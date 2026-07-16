@@ -18,19 +18,17 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
+using ATV::cpu::gpw::GaussianBasis;
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::XcKind;
-using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GPWSolver;
 using ATV::cpu::gpw::GthPotential;
+using ATV::cpu::gpw::XcKind;
 
 namespace {
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
@@ -38,13 +36,11 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 
 TEST(GpwNaClCP2K, PeriodicDiatomicPbe) {
     const auto basis_Na =
-        GaussianBasis(ATV::Element::Na, "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(molrs::Element::Na, "DZVP-MOLOPT-SR-GTH");
     const auto basis_Cl =
-        GaussianBasis(ATV::Element::Cl, "DZVP-MOLOPT-SR-GTH");
-    const auto pot_Na =
-        GthPotential(ATV::Element::Na, "GTH-PBE-q9");
-    const auto pot_Cl =
-        GthPotential(ATV::Element::Cl, "GTH-PBE-q7");
+        GaussianBasis(molrs::Element::Cl, "DZVP-MOLOPT-SR-GTH");
+    const auto pot_Na = GthPotential(molrs::Element::Na, "GTH-PBE-q9");
+    const auto pot_Cl = GthPotential(molrs::Element::Cl, "GTH-PBE-q7");
 
     const double Na[3] = {5.0 * kAng, 5.0 * kAng, 5.0 * kAng};
     const double Cl[3] = {5.0 * kAng, 5.0 * kAng, 7.36 * kAng};
@@ -64,15 +60,17 @@ TEST(GpwNaClCP2K, PeriodicDiatomicPbe) {
     cfg.xc = XcKind::PBE;
     cfg.nonperiodic = false; // periodic Poisson (PERIODIC XYZ)
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
     const double ref = -62.838137517556305; // CP2K 2026.1
-    std::printf("[GPW NaCl] iters=%d conv=%d  E_total=%.10f  (CP2K %.10f)\n"
-                "           kinetic=%.8f loc_sr=%.8f nonlocal=%.8f es=%.8f xc=%.8f\n"
-                "           |dE|=%.3e Ha\n",
-                r.iters, (int)r.converged, r.e_total, ref, r.e_kinetic,
-                r.e_loc_sr, r.e_nonlocal, r.e_es, r.e_xc,
-                std::abs(r.e_total - ref));
+    std::printf(
+        "[GPW NaCl] iters=%d conv=%d  E_total=%.10f  (CP2K %.10f)\n"
+        "           kinetic=%.8f loc_sr=%.8f nonlocal=%.8f es=%.8f xc=%.8f\n"
+        "           |dE|=%.3e Ha\n",
+        r.iters, (int)r.converged, r.e_total, ref, r.e_kinetic, r.e_loc_sr,
+        r.e_nonlocal, r.e_es, r.e_xc, std::abs(r.e_total - ref));
 
     EXPECT_TRUE(r.converged) << "iters=" << r.iters;
     EXPECT_TRUE(std::isfinite(r.e_total));

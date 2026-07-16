@@ -30,10 +30,13 @@ namespace {
 constexpr double kEps = 0.0104, kSig = 3.4, kCut = 8.0, kSkin = 2.0;
 
 double pair_distance(const cpu::Frame& f) {
-    double dx = static_cast<double>(f.atoms.x[0] - f.atoms.x[1]);
-    double dy = static_cast<double>(f.atoms.y[0] - f.atoms.y[1]);
-    double dz = static_cast<double>(f.atoms.z[0] - f.atoms.z[1]);
-    f.box.min_image(dx, dy, dz);
+    double dx =
+        static_cast<double>(f.span(ATV::kAtom_x)[0] - f.span(ATV::kAtom_x)[1]);
+    double dy =
+        static_cast<double>(f.span(ATV::kAtom_y)[0] - f.span(ATV::kAtom_y)[1]);
+    double dz =
+        static_cast<double>(f.span(ATV::kAtom_z)[0] - f.span(ATV::kAtom_z)[1]);
+    f.simbox.min_image(dx, dy, dz);
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 } // namespace
@@ -50,14 +53,18 @@ TEST(MCPairDistribution, MatchesBoltzmannRadialDensity) {
 
     cpu::Frame frame(2);
     const double r_min = std::pow(2.0, 1.0 / 6.0) * kSig;
-    frame.atoms.x[0] = 0.0; frame.atoms.y[0] = 0.0; frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = r_min; frame.atoms.y[1] = 0.0; frame.atoms.z[1] = 0.0;
-    frame.atoms.mass[0] = frame.atoms.mass[1] = 39.948;
-    frame.box = Mat3::cubic(L);
-    frame.scalars.energy = 0.0;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = r_min;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = frame.span(ATV::kAtom_mass)[1] = 39.948;
+    frame.simbox = ATV::cpu::Box::cubic(L);
+    frame.meta.get(ATV::kEnergy) = 0.0;
 
     cpu::mc::MC mc{T, 20260703u};
-    mc.set_pair(cpu::PairLJCut{kEps, kSig, cut});
+    mc.add_potential(cpu::PairLJCut{kEps, kSig, cut});
     mc.set_neighbor(cpu::md::NeighborList<>{cut, skin, 1, 0, true});
     mc.set_mover(cpu::mc::TranslateMove{0.35});
     mc.build();
@@ -65,7 +72,7 @@ TEST(MCPairDistribution, MatchesBoltzmannRadialDensity) {
     mc.run(frame, 40000); // equilibrate
 
     const int n_samp = 300000, stride = 2;
-    const double kCutV = cut; // shifted-potential cutoff for the analytic V
+    const double kCutV = cut;  // shifted-potential cutoff for the analytic V
     std::vector<double> v_win; // V samples inside [r_lo,r_hi]
     std::vector<int> hist(20, 0);
     const double bw = (r_hi - r_lo) / hist.size();
@@ -90,17 +97,21 @@ TEST(MCPairDistribution, MatchesBoltzmannRadialDensity) {
         << "sampled <V>=" << vmean << " quad=" << vquad << " SE=" << vse;
 
     // (2) SANITY — histogram shape vs analytic r²·e^{−βV}: reduced χ² ~ O(1).
-    const double norm =
-        mctest::integrate([&](double r) {
+    const double norm = mctest::integrate(
+        [&](double r) {
             return mctest::radial_density(r, beta, kEps, kSig, kCutV);
-        }, r_lo, r_hi, 20000);
+        },
+        r_lo, r_hi, 20000);
     double chi2 = 0.0;
     for (std::size_t b = 0; b < hist.size(); ++b) {
         const double a = r_lo + b * bw;
         const double exp_frac =
-            mctest::integrate([&](double r) {
-                return mctest::radial_density(r, beta, kEps, kSig, kCutV);
-            }, a, a + bw, 400) / norm;
+            mctest::integrate(
+                [&](double r) {
+                    return mctest::radial_density(r, beta, kEps, kSig, kCutV);
+                },
+                a, a + bw, 400)
+            / norm;
         const double expc = exp_frac * static_cast<double>(n_win);
         if (expc > 5.0) {
             const double d = hist[b] - expc;

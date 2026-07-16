@@ -23,7 +23,7 @@
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -33,29 +33,38 @@ namespace {
 // generator not vendored per no-third-party policy. Literature value
 // (Szabo-Ostlund minimal-basis H2); confirm against the engine's own output at
 // build time and pin the trailing digits + tolerance to the engine value.
-constexpr double kFciH2Sto3g = -1.1372701746609246; // [Hartree] (engine tiny-FCI is exact in-basis; PySCF fci.FCI = -1.13727 to 5 digits)
+constexpr double kFciH2Sto3g =
+    -1.1372701746609246; // [Hartree] (engine tiny-FCI is exact in-basis; PySCF fci.FCI = -1.13727 to 5 digits)
 
 cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.0};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.7414};
-    f.atoms.type = {1, 1};
-    f.atoms.mass = {1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.7414;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 cpu::scf::SCFResult solve_rhf(const cpu::scf::IntegralPack& ints) {
-    return cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints, 1e-12));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints, 1e-12)};
+    solver.build(ints);
+    return solver.run(ints);
 }
 
 } // namespace
 
 // H2/STO-3G full-CI energy vs the pinned PySCF fci.FCI value.
 TEST(FCIvsPySCF, H2_STO3G) {
-    auto ints = cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
-                                          /*compute_eri=*/true);
+    auto ints =
+        cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
+                                  /*compute_eri=*/true);
     auto scf = solve_rhf(ints);
     ASSERT_TRUE(scf.converged);
     auto res = cpu::scf::fci_energy(ints, scf);
@@ -68,8 +77,9 @@ TEST(FCIvsPySCF, H2_STO3G) {
 // independent analytic two-level H2/STO-3G solve and compare to fci_energy.
 // This needs NO external number -- it isolates an ao2mo bug from an FCI bug.
 TEST(FCIvsPySCF, H2_STO3G_EngineMoSelfConsistency) {
-    auto ints = cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
-                                          /*compute_eri=*/true);
+    auto ints =
+        cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
+                                  /*compute_eri=*/true);
     auto scf = solve_rhf(ints);
     ASSERT_TRUE(scf.converged);
 
@@ -83,7 +93,7 @@ TEST(FCIvsPySCF, H2_STO3G_EngineMoSelfConsistency) {
     // (Brillouin). Assemble the analytic 2x2 and diagonalize by hand.
     const double e0 = ints.V_nuc + 2.0 * h(0, 0) + g(0, 0, 0, 0); // reference
     const double e1 = ints.V_nuc + 2.0 * h(1, 1) + g(1, 1, 1, 1); // double
-    const double v = g(0, 1, 0, 1);                               // coupling K_01
+    const double v = g(0, 1, 0, 1); // coupling K_01
     const double delta = e1 - e0;
     const double e_fci_analytic =
         e0 + 0.5 * (delta - std::sqrt(delta * delta + 4.0 * v * v));
@@ -99,16 +109,17 @@ TEST(FCIvsPySCF, H2_STO3G_EngineMoSelfConsistency) {
 // under-binds H2/STO-3G at equilibrium). Binds the hf-ao2mo-mp2 and hf-fci-tiny
 // milestones. NEVER assert |E_FCI|>=|E_MP2| via a reversed e_corr inequality.
 TEST(FCIvsPySCF, H2_STO3G_Mp2VsFci) {
-    auto ints = cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
-                                          /*compute_eri=*/true);
+    auto ints =
+        cpu::scf::build_integrals(make_h2(), cpu::scf::BasisSet::STO3G, 0,
+                                  /*compute_eri=*/true);
     auto scf = solve_rhf(ints);
     ASSERT_TRUE(scf.converged);
 
     const auto mp2 = cpu::scf::mp2_energy(ints, scf);
     const auto fci = cpu::scf::fci_energy(ints, scf);
     EXPECT_LT(fci.e_corr, 0.0);
-    EXPECT_LE(fci.e_corr, mp2.e_corr + 1e-12);              // FCI recovers >= MP2
-    EXPECT_LE(fci.e_fci, scf.energy + mp2.e_corr + 1e-12);  // E_FCI <= E_MP2
+    EXPECT_LE(fci.e_corr, mp2.e_corr + 1e-12); // FCI recovers >= MP2
+    EXPECT_LE(fci.e_fci, scf.energy + mp2.e_corr + 1e-12); // E_FCI <= E_MP2
 }
 
 #endif // ATV_HAS_RHF

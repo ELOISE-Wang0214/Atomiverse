@@ -3,17 +3,16 @@
 
 #include <cmath>
 #include <gtest/gtest.h>
-#include <xtensor/io/xio.hpp>
 #include <xtensor/core/xmath.hpp>
+#include <xtensor/io/xio.hpp>
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integral_derivatives.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -23,35 +22,50 @@ class SCFGradientFixture : public ::testing::Test {
   protected:
     static cpu::Frame make_h2(double bond_length) {
         cpu::Frame f(2);
-        f.atoms.x = {0.0, bond_length};
-        f.atoms.y = {0.0, 0.0};
-        f.atoms.z = {0.0, 0.0};
-        f.atoms.mass = {1.008, 1.008};
-        f.atoms.type = {1, 1};
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = 0.0;
+        f.span(ATV::kAtom_x)[1] = bond_length;
+        f.span(ATV::kAtom_y)[0] = 0.0;
+        f.span(ATV::kAtom_y)[1] = 0.0;
+        f.span(ATV::kAtom_z)[0] = 0.0;
+        f.span(ATV::kAtom_z)[1] = 0.0;
+        f.span(ATV::kAtom_mass)[0] = 1.008;
+        f.span(ATV::kAtom_mass)[1] = 1.008;
+        f.span(ATV::kAtom_type)[0] = 1;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
     static cpu::Frame make_heh_plus() {
         cpu::Frame f(2);
-        f.atoms.x = {0.0, 0.77};
-        f.atoms.y = {0.0, 0.0};
-        f.atoms.z = {0.0, 0.0};
-        f.atoms.mass = {4.003, 1.008};
-        f.atoms.type = {2, 1};
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = 0.0;
+        f.span(ATV::kAtom_x)[1] = 0.77;
+        f.span(ATV::kAtom_y)[0] = 0.0;
+        f.span(ATV::kAtom_y)[1] = 0.0;
+        f.span(ATV::kAtom_z)[0] = 0.0;
+        f.span(ATV::kAtom_z)[1] = 0.0;
+        f.span(ATV::kAtom_mass)[0] = 4.003;
+        f.span(ATV::kAtom_mass)[1] = 1.008;
+        f.span(ATV::kAtom_type)[0] = 2;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
     /// @brief LiH molecule (Li has sp shells, exercises p-type derivatives).
     static cpu::Frame make_lih(double bond_length = 1.6) {
         cpu::Frame f(2);
-        f.atoms.x = {0.0, bond_length};
-        f.atoms.y = {0.0, 0.0};
-        f.atoms.z = {0.0, 0.0};
-        f.atoms.mass = {6.941, 1.008};
-        f.atoms.type = {3, 1};
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = 0.0;
+        f.span(ATV::kAtom_x)[1] = bond_length;
+        f.span(ATV::kAtom_y)[0] = 0.0;
+        f.span(ATV::kAtom_y)[1] = 0.0;
+        f.span(ATV::kAtom_z)[0] = 0.0;
+        f.span(ATV::kAtom_z)[1] = 0.0;
+        f.span(ATV::kAtom_mass)[0] = 6.941;
+        f.span(ATV::kAtom_mass)[1] = 1.008;
+        f.span(ATV::kAtom_type)[0] = 3;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
@@ -59,12 +73,22 @@ class SCFGradientFixture : public ::testing::Test {
     static cpu::Frame make_h2o() {
         cpu::Frame f(3);
         // Near-equilibrium geometry: O at origin, H at ~0.96 A, angle ~104.5 deg
-        f.atoms.x = {0.0, 0.7572, -0.7572};
-        f.atoms.y = {0.0, 0.5865, 0.5865};
-        f.atoms.z = {0.0, 0.0, 0.0};
-        f.atoms.mass = {15.999, 1.008, 1.008};
-        f.atoms.type = {8, 1, 1};
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = 0.0;
+        f.span(ATV::kAtom_x)[1] = 0.7572;
+        f.span(ATV::kAtom_x)[2] = -0.7572;
+        f.span(ATV::kAtom_y)[0] = 0.0;
+        f.span(ATV::kAtom_y)[1] = 0.5865;
+        f.span(ATV::kAtom_y)[2] = 0.5865;
+        f.span(ATV::kAtom_z)[0] = 0.0;
+        f.span(ATV::kAtom_z)[1] = 0.0;
+        f.span(ATV::kAtom_z)[2] = 0.0;
+        f.span(ATV::kAtom_mass)[0] = 15.999;
+        f.span(ATV::kAtom_mass)[1] = 1.008;
+        f.span(ATV::kAtom_mass)[2] = 1.008;
+        f.span(ATV::kAtom_type)[0] = 8;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.span(ATV::kAtom_type)[2] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 };
@@ -134,14 +158,14 @@ TEST_F(IntegralDerivativesTest, OverlapDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -150,7 +174,7 @@ TEST_F(IntegralDerivativesTest, OverlapDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     EXPECT_NEAR(static_cast<double>(dpack.dS(A, d, mu, nu)),
                                 static_cast<double>(num), 0.01);
                 }
@@ -167,14 +191,14 @@ TEST_F(IntegralDerivativesTest, HcoreDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -183,7 +207,7 @@ TEST_F(IntegralDerivativesTest, HcoreDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     double analytic =
                         dpack.dT(A, d, mu, nu) + dpack.dV(A, d, mu, nu);
                     EXPECT_NEAR(static_cast<double>(analytic),
@@ -209,21 +233,21 @@ TEST_F(IntegralDerivativesTest, VnucDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
             auto dp_bwd =
                 cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
-            double num =
-                (dp_fwd.V_nuc - dp_bwd.V_nuc) / (2.0 * h * kAngstromToBohr);
+            double num = (dp_fwd.V_nuc - dp_bwd.V_nuc)
+                         / (2.0 * h * units::kAngstromInBohr);
             EXPECT_NEAR(static_cast<double>(dpack.dV_nuc(A, d)),
                         static_cast<double>(num), 0.01);
         }
@@ -261,14 +285,14 @@ TEST_F(IntegralDerivativesTest, LiHOverlapDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -277,7 +301,7 @@ TEST_F(IntegralDerivativesTest, LiHOverlapDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     EXPECT_NEAR(static_cast<double>(dpack.dS(A, d, mu, nu)),
                                 static_cast<double>(num), 1e-4)
                         << "dS mismatch A=" << A << " d=" << d << " mu=" << mu
@@ -296,14 +320,14 @@ TEST_F(IntegralDerivativesTest, LiHHcoreDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -312,7 +336,7 @@ TEST_F(IntegralDerivativesTest, LiHHcoreDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     double analytic =
                         dpack.dT(A, d, mu, nu) + dpack.dV(A, d, mu, nu);
                     EXPECT_NEAR(static_cast<double>(analytic),
@@ -363,14 +387,14 @@ TEST_F(IntegralDerivativesTest, H2OOverlapDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -379,7 +403,7 @@ TEST_F(IntegralDerivativesTest, H2OOverlapDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     EXPECT_NEAR(static_cast<double>(dpack.dS(A, d, mu, nu)),
                                 static_cast<double>(num), 1e-4)
                         << "dS mismatch A=" << A << " d=" << d << " mu=" << mu
@@ -398,14 +422,14 @@ TEST_F(IntegralDerivativesTest, H2OHcoreDerivVsNumerical) {
         for (int d = 0; d < 3; ++d) {
             cpu::Frame fwd = frame, bwd = frame;
             if (d == 0) {
-                fwd.atoms.x(A) += h;
-                bwd.atoms.x(A) -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y(A) += h;
-                bwd.atoms.y(A) -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z(A) += h;
-                bwd.atoms.z(A) -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             auto dp_fwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
@@ -414,7 +438,7 @@ TEST_F(IntegralDerivativesTest, H2OHcoreDerivVsNumerical) {
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu))
-                                 / (2.0 * h * kAngstromToBohr);
+                                 / (2.0 * h * units::kAngstromInBohr);
                     double analytic =
                         dpack.dT(A, d, mu, nu) + dpack.dV(A, d, mu, nu);
                     EXPECT_NEAR(static_cast<double>(analytic),
@@ -434,7 +458,9 @@ TEST_F(RHFGradientTest, H2AnalyticVsFiniteDifference) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -452,7 +478,9 @@ TEST_F(RHFGradientTest, HeHPlusAnalyticVsFiniteDifference) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, +1);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -470,7 +498,9 @@ TEST_F(RHFGradientTest, ZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
     double fx_sum = grad.forces(0, 0) + grad.forces(1, 0);
@@ -486,7 +516,9 @@ TEST_F(RHFGradientTest, HeHPlusZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, +1);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
     double fx_sum = grad.forces(0, 0) + grad.forces(1, 0);
@@ -498,7 +530,9 @@ TEST_F(RHFGradientTest, H2ForceDirection) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
     EXPECT_GT(static_cast<double>(grad.forces(0, 0)), 0.0);
@@ -512,14 +546,19 @@ TEST_F(RHFGradientTest, EnergyForceConsistency) {
     auto frame0 = make_h2(R0);
     auto int0 = cpu::scf::build_integrals(frame0, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(int0, double(1e-10));
-    auto res0 = cpu::scf::scf_solve(int0, cfg);
+    ATV::cpu::scf::SCFSolver res0_solver{cfg};
+    res0_solver.build(int0);
+    const auto& res0 = res0_solver.run(int0);
     auto grad0 = cpu::scf::scf_gradient(frame0, int0, res0, cfg);
 
     auto frame1 = make_h2(R0 + delta);
     auto int1 = cpu::scf::build_integrals(frame1, cpu::scf::BasisSet::STO3G);
-    auto res1 = cpu::scf::scf_solve(int1, cfg);
+    ATV::cpu::scf::SCFSolver res1_solver{cfg};
+    res1_solver.build(int1);
+    const auto& res1 = res1_solver.run(int1);
 
-    double dE_actual = res1.energy * kHartree2eV - res0.energy * kHartree2eV;
+    double dE_actual =
+        res1.energy * units::kHartreeInEv - res0.energy * units::kHartreeInEv;
     double dE_predicted = -grad0.forces(1, 0) * delta;
 
     EXPECT_NEAR(static_cast<double>(dE_actual),
@@ -540,7 +579,9 @@ TEST_F(UHFGradientTest, H2ZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
@@ -553,7 +594,9 @@ TEST_F(UHFGradientTest, H2AnalyticVsFiniteDifference) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -571,7 +614,9 @@ TEST_F(UHFGradientTest, H2ForceDirection) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
     EXPECT_GT(static_cast<double>(grad.forces(0, 0)), 0.0);
@@ -587,7 +632,9 @@ TEST_F(KSGradientTest, H2LSDAZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
@@ -600,7 +647,9 @@ TEST_F(KSGradientTest, H2LSDAForceDirection) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
@@ -614,7 +663,9 @@ TEST_F(KSGradientTest, H2LSDAAnalyticVsFD) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
     config.tol = double(1e-10);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -632,7 +683,9 @@ TEST_F(KSGradientTest, HeHPlusLSDAZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 1);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
@@ -645,7 +698,9 @@ TEST_F(KSGradientTest, H2PBEZeroNetForce) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 
@@ -658,7 +713,9 @@ TEST_F(KSGradientTest, H2PBEForceDirection) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
 

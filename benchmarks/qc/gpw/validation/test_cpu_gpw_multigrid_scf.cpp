@@ -19,10 +19,8 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV::cpu::gpw;
@@ -33,15 +31,14 @@ namespace {
 // water basis, Γ-point images active. Closed shell, converges cleanly.
 std::vector<GpwAtom> make_water() {
     constexpr double kAng = 1.8897259885789; // Å -> Bohr
-    const auto bO = GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const auto bH = GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-SR-GTH");
-    const auto pO = GthPotential(ATV::Element::O, "GTH-PBE-q6");
-    const auto pH = GthPotential(ATV::Element::H, "GTH-PBE-q1");
+    const auto bO = GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const auto bH = GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const auto pO = GthPotential(molrs::Element::O, "GTH-PBE-q6");
+    const auto pH = GthPotential(molrs::Element::H, "GTH-PBE-q1");
     const double rO[3] = {2.6 * kAng, 2.5 * kAng, 2.4 * kAng};
     const double rH1[3] = {3.16 * kAng, 2.5 * kAng, 2.9 * kAng};
     const double rH2[3] = {2.1 * kAng, 2.5 * kAng, 2.95 * kAng};
-    return {GpwAtom(rO, bO, pO), GpwAtom(rH1, bH, pH),
-            GpwAtom(rH2, bH, pH)};
+    return {GpwAtom(rO, bO, pO), GpwAtom(rH1, bH, pH), GpwAtom(rH2, bH, pH)};
 }
 
 GpwConfig base_config() {
@@ -65,22 +62,27 @@ TEST(GpwMultigridScf, FourLevelsMatchSingleGrid) {
 
     GpwConfig cfg1 = base_config();
     cfg1.ngrids = 1;
-    const GpwResult r1 = gpw_scf(atoms, cfg1);
+    GPWSolver solver1{cfg1};
+    solver1.build(atoms);
+    const GpwResult r1 = solver1.run(atoms);
 
     GpwConfig cfg4 = base_config();
     cfg4.ngrids = 4;
     cfg4.rel_cutoff = 60.0;
-    const GpwResult r4 = gpw_scf(atoms, cfg4);
+    GPWSolver solver4{cfg4};
+    solver4.build(atoms);
+    const GpwResult r4 = solver4.run(atoms);
 
     std::printf("[GPW mg-scf] ngrids=1 E=%.8f (it=%d conv=%d)\n", r1.e_total,
                 r1.iters, r1.converged);
     std::printf("[GPW mg-scf] ngrids=4 E=%.8f (it=%d conv=%d)\n", r4.e_total,
                 r4.iters, r4.converged);
-    std::printf("[GPW mg-scf] dE = %.3e Ha\n", std::abs(r4.e_total - r1.e_total));
-    std::printf("[GPW mg-scf] g1: T=%.5f loc=%.5f es=%.5f xc=%.5f\n", r1.e_kinetic,
-                r1.e_loc_sr, r1.e_es, r1.e_xc);
-    std::printf("[GPW mg-scf] g4: T=%.5f loc=%.5f es=%.5f xc=%.5f\n", r4.e_kinetic,
-                r4.e_loc_sr, r4.e_es, r4.e_xc);
+    std::printf("[GPW mg-scf] dE = %.3e Ha\n",
+                std::abs(r4.e_total - r1.e_total));
+    std::printf("[GPW mg-scf] g1: T=%.5f loc=%.5f es=%.5f xc=%.5f\n",
+                r1.e_kinetic, r1.e_loc_sr, r1.e_es, r1.e_xc);
+    std::printf("[GPW mg-scf] g4: T=%.5f loc=%.5f es=%.5f xc=%.5f\n",
+                r4.e_kinetic, r4.e_loc_sr, r4.e_es, r4.e_xc);
 
     EXPECT_TRUE(r1.converged);
     EXPECT_TRUE(r4.converged);

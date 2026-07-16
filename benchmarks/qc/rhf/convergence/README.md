@@ -38,7 +38,7 @@ minimal. Extend as the chapter needs:
 
 - more molecules (CH4, NH3, benzene) to show the trend is systematic;
 - a two-point CBS extrapolation (e.g. def2-SVP/def2-TZVP → estimated limit);
-- a companion **DFT** ladder (`uks_solve` / PBE) once chapter 5 needs it.
+- a companion **DFT** ladder (`SCFSolver` / PBE) once chapter 5 needs it.
 
 ## Expected numbers (orientation, not a gate)
 

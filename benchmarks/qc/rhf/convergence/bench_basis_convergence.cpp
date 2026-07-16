@@ -35,7 +35,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -51,12 +51,12 @@ cpu::Frame make_h2o() {
         {0.000000, -0.757200, -0.469200},
     };
     for (int i = 0; i < 3; ++i) {
-        f.atoms.type[i] = Z[i];
-        f.atoms.x[i] = xyz[i][0];
-        f.atoms.y[i] = xyz[i][1];
-        f.atoms.z[i] = xyz[i][2];
+        f.span(ATV::kAtom_type)[i] = Z[i];
+        f.span(ATV::kAtom_x)[i] = xyz[i][0];
+        f.span(ATV::kAtom_y)[i] = xyz[i][1];
+        f.span(ATV::kAtom_z)[i] = xyz[i][2];
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -87,7 +87,8 @@ int main(int argc, char** argv) {
         {"def2-TZVP", cpu::scf::BasisSet::Def2TZVP},
     };
 
-    std::printf("# RHF/H2O total energy vs basis set (variational convergence)\n");
+    std::printf(
+        "# RHF/H2O total energy vs basis set (variational convergence)\n");
     std::printf("# %-12s  %-18s  %-16s\n", "basis", "E_RHF [Ha]",
                 "dE_vs_prev [Ha]");
 
@@ -101,7 +102,11 @@ int main(int argc, char** argv) {
         double e;
         try {
             auto ints = cpu::scf::build_integrals(frame, rung.basis);
-            auto res = cpu::scf::rhf_solve(ints, 1e-10, 200);
+            auto config = cpu::scf::rhf_config(ints, 1e-10);
+            config.max_iter = 200;
+            cpu::scf::SCFSolver solver{config};
+            solver.build(ints);
+            const auto& res = solver.run(ints);
             if (!res.converged) {
                 std::printf("  %-12s  SCF NOT CONVERGED\n", rung.name);
                 ++n_fail;
@@ -139,7 +144,8 @@ int main(int argc, char** argv) {
     }
 
     std::printf("#\n# Expected: E decreases monotonically toward the CBS limit "
-                "and the\n# per-step lowering shrinks. %d issue(s).\n", n_fail);
+                "and the\n# per-step lowering shrinks. %d issue(s).\n",
+                n_fail);
     return n_fail == 0 ? 0 : 1;
 }
 

@@ -27,10 +27,10 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -62,30 +62,30 @@ cpu::Frame make_fcc_argon() {
     const int n = static_cast<int>(x.size());
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = x[i];
-        frame.atoms.y[i] = y[i];
-        frame.atoms.z[i] = z[i];
-        frame.atoms.mass[i] = 39.948; // Ar amu
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x[i];
+        frame.span(ATV::kAtom_y)[i] = y[i];
+        frame.span(ATV::kAtom_z)[i] = z[i];
+        frame.span(ATV::kAtom_mass)[i] = 39.948; // Ar amu
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
 /// Measured kinetic temperature with `3N − 3` DOF (COM removed), matching
 /// LAMMPS `compute temp` with `extra_dof = dimension`.
 double measured_temperature(const cpu::Frame& f) {
-    const int n = f.atoms.size();
-    double ke2 = 0.0; // 2 * KE / kMvv2e  ==  sum(m v^2)
+    const int n = f.nlocal();
+    double ke2 = 0.0; // 2 * KE / units::mass_v2_to_energy  ==  sum(m v^2)
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        ke2 += f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        ke2 += f.span(ATV::kAtom_mass)[i] * v2;
     }
-    const double ke = 0.5 * kMvv2e * ke2;
+    const double ke = 0.5 * units::mass_v2_to_energy * ke2;
     const int ndof = 3 * n - 3;
-    return 2.0 * ke / (ndof * kBoltzmann);
+    return 2.0 * ke / (ndof * units::kB_ev_per_k);
 }
 
 } // namespace
@@ -111,8 +111,8 @@ BENCH_CASE(SetupLammpsAlign_CheckNoRebuildsEveryEligibleStep) {
         cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/true};
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-        sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-        sim.set_neighbor(nl);
+        sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+        sim.set_neighbor_ref(nl);
         sim.build();
         sim.run(frame, n_steps);
         rebuilds_yes = nl.n_rebuilds();
@@ -125,8 +125,8 @@ BENCH_CASE(SetupLammpsAlign_CheckNoRebuildsEveryEligibleStep) {
         cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/false};
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-        sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-        sim.set_neighbor(nl);
+        sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+        sim.set_neighbor_ref(nl);
         sim.build();
         sim.run(frame, n_steps);
         rebuilds_no = nl.n_rebuilds();
@@ -161,8 +161,8 @@ BENCH_CASE(SetupLammpsAlign_CheckNoHonoursEveryAndDelayGates) {
     cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/false};
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl);
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_neighbor_ref(nl);
     sim.build();
     sim.run(frame, n_steps);
 
@@ -180,9 +180,9 @@ BENCH_CASE(SetupLammpsAlign_CheckNoHonoursEveryAndDelayGates) {
 void build_with_init(cpu::md::MD& sim, cpu::md::InitVelocity init) {
     constexpr double cutoff = 6.8;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff});
-    sim.add(init);
+    sim.add_ref(init);
     sim.build();
 }
 
@@ -246,13 +246,13 @@ BENCH_CASE(SetupLammpsAlign_InitVelocityZeroesLinearMomentum) {
                                           cpu::md::VelocityDist::gaussian});
     sim.run(frame, 0);
 
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     double p[3] = {0, 0, 0}, mtot = 0;
     for (int i = 0; i < n; ++i) {
-        const double m = frame.atoms.mass[i];
-        p[0] += m * frame.atoms.vx[i];
-        p[1] += m * frame.atoms.vy[i];
-        p[2] += m * frame.atoms.vz[i];
+        const double m = frame.span(ATV::kAtom_mass)[i];
+        p[0] += m * frame.span(ATV::kAtom_vx)[i];
+        p[1] += m * frame.span(ATV::kAtom_vy)[i];
+        p[2] += m * frame.span(ATV::kAtom_vz)[i];
         mtot += m;
     }
     // Net COM velocity must be zero (LAMMPS `mom yes` default).
@@ -287,8 +287,10 @@ BENCH_CASE(SetupLammpsAlign_InitVelocityDistModesDiffer) {
     }
 
     bool any_diff = false;
-    for (int i = 0; i < frame_g.atoms.size(); ++i) {
-        if (std::abs(frame_g.atoms.vx[i] - frame_u.atoms.vx[i]) > 1e-9) {
+    for (int i = 0; i < frame_g.nlocal(); ++i) {
+        if (std::abs(frame_g.span(ATV::kAtom_vx)[i]
+                     - frame_u.span(ATV::kAtom_vx)[i])
+            > 1e-9) {
             any_diff = true;
             break;
         }

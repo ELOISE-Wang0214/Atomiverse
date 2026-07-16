@@ -20,7 +20,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/pw/pw_scf.h"
+#include "atomiverse/cpu/pw/pw_solver.h"
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/cuda/pw/pw_scf.cuh"
 #endif
@@ -45,15 +45,15 @@ constexpr double kEvPerA3ToGPa = 160.21766208;
 cpu::Frame make_si_fcc(double a) {
     cpu::Frame f(2);
     for (int i = 0; i < 2; ++i) {
-        f.atoms.type[i] = 14;
-        f.atoms.mass[i] = 28.0855;
+        f.span(ATV::kAtom_type)[i] = 14;
+        f.span(ATV::kAtom_mass)[i] = 28.0855;
     }
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.x[1] = a / 4.0;
-    f.atoms.y[1] = a / 4.0;
-    f.atoms.z[1] = a / 4.0;
+    f.span(ATV::kAtom_x)[0] = 0;
+    f.span(ATV::kAtom_y)[0] = 0;
+    f.span(ATV::kAtom_z)[0] = 0;
+    f.span(ATV::kAtom_x)[1] = a / 4.0;
+    f.span(ATV::kAtom_y)[1] = a / 4.0;
+    f.span(ATV::kAtom_z)[1] = a / 4.0;
     double h = a / 2.0;
     Mat3 cell;
     cell(0, 0) = 0;
@@ -65,14 +65,14 @@ cpu::Frame make_si_fcc(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.box = cell;
+    f.simbox.set_cell(cell);
     return f;
 }
 
 struct EosFit {
-    double v0 = 0;  ///< Equilibrium volume per 2-atom cell [Å³].
-    double a0 = 0;  ///< Equilibrium fcc lattice constant [Å].
-    double b0 = 0;  ///< Bulk modulus [GPa].
+    double v0 = 0; ///< Equilibrium volume per 2-atom cell [Å³].
+    double a0 = 0; ///< Equilibrium fcc lattice constant [Å].
+    double b0 = 0; ///< Bulk modulus [GPa].
     bool ok = false;
 };
 
@@ -216,11 +216,18 @@ int main(int argc, char** argv) {
             return 1;
 #endif
         } else {
-            r = cpu::pw::pw_scf(frame, upf, ecut_ry, kmesh, 1e-7, 60);
+            cpu::pw::PWConfig config;
+            config.upf_path = upf;
+            config.ecut_ry = ecut_ry;
+            config.k_mesh = kmesh;
+            config.tol = 1e-7;
+            config.max_iter = 60;
+            cpu::pw::PWSolver solver{config};
+            solver.build(frame);
+            r = solver.run(frame);
         }
         if (!r.converged) {
-            std::cerr << "  WARNING: SCF not converged at a=" << a
-                      << std::endl;
+            std::cerr << "  WARNING: SCF not converged at a=" << a << std::endl;
             all_converged = false;
         }
         lats.push_back(a);
@@ -264,8 +271,8 @@ int main(int argc, char** argv) {
         ref = fit_eos(ref_v, ref_e);
         ref_name = "CP2K (GTH-PADE-q4, DZVP-GTH, LDA)";
         if (!ref.ok) {
-            std::cerr << "FAIL: CP2K reference fit failed (" << ref_csv
-                      << ")" << std::endl;
+            std::cerr << "FAIL: CP2K reference fit failed (" << ref_csv << ")"
+                      << std::endl;
             return 1;
         }
     } else {
@@ -281,8 +288,8 @@ int main(int argc, char** argv) {
         tol_b0 = 30.0;
     }
 
-    std::printf("\n  %-28s a0 = %.4f A   B0 = %6.1f GPa\n", "Atomiverse pw:",
-                atv.a0, atv.b0);
+    std::printf("\n  %-28s a0 = %.4f A   B0 = %6.1f GPa\n",
+                "Atomiverse pw:", atv.a0, atv.b0);
     std::printf("  %-28s a0 = %.4f A   B0 = %6.1f GPa\n",
                 (ref_name.substr(0, 4) + ":").c_str(), ref.a0, ref.b0);
     std::printf("  reference: %s\n", ref_name.c_str());

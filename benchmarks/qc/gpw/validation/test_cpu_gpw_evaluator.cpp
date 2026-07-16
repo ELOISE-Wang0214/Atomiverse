@@ -3,7 +3,7 @@
 ///
 /// The `GpwEvaluatorSolver` suite (arch-refactor-04-engines Design §2) pins the
 /// evaluator behaviour across the switch to an owned GPWSolver: the energy is
-/// bit-invariant vs a direct gpw_scf solve of the identically-assembled system,
+/// bit-invariant vs a direct GPWSolver run of the identically-assembled system,
 /// and launching after the frame box changed from the build-time cell throws
 /// std::runtime_error (GPW does not support variable cells). These cases use a
 /// fully inline basis/pseudopotential — no CP2K data files required.
@@ -11,6 +11,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _OPENMP
@@ -23,18 +24,15 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/facade/component_role.h"
 
 using namespace ATV::cpu::gpw;
 
 namespace {
-constexpr double kBohr2Ang = 1.0 / 1.8897259885789;
 constexpr double kAng2Bohr =
     1.8897259885789; // same constant as gpw_evaluator.cpp
 
@@ -43,9 +41,6 @@ constexpr double kAng2Bohr =
 // test_cpu_gpw_solver.cpp, expressed as the GaussianBasis/GthPotential structs
 // the evaluator consumes. No file parsing.
 Kind inline_hydrogen_kind() {
-    GaussianBasis basis;
-    basis.element = ATV::Element::H;
-    basis.name = "INLINE-S";
     GaussianBasisSet set;
     set.n = 1;
     set.lmin = 0;
@@ -54,36 +49,27 @@ Kind inline_hydrogen_kind() {
     set.nshell = {1};
     set.ncoef = 1;
     set.coef = {1.0};
-    basis.sets = {set};
-
-    GthPotential pot;
-    pot.element = ATV::Element::H;
-    pot.name = "INLINE-q1";
-    pot.zion = 1;
-    pot.rloc = 0.2;
-    pot.cloc = {-4.17890044, 0.72446331};
-
-    Kind e;
-    e.element = ATV::Element::H;
-    e.basis = basis;
-    e.pot = pot;
-    return e;
+    GaussianBasis basis{molrs::Element::H, "INLINE-S", {std::move(set)}};
+    GthPotential pot{molrs::Element::H,         "INLINE-q1", 1, 0.2,
+                     {-4.17890044, 0.72446331}, {}};
+    return Kind{molrs::Element::H, std::move(basis), std::move(pot)};
 }
 
 // H2 at 1.4 Bohr in a cubic 8 Bohr box, expressed in the frame's Angstrom.
 ATV::cpu::Frame inline_h2_frame() {
     const double box = 8.0; // [Bohr]
     ATV::cpu::Frame frame(2);
-    frame.box = ATV::cpu::Box::orthorhombic(box * kBohr2Ang, box * kBohr2Ang,
-                                            box * kBohr2Ang);
-    frame.atoms.x(0) = (box / 2 - 0.7) * kBohr2Ang;
-    frame.atoms.y(0) = (box / 2) * kBohr2Ang;
-    frame.atoms.z(0) = (box / 2) * kBohr2Ang;
-    frame.atoms.x(1) = (box / 2 + 0.7) * kBohr2Ang;
-    frame.atoms.y(1) = (box / 2) * kBohr2Ang;
-    frame.atoms.z(1) = (box / 2) * kBohr2Ang;
-    frame.atoms.type(0) = 1; // H
-    frame.atoms.type(1) = 1;
+    frame.simbox = ATV::cpu::Box::orthorhombic(
+        box * ATV::units::kBohrInAngstrom, box * ATV::units::kBohrInAngstrom,
+        box * ATV::units::kBohrInAngstrom);
+    frame.span(ATV::kAtom_x)[0] = (box / 2 - 0.7) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[0] = (box / 2) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[0] = (box / 2) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_x)[1] = (box / 2 + 0.7) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[1] = (box / 2) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[1] = (box / 2) * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_type)[0] = 1; // H
+    frame.span(ATV::kAtom_type)[1] = 1;
     return frame;
 }
 
@@ -113,21 +99,21 @@ TEST(GpwEvaluator, H2SinglePointThroughDriver) {
     // test exercises the evaluator → Evaluate-driver → frame.energy plumbing;
     // periodic CP2K parity for the production basis is in the MOLOPT zno/nacl tests.
     ATV::cpu::Frame frame(2);
-    frame.box = ATV::cpu::Box::orthorhombic(16.0 * kBohr2Ang, 16.0 * kBohr2Ang,
-                                            16.0 * kBohr2Ang);
-    frame.atoms.x(0) = 3.5 * kBohr2Ang;
-    frame.atoms.y(0) = 2.0 * kBohr2Ang;
-    frame.atoms.z(0) = 2.0 * kBohr2Ang;
-    frame.atoms.x(1) = 4.5 * kBohr2Ang;
-    frame.atoms.y(1) = 2.0 * kBohr2Ang;
-    frame.atoms.z(1) = 2.0 * kBohr2Ang;
-    frame.atoms.type(0) = 1; // H
-    frame.atoms.type(1) = 1;
+    frame.simbox = ATV::cpu::Box::orthorhombic(
+        16.0 * ATV::units::kBohrInAngstrom, 16.0 * ATV::units::kBohrInAngstrom,
+        16.0 * ATV::units::kBohrInAngstrom);
+    frame.span(ATV::kAtom_x)[0] = 3.5 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[0] = 2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[0] = 2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_x)[1] = 4.5 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[1] = 2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[1] = 2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_type)[0] = 1; // H
+    frame.span(ATV::kAtom_type)[1] = 1;
 
-    Kind H;
-    H.element = ATV::Element::H;
-    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
-    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+    const Kind H{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
@@ -144,7 +130,7 @@ TEST(GpwEvaluator, H2SinglePointThroughDriver) {
     // (-1.10676 Ha): the DZV-GTH-PADE/PADE-LDA path sits ~30 mHa above CP2K
     // (a pre-existing basis/grid offset, documented in gpw-periodic-lattice-sum);
     // the gate brackets that offset so the test validates plumbing + rough physics.
-    const double e_ev = frame.scalars.energy;
+    const double e_ev = frame.meta.get(ATV::kEnergy);
     const double ref_ev = -1.10676359396999 * 27.211386245988;
     EXPECT_TRUE(eval.last_result().converged);
     EXPECT_NEAR(e_ev, ref_ev,
@@ -157,7 +143,7 @@ TEST(GpwEvaluator, H2SinglePointThroughDriver) {
 // ── Evaluator-owns-GPWSolver contract (arch-refactor-04-engines Design §2) ──
 
 // Numerical anchor (must stay green across the refactor): the evaluator's
-// energy is BIT-IDENTICAL to a direct gpw_scf solve of the same system,
+// energy is BIT-IDENTICAL to a direct GPWSolver run of the same system,
 // assembled exactly the way gpw_evaluator.cpp assembles it (Angstrom → Bohr,
 // n_occ = Σ zion / 2, cold start). Launch keeps calling the same inner solve —
 // switching to an owned GPWSolver must not move a single bit.
@@ -174,15 +160,15 @@ TEST(GpwEvaluatorSolver, InlineH2EnergyBitMatchesDirectSolve) {
     const Kind H = inline_hydrogen_kind();
     std::vector<GpwAtom> atoms;
     for (int i = 0; i < 2; ++i) {
-        const double pos[3] = {frame.atoms.x(i) * kAng2Bohr,
-                               frame.atoms.y(i) * kAng2Bohr,
-                               frame.atoms.z(i) * kAng2Bohr};
+        const double pos[3] = {frame.span(ATV::kAtom_x)[i] * kAng2Bohr,
+                               frame.span(ATV::kAtom_y)[i] * kAng2Bohr,
+                               frame.span(ATV::kAtom_z)[i] * kAng2Bohr};
         atoms.push_back(GpwAtom(pos, H.basis, H.pot, 1));
     }
     GpwConfig cfg;
-    cfg.cell[0] = frame.box.length(0) * kAng2Bohr;
-    cfg.cell[1] = frame.box.length(1) * kAng2Bohr;
-    cfg.cell[2] = frame.box.length(2) * kAng2Bohr;
+    cfg.cell[0] = frame.simbox.length(0) * kAng2Bohr;
+    cfg.cell[1] = frame.simbox.length(1) * kAng2Bohr;
+    cfg.cell[2] = frame.simbox.length(2) * kAng2Bohr;
     cfg.cutoff_ry = ecfg.cutoff_ry;
     cfg.n_occ = 1; // Σ zion = 2 valence electrons, closed shell
     cfg.max_iter = ecfg.max_iter;
@@ -190,11 +176,14 @@ TEST(GpwEvaluatorSolver, InlineH2EnergyBitMatchesDirectSolve) {
     cfg.mix = ecfg.mix;
     cfg.xc = ecfg.xc;
     cfg.nonperiodic = ecfg.nonperiodic;
-    const GpwResult ref = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult ref = solver.run(atoms);
     ASSERT_TRUE(ref.converged);
 
     EXPECT_DOUBLE_EQ(eval.last_energy_hartree(), ref.e_total);
-    EXPECT_DOUBLE_EQ(frame.scalars.energy, ref.e_total * ATV::kHartree2eV);
+    EXPECT_DOUBLE_EQ(frame.meta.get(ATV::kEnergy),
+                     ref.e_total * ATV::units::kHartreeInEv);
 }
 
 // Variable-cell guard: GPW does not support a cell that changes after build()
@@ -209,10 +198,10 @@ TEST(GpwEvaluatorSolver, LaunchAfterCellChangeThrowsRuntimeError) {
     eval.build(ATV::cpu::BuildContext{runtime, frame});
 
     // NPT-style cell change between build and launch.
-    const double a = frame.box.length(0);
-    const double b = frame.box.length(1);
-    const double c = frame.box.length(2);
-    frame.box = ATV::cpu::Box::orthorhombic(1.10 * a, b, c);
+    const double a = frame.simbox.length(0);
+    const double b = frame.simbox.length(1);
+    const double c = frame.simbox.length(2);
+    frame.simbox = ATV::cpu::Box::orthorhombic(1.10 * a, b, c);
 
     ATV::cpu::LaunchContext ctx{runtime, frame, 0, 0};
     EXPECT_THROW(eval.launch(ctx), std::runtime_error);

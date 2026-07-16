@@ -16,21 +16,19 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/linalg/density.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 
-using ATV::cpu::linalg::RealMatrix;
 using ATV::cpu::gpw::internal::ot_gradient;
 using ATV::cpu::gpw::internal::ot_minimize_fixed;
 using ATV::cpu::gpw::internal::ot_orthonormalize;
 using ATV::cpu::gpw::internal::ot_parameterize;
 using ATV::cpu::gpw::internal::ot_tangent;
+using ATV::cpu::linalg::RealMatrix;
 
 namespace {
 
@@ -51,20 +49,24 @@ Problem make_problem(int nb, int no, unsigned seed) {
             H(i, j) = nd(rng);
         }
     RealMatrix S = xt::linalg::dot(A, xt::transpose(A));
-    for (int i = 0; i < nb; ++i) S(i, i) += static_cast<double>(nb); // well-conditioned SPD
-    RealMatrix Hs = 0.5 * (H + xt::transpose(H));                    // symmetric
+    for (int i = 0; i < nb; ++i)
+        S(i, i) += static_cast<double>(nb);       // well-conditioned SPD
+    RealMatrix Hs = 0.5 * (H + xt::transpose(H)); // symmetric
     RealMatrix Cr = xt::zeros<double>({nb, no});
     for (int i = 0; i < nb; ++i)
-        for (int j = 0; j < no; ++j) Cr(i, j) = nd(rng);
+        for (int j = 0; j < no; ++j)
+            Cr(i, j) = nd(rng);
     RealMatrix C0 = ot_orthonormalize(Cr, S);
     RealMatrix T = xt::zeros<double>({nb, nb}); // identity preconditioner basis
-    for (int i = 0; i < nb; ++i) T(i, i) = 1.0;
+    for (int i = 0; i < nb; ++i)
+        T(i, i) = 1.0;
     return {S, Hs, T, C0, nb, no};
 }
 
 double max_abs(const RealMatrix& m) {
     double r = 0.0;
-    for (double v : m) r = std::max(r, std::abs(v));
+    for (double v : m)
+        r = std::max(r, std::abs(v));
     return r;
 }
 
@@ -76,13 +78,16 @@ TEST(GpwOt, ParameterizationKeepsOrthonormal) {
     std::normal_distribution<double> nd(0.0, 1.0);
     RealMatrix d = xt::zeros<double>({p.nb, p.no});
     for (int i = 0; i < p.nb; ++i)
-        for (int j = 0; j < p.no; ++j) d(i, j) = nd(rng);
+        for (int j = 0; j < p.no; ++j)
+            d(i, j) = nd(rng);
     const RealMatrix x = ot_tangent(p.C0, p.S, d); // S-tangent
 
     for (double alpha : {0.05, 0.5, 1.7, 4.0}) {
         const RealMatrix C = ot_parameterize(p.C0, alpha * x, p.S);
-        RealMatrix G = xt::linalg::dot(xt::transpose(C), xt::linalg::dot(p.S, C));
-        for (int i = 0; i < p.no; ++i) G(i, i) -= 1.0;
+        RealMatrix G =
+            xt::linalg::dot(xt::transpose(C), xt::linalg::dot(p.S, C));
+        for (int i = 0; i < p.no; ++i)
+            G(i, i) -= 1.0;
         EXPECT_LT(max_abs(G), 1e-11) << "C^T S C != I at alpha=" << alpha;
     }
 }
@@ -98,7 +103,8 @@ TEST(GpwOt, GradientMatchesFiniteDifference) {
     std::normal_distribution<double> nd(0.0, 1.0);
     RealMatrix dd = xt::zeros<double>({p.nb, p.no});
     for (int i = 0; i < p.nb; ++i)
-        for (int j = 0; j < p.no; ++j) dd(i, j) = nd(rng);
+        for (int j = 0; j < p.no; ++j)
+            dd(i, j) = nd(rng);
     const RealMatrix d = ot_tangent(p.C0, p.S, dd);
 
     const double eps = 1e-6;
@@ -116,7 +122,8 @@ TEST(GpwOt, FixedHReproducesDiagonalization) {
     // Reference: generalized diagonalization, occupy the no lowest states.
     auto [eig, Call] = ATV::cpu::linalg::diagonalize_fock_generalized(p.H, p.S);
     double band_ref = 0.0;
-    for (int i = 0; i < p.no; ++i) band_ref += 2.0 * eig(i);
+    for (int i = 0; i < p.no; ++i)
+        band_ref += 2.0 * eig(i);
     const RealMatrix P_ref =
         ATV::cpu::linalg::build_density_matrix(Call, p.no, p.nb, 2.0);
 
@@ -133,32 +140,44 @@ TEST(GpwOt, FixedHReproducesDiagonalization) {
     EXPECT_LT(max_abs(P_ot - P_ref), 1e-6); // same occupied subspace (density)
 }
 
-// ── Self-consistent equivalence: full gpw_scf, OT vs diagonalization ────────
+// ── Self-consistent equivalence: GPWSolver, OT vs diagonalization ──────────
 namespace {
-using ATV::cpu::gpw::GpwConfig;
-using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::GaussianBasis;
 using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::GpwConfig;
+using ATV::cpu::gpw::GpwResult;
+using ATV::cpu::gpw::GPWSolver;
 using ATV::cpu::gpw::GthPotential;
 } // namespace
 
 TEST(GpwOtScf, H2MatchesDiagonalization) {
-    const auto basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0};
     std::vector<ATV::cpu::gpw::GpwAtom> atoms = {GpwAtom(rA, basis, pot),
                                                  GpwAtom(rB, basis, pot)};
     GpwConfig cfg;
-    cfg.cell[0] = 8.0; cfg.cell[1] = 4.0; cfg.cell[2] = 4.0;
-    cfg.cutoff_ry = 140.0; cfg.n_occ = 1; cfg.max_iter = 300; cfg.tol = 1e-8;
+    cfg.cell[0] = 8.0;
+    cfg.cell[1] = 4.0;
+    cfg.cell[2] = 4.0;
+    cfg.cutoff_ry = 140.0;
+    cfg.n_occ = 1;
+    cfg.max_iter = 300;
+    cfg.tol = 1e-8;
 
-    cfg.use_ot = false; const GpwResult diag = gpw_scf(atoms, cfg);
-    cfg.use_ot = true;  const GpwResult ot = gpw_scf(atoms, cfg);
-    std::printf("[GPW OT-SCF H2] diag E=%.10f (%d it)  ot E=%.10f (%d it)  dE=%.2e\n",
-                diag.e_total, diag.iters, ot.e_total, ot.iters,
-                std::abs(ot.e_total - diag.e_total));
+    cfg.use_ot = false;
+    GPWSolver diagonal_solver{cfg};
+    diagonal_solver.build(atoms);
+    const GpwResult diag = diagonal_solver.run(atoms);
+    cfg.use_ot = true;
+    GPWSolver ot_solver{cfg};
+    ot_solver.build(atoms);
+    const GpwResult ot = ot_solver.run(atoms);
+    std::printf(
+        "[GPW OT-SCF H2] diag E=%.10f (%d it)  ot E=%.10f (%d it)  dE=%.2e\n",
+        diag.e_total, diag.iters, ot.e_total, ot.iters,
+        std::abs(ot.e_total - diag.e_total));
     EXPECT_TRUE(diag.converged);
     EXPECT_TRUE(ot.converged);
     EXPECT_NEAR(ot.e_total, diag.e_total, 1e-7);
@@ -166,10 +185,10 @@ TEST(GpwOtScf, H2MatchesDiagonalization) {
 
 TEST(GpwOtScf, ZnOMatchesDiagonalization) {
     constexpr double kAng = 1.8897259885789;
-    const auto bZn = GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
-    const auto bO = GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const auto pZn = GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
-    const auto pO = GthPotential(ATV::Element::O, "GTH-PBE-q6");
+    const auto bZn = GaussianBasis(molrs::Element::Zn, "DZVP-MOLOPT-SR-GTH");
+    const auto bO = GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const auto pZn = GthPotential(molrs::Element::Zn, "GTH-PBE-q12");
+    const auto pO = GthPotential(molrs::Element::O, "GTH-PBE-q6");
     const double rZn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double rO[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
     std::vector<ATV::cpu::gpw::GpwAtom> atoms = {GpwAtom(rZn, bZn, pZn),
@@ -177,7 +196,10 @@ TEST(GpwOtScf, ZnOMatchesDiagonalization) {
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
     cfg.cutoff_ry = 120.0; // cheap grid (consistency, not absolute accuracy)
-    cfg.n_occ = 9; cfg.max_iter = 400; cfg.tol = 1e-8; cfg.xc = ATV::cpu::gpw::XcKind::PBE;
+    cfg.n_occ = 9;
+    cfg.max_iter = 400;
+    cfg.tol = 1e-8;
+    cfg.xc = ATV::cpu::gpw::XcKind::PBE;
     // ZnO (Zn semicore, small HOMO-LUMO gap) swaps occupied/virtual states between
     // iterations and NEVER converges under plain diagonalization: 400 iterations,
     // parked ~3 mHa above the minimum, and neither DIIS nor linear damping rescues it.
@@ -187,11 +209,18 @@ TEST(GpwOtScf, ZnOMatchesDiagonalization) {
     // reaches independently. Convergence aid, not a bent assertion.
     cfg.level_shift = 0.5;
 
-    cfg.use_ot = false; const GpwResult diag = gpw_scf(atoms, cfg);
-    cfg.use_ot = true;  const GpwResult ot = gpw_scf(atoms, cfg);
-    std::printf("[GPW OT-SCF ZnO] diag E=%.10f (%d it)  ot E=%.10f (%d it)  dE=%.2e\n",
-                diag.e_total, diag.iters, ot.e_total, ot.iters,
-                std::abs(ot.e_total - diag.e_total));
+    cfg.use_ot = false;
+    GPWSolver diagonal_solver{cfg};
+    diagonal_solver.build(atoms);
+    const GpwResult diag = diagonal_solver.run(atoms);
+    cfg.use_ot = true;
+    GPWSolver ot_solver{cfg};
+    ot_solver.build(atoms);
+    const GpwResult ot = ot_solver.run(atoms);
+    std::printf(
+        "[GPW OT-SCF ZnO] diag E=%.10f (%d it)  ot E=%.10f (%d it)  dE=%.2e\n",
+        diag.e_total, diag.iters, ot.e_total, ot.iters,
+        std::abs(ot.e_total - diag.e_total));
     EXPECT_TRUE(diag.converged);
     EXPECT_TRUE(ot.converged);
     EXPECT_NEAR(ot.e_total, diag.e_total, 2e-7);

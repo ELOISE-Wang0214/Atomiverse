@@ -48,10 +48,10 @@ namespace {
 inline constexpr double kKcalToEv = 1.0 / 23.060547830619026;
 
 // ── MSU Dreiding-UA force field (verbatim from the published deck) ───
-inline constexpr double kBondK_kcal = 350.0;                // kcal/mol/Å²
-inline constexpr double kBondR0 = 1.53;                     // Å
-inline constexpr double kAngleK_kcal = 60.0;                // kcal/mol/rad²
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0; // rad
+inline constexpr double kBondK_kcal = 350.0; // kcal/mol/Å²
+inline constexpr double kBondR0 = 1.53;      // Å
+inline constexpr double kAngleK_kcal = 60.0; // kcal/mol/rad²
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0; // rad
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalToEv; }
@@ -99,34 +99,34 @@ constexpr double kCoords[kN][3] = {
 cpu::Frame make_c20h42_perturbed() {
     cpu::Frame frame(kN);
     for (int i = 0; i < kN; ++i) {
-        frame.atoms.x[i] = kCoords[i][0];
-        frame.atoms.y[i] = kCoords[i][1];
-        frame.atoms.z[i] = kCoords[i][2];
-        frame.atoms.mass[i] = 14.027; // CH2 united atom
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = kCoords[i][0];
+        frame.span(ATV::kAtom_y)[i] = kCoords[i][1];
+        frame.span(ATV::kAtom_z)[i] = kCoords[i][2];
+        frame.span(ATV::kAtom_mass)[i] = 14.027; // CH2 united atom
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
 
     const int nb = kN - 1, na = kN - 2, nd = kN - 3;
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < nb; ++k) {
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     }
     for (int k = 0; k < na; ++k) {
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     }
     for (int k = 0; k < nd; ++k) {
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     }
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(100.0);
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
 /// @brief Run one bonded component through `build → launch → destroy`
-/// and return the energy it accumulated into `frame.scalars.energy` [eV].
+/// and return the energy it accumulated into `frame.meta.get(ATV::kEnergy)` [eV].
 template <typename Comp>
 double eval_one(cpu::Frame& frame, Comp& comp) {
     cpu::Context ctx;
@@ -134,16 +134,16 @@ double eval_one(cpu::Frame& frame, Comp& comp) {
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
 
     comp.build(bctx);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     for (int i = 0; i < n; ++i) {
-        frame.atoms.fx[i] = 0;
-        frame.atoms.fy[i] = 0;
-        frame.atoms.fz[i] = 0;
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
     }
-    frame.scalars.energy = 0;
+    frame.meta.get(ATV::kEnergy) = 0;
     comp.launch(lctx);
     comp.destroy({ctx, frame});
-    return frame.scalars.energy;
+    return frame.meta.get(ATV::kEnergy);
 }
 
 } // namespace
@@ -154,12 +154,12 @@ BENCH_CASE(GeometryAndTopologyPinned) {
     static_assert(sizeof(kCoords) / sizeof(kCoords[0]) == 20,
                   "embedded C20H42 geometry must have exactly 20 atoms");
     auto frame = make_c20h42_perturbed();
-    BM_EQ(frame.atoms.size(), 20);
+    BM_EQ(frame.nlocal(), 20);
     int n_bond = 0, n_angle = 0, n_dihedral = 0;
-    for (int i = 0; i < frame.atoms.nlocal; ++i) {
-        n_bond += frame.atoms.num_bond[i];
-        n_angle += frame.atoms.num_angle[i];
-        n_dihedral += frame.atoms.num_dihedral[i];
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        n_bond += frame.span(ATV::kAtom_num_bond)[i];
+        n_angle += frame.span(ATV::kAtom_num_angle)[i];
+        n_dihedral += frame.span(ATV::kAtom_num_dihedral)[i];
     }
     BM_EQ(n_bond, 19);
     BM_EQ(n_angle, 18);

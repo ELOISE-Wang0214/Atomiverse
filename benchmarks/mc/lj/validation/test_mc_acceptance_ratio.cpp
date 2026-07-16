@@ -38,12 +38,12 @@ TEST(MCAcceptanceRatio, DecreasesMonotonicallyWithDelta) {
         cpu::Frame frame = mctest::fcc(/*nc=*/4, rho, n); // 256 atoms
 
         cpu::mc::MC mc{T, 777u};
-        mc.set_pair(cpu::PairLJCut{1.0, 1.0, rc});
+        mc.add_potential(cpu::PairLJCut{1.0, 1.0, rc});
         mc.set_neighbor(cpu::md::NeighborList<>{rc, 0.3, 1, 0, true});
         mc.set_mover(cpu::mc::TranslateMove{deltas[i]});
         mc.build();
 
-        mc.run(frame, 50 * n);  // equilibrate the lattice melt / transient
+        mc.run(frame, 50 * n); // equilibrate the lattice melt / transient
         // Re-measure over a clean window: acceptance_ratio() is lifetime, so
         // keep the equilibration short relative to the measurement.
         const long long a0 = mc.accepts(), t0 = mc.attempts();

@@ -27,16 +27,16 @@
 
 #include "bench_check.h"
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include <cmath>
 
@@ -57,30 +57,34 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0] + 0.25) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1] + 0.25) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2] + 0.25) * a;
-                    frame.atoms.mass[idx] = mass;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] =
+                        (ix + basis[b][0] + 0.25) * a;
+                    frame.span(ATV::kAtom_y)[idx] =
+                        (iy + basis[b][1] + 0.25) * a;
+                    frame.span(ATV::kAtom_z)[idx] =
+                        (iz + basis[b][2] + 0.25) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = mass;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
-                    frame.atoms.vx[idx] = s;
-                    frame.atoms.vy[idx] = s * 0.5;
-                    frame.atoms.vz[idx] = s * 0.25;
+                    frame.span(ATV::kAtom_vx)[idx] = s;
+                    frame.span(ATV::kAtom_vy)[idx] = s * 0.5;
+                    frame.span(ATV::kAtom_vz)[idx] = s * 0.25;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 /// @brief LAMMPS-standard scalar pressure `P = (2·KE + Σ virial)/(3V)`,
 /// positive ⇔ compressive — `compute pressure::compute_scalar()`.
 double lammps_pressure(const cpu::Frame& frame) {
-    const double V = frame.box.volume();
+    const double V = frame.simbox.volume();
     const double trace =
-        (frame.scalars.stress[0] + frame.scalars.stress[1]
-         + frame.scalars.stress[2])
-        + (frame.scalars.stress_kinetic[0] + frame.scalars.stress_kinetic[1]
-           + frame.scalars.stress_kinetic[2]);
+        (frame.meta.get(ATV::kStress)[0] + frame.meta.get(ATV::kStress)[1]
+         + frame.meta.get(ATV::kStress)[2])
+        + (frame.meta.get(ATV::kStressKinetic)[0]
+           + frame.meta.get(ATV::kStressKinetic)[1]
+           + frame.meta.get(ATV::kStressKinetic)[2]);
     return +trace / (3.0 * V); // LAMMPS sign: positive compressive.
 }
 
@@ -144,18 +148,18 @@ BENCH_CASE(PressureLammpsAlign_BarostatExpandsOverCompressedBox) {
     sim.build();
 
     sim.run(frame, 1);
-    const double V0 = frame.box.volume();
+    const double V0 = frame.simbox.volume();
     const double P0 = lammps_pressure(frame);
 
     // Over-compressed: LAMMPS sign says P > 0 (compressive).
     BM_GT(P0, 0.0) << "over-compressed box must read positive pressure";
 
     sim.run(frame, 400);
-    const double V1 = frame.box.volume();
+    const double V1 = frame.simbox.volume();
     const double P1 = lammps_pressure(frame);
 
-    for (int i = 0; i < frame.atoms.size(); ++i)
-        BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+    for (int i = 0; i < frame.nlocal(); ++i)
+        BM_ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]));
 
     // Positive (compressive) pressure at P_target = 0 ⇒ box expands.
     BM_GT(V1, V0) << "compressive pressure must drive box growth";
@@ -182,10 +186,10 @@ BENCH_CASE(PressureLammpsAlign_BulkModulusScalesRelaxationRate) {
         sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt, bulk_modulus});
         sim.build();
         sim.run(frame, 200);
-        return frame.box.volume();
+        return frame.simbox.volume();
     };
 
-    const double V0 = make_fcc_argon(4, 4.6, 39.948).box.volume();
+    const double V0 = make_fcc_argon(4, 4.6, 39.948).simbox.volume();
     const double V_soft = run(1.0);   // soft modulus ⇒ fast relaxation
     const double V_stiff = run(50.0); // stiff modulus ⇒ slow relaxation
 
@@ -225,10 +229,10 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
         sim.run(frame, 1);
         P_berendsen_0 = lammps_pressure(frame);
         sim.run(frame, 1999);
-        V_berendsen = frame.box.volume();
+        V_berendsen = frame.simbox.volume();
         P_berendsen_1 = lammps_pressure(frame);
-        for (int i = 0; i < frame.atoms.size(); ++i)
-            BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+        for (int i = 0; i < frame.nlocal(); ++i)
+            BM_ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]));
         // Unified sign: over-compressed ⇒ P > 0 (compressive), and the
         // barostat drives |P| down toward the setpoint.
         BM_GT(P_berendsen_0, 0.0);
@@ -251,13 +255,13 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
                                                    .dt = dt}});
         sim.build();
         sim.run(frame, 2000);
-        V_npt = frame.box.volume();
-        for (int i = 0; i < frame.atoms.size(); ++i)
-            BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+        V_npt = frame.simbox.volume();
+        for (int i = 0; i < frame.nlocal(); ++i)
+            BM_ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]));
     }
 
     // Both relax an over-compressed box outward toward a common density.
-    const double V0 = make_fcc_argon(4, 4.7, 39.948).box.volume();
+    const double V0 = make_fcc_argon(4, 4.7, 39.948).simbox.volume();
     BM_GT(V_berendsen, V0);
     BM_GT(V_npt, V0);
     // Same equilibrium density within 25 % — the two schemes converge

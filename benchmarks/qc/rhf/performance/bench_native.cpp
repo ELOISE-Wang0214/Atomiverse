@@ -11,9 +11,9 @@
 /// │  evaluate_xc(PBE)             │ libxc: xc_gga_exc_vxc (PBE)   │
 /// │  build_molecular_grid          │ external grid libraries        │
 /// │  build_integral_derivatives    │ libcint: int1e_ipovlp, etc.   │
-/// │  scf_solve (UHF)              │ (no direct equivalent)         │
-/// │  scf_solve (UKS/LSDA)         │ libxc-backed KS solver         │
-/// │  scf_solve (UKS/PBE)          │ libxc-backed KS solver         │
+/// │  SCFSolver::run (UHF)              │ (no direct equivalent)         │
+/// │  SCFSolver::run (UKS/LSDA)         │ libxc-backed KS solver         │
+/// │  SCFSolver::run (UKS/PBE)          │ libxc-backed KS solver         │
 /// │  scf_gradient (RHF)           │ libcint derivative integrals   │
 /// │  scf_gradient (UHF)           │ libcint derivative integrals   │
 /// └──────────────────────────────────────────────────────────────────┘
@@ -38,11 +38,11 @@
 #ifdef ATV_HAS_LIBXC
 #include "atomiverse/cpu/scf/xc_libxc.h"
 #endif
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -51,23 +51,33 @@ using namespace ATV::cpu::scf;
 
 static cpu::Frame make_h2() {
     cpu::Frame frame(2);
-    frame.atoms.x = {0.0, 0.74};
-    frame.atoms.y = {0.0, 0.0};
-    frame.atoms.z = {0.0, 0.0};
-    frame.atoms.mass = {1.008, 1.008};
-    frame.atoms.type = {1, 1};
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.74;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = 1.008;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
 static cpu::Frame make_lih() {
     cpu::Frame frame(2);
-    frame.atoms.x = {0.0, 1.595};
-    frame.atoms.y = {0.0, 0.0};
-    frame.atoms.z = {0.0, 0.0};
-    frame.atoms.mass = {6.941, 1.008};
-    frame.atoms.type = {3, 1};
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 1.595;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = 6.941;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_type)[0] = 3;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -96,13 +106,13 @@ static cpu::Frame make_aspirin() {
     };
 
     for (int i = 0; i < 21; ++i) {
-        frame.atoms.type[i] = types[i];
-        frame.atoms.mass[i] = masses[i];
-        frame.atoms.x[i] = coords[i][0];
-        frame.atoms.y[i] = coords[i][1];
-        frame.atoms.z[i] = coords[i][2];
+        frame.span(ATV::kAtom_type)[i] = types[i];
+        frame.span(ATV::kAtom_mass)[i] = masses[i];
+        frame.span(ATV::kAtom_x)[i] = coords[i][0];
+        frame.span(ATV::kAtom_y)[i] = coords[i][1];
+        frame.span(ATV::kAtom_z)[i] = coords[i][2];
     }
-    frame.box = Mat3::cubic(100.0);
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -111,24 +121,54 @@ static cpu::Frame make_aspirin() {
 static cpu::Frame make_water() {
     // H2O: 3 atoms, 7 AOs (STO-3G)
     cpu::Frame frame(3);
-    frame.atoms.type = {8, 1, 1};
-    frame.atoms.mass = {15.999, 1.008, 1.008};
-    frame.atoms.x = {0.0, 0.757, -0.757};
-    frame.atoms.y = {0.0, 0.587, 0.587};
-    frame.atoms.z = {0.0, 0.0, 0.0};
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_type)[0] = 8;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_type)[2] = 1;
+    frame.span(ATV::kAtom_mass)[0] = 15.999;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_mass)[2] = 1.008;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.757;
+    frame.span(ATV::kAtom_x)[2] = -0.757;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.587;
+    frame.span(ATV::kAtom_y)[2] = 0.587;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[2] = 0.0;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
 static cpu::Frame make_methane() {
     // CH4: 5 atoms, 9 AOs (STO-3G)
     cpu::Frame frame(5);
-    frame.atoms.type = {6, 1, 1, 1, 1};
-    frame.atoms.mass = {12.011, 1.008, 1.008, 1.008, 1.008};
-    frame.atoms.x = {0.0, 0.629, -0.629, 0.629, -0.629};
-    frame.atoms.y = {0.0, 0.629, -0.629, -0.629, 0.629};
-    frame.atoms.z = {0.0, 0.629, 0.629, -0.629, -0.629};
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_type)[0] = 6;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_type)[2] = 1;
+    frame.span(ATV::kAtom_type)[3] = 1;
+    frame.span(ATV::kAtom_type)[4] = 1;
+    frame.span(ATV::kAtom_mass)[0] = 12.011;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_mass)[2] = 1.008;
+    frame.span(ATV::kAtom_mass)[3] = 1.008;
+    frame.span(ATV::kAtom_mass)[4] = 1.008;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.629;
+    frame.span(ATV::kAtom_x)[2] = -0.629;
+    frame.span(ATV::kAtom_x)[3] = 0.629;
+    frame.span(ATV::kAtom_x)[4] = -0.629;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.629;
+    frame.span(ATV::kAtom_y)[2] = -0.629;
+    frame.span(ATV::kAtom_y)[3] = -0.629;
+    frame.span(ATV::kAtom_y)[4] = 0.629;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.629;
+    frame.span(ATV::kAtom_z)[2] = 0.629;
+    frame.span(ATV::kAtom_z)[3] = -0.629;
+    frame.span(ATV::kAtom_z)[4] = -0.629;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -150,13 +190,13 @@ static cpu::Frame make_ethanol() {
         {1.617, -0.694, 0.865},   // H (OH)
     };
     for (int i = 0; i < 9; ++i) {
-        frame.atoms.type[i] = types[i];
-        frame.atoms.mass[i] = masses[i];
-        frame.atoms.x[i] = coords[i][0];
-        frame.atoms.y[i] = coords[i][1];
-        frame.atoms.z[i] = coords[i][2];
+        frame.span(ATV::kAtom_type)[i] = types[i];
+        frame.span(ATV::kAtom_mass)[i] = masses[i];
+        frame.span(ATV::kAtom_x)[i] = coords[i][0];
+        frame.span(ATV::kAtom_y)[i] = coords[i][1];
+        frame.span(ATV::kAtom_z)[i] = coords[i][2];
     }
-    frame.box = Mat3::cubic(100.0);
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -375,7 +415,7 @@ static void BM_Grid_SingleAtom(benchmark::State& state) {
     int n_angular = static_cast<int>(state.range(0));
     native::Atom h = {1, {0.0, 0.0, 0.0}};
     for (auto _ : state) {
-        auto grid = build_molecular_grid(&h, 1, 50, n_angular);
+        auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 50, n_angular);
         benchmark::DoNotOptimize(grid.points.size());
     }
 }
@@ -389,10 +429,11 @@ BENCHMARK(BM_Grid_SingleAtom)
 
 static void BM_Grid_H2(benchmark::State& state) {
     int n_angular = static_cast<int>(state.range(0));
-    double d = 0.74 * kAngstromToBohr;
+    double d = 0.74 * units::kAngstromInBohr;
     native::Atom atoms[] = {{1, {0, 0, 0}}, {1, {d, 0, 0}}};
     for (auto _ : state) {
-        auto grid = build_molecular_grid(atoms, 2, 50, n_angular);
+        auto grid =
+            build_molecular_grid(atoms, 2, GridLevel::SG0, 50, n_angular);
         benchmark::DoNotOptimize(grid.points.size());
     }
 }
@@ -448,7 +489,9 @@ static void BM_UHFSolve_H2(benchmark::State& state) {
     auto cfg = uhf_config(integrals, 1, 1, tol);
     cfg.max_iter = 100;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
 }
@@ -461,7 +504,9 @@ static void BM_UHFSolve_LiH(benchmark::State& state) {
     auto cfg = uhf_config(integrals, 2, 2, tol);
     cfg.max_iter = 100;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
 }
@@ -478,7 +523,9 @@ static void BM_UKSSolve_H2_LSDA(benchmark::State& state) {
     auto cfg = uks_config(integrals, 1, 1, XCType::LSDA, tol);
     cfg.max_iter = 100;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
 }
@@ -491,7 +538,9 @@ static void BM_UKSSolve_H2_PBE(benchmark::State& state) {
     auto cfg = uks_config(integrals, 1, 1, XCType::PBE, tol);
     cfg.max_iter = 100;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
 }
@@ -507,7 +556,9 @@ static void BM_RHFGradient_H2(benchmark::State& state) {
     constexpr double tol = 1e-10;
     auto cfg = rhf_config(integrals, tol);
     cfg.max_iter = 200;
-    auto result = scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    auto& result = result_solver.run(integrals);
     for (auto _ : state) {
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
@@ -521,7 +572,9 @@ static void BM_UHFGradient_H2(benchmark::State& state) {
     constexpr double tol = 1e-10;
     auto cfg = uhf_config(integrals, 1, 1, tol);
     cfg.max_iter = 200;
-    auto result = scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    auto& result = result_solver.run(integrals);
     for (auto _ : state) {
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
@@ -691,7 +744,9 @@ static void BM_RHFSolve_Water(benchmark::State& state) {
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
     state.SetLabel("7 AOs");
@@ -705,7 +760,9 @@ static void BM_RHFSolve_Ethanol(benchmark::State& state) {
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
     }
     state.SetLabel("26 AOs");
@@ -721,7 +778,9 @@ static void BM_RHFSolve_Aspirin(benchmark::State& state) {
     cfg.tol = 1e-9; // match PySCF conv_tol (|dE|<tol + ||err||<sqrt(tol))
     cfg.max_iter = 50;
     for (auto _ : state) {
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         benchmark::DoNotOptimize(result.energy);
         state.counters["iters"] = result.iterations;
         state.counters["energy_ha"] = result.energy;
@@ -736,7 +795,9 @@ static void BM_RHFGradient_Aspirin(benchmark::State& state) {
     auto cfg = rhf_config(integrals);
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
-    auto result = scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    auto& result = result_solver.run(integrals);
     for (auto _ : state) {
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
@@ -756,7 +817,9 @@ static void BM_RHF_IntegralsToGradient_H2(benchmark::State& state) {
         auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto cfg = rhf_config(integrals, tol);
         cfg.max_iter = 200;
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
     }
@@ -770,7 +833,9 @@ static void BM_RHF_IntegralsToGradient_LiH(benchmark::State& state) {
         auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto cfg = rhf_config(integrals, tol);
         cfg.max_iter = 200;
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
     }
@@ -784,7 +849,9 @@ static void BM_RHF_IntegralsToGradient_Aspirin(benchmark::State& state) {
         auto cfg = rhf_config(integrals);
         cfg.tol = 1e-6;
         cfg.max_iter = 200;
-        auto result = scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        auto& result = result_solver.run(integrals);
         auto grad = scf_gradient(frame, integrals, result, cfg);
         benchmark::DoNotOptimize(grad.energy);
     }
@@ -908,7 +975,7 @@ static void BM_RysERI_pppp(benchmark::State& state) {
 BENCHMARK(BM_RysERI_pppp);
 
 int main(int argc, char** argv) {
-    ATV::log_init(spdlog::level::warn);
+    ATV::log_init(ATV::LogConfig{.level = spdlog::level::warn});
     benchmark::Initialize(&argc, argv);
     if (benchmark::ReportUnrecognizedArguments(argc, argv))
         return 1;

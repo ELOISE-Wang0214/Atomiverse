@@ -25,8 +25,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using ATV::cpu::scf::BasisSet;
@@ -35,8 +34,8 @@ namespace {
 
 /// @brief One atom of a reference molecule: nuclear charge Z + position [Å].
 struct RefAtom {
-    int z;              ///< Atomic number.
-    double x, y, z_;    ///< Position [Angstrom].
+    int z;           ///< Atomic number.
+    double x, y, z_; ///< Position [Angstrom].
 };
 
 /// @brief Pinned Koopmans reference for one (system, basis) pair.
@@ -44,20 +43,19 @@ struct RefAtom {
 /// PySCF 2.13.1 cart=True conv_tol=1e-12; generator not vendored per
 /// no-third-party policy. −ε_HOMO and E_RHF both in Hartree.
 struct KoopmansRef {
-    const char* system;      ///< Molecule label.
-    BasisSet basis;          ///< Basis set.
-    const char* basis_name;  ///< Human-readable basis label.
-    double neg_eps_homo;     ///< −ε_HOMO [Ha] (Koopmans vertical IP).
-    double e_rhf;            ///< RHF total energy [Ha].
-    double eps_tol;          ///< −ε_HOMO match tolerance [Ha] (see note below).
+    const char* system;     ///< Molecule label.
+    BasisSet basis;         ///< Basis set.
+    const char* basis_name; ///< Human-readable basis label.
+    double neg_eps_homo;    ///< −ε_HOMO [Ha] (Koopmans vertical IP).
+    double e_rhf;           ///< RHF total energy [Ha].
+    double eps_tol;         ///< −ε_HOMO match tolerance [Ha] (see note below).
 };
 
 // Reference geometries [Å], copied verbatim into the tutorial and tests.
-const std::vector<RefAtom> kHe  = {{2, 0, 0, 0}};
-const std::vector<RefAtom> kH2  = {{1, 0, 0, 0}, {1, 0, 0, 0.7414}};
-const std::vector<RefAtom> kH2O = {{8, 0, 0, 0.1173},
-                                   {1, 0, 0.7572, -0.4692},
-                                   {1, 0, -0.7572, -0.4692}};
+const std::vector<RefAtom> kHe = {{2, 0, 0, 0}};
+const std::vector<RefAtom> kH2 = {{1, 0, 0, 0}, {1, 0, 0, 0.7414}};
+const std::vector<RefAtom> kH2O = {
+    {8, 0, 0, 0.1173}, {1, 0, 0.7572, -0.4692}, {1, 0, -0.7572, -0.4692}};
 const std::vector<RefAtom> kNH3 = {{7, 0, 0, 0},
                                    {1, 0, -0.9377, -0.3816},
                                    {1, 0.8121, 0.4689, -0.3816},
@@ -80,16 +78,16 @@ const std::vector<RefAtom> kCH4 = {{6, 0, 0, 0},
 // NH3 / H2O / CH4 near 5e-8. These are honest precision floors of the pinned
 // basis rows, NOT solver error (the total energy proves the basis is correct).
 constexpr KoopmansRef kKoopmansRef[] = {
-    {"He",  BasisSet::STO3G,     "STO-3G", 0.87603551,  -2.8077839575, 1e-8},
-    {"H2",  BasisSet::STO3G,     "STO-3G", 0.57797481,  -1.1166843871, 1e-8},
-    {"H2O", BasisSet::STO3G,     "STO-3G", 0.39123677, -74.9630231385, 1e-8},
-    {"NH3", BasisSet::STO3G,     "STO-3G", 0.35252132, -55.4540871348, 1e-8},
-    {"CH4", BasisSet::STO3G,     "STO-3G", 0.51931445, -39.7268336369, 1e-8},
-    {"He",  BasisSet::Pople631G, "6-31G",  0.91412663,  -2.8551604262, 5e-8},
-    {"H2",  BasisSet::Pople631G, "6-31G",  0.59539276,  -1.1267339671, 5e-7},
-    {"H2O", BasisSet::Pople631G, "6-31G",  0.50136813, -75.9839744727, 5e-8},
-    {"NH3", BasisSet::Pople631G, "6-31G",  0.41503216, -56.1610211797, 5e-8},
-    {"CH4", BasisSet::Pople631G, "6-31G",  0.54404220, -40.1805127401, 5e-8},
+    {"He", BasisSet::STO3G, "STO-3G", 0.87603551, -2.8077839575, 1e-8},
+    {"H2", BasisSet::STO3G, "STO-3G", 0.57797481, -1.1166843871, 1e-8},
+    {"H2O", BasisSet::STO3G, "STO-3G", 0.39123677, -74.9630231385, 1e-8},
+    {"NH3", BasisSet::STO3G, "STO-3G", 0.35252132, -55.4540871348, 1e-8},
+    {"CH4", BasisSet::STO3G, "STO-3G", 0.51931445, -39.7268336369, 1e-8},
+    {"He", BasisSet::Pople631G, "6-31G", 0.91412663, -2.8551604262, 5e-8},
+    {"H2", BasisSet::Pople631G, "6-31G", 0.59539276, -1.1267339671, 5e-7},
+    {"H2O", BasisSet::Pople631G, "6-31G", 0.50136813, -75.9839744727, 5e-8},
+    {"NH3", BasisSet::Pople631G, "6-31G", 0.41503216, -56.1610211797, 5e-8},
+    {"CH4", BasisSet::Pople631G, "6-31G", 0.54404220, -40.1805127401, 5e-8},
 };
 
 /// @brief Resolve a reference molecule label to its geometry.
@@ -111,12 +109,12 @@ const std::vector<RefAtom>& geometry_for(const std::string& system) {
 cpu::Frame make_frame(const std::vector<RefAtom>& atoms) {
     cpu::Frame f(static_cast<int>(atoms.size()));
     for (std::size_t i = 0; i < atoms.size(); ++i) {
-        f.atoms.type[i] = atoms[i].z;
-        f.atoms.x[i] = atoms[i].x;
-        f.atoms.y[i] = atoms[i].y;
-        f.atoms.z[i] = atoms[i].z_;
+        f.span(ATV::kAtom_type)[i] = atoms[i].z;
+        f.span(ATV::kAtom_x)[i] = atoms[i].x;
+        f.span(ATV::kAtom_y)[i] = atoms[i].y;
+        f.span(ATV::kAtom_z)[i] = atoms[i].z_;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -136,7 +134,9 @@ TEST(KoopmansParity, NegEpsHomoAndEnergyVsPySCF) {
         auto cfg = cpu::scf::rhf_config(integrals, 1e-10);
         cfg.max_iter = 100;
         cfg.conv_tol_grad = 1e-9;
-        auto result = cpu::scf::scf_solve(integrals, cfg);
+        ATV::cpu::scf::SCFSolver result_solver{cfg};
+        result_solver.build(integrals);
+        const auto& result = result_solver.run(integrals);
         ASSERT_TRUE(result.converged)
             << ref.system << " / " << ref.basis_name << " did not converge";
 

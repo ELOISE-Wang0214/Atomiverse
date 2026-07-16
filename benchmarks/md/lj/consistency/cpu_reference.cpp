@@ -61,26 +61,26 @@ int main(int argc, char** argv) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{p.dt});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff});
     sim.build();
     sim.run(frame, p.steps);
 
     // Snapshot the reference energy + per-atom forces.
     Golden g;
-    g.energy = frame.scalars.energy;
-    const int n = frame.atoms.size();
+    g.energy = frame.meta.get(ATV::kEnergy);
+    const int n = frame.nlocal();
     g.fx.reserve(n);
     g.fy.reserve(n);
     g.fz.reserve(n);
     double fmax = 0.0;
     for (int i = 0; i < n; ++i) {
-        g.fx.push_back(frame.atoms.fx[i]);
-        g.fy.push_back(frame.atoms.fy[i]);
-        g.fz.push_back(frame.atoms.fz[i]);
-        fmax = std::fmax(fmax, std::fabs(frame.atoms.fx[i]));
-        fmax = std::fmax(fmax, std::fabs(frame.atoms.fy[i]));
-        fmax = std::fmax(fmax, std::fabs(frame.atoms.fz[i]));
+        g.fx.push_back(frame.span(ATV::kAtom_fx)[i]);
+        g.fy.push_back(frame.span(ATV::kAtom_fy)[i]);
+        g.fz.push_back(frame.span(ATV::kAtom_fz)[i]);
+        fmax = std::fmax(fmax, std::fabs(frame.span(ATV::kAtom_fx)[i]));
+        fmax = std::fmax(fmax, std::fabs(frame.span(ATV::kAtom_fy)[i]));
+        fmax = std::fmax(fmax, std::fabs(frame.span(ATV::kAtom_fz)[i]));
     }
 
     // Guard against a silent false-pass: if the force field is trivially

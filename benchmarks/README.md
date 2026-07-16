@@ -27,6 +27,7 @@ Current cases:
 | Domain | Case | System | External reference |
 |--------|------|--------|--------------------|
 | `md` | `lj` | argon Lennard-Jones | LAMMPS |
+| `md` | `npt_pme` | charged NaCl CoulLong+PME | LAMMPS coul/long+pppm |
 | `md` | `pe` | polyethylene melt (Dreiding-UA) | LAMMPS |
 | `qc` | `rhf` | small-molecule suite (Gaussian basis) | PySCF / libcint |
 | `pw` | `si` | bulk Si (plane-wave LDA) | CP2K / QE |

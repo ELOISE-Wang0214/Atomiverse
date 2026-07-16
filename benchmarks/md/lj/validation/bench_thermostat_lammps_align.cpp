@@ -20,16 +20,16 @@
 
 #include "bench_check.h"
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include <cmath>
 #include <iostream>
@@ -51,30 +51,30 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = mass;
-                    frame.atoms.type[idx] = 0;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = mass;
+                    frame.span(ATV::kAtom_type)[idx] = 0;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 /// @brief Instantaneous temperature with 3(N-1) DOF (COM removed),
 /// matching the LAMMPS `temp` compute.
 double instantaneous_T(const cpu::Frame& f) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     double KE = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        KE += 0.5 * f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        KE += 0.5 * f.span(ATV::kAtom_mass)[i] * v2;
     }
-    KE *= kMvv2e;
-    return 2.0 * KE / (3.0 * (n - 1) * kBoltzmann);
+    KE *= units::mass_v2_to_energy;
+    return 2.0 * KE / (3.0 * (n - 1) * units::kB_ev_per_k);
 }
 
 } // namespace
@@ -125,7 +125,7 @@ BENCH_CASE(ThermostatLammpsAlign_FixLangevinTemperatureRampTracksSetpoint) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T_start, /*seed=*/777u});
-    sim.add(lang); // lvalue → non-owning storage
+    sim.add_ref(lang);
     sim.build();
 
     constexpr int n_windows = 6;
@@ -216,9 +216,9 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverTemperatureRampTracksSetpoint) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T_start, /*seed=*/4242u});
-    sim.add(nh); // lvalue → non-owning storage
+    sim.add_ref(nh);
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     constexpr int n_windows = 6;
@@ -262,7 +262,7 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverTauIsTimeConstant) {
         sim.add(cpu::md::InitVelocity{T_init, /*seed=*/909u});
         sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
         sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-        sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+        sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, relax_steps);
         return instantaneous_T(frame);
@@ -300,7 +300,7 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverHoldsMeanTemperature) {
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/2024u});
     sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
     sim.run(frame, 2000); // burn-in
 

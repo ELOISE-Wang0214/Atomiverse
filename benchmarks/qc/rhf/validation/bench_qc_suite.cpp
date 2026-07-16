@@ -1,5 +1,5 @@
 /// @file benchmarks/qc/rhf/validation/bench_qc_suite.cpp
-/// @brief Phase 1.2 QC benchmark suite — Minimize + SCFEvaluator at PBE /
+/// @brief Phase 1.2 QC benchmark suite — Minimize + SCF at PBE /
 ///        def2-SVP, Armijo backtracking on. Compared against
 ///        geomeTRIC-optimized PySCF references.
 ///
@@ -40,7 +40,7 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -164,12 +164,12 @@ cpu::scf::BasisSet basis_from_name(const std::string& b) {
 cpu::Frame atoms_to_frame(const std::vector<XYZAtom>& atoms) {
     cpu::Frame f(static_cast<int>(atoms.size()));
     for (size_t i = 0; i < atoms.size(); ++i) {
-        f.atoms.type[i] = atoms[i].Z;
-        f.atoms.x[i] = atoms[i].x;
-        f.atoms.y[i] = atoms[i].y;
-        f.atoms.z[i] = atoms[i].z;
+        f.span(ATV::kAtom_type)[i] = atoms[i].Z;
+        f.span(ATV::kAtom_x)[i] = atoms[i].x;
+        f.span(ATV::kAtom_y)[i] = atoms[i].y;
+        f.span(ATV::kAtom_z)[i] = atoms[i].z;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -231,8 +231,7 @@ RunResult run_molecule(const std::string& stem, const fs::path& xyz_path,
         /*rms_dtol=*/3e-3,
         /*etol=*/1e-6,
     });
-    opt.on(ATV::minimizer::Phase::force)
-        .add(cpu::scf::SCFEvaluator{cfg, basis_id});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{cfg, basis_id});
     opt.build();
 
     const auto t0 = std::chrono::steady_clock::now();
@@ -244,7 +243,9 @@ RunResult run_molecule(const std::string& stem, const fs::path& xyz_path,
     auto ints_final = cpu::scf::build_integrals(frame, basis_id);
     auto cfg_final = make_config(ints_final, ref);
     cfg_final.tol = 1e-10;
-    auto res = cpu::scf::scf_solve(ints_final, cfg_final);
+    ATV::cpu::scf::SCFSolver res_solver{cfg_final};
+    res_solver.build(ints_final);
+    const auto& res = res_solver.run(ints_final);
 
     return {res.converged, wall_ms, res.energy,
             res.energy - ref.energy_hartree};

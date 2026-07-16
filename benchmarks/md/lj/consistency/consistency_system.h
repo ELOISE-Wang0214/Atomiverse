@@ -80,16 +80,16 @@ inline ATV::cpu::Frame make_consistency_system() {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
         // Deterministic per-atom jitter to break FCC symmetry.
-        frame.atoms.x[i] = x[i] + kJitter * std::sin(0.7 * i);
-        frame.atoms.y[i] = y[i] + kJitter * std::sin(1.3 * i);
-        frame.atoms.z[i] = z[i] + kJitter * std::sin(1.9 * i);
-        frame.atoms.vx[i] = 0.0;
-        frame.atoms.vy[i] = 0.0;
-        frame.atoms.vz[i] = 0.0;
-        frame.atoms.mass[i] = kMassAr;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x[i] + kJitter * std::sin(0.7 * i);
+        frame.span(ATV::kAtom_y)[i] = y[i] + kJitter * std::sin(1.3 * i);
+        frame.span(ATV::kAtom_z)[i] = z[i] + kJitter * std::sin(1.9 * i);
+        frame.span(ATV::kAtom_vx)[i] = 0.0;
+        frame.span(ATV::kAtom_vy)[i] = 0.0;
+        frame.span(ATV::kAtom_vz)[i] = 0.0;
+        frame.span(ATV::kAtom_mass)[i] = kMassAr;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

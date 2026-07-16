@@ -6,11 +6,11 @@
 /// 5-step BOMD tests in `test_scf_evaluator.cpp` cannot catch:
 ///
 ///   1. **Energy drift** — accumulated integrator error over a longer
-///      trajectory. A pass here means VelocityVerlet + SCFEvaluator
+///      trajectory. A pass here means VelocityVerlet + SCF
 ///      remain symplectic-equivalent over many steps for the chosen dt.
 ///
 ///   2. **State leakage via ASPC** — the predictor-corrector reuses
-///      density across MD steps. If anything in `SCFEvaluator` were to
+///      density across MD steps. If anything in `SCF` were to
 ///      cache geometry-dependent state and forget to invalidate it on
 ///      the next step (a bug seen during early Driver/Component work),
 ///      ASPC propagation would silently drift away from a fresh
@@ -30,7 +30,7 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;
@@ -41,20 +41,31 @@ namespace {
 ///        two test files independent.
 cpu::Frame make_h2(double bond_length, double v_stretch) {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, bond_length};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.vx = {-v_stretch / 2, v_stretch / 2};
-    f.atoms.vy = {0.0, 0.0};
-    f.atoms.vz = {0.0, 0.0};
-    f.atoms.fx = {0.0, 0.0};
-    f.atoms.fy = {0.0, 0.0};
-    f.atoms.fz = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.scalars.energy = 0;
-    f.scalars.kinetic = 0;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = bond_length;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_vx)[0] = -v_stretch / 2;
+    f.span(ATV::kAtom_vx)[1] = v_stretch / 2;
+    f.span(ATV::kAtom_vy)[0] = 0.0;
+    f.span(ATV::kAtom_vy)[1] = 0.0;
+    f.span(ATV::kAtom_vz)[0] = 0.0;
+    f.span(ATV::kAtom_vz)[1] = 0.0;
+    f.span(ATV::kAtom_fx)[0] = 0.0;
+    f.span(ATV::kAtom_fx)[1] = 0.0;
+    f.span(ATV::kAtom_fy)[0] = 0.0;
+    f.span(ATV::kAtom_fy)[1] = 0.0;
+    f.span(ATV::kAtom_fz)[0] = 0.0;
+    f.span(ATV::kAtom_fz)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.meta.get(ATV::kEnergy) = 0;
+    f.meta.get(ATV::kKinetic) = 0;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -119,7 +130,7 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
     sim.build();
 
     // Sample E_total every `sample_every` steps. Each sim.run(frame, k)
@@ -129,8 +140,8 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
     double e_max = -std::numeric_limits<double>::infinity();
     for (int s = 0; s < n_steps; s += sample_every) {
         sim.run(frame, sample_every);
-        const double E = static_cast<double>(frame.scalars.energy)
-                         + static_cast<double>(frame.scalars.kinetic);
+        const double E = static_cast<double>(frame.meta.get(ATV::kEnergy))
+                         + static_cast<double>(frame.meta.get(ATV::kKinetic));
         if (E < e_min)
             e_min = E;
         if (E > e_max)
@@ -150,7 +161,7 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
     EXPECT_LT(envelope, 0.10)
         << "NVE total-energy envelope = " << envelope << " eV across "
         << n_steps << " steps — expected ≤ 0.10. "
-        << "VelocityVerlet + SCFEvaluator may have lost symplecticity, "
+        << "VelocityVerlet + SCF may have lost symplecticity, "
         << "or the SCF unwrap is interfering with conservation.";
 
     // Sanity: PE alone must always sit in the bonded H2 well, never
@@ -176,7 +187,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     // Tight corrector tolerance — at 1e-9 the ASPC corrector is forced to
     // converge to the same fixed point as a fresh SCF, so any disagreement
     // points at state leakage rather than predictor truncation.
-    cpu::scf::SCFEvaluator aspc_evaluator{config};
+    cpu::scf::SCF aspc_evaluator{config};
     aspc_evaluator.predictor(/*order=*/3, /*corrector_steps=*/8,
                              /*corrector_tol=*/1e-9, /*fallback=*/true);
 
@@ -192,25 +203,27 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     // Snapshot the current geometry (positions + velocities) and the
     // forces just produced by the propagation.
     cpu::Frame snapshot = frame;
-    const double fx0_prop = static_cast<double>(frame.atoms.fx(0));
-    const double fx1_prop = static_cast<double>(frame.atoms.fx(1));
-    const double E_prop = static_cast<double>(frame.scalars.energy);
+    const double fx0_prop = static_cast<double>(frame.span(ATV::kAtom_fx)[0]);
+    const double fx1_prop = static_cast<double>(frame.span(ATV::kAtom_fx)[1]);
+    const double E_prop = static_cast<double>(frame.meta.get(ATV::kEnergy));
 
     // Stand-alone single-point on the same geometry — Evaluate driver,
-    // fresh SCFEvaluator (no predictor history). Forces here are the
+    // fresh SCF (no predictor history). Forces here are the
     // ground truth for the snapshot geometry.
-    cpu::scf::SCFEvaluator fresh{config};
+    cpu::scf::SCF fresh{config};
     cpu::Evaluate eval;
-    eval.on(ATV::evaluate::Phase::evaluate).add(fresh);
+    eval.on(ATV::evaluate::Phase::evaluate).add_ref(fresh);
     eval.build();
     eval.run(snapshot); // cpu::Evaluate runs exactly one pass
 
-    const double fx0_fresh = static_cast<double>(snapshot.atoms.fx(0));
-    const double fx1_fresh = static_cast<double>(snapshot.atoms.fx(1));
-    const double E_fresh = static_cast<double>(snapshot.scalars.energy);
+    const double fx0_fresh =
+        static_cast<double>(snapshot.span(ATV::kAtom_fx)[0]);
+    const double fx1_fresh =
+        static_cast<double>(snapshot.span(ATV::kAtom_fx)[1]);
+    const double E_fresh = static_cast<double>(snapshot.meta.get(ATV::kEnergy));
 
     // Convert the spec's 1e-7 Ha/Bohr threshold into eV/Å:
-    //   1 Ha / Bohr = kHartree2eV / kBohr2A eV/Å ≈ 27.211386 / 0.529177 ≈ 51.422 eV/Å
+    //   1 Ha / Bohr = units::kHartreeInEv / kBohr2A eV/Å ≈ 27.211386 / 0.529177 ≈ 51.422 eV/Å
     //   1e-7 Ha/Bohr  ≈ 5.14e-6 eV/Å
     // We allow a 2× margin (1e-5 eV/Å) for accumulated FP arithmetic
     // differences across the two converging paths. A genuine state
@@ -218,7 +231,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     const double force_tol_eVA = 1e-5;
     EXPECT_NEAR(fx0_prop, fx0_fresh, force_tol_eVA)
         << "ASPC propagation force on atom 0 disagrees with fresh single-point "
-        << "at the same geometry — possible state leakage in SCFEvaluator.";
+        << "at the same geometry — possible state leakage in SCF.";
     EXPECT_NEAR(fx1_prop, fx1_fresh, force_tol_eVA)
         << "ASPC propagation force on atom 1 disagrees with fresh "
            "single-point.";
@@ -235,7 +248,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
 // but the starting geometry comes in as a molrs.Frame and is brought
 // across by `cpu::materialize` into ONE `cpu::Frame` that the whole
 // AIMD trajectory then runs on. This pins that the new molrs-Frame
-// ingress preserves the AIMD shared-frame invariant (MD + SCFEvaluator
+// ingress preserves the AIMD shared-frame invariant (MD + SCF
 // on a single cpu::Frame) and energy conservation.
 
 TEST(AIMDConservation, RHFNVEEnergyDriftViaMaterializedFrame) {
@@ -254,7 +267,7 @@ TEST(AIMDConservation, RHFNVEEnergyDriftViaMaterializedFrame) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
     sim.build();
 
     // The whole trajectory advances ONE materialized cpu::Frame —
@@ -263,8 +276,8 @@ TEST(AIMDConservation, RHFNVEEnergyDriftViaMaterializedFrame) {
     double e_max = -std::numeric_limits<double>::infinity();
     for (int s = 0; s < n_steps; s += sample_every) {
         sim.run(frame, sample_every);
-        const double E = static_cast<double>(frame.scalars.energy)
-                         + static_cast<double>(frame.scalars.kinetic);
+        const double E = static_cast<double>(frame.meta.get(ATV::kEnergy))
+                         + static_cast<double>(frame.meta.get(ATV::kKinetic));
         if (E < e_min)
             e_min = E;
         if (E > e_max)

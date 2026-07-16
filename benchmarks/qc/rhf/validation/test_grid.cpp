@@ -16,15 +16,15 @@
 #include <stdexcept>
 #include <vector>
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/lebedev_data.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -263,16 +263,16 @@ TEST(Grid, MuraKnowlesGaussianMoments) {
 
 TEST(Grid, BraggSlaterCoverage) {
     // Z = 1..36 must each return a finite, positive Bohr radius matching
-    // the published Angstrom value times kAngstromToBohr.
+    // the published Angstrom value times units::kAngstromInBohr.
     //
     // Spot-checks (Angstrom): PySCF-matching values.
     // H=0.35 (non-bonded), He=1.40 / Ne=1.50 / Kr=1.90 (Bondi-style noble gas),
     // C=0.70 (Slater).
-    EXPECT_NEAR(bragg_slater_radius(1), 0.35 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(2), 1.40 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(6), 0.70 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(10), 1.50 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(36), 1.90 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(1), 0.35 * units::kAngstromInBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(2), 1.40 * units::kAngstromInBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(6), 0.70 * units::kAngstromInBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(10), 1.50 * units::kAngstromInBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(36), 1.90 * units::kAngstromInBohr, 1e-15);
 
     // Every Z in 1..36 returns a positive radius without throwing.
     for (int Z = 1; Z <= 36; ++Z) {
@@ -295,7 +295,7 @@ TEST(Grid, BraggSlaterRejectsOutOfRange) {
 
 TEST(Grid, SingleAtomGridHasPoints) {
     native::Atom h = {1, {0.0, 0.0, 0.0}};
-    auto grid = build_molecular_grid(&h, 1, 20, 6);
+    auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 20, 6);
 
     EXPECT_GT(grid.points.size(), 0u);
     EXPECT_EQ(grid.n_radial, 20);
@@ -304,17 +304,17 @@ TEST(Grid, SingleAtomGridHasPoints) {
 
 TEST(Grid, TwoAtomGridHasMorePoints) {
     native::Atom h1 = {1, {0.0, 0.0, 0.0}};
-    auto grid1 = build_molecular_grid(&h1, 1, 20, 6);
+    auto grid1 = build_molecular_grid(&h1, 1, GridLevel::SG0, 20, 6);
 
     native::Atom atoms[] = {{1, {0.0, 0.0, 0.0}}, {1, {1.4, 0.0, 0.0}}};
-    auto grid2 = build_molecular_grid(atoms, 2, 20, 6);
+    auto grid2 = build_molecular_grid(atoms, 2, GridLevel::SG0, 20, 6);
 
     EXPECT_GT(grid2.points.size(), grid1.points.size());
 }
 
 TEST(Grid, BeckePartitionPositive) {
     native::Atom h = {1, {0.0, 0.0, 0.0}};
-    auto grid = build_molecular_grid(&h, 1, 30, 6);
+    auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 30, 6);
     for (const auto& gp : grid.points)
         EXPECT_GT(static_cast<double>(gp.weight), 0.0);
 }
@@ -322,7 +322,7 @@ TEST(Grid, BeckePartitionPositive) {
 TEST(Grid, SingleAtomSlaterIntegral) {
     // int exp(-2r) d^3r = pi  (the 1s^2 hydrogen density norm).
     native::Atom h = {1, {0.0, 0.0, 0.0}};
-    auto grid = build_molecular_grid(&h, 1, 50, 110);
+    auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 50, 110);
     double integral = 0;
     for (const auto& gp : grid.points) {
         double r = std::sqrt(gp.x * gp.x + gp.y * gp.y + gp.z * gp.z);
@@ -334,7 +334,7 @@ TEST(Grid, SingleAtomSlaterIntegral) {
 TEST(Grid, TwoAtomPartitionSymmetry) {
     double d = 1.4;
     native::Atom atoms[] = {{1, {-d / 2, 0, 0}}, {1, {d / 2, 0, 0}}};
-    auto grid = build_molecular_grid(atoms, 2, 30, 6);
+    auto grid = build_molecular_grid(atoms, 2, GridLevel::SG0, 30, 6);
     double w_left = 0, w_right = 0;
     for (const auto& gp : grid.points) {
         if (gp.x < 0)
@@ -349,7 +349,7 @@ TEST(Grid, TwoAtomPartitionSymmetry) {
 
 TEST(Grid, GridPointsFinite) {
     native::Atom atoms[] = {{1, {0, 0, 0}}, {2, {2.0, 0, 0}}};
-    auto grid = build_molecular_grid(atoms, 2, 30, 6);
+    auto grid = build_molecular_grid(atoms, 2, GridLevel::SG0, 30, 6);
     for (const auto& gp : grid.points) {
         EXPECT_FALSE(std::isnan(gp.x));
         EXPECT_FALSE(std::isnan(gp.y));
@@ -408,12 +408,12 @@ struct AtomXYZ {
 cpu::Frame make_frame(const std::vector<AtomXYZ>& atoms) {
     cpu::Frame f(static_cast<int>(atoms.size()));
     for (size_t i = 0; i < atoms.size(); ++i) {
-        f.atoms.type[i] = atoms[i].Z;
-        f.atoms.x[i] = atoms[i].x;
-        f.atoms.y[i] = atoms[i].y;
-        f.atoms.z[i] = atoms[i].z;
+        f.span(ATV::kAtom_type)[i] = atoms[i].Z;
+        f.span(ATV::kAtom_x)[i] = atoms[i].x;
+        f.span(ATV::kAtom_y)[i] = atoms[i].y;
+        f.span(ATV::kAtom_z)[i] = atoms[i].z;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -460,7 +460,9 @@ double atv_rks_pbe_energy(const std::vector<AtomXYZ>& atoms, GridLevel level) {
     c.damping_factor = 0.0;
     c.init_guess = cpu::scf::InitGuess::MINAO;
     c.grid_level = level;
-    return cpu::scf::scf_solve(ints, c).energy;
+    cpu::scf::SCFSolver solver{c};
+    solver.build(ints);
+    return solver.run(ints).energy;
 }
 
 } // namespace
@@ -475,27 +477,6 @@ TEST(Grid, LebedevNewOrdersMonomialExactness) {
         double err = lebedev_monomial_maxerr(g);
         EXPECT_LT(err, 1e-12)
             << g.name << ": monomial exactness failed, maxerr=" << err;
-    }
-}
-
-// ── ac-009: GridLevel::SG0 reproduces the legacy (50,110) grid ──────────
-
-TEST(Grid, SG0ReproducesLegacyGrid) {
-    // The pre-change call build_molecular_grid(atoms, natm, 50, 110) and
-    // the new level-aware path with GridLevel::SG0 must produce a
-    // bit-for-bit identical MolecularGrid.
-    native::Atom atoms[] = {
-        {8, {0.0, 0.0, 0.2}}, {1, {0.0, 1.4, -0.9}}, {1, {0.0, -1.4, -0.9}}};
-    auto legacy = build_molecular_grid(atoms, 3, 50, 110);
-    auto sg0 = build_molecular_grid(atoms, 3, GridLevel::SG0, 50, 110);
-
-    ASSERT_EQ(legacy.points.size(), sg0.points.size());
-    for (size_t i = 0; i < legacy.points.size(); ++i) {
-        EXPECT_EQ(legacy.points[i].x, sg0.points[i].x) << "point " << i;
-        EXPECT_EQ(legacy.points[i].y, sg0.points[i].y) << "point " << i;
-        EXPECT_EQ(legacy.points[i].z, sg0.points[i].z) << "point " << i;
-        EXPECT_EQ(legacy.points[i].weight, sg0.points[i].weight)
-            << "point " << i;
     }
 }
 
@@ -540,7 +521,9 @@ TEST(Grid, SG1RecoversWaterElectronCount) {
     c.tol = 1e-10;
     c.init_guess = cpu::scf::InitGuess::MINAO;
     c.grid_level = GridLevel::SG1;
-    auto r = cpu::scf::scf_solve(ints, c);
+    ATV::cpu::scf::SCFSolver r_solver{c};
+    r_solver.build(ints);
+    const auto& r = r_solver.run(ints);
     double n_e = r.integrated_n_alpha + r.integrated_n_beta;
     EXPECT_NEAR(n_e, 10.0, 1e-4) << "SG-1 grid electron count = " << n_e;
 }
@@ -557,7 +540,9 @@ TEST(Grid, MatchPySCFRecoversWaterElectronCount) {
     c.tol = 1e-10;
     c.init_guess = cpu::scf::InitGuess::MINAO;
     c.grid_level = GridLevel::MatchPySCF;
-    auto r = cpu::scf::scf_solve(ints, c);
+    ATV::cpu::scf::SCFSolver r_solver{c};
+    r_solver.build(ints);
+    const auto& r = r_solver.run(ints);
     double n_e = r.integrated_n_alpha + r.integrated_n_beta;
     EXPECT_NEAR(n_e, 10.0, 1e-4) << "match-PySCF grid electron count = " << n_e;
 }

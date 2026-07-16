@@ -19,19 +19,17 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
+using ATV::cpu::gpw::GaussianBasis;
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::XcKind;
-using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GPWSolver;
 using ATV::cpu::gpw::GthPotential;
+using ATV::cpu::gpw::XcKind;
 
 namespace {
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
@@ -39,13 +37,10 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 
 TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     const auto basis_Zn =
-        GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
-    const auto basis_O =
-        GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
-    const auto pot_Zn =
-        GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
-    const auto pot_O =
-        GthPotential(ATV::Element::O, "GTH-PBE-q6");
+        GaussianBasis(molrs::Element::Zn, "DZVP-MOLOPT-SR-GTH");
+    const auto basis_O = GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const auto pot_Zn = GthPotential(molrs::Element::Zn, "GTH-PBE-q12");
+    const auto pot_O = GthPotential(molrs::Element::O, "GTH-PBE-q6");
 
     const double Zn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double O[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
@@ -58,7 +53,8 @@ TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     cfg.cutoff_ry = 600.0;
     if (const char* b = std::getenv("ATV_ZNO_BOX"))
         cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = std::atof(b) * kAng;
-    if (const char* c = std::getenv("ATV_ZNO_CUT")) cfg.cutoff_ry = std::atof(c);
+    if (const char* c = std::getenv("ATV_ZNO_CUT"))
+        cfg.cutoff_ry = std::atof(c);
     cfg.n_occ = 9; // 18 valence electrons (Zn q12 + O q6)
     cfg.max_iter = 400;
     cfg.tol = 1e-7;
@@ -69,15 +65,17 @@ TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     cfg.xc = XcKind::PBE;
     cfg.nonperiodic = false; // periodic Poisson (PERIODIC XYZ)
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
     const double ref = -76.40905670322425; // CP2K 2026.1
-    std::printf("[GPW ZnO] iters=%d conv=%d  E_total=%.10f  (CP2K %.10f)\n"
-                "          kinetic=%.8f loc_sr=%.8f nonlocal=%.8f es=%.8f xc=%.8f\n"
-                "          |dE|=%.3e Ha\n",
-                r.iters, (int)r.converged, r.e_total, ref, r.e_kinetic,
-                r.e_loc_sr, r.e_nonlocal, r.e_es, r.e_xc,
-                std::abs(r.e_total - ref));
+    std::printf(
+        "[GPW ZnO] iters=%d conv=%d  E_total=%.10f  (CP2K %.10f)\n"
+        "          kinetic=%.8f loc_sr=%.8f nonlocal=%.8f es=%.8f xc=%.8f\n"
+        "          |dE|=%.3e Ha\n",
+        r.iters, (int)r.converged, r.e_total, ref, r.e_kinetic, r.e_loc_sr,
+        r.e_nonlocal, r.e_es, r.e_xc, std::abs(r.e_total - ref));
 
     EXPECT_TRUE(r.converged) << "iters=" << r.iters;
     EXPECT_TRUE(std::isfinite(r.e_total));

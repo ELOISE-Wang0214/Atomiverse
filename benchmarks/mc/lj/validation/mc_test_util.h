@@ -31,14 +31,14 @@ inline ATV::cpu::Frame fcc(int nc, double rho, int& n_out) {
         for (int iy = 0; iy < nc; ++iy)
             for (int iz = 0; iz < nc; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    f.atoms.x[idx] = (ix + bx[b]) * a;
-                    f.atoms.y[idx] = (iy + by[b]) * a;
-                    f.atoms.z[idx] = (iz + bz[b]) * a;
-                    f.atoms.mass[idx] = 1.0;
+                    f.span(ATV::kAtom_x)[idx] = (ix + bx[b]) * a;
+                    f.span(ATV::kAtom_y)[idx] = (iy + by[b]) * a;
+                    f.span(ATV::kAtom_z)[idx] = (iz + bz[b]) * a;
+                    f.span(ATV::kAtom_mass)[idx] = 1.0;
                     ++idx;
                 }
-    f.box = ATV::Mat3::cubic(L);
-    f.scalars.energy = 0.0;
+    f.simbox = ATV::cpu::Box::cubic(L);
+    f.meta.get(ATV::kEnergy) = 0.0;
     n_out = n;
     return f;
 }
@@ -79,9 +79,8 @@ inline double mean_V_quadrature(double beta, double eps, double sig, double rc,
     auto w = [&](double r) {
         return r * r * std::exp(-beta * lj_shifted(r, eps, sig, rc));
     };
-    const double num =
-        integrate([&](double r) { return lj_shifted(r, eps, sig, rc) * w(r); },
-                  a, b, n);
+    const double num = integrate(
+        [&](double r) { return lj_shifted(r, eps, sig, rc) * w(r); }, a, b, n);
     const double den = integrate(w, a, b, n);
     return num / den;
 }
@@ -123,14 +122,17 @@ inline std::pair<double, double> block_mean_se(const std::vector<double>& x,
 ///        O(N²) — for the small NIST cell, evaluated only on stored snapshots.
 inline double truncated_lj_energy(const ATV::cpu::Frame& f, double eps,
                                   double sig, double rc) {
-    const int n = f.atoms.nlocal;
+    const int n = f.nlocal();
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
-            double dx = static_cast<double>(f.atoms.x[i] - f.atoms.x[j]);
-            double dy = static_cast<double>(f.atoms.y[i] - f.atoms.y[j]);
-            double dz = static_cast<double>(f.atoms.z[i] - f.atoms.z[j]);
-            f.box.min_image(dx, dy, dz);
+            double dx = static_cast<double>(f.span(ATV::kAtom_x)[i]
+                                            - f.span(ATV::kAtom_x)[j]);
+            double dy = static_cast<double>(f.span(ATV::kAtom_y)[i]
+                                            - f.span(ATV::kAtom_y)[j]);
+            double dz = static_cast<double>(f.span(ATV::kAtom_z)[i]
+                                            - f.span(ATV::kAtom_z)[j]);
+            f.simbox.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             e += lj_cut(r, eps, sig, rc);
         }

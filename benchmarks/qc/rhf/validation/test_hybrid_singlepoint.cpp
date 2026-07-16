@@ -34,8 +34,8 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
@@ -55,7 +55,8 @@ constexpr double kHartreeToEV = 27.211386245988;
 
 std::string read_reference_file(const std::string& stem) {
     const std::string path = std::string(ATV_SOURCE_DIR)
-                             + "/benchmarks/qc/rhf/validation/reference/" + stem + ".json";
+                             + "/benchmarks/qc/rhf/validation/reference/" + stem
+                             + ".json";
     std::ifstream in(path);
     if (!in)
         throw std::runtime_error("cannot open reference JSON: " + path);
@@ -90,57 +91,167 @@ double json_value(const std::string& doc, const std::string& block,
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type = {8, 1, 1};
-    f.atoms.x = {0.000000, 0.000000, 0.000000};
-    f.atoms.y = {0.000000, 0.755453, -0.755453};
-    f.atoms.z = {0.117790, -0.471161, -0.471161};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
-    f.atoms.type = {6, 1, 1, 1, 1};
-    f.atoms.x = {0.000000, 0.627640, -0.627640, 0.627640, -0.627640};
-    f.atoms.y = {0.000000, 0.627640, -0.627640, -0.627640, 0.627640};
-    f.atoms.z = {0.000000, 0.627640, 0.627640, -0.627640, -0.627640};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.627640;
+    f.span(ATV::kAtom_x)[2] = -0.627640;
+    f.span(ATV::kAtom_x)[3] = 0.627640;
+    f.span(ATV::kAtom_x)[4] = -0.627640;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.627640;
+    f.span(ATV::kAtom_y)[2] = -0.627640;
+    f.span(ATV::kAtom_y)[3] = -0.627640;
+    f.span(ATV::kAtom_y)[4] = 0.627640;
+    f.span(ATV::kAtom_z)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[1] = 0.627640;
+    f.span(ATV::kAtom_z)[2] = 0.627640;
+    f.span(ATV::kAtom_z)[3] = -0.627640;
+    f.span(ATV::kAtom_z)[4] = -0.627640;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_nh3() {
     cpu::Frame f(4);
-    f.atoms.type = {7, 1, 1, 1};
-    f.atoms.x = {0.000000, 0.000000, 0.812328, -0.812328};
-    f.atoms.y = {0.000000, 0.938035, -0.469017, -0.469017};
-    f.atoms.z = {0.113880, -0.265825, -0.265825, -0.265825};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 7;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_x)[2] = 0.812328;
+    f.span(ATV::kAtom_x)[3] = -0.812328;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.938035;
+    f.span(ATV::kAtom_y)[2] = -0.469017;
+    f.span(ATV::kAtom_y)[3] = -0.469017;
+    f.span(ATV::kAtom_z)[0] = 0.113880;
+    f.span(ATV::kAtom_z)[1] = -0.265825;
+    f.span(ATV::kAtom_z)[2] = -0.265825;
+    f.span(ATV::kAtom_z)[3] = -0.265825;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_benzene() {
     cpu::Frame f(12);
-    f.atoms.type = {6, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 1};
-    f.atoms.x = {-1.362315, -0.956919, 0.405396, 1.362315, 0.956919, -0.405396,
-                 -2.416240, -1.697218, 0.719021, 2.416240, 1.697218, -0.719021};
-    f.atoms.y = {-0.318457, 1.020526, 1.338982, 0.318457, -1.020526, -1.338982,
-                 -0.564824, 1.810033, 2.374857, 0.564824, -1.810033, -2.374857};
-    f.atoms.z = {0.002346, 0.012443, 0.010097, -0.002345, -0.012442, -0.010097,
-                 0.004159, 0.022066, 0.017908, -0.004160, -0.022067, -0.017909};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 6;
+    f.span(ATV::kAtom_type)[2] = 6;
+    f.span(ATV::kAtom_type)[3] = 6;
+    f.span(ATV::kAtom_type)[4] = 6;
+    f.span(ATV::kAtom_type)[5] = 6;
+    f.span(ATV::kAtom_type)[6] = 1;
+    f.span(ATV::kAtom_type)[7] = 1;
+    f.span(ATV::kAtom_type)[8] = 1;
+    f.span(ATV::kAtom_type)[9] = 1;
+    f.span(ATV::kAtom_type)[10] = 1;
+    f.span(ATV::kAtom_type)[11] = 1;
+    f.span(ATV::kAtom_x)[0] = -1.362315;
+    f.span(ATV::kAtom_x)[1] = -0.956919;
+    f.span(ATV::kAtom_x)[2] = 0.405396;
+    f.span(ATV::kAtom_x)[3] = 1.362315;
+    f.span(ATV::kAtom_x)[4] = 0.956919;
+    f.span(ATV::kAtom_x)[5] = -0.405396;
+    f.span(ATV::kAtom_x)[6] = -2.416240;
+    f.span(ATV::kAtom_x)[7] = -1.697218;
+    f.span(ATV::kAtom_x)[8] = 0.719021;
+    f.span(ATV::kAtom_x)[9] = 2.416240;
+    f.span(ATV::kAtom_x)[10] = 1.697218;
+    f.span(ATV::kAtom_x)[11] = -0.719021;
+    f.span(ATV::kAtom_y)[0] = -0.318457;
+    f.span(ATV::kAtom_y)[1] = 1.020526;
+    f.span(ATV::kAtom_y)[2] = 1.338982;
+    f.span(ATV::kAtom_y)[3] = 0.318457;
+    f.span(ATV::kAtom_y)[4] = -1.020526;
+    f.span(ATV::kAtom_y)[5] = -1.338982;
+    f.span(ATV::kAtom_y)[6] = -0.564824;
+    f.span(ATV::kAtom_y)[7] = 1.810033;
+    f.span(ATV::kAtom_y)[8] = 2.374857;
+    f.span(ATV::kAtom_y)[9] = 0.564824;
+    f.span(ATV::kAtom_y)[10] = -1.810033;
+    f.span(ATV::kAtom_y)[11] = -2.374857;
+    f.span(ATV::kAtom_z)[0] = 0.002346;
+    f.span(ATV::kAtom_z)[1] = 0.012443;
+    f.span(ATV::kAtom_z)[2] = 0.010097;
+    f.span(ATV::kAtom_z)[3] = -0.002345;
+    f.span(ATV::kAtom_z)[4] = -0.012442;
+    f.span(ATV::kAtom_z)[5] = -0.010097;
+    f.span(ATV::kAtom_z)[6] = 0.004159;
+    f.span(ATV::kAtom_z)[7] = 0.022066;
+    f.span(ATV::kAtom_z)[8] = 0.017908;
+    f.span(ATV::kAtom_z)[9] = -0.004160;
+    f.span(ATV::kAtom_z)[10] = -0.022067;
+    f.span(ATV::kAtom_z)[11] = -0.017909;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_glycine() {
     cpu::Frame f(10);
-    f.atoms.type = {7, 6, 6, 8, 8, 1, 1, 1, 1, 1};
-    f.atoms.x = {-1.400839, -0.370019, 0.925792,  1.233153,  1.771618,
-                 -1.625527, -2.268277, -0.238214, -0.673752, 2.646065};
-    f.atoms.y = {0.271160, -0.558813, 0.184484,  0.868576,  0.156585,
-                 1.052674, -0.307372, -1.486583, -0.848738, 0.668026};
-    f.atoms.z = {-0.425197, 0.187422,  0.223822,  1.236362, -0.880405,
-                 0.233297,  -0.505344, -0.410315, 1.218266, -0.877908};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 7;
+    f.span(ATV::kAtom_type)[1] = 6;
+    f.span(ATV::kAtom_type)[2] = 6;
+    f.span(ATV::kAtom_type)[3] = 8;
+    f.span(ATV::kAtom_type)[4] = 8;
+    f.span(ATV::kAtom_type)[5] = 1;
+    f.span(ATV::kAtom_type)[6] = 1;
+    f.span(ATV::kAtom_type)[7] = 1;
+    f.span(ATV::kAtom_type)[8] = 1;
+    f.span(ATV::kAtom_type)[9] = 1;
+    f.span(ATV::kAtom_x)[0] = -1.400839;
+    f.span(ATV::kAtom_x)[1] = -0.370019;
+    f.span(ATV::kAtom_x)[2] = 0.925792;
+    f.span(ATV::kAtom_x)[3] = 1.233153;
+    f.span(ATV::kAtom_x)[4] = 1.771618;
+    f.span(ATV::kAtom_x)[5] = -1.625527;
+    f.span(ATV::kAtom_x)[6] = -2.268277;
+    f.span(ATV::kAtom_x)[7] = -0.238214;
+    f.span(ATV::kAtom_x)[8] = -0.673752;
+    f.span(ATV::kAtom_x)[9] = 2.646065;
+    f.span(ATV::kAtom_y)[0] = 0.271160;
+    f.span(ATV::kAtom_y)[1] = -0.558813;
+    f.span(ATV::kAtom_y)[2] = 0.184484;
+    f.span(ATV::kAtom_y)[3] = 0.868576;
+    f.span(ATV::kAtom_y)[4] = 0.156585;
+    f.span(ATV::kAtom_y)[5] = 1.052674;
+    f.span(ATV::kAtom_y)[6] = -0.307372;
+    f.span(ATV::kAtom_y)[7] = -1.486583;
+    f.span(ATV::kAtom_y)[8] = -0.848738;
+    f.span(ATV::kAtom_y)[9] = 0.668026;
+    f.span(ATV::kAtom_z)[0] = -0.425197;
+    f.span(ATV::kAtom_z)[1] = 0.187422;
+    f.span(ATV::kAtom_z)[2] = 0.223822;
+    f.span(ATV::kAtom_z)[3] = 1.236362;
+    f.span(ATV::kAtom_z)[4] = -0.880405;
+    f.span(ATV::kAtom_z)[5] = 0.233297;
+    f.span(ATV::kAtom_z)[6] = -0.505344;
+    f.span(ATV::kAtom_z)[7] = -0.410315;
+    f.span(ATV::kAtom_z)[8] = 1.218266;
+    f.span(ATV::kAtom_z)[9] = -0.877908;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

@@ -45,7 +45,7 @@
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
@@ -64,34 +64,79 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type = {8, 1, 1};
-    f.atoms.x = {0.000000, 0.000000, 0.000000};
-    f.atoms.y = {0.000000, 0.755453, -0.755453};
-    f.atoms.z = {0.117790, -0.471161, -0.471161};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
-    f.atoms.type = {6, 1, 1, 1, 1};
-    f.atoms.x = {0.000000, 0.627640, -0.627640, 0.627640, -0.627640};
-    f.atoms.y = {0.000000, 0.627640, -0.627640, -0.627640, 0.627640};
-    f.atoms.z = {0.000000, 0.627640, 0.627640, -0.627640, -0.627640};
-    f.atoms.mass = {12.011, 1.008, 1.008, 1.008, 1.008};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.627640;
+    f.span(ATV::kAtom_x)[2] = -0.627640;
+    f.span(ATV::kAtom_x)[3] = 0.627640;
+    f.span(ATV::kAtom_x)[4] = -0.627640;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.627640;
+    f.span(ATV::kAtom_y)[2] = -0.627640;
+    f.span(ATV::kAtom_y)[3] = -0.627640;
+    f.span(ATV::kAtom_y)[4] = 0.627640;
+    f.span(ATV::kAtom_z)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[1] = 0.627640;
+    f.span(ATV::kAtom_z)[2] = 0.627640;
+    f.span(ATV::kAtom_z)[3] = -0.627640;
+    f.span(ATV::kAtom_z)[4] = -0.627640;
+    f.span(ATV::kAtom_mass)[0] = 12.011;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_mass)[3] = 1.008;
+    f.span(ATV::kAtom_mass)[4] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_nh3() {
     cpu::Frame f(4);
-    f.atoms.type = {7, 1, 1, 1};
-    f.atoms.x = {0.000000, 0.000000, 0.812328, -0.812328};
-    f.atoms.y = {0.000000, 0.938035, -0.469017, -0.469017};
-    f.atoms.z = {0.113880, -0.265825, -0.265825, -0.265825};
-    f.atoms.mass = {14.007, 1.008, 1.008, 1.008};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 7;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_x)[2] = 0.812328;
+    f.span(ATV::kAtom_x)[3] = -0.812328;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.938035;
+    f.span(ATV::kAtom_y)[2] = -0.469017;
+    f.span(ATV::kAtom_y)[3] = -0.469017;
+    f.span(ATV::kAtom_z)[0] = 0.113880;
+    f.span(ATV::kAtom_z)[1] = -0.265825;
+    f.span(ATV::kAtom_z)[2] = -0.265825;
+    f.span(ATV::kAtom_z)[3] = -0.265825;
+    f.span(ATV::kAtom_mass)[0] = 14.007;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_mass)[3] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -198,7 +243,9 @@ cpu::scf::GradientResult run_hybrid_gradient(const std::string& stem,
     cfg.tol = 1e-9;
     cfg.max_iter = 300;
     cfg.xc_grad_project_translation = false;
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     EXPECT_TRUE(result.converged) << "hybrid SCF did not converge: " << stem;
     return cpu::scf::scf_gradient(frame, integrals, result, cfg);
 }
@@ -261,7 +308,11 @@ void check_moving_grid_fd(const std::string& stem, XCType xc,
     cfg.max_iter = 300;
     cfg.xc_grad_project_translation = false;
 
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+
+    result_solver.build(integrals);
+
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged) << label << " " << stem;
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, cfg);
 
@@ -270,7 +321,7 @@ void check_moving_grid_fd(const std::string& stem, XCType xc,
     auto fd = cpu::scf::scf_finite_difference_gradient(
         frame, cfg, /*charge=*/0, h_ang, BasisSet::Pople631Gs);
 
-    const int natm = static_cast<int>(frame.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
     double max_err = 0.0;
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
@@ -322,7 +373,7 @@ TEST(HybridGradient, HybridGradientIsTranslationallyInvariant) {
 // ── ac-005: B3LYP/6-31G* geometry optimization converges + matches PySCF ─
 //
 // Composition-only proof: b3lyp_config flows into the existing
-// cpu::minimizer::Minimize + SCFEvaluator + LBFGS stack with no new
+// cpu::minimizer::Minimize + SCF + LBFGS stack with no new
 // production code. Water is started slightly off the B3LYP minimum; the
 // optimizer must converge to the checked-in PySCF optimized geometry.
 
@@ -330,12 +381,22 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
     // Start water slightly compressed from the B3LYP minimum so the
     // optimizer has real work to do.
     cpu::Frame frame(3);
-    frame.atoms.type = {8, 1, 1};
-    frame.atoms.x = {0.000000, 0.000000, 0.000000};
-    frame.atoms.y = {0.000000, 0.745000, -0.745000};
-    frame.atoms.z = {0.130000, -0.480000, -0.480000};
-    frame.atoms.mass = {15.999, 1.008, 1.008};
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_type)[0] = 8;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_type)[2] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.000000;
+    frame.span(ATV::kAtom_x)[1] = 0.000000;
+    frame.span(ATV::kAtom_x)[2] = 0.000000;
+    frame.span(ATV::kAtom_y)[0] = 0.000000;
+    frame.span(ATV::kAtom_y)[1] = 0.745000;
+    frame.span(ATV::kAtom_y)[2] = -0.745000;
+    frame.span(ATV::kAtom_z)[0] = 0.130000;
+    frame.span(ATV::kAtom_z)[1] = -0.480000;
+    frame.span(ATV::kAtom_z)[2] = -0.480000;
+    frame.span(ATV::kAtom_mass)[0] = 15.999;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_mass)[2] = 1.008;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
 
     auto integrals = cpu::scf::build_integrals(frame, BasisSet::Pople631Gs);
     auto config = cpu::scf::b3lyp_config(integrals);
@@ -358,7 +419,7 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
                             /*rms_dtol=*/0.002,
                             /*etol=*/1e-5});
     opt.on(ATV::minimizer::Phase::force)
-        .add(cpu::scf::SCFEvaluator{config, BasisSet::Pople631Gs});
+        .add(cpu::scf::SCF{config, BasisSet::Pople631Gs});
     opt.build();
     const int max_iter = 60;
     const int iters = opt.run(frame, max_iter);
@@ -374,9 +435,9 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
     // also account for a possible mirror flip along x (all-zero by C2v).
     double com_atv[3] = {0, 0, 0}, com_ref[3] = {0, 0, 0};
     for (int A = 0; A < 3; ++A) {
-        com_atv[0] += frame.atoms.x(A);
-        com_atv[1] += frame.atoms.y(A);
-        com_atv[2] += frame.atoms.z(A);
+        com_atv[0] += frame.span(ATV::kAtom_x)[A];
+        com_atv[1] += frame.span(ATV::kAtom_y)[A];
+        com_atv[2] += frame.span(ATV::kAtom_z)[A];
         com_ref[0] += kB3LYPOptGeom[A][0];
         com_ref[1] += kB3LYPOptGeom[A][1];
         com_ref[2] += kB3LYPOptGeom[A][2];
@@ -388,9 +449,9 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
 
     double sum_sq = 0.0;
     for (int A = 0; A < 3; ++A) {
-        const double ax = frame.atoms.x(A) - com_atv[0];
-        const double ay = frame.atoms.y(A) - com_atv[1];
-        const double az = frame.atoms.z(A) - com_atv[2];
+        const double ax = frame.span(ATV::kAtom_x)[A] - com_atv[0];
+        const double ay = frame.span(ATV::kAtom_y)[A] - com_atv[1];
+        const double az = frame.span(ATV::kAtom_z)[A] - com_atv[2];
         const double rx = kB3LYPOptGeom[A][0] - com_ref[0];
         const double ry = kB3LYPOptGeom[A][1] - com_ref[1];
         const double rz = kB3LYPOptGeom[A][2] - com_ref[2];
@@ -403,10 +464,11 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
     EXPECT_LE(rms, 1e-3)
         << "optimized B3LYP/6-31G* water geometry RMS exceeds 1e-3 Angstrom";
 
-    // Final energy vs PySCF optimized reference. SCFEvaluator writes the
-    // KS total energy (eV) into frame.scalars.energy; convert back to Hartree.
-    const double e_final_ha = units::convert(
-        frame.scalars.energy, units::Energy::eV, units::Energy::Hartree);
+    // Final energy vs PySCF optimized reference. SCF writes the
+    // KS total energy (eV) into frame.meta.get(ATV::kEnergy); convert back to Hartree.
+    const double e_final_ha =
+        units::convert(frame.meta.get(ATV::kEnergy), units::Energy::eV,
+                       units::Energy::Hartree);
     std::printf("[hybrid-grad] ac-005 final E = %.10f Ha (PySCF %.10f Ha)\n",
                 e_final_ha, kB3LYPOptEnergyHa);
     EXPECT_NEAR(e_final_ha, kB3LYPOptEnergyHa, 1e-6)

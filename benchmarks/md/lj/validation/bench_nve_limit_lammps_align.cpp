@@ -41,23 +41,24 @@ constexpr int kInitial = ATV::slot_of(ATV::md::Phase::initial_integrate);
 constexpr int kFinal = ATV::slot_of(ATV::md::Phase::final_integrate);
 
 double speed(const cpu::Frame& f, int i) {
-    return std::sqrt(f.atoms.vx[i] * f.atoms.vx[i]
-                     + f.atoms.vy[i] * f.atoms.vy[i]
-                     + f.atoms.vz[i] * f.atoms.vz[i]);
+    return std::sqrt(f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                     + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                     + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i]);
 }
 
 // Single free atom at the box centre, unit mass, zero velocity.
 cpu::Frame make_single_atom() {
     cpu::Frame frame(1);
-    frame.atoms.x[0] = 10.0;
-    frame.atoms.y[0] = 10.0;
-    frame.atoms.z[0] = 10.0;
-    frame.atoms.vx[0] = 0.0;
-    frame.atoms.vy[0] = 0.0;
-    frame.atoms.vz[0] = 0.0;
-    frame.atoms.mass[0] = 1.0;
-    frame.atoms.type[0] = 0;
-    frame.box = Mat3::cubic(1000.0); // huge box → no PBC wrap interference
+    frame.span(ATV::kAtom_x)[0] = 10.0;
+    frame.span(ATV::kAtom_y)[0] = 10.0;
+    frame.span(ATV::kAtom_z)[0] = 10.0;
+    frame.span(ATV::kAtom_vx)[0] = 0.0;
+    frame.span(ATV::kAtom_vy)[0] = 0.0;
+    frame.span(ATV::kAtom_vz)[0] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = 1.0;
+    frame.span(ATV::kAtom_type)[0] = 0;
+    frame.simbox =
+        ATV::cpu::Box::cubic(1000.0); // huge box → no PBC wrap interference
     return frame;
 }
 
@@ -75,16 +76,16 @@ BENCH_CASE(NveLimitLammpsAlign_InitialHalfDistanceCap) {
     const double dt = 0.5;    // fs
     const double xmax = 0.05; // Å  → vmax = xmax/dt = 0.1 Å/fs
 
-    // Force spike (in eV/Å). dtfm = 0.5*dt*kFtm2v/m. With a large enough
+    // Force spike (in eV/Å). dtfm = 0.5*dt*units::force_to_accel/m. With a large enough
     // force the post-kick speed far exceeds vmax, so the cap MUST engage.
     const double F = 1.0e4;
-    frame.atoms.fx[0] = 0.6 * F;
-    frame.atoms.fy[0] = 0.8 * F; // |f| direction is (0.6, 0.8, 0)
-    frame.atoms.fz[0] = 0.0;
+    frame.span(ATV::kAtom_fx)[0] = 0.6 * F;
+    frame.span(ATV::kAtom_fy)[0] = 0.8 * F; // |f| direction is (0.6, 0.8, 0)
+    frame.span(ATV::kAtom_fz)[0] = 0.0;
 
-    const double x0 = frame.atoms.x[0];
-    const double y0 = frame.atoms.y[0];
-    const double z0 = frame.atoms.z[0];
+    const double x0 = frame.span(ATV::kAtom_x)[0];
+    const double y0 = frame.span(ATV::kAtom_y)[0];
+    const double z0 = frame.span(ATV::kAtom_z)[0];
 
     cpu::md::NVELimit limit(dt, xmax);
     cpu::Context ctx;
@@ -96,16 +97,18 @@ BENCH_CASE(NveLimitLammpsAlign_InitialHalfDistanceCap) {
         << "post-kick Euclidean speed must be capped to xmax/dt";
 
     // Displacement of this single step must be exactly xmax (distance cap).
-    const double disp =
-        std::sqrt((frame.atoms.x[0] - x0) * (frame.atoms.x[0] - x0)
-                  + (frame.atoms.y[0] - y0) * (frame.atoms.y[0] - y0)
-                  + (frame.atoms.z[0] - z0) * (frame.atoms.z[0] - z0));
+    const double disp = std::sqrt((frame.span(ATV::kAtom_x)[0] - x0)
+                                      * (frame.span(ATV::kAtom_x)[0] - x0)
+                                  + (frame.span(ATV::kAtom_y)[0] - y0)
+                                        * (frame.span(ATV::kAtom_y)[0] - y0)
+                                  + (frame.span(ATV::kAtom_z)[0] - z0)
+                                        * (frame.span(ATV::kAtom_z)[0] - z0));
     BM_NEAR(disp, xmax, 1e-12)
         << "per-step displacement must be bounded by xmax (a distance)";
 
     // Cap preserves direction: v stays parallel to the force spike.
-    BM_NEAR(frame.atoms.vx[0] / speed(frame, 0), 0.6, 1e-12);
-    BM_NEAR(frame.atoms.vy[0] / speed(frame, 0), 0.8, 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_vx)[0] / speed(frame, 0), 0.6, 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_vy)[0] / speed(frame, 0), 0.8, 1e-12);
 }
 
 // ── ac-003: the cap also engages in the FINAL integrate half ─────────
@@ -119,9 +122,9 @@ BENCH_CASE(NveLimitLammpsAlign_FinalHalfDistanceCap) {
     const double xmax = 0.05;
 
     const double F = 1.0e4;
-    frame.atoms.fx[0] = 0.0;
-    frame.atoms.fy[0] = 0.0;
-    frame.atoms.fz[0] = F; // pure +z spike
+    frame.span(ATV::kAtom_fx)[0] = 0.0;
+    frame.span(ATV::kAtom_fy)[0] = 0.0;
+    frame.span(ATV::kAtom_fz)[0] = F; // pure +z spike
 
     cpu::md::NVELimit limit(dt, xmax);
     cpu::Context ctx;
@@ -132,9 +135,9 @@ BENCH_CASE(NveLimitLammpsAlign_FinalHalfDistanceCap) {
     BM_NEAR(speed(frame, 0), vmax, 1e-12)
         << "final_integrate half must also cap |v| to xmax/dt";
     // final_integrate must NOT move the atom.
-    BM_NEAR(frame.atoms.x[0], 10.0, 1e-12);
-    BM_NEAR(frame.atoms.y[0], 10.0, 1e-12);
-    BM_NEAR(frame.atoms.z[0], 10.0, 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_x)[0], 10.0, 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_y)[0], 10.0, 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_z)[0], 10.0, 1e-12);
 }
 
 // ── ac-002: the cap uses the Euclidean (L2) norm, not per-component ──
@@ -150,12 +153,12 @@ BENCH_CASE(NveLimitLammpsAlign_EuclideanNormNotPerComponent) {
 
     // Pre-existing isotropic velocity, each component already > vmax so a
     // per-component cap would give |v| = vmax*√3 ≠ vmax.
-    frame.atoms.vx[0] = 1.0;
-    frame.atoms.vy[0] = 1.0;
-    frame.atoms.vz[0] = 1.0;
-    frame.atoms.fx[0] = 0.0;
-    frame.atoms.fy[0] = 0.0;
-    frame.atoms.fz[0] = 0.0;
+    frame.span(ATV::kAtom_vx)[0] = 1.0;
+    frame.span(ATV::kAtom_vy)[0] = 1.0;
+    frame.span(ATV::kAtom_vz)[0] = 1.0;
+    frame.span(ATV::kAtom_fx)[0] = 0.0;
+    frame.span(ATV::kAtom_fy)[0] = 0.0;
+    frame.span(ATV::kAtom_fz)[0] = 0.0;
 
     cpu::md::NVELimit limit(dt, xmax);
     cpu::Context ctx;
@@ -164,9 +167,9 @@ BENCH_CASE(NveLimitLammpsAlign_EuclideanNormNotPerComponent) {
 
     BM_NEAR(speed(frame, 0), vmax, 1e-12)
         << "cap must use Euclidean speed vsq = v·v";
-    BM_NEAR(frame.atoms.vx[0], vmax / std::sqrt(3.0), 1e-12);
-    BM_NEAR(frame.atoms.vy[0], vmax / std::sqrt(3.0), 1e-12);
-    BM_NEAR(frame.atoms.vz[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_vx)[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_vy)[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.span(ATV::kAtom_vz)[0], vmax / std::sqrt(3.0), 1e-12);
 }
 
 // ── ac-002: below-threshold velocities pass through unchanged ─────────
@@ -176,18 +179,18 @@ BENCH_CASE(NveLimitLammpsAlign_NoCapBelowThreshold) {
     const double dt = 0.5;
     const double xmax = 0.05; // vmax = 0.1 Å/fs
 
-    frame.atoms.vx[0] = 0.03;
-    frame.atoms.vy[0] = 0.04; // |v| = 0.05 < vmax = 0.1 → untouched
-    frame.atoms.vz[0] = 0.0;
+    frame.span(ATV::kAtom_vx)[0] = 0.03;
+    frame.span(ATV::kAtom_vy)[0] = 0.04; // |v| = 0.05 < vmax = 0.1 → untouched
+    frame.span(ATV::kAtom_vz)[0] = 0.0;
 
     cpu::md::NVELimit limit(dt, xmax);
     cpu::Context ctx;
     cpu::LaunchContext lctx{ctx, frame, kFinal, 0};
     limit.launch(lctx);
 
-    BM_NEAR(frame.atoms.vx[0], 0.03, 1e-14);
-    BM_NEAR(frame.atoms.vy[0], 0.04, 1e-14);
-    BM_NEAR(frame.atoms.vz[0], 0.0, 1e-14);
+    BM_NEAR(frame.span(ATV::kAtom_vx)[0], 0.03, 1e-14);
+    BM_NEAR(frame.span(ATV::kAtom_vy)[0], 0.04, 1e-14);
+    BM_NEAR(frame.span(ATV::kAtom_vz)[0], 0.0, 1e-14);
 }
 
 // ── ac-004: large xmax → NVELimit reduces to plain VelocityVerlet ────
@@ -199,24 +202,25 @@ BENCH_CASE(NveLimitLammpsAlign_NoCapBelowThreshold) {
 BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
     auto build_pair = []() {
         cpu::Frame f(2);
-        f.atoms.x[0] = 9.0;
-        f.atoms.y[0] = 10.0;
-        f.atoms.z[0] = 10.0;
-        f.atoms.x[1] = 11.4;
-        f.atoms.y[1] = 10.0;
-        f.atoms.z[1] = 10.0; // stretched bond
+        f.span(ATV::kAtom_x)[0] = 9.0;
+        f.span(ATV::kAtom_y)[0] = 10.0;
+        f.span(ATV::kAtom_z)[0] = 10.0;
+        f.span(ATV::kAtom_x)[1] = 11.4;
+        f.span(ATV::kAtom_y)[1] = 10.0;
+        f.span(ATV::kAtom_z)[1] = 10.0; // stretched bond
         for (int i = 0; i < 2; ++i) {
-            f.atoms.mass[i] = 12.0;
-            f.atoms.type[i] = 0;
-            f.atoms.vx[i] = f.atoms.vy[i] = f.atoms.vz[i] = 0.0;
+            f.span(ATV::kAtom_mass)[i] = 12.0;
+            f.span(ATV::kAtom_type)[i] = 0;
+            f.span(ATV::kAtom_vx)[i] = f.span(ATV::kAtom_vy)[i] =
+                f.span(ATV::kAtom_vz)[i] = 0.0;
         }
         // Per-atom topology: real bond forces now flow (the old flat fill
         // wrote dead storage and left this case with zero bond force).
-        f.atoms.map_clear();
-        f.atoms.map_set(0, f.atoms.nlocal);
-        f.atoms.add_bond(0, 1, 0);
-        f.atoms.build_special_list();
-        f.box = Mat3::cubic(1000.0);
+        f.clear_tag_index();
+        f.rebuild_tag_index(0, f.nlocal());
+        f.add_bond(0, 1, 0);
+        f.build_special_list();
+        f.simbox = ATV::cpu::Box::cubic(1000.0);
         return f;
     };
 
@@ -245,10 +249,12 @@ BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
     }
 
     for (int i = 0; i < 2; ++i) {
-        BM_NEAR(frame_lim.atoms.x[i], frame_vv.atoms.x[i], 1e-12)
+        BM_NEAR(frame_lim.span(ATV::kAtom_x)[i], frame_vv.span(ATV::kAtom_x)[i],
+                1e-12)
             << "atom " << i << " x diverged: NVELimit with large xmax must "
             << "match plain VelocityVerlet";
-        BM_NEAR(frame_lim.atoms.vx[i], frame_vv.atoms.vx[i], 1e-12)
+        BM_NEAR(frame_lim.span(ATV::kAtom_vx)[i],
+                frame_vv.span(ATV::kAtom_vx)[i], 1e-12)
             << "atom " << i << " vx diverged";
     }
 }
@@ -260,24 +266,25 @@ BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
 
 BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 9.3;
-    frame.atoms.y[0] = 10.0;
-    frame.atoms.z[0] = 10.0;
-    frame.atoms.x[1] = 11.0;
-    frame.atoms.y[1] = 10.0;
-    frame.atoms.z[1] = 10.0;
+    frame.span(ATV::kAtom_x)[0] = 9.3;
+    frame.span(ATV::kAtom_y)[0] = 10.0;
+    frame.span(ATV::kAtom_z)[0] = 10.0;
+    frame.span(ATV::kAtom_x)[1] = 11.0;
+    frame.span(ATV::kAtom_y)[1] = 10.0;
+    frame.span(ATV::kAtom_z)[1] = 10.0;
     for (int i = 0; i < 2; ++i) {
-        frame.atoms.mass[i] = 12.0;
-        frame.atoms.type[i] = 0;
-        frame.atoms.vx[i] = frame.atoms.vy[i] = frame.atoms.vz[i] = 0.0;
+        frame.span(ATV::kAtom_mass)[i] = 12.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
+        frame.span(ATV::kAtom_vx)[i] = frame.span(ATV::kAtom_vy)[i] =
+            frame.span(ATV::kAtom_vz)[i] = 0.0;
     }
     // Per-atom topology: real bond forces now flow (the old flat fill
     // wrote dead storage and left this case with zero bond force).
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(0, 1, 0);
-    frame.atoms.build_special_list();
-    frame.box = Mat3::cubic(1000.0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(0, 1, 0);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::cubic(1000.0);
 
     // dt = 0.1 fs keeps the velocity-Verlet symplectic energy error
     // (which scales as O(dt^2)) comfortably inside the 1e-4 drift bound
@@ -289,14 +296,16 @@ BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e0 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     if (!(std::abs(e0) > 0.0)) {
         BM_TRUE(false) << "initial total energy must be nonzero";
         return;
     }
 
     sim.run(frame, 1999);
-    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e1 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     BM_LT(drift, 1e-4) << "VelocityVerlet NVE drift " << drift
@@ -312,24 +321,25 @@ BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
 
 BENCH_CASE(NveLimitLammpsAlign_FarFromEquilibriumDisplacementBounded) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 10.00;
-    frame.atoms.y[0] = 10.0;
-    frame.atoms.z[0] = 10.0;
-    frame.atoms.x[1] = 10.02;
-    frame.atoms.y[1] = 10.0;
-    frame.atoms.z[1] = 10.0;
+    frame.span(ATV::kAtom_x)[0] = 10.00;
+    frame.span(ATV::kAtom_y)[0] = 10.0;
+    frame.span(ATV::kAtom_z)[0] = 10.0;
+    frame.span(ATV::kAtom_x)[1] = 10.02;
+    frame.span(ATV::kAtom_y)[1] = 10.0;
+    frame.span(ATV::kAtom_z)[1] = 10.0;
     for (int i = 0; i < 2; ++i) {
-        frame.atoms.mass[i] = 1.0;
-        frame.atoms.type[i] = 0;
-        frame.atoms.vx[i] = frame.atoms.vy[i] = frame.atoms.vz[i] = 0.0;
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
+        frame.span(ATV::kAtom_vx)[i] = frame.span(ATV::kAtom_vy)[i] =
+            frame.span(ATV::kAtom_vz)[i] = 0.0;
     }
     // Per-atom topology: real bond forces now flow (the old flat fill
     // wrote dead storage and left this case with zero bond force).
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(0, 1, 0);
-    frame.atoms.build_special_list();
-    frame.box = Mat3::cubic(1000.0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(0, 1, 0);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::cubic(1000.0);
 
     const double dt = 0.5;
     const double xmax = 0.1; // Å per step
@@ -341,36 +351,44 @@ BENCH_CASE(NveLimitLammpsAlign_FarFromEquilibriumDisplacementBounded) {
     sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{500.0}, {1.53}});
     sim.build();
 
-    double prev_x0 = frame.atoms.x[0], prev_y0 = frame.atoms.y[0],
-           prev_z0 = frame.atoms.z[0];
-    double prev_x1 = frame.atoms.x[1], prev_y1 = frame.atoms.y[1],
-           prev_z1 = frame.atoms.z[1];
+    double prev_x0 = frame.span(ATV::kAtom_x)[0],
+           prev_y0 = frame.span(ATV::kAtom_y)[0],
+           prev_z0 = frame.span(ATV::kAtom_z)[0];
+    double prev_x1 = frame.span(ATV::kAtom_x)[1],
+           prev_y1 = frame.span(ATV::kAtom_y)[1],
+           prev_z1 = frame.span(ATV::kAtom_z)[1];
 
     for (int s = 0; s < steps; ++s) {
         sim.run(frame, 1);
-        const double d0 = std::sqrt(
-            (frame.atoms.x[0] - prev_x0) * (frame.atoms.x[0] - prev_x0)
-            + (frame.atoms.y[0] - prev_y0) * (frame.atoms.y[0] - prev_y0)
-            + (frame.atoms.z[0] - prev_z0) * (frame.atoms.z[0] - prev_z0));
-        const double d1 = std::sqrt(
-            (frame.atoms.x[1] - prev_x1) * (frame.atoms.x[1] - prev_x1)
-            + (frame.atoms.y[1] - prev_y1) * (frame.atoms.y[1] - prev_y1)
-            + (frame.atoms.z[1] - prev_z1) * (frame.atoms.z[1] - prev_z1));
+        const double d0 =
+            std::sqrt((frame.span(ATV::kAtom_x)[0] - prev_x0)
+                          * (frame.span(ATV::kAtom_x)[0] - prev_x0)
+                      + (frame.span(ATV::kAtom_y)[0] - prev_y0)
+                            * (frame.span(ATV::kAtom_y)[0] - prev_y0)
+                      + (frame.span(ATV::kAtom_z)[0] - prev_z0)
+                            * (frame.span(ATV::kAtom_z)[0] - prev_z0));
+        const double d1 =
+            std::sqrt((frame.span(ATV::kAtom_x)[1] - prev_x1)
+                          * (frame.span(ATV::kAtom_x)[1] - prev_x1)
+                      + (frame.span(ATV::kAtom_y)[1] - prev_y1)
+                            * (frame.span(ATV::kAtom_y)[1] - prev_y1)
+                      + (frame.span(ATV::kAtom_z)[1] - prev_z1)
+                            * (frame.span(ATV::kAtom_z)[1] - prev_z1));
         // Per-step displacement = |v_capped|·dt ≤ xmax. A small tolerance
         // covers floating-point round-off in the rescale.
         BM_LE(d0, xmax + 1e-9) << "atom 0 step " << s << " moved " << d0;
         BM_LE(d1, xmax + 1e-9) << "atom 1 step " << s << " moved " << d1;
-        if (std::isnan(frame.atoms.x[0])) {
+        if (std::isnan(frame.span(ATV::kAtom_x)[0])) {
             BM_TRUE(false) << "atom 0 blew up at step " << s;
             return;
         }
 
-        prev_x0 = frame.atoms.x[0];
-        prev_y0 = frame.atoms.y[0];
-        prev_z0 = frame.atoms.z[0];
-        prev_x1 = frame.atoms.x[1];
-        prev_y1 = frame.atoms.y[1];
-        prev_z1 = frame.atoms.z[1];
+        prev_x0 = frame.span(ATV::kAtom_x)[0];
+        prev_y0 = frame.span(ATV::kAtom_y)[0];
+        prev_z0 = frame.span(ATV::kAtom_z)[0];
+        prev_x1 = frame.span(ATV::kAtom_x)[1];
+        prev_y1 = frame.span(ATV::kAtom_y)[1];
+        prev_z1 = frame.span(ATV::kAtom_z)[1];
     }
 }
 

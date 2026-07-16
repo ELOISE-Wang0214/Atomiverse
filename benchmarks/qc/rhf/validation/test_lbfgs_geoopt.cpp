@@ -8,7 +8,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -16,12 +16,17 @@ class LBFGSTest : public ::testing::Test {
   protected:
     static cpu::Frame make_h2(double bond_length) {
         cpu::Frame f(2);
-        f.atoms.x = {0.0, bond_length};
-        f.atoms.y = {0.0, 0.0};
-        f.atoms.z = {0.0, 0.0};
-        f.atoms.mass = {1.008, 1.008};
-        f.atoms.type = {1, 1};
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = 0.0;
+        f.span(ATV::kAtom_x)[1] = bond_length;
+        f.span(ATV::kAtom_y)[0] = 0.0;
+        f.span(ATV::kAtom_y)[1] = 0.0;
+        f.span(ATV::kAtom_z)[0] = 0.0;
+        f.span(ATV::kAtom_z)[1] = 0.0;
+        f.span(ATV::kAtom_mass)[0] = 1.008;
+        f.span(ATV::kAtom_mass)[1] = 1.008;
+        f.span(ATV::kAtom_type)[0] = 1;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 };
@@ -35,11 +40,11 @@ TEST_F(LBFGSTest, H2RHFGeometryOptimization) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.build();
     opt.run(frame, 50);
 
-    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    double bond = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
     EXPECT_LT(static_cast<double>(bond), 1.2)
         << "H2 bond should contract from 1.2 Å";
     EXPECT_GT(static_cast<double>(bond), 0.5) << "H2 bond should not collapse";
@@ -54,11 +59,11 @@ TEST_F(LBFGSTest, H2LSDAGeometryOptimization) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.build();
     opt.run(frame, 50);
 
-    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    double bond = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
     EXPECT_LT(static_cast<double>(bond), 1.2)
         << "H2 bond should contract from 1.2 Å (LSDA)";
     EXPECT_GT(static_cast<double>(bond), 0.5);
@@ -73,11 +78,11 @@ TEST_F(LBFGSTest, CompressedH2Expands) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.build();
     opt.run(frame, 30);
 
-    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    double bond = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
     EXPECT_GT(static_cast<double>(bond), 0.5) << "Compressed H2 should expand";
 }
 
@@ -99,11 +104,11 @@ TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
                                         /*max_dtol=*/0.001,
                                         /*rms_dtol=*/0.0005,
                                         /*etol=*/1e-7});
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.build();
     opt.run(frame, 80);
 
-    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    double bond = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
     // H2/STO-3G PySCF-minimum bond ≈ 0.7122 Å.
     EXPECT_NEAR(static_cast<double>(bond), 0.7122, 0.01);
 }
@@ -120,11 +125,12 @@ TEST_F(LBFGSTest, FixedStepFallbackStillContracts) {
     step.line_search(cpu::minimizer::LineSearchMode::Fixed);
     cpu::minimizer::Minimize opt;
     opt.add(std::move(step)); // ForceConverged{} default handler (ftol=0.05).
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.build();
     opt.run(frame, 50);
 
-    double bond = frame.atoms.x(1) - frame.atoms.x(0);
-    EXPECT_LT(static_cast<double>(bond), 1.2) << "Fixed-step LBFGS contracts H2";
+    double bond = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
+    EXPECT_LT(static_cast<double>(bond), 1.2)
+        << "Fixed-step LBFGS contracts H2";
     EXPECT_GT(static_cast<double>(bond), 0.5);
 }

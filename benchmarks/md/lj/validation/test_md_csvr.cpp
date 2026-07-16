@@ -7,7 +7,7 @@
 /// T at the setpoint AND relative variance Var(K)/<K>^2 ≈ 2/N_f (the
 /// signature that distinguishes CSVR from Berendsen, which collapses the
 /// fluctuations); (b) the published H~ = E_pot + E_kin + H~_therm
-/// (frame.scalars.conserved) shows no secular drift.
+/// (frame.meta.get(ATV::kConserved)) shows no secular drift.
 
 #include <gtest/gtest.h>
 
@@ -20,8 +20,8 @@
 #include "atomiverse/cpu/md/fix_csvr.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
@@ -38,25 +38,26 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 // Kinetic energy [eV] from the live velocities (independent of any observer).
 double kinetic_ev(const cpu::Frame& f) {
     double s = 0.0;
-    for (int i = 0; i < f.atoms.size(); ++i)
-        s += f.atoms.mass[i]
-             * (f.atoms.vx[i] * f.atoms.vx[i] + f.atoms.vy[i] * f.atoms.vy[i]
-                + f.atoms.vz[i] * f.atoms.vz[i]);
-    return 0.5 * kMvv2e * s;
+    for (int i = 0; i < f.nlocal(); ++i)
+        s += f.span(ATV::kAtom_mass)[i]
+             * (f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i]);
+    return 0.5 * units::mass_v2_to_energy * s;
 }
 
 } // namespace
@@ -68,15 +69,16 @@ TEST(FixCSVR, CanonicalSamplingAndConservedQuantity) {
     const double eps = 0.0104, sigma = 3.4, cutoff = 8.5;
 
     auto frame = make_fcc_argon(4, 5.26); // 256 atoms
-    const int natoms = frame.atoms.size();
+    const int natoms = frame.nlocal();
     const int n_dof = 3 * natoms - 3; // COM removed
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T, /*seed=*/2024});
-    sim.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 1.0});
-    sim.set_thermostat(cpu::md::FixCSVR{T, tau, dt, /*seed=*/7}); // plugs in via set_thermostat
+    sim.set_thermostat(cpu::md::FixCSVR{
+        T, tau, dt, /*seed=*/7}); // plugs in via set_thermostat
     sim.build();
 
     sim.run(frame, 3000); // equilibrate
@@ -89,18 +91,20 @@ TEST(FixCSVR, CanonicalSamplingAndConservedQuantity) {
     for (int s = 0; s < n_samples; ++s) {
         sim.run(frame, interval);
         ke.push_back(kinetic_ev(frame));
-        cons.push_back(frame.scalars.conserved);
+        cons.push_back(frame.meta.get(ATV::kConserved));
     }
 
     // ── ac-008: canonical kinetic-energy distribution ──────────────────
     double mean_ke = 0.0;
-    for (double k : ke) mean_ke += k;
+    for (double k : ke)
+        mean_ke += k;
     mean_ke /= n_samples;
     double var_ke = 0.0;
-    for (double k : ke) var_ke += (k - mean_ke) * (k - mean_ke);
+    for (double k : ke)
+        var_ke += (k - mean_ke) * (k - mean_ke);
     var_ke /= n_samples;
 
-    const double mean_T = 2.0 * mean_ke / (n_dof * kBoltzmann);
+    const double mean_T = 2.0 * mean_ke / (n_dof * units::kB_ev_per_k);
     const double rel_var = var_ke / (mean_ke * mean_ke);
     const double canonical_rel_var = 2.0 / n_dof; // exact for the canonical K
 
@@ -125,8 +129,10 @@ TEST(FixCSVR, CanonicalSamplingAndConservedQuantity) {
     // the kinetic energy (the natural energy unit of the run).
     double first = 0.0, second = 0.0;
     const int half = n_samples / 2;
-    for (int s = 0; s < half; ++s) first += cons[s];
-    for (int s = half; s < n_samples; ++s) second += cons[s];
+    for (int s = 0; s < half; ++s)
+        first += cons[s];
+    for (int s = half; s < n_samples; ++s)
+        second += cons[s];
     first /= half;
     second /= (n_samples - half);
     const double drift = std::abs(second - first);

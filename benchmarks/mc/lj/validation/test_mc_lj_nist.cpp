@@ -39,7 +39,9 @@ double u_lrc_per_n(double rho) {
            * ((1.0 / 3.0) * std::pow(kRc, -9.0) - std::pow(kRc, -3.0));
 }
 
-struct Result { double u_per_n, se, tol, u_ref; };
+struct Result {
+    double u_per_n, se, tol, u_ref;
+};
 
 Result run_state(double Tstar, double rho, double u_ref) {
     // nc=5 ⇒ N=500 (matches the SRSW reference N and, crucially, keeps the box
@@ -60,7 +62,7 @@ Result run_state(double Tstar, double rho, double u_ref) {
     if (rho >= 0.85) {
         const double T_melt = 1.5 / ATV::units::kB_ev_per_k;
         cpu::mc::MC melt{T_melt, 909090u};
-        melt.set_pair(cpu::PairLJCut{1.0, 1.0, kRc});
+        melt.add_potential(cpu::PairLJCut{1.0, 1.0, kRc});
         melt.set_neighbor(cpu::md::NeighborList<>{kRc, 0.3, 1, 0, true});
         melt.set_mover(cpu::mc::TranslateMove{0.25});
         melt.build();
@@ -68,7 +70,7 @@ Result run_state(double Tstar, double rho, double u_ref) {
     }
 
     cpu::mc::MC mc{T, 424242u};
-    mc.set_pair(cpu::PairLJCut{1.0, 1.0, kRc});
+    mc.add_potential(cpu::PairLJCut{1.0, 1.0, kRc});
     mc.set_neighbor(cpu::md::NeighborList<>{kRc, 0.3, 1, 0, true});
     mc.set_mover(cpu::mc::TranslateMove{0.12});
     mc.build();
@@ -97,7 +99,9 @@ Result run_state(double Tstar, double rho, double u_ref) {
 } // namespace
 
 TEST(MCLJNist, MatchesSRSWReference) {
-    struct SP { double Tstar, rho, uref; };
+    struct SP {
+        double Tstar, rho, uref;
+    };
     const SP points[] = {{0.85, 0.78, -5.5386}, {0.90, 0.90, -6.1773}};
 
     for (const SP& sp : points) {
@@ -106,10 +110,11 @@ TEST(MCLJNist, MatchesSRSWReference) {
                     "blockSE=%.4f tol=%.4f  |dev|=%.4f\n",
                     sp.Tstar, sp.rho, r.u_per_n, r.u_ref, r.se, r.tol,
                     std::abs(r.u_per_n - r.u_ref));
-        std::printf("[NIST] caveats: energy = pure-cut (rc=3σ) re-eval + LRC "
-                    "(sampler runs cut-and-shifted); N=500 matches the ref; "
-                    "residual = short-run statistical error + cut-vs-cut-shifted "
-                    "ensemble difference.\n");
+        std::printf(
+            "[NIST] caveats: energy = pure-cut (rc=3σ) re-eval + LRC "
+            "(sampler runs cut-and-shifted); N=500 matches the ref; "
+            "residual = short-run statistical error + cut-vs-cut-shifted "
+            "ensemble difference.\n");
         EXPECT_LE(std::abs(r.u_per_n - r.u_ref), r.tol)
             << "T*=" << sp.Tstar << " rho*=" << sp.rho;
     }

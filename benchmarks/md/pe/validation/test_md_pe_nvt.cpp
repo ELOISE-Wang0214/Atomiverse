@@ -34,7 +34,7 @@ inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal = 268.0;
 inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
@@ -50,43 +50,43 @@ inline std::vector<double> dihedral_Cn_eV() {
 
 cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     cpu::Frame frame(n_carbons);
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
     const double x0 = (box_len - (n_carbons - 1) * dx_step) / 2.0;
     const double y0 = box_len / 2.0;
     const double z0 = box_len / 2.0;
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = x0 + i * dx_step;
-        frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
-        frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x0 + i * dx_step;
+        frame.span(ATV::kAtom_y)[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
+        frame.span(ATV::kAtom_z)[i] = z0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
     const int n_b = n_carbons - 1;
     const int n_a = n_carbons - 2;
     const int n_d = n_carbons - 3;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_b; ++k) {
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     }
     for (int k = 0; k < n_a; ++k) {
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     }
     for (int k = 0; k < n_d; ++k) {
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     }
-    frame.atoms.build_special_list();
-    frame.box = Mat3::cubic(box_len);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
-// Instantaneous temperature from frame.scalars.kinetic [eV]:
+// Instantaneous temperature from frame.meta.get(ATV::kKinetic) [eV]:
 //   E_kin = (3/2) N k_B T
 //   T = (2/3) * E_kin / (N k_B)
 double temperature_from_kinetic(double e_kin_ev, int n_atoms) {
-    return (2.0 / 3.0) * e_kin_ev / (n_atoms * kBoltzmann);
+    return (2.0 / 3.0) * e_kin_ev / (n_atoms * units::kB_ev_per_k);
 }
 
 } // namespace
@@ -112,7 +112,7 @@ TEST(PeNvt, NoseHooverHoldsTargetTemperature) {
     sim.run(frame, 5000);
 
     const double T_final =
-        temperature_from_kinetic(frame.scalars.kinetic, frame.atoms.size());
+        temperature_from_kinetic(frame.meta.get(ATV::kKinetic), frame.nlocal());
     const double rel_err = std::abs(T_final - T_target) / T_target;
 
     // The instantaneous temperature on a 20-atom chain has substantial
@@ -126,8 +126,8 @@ TEST(PeNvt, NoseHooverHoldsTargetTemperature) {
         << " K, relative error " << rel_err << " exceeds 30%";
 
     // The chain must not have fallen apart.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
             << "atom " << i << " x went NaN -- thermostat unstable";
     }
 }

@@ -16,10 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV::cpu::gpw;
@@ -29,10 +27,10 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 } // namespace
 
 TEST(GpwH2OTutorial, IsolatedPbeWater) {
-    const auto basis_O = GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-GTH");
-    const auto basis_H = GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-GTH");
-    const auto pot_O = GthPotential(ATV::Element::O, "GTH-PBE-q6");
-    const auto pot_H = GthPotential(ATV::Element::H, "GTH-PBE-q1");
+    const auto basis_O = GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH");
+    const auto basis_H = GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH");
+    const auto pot_O = GthPotential(molrs::Element::O, "GTH-PBE-q6");
+    const auto pot_H = GthPotential(molrs::Element::H, "GTH-PBE-q1");
 
     const double O[3] = {5.0 * kAng, 5.0 * kAng, 5.0 * kAng};
     const double H1[3] = {5.7586 * kAng, 5.0 * kAng, 5.5043 * kAng};
@@ -52,12 +50,15 @@ TEST(GpwH2OTutorial, IsolatedPbeWater) {
     cfg.xc = XcKind::PBE;
     cfg.nonperiodic = true; // MT isolated Poisson
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
-    std::printf("[GPW H2O] iters=%d conv=%d  E_total=%.10f  (CP2K -17.2123371446)\n"
-                "          kinetic=%.8f TrP*Vpp=%.8f core_ham=%.8f es=%.8f xc=%.8f\n",
-                r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
-                r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
+    std::printf(
+        "[GPW H2O] iters=%d conv=%d  E_total=%.10f  (CP2K -17.2123371446)\n"
+        "          kinetic=%.8f TrP*Vpp=%.8f core_ham=%.8f es=%.8f xc=%.8f\n",
+        r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
+        r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
 
     EXPECT_TRUE(r.converged) << "iters=" << r.iters;
     EXPECT_TRUE(std::isfinite(r.e_total));

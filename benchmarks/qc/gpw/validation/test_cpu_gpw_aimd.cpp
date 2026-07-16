@@ -8,11 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/md/fix_csvr.h"
 #include "atomiverse/cpu/md/init.h"
@@ -22,30 +21,34 @@
 using namespace ATV::cpu::gpw;
 
 namespace {
-constexpr double kBohr2Ang = 1.0 / 1.8897259885789;
 
 double bond_ang(const ATV::cpu::Frame& f) {
-    const double dx = f.atoms.x(1) - f.atoms.x(0);
-    const double dy = f.atoms.y(1) - f.atoms.y(0);
-    const double dz = f.atoms.z(1) - f.atoms.z(0);
+    const double dx = f.span(ATV::kAtom_x)[1] - f.span(ATV::kAtom_x)[0];
+    const double dy = f.span(ATV::kAtom_y)[1] - f.span(ATV::kAtom_y)[0];
+    const double dz = f.span(ATV::kAtom_z)[1] - f.span(ATV::kAtom_z)[0];
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 } // namespace
 
 TEST(GpwAIMD, H2NveTrajectoryRuns) {
     ATV::cpu::Frame frame(2);
-    frame.box = ATV::cpu::Box::orthorhombic(8.0 * kBohr2Ang, 4.0 * kBohr2Ang, 4.0 * kBohr2Ang);
-    frame.atoms.x(0) = 3.6 * kBohr2Ang; // ~1.4 Bohr near equilibrium
-    frame.atoms.x(1) = 5.0 * kBohr2Ang;
-    frame.atoms.y(0) = frame.atoms.y(1) = 2.0 * kBohr2Ang;
-    frame.atoms.z(0) = frame.atoms.z(1) = 2.0 * kBohr2Ang;
-    frame.atoms.type(0) = frame.atoms.type(1) = 1;
-    frame.atoms.mass(0) = frame.atoms.mass(1) = 1.008; // H [amu]
+    frame.simbox = ATV::cpu::Box::orthorhombic(
+        8.0 * ATV::units::kBohrInAngstrom, 4.0 * ATV::units::kBohrInAngstrom,
+        4.0 * ATV::units::kBohrInAngstrom);
+    frame.span(ATV::kAtom_x)[0] =
+        3.6 * ATV::units::kBohrInAngstrom; // ~1.4 Bohr near equilibrium
+    frame.span(ATV::kAtom_x)[1] = 5.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[0] = frame.span(ATV::kAtom_y)[1] =
+        2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[0] = frame.span(ATV::kAtom_z)[1] =
+        2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_type)[0] = frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_mass)[0] = frame.span(ATV::kAtom_mass)[1] =
+        1.008; // H [amu]
 
-    Kind H;
-    H.element = ATV::Element::H;
-    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
-    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+    const Kind H{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
@@ -65,8 +68,10 @@ TEST(GpwAIMD, H2NveTrajectoryRuns) {
 
     // The trajectory ran: energy is finite and the bond has moved (atoms have
     // nonzero velocity at 300 K, integrated by velocity-Verlet on GPW forces).
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
-    EXPECT_GT(std::abs(bond_ang(frame) - bond0), 1e-6) << "frame did not evolve";
+    EXPECT_TRUE(
+        std::isfinite(static_cast<double>(frame.meta.get(ATV::kEnergy))));
+    EXPECT_GT(std::abs(bond_ang(frame) - bond0), 1e-6)
+        << "frame did not evolve";
 }
 
 // GPW-CSVR NVT: the same textbook H2, thermostatted by FixCSVR (Bussi). The
@@ -76,19 +81,21 @@ TEST(GpwAIMD, H2NveTrajectoryRuns) {
 // physical and the Bussi conserved quantity is finite.
 TEST(GpwAIMD, H2CsvrNvtTrajectoryRuns) {
     ATV::cpu::Frame frame(2);
-    frame.box = ATV::cpu::Box::orthorhombic(8.0 * kBohr2Ang, 4.0 * kBohr2Ang,
-                                            4.0 * kBohr2Ang);
-    frame.atoms.x(0) = 3.6 * kBohr2Ang;
-    frame.atoms.x(1) = 5.0 * kBohr2Ang;
-    frame.atoms.y(0) = frame.atoms.y(1) = 2.0 * kBohr2Ang;
-    frame.atoms.z(0) = frame.atoms.z(1) = 2.0 * kBohr2Ang;
-    frame.atoms.type(0) = frame.atoms.type(1) = 1;
-    frame.atoms.mass(0) = frame.atoms.mass(1) = 1.008;
+    frame.simbox = ATV::cpu::Box::orthorhombic(
+        8.0 * ATV::units::kBohrInAngstrom, 4.0 * ATV::units::kBohrInAngstrom,
+        4.0 * ATV::units::kBohrInAngstrom);
+    frame.span(ATV::kAtom_x)[0] = 3.6 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_x)[1] = 5.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_y)[0] = frame.span(ATV::kAtom_y)[1] =
+        2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_z)[0] = frame.span(ATV::kAtom_z)[1] =
+        2.0 * ATV::units::kBohrInAngstrom;
+    frame.span(ATV::kAtom_type)[0] = frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_mass)[0] = frame.span(ATV::kAtom_mass)[1] = 1.008;
 
-    Kind H;
-    H.element = ATV::Element::H;
-    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
-    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+    const Kind H{molrs::Element::H,
+                 GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),
+                 GthPotential(molrs::Element::H, "GTH-PADE-q1")};
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
@@ -106,8 +113,10 @@ TEST(GpwAIMD, H2CsvrNvtTrajectoryRuns) {
     sim.build();
     sim.run(frame, 10);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.conserved)))
+    EXPECT_TRUE(
+        std::isfinite(static_cast<double>(frame.meta.get(ATV::kEnergy))));
+    EXPECT_TRUE(
+        std::isfinite(static_cast<double>(frame.meta.get(ATV::kConserved))))
         << "Bussi H-tilde bookkeeping broke";
     const double bond = bond_ang(frame);
     EXPECT_GT(bond, 0.4);

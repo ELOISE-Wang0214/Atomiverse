@@ -23,7 +23,7 @@
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
 #include "atomiverse/facade/component_role.h"
@@ -39,24 +39,34 @@ constexpr double kHessianStepAngstrom = 1.0e-3;
 /// @brief Near-equilibrium water geometry (O at origin, two H, ~104.5 deg).
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.5865, 0.5865};
-    f.atoms.z = {0.0, 0.0, 0.0};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.atoms.type = {8, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7572;
+    f.span(ATV::kAtom_x)[2] = -0.7572;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.5865;
+    f.span(ATV::kAtom_y)[2] = 0.5865;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_z)[2] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 /// @brief A single hydrogen atom (degenerate N=1 case for ac-008).
 cpu::Frame make_single_atom() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.mass = {1.008};
-    f.atoms.type = {1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -67,7 +77,7 @@ cpu::Frame make_single_atom() {
 /// converged at least as tightly as the equilibrium one (gradient
 /// tolerance <= 1e-7 Ha/Bohr). `conv_tol_grad` is set explicitly so the
 /// converged density is geometry-correct regardless of SCF warm-start —
-/// the driver's `SCFEvaluator` warm-starts across displacements while
+/// the driver's `SCF` warm-starts across displacements while
 /// the oracle solves fresh, and only a tight tolerance makes the two
 /// agree to the acceptance bar. Used identically by the driver and the
 /// oracle (the "same convergence" the acceptance contract demands).
@@ -94,14 +104,16 @@ cpu::scf::SCFConfig tight_rhf_config(const cpu::scf::IntegralPack& ints) {
 /// @return Symmetrized [3N,3N] Hessian in eV/Angstrom^2.
 xt::xtensor<double, 2> gradient_difference_oracle(const cpu::Frame& frame,
                                                   double h) {
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     const int dim = 3 * n;
     xt::xtensor<double, 2> H = xt::zeros<double>({dim, dim});
 
     auto force_at = [&](const cpu::Frame& geom) {
         auto ints = cpu::scf::build_integrals(geom, cpu::scf::BasisSet::STO3G);
         auto cfg = tight_rhf_config(ints);
-        auto res = cpu::scf::scf_solve(ints, cfg);
+        ATV::cpu::scf::SCFSolver res_solver{cfg};
+        res_solver.build(ints);
+        const auto& res = res_solver.run(ints);
         return cpu::scf::scf_gradient(geom, ints, res, cfg)
             .forces; // [n,3] eV/A
     };
@@ -114,11 +126,11 @@ xt::xtensor<double, 2> gradient_difference_oracle(const cpu::Frame& frame,
         cpu::Frame bwd = frame;
         auto disp = [&](cpu::Frame& g, double s) {
             if (axis == 0)
-                g.atoms.x(atom) += s;
+                g.span(ATV::kAtom_x)[atom] += s;
             else if (axis == 1)
-                g.atoms.y(atom) += s;
+                g.span(ATV::kAtom_y)[atom] += s;
             else
-                g.atoms.z(atom) += s;
+                g.span(ATV::kAtom_z)[atom] += s;
         };
         disp(fwd, +h);
         disp(bwd, -h);
@@ -150,7 +162,7 @@ TEST(NumericalHessian, BuildsAndProducesHessian) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -172,7 +184,7 @@ TEST(NumericalHessian, MatchesGradientDifferenceOracle) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -198,7 +210,7 @@ TEST(NumericalHessian, ReturnedHessianIsSymmetric) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -219,7 +231,7 @@ TEST(NumericalHessian, TranslationalSumRule) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -251,7 +263,7 @@ TEST(NumericalHessian, ValidateThrowsWithoutHessianAccumulator) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver{cpu::vib::Hessian::WithoutAccumulator{}};
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     EXPECT_THROW(driver.build(), std::runtime_error);
 }
 
@@ -261,7 +273,7 @@ TEST(NumericalHessian, ValidateAcceptsCorrectlyConfiguredDriver) {
     auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     EXPECT_NO_THROW(driver.build());
 }
 
@@ -274,7 +286,7 @@ TEST(NumericalHessian, SingleAtomFrame) {
     auto cfg = cpu::scf::uhf_config(ints, 1, 0); // single H: one alpha electron
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg});
     driver.build();
     auto result = driver.run(frame);
 

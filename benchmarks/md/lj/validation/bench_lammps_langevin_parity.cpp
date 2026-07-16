@@ -37,15 +37,15 @@
 
 #include "bench_check.h"
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include <cmath>
 #include <iostream>
@@ -68,42 +68,42 @@ cpu::Frame make_fcc_argon_256() {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 0;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 0;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 double instantaneous_T(const cpu::Frame& f) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     double KE_eV = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        KE_eV += 0.5 * f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        KE_eV += 0.5 * f.span(ATV::kAtom_mass)[i] * v2;
     }
-    KE_eV *= kMvv2e;
+    KE_eV *= units::mass_v2_to_energy;
     // LAMMPS temp compute uses 3(N-1) DOF (COM removed).
     const int dof = 3 * (n - 1);
-    return 2.0 * KE_eV / (dof * kBoltzmann);
+    return 2.0 * KE_eV / (dof * units::kB_ev_per_k);
 }
 
 double instantaneous_KE_eV(const cpu::Frame& f) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     double KE = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        KE += 0.5 * f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        KE += 0.5 * f.span(ATV::kAtom_mass)[i] * v2;
     }
-    return KE * kMvv2e;
+    return KE * units::mass_v2_to_energy;
 }
 
 } // namespace
@@ -128,7 +128,7 @@ BENCH_CASE(LammpsParity_Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
     sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
                                  /*seed=*/904297u});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);

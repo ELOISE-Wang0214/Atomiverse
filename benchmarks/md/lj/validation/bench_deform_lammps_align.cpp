@@ -34,17 +34,17 @@ namespace {
 /// Two atoms in a cubic box. Only Deform moves the box / coordinates.
 cpu::Frame make_two_atom_box(double box_len) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.25 * box_len;
-    frame.atoms.y[0] = 0.25 * box_len;
-    frame.atoms.z[0] = 0.25 * box_len;
-    frame.atoms.x[1] = 0.75 * box_len;
-    frame.atoms.y[1] = 0.75 * box_len;
-    frame.atoms.z[1] = 0.75 * box_len;
+    frame.span(ATV::kAtom_x)[0] = 0.25 * box_len;
+    frame.span(ATV::kAtom_y)[0] = 0.25 * box_len;
+    frame.span(ATV::kAtom_z)[0] = 0.25 * box_len;
+    frame.span(ATV::kAtom_x)[1] = 0.75 * box_len;
+    frame.span(ATV::kAtom_y)[1] = 0.75 * box_len;
+    frame.span(ATV::kAtom_z)[1] = 0.75 * box_len;
     for (int i = 0; i < 2; ++i) {
-        frame.atoms.mass[i] = 12.011;
-        frame.atoms.type[i] = 6;
+        frame.span(ATV::kAtom_mass)[i] = 12.011;
+        frame.span(ATV::kAtom_type)[i] = 6;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -76,12 +76,12 @@ BENCH_CASE(DeformLammpsAlign_ErateLinearEngineeringStrainTrajectory) {
 
     // LAMMPS fix deform ERATE: L = L0*(1 + R*t_elapsed), t_elapsed = N*dt.
     const double expected = L0 * (1.0 + rate * N * dt);
-    BM_NEAR(frame.box(0, 0), expected, 1e-9)
+    BM_NEAR(frame.simbox.cell()(0, 0), expected, 1e-9)
         << "erate box edge diverged from L0*(1+R*t)";
 
     // y and z untouched.
-    BM_DOUBLE_EQ(frame.box(1, 1), L0);
-    BM_DOUBLE_EQ(frame.box(2, 2), L0);
+    BM_DOUBLE_EQ(frame.simbox.cell()(1, 1), L0);
+    BM_DOUBLE_EQ(frame.simbox.cell()(2, 2), L0);
 }
 
 // ── ac-002 / ac-003: Mode::trate reproduces L(t) = L0*exp(R*t) ──────────
@@ -98,12 +98,12 @@ BENCH_CASE(DeformLammpsAlign_TrateExponentialTrueStrainTrajectory) {
 
     // LAMMPS fix deform TRATE: L = L0*exp(R*t_elapsed).
     const double expected = L0 * std::exp(rate * N * dt);
-    BM_NEAR(frame.box(0, 0), expected, 1e-9)
+    BM_NEAR(frame.simbox.cell()(0, 0), expected, 1e-9)
         << "trate box edge diverged from L0*exp(R*t)";
 
     // erate and trate must differ beyond first order.
     const double erate_value = L0 * (1.0 + rate * N * dt);
-    BM_GT(std::abs(frame.box(0, 0) - erate_value), 1e-6)
+    BM_GT(std::abs(frame.simbox.cell()(0, 0) - erate_value), 1e-6)
         << "trate must be distinct from erate beyond first order";
 }
 
@@ -116,13 +116,13 @@ BENCH_CASE(DeformLammpsAlign_ErateAffinelyRemapsAtomCoordinates) {
     const int N = 20;
 
     auto frame = make_two_atom_box(L0);
-    const double x0_atom1 = frame.atoms.x[1];
+    const double x0_atom1 = frame.span(ATV::kAtom_x)[1];
 
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
     const double box_factor = (1.0 + rate * N * dt);
-    BM_NEAR(frame.atoms.x[1], x0_atom1 * box_factor, 1e-9)
+    BM_NEAR(frame.span(ATV::kAtom_x)[1], x0_atom1 * box_factor, 1e-9)
         << "erate did not affinely remap atom x coordinate";
 }
 
@@ -145,13 +145,13 @@ BENCH_CASE(DeformLammpsAlign_ErateReferencesActivationLengthNotSimInitial) {
 
     // Frame built at 80 A, then "pre-compressed" to 73 A before Deform runs.
     auto frame = make_two_atom_box(L_sim_initial);
-    frame.box = Mat3::cubic(L_activation);
+    frame.simbox = ATV::cpu::Box::cubic(L_activation);
 
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
     // Engineering strain referenced to the ACTIVATION length (73 A).
-    const double L_final = frame.box(0, 0);
+    const double L_final = frame.simbox.cell()(0, 0);
     const double strain_vs_activation = (L_final - L_activation) / L_activation;
     const double strain_vs_sim_initial =
         (L_final - L_sim_initial) / L_sim_initial;
@@ -179,12 +179,13 @@ BENCH_CASE(DeformLammpsAlign_TrateReferencesActivationLength) {
     const int N = 100;
 
     auto frame = make_two_atom_box(80.0);
-    frame.box = Mat3::cubic(L_activation);
+    frame.simbox = ATV::cpu::Box::cubic(L_activation);
 
     cpu::md::Deform deform{cpu::md::Deform::Mode::trate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
-    BM_NEAR(frame.box(0, 0), L_activation * std::exp(rate * N * dt), 1e-9)
+    BM_NEAR(frame.simbox.cell()(0, 0), L_activation * std::exp(rate * N * dt),
+            1e-9)
         << "trate must reference the activation-time box edge";
 }
 
@@ -200,13 +201,13 @@ BENCH_CASE(DeformLammpsAlign_RebuildReSnapshotsActivationLength) {
     // First segment from L = 40.
     auto frame_a = make_two_atom_box(40.0);
     run_deform(deform, frame_a, N);
-    BM_NEAR(frame_a.box(0, 0), 40.0 * (1.0 + rate * N * dt), 1e-9);
+    BM_NEAR(frame_a.simbox.cell()(0, 0), 40.0 * (1.0 + rate * N * dt), 1e-9);
 
     // Second segment: same component, different box edge. build() must
     // re-snapshot L0 so strain references the new activation length.
     auto frame_b = make_two_atom_box(55.0);
     run_deform(deform, frame_b, N);
-    BM_NEAR(frame_b.box(0, 0), 55.0 * (1.0 + rate * N * dt), 1e-9)
+    BM_NEAR(frame_b.simbox.cell()(0, 0), 55.0 * (1.0 + rate * N * dt), 1e-9)
         << "build() must re-arm the L0 snapshot for a new segment";
 }
 
@@ -225,8 +226,9 @@ BENCH_CASE(DeformLammpsAlign_SetRateZeroFreezesBox) {
 
     run_deform(deform, frame, 100);
 
-    BM_DOUBLE_EQ(frame.box(0, 0), L0) << "set_rate(0) must freeze the box";
-    BM_DOUBLE_EQ(frame.atoms.x[1], 0.75 * L0)
+    BM_DOUBLE_EQ(frame.simbox.cell()(0, 0), L0)
+        << "set_rate(0) must freeze the box";
+    BM_DOUBLE_EQ(frame.span(ATV::kAtom_x)[1], 0.75 * L0)
         << "set_rate(0) must leave atom coordinates untouched";
 }
 
@@ -242,8 +244,9 @@ BENCH_CASE(DeformLammpsAlign_NegativeRateCompresses) {
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
-    BM_LT(frame.box(0, 0), L0) << "negative erate must compress the box";
-    BM_NEAR(frame.box(0, 0), L0 * (1.0 + rate * N * dt), 1e-9);
+    BM_LT(frame.simbox.cell()(0, 0), L0)
+        << "negative erate must compress the box";
+    BM_NEAR(frame.simbox.cell()(0, 0), L0 * (1.0 + rate * N * dt), 1e-9);
 }
 
 // ── axis selection: y axis (axis=1) deforms, x and z untouched ──────────
@@ -258,9 +261,9 @@ BENCH_CASE(DeformLammpsAlign_AxisSelectionDeformsRequestedAxisOnly) {
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/1};
     run_deform(deform, frame, N);
 
-    BM_NEAR(frame.box(1, 1), L0 * (1.0 + rate * N * dt), 1e-9);
-    BM_DOUBLE_EQ(frame.box(0, 0), L0);
-    BM_DOUBLE_EQ(frame.box(2, 2), L0);
+    BM_NEAR(frame.simbox.cell()(1, 1), L0 * (1.0 + rate * N * dt), 1e-9);
+    BM_DOUBLE_EQ(frame.simbox.cell()(0, 0), L0);
+    BM_DOUBLE_EQ(frame.simbox.cell()(2, 2), L0);
 }
 
 BENCH_MAIN("MD fix deform — LAMMPS API alignment");

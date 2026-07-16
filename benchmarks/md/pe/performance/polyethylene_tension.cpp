@@ -175,24 +175,24 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame, int n_local,
     std::vector<double> img_z(static_cast<std::size_t>(n_local));
     for (int i = 0; i < n_local; ++i) {
         type_d[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.type[i]);
+            static_cast<double>(frame.span(ATV::kAtom_type)[i]);
         tag_d[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.tag[i]);
+            static_cast<double>(frame.span(ATV::kAtom_tag)[i]);
         img_x[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.image(i, 0));
+            static_cast<double>(frame.span(ATV::kAtom_image)(i, 0));
         img_y[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.image(i, 1));
+            static_cast<double>(frame.span(ATV::kAtom_image)(i, 1));
         img_z[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.image(i, 2));
+            static_cast<double>(frame.span(ATV::kAtom_image)(i, 2));
     }
 
-    auto gx = gather_d(frame.atoms.x.data());
-    auto gy = gather_d(frame.atoms.y.data());
-    auto gz = gather_d(frame.atoms.z.data());
-    auto gvx = gather_d(frame.atoms.vx.data());
-    auto gvy = gather_d(frame.atoms.vy.data());
-    auto gvz = gather_d(frame.atoms.vz.data());
-    auto gmass = gather_d(frame.atoms.mass.data());
+    auto gx = gather_d(frame.span(ATV::kAtom_x).data());
+    auto gy = gather_d(frame.span(ATV::kAtom_y).data());
+    auto gz = gather_d(frame.span(ATV::kAtom_z).data());
+    auto gvx = gather_d(frame.span(ATV::kAtom_vx).data());
+    auto gvy = gather_d(frame.span(ATV::kAtom_vy).data());
+    auto gvz = gather_d(frame.span(ATV::kAtom_vz).data());
+    auto gmass = gather_d(frame.span(ATV::kAtom_mass).data());
     auto gtype = gather_d(type_d.data());
     auto gtag = gather_d(tag_d.data());
     auto gimx = gather_d(img_x.data());
@@ -208,7 +208,7 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame, int n_local,
     // directly). molrs builds the Frame and writes it.
     std::array<double, 9> box{};
     {
-        const auto& cell = frame.box.cell();
+        const auto& cell = frame.simbox.cell();
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 box[static_cast<std::size_t>(i * 3 + j)] =
@@ -265,7 +265,7 @@ constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 constexpr double kBondK_kcal = 350.0;
 constexpr double kBondR0 = 1.53;
 constexpr double kAngleK_kcal = 60.0;
-constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 constexpr double kLjEps_kcal = 0.112;
 constexpr double kLjSigma = 4.01;
 constexpr double kLjCutoff = 10.5;
@@ -585,7 +585,7 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
     const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
 
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dy_step = kBondR0 * std::cos(half_apex);
     const double dz_step = kBondR0 * std::sin(half_apex);
 
@@ -598,36 +598,35 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
                 const double cz0 = cz * cell + cell / 2.0;
                 const double y0 = cy * cell + margin;
                 for (int i = 0; i < n_carbons; ++i) {
-                    frame.atoms.x[idx] = cx0;
-                    frame.atoms.y[idx] = y0 + i * dy_step;
-                    frame.atoms.z[idx] = cz0 + (i % 2 == 0 ? 0.0 : dz_step);
-                    frame.atoms.mass[idx] = 14.027;
-                    frame.atoms.type[idx] = 0;
+                    frame.span(ATV::kAtom_x)[idx] = cx0;
+                    frame.span(ATV::kAtom_y)[idx] = y0 + i * dy_step;
+                    frame.span(ATV::kAtom_z)[idx] =
+                        cz0 + (i % 2 == 0 ? 0.0 : dz_step);
+                    frame.span(ATV::kAtom_mass)[idx] = 14.027;
+                    frame.span(ATV::kAtom_type)[idx] = 0;
                     ++idx;
                 }
             }
         }
     }
 
-    // Per-atom topology (LAMMPS num_bond[i] + bond_atom[i][m] layout). The
-    // Frame-owned flat bond/angle/dihedral arrays are dead storage now — the
-    // force kernels read the per-atom lists on cpu::Atom. Populate them here
-    // so the synthetic (--no-data) fallback exercises real bonded forces;
+    // Populate the canonical topology Block columns through Frame's structural
+    // API so the synthetic (--no-data) fallback exercises real bonded forces;
     // the --data path goes through load_lammps_data, which already does this.
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
         for (int k = 0; k < n_carbons - 1; ++k)
-            frame.atoms.add_bond(base + k, base + k + 1, 0);
+            frame.add_bond(base + k, base + k + 1, 0);
         for (int k = 0; k < n_carbons - 2; ++k)
-            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
+            frame.add_angle(base + k, base + k + 1, base + k + 2, 0);
         for (int k = 0; k < n_carbons - 3; ++k)
-            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
-                                     base + k + 3, 0);
+            frame.add_dihedral(base + k, base + k + 1, base + k + 2,
+                               base + k + 3, 0);
     }
-    frame.atoms.build_special_list();
-    frame.box = Mat3::cubic(box_len);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -649,7 +648,7 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
 // the per-tier split only has to be self-consistent, which the chain order is.
 cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
                              double margin, int my_rank, int world_size) {
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dy_step = kBondR0 * std::cos(half_apex);
     const double dz_step = kBondR0 * std::sin(half_apex);
     const double cell = box_len / chains_per_axis;
@@ -704,37 +703,37 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     const int n = static_cast<int>(X.size());
     cpu::Frame frame(n);
     for (int k = 0; k < n; ++k) {
-        frame.atoms.x[k] = X[k];
-        frame.atoms.y[k] = Y[k];
-        frame.atoms.z[k] = Z[k];
-        frame.atoms.mass[k] = 14.027;
-        frame.atoms.type[k] = 0;
-        frame.atoms.tag[k] = TAG[k];
+        frame.span(ATV::kAtom_x)[k] = X[k];
+        frame.span(ATV::kAtom_y)[k] = Y[k];
+        frame.span(ATV::kAtom_z)[k] = Z[k];
+        frame.span(ATV::kAtom_mass)[k] = 14.027;
+        frame.span(ATV::kAtom_type)[k] = 0;
+        frame.span(ATV::kAtom_tag)[k] = TAG[k];
     }
-    frame.atoms.nlocal = n;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, n);
+    frame.set_nlocal(n);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n);
     // The analytic special list below writes the wide `special` array
     // directly (bypassing build_special_list), so size the runtime topology
     // strides up front: linear chain = 1 owned bond/angle/dihedral per atom,
     // up to 6 special partners (p±1, p±2, p±3).
-    frame.atoms.reserve_topology(1, 1, 1, 6);
+    frame.reserve_topology(1, 1, 1, 6);
     const int nc = n_carbons;
     for (int k = 0; k < n; ++k) {
         const std::int64_t t = TAG[k];
         const int p = POS[k];
         if (p < nc - 1)
-            frame.atoms.add_bond(t, t + 1, 0);
+            frame.add_bond(t, t + 1, 0);
         if (p >= 1 && p <= nc - 2)
-            frame.atoms.add_angle(t - 1, t, t + 1, 0);
+            frame.add_angle(t - 1, t, t + 1, 0);
         if (p >= 1 && p <= nc - 3)
-            frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
+            frame.add_dihedral(t - 1, t, t + 1, t + 2, 0);
         // Analytic special list: chain neighbours p±1 (1-2), p±2 (1-3), p±3 (1-4).
         const std::int64_t cbase = t - p;
         int s = 0;
         auto add = [&](int q) {
             if (q >= 0 && q < nc) {
-                frame.atoms.special(k, s) = cbase + q;
+                frame.span(ATV::kAtom_special)(k, s) = cbase + q;
                 ++s;
             }
         };
@@ -747,11 +746,11 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
         add(p - 3);
         add(p + 3);
         const int n14 = s;
-        frame.atoms.nspecial(k, 0) = n12;
-        frame.atoms.nspecial(k, 1) = n13;
-        frame.atoms.nspecial(k, 2) = n14;
+        frame.span(ATV::kAtom_nspecial)(k, 0) = n12;
+        frame.span(ATV::kAtom_nspecial)(k, 1) = n13;
+        frame.span(ATV::kAtom_nspecial)(k, 2) = n14;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -830,33 +829,33 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     const int n = static_cast<int>(X.size());
     cpu::Frame frame(n);
     for (int q = 0; q < n; ++q) {
-        frame.atoms.x[q] = X[q];
-        frame.atoms.y[q] = Y[q];
-        frame.atoms.z[q] = Z[q];
-        frame.atoms.mass[q] = 14.02;
-        frame.atoms.type[q] = 0;
-        frame.atoms.tag[q] = TAG[q];
+        frame.span(ATV::kAtom_x)[q] = X[q];
+        frame.span(ATV::kAtom_y)[q] = Y[q];
+        frame.span(ATV::kAtom_z)[q] = Z[q];
+        frame.span(ATV::kAtom_mass)[q] = 14.02;
+        frame.span(ATV::kAtom_type)[q] = 0;
+        frame.span(ATV::kAtom_tag)[q] = TAG[q];
     }
-    frame.atoms.nlocal = n;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, n);
+    frame.set_nlocal(n);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n);
     // Direct wide-array special writes below — pre-size the runtime strides
     // (see make_pe_melt above for the rationale).
-    frame.atoms.reserve_topology(1, 1, 1, 6);
+    frame.reserve_topology(1, 1, 1, 6);
     for (int q = 0; q < n; ++q) {
         const std::int64_t t = TAG[q];
         const int p = POS[q];
         if (p < L - 1)
-            frame.atoms.add_bond(t, t + 1, 0);
+            frame.add_bond(t, t + 1, 0);
         if (p >= 1 && p <= L - 2)
-            frame.atoms.add_angle(t - 1, t, t + 1, 0);
+            frame.add_angle(t - 1, t, t + 1, 0);
         if (p >= 1 && p <= L - 3)
-            frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
+            frame.add_dihedral(t - 1, t, t + 1, t + 2, 0);
         const std::int64_t cbase = t - p;
         int s = 0;
         auto add = [&](int r) {
             if (r >= 0 && r < L) {
-                frame.atoms.special(q, s) = cbase + r;
+                frame.span(ATV::kAtom_special)(q, s) = cbase + r;
                 ++s;
             }
         };
@@ -869,11 +868,11 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
         add(p - 3);
         add(p + 3);
         const int n14 = s;
-        frame.atoms.nspecial(q, 0) = n12;
-        frame.atoms.nspecial(q, 1) = n13;
-        frame.atoms.nspecial(q, 2) = n14;
+        frame.span(ATV::kAtom_nspecial)(q, 0) = n12;
+        frame.span(ATV::kAtom_nspecial)(q, 1) = n13;
+        frame.span(ATV::kAtom_nspecial)(q, 2) = n14;
     }
-    frame.box = Mat3::diagonal(Lx, Ly, Lz);
+    frame.simbox = ATV::cpu::Box::orthorhombic(Lx, Ly, Lz);
     return frame;
 }
 #endif
@@ -881,21 +880,23 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
 double temperature_K(double ke_eV, int n_dof) {
     if (n_dof <= 0)
         return 0.0;
-    return 2.0 * ke_eV / (static_cast<double>(n_dof) * kBoltzmann);
+    return 2.0 * ke_eV / (static_cast<double>(n_dof) * units::kB_ev_per_k);
 }
 
 double pressure_eV_per_A3(const cpu::Frame& f) {
-    const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    const double V =
+        f.simbox.cell()(0, 0) * f.simbox.cell()(1, 1) * f.simbox.cell()(2, 2);
     if (V <= 0.0)
         return 0.0;
     // LAMMPS `compute pressure`: P = (2·KE + virial_trace) / (3V).
-    // f.scalars.stress carries the pair+bonded virial; the kinetic part
-    // (trace = 2·KE) lives in f.scalars.stress_kinetic. Barostat /
+    // f.meta.get(ATV::kStress) carries the pair+bonded virial; the kinetic part
+    // (trace = 2·KE) lives in f.meta.get(ATV::kStressKinetic). Barostat /
     // NoseHooverNPT already combine the two — this reporter must match.
-    const double trace = f.scalars.stress[0] + f.scalars.stress[1]
-                         + f.scalars.stress[2] + f.scalars.stress_kinetic[0]
-                         + f.scalars.stress_kinetic[1]
-                         + f.scalars.stress_kinetic[2];
+    const double trace =
+        f.meta.get(ATV::kStress)[0] + f.meta.get(ATV::kStress)[1]
+        + f.meta.get(ATV::kStress)[2] + f.meta.get(ATV::kStressKinetic)[0]
+        + f.meta.get(ATV::kStressKinetic)[1]
+        + f.meta.get(ATV::kStressKinetic)[2];
     return trace / (3.0 * V);
 }
 
@@ -903,18 +904,20 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
 ///
 /// LAMMPS `compute pressure` (`compute_pressure.cpp:257`):
 /// `P_αα = (Σ_i m_i v_iα² + virial_αα) / V`. Same sign convention as
-/// `pressure_eV_per_A3` (positive ⇔ compressive). `f.scalars.stress`
-/// carries the pair+bonded virial diagonal; `f.scalars.stress_kinetic`
+/// `pressure_eV_per_A3` (positive ⇔ compressive). `f.meta.get(ATV::kStress)`
+/// carries the pair+bonded virial diagonal; `f.meta.get(ATV::kStressKinetic)`
 /// carries Σ m·v_α². Reports in bar via `kEvPerA3ToBar`. Phase G.2
 /// reporter (msu-pe-cuda-components-01).
 void pressure_per_axis_bar(const cpu::Frame& f, double Pbar[3]) {
-    const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    const double V =
+        f.simbox.cell()(0, 0) * f.simbox.cell()(1, 1) * f.simbox.cell()(2, 2);
     if (V <= 0.0) {
         Pbar[0] = Pbar[1] = Pbar[2] = 0.0;
         return;
     }
     for (int k = 0; k < 3; ++k) {
-        const double t_axis = f.scalars.stress[k] + f.scalars.stress_kinetic[k];
+        const double t_axis =
+            f.meta.get(ATV::kStress)[k] + f.meta.get(ATV::kStressKinetic)[k];
         Pbar[k] = (t_axis / V) * kEvPerA3ToBar;
     }
 }
@@ -930,7 +933,7 @@ void pressure_per_axis_bar(const cpu::Frame& f, double Pbar[3]) {
 /// driver. `begin_stage()` is called between stages to tag the rows
 /// with the active stage and keep the absolute step index globally
 /// monotonic across the per-stage driver rebuilds.
-class CsvRecorder : public cpu::ComponentBase {
+class CsvRecorder : public cpu::Component {
   public:
     CsvRecorder(std::ofstream* thermo, std::ofstream* stress, int print_every,
                 int n_global_dof, double box_x_initial)
@@ -972,7 +975,7 @@ class CsvRecorder : public cpu::ComponentBase {
         if (ctx.runtime.mpi_rank != 0)
             return;
         const auto& f = ctx.frame;
-        const double T = temperature_K(f.scalars.kinetic, n_dof_);
+        const double T = temperature_K(f.meta.get(ATV::kKinetic), n_dof_);
         const double P_bar = pressure_eV_per_A3(f) * kEvPerA3ToBar;
         double Pbar[3];
         pressure_per_axis_bar(f, Pbar);
@@ -992,12 +995,14 @@ class CsvRecorder : public cpu::ComponentBase {
             std::ostringstream row;
             row << abs_step << "," << current_stage_ << "," << current_T_target_
                 << "," << T << "," << P_bar << "," << Pbar[0] << "," << Pbar[1]
-                << "," << Pbar[2] << "," << f.scalars.energy << ","
-                << f.scalars.energy_pair << "," << f.scalars.energy_bond << ","
-                << f.scalars.energy_angle << "," << f.scalars.energy_dihedral
-                << "," << f.scalars.kinetic << "," << f.box(0, 0) << ","
-                << f.box(1, 1) << "," << f.box(2, 2) << ","
-                << f.scalars.conserved;
+                << "," << Pbar[2] << "," << f.meta.get(ATV::kEnergy) << ","
+                << f.meta.get(ATV::kEnergyPair) << ","
+                << f.meta.get(ATV::kEnergyBond) << ","
+                << f.meta.get(ATV::kEnergyAngle) << ","
+                << f.meta.get(ATV::kEnergyDihedral) << ","
+                << f.meta.get(ATV::kKinetic) << "," << f.simbox.cell()(0, 0)
+                << "," << f.simbox.cell()(1, 1) << "," << f.simbox.cell()(2, 2)
+                << "," << f.meta.get(ATV::kConserved);
 #ifdef ATV_HAS_MPI
             if (ctx.runtime.md.dd) {
                 row << "," << ctx.runtime.md.dd->neighbor_generation << ","
@@ -1020,21 +1025,23 @@ class CsvRecorder : public cpu::ComponentBase {
             // fix deform's L0-at-fix-issue rule. The sim-initial box is
             // wrong here: NPT stages 2-4 compress the box beforehand.
             if (!strain_ref_set_) {
-                box_x0_ = f.box(0, 0);
+                box_x0_ = f.simbox.cell()(0, 0);
                 strain_ref_set_ = true;
             }
-            const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+            const double V = f.simbox.cell()(0, 0) * f.simbox.cell()(1, 1)
+                             * f.simbox.cell()(2, 2);
             // Tensile stress σ_xx = -P_xx with LAMMPS pressure convention
-            // P_αα = (kinetic_αα + virial_αα) / V. f.scalars.stress carries
-            // the pair+bonded virial; f.scalars.stress_kinetic the kinetic
+            // P_αα = (kinetic_αα + virial_αα) / V. f.meta.get(ATV::kStress) carries
+            // the pair+bonded virial; f.meta.get(ATV::kStressKinetic) the kinetic
             // (Σ m·vα·vα). Both must be summed — omitting kinetic shifted
             // σ_xx by ~+0.05 GPa at 100 K (≈ NkT/V per axis), enough to
             // bias the small-strain elastic-modulus fit by several×.
             const double sigma_xx =
-                (V > 0.0)
-                    ? -(f.scalars.stress[0] + f.scalars.stress_kinetic[0]) / V
-                    : 0.0;
-            const double strain = f.box(0, 0) / box_x0_ - 1.0;
+                (V > 0.0) ? -(f.meta.get(ATV::kStress)[0]
+                              + f.meta.get(ATV::kStressKinetic)[0])
+                                / V
+                          : 0.0;
+            const double strain = f.simbox.cell()(0, 0) / box_x0_ - 1.0;
             std::ostringstream row;
             row << abs_step << "," << current_stage_ << "," << strain << ","
                 << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa) << "\n";
@@ -1071,7 +1078,7 @@ class CsvRecorder : public cpu::ComponentBase {
 /// type 1, renders as "H"); the former integer-species `Step N` format is
 /// gone with the hand-rolled emitter it came from. The file is created
 /// lazily: the first written frame truncates any stale file.
-class TrajectoryRecorder : public cpu::ComponentBase {
+class TrajectoryRecorder : public cpu::Component {
   public:
     /// @brief Construct.
     /// @param path       Output XYZ path (written by rank 0 only).
@@ -1197,21 +1204,21 @@ struct SharedDisableFlags {
 
 void wire_shared(cpu::md::MD& sim, SharedComponents& sc,
                  SharedDisableFlags disable = {}) {
-    sim.set_neighbor(sc.nl);
+    sim.set_neighbor_ref(sc.nl);
     if (!disable.no_lj)
-        sim.set_pair(sc.lj);
+        sim.add_potential_ref(sc.lj);
     if (!disable.no_bond)
-        sim.set_bond(sc.hb);
+        sim.add_potential_ref(sc.hb);
     if (!disable.no_angle)
-        sim.set_angle(sc.ha);
+        sim.add_potential_ref(sc.ha);
     if (!disable.no_dihedral)
-        sim.set_dihedral(sc.hd);
-    sim.on(ATV::md::Phase::end_of_step).add(*sc.rec, 20);
+        sim.add_potential_ref(sc.hd);
+    sim.on(ATV::md::Phase::end_of_step).add_ref(*sc.rec, 20);
     if (sc.traj_on) {
-        sim.on(ATV::md::Phase::end_of_step).add(*sc.trec, 25);
+        sim.on(ATV::md::Phase::end_of_step).add_ref(*sc.trec, 25);
     }
     if (sc.rdf) {
-        sim.add(*sc.rdf);
+        sim.add_ref(*sc.rdf);
     }
     // NOTE: RCB load-balancing was evaluated here and REVERTED — at 64 ranks
     // perfect balance gave zero speedup and at 32 ranks the rebalance churn
@@ -1339,7 +1346,8 @@ class CudaCsvRecorder : public cuda::AsyncRecordBase<SystemScalarsSnapshot> {
         const auto& s = snap.scalars;
         const double T =
             (n_dof_ > 0)
-                ? 2.0 * s.kinetic / (static_cast<double>(n_dof_) * kBoltzmann)
+                ? 2.0 * s.kinetic
+                      / (static_cast<double>(n_dof_) * units::kB_ev_per_k)
                 : 0.0;
         const double V = box_x * box_y * box_z;
         double P_bar = 0, Pxx = 0, Pyy = 0, Pzz = 0;
@@ -1441,7 +1449,7 @@ void run_cuda_multigpu(const Args& a, cpu::Frame& frame, bool quiet) {
             stderr,
             "  multi-GPU PE: %d GPU(s), %d atoms, %d steps, wall=%.3fs, "
             "%.1f step/s\n",
-            mg.count(), frame.atoms.size(), steps, wall, sps);
+            mg.count(), frame.nlocal(), steps, wall, sps);
 }
 
 void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
@@ -1490,14 +1498,15 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         cuda::md::MD sim;
         sim.set_neighbor(cuda::NeighborList{kLjCutoff});
         if (!a.disable_lj)
-            sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
-                             .set_special_bonds(0.0, 0.0, 0.0));
+            sim.add_potential(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                                  .set_special_bonds(0.0, 0.0, 0.0));
         if (!a.disable_bond)
-            sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+            sim.add_potential(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
         if (!a.disable_angle)
-            sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+            sim.add_potential(
+                cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
         if (!a.disable_dihedral)
-            sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
+            sim.add_potential(cuda::DihedralMultiHarmonic{cuda_Cn});
         sim.set_integrator(cuda::md::NVELimit{a.dt_stage1, 0.05});
         if (!std::getenv("ATV_NO_INITVEL"))
             sim.add(cuda::md::InitVelocity{
@@ -1506,7 +1515,7 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
             sim.set_thermostat(cuda::md::FixLangevin{
                 a.T_hot, a.T_hot, a.langevin_damp, a.dt_stage1,
                 static_cast<std::uint32_t>(a.seed + 1)});
-        sim.add(rec); // uses default_bindings: end_of_step @ +20
+        sim.add_ref(rec); // uses default_bindings: end_of_step @ +20
         sim.build();
         const double ts0 = now_seconds();
         sim.run(frame, steps);
@@ -1522,12 +1531,13 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                          "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n%d\n"
                          "ITEM: BOX BOUNDS pp pp pp\n0 1\n0 1\n0 1\n"
                          "ITEM: ATOMS id fx fy fz\n",
-                         frame.atoms.size());
-            for (int i = 0; i < frame.atoms.size(); ++i)
+                         frame.nlocal());
+            for (int i = 0; i < frame.nlocal(); ++i)
                 std::fprintf(fp, "%lld %.10e %.10e %.10e\n",
-                             (long long)(frame.atoms.tag[i] + 1),
-                             frame.atoms.fx[i], frame.atoms.fy[i],
-                             frame.atoms.fz[i]);
+                             (long long)(frame.span(ATV::kAtom_tag)[i] + 1),
+                             frame.span(ATV::kAtom_fx)[i],
+                             frame.span(ATV::kAtom_fy)[i],
+                             frame.span(ATV::kAtom_fz)[i]);
             std::fclose(fp);
         }
     }
@@ -1536,16 +1546,17 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
     auto wire_npt_stage = [&](cuda::md::MD& sim, cuda::md::NoseHooverNPT& npt) {
         sim.set_neighbor(cuda::NeighborList{kLjCutoff});
         if (!a.disable_lj)
-            sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
-                             .set_special_bonds(0.0, 0.0, 0.0));
+            sim.add_potential(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                                  .set_special_bonds(0.0, 0.0, 0.0));
         if (!a.disable_bond)
-            sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+            sim.add_potential(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
         if (!a.disable_angle)
-            sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+            sim.add_potential(
+                cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
         if (!a.disable_dihedral)
-            sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
-        sim.set_integrator(npt);
-        sim.add(rec); // uses default_bindings: end_of_step @ +20
+            sim.add_potential(cuda::DihedralMultiHarmonic{cuda_Cn});
+        sim.set_integrator_ref(npt);
+        sim.add_ref(rec); // uses default_bindings: end_of_step @ +20
     };
 
     // Stage 2 — iso NoseHooverNPT @ T_hot.
@@ -1747,22 +1758,22 @@ int main(int argc, char** argv) {
                          "[ckpt] loaded %d atoms from %s; starting at "
                          "stage %d\n",
                          n_loaded, ckpt_load_path.c_str(), ckpt_load_stage);
-        // ZarrReader permutes `frame.atoms.tag[]` to reflect the Zarr
+        // ZarrReader permutes `frame.span(ATV::kAtom_tag)[]` to reflect the Zarr
         // dump's atom ordering, but the per-atom topology arrays
         // (num_bond, bond_atom, ...) are still aligned to the original
         // lammps_data row order. Reshuffle to put each row's topology
         // back next to its atom-tag.
-        frame.atoms.reshuffle_topology_to_tags();
+        frame.reshuffle_topology_to_tags();
         // Rebuild the special-neighbor list (BFS depends on the
         // bond graph having been reshuffled into place first).
-        frame.atoms.map_clear();
-        frame.atoms.map_set(0, frame.atoms.nlocal);
-        frame.atoms.build_special_list();
+        frame.clear_tag_index();
+        frame.rebuild_tag_index(0, frame.nlocal());
+        frame.build_special_list();
     }
 
-    const int n_atoms = frame.atoms.size();
+    const int n_atoms = frame.nlocal();
     const int n_global_dof = 3 * n_atoms - 3;
-    const double box_x0 = frame.box(0, 0);
+    const double box_x0 = frame.simbox.cell()(0, 0);
 
     // `trajectory.xyz` is created lazily by TrajectoryRecorder (registered
     // only when --traj-every is set), so a default run leaves CSV-only
@@ -1911,7 +1922,7 @@ int main(int argc, char** argv) {
         if (ckpt_dump_stage != stage_id || ckpt_dump_path.empty())
             return;
         const int n_local = preserved_dd ? preserved_dd->n_local
-                                         : static_cast<int>(frame.atoms.size());
+                                         : static_cast<int>(frame.nlocal());
         ckpt::dump_global(my_rank, frame, n_local, ckpt_dump_path);
         if (my_rank == 0)
             std::fprintf(stderr, "[ckpt] dumped stage %d → %s\n", stage_id,
@@ -1962,9 +1973,9 @@ int main(int argc, char** argv) {
                                       a.langevin_damp, a.dt_stage1,
                                       static_cast<std::uint32_t>(a.seed + 1)};
         cpu::md::MD sim;
-        sim.set_integrator(nve);
-        sim.add(init_v);
-        sim.set_thermostat(langevin);
+        sim.set_integrator_ref(nve);
+        sim.add_ref(init_v);
+        sim.set_thermostat_ref(langevin);
         // Stage 1 is NVE/limit + per-atom Langevin: nothing consumes the global
         // energy/kinetic/stress between thermo samples, so the per-step
         // MPI_Allreduce is pure diagnostic overhead. Fire it only on sampled
@@ -2003,8 +2014,8 @@ int main(int argc, char** argv) {
         // the counter doesn't matter for correctness.
         cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
-        sim.set_integrator(npt);
-        sim.add(zm);
+        sim.set_integrator_ref(npt);
+        sim.add_ref(zm);
         wire_shared(sim, shared,
                     SharedDisableFlags{a.disable_lj, a.disable_bond,
                                        a.disable_angle, a.disable_dihedral});
@@ -2024,7 +2035,7 @@ int main(int argc, char** argv) {
             sim.run(frame, mid_dump_step);
             auto tmp_dd = sim.release_dd();
             const int n_local_here =
-                tmp_dd ? tmp_dd->n_local : static_cast<int>(frame.atoms.size());
+                tmp_dd ? tmp_dd->n_local : static_cast<int>(frame.nlocal());
 #ifdef ATV_HAS_MPI
             ckpt::dump_global(my_rank, frame, n_local_here, mid_dump_path);
             if (my_rank == 0)
@@ -2069,8 +2080,8 @@ int main(int argc, char** argv) {
         // LAMMPS `fix momentum 1 linear 1 1 1` (Phase G.1).
         cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
-        sim.set_integrator(npt);
-        sim.add(zm);
+        sim.set_integrator_ref(npt);
+        sim.add_ref(zm);
         wire_shared(sim, shared);
         rec.begin_stage(3, a.T_cold, /*record_strain=*/false);
         if (preserved_dd)
@@ -2099,8 +2110,8 @@ int main(int argc, char** argv) {
         // LAMMPS `fix momentum 1 linear 1 1 1` (Phase G.1).
         cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
-        sim.set_integrator(npt);
-        sim.add(zm);
+        sim.set_integrator_ref(npt);
+        sim.add_ref(zm);
         wire_shared(sim, shared);
         rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
         if (preserved_dd)
@@ -2135,8 +2146,8 @@ int main(int argc, char** argv) {
         cpu::md::Deform deform{cpu::md::Deform::Mode::erate, a.strain_rate,
                                a.dt_stage5, /*axis=*/0};
         cpu::md::MD sim;
-        sim.set_integrator(npt);
-        sim.add(deform);
+        sim.set_integrator_ref(npt);
+        sim.add_ref(deform);
         wire_shared(sim, shared);
         rec.begin_stage(5, a.T_cold, /*record_strain=*/true);
         if (preserved_dd)

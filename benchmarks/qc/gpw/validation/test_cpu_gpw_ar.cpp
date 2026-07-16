@@ -17,21 +17,18 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
+using ATV::cpu::gpw::GaussianBasis;
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GPWSolver;
 using ATV::cpu::gpw::GthPotential;
 
-namespace {
-} // namespace
+namespace {} // namespace
 
 TEST(GpwArCP2K, NonlocalAndDConverges) {
     // SKIPPED by default: same DZVP-GTH-PADE/PADE-LDA limitation as the H2 test —
@@ -40,9 +37,10 @@ TEST(GpwArCP2K, NonlocalAndDConverges) {
     // (DZVP-MOLOPT-SR-GTH) is unaffected; periodic parity is covered by nacl/zno.
     // Set ATV_RUN_PADE=1 to run for investigation.
     if (!std::getenv("ATV_RUN_PADE"))
-        GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = GaussianBasis(ATV::Element::Ar, "DZVP-GTH-PADE");
-    const auto pot = GthPotential(ATV::Element::Ar, "GTH-PADE-q8");
+        GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see "
+                        "gpw-periodic-lattice-sum";
+    const auto basis = GaussianBasis(molrs::Element::Ar, "DZVP-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::Ar, "GTH-PADE-q8");
 
     const double pos[3] = {3.0, 3.0, 3.0}; // box center (translation-invariant)
     std::vector<GpwAtom> atoms = {GpwAtom(pos, basis, pot)};
@@ -55,12 +53,16 @@ TEST(GpwArCP2K, NonlocalAndDConverges) {
     cfg.tol = 1e-7;
     cfg.mix = 0.3;
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
-    std::printf("[GPW Ar] iters=%d conv=%d  E_total=%.10f  (CP2K -21.0494423140)\n"
-                "         kinetic=%.8f  TrP*Vpp=%.8f  core_ham=%.8f  es=%.8f  xc=%.8f\n",
-                r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
-                r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
+    std::printf(
+        "[GPW Ar] iters=%d conv=%d  E_total=%.10f  (CP2K -21.0494423140)\n"
+        "         kinetic=%.8f  TrP*Vpp=%.8f  core_ham=%.8f  es=%.8f  "
+        "xc=%.8f\n",
+        r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
+        r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
 
     EXPECT_TRUE(r.converged) << "iters=" << r.iters;
     EXPECT_TRUE(std::isfinite(r.e_total));

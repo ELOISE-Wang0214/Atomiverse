@@ -32,7 +32,7 @@
 #include "atomiverse/cpu/scf/shell_pair.h"
 
 #ifdef ATV_HAS_LIBCINT
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "libcint_reference.cuh"
 #endif
 
@@ -202,13 +202,13 @@ ATV::cpu::Frame make_ch4() {
     const double cz[5] = {0.0, d, -d, -d, d};
     const int z[5] = {6, 1, 1, 1, 1};
     for (int i = 0; i < 5; ++i) {
-        f.atoms.x[i] = cx[i];
-        f.atoms.y[i] = cy[i];
-        f.atoms.z[i] = cz[i];
-        f.atoms.type[i] = z[i];
-        f.atoms.mass[i] = (z[i] == 6) ? 12.011 : 1.008;
+        f.span(ATV::kAtom_x)[i] = cx[i];
+        f.span(ATV::kAtom_y)[i] = cy[i];
+        f.span(ATV::kAtom_z)[i] = cz[i];
+        f.span(ATV::kAtom_type)[i] = z[i];
+        f.span(ATV::kAtom_mass)[i] = (z[i] == 6) ? 12.011 : 1.008;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

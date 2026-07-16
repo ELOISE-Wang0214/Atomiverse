@@ -87,6 +87,14 @@ foreach(name
     target_include_directories(${name} PRIVATE md/common)
 endforeach()
 
+# validation: charged NaCl CoulLong+PME vs LAMMPS coul/long+pppm at three
+# variable-cell static frames (cpu-breadth-03 ac-006). Requires KSPACE/FFTW.
+if(ATV_BUILD_KSPACE)
+    atv_add_plain_bench(bench_pme_nacl_lammps
+                        md/npt_pme/validation/bench_pme_nacl_lammps.cpp)
+    target_include_directories(bench_pme_nacl_lammps PRIVATE md/common)
+endif()
+
 # validation (gtest): Atomiverse's own thermostat correctness — relocated from
 # the unit gate (each runs a full equilibration to a temperature setpoint:
 # seconds). Orthogonal to the LAMMPS-parity benches above (those assert *parity*

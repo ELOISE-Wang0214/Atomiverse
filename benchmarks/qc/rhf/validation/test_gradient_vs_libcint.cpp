@@ -36,7 +36,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 namespace {
 
@@ -47,50 +47,50 @@ using namespace ATV;
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Near-equilibrium geometry (Angstrom)
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.117;
-    f.atoms.x[1] = 0.0;
-    f.atoms.y[1] = 0.757;
-    f.atoms.z[1] = -0.468;
-    f.atoms.x[2] = 0.0;
-    f.atoms.y[2] = -0.757;
-    f.atoms.z[2] = -0.468;
-    f.atoms.type[0] = 8;
-    f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1;
-    f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1;
-    f.atoms.mass[2] = 1.008;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.117;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.757;
+    f.span(ATV::kAtom_z)[1] = -0.468;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[2] = -0.757;
+    f.span(ATV::kAtom_z)[2] = -0.468;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
     // Tetrahedral CH4 (Angstrom)
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = 0.629;
-    f.atoms.y[1] = 0.629;
-    f.atoms.z[1] = 0.629;
-    f.atoms.x[2] = -0.629;
-    f.atoms.y[2] = -0.629;
-    f.atoms.z[2] = 0.629;
-    f.atoms.x[3] = -0.629;
-    f.atoms.y[3] = 0.629;
-    f.atoms.z[3] = -0.629;
-    f.atoms.x[4] = 0.629;
-    f.atoms.y[4] = -0.629;
-    f.atoms.z[4] = -0.629;
-    f.atoms.type[0] = 6;
-    f.atoms.mass[0] = 12.011;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.629;
+    f.span(ATV::kAtom_y)[1] = 0.629;
+    f.span(ATV::kAtom_z)[1] = 0.629;
+    f.span(ATV::kAtom_x)[2] = -0.629;
+    f.span(ATV::kAtom_y)[2] = -0.629;
+    f.span(ATV::kAtom_z)[2] = 0.629;
+    f.span(ATV::kAtom_x)[3] = -0.629;
+    f.span(ATV::kAtom_y)[3] = 0.629;
+    f.span(ATV::kAtom_z)[3] = -0.629;
+    f.span(ATV::kAtom_x)[4] = 0.629;
+    f.span(ATV::kAtom_y)[4] = -0.629;
+    f.span(ATV::kAtom_z)[4] = -0.629;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_mass)[0] = 12.011;
     for (int i = 1; i < 5; ++i) {
-        f.atoms.type[i] = 1;
-        f.atoms.mass[i] = 1.008;
+        f.span(ATV::kAtom_type)[i] = 1;
+        f.span(ATV::kAtom_mass)[i] = 1.008;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -116,15 +116,15 @@ cpu::Frame make_aspirin() {
         {-1.4267, -0.2091, -0.6502},
     };
     for (int i = 0; i < 21; ++i) {
-        f.atoms.type[i] = types[i];
-        f.atoms.mass[i] = (types[i] == 6)   ? 12.011
-                          : (types[i] == 8) ? 15.999
-                                            : 1.008;
-        f.atoms.x[i] = coords[i][0];
-        f.atoms.y[i] = coords[i][1];
-        f.atoms.z[i] = coords[i][2];
+        f.span(ATV::kAtom_type)[i] = types[i];
+        f.span(ATV::kAtom_mass)[i] = (types[i] == 6)   ? 12.011
+                                     : (types[i] == 8) ? 15.999
+                                                       : 1.008;
+        f.span(ATV::kAtom_x)[i] = coords[i][0];
+        f.span(ATV::kAtom_y)[i] = coords[i][1];
+        f.span(ATV::kAtom_z)[i] = coords[i][2];
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -163,7 +163,7 @@ GradCompare diff_forces(const xt::xtensor<double, 2>& ref,
     return r;
 }
 
-/// Run `scf_solve` + `scf_gradient` on `frame`, returning the force field.
+/// Run `SCFSolver::run` + `scf_gradient` on `frame`, returning the force field.
 /// When `force_native` is true, routes through the native 2e-derivative path
 /// even if libcint is compiled in.
 xt::xtensor<double, 2> compute_gradient(const cpu::Frame& frame,
@@ -175,7 +175,11 @@ xt::xtensor<double, 2> compute_gradient(const cpu::Frame& frame,
     config.max_iter = 200;
     config.force_native_two_electron_deriv = force_native;
 
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+
+    result_solver.build(integrals);
+
+    const auto& result = result_solver.run(integrals);
     EXPECT_TRUE(result.converged) << "SCF did not converge";
 
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);

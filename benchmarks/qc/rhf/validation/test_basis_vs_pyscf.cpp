@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using namespace ATV::cpu;
@@ -30,19 +30,19 @@ namespace {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Geometry copied verbatim from the PySCF reference script.
-    f.atoms.type[0] = 8; // O
-    f.atoms.type[1] = 1; // H
-    f.atoms.type[2] = 1; // H
-    f.atoms.x[0] = 0.000000;
-    f.atoms.y[0] = 0.000000;
-    f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000;
-    f.atoms.y[1] = 0.755453;
-    f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000;
-    f.atoms.y[2] = -0.755453;
-    f.atoms.z[2] = -0.471161;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8; // O
+    f.span(ATV::kAtom_type)[1] = 1; // H
+    f.span(ATV::kAtom_type)[2] = 1; // H
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -55,13 +55,15 @@ TEST(BasisVsPySCF, H2O_631G_RHF) {
     // Structural sanity: basis size is deterministic from geometry + basis.
     EXPECT_EQ(integrals.n_basis, 13);
 
-    // With kAngstromToBohr pinned to PySCF's 1/0.52917721092, V_nuc
+    // With units::kAngstromInBohr pinned to PySCF's 1/0.52917721092, V_nuc
     // should match the reference to the precision of the checked-in
     // literal (~1e-12).
     EXPECT_NEAR(integrals.V_nuc, 9.189193229310, 1e-11);
 
     auto config = scf::rhf_config(integrals, /*tol=*/1e-10);
-    auto result = scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     // PySCF 2.12.1 reference:
@@ -101,7 +103,9 @@ TEST(BasisVsPySCF, H2O_631Gs_cart_RHF) {
     EXPECT_NEAR(integrals.V_nuc, 9.189193229310, 1e-11);
 
     auto config = scf::rhf_config(integrals, /*tol=*/1e-10);
-    auto result = scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     // PySCF 2.12.1 reference (cart=True to match our Cartesian d):
@@ -118,7 +122,9 @@ TEST(BasisVsPySCF, H2O_def2SVP_cart_RHF) {
     EXPECT_EQ(integrals.n_basis, 25);
 
     auto config = scf::rhf_config(integrals, /*tol=*/1e-10);
-    auto result = scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     // PySCF 2.12.1 reference (cart=True):

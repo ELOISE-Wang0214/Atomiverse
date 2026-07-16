@@ -37,7 +37,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -53,22 +53,22 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
 /// @brief Water near its def2-SVP / 6-31G* RHF equilibrium (C2v, z-axis).
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8;
-    f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1;
-    f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1;
-    f.atoms.mass[2] = 1.008;
-    f.atoms.x[0] = 0.000000;
-    f.atoms.y[0] = 0.000000;
-    f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000;
-    f.atoms.y[1] = 0.755453;
-    f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000;
-    f.atoms.y[2] = -0.755453;
-    f.atoms.z[2] = -0.471161;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -193,7 +193,11 @@ TEST(KsGridResponseGradient, NetTranslationalForceVanishesWithoutProjection) {
     cfg.max_iter = 200;
     cfg.xc_grad_project_translation = false; // genuine first-principles path
 
-    auto res = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver res_solver{cfg};
+
+    res_solver.build(ints);
+
+    const auto& res = res_solver.run(ints);
     ASSERT_TRUE(res.converged) << "PBE RKS should converge";
 
     auto g = cpu::scf::scf_gradient(frame, ints, res, cfg);
@@ -227,7 +231,9 @@ void check_moving_grid_fd(const cpu::Frame& frame, cpu::scf::BasisSet basis,
     cfg.xc_grad_project_translation = false;
 
     auto ints = cpu::scf::build_integrals(frame, basis);
-    auto res = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver res_solver{cfg};
+    res_solver.build(ints);
+    const auto& res = res_solver.run(ints);
     ASSERT_TRUE(res.converged) << label << ": SCF should converge";
     auto analytic = cpu::scf::scf_gradient(frame, ints, res, cfg);
 
@@ -238,7 +244,7 @@ void check_moving_grid_fd(const cpu::Frame& frame, cpu::scf::BasisSet basis,
                                                        h_ang, basis);
 
     double max_err = 0.0;
-    const int natm = static_cast<int>(frame.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
             const double e = ev_a_to_ha_bohr(

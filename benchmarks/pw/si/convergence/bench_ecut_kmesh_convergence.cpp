@@ -28,7 +28,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/pw/pw_scf.h"
+#include "atomiverse/cpu/pw/pw_solver.h"
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/cuda/pw/pw_scf.cuh"
 #endif
@@ -47,21 +47,27 @@ namespace {
 cpu::Frame make_si_fcc(double a) {
     cpu::Frame f(2);
     for (int i = 0; i < 2; ++i) {
-        f.atoms.type[i] = 14;
-        f.atoms.mass[i] = 28.0855;
+        f.span(ATV::kAtom_type)[i] = 14;
+        f.span(ATV::kAtom_mass)[i] = 28.0855;
     }
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.x[1] = a / 4.0;
-    f.atoms.y[1] = a / 4.0;
-    f.atoms.z[1] = a / 4.0;
+    f.span(ATV::kAtom_x)[0] = 0;
+    f.span(ATV::kAtom_y)[0] = 0;
+    f.span(ATV::kAtom_z)[0] = 0;
+    f.span(ATV::kAtom_x)[1] = a / 4.0;
+    f.span(ATV::kAtom_y)[1] = a / 4.0;
+    f.span(ATV::kAtom_z)[1] = a / 4.0;
     const double h = a / 2.0;
     Mat3 cell;
-    cell(0, 0) = 0;   cell(0, 1) = h;   cell(0, 2) = h;
-    cell(1, 0) = h;   cell(1, 1) = 0;   cell(1, 2) = h;
-    cell(2, 0) = h;   cell(2, 1) = h;   cell(2, 2) = 0;
-    f.box = cell;
+    cell(0, 0) = 0;
+    cell(0, 1) = h;
+    cell(0, 2) = h;
+    cell(1, 0) = h;
+    cell(1, 1) = 0;
+    cell(1, 2) = h;
+    cell(2, 0) = h;
+    cell(2, 1) = h;
+    cell(2, 2) = 0;
+    f.simbox.set_cell(cell);
     return f;
 }
 
@@ -97,7 +103,15 @@ double run_pw(const cpu::Frame& frame, const std::string& upf, double ecut_ry,
         return 0.0;
 #endif
     } else {
-        r = cpu::pw::pw_scf(frame, upf, ecut_ry, kmesh, 1e-7, 60);
+        cpu::pw::PWConfig config;
+        config.upf_path = upf;
+        config.ecut_ry = ecut_ry;
+        config.k_mesh = kmesh;
+        config.tol = 1e-7;
+        config.max_iter = 60;
+        cpu::pw::PWSolver solver{config};
+        solver.build(frame);
+        r = solver.run(frame);
     }
     converged = r.converged;
     return r.energy; // [Ry]
@@ -146,7 +160,8 @@ int main(int argc, char** argv) {
     // ── Sweep 1: ecut at fixed k-mesh (variational) ───────────────────
     std::printf("# PW Si total energy vs ecut  (k-mesh %dx%dx%d, %s)\n",
                 kmesh_fixed, kmesh_fixed, kmesh_fixed, backend.c_str());
-    std::printf("# %-10s  %-18s  %-16s\n", "ecut[Ry]", "E[Ry]", "dE_vs_prev[Ry]");
+    std::printf("# %-10s  %-18s  %-16s\n", "ecut[Ry]", "E[Ry]",
+                "dE_vs_prev[Ry]");
     double prev = 0.0, prev_delta = 0.0;
     bool have_prev = false;
     for (double ecut : ecut_list) {
@@ -212,6 +227,7 @@ int main(int argc, char** argv) {
     }
 
     std::printf("#\n# Expected: E(ecut) decreases monotonically and plateaus; "
-                "E(k-mesh)\n# converges (|dE| shrinks). %d issue(s).\n", n_fail);
+                "E(k-mesh)\n# converges (|dE| shrinks). %d issue(s).\n",
+                n_fail);
     return n_fail == 0 ? 0 : 1;
 }

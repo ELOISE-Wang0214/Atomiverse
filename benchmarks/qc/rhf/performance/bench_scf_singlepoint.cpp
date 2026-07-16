@@ -27,8 +27,8 @@
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -64,12 +64,12 @@ cpu::Frame load_xyz(const std::string& stem) {
         std::string sym;
         double x, y, z;
         ss >> sym >> x >> y >> z;
-        f.atoms.type[i] = z_from_symbol(sym);
-        f.atoms.x[i] = x;
-        f.atoms.y[i] = y;
-        f.atoms.z[i] = z;
+        f.span(ATV::kAtom_type)[i] = z_from_symbol(sym);
+        f.span(ATV::kAtom_x)[i] = x;
+        f.span(ATV::kAtom_y)[i] = y;
+        f.span(ATV::kAtom_z)[i] = z;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

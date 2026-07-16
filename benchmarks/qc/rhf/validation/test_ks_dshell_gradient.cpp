@@ -39,7 +39,7 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -58,22 +58,22 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
 /// carry over.
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8;
-    f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1;
-    f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1;
-    f.atoms.mass[2] = 1.008;
-    f.atoms.x[0] = 0.000000;
-    f.atoms.y[0] = 0.000000;
-    f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000;
-    f.atoms.y[1] = 0.755453;
-    f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000;
-    f.atoms.y[2] = -0.755453;
-    f.atoms.z[2] = -0.471161;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -84,12 +84,12 @@ cpu::Frame make_h2o() {
 /// analytic KS gradient must recognise it as near-stationary.
 cpu::Frame make_h2o_pbe_optimized() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8;
-    f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1;
-    f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1;
-    f.atoms.mass[2] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
     // r = 0.9686 A, half-angle = 51.775 deg.
     //   y_H = r sin(theta/2) = 0.761301
     //   dz  = r cos(theta/2) = 0.598873
@@ -99,16 +99,16 @@ cpu::Frame make_h2o_pbe_optimized() {
     // is irrelevant (translational invariance).
     const double zO = dz / 3.0; // arbitrary, keeps COM-ish placement
     const double zH = zO - dz;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = zO;
-    f.atoms.x[1] = 0.0;
-    f.atoms.y[1] = yH;
-    f.atoms.z[1] = zH;
-    f.atoms.x[2] = 0.0;
-    f.atoms.y[2] = -yH;
-    f.atoms.z[2] = zH;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = zO;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[1] = yH;
+    f.span(ATV::kAtom_z)[1] = zH;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[2] = -yH;
+    f.span(ATV::kAtom_z)[2] = zH;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -144,7 +144,9 @@ cpu::scf::GradientResult ks_analytic_gradient(const cpu::Frame& frame,
                                               int n_angular = 110) {
     auto ints = cpu::scf::build_integrals(frame, basis);
     auto cfg = pbe_config(ints, n_radial, n_angular);
-    auto res = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver res_solver{cfg};
+    res_solver.build(ints);
+    const auto& res = res_solver.run(ints);
     EXPECT_TRUE(res.converged) << "PBE RKS should converge";
     return cpu::scf::scf_gradient(frame, ints, res, cfg);
 }
@@ -159,7 +161,7 @@ TEST(KsDShellGradient, PBE_631Gs_AnalyticMatchesFD) {
 
     auto analytic = ks_analytic_gradient(frame, basis);
 
-    // FD oracle: scf_finite_difference_gradient drives scf_solve at
+    // FD oracle: scf_finite_difference_gradient drives SCFSolver::run at
     // displaced geometries; h = 1e-3 Bohr expressed in Angstrom.
     auto ints = cpu::scf::build_integrals(frame, basis);
     auto cfg = pbe_config(ints);
@@ -240,9 +242,9 @@ TEST(KsDShellGradient, PBE_def2SVP_OptimizedGeometryNearStationary) {
         // eV/A, positions in A. A small fixed step is stable for water.
         const double step = 0.02; // A^2 / eV
         for (int A = 0; A < 3; ++A) {
-            frame.atoms.x[A] += step * g.forces(A, 0);
-            frame.atoms.y[A] += step * g.forces(A, 1);
-            frame.atoms.z[A] += step * g.forces(A, 2);
+            frame.span(ATV::kAtom_x)[A] += step * g.forces(A, 0);
+            frame.span(ATV::kAtom_y)[A] += step * g.forces(A, 1);
+            frame.span(ATV::kAtom_z)[A] += step * g.forces(A, 2);
         }
     }
 

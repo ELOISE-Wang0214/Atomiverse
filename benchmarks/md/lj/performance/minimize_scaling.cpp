@@ -38,11 +38,11 @@
 #include <cstring>
 #include <string>
 
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include "sc_lj_system.h"
 
@@ -71,9 +71,9 @@ struct Args {
     // monotonically without overshoot (energy decrease is asserted at the
     // end); per-iteration cost is jitter-amplitude independent.
     double alpha0 = 0.005;
-    std::string opt = "cg";       ///< cg | lbfgs
-    bool csv_header = false;      ///< print CSV column header (rank 0 only)
-    bool quiet = false;           ///< suppress one-line summaries
+    std::string opt = "cg";  ///< cg | lbfgs
+    bool csv_header = false; ///< print CSV column header (rank 0 only)
+    bool quiet = false;      ///< suppress one-line summaries
 };
 
 void print_help() {
@@ -83,7 +83,8 @@ void print_help() {
         "                      Mutually exclusive with --atoms-per-rank.\n"
         "  --atoms-per-rank N  Atoms per rank (weak scaling). Default 200000.\n"
         "  --iters N           Optimizer iterations (budget always exhausted;\n"
-        "                      1 force evaluation per iteration). Default 100.\n"
+        "                      1 force evaluation per iteration). Default "
+        "100.\n"
         "  --opt cg|lbfgs      Optimizer component. Default cg.\n"
         "  --cutoff R          LJ cutoff in Angstrom. Default 5.0.\n"
         "  --skin R            Verlet skin in Angstrom. Default 0.6.\n"
@@ -210,7 +211,8 @@ int main(int argc, char** argv) {
     // No barostat / stress consumer in a plain minimization: skip the pair
     // virial (same vflag gating as the MD benchmark, ~20-25% off the LJ
     // inner loop).
-    opt.set_pair(cpu::PairLJCut{1.0, 2.5, args.cutoff}.set_compute_stress(false));
+    opt.add_potential(
+        cpu::PairLJCut{1.0, 2.5, args.cutoff}.set_compute_stress(false));
     opt.set_neighbor(cpu::md::NeighborList<>{args.cutoff, args.skin});
     if (args.opt == "lbfgs") {
         opt.set_optimizer(
@@ -249,7 +251,7 @@ int main(int argc, char** argv) {
                      done, args.iters);
     if (my_rank == 0 && !args.quiet)
         std::fprintf(stderr, "FINAL_ENERGY %.6f  iters %d\n",
-                     frame.scalars.energy, done);
+                     frame.meta.get(ATV::kEnergy), done);
 
     const double total_s = t1 - t0;
     const double per_iter_ms = 1000.0 * total_s / std::max(1, done);
@@ -271,8 +273,8 @@ int main(int argc, char** argv) {
                          "minimize_scaling: %d ranks  %d atoms  %d iters  "
                          "%.4f s total  %.4f ms/iter  (%s, %s, ~%d "
                          "atoms/rank)\n",
-                         world_size, n_actual, done, total_s, per_iter_ms,
-                         mode, args.opt.c_str(), per_rank);
+                         world_size, n_actual, done, total_s, per_iter_ms, mode,
+                         args.opt.c_str(), per_rank);
         }
     }
 

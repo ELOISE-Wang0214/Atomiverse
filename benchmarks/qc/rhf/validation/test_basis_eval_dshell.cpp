@@ -25,7 +25,7 @@
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -33,19 +33,19 @@ namespace {
 
 cpu::Frame make_water() {
     cpu::Frame f(3);
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.117;
-    f.atoms.type[0] = 8;
-    f.atoms.x[1] = 0.0;
-    f.atoms.y[1] = 0.757;
-    f.atoms.z[1] = -0.468;
-    f.atoms.type[1] = 1;
-    f.atoms.x[2] = 0.0;
-    f.atoms.y[2] = -0.757;
-    f.atoms.z[2] = -0.468;
-    f.atoms.type[2] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.117;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.757;
+    f.span(ATV::kAtom_z)[1] = -0.468;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[2] = -0.757;
+    f.span(ATV::kAtom_z)[2] = -0.468;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -129,7 +129,9 @@ TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
     auto config = cpu::scf::baseline_config(integrals);
     config.max_iter = 200;
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged) << "RHF/6-31G* on water should converge";
 
     // Bounding-box Cartesian grid in Bohr.  Fine enough spacing to recover
@@ -203,7 +205,11 @@ TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
     config.max_iter = 100;
     config.tol = 1e-9;
 
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+
+    result_solver.build(integrals);
+
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged)
         << "PBE/def2-SVP RKS on water should converge";
 
@@ -227,7 +233,11 @@ TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
     config.max_iter = 100;
     config.tol = 1e-8;
 
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+
+    result_solver.build(integrals);
+
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged) << "PBE/6-31G* on water should converge";
 
     // n_radial=50, n_angular=110 is SG-0-ish; alpha/beta electron count

@@ -43,43 +43,63 @@ void run_diagonalize(cpu::Frame& frame, cpu::vib::HessianWorkspace& ws) {
 /// @brief Optimized-ish H2O geometry (nonlinear), Angstrom.
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.5865, 0.5865};
-    f.atoms.z = {0.0, 0.0, 0.0};
-    f.atoms.type = {8, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7572;
+    f.span(ATV::kAtom_x)[2] = -0.7572;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.5865;
+    f.span(ATV::kAtom_y)[2] = 0.5865;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_z)[2] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 /// @brief Linear CO2 geometry: O=C=O along the x-axis, Angstrom.
 cpu::Frame make_co2() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 1.16, -1.16}; // C at origin, two O symmetric.
-    f.atoms.y = {0.0, 0.0, 0.0};
-    f.atoms.z = {0.0, 0.0, 0.0};
-    f.atoms.type = {6, 8, 8};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 1.16;
+    f.span(ATV::kAtom_x)[2] = -1.16; // C at origin, two O symmetric.
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_y)[2] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_z)[2] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 8;
+    f.span(ATV::kAtom_type)[2] = 8;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 /// @brief Diatomic HF along the x-axis, Angstrom.
 cpu::Frame make_hf() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.917};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.type = {1, 9}; // H, F
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.917;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 9; // H, F
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 /// @brief Fill the workspace `r0` from the frame coordinates (Angstrom).
 void fill_r0(const cpu::Frame& f, cpu::vib::HessianWorkspace& ws) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     for (int i = 0; i < n; ++i) {
-        ws.r0[3 * i + 0] = f.atoms.x(i);
-        ws.r0[3 * i + 1] = f.atoms.y(i);
-        ws.r0[3 * i + 2] = f.atoms.z(i);
+        ws.r0[3 * i + 0] = f.span(ATV::kAtom_x)[i];
+        ws.r0[3 * i + 1] = f.span(ATV::kAtom_y)[i];
+        ws.r0[3 * i + 2] = f.span(ATV::kAtom_z)[i];
     }
     ws.r0_ready = true;
 }

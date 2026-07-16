@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integral_derivatives.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -27,19 +27,19 @@ namespace {
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8;
-    f.atoms.type[1] = 1;
-    f.atoms.type[2] = 1;
-    f.atoms.x[0] = 0.000000;
-    f.atoms.y[0] = 0.000000;
-    f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000;
-    f.atoms.y[1] = 0.755453;
-    f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000;
-    f.atoms.y[2] = -0.755453;
-    f.atoms.z[2] = -0.471161;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.000000;
+    f.span(ATV::kAtom_y)[0] = 0.000000;
+    f.span(ATV::kAtom_z)[0] = 0.117790;
+    f.span(ATV::kAtom_x)[1] = 0.000000;
+    f.span(ATV::kAtom_y)[1] = 0.755453;
+    f.span(ATV::kAtom_z)[1] = -0.471161;
+    f.span(ATV::kAtom_x)[2] = 0.000000;
+    f.span(ATV::kAtom_y)[2] = -0.755453;
+    f.span(ATV::kAtom_z)[2] = -0.471161;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -51,7 +51,9 @@ TEST(Def2SVPGradient, H2O_RHF_no_broadcast_error) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
 
     auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-10);
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     // The line we're trying to make not crash.
@@ -85,13 +87,15 @@ TEST(Def2SVPGradient, H2_STO3G_analytic_vs_PySCF_reference) {
     //   atom 0: (0, 0, +1.4233423) eV/Å
     //   atom 1: (0, 0, -1.4233423) eV/Å
     ATV::cpu::Frame f(2);
-    f.atoms.type[0] = 1;
-    f.atoms.type[1] = 1;
-    f.atoms.z[1] = 0.74;
-    f.box = ATV::Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_z)[1] = 0.74;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     auto ints = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(ints, 1e-11);
-    auto res = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver res_solver{cfg};
+    res_solver.build(ints);
+    const auto& res = res_solver.run(ints);
     ASSERT_TRUE(res.converged);
     auto g = cpu::scf::scf_gradient(f, ints, res, cfg);
 
@@ -108,7 +112,9 @@ TEST(Def2SVPGradient, H2O_STO3G_analytic_vs_PySCF_reference) {
     const auto frame = make_h2o();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(ints, 1e-11);
-    auto res = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver res_solver{cfg};
+    res_solver.build(ints);
+    const auto& res = res_solver.run(ints);
     ASSERT_TRUE(res.converged);
     auto g = cpu::scf::scf_gradient(frame, ints, res, cfg);
 
@@ -136,7 +142,9 @@ TEST(Def2SVPGradient, H2O_631G_analytic_vs_FD_control) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
 
     auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-11);
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, cfg);
@@ -175,14 +183,14 @@ TEST(Def2SVPGradient, H2O_631Gs_dS_dT_dV_vs_FD) {
             cpu::Frame fwd = frame;
             cpu::Frame bwd = frame;
             if (d == 0) {
-                fwd.atoms.x[A] += h;
-                bwd.atoms.x[A] -= h;
+                fwd.span(ATV::kAtom_x)[A] += h;
+                bwd.span(ATV::kAtom_x)[A] -= h;
             } else if (d == 1) {
-                fwd.atoms.y[A] += h;
-                bwd.atoms.y[A] -= h;
+                fwd.span(ATV::kAtom_y)[A] += h;
+                bwd.span(ATV::kAtom_y)[A] -= h;
             } else {
-                fwd.atoms.z[A] += h;
-                bwd.atoms.z[A] -= h;
+                fwd.span(ATV::kAtom_z)[A] += h;
+                bwd.span(ATV::kAtom_z)[A] -= h;
             }
             const auto ifwd =
                 cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::Pople631Gs);
@@ -222,7 +230,9 @@ TEST(Def2SVPGradient, H2O_631Gs_analytic_vs_FD_minimal_d) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
     auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-11);
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, cfg);
@@ -242,7 +252,9 @@ TEST(Def2SVPGradient, H2O_def2svp_analytic_vs_FD) {
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
     auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-11);
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     ASSERT_TRUE(result.converged);
 
     auto analytic = cpu::scf::scf_gradient(frame, integrals, result, cfg);

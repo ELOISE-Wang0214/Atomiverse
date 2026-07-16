@@ -1,6 +1,6 @@
 # pw — plane-wave DFT benchmarks (bulk Si vs CP2K)
 
-Benchmarks the plane-wave SCF (`cpu::pw::pw_scf` / `cuda::pw::pw_scf`)
+Benchmarks the plane-wave SCF (`cpu::pw::PWSolver` / `cuda::pw::pw_scf`)
 against CP2K Quickstep on bulk silicon (2-atom fcc primitive cell,
 LDA). Layout follows the standard scheme:
 

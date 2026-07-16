@@ -50,20 +50,20 @@ inline ATV::cpu::Frame make_sc_lj_total(int n_target) {
     for (int ix = 0; ix < cells; ++ix)
         for (int iy = 0; iy < cells; ++iy)
             for (int iz = 0; iz < cells; ++iz) {
-                frame.atoms.x[idx] =
+                frame.span(ATV::kAtom_x)[idx] =
                     (ix + 0.5) * kSpacing + 0.1 * std::sin(0.7 * idx);
-                frame.atoms.y[idx] =
+                frame.span(ATV::kAtom_y)[idx] =
                     (iy + 0.5) * kSpacing + 0.1 * std::sin(1.3 * idx);
-                frame.atoms.z[idx] =
+                frame.span(ATV::kAtom_z)[idx] =
                     (iz + 0.5) * kSpacing + 0.1 * std::sin(1.9 * idx);
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.vx[idx] = 0.01 * std::sin(0.5 * idx);
-                frame.atoms.vy[idx] = 0.01 * std::sin(0.9 * idx);
-                frame.atoms.vz[idx] = 0.01 * std::sin(1.1 * idx);
+                frame.span(ATV::kAtom_mass)[idx] = 1.0;
+                frame.span(ATV::kAtom_type)[idx] = 0;
+                frame.span(ATV::kAtom_vx)[idx] = 0.01 * std::sin(0.5 * idx);
+                frame.span(ATV::kAtom_vy)[idx] = 0.01 * std::sin(0.9 * idx);
+                frame.span(ATV::kAtom_vz)[idx] = 0.01 * std::sin(1.1 * idx);
                 ++idx;
             }
-    frame.box = Mat3::cubic(cells * kSpacing);
+    frame.simbox = ATV::cpu::Box::cubic(cells * kSpacing);
     return frame;
 }
 
@@ -90,7 +90,9 @@ inline ATV::cpu::Frame make_sc_lj_local(int n_target, int my_rank,
         int dx, dy, dz;
         if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
             && dx * dy * dz == world_size) {
-            dims[0] = dx; dims[1] = dy; dims[2] = dz;
+            dims[0] = dx;
+            dims[1] = dy;
+            dims[2] = dz;
         }
     }
     if (dims[0] == 0)
@@ -102,16 +104,17 @@ inline ATV::cpu::Frame make_sc_lj_local(int n_target, int my_rank,
         q -= L * std::floor(q / L); // wrap to [0, L) like partition_atoms
         if (d <= 1)
             return 0;
-        return std::max(0, std::min(d - 1,
-                                    static_cast<int>(q * d / L)));
+        return std::max(0, std::min(d - 1, static_cast<int>(q * d / L)));
     };
     // Local lattice-index window (+/-2 margin covers the 0.1-A jitter).
     auto lo = [&](int c, int d) {
-        return std::max(0, static_cast<int>(static_cast<double>(c) * cells / d) - 2);
+        return std::max(0, static_cast<int>(static_cast<double>(c) * cells / d)
+                               - 2);
     };
     auto hi = [&](int c, int d) {
-        return std::min(cells, static_cast<int>(
-                                   static_cast<double>(c + 1) * cells / d) + 2);
+        return std::min(cells,
+                        static_cast<int>(static_cast<double>(c + 1) * cells / d)
+                            + 2);
     };
 
     std::vector<double> px, py, pz, vx, vy, vz;
@@ -122,13 +125,19 @@ inline ATV::cpu::Frame make_sc_lj_local(int n_target, int my_rank,
                  ++iz) {
                 const std::int64_t idx =
                     (static_cast<std::int64_t>(ix) * cells + iy) * cells + iz;
-                const double x = (ix + 0.5) * kSpacing + 0.1 * std::sin(0.7 * idx);
-                const double y = (iy + 0.5) * kSpacing + 0.1 * std::sin(1.3 * idx);
-                const double z = (iz + 0.5) * kSpacing + 0.1 * std::sin(1.9 * idx);
-                if (owner(x, dims[0]) != coords[0] || owner(y, dims[1]) != coords[1]
+                const double x =
+                    (ix + 0.5) * kSpacing + 0.1 * std::sin(0.7 * idx);
+                const double y =
+                    (iy + 0.5) * kSpacing + 0.1 * std::sin(1.3 * idx);
+                const double z =
+                    (iz + 0.5) * kSpacing + 0.1 * std::sin(1.9 * idx);
+                if (owner(x, dims[0]) != coords[0]
+                    || owner(y, dims[1]) != coords[1]
                     || owner(z, dims[2]) != coords[2])
                     continue;
-                px.push_back(x); py.push_back(y); pz.push_back(z);
+                px.push_back(x);
+                py.push_back(y);
+                pz.push_back(z);
                 vx.push_back(0.01 * std::sin(0.5 * idx));
                 vy.push_back(0.01 * std::sin(0.9 * idx));
                 vz.push_back(0.01 * std::sin(1.1 * idx));
@@ -138,15 +147,21 @@ inline ATV::cpu::Frame make_sc_lj_local(int n_target, int my_rank,
     const int n = static_cast<int>(px.size());
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = px[i]; frame.atoms.y[i] = py[i]; frame.atoms.z[i] = pz[i];
-        frame.atoms.vx[i] = vx[i]; frame.atoms.vy[i] = vy[i]; frame.atoms.vz[i] = vz[i];
-        frame.atoms.mass[i] = 1.0; frame.atoms.type[i] = 0;
-        frame.atoms.tag[i] = tg[i]; // GLOBAL tag (ctor default is local row i)
+        frame.span(ATV::kAtom_x)[i] = px[i];
+        frame.span(ATV::kAtom_y)[i] = py[i];
+        frame.span(ATV::kAtom_z)[i] = pz[i];
+        frame.span(ATV::kAtom_vx)[i] = vx[i];
+        frame.span(ATV::kAtom_vy)[i] = vy[i];
+        frame.span(ATV::kAtom_vz)[i] = vz[i];
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
+        frame.span(ATV::kAtom_tag)[i] =
+            tg[i]; // GLOBAL tag (ctor default is local row i)
     }
-    frame.atoms.nlocal = n;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, n);
-    frame.box = Mat3::cubic(L);
+    frame.set_nlocal(n);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n);
+    frame.simbox = ATV::cpu::Box::cubic(L);
     return frame;
 }
 #endif

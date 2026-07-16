@@ -65,11 +65,15 @@ TEST(VibConstants, MassLookupThrows) {
 TEST(VibMassWeighting, MassWeightingTransform) {
     // 2-atom system: atom 0 = O (15.999), atom 1 = H (1.008).
     cpu::Frame frame(2);
-    frame.atoms.x = {0.0, 0.96};
-    frame.atoms.y = {0.0, 0.0};
-    frame.atoms.z = {0.0, 0.0};
-    frame.atoms.type = {8, 1};
-    frame.box = Mat3::cubic(50.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.96;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_type)[0] = 8;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
 
     const int n = 2;
     const int dim = 6;

@@ -25,7 +25,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 #include "atomiverse/cpu/vib/frequency_report.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
@@ -41,11 +41,19 @@ namespace {
 /// @brief H2O at its RHF/6-31G optimized geometry (Angstrom).
 cpu::Frame make_water() {
     cpu::Frame f(3);
-    f.atoms.x = {-0.000000000000, -0.000000000000, 0.000000000000};
-    f.atoms.y = {-0.000000000000, 0.785166496369, -0.785166496369};
-    f.atoms.z = {0.034902683452, 0.569048658274, 0.569048658274};
-    f.atoms.type = {8, 1, 1}; // atomic numbers Z.
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = -0.000000000000;
+    f.span(ATV::kAtom_x)[1] = -0.000000000000;
+    f.span(ATV::kAtom_x)[2] = 0.000000000000;
+    f.span(ATV::kAtom_y)[0] = -0.000000000000;
+    f.span(ATV::kAtom_y)[1] = 0.785166496369;
+    f.span(ATV::kAtom_y)[2] = -0.785166496369;
+    f.span(ATV::kAtom_z)[0] = 0.034902683452;
+    f.span(ATV::kAtom_z)[1] = 0.569048658274;
+    f.span(ATV::kAtom_z)[2] = 0.569048658274;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1; // atomic numbers Z.
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -69,7 +77,7 @@ cpu::vib::HessianResult run_water(const std::string& freq_path,
     out.mode_xyz_prefix = mode_prefix;
     cpu::vib::Hessian driver{tc, out};
     driver.on(ATV::vib::Phase::force)
-        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCF{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }

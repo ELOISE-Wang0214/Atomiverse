@@ -20,7 +20,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
 #include "atomiverse/facade/stage.h"
@@ -38,12 +38,12 @@ cpu::Frame make_frame(const pyscf_ref::RefMolecule& ref) {
     const int n = ref.natoms;
     cpu::Frame f(n);
     for (int i = 0; i < n; ++i) {
-        f.atoms.x(i) = ref.geom[i].x;
-        f.atoms.y(i) = ref.geom[i].y;
-        f.atoms.z(i) = ref.geom[i].z;
-        f.atoms.type(i) = ref.geom[i].Z;
+        f.span(ATV::kAtom_x)[i] = ref.geom[i].x;
+        f.span(ATV::kAtom_y)[i] = ref.geom[i].y;
+        f.span(ATV::kAtom_z)[i] = ref.geom[i].z;
+        f.span(ATV::kAtom_type)[i] = ref.geom[i].Z;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -65,7 +65,7 @@ cpu::vib::HessianResult run_vib(cpu::Frame frame) {
 
     cpu::vib::Hessian driver;
     driver.on(ATV::vib::Phase::force)
-        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCF{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }

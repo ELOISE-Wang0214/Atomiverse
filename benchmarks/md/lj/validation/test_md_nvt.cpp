@@ -33,24 +33,25 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 double kinetic_ev(const cpu::Frame& f) {
     double s = 0.0;
-    for (int i = 0; i < f.atoms.size(); ++i)
-        s += f.atoms.mass[i]
-             * (f.atoms.vx[i] * f.atoms.vx[i] + f.atoms.vy[i] * f.atoms.vy[i]
-                + f.atoms.vz[i] * f.atoms.vz[i]);
-    return 0.5 * kMvv2e * s;
+    for (int i = 0; i < f.nlocal(); ++i)
+        s += f.span(ATV::kAtom_mass)[i]
+             * (f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i]);
+    return 0.5 * units::mass_v2_to_energy * s;
 }
 
 // Equilibrate a 108-atom LJ argon gas under NVT (the given thermostat) and
@@ -60,14 +61,14 @@ double nvt_mean_temperature(cpu::md::NVT::Thermostat thermo) {
     const double eps = 0.0104, sigma = 3.4, cutoff = 8.5;
 
     auto frame = make_fcc_argon(3, 5.26); // 108 atoms
-    const int n_dof = 3 * frame.atoms.size() - 3;
+    const int n_dof = 3 * frame.nlocal() - 3;
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T, /*seed=*/2024});
     // One call bundles VelocityVerlet + the chosen thermostat (LAMMPS fix nvt
     // ergonomic) — no separate set_integrator + set_thermostat.
     sim.set_nvt(cpu::md::NVT{dt, T, tau, thermo, /*seed=*/7});
-    sim.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+    sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 1.0});
     sim.build();
 
@@ -80,7 +81,7 @@ double nvt_mean_temperature(cpu::md::NVT::Thermostat thermo) {
         mean_ke += kinetic_ev(frame);
     }
     mean_ke /= n_samples;
-    return 2.0 * mean_ke / (n_dof * kBoltzmann);
+    return 2.0 * mean_ke / (n_dof * units::kB_ev_per_k);
 }
 
 } // namespace

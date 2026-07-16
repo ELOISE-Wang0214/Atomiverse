@@ -47,22 +47,22 @@
 ///     is now continuable (build once, destroy at driver teardown).
 ///
 /// Supporting fixes also landed: LAMMPS-matching outer-NHC Trotter
-/// order; a `frame.scalars.stress` / `frame.scalars.stress_kinetic` split feeding a
+/// order; a `frame.meta.get(ATV::kStress)` / `frame.meta.get(ATV::kStressKinetic)` split feeding a
 /// fresh kinetic-stress trace into `update_eps_dot`; the exact MTK
 /// position-drift factor `(e^{ε̇dt}-1)/(ε̇dt)` in place of the bare
 /// `sinhc`; and a `CellList` grid resize on box change.
 
 #include "bench_check.h"
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include <cmath>
 #include <iostream>
@@ -87,44 +87,45 @@ cpu::Frame make_fcc_argon_256() {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 0;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 0;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
 double instantaneous_T(const cpu::Frame& f) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     double KE_eV = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        KE_eV += 0.5 * f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        KE_eV += 0.5 * f.span(ATV::kAtom_mass)[i] * v2;
     }
-    KE_eV *= kMvv2e;
-    return 2.0 * KE_eV / (3 * (n - 1) * kBoltzmann);
+    KE_eV *= units::mass_v2_to_energy;
+    return 2.0 * KE_eV / (3 * (n - 1) * units::kB_ev_per_k);
 }
 
 double instantaneous_KE_eV(const cpu::Frame& f) {
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
     double KE = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        KE += 0.5 * f.atoms.mass[i] * v2;
+        const double v2 = f.span(ATV::kAtom_vx)[i] * f.span(ATV::kAtom_vx)[i]
+                          + f.span(ATV::kAtom_vy)[i] * f.span(ATV::kAtom_vy)[i]
+                          + f.span(ATV::kAtom_vz)[i] * f.span(ATV::kAtom_vz)[i];
+        KE += 0.5 * f.span(ATV::kAtom_mass)[i] * v2;
     }
-    return KE * kMvv2e;
+    return KE * units::mass_v2_to_energy;
 }
 
 double volume(const cpu::Frame& f) {
-    return f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    return f.simbox.cell()(0, 0) * f.simbox.cell()(1, 1)
+           * f.simbox.cell()(2, 2);
 }
 
 } // namespace
@@ -162,7 +163,7 @@ BENCH_CASE(LammpsParity_Slow_NptMatchesLammpsEnsembleAverages) {
                                                .tau_P = tau_P,
                                                .dt = dt}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);
@@ -208,7 +209,7 @@ BENCH_CASE(LammpsParity_Slow_NptMatchesLammpsEnsembleAverages) {
 // Hamiltonian (atom KE+PE + barostat KE + both NHC chains' KE/PE +
 // p·V) — NOT the plain KE+PE, which exchanges energy with the
 // thermostat/barostat. `NoseHooverNPT` publishes it to
-// `frame.scalars.conserved` every step (the `Conserved` column of `Thermo`).
+// `frame.meta.get(ATV::kConserved)` every step (the `Conserved` column of `Thermo`).
 // This case runs the parity system 10 000 steps and asserts the
 // extended H neither drifts nor blows up — the canonical proof the
 // integrator's Trotter splitting is symplectic.
@@ -230,20 +231,20 @@ BENCH_CASE(LammpsParity_Slow_NptConservesExtendedHamiltonian) {
                                                .tau_P = 1000.0,
                                                .dt = dt}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
-    // One step to populate frame.scalars.conserved, then take that as H(0).
+    // One step to populate frame.meta.get(ATV::kConserved), then take that as H(0).
     sim.run(frame, 1);
-    const double H0 = frame.scalars.conserved;
+    const double H0 = frame.meta.get(ATV::kConserved);
 
     double max_abs_drift = 0.0;
     constexpr int n_chunks = 100;
     constexpr int chunk = 100; // 100 × 100 = 10 000 steps
     for (int c = 0; c < n_chunks; ++c) {
         sim.run(frame, chunk);
-        max_abs_drift =
-            std::max(max_abs_drift, std::abs(frame.scalars.conserved - H0));
+        max_abs_drift = std::max(
+            max_abs_drift, std::abs(frame.meta.get(ATV::kConserved) - H0));
     }
 
     std::cerr << "MTK extended H: H(0) = " << H0 << " eV, "
@@ -293,7 +294,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptIsotropicDefaultMatchesLammps) {
                                 .couple_axis = {true, true, true},
                                 .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);
@@ -346,9 +347,9 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptFixedXAxisHoldsXEdge) {
     constexpr double kCutoff = 8.5;
 
     auto frame = make_fcc_argon_256();
-    const double Lx0 = frame.box(0, 0);
-    const double Ly0 = frame.box(1, 1);
-    const double Lz0 = frame.box(2, 2);
+    const double Lx0 = frame.simbox.cell()(0, 0);
+    const double Ly0 = frame.simbox.cell()(1, 1);
+    const double Lz0 = frame.simbox.cell()(2, 2);
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
@@ -361,14 +362,14 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptFixedXAxisHoldsXEdge) {
          .couple_axis = {false, true, true}, // x rigid; y,z barostatted
          .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     sim.run(frame, 5000);
 
-    const double Lx = frame.box(0, 0);
-    const double Ly = frame.box(1, 1);
-    const double Lz = frame.box(2, 2);
+    const double Lx = frame.simbox.cell()(0, 0);
+    const double Ly = frame.simbox.cell()(1, 1);
+    const double Lz = frame.simbox.cell()(2, 2);
 
     std::cerr << "Aniso fixed-x: Lx " << Lx0 << " -> " << Lx << ", Ly " << Ly0
               << " -> " << Ly << ", Lz " << Lz0 << " -> " << Lz << " A\n";
@@ -421,13 +422,13 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
          .couple_axis = {true, false, false}, // only x barostatted
          .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     // Burn in past the violent first-relaxation transient of the
     // over-dense FCC start before sampling the conserved quantity.
     sim.run(frame, 3000);
-    const double H0 = frame.scalars.conserved;
+    const double H0 = frame.meta.get(ATV::kConserved);
 
     double max_abs_drift = 0.0;
     double first_half = 0.0, second_half = 0.0;
@@ -436,7 +437,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
     constexpr int chunk = 100; // 80 × 100 = 8000 sampled steps
     for (int c = 0; c < n_chunks; ++c) {
         sim.run(frame, chunk);
-        const double H = frame.scalars.conserved;
+        const double H = frame.meta.get(ATV::kConserved);
         max_abs_drift = std::max(max_abs_drift, std::abs(H - H0));
         if (c < n_chunks / 2) {
             first_half += H;
@@ -504,7 +505,7 @@ BENCH_CASE(LammpsParity_Slow_NptTemperatureRampTracksSetpoint) {
     npt.set_run_span(0, total_steps);
     sim.set_integrator(std::move(npt));
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
+    sim.add_potential(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
 

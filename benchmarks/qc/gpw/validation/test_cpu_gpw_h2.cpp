@@ -16,21 +16,18 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
+using ATV::cpu::gpw::GaussianBasis;
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GPWSolver;
 using ATV::cpu::gpw::GthPotential;
 
-namespace {
-} // namespace
+namespace {} // namespace
 
 TEST(GpwH2CP2K, RealBasisConverges) {
     // SKIPPED by default: the DZV-GTH-PADE/PADE-LDA path has a pre-existing ~30 mHa
@@ -42,9 +39,10 @@ TEST(GpwH2CP2K, RealBasisConverges) {
     // confined); periodic GPW parity is covered by the MOLOPT nacl/zno tests.
     // Set ATV_RUN_PADE=1 to run for investigation (ATV_H2_BOX overrides the cell).
     if (!std::getenv("ATV_RUN_PADE"))
-        GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
-    const auto pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+        GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see "
+                        "gpw-periodic-lattice-sum";
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
 
     // CP2K H2.inp geometry, in the 8x4x4 box (place the molecule away from the
     // origin so it does not straddle the periodic boundary).
@@ -66,12 +64,16 @@ TEST(GpwH2CP2K, RealBasisConverges) {
     cfg.tol = 1e-7;
     cfg.mix = 0.3;
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
-    std::printf("[GPW H2] iters=%d conv=%d  E_total=%.10f  (CP2K -1.0634557496)\n"
-                "         kinetic=%.8f  TrP*Vpp=%.8f  core_ham=%.8f  es=%.8f  xc=%.8f\n",
-                r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
-                r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
+    std::printf(
+        "[GPW H2] iters=%d conv=%d  E_total=%.10f  (CP2K -1.0634557496)\n"
+        "         kinetic=%.8f  TrP*Vpp=%.8f  core_ham=%.8f  es=%.8f  "
+        "xc=%.8f\n",
+        r.iters, (int)r.converged, r.e_total, r.e_kinetic, r.e_loc_sr,
+        r.e_kinetic + r.e_loc_sr, r.e_es, r.e_xc);
 
     // Per-H DZV-GTH-PADE = 2 contracted s functions -> 4 basis functions total.
     EXPECT_TRUE(r.converged) << "iters=" << r.iters;

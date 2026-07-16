@@ -5,8 +5,8 @@
 #include <array>
 #include <vector>
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -24,7 +24,7 @@ using namespace ATV::cpu::scf;
 
 namespace {
 
-constexpr double kA2B = ATV::kAngstromToBohr;
+constexpr double kA2B = ATV::units::kAngstromInBohr;
 
 struct AtomSpec {
     int Z;
@@ -584,7 +584,7 @@ BENCHMARK(BM_ERIBlock_Libcint)->DenseRange(0, 3);
 #endif
 
 int main(int argc, char** argv) {
-    ATV::log_init(spdlog::level::warn);
+    ATV::log_init(ATV::LogConfig{.level = spdlog::level::warn});
     benchmark::Initialize(&argc, argv);
     if (benchmark::ReportUnrecognizedArguments(argc, argv))
         return 1;

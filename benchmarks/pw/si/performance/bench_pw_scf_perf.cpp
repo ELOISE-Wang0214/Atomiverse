@@ -20,7 +20,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/pw/pw_scf.h"
+#include "atomiverse/cpu/pw/pw_solver.h"
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/cuda/pw/pw_scf.cuh"
 #endif
@@ -40,15 +40,15 @@ namespace {
 cpu::Frame make_si_fcc(double a) {
     cpu::Frame f(2);
     for (int i = 0; i < 2; ++i) {
-        f.atoms.type[i] = 14;
-        f.atoms.mass[i] = 28.0855;
+        f.span(ATV::kAtom_type)[i] = 14;
+        f.span(ATV::kAtom_mass)[i] = 28.0855;
     }
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.x[1] = a / 4.0;
-    f.atoms.y[1] = a / 4.0;
-    f.atoms.z[1] = a / 4.0;
+    f.span(ATV::kAtom_x)[0] = 0;
+    f.span(ATV::kAtom_y)[0] = 0;
+    f.span(ATV::kAtom_z)[0] = 0;
+    f.span(ATV::kAtom_x)[1] = a / 4.0;
+    f.span(ATV::kAtom_y)[1] = a / 4.0;
+    f.span(ATV::kAtom_z)[1] = a / 4.0;
     double h = a / 2.0;
     Mat3 cell;
     cell(0, 0) = 0;
@@ -60,7 +60,7 @@ cpu::Frame make_si_fcc(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.box = cell;
+    f.simbox.set_cell(cell);
     return f;
 }
 
@@ -122,7 +122,15 @@ int main(int argc, char** argv) {
             return 1;
 #endif
         } else {
-            r = cpu::pw::pw_scf(frame, upf, ecut, kmesh, 1e-7, 60);
+            cpu::pw::PWConfig config;
+            config.upf_path = upf;
+            config.ecut_ry = ecut;
+            config.k_mesh = kmesh;
+            config.tol = 1e-7;
+            config.max_iter = 60;
+            cpu::pw::PWSolver solver{config};
+            solver.build(frame);
+            r = solver.run(frame);
         }
         auto t1 = std::chrono::steady_clock::now();
         double wall = std::chrono::duration<double>(t1 - t0).count();

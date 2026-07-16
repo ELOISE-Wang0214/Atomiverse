@@ -31,12 +31,15 @@
 #include <cstring>
 #include <string>
 
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/md/md.h"
+#include <xsimd/xsimd.hpp>
+#include <xtensor/core/xtensor_config.hpp>
+
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include "sc_lj_system.h"
 
@@ -61,8 +64,8 @@ struct Args {
     int warmup = 10;             ///< unrecorded warmup steps before timing
     double cutoff = 5.0;         ///< LJ cutoff (= 2*sigma, matches GPU bench)
     double skin = 0.6;           ///< Verlet skin [A] — matches LAMMPS lj.in
-    int reneigh = 20;            ///< reneighbor cadence (steps) — matches LAMMPS
-    int migrate = 0;             ///< migrate cadence (0 = follow reneigh)
+    int reneigh = 20; ///< reneighbor cadence (steps) — matches LAMMPS
+    int migrate = 0;  ///< migrate cadence (0 = follow reneigh)
     // Time step. sigma=2.5, eps=1, m=1 → LJ time unit tau = sigma*sqrt(m/eps)
     // = 2.5. LAMMPS lj.in uses dt* = 0.005 (reduced); the matching value here is
     // 0.005*tau = 0.0125. dt=1.0 (dt/tau=0.4) was ~80x too large — the velocity-
@@ -70,8 +73,10 @@ struct Args {
     // which is unphysical and also corrupts the throughput comparison (a blown-up
     // system loses neighbors and runs artificially fast).
     double dt = 0.0125;
-    bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
-    bool quiet = false;          ///< suppress one-line per-rank reports
+    bool csv_header = false; ///< print CSV header to stdout (rank 0 only)
+    bool quiet = false;      ///< suppress one-line per-rank reports
+    bool provenance = false; ///< print machine-readable SIMD dependency data
+    bool force_reneighbor = false; ///< rebuild the neighbor list every step
 };
 
 void print_help() {
@@ -84,7 +89,14 @@ void print_help() {
         "  --warmup N          Warmup steps before timing. Default 10.\n"
         "  --cutoff R          LJ cutoff in Angstrom. Default 5.0.\n"
         "  --skin R            Verlet skin in Angstrom. Default 0.6.\n"
-        "  --dt T              Time step in fs. Default 1.0.\n"
+        "  --reneigh N         Halo/neighbor cadence. Default 20.\n"
+        "  --migrate N         Migration cadence; 0 follows --reneigh. Default "
+        "0.\n"
+        "  --force-reneighbor  Rebuild the neighbor list every step (check "
+        "no).\n"
+        "  --dt T              Time step in fs. Default 0.0125.\n"
+        "  --provenance        Print xsimd/xtensor versions and SIMD batch "
+        "widths.\n"
         "  --csv-header        Print CSV column header before the data row.\n"
         "  --quiet             Suppress per-rank summaries.\n"
         "  --help              Show this message.\n");
@@ -139,6 +151,14 @@ bool parse_args(int argc, char** argv, Args& a) {
             a.quiet = true;
             continue;
         }
+        if (std::strcmp(s, "--provenance") == 0) {
+            a.provenance = true;
+            continue;
+        }
+        if (std::strcmp(s, "--force-reneighbor") == 0) {
+            a.force_reneighbor = true;
+            continue;
+        }
         if (std::strcmp(s, "--help") == 0) {
             print_help();
             std::exit(0);
@@ -158,6 +178,11 @@ int main(int argc, char** argv) {
     Args args;
     if (!parse_args(argc, argv, args))
         return 2;
+    if (args.reneigh < 1 || args.migrate < 0) {
+        std::fprintf(stderr,
+                     "--reneigh must be >= 1 and --migrate must be >= 0\n");
+        return 2;
+    }
 
 #ifdef ATV_HAS_MPI
     int provided = 0;
@@ -168,6 +193,15 @@ int main(int argc, char** argv) {
 #else
     int world_size = 1, my_rank = 0;
 #endif
+
+    if (my_rank == 0 && args.provenance) {
+        std::printf(
+            "# atomiverse-perf xsimd=%d.%d.%d xtensor=%d.%d.%d "
+            "storage_batch=%zu work_batch=%zu\n",
+            XSIMD_VERSION_MAJOR, XSIMD_VERSION_MINOR, XSIMD_VERSION_PATCH,
+            XTENSOR_VERSION_MAJOR, XTENSOR_VERSION_MINOR, XTENSOR_VERSION_PATCH,
+            xsimd::batch<StorageReal>::size, xsimd::batch<WorkReal>::size);
+    }
 
     // Determine atom count and mode.
     const char* mode = "weak";
@@ -222,17 +256,18 @@ int main(int argc, char** argv) {
     // momentum).
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{args.cutoff + args.skin, args.reneigh}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
-    // Adaptive Verlet rebuild (LAMMPS `neigh_modify check yes`): re-enumerate
-    // the list only when an atom has drifted more than skin/2, not on a fixed
-    // cadence. The per-step skin scan is far cheaper than a full rebuild, so
-    // for systems that move less than skin/2 over `reneigh` steps this does
-    // fewer rebuilds than a fixed `every N` would — a legitimate AV speedup
-    // over the deck's `every 20 check no`, kept because it is a general,
-    // physics-correct optimisation (a stale list is impossible by construction).
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::md::NeighborList<>{args.cutoff, args.skin}, -10);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
+    // Normal mode mirrors `neigh_modify every N delay N check yes`: only the
+    // cadence-eligible steps run the half-skin displacement check. The explicit
+    // performance sentinel selects `check no`, `every 1`, `delay 0` so every
+    // measured step rebuilds; this is intentionally a separate path and never
+    // inferred from a magic cadence value.
+    const int neighbor_every = args.force_reneighbor ? 1 : args.reneigh;
+    const int neighbor_delay = args.force_reneighbor ? 0 : args.reneigh;
+    const bool neighbor_check = !args.force_reneighbor;
+    cpu::md::NeighborList<> neighbor{args.cutoff, args.skin, neighbor_every,
+                                     neighbor_delay, neighbor_check};
+    sim.on(ATV::md::Phase::force).add_ref(neighbor, -10);
     // Plain NVE: no barostat / pressure consumer, so skip the pair virial
     // (LAMMPS-style vflag gating) — ~20-25% off the LJ inner loop.
     sim.on(ATV::md::Phase::force)
@@ -273,7 +308,7 @@ int main(int argc, char** argv) {
     if (do_timing)
         sim.emit_timing("bench");
 
-    // Correctness oracle: frame.scalars.energy is the cross-rank-reduced total
+    // Correctness oracle: frame.meta.get(ATV::kEnergy) is the cross-rank-reduced total
     // LJ potential energy (filled by the Reduce component) on rank 0 — the same
     // field tests/mpi/test_lj_energy_bruteforce.cpp checks. Compare across
     // reneigh cadences to confirm the position-only halo conserves energy.
@@ -281,8 +316,8 @@ int main(int argc, char** argv) {
         // Total linear momentum over OWNED atoms, reduced across ranks. For NVE
         // it must stay constant — a drift exposes a Newton's-3rd-law violation
         // in the multi-rank force path (reverse-halo / dedup). The authoritative
-        // owned count is dd->n_local (frame.atoms.nlocal is left at global N).
-        int nloc = frame.atoms.size();
+        // owned count is dd->n_local (frame.nlocal() is left at global N).
+        int nloc = frame.nlocal();
 #ifdef ATV_HAS_MPI
         auto dd_probe = sim.release_dd();
         if (world_size > 1 && dd_probe)
@@ -290,10 +325,10 @@ int main(int argc, char** argv) {
 #endif
         double p[3] = {0, 0, 0};
         for (int i = 0; i < nloc; ++i) {
-            const double m = frame.atoms.mass[i];
-            p[0] += m * frame.atoms.vx[i];
-            p[1] += m * frame.atoms.vy[i];
-            p[2] += m * frame.atoms.vz[i];
+            const double m = frame.span(ATV::kAtom_mass)[i];
+            p[0] += m * frame.span(ATV::kAtom_vx)[i];
+            p[1] += m * frame.span(ATV::kAtom_vy)[i];
+            p[2] += m * frame.span(ATV::kAtom_vz)[i];
         }
         double pg[3] = {p[0], p[1], p[2]};
 #ifdef ATV_HAS_MPI
@@ -303,7 +338,7 @@ int main(int argc, char** argv) {
             std::sqrt(pg[0] * pg[0] + pg[1] * pg[1] + pg[2] * pg[2]);
         if (my_rank == 0)
             std::fprintf(stderr, "FINAL_ENERGY %.6f  |P| %.6e  nloc0 %d\n",
-                         frame.scalars.energy, pmag, nloc);
+                         frame.meta.get(ATV::kEnergy), pmag, nloc);
     }
 
     const double total_s = t1 - t0;
@@ -318,8 +353,15 @@ int main(int argc, char** argv) {
 
     if (my_rank == 0) {
         const int per_rank = (n_actual + world_size - 1) / world_size;
+        if (args.provenance) {
+            std::printf(
+                "# atomiverse-neighbor policy=%s rebuilds=%d launches=%d\n",
+                args.force_reneighbor ? "forced" : "adaptive",
+                neighbor.n_rebuilds(), args.warmup + args.steps);
+        }
         std::printf("%d,%d,%d,%.6f,%.6f,%d,%s,%ld\n", world_size, n_actual,
-                    args.steps, total_s, per_step_ms, per_rank, mode, total_hwm);
+                    args.steps, total_s, per_step_ms, per_rank, mode,
+                    total_hwm);
         if (!args.quiet) {
             std::fprintf(stderr,
                          "scaling: %d ranks  %d atoms  %d steps  %.4f s total  "

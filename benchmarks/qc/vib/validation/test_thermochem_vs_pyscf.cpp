@@ -21,7 +21,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
 #include "atomiverse/cpu/vib/nist_constants.h"
@@ -37,7 +37,7 @@ namespace {
 
 /// @brief 1 Hartree expressed in electron-volts (PySCF-consistent).
 ///
-/// Named distinctly from `ATV::kHartree2eV` (core/units.h): `using namespace ATV;` above
+/// Named distinctly from `ATV::units::kHartreeInEv`: `using namespace ATV;` above
 /// makes a same-named local an ambiguous reference, and this test deliberately wants the
 /// NIST value PySCF uses, not the engine's own.
 const double kNistHartree2eV = cpu::vib::nist::HARTREE2EV;
@@ -55,12 +55,12 @@ cpu::Frame make_frame(const pyscf_thermo_ref::RefThermo& ref) {
     const int n = ref.natoms;
     cpu::Frame f(n);
     for (int i = 0; i < n; ++i) {
-        f.atoms.x(i) = ref.geom[i].x;
-        f.atoms.y(i) = ref.geom[i].y;
-        f.atoms.z(i) = ref.geom[i].z;
-        f.atoms.type(i) = ref.geom[i].Z;
+        f.span(ATV::kAtom_x)[i] = ref.geom[i].x;
+        f.span(ATV::kAtom_y)[i] = ref.geom[i].y;
+        f.span(ATV::kAtom_z)[i] = ref.geom[i].z;
+        f.span(ATV::kAtom_type)[i] = ref.geom[i].Z;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -89,7 +89,7 @@ cpu::vib::HessianResult run_thermo(const pyscf_thermo_ref::RefThermo& ref) {
 
     cpu::vib::Hessian driver{tc};
     driver.on(ATV::vib::Phase::force)
-        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCF{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }
