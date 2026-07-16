@@ -5,18 +5,19 @@
 /// etc.) avoids D2H transfers during the simulation loop.
 /// CUDA-free header (contains only pointer declarations).
 ///
-/// The SEMANTIC field set mirrors `cpu::Frame` / `torch::Frame` (same
-/// physical quantities), but the topology REPRESENTATION is deliberately
-/// dual on this backend: the single-GPU path uses the flat
+/// One backend, one Frame type: this is `cuda::Frame`, not a shared layout
+/// with CPU. The SEMANTIC field set mirrors `cpu::Frame` / `torch::Frame`
+/// (same physical quantities), but the topology REPRESENTATION is
+/// deliberately dual on this backend: the single-GPU path uses the flat
 /// `BondList/AngleList/DihedralList` device arrays (transfer-friendly;
 /// the CUDA kernels have not been ported to per-atom topology, so
 /// `cpu::to_cuda` re-flattens from the CPU per-atom layout on every
 /// H2D transfer), while the multi-GPU domain-decomposition path carries
 /// the per-atom SoA (global-tag partners) needed for migration. CPU is
-/// per-atom only. Per the CLAUDE.md Frame purity rule the frame carries only
-/// fundamental physical quantities: method-specific scratch (the SCF
-/// workspace, the neighbor pair list) is owned by the components that
-/// compute it, not by the frame.
+/// blocks+meta+simbox with per-atom topology columns only. Per the
+/// CLAUDE.md Frame purity rule the frame carries only fundamental physical
+/// quantities: method-specific scratch (the SCF workspace, the neighbor
+/// pair list) is owned by the components that compute it, not by the frame.
 ///
 /// @see cpu::Frame for the host-side counterpart
 /// @see core/system_scalars.h for the shared system-scalar bundle
@@ -86,12 +87,12 @@ struct Frame {
         int* type = nullptr;      ///< Atom types [device].
 
         /// @brief Global atom identity [device], persistent across MPI
-        /// migration and restart. Mirrors `cpu::Frame::Atoms::tag`.
+        /// migration and restart. Same semantic field as CPU `kAtom_tag`.
         std::int64_t* tag = nullptr;
 
         /// @brief Per-atom PBC crossing counts, flat row-major [device,
         /// 3 * n_atoms], `image[i * 3 + d]` for atom i along dimension d.
-        /// Mirrors `cpu::Frame::Atoms::image`.
+        /// Same semantic field as CPU `kAtom_image`.
         std::int8_t* image = nullptr;
 
         int* d_size = nullptr; ///< Atom count [device, 1 element].

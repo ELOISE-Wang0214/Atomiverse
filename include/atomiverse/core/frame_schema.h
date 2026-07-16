@@ -1,146 +1,231 @@
 /// @file core/frame_schema.h
-/// @brief THE single enumeration of per-atom fields — the frame-block
-///        registry's schema (backend-agnostic).
+/// @brief Canonical semantic schema for Frame blocks and typed metadata.
 ///
-/// This is step 1 of the signed Frame verdict (frame-block-01): one X-macro
-/// list is the *only* place the per-atom field set is written down. Every
-/// consumer that used to hand-copy the list — `Atom::grow`, `set_capacity`,
-/// `copy_row`, `comm::pack_exchange` / `unpack_exchange` — derives from this
-/// table instead. The grow data-destruction bug of probe 4 was a direct
-/// product of the old "copy the list at every site" pattern; with one list
-/// there is no second copy to fall out of sync.
-///
-/// ## The macro row
-///
-/// `X(member, key, Elem, DTag, Stride, Group, epi, flags)`
-///
-/// - `member` — the `cpu::Atom` data member the CPU backend binds.
-/// - `key`    — the molrs exchange-schema column name (block `"atoms"`),
-///              1:1 with the member name by the signed verdict.
-/// - `Elem`   — element type from the ATV precision tiers
-///              (`StorageReal` / `AccReal` / `TagInt` / `int` / `std::int8_t`).
-/// - `DTag`   — the matching `ColDType` enumerator (runtime dispatch tag).
-/// - `Stride` — `ColStride`: how many columns per row, and who owns the
-///              runtime stride (`One`, `Fixed3`, or a per-atom topology
-///              stride like `BondPA`).
-/// - `Group`  — `ColGroup`: which counted section of the exchange payload
-///              the column belongs to (`Core` is packed flat; `Bond` /
-///              `Angle` / `Dihedral` items are length-prefixed by their
-///              count column; `Special` is the nspecial-prefixed list).
-/// - `epi`    — entries per group item (e.g. `angle_atom` stores 2 partner
-///              tags per angle; 0 for non-group columns).
-/// - `flags`  — `kColCount` (this column IS its group's length prefix),
-///              `kColTopology` (lazy wide storage, only allocated once the
-///              system has bonded topology), `kColIdentityTail` (new tail
-///              rows are seeded with the row index — the tag invariant).
-///
-/// The order of rows is load-bearing: it IS the exchange wire order
-/// (Core scalars, then bond / angle / dihedral counted groups, then the
-/// special-neighbor section) — pinned by the MPI migration suite and the
-/// MC transaction-rollback tests.
+/// The schema describes meaning and wire identity only.  It deliberately has
+/// no CPU member-name column: every backend owns an independent Block/Column
+/// representation and resolves these keys at its launch boundary.
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "atomiverse/core/precision.h"
 
 namespace ATV {
 
-/// @brief Runtime dtype tag of a registry column (ATV precision tiers).
+/// Runtime dtype of one Block column.  The tag is semantic; the wire schema
+/// also fingerprints the configured sizeof(StorageReal/TagInt), so different
+/// precision/ID builds cannot accidentally exchange payloads.
 enum class ColDType : std::uint8_t { Storage, Acc, Tag, Int, Int8 };
 
-/// @brief Column width semantics: fixed widths, or which runtime per-atom
-///        topology stride sizes the column.
+constexpr std::size_t col_dtype_size(ColDType dtype) noexcept {
+    switch (dtype) {
+    case ColDType::Storage:
+        return sizeof(StorageReal);
+    case ColDType::Acc:
+        return sizeof(AccReal);
+    case ColDType::Tag:
+        return sizeof(TagInt);
+    case ColDType::Int:
+        return sizeof(int);
+    case ColDType::Int8:
+        return sizeof(std::int8_t);
+    }
+    return 0;
+}
+
+/// Column-width semantics.  Runtime topology strides live in typed Frame
+/// metadata and are materialized into concrete Column::cols() values.
 enum class ColStride : std::uint8_t {
-    One,         ///< plain 1D column
-    Fixed3,      ///< [nmax, 3] (image, nspecial)
-    BondPA,      ///< [nmax, bond_per_atom]
-    AnglePA2,    ///< [nmax, 2 * angle_per_atom]
-    AnglePA,     ///< [nmax, angle_per_atom]
-    DihedralPA3, ///< [nmax, 3 * dihedral_per_atom]
-    DihedralPA,  ///< [nmax, dihedral_per_atom]
-    MaxSpecial,  ///< [nmax, maxspecial]
+    One,
+    Fixed3,
+    BondPA,
+    AnglePA2,
+    AnglePA,
+    DihedralPA3,
+    DihedralPA,
+    ImproperPA3,
+    ImproperPA,
+    MaxSpecial,
 };
 
-/// @brief Which counted section of the exchange payload a column rides.
-enum class ColGroup : std::uint8_t { Core, Bond, Angle, Dihedral, Special };
+/// Counted section of an exchange row.
+enum class ColGroup : std::uint8_t {
+    Core,
+    Bond,
+    Angle,
+    Dihedral,
+    Improper,
+    Special
+};
 
 inline constexpr unsigned kColNone = 0;
-inline constexpr unsigned kColCount = 1u << 0;    ///< group length prefix
-inline constexpr unsigned kColTopology = 1u << 1; ///< lazy wide storage
-inline constexpr unsigned kColIdentityTail = 1u << 2; ///< tag tail seeding
-inline constexpr unsigned kColWriteBack = 1u << 3; ///< in the write_back contract
+inline constexpr unsigned kColCount = 1u << 0;
+inline constexpr unsigned kColTopology = 1u << 1;
+inline constexpr unsigned kColIdentityTail = 1u << 2;
+inline constexpr unsigned kColWriteBack = 1u << 3;
+inline constexpr unsigned kColMigrate = 1u << 4;
+inline constexpr unsigned kColExchange = 1u << 5;
+inline constexpr unsigned kColComm = 1u << 6;
+inline constexpr unsigned kColBorder = 1u << 7;
+inline constexpr unsigned kColReverse = 1u << 8;
+inline constexpr unsigned kColState = kColMigrate | kColExchange;
 
-/// @brief One schema row — everything a registry consumer needs to know
-///        about a column except the backend's storage object.
+/// One canonical field row.  wire_id is explicit and never derived from a
+/// variant or container index.
 struct FieldSpec {
-    const char* key;    ///< molrs exchange-schema column name
-    ColDType dtype;     ///< element tier
-    ColStride stride;   ///< width semantics
-    ColGroup group;     ///< exchange payload section
-    int epi;            ///< entries per group item (0 = not a group payload)
-    unsigned flags;     ///< kCol* bits
+    std::uint16_t wire_id;
+    const char* key;
+    ColDType dtype;
+    ColStride stride;
+    ColGroup group;
+    int epi;
+    unsigned flags;
 };
 
-// ── THE field list ──────────────────────────────────────────────────────────
-//
-//                member         key             Elem         DTag     Stride       Group     epi flags
-#define ATV_ATOM_FIELDS(X)                                                                              \
-    X(x,             "x",            StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(y,             "y",            StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(z,             "z",            StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(vx,            "vx",           StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(vy,            "vy",           StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(vz,            "vz",           StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(fx,            "fx",           AccReal,     Acc,     One,         Core,     0, kColWriteBack)          \
-    X(fy,            "fy",           AccReal,     Acc,     One,         Core,     0, kColWriteBack)          \
-    X(fz,            "fz",           AccReal,     Acc,     One,         Core,     0, kColWriteBack)          \
-    X(mass,          "mass",         StorageReal, Storage, One,         Core,     0, kColNone)          \
-    X(charge,        "charge",       StorageReal, Storage, One,         Core,     0, kColWriteBack)          \
-    X(type,          "type",         int,         Int,     One,         Core,     0, kColNone)          \
-    X(tag,           "tag",          TagInt,      Tag,     One,         Core,     0, kColIdentityTail)  \
-    X(image,         "image",        std::int8_t, Int8,    Fixed3,      Core,     0, kColNone)          \
-    X(num_bond,      "num_bond",     int,         Int,     One,         Bond,     0, kColCount)         \
-    X(bond_atom,     "bond_atom",    TagInt,      Tag,     BondPA,      Bond,     1, kColTopology)      \
-    X(bond_type,     "bond_type",    int,         Int,     BondPA,      Bond,     1, kColTopology)      \
-    X(num_angle,     "num_angle",    int,         Int,     One,         Angle,    0, kColCount)         \
-    X(angle_atom,    "angle_atom",   TagInt,      Tag,     AnglePA2,    Angle,    2, kColTopology)      \
-    X(angle_type,    "angle_type",   int,         Int,     AnglePA,     Angle,    1, kColTopology)      \
-    X(num_dihedral,  "num_dihedral", int,         Int,     One,         Dihedral, 0, kColCount)         \
-    X(dihedral_atom, "dihedral_atom",TagInt,      Tag,     DihedralPA3, Dihedral, 3, kColTopology)      \
-    X(dihedral_type, "dihedral_type",int,         Int,     DihedralPA,  Dihedral, 1, kColTopology)      \
-    X(nspecial,      "nspecial",     int,         Int,     Fixed3,      Special,  0, kColCount)         \
-    X(special,       "special",      TagInt,      Tag,     MaxSpecial,  Special,  1, kColTopology)
+// id, key, element tier, dtype, stride, group, entries/item, flags
+#define ATV_ATOM_FIELDS(X)                                                     \
+    X(x, "x", StorageReal, Storage, One, Core, 0,                              \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(y, "y", StorageReal, Storage, One, Core, 0,                              \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(z, "z", StorageReal, Storage, One, Core, 0,                              \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(vx, "vx", StorageReal, Storage, One, Core, 0,                            \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(vy, "vy", StorageReal, Storage, One, Core, 0,                            \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(vz, "vz", StorageReal, Storage, One, Core, 0,                            \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(fx, "fx", AccReal, Acc, One, Core, 0,                                    \
+      kColState | kColReverse | kColWriteBack)                                 \
+    X(fy, "fy", AccReal, Acc, One, Core, 0,                                    \
+      kColState | kColReverse | kColWriteBack)                                 \
+    X(fz, "fz", AccReal, Acc, One, Core, 0,                                    \
+      kColState | kColReverse | kColWriteBack)                                 \
+    X(mass, "mass", StorageReal, Storage, One, Core, 0,                        \
+      kColState | kColBorder)                                                  \
+    X(charge, "charge", StorageReal, Storage, One, Core, 0,                    \
+      kColState | kColComm | kColBorder | kColWriteBack)                       \
+    X(type, "type", int, Int, One, Core, 0, kColState | kColBorder)            \
+    X(tag, "tag", TagInt, Tag, One, Core, 0,                                   \
+      kColState | kColBorder | kColIdentityTail)                               \
+    X(image, "image", std::int8_t, Int8, Fixed3, Core, 0,                      \
+      kColState | kColBorder)                                                  \
+    X(num_bond, "num_bond", int, Int, One, Bond, 0, kColState | kColCount)     \
+    X(bond_atom, "bond_atom", TagInt, Tag, BondPA, Bond, 1,                    \
+      kColState | kColTopology)                                                \
+    X(bond_type, "bond_type", int, Int, BondPA, Bond, 1,                       \
+      kColState | kColTopology)                                                \
+    X(num_angle, "num_angle", int, Int, One, Angle, 0, kColState | kColCount)  \
+    X(angle_atom, "angle_atom", TagInt, Tag, AnglePA2, Angle, 2,               \
+      kColState | kColTopology)                                                \
+    X(angle_type, "angle_type", int, Int, AnglePA, Angle, 1,                   \
+      kColState | kColTopology)                                                \
+    X(num_dihedral, "num_dihedral", int, Int, One, Dihedral, 0,                \
+      kColState | kColCount)                                                   \
+    X(dihedral_atom, "dihedral_atom", TagInt, Tag, DihedralPA3, Dihedral, 3,   \
+      kColState | kColTopology)                                                \
+    X(dihedral_type, "dihedral_type", int, Int, DihedralPA, Dihedral, 1,       \
+      kColState | kColTopology)                                                \
+    X(nspecial, "nspecial", int, Int, Fixed3, Special, 0,                      \
+      kColState | kColCount)                                                   \
+    X(special, "special", TagInt, Tag, MaxSpecial, Special, 1,                 \
+      kColState | kColTopology)                                                \
+    X(num_improper, "num_improper", int, Int, One, Improper, 0,                \
+      kColState | kColCount)                                                   \
+    X(improper_atom, "improper_atom", TagInt, Tag, ImproperPA3, Improper, 3,   \
+      kColState | kColTopology)                                                \
+    X(improper_type, "improper_type", int, Int, ImproperPA, Improper, 1,       \
+      kColState | kColTopology)
 
-/// @brief The schema table, generated from the list above.
+enum class AtomFieldId : std::uint16_t {
+#define ATV_FIELD_ENUM(id, key, Elem, DTag, Stride, Group, epi, flags) id,
+    ATV_ATOM_FIELDS(ATV_FIELD_ENUM)
+#undef ATV_FIELD_ENUM
+        COUNT
+};
+
 inline constexpr FieldSpec kAtomFieldSpecs[] = {
-#define ATV_FIELD_SPEC_ROW(member, key, Elem, DTag, Stride, Group, epi, flags)                          \
-    FieldSpec{key, ColDType::DTag, ColStride::Stride, ColGroup::Group, epi, flags},
-    ATV_ATOM_FIELDS(ATV_FIELD_SPEC_ROW)
-#undef ATV_FIELD_SPEC_ROW
+#define ATV_FIELD_SPEC(id, key, Elem, DTag, Stride, Group, epi, flags)         \
+    FieldSpec{static_cast<std::uint16_t>(AtomFieldId::id),                     \
+              key,                                                             \
+              ColDType::DTag,                                                  \
+              ColStride::Stride,                                               \
+              ColGroup::Group,                                                 \
+              epi,                                                             \
+              flags},
+    ATV_ATOM_FIELDS(ATV_FIELD_SPEC)
+#undef ATV_FIELD_SPEC
 };
 
-/// @brief Number of per-atom schema columns.
 inline constexpr int kAtomFieldCount =
     static_cast<int>(sizeof(kAtomFieldSpecs) / sizeof(FieldSpec));
+inline constexpr std::uint16_t kDynamicFieldId = 0xffffu;
 
-/// @brief Compile-time typed column key: the unit of launch-boundary
-///        resolution (`frame.span(kAtom_x)`), aligned with the molrs
-///        two-level naming (`block` / `key`).
-///
-/// Keys are constants, not bare strings, so a dtype mismatch is a compile
-/// error rather than a runtime surprise.
-/// @tparam T Element type the column must carry.
+/// Compile-time typed column key.  Dynamic columns use kDynamicFieldId and
+/// are still dtype-checked by Block::span.
 template <typename T>
 struct ColKey {
-    const char* block; ///< molrs block name (per-atom columns: "atoms")
-    const char* key;   ///< molrs column name
+    const char* block;
+    const char* key;
+    std::uint16_t wire_id;
+    ColDType dtype;
 };
 
-/// @brief Typed keys for every schema column (kAtom_x, kAtom_vy, …).
-#define ATV_FIELD_KEY(member, key, Elem, DTag, Stride, Group, epi, flags)                               \
-    inline constexpr ColKey<Elem> kAtom_##member{"atoms", key};
+#define ATV_FIELD_KEY(id, key, Elem, DTag, Stride, Group, epi, flags)          \
+    inline constexpr ColKey<Elem> kAtom_##id{                                  \
+        "atoms", key, static_cast<std::uint16_t>(AtomFieldId::id),             \
+        ColDType::DTag};
 ATV_ATOM_FIELDS(ATV_FIELD_KEY)
 #undef ATV_FIELD_KEY
+
+/// A typed metadata key.  `serializable` is part of the semantic schema;
+/// backend-only entries (population/capacity/index caches) never cross FFI.
+template <typename T>
+struct MetaKey {
+    const char* key;
+    bool serializable;
+};
+
+using MetaBool3 = std::array<bool, 3>;
+using MetaI32x3 = std::array<std::int32_t, 3>;
+using MetaI64x3 = std::array<std::int64_t, 3>;
+using MetaU32x3 = std::array<std::uint32_t, 3>;
+using MetaU64x3 = std::array<std::uint64_t, 3>;
+using MetaF32x3 = std::array<float, 3>;
+using MetaF64x3 = std::array<double, 3>;
+using MetaF32x6 = std::array<float, 6>;
+using MetaF64x6 = std::array<double, 6>;
+using MetaF32x9 = std::array<float, 9>;
+using MetaF64x9 = std::array<double, 9>;
+using MetaReal6 = MetaF64x6;
+
+inline constexpr MetaKey<std::int64_t> kNLocal{"nlocal", false};
+inline constexpr MetaKey<std::int64_t> kNGhost{"nghost", false};
+inline constexpr MetaKey<std::int64_t> kNMax{"nmax", false};
+inline constexpr MetaKey<std::int64_t> kBondPerAtom{"bond_per_atom", false};
+inline constexpr MetaKey<std::int64_t> kAnglePerAtom{"angle_per_atom", false};
+inline constexpr MetaKey<std::int64_t> kDihedralPerAtom{"dihedral_per_atom",
+                                                        false};
+inline constexpr MetaKey<std::int64_t> kImproperPerAtom{"improper_per_atom",
+                                                        false};
+inline constexpr MetaKey<std::int64_t> kMaxSpecial{"maxspecial", false};
+inline constexpr MetaKey<std::int64_t> kHasBonded{"has_bonded", false};
+inline constexpr MetaKey<std::int64_t> kNextTag{"next_tag", false};
+
+inline constexpr MetaKey<std::int64_t> kStep{"step", true};
+inline constexpr MetaKey<double> kEnergy{"energy", true};
+inline constexpr MetaKey<double> kEnergyPair{"energy_pair", true};
+inline constexpr MetaKey<double> kEnergyBond{"energy_bond", true};
+inline constexpr MetaKey<double> kEnergyAngle{"energy_angle", true};
+inline constexpr MetaKey<double> kEnergyDihedral{"energy_dihedral", true};
+inline constexpr MetaKey<double> kEnergyImproper{"energy_improper", true};
+inline constexpr MetaKey<double> kKinetic{"kinetic", true};
+inline constexpr MetaKey<double> kConserved{"conserved", true};
+inline constexpr MetaKey<MetaF64x6> kStress{"stress", true};
+inline constexpr MetaKey<MetaF64x6> kStressKinetic{"stress_kinetic", true};
 
 } // namespace ATV

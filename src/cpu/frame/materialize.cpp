@@ -1,17 +1,18 @@
 /// @file src/cpu/frame/materialize.cpp
-/// @brief Implementation of cpu::materialize / cpu::write_back.
+/// @brief molrs.Frame <-> canonical CPU block Frame.
 
 #include "atomiverse/cpu/frame/materialize.h"
 
-#include <cstring>
-#include <type_traits>
-#include <limits>
-
 #include <cstdint>
+#include <initializer_list>
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "../io/molrs_meta.h"
 #include "atomiverse/core/mat3.h"
 
 namespace ATV {
@@ -19,290 +20,271 @@ namespace cpu {
 
 namespace {
 
-// ── Required-field readers (fail loud, naming the field) ────────────────
+bool contains(std::string_view value,
+              std::initializer_list<std::string_view> allowed) {
+    for (const std::string_view candidate : allowed)
+        if (value == candidate)
+            return true;
+    return false;
+}
 
-/// @brief Read a required f64 column or throw with the field name.
+std::string as_string(const rust::String& value) {
+    return {value.data(), value.size()};
+}
+
+void validate_columns(const molrs::FrameRef& src, const char* block,
+                      std::initializer_list<std::string_view> allowed) {
+    for (const rust::String& raw : molrs::frame_block_columns(src, block)) {
+        const std::string column = as_string(raw);
+        if (!contains(column, allowed))
+            throw std::runtime_error("cpu::materialize: unsupported column '"
+                                     + std::string(block) + "." + column + "'");
+    }
+}
+
+void validate_exchange_schema(const molrs::FrameRef& src) {
+    for (const rust::String& raw : molrs::frame_block_names(src)) {
+        const std::string block = as_string(raw);
+        if (!contains(block,
+                      {"atoms", "bonds", "angles", "dihedrals", "impropers"}))
+            throw std::runtime_error("cpu::materialize: unsupported block '"
+                                     + block + "'");
+    }
+
+    validate_columns(src, "atoms",
+                     {"x", "y", "z", "vx", "vy", "vz", "fx", "fy", "fz", "mass",
+                      "charge", "type", "tag", "ix", "iy", "iz"});
+    validate_columns(src, "bonds", {"atomi", "atomj", "type"});
+    validate_columns(src, "angles", {"atomi", "atomj", "atomk", "type"});
+    validate_columns(src, "dihedrals",
+                     {"atomi", "atomj", "atomk", "atoml", "type"});
+    validate_columns(src, "impropers",
+                     {"atomi", "atomj", "atomk", "atoml", "type"});
+}
+
+bool has_column(const molrs::FrameRef& src, const char* block,
+                const char* key) {
+    for (const rust::String& raw : molrs::frame_block_columns(src, block))
+        if (as_string(raw) == key)
+            return true;
+    return false;
+}
+
 ::rust::Vec<double> require_f64(const molrs::FrameRef& src, const char* block,
                                 const char* col) {
-    auto v = molrs::frame_column_f64(src, block, col);
-    if (v.empty()) {
-        throw std::runtime_error(std::string("cpu::materialize: required "
-                                             "field '")
-                                 + block + "." + col
-                                 + "' is missing or empty in the molrs.Frame");
-    }
-    return v;
+    auto values = molrs::frame_column_f64(src, block, col);
+    if (values.empty())
+        throw std::runtime_error("cpu::materialize: required field '"
+                                 + std::string(block) + "." + col
+                                 + "' is missing or empty");
+    return values;
 }
 
-/// @brief Read a required i32 column or throw with the field name.
 ::rust::Vec<std::int32_t> require_i32(const molrs::FrameRef& src,
                                       const char* block, const char* col) {
-    auto v = molrs::frame_column_i32(src, block, col);
-    if (v.empty()) {
-        throw std::runtime_error(std::string("cpu::materialize: required "
-                                             "field '")
-                                 + block + "." + col
-                                 + "' is missing or empty in the molrs.Frame");
-    }
-    return v;
+    auto values = molrs::frame_column_i32(src, block, col);
+    if (values.empty())
+        throw std::runtime_error("cpu::materialize: required field '"
+                                 + std::string(block) + "." + col
+                                 + "' is missing or empty");
+    return values;
 }
 
-// ── Optional-field copy helpers (silent zero on absent column) ──────────
-
-/// @brief Copy an optional f64 column into `dst[0..n)`; leave zeros if absent.
-template <class T>
-void copy_optional_f64(const molrs::FrameRef& src, const char* block,
-                       const char* col, xt::xtensor<T, 1>& dst, int n) {
-    auto v = molrs::frame_column_f64(src, block, col);
-    if (static_cast<int>(v.size()) != n) {
-        return; // absent or shape mismatch -> keep the zero-initialized array
-    }
-    for (int i = 0; i < n; ++i) {
-        dst[i] = v[i]; // implicit widen/narrow to the storage tier
-    }
+template <typename T>
+void copy_optional_f64(const molrs::FrameRef& src, const char* key,
+                       Span<T> destination, int n) {
+    if (!has_column(src, "atoms", key))
+        return;
+    auto values = molrs::frame_column_f64(src, "atoms", key);
+    if (static_cast<int>(values.size()) != n)
+        throw std::runtime_error("cpu::materialize: optional field 'atoms."
+                                 + std::string(key)
+                                 + "' has the wrong dtype or row count");
+    T* out = destination.data();
+    for (int i = 0; i < n; ++i)
+        out[i] = static_cast<T>(values[i]);
 }
 
-/// @brief Materialize an optional i32 topology column into `dst`.
-xt::xtensor<int, 1> read_topology_column(const molrs::FrameRef& src,
-                                         const char* block, const char* col,
-                                         int n) {
-    auto v = molrs::frame_column_i32(src, block, col);
-    xt::xtensor<int, 1> out = xt::zeros<int>({n});
-    if (static_cast<int>(v.size()) == n) {
-        for (int i = 0; i < n; ++i) {
-            out[i] = v[i];
-        }
-    }
+std::vector<int> topology_column(const molrs::FrameRef& src, const char* block,
+                                 const char* key, int n) {
+    auto values = molrs::frame_column_i32(src, block, key);
+    if (static_cast<int>(values.size()) != n)
+        throw std::runtime_error(
+            "cpu::materialize: topology field '" + std::string(block) + "."
+            + key + "' is missing or has the wrong dtype/row count");
+    std::vector<int> out(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        out[static_cast<std::size_t>(i)] = values[i];
     return out;
+}
+
+template <typename T>
+void write_f64(molrs::FrameRef& dst, const char* key, const T* source, int n) {
+    std::vector<double> values(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        values[static_cast<std::size_t>(i)] = static_cast<double>(source[i]);
+    molrs::frame_set_column_f64(
+        dst, "atoms", key,
+        ::rust::Slice<const double>(values.data(), values.size()));
 }
 
 } // namespace
 
 Frame materialize(const molrs::FrameRef& src) {
-    // ── Required: atom positions + type ────────────────────────────────
+    internal::require_molrs_frame_schema_v2();
+    validate_exchange_schema(src);
     auto x = require_f64(src, "atoms", "x");
     auto y = require_f64(src, "atoms", "y");
     auto z = require_f64(src, "atoms", "z");
     auto type = require_i32(src, "atoms", "type");
-
     const int n = static_cast<int>(x.size());
-    if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n) {
-        throw std::runtime_error("cpu::materialize: atoms.x / atoms.y / "
-                                 "atoms.z have inconsistent row counts");
-    }
-    if (static_cast<int>(type.size()) != n) {
-        throw std::runtime_error("cpu::materialize: atoms.type row count "
-                                 "does not match atoms.x");
-    }
+    if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n
+        || static_cast<int>(type.size()) != n)
+        throw std::runtime_error(
+            "cpu::materialize: required atom columns have inconsistent rows");
 
     Frame frame(n);
+    StorageReal* px = frame.span(kAtom_x).data();
+    StorageReal* py = frame.span(kAtom_y).data();
+    StorageReal* pz = frame.span(kAtom_z).data();
+    int* ptype = frame.span(kAtom_type).data();
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = x[i];
-        frame.atoms.y[i] = y[i];
-        frame.atoms.z[i] = z[i];
-        frame.atoms.type[i] = type[i];
+        px[i] = static_cast<StorageReal>(x[i]);
+        py[i] = static_cast<StorageReal>(y[i]);
+        pz[i] = static_cast<StorageReal>(z[i]);
+        ptype[i] = type[i];
     }
 
-    // ── Optional per-atom fields (silent zero when absent) ─────────────
-    //
-    // Registry-driven (frame-block-01): every plain float column of the
-    // schema rides the generic key copy — the required x/y/z trio (read
-    // above, with the row-count check) and the non-column specials (tag
-    // narrowing, the 3-column image split, topology) stay structural.
-    frame.atoms.for_each_column([&](const FieldSpec& spec, auto& arr) {
-        using arr_t = std::decay_t<decltype(arr)>;
-        if constexpr (std::is_same_v<typename arr_t::value_type, double>) {
-            if (spec.stride != ColStride::One)
-                return;
-            if (std::strcmp(spec.key, "x") == 0
-                || std::strcmp(spec.key, "y") == 0
-                || std::strcmp(spec.key, "z") == 0)
-                return; // the required trio, already materialized
-            copy_optional_f64(src, "atoms", spec.key, arr, n);
-        }
-    });
+    copy_optional_f64(src, "vx", frame.span(kAtom_vx), n);
+    copy_optional_f64(src, "vy", frame.span(kAtom_vy), n);
+    copy_optional_f64(src, "vz", frame.span(kAtom_vz), n);
+    copy_optional_f64(src, "fx", frame.span(kAtom_fx), n);
+    copy_optional_f64(src, "fy", frame.span(kAtom_fy), n);
+    copy_optional_f64(src, "fz", frame.span(kAtom_fz), n);
+    copy_optional_f64(src, "mass", frame.span(kAtom_mass), n);
+    copy_optional_f64(src, "charge", frame.span(kAtom_charge), n);
 
-    // Optional global tag (i32 in molrs -> i64 in cpu::Frame). When absent
-    // the Frame ctor's identity default (tag(i) == i) is kept.
-    {
-        auto tag = molrs::frame_column_i32(src, "atoms", "tag");
-        if (static_cast<int>(tag.size()) == n) {
-            for (int i = 0; i < n; ++i) {
-                frame.atoms.tag[i] = static_cast<TagInt>(tag[i]);
-            }
-        }
+    if (has_column(src, "atoms", "tag")) {
+        auto tags = molrs::frame_column_i32(src, "atoms", "tag");
+        if (static_cast<int>(tags.size()) != n)
+            throw std::runtime_error(
+                "cpu::materialize: optional field 'atoms.tag' has the wrong "
+                "dtype or row count");
+        TagInt* destination = frame.span(kAtom_tag).data();
+        for (int i = 0; i < n; ++i)
+            destination[i] = static_cast<TagInt>(tags[i]);
     }
 
-    // Optional per-axis PBC image counts (i32 in molrs -> i8 [n,3] in
-    // cpu::Frame). Absent columns leave the zero-initialized image array.
-    {
-        const char* axis_cols[3] = {"ix", "iy", "iz"};
-        for (int d = 0; d < 3; ++d) {
-            auto img = molrs::frame_column_i32(src, "atoms", axis_cols[d]);
-            if (static_cast<int>(img.size()) == n) {
-                for (int i = 0; i < n; ++i) {
-                    frame.atoms.image(i, d) = static_cast<std::int8_t>(img[i]);
-                }
-            }
-        }
+    auto image = frame.span(kAtom_image);
+    const char* axes[3] = {"ix", "iy", "iz"};
+    for (int d = 0; d < 3; ++d) {
+        if (!has_column(src, "atoms", axes[d]))
+            continue;
+        auto values = molrs::frame_column_i32(src, "atoms", axes[d]);
+        if (static_cast<int>(values.size()) != n)
+            throw std::runtime_error("cpu::materialize: optional field 'atoms."
+                                     + std::string(axes[d])
+                                     + "' has the wrong dtype or row count");
+        for (int i = 0; i < n; ++i)
+            image(i, d) = static_cast<std::int8_t>(values[i]);
     }
 
-    // ── Optional topology blocks → scatter into per-atom layout ────────
-    //
-    // molrs stores topology as flat global arrays (`bonds.atomi[k]` etc.).
-    // `cpu::Atom` uses the LAMMPS per-atom layout. Scatter via the
-    // `add_*` helpers, which look up the owner atom's local row via the
-    // tag→local `map`. Atoms-block was filled above with default tags
-    // (tag[i] == i) or molrs-supplied tags; populate the map before
-    // scattering.
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    {
-        const int nb = static_cast<int>(molrs::frame_block_nrows(src, "bonds"));
-        if (nb > 0) {
-            auto atomi = read_topology_column(src, "bonds", "atomi", nb);
-            auto atomj = read_topology_column(src, "bonds", "atomj", nb);
-            auto btype = read_topology_column(src, "bonds", "type", nb);
-            for (int k = 0; k < nb; ++k) {
-                frame.atoms.add_bond(static_cast<std::int64_t>(atomi[k]),
-                                     static_cast<std::int64_t>(atomj[k]),
-                                     btype[k]);
-            }
-        }
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n);
+    const int nb = static_cast<int>(molrs::frame_block_nrows(src, "bonds"));
+    if (nb > 0) {
+        auto atomi = topology_column(src, "bonds", "atomi", nb);
+        auto atomj = topology_column(src, "bonds", "atomj", nb);
+        auto kind = topology_column(src, "bonds", "type", nb);
+        for (int k = 0; k < nb; ++k)
+            frame.add_bond(atomi[k], atomj[k], kind[k]);
     }
-    {
-        const int na =
-            static_cast<int>(molrs::frame_block_nrows(src, "angles"));
-        if (na > 0) {
-            auto atomi = read_topology_column(src, "angles", "atomi", na);
-            auto atomj = read_topology_column(src, "angles", "atomj", na);
-            auto atomk = read_topology_column(src, "angles", "atomk", na);
-            auto atype = read_topology_column(src, "angles", "type", na);
-            for (int k = 0; k < na; ++k) {
-                frame.atoms.add_angle(static_cast<std::int64_t>(atomi[k]),
-                                      static_cast<std::int64_t>(atomj[k]),
-                                      static_cast<std::int64_t>(atomk[k]),
-                                      atype[k]);
-            }
-        }
+    const int na = static_cast<int>(molrs::frame_block_nrows(src, "angles"));
+    if (na > 0) {
+        auto atomi = topology_column(src, "angles", "atomi", na);
+        auto atomj = topology_column(src, "angles", "atomj", na);
+        auto atomk = topology_column(src, "angles", "atomk", na);
+        auto kind = topology_column(src, "angles", "type", na);
+        for (int k = 0; k < na; ++k)
+            frame.add_angle(atomi[k], atomj[k], atomk[k], kind[k]);
     }
-    {
-        const int nd =
-            static_cast<int>(molrs::frame_block_nrows(src, "dihedrals"));
-        if (nd > 0) {
-            auto atomi = read_topology_column(src, "dihedrals", "atomi", nd);
-            auto atomj = read_topology_column(src, "dihedrals", "atomj", nd);
-            auto atomk = read_topology_column(src, "dihedrals", "atomk", nd);
-            auto atoml = read_topology_column(src, "dihedrals", "atoml", nd);
-            auto dtype = read_topology_column(src, "dihedrals", "type", nd);
-            for (int k = 0; k < nd; ++k) {
-                frame.atoms.add_dihedral(static_cast<std::int64_t>(atomi[k]),
-                                         static_cast<std::int64_t>(atomj[k]),
-                                         static_cast<std::int64_t>(atomk[k]),
-                                         static_cast<std::int64_t>(atoml[k]),
-                                         dtype[k]);
-            }
-        }
+    const int nd = static_cast<int>(molrs::frame_block_nrows(src, "dihedrals"));
+    if (nd > 0) {
+        auto atomi = topology_column(src, "dihedrals", "atomi", nd);
+        auto atomj = topology_column(src, "dihedrals", "atomj", nd);
+        auto atomk = topology_column(src, "dihedrals", "atomk", nd);
+        auto atoml = topology_column(src, "dihedrals", "atoml", nd);
+        auto kind = topology_column(src, "dihedrals", "type", nd);
+        for (int k = 0; k < nd; ++k)
+            frame.add_dihedral(atomi[k], atomj[k], atomk[k], atoml[k], kind[k]);
     }
-    // Build 1-2 / 1-3 / 1-4 special-neighbor list once topology is in.
-    frame.atoms.build_special_list();
+    const int ni = static_cast<int>(molrs::frame_block_nrows(src, "impropers"));
+    if (ni > 0) {
+        auto atomi = topology_column(src, "impropers", "atomi", ni);
+        auto atomj = topology_column(src, "impropers", "atomj", ni);
+        auto atomk = topology_column(src, "impropers", "atomk", ni);
+        auto atoml = topology_column(src, "impropers", "atoml", ni);
+        auto kind = topology_column(src, "impropers", "type", ni);
+        for (int k = 0; k < ni; ++k)
+            frame.add_improper(atomi[k], atomj[k], atomk[k], atoml[k], kind[k]);
+    }
+    frame.build_special_list();
 
-    // ── Optional simulation box (9 row-major H entries) ────────────────
-    {
-        auto h = molrs::frame_simbox(src);
-        if (h.size() == 9u) {
-            Mat3 cell;
-            for (int i = 0; i < 3; ++i) {
-                for (int j = 0; j < 3; ++j) {
-                    cell(i, j) = static_cast<Real>(h[i * 3 + j]);
-                }
-            }
-            frame.box.set_cell(cell);
-        }
+    auto cell_values = molrs::frame_simbox(src);
+    if (cell_values.size() == 9u) {
+        Mat3 cell;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                cell(i, j) = static_cast<AccReal>(cell_values[i * 3 + j]);
+        frame.simbox.set_cell(cell);
     }
-
+    internal::decode_molrs_meta(molrs::frame_meta_entries(src), frame.meta);
     return frame;
 }
 
 void write_back(const Frame& src, molrs::FrameRef& dst) {
-    const int n = src.atoms.size();
-    auto slice = [n](const xt::xtensor<double, 1>& a) {
-        return ::rust::Slice<const double>(a.data(),
-                                           static_cast<std::size_t>(n));
-    };
+    internal::require_molrs_frame_schema_v2();
+    const int n = src.nlocal();
+    write_f64(dst, "x", src.span(kAtom_x).data(), n);
+    write_f64(dst, "y", src.span(kAtom_y).data(), n);
+    write_f64(dst, "z", src.span(kAtom_z).data(), n);
+    write_f64(dst, "vx", src.span(kAtom_vx).data(), n);
+    write_f64(dst, "vy", src.span(kAtom_vy).data(), n);
+    write_f64(dst, "vz", src.span(kAtom_vz).data(), n);
+    write_f64(dst, "fx", src.span(kAtom_fx).data(), n);
+    write_f64(dst, "fy", src.span(kAtom_fy).data(), n);
+    write_f64(dst, "fz", src.span(kAtom_fz).data(), n);
+    write_f64(dst, "charge", src.span(kAtom_charge).data(), n);
 
-    // ── Per-atom results ───────────────────────────────────────────────
-    //
-    // Registry-driven (frame-block-01): the write-back contract set is the
-    // schema's kColWriteBack columns (x/v/f + charge; mass/type/topology are
-    // per-run static inputs and deliberately absent). tag and image keep
-    // their structural sections below (i32 narrowing / 3-column split).
-    src.atoms.for_each_column([&](const FieldSpec& spec, auto& arr) {
-        using arr_t = std::decay_t<decltype(arr)>;
-        if constexpr (std::is_same_v<typename arr_t::value_type, double>) {
-            if (spec.flags & kColWriteBack)
-                molrs::frame_set_column_f64(dst, "atoms", spec.key,
-                                            slice(arr));
-        }
-    });
-
-    // ── Per-atom identity + PBC crossing counts (contract fields) ──────
-    //
-    // image evolves during MD (unwrapped-coordinate reconstruction needs
-    // it) and tag is the only stable identity anchor once multi-rank
-    // migration reorders local rows — both must round-trip. int8 image
-    // widens to the i32 ix/iy/iz columns symmetric with materialize();
-    // TagInt narrows to i32 with an overflow check (no silent truncation).
-    {
-        std::vector<std::int32_t> ix(static_cast<std::size_t>(n));
-        std::vector<std::int32_t> iy(static_cast<std::size_t>(n));
-        std::vector<std::int32_t> iz(static_cast<std::size_t>(n));
-        std::vector<std::int32_t> tag(static_cast<std::size_t>(n));
-        for (int i = 0; i < n; ++i) {
-            ix[static_cast<std::size_t>(i)] = src.atoms.image(i, 0);
-            iy[static_cast<std::size_t>(i)] = src.atoms.image(i, 1);
-            iz[static_cast<std::size_t>(i)] = src.atoms.image(i, 2);
-            const auto t = src.atoms.tag[i];
-            if (t > std::numeric_limits<std::int32_t>::max()
-                || t < std::numeric_limits<std::int32_t>::min()) {
-                throw std::runtime_error(
-                    "write_back: atom tag " + std::to_string(t)
-                    + " does not fit the molrs i32 tag column "
-                      "(no silent truncation)");
-            }
-            tag[static_cast<std::size_t>(i)] = static_cast<std::int32_t>(t);
-        }
-        auto islice = [n](const std::vector<std::int32_t>& v) {
-            return ::rust::Slice<const std::int32_t>(
-                v.data(), static_cast<std::size_t>(n));
-        };
-        molrs::frame_set_column_i32(dst, "atoms", "ix", islice(ix));
-        molrs::frame_set_column_i32(dst, "atoms", "iy", islice(iy));
-        molrs::frame_set_column_i32(dst, "atoms", "iz", islice(iz));
-        molrs::frame_set_column_i32(dst, "atoms", "tag", islice(tag));
+    const auto image = src.span(kAtom_image);
+    const TagInt* tags = src.span(kAtom_tag).data();
+    std::vector<std::int32_t> ix(static_cast<std::size_t>(n));
+    std::vector<std::int32_t> iy(static_cast<std::size_t>(n));
+    std::vector<std::int32_t> iz(static_cast<std::size_t>(n));
+    std::vector<std::int32_t> tag_values(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        ix[i] = image(i, 0);
+        iy[i] = image(i, 1);
+        iz[i] = image(i, 2);
+        if (tags[i] > std::numeric_limits<std::int32_t>::max()
+            || tags[i] < std::numeric_limits<std::int32_t>::min())
+            throw std::runtime_error("write_back: atom tag does not fit i32");
+        tag_values[i] = static_cast<std::int32_t>(tags[i]);
     }
+    auto set_i32 = [&](const char* key,
+                       const std::vector<std::int32_t>& values) {
+        molrs::frame_set_column_i32(
+            dst, "atoms", key,
+            ::rust::Slice<const std::int32_t>(values.data(), values.size()));
+    };
+    set_i32("ix", ix);
+    set_i32("iy", iy);
+    set_i32("iz", iz);
+    set_i32("tag", tag_values);
 
-    // ── System scalars -> dedicated molrs blocks ───────────────────────
-    //
-    // A molrs block requires every column to share the same row count, so
-    // the three scalar quantities go into a 1-row "scalars" block while the
-    // two 6-component Voigt tensors each get their own 6-row block. Every
-    // tensor lives under a single "value" column.
-    const double energy[1] = {src.scalars.energy};
-    const double kinetic[1] = {src.scalars.kinetic};
-    const double conserved[1] = {src.scalars.conserved};
-    molrs::frame_set_column_f64(dst, "scalars", "energy",
-                                ::rust::Slice<const double>(energy, 1));
-    molrs::frame_set_column_f64(dst, "scalars", "kinetic",
-                                ::rust::Slice<const double>(kinetic, 1));
-    molrs::frame_set_column_f64(dst, "scalars", "conserved",
-                                ::rust::Slice<const double>(conserved, 1));
-    molrs::frame_set_column_f64(
-        dst, "stress", "value",
-        ::rust::Slice<const double>(src.scalars.stress, 6));
-    molrs::frame_set_column_f64(
-        dst, "stress_kinetic", "value",
-        ::rust::Slice<const double>(src.scalars.stress_kinetic, 6));
+    auto entries = internal::encode_molrs_meta(src.meta);
+    for (auto& entry : entries)
+        molrs::frame_set_meta_entry(dst, std::move(entry));
 }
 
 } // namespace cpu

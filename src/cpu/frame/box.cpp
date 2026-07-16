@@ -47,6 +47,24 @@ void invert_3x3(const Mat3& m, Mat3& inv) noexcept {
 
 } // namespace
 
+Box& Box::operator=(const Box& other) noexcept {
+    if (this == &other)
+        return *this;
+    cell_ = other.cell_;
+    recompute_cache_();
+    bump_revision_();
+    return *this;
+}
+
+Box& Box::operator=(Box&& other) noexcept {
+    if (this == &other)
+        return *this;
+    cell_ = other.cell_;
+    recompute_cache_();
+    bump_revision_();
+    return *this;
+}
+
 void Box::recompute_cache_() noexcept {
     ortho_ = is_diagonal(cell_);
     if (ortho_) {
@@ -75,6 +93,7 @@ void Box::recompute_cache_() noexcept {
 void Box::set_cell(const Mat3& cell) noexcept {
     cell_ = cell;
     recompute_cache_();
+    bump_revision_();
 }
 
 void Box::scale_diagonal(double sx, double sy, double sz) noexcept {
@@ -82,6 +101,7 @@ void Box::scale_diagonal(double sx, double sy, double sz) noexcept {
     cell_(1, 1) *= sy;
     cell_(2, 2) *= sz;
     recompute_cache_();
+    bump_revision_();
 }
 
 void Box::scale_isotropic(double s) noexcept {
@@ -89,11 +109,13 @@ void Box::scale_isotropic(double s) noexcept {
     cell_(1, 1) *= s;
     cell_(2, 2) *= s;
     recompute_cache_();
+    bump_revision_();
 }
 
 void Box::scale_axis(int d, double s) noexcept {
     cell_(d, d) *= s;
     recompute_cache_();
+    bump_revision_();
 }
 
 } // namespace cpu

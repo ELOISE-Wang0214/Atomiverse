@@ -2,10 +2,8 @@
 /// @brief cpu::Box -- canonical simulation cell + min-image + wrap.
 ///
 /// Single source of truth for cell data and periodic-boundary helpers on
-/// the CPU backend. Lives at the backend root (per CLAUDE.md "Files at
-/// the backend root are shared infrastructure used by multiple domains")
-/// because Box is consumed by `bonded/`, `md/`, `observer/`, `scf/`,
-/// `recorder/`, and `mpi/`.
+/// the CPU backend. Lives in the `frame/` pillar because it is part of the
+/// Frame's physical `simbox` region and is consumed across method domains.
 ///
 /// **Hot-path discipline.** Box stores fundamental cell data
 /// (`Mat3 cell_`) plus a per-step-immutable cache (`Mat3 inv_cell_`,
@@ -32,6 +30,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 
 #include "atomiverse/core/mat3.h"
 
@@ -52,6 +51,11 @@ class Box {
     /// @brief Construct from a row-major 3×3 cell matrix.
     /// @param cell Cell matrix [Angstrom]; rows are lattice vectors a, b, c.
     explicit Box(const Mat3& cell) noexcept { set_cell(cell); }
+
+    Box(const Box&) noexcept = default;
+    Box(Box&&) noexcept = default;
+    Box& operator=(const Box& other) noexcept;
+    Box& operator=(Box&& other) noexcept;
 
     /// @brief Construct an orthorhombic box.
     /// @param a Edge length along x [Angstrom].
@@ -217,7 +221,7 @@ class Box {
     /// @param s Scale.
     void scale_axis(int d, double s) noexcept;
 
-    // ── Raw accessors (compat shims) ───────────────────────────────────
+    // ── Explicit cell accessors ────────────────────────────────────────
 
     /// @brief Read-only access to the cell matrix.
     /// @return Reference to the underlying `Mat3` cell [Angstrom].
@@ -231,24 +235,13 @@ class Box {
         return inv_cell_;
     }
 
-    /// @brief Read-only element shim — same calling convention as legacy
-    /// `Mat3 box`. Lets pre-existing `frame.box(0, 0)` reads continue to
-    /// compile during the migration. Removed by the closeout task once
-    /// every callsite is migrated to a named accessor.
-    /// @param i Row index in `[0, 2]`.
-    /// @param j Column index in `[0, 2]`.
-    /// @return `cell(i, j)` [Angstrom].
-    [[gnu::always_inline]] inline double operator()(int i,
-                                                    int j) const noexcept {
-        return cell_(i, j);
-    }
-
-    /// @brief Assignment from a raw `Mat3`. Migration shim.
-    /// @param cell New cell matrix [Angstrom].
-    /// @return Reference to this Box.
-    Box& operator=(const Mat3& cell) noexcept {
-        set_cell(cell);
-        return *this;
+    /// @brief Monotonic mutation revision for cell-dependent component caches.
+    ///
+    /// Every explicit mutation and assignment advances the destination Box's
+    /// revision.  Cell-dependent components compare this scalar rather than
+    /// duplicating nine-entry cell snapshots and equality policies.
+    [[gnu::always_inline]] inline std::uint64_t revision() const noexcept {
+        return revision_;
     }
 
   private:
@@ -257,8 +250,10 @@ class Box {
     double half_lx_{0.0}, half_ly_{0.0}, half_lz_{0.0};
     double inv_lx_{0.0}, inv_ly_{0.0}, inv_lz_{0.0};
     bool ortho_{true};
+    std::uint64_t revision_{1};
 
     void recompute_cache_() noexcept;
+    void bump_revision_() noexcept { ++revision_; }
 };
 
 } // namespace cpu

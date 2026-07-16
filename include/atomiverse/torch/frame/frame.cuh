@@ -1,14 +1,14 @@
 /// @file torch/frame/frame.cuh
 /// @brief torch::Frame -- differentiable system state backed by at::Tensor.
 ///
-/// Parallel to cpu::Frame (xtensor) and cuda::Frame (raw device pointers).
-/// Tensors may have requires_grad=true for autograd-enabled workflows.
+/// One backend, one Frame type: this is `torch::Frame`, not a shared layout
+/// with CPU or CUDA. Tensors may have requires_grad=true for autograd.
 ///
 /// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
-/// matching the molcrafts naming convention (molpy Block model). The field
-/// set mirrors `cpu::Frame` and `cuda::Frame` exactly -- the three execution
-/// frames differ only in device representation (xtensor / raw device
-/// pointers / at::Tensor), never in which physical quantities they hold.
+/// matching the molcrafts naming convention. The SEMANTIC field set
+/// mirrors `cpu::Frame` and `cuda::Frame`; the physical representation is
+/// independently `at::Tensor` (CPU is blocks+meta+simbox; CUDA is device
+/// pointers). Representation work toward a blocks map on torch is deferred.
 /// Per the CLAUDE.md Frame purity rule the frame carries only fundamental
 /// physical quantities: method-specific scratch (the neighbor pair list) is
 /// owned by the component that computes it -- `torch::NeighborList` -- not by
@@ -81,13 +81,13 @@ struct Frame {
         /// @brief Per-atom partial charge [e] (elementary charge).
         ///
         /// Treated as a fundamental physical property (analogue of LAMMPS
-        /// atom->q). Mirrors `cpu::Frame::Atoms::charge`. kRealDtype.
+        /// atom->q). Same semantic field as CPU `kAtom_charge`. kRealDtype.
         Tensor charge;
 
         Tensor type; ///< Atom type indices (kIntDtype, no grad).
 
         /// @brief Global atom identity [n_atoms], persistent across MPI
-        /// migration and restart. Mirrors `cpu::Frame::Atoms::tag`.
+        /// migration and restart. Same semantic field as CPU `kAtom_tag`.
         /// kLongDtype (std::int64_t), no grad.
         Tensor tag;
 
@@ -95,7 +95,7 @@ struct Frame {
         ///
         /// `image[i][d]` increments by +-1 when atom i crosses the box face
         /// along dimension d. Used to reconstruct unwrapped trajectories.
-        /// Mirrors `cpu::Frame::Atoms::image`. kImageDtype (std::int8_t),
+        /// Same semantic field as CPU `kAtom_image`. kImageDtype (std::int8_t),
         /// no grad.
         Tensor image;
     } atoms;
@@ -135,12 +135,12 @@ struct Frame {
     // and `cuda::Frame` carries a device-resident `SystemScalars*`. See that
     // header for the field-by-field documentation and units.
 
-    Tensor energy;          ///< Potential energy [1], [eV].
-    Tensor kinetic;         ///< Kinetic energy [1], [eV].
-    Tensor conserved;       ///< Integrator conserved quantity [1], [eV].
-    Tensor stress;          ///< Virial stress [6], Voigt [eV].
-    Tensor stress_kinetic;  ///< Kinetic stress [6], Voigt [eV].
-    Tensor box;             ///< Simulation cell [9], row-major [Angstrom].
+    Tensor energy;         ///< Potential energy [1], [eV].
+    Tensor kinetic;        ///< Kinetic energy [1], [eV].
+    Tensor conserved;      ///< Integrator conserved quantity [1], [eV].
+    Tensor stress;         ///< Virial stress [6], Voigt [eV].
+    Tensor stress_kinetic; ///< Kinetic stress [6], Voigt [eV].
+    Tensor box;            ///< Simulation cell [9], row-major [Angstrom].
 
     // ---- Metadata (host-cached) ----
 

@@ -2,16 +2,15 @@
 /// @brief cpu::materialize / cpu::write_back -- molrs.Frame <-> cpu::Frame.
 ///
 /// `molrs.Frame` is the canonical exchange layer; `cpu::Frame` is the CPU
-/// backend's execution frame. The materializer is shared infrastructure
-/// (sibling of `cpu/transfer.h` at the backend root, per the CLAUDE.md
-/// backend-layering rule) and is meant to run once per `run()` -- never
-/// inside a step loop.
+/// backend's execution frame. The materializer belongs to the CPU `frame/`
+/// pillar and runs once per `run()` -- never inside a step loop.
 ///
-/// `materialize()` reads a fixed field set by known block/column name.
-/// Required fields (positions, type) fail loud with a named exception;
-/// optional fields (velocities, forces, charge, image, tag, topology)
-/// default to zero / empty. `write_back()` pushes positions, velocities,
-/// forces, charge, and the system scalars back into the same molrs.Frame.
+/// `materialize()` accepts only the schema-v2 atoms/bonds/angles/dihedrals
+/// blocks and their declared columns. Unknown blocks/columns, wrong dtypes,
+/// and inconsistent row counts fail immediately. Required fields (positions,
+/// type) fail with a named exception; optional state defaults to zero/empty.
+/// `write_back()` pushes mutable atom state and every serializable exact-dtype
+/// metadata entry back into the same molrs.Frame.
 ///
 /// @see cpu::Frame for the CPU execution frame
 /// @see molrs.hpp for the molrs CXX FFI bridge
@@ -54,19 +53,14 @@ Frame materialize(const molrs::FrameRef& src);
 /// | mass [amu]             | optional                | NOT written (per-run immutable input) |
 /// | bonds/angles/dihedrals | optional → per-atom     | NOT written (per-run static) |
 /// | box                    | optional                | NOT written (per-run static by contract) |
-/// | scalars/stress/stress_kinetic | NOT read (write-only channel) | written |
+/// | typed metadata          | read (all 19 molrs dtypes) | written (all serializable entries) |
 ///
 /// image evolves during MD (unwrapped-coordinate reconstruction) and tag
 /// is the identity anchor after multi-rank migration — both round-trip.
-/// Per-frame metadata (step, energy annotations) stays outside this
-/// contract: it travels through `write_frame_xyz_meta`
-/// (cpu/io/frame_writer.h), not through write_back.
-///
-/// The system scalars go into dedicated blocks: `energy`, `kinetic`,
-/// `conserved` as one-row columns of the `scalars` block, and the two
-/// 6-component Voigt tensors as a `value` column of their own `stress` /
-/// `stress_kinetic` blocks (a molrs block requires uniform column row
-/// counts).
+/// Metadata is part of the Frame boundary itself.  Energy, kinetic energy,
+/// conserved energy, step, and the two six-component stress tensors retain
+/// their exact typed values in `Frame::meta`; there is no string side channel
+/// and no synthetic one-row scalar/stress block.
 ///
 /// @param src cpu::Frame whose state is exported.
 /// @param dst molrs.Frame to update in place (must be the same frame that

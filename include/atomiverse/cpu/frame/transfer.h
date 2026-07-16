@@ -20,7 +20,7 @@ namespace cpu {
 /// PairList starts empty (nullptr) -- allocated later by NeighborList::build().
 ///
 /// @param src CPU Frame to transfer.
-/// @param capacity  If > src.atoms.size(), per-atom arrays are allocated to
+/// @param capacity  If greater than `src.nlocal()`, per-atom arrays are allocated to
 ///        `capacity` slots (only size() values copied), leaving headroom for
 ///        multi-GPU halo ghosts appended in [n_local, capacity). 0 ⇒ exact.
 /// @return Newly allocated cuda::Frame with all data on device.

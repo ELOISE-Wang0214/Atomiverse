@@ -15,7 +15,8 @@ namespace ATV {
 /// All values are device-resident on the owning Frame's device. Units are
 /// the MD-internal set (eV, Angstrom, fs, amu, K) -- see `core/units.h`.
 struct SystemScalars {
-    double energy = 0;  ///< Potential energy [eV] — sum of all evaluator contributions.
+    double energy =
+        0; ///< Potential energy [eV] — sum of all evaluator contributions.
 
     /// @brief Pair (non-bonded) potential energy [eV].
     ///
@@ -42,10 +43,16 @@ struct SystemScalars {
     /// evaluator) alongside `energy`. Mirrors LAMMPS `thermo_style edihed`.
     ///
     /// Invariant: `energy ≈ energy_pair + energy_bond + energy_angle +
-    /// energy_dihedral` (plus any future per-term fields) to round-off
-    /// precision, when every contributing evaluator writes both `energy`
-    /// and its term-specific field on the same `+=` line.
+    /// energy_dihedral + energy_improper` (plus any future per-term fields)
+    /// to round-off precision, when every contributing evaluator writes both
+    /// `energy` and its term-specific field on the same `+=` line.
     double energy_dihedral = 0;
+
+    /// @brief Improper (out-of-plane / harmonic) potential energy [eV].
+    ///
+    /// Accumulated by `cpu::ImproperHarmonic` alongside `energy`. Mirrors
+    /// LAMMPS `thermo_style eimp`.
+    double energy_improper = 0;
 
     double kinetic = 0; ///< Kinetic energy [eV].
 

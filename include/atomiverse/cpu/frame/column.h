@@ -1,122 +1,227 @@
 /// @file cpu/frame/column.h
-/// @brief CPU column machinery for the frame-block registry: typed spans
-///        (launch-boundary resolution), the type-erased ColumnRef the
-///        structural encoders iterate, and registry-owned extension columns.
+/// @brief Owning CPU Column plus generation-aware typed resolved spans.
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <type_traits>
 #include <variant>
 
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/core/precision.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief A resolved column: raw pointer + column count. The return type of
-///        `Frame::span` — resolve ONCE at the launch boundary, loop over the
-///        raw pointer (the 13.7× rule: never look a key up inside a loop).
-/// @tparam T Element type.
-template <typename T>
-struct Span {
-    T* data = nullptr; ///< Flat storage, row-major `[nmax, cols]`.
-    int cols = 1;      ///< Columns per row (1 for plain 1D columns).
+inline constexpr std::size_t kResolveBudgetPerLaunch =
+    static_cast<std::size_t>(kAtomFieldCount) * 2;
 
-    /// @brief 1D convenience: decay to the raw pointer.
-    operator T*() const noexcept { return data; }
-
-    /// @brief 2D element access: row `i`, column `c`.
-    T& operator()(int i, int c) const { return data[i * cols + c]; }
+struct ResolutionWindow {
+    std::size_t count = 0;
+    std::size_t budget = kResolveBudgetPerLaunch;
+    bool active = false;
 };
 
-/// @brief Type-erased view of one registry column — what the structural
-///        encoders (copy_row, pack/unpack_exchange) iterate. Carries the
-///        schema facts it needs by value (no pointer into the schema table,
-///        so registry-owned extras views are lifetime-safe). Values cross
-///        through `double`, matching the exchange payload's cast-to-double
-///        wire convention.
-struct ColumnRef {
-    const char* key = nullptr; ///< Column name (diagnostics).
-    ColDType dtype = ColDType::Storage; ///< Element tier.
-    ColGroup group = ColGroup::Core;    ///< Exchange payload section.
-    int epi = 0;                        ///< Entries per group item.
-    unsigned flags = kColNone;          ///< kCol* bits.
-    void* data = nullptr;               ///< Flat storage `[nmax, cols]`.
-    int cols = 0;                       ///< Runtime column count.
-
-    /// @brief Read element (row, c) widened to double.
-    double get(int row, int c) const {
-        const std::size_t k =
-            static_cast<std::size_t>(row) * cols + static_cast<std::size_t>(c);
-        switch (dtype) {
-        case ColDType::Storage: return static_cast<double>(static_cast<StorageReal*>(data)[k]);
-        case ColDType::Acc:     return static_cast<double>(static_cast<AccReal*>(data)[k]);
-        case ColDType::Tag:     return static_cast<double>(static_cast<TagInt*>(data)[k]);
-        case ColDType::Int:     return static_cast<double>(static_cast<int*>(data)[k]);
-        case ColDType::Int8:    return static_cast<double>(static_cast<std::int8_t*>(data)[k]);
-        }
-        return 0.0; // unreachable
+/// Debug/performance instrumentation shared by MetaMap and all Blocks in one
+/// Frame. It is bookkeeping owned by the typed-meta pillar, never a fourth
+/// physical Frame field.
+class ResolutionState {
+  public:
+    void note() noexcept {
+        if (active_.load(std::memory_order_relaxed))
+            count_.fetch_add(1, std::memory_order_relaxed);
     }
 
-    /// @brief Write element (row, c) narrowed from double.
-    void set(int row, int c, double v) const {
-        const std::size_t k =
-            static_cast<std::size_t>(row) * cols + static_cast<std::size_t>(c);
-        switch (dtype) {
-        case ColDType::Storage: static_cast<StorageReal*>(data)[k] = static_cast<StorageReal>(v); break;
-        case ColDType::Acc:     static_cast<AccReal*>(data)[k] = static_cast<AccReal>(v); break;
-        case ColDType::Tag:     static_cast<TagInt*>(data)[k] = static_cast<TagInt>(v); break;
-        case ColDType::Int:     static_cast<int*>(data)[k] = static_cast<int>(v); break;
-        case ColDType::Int8:    static_cast<std::int8_t*>(data)[k] = static_cast<std::int8_t>(v); break;
-        }
+    void begin(std::size_t budget) noexcept {
+        count_.store(0, std::memory_order_relaxed);
+        budget_.store(budget, std::memory_order_relaxed);
+        active_.store(true, std::memory_order_relaxed);
     }
 
-    /// @brief Copy element (row `src`, c) to (row `dst`, c) without a
-    ///        double round-trip (bitwise row moves).
-    void copy_element(int dst, int src, int c) const {
-        const std::size_t kd =
-            static_cast<std::size_t>(dst) * cols + static_cast<std::size_t>(c);
-        const std::size_t ks =
-            static_cast<std::size_t>(src) * cols + static_cast<std::size_t>(c);
-        switch (dtype) {
-        case ColDType::Storage: { auto* p = static_cast<StorageReal*>(data); p[kd] = p[ks]; break; }
-        case ColDType::Acc:     { auto* p = static_cast<AccReal*>(data); p[kd] = p[ks]; break; }
-        case ColDType::Tag:     { auto* p = static_cast<TagInt*>(data); p[kd] = p[ks]; break; }
-        case ColDType::Int:     { auto* p = static_cast<int*>(data); p[kd] = p[ks]; break; }
-        case ColDType::Int8:    { auto* p = static_cast<std::int8_t*>(data); p[kd] = p[ks]; break; }
-        }
+    ResolutionWindow snapshot() const noexcept {
+        return ResolutionWindow{count_.load(std::memory_order_relaxed),
+                                budget_.load(std::memory_order_relaxed),
+                                active_.load(std::memory_order_relaxed)};
     }
+
+    void restore(ResolutionWindow window) noexcept {
+        count_.store(window.count, std::memory_order_relaxed);
+        budget_.store(window.budget, std::memory_order_relaxed);
+        active_.store(window.active, std::memory_order_relaxed);
+    }
+
+    void deactivate() noexcept {
+        active_.store(false, std::memory_order_relaxed);
+    }
+
+  private:
+    std::atomic<std::size_t> count_{0};
+    std::atomic<std::size_t> budget_{kResolveBudgetPerLaunch};
+    std::atomic<bool> active_{false};
 };
 
-/// @brief A registry-OWNED extension column (`Frame::insert`): a per-atom
-///        payload some component or workflow attaches at runtime. Stored
-///        rank-2 `[nmax, cols]` regardless of cols so growth is uniform.
-struct ExtraColumn {
-    std::string key;        ///< Column name (block is "atoms" in v1).
-    ColDType dtype;         ///< Element tier.
-    int cols = 1;           ///< Columns per row.
-    bool migrates = true;   ///< Rides copy_row (row identity follows the atom).
-    bool exchanged = false; ///< Rides pack/unpack_exchange (MPI + MC patch).
-
-    /// One alternative per dtype tier; always `[nmax, cols]`.
-    std::variant<xt::xtensor<StorageReal, 2>, xt::xtensor<AccReal, 2>,
-                 xt::xtensor<TagInt, 2>, xt::xtensor<int, 2>,
-                 xt::xtensor<std::int8_t, 2>>
-        data;
+class stale_handle_error : public std::logic_error {
+  public:
+    using std::logic_error::logic_error;
 };
 
-/// @brief Capacity of the fixed ColumnRef scratch arrays the structural
-///        encoders use (schema columns + extension-column headroom).
-inline constexpr int kMaxExchangeColumns = 64;
-
-/// @brief Thrown by `Frame::span` on a dtype-mismatched or unknown key.
 class column_error : public std::runtime_error {
   public:
     using std::runtime_error::runtime_error;
+};
+
+/// A resolved contiguous column view.  Extracting/indexing validates the
+/// Block generation captured at resolution.  Hot loops should call data()
+/// once at launch entry and iterate the returned pointer; no check occurs per
+/// particle after that explicit boundary.
+template <typename T>
+class Span {
+  public:
+    using element_type = T;
+
+    Span() = default;
+    Span(T* ptr, int cols, const std::uint64_t* generation,
+         std::uint64_t captured) noexcept
+        : ptr_(ptr), cols_(cols), generation_(generation), captured_(captured) {
+    }
+
+    void validate() const {
+        if (generation_ != nullptr && *generation_ != captured_)
+            throw stale_handle_error(
+                "resolved Frame span is stale after a structural mutation");
+    }
+
+    bool stale() const noexcept {
+        return generation_ != nullptr && *generation_ != captured_;
+    }
+
+    T* data() const {
+        validate();
+        return ptr_;
+    }
+
+    int cols() const noexcept { return cols_; }
+    explicit operator bool() const noexcept { return ptr_ != nullptr; }
+    operator T*() const { return data(); }
+
+    T& operator[](std::size_t i) const {
+        validate();
+        return ptr_[i];
+    }
+
+    T& operator()(int row, int col) const {
+        validate();
+        return ptr_[static_cast<std::size_t>(row) * cols_
+                    + static_cast<std::size_t>(col)];
+    }
+
+  private:
+    T* ptr_ = nullptr;
+    int cols_ = 0;
+    const std::uint64_t* generation_ = nullptr;
+    std::uint64_t captured_ = 0;
+};
+
+struct ColumnSpec {
+    ColDType dtype = ColDType::Storage;
+    int cols = 1;
+    ColGroup group = ColGroup::Core;
+    int entries_per_item = 0;
+    unsigned flags = kColNone;
+    std::uint16_t wire_id = kDynamicFieldId;
+};
+
+/// Native, type-erased resolved descriptor used to compile structural plans.
+/// It never widens through double.  read_data and write_data point at the same
+/// native contiguous storage; write_data is null for a const resolution.
+struct ColumnRef {
+    std::string_view key;
+    ColDType dtype = ColDType::Storage;
+    ColGroup group = ColGroup::Core;
+    int entries_per_item = 0;
+    unsigned flags = kColNone;
+    std::uint16_t wire_id = kDynamicFieldId;
+    const void* read_data = nullptr;
+    void* write_data = nullptr;
+    int cols = 0;
+    std::size_t element_size = 0;
+    bool writable = false;
+    const std::uint64_t* generation = nullptr;
+    std::uint64_t captured_generation = 0;
+
+    void validate() const {
+        if (generation != nullptr && *generation != captured_generation)
+            throw stale_handle_error("resolved Frame column plan is stale "
+                                     "after a structural mutation");
+    }
+
+    const std::byte* bytes() const {
+        validate();
+        return static_cast<const std::byte*>(read_data);
+    }
+
+    std::byte* mutable_bytes() const {
+        validate();
+        if (!writable)
+            throw column_error("attempt to write through a const ColumnRef");
+        return static_cast<std::byte*>(write_data);
+    }
+
+    std::size_t row_bytes() const noexcept {
+        return static_cast<std::size_t>(cols) * element_size;
+    }
+};
+
+template <typename T, ColDType DType>
+struct ColumnBuffer {
+    using value_type = T;
+    static constexpr ColDType dtype = DType;
+    xt::xtensor<T, 2> values;
+};
+
+/// One owning CPU column.  All columns are rank-2 `[capacity, cols]`; a scalar
+/// column simply has `cols == 1`.  That uniform layout makes structural
+/// traversal independent of a named C++ member or xtensor rank.
+class Column {
+  public:
+    using Storage = std::variant<ColumnBuffer<StorageReal, ColDType::Storage>,
+                                 ColumnBuffer<AccReal, ColDType::Acc>,
+                                 ColumnBuffer<TagInt, ColDType::Tag>,
+                                 ColumnBuffer<int, ColDType::Int>,
+                                 ColumnBuffer<std::int8_t, ColDType::Int8>>;
+
+    Column() = default;
+    Column(ColumnSpec spec, int rows);
+
+    ColDType dtype() const noexcept { return spec_.dtype; }
+    ColGroup group() const noexcept { return spec_.group; }
+    int cols() const noexcept { return spec_.cols; }
+    int entries_per_item() const noexcept { return spec_.entries_per_item; }
+    unsigned flags() const noexcept { return spec_.flags; }
+    std::uint16_t wire_id() const noexcept { return spec_.wire_id; }
+    ColumnSpec spec() const noexcept { return spec_; }
+    std::size_t element_size() const noexcept {
+        return col_dtype_size(spec_.dtype);
+    }
+    std::size_t memory_bytes() const noexcept;
+
+  private:
+    friend class Block;
+
+    void resize_rows(int old_rows, int new_rows);
+    void restride(int rows, int new_cols);
+    void copy_row(int dst, int src);
+    const void* data() const noexcept;
+    void* data() noexcept;
+
+    ColumnSpec spec_{};
+    Storage storage_{};
 };
 
 } // namespace cpu
