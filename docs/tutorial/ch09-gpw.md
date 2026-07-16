@@ -71,16 +71,16 @@ AIMD on thousands of atoms.
 ## The Representation: An Inner Solver Behind an Evaluator
 
 GPW follows the exact architecture of the other electronic-structure methods in
-this manual. The SCF machinery is an **inner solver** — `cpu::gpw::gpw_scf`,
+this manual. The SCF machinery is an **inner solver** — `cpu::gpw::GPWSolver`,
 driven by `cpu::gpw::GPWEvaluator` — and it is *not* a `Driver` subclass, just
-as [Gaussian SCF is an inner solver](ch02-rhf.md) behind `SCFEvaluator` and
+as [Gaussian SCF is an inner solver](ch02-rhf.md) behind `SCF` and
 [plane-wave DFT](ch08-plane-wave.md) is one behind `PWEvaluator`.
 
 `GPWEvaluator` reports `role() == Evaluator` and `capabilities() == Energy`
 (plus `Force` when analytic forces are enabled). Its `build()` records
 the per-element basis and pseudopotential templates; each `launch()` assembles
 the atoms at the frame's current geometry (converting Å → Bohr), runs the GPW
-SCF, and writes the total energy to `frame.scalars.energy` in eV — the same
+SCF, and writes the total energy to `frame.meta.get(kEnergy)` in eV — the same
 contract every evaluator honours. Because it is an ordinary Energy evaluator, it
 plugs into the `Evaluate`, `MD`, and `Minimize` drivers with no special support.
 
@@ -90,7 +90,7 @@ The runnable companion is [`examples/09_gpw.cpp`](https://github.com/MolCrafts/A
 an isolated water molecule, the electronic structure of CP2K's getting-started
 `h2o.inp`. Keep it open beside this text.
 
-**Step 1 — build the Frame.** GPW reads `frame.atoms.type` as the atomic number
+**Step 1 — build the Frame.** GPW reads `frame.span(kAtom_type)` as the atomic number
 $Z$ and needs a cell (`cpu::Box`); an isolated molecule sits in a box large
 enough to avoid its images:
 
@@ -101,24 +101,26 @@ const double x[3]  = {5.0000, 5.7586, 4.2414};     // Å
 const double y[3]  = {5.0000, 5.0000, 5.0000};
 const double zc[3] = {5.0000, 5.5043, 5.5043};
 for (int i = 0; i < 3; ++i) {
-    f.atoms.type[i] = z[i];
-    f.atoms.x[i] = x[i]; f.atoms.y[i] = y[i]; f.atoms.z[i] = zc[i];
+    f.span(kAtom_type)[i] = z[i];
+    f.span(kAtom_x)[i] = x[i];
+    f.span(kAtom_y)[i] = y[i];
+    f.span(kAtom_z)[i] = zc[i];
 }
-f.box = cpu::Box::cubic(10.0);                      // 10 Å box
+f.simbox = cpu::Box::cubic(10.0);                   // 10 Å box
 ```
 
 **Step 2 — declare a `Kind` per element.** A `cpu::gpw::Kind` is CP2K's
-`&KIND` concept: one chemical element (`ATV::Element`, the molrs
+`&KIND` concept: one chemical element (`molrs::Element`, the molrs
 periodic-table enum) paired with its contracted Gaussian basis and GTH
 pseudopotential, both from the in-tree data tables:
 
 ```cpp
-const cpu::gpw::Kind O{ATV::Element::O,
-                       cpu::gpw::GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-GTH"),
-                       cpu::gpw::GthPotential(ATV::Element::O, "GTH-PBE-q6")};
-const cpu::gpw::Kind H{ATV::Element::H,
-                       cpu::gpw::GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-GTH"),
-                       cpu::gpw::GthPotential(ATV::Element::H, "GTH-PBE-q1")};
+const cpu::gpw::Kind O{molrs::Element::O,
+                       cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+                       cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
+const cpu::gpw::Kind H{molrs::Element::H,
+                       cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
+                       cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 ```
 
 The `q6`/`q1` suffixes are the valence electron counts the pseudopotential keeps
@@ -135,7 +137,7 @@ cfg.nonperiodic = true;                      // isolated: Martyna-Tuckerman elec
 cfg.kinds      = {O, H};
 
 cpu::gpw::GPWEvaluator eval(cfg);
-cpu::single_point(frame, eval);              // frame.scalars.energy now set [eV]
+cpu::single_point(frame, eval);              // kEnergy now set [eV]
 
 const double e_ha = eval.last_energy_hartree();          // total energy [Hartree]
 const bool   ok   = eval.last_result().converged;
@@ -190,12 +192,12 @@ Stand back and count the electronic-structure evaluators this manual now has:
 
 | evaluator | basis | electrostatics | chapter |
 |---|---|---|---|
-| `SCFEvaluator` | Gaussian | analytic ERIs | [2](ch02-rhf.md)–[6](ch06-hybrid-dft.md) |
+| `SCF` | Gaussian | analytic ERIs | [2](ch02-rhf.md)–[6](ch06-hybrid-dft.md) |
 | `PWEvaluator` | plane wave | reciprocal-space FFT | [8](ch08-plane-wave.md) |
 | `GPWEvaluator` | Gaussian + grid | grid FFT (Poisson) | 9 (this) |
 
 All three are `role() == Evaluator`, `capabilities() == Energy`, and all three
-write `frame.scalars.energy`. So all three are interchangeable at the *driver*
+write `frame.meta.get(kEnergy)`. So all three are interchangeable at the *driver*
 level: `cpu::single_point(frame, eval)` for an energy, `on(md::Phase::force)
 .add(eval)` for AIMD, `on(minimizer::Phase::force).add(eval)` for geometry
 optimization. The physics inside each is completely different; the seam the

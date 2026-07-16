@@ -37,15 +37,15 @@ Two policy slots let you change *when* a run ends without writing a driver:
   (`Rollback`). `MC` attaches `cpu::Metropolis`; a GCMC or REMD acceptance
   rule goes here too.
 
-## Evaluators — how the energy is computed
+## Energy / force sources — how the energy is computed
 
-| Method | Component | Build flag |
+| Method | Component (kind) | Build flag |
 |---|---|---|
-| Lennard-Jones + bonded styles | `cpu::PairLJCut`, `cpu::BondHarmonic`, … | *(always on)* |
-| Gaussian SCF — RHF / UHF / Kohn-Sham DFT | `cpu::scf::SCFEvaluator` | `ATV_BUILD_RHF` |
-| Plane-wave DFT | `cpu::pw::PWEvaluator` | `ATV_BUILD_PW` |
-| Gaussian-and-plane-waves DFT | `cpu::gpw::GPWEvaluator` | `ATV_BUILD_GPW` |
-| NDDO / AM1 semiempirics | `cpu::semiempirical::AM1Evaluator` | `ATV_BUILD_RHF` |
+| Lennard-Jones + bonded styles | `PairLJCut` / `BondHarmonic` / … (`Potential`) | *(always on)* |
+| Gaussian SCF — RHF / UHF / Kohn-Sham DFT | `cpu::scf::SCF` (`HF`) | `ATV_BUILD_RHF` |
+| Plane-wave DFT | `cpu::pw::PWEvaluator` (`PlaneWave`) | `ATV_BUILD_PW` |
+| Gaussian-and-plane-waves DFT | `cpu::gpw::GPWEvaluator` (`GPW`) | `ATV_BUILD_GPW` |
+| NDDO / AM1 semiempirics | `cpu::semiempirical::AM1Evaluator` (`Semiempirical`) | `ATV_BUILD_RHF` |
 
 Each method's iteration loop lives in an inner **solver**
 (`cpu::scf::SCFSolver`, `cpu::pw::PWSolver`, `cpu::gpw::GPWSolver`,
@@ -60,7 +60,7 @@ with LAMMPS-shaped categorical setters.
 
 ```cpp
 cpu::md::MD sim;
-sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps [eV], sigma [Å], rcut [Å]
+sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps [eV], sigma [Å], rcut [Å]
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.01});       // dt [fs]
 sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0});   // T [K], tau [fs]
@@ -80,7 +80,11 @@ analytic gradients. Basis sets: `STO3G`, `Pople631G`, `Pople631Gs`, `Def2SVP`,
 
 ```cpp
 auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto res  = cpu::scf::rhf_solve(ints, 1e-10, 100);       // res.energy [Hartree]
+auto config = cpu::scf::rhf_config(ints, 1e-10);
+config.max_iter = 100;
+cpu::scf::SCFSolver solver{config};
+solver.build(ints);
+const auto& res = solver.run(ints);                       // res.energy [Hartree]
 ```
 
 Chapters [2](../tutorial/ch02-rhf.md)–[7](../tutorial/ch07-correlation.md)
@@ -94,7 +98,7 @@ the whole point of the architecture: nothing about the loop changes.
 ```cpp
 cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
-aimd.on(md::Phase::force).add(cpu::scf::SCFEvaluator{cfg});   // with_gradient(true)
+aimd.on(md::Phase::force).add(cpu::scf::SCF{cfg});   // with_gradient(true)
 aimd.build();
 aimd.run(frame, 100);
 ```
@@ -109,7 +113,7 @@ sets, and DFT-D3 dispersion, so it needs no external data files.
 
 ```cpp
 cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
-cpu::single_point(frame, pwe);            // frame.scalars.energy [eV]
+cpu::single_point(frame, pwe);            // frame.meta.get(kEnergy) [eV]
 ```
 
 See [Chapter 8](../tutorial/ch08-plane-wave.md) and
@@ -126,7 +130,7 @@ opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});  // memory, alpha0, max_l
 // Convergence is the handler's, not the optimizer's. Omit it and Minimize
 // attaches cpu::ForceConverged{} with its defaults.
 opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
 opt.build();
 opt.run(frame, 100);
 ```
@@ -141,7 +145,7 @@ add a **Mover**.
 
 ```cpp
 cpu::mc::MC mc{/*T [K]=*/300.0, /*seed=*/12345u};
-mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 mc.set_mover(cpu::mc::TranslateMove{/*delta [Å]=*/0.2});
 mc.build();

@@ -12,7 +12,7 @@ about thirty lines.
 The runnable example for this chapter is
 [`examples/07_md_lj.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) — a complete NVE
 Lennard-Jones argon run on the CPU using the categorical setters
-(`set_pair` / `set_neighbor` / `set_integrator` / `set_thermo`). Build and run
+(`add_potential` / `set_neighbor` / `set_integrator` / `set_thermo`). Build and run
 it with:
 
 ```bash
@@ -41,13 +41,13 @@ initial_integrate → pre_force → force → post_force → final_integrate →
 
 works for both regimes. In a classical run, the components bound at the
 `force` phase are pair potentials and bonded-energy terms; in AIMD the
-same phase holds an `SCFEvaluator`. The integrator, thermostat,
+same phase holds an `SCF`. The integrator, thermostat,
 barostat, kinetic-energy accumulator, and recorder all read and write
-the same `frame.atoms.fx/fy/fz` and `frame.scalars.energy` fields irrespective
+the same `kAtom_fx/fy/fz` columns and `kEnergy` entry irrespective
 of who produced the forces.
 
 Concretely, a "classical" force in Atomiverse is any
-`cpu::ComponentBase`-derived class whose `role()` is `Evaluator` and
+`cpu::Component`-derived class whose `role()` is `Evaluator` and
 whose `capabilities()` advertises at least `Capability::Force`. The
 shipped set under `cpu/potentials/` is:
 
@@ -77,19 +77,24 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
         {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}
     };
     cpu::Frame f(n_cells * n_cells * n_cells * 4);
+    auto x = f.span(kAtom_x);
+    auto y = f.span(kAtom_y);
+    auto z = f.span(kAtom_z);
+    auto mass = f.span(kAtom_mass);
+    auto type = f.span(kAtom_type);
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
       for (int iy = 0; iy < n_cells; ++iy)
         for (int iz = 0; iz < n_cells; ++iz)
           for (int b = 0; b < 4; ++b) {
-              f.atoms.x[idx] = (ix + basis[b][0]) * a;
-              f.atoms.y[idx] = (iy + basis[b][1]) * a;
-              f.atoms.z[idx] = (iz + basis[b][2]) * a;
-              f.atoms.mass[idx] = 39.948;        // amu
-              f.atoms.type[idx] = 18;             // Ar
+              x[idx] = (ix + basis[b][0]) * a;
+              y[idx] = (iy + basis[b][1]) * a;
+              z[idx] = (iz + basis[b][2]) * a;
+              mass[idx] = 39.948;                  // amu
+              type[idx] = 18;                      // Ar
               ++idx;
           }
-    f.box = Mat3::cubic(n_cells * a);
+    f.simbox = cpu::Box::cubic(n_cells * a);
     return f;
 }
 ```
@@ -124,13 +129,13 @@ appear:
    `launch()` is a no-op; its `build()` draws a Maxwell-Boltzmann sample
    at temperature $T$, scales velocities by $\sqrt{k_B T / m}$ per atom,
    and removes the centre-of-mass velocity. By the time the first MD
-   step runs, `frame.atoms.vx/vy/vz` already carry physical thermal
+   step runs, the `kAtom_vx/vy/vz` columns already carry physical thermal
    velocities.
 2. **`VelocityVerlet{dt}`** is the integrator. It binds at
    `initial_integrate @ 0` (first half-kick + position drift) and
    `final_integrate @ 0` (second half-kick). The factor between
    $f$ in eV/Å, $m$ in amu, $v$ in Å/fs is the metal-units conversion
-   constant `kFtm2v` — handled internally; the user sees physical
+   constant `units::force_to_accel` — handled internally; the user sees physical
    units on every public field.
 3. **`NeighborList`** must be bound explicitly at the `pre_force` phase
    because its natural slot is shared between MD and minimization (no
@@ -152,7 +157,7 @@ The driver's auto-added infrastructure — `ZeroForces`, `ZeroEnergy`,
 `end_of_step @ -100`, `ZeroKinetic` at `end_of_step @ -1000`,
 `SnapshotPublisher` at `end_of_step @ +10` — is wired by `cpu::md::MD`'s
 constructor before the user code runs. You almost never have to think
-about them, but if you ever wonder why `frame.scalars.energy` is zero before the
+about them, but if you ever wonder why `frame.meta.get(kEnergy)` is zero before the
 first force component runs each step, that is why.
 
 ## Adding a Thermostat (NVT)
@@ -207,7 +212,7 @@ sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
 sim.add(cpu::md::Barostat {P_target, tau_P, dt});
 ```
 
-`Barostat` reads the global virial sum from `frame.scalars.stress`, computes the
+`Barostat` reads the global virial sum from `frame.meta.get(kStress)`, computes the
 instantaneous pressure $P = -(\sigma_{xx} + \sigma_{yy} + \sigma_{zz})/(3V)$,
 and rescales the box edge length and every owned atom's position by
 $\mu = (1 - (\Delta t/\tau_P)(P - P_{\mathrm{target}}))^{1/3}$. It is bound at
@@ -244,8 +249,8 @@ sim.on(md::Phase::force).add(
 
 Each constructor takes a `std::vector` indexed by *bond type* (or angle
 type, or dihedral type) — the type indices are what you store in
-`frame.atoms (per-atom bonded topology).type`, `frame.atoms (per-atom angle topology).type`, etc. when you assemble the
-topology.
+the `kAtom_bond_type`, `kAtom_angle_type`, and `kAtom_dihedral_type`
+columns when you assemble the topology.
 
 A subtle detail that is easy to miss: by default, `PairLJCut` does *not* know
 about your topology. If you want LAMMPS-style "special bonds" — i.e.
@@ -273,12 +278,12 @@ had its second half-kick, and the kinetic energy has been recomputed.
 
 The auto-added components in `cpu::md::MD` are, in order:
 
-1. `ZeroKinetic` (-1000) — clear `frame.scalars.kinetic` so KE is reaccumulated
+1. `ZeroKinetic` (-1000) — clear `frame.meta.get(kKinetic)` so KE is reaccumulated
    from current velocities each step.
 2. `KineticEnergy` (-100) — sum $\frac{1}{2} \sum_i m_i v_i^2$ with OpenMP
    reduction.
 3. `ReduceEnergy` (-50) — single-rank no-op; multi-rank
-   `MPI_Allreduce` for `frame.scalars.energy`, `frame.scalars.kinetic`, and the stress
+   `MPI_Allreduce` for `kEnergy`, `kKinetic`, and the stress
    components so every rank sees the same global totals.
 4. `SnapshotPublisher` (+10) — publishes a `FrameSnapshot` to async
    observers (zero-cost early return when no observer is subscribed).
@@ -309,7 +314,7 @@ headers for the currently shipped writers.)
 ## When the Force Producer Changes
 
 Everything above uses classical force evaluators at the `force` phase.
-Replace them with `cpu::scf::SCFEvaluator{config}.predictor(3)` and
+Replace them with `cpu::scf::SCF{config}.predictor(3)` and
 nothing else changes — the integrator, thermostat, barostat, and
 observers all keep working. That is the AIMD recipe of [Tutorial
 6](ch15-cross-method.md), and it is *the* reason the project has only one MD
@@ -325,10 +330,10 @@ the MD wiring.
 A short field guide to the things that have actually broken in this
 code:
 
-- **`frame.box` not set.** Every neighbor-search and minimum-image
+- **`frame.simbox` not set.** Every neighbor-search and minimum-image
   helper reads `cpu::Box`. An uninitialized box means
   zero-length edges, infinite densities, and segfaults inside cell-list
-  setup. Always set `frame.box = Mat3::cubic(L)` before `sim.build()`.
+  setup. Always set `frame.simbox = cpu::Box::cubic(L)` before `sim.build()`.
 - **Cutoff vs neighbor-list-cutoff.** `PairLJCut{eps, sigma, cutoff}` defines
   the physical cutoff. `NeighborList<>{cutoff}` defines the search
   cutoff. They must agree (or the neighbor-list cutoff is larger by the
@@ -363,7 +368,7 @@ discussed in detail here:
 The next chapter
 ([Geometry Minimization](ch12-geometry-optimization.md)) reuses the same
 force evaluators under a different driver — `cpu::minimizer::Minimize`
-— and shows how the SCFEvaluator pattern that anchored the AIMD chapter
+— and shows how the SCF pattern that anchored the AIMD chapter
 also anchors *ab initio* geometry optimization. From a wiring
 perspective, the two are the same recipe with the integrator swapped
 for an L-BFGS step.

@@ -1,5 +1,5 @@
-> **Moved to `.claude/notes/notes.md`.** This file kept for backward reference.
-> New content is written to `.claude/notes/notes.md` via `/mol:note` or `/av-note`.
+> **Canonical notes: `.claude/notes/notes.md`.** This file is a legacy archive.
+> New decisions go there (e.g. 2026-07-16 Role + kinds hard cut).
 
 # Architecture Notes (legacy copy)
 
@@ -988,3 +988,8 @@ LibTorch 环境）恰恰是它长期无人验证的原因——这两者互为�
 扩展列（`insert("rho")`）与用户 meta **不跨 FFI**：它们是引擎本地 scratch，交换 schema
 就是交换 schema。`write_back` 不导出它们、不被它们干扰；`materialize` 不凭空造它们。
 以前这是 `write_back` 循环的一个无人知晓的副作用，现在是 `test_materialize.cpp` 里的契约。
+
+## Component Role (2026-07-16)
+
+See `.claude/notes/notes.md` § Component Role = RoleFlag set.
+`Component` (not ComponentBase); kinds in `cpu/component/component.h`; no Capability.

@@ -123,8 +123,12 @@ for (auto basis : {cpu::scf::BasisSet::STO3G,
                    cpu::scf::BasisSet::Pople631G,
                    cpu::scf::BasisSet::Pople631Gs,
                    cpu::scf::BasisSet::Def2SVP}) {
-    auto ints   = cpu::scf::build_integrals(frame, basis);
-    auto result = cpu::scf::rhf_solve(ints, /*tol=*/1e-10, /*max_iter=*/100);
+    auto ints = cpu::scf::build_integrals(frame, basis);
+    auto config = cpu::scf::rhf_config(ints, 1e-10);
+    config.max_iter = 100;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
 
     std::printf("%-12s  n_ao=%3d  E = %.8f Ha  (%d iters)\n",
                 cpu::scf::basis_set_name(basis), ints.n_basis,
@@ -132,19 +136,19 @@ for (auto basis : {cpu::scf::BasisSet::STO3G,
 }
 ```
 
-`rhf_solve` returns an `RHFResult` whose `energy` is the total (electronic +
-nuclear) energy in **Hartree**, along with `converged`, `iterations`, and the
-orbital `eigenvalues`. `basis_set_name` gives the human-readable label for
-logs.
+`SCFSolver::run` returns its owned `SCFResult`; `energy` is the total
+(electronic + nuclear) energy in **Hartree**, alongside `converged`,
+`iterations`, and spin-resolved orbital eigenvalues. `basis_set_name` gives
+the human-readable label for logs.
 
-If you want the unified solver instead of the RHF convenience wrapper — for
-example to keep the same `SCFConfig` while changing the basis — build the
-config from the integral pack and call `scf_solve`:
+Build the config from the integral pack and execute the solver lifecycle:
 
 ```cpp
 auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
 auto config = cpu::scf::rhf_config(ints);        // Restricted HF, MINAO guess
-auto result = cpu::scf::scf_solve(ints, config); // SCFResult, energy in Ha
+cpu::scf::SCFSolver solver{config};
+solver.build(ints);
+const auto& result = solver.run(ints);            // SCFResult, energy in Ha
 ```
 
 The config's electron counts (`n_alpha`, `n_beta`) are taken from the pack's

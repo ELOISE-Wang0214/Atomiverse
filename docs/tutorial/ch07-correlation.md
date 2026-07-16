@@ -130,10 +130,10 @@ engine already exposes exactly the inputs such a method needs:
 - `cpu::scf::build_integrals(frame, basis, charge, /*compute_eri=*/true)`
   produces the two-electron integrals (`integrals.ERI`) that an MO-basis
   transform would consume — the same integrals the CUDA `RHFFock` kernel reads.
-- `cpu::scf::rhf_solve(...)` returns the converged orbitals and their energies.
+- `cpu::scf::SCFSolver::run(...)` returns the converged orbitals and their energies.
 
 A correlation method would therefore be a component that **reads the SCF result
-and writes a corrected energy onto `frame.scalars`** — architecturally an
+and writes a corrected energy into typed `frame.meta`** — architecturally an
 *evaluator that runs after the SCF evaluator*, in the same slot pattern that
 [Chapter 13](ch13-observables.md)'s observers occupy after the integrator. It
 would reuse the existing integral engine rather than introduce a parallel one,

@@ -11,9 +11,9 @@ srun  -n  128 atomiverse atv.py        # Slurm, same thing
 Under the launcher every rank starts the native `atomiverse` executable.
 Rank 0 alone embeds a CPython interpreter and runs your script; ranks
 1..N-1 never touch Python — they block in a native worker loop. Each
-driver `run()` (and each AM1 `single_point`) becomes ONE task-granular
+MD/Minimize driver `run()` (and each AM1 `single_point`) becomes ONE task-granular
 in-memory broadcast: the task description plus the Frame go out, every
-rank computes natively (MPI domain decomposition for MD; full-replica
+rank computes natively (MPI domain decomposition for MD and Minimize; full-replica
 solves for whole-molecule methods like AM1), and the gathered result is
 written back into the same `molrs.Frame` your script holds. There is no
 intermediate file and no visible IR.
@@ -31,6 +31,10 @@ Semantics to know:
 - **`ev.last_result()` is serial-path only** for AM1: under the launcher
   the solve happens inside per-rank materializers; energy [eV] and
   Mulliken charges [e] come back through the Frame.
+- **Minimize returns control metadata separately from state**:
+  `iterations`, `converged`, and `stop_reason` are the returned
+  `MinimizeResult`; coordinates, forces, energy, box, and topology remain in
+  the caller's same `molrs.Frame`.
 - Subprocesses spawned by your script (multiprocessing workers, shelled
   `python`) import atomiverse in plain serial mode automatically.
 

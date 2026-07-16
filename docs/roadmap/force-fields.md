@@ -31,7 +31,7 @@ and both are benchmarked against LAMMPS/Kokkos in
 | OPLS torsion                       |  ○  |   ○  |
 | Ryckaert–Bellemans torsion         |  ✓  |   ✓  |
 | CHARMM torsion                     |  ✓  |   ○  |
-| Harmonic improper torsion          |  ○  |   ○  |
+| Harmonic improper torsion          |  ✓  |   ○  |
 | Periodic improper torsion          |  ○  |   ○  |
 | CVFF improper torsion              |  ○  |   ○  |
 | CMAP correction                    |  ○  |   ○  |
@@ -52,8 +52,15 @@ Two torsion styles share the same topology and geometry helpers
   scaling remains on pair styles via `special_bonds`. Regression
   `regressions/md/dihedral_charmm` pins analytic energies at \(\phi=\pi/2\).
 
-Neither is an OPLS parameterization table. There is **no improper style of any
-kind**. Bonded forces are cross-validated against LAMMPS in
+Neither is an OPLS parameterization table.
+
+**Improper topology** is first-class (schema columns `num_improper` /
+`improper_atom` / `improper_type`, independent of dihedrals).
+`ImproperHarmonic` implements LAMMPS `improper_style harmonic`
+\(V = K(\chi-\chi_0)^2\) using the shared `dihedral_geom` helpers
+(`regressions/md/improper_harmonic`). Periodic / CVFF impropers remain ○.
+
+Bonded forces are cross-validated against LAMMPS in
 `benchmarks/md/pe/validation/` (multi/harmonic path).
 
 ## 2. Classical Nonbonded Potentials

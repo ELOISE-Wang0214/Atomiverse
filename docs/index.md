@@ -29,9 +29,9 @@ different calculation.
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{0.5});          // fs
 
-sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});            // classical MD
+sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});            // classical MD
 // or:
-sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{cfg}); // ab-initio MD
+sim.on(md::Phase::force).add(cpu::scf::SCF{cfg}); // ab-initio MD
 
 sim.build();
 sim.run(frame, 1000);

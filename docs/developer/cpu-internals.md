@@ -86,7 +86,7 @@ provides:
    the node, borrowed by the Context (see below).
 4. The two policy slots: `add_handler(...)` (plural, termination) and
    `set_outcome(...)` (singular, commit/rollback).
-5. The categorical setter API (`set_pair`, `set_bond`, …, `set_thermo`).
+5. The categorical setter API (`add_potential`, `add_potential`, …, `set_thermo`).
 
 The presets are thin: their constructors auto-add infrastructure
 components (zeroing, kinetic accumulator, snapshot publisher) and
@@ -116,7 +116,7 @@ class StopWhenTooHot : public cpu::LoopHandler {
     explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
     const char* name() const override { return "stop_when_too_hot"; }
     ATV::Verdict after_iteration(const cpu::LoopState& s) override {
-        return (s.frame.scalars.temperature > t_max_) ? ATV::Verdict::Stop
+        return (temperature(s.frame) > t_max_) ? ATV::Verdict::Stop
                                                       : ATV::Verdict::Continue;
     }
   private:
@@ -144,63 +144,37 @@ going. `Metropolis` is one implementation; `MC` attaches it in its
 constructor. Swapping in a GCMC or REMD acceptance rule is a
 `set_outcome` call, not a new driver class.
 
-## Two Tagging Axes, Not One
+## Kind (type) + Role (flags) — not Capability
 
-The single biggest design decision in the component model is splitting
-*role* and *capability* into independent axes. The definitions are in
-[`facade/component_role.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/component_role.h):
+There is **no `Capability` write-set** and no exclusive `ComponentRole`
+enum. Two orthogonal mechanisms remain:
 
-```cpp
-enum class ComponentRole : uint8_t {
-    None, Evaluator, Integrator, Optimizer,
-    Thermostat, Barostat, ConvergenceCheck, Recorder, Observer
-};
+1. **Kind** — a C++ intermediate class (one header under
+   `cpu/component/`: `Potential`, `HF`, `Semiempirical`, `PlaneWave`,
+   `GPW`, `Bias`, `PathCoupling`, `Observer`, `Recorder`, `Integrator`,
+   `Thermostat`, `Barostat`, `Optimizer`, `Constraint`, `Mover`).
+   Presets validate with `dynamic_cast` to those types.
+2. **Role** — a `RoleFlag` bitset on `role()` (`FrameImmutable`,
+   `Deferred`, `ExternalIO`). Unset `Deferred` ⇒ main-loop required.
+   See [`facade/component_role.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/component_role.h).
 
-enum class Capability : uint32_t {
-    None          = 0,
-    Energy        = 1u << 0,
-    Force         = 1u << 1,
-    Stress        = 1u << 2,
-    Charge        = 1u << 3,
-    Dipole        = 1u << 4,
-    DensityMatrix = 1u << 5,
-    Orbitals      = 1u << 6,
-};
-```
+Outputs are Frame keys (`kEnergy`, `kAtom_fx`, …), not capability bits.
 
-Why two axes? Because the same component class is, in different
-contexts, the right answer to different validation questions.
+- `cpu::scf::SCF` inherits `cpu::HF`. With `with_gradient(true)` it
+  writes forces; Evaluate / MD / Minimize all accept any energy/force
+  kind (`Potential`, `HF`, `Bias`, …).
+- `cpu::md::FixLangevin` inherits `Thermostat` and writes additive
+  forces; MD still special-cases Langevin by name when no Potential is
+  present (pure Langevin diffusion).
 
-- `cpu::scf::SCFEvaluator` is always `role() == Evaluator`. Its
-  `capabilities()` is `Energy | DensityMatrix | Orbitals` by default,
-  and *also* includes `Force` when `with_gradient(true)` is set.
-  - In `cpu::Evaluate` (single-point energy), the `Force` bit can be
-    off and the driver still validates: it just needs an Evaluator with
-    *any* non-empty capability set.
-  - In `cpu::md::MD`, the same class with `with_gradient(true)` passes
-    MD's "something must produce `Capability::Force`" check.
-  - In `cpu::minimizer::Minimize`, the same class passes Minimize's
-    "Energy or Force" check.
-
-If role and capability were collapsed into a single tag, this class
-would need to be three classes, or each driver would need to special-case
-SCF, or both. The split is the principled way out.
-
-A second example: `cpu::md::FixLangevin` declares
-`role() == Thermostat` (it is a temperature controller), but its
-`capabilities()` is `Capability::Force` because its `launch()` writes
-additive friction + random forces into `fx/fy/fz`. That one bit is what
-lets a *pure* Langevin run — diffusion in a featureless box, no LJ at
-all — satisfy `cpu::md::MD`'s "something writes forces" build-time
-check. Roles describe structure; capabilities describe data flow.
-
-When you write a new component, ask both questions independently: what
-slot does this fill? what fields does it write?
+When you write a new component: pick a **kind**, compose **Role** flags
+only if you differ from the default `0`, and write the Frame fields you
+own.
 
 ## The Component Lifecycle, Strictly
 
 The base class
-[`cpu::ComponentBase`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h) defines
+[`cpu::Component`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h) defines
 exactly three hooks:
 
 ```cpp
@@ -213,8 +187,8 @@ The contract is:
 
 1. **`build` runs once, before the first iteration.** All allocation
    goes here: per-thread reduction buffers, cell-list arrays,
-   shell-pair lists, FFT plans, anything sized to `frame.atoms.size()`
-   or `frame.box`.
+   shell-pair lists, FFT plans, anything sized to `frame.capacity()`
+   or derived from `frame.simbox`.
 2. **`launch` runs once per iteration.** No allocation. Re-use only.
    This is enforced by code review and by regression tests like
    `tests/cpu/test_md_no_alloc.cpp`, which asserts that the inner MD
@@ -239,12 +213,12 @@ Two practical consequences:
 - **Per-step state lives on the component.** The L-BFGS history vectors
   $(s_i, y_i)$ live in `cpu::minimizer::LBFGS` member arrays. The Verlet
   pair list lives in `cpu::md::NeighborList::pairs_`. The
-  predictor-corrector density-matrix history lives in `SCFEvaluator`'s
+  predictor-corrector density-matrix history lives in `SCF`'s
   `aspc_alpha_` / `aspc_beta_` members. Drivers and the Frame stay
   stateless across iterations.
 - **The Frame is the *only* shared mutable state.** Components
-  communicate by reading and writing `frame.atoms.*`, `frame.scalars.energy`,
-  `frame.scalars.kinetic`, and `frame.scalars.stress`. There is no driver-side scratch
+  communicate by reading and writing typed atom columns and typed metadata
+  (`kEnergy`, `kKinetic`, `kStress`). There is no driver-side scratch
   buffer that a downstream component is supposed to read. If you find
   yourself wanting one, you have a layering problem; either lift it
   onto the Frame as a fundamental field, or own it inside the
@@ -313,7 +287,7 @@ minimization is only which handlers happen to be attached.
 ## Why SCF Is an Inner Solver, Not a Driver
 
 Neither backend implements SCF as a driver: CPU and CUDA both use the
-`scf::SCFSolver` inner-solver shape behind an `SCFEvaluator` component,
+`scf::SCFSolver` inner-solver shape behind an `SCF` component,
 and the CPU plane-wave SCF follows the same shape
 (`cpu::pw::PWSolver` + `PWEvaluator`). This was a substantive design
 choice, and it is worth explaining because the asymmetry confuses new
@@ -323,7 +297,7 @@ There are two reasons CPU SCF is implemented as
 `cpu::scf::SCFSolver` (a public low-level class) rather than as a
 driver subclass:
 
-1. **SCF is reused by AIMD and minimization.** `SCFEvaluator::launch`
+1. **SCF is reused by AIMD and minimization.** `SCF::launch`
    constructs an `SCFSolver` once at `build()` time and calls
    `solver_->run(integrals)` on every MD step or every minimizer step.
    If SCF were itself a `Driver<>` subclass, AIMD would be one driver
@@ -338,7 +312,7 @@ driver subclass:
 
 The SCF inner-step helpers therefore live in
 [`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/),
-none of them inherit from `cpu::ComponentBase`, and none of them are
+none of them inherit from `cpu::Component`, and none of them are
 registered into any Plan. They are owned by `SCFSolver` as direct
 members:
 
@@ -367,7 +341,7 @@ from leaking into user-visible APIs.
 
 If a user wants to run SCF directly without an outer driver, they
 construct an `SCFSolver` themselves; if they want SCF as a force
-provider in MD or minimization, they wrap it with `SCFEvaluator`. Two
+provider in MD or minimization, they wrap it with `SCF`. Two
 public surfaces, one inner solver, no nested drivers.
 
 ## Hot-Path Data Hygiene
@@ -382,7 +356,7 @@ runtime context.
 
 This rule has bitten developers who tried to lift, e.g., a per-atom
 bond-exclusion list onto the Frame. The right place is on the LJ
-component (`excluded_by_tag_`, rebuilt from `frame.atoms (per-atom bonded topology)` at `build()`
+component (`excluded_by_tag_`, rebuilt from the per-atom topology columns at `build()`
 time), not on the Frame. The Frame is the user-visible truth; derived
 maps are implementation details that can change with the algorithm.
 
@@ -432,13 +406,14 @@ to hoist the loads, and document the reason.
 
 ## Validation, Phase Compilation, and Plan Sorting
 
-The journey from `driver.add(component)` to "components running in
+The journey from `driver.add(Component{...})` to "components running in
 order" goes through these stages:
 
-1. **Registration.** `driver.add(c)` reads `c.default_bindings()` and
-   appends `(component, phase, order)` triples to the driver's
-   `pending_` vector. `driver.on(p).add(c, ord)` skips the defaults and
-   adds one explicit triple.
+1. **Registration.** `driver.add(Component{...})` owns the component, reads its
+   `default_bindings()`, and appends `(component, phase, order)` triples to the
+   driver's `pending_` vector. `driver.on(p).add(Component{...}, ord)` owns and
+   skips the defaults. The corresponding `add_ref` calls borrow an existing
+   instance; plain `add(lvalue)` is deleted.
 2. **Validation.** `cpu::CPUDriver::build()` calls
    `validate_components()` (overridden by each preset) which walks
    `pending_` and checks role + capability requirements.
@@ -516,7 +491,7 @@ plug into them automatically.
 - `tests/cpu/test_md_no_alloc.cpp` — the regression test for "no
   allocation in `launch()`".
 - `tests/cpu/scf/test_aimd_conservation.cpp` — energy / momentum /
-  bond-oscillation conservation under composed `MD + SCFEvaluator`.
+  bond-oscillation conservation under composed `MD + SCF`.
 - [Extending CPU Subsystems](extending-cpu-subsystems.md) — the
   practical recipe for adding new components in each of MD, SCF, and
   the minimizer.

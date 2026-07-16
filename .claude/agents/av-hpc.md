@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 model: inherit
 ---
 
-Read CLAUDE.md for dual-backend design, CPU data residency rules, and component lifecycle, and .claude/NOTES.md for recent decisions, before starting any work.
+Read CLAUDE.md for dual-backend design, CPU data residency rules, and component lifecycle, and .claude/notes/notes.md for recent decisions, before starting any work.
 
 ## Role
 

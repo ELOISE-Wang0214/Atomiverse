@@ -87,7 +87,7 @@ registered as the integrator.
 
 The categorical setters on `cpu::md::MD` are the primary API:
 `set_integrator` (singular — one integrator), `set_thermostat` and
-`set_barostat` (plural — each call appends), plus the shared `set_pair`,
+`set_barostat` (plural — each call appends), plus the shared `add_potential`,
 `set_neighbor`, `set_thermo`.
 
 ### NVE — the baseline
@@ -102,7 +102,7 @@ auto frame = make_fcc_argon(4, /*a=*/5.32);   // 256 Ar atoms, Å
 
 cpu::md::MD sim;
 sim.add(cpu::md::InitVelocity{100.0, /*seed=*/42u});
-sim.set_pair(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
+sim.add_potential(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/4.0});
 sim.set_thermo(100);
@@ -125,7 +125,7 @@ sim.set_thermostat(cpu::md::NoseHoover{/*T=*/100.0, /*tau_T=*/200.0, /*dt=*/4.0}
 Nosé-Hoover couples the velocities to a single deterministic thermostat
 variable $\xi$ that itself relaxes toward the target; it carries a
 **conserved quantity** (the extended Hamiltonian), which the driver writes to
-`frame.scalars.conserved` and `Thermo` logs. A flat `conserved` trace is the
+`frame.meta.get(kConserved)` and `Thermo` logs. A flat `conserved` trace is the
 correctness check that the thermostat is sampling correctly. Use Nosé-Hoover
 when you want a smooth, reproducible time series — a clean vibrational power
 spectrum, or a trajectory you can rerun bit-for-bit. (It is a single-chain
@@ -148,7 +148,7 @@ The Bussi canonical-sampling-through-velocity-rescaling thermostat is
 a single stochastic factor chosen to drive the kinetic energy toward its
 canonical target *with the correct fluctuations*, and — unlike Berendsen
 rescaling — it carries a conserved quantity (accumulated in
-`frame.scalars.conserved`), so it genuinely samples the canonical ensemble.
+`frame.meta.get(kConserved)`), so it genuinely samples the canonical ensemble.
 
 ```cpp
 sim.set_integrator(cpu::md::VelocityVerlet{4.0});
@@ -196,7 +196,7 @@ sim.set_thermostat(cpu::md::NoseHoover{100.0, 200.0, 4.0});
 sim.set_barostat  (cpu::md::Barostat{/*P=*/6.2415e-7, /*tau_P=*/2000.0, /*dt=*/4.0});
 ```
 
-`Barostat` reads `frame.scalars.stress` to compute the internal pressure,
+`Barostat` reads `frame.meta.get(kStress)` to compute the internal pressure,
 which is why it declares `reads() == Capability::Stress` — and that
 declaration makes `cpu::md::MD` **auto-inject a `Virial` stress observer** at
 build time so the pressure is actually available (you do not add `Virial`
@@ -214,7 +214,7 @@ symplectic Trotter step. It **replaces** `VelocityVerlet` / `NoseHoover` /
 constructed with designated initializers (the idiom the test suite uses):
 
 ```cpp
-sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
+sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 100.0,
                                            .tau_T    = 200.0,
@@ -229,7 +229,7 @@ required; the rest default sensibly (`drag = 0`, `mtchain = mpchain = 3`,
 `couple_axis = {true,true,true}` for isotropic coupling, `T_stop = T_target`
 for no ramp). Like the Berendsen barostat it declares `reads() == Stress`, so
 `Virial` is auto-injected. It writes the full MTK extended Hamiltonian to
-`frame.scalars.conserved` — the flat trace of *that* quantity is the rigorous
+`frame.meta.get(kConserved)` — the flat trace of *that* quantity is the rigorous
 correctness check for an NPT run. Set `couple_axis` to barostat individual
 axes (e.g. `{false,false,true}` for uniaxial), and use `set_run_span` with a
 non-default `T_stop` for a temperature ramp.
@@ -246,7 +246,7 @@ sim.set_nvt(cpu::md::NVT{/*dt=*/4.0, /*T=*/100.0, /*tau=*/100.0,
 
 It expands into `VelocityVerlet{dt}` plus the chosen thermostat
 (`NVT::Thermostat::NoseHoover` or `CSVR`), each with its correct phase
-bindings — exactly the two explicit calls, so it composes with `set_pair` /
+bindings — exactly the two explicit calls, so it composes with `add_potential` /
 `set_neighbor` and even with a DFT evaluator on the force phase the same way.
 
 ## The Expected Result: Means at the Setpoint, Correct Fluctuations
@@ -265,7 +265,7 @@ A correctly thermostatted run has two signatures, and both matter:
   flag, not a success.
 
 For the deterministic thermostats there is a third, sharper check: the
-`frame.scalars.conserved` trace (Nosé-Hoover extended Hamiltonian, or the MTK
+`frame.meta.get(kConserved)` trace (Nosé-Hoover extended Hamiltonian, or the MTK
 Hamiltonian for `NoseHooverNPT`) should be *flat* over the run. Drift in the
 conserved quantity means the time step is too large or the coupling time too
 short.
@@ -294,7 +294,7 @@ designated ensemble validation case.
 
 Every ensemble in this chapter was built on classical `PairLJCut` forces, but
 nothing in the thermostat or barostat touches the force *source*. Replace the
-pair potential with an `SCFEvaluator` on the force phase and every line about
+pair potential with an `SCF` on the force phase and every line about
 temperature and pressure control stays exactly as written — that is **ab
 initio molecular dynamics in the canonical or isothermal-isobaric ensemble**:
 
@@ -303,7 +303,7 @@ cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
 aimd.set_thermostat(cpu::md::NoseHoover{300.0, 100.0, 0.5});   // NVT, unchanged
 aimd.on(md::Phase::force)
-    .add(cpu::scf::SCFEvaluator{cfg}.predictor(3));            // quantum forces
+    .add(cpu::scf::SCF{cfg}.predictor(3));            // quantum forces
 aimd.build();
 aimd.run(frame, n_steps);
 ```

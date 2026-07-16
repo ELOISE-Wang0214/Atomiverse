@@ -176,3 +176,143 @@ Gaussian job type 类比 SP/MD/Opt/Freq/MC；方法=inner Solver+Evaluator 组�
 NeighborProvider/PairEvaluator/AsyncComponentBase）、Context service 分组、write_back
 契约、cuda RDF 归 molrs（engine measures, molrs analyzes 两后端无例外）。
 GPU-owed 验证集中在 01–07 的台账（GH200 sbatch + Linux CI + /mol:bench）。
+
+## [2026-07-15] CPU breadth 01 — architecture foundation subset
+
+- Component registration 已硬切为显式 lifetime：rvalue/`unique_ptr` 的
+  `add` 转移 ownership，`add_ref` 是唯一 borrowing spelling，Driver、
+  PhaseBuilder 与 CPU categorical setters 的普通 lvalue overload 均删除；
+  全部 in-tree CPU caller 已明确迁移，compile-time/runtime ownership 门禁通过。
+- molrs CXX boundary 由 `molrs-cxxapi/CXX_API_VERSION`、capability mask、
+  Atomiverse configure-time exact version check 和 runtime exact contract 共同守门；
+  mismatch 会报告 expected/found。当前 molrs 是 dirty 未发布 worktree，因此
+  release tag/SHA 与 CI pin 保持未完成，禁止把本地状态伪装成发布基线。
+
+## [2026-07-15] CPU breadth 02 — typed Minimize task cutover
+
+- `TaskSpec` 硬切到 v3 typed sum：`MDTask` 只接受 `md::Phase`，
+  `MinimizeTask` 只接受 `minimizer::Phase`，`SinglePointTask` 保持独立。
+  不存在通用 raw-phase IR、v2 decoder、alias 或 translation branch。
+- 经过两个真实 staged task 后的边界裁决：只有 wire envelope、
+  explicit `ComponentId`、materializer 入口和 `TaskResult` 是共享的；
+  phase enum、component allow-list、budget 和 handler params 必须留在每个
+  task alternative 内，不继续泛化。
+- MPI task protocol 硬切 v2，`DispatchResult{Frame, TaskResult}` 将状态与
+  loop-control 分离；MD/Minimize 都通过同一 DD owner-gather 路径，
+  SinglePoint 保持 full replica。
+- Minimize 新增明确的 detached teardown：先 destroy components，再移交
+  仍持有 Cartesian communicator 的 DD，最后 shutdown Runtime；避免 gather
+  在 communicator 释放后发生。
+- 4-rank protocol 结构门禁抓到 zero-owner rank 在 `LBFGS::build` 拒绝
+  `dim==0`，导致其他 rank 已进入 optimizer collective 而空 rank 进入
+  protocol status collective（`MPI_ERR_TRUNCATE`）。LBFGS 现在为空分区保留一个
+  inert storage slot，launch 仍以 local dim 0 参加完全相同的 collective 序列。
+- Python 公开面为 `atomiverse.minimizer.{Minimize,LBFGS,ForceConverged,
+  MinimizeResult}`，仍是 `add`/`on` 组合和唯一 `molrs.Frame` 状态货币。
+  GPU 明确 deferred，`device!="cpu"` fail loud。
+
+## [2026-07-15] CPU breadth 03 — long-range contract and cell lifecycle cutover
+
+- `CoulLong`、`KSpaceEwald`、`KSpacePME` 通过窄的
+  `LongRangeParticipant` 暴露 real/reciprocal role 与共享 `alpha`；
+  `CPUDriver` 在所有 typed CPU loop build 前统一拒绝缺半边、重复半边、
+  `alpha` 不一致，以及 Stress consumer 配到无 Stress reciprocal 的 Plan。
+  校验按 component identity 去重，不依赖 RTTI、名称或 MD 私有分支。
+- `Box` 现在提供单调 mutation revision；cell-dependent cache 以
+  `(Box identity, revision)` 为键，既捕获 NPT/deform 原地变胞，也不会把
+  两个 revision 相同的 replica Frame 误认为同一个 cell。
+- Ewald/PME 公开 `KSpaceLifecycleStats{builds,cell_refreshes,
+  capacity_rebuilds}`。PME 的 per-atom spline workspace 已从 launch 局部
+  vector 移到 component-owned capacity；同 shape 变胞只 refresh，网格 shape
+  或 atom capacity 跨界才 rebuild/replan，destroy 明确释放所有 workspace；
+  FFTW plan ownership 硬切为 move-only，禁止复制裸 plan 句柄。
+- PME 尚未写 reciprocal Stress，因此删除其 `Capability::Stress` 声明；
+  压力耦合 Plan 现在 fail loud。应力算法本身不在本次架构重构范围内。
+
+## [2026-07-16] cpu-breadth campaign bulk implementation push
+
+Closed/advanced the remaining CPU campaign surface in one push:
+
+- **01**: `acceptance-cpu.yml` (dev/master), `ci.yml` includes `dev`,
+  `tools/verify_cpu_test_manifest.py`, GPW⇒RHF∧PW CMake fatal, harmonic
+  `reg_harmonic_driver_matrix`.
+- **02**: `reg_lj_dimer` public Minimize literature gate.
+- **03**: already CPU-complete earlier (PME stress, NPT, LAMMPS, 2-rank).
+- **04**: `PairCoulCut`, `ForceFieldSnapshot` + `CompiledForceField`,
+  `reg_tip3p_two_water` (LJ+bond+angle install path; coul special-bonds
+  follow-up; molrs ForceFieldRef CXX snapshot still release-gated).
+- **05**: `cpu::path::Remd` — N owned `MD` programs, Metropolis exchange,
+  velocity rescale, `reg_remd_harmonic`.
+- **06**: `bias::DistanceCV`, `bias::HarmonicBias`,
+  `LaunchContext::requested_capabilities`, `reg_umbrella_harmonic`.
+- **07**: `docs/developer/cpu-architecture-breadth-verdict.md`.
+
+GPU criteria remain deferred. frame-block-04 formal ASan/perf still open.
+
+## [2026-07-16] open-item close-out (specials / stale / WHAM / pins)
+
+- **PairCoulCut special-bonds**: same filtered-CSR path as `PairLJCut`
+  (`set_special_bonds(0,0,0)` rebuilds exclusion map on PairList version).
+  `CompiledForceField` applies `special_coul[]`. Unit tests exclude 1-2 and
+  keep intermolecular; `reg_tip3p_two_water` runs full LJ+coul/cut+bonded
+  with specials (`E≈0.66 eV`, no intramolecular coulomb blow-up). Tags in
+  `add_bond`/`add_angle` are global tags, not local indices.
+- **Evaluate/MD/Minimize install**: `test_cpu_compiled_forcefield` installs
+  one snapshot into all three workflows.
+- **molrs pin**: `cmake/MolrsContract.cmake` records
+  `ATV_MOLRS_CXX_API_VERSION=1` and `ATV_MOLRS_GIT_REF=v0.7.0`; CI checkouts
+  use `ref: v0.7.0`. Path overrides still cannot bypass CXX API version.
+- **Stale handles**: `Span`/`MetaRef` generation rejection unit-tested
+  (grow, column insert, topology restride, meta insert → `stale_handle_error`).
+- **Umbrella WHAM**: multi-window synthetic Boltzmann samples + in-process
+  WHAM recovers flat PMF (RMSE < 0.3 kBT). Ownership: ATV = CV/bias/samples;
+  production WHAM analysis remains molrs-owned.
+- **REMD**: exchange stats + deterministic seed gated; analytic T-marginal
+  literature gate still open (needs 1-particle spring evaluator).
+- Remaining open: molrs ForceField CXX snapshot, molpy cross-repo fixture,
+  alloc-intercept perf gates, frame-block ASan/perf matrices, REMD
+  T-histograms.
+
+## [2026-07-16] Component model hard cut (Role + kinds + ForceField)
+
+**Deleted:** `Capability` write-set; exclusive `ComponentRole`;
+`capabilities()` / `reads()` / `requested_capabilities`; free-function
+`is_energy_force_source()`; intermediate kinds `ElectronicStructure` and
+`Infrastructure`; constant presets `kRole*`.
+
+**Role** is a `uint32_t` bitset of `RoleFlag` only:
+- `FrameImmutable` — does not mutate x/v/f/box/topology
+- `Deferred` set — optional / may leave the hot path; **unset** ⇒ main-loop required
+- `ExternalIO` — writes outside the process
+
+No named role presets. Compose flags where needed
+(`Observer` = `FrameImmutable | Deferred`;
+`Recorder` = those + `ExternalIO`; default `0` = required).
+
+**Kinds are classes, one header each** under `cpu/component/`:
+`component.h` holds only `cpu::Component`. Marker kinds:
+`potential.h`, `hf.h`, `semiempirical.h`, `plane_wave.h`, `gpw.h`,
+`bias.h`, `path_coupling.h`, `observer.h`, `recorder.h`,
+`integrator.h`, `thermostat.h`, `barostat.h`, `optimizer.h`,
+`constraint.h`, `mover.h`. Depth ≤ 2: `Concrete → Kind → Component`.
+
+Electronic structure is **method-named**, not a bag kind:
+`SCF : HF`, `AM1Evaluator : Semiempirical`, `PWEvaluator : PlaneWave`,
+`GPWEvaluator : GPW`.
+
+Pipeline glue (NeighborList, Halo*, Migrate, Reduce, Zero*) inherits
+`Component` directly — name the job, no `Infrastructure` parent.
+
+**Renames:** `ComponentBase` → `Component`; `cpu::scf::SCFEvaluator` →
+`cpu::scf::SCF`. Pair path: `PairLJCut → PairPotential → Potential → Component`.
+
+**ForceField** is **data only** (molrs-aligned `def_pairstyle` /
+`def_bondstyle` / …). It is not a Component and does not install into a
+Driver. Classical terms register as Components via
+`add_potential(Potential&&)` (replaces singular `set_pair` / `set_bond` /
+`set_angle` / `set_dihedral`). Neighbor remains `set_neighbor`.
+
+**Validation:** presets `dynamic_cast` to concrete kinds (Potential,
+Bias, PathCoupling, HF, Semiempirical, PlaneWave, GPW, Integrator, …).
+No free-function component classifier. Stress assembly uses
+`requires_system_stress()` / `provides_system_stress()` on Component.

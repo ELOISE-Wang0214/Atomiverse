@@ -4,7 +4,7 @@ The `cpu::minimizer::Minimize` driver answers a different question from
 the MD chapters. Instead of "how does the system evolve in time?" it
 asks "where is the nearest local minimum of the potential energy
 surface?" The wiring is closely related — same `cpu::Frame`, same
-`SCFEvaluator` at the force phase — but the outer loop is no longer a
+`SCF` at the force phase — but the outer loop is no longer a
 time integrator. It is a quasi-Newton or conjugate-gradient *search*,
 and it terminates when the gradient and the displacements between
 successive geometries fall below tolerance.
@@ -220,7 +220,7 @@ opt.add_handler(cpu::ForceConverged{
     /*rms_dtol=*/ 0.05,   // [Å]
     /*etol=*/     1e-3    // [eV]
 });
-opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
 opt.build();
 
 int iters = opt.run(frame, /*max_iter=*/100);
@@ -235,11 +235,11 @@ attach its default one — the preset supplies `ForceConverged{}` only
 when you have supplied no handler of your own.
 
 The single line that does *all* the chemistry is
-`opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config})`.
+`opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config})`.
 The evaluator's `launch()` rebuilds the integrals at the current
 geometry, runs the SCF cycle, computes the analytic nuclear gradient
 ($\partial E / \partial R_A$), and writes the negative gradient into
-`frame.atoms.fx/fy/fz`. The optimizer reads those forces at its
+the `kAtom_fx/fy/fz` columns. The optimizer reads those forces at its
 `search_direction` pass, decides the new geometry and writes the updated
 coordinates back; at `convergence_check` it publishes the force,
 displacement and energy metrics that `ForceConverged` will judge.
@@ -328,7 +328,7 @@ step keeps overshooting. Cure: turn on the line search, or tighten
 
 **The SCF is the problem** when the energy jumps non-monotonically,
 the forces blow up, or the atoms move by tens of Ångström in one step.
-Symptoms: SCFEvaluator's `last_result().converged` is false; the
+Symptoms: SCF's `last_result().converged` is false; the
 trajectory shows atoms passing through each other. Cure: this is not
 an optimizer bug. Either the SCF tolerance is set too loose
 (`config.tol > 1e-6` produces noisy gradients near minimum), the
@@ -345,28 +345,28 @@ there.
 
 ## What's Next
 
-The exact same recipe — `Minimize` driver, `SCFEvaluator` at force
+The exact same recipe — `Minimize` driver, `SCF` at force
 phase, optimizer component at `search_direction` — also drives
-classical relaxation. Replace the SCFEvaluator with `cpu::PairLJCut` and
+classical relaxation. Replace the SCF with `cpu::PairLJCut` and
 `cpu::BondHarmonic`, and you have a force-field minimization.
 The optimizer does not know the difference, and the convergence
 tolerances stay in the same units.
 
 If you came here from [Chapter 15: AIMD](ch15-cross-method.md), the symmetry is
-worth pausing on. The same `SCFEvaluator{config}` instance plugs into
+worth pausing on. The same `SCF{config}` instance plugs into
 either driver:
 
 ```cpp
 // Geometry optimization (Optimize loop)
 cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{...});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
 
 // Ab initio molecular dynamics (Dynamics loop)
 cpu::md::MD                sim;
 sim.add(cpu::md::VelocityVerlet{dt});
 sim.add(cpu::md::NoseHoover{T, tau, dt});
-sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{cfg}.predictor(3));
+sim.on(md::Phase::force).add(cpu::scf::SCF{cfg}.predictor(3));
 ```
 
 Two drivers, one evaluator, two ensembles. That is the architecture

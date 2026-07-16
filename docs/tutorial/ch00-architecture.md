@@ -38,17 +38,17 @@ driver, and read final coordinates and energies out of the same fields
 when the run finishes. Units are eV, Å, fs, amu throughout.
 
 The same frame is reused across MD, minimization, and SCF. That is why we
-can compose, for example, `cpu::md::MD` with an `SCFEvaluator` to do *ab
+can compose, for example, `cpu::md::MD` with `cpu::scf::SCF` to do *ab
 initio* molecular dynamics: the velocity-Verlet integrator and the SCF
-solver agree to write to the same `frame.atoms.fx/fy/fz` arrays, and the
+component agree to write to the same `kAtom_fx/fy/fz` columns, and the
 driver routes them in the right order.
 
 ## What a Component Is, and What It Is Not
 
 A **component** is one well-scoped piece of work that runs at a specific
 phase of one step of one driver. The base class
-[`cpu::ComponentBase`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h) defines
-exactly three lifecycle hooks:
+[`cpu::Component`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h)
+defines exactly three lifecycle hooks:
 
 ```cpp
 void build  (const BuildContext&);   // one-time setup
@@ -58,24 +58,26 @@ void destroy(const DestroyContext&); // teardown
 
 Every concrete piece of physics — Lennard-Jones forces, harmonic bonds,
 the Nose-Hoover thermostat, the L-BFGS optimizer step, the SCF force
-evaluator — is a class that inherits this base and overrides those hooks.
+component — is a class that inherits a thin **kind** (`Potential`,
+`Integrator`, `HF`, …) which itself inherits `Component`. One kind per
+header under `cpu/component/`; depth ≤ 2.
 
 The contract is strict, and the strictness is the point:
 
 1. **`build` may allocate; `launch` may not.** Per-step allocation
    destroys cache locality and parallel scaling, so the project enforces
    it as a structural rule, not a guideline.
-2. **A component declares its role and its capabilities.** The role tag
-   (Integrator / Optimizer / Evaluator / Thermostat / …) says *where* it
-   runs in the loop. The capability bitset (Energy | Force | Stress | …)
-   says *what fields it writes* to the frame.
+2. **Kind is the C++ type; Role is a bitset.** Inheritance says *what
+   class of work* this is (`Potential`, `HF`, `Optimizer`, …). `role()`
+   returns `RoleFlag`s (`FrameImmutable`, `Deferred`, `ExternalIO`) —
+   how the loop may treat it. There is no `Capability` write-set; outputs
+   are Frame keys (`kEnergy`, `kAtom_fx`, …).
 3. **A component does not own a loop.** The driver does. A component
    advances state by exactly one step's worth of work and returns.
 
 This last rule is what lets you swap, say, L-BFGS for conjugate-gradient
 inside `cpu::minimizer::Minimize` without touching the minimizer driver
-at all. Both are `Optimizer`-role components with the same outer
-contract; the driver's run loop is identical either way.
+at all. Both inherit `Optimizer`; the driver's run loop is identical.
 
 ## What a Driver Is
 
@@ -146,12 +148,14 @@ For `cpu::Evaluate` (single-point work) the order is:
 prepare → evaluate → finalize
 ```
 
-When you call `driver.add(component)`, the component's
-`default_bindings()` say which phase it belongs to and at what order
-within that phase. When you want explicit placement, you write
-`driver.on(phase).add(component, order)`. Negative orders run before
-positive orders, so user observers (default `0`) sit naturally after
-infrastructure (negative orders).
+When you call `driver.add(Component{...})`, the driver owns the component and
+its `default_bindings()` say which phase it belongs to and at what order within
+that phase. An existing component is borrowed only with the explicit
+`driver.add_ref(component)` spelling. Explicit placement follows the same rule:
+`driver.on(phase).add(Component{...}, order)` owns, while
+`driver.on(phase).add_ref(component, order)` borrows. Plain `add(lvalue)` is
+deleted. Negative orders run before positive orders, so user observers (default
+`0`) sit naturally after infrastructure (negative orders).
 
 You will see this concretely in every later tutorial. The takeaway here
 is just that **the loop has names**. You are never expected to read
@@ -187,7 +191,7 @@ handler: `sim.add_handler(cpu::StopOnNaN{})`.
 loop until converged or max_iter:
     search_direction   ← LBFGS / CG computes a descent direction
     line_search        ← (optional Armijo backtracking)
-    force              ← PairLJCut / SCFEvaluator / … (same evaluators as MD!)
+    force              ← PairLJCut / SCF / … (same evaluators as MD!)
     convergence_check  ← LBFGS / CG *measure*: max force, displacement, ΔE
     end_of_step        ← OptLog, FinalGeometry, TrajectoryWriter
 ```
@@ -213,7 +217,7 @@ std::cout << opt.stop_reason() << "\n";   // which handler ended the loop
 ```text
 exactly once:
     prepare    ← ZeroForces, ZeroEnergy
-    evaluate   ← SCFEvaluator / PairLJCut / BondHarmonic / …
+    evaluate   ← SCF / PairLJCut / BondHarmonic / …
     finalize   ← (recorders that read the final state)
 ```
 
@@ -232,24 +236,24 @@ convergence-check cycle to converge a single-point electronic structure
 calculation. It has its own internal loop, its own internal helpers
 (under `cpu::scf::internal::`), and its own convergence channel. None of
 those internals are registered into any outer Plan, and none inherit
-from `cpu::ComponentBase`.
+from `cpu::Component`.
 
 What plugs into a driver is a wrapper:
-[`cpu::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_evaluator.h).
-The evaluator is a `cpu::ComponentBase` with role `Evaluator` and
+[`cpu::scf::SCF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_evaluator.h).
+The evaluator is a `cpu::Component` with kind `HF` (or `Potential`) and
 capabilities `Energy | DensityMatrix | Orbitals` (and `Force` when
 gradient computation is enabled). Inside its `launch()` it builds the
 integrals at the current geometry, calls into a pre-built `SCFSolver`,
 optionally computes the analytic nuclear gradient, and writes
-`frame.scalars.energy` and (when applicable) the force arrays.
+`frame.meta.get(kEnergy)` and (when applicable) the force columns.
 
 That is why one and the same component is the right answer for three
 very different workflows:
 
-- **Single-point energy.** `cpu::Evaluate + SCFEvaluator{cfg}.with_gradient(false)`
-- **Geometry optimization.** `cpu::minimizer::Minimize + LBFGS + SCFEvaluator{cfg}` (the example in
+- **Single-point energy.** `cpu::Evaluate + SCF{cfg}.with_gradient(false)`
+- **Geometry optimization.** `cpu::minimizer::Minimize + LBFGS + SCF{cfg}` (the example in
   [Chapter 12](ch12-geometry-optimization.md))
-- **Ab initio molecular dynamics.** `cpu::md::MD + VelocityVerlet + NoseHoover + SCFEvaluator{cfg}.predictor(3)`
+- **Ab initio molecular dynamics.** `cpu::md::MD + VelocityVerlet + NoseHoover + SCF{cfg}.predictor(3)`
   (the example in [Chapter 15](ch15-cross-method.md))
 
 Same evaluator. Three different drivers. Same `cpu::Frame`.
@@ -262,16 +266,16 @@ providers*, not by writing a new driver.
 
 ```text
 cpu::md::MD        + PairLJCut                          = classical MD
-cpu::md::MD        + SCFEvaluator                        = AIMD
+cpu::md::MD        + SCF                        = AIMD
 cpu::minimizer::Minimize + LBFGS + PairLJCut             = classical relaxation
-cpu::minimizer::Minimize + LBFGS + SCFEvaluator          = ab initio geometry opt
+cpu::minimizer::Minimize + LBFGS + SCF          = ab initio geometry opt
 cpu::Evaluate      + PairLJCut                           = classical single-point
-cpu::Evaluate      + SCFEvaluator                        = quantum single-point
+cpu::Evaluate      + SCF                        = quantum single-point
 ```
 
 The driver code does not know whether the force is empirical or
 quantum-mechanical; it only requires that *something* registered on the
-`force` phase produces `Capability::Force`. That single architectural
+`force` phase produces `a force-writing energy kind (Potential / HF / …)`. That single architectural
 choice is what unifies the rest of the documentation.
 
 ## Two Types You Will Meet Often
@@ -312,7 +316,7 @@ class StopWhenTooHot : public cpu::LoopHandler {
     explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
     const char* name() const override { return "stop_when_too_hot"; }
     ATV::Verdict after_iteration(const cpu::LoopState& s) override {
-        return (s.frame.scalars.temperature > t_max_) ? ATV::Verdict::Stop
+        return (temperature(s.frame) > t_max_) ? ATV::Verdict::Stop
                                                       : ATV::Verdict::Continue;
     }
   private:
@@ -331,20 +335,20 @@ You can now read the rest of the manual without losing your bearings.
   the very idea of "self-consistent" is new to you.
 - **Chapter 2 — Restricted Hartree-Fock (RHF).** Same loop, real
   molecule. Introduces `IntegralPack`, `SCFConfig`, and the
-  `SCFEvaluator`-with-`cpu::Evaluate` recipe.
+  `SCF`-with-`cpu::Evaluate` recipe.
 - **Chapter 3 — Unrestricted Hartree-Fock (UHF).** Adds spin
   polarization. Same driver, different `SCFConfig`.
 - **Chapter 4 — Unrestricted Kohn-Sham DFT (UKS).** Adds the XC grid.
   Same driver, same evaluator class, different `SCFConfig`.
 - **Chapter 6 — *Ab Initio* Molecular Dynamics.** Switches the driver to
   `cpu::md::MD`, adds an integrator and a thermostat, keeps the
-  `SCFEvaluator` at the force phase.
+  `SCF` at the force phase.
 - **Chapter 7 — Classical Molecular Dynamics.** Replaces the
-  `SCFEvaluator` with `PairLJCut` and bonded force-field components. Shows the
+  `SCF` with `PairLJCut` and bonded force-field components. Shows the
   full thermo / trajectory / RDF observer stack.
 - **Chapter 8 — Geometry Minimization.** Switches the driver to
   `cpu::minimizer::Minimize`, swaps `LBFGS` and `CG` as the optimizer
-  component, keeps the `SCFEvaluator` at the force phase.
+  component, keeps the `SCF` at the force phase.
 
 If you only have time for one example to start with, build and run
 `examples/01_scf.cpp` (the SCF toy) and read Chapter 1 next.

@@ -114,7 +114,7 @@ not a new driver class.
 
 Electronic-structure code exists in two complementary forms:
 
-- CPU reference solvers such as `rhf_solve`, `uhf_solve`, and `uks_solve`
+- the CPU `cpu::scf::SCFSolver`, configured for RHF, UHF, RKS, or UKS
 - a device-resident CUDA inner solver `cuda::scf::SCFSolver`, wrapped by the
   `cuda::scf::SCFEvaluator` component and driven by `cuda::Evaluate`
 

@@ -36,7 +36,7 @@ The easiest way to understand the codebase is as four layers.
 The files under [`include/atomiverse/core`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core)
 define the smallest shared concepts:
 
-- numeric aliases such as `Real` and `Int`
+- role-specific numeric tiers such as `StorageReal`, `AccReal`, and `TagInt`
 - small value types such as `Mat3`
 - execution traits such as `Scheduling`
 - device tags used for compile-time backend selection
@@ -151,10 +151,13 @@ The transfer boundary is explicit:
 The plan system is the reason examples can read like a script instead of a
 handwritten event loop.
 
-Each component can either declare `default_bindings()` or be attached manually
-through `driver.on(phase).add(component, order)`. The driver stores those
-requests as pending bindings. When `build()` is called, `PlanBuilder` resolves
-them into one `StageSlot` per phase, with operations sorted by `order`.
+Each component can either declare `default_bindings()` or be attached manually.
+`driver.add(Component{...})` and `driver.on(phase).add(Component{...}, order)`
+transfer ownership to the driver. Borrowing requires the explicit `add_ref`
+spelling on the corresponding path; plain `add(lvalue)` is deleted. The driver
+stores those requests as pending bindings. When `build()` is called,
+`PlanBuilder` resolves them into one `StageSlot` per phase, with operations
+sorted by `order`.
 
 That means two things follow automatically.
 
@@ -240,25 +243,22 @@ home of single-point energy and force calculations.
 **SCF is not a driver family.** Both Gaussian-basis SCF and plane-wave DFT are
 *inner solvers* — plain low-level classes, not `Driver` subclasses. Gaussian SCF
 is `cpu::scf::SCFSolver` (and `cuda::scf::SCFSolver`), wrapped by the
-`cpu::scf::SCFEvaluator` / `cuda::scf::SCFEvaluator` component; plane-wave DFT is
-`cpu::pw::PWSolver` behind `cpu::pw::PWEvaluator`. The evaluator carries the
-`Energy` capability (plus `Force` / `DensityMatrix` / `Orbitals` where
-applicable) and plugs into the *same* Evaluate, MD, and Minimize drivers — the
-"swap the evaluator, keep the driver" pattern that gives AIMD and *ab initio*
-geometry optimization for free.
+`cpu::scf::SCF` (`cpu::HF`) / the CUDA SCF evaluator; plane-wave DFT is
+`cpu::pw::PWSolver` behind `cpu::pw::PWEvaluator` (`PlaneWave`). There is no
+`Capability` write-set — components write Frame keys and plug into the *same*
+Evaluate, MD, and Minimize drivers ("swap the energy source, keep the driver").
 
 The SCF cycle (Hamiltonian build → diagonalize → density → DIIS → convergence)
 is decomposed into `internal::` helpers — `HamiltonianBuilder`, `EigenSolver`,
 `DensityBuilder`, `DIISMixer`, `DualConvergenceCheck` — owned as direct members
-of `SCFSolver`. None inherit from `ComponentBase`, none are registered into a
+of `SCFSolver`. None inherit from `Component`, none are registered into a
 Plan, and there is deliberately **no `scf::Phase` enum**. That is why the SCF
 loop is neither a monolithic function nor a user-pluggable phase order.
 
-## Why CPU SCF Solvers Still Exist
+## Why the CPU SCF Solver Still Exists
 
-A common question is why the repository has both staged CUDA SCF components and
-standalone CPU solver functions such as `rhf_solve`, `uhf_solve`, and
-`uks_solve`.
+A common question is why the repository has both a CPU `SCFSolver` and staged
+CUDA SCF components.
 
 The short answer is that they solve different engineering problems.
 

@@ -7,7 +7,7 @@ interop, this is the right place to start. If your goal is to learn SCF, RHF,
 UHF, or UKS, stay in the tutorial track instead.
 
 `ATV::torch` is **not a third execution backend** — it has no `Driver`, no
-`ComponentBase`, no `backend_traits`, and no device tag. It is a
+`Component`, no `backend_traits`, and no device tag. It is a
 *differentiable-potential library*: a tensor-backed `Frame`, a neighbor-list
 builder, and a small set of potential kernels exposed as free functions on
 `at::Tensor`. Use it for workflows where a simulation operator is not the end of

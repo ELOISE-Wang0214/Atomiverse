@@ -65,19 +65,20 @@ using namespace ATV;
 
 cpu::Frame frame(3);                       // three atoms: an H2O
 
-frame.atoms.type[0] = 8;                   // type = atomic number Z
-frame.atoms.type[1] = 1;
-frame.atoms.type[2] = 1;
+auto type = frame.span(kAtom_type);
+auto x = frame.span(kAtom_x);
+auto y = frame.span(kAtom_y);
+auto z = frame.span(kAtom_z);
+auto mass = frame.span(kAtom_mass);
 
-frame.atoms.x[0] = 0.0;  frame.atoms.y[0] = 0.0;      frame.atoms.z[0] = 0.1178;
-frame.atoms.x[1] = 0.0;  frame.atoms.y[1] = 0.7555;   frame.atoms.z[1] = -0.4712;
-frame.atoms.x[2] = 0.0;  frame.atoms.y[2] = -0.7555;  frame.atoms.z[2] = -0.4712;
+type[0] = 8; type[1] = 1; type[2] = 1;     // atomic number Z
+x[0] = 0.0; y[0] = 0.0;     z[0] = 0.1178;
+x[1] = 0.0; y[1] = 0.7555;  z[1] = -0.4712;
+x[2] = 0.0; y[2] = -0.7555; z[2] = -0.4712;
 
-frame.atoms.mass[0] = 15.999;              // amu
-frame.atoms.mass[1] = 1.008;
-frame.atoms.mass[2] = 1.008;
+mass[0] = 15.999; mass[1] = 1.008; mass[2] = 1.008; // amu
 
-frame.box = Mat3::cubic(100.0);            // a big non-interacting cell [Å]
+frame.simbox = cpu::Box::cubic(100.0);      // a big non-interacting cell [Å]
 ```
 
 For a small molecule the initializer-list form used throughout the test
@@ -85,25 +86,32 @@ suite is more compact and just as valid:
 
 ```cpp
 cpu::Frame frame(3);
-frame.atoms.type = {8, 1, 1};
-frame.atoms.x    = {0.0, 0.0,     0.0};
-frame.atoms.y    = {0.0, 0.7555, -0.7555};
-frame.atoms.z    = {0.1178, -0.4712, -0.4712};
-frame.atoms.mass = {15.999, 1.008, 1.008};
-frame.box        = Mat3::cubic(100.0);
+const int type[] = {8, 1, 1};
+const double x[] = {0.0, 0.0, 0.0};
+const double y[] = {0.0, 0.7555, -0.7555};
+const double z[] = {0.1178, -0.4712, -0.4712};
+const double mass[] = {15.999, 1.008, 1.008};
+for (int i = 0; i < frame.nlocal(); ++i) {
+    frame.span(kAtom_type)[i] = type[i];
+    frame.span(kAtom_x)[i] = x[i];
+    frame.span(kAtom_y)[i] = y[i];
+    frame.span(kAtom_z)[i] = z[i];
+    frame.span(kAtom_mass)[i] = mass[i];
+}
+frame.simbox = cpu::Box::cubic(100.0);
 ```
 
 Two conventions here are load-bearing and reused in every quantum chapter:
-`frame.atoms.type[i]` stores the **atomic number Z** (not a force-field type
+`frame.span(kAtom_type)[i]` stores the **atomic number Z** (not a force-field type
 index), and positions are in **Ångström**. Results land back on the same
-object: `frame.scalars.energy` (potential energy, eV) and the force arrays
-`frame.atoms.fx/fy/fz` (eV/Å) after a driver runs.
+object: `frame.meta.get(kEnergy)` (potential energy, eV) and the
+`kAtom_fx/fy/fz` columns (eV/Å) after a driver runs.
 
 ### The box is `cpu::Box`
 
 The simulation cell is [`cpu::Box`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box.h),
-constructed most often from `Mat3::cubic(L)` (which `frame.box = ...` accepts
-directly). It owns the 3×3 cell matrix plus a per-step-immutable cache and
+constructed most often with `cpu::Box::cubic(L)` and assigned to
+`frame.simbox`. It owns the 3×3 cell matrix plus a per-step-immutable cache and
 exposes the queries force kernels need:
 
 ```cpp
@@ -124,7 +132,7 @@ minimum-image helper (`min_image`) is on the hot path — see
 The MD-internal ("metal") unit system is the canonical one:
 **energy in eV, length in Å, time in fs, mass in amu, temperature in K,
 force in eV/Å.** Electronic-structure solvers work *internally* in
-Hartree/Bohr/Rydberg but convert onto `frame.scalars.energy` in eV before
+Hartree/Bohr/Rydberg but convert into `frame.meta.get(kEnergy)` in eV before
 returning, so the frame you read is always in metal units.
 
 When you do need to cross the bridge — say to compare a force against a
@@ -143,7 +151,7 @@ double f_au    = convert(f_ev_A, Force::eVPerAngstrom, Force::HartreePerBohr);
 The conversion factors (`BOHR = 0.52917721092 Å`,
 `HARTREE2EV = 27.211386245988`) are pinned to PySCF's `nist.py` so integrals
 match the ground-truth path bit-for-bit. Named constants like
-`ATV::units::kB_ev_per_k` (Boltzmann, eV/K) and `ATV::kHartree2eV` are
+`ATV::units::kB_ev_per_k` (Boltzmann, eV/K) and `ATV::units::kHartreeInEv` are
 available for the common conversions.
 
 ## The Precision Model: Spend Bits Where They Matter
@@ -187,13 +195,12 @@ overflow 32 bits:
 
 `-DATV_ID_SIZE=bigbig` widens `TagInt` and `ImageInt` to 64-bit for
 billion-atom runs; `BigInt` is always 64-bit so a global count never wraps.
-The legacy catch-all aliases `ATV::Real` (= `AccReal`) and `ATV::Int`
-(= `LocalInt`) remain for older call sites, but new code should name the
-tier it means.
+There is no catch-all floating-point or integer type: every declaration names
+the tier matching its physical role.
 
 You rarely construct these types by hand — the frame's arrays already carry
 the right tier. What matters is understanding *why* an energy read from
-`frame.scalars.energy` is trustworthy even in a mixed-precision build: the
+`frame.meta.get(kEnergy)` is trustworthy even in a mixed-precision build: the
 storage may be `float`, but everything that *sums* is `double`.
 
 ## The Validation Discipline: Finite Differences Certify a Gradient
@@ -220,7 +227,9 @@ cpu::Frame frame = /* H2O, positions in Å, type = Z */;
 
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 auto config    = cpu::scf::rhf_config(integrals);       // RHF, MINAO guess
-auto result    = cpu::scf::scf_solve(integrals, config);
+cpu::scf::SCFSolver solver{config};
+solver.build(integrals);
+const auto& result = solver.run(integrals);
 
 // Analytic gradient: forces [n_atoms, 3] in eV/Å, energy in eV.
 auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -230,7 +239,7 @@ auto fd = cpu::scf::scf_finite_difference_gradient(
     frame, config, /*charge=*/0, /*h=*/5e-5, cpu::scf::BasisSet::STO3G);
 
 double max_err = 0.0;
-for (int A = 0; A < static_cast<int>(frame.atoms.size()); ++A)
+for (int A = 0; A < frame.nlocal(); ++A)
     for (int d = 0; d < 3; ++d)
         max_err = std::max(max_err,
                            std::abs(analytic.forces(A, d) - fd.forces(A, d)));

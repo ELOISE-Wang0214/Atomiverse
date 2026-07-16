@@ -36,8 +36,8 @@ the component will only ever participate in MD (its phase enum is
 `md::Phase`). Putting it under `cpu/md/` also keeps it out of the
 minimizer/SCF dependency footprint.
 
-**The skeleton.** Inherit from `cpu::ComponentBase`, declare the role,
-declare the default bindings, and override `launch`:
+**The skeleton.** Inherit the matching kind (`Integrator`, `Potential`, …),
+declare default bindings if the phase is fixed, and override `launch`:
 
 ```cpp
 #pragma once
@@ -45,18 +45,18 @@ declare the default bindings, and override `launch`:
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV { namespace cpu { namespace md {
 
-class Beeman : public cpu::ComponentBase {
+class Beeman : public cpu::Integrator {
 public:
     explicit Beeman(double dt);
 
-    std::string   name() const override   { return "beeman"; }
-    ComponentRole role() const override   { return ComponentRole::Integrator; }
+    std::string name() const override { return "beeman"; }
+    // role() defaults to 0; override only for Deferred / FrameImmutable
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
@@ -93,16 +93,14 @@ Two architectural choices to make consciously:
    only fundamental physical quantities go on `cpu::Frame`.
 
 **Allocation discipline.** If you store per-step buffers, allocate them
-in `build()` (sized to `frame.atoms.size()`), not in `launch()`. The
+in `build()` (sized to `frame.capacity()`), not in `launch()`. The
 zero-allocation invariant in `launch()` is verified by
 `tests/cpu/test_md_no_alloc.cpp`, and breaking it will fail review.
 
 **Validation comes for free.** `cpu::md::MD::validate_components`
-walks the registered set and requires at least one component with
-`role() == Integrator`. By tagging Beeman with `ComponentRole::Integrator`
-in the header above, you make the new integrator a valid replacement
-for `VelocityVerlet`. No driver-side change is needed — that is the
-whole point of the role tag.
+walks the registered set and requires at least one `Integrator` (and an
+energy/force kind). Inheriting `cpu::Integrator` makes Beeman a valid
+replacement for `VelocityVerlet`. No driver-side change is needed.
 
 **Test recipe.** Add `tests/cpu/md/test_beeman.cpp` that builds a small
 NVE system (typically the FCC Argon fixture from `test_md.cpp`),
@@ -140,13 +138,13 @@ judged. It does **not** judge them itself. Mirror the existing pattern:
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"   // for OptRecord
 #include "atomiverse/facade/stage.h"
 
 namespace ATV { namespace cpu { namespace minimizer {
 
-class FIRE : public cpu::ComponentBase {
+class FIRE : public cpu::Optimizer {
 public:
     FIRE(double dt0,           // initial pseudo-timestep [fs]
          double dt_max,        // step ceiling
@@ -157,7 +155,7 @@ public:
          double f_alpha);      // alpha decay factor
 
     std::string   name() const override { return "fire"; }
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    // Optimizer kind; role defaults to 0
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
@@ -218,15 +216,14 @@ convergence definition that once demanded "its own convergence
 component" is now just a handler, and it is about ten lines.
 
 **Lifecycle.** `build()` allocates `v_`, `x_prev_`, and `trace_` to
-sizes proportional to `frame.atoms.size()`. `launch()` reads forces
+sizes proportional to `frame.capacity()`. `launch()` reads forces
 from the frame, applies the FIRE update rules to `v_`, computes the new
 positions, writes them back, and publishes the metrics above.
 
 **Validation.** `cpu::minimizer::Minimize::validate_components` requires
-at least one `Optimizer` component and at least one `Evaluator` with
-`Capability::Energy` or `Capability::Force`. By tagging FIRE with
-`ComponentRole::Optimizer`, you make it a valid drop-in for `LBFGS` /
-`CG`. The driver does not have to change.
+at least one `Optimizer` and at least one energy/force kind
+(`Potential`, `HF`, `Bias`, …). Inheriting `Optimizer` makes FIRE a
+valid drop-in for `LBFGS` / `CG`. The driver does not have to change.
 
 **Test recipe.** Extend `test_minimize_driver_swap_optimizer.cpp` to
 run the same aspirin / RHF problem with all three optimizers and
@@ -236,7 +233,7 @@ $\Delta t$ ramp). Use a closed-form quadratic fixture if you want a
 clean numeric oracle without touching SCF.
 
 A subtlety worth flagging: FIRE has its own **internal** velocity
-state $v$ that is *not* the same as `frame.atoms.vx/vy/vz` (which would
+state $v$ that is *not* the same as the `kAtom_vx/vy/vz` columns (which would
 be physical MD velocities). Keeping FIRE's $v$ on the component, not
 on the frame, follows the data-residency rule — a different optimizer
 might use different state, and the frame stays algorithm-agnostic.
@@ -248,7 +245,7 @@ might use different state, and the frame stays algorithm-agnostic.
 standard Pulay DIIS for poorly-conditioned starts.
 
 **Where it lives.** This is *not* a Component. It does not inherit
-from `cpu::ComponentBase`, it does not have `default_bindings()`, and
+from `cpu::Component`, it does not have `default_bindings()`, and
 it never gets registered into a Plan. It is an inner-step helper, and
 inner-step helpers live in
 [`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/)
@@ -365,9 +362,9 @@ Three questions, in order:
 
 1. **Does the extension live in a phase the user can already see?**
    - If yes (force, integrate, search_direction, end_of_step, …): it
-     is a Component. Inherit from `cpu::ComponentBase`, pick the role
-     and capabilities, declare default bindings, plug into the
-     existing driver.
+     is a Component. Inherit the matching kind (`Potential`,
+     `Integrator`, `Optimizer`, `HF`, …), declare default bindings,
+     plug into the existing driver.
    - If no: it is an inner-solver helper. Pick the right inner solver
      class (today: `cpu::scf::SCFSolver`), put the helper in that
      solver's `internal::` directory, give it a `prepare()` /

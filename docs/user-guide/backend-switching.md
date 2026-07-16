@@ -22,11 +22,15 @@ comes only after the integrals and workflow are chosen.
 
 ## CPU Solver Versus CUDA Driver
 
-The CPU path keeps the whole calculation in one direct call:
+The CPU path exposes the solver lifecycle directly:
 
 ```cpp
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto result = cpu::scf::rhf_solve(integrals, tol, 100);
+auto config = cpu::scf::rhf_config(integrals, tol);
+config.max_iter = 100;
+cpu::scf::SCFSolver solver{config};
+solver.build(integrals);
+const auto& result = solver.run(integrals);
 ```
 
 This is the best path for learning, debugging, and validating the mathematics.
@@ -35,18 +39,18 @@ The code is compact and the linear algebra stays close to the physics.
 The CUDA path keeps the same `cpu::Frame` and the same integral data, but hands
 the iterative work to a device-resident evaluator driven by `cuda::Evaluate`.
 The inner SCF cycle (Fock build, diagonalize, density, convergence) lives
-inside `cuda::scf::SCFSolver`, wrapped by the `cuda::scf::SCFEvaluator`
+inside `cuda::scf::SCFSolver`, wrapped by the `cuda::scf::SCF`
 component:
 
 ```cpp
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
-cuda::scf::SCFEvaluator scf{integrals, tol, /*max_iter=*/100};
+cuda::scf::SCF scf{integrals, tol, /*max_iter=*/100};
 
 cuda::Evaluate eval;
 eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
 eval.build();
-eval.run(frame);              // frame.scalars.energy populated
+eval.run(frame);              // frame.meta.get(kEnergy) populated
 ```
 
 That is the main backend switch in Atomiverse. The physical problem is the

@@ -48,7 +48,7 @@ chapter are all averages over that sequence:
 - **Energy conservation** is the simplest: in the microcanonical (NVE) ensemble
   the total energy $E = U + K$ should be constant, so its drift is a direct
   measure of integrator quality — an observable you get for free from
-  `frame.scalars`.
+  typed `frame.meta` entries.
 - **The radial distribution function** $g(r)$ is a *structural* average — the
   probability of finding a pair of atoms at separation $r$, normalised by the
   ideal-gas expectation. Its first peak is the nearest-neighbour shell.
@@ -127,22 +127,22 @@ construct an observer and call `set_observer`.
 ### The cheapest observable: energy conservation
 
 You do not need a component for this one. Every evaluator writes into the shared
-[`SystemScalars`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/system_scalars.h) bundle on
-`frame.scalars`, and the integrator writes the kinetic energy, so total energy
+typed Frame metadata, and the integrator writes the kinetic energy, so total energy
 is already available each step:
 
 ```cpp
 auto frame = make_fcc_argon(4, /*a=*/5.32);        // 256 Ar atoms, Å
 
 cpu::md::MD sim;
-sim.set_pair(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
+sim.add_potential(cpu::PairLJCut{/*eps=*/0.0104, /*sigma=*/3.4, /*cutoff=*/6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/4.0});   // NVE — no thermostat
 sim.set_thermo(1000);   // print step, T, PE, KE, E_total every 1000 steps
 sim.build();
 sim.run(frame, 100'000);
 
-const double E_total = frame.scalars.energy + frame.scalars.kinetic;  // [eV]
+const double E_total = frame.meta.get(kEnergy)
+                     + frame.meta.get(kKinetic);                  // [eV]
 ```
 
 In NVE, `E_total` should be constant to a small drift that scales with the
@@ -298,7 +298,7 @@ number.
 
 The through-line of this book is that you change *method* by swapping the
 force-providing evaluator and change *hardware* by swapping the backend
-namespace, while the loop, the tags, and the `SystemScalars` bundle stay fixed.
+namespace, while the loop, identity columns, and exact typed-meta keys stay fixed.
 Observables are where that pattern pays off a second time.
 
 An observer never asks *how* the trajectory was produced. It subscribes to the

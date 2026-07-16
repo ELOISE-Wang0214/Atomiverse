@@ -87,9 +87,11 @@ insertion in `pre_exchange`), the phase is already there waiting.
 ## How a component attaches: (phase, order)
 
 A component declares where it runs with `default_bindings()` returning a list of
-`(phase, order)` pairs, or a caller pins it explicitly with
-`driver.on(phase).add(component, order)`. Within a phase, components run in
-ascending `order`. The convention is a small signed integer:
+`(phase, order)` pairs, or a caller pins an owned temporary explicitly with
+`driver.on(phase).add(Component{...}, order)`. Existing instances use
+`driver.on(phase).add_ref(component, order)` and must outlive the driver; implicit
+lvalue borrowing is deleted. Within a phase, components run in ascending
+`order`. The convention is a small signed integer:
 
 - **negative** — infrastructure that must run *first* (zeroing buffers, ghost
   setup),
@@ -119,7 +121,7 @@ end_of_step       :  zero_kinetic(-1000), kinetic_energy(-100), reduce(-50),
                      observers(+20), rebalance(+1000)
 ```
 
-The categorical setters (`set_pair`, `set_neighbor`, `set_integrator`,
+The categorical setters (`add_potential`, `set_neighbor`, `set_integrator`,
 `set_thermostat`, `set_barostat`, …) are thin wrappers that call
 `on(phase).add(...)` at the documented phase/order, so a plan built with the
 setters is identical to one built with raw `add()` calls. `set_neighbor` binds
@@ -129,34 +131,36 @@ their force phase just ahead of the kernels.
 
 ## The component contract
 
-A component (`cpu::ComponentBase`) is the unit of scheduled work — the rough
+A component (`cpu::Component`) is the unit of scheduled work — the rough
 analogue of a LAMMPS `Fix` or `Pair`:
 
 ```cpp
 std::string name() const;                        // identity / timing key, snake_case
-ComponentRole role() const;                      // Integrator | Evaluator | None | ...
-Capability capabilities() const;                 // Force | Energy | Stress | ...
+Role role() const;                               // RoleFlag bitset (default 0)
 std::vector<DefaultBinding> default_bindings();   // {(phase, order), ...}
 void build(const BuildContext&);                 // one-time allocation (NOT per step)
 void launch(const LaunchContext&);               // per-step work (NO allocation)
 void destroy(const DestroyContext&);             // teardown
 ```
 
+Kinds (`Integrator`, `Potential`, `HF`, …) are C++ types — one header
+each under `cpu/component/`. There is no `Capability` write-set.
+
 Two invariants are load-bearing and enforced by tests:
 
 - **No allocation in `launch()`.** Buffers are sized in `build()` (or grown only
   on rare capacity events such as a ghost-region expansion). The MD inner loop
   is allocation-free at steady state.
-- **Owned vs ghost rows.** Owned atoms live in `frame.atoms[0, n_local)`; halo
+- **Owned vs ghost rows.** Owned atoms live in the first `frame.nlocal()` rows;
   ghosts in `[n_local, n_local + n_ghost)`. Force kernels accumulate into the
-  shared `frame.atoms.f*`; integrators and reductions iterate owned rows only
+  shared `kAtom_fx/fy/fz` columns; integrators and reductions iterate owned rows only
   (see `owned_range.h` / `ResolveView`).
 
 ## Adding a component or a phase
 
-To add a component, give it a `name()`, a `role()`/`capabilities()`, a
-`default_bindings()` at the right `(phase, order)`, and a `build()`/`launch()`
-pair that respects the two invariants above. See
+To add a component, inherit the matching kind, give it a `name()`, optional
+`role()` flags, a `default_bindings()` at the right `(phase, order)`, and a
+`build()`/`launch()` pair that respects the two invariants above. See
 [Extending CPU Subsystems](extending-cpu-subsystems.md) for worked examples
 (adding an MD integrator, a minimiser, an SCF helper).
 

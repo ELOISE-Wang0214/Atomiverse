@@ -147,7 +147,7 @@ Copper (`cpu/potentials/eam_data/eam_tables.h`):
 ### Running it
 
 `cpu::EAM` is a force component like any other. It is **not** a `Pair` — see §5 —
-so it is bound explicitly rather than through `set_pair`:
+so it is bound explicitly rather than through `add_potential`:
 
 ```cpp
 #include "atomiverse/cpu/potentials/eam.h"
@@ -158,12 +158,12 @@ cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{1.0});           // fs
 sim.on(md::Phase::force)
-   .add(cpu::EAM{cpu::EAMPotential{Element::Cu, "sutton-chen"}, cutoff});
+   .add(cpu::EAM{cpu::EAMPotential{molrs::Element::Cu, "sutton-chen"}, cutoff});
 sim.build();
 sim.run(frame, 1000);
 ```
 
-`EAMPotential(Element, name)` is a **lookup constructor**: it reads the in-tree static
+`EAMPotential(molrs::Element, name)` is a **lookup constructor**: it reads the in-tree static
 table and throws on an element or parameterization it does not have. There is no
 `setfl` / `.eam.alloy` parser anywhere in the engine, and nothing reads a data file
 at build, test, or run time.
@@ -247,7 +247,7 @@ Silicon (`cpu/potentials/sw_data/sw_tables.h`):
 ```cpp
 #include "atomiverse/cpu/potentials/sw.h"
 
-const cpu::SWPotential pot{Element::Si, "stillinger-weber"};
+const cpu::SWPotential pot{molrs::Element::Si, "stillinger-weber"};
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{pot.cutoff(), 0.3});
@@ -275,19 +275,24 @@ const double basis[8][3] = {
 };
 
 cpu::Frame frame(8 * nc * nc * nc);
+auto x = frame.span(kAtom_x);
+auto y = frame.span(kAtom_y);
+auto z = frame.span(kAtom_z);
+auto mass = frame.span(kAtom_mass);
+auto type = frame.span(kAtom_type);
 int idx = 0;
 for (int ix = 0; ix < nc; ++ix)
   for (int iy = 0; iy < nc; ++iy)
     for (int iz = 0; iz < nc; ++iz)
       for (int k = 0; k < 8; ++k) {
-          frame.atoms.x[idx] = (ix + basis[k][0]) * a0;
-          frame.atoms.y[idx] = (iy + basis[k][1]) * a0;
-          frame.atoms.z[idx] = (iz + basis[k][2]) * a0;
-          frame.atoms.mass[idx] = 28.0855;
-          frame.atoms.type[idx] = 14;   // Z
+          x[idx] = (ix + basis[k][0]) * a0;
+          y[idx] = (iy + basis[k][1]) * a0;
+          z[idx] = (iz + basis[k][2]) * a0;
+          mass[idx] = 28.0855;
+          type[idx] = 14;   // Z
           ++idx;
       }
-frame.box = Mat3::cubic(a0 * nc);
+frame.simbox = cpu::Box::cubic(a0 * nc);
 ```
 
 Two atoms per lattice point, offset by ¼ along the body diagonal: that is what makes
@@ -413,12 +418,12 @@ one abstraction that is currently clean and fast. Instead both styles follow the
 pattern `CoulLong` already established:
 
 ```cpp
-class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer { ... };
+class EAM : public cpu::Component, public cpu::NeighborConsumer { ... };
 
-sim.on(md::Phase::force).add(cpu::EAM{...});   // explicit, not set_pair
+sim.on(md::Phase::force).add(cpu::EAM{...});   // explicit, not add_potential
 ```
 
-`set_pair` is a singular slot (a second pair style throws), and `Pair::launch()` is
+`add_potential` is a singular slot (a second pair style throws), and `Pair::launch()` is
 `final`. Explicit `.on(phase).add()` is the general road, and it is not a workaround —
 it is the API for anything that is not literally a pair style.
 

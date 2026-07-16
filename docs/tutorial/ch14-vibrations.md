@@ -25,7 +25,7 @@ The six questions:
 6. **The recurring pattern.** Another loop that reuses any force evaluator,
    exactly like MD and minimization.
 
-This chapter assumes the `SCFEvaluator`-at-the-force-phase pattern from
+This chapter assumes the `SCF`-at-the-force-phase pattern from
 Tutorials 6 and 8.
 
 ## The Concept: Curvature Is Frequency
@@ -115,7 +115,7 @@ cfg.conv_tol_grad = 1e-9;
 
 cpu::vib::Hessian driver;
 driver.on(ATV::vib::Phase::force)
-      .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+      .add(cpu::scf::SCF{cfg, cpu::scf::BasisSet::Pople631G});
 driver.build();
 
 cpu::vib::HessianResult H = driver.run(frame);   // 6N + 1 force evaluations
@@ -164,7 +164,7 @@ tc.symmetry_number = 2;        // rotational σ, supplied per molecule (H2O: 2)
 
 cpu::vib::Hessian driver{tc};
 driver.on(ATV::vib::Phase::force)
-      .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+      .add(cpu::scf::SCF{cfg, cpu::scf::BasisSet::Pople631G});
 driver.build();
 auto H = driver.run(frame);
 
@@ -239,7 +239,7 @@ Vibrational analysis is the clearest proof that Atomiverse's "swap the
 evaluator, keep the driver" architecture is not confined to MD. `cpu::vib::
 Hessian` is its own loop — its own phase enum, its own fixed
 $6N$-displacement schedule, no termination handler — yet it consumes the
-*identical* `SCFEvaluator{config}` that:
+*identical* `SCF{config}` that:
 
 - MD ([Chapter 15](ch15-cross-method.md)) plugs into `cpu::md::MD` for AIMD,
 - the minimizer ([Chapter 12](ch12-geometry-optimization.md)) plugs into
@@ -254,19 +254,19 @@ drivers*:
 // 1. Optimize
 cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{/* ... */});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg, basis});
+opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg, basis});
 opt.build();  opt.run(frame, 100);
 
 // 2. Characterize at the optimized geometry — same cfg, same basis
 cpu::vib::Hessian vib{tc};
-vib.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg, basis});
+vib.on(ATV::vib::Phase::force).add(cpu::scf::SCF{cfg, basis});
 vib.build();  auto H = vib.run(frame);
 ```
 
 Because any `Capability::Force` component works at the `force` phase, the very
 same driver produces *classical* vibrational frequencies if you register a
 force-field evaluator (`PairLJCut` + bonded terms) instead of an
-`SCFEvaluator`. The Hessian machinery never learns whether its forces are
+`SCF`. The Hessian machinery never learns whether its forces are
 empirical or quantum — which is exactly the invariant
 [Chapter 15](ch15-cross-method.md) elevates to a design principle.
 

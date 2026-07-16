@@ -28,12 +28,15 @@ way it is, not to assume domain knowledge.
   studies (add an MD integrator, add a minimizer, add an SCF inner-step helper)
   at the level of "what file do I create, what do I inherit, what does the test
   look like?"
+- **[KSpace long-range electrostatics](kspace-long-range.md)** — CoulLong +
+  Ewald/PME pairing, stress, cell refresh vs rebuild, replicated-grid MPI
+  ceiling, and the accepted charged-NPT scope.
 
 ## Codebase map
 
 | Directory | Role |
 |---|---|
-| `include/atomiverse/core` | shared vocabulary: `Real`, `Int`, `Mat3`, units, precision tiers, device tags |
+| `include/atomiverse/core` | shared vocabulary: role-specific precision tiers, `Mat3`, units, device tags |
 | `include/atomiverse/facade` | backend-agnostic orchestration: `Driver`, `Plan`, phase enums, roles/capabilities |
 | `include/atomiverse/cpu`, `src/cpu` | CPU backend — frame, drivers, MD, MC, minimizer, SCF, PW, GPW, semiempirics, observers |
 | `include/atomiverse/cuda`, `src/cuda` | CUDA backend — staged components, transfers, async observer bridges |

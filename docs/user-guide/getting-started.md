@@ -126,7 +126,7 @@ The user-facing description of your system lives in
 [`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h). You fill it with
 atom positions, masses, atom types, the simulation box, and optionally topology
 (bonds/angles). Positions are in Ångström; energies come back on
-`frame.scalars.energy` in eV (the SCF/PW evaluators also report Hartree/Rydberg
+`frame.meta.get(kEnergy)` in eV (the SCF/PW evaluators also report Hartree/Rydberg
 on their result objects). CPU workflows operate on the frame directly; CUDA
 workflows copy it to a device frame internally and copy results back, so you do
 not manage GPU memory by hand for a standard run.

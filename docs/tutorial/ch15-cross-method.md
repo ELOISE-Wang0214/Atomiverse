@@ -18,7 +18,7 @@ The six questions:
 2. **The Atomiverse representation.** The `Evaluator` component as the single
    pluggable degree of freedom.
 3. **The C++ API.** `cpu::single_point`, `cpu::Evaluate`, `cpu::md::MD`,
-   `cpu::minimizer::Minimize`, and the `SCFEvaluator` knobs.
+   `cpu::minimizer::Minimize`, and the `SCF` knobs.
 4. **The expected result.** Matching structure, diverging cost, between
    classical and quantum runs.
 5. **The validation.** A golden end-to-end run and the composition tests that
@@ -33,7 +33,7 @@ MD" are different programs with different input decks, different data
 structures, and different mental models. Atomiverse rejects that split. It
 observes that a time integrator, a geometry optimizer, and a single-point
 evaluator do not actually *care* where forces come from — they only care that
-*something* fills `frame.atoms.fx/fy/fz` and `frame.scalars.energy` at the
+*something* fills `kAtom_fx/fy/fz` and `kEnergy` at the
 right phase. So "method" is factored down to a single replaceable object: the
 **Evaluator**.
 
@@ -43,7 +43,7 @@ of that one object, cleanly separated from everything else:
 - A **classical** evaluator (`PairLJCut` + bonded terms) costs $O(N)$ per
   step with a small constant. It is accurate only insofar as its
   parameters were fit to the chemistry you are studying.
-- A **quantum** evaluator (`SCFEvaluator`) costs a full self-consistent-field
+- A **quantum** evaluator (`SCF`) costs a full self-consistent-field
   solve per step — orders of magnitude more — but is *transferable*: it needs
   no per-system parameters and describes bond breaking, polarization, and
   charge transfer that no fixed force field captures.
@@ -85,7 +85,7 @@ auto make_classical = []{ return cpu::PairLJCut{0.0104, 3.4, 6.8}; };
 
 // Quantum force provider: RHF/STO-3G, forces on by default
 auto make_quantum = [](const cpu::scf::IntegralPack& ints){
-    return cpu::scf::SCFEvaluator{cpu::scf::rhf_config(ints)};
+    return cpu::scf::SCF{cpu::scf::rhf_config(ints)};
 };
 ```
 
@@ -98,10 +98,10 @@ work:
 
 ```cpp
 auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto scf  = cpu::scf::SCFEvaluator{cpu::scf::rhf_config(ints)};
+auto scf  = cpu::scf::SCF{cpu::scf::rhf_config(ints)};
 scf.with_gradient(false);                 // energy only
 
-cpu::single_point(frame, scf);            // frame.scalars.energy [eV] populated
+cpu::single_point(frame, scf);            // frame.meta.get(kEnergy) [eV] populated
 double e_ha = scf.last_result().energy;   // and in Hartree on the result
 ```
 
@@ -110,10 +110,10 @@ categorical setters (a pair potential needs a neighbor list):
 
 ```cpp
 cpu::Evaluate eval;
-eval.set_pair(make_classical());
+eval.add_potential(make_classical());
 eval.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 eval.build();
-eval.run(frame);                          // frame.scalars.energy [eV]
+eval.run(frame);                          // frame.meta.get(kEnergy) [eV]
 ```
 
 ### Geometry optimization — `cpu::minimizer::Minimize`
@@ -147,7 +147,7 @@ sim.set_integrator(cpu::md::VelocityVerlet{/*dt=*/0.5});
 sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0, 0.5});   // NVT
 
 // Classical MD:
-sim.set_pair(make_classical());
+sim.add_potential(make_classical());
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 //   ── OR ── AIMD (swap the force provider):
 sim.on(md::Phase::force).add(make_quantum(ints).predictor(3));
@@ -157,7 +157,7 @@ sim.build();
 sim.run(frame, n_steps);
 ```
 
-The two `SCFEvaluator` knobs that appear here are the workflow-tuning levers
+The two `SCF` knobs that appear here are the workflow-tuning levers
 this chapter is really about:
 
 - **`with_gradient(bool)`** — on by default (writes forces, advertises
@@ -178,7 +178,7 @@ every time step. The most common variant, running a converged SCF at each
 nuclear configuration, is **Born-Oppenheimer MD (BOMD)**. The runnable companion
 is [`examples/06_aimd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/06_aimd.cpp), which propagates H₂ for
 50 fs of NVT at 100 K on RHF/STO-3G forces. Nothing in the loop "knows" the
-forces are quantum mechanical: the `SCFEvaluator` advertises `Capability::Force`
+forces are quantum mechanical: the `SCF` advertises `Capability::Force`
 and the driver treats it like any other force provider. But four practical
 points separate a toy run from a production one.
 
@@ -210,7 +210,7 @@ savings — so treat `predictor(order)` as a production lever, not a universal w
 ```
 
 `PE_eV` is the SCF total electronic energy plus nuclear repulsion (the same value
-`frame.scalars.energy` carries). `KE_eV` is the classical nuclear kinetic energy
+`frame.meta.get(kEnergy)` carries). `KE_eV` is the classical nuclear kinetic energy
 from the auto-added kinetic component at `end_of_step`. `T_K` is the
 instantaneous kinetic temperature, $T = 2 E_{\mathrm{kin}} / (N_{\mathrm{dof}}
 k_B)$ with $N_{\mathrm{dof}} = 3N - 3$ (centre of mass removed).
@@ -223,11 +223,11 @@ ensemble averages over many trajectories, never a single short one. (This is the
 analysis-side lesson of [Chapter 13](ch13-observables.md): an observable is a
 trajectory average, not an instantaneous reading.)
 
-**A design note that shaped `SCFEvaluator::launch`.** `VelocityVerlet` wraps
+**A design note that shaped `SCF::launch`.** `VelocityVerlet` wraps
 atoms through periodic boundaries, but the SCF integral builder is not
 minimum-image aware. If a boundary atom wrapped across the cell, the next SCF
 would see the molecule ~one box length apart and collapse onto the unphysical
-RHF ionic limit. To close that trap, `SCFEvaluator::launch` reassembles the
+RHF ionic limit. To close that trap, `SCF::launch` reassembles the
 molecule by minimum image relative to atom 0 before each integral build, then
 restores the wrapped positions before returning — so any geometry inside the cell
 is acceptable and you never have to centre atoms yourself. (The anchor-on-atom-0
@@ -275,7 +275,7 @@ consistency check that the evaluator carries no illegal step-to-step state.
 
 The cross-method promise is validated at two levels.
 
-**Composition.** The `SCFEvaluator` is tested to coexist, without conflict,
+**Composition.** The `SCF` is tested to coexist, without conflict,
 with every ensemble and driver it is supposed to plug into — Nosé-Hoover,
 Langevin, and Berendsen-barostat MD; L-BFGS and CG minimization; and the
 single-pass evaluate driver. These composition tests are what certify that
@@ -308,13 +308,13 @@ pattern recurs" section pointed at this one:
 
 ```text
 cpu::Evaluate            + PairLJCut     = classical single point
-cpu::Evaluate            + SCFEvaluator  = quantum single point
+cpu::Evaluate            + SCF  = quantum single point
 cpu::minimizer::Minimize + PairLJCut     = classical relaxation
-cpu::minimizer::Minimize + SCFEvaluator  = ab initio geometry optimization
+cpu::minimizer::Minimize + SCF  = ab initio geometry optimization
 cpu::md::MD              + PairLJCut     = classical molecular dynamics
-cpu::md::MD              + SCFEvaluator  = ab initio molecular dynamics
+cpu::md::MD              + SCF  = ab initio molecular dynamics
 cpu::vib::Hessian        + PairLJCut     = force-field vibrational analysis
-cpu::vib::Hessian        + SCFEvaluator  = ab initio vibrational analysis
+cpu::vib::Hessian        + SCF  = ab initio vibrational analysis
 ```
 
 Four drivers down the left, two evaluators across the top, eight distinct
@@ -334,7 +334,7 @@ different from the one you already know.
 
 ## Validation Reference
 
-The evaluator-composition tests (SCFEvaluator coexisting with NVE/NVT/NPT
+The evaluator-composition tests (SCF coexisting with NVE/NVT/NPT
 integrators and both minimizers, plus the state-leakage single-point-vs-
 propagation check) live in
 [`tests/cpu/scf/test_scf_evaluator.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_scf_evaluator.cpp)

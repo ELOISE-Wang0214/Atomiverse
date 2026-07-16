@@ -171,11 +171,11 @@ short:
 
 ```cpp
 cpu::Frame frame(2);
-frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-frame.atoms.type[0] = 1;
-frame.atoms.type[1] = 1;
-frame.box = Mat3::cubic(100.0);
+frame.span(kAtom_x)[0] = 0;    frame.span(kAtom_y)[0] = 0; frame.span(kAtom_z)[0] = 0;
+frame.span(kAtom_x)[1] = 0.74; frame.span(kAtom_y)[1] = 0; frame.span(kAtom_z)[1] = 0;
+frame.span(kAtom_type)[0] = 1;
+frame.span(kAtom_type)[1] = 1;
+frame.simbox = cpu::Box::cubic(100.0);
 ```
 
 Those lines carry more chemistry than they appear to: two nuclei fixed at the
@@ -184,7 +184,11 @@ molecular orbitals. The rest of the file follows the RHF logic directly:
 
 ```cpp
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto result    = cpu::scf::rhf_solve(integrals, tol, 100);   // result.energy [Hartree]
+auto config = cpu::scf::rhf_config(integrals, tol);
+config.max_iter = 100;
+cpu::scf::SCFSolver solver{config};
+solver.build(integrals);
+const auto& result = solver.run(integrals);                   // energy [Hartree]
 ```
 
 > **Element coverage:** the STO-3G integral path supports elements **H through O
@@ -258,7 +262,9 @@ guard, and no SCF iteration ever runs.
 ```cpp
 auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
                                       /*charge=*/+1);   // H2O+, 9 electrons
-cpu::scf::rhf_solve(ints);   // throws std::invalid_argument — not silence
+cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints)};
+solver.build(ints);
+solver.run(ints);             // throws std::invalid_argument — not silence
 ```
 
 Because the guard is read-only and runs before any work, valid closed-shell
@@ -407,8 +413,12 @@ the sorted orbital energies; the HOMO is the last occupied one:
 
 ```cpp
 auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto result = cpu::scf::rhf_solve(ints, 1e-10, 100);
-double eps_homo = result.eigenvalues(ints.n_occ() - 1);   // [Hartree]
+auto config = cpu::scf::rhf_config(ints, 1e-10);
+config.max_iter = 100;
+cpu::scf::SCFSolver solver{config};
+solver.build(ints);
+const auto& result = solver.run(ints);
+double eps_homo = result.eigenvalues_alpha(ints.n_occ() - 1); // [Hartree]
 double ip_eV    = -eps_homo * 27.211386245988;            // 1 Ha = 27.211386245988 eV
 ```
 

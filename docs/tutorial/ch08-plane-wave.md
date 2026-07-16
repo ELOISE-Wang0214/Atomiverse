@@ -152,9 +152,9 @@ energy.
 ## Running it from C++
 
 The user-facing entry point is the `cpu::pw::PWEvaluator` component — the
-plane-wave analogue of `cpu::scf::SCFEvaluator`. It wraps a `PWSolver`, has
+plane-wave analogue of `cpu::scf::SCF`. It wraps a `PWSolver`, has
 `role() == Evaluator` and `capabilities() == Energy`, and writes the total
-energy to `frame.scalars.energy` in eV (the Rydberg / Hartree breakdown stays on
+energy to `frame.meta.get(kEnergy)` in eV (the Rydberg / Hartree breakdown stays on
 `last_result()`). Run it through the one-pass `cpu::Evaluate` driver, most
 concisely via the `cpu::single_point` helper:
 
@@ -169,18 +169,19 @@ cfg.k_mesh   = 4;      // 4x4x4 Monkhorst-Pack mesh
 cfg.tol      = 1e-6;   // SCF tolerance on the density change
 
 cpu::pw::PWEvaluator pwe{cfg};
-cpu::single_point(frame, pwe);          // frame.scalars.energy [eV]
+cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) [eV]
 
 const auto& r = pwe.last_result();
 // r.energy [Ry], r.energy_ha [Hartree], r.converged, r.iterations
 ```
 
-For quick scripting there is also a thin functional shim that constructs a
-transient solver:
+Low-level code uses the same explicit solver lifecycle:
 
 ```cpp
-#include "atomiverse/cpu/pw/pw_scf.h"
-cpu::pw::PWResult r = cpu::pw::pw_scf(frame, cfg.upf_path, 30.0, 4, 1e-6, 50);
+#include "atomiverse/cpu/pw/pw_solver.h"
+cpu::pw::PWSolver solver{cfg};
+solver.build(frame);
+const cpu::pw::PWResult& r = solver.run(frame);
 ```
 
 If `upf_path` is empty, the solver falls back to a toy local potential
@@ -238,8 +239,7 @@ A GPU path exists: `cuda::pw::pw_scf` runs the Davidson hot path on the device
 
 1. [`include/atomiverse/cpu/pw/pw_evaluator.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_evaluator.h) — the user-facing component
 2. [`include/atomiverse/cpu/pw/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
-3. [`include/atomiverse/cpu/pw/pw_scf.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_scf.h) — the functional shim
-4. `include/atomiverse/cpu/pw/internal/` — the step helpers and numerics
+3. `include/atomiverse/cpu/pw/internal/` — the step helpers and numerics
    (`g_vector.h`, `fft.h`, `ewald.h`, `kpoint.h`, `upf_reader.h`, …)
 
 For a converged equation-of-state validation against CP2K, see

@@ -23,8 +23,8 @@ Start with these types:
 
 - [`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h)
 - [`Mat3`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/mat3.h)
-- [`Real`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/real.h)
-- [`Int`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/int.h)
+- [`StorageReal` / `WorkReal` / `AccReal`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/precision.h)
+- [`LocalInt` / `TagInt` / `ImageInt` / `BigInt`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/precision.h)
 
 ### Build staged workflows
 
@@ -67,9 +67,9 @@ The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
 Start with these CPU headers:
 
 - [`IntegralPack` and `build_integrals`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h)
-- [`rhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/rhf_solve.h)
-- [`uhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uhf_solve.h)
-- [`uks_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uks_solve.h)
+- [`SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solver.h)
+- [`SCFConfig` and `SCFResult`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h)
+- [`XCType`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)
 
 ### Run SCF workflows on the CUDA backend
 

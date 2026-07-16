@@ -17,7 +17,7 @@ The six questions:
    means.
 2. **The Atomiverse representation.** `XCType::B3LYP` / `PBE0`, the
    exact-exchange fraction, and how the Fock builder splits the work.
-3. **The C++ API.** `b3lyp_config` / `pbe0_config`, `scf_solve`, and
+3. **The C++ API.** `b3lyp_config` / `pbe0_config`, `SCFSolver`, and
    `scf_gradient`.
 4. **The expected result.** A converged hybrid energy and forces that match
    PySCF's `grad.RKS`.
@@ -95,7 +95,7 @@ self-interaction correction.
 ## The C++ API: Two Config Builders, Then Gradients
 
 The convenience builders in
-[`scf_solve.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solve.h) preset a
+[`scf_types.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h) preset a
 production-grade closed-shell hybrid configuration — restricted KS, the
 PySCF-matching `GridLevel::MatchPySCF` integration grid, MINAO initial guess,
 `tol = 1e-9`, DIIS on — and differ only in the functional:
@@ -109,7 +109,9 @@ auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs
 cpu::scf::SCFConfig cfg = cpu::scf::b3lyp_config(integrals);   // or pbe0_config
 cfg.max_iter = 300;
 
-auto result = cpu::scf::scf_solve(integrals, cfg);            // SCFResult
+cpu::scf::SCFSolver solver{cfg};
+solver.build(integrals);
+const auto& result = solver.run(integrals);                    // SCFResult
 // result.energy [Hartree], result.converged, result.xc_energy, ...
 ```
 
@@ -151,7 +153,9 @@ auto run_hybrid = [](cpu::Frame& frame, cpu::scf::XCType xc) {
                                   ? cpu::scf::b3lyp_config(ints)
                                   : cpu::scf::pbe0_config(ints);
     cfg.max_iter = 300;
-    auto result = cpu::scf::scf_solve(ints, cfg);
+    cpu::scf::SCFSolver solver{cfg};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     return cpu::scf::scf_gradient(frame, ints, result, cfg);
 };
 ```
@@ -231,7 +235,7 @@ cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
 opt.add_handler(cpu::ForceConverged{/* the five tolerances */});
 opt.on(minimizer::Phase::force)
-   .add(cpu::scf::SCFEvaluator{cpu::scf::b3lyp_config(integrals),
+   .add(cpu::scf::SCF{cpu::scf::b3lyp_config(integrals),
                                cpu::scf::BasisSet::Pople631Gs});
 opt.build();
 opt.run(frame, /*max_iter=*/100);

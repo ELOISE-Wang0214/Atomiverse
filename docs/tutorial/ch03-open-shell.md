@@ -80,7 +80,11 @@ In the example, that choice appears directly in calls such as
 
 ```cpp
 auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto result = cpu::scf::uhf_solve(ints, n_alpha, n_beta, tol, max_iter);
+auto config = cpu::scf::uhf_config(ints, n_alpha, n_beta, tol);
+config.max_iter = max_iter;
+cpu::scf::SCFSolver solver{config};
+solver.build(ints);
+const auto& result = solver.run(ints);
 ```
 
 The input you must choose carefully is the spin occupation. `n_alpha` and
@@ -257,16 +261,22 @@ channels with half of the converged neutral density,
 
 ```cpp
 auto ints_n  = cpu::scf::build_integrals(frame, basis, /*charge=*/0);
-auto neutral = cpu::scf::rhf_solve(ints_n, tol, max_iter);
+auto neutral_cfg = cpu::scf::rhf_config(ints_n, tol);
+neutral_cfg.max_iter = max_iter;
+cpu::scf::SCFSolver neutral_solver{neutral_cfg};
+neutral_solver.build(ints_n);
+const auto& neutral = neutral_solver.run(ints_n);
 
 cpu::scf::SCFInitialGuess guess;
-guess.P_alpha = 0.5 * neutral.P;   // split the neutral density evenly
-guess.P_beta  = 0.5 * neutral.P;
+guess.P_alpha = 0.5 * neutral.P_alpha; // split total restricted density evenly
+guess.P_beta  = 0.5 * neutral.P_alpha;
 guess.has_alpha = guess.has_beta = true;
 
 auto ints_c = cpu::scf::build_integrals(frame, basis, /*charge=*/+1);
 auto cfg    = cpu::scf::uhf_config(ints_c, /*n_alpha=*/N/2, /*n_beta=*/N/2 - 1);
-auto cation = cpu::scf::scf_solve(ints_c, cfg, &guess);
+cpu::scf::SCFSolver cation_solver{cfg};
+cation_solver.build(ints_c);
+const auto& cation = cation_solver.run(ints_c, &guess);
 ```
 
 A bare Hcore cold start converges to the same energy on these small systems —
@@ -329,7 +339,7 @@ The more subtle mistake is to compare only total energies and ignore the rest of
 the result. UHF is a spin-resolved method. If the $\alpha$ and $\beta$
 densities, orbital energies, and contamination all look like the restricted
 solution, then the unrestricted machinery has not actually changed the physics,
-even if the function call name says `uhf_solve`.
+even if the solver was configured for UHF.
 
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree-Fock exchange, it uses an

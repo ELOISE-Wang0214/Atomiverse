@@ -120,15 +120,14 @@ basic call looks like this:
 
 ```cpp
 auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto uks = cpu::scf::uks_solve(
-    ints,
-    n_alpha,
-    n_beta,
-    cpu::scf::XCType::LSDA,
-    50,
-    110,
-    tol,
-    max_iter);
+auto config = cpu::scf::uks_config(
+    ints, n_alpha, n_beta, cpu::scf::XCType::LSDA, tol);
+config.n_radial = 50;
+config.n_angular = 110;
+config.max_iter = max_iter;
+cpu::scf::SCFSolver solver{config};
+solver.build(ints);
+const auto& uks = solver.run(ints);
 ```
 
 > **Element coverage:** like the other Gaussian-basis tutorials, STO-3G here
