@@ -1,0 +1,73 @@
+name: CPU acceptance
+
+on:
+  push:
+    branches: [dev, master]
+  pull_request:
+    branches: [dev, master]
+
+jobs:
+  cpu-core:
+    name: CPU core (MPI + regressions)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout molrs
+        uses: actions/checkout@v4
+        with:
+          repository: MolCrafts/molrs
+          # Keep in sync with ATV_MOLRS_GIT_REF in cmake/MolrsContract.cmake
+          ref: v0.7.0
+          path: molrs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libblas-dev liblapack-dev libfftw3-dev libopenmpi-dev openmpi-bin
+      - name: Configure
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DATV_BUILD_CUDA=OFF -DATV_BUILD_TORCH=OFF \
+            -DATV_USE_MPI=ON -DATV_BUILD_TESTS=ON \
+            -DATV_BUILD_REGRESSIONS=ON -DATV_BUILD_KSPACE=ON \
+            -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Manifest
+        run: python3 tools/verify_cpu_test_manifest.py build
+      - name: Unit tests
+        run: ctest --test-dir build -j$(nproc) --output-on-failure -E 'no_alloc'
+      - name: Public regressions
+        run: cmake --build build --target regressions
+
+  cpu-full:
+    name: CPU full (RHF/PW/GPW/KSPACE)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout molrs
+        uses: actions/checkout@v4
+        with:
+          repository: MolCrafts/molrs
+          # Keep in sync with ATV_MOLRS_GIT_REF in cmake/MolrsContract.cmake
+          ref: v0.7.0
+          path: molrs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libblas-dev liblapack-dev libfftw3-dev
+      - name: Configure
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DATV_BUILD_CUDA=OFF -DATV_BUILD_TORCH=OFF \
+            -DATV_BUILD_TESTS=ON -DATV_BUILD_REGRESSIONS=ON \
+            -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
+            -DATV_BUILD_KSPACE=ON \
+            -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Unit tests
+        run: ctest --test-dir build -j$(nproc) --output-on-failure -E 'no_alloc'

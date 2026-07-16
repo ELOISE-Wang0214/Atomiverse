@@ -9,9 +9,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 env:
   CARGO_TERM_COLOR: always
@@ -48,6 +48,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: MolCrafts/molrs
+          # Keep in sync with ATV_MOLRS_GIT_REF in cmake/MolrsContract.cmake
+          ref: v0.7.0
           path: molrs
 
       - name: Install Rust toolchain

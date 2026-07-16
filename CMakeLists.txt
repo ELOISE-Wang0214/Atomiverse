@@ -72,6 +72,8 @@ if(NOT ATV_DOCS_ONLY)
            "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
            OFF)
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
+    include("${CMAKE_SOURCE_DIR}/cmake/MolrsContract.cmake")
+    atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     # The nanobind module is a shared object linking the static atomiverse
     # and fetched-dependency archives (spdlog, ...): everything must be PIC.
@@ -160,6 +162,7 @@ if(NOT ATV_DOCS_ONLY)
     set(ATOMIVERSE_SRCS
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
+        src/core/molrs_contract.cpp
         src/cpu/scf/solve.cpp
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
@@ -172,7 +175,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/recorder/thermo.cpp
         src/cpu/recorder/xyz.cpp
         # CPU backend infrastructure
-        src/cpu/frame/atom.cpp
+        src/cpu/frame/frame.cpp
         src/cpu/driver/backend.cpp
         src/cpu/driver/dof.cpp
         src/cpu/frame/box.cpp
@@ -232,6 +235,9 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/minimizer/lbfgs_history.cpp
         src/cpu/replica/replica_expansion.cpp
         src/cpu/path/neb.cpp
+        src/cpu/path/remd.cpp
+        src/cpu/bias/distance_cv.cpp
+        src/cpu/bias/harmonic_bias.cpp
         src/cpu/minimizer/cg.cpp
         src/cpu/minimizer/trajectory_writer.cpp
         src/cpu/minimizer/opt_log.cpp
@@ -326,6 +332,9 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
+    target_compile_definitions(atomiverse PRIVATE
+        ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
+        ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
 
     if(ATV_BUILD_RHF)
         target_sources(atomiverse PRIVATE
@@ -345,13 +354,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/scf_solver.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp
-            src/cpu/scf/scf_solve.cpp
-            src/cpu/scf/rhf_solve.cpp
-            src/cpu/scf/uhf_solve.cpp
             src/cpu/scf/xc_functional.cpp
             src/cpu/scf/xc_gga.cpp
             src/cpu/scf/grid.cpp
-            src/cpu/scf/uks_solve.cpp
             src/cpu/scf/integral_derivatives.cpp
             src/cpu/scf/gradient.cpp
             src/cpu/scf/mp2.cpp
@@ -381,6 +386,14 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_GPW)
+        if(NOT ATV_BUILD_RHF)
+            message(FATAL_ERROR
+                "ATV_BUILD_GPW=ON requires ATV_BUILD_RHF=ON (Gaussian SCF).")
+        endif()
+        if(NOT ATV_BUILD_PW)
+            message(FATAL_ERROR
+                "ATV_BUILD_GPW=ON requires ATV_BUILD_PW=ON (FFTW plane-wave stack).")
+        endif()
         # GPW = Gaussian basis + density collocated on a uniform FFT grid +
         # analytic GTH pseudopotentials, targeting CP2K Quickstep parity.
         # Incremental build-out: the CP2K data-file readers come first
@@ -423,7 +436,7 @@ if(NOT ATV_DOCS_ONLY)
             target_compile_definitions(atomiverse PUBLIC ATV_GPW_HAS_FFT)
             # Optional FFTW3 OpenMP threading — the FFTs over the (large) density
             # grid dominate GPW's cost. fftw_plan_with_nthreads is global, so one
-            # init in gpw_scf threads every plan. Link libfftw3_omp if present.
+            # GPWSolver initialization threads every plan. Link libfftw3_omp if present.
             find_library(FFTW3_OMP_LIB fftw3_omp HINTS
                 $ENV{FFTW3_ROOT}/lib $ENV{FFTW3_ROOT}/lib64
                 $ENV{FFTW_ROOT}/lib $ENV{FFTW_ROOT}/lib64)
@@ -470,7 +483,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/convergence.cpp
             src/cpu/pw/pw_solver.cpp
             src/cpu/pw/pw_evaluator.cpp
-            src/cpu/pw/pw_scf.cpp
         )
         if(NOT ATV_BUILD_RHF)
             target_sources(atomiverse PRIVATE
@@ -765,6 +777,7 @@ if(NOT ATV_DOCS_ONLY)
         nanobind_add_module(_atomiverse
             python/src/bindings/bind.cpp
             python/src/bindings/bind_md.cpp
+            python/src/bindings/bind_minimizer.cpp
             python/src/bindings/bind_pw.cpp
             python/src/bindings/bind_semiempirical.cpp
         )
