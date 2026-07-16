@@ -34,14 +34,14 @@ namespace vib {
 ///
 /// `role() == None`; it mutates positions (an implicit frame field) but
 /// declares no `capabilities()` (Energy/Force/... are unaffected).
-class DisplaceStep : public cpu::ComponentBase {
+class DisplaceStep : public cpu::Component {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit DisplaceStep(HessianWorkspace* ws) : ws_(ws) {}
 
     std::string name() const override { return "vib_displace_step"; }
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Default binding: `vib::Phase::displace` @ 0.
     /// @return Single binding placing this at the displace phase.

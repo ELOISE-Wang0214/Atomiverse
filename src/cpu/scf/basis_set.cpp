@@ -7,8 +7,8 @@
 #include <string>
 #include <utility>
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/def2_svp.h"
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
@@ -66,7 +66,7 @@ void ShellList::move_from(ShellList&& o) noexcept {
 // ── AtomList builder ─────────────────────────────────────────────────
 
 AtomList make_atom_list(const Frame& frame, int charge) {
-    const int natm = static_cast<int>(frame.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
 
     AtomList out;
     out.atoms.resize(natm);

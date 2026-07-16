@@ -21,16 +21,16 @@ namespace ATV {
 namespace cpu {
 
 void publish_global_dof(Context& ctx, const Frame& frame, int n_constraints) {
-    long long n_global = frame.atoms.size();
+    long long n_global = frame.nlocal();
 
 #ifdef ATV_HAS_MPI
     // Multi-rank: reduce the OWNER count, taken from the decomposition — NOT
-    // frame.atoms.size().
+    // frame.nlocal().
     //
     // `partition_atoms` compacts this rank's owned atoms to the front and records
-    // the count in `dd->n_local`, but it deliberately leaves `frame.atoms.nlocal`
+    // the count in `dd->n_local`, but it deliberately leaves Frame metadata
     // at the full allocation (the tail is slack for ghosts). So on every rank
-    // `frame.atoms.size()` is still the GLOBAL atom count, and reducing it would
+    // `frame.nlocal()` is still the GLOBAL atom count, and reducing it would
     // multiply the system size by the rank count. That is not a hypothetical: doing
     // it gave Ndof 8x too large on 8 ranks, which made the MTK barostat's target
     // kinetic energy 8x too large, and the NPT test equilibrated to 2404 K instead

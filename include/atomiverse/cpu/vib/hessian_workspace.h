@@ -28,7 +28,7 @@ inline constexpr double kHessianStepAngstrom = 1.0e-3;
 
 /// @brief Shared scratch for the numerical-Hessian components.
 ///
-/// Sized once by the driver in `build()` from `N = frame.atoms.size()`.
+/// Sized once by the driver in `build()` from `N = frame.nlocal()`.
 /// Lifetime: owned by `cpu::vib::Hessian`; components hold raw pointers.
 struct HessianWorkspace {
     /// @brief Number of atoms `N`.

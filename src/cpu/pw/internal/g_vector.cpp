@@ -10,22 +10,22 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
-GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut,
+GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, AccReal ecut,
                                 const Vec3& k) {
     auto recip = cell_bohr.recip_cell();
     Vec3 b0{recip(0, 0), recip(0, 1), recip(0, 2)};
     Vec3 b1{recip(1, 0), recip(1, 1), recip(1, 2)};
     Vec3 b2{recip(2, 0), recip(2, 1), recip(2, 2)};
 
-    Real b0n = b0.norm(), b1n = b1.norm(), b2n = b2.norm();
-    Real gmax = std::sqrt(Real(2) * ecut);
+    AccReal b0n = b0.norm(), b1n = b1.norm(), b2n = b2.norm();
+    AccReal gmax = std::sqrt(AccReal(2) * ecut);
     int hmax = static_cast<int>(gmax / b0n) + 1;
     int kmax = static_cast<int>(gmax / b1n) + 1;
     int lmax = static_cast<int>(gmax / b2n) + 1;
 
     struct GV {
         Vec3 v;
-        Real e;
+        AccReal e;
         int hi, ki, li;
     };
     std::vector<GV> tmp;
@@ -33,10 +33,10 @@ GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut,
     for (int h = -hmax; h <= hmax; ++h) {
         for (int kk = -kmax; kk <= kmax; ++kk) {
             for (int l = -lmax; l <= lmax; ++l) {
-                Vec3 g = b0 * Real(h) + b1 * Real(kk) + b2 * Real(l);
+                Vec3 g = b0 * AccReal(h) + b1 * AccReal(kk) + b2 * AccReal(l);
                 Vec3 kpg = {g[0] + k[0], g[1] + k[1], g[2] + k[2]};
-                Real e = Real(0.5) * kpg.norm_squared();
-                if (e <= ecut + Real(1e-12)) {
+                AccReal e = AccReal(0.5) * kpg.norm_squared();
+                if (e <= ecut + AccReal(1e-12)) {
                     tmp.push_back({g, e, h, kk, l});
                 }
             }

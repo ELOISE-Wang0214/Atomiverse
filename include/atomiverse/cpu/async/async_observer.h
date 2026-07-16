@@ -5,7 +5,7 @@
 /// Inherits the full async-dispatch machinery from `AsyncComponentBase` and
 /// adds a sole behaviour: a default binding at
 /// `md::Phase::end_of_step @ +20`. Users writing MD observers should inherit
-/// from this class so `sim.add(obs)` just works; users wanting the same
+/// from this class so `sim.add_ref(obs)` just works; users wanting the same
 /// observer logic reusable across minimizer/SCF should inherit directly
 /// from `cpu::AsyncComponentBase` and bind explicitly per driver.
 #pragma once
@@ -23,7 +23,7 @@ namespace md {
 /// @brief MD-specific async observer base (binds `md::Phase::end_of_step @ +20`).
 class AsyncObserver : public cpu::AsyncComponentBase {
   public:
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }

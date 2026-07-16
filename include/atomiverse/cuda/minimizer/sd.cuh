@@ -55,7 +55,7 @@ namespace minimizer {
 /// required optimization step.
 ///
 /// @see cuda::minimizer::Minimize for the driver this component plugs into
-class SteepestDescent : public ComponentBase {
+class SteepestDescent : public Component {
   public:
     /// @brief Construct a steepest-descent step.
     /// @param alpha Step size [fs] (pseudo-timestep, same units as
@@ -65,10 +65,11 @@ class SteepestDescent : public ComponentBase {
     /// @brief Component name.
     /// @return "steepest_descent".
     std::string name() const override { return "steepest_descent"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role of this component.
     /// @return ComponentRole::Optimizer.
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    /* role via Optimizer base */
 
     /// @brief Default bindings: search_direction + convergence_check, both at order 0.
     /// @return The two bindings.
@@ -103,7 +104,7 @@ class SteepestDescent : public ComponentBase {
     double alpha_; ///< Step size (pseudo-timestep) [fs].
     int step_ = 0; ///< Optimizer step counter.
 
-    ConvCheck conv_;             ///< Metric reduction (publishes; never decides).
+    ConvCheck conv_; ///< Metric reduction (publishes; never decides).
     std::vector<OptRecord> trace_; ///< Per-step diagnostics.
 };
 

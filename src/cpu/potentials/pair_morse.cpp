@@ -20,7 +20,7 @@ PairMorse::PairMorse(double D, double alpha, double r0, double cutoff)
 
 void PairMorse::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const int n = static_cast<int>(f.atoms.size());
+    const int n = static_cast<int>(f.nlocal());
 
     double energy = 0.0;
     const StorageReal* __restrict x = f.span(kAtom_x);
@@ -35,7 +35,7 @@ void PairMorse::compute(const LaunchContext& ctx) {
             double dx = x[j] - x[i];
             double dy = y[j] - y[i];
             double dz = z[j] - z[i];
-            f.box.min_image(dx, dy, dz);
+            f.simbox.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= cutoff_sq_ || r2 == 0.0)
                 continue;
@@ -57,7 +57,7 @@ void PairMorse::compute(const LaunchContext& ctx) {
             energy += v;
         }
     }
-    f.scalars.energy += energy;
+    f.meta.get(kEnergy) += energy;
 }
 
 } // namespace cpu

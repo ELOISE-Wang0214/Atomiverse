@@ -4,8 +4,7 @@
 
 #include "atomiverse/cpu/minimizer/trajectory_writer.h"
 
-#include <spdlog/fmt/fmt.h>
-
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/comm/gather_for_io.h"
 
 namespace ATV {
@@ -22,6 +21,9 @@ void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
     if ((ctx.step % stride_) != 0)
         return;
 
+    // Publish iteration identity through the Frame's typed metadata channel.
+    ctx.frame.meta.get(kStep) = static_cast<std::int64_t>(ctx.step);
+
     // Multi-rank: collective owner gather (every rank participates before
     // the rank gate) so the written frame holds the complete tag-ordered
     // geometry; returns nullptr on non-root ranks.
@@ -30,18 +32,12 @@ void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
     if (!src)
         return;
 
-    // Per-frame step + energy on the extxyz comment line (the pre-refactor
-    // MolRec scalars, restored through the molrs meta hook).
-    const cpu::XYZMeta meta{
-        {"step", std::to_string(ctx.step)},
-        {"energy_eV", fmt::format("{:.10g}", ctx.frame.scalars.energy)}};
-
     // First write truncates any pre-existing file; later writes append.
     if (!truncated_) {
-        writer_.write(*src, meta);
+        writer_.write(*src);
         truncated_ = true;
     } else {
-        writer_.append(*src, meta);
+        writer_.append(*src);
     }
     ++n_written_;
 }

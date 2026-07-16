@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -52,14 +52,13 @@ namespace md {
 /// (compressive) — matching `compute pressure` and both barostats. No
 /// sign correction needed; `frame.stress` is already LAMMPS-consistent.
 /// **Audit confirmed aligned — no code change to this component.**
-class Virial : public cpu::ComponentBase {
+class Virial : public cpu::Observer {
   public:
     std::string name() const override { return "virial"; }
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    bool provides_system_stress() const override { return true; }
     /// @brief Writes `frame.stress` / `frame.stress_kinetic` — the driver
     /// infrastructure scan detects the canonical Stress provider via
     /// `role()==Observer && capabilities()&Stress`, not via `name()`.
-    Capability capabilities() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::post_force, -50)};
     }

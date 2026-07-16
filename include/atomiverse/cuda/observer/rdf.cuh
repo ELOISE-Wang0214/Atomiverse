@@ -56,7 +56,7 @@ class RDF : public AsyncBridge {
     std::string name() const override { return "rdf"; }
     /// @brief Observer — streams frames into the molrs accumulator (no I/O
     /// per step).
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
 
   protected:
     void on_build(const BuildContext& ctx) override {

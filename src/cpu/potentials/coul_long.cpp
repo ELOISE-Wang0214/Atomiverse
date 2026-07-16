@@ -37,7 +37,7 @@ void CoulLong::build(const BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    const int n = ctx.frame.atoms.nmax;
+    const int n = ctx.frame.capacity();
     fx_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fy_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fz_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
@@ -51,14 +51,14 @@ void CoulLong::launch(const LaunchContext& ctx) {
                                  "to the force phase ahead of CoulLong.");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.box;
+    const auto& box = f.simbox;
 
     const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
-    const int n_force = mpi ? dd->n_local + dd->n_ghost : f.atoms.size();
+    const int n_force = mpi ? dd->n_local + dd->n_ghost : f.nlocal();
 
     // Ghost charges arrive via the build_halo border message (x,y,z,tag,q), so
-    // f.atoms.charge[j] is valid for ghost rows too — no global tag→charge map.
+    // The charge column is valid for ghost rows too — no tag→charge map.
 
     // Grow per-thread force arenas to cover the ghost region if needed.
     if (static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
@@ -90,7 +90,7 @@ void CoulLong::launch(const LaunchContext& ctx) {
 
     const double alpha = alpha_;
     const double rc_sq = cutoff_sq_;
-    const double qqr2e = ATV::kCoulomb;
+    const double qqr2e = ATV::units::coulomb;
 
     double energy_total = 0;
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
@@ -110,7 +110,7 @@ void CoulLong::launch(const LaunchContext& ctx) {
         std::fill(fy_thr_[tid].begin(), fy_thr_[tid].begin() + n_force, 0.0);
         std::fill(fz_thr_[tid].begin(), fz_thr_[tid].begin() + n_force, 0.0);
 
-        const double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
+        const double lx = box.length(0), ly = box.length(1), lz = box.length(2);
         const double inv_lx = 1.0 / lx, inv_ly = 1.0 / ly, inv_lz = 1.0 / lz;
 
 #pragma omp for schedule(static)
@@ -141,7 +141,7 @@ void CoulLong::launch(const LaunchContext& ctx) {
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc_sq || r2 == 0.0)
                     continue;
-                // Ghost charge is carried in f.atoms.charge by the border halo,
+                // Ghost charge is carried in the charge column by the border halo,
                 // so a single read covers both owned and ghost j.
                 const double qj = q_ptr[j];
                 if (qj == 0.0)
@@ -191,14 +191,14 @@ void CoulLong::launch(const LaunchContext& ctx) {
         }
     }
 
-    f.scalars.energy += energy_total;
-    f.scalars.energy_pair += energy_total;
-    f.scalars.stress[0] += v_xx;
-    f.scalars.stress[1] += v_yy;
-    f.scalars.stress[2] += v_zz;
-    f.scalars.stress[3] += v_xy;
-    f.scalars.stress[4] += v_xz;
-    f.scalars.stress[5] += v_yz;
+    f.meta.get(kEnergy) += energy_total;
+    f.meta.get(kEnergyPair) += energy_total;
+    f.meta.get(kStress)[0] += v_xx;
+    f.meta.get(kStress)[1] += v_yy;
+    f.meta.get(kStress)[2] += v_zz;
+    f.meta.get(kStress)[3] += v_xy;
+    f.meta.get(kStress)[4] += v_xz;
+    f.meta.get(kStress)[5] += v_yz;
 }
 
 void CoulLong::destroy(const DestroyContext&) {

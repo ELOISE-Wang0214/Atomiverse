@@ -31,23 +31,24 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
 
     // Volume from box (orthorhombic). For multi-rank the box is
     // identical across ranks, so V is the global volume.
-    const double V = f.box.volume();
+    const double V = f.simbox.volume();
     if (V <= 0.0)
         return;
 
     // LAMMPS-standard scalar pressure P = +trace(σ)/(3V), positive ⇔
     // compressive — `compute pressure::compute_scalar()`:
     //   P = (2·KE + Σ virial) / (3·V).
-    // `frame.scalars.stress` holds the pair-virial part Σ r·F; the kinetic
-    // part Σ m·v² (trace = 2·KE) lives in `frame.scalars.stress_kinetic`.
+    // `frame.meta.get(kStress)` holds the pair-virial part Σ r·F; the kinetic
+    // part Σ m·v² (trace = 2·KE) lives in `frame.meta.get(kStressKinetic)`.
     // Berendsen runs at `end_of_step`, so both fields are at the same
     // post-force velocity snapshot. This `+trace/(3V)` convention is
     // identical to `NoseHooverNPT` and LAMMPS — the link
     // `lammps-api-align-04` flipped the previous `−trace/(3V)`.
     const double trace_total =
-        (f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2])
-        + (f.scalars.stress_kinetic[0] + f.scalars.stress_kinetic[1]
-           + f.scalars.stress_kinetic[2]);
+        (f.meta.get(kStress)[0] + f.meta.get(kStress)[1]
+         + f.meta.get(kStress)[2])
+        + (f.meta.get(kStressKinetic)[0] + f.meta.get(kStressKinetic)[1]
+           + f.meta.get(kStressKinetic)[2]);
     const double P = +trace_total / (3.0 * V);
 
     // Berendsen dilation factor — `fix_press_berendsen.cpp::end_of_step`:
@@ -66,7 +67,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // Scale box edges. Single-rank or multi-rank: deterministic, identical
     // computation on every rank (P, V, μ are all global) so the box stays
     // consistent across ranks without any explicit broadcast.
-    f.box.scale_isotropic(mu);
+    f.simbox.scale_isotropic(mu);
 
     // Affine-rescale owned atom positions.
     const int n = owned_count(ctx);
@@ -89,7 +90,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // `(μ-1)*pos`. Mirrors LAMMPS `fix press/berendsen::end_of_step`
     // calling `domain->x2lamda(nlocal+nghost) / lamda2x(...)` so
     // every atom slot tracks the rescale.
-    const int n_total = static_cast<int>(f.atoms.size());
+    const int n_total = static_cast<int>(f.nlocal());
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
         for (int i = n; i < n_total; ++i) {
@@ -106,7 +107,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // from these bounds; letting them go stale degrades both as the box
     // breathes.
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
     }
 }
 

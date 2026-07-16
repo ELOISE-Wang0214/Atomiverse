@@ -10,7 +10,7 @@
 ///
 /// Usage:
 /// @code
-///   cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
+///   cuda::scf::SCF scf{integrals, tol, max_iter};
 ///   cuda::single_point(frame, scf);
 ///   // frame.scalars.energy populated.
 /// @endcode

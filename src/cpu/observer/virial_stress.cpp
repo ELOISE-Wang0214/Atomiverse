@@ -42,16 +42,16 @@ void Virial::launch(const cpu::LaunchContext& ctx) {
         v_yz += m * vyi * vzi;
     }
 
-    // mass·v² is in amu·(Å/fs)², the kMvv2e factor brings it to eV.
+    // mass·v² is in amu·(Å/fs)², the units::mass_v2_to_energy factor brings it to eV.
     // Overwrite (not +=) since this is the canonical kinetic contribution and
     // each integrator step computes it once from current velocities. The pair
-    // virial accumulates separately into `frame.scalars.stress`.
-    f.scalars.stress_kinetic[0] = kMvv2e * v_xx;
-    f.scalars.stress_kinetic[1] = kMvv2e * v_yy;
-    f.scalars.stress_kinetic[2] = kMvv2e * v_zz;
-    f.scalars.stress_kinetic[3] = kMvv2e * v_xy;
-    f.scalars.stress_kinetic[4] = kMvv2e * v_xz;
-    f.scalars.stress_kinetic[5] = kMvv2e * v_yz;
+    // virial accumulates separately into `frame.meta.get(kStress)`.
+    f.meta.get(kStressKinetic)[0] = units::mass_v2_to_energy * v_xx;
+    f.meta.get(kStressKinetic)[1] = units::mass_v2_to_energy * v_yy;
+    f.meta.get(kStressKinetic)[2] = units::mass_v2_to_energy * v_zz;
+    f.meta.get(kStressKinetic)[3] = units::mass_v2_to_energy * v_xy;
+    f.meta.get(kStressKinetic)[4] = units::mass_v2_to_energy * v_xz;
+    f.meta.get(kStressKinetic)[5] = units::mass_v2_to_energy * v_yz;
 }
 
 } // namespace md

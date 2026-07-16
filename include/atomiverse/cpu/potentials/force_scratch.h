@@ -10,8 +10,8 @@
 /// This header factors both out.
 ///
 /// CRITICAL: the zero/reduce passes iterate `n_force = n_local + n_ghost`
-/// (from `ResolveView::n_force()`), NOT `atoms.n_total()`. In multi-rank
-/// `atoms.nlocal` is the global atom count, so the old `n_total()`-bounded
+/// (from `ResolveView::n_force()`), NOT `Frame::n_total()`. In multi-rank
+/// `Frame::nlocal()` is the global atom count, so the old bound
 /// passes did O(global N) work on every rank — the measured ~100x bonded
 /// straggler. Buffers are still *allocated* to `nmax` (capacity), but only
 /// the live `[0, n_force)` rows are touched per step.
@@ -54,7 +54,7 @@ struct ThreadForce {
 /// LAMMPS never pays. With three bonded kernels (bond/angle/dihedral) those
 /// six sweeps were a measurable slice of the bonded-force gap vs LAMMPS.
 class BondedForceScratch {
-public:
+  public:
     /// @brief Allocate `n_threads` buffers of `nmax` rows each (call in
     ///        build()). With a single thread no scratch is allocated — the
     ///        kernel writes directly into the frame (see `begin_thread`).
@@ -96,12 +96,12 @@ public:
         if (direct_) {
             // A caller that forgot `bind(f)` would otherwise get null force
             // pointers and silently drop every bonded force. Fail loudly.
-            if (fx_frame_.data == nullptr)
+            if (!fx_frame_)
                 throw std::logic_error(
                     "BondedForceScratch: begin_thread() before bind(frame) — "
                     "resolve the frame's force columns once, outside the "
                     "parallel region");
-            return {fx_frame_.data, fy_frame_.data, fz_frame_.data};
+            return {fx_frame_.data(), fy_frame_.data(), fz_frame_.data()};
         }
         auto& fx = fx_[static_cast<std::size_t>(tid)];
         auto& fy = fy_[static_cast<std::size_t>(tid)];
@@ -131,18 +131,21 @@ public:
         // gather.
         if (direct_)
             return;
-        double* __restrict fx = fx_frame_.data;
-        double* __restrict fy = fy_frame_.data;
-        double* __restrict fz = fz_frame_.data;
+        double* __restrict fx = fx_frame_.data();
+        double* __restrict fy = fy_frame_.data();
+        double* __restrict fz = fz_frame_.data();
         // Parallelize over rows (each row independent — no cross-thread write
         // hazard), gathering every thread's contribution for row i.
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n_force; ++i) {
             double sx = 0.0, sy = 0.0, sz = 0.0;
             for (int t = 0; t < n_threads_; ++t) {
-                sx += fx_[static_cast<std::size_t>(t)][static_cast<std::size_t>(i)];
-                sy += fy_[static_cast<std::size_t>(t)][static_cast<std::size_t>(i)];
-                sz += fz_[static_cast<std::size_t>(t)][static_cast<std::size_t>(i)];
+                sx += fx_[static_cast<std::size_t>(t)]
+                         [static_cast<std::size_t>(i)];
+                sy += fy_[static_cast<std::size_t>(t)]
+                         [static_cast<std::size_t>(i)];
+                sz += fz_[static_cast<std::size_t>(t)]
+                         [static_cast<std::size_t>(i)];
             }
             fx[i] += sx;
             fy[i] += sy;
@@ -161,7 +164,7 @@ public:
         fz_frame_ = Span<AccReal>{};
     }
 
-private:
+  private:
     int n_threads_ = 0;
     bool direct_ = false; ///< single-thread: accumulate straight into frame.
     std::vector<std::vector<double>> fx_, fy_, fz_;
@@ -192,10 +195,10 @@ struct Voigt6 {
         return *this;
     }
 
-    /// @brief Accumulate into `frame.scalars.stress[0..5]`.
-    void flush_to(SystemScalars& s) const noexcept {
+    /// @brief Accumulate into the resolved `kStress` value.
+    void flush_to(MetaReal6& stress) const noexcept {
         for (int k = 0; k < 6; ++k)
-            s.stress[k] += v[k];
+            stress[k] += v[k];
     }
 };
 

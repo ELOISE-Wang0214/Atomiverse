@@ -36,7 +36,7 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // partition has happened (e.g. polyethylene_tension's per-stage rebuild)
     // atoms.size() == n_local + n_ghost — wrong. Allreduce-sum dd->n_local
     // to recover global N in that case.
-    int n_global = static_cast<int>(ctx.frame.atoms.size());
+    int n_global = static_cast<int>(ctx.frame.nlocal());
 #ifdef ATV_HAS_MPI
     // MUST be unconditional across all ranks (collective). A rank that owns no
     // atoms (n_local == 0) still has to call MPI_Allreduce or the others hang;
@@ -57,8 +57,8 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // Initial chain mass at the ramp anchor `T_start_`; `launch()`
     // retunes it each step to the live setpoint (LAMMPS recomputes
     // `eta_mass[0] = tdof·boltz·t_target/t_freq²` in nhc_temp_integrate).
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_start_ * tau_T_
-         * tau_T_;
+    Q_ = static_cast<double>(n_dof_global_) * units::kB_ev_per_k * T_start_
+         * tau_T_ * tau_T_;
 }
 
 void NoseHoover::set_T_target(double T_target, bool reset_chain) {
@@ -71,8 +71,8 @@ void NoseHoover::set_T_target(double T_target, bool reset_chain) {
     // Rescale `Q_` to the new setpoint using the cached global DOF count.
     // Skipping this would leave the chain mass tuned to the old bath
     // temperature, producing the wrong response time after the transition.
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target * tau_T_
-         * tau_T_;
+    Q_ = static_cast<double>(n_dof_global_) * units::kB_ev_per_k * T_target
+         * tau_T_ * tau_T_;
     if (reset_chain)
         xi_ = 0.0;
 }
@@ -125,19 +125,18 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         // frequency `ω = 1/tau_T` stays constant across the ramp,
         // matching LAMMPS recomputing `eta_mass[0]` each NHC update.
         T_live_ = compute_temp_target(ctx.step);
-        Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_live_ * tau_T_
-             * tau_T_;
+        Q_ = static_cast<double>(n_dof_global_) * units::kB_ev_per_k * T_live_
+             * tau_T_ * tau_T_;
 
         // Per-rank kinetic over owned atoms only.
         double ke_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
         for (int i = 0; i < n; ++i) {
-            double v2 = sp_vx[i] * sp_vx[i]
-                        + sp_vy[i] * sp_vy[i]
-                        + sp_vz[i] * sp_vz[i];
+            double v2 =
+                sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
             ke_local += sp_mass[i] * v2;
         }
-        ke_local *= double(0.5) * kMvv2e;
+        ke_local *= double(0.5) * units::mass_v2_to_energy;
 
         // Phase 0.5: under multi-rank reduce KE across the Cartesian comm so
         // the thermostat couples to the *global* bath rather than this
@@ -156,7 +155,7 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         // Update thermostat variable against the live target.
         xi_ += (dt_ * double(0.5))
                * (double(2) * ke
-                  - static_cast<double>(n_dof) * kBoltzmann * T_live_)
+                  - static_cast<double>(n_dof) * units::kB_ev_per_k * T_live_)
                / Q_;
 
         // Rescale velocities (owners only).

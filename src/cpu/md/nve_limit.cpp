@@ -33,7 +33,7 @@ void NVELimit::launch(const cpu::LaunchContext& ctx) {
     const int n = owned_count(ctx);
     const double vmax = xmax_ / dt_;
     const double vmax_sq = vmax * vmax;
-    const double dtf = 0.5 * dt_ * kFtm2v;
+    const double dtf = 0.5 * dt_ * units::force_to_accel;
 
     // Hoisted once for both branches -- the launch-boundary rule.
     const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
@@ -55,9 +55,8 @@ void NVELimit::launch(const cpu::LaunchContext& ctx) {
             sp_vy[i] += dtfm * sp_fy[i];
             sp_vz[i] += dtfm * sp_fz[i];
 
-            const double vsq = sp_vx[i] * sp_vx[i]
-                               + sp_vy[i] * sp_vy[i]
-                               + sp_vz[i] * sp_vz[i];
+            const double vsq =
+                sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
             if (vsq > vmax_sq) {
                 const double s = vmax / std::sqrt(vsq);
                 sp_vx[i] *= s;
@@ -78,9 +77,8 @@ void NVELimit::launch(const cpu::LaunchContext& ctx) {
             sp_vy[i] += dtfm * sp_fy[i];
             sp_vz[i] += dtfm * sp_fz[i];
 
-            const double vsq = sp_vx[i] * sp_vx[i]
-                               + sp_vy[i] * sp_vy[i]
-                               + sp_vz[i] * sp_vz[i];
+            const double vsq =
+                sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
             if (vsq > vmax_sq) {
                 const double s = vmax / std::sqrt(vsq);
                 sp_vx[i] *= s;

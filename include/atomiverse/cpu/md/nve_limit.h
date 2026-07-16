@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -50,7 +50,7 @@ namespace md {
 ///
 /// Bound to `initial_integrate @ 0` and `final_integrate @ 0` --
 /// replaces (do not combine with) `VelocityVerlet`.
-class NVELimit : public cpu::ComponentBase {
+class NVELimit : public cpu::Integrator {
   public:
     /// @param dt   Timestep [fs]. Mirrors the global LAMMPS `timestep`.
     /// @param xmax Maximum distance an atom may move in one step [Å]
@@ -60,9 +60,8 @@ class NVELimit : public cpu::ComponentBase {
     NVELimit(double dt, double xmax);
 
     std::string name() const override { return "nve_limit"; }
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: velocity Verlet with a per-step displacement cap.
-    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
                 ATV::make_binding(ATV::md::Phase::final_integrate, 0)};

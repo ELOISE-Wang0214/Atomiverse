@@ -20,7 +20,7 @@ namespace md {
 ///
 /// Binds to final_integrate at order +200 (after VelocityVerlet + NoseHoover).
 /// Requires Virial at post_force to populate DeviceFrame::stress.
-class Barostat : public ComponentBase {
+class Barostat : public Component {
   public:
     /// @brief Construct barostat.
     /// @param P_target Target pressure [eV/Angstrom^3].
@@ -32,17 +32,18 @@ class Barostat : public ComponentBase {
     Barostat& operator=(Barostat&&) noexcept;
 
     std::string name() const override { return "barostat"; }
+    Role role() const override { return 0; }
+    bool requires_system_stress() const override { return true; }
 
     /// @brief Structural role — the pressure controller.
     ///
     /// Mirrors `cpu::md::Barostat`.
     /// @return ComponentRole::Barostat.
-    ComponentRole role() const override { return ComponentRole::Barostat; }
+    /* role via Barostat base */
     /// @brief Reads — consumes `Stress` to drive the Berendsen volume
     ///        rescale. Triggers `cuda::md::MD::install_infra_` to
     ///        auto-inject `cuda::Virial` via capability matching
     ///        (the `role()==Barostat` proxy is no longer required).
-    Capability reads() const override { return Capability::Stress; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

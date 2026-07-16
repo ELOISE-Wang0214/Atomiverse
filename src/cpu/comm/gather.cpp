@@ -1,23 +1,24 @@
-/// @file src/cpu/md/mpi/gather.cpp
-/// @brief `gather_to_root` -- collect distributed frame owners to one rank.
-///
-/// Implementation uses one `MPI_Gather` for per-rank owner counts plus a
-/// batch of `MPI_Gatherv` calls for the per-atom fields. After gather the
-/// root sorts atoms by `tag` so the I/O order is decomposition-independent.
-///
-/// @see .claude/specs/parallel-md-engine.md  § A.9
+/// @file cpu/comm/gather.cpp
+/// @brief Native-dtype owner gather with schema-driven runtime columns.
 
 #include "atomiverse/cpu/comm/gather.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <numeric>
+#include <stdexcept>
+#include <type_traits>
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
+#include "atomiverse/cpu/comm/schema_mpi.h"
 #include <mpi.h>
 #endif
 
@@ -28,94 +29,138 @@ namespace mpi {
 
 namespace {
 
-void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
-    out.n_total = n_local;
-    out.box = frame.box.cell();
-    // Hoisted once at this launch-boundary function's entry (single-rank
-    // fallback path — no loop over atoms here, one assign() per field).
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
-    const StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
-    const StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
-    const StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
-    const AccReal* __restrict sp_fx = frame.span(kAtom_fx);
-    const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
-    const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
-    const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
-    const StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
-    const int* __restrict sp_type = frame.span(kAtom_type);
-    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
-    const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
-    out.x.assign(sp_x, sp_x + n_local);
-    out.y.assign(sp_y, sp_y + n_local);
-    out.z.assign(sp_z, sp_z + n_local);
-    out.vx.assign(sp_vx, sp_vx + n_local);
-    out.vy.assign(sp_vy, sp_vy + n_local);
-    out.vz.assign(sp_vz, sp_vz + n_local);
-    out.fx.assign(sp_fx, sp_fx + n_local);
-    out.fy.assign(sp_fy, sp_fy + n_local);
-    out.fz.assign(sp_fz, sp_fz + n_local);
-    out.mass.assign(sp_mass, sp_mass + n_local);
-    out.charge.assign(sp_charge, sp_charge + n_local);
-    out.type.assign(sp_type, sp_type + n_local);
-    out.tag.assign(sp_tag, sp_tag + n_local);
-    out.image.assign(sp_image, sp_image + 3 * n_local);
+std::size_t checked_product(std::size_t a, std::size_t b,
+                            const char* operation) {
+    if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a)
+        throw std::overflow_error(std::string(operation) + ": size overflow");
+    return a * b;
 }
 
-// Reorder all per-atom fields in `g` so that `g.tag` is ascending. Stable so
-// equal tags (which would indicate a bug upstream) preserve their order.
-void sort_by_tag(GatheredFrame& g) {
-    const int n = g.n_total;
+void copy_runtime_columns(GatheredFrame& out, const Frame& frame, int n_local,
+                          const comm::PackPlan& plan) {
+    for (const ColumnRef& field : plan.fields) {
+        if (field.wire_id != kDynamicFieldId)
+            continue;
+        GatheredColumn column;
+        column.key = field.key;
+        column.dtype = field.dtype;
+        column.cols = field.cols;
+        column.group = field.group;
+        column.entries_per_item = field.entries_per_item;
+        column.flags = field.flags;
+        const std::size_t bytes =
+            checked_product(static_cast<std::size_t>(n_local),
+                            field.row_bytes(), "gather/runtime-column");
+        column.bytes.resize(bytes);
+        if (bytes != 0)
+            std::memcpy(column.bytes.data(), field.bytes(), bytes);
+        out.runtime_columns.push_back(std::move(column));
+    }
+}
+
+void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
+    if (n_local < 0 || n_local > frame.capacity())
+        throw std::out_of_range(
+            "gather: owner range is outside Frame capacity");
+    out.n_total = n_local;
+    out.box = frame.simbox.cell();
+    const StorageReal* x = frame.span(kAtom_x).data();
+    const StorageReal* y = frame.span(kAtom_y).data();
+    const StorageReal* z = frame.span(kAtom_z).data();
+    const StorageReal* vx = frame.span(kAtom_vx).data();
+    const StorageReal* vy = frame.span(kAtom_vy).data();
+    const StorageReal* vz = frame.span(kAtom_vz).data();
+    const AccReal* fx = frame.span(kAtom_fx).data();
+    const AccReal* fy = frame.span(kAtom_fy).data();
+    const AccReal* fz = frame.span(kAtom_fz).data();
+    const StorageReal* mass = frame.span(kAtom_mass).data();
+    const StorageReal* charge = frame.span(kAtom_charge).data();
+    const int* type = frame.span(kAtom_type).data();
+    const TagInt* tag = frame.span(kAtom_tag).data();
+    const std::int8_t* image = frame.span(kAtom_image).data();
+    auto copy = [](auto& destination, const auto* source, std::size_t count) {
+        destination.resize(count);
+        if (count != 0)
+            std::copy_n(source, count, destination.data());
+    };
+    const std::size_t rows = static_cast<std::size_t>(n_local);
+    copy(out.x, x, rows);
+    copy(out.y, y, rows);
+    copy(out.z, z, rows);
+    copy(out.vx, vx, rows);
+    copy(out.vy, vy, rows);
+    copy(out.vz, vz, rows);
+    copy(out.fx, fx, rows);
+    copy(out.fy, fy, rows);
+    copy(out.fz, fz, rows);
+    copy(out.mass, mass, rows);
+    copy(out.charge, charge, rows);
+    copy(out.type, type, rows);
+    copy(out.tag, tag, rows);
+    copy(out.image, image,
+         checked_product(rows, std::size_t{3}, "gather/image"));
+    const comm::PackPlan plan = comm::make_exchange_plan(frame);
+    copy_runtime_columns(out, frame, n_local, plan);
+}
+
+void sort_by_tag(GatheredFrame& gathered) {
+    const int n = gathered.n_total;
     if (n <= 1)
         return;
-    std::vector<int> perm(static_cast<std::size_t>(n));
-    std::iota(perm.begin(), perm.end(), 0);
-    std::stable_sort(perm.begin(), perm.end(),
-                     [&](int a, int b) { return g.tag[a] < g.tag[b]; });
+    std::vector<int> permutation(static_cast<std::size_t>(n));
+    std::iota(permutation.begin(), permutation.end(), 0);
+    std::stable_sort(permutation.begin(), permutation.end(), [&](int a, int b) {
+        return gathered.tag[static_cast<std::size_t>(a)]
+               < gathered.tag[static_cast<std::size_t>(b)];
+    });
 
-    auto apply_perm_double = [&](std::vector<double>& v) {
-        std::vector<double> tmp(v.size());
+    auto permute = [&](auto& values) {
+        using T = typename std::decay_t<decltype(values)>::value_type;
+        std::vector<T> reordered(values.size());
         for (int i = 0; i < n; ++i)
-            tmp[i] = v[perm[i]];
-        v.swap(tmp);
+            reordered[static_cast<std::size_t>(i)] =
+                values[static_cast<std::size_t>(permutation[i])];
+        values.swap(reordered);
     };
-    auto apply_perm_int = [&](std::vector<int>& v) {
-        std::vector<int> tmp(v.size());
-        for (int i = 0; i < n; ++i)
-            tmp[i] = v[perm[i]];
-        v.swap(tmp);
-    };
-    auto apply_perm_int64 = [&](std::vector<std::int64_t>& v) {
-        std::vector<std::int64_t> tmp(v.size());
-        for (int i = 0; i < n; ++i)
-            tmp[i] = v[perm[i]];
-        v.swap(tmp);
-    };
+    permute(gathered.x);
+    permute(gathered.y);
+    permute(gathered.z);
+    permute(gathered.vx);
+    permute(gathered.vy);
+    permute(gathered.vz);
+    permute(gathered.fx);
+    permute(gathered.fy);
+    permute(gathered.fz);
+    permute(gathered.mass);
+    permute(gathered.charge);
+    permute(gathered.type);
+    permute(gathered.tag);
 
-    apply_perm_double(g.x);
-    apply_perm_double(g.y);
-    apply_perm_double(g.z);
-    apply_perm_double(g.vx);
-    apply_perm_double(g.vy);
-    apply_perm_double(g.vz);
-    apply_perm_double(g.fx);
-    apply_perm_double(g.fy);
-    apply_perm_double(g.fz);
-    apply_perm_double(g.mass);
-    apply_perm_double(g.charge);
-    apply_perm_int(g.type);
-    apply_perm_int64(g.tag);
-
-    // image: 3 entries per atom in flat row-major layout.
-    std::vector<std::int8_t> tmp_img(g.image.size());
+    std::vector<std::int8_t> reordered_image(gathered.image.size());
     for (int i = 0; i < n; ++i) {
-        const int src = perm[i];
-        tmp_img[3 * i + 0] = g.image[3 * src + 0];
-        tmp_img[3 * i + 1] = g.image[3 * src + 1];
-        tmp_img[3 * i + 2] = g.image[3 * src + 2];
+        const int source = permutation[i];
+        std::memcpy(reordered_image.data() + 3 * i,
+                    gathered.image.data() + 3 * source,
+                    3 * sizeof(std::int8_t));
     }
-    g.image.swap(tmp_img);
+    gathered.image.swap(reordered_image);
+
+    for (GatheredColumn& column : gathered.runtime_columns) {
+        if (column.bytes.size() % static_cast<std::size_t>(n) != 0)
+            throw std::runtime_error(
+                "gather: runtime-column payload is not row aligned");
+        const std::size_t row_bytes =
+            column.bytes.size() / static_cast<std::size_t>(n);
+        std::vector<std::byte> reordered(column.bytes.size());
+        for (int i = 0; i < n; ++i)
+            if (row_bytes != 0)
+                std::memcpy(
+                    reordered.data() + static_cast<std::size_t>(i) * row_bytes,
+                    column.bytes.data()
+                        + static_cast<std::size_t>(permutation[i]) * row_bytes,
+                    row_bytes);
+        column.bytes.swap(reordered);
+    }
 }
 
 } // namespace
@@ -126,142 +171,185 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
                              const DomainDecomposition& dd, int root) {
     GatheredFrame out;
     out.root_rank = root;
-    out.box = frame.box.cell();
+    out.box = frame.simbox.cell();
 
     if (dd.cart_comm == MPI_COMM_NULL) {
-        // Single-rank fallback: direct copy of owners.
         copy_owners_into(out, frame, dd.n_local);
         return out;
     }
 
     int world_size = 0;
-    int my_rank = 0;
+    int rank = 0;
     MPI_Comm_size(dd.cart_comm, &world_size);
-    MPI_Comm_rank(dd.cart_comm, &my_rank);
-
+    MPI_Comm_rank(dd.cart_comm, &rank);
+    int root_min = 0;
+    int root_max = 0;
+    MPI_Allreduce(&root, &root_min, 1, MPI_INT, MPI_MIN, dd.cart_comm);
+    MPI_Allreduce(&root, &root_max, 1, MPI_INT, MPI_MAX, dd.cart_comm);
+    if (root_min != root_max || root < 0 || root >= world_size)
+        throw std::invalid_argument(
+            "gather_to_root: root rank is invalid or differs across ranks");
     if (world_size <= 1) {
         copy_owners_into(out, frame, dd.n_local);
         return out;
     }
 
-    const int n_local = dd.n_local;
+    const comm::PackPlan plan = comm::make_exchange_plan(frame);
+    comm::require_collective_schema(plan, dd.cart_comm, "gather_to_root");
 
-    // Step 1: every rank ships its owner count to root.
-    std::vector<int> recv_counts;
-    if (my_rank == root)
-        recv_counts.assign(static_cast<std::size_t>(world_size), 0);
-    MPI_Gather(&n_local, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, root,
-               dd.cart_comm);
+    const int local_range_valid =
+        dd.n_local >= 0 && dd.n_local <= frame.capacity();
+    int all_ranges_valid = 0;
+    MPI_Allreduce(&local_range_valid, &all_ranges_valid, 1, MPI_INT, MPI_MIN,
+                  dd.cart_comm);
+    if (!all_ranges_valid)
+        throw std::out_of_range(
+            "gather_to_root: owner range is outside Frame capacity");
 
-    // Compute total + per-rank displacements on root.
-    std::vector<int> displs;
-    int n_total = 0;
-    if (my_rank == root) {
-        displs.assign(static_cast<std::size_t>(world_size), 0);
-        for (int r = 0; r < world_size; ++r) {
-            displs[static_cast<std::size_t>(r)] = n_total;
-            n_total += recv_counts[static_cast<std::size_t>(r)];
-        }
-    }
-
-    // Broadcast n_total so non-root ranks know the global atom count
-    // (useful for ergonomic checks at call sites without re-reducing).
-    MPI_Bcast(&n_total, 1, MPI_INT, root, dd.cart_comm);
+    const std::int64_t local_count = dd.n_local;
+    std::int64_t global_count = 0;
+    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT64_T, MPI_SUM,
+                  dd.cart_comm);
+    if (global_count < 0 || global_count > std::numeric_limits<int>::max() / 3)
+        throw std::length_error("gather_to_root: global atom count overflow");
+    const int n_total = static_cast<int>(global_count);
     out.n_total = n_total;
 
-    // Allocate root buffers.
-    if (my_rank == root) {
-        out.x.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.y.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.z.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.vx.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.vy.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.vz.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.fx.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.fy.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.fz.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.mass.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.charge.assign(static_cast<std::size_t>(n_total), 0.0);
-        out.type.assign(static_cast<std::size_t>(n_total), 0);
-        out.tag.assign(static_cast<std::size_t>(n_total), 0);
-        out.image.assign(static_cast<std::size_t>(3 * n_total), 0);
+    std::vector<int> counts;
+    if (rank == root)
+        counts.resize(static_cast<std::size_t>(world_size));
+    const int n_local = dd.n_local;
+    MPI_Gather(&n_local, 1, MPI_INT, rank == root ? counts.data() : nullptr, 1,
+               MPI_INT, root, dd.cart_comm);
+
+    std::vector<int> displacements;
+    if (rank == root) {
+        displacements.resize(static_cast<std::size_t>(world_size));
+        int cursor = 0;
+        for (int r = 0; r < world_size; ++r) {
+            displacements[static_cast<std::size_t>(r)] = cursor;
+            cursor += counts[static_cast<std::size_t>(r)];
+        }
+        if (cursor != n_total)
+            throw std::runtime_error(
+                "gather_to_root: owner-count disagreement");
+        out.x.resize(n_total);
+        out.y.resize(n_total);
+        out.z.resize(n_total);
+        out.vx.resize(n_total);
+        out.vy.resize(n_total);
+        out.vz.resize(n_total);
+        out.fx.resize(n_total);
+        out.fy.resize(n_total);
+        out.fz.resize(n_total);
+        out.mass.resize(n_total);
+        out.charge.resize(n_total);
+        out.type.resize(n_total);
+        out.tag.resize(n_total);
+        out.image.resize(static_cast<std::size_t>(n_total) * 3);
     }
 
-    // Helper: gather one per-atom real field. `sendbuf` may be single-precision
-    // storage (StorageReal); widen to a double staging buffer so the gathered
-    // output is double regardless of the storage tier. Gather is a low-frequency
-    // output path (rank-0 collection), so the copy is negligible.
-    auto gather_double = [&](const auto* sendbuf, double* recvbuf) {
-        std::vector<double> send(sendbuf, sendbuf + n_local);
-        MPI_Gatherv(send.data(), n_local, MPI_DOUBLE, recvbuf,
-                    my_rank == root ? recv_counts.data() : nullptr,
-                    my_rank == root ? displs.data() : nullptr, MPI_DOUBLE, root,
+    const MPI_Datatype storage_mpi =
+        std::is_same_v<StorageReal, float> ? MPI_FLOAT : MPI_DOUBLE;
+    const MPI_Datatype tag_mpi =
+        std::is_same_v<TagInt, std::int32_t> ? MPI_INT32_T : MPI_INT64_T;
+
+    auto gather_native = [&](const auto* source, auto& destination,
+                             MPI_Datatype dtype) {
+        using T = typename std::decay_t<decltype(destination)>::value_type;
+        T* receive = rank == root ? destination.data() : nullptr;
+        MPI_Gatherv(source, n_local, dtype, receive,
+                    rank == root ? counts.data() : nullptr,
+                    rank == root ? displacements.data() : nullptr, dtype, root,
                     dd.cart_comm);
     };
 
-    // Hoisted once at the launch boundary; every gather call below reads
-    // through these instead of re-resolving per field.
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
-    const StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
-    const StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
-    const StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
-    const AccReal* __restrict sp_fx = frame.span(kAtom_fx);
-    const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
-    const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
-    const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
-    const StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
-    const int* __restrict sp_type = frame.span(kAtom_type);
-    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
-    const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
+    gather_native(frame.span(kAtom_x).data(), out.x, storage_mpi);
+    gather_native(frame.span(kAtom_y).data(), out.y, storage_mpi);
+    gather_native(frame.span(kAtom_z).data(), out.z, storage_mpi);
+    gather_native(frame.span(kAtom_vx).data(), out.vx, storage_mpi);
+    gather_native(frame.span(kAtom_vy).data(), out.vy, storage_mpi);
+    gather_native(frame.span(kAtom_vz).data(), out.vz, storage_mpi);
+    gather_native(frame.span(kAtom_fx).data(), out.fx, MPI_DOUBLE);
+    gather_native(frame.span(kAtom_fy).data(), out.fy, MPI_DOUBLE);
+    gather_native(frame.span(kAtom_fz).data(), out.fz, MPI_DOUBLE);
+    gather_native(frame.span(kAtom_mass).data(), out.mass, storage_mpi);
+    gather_native(frame.span(kAtom_charge).data(), out.charge, storage_mpi);
+    gather_native(frame.span(kAtom_type).data(), out.type, MPI_INT);
+    gather_native(frame.span(kAtom_tag).data(), out.tag, tag_mpi);
 
-    gather_double(sp_x, my_rank == root ? out.x.data() : nullptr);
-    gather_double(sp_y, my_rank == root ? out.y.data() : nullptr);
-    gather_double(sp_z, my_rank == root ? out.z.data() : nullptr);
-    gather_double(sp_vx, my_rank == root ? out.vx.data() : nullptr);
-    gather_double(sp_vy, my_rank == root ? out.vy.data() : nullptr);
-    gather_double(sp_vz, my_rank == root ? out.vz.data() : nullptr);
-    gather_double(sp_fx, my_rank == root ? out.fx.data() : nullptr);
-    gather_double(sp_fy, my_rank == root ? out.fy.data() : nullptr);
-    gather_double(sp_fz, my_rank == root ? out.fz.data() : nullptr);
-    gather_double(sp_mass, my_rank == root ? out.mass.data() : nullptr);
-    gather_double(sp_charge, my_rank == root ? out.charge.data() : nullptr);
-
-    MPI_Gatherv(sp_type, n_local, MPI_INT,
-                my_rank == root ? out.type.data() : nullptr,
-                my_rank == root ? recv_counts.data() : nullptr,
-                my_rank == root ? displs.data() : nullptr, MPI_INT, root,
-                dd.cart_comm);
-
-    MPI_Gatherv(sp_tag, n_local, MPI_INT64_T,
-                my_rank == root ? out.tag.data() : nullptr,
-                my_rank == root ? recv_counts.data() : nullptr,
-                my_rank == root ? displs.data() : nullptr, MPI_INT64_T, root,
-                dd.cart_comm);
-
-    // image is shape [n, 3] -- ship 3 bytes per atom.
-    std::vector<int> img_counts;
-    std::vector<int> img_displs;
-    if (my_rank == root) {
-        img_counts.assign(static_cast<std::size_t>(world_size), 0);
-        img_displs.assign(static_cast<std::size_t>(world_size), 0);
+    std::vector<int> image_counts;
+    std::vector<int> image_displacements;
+    if (rank == root) {
+        image_counts.resize(static_cast<std::size_t>(world_size));
+        image_displacements.resize(static_cast<std::size_t>(world_size));
         for (int r = 0; r < world_size; ++r) {
-            img_counts[static_cast<std::size_t>(r)] =
-                3 * recv_counts[static_cast<std::size_t>(r)];
-            img_displs[static_cast<std::size_t>(r)] =
-                3 * displs[static_cast<std::size_t>(r)];
+            image_counts[static_cast<std::size_t>(r)] =
+                3 * counts[static_cast<std::size_t>(r)];
+            image_displacements[static_cast<std::size_t>(r)] =
+                3 * displacements[static_cast<std::size_t>(r)];
         }
     }
-    MPI_Gatherv(sp_image, 3 * n_local, MPI_INT8_T,
-                my_rank == root ? out.image.data() : nullptr,
-                my_rank == root ? img_counts.data() : nullptr,
-                my_rank == root ? img_displs.data() : nullptr, MPI_INT8_T, root,
-                dd.cart_comm);
+    MPI_Gatherv(frame.span(kAtom_image).data(), 3 * n_local, MPI_INT8_T,
+                rank == root ? out.image.data() : nullptr,
+                rank == root ? image_counts.data() : nullptr,
+                rank == root ? image_displacements.data() : nullptr, MPI_INT8_T,
+                root, dd.cart_comm);
 
-    if (my_rank == root) {
-        sort_by_tag(out);
+    for (const ColumnRef& field : plan.fields) {
+        if (field.wire_id != kDynamicFieldId)
+            continue;
+        comm::require_collective_fingerprint(
+            comm::kAtomWireVersion,
+            static_cast<std::uint64_t>(field.row_bytes()), dd.cart_comm,
+            "gather_to_root/runtime-width");
+        const std::size_t row_bytes = field.row_bytes();
+        const std::size_t local_bytes =
+            checked_product(static_cast<std::size_t>(n_local), row_bytes,
+                            "gather/runtime-local");
+        const std::size_t total_bytes =
+            checked_product(static_cast<std::size_t>(n_total), row_bytes,
+                            "gather/runtime-global");
+        const int send_count =
+            comm::checked_mpi_byte_count(local_bytes, "gather/runtime-send");
+        if (total_bytes
+            > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            throw std::length_error("gather: runtime payload exceeds INT_MAX");
+
+        std::vector<int> byte_counts;
+        std::vector<int> byte_displacements;
+        GatheredColumn* target = nullptr;
+        if (rank == root) {
+            byte_counts.resize(static_cast<std::size_t>(world_size));
+            byte_displacements.resize(static_cast<std::size_t>(world_size));
+            for (int r = 0; r < world_size; ++r) {
+                byte_counts[static_cast<std::size_t>(r)] =
+                    comm::checked_mpi_byte_count(
+                        checked_product(static_cast<std::size_t>(counts[r]),
+                                        row_bytes, "gather/runtime-rank"),
+                        "gather/runtime-rank");
+                byte_displacements[static_cast<std::size_t>(r)] =
+                    comm::checked_mpi_byte_count(
+                        checked_product(
+                            static_cast<std::size_t>(displacements[r]),
+                            row_bytes, "gather/runtime-displacement"),
+                        "gather/runtime-displacement");
+            }
+            out.runtime_columns.push_back(
+                GatheredColumn{std::string(field.key), field.dtype, field.cols,
+                               field.group, field.entries_per_item, field.flags,
+                               std::vector<std::byte>(total_bytes)});
+            target = &out.runtime_columns.back();
+        }
+        MPI_Gatherv(field.bytes(), send_count, MPI_BYTE,
+                    target ? target->bytes.data() : nullptr,
+                    rank == root ? byte_counts.data() : nullptr,
+                    rank == root ? byte_displacements.data() : nullptr,
+                    MPI_BYTE, root, dd.cart_comm);
     }
+
+    if (rank == root)
+        sort_by_tag(out);
     return out;
 }
 
@@ -277,45 +365,87 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 
 #endif // ATV_HAS_MPI
 
-cpu::Frame to_frame(const GatheredFrame& g) {
-    const int n = static_cast<int>(g.x.size());
-    cpu::Frame f(n);
-    f.box.set_cell(g.box);
-    // Hoisted after `f`'s construction (dominates the loop below), never
-    // before -- f is constructed here, not passed in.
-    StorageReal* __restrict sp_x = f.span(kAtom_x);
-    StorageReal* __restrict sp_y = f.span(kAtom_y);
-    StorageReal* __restrict sp_z = f.span(kAtom_z);
-    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
-    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
-    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
-    AccReal* __restrict sp_fx = f.span(kAtom_fx);
-    AccReal* __restrict sp_fy = f.span(kAtom_fy);
-    AccReal* __restrict sp_fz = f.span(kAtom_fz);
-    StorageReal* __restrict sp_mass = f.span(kAtom_mass);
-    StorageReal* __restrict sp_charge = f.span(kAtom_charge);
-    int* __restrict sp_type = f.span(kAtom_type);
-    TagInt* __restrict sp_tag = f.span(kAtom_tag);
-    std::int8_t* __restrict sp_image = f.span(kAtom_image);
-    for (int i = 0; i < n; ++i) {
-        sp_x[i] = static_cast<StorageReal>(g.x[i]);
-        sp_y[i] = static_cast<StorageReal>(g.y[i]);
-        sp_z[i] = static_cast<StorageReal>(g.z[i]);
-        sp_vx[i] = static_cast<StorageReal>(g.vx[i]);
-        sp_vy[i] = static_cast<StorageReal>(g.vy[i]);
-        sp_vz[i] = static_cast<StorageReal>(g.vz[i]);
-        sp_fx[i] = static_cast<AccReal>(g.fx[i]);
-        sp_fy[i] = static_cast<AccReal>(g.fy[i]);
-        sp_fz[i] = static_cast<AccReal>(g.fz[i]);
-        sp_mass[i] = static_cast<StorageReal>(g.mass[i]);
-        sp_charge[i] = static_cast<StorageReal>(g.charge[i]);
-        sp_type[i] = g.type[i];
-        sp_tag[i] = static_cast<TagInt>(g.tag[i]);
-        sp_image[3 * i + 0] = g.image[3 * i + 0];
-        sp_image[3 * i + 1] = g.image[3 * i + 1];
-        sp_image[3 * i + 2] = g.image[3 * i + 2];
+cpu::Frame to_frame(const GatheredFrame& gathered) {
+    if (gathered.x.size()
+        > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::length_error("to_frame: gathered atom count overflow");
+    const int n = static_cast<int>(gathered.x.size());
+    auto require_rows = [&](std::size_t size, const char* key) {
+        if (size != static_cast<std::size_t>(n))
+            throw std::invalid_argument(std::string("to_frame: column '") + key
+                                        + "' has inconsistent rows");
+    };
+    require_rows(gathered.y.size(), "y");
+    require_rows(gathered.z.size(), "z");
+    require_rows(gathered.vx.size(), "vx");
+    require_rows(gathered.vy.size(), "vy");
+    require_rows(gathered.vz.size(), "vz");
+    require_rows(gathered.fx.size(), "fx");
+    require_rows(gathered.fy.size(), "fy");
+    require_rows(gathered.fz.size(), "fz");
+    require_rows(gathered.mass.size(), "mass");
+    require_rows(gathered.charge.size(), "charge");
+    require_rows(gathered.type.size(), "type");
+    require_rows(gathered.tag.size(), "tag");
+    if (gathered.image.size() != static_cast<std::size_t>(n) * 3)
+        throw std::invalid_argument("to_frame: image has inconsistent rows");
+
+    cpu::Frame frame(n);
+    frame.simbox.set_cell(gathered.box);
+    for (const GatheredColumn& column : gathered.runtime_columns) {
+        frame.block("atoms").insert(
+            column.key,
+            ColumnSpec{column.dtype, column.cols, column.group,
+                       column.entries_per_item, column.flags, kDynamicFieldId});
     }
-    return f;
+
+    std::copy(gathered.x.begin(), gathered.x.end(), frame.span(kAtom_x).data());
+    std::copy(gathered.y.begin(), gathered.y.end(), frame.span(kAtom_y).data());
+    std::copy(gathered.z.begin(), gathered.z.end(), frame.span(kAtom_z).data());
+    std::copy(gathered.vx.begin(), gathered.vx.end(),
+              frame.span(kAtom_vx).data());
+    std::copy(gathered.vy.begin(), gathered.vy.end(),
+              frame.span(kAtom_vy).data());
+    std::copy(gathered.vz.begin(), gathered.vz.end(),
+              frame.span(kAtom_vz).data());
+    std::copy(gathered.fx.begin(), gathered.fx.end(),
+              frame.span(kAtom_fx).data());
+    std::copy(gathered.fy.begin(), gathered.fy.end(),
+              frame.span(kAtom_fy).data());
+    std::copy(gathered.fz.begin(), gathered.fz.end(),
+              frame.span(kAtom_fz).data());
+    std::copy(gathered.mass.begin(), gathered.mass.end(),
+              frame.span(kAtom_mass).data());
+    std::copy(gathered.charge.begin(), gathered.charge.end(),
+              frame.span(kAtom_charge).data());
+    std::copy(gathered.type.begin(), gathered.type.end(),
+              frame.span(kAtom_type).data());
+    std::copy(gathered.tag.begin(), gathered.tag.end(),
+              frame.span(kAtom_tag).data());
+    std::copy(gathered.image.begin(), gathered.image.end(),
+              frame.span(kAtom_image).data());
+
+    auto refs = frame.block("atoms").resolve_columns();
+    for (const GatheredColumn& column : gathered.runtime_columns) {
+        auto it =
+            std::find_if(refs.begin(), refs.end(), [&](const ColumnRef& ref) {
+                return ref.wire_id == kDynamicFieldId && ref.key == column.key;
+            });
+        if (it == refs.end())
+            throw column_error("to_frame: missing runtime column '" + column.key
+                               + "'");
+        const std::size_t expected =
+            checked_product(static_cast<std::size_t>(n), it->row_bytes(),
+                            "to_frame/runtime-column");
+        if (column.bytes.size() != expected)
+            throw std::invalid_argument(
+                "to_frame: runtime-column payload size mismatch");
+        if (expected != 0)
+            std::memcpy(it->mutable_bytes(), column.bytes.data(), expected);
+    }
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n);
+    return frame;
 }
 
 } // namespace mpi

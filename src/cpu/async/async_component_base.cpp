@@ -17,7 +17,7 @@ void AsyncComponentBase::build(const BuildContext& ctx) {
     // Pre-size ring slot buffers for this subscriber's mask so
     // `Publish::launch()` never reallocates at fire time.
     // Multiple calls are idempotent (monotonic).
-    exec_->prealloc_slots(ctx.frame.atoms.size(), capture_mask());
+    exec_->prealloc_slots(ctx.frame.nlocal(), capture_mask());
 }
 
 void AsyncComponentBase::launch(const LaunchContext& ctx) {

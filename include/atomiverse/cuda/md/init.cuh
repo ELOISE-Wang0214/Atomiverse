@@ -33,7 +33,7 @@ namespace md {
 /// own phase via explicit `on(phase).add()` (md::MD binds it at
 /// pre_force, order -1000). Uses the DMA engine (cudaMemsetAsync), not a
 /// compute kernel.
-class ZeroForces : public ComponentBase {
+class ZeroForces : public Component {
   public:
     /// @brief Component name.
     /// @return "zero_forces".
@@ -42,7 +42,7 @@ class ZeroForces : public ComponentBase {
     /// @brief Structural role — none. Zeroing an accumulator is not a
     ///        loop slot; the driver decides where it binds.
     /// @return ComponentRole::None.
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Zero fx, fy, fz arrays via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -55,7 +55,7 @@ class ZeroForces : public ComponentBase {
 /// own phase via explicit `on(phase).add()` (md::MD binds it at
 /// pre_force, order -999). Uses the DMA engine (cudaMemsetAsync), not a
 /// compute kernel.
-class ZeroEnergy : public ComponentBase {
+class ZeroEnergy : public Component {
   public:
     /// @brief Component name.
     /// @return "zero_energy".
@@ -64,7 +64,7 @@ class ZeroEnergy : public ComponentBase {
     /// @brief Structural role — none. Zeroing an accumulator is not a
     ///        loop slot; the driver decides where it binds.
     /// @return ComponentRole::None.
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Zero energy scalar via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -77,7 +77,7 @@ class ZeroEnergy : public ComponentBase {
 /// own phase via explicit `on(phase).add()` (md::MD binds it at
 /// end_of_step, order -1000). Uses the DMA engine (cudaMemsetAsync), not
 /// a compute kernel.
-class ZeroKinetic : public ComponentBase {
+class ZeroKinetic : public Component {
   public:
     /// @brief Component name.
     /// @return "zero_kinetic".
@@ -86,7 +86,7 @@ class ZeroKinetic : public ComponentBase {
     /// @brief Structural role — none. Zeroing an accumulator is not a
     ///        loop slot; the driver decides where it binds.
     /// @return ComponentRole::None.
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Zero kinetic energy scalar via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -118,7 +118,7 @@ class ZeroKinetic : public ComponentBase {
 ///
 /// @see cpu::md::ZeroLinearMomentum for the CPU reference implementation.
 /// @see .claude/specs/msu-pe-cuda-components-01-fidelity-and-momentum.md
-class ZeroMomentum : public ComponentBase {
+class ZeroMomentum : public Component {
   public:
     /// @brief Construct momentum-removal component.
     /// @param freq Subtract every `freq` `end_of_step` invocations
@@ -133,9 +133,8 @@ class ZeroMomentum : public ComponentBase {
     ///        cancellation hook, not a loop slot
     ///        (Thermostat / Integrator / …).
     /// @return ComponentRole::None.
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
     /// @brief Write-set: subtracts the drift from every velocity.
-    Capability capabilities() const override { return Capability::Velocity; }
 
     /// @brief Default binding: `end_of_step @ +25` — after thermo/recorder
     ///        writers (`+20`) and the integrator's `end_of_step` slot.
@@ -200,7 +199,7 @@ class ZeroMomentum : public ComponentBase {
 /// @endcode
 ///
 /// @see LAMMPS velocity create: https://docs.lammps.org/velocity.html
-class InitVelocity : public ComponentBase {
+class InitVelocity : public Component {
   public:
     /// @brief Construct velocity initializer.
     /// @param temperature Target temperature [K].
@@ -213,7 +212,6 @@ class InitVelocity : public ComponentBase {
     std::string name() const override { return "init_velocity"; }
 
     /// @brief Write-set: seeds the Maxwell distribution into v (at build).
-    Capability capabilities() const override { return Capability::Velocity; }
 
     /// @brief Default bindings: initial_integrate at order -2000 (before integrator).
     /// @return Single binding to initial_integrate.

@@ -20,7 +20,7 @@ namespace md {
 ///
 /// Composes with VelocityVerlet (runs after it at same phases via order +100).
 /// Maintains thermostat variable ξ on device. Rescales velocities to target temperature.
-class NoseHoover : public ComponentBase {
+class NoseHoover : public Component {
   public:
     /// @brief Construct thermostat.
     /// @param T_target Target temperature [K].
@@ -32,14 +32,14 @@ class NoseHoover : public ComponentBase {
     NoseHoover& operator=(NoseHoover&&) noexcept;
 
     std::string name() const override { return "nose_hoover"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role — the temperature controller.
     ///
     /// Mirrors `cpu::md::NoseHoover`.
     /// @return ComponentRole::Thermostat.
-    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /* role via Thermostat base */
     /// @brief Write-set: rescales velocities by the thermostat factor.
-    Capability capabilities() const override { return Capability::Velocity; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

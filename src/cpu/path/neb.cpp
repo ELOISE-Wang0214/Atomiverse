@@ -24,7 +24,8 @@ cpu::ReplicaSet& band_of(const cpu::LaunchContext& ctx, const char* who) {
     if (!b) {
         throw std::runtime_error(
             std::string(who)
-            + ": no replica band on the context — this component only works inside a "
+            + ": no replica band on the context — this component only works "
+              "inside a "
               "PathDriver, which is what publishes ctx.path.replicas");
     }
     return *b;
@@ -33,13 +34,13 @@ cpu::ReplicaSet& band_of(const cpu::LaunchContext& ctx, const char* who) {
 } // namespace
 
 void NebCoupling::build(const cpu::BuildContext& ctx) {
-    tangent_.assign(ctx.frame.atoms.size() * 3, 0.0);
+    tangent_.assign(ctx.frame.nlocal() * 3, 0.0);
 }
 
 void NebCoupling::launch(const cpu::LaunchContext& ctx) {
     cpu::ReplicaSet& band = band_of(ctx, "NebCoupling");
     const int n_img = band.size();
-    const int n = band.frame(0).atoms.size();
+    const int n = band.frame(0).nlocal();
 
     // The climbing image is the highest-energy one — but only once the band has had a
     // few iterations to relax. See the ctor doc: climbing from a raw interpolation sends
@@ -48,10 +49,12 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
     if (climbing_ && ctx.step >= climb_after_) {
         int hi = 1;
         for (int i = 2; i < n_img - 1; ++i) {
-            if (band.frame(i).scalars.energy > band.frame(hi).scalars.energy)
+            if (band.frame(i).meta.get(kEnergy)
+                > band.frame(hi).meta.get(kEnergy))
                 hi = i;
         }
-        if (n_img > 2) climb_idx_ = hi;
+        if (n_img > 2)
+            climb_idx_ = hi;
     }
 
     // Endpoints are the given reactant and product: frozen.
@@ -90,9 +93,9 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
         const StorageReal* __restrict next_y = next.span(kAtom_y);
         const StorageReal* __restrict next_z = next.span(kAtom_z);
 
-        const double v_prev = prev.scalars.energy;
-        const double v_cur = cur.scalars.energy;
-        const double v_next = next.scalars.energy;
+        const double v_prev = prev.meta.get(kEnergy);
+        const double v_cur = cur.meta.get(kEnergy);
+        const double v_next = next.meta.get(kEnergy);
 
         // ── Improved tangent (Henkelman & Jónsson 2000, JCP 113, 9978) ──────────
         //
@@ -131,10 +134,13 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
                                       + w_prev * (cur_z[i] - prev_z[i]);
             }
         }
-        for (const double t : tangent_) norm += t * t;
+        for (const double t : tangent_)
+            norm += t * t;
         norm = std::sqrt(norm);
-        if (norm < 1e-12) continue; // coincident images — nothing to couple along
-        for (double& t : tangent_) t /= norm;
+        if (norm < 1e-12)
+            continue; // coincident images — nothing to couple along
+        for (double& t : tangent_)
+            t /= norm;
 
         // ── Project the true force ──────────────────────────────────────────────
         double f_dot_tau = 0.0;
@@ -172,12 +178,9 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
         const double f_spring = k_ * (std::sqrt(d_next) - std::sqrt(d_prev));
 
         for (int i = 0; i < n; ++i) {
-            cur_fx[i] +=
-                (f_spring - f_dot_tau) * tangent_[i * 3 + 0];
-            cur_fy[i] +=
-                (f_spring - f_dot_tau) * tangent_[i * 3 + 1];
-            cur_fz[i] +=
-                (f_spring - f_dot_tau) * tangent_[i * 3 + 2];
+            cur_fx[i] += (f_spring - f_dot_tau) * tangent_[i * 3 + 0];
+            cur_fy[i] += (f_spring - f_dot_tau) * tangent_[i * 3 + 1];
+            cur_fz[i] += (f_spring - f_dot_tau) * tangent_[i * 3 + 2];
         }
     }
 }
@@ -197,7 +200,7 @@ void BandLBFGS::build(const cpu::BuildContext& ctx) {
 void BandLBFGS::launch(const cpu::LaunchContext& ctx) {
     cpu::ReplicaSet& band = band_of(ctx, "BandLBFGS");
     const int n_img = band.size();
-    const int n = band.frame(0).atoms.size();
+    const int n = band.frame(0).nlocal();
     const int dim = n_img * n * 3;
 
     if (!hist_) {
@@ -250,8 +253,7 @@ void BandLBFGS::launch(const cpu::LaunchContext& ctx) {
             g_[b + 0] = -f_fx[i];
             g_[b + 1] = -f_fy[i];
             g_[b + 2] = -f_fz[i];
-            const double fm = std::sqrt(f_fx[i] * f_fx[i]
-                                        + f_fy[i] * f_fy[i]
+            const double fm = std::sqrt(f_fx[i] * f_fx[i] + f_fy[i] * f_fy[i]
                                         + f_fz[i] * f_fz[i]);
             im_max = std::max(im_max, fm);
         }

@@ -1,7 +1,7 @@
 /// @file cpu/scf/internal/eigen_solver.h
 /// @brief internal::EigenSolver — generalized symmetric eigensolve (F C = S C ε).
 ///
-/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase`.
+/// **Internal SCF helper.** Does NOT inherit `cpu::Component`.
 ///
 /// Thin stateful wrapper around `diagonalize_fock_generalized` (LAPACK
 /// dsygvd via xtensor-blas). Held as a member of `cpu::scf::SCFSolver`

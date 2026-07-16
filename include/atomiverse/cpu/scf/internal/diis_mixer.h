@@ -1,7 +1,7 @@
 /// @file cpu/scf/internal/diis_mixer.h
 /// @brief internal::DIISMixer — combined DIIS accelerator for spin-resolved SCF.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase` and is
+/// **Internal SCF helper.** Does NOT inherit `cpu::Component` and is
 /// not registered into any outer Driver Plan. Owned by `cpu::scf::SCFSolver`
 /// (and by tests, via direct include of this header).
 ///

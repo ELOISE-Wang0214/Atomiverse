@@ -65,8 +65,10 @@ namespace md {
 /// single O(n) skin scan (or zero when `ago < every` or `ago < delay`).
 /// Defaults match LAMMPS: `every=1`, `delay=10`, `check=true` (`check yes`).
 template <typename Strategy = CellList>
-class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
+class NeighborList : public cpu::Component, public cpu::NeighborProvider {
   public:
+    Role role() const override { return role_bit(RoleFlag::FrameImmutable); }
+
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
     /// @param every Attempt rebuild at most every N steps (LAMMPS `neigh_modify
@@ -150,7 +152,8 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         //               phase precedes force, so the requester's build() lands
         //               after ours; resolving the mode lazily here is the same
         //               deal the CUDA flat-pairs export strikes.
-        const bool mode_stale = ctx.runtime.md.full_list_requested != built_full_;
+        const bool mode_stale =
+            ctx.runtime.md.full_list_requested != built_full_;
         const bool size_stale = n_active != strategy_.n_at_last_build();
         const bool halo_stale =
             is_multi_rank(ctx.runtime)
@@ -216,7 +219,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
     static int active_count(const cpu::Context& rt, const cpu::Frame& frame) {
         if (is_multi_rank(rt))
             return rt.md.dd->n_local + rt.md.dd->n_ghost;
-        return frame.atoms.size();
+        return frame.nlocal();
     }
 
     /// @brief Multi-rank trim: `inum = dd->n_local` so force kernels only
@@ -248,12 +251,13 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
                                    is_multi_rank(rt) ? rt.md.dd->n_local : -1);
         }
         built_full_ = want_full;
-        pairs_.n_rows = n_active; // owners + ghosts; `inum` is trimmed to owners later
+        pairs_.n_rows =
+            n_active; // owners + ghosts; `inum` is trimmed to owners later
     }
 
     /// @brief (Re-)initialise the underlying spatial-index strategy from
-    /// the current frame.box.  Called from `build()` (one-time setup)
-    /// and from `launch()` whenever `frame.box` has drifted enough that
+    /// the current frame.simbox.  Called from `build()` (one-time setup)
+    /// and from `launch()` whenever `frame.simbox` has drifted enough that
     /// the cell-grid sizing is stale.
     void reinit_strategy(const cpu::Context& rt, cpu::Frame& f) {
         if (is_multi_rank(rt)) {

@@ -8,17 +8,12 @@
 #pragma once
 
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace ATV {
 namespace cpu {
 
 class Frame; // fwd — CUDA-safe (this header is pulled by 02_rhf.cu)
-
-/// @brief Frame-level key=value metadata serialized into the extxyz comment
-/// line (values pre-formatted by the caller) — e.g. `step`, `energy_eV`.
-using XYZMeta = std::vector<std::pair<std::string, std::string>>;
 
 /// @brief XYZ trajectory writer (standard element + coordinates).
 ///
@@ -34,13 +29,8 @@ class XYZ {
     void write(const Frame& frame);  ///< truncate/create, write one frame
     void append(const Frame& frame); ///< append one frame
 
-    /// @brief truncate/create, write one frame + extxyz comment-line metadata.
-    void write(const Frame& frame, const XYZMeta& meta);
-    /// @brief append one frame + extxyz comment-line metadata.
-    void append(const Frame& frame, const XYZMeta& meta);
-
   private:
-    void write_impl(const Frame& frame, bool append, const XYZMeta& meta);
+    void write_impl(const Frame& frame, bool append);
 
     std::string filename_;
     std::vector<int> type_id_; ///< per-frame extraction scratch (reused)
@@ -66,8 +56,8 @@ class ZarrReader {
     ZarrReader& operator=(const ZarrReader&) = delete;
 
     /// @brief Read the first frame of the Zarr store into `frame`.
-    /// Overwrites `frame.atoms[0..n_global)` and `frame.box`. Throws on
-    /// I/O error or if `n_global > frame.atoms.size()`.
+    /// Overwrites the owned atom Block rows and `frame.simbox`. Throws on
+    /// I/O error or if `n_global > frame.nlocal()`.
     /// @return Number of atoms loaded (== `n_global` from the file).
     int read_into(Frame& frame);
 

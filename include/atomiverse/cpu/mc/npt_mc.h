@@ -51,8 +51,8 @@ class NptMetropolis : public OutcomePolicy {
     /// @brief Seed the reference energy AND volume from the initial
     ///        configuration.
     void on_start(const cpu::LoopState& s) override {
-        e_cur_ = s.frame.scalars.energy;
-        v_cur_ = s.frame.box.volume();
+        e_cur_ = s.frame.meta.get(kEnergy);
+        v_cur_ = s.frame.simbox.volume();
     }
 
     /// @brief Judge the trial now in the frame, by its verb.
@@ -64,7 +64,7 @@ class NptMetropolis : public OutcomePolicy {
             throw std::runtime_error(
                 "NptMetropolis: ctx.mc.proposal not published — must run "
                 "under an MC preset");
-        const AccReal e_trial = s.frame.scalars.energy;
+        const AccReal e_trial = s.frame.meta.get(kEnergy);
         const double beta =
             1.0 / (units::kB_ev_per_k * static_cast<double>(temperature_));
         const double dE = static_cast<double>(e_trial - e_cur_);
@@ -79,12 +79,12 @@ class NptMetropolis : public OutcomePolicy {
             arg = beta * dE;
             break;
         case Transaction::Verb::Box: {
-            const double v_trial = s.frame.box.volume();
-            const double n = static_cast<double>(s.frame.atoms.nlocal);
-            arg = beta
-                      * (dE
-                         + static_cast<double>(pressure_) * (v_trial - v_cur_))
-                  - n * std::log(v_trial / v_cur_);
+            const double v_trial = s.frame.simbox.volume();
+            const double n = static_cast<double>(s.frame.nlocal());
+            arg =
+                beta
+                    * (dE + static_cast<double>(pressure_) * (v_trial - v_cur_))
+                - n * std::log(v_trial / v_cur_);
             break;
         }
         default:
@@ -95,7 +95,7 @@ class NptMetropolis : public OutcomePolicy {
 
         if (accept_(arg)) {
             e_cur_ = e_trial;
-            v_cur_ = s.frame.box.volume();
+            v_cur_ = s.frame.simbox.volume();
             return Outcome::Commit;
         }
         return Outcome::Rollback;
@@ -129,7 +129,7 @@ class NptMetropolis : public OutcomePolicy {
 /// Pair it with a `MoveSelector` mixing `TranslateMove` and `VolumeMove`:
 /// @code{.cpp}
 ///   cpu::mc::NptMc mc{300.0, /*P [eV/Å³]=*/1e-4, /*seed=*/7u};
-///   mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+///   mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 ///   mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 ///   mc.set_mover(cpu::mc::MoveSelector{rig}
 ///                    .add(cpu::mc::TranslateMove{0.2}, 0.9)
@@ -145,9 +145,8 @@ class NptMc : public McBase {
     /// @param seed Seed for the single reproducible RNG stream.
     /// @throws std::invalid_argument if `temperature_K <= 0`.
     NptMc(AccReal temperature_K, AccReal pressure_ev_A3, std::uint64_t seed)
-        : McBase(seed),
-          policy_(this->set_outcome(
-              NptMetropolis{temperature_K, pressure_ev_A3, rng_})) {}
+        : McBase(seed), policy_(this->set_outcome(NptMetropolis{
+                            temperature_K, pressure_ev_A3, rng_})) {}
 
     /// @brief Energy [eV] of the current (last-accepted) configuration.
     AccReal current_energy() const { return policy_.current_energy(); }

@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/backend_traits.h"
@@ -54,26 +55,51 @@ class PhaseBuilder {
   public:
     /// @brief Register a component explicitly on the current phase.
     ///
-    /// Ownership follows the value category of the argument (symmetric with
-    /// `Driver::add`): rvalue → moved into the driver; lvalue → stored as a
-    /// non-owning pointer, caller retains lifetime.
+    /// Rvalues are moved into the driver. Borrowing is deliberately a different
+    /// spelling (`add_ref`) so the Plan's lifetime cannot be misread at the call
+    /// site.
     /// @tparam Comp Concrete component type.
     /// @param comp Component instance.
     /// @param order Ordering within the phase (lower runs earlier).
     /// @return `*this` for fluent chaining.
-    template <typename Comp>
+    template <typename Comp,
+              std::enable_if_t<
+                  std::is_base_of_v<Component, std::remove_reference_t<Comp>>
+                      && !std::is_lvalue_reference_v<Comp>,
+                  int> = 0>
     PhaseBuilder& add(Comp&& comp, int order = 0) {
         using C = std::remove_reference_t<Comp>;
-        if constexpr (std::is_lvalue_reference_v<Comp>) {
-            bindings_->push_back({ATV::slot_of(phase_), order, &comp});
-        } else {
-            auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
-            auto* raw = ptr.get();
-            owned_->push_back(std::move(ptr));
-            bindings_->push_back({ATV::slot_of(phase_), order, raw});
-        }
+        auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
+        auto* raw = ptr.get();
+        owned_->push_back(std::move(ptr));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
         return *this;
     }
+
+    /// @brief Transfer ownership from an explicit unique pointer.
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
+    PhaseBuilder& add(std::unique_ptr<Comp> comp, int order = 0) {
+        if (!comp)
+            throw std::invalid_argument("PhaseBuilder::add: null component");
+        Component* raw = comp.get();
+        owned_->push_back(std::move(comp));
+        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        return *this;
+    }
+
+    /// @brief Borrow a component whose lifetime is owned by the caller.
+    template <typename Comp>
+    PhaseBuilder& add_ref(Comp& comp, int order = 0) {
+        static_assert(std::is_base_of_v<Component, Comp>,
+                      "add_ref requires a backend component subclass");
+        bindings_->push_back({ATV::slot_of(phase_), order, &comp});
+        return *this;
+    }
+
+    /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
+    template <typename Comp>
+    PhaseBuilder& add(Comp&, int = 0) = delete;
 
   private:
     template <typename PE, typename DT>
@@ -123,44 +149,57 @@ class Driver {
 
     /// @brief Add a component using its `default_bindings()`.
     ///
-    /// Two ownership modes selected by the value category of the argument:
-    ///   - **rvalue** (e.g. `sim.add(VelocityVerlet{0.001})`): driver takes
-    ///     ownership by moving the component into a `unique_ptr`.
-    ///   - **lvalue** (e.g. `MyObserver obs; sim.add(obs)`): driver stores
-    ///     a non-owning pointer; caller retains lifetime, allowing post-run
-    ///     state introspection. This is the preferred form for components
-    ///     that are non-copyable / non-movable (e.g. `std::mutex` members)
-    ///     or whose state the caller wants to read after `run()` returns.
+    /// The driver owns the rvalue. Borrowing uses the intentionally different
+    /// `add_ref(component)` spelling.
     ///
     /// @tparam Comp Concrete component type (deduced).
     /// @param comp Component instance.
-    template <typename Comp>
+    template <typename Comp,
+              std::enable_if_t<
+                  std::is_base_of_v<Component, std::remove_reference_t<Comp>>
+                      && !std::is_lvalue_reference_v<Comp>,
+                  int> = 0>
     void add(Comp&& comp) {
         using C = std::remove_reference_t<Comp>;
-        if constexpr (std::is_lvalue_reference_v<Comp>) {
-            // Non-owning: caller retains lifetime.
-            auto bindings = comp.default_bindings();
-            if (bindings.empty())
-                throw std::runtime_error(
-                    "Component '" + comp.name()
-                    + "' has no default bindings. Use .on(phase).add().");
-            validate_binding_kinds_(comp.name(), bindings);
-            for (auto& db : bindings)
-                pending_.push_back({db.phase, db.order, &comp});
-        } else {
-            auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
-            auto bindings = ptr->default_bindings();
-            if (bindings.empty())
-                throw std::runtime_error(
-                    "Component '" + ptr->name()
-                    + "' has no default bindings. Use .on(phase).add().");
-            validate_binding_kinds_(ptr->name(), bindings);
-            auto* raw = ptr.get();
-            owned_components_.push_back(std::move(ptr));
-            for (auto& db : bindings)
-                pending_.push_back({db.phase, db.order, raw});
-        }
+        add(std::make_unique<C>(std::forward<Comp>(comp)));
     }
+
+    /// @brief Transfer ownership from an explicit unique pointer.
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
+    void add(std::unique_ptr<Comp> comp) {
+        if (!comp)
+            throw std::invalid_argument("Driver::add: null component");
+        auto bindings = comp->default_bindings();
+        if (bindings.empty())
+            throw std::runtime_error(
+                "Component '" + comp->name()
+                + "' has no default bindings. Use .on(phase).add().");
+        validate_binding_kinds_(comp->name(), bindings);
+        Component* raw = comp.get();
+        owned_components_.push_back(std::move(comp));
+        for (const auto& db : bindings)
+            pending_.push_back({db.phase, db.order, raw});
+    }
+
+    /// @brief Borrow a component whose lifetime is owned by the caller.
+    template <typename Comp>
+    void add_ref(Comp& comp) {
+        static_assert(std::is_base_of_v<Component, Comp>,
+                      "add_ref requires a backend component subclass");
+        auto bindings = comp.default_bindings();
+        if (bindings.empty())
+            throw std::runtime_error(
+                "Component '" + comp.name()
+                + "' has no default bindings. Use .on(phase).add_ref().");
+        validate_binding_kinds_(comp.name(), bindings);
+        for (const auto& db : bindings)
+            pending_.push_back({db.phase, db.order, &comp});
+    }
+
+    /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
+    template <typename Comp>
+    void add(Comp&) = delete;
 
     /// @brief Begin explicit phase binding.
     /// @param phase Phase value returned by the driver's `Phase` enum.

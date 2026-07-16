@@ -28,15 +28,16 @@
 /// naming both versions. Dispatcher and workers must therefore construct in
 /// lockstep. The header's `version` field is defence in depth.
 ///
-/// **Results.** After an MD task the owning decomposition is released from
+/// **Results.** After an MD or Minimize task the owning decomposition is released from
 /// the materialized driver (`test_eam_multirank` pattern) and the owners are
 /// gathered to rank 0 (`gather_to_root` → `to_frame`, which carries
-/// x/v/f/mass/charge/type/tag/image + box); `frame.scalars` needs no gather
+/// x/v/f/mass/charge/type/tag/image + cell); serializable Frame metadata needs no gather
 /// (the Reduce component all-reduces global scalars onto every rank each
 /// step). SinglePoint frames are full replicas — rank 0's own post-run frame
-/// IS the result. Frame is the only I/O currency.
+/// IS the result. Frame remains the only state currency; `TaskResult` is a
+/// separate control-plane record (iterations, convergence, stop reason).
 ///
-/// **Communicator.** v1 supports `comm == MPI_COMM_WORLD` (or a congruent
+/// **Communicator.** v2 supports `comm == MPI_COMM_WORLD` (or a congruent
 /// communicator with identical ranks): the Frame broadcast rides
 /// `cpu::comm::bcast_frame`, which is WORLD-fixed by the
 /// `scatter_atoms_from_root` precedent. Communicator parameterization is a
@@ -73,13 +74,19 @@ enum class Command : std::int32_t {
 };
 
 /// @brief Protocol version; the handshake and every header carry it.
-inline constexpr std::int32_t kProtocolVersion = 1;
+inline constexpr std::int32_t kProtocolVersion = 2;
 
 /// @brief Fixed-size per-command header, broadcast as raw bytes.
 struct CommandHeader {
     std::int32_t version = kProtocolVersion; ///< Defence in depth.
     std::int32_t command = 0;                ///< A `Command` value.
-    std::int64_t payload_bytes = 0;          ///< TaskSpec byte count (RUN_TASK).
+    std::int64_t payload_bytes = 0; ///< TaskSpec byte count (RUN_TASK).
+};
+
+/// @brief One dispatched task's state and control-plane result.
+struct DispatchResult {
+    cpu::Frame frame;
+    TaskResult control;
 };
 
 /// @brief Worker-side blocking command loop (ranks != root).
@@ -93,8 +100,7 @@ class WorkerLoop {
     /// @throws std::runtime_error if MPI is not initialized, `comm` is
     ///         MPI_COMM_NULL, this rank IS rank 0, or the handshake finds a
     ///         version mismatch on any rank (message names both versions).
-    explicit WorkerLoop(MPI_Comm comm,
-                        std::int32_t version = kProtocolVersion);
+    explicit WorkerLoop(MPI_Comm comm, std::int32_t version = kProtocolVersion);
 
     /// @brief Block on command broadcasts until SHUTDOWN.
     ///
@@ -109,7 +115,7 @@ class WorkerLoop {
     std::int32_t version_;
 };
 
-/// @brief Rank-0 dispatch endpoint: one broadcast per task, result Frame back.
+/// @brief Rank-0 dispatch endpoint: one broadcast per task, typed result back.
 class TaskDispatcher {
   public:
     /// @brief Validating constructor; joins the collective version handshake.
@@ -130,7 +136,7 @@ class TaskDispatcher {
                             std::int32_t version = kProtocolVersion,
                             bool do_handshake = true);
 
-    /// @brief Run one task on every rank; return the result Frame.
+    /// @brief Run one task on every rank; return state + loop control metadata.
     ///
     /// Broadcasts the spec + frame, joins the shared execution path, and
     /// (MD) gathers the owners back. At world size 1 this degrades to a
@@ -139,12 +145,11 @@ class TaskDispatcher {
     /// @param spec  The validated task description.
     /// @param frame The full input system (owned rows `[0, nlocal)`;
     ///              positions [Angstrom], velocities [Angstrom/fs]).
-    /// @return The result Frame on rank 0: tag-ordered
-    ///         x/v/f/mass/charge/type/tag/image + box, with the globally
-    ///         reduced `scalars` (energy [eV], …) of the finished task.
+    /// @return Result Frame plus iterations/convergence/stop reason. Distributed
+    ///         Frames are tag-ordered owner gathers on rank 0.
     /// @throws std::runtime_error when any rank's setup or run failed (the
     ///         status allreduce carried the failure here in lockstep).
-    cpu::Frame dispatch(const TaskSpec& spec, cpu::Frame frame);
+    DispatchResult dispatch(const TaskSpec& spec, cpu::Frame frame);
 
     /// @brief Broadcast SHUTDOWN; every WorkerLoop::run() returns.
     void shutdown();

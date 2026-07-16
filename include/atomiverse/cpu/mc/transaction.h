@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
@@ -78,7 +79,7 @@ class Transaction {
     /// @brief Splice the patch back: restore `nlocal`, every touched row
     ///        (field-exact, topology included), and the box if recorded.
     /// @param f The main frame to restore.
-    void rollback(cpu::Frame& f) const;
+    void rollback(cpu::Frame& f);
 
     /// @brief Number of touched (snapshotted) rows in the patch.
     std::size_t size() const noexcept { return touched_.size(); }
@@ -91,14 +92,22 @@ class Transaction {
 
     /// @brief Reset to an empty changeset, retaining backing storage so a
     ///        Mover reuses it across moves without per-move reallocation.
-    void clear() noexcept;
+    void clear();
 
   private:
-    cpu::Frame patch_{0};             ///< Original rows of touched atoms + box.
-    std::vector<LocalInt> touched_;   ///< Main-frame row of patch row k.
-    int nlocal_before_ = -1;          ///< `nlocal` when `begin()` ran.
-    bool box_recorded_ = false;       ///< Patch box is meaningful.
-    mutable std::vector<double> buf_; ///< pack_exchange scratch (reused).
+    /// Compile or refresh the two exchange plans once at the transaction
+    /// boundary, and reserve enough patch rows for the announced operation.
+    /// Per-row record/rollback loops only execute the compiled descriptors.
+    void prepare_plans_(const cpu::Frame& source, int required_rows);
+
+    cpu::Frame patch_{0};           ///< Original rows of touched atoms + box.
+    std::vector<LocalInt> touched_; ///< Main-frame row of patch row k.
+    int nlocal_before_ = -1;        ///< `nlocal` when `begin()` ran.
+    bool box_recorded_ = false;     ///< Patch box is meaningful.
+    std::vector<std::byte> buf_;    ///< Native pack scratch (reused).
+    const cpu::Frame* source_frame_ = nullptr;
+    comm::PackPlan source_plan_; ///< Main Frame exchange descriptor.
+    comm::PackPlan patch_plan_;  ///< Patch Frame exchange descriptor.
 };
 
 } // namespace mc

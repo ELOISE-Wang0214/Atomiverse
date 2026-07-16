@@ -37,9 +37,9 @@ namespace ATV {
 /// @code{.cpp}
 /// cpu::md::MD sim;
 /// sim.set_integrator(cpu::md::VelocityVerlet{0.001});
-/// sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
+/// sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
 /// MSD msd{/*dt_between_frames=*/0.1, /*freq=*/100, "msd.dat"};
-/// sim.add(msd);
+/// sim.add_ref(msd);
 /// sim.build();  sim.run(frame, 100'000);
 /// @endcode
 class MSD : public cpu::md::AsyncObserver {
@@ -57,7 +57,7 @@ class MSD : public cpu::md::AsyncObserver {
                  int window = 256);
 
     std::string name() const override { return "msd_async"; }
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     int frequency() const override { return freq_; }
 
     cpu::CaptureMask capture_mask() const override {

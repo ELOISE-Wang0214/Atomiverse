@@ -39,9 +39,9 @@ namespace mpi {
 /// (d) a generation counter that consumers (neighbor lists, halo lists)
 /// rebuild against, and (e) derived bookkeeping (send lists, tag→local map).
 ///
-/// `Frame::atoms.size()` is the *allocated capacity* in multi-rank mode;
+/// `Frame::capacity()` is the allocated row capacity in multi-rank mode;
 /// `n_local` is the owned-atom count. Force kernels and integrators iterate
-/// `n_local` (via `owned_count()` / `owned_range.h`), not `atoms.size()`,
+/// `n_local` (via `owned_count()` / `owned_range.h`), not capacity,
 /// so ghost rows in `[n_local, n_local + n_ghost)` are never double-counted.
 struct DomainDecomposition {
 #ifdef ATV_HAS_MPI
@@ -149,7 +149,7 @@ struct DomainDecomposition {
     /// inserted into `tag_to_local`, in slot order. Used to roll back
     /// ghost entries before the next halo write so a different ghost set
     /// does not leave stale tag→slot bindings behind.
-    std::vector<std::int64_t> ghost_tags;
+    std::vector<TagInt> ghost_tags;
 
     /// @brief Per-axis cut planes as **fractions** of the box length, in `[0, 1]`.
     ///
@@ -171,8 +171,8 @@ struct DomainDecomposition {
 
     /// @brief Bind to a frame: populate `n_local`, `capacity`, `tag_to_local`.
     ///
-    /// Single-rank initialization. Sets `n_local = capacity = frame.atoms.size()`,
-    /// `n_ghost = 0`, and rebuilds `tag_to_local` from `frame.atoms.tag`.
+    /// Single-rank initialization. Sets `n_local = capacity = frame.nlocal()`,
+    /// `n_ghost = 0`, and rebuilds `tag_to_local` from `kAtom_tag`.
     /// Does not touch MPI topology fields.
     ///
     /// @param frame Host-side frame whose atoms this DD describes.
@@ -247,7 +247,7 @@ struct DomainDecomposition {
 
     /// @brief Partition atoms across ranks by spatial position.
     ///
-    /// Each rank inspects all atoms in `frame.atoms[0..size())`, picks the
+    /// Each rank inspects all owned rows in the `atoms` Block, picks the
     /// subset whose (PBC-wrapped) positions fall in this rank's slab,
     /// compacts those atoms to the front of every per-atom array, and
     /// updates `n_local`, `n_ghost = 0`, `capacity = atoms.size()`. Stale

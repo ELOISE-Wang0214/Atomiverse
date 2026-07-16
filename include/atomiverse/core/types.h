@@ -19,6 +19,4 @@ enum class Scheduling {
 class Mat3;
 class Vec3;
 
-using Mat33 = Mat3;
-
 } // namespace ATV

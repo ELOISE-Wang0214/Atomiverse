@@ -2,6 +2,7 @@
 /// @brief Atomiverse AM1 plus molrs reference AM1-BCC charge assignment.
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
@@ -17,7 +18,7 @@ namespace semiempirical {
 /// correction lookup, and charge-column writes are delegated to molrs.
 struct AM1BCCChargeConfig {
     AM1Config am1{};
-    bool normalize_total_charge = false;
+    std::string parameter_set = "bcc";
 };
 
 /// @brief Assign reference AM1-BCC charges to a molrs molecular graph frame.
@@ -31,9 +32,10 @@ class AM1BCCChargeAssigner {
 
     /// @brief Compute AM1 base charges and apply molrs AM1-BCC corrections.
     ///
-    /// The input frame must contain atom coordinates and either integer
-    /// `atoms.type` atomic numbers or canonical molrs `atoms.element` symbols.
-    /// It must also contain molrs graph topology for BCC typing.
+    /// The input frame must contain atom coordinates plus integer `atoms.type`
+    /// atomic numbers (the exact Atomiverse exchange schema). BCC typing also
+    /// requires canonical `atoms.element` symbols and molrs graph topology;
+    /// neither field substitutes for the other.
     std::vector<double> assign(molrs::FrameRef& frame);
 
     const AM1Result& last_am1_result() const { return solver_.last_result(); }

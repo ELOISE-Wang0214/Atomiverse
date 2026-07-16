@@ -22,7 +22,7 @@ OptLog::OptLog(std::string filename, bool also_stdout)
 void OptLog::build(const cpu::BuildContext& ctx) {
     // Position reference sized to the frame capacity (≥ n_local under
     // multi-rank) so launch() never allocates on the steady-state path.
-    const int cap = ctx.frame.atoms.size();
+    const int cap = ctx.frame.nlocal();
     x_prev_.assign(cap, 0.0);
     y_prev_.assign(cap, 0.0);
     z_prev_.assign(cap, 0.0);
@@ -116,13 +116,13 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_rank != 0)
         return;
     if (os_.is_open()) {
-        os_ << ctx.step << '\t' << f.scalars.energy << '\t' << max_force << '\t'
-            << rms_force << '\t' << step_norm << '\n';
+        os_ << ctx.step << '\t' << f.meta.get(kEnergy) << '\t' << max_force
+            << '\t' << rms_force << '\t' << step_norm << '\n';
         os_.flush();
     }
     if (also_stdout_) {
         std::printf("%6d  %15.8e  %12.6e  %12.6e  %12.6e\n", ctx.step,
-                    f.scalars.energy, max_force, rms_force, step_norm);
+                    f.meta.get(kEnergy), max_force, rms_force, step_norm);
     }
     ++n_rows_;
 }

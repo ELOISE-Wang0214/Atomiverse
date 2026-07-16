@@ -6,6 +6,7 @@
 #include "atomiverse/cpu/async/analysis_executor.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/driver/step_timing.h"
+#include "atomiverse/facade/molrs_contract.h"
 
 #include <algorithm>
 #include <chrono>
@@ -32,6 +33,11 @@ Backend::Backend(Backend&&) noexcept = default;
 Backend& Backend::operator=(Backend&&) noexcept = default;
 
 void Backend::init() {
+    // A local ATV_MOLRS_PATH is an alternate source location, not permission to
+    // run against a different interface. Fail before any execution service is
+    // initialized or any component sees a Frame.
+    ATV::molrs_contract::require_compatible();
+
 #ifdef _OPENMP
     if (context_.n_threads > 0)
         omp_set_num_threads(context_.n_threads);
@@ -187,12 +193,13 @@ void Backend::set_frame(cpu::Frame& frame) {
             // chosen for an unknown box). Must precede the initial
             // partition: builder-side pre-filtered frames use the same
             // `choose_dims`, and the two grids must agree on ownership.
-            dd_->init_topology(MPI_COMM_WORLD, frame.box.length(0),
-                               frame.box.length(1), frame.box.length(2));
+            dd_->init_topology(MPI_COMM_WORLD, frame.simbox.length(0),
+                               frame.simbox.length(1), frame.simbox.length(2));
             dd_->partition_atoms(frame);
 
-            // Drop `atoms.map`. Under decomposition the authoritative tag->row map is
-            // `dd->tag_to_local`; `atoms.map` still holds the PRE-partition identity
+            // Drop the Frame-local tag index. Under decomposition the authoritative
+            // tag->row map is `dd->tag_to_local`; the local index still holds the
+            // PRE-partition identity
             // mapping, and `partition_atoms` has just compacted the owners to the front
             // and left the tail as ghost slack. So every entry in it now points at a
             // DIFFERENT atom than the one it names.
@@ -203,9 +210,9 @@ void Backend::set_frame(cpu::Frame& frame) {
             // resolved tags through `atoms.map`. Releasing it turns a wrong answer into
             // no answer (`find()` returns `end()`), which callers already handle as
             // "not on this rank".
-            frame.atoms.map_release();
+            frame.release_tag_index();
         } else {
-            dd_->compute_sublo_subhi(frame.box);
+            dd_->compute_sublo_subhi(frame.simbox);
             // Carry-over preserves the partition (no re-scan — see above), but
             // the allocation bound must still grow if this frame is larger than
             // the one the partition was sized for (e.g. a reused backend
@@ -213,28 +220,28 @@ void Backend::set_frame(cpu::Frame& frame) {
             // Migrate reserve their per-instance buffers against a stale,
             // too-small `capacity` and can overflow. Grow-only: never shrink
             // below the existing ghost slack.
-            if (frame.atoms.size() > dd_->capacity)
-                dd_->capacity = frame.atoms.size();
+            if (frame.nlocal() > dd_->capacity)
+                dd_->capacity = frame.nlocal();
         }
         release_tag_maps_if_unused(frame);
         return;
     }
 #endif
     dd_->bind(frame);
-    dd_->compute_sublo_subhi(frame.box);
+    dd_->compute_sublo_subhi(frame.simbox);
     release_tag_maps_if_unused(frame);
 }
 
 void Backend::release_tag_maps_if_unused(cpu::Frame& frame) {
-    if (frame.atoms.has_bonded())
+    if (frame.has_bonded())
         return;
     // No bonded topology → nothing resolves global tags at run time
     // (ResolveView and the add_* topology loaders are the only readers).
-    // The loaders may have populated `atoms.map` before topology turned
-    // out to be empty (materialize / lammps_data / benches call map_set
+    // The loaders may have populated the local index before topology turned
+    // out to be empty (materialize / lammps_data / benches build it
     // unconditionally); drop it and the DD mirror. ~50 B/atom each —
     // ~400 MB dead weight on an 8M-atom single-rank LJ run.
-    frame.atoms.map_release();
+    frame.release_tag_index();
     if (dd_) {
         std::unordered_map<TagInt, int>{}.swap(dd_->tag_to_local);
     }
@@ -294,7 +301,7 @@ void Backend::step(int step_idx) {
         const auto step_t1 = std::chrono::steady_clock::now();
         timing_.set_loop(
             std::chrono::duration<double>(step_t1 - step_t0).count(),
-            dd_ ? dd_->n_local : static_cast<int>(frame_->atoms.size()));
+            dd_ ? dd_->n_local : static_cast<int>(frame_->nlocal()));
         timing_.tick_step();
     }
 }
@@ -309,7 +316,7 @@ void Backend::step(int step_idx) {
 // have no entry in it. Timing a nested loop needs a per-plan handle table, which is a
 // follow-up, not a silent wrong answer — so these take the untimed path deliberately.
 
-void Backend::build_plan(const Plan<cpu::ComponentBase>& plan) {
+void Backend::build_plan(const Plan<cpu::Component>& plan) {
     BuildContext ctx{context_, *frame_};
     for (const auto& slot : plan.slots) {
         for (const auto& op : slot.ops) {
@@ -319,7 +326,7 @@ void Backend::build_plan(const Plan<cpu::ComponentBase>& plan) {
     }
 }
 
-void Backend::step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx) {
+void Backend::step_plan(const Plan<cpu::Component>& plan, int step_idx) {
     for (const auto& slot : plan.slots) {
         if (slot.ops.empty())
             continue;
@@ -336,7 +343,7 @@ void Backend::step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx) {
     }
 }
 
-void Backend::destroy_plan(const Plan<cpu::ComponentBase>& plan) {
+void Backend::destroy_plan(const Plan<cpu::Component>& plan) {
     DestroyContext ctx{context_, *frame_};
     for (int s = static_cast<int>(plan.slots.size()) - 1; s >= 0; --s) {
         const auto& slot = plan.slots[s];
@@ -376,7 +383,7 @@ void Backend::run_slot_(int slot_index, int step_idx) {
 }
 
 void Backend::run(int n_steps) {
-    ATV_INFO("running {} steps ({} atoms)", n_steps, frame_->atoms.size());
+    ATV_INFO("running {} steps ({} atoms)", n_steps, frame_->nlocal());
     for (int s = 0; s < n_steps; ++s)
         step(s);
     ATV_INFO("run complete");
@@ -393,10 +400,10 @@ Backend::collect_component_memory() const {
     // Unique components across all plan slots (a component may bind to several
     // phases) — dedup by pointer so its memory is counted once.
     if (plan_) {
-        std::vector<const cpu::ComponentBase*> seen;
+        std::vector<const cpu::Component*> seen;
         for (const auto& slot : plan_->slots) {
             for (const auto& op : slot.ops) {
-                const cpu::ComponentBase* c = op.component;
+                const cpu::Component* c = op.component;
                 if (!c || std::find(seen.begin(), seen.end(), c) != seen.end())
                     continue;
                 seen.push_back(c);
@@ -408,7 +415,7 @@ Backend::collect_component_memory() const {
     }
     // Per-atom SoA + topology + tag map (the dominant "Atoms" bucket).
     if (frame_)
-        out.emplace_back("[atoms]", frame_->atoms.memory_bytes());
+        out.emplace_back("[atoms]", frame_->block("atoms").memory_bytes());
     // Domain-decomposition tag→local map + ghost-tag list (Comm bucket).
     if (dd_) {
         std::size_t b = dd_->tag_to_local.size() * 32
@@ -444,7 +451,8 @@ void Backend::shutdown() {
         executor_.reset();
     }
     context_.analysis.executor = nullptr;
-    context_.exec.runtime = nullptr; // the Runtime is gone; no node may reach it
+    context_.exec.runtime =
+        nullptr; // the Runtime is gone; no node may reach it
 
 #ifdef ATV_HAS_MPI
     if (dd_) {

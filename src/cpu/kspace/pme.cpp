@@ -4,8 +4,10 @@
 /// Built only when ATV_BUILD_KSPACE is defined (links FFTW3).
 #include "atomiverse/cpu/kspace/pme.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 #include <fftw3.h>
 
@@ -72,7 +74,7 @@ std::vector<double> spline_moduli(int K, int n) {
     for (int i = 0; i < K; ++i) {
         double sr = 0, si = 0;
         for (int k = 0; k < n - 1; ++k) {
-            const double arg = 2.0 * ATV::kPI * i * k / K;
+            const double arg = 2.0 * ATV::units::pi * i * k / K;
             sr += data[k] * std::cos(arg);
             si += data[k] * std::sin(arg);
         }
@@ -111,41 +113,71 @@ KSpacePME::KSpacePME(double alpha, double grid_spacing, int order)
     : alpha_(alpha), spacing_(grid_spacing), order_(order) {
     if (alpha <= 0.0)
         throw std::invalid_argument("KSpacePME: alpha must be > 0");
+    if (grid_spacing <= 0.0)
+        throw std::invalid_argument("KSpacePME: grid_spacing must be > 0");
     if (order < 3)
         throw std::invalid_argument("KSpacePME: order must be ≥ 3");
 }
 
-KSpacePME::~KSpacePME() {
-    if (plan_fwd_)
-        fftw_destroy_plan(static_cast<fftw_plan>(plan_fwd_));
-    if (plan_bwd_)
-        fftw_destroy_plan(static_cast<fftw_plan>(plan_bwd_));
+KSpacePME::~KSpacePME() { release_storage(); }
+
+KSpacePME::KSpacePME(KSpacePME&& other) noexcept
+    : KSpace(std::move(other)), alpha_(other.alpha_), spacing_(other.spacing_),
+      order_(other.order_), box_identity_(other.box_identity_),
+      cell_revision_(other.cell_revision_), have_grid_(other.have_grid_),
+      grid_(std::move(other.grid_)), plan_fwd_(other.plan_fwd_),
+      plan_bwd_(other.plan_bwd_), atom_capacity_(other.atom_capacity_),
+      base_(std::move(other.base_)), theta_(std::move(other.theta_)),
+      dtheta_(std::move(other.dtheta_)) {
+    for (int d = 0; d < 3; ++d) {
+        K_[d] = other.K_[d];
+        bsp_mod_[d] = std::move(other.bsp_mod_[d]);
+        other.K_[d] = 0;
+    }
+    other.box_identity_ = nullptr;
+    other.cell_revision_ = 0;
+    other.have_grid_ = false;
+    other.plan_fwd_ = nullptr;
+    other.plan_bwd_ = nullptr;
+    other.atom_capacity_ = 0;
 }
 
-void KSpacePME::ensure_grid(const cpu::Frame& frame) {
-    const auto& box = frame.box;
-    std::array<double, 9> cell{box(0, 0), box(0, 1), box(0, 2),
-                               box(1, 0), box(1, 1), box(1, 2),
-                               box(2, 0), box(2, 1), box(2, 2)};
-    if (have_grid_ && cell == cell_cache_)
+void KSpacePME::ensure_grid(const cpu::Frame& frame, bool initial_build) {
+    const auto& box = frame.simbox;
+    if (have_grid_ && box_identity_ == &box && box.revision() == cell_revision_)
         return;
-    cell_cache_ = cell;
 
+    int next_K[3];
     for (int d = 0; d < 3; ++d) {
         const double len = box.length(d);
-        K_[d] = good_fft_size(static_cast<int>(std::ceil(len / spacing_)));
-        if (K_[d] < order_ + 1)
-            K_[d] = good_fft_size(order_ + 1);
-        bsp_mod_[d] = spline_moduli(K_[d], order_);
+        next_K[d] = good_fft_size(static_cast<int>(std::ceil(len / spacing_)));
+        if (next_K[d] < order_ + 1)
+            next_K[d] = good_fft_size(order_ + 1);
     }
 
-    const int ntot = K_[0] * K_[1] * K_[2];
-    grid_.assign(ntot, std::complex<double>(0, 0));
-    if (ntot != planned_n_) {
+    const bool shape_changed = !have_grid_ || next_K[0] != K_[0]
+                               || next_K[1] != K_[1] || next_K[2] != K_[2];
+    if (have_grid_ && !initial_build) {
+        if (shape_changed)
+            note_capacity_rebuild();
+        else
+            note_cell_refresh();
+    }
+
+    if (shape_changed) {
         if (plan_fwd_)
             fftw_destroy_plan(static_cast<fftw_plan>(plan_fwd_));
         if (plan_bwd_)
             fftw_destroy_plan(static_cast<fftw_plan>(plan_bwd_));
+        plan_fwd_ = nullptr;
+        plan_bwd_ = nullptr;
+
+        for (int d = 0; d < 3; ++d) {
+            K_[d] = next_K[d];
+            bsp_mod_[d] = spline_moduli(K_[d], order_);
+        }
+        const int ntot = K_[0] * K_[1] * K_[2];
+        grid_.resize(static_cast<std::size_t>(ntot));
         auto* data = reinterpret_cast<fftw_complex*>(grid_.data());
         // fftw_plan_dft_3d(n0,n1,n2): n0 slowest, n2 fastest. Lay out grid
         // with axis 2 fastest: idx = k2 + K2*(k1 + K1*k0).
@@ -153,21 +185,50 @@ void KSpacePME::ensure_grid(const cpu::Frame& frame) {
                                      FFTW_FORWARD, FFTW_ESTIMATE);
         plan_bwd_ = fftw_plan_dft_3d(K_[0], K_[1], K_[2], data, data,
                                      FFTW_BACKWARD, FFTW_ESTIMATE);
-        planned_n_ = ntot;
+        if (!plan_fwd_ || !plan_bwd_) {
+            if (plan_fwd_)
+                fftw_destroy_plan(static_cast<fftw_plan>(plan_fwd_));
+            if (plan_bwd_)
+                fftw_destroy_plan(static_cast<fftw_plan>(plan_bwd_));
+            plan_fwd_ = nullptr;
+            plan_bwd_ = nullptr;
+            throw std::runtime_error("KSpacePME: FFTW plan creation failed");
+        }
     }
+
+    box_identity_ = &box;
+    cell_revision_ = box.revision();
     have_grid_ = true;
 }
 
-void KSpacePME::build(const BuildContext& ctx) { ensure_grid(ctx.frame); }
+void KSpacePME::ensure_atom_capacity(int required, bool initial_build) {
+    if (required <= atom_capacity_)
+        return;
+    const int grown = atom_capacity_ > 0 ? atom_capacity_ * 2 : 1;
+    const int next = std::max(required, grown);
+    base_.resize(static_cast<std::size_t>(3 * next));
+    theta_.resize(static_cast<std::size_t>(3 * order_ * next));
+    dtheta_.resize(static_cast<std::size_t>(3 * order_ * next));
+    atom_capacity_ = next;
+    if (!initial_build)
+        note_capacity_rebuild();
+}
+
+void KSpacePME::build(const BuildContext& ctx) {
+    note_build();
+    ensure_grid(ctx.frame, true);
+    ensure_atom_capacity(ctx.frame.capacity(), true);
+}
 
 void KSpacePME::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    ensure_grid(f);
+    ensure_grid(f, false);
 
     const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
-    const int n_local = mpi ? dd->n_local : f.atoms.size();
+    const int n_local = mpi ? dd->n_local : f.nlocal();
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
+    ensure_atom_capacity(n_local, false);
 
     const int K0 = K_[0], K1 = K_[1], K2 = K_[2];
     const int ntot = K0 * K1 * K2;
@@ -182,12 +243,13 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     AccReal* __restrict sp_fz = f.span(kAtom_fz);
 
     const auto& ic =
-        f.box.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
-    const double vol = f.box.volume();
+        f.simbox.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
+    const double vol = f.simbox.volume();
 
-    // Per-atom spline tables (stencil offset + theta/dtheta per dimension).
-    std::vector<int> base(3 * n_local);
-    std::vector<double> th(3 * n * n_local), dth(3 * n * n_local);
+    // Per-atom spline tables live in persistent component-owned workspace.
+    auto& base = base_;
+    auto& th = theta_;
+    auto& dth = dtheta_;
 
     std::fill(grid_.begin(), grid_.end(), std::complex<double>(0, 0));
 
@@ -238,9 +300,20 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                      reinterpret_cast<fftw_complex*>(grid_.data()),
                      reinterpret_cast<fftw_complex*>(grid_.data()));
 
-    // ── Influence function: energy + convolution ───────────────────────
-    const double inv_pi2_a2 = ATV::kPI * ATV::kPI / (alpha_ * alpha_);
+    // ── Influence function: energy + virial + convolution ──────────────
+    // Reciprocal energy (Essmann et al.):
+    //   E = (k_e/(2πV)) Σ_{m≠0} exp(−π²|m|²/α²)/|m|² · B(m) · |Q(m)|²
+    // with m built from inv_cell (no explicit 2π; the 2π is absorbed into
+    // the prefactor). The per-mode virial matches KSpaceEwald after the
+    // k=2πm substitution:
+    //   V_ab = ug · (δ_ab + vt · m_a m_b),  vt = −2(1/|m|² + π²/α²).
+    // Rank 0 alone accumulates energy/stress; every rank still applies the
+    // influence function so the inverse FFT yields forces on owned atoms.
+    const double inv_pi2_a2 =
+        ATV::units::pi * ATV::units::pi / (alpha_ * alpha_);
+    const double vt_const = inv_pi2_a2; // π²/α² term inside vt
     double e_recip = 0;
+    double s_xx = 0, s_yy = 0, s_zz = 0, s_xy = 0, s_xz = 0, s_yz = 0;
     for (int m0 = 0; m0 < K0; ++m0) {
         const int h0 = (m0 <= K0 / 2) ? m0 : m0 - K0;
         const double bm0 = bsp_mod_[0][m0];
@@ -266,13 +339,29 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                 const double B = bm01 * bsp_mod_[2][m2];
                 const double H = std::exp(-inv_pi2_a2 * msq) / msq * B;
                 const std::complex<double> Qm = grid_[idx];
-                e_recip += H * (Qm.real() * Qm.real() + Qm.imag() * Qm.imag());
+                const double q2 = Qm.real() * Qm.real() + Qm.imag() * Qm.imag();
+                e_recip += H * q2;
+                // Virial geometric factor in m-space (see header comment).
+                const double vt = -2.0 * (1.0 / msq + vt_const);
+                const double ug = H * q2; // scaled by escale below
+                s_xx += ug * (1.0 + vt * mx * mx);
+                s_yy += ug * (1.0 + vt * my * my);
+                s_zz += ug * (1.0 + vt * mz * mz);
+                s_xy += ug * (vt * mx * my);
+                s_xz += ug * (vt * mx * mz);
+                s_yz += ug * (vt * my * mz);
                 grid_[idx] = H * Qm;
             }
         }
     }
-    const double escale = ATV::kCoulomb / (2.0 * ATV::kPI * vol);
+    const double escale = ATV::units::coulomb / (2.0 * ATV::units::pi * vol);
     e_recip *= escale;
+    s_xx *= escale;
+    s_yy *= escale;
+    s_zz *= escale;
+    s_xy *= escale;
+    s_xz *= escale;
+    s_yz *= escale;
 
     // ── Inverse FFT → real-space convolution grid ──────────────────────
     fftw_execute_dft(static_cast<fftw_plan>(plan_bwd_),
@@ -280,9 +369,9 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                      reinterpret_cast<fftw_complex*>(grid_.data()));
 
     // ── Interpolate reciprocal forces onto owned atoms ─────────────────
-    // F_{i,a} = -(kCoulomb/πV) q_i Σ_stencil C(grid) Σ_d dθ_d Π_{d'≠d} θ_{d'}
+    // F_{i,a} = -(units::coulomb/πV) q_i Σ_stencil C(grid) Σ_d dθ_d Π_{d'≠d} θ_{d'}
     //           · K_d · ic(a,d)
-    const double fscale = ATV::kCoulomb / (ATV::kPI * vol);
+    const double fscale = ATV::units::coulomb / (ATV::units::pi * vol);
     for (int i = 0; i < n_local; ++i) {
         const double qi = q[i];
         if (qi == 0.0)
@@ -330,9 +419,9 @@ void KSpacePME::compute(const LaunchContext& ctx) {
         q_local += q[i];
     }
     const double e_self =
-        -ATV::kCoulomb * alpha_ / std::sqrt(ATV::kPI) * qsq_local;
-    f.scalars.energy += e_self;
-    f.scalars.energy_pair += e_self;
+        -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi) * qsq_local;
+    f.meta.get(kEnergy) += e_self;
+    f.meta.get(kEnergyPair) += e_self;
 
     double q_total = q_local;
 #ifdef ATV_HAS_MPI
@@ -341,15 +430,55 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                       dd->cart_comm);
 #endif
     if (first_rank) {
-        const double e_net = -ATV::kCoulomb * ATV::kPI
+        const double e_net = -ATV::units::coulomb * ATV::units::pi
                              / (2.0 * vol * alpha_ * alpha_) * q_total
                              * q_total;
-        f.scalars.energy += e_recip + e_net;
-        f.scalars.energy_pair += e_recip + e_net;
+        f.meta.get(kEnergy) += e_recip + e_net;
+        f.meta.get(kEnergyPair) += e_recip + e_net;
+        // Reciprocal virial only (same as KSpaceEwald): the net-charge term
+        // is pure 1/V energy with zero contribution on a neutral cell, and
+        // is intentionally omitted from the stress tally for parity.
+        f.meta.get(kStress)[0] += s_xx;
+        f.meta.get(kStress)[1] += s_yy;
+        f.meta.get(kStress)[2] += s_zz;
+        f.meta.get(kStress)[3] += s_xy;
+        f.meta.get(kStress)[4] += s_xz;
+        f.meta.get(kStress)[5] += s_yz;
     }
 }
 
-void KSpacePME::destroy(const DestroyContext&) {}
+void KSpacePME::release_storage() noexcept {
+    if (plan_fwd_)
+        fftw_destroy_plan(static_cast<fftw_plan>(plan_fwd_));
+    if (plan_bwd_)
+        fftw_destroy_plan(static_cast<fftw_plan>(plan_bwd_));
+    plan_fwd_ = nullptr;
+    plan_bwd_ = nullptr;
+
+    std::vector<std::complex<double>>().swap(grid_);
+    for (auto& moduli : bsp_mod_)
+        std::vector<double>().swap(moduli);
+    std::vector<int>().swap(base_);
+    std::vector<double>().swap(theta_);
+    std::vector<double>().swap(dtheta_);
+
+    K_[0] = K_[1] = K_[2] = 0;
+    atom_capacity_ = 0;
+    box_identity_ = nullptr;
+    cell_revision_ = 0;
+    have_grid_ = false;
+}
+
+void KSpacePME::destroy(const DestroyContext&) { release_storage(); }
+
+std::size_t KSpacePME::memory_bytes() const {
+    std::size_t bytes = grid_.capacity() * sizeof(std::complex<double>);
+    for (const auto& moduli : bsp_mod_)
+        bytes += moduli.capacity() * sizeof(double);
+    bytes += base_.capacity() * sizeof(int);
+    bytes += (theta_.capacity() + dtheta_.capacity()) * sizeof(double);
+    return bytes;
+}
 
 } // namespace cpu
 } // namespace ATV

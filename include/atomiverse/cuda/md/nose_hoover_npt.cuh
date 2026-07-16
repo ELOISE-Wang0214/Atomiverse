@@ -51,7 +51,7 @@ namespace md {
 
 /// @brief CUDA MTK NPT integrator. Same API surface and Trotter ordering
 ///        as `cpu::md::NoseHooverNPT`.
-class NoseHooverNPT : public ComponentBase {
+class NoseHooverNPT : public Component {
   public:
     /// @brief Configuration aggregate (mirror of `cpu::md::NoseHooverNPT::Config`).
     struct Config {
@@ -81,14 +81,12 @@ class NoseHooverNPT : public ComponentBase {
     double T_target() const noexcept { return T_live_; }
 
     std::string name() const override { return "nose_hoover_npt"; }
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: MTK: propagates x and v, and scales the cell.
-    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     /// @brief Reads — consumes `Stress` to drive ε̇ via `update_eps_dot_`.
     ///        Triggers `cuda::md::MD::install_infra_` to auto-inject
     ///        `cuda::Virial` if none is registered. The Integrator
     ///        role alone could not express this dependency.
-    Capability reads() const override { return Capability::Stress; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),

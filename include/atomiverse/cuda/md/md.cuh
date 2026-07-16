@@ -39,7 +39,7 @@
 ///
 /// `MD` exposes the same 11-method categorical surface as
 /// `cpu::md::MD` (chain link `msu-pe-cuda-components-02`, Phase G.4):
-/// `set_pair / set_bond / set_angle / set_dihedral / set_neighbor`
+/// `add_potential / add_potential / set_angle / set_dihedral / set_neighbor`
 /// (singular, idempotent on same-class re-call, throw on
 /// different-class re-call), `set_integrator` (singular via the
 /// component's own `default_bindings()`), `set_thermostat /
@@ -78,7 +78,7 @@
 /// Usage:
 /// @code{.cpp}
 /// cuda::md::MD sim;
-/// sim.set_pair(cuda::PairLJCut{1.0, 1.0, 3.0});
+/// sim.add_potential(cuda::PairLJCut{1.0, 1.0, 3.0});
 /// sim.set_neighbor(cuda::NeighborList{3.0});
 /// sim.set_integrator(cuda::md::VelocityVerlet{0.001});
 /// sim.set_thermo(5);
@@ -191,8 +191,8 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
     /// @tparam P Pair evaluator type (e.g. `cuda::PairLJCut`).
     /// @param p Pair evaluator (passed by forwarding reference).
     template <typename P>
-    MD& set_pair(P&& p) {
-        set_singular_at_(std::forward<P>(p), pair_set_, "set_pair",
+    MD& add_potential(P&& p) {
+        set_singular_at_(std::forward<P>(p), pair_set_, "add_potential",
                          ATV::md::Phase::force, 0);
         return *this;
     }
@@ -200,8 +200,8 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
     /// @brief Configure the bond force evaluator (LAMMPS `bond_style`).
     ///        Bound at `md::Phase::force @ 0`.
     template <typename B>
-    MD& set_bond(B&& b) {
-        set_singular_at_(std::forward<B>(b), bond_set_, "set_bond",
+    MD& add_potential(B&& b) {
+        set_singular_at_(std::forward<B>(b), bond_set_, "add_potential",
                          ATV::md::Phase::force, 0);
         return *this;
     }
@@ -297,26 +297,28 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
     }
 
   protected:
-    /// @brief Require at least one `Integrator`-role component and at
-    ///        least one component carrying `Capability::Force`.
-    ///
-    /// Folded down from the deleted `cuda::DynamicsDriver`: it is the *validation* of
-    /// an MD plan, and MD is the only thing that ever wanted it.
+    /// @brief Integrator + hot-path force source (Role flags).
     void validate_components() const override {
         bool has_integrator = false;
         bool has_force_writer = false;
-        for_each_pending([&](const cuda::ComponentBase& c) {
-            if (c.role() == ComponentRole::Integrator)
+        for_each_pending([&](const cuda::Component& c) {
+            // CUDA kind bases pending; integrators identified by name for now.
+            if (c.name() == "velocity_verlet" || c.name() == "nve_limit"
+                || c.name().find("verlet") != std::string::npos)
                 has_integrator = true;
-            // Force capability is the load-bearing predicate — any component that
-            // writes forces satisfies "the integrator has something to integrate".
-            if (has_capability(c.capabilities(), Capability::Force))
+            // Force sources: hot-path and not FrameImmutable, not
+            // named integrators/thermostats/barostats alone.
+            if (loop_required(c.role())
+                && !has_role(c.role(), RoleFlag::FrameImmutable)
+                && c.name() != "velocity_verlet" && c.name() != "nve_limit"
+                && c.name() != "nose_hoover" && c.name() != "berendsen"
+                && c.name().find("barostat") == std::string::npos)
                 has_force_writer = true;
         });
         if (!has_integrator)
             throw_missing("Integrator");
         if (!has_force_writer)
-            throw_missing("Component with Capability::Force");
+            throw_missing("hot-path force Component");
     }
 
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.
@@ -340,11 +342,10 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
         bool has_stress_producer = false;
         bool has_neighbor_list = false;
         std::string neighbor_consumer_name; // first NeighborConsumer
-        this->for_each_pending([&](const cuda::ComponentBase& c) {
-            if ((c.reads() & Capability::Stress) != Capability::None)
+        this->for_each_pending([&](const cuda::Component& c) {
+            if (c.requires_system_stress())
                 needs_stress_input = true;
-            if (c.role() == ComponentRole::Observer
-                && (c.capabilities() & Capability::Stress) != Capability::None)
+            if (c.provides_system_stress())
                 has_stress_producer = true;
             if (c.as_neighbor_consumer()) {
                 if (neighbor_consumer_name.empty())
@@ -377,7 +378,7 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
         // +8% @1M / +33% @4M atoms on a single GH200). Mirrors the multi-GPU NVE
         // path, which already gates its default pair off.
         const bool stress_consumed = needs_stress_input || has_stress_producer;
-        this->for_each_pending_mut([&](cuda::ComponentBase& c) {
+        this->for_each_pending_mut([&](cuda::Component& c) {
             c.set_stress_required(stress_consumed);
         });
 

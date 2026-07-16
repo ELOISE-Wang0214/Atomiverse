@@ -1,5 +1,5 @@
 /// @file cpu/scf/scf_evaluator.h
-/// @brief SCFEvaluator — CPU force-phase component for ab initio MD.
+/// @brief SCF — CPU force-phase component for ab initio MD.
 ///
 /// Single component for all mean-field methods (RHF, UHF, RKS, UKS).
 /// Binds to md::Phase::force. Each launch(): rebuild integrals, run SCF,
@@ -9,7 +9,7 @@
 /// @code
 ///   md::MD sim;
 ///   sim.add(md::VelocityVerlet{dt});
-///   sim.on(md::Phase::force).add(scf::SCFEvaluator{config, charge});
+///   sim.on(md::Phase::force).add(scf::SCF{config, charge});
 ///   sim.build();
 ///   sim.run(frame, n_steps);
 /// @endcode
@@ -20,21 +20,21 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/hf.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Shared view into the latest SCFEvaluator state.
+/// @brief Shared view into the latest SCF state.
 ///
-/// Bundles the three shared-pointer handles published by `SCFEvaluator`.
+/// Bundles the three shared-pointer handles published by `SCF`.
 /// Observer components capture one of these during construction and then
 /// read from it each step; the pointers stay valid across the driver's
 /// value-copy of the evaluator.
@@ -50,16 +50,15 @@ struct SCFResultHandle {
 /// @brief Ab initio force evaluator component for MD drivers.
 ///
 /// Rebuilds integrals + runs SCF + computes analytic gradient each step.
-/// Writes forces to frame.atoms.fx/fy/fz and energy to frame.energy.
+/// Writes forces to `kAtom_fx/fy/fz` and energy to `kEnergy`.
 /// Optionally uses ASPC predictor-corrector for density matrix warm-start.
-class SCFEvaluator : public cpu::ComponentBase {
+class SCF : public cpu::HF {
   public:
     /// @brief Construct from SCF configuration.
     /// @param config  SCF parameters (method, spin, XC, convergence, grid).
     /// @param basis   Basis set to resolve at each step from frame positions.
     /// @param charge  Molecular charge (0 = neutral).
-    SCFEvaluator(SCFConfig config, BasisSet basis = BasisSet::STO3G,
-                 int charge = 0);
+    SCF(SCFConfig config, BasisSet basis = BasisSet::STO3G, int charge = 0);
 
     /// @brief Enable ASPC predictor-corrector for density warm-start.
     /// @param order           Extrapolation order K (default 3).
@@ -67,27 +66,25 @@ class SCFEvaluator : public cpu::ComponentBase {
     /// @param corrector_tol   Corrector convergence tolerance (default 1e-4).
     /// @param fallback        Fall back to full SCF if corrector fails.
     /// @return Reference to this for chaining (preserves value category:
-    ///         lvalue chain → `SCFEvaluator&`, rvalue chain →
-    ///         `SCFEvaluator&&` so `driver.add(...)` deduces an rvalue
+    ///         lvalue chain → `SCF&`, rvalue chain →
+    ///         `SCF&&` so `driver.add(...)` deduces an rvalue
     ///         and moves the temporary into ownership).
-    SCFEvaluator& predictor(int order = 3, int corrector_steps = 2,
-                            double corrector_tol = 1e-4,
-                            bool fallback = true) &;
-    SCFEvaluator&& predictor(int order = 3, int corrector_steps = 2,
-                             double corrector_tol = 1e-4,
-                             bool fallback = true) &&;
+    SCF& predictor(int order = 3, int corrector_steps = 2,
+                   double corrector_tol = 1e-4, bool fallback = true) &;
+    SCF&& predictor(int order = 3, int corrector_steps = 2,
+                    double corrector_tol = 1e-4, bool fallback = true) &&;
 
     /// @brief Set a per-step callback for diagnostics.
     /// @param cb Callback invoked after each force evaluation.
     /// @return Reference to this for chaining (value-category preserving).
-    SCFEvaluator& on_evaluate(std::function<void(const SCFResult&)> cb) &;
-    SCFEvaluator&& on_evaluate(std::function<void(const SCFResult&)> cb) &&;
+    SCF& on_evaluate(std::function<void(const SCFResult&)> cb) &;
+    SCF&& on_evaluate(std::function<void(const SCFResult&)> cb) &&;
 
     /// @brief Toggle gradient computation.
     ///
     /// `with_gradient(true)`  (default) — `launch()` runs SCF + analytic
     ///                                    nuclear gradient and writes
-    ///                                    forces into `frame.atoms.f*`.
+    ///                                    forces into the force columns.
     ///                                    `capabilities()` includes
     ///                                    `Capability::Force`.
     /// `with_gradient(false)` — `launch()` runs SCF only; forces are not
@@ -98,28 +95,21 @@ class SCFEvaluator : public cpu::ComponentBase {
     /// Must be called before `driver.build()` (capabilities are inspected
     /// during validation).
     /// @return Reference to self for chaining (value-category preserving).
-    SCFEvaluator& with_gradient(bool enabled) & noexcept {
+    SCF& with_gradient(bool enabled) & noexcept {
         compute_force_ = enabled;
         return *this;
     }
-    SCFEvaluator&& with_gradient(bool enabled) && noexcept {
+    SCF&& with_gradient(bool enabled) && noexcept {
         compute_force_ = enabled;
         return std::move(*this);
     }
 
     std::string name() const override { return "scf_evaluator"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    /* role via Potential/kind base */
     /// @brief Capabilities reflect what `launch()` writes to the frame.
     ///        Always: Energy, DensityMatrix, Orbitals.
     ///        Force is added when gradient computation is enabled (the
     ///        default; toggle via `with_gradient(false)`).
-    Capability capabilities() const override {
-        Capability caps = Capability::Energy | Capability::DensityMatrix
-                          | Capability::Orbitals;
-        if (compute_force_)
-            caps = caps | Capability::Force;
-        return caps;
-    }
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
@@ -141,7 +131,7 @@ class SCFEvaluator : public cpu::ComponentBase {
     /// @brief Shared handle to the latest SCFResult.
     ///
     /// Returns a shared_ptr that stays valid across driver ownership moves
-    /// (the driver copies the SCFEvaluator by value when adding components).
+    /// (the driver copies the SCF by value when adding components).
     /// Observers such as `OrbitalInfoObserver` use this to read state written
     /// by the driver-owned evaluator.
     ///
@@ -216,6 +206,7 @@ class SCFEvaluator : public cpu::ComponentBase {
     std::function<void(const SCFResult&)> on_evaluate_;
 };
 
+/* SCF */;
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

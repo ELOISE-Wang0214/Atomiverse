@@ -90,7 +90,7 @@ struct ShellList {
 
 /// @brief Build an AtomList from a Frame + molecular charge.
 ///
-/// Reads `frame.atoms.type` as Z, `frame.atoms.x/y/z` as Angstrom, and
+/// Reads `frame.span(kAtom_type)` as Z, the `kAtom_x/y/z` columns as Angstrom, and
 /// converts positions to Bohr. Electron count is `Σ Z − charge`.
 [[nodiscard]] AtomList make_atom_list(const Frame& frame, int charge = 0);
 

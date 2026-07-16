@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/barostat.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -66,7 +66,7 @@ namespace md {
 /// re-derived together with the sign (`(P_target − P)` instead of
 /// `(P − P_target)`), `μ` is numerically unchanged for the same physical
 /// state — a representation change, not a behaviour change.
-class Barostat : public cpu::ComponentBase {
+class Barostat : public cpu::Barostat {
   public:
     /// @brief LAMMPS `fix press/berendsen`-equivalent isotropic barostat.
     /// @param P_target     Target pressure [eV/Å³], LAMMPS-standard sign
@@ -87,12 +87,11 @@ class Barostat : public cpu::ComponentBase {
              double bulk_modulus = 1.0);
 
     std::string name() const override { return "barostat"; }
-    ComponentRole role() const override { return ComponentRole::Barostat; }
+    /* role via Barostat base */
     /// @brief Reads `frame.stress` to derive internal pressure for
     /// the rescaling factor `μ`. Triggers auto-injection of
     /// `Virial` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
-    Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::end_of_step, -45)};
     }

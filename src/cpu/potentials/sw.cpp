@@ -14,7 +14,7 @@
 namespace ATV {
 namespace cpu {
 
-SWPotential::SWPotential(Element element, std::string_view name) {
+SWPotential::SWPotential(molrs::Element element, std::string_view name) {
     const int z = static_cast<int>(element);
     for (unsigned long k = 0; k < sw_data::kStillingerWeberCount; ++k) {
         const sw_data::SWRow& row = sw_data::kStillingerWeber[k];
@@ -32,7 +32,8 @@ SWPotential::SWPotential(Element element, std::string_view name) {
             return;
         }
     }
-    throw std::out_of_range("SWPotential: no parameterization '" + std::string(name)
+    throw std::out_of_range("SWPotential: no parameterization '"
+                            + std::string(name)
                             + "' for Z=" + std::to_string(z));
 }
 
@@ -86,9 +87,10 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
             double dx = x_ptr[i] - x_ptr[j];
             double dy = y_ptr[i] - y_ptr[j];
             double dz = z_ptr[i] - z_ptr[j];
-            f.box.min_image(dx, dy, dz);
+            f.simbox.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= rc2) continue;
+            if (r2 >= rc2)
+                continue;
 
             const double r = std::sqrt(r2);
             e_total += 0.5 * pot_.phi2(r);
@@ -120,9 +122,10 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
             double ax = x_ptr[i] - x_ptr[j];
             double ay = y_ptr[i] - y_ptr[j];
             double az = z_ptr[i] - z_ptr[j];
-            f.box.min_image(ax, ay, az);
+            f.simbox.min_image(ax, ay, az);
             const double r1sq = ax * ax + ay * ay + az * az;
-            if (r1sq >= rc2) continue;
+            if (r1sq >= rc2)
+                continue;
             const double r1 = std::sqrt(r1sq);
 
             for (int kk = jj + 1; kk < nn; ++kk) {
@@ -130,9 +133,10 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
                 double bx = x_ptr[i] - x_ptr[k];
                 double by = y_ptr[i] - y_ptr[k];
                 double bz = z_ptr[i] - z_ptr[k];
-                f.box.min_image(bx, by, bz);
+                f.simbox.min_image(bx, by, bz);
                 const double r2sq = bx * bx + by * by + bz * bz;
-                if (r2sq >= rc2) continue;
+                if (r2sq >= rc2)
+                    continue;
                 const double r2 = std::sqrt(r2sq);
 
                 const double g1 = pot_.g(r1), g2 = pot_.g(r2);
@@ -196,9 +200,10 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
-    f.scalars.energy += e_total;
-    f.scalars.energy_pair += e_total;
-    for (int c = 0; c < 6; ++c) f.scalars.stress[c] += v[c];
+    f.meta.get(kEnergy) += e_total;
+    f.meta.get(kEnergyPair) += e_total;
+    for (int c = 0; c < 6; ++c)
+        f.meta.get(kStress)[c] += v[c];
 }
 
 } // namespace cpu

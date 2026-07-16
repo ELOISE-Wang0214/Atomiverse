@@ -1,7 +1,7 @@
 /// @file cpu/scf/basis_eval.h
 /// @brief Inline basis function evaluation on grid points (s/p/d type Gaussians).
 ///
-/// Shared by scf_solve.cpp (V_xc construction), gradient.cpp (XC gradient),
+/// Shared by scf_solver.cpp (V_xc construction), gradient.cpp (XC gradient),
 /// and the cube-file writers. All coordinates in Bohr.
 ///
 /// General Cartesian Gaussian:

@@ -4,6 +4,7 @@
 /// Mirror of `cpu::Pair`. Independent hierarchy — no shared ancestor
 /// between CPU and CUDA potential layers; only the names match.
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/component/neighbor_protocol.cuh"
@@ -12,14 +13,12 @@ namespace ATV {
 namespace cuda {
 
 /// @brief Abstract base for non-bonded pair styles (CUDA backend).
-class Pair : public ComponentBase, public NeighborConsumer {
+class Pair : public Component, public NeighborConsumer {
   public:
+    Role role() const override { return 0; }
     ~Pair() override = default;
 
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
+    /* role via Potential/kind base */
     /// @brief Pair styles depend on a neighbor list — used by
     ///        `cuda::md::MD::install_infra_` to detect a missing
     ///        `cuda::NeighborList` registration without `dynamic_cast`.

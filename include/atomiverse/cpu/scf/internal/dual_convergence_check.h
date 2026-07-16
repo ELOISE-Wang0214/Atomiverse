@@ -1,7 +1,7 @@
 /// @file cpu/scf/internal/dual_convergence_check.h
 /// @brief internal::DualConvergenceCheck — PySCF-aligned |ΔE| ∧ ‖err‖ check.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase`.
+/// **Internal SCF helper.** Does NOT inherit `cpu::Component`.
 ///
 /// Reports whether an SCF iteration has converged using PySCF's standard
 /// dual criterion:

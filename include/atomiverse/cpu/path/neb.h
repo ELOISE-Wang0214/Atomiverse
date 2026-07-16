@@ -25,7 +25,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/optimizer.h"
+#include "atomiverse/cpu/component/path_coupling.h"
 #include "atomiverse/cpu/minimizer/lbfgs_history.h"
 #include "atomiverse/facade/stage.h"
 
@@ -58,7 +59,7 @@ namespace path {
 ///
 /// The two **endpoints are frozen** (force zeroed): they are the reactant and product,
 /// given, not searched for.
-class NebCoupling : public cpu::ComponentBase {
+class NebCoupling : public cpu::PathCoupling {
   public:
     /// @param spring_k Spring constant along the band [eV/Å²].
     /// @param climbing Enable the climbing image (CI-NEB). Off = plain NEB, which
@@ -68,12 +69,12 @@ class NebCoupling : public cpu::ComponentBase {
     ///        initial band is often nowhere near the saddle, and inverting its force
     ///        sends it uphill in the wrong direction entirely. Standard practice is to
     ///        relax first, then climb.
-    explicit NebCoupling(double spring_k, bool climbing = true, int climb_after = 5)
+    explicit NebCoupling(double spring_k, bool climbing = true,
+                         int climb_after = 5)
         : k_(spring_k), climbing_(climbing), climb_after_(climb_after) {}
 
     std::string name() const override { return "neb_coupling"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Force; }
+    /* role via Potential/kind base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::path::Phase::couple, 0)};
@@ -107,7 +108,7 @@ class NebCoupling : public cpu::ComponentBase {
 /// iteration's step — so a converged band always takes one final, tiny step it did not
 /// strictly need. That is the honest cost of deciding convergence in the phase named for
 /// it rather than in the middle of the one that moves the atoms.
-class BandLBFGS : public cpu::ComponentBase {
+class BandLBFGS : public cpu::Optimizer {
   public:
     /// @param memory Curvature pairs to retain.
     /// @param max_step Cap on any single coordinate's displacement [Å]. NEB forces are
@@ -118,8 +119,7 @@ class BandLBFGS : public cpu::ComponentBase {
         : memory_(memory), max_step_(max_step), ftol_(ftol) {}
 
     std::string name() const override { return "band_lbfgs"; }
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
-    Capability capabilities() const override { return Capability::Position; }
+    /* role via Optimizer base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::path::Phase::search_direction, 0),
@@ -141,7 +141,8 @@ class BandLBFGS : public cpu::ComponentBase {
     std::vector<double> x_;   ///< Band coordinates, concatenated.
     std::vector<double> g_;   ///< Band gradient = -(NEB force).
     std::vector<double> dir_; ///< Search direction.
-    std::vector<double> image_max_force_; ///< Per-image max |F| from this iteration.
+    std::vector<double>
+        image_max_force_; ///< Per-image max |F| from this iteration.
     double max_force_ = 0.0;
 };
 

@@ -1,7 +1,7 @@
 /// @file cpu/scf/internal/hamiltonian_builder.h
 /// @brief internal::HamiltonianBuilder — F = Hcore + J − αK + V_xc.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase`.
+/// **Internal SCF helper.** Does NOT inherit `cpu::Component`.
 ///
 /// Encapsulates the method-dispatched Fock build (RHF / UHF / RKS / UKS)
 /// + ownership of the precomputed shell-pair lists and integration grid.
@@ -10,10 +10,10 @@
 /// `SCFSolver::run()` calls and SCF iterations.
 #pragma once
 
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, MeanFieldType, SpinType
-#include "atomiverse/cpu/scf/dense_matrix.h"
+#include "atomiverse/cpu/scf/scf_types.h" // SCFConfig, MeanFieldType, SpinType
 #include "atomiverse/cpu/scf/shell_pair.h"
 
 namespace ATV {

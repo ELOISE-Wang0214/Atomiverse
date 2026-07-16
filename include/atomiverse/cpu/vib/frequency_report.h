@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -30,7 +30,7 @@ namespace vib {
 ///
 /// `role() == ComponentRole::Recorder` — I/O only; `capabilities()` is
 /// empty (it writes no `cpu::Frame` field).
-class FrequencyReport : public cpu::ComponentBase {
+class FrequencyReport : public cpu::Recorder {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws   Non-owning pointer to the shared Hessian workspace.
@@ -48,7 +48,7 @@ class FrequencyReport : public cpu::ComponentBase {
 
     /// @brief Structural role — Recorder (writes I/O only).
     /// @return `ComponentRole::Recorder`.
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
 
     /// @brief Default binding: `vib::Phase::end_of_step` @ 0.
     /// @return Single binding placing this at the end-of-step phase.

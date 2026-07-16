@@ -49,15 +49,15 @@ FFTPlan3D::~FFTPlan3D() {
         fftw_free(cbuf2_);
 }
 
-void FFTPlan3D::r2c(const Real* in, fftw_complex* out) {
-    std::memcpy(rbuf_, in, static_cast<size_t>(nr_) * sizeof(Real));
+void FFTPlan3D::r2c(const AccReal* in, fftw_complex* out) {
+    std::memcpy(rbuf_, in, static_cast<size_t>(nr_) * sizeof(AccReal));
     fftw_execute_dft_r2c(fwd_, rbuf_, out);
 }
 
-void FFTPlan3D::c2r(const fftw_complex* in, Real* out) {
+void FFTPlan3D::c2r(const fftw_complex* in, AccReal* out) {
     std::memcpy(cbuf_, in, static_cast<size_t>(nc_) * sizeof(fftw_complex));
     fftw_execute_dft_c2r(bwd_, cbuf_, rbuf_);
-    std::memcpy(out, rbuf_, static_cast<size_t>(nr_) * sizeof(Real));
+    std::memcpy(out, rbuf_, static_cast<size_t>(nr_) * sizeof(AccReal));
 }
 
 void FFTPlan3D::c2c_fwd(fftw_complex* inout) {

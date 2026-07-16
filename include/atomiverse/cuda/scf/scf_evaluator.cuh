@@ -1,8 +1,8 @@
 /// @file cuda/scf/scf_evaluator.cuh
-/// @brief cuda::scf::SCFEvaluator — CUDA Evaluator component wrapping an
+/// @brief cuda::scf::SCF — CUDA Evaluator component wrapping an
 ///        inner `SCFSolver`.
 ///
-/// `SCFEvaluator` is a real `cuda::ComponentBase` with
+/// `SCF` is a real `cuda::Component` with
 /// `role() == ComponentRole::Evaluator` and
 /// `capabilities() == Energy | DensityMatrix | Orbitals`. It owns one
 /// `cuda::scf::SCFSolver`, builds it once in `build()`, and runs the full
@@ -10,14 +10,14 @@
 /// and density into the device frame.
 ///
 /// The user-facing single-point CUDA SCF workflow is
-/// `cuda::Evaluate + cuda::scf::SCFEvaluator` (or the `cuda::single_point`
-/// helper). Mirrors `cpu::scf::SCFEvaluator` minus the CPU-only
+/// `cuda::Evaluate + cuda::scf::SCF` (or the `cuda::single_point`
+/// helper). Mirrors `cpu::scf::SCF` minus the CPU-only
 /// `with_gradient` toggle and ASPC `predictor()` warm-start — there is no
 /// CUDA SCF gradient kernel, so this evaluator is energy/density only.
 ///
 /// @code{.cpp}
 ///   cuda::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{integrals, tol, max_iter});
 ///   eval.build();
 ///   eval.run(frame);            // frame.scalars.energy populated
 /// @endcode
@@ -46,7 +46,7 @@ namespace scf {
 /// Owns an `SCFSolver`, built once in `build()` and run in `launch()`.
 /// Three constructors map onto the three `SCFSolver` run paths. Declares no
 /// default bindings — attach explicitly with `.on(phase).add()`.
-class SCFEvaluator : public cuda::ComponentBase {
+class SCF : public cuda::Component {
   public:
     /// @brief Construct a synthetic-path SCF evaluator `H(P) = H0 + alpha*P`.
     /// @param n_occ Number of occupied orbitals [dimensionless].
@@ -54,7 +54,7 @@ class SCFEvaluator : public cuda::ComponentBase {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
-    SCFEvaluator(int n_occ, double alpha, double tol, int max_iter);
+    SCF(int n_occ, double alpha, double tol, int max_iter);
 
 #ifdef ATV_HAS_RHF
     /// @brief Construct an RHF evaluator driven by host-computed integrals.
@@ -66,8 +66,8 @@ class SCFEvaluator : public cuda::ComponentBase {
     /// @param level_shift Virtual-orbital level shift λ [Hartree], default
     ///        0.0 (no shift). Forwarded to the inner SCFSolver
     ///        (hf-robust-03).
-    SCFEvaluator(const cpu::scf::IntegralPack& integrals, double tol,
-                 int max_iter, double level_shift = 0.0);
+    SCF(const cpu::scf::IntegralPack& integrals, double tol, int max_iter,
+        double level_shift = 0.0);
 
     /// @brief Construct an RHF evaluator driven by GPU-native integrals.
     /// @param n_prim Primitives per shell (3 for STO-3G) [dimensionless].
@@ -78,28 +78,24 @@ class SCFEvaluator : public cuda::ComponentBase {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
-    SCFEvaluator(int n_prim, const double* exponents,
-                 const double* coefficients, int n_occ, double tol,
-                 int max_iter);
+    SCF(int n_prim, const double* exponents, const double* coefficients,
+        int n_occ, double tol, int max_iter);
 #endif
 
     /// @brief Component name.
     /// @return "scf_evaluator".
     std::string name() const override { return "scf_evaluator"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role of this component.
     /// @return ComponentRole::Evaluator.
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    /* role via Potential/kind base */
 
     /// @brief Frame fields this component writes each launch.
     /// @return `Energy | DensityMatrix | Orbitals` — no `Force` (no CUDA
     ///         SCF gradient kernel exists).
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::DensityMatrix
-               | Capability::Orbitals;
-    }
 
-    // Deliberately no default_bindings(): like the CPU SCFEvaluator, this
+    // Deliberately no default_bindings(): like the CPU SCF, this
     // evaluator is reusable across workflows (Evaluate, MD, Minimize), so
     // the target phase must be chosen explicitly with .on(phase).add() — a
     // hardcoded evaluate::Phase would misbind when added to another driver.

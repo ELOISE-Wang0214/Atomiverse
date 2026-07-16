@@ -101,13 +101,13 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // target 0.5·n_dof·kT used by compute_global_KE's NHC update. Using a
     // per-rank value blows up the barostat under multi-rank rebuilds.
     //
-    // Single-rank: frame.atoms.size() IS global N. Multi-rank: when build()
+    // Single-rank: frame.nlocal() IS global N. Multi-rank: when build()
     // runs BEFORE partitioning (initial build), atoms.size() is global too;
     // but when build() runs AFTER a prior stage has already partitioned
     // (the polyethylene_tension per-stage driver rebuild), atoms.size() ==
     // n_local + n_ghost — wrong. The DD's `n_local` is authoritative on
     // each rank post-partition, so Allreduce-sum that to recover global N.
-    int N = static_cast<int>(ctx.frame.atoms.size());
+    int N = static_cast<int>(ctx.frame.nlocal());
 #ifdef ATV_HAS_MPI
     // MUST be unconditional across all ranks: MPI_Allreduce is a collective,
     // so every rank on cart_comm has to call it or the ones that do hang
@@ -126,7 +126,7 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
     n_dof_ = ctx.runtime.md.n_dof_global;
     (void)N;
-    kT_ = kBoltzmann * T_target_;
+    kT_ = units::kB_ev_per_k * T_target_;
 
     // Standard MTK masses (Tuckerman 2006 §III).
     //   Q_t[0] = N_f kT tau_T^2 drives the full KE reservoir;
@@ -196,7 +196,7 @@ void NoseHooverNPT::compute_temp_target(int step) {
         delta = std::clamp(delta, 0.0, 1.0);
     }
     T_live_ = T_target_ + delta * (T_stop_ - T_target_);
-    kT_ = kBoltzmann * T_live_;
+    kT_ = units::kB_ev_per_k * T_live_;
 }
 
 double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
@@ -211,12 +211,11 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
     double ke_local = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
     for (int i = 0; i < n; ++i) {
-        const double v2 = sp_vx[i] * sp_vx[i]
-                          + sp_vy[i] * sp_vy[i]
-                          + sp_vz[i] * sp_vz[i];
+        const double v2 =
+            sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
         ke_local += sp_mass[i] * v2;
     }
-    ke_local *= 0.5 * kMvv2e;
+    ke_local *= 0.5 * units::mass_v2_to_energy;
 
     double ke = ke_local;
 #ifdef ATV_HAS_MPI
@@ -249,7 +248,9 @@ NoseHooverNPT::compute_axis_KE(const cpu::LaunchContext& ctx) const {
         ky += m * sp_vy[i] * sp_vy[i];
         kz += m * sp_vz[i] * sp_vz[i];
     }
-    double ke[3] = {0.5 * kMvv2e * kx, 0.5 * kMvv2e * ky, 0.5 * kMvv2e * kz};
+    double ke[3] = {0.5 * units::mass_v2_to_energy * kx,
+                    0.5 * units::mass_v2_to_energy * ky,
+                    0.5 * units::mass_v2_to_energy * kz};
 #ifdef ATV_HAS_MPI
     if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
         && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
@@ -455,15 +456,15 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
                                    double half_dt) {
     const auto& f = ctx.frame;
-    const double V = f.box.volume();
+    const double V = f.simbox.volume();
     if (V <= 0.0)
         return;
 
     // Standard MTK sign convention (Tuckerman 2006, LAMMPS `fix_nh.cpp`):
-    // pressure positive ⇔ compressive. `frame.scalars.stress[0..2]` holds the
+    // pressure positive ⇔ compressive. `frame.meta.get(kStress)[0..2]` holds the
     // per-axis pair-virial diagonal; the kinetic diagonal `2·KE_α` is
     // computed fresh from the current velocities (NOT the stale
-    // `frame.scalars.stress_kinetic` snapshot taken at `post_force` time, before
+    // `frame.meta.get(kStressKinetic)` snapshot taken at `post_force` time, before
     // `kick_v_by_force` / `scale_v_by_baro` — using it pumped a runaway
     // box drift; see tests/cpu/md/test_lammps_npt_parity.cpp).
     //
@@ -477,7 +478,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // Hamiltonian secularly (caught by Slow_AnisoNptConserves…).
     const std::array<double, 3> ke_axis = compute_axis_KE(ctx);
 
-    // Per-axis pair virial. `f.scalars.stress[0..2]` is the rank-LOCAL diagonal
+    // Per-axis pair virial. `f.meta.get(kStress)[0..2]` is the rank-LOCAL diagonal
     // here: the barostat runs at final_integrate, BEFORE Reduce
     // (end_of_step) reduces stress across ranks. ke_axis above is already
     // globally summed, so without summing the virial too the driving pressure
@@ -485,8 +486,8 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // off the wrong pressure, the box diverges between ranks, and multi-rank
     // NPT/tension blows up (single-rank is unaffected). The pair virial is
     // additive across ranks, so MPI_Allreduce(SUM) recovers the global value.
-    double vir[3] = {f.scalars.stress[0], f.scalars.stress[1],
-                     f.scalars.stress[2]};
+    double vir[3] = {f.meta.get(kStress)[0], f.meta.get(kStress)[1],
+                     f.meta.get(kStress)[2]};
 #ifdef ATV_HAS_MPI
     if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
         && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
@@ -605,7 +606,7 @@ void NoseHooverNPT::kick_v_by_force(const cpu::LaunchContext& ctx,
                                     double half_dt) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
-    const double dtf = half_dt * kFtm2v;
+    const double dtf = half_dt * units::force_to_accel;
 
     const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
     StorageReal* __restrict sp_vx = f.span(kAtom_vx);
@@ -712,7 +713,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // multiplies by exp(0)=1, i.e. is left unchanged. For the all-coupled
     // case all three factors are equal so this is identical to the
     // legacy `box.scale_isotropic(a)`.
-    f.box.scale_diagonal(ax, ay, az);
+    f.simbox.scale_diagonal(ax, ay, az);
 
     // Wrap (orthorhombic) owned atoms into the freshly-scaled box.
     wrap_orthorhombic(f, n);
@@ -737,7 +738,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // promptly whenever an owner crosses a slab boundary because the
     // refreshed `sublo/subhi` above feeds the next scheduled migration.
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
     }
 }
 
@@ -751,7 +752,7 @@ double
 NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
     const auto& f = ctx.frame;
     // Atom kinetic + potential energy.
-    double H = f.scalars.kinetic + f.scalars.energy;
+    double H = f.meta.get(kKinetic) + f.meta.get(kEnergy);
     // Barostat kinetic energy Σ_α ½·W_axis·ε̇_α² over active axes, with
     // `W_axis = W_/3` the per-axis barostat mass. For the all-coupled,
     // all-equal case this sums to the legacy `½·W_·ε̇²`.
@@ -779,7 +780,7 @@ NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
     for (int k = 0; k < mpchain_; ++k)
         H += kT_ * eta_b_[static_cast<std::size_t>(k)];
     // Pressure-volume term.
-    H += P_target_ * f.box.volume();
+    H += P_target_ * f.simbox.volume();
     return H;
 }
 
@@ -828,7 +829,7 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         kick_v_by_force(ctx, half_dt);
 
     } else if (ctx.at(ATV::md::Phase::end_of_step)) {
-        // Reduce has run (frame.scalars.stress globally reduced).
+        // Reduce has run (frame.meta.get(kStress) globally reduced).
         // Recompute KE_global_ from CURRENT v before pressure step.
         KE_global_ = compute_global_KE(ctx);
 
@@ -841,14 +842,14 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         nhc_atoms_half(ctx, half_dt); // P10
         nhc_baro_half(half_dt);       // P11
 
-        // Rewrite frame.scalars.kinetic so observers bound at end_of_step @ > -40
+        // Rewrite frame.meta.get(kKinetic) so observers bound at end_of_step @ > -40
         // see the post-NPT kinetic energy.
-        ctx.frame.scalars.kinetic = KE_global_;
+        ctx.frame.meta.get(kKinetic) = KE_global_;
 
         // Publish the conserved MTK extended Hamiltonian for `Thermo`
         // and the conservation regression gate. Computed last, once the
         // atoms, box, ε̇ and both chains hold their end-of-step values.
-        ctx.frame.scalars.conserved = extended_hamiltonian(ctx);
+        ctx.frame.meta.get(kConserved) = extended_hamiltonian(ctx);
     }
 }
 

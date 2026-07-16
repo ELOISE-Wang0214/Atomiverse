@@ -71,7 +71,7 @@ Hessian::Hessian(WithoutAccumulator /*tag*/) {
 HessianResult Hessian::run(cpu::Frame& frame) {
     // Size the shared workspace from the frame before the component loop
     // runs — no allocation happens inside any component launch().
-    const int n_atoms = frame.atoms.size();
+    const int n_atoms = frame.nlocal();
     workspace_->allocate(n_atoms);
 
     // The 6N-displacement loop: two displacements per Cartesian coordinate. A fixed

@@ -21,7 +21,7 @@
 namespace ATV {
 
 /// @brief One resolved operation within a StageSlot.
-/// @tparam Component Component base type (cpu::ComponentBase or ATV::ComponentBase).
+/// @tparam Component Component base type (cpu::Component or ATV::Component).
 template <typename Component>
 struct Operation {
     Component* component; ///< Non-owning pointer to the component.

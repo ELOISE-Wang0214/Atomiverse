@@ -12,8 +12,8 @@
 
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/component/context.cuh"
-#include "atomiverse/cuda/frame/frame.cuh"
 #include "atomiverse/cuda/device/timer.h"
+#include "atomiverse/cuda/frame/frame.cuh"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
@@ -47,13 +47,13 @@ class Backend {
 
     /// @brief Bind a compiled Plan for execution.
     /// @param plan Plan to execute (non-owning reference, must outlive Backend usage).
-    void load(const Plan<ComponentBase>& plan) { plan_ = &plan; }
+    void load(const Plan<Component>& plan) { plan_ = &plan; }
 
     /// @brief Materialize DeviceFrame from a host Frame (calls cpu::to_cuda).
     /// @param frame Host-side system state to transfer to device.
     void materialize(const cpu::Frame& frame);
 
-    /// @brief Build all components in Plan order (calls ComponentBase::build).
+    /// @brief Build all components in Plan order (calls Component::build).
     void build_components();
 
     /// @brief Execute one simulation step (launch all components by phase).
@@ -64,7 +64,7 @@ class Backend {
     /// @param n_steps Number of steps to execute.
     void run(int n_steps);
 
-    /// @brief Destroy all components in reverse Plan order (calls ComponentBase::destroy).
+    /// @brief Destroy all components in reverse Plan order (calls Component::destroy).
     void destroy_components();
 
     /// @brief Retrieve results back to host Frame (calls cuda::to_cpu).
@@ -86,7 +86,7 @@ class Backend {
   private:
     cuda::Context context_{}; ///< CUDA stream handles.
     cuda::Frame frame_{};     ///< Device-resident system state + host metadata.
-    const Plan<ComponentBase>* plan_ =
+    const Plan<Component>* plan_ =
         nullptr;             ///< Non-owning pointer to compiled Plan.
     Timer* timer_ = nullptr; ///< Non-owning pointer to optional Timer.
 };

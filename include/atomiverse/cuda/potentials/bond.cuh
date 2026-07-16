@@ -5,6 +5,7 @@
 /// today; `select_owned_tuples` is a shim returning `0..n_bonds-1`
 /// until DD lands.
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include <cstdint>
 #include <functional>
@@ -15,14 +16,12 @@
 namespace ATV {
 namespace cuda {
 
-class Bond : public ComponentBase {
+class Bond : public Component {
   public:
+    Role role() const override { return 0; }
     ~Bond() override = default;
 
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
+    /* role via Potential/kind base */
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 

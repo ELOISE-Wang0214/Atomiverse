@@ -23,7 +23,7 @@ namespace minimizer {
 /// (binds `minimizer::Phase::end_of_step @ +20`).
 class AsyncObserver : public cpu::AsyncComponentBase {
   public:
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::minimizer::Phase::end_of_step, 20)};
     }

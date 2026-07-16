@@ -26,17 +26,19 @@ void BondHarmonic::build(const BuildContext& ctx) {
     // Per-thread accumulators are sized to the full backing-store capacity
     // (`nmax`); only the live `[0, n_force)` rows are touched per step (a
     // partner row may be a ghost, so the range must span owners + ghosts).
-    scratch_.build(n_threads, ctx.frame.atoms.nmax);
+    scratch_.build(n_threads, ctx.frame.capacity());
 }
 
 void BondHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    auto& a = f.atoms;
+    const auto num_bond = f.span(kAtom_num_bond);
+    const auto bond_atom = f.span(kAtom_bond_atom);
+    const auto bond_type = f.span(kAtom_bond_type);
 
     // Single source of truth for owned/ghost counts + bounded tag→local
     // resolution. `n_local` = owners to iterate; `n_force` = owners + ghosts,
     // the extent the per-thread force buffers and the reduction touch (NOT
-    // `atoms.n_total()`, which is the global atom count in multi-rank).
+    // `Frame::n_total()`, which is the global atom count in multi-rank).
     // `resolve()` returns -1 for any tag that is absent or maps outside
     // `[0, n_force)` — a stale ghost partner is dropped, not read as garbage.
     const md::ResolveView rv(ctx);
@@ -50,16 +52,16 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
         cache_.flat.clear();
         cache_.dropped_at_build = 0;
         for (int i = 0; i < nlocal; ++i) {
-            const int nb = a.num_bond[i];
+            const int nb = num_bond[i];
             for (int m = 0; m < nb; ++m) {
-                const int j = rv.resolve(a.bond_atom(i, m));
+                const int j = rv.resolve(bond_atom(i, m));
                 if (j < 0) {
                     ++cache_.dropped_at_build;
                     continue;
                 }
                 cache_.flat.push_back(i);
                 cache_.flat.push_back(j);
-                cache_.flat.push_back(a.bond_type(i, m));
+                cache_.flat.push_back(bond_type(i, m));
             }
         }
         cache_.mark_built(ctx);
@@ -107,7 +109,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             double dx = x_ptr[i] - x_ptr[j];
             double dy = y_ptr[i] - y_ptr[j];
             double dz = z_ptr[i] - z_ptr[j];
-            f.box.min_image(dx, dy, dz);
+            f.simbox.min_image(dx, dy, dz);
 
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             const double dr = r - r0_[type];
@@ -134,9 +136,9 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
 
     scratch_.reduce_into(n_force);
 
-    f.scalars.energy += energy_total;
-    f.scalars.energy_bond += energy_total;
-    vir.flush_to(f.scalars);
+    f.meta.get(kEnergy) += energy_total;
+    f.meta.get(kEnergyBond) += energy_total;
+    vir.flush_to(f.meta.get(kStress));
 
     drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }

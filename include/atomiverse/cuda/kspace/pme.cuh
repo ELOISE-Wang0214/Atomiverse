@@ -26,9 +26,6 @@ class KSpacePME : public KSpace {
     ~KSpacePME() override;
 
     std::string name() const override { return "pme"; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
-    }
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

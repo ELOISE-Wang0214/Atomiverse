@@ -27,9 +27,6 @@ class KSpaceEwald : public KSpace {
     ~KSpaceEwald() override;
 
     std::string name() const override { return "ewald"; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
-    }
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

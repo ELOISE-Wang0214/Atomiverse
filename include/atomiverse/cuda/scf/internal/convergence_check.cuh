@@ -2,7 +2,7 @@
 /// @brief internal::ConvergenceCheck -- SCF convergence via Frobenius norm
 ///        of P - P_old.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cuda::ComponentBase` and is
+/// **Internal SCF helper.** Does NOT inherit `cuda::Component` and is
 /// never registered into a `Driver` Plan. Owned by `cuda::scf::SCFSolver`,
 /// which drives its `build` / `step` / `destroy` lifecycle directly.
 ///

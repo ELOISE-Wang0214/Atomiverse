@@ -3,11 +3,13 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/core/precision.h"
+#include "atomiverse/cpu/component/constraint.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/facade/stage.h"
 
@@ -97,14 +99,34 @@ namespace md {
 ///   md.on(md::Phase::post_integrate).add(comm::HaloRefresh{Field::positions}, -100);
 ///   md.on(md::Phase::final_integrate).add(comm::HaloRefresh{Field::velocities}, +150);
 /// @endcode
-class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
+class FixRattle : public cpu::Constraint, public cpu::ConstraintProvider {
   public:
+    /// @brief Smallest meaningful relative residual for the configured Frame
+    /// storage precision. A tighter request cannot survive the write back to
+    /// the position/velocity columns and is rejected instead of iterating to
+    /// the cap forever.
+    static constexpr double storage_tolerance_floor() noexcept {
+        return 64.0
+               * static_cast<double>(
+                   std::numeric_limits<StorageReal>::epsilon());
+    }
+
+    /// @brief Precision-aware default: 1e-10 for double storage, the explicit
+    /// representability floor for float storage.
+    static constexpr double default_tolerance() noexcept {
+        return storage_tolerance_floor() > 1.0e-10 ? storage_tolerance_floor()
+                                                   : 1.0e-10;
+    }
+
     /// @param dt Timestep [fs] — the position stage feeds its correction back into
     ///        the velocities as `dx/dt`, so it must match the integrator's.
-    /// @param tolerance Relative tolerance on `|r|^2/d^2 - 1` (default 1e-10).
+    /// @param tolerance Relative tolerance on `|r|^2/d^2 - 1`. The default is
+    ///        `default_tolerance()`; values below `storage_tolerance_floor()`
+    ///        throw because the Frame columns cannot represent the requested result.
     /// @param max_iter Iteration cap; exceeding it throws rather than silently
     ///        returning an unconstrained molecule.
-    explicit FixRattle(double dt, double tolerance = 1e-10, int max_iter = 500);
+    explicit FixRattle(double dt, double tolerance = default_tolerance(),
+                       int max_iter = 500);
 
     /// @brief Hold every bond of type `bond_type` at length `length`.
     /// @param bond_type Bond type index as stored in the frame's topology.
@@ -124,14 +146,13 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
     /// @brief Structural slot: a Constraint, NOT an Integrator. Tagging it as an
     /// Integrator would let a Plan with a constraint and no integrator pass
     /// `cpu::md::MD::validate_components()` and run with nothing propagating the motion.
-    ComponentRole role() const override { return ComponentRole::Constraint; }
+    /* role via Constraint base */
 
     /// @brief Write-set: it projects both coordinates and velocities.
-    Capability capabilities() const override {
-        return Capability::Position | Capability::Velocity;
-    }
 
-    const cpu::ConstraintProvider* as_constraint() const override { return this; }
+    const cpu::ConstraintProvider* as_constraint() const override {
+        return this;
+    }
 
     /// @brief Number of scalar constraints, globally (one per held distance).
     int n_constraints(const cpu::Context& ctx,
@@ -139,9 +160,11 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {
-            ATV::make_binding(ATV::md::Phase::initial_integrate, -500), // snapshot
-            ATV::make_binding(ATV::md::Phase::post_integrate, 0),       // positions
-            ATV::make_binding(ATV::md::Phase::final_integrate, +200),   // velocities
+            ATV::make_binding(ATV::md::Phase::initial_integrate,
+                              -500),                              // snapshot
+            ATV::make_binding(ATV::md::Phase::post_integrate, 0), // positions
+            ATV::make_binding(ATV::md::Phase::final_integrate,
+                              +200), // velocities
         };
     }
 
@@ -198,7 +221,7 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
     std::vector<int> rows_;               ///< resolved rows, 2 per constraint
 
     /// Reference (constraint-satisfying) positions, snapshotted before the
-    /// integrator moves anything. Component-owned: `frame.atoms` is not a safe place
+    /// integrator moves anything. Component-owned: the Frame atom Block is not a safe place
     /// to stash them, and by post_integrate the originals are gone.
     std::vector<double> ref_x_, ref_y_, ref_z_;
 

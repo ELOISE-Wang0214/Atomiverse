@@ -18,7 +18,7 @@ namespace md {
 ///
 /// Each step: box[axis] *= (1 + rate*dt). Atom positions remapped proportionally.
 /// Binds to initial_integrate at order -100 (before VelocityVerlet).
-class Deform : public ComponentBase {
+class Deform : public Component {
   public:
     /// @brief Construct deformation component.
     /// @param axis        Deformation axis (0=x, 1=y, 2=z).
@@ -27,6 +27,7 @@ class Deform : public ComponentBase {
     Deform(int axis, double strain_rate, double dt);
 
     std::string name() const override { return "deform"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role — a box/position time-step integrator.
     ///
@@ -34,9 +35,8 @@ class Deform : public ComponentBase {
     /// box and positions each step, so it occupies the `Integrator`
     /// slot.
     /// @return ComponentRole::Integrator.
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: affine remap of coordinates as the box strains.
-    Capability capabilities() const override { return Capability::Position; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

@@ -35,7 +35,7 @@ namespace md {
 /// Dispatches to the appropriate kernel based on `ctx.stage`:
 /// - `Phase::initial_integrate`: updates velocities (half-step) and positions.
 /// - `Phase::final_integrate`: updates velocities (half-step).
-class VelocityVerlet : public ComponentBase {
+class VelocityVerlet : public Component {
   public:
     /// @brief Construct with a time step.
     /// @param dt Time step [fs].
@@ -44,15 +44,15 @@ class VelocityVerlet : public ComponentBase {
     /// @brief Component name.
     /// @return "velocity_verlet".
     std::string name() const override { return "velocity_verlet"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role — the time-step integrator.
     ///
     /// Mirrors `cpu::md::VelocityVerlet`. `cuda::md::MD::validate_components()`
     /// requires ≥ 1 `Integrator`-role component at build time.
     /// @return ComponentRole::Integrator.
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: half-kick (v) + drift (x).
-    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
 
     /// @brief Default bindings: initial_integrate (order 0) and final_integrate (order 0).
     /// @return Two DefaultBinding entries.

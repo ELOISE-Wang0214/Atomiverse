@@ -1,7 +1,7 @@
 /// @file cpu/scf/internal/density_builder.h
 /// @brief internal::DensityBuilder — P = factor · C_occ · C_occᵀ.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase`.
+/// **Internal SCF helper.** Does NOT inherit `cpu::Component`.
 ///
 /// Stateless thin wrapper around `build_density_matrix`. Phase 4
 /// introduces an in-place variant that writes to a pre-allocated

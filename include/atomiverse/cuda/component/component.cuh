@@ -1,5 +1,5 @@
 /// @file cuda/component/component.cuh
-/// @brief ComponentBase -- OOP base class for all simulation components.
+/// @brief Component -- OOP base class for all simulation components.
 ///
 /// Components follow a strict 3-phase lifecycle:
 ///   build()   -- one-time resource preparation (after Runtime + DeviceFrame exist)
@@ -33,10 +33,10 @@ class NeighborProvider;
 
 /// @brief Context for one-time component build (after Runtime + DeviceFrame exist).
 ///
-/// Passed to ComponentBase::build(). Components may perform cudaMalloc,
+/// Passed to Component::build(). Components may perform cudaMalloc,
 /// cudaMemcpy, cudaStreamSynchronize during build -- any host/device work.
 ///
-/// @see ComponentBase::build()
+/// @see Component::build()
 struct BuildContext {
     cuda::Context& runtime; ///< CUDA execution context (streams).
     cuda::Frame& frame;     ///< Device-resident system state + host metadata.
@@ -44,15 +44,15 @@ struct BuildContext {
 
 /// @brief Context for per-step GPU work submission.
 ///
-/// Passed to ComponentBase::launch() every simulation step. launch() must
+/// Passed to Component::launch() every simulation step. launch() must
 /// remain GPU-pure: only kernel launches, cudaMemsetAsync, cudaMemcpyAsync D2D.
 ///
-/// @see ComponentBase::launch()
+/// @see Component::launch()
 struct LaunchContext {
     cuda::Context& runtime; ///< CUDA execution context (streams).
     cuda::Frame& frame;     ///< Device-resident system state + host metadata.
-    int stage;              ///< Current Plan slot index (erased — compare via `at()`).
-    int step;               ///< Current simulation step index (0-based).
+    int stage; ///< Current Plan slot index (erased — compare via `at()`).
+    int step;  ///< Current simulation step index (0-based).
 
     /// @brief Is the component running in `phase` right now? @see cpu::LaunchContext::at
     /// @tparam PhaseEnum The workflow Phase enum the component is bound in.
@@ -66,10 +66,10 @@ struct LaunchContext {
 
 /// @brief Context for component resource cleanup.
 ///
-/// Passed to ComponentBase::destroy() after the simulation loop completes.
+/// Passed to Component::destroy() after the simulation loop completes.
 /// Components must release all GPU resources allocated in build().
 ///
-/// @see ComponentBase::destroy()
+/// @see Component::destroy()
 struct DestroyContext {
     cuda::Context& runtime; ///< CUDA execution context (streams).
     cuda::Frame& frame;     ///< Device-resident system state + host metadata.
@@ -90,39 +90,19 @@ struct DestroyContext {
 ///
 /// @see Driver for the user-facing registration API
 /// @see Backend for lifecycle dispatch
-class ComponentBase {
+class Component {
   public:
-    virtual ~ComponentBase() = default;
+    virtual ~Component() = default;
 
     /// @brief Human-readable component name (used in timing reports).
     /// @return Component identifier string.
     virtual std::string name() const = 0;
 
-    /// @brief Structural role within an outer driver loop.
-    ///
-    /// Mirrors `cpu::ComponentBase::role()` (Phase 5). Defaults to `None`
-    /// for structural infrastructure components; concrete components
-    /// override to declare their slot (Integrator / Evaluator / ...).
-    /// @see facade/component_role.h
-    virtual ComponentRole role() const { return ComponentRole::None; }
+    /// @brief RoleFlag set (mirrors cpu::Component). @see facade/component_role.h
+    virtual Role role() const { return 0; }
 
-    /// @brief Bitset of frame fields this component may write.
-    ///
-    /// Mirrors `cpu::ComponentBase::capabilities()`. Defaults to `None`;
-    /// concrete evaluators override to declare what they produce.
-    /// @see facade/component_role.h
-    virtual Capability capabilities() const { return Capability::None; }
-
-    /// @brief Bitset of frame fields this component consumes.
-    ///
-    /// Mirrors `cpu::ComponentBase::reads()`. Defaults to `None`;
-    /// concrete components override to declare their inputs. Used by
-    /// `cuda::md::MD::install_infra_` for capability-typed auto-injection
-    /// — e.g. a barostat that declares `reads()==Stress` auto-pulls in
-    /// `cuda::Virial` if none is registered.
-    /// @return Capability bitset of frame fields read (defaults to None).
-    /// @see facade/component_role.h
-    virtual Capability reads() const { return Capability::None; }
+    virtual bool requires_system_stress() const { return false; }
+    virtual bool provides_system_stress() const { return false; }
 
     /// @brief Per-run hint: does any component downstream consume this
     ///        evaluator's stress/virial contribution?
@@ -141,7 +121,7 @@ class ComponentBase {
 
     /// @brief Typed accessor for the consumer side of the opt-in
     ///        neighbor protocol (mirrors
-    ///        `cpu::ComponentBase::as_neighbor_consumer()`).
+    ///        `cpu::Component::as_neighbor_consumer()`).
     ///
     /// Pair evaluators (`cuda::Pair` subclasses) return `this`;
     /// `cuda::md::MD::install_infra_` probes it for the missing-NL gate —
@@ -199,7 +179,7 @@ class ComponentBase {
     virtual void destroy(const DestroyContext& ctx) {}
 
     /// @brief Typed accessor for the opt-in halo protocol (mirrors
-    ///        `cpu::ComponentBase::halo_participant()`). A participating
+    ///        `cpu::Component::halo_participant()`). A participating
     ///        component inherits `cuda::HaloParticipant` and overrides this
     ///        to return `this`; probes stay free of `dynamic_cast` and
     ///        `name()` matching. Default: not a participant.
@@ -207,7 +187,7 @@ class ComponentBase {
     virtual HaloParticipant* halo_participant() { return nullptr; }
 
     /// @brief Heap/device bytes this component owns (workspaces, rings,
-    ///        comm buffers). Mirrors `cpu::ComponentBase::memory_bytes()`
+    ///        comm buffers). Mirrors `cpu::Component::memory_bytes()`
     ///        so both backends expose the same core reporting set; the
     ///        driver-side memory summary consumption lands with
     ///        arch-refactor-04. Default 0 for stateless components.

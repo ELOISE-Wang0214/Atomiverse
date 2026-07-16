@@ -2,8 +2,8 @@
 /// @brief PWSolver implementation — orchestrates the internal step helpers
 ///        through the plane-wave SCF self-consistency cycle.
 ///
-/// `pw_scf()` is a thin functional wrapper that constructs a transient
-/// `PWSolver` and runs it; both produce identical results.
+/// Low-level callers construct `PWSolver` explicitly and execute its
+/// build/run lifecycle; workflow callers use `PWEvaluator`.
 ///
 /// Problem assembly (Ewald, G-vectors, FFT grids, V_loc, per-k KB
 /// projectors / atomic wavefunctions on q = k+G, initial density) is the
@@ -32,6 +32,7 @@
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
 #include "atomiverse/cpu/pw/internal/veff_builder.h"
 #include "atomiverse/cpu/pw/internal/xc_builder.h"
+#include "atomiverse/cpu/pw/qe_units.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -73,7 +74,7 @@ MpiLayout mpi_layout() {
 
 #ifdef ATV_HAS_MPI
 MPI_Datatype mpi_real_type() {
-    return sizeof(Real) == sizeof(double) ? MPI_DOUBLE : MPI_FLOAT;
+    return sizeof(AccReal) == sizeof(double) ? MPI_DOUBLE : MPI_FLOAT;
 }
 #endif
 
@@ -87,7 +88,7 @@ PWSolver::PWSolver(PWConfig config)
       xc_(std::make_unique<internal::XCBuilder>()),
       veff_(std::make_unique<internal::VeffBuilder>()),
       density_(std::make_unique<internal::DensityBuilder>(
-          Real(config_.mix_beta), config_.pulay_depth)) {}
+          AccReal(config_.mix_beta), config_.pulay_depth)) {}
 
 // Out-of-line where internal::* are complete types (required for the
 // unique_ptr members over forward-declared helpers).
@@ -104,7 +105,7 @@ void PWSolver::build(const cpu::Frame& reference) {
         // Validate the toy valence table covers every atom type up front
         // (throws on unsupported Z — no silent 0-electron fallback).
         const int* __restrict sp_type = reference.span(kAtom_type);
-        for (size_t i = 0; i < reference.atoms.size(); ++i)
+        for (size_t i = 0; i < reference.nlocal(); ++i)
             (void)internal::valence_from_z(sp_type[i]);
     }
     built_ = true;
@@ -128,14 +129,14 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const int n_bands = prob.n_bands;
-    const Real vol_bohr = prob.vol_bohr;
-    ws.mix_beta = Real(config_.mix_beta);
+    const AccReal vol_bohr = prob.vol_bohr;
+    ws.mix_beta = AccReal(config_.mix_beta);
     ws.pulay_depth = config_.pulay_depth;
 
     if (log_rank0)
         ATV_INFO("[pw] start atoms={} elec={} bands={} ecut_ry={} {} "
                  "k_mesh={} ranks={}",
-                 frame.atoms.size(), prob.n_elec, n_bands, config_.ecut_ry,
+                 frame.nlocal(), prob.n_elec, n_bands, config_.ecut_ry,
                  config_.upf_path.empty() ? "toy" : "upf", config_.k_mesh,
                  layout.nprocs);
 
@@ -146,11 +147,11 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
     density_->reset(ws);
     if (!davidson_ || davidson_bands_ != n_bands) {
         davidson_ = std::make_unique<internal::DavidsonSolver>(
-            n_bands, Real(config_.tol) * Real(0.1), 40);
+            n_bands, AccReal(config_.tol) * AccReal(0.1), 40);
         davidson_bands_ = n_bands;
     }
     davidson_->prepare(ws);
-    internal::ConvergenceCheck convergence{Real(config_.tol), 2};
+    internal::ConvergenceCheck convergence{AccReal(config_.tol), 2};
 
     // ── SCF loop ──
     bool converged = false;
@@ -161,7 +162,7 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
 
         // Accumulate density and band energy over this rank's k-points.
         density_->begin(ws);
-        Real e_band = 0;
+        AccReal e_band = 0;
         auto* saved_gvec = ws.gvec;
         for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
             auto& gvk = prob.gv_k[ik];
@@ -182,9 +183,9 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
 
             davidson_->step(ws);
 
-            const Real weight = prob.kg.weights[ik];
+            const AccReal weight = prob.kg.weights[ik];
             for (int b = 0; b < n_bands; ++b)
-                e_band += weight * ws.eigenvalues[b] * Real(2);
+                e_band += weight * ws.eigenvalues[b] * AccReal(2);
 
             density_->accumulate_kpoint(ws, weight, n_bands);
 
@@ -212,7 +213,7 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
         const auto terms =
             internal::iteration_energy(ws, e_band, prob.ew_total, vol_bohr);
         result_.energy_ha = static_cast<double>(terms.total);
-        result_.energy = result_.energy_ha / kRy2Hartree;
+        result_.energy = result_.energy_ha / qe_units::rydberg_to_hartree;
 
         // Shared rank-0-gated formatter (same line as the CUDA loop).
         internal::log_iteration_energy(terms, ws, prob.ew_total, iter);

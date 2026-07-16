@@ -74,17 +74,17 @@ class CellList {
     /// @brief Full rebuild: bin atoms, build stencil.
     /// @param frame Frame to bin.
     /// @param n_active Number of active atoms (owners + ghosts) to iterate.
-    ///        `-1` means `frame.atoms.size()` (single-rank legacy).
+    ///        `-1` means `frame.nlocal()` (single-rank legacy).
     void build(const cpu::Frame& frame, int n_active = -1);
 
     /// @brief Check if any atom moved more than skin/2.
     /// @param frame Frame whose positions are compared to last `build()`.
-    /// @param n_active Number of active atoms to scan; `-1` = `frame.atoms.size()`.
+    /// @param n_active Number of active atoms to scan; `-1` = `frame.nlocal()`.
     bool needs_rebuild(const cpu::Frame& frame, int n_active = -1) const;
 
     /// @brief Rebuild if needed, else no-op.
     /// @param frame Frame to potentially rebin.
-    /// @param n_active Number of active atoms; `-1` = `frame.atoms.size()`.
+    /// @param n_active Number of active atoms; `-1` = `frame.nlocal()`.
     void update(const cpu::Frame& frame, int n_active = -1);
 
     /// @brief Produce LAMMPS-style half-neighbor list (CSR) into a fresh
@@ -93,14 +93,14 @@ class CellList {
     /// directly so their `PairList`'s amortized buffer capacity is
     /// preserved across calls.
     /// @param frame Frame for distance evaluation.
-    /// @param n_active Outer-loop / array-size bound; `-1` = `frame.atoms.size()`.
+    /// @param n_active Outer-loop / array-size bound; `-1` = `frame.nlocal()`.
     ///        Caller (e.g. `NeighborList`) typically trims `inum = n_local` after.
     PairList build_half(const cpu::Frame& frame, int n_active = -1) const;
 
     /// @brief Produce full-neighbor list (CSR) into a fresh `PairList`. See
     /// `build_half` for the capacity-preservation rationale.
     /// @param frame Frame for distance evaluation.
-    /// @param n_active Outer-loop / array-size bound; `-1` = `frame.atoms.size()`.
+    /// @param n_active Outer-loop / array-size bound; `-1` = `frame.nlocal()`.
     PairList build_full(const cpu::Frame& frame, int n_active = -1) const;
 
     /// @brief Rebuild the half-neighbor list **in place** into an existing
@@ -125,8 +125,8 @@ class CellList {
     ///        E_pair / virial are 1.3-2× LAMMPS, driving NPT into a
     ///        runaway barostat. Default `-1` (= single-rank mode):
     ///        pure local-index half-list, byte-identical to legacy.
-    void refresh_half(const cpu::Frame& frame, int n_active,
-                      PairList& out, int n_local = -1) const;
+    void refresh_half(const cpu::Frame& frame, int n_active, PairList& out,
+                      int n_local = -1) const;
 
     /// @brief Rebuild the full-neighbor list **in place** into an existing
     /// `PairList`. See `refresh_half` for the capacity-preservation

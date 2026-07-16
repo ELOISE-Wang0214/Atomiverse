@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -30,7 +30,7 @@ namespace mc {
 ///
 /// Role `Mover`, capabilities `None` (it moves atoms; it writes no energy /
 /// force field).
-class TranslateMove : public cpu::ComponentBase {
+class TranslateMove : public cpu::Mover {
   public:
     /// @param delta Displacement half-width δ [Å] (must be > 0). Each axis is
     ///        displaced by a uniform draw in `[-δ, δ]`.
@@ -43,7 +43,7 @@ class TranslateMove : public cpu::ComponentBase {
 
     /// @brief Structural role.
     /// @return `ComponentRole::Mover`.
-    ComponentRole role() const override { return ComponentRole::Mover; }
+    /* role via Mover base */
 
     /// @brief Default binding: the `propose` phase, order 0.
     /// @return One binding on `sampling::Phase::propose`.

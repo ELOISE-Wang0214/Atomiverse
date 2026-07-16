@@ -8,7 +8,7 @@
 #include <fstream>
 #include <string>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 
 namespace ATV {
 namespace cpu {
@@ -19,12 +19,12 @@ namespace cpu {
 /// integrator's conserved quantity (`frame.conserved` — the extended
 /// Hamiltonian for Nosé-Hoover NVT/NPT) at the given frequency.
 /// MPI-aware: only rank 0 prints.
-class Thermo : public cpu::ComponentBase {
+class Thermo : public cpu::Recorder {
   public:
     explicit Thermo(int freq);
 
     std::string name() const override { return "thermo"; }
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
     int frequency() const override { return freq_; }
     void launch(const cpu::LaunchContext& ctx) override;
 

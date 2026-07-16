@@ -37,18 +37,17 @@ void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
     const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
 #pragma omp parallel for schedule(static) reduction(+ : ke)
     for (int i = 0; i < n; ++i) {
-        double v2 = sp_vx[i] * sp_vx[i]
-                    + sp_vy[i] * sp_vy[i]
-                    + sp_vz[i] * sp_vz[i];
+        double v2 =
+            sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
         ke += sp_mass[i] * v2;
     }
 
-    f.scalars.kinetic = double(0.5) * kMvv2e * ke;
+    f.meta.get(kKinetic) = double(0.5) * units::mass_v2_to_energy * ke;
 }
 
-// ── ZeroLinearMomentum ───────────────────────────────────────────
+// ── ZeroMomentum ─────────────────────────────────────────────────
 
-void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
+void ZeroMomentum::launch(const cpu::LaunchContext& ctx) {
     if (step_++ % freq_ != 0)
         return;
 
@@ -177,13 +176,12 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
 
     // ── 3. rescale so the measured temperature equals T exactly ──────
     // LAMMPS `rescale(t_old, t_new)`: factor = sqrt(t_new / t_old).
-    // KE = 0.5 * kMvv2e * sum(m v^2); T = 2*KE / (Ndof * kB) with
+    // KE = 0.5 * units::mass_v2_to_energy * sum(m v^2); T = 2*KE / (Ndof * kB) with
     // Ndof = 3N - 3 (COM removed), matching `compute temp` extra_dof.
     double sum_mv2 = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = sp_vx[i] * sp_vx[i]
-                          + sp_vy[i] * sp_vy[i]
-                          + sp_vz[i] * sp_vz[i];
+        const double v2 =
+            sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
         sum_mv2 += sp_mass[i] * v2;
     }
     long long n_global = n;
@@ -204,9 +202,9 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     const long long ndof = ctx.runtime.md.n_dof_global;
     (void)n_global;
     if (ndof > 0 && sum_mv2 > 0.0) {
-        const double ke = 0.5 * kMvv2e * sum_mv2;
+        const double ke = 0.5 * units::mass_v2_to_energy * sum_mv2;
         const double t_measured =
-            2.0 * ke / (static_cast<double>(ndof) * kBoltzmann);
+            2.0 * ke / (static_cast<double>(ndof) * units::kB_ev_per_k);
         const double factor = std::sqrt(temperature_ / t_measured);
         for (int i = 0; i < n; ++i) {
             sp_vx[i] *= factor;

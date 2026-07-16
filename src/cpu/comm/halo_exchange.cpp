@@ -22,13 +22,19 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/schema_mpi.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
@@ -41,7 +47,7 @@ namespace comm {
 
 // ── Per-instance buffer storage (PIMPL) ──────────────────────────────
 //
-// `FaceBufs` holds only `std::vector<double>` arrays, so the type is
+// `FaceBufs` holds only native byte arrays and compiled plans, so the type is
 // usable regardless of whether MPI is linked in; the send-/recv-force
 // arrays simply stay empty on the !MPI path. Keeping the full definition
 // here (rather than under `#ifdef ATV_HAS_MPI`) lets the non-MPI stubs
@@ -50,10 +56,13 @@ namespace comm {
 namespace detail {
 
 struct FaceBufs {
-    std::array<std::vector<double>, 6> send_pos; // packed positions per face
-    std::array<std::vector<double>, 6> recv_pos; // received positions per face
-    std::array<std::vector<double>, 6> send_force; // packed forces (Reverse)
-    std::array<std::vector<double>, 6> recv_force; // received forces (Reverse)
+    std::array<std::vector<std::byte>, 6> send_pos;
+    std::array<std::vector<std::byte>, 6> recv_pos;
+    std::array<std::vector<std::byte>, 6> send_force;
+    std::array<std::vector<std::byte>, 6> recv_force;
+    PackPlan border_plan;
+    PackPlan comm_plan;
+    PackPlan reverse_plan;
 };
 
 } // namespace detail
@@ -93,7 +102,7 @@ std::size_t HaloSend::send_buf_capacity_for_test() const {
 }
 
 namespace {
-// Resident bytes of a FaceBufs (4 arrays × 6 per-face double vectors).
+// Resident bytes of a FaceBufs (4 arrays × 6 per-face byte vectors).
 std::size_t facebufs_bytes(const detail::FaceBufs* b) {
     if (!b)
         return 0;
@@ -102,7 +111,7 @@ std::size_t facebufs_bytes(const detail::FaceBufs* b) {
     for (int f = 0; f < 6; ++f)
         n += (b->send_pos[f].size() + b->recv_pos[f].size()
               + b->send_force[f].size() + b->recv_force[f].size())
-             * sizeof(double);
+             * sizeof(std::byte);
     return n;
 }
 } // namespace
@@ -123,13 +132,6 @@ namespace {
 /// `dd == nullptr` (pre-partition / single-rank path) the tag is assumed
 /// to equal the row index, matching the default `tag[i] = i` layout set
 /// up by `Frame::Atoms`'s constructor.
-inline int resolve_tag(const md::mpi::DomainDecomposition* dd, int atom_tag) {
-    if (dd == nullptr)
-        return atom_tag;
-    auto it = dd->tag_to_local.find(static_cast<std::int64_t>(atom_tag));
-    return (it == dd->tag_to_local.end()) ? -1 : it->second;
-}
-
 /// @brief Max intra-tuple span across every tuple whose atoms all resolve
 /// (locally) on this rank. Each rank's local max is post-combined with an
 /// `MPI_Allreduce(MAX)` in `compute_bonded_extension_mpi` so the global
@@ -137,15 +139,12 @@ inline int resolve_tag(const md::mpi::DomainDecomposition* dd, int atom_tag) {
 /// tuple is partial on every rank.
 double compute_bonded_extension_local(const Frame& frame,
                                       const md::mpi::DomainDecomposition* dd) {
-    // Reads per-atom bonded topology from `frame.atoms` (was: flat
-    // bonds/angles/dihedrals blocks on Frame; those are deleted).
+    // Reads per-atom bonded topology directly from the canonical atoms Block.
     // Single-rank: `dd` may be null; we treat all atoms as locally
     // resolvable. Multi-rank: `dd->tag_to_local` (still maintained by
     // the old halo / migration path until full switchover) is the
-    // resolver — same semantics as before, just sourced from a
-    // different layout.
+    // resolver for the rank-local Frame rows.
     double max_sq = 0.0;
-    const auto& a = frame.atoms;
 
     // Hoisted ONCE at the launch boundary; `pair_d2` below only ever reads
     // through these (topology arrays num_bond/bond_atom/... stay direct
@@ -153,16 +152,23 @@ double compute_bonded_extension_local(const Frame& frame,
     const StorageReal* __restrict sp_x = frame.span(kAtom_x);
     const StorageReal* __restrict sp_y = frame.span(kAtom_y);
     const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    const int* __restrict num_bond = frame.span(kAtom_num_bond).data();
+    const auto bond_atom = frame.span(kAtom_bond_atom);
+    const int* __restrict num_angle = frame.span(kAtom_num_angle).data();
+    const auto angle_atom = frame.span(kAtom_angle_atom);
+    const int* __restrict num_dihedral = frame.span(kAtom_num_dihedral).data();
+    const auto dihedral_atom = frame.span(kAtom_dihedral_atom);
 
     auto pair_d2 = [&](int i, int j) {
         double dx = sp_x[i] - sp_x[j];
         double dy = sp_y[i] - sp_y[j];
         double dz = sp_z[i] - sp_z[j];
-        frame.box.min_image(dx, dy, dz);
+        frame.simbox.min_image(dx, dy, dz);
         return dx * dx + dy * dy + dz * dz;
     };
 
-    auto resolve_via_dd = [&](std::int64_t tag) -> int {
+    auto resolve_via_dd = [&](TagInt tag) -> int {
         if (dd == nullptr)
             return static_cast<int>(tag);
         auto it = dd->tag_to_local.find(tag);
@@ -174,27 +180,26 @@ double compute_bonded_extension_local(const Frame& frame,
     // pre-partition topology that would resolve to current rows whose
     // positions belong to entirely different atoms — giving spurious
     // 50+ Å bond distances and an astronomically wrong bonded extent.
-    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
-    const int nlocal_iter = (dd != nullptr) ? dd->n_local : a.nlocal;
+    const int nlocal_iter = (dd != nullptr) ? dd->n_local : frame.nlocal();
     for (int i_owner = 0; i_owner < nlocal_iter; ++i_owner) {
-        const std::int64_t ti = sp_tag[i_owner];
+        const TagInt ti = sp_tag[i_owner];
         // Bonds: owner is the smaller-tag atom; partner stored in
         // bond_atom[i][m].
-        const int nb = a.num_bond[i_owner];
+        const int nb = num_bond[i_owner];
         for (int m = 0; m < nb; ++m) {
             const int i = resolve_via_dd(ti);
-            const int j = resolve_via_dd(a.bond_atom(i_owner, m));
+            const int j = resolve_via_dd(bond_atom(i_owner, m));
             if (i < 0 || j < 0)
                 continue;
             max_sq = std::max(max_sq, pair_d2(i, j));
         }
         // Angles: center atom owns; non-center partners are
         // (angle_atom(i, 2m), angle_atom(i, 2m+1)).
-        const int na = a.num_angle[i_owner];
+        const int na = num_angle[i_owner];
         for (int m = 0; m < na; ++m) {
             const int j = resolve_via_dd(ti); // center
-            const int i = resolve_via_dd(a.angle_atom(i_owner, 2 * m + 0));
-            const int k = resolve_via_dd(a.angle_atom(i_owner, 2 * m + 1));
+            const int i = resolve_via_dd(angle_atom(i_owner, 2 * m + 0));
+            const int k = resolve_via_dd(angle_atom(i_owner, 2 * m + 1));
             if (i < 0 || j < 0 || k < 0)
                 continue;
             max_sq = std::max(max_sq, pair_d2(i, j));
@@ -203,12 +208,12 @@ double compute_bonded_extension_local(const Frame& frame,
         }
         // Dihedrals: atom-j owns; non-j partners are (i, k, l) at offsets
         // 3m+0/1/2.
-        const int nd = a.num_dihedral[i_owner];
+        const int nd = num_dihedral[i_owner];
         for (int m = 0; m < nd; ++m) {
             const int j = resolve_via_dd(ti);
-            const int i = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 0));
-            const int k = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 1));
-            const int l = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 2));
+            const int i = resolve_via_dd(dihedral_atom(i_owner, 3 * m + 0));
+            const int k = resolve_via_dd(dihedral_atom(i_owner, 3 * m + 1));
+            const int l = resolve_via_dd(dihedral_atom(i_owner, 3 * m + 2));
             if (i < 0 || j < 0 || k < 0 || l < 0)
                 continue;
             max_sq = std::max(max_sq, pair_d2(i, j));
@@ -225,14 +230,8 @@ double compute_bonded_extension_local(const Frame& frame,
 } // namespace
 
 double HaloSend::compute_bonded_extension(const cpu::Frame& frame) {
-    // Public, no-DD-provided variant: assumes `frame.atoms.tag(i) == i`
-    // (the default layout produced by `Frame::Atoms`) so that tag values
-    // in `frame.atoms per-atom topology` can be used as direct row indices
-    // into `frame.atoms.x/y/z`. This holds for single-rank callers, for
-    // pre-partition callers, and for all current unit tests. Rank-local
-    // multi-rank scans must go through `compute_bonded_extension_local`
-    // with the rank's `md::mpi::DomainDecomposition` to avoid reading wrong rows
-    // in a post-`partition_atoms` compacted frame.
+    // The no-DD variant assumes canonical row-index tags, as initialized by
+    // Frame. Rank-local multi-rank scans use the DD tag map instead.
     return compute_bonded_extension_local(frame, /*dd=*/nullptr);
 }
 
@@ -299,156 +298,162 @@ void rebuild_send_lists_for_axis(const Frame& frame,
     }
 }
 
-/// @brief Pack the border message (positions + tag + charge) for face `f`.
-///
-/// Layout: `[x0, y0, z0, tag0, q0, <extra fields>, x1, ...]` --
-/// `kBorderDoublesPerAtom + Σ declared forward widths` doubles per atom. Sent only at
-/// full rebuilds (reneighbor), mirroring LAMMPS `borders()`/AtomVec carrying `q`
-/// to ghosts: charge is static per run, so ghosts get it once and the per-step
-/// forward refresh stays positions-only. Tag is cast to double (exact to 2^53).
-/// Applies the per-face PBC shift to the packed coordinate for atoms whose owner
-/// sits on the periodic edge along the send direction.
-constexpr int kBorderDoublesPerAtom = 5; // x, y, z, tag, q
-constexpr int kPosOnlyDoublesPerAtom = 3;
-constexpr int kForceDoublesPerAtom = 3; // fx, fy, fz
-
 using CommField = HaloParticipant::CommField;
 
-/// @brief Total per-atom doubles contributed by declared extra fields.
-int extra_width(const std::vector<CommField>& fields) {
-    int w = 0;
-    for (const auto& f : fields)
-        w += f.width;
-    return w;
-}
-
-/// @brief Append the declared extra fields for send-list atom `i` at
-/// `buf[off]` (contiguous, participant order). Returns doubles written.
-std::size_t pack_extra_fields(const std::vector<CommField>& fields, int i,
-                              std::vector<double>& buf, std::size_t off) {
-    for (const auto& f : fields) {
-        const std::size_t base =
-            static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
-        for (int k = 0; k < f.width; ++k)
-            buf[off++] = static_cast<double>(f.data[base + k]);
+void hash_wire_value(std::uint64_t& hash, const void* data, std::size_t bytes) {
+    constexpr std::uint64_t prime = 1099511628211ull;
+    const auto* input = static_cast<const unsigned char*>(data);
+    for (std::size_t i = 0; i < bytes; ++i) {
+        hash ^= input[i];
+        hash *= prime;
     }
-    return off;
 }
 
-/// @brief Write the extra-field payload at `rbuf[off]` into ghost row
-/// `slot` (forward: overwrite). Returns doubles consumed.
-std::size_t unpack_extra_fields(const std::vector<CommField>& fields, int slot,
-                                const std::vector<double>& rbuf,
-                                std::size_t off) {
-    for (const auto& f : fields) {
-        const std::size_t base =
-            static_cast<std::size_t>(slot) * static_cast<std::size_t>(f.width);
-        for (int k = 0; k < f.width; ++k)
-            f.data[base + k] = static_cast<StorageReal>(rbuf[off++]);
+template <typename T>
+void hash_wire_value(std::uint64_t& hash, const T& value) {
+    hash_wire_value(hash, &value, sizeof(value));
+}
+
+std::uint64_t halo_payload_fingerprint(const PackPlan& plan,
+                                       const std::vector<CommField>& extras,
+                                       std::uint64_t discriminator = 0) {
+    std::uint64_t hash = 1469598103934665603ull;
+    hash_wire_value(hash, plan.version);
+    hash_wire_value(hash, plan.fingerprint);
+    hash_wire_value(hash, discriminator);
+    const std::uint64_t count = extras.size();
+    hash_wire_value(hash, count);
+    const std::uint64_t element_size = sizeof(StorageReal);
+    hash_wire_value(hash, element_size);
+    for (const CommField& field : extras) {
+        if (field.width <= 0)
+            throw std::invalid_argument(
+                "halo participant field width must be positive");
+        const std::int64_t width = field.width;
+        hash_wire_value(hash, width);
     }
-    return off;
+    return hash;
 }
 
-/// @brief ACCUMULATE the extra-field payload at `rbuf[off]` onto row `i`
-/// (reverse: exactly-once partial sums, mirroring the intrinsic forces).
-std::size_t accumulate_extra_fields(const std::vector<CommField>& fields, int i,
-                                    const std::vector<double>& rbuf,
-                                    std::size_t off) {
-    for (const auto& f : fields) {
-        const std::size_t base =
-            static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
-        for (int k = 0; k < f.width; ++k)
-            f.data[base + k] += static_cast<StorageReal>(rbuf[off++]);
+void require_collective_halo_schema(const PackPlan& plan,
+                                    const std::vector<CommField>& extras,
+                                    MPI_Comm communicator,
+                                    std::string_view operation,
+                                    std::uint64_t discriminator = 0) {
+    require_collective_fingerprint(
+        plan.version, halo_payload_fingerprint(plan, extras, discriminator),
+        communicator, operation);
+}
+
+std::size_t checked_mul(std::size_t a, std::size_t b, const char* operation) {
+    if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a)
+        throw std::overflow_error(std::string(operation) + ": size overflow");
+    return a * b;
+}
+
+std::size_t extra_row_bytes(const std::vector<CommField>& fields) {
+    std::size_t result = 0;
+    for (const CommField& field : fields) {
+        const std::size_t bytes =
+            checked_mul(static_cast<std::size_t>(field.width),
+                        sizeof(StorageReal), "halo extra field");
+        if (bytes > std::numeric_limits<std::size_t>::max() - result)
+            throw std::overflow_error("halo extra-field row size overflow");
+        result += bytes;
     }
-    return off;
+    return result;
 }
 
-void pack_positions_for_face(const Frame& frame,
-                             const md::mpi::DomainDecomposition& dd, int f,
-                             std::vector<double>& buf,
-                             const std::vector<CommField>& xfields) {
+void pack_extra_fields(const std::vector<CommField>& fields,
+                       const std::vector<int>& rows,
+                       std::vector<std::byte>& buffer, std::size_t offset) {
+    for (int row : rows) {
+        for (const CommField& field : fields) {
+            const std::size_t bytes =
+                static_cast<std::size_t>(field.width) * sizeof(StorageReal);
+            const auto* source = reinterpret_cast<const std::byte*>(
+                field.data + static_cast<std::size_t>(row) * field.width);
+            if (bytes != 0)
+                std::memcpy(buffer.data() + offset, source, bytes);
+            offset += bytes;
+        }
+    }
+}
+
+void unpack_extra_fields(const std::vector<CommField>& fields, int first,
+                         int count, const std::vector<std::byte>& buffer,
+                         std::size_t offset) {
+    for (int row = first; row < first + count; ++row) {
+        for (const CommField& field : fields) {
+            const std::size_t bytes =
+                static_cast<std::size_t>(field.width) * sizeof(StorageReal);
+            auto* destination = reinterpret_cast<std::byte*>(
+                field.data + static_cast<std::size_t>(row) * field.width);
+            if (bytes != 0)
+                std::memcpy(destination, buffer.data() + offset, bytes);
+            offset += bytes;
+        }
+    }
+}
+
+std::size_t forward_wire_bytes(const PackPlan& plan, int count) {
+    return plan.kind == PackKind::Border ? border_bytes(plan, count)
+                                         : comm_bytes(plan, count);
+}
+
+std::size_t plan_row_bytes(const PackPlan& plan) {
+    std::size_t bytes = 0;
+    for (const ColumnRef& field : plan.fields) {
+        if (field.row_bytes() > std::numeric_limits<std::size_t>::max() - bytes)
+            throw std::overflow_error("halo plan row size overflow");
+        bytes += field.row_bytes();
+    }
+    return bytes;
+}
+
+void pack_forward_for_face(const Frame& frame,
+                           const md::mpi::DomainDecomposition& dd, int f,
+                           const PackPlan& plan, bool full_rebuild,
+                           std::vector<std::byte>& buffer,
+                           const std::vector<CommField>& fields) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
-    const int per_atom = kBorderDoublesPerAtom + extra_width(xfields);
-    buf.resize(static_cast<std::size_t>(n) * per_atom);
-
+    const std::size_t wire_bytes = forward_wire_bytes(plan, n);
+    const std::size_t extras =
+        checked_mul(static_cast<std::size_t>(n), extra_row_bytes(fields),
+                    "halo forward extras");
+    buffer.resize(wire_bytes + extras);
     const int dim = face_dim(f);
-    const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
-
-    const StorageReal* __restrict x = frame.span(kAtom_x);
-    const StorageReal* __restrict y = frame.span(kAtom_y);
-    const StorageReal* __restrict z = frame.span(kAtom_z);
-    const TagInt* __restrict tag = frame.span(kAtom_tag);
-    const StorageReal* __restrict q = frame.span(kAtom_charge);
-
-    for (int k = 0; k < n; ++k) {
-        const int i = list[static_cast<std::size_t>(k)];
-        double xi = x[i], yi = y[i], zi = z[i];
-        if (dim == 0)
-            xi += shift;
-        else if (dim == 1)
-            yi += shift;
-        else if (dim == 2)
-            zi += shift;
-        std::size_t off = static_cast<std::size_t>(k) * per_atom;
-        buf[off + 0] = xi;
-        buf[off + 1] = yi;
-        buf[off + 2] = zi;
-        buf[off + 3] = static_cast<double>(tag[i]);
-        buf[off + 4] = q[i]; // static per run; carried to ghosts at reneighbor
-        pack_extra_fields(xfields, i, buf, off + kBorderDoublesPerAtom);
-    }
+    const double shift = pbc_shift_for_face(dd, f, frame.simbox.length(dim));
+    const double sx = dim == 0 ? shift : 0.0;
+    const double sy = dim == 1 ? shift : 0.0;
+    const double sz = dim == 2 ? shift : 0.0;
+    if (full_rebuild)
+        (void)pack_border(frame, plan, list.data(), n, sx, sy, sz,
+                          buffer.data(), wire_bytes);
+    else
+        (void)pack_comm(frame, plan, list.data(), n, sx, sy, sz, buffer.data(),
+                        wire_bytes);
+    pack_extra_fields(fields, list, buffer, wire_bytes);
 }
 
-/// @brief Pack `(x,y,z)` plus declared extra fields for face `f`
-/// (position-only refresh between reneighbor events). Ghost slot indices
-/// on the receiver stay fixed, so we do not re-send tags; extra forward
-/// fields refresh every step alongside positions.
-void pack_positions_only_for_face(const Frame& frame,
-                                  const md::mpi::DomainDecomposition& dd, int f,
-                                  std::vector<double>& buf,
-                                  const std::vector<CommField>& xfields) {
-    const auto& list = dd.send_lists[f];
-    const int n = static_cast<int>(list.size());
-    const int per_atom = kPosOnlyDoublesPerAtom + extra_width(xfields);
-    buf.resize(static_cast<std::size_t>(n) * per_atom);
-
-    const int dim = face_dim(f);
-    const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
-
-    const StorageReal* __restrict x = frame.span(kAtom_x);
-    const StorageReal* __restrict y = frame.span(kAtom_y);
-    const StorageReal* __restrict z = frame.span(kAtom_z);
-
-    for (int k = 0; k < n; ++k) {
-        const int i = list[static_cast<std::size_t>(k)];
-        double xi = x[i], yi = y[i], zi = z[i];
-        if (dim == 0)
-            xi += shift;
-        else if (dim == 1)
-            yi += shift;
-        else if (dim == 2)
-            zi += shift;
-        std::size_t off = static_cast<std::size_t>(k) * per_atom;
-        buf[off + 0] = xi;
-        buf[off + 1] = yi;
-        buf[off + 2] = zi;
-        pack_extra_fields(xfields, i, buf, off + kPosOnlyDoublesPerAtom);
-    }
-}
-
-void prealloc_bufs(FaceBufs& b, int initial_cap) {
+void prealloc_bufs(FaceBufs& b, int initial_cap, std::size_t border_row_bytes,
+                   std::size_t comm_row_bytes, std::size_t reverse_row_bytes) {
     for (int f = 0; f < 6; ++f) {
-        // Conservative: each face could ship up to `initial_cap` atoms.
-        // Border (full-rebuild) sends xyz + tag + q (+ declared forward
-        // fields); the per-step forward sends xyz (+ declared forward
-        // fields). Reverse sends fx,fy,fz (+ declared reverse fields).
-        b.send_pos[f].reserve(static_cast<std::size_t>(initial_cap)
-                              * kBorderDoublesPerAtom);
-        b.recv_pos[f].reserve(static_cast<std::size_t>(initial_cap)
-                              * kBorderDoublesPerAtom);
-        b.send_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
-        b.recv_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
+        const std::size_t forward_row =
+            std::max(border_row_bytes, comm_row_bytes);
+        b.send_pos[f].reserve(checked_mul(static_cast<std::size_t>(initial_cap),
+                                          forward_row,
+                                          "halo preallocate forward"));
+        b.recv_pos[f].reserve(checked_mul(static_cast<std::size_t>(initial_cap),
+                                          forward_row,
+                                          "halo preallocate forward"));
+        b.send_force[f].reserve(
+            checked_mul(static_cast<std::size_t>(initial_cap),
+                        reverse_row_bytes, "halo preallocate reverse"));
+        b.recv_force[f].reserve(
+            checked_mul(static_cast<std::size_t>(initial_cap),
+                        reverse_row_bytes, "halo preallocate reverse"));
     }
 }
 
@@ -491,28 +496,37 @@ void HaloSend::build(const cpu::BuildContext& ctx) {
     // smaller cutoff — and must be told so, not handed wrong physics.
     const double need = halo_cutoff();
     for (int d = 0; d < 3; ++d) {
-        if (dd->dims[d] <= 1) continue; // not decomposed along this axis
+        if (dd->dims[d] <= 1)
+            continue; // not decomposed along this axis
         const double sub = dd->subhi[d] - dd->sublo[d];
         if (need > sub) {
             throw std::runtime_error(
                 "HaloSend: the requested ghost shell (" + std::to_string(need)
                 + " A) is wider than this rank's subdomain along axis "
                 + std::to_string(d) + " (" + std::to_string(sub)
-                + " A). The halo only exchanges with immediate neighbour ranks, so a "
+                + " A). The halo only exchanges with immediate neighbour "
+                  "ranks, so a "
                   "deeper shell cannot be filled and the ghost region would be "
-                  "silently truncated. Use a larger box, fewer ranks along that axis, "
-                  "or a smaller cutoff. (A many-body style such as EAM asks for a "
+                  "silently truncated. Use a larger box, fewer ranks along "
+                  "that axis, "
+                  "or a smaller cutoff. (A many-body style such as EAM asks "
+                  "for a "
                   "ghost-of-ghost shell of 2*cutoff.)");
         }
     }
 
     if (!bufs_)
         bufs_ = std::make_unique<detail::FaceBufs>();
+    bufs_->border_plan = make_border_plan(ctx.frame);
+    bufs_->comm_plan = make_comm_plan(ctx.frame);
+    bufs_->reverse_plan = make_reverse_plan(ctx.frame);
     // Each face ships only the boundary layer (cutoff-deep slab, typically
     // 5-15% of owners; the cascade re-forwarding adds a little). A quarter
     // of capacity is generous; std::vector growth covers outliers.
     const int face_cap = dd->capacity / 4 + 1024;
-    prealloc_bufs(*bufs_, face_cap);
+    prealloc_bufs(*bufs_, face_cap, border_bytes(bufs_->border_plan, 1),
+                  comm_bytes(bufs_->comm_plan, 1),
+                  plan_row_bytes(bufs_->reverse_plan));
     for (int f = 0; f < 6; ++f)
         dd->send_lists[f].reserve(static_cast<std::size_t>(face_cap));
 }
@@ -544,7 +558,8 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                                double cutoff, bool full_rebuild, int& frame_cap,
                                int my_rank, double bonded_extension_for_log,
                                int& slot_in_out,
-                               const std::vector<CommField>& xfields) {
+                               const std::vector<CommField>& xfields,
+                               PackPlan& plan) {
     const int f_lo = 2 * dim;
     const int f_hi = 2 * dim + 1;
     const std::size_t fz_lo = static_cast<std::size_t>(f_lo);
@@ -586,10 +601,6 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         recv_counts[1] = dd.recv_counts[fz_hi];
     }
 
-    const int per_atom_doubles =
-        (full_rebuild ? kBorderDoublesPerAtom : kPosOnlyDoublesPerAtom)
-        + extra_width(xfields);
-
     for (int s = 0; s < 2; ++s) {
         const int face_s = (s == 0) ? f_lo : f_hi;
         const int neighbor = (s == 0) ? neighbor_lo : neighbor_hi;
@@ -597,14 +608,15 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         auto& rbuf = bufs.recv_pos[static_cast<std::size_t>(face_s)];
         if (neighbor == MPI_PROC_NULL) {
             sbuf.clear();
-        } else if (full_rebuild) {
-            pack_positions_for_face(frame, dd, face_s, sbuf, xfields);
         } else {
-            pack_positions_only_for_face(frame, dd, face_s, sbuf, xfields);
+            pack_forward_for_face(frame, dd, face_s, plan, full_rebuild, sbuf,
+                                  xfields);
         }
-        rbuf.assign(static_cast<std::size_t>(recv_counts[s])
-                        * static_cast<std::size_t>(per_atom_doubles),
-                    0.0);
+        const std::size_t row_bytes =
+            forward_wire_bytes(plan, 1) + extra_row_bytes(xfields);
+        rbuf.assign(checked_mul(static_cast<std::size_t>(recv_counts[s]),
+                                row_bytes, "halo receive buffer"),
+                    std::byte{0});
     }
 
     MPI_Request pos_reqs[4];
@@ -617,17 +629,19 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (send_counts[s] > 0) {
             MPI_Isend(
                 bufs.send_pos[static_cast<std::size_t>(face_s)].data(),
-                static_cast<int>(
-                    bufs.send_pos[static_cast<std::size_t>(face_s)].size()),
-                MPI_DOUBLE, neighbor, 100 + face_s, dd.cart_comm,
+                checked_mpi_byte_count(
+                    bufs.send_pos[static_cast<std::size_t>(face_s)].size(),
+                    "halo forward send"),
+                MPI_BYTE, neighbor, 100 + face_s, dd.cart_comm,
                 &pos_reqs[n_preqs++]);
         }
         if (recv_counts[s] > 0) {
             MPI_Irecv(
                 bufs.recv_pos[static_cast<std::size_t>(face_s)].data(),
-                static_cast<int>(
-                    bufs.recv_pos[static_cast<std::size_t>(face_s)].size()),
-                MPI_DOUBLE, neighbor, 100 + opposite_face(face_s), dd.cart_comm,
+                checked_mpi_byte_count(
+                    bufs.recv_pos[static_cast<std::size_t>(face_s)].size(),
+                    "halo forward receive"),
+                MPI_BYTE, neighbor, 100 + opposite_face(face_s), dd.cart_comm,
                 &pos_reqs[n_preqs++]);
         }
     }
@@ -646,9 +660,17 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (slot_in_out + new_ghosts > frame_cap) {
             const int needed = slot_in_out + new_ghosts;
             // 50% slack so a cascade of small overflows doesn't realloc each axis.
-            frame.atoms.set_capacity(needed + needed / 2 + 1024);
-            frame_cap = frame.atoms.nmax;
-            dd.capacity = frame.atoms.nmax;
+            const std::int64_t requested =
+                static_cast<std::int64_t>(needed) + needed / 2 + 1024;
+            if (requested > std::numeric_limits<int>::max())
+                throw std::overflow_error("halo: capacity growth overflow");
+            const std::uint64_t fingerprint = plan.fingerprint;
+            frame.set_capacity(static_cast<int>(requested));
+            frame_cap = frame.capacity();
+            dd.capacity = frame.capacity();
+            plan =
+                full_rebuild ? make_border_plan(frame) : make_comm_plan(frame);
+            require_schema_fingerprint(plan, fingerprint, plan.version);
             ATV_DEBUG("halo_exchange: rank {} grew ghost capacity to {} "
                       "(needed {}) at axis {}",
                       my_rank, frame_cap, needed, dim);
@@ -662,37 +684,24 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     // Hoisted AFTER the capacity guard above (a `set_capacity` there would
     // invalidate any span resolved before it) and dominating both the
     // full_rebuild and refresh unpack loops below.
-    StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    StorageReal* __restrict sp_z = frame.span(kAtom_z);
-    TagInt* __restrict sp_tag = frame.span(kAtom_tag);
-    StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
+    TagInt* __restrict sp_tag = frame.span(kAtom_tag).data();
     int slot = slot_in_out;
     // Ghost tag→slot tracking exists solely for bonded-tuple resolution
     // (ResolveView / select_owned_tuples). Pure pairwise systems never
     // query ghost tags, so skip the per-ghost hash inserts and the
     // companion ghost_tags log entirely — the map stays empty (~50 B per
     // ghost saved, plus the per-rebuild insert/erase churn).
-    const bool track_tags = frame.atoms.has_bonded();
+    const bool track_tags = frame.has_bonded();
     for (int s = 0; s < 2; ++s) {
         const int face_s = (s == 0) ? f_lo : f_hi;
         const int n = recv_counts[s];
         const auto& rbuf = bufs.recv_pos[static_cast<std::size_t>(face_s)];
+        const std::size_t wire_bytes = forward_wire_bytes(plan, n);
         if (full_rebuild) {
+            unpack_border(frame, plan, n, slot, rbuf.data(), wire_bytes);
+            unpack_extra_fields(xfields, slot, n, rbuf, wire_bytes);
             for (int k = 0; k < n; ++k) {
-                const std::size_t off =
-                    static_cast<std::size_t>(k)
-                    * static_cast<std::size_t>(per_atom_doubles);
-                sp_x[slot] = static_cast<StorageReal>(rbuf[off + 0]);
-                sp_y[slot] = static_cast<StorageReal>(rbuf[off + 1]);
-                sp_z[slot] = static_cast<StorageReal>(rbuf[off + 2]);
-                const std::int64_t tag =
-                    static_cast<std::int64_t>(rbuf[off + 3]);
-                sp_tag[slot] = static_cast<TagInt>(tag);
-                sp_charge[slot] =
-                    static_cast<StorageReal>(rbuf[off + 4]); // ghost charge (border)
-                unpack_extra_fields(xfields, slot, rbuf,
-                                    off + kBorderDoublesPerAtom);
+                const TagInt tag = sp_tag[slot];
                 if (track_tags) {
                     dd.tag_to_local[tag] = slot;
                     dd.ghost_tags.push_back(tag);
@@ -701,38 +710,145 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
             }
             dd.recv_counts[static_cast<std::size_t>(face_s)] = n;
         } else {
-            for (int k = 0; k < n; ++k) {
-                const std::size_t off =
-                    static_cast<std::size_t>(k)
-                    * static_cast<std::size_t>(per_atom_doubles);
-                sp_x[slot] = static_cast<StorageReal>(rbuf[off + 0]);
-                sp_y[slot] = static_cast<StorageReal>(rbuf[off + 1]);
-                sp_z[slot] = static_cast<StorageReal>(rbuf[off + 2]);
-                unpack_extra_fields(xfields, slot, rbuf,
-                                    off + kPosOnlyDoublesPerAtom);
-                ++slot;
-            }
+            unpack_comm(frame, plan, n, slot, rbuf.data(), wire_bytes);
+            unpack_extra_fields(xfields, slot, n, rbuf, wire_bytes);
+            slot += n;
         }
     }
     slot_in_out = slot;
 }
 
-// Zero forces on ghost rows [n_local, n_local + n_ghost). ZeroForces only
-// clears owned rows (zeroing the full backing store is ~global-N work per
-// rank); the force kernels accumulate into ghost rows, and HaloRecv
-// ships those contributions back to owners — so ghost forces must start each
-// step at zero. Called by HaloSend after the current n_ghost is set.
+std::size_t reverse_payload_bytes(const PackPlan& plan, int count,
+                                  const std::vector<CommField>& extras) {
+    return checked_mul(static_cast<std::size_t>(count),
+                       plan_row_bytes(plan) + extra_row_bytes(extras),
+                       "halo reverse payload");
+}
+
+void pack_reverse_rows(const PackPlan& plan, int first, int count,
+                       const std::vector<CommField>& extras,
+                       std::vector<std::byte>& buffer) {
+    buffer.resize(reverse_payload_bytes(plan, count, extras));
+    std::size_t offset = 0;
+    for (const ColumnRef& field : plan.fields) {
+        for (int k = 0; k < count; ++k) {
+            const std::size_t bytes = field.row_bytes();
+            if (bytes != 0)
+                std::memcpy(buffer.data() + offset,
+                            field.bytes()
+                                + static_cast<std::size_t>(first + k) * bytes,
+                            bytes);
+            offset += bytes;
+        }
+    }
+    for (const CommField& field : extras) {
+        const std::size_t bytes = checked_mul(
+            static_cast<std::size_t>(count),
+            static_cast<std::size_t>(field.width) * sizeof(StorageReal),
+            "halo reverse extra");
+        if (bytes != 0)
+            std::memcpy(buffer.data() + offset,
+                        field.data
+                            + static_cast<std::size_t>(first) * field.width,
+                        bytes);
+        offset += bytes;
+    }
+}
+
+template <typename T>
+void accumulate_column(const ColumnRef& field, const std::vector<int>& rows,
+                       const std::byte* source) {
+    T* destination = static_cast<T*>(field.write_data);
+    if (!field.writable)
+        throw column_error("halo reverse plan is const");
+    for (std::size_t k = 0; k < rows.size(); ++k) {
+        for (int c = 0; c < field.cols; ++c) {
+            T value{};
+            const std::size_t value_index =
+                k * static_cast<std::size_t>(field.cols)
+                + static_cast<std::size_t>(c);
+            std::memcpy(&value, source + value_index * sizeof(T), sizeof(T));
+            destination[static_cast<std::size_t>(rows[k]) * field.cols + c] +=
+                value;
+        }
+    }
+}
+
+void accumulate_reverse_rows(const PackPlan& plan, const std::vector<int>& rows,
+                             const std::vector<CommField>& extras,
+                             const std::vector<std::byte>& buffer) {
+    if (rows.empty()) {
+        if (!buffer.empty())
+            throw std::runtime_error("halo reverse payload size mismatch");
+        return;
+    }
+    std::size_t offset = 0;
+    for (const ColumnRef& field : plan.fields) {
+        const std::size_t bytes =
+            checked_mul(rows.size(), field.row_bytes(), "halo reverse column");
+        switch (field.dtype) {
+        case ColDType::Storage:
+            accumulate_column<StorageReal>(field, rows, buffer.data() + offset);
+            break;
+        case ColDType::Acc:
+            accumulate_column<AccReal>(field, rows, buffer.data() + offset);
+            break;
+        case ColDType::Tag:
+            accumulate_column<TagInt>(field, rows, buffer.data() + offset);
+            break;
+        case ColDType::Int:
+            accumulate_column<int>(field, rows, buffer.data() + offset);
+            break;
+        case ColDType::Int8:
+            accumulate_column<std::int8_t>(field, rows, buffer.data() + offset);
+            break;
+        }
+        offset += bytes;
+    }
+    for (const CommField& field : extras) {
+        for (std::size_t k = 0; k < rows.size(); ++k) {
+            StorageReal* destination =
+                field.data + static_cast<std::size_t>(rows[k]) * field.width;
+            for (int c = 0; c < field.width; ++c) {
+                StorageReal value{};
+                const std::size_t value_index =
+                    k * static_cast<std::size_t>(field.width)
+                    + static_cast<std::size_t>(c);
+                std::memcpy(&value,
+                            buffer.data() + offset
+                                + value_index * sizeof(StorageReal),
+                            sizeof(value));
+                destination[c] += value;
+            }
+        }
+        offset += rows.size() * static_cast<std::size_t>(field.width)
+                  * sizeof(StorageReal);
+    }
+    if (offset != buffer.size())
+        throw std::runtime_error("halo reverse payload size mismatch");
+}
+
+// Zero every schema-declared reverse accumulator on ghost rows. Runtime
+// columns opt in with kColReverse and require no endpoint field-list edit.
 void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
+                       PackPlan& reverse_plan,
                        const std::vector<CommField>& reverse_fields) {
     const int lo = dd.n_local;
     const int hi = dd.n_local + dd.n_ghost;
-    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
-    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
-    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
-    for (int i = lo; i < hi; ++i) {
-        sp_fx[i] = 0.0;
-        sp_fy[i] = 0.0;
-        sp_fz[i] = 0.0;
+    if (!reverse_plan.valid_for(frame) || !reverse_plan.writable) {
+        reverse_plan = make_reverse_plan(frame);
+    }
+    if (hi <= lo)
+        return;
+    for (const ColumnRef& field : reverse_plan.fields) {
+        std::byte* destination =
+            field.mutable_bytes()
+            + static_cast<std::size_t>(lo) * field.row_bytes();
+        const std::size_t bytes =
+            checked_mul(static_cast<std::size_t>(hi - lo), field.row_bytes(),
+                        "halo reverse zero");
+        if (bytes != 0)
+            std::memset(destination, 0, bytes);
     }
     // Reverse extra fields share the force semantics: ghost rows are
     // partial-sum accumulators and must start each step at zero.
@@ -742,6 +858,84 @@ void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
                 static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
             for (int k = 0; k < f.width; ++k)
                 f.data[base + k] = StorageReal(0);
+        }
+    }
+}
+
+std::array<ColumnRef, 3> refresh_columns(const PackPlan& plan, bool positions) {
+    const std::array<std::uint16_t, 3> ids =
+        positions ? std::array<std::uint16_t,
+                               3>{static_cast<std::uint16_t>(AtomFieldId::x),
+                                  static_cast<std::uint16_t>(AtomFieldId::y),
+                                  static_cast<std::uint16_t>(AtomFieldId::z)}
+                  : std::array<std::uint16_t, 3>{
+                        static_cast<std::uint16_t>(AtomFieldId::vx),
+                        static_cast<std::uint16_t>(AtomFieldId::vy),
+                        static_cast<std::uint16_t>(AtomFieldId::vz)};
+    std::array<ColumnRef, 3> selected{};
+    std::array<bool, 3> found{};
+    for (const ColumnRef& column : plan.fields) {
+        for (std::size_t component = 0; component < ids.size(); ++component) {
+            if (column.wire_id != ids[component])
+                continue;
+            if (column.dtype != ColDType::Storage
+                || column.element_size != sizeof(StorageReal)
+                || column.cols != 1 || !column.writable)
+                throw column_error(
+                    "halo refresh column must be writable StorageReal[1]");
+            selected[component] = column;
+            found[component] = true;
+        }
+    }
+    if (!std::all_of(found.begin(), found.end(),
+                     [](bool value) { return value; }))
+        throw column_error("halo refresh plan is missing its field triple");
+    return selected;
+}
+
+std::size_t refresh_payload_bytes(int count) {
+    if (count < 0)
+        throw std::invalid_argument("negative halo refresh count");
+    return checked_mul(checked_mul(static_cast<std::size_t>(count),
+                                   std::size_t{3}, "halo refresh payload"),
+                       sizeof(StorageReal), "halo refresh payload");
+}
+
+void pack_refresh_rows(const std::array<ColumnRef, 3>& columns,
+                       const std::vector<int>& rows,
+                       const std::array<double, 3>& shift,
+                       std::vector<std::byte>& buffer) {
+    buffer.resize(refresh_payload_bytes(static_cast<int>(rows.size())));
+    std::size_t offset = 0;
+    for (int row : rows) {
+        for (std::size_t component = 0; component < columns.size();
+             ++component) {
+            StorageReal value{};
+            std::memcpy(&value,
+                        columns[component].bytes()
+                            + static_cast<std::size_t>(row)
+                                  * sizeof(StorageReal),
+                        sizeof(value));
+            value = static_cast<StorageReal>(static_cast<double>(value)
+                                             + shift[component]);
+            std::memcpy(buffer.data() + offset, &value, sizeof(value));
+            offset += sizeof(value);
+        }
+    }
+}
+
+void unpack_refresh_rows(const std::array<ColumnRef, 3>& columns, int first,
+                         int count, const std::vector<std::byte>& buffer) {
+    if (buffer.size() != refresh_payload_bytes(count))
+        throw std::length_error("halo refresh payload size mismatch");
+    std::size_t offset = 0;
+    for (int k = 0; k < count; ++k) {
+        for (const ColumnRef& column : columns) {
+            std::memcpy(column.mutable_bytes()
+                            + static_cast<std::size_t>(first + k)
+                                  * sizeof(StorageReal),
+                        buffer.data() + offset, sizeof(StorageReal));
+            offset += sizeof(StorageReal);
         }
     }
 }
@@ -779,6 +973,17 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
         dd->neighbor_generation != last_rebuild_generation_;
     const bool full_rebuild = generation_changed || (ago_ >= every_);
 
+    PackPlan& forward_plan = full_rebuild ? bufs.border_plan : bufs.comm_plan;
+    const PackKind expected_kind =
+        full_rebuild ? PackKind::Border : PackKind::Comm;
+    if (!forward_plan.valid_for(frame) || !forward_plan.writable
+        || forward_plan.kind != expected_kind) {
+        forward_plan =
+            full_rebuild ? make_border_plan(frame) : make_comm_plan(frame);
+    }
+    require_collective_halo_schema(forward_plan, fwd_fields_, dd->cart_comm,
+                                   full_rebuild ? "halo/border" : "halo/comm");
+
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
 
@@ -786,9 +991,10 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
         (cutoff_ > bonded_extension_) ? cutoff_ : bonded_extension_;
     // Mutable: forward_axis_stage grows the frame (and bumps frame_cap) when a
     // shrunk rank needs more ghost rows than its headroom.
-    int frame_cap = static_cast<int>(frame.atoms.tag.size());
+    int frame_cap = frame.capacity();
 
     if (full_rebuild) {
+        frame.set_nghost(0);
         // Re-check the build-time geometry guards: an NPT/deform run can
         // shrink the subdomain AFTER build() validated it (both the
         // shell-width and the dims==2 self-overlap condition are
@@ -799,11 +1005,11 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
             const double sub = dd->subhi[d] - dd->sublo[d];
             if (halo_cut > sub)
                 throw std::runtime_error(
-                    "HaloSend: the box shrank until the ghost shell (" +
-                    std::to_string(halo_cut) + " A) no longer fits axis " +
-                    std::to_string(d) + "'s subdomain (" +
-                    std::to_string(sub) + " A). See HaloSend::build for "
-                    "the geometry contract.");
+                    "HaloSend: the box shrank until the ghost shell ("
+                    + std::to_string(halo_cut) + " A) no longer fits axis "
+                    + std::to_string(d) + "'s subdomain (" + std::to_string(sub)
+                    + " A). See HaloSend::build for "
+                      "the geometry contract.");
         }
 
         // Effective halo = max(pair cutoff, bonded skin): the wider of
@@ -821,9 +1027,11 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
         for (int dim = 0; dim < 3; ++dim) {
             forward_axis_stage(frame, *dd, bufs, dim, slot, halo_cut,
                                /*full_rebuild=*/true, frame_cap, my_rank,
-                               bonded_extension_, slot, fwd_fields_);
+                               bonded_extension_, slot, fwd_fields_,
+                               forward_plan);
         }
         dd->n_ghost = slot - dd->n_local;
+        frame.set_nghost(dd->n_ghost);
 
         // Signal to ghost-index-caching consumers (the NeighborList CSR
         // is the load-bearing one) that ghost slot assignments may have
@@ -839,7 +1047,7 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
 
         ago_ = 0;
         last_rebuild_generation_ = dd->neighbor_generation;
-        zero_ghost_forces(frame, *dd, rev_fields_);
+        zero_ghost_forces(frame, *dd, bufs.reverse_plan, rev_fields_);
         return;
     }
 
@@ -851,9 +1059,9 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     for (int dim = 0; dim < 3; ++dim) {
         forward_axis_stage(frame, *dd, bufs, dim, /*sources_end=*/0, halo_cut,
                            /*full_rebuild=*/false, frame_cap, my_rank,
-                           bonded_extension_, slot, fwd_fields_);
+                           bonded_extension_, slot, fwd_fields_, forward_plan);
     }
-    zero_ghost_forces(frame, *dd, rev_fields_);
+    zero_ghost_forces(frame, *dd, bufs.reverse_plan, rev_fields_);
 }
 
 // ── HaloRefresh — a forward field refresh at an arbitrary phase ───────
@@ -864,19 +1072,16 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
     auto* dd = ctx.runtime.md.dd;
     if (!dd || ctx.runtime.mpi_size <= 1 || dd->cart_comm == MPI_COMM_NULL)
         return;
-    // NO early return on `n_ghost == 0`. Every rank must reach the Sendrecv below: a
-    // rank with no ghosts of its own is still a NEIGHBOUR that some other rank is
-    // waiting to hear from, and bailing out here deadlocks the whole run. (It did.)
-    // Ranks with nothing to send simply exchange zero-length messages.
-
     Frame& frame = ctx.frame;
     const bool pos = (field_ == Field::positions);
-
-    // Source arrays. Positions carry the periodic shift; velocities must NOT — a
-    // ghost across the boundary lives at x - L, but it moves at the same v.
-    StorageReal* __restrict sx = pos ? frame.span(kAtom_x) : frame.span(kAtom_vx);
-    StorageReal* __restrict sy = pos ? frame.span(kAtom_y) : frame.span(kAtom_vy);
-    StorageReal* __restrict sz = pos ? frame.span(kAtom_z) : frame.span(kAtom_vz);
+    PackPlan plan = make_comm_plan(frame);
+    constexpr std::uint64_t kPositionRefresh = 0x706f736974696f6eull;
+    constexpr std::uint64_t kVelocityRefresh = 0x76656c6f63697479ull;
+    require_collective_halo_schema(plan, {}, dd->cart_comm,
+                                   pos ? "halo/refresh-position"
+                                       : "halo/refresh-velocity",
+                                   pos ? kPositionRefresh : kVelocityRefresh);
+    const auto columns = refresh_columns(plan, pos);
 
     // Replay the cascade EXACTLY as the last full rebuild laid it out: axis 0,1,2;
     // within an axis, the -face then the +face; ghost slots appended from n_local.
@@ -887,13 +1092,14 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
     // the SAME rank, and a sequential pair crosses its tags — each side blocks sending
     // face 0 while waiting to receive face 1. It deadlocks, and it deadlocked. The
     // rebuild path already does it this way, for exactly this reason.
-    std::array<std::vector<double>, 2> sbuf, rbuf;
+    std::array<std::vector<std::byte>, 2> sbuf, rbuf;
     int slot = dd->n_local;
-    const int me = ctx.runtime.mpi_rank;
+    int me = 0;
+    MPI_Comm_rank(dd->cart_comm, &me);
 
     for (int dim = 0; dim < 3; ++dim) {
         const int face[2] = {2 * dim, 2 * dim + 1};
-        const double L = frame.box.length(dim);
+        const double L = frame.simbox.length(dim);
 
         MPI_Request reqs[4];
         int n_req = 0;
@@ -908,35 +1114,35 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
             const double shift = pos ? pbc_shift_for_face(*dd, f, L) : 0.0;
             auto& sb = sbuf[static_cast<std::size_t>(s)];
             auto& rb = rbuf[static_cast<std::size_t>(s)];
-            sb.resize(static_cast<std::size_t>(n_send) * 3);
-            for (int k = 0; k < n_send; ++k) {
-                const int i = list[static_cast<std::size_t>(k)];
-                sb[static_cast<std::size_t>(3 * k) + 0] = sx[i] + shift;
-                sb[static_cast<std::size_t>(3 * k) + 1] = sy[i];
-                sb[static_cast<std::size_t>(3 * k) + 2] = sz[i];
-            }
-            rb.assign(static_cast<std::size_t>(n_recv) * 3, 0.0);
+            std::array<double, 3> shifts{};
+            shifts[static_cast<std::size_t>(dim)] = shift;
+            pack_refresh_rows(columns, list, shifts, sb);
+            rb.assign(refresh_payload_bytes(n_recv), std::byte{0});
 
-            if (nbr == MPI_PROC_NULL || nbr == me) continue;
-            MPI_Isend(sb.data(), n_send * 3, MPI_DOUBLE, nbr, f, dd->cart_comm,
-                      &reqs[n_req++]);
-            MPI_Irecv(rb.data(), n_recv * 3, MPI_DOUBLE, nbr, opposite_face(f),
-                      dd->cart_comm, &reqs[n_req++]);
+            if (nbr == MPI_PROC_NULL || nbr == me)
+                continue;
+            if (n_send > 0)
+                MPI_Isend(
+                    sb.data(),
+                    checked_mpi_byte_count(sb.size(), "halo refresh send"),
+                    MPI_BYTE, nbr, f, dd->cart_comm, &reqs[n_req++]);
+            if (n_recv > 0)
+                MPI_Irecv(
+                    rb.data(),
+                    checked_mpi_byte_count(rb.size(), "halo refresh receive"),
+                    MPI_BYTE, nbr, opposite_face(f), dd->cart_comm,
+                    &reqs[n_req++]);
         }
-        if (n_req > 0) MPI_Waitall(n_req, reqs, MPI_STATUSES_IGNORE);
+        if (n_req > 0)
+            MPI_Waitall(n_req, reqs, MPI_STATUSES_IGNORE);
 
         // Unpack in face order lo, hi — the slot layout the rebuild established.
         for (int s = 0; s < 2; ++s) {
             const int f = face[s];
             const int n_recv = dd->recv_counts[static_cast<std::size_t>(f)];
             const auto& rb = rbuf[static_cast<std::size_t>(s)];
-            for (int k = 0; k < n_recv; ++k) {
-                const std::size_t off = static_cast<std::size_t>(3 * k);
-                sx[slot] = rb[off + 0];
-                sy[slot] = rb[off + 1];
-                sz[slot] = rb[off + 2];
-                ++slot;
-            }
+            unpack_refresh_rows(columns, slot, n_recv, rb);
+            slot += n_recv;
         }
     }
 }
@@ -947,7 +1153,9 @@ void HaloRecv::build(const cpu::BuildContext& ctx) {
         return;
     if (!bufs_)
         bufs_ = std::make_unique<detail::FaceBufs>();
-    prealloc_bufs(*bufs_, dd->capacity);
+    bufs_->reverse_plan = make_reverse_plan(ctx.frame);
+    prealloc_bufs(*bufs_, dd->capacity, 0, 0,
+                  plan_row_bytes(bufs_->reverse_plan));
 }
 
 void HaloRecv::launch(const cpu::LaunchContext& ctx) {
@@ -956,18 +1164,10 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
     auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
-    if (dd->n_ghost == 0)
-        return;
-
     Frame& frame = ctx.frame;
+    if (!bufs_)
+        throw std::logic_error("HaloRecv::launch called before build");
     FaceBufs& bufs = *bufs_;
-
-    // Hoisted ONCE at the launch boundary; no `set_capacity`/`grow` happens
-    // anywhere in this function (only HaloSend grows the frame), so these
-    // stay valid across the whole reverse cascade below.
-    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
-    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
-    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
 
     // One-time flatten of bound participants' reverse-field declarations
     // (see HaloSend::launch for why this is deferred to first launch).
@@ -975,8 +1175,13 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
         append_declared_fields(participants_, /*forward=*/false, rev_fields_);
         fields_cached_ = true;
     }
-    const int per_ghost_doubles =
-        kForceDoublesPerAtom + extra_width(rev_fields_);
+
+    PackPlan& reverse_plan = bufs.reverse_plan;
+    if (!reverse_plan.valid_for(frame) || !reverse_plan.writable
+        || reverse_plan.kind != PackKind::Reverse)
+        reverse_plan = make_reverse_plan(frame);
+    require_collective_halo_schema(reverse_plan, rev_fields_, dd->cart_comm,
+                                   "halo/reverse");
 
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
@@ -990,6 +1195,14 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             slot_start[f] = s;
             s += dd->recv_counts[static_cast<std::size_t>(f)];
         }
+        const int local_layout_valid =
+            s == dd->n_local + dd->n_ghost && s <= frame.capacity();
+        int all_layouts_valid = 0;
+        MPI_Allreduce(&local_layout_valid, &all_layouts_valid, 1, MPI_INT,
+                      MPI_MIN, dd->cart_comm);
+        if (!all_layouts_valid)
+            throw std::runtime_error(
+                "halo reverse ghost layout disagrees with Frame capacity");
     }
 
     // Reverse the axis cascade: z first, then y, then x. Forces accumulated
@@ -1023,23 +1236,12 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             const int face_s = (s == 0) ? f_lo : f_hi;
             const int n = send_force_counts[s];
             auto& sbuf = bufs.send_force[static_cast<std::size_t>(face_s)];
-            sbuf.resize(static_cast<std::size_t>(n)
-                        * static_cast<std::size_t>(per_ghost_doubles));
-            int slot = slot_start[face_s];
-            for (int k = 0; k < n; ++k) {
-                std::size_t off = static_cast<std::size_t>(k)
-                                  * static_cast<std::size_t>(per_ghost_doubles);
-                sbuf[off + 0] = sp_fx[slot];
-                sbuf[off + 1] = sp_fy[slot];
-                sbuf[off + 2] = sp_fz[slot];
-                pack_extra_fields(rev_fields_, slot, sbuf,
-                                  off + kForceDoublesPerAtom);
-                ++slot;
-            }
+            pack_reverse_rows(reverse_plan, slot_start[face_s], n, rev_fields_,
+                              sbuf);
             bufs.recv_force[static_cast<std::size_t>(face_s)].assign(
-                static_cast<std::size_t>(recv_force_counts[s])
-                    * static_cast<std::size_t>(per_ghost_doubles),
-                0.0);
+                reverse_payload_bytes(reverse_plan, recv_force_counts[s],
+                                      rev_fields_),
+                std::byte{0});
         }
 
         MPI_Request reqs[4];
@@ -1052,19 +1254,21 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             if (send_force_counts[s] > 0) {
                 MPI_Isend(
                     bufs.send_force[static_cast<std::size_t>(face_s)].data(),
-                    static_cast<int>(
+                    checked_mpi_byte_count(
                         bufs.send_force[static_cast<std::size_t>(face_s)]
-                            .size()),
-                    MPI_DOUBLE, neighbor, 200 + face_s, dd->cart_comm,
+                            .size(),
+                        "halo reverse send"),
+                    MPI_BYTE, neighbor, 200 + face_s, dd->cart_comm,
                     &reqs[n_reqs++]);
             }
             if (recv_force_counts[s] > 0) {
                 MPI_Irecv(
                     bufs.recv_force[static_cast<std::size_t>(face_s)].data(),
-                    static_cast<int>(
+                    checked_mpi_byte_count(
                         bufs.recv_force[static_cast<std::size_t>(face_s)]
-                            .size()),
-                    MPI_DOUBLE, neighbor, 200 + opposite_face(face_s),
+                            .size(),
+                        "halo reverse receive"),
+                    MPI_BYTE, neighbor, 200 + opposite_face(face_s),
                     dd->cart_comm, &reqs[n_reqs++]);
             }
         }
@@ -1080,26 +1284,7 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             const auto& list = dd->send_lists[static_cast<std::size_t>(face_s)];
             const auto& rbuf =
                 bufs.recv_force[static_cast<std::size_t>(face_s)];
-            const int n = static_cast<int>(list.size());
-            for (int k = 0; k < n; ++k) {
-                const int i = list[static_cast<std::size_t>(k)];
-                std::size_t off = static_cast<std::size_t>(k)
-                                  * static_cast<std::size_t>(per_ghost_doubles);
-                sp_fx[i] += rbuf[off + 0];
-                sp_fy[i] += rbuf[off + 1];
-                sp_fz[i] += rbuf[off + 2];
-                // Reverse extra fields: ACCUMULATE (exactly-once partial
-                // sums), mirroring the intrinsic force semantics.
-                off += 3;
-                for (const auto& f : rev_fields_) {
-                    const std::size_t base =
-                        static_cast<std::size_t>(i)
-                        * static_cast<std::size_t>(f.width);
-                    for (int c = 0; c < f.width; ++c)
-                        f.data[base + c] +=
-                            static_cast<StorageReal>(rbuf[off++]);
-                }
-            }
+            accumulate_reverse_rows(reverse_plan, list, rev_fields_, rbuf);
         }
     }
 }

@@ -37,7 +37,7 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
     // every_ == 1 (default) reduces every step, byte-identical to before; the
     // larger cadence is opt-in via MD::set_scalar_reduce_every. Always firing
     // on the last step keeps the globally-reduced scalars valid for the common
-    // "read frame.scalars after run()" pattern, so the cadence is safe whenever
+    // "read Frame metadata after run()" pattern, so the cadence is safe whenever
     // no *per-step* consumer reads them.
     if (every_ > 1 && !ctx.runtime.md.is_last_step && ctx.step != 0
         && (ctx.step % every_) != 0)
@@ -45,39 +45,40 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
 
     auto& f = ctx.frame;
     // Pack {energy, energy_pair, energy_bond, energy_angle, energy_dihedral,
-    // kinetic, stress[6], stress_kinetic[6]} into a single buffer for one
-    // 18-double allreduce. The 4 per-term energy fields were added by
-    // msu-pe-cuda-components-01 (Phase G.3); they reduce identically to
+    // energy_improper, kinetic, stress[6], stress_kinetic[6]} into one
+    // 19-double allreduce. Per-term energy fields reduce identically to
     // `energy` (each is a per-rank partial sum of one evaluator family).
     // `n_local` is omitted -- it is authoritative on each rank from
     // `dd->n_local` and does not need to be summed. Both stress fields
     // reduce identically (each is a per-rank partial sum of Voigt
     // components).
-    double sendbuf[18];
-    sendbuf[0] = f.scalars.energy;
-    sendbuf[1] = f.scalars.energy_pair;
-    sendbuf[2] = f.scalars.energy_bond;
-    sendbuf[3] = f.scalars.energy_angle;
-    sendbuf[4] = f.scalars.energy_dihedral;
-    sendbuf[5] = f.scalars.kinetic;
+    double sendbuf[19];
+    sendbuf[0] = f.meta.get(kEnergy);
+    sendbuf[1] = f.meta.get(kEnergyPair);
+    sendbuf[2] = f.meta.get(kEnergyBond);
+    sendbuf[3] = f.meta.get(kEnergyAngle);
+    sendbuf[4] = f.meta.get(kEnergyDihedral);
+    sendbuf[5] = f.meta.get(kEnergyImproper);
+    sendbuf[6] = f.meta.get(kKinetic);
     for (int k = 0; k < 6; ++k)
-        sendbuf[6 + k] = f.scalars.stress[k];
+        sendbuf[7 + k] = f.meta.get(kStress)[k];
     for (int k = 0; k < 6; ++k)
-        sendbuf[12 + k] = f.scalars.stress_kinetic[k];
+        sendbuf[13 + k] = f.meta.get(kStressKinetic)[k];
 
-    double recvbuf[18];
-    MPI_Allreduce(sendbuf, recvbuf, 18, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
+    double recvbuf[19];
+    MPI_Allreduce(sendbuf, recvbuf, 19, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
 
-    f.scalars.energy = recvbuf[0];
-    f.scalars.energy_pair = recvbuf[1];
-    f.scalars.energy_bond = recvbuf[2];
-    f.scalars.energy_angle = recvbuf[3];
-    f.scalars.energy_dihedral = recvbuf[4];
-    f.scalars.kinetic = recvbuf[5];
+    f.meta.get(kEnergy) = recvbuf[0];
+    f.meta.get(kEnergyPair) = recvbuf[1];
+    f.meta.get(kEnergyBond) = recvbuf[2];
+    f.meta.get(kEnergyAngle) = recvbuf[3];
+    f.meta.get(kEnergyDihedral) = recvbuf[4];
+    f.meta.get(kEnergyImproper) = recvbuf[5];
+    f.meta.get(kKinetic) = recvbuf[6];
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress[k] = recvbuf[6 + k];
+        f.meta.get(kStress)[k] = recvbuf[7 + k];
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress_kinetic[k] = recvbuf[12 + k];
+        f.meta.get(kStressKinetic)[k] = recvbuf[13 + k];
 }
 
 #else // !ATV_HAS_MPI

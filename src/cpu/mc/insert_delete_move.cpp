@@ -34,16 +34,16 @@ void InsertDeleteMove::launch(const cpu::LaunchContext& ctx) {
             "published — InsertDeleteMove must run under an MC preset");
     }
 
-    auto& a = ctx.frame.atoms;
     std::uniform_real_distribution<double> u01(0.0, 1.0);
 
     if (u01(*rng) < 0.5) {
         // ── Insert at a uniform fractional position ─────────────────────
         txn->begin(Transaction::Verb::Insert, ctx.frame);
-        if (a.nlocal + 1 > a.nmax)
-            a.grow(a.nlocal + 1);
+        const int nlocal = ctx.frame.nlocal();
+        if (nlocal + 1 > ctx.frame.capacity())
+            ctx.frame.grow(nlocal + 1);
         // Resolved AFTER grow() -- grow() invalidates any span/pointer taken
-        // before it (cached `.data()` contract, cpu/frame/atom.h).
+        // before it (generation-aware Span contract, cpu/frame/block.h).
         StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
         StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
         StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
@@ -59,9 +59,9 @@ void InsertDeleteMove::launch(const cpu::LaunchContext& ctx) {
         int* __restrict sp_type = ctx.frame.span(kAtom_type);
         TagInt* __restrict sp_tag = ctx.frame.span(kAtom_tag);
 
-        const int slot = a.nlocal;
+        const int slot = nlocal;
         const double u0 = u01(*rng), u1 = u01(*rng), u2 = u01(*rng);
-        const auto& c = ctx.frame.box.cell();
+        const auto& c = ctx.frame.simbox.cell();
         sp_x[slot] = static_cast<StorageReal>(u0 * c(0, 0) + u1 * c(1, 0)
                                               + u2 * c(2, 0));
         sp_y[slot] = static_cast<StorageReal>(u0 * c(0, 1) + u1 * c(1, 1)
@@ -79,30 +79,39 @@ void InsertDeleteMove::launch(const cpu::LaunchContext& ctx) {
         sp_image(slot, 0) = 0;
         sp_image(slot, 1) = 0;
         sp_image(slot, 2) = 0;
-        a.num_bond[slot] = 0;
-        a.num_angle[slot] = 0;
-        a.num_dihedral[slot] = 0;
-        a.nspecial(slot, 0) = 0;
-        a.nspecial(slot, 1) = 0;
-        a.nspecial(slot, 2) = 0;
+        if (ctx.frame.has_bonded()) {
+            auto num_bond = ctx.frame.span(kAtom_num_bond);
+            auto num_angle = ctx.frame.span(kAtom_num_angle);
+            auto num_dihedral = ctx.frame.span(kAtom_num_dihedral);
+            auto num_improper = ctx.frame.span(kAtom_num_improper);
+            auto nspecial = ctx.frame.span(kAtom_nspecial);
+            num_bond[slot] = 0;
+            num_angle[slot] = 0;
+            num_dihedral[slot] = 0;
+            num_improper[slot] = 0;
+            nspecial(slot, 0) = 0;
+            nspecial(slot, 1) = 0;
+            nspecial(slot, 2) = 0;
+        }
         sp_mass[slot] = static_cast<StorageReal>(mass_amu_);
         sp_type[slot] = type_;
-        sp_tag[slot] = a.acquire_tag();
-        ++a.nlocal;
+        sp_tag[slot] = ctx.frame.acquire_tag();
+        ctx.frame.set_nlocal(nlocal + 1);
     } else {
         // ── Delete a uniformly chosen atom ──────────────────────────────
-        if (a.nlocal == 0) {
+        const int nlocal = ctx.frame.nlocal();
+        if (nlocal == 0) {
             // "A trial deletion from N = 0 is simply rejected" — empty
             // proposal; the policy rolls it back without a Boltzmann draw.
             txn->begin(Transaction::Verb::None, ctx.frame);
             return;
         }
-        std::uniform_int_distribution<int> pick(0, a.nlocal - 1);
+        std::uniform_int_distribution<int> pick(0, nlocal - 1);
         const int victim = pick(*rng);
         txn->begin(Transaction::Verb::Delete, ctx.frame);
         txn->record_touch(ctx.frame, victim); // full row, topology included
-        a.copy_row(victim, a.nlocal - 1);
-        --a.nlocal;
+        ctx.frame.copy_row(victim, nlocal - 1);
+        ctx.frame.set_nlocal(nlocal - 1);
     }
 }
 

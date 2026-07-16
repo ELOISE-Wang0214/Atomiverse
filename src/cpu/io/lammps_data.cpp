@@ -127,7 +127,7 @@ Frame load_lammps_data(const std::string& path) {
         return starts_with(line, s.c_str());
     };
 
-    // LAMMPS atom-id (1-indexed) → 0-indexed position in `frame.atoms.*`.
+    // LAMMPS atom-id (1-indexed) → 0-indexed row in the atoms Block.
     std::unordered_map<int, int> id_to_idx;
     id_to_idx.reserve(n_atoms);
     int next_idx = 0;
@@ -183,21 +183,21 @@ Frame load_lammps_data(const std::string& path) {
                 line.clear();
             continue;
         }
-        // Topology sections — scatter into per-atom layout on `frame.atoms`.
+        // Topology sections — scatter into the per-atom Block layout.
         // `id_to_idx` maps the LAMMPS atom-id (1-indexed) to the row in
-        // frame.atoms (0-indexed); the row IS the global tag (Frame ctor
+        // the atoms Block (0-indexed); the row IS the global tag (Frame ctor
         // sets tag[i] == i). The `add_*` helpers route the entry to the
-        // LAMMPS owner atom's slot via `atoms.map`.
+        // LAMMPS owner atom's slot via the Frame tag index.
         if (is_section("Bonds")) {
-            frame.atoms.map_clear();
-            frame.atoms.map_set(0, frame.atoms.nlocal);
+            frame.clear_tag_index();
+            frame.rebuild_tag_index(0, frame.nlocal());
             consume_n(n_bonds, [&](const std::string& l) {
                 std::istringstream iss(l);
                 int bid, btype, ai, aj;
                 if (!(iss >> bid >> btype >> ai >> aj)) {
                     die(path, "malformed Bonds row: " + l);
                 }
-                frame.atoms.add_bond(id_to_idx[ai], id_to_idx[aj], btype - 1);
+                frame.add_bond(id_to_idx[ai], id_to_idx[aj], btype - 1);
             });
             if (!next_data_line(in, line))
                 line.clear();
@@ -210,8 +210,8 @@ Frame load_lammps_data(const std::string& path) {
                 if (!(iss >> aid >> atype >> ai >> aj >> ak)) {
                     die(path, "malformed Angles row: " + l);
                 }
-                frame.atoms.add_angle(id_to_idx[ai], id_to_idx[aj],
-                                      id_to_idx[ak], atype - 1);
+                frame.add_angle(id_to_idx[ai], id_to_idx[aj], id_to_idx[ak],
+                                atype - 1);
             });
             if (!next_data_line(in, line))
                 line.clear();
@@ -224,9 +224,8 @@ Frame load_lammps_data(const std::string& path) {
                 if (!(iss >> did >> dtype >> ai >> aj >> ak >> al)) {
                     die(path, "malformed Dihedrals row: " + l);
                 }
-                frame.atoms.add_dihedral(id_to_idx[ai], id_to_idx[aj],
-                                         id_to_idx[ak], id_to_idx[al],
-                                         dtype - 1);
+                frame.add_dihedral(id_to_idx[ai], id_to_idx[aj], id_to_idx[ak],
+                                   id_to_idx[al], dtype - 1);
             });
             if (!next_data_line(in, line))
                 line.clear();
@@ -255,10 +254,10 @@ Frame load_lammps_data(const std::string& path) {
     cell(0, 0) = xhi - xlo;
     cell(1, 1) = yhi - ylo;
     cell(2, 2) = zhi - zlo;
-    frame.box = cell;
+    frame.simbox.set_cell(cell);
 
     // Build 1-2 / 1-3 / 1-4 exclusion list once topology is scattered.
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
     return frame;
 }

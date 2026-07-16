@@ -8,7 +8,7 @@
 /// Becke partitioning uses the k(μ) = 1.5μ - 0.5μ³ step function applied 3 times.
 
 #include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/lebedev_data.h"
 
 #include <algorithm>
@@ -47,7 +47,7 @@ static constexpr double kPi = 3.14159265358979323846;
 /// @param Z Atomic number (1 <= Z <= 86).
 /// @return Bragg-Slater radius in Bohr.
 double bragg_slater_radius(int Z) {
-    static constexpr double kA2B = kAngstromToBohr;
+    static constexpr double kA2B = units::kAngstromInBohr;
     static constexpr int kMaxZ = 86;
     // clang-format off
     static constexpr double radii[kMaxZ + 1] = {
@@ -683,11 +683,6 @@ static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
-
-MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
-                                   int n_radial, int n_angular) {
-    return assemble_grid(atoms, natm, GridLevel::SG0, n_radial, n_angular);
-}
 
 MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
                                    GridLevel level, int n_radial,

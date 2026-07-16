@@ -12,12 +12,11 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-GthPotential::GthPotential(Element element, std::string_view name) {
+GthPotential::GthPotential(molrs::Element element, std::string_view name)
+    : element(element), name(name) {
     for (const auto* row : basis_data::kGthPotentials) {
         if (row->z != static_cast<int>(element) || name != row->name)
             continue;
-        this->element = element;
-        this->name = std::string(name);
         this->zion = row->zion;
         this->rloc = row->rloc;
         this->cloc.assign(row->cloc, row->cloc + row->n_cloc);
@@ -36,10 +35,10 @@ GthPotential::GthPotential(Element element, std::string_view name) {
     std::string supported;
     for (const auto* row : basis_data::kGthPotentials)
         supported += std::string(" ") + row->symbol + ":" + row->name;
-    throw std::runtime_error(
-        "GthPotential: no in-tree entry for Z="
-        + std::to_string(static_cast<int>(element)) + " name='"
-        + std::string(name) + "'. Supported:" + supported);
+    throw std::runtime_error("GthPotential: no in-tree entry for Z="
+                             + std::to_string(static_cast<int>(element))
+                             + " name='" + std::string(name)
+                             + "'. Supported:" + supported);
 }
 
 } // namespace gpw

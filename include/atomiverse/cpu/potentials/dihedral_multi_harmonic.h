@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/force_scratch.h"
 #include "atomiverse/cpu/potentials/bonded_cache.h"
 #include "atomiverse/cpu/potentials/dihedral.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {
@@ -20,11 +20,6 @@ class DihedralMultiHarmonic : public Dihedral {
     explicit DihedralMultiHarmonic(std::vector<std::vector<double>> Cn);
 
     std::string name() const override { return "multi_harmonic_dihedral"; }
-    Capability capabilities() const override {
-        // Dihedrals contribute to the virial tensor — narrow the base's
-        // default (Energy|Force) to include Stress.
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

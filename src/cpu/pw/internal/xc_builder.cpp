@@ -22,7 +22,7 @@ void XCBuilder::step(PWWorkspace& ws) {
 
     if (!ws.fft || ws.nr <= 0) {
         for (int i = 0; i < ng; ++i)
-            ws.V_xc_G[i] = std::complex<Real>(0, 0);
+            ws.V_xc_G[i] = std::complex<AccReal>(0, 0);
         return;
     }
 
@@ -70,21 +70,21 @@ void XCBuilder::step(PWWorkspace& ws) {
     if (ws.exc_r.size() != static_cast<std::size_t>(nr))
         ws.exc_r.resize({static_cast<std::size_t>(nr)});
 
-    Real dV = ws.omega / static_cast<Real>(nr); // volume element
-    Real E_xc = 0;
+    AccReal dV = ws.omega / static_cast<AccReal>(nr); // volume element
+    AccReal E_xc = 0;
 
     for (int i = 0; i < nr; ++i) {
-        Real rho = rho_r[i];
-        if (rho < Real(1e-12)) {
+        AccReal rho = rho_r[i];
+        if (rho < AccReal(1e-12)) {
             ws.V_xc_r[i] = 0;
             ws.exc_r[i] = 0;
         } else {
-            auto out = cpu::scf::evaluate_xc(cpu::scf::XCType::PBE,
-                                             rho / Real(2), rho / Real(2));
-            ws.V_xc_r[i] = static_cast<Real>(out.vrho_alpha);
-            ws.exc_r[i] = static_cast<Real>(out.exc);
+            auto out = cpu::scf::evaluate_xc(
+                cpu::scf::XCType::PBE, rho / AccReal(2), rho / AccReal(2));
+            ws.V_xc_r[i] = static_cast<AccReal>(out.vrho_alpha);
+            ws.exc_r[i] = static_cast<AccReal>(out.exc);
             // E_xc = ∫ ρ(r) ε_xc(r) d³r = Σ ρ_i * exc_i * dV
-            E_xc += rho * static_cast<Real>(out.exc) * dV;
+            E_xc += rho * static_cast<AccReal>(out.exc) * dV;
         }
     }
     ws.E_xc = E_xc;
@@ -95,7 +95,7 @@ void XCBuilder::step(PWWorkspace& ws) {
     auto* vxc_g_half = vxc_g_half_.data();
     ws.fft->r2c(ws.V_xc_r.data(), vxc_g_half);
 
-    Real inv_nr = Real(1) / static_cast<Real>(nr);
+    AccReal inv_nr = AccReal(1) / static_cast<AccReal>(nr);
     for (int ig = 0; ig < ng; ++ig) {
         int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
         int kx = ((h % nx) + nx) % nx;
@@ -110,18 +110,18 @@ void XCBuilder::step(PWWorkspace& ws) {
         }
         int idx = kx + nxc * (ky + ny * kz);
         if (idx >= 0 && idx < nc) {
-            ws.V_xc_G[ig] = std::complex<Real>(
-                static_cast<Real>(vxc_g_half[idx][0]) * inv_nr,
-                static_cast<Real>(conj ? -vxc_g_half[idx][1]
-                                       : vxc_g_half[idx][1])
+            ws.V_xc_G[ig] = std::complex<AccReal>(
+                static_cast<AccReal>(vxc_g_half[idx][0]) * inv_nr,
+                static_cast<AccReal>(conj ? -vxc_g_half[idx][1]
+                                          : vxc_g_half[idx][1])
                     * inv_nr);
         } else {
-            ws.V_xc_G[ig] = std::complex<Real>(0, 0);
+            ws.V_xc_G[ig] = std::complex<AccReal>(0, 0);
         }
     }
 
     // Ensure V_xc(G=0) is real
-    ws.V_xc_G[0] = std::complex<Real>(ws.V_xc_G[0].real(), Real(0));
+    ws.V_xc_G[0] = std::complex<AccReal>(ws.V_xc_G[0].real(), AccReal(0));
 }
 
 } // namespace internal

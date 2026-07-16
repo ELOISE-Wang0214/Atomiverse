@@ -12,9 +12,9 @@ bool ConvergenceCheck::step(const PWWorkspace& ws) {
     if (iter_ <= warmup_)
         return false;
 
-    Real diff = 0;
+    AccReal diff = 0;
     for (int i = 0; i < ws.n_g; ++i) {
-        Real dr = std::abs(ws.rho_G[i] - ws.rho_G_old[i]);
+        AccReal dr = std::abs(ws.rho_G[i] - ws.rho_G_old[i]);
         diff += dr * dr;
     }
     diff = std::sqrt(diff);

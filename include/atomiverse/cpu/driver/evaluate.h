@@ -8,8 +8,8 @@
 ///
 /// Single-point energy / force / property workflows go here. Exposes
 /// the same LAMMPS-shaped categorical setter API as `cpu::md::MD`
-/// (minus the time-evolution and optimizer setters): set_pair,
-/// set_bond, set_angle, set_dihedral, set_neighbor, set_observer,
+/// (minus the time-evolution and optimizer setters): add_potential,
+/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record — all inherited from CPUDriver.
 ///
 /// Auto-adds ZeroForces and ZeroEnergy at `evaluate::Phase::prepare`
@@ -18,7 +18,7 @@
 ///
 /// `add()` and `on(phase).add()` from the underlying `Driver<>`
 /// remain public for user-defined hooks (e.g. SCF evaluators
-/// registered via `add(SCFEvaluator{...})`).
+/// registered via `add(SCF{...})`).
 ///
 /// Inheritance: Evaluate → CPUDriver<evaluate::Phase> →
 /// Driver<evaluate::Phase, cpu::device_tag>. There is no `EvaluateDriver` category in
@@ -28,21 +28,27 @@
 /// @code{.cpp}
 ///   // SCF energy + forces (default)
 ///   cpu::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCFEvaluator{cpu::scf::default_config(integrals)});
+///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCF{cpu::scf::default_config(integrals)});
 ///   eval.build();
 ///   eval.run(frame);
 ///
 ///   // Force-field force evaluation (LAMMPS-shaped)
 ///   cpu::Evaluate eval2;
-///   eval2.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+///   eval2.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 ///   eval2.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
 ///   eval2.build();
 ///   eval2.run(frame);
 /// @endcode
 #pragma once
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -55,8 +61,8 @@ namespace cpu {
 
 /// @brief One-pass evaluator preset — "compute these quantities at this geometry".
 ///
-/// Single-point energy, force, density, dipole, charge. Categorical setters (set_pair,
-/// set_bond, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
+/// Single-point energy, force, density, dipole, charge. Categorical setters (add_potential,
+/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
 /// CPUDriver.
 ///
 /// **No handler.** One pass is not a termination policy — there is no loop to terminate.
@@ -95,17 +101,22 @@ class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
             "Add `eval.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
     }
 
-    /// @brief At least one Evaluator with a non-empty capability set. Energy-only,
-    ///        property-only and force-providing evaluators are all valid here.
+    /// @brief At least one energy/force kind (Potential, Bias, HF, …).
     void validate_components() const override {
-        bool found_evaluator = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Evaluator
-                && !is_none(c.capabilities()))
-                found_evaluator = true;
+        bool found = false;
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c))
+                found = true;
         });
-        if (!found_evaluator)
-            throw_missing("Evaluator with non-empty capabilities()");
+        if (!found)
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
     }
 };
 

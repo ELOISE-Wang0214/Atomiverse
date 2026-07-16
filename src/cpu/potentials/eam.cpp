@@ -14,7 +14,7 @@
 namespace ATV {
 namespace cpu {
 
-EAMPotential::EAMPotential(Element element, std::string_view name) {
+EAMPotential::EAMPotential(molrs::Element element, std::string_view name) {
     const int z = static_cast<int>(element);
     for (unsigned long k = 0; k < eam_data::kSuttonChenCount; ++k) {
         const eam_data::SuttonChenRow& row = eam_data::kSuttonChen[k];
@@ -29,7 +29,8 @@ EAMPotential::EAMPotential(Element element, std::string_view name) {
     }
     // No fallback: an unsupported element or name is a programming error, not a
     // reason to silently substitute something plausible.
-    throw std::out_of_range("EAMPotential: no parameterization '" + std::string(name)
+    throw std::out_of_range("EAMPotential: no parameterization '"
+                            + std::string(name)
                             + "' for Z=" + std::to_string(z));
 }
 
@@ -48,7 +49,7 @@ void EAM::build(const cpu::BuildContext& ctx) {
     // the half of them that landed in its own row, so ask for the full list.
     ctx.runtime.md.full_list_requested = true;
 
-    const std::size_t n = static_cast<std::size_t>(ctx.frame.atoms.size());
+    const std::size_t n = static_cast<std::size_t>(ctx.frame.nlocal());
     rho_.assign(n, 0.0);
     dF_.assign(n, 0.0);
 }
@@ -90,9 +91,10 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
             double dx = x_ptr[i] - x_ptr[j];
             double dy = y_ptr[i] - y_ptr[j];
             double dz = z_ptr[i] - z_ptr[j];
-            f.box.min_image(dx, dy, dz);
+            f.simbox.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= rc2) continue; // the list is a Verlet list; screen here
+            if (r2 >= rc2)
+                continue; // the list is a Verlet list; screen here
             rho += pot_.f(std::sqrt(r2));
         }
         rho_[static_cast<std::size_t>(i)] = rho;
@@ -122,19 +124,20 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
             double dx = x_ptr[i] - x_ptr[j];
             double dy = y_ptr[i] - y_ptr[j];
             double dz = z_ptr[i] - z_ptr[j];
-            f.box.min_image(dx, dy, dz);
+            f.simbox.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= rc2) continue;
+            if (r2 >= rc2)
+                continue;
 
             const double r = std::sqrt(r2);
             // The full list carries each pair twice (i->j and j->i), so every
             // per-pair quantity is halved here and the two visits sum to one.
             e_total += 0.5 * (pot_.phi(r) - phi_shift_);
 
-            const double dE_dr =
-                pot_.dphi(r)
-                + (dF_[static_cast<std::size_t>(i)] + dF_[static_cast<std::size_t>(j)])
-                      * pot_.df(r);
+            const double dE_dr = pot_.dphi(r)
+                                 + (dF_[static_cast<std::size_t>(i)]
+                                    + dF_[static_cast<std::size_t>(j)])
+                                       * pot_.df(r);
             // fpair = -(1/r) dE/dr, at FULL strength — not halved. The energy and
             // the virial are halved above/below because the full list visits each
             // pair twice and both visits accumulate into the same total. The force
@@ -157,9 +160,10 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
-    f.scalars.energy += e_total;
-    f.scalars.energy_pair += e_total;
-    for (int k = 0; k < 6; ++k) f.scalars.stress[k] += v[k];
+    f.meta.get(kEnergy) += e_total;
+    f.meta.get(kEnergyPair) += e_total;
+    for (int k = 0; k < 6; ++k)
+        f.meta.get(kStress)[k] += v[k];
 }
 
 } // namespace cpu

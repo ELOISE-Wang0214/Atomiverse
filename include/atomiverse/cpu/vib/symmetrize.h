@@ -29,14 +29,14 @@ namespace vib {
 /// @brief Structural component that symmetrizes the assembled Hessian.
 ///
 /// `role() == None`; reads/writes only the shared workspace, no frame field.
-class Symmetrize : public cpu::ComponentBase {
+class Symmetrize : public cpu::Component {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit Symmetrize(HessianWorkspace* ws) : ws_(ws) {}
 
     std::string name() const override { return "vib_symmetrize"; }
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Default binding: `vib::Phase::diagonalize` @ -1 (before any
     ///        future diagonalizer at that phase).

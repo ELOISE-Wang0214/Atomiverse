@@ -46,7 +46,7 @@ class Recorder : public AsyncBridge {
 
     std::string name() const override { return "recorder"; }
     /// @brief Recorder — writes XYZ trajectory frames.
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
     int frequency() const override { return every_; }
 
   protected:

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/thermostat.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -33,7 +33,7 @@ namespace md {
 /// gaussians). Unlike Berendsen, CSVR injects the correct canonical
 /// fluctuations and carries a conserved quantity: the running thermostat
 /// energy `H̃_therm = −Σ ΔK` (Eq. 15), accumulated so that `E_pot + E_kin +
-/// H̃_therm` (published to `frame.scalars.conserved` [eV]) is drift-free.
+/// H̃_therm` (published to `frame.meta.get(kConserved)` [eV]) is drift-free.
 ///
 /// Reproducibility: the two per-step randoms are GLOBAL (seeded only from
 /// `(seed, step)`), so the trajectory is identical across MPI rank counts.
@@ -41,7 +41,7 @@ namespace md {
 /// `N_f = 3N − 3` (COM removed), cached at `build()`. `τ` is the coupling
 /// time [fs] (CP2K `TIMECON`). Supports the same `T_start`→`T_stop` linear
 /// ramp as `cpu::md::NoseHoover` via `set_T_stop` + `set_run_span`.
-class FixCSVR : public cpu::ComponentBase {
+class FixCSVR : public cpu::Thermostat {
   public:
     /// @param T_start Target / ramp-start temperature [K].
     /// @param tau     Coupling time constant [fs] (CP2K `TIMECON`).
@@ -50,9 +50,8 @@ class FixCSVR : public cpu::ComponentBase {
     FixCSVR(double T_start, double tau, double dt, std::uint32_t seed);
 
     std::string name() const override { return "fix_csvr"; }
-    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /* role via Thermostat base */
     /// @brief Write-set: stochastic velocity rescale.
-    Capability capabilities() const override { return Capability::Velocity; }
     /// @brief Applied once per step, after the velocity-Verlet step.
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::end_of_step, +100)};

@@ -18,7 +18,7 @@
 /// carried in the default `FrameSnapshot`. The natural async-observer
 /// integration point is an SCF-driver observer wrapper that uses
 /// `FrameSnapshot::custom_payload` to shuttle P from the SCF solver to the
-/// analysis thread. That hook depends on `cpu::scf::SCFEvaluator` being
+/// analysis thread. That hook depends on `cpu::scf::SCF` being
 /// extended to publish P into custom_payload, plus a concrete SCF driver
 /// class to auto-add the matching `Publish`. Deferred to Phase 1b
 /// or to the AIMD density-observation workstream.

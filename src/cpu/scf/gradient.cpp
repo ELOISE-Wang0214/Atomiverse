@@ -7,13 +7,13 @@
 ///   KS: one-electron + Coulomb + XC_grid  + Pulay + nuclear
 
 #include "atomiverse/cpu/scf/gradient.h"
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -479,7 +479,7 @@ static void accumulate_xc_gradient(
 GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
                             const SCFResult& result, const SCFConfig& config) {
     const auto t_total = LogClock::now();
-    int natm = static_cast<int>(frame.atoms.size());
+    int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;
     bool is_ks = (config.method == MeanFieldType::KS);
     bool restricted = (config.spin == SpinType::Restricted);
@@ -493,7 +493,7 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
     auto dpack = build_integral_derivatives(integrals);
     ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
-    // Restricted: P_alpha IS P_total (factor 2 included in scf_solve)
+    // Restricted: P_alpha IS P_total (factor 2 included in SCFSolver::run)
     // Unrestricted: P_total = P_alpha + P_beta (per-spin)
     xt::xtensor<double, 2> P =
         restricted ? xt::xtensor<double, 2>(result.P_alpha)
@@ -608,7 +608,7 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
                                               const SCFConfig& config,
                                               int charge, double h,
                                               BasisSet basis) {
-    int natm = static_cast<int>(frame.atoms.size());
+    int natm = static_cast<int>(frame.nlocal());
 
     // FD-oracle grid policy.
     //
@@ -626,21 +626,24 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
     // config.xc_grad_project_translation == true the projection is active
     // and the FD oracle pins the grid to match.
     SCFConfig fd_config = config;
+    const auto reference_integrals = build_integrals(frame, basis, charge);
     MolecularGrid fixed_grid;
     if (config.method == MeanFieldType::KS
         && config.xc_grad_project_translation) {
-        const auto ref_integrals = build_integrals(frame, basis, charge);
-        if (!ref_integrals.atoms.empty()) {
+        if (!reference_integrals.atoms.empty()) {
             fixed_grid = build_molecular_grid(
-                ref_integrals.atoms.data(),
-                static_cast<int>(ref_integrals.atoms.size()), config.grid_level,
-                config.n_radial, config.n_angular);
+                reference_integrals.atoms.data(),
+                static_cast<int>(reference_integrals.atoms.size()),
+                config.grid_level, config.n_radial, config.n_angular);
             fd_config.fixed_grid = &fixed_grid;
         }
     }
 
+    SCFSolver solver{fd_config};
+    solver.build(reference_integrals);
     auto energy_fn = [&](const Frame& f) {
-        return scf_solve(build_integrals(f, basis, charge), fd_config).energy;
+        auto integrals = build_integrals(f, basis, charge);
+        return solver.run(integrals).energy;
     };
     double ref_energy = energy_fn(frame);
 

@@ -2,18 +2,18 @@
 /// @brief NeighborConsumer / NeighborProvider — opt-in protocols for the
 ///        neighbor-list contract. CUDA-free header.
 ///
-/// Split out of `ComponentBase` (arch-refactor-03-neighbor), following the
+/// Split out of `Component` (arch-refactor-03-neighbor), following the
 /// `HaloParticipant` / `PairEvaluator` opt-in precedent: the consumer side
 /// (pair styles, real-space electrostatics) and the supply side
 /// (`cpu::md::NeighborList`) are disjoint populations, so they get two
 /// independent protocols — mirroring the halo protocol's send/recv split.
 /// A component that participates inherits the protocol alongside
-/// `ComponentBase` and overrides the matching `as_*` accessor to return
+/// `Component` and overrides the matching `as_*` accessor to return
 /// `this`; the driver infrastructure scan probes those typed accessors —
 /// no `dynamic_cast`, no `name()` matching.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 
 namespace ATV {
 namespace cpu {
@@ -34,7 +34,7 @@ class NeighborConsumer {
     /// gate still applies, but halo sizing skips this component (the pre-protocol
     /// zero-hint semantics).
     /// @return Cutoff radius [Å]; `0` = no cutoff declared.
-    virtual Real neighbor_cutoff() const = 0;
+    virtual AccReal neighbor_cutoff() const = 0;
 
     /// @brief How far the MPI halo must reach for this component [Å].
     ///
@@ -52,7 +52,7 @@ class NeighborConsumer {
     /// sidesteps that hole instead of punching a new one through it.
     ///
     /// @return Halo radius [Å]; `0` = no halo requirement declared.
-    virtual Real halo_cutoff() const { return neighbor_cutoff(); }
+    virtual AccReal halo_cutoff() const { return neighbor_cutoff(); }
 };
 
 /// @brief Supply side of the neighbor-list contract: a component that

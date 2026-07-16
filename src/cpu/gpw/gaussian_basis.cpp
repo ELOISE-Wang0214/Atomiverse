@@ -11,12 +11,11 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-GaussianBasis::GaussianBasis(Element element, std::string_view name) {
+GaussianBasis::GaussianBasis(molrs::Element element, std::string_view name)
+    : element(element), name(name) {
     for (const auto* row : basis_data::kGaussianBases) {
         if (row->z != static_cast<int>(element) || name != row->name)
             continue;
-        this->element = element;
-        this->name = std::string(name);
         this->sets.reserve(row->n_sets);
         for (unsigned long s = 0; s < row->n_sets; ++s) {
             const auto& in = row->sets[s];
@@ -35,10 +34,10 @@ GaussianBasis::GaussianBasis(Element element, std::string_view name) {
     std::string supported;
     for (const auto* row : basis_data::kGaussianBases)
         supported += std::string(" ") + row->symbol + ":" + row->name;
-    throw std::runtime_error(
-        "GaussianBasis: no in-tree entry for Z="
-        + std::to_string(static_cast<int>(element)) + " name='"
-        + std::string(name) + "'. Supported:" + supported);
+    throw std::runtime_error("GaussianBasis: no in-tree entry for Z="
+                             + std::to_string(static_cast<int>(element))
+                             + " name='" + std::string(name)
+                             + "'. Supported:" + supported);
 }
 
 } // namespace gpw

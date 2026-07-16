@@ -4,9 +4,9 @@
 /// The long-range half of the Ewald split. Adds, on top of the real-space
 /// `CoulLong` contribution:
 ///
-///   E_recip = kCoulomb · (2π/V) Σ_{k≠0} exp(−k²/4α²)/k² · |S(k)|²
-///   E_self  = −kCoulomb · (α/√π) Σ_i q_i²
-///   E_corr  = −kCoulomb · π/(2 V α²) · (Σ_i q_i)²      (net-charge term)
+///   E_recip = units::coulomb · (2π/V) Σ_{k≠0} exp(−k²/4α²)/k² · |S(k)|²
+///   E_self  = −units::coulomb · (α/√π) Σ_i q_i²
+///   E_corr  = −units::coulomb · π/(2 V α²) · (Σ_i q_i)²      (net-charge term)
 ///
 /// with structure factor S(k) = Σ_j q_j exp(i k·r_j) and k running over the
 /// reciprocal lattice. The splitting parameter α and the conventions match
@@ -21,13 +21,12 @@
 /// is added per rank over owned atoms.
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/kspace/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -49,27 +48,30 @@ class KSpaceEwald : public cpu::KSpace {
     static double recommend_alpha(double cutoff, double accuracy = 1e-5);
 
     std::string name() const override { return "ewald"; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
+    LongRangeContract long_range_contract() const override {
+        return {LongRangeRole::ReciprocalSpace, alpha_, AccReal(0), accuracy_};
     }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::force, 100)};
     }
 
     void build(const BuildContext& ctx) override;
+    void destroy(const DestroyContext& ctx) override;
+    std::size_t memory_bytes() const override;
 
   protected:
     void compute(const LaunchContext& ctx) override;
 
   private:
     /// @brief Rebuild the reciprocal-vector tables if the cell changed.
-    void ensure_kvectors(const cpu::Frame& frame);
+    void ensure_kvectors(const cpu::Frame& frame, bool initial_build);
 
     double alpha_;
     double accuracy_;
 
-    // Cached cell (row-major 9) used to detect box changes (NPT/deform).
-    std::array<double, 9> cell_cache_{};
+    // Canonical Box mutation revision used to detect NPT/deform changes.
+    const cpu::Box* box_identity_ = nullptr;
+    std::uint64_t cell_revision_ = 0;
     bool have_kvectors_ = false;
 
     // Reciprocal vectors k and their kernel weight A(k)=exp(-k²/4α²)/k².

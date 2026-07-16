@@ -2,7 +2,7 @@
 /// @brief internal::DavidsonSolver — matrix-free iterative diagonalization.
 ///
 /// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
-/// `cpu::ComponentBase` subclass and never registered into a Plan.
+/// `cpu::Component` subclass and never registered into a Plan.
 #pragma once
 
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"
@@ -15,8 +15,8 @@ namespace internal {
 /// @brief Test hook: one H·ψ application on the bound k-sphere of `ws`
 /// (same code path DavidsonSolver uses). For validation oracles only.
 void pw_apply_h_for_tests(const PWWorkspace& ws,
-                          const std::complex<Real>* psi_g,
-                          std::complex<Real>* hpsi_g);
+                          const std::complex<AccReal>* psi_g,
+                          std::complex<AccReal>* hpsi_g);
 
 /// @brief Block Davidson with FFT-based H·ψ and KB non-local potential.
 ///
@@ -28,7 +28,7 @@ class DavidsonSolver {
     /// @param n_bands  Number of lowest eigenpairs to compute.
     /// @param tol      Residual tolerance [Hartree].
     /// @param max_iter Maximum Davidson expansion sweeps.
-    DavidsonSolver(int n_bands, Real tol = Real(1e-8), int max_iter = 50)
+    DavidsonSolver(int n_bands, AccReal tol = AccReal(1e-8), int max_iter = 50)
         : n_bands_(n_bands), tol_(tol), max_iter_(max_iter) {}
 
     /// @brief Size the FFT work buffer to the workspace grid (idempotent).
@@ -40,7 +40,7 @@ class DavidsonSolver {
 
   private:
     int n_bands_ = 4;
-    Real tol_ = Real(1e-8);
+    AccReal tol_ = AccReal(1e-8);
     int max_iter_ = 50;
     FFTWBuffer<fftw_complex> work_buf_;
 };

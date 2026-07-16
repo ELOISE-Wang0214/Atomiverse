@@ -20,9 +20,9 @@
 #include <array>
 #include <cmath>
 #include <optional>
-#include <utility>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
@@ -582,8 +582,8 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
 // P'_occ = C'_occ C'_occᵀ with C'_occ = Xᵀ S C_occ (XᵀSX = I ⇒ C_occ = X C'_occ).
 std::pair<RealVector, RealMatrix>
 diagonalize_fock_shifted(const RealMatrix& F, const RealMatrix& X,
-                         const RealMatrix& S, const RealMatrix& C_prev, int n_occ,
-                         double shift) {
+                         const RealMatrix& S, const RealMatrix& C_prev,
+                         int n_occ, double shift) {
     if (shift <= 0.0 || C_prev.size() == 0)
         return linalg::diagonalize_fock(F, X);
 
@@ -591,8 +591,7 @@ diagonalize_fock_shifted(const RealMatrix& F, const RealMatrix& X,
     RealMatrix Fp = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
 
     // C'_occ = Xᵀ S C_occ  (m × n_occ)
-    const RealMatrix C_occ =
-        xt::view(C_prev, xt::all(), xt::range(0, n_occ));
+    const RealMatrix C_occ = xt::view(C_prev, xt::all(), xt::range(0, n_occ));
     const RealMatrix Cp_occ =
         xt::linalg::dot(xt::transpose(X), xt::linalg::dot(S, C_occ));
     const RealMatrix Pocc =
@@ -600,12 +599,14 @@ diagonalize_fock_shifted(const RealMatrix& F, const RealMatrix& X,
 
     for (int i = 0; i < m; ++i) {
         Fp(i, i) += shift;
-        for (int j = 0; j < m; ++j) Fp(i, j) -= shift * Pocc(i, j);
+        for (int j = 0; j < m; ++j)
+            Fp(i, j) -= shift * Pocc(i, j);
     }
 
     auto [eig, Cp] = xt::linalg::eigh(Fp);
     RealMatrix C = xt::linalg::dot(X, Cp);
-    for (int i = n_occ; i < m; ++i) eig(i) -= shift; // report unshifted virtuals
+    for (int i = n_occ; i < m; ++i)
+        eig(i) -= shift; // report unshifted virtuals
     return {eig, C};
 }
 
@@ -704,9 +705,8 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
     }
 }
 
-/// The full GPW SCF implementation. `GPWSolver::run` is the owning entry
-/// point; the public `gpw_scf` free function is a thin shim over a
-/// transient solver.
+/// The full GPW SCF implementation, owned and reached through
+/// `GPWSolver::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                   const GpwConfig& cfg,
                                   const RealMatrix* guess_C) {
@@ -888,21 +888,26 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 throw std::runtime_error(
                     "GPW: the overlap matrix is NOT positive definite (s_min="
                     + std::to_string(orth_cache->s_min)
-                    + "). An overlap matrix cannot have a negative eigenvalue, so S is "
-                      "wrong — the lattice sum is incomplete. Refusing to orthogonalize "
+                    + "). An overlap matrix cannot have a negative eigenvalue, "
+                      "so S is "
+                      "wrong — the lattice sum is incomplete. Refusing to "
+                      "orthogonalize "
                       "a non-Gram matrix.");
 
             if (orth_cache->n_dropped > 0)
-                spdlog::warn("GPW: basis is near-linearly-dependent — dropped {} of {} "
-                             "overlap directions (s_min={:.3e} < lindep_threshold={:.1e})",
-                             orth_cache->n_dropped, nb, orth_cache->s_min,
-                             cfg.lindep_threshold);
+                spdlog::warn(
+                    "GPW: basis is near-linearly-dependent — dropped {} of {} "
+                    "overlap directions (s_min={:.3e} < "
+                    "lindep_threshold={:.1e})",
+                    orth_cache->n_dropped, nb, orth_cache->s_min,
+                    cfg.lindep_threshold);
             if (cfg.n_occ > m)
                 throw std::runtime_error(
-                    "GPW: n_occ=" + std::to_string(cfg.n_occ)
-                    + " exceeds the " + std::to_string(m)
+                    "GPW: n_occ=" + std::to_string(cfg.n_occ) + " exceeds the "
+                    + std::to_string(m)
                     + " linearly independent basis directions that survive "
-                      "lindep_threshold — the basis cannot represent the occupied "
+                      "lindep_threshold — the basis cannot represent the "
+                      "occupied "
                       "manifold (no-fallback rule)");
         }
         return *orth_cache;
@@ -1293,7 +1298,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     return res;
 }
 
-// ── GPWSolver — the *Solver face over run_gpw_scf_impl ──────────────
+// ── GPWSolver — the public solver face over run_gpw_scf_impl ────────
 
 GPWSolver::GPWSolver(GpwConfig config) : config_(std::move(config)) {}
 
@@ -1325,13 +1330,6 @@ GpwResult& GPWSolver::run(const std::vector<GpwAtom>& atoms,
     return result_;
 }
 
-GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
-                  const RealMatrix* guess_C) {
-    GPWSolver solver{cfg};
-    solver.build(atoms);
-    return solver.run(atoms, guess_C);
-}
-
 namespace {
 // Displace an atom (its position AND all its basis-function centers) by d.
 GpwAtom displaced(GpwAtom a, int axis, double d) {
@@ -1353,8 +1351,12 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             std::vector<GpwAtom> plus = atoms, minus = atoms;
             plus[a] = displaced(atoms[a], k, +h);
             minus[a] = displaced(atoms[a], k, -h);
-            const double e_plus = gpw_scf(plus, cfg).e_total;
-            const double e_minus = gpw_scf(minus, cfg).e_total;
+            GPWSolver plus_solver{cfg};
+            plus_solver.build(plus);
+            const double e_plus = plus_solver.run(plus).e_total;
+            GPWSolver minus_solver{cfg};
+            minus_solver.build(minus);
+            const double e_minus = minus_solver.run(minus).e_total;
             forces[a][k] = -(e_plus - e_minus) / (2.0 * h); // F = -dE/dR
         }
     }

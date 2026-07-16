@@ -59,7 +59,7 @@ class GcmcMetropolis : public OutcomePolicy {
 
     /// @brief Seed the reference energy from the initial configuration.
     void on_start(const cpu::LoopState& s) override {
-        e_cur_ = s.frame.scalars.energy;
+        e_cur_ = s.frame.meta.get(kEnergy);
     }
 
     /// @brief Judge the trial now in the frame, by its verb.
@@ -71,12 +71,12 @@ class GcmcMetropolis : public OutcomePolicy {
             throw std::runtime_error(
                 "GcmcMetropolis: ctx.mc.proposal not published — must run "
                 "under an MC preset");
-        const AccReal e_trial = s.frame.scalars.energy;
+        const AccReal e_trial = s.frame.meta.get(kEnergy);
         const double beta =
             1.0 / (units::kB_ev_per_k * static_cast<double>(temperature_));
         const double dE = static_cast<double>(e_trial - e_cur_);
         const double mu = static_cast<double>(mu_);
-        const double v = s.frame.box.volume();
+        const double v = s.frame.simbox.volume();
 
         // Acceptance probability written as exp(-arg): arg = βΔE − ln(prefactor).
         double arg;
@@ -90,14 +90,14 @@ class GcmcMetropolis : public OutcomePolicy {
             break;
         case Transaction::Verb::Insert: {
             // The trial frame already holds N+1 atoms.
-            const double n_new = static_cast<double>(s.frame.atoms.nlocal);
+            const double n_new = static_cast<double>(s.frame.nlocal());
             arg = beta * (dE - mu) - std::log(v / (lambda3_ * n_new));
             break;
         }
         case Transaction::Verb::Delete: {
             // The trial frame holds N−1 atoms; the rule's N is the pre-delete
             // count.
-            const double n_old = static_cast<double>(s.frame.atoms.nlocal + 1);
+            const double n_old = static_cast<double>(s.frame.nlocal() + 1);
             arg = beta * (dE + mu) - std::log(lambda3_ * n_old / v);
             break;
         }
@@ -143,14 +143,14 @@ class GcmcMetropolis : public OutcomePolicy {
 /// @code{.cpp}
 ///   cpu::mc::Gcmc mc{/*T=*/120.0, /*mu [eV]=*/-0.1, /*mass [amu]=*/39.948,
 ///                    /*seed=*/7u};
-///   mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+///   mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 ///   mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
 ///   mc.set_mover(cpu::mc::MoveSelector{}
 ///                    .add(cpu::mc::TranslateMove{0.2}, 0.5)
 ///                    .add(cpu::mc::InsertDeleteMove{1, 39.948}, 0.5));
 ///   mc.build();
 ///   mc.run(frame, 200000);
-///   double n_avg = ...; // observe frame.atoms.nlocal along the chain
+///   double n_avg = ...; // observe frame.nlocal() along the chain
 /// @endcode
 class Gcmc : public McBase {
   public:
@@ -162,9 +162,8 @@ class Gcmc : public McBase {
     /// @throws std::invalid_argument on a non-positive temperature or mass.
     Gcmc(AccReal temperature_K, AccReal mu_ev, double mass_amu,
          std::uint64_t seed)
-        : McBase(seed),
-          policy_(this->set_outcome(
-              GcmcMetropolis{temperature_K, mu_ev, mass_amu, rng_})) {}
+        : McBase(seed), policy_(this->set_outcome(GcmcMetropolis{
+                            temperature_K, mu_ev, mass_amu, rng_})) {}
 
     /// @brief Energy [eV] of the current (last-accepted) configuration.
     AccReal current_energy() const { return policy_.current_energy(); }

@@ -11,7 +11,7 @@
 /// @code
 ///   cpu::minimizer::Minimize inner;          // its own phases, handlers, optimizer
 ///   inner.set_optimizer(cpu::minimizer::LBFGS{...});
-///   inner.on(minimizer::Phase::force).add(forces);
+///   inner.on(minimizer::Phase::force).add_ref(forces);
 ///
 ///   cpu::md::MD outer;                       // a different phase enum entirely
 ///   outer.set_integrator(...);
@@ -24,7 +24,7 @@
 ///
 /// The child above loops over `minimizer::Phase`; the parent loops over `md::Phase`. They
 /// never have to agree, and neither ever sees the other's enum. What crosses the boundary
-/// is a `ComponentBase*` — a node — and stages stay typed enums all the way down. This is
+/// is a `Component*` — a node — and stages stay typed enums all the way down. This is
 /// the whole reason `LoopHandler` is not a template and `slot_of` is the only cast in the
 /// codebase.
 ///
@@ -45,9 +45,9 @@
 ///
 /// **Components cannot be cloned.** Running the same inner Driver over N replicas would
 /// need N independent component sets (N L-BFGS curvature histories), and there is no
-/// `clone()` on `ComponentBase`. Nesting makes that problem SHARPER, not softer — it does
+/// `clone()` on `Component`. Nesting makes that problem SHARPER, not softer — it does
 /// not solve it, and this spec deliberately does not decide it. Today a `SubDriver` holds
-/// ONE inner driver with ONE component set. @see .claude/NOTES.md
+/// ONE inner driver with ONE component set. @see .claude/notes/notes.md
 #pragma once
 
 #include <string>
@@ -69,7 +69,7 @@ namespace cpu {
 /// @tparam InnerPhase The child's Phase enum — distinct from the parent's, and never
 ///         visible to it.
 template <typename InnerPhase>
-class SubDriver : public cpu::ComponentBase {
+class SubDriver : public cpu::Component {
   public:
     /// @brief Wrap an inner driver as a node.
     /// @param inner The child loop. Borrowed; must outlive the parent run.
@@ -83,7 +83,7 @@ class SubDriver : public cpu::ComponentBase {
 
     /// @brief Structural role: none. A sub-driver is not an Integrator or an Evaluator —
     ///        it is a loop. What it CONTAINS has roles; the container does not.
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Compile the child's Plan and build its components — ONCE, here, at the
     ///        parent's `build()`.
@@ -92,7 +92,8 @@ class SubDriver : public cpu::ComponentBase {
     /// @param ctx Build context; its `exec.runtime` is the parent's Backend, on which
     ///        the child's Plan is built.
     void build(const cpu::BuildContext& ctx) override {
-        inner_->compile(); // the child's Plan: install_defaults + validate + compile
+        inner_
+            ->compile(); // the child's Plan: install_defaults + validate + compile
         ctx.runtime.exec.runtime->build_plan(inner_->plan());
         built_ = true;
     }
@@ -119,10 +120,10 @@ class SubDriver : public cpu::ComponentBase {
 
   private:
     CPUDriver<InnerPhase>* inner_; ///< The child loop (non-owning).
-    int budget_;                   ///< Child iteration budget per outer iteration.
-    std::string label_;            ///< Name in plans / timing.
-    int last_iterations_ = 0;      ///< Iterations the child last ran.
-    bool built_ = false;           ///< Guards a destroy() without a build().
+    int budget_;              ///< Child iteration budget per outer iteration.
+    std::string label_;       ///< Name in plans / timing.
+    int last_iterations_ = 0; ///< Iterations the child last ran.
+    bool built_ = false;      ///< Guards a destroy() without a build().
 };
 
 /// @brief Deduce the child's Phase enum from the driver — `cpu::SubDriver{inner, 50}`.

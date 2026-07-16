@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -41,7 +41,7 @@ namespace mc {
 /// Children are held by `shared_ptr` so the selector stays copyable through
 /// the driver's forwarding setters; a selector is configured once and never
 /// mutated after registration.
-class MoveSelector : public cpu::ComponentBase {
+class MoveSelector : public cpu::Mover {
   public:
     /// @brief Construct an empty selector; populate with `add`.
     MoveSelector() = default;
@@ -78,7 +78,7 @@ class MoveSelector : public cpu::ComponentBase {
 
     /// @brief Structural role.
     /// @return `ComponentRole::Mover`.
-    ComponentRole role() const override { return ComponentRole::Mover; }
+    /* role via Mover base */
 
     /// @brief Default binding: the `propose` phase, order 0.
     std::vector<DefaultBinding> default_bindings() const override {
@@ -133,16 +133,15 @@ class MoveSelector : public cpu::ComponentBase {
         if (!(weight > 0.0))
             throw std::invalid_argument("MoveSelector: weight must be > 0");
         auto child = std::make_shared<std::decay_t<M>>(std::forward<M>(m));
-        if (child->role() != ComponentRole::Mover)
+        if (dynamic_cast<const Mover*>(child.get()) == nullptr)
             throw std::invalid_argument(
-                "MoveSelector: child must have ComponentRole::Mover");
+                "MoveSelector: child must be a cpu::Mover");
         total_weight_ += weight;
         children_.emplace_back(total_weight_, std::move(child));
     }
 
     /// Children with their CUMULATIVE weight (draw < cumulative selects).
-    std::vector<std::pair<double, std::shared_ptr<cpu::ComponentBase>>>
-        children_;
+    std::vector<std::pair<double, std::shared_ptr<cpu::Component>>> children_;
     double total_weight_ = 0.0; ///< Sum of all registered weights.
 };
 

@@ -14,16 +14,21 @@
 #include "atomiverse/cpu/comm/atom_migration.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <numeric>
+#include <stdexcept>
 #include <vector>
 
 #include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/schema_mpi.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
@@ -48,11 +53,16 @@ namespace {
 // The slot size follows the RUNTIME topology strides (PE: 39 doubles vs the
 // old compile-time worst case of 84), reduced MAX across the communicator so
 // every rank counts buffer atoms with the same divisor.
-int atom_payload_bytes(const cpu::Frame& frame, MPI_Comm comm) {
-    int local = comm::max_exchange_doubles(frame.atoms);
-    int global = local;
-    MPI_Allreduce(&local, &global, 1, MPI_INT, MPI_MAX, comm);
-    return static_cast<int>(sizeof(double)) * global;
+std::size_t atom_payload_bytes(const cpu::Frame& frame, const PackPlan& plan,
+                               MPI_Comm communicator) {
+    require_collective_schema(plan, communicator, "atom_migration");
+    const std::uint64_t local = max_exchange_bytes(frame, plan);
+    std::uint64_t global = 0;
+    MPI_Allreduce(&local, &global, 1, MPI_UINT64_T, MPI_MAX, communicator);
+    if (global > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
+        throw std::length_error(
+            "atom_migration: one native row exceeds MPI datatype count");
+    return static_cast<std::size_t>(global);
 }
 
 inline int rank_along_dim(double q, double L, int dims_d) {
@@ -112,31 +122,33 @@ inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x,
 // zeros up to the communicator-agreed `payload_bytes` so every atom
 // occupies the same byte count on the wire (atom_migration's
 // `MPI_Alltoallv` needs uniform per-atom strides).
-std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
-                      const Frame& frame, int i, std::size_t payload_bytes) {
-    double* dst = reinterpret_cast<double*>(buf.data() + offset);
+std::size_t pack_atom(std::vector<std::byte>& buf, std::size_t offset,
+                      const Frame& frame, const PackPlan& plan, int i,
+                      std::size_t payload_bytes) {
+    std::byte* dst = buf.data() + offset;
     // Zero-pad the slot first so the trailing topology entries don't
     // carry stale data.
     std::memset(dst, 0, payload_bytes);
-    comm::pack_exchange(frame.atoms, i, dst);
+    (void)comm::pack_exchange(frame, plan, i, dst, payload_bytes);
     return offset + payload_bytes;
 }
 
-std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
-                        Frame& frame, int slot, std::size_t payload_bytes) {
-    const double* src = reinterpret_cast<const double*>(buf.data() + offset);
-    comm::unpack_exchange(frame.atoms, slot, src);
+std::size_t unpack_atom(const std::vector<std::byte>& buf, std::size_t offset,
+                        Frame& frame, PackPlan& plan, int slot,
+                        std::size_t payload_bytes) {
+    (void)comm::unpack_exchange(frame, plan, slot, buf.data() + offset,
+                                payload_bytes);
     return offset + payload_bytes;
 }
 
 // Append owned atom `i`'s fixed-stride payload to the back of `buf`.
-inline void pack_to(std::vector<char>& buf, const Frame& frame, int i,
-                    std::size_t payload_bytes) {
+inline void pack_to(std::vector<std::byte>& buf, const Frame& frame,
+                    const PackPlan& plan, int i, std::size_t payload_bytes) {
     const std::size_t off = buf.size();
     buf.resize(off + payload_bytes);
-    double* dst = reinterpret_cast<double*>(buf.data() + off);
+    std::byte* dst = buf.data() + off;
     std::memset(dst, 0, payload_bytes);
-    comm::pack_exchange(frame.atoms, i, dst);
+    (void)comm::pack_exchange(frame, plan, i, dst, payload_bytes);
 }
 
 // Staged nearest-neighbor owner exchange along one Cartesian axis (LAMMPS
@@ -150,7 +162,7 @@ inline void pack_to(std::vector<char>& buf, const Frame& frame, int i,
 // wrapped into [0, L) by the integrator's wrap_orthorhombic, so a raw
 // coord-vs-slab compare matches the old dest_rank_for binning exactly.
 void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
-                        std::size_t payload_bytes) {
+                        std::size_t payload_bytes, PackPlan& plan) {
     if (dd->dims[dim] <= 1)
         return; // not decomposed along this axis — nothing leaves via it
     const int lo_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim)];
@@ -160,7 +172,7 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
     const double subhi = dd->subhi[dim];
     MPI_Comm comm = dd->cart_comm;
 
-    std::vector<char> send_lo, send_hi, recv_lo, recv_hi;
+    std::vector<std::byte> send_lo, send_hi, recv_lo, recv_hi;
     while (true) {
         // Re-fetch each round: set_capacity below may have reallocated the SoA,
         // invalidating any span resolved in a previous round.
@@ -173,16 +185,18 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
         for (int i = 0; i < dd->n_local; ++i) {
             const double qi = q[i];
             if (qi < sublo) {
-                pack_to(send_lo, frame, i, payload_bytes); // exits −dim face
+                pack_to(send_lo, frame, plan, i,
+                        payload_bytes); // exits −dim face
             } else if (qi >= subhi) {
-                pack_to(send_hi, frame, i, payload_bytes); // exits +dim face
+                pack_to(send_hi, frame, plan, i,
+                        payload_bytes); // exits +dim face
             } else {
-                frame.atoms.copy_row(keep, i); // stays; compact to front
+                frame.copy_row(keep, i); // stays; compact to front
                 ++keep;
             }
         }
         dd->n_local = keep;
-        frame.atoms.nlocal = keep;
+        frame.set_nlocal(keep);
 
         const int n_send_lo = static_cast<int>(send_lo.size() / payload_bytes);
         const int n_send_hi = static_cast<int>(send_hi.size() / payload_bytes);
@@ -202,35 +216,45 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
         MPI_Sendrecv(&n_send_lo, 1, MPI_INT, lo_nbr, 1, &n_recv_hi, 1, MPI_INT,
                      hi_nbr, 1, comm, &st);
 
-        const int pb = static_cast<int>(payload_bytes);
-        recv_lo.assign(static_cast<std::size_t>(n_recv_lo) * payload_bytes, 0);
-        recv_hi.assign(static_cast<std::size_t>(n_recv_hi) * payload_bytes, 0);
-        MPI_Sendrecv(send_hi.data(), n_send_hi * pb, MPI_BYTE, hi_nbr, 2,
-                     recv_lo.data(), n_recv_lo * pb, MPI_BYTE, lo_nbr, 2, comm,
-                     &st);
-        MPI_Sendrecv(send_lo.data(), n_send_lo * pb, MPI_BYTE, lo_nbr, 3,
-                     recv_hi.data(), n_recv_hi * pb, MPI_BYTE, hi_nbr, 3, comm,
-                     &st);
+        recv_lo.assign(static_cast<std::size_t>(n_recv_lo) * payload_bytes,
+                       std::byte{0});
+        recv_hi.assign(static_cast<std::size_t>(n_recv_hi) * payload_bytes,
+                       std::byte{0});
+        MPI_Sendrecv(send_hi.data(),
+                     checked_mpi_byte_count(send_hi.size(), "migrate/send_hi"),
+                     MPI_BYTE, hi_nbr, 2, recv_lo.data(),
+                     checked_mpi_byte_count(recv_lo.size(), "migrate/recv_lo"),
+                     MPI_BYTE, lo_nbr, 2, comm, &st);
+        MPI_Sendrecv(send_lo.data(),
+                     checked_mpi_byte_count(send_lo.size(), "migrate/send_lo"),
+                     MPI_BYTE, lo_nbr, 3, recv_hi.data(),
+                     checked_mpi_byte_count(recv_hi.size(), "migrate/recv_hi"),
+                     MPI_BYTE, hi_nbr, 3, comm, &st);
 
         const int n_recv = n_recv_lo + n_recv_hi;
         const int n_needed = dd->n_local + n_recv;
-        if (n_needed > frame.atoms.nmax) {
-            frame.atoms.set_capacity(n_needed + n_needed / 2 + 1024);
-            dd->capacity = frame.atoms.nmax;
+        if (n_needed > frame.capacity()) {
+            const std::int64_t requested =
+                static_cast<std::int64_t>(n_needed) + n_needed / 2 + 1024;
+            if (requested > std::numeric_limits<int>::max())
+                throw std::overflow_error("migrate: capacity growth overflow");
+            frame.set_capacity(static_cast<int>(requested));
+            dd->capacity = frame.capacity();
+            const std::uint64_t fingerprint = plan.fingerprint;
+            plan = make_exchange_plan(frame);
+            require_schema_fingerprint(plan, fingerprint, plan.version);
         }
         int slot = dd->n_local;
         std::size_t o = 0;
         for (int k = 0; k < n_recv_lo; ++k, o += payload_bytes)
-            comm::unpack_exchange(
-                frame.atoms, slot++,
-                reinterpret_cast<const double*>(recv_lo.data() + o));
+            (void)comm::unpack_exchange(frame, plan, slot++, recv_lo.data() + o,
+                                        payload_bytes);
         o = 0;
         for (int k = 0; k < n_recv_hi; ++k, o += payload_bytes)
-            comm::unpack_exchange(
-                frame.atoms, slot++,
-                reinterpret_cast<const double*>(recv_hi.data() + o));
+            (void)comm::unpack_exchange(frame, plan, slot++, recv_hi.data() + o,
+                                        payload_bytes);
         dd->n_local = slot;
-        frame.atoms.nlocal = slot;
+        frame.set_nlocal(slot);
         // Loop: freshly received atoms are re-classified and may forward
         // another hop (multi-subdomain drift / PBC wrap-around).
     }
@@ -275,7 +299,7 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
         const StorageReal* __restrict sp_y = frame.span(kAtom_y);
         const StorageReal* __restrict sp_z = frame.span(kAtom_z);
         for (int i = 0; i < dd->n_local; ++i) {
-            if (dest_rank_for(*dd, sp_x[i], sp_y[i], sp_z[i], frame.box)
+            if (dest_rank_for(*dd, sp_x[i], sp_y[i], sp_z[i], frame.simbox)
                 != my_rank) {
                 any_local = 1;
                 break;
@@ -289,15 +313,22 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
+    // Old ghost rows are not owners and never enter migration. Retire their
+    // population before any capacity or owner-count mutation.
+    frame.set_nghost(0);
+    dd->n_ghost = 0;
+
+    PackPlan plan = make_exchange_plan(frame);
+    const std::size_t payload_bytes =
+        atom_payload_bytes(frame, plan, dd->cart_comm);
+
     // Staged nearest-neighbor exchange x → y → z. After all three axes every
     // owned atom lies within [sublo,subhi) on every axis, i.e. on the rank
     // dest_rank_for would assign it — identical end state to the old
     // MPI_Alltoallv, but with O(1)/O(log P) fabric state instead of O(world).
-    const std::size_t payload_bytes =
-        static_cast<std::size_t>(atom_payload_bytes(frame, dd->cart_comm));
-    exchange_along_dim(frame, dd, 0, payload_bytes);
-    exchange_along_dim(frame, dd, 1, payload_bytes);
-    exchange_along_dim(frame, dd, 2, payload_bytes);
+    exchange_along_dim(frame, dd, 0, payload_bytes, plan);
+    exchange_along_dim(frame, dd, 1, payload_bytes, plan);
+    exchange_along_dim(frame, dd, 2, payload_bytes, plan);
 
     dd->n_ghost = 0;
     ++dd->neighbor_generation;
@@ -306,13 +337,15 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
     // re-resolve through this map on the next neighbor / bonded build.
     // Pure pairwise systems never query it — skip the rebuild entirely.
     dd->tag_to_local.clear();
-    if (frame.atoms.has_bonded()) {
+    if (frame.has_bonded()) {
         dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
         const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
         for (int i = 0; i < dd->n_local; ++i) {
             dd->tag_to_local.emplace(sp_tag[i], i);
         }
     }
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, dd->n_local);
 
     // Also clear `ghost_tags`. The previous step's ghost-tag log is now
     // stale, and worse, leaving it populated lets `HaloSend`'s
@@ -341,26 +374,47 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     if (world <= 1)
         return;
 
-    // 1. Broadcast the box (rank 0 read the file; others are empty and need it
-    //    to compute ownership). cpu::Box is trivially copyable.
-    MPI_Bcast(&frame.box, sizeof(cpu::Box), MPI_BYTE, 0, MPI_COMM_WORLD);
+    // Wire agreement precedes every payload, including the cell broadcast.
+    PackPlan plan = make_exchange_plan(frame);
+    require_collective_schema(plan, MPI_COMM_WORLD, "scatter_atoms_from_root");
+    const std::uint64_t expected_fingerprint = plan.fingerprint;
+
+    // 1. Broadcast the nine physical cell scalars explicitly. Box owns a
+    // cache and is never a raw-memory wire object.
+    std::array<double, 9> cell{};
+    if (rank == 0) {
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                cell[static_cast<std::size_t>(3 * i + j)] =
+                    frame.simbox.cell()(i, j);
+    }
+    MPI_Bcast(cell.data(), static_cast<int>(cell.size()), MPI_DOUBLE, 0,
+              MPI_COMM_WORLD);
+    if (rank != 0) {
+        Mat3 matrix{};
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                matrix(i, j) = cell[static_cast<std::size_t>(3 * i + j)];
+        frame.simbox.set_cell(matrix);
+    }
 
     // 2. Topology identical to the DD the backend builds → ownership matches
     //    partition_atoms' uniform-Cartesian rule (cuts empty here).
     md::mpi::DomainDecomposition dd;
-    dd.init_topology(MPI_COMM_WORLD, frame.box.length(0), frame.box.length(1),
-                     frame.box.length(2));
+    dd.init_topology(MPI_COMM_WORLD, frame.simbox.length(0),
+                     frame.simbox.length(1), frame.simbox.length(2));
     const int world_size = dd.dims[0] * dd.dims[1] * dd.dims[2];
 
     // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     std::vector<std::vector<int>> by_dest(static_cast<std::size_t>(world_size));
     {
         const StorageReal* __restrict sp_x = frame.span(kAtom_x);
         const StorageReal* __restrict sp_y = frame.span(kAtom_y);
         const StorageReal* __restrict sp_z = frame.span(kAtom_z);
         for (int i = 0; i < n; ++i) {
-            const int dest = dest_rank_for(dd, sp_x[i], sp_y[i], sp_z[i], frame.box);
+            const int dest =
+                dest_rank_for(dd, sp_x[i], sp_y[i], sp_z[i], frame.simbox);
             by_dest[static_cast<std::size_t>(dest)].push_back(i);
         }
     }
@@ -371,9 +425,11 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     //    at large N (4M atoms x payload > 2 GB → negative displ → segfault at
     //    256+ ranks). Atom counts stay < 2^31 for any realistic system.
     const std::size_t payload_bytes =
-        static_cast<std::size_t>(atom_payload_bytes(frame, MPI_COMM_WORLD));
+        atom_payload_bytes(frame, plan, MPI_COMM_WORLD);
     MPI_Datatype atom_t;
-    MPI_Type_contiguous(static_cast<int>(payload_bytes), MPI_BYTE, &atom_t);
+    MPI_Type_contiguous(
+        checked_mpi_byte_count(payload_bytes, "scatter_atoms_from_root/row"),
+        MPI_BYTE, &atom_t);
     MPI_Type_commit(&atom_t);
     std::vector<int> sc(world_size, 0), sd(world_size, 0), rc(world_size, 0),
         rd(world_size, 0);
@@ -383,11 +439,15 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         sc[r] = static_cast<int>(by_dest[r].size());
         tot_send += by_dest[r].size();
     }
-    std::vector<char> sbuf(tot_send * payload_bytes);
+    if (tot_send != 0
+        && payload_bytes > std::numeric_limits<std::size_t>::max() / tot_send)
+        throw std::overflow_error(
+            "scatter_atoms_from_root: send size overflow");
+    std::vector<std::byte> sbuf(tot_send * payload_bytes);
     std::size_t off = 0;
     for (int r = 0; r < world_size; ++r)
         for (int idx : by_dest[static_cast<std::size_t>(r)])
-            off = pack_atom(sbuf, off, frame, idx, payload_bytes);
+            off = pack_atom(sbuf, off, frame, plan, idx, payload_bytes);
 
     MPI_Alltoall(sc.data(), 1, MPI_INT, rc.data(), 1, MPI_INT, MPI_COMM_WORLD);
     std::size_t tot_recv = 0; // in atoms
@@ -395,24 +455,40 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         rd[r] = static_cast<int>(tot_recv);
         tot_recv += static_cast<std::size_t>(rc[r]);
     }
-    std::vector<char> rbuf(tot_recv * payload_bytes);
+    if (tot_recv != 0
+        && payload_bytes > std::numeric_limits<std::size_t>::max() / tot_recv)
+        throw std::overflow_error(
+            "scatter_atoms_from_root: receive size overflow");
+    std::vector<std::byte> rbuf(tot_recv * payload_bytes);
     MPI_Alltoallv(sbuf.data(), sc.data(), sd.data(), atom_t, rbuf.data(),
                   rc.data(), rd.data(), atom_t, MPI_COMM_WORLD);
     MPI_Type_free(&atom_t);
 
     // 5. Land received atoms in [0, n_recv); size to owned + ghost headroom.
     //    `tot_recv` is already in atoms (the Alltoallv used a per-atom type).
+    if (tot_recv > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::length_error(
+            "scatter_atoms_from_root: owner count overflow");
     const int n_recv = static_cast<int>(tot_recv);
     // Ghost headroom: 25% (typical halo influx is 20-35% of owners; the
     // chunked Atom::grow covers thin-subdomain outliers). The previous
     // `max(n_recv, 16384)` headroom doubled every per-atom array.
-    frame.atoms.set_capacity(n_recv + std::max(n_recv / 4, 16384));
+    const std::int64_t requested =
+        static_cast<std::int64_t>(n_recv) + std::max(n_recv / 4, 16384);
+    if (requested > std::numeric_limits<int>::max())
+        throw std::overflow_error("scatter_atoms_from_root: capacity overflow");
+    frame.set_nghost(0);
+    frame.set_nlocal(0);
+    frame.set_capacity(static_cast<int>(requested));
+    plan = make_exchange_plan(frame);
+    require_schema_fingerprint(plan, expected_fingerprint, plan.version);
     std::size_t r_off = 0;
     for (int k = 0; k < n_recv; ++k)
-        r_off = unpack_atom(rbuf, r_off, frame, k, payload_bytes);
-    frame.atoms.nlocal = n_recv;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, n_recv);
+        r_off = unpack_atom(rbuf, r_off, frame, plan, k, payload_bytes);
+    frame.set_nlocal(n_recv);
+    frame.set_nghost(0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, n_recv);
 }
 
 #else // !ATV_HAS_MPI

@@ -1,34 +1,22 @@
 /// @file cpu/potentials/bond.h
-/// @brief LAMMPS-style abstract base for bonded 2-body styles (CPU).
-///
-/// Concrete bond styles (BondHarmonic, future BondMorse, BondFENE, ...)
-/// derive from this class and implement compute().
+/// @brief Bond Potential base (BondHarmonic → BondPotential → Component).
 #pragma once
 
-#include "atomiverse/cpu/component/component.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/cpu/component/potential.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief Abstract base for bonded 2-body styles.
-class Bond : public ComponentBase {
+/// @brief Bonded 2-body Potential.
+class BondPotential : public Potential {
   public:
-    ~Bond() override = default;
-
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
-
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
   protected:
-    Bond() = default;
-
-    /// @brief Hot-path override. No virtual call inside the per-bond loop.
     virtual void compute(const LaunchContext& ctx) = 0;
 };
+
+using Bond = BondPotential;
 
 } // namespace cpu
 } // namespace ATV

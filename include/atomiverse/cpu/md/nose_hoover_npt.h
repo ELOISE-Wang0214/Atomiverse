@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -156,7 +156,7 @@ namespace md {
 /// and `Barostat`. Compatible with `KineticEnergy` -- this component
 /// rewrites `frame.kinetic` after the second NHC update so any thermo
 /// output bound at `end_of_step @ > -40` reads the post-NPT value.
-class NoseHooverNPT : public cpu::ComponentBase {
+class NoseHooverNPT : public cpu::Integrator {
   public:
     /// @brief All NPT parameters, grouped so each field is named at the
     /// call site and the order of `tau_T` vs `tau_P` can't be swapped
@@ -220,19 +220,18 @@ class NoseHooverNPT : public cpu::ComponentBase {
         return *this;
     }
 
+    bool requires_system_stress() const override { return true; }
     std::string name() const override { return "nose_hoover_npt"; }
     /// @brief Role tag — Integrator. Although this component subsumes
     /// VelocityVerlet + NoseHoover + Barostat in one Trotter splitting,
     /// only one structural role is exposed; the integrator role is the
     /// load-bearing one for `cpu::md::MD::validate_components()`.
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: MTK: propagates x and v, and scales the cell.
-    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     /// @brief Reads the kinetic-stress component of `frame.stress` to
     /// compute the internal pressure feedback. Triggers auto-injection
     /// of `Virial` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
-    Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
                 ATV::make_binding(ATV::md::Phase::final_integrate, 0),

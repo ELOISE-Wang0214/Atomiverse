@@ -1,10 +1,10 @@
 /// @file cpu/pw/internal/pw_setup.h
 /// @brief Host-side plane-wave SCF problem assembly and density mixing,
-///        shared by the CPU (`cpu::pw::pw_scf`) and CUDA
+///        shared by the CPU (`cpu::pw::PWSolver`) and CUDA
 ///        (`cuda::pw::pw_scf`) drivers.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/internal/g_vector.h"
 #include "atomiverse/cpu/pw/internal/kpoint.h"
@@ -27,8 +27,8 @@ struct PWProblem {
     GVectorList gv0;               ///< Γ-centred G-sphere at ecut.
     std::vector<GVectorList> gv_k; ///< Per-k-point G-spheres.
     KPointGrid kg;
-    Real ew_total = 0; ///< Ewald energy incl. QE G=0 term [Hartree].
-    Real vol_bohr = 0; ///< Cell volume [Bohr³].
+    AccReal ew_total = 0; ///< Ewald energy incl. QE G=0 term [Hartree].
+    AccReal vol_bohr = 0; ///< Cell volume [Bohr³].
     int n_elec = 0;
     int n_bands = 0;
 
@@ -52,7 +52,7 @@ int valence_from_z(int z);
 ///        G-vectors, k-mesh, FFT grids, V_loc (UPF or toy), KB projectors,
 ///        atomic wavefunctions and the initial density.
 ///
-/// This is the entire pre-loop section of the original `pw_scf()`; both
+/// This is the entire pre-loop section of the original monolithic solver; both
 /// backends call it and then run their own SCF loop.
 ///
 /// @param frame    Input structure (positions in Å, type = Z).
@@ -76,16 +76,16 @@ void pulay_mix(PWWorkspace& ws);
 /// real and imaginary parts of rho contribute for cells without
 /// inversion symmetry about the origin).
 struct PWEnergyTerms {
-    Real e_one = 0;    ///< One-electron energy (band - 2*E_H - rho*Vxc).
-    Real e_h = 0;      ///< Hartree energy.
-    Real e_xc_int = 0; ///< Integral of rho * V_xc (decomposition term).
-    Real e_loc = 0;    ///< Integral of rho * V_loc (diagnostic only).
-    Real total = 0;    ///< Total energy incl. E_xc, Ewald, augmentation.
+    AccReal e_one = 0;    ///< One-electron energy (band - 2*E_H - rho*Vxc).
+    AccReal e_h = 0;      ///< Hartree energy.
+    AccReal e_xc_int = 0; ///< Integral of rho * V_xc (decomposition term).
+    AccReal e_loc = 0;    ///< Integral of rho * V_loc (diagnostic only).
+    AccReal total = 0;    ///< Total energy incl. E_xc, Ewald, augmentation.
 };
 
 /// @brief Compute the per-iteration energy decomposition (no I/O).
-PWEnergyTerms iteration_energy(const PWWorkspace& ws, Real e_band,
-                               Real ew_total, Real vol_bohr);
+PWEnergyTerms iteration_energy(const PWWorkspace& ws, AccReal e_band,
+                               AccReal ew_total, AccReal vol_bohr);
 
 /// @brief Emit the per-iteration SCF energy summary as a rank-0-only
 ///        ATV_DEBUG line — the single formatter path shared by the CPU
@@ -99,7 +99,7 @@ PWEnergyTerms iteration_energy(const PWWorkspace& ws, Real e_band,
 /// @param ew_total Ewald energy incl. the QE G=0 term [Hartree].
 /// @param iter     Zero-based SCF iteration index (logged as `iter + 1`).
 void log_iteration_energy(const PWEnergyTerms& terms, const PWWorkspace& ws,
-                          Real ew_total, int iter);
+                          AccReal ew_total, int iter);
 
 } // namespace internal
 } // namespace pw

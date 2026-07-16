@@ -14,7 +14,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 namespace ATV {
 namespace cpu {
@@ -37,7 +37,7 @@ struct GradientResult {
 ///
 /// @param frame     System geometry (positions in Angstrom, type_id = Z).
 /// @param integrals Precomputed integrals at current geometry (Hartree/Bohr).
-/// @param result    Converged SCF result from scf_solve().
+/// @param result    Converged SCF result from SCFSolver::run().
 /// @param config    SCF configuration (method, spin, XC type, grid parameters).
 /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
 GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
@@ -45,7 +45,7 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
 
 /// @brief Unified finite-difference gradient for validation.
 ///
-/// Central differences using scf_solve() at displaced geometries.
+/// Central differences using SCFSolver::run() at displaced geometries.
 /// Cost: 6*n_atoms + 1 SCF evaluations.
 ///
 /// @param frame  System geometry (positions in Angstrom, type_id = Z).

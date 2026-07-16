@@ -1,15 +1,11 @@
-/// @file cpu/scf/scf_solve.h
-/// @brief Unified mean-field SCF solver -- RHF, UHF, UKS through one engine.
+/// @file cpu/scf/scf_types.h
+/// @brief Configuration and result types for the unified CPU SCF solver.
 ///
 /// Factorized design:
 ///   - SpinType: Restricted (1 channel) or Unrestricted (2 channels)
 ///   - MeanFieldType: HF (J - K) or KS (J + V_xc)
 ///   - SCFConfig: all parameters in one struct
 ///   - SCFResult: full energy decomposition, spin-resolved orbitals, diagnostics
-///
-/// The method-specific convenience solvers (rhf_solve, uhf_solve, uks_solve)
-/// are thin wrappers around scf_solve() that preset the matching SCFConfig
-/// and repack into the method-specific result struct.
 ///
 /// @see cpu/linalg/{eigensolve,density}.h + cpu/scf/{scf_guess,spin_analysis}.h
 /// @see cpu::scf::operators.h for J/K operator builders
@@ -23,12 +19,19 @@
 
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Per-iteration data for convergence analysis.
+struct IterationRecord {
+    int iter = 0;             ///< Iteration number (1-based).
+    double energy = 0;        ///< Total energy at this iteration [Hartree].
+    double residual = 0;      ///< Convergence residual.
+    bool diis_active = false; ///< Whether DIIS was used this iteration.
+};
 
 /// @brief Mean-field method type.
 enum class MeanFieldType { HF, KS };
@@ -149,7 +152,7 @@ struct SCFConfig {
     ///          it to hold the grid FIXED across the +/- displacements so
     ///          the FD result matches the fixed-grid analytic XC gradient
     ///          (Johnson-Gill-Pople convention; see gradient.cpp). The
-    ///          pointee must outlive the scf_solve call. Not owned.
+    ///          pointee must outlive the SCFSolver::run call. Not owned.
     const MolecularGrid* fixed_grid = nullptr;
 };
 
@@ -190,11 +193,14 @@ struct SCFResult {
     xt::xtensor<double, 1>
         eigenvalues_alpha; ///< Alpha orbital energies [Hartree], length n_mo.
     xt::xtensor<double, 1>
-        eigenvalues_beta;           ///< Beta orbital energies [Hartree], length n_mo.
-    xt::xtensor<double, 2> P_alpha; ///< Final alpha density matrix (n_ao × n_ao).
-    xt::xtensor<double, 2> P_beta;  ///< Final beta density matrix (n_ao × n_ao).
-    xt::xtensor<double, 2> C_alpha; ///< Final alpha MO coefficients (n_ao × n_mo).
-    xt::xtensor<double, 2> C_beta;  ///< Final beta MO coefficients (n_ao × n_mo).
+        eigenvalues_beta; ///< Beta orbital energies [Hartree], length n_mo.
+    xt::xtensor<double, 2>
+        P_alpha; ///< Final alpha density matrix (n_ao × n_ao).
+    xt::xtensor<double, 2> P_beta; ///< Final beta density matrix (n_ao × n_ao).
+    xt::xtensor<double, 2>
+        C_alpha; ///< Final alpha MO coefficients (n_ao × n_mo).
+    xt::xtensor<double, 2>
+        C_beta; ///< Final beta MO coefficients (n_ao × n_mo).
 
     // Diagnostics
     std::vector<IterationRecord> trace; ///< Per-iteration convergence trace.
@@ -235,7 +241,8 @@ struct SpinResolution {
             || n_electrons - multiplicity + 1 < 0) {
             throw std::invalid_argument(
                 "SpinResolution: invalid electron count / multiplicity "
-                "combination (n_electrons=" + std::to_string(n_electrons)
+                "combination (n_electrons="
+                + std::to_string(n_electrons)
                 + ", multiplicity=" + std::to_string(multiplicity)
                 + "): requires n_electrons >= 0, multiplicity >= 1, "
                   "matching parity (even N_e with odd M or odd N_e with "
@@ -267,9 +274,8 @@ inline SCFConfig rhf_config(const IntegralPack& ints, double tol = 1e-9) {
 }
 
 /// @brief Convenience: UHF configuration.
-/// @note DIIS disabled by default for UHF -- HOMO-LUMO mixing can destabilize DIIS
-///       before the density is near stationary. Use damped SCF (matching original
-///       uhf_solve behavior). Enable DIIS manually for advanced usage.
+/// @note HOMO-LUMO mixing can destabilize DIIS before the density is near
+///       stationary, so UHF uses delayed DIIS and heavy pre-DIIS damping.
 /// @param ints Integral pack retained for API symmetry with `rhf_config`.
 /// @param n_alpha Number of alpha electrons.
 /// @param n_beta Number of beta electrons.
@@ -285,13 +291,11 @@ inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
     c.n_beta = n_beta;
     c.tol = tol;
     c.use_diis = true;
-    // UHF-specific: preserve legacy behaviour (unchanged in Phase 1 PySCF alignment).
-    // NOTE: damping convention was flipped in 2026-04; legacy 0.3 (30% new) becomes 0.7 here.
+    // UHF-specific delayed DIIS and heavy pre-DIIS damping.
     c.diis_max_vectors = 6;
     c.diis_start_iter = 5; // allow HOMO-LUMO mixing to settle before DIIS
-    c.damping_factor =
-        0.7; // heavy pre-DIIS damping (matches legacy 0.3 in old convention)
-    c.init_guess = InitGuess::Hcore; // keep legacy UHF guess
+    c.damping_factor = 0.7;
+    c.init_guess = InitGuess::Hcore;
     return c;
 }
 
@@ -313,11 +317,11 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
     c.n_beta = n_beta;
     c.tol = tol;
     c.use_diis = true;
-    // UKS-specific: preserve legacy behaviour (unchanged in Phase 1 PySCF alignment).
+    // UKS-specific early DIIS and symmetric density mixing.
     c.diis_max_vectors = 6;
     c.diis_start_iter = 1;
     c.damping_factor = 0.5; // symmetric mix — invariant under convention flip
-    c.init_guess = InitGuess::Hcore; // keep legacy UKS guess
+    c.init_guess = InitGuess::Hcore;
     return c;
 }
 
@@ -349,7 +353,7 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 ///
 /// @param ints Integral pack supplying the electron count (must be even —
 ///        odd counts throw `std::invalid_argument` from `SCFSolver::run`).
-/// @return SCFConfig ready to feed `scf_solve`.
+/// @return SCFConfig ready to feed `SCFSolver`.
 inline SCFConfig default_config(const IntegralPack& ints) {
     SCFConfig c;
     c.spin = SpinType::Restricted;
@@ -376,7 +380,7 @@ inline SCFConfig default_config(const IntegralPack& ints) {
 /// 0.81*LYP-C` (libxc `XC_HYB_GGA_XC_B3LYP`).
 ///
 /// @param ints Integral pack supplying the electron count (assumed even).
-/// @return SCFConfig ready to feed `scf_solve` / `SCFSolver`.
+/// @return SCFConfig ready to feed `SCFSolver`.
 inline SCFConfig b3lyp_config(const IntegralPack& ints) {
     SCFConfig c = default_config(ints);
     c.xc_type = XCType::B3LYP;
@@ -392,7 +396,7 @@ inline SCFConfig b3lyp_config(const IntegralPack& ints) {
 /// `XC_HYB_GGA_XC_PBEH`).
 ///
 /// @param ints Integral pack supplying the electron count (assumed even).
-/// @return SCFConfig ready to feed `scf_solve` / `SCFSolver`.
+/// @return SCFConfig ready to feed `SCFSolver`.
 inline SCFConfig pbe0_config(const IntegralPack& ints) {
     SCFConfig c = default_config(ints);
     c.xc_type = XCType::PBE0;
@@ -420,20 +424,6 @@ inline SCFConfig baseline_config(const IntegralPack& ints) {
     c.max_iter = 50;
     return c;
 }
-
-/// @brief Run unified SCF solver.
-///
-/// Dispatches internally based on SCFConfig:
-///   - Restricted HF:    F = Hcore + G(P)        [fused J-0.5K, DIIS]
-///   - Unrestricted HF:  F^sigma = Hcore + J - K^sigma   [combined DIIS]
-///   - Unrestricted KS:  F^sigma = Hcore + J + V^sigma_xc [grid XC, combined DIIS]
-///
-/// @param integrals Molecular integrals (S, Hcore, ERI, V_nuc, atoms, shells).
-/// @param config    SCF configuration (method, spin, convergence, grid).
-/// @param guess     Optional density-matrix initial guess.
-/// @return SCFResult with full energy decomposition and spin-resolved quantities.
-SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
-                    const SCFInitialGuess* guess = nullptr);
 
 } // namespace scf
 } // namespace cpu

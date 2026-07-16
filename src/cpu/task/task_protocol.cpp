@@ -33,8 +33,8 @@ void handshake(MPI_Comm comm, std::int32_t version) {
     MPI_Allreduce(&version, &vmin, 1, MPI_INT32_T, MPI_MIN, comm);
     if (vmax != vmin)
         throw std::runtime_error(
-            "task_protocol: protocol version mismatch across ranks (min " +
-            std::to_string(vmin) + ", max " + std::to_string(vmax) + ")");
+            "task_protocol: protocol version mismatch across ranks (min "
+            + std::to_string(vmin) + ", max " + std::to_string(vmax) + ")");
 }
 
 /// MAX-allreduce a local status code; any rank's failure fails all.
@@ -64,7 +64,7 @@ constexpr const char* kStageName[] = {"", "decode", "setup", "run"};
 /// own message (empty when the failure was remote).
 int execute_task(MPI_Comm comm, const std::vector<std::byte>& bytes,
                  cpu::Frame& frame, std::optional<TaskMaterializer>& mat,
-                 std::string& err) {
+                 TaskResult& result, std::string& err) {
     std::optional<TaskSpec> spec;
     int local = 0;
     try {
@@ -86,7 +86,7 @@ int execute_task(MPI_Comm comm, const std::vector<std::byte>& bytes,
         return kFailSetup;
 
     try {
-        mat->run(frame);
+        result = mat->run(frame);
     } catch (const std::exception& e) {
         local = 1;
         err = e.what();
@@ -103,9 +103,13 @@ int execute_task(MPI_Comm comm, const std::vector<std::byte>& bytes,
 /// CONSUMES `frame` (moved-from afterwards) and the materializer's dd.
 cpu::Frame assemble_result(MPI_Comm comm, TaskMaterializer& mat,
                            cpu::Frame& frame) {
-    if (mat.kind() != TaskKind::MD)
+    if (mat.kind() == TaskKind::SinglePoint)
         return std::move(frame);
     auto dd = mat.release_dd();
+    if (!dd)
+        throw std::runtime_error(
+            "task_protocol: distributed task completed without an owner "
+            "decomposition");
     const auto gathered = md::mpi::gather_to_root(frame, *dd, 0);
     int rank = 0;
     MPI_Comm_rank(comm, &rank);
@@ -114,7 +118,7 @@ cpu::Frame assemble_result(MPI_Comm comm, TaskMaterializer& mat,
     cpu::Frame result = md::mpi::to_frame(gathered);
     // Global scalars were all-reduced onto every rank each step by the
     // Reduce component; rank 0's local copy is authoritative.
-    result.scalars = frame.scalars;
+    result.meta.copy_serializable_from(frame.meta);
     return result;
 }
 
@@ -150,29 +154,29 @@ void WorkerLoop::run() {
         MPI_Bcast(&hdr, sizeof(CommandHeader), MPI_BYTE, 0, comm_);
         if (hdr.version != version_)
             throw std::runtime_error(
-                "task_protocol: corrupt command header (version " +
-                std::to_string(hdr.version) + ", expected " +
-                std::to_string(version_) + ")");
+                "task_protocol: corrupt command header (version "
+                + std::to_string(hdr.version) + ", expected "
+                + std::to_string(version_) + ")");
         if (hdr.command == static_cast<std::int32_t>(Command::SHUTDOWN))
             return;
         if (hdr.command != static_cast<std::int32_t>(Command::RUN_TASK))
-            throw std::runtime_error("task_protocol: unknown command " +
-                                     std::to_string(hdr.command));
+            throw std::runtime_error("task_protocol: unknown command "
+                                     + std::to_string(hdr.command));
         if (hdr.payload_bytes < 0 || hdr.payload_bytes > INT_MAX)
-            throw std::runtime_error(
-                "task_protocol: implausible payload size " +
-                std::to_string(hdr.payload_bytes));
+            throw std::runtime_error("task_protocol: implausible payload size "
+                                     + std::to_string(hdr.payload_bytes));
 
         std::vector<std::byte> bytes(
             static_cast<std::size_t>(hdr.payload_bytes));
-        MPI_Bcast(bytes.data(), static_cast<int>(hdr.payload_bytes),
-                  MPI_BYTE, 0, comm_);
+        MPI_Bcast(bytes.data(), static_cast<int>(hdr.payload_bytes), MPI_BYTE,
+                  0, comm_);
         cpu::Frame frame(0);
         comm::bcast_frame(frame, 0);
 
         std::optional<TaskMaterializer> mat;
+        TaskResult result;
         std::string err;
-        const int status = execute_task(comm_, bytes, frame, mat, err);
+        const int status = execute_task(comm_, bytes, frame, mat, result, err);
         if (status == 0)
             (void)assemble_result(comm_, *mat, frame);
         else if (!err.empty())
@@ -199,7 +203,8 @@ TaskDispatcher::TaskDispatcher(MPI_Comm comm, std::int32_t version,
         handshake(comm_, version_);
 }
 
-cpu::Frame TaskDispatcher::dispatch(const TaskSpec& spec, cpu::Frame frame) {
+DispatchResult TaskDispatcher::dispatch(const TaskSpec& spec,
+                                        cpu::Frame frame) {
     int world = 1;
     MPI_Comm_size(comm_, &world);
     if (world <= 1) {
@@ -207,32 +212,33 @@ cpu::Frame TaskDispatcher::dispatch(const TaskSpec& spec, cpu::Frame frame) {
         // locally (gather_to_root's own single-rank path is equivalent to
         // returning the frame as-is).
         TaskMaterializer mat(spec);
-        mat.run(frame);
-        return frame;
+        TaskResult control = mat.run(frame);
+        return DispatchResult{std::move(frame), std::move(control)};
     }
 
     std::vector<std::byte> bytes = pack(spec);
     if (bytes.size() > static_cast<std::size_t>(INT_MAX))
-        throw std::runtime_error("task_protocol: TaskSpec payload of " +
-                                 std::to_string(bytes.size()) +
-                                 " bytes exceeds the broadcast limit");
+        throw std::runtime_error("task_protocol: TaskSpec payload of "
+                                 + std::to_string(bytes.size())
+                                 + " bytes exceeds the broadcast limit");
     CommandHeader hdr{};
     hdr.version = version_;
     hdr.command = static_cast<std::int32_t>(Command::RUN_TASK);
     hdr.payload_bytes = static_cast<std::int64_t>(bytes.size());
     MPI_Bcast(&hdr, sizeof(CommandHeader), MPI_BYTE, 0, comm_);
-    MPI_Bcast(bytes.data(), static_cast<int>(bytes.size()), MPI_BYTE, 0,
-              comm_);
+    MPI_Bcast(bytes.data(), static_cast<int>(bytes.size()), MPI_BYTE, 0, comm_);
     comm::bcast_frame(frame, 0);
 
     std::optional<TaskMaterializer> mat;
+    TaskResult control;
     std::string err;
-    const int status = execute_task(comm_, bytes, frame, mat, err);
+    const int status = execute_task(comm_, bytes, frame, mat, control, err);
     if (status != 0)
         throw std::runtime_error(
-            "task_protocol: task " + std::string(kStageName[status]) +
-            " failed" + (err.empty() ? " on a remote rank" : ": " + err));
-    return assemble_result(comm_, *mat, frame);
+            "task_protocol: task " + std::string(kStageName[status]) + " failed"
+            + (err.empty() ? " on a remote rank" : ": " + err));
+    return DispatchResult{assemble_result(comm_, *mat, frame),
+                          std::move(control)};
 }
 
 void TaskDispatcher::shutdown() {

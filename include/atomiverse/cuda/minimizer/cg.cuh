@@ -66,7 +66,7 @@ namespace minimizer {
 /// build, which reproduces the CPU step-0 behaviour exactly: forces are
 /// zero at step 0, `g_prev · g_prev = 0` forces β = 0, and the first
 /// moving step is plain steepest descent.
-class CG : public ComponentBase {
+class CG : public Component {
   public:
     /// @brief Construct CG optimizer.
     /// @param alpha0    Step size [Angstrom^2/eV] (default 0.01).
@@ -75,10 +75,11 @@ class CG : public ComponentBase {
     /// @brief Component name.
     /// @return "cg".
     std::string name() const override { return "cg"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role of this component.
     /// @return ComponentRole::Optimizer.
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    /* role via Optimizer base */
 
     /// @brief Default bindings: search_direction + convergence_check.
     std::vector<DefaultBinding> default_bindings() const override {

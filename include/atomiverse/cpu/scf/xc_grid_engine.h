@@ -7,7 +7,7 @@
 ///   3. XC batch evaluation — vectorized over grid points
 ///   4. Vxc = Phi_w^T @ Phi_w — potential matrix via GEMM
 ///
-/// Shared by scf_solve.cpp (Fock build) and gradient.cpp (XC gradient).
+/// Shared by scf_solver.cpp (Fock build) and gradient.cpp (XC gradient).
 ///
 /// @see PySCF numint.py for the reference algorithm.
 #pragma once

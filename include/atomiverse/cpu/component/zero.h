@@ -18,19 +18,17 @@ namespace cpu {
 
 /// @brief Zero all owned-row forces. Phase-agnostic — driver binds to its
 /// own phase. Ghost rows are zeroed by `HaloSend` when it (re)populates them.
-class ZeroForces : public cpu::ComponentBase {
+class ZeroForces : public cpu::Component {
   public:
     std::string name() const override { return "zero_forces"; }
-    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
 /// @brief Zero potential energy (total + per-term decomposition).
 /// Phase-agnostic — driver binds to its own phase.
-class ZeroEnergy : public cpu::ComponentBase {
+class ZeroEnergy : public cpu::Component {
   public:
     std::string name() const override { return "zero_energy"; }
-    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
@@ -38,18 +36,16 @@ class ZeroEnergy : public cpu::ComponentBase {
 ///
 /// Stress accumulation by force kernels (LJ pair virial, future bonded
 /// virials) requires a clean baseline at the start of each step.
-class ZeroStress : public cpu::ComponentBase {
+class ZeroStress : public cpu::Component {
   public:
     std::string name() const override { return "zero_stress"; }
-    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
 /// @brief Zero kinetic energy. Phase-agnostic — driver binds to its own phase.
-class ZeroKinetic : public cpu::ComponentBase {
+class ZeroKinetic : public cpu::Component {
   public:
     std::string name() const override { return "zero_kinetic"; }
-    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 

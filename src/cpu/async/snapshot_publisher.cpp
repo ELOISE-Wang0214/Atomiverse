@@ -115,22 +115,22 @@ void Publish::launch(const LaunchContext& ctx) {
     const int slot_idx = exec_->acquire_slot();
     FrameSnapshot& snap = exec_->slot(slot_idx);
 
-    const int n = ctx.frame.atoms.size();
+    const int n = ctx.frame.nlocal();
     snap.step = step;
     snap.n_owned = n;
-    snap.box = ctx.frame.box;
+    snap.box = ctx.frame.simbox;
 
-    copy_range(snap.x, ctx.frame.atoms.x.data(), n, mask.positions);
-    copy_range(snap.y, ctx.frame.atoms.y.data(), n, mask.positions);
-    copy_range(snap.z, ctx.frame.atoms.z.data(), n, mask.positions);
-    copy_range(snap.vx, ctx.frame.atoms.vx.data(), n, mask.velocities);
-    copy_range(snap.vy, ctx.frame.atoms.vy.data(), n, mask.velocities);
-    copy_range(snap.vz, ctx.frame.atoms.vz.data(), n, mask.velocities);
-    copy_range(snap.fx, ctx.frame.atoms.fx.data(), n, mask.forces);
-    copy_range(snap.fy, ctx.frame.atoms.fy.data(), n, mask.forces);
-    copy_range(snap.fz, ctx.frame.atoms.fz.data(), n, mask.forces);
-    copy_range_int(snap.type, ctx.frame.atoms.type.data(), n, mask.types);
-    copy_range_i64(snap.tag, ctx.frame.atoms.tag.data(), n, mask.tags);
+    copy_range(snap.x, ctx.frame.span(kAtom_x).data(), n, mask.positions);
+    copy_range(snap.y, ctx.frame.span(kAtom_y).data(), n, mask.positions);
+    copy_range(snap.z, ctx.frame.span(kAtom_z).data(), n, mask.positions);
+    copy_range(snap.vx, ctx.frame.span(kAtom_vx).data(), n, mask.velocities);
+    copy_range(snap.vy, ctx.frame.span(kAtom_vy).data(), n, mask.velocities);
+    copy_range(snap.vz, ctx.frame.span(kAtom_vz).data(), n, mask.velocities);
+    copy_range(snap.fx, ctx.frame.span(kAtom_fx).data(), n, mask.forces);
+    copy_range(snap.fy, ctx.frame.span(kAtom_fy).data(), n, mask.forces);
+    copy_range(snap.fz, ctx.frame.span(kAtom_fz).data(), n, mask.forces);
+    copy_range_int(snap.type, ctx.frame.span(kAtom_type).data(), n, mask.types);
+    copy_range_i64(snap.tag, ctx.frame.span(kAtom_tag).data(), n, mask.tags);
 
     exec_->publish(slot_idx, step);
     // Dispatch happens per-subscriber inside `AsyncComponentBase::launch()`

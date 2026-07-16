@@ -1,29 +1,21 @@
 /// @file cpu/potentials/angle.h
-/// @brief LAMMPS-style abstract base for bonded 3-body styles (CPU).
+/// @brief Angle Potential base (AngleHarmonic → AnglePotential → Component).
 #pragma once
 
-#include "atomiverse/cpu/component/component.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/cpu/component/potential.h"
 
 namespace ATV {
 namespace cpu {
 
-class Angle : public ComponentBase {
+class AnglePotential : public Potential {
   public:
-    ~Angle() override = default;
-
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
-    }
-
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
   protected:
-    Angle() = default;
-
     virtual void compute(const LaunchContext& ctx) = 0;
 };
+
+using Angle = AnglePotential;
 
 } // namespace cpu
 } // namespace ATV

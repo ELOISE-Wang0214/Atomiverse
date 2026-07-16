@@ -1,7 +1,5 @@
 /// @file cpu/potentials/pair_lj_cut.h
 /// @brief LAMMPS-style PairLJCut — 12-6 with shifted potential (CPU).
-///
-/// Was `ATV::cpu::md::LJ` before the LAMMPS-naming refactor.
 #pragma once
 
 #include <cstdint>
@@ -21,10 +19,10 @@ namespace cpu {
 /// from a list of these, so the object is fully specified the moment it exists — there
 /// is no half-built state in which it is constructible but not usable.
 struct LJTypeCoeff {
-    int type_i;      ///< first atom type (the frame's `atoms.type[i]` value)
-    int type_j;      ///< second atom type
-    double epsilon;  ///< well depth [eV]
-    double sigma;    ///< length scale [Angstrom]
+    int type_i;     ///< first atom type (the frame's `kAtom_type` value)
+    int type_j;     ///< second atom type
+    double epsilon; ///< well depth [eV]
+    double sigma;   ///< length scale [Angstrom]
 };
 
 /// @brief Lennard-Jones 12-6 with shifted potential.
@@ -35,7 +33,8 @@ struct LJTypeCoeff {
 /// Optional special-bonds exclusions (LAMMPS convention): pairs that are
 /// 1-2 (bonded), 1-3 (across an angle vertex) or 1-4 (across a dihedral)
 /// are skipped during the pair loop. Enable via `set_special_bonds()`.
-/// Lists are derived from `frame.atoms (per-atom bonded topology)`/`frame.atoms (per-atom angle topology)`/`frame.atoms (per-atom dihedral topology)`
+/// Lists are derived from the canonical per-atom topology columns in the
+/// `atoms` Block.
 /// at `build()` time and consulted with a per-atom binary search at
 /// `compute()` time. Default: no exclusions.
 ///
@@ -70,10 +69,10 @@ class PairLJCut : public Pair {
     ///
     /// @code
     ///   // TIP3P: the LJ site is on oxygen only.
-    ///   sim.set_pair(cpu::PairLJCut{{{8, 8, eps_OO, sigma_OO}}, cutoff});
+    ///   sim.add_potential(cpu::PairLJCut{{{8, 8, eps_OO, sigma_OO}}, cutoff});
     ///
     ///   // Cu-Ni alloy: give the like-pairs, let Lorentz-Berthelot mix the rest.
-    ///   sim.set_pair(cpu::PairLJCut{{{29, 29, eps_Cu, sig_Cu},
+    ///   sim.add_potential(cpu::PairLJCut{{{29, 29, eps_Cu, sig_Cu},
     ///                               {28, 28, eps_Ni, sig_Ni}}, cutoff});
     /// @endcode
     ///
@@ -98,8 +97,10 @@ class PairLJCut : public Pair {
     /// @param epsilon Well depth [eV].
     /// @param sigma Length scale [Angstrom].
     /// @throws std::logic_error if this PairLJCut is single-type (there is no table).
-    PairLJCut& set_type_coeff(int type_i, int type_j, double epsilon, double sigma) &;
-    PairLJCut set_type_coeff(int type_i, int type_j, double epsilon, double sigma) &&;
+    PairLJCut& set_type_coeff(int type_i, int type_j, double epsilon,
+                              double sigma) &;
+    PairLJCut set_type_coeff(int type_i, int type_j, double epsilon,
+                             double sigma) &&;
 
     /// @brief True when a per-type coefficient table is active (scalar path).
     bool is_multi_type() const { return n_types_ > 0; }
@@ -110,12 +111,10 @@ class PairLJCut : public Pair {
     void finalize_type_table_();
 
   public:
-
     std::string name() const override { return "lj"; }
 
     /// @brief Enable/disable LAMMPS-style "special bonds" exclusions.
-    /// See pre-refactor `cpu::PairLJCut::set_special_bonds` for full
-    /// semantics — unchanged by the rename.
+    /// See the class-level special-bonds description for full semantics.
     PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
     PairLJCut set_special_bonds(double s12, double s13, double s14) &&;
 
@@ -173,8 +172,9 @@ class PairLJCut : public Pair {
     std::vector<double> eps_tab_;   ///< eps_ij [eV]
     std::vector<double> sigma_tab_; ///< sigma_ij [A]
     std::vector<double> sig6_tab_;  ///< sigma_ij^6 [A^6]
-    std::vector<double> shift_tab_; ///< energy shift at the cutoff, per pair [eV]
-    std::vector<char> set_tab_;     ///< 1 = explicitly set by the user
+    std::vector<double>
+        shift_tab_;             ///< energy shift at the cutoff, per pair [eV]
+    std::vector<char> set_tab_; ///< 1 = explicitly set by the user
     double sigma6_, cutoff_sq_, v_shift_;
 
     // Special-bonds: when any of these is < 1, the corresponding bonded

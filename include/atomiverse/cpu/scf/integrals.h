@@ -7,7 +7,7 @@
 ///
 /// Supports elements H through O (Z=1..8) with STO-3G basis (s and sp shells).
 ///
-/// @see cpu::scf::rhf_solve for the CPU RHF solver that consumes IntegralPack
+/// @see cpu::scf::SCFSolver for the CPU RHF solver that consumes IntegralPack
 #pragma once
 
 #include <array>
@@ -56,8 +56,8 @@ struct IntegralPack {
 
 /// @brief Compute STO-3G integrals for a molecular geometry via native C++.
 ///
-/// Reads atom positions from frame.atoms.x/y/z (Angstrom) and nuclear charges
-/// from frame.atoms.type. Converts to Bohr internally.
+/// Reads atom positions from the `kAtom_x/y/z` columns (Angstrom) and nuclear
+/// charges from `kAtom_type`. Converts to Bohr internally.
 ///
 /// By default the two-electron ERI tensor is NOT computed (compute_eri=false).
 /// The CPU SCF solver uses direct SCF via build_shell_pair_list + build_g_rhf_direct,

@@ -29,16 +29,16 @@ namespace cuda {
 /// @brief Evaluate and store electron density rho(r) on a uniform grid.
 ///
 /// Registers on a `cuda::Evaluate` driver alongside a
-/// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
+/// `cuda::scf::SCF`; it runs in the `evaluate::Phase::finalize`
 /// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
 ///
 /// The converged density matrix is no longer carried on `cuda::Frame`; the
-/// recorder holds a reference to the `cuda::scf::SCFEvaluator` and reads the
+/// recorder holds a reference to the `cuda::scf::SCF` and reads the
 /// density from its SCF workspace. Register the evaluator borrowed (lvalue
 /// `add`) so the reference stays valid for the whole run.
 ///
 /// @code{.cpp}
-/// cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
+/// cuda::scf::SCF scf{integrals, tol, max_iter};
 /// cuda::Evaluate eval;
 /// eval.add(scf);                          // lvalue -> borrowed
 /// eval.on(evaluate::Phase::finalize).add(
@@ -53,9 +53,8 @@ class DensityRecorder : public AsyncBridge {
     /// @param nx,ny,nz   Grid dimensions.
     /// @param padding    Bounding-box padding [Angstrom].
     /// @param every      Sampling stride in steps.
-    DensityRecorder(std::string store_path,
-                    const scf::SCFEvaluator& evaluator, int nx, int ny, int nz,
-                    double padding = double(2.0), int every = 1)
+    DensityRecorder(std::string store_path, const scf::SCF& evaluator, int nx,
+                    int ny, int nz, double padding = double(2.0), int every = 1)
         : store_path_(std::move(store_path)), evaluator_(&evaluator), nx_(nx),
           ny_(ny), nz_(nz), every_(every), padding_(padding) {}
 
@@ -65,7 +64,7 @@ class DensityRecorder : public AsyncBridge {
 
     std::string name() const override { return "density_recorder"; }
     /// @brief Recorder — writes electron-density grid to Zarr store.
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
     int frequency() const override { return every_; }
 
   protected:
@@ -101,8 +100,9 @@ class DensityRecorder : public AsyncBridge {
 
         const auto nb = static_cast<size_t>(n_basis_);
         for (int i = 0; i < kRingDepth; ++i) {
-            cudaMalloc(&d_P_[i], nb * nb * sizeof(double));   // device-ring slot
-            cudaMallocHost(&h_P_[i], nb * nb * sizeof(double)); // pinned host slot
+            cudaMalloc(&d_P_[i], nb * nb * sizeof(double)); // device-ring slot
+            cudaMallocHost(&h_P_[i],
+                           nb * nb * sizeof(double)); // pinned host slot
         }
     }
 
@@ -138,14 +138,20 @@ class DensityRecorder : public AsyncBridge {
 
     void on_destroy(const DestroyContext&) override {
         for (int i = 0; i < kRingDepth; ++i) {
-            if (d_P_[i]) { cudaFree(d_P_[i]); d_P_[i] = nullptr; }
-            if (h_P_[i]) { cudaFreeHost(h_P_[i]); h_P_[i] = nullptr; }
+            if (d_P_[i]) {
+                cudaFree(d_P_[i]);
+                d_P_[i] = nullptr;
+            }
+            if (h_P_[i]) {
+                cudaFreeHost(h_P_[i]);
+                h_P_[i] = nullptr;
+            }
         }
     }
 
   private:
     std::string store_path_;
-    const scf::SCFEvaluator* evaluator_ =
+    const scf::SCF* evaluator_ =
         nullptr; ///< Borrowed SCF evaluator (density source).
     int nx_, ny_, nz_, every_;
     double padding_;

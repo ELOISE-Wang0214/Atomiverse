@@ -2,14 +2,13 @@
 /// @brief `bcast_frame` -- replicate the root rank's whole Frame onto every
 ///        rank of `MPI_COMM_WORLD`.
 ///
-/// The rank-0-reads / every-rank-computes primitive: the root packs each
-/// owned atom row through the registry-driven `comm::pack_exchange` codec
-/// (schema order is wire order; exchanged extension columns ride at the row
-/// tail), broadcasts a fixed POD header (atom count, payload size, bonded
-/// flag, `cpu::Box`, `SystemScalars`) followed by the variable-length row
-/// payload, and every non-root rank reconstructs a full replica: all rows
-/// owned (`nlocal == n`, `nghost == 0`), tag→local map rebuilt, box and
-/// scalars overwritten. The root's own Frame is never modified.
+/// The rank-0-reads / every-rank-computes primitive. Before payload traffic,
+/// every rank collectively validates the exact atoms-Block PackPlan and typed
+/// metadata schema. The root then broadcasts an explicit fixed-width header,
+/// nine cell doubles, the native-dtype row bytes, and typed metadata bytes.
+/// Every non-root rank reconstructs a full replica: all rows owned
+/// (`nlocal == n`, `nghost == 0`), tag→local map rebuilt, cell and
+/// serializable metadata overwritten. The root's Frame is never modified.
 ///
 /// The payload is pure byte transit -- no arithmetic touches any value in
 /// flight, so every replicated field (positions [Angstrom], velocities
@@ -20,12 +19,9 @@
 /// this function in lockstep *before* any rank gate -- it enters MPI
 /// collectives internally (same discipline as `gather_for_root_io`).
 ///
-/// **Precondition:** the exchanged extension-column registration
-/// (`Frame::insert(..., exchanged=true)`) must be identical on every rank.
-/// A divergent registration changes the per-row payload width; the affected
-/// non-root rank detects the consumed-doubles mismatch after decoding and
-/// throws `std::runtime_error` (never a silent truncation). The collectives
-/// complete before decoding, so the failure stays lockstep-safe.
+/// **Precondition:** runtime column and serializable metadata registration
+/// must be identical on every rank. A divergent dtype, width, flag, key, or
+/// order fails collectively before any cell/meta/atom payload is sent.
 ///
 /// Degrade path: on a non-MPI build, or when MPI is not initialized, or at
 /// world size 1, the call returns immediately and the Frame is untouched
@@ -48,12 +44,12 @@ namespace comm {
 /// @param frame On the root rank: the source Frame (owned rows `[0, nlocal)`;
 ///              read-only, never modified). On every other rank: the
 ///              destination Frame, overwritten with a full replica (atom
-///              rows, bonded topology, exchanged extras, box, scalars).
+///              rows, bonded topology, runtime exchange columns, cell, and
+///              serializable typed metadata).
 /// @param root  Rank holding the source Frame (default 0).
-/// @throws std::runtime_error on every rank if the payload exceeds
-///         `INT_MAX` doubles (no silent chunking), and on a non-root rank
-///         whose decode consumes a different double count than the root
-///         announced (exchanged-column registration divergence).
+/// @throws std::runtime_error collectively on schema disagreement.
+/// @throws std::length_error if a native byte payload exceeds MPI's
+///         `INT_MAX` count limit (no silent chunking).
 void bcast_frame(Frame& frame, int root = 0);
 
 } // namespace comm

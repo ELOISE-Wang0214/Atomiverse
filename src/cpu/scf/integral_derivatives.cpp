@@ -19,9 +19,9 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 
 #include "atomiverse/cpu/scf/integral_derivatives.h"
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"

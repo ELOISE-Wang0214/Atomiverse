@@ -43,6 +43,11 @@ inline constexpr double kEvPerAngstromInHartreePerBohr =
     (1.0 / 27.211386245988)
     / 1.8897261245650618; // = (1 eV / 1 Å) in (Hartree / Bohr)
 
+inline constexpr double kBohrInAngstrom = 1.0 / kAngstromInBohr;
+inline constexpr double kHartreeInEv = 1.0 / kEvInHartree;
+inline constexpr double kHartreePerBohrInEvPerAngstrom =
+    1.0 / kEvPerAngstromInHartreePerBohr;
+
 // ── Dimension enums ──────────────────────────────────────────────────
 
 enum class Length { Bohr, Angstrom };
@@ -151,35 +156,5 @@ inline constexpr double h_planck_ev_fs = 4.135667696;
 }
 
 } // namespace units
-
-// ─────────────────────────────────────────────────────────────────────
-// Back-compat: flat `ATV::k*` names for legacy call sites. Read
-// directly from the named factors above — no `units::detail::`
-// involvement.
-// ─────────────────────────────────────────────────────────────────────
-
-inline constexpr double kPI = units::pi;
-inline constexpr double kDegToRad = units::kDegreeInRad;
-inline constexpr double kAngstromToBohr = units::kAngstromInBohr;
-inline constexpr double kBohr2Ang = 1.0 / units::kAngstromInBohr;
-inline constexpr double kHartree2eV = 1.0 / units::kEvInHartree;
-inline constexpr double kForceAU2Metal =
-    1.0 / units::kEvPerAngstromInHartreePerBohr;
-inline constexpr double kBoltzmann = units::kB_ev_per_k;
-inline constexpr double kFtm2v = units::force_to_accel;
-inline constexpr double kMvv2e = units::mass_v2_to_energy;
-
-/// @brief Electrostatic constant 1/(4πε₀)·e²/Å in eV (LAMMPS `qqr2e`,
-/// metal units): `E[eV] = kCoulomb · q_i q_j / r` for q[e], r[Å].
-inline constexpr double kCoulomb = units::coulomb;
-
-/// @brief Angstrom to Bohr (QE convention: 1 Bohr = 0.5291772083 A).
-constexpr double kAngstrom2Bohr = 1.8897259886;
-
-/// @brief Rydberg to Hartree (exact: 1 Ry = 1/2 Hartree).
-constexpr double kRy2Hartree = 0.5;
-
-/// @brief Rydberg to eV (QE convention).
-constexpr double kRy2eV = 13.605693;
 
 } // namespace ATV

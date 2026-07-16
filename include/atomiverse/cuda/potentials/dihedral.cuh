@@ -1,6 +1,7 @@
 /// @file cuda/potentials/dihedral.cuh
 /// @brief LAMMPS-style abstract base for bonded 4-body styles (CUDA).
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include <cstdint>
 #include <functional>
@@ -11,17 +12,15 @@
 namespace ATV {
 namespace cuda {
 
-class Dihedral : public ComponentBase {
+class Dihedral : public Component {
   public:
+    Role role() const override { return 0; }
     ~Dihedral() override = default;
 
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
+    /* role via Potential/kind base */
     /// @brief Capabilities — Energy + Force + Stress. The kernel writes
     ///        per-tuple virial contributions into `frame.scalars->stress[]`
     ///        (see `cuda/potentials/dihedral_multi_harmonic.cu`).
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 

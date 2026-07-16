@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -26,7 +26,7 @@ namespace minimizer {
 
 /// @brief TSV logger for geometry-optimization diagnostics.
 ///
-/// Reads forces and positions directly from `frame.atoms.{fx,fy,fz,x,y,z}`,
+/// Reads forces and positions directly from the canonical atom columns,
 /// so it works with any force evaluator (classical, SCF-based, ...).
 /// Computes step_norm = ||x - x_prev|| between successive launches.
 ///
@@ -34,7 +34,7 @@ namespace minimizer {
 /// cross-rank reduction (the launch is collective under multi-rank);
 /// only rank 0 writes the file / stdout row. After an atom-migration
 /// reshuffle the step_norm reference is invalid and the row reports 0.
-class OptLog : public cpu::ComponentBase {
+class OptLog : public cpu::Recorder {
   public:
     /// @brief Construct.
     /// @param filename   Output TSV path.
@@ -42,7 +42,7 @@ class OptLog : public cpu::ComponentBase {
     explicit OptLog(std::string filename, bool also_stdout = false);
 
     std::string name() const override { return "opt_log"; }
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::minimizer::Phase::end_of_step, 0)};

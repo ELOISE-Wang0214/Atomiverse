@@ -47,7 +47,7 @@ namespace md {
 namespace mpi {
 
 /// @brief Non-uniform brick load balancer based on a global atom histogram.
-class Rebalance : public cpu::ComponentBase {
+class Rebalance : public cpu::Component {
   public:
     /// @param every Step interval between balance passes. Default 1000.
     /// @param n_bins Bins per axis for the global histogram. Default 256;

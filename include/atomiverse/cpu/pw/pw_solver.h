@@ -12,7 +12,7 @@
 /// Its step helpers (`internal::PoissonSolver`, `XCBuilder`,
 /// `VeffBuilder`, `DavidsonSolver`, `DensityBuilder`,
 /// `ConvergenceCheck`) live in `cpu/pw/internal/`, are owned by this
-/// class, never inherit `cpu::ComponentBase`, and are never registered
+/// class, never inherit `cpu::Component`, and are never registered
 /// into any Plan.
 ///
 /// Usage (low-level direct SCF):
@@ -30,7 +30,7 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
@@ -52,7 +52,7 @@ class ConvergenceCheck;
 
 /// @brief Plane-wave DFT configuration.
 struct PWConfig {
-    std::string upf_path; ///< UPF v1 pseudopotential path (empty = toy V_loc).
+    std::string upf_path;  ///< UPF v1 pseudopotential path (empty = toy V_loc).
     double ecut_ry = 30.0; ///< Wavefunction cutoff [Ry].
     int k_mesh = 4;        ///< Monkhorst-Pack mesh size per dimension.
     double tol = 1e-6;     ///< SCF tolerance on the density-change L2 norm.

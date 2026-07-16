@@ -19,10 +19,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
-#include "atomiverse/cpu/linalg/matrix.h"        // RealMatrix
+#include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
 
 namespace ATV {
 namespace cpu {
@@ -174,7 +174,7 @@ class GPWSolver {
     ///
     /// Re-entrant: geometry-dependent structures are rebuilt per call.
     /// @param atoms Atom set at the current geometry [Bohr].
-    /// @param guess_C Optional warm-start MO coefficients (see `gpw_scf`).
+    /// @param guess_C Optional warm-start MO coefficients from an earlier run.
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
@@ -193,21 +193,9 @@ class GPWSolver {
     bool built_ = false; ///< Whether build() validated the configuration.
 };
 
-/// @brief Run the closed-shell GPW SCF for a set of atoms.
-/// @param guess_C Optional warm-start MO coefficients (nb×nb, occupied in the
-///        first n_occ columns — e.g. a previous step's GpwResult::C, or an ASPC
-///        extrapolation). When given, the O(nb³) core-Hamiltonian initial
-///        diagonalization is skipped and the SCF starts from this guess, cutting
-///        the iteration count for AIMD/geometry sweeps. nullptr = cold start.
-///
-/// Thin shim over a transient `GPWSolver` (build + run), kept for the
-/// existing call sites — mirrors `scf_solve()` / `pw_scf()`.
-GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
-                  const linalg::RealMatrix* guess_C = nullptr);
-
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
 ///
-/// Runs `gpw_scf` at +/- h displacements of each atom along each axis
+/// Runs a `GPWSolver` at +/- h displacements of each atom along each axis
 /// (6*N_atoms SCF solves). Correct but expensive; analytic GPW forces are a
 /// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
 /// @param h Displacement step [Bohr].

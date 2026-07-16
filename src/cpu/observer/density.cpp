@@ -48,9 +48,9 @@ scf::ShellList sto3g_shells(const std::vector<int>& type_id,
     int n_electrons = 0;
     for (std::size_t i = 0; i < type_id.size(); ++i) {
         atoms.atoms[i].Z = type_id[i];
-        atoms.atoms[i].pos[0] = x[i] * kAngstromToBohr;
-        atoms.atoms[i].pos[1] = y[i] * kAngstromToBohr;
-        atoms.atoms[i].pos[2] = z[i] * kAngstromToBohr;
+        atoms.atoms[i].pos[0] = x[i] * units::kAngstromInBohr;
+        atoms.atoms[i].pos[1] = y[i] * units::kAngstromInBohr;
+        atoms.atoms[i].pos[2] = z[i] * units::kAngstromInBohr;
         n_electrons += type_id[i];
     }
     atoms.n_electrons = n_electrons;
@@ -117,14 +117,14 @@ DensityGrid eval_density_grid(const std::vector<int>& type_id,
 
     for (int ix = 0; ix < nx; ++ix) {
         const double rx = min_x + (static_cast<double>(ix) / nx) * grid.lx;
-        const double rx_bohr = rx * kAngstromToBohr;
+        const double rx_bohr = rx * units::kAngstromInBohr;
         for (int iy = 0; iy < ny; ++iy) {
             const double ry = min_y + (static_cast<double>(iy) / ny) * grid.ly;
-            const double ry_bohr = ry * kAngstromToBohr;
+            const double ry_bohr = ry * units::kAngstromInBohr;
             for (int iz = 0; iz < nz; ++iz) {
                 const double rz =
                     min_z + (static_cast<double>(iz) / nz) * grid.lz;
-                const double rz_bohr = rz * kAngstromToBohr;
+                const double rz_bohr = rz * units::kAngstromInBohr;
 
                 // Evaluate all basis functions at this point (shared
                 // evaluator -- same as the cube writers).

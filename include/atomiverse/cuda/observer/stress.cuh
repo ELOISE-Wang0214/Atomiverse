@@ -27,6 +27,7 @@
 /// Cross-driver component: empty default_bindings(), bound by the
 /// install_infra_ injector at post_force @ -50. CUDA-free header.
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include <memory>
 #include <string>
@@ -38,7 +39,7 @@ namespace cuda {
 
 /// @brief Capability-declaring zeroing shim for the kinetic-stress
 ///        accumulator. See file-level docstring for the producer split.
-class Virial : public ComponentBase {
+class Virial : public Component {
   public:
     Virial();
     ~Virial() override;
@@ -46,16 +47,19 @@ class Virial : public ComponentBase {
     Virial& operator=(Virial&&) noexcept;
 
     std::string name() const override { return "virial"; }
+    Role role() const override {
+        return RoleFlag::FrameImmutable | RoleFlag::Deferred;
+    }
+    bool provides_system_stress() const override { return true; }
     /// @brief Structural role — Observer. Triggers
     /// `cuda::md::MD::install_infra_` to dedupe duplicate virial-stress
     /// components via capability matching instead of `name()` strings.
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     /// @brief Declares the `Stress` capability so any peer component
     /// reporting `reads()==Stress` (e.g. NoseHooverNPT, Barostat) auto-
     /// injects this component. The actual `stress_kinetic[]` writes are
     /// emitted by `cuda::md::KineticEnergy` at end_of_step; this
     /// component only zeroes the buffer at post_force.
-    Capability capabilities() const override { return Capability::Stress; }
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

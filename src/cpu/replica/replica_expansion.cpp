@@ -17,18 +17,21 @@ LinearInterpolation::LinearInterpolation(cpu::Frame final_state, int n_images)
         throw std::invalid_argument(
             "LinearInterpolation: n_images must be >= 3 (got "
             + std::to_string(n_images)
-            + ") — with two images there is nothing between the endpoints to relax, "
+            + ") — with two images there is nothing between the endpoints to "
+              "relax, "
               "which is not a path calculation");
     }
 }
 
-std::vector<Replica> LinearInterpolation::expand(const cpu::Frame& initial) const {
-    const int n = initial.atoms.size();
-    if (final_.atoms.size() != n) {
+std::vector<Replica>
+LinearInterpolation::expand(const cpu::Frame& initial) const {
+    const int n = initial.nlocal();
+    if (final_.nlocal() != n) {
         throw std::invalid_argument(
             "LinearInterpolation: the final state has "
-            + std::to_string(final_.atoms.size()) + " atoms but the initial state has "
-            + std::to_string(n) + " — a band between different systems is not a band");
+            + std::to_string(final_.nlocal())
+            + " atoms but the initial state has " + std::to_string(n)
+            + " — a band between different systems is not a band");
     }
 
     // Three DISTINCT frames are read/written below (initial / final_ / r.frame) — each
@@ -49,7 +52,8 @@ std::vector<Replica> LinearInterpolation::expand(const cpu::Frame& initial) cons
         // IS its position along the path.
         const double t = double(im) / double(n_images_ - 1);
 
-        Replica r{initial, t}; // copies topology, masses, types, box — all shared
+        Replica r{initial,
+                  t}; // copies topology, masses, types, box — all shared
         // r.frame is a fresh frame each iteration: its spans resolve here, at this
         // loop's boundary.
         StorageReal* __restrict r_x = r.frame.span(kAtom_x);
@@ -72,11 +76,12 @@ void LinearInterpolation::collapse(const std::vector<Replica>& replicas,
 
     int best = 0;
     for (int i = 1; i < static_cast<int>(replicas.size()); ++i) {
-        if (replicas[i].frame.scalars.energy > replicas[best].frame.scalars.energy)
+        if (replicas[i].frame.meta.get(kEnergy)
+            > replicas[best].frame.meta.get(kEnergy))
             best = i;
     }
     const cpu::Frame& saddle = replicas[best].frame;
-    const int n = out.atoms.size();
+    const int n = out.nlocal();
     // Two DISTINCT frames (saddle / out) — separate pointer names, never shared.
     const StorageReal* __restrict sad_x = saddle.span(kAtom_x);
     const StorageReal* __restrict sad_y = saddle.span(kAtom_y);
@@ -89,7 +94,7 @@ void LinearInterpolation::collapse(const std::vector<Replica>& replicas,
         out_y[i] = sad_y[i];
         out_z[i] = sad_z[i];
     }
-    out.scalars = saddle.scalars;
+    out.meta.copy_serializable_from(saddle.meta);
 }
 
 IdentityReplication::IdentityReplication(std::vector<double> parameters)
@@ -102,7 +107,8 @@ IdentityReplication::IdentityReplication(std::vector<double> parameters)
     }
 }
 
-std::vector<Replica> IdentityReplication::expand(const cpu::Frame& initial) const {
+std::vector<Replica>
+IdentityReplication::expand(const cpu::Frame& initial) const {
     std::vector<Replica> replicas;
     replicas.reserve(parameters_.size());
     for (const double p : parameters_)
@@ -115,7 +121,7 @@ void IdentityReplication::collapse(const std::vector<Replica>& replicas,
     if (replicas.empty())
         throw std::logic_error("IdentityReplication::collapse: no replicas");
     const cpu::Frame& r0 = replicas[0].frame;
-    const int n = out.atoms.size();
+    const int n = out.nlocal();
     // Two DISTINCT frames (r0 / out) — separate pointer names, never shared.
     const StorageReal* __restrict r0_x = r0.span(kAtom_x);
     const StorageReal* __restrict r0_y = r0.span(kAtom_y);
@@ -128,7 +134,7 @@ void IdentityReplication::collapse(const std::vector<Replica>& replicas,
         out_y[i] = r0_y[i];
         out_z[i] = r0_z[i];
     }
-    out.scalars = r0.scalars;
+    out.meta.copy_serializable_from(r0.meta);
 }
 
 } // namespace cpu

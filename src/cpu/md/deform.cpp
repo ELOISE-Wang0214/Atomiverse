@@ -48,7 +48,7 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // capturing lo_start/hi_start). Strain is referenced to the box edge
     // at Deform activation, not the simulation-initial box.
     if (origin_step_ < 0) {
-        L0_ = f.box.length(axis_);
+        L0_ = f.simbox.length(axis_);
         origin_step_ = ctx.step;
     }
 
@@ -79,23 +79,29 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // current edge (Box exposes scale_axis, not set_axis). For an
     // unperturbed box this is exact; the affine atom remap below uses
     // the same factor (= LAMMPS `remap x`).
-    const double L_prev = f.box.length(axis_);
+    const double L_prev = f.simbox.length(axis_);
     if (L_prev <= 0.0)
         return;
     const double scale = L_target / L_prev;
     if (scale == 1.0)
         return;
 
-    f.box.scale_axis(axis_, scale);
+    f.simbox.scale_axis(axis_, scale);
 
     const int n = owned_count(ctx);
     // Resolve only the deformed axis's column -- matches the original
     // single-array selection (never resolve all three just to pick one).
     StorageReal* __restrict coord;
     switch (axis_) {
-    case 0: coord = f.span(kAtom_x); break;
-    case 1: coord = f.span(kAtom_y); break;
-    default: coord = f.span(kAtom_z); break;
+    case 0:
+        coord = f.span(kAtom_x);
+        break;
+    case 1:
+        coord = f.span(kAtom_y);
+        break;
+    default:
+        coord = f.span(kAtom_z);
+        break;
     }
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
@@ -109,7 +115,7 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // LAMMPS `fix deform`'s `remap` also operates on nlocal+nghost).
     // Velocity drift is intentionally omitted — the owner rank applies
     // it; the next forward halo propagates the result.
-    const int n_total = static_cast<int>(f.atoms.size());
+    const int n_total = static_cast<int>(f.nlocal());
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
         for (int i = n; i < n_total; ++i) {

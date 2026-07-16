@@ -23,12 +23,14 @@ void AngleHarmonic::build(const BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads = omp_get_max_threads();
 #endif
-    scratch_.build(n_threads, ctx.frame.atoms.nmax);
+    scratch_.build(n_threads, ctx.frame.capacity());
 }
 
 void AngleHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    auto& a = f.atoms;
+    const auto num_angle = f.span(kAtom_num_angle);
+    const auto angle_atom = f.span(kAtom_angle_atom);
+    const auto angle_type = f.span(kAtom_angle_type);
 
     const md::ResolveView rv(ctx);
     const int nlocal = rv.n_local();
@@ -41,10 +43,10 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         cache_.flat.clear();
         cache_.dropped_at_build = 0;
         for (int j = 0; j < nlocal; ++j) {
-            const int na = a.num_angle[j];
+            const int na = num_angle[j];
             for (int m = 0; m < na; ++m) {
-                const int i = rv.resolve(a.angle_atom(j, 2 * m + 0));
-                const int k = rv.resolve(a.angle_atom(j, 2 * m + 1));
+                const int i = rv.resolve(angle_atom(j, 2 * m + 0));
+                const int k = rv.resolve(angle_atom(j, 2 * m + 1));
                 if (i < 0 || k < 0) {
                     ++cache_.dropped_at_build;
                     continue;
@@ -52,7 +54,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
                 cache_.flat.push_back(i);
                 cache_.flat.push_back(j);
                 cache_.flat.push_back(k);
-                cache_.flat.push_back(a.angle_type(j, m));
+                cache_.flat.push_back(angle_type(j, m));
             }
         }
         cache_.mark_built(ctx);
@@ -104,12 +106,12 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
                 double dx_ji = ri[0] - rj[0];
                 double dy_ji = ri[1] - rj[1];
                 double dz_ji = ri[2] - rj[2];
-                f.box.min_image(dx_ji, dy_ji, dz_ji);
+                f.simbox.min_image(dx_ji, dy_ji, dz_ji);
 
                 double dx_jk = rk[0] - rj[0];
                 double dy_jk = rk[1] - rj[1];
                 double dz_jk = rk[2] - rj[2];
-                f.box.min_image(dx_jk, dy_jk, dz_jk);
+                f.simbox.min_image(dx_jk, dy_jk, dz_jk);
 
                 const double r_ji =
                     std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
@@ -119,7 +121,8 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
                 double cos_theta =
                     (dx_ji * dx_jk + dy_ji * dy_jk + dz_ji * dz_jk)
                     / (r_ji * r_jk);
-                cos_theta = std::max(double(-1), std::min(double(1), cos_theta));
+                cos_theta =
+                    std::max(double(-1), std::min(double(1), cos_theta));
                 const double theta = std::acos(cos_theta);
 
                 const double dtheta = theta - theta0_[type];
@@ -170,9 +173,9 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
 
     scratch_.reduce_into(n_force);
 
-    f.scalars.energy += energy_total;
-    f.scalars.energy_angle += energy_total;
-    vir.flush_to(f.scalars);
+    f.meta.get(kEnergy) += energy_total;
+    f.meta.get(kEnergyAngle) += energy_total;
+    vir.flush_to(f.meta.get(kStress));
 
     drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }

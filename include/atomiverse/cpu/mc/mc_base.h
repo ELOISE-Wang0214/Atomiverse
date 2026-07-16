@@ -10,7 +10,14 @@
 #include <utility>
 
 #include "atomiverse/core/precision.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/mover.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -68,9 +75,9 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
 
         for (int s = 0; s < n_sweeps; ++s) {
             this->mutable_outer_status().reset();
-            // frame.scalars.energy still holds the LAST ACCEPTED energy here
+            // frame.meta.get(kEnergy) still holds the LAST ACCEPTED energy here
             // (the trial evaluator hasn't run yet) — save it for rollback.
-            const AccReal e_before = frame.scalars.energy;
+            const AccReal e_before = frame.meta.get(kEnergy);
             const int sweep = this->next_step_();
             this->step_once(sweep); // propose (mutate + record) → energy
             const Transaction::Verb verb = proposal_.verb;
@@ -79,7 +86,7 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
             if (outcome == Outcome::Rollback) {
                 proposal_.rollback(frame);
                 // The frame must reflect the restored state, not the trial.
-                frame.scalars.energy = e_before;
+                frame.meta.get(kEnergy) = e_before;
             }
             if (this->poll_handlers_(s) != Verdict::Continue)
                 break;
@@ -92,11 +99,21 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
     /// @param m Mover component (e.g. `TranslateMove`, `MoveSelector`).
     /// @return `*this` for chaining.
     template <typename M>
+        requires(!std::is_lvalue_reference_v<M>)
     McBase& set_mover(M&& m) {
-        this->set_singular_default_(std::forward<M>(m), mover_set_,
-                                    "set_mover");
+        this->set_singular_default_owned_(std::forward<M>(m), mover_set_,
+                                          "set_mover");
         return *this;
     }
+
+    template <typename M>
+    McBase& set_mover_ref(M& m) {
+        this->set_singular_default_ref_(m, mover_set_, "set_mover_ref");
+        return *this;
+    }
+
+    template <typename M>
+    McBase& set_mover(M&) = delete;
 
     /// @brief Trial moves of verb `v` attempted across all `run()` calls.
     long long attempts(Transaction::Verb v) const {
@@ -111,8 +128,7 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
     /// @brief Accepted fraction of verb-`v` moves, in [0,1] (0 if none).
     double acceptance_ratio(Transaction::Verb v) const {
         const long long a = attempts(v);
-        return a > 0 ? static_cast<double>(accepts(v))
-                           / static_cast<double>(a)
+        return a > 0 ? static_cast<double>(accepts(v)) / static_cast<double>(a)
                      : 0.0;
     }
 
@@ -144,16 +160,23 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
     void validate_components() const override {
         bool has_mover = false;
         bool has_energy = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Mover)
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Mover*>(&c))
                 has_mover = true;
-            if (has_capability(c.capabilities(), Capability::Energy))
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c))
                 has_energy = true;
         });
         if (!has_mover)
             throw_missing("Mover");
         if (!has_energy)
-            throw_missing("Component with Capability::Energy");
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
     }
 
     /// @brief Reserved step index for the energy-only bootstrap pass (a Mover

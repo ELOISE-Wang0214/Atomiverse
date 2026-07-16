@@ -2,8 +2,8 @@
 /// @brief Box — simulation cell value type with periodic boundary operations.
 #pragma once
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/core/vec3.h"
 #include <cmath>
 
@@ -14,17 +14,17 @@ struct Box {
     Vec3 origin;
     bool pbc[3] = {true, true, true};
 
-    static Box cubic(Real a) {
+    static Box cubic(AccReal a) {
         Box b;
         b.cell = Mat3::diagonal(a, a, a);
         b.origin = Vec3::zeros();
         return b;
     }
 
-    Real volume() const { return std::abs(cell.det()); }
+    AccReal volume() const { return std::abs(cell.det()); }
 
     Mat3 recip_cell() const {
-        return cell.inverse().transpose() * Real(2.0 * kPI);
+        return cell.inverse().transpose() * AccReal(2.0 * units::pi);
     }
 
     Vec3 lengths() const {
@@ -54,13 +54,13 @@ struct Box {
             if (pbc[i]) {
                 f[i] -= std::floor(f[i]);
                 if (f[i] < 0)
-                    f[i] += Real(1);
+                    f[i] += AccReal(1);
             }
         }
         return to_cart(f);
     }
 
-    void wrap_batch(Real* xyz, int n) const {
+    void wrap_batch(AccReal* xyz, int n) const {
         for (int i = 0; i < n; ++i) {
             auto w = wrap(Vec3{xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]});
             xyz[i * 3] = w[0];

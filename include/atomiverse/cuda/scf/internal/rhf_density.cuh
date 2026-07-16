@@ -1,7 +1,7 @@
 /// @file cuda/scf/internal/rhf_density.cuh
 /// @brief internal::RHFDensity -- back-transform C, rebuild P, compute RHF energy.
 ///
-/// **Internal SCF helper.** Does NOT inherit `cuda::ComponentBase` and is
+/// **Internal SCF helper.** Does NOT inherit `cuda::Component` and is
 /// never registered into a `Driver` Plan. Owned by `cuda::scf::SCFSolver`,
 /// which drives its `build` / `step` / `destroy` lifecycle directly.
 ///

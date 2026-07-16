@@ -1,145 +1,83 @@
 /// @file cpu/comm/atom_pack.h
-/// @brief Pack / unpack helpers for cpu::Atom across MPI swaps.
+/// @brief Schema-compiled, native-dtype Frame row packing.
 ///
-/// Mirrors LAMMPS' `AtomVec::pack_comm / pack_border / pack_exchange`
-/// trio. Free functions (not member methods on `cpu::Atom`) because we
-/// have a single canonical atom layout and LAMMPS' AtomVec polymorphism
-/// doesn't apply.
-///
-/// Pack layouts (per-atom doubles, dense, contiguous):
-///
-///   pack_comm     [x' y' z']                                       (3 dbl)
-///   pack_border   [x' y' z' tag type img_x img_y img_z]            (8 dbl)
-///   pack_exchange  variable-length; carries x/y/z/v/f/mass/charge/type/tag
-///                  /image + per-atom topology + nspecial/special list.
-///                  Returns the doubles-written count; receiver reads
-///                  the same count.
-///
-/// `x'/y'/z'` denote positions with the per-face PBC shift already
-/// applied (caller supplies the shift), so the receiver sees ghosts
-/// in its own coordinate frame.
-///
-/// @see lammps/src/atom_vec.h for the upstream pack/unpack contracts
-/// @see cpu/atom.h for the per-atom storage these functions operate on
+/// Payloads are bytes described by an exact schema fingerprint.  Values are
+/// copied in their native configured dtype; TagInt is never widened through
+/// double. A PackPlan owns a dynamically-sized descriptor vector and is
+/// invalidated by Frame assignment, typed-meta schema mutation, or any atoms
+/// Block structural generation change.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
+
+#include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace cpu {
-
-class Atom;
-class Box;
-
 namespace comm {
 
-// ── Forward (steady-state ghost position refresh) ─────────────────────────
+inline constexpr std::uint32_t kAtomWireVersion = 2;
 
-/// @brief Doubles written per atom by `pack_comm`.
-inline constexpr int kCommDoublesPerAtom = 3;
+enum class PackKind : std::uint8_t { Comm, Border, Exchange, Reverse };
 
-/// @brief Pack positions of `n` atoms indexed by `sendlist` into `buf`.
-/// Adds the per-face PBC shift to the packed coordinates.
-/// @param atom Source atom container.
-/// @param sendlist Local row indices to pack (length `n`).
-/// @param n Number of atoms to pack.
-/// @param sx X-axis PBC shift to add to packed `x` [Angstrom].
-/// @param sy Y-axis PBC shift [Angstrom].
-/// @param sz Z-axis PBC shift [Angstrom].
-/// @param buf Output buffer; must hold at least `n * kCommDoublesPerAtom` doubles.
-/// @return Number of doubles written.
-int pack_comm(const Atom& atom, const int* sendlist, int n, double sx,
-              double sy, double sz, double* buf);
+struct PackPlan {
+    PackKind kind = PackKind::Exchange;
+    std::uint32_t version = kAtomWireVersion;
+    std::uint64_t fingerprint = 0;
+    std::uint64_t frame_generation = 0;
+    std::uint64_t block_generation = 0;
+    const Frame* frame_owner = nullptr;
+    const Block* owner = nullptr;
+    bool writable = false;
+    std::vector<ColumnRef> fields;
 
-/// @brief Unpack `n` positions from `buf` into ghost slots
-/// `[first, first + n)` of `atom`.
-/// @param atom Destination atom container; slot range must already be allocated.
-/// @param n Number of atoms to unpack.
-/// @param first First ghost row to write.
-/// @param buf Source buffer.
-void unpack_comm(Atom& atom, int n, int first, const double* buf);
+    /// True only while this plan still belongs to the exact Frame instance
+    /// and atoms-Block generation it was compiled from.  This check performs
+    /// no mapping lookup and is therefore safe in per-row pack loops.
+    bool valid_for(const Frame& frame) const noexcept;
+    void validate(const Frame& frame) const;
+};
 
-// ── Border (full ghost rebuild: position + tag + type + image) ────────────
+PackPlan make_comm_plan(const Frame& frame);
+PackPlan make_comm_plan(Frame& frame);
+PackPlan make_border_plan(const Frame& frame);
+PackPlan make_border_plan(Frame& frame);
+PackPlan make_exchange_plan(const Frame& frame);
+PackPlan make_exchange_plan(Frame& frame);
+PackPlan make_reverse_plan(const Frame& frame);
+PackPlan make_reverse_plan(Frame& frame);
 
-/// @brief Doubles written per atom by `pack_border`.
-inline constexpr int kBorderDoublesPerAtom = 8;
+/// Fail before an MPI payload operation when ranks disagree.  The MPI owner
+/// must compare/all-reduce this value collectively before point-to-point I/O.
+void require_schema_fingerprint(const PackPlan& local,
+                                std::uint64_t remote_fingerprint,
+                                std::uint32_t remote_version);
 
-/// @brief Pack position + tag + type + image of `n` atoms into `buf`.
-/// Tag and type are cast to double for uniform packing (atom counts up
-/// to 2^53 are exact; types up to 2^31 trivially fit). Image components
-/// are individually cast.
-/// @param atom Source atom container.
-/// @param sendlist Local row indices.
-/// @param n Number of atoms.
-/// @param sx X-axis PBC shift [Angstrom].
-/// @param sy Y-axis PBC shift [Angstrom].
-/// @param sz Z-axis PBC shift [Angstrom].
-/// @param buf Output buffer (≥ `n * kBorderDoublesPerAtom` doubles).
-/// @return Number of doubles written.
-int pack_border(const Atom& atom, const int* sendlist, int n, double sx,
-                double sy, double sz, double* buf);
+std::size_t comm_bytes(const PackPlan& plan, int n);
+std::size_t border_bytes(const PackPlan& plan, int n);
+std::size_t max_exchange_bytes(const Frame& frame, const PackPlan& plan);
 
-/// @brief Unpack position + tag + type + image into ghost slots
-/// `[first, first + n)` of `atom`.
-/// @param atom Destination atom container.
-/// @param n Number of atoms.
-/// @param first First ghost row to write.
-/// @param buf Source buffer.
-void unpack_border(Atom& atom, int n, int first, const double* buf);
+std::size_t pack_comm(const Frame& frame, const PackPlan& plan,
+                      const int* sendlist, int n, double sx, double sy,
+                      double sz, std::byte* out, std::size_t capacity);
+void unpack_comm(Frame& frame, const PackPlan& plan, int n, int first,
+                 const std::byte* data, std::size_t size);
 
-// ── Exchange (atom migration: full per-atom state + per-atom topology) ────
+std::size_t pack_border(const Frame& frame, const PackPlan& plan,
+                        const int* sendlist, int n, double sx, double sy,
+                        double sz, std::byte* out, std::size_t capacity);
+void unpack_border(Frame& frame, const PackPlan& plan, int n, int first,
+                   const std::byte* data, std::size_t size);
 
-/// @brief Pack the full per-atom payload for atom `i` into `buf`.
-///
-/// Payload includes:
-///   - x, y, z, vx, vy, vz, fx, fy, fz, mass, charge   (11 doubles)
-///   - type, tag                                       (2 ints, packed as doubles)
-///   - image[3]                                        (3 ints, packed as doubles)
-///   - num_bond + bond_atom[..] + bond_type[..]
-///   - num_angle + angle_atom[..] + angle_type[..]
-///   - num_dihedral + dihedral_atom[..] + dihedral_type[..]
-///   - nspecial[3] + special[..]
-///
-/// Variable size; the receiver reads the exact same number of doubles.
-/// Bonds-per-atom counts are written before their respective partner-tag
-/// arrays so the receiver knows how many entries to consume.
-///
-/// @param atom Source atom container.
-/// @param i Owner row index to pack.
-/// @param buf Output buffer (must be sized large enough for the worst-case
-///            payload — `max_exchange_doubles(atom)` per atom).
-/// @return Number of doubles written.
-int pack_exchange(const Atom& atom, int i, double* buf);
+std::size_t pack_exchange(const Frame& frame, const PackPlan& plan, int row,
+                          std::byte* out, std::size_t capacity);
 
-/// @brief Unpack one atom payload from `buf` into row `slot`.
-/// @param atom Destination atom container; `slot < atom.nmax` must hold.
-/// @param slot Local row to write.
-/// @param buf Source buffer (must match what `pack_exchange` wrote).
-/// @return Number of doubles read.
-int unpack_exchange(Atom& atom, int slot, const double* buf);
-
-/// @brief Worst-case doubles for a single `pack_exchange` payload at the
-/// container's CURRENT runtime topology strides. Used to size send/recv
-/// buffers conservatively. Multi-rank callers must reduce with
-/// `MPI_Allreduce(MAX)` so sender and receiver agree on the wire slot size
-/// (strides converge to identical values at load time; the reduce is
-/// belt-and-braces).
-int max_exchange_doubles(const Atom& atom);
-
-// ── Bonded skin extent ────────────────────────────────────────────────────
-
-/// @brief Maximum intra-tuple atom-to-atom distance across all bonds,
-/// angles, and dihedrals where every participant is locally resolvable.
-///
-/// Used by `cpu::comm::Borders` to pick a halo cutoff wide enough to
-/// keep every bonded partner ghosted. Multi-rank callers reduce the
-/// per-rank result with `MPI_Allreduce(MAX)` before applying.
-///
-/// @param atom Atom container with current positions and per-atom topology.
-/// @param box Simulation cell, for minimum-image distance.
-/// @return Max pairwise span in Angstroms; 0 if no bonded tuples present
-///         or no tuple is fully locally resolved.
-double compute_bonded_extension_local(const Atom& atom, const Box& box);
+/// Unpack one variable row.  The plan is refreshed in-place if an incoming
+/// topology count forces a re-stride before payload materialization.
+std::size_t unpack_exchange(Frame& frame, PackPlan& plan, int row,
+                            const std::byte* data, std::size_t size);
 
 } // namespace comm
 } // namespace cpu

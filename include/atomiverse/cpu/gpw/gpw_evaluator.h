@@ -1,13 +1,13 @@
 /// @file cpu/gpw/gpw_evaluator.h
 /// @brief GPWEvaluator — GPW DFT energy component for CPU drivers.
 ///
-/// Mirrors `cpu::pw::PWEvaluator` / `cpu::scf::SCFEvaluator`: a self-contained
+/// Mirrors `cpu::pw::PWEvaluator` / `cpu::scf::SCF`: a self-contained
 /// Evaluator that wraps an owned inner `GPWSolver`. `build()` validates the
 /// per-element basis/pseudopotential templates, assembles the `GpwConfig`
 /// from the build-time frame (cell [Bohr], n_occ, the ATV_GPW_OT diagnostic
 /// switch) and builds the solver; each `launch()` assembles the atoms at the
 /// frame's current geometry (Angstrom -> Bohr), runs the solver, and writes
-/// the total energy to `frame.scalars.energy` [eV]. GPW does not support a
+/// the total energy to `frame.meta.get(kEnergy)` [eV]. GPW does not support a
 /// variable cell: a `launch()` under a box that differs from the build-time
 /// cell throws `std::runtime_error`.
 ///
@@ -19,9 +19,10 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/molrs.hpp"
@@ -31,26 +32,21 @@ namespace cpu {
 namespace gpw {
 
 /// @brief One element's basis + pseudopotential — CP2K's `&KIND` concept.
-///        The element identity is molrs's `Element` (see atomiverse/molrs.hpp).
-///        `Element` is an enum, so a Kind cannot inherit from it; the implicit
-///        conversion below gives the same is-a usage (a Kind IS its element
-///        wherever an Element is expected).
+///        Element identity is owned by `molrs::Element` (see
+///        atomiverse/molrs.hpp) and remains an explicit field. `Kind` is a
+///        composition object, not an element alias or implicit adapter.
 struct Kind {
-    Element element{};   ///< chemical element, matched against frame.atoms.type (Z).
+    molrs::Element
+        element; ///< chemical element, matched against the atoms type column (Z).
     GaussianBasis basis; ///< contracted Gaussian basis for this element.
     GthPotential pot;    ///< GTH pseudopotential for this element.
-
-    Kind() = default;
 
     /// @brief One element's basis + potential in a single expression.
     /// @param element Chemical element (molrs periodic-table enum).
     /// @param basis   Contracted Gaussian basis for this element.
     /// @param pot     GTH pseudopotential for this element.
-    Kind(Element element, GaussianBasis basis, GthPotential pot)
+    Kind(molrs::Element element, GaussianBasis basis, GthPotential pot)
         : element(element), basis(std::move(basis)), pot(std::move(pot)) {}
-
-    /// @brief A Kind is usable as its Element.
-    operator Element() const { return element; }
 };
 
 /// @brief Configuration for the GPW evaluator (grid/XC/electrostatics + kinds).
@@ -61,26 +57,22 @@ struct GpwEvaluatorConfig {
     double mix = 0.3;
     XcKind xc = XcKind::PADE;
     bool nonperiodic = false;
-    bool compute_forces = false; ///< also compute analytic forces (one SCF + one gradient pass).
-    double fd_step = 1e-3;       ///< FD displacement [Bohr] for forces.
-    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
-                     ///< from the in-tree tables (basis_data/dftd3_tables.h).
-    std::vector<Kind>
-        kinds; ///< one per distinct element in the system.
+    bool compute_forces =
+        false; ///< also compute analytic forces (one SCF + one gradient pass).
+    double fd_step = 1e-3; ///< FD displacement [Bohr] for forces.
+    bool d3 = false;       ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
+    ///< from the in-tree tables (basis_data/dftd3_tables.h).
+    std::vector<Kind> kinds; ///< one per distinct element in the system.
 };
 
 /// @brief GPW total-energy evaluator component.
-class GPWEvaluator : public cpu::ComponentBase {
+class GPWEvaluator : public cpu::GPW {
   public:
     explicit GPWEvaluator(GpwEvaluatorConfig config)
         : config_(std::move(config)) {}
 
     std::string name() const override { return "gpw_evaluator"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return config_.compute_forces ? (Capability::Energy | Capability::Force)
-                                      : Capability::Energy;
-    }
+    /* role via Potential/kind base */
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

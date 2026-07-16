@@ -11,7 +11,7 @@
 /// (`md::Phase`, `minimizer::Phase`, `evaluate::Phase`) is driver-specific, so
 /// hardcoding one here would silently misbind when reused across drivers.
 /// Users either:
-///   - Bind explicitly: `sim.on(my_phase_enum::end_of_step).add(obs, 20);`
+///   - Bind explicitly: `sim.on(my_phase_enum::end_of_step).add_ref(obs, 20);`
 ///   - Inherit from a driver-specific wrapper that provides the binding:
 ///     `class MyRDF : public cpu::md::AsyncObserver { ... };`
 ///     (see `cpu/md/async_observer.h`, `cpu/minimizer/async_observer.h`).
@@ -50,7 +50,7 @@ namespace cpu {
 class AnalysisExecutor;
 
 /// @brief Driver-agnostic base for components whose work runs off the main hot path.
-class AsyncComponentBase : public cpu::ComponentBase {
+class AsyncComponentBase : public cpu::Component {
   public:
     /// @brief No default binding. Users bind explicitly or subclass one of
     /// the driver-specific wrappers in `cpu/<driver>/async_observer.h`.

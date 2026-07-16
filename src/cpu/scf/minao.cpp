@@ -21,7 +21,7 @@
 
 #include <xtensor-blas/xlinalg.hpp>
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/minao_data.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 

@@ -1,5 +1,5 @@
 /// @file cpu/scf/scf_evaluator.cpp
-/// @brief SCFEvaluator implementation — unified AIMD force component.
+/// @brief SCF implementation — unified AIMD force component.
 ///
 /// As of driver-taxonomy phase 4, the SCF cycle runs through a
 /// pre-built `cpu::scf::SCFSolver` member: the n_basis-sized workspaces
@@ -44,38 +44,37 @@ namespace {
 ///       anchor-on-atom-0 scheme will need generalisation.
 /// @return Snapshot of the wrapped positions so the caller can restore
 ///         them before launch returns (downstream observers expect
-///         wrapped positions in `frame.atoms.x/y/z`).
+///         wrapped positions in the canonical position columns).
 /// Wrapped positions saved for restoration after the SCF unwrap.
 ///
 /// Plain vectors, restored by an ELEMENT-WISE COPY back into the frame's
-/// existing columns — never by swapping a whole array into `frame.atoms.x`.
+/// existing columns — never by swapping a whole position column.
 /// Swapping frees the frame's storage mid-force-phase, dangling every raw
 /// pointer a component resolved at its launch boundary (LBFGS's line search
 /// replays the force phase and holds exactly such pointers — ASAN caught the
 /// use-after-free). Only `grow`/`set_capacity` may reallocate a frame column,
-/// and only at `pre_force`; see cpu/frame/atom.h.
+/// and only at `pre_force`; see cpu/frame/block.h.
 struct WrappedPositionsSnapshot {
     std::vector<ATV::StorageReal> x, y, z;
 };
 
 WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
     using namespace ATV;
-    const int n = static_cast<int>(frame.atoms.size());
+    const int n = static_cast<int>(frame.nlocal());
     const StorageReal* __restrict px = frame.span(kAtom_x);
     const StorageReal* __restrict py = frame.span(kAtom_y);
     const StorageReal* __restrict pz = frame.span(kAtom_z);
-    WrappedPositionsSnapshot snap{
-        std::vector<ATV::StorageReal>(px, px + n),
-        std::vector<ATV::StorageReal>(py, py + n),
-        std::vector<ATV::StorageReal>(pz, pz + n)};
+    WrappedPositionsSnapshot snap{std::vector<ATV::StorageReal>(px, px + n),
+                                  std::vector<ATV::StorageReal>(py, py + n),
+                                  std::vector<ATV::StorageReal>(pz, pz + n)};
 
     if (n <= 1)
         return snap;
 
     // Gas-phase frame (no/degenerate box): nothing to unwrap, and
     // Box::min_image would divide by a zero edge length.
-    if (frame.box.length(0) <= 0.0 || frame.box.length(1) <= 0.0
-        || frame.box.length(2) <= 0.0)
+    if (frame.simbox.length(0) <= 0.0 || frame.simbox.length(1) <= 0.0
+        || frame.simbox.length(2) <= 0.0)
         return snap;
 
     StorageReal* __restrict sp_x = frame.span(kAtom_x);
@@ -90,7 +89,7 @@ WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
         double dx = sp_x[i] - x0;
         double dy = sp_y[i] - y0;
         double dz = sp_z[i] - z0;
-        frame.box.min_image(dx, dy, dz);
+        frame.simbox.min_image(dx, dy, dz);
         sp_x[i] = x0 + dx;
         sp_y[i] = y0 + dy;
         sp_z[i] = z0 + dz;
@@ -119,7 +118,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-SCFEvaluator::SCFEvaluator(SCFConfig config, BasisSet basis, int charge)
+SCF::SCF(SCFConfig config, BasisSet basis, int charge)
     : config_(std::move(config)), basis_(basis), charge_(charge),
       config_shared_(std::make_shared<SCFConfig>(config_)) {}
 
@@ -128,16 +127,16 @@ SCFEvaluator::SCFEvaluator(SCFConfig config, BasisSet basis, int charge)
 // `predictor()`, `on_evaluate()`, and (in the header) `with_gradient()`
 // are ref-qualified so the chain preserves the value category of the
 // invocation. When called on an rvalue temporary (e.g.
-// `sim.add(SCFEvaluator{cfg}.predictor(3))`), the rvalue overload
-// returns `SCFEvaluator&&`, which makes `Driver::add(Comp&& comp)`
-// deduce `Comp` as `SCFEvaluator` (rvalue) and move the temporary into
+// `sim.add(SCF{cfg}.predictor(3))`), the rvalue overload
+// returns `SCF&&`, which makes `Driver::add(Comp&& comp)`
+// deduce `Comp` as `SCF` (rvalue) and move the temporary into
 // `unique_ptr` ownership rather than storing a non-owning pointer that
 // dangles when the temporary dies. The lvalue overload preserves the
 // existing `evaluator.predictor(3); driver.add(std::move(evaluator));`
 // pattern.
 
-void SCFEvaluator::set_predictor_(int order, int corrector_steps,
-                                  double corrector_tol, bool fallback) {
+void SCF::set_predictor_(int order, int corrector_steps, double corrector_tol,
+                         bool fallback) {
     use_predictor_ = true;
     corrector_steps_ = corrector_steps;
     corrector_tol_ = corrector_tol;
@@ -146,35 +145,33 @@ void SCFEvaluator::set_predictor_(int order, int corrector_steps,
     aspc_beta_ = std::make_unique<ASPCPredictor>(order);
 }
 
-SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
-                                      double corrector_tol, bool fallback) & {
+SCF& SCF::predictor(int order, int corrector_steps, double corrector_tol,
+                    bool fallback) & {
     set_predictor_(order, corrector_steps, corrector_tol, fallback);
     return *this;
 }
 
-SCFEvaluator&& SCFEvaluator::predictor(int order, int corrector_steps,
-                                       double corrector_tol, bool fallback) && {
+SCF&& SCF::predictor(int order, int corrector_steps, double corrector_tol,
+                     bool fallback) && {
     set_predictor_(order, corrector_steps, corrector_tol, fallback);
     return std::move(*this);
 }
 
-void SCFEvaluator::set_on_evaluate_(std::function<void(const SCFResult&)> cb) {
+void SCF::set_on_evaluate_(std::function<void(const SCFResult&)> cb) {
     on_evaluate_ = std::move(cb);
 }
 
-SCFEvaluator&
-SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) & {
+SCF& SCF::on_evaluate(std::function<void(const SCFResult&)> cb) & {
     set_on_evaluate_(std::move(cb));
     return *this;
 }
 
-SCFEvaluator&&
-SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) && {
+SCF&& SCF::on_evaluate(std::function<void(const SCFResult&)> cb) && {
     set_on_evaluate_(std::move(cb));
     return std::move(*this);
 }
 
-void SCFEvaluator::build(const cpu::BuildContext& ctx) {
+void SCF::build(const cpu::BuildContext& ctx) {
     // Build a representative IntegralPack for the current geometry — used
     // both as the working pack for launch #1 and to size the SCFSolver's
     // persistent workspaces (X, shell-pair lists, KS grid). Subsequent
@@ -201,10 +198,10 @@ void SCFEvaluator::build(const cpu::BuildContext& ctx) {
              last_integrals_->n_basis);
 }
 
-void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
+void SCF::launch(const cpu::LaunchContext& ctx) {
     const auto t_total = LogClock::now();
     auto& frame = ctx.frame;
-    const int natm = static_cast<int>(frame.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
     ATV_INFO("[scf_eval] step={} start natm={} charge={}", ctx.step, natm,
              charge_);
 
@@ -321,18 +318,18 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
             const double mag = std::sqrt(fx * fx + fy * fy + fz * fz);
             max_force = std::max(max_force, mag);
         }
-        frame.scalars.energy = grad.energy;
+        frame.meta.get(kEnergy) = grad.energy;
 
         ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
                  "max_force_eVA={:.6f} scf_converged={} scf_iterations={}",
-                 ctx.step, elapsed_ms(t_total), frame.scalars.energy, max_force,
-                 result.converged, result.iterations);
+                 ctx.step, elapsed_ms(t_total), frame.meta.get(kEnergy),
+                 max_force, result.converged, result.iterations);
     } else {
-        // Energy-only path. Convert result.energy (Ha) to frame.scalars.energy (eV).
-        frame.scalars.energy = result.energy * ATV::kHartree2eV;
+        // Energy-only path. Convert result.energy (Ha) to frame.meta.get(kEnergy) (eV).
+        frame.meta.get(kEnergy) = result.energy * ATV::units::kHartreeInEv;
         ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
                  "(energy-only) scf_converged={} scf_iterations={}",
-                 ctx.step, elapsed_ms(t_total), frame.scalars.energy,
+                 ctx.step, elapsed_ms(t_total), frame.meta.get(kEnergy),
                  result.converged, result.iterations);
     }
 

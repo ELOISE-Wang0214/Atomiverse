@@ -26,8 +26,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {
@@ -35,7 +35,7 @@ namespace cpu {
 class AnalysisExecutor;
 
 /// @brief Copies frame fields into a ring slot for async consumption.
-class Publish : public cpu::ComponentBase {
+class Publish : public cpu::Component {
   public:
     std::string name() const override { return "publish"; }
 

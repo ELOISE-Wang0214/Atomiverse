@@ -61,31 +61,12 @@ struct MolecularGrid {
 ///                   (590 for Z <= 10, 770 for Z > 10).
 enum class GridLevel { SG0, SG1, MatchPySCF };
 
-/// @brief Build atom-centered molecular grid with Becke partitioning (legacy).
-///
-/// Constructs atom-centered grids using Treutler-Ahlrichs M4 radial
-/// quadrature (JCP 102, 346 (1995)) and tabulated Lebedev-Laikov angular
-/// quadrature (Doklady Math. 59, 477 (1999)), combined with Becke
-/// fuzzy-cell partitioning (JCP 88, 2547 (1988)). Uniform angular order at
-/// every radial shell -- this is the `GridLevel::SG0` behaviour and is
-/// kept for explicit-override / legacy callers.
-///
-/// @param atoms Array of atom descriptors (Z, position in Bohr).
-/// @param natm  Number of atoms.
-/// @param n_radial Number of radial quadrature points per atom.
-/// @param n_angular Number of Lebedev angular points per atom; one of
-///        {6, 38, 50, 86, 110, 194, 302, 590, 770}. Other values round
-///        down to the next supported order.
-/// @return MolecularGrid with all weighted grid points.
-MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
-                                   int n_radial = 50, int n_angular = 110);
-
 /// @brief Build atom-centered molecular grid at a named quality level.
 ///
 /// Level-aware grid builder: selects the radial scheme and the per-radial-
 /// shell angular Lebedev order from `level` (see ::GridLevel). For
-/// `GridLevel::SG0` this is identical to the legacy overload with the
-/// supplied `n_radial` / `n_angular`. For `SG1` / `MatchPySCF` the
+/// `GridLevel::SG0` uses the supplied `n_radial` / `n_angular`. For
+/// `SG1` / `MatchPySCF` the
 /// `n_radial` / `n_angular` arguments are ignored in favour of the level's
 /// own constants.
 ///

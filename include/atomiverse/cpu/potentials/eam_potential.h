@@ -1,6 +1,6 @@
 /// @file cpu/potentials/eam_potential.h
 /// @brief EAMPotential — analytic embedded-atom potential, constructed by
-///        (Element, name) lookup into the in-tree static tables. No parsing.
+///        (`molrs::Element`, name) lookup into the in-tree static tables. No parsing.
 #pragma once
 
 #include <cmath>
@@ -39,7 +39,7 @@ class EAMPotential {
     /// @param element Chemical element (molrs periodic-table enum).
     /// @param name Parameterization name, e.g. `"sutton-chen"`.
     /// @throws std::out_of_range if the (element, name) pair is not tabulated.
-    EAMPotential(Element element, std::string_view name);
+    EAMPotential(molrs::Element element, std::string_view name);
 
     /// @brief Pair term phi(r) [eV].
     /// @param r Separation [Angstrom].
@@ -47,7 +47,9 @@ class EAMPotential {
 
     /// @brief d(phi)/dr [eV/Angstrom].
     /// @param r Separation [Angstrom].
-    double dphi(double r) const { return -n_ * eps_ * std::pow(a_ / r, n_) / r; }
+    double dphi(double r) const {
+        return -n_ * eps_ * std::pow(a_ / r, n_) / r;
+    }
 
     /// @brief Density contribution f(r) of one neighbour [dimensionless].
     /// @param r Separation [Angstrom].
@@ -70,7 +72,8 @@ class EAMPotential {
     /// into the whole force array.
     /// @param rho Local density [dimensionless].
     double dF(double rho) const {
-        if (rho <= 0.0) return 0.0;
+        if (rho <= 0.0)
+            return 0.0;
         return -0.5 * eps_ * c_ / std::sqrt(rho);
     }
 

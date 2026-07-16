@@ -67,7 +67,7 @@ void launch_nve_limit_final(real_t* vx, real_t* vy, real_t* vz,
 ///
 /// @see cpu::md::NVELimit for the CPU reference + LAMMPS audit table
 /// @see cuda::md::VelocityVerlet for the unconstrained sibling
-class NVELimit : public ComponentBase {
+class NVELimit : public Component {
   public:
     /// @brief Construct NVE/limit integrator.
     /// @param dt   Timestep [fs].
@@ -76,9 +76,8 @@ class NVELimit : public ComponentBase {
     NVELimit(double dt, double xmax) : dt_(dt), xmax_(xmax) {}
 
     std::string name() const override { return "nve_limit"; }
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: velocity Verlet with a per-step displacement cap.
-    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),

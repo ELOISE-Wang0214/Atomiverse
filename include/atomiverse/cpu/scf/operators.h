@@ -11,7 +11,7 @@
 ///   build_coulomb_exchange_fused — RHF Fock build, selected at runtime by
 ///   `HamiltonianBuilder` whenever a dense ERI tensor is available.
 ///
-/// @see cpu::scf::scf_solve which uses the direct-SCF path internally
+/// @see cpu::scf::SCFSolver::run which uses the direct-SCF path internally
 /// @see cpu::scf::ShellPairList for the precomputed pair list input
 #pragma once
 

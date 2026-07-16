@@ -29,7 +29,7 @@ namespace ATV {
 namespace cpu {
 
 PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
-    : Pair(static_cast<Real>(cutoff)), epsilon_(epsilon), sigma_(sigma) {
+    : Pair(static_cast<AccReal>(cutoff)), epsilon_(epsilon), sigma_(sigma) {
     sigma6_ = sigma * sigma * sigma * sigma * sigma * sigma;
     cutoff_sq_ = cutoff * cutoff;
 
@@ -42,12 +42,13 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
 }
 
 PairLJCut::PairLJCut(std::vector<LJTypeCoeff> coeffs, double cutoff)
-    : Pair(static_cast<Real>(cutoff)), epsilon_(0.0), sigma_(0.0) {
+    : Pair(static_cast<AccReal>(cutoff)), epsilon_(0.0), sigma_(0.0) {
     if (cutoff <= 0.0)
         throw std::invalid_argument("PairLJCut: cutoff must be positive");
     if (coeffs.empty())
         throw std::invalid_argument(
-            "PairLJCut: the per-type constructor needs at least one coefficient. There "
+            "PairLJCut: the per-type constructor needs at least one "
+            "coefficient. There "
             "is no system-wide epsilon/sigma to fall back on, deliberately.");
 
     // epsilon_/sigma_ are never read on this path — every coefficient comes from the
@@ -69,12 +70,15 @@ PairLJCut& PairLJCut::set_type_coeff(int type_i, int type_j, double epsilon,
     if (!per_type_mode_)
         throw std::logic_error(
             "PairLJCut::set_type_coeff: this PairLJCut was built with a single "
-            "epsilon/sigma and has no type table. Construct it from a coefficient list "
+            "epsilon/sigma and has no type table. Construct it from a "
+            "coefficient list "
             "instead.");
     if (type_i < 0 || type_j < 0)
-        throw std::invalid_argument("PairLJCut::set_type_coeff: types must be >= 0");
+        throw std::invalid_argument(
+            "PairLJCut::set_type_coeff: types must be >= 0");
     if (sigma <= 0.0)
-        throw std::invalid_argument("PairLJCut::set_type_coeff: sigma must be > 0");
+        throw std::invalid_argument(
+            "PairLJCut::set_type_coeff: sigma must be > 0");
 
     const int need = std::max(type_i, type_j) + 1;
     if (need > n_types_) {
@@ -84,7 +88,8 @@ PairLJCut& PairLJCut::set_type_coeff(int type_i, int type_j, double epsilon,
         std::vector<char> f(static_cast<std::size_t>(need) * need, 0);
         for (int a = 0; a < n_types_; ++a)
             for (int b = 0; b < n_types_; ++b) {
-                const std::size_t old = static_cast<std::size_t>(a) * n_types_ + b;
+                const std::size_t old =
+                    static_cast<std::size_t>(a) * n_types_ + b;
                 const std::size_t nw = static_cast<std::size_t>(a) * need + b;
                 e[nw] = eps_tab_[old];
                 s[nw] = sigma_tab_[old];
@@ -147,7 +152,7 @@ void PairLJCut::build(const BuildContext& ctx) {
     // accumulators are indexed up to n_force = n_local + n_ghost, and ghost
     // rows live in [n_local, nmax). (compute() grows them further if a halo
     // overflow later enlarges the frame.)
-    int n = ctx.frame.atoms.nmax;
+    int n = ctx.frame.capacity();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -179,7 +184,7 @@ void PairLJCut::build(const BuildContext& ctx) {
         return;
     const auto* dd = ctx.runtime.md.dd;
     const int n_owners =
-        (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.atoms.nlocal;
+        (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.nlocal();
     refresh_exclusion_map(ctx.frame, n_owners);
 }
 
@@ -187,7 +192,7 @@ void PairLJCut::refresh_exclusion_map(const Frame& f, int n_owners) {
     // Rebuild the tag-keyed exclusion lists from the CURRENT per-atom
     // `nspecial` / `special` topology of owner rows `[0, n_owners)`.
     // `special(i, ·)` holds GLOBAL TAGS, populated by `materialize` /
-    // the LAMMPS-data reader via `Atom::build_special_list`, and travels
+    // the LAMMPS-data reader via `Frame::build_special_list`, and travels
     // with the atom across migration (pack/unpack/move_row). Iterating
     // owners and recording each owner's own partners makes
     // `excluded_by_tag_[tag_i]` complete for every owner `i` the filtered
@@ -206,27 +211,25 @@ void PairLJCut::refresh_exclusion_map(const Frame& f, int n_owners) {
         excluded_by_tag_[b].push_back(a);
     };
 
-    // `nspecial`/`special` are per-atom TOPOLOGY arrays (not schema scalar
-    // columns), so they stay on the direct `at` accessor; only `tag` is a
-    // schema column and goes through `span`.
-    const auto& at = f.atoms;
+    const auto nspecial = f.span(kAtom_nspecial);
+    const auto special = f.span(kAtom_special);
     const TagInt* __restrict tag_ptr = f.span(kAtom_tag);
     for (int i = 0; i < n_owners; ++i) {
         const std::int64_t ti = tag_ptr[i];
-        const int n12 = at.nspecial(i, 0);
-        const int n13 = at.nspecial(i, 1);
-        const int n14 = at.nspecial(i, 2);
+        const int n12 = nspecial(i, 0);
+        const int n13 = nspecial(i, 1);
+        const int n14 = nspecial(i, 2);
         if (has_excl_12) {
             for (int s = 0; s < n12; ++s)
-                add_pair(ti, at.special(i, s));
+                add_pair(ti, special(i, s));
         }
         if (has_excl_13) {
             for (int s = n12; s < n13; ++s)
-                add_pair(ti, at.special(i, s));
+                add_pair(ti, special(i, s));
         }
         if (has_excl_14) {
             for (int s = n13; s < n14; ++s)
-                add_pair(ti, at.special(i, s));
+                add_pair(ti, special(i, s));
         }
     }
 
@@ -316,7 +319,8 @@ inline void lorentz_berthelot(double eii, double sii, double ejj, double sjj,
 /// Fill the off-diagonal from the diagonal by Lorentz-Berthelot, and precompute
 /// sigma^6 and the per-pair energy shift. Called once, from build().
 void PairLJCut::finalize_type_table_() {
-    if (n_types_ == 0) return;
+    if (n_types_ == 0)
+        return;
     const double rc = static_cast<double>(this->pair_cutoff());
 
     sig6_tab_.assign(static_cast<std::size_t>(n_types_) * n_types_, 0.0);
@@ -328,11 +332,13 @@ void PairLJCut::finalize_type_table_() {
             double e = eps_tab_[ab], s = sigma_tab_[ab];
 
             if (!set_tab_[ab]) {
-                const std::size_t aa = static_cast<std::size_t>(a) * n_types_ + a;
-                const std::size_t bb = static_cast<std::size_t>(b) * n_types_ + b;
+                const std::size_t aa =
+                    static_cast<std::size_t>(a) * n_types_ + a;
+                const std::size_t bb =
+                    static_cast<std::size_t>(b) * n_types_ + b;
                 if (set_tab_[aa] && set_tab_[bb]) {
-                    lorentz_berthelot(eps_tab_[aa], sigma_tab_[aa], eps_tab_[bb],
-                                      sigma_tab_[bb], e, s);
+                    lorentz_berthelot(eps_tab_[aa], sigma_tab_[aa],
+                                      eps_tab_[bb], sigma_tab_[bb], e, s);
                     eps_tab_[ab] = e;
                     sigma_tab_[ab] = s;
                 } else {
@@ -363,8 +369,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             "NeighborList component to the force phase ahead of LJ?");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.box;
-    int n_force = f.atoms.size();
+    const auto& box = f.simbox;
+    int n_force = f.nlocal();
     const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1) {
         n_force = dd->n_local + dd->n_ghost;
@@ -491,7 +497,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         // Hoist box edges + LJ constants to locals so the inner loop keeps
         // them in registers instead of reloading the Mat3 / member fields
         // on every pair.
-        const double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
+        const double lx = box.length(0), ly = box.length(1), lz = box.length(2);
         const double half_lx = double(0.5) * lx;
         const double half_ly = double(0.5) * ly;
         const double half_lz = double(0.5) * lz;
@@ -785,7 +791,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // TIP3P hydrogens) contributes no force and no energy — which is the
                 // point, and is why an unset pair mixes to eps = 0 rather than silently
                 // falling back to the single-sigma value.
-                double p_sig6 = sig6, p_eps24 = eps24, p_eps4 = eps4, p_shift = vshift;
+                double p_sig6 = sig6, p_eps24 = eps24, p_eps4 = eps4,
+                       p_shift = vshift;
                 if (k_multi) {
                     const int ti = k_type[i], tj = k_type[j];
                     const std::size_t ab =
@@ -842,15 +849,15 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         }
     }
 
-    f.scalars.energy += energy_total;
-    f.scalars.energy_pair += energy_total;
+    f.meta.get(kEnergy) += energy_total;
+    f.meta.get(kEnergyPair) += energy_total;
     if (do_virial) {
-        f.scalars.stress[0] += v_xx;
-        f.scalars.stress[1] += v_yy;
-        f.scalars.stress[2] += v_zz;
-        f.scalars.stress[3] += v_xy;
-        f.scalars.stress[4] += v_xz;
-        f.scalars.stress[5] += v_yz;
+        f.meta.get(kStress)[0] += v_xx;
+        f.meta.get(kStress)[1] += v_yy;
+        f.meta.get(kStress)[2] += v_zz;
+        f.meta.get(kStress)[3] += v_xy;
+        f.meta.get(kStress)[4] += v_xz;
+        f.meta.get(kStress)[5] += v_yz;
     }
 }
 

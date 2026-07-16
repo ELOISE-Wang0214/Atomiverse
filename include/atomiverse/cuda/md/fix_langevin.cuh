@@ -55,7 +55,7 @@ namespace md {
 ///
 /// @see cpu::md::FixLangevin for the CPU reference + LAMMPS audit
 ///      verdict table.
-class FixLangevin : public ComponentBase {
+class FixLangevin : public Component {
   public:
     /// @brief Construct Langevin thermostat.
     /// @param T_start Ramp start temperature [K].
@@ -85,13 +85,13 @@ class FixLangevin : public ComponentBase {
     double T_target() const noexcept { return T_live_; }
 
     std::string name() const override { return "fix_langevin"; }
-    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    Role role() const override { return 0; }
+    /* role via Thermostat base */
 
     /// @brief Langevin's role is Thermostat, but it functionally writes
     /// drag + random forces into fx/fy/fz — so it advertises
     /// `Capability::Force` so a pure-Langevin driver (no LJ / bonded)
     /// satisfies `cuda::md::MD`'s "something writes forces" contract.
-    Capability capabilities() const override { return Capability::Force; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::post_force, +500)};

@@ -32,7 +32,7 @@ CG& CG::line_search(LineSearchMode mode, double c1, double c2, double max_step,
 void CG::build(const cpu::BuildContext& ctx) {
     // Capacity-sized buffers (atoms.size() ≥ n_local under multi-rank) —
     // all per-step work happens here, no allocation in launch().
-    const int dim = ctx.frame.atoms.size() * 3;
+    const int dim = ctx.frame.nlocal() * 3;
     x_prev_.assign(dim, 0.0);
     g_prev_.assign(dim, 0.0);
     d_prev_.assign(dim, 0.0);
@@ -133,11 +133,11 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         const double rms_disp =
             disp_valid ? std::sqrt(sums[1] / (3 * n_global)) : 0.0;
         const double energy_change =
-            (step_ > 0) ? std::abs(f.scalars.energy - energy_prev_) : 1e30;
+            (step_ > 0) ? std::abs(f.meta.get(kEnergy) - energy_prev_) : 1e30;
 
         OptRecord rec{};
         rec.step = step_;
-        rec.energy = f.scalars.energy;
+        rec.energy = f.meta.get(kEnergy);
         rec.max_force = max_force_;
         rec.rms_force = rms_force;
         rec.max_displacement = max_disp;
@@ -149,7 +149,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         // existed here TOO, character for character. One policy, two copies, and no way
         // for a user to supply a third: that is what a handler replaces.
         if (LoopMetrics* m = ctx.runtime.loop.metrics) {
-            m->energy = f.scalars.energy;
+            m->energy = f.meta.get(kEnergy);
             m->max_force = max_force_;
             m->rms_force = rms_force;
             m->max_displacement = max_disp;
@@ -161,10 +161,10 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         ATV_INFO("[cg] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
                  "dE_eV={:.6e}",
-                 step_, f.scalars.energy, max_force_, rms_force, max_disp,
+                 step_, f.meta.get(kEnergy), max_force_, rms_force, max_disp,
                  rms_disp, energy_change);
 
-        energy_prev_ = f.scalars.energy;
+        energy_prev_ = f.meta.get(kEnergy);
         return;
     }
 
@@ -183,12 +183,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             || !ctx.runtime.opt.reeval_forces) {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                sp_x[i] =
-                    x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
-                sp_y[i] =
-                    x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
-                sp_z[i] =
-                    x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
+                sp_x[i] = x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
+                sp_y[i] = x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
+                sp_z[i] = x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
             }
             return;
         }
@@ -204,7 +201,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             }
             ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
-            s.f = f.scalars.energy;
+            s.f = f.meta.get(kEnergy);
             double gd_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : gd_local)
             for (int i = 0; i < n; ++i) {
@@ -302,7 +299,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         dir_max = std::max(dir_max, std::abs(d[k]));
     ls_dir_max_ = global_max(ctx, dir_max);
     ls_gd0_ = gd0;
-    ls_phi0_ = f.scalars.energy;
+    ls_phi0_ = f.meta.get(kEnergy);
 
     // Save state for next iteration (buffer swaps — no copies, no allocs).
     // After the swap the current direction is in d_prev_ and the origin

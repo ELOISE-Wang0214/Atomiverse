@@ -25,6 +25,7 @@ const cpu::Frame* gather_for_root_io(const cpu::Frame& frame,
     if (runtime.mpi_rank != 0)
         return nullptr;
     gathered = to_frame(g);
+    gathered.meta.copy_serializable_from(frame.meta);
     return &gathered;
 }
 

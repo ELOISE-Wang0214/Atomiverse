@@ -39,16 +39,17 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
 // ── ZeroEnergy ───────────────────────────────────────────────────
 
 void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
-    auto& s = ctx.frame.scalars;
-    s.energy = 0;
+    auto& meta = ctx.frame.meta;
+    meta.get(kEnergy) = 0;
     // Per-term decomposition (msu-pe-cuda-components-01 / Phase G.3).
     // Each evaluator writes both `energy` and its term-specific field;
     // ZeroEnergy must clear all of them in lockstep so the per-step
     // invariant `energy == Σ per-term` holds.
-    s.energy_pair = 0;
-    s.energy_bond = 0;
-    s.energy_angle = 0;
-    s.energy_dihedral = 0;
+    meta.get(kEnergyPair) = 0;
+    meta.get(kEnergyBond) = 0;
+    meta.get(kEnergyAngle) = 0;
+    meta.get(kEnergyDihedral) = 0;
+    meta.get(kEnergyImproper) = 0;
 }
 
 // ── ZeroStress ───────────────────────────────────────────────────
@@ -56,19 +57,19 @@ void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
 void ZeroStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress[k] = 0;
+        f.meta.get(kStress)[k] = 0;
     // `stress_kinetic` is overwritten (not accumulated) by Virial
     // each step, so it does not strictly need zeroing -- but zero it
     // here for symmetry and so observers that read it before Virial
     // ever ran see a deterministic zero rather than uninitialised data.
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress_kinetic[k] = 0;
+        f.meta.get(kStressKinetic)[k] = 0;
 }
 
 // ── ZeroKinetic ──────────────────────────────────────────────────
 
 void ZeroKinetic::launch(const cpu::LaunchContext& ctx) {
-    ctx.frame.scalars.kinetic = 0;
+    ctx.frame.meta.get(kKinetic) = 0;
 }
 
 } // namespace cpu

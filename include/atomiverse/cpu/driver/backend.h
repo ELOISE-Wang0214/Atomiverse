@@ -63,7 +63,7 @@ class Backend {
 
     /// @brief Bind a compiled Plan for execution.
     /// @param plan Plan to execute (non-owning reference, must outlive Backend usage).
-    void load(const Plan<cpu::ComponentBase>& plan) { plan_ = &plan; }
+    void load(const Plan<cpu::Component>& plan) { plan_ = &plan; }
 
     /// @brief Set the Frame to operate on (zero-copy, non-owning).
     ///
@@ -100,16 +100,16 @@ class Backend {
 
     /// @brief Build the components of an arbitrary Plan (a sub-driver's).
     /// @param plan Plan whose components to build, in Plan order.
-    void build_plan(const Plan<cpu::ComponentBase>& plan);
+    void build_plan(const Plan<cpu::Component>& plan);
 
     /// @brief Walk one iteration of an arbitrary Plan (a sub-driver's).
     /// @param plan Plan to execute.
     /// @param step_idx Iteration index forwarded to the LaunchContext.
-    void step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx);
+    void step_plan(const Plan<cpu::Component>& plan, int step_idx);
 
     /// @brief Destroy the components of an arbitrary Plan, in reverse Plan order.
     /// @param plan Plan whose components to destroy.
-    void destroy_plan(const Plan<cpu::ComponentBase>& plan);
+    void destroy_plan(const Plan<cpu::Component>& plan);
 
     /// @brief Re-run only the bindings of a single phase on the current frame.
     ///
@@ -236,7 +236,7 @@ class Backend {
 
     Context context_{};
     cpu::Frame* frame_ = nullptr;
-    const Plan<cpu::ComponentBase>* plan_ = nullptr;
+    const Plan<cpu::Component>* plan_ = nullptr;
     std::unique_ptr<md::mpi::DomainDecomposition> dd_;
     std::unique_ptr<AnalysisExecutor> executor_;
 

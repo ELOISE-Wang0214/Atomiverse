@@ -10,6 +10,7 @@
 /// bound explicitly via `sim.on(phase).add(NeighborList{...})`.
 /// CUDA-free header.
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include <cstdint>
 #include <memory>
@@ -90,7 +91,7 @@ struct PairList {
 /// and atom-level pair export.
 ///
 /// @see PairList for the output data structure
-class NeighborList : public ComponentBase, public NeighborProvider {
+class NeighborList : public Component, public NeighborProvider {
   public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
@@ -104,6 +105,7 @@ class NeighborList : public ComponentBase, public NeighborProvider {
     /// @brief Component name.
     /// @return "neighbor_list".
     std::string name() const override { return "neighbor_list"; }
+    Role role() const override { return role_bit(RoleFlag::FrameImmutable); }
 
     /// @brief Identifies this component as the neighbor-list supplier
     ///        for `cuda::md::MD::install_infra_`'s typed query.

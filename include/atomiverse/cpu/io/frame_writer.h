@@ -9,7 +9,6 @@
 
 #include <array>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace ATV {
@@ -25,18 +24,6 @@ void write_frame_xyz(const std::string& path, const std::vector<int>& type_id,
                      const std::vector<double>& x, const std::vector<double>& y,
                      const std::vector<double>& z,
                      const std::array<double, 9>& box_mat, bool append);
-
-/// @brief Write one frame plus key=value metadata to a standard-XYZ file.
-///
-/// Like the meta-less overload, but each `meta` pair is serialized by molrs
-/// into the extxyz comment line (`key=value`) — recorders use this to attach
-/// `step` / `energy_eV` per frame. @param meta frame-level key/value pairs
-/// (values pre-formatted by the caller).
-void write_frame_xyz(
-    const std::string& path, const std::vector<int>& type_id,
-    const std::vector<double>& x, const std::vector<double>& y,
-    const std::vector<double>& z, const std::array<double, 9>& box_mat,
-    bool append, const std::vector<std::pair<std::string, std::string>>& meta);
 
 /// @brief Write one frame plus named per-atom fields to a single-frame Zarr store.
 ///

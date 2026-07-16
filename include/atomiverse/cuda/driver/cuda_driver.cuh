@@ -48,7 +48,7 @@
 ///      **Stop > Converged > Continue**. @see cuda/driver/loop_handler.cuh
 ///
 /// Unlike `cpu::CPUDriver`, this layer deliberately provides **no** categorical-setter
-/// API (`set_pair`, `set_bond`, …) — `cuda::md::MD` carries its own — and no MPI. The
+/// API (`add_potential`, `add_potential`, …) — `cuda::md::MD` carries its own — and no MPI. The
 /// CPU driver all-reduces the handler verdict across ranks (`MPI_MAX` over the
 /// severity); the CUDA driver loop is single-rank, so `poll_handlers_` reduces nothing.
 /// When a multi-GPU driver loop lands, the reduction goes in `poll_handlers_` and no
@@ -153,7 +153,7 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
     ///
     /// Components with multiple `default_bindings()` entries appear once
     /// per binding — duplicate-tolerant predicates are expected.
-    /// @tparam Fn Callable invoked as `fn(const cuda::ComponentBase&)`.
+    /// @tparam Fn Callable invoked as `fn(const cuda::Component&)`.
     /// @param fn Visitor applied to each pending component.
     template <typename Fn>
     void for_each_pending(Fn&& fn) const {
@@ -163,7 +163,7 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
 
     /// @brief Mutable variant of for_each_pending — visitor may mutate the
     /// component (e.g. `install_defaults()` gating per-step virial via
-    /// `set_stress_required`). @tparam Fn Callable `fn(cuda::ComponentBase&)`.
+    /// `set_stress_required`). @tparam Fn Callable `fn(cuda::Component&)`.
     template <typename Fn>
     void for_each_pending_mut(Fn&& fn) {
         for (auto& pb : this->pending_)
@@ -233,8 +233,10 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
             }
             v = worse_of(v, hv);
         }
-        if (v == Verdict::Converged) status_.converged = true;
-        if (v == Verdict::Stop) status_.stop_requested = true;
+        if (v == Verdict::Converged)
+            status_.converged = true;
+        if (v == Verdict::Stop)
+            status_.stop_requested = true;
         return v;
     }
 

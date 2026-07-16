@@ -19,7 +19,7 @@ OrbitalInfoObserver::OrbitalInfoObserver(SCFResultHandle handle,
     if (!handle_.result || !handle_.ready)
         throw std::invalid_argument(
             "OrbitalInfoObserver: null SCFResultHandle (did you forget "
-            "SCFEvaluator::result_handle()?)");
+            "SCF::result_handle()?)");
 }
 
 void OrbitalInfoObserver::build(const cpu::BuildContext& ctx) {
@@ -53,9 +53,9 @@ void OrbitalInfoObserver::launch(const cpu::LaunchContext& ctx) {
     // HOMO is the last occupied; LUMO is the first virtual (or HOMO itself
     // if there are no virtuals, which only happens at minimal basis on H-like
     // systems -- flag that explicitly).
-    homo_eV_ = static_cast<double>(eps(n_occ_a - 1)) * kHartree2eV;
+    homo_eV_ = static_cast<double>(eps(n_occ_a - 1)) * units::kHartreeInEv;
     lumo_eV_ = (n_occ_a < n_mo)
-                   ? static_cast<double>(eps(n_occ_a)) * kHartree2eV
+                   ? static_cast<double>(eps(n_occ_a)) * units::kHartreeInEv
                    : homo_eV_;
     double gap = lumo_eV_ - homo_eV_;
 

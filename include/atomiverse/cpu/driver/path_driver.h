@@ -35,7 +35,7 @@
 /// `owned_components_`, and there is no `clone()` anywhere in the tree — so N backends
 /// would need N independently-constructed component sets, which the user would have to
 /// supply through a factory callback (against both the OOP style rule and any hope of a
-/// decent API), or which would need a `clone()` virtual bolted onto `ComponentBase` —
+/// decent API), or which would need a `clone()` virtual bolted onto `Component` —
 /// a dead interface for every component that is not in a band.
 ///
 /// So: one backend, one plan, and the band reached through `ctx.path`. The `force` phase
@@ -53,7 +53,14 @@
 
 #include <stdexcept>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/optimizer.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/replica/replica_set.h"
@@ -85,7 +92,8 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
     /// @param expansion The strategy that generates the band. Borrowed for the call.
     /// @param max_iter Iteration budget for the whole chain.
     /// @return Iterations actually executed.
-    int run(cpu::Frame& frame, const ReplicaExpansion& expansion, int max_iter) {
+    int run(cpu::Frame& frame, const ReplicaExpansion& expansion,
+            int max_iter) {
         ReplicaSet band(frame, expansion);
 
         // setup_pass binds the backend to replica 0's frame. Every replica has the same
@@ -113,11 +121,11 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
             // left pointing at the last replica and is deliberately not meaningful
             // here; a band-wide component that reads ctx.frame is reading one arbitrary
             // image, which is a bug in that component.
-            for (const auto p : {ATV::path::Phase::couple,
-                                 ATV::path::Phase::search_direction,
-                                 ATV::path::Phase::line_search,
-                                 ATV::path::Phase::convergence_check,
-                                 ATV::path::Phase::end_of_step}) {
+            for (const auto p :
+                 {ATV::path::Phase::couple, ATV::path::Phase::search_direction,
+                  ATV::path::Phase::line_search,
+                  ATV::path::Phase::convergence_check,
+                  ATV::path::Phase::end_of_step}) {
                 this->backend_->run_stage(p, s);
             }
 
@@ -146,16 +154,22 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
     /// run, and refusing it would mean this driver knew what NEB is.
     void validate_components() const override {
         bool has_optimizer = false;
-        bool has_force_evaluator = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Optimizer)
+        bool has_force = false;
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Optimizer*>(&c))
                 has_optimizer = true;
-            if (c.role() == ComponentRole::Evaluator
-                && has_capability(c.capabilities(), Capability::Force))
-                has_force_evaluator = true;
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c))
+                has_force = true;
         });
-        if (!has_force_evaluator)
-            throw_missing("Evaluator with Capability::Force");
+        if (!has_force)
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
         if (!has_optimizer)
             throw_missing("Optimizer");
     }

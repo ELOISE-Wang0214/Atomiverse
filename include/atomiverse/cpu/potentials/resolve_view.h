@@ -3,10 +3,10 @@
 ///        learn how many atoms a rank owns/holds and to resolve a global
 ///        atom tag to a local row index, with a built-in bounds guard.
 ///
-/// Motivation. `frame.atoms.nlocal` is NOT the rank-local owned count in
+/// Motivation. `frame.nlocal()` is NOT the rank-local owned count in
 /// multi-rank mode: it is left at the Frame-constructor default (the global
 /// atom count) because `DomainDecomposition::capacity` is sized from
-/// `frame.atoms.size()` as deliberate ghost slack. The authoritative
+/// `frame.nlocal()` as deliberate ghost slack. The authoritative
 /// per-rank counts live on `dd` (`n_local`, `n_ghost`). Bonded/pair force
 /// kernels must therefore size their per-thread accumulators and reduction
 /// loops to `n_local + n_ghost`, NOT `atoms.n_total()` — otherwise every rank
@@ -14,7 +14,7 @@
 ///
 /// Tag resolution. Partner atoms (bonded tuples, special-bonds exclusions)
 /// are stored as global tags and resolved to local rows via a tag→local map
-/// (`dd->tag_to_local` multi-rank, `frame.atoms.map` single-rank). The map
+/// (`dd->tag_to_local` multi-rank, Frame-local tag index single-rank). The map
 /// can retain a STALE entry for a tag whose ghost row was not repopulated by
 /// the current halo (e.g. a bonded partner that stretched beyond the halo
 /// under deformation). `resolve()` therefore rejects any hit outside
@@ -46,8 +46,8 @@ class ResolveView {
             n_local_ = dd->n_local;
             n_force_ = dd->n_local + dd->n_ghost;
         } else {
-            map_ = &ctx.frame.atoms.map;
-            n_local_ = ctx.frame.atoms.size();
+            map_ = &ctx.frame.meta.get(kTagIndex);
+            n_local_ = ctx.frame.nlocal();
             n_force_ = n_local_; // single-rank: no ghosts
         }
     }

@@ -5,7 +5,7 @@
 ///   - `HaloSend::launch` rebuilds per-face send lists from
 ///     current positions, packs owned positions (with PBC shift across
 ///     periodic-edge faces), issues 6-face `MPI_Isend/Irecv`, and unpacks
-///     received ghosts into `frame.atoms[n_local : n_local + n_ghost)`.
+///     received ghosts into `atoms` Block rows `[n_local, n_local+n_ghost)`.
 ///   - `HaloRecv::launch` symmetrically reduces ghost-row
 ///     `fx/fy/fz` contributions back onto the owners.
 ///
@@ -19,13 +19,13 @@
 ///
 /// The default-constructed `HaloSend{}` (`cutoff = 0`) is a
 /// no-op sentinel. Under `ATV_BUILD_MPI`, `cpu::md::MD` auto-injects the
-/// `HaloSend{1.1 * pair_cutoff}` + `HaloRecv{}` pair when `set_pair` is
+/// `HaloSend{1.1 * pair_cutoff}` + `HaloRecv{}` pair when `add_potential` is
 /// called; a manually registered pair suppresses the injection (detected
 /// through the `halo_participant()` protocol probe — reverse exchange
 /// must run exactly once).
 ///
 /// **Bonded skin auto-extension** (spec A.5): `build()` scans the
-/// per-atom bonded topology (`frame.atoms.num_bond / bond_atom / …`;
+/// per-atom bonded topology (`kAtom_num_bond`, `kAtom_bond_atom`, …;
 /// tag-aware: multi-rank scans resolve
 /// atom tags through `dd->tag_to_local` and `MPI_Allreduce(MAX)` across
 /// ranks) to find the widest intra-tuple span. `launch()` uses
@@ -72,18 +72,18 @@ struct FaceBufs;
 /// corresponding face neighbor. PBC: atoms sent across the periodic edge of
 /// the global box are shifted by `±L_d` on the way out so the receiver sees
 /// them in its own coordinate frame.
-class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
+class HaloSend : public cpu::Component, public cpu::HaloParticipant {
   public:
     /// @brief No-op default constructor (cutoff = 0).
     HaloSend();
 
-    /// @brief Real-comm constructor with the pair cutoff.
+    /// @brief MPI constructor with the pair cutoff.
     /// @param cutoff Pair-interaction cutoff [Angstrom]. Typically
     ///        `r_cut + skin` where `r_cut` matches the neighbor list /
     ///        pair potential cutoff. The effective halo width used at
     ///        `launch()` is `max(cutoff, bonded_extension)`, where
     ///        `bonded_extension` is the widest intra-tuple span in
-    ///        `frame.atoms per-atom topology` computed once at `build()`.
+    ///        canonical per-atom topology columns computed once at `build()`.
     ///        When `cutoff >= bonded_extension` the bonded scan has no
     ///        effect (pair cutoff already dominates).
     /// @param every Interval (in steps) between **full** rebuilds of
@@ -142,7 +142,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 
     /// @brief Compute the bonded-skin extension from a frame's topology.
     ///
-    /// Scans the per-atom bonded topology (`frame.atoms.num_bond/bond_atom/…`) and returns
+    /// Scans the per-atom bonded topology columns and returns
     /// the largest pairwise atom-to-atom distance found across any tuple.
     /// For an empty topology the result is `0.0`.
     ///
@@ -154,7 +154,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
     /// @return Maximum intra-tuple pairwise distance in Angstroms.
     static double compute_bonded_extension(const cpu::Frame& frame);
 
-    /// @brief Test-only: per-face send-buffer capacity (doubles) after
+    /// @brief Test-only: per-face native-byte send-buffer capacity after
     /// `build()` has preallocated the instance's own `FaceBufs`. Returns 0
     /// before `build()` or when MPI is not compiled in. Two instances
     /// built from different `dd->capacity` values are expected to report
@@ -193,7 +193,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 ///
 /// Pairs with the most recent `HaloSend` exchange via
 /// the shared per-face state on `md::mpi::DomainDecomposition`. Ghost forces in
-/// `frame.atoms.fx/fy/fz[n_local : n_local + n_ghost)` are packed by face,
+/// `kAtom_fx/fy/fz` ghost rows are packed by face,
 /// `MPI_Isend/Irecv` to the originating ranks, and added into the owners'
 /// local force arrays at the indices in their own `send_lists`.
 ///
@@ -203,10 +203,10 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 ///
 /// ## Reverse-comm payload audit (2026-05-06)
 ///
-/// The reverse exchange transports **exactly three doubles per ghost
-/// row**: `fx, fy, fz`. No other per-atom field is mutated by force
-/// kernels in their owner-or-ghost loop, so no ghost-row state is
-/// silently discarded by this pass:
+/// The reverse exchange transports every atoms-Block column marked
+/// `kColReverse`, in its native dtype. The canonical schema marks
+/// `fx/fy/fz`; runtime columns opt in with the same flag and require no
+/// endpoint payload edit.
 ///
 ///   * Pair forces (`LJ`, future Coulomb) write to `fx/fy/fz`. ✓ shipped.
 ///   * Bonded forces (`BondHarmonic`, `AngleHarmonic`,
@@ -220,12 +220,9 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 ///   * Per-atom potential energy similarly accumulates into the global
 ///     `frame.energy` scalar.
 ///
-/// **Audit conclusion: no silent loss.** Any future kernel that writes
-/// to additional ghost-row fields (e.g. per-atom electrostatic
-/// potential for QM/MM, per-atom virial tensor for stress profiles)
-/// must either (a) extend this payload list and update `pack_face`/
-/// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
-/// and reduce the per-rank totals globally via `Reduce`.
+/// A future kernel that writes another ghost-row accumulator declares a
+/// runtime column with `kColReverse`; the schema fingerprint and generic
+/// pack/accumulate path carry it automatically.
 /// @brief Re-send owner positions or velocities into the EXISTING ghost slots, at a
 ///        phase of the caller's choosing.
 ///
@@ -256,7 +253,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 /// boundary sits at `x - L` in the receiver's frame, but its velocity is unchanged.
 /// Shifting velocities would be an exquisitely silent bug: energies stay finite, the
 /// geometry stays rigid, and only the constrained dynamics is wrong.
-class HaloRefresh : public cpu::ComponentBase {
+class HaloRefresh : public cpu::Component {
   public:
     /// @brief Which per-atom field triple to refresh.
     enum class Field {
@@ -272,10 +269,6 @@ class HaloRefresh : public cpu::ComponentBase {
     }
 
     /// @brief Write-set: it writes ghost rows of the chosen field.
-    Capability capabilities() const override {
-        return field_ == Field::positions ? Capability::Position
-                                          : Capability::Velocity;
-    }
 
     /// @brief No default binding — the caller decides the phase, because only the
     /// caller knows when its data is stale.
@@ -286,7 +279,7 @@ class HaloRefresh : public cpu::ComponentBase {
     Field field_;
 };
 
-class HaloRecv : public cpu::ComponentBase, public cpu::HaloParticipant {
+class HaloRecv : public cpu::Component, public cpu::HaloParticipant {
   public:
     HaloRecv();
     ~HaloRecv() override;

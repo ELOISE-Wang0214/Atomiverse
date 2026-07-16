@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -27,7 +27,7 @@ namespace mc {
 /// Boltzmann draw.
 ///
 /// Role `Mover`, capabilities `None`. Bound to `sampling::Phase::propose`.
-class VolumeMove : public cpu::ComponentBase {
+class VolumeMove : public cpu::Mover {
   public:
     /// @param dv_max Volume half-width δV [Å³] (must be > 0).
     /// @throws std::invalid_argument if `dv_max <= 0`.
@@ -39,7 +39,7 @@ class VolumeMove : public cpu::ComponentBase {
 
     /// @brief Structural role.
     /// @return `ComponentRole::Mover`.
-    ComponentRole role() const override { return ComponentRole::Mover; }
+    /* role via Mover base */
 
     /// @brief Default binding: the `propose` phase, order 0.
     std::vector<DefaultBinding> default_bindings() const override {

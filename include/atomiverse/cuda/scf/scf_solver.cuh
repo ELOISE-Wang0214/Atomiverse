@@ -4,8 +4,8 @@
 /// **NOT a `Driver<...>` subclass** — `SCFSolver` is the *inner* solver
 /// (the SCF self-consistency loop) that lives behind force-providing
 /// evaluator components. The user-facing way to compute single-point
-/// CUDA electronic structure is `cuda::Evaluate + cuda::scf::SCFEvaluator`;
-/// `SCFSolver` is the internal machinery `SCFEvaluator` calls.
+/// CUDA electronic structure is `cuda::Evaluate + cuda::scf::SCF`;
+/// `SCFSolver` is the internal machinery `SCF` calls.
 ///
 /// `SCFSolver` is also a public API for low-level use (debugging, testing,
 /// CPU/CUDA parity). It owns its `internal::*` step helpers, each with a
@@ -36,7 +36,7 @@
 /// Usage (single-point through the outer facade):
 /// @code
 ///   cuda::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCFEvaluator{...});  // owns an SCFSolver internally
+///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{...});  // owns an SCFSolver internally
 ///   eval.build();
 ///   eval.run(frame);
 /// @endcode
@@ -145,7 +145,7 @@ class SCFSolver {
     ///        coefficients, orbital energies, convergence state).
     ///
     /// Valid after `build()`. Exposed so force-evaluator components
-    /// (`SCFEvaluator`) can forward SCF results to downstream observers
+    /// (`SCF`) can forward SCF results to downstream observers
     /// and recorders.
     /// @return The device-resident SCF workspace.
     const SCFWorkspace& workspace() const { return workspace_; }

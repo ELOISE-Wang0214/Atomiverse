@@ -2,7 +2,7 @@
 /// @brief RAII wrapper around FFTW3 3D transforms.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include <cstddef>
 #include <fftw3.h>
 #include <new>
@@ -20,7 +20,7 @@ class FFTPlan3D {
     fftw_plan bwd_cc_ = nullptr; // c2c backward: complex → complex
     int nx_, ny_, nz_;
     int nr_, nc_; // real size, complex (half) size
-    Real* rbuf_ = nullptr;
+    AccReal* rbuf_ = nullptr;
     fftw_complex* cbuf_ = nullptr;
     fftw_complex* cbuf2_ = nullptr; // for c2c
   public:
@@ -29,8 +29,8 @@ class FFTPlan3D {
     FFTPlan3D(const FFTPlan3D&) = delete;
     FFTPlan3D& operator=(const FFTPlan3D&) = delete;
 
-    void r2c(const Real* in, fftw_complex* out);
-    void c2r(const fftw_complex* in, Real* out);
+    void r2c(const AccReal* in, fftw_complex* out);
+    void c2r(const fftw_complex* in, AccReal* out);
     void c2c_fwd(fftw_complex* inout); // in-place c2c forward
     void c2c_bwd(fftw_complex* inout); // in-place c2c backward
     int nx() const { return nx_; }
@@ -44,8 +44,9 @@ class FFTPlan3D {
 ///        step-helper scratch. `resize()` is idempotent for equal sizes,
 ///        so `prepare()` can be re-invoked across geometry changes without
 ///        reallocating when the grid is unchanged.
-/// @tparam T Element type (`Real` or `fftw_complex`).
-template <typename T> class FFTWBuffer {
+/// @tparam T Element type (`AccReal` or `fftw_complex`).
+template <typename T>
+class FFTWBuffer {
     T* p_ = nullptr;
     std::size_t n_ = 0;
 

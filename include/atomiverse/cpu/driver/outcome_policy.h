@@ -71,7 +71,7 @@ class OutcomePolicy {
 /// `SamplingDriver` because there was nowhere else to put them.
 ///
 /// This is a `Sampling`-flavoured policy but nothing in the loop knows that: it reads
-/// `frame.scalars.energy` and returns an `Outcome`.
+/// `frame.meta.get(kEnergy)` and returns an `Outcome`.
 class Metropolis : public OutcomePolicy {
   public:
     /// @brief Construct the NVT acceptance test.
@@ -89,7 +89,8 @@ class Metropolis : public OutcomePolicy {
     Metropolis(AccReal temperature_K, std::mt19937_64& rng)
         : temperature_(temperature_K), rng_(rng) {
         if (!(temperature_K > AccReal(0)))
-            throw std::invalid_argument("Metropolis: temperature must be > 0 K");
+            throw std::invalid_argument(
+                "Metropolis: temperature must be > 0 K");
     }
 
     /// @brief Stable identifier, for diagnostics.
@@ -99,17 +100,17 @@ class Metropolis : public OutcomePolicy {
     /// @brief Bootstrap invariant: seed the reference energy from the INITIAL
     ///        configuration, before any trial move. Without this the first ΔE is
     ///        measured against zero and is meaningless.
-    /// @param s Loop state after the bootstrap pass; `s.frame.scalars.energy` [eV] is
+    /// @param s Loop state after the bootstrap pass; `s.frame.meta.get(kEnergy)` [eV] is
     ///        the initial configuration's energy.
     void on_start(const cpu::LoopState& s) override {
-        e_cur_ = s.frame.scalars.energy;
+        e_cur_ = s.frame.meta.get(kEnergy);
     }
 
     /// @brief Apply the acceptance test to the trial energy now in the frame.
-    /// @param s Loop state; `s.frame.scalars.energy` is the trial energy [eV].
+    /// @param s Loop state; `s.frame.meta.get(kEnergy)` is the trial energy [eV].
     /// @return `Commit` on accept, `Rollback` on reject.
     Outcome after_stages(const cpu::LoopState& s) override {
-        const AccReal e_trial = s.frame.scalars.energy;
+        const AccReal e_trial = s.frame.meta.get(kEnergy);
         const AccReal dE = e_trial - e_cur_;
         ++n_attempts_;
         if (accept_(dE)) {
@@ -153,9 +154,10 @@ class Metropolis : public OutcomePolicy {
         return u(rng_) < p;
     }
 
-    AccReal temperature_;      ///< Ensemble temperature [K].
-    std::mt19937_64& rng_;     ///< The run's single RNG stream, shared with the Mover.
-    AccReal e_cur_ = 0;        ///< Energy of the last accepted state [eV].
+    AccReal temperature_; ///< Ensemble temperature [K].
+    std::mt19937_64&
+        rng_;           ///< The run's single RNG stream, shared with the Mover.
+    AccReal e_cur_ = 0; ///< Energy of the last accepted state [eV].
     long long n_attempts_ = 0; ///< Trial moves attempted (lifetime).
     long long n_accepts_ = 0;  ///< Trial moves accepted (lifetime).
 };

@@ -3,7 +3,7 @@
 ///
 /// Transcribed once from the published table and committed as plain C++ data.
 /// Nothing is parsed at build, test, or run time — no `.sw` reader exists, per the
-/// GPW precedent (CLAUDE.md). Consumed only by the `SWPotential(Element, name)`
+/// GPW precedent (CLAUDE.md). Consumed only by the `SWPotential(molrs::Element, name)`
 /// lookup constructor, which throws on an unsupported element or name.
 ///
 /// Provenance: F. H. Stillinger and T. A. Weber, "Computer simulation of local
@@ -34,16 +34,16 @@ struct SWRow {
     double B;
     double p;
     double q;
-    double a;         ///< cutoff in units of sigma
-    double lambda;    ///< three-body strength
-    double gamma;     ///< three-body exponential prefactor
+    double a;          ///< cutoff in units of sigma
+    double lambda;     ///< three-body strength
+    double gamma;      ///< three-body exponential prefactor
     double cos_theta0; ///< the tetrahedral cosine, -1/3
 };
 
 /// @brief The original silicon parameterization (Stillinger & Weber 1985).
 inline constexpr SWRow kStillingerWeber[] = {
-    {14, "Si", "stillinger-weber", 2.1683, 2.0951, 7.049556277, 0.6022245584, 4.0,
-     0.0, 1.80, 21.0, 1.20, -1.0 / 3.0},
+    {14, "Si", "stillinger-weber", 2.1683, 2.0951, 7.049556277, 0.6022245584,
+     4.0, 0.0, 1.80, 21.0, 1.20, -1.0 / 3.0},
 };
 
 inline constexpr unsigned long kStillingerWeberCount =

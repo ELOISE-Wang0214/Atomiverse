@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/potentials/eam_potential.h"
 #include "atomiverse/facade/stage.h"
 
@@ -20,11 +20,11 @@ namespace cpu {
 /// Component / Neighbor / Comm layers.
 ///
 /// **Why it is not a `Pair`.** `cpu::Pair` models `fpair(r^2)` — one scalar per
-/// separation — and marks `launch()`/`role()` `final`; `set_pair` is a singular
+/// separation — and marks `launch()`/`role()` `final`; `add_potential` is a singular
 /// slot. EAM's force on `i` depends on the *density* at `i` **and at every
 /// neighbour `j`**, so it is not expressible in that shape. It therefore follows
-/// the `CoulLong` precedent instead: a plain `ComponentBase + NeighborConsumer`,
-/// registered explicitly with `.on(md::Phase::force).add(eam)`.
+/// the `CoulLong` precedent instead: a plain `Component + NeighborConsumer`,
+/// registered explicitly with `.on(md::Phase::force).add_ref(eam)`.
 ///
 /// **Two passes, one launch.** Pass 1 accumulates `rho_i = sum_j f(r_ij)` for
 /// every atom; pass 2 uses `F'(rho_i)` and `F'(rho_j)` to build the forces. Both
@@ -47,7 +47,7 @@ namespace cpu {
 /// with no communication point inside `force`. The wide halo sidesteps that hole
 /// instead of punching a new one through it; it costs memory and a fatter ghost
 /// exchange, and it costs no new invariant.
-class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
+class EAM : public cpu::Potential, public cpu::NeighborConsumer {
   public:
     /// @param potential Analytic EAM parameterization (constructed by lookup).
     /// @param cutoff Interaction cutoff [Angstrom]. The Sutton-Chen form is a
@@ -57,13 +57,10 @@ class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
     EAM(EAMPotential potential, double cutoff);
 
     std::string name() const override { return "eam"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
+    /* role via Potential/kind base */
 
     /// @brief Cutoff the neighbor list must cover [Angstrom].
-    Real neighbor_cutoff() const override { return cutoff_; }
+    AccReal neighbor_cutoff() const override { return cutoff_; }
 
     /// @brief The halo must reach 2 * cutoff — a GHOST-OF-GHOST shell.
     ///
@@ -74,7 +71,7 @@ class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
     /// single extra message — which matters, because the engine has exactly one
     /// forward halo (pre_neighbor) and one reverse halo (post_force) per step, and no
     /// communication point at all inside the force phase.
-    Real halo_cutoff() const override { return 2.0 * cutoff_; }
+    AccReal halo_cutoff() const override { return 2.0 * cutoff_; }
     const cpu::NeighborConsumer* as_neighbor_consumer() const override {
         return this;
     }
@@ -91,7 +88,8 @@ class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
   private:
     EAMPotential pot_;
     double cutoff_;
-    double phi_shift_ = 0.0; ///< phi(cutoff), subtracted so the pair term is continuous.
+    double phi_shift_ =
+        0.0; ///< phi(cutoff), subtracted so the pair term is continuous.
 
     /// Per-atom local density and embedding derivative. Sized to the atom count
     /// at build and regrown in launch if the frame grew.

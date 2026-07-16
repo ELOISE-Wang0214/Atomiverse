@@ -2,7 +2,8 @@
 /// @brief cpu::vib::HessianAccumulator — central-difference Hessian-row build.
 ///
 /// Bound at `vib::Phase::accumulate`, after the user-registered force
-/// evaluator has written `frame.atoms.f*` for displacement `s = ctx.step`.
+/// evaluator has written the `kAtom_fx/fy/fz` columns for displacement
+/// `s = ctx.step`.
 ///
 /// Displacement `s` is even for the `+h` evaluation and odd for the `-h`
 /// evaluation of Cartesian coordinate `c = s/2`:
@@ -34,19 +35,18 @@ namespace vib {
 /// `role() == None`; `capabilities() == Capability::Hessian` — it is the
 /// canonical Hessian-producing component that `cpu::vib::Hessian`'s
 /// build-time validation requires.
-class HessianAccumulator : public cpu::ComponentBase {
+class HessianAccumulator : public cpu::Component {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit HessianAccumulator(HessianWorkspace* ws) : ws_(ws) {}
 
     std::string name() const override { return "vib_hessian_accumulator"; }
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Advertises `Capability::Hessian` — the bit `cpu::vib::Hessian`
     ///        requires exactly one component to carry.
     /// @return `Capability::Hessian`.
-    Capability capabilities() const override { return Capability::Hessian; }
 
     /// @brief Default binding: `vib::Phase::accumulate` @ 0.
     /// @return Single binding placing this at the accumulate phase.

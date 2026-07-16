@@ -36,7 +36,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h" // for OptRecord
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -46,7 +46,7 @@ namespace cpu {
 namespace minimizer {
 
 /// @brief Polak-Ribière conjugate-gradient Optimizer.
-class CG : public cpu::ComponentBase {
+class CG : public cpu::Optimizer {
   public:
     /// @brief Construct CG optimizer.
     ///
@@ -73,7 +73,7 @@ class CG : public cpu::ComponentBase {
                     double min_alpha = 1e-8);
 
     std::string name() const override { return "cg"; }
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    /* role via Optimizer base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),

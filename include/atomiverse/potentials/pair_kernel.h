@@ -34,7 +34,8 @@ namespace ATV {
 namespace potentials {
 
 /// @brief One pair's contribution: `force_on_i = fpair * (r_i - r_j)`, `energy`.
-template <class T> struct PairContribution {
+template <class T>
+struct PairContribution {
     T fpair;
     T energy;
 };
@@ -155,7 +156,7 @@ struct LJKernel {
 
 /// @brief Real-space (screened) Coulomb — the short-range half of Ewald,
 /// `E = qqr2e·q_i q_j·erfc(α r)/r`. Mirrors `cpu::CoulLong` exactly. `qqr2e` is
-/// the Coulomb constant in the active unit system (ATV::kCoulomb).
+/// the Coulomb constant in the active unit system (ATV::units::coulomb).
 struct CoulKernel {
     double qqr2e = 0.0;
     double alpha = 0.0;
@@ -188,7 +189,8 @@ struct CoulKernel {
 
 /// @brief Compose two kernels into one neighbor-walk (e.g. lj/cut/coul/long):
 /// sums their `fpair` and `energy` contributions per pair.
-template <class A, class B> struct SumKernel {
+template <class A, class B>
+struct SumKernel {
     A a;
     B b;
     static constexpr bool needs_charge = A::needs_charge || B::needs_charge;

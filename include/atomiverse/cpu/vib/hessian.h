@@ -7,7 +7,7 @@
 /// result via `run()` / `last_result()`.
 ///
 /// Usage — register any `Capability::Force` evaluator on
-/// `vib::Phase::force` (an FF evaluator or `cpu::scf::SCFEvaluator`),
+/// `vib::Phase::force` (an FF evaluator or `cpu::scf::SCF`),
 /// exactly as AIMD registers a force evaluator into `cpu::md::MD`:
 ///
 /// @code{.cpp}
@@ -16,7 +16,7 @@
 ///
 ///   cpu::vib::Hessian driver;
 ///   driver.on(ATV::vib::Phase::force)
-///         .add(cpu::scf::SCFEvaluator{cfg});
+///         .add(cpu::scf::SCF{cfg});
 ///   driver.build();
 ///   cpu::vib::HessianResult H = driver.run(frame);   // [3N,3N] eV/Angstrom^2
 /// @endcode
@@ -30,10 +30,15 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/cpu/vib/displace_step.h"
 #include "atomiverse/cpu/vib/hessian_accumulator.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
@@ -41,6 +46,7 @@
 #include "atomiverse/cpu/vib/reference_geometry.h"
 #include "atomiverse/cpu/vib/symmetrize.h"
 #include "atomiverse/cpu/vib/thermochem.h"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -119,7 +125,7 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
 
     /// @brief Run the `6N`-displacement finite-difference Hessian assembly.
     ///
-    /// Sizes the shared workspace from `frame.atoms.size()`, runs the fixed
+    /// Sizes the shared workspace from `frame.nlocal()`, runs the fixed
     /// budget (`6N` displacement passes + one finalize pass), and returns the
     /// symmetrized Hessian. The result is also
     /// cached for `last_result()`. On return the frame carries the
@@ -139,16 +145,23 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     void validate_components() const override {
         bool has_force_writer = false;
         bool has_hessian_writer = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (has_capability(c.capabilities(), Capability::Force))
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c))
                 has_force_writer = true;
-            if (has_capability(c.capabilities(), Capability::Hessian))
+            if (c.name() == "vib_hessian_accumulator")
                 has_hessian_writer = true;
         });
         if (!has_force_writer)
-            throw_missing("Component with Capability::Force");
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
         if (!has_hessian_writer)
-            throw_missing("Component with Capability::Hessian");
+            throw_missing("vib_hessian_accumulator");
     }
 
   private:

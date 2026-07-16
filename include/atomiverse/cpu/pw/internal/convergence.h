@@ -2,7 +2,7 @@
 /// @brief internal::ConvergenceCheck — density-change SCF convergence test.
 ///
 /// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
-/// `cpu::ComponentBase` subclass; it never touches the driver loop's
+/// `cpu::Component` subclass; it never touches the driver loop's
 /// `IterationStatus` (borrowed by the Context as `ctx.loop`) — the plane-wave
 /// SCF manages its own internal convergence, exactly like `cpu::scf::SCFSolver`.
 #pragma once
@@ -19,7 +19,7 @@ class ConvergenceCheck {
   public:
     /// @param tol    Convergence tolerance on the density-change L2 norm.
     /// @param warmup Iterations to skip before testing (mixer settling).
-    explicit ConvergenceCheck(Real tol, int warmup = 2)
+    explicit ConvergenceCheck(AccReal tol, int warmup = 2)
         : tol_(tol), warmup_(warmup) {}
 
     /// @brief Reset the iteration counter (call once per SCF run).
@@ -31,7 +31,7 @@ class ConvergenceCheck {
     bool step(const PWWorkspace& ws);
 
   private:
-    Real tol_ = Real(1e-8);
+    AccReal tol_ = AccReal(1e-8);
     int warmup_ = 2;
     int iter_ = 0;
 };

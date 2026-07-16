@@ -17,8 +17,7 @@
 /// auto-initializes rank-aware logging from the MPI rank/size it detects, so
 /// applications rarely need to call this directly:
 /// @code
-///   ATV::log_init(spdlog::level::debug);                 // legacy
-///   ATV::log_init({.level = spdlog::level::info,         // full control
+///   ATV::log_init({.level = spdlog::level::info,
 ///                  .mpi_rank = r, .mpi_size = n,
 ///                  .logfile = "run.log"});
 /// @endcode
@@ -58,11 +57,11 @@ struct LogConfig {
     spdlog::level::level_enum level = spdlog::level::info; ///< default/global
     int mpi_rank = 0;
     int mpi_size = 1;
-    bool console = true;             ///< colored console sink
-    bool console_rank0_only = true;  ///< gate console to rank 0
-    std::string logfile;             ///< "" = none; rank-0 file sink
-    std::string per_rank_dir;        ///< "" = none; <dir>/atv.rank<N>.log (all ranks)
-    std::string metrics_file;        ///< "" = none; CSV/JSON sink on report logger
+    bool console = true;            ///< colored console sink
+    bool console_rank0_only = true; ///< gate console to rank 0
+    std::string logfile;            ///< "" = none; rank-0 file sink
+    std::string per_rank_dir; ///< "" = none; <dir>/atv.rank<N>.log (all ranks)
+    std::string metrics_file; ///< "" = none; CSV/JSON sink on report logger
     /// Per-category level overrides, e.g. {{"comm", trace}, {"scf", warn}}.
     std::vector<std::pair<std::string, spdlog::level::level_enum>> categories;
 };
@@ -86,13 +85,6 @@ spdlog::logger& report_logger();
 /// core/report.h `Csv` to emit machine-readable rows without polluting the
 /// console. @see report.h
 spdlog::logger& metrics_logger();
-
-/// @brief Initialize logging with Atomiverse defaults (legacy, single-process).
-/// @param level Log level (default: info). Safe to skip.
-void log_init(spdlog::level::level_enum level = spdlog::level::info);
-
-/// @brief Rank-aware initialization convenience.
-void log_init(spdlog::level::level_enum level, int mpi_rank, int mpi_size);
 
 /// @brief Full initialization. Env vars override `cfg` fields. Idempotent;
 /// an explicit call wins over the Backend's auto-init.
@@ -123,15 +115,15 @@ bool log_initialized();
         SPDLOG_MACRO(_atv_cat_lg, __VA_ARGS__);                                \
     } while (0)
 
-#define ATV_TRACE_CAT(cat, ...)                                               \
+#define ATV_TRACE_CAT(cat, ...)                                                \
     ATV_LOG_CAT_IMPL_(SPDLOG_LOGGER_TRACE, cat, __VA_ARGS__)
-#define ATV_DEBUG_CAT(cat, ...)                                               \
+#define ATV_DEBUG_CAT(cat, ...)                                                \
     ATV_LOG_CAT_IMPL_(SPDLOG_LOGGER_DEBUG, cat, __VA_ARGS__)
-#define ATV_INFO_CAT(cat, ...)                                                \
+#define ATV_INFO_CAT(cat, ...)                                                 \
     ATV_LOG_CAT_IMPL_(SPDLOG_LOGGER_INFO, cat, __VA_ARGS__)
-#define ATV_WARN_CAT(cat, ...)                                                \
+#define ATV_WARN_CAT(cat, ...)                                                 \
     ATV_LOG_CAT_IMPL_(SPDLOG_LOGGER_WARN, cat, __VA_ARGS__)
-#define ATV_ERROR_CAT(cat, ...)                                               \
+#define ATV_ERROR_CAT(cat, ...)                                                \
     ATV_LOG_CAT_IMPL_(SPDLOG_LOGGER_ERROR, cat, __VA_ARGS__)
 
 // Per-subsystem sugar (optional; the _CAT form is the primitive).

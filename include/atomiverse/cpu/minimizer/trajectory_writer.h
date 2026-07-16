@@ -8,7 +8,7 @@
 /// @code
 ///   cpu::minimizer::Minimize opt;
 ///   opt.add(cpu::minimizer::LBFGS{/*...*/});
-///   opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+///   opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
 ///   opt.on(minimizer::Phase::end_of_step)
 ///      .add(cpu::minimizer::TrajectoryWriter{"aspirin_traj.xyz", /*stride=*/1});
 ///   opt.build();
@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/facade/stage.h"
 
@@ -38,7 +38,7 @@ namespace minimizer {
 /// MPI-aware: under multi-rank every rank joins a collective owner gather
 /// (`md::mpi::gather_to_root`, tag-ordered) and only rank 0 writes the
 /// complete geometry.
-class TrajectoryWriter : public cpu::ComponentBase {
+class TrajectoryWriter : public cpu::Recorder {
   public:
     /// @brief Construct.
     /// @param filename Output XYZ path (appended; existing file is overwritten
@@ -47,7 +47,7 @@ class TrajectoryWriter : public cpu::ComponentBase {
     explicit TrajectoryWriter(std::string filename, int stride = 1);
 
     std::string name() const override { return "trajectory_writer"; }
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::minimizer::Phase::end_of_step, 0)};

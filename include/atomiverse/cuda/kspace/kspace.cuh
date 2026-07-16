@@ -20,11 +20,11 @@ namespace ATV {
 namespace cuda {
 
 /// @brief Abstract base for reciprocal-space electrostatics styles (CUDA).
-class KSpace : public ComponentBase {
+class KSpace : public Component {
   public:
     ~KSpace() override = default;
 
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
+    /* role via Potential/kind base */
 
     /// @brief Framework dispatch — `final`, calls `compute()` (mirrors
     ///        `cuda::Pair` / `cuda::Bond`).

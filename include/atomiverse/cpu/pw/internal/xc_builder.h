@@ -2,7 +2,7 @@
 /// @brief internal::XCBuilder — XC potential on the FFT grid via evaluate_xc.
 ///
 /// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
-/// `cpu::ComponentBase` subclass and never registered into a Plan.
+/// `cpu::Component` subclass and never registered into a Plan.
 #pragma once
 
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"
@@ -29,7 +29,7 @@ class XCBuilder {
 
   private:
     FFTWBuffer<fftw_complex> rho_g_half_;
-    FFTWBuffer<Real> rho_r_;
+    FFTWBuffer<AccReal> rho_r_;
     FFTWBuffer<fftw_complex> vxc_g_half_;
 };
 

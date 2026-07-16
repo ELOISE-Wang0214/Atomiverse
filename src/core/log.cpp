@@ -125,9 +125,8 @@ struct Registry {
         if (initialized || default_logger)
             return;
         rebuild_sinks();
-        default_logger =
-            std::make_shared<spdlog::logger>("atv", normal_sinks.begin(),
-                                             normal_sinks.end());
+        default_logger = std::make_shared<spdlog::logger>(
+            "atv", normal_sinks.begin(), normal_sinks.end());
         apply_to(*default_logger, "atv", Kind::Normal);
         report_logger = std::make_shared<spdlog::logger>(
             "atv.report", report_sinks.begin(), report_sinks.end());
@@ -167,8 +166,7 @@ void apply_env(LogConfig& cfg) {
             if (eq == std::string::npos)
                 continue;
             cfg.categories.emplace_back(
-                tok.substr(0, eq),
-                parse_level(tok.substr(eq + 1), cfg.level));
+                tok.substr(0, eq), parse_level(tok.substr(eq + 1), cfg.level));
         }
     }
 }
@@ -239,18 +237,6 @@ void log_init(const LogConfig& cfg_in) {
         r.apply_to(*lg, name, Registry::Kind::Normal);
 
     r.initialized = true;
-}
-
-void log_init(spdlog::level::level_enum level, int mpi_rank, int mpi_size) {
-    LogConfig cfg;
-    cfg.level = level;
-    cfg.mpi_rank = mpi_rank;
-    cfg.mpi_size = mpi_size;
-    log_init(cfg);
-}
-
-void log_init(spdlog::level::level_enum level) {
-    log_init(level, /*mpi_rank=*/0, /*mpi_size=*/1);
 }
 
 bool log_initialized() {

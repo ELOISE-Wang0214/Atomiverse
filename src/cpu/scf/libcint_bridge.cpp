@@ -9,9 +9,9 @@ extern "C" {
 #include <cint.h>
 }
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 
 #include <algorithm>
@@ -93,7 +93,7 @@ void append_shell(LibcintContext& ctx, int atom_index, int l,
 
 LibcintContext build_libcint_context(const Frame& frame) {
     LibcintContext ctx;
-    ctx.natm = static_cast<int>(frame.atoms.size());
+    ctx.natm = static_cast<int>(frame.nlocal());
     ctx.atm.resize(ctx.natm * ATM_SLOTS, 0);
     ctx.env.resize(PTR_ENV_START, 0.0);
 
@@ -105,9 +105,12 @@ LibcintContext build_libcint_context(const Frame& frame) {
     for (int a = 0; a < ctx.natm; ++a) {
         const int Z = sp_type[a];
         const int coord_ptr = static_cast<int>(ctx.env.size());
-        ctx.env.push_back(static_cast<double>(sp_x[a]) * kAngstromToBohr);
-        ctx.env.push_back(static_cast<double>(sp_y[a]) * kAngstromToBohr);
-        ctx.env.push_back(static_cast<double>(sp_z[a]) * kAngstromToBohr);
+        ctx.env.push_back(static_cast<double>(sp_x[a])
+                          * units::kAngstromInBohr);
+        ctx.env.push_back(static_cast<double>(sp_y[a])
+                          * units::kAngstromInBohr);
+        ctx.env.push_back(static_cast<double>(sp_z[a])
+                          * units::kAngstromInBohr);
 
         ctx.atm[a * ATM_SLOTS + CHARGE_OF] = Z;
         ctx.atm[a * ATM_SLOTS + PTR_COORD] = coord_ptr;

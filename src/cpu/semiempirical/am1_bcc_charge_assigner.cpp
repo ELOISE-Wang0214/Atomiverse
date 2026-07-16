@@ -27,11 +27,23 @@ namespace {
     return values;
 }
 
+::rust::Vec<std::int32_t> require_i32_column(const molrs::FrameRef& frame,
+                                             const char* block,
+                                             const char* col) {
+    auto values = molrs::frame_column_i32(frame, block, col);
+    if (values.empty()) {
+        throw std::runtime_error(std::string("AM1BCCChargeAssigner: required ")
+                                 + block + "." + col
+                                 + " i32 column is missing");
+    }
+    return values;
+}
+
 cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
     auto x = require_f64_column(frame, "atoms", "x");
     auto y = require_f64_column(frame, "atoms", "y");
     auto z = require_f64_column(frame, "atoms", "z");
-    auto atomic_numbers = molrs::frame_atomic_numbers(frame);
+    auto atomic_numbers = require_i32_column(frame, "atoms", "type");
 
     const auto n = static_cast<int>(x.size());
     if (static_cast<int>(y.size()) != n || static_cast<int>(z.size()) != n) {
@@ -41,6 +53,16 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
     if (static_cast<int>(atomic_numbers.size()) != n) {
         throw std::runtime_error("AM1BCCChargeAssigner: atomic-number row "
                                  "count differs from atoms.x");
+    }
+    const int first_element = static_cast<int>(molrs::Element::H);
+    const int last_element = static_cast<int>(molrs::Element::Og);
+    for (int i = 0; i < n; ++i) {
+        const int atomic_number = atomic_numbers[static_cast<std::size_t>(i)];
+        if (atomic_number < first_element || atomic_number > last_element) {
+            throw std::runtime_error(
+                "AM1BCCChargeAssigner: type column row " + std::to_string(i)
+                + " is not a molrs::Element atomic number");
+        }
     }
 
     cpu::Frame work(n);
@@ -63,7 +85,7 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
                 cell(i, j) = h[static_cast<std::size_t>(3 * i + j)];
             }
         }
-        work.box.set_cell(cell);
+        work.simbox.set_cell(cell);
     }
     return work;
 }
@@ -86,7 +108,7 @@ std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
     solver_.build(work);
     const auto& am1 = solver_.run(work);
     if (am1.mulliken_charges.size()
-        != static_cast<std::size_t>(work.atoms.size())) {
+        != static_cast<std::size_t>(work.nlocal())) {
         throw std::runtime_error("AM1BCCChargeAssigner: AM1 result charge "
                                  "count does not match atom count");
     }
@@ -95,8 +117,7 @@ std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
         frame,
         ::rust::Slice<const double>(am1.mulliken_charges.data(),
                                     am1.mulliken_charges.size()),
-        static_cast<double>(config_.am1.charge),
-        config_.normalize_total_charge);
+        {config_.parameter_set.data(), config_.parameter_set.size()});
     last_charges_ = to_std_vector(bcc);
     return last_charges_;
 }

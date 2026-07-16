@@ -34,7 +34,7 @@ class Thermo : public AsyncBridge {
 
     std::string name() const override { return "thermo"; }
     /// @brief Recorder — writes thermo line to stdout (and optional file).
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
     int frequency() const override { return every_; }
 
   protected:
@@ -42,7 +42,7 @@ class Thermo : public AsyncBridge {
         n_atoms_ = ctx.frame.n_atoms();
         header_printed_ = false;
         for (int i = 0; i < kRingDepth; ++i) {
-            cudaMalloc(&d_pe_[i], sizeof(double));   // device-ring slot
+            cudaMalloc(&d_pe_[i], sizeof(double)); // device-ring slot
             cudaMalloc(&d_ke_[i], sizeof(double));
             cudaMallocHost(&h_pe_[i], sizeof(double)); // pinned host slot
             cudaMallocHost(&h_ke_[i], sizeof(double));
@@ -62,8 +62,8 @@ class Thermo : public AsyncBridge {
         auto ms = static_cast<cudaStream_t>(ctx.runtime.stream);
         cudaMemcpyAsync(d_pe_[slot], &ctx.frame.scalars->energy, sizeof(double),
                         cudaMemcpyDeviceToDevice, ms);
-        cudaMemcpyAsync(d_ke_[slot], &ctx.frame.scalars->kinetic, sizeof(double),
-                        cudaMemcpyDeviceToDevice, ms);
+        cudaMemcpyAsync(d_ke_[slot], &ctx.frame.scalars->kinetic,
+                        sizeof(double), cudaMemcpyDeviceToDevice, ms);
     }
 
     void d2h_slot(const LaunchContext& ctx, int slot) override {
@@ -76,8 +76,8 @@ class Thermo : public AsyncBridge {
 
     void on_data_ready(const LaunchContext& ctx, int slot) override {
         // CUDA has no constraint components yet, so Ndof is still 3N - 3 here.
-        cpu::thermo_print(ctx.step, *h_pe_[slot], *h_ke_[slot], 3 * n_atoms_ - 3,
-                          header_printed_, file_);
+        cpu::thermo_print(ctx.step, *h_pe_[slot], *h_ke_[slot],
+                          3 * n_atoms_ - 3, header_printed_, file_);
     }
 
     void on_destroy(const DestroyContext&) override {
@@ -109,7 +109,8 @@ class Thermo : public AsyncBridge {
     int n_atoms_ = 0;
     bool header_printed_ = false;
     std::ofstream file_;
-    double* d_pe_[kRingDepth] = {}; ///< device-ring frozen potential energy [eV]
+    double* d_pe_[kRingDepth] =
+        {}; ///< device-ring frozen potential energy [eV]
     double* d_ke_[kRingDepth] = {}; ///< device-ring frozen kinetic energy [eV]
     double* h_pe_[kRingDepth] = {}; ///< pinned host potential energy [eV]
     double* h_ke_[kRingDepth] = {}; ///< pinned host kinetic energy [eV]

@@ -128,7 +128,7 @@ class HostWorker {
 ///   * `destroy(ctx)` -- joins the worker, frees `device_snapshot_` + the K
 ///     ring slots, destroys the 2·K events, resets members to nullptr.
 template <typename Snapshot>
-class AsyncRecordBase : public ComponentBase {
+class AsyncRecordBase : public Component {
   public:
     AsyncRecordBase() = default;
 
@@ -224,9 +224,9 @@ class AsyncRecordBase : public ComponentBase {
     /// @param step Logical simulation step index (passed verbatim to @p work_fn).
     /// @param work_fn Host-side analysis/recording function. Runs on the
     ///        worker thread, never on the hot path.
-    void submit_async(
-        std::int64_t step,
-        std::function<void(const Snapshot&, std::int64_t)> work_fn) {
+    void
+    submit_async(std::int64_t step,
+                 std::function<void(const Snapshot&, std::int64_t)> work_fn) {
         const int slot = ring_head_;
         ring_head_ = (ring_head_ + 1) % kRingDepth;
         // drop_oldest backpressure: the HostWorker queue is unbounded, so the
@@ -262,12 +262,12 @@ class AsyncRecordBase : public ComponentBase {
         cudaEvent_t ev = copy_done_event_[slot];
         Snapshot* snap_ptr = &host_ring_[slot];
         std::atomic<bool>* busy = &slot_busy_[slot];
-        worker_.submit([ev, snap_ptr, busy, step,
-                        work_fn = std::move(work_fn)]() {
-            cudaEventSynchronize(ev);
-            work_fn(*snap_ptr, step);
-            busy->store(false, std::memory_order_release);
-        });
+        worker_.submit(
+            [ev, snap_ptr, busy, step, work_fn = std::move(work_fn)]() {
+                cudaEventSynchronize(ev);
+                work_fn(*snap_ptr, step);
+                busy->store(false, std::memory_order_release);
+            });
         // submit_async returns immediately: no cudaStreamSynchronize on the
         // caller's thread. This is the load-bearing invariant verified by
         // tests/cuda/async/test_hot_path_no_sync.cu.

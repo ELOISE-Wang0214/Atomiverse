@@ -250,12 +250,12 @@ namespace path {
 
 /// @brief Phase order for one Path iteration (one advance of the whole chain).
 enum class Phase {
-    force,             ///< Per-replica force evaluation (any Capability::Force
-                       ///< evaluator — the same ones MD and Minimize use).
-    couple,            ///< Inter-replica coupling: NEB tangent + spring + the
-                       ///< climbing-image flip; later, PIMD's ring-polymer spring.
-    search_direction,  ///< Per-replica descent direction from the coupled force.
-    line_search,       ///< Reserved — line search along the direction.
+    force,  ///< Per-replica force evaluation (any Capability::Force
+            ///< evaluator — the same ones MD and Minimize use).
+    couple, ///< Inter-replica coupling: NEB tangent + spring + the
+            ///< climbing-image flip; later, PIMD's ring-polymer spring.
+    search_direction, ///< Per-replica descent direction from the coupled force.
+    line_search,      ///< Reserved — line search along the direction.
     convergence_check, ///< Per-replica stopping criteria → LoopMetrics.
     end_of_step,       ///< Per-iteration observers / recorders.
     COUNT              ///< Sentinel -- total number of phases.
@@ -266,8 +266,12 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"force",             "couple",      "search_direction",
-            "line_search",       "convergence_check", "end_of_step"};
+    return {"force",
+            "couple",
+            "search_direction",
+            "line_search",
+            "convergence_check",
+            "end_of_step"};
 }
 
 /// @brief Workflow discriminant for `path::Phase` (ADL tag dispatch).
@@ -314,7 +318,7 @@ constexpr int slot_count() {
 /// this helper exists to prevent.
 ///
 /// The `int phase` that comes out is **the erasure itself**, not a leak:
-/// `ComponentBase` is not a template, so `default_bindings()` has to return one
+/// `Component` is not a template, so `default_bindings()` has to return one
 /// concrete type for every workflow. The `PhaseKind` travelling beside it is what
 /// makes the int safe, and `make_binding` is the only way to make the pair.
 ///

@@ -102,26 +102,31 @@ class Minimize : public cuda::CUDADriver<ATV::minimizer::Phase> {
     }
 
   protected:
-    /// @brief Require at least one `Optimizer`-role component and at least
-    ///        one `Evaluator`-role component carrying `Energy` or `Force`.
-    ///
-    /// Folded down from the deleted `cuda::OptimizeDriver`.
+    /// @brief Optimizer + hot-path energy/force source.
     void validate_components() const override {
         bool has_optimizer = false;
-        bool has_energy_or_force_evaluator = false;
-        for_each_pending([&](const cuda::ComponentBase& c) {
-            if (c.role() == ComponentRole::Optimizer)
+        bool has_energy_or_force = false;
+        for_each_pending([&](const cuda::Component& c) {
+            // CUDA kinds not yet split — use Role flags.
+            if (c.name().find("lbfgs") != std::string::npos
+                || c.name().find("cg") != std::string::npos
+                || c.name().find("sd") != std::string::npos
+                || c.name().find("opt") != std::string::npos)
                 has_optimizer = true;
-            if (c.role() == ComponentRole::Evaluator
-                && (has_capability(c.capabilities(), Capability::Energy)
-                    || has_capability(c.capabilities(), Capability::Force)))
-                has_energy_or_force_evaluator = true;
+            if (loop_required(c.role())
+                && !has_role(c.role(), RoleFlag::FrameImmutable))
+                has_energy_or_force = true;
+        });
+        // Prefer name-based optimizer detection until CUDA kinds land.
+        for_each_pending([&](const cuda::Component& c) {
+            if (c.name() == "lbfgs" || c.name() == "cg" || c.name() == "sd"
+                || c.name() == "steepest_descent")
+                has_optimizer = true;
         });
         if (!has_optimizer)
             throw_missing("Optimizer");
-        if (!has_energy_or_force_evaluator)
-            throw_missing(
-                "Evaluator with Capability::Energy or Capability::Force");
+        if (!has_energy_or_force)
+            throw_missing("hot-path energy/force Component");
     }
 
     /// @brief Attach the default termination policy, if the user attached none.

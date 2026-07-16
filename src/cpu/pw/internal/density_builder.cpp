@@ -27,10 +27,10 @@ void DensityBuilder::reset(PWWorkspace& ws) {
 void DensityBuilder::begin(const PWWorkspace& ws) {
     auto* acc = rho_r_accum_.data();
     for (int i = 0; i < ws.nr; ++i)
-        acc[i] = Real(0);
+        acc[i] = AccReal(0);
 }
 
-void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, Real weight,
+void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
                                        int n_bands) {
     if (ws.nr <= 0 || !ws.fft)
         return;
@@ -58,10 +58,10 @@ void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, Real weight,
         }
         ws.fft->c2c_bwd(psi_cc);
         for (int i = 0; i < ws.nr; ++i) {
-            Real psi_sq = static_cast<Real>(psi_cc[i][0] * psi_cc[i][0]
-                                            + psi_cc[i][1] * psi_cc[i][1]);
+            AccReal psi_sq = static_cast<AccReal>(
+                psi_cc[i][0] * psi_cc[i][0] + psi_cc[i][1] * psi_cc[i][1]);
             // ψ_phys(r) = ψ_fft(r)/√Ω, so |ψ|²_phys = |ψ_fft|²/Ω
-            acc[i] += weight * Real(2) * psi_sq / ws.omega;
+            acc[i] += weight * AccReal(2) * psi_sq / ws.omega;
         }
     }
 }
@@ -80,7 +80,7 @@ void DensityBuilder::finish(PWWorkspace& ws) {
     // Extract ρ(G) at the density G-sphere from the half-complex grid.
     int nx = ws.fft_nx, ny = ws.fft_ny, nz = ws.fft_nz, nxc = nx / 2 + 1;
     auto& gv = *ws.gvec;
-    Real inv_nr = Real(1) / Real(ws.nr);
+    AccReal inv_nr = AccReal(1) / AccReal(ws.nr);
     for (int ig = 0; ig < ws.n_g; ++ig) {
         int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
         int kx = ((h % nx) + nx) % nx, ky = ((k % ny) + ny) % ny,
@@ -94,13 +94,13 @@ void DensityBuilder::finish(PWWorkspace& ws) {
         }
         int idx = kx + nxc * (ky + ny * kz);
         if (idx >= 0 && idx < nc) {
-            ws.rho_G[ig] = std::complex<Real>(
-                static_cast<Real>(rho_g_full[idx][0]) * inv_nr,
-                static_cast<Real>(conj ? -rho_g_full[idx][1]
-                                       : rho_g_full[idx][1])
+            ws.rho_G[ig] = std::complex<AccReal>(
+                static_cast<AccReal>(rho_g_full[idx][0]) * inv_nr,
+                static_cast<AccReal>(conj ? -rho_g_full[idx][1]
+                                          : rho_g_full[idx][1])
                     * inv_nr);
         } else
-            ws.rho_G[ig] = std::complex<Real>(0, 0);
+            ws.rho_G[ig] = std::complex<AccReal>(0, 0);
     }
 
     // ── Pulay/DIIS mixing — the shared CPU/CUDA implementation in

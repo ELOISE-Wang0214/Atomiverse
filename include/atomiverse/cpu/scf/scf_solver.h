@@ -4,8 +4,8 @@
 /// **NOT a `Driver<...>` subclass** — `SCFSolver` is the *inner* solver
 /// (the SCF self-consistency loop) that lives behind force-providing
 /// evaluator components. The user-facing way to compute single-point
-/// electronic structure is `cpu::Evaluate + cpu::scf::SCFEvaluator`;
-/// `SCFSolver` is the internal machinery `SCFEvaluator` calls each step.
+/// electronic structure is `cpu::Evaluate + cpu::scf::SCF`;
+/// `SCFSolver` is the internal machinery `SCF` calls each step.
 ///
 /// `SCFSolver` is also a public API for low-level use (debugging,
 /// testing, density-matrix dumps, DIIS comparisons, initial-guess
@@ -24,7 +24,7 @@
 /// Usage (single-point through the outer facade):
 /// @code
 ///   cpu::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCFEvaluator{config});  // owns an SCFSolver internally
+///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCF{config});  // owns an SCFSolver internally
 ///   eval.build();
 ///   eval.run(frame);
 /// @endcode
@@ -34,7 +34,7 @@
 
 #include "atomiverse/cpu/scf/dense_matrix.h" // RealMatrix
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, SCFInitialGuess, SCFResult
+#include "atomiverse/cpu/scf/scf_types.h" // SCFConfig, SCFInitialGuess, SCFResult
 
 namespace ATV {
 namespace cpu {

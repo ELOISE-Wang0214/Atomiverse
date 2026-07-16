@@ -13,7 +13,15 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/materialize.h"
@@ -34,7 +42,7 @@ namespace md {
 ///
 /// Convenience class that auto-adds always-on infrastructure components
 /// in the constructor, exposes a LAMMPS-shaped categorical setter API
-/// (set_pair, set_bond, set_neighbor, set_integrator, set_thermostat,
+/// (add_potential, add_potential, set_neighbor, set_integrator, set_thermostat,
 /// set_barostat, set_observer, set_record, set_thermo — the first six
 /// are inherited from CPUDriver), and runs `install_defaults()` at `build()`
 /// time to derive opt-in infrastructure from declared component requirements:
@@ -51,8 +59,8 @@ namespace md {
 /// Inheritance: MD → CPUDriver<md::Phase> → Driver<md::Phase, cpu::device_tag>.
 /// There is no `DynamicsDriver` category in between any more: "run a step budget" is a
 /// loop bound, not a taxonomy.
-/// CPUDriver provides the shared categorical setter API (set_pair,
-/// set_bond, set_angle, set_dihedral, set_neighbor, set_observer,
+/// CPUDriver provides the shared categorical setter API (add_potential,
+/// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record, set_thermo) and the slot variables. MD adds
 /// driver-specific setters (set_integrator, set_thermostat, set_barostat).
 ///
@@ -79,7 +87,7 @@ namespace md {
 /// Usage (LAMMPS-shaped):
 /// @code{.cpp}
 /// cpu::md::MD sim;
-/// sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
+/// sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
 /// sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 /// sim.set_integrator(cpu::md::VelocityVerlet{0.001});
 /// sim.set_thermo(100);
@@ -98,8 +106,11 @@ class MD : public CPUDriver<ATV::md::Phase> {
     ///
     /// @param frame Host-resident system state, updated in place.
     /// @param n_steps Step budget.
-    void run(cpu::Frame& frame, int n_steps) {
+    /// @return Number of iterations actually executed (may be below the
+    ///         budget when a user handler stops the loop).
+    int run(cpu::Frame& frame, int n_steps) {
         this->begin_run_(frame);
+        int iterations = 0;
         for (int s = 0; s < n_steps; ++s) {
             this->mutable_outer_status().reset();
             // Flag the final step so cadence-gated end-of-step collectives
@@ -107,6 +118,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
             // globally-reduced scalars before run() returns.
             this->backend_->context().md.is_last_step = (s == n_steps - 1);
             this->step_once(this->next_step_());
+            ++iterations;
             if (this->poll_handlers_(s) != Verdict::Continue)
                 break;
         }
@@ -118,6 +130,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
         // Built-in end-of-run report (time + memory), like LAMMPS's loop summary.
         // Collective + rank-0 render; always emitted.
         this->emit_run_summary("md");
+        return iterations;
     }
 
     /// @brief User-facing entry — advance the system stored in a molrs.Frame.
@@ -128,10 +141,12 @@ class MD : public CPUDriver<ATV::md::Phase> {
     /// `cpu::Frame&` overload.
     /// @param frame molrs.Frame handle (input geometry + output sink).
     /// @param n_steps Step budget.
-    void run(molrs::FrameRef& frame, int n_steps) {
+    /// @return Number of iterations actually executed.
+    int run(molrs::FrameRef& frame, int n_steps) {
         cpu::Frame work = cpu::materialize(frame);
-        run(work, n_steps);
+        const int iterations = run(work, n_steps);
         cpu::write_back(work, frame);
+        return iterations;
     }
 
     MD() {
@@ -159,31 +174,62 @@ class MD : public CPUDriver<ATV::md::Phase> {
 
     // ─── MD-specific categorical setters ────────────────────────────
     //
-    // set_pair, set_bond, set_angle, set_dihedral, set_neighbor,
+    // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
     // set_observer, set_record, set_thermo are inherited from CPUDriver.
 
     /// @brief Configure the time integrator (LAMMPS `fix … nve|nvt|npt`).
     template <typename I>
+        requires(!std::is_lvalue_reference_v<I>)
     MD& set_integrator(I&& integ) {
-        this->set_singular_default_(std::forward<I>(integ), integrator_set_,
-                                    "set_integrator");
+        this->set_singular_default_owned_(std::forward<I>(integ),
+                                          integrator_set_, "set_integrator");
         return *this;
     }
+
+    template <typename I>
+    MD& set_integrator_ref(I& integ) {
+        this->set_singular_default_ref_(integ, integrator_set_,
+                                        "set_integrator_ref");
+        return *this;
+    }
+
+    template <typename I>
+    MD& set_integrator(I&) = delete;
 
     /// @brief Add a thermostat (LAMMPS `fix … langevin / temp/berendsen`).
     /// Plural: each call appends; insertion order preserved.
     template <typename T>
+        requires(!std::is_lvalue_reference_v<T>)
     MD& set_thermostat(T&& t) {
         this->add(std::forward<T>(t));
         return *this;
     }
 
+    template <typename T>
+    MD& set_thermostat_ref(T& t) {
+        this->add_ref(t);
+        return *this;
+    }
+
+    template <typename T>
+    MD& set_thermostat(T&) = delete;
+
     /// @brief Add a barostat (LAMMPS `fix … press/berendsen`). Plural.
     template <typename Bs>
+        requires(!std::is_lvalue_reference_v<Bs>)
     MD& set_barostat(Bs&& b) {
         this->add(std::forward<Bs>(b));
         return *this;
     }
+
+    template <typename Bs>
+    MD& set_barostat_ref(Bs& b) {
+        this->add_ref(b);
+        return *this;
+    }
+
+    template <typename Bs>
+    MD& set_barostat(Bs&) = delete;
 
     /// @brief Configure a canonical (NVT) ensemble in one call — LAMMPS
     /// `fix nvt` style: velocity-Verlet integration bundled with a selectable
@@ -194,7 +240,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
     /// plus the chosen thermostat, each registered with its own validated phase
     /// bindings (Nose-Hoover half-steps on initial/final integrate; CSVR rescale
     /// on end_of_step). Equivalent to the explicit two-call form, so it composes
-    /// with `set_pair`/`set_neighbor`/`on(force).add(<DFT evaluator>)` exactly as
+    /// with `add_potential`/`set_neighbor`/`on(force).add(<DFT evaluator>)` exactly as
     /// before.
     ///
     /// @param cfg NVT configuration (dt, T, tau, thermostat kind, seed, ramp).
@@ -309,24 +355,28 @@ class MD : public CPUDriver<ATV::md::Phase> {
     }
 
   protected:
-    /// @brief An Integrator, and something that writes forces for it to integrate.
-    ///
-    /// Capability is the load-bearing predicate on the second one, not role: *any*
-    /// component that writes forces (Evaluator-role LJ, Thermostat-role Langevin)
-    /// satisfies "the integrator has something to integrate".
+    /// @brief Integrator + energy/force kind (Potential / Bias / HF / …).
     void validate_components() const override {
         bool has_integrator = false;
         bool has_force_writer = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Integrator)
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Integrator*>(&c))
                 has_integrator = true;
-            if (has_capability(c.capabilities(), Capability::Force))
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c) || c.name() == "langevin"
+                || c.name() == "fix_langevin")
                 has_force_writer = true;
         });
         if (!has_integrator)
             throw_missing("Integrator");
         if (!has_force_writer)
-            throw_missing("Component with Capability::Force");
+            throw_missing("Potential / Bias / HF / Semiempirical / PlaneWave / "
+                          "GPW (or Langevin)");
     }
 
     void install_defaults() override {
@@ -355,7 +405,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
             // good margin while staying under `2× pair_cutoff` for the
             // 144-atom-in-48Å unit tests (those have slabs of 24 Å, so
             // a 13.65 Å halo would duplicate ghosts and overflow
-            // `frame.atoms.size()`). Callers running with a custom NL
+            // `frame.nlocal()`). Callers running with a custom NL
             // skin > 10% of cutoff should register
             // `HaloSend{halo_cut}` explicitly before the
             // pair evaluator — `install_defaults` will see an existing
@@ -388,9 +438,11 @@ class MD : public CPUDriver<ATV::md::Phase> {
         // thing to leave to a doc comment.
         if (s.has_constraint) {
             this->on(ATV::md::Phase::post_integrate)
-                .add(comm::HaloRefresh{comm::HaloRefresh::Field::positions}, -100);
+                .add(comm::HaloRefresh{comm::HaloRefresh::Field::positions},
+                     -100);
             this->on(ATV::md::Phase::final_integrate)
-                .add(comm::HaloRefresh{comm::HaloRefresh::Field::velocities}, +150);
+                .add(comm::HaloRefresh{comm::HaloRefresh::Field::velocities},
+                     +150);
         }
 #endif
 

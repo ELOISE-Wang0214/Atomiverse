@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/thermostat.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -24,7 +24,7 @@ namespace md {
 /// 2. Random kick:              F_rand =   sqrt(2 m kB T / (damp · dt · mvv2e)) / ftm2v · ξ
 ///
 /// where `ξ ~ N(0, 1)` per Cartesian component per atom per step,
-/// `ftm2v = kFtm2v` and `mvv2e = kMvv2e` (the metal-unit conversion
+/// `ftm2v = units::force_to_accel` and `mvv2e = units::mass_v2_to_energy` (the metal-unit conversion
 /// constants). The combined force satisfies the fluctuation-dissipation
 /// theorem so velocity-Verlet integration of `f_total = f_phys + F_drag
 /// + F_rand` produces the canonical NVT ensemble at the live setpoint.
@@ -45,7 +45,7 @@ namespace md {
 ///   | Force formula     | drag + FDT-consistent random kick | Schneider-Stoll drag + random, FDT-consistent | aligned |
 ///   | `scale` keyword   | optional per-type friction scaling | not supported | deferred (spec out-of-scope) |
 ///   | `tally` keyword   | reservoir energy tally             | not supported | deferred (spec out-of-scope) |
-///   | `zero` keyword    | COM-drift removal                  | not supported | deferred — overlaps `ZeroLinearMomentum` |
+///   | `zero` keyword    | COM-drift removal                  | not supported | deferred — overlaps `ZeroMomentum` |
 ///   | `angmom`/`omega`  | rotational-DOF thermostatting      | not supported | deferred (spec out-of-scope) |
 ///
 /// **RNG divergence (deliberate).** LAMMPS draws uniform samples from
@@ -76,7 +76,7 @@ namespace md {
 /// total. Pair this component with `VelocityVerlet` (or `NVELimit`
 /// for far-from-equilibrium starts) -- the integrator picks up the
 /// modified forces in the next velocity half-kick.
-class FixLangevin : public cpu::ComponentBase {
+class FixLangevin : public cpu::Thermostat {
   public:
     /// @param T_start Ramp start temperature [K] (LAMMPS `Tstart`).
     /// @param T_stop  Ramp end temperature [K] (LAMMPS `Tstop`). A
@@ -113,13 +113,12 @@ class FixLangevin : public cpu::ComponentBase {
     double T_target() const noexcept { return T_live_; }
 
     std::string name() const override { return "fix_langevin"; }
-    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /* role via Thermostat base */
     /// @brief Langevin's role is Thermostat, but it functionally writes
     /// drag + random forces into fx/fy/fz — so it advertises
     /// Capability::Force. This lets a pure Langevin run (no LJ / bonded
     /// evaluator) satisfy `cpu::md::MD::validate_components()`'s "something
     /// writes forces" contract.
-    Capability capabilities() const override { return Capability::Force; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::post_force, +500)};
     }

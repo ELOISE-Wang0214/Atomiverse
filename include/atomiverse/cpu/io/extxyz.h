@@ -19,8 +19,8 @@ namespace cpu {
 
 /// @brief Load the first frame of an (ext)XYZ file into a new cpu::Frame.
 ///
-/// Reads the atom table (positions and the species/element symbol column,
-/// mapped to per-atom `type` = atomic number Z) and the simulation box from
+/// Reads the atom table (positions and the required ExtXYZ `species` column,
+/// consumed into per-atom `type` = atomic number Z) and the simulation box from
 /// the extended-XYZ `Lattice="..."` header. Only the first frame of a
 /// multi-frame file is read.
 ///

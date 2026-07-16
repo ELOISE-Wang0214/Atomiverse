@@ -22,7 +22,7 @@
 ///   cpu::minimizer::Minimize opt;
 ///   opt.add(cpu::minimizer::LBFGS{memory, alpha, max_ls});
 ///   opt.add_handler(cpu::ForceConverged{});   // the convergence policy
-///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
 ///   opt.on(ATV::minimizer::Phase::end_of_step).add(Thermo{1});
 ///   opt.build();
 ///   opt.run(frame, 100);
@@ -34,18 +34,18 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/async/snapshot_publisher.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
+#include "atomiverse/cpu/minimizer/lbfgs_history.h"
 #include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/facade/stage.h"
-#include "atomiverse/cpu/minimizer/lbfgs_history.h"
 
 namespace ATV {
 namespace cpu {
@@ -80,7 +80,7 @@ struct OptRecord {
 /// @endcode
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS direction.
-class LBFGS : public cpu::ComponentBase {
+class LBFGS : public cpu::Optimizer {
   public:
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
@@ -112,7 +112,7 @@ class LBFGS : public cpu::ComponentBase {
                        double min_alpha = 1e-8);
 
     std::string name() const override { return "lbfgs"; }
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    /* role via Optimizer base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
@@ -141,8 +141,9 @@ class LBFGS : public cpu::ComponentBase {
     /// is its second caller, which is when extraction is due — not before.
     std::unique_ptr<LbfgsHistory> hist_;
 
-    std::vector<double> direction_; ///< Search direction (this component's own).
-    bool x_prev_valid_ = false;     ///< False after migration reshuffles rows.
+    std::vector<double>
+        direction_;             ///< Search direction (this component's own).
+    bool x_prev_valid_ = false; ///< False after migration reshuffles rows.
 
     // Per-step workspaces, sized once in build() — no launch() allocation.
     std::vector<double> x_ws_;

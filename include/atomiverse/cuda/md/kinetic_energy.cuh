@@ -21,6 +21,7 @@
 /// @see Virial for the stress_kinetic[] zeroing
 /// @see Thermo for the component that reads frame.scalars->kinetic
 #pragma once
+#include "atomiverse/facade/component_role.h"
 
 #include <string>
 #include <vector>
@@ -38,18 +39,21 @@ namespace md {
 /// before user observers at order >= 0).
 ///
 /// `role()` stays `None` and `capabilities()` stays `None` (the
-/// `ComponentBase` defaults), mirroring `cpu::md::KineticEnergy`:
+/// `Component` defaults), mirroring `cpu::md::KineticEnergy`:
 /// kinetic energy is written to `frame.scalars->kinetic`, which is **not** one of
 /// the `Capability` bits (those cover potential `Energy`, `Force`,
 /// `Stress`, charge / density / orbital fields). It is a structural
 /// diagnostic, not a force/energy producer, so `cuda::md::MD`
 /// validation does not count it toward the `Capability::Force`
 /// requirement.
-class KineticEnergy : public ComponentBase {
+class KineticEnergy : public Component {
   public:
     /// @brief Component name.
     /// @return "kinetic_energy".
     std::string name() const override { return "kinetic_energy"; }
+    Role role() const override {
+        return RoleFlag::FrameImmutable | RoleFlag::Deferred;
+    }
 
     /// @brief Default bindings: end_of_step at order -100.
     /// @return Single binding to end_of_step.

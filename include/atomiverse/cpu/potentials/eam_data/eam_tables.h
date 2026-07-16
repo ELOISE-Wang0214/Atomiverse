@@ -5,7 +5,7 @@
 /// **Nothing is parsed at build, test, or run time** — no setfl / .eam.alloy /
 /// funcfl reader exists anywhere in the tree, per the binding precedent set by
 /// the GPW data tables (CLAUDE.md, "GPW data (in-tree static .h tables, no
-/// parsing)"). Consumed only by the `EAMPotential(Element, name)` lookup
+/// parsing)"). Consumed only by the `EAMPotential(molrs::Element, name)` lookup
 /// constructor, which throws on an unsupported element or name.
 ///
 /// Provenance: A. P. Sutton and J. Chen, "Long-range Finnis-Sinclair potentials",

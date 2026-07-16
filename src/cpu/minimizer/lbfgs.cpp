@@ -59,8 +59,13 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
     // `atoms.size()` is the backing-store capacity (≥ n_local + n_ghost), so
     // the owned-row count can never outgrow it. All per-step work happens in
     // these build-time buffers — no allocation in launch().
-    const int n = ctx.frame.atoms.size();
-    const int dim = n * 3;
+    const int n = ctx.frame.nlocal();
+    // A valid domain-decomposed rank may own zero atoms. It must still build
+    // the optimizer and enter every collective in lockstep with non-empty
+    // ranks. Keep one inert storage element so LbfgsHistory's pointer-based
+    // zero-length operations receive a valid address; launch() continues to
+    // use the exact local dimension (zero on that rank).
+    const int dim = std::max(n * 3, 1);
 
     // The curvature history + two-loop recursion live in LbfgsHistory, which knows
     // nothing about atoms — the band optimizer in cpu/path/ is its second caller.
@@ -144,8 +149,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
     reduction(max : local_max_force)
         for (int i = 0; i < n; ++i) {
-            const double fx = sp_fx[i], fy = sp_fy[i],
-                         fz = sp_fz[i];
+            const double fx = sp_fx[i], fy = sp_fy[i], fz = sp_fz[i];
             const double f2 = fx * fx + fy * fy + fz * fz;
             sum_f2 += f2;
             local_max_force = std::max(local_max_force, std::sqrt(f2));
@@ -181,12 +185,12 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         const double rms_disp =
             disp_valid ? std::sqrt(sums[1] / (3 * n_global)) : double(0);
         const double energy_change =
-            (step_ > 0) ? std::abs(f.scalars.energy - energy_prev_)
+            (step_ > 0) ? std::abs(f.meta.get(kEnergy) - energy_prev_)
                         : double(1e30);
 
         OptRecord rec;
         rec.step = step_;
-        rec.energy = f.scalars.energy;
+        rec.energy = f.meta.get(kEnergy);
         rec.max_force = max_force_;
         rec.rms_force = rms_force;
         rec.max_displacement = max_disp;
@@ -201,7 +205,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         // CG had to duplicate the identical five-way test, and a nested optimizer's
         // convergence stopped the ENCLOSING loop. That last one shipped twice.
         if (LoopMetrics* m = ctx.runtime.loop.metrics) {
-            m->energy = f.scalars.energy;
+            m->energy = f.meta.get(kEnergy);
             m->max_force = max_force_;
             m->rms_force = rms_force;
             m->max_displacement = max_disp;
@@ -213,10 +217,10 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         ATV_INFO("[lbfgs] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
                  "dE_eV={:.6e}",
-                 step_, f.scalars.energy, max_force_, rms_force, max_disp,
+                 step_, f.meta.get(kEnergy), max_force_, rms_force, max_disp,
                  rms_disp, energy_change);
 
-        energy_prev_ = f.scalars.energy;
+        energy_prev_ = f.meta.get(kEnergy);
         return;
     }
 
@@ -244,12 +248,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
                     std::min(alpha0_, 0.1 / ls_dir_max_); // legacy 0.1 Å cap
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                sp_x[i] =
-                    xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                sp_y[i] =
-                    xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                sp_z[i] =
-                    xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                sp_x[i] = xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                sp_y[i] = xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                sp_z[i] = xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             return;
         }
@@ -265,16 +266,13 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         auto phi = [&](double alpha, bool need_slope) -> LsSample {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                sp_x[i] =
-                    xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                sp_y[i] =
-                    xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                sp_z[i] =
-                    xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                sp_x[i] = xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                sp_y[i] = xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                sp_z[i] = xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
-            s.f = f.scalars.energy; // globally reduced by md::mpi::Reduce
+            s.f = f.meta.get(kEnergy); // globally reduced by md::mpi::Reduce
             double gd_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : gd_local)
             for (int i = 0; i < n; ++i) {
@@ -369,7 +367,8 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         dir_max = std::max(dir_max, std::abs(direction_[j]));
     ls_dir_max_ = global_max(ctx, dir_max);
     ls_gd0_ = gd0;
-    ls_phi0_ = f.scalars.energy; // energy at x_prev_ (pre-step, this geometry)
+    ls_phi0_ =
+        f.meta.get(kEnergy); // energy at x_prev_ (pre-step, this geometry)
 
     ++step_;
 }

@@ -5,17 +5,17 @@
 /// any file format — that is the recorder's job.
 ///
 /// Registers on a `cuda::Evaluate` driver alongside a
-/// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
+/// `cuda::scf::SCF`; it runs in the `evaluate::Phase::finalize`
 /// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
 ///
 /// The converged density matrix is no longer carried on `cuda::Frame`; the
-/// observer holds a reference to the `cuda::scf::SCFEvaluator` and reads the
+/// observer holds a reference to the `cuda::scf::SCF` and reads the
 /// density from its SCF workspace. Construct the evaluator as a stable
 /// lvalue and register it borrowed (lvalue `add`), so the reference the
 /// observer holds stays valid for the whole run.
 ///
 /// @code{.cpp}
-/// cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
+/// cuda::scf::SCF scf{integrals, tol, max_iter};
 /// MullikenObs mulliken(integrals, scf);
 /// cuda::Evaluate eval;
 /// eval.on(evaluate::Phase::evaluate).add(scf);   // lvalue -> borrowed
@@ -63,15 +63,15 @@ class MullikenObs : public AsyncBridge {
     /// @param evaluator SCF evaluator whose converged workspace supplies the
     ///                  density matrix (borrowed -- must outlive this observer).
     /// @param every     Sampling stride in steps (1 = every step).
-    MullikenObs(const cpu::scf::IntegralPack& ints,
-                const scf::SCFEvaluator& evaluator, int every = 1)
+    MullikenObs(const cpu::scf::IntegralPack& ints, const scf::SCF& evaluator,
+                int every = 1)
         : integrals_(ints), evaluator_(&evaluator), every_(every) {}
 
     ~MullikenObs() override = default;
 
     std::string name() const override { return "mulliken"; }
     /// @brief Observer — derives Mulliken charges from SCF density (no I/O).
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     int frequency() const override { return every_; }
 
     const std::vector<double>& charges() const { return charges_; }
@@ -157,7 +157,7 @@ class MullikenObs : public AsyncBridge {
 
   private:
     cpu::scf::IntegralPack integrals_;
-    const scf::SCFEvaluator* evaluator_ =
+    const scf::SCF* evaluator_ =
         nullptr; ///< Borrowed SCF evaluator (density source).
     int every_;
 

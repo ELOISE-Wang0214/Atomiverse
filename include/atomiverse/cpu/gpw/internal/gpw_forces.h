@@ -33,11 +33,11 @@ namespace gpw {
 
 /// @brief Analytic GPW forces F_a = -dE/dR_a (one SCF + one gradient pass).
 ///
-/// Runs `gpw_scf`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
+/// Runs `GPWSolver`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
 /// P·dV_pp), grid (P·dV_grid against the converged V_eff) and ionic-core
 /// Hellmann–Feynman (∫V_es ∂n_c) terms analytically.
 ///
-/// @param atoms GPW atoms (basis + GTH PP), as for `gpw_scf`.
+/// @param atoms GPW atoms (basis + GTH PP), as for `GPWSolver::run`.
 /// @param cfg   SCF configuration (grid, XC, electrostatics).
 /// @return Forces [Hartree/Bohr], one xyz triple per atom, in input order.
 /// @throws std::runtime_error if the SCF does not converge.

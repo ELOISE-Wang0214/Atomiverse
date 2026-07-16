@@ -21,41 +21,44 @@ namespace {
 struct TinyRng {
     std::uint32_t state;
     explicit TinyRng(std::uint32_t seed) : state(seed * 2654435761u + 1u) {}
-    Real next() {
+    AccReal next() {
         state = state * 1664525u + 1013904223u;
-        return Real(state) / Real(4294967296.0) - Real(0.5);
+        return AccReal(state) / AccReal(4294967296.0) - AccReal(0.5);
     }
 };
 
 // ── Real spherical harmonics Y_lm(Ĝ) ──
 
-Real y00(Real, Real, Real) { return Real(1) / std::sqrt(Real(4.0 * M_PI)); }
+AccReal y00(AccReal, AccReal, AccReal) {
+    return AccReal(1) / std::sqrt(AccReal(4.0 * M_PI));
+}
 
-void y1m(Real x, Real y, Real z, Real r, Real* out) {
-    Real n = std::sqrt(Real(3) / (Real(4.0 * M_PI)));
-    Real ir = (r > Real(1e-16)) ? Real(1) / r : Real(0);
+void y1m(AccReal x, AccReal y, AccReal z, AccReal r, AccReal* out) {
+    AccReal n = std::sqrt(AccReal(3) / (AccReal(4.0 * M_PI)));
+    AccReal ir = (r > AccReal(1e-16)) ? AccReal(1) / r : AccReal(0);
     out[0] = n * y * ir; // m=-1 (p_y)
     out[1] = n * z * ir; // m=0  (p_z)
     out[2] = n * x * ir; // m=+1 (p_x)
 }
 
-void y2m(Real x, Real y, Real z, Real r, Real* out) {
-    Real ir2 = (r > Real(1e-16)) ? Real(1) / (r * r) : Real(0);
-    out[0] =
-        std::sqrt(Real(15) / (Real(4.0 * M_PI))) * x * y * ir2; // m=-2 (d_xy)
-    out[1] =
-        std::sqrt(Real(15) / (Real(4.0 * M_PI))) * y * z * ir2; // m=-1 (d_yz)
-    out[2] = std::sqrt(Real(5) / (Real(16.0 * M_PI)))
-             * (Real(3) * z * z * ir2 - Real(1)); // m=0 (d_z²)
-    out[3] =
-        std::sqrt(Real(15) / (Real(4.0 * M_PI))) * x * z * ir2; // m=+1 (d_xz)
-    out[4] = std::sqrt(Real(15) / (Real(16.0 * M_PI))) * (x * x - y * y)
+void y2m(AccReal x, AccReal y, AccReal z, AccReal r, AccReal* out) {
+    AccReal ir2 = (r > AccReal(1e-16)) ? AccReal(1) / (r * r) : AccReal(0);
+    out[0] = std::sqrt(AccReal(15) / (AccReal(4.0 * M_PI))) * x * y
+             * ir2; // m=-2 (d_xy)
+    out[1] = std::sqrt(AccReal(15) / (AccReal(4.0 * M_PI))) * y * z
+             * ir2; // m=-1 (d_yz)
+    out[2] = std::sqrt(AccReal(5) / (AccReal(16.0 * M_PI)))
+             * (AccReal(3) * z * z * ir2 - AccReal(1)); // m=0 (d_z²)
+    out[3] = std::sqrt(AccReal(15) / (AccReal(4.0 * M_PI))) * x * z
+             * ir2; // m=+1 (d_xz)
+    out[4] = std::sqrt(AccReal(15) / (AccReal(16.0 * M_PI))) * (x * x - y * y)
              * ir2; // m=+2 (d_x²-y²)
 }
 
 } // namespace
 
-void compute_ylm(Real x, Real y, Real z, Real r, int l, Real* out) {
+void compute_ylm(AccReal x, AccReal y, AccReal z, AccReal r, int l,
+                 AccReal* out) {
     switch (l) {
     case 0:
         out[0] = y00(x, y, z);
@@ -73,47 +76,49 @@ void compute_ylm(Real x, Real y, Real z, Real r, int l, Real* out) {
     }
 }
 
-void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep) {
+void jacobi_eigh(int n, AccReal* A, AccReal* eig, AccReal* vecs,
+                 int max_sweep) {
     // Initialize eigenvectors to identity
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j)
-            vecs[i * n + j] = (i == j) ? Real(1) : Real(0);
+            vecs[i * n + j] = (i == j) ? AccReal(1) : AccReal(0);
         eig[i] = A[i * n + i];
     }
 
     for (int sweep = 0; sweep < max_sweep; ++sweep) {
-        Real max_off = 0;
+        AccReal max_off = 0;
         for (int i = 0; i < n; ++i)
             for (int j = i + 1; j < n; ++j)
                 max_off = std::max(max_off, std::abs(A[i * n + j]));
-        if (max_off < Real(1e-14))
+        if (max_off < AccReal(1e-14))
             break;
 
         for (int p = 0; p < n - 1; ++p) {
             for (int q = p + 1; q < n; ++q) {
-                Real apq = A[p * n + q];
-                if (std::abs(apq) < Real(1e-14))
+                AccReal apq = A[p * n + q];
+                if (std::abs(apq) < AccReal(1e-14))
                     continue;
-                Real app = A[p * n + p], aqq = A[q * n + q];
-                Real theta = Real(0.5) * std::atan2(Real(2) * apq, aqq - app);
-                Real c = std::cos(theta), s = std::sin(theta);
+                AccReal app = A[p * n + p], aqq = A[q * n + q];
+                AccReal theta =
+                    AccReal(0.5) * std::atan2(AccReal(2) * apq, aqq - app);
+                AccReal c = std::cos(theta), s = std::sin(theta);
 
                 // Rotate A
                 A[p * n + p] =
-                    c * c * app + s * s * aqq - Real(2) * c * s * apq;
+                    c * c * app + s * s * aqq - AccReal(2) * c * s * apq;
                 A[q * n + q] =
-                    s * s * app + c * c * aqq + Real(2) * c * s * apq;
-                A[p * n + q] = A[q * n + p] = Real(0);
+                    s * s * app + c * c * aqq + AccReal(2) * c * s * apq;
+                A[p * n + q] = A[q * n + p] = AccReal(0);
                 for (int r = 0; r < n; ++r) {
                     if (r == p || r == q)
                         continue;
-                    Real arp = A[r * n + p], arq = A[r * n + q];
+                    AccReal arp = A[r * n + p], arq = A[r * n + q];
                     A[r * n + p] = A[p * n + r] = c * arp - s * arq;
                     A[r * n + q] = A[q * n + r] = s * arp + c * arq;
                 }
                 // Rotate eigenvectors
                 for (int r = 0; r < n; ++r) {
-                    Real vrp = vecs[r * n + p], vrq = vecs[r * n + q];
+                    AccReal vrp = vecs[r * n + p], vrq = vecs[r * n + q];
                     vecs[r * n + p] = c * vrp - s * vrq;
                     vecs[r * n + q] = s * vrp + c * vrq;
                 }
@@ -130,7 +135,7 @@ void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep) {
         order[i] = i;
     std::sort(order.begin(), order.end(),
               [&](int a, int b) { return eig[a] < eig[b]; });
-    std::vector<Real> eig_s(n), vecs_s(static_cast<size_t>(n) * n);
+    std::vector<AccReal> eig_s(n), vecs_s(static_cast<size_t>(n) * n);
     for (int k = 0; k < n; ++k) {
         eig_s[k] = eig[order[k]];
         for (int i = 0; i < n; ++i)
@@ -143,13 +148,13 @@ void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep) {
 }
 
 int init_subspace(const PWWorkspace& ws, int n_bands,
-                  std::vector<std::complex<Real>>& sub_vectors) {
+                  std::vector<std::complex<AccReal>>& sub_vectors) {
     int ng = ws.n_g;
     int nb = n_bands;
 
     // ── Initialize subspace: lowest T(G) plane waves ──
     struct DiagElem {
-        Real val;
+        AccReal val;
         int idx;
     };
     std::vector<DiagElem> diag(ng);
@@ -172,7 +177,7 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
         n_sub = std::min(ng, nb * 4);
     }
     sub_vectors.assign(static_cast<size_t>(n_sub) * ng,
-                       std::complex<Real>(0, 0));
+                       std::complex<AccReal>(0, 0));
 
     if (n_atom_states >= nb) {
         // Initialize subspace with atomic wavefunctions (QE atomic_wfc_mod.f90)
@@ -180,8 +185,8 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
         int j = 0;
         auto& gv = *ws.gvec;
         for (size_t ia = 0; ia < ws.atom_wfc.size() && j < n_sub; ++ia) {
-            Real ax = ws.atom_pos_bohr[ia][0], ay = ws.atom_pos_bohr[ia][1],
-                 az = ws.atom_pos_bohr[ia][2];
+            AccReal ax = ws.atom_pos_bohr[ia][0], ay = ws.atom_pos_bohr[ia][1],
+                    az = ws.atom_pos_bohr[ia][2];
             for (size_t iw = 0; iw < ws.atom_wfc[ia].size() && j < n_sub;
                  ++iw) {
                 int l = ws.atom_wfc[ia][iw].l;
@@ -189,37 +194,38 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
                 for (int m = 0; m < nm && j < n_sub; ++m) {
                     for (int ig = 0; ig < ng; ++ig) {
                         // Bloch states live on q = k+G.
-                        Real Gx = gv.g[ig][0] + gv.kvec[0],
-                             Gy = gv.g[ig][1] + gv.kvec[1],
-                             Gz = gv.g[ig][2] + gv.kvec[2];
-                        Real Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
-                        Real chi = ws.atom_wfc[ia][iw].chi_G[ig];
-                        if (std::abs(chi) < Real(1e-30)) {
-                            sub_vectors[j * ng + ig] = std::complex<Real>(0, 0);
+                        AccReal Gx = gv.g[ig][0] + gv.kvec[0],
+                                Gy = gv.g[ig][1] + gv.kvec[1],
+                                Gz = gv.g[ig][2] + gv.kvec[2];
+                        AccReal Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
+                        AccReal chi = ws.atom_wfc[ia][iw].chi_G[ig];
+                        if (std::abs(chi) < AccReal(1e-30)) {
+                            sub_vectors[j * ng + ig] =
+                                std::complex<AccReal>(0, 0);
                             continue;
                         }
                         // i^l factor (QE: lphase = (0,1)^l)
-                        std::complex<Real> il(1, 0);
+                        std::complex<AccReal> il(1, 0);
                         if (l == 1)
-                            il = std::complex<Real>(0, 1);
+                            il = std::complex<AccReal>(0, 1);
                         else if (l == 2)
-                            il = std::complex<Real>(-1, 0);
+                            il = std::complex<AccReal>(-1, 0);
                         // Y_lm(Ĝ)
-                        std::vector<Real> ylm(nm);
+                        std::vector<AccReal> ylm(nm);
                         compute_ylm(Gx, Gy, Gz, Gr, l, ylm.data());
                         // Structure factor S(G) = exp(-iG·R)
-                        Real phase = Gx * ax + Gy * ay + Gz * az;
-                        std::complex<Real> S(std::cos(phase),
-                                             -std::sin(phase));
+                        AccReal phase = Gx * ax + Gy * ay + Gz * az;
+                        std::complex<AccReal> S(std::cos(phase),
+                                                -std::sin(phase));
                         sub_vectors[j * ng + ig] = il * ylm[m] * chi * S;
                     }
                     // QE startingwfc='atomic+random': add random perturbation
                     // (deterministic per state index — see TinyRng).
                     TinyRng rng(static_cast<std::uint32_t>(j + 1));
                     for (int ig = 0; ig < ng; ++ig) {
-                        Real rnd = rng.next();
-                        sub_vectors[j * ng + ig] +=
-                            std::complex<Real>(rnd * Real(1e-4), Real(0));
+                        AccReal rnd = rng.next();
+                        sub_vectors[j * ng + ig] += std::complex<AccReal>(
+                            rnd * AccReal(1e-4), AccReal(0));
                     }
                     ++j;
                 }
@@ -232,8 +238,8 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
             int g_idx = diag[j].idx;
             for (int ig = 0; ig < ng; ++ig)
                 sub_vectors[j * ng + ig] = (ig == g_idx)
-                                               ? std::complex<Real>(1, 0)
-                                               : std::complex<Real>(0, 0);
+                                               ? std::complex<AccReal>(1, 0)
+                                               : std::complex<AccReal>(0, 0);
         }
     }
 
@@ -249,19 +255,19 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
         for (int pass = 0; pass < 2; ++pass) {
             for (int k = 0; k < kept; ++k) {
                 const auto* vk = &sub_vectors[static_cast<size_t>(k) * ng];
-                std::complex<Real> ov(0, 0);
+                std::complex<AccReal> ov(0, 0);
                 for (int ig = 0; ig < ng; ++ig)
                     ov += std::conj(vk[ig]) * vj[ig];
                 for (int ig = 0; ig < ng; ++ig)
                     vj[ig] -= ov * vk[ig];
             }
         }
-        Real nrm2 = 0;
+        AccReal nrm2 = 0;
         for (int ig = 0; ig < ng; ++ig)
             nrm2 += std::norm(vj[ig]);
-        if (nrm2 < Real(1e-12))
+        if (nrm2 < AccReal(1e-12))
             continue; // linearly dependent — drop
-        Real inv = Real(1) / std::sqrt(nrm2);
+        AccReal inv = AccReal(1) / std::sqrt(nrm2);
         auto* vk = &sub_vectors[static_cast<size_t>(kept) * ng];
         for (int ig = 0; ig < ng; ++ig)
             vk[ig] = vj[ig] * inv;
@@ -273,22 +279,22 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
     for (int d = 0; n_sub < nb && d < ng; ++d) {
         auto* vj = &sub_vectors[static_cast<size_t>(n_sub) * ng];
         for (int ig = 0; ig < ng; ++ig)
-            vj[ig] = std::complex<Real>(0, 0);
-        vj[diag[d].idx] = std::complex<Real>(1, 0);
+            vj[ig] = std::complex<AccReal>(0, 0);
+        vj[diag[d].idx] = std::complex<AccReal>(1, 0);
         for (int k = 0; k < n_sub; ++k) {
             const auto* vk = &sub_vectors[static_cast<size_t>(k) * ng];
-            std::complex<Real> ov(0, 0);
+            std::complex<AccReal> ov(0, 0);
             for (int ig = 0; ig < ng; ++ig)
                 ov += std::conj(vk[ig]) * vj[ig];
             for (int ig = 0; ig < ng; ++ig)
                 vj[ig] -= ov * vk[ig];
         }
-        Real nrm2 = 0;
+        AccReal nrm2 = 0;
         for (int ig = 0; ig < ng; ++ig)
             nrm2 += std::norm(vj[ig]);
-        if (nrm2 < Real(1e-6))
+        if (nrm2 < AccReal(1e-6))
             continue;
-        Real inv = Real(1) / std::sqrt(nrm2);
+        AccReal inv = AccReal(1) / std::sqrt(nrm2);
         for (int ig = 0; ig < ng; ++ig)
             vj[ig] *= inv;
         ++n_sub;

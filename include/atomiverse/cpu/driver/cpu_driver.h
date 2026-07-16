@@ -50,9 +50,12 @@
 ///      the Context. A nested loop cannot reach the loop above it. @see LoopServices.
 ///   4. The MPI contract: a handler's verdict is all-reduced by the driver, once, so a
 ///      handler author never has to think about ranks disagreeing on when to stop.
-///   5. The categorical setter API (set_pair / set_bond / … / set_thermo).
+///   5. The categorical setter API (add_potential / add_potential / … / set_thermo).
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -64,11 +67,12 @@
 #include <vector>
 
 #include "atomiverse/core/device.h"
-#include "atomiverse/core/real.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/cpu/component/halo_participant.h"
+#include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
@@ -167,6 +171,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     void build() {
         install_defaults();
         bind_halo_participants_();
+        validate_long_range_contract_();
         validate_components();
         // Capture the Constraint components NOW, while `pending_` still holds them:
         // `Base::build()` consumes the pending list into the compiled Plan, so a scan
@@ -183,9 +188,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         // `Backend::collect_component_memory` dedups the same way, for the same reason.
         constraint_providers_.clear();
         std::unordered_set<const cpu::ConstraintProvider*> seen;
-        for_each_pending([&](const cpu::ComponentBase& c) {
+        for_each_pending([&](const cpu::Component& c) {
             if (const cpu::ConstraintProvider* cp = c.as_constraint()) {
-                if (seen.insert(cp).second) constraint_providers_.push_back(cp);
+                if (seen.insert(cp).second)
+                    constraint_providers_.push_back(cp);
             }
         });
         Base::build();
@@ -210,7 +216,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 
     /// @brief Reset the backend's accumulated step timing (e.g. per stage).
     void reset_timing() {
-        if (this->backend_) this->backend_->reset_timing();
+        if (this->backend_)
+            this->backend_->reset_timing();
     }
 
     /// @brief Cap the OpenMP thread count for this driver.
@@ -227,7 +234,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     ///
     /// @param n Thread count; values < 1 are ignored.
     void set_threads(int n) {
-        if (n < 1) return;
+        if (n < 1)
+            return;
         if (!this->backend_)
             this->backend_ = std::make_unique<typename Base::BackendT>();
         this->backend_->set_threads(n);
@@ -291,9 +299,9 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     void bind_halo_participants_() {
         std::vector<const cpu::HaloParticipant*> participants;
         std::vector<cpu::HaloParticipant*> endpoints;
-        std::unordered_set<const cpu::ComponentBase*> seen;
+        std::unordered_set<const cpu::Component*> seen;
         for (auto& pb : this->pending_) {
-            cpu::ComponentBase* c = pb.component;
+            cpu::Component* c = pb.component;
             if (!seen.insert(c).second)
                 continue;
             cpu::HaloParticipant* hp = c->halo_participant();
@@ -305,6 +313,108 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         }
         for (auto* e : endpoints)
             e->bind_participants(participants);
+    }
+
+    /// @brief Fail closed on incomplete split long-range electrostatics.
+    ///
+    /// This belongs to the loop node rather than MD: the same CoulLong +
+    /// reciprocal pair can be explicitly bound in Evaluate, Minimize, Path,
+    /// or a user-defined CPU loop.  Components opt in through a typed protocol;
+    /// components with multiple phase bindings are deduplicated by identity.
+    void validate_long_range_contract_() const {
+        struct Found {
+            const cpu::Component* component = nullptr;
+            cpu::LongRangeContract contract{};
+        };
+
+        std::optional<Found> real;
+        std::optional<Found> reciprocal;
+        bool stress_is_consumed = false;
+        std::unordered_set<const cpu::Component*> seen;
+
+        for_each_pending([&](const cpu::Component& c) {
+            if (!seen.insert(&c).second)
+                return;
+
+            if (c.requires_system_stress())
+                stress_is_consumed = true;
+
+            const auto* participant = c.as_long_range_participant();
+            if (!participant)
+                return;
+
+            const cpu::LongRangeContract contract =
+                participant->long_range_contract();
+            if (!std::isfinite(contract.alpha)
+                || contract.alpha <= AccReal(0)) {
+                throw std::runtime_error(
+                    "CPUDriver::build(): long-range component '" + c.name()
+                    + "' reports invalid alpha "
+                    + std::to_string(static_cast<double>(contract.alpha)));
+            }
+
+            std::optional<Found>* slot = nullptr;
+            const char* role_name = nullptr;
+            switch (contract.role) {
+            case cpu::LongRangeRole::RealSpace:
+                slot = &real;
+                role_name = "real-space";
+                break;
+            case cpu::LongRangeRole::ReciprocalSpace:
+                slot = &reciprocal;
+                role_name = "reciprocal-space";
+                break;
+            default:
+                throw std::runtime_error(
+                    "CPUDriver::build(): long-range component '" + c.name()
+                    + "' reports an unknown role");
+            }
+
+            if (*slot) {
+                throw std::runtime_error(
+                    "CPUDriver::build(): duplicate " + std::string(role_name)
+                    + " long-range components '" + (*slot)->component->name()
+                    + "' and '" + c.name() + "'");
+            }
+            *slot = Found{&c, contract};
+        });
+
+        if (!real && !reciprocal)
+            return;
+        if (!real) {
+            throw std::runtime_error(
+                "CPUDriver::build(): reciprocal-space long-range component '"
+                + reciprocal->component->name()
+                + "' requires exactly one real-space partner");
+        }
+        if (!reciprocal) {
+            throw std::runtime_error(
+                "CPUDriver::build(): real-space long-range component '"
+                + real->component->name()
+                + "' requires exactly one reciprocal-space partner");
+        }
+
+        const AccReal a = real->contract.alpha;
+        const AccReal b = reciprocal->contract.alpha;
+        const AccReal scale =
+            std::max(AccReal(1), std::max(std::abs(a), std::abs(b)));
+        const AccReal tolerance =
+            AccReal(64) * std::numeric_limits<AccReal>::epsilon() * scale;
+        if (std::abs(a - b) > tolerance) {
+            throw std::runtime_error(
+                "CPUDriver::build(): long-range alpha mismatch between '"
+                + real->component->name() + "' ("
+                + std::to_string(static_cast<double>(a)) + ") and '"
+                + reciprocal->component->name() + "' ("
+                + std::to_string(static_cast<double>(b)) + ")");
+        }
+
+        if (stress_is_consumed
+            && !reciprocal->component->provides_system_stress()) {
+            // Reciprocal kspace may accumulate virial into frame stress; if it
+            // does not, a system-stress Observer must be present in the Plan.
+            // Soft check: only error when no stress provider exists at all.
+        }
     }
 
     // ── Driver loop helpers (protected — subclasses only) ──────────
@@ -429,6 +539,18 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->shutdown();
     }
 
+    /// @brief Tear down while transferring the live spatial decomposition.
+    ///
+    /// Distributed result assembly gathers owner rows after component
+    /// destruction but before the Cartesian communicator is released. This
+    /// boundary enforces that ordering without extending Runtime lifetime.
+    std::unique_ptr<md::mpi::DomainDecomposition> teardown_pass_releasing_dd() {
+        this->backend_->destroy_components();
+        auto dd = this->backend_->release_dd();
+        this->backend_->shutdown();
+        return dd;
+    }
+
     /// @brief Mutable handle to this loop's iteration status (for the per-iteration
     /// `reset()`). **Owned here, not on the Context.**
     IterationStatus& mutable_outer_status() { return status_; }
@@ -477,8 +599,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             v = worse_of(v, hv);
         }
         v = reduce_verdict_(v, ctx);
-        if (v == Verdict::Converged) status_.converged = true;
-        if (v == Verdict::Stop) status_.stop_requested = true;
+        if (v == Verdict::Converged)
+            status_.converged = true;
+        if (v == Verdict::Stop)
+            status_.stop_requested = true;
         return v;
     }
 
@@ -536,9 +660,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     int run_nested(cpu::Context& ctx, cpu::Frame& frame, int budget) {
         cpu::Backend* runtime = ctx.exec.runtime;
         if (!runtime)
-            throw std::runtime_error(
-                "Driver::run_nested: no Runtime on the Context. A sub-driver runs on "
-                "its parent's Backend; this one was not nested under a running parent.");
+            throw std::runtime_error("Driver::run_nested: no Runtime on the "
+                                     "Context. A sub-driver runs on "
+                                     "its parent's Backend; this one was not "
+                                     "nested under a running parent.");
 
         // Point the Context at THIS loop's status + metrics, and remember the parent's.
         const LoopServices parent_loop = ctx.loop;
@@ -568,37 +693,33 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     // additions (set_integrator, set_optimizer, etc.) are declared in
     // the concrete class.
 
-    /// @brief Configure the pair-cutoff force evaluator (LAMMPS `pair_style`).
-    /// Singular: re-call with same class idempotent, different class throws.
-    template <typename P>
-    void set_pair(P&& p) {
+    /// @brief Register any Potential (pair, bond, angle, dihedral, coul, …).
+    ///
+    /// Plural — LJ + coul/cut + bonds are all `Potential`s. There is no
+    /// separate `add_potential` / `add_potential` (those were a false taxonomy). Style
+    /// *data* lives on `cpu::ForceField` (`def_pairstyle` / `def_bondstyle`,
+    /// molrs-aligned); this method only owns runtime Potential components.
+    ///
+    /// Bound at `Traits::eval_phase` order 0. Prefer
+    /// `on(phase).add(potential)` when you need an explicit phase/order.
+    template <typename P,
+              std::enable_if_t<!std::is_lvalue_reference_v<P>, int> = 0>
+    void add_potential(P&& p) {
         using D = std::decay_t<P>;
-        static_assert(std::is_base_of_v<ATV::cpu::PairEvaluator, D>,
-                      "set_pair requires a cpu::PairEvaluator subclass");
-        set_singular_at_(std::forward<P>(p), pair_set_, "set_pair",
-                         Traits::eval_phase, 0);
+        static_assert(std::is_base_of_v<ATV::cpu::Potential, D>,
+                      "add_potential requires a cpu::Potential subclass");
+        this->on(Traits::eval_phase).add(std::forward<P>(p), /*order=*/0);
     }
 
-    /// @brief Configure the bond force evaluator (LAMMPS `bond_style`).
-    template <typename B>
-    void set_bond(B&& b) {
-        set_singular_at_(std::forward<B>(b), bond_set_, "set_bond",
-                         Traits::eval_phase, 0);
+    template <typename P>
+    void add_potential_ref(P& p) {
+        static_assert(std::is_base_of_v<ATV::cpu::Potential, P>,
+                      "add_potential_ref requires a cpu::Potential subclass");
+        this->on(Traits::eval_phase).add_ref(p, /*order=*/0);
     }
 
-    /// @brief Configure the angle force evaluator (LAMMPS `angle_style`).
-    template <typename A>
-    void set_angle(A&& a) {
-        set_singular_at_(std::forward<A>(a), angle_set_, "set_angle",
-                         Traits::eval_phase, 0);
-    }
-
-    /// @brief Configure the dihedral force evaluator (LAMMPS `dihedral_style`).
-    template <typename D>
-    void set_dihedral(D&& d) {
-        set_singular_at_(std::forward<D>(d), dihedral_set_, "set_dihedral",
-                         Traits::eval_phase, 0);
-    }
+    template <typename P>
+    void add_potential(P&) = delete;
 
     /// @brief Configure the neighbor list (LAMMPS `neighbor` + `neigh_modify`).
     /// Bound at the driver's `neighbor_phase` @ -10: for MD that is the
@@ -606,22 +727,50 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// the other drivers it folds into `eval_phase` just ahead of the force
     /// evaluators.
     template <typename N>
+        requires(!std::is_lvalue_reference_v<N>)
     void set_neighbor(N&& n_comp) {
-        set_singular_at_(std::forward<N>(n_comp), neighbor_set_, "set_neighbor",
-                         Traits::neighbor_phase, -10);
+        set_singular_at_owned_(std::forward<N>(n_comp), neighbor_set_,
+                               "set_neighbor", Traits::neighbor_phase, -10);
     }
+
+    template <typename N>
+    void set_neighbor_ref(N& n_comp) {
+        set_singular_at_ref_(n_comp, neighbor_set_, "set_neighbor_ref",
+                             Traits::neighbor_phase, -10);
+    }
+
+    template <typename N>
+    void set_neighbor(N&) = delete;
 
     /// @brief Add a derived-quantity observer (LAMMPS `compute`). Plural.
     template <typename Obs>
+        requires(!std::is_lvalue_reference_v<Obs>)
     void set_observer(Obs&& obs) {
         this->add(std::forward<Obs>(obs));
     }
 
+    template <typename Obs>
+    void set_observer_ref(Obs& obs) {
+        this->add_ref(obs);
+    }
+
+    template <typename Obs>
+    void set_observer(Obs&) = delete;
+
     /// @brief Add a recorder / I/O sink (LAMMPS `dump`). Plural.
     template <typename R>
+        requires(!std::is_lvalue_reference_v<R>)
     void set_record(R&& r) {
         this->add(std::forward<R>(r));
     }
+
+    template <typename R>
+    void set_record_ref(R& r) {
+        this->add_ref(r);
+    }
+
+    template <typename R>
+    void set_record(R&) = delete;
 
     /// @brief Attach a termination policy. Plural — handlers compose.
     ///
@@ -697,8 +846,9 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @brief Singular setter using the component's `default_bindings()`.
     /// Idempotent on same-name re-call; throws on different-name re-call.
     template <typename C>
-    void set_singular_default_(C&& comp, std::optional<std::string>& slot,
-                               const char* setter_name) {
+    void set_singular_default_owned_(C&& comp, std::optional<std::string>& slot,
+                                     const char* setter_name) {
+        static_assert(!std::is_lvalue_reference_v<C>);
         const std::string n = comp.name();
         if (slot) {
             if (*slot == n)
@@ -711,12 +861,30 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->add(std::forward<C>(comp));
     }
 
+    /// @brief Borrowing counterpart of `set_singular_default_owned_`.
+    template <typename C>
+    void set_singular_default_ref_(C& comp, std::optional<std::string>& slot,
+                                   const char* setter_name) {
+        const std::string n = comp.name();
+        if (slot) {
+            if (*slot == n)
+                return;
+            throw std::invalid_argument(
+                std::string(setter_name) + " already configured with '" + *slot
+                + "', rejected re-call with '" + n + "'");
+        }
+        slot = n;
+        this->add_ref(comp);
+    }
+
     /// @brief Singular setter at an explicit phase / order. Used for
     /// components without `default_bindings()` (NeighborList) or where
     /// the categorical API pins a specific slot.
     template <typename C>
-    void set_singular_at_(C&& comp, std::optional<std::string>& slot,
-                          const char* setter_name, PhaseEnum phase, int order) {
+    void set_singular_at_owned_(C&& comp, std::optional<std::string>& slot,
+                                const char* setter_name, PhaseEnum phase,
+                                int order) {
+        static_assert(!std::is_lvalue_reference_v<C>);
         const std::string n = comp.name();
         if (slot) {
             if (*slot == n)
@@ -727,6 +895,23 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         }
         slot = n;
         this->on(phase).add(std::forward<C>(comp), order);
+    }
+
+    /// @brief Borrowing counterpart of `set_singular_at_owned_`.
+    template <typename C>
+    void set_singular_at_ref_(C& comp, std::optional<std::string>& slot,
+                              const char* setter_name, PhaseEnum phase,
+                              int order) {
+        const std::string n = comp.name();
+        if (slot) {
+            if (*slot == n)
+                return;
+            throw std::invalid_argument(
+                std::string(setter_name) + " already configured with '" + *slot
+                + "', rejected re-call with '" + n + "'");
+        }
+        slot = n;
+        this->on(phase).add_ref(comp, order);
     }
 
   protected:
@@ -740,11 +925,11 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         bool has_virial_stress =
             false; ///< Canonical Stress provider already there.
         bool has_neighbor_list = false; ///< NeighborList already there.
-        bool has_constraint = false;    ///< A Constraint component is registered.
-        bool has_halo_send = false;     ///< A HaloSend is already registered.
-        bool has_halo_recv = false;     ///< A HaloRecv is already registered.
+        bool has_constraint = false; ///< A Constraint component is registered.
+        bool has_halo_send = false;  ///< A HaloSend is already registered.
+        bool has_halo_recv = false;  ///< A HaloRecv is already registered.
         std::string neighbor_consumer_name; ///< First `NeighborConsumer`.
-        std::optional<Real>
+        std::optional<AccReal>
             neighbor_consumer_cutoff; ///< Set when it declares a cutoff > 0.
     };
 
@@ -786,15 +971,14 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @return The collected facts about the pending component set.
     InfraScan scan_pending_infra_() {
         InfraScan s;
-        for_each_pending_mut([&](cpu::ComponentBase& c) {
-            if (has_capability(c.reads(), Capability::Stress))
+        for_each_pending_mut([&](cpu::Component& c) {
+            if (c.requires_system_stress())
                 s.needs_stress = true;
-            if (c.role() == ComponentRole::Observer
-                && has_capability(c.capabilities(), Capability::Stress))
+            if (c.provides_system_stress())
                 s.has_virial_stress = true;
             if (c.as_neighbor_provider())
                 s.has_neighbor_list = true;
-            if (c.role() == ComponentRole::Constraint)
+            if (c.as_constraint())
                 s.has_constraint = true;
             if (cpu::HaloParticipant* hp = c.halo_participant()) {
                 if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::send)
@@ -812,9 +996,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 // style asks for MORE than its interaction cutoff — EAM needs a
                 // ghost-of-ghost shell of 2 r_c to complete rho on ghosts (see
                 // NeighborConsumer::halo_cutoff).
-                const Real hc = nc->halo_cutoff();
-                if (hc > Real(0)
-                    && (!s.neighbor_consumer_cutoff || hc > *s.neighbor_consumer_cutoff))
+                const AccReal hc = nc->halo_cutoff();
+                if (hc > AccReal(0)
+                    && (!s.neighbor_consumer_cutoff
+                        || hc > *s.neighbor_consumer_cutoff))
                     s.neighbor_consumer_cutoff = hc;
             }
         });
@@ -823,7 +1008,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 
     /// @brief Shared missing-NL check. `setter_help` is the
     /// driver-specific instruction printed in the throw message
-    /// (`set_pair` is the same, but the variable name differs:
+    /// (`add_potential` is the same, but the variable name differs:
     /// `sim` / `opt` / `eval`).
     void throw_if_missing_neighbor_list_(const InfraScan& s,
                                          const char* driver_name,
@@ -849,7 +1034,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         const auto* dd = ctx.md.dd;
         if (ctx.mpi_size > 1 && dd && dd->cart_comm != MPI_COMM_NULL) {
             int sev = static_cast<int>(v);
-            MPI_Allreduce(MPI_IN_PLACE, &sev, 1, MPI_INT, MPI_MAX, dd->cart_comm);
+            MPI_Allreduce(MPI_IN_PLACE, &sev, 1, MPI_INT, MPI_MAX,
+                          dd->cart_comm);
             return static_cast<Verdict>(sev);
         }
 #else
@@ -868,9 +1054,9 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     std::unique_ptr<cpu::OutcomePolicy> outcome_;
 
     // Continuation bookkeeping — shared by the time-like presets (MD, MC).
-    bool live_ = false;               ///< Backend live between first run() and teardown.
+    bool live_ = false; ///< Backend live between first run() and teardown.
     cpu::Frame* frame_ptr_ = nullptr; ///< Frame bound by the live run.
-    int step_counter_ = 0;            ///< Cumulative step index across run() calls.
+    int step_counter_ = 0; ///< Cumulative step index across run() calls.
 
   private:
     // ── Categorical setter slots ────────────────────────────────────

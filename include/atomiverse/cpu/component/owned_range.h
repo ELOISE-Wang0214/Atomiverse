@@ -26,24 +26,24 @@ namespace cpu {
 
 /// @brief Owned-atom count at `launch()` time.
 /// @param ctx Current launch context.
-/// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
+/// @return `dd->n_local` under multi-rank, `ctx.frame.nlocal()` otherwise.
 inline int owned_count(const cpu::LaunchContext& ctx) {
     const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1)
         return dd->n_local;
-    return ctx.frame.atoms.size();
+    return ctx.frame.nlocal();
 }
 
 /// @brief Owned-atom count at `build()` time. Identical semantics to the
 /// `LaunchContext` overload; separate because `BuildContext` and
 /// `LaunchContext` do not share a common base.
 /// @param ctx Current build context.
-/// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
+/// @return `dd->n_local` under multi-rank, `ctx.frame.nlocal()` otherwise.
 inline int owned_count(const cpu::BuildContext& ctx) {
     const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1)
         return dd->n_local;
-    return ctx.frame.atoms.size();
+    return ctx.frame.nlocal();
 }
 
 } // namespace cpu

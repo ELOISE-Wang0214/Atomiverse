@@ -3,6 +3,7 @@
 #include "atomiverse/cpu/pw/pw_evaluator.h"
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/pw/qe_units.h"
 
 namespace ATV {
 namespace cpu {
@@ -15,7 +16,7 @@ void PWEvaluator::build(const cpu::BuildContext& ctx) {
 void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
     const auto& result = solver_.run(ctx.frame);
     // Project units convention: frame-level energies are eV.
-    ctx.frame.scalars.energy = result.energy * kRy2eV;
+    ctx.frame.meta.get(kEnergy) = result.energy * qe_units::rydberg_to_ev;
 }
 
 } // namespace pw

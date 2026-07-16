@@ -20,25 +20,6 @@ void write_frame_xyz(const std::string& path, const std::vector<int>& type_id,
         {box_mat.data(), box_mat.size()}, append);
 }
 
-void write_frame_xyz(
-    const std::string& path, const std::vector<int>& type_id,
-    const std::vector<double>& x, const std::vector<double>& y,
-    const std::vector<double>& z, const std::array<double, 9>& box_mat,
-    bool append, const std::vector<std::pair<std::string, std::string>>& meta) {
-    rust::Vec<rust::String> keys;
-    rust::Vec<rust::String> values;
-    for (const auto& kv : meta) {
-        keys.push_back(rust::String(kv.first));
-        values.push_back(rust::String(kv.second));
-    }
-    molrs::write_frame_xyz_meta(
-        {path.data(), path.size()},
-        {reinterpret_cast<const std::int32_t*>(type_id.data()), type_id.size()},
-        {x.data(), x.size()}, {y.data(), y.size()}, {z.data(), z.size()},
-        {box_mat.data(), box_mat.size()}, std::move(keys), std::move(values),
-        append);
-}
-
 void write_frame_zarr(const std::string& path, const std::vector<int>& type_id,
                       const std::vector<double>& x,
                       const std::vector<double>& y,

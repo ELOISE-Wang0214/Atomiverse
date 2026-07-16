@@ -8,7 +8,7 @@
 /// inverse FFT → force interpolation, giving O(N log N) scaling.
 ///
 /// Smooth PME of Essmann et al., J. Chem. Phys. 103, 8577 (1995):
-///   E_recip = kCoulomb/(2πV) · Σ_{m≠0} exp(−π²m²/α²)/m² · B(m) · |F(Q)(m)|²
+///   E_recip = units::coulomb/(2πV) · Σ_{m≠0} exp(−π²m²/α²)/m² · B(m) · |F(Q)(m)|²
 /// with Q the spline-interpolated charge grid and B(m) the Euler spline
 /// modulus.
 ///
@@ -20,13 +20,13 @@
 /// parallel FFT is a future scalability refinement.)
 #pragma once
 
-#include <array>
 #include <complex>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/kspace/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -46,9 +46,14 @@ class KSpacePME : public cpu::KSpace {
     explicit KSpacePME(double alpha, double grid_spacing = 1.0, int order = 6);
     ~KSpacePME() override;
 
+    KSpacePME(const KSpacePME&) = delete;
+    KSpacePME& operator=(const KSpacePME&) = delete;
+    KSpacePME(KSpacePME&& other) noexcept;
+    KSpacePME& operator=(KSpacePME&&) = delete;
+
     std::string name() const override { return "pme"; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
+    LongRangeContract long_range_contract() const override {
+        return {LongRangeRole::ReciprocalSpace, alpha_, AccReal(0), AccReal(0)};
     }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::force, 100)};
@@ -56,19 +61,23 @@ class KSpacePME : public cpu::KSpace {
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
+    std::size_t memory_bytes() const override;
 
   protected:
     void compute(const LaunchContext& ctx) override;
 
   private:
-    void ensure_grid(const cpu::Frame& frame);
+    void ensure_grid(const cpu::Frame& frame, bool initial_build);
+    void ensure_atom_capacity(int required, bool initial_build);
+    void release_storage() noexcept;
 
     double alpha_;
     double spacing_;
     int order_;
 
     int K_[3] = {0, 0, 0}; ///< Grid dimensions.
-    std::array<double, 9> cell_cache_{};
+    const cpu::Box* box_identity_ = nullptr;
+    std::uint64_t cell_revision_ = 0;
     bool have_grid_ = false;
 
     // Euler spline moduli per grid line, |b_d(m)|².
@@ -79,7 +88,12 @@ class KSpacePME : public cpu::KSpace {
     std::vector<std::complex<double>> grid_;
     void* plan_fwd_ = nullptr;
     void* plan_bwd_ = nullptr;
-    int planned_n_ = 0;
+
+    // Persistent per-atom spline workspace. Growth is an explicit rebuild.
+    int atom_capacity_ = 0;
+    std::vector<int> base_;
+    std::vector<double> theta_;
+    std::vector<double> dtheta_;
 };
 
 } // namespace cpu

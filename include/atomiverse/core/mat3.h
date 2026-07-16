@@ -2,7 +2,7 @@
 /// @brief Mat3 — 3x3 matrix OOP class with xtensor_fixed storage.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/core/vec3.h"
 #include <cmath>
 #include <stdexcept>
@@ -11,13 +11,13 @@
 namespace ATV {
 
 class Mat3 {
-    xt::xtensor_fixed<Real, xt::xshape<3, 3>> m_{};
+    xt::xtensor_fixed<AccReal, xt::xshape<3, 3>> m_{};
 
   public:
     Mat3() = default;
 
-    Real& operator()(int i, int j) { return m_(i, j); }
-    const Real& operator()(int i, int j) const { return m_(i, j); }
+    AccReal& operator()(int i, int j) { return m_(i, j); }
+    const AccReal& operator()(int i, int j) const { return m_(i, j); }
 
     Mat3 operator+(const Mat3& o) const {
         Mat3 r;
@@ -33,15 +33,15 @@ class Mat3 {
                 r(i, j) = m_(i, j) - o(i, j);
         return r;
     }
-    Mat3 operator*(Real s) const {
+    Mat3 operator*(AccReal s) const {
         Mat3 r;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 r(i, j) = m_(i, j) * s;
         return r;
     }
-    friend Mat3 operator*(Real s, const Mat3& m) { return m * s; }
-    Mat3 operator/(Real s) const {
+    friend Mat3 operator*(AccReal s, const Mat3& m) { return m * s; }
+    Mat3 operator/(AccReal s) const {
         Mat3 r;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
@@ -71,24 +71,24 @@ class Mat3 {
                 r(i, j) = m_(j, i);
         return r;
     }
-    Real trace() const { return m_(0, 0) + m_(1, 1) + m_(2, 2); }
-    Real norm() const {
-        Real s = 0;
+    AccReal trace() const { return m_(0, 0) + m_(1, 1) + m_(2, 2); }
+    AccReal norm() const {
+        AccReal s = 0;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 s += m_(i, j) * m_(i, j);
         return std::sqrt(s);
     }
-    Real det() const {
+    AccReal det() const {
         return m_(0, 0) * (m_(1, 1) * m_(2, 2) - m_(1, 2) * m_(2, 1))
                - m_(0, 1) * (m_(1, 0) * m_(2, 2) - m_(1, 2) * m_(2, 0))
                + m_(0, 2) * (m_(1, 0) * m_(2, 1) - m_(1, 1) * m_(2, 0));
     }
     Mat3 inverse() const {
-        Real d = det();
-        if (std::abs(d) < Real(1e-30))
+        AccReal d = det();
+        if (std::abs(d) < AccReal(1e-30))
             throw std::runtime_error("Mat3::inverse: singular matrix");
-        Real inv = Real(1) / d;
+        AccReal inv = AccReal(1) / d;
         Mat3 r;
         r(0, 0) = (m_(1, 1) * m_(2, 2) - m_(1, 2) * m_(2, 1)) * inv;
         r(0, 1) = (m_(0, 2) * m_(2, 1) - m_(0, 1) * m_(2, 2)) * inv;
@@ -108,14 +108,14 @@ class Mat3 {
         m(0, 0) = m(1, 1) = m(2, 2) = 1;
         return m;
     }
-    static Mat3 diagonal(Real a, Real b, Real c) {
+    static Mat3 diagonal(AccReal a, AccReal b, AccReal c) {
         Mat3 m;
         m(0, 0) = a;
         m(1, 1) = b;
         m(2, 2) = c;
         return m;
     }
-    static Mat3 cubic(Real l) { return diagonal(l, l, l); }
+    static Mat3 cubic(AccReal l) { return diagonal(l, l, l); }
 };
 
 } // namespace ATV

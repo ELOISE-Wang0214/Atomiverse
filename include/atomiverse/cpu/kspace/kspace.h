@@ -14,17 +14,35 @@
 /// halo (force-infra-04 formalizes that hook on this base).
 #pragma once
 
-#include "atomiverse/cpu/component/component.h"
+#include <cstdint>
+
+#include "atomiverse/cpu/component/long_range_protocol.h"
+#include "atomiverse/cpu/component/potential.h"
 
 namespace ATV {
 namespace cpu {
 
+/// @brief Observable cold-event ledger for reciprocal-space components.
+struct KSpaceLifecycleStats {
+    std::uint64_t builds = 0;
+    std::uint64_t cell_refreshes = 0;
+    std::uint64_t capacity_rebuilds = 0;
+};
+
 /// @brief Abstract base for reciprocal-space electrostatics styles (CPU).
-class KSpace : public cpu::ComponentBase {
+class KSpace : public cpu::Potential, public cpu::LongRangeParticipant {
   public:
     ~KSpace() override = default;
 
-    ComponentRole role() const final { return ComponentRole::Evaluator; }
+    /* role via Potential/kind base */
+    const LongRangeParticipant* as_long_range_participant() const final {
+        return this;
+    }
+
+    /// @return Cumulative lifecycle events for this component instance.
+    const KSpaceLifecycleStats& lifecycle_stats() const noexcept {
+        return lifecycle_stats_;
+    }
 
     /// @brief Framework dispatch — `final`, calls `compute()` (mirrors
     ///        `cpu::Pair` / `cpu::Bond`).
@@ -33,9 +51,18 @@ class KSpace : public cpu::ComponentBase {
   protected:
     KSpace() = default;
 
+    void note_build() noexcept { ++lifecycle_stats_.builds; }
+    void note_cell_refresh() noexcept { ++lifecycle_stats_.cell_refreshes; }
+    void note_capacity_rebuild() noexcept {
+        ++lifecycle_stats_.capacity_rebuilds;
+    }
+
     /// @brief Hot-path override — derived class runs its reciprocal-space sum
     ///        (direct k-sum for Ewald, FFT for PME).
     virtual void compute(const LaunchContext& ctx) = 0;
+
+  private:
+    KSpaceLifecycleStats lifecycle_stats_{};
 };
 
 } // namespace cpu

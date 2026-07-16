@@ -21,7 +21,7 @@ namespace md {
 namespace mpi {
 
 void DomainDecomposition::bind(const Frame& frame) {
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     n_local = n;
     n_ghost = 0;
     capacity = n;
@@ -30,7 +30,7 @@ void DomainDecomposition::bind(const Frame& frame) {
     // The tag→local map exists solely for bonded-tuple resolution; pure
     // pairwise systems never query it. Skipping the fill (and freeing any
     // prior buckets) saves ~50 B/atom of hash-node heap.
-    if (frame.atoms.has_bonded()) {
+    if (frame.has_bonded()) {
         tag_to_local.reserve(static_cast<std::size_t>(n));
         const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
         for (int i = 0; i < n; ++i) {
@@ -167,7 +167,7 @@ namespace {
 
 // Orthorhombic PBC wrap into [0, L) is provided by `Box::wrap_axis`
 // (`cpu/box.h`) — the single canonical implementation. partition_atoms()
-// below calls `frame.box.wrap_axis(coord, axis)` directly.
+// below calls `frame.simbox.wrap_axis(coord, axis)` directly.
 
 // Rank index (along one dim) that owns wrapped position `q` with `dims_d`
 // equal-width slabs over `[0, L)`. Clamps to [0, dims_d - 1] against FP
@@ -189,11 +189,11 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         return;
     }
 
-    compute_sublo_subhi(frame.box);
+    compute_sublo_subhi(frame.simbox);
 
-    const double Lx = frame.box.length(0);
-    const double Ly = frame.box.length(1);
-    const double Lz = frame.box.length(2);
+    const double Lx = frame.simbox.length(0);
+    const double Ly = frame.simbox.length(1);
+    const double Lz = frame.simbox.length(2);
 
     // First-run vs subsequent-run scoping. On the first call (n_local == 0)
     // we scan the entire user-supplied atom array because we don't yet know
@@ -209,7 +209,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // drifters at pre_force); we only need to re-scan that range, not the
     // stale ghost/old-owner rows beyond it.
     const bool first_partition = (n_local == 0);
-    const int n_to_iterate = first_partition ? frame.atoms.size() : n_local;
+    const int n_to_iterate = first_partition ? frame.nlocal() : n_local;
     std::vector<int> owned_indices;
     owned_indices.reserve(static_cast<std::size_t>(n_to_iterate));
 
@@ -242,9 +242,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             if (!seen_tags.insert(t).second)
                 continue; // duplicate tag from stale tail — keep first
         }
-        const double xw = frame.box.wrap_axis(sp_x[i], 0);
-        const double yw = frame.box.wrap_axis(sp_y[i], 1);
-        const double zw = frame.box.wrap_axis(sp_z[i], 2);
+        const double xw = frame.simbox.wrap_axis(sp_x[i], 0);
+        const double yw = frame.simbox.wrap_axis(sp_y[i], 1);
+        const double zw = frame.simbox.wrap_axis(sp_z[i], 2);
         const int cx = rank_along_dim(xw, Lx, dims[0]);
         const int cy = rank_along_dim(yw, Ly, dims[1]);
         const int cz = rank_along_dim(zw, Lz, dims[2]);
@@ -255,118 +255,18 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
 
     n_local = static_cast<int>(owned_indices.size());
     n_ghost = 0;
-    capacity =
-        frame.atoms.size(); // keep the whole allocation as slack for ghosts
+    capacity = frame.capacity();
 
-    // Compact owned atoms to the front of every per-atom array. Iterating
-    // in increasing `new_i` guarantees we read `old_i >= new_i` so the
-    // destination has not yet been overwritten.
-    // Generic over the element tier (StorageReal x/y/z/v*, AccReal f*, int
-    // type, TagInt tag): span pointer indexing is type-agnostic.
-    auto compact_1d = [&](auto* arr_ptr) {
-        for (int ni = 0; ni < n_local; ++ni) {
-            const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni)
-                arr_ptr[ni] = arr_ptr[oi];
-        }
-    };
-
-    // sp_x/sp_y/sp_z/sp_tag already resolved above (no reallocation since);
-    // the rest resolved here, once, before the compaction calls below.
-    StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
-    StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
-    StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
-    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
-    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
-    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
-    StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
-    StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
-    int* __restrict sp_type = frame.span(kAtom_type);
-    Span<std::int8_t> sp_image = frame.span(kAtom_image);
-
-    compact_1d(sp_x);
-    compact_1d(sp_y);
-    compact_1d(sp_z);
-    compact_1d(sp_vx);
-    compact_1d(sp_vy);
-    compact_1d(sp_vz);
-    compact_1d(sp_fx);
-    compact_1d(sp_fy);
-    compact_1d(sp_fz);
-    compact_1d(sp_mass);
-    // charge was MISSING from this compaction until the task-protocol
-    // result path first consumed it post-partition (2026-07-15): every
-    // multi-rank run left stale slot values in the owner rows' charge
-    // column. Silent until then because no in-tree consumer read owner
-    // charges after partition.
-    compact_1d(sp_charge);
-    compact_1d(sp_type);
-    compact_1d(sp_tag);
+    // One structural row operation covers every migrating column: canonical
+    // state, topology and runtime columns. Increasing destination order keeps
+    // every source row live until it is copied.
     for (int ni = 0; ni < n_local; ++ni) {
         const int oi = owned_indices[static_cast<std::size_t>(ni)];
-        if (oi != ni) {
-            sp_image(ni, 0) = sp_image(oi, 0);
-            sp_image(ni, 1) = sp_image(oi, 1);
-            sp_image(ni, 2) = sp_image(oi, 2);
-        }
+        if (oi != ni)
+            frame.copy_row(ni, oi);
     }
-
-    // Per-atom topology must compact along with the SoA fields, else
-    // num_bond[i] / bond_atom[i][m] become disconnected from tag[i].
-    // (Bug surfaced as bonded_extension = ~60 Å instead of ~3 Å — the
-    // resolver was looking up the right partner tag but reading the
-    // wrong owner row's bond list.)
-    auto& a = frame.atoms;
-
-    for (int ni = 0; ni < n_local; ++ni) {
-        const int oi = owned_indices[static_cast<std::size_t>(ni)];
-        if (oi == ni)
-            continue;
-        a.num_bond(ni) = a.num_bond(oi);
-        a.num_angle(ni) = a.num_angle(oi);
-        a.num_dihedral(ni) = a.num_dihedral(oi);
-        a.nspecial(ni, 0) = a.nspecial(oi, 0);
-        a.nspecial(ni, 1) = a.nspecial(oi, 1);
-        a.nspecial(ni, 2) = a.nspecial(oi, 2);
-        // Wide arrays exist only for atom_style-molecular (lazy bonded storage).
-        if (a.has_bonded()) {
-            for (int m = 0; m < a.bond_per_atom; ++m) {
-                a.bond_atom(ni, m) = a.bond_atom(oi, m);
-                a.bond_type(ni, m) = a.bond_type(oi, m);
-            }
-            for (int m = 0; m < 2 * a.angle_per_atom; ++m)
-                a.angle_atom(ni, m) = a.angle_atom(oi, m);
-            for (int m = 0; m < a.angle_per_atom; ++m)
-                a.angle_type(ni, m) = a.angle_type(oi, m);
-            for (int m = 0; m < 3 * a.dihedral_per_atom; ++m)
-                a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-            for (int m = 0; m < a.dihedral_per_atom; ++m)
-                a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
-            for (int m = 0; m < a.maxspecial; ++m)
-                a.special(ni, m) = a.special(oi, m);
-        }
-    }
-
-    // Registry extras with migrates=true must compact too (the same latent
-    // class as the charge column above, found 2026-07-15): copy_row's
-    // contract says migrating extras travel with the row, and this
-    // compaction is a bulk row move.
-    for (auto& e : frame.atoms.extras) {
-        if (!e.migrates)
-            continue;
-        std::visit(
-            [&](auto& arr) {
-                for (int ni = 0; ni < n_local; ++ni) {
-                    const int oi =
-                        owned_indices[static_cast<std::size_t>(ni)];
-                    if (oi == ni)
-                        continue;
-                    for (int c = 0; c < e.cols; ++c)
-                        arr(ni, c) = arr(oi, c);
-                }
-            },
-            e.data);
-    }
+    frame.set_nlocal(n_local);
+    frame.set_nghost(0);
 
     // Release the global-N backing store. Each rank loaded the whole file
     // (load_lammps_data is called per-rank) but owns only `n_local`; the
@@ -383,15 +283,15 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         // array for the whole run.
         const int headroom = std::max(n_local / 4, 16384);
         const int new_cap = n_local + headroom;
-        if (new_cap < frame.atoms.nmax) {
-            frame.atoms.set_capacity(new_cap);
+        if (new_cap < frame.capacity()) {
+            frame.set_capacity(new_cap);
         }
-        capacity = frame.atoms.nmax;
+        capacity = frame.capacity();
     }
 
     tag_to_local.clear();
     // Bonded-resolution map only — pure pairwise systems skip it (see bind()).
-    if (frame.atoms.has_bonded()) {
+    if (frame.has_bonded()) {
         tag_to_local.reserve(static_cast<std::size_t>(n_local));
         // Re-resolved: `set_capacity` just above may have reallocated the
         // SoA, invalidating the `sp_tag` resolved earlier in this function.
@@ -403,7 +303,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         std::unordered_map<TagInt, int>{}.swap(tag_to_local);
     }
 
-    // No topology filter at partition. Each rank keeps the FULL frame.atoms (per-atom bonded topology)
+    // No topology filter at partition. Each owned row keeps its full bonded topology
     // / angles / dihedrals so that:
     //   * bonded force kernels can iterate all tuples and filter by their
     //     owner-tag (LAMMPS-style ownership rule) at force-eval time;

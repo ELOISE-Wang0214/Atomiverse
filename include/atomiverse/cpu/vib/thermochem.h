@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -40,7 +40,7 @@ namespace vib {
 /// quantities from the normal-mode frequencies and writes them into the
 /// shared `HessianWorkspace`; it performs no I/O and writes no
 /// `cpu::Frame` field, so `capabilities()` is empty.
-class Thermochem : public cpu::ComponentBase {
+class Thermochem : public cpu::Observer {
   public:
     /// @brief Per-molecule thermochemistry inputs.
     ///
@@ -73,7 +73,7 @@ class Thermochem : public cpu::ComponentBase {
 
     /// @brief Structural role — Observer (computes derived quantities).
     /// @return `ComponentRole::Observer`.
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
 
     /// @brief Default binding: `vib::Phase::thermochem` @ 0.
     /// @return Single binding placing this at the thermochem phase.

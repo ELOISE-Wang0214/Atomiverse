@@ -42,14 +42,14 @@ namespace vib {
 ///
 /// `role() == None` and `capabilities()` empty — it writes the
 /// frequency fields of the shared workspace, not a `cpu::Frame` field.
-class HessianDiagonalizer : public cpu::ComponentBase {
+class HessianDiagonalizer : public cpu::Component {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit HessianDiagonalizer(HessianWorkspace* ws) : ws_(ws) {}
 
     std::string name() const override { return "hessian_diagonalizer"; }
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Default binding: `vib::Phase::diagonalize` @ +1 (last).
     /// @return Single binding placing this after `MassWeighting`.

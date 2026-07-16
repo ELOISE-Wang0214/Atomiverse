@@ -3,7 +3,8 @@
 ///
 /// `Reduce` does one batched `MPI_Allreduce(SUM)` of the 18 per-rank
 /// scalar partials `{energy, energy_pair, energy_bond, energy_angle,
-/// energy_dihedral, kinetic, stress[6], stress_kinetic[6]}` into a single
+/// energy_dihedral, energy_improper, kinetic, stress[6], stress_kinetic[6]}`
+/// into a single
 /// collective, so per-rank bookkeeping is globally consistent before
 /// observers or the snapshot publisher read the frame's scalar state.
 /// `n_local` is NOT reduced — it is authoritative per rank from
@@ -41,7 +42,7 @@ namespace mpi {
 /// whose global scalars are pure diagnostics sampled at a known cadence — plain
 /// NVE / per-atom Langevin (the throughput stage) — where it elides the
 /// per-step latency-bound collective LAMMPS likewise avoids until thermo output.
-class Reduce : public cpu::ComponentBase {
+class Reduce : public cpu::Component {
   public:
     Reduce() = default;
     explicit Reduce(int every) : every_(every < 1 ? 1 : every) {}

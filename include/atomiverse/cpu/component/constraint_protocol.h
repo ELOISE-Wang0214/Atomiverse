@@ -2,7 +2,7 @@
 /// @brief ConstraintProvider — opt-in protocol for components that remove degrees
 ///        of freedom. CUDA-free header.
 ///
-/// Follows the `NeighborConsumer` / `HaloParticipant` precedent: `ComponentBase`
+/// Follows the `NeighborConsumer` / `HaloParticipant` precedent: `Component`
 /// stays minimal, and a component that participates inherits the protocol and
 /// overrides the matching `as_*` accessor. The driver probes the typed accessor —
 /// no `dynamic_cast`, no `name()` matching.
@@ -38,7 +38,7 @@ class ConstraintProvider {
     /// global quantity, and the thermostats that consume it are driving a global
     /// kinetic target. The Context is passed because under domain decomposition the
     /// implementation has to know which rows of the frame are actually this rank's
-    /// (`frame.atoms.size()` is NOT the owner count — the tail is ghost slack) and
+    /// (`frame.nlocal()` is NOT the owner count — the tail is ghost slack) and
     /// which communicator to reduce over.
     ///
     /// @param ctx Execution context (decomposition, MPI size).

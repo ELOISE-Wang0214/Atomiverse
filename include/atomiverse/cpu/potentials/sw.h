@@ -6,10 +6,10 @@
 #include <string_view>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
-#include "atomiverse/molrs.hpp"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/facade/stage.h"
+#include "atomiverse/molrs.hpp"
 
 namespace ATV {
 namespace cpu {
@@ -23,7 +23,7 @@ class SWPotential {
     /// @param element Chemical element (molrs periodic-table enum).
     /// @param name Parameterization name, e.g. `"stillinger-weber"`.
     /// @throws std::out_of_range if the (element, name) pair is not tabulated.
-    SWPotential(Element element, std::string_view name);
+    SWPotential(molrs::Element element, std::string_view name);
 
     /// @brief Cutoff `a * sigma` [Angstrom]. Both terms vanish identically here.
     double cutoff() const { return a_ * sigma_; }
@@ -32,8 +32,10 @@ class SWPotential {
     /// @param r Separation [Angstrom].
     double phi2(double r) const {
         const double rc = cutoff();
-        if (r >= rc) return 0.0;
-        return A_ * eps_ * (B_ * std::pow(sigma_ / r, p_) - std::pow(sigma_ / r, q_))
+        if (r >= rc)
+            return 0.0;
+        return A_ * eps_
+               * (B_ * std::pow(sigma_ / r, p_) - std::pow(sigma_ / r, q_))
                * std::exp(sigma_ / (r - rc));
     }
 
@@ -41,12 +43,14 @@ class SWPotential {
     /// @param r Separation [Angstrom].
     double dphi2(double r) const {
         const double rc = cutoff();
-        if (r >= rc) return 0.0;
+        if (r >= rc)
+            return 0.0;
         const double e = std::exp(sigma_ / (r - rc));
         const double bracket =
             B_ * std::pow(sigma_ / r, p_) - std::pow(sigma_ / r, q_);
-        const double dbracket =
-            (-p_ * B_ * std::pow(sigma_ / r, p_) + q_ * std::pow(sigma_ / r, q_)) / r;
+        const double dbracket = (-p_ * B_ * std::pow(sigma_ / r, p_)
+                                 + q_ * std::pow(sigma_ / r, q_))
+                                / r;
         const double de = e * (-sigma_ / ((r - rc) * (r - rc)));
         return A_ * eps_ * (dbracket * e + bracket * de);
     }
@@ -55,7 +59,8 @@ class SWPotential {
     /// @param r Leg length [Angstrom].
     double g(double r) const {
         const double rc = cutoff();
-        if (r >= rc) return 0.0;
+        if (r >= rc)
+            return 0.0;
         return std::exp(gamma_ * sigma_ / (r - rc));
     }
 
@@ -63,7 +68,8 @@ class SWPotential {
     /// @param r Leg length [Angstrom].
     double dg(double r) const {
         const double rc = cutoff();
-        if (r >= rc) return 0.0;
+        if (r >= rc)
+            return 0.0;
         return g(r) * (-gamma_ * sigma_ / ((r - rc) * (r - rc)));
     }
 
@@ -92,21 +98,18 @@ class SWPotential {
 /// `ctx.md.full_list_requested` in `build()`.
 ///
 /// Like `cpu::EAM`, this is not a `cpu::Pair` (that models `fpair(r^2)`) — it is a
-/// `ComponentBase + NeighborConsumer` bound with `.on(md::Phase::force).add(...)`.
+/// `Component + NeighborConsumer` bound with `.on(md::Phase::force).add(...)`.
 /// Single-rank only for the same reason EAM is, and it throws under MPI.
-class StillingerWeber : public cpu::ComponentBase, public cpu::NeighborConsumer {
+class StillingerWeber : public cpu::Potential, public cpu::NeighborConsumer {
   public:
     /// @param potential Parameterization (constructed by lookup).
     explicit StillingerWeber(SWPotential potential);
 
     std::string name() const override { return "sw"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force | Capability::Stress;
-    }
+    /* role via Potential/kind base */
 
     /// @brief Cutoff the neighbor list must cover [Angstrom] — `a * sigma`.
-    Real neighbor_cutoff() const override { return pot_.cutoff(); }
+    AccReal neighbor_cutoff() const override { return pot_.cutoff(); }
     const cpu::NeighborConsumer* as_neighbor_consumer() const override {
         return this;
     }

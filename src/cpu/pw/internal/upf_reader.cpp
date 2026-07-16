@@ -63,8 +63,9 @@ std::string join_open_tag(std::istream& in, std::string line) {
     return line;
 }
 
-std::vector<Real> parse_values(std::istream& in, const std::string& end_tag) {
-    std::vector<Real> vals;
+std::vector<AccReal> parse_values(std::istream& in,
+                                  const std::string& end_tag) {
+    std::vector<AccReal> vals;
     std::string line;
     while (std::getline(in, line)) {
         if (line.find(end_tag) != std::string::npos)
@@ -78,7 +79,7 @@ std::vector<Real> parse_values(std::istream& in, const std::string& end_tag) {
         std::istringstream ss(s);
         double d;
         while (ss >> d)
-            vals.push_back(static_cast<Real>(d));
+            vals.push_back(static_cast<AccReal>(d));
     }
     return vals;
 }
@@ -144,18 +145,11 @@ UPFData read_upf_v1(const std::string& path) {
                     UPFData::KBProjector kb;
                     kb.l = l;
                     kb.beta = std::move(beta_vals);
-                    kb.d = 0; // will be set from PP_DIJ
                     upf.kb.push_back(std::move(kb));
                 }
                 // Read PP_DIJ (after all betas) — full matrix
                 if (tag_open(line, "PP_DIJ")) {
                     upf.d_ij = parse_values(f, "PP_DIJ");
-                    int n = static_cast<int>(upf.kb.size());
-                    // Also set diagonal for backward compatibility
-                    for (int i = 0;
-                         i < n && i * n + i < static_cast<int>(upf.d_ij.size());
-                         ++i)
-                        upf.kb[i].d = upf.d_ij[i * n + i];
                 }
                 // Read PP_Q (augmentation charges, inside PP_AUGMENTATION)
                 if (tag_open(line, "PP_Q")) {
@@ -172,13 +166,13 @@ UPFData read_upf_v1(const std::string& path) {
         if (tag_open(line, "PP_CHI")) {
             line = join_open_tag(f, line);
             int l_chi = 0;
-            Real occ = 0;
+            AccReal occ = 0;
             auto lang = extract_attr(line, "l");
             auto oattr = extract_attr(line, "occupation");
             if (!lang.empty())
                 l_chi = std::stoi(lang);
             if (!oattr.empty())
-                occ = static_cast<Real>(std::stod(oattr));
+                occ = static_cast<AccReal>(std::stod(oattr));
             auto chi_vals = parse_values(f, "PP_CHI");
             upf.chi.push_back(std::move(chi_vals));
             upf.lchi.push_back(l_chi);

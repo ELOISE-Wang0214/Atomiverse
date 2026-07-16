@@ -32,7 +32,7 @@ namespace {
 /// Assemble the GpwAtom set at the frame's current geometry (Å → Bohr).
 std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
                                     const GpwEvaluatorConfig& config) {
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     const int* __restrict sp_type = frame.span(kAtom_type);
     const StorageReal* __restrict sp_x = frame.span(kAtom_x);
     const StorageReal* __restrict sp_y = frame.span(kAtom_y);
@@ -52,7 +52,7 @@ std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
 void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Validate that every atom in the frame has a configured element, and
     // count valence electrons for the closed-shell occupation.
-    const int n_build = ctx.frame.atoms.size();
+    const int n_build = ctx.frame.nlocal();
     const int* __restrict sp_type_build = ctx.frame.span(kAtom_type);
     double z_val_total = 0.0;
     for (int i = 0; i < n_build; ++i)
@@ -63,9 +63,9 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // ATV_GPW_OT diagnostic switch is read once here — re-reading an
     // environment variable per launch had no meaning.
     GpwConfig cfg;
-    cfg.cell[0] = ctx.frame.box.length(0) * kAng2Bohr;
-    cfg.cell[1] = ctx.frame.box.length(1) * kAng2Bohr;
-    cfg.cell[2] = ctx.frame.box.length(2) * kAng2Bohr;
+    cfg.cell[0] = ctx.frame.simbox.length(0) * kAng2Bohr;
+    cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
+    cfg.cell[2] = ctx.frame.simbox.length(2) * kAng2Bohr;
     cfg.cutoff_ry = config_.cutoff_ry;
     cfg.n_occ = static_cast<int>(std::lround(z_val_total / 2.0));
     cfg.max_iter = config_.max_iter;
@@ -84,13 +84,13 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
 
 void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     cpu::Frame& frame = ctx.frame;
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
 
     // GPW does not support a variable cell: the grids, lattice images and
     // Ewald-like electrostatics are sized from the build-time cell. The old
     // implementation silently solved in the new box — undefined behavior.
     for (int d = 0; d < 3; ++d) {
-        const double now = frame.box.length(d) * kAng2Bohr;
+        const double now = frame.simbox.length(d) * kAng2Bohr;
         if (std::abs(now - built_cell_[static_cast<std::size_t>(d)])
             > 1e-9
                   * std::max(
@@ -104,7 +104,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     const auto atoms = assemble_atoms(frame, config_);
     last_ = solver_->run(atoms);
-    frame.scalars.energy = last_.e_total * ATV::kHartree2eV;
+    frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (config_.compute_forces) {
         const auto F = gpw_forces_analytic(atoms, solver_->config());
@@ -113,9 +113,12 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);
         AccReal* __restrict sp_fz = frame.span(kAtom_fz);
         for (int i = 0; i < n; ++i) {
-            sp_fx[i] = F[static_cast<std::size_t>(i)][0] * ATV::kForceAU2Metal;
-            sp_fy[i] = F[static_cast<std::size_t>(i)][1] * ATV::kForceAU2Metal;
-            sp_fz[i] = F[static_cast<std::size_t>(i)][2] * ATV::kForceAU2Metal;
+            sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                       * ATV::units::kHartreePerBohrInEvPerAngstrom;
         }
     }
 }

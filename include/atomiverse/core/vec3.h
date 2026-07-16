@@ -2,28 +2,28 @@
 /// @brief Vec3 — 3D vector value type.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include <cmath>
 #include <xtensor/containers/xfixed.hpp>
 
 namespace ATV {
 
 class Vec3 {
-    xt::xtensor_fixed<Real, xt::xshape<3>> v_{};
+    xt::xtensor_fixed<AccReal, xt::xshape<3>> v_{};
 
   public:
     Vec3() = default;
-    Vec3(Real x, Real y, Real z) { v_ = {x, y, z}; }
+    Vec3(AccReal x, AccReal y, AccReal z) { v_ = {x, y, z}; }
 
-    Real& operator[](int i) { return v_(i); }
-    const Real& operator[](int i) const { return v_(i); }
+    AccReal& operator[](int i) { return v_(i); }
+    const AccReal& operator[](int i) const { return v_(i); }
 
-    Real& x() { return v_(0); }
-    Real& y() { return v_(1); }
-    Real& z() { return v_(2); }
-    Real x() const { return v_(0); }
-    Real y() const { return v_(1); }
-    Real z() const { return v_(2); }
+    AccReal& x() { return v_(0); }
+    AccReal& y() { return v_(1); }
+    AccReal& z() { return v_(2); }
+    AccReal x() const { return v_(0); }
+    AccReal y() const { return v_(1); }
+    AccReal z() const { return v_(2); }
 
     Vec3 operator+(const Vec3& o) const {
         return {v_(0) + o.v_(0), v_(1) + o.v_(1), v_(2) + o.v_(2)};
@@ -31,10 +31,14 @@ class Vec3 {
     Vec3 operator-(const Vec3& o) const {
         return {v_(0) - o.v_(0), v_(1) - o.v_(1), v_(2) - o.v_(2)};
     }
-    Vec3 operator*(Real s) const { return {v_(0) * s, v_(1) * s, v_(2) * s}; }
-    Vec3 operator/(Real s) const { return {v_(0) / s, v_(1) / s, v_(2) / s}; }
+    Vec3 operator*(AccReal s) const {
+        return {v_(0) * s, v_(1) * s, v_(2) * s};
+    }
+    Vec3 operator/(AccReal s) const {
+        return {v_(0) / s, v_(1) / s, v_(2) / s};
+    }
 
-    Real dot(const Vec3& o) const {
+    AccReal dot(const Vec3& o) const {
         return v_(0) * o.v_(0) + v_(1) * o.v_(1) + v_(2) * o.v_(2);
     }
     Vec3 cross(const Vec3& o) const {
@@ -42,10 +46,10 @@ class Vec3 {
                 v_(2) * o.v_(0) - v_(0) * o.v_(2),
                 v_(0) * o.v_(1) - v_(1) * o.v_(0)};
     }
-    Real norm_squared() const { return dot(*this); }
-    Real norm() const { return std::sqrt(norm_squared()); }
+    AccReal norm_squared() const { return dot(*this); }
+    AccReal norm() const { return std::sqrt(norm_squared()); }
     Vec3 normalized() const {
-        Real n = norm();
+        AccReal n = norm();
         return {v_(0) / n, v_(1) / n, v_(2) / n};
     }
 

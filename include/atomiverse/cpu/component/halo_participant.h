@@ -2,14 +2,14 @@
 /// @brief HaloParticipant — opt-in protocol for MPI ghost-exchange
 ///        participation. CUDA-free header.
 ///
-/// Split out of `ComponentBase` (arch-refactor-02-halo): the halo contract
+/// Split out of `Component` (arch-refactor-02-halo): the halo contract
 /// concerns exactly three parties — the `comm::HaloSend` / `comm::HaloRecv`
 /// endpoints and any component that wants extra per-atom fields shipped with
 /// the per-face messages. Every other component keeps a clean vtable.
 ///
 /// Follows the `PairEvaluator` opt-in precedent: a component that
-/// participates inherits this protocol *in addition to* `ComponentBase` and
-/// overrides `ComponentBase::halo_participant()` to return `this`; the
+/// participates inherits this protocol *in addition to* `Component` and
+/// overrides `Component::halo_participant()` to return `this`; the
 /// driver's infrastructure scan probes that single typed accessor — no
 /// `dynamic_cast`, no `name()` matching.
 ///
@@ -54,7 +54,7 @@ class HaloParticipant {
     /// `data` must point at a per-atom array with capacity for owned +
     /// ghost rows, and the pointer must stay **stable for the whole run**
     /// — the endpoints flatten descriptors once at first launch and cache
-    /// them. Size to the worst-case `frame.atoms.nmax` in `build()`
+    /// them. Size to the worst-case `frame.capacity()` in `build()`
     /// (frame-capacity growth mid-run would dangle a cached pointer; a
     /// participant that cannot pre-size must not declare fields). Packed
     /// contiguously as `data[i * width + k]`, `k in [0, width)`.

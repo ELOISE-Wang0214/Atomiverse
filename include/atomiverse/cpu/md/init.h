@@ -1,14 +1,13 @@
 /// @file cpu/md/init.h
 /// @brief CPU MD infrastructure components: KineticEnergy, InitVelocity,
-///        ZeroLinearMomentum (+ compatibility aliases for the backend-root
-///        Zero* components).
+///        ZeroMomentum.
 #pragma once
 
 #include <string>
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/facade/stage.h"
 
@@ -16,19 +15,10 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-// The phase-agnostic Zero* components are shared backend-root
-// infrastructure (used by MD, Minimize, and Evaluate) and live in
-// `cpu/zero.h`. These aliases keep the historical `cpu::md::Zero*`
-// spellings working for existing callers.
-using ZeroForces = cpu::ZeroForces;
-using ZeroEnergy = cpu::ZeroEnergy;
-using ZeroStress = cpu::ZeroStress;
-using ZeroKinetic = cpu::ZeroKinetic;
-
 /// @brief Compute kinetic energy at end_of_step phase.
 ///
-/// KE = 0.5 * kMvv2e * sum(m * v^2), with OpenMP reduction.
-class KineticEnergy : public cpu::ComponentBase {
+/// KE = 0.5 * units::mass_v2_to_energy * sum(m * v^2), with OpenMP reduction.
+class KineticEnergy : public cpu::Observer {
   public:
     std::string name() const override { return "kinetic_energy"; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -44,14 +34,13 @@ class KineticEnergy : public cpu::ComponentBase {
 /// Langevin kicks plus barostat scaling slowly bias the COM away from 0,
 /// and fix_npt alone doesn't zero it).  Bound late in `end_of_step` so
 /// the freshly-integrated velocities are zeroed before the next step.
-class ZeroLinearMomentum : public cpu::ComponentBase {
+class ZeroMomentum : public cpu::Component {
   public:
     /// @param freq Remove momentum every `freq` steps (LAMMPS default 1).
-    explicit ZeroLinearMomentum(int freq = 1) : freq_(freq) {}
+    explicit ZeroMomentum(int freq = 1) : freq_(freq) {}
 
     std::string name() const override { return "zero_linear_momentum"; }
     /// @brief Write-set: subtracts the drift from every velocity.
-    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         // +25 = after KineticEnergy (@-100) / Reduce (@-50) /
         // NoseHooverNPT (@-40) so we only touch post-integration
@@ -64,16 +53,6 @@ class ZeroLinearMomentum : public cpu::ComponentBase {
     int freq_;
     long long step_ = 0;
 };
-
-/// @brief Cross-backend alias of `ZeroLinearMomentum` (chain-friendly name).
-///
-/// The umbrella spec `msu-pe-cuda-components-*` uses the shorter
-/// `ZeroMomentum` name on both CPU and CUDA; the CPU class keeps its
-/// historical `ZeroLinearMomentum` name to avoid an ABI break on
-/// downstream callers, with this alias bridging the two so chain code
-/// can write `cpu::md::ZeroMomentum{1}` symmetrically with the CUDA
-/// sibling `cuda::md::ZeroMomentum{1}`.
-using ZeroMomentum = ZeroLinearMomentum;
 
 /// @brief Velocity-draw distribution for `InitVelocity` (LAMMPS `dist`).
 ///
@@ -115,7 +94,7 @@ enum class VelocityDist {
 /// Generates velocities from the chosen `dist` scaled by `1/sqrt(m)`,
 /// removes the COM velocity, then rescales to the exact target
 /// temperature. No-op during launch().
-class InitVelocity : public cpu::ComponentBase {
+class InitVelocity : public cpu::Component {
   public:
     /// @param temperature Target temperature [K].
     /// @param seed Random number generator seed.
@@ -127,7 +106,6 @@ class InitVelocity : public cpu::ComponentBase {
 
     std::string name() const override { return "init_velocity"; }
     /// @brief Write-set: seeds the Maxwell distribution into v (at build).
-    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, -999)};
     }

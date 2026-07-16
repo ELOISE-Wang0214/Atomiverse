@@ -7,11 +7,10 @@
 /// geometry": single-point energy, force, density, dipole, charge.
 ///
 /// Single-point CUDA SCF energy / density workflows go here:
-/// `cuda::Evaluate + cuda::scf::SCFEvaluator`.
+/// `cuda::Evaluate + cuda::scf::SCF`.
 ///
-/// Validation rule (build-time): at least one component with `role()==Evaluator` AND
-/// non-empty `capabilities()`. Energy-only, property-only, and force-providing
-/// evaluators are all valid here.
+/// Validation rule (build-time): at least one hot-path energy/force
+/// Component (Role flags; no Capability bitset).
 ///
 /// **No handler.** One pass is not a termination policy — there is no loop to terminate.
 ///
@@ -22,7 +21,7 @@
 ///
 /// @code{.cpp}
 ///   cuda::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{integrals, tol, max_iter});
 ///   eval.build();
 ///   eval.run(frame);            // frame.scalars.energy populated
 /// @endcode
@@ -52,17 +51,17 @@ class Evaluate : public CUDADriver<ATV::evaluate::Phase> {
     }
 
   protected:
-    /// @brief Require at least one `Evaluator`-role component with a
-    ///        non-empty `capabilities()` bitset.
+    /// @brief Require at least one hot-physics energy/force source.
     void validate_components() const override {
-        bool found_evaluator = false;
-        for_each_pending([&](const cuda::ComponentBase& c) {
-            if (c.role() == ComponentRole::Evaluator
-                && !is_none(c.capabilities()))
-                found_evaluator = true;
+        bool found = false;
+        for_each_pending([&](const cuda::Component& c) {
+            if (loop_required(c.role())
+                && !has_role(c.role(), RoleFlag::FrameImmutable)
+                && !has_role(c.role(), RoleFlag::ExternalIO))
+                found = true;
         });
-        if (!found_evaluator)
-            throw_missing("Evaluator with non-empty capabilities()");
+        if (!found)
+            throw_missing("hot-path energy/force Component");
     }
 };
 

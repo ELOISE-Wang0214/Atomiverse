@@ -49,8 +49,8 @@ namespace cuda {
 /// @brief Base class for CUDA async-D2H observer and recorder components.
 ///
 /// All observers and recorders that follow the defer-stream sidecar pattern
-/// must extend this class instead of ComponentBase.
-class AsyncBridge : public ComponentBase {
+/// must extend this class instead of Component.
+class AsyncBridge : public Component {
   public:
     /// @brief Device-side snapshot ring depth K. Each capture freezes its
     /// payload into ring slot `(ring_head_++) % kRingDepth` on the compute

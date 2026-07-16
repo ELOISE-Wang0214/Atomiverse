@@ -9,7 +9,7 @@
 ///
 /// Usage:
 /// @code
-///   cpu::scf::SCFEvaluator scf{cfg};
+///   cpu::scf::SCF scf{cfg};
 ///   scf.with_gradient(false);
 ///   cpu::single_point(frame, scf);
 ///   // frame.energy populated; scf.last_result().energy in Hartree.
@@ -38,7 +38,7 @@ template <typename Evaluator>
 void single_point(cpu::Frame& frame, Evaluator& evaluator,
                   ATV::evaluate::Phase phase = ATV::evaluate::Phase::evaluate) {
     cpu::Evaluate eval;
-    eval.on(phase).add(evaluator);
+    eval.on(phase).add_ref(evaluator);
     eval.build();
     eval.run(frame);
 }

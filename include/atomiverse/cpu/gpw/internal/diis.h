@@ -1,8 +1,8 @@
 /// @file cpu/gpw/internal/diis.h
 /// @brief internal::GpwDiis — single-channel Pulay DIIS for the restricted GPW KS matrix.
 ///
-/// **Internal GPW helper.** Does NOT inherit `cpu::ComponentBase` and is not
-/// registered into any outer Driver Plan. Owned by the GPW SCF loop (`gpw_scf`)
+/// **Internal GPW helper.** Does NOT inherit `cpu::Component` and is not
+/// registered into any outer Driver Plan. Owned by the GPW SCF loop (`GPWSolver`)
 /// and by tests (via direct include). Self-contained in `cpu::gpw::internal`;
 /// it reuses only `cpu::linalg` matrix types (never `cpu::scf::internal`), per
 /// the GPW domain-isolation rule.

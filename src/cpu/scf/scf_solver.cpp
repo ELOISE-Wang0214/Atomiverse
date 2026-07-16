@@ -2,8 +2,7 @@
 /// @brief SCFSolver implementation — orchestrates the 5 internal helpers
 ///        through the SCF self-consistency cycle.
 ///
-/// `scf_solve()` is a thin functional wrapper that constructs a transient
-/// `SCFSolver` and runs it; both produce bit-identical results.
+/// `SCFSolver` is the sole low-level CPU SCF execution API.
 
 #include "atomiverse/cpu/scf/scf_solver.h"
 
@@ -21,6 +20,8 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/linalg/eigensolve.h" // build_orthogonalization_matrix, diagonalize
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/cpu/scf/internal/diis_mixer.h"
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
@@ -28,10 +29,8 @@
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h"
 #include "atomiverse/cpu/scf/minao.h"
-#include "atomiverse/cpu/linalg/eigensolve.h"   // build_orthogonalization_matrix, diagonalize
-#include "atomiverse/cpu/scf/dense_matrix.h"
-#include "atomiverse/cpu/scf/scf_guess.h"        // apply_homo_lumo_mixing
-#include "atomiverse/cpu/scf/spin_analysis.h"    // compute_spin_contamination
+#include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
+#include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
 
 namespace ATV {
 namespace cpu {
@@ -44,9 +43,8 @@ SCFSolver::SCFSolver(SCFConfig config)
       density_(std::make_unique<internal::DensityBuilder>()),
       diis_(std::make_unique<internal::DIISMixer>(config_.diis_max_vectors)),
       convergence_(std::make_unique<internal::DualConvergenceCheck>(
-          config_.tol, (config_.conv_tol_grad > 0)
-                           ? config_.conv_tol_grad
-                           : std::sqrt(config_.tol))) {}
+          config_.tol, (config_.conv_tol_grad > 0) ? config_.conv_tol_grad
+                                                   : std::sqrt(config_.tol))) {}
 
 // Out-of-line where internal::* are complete types (required for the
 // unique_ptr members over forward-declared helpers).
@@ -58,7 +56,7 @@ void SCFSolver::build(const IntegralPack& reference) {
     // Geometry-invariant pre-allocation only. Everything else (X = S^{-1/2},
     // shell-pair lists, KS grid) is geometry-dependent — atoms move during
     // geometry optimization / AIMD, so those structures are rebuilt per
-    // run() to stay consistent with the scf_solve() functional contract.
+    // run() so a long-lived solver tracks the current geometry.
     eigen_->prepare(reference.n_basis);
     density_->prepare(reference.n_basis);
     built_ = true;
@@ -77,7 +75,8 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
             && config_.n_alpha != config_.n_beta)) {
         throw std::invalid_argument(
             "SCFSolver::run: inconsistent occupation configuration "
-            "(n_electrons=" + std::to_string(integrals.n_electrons)
+            "(n_electrons="
+            + std::to_string(integrals.n_electrons)
             + ", n_alpha=" + std::to_string(config_.n_alpha)
             + ", n_beta=" + std::to_string(config_.n_beta) + ", spin="
             + (config_.spin == SpinType::Restricted ? "Restricted"

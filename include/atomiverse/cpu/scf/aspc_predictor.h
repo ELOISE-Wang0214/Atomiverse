@@ -32,7 +32,7 @@ namespace scf {
 ///         pred.record(P_corrected);
 ///     } else {
 ///         // Not enough history, do full SCF
-///         auto result = rhf_solve(integrals, tol, max_iter);
+///         auto result = SCFSolver(integrals, tol, max_iter);
 ///         pred.record(result.P);
 ///     }
 /// }

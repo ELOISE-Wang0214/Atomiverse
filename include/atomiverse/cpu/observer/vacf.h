@@ -43,7 +43,7 @@ class VACF : public cpu::md::AsyncObserver {
                   std::string output_file = "vacf.dat");
 
     std::string name() const override { return "vacf_async"; }
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     int frequency() const override { return freq_; }
 
     cpu::CaptureMask capture_mask() const override {

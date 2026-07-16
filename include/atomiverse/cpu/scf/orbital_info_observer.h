@@ -2,12 +2,12 @@
 /// @brief OrbitalInfoObserver -- per-step HOMO/LUMO/gap summary from SCFResult.
 ///
 /// Reads eigenvalues from the latest SCFResult published by a sibling
-/// `SCFEvaluator` via `SCFResultHandle`. Writes a TSV log and optionally
+/// `SCF` via `SCFResultHandle`. Writes a TSV log and optionally
 /// mirrors to stdout.
 ///
 /// Usage:
 /// @code
-///   cpu::scf::SCFEvaluator scf{config};
+///   cpu::scf::SCF scf{config};
 ///   auto handle = scf.result_handle();                       // share state
 ///   opt.on(minimizer::Phase::force).add(std::move(scf));
 ///   opt.on(minimizer::Phase::end_of_step)
@@ -35,11 +35,11 @@ namespace scf {
 /// @brief Orbital-energy observer component.
 ///
 /// No default bindings: user chooses `end_of_step` of whichever driver hosts
-/// the SCFEvaluator (MD, Minimize, or Evaluate).
-class OrbitalInfoObserver : public cpu::ComponentBase {
+/// the SCF (MD, Minimize, or Evaluate).
+class OrbitalInfoObserver : public cpu::Component {
   public:
     /// @brief Construct.
-    /// @param handle        Shared view of the SCFEvaluator's latest state.
+    /// @param handle        Shared view of the SCF's latest state.
     /// @param filename      Output TSV path. Empty string disables file output.
     /// @param also_stdout   If true, mirror each row to stdout.
     OrbitalInfoObserver(SCFResultHandle handle, std::string filename = "",

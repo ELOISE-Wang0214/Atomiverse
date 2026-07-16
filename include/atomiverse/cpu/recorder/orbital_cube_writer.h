@@ -1,7 +1,7 @@
 /// @file cpu/recorder/orbital_cube_writer.h
 /// @brief OrbitalCubeWriter -- Gaussian-cube molecular-orbital dump.
 ///
-/// Reads the latest MO coefficients and shells from a sibling SCFEvaluator
+/// Reads the latest MO coefficients and shells from a sibling SCF
 /// via `SCFResultHandle`. Evaluates
 ///   psi_i(r) = sum_mu C_alpha(mu, i) * phi_mu(r)
 /// on a uniform Cartesian grid and writes a Gaussian ".cube" file.
@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/recorder/cube.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 
@@ -25,10 +25,10 @@ namespace recorder {
 enum class OrbitalSpin { Alpha, Beta };
 
 /// @brief Molecular-orbital cube writer.
-class OrbitalCubeWriter : public cpu::ComponentBase {
+class OrbitalCubeWriter : public cpu::Component {
   public:
     /// @brief Construct with automatic bounding-box grid.
-    /// @param handle     Shared view of the SCFEvaluator's state.
+    /// @param handle     Shared view of the SCF's state.
     /// @param filename   Output cube path.
     /// @param mo_index   Zero-based MO index (HOMO = n_occ - 1, LUMO = n_occ).
     /// @param spin       Which spin channel to read from.

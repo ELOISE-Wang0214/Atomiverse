@@ -2,7 +2,7 @@
 /// @brief DensityCubeWriter -- Gaussian-cube electron-density dump.
 ///
 /// Reads the latest density matrix and shell descriptors from a sibling
-/// `SCFEvaluator` via `SCFResultHandle`. Evaluates
+/// `SCF` via `SCFResultHandle`. Evaluates
 ///   rho(r) = sum_{mu,nu} [P_alpha + P_beta]_{mu,nu} * phi_mu(r) * phi_nu(r)
 /// on a uniform Cartesian grid and writes a Gaussian ".cube" file.
 ///
@@ -12,7 +12,7 @@
 ///
 /// Usage:
 /// @code
-///   cpu::scf::SCFEvaluator scf{config};
+///   cpu::scf::SCF scf{config};
 ///   auto handle = scf.result_handle();
 ///   opt.on(minimizer::Phase::force).add(std::move(scf));
 ///   opt.on(minimizer::Phase::end_of_step)
@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/recorder/cube.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 
@@ -35,10 +35,10 @@ namespace recorder {
 /// @brief Electron-density cube writer.
 ///
 /// Default stride = 0 (every step). Set stride > 0 to thin output.
-class DensityCubeWriter : public cpu::ComponentBase {
+class DensityCubeWriter : public cpu::Component {
   public:
     /// @brief Construct with automatic bounding-box grid.
-    /// @param handle     Shared view of the SCFEvaluator's state.
+    /// @param handle     Shared view of the SCF's state.
     /// @param filename   Output cube path. Overwritten on each launch.
     /// @param padding    Bounding-box padding [Bohr].
     /// @param spacing    Isotropic grid spacing [Bohr].

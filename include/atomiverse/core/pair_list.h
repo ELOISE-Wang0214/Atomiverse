@@ -11,13 +11,13 @@
 /// @par Canonical SoA fields
 /// | Field    | Type | Shape      | Description                         |
 /// |----------|------|------------|-------------------------------------|
-/// | i        | Int  | [n_pairs]  | First atom index                    |
-/// | j        | Int  | [n_pairs]  | Second atom index                   |
-/// | dx       | Real | [n_pairs]  | x displacement j-i [Angstrom]       |
-/// | dy       | Real | [n_pairs]  | y displacement j-i [Angstrom]       |
-/// | dz       | Real | [n_pairs]  | z displacement j-i [Angstrom]       |
-/// | dist     | Real | [n_pairs]  | Pair distance [Angstrom]            |
-/// | n_pairs  | Int  | scalar     | Number of valid pairs               |
+/// | i        | LocalInt | [n_pairs] | First atom index                  |
+/// | j        | LocalInt | [n_pairs] | Second atom index                 |
+/// | dx       | AccReal  | [n_pairs] | x displacement j-i [Angstrom]    |
+/// | dy       | AccReal  | [n_pairs] | y displacement j-i [Angstrom]    |
+/// | dz       | AccReal  | [n_pairs] | z displacement j-i [Angstrom]    |
+/// | dist     | AccReal  | [n_pairs] | Pair distance [Angstrom]         |
+/// | n_pairs  | LocalInt | scalar    | Number of valid pairs            |
 ///
 /// @par Conventions
 /// - Half-list: each pair (i,j) appears once with i < j.

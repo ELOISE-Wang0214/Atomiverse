@@ -52,7 +52,7 @@ namespace cuda {
 namespace minimizer {
 
 /// @brief L-BFGS Optimizer component (two-loop recursion on device).
-class LBFGS : public ComponentBase {
+class LBFGS : public Component {
   public:
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
@@ -85,10 +85,11 @@ class LBFGS : public ComponentBase {
     /// @brief Component name.
     /// @return "lbfgs".
     std::string name() const override { return "lbfgs"; }
+    Role role() const override { return 0; }
 
     /// @brief Structural role of this component.
     /// @return ComponentRole::Optimizer.
-    ComponentRole role() const override { return ComponentRole::Optimizer; }
+    /* role via Optimizer base */
 
     /// @brief Default bindings: search_direction + convergence_check.
     std::vector<DefaultBinding> default_bindings() const override {

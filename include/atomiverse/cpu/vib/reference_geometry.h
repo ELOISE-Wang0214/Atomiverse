@@ -25,14 +25,14 @@ namespace vib {
 ///
 /// `role() == None` (structural infrastructure, like `Zero*`); writes no
 /// frame field, so `capabilities() == None`.
-class ReferenceGeometry : public cpu::ComponentBase {
+class ReferenceGeometry : public cpu::Component {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit ReferenceGeometry(HessianWorkspace* ws) : ws_(ws) {}
 
     std::string name() const override { return "vib_reference_geometry"; }
-    ComponentRole role() const override { return ComponentRole::None; }
+    /* role default default role 0 */
 
     /// @brief Default binding: `vib::Phase::setup` @ 0.
     /// @return Single binding placing this at the setup phase.
@@ -45,7 +45,7 @@ class ReferenceGeometry : public cpu::ComponentBase {
     void launch(const cpu::LaunchContext& ctx) override {
         if (ws_->r0_ready)
             return;
-        const int n = ctx.frame.atoms.size();
+        const int n = ctx.frame.nlocal();
         // Hoisted once before the loop -- the 13.7x rule.
         const StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
         const StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);

@@ -8,8 +8,8 @@
 /// them converged or `max_iter` is reached.
 ///
 /// Exposes the same LAMMPS-shaped categorical setter API as
-/// `cpu::md::MD` (minus the time-evolution setters): set_pair,
-/// set_bond, set_angle, set_dihedral, set_neighbor, set_optimizer,
+/// `cpu::md::MD` (minus the time-evolution setters): add_potential,
+/// add_potential, set_angle, set_dihedral, set_neighbor, set_optimizer,
 /// set_observer, set_record, set_thermo — all except set_optimizer
 /// are inherited from CPUDriver.
 ///
@@ -31,7 +31,7 @@
 ///   force @     0  pair / bonded evaluators
 ///   force @   +10  comm::HaloRecv    (install_defaults, gated as above)
 ///   force @   +20  md::mpi::Reduce   (install_defaults; makes
-///                                     frame.scalars global *before* the
+///                                     Frame metadata global *before* the
 ///                                     convergence_check phase reads them)
 /// @endcode
 ///
@@ -44,6 +44,7 @@
 /// rank 0 only.
 #pragma once
 
+#include <memory>
 #include <string>
 #include <type_traits>
 
@@ -51,7 +52,15 @@
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
+#include "atomiverse/cpu/component/bias.h"
+#include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
+#include "atomiverse/cpu/component/path_coupling.h"
+#include "atomiverse/cpu/component/plane_wave.h"
+#include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/materialize.h"
@@ -70,7 +79,7 @@ namespace minimizer {
 ///
 /// `validate_components()` requires ≥ 1 `Optimizer` component (e.g. `LBFGS`,
 /// `CG`) and ≥ 1 `Evaluator` with `Capability::Energy` or `Capability::Force`
-/// (e.g. `SCFEvaluator`).
+/// (e.g. `SCF`).
 ///
 /// Inheritance: Minimize → CPUDriver<minimizer::Phase> →
 /// Driver<minimizer::Phase, cpu::device_tag>. There is no `OptimizeDriver` category in
@@ -80,6 +89,12 @@ namespace minimizer {
 /// CPUDriver provides the shared categorical setters and slot variables.
 class Minimize : public CPUDriver<ATV::minimizer::Phase> {
   public:
+    /// @brief Completed run plus the still-live owner decomposition.
+    struct DetachedRun {
+        int iterations = 0;
+        std::unique_ptr<cpu::md::mpi::DomainDecomposition> decomposition;
+    };
+
     /// @brief Iterate to convergence, or up to `max_iter` iterations.
     ///
     /// Unlike MD (continuable: consecutive calls extend one trajectory), each `run()`
@@ -93,27 +108,16 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
     /// @param max_iter Iteration budget.
     /// @return Number of iterations actually executed (≤ `max_iter`).
     int run(cpu::Frame& frame, int max_iter) {
-        setup_pass(frame);
-        // Publish the re-entrant force re-eval handle so an Optimizer component can
-        // evaluate trial geometries during the line_search phase. Replays the force
-        // phase (zeroing → evaluator → reduce) on the frame's current geometry.
-        // Captures `this`; valid for the run.
-        this->backend_->context().opt.reeval_forces = [this](bool /*need_grad*/) {
-            this->backend_->run_stage(Traits::eval_phase, /*step_idx=*/0);
-        };
-        int iters = 0;
-        for (int s = 0; s < max_iter; ++s) {
-            mutable_outer_status().reset();
-            step_once(s);
-            ++iters;
-            // The optimizer PUBLISHED its metrics during the step; the handlers judge
-            // them here. Neither LBFGS nor CG decides its own convergence any more —
-            // which is why a nested optimizer can no longer stop this loop.
-            if (poll_handlers_(s) != Verdict::Continue)
-                break;
-        }
-        teardown_pass();
-        return iters;
+        return run_impl_(frame, max_iter, false).iterations;
+    }
+
+    /// @brief Optimize and transfer the final owner decomposition.
+    ///
+    /// Task orchestration uses this entry point to gather the final distributed
+    /// Frame after component destruction. The decomposition is detached before
+    /// Runtime shutdown, so its Cartesian communicator remains valid for gather.
+    DetachedRun run_detached(cpu::Frame& frame, int max_iter) {
+        return run_impl_(frame, max_iter, true);
     }
 
     /// @brief User-facing entry — optimize the system stored in a molrs.Frame.
@@ -137,16 +141,26 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
 
     // ─── Minimizer-specific categorical setters ─────────────────────
     //
-    // set_pair, set_bond, set_angle, set_dihedral, set_neighbor,
+    // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
     // set_observer, set_record, set_thermo are inherited from CPUDriver.
 
     /// @brief Configure the optimization algorithm (LAMMPS `min_style`).
     template <typename O>
+        requires(!std::is_lvalue_reference_v<O>)
     Minimize& set_optimizer(O&& o) {
-        this->set_singular_default_(std::forward<O>(o), optimizer_set_,
-                                    "set_optimizer");
+        this->set_singular_default_owned_(std::forward<O>(o), optimizer_set_,
+                                          "set_optimizer");
         return *this;
     }
+
+    template <typename O>
+    Minimize& set_optimizer_ref(O& o) {
+        this->set_singular_default_ref_(o, optimizer_set_, "set_optimizer_ref");
+        return *this;
+    }
+
+    template <typename O>
+    Minimize& set_optimizer(O&) = delete;
 
     /// @brief Owner-migration cadence in optimizer iterations (default 10,
     /// matching `HaloSend`'s full-rebuild cadence). Each actual migration
@@ -160,23 +174,27 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
     }
 
   protected:
-    /// @brief An Optimizer, and an Evaluator that provides Energy or Force.
+    /// @brief Optimizer + energy/force kind.
     void validate_components() const override {
         bool has_optimizer = false;
-        bool has_energy_or_force_evaluator = false;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Optimizer)
+        bool has_energy_or_force = false;
+        for_each_pending([&](const cpu::Component& c) {
+            if (dynamic_cast<const Optimizer*>(&c))
                 has_optimizer = true;
-            if (c.role() == ComponentRole::Evaluator
-                && (has_capability(c.capabilities(), Capability::Energy)
-                    || has_capability(c.capabilities(), Capability::Force)))
-                has_energy_or_force_evaluator = true;
+            if (dynamic_cast<const Potential*>(&c)
+                || dynamic_cast<const Bias*>(&c)
+                || dynamic_cast<const PathCoupling*>(&c)
+                || dynamic_cast<const HF*>(&c)
+                || dynamic_cast<const Semiempirical*>(&c)
+                || dynamic_cast<const PlaneWave*>(&c)
+                || dynamic_cast<const GPW*>(&c))
+                has_energy_or_force = true;
         });
         if (!has_optimizer)
             throw_missing("Optimizer");
-        if (!has_energy_or_force_evaluator)
+        if (!has_energy_or_force)
             throw_missing(
-                "Evaluator with Capability::Energy or Capability::Force");
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
     }
 
     void install_defaults() override {
@@ -227,6 +245,35 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
     }
 
   private:
+    DetachedRun run_impl_(cpu::Frame& frame, int max_iter, bool detach_dd) {
+        setup_pass(frame);
+        // Publish the re-entrant force re-eval handle so an Optimizer component can
+        // evaluate trial geometries during the line_search phase. Replays the force
+        // phase (zeroing → evaluator → reduce) on the frame's current geometry.
+        // Captures `this`; valid for the run.
+        this->backend_->context().opt.reeval_forces =
+            [this](bool /*need_grad*/) {
+                this->backend_->run_stage(Traits::eval_phase, /*step_idx=*/0);
+            };
+        int iters = 0;
+        for (int s = 0; s < max_iter; ++s) {
+            mutable_outer_status().reset();
+            step_once(s);
+            ++iters;
+            // The optimizer publishes metrics; handlers alone judge convergence.
+            if (poll_handlers_(s) != Verdict::Continue)
+                break;
+        }
+
+        DetachedRun result;
+        result.iterations = iters;
+        if (detach_dd)
+            result.decomposition = teardown_pass_releasing_dd();
+        else
+            teardown_pass();
+        return result;
+    }
+
     std::optional<std::string> optimizer_set_;
     int migrate_every_ = 10;
 };

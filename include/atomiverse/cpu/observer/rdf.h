@@ -39,7 +39,7 @@ namespace ATV {
 /// sim.on(md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.8});
 ///
 /// RDF rdf{5.5, 200, 100, "rdf.dat"};  // r_max, bins, freq, file
-/// sim.add(rdf);                        // lvalue → non-owning; read gr() after
+/// sim.add_ref(rdf);                    // explicit borrow; read gr() after
 /// sim.build();
 /// sim.run(frame, 1'000'000);
 /// @endcode
@@ -53,7 +53,7 @@ class RDF : public cpu::md::AsyncObserver {
         std::string output_file = "rdf.dat");
 
     std::string name() const override { return "rdf_async"; }
-    ComponentRole role() const override { return ComponentRole::Observer; }
+    /* role via Observer base */
     int frequency() const override { return freq_; }
 
     cpu::CaptureMask capture_mask() const override {

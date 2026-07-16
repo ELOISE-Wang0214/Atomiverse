@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/thermostat.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -73,7 +73,7 @@ namespace md {
 /// behavioural change for existing callers. `set_T_target` is retained
 /// for the segmented-run idiom (retune the setpoint between `run()`
 /// calls); the ramp is the continuous alternative.
-class NoseHoover : public cpu::ComponentBase {
+class NoseHoover : public cpu::Thermostat {
   public:
     /// @param T_start Ramp start / target temperature [K]
     ///                (LAMMPS `Tstart`).
@@ -83,9 +83,8 @@ class NoseHoover : public cpu::ComponentBase {
     NoseHoover(double T_start, double tau_T, double dt);
 
     std::string name() const override { return "nose_hoover"; }
-    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /* role via Thermostat base */
     /// @brief Write-set: rescales velocities by the thermostat factor.
-    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, +100),
                 ATV::make_binding(ATV::md::Phase::final_integrate, +100)};

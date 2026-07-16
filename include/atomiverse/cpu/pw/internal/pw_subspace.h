@@ -4,7 +4,7 @@
 ///        by the CPU and CUDA plane-wave band solvers.
 #pragma once
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"
 #include <complex>
 #include <vector>
@@ -19,13 +19,15 @@ inline int n_m_for_l(int l) { return 2 * l + 1; }
 
 /// @brief Real spherical harmonics Y_lm(Ĝ) for l ≤ 2.
 /// @param out Array of size 2l+1 (m = -l..l).
-void compute_ylm(Real x, Real y, Real z, Real r, int l, Real* out);
+void compute_ylm(AccReal x, AccReal y, AccReal z, AccReal r, int l,
+                 AccReal* out);
 
 /// @brief Cyclic Jacobi eigensolver for small dense symmetric matrices.
 ///
 /// Destroys `A`; eigenpairs are returned sorted ascending — both band
 /// solvers take the first n_bands columns as the occupied bands.
-void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep = 20);
+void jacobi_eigh(int n, AccReal* A, AccReal* eig, AccReal* vecs,
+                 int max_sweep = 20);
 
 /// @brief Build the initial Davidson subspace for the current k-point.
 ///
@@ -35,7 +37,7 @@ void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep = 20);
 ///
 /// @return n_sub, the number of initial subspace vectors.
 int init_subspace(const PWWorkspace& ws, int n_bands,
-                  std::vector<std::complex<Real>>& sub_vectors);
+                  std::vector<std::complex<AccReal>>& sub_vectors);
 
 } // namespace internal
 } // namespace pw

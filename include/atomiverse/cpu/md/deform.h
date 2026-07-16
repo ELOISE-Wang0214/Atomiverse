@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -59,7 +59,7 @@ namespace md {
 ///
 /// Bound at `initial_integrate @ +200`, after VelocityVerlet (+0) and
 /// NoseHoover (+100).
-class Deform : public cpu::ComponentBase {
+class Deform : public cpu::Integrator {
   public:
     /// @brief Per-axis strain mode -- mirrors LAMMPS `fix deform` keywords.
     enum class Mode {
@@ -81,9 +81,8 @@ class Deform : public cpu::ComponentBase {
     Deform(Mode mode, double rate, double dt, int axis = 0);
 
     std::string name() const override { return "deform"; }
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     /// @brief Write-set: affine remap of coordinates as the box strains.
-    Capability capabilities() const override { return Capability::Position; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 200)};
     }

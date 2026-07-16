@@ -1,5 +1,5 @@
 /// @file cpu/task/task_materializer.cpp
-/// @brief TaskSpec registration replay onto MD / Evaluate pipelines.
+/// @brief Typed TaskSpec registration replay onto MD/Evaluate/Minimize.
 
 #include "atomiverse/cpu/task/task_materializer.h"
 
@@ -7,9 +7,11 @@
 #include <type_traits>
 #include <utility>
 
+#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
@@ -18,22 +20,16 @@
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 
-namespace ATV {
-namespace cpu {
-namespace task {
-
+namespace ATV::cpu::task {
 namespace {
 
-/// Replay one entry onto the MD driver exactly as the bindings registered
-/// it: default-binding `add()` when `binding` is empty, explicit
-/// `on(phase).add(comp, order)` otherwise.
-void register_entry(md::MD& md, const ComponentEntry& entry) {
-    const auto reg = [&](auto comp) {
+void register_md_entry(md::MD& driver, const MDComponentEntry& entry) {
+    const auto reg = [&](auto component) {
         if (entry.binding)
-            md.on(entry.binding->phase)
-                .add(std::move(comp), entry.binding->order);
+            driver.on(entry.binding->phase)
+                .add(std::move(component), entry.binding->order);
         else
-            md.add(std::move(comp));
+            driver.add(std::move(component));
     };
     std::visit(
         [&](const auto& p) {
@@ -56,57 +52,104 @@ void register_entry(md::MD& md, const ComponentEntry& entry) {
                 reg(cpu::md::NoseHoover{p.T_start, p.tau_T, p.dt});
             else if constexpr (std::is_same_v<P, ThermoParams>)
                 reg(cpu::Thermo{p.freq});
-            else if constexpr (std::is_same_v<P, AM1EvaluatorParams>)
-                // Unreachable: the MD TaskSpec ctor rejects AM1 entries.
-                throw std::logic_error(
-                    "task_materializer: AM1Evaluator entry inside an MD "
-                    "task (TaskSpec invariant breached)");
+        },
+        entry.params);
+}
+
+void register_minimize_entry(minimizer::Minimize& driver,
+                             const MinimizeComponentEntry& entry) {
+    const auto reg = [&](auto component) {
+        if (entry.binding)
+            driver.on(entry.binding->phase)
+                .add(std::move(component), entry.binding->order);
+        else
+            driver.add(std::move(component));
+    };
+    std::visit(
+        [&](const auto& p) {
+            using P = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<P, PairLJCutParams>)
+                reg(cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff});
+            else if constexpr (std::is_same_v<P, NeighborListParams>)
+                reg(cpu::md::NeighborList<>{p.cutoff, p.skin});
+            else if constexpr (std::is_same_v<P, LBFGSParams>)
+                reg(cpu::minimizer::LBFGS{p.memory, p.alpha0, p.max_ls});
         },
         entry.params);
 }
 
 } // namespace
 
-TaskMaterializer::TaskMaterializer(const TaskSpec& spec)
-    : kind_(spec.kind()), n_steps_(spec.n_steps()) {
+TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
     if (kind_ == TaskKind::MD) {
+        const auto& task = spec.md();
+        budget_ = static_cast<int>(task.n_steps);
         md_.emplace();
-        for (const auto& entry : spec.entries())
-            register_entry(*md_, entry);
+        for (const auto& entry : task.entries)
+            register_md_entry(*md_, entry);
         md_->build();
         return;
     }
-    // SinglePoint (v1: AM1). The TaskSpec ctor guarantees exactly one
-    // AM1 entry with no explicit binding; the evaluator's phase is pinned
-    // here (evaluate::Phase::evaluate), not on the wire.
-    const auto& p = std::get<AM1EvaluatorParams>(spec.entries().front().params);
-    semiempirical::AM1Config cfg;
-    cfg.charge = p.charge;
-    cfg.multiplicity = p.multiplicity;
-    cfg.max_iter = p.max_iter;
-    cfg.density_tol = p.density_tol;
-    cfg.energy_tol = p.energy_tol;
-    eval_.emplace();
-    // AM1 is a molecular whole-system solve: under multi-rank MPI the
-    // Backend must NOT spatially decompose the replica (each rank solves
-    // the full molecule redundantly; lockstep-trivial).
-    eval_->set_serial_on_replica();
-    eval_->on(ATV::evaluate::Phase::evaluate)
-        .add(semiempirical::AM1Evaluator{cfg});
-    eval_->build();
+
+    if (kind_ == TaskKind::SinglePoint) {
+        const auto& p = spec.single_point().evaluator;
+        semiempirical::AM1Config cfg;
+        cfg.charge = p.charge;
+        cfg.multiplicity = p.multiplicity;
+        cfg.max_iter = p.max_iter;
+        cfg.density_tol = p.density_tol;
+        cfg.energy_tol = p.energy_tol;
+        eval_.emplace();
+        eval_->set_serial_on_replica();
+        eval_->on(ATV::evaluate::Phase::evaluate)
+            .add(semiempirical::AM1Evaluator{cfg});
+        eval_->build();
+        return;
+    }
+
+    const auto& task = spec.minimize();
+    budget_ = static_cast<int>(task.max_iter);
+    minimize_.emplace();
+    const auto& c = task.convergence;
+    minimize_->add_handler(cpu::ForceConverged{c.ftol, c.rms_ftol, c.max_dtol,
+                                               c.rms_dtol, c.etol});
+    for (const auto& entry : task.entries)
+        register_minimize_entry(*minimize_, entry);
+    minimize_->build();
 }
 
-void TaskMaterializer::run(cpu::Frame& frame) {
-    if (kind_ == TaskKind::MD)
-        md_->run(frame, static_cast<int>(n_steps_));
-    else
+TaskResult TaskMaterializer::run(cpu::Frame& frame) {
+    completed_dd_.reset();
+    if (kind_ == TaskKind::MD) {
+        const int iterations = md_->run(frame, budget_);
+        return TaskResult{iterations, md_->converged(), md_->stop_reason()};
+    }
+    if (kind_ == TaskKind::SinglePoint) {
         eval_->run(frame);
+        return TaskResult{1, false, {}};
+    }
+
+    auto completed = minimize_->run_detached(frame, budget_);
+    const int iterations = completed.iterations;
+    completed_dd_ = std::move(completed.decomposition);
+    return TaskResult{iterations, minimize_->converged(),
+                      minimize_->stop_reason()};
 }
 
 std::unique_ptr<md::mpi::DomainDecomposition> TaskMaterializer::release_dd() {
-    return kind_ == TaskKind::MD ? md_->release_dd() : nullptr;
+    if (kind_ == TaskKind::MD)
+        return md_->release_dd();
+    if (kind_ == TaskKind::Minimize)
+        return std::move(completed_dd_);
+    return nullptr;
 }
 
-} // namespace task
-} // namespace cpu
-} // namespace ATV
+const Plan<cpu::Component>& TaskMaterializer::plan() const {
+    if (kind_ == TaskKind::MD)
+        return md_->plan();
+    if (kind_ == TaskKind::SinglePoint)
+        return eval_->plan();
+    return minimize_->plan();
+}
+
+} // namespace ATV::cpu::task

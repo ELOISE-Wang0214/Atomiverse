@@ -26,7 +26,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -34,14 +34,14 @@ namespace cpu {
 namespace minimizer {
 
 /// @brief Writer that persists a single-frame XYZ of the final geometry.
-class FinalGeometry : public cpu::ComponentBase {
+class FinalGeometry : public cpu::Recorder {
   public:
     /// @brief Construct.
     /// @param filename Output XYZ path (overwritten once at end of run).
     explicit FinalGeometry(std::string filename);
 
     std::string name() const override { return "final_geometry"; }
-    ComponentRole role() const override { return ComponentRole::Recorder; }
+    /* role via Recorder base */
 
     std::vector<DefaultBinding> default_bindings() const override {
         // Run late in end_of_step so that converged-step forces/energy have

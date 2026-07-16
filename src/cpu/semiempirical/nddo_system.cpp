@@ -31,12 +31,12 @@ NDDOSystem build_am1_system(const cpu::Frame& frame, int charge,
 
     NDDOSystem system;
     system.charge = charge;
-    system.atoms.reserve(static_cast<std::size_t>(frame.atoms.size()));
+    system.atoms.reserve(static_cast<std::size_t>(frame.nlocal()));
 
     int next_ao = 0;
     double electron_count = -static_cast<double>(charge);
     const int* __restrict sp_type = frame.span(kAtom_type);
-    for (int i = 0; i < frame.atoms.size(); ++i) {
+    for (int i = 0; i < frame.nlocal(); ++i) {
         const int z = sp_type[i];
         if (!am1_has_parameter(z)) {
             throw std::runtime_error(

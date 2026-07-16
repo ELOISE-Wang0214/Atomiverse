@@ -51,7 +51,7 @@ void FixCSVR::build(const cpu::BuildContext& ctx) {
     // Global DOF count (3N − 3). atoms.size() is global only on the initial
     // build; after a domain partition it is n_local + n_ghost, so recover the
     // global N by allreduce-summing dd->n_local (mirrors NoseHoover::build).
-    int n_global = static_cast<int>(ctx.frame.atoms.size());
+    int n_global = static_cast<int>(ctx.frame.nlocal());
 #ifdef ATV_HAS_MPI
     if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
         && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
@@ -98,12 +98,11 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
     double ke_local = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
     for (int i = 0; i < n; ++i) {
-        const double v2 = sp_vx[i] * sp_vx[i]
-                          + sp_vy[i] * sp_vy[i]
-                          + sp_vz[i] * sp_vz[i];
+        const double v2 =
+            sp_vx[i] * sp_vx[i] + sp_vy[i] * sp_vy[i] + sp_vz[i] * sp_vz[i];
         ke_local += sp_mass[i] * v2;
     }
-    ke_local *= 0.5 * kMvv2e;
+    ke_local *= 0.5 * units::mass_v2_to_energy;
 
     double ke = ke_local;
 #ifdef ATV_HAS_MPI
@@ -120,7 +119,7 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
         return;
 
     const double ke_bar =
-        0.5 * static_cast<double>(n_dof) * kBoltzmann * T_live_;
+        0.5 * static_cast<double>(n_dof) * units::kB_ev_per_k * T_live_;
 
     // Two GLOBAL random draws, identical on every rank (seeded from step only).
     std::mt19937_64 rng(step_seed(seed_, ctx.step));
@@ -159,7 +158,8 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
     // E_pot + E_kin + H~_therm is drift-free.
     const double ke_after = alpha2 * ke;
     thermostat_energy_ += -(ke_after - ke);
-    f.scalars.conserved = f.scalars.energy + ke_after + thermostat_energy_;
+    f.meta.get(kConserved) =
+        f.meta.get(kEnergy) + ke_after + thermostat_energy_;
 }
 
 } // namespace md
