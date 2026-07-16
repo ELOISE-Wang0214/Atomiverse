@@ -13,6 +13,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/component_role.h"
@@ -227,11 +228,10 @@ TEST(FrameRegistry, ResolutionWindowCountsAndThrows) {
 namespace {
 
 /// @brief A component that breaks the 13.7× rule on purpose: resolves a key
-///        per "atom" inside its loop.
-class KeyLookupInALoop : public cpu::Component {
+///        per "atom" inside its loop. Kind is Potential so Evaluate accepts it.
+class KeyLookupInALoop : public cpu::Potential {
   public:
     std::string name() const override { return "key_lookup_in_a_loop"; }
-    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext& ctx) override {
         double acc = 0.0;
         for (int i = 0; i < 100; ++i) {
