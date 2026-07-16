@@ -27,8 +27,10 @@
 /// @endcode
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -131,6 +133,21 @@ class PWSolver {
     // Owned result buffer (returned by reference from run()).
     PWResult result_;
 };
+
+/// @brief Finite-difference ionic forces F_a = −dE/dR_a via central differences.
+///
+/// Runs a full plane-wave SCF at ±h displacements of each atom along each
+/// Cartesian axis (6 N_atoms SCF solves). Correct but expensive; analytic
+/// Hellmann–Feynman + Pulay forces are a follow-on (mirrors GPW's first
+/// oracle path `gpw_forces_fd`).
+///
+/// @param frame Geometry [Å]; not mutated.
+/// @param cfg   Plane-wave configuration (UPF path, ecut, k-mesh, SCF tol).
+/// @param h_ang Displacement step [Å] (default 1e-3).
+/// @return Forces [eV/Å], one xyz triple per atom, same order as frame rows.
+/// @throws std::invalid_argument if h_ang ≤ 0 or the frame has no atoms.
+std::vector<std::array<double, 3>>
+pw_forces_fd(const cpu::Frame& frame, const PWConfig& cfg, double h_ang = 1e-3);
 
 } // namespace pw
 } // namespace cpu

@@ -42,6 +42,7 @@
 #include <cmath>
 #include <complex>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -232,6 +233,50 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
                  config_.max_iter, result_.energy);
 
     return result_;
+}
+
+std::vector<std::array<double, 3>>
+pw_forces_fd(const cpu::Frame& frame, const PWConfig& cfg, double h_ang) {
+    if (h_ang <= 0.0)
+        throw std::invalid_argument("pw_forces_fd: h_ang must be > 0");
+    const int n = frame.nlocal();
+    if (n <= 0)
+        throw std::invalid_argument("pw_forces_fd: frame has no atoms");
+
+    // Working copy: only positions are perturbed; type/mass/box stay fixed.
+    cpu::Frame work = frame;
+
+    auto x = work.span(kAtom_x);
+    auto y = work.span(kAtom_y);
+    auto z = work.span(kAtom_z);
+    StorageReal* axes[3] = {x.data(), y.data(), z.data()};
+
+    std::vector<std::array<double, 3>> forces(static_cast<std::size_t>(n),
+                                              {0.0, 0.0, 0.0});
+    // Energy is in Ry; convert dE/dR to eV/Å for the Frame force convention.
+    const double ry_to_ev = qe_units::rydberg_to_ev;
+
+    for (int a = 0; a < n; ++a) {
+        for (int k = 0; k < 3; ++k) {
+            const StorageReal r0 = axes[k][a];
+
+            axes[k][a] = r0 + static_cast<StorageReal>(h_ang);
+            PWSolver plus{cfg};
+            plus.build(work);
+            const double e_plus = plus.run(work).energy; // Ry
+
+            axes[k][a] = r0 - static_cast<StorageReal>(h_ang);
+            PWSolver minus{cfg};
+            minus.build(work);
+            const double e_minus = minus.run(work).energy;
+
+            axes[k][a] = r0;
+            // F = -dE/dR with E in eV, R in Å
+            forces[static_cast<std::size_t>(a)][static_cast<std::size_t>(k)] =
+                -(e_plus - e_minus) * ry_to_ev / (2.0 * h_ang);
+        }
+    }
+    return forces;
 }
 
 } // namespace pw

@@ -428,6 +428,7 @@ if(ATV_BUILD_PW)
     atv_add_cpp_test(test_cpu_pw_components cpu/pw/test_pw_components.cpp)
     atv_add_cpp_test(test_cpu_pw_si         cpu/pw/test_pw_si.cpp)
     atv_add_cpp_test(test_cpu_pw_evaluator  cpu/pw/test_pw_evaluator.cpp)
+    atv_add_cpp_test(test_cpu_pw_forces     cpu/pw/test_pw_forces.cpp)
 
     # FFT test needs FFTW3 linkage
     add_executable(test_cpu_pw_fft cpu/pw/test_fft.cpp)

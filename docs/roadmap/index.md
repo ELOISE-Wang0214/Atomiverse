@@ -117,8 +117,9 @@ watch out for in the ones that do.
 
 ### Plane-wave DFT
 
-- **Energy only — no forces, no stress.** `PWEvaluator` declares
-  `Capability::Energy`, so plane waves cannot drive MD or geometry optimization.
+- **Forces via FD of energy; no stress.** `PWEvaluator::with_gradient(true)`
+  fills ionic forces with `pw_forces_fd` (6N SCF cost). Analytic PW forces and
+  the stress tensor remain open, so variable-cell work is still blocked.
 - **Effectively LDA.** The XC builder calls the PBE routine with `sigma = 0`,
   which is the Slater + PW92 LDA limit. There is no true GGA and no spin
   polarization in the plane-wave path.

@@ -189,9 +189,10 @@ path has no dispersion correction.
 Two periodic DFT engines exist, with disjoint strengths:
 
 - **Plane-wave DFT** (`cpu::pw::PWSolver`, `cuda::pw`) — k-points, norm-conserving
-  UPF pseudopotentials, block Davidson. **Energy only**: no forces, no stress, so
-  it cannot drive MD or optimization. Its XC is the Slater + PW92 LDA limit (the
-  PBE routine is called with `sigma = 0`), spin-unpolarized.
+  UPF pseudopotentials, block Davidson. **Ionic forces via central FD of the SCF
+  energy** (`pw_forces_fd`, `PWEvaluator::with_gradient(true)`); analytic
+  Hellmann–Feynman + Pulay is a follow-on. **No stress.** XC is the Slater +
+  PW92 LDA limit (PBE called with `sigma = 0`), spin-unpolarized.
 - **GPW**, Gaussian and plane waves (`cpu::gpw::GPWSolver`) — Gaussian basis
   collocated on a uniform grid, GTH pseudopotentials, LDA (Padé) or PBE, DFT-D3,
   **analytic forces**, OT minimizer. **Γ-point and closed-shell only.** CPU only.
@@ -241,9 +242,9 @@ Which engine backs which ✓:
 | Maximally localized Wannier functions  |  ○  |   ○  |
 
 - **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay), validated
-  against finite differences. Plane waves have no forces at all — which is why
-  the ab-initio MD rows in [Molecular Dynamics](molecular-dynamics.md) list GPW
-  and molecular SCF, but not PW.
+  against finite differences. Plane-wave forces ship as **re-SCF central FD**
+  (`pw_forces_fd`); that is enough to drive Minimize / MD, at 6N SCF cost.
+  Analytic PW forces remain ○.
 - **No stress tensor on any periodic engine**, hence no variable-cell relaxation
   (doubly blocked — see [Optimization](optimization.md)).
 - **Finite-displacement phonons** is ○ even though a finite-difference Hessian
