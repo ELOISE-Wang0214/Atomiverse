@@ -53,3 +53,4 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
 | Domain | Case | What it pins | Reference |
 |---|---|---|---|
 | `md` | `lj_argon` | NVE energy conservation of the LJ argon fluid | Rahman (1964); Frenkel & Smit §4.3 |
+| `md` | `dihedral_charmm` | CHARMM periodic torsion \(V=K(1+\cos(n\phi-\delta))\) at \(\phi=\pi/2\) | MacKerell et al. (1998); LAMMPS `dihedral_style charmm` |

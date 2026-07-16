@@ -27,10 +27,10 @@ and both are benchmarked against LAMMPS/Kokkos in
 | Restricted-bending angle potential |  ○  |   ○  |
 | Urey–Bradley potential             |  ○  |   ○  |
 | Tabulated angle potential          |  ○  |   ○  |
-| Periodic Fourier torsion           |  ○  |   ○  |
+| Periodic Fourier torsion           |  ✓  |   ○  |
 | OPLS torsion                       |  ○  |   ○  |
 | Ryckaert–Bellemans torsion         |  ✓  |   ✓  |
-| CHARMM torsion                     |  ○  |   ○  |
+| CHARMM torsion                     |  ✓  |   ○  |
 | Harmonic improper torsion          |  ○  |   ○  |
 | Periodic improper torsion          |  ○  |   ○  |
 | CVFF improper torsion              |  ○  |   ○  |
@@ -42,12 +42,19 @@ and both are benchmarked against LAMMPS/Kokkos in
 | Class-II bonded potential          |  ○  |   ○  |
 | Tabulated bonded potential         |  ○  |   ○  |
 
-The torsion style is `DihedralMultiHarmonic`, LAMMPS `dihedral_style
-multi/harmonic`: `V = Σₙ Cₙ cosⁿφ`. That is the Ryckaert–Bellemans functional
-form, which is why the RB row is ✓ — but it is *not* exposed under the OPLS or
-CHARMM parameterizations, and there is **no improper style of any kind**.
-Bonded forces are cross-validated against LAMMPS in
-`benchmarks/md/pe/validation/`.
+Two torsion styles share the same topology and geometry helpers
+(`dihedral_geom`):
+
+- `DihedralMultiHarmonic` — LAMMPS `dihedral_style multi/harmonic`:
+  \(V = \sum_n C_n \cos^n\phi\) (Ryckaert–Bellemans), CUDA mirror present.
+- `DihedralCharmm` — LAMMPS `dihedral_style charmm` **without** optional 1–4
+  pair weights: \(V = K(1 + \cos(n\phi - \delta))\). CPU only for now; 1–4
+  scaling remains on pair styles via `special_bonds`. Regression
+  `regressions/md/dihedral_charmm` pins analytic energies at \(\phi=\pi/2\).
+
+Neither is an OPLS parameterization table. There is **no improper style of any
+kind**. Bonded forces are cross-validated against LAMMPS in
+`benchmarks/md/pe/validation/` (multi/harmonic path).
 
 ## 2. Classical Nonbonded Potentials
 
@@ -58,7 +65,7 @@ Bonded forces are cross-validated against LAMMPS in
 | Buckingham potential                |  ○  |   ○  |
 | Morse nonbonded potential           |  ✓  |   ○  |
 | Tabulated pair potential            |  ○  |   ○  |
-| Coulomb potential                   |  ○  |   ○  |
+| Coulomb potential                   |  ✓  |   ○  |
 | Reaction-field electrostatics       |  ○  |   ○  |
 | Damped-shifted-force electrostatics |  ○  |   ○  |
 | Wolf summation                      |  ○  |   ○  |
@@ -79,9 +86,10 @@ Notes:
   yet expressible.
 - **Morse** exists as a demo style: O(N²) all-pairs, deliberately opting out of
   the neighbor list. Correct, but not a production style — and CPU-only.
-- **"Coulomb potential"** is ○ because there is no plain cut-off Coulomb style.
-  What exists is `CoulLong`, the real-space Ewald-screened `erfc(αr)/r` half of
-  the PME/Ewald split — it is not usable standalone.
+- **Cut-off Coulomb** is `PairCoulCut` (CPU; special_bonds aware). The plain
+  "Coulomb potential" row should be read as that style once the roadmap
+  matrix is refreshed — `CoulLong` remains the real-space Ewald-screened
+  `erfc(αr)/r` half of the PME/Ewald split.
 - The PME implementation is Essmann **smooth** PME (B-spline charge spreading →
   FFT → influence function), so the "Particle Mesh Ewald" and "Smooth Particle
   Mesh Ewald" rows are the same code. Despite an in-code reference to LAMMPS

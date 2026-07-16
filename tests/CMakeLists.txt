@@ -134,6 +134,7 @@ atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_kernel             cpu/potentials/test_pair_kernel.cpp)
+atv_add_cpp_test(test_cpu_dihedral_charmm         cpu/potentials/test_dihedral_charmm.cpp)
 atv_add_cpp_test(test_cpu_ewald_coul              cpu/kspace/test_ewald_coul.cpp)
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/kspace/test_pme_coul.cpp)

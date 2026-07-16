@@ -18,6 +18,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_charmm.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
@@ -27,34 +28,34 @@ namespace {
 cpu::Frame make_perturbed_butane() {
     cpu::Frame frame(4);
     // Off-trans geometry so cos(phi) != -1, sin(phi) != 0.
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 1.5;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.0;
-    frame.atoms.x[2] = 2.1;
-    frame.atoms.y[2] = 1.3;
-    frame.atoms.z[2] = 0.0;
-    frame.atoms.x[3] = 3.5;
-    frame.atoms.y[3] = 1.1;
-    frame.atoms.z[3] = 0.4;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 1.5;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_x)[2] = 2.1;
+    frame.span(ATV::kAtom_y)[2] = 1.3;
+    frame.span(ATV::kAtom_z)[2] = 0.0;
+    frame.span(ATV::kAtom_x)[3] = 3.5;
+    frame.span(ATV::kAtom_y)[3] = 1.1;
+    frame.span(ATV::kAtom_z)[3] = 0.4;
     for (int i = 0; i < 4; ++i) {
-        frame.atoms.mass[i] = 14.0;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_mass)[i] = 14.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(50.0);
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < 3; ++k) {
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     }
     for (int k = 0; k < 2; ++k) {
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     }
-    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
-    frame.atoms.build_special_list();
+    frame.add_dihedral(0, 1, 2, 3, 0);
+    frame.build_special_list();
     return frame;
 }
 
@@ -62,36 +63,36 @@ cpu::Frame make_perturbed_butane() {
 // after running `launch` on a freshly-zeroed-force copy of `frame`.
 double analytic_force(cpu::Frame frame, std::function<void(cpu::Frame&)> launch,
                       int atom_idx, int axis) {
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        frame.atoms.fx[i] = 0;
-        frame.atoms.fy[i] = 0;
-        frame.atoms.fz[i] = 0;
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
     }
-    frame.scalars.energy = 0;
+    frame.meta.get(ATV::kEnergy) = 0;
     launch(frame);
     if (axis == 0)
-        return frame.atoms.fx[atom_idx];
+        return frame.span(ATV::kAtom_fx)[atom_idx];
     if (axis == 1)
-        return frame.atoms.fy[atom_idx];
-    return frame.atoms.fz[atom_idx];
+        return frame.span(ATV::kAtom_fy)[atom_idx];
+    return frame.span(ATV::kAtom_fz)[atom_idx];
 }
 
 // Central-difference estimate of dE/dx[atom, axis].
 double fd_gradient(cpu::Frame frame, std::function<void(cpu::Frame&)> launch,
                    int atom_idx, int axis, double h) {
     auto eval = [&](cpu::Frame& f) {
-        for (int i = 0; i < f.atoms.size(); ++i) {
-            f.atoms.fx[i] = 0;
-            f.atoms.fy[i] = 0;
-            f.atoms.fz[i] = 0;
+        for (int i = 0; i < f.nlocal(); ++i) {
+            f.span(ATV::kAtom_fx)[i] = 0;
+            f.span(ATV::kAtom_fy)[i] = 0;
+            f.span(ATV::kAtom_fz)[i] = 0;
         }
-        f.scalars.energy = 0;
+        f.meta.get(ATV::kEnergy) = 0;
         launch(f);
-        return f.scalars.energy;
+        return f.meta.get(ATV::kEnergy);
     };
-    auto& pos = (axis == 0)   ? frame.atoms.x
-                : (axis == 1) ? frame.atoms.y
-                              : frame.atoms.z;
+    auto pos = (axis == 0)   ? frame.span(ATV::kAtom_x)
+               : (axis == 1) ? frame.span(ATV::kAtom_y)
+                             : frame.span(ATV::kAtom_z);
     const double orig = pos[atom_idx];
     pos[atom_idx] = orig + h;
     const double e_plus = eval(frame);
@@ -104,10 +105,11 @@ double fd_gradient(cpu::Frame frame, std::function<void(cpu::Frame&)> launch,
 void check_kernel(const std::string& label,
                   std::function<void(cpu::Frame&)> launch, double tol) {
     auto frame = make_perturbed_butane();
-    for (int a = 0; a < frame.atoms.size(); ++a) {
+    const double h = 1.0e-4;
+    for (int a = 0; a < frame.nlocal(); ++a) {
         for (int d = 0; d < 3; ++d) {
             const double f_analytic = analytic_force(frame, launch, a, d);
-            const double grad = fd_gradient(frame, launch, a, d, 1e-4);
+            const double grad = fd_gradient(frame, launch, a, d, h);
             // Analytic force = -grad; compare.
             EXPECT_NEAR(f_analytic, -grad, tol)
                 << label << " atom " << a << " axis " << d
@@ -156,6 +158,37 @@ TEST(PeFdForce, DihedralMultiHarmonic) {
             cpu::BuildContext bctx{ctx, f};
             cpu::LaunchContext lctx{ctx, f, 0, 0};
             cpu::DihedralMultiHarmonic c({{0.1, -0.2, 0.05, 0.3, -0.1}});
+            c.build(bctx);
+            c.launch(lctx);
+            c.destroy({ctx, f});
+        },
+        1e-6);
+}
+
+TEST(PeFdForce, DihedralCharmm) {
+    check_kernel(
+        "cpu::DihedralCharmm",
+        [](cpu::Frame& f) {
+            cpu::Context ctx;
+            cpu::BuildContext bctx{ctx, f};
+            cpu::LaunchContext lctx{ctx, f, 0, 0};
+            // K=0.2 eV, n=2, delta=0 — non-zero gradient on the perturbed butane.
+            cpu::DihedralCharmm c({0.2}, {2}, {0.0});
+            c.build(bctx);
+            c.launch(lctx);
+            c.destroy({ctx, f});
+        },
+        1e-6);
+}
+
+TEST(PeFdForce, DihedralCharmmPhasePi) {
+    check_kernel(
+        "cpu::DihedralCharmm phase=pi",
+        [](cpu::Frame& f) {
+            cpu::Context ctx;
+            cpu::BuildContext bctx{ctx, f};
+            cpu::LaunchContext lctx{ctx, f, 0, 0};
+            cpu::DihedralCharmm c({0.15}, {1}, {3.141592653589793});
             c.build(bctx);
             c.launch(lctx);
             c.destroy({ctx, f});

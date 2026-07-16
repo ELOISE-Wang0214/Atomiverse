@@ -4,7 +4,7 @@
 ///
 /// The bonded kernels store partner atoms as **global tags** and used to
 /// resolve every tag through the `tag_to_local` hash map on **every step**
-/// (1 lookup per bond partner, 2 per angle, 3 per dihedral — each a
+/// (1 lookup per bond partner, 2 per angle, 3 per dihedral/charmm — each a
 /// cache-missing `unordered_map::find`). Local row indices are stable
 /// between topology-relevant events, so the resolution is hoisted here:
 /// each kernel keeps one cache of fully-resolved local-index tuples and
