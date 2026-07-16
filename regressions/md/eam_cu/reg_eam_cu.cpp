@@ -42,31 +42,35 @@ int main() {
             for (int iy = 0; iy < n_cell; ++iy)
                 for (int iz = 0; iz < n_cell; ++iz)
                     for (int k = 0; k < 4; ++k) {
-                        frame.atoms.x[idx] = (double(ix) + basis[k][0]) * a;
-                        frame.atoms.y[idx] = (double(iy) + basis[k][1]) * a;
-                        frame.atoms.z[idx] = (double(iz) + basis[k][2]) * a;
-                        frame.atoms.mass[idx] = 63.546;
-                        frame.atoms.type[idx] = 29;
+                        frame.span(ATV::kAtom_x)[idx] =
+                            (double(ix) + basis[k][0]) * a;
+                        frame.span(ATV::kAtom_y)[idx] =
+                            (double(iy) + basis[k][1]) * a;
+                        frame.span(ATV::kAtom_z)[idx] =
+                            (double(iz) + basis[k][2]) * a;
+                        frame.span(ATV::kAtom_mass)[idx] = 63.546;
+                        frame.span(ATV::kAtom_type)[idx] = 29;
                         ++idx;
                     }
-        frame.box = Mat3::cubic(a * n_cell);
+        frame.simbox = ATV::cpu::Box::cubic(a * n_cell);
 
-        if (frame.box.length(0) <= 2.0 * cutoff) {
+        if (frame.simbox.length(0) <= 2.0 * cutoff) {
             std::printf("FAIL: box %.2f A too small for cutoff %.2f A\n",
-                        frame.box.length(0), cutoff);
+                        frame.simbox.length(0), cutoff);
             return 1;
         }
 
         cpu::Evaluate eval;
         eval.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3, 1, 0, true});
         eval.on(evaluate::Phase::evaluate)
-            .add(cpu::EAM{cpu::EAMPotential{Element::Cu, "sutton-chen"}, cutoff});
+            .add(cpu::EAM{cpu::EAMPotential{molrs::Element::Cu, "sutton-chen"},
+                          cutoff});
         eval.enable_timing(false);
         eval.build();
         eval.run(frame);
 
         a_scan[s] = a;
-        e_scan[s] = frame.scalars.energy / double(n); // [eV/atom]
+        e_scan[s] = frame.meta.get(ATV::kEnergy) / double(n); // [eV/atom]
         if (e_scan[s] < best_e) {
             best_e = e_scan[s];
             best_a = a;
@@ -76,7 +80,8 @@ int main() {
     // Parabolic refinement of the minimum through the three points around it.
     double a_min = best_a;
     for (int s = 1; s < n_scan - 1; ++s) {
-        if (a_scan[s] != best_a) continue;
+        if (a_scan[s] != best_a)
+            continue;
         const double y0 = e_scan[s - 1], y1 = e_scan[s], y2 = e_scan[s + 1];
         const double denom = y0 - 2.0 * y1 + y2;
         if (std::fabs(denom) > 1e-12) {
@@ -94,11 +99,13 @@ int main() {
     // law has no intrinsic range) and the discrete lattice scan. See REFERENCE.md.
     const double tol = 0.02;
 
-    std::printf("EAM Cu (Sutton-Chen), fcc, cutoff = %.1f A, %d atoms\n", cutoff,
-                4 * n_cell * n_cell * n_cell);
-    std::printf("  equilibrium a0 = %.4f A     want %.4f A   (err %.2f%%, tol %.0f%%)\n",
+    std::printf("EAM Cu (Sutton-Chen), fcc, cutoff = %.1f A, %d atoms\n",
+                cutoff, 4 * n_cell * n_cell * n_cell);
+    std::printf("  equilibrium a0 = %.4f A     want %.4f A   (err %.2f%%, tol "
+                "%.0f%%)\n",
                 a_min, a0_ref, 100.0 * a_err, 100.0 * tol);
-    std::printf("  cohesive E     = %.4f eV    want %.4f eV  (err %.2f%%, tol %.0f%%)\n",
+    std::printf("  cohesive E     = %.4f eV    want %.4f eV  (err %.2f%%, tol "
+                "%.0f%%)\n",
                 ecoh, ecoh_ref, 100.0 * e_err, 100.0 * tol);
 
     bool ok = true;

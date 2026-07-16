@@ -54,7 +54,7 @@ atoms.insert("z", np.array(zs))
 atoms.insert("mass", np.full(n, 39.948))  # Ar [amu]
 atoms.insert("type", np.zeros(n, dtype=np.int32))
 frame["atoms"] = atoms
-frame.box = molrs.Box.cube(N_CELLS * A0)
+frame.simbox = molrs.Box.cube(N_CELLS * A0)
 
 sim = atv.md.MD()
 sim.add(atv.VelocityVerlet(0.001))  # dt [fs]
@@ -66,9 +66,9 @@ sim.run(frame, N_STEPS)
 
 np.savez(
     out_path,
-    energy=np.asarray(frame["scalars"]["energy"])[:1],
+    energy=np.asarray([frame.meta["energy"]], dtype=np.float64),
     x=np.asarray(frame["atoms"]["x"]),
     y=np.asarray(frame["atoms"]["y"]),
     z=np.asarray(frame["atoms"]["z"]),
 )
-print(f"lj leg done: E = {float(np.asarray(frame['scalars']['energy'])[0]):.12f} eV")
+print(f"lj leg done: E = {float(frame.meta['energy']):.12f} eV")

@@ -26,14 +26,14 @@ atoms.insert("z", np.array([0.0, H, H, -H, -H]))
 atoms.insert("mass", np.array([12.011, 1.008, 1.008, 1.008, 1.008]))
 atoms.insert("type", np.array([6, 1, 1, 1, 1], dtype=np.int32))  # Z
 frame["atoms"] = atoms
-frame.box = molrs.Box.cube(20.0)
+frame.simbox = molrs.Box.cube(20.0)
 
 ev = atv.AM1Evaluator(atv.AM1Config(charge=0))
 atv.single_point(frame, ev)
 
 np.savez(
     out_path,
-    energy=np.asarray(frame["scalars"]["energy"])[:1],
+    energy=np.asarray([frame.meta["energy"]], dtype=np.float64),
     charge=np.asarray(frame["atoms"]["charge"]),
 )
-print(f"am1 leg done: E = {float(np.asarray(frame['scalars']['energy'])[0]):.12f} eV")
+print(f"am1 leg done: E = {float(frame.meta['energy']):.12f} eV")

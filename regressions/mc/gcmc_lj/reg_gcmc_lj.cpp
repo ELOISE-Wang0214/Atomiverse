@@ -32,22 +32,23 @@ int main() {
     // ── Argon-flavoured LJ, truncated AND shifted at 2.5σ ────────────────
     // The engine's PairLJCut is cut-and-shifted, so B₂ below is computed for
     // exactly that potential — convention-exact, no long-range correction.
-    const double eps = 120.0 * units::kB_ev_per_k; // ε/k_B = 120 K [eV]
-    const double sigma = 3.4;                      // [Å]
-    const double cutoff = 2.5 * sigma;             // [Å]
-    const double t_red = 1.5;                      // supercritical vapor
-    const double temperature = t_red * 120.0;      // 180 K
+    const double eps = 120.0 * units::kB_ev_per_k;      // ε/k_B = 120 K [eV]
+    const double sigma = 3.4;                           // [Å]
+    const double cutoff = 2.5 * sigma;                  // [Å]
+    const double t_red = 1.5;                           // supercritical vapor
+    const double temperature = t_red * 120.0;           // 180 K
     const double kT = units::kB_ev_per_k * temperature; // [eV]
-    const double mass = 39.948;                    // argon [amu]
-    const double box_len = 12.0 * sigma;           // 40.8 Å; > 2 rc
-    const double volume = box_len * box_len * box_len; // [Å³]
+    const double mass = 39.948;                         // argon [amu]
+    const double box_len = 12.0 * sigma;                // 40.8 Å; > 2 rc
+    const double volume = box_len * box_len * box_len;  // [Å³]
 
     // ── B₂ of the cut-shifted potential by quadrature (exact reference) ──
     // B₂(T) = −2π ∫₀^rc [exp(−βu_s(r)) − 1] r² dr;  u_s ≡ 0 beyond rc.
     // (McQuarrie, Statistical Mechanics, eq. 12-30; see REFERENCE.md.)
     const double beta = 1.0 / kT;
     const double u_at_rc =
-        4.0 * eps * (std::pow(sigma / cutoff, 12) - std::pow(sigma / cutoff, 6));
+        4.0 * eps
+        * (std::pow(sigma / cutoff, 12) - std::pow(sigma / cutoff, 6));
     double b2 = 0.0; // [Å³]
     {
         const int n_quad = 200000; // Simpson; integrand is smooth and bounded
@@ -63,7 +64,8 @@ int main() {
                 const double u = 4.0 * eps * (sr6 * sr6 - sr6) - u_at_rc;
                 f = std::exp(-beta * u) - 1.0;
             }
-            const double w = (k == 0 || k == n_quad) ? 1.0 : (k % 2 ? 4.0 : 2.0);
+            const double w =
+                (k == 0 || k == n_quad) ? 1.0 : (k % 2 ? 4.0 : 2.0);
             acc += w * f * r * r;
         }
         b2 = -2.0 * units::pi * acc * h / 3.0;
@@ -72,7 +74,7 @@ int main() {
                 b2 / (sigma * sigma * sigma));
 
     // ── Two activities on the dilute vapor branch ────────────────────────
-    const double z_red[2] = {0.010, 0.030}; // z σ³
+    const double z_red[2] = {0.010, 0.030};                         // z σ³
     const double lambda = units::lambda_thermal(mass, temperature); // [Å]
     const double lambda3 = lambda * lambda * lambda;                // [Å³]
 
@@ -94,17 +96,18 @@ int main() {
         const double spacing = box_len / side;
         cpu::Frame frame(n0);
         for (int i = 0; i < n0; ++i) {
-            frame.atoms.x[i] = (i % side + 0.5) * spacing;
-            frame.atoms.y[i] = ((i / side) % side + 0.5) * spacing;
-            frame.atoms.z[i] = (i / (side * side) + 0.5) * spacing;
-            frame.atoms.mass[i] = mass;
-            frame.atoms.type[i] = 1;
+            frame.span(ATV::kAtom_x)[i] = (i % side + 0.5) * spacing;
+            frame.span(ATV::kAtom_y)[i] = ((i / side) % side + 0.5) * spacing;
+            frame.span(ATV::kAtom_z)[i] = (i / (side * side) + 0.5) * spacing;
+            frame.span(ATV::kAtom_mass)[i] = mass;
+            frame.span(ATV::kAtom_type)[i] = 1;
         }
-        frame.box = Mat3::cubic(box_len);
+        frame.simbox = ATV::cpu::Box::cubic(box_len);
 
         cpu::mc::Gcmc mc{temperature, mu, mass, /*seed=*/97u + p};
-        mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
-        mc.set_neighbor(cpu::md::NeighborList<>{cutoff, /*skin=*/1.0, 1, 0, true});
+        mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+        mc.set_neighbor(
+            cpu::md::NeighborList<>{cutoff, /*skin=*/1.0, 1, 0, true});
         mc.set_mover(cpu::mc::MoveSelector{}
                          .add(cpu::mc::TranslateMove{0.4 * sigma}, 0.5)
                          .add(cpu::mc::InsertDeleteMove{1, mass}, 0.5));
@@ -115,7 +118,7 @@ int main() {
         double n_sum = 0.0, n_sq_sum = 0.0;
         for (int b = 0; b < n_blocks; ++b) {
             mc.run(frame, 10); // decorrelate between samples
-            const double n_now = static_cast<double>(frame.atoms.nlocal);
+            const double n_now = static_cast<double>(frame.nlocal());
             n_sum += n_now;
             n_sq_sum += n_now * n_now;
         }

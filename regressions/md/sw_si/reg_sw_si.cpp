@@ -21,13 +21,12 @@ int main() {
     const double ecoh_ref = 4.3363; // [eV/atom]  SW's fitted cohesive energy
     const int n_cell = 3;           // 8*27 = 216 atoms; box 16.3 A > 2*cutoff
 
-    const cpu::SWPotential pot(Element::Si, "stillinger-weber");
+    const cpu::SWPotential pot(molrs::Element::Si, "stillinger-weber");
     const double cutoff = pot.cutoff(); // a*sigma = 3.771 A
 
-    const double diamond[8][3] = {{0, 0, 0},          {0.25, 0.25, 0.25},
-                                  {0.5, 0.5, 0},      {0.75, 0.75, 0.25},
-                                  {0.5, 0, 0.5},      {0.75, 0.25, 0.75},
-                                  {0, 0.5, 0.5},      {0.25, 0.75, 0.75}};
+    const double diamond[8][3] = {
+        {0, 0, 0},     {0.25, 0.25, 0.25}, {0.5, 0.5, 0}, {0.75, 0.75, 0.25},
+        {0.5, 0, 0.5}, {0.75, 0.25, 0.75}, {0, 0.5, 0.5}, {0.25, 0.75, 0.75}};
 
     // Lattice scan of diamond Si.
     const int n_scan = 13;
@@ -44,16 +43,19 @@ int main() {
             for (int iy = 0; iy < n_cell; ++iy)
                 for (int iz = 0; iz < n_cell; ++iz)
                     for (int k = 0; k < 8; ++k) {
-                        frame.atoms.x[idx] = (double(ix) + diamond[k][0]) * a;
-                        frame.atoms.y[idx] = (double(iy) + diamond[k][1]) * a;
-                        frame.atoms.z[idx] = (double(iz) + diamond[k][2]) * a;
-                        frame.atoms.mass[idx] = 28.0855;
-                        frame.atoms.type[idx] = 14;
+                        frame.span(ATV::kAtom_x)[idx] =
+                            (double(ix) + diamond[k][0]) * a;
+                        frame.span(ATV::kAtom_y)[idx] =
+                            (double(iy) + diamond[k][1]) * a;
+                        frame.span(ATV::kAtom_z)[idx] =
+                            (double(iz) + diamond[k][2]) * a;
+                        frame.span(ATV::kAtom_mass)[idx] = 28.0855;
+                        frame.span(ATV::kAtom_type)[idx] = 14;
                         ++idx;
                     }
-        frame.box = Mat3::cubic(a * n_cell);
+        frame.simbox = ATV::cpu::Box::cubic(a * n_cell);
 
-        if (frame.box.length(0) <= 2.0 * cutoff) {
+        if (frame.simbox.length(0) <= 2.0 * cutoff) {
             std::printf("FAIL: box too small for the cutoff\n");
             return 1;
         }
@@ -66,7 +68,7 @@ int main() {
         eval.run(frame);
 
         a_scan[s] = a;
-        e_scan[s] = frame.scalars.energy / double(n);
+        e_scan[s] = frame.meta.get(ATV::kEnergy) / double(n);
         if (e_scan[s] < best_e) {
             best_e = e_scan[s];
             best_a = a;
@@ -76,7 +78,8 @@ int main() {
     // Parabolic refinement through the three points bracketing the minimum.
     double a_min = best_a;
     for (int s = 1; s < n_scan - 1; ++s) {
-        if (a_scan[s] != best_a) continue;
+        if (a_scan[s] != best_a)
+            continue;
         const double y0 = e_scan[s - 1], y1 = e_scan[s], y2 = e_scan[s + 1];
         const double denom = y0 - 2.0 * y1 + y2;
         if (std::fabs(denom) > 1e-12) {
@@ -94,7 +97,8 @@ int main() {
     const int n_fcc_cell = 4; // 4*64 = 256 atoms
     const double n_density = 8.0 / (a0_ref * a0_ref * a0_ref); // diamond Si
     const double a_fcc = std::cbrt(4.0 / n_density);
-    const double fcc[4][3] = {{0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
+    const double fcc[4][3] = {
+        {0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
 
     const int n_f = 4 * n_fcc_cell * n_fcc_cell * n_fcc_cell;
     cpu::Frame ff(n_f);
@@ -103,14 +107,17 @@ int main() {
         for (int iy = 0; iy < n_fcc_cell; ++iy)
             for (int iz = 0; iz < n_fcc_cell; ++iz)
                 for (int k = 0; k < 4; ++k) {
-                    ff.atoms.x[fi] = (double(ix) + fcc[k][0]) * a_fcc;
-                    ff.atoms.y[fi] = (double(iy) + fcc[k][1]) * a_fcc;
-                    ff.atoms.z[fi] = (double(iz) + fcc[k][2]) * a_fcc;
-                    ff.atoms.mass[fi] = 28.0855;
-                    ff.atoms.type[fi] = 14;
+                    ff.span(ATV::kAtom_x)[fi] =
+                        (double(ix) + fcc[k][0]) * a_fcc;
+                    ff.span(ATV::kAtom_y)[fi] =
+                        (double(iy) + fcc[k][1]) * a_fcc;
+                    ff.span(ATV::kAtom_z)[fi] =
+                        (double(iz) + fcc[k][2]) * a_fcc;
+                    ff.span(ATV::kAtom_mass)[fi] = 28.0855;
+                    ff.span(ATV::kAtom_type)[fi] = 14;
                     ++fi;
                 }
-    ff.box = Mat3::cubic(a_fcc * n_fcc_cell);
+    ff.simbox = ATV::cpu::Box::cubic(a_fcc * n_fcc_cell);
 
     cpu::Evaluate eval_fcc;
     eval_fcc.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3, 1, 0, true});
@@ -118,7 +125,7 @@ int main() {
     eval_fcc.enable_timing(false);
     eval_fcc.build();
     eval_fcc.run(ff);
-    const double e_fcc = ff.scalars.energy / double(n_f);
+    const double e_fcc = ff.meta.get(ATV::kEnergy) / double(n_f);
 
     const double a_err = std::fabs(a_min - a0_ref) / a0_ref;
     const double e_err = std::fabs(ecoh - ecoh_ref) / ecoh_ref;
@@ -128,12 +135,15 @@ int main() {
 
     std::printf("SW silicon, diamond, cutoff = %.4f A (= a*sigma), %d atoms\n",
                 cutoff, 8 * n_cell * n_cell * n_cell);
-    std::printf("  equilibrium a0 = %.4f A     want %.4f A   (err %.2f%%, tol %.0f%%)\n",
+    std::printf("  equilibrium a0 = %.4f A     want %.4f A   (err %.2f%%, tol "
+                "%.0f%%)\n",
                 a_min, a0_ref, 100.0 * a_err, 100.0 * tol);
-    std::printf("  cohesive E     = %.4f eV    want %.4f eV  (err %.2f%%, tol %.0f%%)\n",
+    std::printf("  cohesive E     = %.4f eV    want %.4f eV  (err %.2f%%, tol "
+                "%.0f%%)\n",
                 ecoh, ecoh_ref, 100.0 * e_err, 100.0 * tol);
     std::printf("  E(diamond)     = %.4f eV/atom\n", best_e);
-    std::printf("  E(fcc, same density) = %.4f eV/atom   [must be HIGHER]\n", e_fcc);
+    std::printf("  E(fcc, same density) = %.4f eV/atom   [must be HIGHER]\n",
+                e_fcc);
 
     bool ok = true;
     if (!(a_err <= tol)) {

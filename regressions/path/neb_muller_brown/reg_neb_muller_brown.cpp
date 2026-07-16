@@ -40,13 +40,10 @@ constexpr double kY0[4] = {0.0, 0.5, 1.5, 1.0};
 
 /// A single particle on the surface. One atom; z is unused and its force is left at zero,
 /// so the particle stays in the plane it started in.
-class MullerBrown : public cpu::ComponentBase {
+class MullerBrown : public cpu::Component {
   public:
     std::string name() const override { return "muller_brown"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
-    }
+    /* role via Potential/kind base */
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::path::Phase::force, 0)};
     }
@@ -55,8 +52,8 @@ class MullerBrown : public cpu::ComponentBase {
 
     void launch(const cpu::LaunchContext& ctx) override {
         auto& f = ctx.frame;
-        const double x = f.atoms.x[0];
-        const double y = f.atoms.y[0];
+        const double x = f.span(ATV::kAtom_x)[0];
+        const double y = f.span(ATV::kAtom_y)[0];
 
         double v = 0.0, dvdx = 0.0, dvdy = 0.0;
         for (int k = 0; k < 4; ++k) {
@@ -70,21 +67,22 @@ class MullerBrown : public cpu::ComponentBase {
             dvdy += e * (kBb[k] * dx + 2.0 * kCc[k] * dy);
         }
 
-        f.scalars.energy = v;
-        f.atoms.fx(0) = -dvdx; // force = -grad V
-        f.atoms.fy(0) = -dvdy;
-        f.atoms.fz(0) = 0.0;
+        f.meta.get(ATV::kEnergy) = v;
+        f.span(ATV::kAtom_fx)[0] = -dvdx; // force = -grad V
+        f.span(ATV::kAtom_fy)[0] = -dvdy;
+        f.span(ATV::kAtom_fz)[0] = 0.0;
     }
 };
 
 cpu::Frame particle_at(double x, double y) {
     cpu::Frame f(1);
-    f.atoms.x[0] = x;
-    f.atoms.y[0] = y;
-    f.atoms.z[0] = 0.0;
-    f.atoms.mass[0] = 1.0;
-    f.atoms.type[0] = 1;
-    f.box = Mat3::cubic(100.0); // the surface is unbounded; the box never binds
+    f.span(ATV::kAtom_x)[0] = x;
+    f.span(ATV::kAtom_y)[0] = y;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.0;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.simbox = ATV::cpu::Box::cubic(
+        100.0); // the surface is unbounded; the box never binds
     return f;
 }
 
@@ -97,8 +95,9 @@ constexpr double kMinAV = -146.700;
 int check(const char* what, double got, double want, double tol) {
     const double err = std::abs(got - want);
     const bool ok = err <= tol;
-    std::printf("  %-28s got %10.4f   want %10.4f   |err| %8.4f   tol %6.3f   %s\n", what,
-                got, want, err, tol, ok ? "OK" : "FAIL");
+    std::printf(
+        "  %-28s got %10.4f   want %10.4f   |err| %8.4f   tol %6.3f   %s\n",
+        what, got, want, err, tol, ok ? "OK" : "FAIL");
     return ok ? 0 : 1;
 }
 
@@ -108,7 +107,7 @@ int main() {
     std::printf("regression [path/neb_muller_brown] — CI-NEB saddle point\n");
 
     // The two minima the path connects: the global minimum A and the minimum B.
-    cpu::Frame initial = particle_at(-0.558, 1.442); // minimum A
+    cpu::Frame initial = particle_at(-0.558, 1.442);    // minimum A
     cpu::Frame final_state = particle_at(0.623, 0.028); // minimum B
 
     // The band: 13 images, generated from ONE frame by a strategy. The product state is
@@ -120,8 +119,10 @@ int main() {
     neb.on(ATV::path::Phase::force).add(MullerBrown{});
     neb.add(cpu::path::NebCoupling{/*spring_k=*/10.0, /*climbing=*/true,
                                    /*climb_after=*/20});
-    neb.add(cpu::path::BandLBFGS{/*memory=*/10, /*max_step=*/0.01, /*ftol=*/0.5});
-    neb.set_threads(1); // one atom per image — threads would cost more than the physics
+    neb.add(
+        cpu::path::BandLBFGS{/*memory=*/10, /*max_step=*/0.01, /*ftol=*/0.5});
+    neb.set_threads(
+        1); // one atom per image — threads would cost more than the physics
     neb.enable_timing(false);
     neb.build();
 
@@ -129,9 +130,9 @@ int main() {
 
     // Frame in, Frame out: `initial` now holds the collapsed result — for CI-NEB, the
     // climbing image, i.e. the saddle-point configuration.
-    const double sx = initial.atoms.x[0];
-    const double sy = initial.atoms.y[0];
-    const double sv = initial.scalars.energy;
+    const double sx = initial.span(ATV::kAtom_x)[0];
+    const double sy = initial.span(ATV::kAtom_y)[0];
+    const double sv = initial.meta.get(ATV::kEnergy);
     const double barrier = sv - kMinAV;
 
     std::printf("  converged in %d iterations\n", iters);

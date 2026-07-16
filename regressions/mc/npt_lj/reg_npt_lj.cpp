@@ -30,14 +30,14 @@ using namespace ATV;
 
 int main() {
     // ── Argon-flavoured LJ, truncated AND shifted at 2.5σ ────────────────
-    const double eps = 120.0 * units::kB_ev_per_k; // ε/k_B = 120 K [eV]
-    const double sigma = 3.4;                      // [Å]
-    const double cutoff = 2.5 * sigma;             // [Å]
-    const double t_red = 1.5;                      // supercritical vapor
-    const double temperature = t_red * 120.0;      // 180 K
+    const double eps = 120.0 * units::kB_ev_per_k;      // ε/k_B = 120 K [eV]
+    const double sigma = 3.4;                           // [Å]
+    const double cutoff = 2.5 * sigma;                  // [Å]
+    const double t_red = 1.5;                           // supercritical vapor
+    const double temperature = t_red * 120.0;           // 180 K
     const double kT = units::kB_ev_per_k * temperature; // [eV]
-    const double mass = 39.948;                    // argon [amu]
-    const int n_atoms = 125;                       // 5³ — clean SC lattice
+    const double mass = 39.948;                         // argon [amu]
+    const int n_atoms = 125;                            // 5³ — clean SC lattice
 
     // Dilute state point: P* = Pσ³/ε = 0.0297 targets ρσ³ ≈ 0.02, where the
     // virial series is converged at second order (see REFERENCE.md).
@@ -48,7 +48,8 @@ int main() {
     // B₂(T) = −2π ∫₀^rc [exp(−βu_s(r)) − 1] r² dr (McQuarrie eq. 12-30).
     const double beta = 1.0 / kT;
     const double u_at_rc =
-        4.0 * eps * (std::pow(sigma / cutoff, 12) - std::pow(sigma / cutoff, 6));
+        4.0 * eps
+        * (std::pow(sigma / cutoff, 12) - std::pow(sigma / cutoff, 6));
     double b2 = 0.0; // [Å³]
     {
         const int n_quad = 200000;
@@ -64,7 +65,8 @@ int main() {
                 const double u = 4.0 * eps * (sr6 * sr6 - sr6) - u_at_rc;
                 f = std::exp(-beta * u) - 1.0;
             }
-            const double w = (k == 0 || k == n_quad) ? 1.0 : (k % 2 ? 4.0 : 2.0);
+            const double w =
+                (k == 0 || k == n_quad) ? 1.0 : (k % 2 ? 4.0 : 2.0);
             acc += w * f * r * r;
         }
         b2 = -2.0 * units::pi * acc * h / 3.0;
@@ -87,18 +89,18 @@ int main() {
     const double spacing = box_len / side;
     cpu::Frame frame(n_atoms);
     for (int i = 0; i < n_atoms; ++i) {
-        frame.atoms.x[i] = (i % side + 0.5) * spacing;
-        frame.atoms.y[i] = ((i / side) % side + 0.5) * spacing;
-        frame.atoms.z[i] = (i / (side * side) + 0.5) * spacing;
-        frame.atoms.mass[i] = mass;
-        frame.atoms.type[i] = 1;
+        frame.span(ATV::kAtom_x)[i] = (i % side + 0.5) * spacing;
+        frame.span(ATV::kAtom_y)[i] = ((i / side) % side + 0.5) * spacing;
+        frame.span(ATV::kAtom_z)[i] = (i / (side * side) + 0.5) * spacing;
+        frame.span(ATV::kAtom_mass)[i] = mass;
+        frame.span(ATV::kAtom_type)[i] = 1;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
 
     // δV ≈ σ_V = ⟨V⟩/√N keeps volume moves near 50% acceptance.
     const double dv_max = v_pred / std::sqrt(static_cast<double>(n_atoms));
     cpu::mc::NptMc mc{temperature, pressure, /*seed=*/1337u};
-    mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+    mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
     mc.set_neighbor(cpu::md::NeighborList<>{cutoff, /*skin=*/1.0, 1, 0, true});
     mc.set_mover(cpu::mc::MoveSelector{}
                      .add(cpu::mc::TranslateMove{0.4 * sigma}, 0.8)
@@ -110,7 +112,7 @@ int main() {
     double v_sum = 0.0, v_sq_sum = 0.0;
     for (int b = 0; b < n_blocks; ++b) {
         mc.run(frame, 10);
-        const double v_now = frame.box.volume();
+        const double v_now = frame.simbox.volume();
         v_sum += v_now;
         v_sq_sum += v_now * v_now;
     }
@@ -132,7 +134,8 @@ int main() {
     // A frozen chain (e.g. a NaN energy rejecting every trial) must FAIL,
     // never coast through on its starting volume.
     if (!(acc_disp > 0.01) || !(acc_vol > 0.01)) {
-        std::printf("FAIL: frozen chain (displacement/volume acceptance ~ 0)\n");
+        std::printf(
+            "FAIL: frozen chain (displacement/volume acceptance ~ 0)\n");
         return 1;
     }
     if (!(diff <= tol)) {
