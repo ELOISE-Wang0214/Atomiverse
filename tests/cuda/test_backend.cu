@@ -20,7 +20,7 @@ __global__ void add_one_k(cuda::real_t* fx, cuda::real_t* fy, cuda::real_t* fz,
     }
 }
 
-class AddOne : public cuda::ComponentBase {
+class AddOne : public cuda::Component {
   public:
     std::string name() const override { return "add_one"; }
     void launch(const cuda::LaunchContext& ctx) override {
@@ -41,7 +41,7 @@ __global__ void double_vel_k(cuda::real_t* vx, const int* n_ptr) {
         vx[idx] *= cuda::real_t(2);
 }
 
-class DoubleVel : public cuda::ComponentBase {
+class DoubleVel : public cuda::Component {
   public:
     std::string name() const override { return "double_vel"; }
     Scheduling scheduling() const override { return Scheduling::deferrable; }
@@ -57,7 +57,7 @@ class DoubleVel : public cuda::ComponentBase {
     }
 };
 
-class FreqDoubler : public cuda::ComponentBase {
+class FreqDoubler : public cuda::Component {
   public:
     std::string name() const override { return "freq_doubler"; }
     int frequency() const override { return 3; }
@@ -85,7 +85,7 @@ TEST(Backend, KernelDispatch) {
     backend.materialize(frame);
 
     AddOne adder;
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({0, 0, &adder});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
@@ -119,7 +119,7 @@ TEST(Backend, BlockingDeferrable) {
     AddOne adder;
     DoubleVel doubler;
 
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({ATV::slot_of(md::Phase::force), 0, &adder});
     builder.add({ATV::slot_of(md::Phase::end_of_step), 0, &doubler});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
@@ -156,7 +156,7 @@ TEST(Backend, ConditionalExecution) {
     backend.materialize(frame);
 
     FreqDoubler freq;
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({ATV::slot_of(md::Phase::end_of_step), 0, &freq});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);

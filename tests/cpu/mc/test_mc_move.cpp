@@ -37,9 +37,9 @@ constexpr double kEps = 0.0104, kSigma = 3.4, kCut = 8.0, kSkin = 2.0;
 TEST(TranslateMoveUnit, DisplacesOneAtomAndRecordsChangeset) {
     cpu::Frame frame(3);
     for (int i = 0; i < 3; ++i) {
-        frame.atoms.x[i] = static_cast<double>(i);
-        frame.atoms.y[i] = 0.0;
-        frame.atoms.z[i] = 0.0;
+        frame.span(ATV::kAtom_x)[i] = static_cast<double>(i);
+        frame.span(ATV::kAtom_y)[i] = 0.0;
+        frame.span(ATV::kAtom_z)[i] = 0.0;
     }
     cpu::Frame before = frame;
 
@@ -61,30 +61,36 @@ TEST(TranslateMoveUnit, DisplacesOneAtomAndRecordsChangeset) {
     ASSERT_LT(i, 3);
 
     // The patch holds the pre-move row; the frame holds the post-move one.
-    EXPECT_EQ(txn.patch().atoms.x[0], before.atoms.x[i]);
-    EXPECT_EQ(txn.patch().atoms.y[0], before.atoms.y[i]);
-    EXPECT_EQ(txn.patch().atoms.z[0], before.atoms.z[i]);
+    EXPECT_EQ(txn.patch().span(ATV::kAtom_x)[0], before.span(ATV::kAtom_x)[i]);
+    EXPECT_EQ(txn.patch().span(ATV::kAtom_y)[0], before.span(ATV::kAtom_y)[i]);
+    EXPECT_EQ(txn.patch().span(ATV::kAtom_z)[0], before.span(ATV::kAtom_z)[i]);
 
     // Displacement is within the symmetric box [-δ, δ] per axis (the box is
     // degenerate here, so no wrap interferes with the bound).
-    EXPECT_LE(std::abs(frame.atoms.x[i] - before.atoms.x[i]), 0.5);
-    EXPECT_LE(std::abs(frame.atoms.y[i] - before.atoms.y[i]), 0.5);
-    EXPECT_LE(std::abs(frame.atoms.z[i] - before.atoms.z[i]), 0.5);
+    EXPECT_LE(
+        std::abs(frame.span(ATV::kAtom_x)[i] - before.span(ATV::kAtom_x)[i]),
+        0.5);
+    EXPECT_LE(
+        std::abs(frame.span(ATV::kAtom_y)[i] - before.span(ATV::kAtom_y)[i]),
+        0.5);
+    EXPECT_LE(
+        std::abs(frame.span(ATV::kAtom_z)[i] - before.span(ATV::kAtom_z)[i]),
+        0.5);
 
     // Only atom i moved; the others are untouched.
     for (int k = 0; k < 3; ++k) {
         if (k == i)
             continue;
-        EXPECT_EQ(frame.atoms.x[k], before.atoms.x[k]);
-        EXPECT_EQ(frame.atoms.y[k], before.atoms.y[k]);
-        EXPECT_EQ(frame.atoms.z[k], before.atoms.z[k]);
+        EXPECT_EQ(frame.span(ATV::kAtom_x)[k], before.span(ATV::kAtom_x)[k]);
+        EXPECT_EQ(frame.span(ATV::kAtom_y)[k], before.span(ATV::kAtom_y)[k]);
+        EXPECT_EQ(frame.span(ATV::kAtom_z)[k], before.span(ATV::kAtom_z)[k]);
     }
 }
 
 TEST(TranslateMoveUnit, BootstrapPassIsNoOp) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.x[1] = 4.0;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 4.0;
     cpu::Frame before = frame;
 
     std::mt19937_64 rng(1u);
@@ -98,8 +104,8 @@ TEST(TranslateMoveUnit, BootstrapPassIsNoOp) {
     mv.launch(lctx);
 
     EXPECT_EQ(txn.size(), 0u); // proposed nothing
-    EXPECT_EQ(frame.atoms.x[0], before.atoms.x[0]);
-    EXPECT_EQ(frame.atoms.x[1], before.atoms.x[1]);
+    EXPECT_EQ(frame.span(ATV::kAtom_x)[0], before.span(ATV::kAtom_x)[0]);
+    EXPECT_EQ(frame.span(ATV::kAtom_x)[1], before.span(ATV::kAtom_x)[1]);
 }
 
 TEST(TranslateMoveUnit, RejectsNonPositiveDelta) {
@@ -116,7 +122,7 @@ TEST(MCBuildUnit, RejectsNonPositiveTemperature) {
 
 TEST(MCBuildUnit, ThrowsWithoutMover) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_neighbor(cpu::md::NeighborList<>{kCut, kSkin, 1, 0, true});
     EXPECT_THROW(mc.build(), std::runtime_error);
 }
@@ -129,14 +135,14 @@ TEST(MCBuildUnit, ThrowsWithoutEnergyEvaluator) {
 
 TEST(MCBuildUnit, ThrowsWithPairButNoNeighborList) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_mover(cpu::mc::TranslateMove{0.2});
     EXPECT_THROW(mc.build(), std::runtime_error);
 }
 
 TEST(MCBuildUnit, SucceedsWhenFullyAssembled) {
     cpu::mc::MC mc{300.0, 1u};
-    mc.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    mc.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     mc.set_neighbor(cpu::md::NeighborList<>{kCut, kSkin, 1, 0, true});
     mc.set_mover(cpu::mc::TranslateMove{0.2});
     EXPECT_NO_THROW(mc.build());

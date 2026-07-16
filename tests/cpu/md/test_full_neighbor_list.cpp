@@ -33,14 +33,15 @@ cpu::Frame lattice(int n_side, double spacing) {
             for (int iz = 0; iz < n_side; ++iz) {
                 // A reproducible jitter so the pairs are not all at equal r.
                 const double j = 0.07 * std::sin(double(7 * idx + 1));
-                f.atoms.x[idx] = (double(ix) + 0.5) * spacing + j;
-                f.atoms.y[idx] = (double(iy) + 0.5) * spacing - j;
-                f.atoms.z[idx] = (double(iz) + 0.5) * spacing + 0.5 * j;
-                f.atoms.mass[idx] = 1.0;
-                f.atoms.type[idx] = 0;
+                f.span(ATV::kAtom_x)[idx] = (double(ix) + 0.5) * spacing + j;
+                f.span(ATV::kAtom_y)[idx] = (double(iy) + 0.5) * spacing - j;
+                f.span(ATV::kAtom_z)[idx] =
+                    (double(iz) + 0.5) * spacing + 0.5 * j;
+                f.span(ATV::kAtom_mass)[idx] = 1.0;
+                f.span(ATV::kAtom_type)[idx] = 0;
                 ++idx;
             }
-    f.box = Mat3::cubic(n_side * spacing);
+    f.simbox = ATV::cpu::Box::cubic(n_side * spacing);
     return f;
 }
 
@@ -50,7 +51,7 @@ cpu::Frame lattice(int n_side, double spacing) {
 TEST(FullNeighborList, IsUnionOfBothHalfDirections) {
     const double cutoff = 2.6;
     cpu::Frame f = lattice(4, 1.9); // 64 atoms, box 7.6 A
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
 
     cpu::md::CellList cl(cutoff);
     cl.init(f, cutoff);
@@ -80,13 +81,17 @@ TEST(FullNeighborList, IsUnionOfBothHalfDirections) {
 
     std::size_t n_half_pairs = 0, n_full_legs = 0;
     for (int i = 0; i < n; ++i) {
-        EXPECT_EQ(got[i], expected[i]) << "neighbour set differs for atom " << i;
-        EXPECT_EQ(got[i].count(i), 0u) << "atom " << i << " is its own neighbour";
+        EXPECT_EQ(got[i], expected[i])
+            << "neighbour set differs for atom " << i;
+        EXPECT_EQ(got[i].count(i), 0u)
+            << "atom " << i << " is its own neighbour";
         n_full_legs += got[i].size();
     }
-    for (int i = 0; i < n; ++i) n_half_pairs += expected[i].size();
+    for (int i = 0; i < n; ++i)
+        n_half_pairs += expected[i].size();
 
-    EXPECT_GT(n_full_legs, 0u) << "the cutoff caught no pairs — test is vacuous";
+    EXPECT_GT(n_full_legs, 0u)
+        << "the cutoff caught no pairs — test is vacuous";
     // Every pair appears exactly twice in a full list, once in each direction.
     EXPECT_EQ(n_full_legs % 2, 0u);
 }
@@ -102,7 +107,7 @@ TEST(FullNeighborList, IsUnionOfBothHalfDirections) {
 TEST(FullNeighborList, LegsAreCompleteWithinCutoffAndBoundedBySkin) {
     const double cutoff = 2.6, skin = 0.4;
     cpu::Frame f = lattice(4, 1.9);
-    const int n = f.atoms.size();
+    const int n = f.nlocal();
 
     cpu::md::CellList cl(cutoff, skin);
     cl.init(f, cutoff + skin);
@@ -123,11 +128,12 @@ TEST(FullNeighborList, LegsAreCompleteWithinCutoffAndBoundedBySkin) {
     std::size_t n_inside = 0;
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            if (i == j) continue;
-            double dx = f.atoms.x[i] - f.atoms.x[j];
-            double dy = f.atoms.y[i] - f.atoms.y[j];
-            double dz = f.atoms.z[i] - f.atoms.z[j];
-            f.box.min_image(dx, dy, dz);
+            if (i == j)
+                continue;
+            double dx = f.span(ATV::kAtom_x)[i] - f.span(ATV::kAtom_x)[j];
+            double dy = f.span(ATV::kAtom_y)[i] - f.span(ATV::kAtom_y)[j];
+            double dz = f.span(ATV::kAtom_z)[i] - f.span(ATV::kAtom_z)[j];
+            f.simbox.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
 
             if (r <= cutoff) {

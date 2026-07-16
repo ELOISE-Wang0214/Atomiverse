@@ -40,22 +40,22 @@ namespace {
 cpu::Frame make_small_frame(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = 1.0 + 0.1 * i;
-        frame.atoms.y[i] = 2.0 + 0.1 * i;
-        frame.atoms.z[i] = 3.0 + 0.1 * i;
-        frame.atoms.vx[i] = 0.01 * i;
-        frame.atoms.vy[i] = 0.02 * i;
-        frame.atoms.vz[i] = 0.03 * i;
-        frame.atoms.mass[i] = 1.0;
+        frame.span(ATV::kAtom_x)[i] = 1.0 + 0.1 * i;
+        frame.span(ATV::kAtom_y)[i] = 2.0 + 0.1 * i;
+        frame.span(ATV::kAtom_z)[i] = 3.0 + 0.1 * i;
+        frame.span(ATV::kAtom_vx)[i] = 0.01 * i;
+        frame.span(ATV::kAtom_vy)[i] = 0.02 * i;
+        frame.span(ATV::kAtom_vz)[i] = 0.03 * i;
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.box = Mat3::cubic(10.0);
+    frame.simbox = ATV::cpu::Box::cubic(10.0);
     return frame;
 }
 
 /// @brief Capture target — records the last snapshot received.
 ///
 /// Inherits `cpu::md::AsyncObserver` to get the MD-flavoured default
-/// binding (`md::Phase::end_of_step @ +20`), so `sim.add(cap)` works
+/// binding (`md::Phase::end_of_step @ +20`), so `sim.add_ref(cap)` works
 /// without explicit `on()` wiring.
 class PositionCapture : public cpu::md::AsyncObserver {
   public:
@@ -86,19 +86,19 @@ class PositionCapture : public cpu::md::AsyncObserver {
 /// @brief Integrator that stamps positions with an analytic trajectory
 /// `x_i(step) = tag_i + step` at `initial_integrate`, so a torn or
 /// mis-stamped snapshot is detectable per-atom on the consumer side.
-class StepStamper : public cpu::ComponentBase {
+class StepStamper : public cpu::Component {
   public:
     std::string name() const override { return "step_stamper"; }
-    ComponentRole role() const override { return ComponentRole::Integrator; }
+    /* role via Integrator base */
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0)};
     }
     void launch(const cpu::LaunchContext& ctx) override {
-        auto& a = ctx.frame.atoms;
-        const int n = a.size();
+        auto x = ctx.frame.span(kAtom_x);
+        const auto tag = ctx.frame.span(kAtom_tag);
+        const int n = ctx.frame.nlocal();
         for (int i = 0; i < n; ++i)
-            a.x[i] =
-                static_cast<double>(a.tag[i]) + static_cast<double>(ctx.step);
+            x[i] = static_cast<double>(tag[i]) + static_cast<double>(ctx.step);
     }
 };
 
@@ -196,19 +196,19 @@ TEST(Publish, SnapshotCopiesPositions) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(cap);
+    sim.add_ref(cap);
     sim.build();
     sim.run(frame,
             5); // give the publisher a step where async fires (step >= 1)
 
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     ASSERT_GE(cap.handled(), 1) << "no snapshot was delivered";
     auto snap = cap.copy_last();
     ASSERT_EQ(static_cast<int>(snap.x.size()), n);
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(snap.x[i], frame.atoms.x[i], 1e-12);
-        EXPECT_NEAR(snap.y[i], frame.atoms.y[i], 1e-12);
-        EXPECT_NEAR(snap.z[i], frame.atoms.z[i], 1e-12);
+        EXPECT_NEAR(snap.x[i], frame.span(ATV::kAtom_x)[i], 1e-12);
+        EXPECT_NEAR(snap.y[i], frame.span(ATV::kAtom_y)[i], 1e-12);
+        EXPECT_NEAR(snap.z[i], frame.span(ATV::kAtom_z)[i], 1e-12);
     }
 }
 
@@ -222,7 +222,7 @@ TEST(Publish, SnapshotCopiesBoxAndStep) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(cap);
+    sim.add_ref(cap);
     sim.build();
     sim.run(frame, 5);
 
@@ -230,7 +230,8 @@ TEST(Publish, SnapshotCopiesBoxAndStep) {
     auto snap = cap.copy_last();
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
-            EXPECT_NEAR(snap.box(i, j), frame.box(i, j), 1e-12);
+            EXPECT_NEAR(snap.box.cell()(i, j), frame.simbox.cell()(i, j),
+                        1e-12);
     EXPECT_GE(snap.step, 1)
         << "publisher fires after step 0; first capture must be step >= 1";
 }
@@ -245,13 +246,13 @@ TEST(Publish, CaptureMaskRespected) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(cap);
+    sim.add_ref(cap);
     sim.build();
     sim.run(frame, 5);
 
     ASSERT_GE(cap.handled(), 1);
     auto snap = cap.copy_last();
-    EXPECT_EQ(static_cast<int>(snap.x.size()), frame.atoms.size());
+    EXPECT_EQ(static_cast<int>(snap.x.size()), frame.nlocal());
     EXPECT_EQ(static_cast<std::size_t>(snap.vx.size()),
               static_cast<std::size_t>(0))
         << "velocities must remain empty when CaptureMask.velocities=false";
@@ -272,13 +273,13 @@ TEST(Publish, CaptureMaskRespected) {
 
 TEST(Publish, StaticMaskUnionAllSubscribers) {
     auto frame = make_small_frame(40);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     // Distinctive, all-nonzero velocities so "not copied" (zeros) is
     // distinguishable from "copied".
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] = 100.0 + i;
-        frame.atoms.vy[i] = 200.0 + i;
-        frame.atoms.vz[i] = 300.0 + i;
+        frame.span(ATV::kAtom_vx)[i] = 100.0 + i;
+        frame.span(ATV::kAtom_vy)[i] = 200.0 + i;
+        frame.span(ATV::kAtom_vz)[i] = 300.0 + i;
     }
 
     PositionCapture cap; // positions, every step, records snapshots
@@ -287,8 +288,8 @@ TEST(Publish, StaticMaskUnionAllSubscribers) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(cap);
-    sim.add(vel);
+    sim.add_ref(cap);
+    sim.add_ref(vel);
     sim.build();
     sim.run(frame, 5);
 
@@ -317,16 +318,16 @@ TEST(Publish, StaticMaskUnionAllSubscribers) {
 
 TEST(Publish, FreezeDispatchConsistencyUnderLag) {
     auto frame = make_small_frame(48);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     for (int i = 0; i < n; ++i)
-        frame.atoms.tag[i] = i + 1; // nonzero, distinct global tags
+        frame.span(ATV::kAtom_tag)[i] = i + 1; // nonzero, distinct global tags
 
     ConsistencyCheck cap;
 
     cpu::md::MD sim;
     sim.add(StepStamper{}); // sets x_i = tag_i + step each step
     sim.add(NoOpForce{});
-    sim.add(cap);
+    sim.add_ref(cap);
     sim.build();
     sim.run(frame, 40); // hot loop races ahead of the 5 ms/frame worker
 

@@ -23,15 +23,17 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/comm/gather.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/eam.h"
 
 using namespace ATV;
 
 namespace {
+
+constexpr double kForceTolerance = 1.0e-9;
 
 constexpr double kCutoff = 3.5;
 constexpr double kA0 = 3.61; // fcc Cu
@@ -40,21 +42,25 @@ constexpr double kA0 = 3.61; // fcc Cu
 cpu::Frame copper(int n_cell) {
     const int n = 4 * n_cell * n_cell * n_cell;
     cpu::Frame f(n);
-    const double b[4][3] = {{0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
+    const double b[4][3] = {
+        {0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
     int idx = 0;
     for (int ix = 0; ix < n_cell; ++ix)
         for (int iy = 0; iy < n_cell; ++iy)
             for (int iz = 0; iz < n_cell; ++iz)
                 for (int k = 0; k < 4; ++k) {
                     const double j = 0.10 * std::sin(double(13 * idx + 3));
-                    f.atoms.x[idx] = (double(ix) + b[k][0]) * kA0 + j;
-                    f.atoms.y[idx] = (double(iy) + b[k][1]) * kA0 - 0.7 * j;
-                    f.atoms.z[idx] = (double(iz) + b[k][2]) * kA0 + 0.3 * j;
-                    f.atoms.mass[idx] = 63.546;
-                    f.atoms.type[idx] = 29;
+                    f.span(ATV::kAtom_x)[idx] =
+                        (double(ix) + b[k][0]) * kA0 + j;
+                    f.span(ATV::kAtom_y)[idx] =
+                        (double(iy) + b[k][1]) * kA0 - 0.7 * j;
+                    f.span(ATV::kAtom_z)[idx] =
+                        (double(iz) + b[k][2]) * kA0 + 0.3 * j;
+                    f.span(ATV::kAtom_mass)[idx] = 63.546;
+                    f.span(ATV::kAtom_type)[idx] = 29;
                     ++idx;
                 }
-    f.box = Mat3::cubic(kA0 * n_cell);
+    f.simbox = ATV::cpu::Box::cubic(kA0 * n_cell);
     return f;
 }
 
@@ -71,7 +77,7 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
     // Cu's first two neighbour shells (2.55, 3.61 A); n_cell 6 -> box 21.7 A.
     const int n_cell = 6; // 864 atoms
     cpu::Frame frame = copper(n_cell);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
 
     // The MD driver, NOT Evaluate: only Dynamics installs the decomposition and the
     // halo, so only it actually exercises ghosts. dt = 0 keeps the geometry fixed, so
@@ -80,7 +86,8 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, 0.3, 1, 0, true});
     sim.set_integrator(cpu::md::VelocityVerlet{0.0});
     sim.on(md::Phase::force)
-        .add(cpu::EAM{cpu::EAMPotential{Element::Cu, "sutton-chen"}, kCutoff});
+        .add(cpu::EAM{cpu::EAMPotential{molrs::Element::Cu, "sutton-chen"},
+                      kCutoff});
     sim.enable_timing(false);
     sim.build();
     sim.run(frame, 1);
@@ -96,7 +103,7 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
     ASSERT_EQ(static_cast<int>(g.fx.size()), n);
 
     // ── Brute-force reference: no neighbor list, no halo, no decomposition ──
-    const cpu::EAMPotential pot{Element::Cu, "sutton-chen"};
+    const cpu::EAMPotential pot{molrs::Element::Cu, "sutton-chen"};
     const double phi_shift = pot.phi(kCutoff);
     const cpu::Frame ref = copper(n_cell); // the same geometry, unpartitioned
 
@@ -104,13 +111,15 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
     for (int i = 0; i < n; ++i) {
         double r_sum = 0.0;
         for (int j = 0; j < n; ++j) {
-            if (i == j) continue;
-            double dx = ref.atoms.x[i] - ref.atoms.x[j];
-            double dy = ref.atoms.y[i] - ref.atoms.y[j];
-            double dz = ref.atoms.z[i] - ref.atoms.z[j];
-            ref.box.min_image(dx, dy, dz);
+            if (i == j)
+                continue;
+            double dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
+            double dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
+            double dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
+            ref.simbox.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (r >= kCutoff) continue;
+            if (r >= kCutoff)
+                continue;
             r_sum += pot.f(r);
         }
         rho[i] = r_sum;
@@ -120,13 +129,15 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
     std::vector<double> fx(n, 0.0), fy(n, 0.0), fz(n, 0.0);
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            if (i == j) continue;
-            double dx = ref.atoms.x[i] - ref.atoms.x[j];
-            double dy = ref.atoms.y[i] - ref.atoms.y[j];
-            double dz = ref.atoms.z[i] - ref.atoms.z[j];
-            ref.box.min_image(dx, dy, dz);
+            if (i == j)
+                continue;
+            double dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
+            double dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
+            double dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
+            ref.simbox.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (r >= kCutoff) continue;
+            if (r >= kCutoff)
+                continue;
             const double dE_dr = pot.dphi(r) + (dF[i] + dF[j]) * pot.df(r);
             const double fpair = -dE_dr / r;
             fx[i] += fpair * dx;
@@ -142,10 +153,11 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
         worst = std::max(worst, std::fabs(g.fy[i] - fy[i]));
         worst = std::max(worst, std::fabs(g.fz[i] - fz[i]));
     }
-    EXPECT_LT(worst, 1e-9) << "on " << size
-                           << " ranks, the decomposed EAM forces differ from the "
-                              "brute-force reference by "
-                           << worst << " eV/A — the ghost densities are truncated";
+    EXPECT_LT(worst, kForceTolerance)
+        << "on " << size
+        << " ranks, the decomposed EAM forces differ from the "
+           "brute-force reference by "
+        << worst << " eV/A — the ghost densities are truncated";
 }
 
 int main(int argc, char** argv) {

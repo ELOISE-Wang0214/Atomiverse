@@ -8,10 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/facade/loop.h"
 
 #include <limits>
@@ -32,8 +32,10 @@ class StopWhenTooHot : public cpu::LoopHandler {
     const char* name() const override { return "stop_when_too_hot"; }
     Verdict after_iteration(const cpu::LoopState& s) override {
         const int ndof = s.runtime.md.n_dof_global;
-        if (ndof <= 0) return Verdict::Continue;
-        const double T = 2.0 * s.frame.scalars.kinetic / (ndof * kBoltzmann);
+        if (ndof <= 0)
+            return Verdict::Continue;
+        const double T =
+            2.0 * s.frame.meta.get(ATV::kKinetic) / (ndof * units::kB_ev_per_k);
         return (T > t_max_) ? Verdict::Stop : Verdict::Continue;
     }
 
@@ -61,10 +63,12 @@ struct Harness {
 /// force tolerance. Silence would be better than a wrong answer; a wrong answer wearing
 /// a "converged" badge is the worst outcome available.
 TEST(LoopHandlerTest, SeverityOrdering) {
-    EXPECT_EQ(worse_of(Verdict::Continue, Verdict::Converged), Verdict::Converged);
+    EXPECT_EQ(worse_of(Verdict::Continue, Verdict::Converged),
+              Verdict::Converged);
     EXPECT_EQ(worse_of(Verdict::Converged, Verdict::Stop), Verdict::Stop);
     EXPECT_EQ(worse_of(Verdict::Stop, Verdict::Converged), Verdict::Stop);
-    EXPECT_EQ(worse_of(Verdict::Continue, Verdict::Continue), Verdict::Continue);
+    EXPECT_EQ(worse_of(Verdict::Continue, Verdict::Continue),
+              Verdict::Continue);
     // Idempotent, and order-independent — it is a max over severity, which is exactly
     // what lets the driver reduce it across MPI ranks with a single MPI_MAX.
     EXPECT_EQ(worse_of(Verdict::Stop, Verdict::Stop), Verdict::Stop);
@@ -73,7 +77,8 @@ TEST(LoopHandlerTest, SeverityOrdering) {
 /// ForceConverged judges the METRICS, never the iteration counter.
 TEST(LoopHandlerTest, ForceConvergedNeedsEveryCriterion) {
     Harness h;
-    cpu::ForceConverged handler{/*ftol=*/0.05, /*rms_ftol=*/0.03, /*max_dtol=*/0.002,
+    cpu::ForceConverged handler{/*ftol=*/0.05, /*rms_ftol=*/0.03,
+                                /*max_dtol=*/0.002,
                                 /*rms_dtol=*/0.001, /*etol=*/1e-5};
 
     // Everything satisfied.
@@ -99,7 +104,8 @@ TEST(LoopHandlerTest, ForceConvergedNeedsEveryCriterion) {
 /// convergence_check runs, driver-iteration 0 is not the optimizer's first step. Skipping
 /// the displacement test there declared an untouched lattice converged, having moved
 /// nothing.
-TEST(LoopHandlerTest, ForceConvergedSkipsDisplacementOnlyWhenTheComponentSaysSo) {
+TEST(LoopHandlerTest,
+     ForceConvergedSkipsDisplacementOnlyWhenTheComponentSaysSo) {
     Harness h;
     cpu::ForceConverged handler{};
 
@@ -109,7 +115,8 @@ TEST(LoopHandlerTest, ForceConvergedSkipsDisplacementOnlyWhenTheComponentSaysSo)
     h.metrics.energy_change = 1e-9;
     h.metrics.max_displacement = 999.0; // garbage — and it must be IGNORED
     h.metrics.rms_displacement = 999.0;
-    h.metrics.has_displacement = false; // ... because the component says it is meaningless
+    h.metrics.has_displacement =
+        false; // ... because the component says it is meaningless
 
     EXPECT_EQ(handler.after_iteration(h.state(0)), Verdict::Converged);
 
@@ -158,10 +165,11 @@ TEST(LoopHandlerTest, AUserHandlerCanReadTheFrame) {
 
     h.ctx.md.n_dof_global = 300;
     // KE for T = 300 K on 300 DOF: KE = Ndof kB T / 2
-    h.frame.scalars.kinetic = 0.5 * 300 * kBoltzmann * 300.0;
+    h.frame.meta.get(ATV::kKinetic) = 0.5 * 300 * units::kB_ev_per_k * 300.0;
     EXPECT_EQ(handler.after_iteration(h.state(0)), Verdict::Continue);
 
-    h.frame.scalars.kinetic = 0.5 * 300 * kBoltzmann * 5000.0; // runaway
+    h.frame.meta.get(ATV::kKinetic) =
+        0.5 * 300 * units::kB_ev_per_k * 5000.0; // runaway
     EXPECT_EQ(handler.after_iteration(h.state(0)), Verdict::Stop);
 }
 
@@ -173,7 +181,8 @@ TEST(LoopHandlerTest, AUserHandlerCanReadTheFrame) {
 /// nested driver takes over, and restoring it is how the parent gets its own back.
 TEST(LoopHandlerTest, StatusIsBorrowedByTheContextNotOwned) {
     cpu::Context ctx;
-    EXPECT_EQ(ctx.loop.status, nullptr) << "a Context attached to no loop owns no status";
+    EXPECT_EQ(ctx.loop.status, nullptr)
+        << "a Context attached to no loop owns no status";
 
     IterationStatus outer_status;
     LoopMetrics outer_metrics;
@@ -193,7 +202,8 @@ TEST(LoopHandlerTest, StatusIsBorrowedByTheContextNotOwned) {
 
         EXPECT_TRUE(inner_status.stop_requested);
         EXPECT_FALSE(outer_status.stop_requested)
-            << "the inner loop reached its parent's status — the bug that shipped twice";
+            << "the inner loop reached its parent's status — the bug that "
+               "shipped twice";
 
         ctx.loop.status = saved_s;
         ctx.loop.metrics = saved_m;

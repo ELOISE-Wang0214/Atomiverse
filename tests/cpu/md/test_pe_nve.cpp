@@ -32,7 +32,7 @@ inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal = 268.0;
 inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
@@ -49,7 +49,7 @@ inline std::vector<double> dihedral_Cn_eV() {
 cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     cpu::Frame frame(n_carbons);
 
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
 
@@ -58,30 +58,30 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     const double z0 = box_len / 2.0;
 
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = x0 + i * dx_step;
-        frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
-        frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027; // CH2 united atom (amu)
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x0 + i * dx_step;
+        frame.span(ATV::kAtom_y)[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
+        frame.span(ATV::kAtom_z)[i] = z0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027; // CH2 united atom (amu)
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
 
     const int n_bonds = n_carbons - 1;
     const int n_angles = n_carbons - 2;
     const int n_dihedrals = n_carbons - 3;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_bonds; ++k) {
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     }
     for (int k = 0; k < n_angles; ++k) {
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     }
     for (int k = 0; k < n_dihedrals; ++k) {
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     }
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -96,9 +96,9 @@ TEST(PeNve, EnergyConserves1000Steps) {
     // non-trivial bond-angle-dihedral trajectory without drifting far from
     // the equilibrium geometry. Amplitude chosen so the excursion is well
     // inside the harmonic regime of every bonded potential.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
+    for (int i = 0; i < frame.nlocal(); ++i) {
         const double sign = (i % 2 == 0) ? +1.0 : -1.0;
-        frame.atoms.vz[i] = sign * 1e-3; // Å / fs
+        frame.span(ATV::kAtom_vz)[i] = sign * 1e-3; // Å / fs
     }
 
     cpu::md::MD sim;
@@ -110,11 +110,13 @@ TEST(PeNve, EnergyConserves1000Steps) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e0 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     ASSERT_GT(std::abs(e0), 0.0) << "initial energy must be nonzero";
 
     sim.run(frame, 999);
-    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e1 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-4)

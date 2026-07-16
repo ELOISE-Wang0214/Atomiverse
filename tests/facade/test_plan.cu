@@ -9,7 +9,7 @@ using namespace ATV;
 
 // Dummy component for testing
 
-class DummyComponent : public cuda::ComponentBase {
+class DummyComponent : public cuda::Component {
   public:
     DummyComponent(std::string n) : name_(std::move(n)) {}
 
@@ -23,7 +23,7 @@ class DummyComponent : public cuda::ComponentBase {
 TEST(Plan, LayerSeparation) {
     // Plan builds on host with no CUDA API calls.
     DummyComponent comp("test");
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({0, 0, &comp});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
 
@@ -36,7 +36,7 @@ TEST(Plan, OrderBasedScheduling) {
     DummyComponent b("B");
     DummyComponent a("A");
 
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     int force = ATV::slot_of(md::Phase::force);
     builder.add({force, 10, &b});
     builder.add({force, 1, &a});
@@ -50,7 +50,7 @@ TEST(Plan, OrderBasedScheduling) {
 
 TEST(Plan, InvalidPhaseThrows) {
     DummyComponent comp("bad");
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({999, 0, &comp});
     EXPECT_THROW(builder.build(ATV::slot_count<md::Phase>()),
                  std::runtime_error);

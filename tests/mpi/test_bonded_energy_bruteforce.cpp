@@ -46,11 +46,13 @@ using namespace ATV;
 
 namespace {
 
+constexpr double kEnergyRelativeTolerance = 1.0e-9;
+
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal = 268.0;
 inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
@@ -67,12 +69,18 @@ inline std::vector<double> dihedral_Cn_eV() {
 // Cubic minimum image, multi-wrap safe and independent of Box::min_image's
 // internal implementation (the honest-oracle requirement).
 void min_image_cubic(double& dx, double& dy, double& dz, double L) {
-    while (dx > 0.5 * L) dx -= L;
-    while (dx < -0.5 * L) dx += L;
-    while (dy > 0.5 * L) dy -= L;
-    while (dy < -0.5 * L) dy += L;
-    while (dz > 0.5 * L) dz -= L;
-    while (dz < -0.5 * L) dz += L;
+    while (dx > 0.5 * L)
+        dx -= L;
+    while (dx < -0.5 * L)
+        dx += L;
+    while (dy > 0.5 * L)
+        dy -= L;
+    while (dy < -0.5 * L)
+        dy += L;
+    while (dz > 0.5 * L)
+        dz -= L;
+    while (dz < -0.5 * L)
+        dz += L;
 }
 
 struct BondedEnergies {
@@ -90,7 +98,7 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
     const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
 
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double along = kBondR0 * std::cos(half_apex); // step along chain axis
     const double zig = kBondR0 * std::sin(half_apex);   // transverse zig-zag
     const double c = box_len / 2.0;
@@ -101,7 +109,7 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
     auto place = [&](int base, int axis) {
         const double start = c - 0.5 * (n_carbons - 1) * along;
         for (int i = 0; i < n_carbons; ++i) {
-            const double a = start + i * along;       // along the chain axis
+            const double a = start + i * along;        // along the chain axis
             const double t = (i % 2 == 0) ? 0.0 : zig; // transverse zig-zag
             double p[3];
             p[axis] = a;
@@ -112,14 +120,14 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
             p[0] += 0.17 * std::sin(0.7 * g + 1.0);
             p[1] += 0.13 * std::cos(0.9 * g + 2.0);
             p[2] += 0.11 * std::sin(1.3 * g + 0.5);
-            frame.atoms.x[g] = p[0];
-            frame.atoms.y[g] = p[1];
-            frame.atoms.z[g] = p[2];
-            frame.atoms.mass[g] = 14.027;
-            frame.atoms.type[g] = 0;
-            frame.atoms.vx[g] = 0.0;
-            frame.atoms.vy[g] = 0.0;
-            frame.atoms.vz[g] = 0.0;
+            frame.span(ATV::kAtom_x)[g] = p[0];
+            frame.span(ATV::kAtom_y)[g] = p[1];
+            frame.span(ATV::kAtom_z)[g] = p[2];
+            frame.span(ATV::kAtom_mass)[g] = 14.027;
+            frame.span(ATV::kAtom_type)[g] = 0;
+            frame.span(ATV::kAtom_vx)[g] = 0.0;
+            frame.span(ATV::kAtom_vy)[g] = 0.0;
+            frame.span(ATV::kAtom_vz)[g] = 0.0;
         }
     };
     for (int chain = 0; chain < n_chains; ++chain)
@@ -128,21 +136,21 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
     const int n_b_per = n_carbons - 1;
     const int n_a_per = n_carbons - 2;
     const int n_d_per = n_carbons - 3;
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int chain = 0; chain < n_chains; ++chain) {
         const int base = chain * n_carbons;
         for (int k = 0; k < n_b_per; ++k)
-            frame.atoms.add_bond(base + k, base + k + 1, 0);
+            frame.add_bond(base + k, base + k + 1, 0);
         for (int k = 0; k < n_a_per; ++k)
-            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
+            frame.add_angle(base + k, base + k + 1, base + k + 2, 0);
         for (int k = 0; k < n_d_per; ++k)
-            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
-                                     base + k + 3, 0);
+            frame.add_dihedral(base + k, base + k + 1, base + k + 2,
+                               base + k + 3, 0);
     }
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -152,16 +160,24 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
 // construction and the energy formulas verbatim (bond K(r-r0)²; angle
 // K(θ-θ0)²; dihedral Σ Cn cosⁿφ with φ from the b1×b2, b2×b3 normals).
 BondedEnergies brute_force_bonded(const cpu::Frame& f) {
-    const auto& a = f.atoms;
-    const double L = f.box(0, 0);
-    const int n = a.size();
+    const auto x = f.span(kAtom_x);
+    const auto y = f.span(kAtom_y);
+    const auto z = f.span(kAtom_z);
+    const auto num_bond = f.span(kAtom_num_bond);
+    const auto bond_atom = f.span(kAtom_bond_atom);
+    const auto num_angle = f.span(kAtom_num_angle);
+    const auto angle_atom = f.span(kAtom_angle_atom);
+    const auto num_dihedral = f.span(kAtom_num_dihedral);
+    const auto dihedral_atom = f.span(kAtom_dihedral_atom);
+    const double L = f.simbox.cell()(0, 0);
+    const int n = f.nlocal();
     const double bk = bond_K_eV();
     const double ak = angle_K_eV();
     const auto cn = dihedral_Cn_eV();
     auto pos = [&](int i, double r[3]) {
-        r[0] = a.x[i];
-        r[1] = a.y[i];
-        r[2] = a.z[i];
+        r[0] = x[i];
+        r[1] = y[i];
+        r[2] = z[i];
     };
 
     BondedEnergies e;
@@ -170,8 +186,8 @@ BondedEnergies brute_force_bonded(const cpu::Frame& f) {
         pos(i, ri);
 
         // Bonds owned by i.
-        for (int m = 0; m < a.num_bond[i]; ++m) {
-            const int j = static_cast<int>(a.bond_atom(i, m));
+        for (int m = 0; m < num_bond[i]; ++m) {
+            const int j = static_cast<int>(bond_atom(i, m));
             double rj[3];
             pos(j, rj);
             double dx = ri[0] - rj[0], dy = ri[1] - rj[1], dz = ri[2] - rj[2];
@@ -182,9 +198,9 @@ BondedEnergies brute_force_bonded(const cpu::Frame& f) {
         }
 
         // Angles centred on i.
-        for (int m = 0; m < a.num_angle[i]; ++m) {
-            const int pi = static_cast<int>(a.angle_atom(i, 2 * m + 0));
-            const int pk = static_cast<int>(a.angle_atom(i, 2 * m + 1));
+        for (int m = 0; m < num_angle[i]; ++m) {
+            const int pi = static_cast<int>(angle_atom(i, 2 * m + 0));
+            const int pk = static_cast<int>(angle_atom(i, 2 * m + 1));
             double rpi[3], rpk[3];
             pos(pi, rpi);
             pos(pk, rpk);
@@ -203,17 +219,20 @@ BondedEnergies brute_force_bonded(const cpu::Frame& f) {
         }
 
         // Dihedrals owned by i (= the i2 / second atom of i1-i2-i3-i4).
-        for (int m = 0; m < a.num_dihedral[i]; ++m) {
-            const int i1 = static_cast<int>(a.dihedral_atom(i, 3 * m + 0));
-            const int i3 = static_cast<int>(a.dihedral_atom(i, 3 * m + 1));
-            const int i4 = static_cast<int>(a.dihedral_atom(i, 3 * m + 2));
+        for (int m = 0; m < num_dihedral[i]; ++m) {
+            const int i1 = static_cast<int>(dihedral_atom(i, 3 * m + 0));
+            const int i3 = static_cast<int>(dihedral_atom(i, 3 * m + 1));
+            const int i4 = static_cast<int>(dihedral_atom(i, 3 * m + 2));
             double r1[3], r3[3], r4[3];
             pos(i1, r1);
             pos(i3, r3);
             pos(i4, r4); // r2 == ri (owner)
-            double b1x = ri[0] - r1[0], b1y = ri[1] - r1[1], b1z = ri[2] - r1[2];
-            double b2x = r3[0] - ri[0], b2y = r3[1] - ri[1], b2z = r3[2] - ri[2];
-            double b3x = r4[0] - r3[0], b3y = r4[1] - r3[1], b3z = r4[2] - r3[2];
+            double b1x = ri[0] - r1[0], b1y = ri[1] - r1[1],
+                   b1z = ri[2] - r1[2];
+            double b2x = r3[0] - ri[0], b2y = r3[1] - ri[1],
+                   b2z = r3[2] - ri[2];
+            double b3x = r4[0] - r3[0], b3y = r4[1] - r3[1],
+                   b3z = r4[2] - r3[2];
             min_image_cubic(b1x, b1y, b1z, L);
             min_image_cubic(b2x, b2y, b2z, L);
             min_image_cubic(b3x, b3y, b3z, L);
@@ -228,8 +247,8 @@ BondedEnergies brute_force_bonded(const cpu::Frame& f) {
             const double n2sq = n2x * n2x + n2y * n2y + n2z * n2z;
             if (n1sq < 1e-20 || n2sq < 1e-20)
                 continue;
-            double cosp = (n1x * n2x + n1y * n2y + n1z * n2z)
-                          / std::sqrt(n1sq * n2sq);
+            double cosp =
+                (n1x * n2x + n1y * n2y + n1z * n2z) / std::sqrt(n1sq * n2sq);
             cosp = std::max(-1.0, std::min(1.0, cosp));
             double pw = 1.0, sum = 0.0;
             for (std::size_t k = 0; k < cn.size(); ++k) {
@@ -272,10 +291,8 @@ TEST(BondedEnergyBruteForce, PerTermEnergyMatchesBruteForce) {
         .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
     // Bonded-only sim: no pair evaluator ⇒ halo is not auto-injected, so wire
     // the ghost exchange explicitly (cutoff must span the longest tuple).
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{cutoff}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{cutoff}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1); // one frozen step → Reduce fills global per-term
@@ -284,16 +301,16 @@ TEST(BondedEnergyBruteForce, PerTermEnergyMatchesBruteForce) {
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     auto check = [&](const char* term, double dist, double oracle) {
         const double rel = std::abs(dist - oracle) / std::abs(oracle);
-        EXPECT_LT(rel, 1e-9)
+        EXPECT_LT(rel, kEnergyRelativeTolerance)
             << "rank " << my_rank << " world=" << world_size << ": distributed "
             << term << " energy " << dist << " disagrees with brute force "
             << oracle << " (rel=" << rel
             << ") — a bonded tuple's cross-cut partner was dropped or "
                "mis-resolved";
     };
-    check("bond", frame.scalars.energy_bond, bf.bond);
-    check("angle", frame.scalars.energy_angle, bf.angle);
-    check("dihedral", frame.scalars.energy_dihedral, bf.dihedral);
+    check("bond", frame.meta.get(ATV::kEnergyBond), bf.bond);
+    check("angle", frame.meta.get(ATV::kEnergyAngle), bf.angle);
+    check("dihedral", frame.meta.get(ATV::kEnergyDihedral), bf.dihedral);
 }
 
 int main(int argc, char** argv) {

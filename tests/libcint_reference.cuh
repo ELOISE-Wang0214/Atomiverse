@@ -19,8 +19,8 @@ extern "C" {
 #undef atm
 #undef bas
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/integrals.h"
 
@@ -60,10 +60,10 @@ inline void normalize_contracted_coeffs(int l, const double* exps,
 /// integral engine. Supports elements Z=1..8 with s and p type shells.
 /// Used exclusively for validation — never in production code.
 inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
-    int natm = static_cast<int>(frame.atoms.size());
+    int natm = static_cast<int>(frame.nlocal());
     int n_electrons = 0;
     for (int i = 0; i < natm; ++i)
-        n_electrons += frame.atoms.type[i];
+        n_electrons += frame.span(ATV::kAtom_type)[i];
 
     // Count basis functions and shells from the checked-in basis_data table.
     // Generic table already separates s and p shells (no sp fusion) so shell
@@ -73,7 +73,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     int n_basis = 0;
     int n_shells = 0;
     for (int i = 0; i < natm; ++i) {
-        int Z = static_cast<int>(frame.atoms.type[i]);
+        int Z = static_cast<int>(frame.span(ATV::kAtom_type)[i]);
         for (const auto& sh : sto3g_table[Z].shells) {
             n_shells += 1;
             n_basis += (sh.l + 1) * (sh.l + 2) / 2; // Cartesian dim
@@ -101,11 +101,14 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 
     for (int i = 0; i < natm; ++i) {
         atm_arr[CHARGE_OF + ATM_SLOTS * i] =
-            static_cast<FINT>(frame.atoms.type[i]);
+            static_cast<FINT>(frame.span(ATV::kAtom_type)[i]);
         atm_arr[PTR_COORD + ATM_SLOTS * i] = off;
-        env[off + 0] = static_cast<double>(frame.atoms.x[i]) * kAngstromToBohr;
-        env[off + 1] = static_cast<double>(frame.atoms.y[i]) * kAngstromToBohr;
-        env[off + 2] = static_cast<double>(frame.atoms.z[i]) * kAngstromToBohr;
+        env[off + 0] = static_cast<double>(frame.span(ATV::kAtom_x)[i])
+                       * units::kAngstromInBohr;
+        env[off + 1] = static_cast<double>(frame.span(ATV::kAtom_y)[i])
+                       * units::kAngstromInBohr;
+        env[off + 2] = static_cast<double>(frame.span(ATV::kAtom_z)[i])
+                       * units::kAngstromInBohr;
         off += 3;
     }
 
@@ -118,7 +121,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     int shell_idx = 0;
     int bf_idx = 0;
     for (int a = 0; a < natm; ++a) {
-        int Z = static_cast<int>(frame.atoms.type[a]);
+        int Z = static_cast<int>(frame.span(ATV::kAtom_type)[a]);
         for (const auto& sh : sto3g_table[Z].shells) {
             const int l = sh.l;
             const int nprim = static_cast<int>(sh.alpha.size());
@@ -241,18 +244,19 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     pack.V_nuc = 0;
     for (int a = 0; a < natm; ++a)
         for (int b = a + 1; b < natm; ++b) {
-            double dx = (static_cast<double>(frame.atoms.x[a])
-                         - static_cast<double>(frame.atoms.x[b]))
-                        * kAngstromToBohr;
-            double dy = (static_cast<double>(frame.atoms.y[a])
-                         - static_cast<double>(frame.atoms.y[b]))
-                        * kAngstromToBohr;
-            double dz = (static_cast<double>(frame.atoms.z[a])
-                         - static_cast<double>(frame.atoms.z[b]))
-                        * kAngstromToBohr;
+            double dx = (static_cast<double>(frame.span(ATV::kAtom_x)[a])
+                         - static_cast<double>(frame.span(ATV::kAtom_x)[b]))
+                        * units::kAngstromInBohr;
+            double dy = (static_cast<double>(frame.span(ATV::kAtom_y)[a])
+                         - static_cast<double>(frame.span(ATV::kAtom_y)[b]))
+                        * units::kAngstromInBohr;
+            double dz = (static_cast<double>(frame.span(ATV::kAtom_z)[a])
+                         - static_cast<double>(frame.span(ATV::kAtom_z)[b]))
+                        * units::kAngstromInBohr;
             double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            pack.V_nuc += static_cast<double>(frame.atoms.type[a]
-                                              * frame.atoms.type[b] / r);
+            pack.V_nuc +=
+                static_cast<double>(frame.span(ATV::kAtom_type)[a]
+                                    * frame.span(ATV::kAtom_type)[b] / r);
         }
 
     return pack;
@@ -312,7 +316,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 inline xt::xtensor<double, 4>
 build_eri_libcint_from_pack(const cpu::Frame& frame,
                             const cpu::scf::IntegralPack& pack) {
-    const int natm = static_cast<int>(frame.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
 
     // Regroup AO-level shells (one per Cartesian component) into shells:
     // a new shell starts whenever (center, l) changes.
@@ -338,11 +342,14 @@ build_eri_libcint_from_pack(const cpu::Frame& frame,
 
     for (int i = 0; i < natm; ++i) {
         atm_arr[CHARGE_OF + ATM_SLOTS * i] =
-            static_cast<FINT>(frame.atoms.type[i]);
+            static_cast<FINT>(frame.span(ATV::kAtom_type)[i]);
         atm_arr[PTR_COORD + ATM_SLOTS * i] = off;
-        env[off + 0] = static_cast<double>(frame.atoms.x[i]) * kAngstromToBohr;
-        env[off + 1] = static_cast<double>(frame.atoms.y[i]) * kAngstromToBohr;
-        env[off + 2] = static_cast<double>(frame.atoms.z[i]) * kAngstromToBohr;
+        env[off + 0] = static_cast<double>(frame.span(ATV::kAtom_x)[i])
+                       * units::kAngstromInBohr;
+        env[off + 1] = static_cast<double>(frame.span(ATV::kAtom_y)[i])
+                       * units::kAngstromInBohr;
+        env[off + 2] = static_cast<double>(frame.span(ATV::kAtom_z)[i])
+                       * units::kAngstromInBohr;
         off += 3;
     }
 
@@ -360,12 +367,12 @@ build_eri_libcint_from_pack(const cpu::Frame& frame,
         int atom_index = 0;
         double best = 1e30;
         for (int a = 0; a < natm; ++a) {
-            const double ax =
-                static_cast<double>(frame.atoms.x[a]) * kAngstromToBohr;
-            const double ay =
-                static_cast<double>(frame.atoms.y[a]) * kAngstromToBohr;
-            const double az =
-                static_cast<double>(frame.atoms.z[a]) * kAngstromToBohr;
+            const double ax = static_cast<double>(frame.span(ATV::kAtom_x)[a])
+                              * units::kAngstromInBohr;
+            const double ay = static_cast<double>(frame.span(ATV::kAtom_y)[a])
+                              * units::kAngstromInBohr;
+            const double az = static_cast<double>(frame.span(ATV::kAtom_z)[a])
+                              * units::kAngstromInBohr;
             const double d2 = (ax - sh.center[0]) * (ax - sh.center[0])
                               + (ay - sh.center[1]) * (ay - sh.center[1])
                               + (az - sh.center[2]) * (az - sh.center[2]);

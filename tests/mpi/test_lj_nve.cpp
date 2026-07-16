@@ -13,7 +13,7 @@
 ///     not migrate across slab boundaries within the run (Phase 2 has no
 ///     atom migration; see spec §A.4).
 ///   - 20 steps of NVE integration with `dt = 1 fs`.
-///   - Each step: compute total energy = `Σ local frame.scalars.energy +
+///   - Each step: compute total energy = `Σ local frame.meta.get(ATV::kEnergy) +
 ///     Σ local kinetic` reduced across ranks via `MPI_Allreduce`. In NVE
 ///     the total energy drift must stay below 1e-2 relative.
 
@@ -26,13 +26,13 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -59,31 +59,31 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] =
+                    frame.span(ATV::kAtom_x)[idx] =
                         (static_cast<double>(ix) + basis[b][0]) * a_lat + shift;
-                    frame.atoms.y[idx] =
+                    frame.span(ATV::kAtom_y)[idx] =
                         (static_cast<double>(iy) + basis[b][1]) * a_lat + shift;
-                    frame.atoms.z[idx] =
+                    frame.span(ATV::kAtom_z)[idx] =
                         (static_cast<double>(iz) + basis[b][2]) * a_lat + shift;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     // Tiny structured velocity pattern: deterministic, sum-to-zero.
                     const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
-                    frame.atoms.vx[idx] = s;
-                    frame.atoms.vy[idx] = s * 0.5;
-                    frame.atoms.vz[idx] = s * 0.25;
+                    frame.span(ATV::kAtom_vx)[idx] = s;
+                    frame.span(ATV::kAtom_vy)[idx] = s * 0.5;
+                    frame.span(ATV::kAtom_vz)[idx] = s * 0.25;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a_lat);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
 double total_energy_global(const cpu::Frame& frame) {
     // Reduce (Phase 0.4) runs at end_of_step @ -50 and writes the
-    // globally-reduced sum back into frame.scalars.energy / frame.scalars.kinetic, so
+    // globally-reduced sum back into frame.meta.get(ATV::kEnergy) / frame.meta.get(ATV::kKinetic), so
     // every rank sees the same global value here. Pre-Phase-0.4 callers
     // had to MPI_Allreduce manually -- doing so now would double-reduce.
-    return frame.scalars.energy + frame.scalars.kinetic;
+    return frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
 }
 
 } // namespace
@@ -106,18 +106,18 @@ TEST(LjNve, EnergyConservationSingleRank) {
     sim.add(cpu::md::VelocityVerlet{1.0}); // dt = 1 fs
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{6.0}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{6.0}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e0 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     ASSERT_GT(std::abs(e0), 1e-12) << "initial energy should be nonzero";
 
     sim.run(frame, 20);
-    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e1 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-2) << "single-rank NVE energy drift " << drift
                            << " exceeds 1e-2 over 20 steps (E0=" << e0
@@ -142,10 +142,8 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.add(cpu::md::VelocityVerlet{1.0});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{6.0}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{6.0}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1);

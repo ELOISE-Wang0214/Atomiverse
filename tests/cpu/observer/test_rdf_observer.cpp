@@ -2,7 +2,7 @@
 /// @brief Tests for `RDF` async observer (molrs-backed g(r)).
 ///
 /// Verifies:
-///   - registration via `sim.add(rdf)` (uses cpu::md::AsyncObserver default binding)
+///   - registration via `sim.add_ref(rdf)` (explicit borrowed component)
 ///   - snapshots stage into the molrs trajectory (n_samples accrues)
 ///   - finalize() computes a nonzero g(r) via molrs and writes the output file
 ///   - first g(r) peak position matches FCC nearest-neighbor distance
@@ -43,14 +43,14 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
@@ -76,7 +76,7 @@ TEST(RDFObserverAsync, AccumulatesAcrossSnapshots) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
         sim.add(NoOpForce{});
-        sim.add(rdf);
+        sim.add_ref(rdf);
         sim.build();
         sim.run(
             frame,
@@ -103,7 +103,7 @@ TEST(RDFObserverAsync, FinalizeWritesOutputFile) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
         sim.add(NoOpForce{});
-        sim.add(rdf);
+        sim.add_ref(rdf);
         sim.build();
         sim.run(frame, 5);
     }
@@ -142,7 +142,7 @@ TEST(RDFObserverAsync, FirstPeakNearFCCNearestNeighbor) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
         sim.add(NoOpForce{});
-        sim.add(rdf);
+        sim.add_ref(rdf);
         sim.build();
         sim.run(frame, 3); // 2 firing snapshots
     }
@@ -180,7 +180,7 @@ TEST(RDFObserverAsync, FrequencyRespected) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
         sim.add(NoOpForce{});
-        sim.add(rdf);
+        sim.add_ref(rdf);
         sim.build();
         sim.run(frame, 11); // step > 0 && step % 3 == 0 → 3, 6, 9 → 3 samples
     }

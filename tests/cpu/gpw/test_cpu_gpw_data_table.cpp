@@ -14,9 +14,11 @@
 #include <gtest/gtest.h>
 
 #include <stdexcept>
+#include <type_traits>
 
 #include "atomiverse/cpu/gpw/basis_data/gpw_tables.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
 
@@ -24,22 +26,26 @@ using namespace ATV::cpu::gpw;
 
 namespace {
 constexpr double kTol = 1e-12; // the tables are exact decimal transcriptions
+
+static_assert(!std::is_default_constructible_v<GaussianBasis>);
+static_assert(!std::is_default_constructible_v<GthPotential>);
+static_assert(!std::is_default_constructible_v<Kind>);
 } // namespace
 
 // ac-003: the five supported elements {Zn,O,H,Na,Cl} resolve, with the right valence charge.
 TEST(GpwDataTable, EdlElementsHaveCorrectZion) {
-    EXPECT_EQ(GthPotential(ATV::Element::H, "GTH-PBE-q1").zion, 1);
-    EXPECT_EQ(GthPotential(ATV::Element::O, "GTH-PBE-q6").zion, 6);
-    EXPECT_EQ(GthPotential(ATV::Element::Na, "GTH-PBE-q9").zion, 9);
-    EXPECT_EQ(GthPotential(ATV::Element::Cl, "GTH-PBE-q7").zion, 7);
-    EXPECT_EQ(GthPotential(ATV::Element::Zn, "GTH-PBE-q12").zion, 12);
+    EXPECT_EQ(GthPotential(molrs::Element::H, "GTH-PBE-q1").zion, 1);
+    EXPECT_EQ(GthPotential(molrs::Element::O, "GTH-PBE-q6").zion, 6);
+    EXPECT_EQ(GthPotential(molrs::Element::Na, "GTH-PBE-q9").zion, 9);
+    EXPECT_EQ(GthPotential(molrs::Element::Cl, "GTH-PBE-q7").zion, 7);
+    EXPECT_EQ(GthPotential(molrs::Element::Zn, "GTH-PBE-q12").zion, 12);
 }
 
 // ac-003: Zn-q12 is the element that forces arbitrary-l support — it carries a
 // d (l=2) nonlocal projector channel. A table that silently dropped it would
 // still "work" and be physically wrong, so assert the channel structure.
 TEST(GpwDataTable, ZnPbeQ12HasSPDProjectorChannels) {
-    const GthPotential zn = GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
+    const GthPotential zn = GthPotential(molrs::Element::Zn, "GTH-PBE-q12");
     ASSERT_EQ(zn.channels.size(), 3u); // l = 0, 1, 2
     EXPECT_EQ(zn.channels[0].l, 0);
     EXPECT_EQ(zn.channels[1].l, 1);
@@ -59,7 +65,7 @@ TEST(GpwDataTable, ZnPbeQ12HasSPDProjectorChannels) {
 
 // ac-003: local part of a light element, digit-for-digit.
 TEST(GpwDataTable, OxygenPbeQ6LocalPart) {
-    const GthPotential o = GthPotential(ATV::Element::O, "GTH-PBE-q6");
+    const GthPotential o = GthPotential(molrs::Element::O, "GTH-PBE-q6");
     EXPECT_EQ(o.zion, 6);
     EXPECT_GT(o.cloc.size(), 0u);
     EXPECT_GT(o.rloc, 0.0);
@@ -68,15 +74,17 @@ TEST(GpwDataTable, OxygenPbeQ6LocalPart) {
 
 // ac-003: MOLOPT basis for every supported element, with a pinned H contraction.
 TEST(GpwDataTable, MoloptSrBasisForEdlElements) {
-    for (ATV::Element el : {ATV::Element::H, ATV::Element::O, ATV::Element::Na,
-                            ATV::Element::Cl, ATV::Element::Zn}) {
+    for (molrs::Element el :
+         {molrs::Element::H, molrs::Element::O, molrs::Element::Na,
+          molrs::Element::Cl, molrs::Element::Zn}) {
         const GaussianBasis b = GaussianBasis(el, "DZVP-MOLOPT-SR-GTH");
         EXPECT_EQ(b.element, el);
         ASSERT_FALSE(b.sets.empty()) << static_cast<int>(el);
         EXPECT_GT(b.sets[0].nexp(), 0) << static_cast<int>(el);
     }
 
-    const GaussianBasis h = GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis h =
+        GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
     ASSERT_EQ(h.sets.size(), 1u);
     const GaussianBasisSet& s = h.sets[0];
     EXPECT_EQ(s.nexp(), 5);
@@ -91,26 +99,33 @@ TEST(GpwDataTable, MoloptSrBasisForEdlElements) {
 
 // ac-003: Zn's MOLOPT set carries the f (l=3) shell that broke harmonics().
 TEST(GpwDataTable, ZnMoloptCarriesFShell) {
-    const GaussianBasis zn = GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis zn =
+        GaussianBasis(molrs::Element::Zn, "DZVP-MOLOPT-SR-GTH");
     int lmax = 0;
-    for (const GaussianBasisSet& s : zn.sets) lmax = std::max(lmax, s.lmax);
+    for (const GaussianBasisSet& s : zn.sets)
+        lmax = std::max(lmax, s.lmax);
     EXPECT_GE(lmax, 3) << "Zn DZVP-MOLOPT-SR-GTH must include the f shell";
 }
 
 // ac-004 / no-fallback rule: an unsupported element or name THROWS. A fallback
 // value here would be a silently wrong pseudopotential.
 TEST(GpwDataTable, UnsupportedEntryThrows) {
-    EXPECT_THROW(GthPotential(ATV::Element::Zn, "GTH-NOPE-q12"), std::runtime_error);
-    EXPECT_THROW(GthPotential(ATV::Element::Pu, "GTH-PBE-q1"), std::runtime_error);
-    EXPECT_THROW(GaussianBasis(ATV::Element::Zn, "DZVP-NOPE-GTH"), std::runtime_error);
-    EXPECT_THROW(GaussianBasis(ATV::Element::Pu, "DZVP-MOLOPT-SR-GTH"), std::runtime_error);
+    EXPECT_THROW(GthPotential(molrs::Element::Zn, "GTH-NOPE-q12"),
+                 std::runtime_error);
+    EXPECT_THROW(GthPotential(molrs::Element::Pu, "GTH-PBE-q1"),
+                 std::runtime_error);
+    EXPECT_THROW(GaussianBasis(molrs::Element::Zn, "DZVP-NOPE-GTH"),
+                 std::runtime_error);
+    EXPECT_THROW(GaussianBasis(molrs::Element::Pu, "DZVP-MOLOPT-SR-GTH"),
+                 std::runtime_error);
 }
 
 // ac-013: the in-tree D3 table covers the supported set and only that set.
 TEST(GpwDataTable, D3CoversSupportedElementsOnly) {
     for (int z : {1, 8, 11, 17, 18, 30})
         EXPECT_TRUE(D3Params::supports_element(z)) << z;
-    for (int z : {6, 7, 26, 94}) EXPECT_FALSE(D3Params::supports_element(z)) << z;
+    for (int z : {6, 7, 26, 94})
+        EXPECT_FALSE(D3Params::supports_element(z)) << z;
 
     const D3Params p{};
     EXPECT_FALSE(p.c6ab[1][1].empty());   // H-H

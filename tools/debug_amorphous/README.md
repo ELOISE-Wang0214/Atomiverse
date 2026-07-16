@@ -15,7 +15,7 @@ can be put next to LAMMPS line-by-line.
 | `amorphous.in` | LAMMPS input script (DREIDING-like force field, NVE/limit + Langevin Stage 1, NPT Stage 2) |
 | `log.PE_nc10_cl1000.txt` | LAMMPS reference log (Stages 1 + 2 already run) |
 | `lammps_loader.h` | C++ loader: LAMMPS data → `cpu::Frame` |
-| `gather_frame.h` | Inter-stage all-gather so Stage 2 can resume from Stage 1's multi-rank state |
+| `gather_frame.h` | Native-schema inter-stage all-gather; preserves runtime columns, topology, configured precision, and full-width tags |
 | `run_atomiverse.cpp` | Main MPI driver |
 | `run.sh` | Build-and-launch helper |
 | `compare.py` | Side-by-side T / P / Lx comparison + plot |
@@ -40,7 +40,7 @@ verbatim.
 | Stage | LAMMPS | Atomiverse mapping |
 |---|---|---|
 | 1 | `fix nve/limit 0.05` + `fix langevin T=500 τ=10 fs`, dt=1 fs, 10 000 steps | `cpu::md::NVELimit{1, 0.05}` + `cpu::md::FixLangevin{500, 10, 1, 904297}` |
-| 2 | `fix npt T=500 τ_T=50 iso P=0 τ_P=1000 drag 2` (mtchain=mpchain=3) + `fix momentum 1 linear 1 1 1`, dt=0.5 fs, 50 000 steps | `cpu::md::NoseHooverNPT{.T=500, .tau_T=50, .P=0, .tau_P=1000, .drag=2, .mtchain=3, .mpchain=3, .dt=0.5}` + `cpu::md::ZeroLinearMomentum{1}` |
+| 2 | `fix npt T=500 τ_T=50 iso P=0 τ_P=1000 drag 2` (mtchain=mpchain=3) + `fix momentum 1 linear 1 1 1`, dt=0.5 fs, 50 000 steps | `cpu::md::NoseHooverNPT{.T=500, .tau_T=50, .P=0, .tau_P=1000, .drag=2, .mtchain=3, .mpchain=3, .dt=0.5}` + `cpu::md::ZeroMomentum{1}` |
 
 **Algorithm match rule.** Both stages use the exact same thermostat /
 barostat family on both sides — Stage 1 Langevin vs Langevin, Stage 2
@@ -95,7 +95,7 @@ python3 tools/debug_amorphous/compare.py
 
 Output: `compare.png` with one row per observable, one column per
 stage (T, P, PE, KE, E_total, ρ, v_rms), plus a text summary table
-on stdout. `v_rms = sqrt(2·KE / (M_total·kMvv2e))` is derived identically
+on stdout. `v_rms = sqrt(2·KE / (M_total·units::mass_v2_to_energy))` is derived identically
 on both sides from the KE column, so it visualises the same data as
 the KE panel but in Å/fs.
 

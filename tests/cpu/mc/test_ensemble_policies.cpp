@@ -31,7 +31,7 @@ struct PolicyHarness {
     std::mt19937_64 rng{99u};
 
     PolicyHarness() {
-        frame.box.set_cell(Mat3::diagonal(20.0, 20.0, 20.0));
+        frame.simbox.set_cell(Mat3::diagonal(20.0, 20.0, 20.0));
         ctx.mc.proposal = &txn;
         ctx.mc.rng = &rng;
     }
@@ -65,9 +65,9 @@ TEST(GcmcMetropolis, LambdaCubedMatchesUnits) {
 TEST(GcmcMetropolis, DownhillDisplacementAlwaysCommits) {
     PolicyHarness h;
     cpu::mc::GcmcMetropolis p{120.0, 0.0, 39.948, h.rng};
-    h.frame.scalars.energy = -1.0;
+    h.frame.meta.get(ATV::kEnergy) = -1.0;
     p.on_start(h.state());
-    h.frame.scalars.energy = -1.5; // dE < 0
+    h.frame.meta.get(ATV::kEnergy) = -1.5; // dE < 0
     h.stamp(Verb::Displace);
     EXPECT_EQ(p.after_stages(h.state()), Outcome::Commit);
     EXPECT_EQ(p.current_energy(), -1.5); // reference moved to the trial
@@ -78,17 +78,17 @@ TEST(GcmcMetropolis, DisplacementAcceptanceMatchesBoltzmannFactor) {
     const double T = 300.0;
     const double dE = 0.02; // uphill
     cpu::mc::GcmcMetropolis p{T, 0.0, 39.948, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
     h.stamp(Verb::Displace);
 
     const int n_trials = 40000;
     int commits = 0;
     for (int k = 0; k < n_trials; ++k) {
-        h.frame.scalars.energy = dE; // fresh uphill trial from E=0
+        h.frame.meta.get(ATV::kEnergy) = dE; // fresh uphill trial from E=0
         if (p.after_stages(h.state()) == Outcome::Commit) {
             ++commits;
-            h.frame.scalars.energy = 0.0; // hop back so dE stays fixed
+            h.frame.meta.get(ATV::kEnergy) = 0.0; // hop back so dE stays fixed
             h.stamp(Verb::Displace);
             // Bring the reference back to 0 with a certain downhill commit.
             ASSERT_EQ(p.after_stages(h.state()), Outcome::Commit);
@@ -96,8 +96,7 @@ TEST(GcmcMetropolis, DisplacementAcceptanceMatchesBoltzmannFactor) {
     }
     const double expected = std::exp(-dE / (units::kB_ev_per_k * T));
     const double observed = static_cast<double>(commits) / n_trials;
-    const double sigma =
-        std::sqrt(expected * (1.0 - expected) / n_trials);
+    const double sigma = std::sqrt(expected * (1.0 - expected) / n_trials);
     EXPECT_NEAR(observed, expected, 4.0 * sigma);
 }
 
@@ -106,7 +105,7 @@ TEST(GcmcMetropolis, InsertionPrefactorGovernsTheDecision) {
     // deterministic commit, no RNG draw.
     PolicyHarness h;
     cpu::mc::GcmcMetropolis p{120.0, 0.0, 39.948, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
     h.stamp(Verb::Insert); // trial frame already holds N+1 = 4 atoms
     EXPECT_EQ(p.after_stages(h.state()), Outcome::Commit);
@@ -116,7 +115,7 @@ TEST(GcmcMetropolis, HopelessInsertionIsRejected) {
     // μ = −10 eV at 120 K: βμ ≈ −967 ⇒ exp(-arg) ≈ 0 — rejected every time.
     PolicyHarness h;
     cpu::mc::GcmcMetropolis p{120.0, -10.0, 39.948, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
     h.stamp(Verb::Insert);
     for (int k = 0; k < 100; ++k)
@@ -127,9 +126,9 @@ TEST(GcmcMetropolis, DeletionPrefactorGovernsTheDecision) {
     // dE = 0, μ = 0: arg = −ln(Λ³·N_old / V). Make the box tiny so
     // Λ³·N_old > V ⇒ deterministic commit.
     PolicyHarness h;
-    h.frame.box.set_cell(Mat3::diagonal(0.1, 0.1, 0.1));
+    h.frame.simbox.set_cell(Mat3::diagonal(0.1, 0.1, 0.1));
     cpu::mc::GcmcMetropolis p{120.0, 0.0, 39.948, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
     h.stamp(Verb::Delete);
     EXPECT_EQ(p.after_stages(h.state()), Outcome::Commit);
@@ -154,7 +153,7 @@ TEST(NptMetropolis, RejectsBadConstruction) {
 TEST(NptMetropolis, SeedsEnergyAndVolume) {
     PolicyHarness h;
     cpu::mc::NptMetropolis p{300.0, 0.0, h.rng};
-    h.frame.scalars.energy = -2.5;
+    h.frame.meta.get(ATV::kEnergy) = -2.5;
     p.on_start(h.state());
     EXPECT_EQ(p.current_energy(), -2.5);
     EXPECT_DOUBLE_EQ(p.current_volume(), 20.0 * 20.0 * 20.0);
@@ -164,12 +163,12 @@ TEST(NptMetropolis, ZeroPressureExpansionAlwaysCommits) {
     // dE = 0, P = 0: arg = −N·ln(V'/V) < 0 for an expansion — deterministic.
     PolicyHarness h;
     cpu::mc::NptMetropolis p{300.0, 0.0, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
-    h.frame.box.scale_isotropic(1.05);
+    h.frame.simbox.scale_isotropic(1.05);
     h.stamp(Verb::Box);
     EXPECT_EQ(p.after_stages(h.state()), Outcome::Commit);
-    EXPECT_DOUBLE_EQ(p.current_volume(), h.frame.box.volume());
+    EXPECT_DOUBLE_EQ(p.current_volume(), h.frame.simbox.volume());
 }
 
 TEST(NptMetropolis, CrushingPressureRejectsExpansion) {
@@ -177,9 +176,9 @@ TEST(NptMetropolis, CrushingPressureRejectsExpansion) {
     // exp(-arg) ≈ 0.
     PolicyHarness h;
     cpu::mc::NptMetropolis p{300.0, /*P [eV/Å³]=*/10.0, h.rng};
-    h.frame.scalars.energy = 0.0;
+    h.frame.meta.get(ATV::kEnergy) = 0.0;
     p.on_start(h.state());
-    h.frame.box.scale_isotropic(1.5);
+    h.frame.simbox.scale_isotropic(1.5);
     h.stamp(Verb::Box);
     for (int k = 0; k < 100; ++k)
         EXPECT_EQ(p.after_stages(h.state()), Outcome::Rollback);

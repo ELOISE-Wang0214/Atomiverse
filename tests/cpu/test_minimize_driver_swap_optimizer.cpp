@@ -14,7 +14,7 @@
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -22,19 +22,24 @@ namespace {
 
 cpu::Frame make_h2(double bond_length) {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, bond_length};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = bond_length;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 double bond_length(const cpu::Frame& f) {
-    const double dx = f.atoms.x(1) - f.atoms.x(0);
-    const double dy = f.atoms.y(1) - f.atoms.y(0);
-    const double dz = f.atoms.z(1) - f.atoms.z(0);
+    const double dx = f.span(ATV::kAtom_x)[1] - f.span(ATV::kAtom_x)[0];
+    const double dy = f.span(ATV::kAtom_y)[1] - f.span(ATV::kAtom_y)[0];
+    const double dz = f.span(ATV::kAtom_z)[1] - f.span(ATV::kAtom_z)[0];
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
@@ -42,7 +47,9 @@ double energy_at(const cpu::Frame& frame_template) {
     auto integrals =
         cpu::scf::build_integrals(frame_template, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
-    auto result = cpu::scf::scf_solve(integrals, config);
+    ATV::cpu::scf::SCFSolver result_solver{config};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     return result.energy;
 }
 
@@ -63,7 +70,7 @@ TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
 
         cpu::minimizer::Minimize opt;
         opt.add(cpu::minimizer::LBFGS{});
-        opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+        opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{cfg});
         opt.build();
         opt.run(frame_lbfgs, max_iter);
     }
@@ -79,7 +86,7 @@ TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
 
         cpu::minimizer::Minimize opt;
         opt.add(cpu::minimizer::CG{});
-        opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+        opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{cfg});
         opt.build();
         opt.run(frame_cg, max_iter);
     }
@@ -99,7 +106,7 @@ TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
     // not a numerical-quality test.
     EXPECT_NEAR(bond_lbfgs, bond_cg, 0.05)
         << "LBFGS and CG should land at the same H₂ minimum bond length";
-    EXPECT_NEAR(energy_lbfgs, energy_cg, 1e-3 * kHartree2eV)
+    EXPECT_NEAR(energy_lbfgs, energy_cg, 1e-3 * units::kHartreeInEv)
         << "LBFGS and CG should land at the same H₂ minimum energy "
         << "(within 1e-3 Ha)";
 }

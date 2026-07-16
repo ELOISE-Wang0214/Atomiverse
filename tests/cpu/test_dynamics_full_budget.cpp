@@ -34,7 +34,7 @@ namespace {
 
 /// A component may REQUEST a stop. It may not declare convergence — there is no longer
 /// any field it could write to do so.
-struct StopAtStep : ATV::cpu::ComponentBase {
+struct StopAtStep : ATV::cpu::Component {
     int stop_at;
     explicit StopAtStep(int s) : stop_at(s) {}
     std::string name() const override { return "stop_at_step"; }
@@ -56,7 +56,8 @@ class ConvergeAtIteration : public ATV::cpu::LoopHandler {
     explicit ConvergeAtIteration(int at) : at_(at) {}
     const char* name() const override { return "converge_at_iteration"; }
     ATV::Verdict after_iteration(const ATV::cpu::LoopState& s) override {
-        return (s.iteration >= at_) ? ATV::Verdict::Converged : ATV::Verdict::Continue;
+        return (s.iteration >= at_) ? ATV::Verdict::Converged
+                                    : ATV::Verdict::Continue;
     }
 
   private:
@@ -76,8 +77,8 @@ TEST(DynamicsTermination, NoHandlerRunsTheFullBudget) {
     StubForceEvaluator force;
     cpu::md::MD d;
 
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
     d.build();
 
     auto frame = make_trivial_frame();
@@ -93,9 +94,9 @@ TEST(DynamicsTermination, BreaksOnStopRequested) {
     StopAtStep stopper{/*stop_at=*/3};
     cpu::md::MD d;
 
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
-    d.on(md::Phase::end_of_step).add(stopper);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
+    d.on(md::Phase::end_of_step).add_ref(stopper);
     d.build();
 
     auto frame = make_trivial_frame();
@@ -114,12 +115,13 @@ TEST(DynamicsTermination, AUserHandlerCanHaltAnMdRun) {
     StubForceEvaluator force;
     cpu::md::MD d;
 
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
     d.add_handler(ConvergeAtIteration{2});
     d.build();
 
     auto frame = make_trivial_frame();
     d.run(frame, /*n_steps=*/10);
-    EXPECT_EQ(integ.step_count, 3) << "iterations 0,1,2 run; the handler halts after 2";
+    EXPECT_EQ(integ.step_count, 3)
+        << "iterations 0,1,2 run; the handler halts after 2";
 }

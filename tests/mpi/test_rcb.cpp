@@ -36,13 +36,13 @@ cpu::Frame make_skewed_frame(double box_len, int n_atoms) {
     const double cluster_box = box_len * 0.4;
     for (int i = 0; i < n_atoms; ++i) {
         const double t = static_cast<double>(i) / std::max(1, n_atoms - 1);
-        frame.atoms.x[i] = t * cluster_box;
-        frame.atoms.y[i] = std::fmod(t * 7.0, 1.0) * cluster_box;
-        frame.atoms.z[i] = std::fmod(t * 13.0, 1.0) * cluster_box;
-        frame.atoms.mass[i] = 1.0;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = t * cluster_box;
+        frame.span(ATV::kAtom_y)[i] = std::fmod(t * 7.0, 1.0) * cluster_box;
+        frame.span(ATV::kAtom_z)[i] = std::fmod(t * 13.0, 1.0) * cluster_box;
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

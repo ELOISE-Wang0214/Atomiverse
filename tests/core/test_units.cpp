@@ -3,26 +3,24 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/core/units.h"
 
 using namespace ATV;
 
 TEST(Units, AngstromToBohr) {
-    Real bohr = Real(5.43) * kAngstrom2Bohr;
-    EXPECT_NEAR(static_cast<double>(bohr),
-                5.43 * static_cast<double>(kAngstrom2Bohr), 1e-2);
+    const AccReal bohr = units::convert(AccReal(5.43), units::Length::Angstrom,
+                                        units::Length::Bohr);
+    EXPECT_NEAR(bohr, 5.43 * units::kAngstromInBohr, 1e-12);
 }
 
-TEST(Units, RyToHartreeExact) { EXPECT_EQ(kRy2Hartree, Real(0.5)); }
-
-TEST(Units, RyToEV) { EXPECT_EQ(kRy2eV, Real(13.605693)); }
-
 TEST(Units, RoundtripAngstromBohr) {
-    Real a = 5.43;
-    Real b = a * kAngstrom2Bohr;
-    Real back = b * kBohr2Ang;
-    EXPECT_NEAR(static_cast<double>(back), static_cast<double>(a), 1e-6);
+    const AccReal a = 5.43;
+    const AccReal b =
+        units::convert(a, units::Length::Angstrom, units::Length::Bohr);
+    const AccReal back =
+        units::convert(b, units::Length::Bohr, units::Length::Angstrom);
+    EXPECT_NEAR(back, a, 1e-12);
 }
 
 TEST(Units, ThermalDeBroglieHydrogenAt300K) {

@@ -7,8 +7,8 @@
 /// CONVERGES to a finite fixed point; exact CP2K bit-parity is the M1 milestone.
 ///
 /// The `GpwSolverClass` suite (arch-refactor-04-engines) pins the GPWSolver
-/// class contract: build/run lifecycle, fail-fast validation, and bit-identical
-/// energies between the class path and the `gpw_scf` shim. Bit-parity tests pin
+/// class contract: build/run lifecycle, fail-fast validation, and deterministic
+/// energies across independent solver instances. Bit-parity tests pin
 /// OMP to 1 thread: `integrate_potential` merges per-thread buffers under
 /// `omp critical` in arrival order, so multi-thread runs are not bit-stable
 /// across invocations (verified empirically; same pattern as
@@ -29,7 +29,6 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 
-using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
@@ -77,7 +76,7 @@ GpwAtom hydrogen(const double pos[3]) {
 
 // Small known-converging inline H2 (8 Bohr box, 120 Ry): converges in a couple
 // of DIIS iterations, ~ms per SCF — keeps the class-contract suite in the
-// fast gate. Verified against the current gpw_scf before the refactor.
+// fast gate. Verified against the direct solver lifecycle.
 std::vector<GpwAtom> small_h2(double box = 8.0) {
     const double rA[3] = {box / 2 - 0.7, box / 2, box / 2};
     const double rB[3] = {box / 2 + 0.7, box / 2, box / 2}; // 1.4 Bohr apart
@@ -118,7 +117,9 @@ TEST(GpwSolver, MinimalH2Converges) {
     cfg.tol = 1e-7;
     cfg.mix = 0.5;
 
-    GpwResult r = gpw_scf(atoms, cfg);
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    const GpwResult r = solver.run(atoms);
 
     EXPECT_TRUE(r.converged)
         << "SCF did not converge in " << r.iters << " iters";
@@ -133,17 +134,17 @@ TEST(GpwSolver, MinimalH2Converges) {
 
 // ── GPWSolver class contract (arch-refactor-04-engines Design §2) ──────────
 
-// Domain anchor + shim integration: the class path (build + cold run) must be
-// BIT-IDENTICAL to the gpw_scf free function — the shim becomes a thin wrapper
-// over a transient GPWSolver, so every energy channel [Hartree] and the
-// iteration count must not move.
-TEST(GpwSolverClass, ColdRunBitIdenticalToShim) {
+// Independent cold solvers must be bit-identical in every energy channel
+// [Hartree] and in their iteration count.
+TEST(GpwSolverClass, IndependentColdRunsAreBitIdentical) {
     pin_single_thread();
     const auto atoms = small_h2();
     const GpwConfig cfg = small_cfg();
 
-    const GpwResult ref = gpw_scf(atoms, cfg);
-    ASSERT_TRUE(ref.converged) << "shim reference did not converge";
+    GPWSolver reference_solver(cfg);
+    reference_solver.build(atoms);
+    const GpwResult ref = reference_solver.run(atoms);
+    ASSERT_TRUE(ref.converged) << "reference solver did not converge";
 
     GPWSolver solver(cfg);
     solver.build(atoms);
@@ -162,26 +163,24 @@ TEST(GpwSolverClass, ColdRunBitIdenticalToShim) {
         EXPECT_DOUBLE_EQ(r.eps[i], ref.eps[i]) << "eps[" << i << "]";
 }
 
-// Integration: the warm-start guess_C parameter must be forwarded through the
-// class path exactly as through the shim (AIMD/geometry sweeps rely on it).
-TEST(GpwSolverClass, WarmStartGuessBitIdenticalToShim) {
+// Integration: the warm-start guess_C parameter must reach the same fixed point
+// through an independent solver (AIMD/geometry sweeps rely on it).
+TEST(GpwSolverClass, WarmStartReachesColdFixedPoint) {
     pin_single_thread();
     const auto atoms = small_h2();
     const GpwConfig cfg = small_cfg();
 
-    const GpwResult cold = gpw_scf(atoms, cfg); // source of the guess
+    GPWSolver cold_solver(cfg);
+    cold_solver.build(atoms);
+    const GpwResult cold = cold_solver.run(atoms);
     ASSERT_TRUE(cold.converged);
-
-    const GpwResult ref = gpw_scf(atoms, cfg, &cold.C);
-    ASSERT_TRUE(ref.converged);
 
     GPWSolver solver(cfg);
     solver.build(atoms);
     const GpwResult& r = solver.run(atoms, &cold.C);
 
     EXPECT_TRUE(r.converged);
-    EXPECT_EQ(r.iters, ref.iters);
-    EXPECT_DOUBLE_EQ(r.e_total, ref.e_total);
+    EXPECT_DOUBLE_EQ(r.e_total, cold.e_total);
 }
 
 // Lifecycle: build() is one-time, run() is re-entrant — two cold runs on the

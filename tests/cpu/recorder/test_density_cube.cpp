@@ -17,7 +17,7 @@
 #include "atomiverse/cpu/recorder/density_cube_writer.h"
 #include "atomiverse/cpu/recorder/orbital_cube_writer.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -25,12 +25,17 @@ namespace {
 
 cpu::Frame make_h2(double bond_length) {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, bond_length};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = bond_length;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -84,7 +89,7 @@ TEST(DensityCubeTest, H2DensityIntegratesToTwoElectrons) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::scf::SCFEvaluator scf{config};
+    cpu::scf::SCF scf{config};
     auto handle = scf.result_handle();
 
     auto tmp = std::filesystem::temp_directory_path() / "atv_rho_h2.cube";
@@ -121,7 +126,7 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::scf::SCFEvaluator scf{config};
+    cpu::scf::SCF scf{config};
     auto handle = scf.result_handle();
 
     auto tmp = std::filesystem::temp_directory_path() / "atv_mo_h2.cube";

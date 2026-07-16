@@ -259,11 +259,11 @@ TEST(RHF, NegativeNoccThrowsDeviceIntegrals) {
                  std::invalid_argument);
 }
 
-// ── CUDA RHF single-point tests (cuda::Evaluate + SCFEvaluator) ───────
+// ── CUDA RHF single-point tests (cuda::Evaluate + SCF) ───────
 
 TEST(RHF, CUDASinglePointEnergy) {
     // ac-006: single-point H2/STO-3G RHF through
-    // `cuda::Evaluate + cuda::scf::SCFEvaluator` reproduces the textbook
+    // `cuda::Evaluate + cuda::scf::SCF` reproduces the textbook
     // reference -1.1167 Ha.
     auto frame = make_h2();
     auto integrals =
@@ -274,7 +274,7 @@ TEST(RHF, CUDASinglePointEnergy) {
 
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        .add(cuda::scf::SCF{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -302,15 +302,13 @@ TEST(RHF, CUDALevelShiftEnergyInvariant) {
 
     cuda::Evaluate eval0;
     eval0.on(ATV::evaluate::Phase::evaluate)
-        .add(
-            cuda::scf::SCFEvaluator{integrals0, tol, 100, /*level_shift=*/0.0});
+        .add(cuda::scf::SCF{integrals0, tol, 100, /*level_shift=*/0.0});
     eval0.build();
     eval0.run(frame0);
 
     cuda::Evaluate eval5;
     eval5.on(ATV::evaluate::Phase::evaluate)
-        .add(
-            cuda::scf::SCFEvaluator{integrals5, tol, 100, /*level_shift=*/0.5});
+        .add(cuda::scf::SCF{integrals5, tol, 100, /*level_shift=*/0.5});
     eval5.build();
     eval5.run(frame5);
 
@@ -338,12 +336,12 @@ TEST(RHF, CUDASinglePointHelper) {
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{integrals_d, tol, 100});
+            .add(cuda::scf::SCF{integrals_d, tol, 100});
         eval.build();
         eval.run(frame_direct);
     }
     {
-        cuda::scf::SCFEvaluator scf{integrals_h, tol, 100};
+        cuda::scf::SCF scf{integrals_h, tol, 100};
         cuda::single_point(frame_helper, scf);
     }
 
@@ -364,10 +362,10 @@ TEST(RHF, CPUCUDAParity) {
     // CPU
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    // CUDA via SCFEvaluator + Evaluate
+    // CUDA via SCF + Evaluate
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        .add(cuda::scf::SCF{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -391,7 +389,7 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
     cuda::Evaluate eval;
     // n_prim=3, n_occ=1
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{3, exp, coeff, 1, double(1e-5), 100});
+        .add(cuda::scf::SCF{3, exp, coeff, 1, double(1e-5), 100});
     eval.build();
     eval.run(frame);
 
@@ -543,7 +541,7 @@ TEST(RHF, CUDAHeAtom) {
 
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        .add(cuda::scf::SCF{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -566,7 +564,7 @@ TEST(RHF, CUDALiH) {
 
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        .add(cuda::scf::SCF{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -589,7 +587,7 @@ TEST(RHF, CUDAHeHPlus) {
 
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        .add(cuda::scf::SCF{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -603,14 +601,14 @@ TEST(RHF, CUDAHeHPlus) {
 
 // ── Structural / discipline tests ────────────────────────────────────
 
-TEST(RHF, SCFEvaluatorIsEnergyDensityOrbitalsOnly) {
-    // ac-005: the RHF-configured SCFEvaluator carries exactly
+TEST(RHF, SCFIsEnergyDensityOrbitalsOnly) {
+    // ac-005: the RHF-configured SCF carries exactly
     // Energy|DensityMatrix|Orbitals — no Force capability (no CUDA SCF
     // gradient kernel exists).
     auto frame = make_h2();
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
-    cuda::scf::SCFEvaluator eval{integrals, double(1e-6), 100};
+    cuda::scf::SCF eval{integrals, double(1e-6), 100};
     EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
     EXPECT_EQ(eval.capabilities(), Capability::Energy
                                        | Capability::DensityMatrix

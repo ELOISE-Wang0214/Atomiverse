@@ -29,16 +29,18 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
 namespace {
+
+constexpr double kEnergyRelativeTolerance = 1.0e-9;
 
 // FCC lattice, quarter-cell shifted off the slab boundaries so no site lands
 // exactly on a partition cut (mirrors test_lj_nve's make_fcc_argon rationale).
@@ -53,20 +55,20 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] =
+                    frame.span(ATV::kAtom_x)[idx] =
                         (static_cast<double>(ix) + basis[b][0]) * a_lat + shift;
-                    frame.atoms.y[idx] =
+                    frame.span(ATV::kAtom_y)[idx] =
                         (static_cast<double>(iy) + basis[b][1]) * a_lat + shift;
-                    frame.atoms.z[idx] =
+                    frame.span(ATV::kAtom_z)[idx] =
                         (static_cast<double>(iz) + basis[b][2]) * a_lat + shift;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
-                    frame.atoms.vx[idx] = 0.0;
-                    frame.atoms.vy[idx] = 0.0;
-                    frame.atoms.vz[idx] = 0.0;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
+                    frame.span(ATV::kAtom_vx)[idx] = 0.0;
+                    frame.span(ATV::kAtom_vy)[idx] = 0.0;
+                    frame.span(ATV::kAtom_vz)[idx] = 0.0;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a_lat);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -76,8 +78,7 @@ double lj_pair_energy(double r2, double eps, double sigma, double cutoff) {
     const double cutoff_sq = cutoff * cutoff;
     if (r2 >= cutoff_sq)
         return 0.0;
-    const double sigma6 =
-        sigma * sigma * sigma * sigma * sigma * sigma;
+    const double sigma6 = sigma * sigma * sigma * sigma * sigma * sigma;
     const double rc2inv = 1.0 / cutoff_sq;
     const double rc6inv = rc2inv * rc2inv * rc2inv * sigma6;
     const double v_shift = 4.0 * eps * (rc6inv * rc6inv - rc6inv);
@@ -88,23 +89,33 @@ double lj_pair_energy(double r2, double eps, double sigma, double cutoff) {
 
 double brute_force_lj_energy(const cpu::Frame& frame, double eps, double sigma,
                              double cutoff) {
-    const int n = frame.atoms.size();
-    const double lx = frame.box(0, 0), ly = frame.box(1, 1),
-                 lz = frame.box(2, 2);
+    const int n = frame.nlocal();
+    const double lx = frame.simbox.cell()(0, 0), ly = frame.simbox.cell()(1, 1),
+                 lz = frame.simbox.cell()(2, 2);
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
-            double dx = frame.atoms.x[i] - frame.atoms.x[j];
-            double dy = frame.atoms.y[i] - frame.atoms.y[j];
-            double dz = frame.atoms.z[i] - frame.atoms.z[j];
+            double dx =
+                frame.span(ATV::kAtom_x)[i] - frame.span(ATV::kAtom_x)[j];
+            double dy =
+                frame.span(ATV::kAtom_y)[i] - frame.span(ATV::kAtom_y)[j];
+            double dz =
+                frame.span(ATV::kAtom_z)[i] - frame.span(ATV::kAtom_z)[j];
             // Minimum image (multi-wrap safe).
-            while (dx > 0.5 * lx) dx -= lx;
-            while (dx < -0.5 * lx) dx += lx;
-            while (dy > 0.5 * ly) dy -= ly;
-            while (dy < -0.5 * ly) dy += ly;
-            while (dz > 0.5 * lz) dz -= lz;
-            while (dz < -0.5 * lz) dz += lz;
-            e += lj_pair_energy(dx * dx + dy * dy + dz * dz, eps, sigma, cutoff);
+            while (dx > 0.5 * lx)
+                dx -= lx;
+            while (dx < -0.5 * lx)
+                dx += lx;
+            while (dy > 0.5 * ly)
+                dy -= ly;
+            while (dy < -0.5 * ly)
+                dy += ly;
+            while (dz > 0.5 * lz)
+                dz -= lz;
+            while (dz < -0.5 * lz)
+                dz += lz;
+            e +=
+                lj_pair_energy(dx * dx + dy * dy + dz * dz, eps, sigma, cutoff);
         }
     }
     return e;
@@ -137,21 +148,19 @@ TEST(LjEnergyBruteForce, GlobalEnergyMatchesBruteForce) {
     sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{eps, sigma, cutoff});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{cutoff}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{cutoff}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1); // one frozen step → Reduce fills global energy
 
-    // frame.scalars.energy is the cross-rank reduced LJ potential energy.
-    const double e_dist = frame.scalars.energy;
+    // frame.meta.get(ATV::kEnergy) is the cross-rank reduced LJ potential energy.
+    const double e_dist = frame.meta.get(ATV::kEnergy);
     const double rel = std::abs(e_dist - e_bf) / std::abs(e_bf);
 
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-    EXPECT_LT(rel, 1e-9)
+    EXPECT_LT(rel, kEnergyRelativeTolerance)
         << "rank " << my_rank << " world=" << world_size
         << ": distributed LJ energy " << e_dist
         << " disagrees with brute force " << e_bf << " (rel=" << rel

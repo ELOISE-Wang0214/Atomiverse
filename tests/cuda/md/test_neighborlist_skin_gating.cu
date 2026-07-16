@@ -85,7 +85,7 @@ TEST(NeighborListSkinGating, FrozenLatticeStaysAtOneRebuild) {
     // `cuda::md::MD::set_neighbor` would move the component into the
     // driver's Plan, hiding it.)
     cuda::NeighborList nl{cutoff, skin};
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({0, 0, &nl});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
@@ -139,7 +139,7 @@ TEST(NeighborListSkinGating, RebuildsWhenDisplacementExceedsHalfSkin) {
     backend.materialize(frame);
 
     cuda::NeighborList nl{cutoff, skin};
-    PlanBuilder<cuda::ComponentBase> builder;
+    PlanBuilder<cuda::Component> builder;
     builder.add({0, 0, &nl});
     auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
@@ -171,10 +171,10 @@ TEST(NeighborListSkinGating, RebuildsWhenDisplacementExceedsHalfSkin) {
 
     // After 3 total launches, expect ≥ 2 rebuilds (initial + the one
     // triggered by the perturbation, with 1-step lag).
-    EXPECT_GE(nl.rebuild_count(), 2)
-        << "Skin gate must rebuild after a displacement of 0.5 > half_skin=0.45 "
-           "(got "
-        << nl.rebuild_count() << " rebuilds)";
+    EXPECT_GE(nl.rebuild_count(), 2) << "Skin gate must rebuild after a "
+                                        "displacement of 0.5 > half_skin=0.45 "
+                                        "(got "
+                                     << nl.rebuild_count() << " rebuilds)";
 
     cuda::DestroyContext dctx{backend.context(), backend.frame()};
     nl.destroy(dctx);

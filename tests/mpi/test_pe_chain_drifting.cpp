@@ -25,9 +25,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
@@ -41,7 +41,7 @@ inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal = 268.0;
 inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
@@ -58,7 +58,7 @@ inline std::vector<double> dihedral_Cn_eV() {
 cpu::Frame make_drifting_chain(int n_carbons, double box_x, double box_yz,
                                double drift_vx) {
     cpu::Frame frame(n_carbons);
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
     // Place chain entirely inside rank 0's slab (x in [0, box_x/2)) at
@@ -68,24 +68,24 @@ cpu::Frame make_drifting_chain(int n_carbons, double box_x, double box_yz,
     const double y0 = box_yz / 2.0;
     const double z0 = box_yz / 2.0;
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = x_start + i * dx_step;
-        frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
-        frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x_start + i * dx_step;
+        frame.span(ATV::kAtom_y)[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
+        frame.span(ATV::kAtom_z)[i] = z0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027;
+        frame.span(ATV::kAtom_type)[i] = 0;
         // Uniform +x drift -- the entire chain translates toward rank 1.
-        frame.atoms.vx[i] = drift_vx;
+        frame.span(ATV::kAtom_vx)[i] = drift_vx;
     }
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_carbons - 1; ++k)
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     for (int k = 0; k < n_carbons - 2; ++k)
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     for (int k = 0; k < n_carbons - 3; ++k)
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
-    frame.atoms.build_special_list();
-    frame.box = Mat3::diagonal(box_x, box_yz, box_yz);
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
     return frame;
 }
 
@@ -106,14 +106,12 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
     // by 0.025 Å per 0.5-fs step. Over 1000 steps the chain shifts ~25 Å
     // (a full slab width) so most atoms migrate.
     auto frame = make_drifting_chain(16, 30.0, 30.0, /*drift_vx=*/0.05);
-    const int n_atoms_global = frame.atoms.size();
+    const int n_atoms_global = frame.nlocal();
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{5.0}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{5.0}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
@@ -122,8 +120,8 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
 
     sim.run(frame, 1000);
 
-    const double e1 =
-        frame.scalars.energy + frame.scalars.kinetic; // global via Reduce
+    const double e1 = frame.meta.get(ATV::kEnergy)
+                      + frame.meta.get(ATV::kKinetic); // global via Reduce
     EXPECT_FALSE(std::isnan(e1)) << "global E went NaN -- migration broke "
                                     "bonded ownership routing";
     EXPECT_LT(std::abs(e1), 1e3)
@@ -133,15 +131,15 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
     // Globally the atom count must be conserved.
     int local_n = 0;
     if (my_rank == 0 || my_rank == 1)
-        local_n = static_cast<int>(frame.atoms.size());
+        local_n = static_cast<int>(frame.nlocal());
     // Use dd's authoritative count instead.
-    // (Each rank's frame.atoms.size() is the original capacity; what
+    // (Each rank's frame.nlocal() is the original capacity; what
     // changed across migration is dd->n_local.)
     // We can't reach dd from the user side here, so just assert no NaN
     // and let the global count be a separate diagnostic.
 
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        if (std::isnan(frame.atoms.x[i])) {
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        if (std::isnan(frame.span(ATV::kAtom_x)[i])) {
             FAIL() << "rank " << my_rank << " atom slot " << i << " x went NaN";
         }
     }

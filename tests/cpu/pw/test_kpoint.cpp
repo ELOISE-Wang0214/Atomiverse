@@ -8,7 +8,7 @@ using namespace ATV::cpu::pw::internal;
 TEST(KPoint, MP_4x4x4) {
     auto kg = generate_mp_mesh(4, 4, 4);
     EXPECT_EQ(kg.kpoints.size(), 64u);
-    Real sum = 0;
+    AccReal sum = 0;
     for (auto w : kg.weights)
         sum += w;
     EXPECT_NEAR(static_cast<double>(sum), 1.0, 1e-14);

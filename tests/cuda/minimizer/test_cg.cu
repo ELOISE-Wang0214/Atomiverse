@@ -87,8 +87,8 @@ double initial_energy(const cpu::Frame& frame, double cutoff) {
 } // anonymous namespace
 
 // ── Compile-time shape guards ───────────────────────────────────────
-static_assert(std::is_base_of<cuda::ComponentBase, cuda::minimizer::CG>::value,
-              "cuda::minimizer::CG must be a cuda::ComponentBase");
+static_assert(std::is_base_of<cuda::Component, cuda::minimizer::CG>::value,
+              "cuda::minimizer::CG must be a cuda::Component");
 
 TEST(MinimizerCG, IsOptimizerRole) {
     cuda::minimizer::CG step{double(0.01)};

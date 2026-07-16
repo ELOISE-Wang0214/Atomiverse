@@ -4,7 +4,7 @@
 /// Covers the rust-frame-lowering-02 acceptance criteria:
 ///   - ac-002: molrs.Frame -> cpu::Frame -> molrs.Frame round-trips
 ///             positions / velocities / forces / charge / topology / box /
-///             system scalars element-wise.
+///             typed system metadata element-wise.
 ///   - ac-003: required fields fail loud (named exception); optional fields
 ///             default to zero without throwing.
 ///   - ac-004: a cpu::Frame produced by cpu::materialize is runnable under
@@ -194,28 +194,28 @@ TEST(Materialize, RoundTrip) {
 
     Frame cf = materialize(*fr);
 
-    ASSERT_EQ(cf.atoms.size(), 3);
+    ASSERT_EQ(cf.nlocal(), 3);
     int n_bond = 0, n_angle = 0, n_dihedral = 0;
-    for (int i = 0; i < cf.atoms.nlocal; ++i) {
-        n_bond += cf.atoms.num_bond[i];
-        n_angle += cf.atoms.num_angle[i];
-        n_dihedral += cf.atoms.num_dihedral[i];
+    for (int i = 0; i < cf.nlocal(); ++i) {
+        n_bond += cf.span(ATV::kAtom_num_bond)[i];
+        n_angle += cf.span(ATV::kAtom_num_angle)[i];
+        n_dihedral += cf.span(ATV::kAtom_num_dihedral)[i];
     }
     ASSERT_EQ(n_bond, 1);
     ASSERT_EQ(n_angle, 1);
     ASSERT_EQ(n_dihedral, 1);
 
     // Mutate the cpu::Frame so write-back has something distinct to carry.
-    cf.atoms.x[1] = 7.25;
-    cf.atoms.vy[2] = -9.5;
-    cf.atoms.fz[0] = 42.0;
-    cf.atoms.charge[0] = -0.875;
-    cf.scalars.energy = -123.5;
-    cf.scalars.kinetic = 64.25;
-    cf.scalars.conserved = -59.25;
+    cf.span(ATV::kAtom_x)[1] = 7.25;
+    cf.span(ATV::kAtom_vy)[2] = -9.5;
+    cf.span(ATV::kAtom_fz)[0] = 42.0;
+    cf.span(ATV::kAtom_charge)[0] = -0.875;
+    cf.meta.get(ATV::kEnergy) = -123.5;
+    cf.meta.get(ATV::kKinetic) = 64.25;
+    cf.meta.get(ATV::kConserved) = -59.25;
     for (int k = 0; k < 6; ++k) {
-        cf.scalars.stress[k] = 1.0 + k;
-        cf.scalars.stress_kinetic[k] = 10.0 + k;
+        cf.meta.get(ATV::kStress)[k] = 1.0 + k;
+        cf.meta.get(ATV::kStressKinetic)[k] = 10.0 + k;
     }
 
     write_back(cf, *fr);
@@ -234,16 +234,16 @@ TEST(Materialize, RoundTrip) {
 
     ASSERT_EQ(rx.size(), 3u);
     for (int i = 0; i < 3; ++i) {
-        EXPECT_DOUBLE_EQ(rx[i], cf.atoms.x[i]);
-        EXPECT_DOUBLE_EQ(ry[i], cf.atoms.y[i]);
-        EXPECT_DOUBLE_EQ(rz[i], cf.atoms.z[i]);
-        EXPECT_DOUBLE_EQ(rvx[i], cf.atoms.vx[i]);
-        EXPECT_DOUBLE_EQ(rvy[i], cf.atoms.vy[i]);
-        EXPECT_DOUBLE_EQ(rvz[i], cf.atoms.vz[i]);
-        EXPECT_DOUBLE_EQ(rfx[i], cf.atoms.fx[i]);
-        EXPECT_DOUBLE_EQ(rfy[i], cf.atoms.fy[i]);
-        EXPECT_DOUBLE_EQ(rfz[i], cf.atoms.fz[i]);
-        EXPECT_DOUBLE_EQ(rq[i], cf.atoms.charge[i]);
+        EXPECT_DOUBLE_EQ(rx[i], cf.span(ATV::kAtom_x)[i]);
+        EXPECT_DOUBLE_EQ(ry[i], cf.span(ATV::kAtom_y)[i]);
+        EXPECT_DOUBLE_EQ(rz[i], cf.span(ATV::kAtom_z)[i]);
+        EXPECT_DOUBLE_EQ(rvx[i], cf.span(ATV::kAtom_vx)[i]);
+        EXPECT_DOUBLE_EQ(rvy[i], cf.span(ATV::kAtom_vy)[i]);
+        EXPECT_DOUBLE_EQ(rvz[i], cf.span(ATV::kAtom_vz)[i]);
+        EXPECT_DOUBLE_EQ(rfx[i], cf.span(ATV::kAtom_fx)[i]);
+        EXPECT_DOUBLE_EQ(rfy[i], cf.span(ATV::kAtom_fy)[i]);
+        EXPECT_DOUBLE_EQ(rfz[i], cf.span(ATV::kAtom_fz)[i]);
+        EXPECT_DOUBLE_EQ(rq[i], cf.span(ATV::kAtom_charge)[i]);
     }
 
     // Topology survives the materialize (write_back leaves it untouched).
@@ -255,15 +255,15 @@ TEST(Materialize, RoundTrip) {
 
     // cpu side: topology scattered into the per-atom layout, keyed by tag.
     // bond (tags 10-11): smaller tag 10 -> row 0 owns; partner tag 11.
-    ASSERT_EQ(cf.atoms.num_bond[0], 1);
-    EXPECT_EQ(cf.atoms.bond_atom(0, 0), 11);
-    EXPECT_EQ(cf.atoms.bond_type(0, 0), 1);
+    ASSERT_EQ(cf.span(ATV::kAtom_num_bond)[0], 1);
+    EXPECT_EQ(cf.span(ATV::kAtom_bond_atom)(0, 0), 11);
+    EXPECT_EQ(cf.span(ATV::kAtom_bond_type)(0, 0), 1);
     // angle (10-11-12): center tag 11 -> row 1 owns; k-partner tag is 12.
-    ASSERT_EQ(cf.atoms.num_angle[1], 1);
-    EXPECT_EQ(cf.atoms.angle_atom(1, 1), 12);
+    ASSERT_EQ(cf.span(ATV::kAtom_num_angle)[1], 1);
+    EXPECT_EQ(cf.span(ATV::kAtom_angle_atom)(1, 1), 12);
     // dihedral (10-11-12-12): atom-j tag 11 -> row 1 owns; l-partner tag 12.
-    ASSERT_EQ(cf.atoms.num_dihedral[1], 1);
-    EXPECT_EQ(cf.atoms.dihedral_atom(1, 2), 12);
+    ASSERT_EQ(cf.span(ATV::kAtom_num_dihedral)[1], 1);
+    EXPECT_EQ(cf.span(ATV::kAtom_dihedral_atom)(1, 2), 12);
 
     // Box round-trips.
     auto h = molrs::frame_simbox(*fr);
@@ -271,27 +271,45 @@ TEST(Materialize, RoundTrip) {
     EXPECT_DOUBLE_EQ(h[0], 20.0);
     EXPECT_DOUBLE_EQ(h[4], 20.0);
     EXPECT_DOUBLE_EQ(h[8], 20.0);
-    EXPECT_DOUBLE_EQ(cf.box.length(0), 20.0);
-    EXPECT_DOUBLE_EQ(cf.box.length(1), 20.0);
-    EXPECT_DOUBLE_EQ(cf.box.length(2), 20.0);
+    EXPECT_DOUBLE_EQ(cf.simbox.length(0), 20.0);
+    EXPECT_DOUBLE_EQ(cf.simbox.length(1), 20.0);
+    EXPECT_DOUBLE_EQ(cf.simbox.length(2), 20.0);
 
-    // System scalars round-trip through the dedicated "scalars" block.
-    auto se = molrs::frame_column_f64(*fr, "scalars", "energy");
-    auto sk = molrs::frame_column_f64(*fr, "scalars", "kinetic");
-    auto sc = molrs::frame_column_f64(*fr, "scalars", "conserved");
-    ASSERT_EQ(se.size(), 1u);
-    EXPECT_DOUBLE_EQ(se[0], -123.5);
-    EXPECT_DOUBLE_EQ(sk[0], 64.25);
-    EXPECT_DOUBLE_EQ(sc[0], -59.25);
+    // System results cross the boundary only as exact typed metadata. No
+    // synthetic result block exists in schema v2.
+    const auto meta = molrs::frame_meta_entries(*fr);
+    auto find_meta = [&](const char* key) -> const molrs::MetaEntry* {
+        for (const auto& entry : meta)
+            if (std::string(entry.key.data(), entry.key.size()) == key)
+                return &entry;
+        return nullptr;
+    };
+    const auto* energy = find_meta("energy");
+    const auto* kinetic = find_meta("kinetic");
+    const auto* conserved = find_meta("conserved");
+    ASSERT_NE(energy, nullptr);
+    ASSERT_NE(kinetic, nullptr);
+    ASSERT_NE(conserved, nullptr);
+    EXPECT_EQ(energy->dtype, molrs::MetaType::F64);
+    EXPECT_DOUBLE_EQ(energy->f64_value, -123.5);
+    EXPECT_DOUBLE_EQ(kinetic->f64_value, 64.25);
+    EXPECT_DOUBLE_EQ(conserved->f64_value, -59.25);
 
-    auto ss = molrs::frame_column_f64(*fr, "stress", "value");
-    auto ssk = molrs::frame_column_f64(*fr, "stress_kinetic", "value");
-    ASSERT_EQ(ss.size(), 6u);
-    ASSERT_EQ(ssk.size(), 6u);
+    const auto* stress = find_meta("stress");
+    const auto* stress_kinetic = find_meta("stress_kinetic");
+    ASSERT_NE(stress, nullptr);
+    ASSERT_NE(stress_kinetic, nullptr);
+    EXPECT_EQ(stress->dtype, molrs::MetaType::F64x6);
+    EXPECT_EQ(stress_kinetic->dtype, molrs::MetaType::F64x6);
+    ASSERT_EQ(stress->f64_values.size(), 6u);
+    ASSERT_EQ(stress_kinetic->f64_values.size(), 6u);
     for (int k = 0; k < 6; ++k) {
-        EXPECT_DOUBLE_EQ(ss[k], 1.0 + k);
-        EXPECT_DOUBLE_EQ(ssk[k], 10.0 + k);
+        EXPECT_DOUBLE_EQ(stress->f64_values[k], 1.0 + k);
+        EXPECT_DOUBLE_EQ(stress_kinetic->f64_values[k], 10.0 + k);
     }
+    EXPECT_FALSE(molrs::frame_has_block(*fr, "scalars"));
+    EXPECT_FALSE(molrs::frame_has_block(*fr, "stress"));
+    EXPECT_FALSE(molrs::frame_has_block(*fr, "stress_kinetic"));
 }
 
 // ── ac-003: required fields fail loud; optional fields default to zero ──
@@ -350,19 +368,19 @@ TEST(Materialize, MissingOptionalFieldsDefaultToZero) {
 
     Frame cf = materialize(*fr); // must NOT throw
 
-    ASSERT_EQ(cf.atoms.size(), 3);
+    ASSERT_EQ(cf.nlocal(), 3);
     for (int i = 0; i < 3; ++i) {
-        EXPECT_DOUBLE_EQ(cf.atoms.vx[i], 0.0);
-        EXPECT_DOUBLE_EQ(cf.atoms.vy[i], 0.0);
-        EXPECT_DOUBLE_EQ(cf.atoms.vz[i], 0.0);
-        EXPECT_DOUBLE_EQ(cf.atoms.fx[i], 0.0);
-        EXPECT_DOUBLE_EQ(cf.atoms.charge[i], 0.0);
+        EXPECT_DOUBLE_EQ(cf.span(ATV::kAtom_vx)[i], 0.0);
+        EXPECT_DOUBLE_EQ(cf.span(ATV::kAtom_vy)[i], 0.0);
+        EXPECT_DOUBLE_EQ(cf.span(ATV::kAtom_vz)[i], 0.0);
+        EXPECT_DOUBLE_EQ(cf.span(ATV::kAtom_fx)[i], 0.0);
+        EXPECT_DOUBLE_EQ(cf.span(ATV::kAtom_charge)[i], 0.0);
     }
     // No topology -> per-atom counts all zero.
-    for (int i = 0; i < cf.atoms.nlocal; ++i) {
-        EXPECT_EQ(cf.atoms.num_bond[i], 0);
-        EXPECT_EQ(cf.atoms.num_angle[i], 0);
-        EXPECT_EQ(cf.atoms.num_dihedral[i], 0);
+    for (int i = 0; i < cf.nlocal(); ++i) {
+        EXPECT_EQ(cf.span(ATV::kAtom_num_bond)[i], 0);
+        EXPECT_EQ(cf.span(ATV::kAtom_num_angle)[i], 0);
+        EXPECT_EQ(cf.span(ATV::kAtom_num_dihedral)[i], 0);
     }
 }
 
@@ -395,22 +413,22 @@ TEST(Materialize, MaterializedFrameIsRunnable) {
                             ::rust::Slice<const double>(h.data(), h.size()));
 
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 2);
+    ASSERT_EQ(cf.nlocal(), 2);
 
     ATV::cpu::md::MD sim;
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.8, /*skin=*/0.5});
-    sim.set_pair(ATV::cpu::PairLJCut{0.0104, 3.4, 6.8});
+    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.8});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.5});
     sim.build();
     sim.run(cf, 10);
 
-    EXPECT_TRUE(std::isfinite(cf.scalars.energy))
+    EXPECT_TRUE(std::isfinite(cf.meta.get(ATV::kEnergy)))
         << "MD run on a materialized frame must leave a finite energy";
 }
 
 // ── arch-refactor-06-frame §2: write_back field contract (golden) ────────
 
-// Contract fields (x/v/f/charge, image, tag, scalars/stress) mutated on the
+// Contract fields (x/v/f/charge, image, tag, typed metadata) mutated on the
 // cpu::Frame must reach the molrs.Frame through write_back. image goes back
 // through the same ix/iy/iz i32 columns materialize reads (int8 -> i32
 // widen); tag presents the permuted values (TagInt -> i32 narrowing).
@@ -418,29 +436,29 @@ TEST(WriteBackContract, GoldenRoundTripContractFields) {
     auto fr = make_contract_frame();
 
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 3);
+    ASSERT_EQ(cf.nlocal(), 3);
 
     // Anchor the materialize read side of the symmetric format first:
     // ix/iy/iz i32 columns landed in the int8 [n,3] image array.
-    ASSERT_EQ(cf.atoms.image(0, 0), 1);
-    ASSERT_EQ(cf.atoms.image(1, 1), 3);
-    ASSERT_EQ(cf.atoms.image(2, 2), 4);
-    ASSERT_EQ(cf.atoms.tag[0], 10);
-    ASSERT_EQ(cf.atoms.tag[2], 12);
+    ASSERT_EQ(cf.span(ATV::kAtom_image)(0, 0), 1);
+    ASSERT_EQ(cf.span(ATV::kAtom_image)(1, 1), 3);
+    ASSERT_EQ(cf.span(ATV::kAtom_image)(2, 2), 4);
+    ASSERT_EQ(cf.span(ATV::kAtom_tag)[0], 10);
+    ASSERT_EQ(cf.span(ATV::kAtom_tag)[2], 12);
 
     // Mutate every contract field so write_back has distinct values to carry.
-    cf.atoms.x[1] = 6.75;
-    cf.atoms.vy[0] = -3.5;
-    cf.atoms.fz[2] = 17.0;
-    cf.atoms.charge[1] = 0.125;
-    cf.atoms.image(0, 0) = 3;  // ix[0]: 1 -> 3
-    cf.atoms.image(1, 1) = -7; // iy[1]: 3 -> -7
-    cf.atoms.image(2, 2) = 90; // iz[2]: 4 -> 90
+    cf.span(ATV::kAtom_x)[1] = 6.75;
+    cf.span(ATV::kAtom_vy)[0] = -3.5;
+    cf.span(ATV::kAtom_fz)[2] = 17.0;
+    cf.span(ATV::kAtom_charge)[1] = 0.125;
+    cf.span(ATV::kAtom_image)(0, 0) = 3;  // ix[0]: 1 -> 3
+    cf.span(ATV::kAtom_image)(1, 1) = -7; // iy[1]: 3 -> -7
+    cf.span(ATV::kAtom_image)(2, 2) = 90; // iz[2]: 4 -> 90
     // Permute the tags (reverse): {10, 11, 12} -> {12, 11, 10}.
-    cf.atoms.tag[0] = 12;
-    cf.atoms.tag[2] = 10;
-    cf.scalars.energy = -77.25;
-    cf.scalars.kinetic = 5.5;
+    cf.span(ATV::kAtom_tag)[0] = 12;
+    cf.span(ATV::kAtom_tag)[2] = 10;
+    cf.meta.get(ATV::kEnergy) = -77.25;
+    cf.meta.get(ATV::kKinetic) = 5.5;
 
     write_back(cf, *fr);
 
@@ -481,12 +499,24 @@ TEST(WriteBackContract, GoldenRoundTripContractFields) {
     EXPECT_EQ(rtag[1], 11);
     EXPECT_EQ(rtag[2], 10) << "permuted tag must reach molrs atoms.tag";
 
-    // Scalars stay a write channel.
-    auto se = molrs::frame_column_f64(*fr, "scalars", "energy");
-    auto sk = molrs::frame_column_f64(*fr, "scalars", "kinetic");
-    ASSERT_EQ(se.size(), 1u);
-    EXPECT_DOUBLE_EQ(se[0], -77.25);
-    EXPECT_DOUBLE_EQ(sk[0], 5.5);
+    // System results stay a typed-metadata write channel. Synthetic scalar
+    // blocks are forbidden by the v2 exchange schema.
+    const auto meta = molrs::frame_meta_entries(*fr);
+    auto find_meta = [&](const char* key) -> const molrs::MetaEntry* {
+        for (const auto& entry : meta)
+            if (std::string(entry.key.data(), entry.key.size()) == key)
+                return &entry;
+        return nullptr;
+    };
+    const auto* energy = find_meta("energy");
+    const auto* kinetic = find_meta("kinetic");
+    ASSERT_NE(energy, nullptr);
+    ASSERT_NE(kinetic, nullptr);
+    EXPECT_EQ(energy->dtype, molrs::MetaType::F64);
+    EXPECT_EQ(kinetic->dtype, molrs::MetaType::F64);
+    EXPECT_DOUBLE_EQ(energy->f64_value, -77.25);
+    EXPECT_DOUBLE_EQ(kinetic->f64_value, 5.5);
+    EXPECT_FALSE(molrs::frame_has_block(*fr, "scalars"));
 }
 
 // Non-contract fields (type / mass / topology blocks / box) are designated
@@ -496,14 +526,14 @@ TEST(WriteBackContract, NonContractFieldsUntouched) {
     auto fr = make_contract_frame();
 
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 3);
+    ASSERT_EQ(cf.nlocal(), 3);
 
     // Mutate NON-contract fields...
-    cf.atoms.type[0] = 99;
-    cf.atoms.mass[1] = 999.9;
-    cf.box.set_cell(ATV::Mat3::cubic(42.0));
+    cf.span(ATV::kAtom_type)[0] = 99;
+    cf.span(ATV::kAtom_mass)[1] = 999.9;
+    cf.simbox.set_cell(ATV::Mat3::cubic(42.0));
     // ...plus one contract sentinel proving write_back actually ran.
-    cf.atoms.x[0] = 8.5;
+    cf.span(ATV::kAtom_x)[0] = 8.5;
 
     write_back(cf, *fr);
 
@@ -559,11 +589,11 @@ TEST(WriteBackContract, TagOverflowThrows) {
 
     auto fr = make_minimal_frame();
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 2);
+    ASSERT_EQ(cf.nlocal(), 2);
 
     const std::int64_t over =
         std::int64_t{std::numeric_limits<std::int32_t>::max()} + 1;
-    cf.atoms.tag[0] = static_cast<ATV::TagInt>(over);
+    cf.span(ATV::kAtom_tag)[0] = static_cast<ATV::TagInt>(over);
 
     try {
         write_back(cf, *fr);
@@ -580,7 +610,7 @@ TEST(WriteBackContract, TagOverflowThrows) {
 TEST(WriteBackContract, MinimalFrameWriteBackDoesNotThrow) {
     auto fr = make_minimal_frame();
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 2);
+    ASSERT_EQ(cf.nlocal(), 2);
 
     EXPECT_NO_THROW(write_back(cf, *fr));
 }
@@ -589,28 +619,32 @@ TEST(WriteBackContract, MinimalFrameWriteBackDoesNotThrow) {
 //
 // frame-block-01 gave cpu::Frame two things molrs has no place for: registry-
 // owned EXTENSION COLUMNS (`insert("rho", …)` — a per-atom payload a component
-// attaches at runtime) and OWNED META entries. Both are engine-local by
-// design: an extension column is method scratch (EAM's rho), and the exchange
-// schema is the schema — the FFI boundary carries the schema columns and
-// nothing else. That is a contract, not an accident, so it is pinned here: a
-// silent change in either direction (an extra suddenly exported, or a schema
-// column suddenly dropped because an extra confused the loop) fails this test.
+// attaches at runtime). Such columns are engine-local method scratch. Typed,
+// serializable metadata is different: it is the current molrs exchange
+// channel and crosses exactly, without a synthetic block.
 
-TEST(WriteBackContract, ExtensionColumnsAndMetaStayEngineLocal) {
+TEST(WriteBackContract, ExtensionColumnsStayLocalAndTypedMetaCrosses) {
     auto fr = make_contract_frame();
     Frame cf = materialize(*fr);
-    ASSERT_EQ(cf.atoms.size(), 3);
+    ASSERT_EQ(cf.nlocal(), 3);
 
     // Attach an extension column and an owned meta entry, then write back.
-    cf.insert("rho", ATV::ColDType::Storage, 1);
-    auto rho = cf.span(ATV::ColKey<ATV::StorageReal>{"atoms", "rho"});
+    const ATV::ColKey<ATV::StorageReal> rho_key{
+        "atoms", "rho", ATV::kDynamicFieldId, ATV::ColDType::Storage};
+    cf.block("atoms").insert("rho", ATV::cpu::ColumnSpec{ATV::ColDType::Storage,
+                                                         1, ATV::ColGroup::Core,
+                                                         0, ATV::kColNone,
+                                                         ATV::kDynamicFieldId});
+    auto rho = cf.span(rho_key);
     rho[0] = 1.5;
     rho[1] = 2.5;
     rho[2] = 3.5;
-    cf.set_meta("annealing_stage", ATV::cpu::MetaValue{std::string("quench")});
+    constexpr ATV::MetaKey<std::string> annealing_stage{"annealing_stage",
+                                                        true};
+    cf.meta.insert(annealing_stage, std::string("quench"));
 
     // A contract field still carries across — the extras do not disturb it.
-    cf.atoms.x[1] = 6.75;
+    cf.span(ATV::kAtom_x)[1] = 6.75;
     write_back(cf, *fr);
 
     auto rx = molrs::frame_column_f64(*fr, "atoms", "x");
@@ -625,9 +659,22 @@ TEST(WriteBackContract, ExtensionColumnsAndMetaStayEngineLocal) {
 
     // …and it is still intact on the engine side (write_back is a read-only
     // export; it must not disturb the frame).
-    auto rho_after = cf.span(ATV::ColKey<ATV::StorageReal>{"atoms", "rho"});
+    auto rho_after = cf.span(rho_key);
     EXPECT_EQ(rho_after[1], ATV::StorageReal(2.5));
-    EXPECT_TRUE(cf.has_meta("annealing_stage"));
+    EXPECT_EQ(cf.meta.get(annealing_stage), "quench");
+
+    bool found_stage = false;
+    for (const auto& entry : molrs::frame_meta_entries(*fr)) {
+        if (std::string(entry.key.data(), entry.key.size())
+            == "annealing_stage") {
+            found_stage = true;
+            EXPECT_EQ(entry.dtype, molrs::MetaType::String);
+            EXPECT_EQ(std::string(entry.string_value.data(),
+                                  entry.string_value.size()),
+                      "quench");
+        }
+    }
+    EXPECT_TRUE(found_stage);
 }
 
 TEST(Materialize, MaterializedFrameCarriesNoExtras) {
@@ -637,10 +684,41 @@ TEST(Materialize, MaterializedFrameCarriesNoExtras) {
     auto fr = make_contract_frame();
     Frame cf = materialize(*fr);
 
-    EXPECT_EQ(cf.atoms.n_extra_columns(), 0);
+    EXPECT_EQ(static_cast<int>(cf.block("atoms").columns().size()),
+              ATV::kAtomFieldCount);
     EXPECT_TRUE(cf.has("atoms", "x"));
     EXPECT_FALSE(cf.has("atoms", "rho"));
 
     // Bookkeeping meta views are live off the materialized frame.
-    EXPECT_EQ(std::get<std::int64_t>(cf.meta("nlocal")), 3);
+    EXPECT_EQ(cf.meta.get(ATV::kNLocal), 3);
+}
+
+TEST(Materialize, RejectsSyntheticResultBlocks) {
+    for (const char* block : {"scalars", "stress"}) {
+        auto fr = make_minimal_frame();
+        const std::vector<double> values = {0.0};
+        molrs::frame_set_column_f64(
+            *fr, block, "energy",
+            ::rust::Slice<const double>(values.data(), values.size()));
+        EXPECT_THROW(
+            {
+                try {
+                    (void)materialize(*fr);
+                } catch (const std::runtime_error& error) {
+                    EXPECT_NE(std::string(error.what()).find(block),
+                              std::string::npos);
+                    throw;
+                }
+            },
+            std::runtime_error);
+    }
+}
+
+TEST(Materialize, RejectsUnknownAtomColumns) {
+    auto fr = make_minimal_frame();
+    const std::vector<double> rho = {1.0, 2.0};
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "rho",
+        ::rust::Slice<const double>(rho.data(), rho.size()));
+    EXPECT_THROW((void)materialize(*fr), std::runtime_error);
 }

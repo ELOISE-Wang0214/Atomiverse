@@ -16,7 +16,7 @@
 /// result must equal the SAME TaskSpec run directly (no protocol) through
 /// TaskMaterializer on every rank — under MPI the direct run decomposes the
 /// identical full-replica frame exactly like the protocol's post-broadcast
-/// path, so `frame.scalars` (globally reduced onto every rank by mpi::Reduce
+/// path, so typed Frame energy metadata (globally reduced by mpi::Reduce
 /// at end_of_step) is comparable on rank 0 WITHOUT a second gather. Per-atom
 /// trajectories are only whole on a single rank, so:
 ///   - every N:  energy relative 1e-10; result-frame shape (n atoms, the
@@ -37,6 +37,7 @@
 ///         std::runtime_error naming both versions, no deadlock  [ac-006]
 ///   - (e) materialize-failing TaskSpec → dispatch() throws on
 ///         rank 0, workers survive, next valid task succeeds     [ac-007]
+///   - (f) Minimize uses the same result/gather protocol shape
 ///   - wire-shape constants + wrong-side validating ctors        [ac-001]
 ///
 /// Not testable here: the MPI-uninitialized WorkerLoop ctor throw (this
@@ -129,16 +130,17 @@ cpu::Frame make_lj_frame() {
     for (int i = 0; i < kNAtoms; ++i) {
         const int col = i % 5;
         const int row = i / 5;
-        frame.atoms.x[i] = 8.0 + kSpacing * static_cast<double>(col);
-        frame.atoms.y[i] = 10.0 + kSpacing * static_cast<double>(row);
-        frame.atoms.z[i] = 15.0;
-        frame.atoms.mass[i] = 39.948;
-        frame.atoms.type[i] = 18;
-        frame.atoms.charge[i] = fixture_charge(i);
+        frame.span(ATV::kAtom_x)[i] = 8.0 + kSpacing * static_cast<double>(col);
+        frame.span(ATV::kAtom_y)[i] =
+            10.0 + kSpacing * static_cast<double>(row);
+        frame.span(ATV::kAtom_z)[i] = 15.0;
+        frame.span(ATV::kAtom_mass)[i] = 39.948;
+        frame.span(ATV::kAtom_type)[i] = 18;
+        frame.span(ATV::kAtom_charge)[i] = fixture_charge(i);
         for (int d = 0; d < 3; ++d)
-            frame.atoms.image(i, d) = fixture_image(i, d);
+            frame.span(ATV::kAtom_image)(i, d) = fixture_image(i, d);
     }
-    frame.box = Mat3::cubic(30.0);
+    frame.simbox = ATV::cpu::Box::cubic(30.0);
     return frame;
 }
 
@@ -146,19 +148,31 @@ cpu::Frame make_lj_frame() {
 ///        NeighborList + PairLJCut explicit at force (distinct orders),
 ///        VelocityVerlet + InitVelocity via default bindings, 5 steps.
 TaskSpec make_lj_spec() {
-    std::vector<ComponentEntry> entries;
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(MDComponentEntry{NeighborListParams{kCutoff, kSkin},
+                                       MDBinding{ATV::md::Phase::force, -10}});
+    entries.push_back(MDComponentEntry{PairLJCutParams{kEps, kSigma, kCutoff},
+                                       MDBinding{ATV::md::Phase::force, 0}});
     entries.push_back(
-        ComponentEntry{ComponentParams{NeighborListParams{kCutoff, kSkin}},
-                       ExplicitBinding{ATV::md::Phase::force, -10}});
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
     entries.push_back(
-        ComponentEntry{ComponentParams{PairLJCutParams{kEps, kSigma, kCutoff}},
-                       ExplicitBinding{ATV::md::Phase::force, 0}});
-    entries.push_back(ComponentEntry{ComponentParams{VelocityVerletParams{kDt}},
-                                     std::nullopt});
+        MDComponentEntry{InitVelocityParams{kTinit, kSeed}, std::nullopt});
+    return TaskSpec(MDTask{std::move(entries), kNSteps});
+}
+
+/// @brief Minimal typed Minimize task used only to exercise orchestration:
+///        one iteration, then return control metadata and gather owner rows.
+TaskSpec make_minimize_spec() {
+    std::vector<MinimizeComponentEntry> entries;
+    entries.push_back(MinimizeComponentEntry{
+        NeighborListParams{kCutoff, kSkin},
+        MinimizeBinding{ATV::minimizer::Phase::force, -10}});
+    entries.push_back(MinimizeComponentEntry{
+        PairLJCutParams{kEps, kSigma, kCutoff},
+        MinimizeBinding{ATV::minimizer::Phase::force, 0}});
     entries.push_back(
-        ComponentEntry{ComponentParams{InitVelocityParams{kTinit, kSeed}},
-                       std::nullopt});
-    return TaskSpec(std::move(entries), kNSteps);
+        MinimizeComponentEntry{LBFGSParams{5, 0.01, 1}, std::nullopt});
+    return TaskSpec(MinimizeTask{std::move(entries), 1, {}});
 }
 
 /// @brief Run `spec` directly (no protocol) on a fresh fixture frame. A
@@ -187,41 +201,44 @@ void expect_energy_close(double got, double want) {
 ///        energy within 1e-10 relative of the direct reference.
 void expect_result_frame_contract(const cpu::Frame& result,
                                   const cpu::Frame& direct) {
-    ASSERT_EQ(result.atoms.nlocal, kNAtoms);
-    EXPECT_EQ(result.atoms.nghost, 0);
+    ASSERT_EQ(result.nlocal(), kNAtoms);
+    EXPECT_EQ(result.nghost(), 0);
 
     for (int i = 0; i < kNAtoms; ++i) {
         SCOPED_TRACE("atom row " + std::to_string(i));
         // Identity tags + tag-ordered contract ⇒ row i carries tag i.
-        ASSERT_EQ(result.atoms.tag[i], TagInt(i));
-        EXPECT_EQ(result.atoms.mass[i], StorageReal(39.948));
-        EXPECT_EQ(result.atoms.type[i], 18);
+        ASSERT_EQ(result.span(ATV::kAtom_tag)[i], TagInt(i));
+        EXPECT_EQ(result.span(ATV::kAtom_mass)[i], StorageReal(39.948));
+        EXPECT_EQ(result.span(ATV::kAtom_type)[i], 18);
         // Passive columns ride the gather exactly (the charge+image gather
         // extension of this chain link; LJ MD never touches either).
-        EXPECT_EQ(result.atoms.charge[i], fixture_charge(i));
+        EXPECT_EQ(result.span(ATV::kAtom_charge)[i], fixture_charge(i));
         for (int d = 0; d < 3; ++d)
-            EXPECT_EQ(result.atoms.image(i, d), fixture_image(i, d))
+            EXPECT_EQ(result.span(ATV::kAtom_image)(i, d), fixture_image(i, d))
                 << "image axis " << d;
     }
 
     for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c)
-            EXPECT_EQ(result.box(r, c), (r == c) ? 30.0 : 0.0)
+            EXPECT_EQ(result.simbox.cell()(r, c), (r == c) ? 30.0 : 0.0)
                 << "box(" << r << ", " << c << ")";
 
     // Globally reduced scalars, comparable on rank 0 without a second
     // gather (mpi::Reduce wrote the global values onto every rank's
     // direct-run frame at end_of_step).
-    expect_energy_close(result.scalars.energy, direct.scalars.energy);
-    expect_energy_close(result.scalars.kinetic, direct.scalars.kinetic);
+    expect_energy_close(result.meta.get(ATV::kEnergy),
+                        direct.meta.get(ATV::kEnergy));
+    expect_energy_close(result.meta.get(ATV::kKinetic),
+                        direct.meta.get(ATV::kKinetic));
 
     // Forces are part of the result schema; 5 steps near the LJ minimum
     // must leave SOME nonzero component (presence check — per-atom force
     // comparison at N > 1 would need a second gather).
     bool any_force = false;
     for (int i = 0; i < kNAtoms && !any_force; ++i)
-        any_force = result.atoms.fx[i] != 0.0 || result.atoms.fy[i] != 0.0 ||
-                    result.atoms.fz[i] != 0.0;
+        any_force = result.span(ATV::kAtom_fx)[i] != 0.0
+                    || result.span(ATV::kAtom_fy)[i] != 0.0
+                    || result.span(ATV::kAtom_fz)[i] != 0.0;
     EXPECT_TRUE(any_force) << "gathered result carries no forces";
 }
 
@@ -230,15 +247,21 @@ void expect_result_frame_contract(const cpu::Frame& result,
 ///        (same physics, different code path — NOT bitwise by contract).
 void expect_trajectory_close_serial(const cpu::Frame& result,
                                     const cpu::Frame& direct) {
-    ASSERT_EQ(result.atoms.nlocal, direct.atoms.nlocal);
-    for (int i = 0; i < direct.atoms.nlocal; ++i) {
+    ASSERT_EQ(result.nlocal(), direct.nlocal());
+    for (int i = 0; i < direct.nlocal(); ++i) {
         SCOPED_TRACE("atom " + std::to_string(i));
-        EXPECT_NEAR(result.atoms.x[i], direct.atoms.x[i], 1e-10);
-        EXPECT_NEAR(result.atoms.y[i], direct.atoms.y[i], 1e-10);
-        EXPECT_NEAR(result.atoms.z[i], direct.atoms.z[i], 1e-10);
-        EXPECT_NEAR(result.atoms.vx[i], direct.atoms.vx[i], 1e-10);
-        EXPECT_NEAR(result.atoms.vy[i], direct.atoms.vy[i], 1e-10);
-        EXPECT_NEAR(result.atoms.vz[i], direct.atoms.vz[i], 1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_x)[i], direct.span(ATV::kAtom_x)[i],
+                    1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_y)[i], direct.span(ATV::kAtom_y)[i],
+                    1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_z)[i], direct.span(ATV::kAtom_z)[i],
+                    1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_vx)[i],
+                    direct.span(ATV::kAtom_vx)[i], 1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_vy)[i],
+                    direct.span(ATV::kAtom_vy)[i], 1e-10);
+        EXPECT_NEAR(result.span(ATV::kAtom_vz)[i],
+                    direct.span(ATV::kAtom_vz)[i], 1e-10);
     }
 }
 
@@ -253,14 +276,16 @@ void expect_trajectory_close_serial(const cpu::Frame& result,
 TEST(MpiTaskProtocol, WireConstantsAreStable) {
     EXPECT_EQ(static_cast<std::int32_t>(Command::RUN_TASK), 1);
     EXPECT_EQ(static_cast<std::int32_t>(Command::SHUTDOWN), 2);
-    EXPECT_EQ(kProtocolVersion, 1);
+    EXPECT_EQ(kProtocolVersion, 2);
 
     static_assert(std::is_same_v<std::underlying_type_t<Command>, std::int32_t>,
                   "Command must be int32 on the wire");
     static_assert(std::is_trivially_copyable_v<CommandHeader>,
                   "CommandHeader is broadcast as MPI_BYTE");
-    static_assert(std::is_same_v<decltype(CommandHeader::version), std::int32_t>);
-    static_assert(std::is_same_v<decltype(CommandHeader::command), std::int32_t>);
+    static_assert(
+        std::is_same_v<decltype(CommandHeader::version), std::int32_t>);
+    static_assert(
+        std::is_same_v<decltype(CommandHeader::command), std::int32_t>);
     static_assert(
         std::is_same_v<decltype(CommandHeader::payload_bytes), std::int64_t>);
 }
@@ -292,13 +317,18 @@ TEST(MpiTaskProtocol, DispatchedLjMdTaskMatchesDirectRun) {
 
     // Reference first, OUTSIDE the session (collective across all ranks).
     const cpu::Frame direct = direct_reference_run(spec);
-    ASSERT_NE(direct.scalars.energy, 0.0)
+    ASSERT_NE(direct.meta.get(ATV::kEnergy), 0.0)
         << "fixture produced zero LJ energy — the equivalence check would "
            "be vacuous";
 
     if (world_rank() == 0) {
         TaskDispatcher dispatcher(MPI_COMM_WORLD);
-        cpu::Frame result = dispatcher.dispatch(spec, make_lj_frame());
+        DispatchResult dispatched = dispatcher.dispatch(spec, make_lj_frame());
+        const cpu::Frame& result = dispatched.frame;
+
+        EXPECT_EQ(dispatched.control.iterations, kNSteps);
+        EXPECT_FALSE(dispatched.control.converged);
+        EXPECT_TRUE(dispatched.control.stop_reason.empty());
 
         expect_result_frame_contract(result, direct);
         if (world_size() == 1)
@@ -307,7 +337,8 @@ TEST(MpiTaskProtocol, DispatchedLjMdTaskMatchesDirectRun) {
         dispatcher.shutdown();
     } else {
         WorkerLoop worker(MPI_COMM_WORLD);
-        EXPECT_NO_THROW(worker.run()); // one RUN_TASK, then SHUTDOWN releases it
+        EXPECT_NO_THROW(
+            worker.run()); // one RUN_TASK, then SHUTDOWN releases it
     }
 }
 
@@ -328,6 +359,29 @@ TEST(MpiTaskProtocol, ShutdownReleasesEveryWorkerCleanly) {
     }
 }
 
+// ── (f) A second staged task reuses the protocol without MD erasure ────
+
+TEST(MpiTaskProtocol, MinimizeReturnsControlAndGatheredFrame) {
+    const TaskSpec spec = make_minimize_spec();
+
+    if (world_rank() == 0) {
+        TaskDispatcher dispatcher(MPI_COMM_WORLD);
+        DispatchResult result = dispatcher.dispatch(spec, make_lj_frame());
+
+        // Structural contract only: one typed loop iteration ran and the DD
+        // owner rows were gathered through the same result envelope as MD.
+        EXPECT_EQ(result.control.iterations, 1);
+        ASSERT_EQ(result.frame.nlocal(), kNAtoms);
+        for (int i = 0; i < kNAtoms; ++i)
+            EXPECT_EQ(result.frame.span(ATV::kAtom_tag)[i], TagInt(i));
+
+        dispatcher.shutdown();
+    } else {
+        WorkerLoop worker(MPI_COMM_WORLD);
+        EXPECT_NO_THROW(worker.run());
+    }
+}
+
 // ── (c) Two sequential tasks in one session: ac-005 ─────────────────────────
 //
 // Workers must loop back to the blocking Bcast after the first RUN_TASK.
@@ -341,27 +395,37 @@ TEST(MpiTaskProtocol, TwoSequentialTasksInOneSessionBothMatch) {
     const TaskSpec spec = make_lj_spec();
 
     const cpu::Frame direct = direct_reference_run(spec);
-    ASSERT_NE(direct.scalars.energy, 0.0);
+    ASSERT_NE(direct.meta.get(ATV::kEnergy), 0.0);
 
     if (world_rank() == 0) {
         TaskDispatcher dispatcher(MPI_COMM_WORLD);
-        cpu::Frame first = dispatcher.dispatch(spec, make_lj_frame());
-        cpu::Frame second = dispatcher.dispatch(spec, make_lj_frame());
+        DispatchResult first_result =
+            dispatcher.dispatch(spec, make_lj_frame());
+        DispatchResult second_result =
+            dispatcher.dispatch(spec, make_lj_frame());
+        const cpu::Frame& first = first_result.frame;
+        const cpu::Frame& second = second_result.frame;
 
         expect_result_frame_contract(first, direct);
         expect_result_frame_contract(second, direct);
 
         // Same-process determinism: dispatch #2 is dispatch #1 replayed.
-        EXPECT_EQ(first.scalars.energy, second.scalars.energy);
-        ASSERT_EQ(first.atoms.nlocal, second.atoms.nlocal);
-        for (int i = 0; i < first.atoms.nlocal; ++i) {
+        EXPECT_EQ(first.meta.get(ATV::kEnergy), second.meta.get(ATV::kEnergy));
+        ASSERT_EQ(first.nlocal(), second.nlocal());
+        for (int i = 0; i < first.nlocal(); ++i) {
             SCOPED_TRACE("atom " + std::to_string(i));
-            EXPECT_EQ(first.atoms.x[i], second.atoms.x[i]);
-            EXPECT_EQ(first.atoms.y[i], second.atoms.y[i]);
-            EXPECT_EQ(first.atoms.z[i], second.atoms.z[i]);
-            EXPECT_EQ(first.atoms.vx[i], second.atoms.vx[i]);
-            EXPECT_EQ(first.atoms.vy[i], second.atoms.vy[i]);
-            EXPECT_EQ(first.atoms.vz[i], second.atoms.vz[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_x)[i],
+                      second.span(ATV::kAtom_x)[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_y)[i],
+                      second.span(ATV::kAtom_y)[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_z)[i],
+                      second.span(ATV::kAtom_z)[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_vx)[i],
+                      second.span(ATV::kAtom_vx)[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_vy)[i],
+                      second.span(ATV::kAtom_vy)[i]);
+            EXPECT_EQ(first.span(ATV::kAtom_vz)[i],
+                      second.span(ATV::kAtom_vz)[i]);
         }
 
         dispatcher.shutdown();
@@ -394,8 +458,7 @@ TEST(MpiTaskProtocol, VersionMismatchThrowsOnEveryRankNamingBothVersions) {
         if (world_rank() == 0) {
             TaskDispatcher dispatcher(MPI_COMM_WORLD, good);
         } else {
-            WorkerLoop worker(MPI_COMM_WORLD,
-                              world_rank() == 1 ? bad : good);
+            WorkerLoop worker(MPI_COMM_WORLD, world_rank() == 1 ? bad : good);
         }
     } catch (const std::runtime_error& e) {
         threw = true;
@@ -421,10 +484,10 @@ TEST(MpiTaskProtocol, VersionMismatchThrowsOnEveryRankNamingBothVersions) {
 // loop back, and the SAME session then executes a valid task correctly.
 
 TEST(MpiTaskProtocol, MaterializeFailurePropagatesAndSessionSurvives) {
-    std::vector<ComponentEntry> bad_entries;
-    bad_entries.push_back(ComponentEntry{
-        ComponentParams{VelocityVerletParams{kDt}}, std::nullopt});
-    const TaskSpec bad_spec(std::move(bad_entries), kNSteps);
+    std::vector<MDComponentEntry> bad_entries;
+    bad_entries.push_back(
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
+    const TaskSpec bad_spec(MDTask{std::move(bad_entries), kNSteps});
 
     // Determinism prerequisite, same point on every rank: this spec fails
     // to materialize locally (the failure dispatch() must propagate).
@@ -432,7 +495,7 @@ TEST(MpiTaskProtocol, MaterializeFailurePropagatesAndSessionSurvives) {
 
     const TaskSpec good_spec = make_lj_spec();
     const cpu::Frame direct = direct_reference_run(good_spec);
-    ASSERT_NE(direct.scalars.energy, 0.0);
+    ASSERT_NE(direct.meta.get(ATV::kEnergy), 0.0);
 
     if (world_rank() == 0) {
         TaskDispatcher dispatcher(MPI_COMM_WORLD);
@@ -442,8 +505,9 @@ TEST(MpiTaskProtocol, MaterializeFailurePropagatesAndSessionSurvives) {
 
         // The session survives the task-level failure: the very next
         // dispatch must produce the correct physics.
-        cpu::Frame result = dispatcher.dispatch(good_spec, make_lj_frame());
-        expect_result_frame_contract(result, direct);
+        DispatchResult result = dispatcher.dispatch(good_spec, make_lj_frame());
+        expect_result_frame_contract(result.frame, direct);
+        EXPECT_EQ(result.control.iterations, kNSteps);
 
         dispatcher.shutdown();
     } else {

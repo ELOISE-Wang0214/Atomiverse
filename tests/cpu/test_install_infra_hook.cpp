@@ -1,6 +1,6 @@
 /// @file tests/cpu/test_install_infra_hook.cpp
 /// @brief Phase 1 (driver-infra-auto-injection) — assert the foundation:
-///        (a) `ComponentBase::reads()` defaults to `Capability::None`;
+///        (a) `Component::reads()` defaults to `Capability::None`;
 ///        (b) the neighbor contract is an opt-in protocol — see (g)/(h);
 ///        (c) a CPU driver subclass can override `install_defaults()` to inject
 ///            a component, and the hook fires *before* `validate_components()`
@@ -10,18 +10,18 @@
 /// Acceptance: T1 + T2 of `.claude/specs/driver-infra-auto-injection.md`.
 ///
 /// arch-refactor-02-halo additions (`HaloParticipant` protocol scan):
-///        (d) `ComponentBase::halo_participant()` defaults to `nullptr`; the
+///        (d) `Component::halo_participant()` defaults to `nullptr`; the
 ///            eight legacy halo virtuals are gone from the base vtable;
 ///        (e) `HaloSend`/`HaloRecv` expose `Endpoint::send`/`Endpoint::recv`
 ///            through the protocol, and a manually registered pair +
-///            `set_pair` builds to exactly ONE endpoint pair (no double
+///            `add_potential` builds to exactly ONE endpoint pair (no double
 ///            injection);
 ///        (f) a pure field participant (`Endpoint::none`) is not treated as
 ///            an endpoint and does not suppress the automatic injection.
 ///
 /// arch-refactor-03-neighbor additions (`NeighborConsumer` /
 /// `NeighborProvider` opt-in protocol, neighbor_protocol.h):
-///        (g) `ComponentBase::as_neighbor_consumer()` and
+///        (g) `Component::as_neighbor_consumer()` and
 ///            `as_neighbor_provider()` default to `nullptr`; the three
 ///            legacy in-vtable neighbor trio is gone
 ///            from the base vtable;
@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/halo_participant.h"
@@ -97,7 +97,7 @@ class HookCounterDynamics : public ATV::cpu::md::MD {
         // Inject the integrator from inside the hook — driver's
         // `validate_components()` must see this component on the
         // pending list, otherwise validation throws "missing Integrator".
-        this->on(ATV::md::Phase::initial_integrate).add(integ);
+        this->on(ATV::md::Phase::initial_integrate).add_ref(integ);
     }
 };
 
@@ -107,7 +107,7 @@ TEST(InstallInfraHook, HookFiresBeforeValidateComponents) {
     // arrives via install_defaults(). If validate_components() ran first,
     // the build would throw "missing Integrator".
     StubForceEvaluator force;
-    d.on(ATV::md::Phase::force).add(force);
+    d.on(ATV::md::Phase::force).add_ref(force);
 
     EXPECT_NO_THROW(d.build());
     EXPECT_EQ(d.install_calls, 1);
@@ -116,7 +116,7 @@ TEST(InstallInfraHook, HookFiresBeforeValidateComponents) {
 TEST(InstallInfraHook, HookFiresExactlyOncePerBuild) {
     HookCounterDynamics d;
     StubForceEvaluator force;
-    d.on(ATV::md::Phase::force).add(force);
+    d.on(ATV::md::Phase::force).add_ref(force);
 
     d.build();
     EXPECT_EQ(d.install_calls, 1);
@@ -131,7 +131,7 @@ TEST(InstallInfraHook, DefaultInstallInfraIsNoOp) {
     // role, which is what would make the validation rule vacuous.
     ATV::cpu::md::MD d;
     StubForceEvaluator force;
-    d.on(ATV::md::Phase::force).add(force);
+    d.on(ATV::md::Phase::force).add_ref(force);
     EXPECT_THROW(d.build(), std::runtime_error);
 }
 
@@ -140,7 +140,7 @@ TEST(InstallInfraHook, DefaultInstallInfraIsNoOp) {
 /// @brief Pure field participant: opts into `HaloParticipant`, keeps the
 /// default `Endpoint::none`, and declares one width-1 forward field. Must
 /// neither count as a halo endpoint nor suppress endpoint auto-injection.
-class PureFieldParticipant : public ATV::cpu::ComponentBase,
+class PureFieldParticipant : public ATV::cpu::Component,
                              public ATV::cpu::HaloParticipant {
   public:
     std::string name() const override { return "pure_field_participant"; }
@@ -159,13 +159,13 @@ class PureFieldParticipant : public ATV::cpu::ComponentBase,
 /// components that appear under multiple phase bindings. No `dynamic_cast`,
 /// no `name()` matching — same discipline as `scan_pending_infra_()`.
 std::pair<int, int>
-count_halo_endpoints(const ATV::Plan<ATV::cpu::ComponentBase>& plan) {
-    std::unordered_set<const ATV::cpu::ComponentBase*> seen;
+count_halo_endpoints(const ATV::Plan<ATV::cpu::Component>& plan) {
+    std::unordered_set<const ATV::cpu::Component*> seen;
     int sends = 0;
     int recvs = 0;
     for (const auto& slot : plan.slots) {
         for (const auto& op : slot.ops) {
-            ATV::cpu::ComponentBase* c = op.component;
+            ATV::cpu::Component* c = op.component;
             if (!seen.insert(c).second)
                 continue;
             ATV::cpu::HaloParticipant* p = c->halo_participant();
@@ -194,7 +194,7 @@ TEST(HaloParticipantProtocol, ComponentBaseDefaultsToNullParticipant) {
 }
 
 // Detection idiom: the eight legacy halo virtuals must be GONE from
-// `cpu::ComponentBase` (replaced by the single `halo_participant()` query).
+// `cpu::Component` (replaced by the single `halo_participant()` query).
 #define ATV_TEST_HAS_MEMBER(memb)                                              \
     template <typename T, typename = void>                                     \
     struct HasMember_##memb : std::false_type {};                              \
@@ -214,23 +214,23 @@ ATV_TEST_HAS_MEMBER(unpack_reverse);
 #undef ATV_TEST_HAS_MEMBER
 
 TEST(HaloParticipantProtocol, LegacyHaloVirtualsAreGoneFromComponentBase) {
-    using CB = ATV::cpu::ComponentBase;
+    using CB = ATV::cpu::Component;
     static_assert(!HasMember_provides_halo_send<CB>::value,
-                  "provides_halo_send must be deleted from cpu::ComponentBase");
+                  "provides_halo_send must be deleted from cpu::Component");
     static_assert(!HasMember_provides_halo_recv<CB>::value,
-                  "provides_halo_recv must be deleted from cpu::ComponentBase");
+                  "provides_halo_recv must be deleted from cpu::Component");
     static_assert(!HasMember_comm_forward<CB>::value,
-                  "comm_forward must be deleted from cpu::ComponentBase");
+                  "comm_forward must be deleted from cpu::Component");
     static_assert(!HasMember_comm_reverse<CB>::value,
-                  "comm_reverse must be deleted from cpu::ComponentBase");
+                  "comm_reverse must be deleted from cpu::Component");
     static_assert(!HasMember_pack_forward<CB>::value,
-                  "pack_forward must be deleted from cpu::ComponentBase");
+                  "pack_forward must be deleted from cpu::Component");
     static_assert(!HasMember_unpack_forward<CB>::value,
-                  "unpack_forward must be deleted from cpu::ComponentBase");
+                  "unpack_forward must be deleted from cpu::Component");
     static_assert(!HasMember_pack_reverse<CB>::value,
-                  "pack_reverse must be deleted from cpu::ComponentBase");
+                  "pack_reverse must be deleted from cpu::Component");
     static_assert(!HasMember_unpack_reverse<CB>::value,
-                  "unpack_reverse must be deleted from cpu::ComponentBase");
+                  "unpack_reverse must be deleted from cpu::Component");
     SUCCEED(); // contract is compile-time
 }
 
@@ -257,8 +257,8 @@ TEST(HaloParticipantProtocol, ManualHaloPairIsNotDoubleInjected) {
     // must run exactly once (see halo_exchange.h).
     ATV::cpu::md::MD sim;
     StubIntegrator integ;
-    sim.on(ATV::md::Phase::initial_integrate).add(integ);
-    sim.set_pair(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
+    sim.on(ATV::md::Phase::initial_integrate).add_ref(integ);
+    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.0});
     sim.add(ATV::cpu::comm::HaloSend{6.6});
     sim.add(ATV::cpu::comm::HaloRecv{});
@@ -286,15 +286,15 @@ TEST(HaloParticipantProtocol, FieldParticipantIsNotAnEndpoint) {
 TEST(HaloParticipantProtocol, FieldParticipantDoesNotSuppressAutoInjection) {
     // A pure field participant is registered, but NO halo endpoints are.
     // Under an MPI build, install_defaults() must still auto-inject the
-    // HaloSend/HaloRecv pair for the set_pair cutoff: Endpoint::none must
+    // HaloSend/HaloRecv pair for the add_potential cutoff: Endpoint::none must
     // not trip the has_halo_send/has_halo_recv scan booleans.
     ATV::cpu::md::MD sim;
     StubIntegrator integ;
     PureFieldParticipant fp;
-    sim.on(ATV::md::Phase::initial_integrate).add(integ);
-    sim.set_pair(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
+    sim.on(ATV::md::Phase::initial_integrate).add_ref(integ);
+    sim.add_potential(ATV::cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{6.0});
-    sim.on(ATV::md::Phase::force).add(fp, +100);
+    sim.on(ATV::md::Phase::force).add_ref(fp, +100);
     sim.build();
 
     const auto [sends, recvs] = count_halo_endpoints(sim.plan());
@@ -312,25 +312,25 @@ TEST(HaloParticipantProtocol, FieldParticipantDoesNotSuppressAutoInjection) {
 // ═══ NeighborConsumer/NeighborProvider protocol (arch-refactor-03) ══════
 
 /// @brief Interaction cutoff [Å] declared by the consumer probe below.
-constexpr ATV::Real kProbeCutoff = 5.5;
+constexpr ATV::AccReal kProbeCutoff = 5.5;
 
 /// @brief Consumer-side probe: opts into `NeighborConsumer` alongside
-/// `ComponentBase` and reports a fixed cutoff. Mirrors what
+/// `Component` and reports a fixed cutoff. Mirrors what
 /// `cpu::PairEvaluator` / `cpu::CoulLong` do in production.
-class ProbeNeighborConsumer : public ATV::cpu::ComponentBase,
+class ProbeNeighborConsumer : public ATV::cpu::Component,
                               public ATV::cpu::NeighborConsumer {
   public:
     std::string name() const override { return "probe_neighbor_consumer"; }
     const ATV::cpu::NeighborConsumer* as_neighbor_consumer() const override {
         return this;
     }
-    ATV::Real neighbor_cutoff() const override { return kProbeCutoff; }
+    ATV::AccReal neighbor_cutoff() const override { return kProbeCutoff; }
     void launch(const ATV::cpu::LaunchContext&) override {}
 };
 
 /// @brief Supply-side probe: opts into the `NeighborProvider` tag protocol.
 /// Mirrors what `cpu::md::NeighborList` does in production.
-class ProbeNeighborProvider : public ATV::cpu::ComponentBase,
+class ProbeNeighborProvider : public ATV::cpu::Component,
                               public ATV::cpu::NeighborProvider {
   public:
     std::string name() const override { return "probe_neighbor_provider"; }

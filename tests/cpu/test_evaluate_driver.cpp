@@ -2,10 +2,10 @@
 /// @brief Phase 5 — `cpu::Evaluate` driver behaves correctly under the
 ///        one-pass evaluate contract:
 ///
-///   1. Energy-only `SCFEvaluator(.with_gradient(false))` is accepted by
+///   1. Energy-only `SCF(.with_gradient(false))` is accepted by
 ///      `Evaluate` (capability check passes) but rejected by `Dynamics`
 ///      (no Force capability).
-///   2. `Evaluate + SCFEvaluator(.with_gradient(false))` reproduces a
+///   2. `Evaluate + SCF(.with_gradient(false))` reproduces a
 ///      direct `SCFSolver.run()` energy bit-for-bit on H₂O / STO-3G.
 ///   3. The free function `cpu::single_point(frame, evaluator)` is
 ///      equivalent to constructing an `Evaluate`, adding the evaluator,
@@ -24,13 +24,13 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/driver/evaluate.h"
-#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -38,12 +38,22 @@ namespace {
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.0, 0.0};
-    f.atoms.z = {0.0, -0.5860, -0.5860};
-    f.atoms.type = {8, 1, 1};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7572;
+    f.span(ATV::kAtom_x)[2] = -0.7572;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_y)[2] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = -0.5860;
+    f.span(ATV::kAtom_z)[2] = -0.5860;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -55,13 +65,13 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorAcceptedByEvaluate) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
-    cpu::scf::SCFEvaluator scf{cfg};
+    cpu::scf::SCF scf{cfg};
     scf.with_gradient(false);
     EXPECT_FALSE(has_capability(scf.capabilities(), Capability::Force))
         << "with_gradient(false) must drop the Force capability bit";
 
     cpu::Evaluate eval;
-    eval.on(ATV::evaluate::Phase::evaluate).add(scf);
+    eval.on(ATV::evaluate::Phase::evaluate).add_ref(scf);
     EXPECT_NO_THROW(eval.build());
 }
 
@@ -71,12 +81,12 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
-    cpu::scf::SCFEvaluator scf{cfg};
+    cpu::scf::SCF scf{cfg};
     scf.with_gradient(false);
 
     cpu::md::MD d;
     d.on(ATV::md::Phase::initial_integrate).add(cpu::md::VelocityVerlet{0.5});
-    d.on(ATV::md::Phase::force).add(scf);
+    d.on(ATV::md::Phase::force).add_ref(scf);
     try {
         d.build();
         FAIL() << "cpu::md::MD should reject an evaluator without Force "
@@ -99,25 +109,26 @@ TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {
     const auto& result_direct = solver.run(integrals);
     const double E_direct_Ha = result_direct.energy;
 
-    // Path 2 — Evaluate + SCFEvaluator.
+    // Path 2 — Evaluate + SCF.
     auto frame_eval = make_h2o();
-    cpu::scf::SCFEvaluator scf_eval{cfg};
+    cpu::scf::SCF scf_eval{cfg};
     scf_eval.with_gradient(false);
 
     cpu::Evaluate eval;
-    eval.on(ATV::evaluate::Phase::evaluate).add(scf_eval);
+    eval.on(ATV::evaluate::Phase::evaluate).add_ref(scf_eval);
     eval.build();
     eval.run(frame_eval);
 
     const double E_via_eval_Ha = scf_eval.last_result().energy;
     EXPECT_NEAR(E_via_eval_Ha, E_direct_Ha, 1e-10)
-        << "Evaluate + SCFEvaluator should match SCFSolver direct to FP noise";
+        << "Evaluate + SCF should match SCFSolver direct to FP noise";
 
-    // frame.scalars.energy is populated in eV; spot-check the conversion.
-    const double frame_eV = frame_eval.scalars.energy;
-    const double frame_Ha = frame_eV / kHartree2eV;
+    // frame.meta.get(ATV::kEnergy) is populated in eV; spot-check the conversion.
+    const double frame_eV = frame_eval.meta.get(ATV::kEnergy);
+    const double frame_Ha = frame_eV / units::kHartreeInEv;
     EXPECT_NEAR(frame_Ha, E_via_eval_Ha, 1e-10)
-        << "frame.scalars.energy (eV) should be SCF energy (Ha) × Hartree2eV";
+        << "frame.meta.get(ATV::kEnergy) (eV) should be SCF energy (Ha) × "
+           "Hartree2eV";
 }
 
 TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
@@ -136,17 +147,17 @@ TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
     auto cfg = cpu::scf::rhf_config(integrals);
 
     // Inline construction.
-    cpu::scf::SCFEvaluator scf_inline{cfg};
+    cpu::scf::SCF scf_inline{cfg};
     scf_inline.with_gradient(false);
     {
         cpu::Evaluate eval;
-        eval.on(ATV::evaluate::Phase::evaluate).add(scf_inline);
+        eval.on(ATV::evaluate::Phase::evaluate).add_ref(scf_inline);
         eval.build();
         eval.run(frame_inline);
     }
 
     // Free-function helper.
-    cpu::scf::SCFEvaluator scf_helper{cfg};
+    cpu::scf::SCF scf_helper{cfg};
     scf_helper.with_gradient(false);
     cpu::single_point(frame_helper, scf_helper);
 
@@ -154,8 +165,8 @@ TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
                 scf_helper.last_result().energy, 1e-10)
         << "single_point() must be equivalent to inline Evaluate construction "
         << "(1e-10 — parallel-reduction order can vary by ~1e-12)";
-    EXPECT_NEAR(frame_inline.scalars.energy, frame_helper.scalars.energy,
-                1e-10);
+    EXPECT_NEAR(frame_inline.meta.get(ATV::kEnergy),
+                frame_helper.meta.get(ATV::kEnergy), 1e-10);
 }
 
 #endif // ATV_HAS_RHF

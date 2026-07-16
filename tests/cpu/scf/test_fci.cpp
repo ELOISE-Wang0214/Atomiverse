@@ -21,7 +21,7 @@
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -29,36 +29,45 @@ namespace {
 
 cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.type = {2};
-    f.atoms.mass = {4.0026};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 2;
+    f.span(ATV::kAtom_mass)[0] = 4.0026;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.0};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.7414};
-    f.atoms.type = {1, 1};
-    f.atoms.mass = {1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.7414;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 // Solve a restricted reference and return the unified SCFResult.
 cpu::scf::SCFResult solve_rhf(const cpu::scf::IntegralPack& ints) {
-    return cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints, 1e-12));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints, 1e-12)};
+    solver.build(ints);
+    return solver.run(ints);
 }
 
 // Binomial coefficient for the determinant-count invariant.
 long long choose(int n, int k) {
-    if (k < 0 || k > n) return 0;
+    if (k < 0 || k > n)
+        return 0;
     long long r = 1;
-    for (int i = 0; i < k; ++i) r = r * (n - i) / (i + 1);
+    for (int i = 0; i < k; ++i)
+        r = r * (n - i) / (i + 1);
     return r;
 }
 
@@ -96,7 +105,8 @@ TEST(FCI, H2_STO3G_CountAndHermiticity) {
     ASSERT_TRUE(scf.converged);
 
     const int n_mo = static_cast<int>(scf.C_alpha.shape(1));
-    const long long n_det = choose(n_mo, scf.n_alpha) * choose(n_mo, scf.n_beta);
+    const long long n_det =
+        choose(n_mo, scf.n_alpha) * choose(n_mo, scf.n_beta);
     EXPECT_EQ(n_det, 4);
 
     auto hci = cpu::scf::fci_hamiltonian(ints, scf);
@@ -120,8 +130,8 @@ TEST(FCI, H2_STO3G_VariationalAndSign) {
 
     auto res = cpu::scf::fci_energy(ints, scf);
     EXPECT_TRUE(std::isfinite(res.e_fci));
-    EXPECT_LE(res.e_fci, scf.energy + 1e-10);       // variational
-    EXPECT_LE(res.e_corr, 0.0);                     // correlation lowers energy
+    EXPECT_LE(res.e_fci, scf.energy + 1e-10); // variational
+    EXPECT_LE(res.e_corr, 0.0);               // correlation lowers energy
     EXPECT_NEAR(res.e_corr, res.e_fci - scf.energy, 1e-12);
 }
 

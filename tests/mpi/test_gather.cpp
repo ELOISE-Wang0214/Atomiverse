@@ -24,29 +24,38 @@ using namespace ATV;
 
 namespace {
 
+const ColKey<StorageReal> kGatherAux{"atoms", "gather_aux", kDynamicFieldId,
+                                     ColDType::Storage};
+
 // Lay 27 atoms on a 3x3x3 grid in a cubic box. Each atom gets a deterministic
 // position so we can assert the gathered field values match exactly.
 cpu::Frame make_grid_frame(double box_len, int per_axis) {
     const int n = per_axis * per_axis * per_axis;
     cpu::Frame frame(n);
+    frame.block("atoms").insert(
+        "gather_aux",
+        cpu::ColumnSpec{ColDType::Storage, 2, ColGroup::Core, 0,
+                        kColMigrate | kColExchange, kDynamicFieldId});
     const double dx = box_len / per_axis;
     int idx = 0;
     for (int ix = 0; ix < per_axis; ++ix) {
         for (int iy = 0; iy < per_axis; ++iy) {
             for (int iz = 0; iz < per_axis; ++iz) {
-                frame.atoms.x[idx] = (ix + 0.5) * dx;
-                frame.atoms.y[idx] = (iy + 0.5) * dx;
-                frame.atoms.z[idx] = (iz + 0.5) * dx;
-                frame.atoms.vx[idx] = idx * 0.01;
-                frame.atoms.vy[idx] = idx * 0.02;
-                frame.atoms.vz[idx] = idx * 0.03;
-                frame.atoms.mass[idx] = 1.0 + 0.001 * idx;
-                frame.atoms.type[idx] = idx % 3;
+                frame.span(ATV::kAtom_x)[idx] = (ix + 0.5) * dx;
+                frame.span(ATV::kAtom_y)[idx] = (iy + 0.5) * dx;
+                frame.span(ATV::kAtom_z)[idx] = (iz + 0.5) * dx;
+                frame.span(ATV::kAtom_vx)[idx] = idx * 0.01;
+                frame.span(ATV::kAtom_vy)[idx] = idx * 0.02;
+                frame.span(ATV::kAtom_vz)[idx] = idx * 0.03;
+                frame.span(ATV::kAtom_mass)[idx] = 1.0 + 0.001 * idx;
+                frame.span(ATV::kAtom_type)[idx] = idx % 3;
+                frame.span(kGatherAux)(idx, 0) = StorageReal(100 + idx);
+                frame.span(kGatherAux)(idx, 1) = StorageReal(-200 - idx);
                 ++idx;
             }
         }
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -70,10 +79,15 @@ TEST(Gather, SingleRankCopiesOwners) {
     EXPECT_EQ(g.n_total, 27);
     ASSERT_EQ(static_cast<int>(g.x.size()), 27);
     for (int i = 0; i < 27; ++i) {
-        EXPECT_DOUBLE_EQ(g.x[i], frame.atoms.x[i]);
-        EXPECT_DOUBLE_EQ(g.vx[i], frame.atoms.vx[i]);
-        EXPECT_EQ(g.tag[i], frame.atoms.tag[i]);
-        EXPECT_EQ(g.type[i], frame.atoms.type[i]);
+        EXPECT_DOUBLE_EQ(g.x[i], frame.span(ATV::kAtom_x)[i]);
+        EXPECT_DOUBLE_EQ(g.vx[i], frame.span(ATV::kAtom_vx)[i]);
+        EXPECT_EQ(g.tag[i], frame.span(ATV::kAtom_tag)[i]);
+        EXPECT_EQ(g.type[i], frame.span(ATV::kAtom_type)[i]);
+    }
+    const cpu::Frame roundtrip = cpu::md::mpi::to_frame(g);
+    for (int i = 0; i < 27; ++i) {
+        EXPECT_EQ(roundtrip.span(kGatherAux)(i, 0), StorageReal(100 + i));
+        EXPECT_EQ(roundtrip.span(kGatherAux)(i, 1), StorageReal(-200 - i));
     }
 
     backend.shutdown();
@@ -110,6 +124,11 @@ TEST(Gather, MultiRankSortsByTag) {
         // original assignment, and tags are global atom IDs == initial idx).
         for (int i = 0; i < 27; ++i) {
             EXPECT_EQ(g.type[i], i % 3);
+        }
+        const cpu::Frame roundtrip = cpu::md::mpi::to_frame(g);
+        for (int i = 0; i < 27; ++i) {
+            EXPECT_EQ(roundtrip.span(kGatherAux)(i, 0), StorageReal(100 + i));
+            EXPECT_EQ(roundtrip.span(kGatherAux)(i, 1), StorageReal(-200 - i));
         }
     } else {
         // Non-root receives empty buffers but a valid n_total.

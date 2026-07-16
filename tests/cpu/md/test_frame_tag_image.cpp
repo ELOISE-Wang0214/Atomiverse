@@ -21,7 +21,7 @@ TEST(FrameTagImage, DefaultConstructSetsIdentityTags) {
     constexpr int n = 100;
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        EXPECT_EQ(frame.atoms.tag(i), static_cast<std::int64_t>(i))
+        EXPECT_EQ(frame.span(ATV::kAtom_tag)[i], static_cast<std::int64_t>(i))
             << "tag at index " << i << " should equal i by default";
     }
 }
@@ -33,7 +33,8 @@ TEST(FrameTagImage, DefaultConstructZerosImage) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
         for (int d = 0; d < 3; ++d) {
-            EXPECT_EQ(frame.atoms.image(i, d), static_cast<std::int8_t>(0))
+            EXPECT_EQ(frame.span(ATV::kAtom_image)(i, d),
+                      static_cast<std::int8_t>(0))
                 << "image(" << i << "," << d << ") should default to 0";
         }
     }
@@ -43,7 +44,8 @@ TEST(FrameTagImage, DefaultConstructZerosImage) {
 
 TEST(FrameTagImage, TagDtypeIsTagInt) {
     cpu::Frame frame(4);
-    using tag_t = typename std::decay_t<decltype(frame.atoms.tag)>::value_type;
+    using tag_t = typename std::decay_t<decltype(frame.span(
+        ATV::kAtom_tag))>::element_type;
     // tag is the TagInt tier (int64 under bigbig, int32 under smallbig), not a
     // hardcoded int64 — see core/precision.h.
     static_assert(std::is_same_v<tag_t, ATV::TagInt>,
@@ -59,7 +61,7 @@ TEST(FrameTagImage, ImageShapeIsNx3) {
     // Per-atom SoA fields are sized to capacity `nmax` (LAMMPS DELTA growth,
     // floored at 64), not exactly `n`. The invariant is that `image` is a
     // `[nmax, 3]` array with the same row count as the other per-atom fields.
-    EXPECT_GE(static_cast<int>(frame.atoms.image.shape()[0]), n);
-    EXPECT_EQ(frame.atoms.image.shape()[0], frame.atoms.x.shape()[0]);
-    EXPECT_EQ(static_cast<int>(frame.atoms.image.shape()[1]), 3);
+    EXPECT_GE(frame.capacity(), n);
+    EXPECT_EQ(frame.block("atoms").rows(), frame.capacity());
+    EXPECT_EQ(frame.span(ATV::kAtom_image).cols(), 3);
 }

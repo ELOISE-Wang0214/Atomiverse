@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 # Grep gate (frame-block-01, ac-001): the registry is THE single field
-# enumeration. The functions that used to hand-copy the per-atom field list —
-# Atom::set_capacity, Atom::copy_row, comm::pack_exchange,
-# comm::unpack_exchange, comm::max_exchange_doubles — must contain NO member
-# names; they iterate for_each_column / collect_columns instead. (grow()
-# delegates to set_capacity, and the probe-4 grow data-destruction bug was
-# exactly a second hand copy of this list falling out of sync.)
+# enumeration. Structural storage and native-byte exchange must traverse the
+# Block/Column plan and must not hand-copy a list of former Atom members.
 #
 # Usage: field_list_scrub.sh <repo-root>
 set -u
@@ -36,14 +32,14 @@ check() { # file, signature-regex, label
     fi
 }
 
-ATOM="$ROOT/src/cpu/frame/atom.cpp"
+FRAME="$ROOT/src/cpu/frame/frame.cpp"
 PACK="$ROOT/src/cpu/comm/atom_pack.cpp"
 
-check "$ATOM" '^void Atom::set_capacity'        'Atom::set_capacity'
-check "$ATOM" '^void Atom::copy_row'            'Atom::copy_row'
-check "$PACK" '^int pack_exchange'              'comm::pack_exchange'
-check "$PACK" '^int unpack_exchange'            'comm::unpack_exchange'
-check "$PACK" '^int max_exchange_doubles'       'comm::max_exchange_doubles'
+check "$FRAME" '^void Frame::set_capacity'       'Frame::set_capacity'
+check "$FRAME" '^void Block::copy_row'           'Block::copy_row'
+check "$PACK" '^std::size_t pack_exchange'       'comm::pack_exchange'
+check "$PACK" '^std::size_t unpack_exchange'     'comm::unpack_exchange'
+check "$PACK" '^std::size_t max_exchange_bytes'  'comm::max_exchange_bytes'
 
 if [ "$status" -eq 0 ]; then
     echo "PASS: registry functions carry no hand-written field lists"

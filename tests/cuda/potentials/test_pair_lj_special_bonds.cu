@@ -95,8 +95,8 @@ TEST(CudaPairLJSpecialBonds, FourAtomChainAllExcludedZeroEnergy) {
     // canonical force-phase wiring the MSU PE benchmark uses.
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff}.set_special_bonds(0.0, 0.0,
-                                                                     0.0));
+    sim.add_potential(
+        cuda::PairLJCut{1.0, 1.0, cutoff}.set_special_bonds(0.0, 0.0, 0.0));
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     sim.build();
     sim.run(frame, 1);

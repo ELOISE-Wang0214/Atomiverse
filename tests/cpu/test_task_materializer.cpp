@@ -27,6 +27,8 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
@@ -59,13 +61,13 @@ namespace {
 
 // Argon-like LJ parameters; kSpacing ≈ 2^(1/6)·σ so the cluster starts near
 // the LJ minimum and 5 steps at 1 fs stay tame.
-constexpr double kEps = 0.0104;   // [eV]
-constexpr double kSigma = 3.4;    // [Å]
-constexpr double kCutoff = 6.0;   // [Å]
-constexpr double kSkin = 0.3;     // [Å]
-constexpr double kDt = 1.0;       // [fs]
-constexpr double kSpacing = 3.8;  // [Å]
-constexpr double kTinit = 10.0;   // [K]
+constexpr double kEps = 0.0104;  // [eV]
+constexpr double kSigma = 3.4;   // [Å]
+constexpr double kCutoff = 6.0;  // [Å]
+constexpr double kSkin = 0.3;    // [Å]
+constexpr double kDt = 1.0;      // [fs]
+constexpr double kSpacing = 3.8; // [Å]
+constexpr double kTinit = 10.0;  // [K]
 constexpr unsigned kSeed = 42u;
 constexpr int kNSteps = 5;
 
@@ -78,13 +80,14 @@ cpu::Frame make_lj_frame() {
     for (int i = 0; i < n; ++i) {
         const int col = i % 5;
         const int row = i / 5;
-        frame.atoms.x[i] = 8.0 + kSpacing * static_cast<double>(col);
-        frame.atoms.y[i] = 10.0 + kSpacing * static_cast<double>(row);
-        frame.atoms.z[i] = 15.0;
-        frame.atoms.mass[i] = 39.948;
-        frame.atoms.type[i] = 18;
+        frame.span(ATV::kAtom_x)[i] = 8.0 + kSpacing * static_cast<double>(col);
+        frame.span(ATV::kAtom_y)[i] =
+            10.0 + kSpacing * static_cast<double>(row);
+        frame.span(ATV::kAtom_z)[i] = 15.0;
+        frame.span(ATV::kAtom_mass)[i] = 39.948;
+        frame.span(ATV::kAtom_type)[i] = 18;
     }
-    frame.box = Mat3::cubic(30.0);
+    frame.simbox = ATV::cpu::Box::cubic(30.0);
     return frame;
 }
 
@@ -93,45 +96,54 @@ cpu::Frame make_lj_frame() {
 ///        exactly as in tests/mpi/test_bcast_frame.cpp / test_pe_single_chain.
 cpu::Frame make_bonded_lj_frame() {
     cpu::Frame frame = make_lj_frame();
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(/*ti=*/0, /*tj=*/1, /*type=*/0);
-    frame.atoms.build_special_list();
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(/*ti=*/0, /*tj=*/1, /*type=*/0);
+    frame.build_special_list();
     return frame;
 }
 
 /// @brief Bitwise frame agreement: scalars.energy and every atoms.x/y/z.
 void expect_frames_bitwise_equal(const cpu::Frame& got,
                                  const cpu::Frame& want) {
-    EXPECT_EQ(got.scalars.energy, want.scalars.energy);
-    ASSERT_EQ(got.atoms.size(), want.atoms.size());
-    const int n = want.atoms.size();
+    EXPECT_EQ(got.meta.get(ATV::kEnergy), want.meta.get(ATV::kEnergy));
+    ASSERT_EQ(got.nlocal(), want.nlocal());
+    const int n = want.nlocal();
     for (int i = 0; i < n; ++i) {
         SCOPED_TRACE("atom " + std::to_string(i));
-        EXPECT_EQ(got.atoms.x[i], want.atoms.x[i]);
-        EXPECT_EQ(got.atoms.y[i], want.atoms.y[i]);
-        EXPECT_EQ(got.atoms.z[i], want.atoms.z[i]);
+        EXPECT_EQ(got.span(ATV::kAtom_x)[i], want.span(ATV::kAtom_x)[i]);
+        EXPECT_EQ(got.span(ATV::kAtom_y)[i], want.span(ATV::kAtom_y)[i]);
+        EXPECT_EQ(got.span(ATV::kAtom_z)[i], want.span(ATV::kAtom_z)[i]);
     }
+}
+
+std::vector<std::vector<std::string>>
+plan_signature(const Plan<cpu::Component>& plan) {
+    std::vector<std::vector<std::string>> result;
+    result.reserve(plan.slots.size());
+    for (const auto& slot : plan.slots) {
+        auto& names = result.emplace_back();
+        names.reserve(slot.ops.size());
+        for (const auto& op : slot.ops)
+            names.push_back(op.component->name());
+    }
+    return result;
 }
 
 // ── (a) MD equivalence: LJ + NeighborList + VelocityVerlet + InitVelocity ─
 
 TEST(TaskMaterializer, MdLjRunMatchesHandBuiltDriverBitwise) {
     // TaskSpec mirror of the hand-built registration below, entry for entry.
-    std::vector<ComponentEntry> entries;
-    entries.push_back(ComponentEntry{
-        ComponentParams{NeighborListParams{kCutoff, kSkin}},
-        ExplicitBinding{ATV::md::Phase::force, -10}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{PairLJCutParams{kEps, kSigma, kCutoff}},
-        ExplicitBinding{ATV::md::Phase::force, 0}});
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(MDComponentEntry{NeighborListParams{kCutoff, kSkin},
+                                       MDBinding{ATV::md::Phase::force, -10}});
+    entries.push_back(MDComponentEntry{PairLJCutParams{kEps, kSigma, kCutoff},
+                                       MDBinding{ATV::md::Phase::force, 0}});
     entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{kDt}},
-                       std::nullopt});
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
     entries.push_back(
-        ComponentEntry{ComponentParams{InitVelocityParams{kTinit, kSeed}},
-                       std::nullopt});
-    const TaskSpec spec(std::move(entries), kNSteps);
+        MDComponentEntry{InitVelocityParams{kTinit, kSeed}, std::nullopt});
+    const TaskSpec spec(MDTask{std::move(entries), kNSteps});
 
     cpu::Frame materialized_frame = make_lj_frame();
     TaskMaterializer mat(spec);
@@ -145,14 +157,13 @@ TEST(TaskMaterializer, MdLjRunMatchesHandBuiltDriverBitwise) {
     cpu::md::MD sim;
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     sim.add(cpu::md::VelocityVerlet{kDt});
     sim.add(cpu::md::InitVelocity{kTinit, kSeed});
     sim.build();
     sim.run(direct_frame, kNSteps);
 
-    ASSERT_NE(direct_frame.scalars.energy, 0.0)
+    ASSERT_NE(direct_frame.meta.get(ATV::kEnergy), 0.0)
         << "fixture produced zero LJ energy — the equivalence check would "
            "be vacuous";
     expect_frames_bitwise_equal(materialized_frame, direct_frame);
@@ -161,26 +172,20 @@ TEST(TaskMaterializer, MdLjRunMatchesHandBuiltDriverBitwise) {
 // ── (b) MD variant: + BondHarmonic (explicit) + NoseHoover (default) ─────
 
 TEST(TaskMaterializer, MdBondedThermostattedRunMatchesHandBuiltDriverBitwise) {
-    std::vector<ComponentEntry> entries;
-    entries.push_back(ComponentEntry{
-        ComponentParams{NeighborListParams{kCutoff, kSkin}},
-        ExplicitBinding{ATV::md::Phase::force, -10}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{PairLJCutParams{kEps, kSigma, kCutoff}},
-        ExplicitBinding{ATV::md::Phase::force, 0}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{BondHarmonicParams{{2.0}, {kSpacing}}},
-        ExplicitBinding{ATV::md::Phase::force, 1}});
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(MDComponentEntry{NeighborListParams{kCutoff, kSkin},
+                                       MDBinding{ATV::md::Phase::force, -10}});
+    entries.push_back(MDComponentEntry{PairLJCutParams{kEps, kSigma, kCutoff},
+                                       MDBinding{ATV::md::Phase::force, 0}});
+    entries.push_back(MDComponentEntry{BondHarmonicParams{{2.0}, {kSpacing}},
+                                       MDBinding{ATV::md::Phase::force, 1}});
     entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{kDt}},
-                       std::nullopt});
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
     entries.push_back(
-        ComponentEntry{ComponentParams{InitVelocityParams{kTinit, kSeed}},
-                       std::nullopt});
-    entries.push_back(ComponentEntry{
-        ComponentParams{NoseHooverParams{kTinit, 100.0, kDt}},
-        std::nullopt});
-    const TaskSpec spec(std::move(entries), kNSteps);
+        MDComponentEntry{InitVelocityParams{kTinit, kSeed}, std::nullopt});
+    entries.push_back(
+        MDComponentEntry{NoseHooverParams{kTinit, 100.0, kDt}, std::nullopt});
+    const TaskSpec spec(MDTask{std::move(entries), kNSteps});
 
     cpu::Frame materialized_frame = make_bonded_lj_frame();
     TaskMaterializer mat(spec);
@@ -190,10 +195,8 @@ TEST(TaskMaterializer, MdBondedThermostattedRunMatchesHandBuiltDriverBitwise) {
     cpu::md::MD sim;
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::BondHarmonic{{2.0}, {kSpacing}}, 1);
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
+    sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{2.0}, {kSpacing}}, 1);
     sim.add(cpu::md::VelocityVerlet{kDt});
     sim.add(cpu::md::InitVelocity{kTinit, kSeed});
     sim.add(cpu::md::NoseHoover{kTinit, 100.0, kDt});
@@ -210,15 +213,15 @@ TEST(TaskMaterializer, MdBondedThermostattedRunMatchesHandBuiltDriverBitwise) {
 ///        `RunConvergesClosedShellH2AgainstReferenceChargeOracle`.
 cpu::Frame make_h2_frame() {
     cpu::Frame frame(2);
-    frame.atoms.type[0] = 1; // Z = 1 (hydrogen)
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1; // Z = 1 (hydrogen)
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 
@@ -231,7 +234,7 @@ TEST(TaskMaterializer, SinglePointAm1H2MatchesHandBuiltEvaluateBitwise) {
     params.max_iter = 200;
     params.density_tol = 1.0e-8;
     params.energy_tol = 1.0e-10;
-    const TaskSpec spec(params);
+    const TaskSpec spec(SinglePointTask{params});
 
     cpu::Frame materialized_frame = make_h2_frame();
     TaskMaterializer mat(spec);
@@ -255,38 +258,77 @@ TEST(TaskMaterializer, SinglePointAm1H2MatchesHandBuiltEvaluateBitwise) {
     eval.build();
     eval.run(direct_frame);
 
-    ASSERT_NE(direct_frame.scalars.energy, 0.0)
+    ASSERT_NE(direct_frame.meta.get(ATV::kEnergy), 0.0)
         << "AM1 H2 single point produced zero energy — the equivalence "
            "check would be vacuous";
-    EXPECT_EQ(materialized_frame.scalars.energy, direct_frame.scalars.energy);
-    ASSERT_EQ(materialized_frame.atoms.size(), direct_frame.atoms.size());
-    for (int i = 0; i < direct_frame.atoms.size(); ++i) {
+    EXPECT_EQ(materialized_frame.meta.get(ATV::kEnergy),
+              direct_frame.meta.get(ATV::kEnergy));
+    ASSERT_EQ(materialized_frame.nlocal(), direct_frame.nlocal());
+    for (int i = 0; i < direct_frame.nlocal(); ++i) {
         SCOPED_TRACE("atom " + std::to_string(i));
-        EXPECT_EQ(materialized_frame.atoms.charge[i],
-                  direct_frame.atoms.charge[i]);
+        EXPECT_EQ(materialized_frame.span(ATV::kAtom_charge)[i],
+                  direct_frame.span(ATV::kAtom_charge)[i]);
     }
 }
 
 // ── (d) kind() accessor ─────────────────────────────────────────────────
 
+TEST(TaskMaterializer, MinimizePlanMatchesDirectTypedConstruction) {
+    const ForceConvergedParams convergence{0.02, 0.01, 0.003, 0.002, 2e-6};
+    std::vector<MinimizeComponentEntry> entries;
+    entries.push_back(MinimizeComponentEntry{
+        NeighborListParams{kCutoff, kSkin},
+        MinimizeBinding{ATV::minimizer::Phase::force, -10}});
+    entries.push_back(MinimizeComponentEntry{
+        PairLJCutParams{kEps, kSigma, kCutoff},
+        MinimizeBinding{ATV::minimizer::Phase::force, 0}});
+    entries.push_back(
+        MinimizeComponentEntry{LBFGSParams{7, 0.02, 12}, std::nullopt});
+    const TaskSpec spec(MinimizeTask{std::move(entries), 11, convergence});
+
+    TaskMaterializer materialized(spec);
+    EXPECT_EQ(materialized.kind(), TaskKind::Minimize);
+
+    cpu::minimizer::Minimize direct;
+    direct.add_handler(cpu::ForceConverged{
+        convergence.ftol, convergence.rms_ftol, convergence.max_dtol,
+        convergence.rms_dtol, convergence.etol});
+    direct.on(ATV::minimizer::Phase::force)
+        .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10)
+        .add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
+    direct.add(cpu::minimizer::LBFGS{7, 0.02, 12});
+    direct.build();
+
+    EXPECT_EQ(plan_signature(materialized.plan()),
+              plan_signature(direct.plan()));
+}
+
 TEST(TaskMaterializer, KindReportsTaskKindOfTheSpec) {
     // Minimal VALID MD composition: MD::build() (fired by the materializer
     // ctor) demands an Integrator plus a Force-capable component.
-    std::vector<ComponentEntry> entries;
-    entries.push_back(ComponentEntry{
-        ComponentParams{NeighborListParams{kCutoff, kSkin}},
-        ExplicitBinding{ATV::md::Phase::force, -10}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{PairLJCutParams{kEps, kSigma, kCutoff}},
-        ExplicitBinding{ATV::md::Phase::force, 0}});
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(MDComponentEntry{NeighborListParams{kCutoff, kSkin},
+                                       MDBinding{ATV::md::Phase::force, -10}});
+    entries.push_back(MDComponentEntry{PairLJCutParams{kEps, kSigma, kCutoff},
+                                       MDBinding{ATV::md::Phase::force, 0}});
     entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{kDt}},
-                       std::nullopt});
-    const TaskSpec md_spec(std::move(entries), 1);
+        MDComponentEntry{VelocityVerletParams{kDt}, std::nullopt});
+    const TaskSpec md_spec(MDTask{std::move(entries), 1});
     EXPECT_EQ(TaskMaterializer(md_spec).kind(), TaskKind::MD);
 
-    const TaskSpec sp_spec(AM1EvaluatorParams{});
+    const TaskSpec sp_spec(SinglePointTask{AM1EvaluatorParams{}});
     EXPECT_EQ(TaskMaterializer(sp_spec).kind(), TaskKind::SinglePoint);
+
+    std::vector<MinimizeComponentEntry> min_entries;
+    min_entries.push_back(MinimizeComponentEntry{
+        NeighborListParams{kCutoff, kSkin},
+        MinimizeBinding{ATV::minimizer::Phase::force, -10}});
+    min_entries.push_back(MinimizeComponentEntry{
+        PairLJCutParams{kEps, kSigma, kCutoff},
+        MinimizeBinding{ATV::minimizer::Phase::force, 0}});
+    min_entries.push_back(MinimizeComponentEntry{LBFGSParams{}, std::nullopt});
+    const TaskSpec min_spec(MinimizeTask{std::move(min_entries), 1, {}});
+    EXPECT_EQ(TaskMaterializer(min_spec).kind(), TaskKind::Minimize);
 }
 
 } // namespace

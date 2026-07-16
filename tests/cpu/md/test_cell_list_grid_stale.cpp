@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
 
@@ -19,12 +19,12 @@ namespace {
 cpu::Frame make_frame(double lx, double ly, double lz) {
     cpu::Frame frame(8);
     for (int i = 0; i < 8; ++i) {
-        frame.atoms.x[i] = 0.5 + 2.0 * (i % 2);
-        frame.atoms.y[i] = 0.5 + 2.0 * ((i / 2) % 2);
-        frame.atoms.z[i] = 0.5 + 2.0 * (i / 4);
-        frame.atoms.mass[i] = 1.0;
+        frame.span(ATV::kAtom_x)[i] = 0.5 + 2.0 * (i % 2);
+        frame.span(ATV::kAtom_y)[i] = 0.5 + 2.0 * ((i / 2) % 2);
+        frame.span(ATV::kAtom_z)[i] = 0.5 + 2.0 * (i / 4);
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.box.set_cell(Mat3::diagonal(lx, ly, lz));
+    frame.simbox.set_cell(Mat3::diagonal(lx, ly, lz));
     return frame;
 }
 
@@ -38,9 +38,9 @@ TEST(CellListGridStale, EachAxisAloneTriggersRebuild) {
         cl.build(frame);
         ASSERT_FALSE(cl.needs_rebuild(frame)) << "axis " << axis;
 
-        Mat3 cell = frame.box.cell();
+        Mat3 cell = frame.simbox.cell();
         cell(axis, axis) *= 1.2; // stretch ONLY this edge
-        frame.box.set_cell(cell);
+        frame.simbox.set_cell(cell);
         EXPECT_TRUE(cl.needs_rebuild(frame))
             << "stretching only axis " << axis << " must stale the grid";
     }

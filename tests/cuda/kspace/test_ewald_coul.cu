@@ -56,7 +56,7 @@ TEST(CudaEwaldCoul, MadelungNaCl) {
     // force-phase energy reflects the input configuration.
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::CoulLong{alpha, cutoff});
+    sim.add_potential(cuda::CoulLong{alpha, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     sim.on(md::Phase::force).add(cuda::KSpaceEwald{alpha, 1e-7}, 100);
     sim.build();

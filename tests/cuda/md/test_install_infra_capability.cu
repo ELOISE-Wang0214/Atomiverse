@@ -104,7 +104,7 @@ cuda::md::NoseHooverNPT::Config default_npt_cfg() {
 // ── ac-001 + ac-006: capability-typed virtuals exist and route ──────
 
 TEST(InstallInfraCapability, ComponentBaseDefaultsAreNone) {
-    // Smoke: a default-constructed bare ComponentBase subclass (here we
+    // Smoke: a default-constructed bare Component subclass (here we
     // use cuda::md::VelocityVerlet, which doesn't override reads() or the
     // neighbor protocol accessors) returns the None / nullptr defaults.
     cuda::md::VelocityVerlet vv{0.001};
@@ -136,8 +136,8 @@ TEST(InstallInfraCapability, NeighborListIsNeighborProvider) {
 }
 
 // Detection idiom: the two legacy neighbor virtuals must be GONE from
-// `cuda::ComponentBase` (replaced by the two typed protocol accessors;
-// same base-vtable diet as cpu::ComponentBase, arch-refactor-03). The
+// `cuda::Component` (replaced by the two typed protocol accessors;
+// same base-vtable diet as cpu::Component, arch-refactor-03). The
 // deletion of the legacy in-vtable neighbor trio is enforced by the
 // acceptance grep gate (ac-001) plus every migrated call site compiling —
 // an in-test detection idiom would trip the grep gate with its own tokens.
@@ -172,7 +172,7 @@ TEST(InstallInfraCapability, NPTAutoInjectsVirial) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::NoseHooverNPT{default_npt_cfg()});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 1));
@@ -187,7 +187,7 @@ TEST(InstallInfraCapability, MissingNeighborThrowsViaTypedQuery) {
     // as_neighbor_consumer() != nullptr. Behavior is identical;
     // this test guards the typed contract.
     cuda::md::MD sim;
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, 3.0});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, 3.0});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     EXPECT_THROW(
         {

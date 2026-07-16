@@ -54,7 +54,7 @@ inline constexpr double kBondR0 = 1.53;      // Å
 
 // CT-CT-CT angle.
 inline constexpr double kAngleK_kcal = 60.0; // kcal/mol/rad^2 (LAMMPS K)
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0; // rad
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0; // rad
 
 // CT-CT-CT-CT dihedral (n-alkane backbone OPLS).
 
@@ -81,7 +81,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     cpu::Frame frame(n_carbons);
 
     const double half_apex =
-        (kPI - kAngleTheta0) / 2.0; // half of (180° - theta)
+        (units::pi - kAngleTheta0) / 2.0; // half of (180° - theta)
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
 
@@ -90,34 +90,35 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     const double z0 = box_len / 2.0;
 
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = x0 + i * dx_step;
-        frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
-        frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027; // CH2 united atom
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x0 + i * dx_step;
+        frame.span(ATV::kAtom_y)[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
+        frame.span(ATV::kAtom_z)[i] = z0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027; // CH2 united atom
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
 
-    // Per-atom topology population (LAMMPS Atom layout). Tag map must
-    // be populated first so `add_bond` / `add_angle` / `add_dihedral`
-    // can look up the owner atom's local row by global tag.
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    // Populate the canonical topology Block columns through Frame's structural
+    // API. The tag index must exist first so each helper can resolve the owner
+    // atom's local row from its global tag.
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_carbons - 1; ++k)
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     for (int k = 0; k < n_carbons - 2; ++k)
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     for (int k = 0; k < n_carbons - 3; ++k)
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
-    frame.atoms.build_special_list();
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
 // Run a single force-evaluation pass with each bonded component, accumulating
-// V into frame.scalars.energy. Caller is responsible for resetting frame.scalars.energy first.
+// V into frame.meta.get(ATV::kEnergy). Caller is responsible for resetting frame.meta.get(ATV::kEnergy) first.
 void evaluate_bonded(cpu::Frame& frame, cpu::BondHarmonic& bond,
-                     cpu::AngleHarmonic& angle, cpu::DihedralMultiHarmonic& dih) {
+                     cpu::AngleHarmonic& angle,
+                     cpu::DihedralMultiHarmonic& dih) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -128,13 +129,13 @@ void evaluate_bonded(cpu::Frame& frame, cpu::BondHarmonic& bond,
     dih.build(bctx);
 
     // Zero forces and energy before launch.
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     for (int i = 0; i < n; ++i) {
-        frame.atoms.fx[i] = 0;
-        frame.atoms.fy[i] = 0;
-        frame.atoms.fz[i] = 0;
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
     }
-    frame.scalars.energy = 0;
+    frame.meta.get(ATV::kEnergy) = 0;
 
     bond.launch(lctx);
     angle.launch(lctx);
@@ -172,19 +173,20 @@ TEST(PeSingleChain, AllTransGeometryIsStationaryPoint) {
     // offset at trans; the physical claim "all-trans is the minimum"
     // is unchanged — see the max_f gate below.)
     const double expected_dih_offset = 17.0 * 0.006 / 23.060547830619026;
-    EXPECT_NEAR(frame.scalars.energy, expected_dih_offset, 1e-4)
+    EXPECT_NEAR(frame.meta.get(ATV::kEnergy), expected_dih_offset, 1e-4)
         << "all-trans C20H42 PE has only the Dreiding-UA dihedral "
         << "constant offset (~4.4e-3 eV) above zero";
 
     // Forces also vanish to FP tolerance at the minimum.
     double max_f = 0.0;
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        const double fmag = std::sqrt(frame.atoms.fx[i] * frame.atoms.fx[i]
-                                      + frame.atoms.fy[i] * frame.atoms.fy[i]
-                                      + frame.atoms.fz[i] * frame.atoms.fz[i]);
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        const double fmag = std::sqrt(
+            frame.span(ATV::kAtom_fx)[i] * frame.span(ATV::kAtom_fx)[i]
+            + frame.span(ATV::kAtom_fy)[i] * frame.span(ATV::kAtom_fy)[i]
+            + frame.span(ATV::kAtom_fz)[i] * frame.span(ATV::kAtom_fz)[i]);
         max_f = std::max(max_f, fmag);
     }
-    EXPECT_LT(max_f, 1e-10) << "max |force| at equilibrium = " << max_f;
+    EXPECT_LT(max_f, 1.0e-10) << "max |force| at equilibrium = " << max_f;
 }
 
 // ── Stretch one bond: V_bond = K * (Δr)^2 ─────────────────────────────
@@ -198,25 +200,28 @@ TEST(PeSingleChain, StretchOneBondMatchesAnalytic) {
     // keeps atom 0 inside the 0-1-2 plane (so dihedral 0-1-2-3 is also
     // preserved). Only the 0-1 bond length changes, by exactly Δr.
     const double dr = 0.05;
-    const double dx0 = fresh.atoms.x[0] - fresh.atoms.x[1];
-    const double dy0 = fresh.atoms.y[0] - fresh.atoms.y[1];
-    const double dz0 = fresh.atoms.z[0] - fresh.atoms.z[1];
+    const double dx0 =
+        fresh.span(ATV::kAtom_x)[0] - fresh.span(ATV::kAtom_x)[1];
+    const double dy0 =
+        fresh.span(ATV::kAtom_y)[0] - fresh.span(ATV::kAtom_y)[1];
+    const double dz0 =
+        fresh.span(ATV::kAtom_z)[0] - fresh.span(ATV::kAtom_z)[1];
     const double r0_len = std::sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0);
-    fresh.atoms.x[0] += dr * dx0 / r0_len;
-    fresh.atoms.y[0] += dr * dy0 / r0_len;
-    fresh.atoms.z[0] += dr * dz0 / r0_len;
+    fresh.span(ATV::kAtom_x)[0] += dr * dx0 / r0_len;
+    fresh.span(ATV::kAtom_y)[0] += dr * dy0 / r0_len;
+    fresh.span(ATV::kAtom_z)[0] += dr * dz0 / r0_len;
 
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, fresh};
     cpu::LaunchContext lctx{ctx, fresh, 0, 0};
     cpu::BondHarmonic bond_only({bond_K_eV()}, {kBondR0});
     bond_only.build(bctx);
-    fresh.scalars.energy = 0;
+    fresh.meta.get(ATV::kEnergy) = 0;
     bond_only.launch(lctx);
     bond_only.destroy({ctx, fresh});
 
     const double v_expected = bond_K_eV() * dr * dr;
-    EXPECT_NEAR(fresh.scalars.energy, v_expected, 1e-9)
+    EXPECT_NEAR(fresh.meta.get(ATV::kEnergy), v_expected, 1.0e-9)
         << "end-atom shifted by " << dr
         << " Å along bond axis should give K*Δr² = " << v_expected;
 }
@@ -245,16 +250,16 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
 
     const double h = 0.02; // Å
     cpu::Frame fresh = make_all_trans_alkane(20, 50.0);
-    fresh.atoms.z[1] += h;
+    fresh.span(ATV::kAtom_z)[1] += h;
 
     // Compute new angle at vertex 1 from atoms 0, 1, 2 directly.
     auto angle_at = [](const cpu::Frame& f, int i, int j, int k) {
-        double rij[3] = {f.atoms.x[i] - f.atoms.x[j],
-                         f.atoms.y[i] - f.atoms.y[j],
-                         f.atoms.z[i] - f.atoms.z[j]};
-        double rkj[3] = {f.atoms.x[k] - f.atoms.x[j],
-                         f.atoms.y[k] - f.atoms.y[j],
-                         f.atoms.z[k] - f.atoms.z[j]};
+        double rij[3] = {f.span(ATV::kAtom_x)[i] - f.span(ATV::kAtom_x)[j],
+                         f.span(ATV::kAtom_y)[i] - f.span(ATV::kAtom_y)[j],
+                         f.span(ATV::kAtom_z)[i] - f.span(ATV::kAtom_z)[j]};
+        double rkj[3] = {f.span(ATV::kAtom_x)[k] - f.span(ATV::kAtom_x)[j],
+                         f.span(ATV::kAtom_y)[k] - f.span(ATV::kAtom_y)[j],
+                         f.span(ATV::kAtom_z)[k] - f.span(ATV::kAtom_z)[j]};
         const double dot = rij[0] * rkj[0] + rij[1] * rkj[1] + rij[2] * rkj[2];
         const double mij =
             std::sqrt(rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2]);
@@ -282,19 +287,19 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     // make_all_trans_alkane wires every chain angle, and lifting atom 1
     // perturbs both (0,1,2) and (1,2,3) — measuring two angles' energy.
     // Clear all per-atom angles, then add only (0,1,2).
-    for (int i = 0; i < fresh.atoms.nlocal; ++i)
-        fresh.atoms.num_angle[i] = 0;
-    fresh.atoms.map_clear();
-    fresh.atoms.map_set(0, fresh.atoms.nlocal);
-    fresh.atoms.add_angle(0, 1, 2, 0);
-    fresh.atoms.build_special_list();
+    for (int i = 0; i < fresh.nlocal(); ++i)
+        fresh.span(ATV::kAtom_num_angle)[i] = 0;
+    fresh.clear_tag_index();
+    fresh.rebuild_tag_index(0, fresh.nlocal());
+    fresh.add_angle(0, 1, 2, 0);
+    fresh.build_special_list();
 
-    fresh.scalars.energy = 0;
+    fresh.meta.get(ATV::kEnergy) = 0;
     angle_only.launch(lctx);
     angle_only.destroy({ctx, fresh});
 
     const double v_expected = angle_K_eV() * dtheta * dtheta;
-    EXPECT_NEAR(fresh.scalars.energy, v_expected, 1e-9)
+    EXPECT_NEAR(fresh.meta.get(ATV::kEnergy), v_expected, 1e-9)
         << "one angle bent by " << dtheta
         << " rad should give K*Δθ² = " << v_expected;
 }
@@ -314,12 +319,12 @@ TEST(PeSingleChain, AllTransDihedralIsStationaryPoint) {
     cpu::DihedralMultiHarmonic dih({dihedral_Cn_eV()});
     dih.build(bctx);
 
-    fresh.scalars.energy = 0;
+    fresh.meta.get(ATV::kEnergy) = 0;
     dih.launch(lctx);
     dih.destroy({ctx, fresh});
 
     const double expected = 17.0 * 0.006 / 23.060547830619026;
-    EXPECT_NEAR(fresh.scalars.energy, expected, 1e-6)
+    EXPECT_NEAR(fresh.meta.get(ATV::kEnergy), expected, 1e-6)
         << "17 dihedrals at trans should give the Dreiding-UA constant "
         << "offset ~4.4e-3 eV (not 0 — OPLS used to set this to 0 by "
         << "construction; Dreiding-UA does not).";

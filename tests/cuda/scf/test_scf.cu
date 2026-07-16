@@ -1,6 +1,6 @@
 /// @file test_scf.cu
 /// @brief Integration tests for the CUDA SCF inner solver (`SCFSolver`),
-///        the `SCFEvaluator` component, single-point via `cuda::Evaluate`,
+///        the `SCF` component, single-point via `cuda::Evaluate`,
 ///        CPU/CUDA parity, and the structural migration guards.
 
 #include <cmath>
@@ -88,19 +88,19 @@ TEST(SCF, SCFSolverIsNotADriver) {
 }
 
 TEST(SCF, InternalHelpersAreNotComponents) {
-    // ac-003: the relocated SCF step helpers are not ComponentBase subclasses.
-    static_assert(!std::is_base_of_v<cuda::ComponentBase,
-                                     cuda::scf::internal::Hamiltonian>,
-                  "internal::Hamiltonian must not inherit ComponentBase");
-    static_assert(!std::is_base_of_v<cuda::ComponentBase,
-                                     cuda::scf::internal::EigenSolver>,
-                  "internal::EigenSolver must not inherit ComponentBase");
-    static_assert(!std::is_base_of_v<cuda::ComponentBase,
+    // ac-003: the relocated SCF step helpers are not Component subclasses.
+    static_assert(
+        !std::is_base_of_v<cuda::Component, cuda::scf::internal::Hamiltonian>,
+        "internal::Hamiltonian must not inherit Component");
+    static_assert(
+        !std::is_base_of_v<cuda::Component, cuda::scf::internal::EigenSolver>,
+        "internal::EigenSolver must not inherit Component");
+    static_assert(!std::is_base_of_v<cuda::Component,
                                      cuda::scf::internal::DensityBuilder>,
-                  "internal::DensityBuilder must not inherit ComponentBase");
-    static_assert(!std::is_base_of_v<cuda::ComponentBase,
+                  "internal::DensityBuilder must not inherit Component");
+    static_assert(!std::is_base_of_v<cuda::Component,
                                      cuda::scf::internal::ConvergenceCheck>,
-                  "internal::ConvergenceCheck must not inherit ComponentBase");
+                  "internal::ConvergenceCheck must not inherit Component");
     SUCCEED();
 }
 
@@ -109,21 +109,20 @@ TEST(SCF, EvaluateIsALoopNodeOverTheEvaluatePhase) {
     // Evaluate CATEGORY" is now a statement about nothing — there is no category. What
     // still has content, and is what the SCF single point actually depends on, is that
     // Evaluate is a loop node over the `evaluate::Phase` stage domain: that is what lets
-    // an SCFEvaluator bind `evaluate::Phase::evaluate` and be dispatched.
-    static_assert(
-        std::is_base_of_v<cuda::CUDADriver<ATV::evaluate::Phase>, cuda::Evaluate>,
-        "cuda::Evaluate must be a CUDADriver over evaluate::Phase");
+    // an SCF bind `evaluate::Phase::evaluate` and be dispatched.
+    static_assert(std::is_base_of_v<cuda::CUDADriver<ATV::evaluate::Phase>,
+                                    cuda::Evaluate>,
+                  "cuda::Evaluate must be a CUDADriver over evaluate::Phase");
     SUCCEED();
 }
 
-TEST(SCF, SCFEvaluatorRoleAndCapabilities) {
-    // ac-005: SCFEvaluator is an Evaluator-role component with the exact
+TEST(SCF, SCFRoleAndCapabilities) {
+    // ac-005: SCF is an Evaluator-role component with the exact
     // Energy|DensityMatrix|Orbitals capability set (no Force).
-    static_assert(
-        std::is_base_of_v<cuda::ComponentBase, cuda::scf::SCFEvaluator>,
-        "cuda::scf::SCFEvaluator must inherit cuda::ComponentBase");
-    cuda::scf::SCFEvaluator eval{/*n_occ=*/2, /*alpha=*/0.1, /*tol=*/1e-6,
-                                 /*max_iter=*/50};
+    static_assert(std::is_base_of_v<cuda::Component, cuda::scf::SCF>,
+                  "cuda::scf::SCF must inherit cuda::Component");
+    cuda::scf::SCF eval{/*n_occ=*/2, /*alpha=*/0.1, /*tol=*/1e-6,
+                        /*max_iter=*/50};
     EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
     EXPECT_EQ(eval.capabilities(), Capability::Energy
                                        | Capability::DensityMatrix
@@ -138,7 +137,7 @@ TEST(SCF, CUDAConvergence) {
     int n_occ = 3;
     auto frame = make_scf_system(n);
 
-    cuda::scf::SCFEvaluator scf{n_occ, double(0.1), double(1e-6), 200};
+    cuda::scf::SCF scf{n_occ, double(0.1), double(1e-6), 200};
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
     eval.build();
@@ -149,7 +148,7 @@ TEST(SCF, CUDAConvergence) {
 }
 
 TEST(SCF, CUDAReproducibility) {
-    // Two independent SCFEvaluator runs on identical input give
+    // Two independent SCF runs on identical input give
     // bit-identical energy.
     int n = 8;
     auto frame1 = make_scf_system(n);
@@ -158,7 +157,7 @@ TEST(SCF, CUDAReproducibility) {
     for (auto* f : {&frame1, &frame2}) {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
+            .add(cuda::scf::SCF{2, double(0.1), double(1e-7), 200});
         eval.build();
         eval.run(*f);
     }
@@ -177,12 +176,12 @@ TEST(SCF, CUDASinglePointHelper) {
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
+            .add(cuda::scf::SCF{2, double(0.1), double(1e-7), 200});
         eval.build();
         eval.run(frame_direct);
     }
     {
-        cuda::scf::SCFEvaluator scf{2, double(0.1), double(1e-7), 200};
+        cuda::scf::SCF scf{2, double(0.1), double(1e-7), 200};
         cuda::single_point(frame_helper, scf);
     }
 
@@ -198,14 +197,14 @@ TEST(SCF, CUDAAlphaEffect) {
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{2, double(0), double(1e-6), 50});
+            .add(cuda::scf::SCF{2, double(0), double(1e-6), 50});
         eval.build();
         eval.run(frame_a0);
     }
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{2, double(0.5), double(1e-6), 200});
+            .add(cuda::scf::SCF{2, double(0.5), double(1e-6), 200});
         eval.build();
         eval.run(frame_a1);
     }
@@ -222,7 +221,7 @@ TEST(SCF, CUDAMaxIterCap) {
     int n = 8;
     auto frame = make_scf_system(n);
 
-    cuda::scf::SCFEvaluator scf{2, double(0.5), double(1e-12), /*max_iter=*/3};
+    cuda::scf::SCF scf{2, double(0.5), double(1e-12), /*max_iter=*/3};
     cuda::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
     eval.build();
@@ -283,12 +282,12 @@ TEST(SCF, CPUCUDAParity) {
     // CPU reference
     auto cpu_result = cpu::scf::toy::solve(n, n_occ, alpha, tol, 200);
 
-    // CUDA via SCFEvaluator + Evaluate
+    // CUDA via SCF + Evaluate
     auto frame = make_scf_system(n);
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
+            .add(cuda::scf::SCF{n_occ, alpha, tol, 200});
         eval.build();
         eval.run(frame);
     }
@@ -314,7 +313,7 @@ TEST(SCF, CPUCUDAParityN16) {
     {
         cuda::Evaluate eval;
         eval.on(ATV::evaluate::Phase::evaluate)
-            .add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
+            .add(cuda::scf::SCF{n_occ, alpha, tol, 200});
         eval.build();
         eval.run(frame);
     }

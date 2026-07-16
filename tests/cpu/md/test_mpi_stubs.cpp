@@ -48,14 +48,14 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 
@@ -108,13 +108,16 @@ TEST(MpiStubBindings, ReduceEnergyBinding) {
 
 TEST(MpiStubBindings, SingleRankLaunchNoOp) {
     auto frame = make_fcc_argon(3, 5.26);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
 
     // Snapshot positions before.
     std::vector<double> x_before(n), y_before(n), z_before(n);
-    std::memcpy(x_before.data(), frame.atoms.x.data(), n * sizeof(double));
-    std::memcpy(y_before.data(), frame.atoms.y.data(), n * sizeof(double));
-    std::memcpy(z_before.data(), frame.atoms.z.data(), n * sizeof(double));
+    std::memcpy(x_before.data(), frame.span(ATV::kAtom_x).data(),
+                n * sizeof(double));
+    std::memcpy(y_before.data(), frame.span(ATV::kAtom_y).data(),
+                n * sizeof(double));
+    std::memcpy(z_before.data(), frame.span(ATV::kAtom_z).data(),
+                n * sizeof(double));
 
     // Wire a bare MD driver with the four stubs only (plus auto infra + a cheap
     // integrator to have a full step). Drive 10 steps, verify positions unchanged
@@ -129,7 +132,7 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
         cpu::md::MD sim;
         const double zero_force_cut = 3.0;
         sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
-        sim.set_pair(cpu::PairLJCut{1e-12, 3.4, zero_force_cut});
+        sim.add_potential(cpu::PairLJCut{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
         sim.add(cpu::comm::HaloSend{});
         sim.add(cpu::comm::HaloRecv{});
@@ -140,15 +143,15 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
     }
 
     // With no forces or velocities, the stubs must be bit-identical no-ops.
-    EXPECT_EQ(0, std::memcmp(x_before.data(), frame.atoms.x.data(),
+    EXPECT_EQ(0, std::memcmp(x_before.data(), frame.span(ATV::kAtom_x).data(),
                              n * sizeof(double)))
-        << "MPI stubs perturbed frame.atoms.x in single-rank mode";
-    EXPECT_EQ(0, std::memcmp(y_before.data(), frame.atoms.y.data(),
+        << "MPI stubs perturbed frame.span(ATV::kAtom_x) in single-rank mode";
+    EXPECT_EQ(0, std::memcmp(y_before.data(), frame.span(ATV::kAtom_y).data(),
                              n * sizeof(double)))
-        << "MPI stubs perturbed frame.atoms.y in single-rank mode";
-    EXPECT_EQ(0, std::memcmp(z_before.data(), frame.atoms.z.data(),
+        << "MPI stubs perturbed frame.span(ATV::kAtom_y) in single-rank mode";
+    EXPECT_EQ(0, std::memcmp(z_before.data(), frame.span(ATV::kAtom_z).data(),
                              n * sizeof(double)))
-        << "MPI stubs perturbed frame.atoms.z in single-rank mode";
+        << "MPI stubs perturbed frame.span(ATV::kAtom_z) in single-rank mode";
 }
 
 // ── class-name hygiene ───────────────────────────────────────────────

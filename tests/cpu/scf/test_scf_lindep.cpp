@@ -45,7 +45,6 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
@@ -71,12 +70,17 @@ constexpr double kPyscfSmin = 3.531647e-12;
 /// Clean H2 at R = 0.7414 Å.
 cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.0};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.7414};
-    f.atoms.type = {1, 1};
-    f.atoms.mass = {1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.7414;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -84,12 +88,22 @@ cpu::Frame make_h2() {
 /// (0, 0, 1e-5 Å). charge = +1 keeps 2 electrons.
 cpu::Frame make_h2_hplus() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {0.0, 0.0, 0.0};
-    f.atoms.z = {0.0, 0.7414, 1e-5};
-    f.atoms.type = {1, 1, 1};
-    f.atoms.mass = {1.008, 1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_y)[2] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.7414;
+    f.span(ATV::kAtom_z)[2] = 1e-5;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -111,7 +125,11 @@ TEST(SCFLindep, CleanH2DefaultThresholdMatchesBaseline) {
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
     auto cfg = cpu::scf::rhf_config(ints); // lindep_threshold default 1e-8
 
-    const auto result = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+
+    result_solver.build(ints);
+
+    const auto& result = result_solver.run(ints);
     ASSERT_TRUE(result.converged);
     // Healthy basis => n_dropped == 0 => dsygvd path — the value must not
     // move beyond kEnergyTol. Not asserted bit-identical: cross-architecture
@@ -132,7 +150,11 @@ TEST(SCFLindep, CleanH2ThresholdZeroMatchesDsygvd) {
     auto cfg = cpu::scf::rhf_config(ints);
     cfg.lindep_threshold = 0.0;
 
-    const auto result = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+
+    result_solver.build(ints);
+
+    const auto& result = result_solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_NEAR(result.energy, kH2Rhf631gPreChange, kEnergyTol);
 }
@@ -169,7 +191,11 @@ TEST(SCFLindep, NearDegenerateRhfMatchesPyscfElectronicEnergy) {
                                           /*charge=*/+1);
     auto cfg = cpu::scf::rhf_config(ints); // lindep_threshold default 1e-8
 
-    const auto result = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+
+    result_solver.build(ints);
+
+    const auto& result = result_solver.run(ints);
     ASSERT_TRUE(result.converged)
         << "canonical orthogonalization must rescue the near-singular basis";
     // Rectangular spectrum: 4 of 6 columns survive.

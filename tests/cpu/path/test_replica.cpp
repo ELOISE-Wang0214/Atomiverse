@@ -24,11 +24,15 @@ namespace {
 
 cpu::Frame two_atoms(double x0, double x1) {
     cpu::Frame f(2);
-    f.atoms.x[0] = x0; f.atoms.y[0] = 0.0; f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = x1; f.atoms.y[1] = 0.0; f.atoms.z[1] = 0.0;
-    f.atoms.mass[0] = f.atoms.mass[1] = 1.0;
-    f.atoms.type[0] = f.atoms.type[1] = 1;
-    f.box = Mat3::cubic(20.0);
+    f.span(ATV::kAtom_x)[0] = x0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = x1;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = f.span(ATV::kAtom_mass)[1] = 1.0;
+    f.span(ATV::kAtom_type)[0] = f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -45,14 +49,15 @@ TEST(ReplicaExpansion, LinearInterpolationPlacesImagesAlongTheChord) {
     ASSERT_EQ(reps.size(), 5u);
     for (int k = 0; k < 5; ++k) {
         const double t = double(k) / 4.0;
-        EXPECT_NEAR(reps[k].frame.atoms.x[1], 1.0 + t * 4.0, 1e-12);
-        EXPECT_NEAR(reps[k].frame.atoms.x[0], 0.0, 1e-12) << "the fixed atom moved";
+        EXPECT_NEAR(reps[k].frame.span(ATV::kAtom_x)[1], 1.0 + t * 4.0, 1e-12);
+        EXPECT_NEAR(reps[k].frame.span(ATV::kAtom_x)[0], 0.0, 1e-12)
+            << "the fixed atom moved";
         // The replica's parameter IS its position along the path.
         EXPECT_NEAR(reps[k].parameter, t, 1e-12);
     }
     // The endpoints are exactly the endpoints — not an interpolation of them.
-    EXPECT_NEAR(reps[0].frame.atoms.x[1], 1.0, 1e-14);
-    EXPECT_NEAR(reps[4].frame.atoms.x[1], 5.0, 1e-14);
+    EXPECT_NEAR(reps[0].frame.span(ATV::kAtom_x)[1], 1.0, 1e-14);
+    EXPECT_NEAR(reps[4].frame.span(ATV::kAtom_x)[1], 5.0, 1e-14);
 }
 
 /// A band of two images has nothing between the endpoints to relax.
@@ -65,7 +70,7 @@ TEST(ReplicaExpansion, LinearInterpolationRefusesFewerThanThreeImages) {
 TEST(ReplicaExpansion, LinearInterpolationRefusesAnAtomCountMismatch) {
     cpu::Frame initial = two_atoms(0.0, 1.0);
     cpu::Frame final_state(3);
-    final_state.box = Mat3::cubic(20.0);
+    final_state.simbox = ATV::cpu::Box::cubic(20.0);
     cpu::LinearInterpolation expand{final_state, 4};
     EXPECT_THROW(expand.expand(initial), std::invalid_argument);
 }
@@ -75,14 +80,16 @@ TEST(ReplicaExpansion, LinearInterpolationRefusesAnAtomCountMismatch) {
 /// strategy and not an NEB constructor in disguise.
 TEST(ReplicaExpansion, IdentityReplicationCopiesAndTags) {
     cpu::Frame initial = two_atoms(0.0, 1.0);
-    cpu::IdentityReplication expand{{300.0, 350.0, 400.0, 450.0}}; // a temperature ladder
+    cpu::IdentityReplication expand{
+        {300.0, 350.0, 400.0, 450.0}}; // a temperature ladder
 
     const auto reps = expand.expand(initial);
     ASSERT_EQ(reps.size(), 4u);
     EXPECT_EQ(expand.n_replicas(), 4);
     for (const auto& r : reps) {
-        EXPECT_NEAR(r.frame.atoms.x[1], 1.0, 1e-14) << "identity replication changed the "
-                                                       "geometry";
+        EXPECT_NEAR(r.frame.span(ATV::kAtom_x)[1], 1.0, 1e-14)
+            << "identity replication changed the "
+               "geometry";
     }
     EXPECT_NEAR(reps[0].parameter, 300.0, 1e-12);
     EXPECT_NEAR(reps[3].parameter, 450.0, 1e-12);
@@ -102,17 +109,18 @@ TEST(ReplicaExpansion, LinearInterpolationCollapsesToTheHighestEnergyImage) {
     cpu::LinearInterpolation expand{final_state, 5};
 
     auto reps = expand.expand(initial);
-    reps[0].frame.scalars.energy = -1.0;
-    reps[1].frame.scalars.energy = 0.5;
-    reps[2].frame.scalars.energy = 2.5; // the barrier top
-    reps[3].frame.scalars.energy = 0.7;
-    reps[4].frame.scalars.energy = -1.2;
+    reps[0].frame.meta.get(ATV::kEnergy) = -1.0;
+    reps[1].frame.meta.get(ATV::kEnergy) = 0.5;
+    reps[2].frame.meta.get(ATV::kEnergy) = 2.5; // the barrier top
+    reps[3].frame.meta.get(ATV::kEnergy) = 0.7;
+    reps[4].frame.meta.get(ATV::kEnergy) = -1.2;
 
     cpu::Frame out = two_atoms(0.0, 0.0);
     expand.collapse(reps, out);
 
-    EXPECT_NEAR(out.atoms.x[1], reps[2].frame.atoms.x[1], 1e-14);
-    EXPECT_NEAR(out.scalars.energy, 2.5, 1e-14);
+    EXPECT_NEAR(out.span(ATV::kAtom_x)[1], reps[2].frame.span(ATV::kAtom_x)[1],
+                1e-14);
+    EXPECT_NEAR(out.meta.get(ATV::kEnergy), 2.5, 1e-14);
 }
 
 /// THE termination rule of a coupled band: AND, not OR.

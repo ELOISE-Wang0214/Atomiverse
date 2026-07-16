@@ -105,6 +105,15 @@ atv_add_cpp_test(test_vec3  core/test_vec3.cpp)
 atv_add_cpp_test(test_box   core/test_box.cpp)
 atv_add_cpp_test(test_units core/test_units.cpp)
 
+add_test(
+    NAME test_molrs_source_contract_mismatch
+    COMMAND ${CMAKE_COMMAND}
+            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/molrs-contract-mismatch
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/molrs_contract_mismatch.cmake)
+set_tests_properties(test_molrs_source_contract_mismatch PROPERTIES
+    WILL_FAIL TRUE)
+
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
 atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
@@ -134,7 +143,11 @@ atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_kernel             cpu/potentials/test_pair_kernel.cpp)
+atv_add_cpp_test(test_cpu_pair_coul_cut           cpu/potentials/test_pair_coul_cut.cpp)
 atv_add_cpp_test(test_cpu_dihedral_charmm         cpu/potentials/test_dihedral_charmm.cpp)
+atv_add_cpp_test(test_cpu_improper_harmonic       cpu/potentials/test_improper_harmonic.cpp)
+atv_add_cpp_test(test_cpu_compiled_forcefield     cpu/io/test_compiled_forcefield.cpp)
+atv_add_cpp_test(test_cpu_bias_distance_cv        cpu/bias/test_distance_cv.cpp)
 atv_add_cpp_test(test_cpu_ewald_coul              cpu/kspace/test_ewald_coul.cpp)
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/kspace/test_pme_coul.cpp)
@@ -207,8 +220,10 @@ atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
 atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/md/test_fix_rattle.cpp)
 atv_add_cpp_test(test_cpu_md_write_sets  cpu/md/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
+atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
 atv_add_cpp_test(test_cpu_loop_handler    cpu/driver/test_loop_handler.cpp)
 atv_add_cpp_test(test_cpu_sub_driver      cpu/driver/test_sub_driver.cpp)
+atv_add_cpp_test(test_cpu_component_ownership cpu/driver/test_component_ownership.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)
@@ -233,6 +248,7 @@ atv_add_cpp_test(test_cpu_md_set_api                      cpu/md/test_md_set_api
 atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_equivalence.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
+atv_add_cpp_test(test_cpu_molrs_contract                  cpu/test_molrs_contract.cpp)
 
 # cpu/task infrastructure cluster (mpi-launcher-embedded-python-02-codec):
 # TaskSpec data model + MPI-free byte codec + rank-agnostic materializer.
@@ -306,6 +322,15 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
                     test_mpi_coul_energy_bruteforce 1)
     atv_add_mpi_run(test_mpi_coul_energy_bruteforce_n8
                     test_mpi_coul_energy_bruteforce 8)
+
+    if(ATV_BUILD_KSPACE)
+        atv_add_mpi_exec(test_mpi_pme_nacl_parity
+                         mpi/test_pme_nacl_parity.cpp)
+        atv_add_mpi_run(test_mpi_pme_nacl_parity_n1
+                        test_mpi_pme_nacl_parity 1)
+        atv_add_mpi_run(test_mpi_pme_nacl_parity_n2
+                        test_mpi_pme_nacl_parity 2)
+    endif()
 
     atv_add_mpi_exec(test_mpi_bonded_energy_bruteforce
                      mpi/test_bonded_energy_bruteforce.cpp)
@@ -432,8 +457,8 @@ atv_add_cpp_test(test_cpu_linalg_canonical_orth
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
 
 if(ATV_BUILD_RHF)
-    atv_add_cpp_test(test_cpu_scf_uhf_solve    cpu/scf/test_uhf_solve.cpp)
-    atv_add_cpp_test(test_cpu_scf_uks_solve    cpu/scf/test_uks_solve.cpp)
+    atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
+    atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2           cpu/scf/test_mp2.cpp)
@@ -602,6 +627,14 @@ add_test(
 add_test(
     NAME test_stage_typing_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate: compatibility-only CPU aliases/overloads stay deleted and the
+# TaskSpec wire format is strict v3 with an explicit ComponentId mapping.
+# Deliberately excludes cpu/frame/ and CUDA/Torch sources.
+add_test(
+    NAME test_cpu_compatibility_surface_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/compatibility_surface_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: the CUDA SCF inner solver must not see the component layer

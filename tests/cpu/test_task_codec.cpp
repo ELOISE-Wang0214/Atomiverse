@@ -1,376 +1,220 @@
 /// @file tests/cpu/test_task_codec.cpp
-/// @brief Unit tests for the `cpu/task/` TaskSpec data model and its MPI-free
-///        byte codec (`cpu::task::pack` / `cpu::task::unpack`).
-///
-/// Spec: .claude/specs/mpi-launcher-embedded-python-02-codec.md. Covers the
-/// two validating TaskSpec constructors (MD / AM1 SinglePoint), field-exact
-/// pack→unpack roundtrips over the full nine-component MD bindable set, and
-/// the five wire-tampering rejections (version, task_kind, component_id,
-/// truncation, kind-invariant violation). Pure serial, no MPI, no I/O.
+/// @brief TaskSpec v3 typed-payload and exact-wire contract tests.
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <optional>
+#include <limits>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
-#include <variant>
 #include <vector>
 
 #include "atomiverse/cpu/task/task_codec.h"
 #include "atomiverse/cpu/task/task_spec.h"
-#include "atomiverse/facade/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::task;
 
 namespace {
 
-// ── Wire-format offsets ─────────────────────────────────────────────────
-//
-// Per the spec's wire-format section the stream is a tightly packed,
-// native-endianness byte sequence:
-//   {magic 'ATVT' (4 B), u32 version, u8 task_kind, u32 n_entries,
-//    [entry ...], i64 n_steps}
-// so the fixed header offsets are:
-constexpr std::size_t kMagicOffset = 0;   ///< 4 bytes: 'A' 'T' 'V' 'T'
-constexpr std::size_t kVersionOffset = 4; ///< u32 version, bytes [4, 8)
-constexpr std::size_t kTaskKindOffset = 8;  ///< u8 task_kind, byte 8
-constexpr std::size_t kNEntriesOffset = 9;  ///< u32 n_entries, bytes [9, 13)
-// entry = {u16 component_id, u8 has_binding, (u32 phase_slot, i32 order)?,
-//          per-field payload}; the first entry starts right after n_entries:
-constexpr std::size_t kFirstComponentIdOffset = 13; ///< u16, bytes [13, 15)
+constexpr std::size_t kVersionOffset = 4;
+constexpr std::size_t kTaskKindOffset = 8;
+constexpr std::size_t kFirstComponentIdOffset = 13;
+constexpr std::size_t kFirstPhaseOffset = 16;
 
 template <typename T>
-T read_scalar(const std::vector<std::byte>& buf, std::size_t offset) {
-    T value{};
-    std::memcpy(&value, buf.data() + offset, sizeof(T));
-    return value;
+void write_scalar(std::vector<std::byte>& bytes, std::size_t offset, T value) {
+    std::memcpy(bytes.data() + offset, &value, sizeof(T));
 }
 
-template <typename T>
-void write_scalar(std::vector<std::byte>& buf, std::size_t offset, T value) {
-    std::memcpy(buf.data() + offset, &value, sizeof(T));
-}
-
-/// @brief All-nine-MD-component spec: three default-binding entries
-///        (the `md.add(comp)` path components of bind_md.cpp — VelocityVerlet,
-///        InitVelocity, NoseHoover) and six explicit `{phase, order}` entries
-///        covering three distinct md::Phase values and nonzero orders.
-TaskSpec make_full_md_spec() {
-    std::vector<ComponentEntry> entries;
-    entries.push_back(ComponentEntry{
-        ComponentParams{NeighborListParams{6.0, 0.3}},
-        ExplicitBinding{ATV::md::Phase::force, -10}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{PairLJCutParams{0.0104, 3.4, 6.0}},
-        ExplicitBinding{ATV::md::Phase::force, 0}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{BondHarmonicParams{{15.2, 2.5}, {1.53, 1.09}}},
-        ExplicitBinding{ATV::md::Phase::force, 1}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{AngleHarmonicParams{{2.7}, {1.911}}},
-        ExplicitBinding{ATV::md::Phase::force, 2}});
-    entries.push_back(ComponentEntry{
-        ComponentParams{
-            DihedralMultiHarmonicParams{{{1.73, -4.49, 0.776, 6.99, 0.0}}}},
-        ExplicitBinding{ATV::md::Phase::pre_force, 3}});
+TaskSpec make_md_spec() {
+    std::vector<MDComponentEntry> entries;
+    entries.push_back(MDComponentEntry{NeighborListParams{6.0, 0.3},
+                                       MDBinding{ATV::md::Phase::force, -10}});
+    entries.push_back(MDComponentEntry{PairLJCutParams{0.0104, 3.4, 6.0},
+                                       MDBinding{ATV::md::Phase::force, 0}});
     entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{0.5}},
-                       std::nullopt});
+        MDComponentEntry{BondHarmonicParams{{15.2, 2.5}, {1.53, 1.09}},
+                         MDBinding{ATV::md::Phase::force, 1}});
+    entries.push_back(MDComponentEntry{AngleHarmonicParams{{2.7}, {1.911}},
+                                       MDBinding{ATV::md::Phase::force, 2}});
+    entries.push_back(MDComponentEntry{
+        DihedralMultiHarmonicParams{{{1.73, -4.49, 0.776, 6.99, 0.0}}},
+        MDBinding{ATV::md::Phase::pre_force, 3}});
     entries.push_back(
-        ComponentEntry{ComponentParams{InitVelocityParams{300.0, 4242u}},
-                       std::nullopt});
+        MDComponentEntry{VelocityVerletParams{0.5}, std::nullopt});
     entries.push_back(
-        ComponentEntry{ComponentParams{NoseHooverParams{300.0, 100.0, 0.5}},
-                       std::nullopt});
-    entries.push_back(ComponentEntry{ComponentParams{ThermoParams{100}},
-                                     ExplicitBinding{
-                                         ATV::md::Phase::end_of_step, 50}});
-    return TaskSpec(std::move(entries), /*n_steps=*/7);
+        MDComponentEntry{InitVelocityParams{300.0, 4242u}, std::nullopt});
+    entries.push_back(
+        MDComponentEntry{NoseHooverParams{300.0, 100.0, 0.5}, std::nullopt});
+    entries.push_back(MDComponentEntry{
+        ThermoParams{100}, MDBinding{ATV::md::Phase::end_of_step, 50}});
+    return TaskSpec(MDTask{std::move(entries), 7});
 }
 
-/// @brief Field-by-field ComponentEntry equality (TaskSpec itself need not
-///        provide operator==; the ten param structs must).
-void expect_entry_eq(const ComponentEntry& got, const ComponentEntry& want) {
-    EXPECT_EQ(got.params.index(), want.params.index());
-    EXPECT_TRUE(got.params == want.params);
-    ASSERT_EQ(got.binding.has_value(), want.binding.has_value());
-    if (want.binding.has_value()) {
-        EXPECT_EQ(got.binding->phase, want.binding->phase);
-        EXPECT_EQ(got.binding->order, want.binding->order);
-    }
+TaskSpec make_minimize_spec() {
+    std::vector<MinimizeComponentEntry> entries;
+    entries.push_back(MinimizeComponentEntry{
+        NeighborListParams{6.0, 0.3},
+        MinimizeBinding{ATV::minimizer::Phase::force, -10}});
+    entries.push_back(MinimizeComponentEntry{
+        PairLJCutParams{0.0104, 3.4, 6.0},
+        MinimizeBinding{ATV::minimizer::Phase::force, 0}});
+    entries.push_back(
+        MinimizeComponentEntry{LBFGSParams{7, 0.02, 12}, std::nullopt});
+    return TaskSpec(
+        MinimizeTask{std::move(entries), 55,
+                     ForceConvergedParams{0.02, 0.01, 0.003, 0.002, 2e-6}});
 }
 
-std::string lowercase(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return s;
-}
-
-/// @brief unpack() must throw std::runtime_error whose what() contains
-///        `needle` (the offending value, per the codec error contract).
-void expect_unpack_runtime_error_containing(const std::vector<std::byte>& buf,
-                                            const std::string& needle) {
+void expect_runtime_error(const std::vector<std::byte>& bytes,
+                          const std::string& needle) {
     try {
-        (void)unpack(buf.data(), buf.size());
-        FAIL() << "unpack accepted a tampered buffer (expected "
-                  "std::runtime_error containing '"
-               << needle << "')";
-    } catch (const std::runtime_error& e) {
-        EXPECT_NE(std::string(e.what()).find(needle), std::string::npos)
-            << "what() does not name the offending value '" << needle
-            << "': " << e.what();
+        (void)unpack(bytes.data(), bytes.size());
+        FAIL() << "tampered payload was accepted";
+    } catch (const std::runtime_error& err) {
+        EXPECT_NE(std::string(err.what()).find(needle), std::string::npos)
+            << err.what();
     }
 }
 
-// ── Variant layout: component_id stability ──────────────────────────────
-
-// The wire component_id is the variant index; the nine MD alternatives'
-// indices are frozen and AM1EvaluatorParams is appended LAST (index 9) so
-// kWireVersion stays 1.
-static_assert(std::variant_size_v<ComponentParams> == 10,
-              "ComponentParams must have exactly ten alternatives");
-static_assert(
-    std::is_same_v<std::variant_alternative_t<9, ComponentParams>,
-                   AM1EvaluatorParams>,
-    "AM1EvaluatorParams must be the LAST (10th) variant alternative");
-static_assert(
-    std::is_same_v<std::variant_alternative_t<0, ComponentParams>,
-                   PairLJCutParams>,
-    "PairLJCutParams must be the first variant alternative (id 0)");
-
-TEST(TaskCodec, Am1ParamsOccupyLastComponentId) {
-    const ComponentParams p{AM1EvaluatorParams{}};
-    EXPECT_EQ(p.index(), 9u);
+TEST(TaskCodec, ComponentIdsAreExplicitAndStable) {
+    EXPECT_EQ(static_cast<std::uint16_t>(ComponentId::PairLJCut), 0u);
+    EXPECT_EQ(static_cast<std::uint16_t>(ComponentId::AM1Evaluator), 9u);
+    EXPECT_EQ(static_cast<std::uint16_t>(ComponentId::LBFGS), 10u);
+    EXPECT_EQ(component_id(MDComponentParams{VelocityVerletParams{}}),
+              ComponentId::VelocityVerlet);
+    EXPECT_EQ(component_id(MinimizeComponentParams{LBFGSParams{}}),
+              ComponentId::LBFGS);
 }
 
-TEST(TaskCodec, WireVersionIsOne) {
-    EXPECT_EQ(TaskSpec::kWireVersion, 1u);
+TEST(TaskCodec, WireVersionIsThree) { EXPECT_EQ(TaskSpec::kWireVersion, 3u); }
+
+TEST(TaskCodec, MdRoundtripIsFieldExact) {
+    const TaskSpec spec = make_md_spec();
+    const auto bytes = pack(spec);
+    const TaskSpec back = unpack(bytes.data(), bytes.size());
+    ASSERT_EQ(back.kind(), TaskKind::MD);
+    EXPECT_TRUE(back.md() == spec.md());
 }
 
-// ── (a) MD roundtrip over the full bindable set ─────────────────────────
-
-TEST(TaskCodec, MdRoundtripAllNineComponentTypesFieldExact) {
-    const TaskSpec spec = make_full_md_spec();
-    ASSERT_EQ(spec.kind(), TaskKind::MD);
-
-    const std::vector<std::byte> buf = pack(spec);
-    const TaskSpec back = unpack(buf.data(), buf.size());
-
-    EXPECT_EQ(back.kind(), TaskKind::MD);
-    EXPECT_EQ(back.n_steps(), spec.n_steps());
-    ASSERT_EQ(back.entries().size(), spec.entries().size());
-    for (std::size_t i = 0; i < spec.entries().size(); ++i) {
-        SCOPED_TRACE("entry " + std::to_string(i));
-        expect_entry_eq(back.entries()[i], spec.entries()[i]);
-    }
+TEST(TaskCodec, SinglePointRoundtripIsFieldExact) {
+    AM1EvaluatorParams p{-1, 2, 50, 1e-6, 1e-8};
+    const TaskSpec spec(SinglePointTask{p});
+    const auto bytes = pack(spec);
+    const TaskSpec back = unpack(bytes.data(), bytes.size());
+    ASSERT_EQ(back.kind(), TaskKind::SinglePoint);
+    EXPECT_EQ(back.single_point().evaluator, p);
 }
 
-TEST(TaskCodec, MdRoundtripPreservesVectorParamsExactly) {
-    const TaskSpec spec = make_full_md_spec();
-    const std::vector<std::byte> buf = pack(spec);
-    const TaskSpec back = unpack(buf.data(), buf.size());
-
-    // Spot-check the three vector-carrying params through std::get — the
-    // u64-length-prefixed wire vectors must come back element-exact.
-    const auto& bond = std::get<BondHarmonicParams>(back.entries()[2].params);
-    EXPECT_EQ(bond.K, (std::vector<double>{15.2, 2.5}));
-    EXPECT_EQ(bond.r0, (std::vector<double>{1.53, 1.09}));
-    const auto& angle = std::get<AngleHarmonicParams>(back.entries()[3].params);
-    EXPECT_EQ(angle.K, (std::vector<double>{2.7}));
-    EXPECT_EQ(angle.theta0, (std::vector<double>{1.911}));
-    const auto& dih =
-        std::get<DihedralMultiHarmonicParams>(back.entries()[4].params);
-    EXPECT_EQ(dih.Cn, (std::vector<std::vector<double>>{
-                          {1.73, -4.49, 0.776, 6.99, 0.0}}));
+TEST(TaskCodec, MinimizeRoundtripKeepsTypedPhaseBudgetAndAllTolerances) {
+    const TaskSpec spec = make_minimize_spec();
+    const auto bytes = pack(spec);
+    const TaskSpec back = unpack(bytes.data(), bytes.size());
+    ASSERT_EQ(back.kind(), TaskKind::Minimize);
+    EXPECT_TRUE(back.minimize() == spec.minimize());
+    ASSERT_TRUE(back.minimize().entries[0].binding);
+    EXPECT_EQ(back.minimize().entries[0].binding->phase,
+              ATV::minimizer::Phase::force);
 }
 
-TEST(TaskCodec, MdRoundtripPreservesExplicitAndDefaultBindings) {
-    const TaskSpec spec = make_full_md_spec();
-    const std::vector<std::byte> buf = pack(spec);
-    const TaskSpec back = unpack(buf.data(), buf.size());
-
-    // Explicit entries keep their typed phase + order.
-    ASSERT_TRUE(back.entries()[0].binding.has_value());
-    EXPECT_EQ(back.entries()[0].binding->phase, ATV::md::Phase::force);
-    EXPECT_EQ(back.entries()[0].binding->order, -10);
-    ASSERT_TRUE(back.entries()[4].binding.has_value());
-    EXPECT_EQ(back.entries()[4].binding->phase, ATV::md::Phase::pre_force);
-    EXPECT_EQ(back.entries()[4].binding->order, 3);
-    ASSERT_TRUE(back.entries()[8].binding.has_value());
-    EXPECT_EQ(back.entries()[8].binding->phase, ATV::md::Phase::end_of_step);
-    EXPECT_EQ(back.entries()[8].binding->order, 50);
-    // Default-binding entries stay nullopt (the md.add(comp) path).
-    EXPECT_FALSE(back.entries()[5].binding.has_value());
-    EXPECT_FALSE(back.entries()[6].binding.has_value());
-    EXPECT_FALSE(back.entries()[7].binding.has_value());
+TEST(TaskCodec, VersionTwoAndUnknownVersionsAreRejected) {
+    auto bytes = pack(make_md_spec());
+    write_scalar<std::uint32_t>(bytes, kVersionOffset, 2);
+    expect_runtime_error(bytes, "version 2");
+    bytes = pack(make_md_spec());
+    write_scalar<std::uint32_t>(bytes, kVersionOffset, 99);
+    expect_runtime_error(bytes, "version 99");
 }
 
-// ── Wire header layout (pins the tamper offsets below) ──────────────────
-
-TEST(TaskCodec, WireHeaderLayoutMatchesSpec) {
-    const TaskSpec spec = make_full_md_spec();
-    const std::vector<std::byte> buf = pack(spec);
-
-    ASSERT_GE(buf.size(), kFirstComponentIdOffset + sizeof(std::uint16_t));
-    EXPECT_EQ(static_cast<char>(buf[kMagicOffset + 0]), 'A');
-    EXPECT_EQ(static_cast<char>(buf[kMagicOffset + 1]), 'T');
-    EXPECT_EQ(static_cast<char>(buf[kMagicOffset + 2]), 'V');
-    EXPECT_EQ(static_cast<char>(buf[kMagicOffset + 3]), 'T');
-    EXPECT_EQ(read_scalar<std::uint32_t>(buf, kVersionOffset),
-              TaskSpec::kWireVersion);
-    EXPECT_EQ(static_cast<std::uint8_t>(buf[kTaskKindOffset]),
-              static_cast<std::uint8_t>(TaskKind::MD));
-    EXPECT_EQ(read_scalar<std::uint32_t>(buf, kNEntriesOffset),
-              static_cast<std::uint32_t>(spec.entries().size()));
-    // First entry is NeighborListParams = variant index 1.
-    EXPECT_EQ(read_scalar<std::uint16_t>(buf, kFirstComponentIdOffset),
-              std::uint16_t{1});
+TEST(TaskCodec, UnknownTaskAndComponentIdsAreRejected) {
+    auto bytes = pack(make_md_spec());
+    bytes[kTaskKindOffset] = std::byte{9};
+    expect_runtime_error(bytes, "task_kind 9");
+    bytes = pack(make_md_spec());
+    write_scalar<std::uint16_t>(bytes, kFirstComponentIdOffset, 999);
+    expect_runtime_error(bytes, "component_id 999");
 }
 
-// ── (b) SinglePoint roundtrip ───────────────────────────────────────────
+TEST(TaskCodec, CrossKindComponentsNameSourceAndTarget) {
+    auto md_bytes = pack(make_md_spec());
+    write_scalar<std::uint16_t>(md_bytes, kFirstComponentIdOffset,
+                                static_cast<std::uint16_t>(ComponentId::LBFGS));
+    expect_runtime_error(md_bytes, "belongs to Minimize, not MD");
 
-TEST(TaskCodec, SinglePointRoundtripAllFiveAm1FieldsExact) {
-    // All five fields away from the NDDOConfig defaults.
-    AM1EvaluatorParams am1{};
-    am1.charge = -1;
-    am1.multiplicity = 2;
-    am1.max_iter = 50;
-    am1.density_tol = 1.0e-6;
-    am1.energy_tol = 1.0e-8;
-
-    const TaskSpec spec(am1);
-    ASSERT_EQ(spec.kind(), TaskKind::SinglePoint);
-    ASSERT_EQ(spec.entries().size(), 1u);
-    EXPECT_FALSE(spec.entries()[0].binding.has_value());
-
-    const std::vector<std::byte> buf = pack(spec);
-    EXPECT_EQ(static_cast<std::uint8_t>(buf[kTaskKindOffset]),
-              static_cast<std::uint8_t>(TaskKind::SinglePoint));
-
-    const TaskSpec back = unpack(buf.data(), buf.size());
-    EXPECT_EQ(back.kind(), TaskKind::SinglePoint);
-    ASSERT_EQ(back.entries().size(), 1u);
-    EXPECT_FALSE(back.entries()[0].binding.has_value());
-    const auto& got = std::get<AM1EvaluatorParams>(back.entries()[0].params);
-    EXPECT_EQ(got.charge, -1);
-    EXPECT_EQ(got.multiplicity, 2);
-    EXPECT_EQ(got.max_iter, 50);
-    EXPECT_EQ(got.density_tol, 1.0e-6);
-    EXPECT_EQ(got.energy_tol, 1.0e-8);
-    EXPECT_TRUE(got == am1);
+    auto min_bytes = pack(make_minimize_spec());
+    write_scalar<std::uint16_t>(
+        min_bytes, kFirstComponentIdOffset,
+        static_cast<std::uint16_t>(ComponentId::VelocityVerlet));
+    expect_runtime_error(min_bytes, "belongs to MD, not Minimize");
 }
 
-// ── (c) Version tamper ──────────────────────────────────────────────────
-
-TEST(TaskCodec, VersionTamperThrowsNamingOffendingVersion) {
-    std::vector<std::byte> buf = pack(make_full_md_spec());
-    const std::uint32_t bad_version = TaskSpec::kWireVersion + 1;
-    write_scalar<std::uint32_t>(buf, kVersionOffset, bad_version);
-    expect_unpack_runtime_error_containing(buf, std::to_string(bad_version));
+TEST(TaskCodec, EachPhaseSlotIsCheckedAgainstItsOwnDomain) {
+    auto bytes = pack(make_minimize_spec());
+    write_scalar<std::uint32_t>(
+        bytes, kFirstPhaseOffset,
+        static_cast<std::uint32_t>(ATV::slot_count<ATV::minimizer::Phase>()));
+    expect_runtime_error(bytes, "minimizer::Phase");
 }
 
-// ── (d) component_id / task_kind tamper ─────────────────────────────────
+TEST(TaskCodec, InvalidBudgetsLbfgsAndTolerancesFailBeforePacking) {
+    EXPECT_THROW(TaskSpec(MDTask{{}, 0}), std::invalid_argument);
+    EXPECT_THROW(TaskSpec(MinimizeTask{{}, -1, {}}), std::invalid_argument);
 
-TEST(TaskCodec, ComponentIdTamperThrowsNamingOffendingId) {
-    std::vector<std::byte> buf = pack(make_full_md_spec());
-    // Ten alternatives → valid ids are [0, 9]; 999 is well outside.
-    write_scalar<std::uint16_t>(buf, kFirstComponentIdOffset,
-                                std::uint16_t{999});
-    expect_unpack_runtime_error_containing(buf, "999");
+    MinimizeTask bad_lbfgs{
+        {MinimizeComponentEntry{LBFGSParams{0, 0.01, 10}, std::nullopt}},
+        10,
+        {}};
+    EXPECT_THROW(TaskSpec(std::move(bad_lbfgs)), std::invalid_argument);
+
+    MinimizeTask bad_tol{{}, 10, {}};
+    bad_tol.convergence.ftol = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(TaskSpec(std::move(bad_tol)), std::invalid_argument);
 }
 
-TEST(TaskCodec, TaskKindTamperThrowsNamingOffendingValue) {
-    std::vector<std::byte> buf = pack(make_full_md_spec());
-    // TaskKind is {MD = 0, SinglePoint = 1}; 7 is outside the enum.
-    buf[kTaskKindOffset] = std::byte{7};
-    expect_unpack_runtime_error_containing(buf, "7");
+TEST(TaskCodec, TypedCountSentinelsAreRejectedInMemory) {
+    MDTask md{{MDComponentEntry{PairLJCutParams{1, 1, 2},
+                                MDBinding{ATV::md::Phase::COUNT, 0}}},
+              1};
+    EXPECT_THROW(TaskSpec(std::move(md)), std::invalid_argument);
+
+    MinimizeTask min{
+        {MinimizeComponentEntry{
+            LBFGSParams{}, MinimizeBinding{ATV::minimizer::Phase::COUNT, 0}}},
+        1,
+        {}};
+    EXPECT_THROW(TaskSpec(std::move(min)), std::invalid_argument);
 }
 
-// ── (e) Truncated buffer ────────────────────────────────────────────────
-
-TEST(TaskCodec, TruncatedBufferThrows) {
-    const std::vector<std::byte> buf = pack(make_full_md_spec());
-    ASSERT_GT(buf.size(), 2u);
-    EXPECT_THROW((void)unpack(buf.data(), buf.size() / 2),
+TEST(TaskCodec, TruncationAndTrailingBytesAreRejected) {
+    const auto full = pack(make_minimize_spec());
+    EXPECT_THROW((void)unpack(full.data(), full.size() / 2),
+                 std::runtime_error);
+    auto trailing = full;
+    trailing.push_back(std::byte{0});
+    EXPECT_THROW((void)unpack(trailing.data(), trailing.size()),
                  std::runtime_error);
 }
 
-// ── (f) MD ctor validates n_steps ───────────────────────────────────────
-
-TEST(TaskCodec, MdCtorRejectsNStepsBelowOne) {
-    std::vector<ComponentEntry> entries;
-    entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{0.5}},
-                       std::nullopt});
-    EXPECT_THROW(TaskSpec(entries, /*n_steps=*/0), std::invalid_argument);
-    EXPECT_THROW(TaskSpec(entries, /*n_steps=*/-5), std::invalid_argument);
+TEST(TaskCodec, TaskResultRoundtripAndTruncationAreExact) {
+    const TaskResult result{17, true, "force_converged"};
+    const auto bytes = pack_result(result);
+    EXPECT_EQ(unpack_result(bytes.data(), bytes.size()), result);
+    EXPECT_THROW((void)unpack_result(bytes.data(), bytes.size() - 1),
+                 std::runtime_error);
 }
 
-// ── (g) MD ctor rejects evaluator-only params, naming the component ─────
+TEST(TaskCodec, EmptyMdAndMinimizePayloadsRemainCodecLevelCitizens) {
+    const TaskSpec md(MDTask{{}, 3});
+    const auto md_bytes = pack(md);
+    EXPECT_TRUE(unpack(md_bytes.data(), md_bytes.size()).md().entries.empty());
 
-TEST(TaskCodec, MdCtorRejectsAm1EntryNamingComponent) {
-    std::vector<ComponentEntry> entries;
-    entries.push_back(
-        ComponentEntry{ComponentParams{VelocityVerletParams{0.5}},
-                       std::nullopt});
-    entries.push_back(ComponentEntry{ComponentParams{AM1EvaluatorParams{}},
-                                     std::nullopt});
-    try {
-        TaskSpec spec(entries, /*n_steps=*/10);
-        FAIL() << "MD TaskSpec accepted an AM1EvaluatorParams entry";
-    } catch (const std::invalid_argument& e) {
-        // The message must name the offending component.
-        EXPECT_NE(lowercase(e.what()).find("am1"), std::string::npos)
-            << "what() does not name the AM1 component: " << e.what();
-    }
-}
-
-// ── (h) Kind-invariant violations on the wire ───────────────────────────
-
-TEST(TaskCodec, KindFlipToSinglePointOnMultiEntryMdBufferThrows) {
-    // A packed multi-entry MD task whose kind byte is flipped to SinglePoint
-    // violates the exactly-one-entry invariant; decode goes through the
-    // validating ctors, so unpack must throw.
-    std::vector<std::byte> buf = pack(make_full_md_spec());
-    buf[kTaskKindOffset] =
-        static_cast<std::byte>(static_cast<std::uint8_t>(
-            TaskKind::SinglePoint));
-    EXPECT_ANY_THROW((void)unpack(buf.data(), buf.size()));
-}
-
-TEST(TaskCodec, KindFlipToSinglePointOnNonAm1SingleEntryBufferThrows) {
-    // One entry, but not AM1EvaluatorParams: a SinglePoint task cannot carry
-    // a non-AM1 component in v1.
-    std::vector<ComponentEntry> entries;
-    entries.push_back(ComponentEntry{
-        ComponentParams{PairLJCutParams{0.0104, 3.4, 6.0}},
-        std::nullopt});
-    std::vector<std::byte> buf = pack(TaskSpec(std::move(entries), 3));
-    buf[kTaskKindOffset] =
-        static_cast<std::byte>(static_cast<std::uint8_t>(
-            TaskKind::SinglePoint));
-    EXPECT_ANY_THROW((void)unpack(buf.data(), buf.size()));
-}
-
-// ── (i) Empty-entry MD spec is a codec-level citizen ────────────────────
-
-TEST(TaskCodec, EmptyEntryMdSpecRoundtrips) {
-    // Driver-level component validation is the materializer's build() job,
-    // not the codec's: an empty MD task packs and unpacks cleanly.
-    const TaskSpec spec(std::vector<ComponentEntry>{}, /*n_steps=*/10);
-    const std::vector<std::byte> buf = pack(spec);
-    const TaskSpec back = unpack(buf.data(), buf.size());
-    EXPECT_EQ(back.kind(), TaskKind::MD);
-    EXPECT_TRUE(back.entries().empty());
-    EXPECT_EQ(back.n_steps(), 10);
+    const TaskSpec min(MinimizeTask{{}, 3, {}});
+    const auto min_bytes = pack(min);
+    EXPECT_TRUE(
+        unpack(min_bytes.data(), min_bytes.size()).minimize().entries.empty());
 }
 
 } // namespace

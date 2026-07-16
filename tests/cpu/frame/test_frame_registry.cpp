@@ -11,8 +11,8 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/comm/atom_pack.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/component_role.h"
@@ -23,30 +23,47 @@ using namespace ATV;
 
 TEST(FrameRegistry, BindingVisitsEverySchemaRowExactlyOnce) {
     cpu::Frame frame(4);
-    int visited = 0;
+    frame.reserve_topology(2, 1, 1, 6);
     std::set<std::string> keys;
-    frame.atoms.for_each_column([&](const FieldSpec& spec, auto& /*arr*/) {
-        ++visited;
-        EXPECT_TRUE(keys.insert(spec.key).second)
-            << "duplicate schema key " << spec.key;
-    });
-    // One binding line per table row — a drifting macro list breaks this.
-    EXPECT_EQ(visited, kAtomFieldCount);
+    for (const auto& [key, column] : frame.block("atoms").columns()) {
+        (void)column;
+        EXPECT_TRUE(keys.insert(key).second) << "duplicate schema key " << key;
+    }
+    EXPECT_EQ(static_cast<int>(frame.block("atoms").columns().size()),
+              kAtomFieldCount);
     EXPECT_EQ(static_cast<int>(keys.size()), kAtomFieldCount);
+    for (const FieldSpec& spec : kAtomFieldSpecs)
+        EXPECT_EQ(keys.count(spec.key), 1u)
+            << "missing schema key " << spec.key;
 }
 
 TEST(FrameRegistry, ColumnWidthsMatchTheBoundStorage) {
     cpu::Frame frame(4);
-    frame.atoms.reserve_topology(2, 1, 1, 6);
-    frame.atoms.for_each_column([&](const FieldSpec& spec, auto& arr) {
-        const auto cols =
-            static_cast<std::size_t>(frame.atoms.cols_of(spec.stride));
-        if (arr.dimension() == 1) {
-            EXPECT_EQ(cols, 1u) << spec.key;
-        } else {
-            EXPECT_EQ(arr.shape()[1], cols) << spec.key;
-        }
-    });
+    frame.reserve_topology(2, 1, 1, 6);
+    const auto refs = frame.block("atoms").resolve_columns();
+    ASSERT_EQ(static_cast<int>(refs.size()), kAtomFieldCount);
+    for (const auto& ref : refs) {
+        int expected = 1;
+        if (ref.key == "image" || ref.key == "nspecial")
+            expected = 3;
+        else if (ref.key == "bond_atom" || ref.key == "bond_type")
+            expected = 2;
+        else if (ref.key == "angle_atom")
+            expected = 2;
+        else if (ref.key == "angle_type")
+            expected = 1;
+        else if (ref.key == "dihedral_atom")
+            expected = 3;
+        else if (ref.key == "dihedral_type")
+            expected = 1;
+        else if (ref.key == "improper_atom")
+            expected = 0; // reserve 0 improper
+        else if (ref.key == "improper_type")
+            expected = 0;
+        else if (ref.key == "special")
+            expected = 6;
+        EXPECT_EQ(ref.cols, expected) << ref.key;
+    }
 }
 
 // ── Typed spans (ac-002) ────────────────────────────────────────────────────
@@ -55,20 +72,24 @@ TEST(FrameRegistry, SpanResolvesTypedColumns) {
     cpu::Frame frame(3);
     auto x = frame.span(kAtom_x);
     x[1] = StorageReal(4.5);
-    EXPECT_EQ(frame.atoms.x[1], StorageReal(4.5)); // same storage
+    EXPECT_EQ(frame.span(ATV::kAtom_x)[1], StorageReal(4.5)); // same storage
 
     auto img = frame.span(kAtom_image);
-    EXPECT_EQ(img.cols, 3);
+    EXPECT_EQ(img.cols(), 3);
     img(2, 1) = 7;
-    EXPECT_EQ(frame.atoms.image(2, 1), 7);
+    EXPECT_EQ(frame.span(ATV::kAtom_image)(2, 1), 7);
 }
 
 TEST(FrameRegistry, SpanRejectsUnknownKeyAndWrongType) {
     cpu::Frame frame(2);
-    EXPECT_THROW(frame.span(ColKey<StorageReal>{"atoms", "nope"}),
+    EXPECT_THROW(frame.span(ColKey<StorageReal>{
+                     "atoms", "nope", kDynamicFieldId, ColDType::Storage}),
                  cpu::column_error);
-    EXPECT_THROW(frame.span(ColKey<int>{"atoms", "x"}), cpu::column_error);
-    EXPECT_THROW(frame.span(ColKey<StorageReal>{"bonds", "x"}),
+    EXPECT_THROW(
+        frame.span(ColKey<int>{"atoms", "x", kDynamicFieldId, ColDType::Int}),
+        cpu::column_error);
+    EXPECT_THROW(frame.span(ColKey<StorageReal>{"bonds", "x", kDynamicFieldId,
+                                                ColDType::Storage}),
                  cpu::column_error);
 }
 
@@ -76,10 +97,11 @@ TEST(FrameRegistry, HasTracksTheLazyTopologyGroup) {
     cpu::Frame frame(3);
     EXPECT_TRUE(frame.has("atoms", "x"));
     EXPECT_TRUE(frame.has("atoms", "num_bond")); // counts always present
-    EXPECT_FALSE(frame.has("atoms", "bond_atom")); // lazy wide storage
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, 3);
-    frame.atoms.add_bond(0, 1, 1);
+    EXPECT_TRUE(frame.has("atoms", "bond_atom"));
+    EXPECT_EQ(frame.span(kAtom_bond_atom).cols(), 0); // initially zero-width
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, 3);
+    frame.add_bond(0, 1, 1);
     EXPECT_TRUE(frame.has("atoms", "bond_atom"));
     EXPECT_FALSE(frame.has("atoms", "rho"));
     EXPECT_FALSE(frame.has("bonds", "x"));
@@ -89,57 +111,71 @@ TEST(FrameRegistry, HasTracksTheLazyTopologyGroup) {
 
 TEST(FrameRegistry, ExtensionColumnLivesTheFullLifecycle) {
     cpu::Frame frame(3);
-    frame.insert("rho", ColDType::Storage, 1);
+    frame.block("atoms").insert(
+        "rho", cpu::ColumnSpec{ColDType::Storage, 1, ColGroup::Core, 0,
+                               kColMigrate | kColExchange, kDynamicFieldId});
     EXPECT_TRUE(frame.has("atoms", "rho"));
 
-    auto rho = frame.span(ColKey<StorageReal>{"atoms", "rho"});
+    const ColKey<StorageReal> rho_key{"atoms", "rho", kDynamicFieldId,
+                                      ColDType::Storage};
+    auto rho = frame.span(rho_key);
     rho[0] = 1.5;
     rho[2] = 2.5;
 
     // Survives a chunked reallocation (the probe-4 bug class)…
-    frame.atoms.grow(frame.atoms.nmax + 1);
-    rho = frame.span(ColKey<StorageReal>{"atoms", "rho"});
+    frame.grow(frame.capacity() + 1);
+    rho = frame.span(rho_key);
     EXPECT_EQ(rho[0], StorageReal(1.5));
     EXPECT_EQ(rho[2], StorageReal(2.5));
-    EXPECT_EQ(rho[frame.atoms.nmax - 1], StorageReal(0)); // zeroed tail
+    EXPECT_EQ(rho[frame.capacity() - 1], StorageReal(0)); // zeroed tail
 
     // …and rides copy_row.
-    frame.atoms.copy_row(1, 2);
+    frame.copy_row(1, 2);
     EXPECT_EQ(rho[1], StorageReal(2.5));
 }
 
 TEST(FrameRegistry, InsertRejectsCollisions) {
     cpu::Frame frame(2);
-    EXPECT_THROW(frame.insert("x", ColDType::Storage, 1),
-                 std::invalid_argument);
-    frame.insert("rho", ColDType::Storage, 1);
-    EXPECT_THROW(frame.insert("rho", ColDType::Storage, 1),
-                 std::invalid_argument);
-    EXPECT_THROW(frame.insert("bad", ColDType::Storage, 0),
-                 std::invalid_argument);
+    const cpu::ColumnSpec scalar{
+        ColDType::Storage, 1, ColGroup::Core, 0, kColNone, kDynamicFieldId};
+    EXPECT_THROW(frame.block("atoms").insert("x", scalar), cpu::column_error);
+    frame.block("atoms").insert("rho", scalar);
+    EXPECT_THROW(frame.block("atoms").insert("rho", scalar), cpu::column_error);
+    EXPECT_THROW(
+        frame.block("atoms").insert(
+            "bad", cpu::ColumnSpec{ColDType::Storage, 0, ColGroup::Core, 0,
+                                   kColNone, kDynamicFieldId}),
+        std::invalid_argument);
 }
 
 TEST(FrameRegistry, ExchangedExtensionColumnRidesThePayload) {
     cpu::Frame a(2);
-    a.insert("rho", ColDType::Storage, 2, /*migrates=*/true,
-             /*exchanged=*/true);
-    auto rho = a.span(ColKey<StorageReal>{"atoms", "rho"});
+    const ColKey<StorageReal> rho_key{"atoms", "rho", kDynamicFieldId,
+                                      ColDType::Storage};
+    const cpu::ColumnSpec rho_spec{
+        ColDType::Storage, 2, ColGroup::Core, 0, kColMigrate | kColExchange,
+        kDynamicFieldId};
+    a.block("atoms").insert("rho", rho_spec);
+    auto rho = a.span(rho_key);
     rho(1, 0) = 3.5;
     rho(1, 1) = 4.5;
-    a.atoms.x[1] = 9.0;
+    a.span(ATV::kAtom_x)[1] = 9.0;
 
     cpu::Frame b(2); // same extras layout on the receiving side (SPMD)
-    b.insert("rho", ColDType::Storage, 2, true, true);
+    b.block("atoms").insert("rho", rho_spec);
 
-    std::vector<double> buf(
-        static_cast<std::size_t>(cpu::comm::max_exchange_doubles(a.atoms)));
-    const int packed = cpu::comm::pack_exchange(a.atoms, 1, buf.data());
-    const int unpacked = cpu::comm::unpack_exchange(b.atoms, 0, buf.data());
+    auto send_plan = cpu::comm::make_exchange_plan(a);
+    auto recv_plan = cpu::comm::make_exchange_plan(b);
+    std::vector<std::byte> buf(cpu::comm::max_exchange_bytes(a, send_plan));
+    const auto packed =
+        cpu::comm::pack_exchange(a, send_plan, 1, buf.data(), buf.size());
+    const auto unpacked =
+        cpu::comm::unpack_exchange(b, recv_plan, 0, buf.data(), packed);
     EXPECT_EQ(packed, unpacked);
     EXPECT_LE(packed, static_cast<int>(buf.size()));
 
-    EXPECT_EQ(b.atoms.x[0], StorageReal(9.0));
-    auto rho_b = b.span(ColKey<StorageReal>{"atoms", "rho"});
+    EXPECT_EQ(b.span(ATV::kAtom_x)[0], StorageReal(9.0));
+    auto rho_b = b.span(rho_key);
     EXPECT_EQ(rho_b(0, 0), StorageReal(3.5));
     EXPECT_EQ(rho_b(0, 1), StorageReal(4.5));
 }
@@ -148,24 +184,26 @@ TEST(FrameRegistry, ExchangedExtensionColumnRidesThePayload) {
 
 TEST(FrameRegistry, MetaViewsAliasTheLiveBookkeeping) {
     cpu::Frame frame(5);
-    EXPECT_EQ(std::get<std::int64_t>(frame.meta("nlocal")), 5);
-    frame.set_meta("nlocal", cpu::MetaValue{std::int64_t{3}});
-    EXPECT_EQ(frame.atoms.nlocal, 3); // the view routes to the member
+    EXPECT_EQ(frame.meta.get(kNLocal), 5);
+    frame.set_nlocal(3);
+    EXPECT_EQ(frame.meta.get(kNLocal), 3);
 
-    frame.scalars.energy = -1.25;
-    EXPECT_EQ(std::get<double>(frame.meta("energy")), -1.25);
-    frame.set_meta("energy", cpu::MetaValue{-2.5});
-    EXPECT_EQ(frame.scalars.energy, -2.5);
+    frame.meta.get(ATV::kEnergy) = -1.25;
+    EXPECT_EQ(frame.meta.get(kEnergy), -1.25);
+    frame.meta.set(kEnergy, -2.5);
+    EXPECT_EQ(frame.meta.get(ATV::kEnergy), -2.5);
 }
 
 TEST(FrameRegistry, MetaOwnedEntriesAndErrors) {
     cpu::Frame frame(1);
-    EXPECT_FALSE(frame.has_meta("note"));
-    frame.set_meta("note", cpu::MetaValue{std::string("equilibrated")});
-    EXPECT_TRUE(frame.has_meta("note"));
-    EXPECT_EQ(std::get<std::string>(frame.meta("note")), "equilibrated");
-    EXPECT_TRUE(frame.has_meta("nlocal"));
-    EXPECT_THROW(frame.meta("absent"), std::out_of_range);
+    constexpr MetaKey<std::string> note{"note", true};
+    constexpr MetaKey<std::string> absent{"absent", true};
+    EXPECT_FALSE(frame.meta.contains(note.key));
+    frame.meta.insert(note, std::string("equilibrated"));
+    EXPECT_TRUE(frame.meta.contains(note.key));
+    EXPECT_EQ(frame.meta.get(note), "equilibrated");
+    EXPECT_TRUE(frame.meta.contains(kNLocal.key));
+    EXPECT_THROW(frame.meta.get(absent), cpu::meta_error);
 }
 
 // ── Resolution discipline (ac-003) ──────────────────────────────────────────
@@ -190,18 +228,17 @@ namespace {
 
 /// @brief A component that breaks the 13.7× rule on purpose: resolves a key
 ///        per "atom" inside its loop.
-class KeyLookupInALoop : public cpu::ComponentBase {
+class KeyLookupInALoop : public cpu::Component {
   public:
     std::string name() const override { return "key_lookup_in_a_loop"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Energy; }
+    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext& ctx) override {
         double acc = 0.0;
         for (int i = 0; i < 100; ++i) {
             auto x = ctx.frame.span(kAtom_x); // WRONG: inside the loop
             acc += x[0];
         }
-        ctx.frame.scalars.energy = acc;
+        ctx.frame.meta.get(ATV::kEnergy) = acc;
     }
 };
 
@@ -213,4 +250,58 @@ TEST(FrameRegistry, DriverTripsTheViolatingComponent) {
     eval.on(evaluate::Phase::evaluate).add(KeyLookupInALoop{});
     eval.build();
     EXPECT_THROW(eval.run(frame), std::logic_error);
+}
+
+// ── Generation-aware stale handles (frame-block-04 ac-010) ─────────────────
+
+TEST(FrameRegistry, SpanStalesAfterCapacityGrow) {
+    cpu::Frame frame(2);
+    auto x = frame.span(kAtom_x);
+    x[0] = 1.0;
+    EXPECT_FALSE(x.stale());
+    frame.grow(frame.capacity() + 8);
+    EXPECT_TRUE(x.stale());
+    EXPECT_THROW(x[0], cpu::stale_handle_error);
+    // Fresh resolution is valid again.
+    auto x2 = frame.span(kAtom_x);
+    EXPECT_FALSE(x2.stale());
+    EXPECT_EQ(x2[0], StorageReal(1.0));
+}
+
+TEST(FrameRegistry, SpanStalesAfterRuntimeColumnInsert) {
+    cpu::Frame frame(3);
+    auto x = frame.span(kAtom_x);
+    frame.block("atoms").insert(
+        "rho", cpu::ColumnSpec{ColDType::Storage, 1, ColGroup::Core, 0,
+                               kColNone, kDynamicFieldId});
+    EXPECT_TRUE(x.stale());
+    EXPECT_THROW(static_cast<void>(x.data()), cpu::stale_handle_error);
+}
+
+TEST(FrameRegistry, SpanStalesAfterTopologyRestride) {
+    cpu::Frame frame(2);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, 2);
+    auto bond_atom = frame.span(kAtom_bond_atom);
+    EXPECT_EQ(bond_atom.cols(), 0);
+    frame.add_bond(0, 1, 0); // grows topology column width
+    EXPECT_TRUE(bond_atom.stale());
+    EXPECT_THROW(bond_atom(0, 0), cpu::stale_handle_error);
+    auto bond2 = frame.span(kAtom_bond_atom);
+    EXPECT_FALSE(bond2.stale());
+    EXPECT_GE(bond2.cols(), 1);
+}
+
+TEST(FrameRegistry, MetaRefStalesAfterMetaInsert) {
+    cpu::Frame frame(2);
+    auto e = frame.meta.ref(kEnergy);
+    e.get() = 1.25;
+    EXPECT_FALSE(e.stale());
+    constexpr MetaKey<double> kExtra{"test_extra_meta", true};
+    frame.meta.insert(kExtra, 0.0);
+    EXPECT_TRUE(e.stale());
+    EXPECT_THROW(e.get(), cpu::stale_handle_error);
+    auto e2 = frame.meta.ref(kEnergy);
+    EXPECT_FALSE(e2.stale());
+    EXPECT_EQ(e2.get(), 1.25);
 }

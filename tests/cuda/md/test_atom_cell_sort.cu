@@ -19,8 +19,8 @@
 #include <gtest/gtest.h>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame/atom.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/frame/transfer.cuh"
@@ -31,14 +31,14 @@
 
 using namespace ATV;
 using ATV::cuda::real_t;
+using ATV::cuda::md::nlist::apply_permutation_owned;
 using ATV::cuda::md::nlist::AtomCellSortBuffers;
 using ATV::cuda::md::nlist::cell_sort_owned;
-using ATV::cuda::md::nlist::apply_permutation_owned;
 
 namespace {
 
-// Fixture topology strides — set on the frame via reserve_topology (the
-// cpu::Atom strides are runtime values now, sized to the actual topology).
+// Fixture topology strides — set on the frame via reserve_topology
+// (per-atom topology column widths are runtime values now).
 constexpr int MB = 6;
 constexpr int MA = 6;
 constexpr int MD = 8;
@@ -53,61 +53,86 @@ cpu::Frame make_bonded_lattice(int n_side, double spacing) {
     const double box_len = double(n_side) * spacing;
 
     cpu::Frame frame(n);
-    auto& a = frame.atoms;
-    // This fixture populates the wide bonded SoA directly (not via add_bond),
-    // so size the atom_style-molecular storage explicitly before writing.
-    a.reserve_topology(MB, MA, MD, MS);
+    // Populate the wide bonded SoA directly (not via add_bond), so size the
+    // molecular storage explicitly before writing.
+    frame.reserve_topology(MB, MA, MD, MS);
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    auto vx = frame.span(kAtom_vx);
+    auto vy = frame.span(kAtom_vy);
+    auto vz = frame.span(kAtom_vz);
+    auto fx = frame.span(kAtom_fx);
+    auto fy = frame.span(kAtom_fy);
+    auto fz = frame.span(kAtom_fz);
+    auto mass = frame.span(kAtom_mass);
+    auto charge = frame.span(kAtom_charge);
+    auto type = frame.span(kAtom_type);
+    auto tag = frame.span(kAtom_tag);
+    auto image = frame.span(kAtom_image);
+    auto num_bond = frame.span(kAtom_num_bond);
+    auto bond_atom = frame.span(kAtom_bond_atom);
+    auto bond_type = frame.span(kAtom_bond_type);
+    auto num_angle = frame.span(kAtom_num_angle);
+    auto angle_atom = frame.span(kAtom_angle_atom);
+    auto angle_type = frame.span(kAtom_angle_type);
+    auto num_dihedral = frame.span(kAtom_num_dihedral);
+    auto dihedral_atom = frame.span(kAtom_dihedral_atom);
+    auto dihedral_type = frame.span(kAtom_dihedral_type);
+    auto nspecial = frame.span(kAtom_nspecial);
+    auto special = frame.span(kAtom_special);
+
     int idx = 0;
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                a.x[idx] = (double(ix) + 0.5) * spacing;
-                a.y[idx] = (double(iy) + 0.5) * spacing;
-                a.z[idx] = (double(iz) + 0.5) * spacing;
-                a.vx[idx] = 0.1 * idx;
-                a.vy[idx] = 0.2 * idx;
-                a.vz[idx] = 0.3 * idx;
-                a.fx[idx] = -0.1 * idx;
-                a.fy[idx] = -0.2 * idx;
-                a.fz[idx] = -0.3 * idx;
-                a.mass[idx] = 1.0 + 0.01 * idx;
-                a.charge[idx] = (idx % 2 == 0) ? 0.5 : -0.5;
-                a.type[idx] = idx % 3;
-                a.tag[idx] = idx; // identity tags
-                a.image(idx, 0) = static_cast<std::int8_t>(idx % 3 - 1);
-                a.image(idx, 1) = static_cast<std::int8_t>(idx % 5 - 2);
-                a.image(idx, 2) = static_cast<std::int8_t>(idx % 7 - 3);
+                x[idx] = (double(ix) + 0.5) * spacing;
+                y[idx] = (double(iy) + 0.5) * spacing;
+                z[idx] = (double(iz) + 0.5) * spacing;
+                vx[idx] = 0.1 * idx;
+                vy[idx] = 0.2 * idx;
+                vz[idx] = 0.3 * idx;
+                fx[idx] = -0.1 * idx;
+                fy[idx] = -0.2 * idx;
+                fz[idx] = -0.3 * idx;
+                mass[idx] = 1.0 + 0.01 * idx;
+                charge[idx] = (idx % 2 == 0) ? 0.5 : -0.5;
+                type[idx] = idx % 3;
+                tag[idx] = idx; // identity tags
+                image(idx, 0) = static_cast<std::int8_t>(idx % 3 - 1);
+                image(idx, 1) = static_cast<std::int8_t>(idx % 5 - 2);
+                image(idx, 2) = static_cast<std::int8_t>(idx % 7 - 3);
 
                 // Bonded SoA — partner tags are deterministic in idx so any
                 // mispermutation across arrays is observable. (Values need
                 // not form a physically valid topology for this primitive.)
-                const std::int64_t t = idx;
-                a.num_bond[idx] = 2;
+                const TagInt t = static_cast<TagInt>(idx);
+                num_bond[idx] = 2;
                 for (int m = 0; m < MB; ++m) {
-                    a.bond_atom(idx, m) = t * 100 + m;
-                    a.bond_type(idx, m) = idx % 4 + m;
+                    bond_atom(idx, m) = t * 100 + m;
+                    bond_type(idx, m) = idx % 4 + m;
                 }
-                a.num_angle[idx] = 1;
+                num_angle[idx] = 1;
                 for (int m = 0; m < MA; ++m) {
-                    a.angle_atom(idx, 2 * m + 0) = t * 200 + 2 * m;
-                    a.angle_atom(idx, 2 * m + 1) = t * 200 + 2 * m + 1;
-                    a.angle_type(idx, m) = idx % 5 + m;
+                    angle_atom(idx, 2 * m + 0) = t * 200 + 2 * m;
+                    angle_atom(idx, 2 * m + 1) = t * 200 + 2 * m + 1;
+                    angle_type(idx, m) = idx % 5 + m;
                 }
-                a.num_dihedral[idx] = 1;
+                num_dihedral[idx] = 1;
                 for (int m = 0; m < MD; ++m) {
-                    a.dihedral_atom(idx, 3 * m + 0) = t * 300 + 3 * m;
-                    a.dihedral_atom(idx, 3 * m + 1) = t * 300 + 3 * m + 1;
-                    a.dihedral_atom(idx, 3 * m + 2) = t * 300 + 3 * m + 2;
-                    a.dihedral_type(idx, m) = idx % 6 + m;
+                    dihedral_atom(idx, 3 * m + 0) = t * 300 + 3 * m;
+                    dihedral_atom(idx, 3 * m + 1) = t * 300 + 3 * m + 1;
+                    dihedral_atom(idx, 3 * m + 2) = t * 300 + 3 * m + 2;
+                    dihedral_type(idx, m) = idx % 6 + m;
                 }
-                a.nspecial(idx, 0) = 1;
-                a.nspecial(idx, 1) = 2;
-                a.nspecial(idx, 2) = 3;
+                nspecial(idx, 0) = 1;
+                nspecial(idx, 1) = 2;
+                nspecial(idx, 2) = 3;
                 for (int m = 0; m < MS; ++m)
-                    a.special(idx, m) = t * 400 + m;
+                    special(idx, m) = t * 400 + m;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -186,8 +211,7 @@ TEST_F(AtomCellSort, ConsistentPermutationAndSortedByCell) {
     // (c) cell index non-decreasing across sorted rows.
     int prev_cell = -1;
     for (int k = 0; k < n; ++k) {
-        int cell =
-            host_cell_of(h_x[k], h_y[k], h_z[k], L, dim);
+        int cell = host_cell_of(h_x[k], h_y[k], h_z[k], L, dim);
         EXPECT_GE(cell, prev_cell) << "row " << k << " out of cell order";
         prev_cell = cell;
     }

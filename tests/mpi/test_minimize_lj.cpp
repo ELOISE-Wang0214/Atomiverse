@@ -31,21 +31,21 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
 namespace {
 
-constexpr double kEps = 0.0104;  // [eV]
-constexpr double kSigma = 3.4;   // [Å]
-constexpr double kCut = 6.0;     // [Å]
-constexpr int kCells = 5;        // 5×5×5 FCC cells → 500 atoms
-constexpr double kALat = 5.3;    // [Å]
+constexpr double kEps = 0.0104; // [eV]
+constexpr double kSigma = 3.4;  // [Å]
+constexpr double kCut = 6.0;    // [Å]
+constexpr int kCells = 5;       // 5×5×5 FCC cells → 500 atoms
+constexpr double kALat = 5.3;   // [Å]
 
 cpu::Frame make_fcc_argon(double perturb_amp) {
     const int n = kCells * kCells * kCells * 4;
@@ -65,26 +65,23 @@ cpu::Frame make_fcc_argon(double perturb_amp) {
             for (int iz = 0; iz < kCells; ++iz)
                 for (int b = 0; b < 4; ++b) {
                     // Deterministic, rank-count-independent perturbation.
-                    const double px =
-                        perturb_amp * std::sin(1.7 * idx + 0.3);
-                    const double py =
-                        perturb_amp * std::cos(2.3 * idx + 1.1);
-                    const double pz =
-                        perturb_amp * std::sin(3.1 * idx + 2.9);
-                    frame.atoms.x[idx] =
+                    const double px = perturb_amp * std::sin(1.7 * idx + 0.3);
+                    const double py = perturb_amp * std::cos(2.3 * idx + 1.1);
+                    const double pz = perturb_amp * std::sin(3.1 * idx + 2.9);
+                    frame.span(ATV::kAtom_x)[idx] =
                         (static_cast<double>(ix) + basis[b][0]) * kALat + shift
                         + px;
-                    frame.atoms.y[idx] =
+                    frame.span(ATV::kAtom_y)[idx] =
                         (static_cast<double>(iy) + basis[b][1]) * kALat + shift
                         + py;
-                    frame.atoms.z[idx] =
+                    frame.span(ATV::kAtom_z)[idx] =
                         (static_cast<double>(iz) + basis[b][2]) * kALat + shift
                         + pz;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(kCells * kALat);
+    frame.simbox = ATV::cpu::Box::cubic(kCells * kALat);
     return frame;
 }
 
@@ -95,12 +92,12 @@ cpu::Frame make_fcc_argon(double perturb_amp) {
 double reference_energy() {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.0);
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     opt.set_optimizer(cpu::minimizer::LBFGS{});
     opt.build();
     opt.run(frame, 1);
-    return frame.scalars.energy;
+    return frame.meta.get(ATV::kEnergy);
 }
 
 } // namespace
@@ -112,10 +109,10 @@ TEST(MinimizeLj, LbfgsRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.08);
 
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::LBFGS lbfgs{}; // lvalue: post-run trace stays readable
-    opt.set_optimizer(lbfgs);
+    opt.set_optimizer_ref(lbfgs);
     opt.build();
 
     // Generous budget: the force criteria are met within ~50 iterations,
@@ -126,11 +123,11 @@ TEST(MinimizeLj, LbfgsRelaxesPerturbedLatticeAnyRankCount) {
 
     ASSERT_FALSE(lbfgs.trace().empty());
     const double e_start = lbfgs.trace().front().energy;
-    const double e_min = frame.scalars.energy;
+    const double e_min = frame.meta.get(ATV::kEnergy);
 
-    EXPECT_LT(iters, budget) << "LBFGS failed to converge in " << budget
-                             << " iterations (max_force="
-                             << lbfgs.max_force() << ")";
+    EXPECT_LT(iters, budget)
+        << "LBFGS failed to converge in " << budget
+        << " iterations (max_force=" << lbfgs.max_force() << ")";
     // The LOOP knows it converged, not the optimizer: LBFGS publishes metrics, a
     // ForceConverged handler judges them. `LBFGS::converged()` is gone.
     EXPECT_TRUE(opt.converged());
@@ -145,10 +142,10 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.05);
 
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::CG cg{};
-    opt.set_optimizer(cg);
+    opt.set_optimizer_ref(cg);
     opt.build();
 
     const int budget = 1000;
@@ -156,11 +153,11 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
 
     ASSERT_FALSE(cg.trace().empty());
     const double e_start = cg.trace().front().energy;
-    const double e_min = frame.scalars.energy;
+    const double e_min = frame.meta.get(ATV::kEnergy);
 
-    EXPECT_LT(iters, budget) << "CG failed to converge in " << budget
-                             << " iterations (max_force=" << cg.max_force()
-                             << ")";
+    EXPECT_LT(iters, budget)
+        << "CG failed to converge in " << budget
+        << " iterations (max_force=" << cg.max_force() << ")";
     EXPECT_TRUE(opt.converged());
     EXPECT_LT(e_min, e_start) << "energy did not decrease";
     EXPECT_LT(std::abs(e_min - e_ref) / std::abs(e_ref), 1e-3)

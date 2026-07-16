@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_scf_evaluator_no_alloc.cpp
-/// @brief Phase 4 — assert that `SCFEvaluator::launch()` allocates the
+/// @brief Phase 4 — assert that `SCF::launch()` allocates the
 ///        same number of times across steady-state launches.
 ///
 /// The MD-side equivalent (`tests/cpu/test_md_no_alloc.cpp`) asserts
@@ -46,7 +46,7 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 #if defined(__GLIBC__) && defined(__linux__)
 #define ATV_TEST_HAVE_MALLOC_HOOK 1
@@ -97,12 +97,17 @@ namespace {
 
 ATV::cpu::Frame make_h2() {
     ATV::cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.74};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = ATV::Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.74;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -121,7 +126,7 @@ uint64_t armed_launch_count(ATV::cpu::md::MD& sim, ATV::cpu::Frame& frame) {
 
 } // namespace
 
-TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
+TEST(SCFNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
 #ifndef ATV_TEST_HAVE_MALLOC_HOOK
     GTEST_SKIP() << "malloc-hook unavailable on this platform "
                  << "(__GLIBC__ + __linux__ required); the constant-count "
@@ -137,7 +142,7 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.on(ATV::md::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
+    sim.on(ATV::md::Phase::force).add(cpu::scf::SCF{cfg});
     sim.build();
 
     // Warm-up: lets thread pools, xtensor caches, persistent-solver
@@ -147,7 +152,7 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
 
     // Take a window of armed measurements. The original contract
     // asserted exact equality launch-to-launch; that held only while
-    // SCFEvaluator constructed a transient SCFSolver per launch (an
+    // SCF constructed a transient SCFSolver per launch (an
     // identical cold-start allocation sequence every time). The
     // pre-built persistent solver (no-alloc-in-launch rule) carries
     // vector capacities and DIIS history across launches, and OpenMP
@@ -175,8 +180,7 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
     // monotonically across 12 probes; scheduler wobble stays within a
     // few allocations of the floor.
     EXPECT_LE(hi - lo, lo / 20)
-        << "per-launch alloc spread exceeds 5%: min=" << lo
-        << " max=" << hi;
+        << "per-launch alloc spread exceeds 5%: min=" << lo << " max=" << hi;
     EXPECT_LE(mean_last, mean_first * 1.02)
         << "per-launch alloc count trends upward: first-half mean="
         << mean_first << " last-half mean=" << mean_last;

@@ -2,7 +2,7 @@
 /// @brief Isolated unit tests for DIIS extrapolator and ASPC predictor.
 ///
 /// These SCF accelerators are currently only tested transitively through
-/// scf_solve convergence; this file adds direct, isolated verification
+/// SCFSolver::run convergence; this file adds direct, isolated verification
 /// of their internal mechanics.
 
 #ifdef ATV_HAS_RHF
@@ -138,7 +138,8 @@ LevelShiftFixture make_level_shift_fixture() {
     RealMatrix C(xt::linalg::dot(Linv_t, Q));
 
     RealMatrix E = xt::zeros<double>({3, 3});
-    for (int i = 0; i < 3; ++i) E(i, i) = fx.eps(i);
+    for (int i = 0; i < 3; ++i)
+        E(i, i) = fx.eps(i);
     RealMatrix SC(xt::linalg::dot(fx.S, C));
     RealMatrix SCE(xt::linalg::dot(SC, E));
     fx.F = xt::linalg::dot(SCE, xt::transpose(SC));
@@ -156,9 +157,10 @@ TEST(LevelShift, VirtualsShiftByLambdaOccupiedFixed) {
     auto fx = make_level_shift_fixture();
 
     // Fixture self-check: unshifted spectrum reproduces ε.
-    auto [eig0, C0] = ATV::cpu::linalg::diagonalize_fock_generalized(fx.F,
-                                                                     fx.S);
-    for (int i = 0; i < 3; ++i) EXPECT_NEAR(eig0(i), fx.eps(i), 1e-12);
+    auto [eig0, C0] =
+        ATV::cpu::linalg::diagonalize_fock_generalized(fx.F, fx.S);
+    for (int i = 0; i < 3; ++i)
+        EXPECT_NEAR(eig0(i), fx.eps(i), 1e-12);
 
     const double lambda = 0.37;
     RealMatrix F_shift = ATV::cpu::scf::internal::apply_level_shift(
@@ -174,10 +176,11 @@ TEST(LevelShift, VirtualsShiftByLambdaOccupiedFixed) {
 // |λ| <= 1e-4 is a strict element-wise no-op (PySCF skip rule).
 TEST(LevelShift, SkipThresholdIsElementwiseIdentity) {
     auto fx = make_level_shift_fixture();
-    RealMatrix F_out = ATV::cpu::scf::internal::apply_level_shift(
-        fx.F, fx.S, fx.D_occ, 1e-4);
+    RealMatrix F_out =
+        ATV::cpu::scf::internal::apply_level_shift(fx.F, fx.S, fx.D_occ, 1e-4);
     for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) EXPECT_EQ(F_out(i, j), fx.F(i, j));
+        for (int j = 0; j < 3; ++j)
+            EXPECT_EQ(F_out(i, j), fx.F(i, j));
 }
 
 #endif // ATV_HAS_RHF

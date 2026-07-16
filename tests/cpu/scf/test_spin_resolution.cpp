@@ -40,8 +40,6 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
@@ -62,36 +60,51 @@ constexpr double kEnergyTol = 1e-8;
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // O at origin; H atoms in the xz plane.
-    f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.0, 0.0};
-    f.atoms.z = {0.0, -0.5860, -0.5860};
-    f.atoms.type = {8, 1, 1}; // O, H, H
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7572;
+    f.span(ATV::kAtom_x)[2] = -0.7572;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_y)[2] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = -0.5860;
+    f.span(ATV::kAtom_z)[2] = -0.5860;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1; // O, H, H
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 /// Hydroxide geometry (Angstrom): O at origin, H at (0, 0, 0.97).
 cpu::Frame make_oh() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.0};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.97};
-    f.atoms.type = {8, 1}; // O, H
-    f.atoms.mass = {15.999, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.97;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1; // O, H
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 /// Single oxygen atom.
 cpu::Frame make_o_atom() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.type = {8}; // O
-    f.atoms.mass = {15.999};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 8; // O
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -234,7 +247,7 @@ TEST(SpinResolution, FeedsUksConfigRawCounts) {
 // truncates (n_occ() = n_electrons / 2 -> n_alpha + n_beta = N_e - 1); the
 // solver entry guard must now reject it before any SCF iteration runs.
 // tutorial ch02 "Closed-shell validity" worked example (H2O+ via
-// rhf_config/rhf_solve throws); regression anchor
+// rhf_config/SCFSolver::run throws); regression anchor
 // test_cpu_scf_spin_resolution (ac-003, ac-008).
 TEST(SCFSolverGuard, OddElectronRhfThrows) {
     auto frame = make_h2o();
@@ -242,12 +255,11 @@ TEST(SCFSolverGuard, OddElectronRhfThrows) {
                                           /*charge=*/+1);
     ASSERT_EQ(ints.n_electrons, 9) << "H2O+: 10 - 1 = 9 electrons";
 
-    // Legacy convenience wrapper path.
-    EXPECT_THROW(cpu::scf::rhf_solve(ints, /*tol=*/1e-10, /*max_iter=*/100),
-                 std::invalid_argument);
-    // Unified-config path (equivalent choke point: SCFSolver::run).
-    EXPECT_THROW(cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints)),
-                 std::invalid_argument);
+    auto cfg = cpu::scf::rhf_config(ints, 1e-10);
+    cfg.max_iter = 100;
+    cpu::scf::SCFSolver solver{cfg};
+    solver.build(ints);
+    EXPECT_THROW(solver.run(ints), std::invalid_argument);
 }
 
 // ac-004(a): guard condition 2 — n_alpha + n_beta != integrals.n_electrons.
@@ -258,7 +270,9 @@ TEST(SCFSolverGuard, OccupationSumMismatchThrows) {
     ASSERT_EQ(ints.n_electrons, 10);
 
     const auto cfg = cpu::scf::uhf_config(ints, 5, 4); // sum = 9 != 10
-    EXPECT_THROW(cpu::scf::scf_solve(ints, cfg), std::invalid_argument);
+    cpu::scf::SCFSolver solver{cfg};
+    solver.build(ints);
+    EXPECT_THROW(solver.run(ints), std::invalid_argument);
 }
 
 // Guard condition 1 triggered independently: negative occupation count with
@@ -272,7 +286,9 @@ TEST(SCFSolverGuard, NegativeOccupationThrows) {
     auto cfg = cpu::scf::uhf_config(ints, 5, 5);
     cfg.n_alpha = -1;
     cfg.n_beta = 11;
-    EXPECT_THROW(cpu::scf::scf_solve(ints, cfg), std::invalid_argument);
+    cpu::scf::SCFSolver solver{cfg};
+    solver.build(ints);
+    EXPECT_THROW(solver.run(ints), std::invalid_argument);
 }
 
 // ac-004(b): guard condition 3 triggered independently — Restricted spin
@@ -288,7 +304,9 @@ TEST(SCFSolverGuard, RestrictedOpenShellThrows) {
     auto cfg = cpu::scf::rhf_config(ints); // spin = Restricted, method = HF
     cfg.n_alpha = 5;
     cfg.n_beta = 4;
-    EXPECT_THROW(cpu::scf::scf_solve(ints, cfg), std::invalid_argument);
+    cpu::scf::SCFSolver solver{cfg};
+    solver.build(ints);
+    EXPECT_THROW(solver.run(ints), std::invalid_argument);
 }
 
 // ac-004(c): the guard must have ZERO behavioural impact on valid runs —
@@ -305,7 +323,9 @@ TEST(SCFSolverGuard, NeutralH2ORhfEnergyMatchesBaseline) {
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     ASSERT_EQ(ints.n_electrons, 10);
 
-    const auto result = cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints)};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged) << "H2O / STO-3G RHF should converge";
     EXPECT_NEAR(result.energy, kH2ORhfSto3gPreChange, kEnergyTol)
         << "Guard must not perturb the valid closed-shell path "

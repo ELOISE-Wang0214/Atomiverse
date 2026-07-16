@@ -41,7 +41,7 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
 // ─── CUDA component stubs ───────────────────────────────────────────
 
 /// @brief Integrator-role stub. No default bindings — bound explicitly.
-class StubIntegrator : public ATV::cuda::ComponentBase {
+class StubIntegrator : public ATV::cuda::Component {
   public:
     std::string name() const override { return "stub_integrator"; }
     ATV::ComponentRole role() const override {
@@ -51,7 +51,7 @@ class StubIntegrator : public ATV::cuda::ComponentBase {
 };
 
 /// @brief Evaluator-role stub advertising `Energy | Force`.
-class StubForceEvaluator : public ATV::cuda::ComponentBase {
+class StubForceEvaluator : public ATV::cuda::Component {
   public:
     std::string name() const override { return "stub_force"; }
     ATV::ComponentRole role() const override {
@@ -64,7 +64,7 @@ class StubForceEvaluator : public ATV::cuda::ComponentBase {
 };
 
 /// @brief Evaluator-role stub advertising only `Energy` (no `Force`).
-class StubEnergyEvaluator : public ATV::cuda::ComponentBase {
+class StubEnergyEvaluator : public ATV::cuda::Component {
   public:
     std::string name() const override { return "stub_energy"; }
     ATV::ComponentRole role() const override {
@@ -77,7 +77,7 @@ class StubEnergyEvaluator : public ATV::cuda::ComponentBase {
 };
 
 /// @brief Optimizer-role stub.
-class StubOptimizer : public ATV::cuda::ComponentBase {
+class StubOptimizer : public ATV::cuda::Component {
   public:
     std::string name() const override { return "stub_optimizer"; }
     ATV::ComponentRole role() const override {
@@ -87,7 +87,7 @@ class StubOptimizer : public ATV::cuda::ComponentBase {
 };
 
 /// @brief `role()` defaults to `None` — structural-only stub.
-class StubBareInfra : public ATV::cuda::ComponentBase {
+class StubBareInfra : public ATV::cuda::Component {
   public:
     std::string name() const override { return "stub_bare"; }
     void launch(const ATV::cuda::LaunchContext&) override {}

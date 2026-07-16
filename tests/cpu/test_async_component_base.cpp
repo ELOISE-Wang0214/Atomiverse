@@ -18,9 +18,9 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/async/analysis_executor.h"
 #include "atomiverse/cpu/async/async_component_base.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/async/frame_snapshot.h"
 #include "atomiverse/cpu/async/async_observer.h"
+#include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
@@ -38,16 +38,16 @@ namespace {
 cpu::Frame make_tiny(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = 0.1 * i;
-        frame.atoms.mass[i] = 1.0;
+        frame.span(ATV::kAtom_x)[i] = 0.1 * i;
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.box = Mat3::cubic(10.0);
+    frame.simbox = ATV::cpu::Box::cubic(10.0);
     return frame;
 }
 
 /// @brief Records caller thread and fire counts for analysis-thread assertions.
 ///
-/// Uses `cpu::md::AsyncObserver` so `sim.add(rec)` picks up the MD
+/// Uses `cpu::md::AsyncObserver` so `sim.add_ref(rec)` picks up the MD
 /// default binding (`md::Phase::end_of_step @ +20`).
 class ThreadRecorder : public cpu::md::AsyncObserver {
   public:
@@ -94,13 +94,13 @@ TEST(AsyncComponentBase, OnSnapshotRunsOnAnalysisThread) {
     auto frame = make_tiny(8);
     std::thread::id main_id = std::this_thread::get_id();
 
-    // `rec` MUST outlive `sim`: Driver::add(lvalue) is non-owning.
+    // `rec` MUST outlive `sim`: Driver::add_ref is explicitly non-owning.
     ThreadRecorder rec;
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(rec);
+    sim.add_ref(rec);
     sim.build();
     sim.run(frame, 5); // step >= 1 needed for publisher to fire
 
@@ -121,7 +121,7 @@ TEST(AsyncComponentBase, FrequencyRespected) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(rec);
+    sim.add_ref(rec);
     sim.build();
     sim.run(frame, 20);
 
@@ -140,7 +140,7 @@ TEST(AsyncComponentBase, FinalizeCalledOnce) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
         sim.add(NoOpForce{});
-        sim.add(rec);
+        sim.add_ref(rec);
         sim.build();
         sim.run(frame, 5);
     } // sim shutdown drains executor and calls finalize() once
@@ -196,7 +196,7 @@ TEST(AsyncComponentBase, MpiAllreduceInOnSnapshotWorks) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
     sim.add(NoOpForce{});
-    sim.add(sub);
+    sim.add_ref(sub);
     sim.build();
     sim.run(frame, 5);
 

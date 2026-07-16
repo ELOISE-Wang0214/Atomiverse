@@ -20,6 +20,7 @@
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_charmm.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
+#include "atomiverse/cpu/potentials/improper_harmonic.h"
 
 using namespace ATV;
 
@@ -55,6 +56,7 @@ cpu::Frame make_perturbed_butane() {
         frame.add_angle(k, k + 1, k + 2, 0);
     }
     frame.add_dihedral(0, 1, 2, 3, 0);
+    frame.add_improper(0, 1, 2, 3, 0);
     frame.build_special_list();
     return frame;
 }
@@ -189,6 +191,21 @@ TEST(PeFdForce, DihedralCharmmPhasePi) {
             cpu::BuildContext bctx{ctx, f};
             cpu::LaunchContext lctx{ctx, f, 0, 0};
             cpu::DihedralCharmm c({0.15}, {1}, {3.141592653589793});
+            c.build(bctx);
+            c.launch(lctx);
+            c.destroy({ctx, f});
+        },
+        1e-6);
+}
+
+TEST(PeFdForce, ImproperHarmonic) {
+    check_kernel(
+        "cpu::ImproperHarmonic",
+        [](cpu::Frame& f) {
+            cpu::Context ctx;
+            cpu::BuildContext bctx{ctx, f};
+            cpu::LaunchContext lctx{ctx, f, 0, 0};
+            cpu::ImproperHarmonic c({0.3}, {0.0});
             c.build(bctx);
             c.launch(lctx);
             c.destroy({ctx, f});

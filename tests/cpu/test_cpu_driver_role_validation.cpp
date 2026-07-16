@@ -1,13 +1,9 @@
 /// @file tests/cpu/test_cpu_driver_role_validation.cpp
-/// @brief Phase 1.5 — assert that the Evaluate / MD / Minimize presets throw at
-///        build() time when their required role + capability set is not
-///        satisfied, and build successfully when it is.
+/// @brief Assert that Evaluate / MD / Minimize throw at build() when their
+///        required kinds are missing, and build successfully when present.
 ///
-/// The category bases these tests used to instantiate (EvaluateDriver /
-/// DynamicsDriver / OptimizeDriver) no longer exist — `validate_components()`
-/// moved down into the presets, which is where the rule was always enforced.
-///
-/// Acceptance: ac-003 in `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
+/// Required energy/force kinds: Potential, Bias, PathCoupling, HF,
+/// Semiempirical, PlaneWave, GPW. There is no Capability write-set.
 
 #include <gtest/gtest.h>
 
@@ -40,7 +36,7 @@ TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutIntegrator) {
     using namespace ATV;
     cpu::md::MD d;
     StubForceEvaluator force;
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::force).add_ref(force);
     try {
         d.build();
         FAIL() << "expected throw — MD missing Integrator";
@@ -49,19 +45,20 @@ TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutIntegrator) {
     }
 }
 
-TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutForceEvaluator) {
+TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutEnergyForceKind) {
     using namespace ATV;
     cpu::md::MD d;
     StubIntegrator integ;
-    StubEnergyEvaluator energy_only;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(energy_only);
+    StubBareInfra bare;
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(bare);
     try {
         d.build();
-        FAIL() << "expected throw — MD missing Force-capable "
-                  "evaluator";
+        FAIL() << "expected throw — MD missing Potential / Bias / HF / …";
     } catch (const std::runtime_error& e) {
-        EXPECT_TRUE(message_mentions(e, "Force")) << e.what();
+        EXPECT_TRUE(message_mentions(e, "Potential")
+                    || message_mentions(e, "Bias") || message_mentions(e, "HF"))
+            << e.what();
     }
 }
 
@@ -70,8 +67,8 @@ TEST(CPUDriverRoleValidation, DynamicsBuildsWithIntegratorAndForce) {
     cpu::md::MD d;
     StubIntegrator integ;
     StubForceEvaluator force;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
     EXPECT_NO_THROW(d.build());
 }
 
@@ -81,7 +78,7 @@ TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutOptimizer) {
     using namespace ATV;
     cpu::minimizer::Minimize o;
     StubForceEvaluator force;
-    o.on(minimizer::Phase::force).add(force);
+    o.on(minimizer::Phase::force).add_ref(force);
     try {
         o.build();
         FAIL() << "expected throw — Minimize missing Optimizer";
@@ -90,20 +87,19 @@ TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutOptimizer) {
     }
 }
 
-TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceEvaluator) {
+TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceKind) {
     using namespace ATV;
     cpu::minimizer::Minimize o;
     StubOptimizer opt;
     StubBareInfra infra;
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::end_of_step).add(infra);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::end_of_step).add_ref(infra);
     try {
         o.build();
-        FAIL()
-            << "expected throw — Minimize missing Energy/Force evaluator";
+        FAIL() << "expected throw — Minimize missing Potential / Bias / HF / …";
     } catch (const std::runtime_error& e) {
-        EXPECT_TRUE(message_mentions(e, "Energy")
-                    || message_mentions(e, "Force"))
+        EXPECT_TRUE(message_mentions(e, "Potential")
+                    || message_mentions(e, "Bias") || message_mentions(e, "HF"))
             << e.what();
     }
 }
@@ -113,23 +109,26 @@ TEST(CPUDriverRoleValidation, OptimizeBuildsWithOptimizerAndEnergy) {
     cpu::minimizer::Minimize o;
     StubOptimizer opt;
     StubEnergyEvaluator energy;
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::force).add(energy);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::force).add_ref(energy);
     EXPECT_NO_THROW(o.build());
 }
 
 // ─── Evaluate (cpu::Evaluate) ────────────────────────────────────────
 
-TEST(CPUDriverRoleValidation, EvaluateThrowsWithoutEvaluator) {
+TEST(CPUDriverRoleValidation, EvaluateThrowsWithoutEnergyKind) {
     using namespace ATV;
     cpu::Evaluate e;
     StubBareInfra infra;
-    e.on(evaluate::Phase::prepare).add(infra);
+    e.on(evaluate::Phase::prepare).add_ref(infra);
     try {
         e.build();
-        FAIL() << "expected throw — Evaluate missing Evaluator";
+        FAIL() << "expected throw — Evaluate missing Potential / Bias / HF / …";
     } catch (const std::runtime_error& ex) {
-        EXPECT_TRUE(message_mentions(ex, "Evaluator")) << ex.what();
+        EXPECT_TRUE(message_mentions(ex, "Potential")
+                    || message_mentions(ex, "Bias")
+                    || message_mentions(ex, "HF"))
+            << ex.what();
     }
 }
 
@@ -137,6 +136,6 @@ TEST(CPUDriverRoleValidation, EvaluateBuildsWithEnergyEvaluator) {
     using namespace ATV;
     cpu::Evaluate e;
     StubEnergyEvaluator energy;
-    e.on(evaluate::Phase::evaluate).add(energy);
+    e.on(evaluate::Phase::evaluate).add_ref(energy);
     EXPECT_NO_THROW(e.build());
 }

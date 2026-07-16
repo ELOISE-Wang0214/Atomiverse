@@ -12,10 +12,10 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -52,13 +52,13 @@ cpu::Frame make_fcc_argon() {
     const int n = static_cast<int>(x.size());
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = x[i];
-        frame.atoms.y[i] = y[i];
-        frame.atoms.z[i] = z[i];
-        frame.atoms.mass[i] = 39.948; // Ar amu
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x[i];
+        frame.span(ATV::kAtom_y)[i] = y[i];
+        frame.span(ATV::kAtom_z)[i] = z[i];
+        frame.span(ATV::kAtom_mass)[i] = 39.948; // Ar amu
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -78,8 +78,8 @@ TEST(NeighborListRebuild, DelayGateHonoured) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl); // lvalue → non-owning pointer
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_neighbor_ref(nl);
     sim.build();
 
     sim.run(frame, 200);
@@ -101,10 +101,10 @@ TEST(NeighborListRebuild, EveryGateReducesChecks) {
 
     // Give atoms a significant kick so displacement triggers rebuilds
     // whenever the check is actually performed.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        frame.atoms.vx[i] = (i % 3 == 0) ? 0.05 : -0.02;
-        frame.atoms.vy[i] = (i % 3 == 1) ? 0.05 : -0.02;
-        frame.atoms.vz[i] = (i % 3 == 2) ? 0.05 : -0.02;
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        frame.span(ATV::kAtom_vx)[i] = (i % 3 == 0) ? 0.05 : -0.02;
+        frame.span(ATV::kAtom_vy)[i] = (i % 3 == 1) ? 0.05 : -0.02;
+        frame.span(ATV::kAtom_vz)[i] = (i % 3 == 2) ? 0.05 : -0.02;
     }
 
     constexpr double cutoff = 6.8;
@@ -114,8 +114,8 @@ TEST(NeighborListRebuild, EveryGateReducesChecks) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl);
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_neighbor_ref(nl);
     sim.build();
 
     sim.run(frame, 200);
@@ -147,8 +147,8 @@ TEST(NeighborListRebuild, DelayZeroAllowsImmediateRebuild) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl);
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_neighbor_ref(nl);
     sim.build();
 
     sim.run(frame, 100);
@@ -168,11 +168,11 @@ TEST(NeighborListRebuild, NveDriftWithinTolerance) {
     auto frame = make_fcc_argon();
 
     // Small initial kick for non-trivial dynamics.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
+    for (int i = 0; i < frame.nlocal(); ++i) {
         const double sign = (i % 2 == 0) ? +1.0 : -1.0;
-        frame.atoms.vx[i] = sign * 1e-3;
-        frame.atoms.vy[i] = sign * 1e-3;
-        frame.atoms.vz[i] = sign * 1e-3;
+        frame.span(ATV::kAtom_vx)[i] = sign * 1e-3;
+        frame.span(ATV::kAtom_vy)[i] = sign * 1e-3;
+        frame.span(ATV::kAtom_vz)[i] = sign * 1e-3;
     }
 
     constexpr double cutoff = 6.8;
@@ -182,16 +182,18 @@ TEST(NeighborListRebuild, NveDriftWithinTolerance) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl);
+    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
+    sim.set_neighbor_ref(nl);
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e0 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     ASSERT_GT(std::abs(e0), 0.0) << "initial energy must be nonzero";
 
     sim.run(frame, 999);
-    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
+    const double e1 =
+        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-4)

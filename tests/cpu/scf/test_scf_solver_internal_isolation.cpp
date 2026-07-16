@@ -4,7 +4,7 @@
 ///
 /// Two enforced invariants:
 ///   1. **Static-assert level**: no internal helper inherits
-///      `cpu::ComponentBase`. (Compile-time guarantee that they cannot be
+///      `cpu::Component`. (Compile-time guarantee that they cannot be
 ///      registered into any outer Plan.)
 ///   2. **Header-include level**: no header outside
 ///      `include/atomiverse/cpu/scf/internal/` includes `internal/*.h`.
@@ -33,31 +33,27 @@
 
 using namespace ATV;
 
-// ── Static-assert: internal helpers do not inherit ComponentBase ────
+// ── Static-assert: internal helpers do not inherit Component ────
 
 static_assert(
-    !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::DensityBuilder>,
-    "internal::DensityBuilder must not inherit cpu::ComponentBase");
+    !std::is_base_of_v<cpu::Component, cpu::scf::internal::DensityBuilder>,
+    "internal::DensityBuilder must not inherit cpu::Component");
+static_assert(!std::is_base_of_v<cpu::Component, cpu::scf::internal::DIISMixer>,
+              "internal::DIISMixer must not inherit cpu::Component");
+static_assert(!std::is_base_of_v<cpu::Component,
+                                 cpu::scf::internal::DualConvergenceCheck>,
+              "internal::DualConvergenceCheck must not inherit cpu::Component");
 static_assert(
-    !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::DIISMixer>,
-    "internal::DIISMixer must not inherit cpu::ComponentBase");
+    !std::is_base_of_v<cpu::Component, cpu::scf::internal::EigenSolver>,
+    "internal::EigenSolver must not inherit cpu::Component");
 static_assert(
-    !std::is_base_of_v<cpu::ComponentBase,
-                       cpu::scf::internal::DualConvergenceCheck>,
-    "internal::DualConvergenceCheck must not inherit cpu::ComponentBase");
-static_assert(
-    !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::EigenSolver>,
-    "internal::EigenSolver must not inherit cpu::ComponentBase");
-static_assert(
-    !std::is_base_of_v<cpu::ComponentBase,
-                       cpu::scf::internal::HamiltonianBuilder>,
-    "internal::HamiltonianBuilder must not inherit cpu::ComponentBase");
+    !std::is_base_of_v<cpu::Component, cpu::scf::internal::HamiltonianBuilder>,
+    "internal::HamiltonianBuilder must not inherit cpu::Component");
 
 TEST(SCFSolverInternalIsolation, NotComponentBaseSubclasses) {
     // The static_asserts above are the load-bearing check; this test exists
     // so ctest reports a single named pass on this invariant.
-    SUCCEED()
-        << "static_assert: no internal helper inherits cpu::ComponentBase";
+    SUCCEED() << "static_assert: no internal helper inherits cpu::Component";
 }
 
 // ── Grep gate: facade-public headers must not include internal/*.h ──

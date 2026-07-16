@@ -18,7 +18,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -27,29 +27,41 @@ namespace {
 // H2O / spec geometry (Angstrom): O(0,0,0.1173), H(0,+-0.7572,-0.4692).
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {0.0, 0.7572, -0.7572};
-    f.atoms.z = {0.1173, -0.4692, -0.4692};
-    f.atoms.type = {8, 1, 1};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.7572;
+    f.span(ATV::kAtom_y)[2] = -0.7572;
+    f.span(ATV::kAtom_z)[0] = 0.1173;
+    f.span(ATV::kAtom_z)[1] = -0.4692;
+    f.span(ATV::kAtom_z)[2] = -0.4692;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.type = {2};
-    f.atoms.mass = {4.0026};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 2;
+    f.span(ATV::kAtom_mass)[0] = 4.0026;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
 // Solve a restricted reference and return the unified SCFResult.
 cpu::scf::SCFResult solve_rhf(const cpu::scf::IntegralPack& ints) {
-    return cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints, 1e-12));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints, 1e-12)};
+    solver.build(ints);
+    return solver.run(ints);
 }
 
 } // namespace
@@ -87,8 +99,8 @@ TEST(MP2, Ao2moOvovSymmetry) {
         for (int a = 0; a < n_vir; ++a)
             for (int j = 0; j < n_occ; ++j)
                 for (int b = 0; b < n_vir; ++b)
-                    max_diff = std::max(
-                        max_diff, std::abs(ovov(i, a, j, b) - ovov(j, b, i, a)));
+                    max_diff = std::max(max_diff, std::abs(ovov(i, a, j, b)
+                                                           - ovov(j, b, i, a)));
     EXPECT_LE(max_diff, 1e-12);
 }
 

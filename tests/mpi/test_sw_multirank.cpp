@@ -32,14 +32,15 @@ using namespace ATV;
 
 namespace {
 
+constexpr double kForceTolerance = 1.0e-9;
+
 constexpr double kA0 = 5.431; // diamond Si
 
 /// Distorted diamond silicon — built identically on every rank.
 cpu::Frame silicon(int n_cell) {
-    const double b[8][3] = {{0, 0, 0},          {0.25, 0.25, 0.25},
-                            {0.5, 0.5, 0},      {0.75, 0.75, 0.25},
-                            {0.5, 0, 0.5},      {0.75, 0.25, 0.75},
-                            {0, 0.5, 0.5},      {0.25, 0.75, 0.75}};
+    const double b[8][3] = {
+        {0, 0, 0},     {0.25, 0.25, 0.25}, {0.5, 0.5, 0}, {0.75, 0.75, 0.25},
+        {0.5, 0, 0.5}, {0.75, 0.25, 0.75}, {0, 0.5, 0.5}, {0.25, 0.75, 0.75}};
     const int n = 8 * n_cell * n_cell * n_cell;
     cpu::Frame f(n);
     int idx = 0;
@@ -48,14 +49,17 @@ cpu::Frame silicon(int n_cell) {
             for (int iz = 0; iz < n_cell; ++iz)
                 for (int k = 0; k < 8; ++k) {
                     const double j = 0.10 * std::sin(double(11 * idx + 5));
-                    f.atoms.x[idx] = (double(ix) + b[k][0]) * kA0 + j;
-                    f.atoms.y[idx] = (double(iy) + b[k][1]) * kA0 - 0.6 * j;
-                    f.atoms.z[idx] = (double(iz) + b[k][2]) * kA0 + 0.4 * j;
-                    f.atoms.mass[idx] = 28.0855;
-                    f.atoms.type[idx] = 14;
+                    f.span(ATV::kAtom_x)[idx] =
+                        (double(ix) + b[k][0]) * kA0 + j;
+                    f.span(ATV::kAtom_y)[idx] =
+                        (double(iy) + b[k][1]) * kA0 - 0.6 * j;
+                    f.span(ATV::kAtom_z)[idx] =
+                        (double(iz) + b[k][2]) * kA0 + 0.4 * j;
+                    f.span(ATV::kAtom_mass)[idx] = 28.0855;
+                    f.span(ATV::kAtom_type)[idx] = 14;
                     ++idx;
                 }
-    f.box = Mat3::cubic(kA0 * n_cell);
+    f.simbox = ATV::cpu::Box::cubic(kA0 * n_cell);
     return f;
 }
 
@@ -66,11 +70,11 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    const cpu::SWPotential pot{Element::Si, "stillinger-weber"};
+    const cpu::SWPotential pot{molrs::Element::Si, "stillinger-weber"};
     const double rc = pot.cutoff(); // 3.771 A
     const int n_cell = 3;           // 216 atoms, box 16.3 A
     cpu::Frame frame = silicon(n_cell);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
 
     cpu::md::MD sim;
     sim.set_neighbor(cpu::md::NeighborList<>{rc, 0.3, 1, 0, true});
@@ -98,20 +102,22 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
     std::vector<double> fx(n, 0.0), fy(n, 0.0), fz(n, 0.0);
 
     const auto delta = [&](int i, int j, double& dx, double& dy, double& dz) {
-        dx = ref.atoms.x[i] - ref.atoms.x[j];
-        dy = ref.atoms.y[i] - ref.atoms.y[j];
-        dz = ref.atoms.z[i] - ref.atoms.z[j];
-        ref.box.min_image(dx, dy, dz);
+        dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
+        dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
+        dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
+        ref.simbox.min_image(dx, dy, dz);
     };
 
     for (int i = 0; i < n; ++i) {
         // two-body
         for (int j = 0; j < n; ++j) {
-            if (i == j) continue;
+            if (i == j)
+                continue;
             double dx, dy, dz;
             delta(i, j, dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= rc2) continue;
+            if (r2 >= rc2)
+                continue;
             const double r = std::sqrt(r2);
             const double fpair = -pot.dphi2(r) / r;
             fx[i] += fpair * dx;
@@ -120,18 +126,22 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
         }
         // three-body, vertex at i
         for (int j = 0; j < n; ++j) {
-            if (j == i) continue;
+            if (j == i)
+                continue;
             double ax, ay, az;
             delta(i, j, ax, ay, az);
             const double r1sq = ax * ax + ay * ay + az * az;
-            if (r1sq >= rc2) continue;
+            if (r1sq >= rc2)
+                continue;
             const double r1 = std::sqrt(r1sq);
             for (int k = j + 1; k < n; ++k) {
-                if (k == i) continue;
+                if (k == i)
+                    continue;
                 double bx, by, bz;
                 delta(i, k, bx, by, bz);
                 const double r2sq = bx * bx + by * by + bz * bz;
-                if (r2sq >= rc2) continue;
+                if (r2sq >= rc2)
+                    continue;
                 const double r2 = std::sqrt(r2sq);
 
                 const double g1 = pot.g(r1), g2 = pot.g(r2);
@@ -144,15 +154,25 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
                 const double dE_dr2 = le * dl * dl * g1 * dg2;
                 const double inv = 1.0 / (r1 * r2);
 
-                const double fjx = dE_dr1 * (ax / r1) + dcos * (bx * inv - cs * ax / r1sq);
-                const double fjy = dE_dr1 * (ay / r1) + dcos * (by * inv - cs * ay / r1sq);
-                const double fjz = dE_dr1 * (az / r1) + dcos * (bz * inv - cs * az / r1sq);
-                const double fkx = dE_dr2 * (bx / r2) + dcos * (ax * inv - cs * bx / r2sq);
-                const double fky = dE_dr2 * (by / r2) + dcos * (ay * inv - cs * by / r2sq);
-                const double fkz = dE_dr2 * (bz / r2) + dcos * (az * inv - cs * bz / r2sq);
+                const double fjx =
+                    dE_dr1 * (ax / r1) + dcos * (bx * inv - cs * ax / r1sq);
+                const double fjy =
+                    dE_dr1 * (ay / r1) + dcos * (by * inv - cs * ay / r1sq);
+                const double fjz =
+                    dE_dr1 * (az / r1) + dcos * (bz * inv - cs * az / r1sq);
+                const double fkx =
+                    dE_dr2 * (bx / r2) + dcos * (ax * inv - cs * bx / r2sq);
+                const double fky =
+                    dE_dr2 * (by / r2) + dcos * (ay * inv - cs * by / r2sq);
+                const double fkz =
+                    dE_dr2 * (bz / r2) + dcos * (az * inv - cs * bz / r2sq);
 
-                fx[j] += fjx; fy[j] += fjy; fz[j] += fjz;
-                fx[k] += fkx; fy[k] += fky; fz[k] += fkz;
+                fx[j] += fjx;
+                fy[j] += fjy;
+                fz[j] += fjz;
+                fx[k] += fkx;
+                fy[k] += fky;
+                fz[k] += fkz;
                 fx[i] -= fjx + fkx;
                 fy[i] -= fjy + fky;
                 fz[i] -= fjz + fkz;
@@ -166,10 +186,12 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
         worst = std::max(worst, std::fabs(g.fy[i] - fy[i]));
         worst = std::max(worst, std::fabs(g.fz[i] - fz[i]));
     }
-    EXPECT_LT(worst, 1e-9)
+    EXPECT_LT(worst, kForceTolerance)
         << "on " << size
-        << " ranks, the decomposed SW forces differ from brute force by " << worst
-        << " eV/A — a triplet is being lost or double-counted at a rank boundary";
+        << " ranks, the decomposed SW forces differ from brute force by "
+        << worst
+        << " eV/A — a triplet is being lost or double-counted at a rank "
+           "boundary";
 }
 
 int main(int argc, char** argv) {

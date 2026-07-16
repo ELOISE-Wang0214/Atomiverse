@@ -55,7 +55,7 @@ __global__ void stamp_positions_kernel(real_t* x, const std::int64_t* tag,
 /// @brief Integrator-slot component that writes the analytic trajectory into
 ///        x at end_of_step @ +5 — after per-step reductions and before the
 ///        async observer freezes at +20.
-class StampPositions : public cuda::ComponentBase {
+class StampPositions : public cuda::Component {
   public:
     std::string name() const override { return "stamp_positions"; }
     std::vector<DefaultBinding> default_bindings() const override {

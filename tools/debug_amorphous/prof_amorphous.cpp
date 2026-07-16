@@ -46,9 +46,9 @@ static void record(const std::string& k, double t) {
     b.t += t;
 }
 
-class TimedWrapper : public cpu::ComponentBase {
+class TimedWrapper : public cpu::Component {
   public:
-    TimedWrapper(std::unique_ptr<cpu::ComponentBase> inner, std::string label,
+    TimedWrapper(std::unique_ptr<cpu::Component> inner, std::string label,
                  int phase, int order)
         : inner_(std::move(inner)), label_(std::move(label)), phase_(phase),
           order_(order) {}
@@ -69,7 +69,7 @@ class TimedWrapper : public cpu::ComponentBase {
     }
 
   private:
-    std::unique_ptr<cpu::ComponentBase> inner_;
+    std::unique_ptr<cpu::Component> inner_;
     std::string label_;
     int phase_, order_;
 };
@@ -77,7 +77,7 @@ class TimedWrapper : public cpu::ComponentBase {
 // Instrumented NL that breaks time into bin_atoms / refresh_half. Mirrors
 // LAMMPS `neigh_modify every N delay 0 check yes`: rebuild at most every
 // `every` steps and only if the skin scan fires.
-class InstrNeighborList : public cpu::ComponentBase {
+class InstrNeighborList : public cpu::Component {
   public:
     InstrNeighborList(double cutoff, double skin, int every)
         : strategy_(cutoff, skin), cutoff_(cutoff),
@@ -88,14 +88,14 @@ class InstrNeighborList : public cpu::ComponentBase {
     }
     void build(const cpu::BuildContext& ctx) override {
         strategy_.init(ctx.frame, cutoff_);
-        strategy_.build(ctx.frame, ctx.frame.atoms.size());
-        strategy_.refresh_half(ctx.frame, ctx.frame.atoms.size(), pairs_);
+        strategy_.build(ctx.frame, ctx.frame.nlocal());
+        strategy_.refresh_half(ctx.frame, ctx.frame.nlocal(), pairs_);
         ++pairs_.version;
         ctx.runtime.md.pair_list = &pairs_;
         ago_ = 0;
     }
     void launch(const cpu::LaunchContext& ctx) override {
-        const int n = ctx.frame.atoms.size();
+        const int n = ctx.frame.nlocal();
         ++ago_;
         if (ago_ < every_) {
             ctx.runtime.md.pair_list = &pairs_;
@@ -132,7 +132,7 @@ class InstrNeighborList : public cpu::ComponentBase {
 
 // Eager NL (mimics the *old* pre-lazy path) -- always update + refresh_half
 // every step. Used to reproduce the "refresh-every-step" cost for comparison.
-class EagerNLInstr : public cpu::ComponentBase {
+class EagerNLInstr : public cpu::Component {
   public:
     explicit EagerNLInstr(double cutoff, double skin = 0.4)
         : strategy_(cutoff, skin), cutoff_(cutoff) {}
@@ -142,13 +142,13 @@ class EagerNLInstr : public cpu::ComponentBase {
     }
     void build(const cpu::BuildContext& ctx) override {
         strategy_.init(ctx.frame, cutoff_);
-        strategy_.build(ctx.frame, ctx.frame.atoms.size());
-        strategy_.refresh_half(ctx.frame, ctx.frame.atoms.size(), pairs_);
+        strategy_.build(ctx.frame, ctx.frame.nlocal());
+        strategy_.refresh_half(ctx.frame, ctx.frame.nlocal(), pairs_);
         ++pairs_.version;
         ctx.runtime.md.pair_list = &pairs_;
     }
     void launch(const cpu::LaunchContext& ctx) override {
-        const int n = ctx.frame.atoms.size();
+        const int n = ctx.frame.nlocal();
         auto t0 = clock_t_::now();
         strategy_.update(ctx.frame,
                          n); // always checks needs_rebuild → sometimes build()
@@ -185,7 +185,7 @@ constexpr double angle_K_kcal = 60.0;
 constexpr double lj_eps_kcal = 0.112;
 constexpr double lj_sig = 4.01;
 constexpr double lj_cut = 10.5;
-inline double deg2rad(double d) { return d * kPI / 180.0; }
+inline double deg2rad(double d) { return d * units::pi / 180.0; }
 } // namespace params
 
 void print_and_clear(double total, int n_steps, const char* title) {
@@ -220,27 +220,27 @@ void run_scenario(const std::string& data_path, int n_steps, Mode mode,
 
     const int ph_force = static_cast<int>(ATV::md::Phase::force);
 
-    std::unique_ptr<cpu::ComponentBase> raw_nl;
+    std::unique_ptr<cpu::Component> raw_nl;
     if (mode == EAGER)
         raw_nl = std::make_unique<EagerNLInstr>(params::lj_cut, 0.4);
     else
         // LAMMPS-matched: cutoff=10.5, skin=0.4, every=10 (from `neigh_modify`).
         raw_nl = std::make_unique<InstrNeighborList>(params::lj_cut, 0.4, 10);
-    sim.add(*raw_nl);
+    sim.add_ref(*raw_nl);
 
     auto lj = timed(cpu::PairLJCut{lj_eps_ev, params::lj_sig, params::lj_cut}
                         .set_special_bonds(0.0, 0.0, 0.0),
                     "lj_pair", ph_force, 0);
-    sim.add(*lj);
+    sim.add_ref(*lj);
     auto hb = timed(cpu::BondHarmonic{{bond_K_ev}, {params::bond_r0}},
                     "harm_bond", ph_force, 1);
-    sim.add(*hb);
+    sim.add_ref(*hb);
     auto ha = timed(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}},
                     "harm_angle", ph_force, 2);
-    sim.add(*ha);
+    sim.add_ref(*ha);
     auto hd = timed(cpu::DihedralMultiHarmonic{{dihedral_ev}}, "dihedral",
                     ph_force, 3);
-    sim.add(*hd);
+    sim.add_ref(*hd);
 
     sim.build();
     auto t0 = clock_t_::now();

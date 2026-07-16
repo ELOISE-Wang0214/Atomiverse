@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/minimizer/opt_log.h"
 #include "atomiverse/cpu/minimizer/trajectory_writer.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -27,12 +27,17 @@ namespace {
 
 cpu::Frame make_h2(double bond_length) {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, bond_length};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = bond_length;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -73,7 +78,7 @@ TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(
             cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/1});
@@ -98,7 +103,7 @@ TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(
             cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/2});
@@ -122,7 +127,7 @@ TEST_F(MinimizerRecordersTest, OptLogTSVHasOneRowPerStep) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::OptLog{log_path.string()});
     opt.build();
@@ -152,7 +157,7 @@ TEST_F(MinimizerRecordersTest, FinalGeometryContainsOneFrame) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
-    opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::FinalGeometry{final_path.string()});
     opt.build();

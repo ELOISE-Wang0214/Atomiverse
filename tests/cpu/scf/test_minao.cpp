@@ -102,46 +102,46 @@ static constexpr double CH4_MINAO_TRACE = 9.92172150763174443e+00;
 cpu::Frame make_water() {
     cpu::Frame f(3);
     // O 0 0 0.117; H 0 0.757 -0.468; H 0 -0.757 -0.468
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.117;
-    f.atoms.type[0] = 8;
-    f.atoms.x[1] = 0.0;
-    f.atoms.y[1] = 0.757;
-    f.atoms.z[1] = -0.468;
-    f.atoms.type[1] = 1;
-    f.atoms.x[2] = 0.0;
-    f.atoms.y[2] = -0.757;
-    f.atoms.z[2] = -0.468;
-    f.atoms.type[2] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.117;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.757;
+    f.span(ATV::kAtom_z)[1] = -0.468;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[2] = -0.757;
+    f.span(ATV::kAtom_z)[2] = -0.468;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_methane() {
     cpu::Frame f(5);
     // C 0 0 0; H at ±0.629 tetrahedral positions
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.type[0] = 6;
-    f.atoms.x[1] = 0.629;
-    f.atoms.y[1] = 0.629;
-    f.atoms.z[1] = 0.629;
-    f.atoms.type[1] = 1;
-    f.atoms.x[2] = -0.629;
-    f.atoms.y[2] = -0.629;
-    f.atoms.z[2] = 0.629;
-    f.atoms.type[2] = 1;
-    f.atoms.x[3] = -0.629;
-    f.atoms.y[3] = 0.629;
-    f.atoms.z[3] = -0.629;
-    f.atoms.type[3] = 1;
-    f.atoms.x[4] = 0.629;
-    f.atoms.y[4] = -0.629;
-    f.atoms.z[4] = -0.629;
-    f.atoms.type[4] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_x)[1] = 0.629;
+    f.span(ATV::kAtom_y)[1] = 0.629;
+    f.span(ATV::kAtom_z)[1] = 0.629;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_x)[2] = -0.629;
+    f.span(ATV::kAtom_y)[2] = -0.629;
+    f.span(ATV::kAtom_z)[2] = 0.629;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[3] = -0.629;
+    f.span(ATV::kAtom_y)[3] = 0.629;
+    f.span(ATV::kAtom_z)[3] = -0.629;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_x)[4] = 0.629;
+    f.span(ATV::kAtom_y)[4] = -0.629;
+    f.span(ATV::kAtom_z)[4] = -0.629;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

@@ -11,16 +11,16 @@
 /// file references only the new API; it is a compile-time shape guard.
 
 #include <cmath>
-#include <type_traits>
 #include <gtest/gtest.h>
+#include <type_traits>
 
+#include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
+#include "atomiverse/facade/component_role.h"
 
 using namespace ATV;
 
@@ -67,7 +67,7 @@ cpu::Frame make_displaced_system(int n_side, double density,
 // ── Compile-time shape guard ────────────────────────────────────────
 //
 // `Minimize` must be a loop node over `minimizer::Phase`, and `SteepestDescent` must be
-// a `cuda::ComponentBase` tagged with `role()==Optimizer`. These static checks fail to
+// a `cuda::Component` tagged with `role()==Optimizer`. These static checks fail to
 // compile against the deleted `SD` / `CG` driver classes or the old
 // `SteepestDescentStep` name.
 //
@@ -79,8 +79,8 @@ static_assert(
                     cuda::minimizer::Minimize>::value,
     "cuda::minimizer::Minimize must be a CUDADriver over minimizer::Phase");
 static_assert(
-    std::is_base_of<cuda::ComponentBase, cuda::minimizer::SteepestDescent>::value,
-    "cuda::minimizer::SteepestDescent must be a cuda::ComponentBase");
+    std::is_base_of<cuda::Component, cuda::minimizer::SteepestDescent>::value,
+    "cuda::minimizer::SteepestDescent must be a cuda::Component");
 
 TEST(Minimizer, SteepestDescentIsOptimizerRole) {
     cuda::minimizer::SteepestDescent step{double(0.01)};

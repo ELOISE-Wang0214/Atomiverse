@@ -51,8 +51,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 namespace ATV {
 namespace test {
@@ -67,12 +66,12 @@ inline constexpr double kDoubletS2 = 0.75;
 /// @return CPU Frame with one He atom in a 100 Å cubic box.
 inline cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.mass = {4.002602};
-    f.atoms.type = {2};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 4.002602;
+    f.span(ATV::kAtom_type)[0] = 2;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -80,12 +79,17 @@ inline cpu::Frame make_he() {
 /// @return CPU Frame with two H atoms in a 100 Å cubic box.
 inline cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.7414};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7414;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -94,12 +98,22 @@ inline cpu::Frame make_h2() {
 /// @return CPU Frame with O + 2H in a 100 Å cubic box.
 inline cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {0.0, 0.7572, -0.7572};
-    f.atoms.z = {0.1173, -0.4692, -0.4692};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.atoms.type = {8, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.7572;
+    f.span(ATV::kAtom_y)[2] = -0.7572;
+    f.span(ATV::kAtom_z)[0] = 0.1173;
+    f.span(ATV::kAtom_z)[1] = -0.4692;
+    f.span(ATV::kAtom_z)[2] = -0.4692;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -108,12 +122,27 @@ inline cpu::Frame make_h2o() {
 /// @return CPU Frame with N + 3H in a 100 Å cubic box.
 inline cpu::Frame make_nh3() {
     cpu::Frame f(4);
-    f.atoms.x = {0.0, 0.0, 0.812328, -0.812328};
-    f.atoms.y = {0.0, 0.938035, -0.469017, -0.469017};
-    f.atoms.z = {0.113880, -0.265825, -0.265825, -0.265825};
-    f.atoms.mass = {14.007, 1.008, 1.008, 1.008};
-    f.atoms.type = {7, 1, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.812328;
+    f.span(ATV::kAtom_x)[3] = -0.812328;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.938035;
+    f.span(ATV::kAtom_y)[2] = -0.469017;
+    f.span(ATV::kAtom_y)[3] = -0.469017;
+    f.span(ATV::kAtom_z)[0] = 0.113880;
+    f.span(ATV::kAtom_z)[1] = -0.265825;
+    f.span(ATV::kAtom_z)[2] = -0.265825;
+    f.span(ATV::kAtom_z)[3] = -0.265825;
+    f.span(ATV::kAtom_mass)[0] = 14.007;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_mass)[3] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 7;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -121,12 +150,32 @@ inline cpu::Frame make_nh3() {
 /// @return CPU Frame with C + 4H in a 100 Å cubic box.
 inline cpu::Frame make_ch4() {
     cpu::Frame f(5);
-    f.atoms.x = {0.0, 0.627640, -0.627640, 0.627640, -0.627640};
-    f.atoms.y = {0.0, 0.627640, -0.627640, -0.627640, 0.627640};
-    f.atoms.z = {0.0, 0.627640, 0.627640, -0.627640, -0.627640};
-    f.atoms.mass = {12.011, 1.008, 1.008, 1.008, 1.008};
-    f.atoms.type = {6, 1, 1, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.627640;
+    f.span(ATV::kAtom_x)[2] = -0.627640;
+    f.span(ATV::kAtom_x)[3] = 0.627640;
+    f.span(ATV::kAtom_x)[4] = -0.627640;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.627640;
+    f.span(ATV::kAtom_y)[2] = -0.627640;
+    f.span(ATV::kAtom_y)[3] = -0.627640;
+    f.span(ATV::kAtom_y)[4] = 0.627640;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.627640;
+    f.span(ATV::kAtom_z)[2] = 0.627640;
+    f.span(ATV::kAtom_z)[3] = -0.627640;
+    f.span(ATV::kAtom_z)[4] = -0.627640;
+    f.span(ATV::kAtom_mass)[0] = 12.011;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.span(ATV::kAtom_mass)[3] = 1.008;
+    f.span(ATV::kAtom_mass)[4] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -144,7 +193,7 @@ struct SystemSpec {
 /// @brief The five neutral systems, ordered as in the tutorial table.
 ///        `minimal_basis_exact` marks the He / H₂ single-electron cations.
 inline const SystemSpec kSystems[5] = {
-    {"He", &make_he, true},   {"H2", &make_h2, true},
+    {"He", &make_he, true},    {"H2", &make_h2, true},
     {"H2O", &make_h2o, false}, {"NH3", &make_nh3, false},
     {"CH4", &make_ch4, false},
 };
@@ -158,22 +207,22 @@ inline const cpu::scf::BasisSet kBases[2] = {
 /// @brief Outcome of one ΔSCF vertical-ionization evaluation (all energies
 ///        in [Hartree]). Holds everything the invariant assertions need.
 struct DeltaScfResult {
-    bool neutral_converged = false;   ///< Neutral RHF converged.
-    bool cation_converged = false;    ///< Warm-started cation UHF converged.
+    bool neutral_converged = false;     ///< Neutral RHF converged.
+    bool cation_converged = false;      ///< Warm-started cation UHF converged.
     bool cation_cold_converged = false; ///< Hcore cold-start cation converged.
-    double e_neutral = 0.0;           ///< Neutral RHF total energy [Ha].
-    double e_cation = 0.0;            ///< Warm-started cation UHF energy [Ha].
-    double e_cation_cold = 0.0;       ///< Hcore cold-start cation energy [Ha].
-    double i_delta = 0.0;             ///< I_ΔSCF = E_cation − E_neutral [Ha].
-    double neg_eps_homo = 0.0;        ///< Koopmans ionization −ε_HOMO [Ha].
-    double spin_contamination = 0.0;  ///< ⟨S²⟩ − S(S+1) of the cation.
-    int n_alpha = 0;                  ///< Cation alpha electrons.
-    int n_beta = 0;                   ///< Cation beta electrons.
+    double e_neutral = 0.0;             ///< Neutral RHF total energy [Ha].
+    double e_cation = 0.0;           ///< Warm-started cation UHF energy [Ha].
+    double e_cation_cold = 0.0;      ///< Hcore cold-start cation energy [Ha].
+    double i_delta = 0.0;            ///< I_ΔSCF = E_cation − E_neutral [Ha].
+    double neg_eps_homo = 0.0;       ///< Koopmans ionization −ε_HOMO [Ha].
+    double spin_contamination = 0.0; ///< ⟨S²⟩ − S(S+1) of the cation.
+    int n_alpha = 0;                 ///< Cation alpha electrons.
+    int n_beta = 0;                  ///< Cation beta electrons.
 };
 
 /// @brief Run the full ΔSCF workflow for one (geometry, basis) pair.
 ///
-/// Neutral N-electron RHF (`build_integrals(charge=0)` + `rhf_solve`) then the
+/// Neutral N-electron RHF (`build_integrals(charge=0)` + `SCFSolver`) then the
 /// (N−1)-electron doublet cation both warm-started from the neutral density
 /// (`SCFInitialGuess`: P_sigma = (n_sigma/N)·P_neutral, so each channel's seed
 /// trace is exactly n_sigma — the beta seed is ZERO when n_beta = 0) and
@@ -208,7 +257,9 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     SCFConfig neutral_cfg = rhf_config(ints_neutral, tol);
     neutral_cfg.max_iter = 200;
     neutral_cfg.conv_tol_grad = 1e-9;
-    SCFResult neutral = scf_solve(ints_neutral, neutral_cfg);
+    SCFSolver neutral_solver{neutral_cfg};
+    neutral_solver.build(ints_neutral);
+    SCFResult neutral = neutral_solver.run(ints_neutral);
     out.neutral_converged = neutral.converged;
     out.e_neutral = neutral.energy;
     const int n_occ = ints_neutral.n_occ();
@@ -245,14 +296,16 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
         (static_cast<double>(out.n_beta) / neutral_ne) * neutral.P_alpha;
     guess.has_alpha = true;
     guess.has_beta = true;
-    SCFResult cation = scf_solve(ints_cation, cfg, &guess);
+    SCFSolver cation_solver{cfg};
+    cation_solver.build(ints_cation);
+    SCFResult cation = cation_solver.run(ints_cation, &guess);
     out.cation_converged = cation.converged;
     out.e_cation = cation.energy;
     out.spin_contamination = cation.spin_contamination;
     out.i_delta = cation.energy - neutral.energy;
 
     // Cold start: identical config, Hcore guess (uhf_config default), no seed.
-    SCFResult cation_cold = scf_solve(ints_cation, cfg, /*guess=*/nullptr);
+    SCFResult cation_cold = cation_solver.run(ints_cation);
     out.cation_cold_converged = cation_cold.converged;
     out.e_cation_cold = cation_cold.energy;
 

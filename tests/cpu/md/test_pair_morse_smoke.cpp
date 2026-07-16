@@ -23,40 +23,40 @@ TEST(PairMorseDemo, TwoAtomNveOscillates) {
     const double r_init = 2.2; // small displacement off r₀
 
     ATV::cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.x[1] = r_init;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.z[1] = 0.0;
-    frame.atoms.mass[0] = 12.0;
-    frame.atoms.mass[1] = 12.0;
-    frame.atoms.vx[0] = 0.0;
-    frame.atoms.vx[1] = 0.0;
-    frame.atoms.vy[0] = 0.0;
-    frame.atoms.vy[1] = 0.0;
-    frame.atoms.vz[0] = 0.0;
-    frame.atoms.vz[1] = 0.0;
-    frame.box = ATV::Mat3::cubic(50.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = r_init;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = 12.0;
+    frame.span(ATV::kAtom_mass)[1] = 12.0;
+    frame.span(ATV::kAtom_vx)[0] = 0.0;
+    frame.span(ATV::kAtom_vx)[1] = 0.0;
+    frame.span(ATV::kAtom_vy)[0] = 0.0;
+    frame.span(ATV::kAtom_vy)[1] = 0.0;
+    frame.span(ATV::kAtom_vz)[0] = 0.0;
+    frame.span(ATV::kAtom_vz)[1] = 0.0;
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
 
     ATV::cpu::md::MD sim;
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.1}); // 0.1 fs
-    sim.set_pair(ATV::cpu::PairMorse{D, alpha, r0, rcut});
+    sim.add_potential(ATV::cpu::PairMorse{D, alpha, r0, rcut});
     sim.build();
 
     // Capture initial total energy at step 1 (one launch + one integration).
     sim.run(frame, 1);
     const double E0 =
-        frame.scalars.energy + 0.0; // PE only at step 1 (v=0 → KE=0)
+        frame.meta.get(ATV::kEnergy) + 0.0; // PE only at step 1 (v=0 → KE=0)
 
     // Run 100 more steps; check NVE conservation and r stays in well basin.
     sim.run(frame, 100);
 
     // Final separation.
-    const double dx = frame.atoms.x[1] - frame.atoms.x[0];
+    const double dx = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
     const double r_final = std::abs(dx);
 
-    // (a) Energy conservation. The harness reports `frame.scalars.energy` as
+    // (a) Energy conservation. The harness reports `frame.meta.get(ATV::kEnergy)` as
     // potential only; with conservative forces and zero initial v, the
     // bound oscillation keeps KE+PE constant. The PE alone at r ≈ r₀
     // is ≈ 0 (well bottom); at the turning point r ≈ r_init it's the
@@ -64,8 +64,8 @@ TEST(PairMorseDemo, TwoAtomNveOscillates) {
     // KE-redistribution allowance. A loose 5% relative bound suffices
     // for the demo (the live demo cares about "does it run", not "is
     // it bit-identical to a reference impl").
-    EXPECT_LT(std::abs(frame.scalars.energy - E0) / std::abs(E0), 5e-2)
-        << "PE drift: E0=" << E0 << " E_final=" << frame.scalars.energy;
+    EXPECT_LT(std::abs(frame.meta.get(ATV::kEnergy) - E0) / std::abs(E0), 5e-2)
+        << "PE drift: E0=" << E0 << " E_final=" << frame.meta.get(ATV::kEnergy);
 
     // (b) Atoms stay in the Morse well basin (r within 50% of r₀).
     EXPECT_GT(r_final, 0.5 * r0)

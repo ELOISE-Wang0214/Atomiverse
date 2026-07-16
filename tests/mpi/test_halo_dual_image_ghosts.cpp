@@ -31,8 +31,9 @@ using namespace ATV;
 
 namespace {
 
-constexpr double kEps = 0.0104;  // [eV]
-constexpr double kSigma = 3.4;   // [A]
+constexpr double kEps = 0.0104; // [eV]
+constexpr double kSigma = 3.4;  // [A]
+constexpr double kEnergyRelativeTolerance = 1.0e-9;
 
 /// Simple-cubic n^3 lattice, spacing a0, cubic box n*a0.
 cpu::Frame make_sc_lattice(int n_side, double a0) {
@@ -42,14 +43,14 @@ cpu::Frame make_sc_lattice(int n_side, double a0) {
     for (int i = 0; i < n_side; ++i)
         for (int j = 0; j < n_side; ++j)
             for (int k = 0; k < n_side; ++k) {
-                frame.atoms.x[idx] = (i + 0.5) * a0;
-                frame.atoms.y[idx] = (j + 0.5) * a0;
-                frame.atoms.z[idx] = (k + 0.5) * a0;
-                frame.atoms.mass[idx] = 39.948;
-                frame.atoms.tag[idx] = idx;
+                frame.span(ATV::kAtom_x)[idx] = (i + 0.5) * a0;
+                frame.span(ATV::kAtom_y)[idx] = (j + 0.5) * a0;
+                frame.span(ATV::kAtom_z)[idx] = (k + 0.5) * a0;
+                frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                frame.span(ATV::kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.box = Mat3::cubic(n_side * a0);
+    frame.simbox = ATV::cpu::Box::cubic(n_side * a0);
     return frame;
 }
 
@@ -68,14 +69,17 @@ double lj_pair_energy(double r2, double cutoff) {
 
 /// O(N^2) minimum-image total LJ energy oracle.
 double brute_force_energy(const cpu::Frame& frame, double cutoff) {
-    const int n = frame.atoms.nlocal;
-    const double L = frame.box.length(0);
+    const int n = frame.nlocal();
+    const double L = frame.simbox.length(0);
     double total = 0.0;
     for (int i = 0; i < n; ++i)
         for (int j = i + 1; j < n; ++j) {
-            double dx = frame.atoms.x[i] - frame.atoms.x[j];
-            double dy = frame.atoms.y[i] - frame.atoms.y[j];
-            double dz = frame.atoms.z[i] - frame.atoms.z[j];
+            double dx =
+                frame.span(ATV::kAtom_x)[i] - frame.span(ATV::kAtom_x)[j];
+            double dy =
+                frame.span(ATV::kAtom_y)[i] - frame.span(ATV::kAtom_y)[j];
+            double dz =
+                frame.span(ATV::kAtom_z)[i] - frame.span(ATV::kAtom_z)[j];
             dx -= L * std::round(dx / L);
             dy -= L * std::round(dy / L);
             dz -= L * std::round(dz / L);
@@ -113,9 +117,11 @@ TEST(HaloDualImageGhosts, OverlappingFaceBandsMatchBruteForce) {
 
     run_one_frozen_step(frame, 6.0);
 
-    const double rel = std::abs(frame.scalars.energy - e_bf) / std::abs(e_bf);
-    EXPECT_LT(rel, 1e-9) << "distributed " << frame.scalars.energy
-                         << " vs brute force " << e_bf;
+    const double rel =
+        std::abs(frame.meta.get(ATV::kEnergy) - e_bf) / std::abs(e_bf);
+    EXPECT_LT(rel, kEnergyRelativeTolerance)
+        << "distributed " << frame.meta.get(ATV::kEnergy) << " vs brute force "
+        << e_bf;
 }
 
 // Companion: the SAME shape with 2*halo < span (6^3 lattice, box 31.56 A,
@@ -135,9 +141,11 @@ TEST(HaloDualImageGhosts, NonOverlappingGeometryStillMatchesBruteForce) {
 
     run_one_frozen_step(frame, 6.0);
 
-    const double rel = std::abs(frame.scalars.energy - e_bf) / std::abs(e_bf);
-    EXPECT_LT(rel, 1e-9) << "distributed " << frame.scalars.energy
-                         << " vs brute force " << e_bf;
+    const double rel =
+        std::abs(frame.meta.get(ATV::kEnergy) - e_bf) / std::abs(e_bf);
+    EXPECT_LT(rel, kEnergyRelativeTolerance)
+        << "distributed " << frame.meta.get(ATV::kEnergy) << " vs brute force "
+        << e_bf;
 }
 
 // ── Custom main that initializes MPI before/after GoogleTest ────────────

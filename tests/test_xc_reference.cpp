@@ -477,7 +477,7 @@ TEST(XCReference, GridIntegration_GaussianNormalization) {
     // ∫ exp(-α r²) dτ = (π/α)^{3/2}
     // Tests the molecular grid accuracy against an exact analytical result.
     native::Atom h = {1, {0.0, 0.0, 0.0}};
-    auto grid = build_molecular_grid(&h, 1, 50, 302);
+    auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 50, 302);
 
     double alpha = 1.0;
     double integral = 0;
@@ -501,7 +501,7 @@ TEST(XCReference, GridIntegration_STO1sNormalization) {
     // For α=1: ∫ (1/π) exp(-2r) dτ = 1
     // i.e., ∫ exp(-2r) dτ = π
     native::Atom h = {1, {0.0, 0.0, 0.0}};
-    auto grid = build_molecular_grid(&h, 1, 50, 302);
+    auto grid = build_molecular_grid(&h, 1, GridLevel::SG0, 50, 302);
 
     double integral = 0;
     for (const auto& gp : grid.points) {
@@ -521,7 +521,7 @@ TEST(XCReference, GridIntegration_TwoAtomPartition) {
     // (for symmetric f centered at midpoint).
     double d = 1.4; // Bohr
     native::Atom atoms[] = {{1, {-d / 2, 0, 0}}, {1, {d / 2, 0, 0}}};
-    auto grid = build_molecular_grid(atoms, 2, 50, 110);
+    auto grid = build_molecular_grid(atoms, 2, GridLevel::SG0, 50, 110);
 
     // Integrate f(r) = 1 near the origin to check Becke weights sum correctly
     double sum_weights = 0;

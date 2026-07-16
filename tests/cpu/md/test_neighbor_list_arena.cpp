@@ -35,15 +35,18 @@ cpu::Frame make_uniform_cubic(int n_per_side, double box_len) {
     for (int ix = 0; ix < n_per_side; ++ix) {
         for (int iy = 0; iy < n_per_side; ++iy) {
             for (int iz = 0; iz < n_per_side; ++iz) {
-                frame.atoms.x[idx] = (static_cast<double>(ix) + 0.5) * step;
-                frame.atoms.y[idx] = (static_cast<double>(iy) + 0.5) * step;
-                frame.atoms.z[idx] = (static_cast<double>(iz) + 0.5) * step;
-                frame.atoms.mass[idx] = 1.0;
+                frame.span(ATV::kAtom_x)[idx] =
+                    (static_cast<double>(ix) + 0.5) * step;
+                frame.span(ATV::kAtom_y)[idx] =
+                    (static_cast<double>(iy) + 0.5) * step;
+                frame.span(ATV::kAtom_z)[idx] =
+                    (static_cast<double>(iz) + 0.5) * step;
+                frame.span(ATV::kAtom_mass)[idx] = 1.0;
                 ++idx;
             }
         }
     }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -53,7 +56,7 @@ TEST(NeighborListArena, RefreshHalfReusesBuffersInSteadyState) {
     // 5^3 = 125 atoms in a 10 Å box (step 2.0 Å). Cutoff 2.6 finds
     // nearest-and-second-nearest neighbors via the cell list.
     auto frame = make_uniform_cubic(5, 10.0);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
 
     // cutoff = 2.6 Å, skin = 0.4 Å ⇒ cutoff_skin = 3.0 Å (covers multiple
     // cell layers in the 10 Å box so the cell list is non-trivial).

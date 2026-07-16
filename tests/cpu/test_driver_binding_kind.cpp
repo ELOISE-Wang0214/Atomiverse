@@ -33,12 +33,12 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/driver/path_driver.h"
 #include "atomiverse/cpu/mc/mc.h"
 #include "atomiverse/cpu/mc/translate_move.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
-#include "atomiverse/cpu/driver/path_driver.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/path/neb.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
@@ -56,8 +56,8 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
 }
 
 /// @brief Component-name sequence of one compiled Plan phase slot.
-std::vector<std::string>
-slot_names(const ATV::Plan<ATV::cpu::ComponentBase>& plan, std::size_t phase) {
+std::vector<std::string> slot_names(const ATV::Plan<ATV::cpu::Component>& plan,
+                                    std::size_t phase) {
     std::vector<std::string> names;
     for (const auto& op : plan.slots[phase].ops)
         names.push_back(op.component->name());
@@ -67,15 +67,11 @@ slot_names(const ATV::Plan<ATV::cpu::ComponentBase>& plan, std::size_t phase) {
 /// @brief Local Evaluate-kind probe: declares a default binding on
 /// `evaluate::Phase::evaluate` through the final `make_binding` API. Used
 /// to drive the kind gate on the LVALUE `add()` branch of an MD driver.
-class EvaluateKindProbe : public ATV::cpu::ComponentBase {
+class EvaluateKindProbe : public ATV::cpu::Component {
   public:
     std::string name() const override { return "evaluate_kind_probe"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Evaluator;
-    }
-    ATV::Capability capabilities() const override {
-        return ATV::Capability::Energy;
-    }
+    ATV::ComponentRole role() const override { return ATV::/*Potential*/; }
+    Role role() const override { return 0; }
     std::vector<ATV::DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::evaluate::Phase::evaluate, 0)};
     }
@@ -128,8 +124,8 @@ TEST(DriverBindingKind, MdAddEvaluateKindProbeThrows) {
     ATV::cpu::md::MD md;
     EvaluateKindProbe probe;
     try {
-        // lvalue `add()` branch (caller retains ownership).
-        md.add(probe);
+        // Explicit borrowed-registration branch.
+        md.add_ref(probe);
         FAIL() << "expected throw — Evaluate-kind default bindings "
                   "registered into an MD driver";
     } catch (const std::runtime_error& e) {
@@ -163,7 +159,7 @@ TEST(DriverBindingKind, MinimizeAddSameKindLbfgsNoThrow) {
 TEST(DriverBindingKind, EvaluatePlanShapeUnchanged) {
     ATV::cpu::Evaluate ev;
     atv_test::StubEnergyEvaluator eval;
-    ev.on(ATV::evaluate::Phase::evaluate).add(eval);
+    ev.on(ATV::evaluate::Phase::evaluate).add_ref(eval);
     ev.build();
 
     const auto& plan = ev.plan();
@@ -184,7 +180,7 @@ TEST(DriverBindingKind, MdPlanShapeUnchanged) {
     ATV::cpu::md::MD sim;
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{0.01});
     atv_test::NoOpForce force;
-    sim.add(force);
+    sim.add_ref(force);
     sim.build();
 
     const auto& plan = sim.plan();
@@ -219,7 +215,7 @@ TEST(DriverBindingKind, MinimizePlanShapeUnchanged) {
     ATV::cpu::minimizer::Minimize opt;
     opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10});
     atv_test::StubForceEvaluator force;
-    opt.on(ATV::minimizer::Phase::force).add(force);
+    opt.on(ATV::minimizer::Phase::force).add_ref(force);
     opt.build();
 
     const auto& plan = opt.plan();
@@ -242,7 +238,7 @@ TEST(DriverBindingKind, MinimizePlanShapeUnchanged) {
 TEST(DriverBindingKind, HessianPlanShapeUnchanged) {
     ATV::cpu::vib::Hessian hess;
     atv_test::StubForceEvaluator force;
-    hess.on(ATV::vib::Phase::force).add(force);
+    hess.on(ATV::vib::Phase::force).add_ref(force);
     hess.build();
 
     const auto& plan = hess.plan();
@@ -271,7 +267,7 @@ TEST(DriverBindingKind, McPlanShapeUnchanged) {
     ATV::cpu::mc::MC mc{300.0, 12345u};
     mc.set_mover(ATV::cpu::mc::TranslateMove{0.2});
     atv_test::StubEnergyEvaluator energy;
-    mc.on(ATV::sampling::Phase::energy).add(energy);
+    mc.on(ATV::sampling::Phase::energy).add_ref(energy);
     mc.build();
 
     const auto& plan = mc.plan();
@@ -319,13 +315,14 @@ TEST(DriverBindingKind, PathAddMdKindVelocityVerletThrows) {
 TEST(DriverBindingKind, PathPlanShapeUnchanged) {
     ATV::cpu::PathDriver neb;
     atv_test::StubForceEvaluator force;
-    neb.on(ATV::path::Phase::force).add(force);
+    neb.on(ATV::path::Phase::force).add_ref(force);
     neb.add(ATV::cpu::path::NebCoupling{1.0});
     neb.add(ATV::cpu::path::BandLBFGS{});
     neb.build();
 
     const auto& plan = neb.plan();
-    ASSERT_EQ(plan.slots.size(), static_cast<std::size_t>(ATV::path::Phase::COUNT));
+    ASSERT_EQ(plan.slots.size(),
+              static_cast<std::size_t>(ATV::path::Phase::COUNT));
     using P = ATV::path::Phase;
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::couple)),
               (std::vector<std::string>{"neb_coupling"}));

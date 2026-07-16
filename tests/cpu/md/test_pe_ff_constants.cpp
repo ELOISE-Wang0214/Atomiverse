@@ -21,7 +21,7 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 
 namespace {
 
@@ -34,9 +34,9 @@ namespace {
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 
 constexpr double kBondK_kcal = 350.0;
-constexpr double kBondR0 = 1.53;                          // Å
-constexpr double kAngleK_kcal = 60.0;                     // kcal/mol/rad²
-constexpr double kAngleTheta0 = 109.5 * ATV::kPI / 180.0; // rad (sp³)
+constexpr double kBondR0 = 1.53;                                // Å
+constexpr double kAngleK_kcal = 60.0;                           // kcal/mol/rad²
+constexpr double kAngleTheta0 = 109.5 * ATV::units::pi / 180.0; // rad (sp³)
 // Direct multi-harmonic coefficients (no OPLS Fourier conversion).
 constexpr double kDihC0_kcal = 1.73;
 constexpr double kDihC1_kcal = -4.49;
@@ -61,7 +61,7 @@ std::vector<double> dihedral_Cn_eV() {
 TEST(PEFFConstants, AngleMatchesMSUPaper) {
     EXPECT_DOUBLE_EQ(kAngleK_kcal, 60.0)
         << "Dreiding-UA angle k must be 60 kcal/mol/rad² (MSU paper)";
-    EXPECT_NEAR(kAngleTheta0, 109.5 * ATV::kPI / 180.0, 1e-12)
+    EXPECT_NEAR(kAngleTheta0, 109.5 * ATV::units::pi / 180.0, 1e-12)
         << "Dreiding-UA θ0 must be 109.5° (sp³ tetrahedral, MSU paper)";
 }
 

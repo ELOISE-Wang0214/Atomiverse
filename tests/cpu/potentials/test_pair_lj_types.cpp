@@ -21,31 +21,38 @@ using namespace ATV;
 
 namespace {
 
+constexpr double kEnergyTolerance = 1.0e-12;
+
 /// Two atoms of the given types at separation r — several call sites below.
 cpu::Frame dimer(int ta, int tb, double r) {
     cpu::Frame f(2);
-    f.atoms.x[0] = 10.0; f.atoms.y[0] = 10.0; f.atoms.z[0] = 10.0;
-    f.atoms.x[1] = 10.0 + r; f.atoms.y[1] = 10.0; f.atoms.z[1] = 10.0;
-    f.atoms.mass[0] = f.atoms.mass[1] = 1.0;
-    f.atoms.type[0] = ta;
-    f.atoms.type[1] = tb;
-    f.box = Mat3::cubic(40.0);
+    f.span(ATV::kAtom_x)[0] = 10.0;
+    f.span(ATV::kAtom_y)[0] = 10.0;
+    f.span(ATV::kAtom_z)[0] = 10.0;
+    f.span(ATV::kAtom_x)[1] = 10.0 + r;
+    f.span(ATV::kAtom_y)[1] = 10.0;
+    f.span(ATV::kAtom_z)[1] = 10.0;
+    f.span(ATV::kAtom_mass)[0] = f.span(ATV::kAtom_mass)[1] = 1.0;
+    f.span(ATV::kAtom_type)[0] = ta;
+    f.span(ATV::kAtom_type)[1] = tb;
+    f.simbox = ATV::cpu::Box::cubic(40.0);
     return f;
 }
 
 double energy_of(cpu::Frame& f, cpu::PairLJCut pair, double cutoff) {
     cpu::Evaluate eval;
     eval.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3, 1, 0, true});
-    eval.set_pair(std::move(pair));
+    eval.add_potential(std::move(pair));
     eval.enable_timing(false);
     eval.build();
     eval.run(f);
-    return f.scalars.energy;
+    return f.meta.get(ATV::kEnergy);
 }
 
 /// Shifted LJ, computed by hand.
 double lj_ref(double eps, double sigma, double r, double rc) {
-    if (r >= rc) return 0.0;
+    if (r >= rc)
+        return 0.0;
     const double s6 = std::pow(sigma / r, 6.0);
     const double s6c = std::pow(sigma / rc, 6.0);
     return 4.0 * eps * (s6 * s6 - s6) - 4.0 * eps * (s6c * s6c - s6c);
@@ -62,9 +69,10 @@ TEST(PairLJTypes, SingleTypeTableMatchesTheScalarPath) {
     const double e_plain = energy_of(f1, cpu::PairLJCut{eps, sigma, rc}, rc);
 
     cpu::Frame f2 = dimer(0, 0, r);
-    const double e_table = energy_of(f2, cpu::PairLJCut{{{0, 0, eps, sigma}}, rc}, rc);
+    const double e_table =
+        energy_of(f2, cpu::PairLJCut{{{0, 0, eps, sigma}}, rc}, rc);
 
-    EXPECT_NEAR(e_plain, lj_ref(eps, sigma, r, rc), 1e-12);
+    EXPECT_NEAR(e_plain, lj_ref(eps, sigma, r, rc), kEnergyTolerance);
     EXPECT_NEAR(e_table, e_plain, 1e-12)
         << "the per-type path disagrees with the single-epsilon path";
 }
@@ -84,27 +92,30 @@ TEST(PairLJTypes, UnlikePairsMixByLorentzBerthelot) {
     cpu::Frame f = dimer(0, 1, r);
     const double e_mixed = energy_of(f, make(), rc);
 
-    const double eps_ij = std::sqrt(e1 * e2);   // geometric mean
-    const double sig_ij = 0.5 * (s1 + s2);      // arithmetic mean
-    EXPECT_NEAR(e_mixed, lj_ref(eps_ij, sig_ij, r, rc), 1e-12);
+    const double eps_ij = std::sqrt(e1 * e2); // geometric mean
+    const double sig_ij = 0.5 * (s1 + s2);    // arithmetic mean
+    EXPECT_NEAR(e_mixed, lj_ref(eps_ij, sig_ij, r, rc), kEnergyTolerance);
 
     // ... and the like pairs still use their own coefficients.
     cpu::Frame f00 = dimer(0, 0, r);
-    EXPECT_NEAR(energy_of(f00, make(), rc), lj_ref(e1, s1, r, rc), 1e-12);
+    EXPECT_NEAR(energy_of(f00, make(), rc), lj_ref(e1, s1, r, rc),
+                kEnergyTolerance);
     cpu::Frame f11 = dimer(1, 1, r);
-    EXPECT_NEAR(energy_of(f11, make(), rc), lj_ref(e2, s2, r, rc), 1e-12);
+    EXPECT_NEAR(energy_of(f11, make(), rc), lj_ref(e2, s2, r, rc),
+                kEnergyTolerance);
 }
 
 /// An explicit off-diagonal overrides the mixed value.
 TEST(PairLJTypes, ExplicitCrossTermOverridesMixing) {
     const double rc = 9.0, r = 4.2;
     auto pair = cpu::PairLJCut{{{0, 0, 0.1, 3.0},
-                               {1, 1, 0.4, 4.0},
-                               {0, 1, 0.9, 5.0}}, // nothing like the mix
-                              rc};
+                                {1, 1, 0.4, 4.0},
+                                {0, 1, 0.9, 5.0}}, // nothing like the mix
+                               rc};
 
     cpu::Frame f = dimer(0, 1, r);
-    EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.9, 5.0, r, rc), 1e-12);
+    EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.9, 5.0, r, rc),
+                kEnergyTolerance);
 }
 
 /// THE POINT: a type with no LJ site (TIP3P hydrogen) must not interact.
@@ -132,7 +143,7 @@ TEST(PairLJTypes, TypeWithoutAnLJSiteDoesNotInteract) {
     // O-O does interact, with its own coefficients.
     cpu::Frame oo = dimer(8, 8, 3.5);
     EXPECT_NEAR(energy_of(oo, pair, rc),
-                lj_ref(0.1521 * 0.04336, 3.1507, 3.5, rc), 1e-12);
+                lj_ref(0.1521 * 0.04336, 3.1507, 3.5, rc), kEnergyTolerance);
     EXPECT_LT(energy_of(oo, pair, rc), 0.0) << "O-O should be bound at 3.5 A";
 }
 
@@ -151,7 +162,8 @@ TEST(PairLJTypes, SetTypeCoeffEditsOneEntry) {
     pair.set_type_coeff(0, 0, 0.7, 3.6); // overwrite it
 
     cpu::Frame f = dimer(0, 0, r);
-    EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.7, 3.6, r, rc), 1e-12);
+    EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.7, 3.6, r, rc),
+                kEnergyTolerance);
 }
 
 /// A single-type PairLJCut has no table, and says so rather than growing one silently.

@@ -1,33 +1,32 @@
 /// @file tools/debug_amorphous/gather_frame.h
-/// @brief Inter-stage all-gather for multi-rank Frame state.
+/// @brief Native-schema inter-stage all-gather for multi-rank CPU Frames.
 ///
-/// After a multi-rank `cpu::md::MD::run()`, every rank holds only the
-/// atoms in its slab inside `frame.atoms[0 : n_local)`; the remainder of
-/// the array is stale (mostly old ghost slots). When the user then
-/// constructs a SECOND driver and calls `run()` again, that driver's
-/// `partition_atoms()` sees `n_local == 0` and rescans the whole array
-/// (including the stale tail) -- with garbage going into the partition.
+/// After a distributed `cpu::md::MD::run()`, each rank owns only its first
+/// `n_local` rows.  A second driver must start from one complete replicated
+/// Frame, including runtime columns and per-row bonded topology.  This helper
+/// therefore gathers `cpu::comm::PackPlan::Exchange` rows as native bytes,
+/// sorts them by the native `TagInt`, and atomically replaces the distributed
+/// Frame with the complete sorted result on every rank.
 ///
-/// `gather_full_frame_inplace()` fixes the handoff: it `MPI_Allgatherv`s
-/// every rank's owned atoms back into `[0, n_total)` on every rank, in
-/// canonical (sorted-by-global-tag) order, and resets the `dd->n_local`
-/// to the global count so the next partition starts from a clean,
-/// fully-replicated state.
-///
-/// Single-rank: no-op (every atom is already on this rank).
+/// No field is enumerated here, and no value is widened through `double`.
 #pragma once
 
-#ifdef ATV_HAS_MPI
 #include <mpi.h>
-#endif
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <numeric>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/schema_mpi.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/stage.h"
@@ -38,7 +37,7 @@ namespace debug_amorphous {
 /// @brief Capture-n_local helper: a Component that records `dd->n_local` to
 /// a user-supplied int at every end_of_step, leaving the int holding the
 /// rank's owned-count after the driver returns.
-class CaptureNLocal : public cpu::ComponentBase {
+class CaptureNLocal : public cpu::Component {
   public:
     explicit CaptureNLocal(int* sink) : sink_(sink) {}
     std::string name() const override { return "capture_n_local"; }
@@ -47,131 +46,187 @@ class CaptureNLocal : public cpu::ComponentBase {
     }
     void launch(const cpu::LaunchContext& ctx) override {
         const auto* dd = ctx.runtime.md.dd;
-        *sink_ = (dd && ctx.runtime.mpi_size > 1) ? dd->n_local
-                                                  : ctx.frame.atoms.size();
+        *sink_ =
+            (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.nlocal();
     }
 
   private:
     int* sink_;
 };
 
+namespace detail {
+
+struct PackedRow {
+    std::size_t offset = 0;
+    std::size_t size = 0;
+    TagInt tag = 0;
+};
+
+inline std::size_t checked_add(std::size_t lhs, std::size_t rhs,
+                               const char* operation) {
+    if (rhs > std::numeric_limits<std::size_t>::max() - lhs)
+        throw std::overflow_error(std::string(operation)
+                                  + ": byte count overflow");
+    return lhs + rhs;
+}
+
+inline std::size_t packed_tag_offset(const cpu::comm::PackPlan& plan) {
+    std::size_t offset = 0;
+    for (const cpu::ColumnRef& field : plan.fields) {
+        if (field.group != ColGroup::Core)
+            continue;
+        if (field.wire_id == static_cast<std::uint16_t>(AtomFieldId::tag)) {
+            if (field.dtype != ColDType::Tag || field.cols != 1
+                || field.element_size != sizeof(TagInt))
+                throw cpu::column_error(
+                    "exchange plan has a non-native tag column");
+            return offset;
+        }
+        offset = checked_add(offset, field.row_bytes(),
+                             "gather_full_frame tag offset");
+    }
+    throw cpu::column_error("exchange plan has no tag column");
+}
+
+} // namespace detail
+
 inline void gather_full_frame_inplace(cpu::Frame& frame, int n_local,
-                                      int world_size, MPI_Comm comm) {
-#ifdef ATV_HAS_MPI
+                                      MPI_Comm comm) {
+    int world_size = 0;
+    MPI_Comm_size(comm, &world_size);
     if (world_size <= 1)
         return;
 
-    // Per-atom payload: x, y, z, vx, vy, vz, fx, fy, fz, mass (10 doubles)
-    // + tag (i64 in a double slot via reinterpret) + type (i32 in a double).
-    // Use MPI_DOUBLE so the reduction is a single Allgatherv.
-    constexpr int kPerAtomDoubles = 13;
+    const int local_range_valid =
+        n_local >= 0 && n_local <= frame.capacity() ? 1 : 0;
+    int all_ranges_valid = 0;
+    MPI_Allreduce(&local_range_valid, &all_ranges_valid, 1, MPI_INT, MPI_MIN,
+                  comm);
+    if (!all_ranges_valid)
+        throw std::invalid_argument(
+            "gather_full_frame: an owned-row range is invalid");
 
-    const int capacity = frame.atoms.size();
+    cpu::comm::PackPlan source_plan = cpu::comm::make_exchange_plan(frame);
+    cpu::comm::require_collective_schema(source_plan, comm,
+                                         "gather_full_frame");
+    const std::size_t tag_offset = detail::packed_tag_offset(source_plan);
 
-    // Pack our owned atoms.
-    std::vector<double> sendbuf(static_cast<std::size_t>(n_local)
-                                * kPerAtomDoubles);
-    for (int i = 0; i < n_local; ++i) {
-        double* p =
-            sendbuf.data() + static_cast<std::size_t>(i) * kPerAtomDoubles;
-        p[0] = frame.atoms.x[i];
-        p[1] = frame.atoms.y[i];
-        p[2] = frame.atoms.z[i];
-        p[3] = frame.atoms.vx[i];
-        p[4] = frame.atoms.vy[i];
-        p[5] = frame.atoms.vz[i];
-        p[6] = frame.atoms.fx[i];
-        p[7] = frame.atoms.fy[i];
-        p[8] = frame.atoms.fz[i];
-        p[9] = frame.atoms.mass[i];
-        // Stash tag (i64) in a double slot via memcpy (preserves bits).
-        const std::int64_t tag = frame.atoms.tag[i];
-        std::memcpy(&p[10], &tag, sizeof(double));
-        // Stash type (i32) and image (3 i8) packed into one double.
-        std::int32_t typ_and_image[2] = {
-            static_cast<std::int32_t>(frame.atoms.type[i]),
-            (static_cast<std::int32_t>(frame.atoms.image(i, 0)) & 0xFF)
-                | ((static_cast<std::int32_t>(frame.atoms.image(i, 1)) & 0xFF)
-                   << 8)
-                | ((static_cast<std::int32_t>(frame.atoms.image(i, 2)) & 0xFF)
-                   << 16)};
-        std::memcpy(&p[11], typ_and_image, sizeof(typ_and_image));
-        // Last slot holds nothing right now; reserve for future extension.
-        p[12] = 0.0;
+    // Frame each variable-size exchange row with one fixed-width byte count.
+    // The row itself remains exactly the native PackPlan payload.
+    const std::size_t row_capacity =
+        cpu::comm::max_exchange_bytes(frame, source_plan);
+    std::vector<std::byte> row_buffer(row_capacity);
+    std::vector<std::byte> send_buffer;
+    for (int row = 0; row < n_local; ++row) {
+        const std::size_t payload_size = cpu::comm::pack_exchange(
+            frame, source_plan, row, row_buffer.data(), row_buffer.size());
+        if (payload_size > std::numeric_limits<std::uint64_t>::max())
+            throw std::length_error(
+                "gather_full_frame: one row exceeds the wire envelope");
+        const std::size_t envelope_offset = send_buffer.size();
+        const std::size_t payload_offset = detail::checked_add(
+            envelope_offset, sizeof(std::uint64_t), "gather_full_frame");
+        send_buffer.resize(detail::checked_add(payload_offset, payload_size,
+                                               "gather_full_frame"));
+        const auto wire_size = static_cast<std::uint64_t>(payload_size);
+        std::memcpy(send_buffer.data() + envelope_offset, &wire_size,
+                    sizeof(wire_size));
+        if (payload_size != 0)
+            std::memcpy(send_buffer.data() + payload_offset, row_buffer.data(),
+                        payload_size);
     }
 
-    // Discover per-rank send sizes.
+    std::vector<int> owner_counts(static_cast<std::size_t>(world_size));
+    MPI_Allgather(&n_local, 1, MPI_INT, owner_counts.data(), 1, MPI_INT, comm);
+
+    const int send_bytes = cpu::comm::checked_mpi_byte_count(
+        send_buffer.size(), "gather_full_frame");
     std::vector<int> recv_counts(static_cast<std::size_t>(world_size));
-    int my_count = n_local * kPerAtomDoubles;
-    MPI_Allgather(&my_count, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, comm);
-    std::vector<int> recv_displs(static_cast<std::size_t>(world_size), 0);
-    for (int r = 1; r < world_size; ++r)
-        recv_displs[r] = recv_displs[r - 1] + recv_counts[r - 1];
+    MPI_Allgather(&send_bytes, 1, MPI_INT, recv_counts.data(), 1, MPI_INT,
+                  comm);
 
-    int total_doubles = 0;
-    for (int r = 0; r < world_size; ++r)
-        total_doubles += recv_counts[r];
-
-    std::vector<double> recvbuf(static_cast<std::size_t>(total_doubles));
-    MPI_Allgatherv(sendbuf.data(), my_count, MPI_DOUBLE, recvbuf.data(),
-                   recv_counts.data(), recv_displs.data(), MPI_DOUBLE, comm);
-
-    const int n_total = total_doubles / kPerAtomDoubles;
-    if (n_total > capacity) {
-        // Should never happen unless the frame was resized between stages.
-        std::fprintf(
-            stderr,
-            "[gather_full_frame] n_total=%d > capacity=%d -- aborting.\n",
-            n_total, capacity);
-        return;
+    std::vector<int> displacements(static_cast<std::size_t>(world_size), 0);
+    int total_bytes = 0;
+    int n_total = 0;
+    for (int rank = 0; rank < world_size; ++rank) {
+        if (recv_counts[rank] < 0 || owner_counts[rank] < 0
+            || recv_counts[rank] > std::numeric_limits<int>::max() - total_bytes
+            || owner_counts[rank] > std::numeric_limits<int>::max() - n_total)
+            throw std::length_error(
+                "gather_full_frame: collective payload exceeds INT_MAX");
+        displacements[rank] = total_bytes;
+        total_bytes += recv_counts[rank];
+        n_total += owner_counts[rank];
     }
 
-    // Sort entries by global tag so the gathered layout is deterministic
-    // across runs (and across rank counts).
-    std::vector<int> order(static_cast<std::size_t>(n_total));
-    for (int i = 0; i < n_total; ++i)
-        order[i] = i;
-    auto tag_of = [&](int slot) {
-        std::int64_t t;
-        std::memcpy(&t, &recvbuf[slot * kPerAtomDoubles + 10], sizeof(t));
-        return t;
-    };
-    std::sort(order.begin(), order.end(),
-              [&](int a, int b) { return tag_of(a) < tag_of(b); });
+    std::vector<std::byte> receive_buffer(
+        static_cast<std::size_t>(total_bytes));
+    MPI_Allgatherv(send_buffer.data(), send_bytes, MPI_BYTE,
+                   receive_buffer.data(), recv_counts.data(),
+                   displacements.data(), MPI_BYTE, comm);
 
-    for (int dst = 0; dst < n_total; ++dst) {
-        const int src = order[dst];
-        const double* p =
-            recvbuf.data() + static_cast<std::size_t>(src) * kPerAtomDoubles;
-        frame.atoms.x[dst] = p[0];
-        frame.atoms.y[dst] = p[1];
-        frame.atoms.z[dst] = p[2];
-        frame.atoms.vx[dst] = p[3];
-        frame.atoms.vy[dst] = p[4];
-        frame.atoms.vz[dst] = p[5];
-        frame.atoms.fx[dst] = p[6];
-        frame.atoms.fy[dst] = p[7];
-        frame.atoms.fz[dst] = p[8];
-        frame.atoms.mass[dst] = p[9];
-        std::int64_t tag;
-        std::memcpy(&tag, &p[10], sizeof(tag));
-        frame.atoms.tag[dst] = tag;
-        std::int32_t typ_and_image[2];
-        std::memcpy(typ_and_image, &p[11], sizeof(typ_and_image));
-        frame.atoms.type[dst] = typ_and_image[0];
-        frame.atoms.image(dst, 0) =
-            static_cast<std::int8_t>((typ_and_image[1] & 0xFF) << 24 >> 24);
-        frame.atoms.image(dst, 1) = static_cast<std::int8_t>(
-            ((typ_and_image[1] >> 8) & 0xFF) << 24 >> 24);
-        frame.atoms.image(dst, 2) = static_cast<std::int8_t>(
-            ((typ_and_image[1] >> 16) & 0xFF) << 24 >> 24);
+    std::vector<detail::PackedRow> rows;
+    rows.reserve(static_cast<std::size_t>(n_total));
+    for (int rank = 0; rank < world_size; ++rank) {
+        std::size_t cursor = static_cast<std::size_t>(displacements[rank]);
+        const std::size_t end = detail::checked_add(
+            cursor, static_cast<std::size_t>(recv_counts[rank]),
+            "gather_full_frame rank segment");
+        for (int row = 0; row < owner_counts[rank]; ++row) {
+            if (sizeof(std::uint64_t) > end - cursor)
+                throw std::length_error(
+                    "gather_full_frame: truncated row envelope");
+            std::uint64_t wire_size = 0;
+            std::memcpy(&wire_size, receive_buffer.data() + cursor,
+                        sizeof(wire_size));
+            cursor += sizeof(wire_size);
+            if (wire_size > static_cast<std::uint64_t>(end - cursor))
+                throw std::length_error(
+                    "gather_full_frame: truncated exchange row");
+            const std::size_t payload_size =
+                static_cast<std::size_t>(wire_size);
+            if (tag_offset > payload_size
+                || sizeof(TagInt) > payload_size - tag_offset)
+                throw std::length_error(
+                    "gather_full_frame: exchange row has no complete tag");
+            TagInt tag = 0;
+            std::memcpy(&tag, receive_buffer.data() + cursor + tag_offset,
+                        sizeof(tag));
+            rows.push_back(detail::PackedRow{cursor, payload_size, tag});
+            cursor += payload_size;
+        }
+        if (cursor != end)
+            throw std::length_error(
+                "gather_full_frame: rank segment has trailing bytes");
     }
-#else
-    (void)frame;
-    (void)n_local;
-    (void)world_size;
-    (void)comm;
-#endif
+    if (rows.size() != static_cast<std::size_t>(n_total))
+        throw std::length_error(
+            "gather_full_frame: owner and row counts disagree");
+
+    std::stable_sort(
+        rows.begin(), rows.end(),
+        [](const detail::PackedRow& lhs, const detail::PackedRow& rhs) {
+            return lhs.tag < rhs.tag;
+        });
+
+    cpu::Frame gathered = frame.clone_structure(n_total);
+    cpu::comm::PackPlan destination_plan =
+        cpu::comm::make_exchange_plan(gathered);
+    cpu::comm::require_schema_fingerprint(
+        destination_plan, source_plan.fingerprint, source_plan.version);
+    for (int destination = 0; destination < n_total; ++destination) {
+        const auto& row = rows[static_cast<std::size_t>(destination)];
+        const std::size_t consumed = cpu::comm::unpack_exchange(
+            gathered, destination_plan, destination,
+            receive_buffer.data() + row.offset, row.size);
+        if (consumed != row.size)
+            throw std::length_error(
+                "gather_full_frame: exchange decoder left trailing bytes");
+    }
+    gathered.set_nlocal(n_total);
+    gathered.set_nghost(0);
+    gathered.clear_tag_index();
+    frame = std::move(gathered);
 }
 
 } // namespace debug_amorphous

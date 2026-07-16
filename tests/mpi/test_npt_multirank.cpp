@@ -17,14 +17,14 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -44,18 +44,21 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0] + 0.25) * a_lat;
-                    frame.atoms.y[idx] = (iy + basis[b][1] + 0.25) * a_lat;
-                    frame.atoms.z[idx] = (iz + basis[b][2] + 0.25) * a_lat;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] =
+                        (ix + basis[b][0] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_y)[idx] =
+                        (iy + basis[b][1] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_z)[idx] =
+                        (iz + basis[b][2] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
-                    frame.atoms.vx[idx] = s;
-                    frame.atoms.vy[idx] = s * 0.5;
-                    frame.atoms.vz[idx] = s * 0.25;
+                    frame.span(ATV::kAtom_vx)[idx] = s;
+                    frame.span(ATV::kAtom_vy)[idx] = s * 0.5;
+                    frame.span(ATV::kAtom_vz)[idx] = s * 0.25;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a_lat);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -63,12 +66,14 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 // compressive — matches `compute pressure`, `NoseHooverNPT` and the
 // post-`lammps-api-align-04` `Barostat`.
 double pressure_from_frame(const cpu::Frame& frame) {
-    const double V = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
+    const double V = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
+                     * frame.simbox.cell()(2, 2);
     const double trace =
-        (frame.scalars.stress[0] + frame.scalars.stress[1]
-         + frame.scalars.stress[2])
-        + (frame.scalars.stress_kinetic[0] + frame.scalars.stress_kinetic[1]
-           + frame.scalars.stress_kinetic[2]);
+        (frame.meta.get(ATV::kStress)[0] + frame.meta.get(ATV::kStress)[1]
+         + frame.meta.get(ATV::kStress)[2])
+        + (frame.meta.get(ATV::kStressKinetic)[0]
+           + frame.meta.get(ATV::kStressKinetic)[1]
+           + frame.meta.get(ATV::kStressKinetic)[2]);
     return +trace / (3.0 * V);
 }
 
@@ -92,10 +97,8 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{lj_cut}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{lj_cut}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::PairLJCut{lj_eps, lj_sig, lj_cut});
@@ -104,20 +107,22 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
     sim.build();
 
     sim.run(frame, 1);
-    const double V_initial =
-        frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
+    const double V_initial = frame.simbox.cell()(0, 0)
+                             * frame.simbox.cell()(1, 1)
+                             * frame.simbox.cell()(2, 2);
     const double P_initial = pressure_from_frame(frame);
 
     sim.run(frame, 999);
-    const double V_final = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
+    const double V_final = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
+                           * frame.simbox.cell()(2, 2);
     const double P_final = pressure_from_frame(frame);
 
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
     // No NaN explosion.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
             << "rank " << my_rank << " atom " << i << " x went NaN";
     }
 

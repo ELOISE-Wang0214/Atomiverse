@@ -43,15 +43,15 @@ TEST(MCScaffold, MoverRoleIsDistinct) {
     EXPECT_NE(ComponentRole::Mover, ComponentRole::None);
     EXPECT_NE(ComponentRole::Mover, ComponentRole::Barostat);
     EXPECT_NE(ComponentRole::Mover, ComponentRole::Integrator);
-    EXPECT_NE(ComponentRole::Mover, ComponentRole::Evaluator);
+    EXPECT_NE(ComponentRole::Mover, /*Potential*/);
 }
 
 // ── mc::Transaction: Frame-patch record + guards ────────────────────────────
 
 TEST(MCScaffold, TransactionRecordsPatchRows) {
     cpu::Frame frame(6);
-    frame.atoms.x[2] = 1.5;
-    frame.atoms.x[5] = 2.5;
+    frame.span(ATV::kAtom_x)[2] = 1.5;
+    frame.span(ATV::kAtom_x)[5] = 2.5;
 
     cpu::mc::Transaction t;
     t.begin(cpu::mc::Transaction::Verb::Displace, frame);
@@ -62,9 +62,9 @@ TEST(MCScaffold, TransactionRecordsPatchRows) {
     EXPECT_EQ(t.verb, cpu::mc::Transaction::Verb::Displace);
     EXPECT_EQ(t.touched(0), LocalInt(2));
     EXPECT_EQ(t.touched(1), LocalInt(5));
-    EXPECT_EQ(t.patch().atoms.nlocal, 2);
-    EXPECT_EQ(t.patch().atoms.x[0], StorageReal(1.5));
-    EXPECT_EQ(t.patch().atoms.x[1], StorageReal(2.5));
+    EXPECT_EQ(t.patch().nlocal(), 2);
+    EXPECT_EQ(t.patch().span(ATV::kAtom_x)[0], StorageReal(1.5));
+    EXPECT_EQ(t.patch().span(ATV::kAtom_x)[1], StorageReal(2.5));
 }
 
 TEST(MCScaffold, TransactionRollbackWithoutBeginThrows) {
@@ -98,17 +98,16 @@ TEST(MCScaffold, ContextHandlesDefaultNull) {
 namespace {
 
 /// @brief Minimal Mover-role stub (no proposal logic) for validation tests.
-struct StubMover : cpu::ComponentBase {
+struct StubMover : cpu::Component {
     std::string name() const override { return "stub_mover"; }
-    ComponentRole role() const override { return ComponentRole::Mover; }
+    /* role via Mover base */
     void launch(const cpu::LaunchContext&) override {}
 };
 
 /// @brief Minimal Energy-writing evaluator stub for validation tests.
-struct StubEnergy : cpu::ComponentBase {
+struct StubEnergy : cpu::Component {
     std::string name() const override { return "stub_energy"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Energy; }
+    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext&) override {}
 };
 

@@ -63,7 +63,7 @@ class InnerLoop : public cpu::CPUDriver<ATV::minimizer::Phase> {
 /// It writes into `ctx.runtime.loop.metrics` — the ONLY channel a component has. It
 /// cannot write `converged`: there is no such field reachable from here, which is the
 /// point. A handler turns the metric into the verdict.
-class ConvergeAt : public cpu::ComponentBase {
+class ConvergeAt : public cpu::Component {
   public:
     explicit ConvergeAt(int at) : at_(at) {}
     std::string name() const override { return "converge_at"; }
@@ -90,7 +90,7 @@ class ConvergeAt : public cpu::ComponentBase {
 };
 
 /// @brief Publishes a fixed force metric every iteration. The PARENT's measurement.
-class PublishForce : public cpu::ComponentBase {
+class PublishForce : public cpu::Component {
   public:
     explicit PublishForce(double f) : f_(f) {}
     std::string name() const override { return "publish_force"; }
@@ -108,7 +108,7 @@ class PublishForce : public cpu::ComponentBase {
 };
 
 /// @brief Records the Backend address it is launched with, and the DD pointer.
-class RuntimeProbe : public cpu::ComponentBase {
+class RuntimeProbe : public cpu::Component {
   public:
     std::string name() const override { return "runtime_probe"; }
     void build(const cpu::BuildContext& ctx) override {
@@ -132,13 +132,13 @@ class RuntimeProbe : public cpu::ComponentBase {
 cpu::Frame two_atoms() {
     cpu::Frame f(2);
     for (int i = 0; i < 2; ++i) {
-        f.atoms.x[i] = 0.5 * i;
-        f.atoms.y[i] = 0.0;
-        f.atoms.z[i] = 0.0;
-        f.atoms.mass[i] = 1.0;
-        f.atoms.type[i] = 1;
+        f.span(ATV::kAtom_x)[i] = 0.5 * i;
+        f.span(ATV::kAtom_y)[i] = 0.0;
+        f.span(ATV::kAtom_z)[i] = 0.0;
+        f.span(ATV::kAtom_mass)[i] = 1.0;
+        f.span(ATV::kAtom_type)[i] = 1;
     }
-    f.box = Mat3::cubic(10.0);
+    f.simbox = ATV::cpu::Box::cubic(10.0);
     return f;
 }
 
@@ -153,7 +153,7 @@ TEST(SubDriver, NestedConvergenceDoesNotStopTheParent) {
     // its own ForceConverged handler stops it.
     InnerLoop inner;
     ConvergeAt converge{/*at=*/2};
-    inner.on(ATV::minimizer::Phase::convergence_check).add(converge);
+    inner.on(ATV::minimizer::Phase::convergence_check).add_ref(converge);
     inner.add_handler(cpu::ForceConverged{});
 
     // The PARENT does NOT converge: it publishes a huge force every iteration. And,
@@ -163,9 +163,10 @@ TEST(SubDriver, NestedConvergenceDoesNotStopTheParent) {
     OuterLoop outer;
     PublishForce big{1e3};
     cpu::SubDriver node{inner, /*budget=*/10};
-    outer.on(ATV::md::Phase::force).add(big);
-    outer.on(ATV::md::Phase::end_of_step).add(node); // the child runs AFTER the parent
-    outer.add_handler(cpu::ForceConverged{});        //   measures — so it writes last
+    outer.on(ATV::md::Phase::force).add_ref(big);
+    outer.on(ATV::md::Phase::end_of_step)
+        .add_ref(node);                       // the child runs AFTER the parent
+    outer.add_handler(cpu::ForceConverged{}); //   measures — so it writes last
     outer.build();
 
     const int outer_iters = outer.run(frame, /*budget=*/5);
@@ -181,8 +182,9 @@ TEST(SubDriver, NestedConvergenceDoesNotStopTheParent) {
     // metrics for the duration of the inner loop and restores the parent's on exit, so
     // the child's measurements are the child's. This is probe 2 and probe 3's bug, and
     // it is now unwritable rather than merely forbidden.
-    EXPECT_EQ(outer_iters, 5) << "the inner loop stopped the outer loop — the bug that "
-                                 "shipped in probe 2 and again in probe 3";
+    EXPECT_EQ(outer_iters, 5)
+        << "the inner loop stopped the outer loop — the bug that "
+           "shipped in probe 2 and again in probe 3";
     EXPECT_FALSE(outer.converged())
         << "the parent adopted its child's verdict; status is not per-loop";
 
@@ -199,13 +201,13 @@ TEST(SubDriver, RunsOnTheParentsRuntime) {
 
     InnerLoop inner;
     RuntimeProbe inner_probe;
-    inner.on(ATV::minimizer::Phase::force).add(inner_probe);
+    inner.on(ATV::minimizer::Phase::force).add_ref(inner_probe);
 
     OuterLoop outer;
     RuntimeProbe outer_probe;
     cpu::SubDriver node{inner, /*budget=*/3};
-    outer.on(ATV::md::Phase::force).add(outer_probe);
-    outer.on(ATV::md::Phase::end_of_step).add(node);
+    outer.on(ATV::md::Phase::force).add_ref(outer_probe);
+    outer.on(ATV::md::Phase::end_of_step).add_ref(node);
     outer.build();
 
     outer.run(frame, /*budget=*/4);
@@ -223,15 +225,17 @@ TEST(SubDriver, InnerBuildRunsOnceAtOuterBuild) {
     cpu::Frame frame = two_atoms();
 
     InnerLoop inner;
-    ConvergeAt inner_comp{/*at=*/999}; // never converges; always runs the full budget
-    inner.on(ATV::minimizer::Phase::convergence_check).add(inner_comp);
+    ConvergeAt inner_comp{
+        /*at=*/999}; // never converges; always runs the full budget
+    inner.on(ATV::minimizer::Phase::convergence_check).add_ref(inner_comp);
 
     OuterLoop outer;
     cpu::SubDriver node{inner, /*budget=*/3};
-    outer.on(ATV::md::Phase::end_of_step).add(node);
+    outer.on(ATV::md::Phase::end_of_step).add_ref(node);
 
     outer.build();
-    EXPECT_EQ(inner_comp.builds, 0) << "build() compiles Plans; it must not run them";
+    EXPECT_EQ(inner_comp.builds, 0)
+        << "build() compiles Plans; it must not run them";
 
     outer.run(frame, /*budget=*/4);
 
@@ -251,16 +255,16 @@ TEST(SubDriver, InnerBuildRunsOnceAtOuterBuild) {
 TEST(SubDriver, ChildKeepsItsOwnPhaseEnum) {
     // The parent loops over md::Phase; the child over minimizer::Phase. Neither template
     // is instantiated with the other's enum. Type erasure happens where the node crosses
-    // into the Plan (as a ComponentBase*), never at the stage boundary — stages stay
+    // into the Plan (as a Component*), never at the stage boundary — stages stay
     // typed enums all the way down.
-    static_assert(
-        std::is_base_of_v<cpu::CPUDriver<ATV::md::Phase>, OuterLoop>,
-        "parent loops over md::Phase");
+    static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::md::Phase>, OuterLoop>,
+                  "parent loops over md::Phase");
     static_assert(
         std::is_base_of_v<cpu::CPUDriver<ATV::minimizer::Phase>, InnerLoop>,
         "child loops over minimizer::Phase");
     static_assert(
-        std::is_base_of_v<cpu::ComponentBase, cpu::SubDriver<ATV::minimizer::Phase>>,
+        std::is_base_of_v<cpu::Component,
+                          cpu::SubDriver<ATV::minimizer::Phase>>,
         "a SubDriver IS a node — that is what lets a Plan slot hold a driver");
     SUCCEED();
 }

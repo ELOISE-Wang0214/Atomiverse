@@ -23,13 +23,13 @@ namespace {
 /// Flips outer_status.converged to true on the iteration whose 0-based
 /// step index equals `converge_at_step`. Uses `LaunchContext::step` so
 /// the trigger lines up with the driver's iteration counter.
-struct ConvergeAtStep : ATV::cpu::ComponentBase {
+struct ConvergeAtStep : ATV::cpu::Component {
     int converge_at_step;
     int launch_count = 0;
     explicit ConvergeAtStep(int s) : converge_at_step(s) {}
     std::string name() const override { return "converge_at_step"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::ConvergenceCheck;
+    ATV::Role role() const override {
+        return 0; // LoopControl-like metrics publisher
     }
     void launch(const ATV::cpu::LaunchContext& ctx) override {
         ++launch_count;
@@ -57,9 +57,9 @@ TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
     StubEnergyEvaluator energy;
     ConvergeAtStep converge{/*step=*/3};
 
-    opt.on(minimizer::Phase::search_direction).add(optimizer);
-    opt.on(minimizer::Phase::force).add(energy);
-    opt.on(minimizer::Phase::convergence_check).add(converge);
+    opt.on(minimizer::Phase::search_direction).add_ref(optimizer);
+    opt.on(minimizer::Phase::force).add_ref(energy);
+    opt.on(minimizer::Phase::convergence_check).add_ref(converge);
     // Termination is a POLICY, not a class — that is the point of the refactor. The
     // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
     // we attach it explicitly so this test pins the tolerances it judges against
@@ -84,9 +84,9 @@ TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     StubEnergyEvaluator energy;
     ConvergeAtStep never{/*step=*/9999}; // far beyond max_iter
 
-    opt.on(minimizer::Phase::search_direction).add(optimizer);
-    opt.on(minimizer::Phase::force).add(energy);
-    opt.on(minimizer::Phase::convergence_check).add(never);
+    opt.on(minimizer::Phase::search_direction).add_ref(optimizer);
+    opt.on(minimizer::Phase::force).add_ref(energy);
+    opt.on(minimizer::Phase::convergence_check).add_ref(never);
     // Termination is a POLICY, not a class — that is the point of the refactor. The
     // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
     // we attach it explicitly so this test pins the tolerances it judges against

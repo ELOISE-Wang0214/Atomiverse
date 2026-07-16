@@ -21,7 +21,7 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
@@ -39,39 +39,39 @@ namespace {
 /// @brief Build a 3-atom water frame (C2v, OH ≈ 0.96 Å).
 cpu::Frame make_water() {
     cpu::Frame f(3);
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = 0.7572;
-    f.atoms.y[1] = 0.5859;
-    f.atoms.z[1] = 0.0;
-    f.atoms.x[2] = -0.7572;
-    f.atoms.y[2] = 0.5859;
-    f.atoms.z[2] = 0.0;
-    f.atoms.type[0] = 8;
-    f.atoms.type[1] = 1;
-    f.atoms.type[2] = 1;
-    f.atoms.mass[0] = 15.999;
-    f.atoms.mass[1] = 1.008;
-    f.atoms.mass[2] = 1.008;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7572;
+    f.span(ATV::kAtom_y)[1] = 0.5859;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = -0.7572;
+    f.span(ATV::kAtom_y)[2] = 0.5859;
+    f.span(ATV::kAtom_z)[2] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 /// @brief Build a carbon monoxide frame.
 cpu::Frame make_co() {
     cpu::Frame f(2);
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = 1.128;
-    f.atoms.y[1] = 0.0;
-    f.atoms.z[1] = 0.0;
-    f.atoms.type[0] = 6;
-    f.atoms.type[1] = 8;
-    f.atoms.mass[0] = 12.011;
-    f.atoms.mass[1] = 15.999;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 1.128;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 8;
+    f.span(ATV::kAtom_mass)[0] = 12.011;
+    f.span(ATV::kAtom_mass)[1] = 15.999;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

@@ -14,7 +14,7 @@
 ///                                   P=0,    τ_P=1000 fs,
 ///                                   drag=2, mtchain=3,       //    (LAMMPS defaults)
 ///                                   mpchain=3, dt=0.5 fs)
-///            cpu::md::ZeroLinearMomentum{1}                  // == fix momentum 1 linear 1 1 1
+///            cpu::md::ZeroMomentum{1}                        // == fix momentum 1 linear 1 1 1
 ///
 /// The point is to compare temperature / pressure trajectories on
 /// **identical input atoms, force field, box, cutoff, integrator, and
@@ -63,7 +63,7 @@ namespace {
 // kcal/mol → eV:
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 // degrees → rad:
-inline double deg2rad(double d) { return d * kPI / 180.0; }
+inline double deg2rad(double d) { return d * units::pi / 180.0; }
 // LAMMPS pressure unit is atmosphere; Atomiverse internal stress is
 // eV / Å³ . 1 atm ≈ 1.013 25e5 Pa = 1.013 25e5 J / m³ → 6.324209e-7
 // eV / Å³  (Pa × m³/eV·Å³).  For pressure printing we go the other way:
@@ -78,14 +78,14 @@ inline constexpr double kAmuPerA3ToGPerCc = 1.660'539'066'60;
 //    every `period` steps and print a LAMMPS-style thermo line. -----
 //
 // Bound at end_of_step at order >= +20 so it runs after ReduceEnergy (-50)
-// and after Barostat (-45). Reads frame.energy, frame.kinetic, frame.stress
+// and after Barostat (-45). Reads typed Frame energy/kinetic/stress metadata
 // — all already globally reduced.
 //
 // Columns match LAMMPS `thermo_style custom step temp press pe ke etotal
 // density vol lx ly lz` so the two logs can be diffed line by line
 // (LAMMPS pe/ke/etotal are in kcal/mol and we convert to eV in
 // compare.py). ThermoPrinter prints energies in eV.
-class ThermoPrinter : public cpu::ComponentBase {
+class ThermoPrinter : public cpu::Component {
   public:
     ThermoPrinter(int period, std::ostream& out, int n_atoms_global,
                   double total_mass_amu)
@@ -105,34 +105,36 @@ class ThermoPrinter : public cpu::ComponentBase {
         const auto& f = ctx.frame;
 
         if (step_ % period_ == 0) {
-            const double Lx = f.box(0, 0);
-            const double Ly = f.box(1, 1);
-            const double Lz = f.box(2, 2);
+            const double Lx = f.simbox.length(0);
+            const double Ly = f.simbox.length(1);
+            const double Lz = f.simbox.length(2);
             const double V = Lx * Ly * Lz;
-            const double T = (n_global_ > 1)
-                                 ? (2.0 * f.scalars.kinetic)
-                                       / (3.0 * (n_global_ - 1) * kBoltzmann)
-                                 : 0.0;
+            const double kinetic = f.meta.get(kKinetic);
+            const double energy = f.meta.get(kEnergy);
+            const auto& stress = f.meta.get(kStress);
+            const double T =
+                (n_global_ > 1)
+                    ? (2.0 * kinetic)
+                          / (3.0 * (n_global_ - 1) * units::kB_ev_per_k)
+                    : 0.0;
             // Atomiverse `frame.stress` stores the LAMMPS-style virial
             // directly (virial[0] = Σ r_ij,x · F_ij,x accumulated with
             // compression-positive sign), so the physical pressure is
             // just `(kin + pair virial)/(3V)` with NO sign flip. Sign
             // must match LAMMPS log (+ = compression).
-            const double P_evA3 = +(f.scalars.stress[0] + f.scalars.stress[1]
-                                    + f.scalars.stress[2])
-                                  / (3.0 * V);
+            const double P_evA3 =
+                +(stress[0] + stress[1] + stress[2]) / (3.0 * V);
             const double P_atm = P_evA3 * kEvPerA3ToAtm;
 
             const double density =
                 (V > 0.0) ? total_mass_amu_ * kAmuPerA3ToGPerCc / V : 0.0;
-            const double etotal = f.scalars.energy + f.scalars.kinetic;
+            const double etotal = energy + kinetic;
 
             (*out_) << std::setw(10) << step_ << ' ' << std::setw(14)
                     << std::setprecision(8) << T << ' ' << std::setw(14)
                     << std::setprecision(8) << P_atm << ' ' << std::setw(14)
-                    << std::setprecision(8) << f.scalars.energy << ' '
-                    << std::setw(14) << std::setprecision(8)
-                    << f.scalars.kinetic << ' ' << std::setw(14)
+                    << std::setprecision(8) << energy << ' ' << std::setw(14)
+                    << std::setprecision(8) << kinetic << ' ' << std::setw(14)
                     << std::setprecision(8) << etotal << ' ' << std::setw(12)
                     << std::setprecision(6) << density << ' ' << std::setw(14)
                     << std::setprecision(8) << V << ' ' << std::setw(10)
@@ -240,37 +242,41 @@ int main(int argc, char** argv) {
     cpu::Frame frame = debug_amorphous::load_lammps_data(data_path);
 
     if (rank == 0) {
-        std::cerr << "[atomiverse] n_atoms     = " << frame.atoms.size()
-                  << '\n';
+        std::cerr << "[atomiverse] n_atoms     = " << frame.nlocal() << '\n';
         // Per-atom topology counts (the flat sub-structs are deleted).
         long nb = 0, na = 0, nd = 0;
-        for (int i = 0; i < frame.atoms.nlocal; ++i) {
-            nb += frame.atoms.num_bond[i];
-            na += frame.atoms.num_angle[i];
-            nd += frame.atoms.num_dihedral[i];
+        const auto num_bond = frame.span(kAtom_num_bond);
+        const auto num_angle = frame.span(kAtom_num_angle);
+        const auto num_dihedral = frame.span(kAtom_num_dihedral);
+        for (int i = 0; i < frame.nlocal(); ++i) {
+            nb += num_bond[i];
+            na += num_angle[i];
+            nd += num_dihedral[i];
         }
         std::cerr << "[atomiverse] n_bonds     = " << nb << '\n';
         std::cerr << "[atomiverse] n_angles    = " << na << '\n';
         std::cerr << "[atomiverse] n_dihedrals = " << nd << '\n';
-        std::cerr << "[atomiverse] box (Å)     = " << frame.box(0, 0) << ' '
-                  << frame.box(1, 1) << ' ' << frame.box(2, 2) << '\n';
+        std::cerr << "[atomiverse] box (Å)     = " << frame.simbox.length(0)
+                  << ' ' << frame.simbox.length(1) << ' '
+                  << frame.simbox.length(2) << '\n';
     }
 
-    const int n_atoms_global = frame.atoms.size();
+    const int n_atoms_global = frame.nlocal();
 
     // Total mass snapshot — taken before Backend::set_frame partitions
     // the atoms, so every rank agrees on the global system mass. Used
     // by ThermoPrinter to print density in g/cc without any inter-stage
     // MPI communication.
     double total_mass_amu = 0.0;
-    for (std::size_t i = 0; i < frame.atoms.mass.size(); ++i) {
-        total_mass_amu += frame.atoms.mass[i];
+    const auto mass = frame.span(kAtom_mass);
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        total_mass_amu += mass[i];
     }
     if (rank == 0) {
         std::cerr << "[atomiverse] total_mass = " << total_mass_amu << " amu\n";
     }
 
-    int stage1_n_local = frame.atoms.size(); // assume all-on-rank-0 default
+    int stage1_n_local = frame.nlocal(); // assume all-on-rank-0 default
 
     std::ofstream log_stream;
     if (rank == 0) {
@@ -307,14 +313,14 @@ int main(int argc, char** argv) {
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};
-        sim.add(thermo);
+        sim.add_ref(thermo);
 
         // Stash this rank's final n_local so we can gather the frame
         // back to every rank between stages (Stage 2's driver scans the
         // whole array on first partition; without a gather it'd see
         // stale ghost rows).
         debug_amorphous::CaptureNLocal capture{&stage1_n_local};
-        sim.add(capture);
+        sim.add_ref(capture);
 
         sim.build();
 
@@ -340,14 +346,14 @@ int main(int argc, char** argv) {
     // ── Inter-stage gather: replicate the full frame on every rank ──
     if (run_stage1 && n_steps_stage1 > 0 && run_stage2 && world_size > 1) {
         debug_amorphous::gather_full_frame_inplace(frame, stage1_n_local,
-                                                   world_size, MPI_COMM_WORLD);
+                                                   MPI_COMM_WORLD);
         if (rank == 0) {
             std::cerr << "[atomiverse] inter-stage gather complete "
                       << "(n_local on rank 0 was " << stage1_n_local << ")\n";
         }
     }
 
-    // ── Stage 2: NoseHooverNPT (MTK-iso with M-chain NHC) + ZeroLinearMomentum.
+    // ── Stage 2: NoseHooverNPT (MTK-iso with M-chain NHC) + ZeroMomentum.
     //
     // Mirrors LAMMPS `fix npt iso 500 500 50 iso 0 0 1000 drag 2` +
     // `fix momentum 1 linear 1 1 1`. Exact algorithmic match: Martyna-
@@ -379,7 +385,7 @@ int main(int argc, char** argv) {
             /*.mpchain =*/3,   // LAMMPS default
         }});
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
-        sim.add(cpu::md::ZeroLinearMomentum{1});
+        sim.add(cpu::md::ZeroMomentum{1});
         sim.on(ATV::md::Phase::pre_force)
             .add(cpu::comm::HaloSend{lj_cut + 0.4}, -20);
         sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
@@ -396,7 +402,7 @@ int main(int argc, char** argv) {
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};
         thermo.reset_step();
-        sim.add(thermo);
+        sim.add_ref(thermo);
 
         sim.build();
 

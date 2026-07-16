@@ -9,7 +9,7 @@
 #include <cmath>
 #include <random>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -33,13 +33,13 @@ struct MoverHarness {
 
     explicit MoverHarness(int n) : frame(n) {
         for (int i = 0; i < n; ++i) {
-            frame.atoms.x[i] = 1.0 + i;
-            frame.atoms.y[i] = 2.0 + i;
-            frame.atoms.z[i] = 3.0 + i;
-            frame.atoms.mass[i] = 39.948;
-            frame.atoms.type[i] = 1;
+            frame.span(ATV::kAtom_x)[i] = 1.0 + i;
+            frame.span(ATV::kAtom_y)[i] = 2.0 + i;
+            frame.span(ATV::kAtom_z)[i] = 3.0 + i;
+            frame.span(ATV::kAtom_mass)[i] = 39.948;
+            frame.span(ATV::kAtom_type)[i] = 1;
         }
-        frame.box.set_cell(Mat3::diagonal(10.0, 10.0, 10.0));
+        frame.simbox.set_cell(Mat3::diagonal(10.0, 10.0, 10.0));
         ctx.mc.proposal = &txn;
         ctx.mc.rng = &rng;
     }
@@ -67,27 +67,30 @@ TEST(VolumeMove, RescalesBoxAndEveryCoordinateIsotropically) {
     ASSERT_EQ(h.txn.verb, Verb::Box);
     ASSERT_EQ(h.txn.size(), 3u); // every row snapshotted
     const double s =
-        h.frame.box.length(0) / before.box.length(0); // isotropic factor
-    EXPECT_NEAR(h.frame.box.length(1), before.box.length(1) * s, 1e-12);
-    EXPECT_NEAR(h.frame.box.length(2), before.box.length(2) * s, 1e-12);
+        h.frame.simbox.length(0) / before.simbox.length(0); // isotropic factor
+    EXPECT_NEAR(h.frame.simbox.length(1), before.simbox.length(1) * s, 1e-12);
+    EXPECT_NEAR(h.frame.simbox.length(2), before.simbox.length(2) * s, 1e-12);
     for (int i = 0; i < 3; ++i) {
-        EXPECT_NEAR(h.frame.atoms.x[i], before.atoms.x[i] * s, 1e-12);
-        EXPECT_NEAR(h.frame.atoms.y[i], before.atoms.y[i] * s, 1e-12);
-        EXPECT_NEAR(h.frame.atoms.z[i], before.atoms.z[i] * s, 1e-12);
+        EXPECT_EQ(h.frame.span(ATV::kAtom_x)[i],
+                  static_cast<StorageReal>(before.span(ATV::kAtom_x)[i] * s));
+        EXPECT_EQ(h.frame.span(ATV::kAtom_y)[i],
+                  static_cast<StorageReal>(before.span(ATV::kAtom_y)[i] * s));
+        EXPECT_EQ(h.frame.span(ATV::kAtom_z)[i],
+                  static_cast<StorageReal>(before.span(ATV::kAtom_z)[i] * s));
     }
     // ΔV bounded by δV.
-    const double v0 = before.box.volume();
-    EXPECT_LE(std::abs(h.frame.box.volume() - v0), 100.0 + 1e-9);
+    const double v0 = before.simbox.volume();
+    EXPECT_LE(std::abs(h.frame.simbox.volume() - v0), 100.0 + 1e-9);
 
     // And a rejection restores everything bitwise.
     h.txn.rollback(h.frame);
-    EXPECT_EQ(h.frame.atoms.x[1], before.atoms.x[1]);
-    EXPECT_EQ(h.frame.box.cell()(2, 2), before.box.cell()(2, 2));
+    EXPECT_EQ(h.frame.span(ATV::kAtom_x)[1], before.span(ATV::kAtom_x)[1]);
+    EXPECT_EQ(h.frame.simbox.cell()(2, 2), before.simbox.cell()(2, 2));
 }
 
 TEST(VolumeMove, ClampedDrawProposesNothing) {
     MoverHarness h{2};
-    h.frame.box.set_cell(Mat3::diagonal(1.0, 1.0, 1.0)); // V = 1 Å³
+    h.frame.simbox.set_cell(Mat3::diagonal(1.0, 1.0, 1.0)); // V = 1 Å³
     cpu::mc::VolumeMove mv{1e6}; // most draws land below V' <= 0
     int none_seen = 0;
     for (int k = 0; k < 50; ++k) {
@@ -107,7 +110,7 @@ TEST(VolumeMove, BootstrapPassIsNoOp) {
     cpu::mc::VolumeMove mv{10.0};
     mv.launch(h.launch(/*step=*/-1));
     EXPECT_EQ(h.txn.size(), 0u);
-    EXPECT_EQ(h.frame.box.cell()(0, 0), before.box.cell()(0, 0));
+    EXPECT_EQ(h.frame.simbox.cell()(0, 0), before.simbox.cell()(0, 0));
 }
 
 // ── InsertDeleteMove ────────────────────────────────────────────────────────
@@ -122,23 +125,22 @@ TEST(InsertDeleteMove, InsertionAppendsAZeroedRowInsideTheCell) {
     cpu::mc::InsertDeleteMove mv{2, 39.948};
     // Drive until an insertion happens (coin is 50/50).
     while (true) {
-        const int n_before = h.frame.atoms.nlocal;
+        const int n_before = h.frame.nlocal();
         mv.launch(h.launch());
         if (h.txn.verb == Verb::Insert) {
             const int slot = n_before;
-            ASSERT_EQ(h.frame.atoms.nlocal, n_before + 1);
-            const auto& a = h.frame.atoms;
-            EXPECT_GE(a.x[slot], 0.0);
-            EXPECT_LT(a.x[slot], 10.0);
-            EXPECT_GE(a.y[slot], 0.0);
-            EXPECT_LT(a.y[slot], 10.0);
-            EXPECT_EQ(a.vx[slot], 0.0);
-            EXPECT_EQ(a.fz[slot], 0.0);
-            EXPECT_EQ(a.charge[slot], 0.0);
-            EXPECT_EQ(a.num_bond[slot], 0);
-            EXPECT_EQ(a.mass[slot], StorageReal(39.948));
-            EXPECT_EQ(a.type[slot], 2);
-            EXPECT_EQ(a.tag[slot], 3); // acquire_tag: past identity tags 0..2
+            ASSERT_EQ(h.frame.nlocal(), n_before + 1);
+            EXPECT_GE(h.frame.span(kAtom_x)[slot], 0.0);
+            EXPECT_LT(h.frame.span(kAtom_x)[slot], 10.0);
+            EXPECT_GE(h.frame.span(kAtom_y)[slot], 0.0);
+            EXPECT_LT(h.frame.span(kAtom_y)[slot], 10.0);
+            EXPECT_EQ(h.frame.span(kAtom_vx)[slot], 0.0);
+            EXPECT_EQ(h.frame.span(kAtom_fz)[slot], 0.0);
+            EXPECT_EQ(h.frame.span(kAtom_charge)[slot], 0.0);
+            EXPECT_EQ(h.frame.span(kAtom_num_bond)[slot], 0);
+            EXPECT_EQ(h.frame.span(kAtom_mass)[slot], StorageReal(39.948));
+            EXPECT_EQ(h.frame.span(kAtom_type)[slot], 2);
+            EXPECT_EQ(h.frame.span(kAtom_tag)[slot], 3);
             break;
         }
         h.txn.rollback(h.frame); // undo the deletion and redraw
@@ -152,12 +154,16 @@ TEST(InsertDeleteMove, DeletionCompactsAndPatchResurrects) {
     while (true) {
         mv.launch(h.launch());
         if (h.txn.verb == Verb::Delete) {
-            EXPECT_EQ(h.frame.atoms.nlocal, 3);
+            EXPECT_EQ(h.frame.nlocal(), 3);
             h.txn.rollback(h.frame);
-            ASSERT_EQ(h.frame.atoms.nlocal, 4);
+            ASSERT_EQ(h.frame.nlocal(), 4);
             for (int i = 0; i < 4; ++i) {
-                EXPECT_EQ(h.frame.atoms.x[i], before.atoms.x[i]) << i;
-                EXPECT_EQ(h.frame.atoms.tag[i], before.atoms.tag[i]) << i;
+                EXPECT_EQ(h.frame.span(ATV::kAtom_x)[i],
+                          before.span(ATV::kAtom_x)[i])
+                    << i;
+                EXPECT_EQ(h.frame.span(ATV::kAtom_tag)[i],
+                          before.span(ATV::kAtom_tag)[i])
+                    << i;
             }
             break;
         }
@@ -177,7 +183,7 @@ TEST(InsertDeleteMove, DeletionFromEmptyFrameProposesNothing) {
             h.txn.rollback(h.frame); // reject the insertion, stay at N = 0
     }
     EXPECT_GT(none_seen, 0);
-    EXPECT_EQ(h.frame.atoms.nlocal, 0);
+    EXPECT_EQ(h.frame.nlocal(), 0);
 }
 
 // ── MoveSelector (ac-006) ───────────────────────────────────────────────────
@@ -228,7 +234,7 @@ TEST(MoveSelector, TemporaryChainIsOwnedByTheDriver) {
     // keep the chain an rvalue, forcing the owning branch. This test drives
     // exactly that temporary-chain path through build().
     cpu::mc::Gcmc mc{120.0, -0.1, 39.948, 1u};
-    mc.set_pair(cpu::PairLJCut{0.0104, 3.4, 8.5});
+    mc.add_potential(cpu::PairLJCut{0.0104, 3.4, 8.5});
     mc.set_neighbor(cpu::md::NeighborList<>{8.5, 1.0, 1, 0, true});
     mc.set_mover(cpu::mc::MoveSelector{}
                      .add(cpu::mc::TranslateMove{0.2}, 0.5)

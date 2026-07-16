@@ -38,13 +38,16 @@ cpu::Frame make_uniform_grid(int n_per_side, double box_len) {
     for (int ix = 0; ix < n_per_side; ++ix)
         for (int iy = 0; iy < n_per_side; ++iy)
             for (int iz = 0; iz < n_per_side; ++iz) {
-                frame.atoms.x[idx] = (static_cast<double>(ix) + 0.5) * step;
-                frame.atoms.y[idx] = (static_cast<double>(iy) + 0.5) * step;
-                frame.atoms.z[idx] = (static_cast<double>(iz) + 0.5) * step;
-                frame.atoms.mass[idx] = 1.0;
+                frame.span(ATV::kAtom_x)[idx] =
+                    (static_cast<double>(ix) + 0.5) * step;
+                frame.span(ATV::kAtom_y)[idx] =
+                    (static_cast<double>(iy) + 0.5) * step;
+                frame.span(ATV::kAtom_z)[idx] =
+                    (static_cast<double>(iz) + 0.5) * step;
+                frame.span(ATV::kAtom_mass)[idx] = 1.0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -102,7 +105,7 @@ TEST(MpiTopology, FaceNeighborsValidUnderPBC) {
 
 TEST(MpiTopology, PartitionConservesTotalAtomCount) {
     auto frame = make_uniform_grid(4, 10.0); // 64 atoms, box 10x10x10
-    const int n_total = frame.atoms.size();
+    const int n_total = frame.nlocal();
 
     cpu::Backend backend;
     backend.init();
@@ -125,7 +128,7 @@ TEST(MpiTopology, PartitionConservesTotalAtomCount) {
 
 TEST(MpiTopology, PartitionAssignsEveryTagOnce) {
     auto frame = make_uniform_grid(4, 10.0);
-    const int n_total = frame.atoms.size();
+    const int n_total = frame.nlocal();
 
     cpu::Backend backend;
     backend.init();
@@ -136,7 +139,7 @@ TEST(MpiTopology, PartitionAssignsEveryTagOnce) {
     // Each rank reports which tags it owns.
     std::vector<int> tag_counts(static_cast<std::size_t>(n_total), 0);
     for (int i = 0; i < dd->n_local; ++i) {
-        const std::int64_t t = frame.atoms.tag(i);
+        const std::int64_t t = frame.span(ATV::kAtom_tag)[i];
         if (t >= 0 && t < n_total) {
             tag_counts[static_cast<std::size_t>(t)] = 1;
         }
@@ -169,9 +172,9 @@ TEST(MpiTopology, OwnedAtomsInSlab) {
     // For a uniform-grid initial placement, all atom positions are in
     // [0, box_len); no PBC-wrap is needed, so sublo <= pos < subhi must hold.
     for (int i = 0; i < dd->n_local; ++i) {
-        const double x = frame.atoms.x(i);
-        const double y = frame.atoms.y(i);
-        const double z = frame.atoms.z(i);
+        const double x = frame.span(ATV::kAtom_x)[i];
+        const double y = frame.span(ATV::kAtom_y)[i];
+        const double z = frame.span(ATV::kAtom_z)[i];
         EXPECT_GE(x, dd->sublo[0]) << "atom " << i << " x out of slab";
         EXPECT_LT(x, dd->subhi[0]) << "atom " << i << " x out of slab";
         EXPECT_GE(y, dd->sublo[1]) << "atom " << i << " y out of slab";

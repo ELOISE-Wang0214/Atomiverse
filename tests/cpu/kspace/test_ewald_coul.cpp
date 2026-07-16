@@ -39,23 +39,24 @@ cpu::Frame make_rocksalt(double d, int n) {
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             for (int k = 0; k < n; ++k) {
-                frame.atoms.x[idx] = i * d;
-                frame.atoms.y[idx] = j * d;
-                frame.atoms.z[idx] = k * d;
-                frame.atoms.charge[idx] = ((i + j + k) % 2 == 0) ? 1.0 : -1.0;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.tag[idx] = idx + 1;
+                frame.span(ATV::kAtom_x)[idx] = i * d;
+                frame.span(ATV::kAtom_y)[idx] = j * d;
+                frame.span(ATV::kAtom_z)[idx] = k * d;
+                frame.span(ATV::kAtom_charge)[idx] =
+                    ((i + j + k) % 2 == 0) ? 1.0 : -1.0;
+                frame.span(ATV::kAtom_mass)[idx] = 1.0;
+                frame.span(ATV::kAtom_type)[idx] = 0;
+                frame.span(ATV::kAtom_tag)[idx] = idx + 1;
                 ++idx;
             }
-    frame.box = Mat3::cubic(n * d);
+    frame.simbox = ATV::cpu::Box::cubic(n * d);
     return frame;
 }
 
 // Dense half neighbor list (every j > i). CoulLong applies the cutoff and
 // minimum-image internally; valid while cutoff < L/2.
 void build_full_halflist(const cpu::Frame& f, cpu::md::PairList& pairs) {
-    const int N = f.atoms.size();
+    const int N = f.nlocal();
     pairs.inum = N;
     pairs.ilist.resize(N);
     pairs.numneigh.resize(N);
@@ -78,13 +79,14 @@ void build_full_halflist(const cpu::Frame& f, cpu::md::PairList& pairs) {
 // Total electrostatic energy: real-space CoulLong + reciprocal KSpaceEwald.
 double electrostatic_energy(cpu::Frame& f, const cpu::md::PairList& pairs,
                             double alpha, double cutoff, double accuracy) {
-    for (int i = 0; i < f.atoms.size(); ++i) {
-        f.atoms.fx[i] = f.atoms.fy[i] = f.atoms.fz[i] = 0;
+    for (int i = 0; i < f.nlocal(); ++i) {
+        f.span(ATV::kAtom_fx)[i] = f.span(ATV::kAtom_fy)[i] =
+            f.span(ATV::kAtom_fz)[i] = 0;
     }
-    f.scalars.energy = 0;
-    f.scalars.energy_pair = 0;
+    f.meta.get(ATV::kEnergy) = 0;
+    f.meta.get(ATV::kEnergyPair) = 0;
     for (int s = 0; s < 6; ++s)
-        f.scalars.stress[s] = 0;
+        f.meta.get(ATV::kStress)[s] = 0;
 
     cpu::Context ctx;
     ctx.md.pair_list = &pairs;
@@ -98,7 +100,7 @@ double electrostatic_energy(cpu::Frame& f, const cpu::md::PairList& pairs,
     real.launch(lctx);
     recip.launch(lctx);
     real.destroy({ctx, f});
-    return f.scalars.energy;
+    return f.meta.get(ATV::kEnergy);
 }
 
 } // namespace
@@ -115,7 +117,8 @@ TEST(EwaldCoul, MadelungNaCl) {
     const double e = electrostatic_energy(frame, pairs, alpha, cutoff, 1e-7);
 
     const int N = n * n * n;
-    const double e_expected = -0.5 * N * kMadelungNaCl * ATV::kCoulomb / d;
+    const double e_expected =
+        -0.5 * N * kMadelungNaCl * ATV::units::coulomb / d;
     EXPECT_NEAR(e / e_expected, 1.0, 1e-4)
         << "E=" << e << "  expected=" << e_expected;
 }
@@ -142,15 +145,15 @@ TEST(EwaldCoul, FiniteDifferenceForces) {
         {1.0, 1.0, 1.0}, {3.2, 1.4, 1.1}, {1.3, 3.1, 2.4}, {2.7, 2.2, 3.6}};
     const double q[4] = {0.6, -0.4, 0.5, -0.7};
     for (int i = 0; i < 4; ++i) {
-        frame.atoms.x[i] = coords[i][0];
-        frame.atoms.y[i] = coords[i][1];
-        frame.atoms.z[i] = coords[i][2];
-        frame.atoms.charge[i] = q[i];
-        frame.atoms.mass[i] = 1.0;
-        frame.atoms.type[i] = 0;
-        frame.atoms.tag[i] = i + 1;
+        frame.span(ATV::kAtom_x)[i] = coords[i][0];
+        frame.span(ATV::kAtom_y)[i] = coords[i][1];
+        frame.span(ATV::kAtom_z)[i] = coords[i][2];
+        frame.span(ATV::kAtom_charge)[i] = q[i];
+        frame.span(ATV::kAtom_mass)[i] = 1.0;
+        frame.span(ATV::kAtom_type)[i] = 0;
+        frame.span(ATV::kAtom_tag)[i] = i + 1;
     }
-    frame.box = Mat3::cubic(8.0);
+    frame.simbox = ATV::cpu::Box::cubic(8.0);
     cpu::md::PairList pairs;
     build_full_halflist(frame, pairs);
 
@@ -160,14 +163,14 @@ TEST(EwaldCoul, FiniteDifferenceForces) {
 
     auto force = [&](int a, int axis) {
         electrostatic_energy(frame, pairs, alpha, cutoff, acc);
-        return axis == 0   ? frame.atoms.fx[a]
-               : axis == 1 ? frame.atoms.fy[a]
-                           : frame.atoms.fz[a];
+        return axis == 0   ? frame.span(ATV::kAtom_fx)[a]
+               : axis == 1 ? frame.span(ATV::kAtom_fy)[a]
+                           : frame.span(ATV::kAtom_fz)[a];
     };
     auto energy_at = [&](int a, int axis, double delta) {
-        auto& pos = axis == 0   ? frame.atoms.x
-                    : axis == 1 ? frame.atoms.y
-                                : frame.atoms.z;
+        auto pos = axis == 0   ? frame.span(ATV::kAtom_x)
+                   : axis == 1 ? frame.span(ATV::kAtom_y)
+                               : frame.span(ATV::kAtom_z);
         const double orig = pos[a];
         pos[a] = orig + delta;
         const double e = electrostatic_energy(frame, pairs, alpha, cutoff, acc);
@@ -175,13 +178,13 @@ TEST(EwaldCoul, FiniteDifferenceForces) {
         return e;
     };
 
-    const double h = 1e-5;
+    const double h = 1.0e-5;
     for (int a = 0; a < 4; ++a)
         for (int axis = 0; axis < 3; ++axis) {
             const double f_analytic = force(a, axis);
             const double grad =
                 (energy_at(a, axis, h) - energy_at(a, axis, -h)) / (2 * h);
-            EXPECT_NEAR(f_analytic, -grad, 1e-4)
+            EXPECT_NEAR(f_analytic, -grad, 1.0e-4)
                 << "atom " << a << " axis " << axis;
         }
 }

@@ -90,7 +90,7 @@ TEST(CudaNoseHooverNPT, IsoNPTBuildsAndRunsFinite) {
                                         .dt = 0.001};
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::NoseHooverNPT{cfg});
     sim.build();
     sim.run(frame, 200);
@@ -117,7 +117,7 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     cfg.couple_axis = {false, true, true}; // x rigid, y/z barostatted
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::NoseHooverNPT{cfg});
     sim.build();
     sim.run(frame, 100);
@@ -149,7 +149,7 @@ TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.add(npt);
     sim.build();
     sim.run(frame, 50);
@@ -174,7 +174,7 @@ TEST(CudaNoseHooverNPT, WritesConservedHamiltonian) {
                                         .dt = 0.001};
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
+    sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::NoseHooverNPT{cfg});
     sim.build();
     sim.run(frame, 50);

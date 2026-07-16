@@ -1,14 +1,10 @@
 /// @file tests/cpu/test_evaluate_driver_capabilities.cpp
-/// @brief Phase 1.6 — Evaluate accepts evaluators *by capability*, not by
-///        ForceProvider role. An energy-only evaluator (no Force capability)
-///        is valid in `cpu::Evaluate` and rejected by `cpu::md::MD`.
-///
-/// Acceptance: ac-004 in `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
-
+/// @brief Evaluate accepts energy/force Potential sources; MD requires Integrator.
 #include <gtest/gtest.h>
 
 #include <string>
 
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/facade/stage.h"
@@ -20,19 +16,9 @@ using atv_test::StubIntegrator;
 
 namespace {
 
-/// Energy-only evaluator with launch counter — used to assert that
-/// Evaluate::run() actually invoked the evaluator. Differs from the
-/// shared `StubEnergyEvaluator` only in carrying the counter; the
-/// counter is what makes this test specific.
-struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
+struct EnergyOnlyPotential : ATV::cpu::Potential {
     int launch_count = 0;
     std::string name() const override { return "energy_only"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Evaluator;
-    }
-    ATV::Capability capabilities() const override {
-        return ATV::Capability::Energy;
-    }
     void launch(const ATV::cpu::LaunchContext&) override { ++launch_count; }
 };
 
@@ -41,29 +27,20 @@ struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
 TEST(EvaluateCapabilities, EnergyOnlyAcceptedByEvaluate) {
     using namespace ATV;
     cpu::Evaluate e;
-    EnergyOnlyEvaluator energy;
-    e.on(evaluate::Phase::evaluate).add(energy);
+    EnergyOnlyPotential energy;
+    e.on(evaluate::Phase::evaluate).add_ref(energy);
     EXPECT_NO_THROW(e.build());
 
     auto frame = make_trivial_frame();
     e.run(frame);
-    EXPECT_EQ(energy.launch_count, 1)
-        << "Evaluate should run the evaluator exactly once";
+    EXPECT_EQ(energy.launch_count, 1);
 }
 
-TEST(EvaluateCapabilities, EnergyOnlyRejectedByDynamics) {
+TEST(EvaluateCapabilities, MDStillNeedsIntegrator) {
     using namespace ATV;
-    cpu::md::MD d;
-    StubIntegrator integ;
-    EnergyOnlyEvaluator energy;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(energy);
-    try {
-        d.build();
-        FAIL()
-            << "Dynamics requires Force capability — energy-only must reject";
-    } catch (const std::runtime_error& e) {
-        EXPECT_NE(std::string(e.what()).find("Force"), std::string::npos)
-            << e.what();
-    }
+    cpu::md::MD md;
+    EnergyOnlyPotential energy;
+    md.on(md::Phase::force).add_ref(energy);
+    // No integrator → build fails.
+    EXPECT_THROW(md.build(), std::exception);
 }

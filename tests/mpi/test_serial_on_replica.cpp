@@ -61,15 +61,15 @@ namespace {
 ///        rank constructs a bitwise-identical full replica.
 cpu::Frame make_h2_frame() {
     cpu::Frame frame(2);
-    frame.atoms.type[0] = 1; // Z = 1 (hydrogen)
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1; // Z = 1 (hydrogen)
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 
@@ -111,7 +111,7 @@ TEST(SerialOnReplica, BackendFlagSkipsTopologyAndKeepsFrameWhole) {
     EXPECT_EQ(dd->cart_comm, MPI_COMM_NULL)
         << "serial-on-replica must leave cart_comm MPI_COMM_NULL so "
            "partition_atoms is unreachable";
-    EXPECT_EQ(frame.atoms.nlocal, 2)
+    EXPECT_EQ(frame.nlocal(), 2)
         << "rank " << backend.context().mpi_rank
         << " lost part of its replica to decomposition";
 
@@ -126,7 +126,7 @@ TEST(SerialOnReplica, EvaluateAm1KeepsFullReplicaOnEveryRank) {
 
     int rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    EXPECT_EQ(frame.atoms.nlocal, 2)
+    EXPECT_EQ(frame.nlocal(), 2)
         << "rank " << rank
         << ": AM1 single point ran on a partitioned sub-molecule";
 }
@@ -147,16 +147,17 @@ TEST(SerialOnReplica, EvaluateAm1MatchesSerialInnerSolverReference) {
     const auto& ref = solver.run(ref_frame);
     ASSERT_TRUE(ref.converged);
 
-    const double ref_energy_ev = ref.electronic_energy_hartree * kHartree2eV;
+    const double ref_energy_ev =
+        ref.electronic_energy_hartree * units::kHartreeInEv;
     ASSERT_NE(ref_energy_ev, 0.0)
         << "reference produced zero energy — the parity check would be "
            "vacuous";
-    EXPECT_EQ(frame.scalars.energy, ref_energy_ev);
+    EXPECT_EQ(frame.meta.get(ATV::kEnergy), ref_energy_ev);
 
     ASSERT_EQ(ref.mulliken_charges.size(), 2u);
     for (int i = 0; i < 2; ++i) {
         SCOPED_TRACE("atom " + std::to_string(i));
-        EXPECT_EQ(frame.atoms.charge[i],
+        EXPECT_EQ(frame.span(ATV::kAtom_charge)[i],
                   static_cast<StorageReal>(
                       ref.mulliken_charges[static_cast<std::size_t>(i)]));
     }
@@ -173,7 +174,7 @@ TEST(SerialOnReplica, EvaluateAm1EnergyIdenticalAcrossRanks) {
 
     // scalars.energy is AccReal (always double) — allgather and compare
     // every rank's value bitwise against rank 0's.
-    const double local = frame.scalars.energy;
+    const double local = frame.meta.get(ATV::kEnergy);
     std::vector<double> energies(static_cast<std::size_t>(size), 0.0);
     MPI_Allgather(&local, 1, MPI_DOUBLE, energies.data(), 1, MPI_DOUBLE,
                   MPI_COMM_WORLD);

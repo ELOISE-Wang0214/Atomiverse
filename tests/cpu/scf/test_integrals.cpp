@@ -10,7 +10,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/operators.h"
@@ -28,17 +28,17 @@ constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 /// @brief Build an H2 frame at a given bond length along x.
 cpu::Frame make_h2(double bond_length) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0);
-    frame.atoms.y[0] = double(0);
-    frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = bond_length;
-    frame.atoms.y[1] = double(0);
-    frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(1.008);
-    frame.atoms.mass[1] = double(1.008);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1;
-    frame.box = Mat3::cubic(100.0);
+    frame.span(ATV::kAtom_x)[0] = double(0);
+    frame.span(ATV::kAtom_y)[0] = double(0);
+    frame.span(ATV::kAtom_z)[0] = double(0);
+    frame.span(ATV::kAtom_x)[1] = bond_length;
+    frame.span(ATV::kAtom_y)[1] = double(0);
+    frame.span(ATV::kAtom_z)[1] = double(0);
+    frame.span(ATV::kAtom_mass)[0] = double(1.008);
+    frame.span(ATV::kAtom_mass)[1] = double(1.008);
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.simbox = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -55,7 +55,7 @@ struct H2Setup {
         centers[0][0] = 0;
         centers[0][1] = 0;
         centers[0][2] = 0;
-        centers[1][0] = bond_angstrom * kAngstromToBohr;
+        centers[1][0] = bond_angstrom * units::kAngstromInBohr;
         centers[1][1] = 0;
         centers[1][2] = 0;
         for (int s = 0; s < 2; ++s) {
@@ -259,7 +259,7 @@ TEST(NativeIntegrals, MultiGeometry_IntegralPack) {
         EXPECT_NEAR(static_cast<double>(pack.S(0, 0)), 1.0, 0.01)
             << "S(0,0) != 1.0 at bond_length=" << bl;
         // V_nuc should be Z1*Z2/R (in Hartree with Bohr distance)
-        double R_bohr = bl * kAngstromToBohr;
+        double R_bohr = bl * units::kAngstromInBohr;
         double expected_vnuc = 1.0 / R_bohr; // Z=1 for both H atoms
         EXPECT_NEAR(static_cast<double>(pack.V_nuc), expected_vnuc, 1e-5)
             << "V_nuc mismatch at bond_length=" << bl;
@@ -272,22 +272,22 @@ TEST(NativeIntegrals, MultiGeometry_IntegralPack) {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Standard geometry: O at origin, H at ~0.96 A, angle 104.5 deg
-    f.atoms.x[0] = double(0.0);
-    f.atoms.y[0] = double(0.0);
-    f.atoms.z[0] = double(0.0);
-    f.atoms.x[1] = double(0.757);
-    f.atoms.y[1] = double(0.587);
-    f.atoms.z[1] = double(0.0);
-    f.atoms.x[2] = double(-0.757);
-    f.atoms.y[2] = double(0.587);
-    f.atoms.z[2] = double(0.0);
-    f.atoms.mass[0] = double(15.999);
-    f.atoms.mass[1] = double(1.008);
-    f.atoms.mass[2] = double(1.008);
-    f.atoms.type[0] = 8;
-    f.atoms.type[1] = 1;
-    f.atoms.type[2] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = double(0.0);
+    f.span(ATV::kAtom_y)[0] = double(0.0);
+    f.span(ATV::kAtom_z)[0] = double(0.0);
+    f.span(ATV::kAtom_x)[1] = double(0.757);
+    f.span(ATV::kAtom_y)[1] = double(0.587);
+    f.span(ATV::kAtom_z)[1] = double(0.0);
+    f.span(ATV::kAtom_x)[2] = double(-0.757);
+    f.span(ATV::kAtom_y)[2] = double(0.587);
+    f.span(ATV::kAtom_z)[2] = double(0.0);
+    f.span(ATV::kAtom_mass)[0] = double(15.999);
+    f.span(ATV::kAtom_mass)[1] = double(1.008);
+    f.span(ATV::kAtom_mass)[2] = double(1.008);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -295,29 +295,29 @@ cpu::Frame make_h2o() {
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
     // Tetrahedral geometry, C at origin, H at ~1.089 A
-    f.atoms.x[0] = double(0.0);
-    f.atoms.y[0] = double(0.0);
-    f.atoms.z[0] = double(0.0);
-    f.atoms.x[1] = double(0.6276);
-    f.atoms.y[1] = double(0.6276);
-    f.atoms.z[1] = double(0.6276);
-    f.atoms.x[2] = double(-0.6276);
-    f.atoms.y[2] = double(-0.6276);
-    f.atoms.z[2] = double(0.6276);
-    f.atoms.x[3] = double(-0.6276);
-    f.atoms.y[3] = double(0.6276);
-    f.atoms.z[3] = double(-0.6276);
-    f.atoms.x[4] = double(0.6276);
-    f.atoms.y[4] = double(-0.6276);
-    f.atoms.z[4] = double(-0.6276);
+    f.span(ATV::kAtom_x)[0] = double(0.0);
+    f.span(ATV::kAtom_y)[0] = double(0.0);
+    f.span(ATV::kAtom_z)[0] = double(0.0);
+    f.span(ATV::kAtom_x)[1] = double(0.6276);
+    f.span(ATV::kAtom_y)[1] = double(0.6276);
+    f.span(ATV::kAtom_z)[1] = double(0.6276);
+    f.span(ATV::kAtom_x)[2] = double(-0.6276);
+    f.span(ATV::kAtom_y)[2] = double(-0.6276);
+    f.span(ATV::kAtom_z)[2] = double(0.6276);
+    f.span(ATV::kAtom_x)[3] = double(-0.6276);
+    f.span(ATV::kAtom_y)[3] = double(0.6276);
+    f.span(ATV::kAtom_z)[3] = double(-0.6276);
+    f.span(ATV::kAtom_x)[4] = double(0.6276);
+    f.span(ATV::kAtom_y)[4] = double(-0.6276);
+    f.span(ATV::kAtom_z)[4] = double(-0.6276);
     for (int i = 0; i < 5; ++i)
-        f.atoms.mass[i] = (i == 0) ? double(12.011) : double(1.008);
-    f.atoms.type[0] = 6;
-    f.atoms.type[1] = 1;
-    f.atoms.type[2] = 1;
-    f.atoms.type[3] = 1;
-    f.atoms.type[4] = 1;
-    f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_mass)[i] = (i == 0) ? double(12.011) : double(1.008);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -499,17 +499,17 @@ TEST(NativeVsLibcint, CH4) { compare_integrals_vs_libcint(make_ch4(), "CH4"); }
 /// @brief Build CO (carbon monoxide) frame.
 static cpu::Frame make_co() {
     cpu::Frame f(2);
-    f.atoms.x[0] = double(0.0);
-    f.atoms.y[0] = double(0.0);
-    f.atoms.z[0] = double(0.0);
-    f.atoms.x[1] = double(1.128);
-    f.atoms.y[1] = double(0.0);
-    f.atoms.z[1] = double(0.0);
-    f.atoms.mass[0] = double(12.011);
-    f.atoms.mass[1] = double(15.999);
-    f.atoms.type[0] = 6;
-    f.atoms.type[1] = 8;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = double(0.0);
+    f.span(ATV::kAtom_y)[0] = double(0.0);
+    f.span(ATV::kAtom_z)[0] = double(0.0);
+    f.span(ATV::kAtom_x)[1] = double(1.128);
+    f.span(ATV::kAtom_y)[1] = double(0.0);
+    f.span(ATV::kAtom_z)[1] = double(0.0);
+    f.span(ATV::kAtom_mass)[0] = double(12.011);
+    f.span(ATV::kAtom_mass)[1] = double(15.999);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 8;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

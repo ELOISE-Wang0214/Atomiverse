@@ -23,17 +23,17 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -42,23 +42,24 @@ namespace {
 cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     const int n = n_cells * n_cells * n_cells * 4;
     cpu::Frame frame(n);
-    const double basis[4][3] = {{0.0, 0.0, 0.0},
-                                {0.5, 0.5, 0.0},
-                                {0.5, 0.0, 0.5},
-                                {0.0, 0.5, 0.5}};
+    const double basis[4][3] = {
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0] + 0.25) * a_lat;
-                    frame.atoms.y[idx] = (iy + basis[b][1] + 0.25) * a_lat;
-                    frame.atoms.z[idx] = (iz + basis[b][2] + 0.25) * a_lat;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 18;
+                    frame.span(ATV::kAtom_x)[idx] =
+                        (ix + basis[b][0] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_y)[idx] =
+                        (iy + basis[b][1] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_z)[idx] =
+                        (iz + basis[b][2] + 0.25) * a_lat;
+                    frame.span(ATV::kAtom_mass)[idx] = 39.948;
+                    frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.box = Mat3::cubic(n_cells * a_lat);
+    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -66,7 +67,8 @@ double temperature_K(const cpu::Frame& f, int n_global) {
     const int ndof = 3 * n_global - 3;
     if (ndof <= 0)
         return 0.0;
-    return 2.0 * f.scalars.kinetic / (static_cast<double>(ndof) * kBoltzmann);
+    return 2.0 * f.meta.get(ATV::kKinetic)
+           / (static_cast<double>(ndof) * units::kB_ev_per_k);
 }
 
 } // namespace
@@ -86,7 +88,7 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     // test_npt_multirank — already a multi-rank-validated layout under
     // Berendsen, so any failure here isolates NoseHooverNPT.
     auto frame = make_fcc_argon(5, 5.3);
-    const int n_global = static_cast<int>(frame.atoms.size());
+    const int n_global = static_cast<int>(frame.nlocal());
 
     const double lj_eps = 0.0104;
     const double lj_sig = 3.4;
@@ -105,7 +107,7 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
                                                .drag = 2.0}});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
     sim.build();
 
@@ -113,9 +115,9 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     sim.run(frame, 1);
     const double T1 = temperature_K(frame, n_global);
     if (my_rank == 0) {
-        std::printf(
-            "[NHnpt-8r] step 1: T=%.3f K, E_kin=%.3f eV, box=%.4f Å\n", T1,
-            static_cast<double>(frame.scalars.kinetic), frame.box(0, 0));
+        std::printf("[NHnpt-8r] step 1: T=%.3f K, E_kin=%.3f eV, box=%.4f Å\n",
+                    T1, static_cast<double>(frame.meta.get(ATV::kKinetic)),
+                    frame.simbox.cell()(0, 0));
     }
     EXPECT_GT(T1, 50.0) << "after step 1: T_K should be > 50 K, got " << T1;
     EXPECT_LT(T1, 600.0) << "after step 1: T_K runaway: " << T1;
@@ -124,15 +126,16 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     constexpr int n_steps = 200;
     constexpr int probe_every = 20;
     double T_min_observed = T1;
-    for (int chunk_start = 0; chunk_start < n_steps; chunk_start += probe_every) {
+    for (int chunk_start = 0; chunk_start < n_steps;
+         chunk_start += probe_every) {
         sim.run(frame, probe_every);
         const double T = temperature_K(frame, n_global);
         if (my_rank == 0) {
             std::printf("[NHnpt-8r] step %d: T=%.3f K, E_kin=%.3f eV, "
                         "box=%.4f Å\n",
                         chunk_start + probe_every + 1, T,
-                        static_cast<double>(frame.scalars.kinetic),
-                        frame.box(0, 0));
+                        static_cast<double>(frame.meta.get(ATV::kKinetic)),
+                        frame.simbox.cell()(0, 0));
         }
         if (T < T_min_observed)
             T_min_observed = T;
@@ -145,10 +148,10 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
                     T_min_observed);
     }
 
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
             << "rank " << my_rank << " atom " << i << " x went NaN";
-        ASSERT_FALSE(std::isnan(frame.atoms.vx[i]))
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_vx)[i]))
             << "rank " << my_rank << " atom " << i << " vx went NaN";
     }
 }
@@ -163,8 +166,8 @@ cpu::Frame make_pe_box_simple(int n_chains_per_axis, int n_atoms_per_chain,
     // own cubic cell aligned along x. Cells span the full box so every
     // 2x2x2 MPI rank sees a roughly equal local atom count after
     // `partition_atoms`. Bond length 1.53 Å (matches bench / Dreiding-UA).
-    const int n_chains
-        = n_chains_per_axis * n_chains_per_axis * n_chains_per_axis;
+    const int n_chains =
+        n_chains_per_axis * n_chains_per_axis * n_chains_per_axis;
     const int n_atoms = n_chains * n_atoms_per_chain;
     const double r0 = 1.53;
     const double cell = box_len / static_cast<double>(n_chains_per_axis);
@@ -179,11 +182,11 @@ cpu::Frame make_pe_box_simple(int n_chains_per_axis, int n_atoms_per_chain,
                 const double y0 = (cy + 0.5) * cell;
                 const double z0 = (cz + 0.5) * cell;
                 for (int k = 0; k < n_atoms_per_chain; ++k) {
-                    frame.atoms.x[atom_idx] = x0 + k * r0;
-                    frame.atoms.y[atom_idx] = y0;
-                    frame.atoms.z[atom_idx] = z0;
-                    frame.atoms.mass[atom_idx] = 14.0;
-                    frame.atoms.type[atom_idx] = 1;
+                    frame.span(ATV::kAtom_x)[atom_idx] = x0 + k * r0;
+                    frame.span(ATV::kAtom_y)[atom_idx] = y0;
+                    frame.span(ATV::kAtom_z)[atom_idx] = z0;
+                    frame.span(ATV::kAtom_mass)[atom_idx] = 14.0;
+                    frame.span(ATV::kAtom_type)[atom_idx] = 1;
                     // Frame ctor default tag[i] == i, used by add_bond /
                     // add_angle below to route the per-atom topology entry
                     // to the LAMMPS-convention owner row.
@@ -194,19 +197,19 @@ cpu::Frame make_pe_box_simple(int n_chains_per_axis, int n_atoms_per_chain,
     // Per-atom topology population (LAMMPS num_bond[i] + bond_atom[i][m]
     // layout). `add_bond` routes to the smaller-tag owner; `add_angle`
     // routes to the center atom.
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int c = 0; c < n_chains; ++c) {
         const int chain_base = c * n_atoms_per_chain;
         for (int k = 0; k < n_atoms_per_chain - 1; ++k)
-            frame.atoms.add_bond(chain_base + k, chain_base + k + 1, 0);
+            frame.add_bond(chain_base + k, chain_base + k + 1, 0);
         for (int k = 0; k < n_atoms_per_chain - 2; ++k)
-            frame.atoms.add_angle(chain_base + k, chain_base + k + 1,
-                                  chain_base + k + 2, 0);
+            frame.add_angle(chain_base + k, chain_base + k + 1,
+                            chain_base + k + 2, 0);
     }
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -232,7 +235,7 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
     // one cell with margin. halo_cut ≈ 11.55 < cell/2 (17.5), so cascade
     // ghosts stay bounded and fit the fixed 144-atom frame capacity.
     auto frame = make_pe_box_simple(2, 18, 70.0);
-    const int n_global = static_cast<int>(frame.atoms.size());
+    const int n_global = static_cast<int>(frame.nlocal());
 
     const double bond_K_eV = 350.0 * 0.0433641 / (1.53 * 1.53);
     const double bond_r0 = 1.53;
@@ -251,9 +254,9 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
                                                .drag = 2.0}});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.set_bond(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
     // NO angle, NO dihedral — bonds only.
     sim.build();
 
@@ -270,8 +273,9 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
         if (my_rank == 0 && (s <= 5 || s % 10 == 0)) {
             std::printf("[NHnpt+bondsonly-8r] step %d: T=%.3f K, E_kin=%.3f "
                         "eV, box=%.4f Å\n",
-                        s, T, static_cast<double>(frame.scalars.kinetic),
-                        frame.box(0, 0));
+                        s, T,
+                        static_cast<double>(frame.meta.get(ATV::kKinetic)),
+                        frame.simbox.cell()(0, 0));
         }
         ASSERT_GT(T, 1.0) << "T_K collapsed at step " << s
                           << " (bonds-only repro)";
@@ -298,7 +302,7 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
     auto frame = make_pe_box_simple(/*n_chains_per_axis=*/2,
                                     /*n_atoms_per_chain=*/18,
                                     /*box_len=*/70.0);
-    const int n_global = static_cast<int>(frame.atoms.size());
+    const int n_global = static_cast<int>(frame.nlocal());
 
     // Dreiding-UA-ish params (matching the bench).
     const double bond_K_eV =
@@ -321,10 +325,10 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
                                                .drag = 2.0}});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
-    sim.set_pair(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.set_bond(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
-    sim.set_angle(cpu::AngleHarmonic{{angle_K_eV}, {angle_theta0}});
+    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.add_potential(cpu::AngleHarmonic{{angle_K_eV}, {angle_theta0}});
     sim.build();
 
     // NOTE: this test was originally a *collapse* repro (T → 0 mode). It
@@ -342,8 +346,8 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
             std::printf("[NHnpt+bond-8r] step %d: T=%.3f K, E_kin=%.3f eV, "
                         "box=%.4f Å\n",
                         chunk + probe_every + 1, T,
-                        static_cast<double>(frame.scalars.kinetic),
-                        frame.box(0, 0));
+                        static_cast<double>(frame.meta.get(ATV::kKinetic)),
+                        frame.simbox.cell()(0, 0));
         }
         ASSERT_GT(T, 1.0) << "T_K collapsed at step "
                           << (chunk + probe_every + 1)
@@ -396,31 +400,32 @@ cpu::Frame make_drifting_x1_chains(int n_lanes, int n_atoms_per_chain,
             const double y0 = (ly + 0.5) * lane;
             const double z0 = (lz + 0.5) * lane;
             for (int k = 0; k < n_atoms_per_chain; ++k) {
-                frame.atoms.x[atom_idx] = x_start + k * r0;
-                frame.atoms.y[atom_idx] = y0;
-                frame.atoms.z[atom_idx] = z0;
-                frame.atoms.vx[atom_idx] = drift_vx; // coherent −x march
-                frame.atoms.mass[atom_idx] = 14.0;
-                frame.atoms.type[atom_idx] = 1;
+                frame.span(ATV::kAtom_x)[atom_idx] = x_start + k * r0;
+                frame.span(ATV::kAtom_y)[atom_idx] = y0;
+                frame.span(ATV::kAtom_z)[atom_idx] = z0;
+                frame.span(ATV::kAtom_vx)[atom_idx] =
+                    drift_vx; // coherent −x march
+                frame.span(ATV::kAtom_mass)[atom_idx] = 14.0;
+                frame.span(ATV::kAtom_type)[atom_idx] = 1;
                 ++atom_idx;
             }
         }
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int c = 0; c < n_chains; ++c) {
         const int chain_base = c * n_atoms_per_chain;
         for (int k = 0; k < n_atoms_per_chain - 1; ++k)
-            frame.atoms.add_bond(chain_base + k, chain_base + k + 1, 0);
+            frame.add_bond(chain_base + k, chain_base + k + 1, 0);
         // Angles populate the 1-3 special tier so the exclusion covers the
         // full 1-2/1-3/1-4 set the bench uses.
         for (int k = 0; k < n_atoms_per_chain - 2; ++k)
-            frame.atoms.add_angle(chain_base + k, chain_base + k + 1,
-                                  chain_base + k + 2, 0);
+            frame.add_angle(chain_base + k, chain_base + k + 1,
+                            chain_base + k + 2, 0);
     }
-    frame.atoms.build_special_list();
+    frame.build_special_list();
 
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -441,8 +446,9 @@ TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
     // ⇒ the chain heads reach x = 35 around step ~50 and migrate to the x0
     // ranks, whose build-time exclusion map never held these tags.
     // halo_cut = 1.1·lj_cut = 11.55 < slab/2 = 17.5 (cascade-bound rule).
-    auto frame = make_drifting_x1_chains(/*n_lanes=*/4, /*n_atoms_per_chain=*/18,
-                                         /*box_len=*/70.0, /*drift_vx=*/-0.04);
+    auto frame =
+        make_drifting_x1_chains(/*n_lanes=*/4, /*n_atoms_per_chain=*/18,
+                                /*box_len=*/70.0, /*drift_vx=*/-0.04);
 
     const double bond_K_eV = 350.0 * 0.0433641 / (1.53 * 1.53);
     const double bond_r0 = 1.53;
@@ -459,9 +465,9 @@ TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
     // special_bonds(0,0,0): 1-2/1-3/1-4 bonded pairs MUST be excluded from
     // LJ. The migration-staleness bug dropped this exclusion for migrated
     // atoms, feeding the LJ kernel a 1.53 Å pair (E_pair → 1e5+ eV).
-    sim.set_pair(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+    sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
         0.0, 0.0, 0.0));
-    sim.set_bond(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.add_potential(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
     sim.build();
 
     // E_pair for these sparse, lane-separated chains is tiny: only intra-
@@ -473,18 +479,19 @@ TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
     constexpr int probe_every = 10;
     for (int chunk = 0; chunk < n_steps; chunk += probe_every) {
         sim.run(frame, probe_every);
-        const double e_pair = static_cast<double>(frame.scalars.energy_pair);
+        const double e_pair =
+            static_cast<double>(frame.meta.get(ATV::kEnergyPair));
         if (my_rank == 0) {
             std::printf("[mig-excl-8r] step %d: E_pair=%.4f eV, box=%.3f Å\n",
-                        chunk + probe_every, e_pair, frame.box(0, 0));
+                        chunk + probe_every, e_pair, frame.simbox.cell()(0, 0));
         }
         ASSERT_LT(std::abs(e_pair), 200.0)
             << "E_pair exploded at step " << (chunk + probe_every)
             << " — a migrated atom lost its special-bonds exclusion and the "
                "LJ kernel saw a ~1.53 Å bonded pair (stale PairLJCut map)";
     }
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
             << "rank " << my_rank << " atom " << i << " x NaN";
     }
 }

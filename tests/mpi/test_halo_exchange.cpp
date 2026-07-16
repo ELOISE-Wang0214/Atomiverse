@@ -54,6 +54,11 @@ using namespace ATV;
 
 namespace {
 
+const ColKey<StorageReal> kHaloAux{"atoms", "halo_aux", kDynamicFieldId,
+                                   ColDType::Storage};
+const ColKey<StorageReal> kHaloReverseAux{"atoms", "halo_reverse_aux",
+                                          kDynamicFieldId, ColDType::Storage};
+
 cpu::Frame make_uniform_grid(int n_per_side, double box_len) {
     const int n = n_per_side * n_per_side * n_per_side;
     cpu::Frame frame(n);
@@ -62,13 +67,16 @@ cpu::Frame make_uniform_grid(int n_per_side, double box_len) {
     for (int ix = 0; ix < n_per_side; ++ix)
         for (int iy = 0; iy < n_per_side; ++iy)
             for (int iz = 0; iz < n_per_side; ++iz) {
-                frame.atoms.x[idx] = (static_cast<double>(ix) + 0.5) * step;
-                frame.atoms.y[idx] = (static_cast<double>(iy) + 0.5) * step;
-                frame.atoms.z[idx] = (static_cast<double>(iz) + 0.5) * step;
-                frame.atoms.mass[idx] = 1.0;
+                frame.span(ATV::kAtom_x)[idx] =
+                    (static_cast<double>(ix) + 0.5) * step;
+                frame.span(ATV::kAtom_y)[idx] =
+                    (static_cast<double>(iy) + 0.5) * step;
+                frame.span(ATV::kAtom_z)[idx] =
+                    (static_cast<double>(iz) + 0.5) * step;
+                frame.span(ATV::kAtom_mass)[idx] = 1.0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -113,17 +121,17 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
         r.dims[d] = dd->dims[d];
         r.coords[d] = dd->coords[d];
     }
-    r.Lx = frame.box(0, 0);
-    r.Ly = frame.box(1, 1);
-    r.Lz = frame.box(2, 2);
+    r.Lx = frame.simbox.cell()(0, 0);
+    r.Ly = frame.simbox.cell()(1, 1);
+    r.Lz = frame.simbox.cell()(2, 2);
 
     r.ghost_x.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
     r.ghost_y.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
     r.ghost_z.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
     for (int g = 0; g < dd->n_ghost; ++g) {
-        r.ghost_x[g] = frame.atoms.x[dd->n_local + g];
-        r.ghost_y[g] = frame.atoms.y[dd->n_local + g];
-        r.ghost_z[g] = frame.atoms.z[dd->n_local + g];
+        r.ghost_x[g] = frame.span(ATV::kAtom_x)[dd->n_local + g];
+        r.ghost_y[g] = frame.span(ATV::kAtom_y)[dd->n_local + g];
+        r.ghost_z[g] = frame.span(ATV::kAtom_z)[dd->n_local + g];
     }
 
     backend.shutdown();
@@ -160,6 +168,23 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     }
 
     auto frame = make_uniform_grid(4, 10.0);
+#if defined(ATV_ID_BIGBIG)
+    constexpr TagInt tag_base = TagInt{9007199254740993LL};
+#else
+    constexpr TagInt tag_base = TagInt{700000003};
+#endif
+    frame.block("atoms").insert(
+        "halo_aux",
+        cpu::ColumnSpec{ColDType::Storage, 2, ColGroup::Core, 0,
+                        kColMigrate | kColExchange | kColBorder | kColComm,
+                        kDynamicFieldId});
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        frame.span(kAtom_tag)[i] = tag_base + TagInt(i);
+        frame.span(kHaloAux)(i, 0) = StorageReal(100 + i);
+        frame.span(kHaloAux)(i, 1) = StorageReal(-200 - i);
+    }
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
@@ -170,6 +195,29 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     fwd.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
     fwd.launch(lctx);
+
+    for (int g = 0; g < dd->n_ghost; ++g) {
+        const int row = dd->n_local + g;
+        const int source =
+            static_cast<int>(frame.span(kAtom_tag)[row] - tag_base);
+        ASSERT_GE(source, 0);
+        ASSERT_LT(source, 64);
+        EXPECT_EQ(frame.span(kHaloAux)(row, 0), StorageReal(100 + source));
+        EXPECT_EQ(frame.span(kHaloAux)(row, 1), StorageReal(-200 - source));
+    }
+
+    for (int i = 0; i < dd->n_local; ++i) {
+        frame.span(kHaloAux)(i, 0) += StorageReal(1000);
+        frame.span(kHaloAux)(i, 1) -= StorageReal(1000);
+    }
+    fwd.launch(lctx); // steady comm plan, same ghost slots
+    for (int g = 0; g < dd->n_ghost; ++g) {
+        const int row = dd->n_local + g;
+        const int source =
+            static_cast<int>(frame.span(kAtom_tag)[row] - tag_base);
+        EXPECT_EQ(frame.span(kHaloAux)(row, 0), StorageReal(1100 + source));
+        EXPECT_EQ(frame.span(kHaloAux)(row, 1), StorageReal(-1200 - source));
+    }
 
     // Local sanity: total ghost atoms = sum of recv_counts[] across faces.
     int total_ghosts = 0;
@@ -241,6 +289,11 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
         GTEST_SKIP();
 
     auto frame = make_uniform_grid(4, 10.0);
+    frame.block("atoms").insert(
+        "halo_reverse_aux",
+        cpu::ColumnSpec{ColDType::Storage, 1, ColGroup::Core, 0,
+                        kColMigrate | kColExchange | kColReverse,
+                        kDynamicFieldId});
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
@@ -257,14 +310,16 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     // Plant a known force pattern on every atom (owners + ghosts).
     // Owner forces start at 1.0, 2.0, 3.0; ghost forces add 10.0 each.
     for (int i = 0; i < dd->n_local; ++i) {
-        frame.atoms.fx[i] = 1.0;
-        frame.atoms.fy[i] = 2.0;
-        frame.atoms.fz[i] = 3.0;
+        frame.span(ATV::kAtom_fx)[i] = 1.0;
+        frame.span(ATV::kAtom_fy)[i] = 2.0;
+        frame.span(ATV::kAtom_fz)[i] = 3.0;
+        frame.span(kHaloReverseAux)[i] = StorageReal(4.0);
     }
     for (int g = 0; g < dd->n_ghost; ++g) {
-        frame.atoms.fx[dd->n_local + g] = 10.0;
-        frame.atoms.fy[dd->n_local + g] = 10.0;
-        frame.atoms.fz[dd->n_local + g] = 10.0;
+        frame.span(ATV::kAtom_fx)[dd->n_local + g] = 10.0;
+        frame.span(ATV::kAtom_fy)[dd->n_local + g] = 10.0;
+        frame.span(ATV::kAtom_fz)[dd->n_local + g] = 10.0;
+        frame.span(kHaloReverseAux)[dd->n_local + g] = StorageReal(7.0);
     }
 
     rev.launch(lctx);
@@ -278,23 +333,24 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     // exactly one owner, so the global owner-force sum is
     //   Σ owner fx = base_x·N_owners + 10·N_ghosts   (likewise fy, fz),
     // with base = (1,2,3) on owners and 10 on every ghost.
-    double local_f[3] = {0.0, 0.0, 0.0};
+    double local_f[4] = {0.0, 0.0, 0.0, 0.0};
     for (int i = 0; i < dd->n_local; ++i) {
-        local_f[0] += frame.atoms.fx[i];
-        local_f[1] += frame.atoms.fy[i];
-        local_f[2] += frame.atoms.fz[i];
+        local_f[0] += frame.span(ATV::kAtom_fx)[i];
+        local_f[1] += frame.span(ATV::kAtom_fy)[i];
+        local_f[2] += frame.span(ATV::kAtom_fz)[i];
+        local_f[3] += frame.span(kHaloReverseAux)[i];
         // Per-owner sanity: the returned offset is a non-negative integer
         // multiple of 10 on every axis (no partial/duplicated ghost force).
-        const double off = frame.atoms.fx[i] - 1.0;
+        const double off = frame.span(ATV::kAtom_fx)[i] - 1.0;
         EXPECT_GE(off, -1e-9) << "owner " << i << " lost its base force";
         EXPECT_NEAR(off / 10.0, std::round(off / 10.0), 1e-9)
             << "owner " << i << " fx offset " << off
             << " is not a clean multiple of the 10.0 ghost force";
     }
     long long local_counts[2] = {dd->n_local, dd->n_ghost};
-    double global_f[3] = {0.0, 0.0, 0.0};
+    double global_f[4] = {0.0, 0.0, 0.0, 0.0};
     long long global_counts[2] = {0, 0};
-    MPI_Allreduce(local_f, global_f, 3, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
+    MPI_Allreduce(local_f, global_f, 4, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
     MPI_Allreduce(local_counts, global_counts, 2, MPI_LONG_LONG, MPI_SUM,
                   dd->cart_comm);
     const double no = static_cast<double>(global_counts[0]);
@@ -302,6 +358,8 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     EXPECT_NEAR(global_f[0], 1.0 * no + 10.0 * ng, 1e-6) << "fx not conserved";
     EXPECT_NEAR(global_f[1], 2.0 * no + 10.0 * ng, 1e-6) << "fy not conserved";
     EXPECT_NEAR(global_f[2], 3.0 * no + 10.0 * ng, 1e-6) << "fz not conserved";
+    EXPECT_NEAR(global_f[3], 4.0 * no + 7.0 * ng, 1e-6)
+        << "runtime reverse column not conserved";
 
     backend.shutdown();
 }
@@ -369,11 +427,10 @@ namespace {
 
 /// @brief No-op Force evaluator so `cpu::md::MD` validation passes without
 /// dragging a pair potential + neighbor list into the field-participant tests.
-class NullForce : public cpu::ComponentBase {
+class NullForce : public cpu::Component {
   public:
     std::string name() const override { return "null_force"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Force; }
+    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext&) override {}
 };
 
@@ -382,7 +439,7 @@ class NullForce : public cpu::ComponentBase {
 /// `data[i*width + k]` layout) and one width-1 reverse field.
 ///
 /// Lifecycle (per the HaloParticipant contract):
-///   - `build()` allocates owned+ghost capacity (`frame.atoms.size()`,
+///   - `build()` allocates owned+ghost capacity (`frame.nlocal()`,
 ///     == `dd->capacity` in multi-rank mode; no-alloc-in-launch) and seeds
 ///     owner rows with tag-derived values so the step-0 forward exchange
 ///     (HaloSend @ pre_neighbor, i.e. *before* our force-phase launch)
@@ -398,8 +455,7 @@ class NullForce : public cpu::ComponentBase {
 ///   reverse: owners start at kRevBase, each ghost copy plants kRevGhost;
 ///            after one reverse pass an owner holds
 ///            kRevBase + kRevGhost * (# ghost copies of it, cluster-wide).
-class FieldParticipant : public cpu::ComponentBase,
-                         public cpu::HaloParticipant {
+class FieldParticipant : public cpu::Component, public cpu::HaloParticipant {
   public:
     static double fwd1_value(TagInt t) {
         return 0.5 + 3.0 * static_cast<double>(t);
@@ -450,7 +506,7 @@ class FieldParticipant : public cpu::ComponentBase,
     }
 
     void build(const cpu::BuildContext& ctx) override {
-        const std::size_t cap = ctx.frame.atoms.size(); // owned+ghost capacity
+        const std::size_t cap = static_cast<std::size_t>(ctx.frame.capacity());
         fwd1_.assign(cap, StorageReal(0));
         fwd3_.assign(cap * 3, StorageReal(0));
         rev_.assign(cap, StorageReal(0));
@@ -463,7 +519,7 @@ class FieldParticipant : public cpu::ComponentBase,
     void launch(const cpu::LaunchContext& ctx) override {
         const auto* dd = ctx.runtime.md.dd;
         const int n_local =
-            dd ? dd->n_local : static_cast<int>(ctx.frame.atoms.size());
+            dd ? dd->n_local : static_cast<int>(ctx.frame.nlocal());
         const int n_ghost = dd ? dd->n_ghost : 0;
 
         if (ctx.step <= 1) {
@@ -474,9 +530,10 @@ class FieldParticipant : public cpu::ComponentBase,
             s.ghost_tag.assign(static_cast<std::size_t>(n_ghost), TagInt(0));
             s.ghost_fwd1.assign(static_cast<std::size_t>(n_ghost), 0.0);
             s.ghost_fwd3.assign(static_cast<std::size_t>(n_ghost) * 3, 0.0);
+            const auto tags = ctx.frame.span(ATV::kAtom_tag);
             for (int g = 0; g < n_ghost; ++g) {
                 const int row = n_local + g;
-                s.ghost_tag[g] = ctx.frame.atoms.tag[row];
+                s.ghost_tag[g] = tags[row];
                 s.ghost_fwd1[g] = static_cast<double>(fwd1_[row]);
                 for (int k = 0; k < 3; ++k)
                     s.ghost_fwd3[3 * g + k] =
@@ -499,10 +556,10 @@ class FieldParticipant : public cpu::ComponentBase,
   private:
     void write_owner_rows_(const cpu::Frame& frame,
                            const cpu::md::mpi::DomainDecomposition* dd) {
-        const int n_local =
-            dd ? dd->n_local : static_cast<int>(frame.atoms.size());
+        const int n_local = dd ? dd->n_local : static_cast<int>(frame.nlocal());
+        const auto tags = frame.span(ATV::kAtom_tag);
         for (int i = 0; i < n_local; ++i) {
-            const TagInt t = frame.atoms.tag[i];
+            const TagInt t = tags[i];
             fwd1_[i] = StorageReal(fwd1_value(t));
             for (int k = 0; k < 3; ++k)
                 fwd3_[3 * i + k] = StorageReal(fwd3_value(t, k));
@@ -526,10 +583,10 @@ void run_field_participant_md(cpu::Frame& frame, NullForce& force,
                               FieldParticipant& part) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1.0});
-    sim.on(ATV::md::Phase::force).add(force);
+    sim.on(ATV::md::Phase::force).add_ref(force);
     sim.add(cpu::comm::HaloSend{2.0});
     sim.add(cpu::comm::HaloRecv{});
-    sim.on(ATV::md::Phase::force).add(part, +100);
+    sim.on(ATV::md::Phase::force).add_ref(part, +100);
     sim.build();
     sim.run(frame, 2);
 }

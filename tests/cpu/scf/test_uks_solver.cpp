@@ -1,5 +1,5 @@
-/// @file tests/cpu/scf/test_uks_solve.cpp
-/// @brief Tests for UKS solver: LSDA/PBE on H, He, Li atoms and H2 molecule.
+/// @file tests/cpu/scf/test_uks_solver.cpp
+/// @brief Tests for UKS configurations through the unified SCFSolver.
 
 #ifdef ATV_HAS_RHF
 
@@ -11,12 +11,11 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/uhf_solve.h"
-#include "atomiverse/cpu/scf/uks_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
-class UKSSolveTest : public ::testing::Test {
+class UKSSolverrTest : public ::testing::Test {
   protected:
     static constexpr double kTol =
         (sizeof(double) == sizeof(float)) ? double(1e-4) : double(1e-7);
@@ -24,77 +23,95 @@ class UKSSolveTest : public ::testing::Test {
 
     static cpu::Frame make_h_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0);
-        f.atoms.y[0] = double(0);
-        f.atoms.z[0] = double(0);
-        f.atoms.type[0] = 1;
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = double(0);
+        f.span(ATV::kAtom_y)[0] = double(0);
+        f.span(ATV::kAtom_z)[0] = double(0);
+        f.span(ATV::kAtom_type)[0] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
     static cpu::Frame make_he_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0);
-        f.atoms.y[0] = double(0);
-        f.atoms.z[0] = double(0);
-        f.atoms.type[0] = 2;
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = double(0);
+        f.span(ATV::kAtom_y)[0] = double(0);
+        f.span(ATV::kAtom_z)[0] = double(0);
+        f.span(ATV::kAtom_type)[0] = 2;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
     static cpu::Frame make_li_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0);
-        f.atoms.y[0] = double(0);
-        f.atoms.z[0] = double(0);
-        f.atoms.type[0] = 3;
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = double(0);
+        f.span(ATV::kAtom_y)[0] = double(0);
+        f.span(ATV::kAtom_z)[0] = double(0);
+        f.span(ATV::kAtom_type)[0] = 3;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 
     static cpu::Frame make_h2(double bond_length_angstrom) {
         cpu::Frame f(2);
-        f.atoms.x[0] = double(0);
-        f.atoms.y[0] = double(0);
-        f.atoms.z[0] = double(0);
-        f.atoms.x[1] = double(bond_length_angstrom);
-        f.atoms.y[1] = double(0);
-        f.atoms.z[1] = double(0);
-        f.atoms.type[0] = 1;
-        f.atoms.type[1] = 1;
-        f.box = Mat3::cubic(100.0);
+        f.span(ATV::kAtom_x)[0] = double(0);
+        f.span(ATV::kAtom_y)[0] = double(0);
+        f.span(ATV::kAtom_z)[0] = double(0);
+        f.span(ATV::kAtom_x)[1] = double(bond_length_angstrom);
+        f.span(ATV::kAtom_y)[1] = double(0);
+        f.span(ATV::kAtom_z)[1] = double(0);
+        f.span(ATV::kAtom_type)[0] = 1;
+        f.span(ATV::kAtom_type)[1] = 1;
+        f.simbox = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 };
 
 // ── Result structure ────────────────────────────────────────────────
 
-TEST_F(UKSSolveTest, ResultContainsXCDecomposition) {
+TEST_F(UKSSolverrTest, ResultContainsXCDecomposition) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     EXPECT_NE(static_cast<double>(result.one_electron_energy), 0.0);
     EXPECT_NE(static_cast<double>(result.coulomb_energy), 0.0);
     EXPECT_NE(static_cast<double>(result.xc_energy), 0.0);
 }
 
-TEST_F(UKSSolveTest, ResultHasIntegratedElectronCounts) {
+TEST_F(UKSSolverrTest, ResultHasIntegratedElectronCounts) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     EXPECT_GT(static_cast<double>(result.integrated_n_alpha), 0.0);
     EXPECT_GT(static_cast<double>(result.integrated_n_beta), 0.0);
 }
 
-TEST_F(UKSSolveTest, DensityMatricesHaveCorrectShape) {
+TEST_F(UKSSolverrTest, DensityMatricesHaveCorrectShape) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     int n = ints.n_basis;
     EXPECT_EQ(result.P_alpha.shape(0), (size_t)n);
     EXPECT_EQ(result.P_alpha.shape(1), (size_t)n);
@@ -102,11 +119,17 @@ TEST_F(UKSSolveTest, DensityMatricesHaveCorrectShape) {
     EXPECT_EQ(result.P_beta.shape(1), (size_t)n);
 }
 
-TEST_F(UKSSolveTest, EnergyDecompositionSumsCorrectly) {
+TEST_F(UKSSolverrTest, EnergyDecompositionSumsCorrectly) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double E_sum = static_cast<double>(result.one_electron_energy)
                    + static_cast<double>(result.coulomb_energy)
@@ -117,21 +140,33 @@ TEST_F(UKSSolveTest, EnergyDecompositionSumsCorrectly) {
 
 // ── H atom (doublet) ────────────────────────────────────────────────
 
-TEST_F(UKSSolveTest, HAtomLSDAConverges) {
+TEST_F(UKSSolverrTest, HAtomLSDAConverges) {
     auto frame = make_h_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     EXPECT_EQ(result.n_alpha, 1);
     EXPECT_EQ(result.n_beta, 0);
 }
 
-TEST_F(UKSSolveTest, HAtomLSDAEnergyReasonable) {
+TEST_F(UKSSolverrTest, HAtomLSDAEnergyReasonable) {
     auto frame = make_h_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 50,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double E = static_cast<double>(result.energy);
     EXPECT_LT(E, -0.40);
@@ -173,56 +208,86 @@ constexpr H2Point kH2_pes[] = {
 };
 } // namespace pyscf_ref
 
-TEST_F(UKSSolveTest, HAtomMatchesPyscfReference) {
+TEST_F(UKSSolverrTest, HAtomMatchesPyscfReference) {
     auto frame = make_h_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 50,
-                                      110, 1e-10, 200);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA, 1e-10);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 200;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_LT(std::abs(result.energy - pyscf_ref::kH_atom), 1e-6)
         << "H atom energy: native=" << result.energy
         << " pyscf=" << pyscf_ref::kH_atom;
 }
 
-TEST_F(UKSSolveTest, HeAtomMatchesPyscfReference) {
+TEST_F(UKSSolverrTest, HeAtomMatchesPyscfReference) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, 1e-10, 200);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, 1e-10);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 200;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_LT(std::abs(result.energy - pyscf_ref::kHe_atom), 1e-5)
         << "He atom energy: native=" << result.energy
         << " pyscf=" << pyscf_ref::kHe_atom;
 }
 
-TEST_F(UKSSolveTest, LiAtomMatchesPyscfReference) {
+TEST_F(UKSSolverrTest, LiAtomMatchesPyscfReference) {
     auto frame = make_li_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 2, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, 1e-10, 200);
+    auto config =
+        cpu::scf::uks_config(ints, 2, 1, cpu::scf::XCType::LSDA, 1e-10);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 200;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_LT(std::abs(result.energy - pyscf_ref::kLi_atom), 1e-4)
         << "Li atom energy: native=" << result.energy
         << " pyscf=" << pyscf_ref::kLi_atom;
 }
 
-TEST_F(UKSSolveTest, H2EquilibriumMatchesPyscfReference) {
+TEST_F(UKSSolverrTest, H2EquilibriumMatchesPyscfReference) {
     auto frame = make_h2(0.74);
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, 1e-10, 200);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, 1e-10);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 200;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_LT(std::abs(result.energy - pyscf_ref::kH2_eq), 1e-5)
         << "H2 R=0.74 energy: native=" << result.energy
         << " pyscf=" << pyscf_ref::kH2_eq;
 }
 
-TEST_F(UKSSolveTest, H2PESScanMatchesPyscfReference) {
+TEST_F(UKSSolverrTest, H2PESScanMatchesPyscfReference) {
     for (const auto& pt : pyscf_ref::kH2_pes) {
         auto frame = make_h2(pt.R);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA,
-                                          50, 110, 1e-10, 200);
+        auto config =
+            cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, 1e-10);
+        config.n_radial = 50;
+        config.n_angular = 110;
+        config.max_iter = 200;
+        cpu::scf::SCFSolver solver{config};
+        solver.build(ints);
+        const auto& result = solver.run(ints);
         ASSERT_TRUE(result.converged)
             << "PES point R=" << pt.R << " A failed to converge";
         EXPECT_LT(std::abs(result.energy - pt.E), 1e-4)
@@ -231,11 +296,17 @@ TEST_F(UKSSolveTest, H2PESScanMatchesPyscfReference) {
     }
 }
 
-TEST_F(UKSSolveTest, HAtomSpinDensity) {
+TEST_F(UKSSolverrTest, HAtomSpinDensity) {
     auto frame = make_h_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double tr_alpha = xt::sum(result.P_alpha * ints.S)();
     double tr_beta = xt::sum(result.P_beta * ints.S)();
@@ -245,40 +316,64 @@ TEST_F(UKSSolveTest, HAtomSpinDensity) {
 
 // ── He atom (singlet) ───────────────────────────────────────────────
 
-TEST_F(UKSSolveTest, HeAtomLSDAConverges) {
+TEST_F(UKSSolverrTest, HeAtomLSDAConverges) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
 }
 
-TEST_F(UKSSolveTest, HeAtomLSDAEnergyReasonable) {
+TEST_F(UKSSolverrTest, HeAtomLSDAEnergyReasonable) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double E = static_cast<double>(result.energy);
     EXPECT_LT(E, -2.70);
     EXPECT_GT(E, -2.95);
 }
 
-TEST_F(UKSSolveTest, HeClosedShellAlphaBetaSymmetry) {
+TEST_F(UKSSolverrTest, HeClosedShellAlphaBetaSymmetry) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double diff = xt::norm_l2(result.P_alpha - result.P_beta)();
     EXPECT_NEAR(static_cast<double>(diff), 0.0, 1e-4);
 }
 
-TEST_F(UKSSolveTest, HeAtomElectronCount) {
+TEST_F(UKSSolverrTest, HeAtomElectronCount) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double tr_alpha = xt::sum(result.P_alpha * ints.S)();
     double tr_beta = xt::sum(result.P_beta * ints.S)();
@@ -288,21 +383,33 @@ TEST_F(UKSSolveTest, HeAtomElectronCount) {
 
 // ── Li atom (doublet) ───────────────────────────────────────────────
 
-TEST_F(UKSSolveTest, LiAtomLSDAConverges) {
+TEST_F(UKSSolverrTest, LiAtomLSDAConverges) {
     auto frame = make_li_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 2, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 100);
+    auto config =
+        cpu::scf::uks_config(ints, 2, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 100;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     EXPECT_EQ(result.n_alpha, 2);
     EXPECT_EQ(result.n_beta, 1);
 }
 
-TEST_F(UKSSolveTest, LiAtomLSDAEnergyReasonable) {
+TEST_F(UKSSolverrTest, LiAtomLSDAEnergyReasonable) {
     auto frame = make_li_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 2, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, kTol, 100);
+    auto config =
+        cpu::scf::uks_config(ints, 2, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 100;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double E = static_cast<double>(result.energy);
     EXPECT_LT(E, -7.0);
@@ -311,19 +418,31 @@ TEST_F(UKSSolveTest, LiAtomLSDAEnergyReasonable) {
 
 // ── H2 at equilibrium ───────────────────────────────────────────────
 
-TEST_F(UKSSolveTest, H2EquilibriumLSDAConverges) {
+TEST_F(UKSSolverrTest, H2EquilibriumLSDAConverges) {
     auto frame = make_h2(0.74);
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 100);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 100;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
 }
 
-TEST_F(UKSSolveTest, H2EquilibriumLSDAEnergyReasonable) {
+TEST_F(UKSSolverrTest, H2EquilibriumLSDAEnergyReasonable) {
     auto frame = make_h2(0.74);
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50,
-                                      110, kTol, 100);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 50;
+    config.n_angular = 110;
+    config.max_iter = 100;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_TRUE(result.converged);
     double E = static_cast<double>(result.energy);
     EXPECT_LT(E, -1.05);
@@ -332,12 +451,22 @@ TEST_F(UKSSolveTest, H2EquilibriumLSDAEnergyReasonable) {
 
 // ── Cross-method comparisons ────────────────────────────────────────
 
-TEST_F(UKSSolveTest, UKSvsUHFDifferentEnergy) {
+TEST_F(UKSSolverrTest, UKSvsUHFDifferentEnergy) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 50);
-    auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35, 110,
-                                   kTol, 80);
+    auto uhf_config = cpu::scf::uhf_config(ints, 1, 1, kTol);
+    uhf_config.max_iter = 50;
+    cpu::scf::SCFSolver uhf_solver{uhf_config};
+    uhf_solver.build(ints);
+    const auto& uhf = uhf_solver.run(ints);
+    auto uks_config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    uks_config.n_radial = 35;
+    uks_config.n_angular = 110;
+    uks_config.max_iter = 80;
+    cpu::scf::SCFSolver uks_solver{uks_config};
+    uks_solver.build(ints);
+    const auto& uks = uks_solver.run(ints);
     EXPECT_TRUE(uhf.converged);
     EXPECT_TRUE(uks.converged);
     EXPECT_GT(std::abs(static_cast<double>(uks.energy)
@@ -345,13 +474,25 @@ TEST_F(UKSSolveTest, UKSvsUHFDifferentEnergy) {
               1e-4);
 }
 
-TEST_F(UKSSolveTest, HeAtomLSDAvsPBE) {
+TEST_F(UKSSolverrTest, HeAtomLSDAvsPBE) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto lsda = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35, 110,
-                                    kTol, 80);
-    auto pbe = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::PBE, 35, 110,
-                                   kTol, 80);
+    auto lsda_config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    lsda_config.n_radial = 35;
+    lsda_config.n_angular = 110;
+    lsda_config.max_iter = 80;
+    cpu::scf::SCFSolver lsda_solver{lsda_config};
+    lsda_solver.build(ints);
+    const auto& lsda = lsda_solver.run(ints);
+    auto pbe_config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::PBE, kTol);
+    pbe_config.n_radial = 35;
+    pbe_config.n_angular = 110;
+    pbe_config.max_iter = 80;
+    cpu::scf::SCFSolver pbe_solver{pbe_config};
+    pbe_solver.build(ints);
+    const auto& pbe = pbe_solver.run(ints);
     EXPECT_TRUE(lsda.converged);
     EXPECT_TRUE(pbe.converged);
     EXPECT_GT(std::abs(static_cast<double>(lsda.energy)
@@ -361,20 +502,32 @@ TEST_F(UKSSolveTest, HeAtomLSDAvsPBE) {
 
 // ── Convergence and eigenvalues ─────────────────────────────────────
 
-TEST_F(UKSSolveTest, ResultHasConvergenceTrace) {
+TEST_F(UKSSolverrTest, ResultHasConvergenceTrace) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_GT(result.trace.size(), 0u);
     EXPECT_EQ(static_cast<int>(result.trace.back().iter), result.iterations);
 }
 
-TEST_F(UKSSolveTest, EigenvaluesHaveCorrectShape) {
+TEST_F(UKSSolverrTest, EigenvaluesHaveCorrectShape) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35,
-                                      110, kTol, 80);
+    auto config =
+        cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, kTol);
+    config.n_radial = 35;
+    config.n_angular = 110;
+    config.max_iter = 80;
+    cpu::scf::SCFSolver solver{config};
+    solver.build(ints);
+    const auto& result = solver.run(ints);
     EXPECT_EQ(result.eigenvalues_alpha.size(), (size_t)ints.n_basis);
     EXPECT_EQ(result.eigenvalues_beta.size(), (size_t)ints.n_basis);
 }
@@ -382,7 +535,7 @@ TEST_F(UKSSolveTest, EigenvaluesHaveCorrectShape) {
 #else
 
 #include <gtest/gtest.h>
-TEST(UKSSolve, SkippedNoBuildRHF) {
+TEST(UKSSolver, SkippedNoBuildRHF) {
     GTEST_SKIP() << "ATV_BUILD_RHF=OFF — UKS tests require -DATV_BUILD_RHF=ON";
 }
 

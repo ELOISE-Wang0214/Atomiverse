@@ -24,7 +24,6 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
@@ -51,12 +50,22 @@ cpu::Frame make_h2o(double stretch) {
     cpu::Frame f(3);
     const double oy = 0.0, oz = 0.1173;
     const double hy = 0.7572, hz = -0.4692;
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {oy, oy + stretch * (hy - oy), oy - stretch * (hy - oy)};
-    f.atoms.z = {oz, oz + stretch * (hz - oz), oz + stretch * (hz - oz)};
-    f.atoms.type = {8, 1, 1};
-    f.atoms.mass = {15.999, 1.008, 1.008};
-    f.box = Mat3::cubic(50.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = oy;
+    f.span(ATV::kAtom_y)[1] = oy + stretch * (hy - oy);
+    f.span(ATV::kAtom_y)[2] = oy - stretch * (hy - oy);
+    f.span(ATV::kAtom_z)[0] = oz;
+    f.span(ATV::kAtom_z)[1] = oz + stretch * (hz - oz);
+    f.span(ATV::kAtom_z)[2] = oz + stretch * (hz - oz);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_mass)[0] = 15.999;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_mass)[2] = 1.008;
+    f.simbox = ATV::cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -103,7 +112,11 @@ TEST(LevelShiftSolver, H2OAnchorMatchesPyscfAtLambdaZero) {
     cfg.n_alpha = ints.n_occ();
     cfg.n_beta = ints.n_occ();
 
-    const auto result = cpu::scf::scf_solve(ints, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+
+    result_solver.build(ints);
+
+    const auto& result = result_solver.run(ints);
     ASSERT_TRUE(result.converged);
     EXPECT_NEAR(result.energy, kPyscfH2O631gAnchor, 1e-6);
 }
@@ -123,8 +136,14 @@ TEST(LevelShiftSolver, EnergyAndReportedEpsilonInvariantUnderShift) {
     auto cfg5 = cfg0;
     cfg5.level_shift = 0.5; // Hartree
 
-    const auto r0 = cpu::scf::scf_solve(ints, cfg0);
-    const auto r5 = cpu::scf::scf_solve(ints, cfg5);
+    ATV::cpu::scf::SCFSolver r0_solver{cfg0};
+
+    r0_solver.build(ints);
+
+    const auto& r0 = r0_solver.run(ints);
+    ATV::cpu::scf::SCFSolver r5_solver{cfg5};
+    r5_solver.build(ints);
+    const auto& r5 = r5_solver.run(ints);
     ASSERT_TRUE(r0.converged);
     ASSERT_TRUE(r5.converged);
 
@@ -134,9 +153,8 @@ TEST(LevelShiftSolver, EnergyAndReportedEpsilonInvariantUnderShift) {
     ASSERT_EQ(r5.eigenvalues_alpha.size(), r0.eigenvalues_alpha.size());
     double max_deps = 0.0;
     for (std::size_t i = 0; i < r0.eigenvalues_alpha.size(); ++i)
-        max_deps = std::max(max_deps,
-                            std::abs(r5.eigenvalues_alpha(i)
-                                     - r0.eigenvalues_alpha(i)));
+        max_deps = std::max(max_deps, std::abs(r5.eigenvalues_alpha(i)
+                                               - r0.eigenvalues_alpha(i)));
     EXPECT_LE(max_deps, 1e-6)
         << "virtual ε must be de-shifted after convergence "
            "(PySCF measured 2.5e-7)";
@@ -157,7 +175,9 @@ TEST(LevelShiftSolver, LevelShiftRescuesStretchedH2O) {
     auto cfg_bare = bare_config();
     cfg_bare.n_alpha = ints.n_occ();
     cfg_bare.n_beta = ints.n_occ();
-    const auto r_bare = cpu::scf::scf_solve(ints, cfg_bare);
+    ATV::cpu::scf::SCFSolver r_bare_solver{cfg_bare};
+    r_bare_solver.build(ints);
+    const auto& r_bare = r_bare_solver.run(ints);
     EXPECT_FALSE(r_bare.converged)
         << "bare Hcore/no-DIIS/no-damping iteration must NOT converge "
            "within 100 iterations (that is what makes the case hard)";
@@ -165,7 +185,9 @@ TEST(LevelShiftSolver, LevelShiftRescuesStretchedH2O) {
     // Same settings + λ = 0.5 Ha: converges.
     auto cfg_shift = cfg_bare;
     cfg_shift.level_shift = kRescueLambda;
-    const auto r_shift = cpu::scf::scf_solve(ints, cfg_shift);
+    ATV::cpu::scf::SCFSolver r_shift_solver{cfg_shift};
+    r_shift_solver.build(ints);
+    const auto& r_shift = r_shift_solver.run(ints);
     ASSERT_TRUE(r_shift.converged)
         << "λ = 0.5 must rescue the divergent iteration";
     EXPECT_EQ(r_shift.iterations, kRescueIterations)
@@ -175,7 +197,9 @@ TEST(LevelShiftSolver, LevelShiftRescuesStretchedH2O) {
     auto cfg_diis = rhf_631g_config();
     cfg_diis.n_alpha = ints.n_occ();
     cfg_diis.n_beta = ints.n_occ();
-    const auto r_diis = cpu::scf::scf_solve(ints, cfg_diis);
+    ATV::cpu::scf::SCFSolver r_diis_solver{cfg_diis};
+    r_diis_solver.build(ints);
+    const auto& r_diis = r_diis_solver.run(ints);
     ASSERT_TRUE(r_diis.converged);
     EXPECT_LT(std::abs(r_shift.energy - r_diis.energy), 1e-8)
         << "level-shifted solution must reach the DIIS reference energy";

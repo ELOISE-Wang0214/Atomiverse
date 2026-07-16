@@ -97,20 +97,20 @@ ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {
     using namespace ATV;
     cpu::Frame frame(n_carbons);
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = box_len / 2.0;
-        frame.atoms.y[i] = box_len / 2.0 + i * kBondR0;
-        frame.atoms.z[i] = box_len / 2.0;
-        frame.atoms.mass[i] = 14.027;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = box_len / 2.0;
+        frame.span(ATV::kAtom_y)[i] = box_len / 2.0 + i * kBondR0;
+        frame.span(ATV::kAtom_z)[i] = box_len / 2.0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    // Per-atom topology (LAMMPS Atom layout): populate the tag map first
-    // so add_bond can resolve the owner row by global tag.
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    // Populate canonical topology Block columns after building the tag index,
+    // so add_bond can resolve the owner row from its global tag.
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_carbons - 1; ++k)
-        frame.atoms.add_bond(k, k + 1, 0);
-    frame.atoms.build_special_list();
-    frame.box = Mat3::cubic(box_len);
+        frame.add_bond(k, k + 1, 0);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

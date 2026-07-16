@@ -50,11 +50,12 @@ TEST(CudaPmeCoul, MadelungNaCl) {
     auto frame = make_rocksalt(d, n);
 
     const double cutoff = 1.9 * d;
-    const double alpha = 3.5 / cutoff; // moderate α so the grid resolves k-space
+    const double alpha =
+        3.5 / cutoff; // moderate α so the grid resolves k-space
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::CoulLong{alpha, cutoff});
+    sim.add_potential(cuda::CoulLong{alpha, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     sim.on(md::Phase::force).add(cuda::KSpacePME{alpha, 0.5, 6}, 100);
     sim.build();

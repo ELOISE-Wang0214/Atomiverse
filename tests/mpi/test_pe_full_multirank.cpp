@@ -24,15 +24,15 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 using namespace ATV;
 
@@ -42,7 +42,7 @@ inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal = 268.0;
 inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+inline constexpr double kAngleTheta0 = 109.5 * units::pi / 180.0;
 
 inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
@@ -58,7 +58,7 @@ inline std::vector<double> dihedral_Cn_eV() {
 
 cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     cpu::Frame frame(n_carbons);
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double half_apex = (units::pi - kAngleTheta0) / 2.0;
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
     const double chain_len = (n_carbons - 1) * dx_step;
@@ -66,22 +66,22 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     const double y0 = box_yz / 2.0;
     const double z0 = box_yz / 2.0;
     for (int i = 0; i < n_carbons; ++i) {
-        frame.atoms.x[i] = x_start + i * dx_step;
-        frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
-        frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027;
-        frame.atoms.type[i] = 0;
+        frame.span(ATV::kAtom_x)[i] = x_start + i * dx_step;
+        frame.span(ATV::kAtom_y)[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
+        frame.span(ATV::kAtom_z)[i] = z0;
+        frame.span(ATV::kAtom_mass)[i] = 14.027;
+        frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
     for (int k = 0; k < n_carbons - 1; ++k)
-        frame.atoms.add_bond(k, k + 1, 0);
+        frame.add_bond(k, k + 1, 0);
     for (int k = 0; k < n_carbons - 2; ++k)
-        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+        frame.add_angle(k, k + 1, k + 2, 0);
     for (int k = 0; k < n_carbons - 3; ++k)
-        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
-    frame.atoms.build_special_list();
-    frame.box = Mat3::diagonal(box_x, box_yz, box_yz);
+        frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    frame.build_special_list();
+    frame.simbox = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
     return frame;
 }
 
@@ -107,14 +107,12 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{lj_cut}, -20);
-    sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloRecv{}, -1000);
+    sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{lj_cut}, -20);
+    sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,
-                                                                   0.0))
+                                                                      0.0))
         .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
         .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
         .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
@@ -122,8 +120,8 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
 
     sim.run(frame, 200);
 
-    const double e1 =
-        frame.scalars.energy + frame.scalars.kinetic; // already global
+    const double e1 = frame.meta.get(ATV::kEnergy)
+                      + frame.meta.get(ATV::kKinetic); // already global
     EXPECT_FALSE(std::isnan(e1)) << "global E went NaN -- LJ likely saw a "
                                     "bonded ghost partner that exclusions "
                                     "failed to suppress";
@@ -133,8 +131,8 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
 
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
             << "rank " << my_rank << " atom " << i << " x went NaN";
     }
 }

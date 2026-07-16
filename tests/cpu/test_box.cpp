@@ -136,12 +136,12 @@ TEST(BoxApi, ConstructFromMat3Triclinic) {
     EXPECT_LT(frob_norm(mat_sub(prod, identity_3x3())), 1e-12);
 }
 
-TEST(BoxApi, Mat3AssignmentShim) {
+TEST(BoxApi, ExplicitSetCell) {
     Box bx;
-    bx = Mat3::cubic(5.0);
+    bx.set_cell(Mat3::cubic(5.0));
     EXPECT_DOUBLE_EQ(bx.length(0), 5.0);
-    EXPECT_DOUBLE_EQ(bx(0, 0), 5.0); // operator() read shim
-    EXPECT_DOUBLE_EQ(bx(1, 2), 0.0);
+    EXPECT_DOUBLE_EQ(bx.cell()(0, 0), 5.0);
+    EXPECT_DOUBLE_EQ(bx.cell()(1, 2), 0.0);
 }
 
 // ── ac-006: ortho min-image numerical parity ───────────────────────────
@@ -339,6 +339,24 @@ TEST(BoxMutation, SetCellRefreshes) {
     EXPECT_FALSE(bx.is_orthorhombic());
     Mat3 prod = mat_mul(bx.cell(), bx.inv_cell());
     EXPECT_LT(frob_norm(mat_sub(prod, identity_3x3())), 1e-12);
+}
+
+TEST(BoxMutation, RevisionAdvancesForEveryMutationAndAssignment) {
+    auto box = Box::cubic(10.0);
+    const auto initial = box.revision();
+    box.scale_isotropic(1.0);
+    EXPECT_GT(box.revision(), initial);
+
+    const auto after_scale = box.revision();
+    box.set_cell(Mat3::cubic(10.0));
+    EXPECT_GT(box.revision(), after_scale);
+
+    const auto before_assignment = box.revision();
+    const auto replacement = Box::orthorhombic(8.0, 9.0, 10.0);
+    box = replacement;
+    EXPECT_GT(box.revision(), before_assignment);
+    EXPECT_DOUBLE_EQ(box.length(0), 8.0);
+    EXPECT_DOUBLE_EQ(box.length(1), 9.0);
 }
 
 // ── ac-008: xsimd batch parity ─────────────────────────────────────────

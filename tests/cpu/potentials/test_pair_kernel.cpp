@@ -38,10 +38,10 @@ TEST(PairKernel, LJMatchesClosedForm) {
     auto c = lj.operator()<double>(r2, 0.0, 0.0);
 
     const double sr6 = std::pow(sigma / r, 6), sr12 = sr6 * sr6;
-    const double e_ref = 4 * eps * (sr12 - sr6)
-                         - 4 * eps
-                               * (std::pow(sigma / cutoff, 12)
-                                  - std::pow(sigma / cutoff, 6));
+    const double e_ref =
+        4 * eps * (sr12 - sr6)
+        - 4 * eps
+              * (std::pow(sigma / cutoff, 12) - std::pow(sigma / cutoff, 6));
     const double f_ref = 24 * eps * (2 * sr12 - sr6) / r2;
     EXPECT_NEAR(c.energy, e_ref, 1e-12);
     EXPECT_NEAR(c.fpair, f_ref, 1e-12);
@@ -49,12 +49,12 @@ TEST(PairKernel, LJMatchesClosedForm) {
 
 TEST(PairKernel, CoulMatchesClosedForm) {
     const double alpha = 0.30, cutoff = 10.0, qi = 1.0, qj = -1.0;
-    CoulKernel coul{kCoulomb, alpha, cutoff * cutoff};
+    CoulKernel coul{units::coulomb, alpha, cutoff * cutoff};
     const double r = 4.2, r2 = r * r;
 
     auto c = coul.operator()<double>(r2, qi, qj);
 
-    const double pref = kCoulomb * qi * qj / r;
+    const double pref = units::coulomb * qi * qj / r;
     const double e_ref = pref * std::erfc(alpha * r);
     const double f_ref =
         pref
@@ -68,7 +68,7 @@ TEST(PairKernel, CoulMatchesClosedForm) {
 TEST(PairKernel, BatchLanesAgreeWithScalar) {
     using batch = xsimd::batch<double>;
     auto lj = make_lj(0.0104, 3.4, 10.0);
-    CoulKernel coul{kCoulomb, 0.30, 100.0};
+    CoulKernel coul{units::coulomb, 0.30, 100.0};
 
     // Distinct r per lane, all inside cutoff.
     alignas(batch::arch_type::alignment()) double r2v[batch::size];
@@ -82,7 +82,8 @@ TEST(PairKernel, BatchLanesAgreeWithScalar) {
     auto clj = lj.operator()<batch>(r2, qi, qj);
     auto cco = coul.operator()<batch>(r2, qi, qj);
 
-    double ljf[batch::size], lje[batch::size], cof[batch::size], coe[batch::size];
+    double ljf[batch::size], lje[batch::size], cof[batch::size],
+        coe[batch::size];
     clj.fpair.store_unaligned(ljf);
     clj.energy.store_unaligned(lje);
     cco.fpair.store_unaligned(cof);
@@ -99,7 +100,7 @@ TEST(PairKernel, BatchLanesAgreeWithScalar) {
 
 TEST(PairKernel, SumComposesLJAndCoul) {
     auto lj = make_lj(0.0104, 3.4, 10.0);
-    CoulKernel coul{kCoulomb, 0.30, 100.0};
+    CoulKernel coul{units::coulomb, 0.30, 100.0};
     SumKernel<LJKernel, CoulKernel> both{lj, coul};
     const double r2 = 4.0 * 4.0;
 
@@ -111,9 +112,9 @@ TEST(PairKernel, SumComposesLJAndCoul) {
 }
 
 TEST(PairKernel, CutoffMaskedPerTerm) {
-    auto lj = make_lj(0.0104, 3.4, 5.0);    // LJ cutoff 5
-    CoulKernel coul{kCoulomb, 0.30, 49.0};  // Coulomb cutoff 7
-    const double r2 = 6.0 * 6.0;            // inside Coulomb, outside LJ
+    auto lj = make_lj(0.0104, 3.4, 5.0);         // LJ cutoff 5
+    CoulKernel coul{units::coulomb, 0.30, 49.0}; // Coulomb cutoff 7
+    const double r2 = 6.0 * 6.0;                 // inside Coulomb, outside LJ
 
     auto cl = lj.operator()<double>(r2, 1.0, -1.0);
     auto cc = coul.operator()<double>(r2, 1.0, -1.0);

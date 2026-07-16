@@ -46,7 +46,7 @@ from pathlib import Path
 # ── Physical constants (CODATA-consistent with include/atomiverse/core/units.h)
 
 KCAL_PER_MOL_TO_EV = 1.0 / 23.060547830619026
-# kMvv2e: 1 amu · (Å/fs)² in eV. Matches units.h `mass_v2_to_energy`.
+# units::mass_v2_to_energy: 1 amu · (Å/fs)² in eV. Matches units.h `mass_v2_to_energy`.
 KMVV2E = 103.6427
 
 # ────────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ class Stage:
     lz: list[float] = field(default_factory=list)
 
     def v_rms(self, total_mass_amu: float) -> list[float]:
-        """RMS velocity [Å/fs] derived from KE: sqrt(2 KE / (M_total × kMvv2e))."""
+        """RMS velocity [Å/fs] derived from KE: sqrt(2 KE / (M_total × units::mass_v2_to_energy))."""
         if total_mass_amu <= 0.0:
             return []
         out = []

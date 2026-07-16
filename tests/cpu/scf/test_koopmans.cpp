@@ -16,8 +16,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 using ATV::cpu::scf::BasisSet;
@@ -26,31 +25,43 @@ namespace {
 
 cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.atoms.type[0] = 2; // He
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 2; // He
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.type = {1, 1};
-    f.atoms.x = {0.0, 0.0};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.7414};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.7414;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type = {8, 1, 1};
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {0.0, 0.7572, -0.7572};
-    f.atoms.z = {0.1173, -0.4692, -0.4692};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.7572;
+    f.span(ATV::kAtom_y)[2] = -0.7572;
+    f.span(ATV::kAtom_z)[0] = 0.1173;
+    f.span(ATV::kAtom_z)[1] = -0.4692;
+    f.span(ATV::kAtom_z)[2] = -0.4692;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -70,7 +81,9 @@ double neg_eps_homo(const cpu::Frame& frame, BasisSet basis) {
     auto cfg = cpu::scf::rhf_config(integrals, 1e-10);
     cfg.max_iter = 100;
     cfg.conv_tol_grad = 1e-9;
-    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ATV::cpu::scf::SCFSolver result_solver{cfg};
+    result_solver.build(integrals);
+    const auto& result = result_solver.run(integrals);
     EXPECT_TRUE(result.converged);
     return -result.eigenvalues_alpha(integrals.n_occ() - 1);
 }
@@ -92,8 +105,7 @@ TEST(Koopmans, H2O_STO3G_NegEpsHomo) {
 
 // He @ 6-31G — also end-to-end validates the new He (Z=2) 6-31G basis row.
 TEST(Koopmans, He_631G_NegEpsHomo) {
-    EXPECT_NEAR(neg_eps_homo(make_he(), BasisSet::Pople631G), 0.91412663,
-                1e-8);
+    EXPECT_NEAR(neg_eps_homo(make_he(), BasisSet::Pople631G), 0.91412663, 1e-8);
 }
 
 // The Koopmans IP in eV uses the pinned Hartree→eV factor explicitly.
