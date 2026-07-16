@@ -98,11 +98,23 @@ class TestMDRunOnMolrsFrame:
         assert np.any(vx != 0.0), "velocities should be initialized and written back"
 
     def test_energy_finite(self, argon_frame, full_lj_md):
-        """Run yields a finite total energy in the molrs.Frame."""
+        """Run yields exact typed metadata, never synthetic result blocks."""
         full_lj_md.run(argon_frame, 5)
-        assert "scalars" in argon_frame.keys()
-        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
-        kinetic = float(np.asarray(argon_frame["scalars"]["kinetic"])[0])
+        assert "scalars" not in argon_frame.keys()
+        assert "stress" not in argon_frame.keys()
+        assert molrs.FRAME_SCHEMA_VERSION == 2
+        energy_meta = argon_frame.meta["energy"]
+        kinetic_meta = argon_frame.meta["kinetic"]
+        stress_meta = argon_frame.meta["stress"]
+        stress_kinetic_meta = argon_frame.meta["stress_kinetic"]
+        assert energy_meta.dtype == "f64"
+        assert kinetic_meta.dtype == "f64"
+        assert stress_meta.dtype == "f64x6"
+        assert stress_kinetic_meta.dtype == "f64x6"
+        assert len(stress_meta.value) == 6
+        assert len(stress_kinetic_meta.value) == 6
+        energy = float(energy_meta.value)
+        kinetic = float(kinetic_meta.value)
         assert np.isfinite(energy)
         assert np.isfinite(kinetic)
         assert kinetic > 0.0
@@ -156,7 +168,7 @@ class TestTopLevelConvenience:
         sim.run(argon_frame, 10)
         x_after = np.asarray(argon_frame["atoms"]["x"])
         assert not np.allclose(x_before, x_after)
-        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        energy = float(argon_frame.meta["energy"].value)
         assert np.isfinite(energy)
 
 
@@ -170,9 +182,42 @@ class TestFrameBindingRemoved:
         assert not hasattr(_cpp, "Cpu" + "Frame")  # token split: ac-002 grep gate
 
     def test_no_frame_attr_on_package(self):
-        # The old `atomiverse.Frame` alias to the legacy frame binding is gone.
+        # Frame and Block have one owner: molrs.
         assert not hasattr(av, "Frame")
+        assert not hasattr(av, "Block")
+
+    @pytest.mark.parametrize("name", ("Frame", "Block"))
+    def test_no_frame_or_block_import(self, name):
+        with pytest.raises(ImportError):
+            exec(f"from atomiverse import {name}", {})
 
     def test_convert_module_gone(self):
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module("atomiverse._convert")
+
+    def test_device_compatibility_module_gone(self):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("atomiverse._device")
+
+
+class TestMolrsFrameV2Boundary:
+    def test_exact_frame_schema_version(self):
+        assert molrs.FRAME_SCHEMA_VERSION == 2
+
+    def test_simbox_is_the_only_cell_property(self, argon_frame):
+        assert argon_frame.simbox is not None
+        assert not hasattr(argon_frame, "box")
+
+    def test_untyped_metadata_is_rejected(self, argon_frame):
+        with pytest.raises(TypeError, match="MetaValue"):
+            argon_frame.meta = {"energy": 0.0}
+
+    @pytest.mark.parametrize("legacy_block_name", ("scalars", "stress"))
+    def test_synthetic_result_block_is_rejected(
+        self, argon_frame, full_lj_md, legacy_block_name
+    ):
+        legacy = molrs.Block()
+        legacy.insert("energy", np.array([0.0], dtype=np.float64))
+        argon_frame[legacy_block_name] = legacy
+        with pytest.raises(RuntimeError, match=legacy_block_name):
+            full_lj_md.run(argon_frame, 1)

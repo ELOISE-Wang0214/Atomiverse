@@ -2,7 +2,9 @@
 
 Atomiverse binds drivers and components only — it does not bind a Frame
 data type. Simulation state crosses the boundary as a ``molrs.Frame``;
-each driver ``run()`` borrows it and writes results back in place.
+each driver ``run()`` borrows it and writes results back in place. Global
+results use the exact typed ``molrs.Frame.meta`` v2 contract; Atomiverse does
+not synthesize ``scalars`` or ``stress`` blocks.
 
 Namespaces
 ----------
@@ -18,13 +20,16 @@ Canonical deep path                   Top-level re-export         C++ symbol (di
 ``md.integrator.VelocityVerlet``      ``VelocityVerlet``          ``cpu::md::VelocityVerlet`` (md/)
 ``md.thermostat.NoseHoover``          ``NoseHoover``              ``cpu::md::NoseHoover`` (md/)
 ``md.InitVelocity``                   ``InitVelocity``            ``cpu::md::InitVelocity`` (md/)
+``minimizer.Minimize``                ``Minimize``                ``cpu::minimizer::Minimize`` (minimizer/)
+``minimizer.LBFGS``                   ``LBFGS``                   ``cpu::minimizer::LBFGS`` (minimizer/)
 ``neighbor.NeighborList``             ``NeighborList``            ``cpu::md::NeighborList<>`` (neighbor/)
 ``potentials.pair.LJCut``             ``PairLJCut``               ``cpu::PairLJCut`` (potentials/)
 ``potentials.bond.Harmonic``          ``BondHarmonic``            ``cpu::BondHarmonic`` (potentials/)
 ``potentials.angle.Harmonic``         ``AngleHarmonic``           ``cpu::AngleHarmonic`` (potentials/)
 ``potentials.dihedral.MultiHarmonic`` ``DihedralMultiHarmonic``   ``cpu::DihedralMultiHarmonic`` (potentials/)
 ``recorder.Thermo``                   ``Thermo``                  ``cpu::Thermo`` (recorder/)
-``pw.pw_scf`` / ``pw.PWResult``       ``pw_scf`` / ``PWResult``   ``cpu::pw`` (pw/)
+``pw.PWSolver`` / ``pw.PWConfig``     ``PWSolver`` / ``PWConfig`` ``cpu::pw`` (pw/)
+``pw.PWResult``                       ``PWResult``                 ``cpu::pw`` (pw/)
 ``semiempirical.AM1Config``           ``AM1Config``               ``cpu::semiempirical`` (semiempirical/)
 ``semiempirical.AM1Evaluator``        ``AM1Evaluator``            ``cpu::semiempirical`` (semiempirical/)
 ``semiempirical.AM1Result``           ``AM1Result``               ``cpu::semiempirical`` (semiempirical/)
@@ -38,13 +43,14 @@ never a namespace axis: ``MD(device="cpu")`` today; ``"cuda"`` raises
 Current surface (honest capability boundary)
 --------------------------------------------
 - **MD** — the ``MD`` driver plus its components (table above).
+- **Geometry optimization** — CPU ``Minimize`` + ``LBFGS`` with an
+  independent ``ForceConverged`` policy.
 - **AM1 semiempirical** — single-point energy [eV] + Mulliken charges [e]
   via ``single_point(frame, AM1Evaluator(...))``; no AM1 forces yet.
-- **Plane-wave DFT** — ``pw_scf`` / ``PWResult`` (requires a wheel built
-  with ``ATV_BUILD_PW=ON``).
+- **Plane-wave DFT** — explicit ``PWConfig`` / ``PWSolver`` / ``PWResult``
+  lifecycle (present only in wheels built with ``ATV_BUILD_PW=ON``).
 
-Roadmap: Gaussian-SCF and geometry-optimization bindings are future work
-with their own spec — deliberately NOT exposed rather than exposed broken.
+Roadmap: Gaussian-SCF bindings remain a later CPU breadth slice.
 
 Example — Molecular Dynamics (canonical deep paths)::
 
@@ -63,16 +69,17 @@ Example — AM1 single point::
     print(ev.last_result().mulliken_charges)
 """
 
+from atomiverse._binding import _cpp
 from atomiverse.driver import single_point
 from atomiverse.md import MD, InitVelocity
 from atomiverse.md.integrator import VelocityVerlet
 from atomiverse.md.thermostat import NoseHoover
+from atomiverse.minimizer import ForceConverged, LBFGS, Minimize, MinimizeResult
 from atomiverse.neighbor import NeighborList
 from atomiverse.potentials.angle import Harmonic as AngleHarmonic
 from atomiverse.potentials.bond import Harmonic as BondHarmonic
 from atomiverse.potentials.dihedral import MultiHarmonic as DihedralMultiHarmonic
 from atomiverse.potentials.pair import LJCut as PairLJCut
-from atomiverse.pw import PWResult, pw_scf
 from atomiverse.recorder import Thermo
 from atomiverse.semiempirical import AM1Config, AM1Evaluator, AM1Result
 
@@ -81,16 +88,25 @@ __all__ = [
     "VelocityVerlet",
     "InitVelocity",
     "NoseHoover",
+    "Minimize",
+    "LBFGS",
+    "ForceConverged",
+    "MinimizeResult",
     "PairLJCut",
     "NeighborList",
     "BondHarmonic",
     "AngleHarmonic",
     "DihedralMultiHarmonic",
     "Thermo",
-    "pw_scf",
-    "PWResult",
     "AM1Config",
     "AM1Evaluator",
     "AM1Result",
     "single_point",
 ]
+
+if hasattr(_cpp, "PWSolver"):
+    from atomiverse.pw import PWConfig as PWConfig
+    from atomiverse.pw import PWResult as PWResult
+    from atomiverse.pw import PWSolver as PWSolver
+
+    __all__.extend(["PWConfig", "PWSolver", "PWResult"])

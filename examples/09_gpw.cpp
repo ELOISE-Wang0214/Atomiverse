@@ -11,7 +11,7 @@
 /// DZVP-MOLOPT-GTH basis + GTH-PBE pseudopotentials, Martyna-Tuckerman isolated
 /// electrostatics. The user-facing component is cpu::gpw::GPWEvaluator (role
 /// Evaluator, capability Energy), run through cpu::single_point exactly like
-/// cpu::pw::PWEvaluator and cpu::scf::SCFEvaluator.
+/// cpu::pw::PWEvaluator and cpu::scf::SCF.
 ///
 /// Build:
 ///   cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
@@ -31,8 +31,8 @@
 
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV;
@@ -47,12 +47,12 @@ cpu::Frame make_water() {
     const double y[3] = {5.0000, 5.0000, 5.0000};
     const double zc[3] = {5.0000, 5.5043, 5.5043};
     for (int i = 0; i < 3; ++i) {
-        f.atoms.type[i] = z[i];
-        f.atoms.x[i] = x[i];
-        f.atoms.y[i] = y[i];
-        f.atoms.z[i] = zc[i];
+        f.span(ATV::kAtom_type)[i] = z[i];
+        f.span(ATV::kAtom_x)[i] = x[i];
+        f.span(ATV::kAtom_y)[i] = y[i];
+        f.span(ATV::kAtom_z)[i] = zc[i];
     }
-    f.box = cpu::Box::cubic(10.0); // 10 Å box
+    f.simbox = cpu::Box::cubic(10.0); // 10 Å box
     return f;
 }
 
@@ -62,12 +62,14 @@ int main() {
 
     cpu::Frame frame = make_water();
 
-    const cpu::gpw::Kind O{ATV::Element::O,
-                           cpu::gpw::GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-GTH"),
-                           cpu::gpw::GthPotential(ATV::Element::O, "GTH-PBE-q6")};
-    const cpu::gpw::Kind H{ATV::Element::H,
-                           cpu::gpw::GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-GTH"),
-                           cpu::gpw::GthPotential(ATV::Element::H, "GTH-PBE-q1")};
+    const cpu::gpw::Kind O{
+        molrs::Element::O,
+        cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
+    const cpu::gpw::Kind H{
+        molrs::Element::H,
+        cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
     cpu::gpw::GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 400.0;
@@ -81,11 +83,13 @@ int main() {
     const double e_ha = eval.last_energy_hartree();
     std::cout << std::fixed << std::setprecision(8);
     std::cout << "GPW H2O single-point (PBE, DZVP-MOLOPT-GTH, MT)\n"
-              << "  converged : " << (eval.last_result().converged ? "yes" : "no")
-              << " in " << eval.last_result().iters << " iters\n"
-              << "  E_total   : " << e_ha << " Hartree   (" << frame.scalars.energy
-              << " eV)\n"
+              << "  converged : "
+              << (eval.last_result().converged ? "yes" : "no") << " in "
+              << eval.last_result().iters << " iters\n"
+              << "  E_total   : " << e_ha << " Hartree   ("
+              << frame.meta.get(ATV::kEnergy) << " eV)\n"
               << "  CP2K ref  : -17.21233714 Hartree\n"
-              << "  |dE|      : " << std::abs(e_ha + 17.21233714458516) << " Hartree\n";
+              << "  |dE|      : " << std::abs(e_ha + 17.21233714458516)
+              << " Hartree\n";
     return 0;
 }

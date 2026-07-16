@@ -7,14 +7,14 @@
 /// RHF orbital energy: IP ≈ −ε_HOMO.
 ///
 /// This example sweeps five molecules × two basis sets, runs a single-point
-/// RHF via `cpu::Evaluate + cpu::scf::SCFEvaluator`, reads the HOMO through
+/// RHF via `cpu::Evaluate + cpu::scf::SCF`, reads the HOMO through
 /// `cpu::scf::OrbitalInfoObserver` (bound at `evaluate::Phase::finalize`,
 /// sharing state via `scf.result_handle()`), and tabulates:
 ///
 ///   system | basis | −ε_HOMO [Ha] | IP_Koopmans [eV] | experimental IP [eV]
 ///
 /// Units: orbital energies in Hartree; IP in eV via 1 Ha = 27.211386245988 eV
-/// (`ATV::kHartree2eV`). The experimental column is a *qualitative* reference
+/// (`ATV::units::kHartreeInEv`). The experimental column is a *qualitative* reference
 /// only — Koopmans neglects orbital relaxation and correlation, so no numeric
 /// tolerance is implied. The reference −ε_HOMO values here are regression-
 /// pinned in benchmarks/qc/rhf/validation/test_koopmans_parity.cpp.
@@ -41,7 +41,7 @@
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/orbital_info_observer.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 using ATV::cpu::scf::BasisSet;
@@ -54,10 +54,10 @@ struct Atom {
 };
 
 struct Molecule {
-    std::string name;              ///< Label.
-    std::vector<Atom> atoms;       ///< Geometry [Å], type = Z.
-    double exp_ip;                 ///< Experimental IP [eV] (qualitative).
-    std::string exp_label;         ///< "adiabatic" / "vertical" tag.
+    std::string name;        ///< Label.
+    std::vector<Atom> atoms; ///< Geometry [Å], type = Z.
+    double exp_ip;           ///< Experimental IP [eV] (qualitative).
+    std::string exp_label;   ///< "adiabatic" / "vertical" tag.
 };
 
 // Reference geometries [Å]; experimental IPs from NIST (qualitative only).
@@ -88,12 +88,12 @@ const std::vector<Molecule> kMolecules = {
 cpu::Frame make_frame(const Molecule& mol) {
     cpu::Frame f(static_cast<int>(mol.atoms.size()));
     for (std::size_t i = 0; i < mol.atoms.size(); ++i) {
-        f.atoms.type[i] = mol.atoms[i].z;
-        f.atoms.x[i] = mol.atoms[i].x;
-        f.atoms.y[i] = mol.atoms[i].y;
-        f.atoms.z[i] = mol.atoms[i].zc;
+        f.span(ATV::kAtom_type)[i] = mol.atoms[i].z;
+        f.span(ATV::kAtom_x)[i] = mol.atoms[i].x;
+        f.span(ATV::kAtom_y)[i] = mol.atoms[i].y;
+        f.span(ATV::kAtom_z)[i] = mol.atoms[i].zc;
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -103,8 +103,8 @@ int main() {
     std::cout << "=== Koopmans' theorem: IP ≈ −ε_HOMO (RHF, CPU) ===\n\n"
               << std::left << std::setw(6) << "system" << std::setw(9)
               << "basis" << std::right << std::setw(15) << "−ε_HOMO [Ha]"
-              << std::setw(18) << "IP_Koopmans [eV]" << "   "
-              << std::left << "experimental IP [eV]\n"
+              << std::setw(18) << "IP_Koopmans [eV]" << "   " << std::left
+              << "experimental IP [eV]\n"
               << std::string(78, '-') << "\n";
 
     const BasisSet bases[] = {BasisSet::STO3G, BasisSet::Pople631G};
@@ -114,11 +114,11 @@ int main() {
             cpu::Frame frame = make_frame(mol);
 
             // Size an SCF config from a representative integral pack, then let
-            // the SCFEvaluator rebuild integrals from the frame each launch.
+            // the SCF rebuild integrals from the frame each launch.
             auto integrals = cpu::scf::build_integrals(frame, basis);
             auto config = cpu::scf::rhf_config(integrals, /*tol=*/1e-10);
 
-            cpu::scf::SCFEvaluator scf{config, basis};
+            cpu::scf::SCF scf{config, basis};
             scf.with_gradient(false); // energy + orbitals only (single point)
             auto handle = scf.result_handle();
 
@@ -137,7 +137,7 @@ int main() {
             const auto& res = *handle.result;
             const double eps_homo_ha = res.eigenvalues_alpha(res.n_alpha - 1);
             const double neg_eps_homo_ha = -eps_homo_ha;
-            const double ip_koopmans_eV = neg_eps_homo_ha * kHartree2eV;
+            const double ip_koopmans_eV = neg_eps_homo_ha * units::kHartreeInEv;
 
             std::cout << std::left << std::setw(6) << mol.name << std::setw(9)
                       << cpu::scf::basis_set_name(basis) << std::right

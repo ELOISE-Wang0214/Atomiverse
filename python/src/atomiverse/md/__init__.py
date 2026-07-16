@@ -3,7 +3,9 @@
 The driver borrows the ``molrs.Frame`` for the duration of :meth:`MD.run`:
 the C++ side materializes a transient execution frame, advances it, and
 writes positions / velocities / forces / energy back into the *same*
-``molrs.Frame``. Atomiverse never owns a separate Frame data type.
+``molrs.Frame``. Energy, kinetic energy, conserved energy, and stress are
+exact-dtype ``molrs.MetaValue`` entries in ``frame.meta``; they are never
+synthetic blocks. Atomiverse never owns a separate Frame data type.
 """
 
 from __future__ import annotations
@@ -167,7 +169,8 @@ class MD:
         ----------
         frame : molrs.Frame
             System state. Must carry an ``atoms`` block with
-            ``x, y, z, type`` columns (``mass`` required for MD).
+            ``x, y, z, type`` columns (``mass`` required for MD). Global
+            results are typed entries in ``frame.meta``.
         n_steps : int
             Number of MD steps to advance.
         """

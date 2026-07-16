@@ -3,7 +3,7 @@
 ///
 /// AIMD = Born-Oppenheimer molecular dynamics. The classical MD loop runs
 /// unchanged; the only difference is that the per-step force evaluator is
-/// `cpu::scf::SCFEvaluator` (a self-consistent SCF + analytic gradient)
+/// `cpu::scf::SCF` (a self-consistent SCF + analytic gradient)
 /// instead of a classical pair potential. This is the same Driver/Component
 /// composition that drives geometry optimization in
 /// `examples/05_geom_opt.cpp`, only with the integration loop
@@ -14,7 +14,7 @@
 ///   1. Construct an H2 frame and integrals at STO-3G.
 ///   2. Compose `cpu::md::MD` with InitVelocity + VelocityVerlet +
 ///      NoseHoover (NVT ensemble).
-///   3. Bind `SCFEvaluator{config}.predictor(3)` at md::Phase::force —
+///   3. Bind `SCF{config}.predictor(3)` at md::Phase::force —
 ///      ASPC predictor warm-starts the density across MD steps.
 ///   4. Run 200 steps and report initial / final energy + temperature.
 ///
@@ -49,42 +49,48 @@
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
 namespace {
 
 /// @brief H2 starting geometry. Placement inside the simulation box is
-///        irrelevant because `SCFEvaluator::launch` reassembles the
+///        irrelevant because `SCF::launch` reassembles the
 ///        molecule via minimum-image relative to atom 0 before each
 ///        integral build, so atoms split across a periodic boundary
 ///        are recomposed transparently.
 cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.74}; // 0.74 Å — RHF/STO-3G equilibrium
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.mass = {1.008, 1.008};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0); // SCF treats the molecule as isolated
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.74; // 0.74 Å — RHF/STO-3G equilibrium
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_mass)[0] = 1.008;
+    f.span(ATV::kAtom_mass)[1] = 1.008;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox =
+        ATV::cpu::Box::cubic(100.0); // SCF treats the molecule as isolated
     return f;
 }
 
-/// @brief Approximate kinetic temperature from frame.scalars.kinetic.
+/// @brief Approximate kinetic temperature from frame.meta.get(ATV::kKinetic).
 ///        T = 2·KE / (n_dof · kB), with COM removed (n_dof = 3·N - 3).
 double temperature_K(const cpu::Frame& frame) {
-    const int n_dof = 3 * frame.atoms.size() - 3;
+    const int n_dof = 3 * frame.nlocal() - 3;
     if (n_dof <= 0)
         return 0.0;
-    return 2.0 * static_cast<double>(frame.scalars.kinetic)
-           / (n_dof * kBoltzmann);
+    return 2.0 * static_cast<double>(frame.meta.get(ATV::kKinetic))
+           / (n_dof * units::kB_ev_per_k);
 }
 
 } // namespace
 
 int main() {
-    ATV::log_init(spdlog::level::info);
+    ATV::log_init(ATV::LogConfig{.level = spdlog::level::info});
     ATV_INFO("=== Atomiverse: AIMD on H2 (NVT, Nose-Hoover) ===");
     ATV_INFO("    Molecule:  H2");
     ATV_INFO("    Method:    RHF / STO-3G");
@@ -107,31 +113,30 @@ int main() {
     // ensemble average over many trajectories converges to T_target;
     // a single short trajectory does not.
 
-    // Build the simulation. `SCFEvaluator{config}.predictor(3)` is a
-    // chained rvalue builder: ref-qualified overloads in SCFEvaluator
+    // Build the simulation. `SCF{config}.predictor(3)` is a
+    // chained rvalue builder: ref-qualified overloads in SCF
     // make the temporary itself become the rvalue argument to add(),
     // which moves it into driver-owned storage.
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42u});
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::NoseHoover{T_target, tau, dt});
-    sim.on(md::Phase::force)
-        .add(cpu::scf::SCFEvaluator{config}.predictor(/*order=*/3));
+    sim.on(md::Phase::force).add(cpu::scf::SCF{config}.predictor(/*order=*/3));
     sim.build();
 
-    // Take one step to populate frame.scalars.kinetic and frame.scalars.energy from the
+    // Take one step to populate frame.meta.get(ATV::kKinetic) and frame.meta.get(ATV::kEnergy) from the
     // integrator's first force evaluation.
     sim.run(frame, 1);
-    const double E_init = static_cast<double>(frame.scalars.energy);
-    const double KE_init = static_cast<double>(frame.scalars.kinetic);
+    const double E_init = static_cast<double>(frame.meta.get(ATV::kEnergy));
+    const double KE_init = static_cast<double>(frame.meta.get(ATV::kKinetic));
     const double T_init = temperature_K(frame);
     ATV_INFO("[aimd] step=1   PE_eV={:>10.4f}  KE_eV={:>8.4f}  T_K={:>7.2f}",
              E_init, KE_init, T_init);
 
     sim.run(frame, n_steps - 1);
 
-    const double E_final = static_cast<double>(frame.scalars.energy);
-    const double KE_final = static_cast<double>(frame.scalars.kinetic);
+    const double E_final = static_cast<double>(frame.meta.get(ATV::kEnergy));
+    const double KE_final = static_cast<double>(frame.meta.get(ATV::kKinetic));
     const double T_final = temperature_K(frame);
     ATV_INFO("[aimd] step={:<3d} PE_eV={:>10.4f}  KE_eV={:>8.4f}  T_K={:>7.2f}",
              n_steps, E_final, KE_final, T_final);
@@ -139,16 +144,22 @@ int main() {
     // Bond length via minimum image — atoms may have wrapped through
     // the box independently during the trajectory, but we want the
     // physical bond.
-    const double lx = frame.box(0, 0);
+    const double lx = frame.simbox.cell()(0, 0);
     auto min_image = [](double d, double L) {
         return (L > 0.0) ? (d - L * std::round(d / L)) : d;
     };
     const double dx =
-        min_image(static_cast<double>(frame.atoms.x(1) - frame.atoms.x(0)), lx);
+        min_image(static_cast<double>(frame.span(ATV::kAtom_x)[1]
+                                      - frame.span(ATV::kAtom_x)[0]),
+                  lx);
     const double dy =
-        min_image(static_cast<double>(frame.atoms.y(1) - frame.atoms.y(0)), lx);
+        min_image(static_cast<double>(frame.span(ATV::kAtom_y)[1]
+                                      - frame.span(ATV::kAtom_y)[0]),
+                  lx);
     const double dz =
-        min_image(static_cast<double>(frame.atoms.z(1) - frame.atoms.z(0)), lx);
+        min_image(static_cast<double>(frame.span(ATV::kAtom_z)[1]
+                                      - frame.span(ATV::kAtom_z)[0]),
+                  lx);
     const double bond = std::sqrt(dx * dx + dy * dy + dz * dz);
     ATV_INFO("[aimd] final H-H bond = {:.4f} Å (RHF/STO-3G eq ≈ 0.74 Å)", bond);
 

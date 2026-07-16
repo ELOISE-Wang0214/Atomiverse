@@ -117,12 +117,12 @@ int main() {
     cpu::XYZ("h2_rhf.xyz").write(frame);
     std::cout << "  Wrote h2_rhf.xyz  (open in OVITO / Avogadro 2)\n";
 
-    // ── 4. CUDA RHF — Evaluate + SCFEvaluator (inner-solver shape) ─────
+    // ── 4. CUDA RHF — Evaluate + SCF (inner-solver shape) ─────
     // SCF is not a driver category: the CUDA SCF cycle runs inside
-    // cuda::scf::SCFSolver, owned by the SCFEvaluator component, driven
+    // cuda::scf::SCFSolver, owned by the SCF component, driven
     // by the one-pass cuda::Evaluate (here via the single_point helper).
-    std::cout << "\n=== CUDA RHF (cuda::Evaluate + scf::SCFEvaluator) ===\n";
-    cuda::scf::SCFEvaluator cuda_scf{integrals, tol, /*max_iter=*/100};
+    std::cout << "\n=== CUDA RHF (cuda::Evaluate + scf::SCF) ===\n";
+    cuda::scf::SCF cuda_scf{integrals, tol, /*max_iter=*/100};
     cuda::single_point(frame, cuda_scf); // frame.scalars.energy populated
 
     // ── 6. Compare ────────────────────────────────────────────────────

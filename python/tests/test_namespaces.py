@@ -27,33 +27,49 @@ import pytest
 import molrs
 
 import atomiverse as av
+from atomiverse._binding import _cpp
 
 # ── Spec mapping table: (top-level name, deep module, deep name) ────
-# One row per entry of the spec's 16-row mapping table.
+# One row per entry of the compiled public mapping table.
 
-_MAPPING: tuple[tuple[str, str, str], ...] = (
+_BASE_MAPPING: tuple[tuple[str, str, str], ...] = (
     ("MD", "atomiverse.md", "MD"),
     ("VelocityVerlet", "atomiverse.md.integrator", "VelocityVerlet"),
     ("NoseHoover", "atomiverse.md.thermostat", "NoseHoover"),
     ("InitVelocity", "atomiverse.md", "InitVelocity"),
+    ("Minimize", "atomiverse.minimizer", "Minimize"),
+    ("LBFGS", "atomiverse.minimizer", "LBFGS"),
+    ("ForceConverged", "atomiverse.minimizer", "ForceConverged"),
+    ("MinimizeResult", "atomiverse.minimizer", "MinimizeResult"),
     ("NeighborList", "atomiverse.neighbor", "NeighborList"),
     ("PairLJCut", "atomiverse.potentials.pair", "LJCut"),
     ("BondHarmonic", "atomiverse.potentials.bond", "Harmonic"),
     ("AngleHarmonic", "atomiverse.potentials.angle", "Harmonic"),
     ("DihedralMultiHarmonic", "atomiverse.potentials.dihedral", "MultiHarmonic"),
     ("Thermo", "atomiverse.recorder", "Thermo"),
-    ("pw_scf", "atomiverse.pw", "pw_scf"),
-    ("PWResult", "atomiverse.pw", "PWResult"),
     ("AM1Config", "atomiverse.semiempirical", "AM1Config"),
     ("AM1Evaluator", "atomiverse.semiempirical", "AM1Evaluator"),
     ("AM1Result", "atomiverse.semiempirical", "AM1Result"),
     ("single_point", "atomiverse.driver", "single_point"),
 )
 
+_PW_MAPPING: tuple[tuple[str, str, str], ...] = (
+    (
+        ("PWConfig", "atomiverse.pw", "PWConfig"),
+        ("PWSolver", "atomiverse.pw", "PWSolver"),
+        ("PWResult", "atomiverse.pw", "PWResult"),
+    )
+    if hasattr(_cpp, "PWSolver")
+    else ()
+)
+
+_MAPPING = _BASE_MAPPING + _PW_MAPPING
+
 _DEEP_MODULES: tuple[str, ...] = (
     "atomiverse.md",
     "atomiverse.md.integrator",
     "atomiverse.md.thermostat",
+    "atomiverse.minimizer",
     "atomiverse.neighbor",
     "atomiverse.potentials",
     "atomiverse.potentials.pair",
@@ -81,9 +97,9 @@ class TestDeepModulesImportable:
 
 
 class TestTopLevelIdentity:
-    def test_mapping_table_has_sixteen_rows(self) -> None:
-        """The spec mapping table carries exactly 16 entries."""
-        assert len(_MAPPING) == 16
+    def test_mapping_table_matches_compiled_surface(self) -> None:
+        """The base has 18 entries and a PW build contributes three types."""
+        assert len(_MAPPING) == (21 if hasattr(_cpp, "PWSolver") else 18)
 
     @pytest.mark.parametrize(
         "top_name,deep_module,deep_name",
@@ -150,7 +166,7 @@ class TestDeviceParameter:
             LJCut(0.0104, 3.4, cutoff)
         )
         sim.run(argon_frame, 5)
-        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        energy = float(argon_frame.meta["energy"].value)
         assert np.isfinite(energy)
 
     def test_md_cuda_device_raises_value_error(self) -> None:
@@ -159,6 +175,13 @@ class TestDeviceParameter:
 
         with pytest.raises(ValueError, match="(?i)cuda"):
             MD(dt=0.001, device="cuda")
+
+    def test_minimize_cuda_device_raises_value_error(self) -> None:
+        """Minimize(device="cuda") fails loud while GPU work is deferred."""
+        from atomiverse.minimizer import Minimize
+
+        with pytest.raises(ValueError, match="(?i)gpu|cuda"):
+            Minimize(device="cuda")
 
     def test_single_point_cuda_device_raises_before_compute(
         self, argon_frame: "molrs.Frame"

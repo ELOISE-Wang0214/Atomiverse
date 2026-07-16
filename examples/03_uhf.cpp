@@ -39,8 +39,7 @@
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/uhf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 #ifdef ATV_HAS_MATPLOT
 #include <matplot/matplot.h>
@@ -52,25 +51,25 @@ using namespace ATV;
 
 static cpu::Frame single_atom(int z) {
     cpu::Frame f(1);
-    f.atoms.x[0] = double(0);
-    f.atoms.y[0] = double(0);
-    f.atoms.z[0] = double(0);
-    f.atoms.type[0] = z;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = double(0);
+    f.span(ATV::kAtom_y)[0] = double(0);
+    f.span(ATV::kAtom_z)[0] = double(0);
+    f.span(ATV::kAtom_type)[0] = z;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame diatomic_h2(double r_angstrom) {
     cpu::Frame f(2);
-    f.atoms.x[0] = double(0);
-    f.atoms.y[0] = double(0);
-    f.atoms.z[0] = double(0);
-    f.atoms.x[1] = double(r_angstrom);
-    f.atoms.y[1] = double(0);
-    f.atoms.z[1] = double(0);
-    f.atoms.type[0] = 1;
-    f.atoms.type[1] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = double(0);
+    f.span(ATV::kAtom_y)[0] = double(0);
+    f.span(ATV::kAtom_z)[0] = double(0);
+    f.span(ATV::kAtom_x)[1] = double(r_angstrom);
+    f.span(ATV::kAtom_y)[1] = double(0);
+    f.span(ATV::kAtom_z)[1] = double(0);
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -212,7 +211,11 @@ int main() {
     {
         auto frame = single_atom(1);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto result = cpu::scf::uhf_solve(ints, 1, 0, tol, max_iter_atoms);
+        auto config = cpu::scf::uhf_config(ints, 1, 0, tol);
+        config.max_iter = max_iter_atoms;
+        cpu::scf::SCFSolver solver{config};
+        solver.build(ints);
+        const auto& result = solver.run(ints);
 
         std::cout << "  Converged:       " << (result.converged ? "yes" : "no")
                   << " (" << result.iterations << " iterations)\n"
@@ -235,8 +238,16 @@ int main() {
     {
         auto frame = diatomic_h2(0.74);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto rhf = cpu::scf::rhf_solve(ints, tol, 50);
-        auto uhf = cpu::scf::uhf_solve(ints, 1, 1, tol, max_iter_h2);
+        auto rhf_config = cpu::scf::rhf_config(ints, tol);
+        rhf_config.max_iter = 50;
+        cpu::scf::SCFSolver rhf_solver{rhf_config};
+        rhf_solver.build(ints);
+        const auto& rhf = rhf_solver.run(ints);
+        auto uhf_config = cpu::scf::uhf_config(ints, 1, 1, tol);
+        uhf_config.max_iter = max_iter_h2;
+        cpu::scf::SCFSolver uhf_solver{uhf_config};
+        uhf_solver.build(ints);
+        const auto& uhf = uhf_solver.run(ints);
 
         std::cout << std::fixed << std::setprecision(8)
                   << "  RHF:  E = " << static_cast<double>(rhf.energy)
@@ -250,7 +261,7 @@ int main() {
                   << " Ha  (should be ~0 at equilibrium)\n\n";
 
         {
-            auto rhf_charge = cpu::mulliken_charge(ints, rhf.P);
+            auto rhf_charge = cpu::mulliken_charge(ints, rhf.P_alpha);
             std::cout << "  RHF Mulliken q[0]: "
                       << static_cast<double>(rhf_charge[0]) << "\n";
             cpu::XYZ("h2_eq_rhf.xyz").write(frame);
@@ -286,11 +297,19 @@ int main() {
     for (double r = 0.5; r <= 4.01; r += 0.25) {
         auto frame = diatomic_h2(r);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto rhf = cpu::scf::rhf_solve(ints, tol, 100);
-        auto uhf = cpu::scf::uhf_solve(ints, 1, 1, tol, max_iter_scan);
+        auto rhf_config = cpu::scf::rhf_config(ints, tol);
+        rhf_config.max_iter = 100;
+        cpu::scf::SCFSolver rhf_solver{rhf_config};
+        rhf_solver.build(ints);
+        const auto& rhf = rhf_solver.run(ints);
+        auto uhf_config = cpu::scf::uhf_config(ints, 1, 1, tol);
+        uhf_config.max_iter = max_iter_scan;
+        cpu::scf::SCFSolver uhf_solver{uhf_config};
+        uhf_solver.build(ints);
+        const auto& uhf = uhf_solver.run(ints);
 
         // RHF: Mulliken (for the table/plots) + stream geometry to XYZ.
-        auto rhf_charge = cpu::mulliken_charge(ints, rhf.P);
+        auto rhf_charge = cpu::mulliken_charge(ints, rhf.P_alpha);
         rhf_xyz.append(frame);
 
         // UHF: Mulliken (for the table/plots) + stream geometry to XYZ.

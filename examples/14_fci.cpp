@@ -29,19 +29,24 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
 int main() {
     // 1. H2 geometry (Angstrom); type = atomic number Z.
     cpu::Frame frame(2);
-    frame.atoms.x = {0.0, 0.0};
-    frame.atoms.y = {0.0, 0.0};
-    frame.atoms.z = {0.0, 0.7414};
-    frame.atoms.type = {1, 1};
-    frame.atoms.mass = {1.008, 1.008};
-    frame.box = Mat3::cubic(50.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.7414;
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_mass)[0] = 1.008;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
 
     std::cout << "=== H2 / STO-3G / full CI (CPU) ===\n"
               << "Geometry: H-H at 0.7414 Angstrom\n\n";
@@ -51,7 +56,9 @@ int main() {
                                           /*charge=*/0, /*compute_eri=*/true);
 
     // 3. RHF reference.
-    auto scf = cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints, 1e-12));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints, 1e-12)};
+    solver.build(ints);
+    const auto& scf = solver.run(ints);
     if (!scf.converged) {
         std::cerr << "RHF did not converge\n";
         return 1;
@@ -60,8 +67,8 @@ int main() {
     // 4. Full CI: exact correlation energy in this basis.
     auto fci = cpu::scf::fci_energy(ints, scf);
 
-    std::cout << std::fixed << std::setprecision(8)
-              << "E_RHF:   " << scf.energy << " Hartree\n"
+    std::cout << std::fixed << std::setprecision(8) << "E_RHF:   " << scf.energy
+              << " Hartree\n"
               << "E_FCI:   " << fci.e_fci << " Hartree\n"
               << "E_corr:  " << fci.e_corr << " Hartree (= E_FCI - E_RHF)\n";
 

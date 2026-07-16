@@ -10,13 +10,14 @@ cd Atomiverse
 pip install --no-build-isolation -ve python/
 ```
 
-Requirements: Python ≥ 3.9, NumPy, `molrs` (the frame/data layer — installed
-separately), C++17 compiler, CMake ≥ 3.18, a Rust toolchain (molrs is built
-via corrosion).
+Requirements: Python ≥ 3.9, NumPy, C++17 compiler, CMake ≥ 3.18, and a
+Rust toolchain. The wheel has an exact dependency on
+`molcrafts-molrs==0.7.0`, whose frame schema version is 2; a different molrs
+release is rejected rather than translated.
 
 Optional backends at build time:
 
-- `CMAKE_ARGS='-DATV_BUILD_PW=ON'` — plane-wave DFT (`pw_scf`; needs FFTW3).
+- `CMAKE_ARGS='-DATV_BUILD_PW=ON'` — explicit plane-wave DFT solver (needs FFTW3).
 - `CMAKE_ARGS='-DATV_BUILD_CUDA=ON'` — CUDA backend (GPU host only).
 
 ## What this package exposes (and what it doesn't)
@@ -33,13 +34,13 @@ Current surface:
   (LAMMPS-style) names: `VelocityVerlet`, `InitVelocity`, `NoseHoover`,
   `PairLJCut`, `NeighborList`, `BondHarmonic`, `AngleHarmonic`,
   `DihedralMultiHarmonic`, `Thermo`.
-- **Plane-wave DFT** — `pw_scf` / `PWResult` (PW-enabled wheels only; a
-  default wheel raises `RuntimeError` with rebuild guidance).
+- **Geometry optimization** — CPU `minimizer.Minimize` with the `LBFGS`
+  optimizer component and independent `ForceConverged` loop policy.
+- **Plane-wave DFT** — `PWConfig` / `PWSolver` / `PWResult` (PW-enabled
+  wheels only; PW types are absent from wheels built without the backend).
 
-**Roadmap:** Gaussian-SCF and geometry-optimization bindings (the C++
-`SCFEvaluator` family and the `Minimize` driver with `LBFGS`/`CG`
-components) are future work with their own spec. They are deliberately not
-exposed rather than exposed broken.
+GPU minimization fails loud and remains deferred. Gaussian-SCF Python
+bindings remain a later CPU breadth slice.
 
 ## Quickstart: Argon MD
 
@@ -68,7 +69,7 @@ atoms.insert("z", zs)
 atoms.insert("mass", np.full(n, 39.948))   # Ar [amu]
 atoms.insert("type", np.zeros(n, dtype=np.int32))
 frame["atoms"] = atoms
-frame.box = molrs.Box.cube(n_cells * a0)
+frame.simbox = molrs.Box.cube(n_cells * a0)
 
 # 2. Configure the MD driver
 epsilon, sigma, cutoff = 0.0104, 3.4, 8.5   # LJ-Ar [eV, Å, Å]
@@ -84,8 +85,10 @@ sim.run(frame, 1000)
 
 # 4. Read results back from the SAME molrs.Frame
 x = np.asarray(frame["atoms"]["x"])
-pe = float(np.asarray(frame["scalars"]["energy"])[0])
-ke = float(np.asarray(frame["scalars"]["kinetic"])[0])
+energy = frame.meta["energy"]               # molrs.MetaValue(dtype="f64")
+kinetic = frame.meta["kinetic"]
+pe = float(energy.value)
+ke = float(kinetic.value)
 print(f"PE = {pe:.4f} eV,  KE = {ke:.4f} eV,  x[0] = {x[0]:.3f} Å")
 ```
 
@@ -123,15 +126,39 @@ res = ev.last_result()                         # Hartree / kcal-mol detail
 print(res.heat_of_formation_kcal_mol, res.iterations)
 ```
 
+## CPU geometry minimization
+
+Minimize uses the same typed component composition as C++. The optimizer and
+termination policy are separate objects; state stays in one `molrs.Frame` and
+the return value carries only loop control metadata:
+
+```python
+opt = av.Minimize(
+    convergence=av.ForceConverged(ftol=0.05, rms_ftol=0.03)
+)
+opt.add(av.LBFGS(memory=5, alpha0=0.01, max_ls=10))
+opt.on("force").add(av.NeighborList(cutoff, 0.3), order=-10) \
+               .add(av.PairLJCut(epsilon, sigma, cutoff))
+
+result = opt.run(frame, max_iter=100)
+print(result.iterations, result.converged, result.stop_reason)
+```
+
+Only the CPU backend is active for this surface. `device="cuda"` fails before
+build or compute; GPU materialization is explicitly deferred.
+
 ## Key concepts
 
 ### molrs.Frame in, molrs.Frame out
 
 The frame must carry an `atoms` block with `x, y, z, type` columns (`mass`
 required for MD). After `run()` the frame holds updated `x/y/z`, `vx/vy/vz`,
-`fx/fy/fz`, and the system scalars (`scalars` block: `energy`, `kinetic`,
-`conserved`). Missing required fields fail loud with a `RuntimeError` naming
-the field.
+and `fx/fy/fz`. Global results are exact-dtype `molrs.MetaValue` entries in
+`frame.meta`: `energy`, `kinetic`, and `conserved` are `f64`; `stress` and
+`stress_kinetic` are `f64x6`. There is no synthetic `scalars` or `stress`
+block. Read the payload through `.value` and inspect `.dtype` when the exact
+wire type matters. Missing required fields fail loud with a `RuntimeError`
+naming the field.
 
 ### MD driver
 
@@ -169,14 +196,20 @@ Components register through two paths, mirroring the C++ API:
 ## Plane-wave DFT (PW-enabled wheels)
 
 ```python
-result = av.pw_scf(frame, "Si.upf", ecut_ry=30.0, k_mesh=4)
+cfg = av.PWConfig()
+cfg.upf_path = "Si.upf"
+cfg.ecut_ry = 30.0
+cfg.k_mesh = 4
+solver = av.PWSolver(cfg)
+solver.build(frame)
+result = solver.run(frame)
 print(result.energy)      # [Ry]
 print(result.converged, result.iterations)
 ```
 
 An empty `upf_path` runs a toy local potential (useful as a smoke test;
-results are not physical). On a default wheel (`ATV_BUILD_PW=OFF`) the call
-raises `RuntimeError` telling you to rebuild with `ATV_BUILD_PW=ON`.
+results are not physical). On a default wheel (`ATV_BUILD_PW=OFF`) the PW
+types are not exported; rebuild with `ATV_BUILD_PW=ON` to use this API.
 
 ## Timing
 

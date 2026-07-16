@@ -22,36 +22,35 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/uhf_solve.h"
-#include "atomiverse/cpu/scf/uks_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
 static cpu::Frame make_atom(int Z) {
     cpu::Frame f(1);
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.type[0] = Z;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0;
+    f.span(ATV::kAtom_y)[0] = 0;
+    f.span(ATV::kAtom_z)[0] = 0;
+    f.span(ATV::kAtom_type)[0] = Z;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_h2(double bond_angstrom) {
     cpu::Frame f(2);
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.x[1] = bond_angstrom;
-    f.atoms.y[1] = 0;
-    f.atoms.z[1] = 0;
-    f.atoms.type[0] = 1;
-    f.atoms.type[1] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0;
+    f.span(ATV::kAtom_y)[0] = 0;
+    f.span(ATV::kAtom_z)[0] = 0;
+    f.span(ATV::kAtom_x)[1] = bond_angstrom;
+    f.span(ATV::kAtom_y)[1] = 0;
+    f.span(ATV::kAtom_z)[1] = 0;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
-static void print_result(const char* name, const cpu::scf::UKSResult& r,
+static void print_result(const char* name, const cpu::scf::SCFResult& r,
                          double V_nuc) {
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "  " << name << ":\n";
@@ -79,9 +78,15 @@ int main() {
         std::cout << "--- Example 1: He atom (LSDA, singlet) ---\n";
         auto frame = make_atom(2);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto uks =
-            cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50, 110);
-        auto uhf = cpu::scf::uhf_solve(ints, 1, 1);
+        auto uks_config =
+            cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA);
+        cpu::scf::SCFSolver uks_solver{uks_config};
+        uks_solver.build(ints);
+        const auto& uks = uks_solver.run(ints);
+        auto uhf_config = cpu::scf::uhf_config(ints, 1, 1);
+        cpu::scf::SCFSolver uhf_solver{uhf_config};
+        uhf_solver.build(ints);
+        const auto& uhf = uhf_solver.run(ints);
         print_result("UKS-LSDA", uks, ints.V_nuc);
         std::cout << "    UHF E      = " << uhf.energy << " Ha\n";
         std::cout << "    diff       = " << (uks.energy - uhf.energy)
@@ -93,8 +98,10 @@ int main() {
         std::cout << "--- Example 2: H atom (LSDA, doublet) ---\n";
         auto frame = make_atom(1);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto uks =
-            cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 50, 110);
+        auto config = cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA);
+        cpu::scf::SCFSolver solver{config};
+        solver.build(ints);
+        const auto& uks = solver.run(ints);
         print_result("UKS-LSDA", uks, ints.V_nuc);
         std::cout << "\n";
     }
@@ -104,8 +111,10 @@ int main() {
         std::cout << "--- Example 3: Li atom (LSDA, doublet) ---\n";
         auto frame = make_atom(3);
         auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto uks =
-            cpu::scf::uks_solve(ints, 2, 1, cpu::scf::XCType::LSDA, 50, 110);
+        auto config = cpu::scf::uks_config(ints, 2, 1, cpu::scf::XCType::LSDA);
+        cpu::scf::SCFSolver solver{config};
+        solver.build(ints);
+        const auto& uks = solver.run(ints);
         print_result("UKS-LSDA", uks, ints.V_nuc);
         std::cout << "    eigenvalues alpha: ";
         for (int i = 0; i < ints.n_basis; ++i)
@@ -126,9 +135,19 @@ int main() {
             auto frame = make_h2(r);
             auto ints =
                 cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-            auto uhf = cpu::scf::uhf_solve(ints, 1, 1, double(1e-9), 400);
-            auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA,
-                                           50, 110, double(1e-7), 100);
+            auto uhf_config = cpu::scf::uhf_config(ints, 1, 1, 1e-9);
+            uhf_config.max_iter = 400;
+            cpu::scf::SCFSolver uhf_solver{uhf_config};
+            uhf_solver.build(ints);
+            const auto& uhf = uhf_solver.run(ints);
+            auto uks_config =
+                cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, 1e-7);
+            uks_config.n_radial = 50;
+            uks_config.n_angular = 110;
+            uks_config.max_iter = 100;
+            cpu::scf::SCFSolver uks_solver{uks_config};
+            uks_solver.build(ints);
+            const auto& uks = uks_solver.run(ints);
 
             std::cout << std::setw(8) << r << std::setw(14) << uhf.energy
                       << std::setw(14) << uks.energy << std::setw(14)

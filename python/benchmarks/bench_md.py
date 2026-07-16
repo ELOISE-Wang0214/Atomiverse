@@ -50,7 +50,7 @@ def make_fcc_frame(n_cells: int, a0: float = 5.26) -> "molrs.Frame":
     block.insert("mass", np.full(n, 39.948, dtype=np.float64))
     block.insert("type", np.zeros(n, dtype=np.int32))
     frame["atoms"] = block
-    frame.box = molrs.Box.cube(float(n_cells * a0))
+    frame.simbox = molrs.Box.cube(float(n_cells * a0))
     return frame
 
 

@@ -14,7 +14,7 @@ Tolerances: the molrs.Frame ``charge`` column is checked to 2.5e-3 e
 ``last_result().mulliken_charges`` is always double and is checked to
 5.0e-5 e, mirroring the C++ unit test's own tolerance.
 
-Units: frame scalars energy [eV]; ``electronic_energy_hartree`` [Hartree];
+Units: typed frame metadata energy [eV]; ``electronic_energy_hartree`` [Hartree];
 ``heat_of_formation_kcal_mol`` [kcal/mol]; charges [e].
 """
 
@@ -49,7 +49,7 @@ def _make_ch4_frame() -> "molrs.Frame":
     )
     atoms.insert("type", np.array([6, 1, 1, 1, 1], dtype=np.int32))
     frame["atoms"] = atoms
-    frame.box = molrs.Box.cube(20.0)
+    frame.simbox = molrs.Box.cube(20.0)
     return frame
 
 
@@ -125,10 +125,13 @@ class TestAM1EvaluatorConstruction:
 
 class TestAM1SinglePointCH4:
     def test_energy_written_back_finite_negative(self, am1_ch4) -> None:
-        """frame scalars energy [eV] is finite and < 0 after single_point."""
+        """Typed frame metadata energy [eV] is finite and negative."""
         frame, _ = am1_ch4
-        assert "scalars" in frame.keys()
-        energy = float(np.asarray(frame["scalars"]["energy"])[0])
+        assert "scalars" not in frame.keys()
+        assert "stress" not in frame.keys()
+        energy_meta = frame.meta["energy"]
+        assert energy_meta.dtype == "f64"
+        energy = float(energy_meta.value)
         assert np.isfinite(energy)
         assert energy < 0.0
 
@@ -190,7 +193,7 @@ class TestUnsupportedElement:
         atoms.insert("mass", np.array([252.0], dtype=np.float64))
         atoms.insert("type", np.array([99], dtype=np.int32))
         frame["atoms"] = atoms
-        frame.box = molrs.Box.cube(20.0)
+        frame.simbox = molrs.Box.cube(20.0)
 
         with pytest.raises(RuntimeError):
             av.single_point(frame, av.AM1Evaluator())

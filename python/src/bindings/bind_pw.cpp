@@ -1,5 +1,5 @@
 /// @file python/bind_pw.cpp
-/// @brief Plane-wave DFT bindings: pw::pw_scf()
+/// @brief Plane-wave DFT bindings backed directly by cpu::pw::PWSolver.
 
 #include "molrs_frame_bridge.h"
 
@@ -7,7 +7,7 @@
 
 #ifdef ATV_HAS_PW
 #include "atomiverse/cpu/frame/materialize.h"
-#include "atomiverse/cpu/pw/pw_scf.h"
+#include "atomiverse/cpu/pw/pw_solver.h"
 #endif
 
 void bind_pw(nb::module_& m) {
@@ -16,11 +16,25 @@ void bind_pw(nb::module_& m) {
     using namespace ATV;
     using namespace ATV::cpu::pw;
 
+    nb::class_<PWConfig>(m, "PWConfig",
+                         "Configuration for the explicit plane-wave solver.")
+        .def(nb::init<>())
+        .def_rw("upf_path", &PWConfig::upf_path)
+        .def_rw("ecut_ry", &PWConfig::ecut_ry)
+        .def_rw("k_mesh", &PWConfig::k_mesh)
+        .def_rw("tol", &PWConfig::tol)
+        .def_rw("max_iter", &PWConfig::max_iter)
+        .def_rw("mix_beta", &PWConfig::mix_beta)
+        .def_rw("pulay_depth", &PWConfig::pulay_depth);
+
     nb::class_<PWResult>(m, "PWResult",
                          "Result of a plane-wave DFT calculation.")
         .def_prop_ro(
             "energy", [](const PWResult& r) { return r.energy; },
             "Total energy [Ry].")
+        .def_prop_ro(
+            "energy_ha", [](const PWResult& r) { return r.energy_ha; },
+            "Total energy [Hartree].")
         .def_prop_ro(
             "converged", [](const PWResult& r) { return r.converged; },
             "Whether SCF converged within max_iter.")
@@ -33,44 +47,36 @@ void bind_pw(nb::module_& m) {
                    + " Ry, iters=" + std::to_string(r.iterations) + ")";
         });
 
-    m.def(
-        "pw_scf",
-        [](nb::object frame_obj, const std::string& upf_path, double ecut_ry,
-           int k_mesh, double tol, int max_iter) {
-            auto fref = borrow_molrs_frame(frame_obj);
-            PWResult result;
-            {
+    nb::class_<PWSolver>(m, "PWSolver",
+                         "Explicit plane-wave SCF solver (build then run).")
+        .def(nb::init<PWConfig>(), nb::arg("config"))
+        .def(
+            "build",
+            [](PWSolver& solver, nb::object frame_obj) {
+                auto fref = borrow_molrs_frame(frame_obj);
                 nb::gil_scoped_release release;
                 cpu::Frame work = cpu::materialize(*fref);
-                result = pw_scf(work, upf_path, ecut_ry, k_mesh, tol, max_iter);
-            }
-            return result;
-        },
-        nb::arg("frame"), nb::arg("upf_path") = "",
-        nb::arg("ecut_ry") = double(30.0), nb::arg("k_mesh") = 4,
-        nb::arg("tol") = double(1e-6), nb::arg("max_iter") = 50,
-        "Run plane-wave DFT total energy calculation for a periodic system.\n\n"
-        "The Frame provides atom positions, types (Z), and simulation cell.\n"
-        "Returns total energy in Rydberg.\n\n"
-        "Parameters\n"
-        "----------\n"
-        "frame : Frame\n"
-        "    Input structure with positions, atom types, and cell.\n"
-        "upf_path : str\n"
-        "    Path to UPF pseudopotential file (empty = toy local potential).\n"
-        "ecut_ry : float\n"
-        "    Plane-wave energy cutoff [Ry]. Default 30.0.\n"
-        "k_mesh : int\n"
-        "    Monkhorst-Pack mesh size per dimension. Default 4.\n"
-        "tol : float\n"
-        "    SCF convergence tolerance. Default 1e-6.\n"
-        "max_iter : int\n"
-        "    Maximum SCF iterations. Default 50.\n"
-        "\n"
-        "Returns\n"
-        "-------\n"
-        "PWResult\n"
-        "    Result with ``.energy`` (Ry), ``.converged``, and "
-        "``.iterations``.");
+                solver.build(work);
+            },
+            nb::arg("frame"),
+            "Validate the reference frame and perform one-time setup.")
+        .def(
+            "run",
+            [](PWSolver& solver, nb::object frame_obj) {
+                auto fref = borrow_molrs_frame(frame_obj);
+                PWResult result;
+                {
+                    nb::gil_scoped_release release;
+                    cpu::Frame work = cpu::materialize(*fref);
+                    result = solver.run(work);
+                }
+                return result;
+            },
+            nb::arg("frame"),
+            "Run SCF at the frame's current geometry. build() is required.")
+        .def_prop_ro(
+            "last_result",
+            [](const PWSolver& solver) { return solver.last_result(); },
+            "Copy of the most recent result.");
 #endif
 }

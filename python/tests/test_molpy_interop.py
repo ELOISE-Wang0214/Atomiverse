@@ -1,8 +1,8 @@
 """molpy <-> atomiverse interop smoke (spec: python-api-namespaces-am1).
 
-molpy and atomiverse share ``molrs.Frame`` as the exchange currency:
-``molpy.Frame`` IS ``molrs.Frame`` (re-exported from the Rust backend),
-and a molpy-built ``Atomistic`` system exports via ``to_frame()`` to the
+molpy and atomiverse share ``molrs.Frame`` as the exchange currency without
+either project re-exporting it. A molpy-built ``Atomistic`` system exports via
+``to_frame()`` to the
 very frame type an atomiverse driver borrows and writes back into.
 
 This is a seconds-fast smoke check, not a physics validation: a molpy
@@ -12,6 +12,8 @@ values). Skips cleanly when molpy is absent.
 """
 
 from __future__ import annotations
+
+import importlib
 
 import numpy as np
 import pytest
@@ -40,14 +42,19 @@ def _molpy_argon_frame() -> "molrs.Frame":
                 )
     frame = system.to_frame()
     frame["atoms"].insert("type", np.zeros(8, dtype=np.int32))
-    frame.box = molrs.Box.cube(2 * scale)
+    frame.simbox = molrs.Box.cube(2 * scale)
     return frame
 
 
 class TestMolpyInterop:
-    def test_frame_type_is_shared(self) -> None:
-        """molpy.Frame is molrs.Frame — one exchange currency, no copy."""
-        assert molpy.Frame is molrs.Frame
+    def test_molpy_does_not_reexport_frame(self) -> None:
+        """The exchange type has one owner: callers import it from molrs."""
+        assert not hasattr(molpy, "Frame")
+        assert not hasattr(molpy, "Block")
+
+    def test_molpy_core_frame_compatibility_module_is_deleted(self) -> None:
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("molpy.core.frame")
 
     def test_molpy_system_exports_molrs_frame(self) -> None:
         """Atomistic.to_frame() yields a molrs.Frame with coordinates."""
@@ -66,5 +73,8 @@ class TestMolpyInterop:
             LJCut(0.0104, 3.4, cutoff)
         )
         sim.run(frame, 10)
-        energy = float(np.asarray(frame["scalars"]["energy"])[0])
+        assert "scalars" not in frame.keys()
+        energy_meta = frame.meta["energy"]
+        assert energy_meta.dtype == "f64"
+        energy = float(energy_meta.value)
         assert np.isfinite(energy)

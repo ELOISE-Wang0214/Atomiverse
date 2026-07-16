@@ -11,6 +11,7 @@ namespace nb = nanobind;
 
 // Forward declarations — each bind_*.cpp provides one init function.
 void bind_md(nb::module_& m);
+void bind_minimizer(nb::module_& m);
 void bind_pw(nb::module_& m);
 void bind_semiempirical(nb::module_& m);
 
@@ -18,10 +19,8 @@ NB_MODULE(_atomiverse, m) {
     m.doc() = "Atomiverse: molecular simulation compute backend";
 
     bind_md(m);
+    bind_minimizer(m);
     bind_pw(m);
     bind_semiempirical(m);
-    // SCF and geometry-optimization bindings are future work (their own
-    // spec): they will bind the Minimize driver + LBFGS/CG Optimizer
-    // components and the SCFEvaluator/build_integrals/rhf_solve family in
-    // the correct driver/component shape (arch-refactor-08 Out of scope).
+    // Gaussian SCF bindings remain a separate CPU breadth slice.
 }

@@ -55,8 +55,7 @@ void bind_semiempirical(nb::module_& m) {
             "iteration cap, density-norm tolerance (dimensionless), and "
             "energy tolerance [Hartree].")
         .def_rw("charge", &AM1Config::charge, "Total molecular charge [e].")
-        .def_rw("multiplicity", &AM1Config::multiplicity,
-                "Spin multiplicity.")
+        .def_rw("multiplicity", &AM1Config::multiplicity, "Spin multiplicity.")
         .def_rw("max_iter", &AM1Config::max_iter, "SCF iteration cap.")
         .def_rw("density_tol", &AM1Config::density_tol,
                 "Density-norm convergence threshold (dimensionless).")
@@ -91,8 +90,7 @@ void bind_semiempirical(nb::module_& m) {
         .def("last_result", &AM1Evaluator::last_result,
              nb::rv_policy::reference_internal,
              "Results of the most recent solve (AM1Result).")
-        .def("config", &AM1Evaluator::config,
-             nb::rv_policy::reference_internal,
+        .def("config", &AM1Evaluator::config, nb::rv_policy::reference_internal,
              "The configuration this evaluator was constructed with.");
 
     // ── single_point: one Evaluate pass over a borrowed molrs.Frame ──
@@ -126,14 +124,14 @@ void bind_semiempirical(nb::module_& m) {
             p.max_iter = cfg.max_iter;
             p.density_tol = cfg.density_tol;
             p.energy_tol = cfg.energy_tol;
-            cpu::task::TaskSpec spec{p};
+            cpu::task::TaskSpec spec{cpu::task::SinglePointTask{p}};
             cpu::Frame result(0);
             {
                 nb::gil_scoped_release release;
                 cpu::task::TaskDispatcher dispatcher(
                     MPI_COMM_WORLD, cpu::task::kProtocolVersion,
                     /*handshake=*/false); // main's dispatcher handshook
-                result = dispatcher.dispatch(spec, std::move(work));
+                result = dispatcher.dispatch(spec, std::move(work)).frame;
             }
             cpu::write_back(result, *fref);
 #endif

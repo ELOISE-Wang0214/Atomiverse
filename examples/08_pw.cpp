@@ -12,7 +12,7 @@
 /// SCF loop lives inside the inner solver `cpu::pw::PWSolver`; the
 /// user-facing component is `cpu::pw::PWEvaluator` (role Evaluator,
 /// capability Energy), run through the one-pass `cpu::Evaluate` driver via
-/// the `cpu::single_point` helper — exactly like `cpu::scf::SCFEvaluator`.
+/// the `cpu::single_point` helper — exactly like `cpu::scf::SCF`.
 ///
 /// Build:
 ///   cmake -B build -DATV_BUILD_PW=ON -DATV_BUILD_EXAMPLES=ON   # needs FFTW3
@@ -50,16 +50,16 @@ namespace {
 /// are the fcc primitive vectors (a/2)(0,1,1), (a/2)(1,0,1), (a/2)(1,1,0).
 cpu::Frame make_silicon(double a) {
     cpu::Frame f(2);
-    f.atoms.type[0] = 14; // Si, Z = 14
-    f.atoms.type[1] = 14;
-    f.atoms.mass[0] = 28.0855;
-    f.atoms.mass[1] = 28.0855;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = a / 4.0;
-    f.atoms.y[1] = a / 4.0;
-    f.atoms.z[1] = a / 4.0;
+    f.span(ATV::kAtom_type)[0] = 14; // Si, Z = 14
+    f.span(ATV::kAtom_type)[1] = 14;
+    f.span(ATV::kAtom_mass)[0] = 28.0855;
+    f.span(ATV::kAtom_mass)[1] = 28.0855;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = a / 4.0;
+    f.span(ATV::kAtom_y)[1] = a / 4.0;
+    f.span(ATV::kAtom_z)[1] = a / 4.0;
 
     const double h = a / 2.0;
     Mat3 cell;
@@ -72,7 +72,7 @@ cpu::Frame make_silicon(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.box = cell;
+    f.simbox.set_cell(cell);
     return f;
 }
 
@@ -109,20 +109,19 @@ int main(int argc, char** argv) {
     //
     // PWEvaluator wraps the inner PWSolver. cpu::single_point binds it at
     // the evaluate phase, builds the one-pass Evaluate driver, and runs it.
-    // The component writes frame.scalars.energy in eV; the Ry / Hartree
+    // The component writes frame.meta.get(ATV::kEnergy) in eV; the Ry / Hartree
     // breakdown stays on last_result().
     cpu::pw::PWEvaluator pwe{cfg};
     cpu::single_point(frame, pwe);
 
     const auto& result = pwe.last_result();
 
-    std::cout << std::boolalpha
-              << "Converged:    " << result.converged << " ("
+    std::cout << std::boolalpha << "Converged:    " << result.converged << " ("
               << result.iterations << " iterations)\n"
               << std::fixed << std::setprecision(6)
               << "E_total:      " << result.energy << " Ry\n"
               << "E_total:      " << result.energy_ha << " Hartree\n"
-              << "E_total:      " << frame.scalars.energy << " eV\n";
+              << "E_total:      " << frame.meta.get(ATV::kEnergy) << " eV\n";
 
     if (upf_path.empty())
         std::cout << "\nNote: re-run with a UPF pseudopotential for a "

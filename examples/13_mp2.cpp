@@ -29,19 +29,29 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
 int main() {
     // 1. H2O geometry (Angstrom); type = atomic number Z.
     cpu::Frame frame(3);
-    frame.atoms.x = {0.0, 0.0, 0.0};
-    frame.atoms.y = {0.0, 0.7572, -0.7572};
-    frame.atoms.z = {0.1173, -0.4692, -0.4692};
-    frame.atoms.type = {8, 1, 1};
-    frame.atoms.mass = {15.999, 1.008, 1.008};
-    frame.box = Mat3::cubic(50.0);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_x)[2] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.7572;
+    frame.span(ATV::kAtom_y)[2] = -0.7572;
+    frame.span(ATV::kAtom_z)[0] = 0.1173;
+    frame.span(ATV::kAtom_z)[1] = -0.4692;
+    frame.span(ATV::kAtom_z)[2] = -0.4692;
+    frame.span(ATV::kAtom_type)[0] = 8;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_type)[2] = 1;
+    frame.span(ATV::kAtom_mass)[0] = 15.999;
+    frame.span(ATV::kAtom_mass)[1] = 1.008;
+    frame.span(ATV::kAtom_mass)[2] = 1.008;
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
 
     std::cout << "=== H2O / STO-3G / MP2 (CPU) ===\n\n";
 
@@ -51,7 +61,9 @@ int main() {
                                           /*charge=*/0, /*compute_eri=*/true);
 
     // 3. RHF reference.
-    auto scf = cpu::scf::scf_solve(ints, cpu::scf::rhf_config(ints, 1e-12));
+    cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints, 1e-12)};
+    solver.build(ints);
+    const auto& scf = solver.run(ints);
     if (!scf.converged) {
         std::cerr << "RHF did not converge\n";
         return 1;
@@ -60,9 +72,10 @@ int main() {
     // 4. Closed-shell canonical MP2.
     auto mp2 = cpu::scf::mp2_energy(ints, scf);
 
-    std::cout << std::fixed << std::setprecision(8)
-              << "E_HF:    " << scf.energy << " Hartree\n"
-              << "E_corr:  " << mp2.e_corr << " Hartree (MP2 correlation, <= 0)\n"
+    std::cout << std::fixed << std::setprecision(8) << "E_HF:    " << scf.energy
+              << " Hartree\n"
+              << "E_corr:  " << mp2.e_corr
+              << " Hartree (MP2 correlation, <= 0)\n"
               << "E_MP2:   " << mp2.e_tot << " Hartree (= E_HF + E_corr)\n";
 
     // Consistency: E_HF + E_corr == E_MP2 to print precision.

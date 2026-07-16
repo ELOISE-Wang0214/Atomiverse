@@ -21,7 +21,7 @@
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -83,18 +83,18 @@ static cpu::Frame make_aspirin() {
     };
 
     for (int i = 0; i < 21; ++i) {
-        f.atoms.type[i] = types[i];
-        f.atoms.mass[i] = double(masses[i]);
-        f.atoms.x[i] = double(coords[i][0]);
-        f.atoms.y[i] = double(coords[i][1]);
-        f.atoms.z[i] = double(coords[i][2]);
+        f.span(ATV::kAtom_type)[i] = types[i];
+        f.span(ATV::kAtom_mass)[i] = double(masses[i]);
+        f.span(ATV::kAtom_x)[i] = double(coords[i][0]);
+        f.span(ATV::kAtom_y)[i] = double(coords[i][1]);
+        f.span(ATV::kAtom_z)[i] = double(coords[i][2]);
     }
-    f.box = Mat3::cubic(100.0);
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 int main() {
-    ATV::log_init(spdlog::level::debug);
+    ATV::log_init(ATV::LogConfig{.level = spdlog::level::debug});
     ATV_INFO("=== Atomiverse: Aspirin Geometry Optimization ===");
     ATV_INFO("    Molecule: C9H8O4 (acetylsalicylic acid)");
     ATV_INFO("    Method:   RHF / STO-3G (rhf_config)");
@@ -132,7 +132,7 @@ int main() {
         double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
         20            // max_ls (line-search trial cap)
     });
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
 
     // Convergence is a POLICY, not an algorithm parameter: it lives on a
     // LoopHandler, not on the optimizer. `ForceConverged` requires ALL five
@@ -144,9 +144,9 @@ int main() {
     //   max_dtol=0.05 Å  (max disp)
     //   rms_dtol=0.02 Å  (RMS disp)
     //   etol=1e-3 eV     (energy diff)
-    opt.add_handler(cpu::ForceConverged{
-        /*ftol=*/0.05, /*rms_ftol=*/0.03, /*max_dtol=*/0.05,
-        /*rms_dtol=*/0.02, /*etol=*/1e-3});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05, /*rms_ftol=*/0.03,
+                                        /*max_dtol=*/0.05,
+                                        /*rms_dtol=*/0.02, /*etol=*/1e-3});
     ATV_INFO("[example] optimizer build start");
     opt.build();
     ATV_INFO("[example] optimizer build done");
@@ -161,23 +161,25 @@ int main() {
     // Report final state
     // Compute final max force
     double max_f = 0;
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        double fx = frame.atoms.fx(i), fy = frame.atoms.fy(i),
-               fz = frame.atoms.fz(i);
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        double fx = frame.span(ATV::kAtom_fx)[i],
+               fy = frame.span(ATV::kAtom_fy)[i],
+               fz = frame.span(ATV::kAtom_fz)[i];
         double mag = std::sqrt(fx * fx + fy * fy + fz * fz);
         if (mag > max_f)
             max_f = mag;
     }
     ATV_INFO("[example] final state energy_eV={:.6f} max_force_eVA={:.6f}",
-             frame.scalars.energy, max_f);
+             frame.meta.get(ATV::kEnergy), max_f);
 
     // Print final coordinates
     ATV_INFO("[example] final coordinates [Angstrom]");
     const char* symbols[] = {"", "H", "He", "Li", "Be", "B", "C", "N", "O"};
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        int Z = static_cast<int>(frame.atoms.type(i));
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        int Z = static_cast<int>(frame.span(ATV::kAtom_type)[i]);
         ATV_INFO("  {:>2s} {:12.6f} {:12.6f} {:12.6f}", symbols[Z],
-                 frame.atoms.x(i), frame.atoms.y(i), frame.atoms.z(i));
+                 frame.span(ATV::kAtom_x)[i], frame.span(ATV::kAtom_y)[i],
+                 frame.span(ATV::kAtom_z)[i]);
     }
 
     ATV_INFO("[example] done");

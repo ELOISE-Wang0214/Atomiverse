@@ -10,7 +10,7 @@ from atomiverse._binding import _cpp
 def single_point(frame: object, evaluator: object, device: str = "cpu") -> None:
     """Evaluate *frame* once with *evaluator* (``cpu::single_point``).
 
-    One ``Evaluate`` pass: energy lands on the frame's scalar channel [eV];
+    One ``Evaluate`` pass: energy lands in the frame's typed ``meta`` map [eV];
     charge-capable evaluators (AM1) write per-atom charges [e] back into the
     same ``molrs.Frame``. The evaluator is borrowed — inspect
     ``evaluator.last_result()`` afterwards for solver-internal quantities.
@@ -19,7 +19,9 @@ def single_point(frame: object, evaluator: object, device: str = "cpu") -> None:
     ----------
     frame : molrs.Frame
         System state (``atoms`` block with ``x, y, z, type``; for
-        semiempirical methods ``type`` is the atomic number Z).
+        semiempirical methods ``type`` is the atomic number Z). Results use
+        ``molrs.MetaValue`` entries, for example
+        ``frame.meta["energy"].value`` with dtype ``"f64"``.
     evaluator : atomiverse.AM1Evaluator
         The evaluator component (v1: AM1 only; SCF/PW single-point
         wrappers are future specs).

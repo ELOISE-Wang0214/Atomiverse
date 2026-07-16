@@ -7,10 +7,10 @@ name = "atomiverse"
 version = "0.1.0"
 description = "Molecular simulation compute backend (CPU + optional CUDA)"
 requires-python = ">=3.9"
-dependencies = ["numpy"]
+dependencies = ["numpy", "molcrafts-molrs==0.7.0"]
 
 [project.optional-dependencies]
-molpy    = ["molpy"]
+molpy    = ["molcrafts-molpy==0.7.0"]
 torch    = ["torch"]
 dev      = ["pytest", "pytest-cov", "numpy"]
 docs     = ["zensical>=0.0.45", "molcrafts-zensical-theme>=0.1.2"]

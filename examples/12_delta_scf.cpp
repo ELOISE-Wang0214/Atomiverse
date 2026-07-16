@@ -8,7 +8,7 @@
 ///   - ΔSCF:      I_ΔSCF = E⁺(N−1) − E(N)   [orbital-relaxed estimate]
 ///
 /// The neutral N-electron system is solved with restricted Hartree-Fock
-/// (`build_integrals(frame, basis, charge=0)` + `rhf_solve`). The (N−1)-electron
+/// (`build_integrals(frame, basis, charge=0)` + `SCFSolver`). The (N−1)-electron
 /// doublet cation is solved with unrestricted Hartree-Fock, warm-started from
 /// the neutral density via `SCFInitialGuess` (P_alpha = P_beta = P_neutral/2)
 /// so the SCF relaxes toward the ground-state ion rather than a hole-shifted
@@ -20,7 +20,7 @@
 /// as a health check — a clean doublet sits at ≈ 0.75.
 ///
 /// All energies are computed in [Hartree] and printed in [eV] using the
-/// canonical conversion `ATV::kHartree2eV` (no inline magic numbers). The
+/// canonical conversion `ATV::units::kHartreeInEv` (no inline magic numbers). The
 /// variational argument guarantees I_ΔSCF ≤ I_K, so the relaxation column
 /// (I_K − I_ΔSCF) is non-negative; it vanishes for He and H₂ in a minimal
 /// basis, where the single-electron cation has no orbital to relax.
@@ -43,8 +43,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 using namespace ATV;
 
@@ -52,51 +51,91 @@ using namespace ATV;
 
 static cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.atoms.x = {0.0};
-    f.atoms.y = {0.0};
-    f.atoms.z = {0.0};
-    f.atoms.type = {2};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 2;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_h2() {
     cpu::Frame f(2);
-    f.atoms.x = {0.0, 0.7414};
-    f.atoms.y = {0.0, 0.0};
-    f.atoms.z = {0.0, 0.0};
-    f.atoms.type = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.7414;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0, 0.0, 0.0};
-    f.atoms.y = {0.0, 0.7572, -0.7572};
-    f.atoms.z = {0.1173, -0.4692, -0.4692};
-    f.atoms.type = {8, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.7572;
+    f.span(ATV::kAtom_y)[2] = -0.7572;
+    f.span(ATV::kAtom_z)[0] = 0.1173;
+    f.span(ATV::kAtom_z)[1] = -0.4692;
+    f.span(ATV::kAtom_z)[2] = -0.4692;
+    f.span(ATV::kAtom_type)[0] = 8;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_nh3() {
     cpu::Frame f(4);
-    f.atoms.x = {0.0, 0.0, 0.812328, -0.812328};
-    f.atoms.y = {0.0, 0.938035, -0.469017, -0.469017};
-    f.atoms.z = {0.113880, -0.265825, -0.265825, -0.265825};
-    f.atoms.type = {7, 1, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.0;
+    f.span(ATV::kAtom_x)[2] = 0.812328;
+    f.span(ATV::kAtom_x)[3] = -0.812328;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.938035;
+    f.span(ATV::kAtom_y)[2] = -0.469017;
+    f.span(ATV::kAtom_y)[3] = -0.469017;
+    f.span(ATV::kAtom_z)[0] = 0.113880;
+    f.span(ATV::kAtom_z)[1] = -0.265825;
+    f.span(ATV::kAtom_z)[2] = -0.265825;
+    f.span(ATV::kAtom_z)[3] = -0.265825;
+    f.span(ATV::kAtom_type)[0] = 7;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_ch4() {
     cpu::Frame f(5);
-    f.atoms.x = {0.0, 0.627640, -0.627640, 0.627640, -0.627640};
-    f.atoms.y = {0.0, 0.627640, -0.627640, -0.627640, 0.627640};
-    f.atoms.z = {0.0, 0.627640, 0.627640, -0.627640, -0.627640};
-    f.atoms.type = {6, 1, 1, 1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_x)[1] = 0.627640;
+    f.span(ATV::kAtom_x)[2] = -0.627640;
+    f.span(ATV::kAtom_x)[3] = 0.627640;
+    f.span(ATV::kAtom_x)[4] = -0.627640;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_y)[1] = 0.627640;
+    f.span(ATV::kAtom_y)[2] = -0.627640;
+    f.span(ATV::kAtom_y)[3] = -0.627640;
+    f.span(ATV::kAtom_y)[4] = 0.627640;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.627640;
+    f.span(ATV::kAtom_z)[2] = 0.627640;
+    f.span(ATV::kAtom_z)[3] = -0.627640;
+    f.span(ATV::kAtom_z)[4] = -0.627640;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.simbox = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -117,10 +156,11 @@ int main() {
 
     const double tol = 1e-10; // tight: resolve the He/H2 exact-relaxation zero
 
-    std::cout << "ΔSCF vertical ionization vs Koopmans (energies in eV)\n"
-              << "  I_K    = -eps_HOMO           (frozen orbitals)\n"
-              << "  I_dSCF = E+(N-1) - E(N)      (orbital relaxed, warm-started)\n"
-              << "  relax  = I_K - I_dSCF >= 0   (= 0 for He, H2 minimal basis)\n\n";
+    std::cout
+        << "ΔSCF vertical ionization vs Koopmans (energies in eV)\n"
+        << "  I_K    = -eps_HOMO           (frozen orbitals)\n"
+        << "  I_dSCF = E+(N-1) - E(N)      (orbital relaxed, warm-started)\n"
+        << "  relax  = I_K - I_dSCF >= 0   (= 0 for He, H2 minimal basis)\n\n";
 
     std::cout << std::left << std::setw(6) << "sys" << std::setw(8) << "basis"
               << std::right << std::setw(12) << "I_K[eV]" << std::setw(12)
@@ -134,24 +174,32 @@ int main() {
 
             // Neutral N-electron RHF.
             auto ints_n = cpu::scf::build_integrals(frame, basis, /*charge=*/0);
-            auto neutral = cpu::scf::rhf_solve(ints_n, tol, 200);
+            auto neutral_config = cpu::scf::rhf_config(ints_n, tol);
+            neutral_config.max_iter = 200;
+            cpu::scf::SCFSolver neutral_solver{neutral_config};
+            neutral_solver.build(ints_n);
+            const auto& neutral = neutral_solver.run(ints_n);
             const int n_occ = ints_n.n_occ();
-            const double i_koopmans = -neutral.eigenvalues(n_occ - 1); // [Ha]
+            const double i_koopmans =
+                -neutral.eigenvalues_alpha(n_occ - 1); // [Ha]
 
             // Doublet cation: (N-1) electrons, n_alpha=N/2, n_beta=N/2-1.
             const int n_alpha = n_occ;
             const int n_beta = n_occ - 1;
-            auto ints_c = cpu::scf::build_integrals(frame, basis, /*charge=*/+1);
+            auto ints_c =
+                cpu::scf::build_integrals(frame, basis, /*charge=*/+1);
             auto cfg = cpu::scf::uhf_config(ints_c, n_alpha, n_beta, tol);
             cfg.max_iter = 300;
 
             // Warm start from the neutral density: P_alpha = P_beta = P/2.
             cpu::scf::SCFInitialGuess guess;
-            guess.P_alpha = 0.5 * neutral.P;
-            guess.P_beta = 0.5 * neutral.P;
+            guess.P_alpha = 0.5 * neutral.P_alpha;
+            guess.P_beta = 0.5 * neutral.P_alpha;
             guess.has_alpha = true;
             guess.has_beta = true;
-            auto cation = cpu::scf::scf_solve(ints_c, cfg, &guess);
+            cpu::scf::SCFSolver cation_solver{cfg};
+            cation_solver.build(ints_c);
+            const auto& cation = cation_solver.run(ints_c, &guess);
 
             const double i_delta = cation.energy - neutral.energy; // [Ha]
             const double relax = i_koopmans - i_delta;             // [Ha] >= 0
@@ -161,20 +209,24 @@ int main() {
             std::cout << std::left << std::setw(6) << sys.name << std::setw(8)
                       << basis_name << std::right << std::fixed
                       << std::setprecision(4) << std::setw(12)
-                      << i_koopmans * kHartree2eV << std::setw(12)
-                      << i_delta * kHartree2eV << std::setw(11)
-                      << relax * kHartree2eV << std::setw(11) << s2
+                      << i_koopmans * units::kHartreeInEv << std::setw(12)
+                      << i_delta * units::kHartreeInEv << std::setw(11)
+                      << relax * units::kHartreeInEv << std::setw(11) << s2
                       << std::setw(7) << (conv ? "yes" : "NO") << "\n";
         }
     }
 
     std::cout
         << "\nReading the table:\n"
-        << "  - relax >= 0 everywhere: orbital relaxation lowers the ionization\n"
+        << "  - relax >= 0 everywhere: orbital relaxation lowers the "
+           "ionization\n"
         << "    energy below the Koopmans estimate (variational bound).\n"
-        << "  - He and H2 show relax = 0 in STO-3G: the single-electron cation\n"
+        << "  - He and H2 show relax = 0 in STO-3G: the single-electron "
+           "cation\n"
         << "    orbital is symmetry-fixed, so there is nothing to relax. In\n"
-        << "    6-31G the lone electron gains relaxation freedom, so relax > 0.\n"
-        << "  - <S^2> ~ 0.75 confirms a clean doublet (no spin contamination).\n";
+        << "    6-31G the lone electron gains relaxation freedom, so relax > "
+           "0.\n"
+        << "  - <S^2> ~ 0.75 confirms a clean doublet (no spin "
+           "contamination).\n";
     return 0;
 }

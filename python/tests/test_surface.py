@@ -1,8 +1,8 @@
 """Honest Python binding surface tests (specs: arch-refactor-08-python,
 python-api-namespaces-am1).
 
-The atomiverse wheel must expose exactly the honest MD + PW + AM1 surface
-— 16 top-level names, each an identity re-export of its deep canonical
+The atomiverse wheel must expose the honest MD + CPU Minimize + optional PW + AM1 surface,
+with each top-level name an identity re-export of its deep canonical
 namespace (pinned per row in test_namespaces.py):
 
 * Canonical LAMMPS-style component names (``PairLJCut``, ``BondHarmonic``,
@@ -11,13 +11,14 @@ namespace (pinned per row in test_namespaces.py):
   and no deprecation shims.
 * The AM1 semiempirical single-point trio (``AM1Config``, ``AM1Evaluator``,
   ``AM1Result``) plus the ``single_point`` entry point.
-* The dead SCF / geometry-optimizer facade is gone and FAILS LOUD:
+* The dead SCF / old ``optimizer`` facade is gone and FAILS LOUD:
   ``atomiverse.scf`` / ``atomiverse.optimizer`` no longer import, dead
   package attributes raise ``AttributeError``, and the ``_cpp`` extension
-  carries none of the never-bound SCF / minimizer symbols.
-* ``pw_scf`` is honest about build flags: when the extension lacks
-  ``pw_scf`` (``ATV_BUILD_PW=OFF``) calling it raises a guided
-  ``RuntimeError`` naming ATV_BUILD_PW — never a bare ``AttributeError``.
+  carries none of the never-bound SCF / legacy optimizer symbols.
+* Plane-wave DFT uses the explicit ``PWConfig`` → ``PWSolver.build`` →
+  ``PWSolver.run`` lifecycle. PW types are present only when the extension was
+  built with ``ATV_BUILD_PW=ON``; the deleted functional entry is absent on
+  every build.
 * A tree grep gate keeps dead references from creeping back anywhere
   under ``python/``. Forbidden tokens are assembled by string
   concatenation so this file never contains one literally.
@@ -41,6 +42,8 @@ import molrs
 import atomiverse as av
 from atomiverse._binding import _cpp
 
+_HAS_PW: bool = hasattr(_cpp, "PWSolver")
+
 # ── Shared surface definitions ──────────────────────────────────────
 
 _CANONICAL_NEW_NAMES: tuple[str, ...] = (
@@ -50,27 +53,30 @@ _CANONICAL_NEW_NAMES: tuple[str, ...] = (
     "DihedralMultiHarmonic",
 )
 
-# Exactly the 16-name honest top-level surface (python-api-namespaces-am1
-# mapping table, right column + single_point).
+# Exact honest top-level surface. The three PW object types exist only in a
+# PW-enabled extension.
 _CANONICAL_ALL: frozenset[str] = frozenset(
     {
         "MD",
         "VelocityVerlet",
         "InitVelocity",
         "NoseHoover",
+        "Minimize",
+        "LBFGS",
+        "ForceConverged",
+        "MinimizeResult",
         "PairLJCut",
         "NeighborList",
         "BondHarmonic",
         "AngleHarmonic",
         "DihedralMultiHarmonic",
         "Thermo",
-        "pw_scf",
-        "PWResult",
         "AM1Config",
         "AM1Evaluator",
         "AM1Result",
         "single_point",
     }
+    | ({"PWConfig", "PWSolver", "PWResult"} if _HAS_PW else set())
 )
 
 _DEAD_PACKAGE_ATTRS: tuple[str, ...] = (
@@ -80,26 +86,25 @@ _DEAD_PACKAGE_ATTRS: tuple[str, ...] = (
     "UKS",
     "GeometryOptimizer",
     "Frame",
+    "Block",
     "LJ",
     "HarmonicBond",
     "HarmonicAngle",
     "MultiHarmonicDihedral",
+    "pw_scf",
 )
 
 _DEAD_CPP_ATTRS: tuple[str, ...] = (
-    "LBFGS",
     "LBFGSStep",
     "MinimizerPhase",
     "SCFConfig",
     "SpinType",
     "MeanFieldType",
     "XCType",
-    "scf_solve",
     "scf_gradient",
     "build_integrals_sto3g",
+    "pw_scf",
 )
-
-_HAS_PW: bool = hasattr(_cpp, "pw_scf")
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -130,7 +135,7 @@ def silicon_frame() -> "molrs.Frame":
     atoms.insert("mass", np.full(2, 28.0855, dtype=np.float64))
     atoms.insert("type", np.full(2, 14, dtype=np.int32))
     frame["atoms"] = atoms
-    frame.box = molrs.Box.cube(a)
+    frame.simbox = molrs.Box.cube(a)
     return frame
 
 
@@ -144,8 +149,8 @@ class TestCanonicalSurface:
         assert hasattr(av, name), f"canonical component atomiverse.{name} is missing"
 
     def test_all_is_exactly_the_honest_surface(self) -> None:
-        """__all__ equals exactly the 16-name MD + PW + AM1 export set."""
-        assert len(_CANONICAL_ALL) == 16
+        """__all__ equals the MD + AM1 base plus optional PW object types."""
+        assert len(_CANONICAL_ALL) == (21 if _HAS_PW else 18)
         assert set(av.__all__) == set(_CANONICAL_ALL)
 
 
@@ -167,10 +172,13 @@ class TestCanonicalMDSmoke:
     def test_energy_finite(
         self, argon_frame: "molrs.Frame", canonical_lj_md: "av.MD"
     ) -> None:
-        """Total energy written back to the molrs.Frame is finite."""
+        """Total energy is exact typed meta, with no result block."""
         canonical_lj_md.run(argon_frame, 10)
-        assert "scalars" in argon_frame.keys()
-        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        assert "scalars" not in argon_frame.keys()
+        assert "stress" not in argon_frame.keys()
+        energy_meta = argon_frame.meta["energy"]
+        assert energy_meta.dtype == "f64"
+        energy = float(energy_meta.value)
         assert np.isfinite(energy)
 
     def test_kinetic_positive(
@@ -178,7 +186,7 @@ class TestCanonicalMDSmoke:
     ) -> None:
         """InitVelocity(10 K, seed 42) yields kinetic energy > 0."""
         canonical_lj_md.run(argon_frame, 10)
-        kinetic = float(np.asarray(argon_frame["scalars"]["kinetic"])[0])
+        kinetic = float(argon_frame.meta["kinetic"].value)
         assert np.isfinite(kinetic)
         assert kinetic > 0.0
 
@@ -205,7 +213,7 @@ class TestDeadSurfaceFailsLoud:
 
     @pytest.mark.parametrize("name", _DEAD_CPP_ATTRS)
     def test_dead_extension_symbol_absent(self, name: str) -> None:
-        """The compiled extension binds none of the dead SCF/minimizer
+        """The compiled extension binds none of the dead SCF/legacy optimizer
         symbols the old facade pretended to call."""
         assert not hasattr(_cpp, name)
 
@@ -215,21 +223,33 @@ class TestDeadSurfaceFailsLoud:
 
 class TestPWSurface:
     @pytest.mark.skipif(not _HAS_PW, reason="extension built without ATV_BUILD_PW")
-    def test_pw_scf_toy_smoke(self, silicon_frame: "molrs.Frame") -> None:
+    def test_explicit_solver_toy_smoke(self, silicon_frame: "molrs.Frame") -> None:
         """Toy local potential (empty upf_path) runs and returns a
         finite energy [Ry] — 'runs, unphysical' contract, no new
         reference values."""
-        result = av.pw_scf(silicon_frame, "", ecut_ry=8.0, k_mesh=1, max_iter=5)
+        config = av.PWConfig()
+        config.ecut_ry = 8.0
+        config.k_mesh = 1
+        config.max_iter = 5
+        solver = av.PWSolver(config)
+        solver.build(silicon_frame)
+        result = solver.run(silicon_frame)
         assert result.iterations >= 1
         assert isinstance(result.energy, float)
         assert np.isfinite(result.energy)
 
     @pytest.mark.skipif(_HAS_PW, reason="extension built with ATV_BUILD_PW")
-    def test_pw_scf_missing_fails_loud(self, silicon_frame: "molrs.Frame") -> None:
-        """Without the PW build, pw_scf raises a guided RuntimeError
-        naming ATV_BUILD_PW — never a bare AttributeError."""
-        with pytest.raises(RuntimeError, match="ATV_BUILD_PW"):
-            av.pw_scf(silicon_frame, "")
+    @pytest.mark.parametrize("name", ("PWConfig", "PWSolver", "PWResult"))
+    def test_pw_types_absent_without_backend(self, name: str) -> None:
+        """A PW-disabled wheel exports no pretend plane-wave object types."""
+        assert not hasattr(av, name)
+        assert not hasattr(_cpp, name)
+
+    def test_functional_entry_deleted(self) -> None:
+        """The old transient solve function is absent from Python and C++."""
+        assert not hasattr(av, "pw_scf")
+        assert not hasattr(importlib.import_module("atomiverse.pw"), "pw_scf")
+        assert not hasattr(_cpp, "pw_scf")
 
 
 # ── In-tree dead-reference grep gate ────────────────────────────────
@@ -252,6 +272,7 @@ _DEAD_AV_ATTRS: tuple[str, ...] = (
     "UKS",
     "GeometryOptimizer",
     "Frame",
+    "Block",
 )
 
 
@@ -260,6 +281,8 @@ def _forbidden_tokens() -> tuple[str, ...]:
     tokens = ["_cpp" + "." + name for name in _DEAD_CPP_ATTRS]
     tokens.append("Cpu" + "Frame")
     tokens.extend("av" + "." + name for name in _DEAD_AV_ATTRS)
+    tokens.extend("atomiverse" + "." + name for name in ("Frame", "Block"))
+    tokens.extend("molpy" + "." + name for name in ("Frame", "Block"))
     return tuple(tokens)
 
 

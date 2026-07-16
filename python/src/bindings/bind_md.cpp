@@ -42,8 +42,8 @@
 #endif
 
 using namespace ATV;
-using cpu::task::ComponentEntry;
-using cpu::task::ExplicitBinding;
+using cpu::task::MDBinding;
+using cpu::task::MDComponentEntry;
 
 namespace {
 
@@ -51,18 +51,18 @@ namespace {
 /// Python sees this as class `MD` with the same method surface as before.
 struct MdHandle {
     cpu::md::MD driver;
-    std::vector<ComponentEntry> mirror;
+    std::vector<MDComponentEntry> mirror;
 
     /// Materialize the real component from its params mirror, register it
     /// on the driver (default-binding or explicit), and record the entry.
     template <typename Params, typename Component>
     void add(const Params& p, Component comp,
-             std::optional<ExplicitBinding> binding) {
+             std::optional<MDBinding> binding) {
         if (binding)
             driver.on(binding->phase).add(std::move(comp), binding->order);
         else
             driver.add(std::move(comp));
-        mirror.push_back(ComponentEntry{p, binding});
+        mirror.push_back(MDComponentEntry{p, binding});
     }
 
     /// Run on a borrowed molrs.Frame: launcher-hosted rank 0 dispatches
@@ -77,7 +77,8 @@ struct MdHandle {
             return;
         }
 #ifdef ATV_HAS_MPI
-        cpu::task::TaskSpec spec(mirror, n_steps);
+        cpu::task::TaskSpec spec(
+            cpu::task::MDTask{mirror, static_cast<std::int64_t>(n_steps)});
         auto fref = borrow_molrs_frame(frame_obj);
         cpu::Frame work = cpu::materialize(*fref);
         cpu::Frame result(0);
@@ -86,10 +87,10 @@ struct MdHandle {
             // main's dispatcher already handshook with the workers; this
             // is the extension module's own copy of the library, so it
             // constructs its dispatcher handshake-free (task_protocol.h).
-            cpu::task::TaskDispatcher dispatcher(
-                MPI_COMM_WORLD, cpu::task::kProtocolVersion,
-                /*handshake=*/false);
-            result = dispatcher.dispatch(spec, std::move(work));
+            cpu::task::TaskDispatcher dispatcher(MPI_COMM_WORLD,
+                                                 cpu::task::kProtocolVersion,
+                                                 /*handshake=*/false);
+            result = dispatcher.dispatch(spec, std::move(work)).frame;
         }
         cpu::write_back(result, *fref);
 #endif
@@ -149,8 +150,8 @@ void bind_md(nb::module_& m) {
             "Construct with target temperature [K], coupling time "
             "tau_T [fs] (LAMMPS `Tdamp`), and timestep [fs].");
 
-    nb::class_<cpu::task::PairLJCutParams>(
-        m, "PairLJCut", "Lennard-Jones 12-6 pair potential.")
+    nb::class_<cpu::task::PairLJCutParams>(m, "PairLJCut",
+                                           "Lennard-Jones 12-6 pair potential.")
         .def(
             "__init__",
             [](cpu::task::PairLJCutParams* p, double epsilon, double sigma,
@@ -176,16 +177,15 @@ void bind_md(nb::module_& m) {
             "__init__",
             [](cpu::task::BondHarmonicParams* p, std::vector<double> K,
                std::vector<double> r0) {
-                new (p) cpu::task::BondHarmonicParams{std::move(K),
-                                                      std::move(r0)};
+                new (p)
+                    cpu::task::BondHarmonicParams{std::move(K), std::move(r0)};
             },
             nb::arg("K"), nb::arg("r0"),
             "Construct with force constants K and equilibrium distances r0 "
             "per bond type.");
 
     nb::class_<cpu::task::AngleHarmonicParams>(
-        m, "AngleHarmonic",
-        "Harmonic angle potential V = K(theta - theta0)^2.")
+        m, "AngleHarmonic", "Harmonic angle potential V = K(theta - theta0)^2.")
         .def(
             "__init__",
             [](cpu::task::AngleHarmonicParams* p, std::vector<double> K,
@@ -205,11 +205,10 @@ void bind_md(nb::module_& m) {
                std::vector<std::vector<double>> Cn) {
                 new (p) cpu::task::DihedralMultiHarmonicParams{std::move(Cn)};
             },
-            nb::arg("Cn"),
-            "Construct with coefficients Cn per dihedral type.");
+            nb::arg("Cn"), "Construct with coefficients Cn per dihedral type.");
 
-    nb::class_<cpu::task::ThermoParams>(
-        m, "Thermo", "Thermodynamic output at end_of_step.")
+    nb::class_<cpu::task::ThermoParams>(m, "Thermo",
+                                        "Thermodynamic output at end_of_step.")
         .def(
             "__init__",
             [](cpu::task::ThermoParams* p, int freq) {
@@ -265,9 +264,9 @@ void bind_md(nb::module_& m) {
             "add_pair_lj_cut",
             [](MdPhaseBuilder& self, const cpu::task::PairLJCutParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(
-                    p, cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
-                    ExplicitBinding{self.phase, order});
+                self.handle->add(p,
+                                 cpu::PairLJCut{p.epsilon, p.sigma, p.cutoff},
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -275,9 +274,8 @@ void bind_md(nb::module_& m) {
             "add_neighbor_list",
             [](MdPhaseBuilder& self, const cpu::task::NeighborListParams& p,
                int order) -> MdPhaseBuilder& {
-                self.handle->add(p,
-                                 cpu::md::NeighborList<>{p.cutoff, p.skin},
-                                 ExplicitBinding{self.phase, order});
+                self.handle->add(p, cpu::md::NeighborList<>{p.cutoff, p.skin},
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -286,7 +284,7 @@ void bind_md(nb::module_& m) {
             [](MdPhaseBuilder& self, const cpu::task::BondHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
                 self.handle->add(p, cpu::BondHarmonic{p.K, p.r0},
-                                 ExplicitBinding{self.phase, order});
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -295,7 +293,7 @@ void bind_md(nb::module_& m) {
             [](MdPhaseBuilder& self, const cpu::task::AngleHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
                 self.handle->add(p, cpu::AngleHarmonic{p.K, p.theta0},
-                                 ExplicitBinding{self.phase, order});
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -305,7 +303,7 @@ void bind_md(nb::module_& m) {
                const cpu::task::DihedralMultiHarmonicParams& p,
                int order) -> MdPhaseBuilder& {
                 self.handle->add(p, cpu::DihedralMultiHarmonic{p.Cn},
-                                 ExplicitBinding{self.phase, order});
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
@@ -314,7 +312,7 @@ void bind_md(nb::module_& m) {
             [](MdPhaseBuilder& self, const cpu::task::ThermoParams& p,
                int order) -> MdPhaseBuilder& {
                 self.handle->add(p, cpu::Thermo{p.freq},
-                                 ExplicitBinding{self.phase, order});
+                                 MDBinding{self.phase, order});
                 return self;
             },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference);
