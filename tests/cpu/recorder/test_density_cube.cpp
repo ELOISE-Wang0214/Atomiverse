@@ -126,7 +126,8 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
     std::error_code ec;
     std::filesystem::remove(tmp, ec);
 
-    int homo_idx = config.n_alpha - 1;
+    // H2 RHF: 2 electrons → n_alpha = 1 → HOMO is orbital 0.
+    constexpr int homo_idx = 0;
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
