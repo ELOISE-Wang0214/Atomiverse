@@ -1,5 +1,15 @@
-# Static half of CI. CI re-runs these hooks, then one cmake + unit ctest
-# (see .github/workflows/ci.yml). clang-format pin matches local 22.1.x.
+# Local == CI. One pipeline, two stages:
+#
+#   pre-commit  → format / hygiene (fast)
+#   pre-push    → tools/ci_cpu_unit.sh (same cmake + ctest as Actions)
+#
+# Install BOTH hook types (default_install_hook_types below):
+#   pre-commit install
+# A red unit suite fails the push; GitHub Actions is not the first gate.
+#
+# clang-format pin matches local 22.1.x.
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -19,3 +29,13 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c, c++, cuda]
+
+  - repo: local
+    hooks:
+      - id: atv-cpu-unit
+        name: CI CPU unit (cmake + ctest)
+        entry: tools/ci_cpu_unit.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

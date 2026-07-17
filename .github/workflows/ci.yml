@@ -1,8 +1,9 @@
 name: CI
 
-# Local:  pre-commit run --all-files
-# Remote: same hooks, then one CPU cmake + unit ctest.
-# No matrix, no acceptance, no MPI gate, no regressions-as-gate, no benchmarks.
+# Same pipeline as local pre-commit:
+#   1) pre-commit hooks (format / hygiene)
+#   2) tools/ci_cpu_unit.sh  (cmake + unit ctest)  ← single source of truth
+# No matrix, no acceptance, no MPI, no regressions-as-gate, no benchmarks.
 
 on:
   push:
@@ -24,6 +25,8 @@ jobs:
           python-version: "3.12"
       - name: Install pre-commit
         run: pip install pre-commit
+      # Default stage only (static). CPU unit runs in the next job via the
+      # same script local pre-push uses — not duplicated here.
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
 
@@ -38,7 +41,6 @@ jobs:
       - name: Read molrs pin
         id: molrs
         run: |
-          # Single source of truth: cmake/MolrsContract.cmake ATV_MOLRS_GIT_REF
           ref=$(sed -n 's/.*set(ATV_MOLRS_GIT_REF "\([^"]*\)".*/\1/p' cmake/MolrsContract.cmake | head -1)
           if [ -z "$ref" ]; then
             echo "Failed to parse ATV_MOLRS_GIT_REF from cmake/MolrsContract.cmake" >&2
@@ -61,21 +63,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libblas-dev liblapack-dev
 
-      - name: Configure
-        run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DATV_BUILD_CUDA=OFF \
-            -DATV_BUILD_TORCH=OFF \
-            -DATV_BUILD_TESTS=ON \
-            -DATV_BUILD_EXAMPLES=OFF \
-            -DATV_BUILD_RHF=ON \
-            -DATV_REAL_STORAGE=double \
-            -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
-
-      - name: Build
-        run: cmake --build build -j$(nproc)
-
-      - name: Unit tests
-        # tests/ only. no_alloc is runtime-dependent (glibc/libgomp) — not a portable gate.
-        run: ctest --test-dir build -j$(nproc) --output-on-failure -E 'no_alloc'
+      - name: CPU unit (same script as local pre-push)
+        env:
+          ATV_MOLRS_PATH: ${{ github.workspace }}/molrs
+          ATV_CI_BUILD_DIR: build
+        run: bash tools/ci_cpu_unit.sh
