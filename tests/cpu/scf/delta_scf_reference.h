@@ -50,8 +50,9 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/scf_solver.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 namespace ATV {
 namespace test {
@@ -222,7 +223,7 @@ struct DeltaScfResult {
 
 /// @brief Run the full ΔSCF workflow for one (geometry, basis) pair.
 ///
-/// Neutral N-electron RHF (`build_integrals(charge=0)` + `SCFSolver`) then the
+/// Neutral N-electron RHF (`cpu::scf::IntegralPack{charge=0}` + `SCFSolver`) then the
 /// (N−1)-electron doublet cation both warm-started from the neutral density
 /// (`SCFInitialGuess`: P_sigma = (n_sigma/N)·P_neutral, so each channel's seed
 /// trace is exactly n_sigma — the beta seed is ZERO when n_beta = 0) and
@@ -253,8 +254,10 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     // energies wander (a single-electron cation such as He⁺/6-31G has a UNIQUE
     // minimum, yet loose warm/cold ends land ~1e-5 apart). Converging the
     // gradient tight pins the unique fixed point.
-    IntegralPack ints_neutral = build_integrals(frame, basis, /*charge=*/0);
-    SCFConfig neutral_cfg = rhf_config(ints_neutral, tol);
+    IntegralPack ints_neutral =
+        cpu::scf::IntegralPack{frame, basis, /*charge=*/0};
+    SCFConfig neutral_cfg =
+        cpu::scf::SCFConfig{cpu::scf::SCFConfig::RHF{}, ints_neutral, tol};
     neutral_cfg.max_iter = 200;
     neutral_cfg.conv_tol_grad = 1e-9;
     SCFSolver neutral_solver{neutral_cfg};
@@ -271,8 +274,10 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     out.n_alpha = n_occ;
     out.n_beta = n_occ - 1;
 
-    IntegralPack ints_cation = build_integrals(frame, basis, /*charge=*/+1);
-    SCFConfig cfg = uhf_config(ints_cation, out.n_alpha, out.n_beta, tol);
+    IntegralPack ints_cation =
+        cpu::scf::IntegralPack{frame, basis, /*charge=*/+1};
+    SCFConfig cfg = cpu::scf::SCFConfig{cpu::scf::SCFConfig::UHF{}, out.n_alpha,
+                                        out.n_beta, tol};
     cfg.max_iter = 300;
     // Tight gradient convergence (same rationale as the neutral): the loose
     // sqrt(tol) default leaves the cation energy reproducible only to ~1e-5,

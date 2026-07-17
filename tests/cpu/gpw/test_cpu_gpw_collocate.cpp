@@ -29,7 +29,8 @@ namespace {
 double s_overlap(double a, const double A[3], double b, const double B[3]) {
     const double p = a + b;
     double d2 = 0.0;
-    for (int k = 0; k < 3; ++k) d2 += (A[k] - B[k]) * (A[k] - B[k]);
+    for (int k = 0; k < 3; ++k)
+        d2 += (A[k] - B[k]) * (A[k] - B[k]);
     return std::pow(M_PI / p, 1.5) * std::exp(-a * b / p * d2);
 }
 
@@ -53,7 +54,8 @@ TEST(GpwCollocate, IntegratePotentialOneRecoversOverlap) {
     const double cA[3] = {5.0, 6.0, 6.0};
     const double cB[3] = {7.0, 6.0, 6.0};
     const double aA = 0.8, aB = 1.2;
-    std::vector<GridBasisFunction> basis = {s_function(aA, cA), s_function(aB, cB)};
+    std::vector<GridBasisFunction> basis = {s_function(aA, cA),
+                                            s_function(aB, cB)};
 
     std::vector<double> V1(static_cast<std::size_t>(grid.npts()), 1.0);
     std::vector<double> S = integrate_potential(grid, basis, V1);
@@ -75,14 +77,16 @@ TEST(GpwCollocate, DensityIntegratesToTracePS) {
     const double cA[3] = {5.0, 6.0, 6.0};
     const double cB[3] = {7.0, 6.0, 6.0};
     const double aA = 0.8, aB = 1.2;
-    std::vector<GridBasisFunction> basis = {s_function(aA, cA), s_function(aB, cB)};
+    std::vector<GridBasisFunction> basis = {s_function(aA, cA),
+                                            s_function(aB, cB)};
 
     // Symmetric density matrix.
     std::vector<double> P = {1.0, 0.3, 0.3, 0.7};
 
     std::vector<double> rho = collocate_density(grid, basis, P);
     double integral = 0.0;
-    for (double v : rho) integral += v;
+    for (double v : rho)
+        integral += v;
     integral *= grid.weight();
 
     const double S00 = s_overlap(aA, cA, aA, cA);

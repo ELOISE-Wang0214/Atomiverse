@@ -37,36 +37,44 @@ struct G1 {
 
 double factorial(int n) {
     double f = 1.0;
-    for (int i = 2; i <= n; ++i) f *= i;
+    for (int i = 2; i <= n; ++i)
+        f *= i;
     return f;
 }
 
 /// Double factorial (m)!! with (-1)!! = 0!! = 1.
 double dfact(int m) {
     double f = 1.0;
-    for (int k = m; k > 1; k -= 2) f *= k;
+    for (int k = m; k > 1; k -= 2)
+        f *= k;
     return f;
 }
 
-double binom(int n, int k) { return factorial(n) / (factorial(k) * factorial(n - k)); }
+double binom(int n, int k) {
+    return factorial(n) / (factorial(k) * factorial(n - k));
+}
 
 /// Coefficients (ascending in t) of (t + d)^l: coeff[k] = C(l,k) d^{l-k}.
 std::vector<double> binom_pow(double d, int l) {
     std::vector<double> c(l + 1);
-    for (int k = 0; k <= l; ++k) c[k] = binom(l, k) * std::pow(d, l - k);
+    for (int k = 0; k <= l; ++k)
+        c[k] = binom(l, k) * std::pow(d, l - k);
     return c;
 }
 
-std::vector<double> polymul(const std::vector<double>& a, const std::vector<double>& b) {
+std::vector<double> polymul(const std::vector<double>& a,
+                            const std::vector<double>& b) {
     std::vector<double> r(a.size() + b.size() - 1, 0.0);
     for (std::size_t i = 0; i < a.size(); ++i)
-        for (std::size_t j = 0; j < b.size(); ++j) r[i + j] += a[i] * b[j];
+        for (std::size_t j = 0; j < b.size(); ++j)
+            r[i + j] += a[i] * b[j];
     return r;
 }
 
 /// int_{-inf}^{inf} t^m exp(-gamma t^2) dt; zero for odd m.
 double gauss_moment(int m, double gamma) {
-    if (m % 2 != 0) return 0.0;
+    if (m % 2 != 0)
+        return 0.0;
     return dfact(m - 1) / std::pow(2.0 * gamma, m / 2) * std::sqrt(kPi / gamma);
 }
 
@@ -82,11 +90,13 @@ double integral_1d(const std::vector<G1>& gs) {
     double s = 0.0;
     for (std::size_t j = 0; j < gs.size(); ++j)
         for (std::size_t k = j + 1; k < gs.size(); ++k)
-            s += gs[j].alpha * gs[k].alpha * (gs[j].c - gs[k].c) * (gs[j].c - gs[k].c);
+            s += gs[j].alpha * gs[k].alpha * (gs[j].c - gs[k].c)
+                 * (gs[j].c - gs[k].c);
     const double pref = std::exp(-s / gamma);
 
     std::vector<double> poly{1.0};
-    for (const auto& g : gs) poly = polymul(poly, binom_pow(Q - g.c, g.l));
+    for (const auto& g : gs)
+        poly = polymul(poly, binom_pow(Q - g.c, g.l));
 
     double res = 0.0;
     for (std::size_t m = 0; m < poly.size(); ++m)
@@ -104,13 +114,15 @@ double moment3d(const Prim& a, const Prim* b, const double D[3], double beta,
     for (int p = 0; p <= k; ++p) {
         for (int q = 0; q <= k - p; ++q) {
             const int r = k - p - q;
-            const double mult = factorial(k) / (factorial(p) * factorial(q) * factorial(r));
+            const double mult =
+                factorial(k) / (factorial(p) * factorial(q) * factorial(r));
             const int dpow[3] = {2 * p, 2 * q, 2 * r};
             double prod = 1.0;
             for (int dim = 0; dim < 3; ++dim) {
                 std::vector<G1> gs;
                 gs.push_back({a.l[dim], a.alpha, a.center[dim]});
-                if (b) gs.push_back({b->l[dim], b->alpha, b->center[dim]});
+                if (b)
+                    gs.push_back({b->l[dim], b->alpha, b->center[dim]});
                 gs.push_back({dpow[dim] + extra_dim[dim], beta, D[dim]});
                 prod *= integral_1d(gs);
             }
@@ -148,7 +160,8 @@ double gth_local_sr(const Prim& a, const Prim& b, const double pp_center[3],
     const int no_extra[3] = {0, 0, 0};
     double total = 0.0;
     for (std::size_t i = 0; i < c.size(); ++i) {
-        const int k = static_cast<int>(i); // term i (0-based) carries moment 2k, k=i-? -> here power 2*i
+        const int k = static_cast<int>(
+            i); // term i (0-based) carries moment 2k, k=i-? -> here power 2*i
         const double coeff = c[i] / std::pow(rloc, 2 * k);
         total += coeff * moment3d(a, &b, pp_center, beta, k, no_extra);
     }
@@ -158,7 +171,8 @@ double gth_local_sr(const Prim& a, const Prim& b, const double pp_center[3],
 double gth_projector_overlap(const Prim& g, const double pp_center[3], int l,
                              int iproj, double r_l, int m) {
     const double beta = 1.0 / (2.0 * r_l * r_l);
-    const int k = iproj - 1; // radial power r^{2(i-1)} (times r^l from angular part)
+    const int k =
+        iproj - 1; // radial power r^{2(i-1)} (times r^l from angular part)
     const double N = gth_norm(l, iproj, r_l);
     // r^l Y_lm as a normalized Cartesian polynomial (Use B); the degree-l monomials
     // are the "extra" D-centered powers, the radial r^{2(i-1)} comes from k. Sum
@@ -175,7 +189,8 @@ double gth_projector_overlap(const Prim& g, const double pp_center[3], int l,
 
 double gth_nonlocal(const Prim& a, const Prim& b, const double pp_center[3],
                     const GthNonlocalChannel& ch) {
-    if (ch.nproj == 0) return 0.0;
+    if (ch.nproj == 0)
+        return 0.0;
     const int n_m = 2 * ch.l + 1; // all m-components of the l-channel (any l).
 
     double total = 0.0;
@@ -186,7 +201,8 @@ double gth_nonlocal(const Prim& a, const Prim& b, const double pp_center[3],
             ob[i] = gth_projector_overlap(b, pp_center, ch.l, i + 1, ch.r, m);
         }
         for (int i = 0; i < ch.nproj; ++i)
-            for (int j = 0; j < ch.nproj; ++j) total += oa[i] * ch.hij(i, j) * ob[j];
+            for (int j = 0; j < ch.nproj; ++j)
+                total += oa[i] * ch.hij(i, j) * ob[j];
     }
     return total;
 }

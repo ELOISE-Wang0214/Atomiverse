@@ -31,8 +31,8 @@ class LauncherArgs {
         script_ = argv[1];
         std::ifstream probe(script_);
         if (!probe.good())
-            throw std::runtime_error("atomiverse: cannot read script '" +
-                                     script_ + "'");
+            throw std::runtime_error("atomiverse: cannot read script '"
+                                     + script_ + "'");
     }
 
     /// @brief The validated script path.

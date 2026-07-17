@@ -65,8 +65,7 @@ void HostWorker::loop() {
         {
             std::unique_lock<std::mutex> lk(mtx_);
             cv_.wait(lk, [this] {
-                return !queue_.empty()
-                       || stop_.load(std::memory_order_acquire);
+                return !queue_.empty() || stop_.load(std::memory_order_acquire);
             });
             if (!queue_.empty()) {
                 job = std::move(queue_.front());

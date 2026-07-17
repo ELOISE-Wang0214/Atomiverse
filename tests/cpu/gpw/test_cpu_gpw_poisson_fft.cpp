@@ -71,9 +71,11 @@ TEST(GpwPoissonFFT, SinglePlaneWaveRoundTrip) {
 
     // e_hartree == 0.5 Σ w ρ V, recomputed independently.
     double e_manual = 0.0;
-    for (long i = 0; i < ng; ++i) e_manual += rho[i] * res.v_r[i];
+    for (long i = 0; i < ng; ++i)
+        e_manual += rho[i] * res.v_r[i];
     e_manual *= 0.5 * grid.weight();
-    EXPECT_NEAR(res.e_hartree, e_manual, 1e-12 * std::max(1.0, std::abs(e_manual)));
+    EXPECT_NEAR(res.e_hartree, e_manual,
+                1e-12 * std::max(1.0, std::abs(e_manual)));
     EXPECT_GT(res.e_hartree, 0.0);
 }
 
@@ -95,8 +97,8 @@ TEST(GpwPoissonFFT, SuperpositionRoundTrip) {
         const double p1 = G1.g[0] * r[0] + G1.g[1] * r[1] + G1.g[2] * r[2];
         const double p2 = G2.g[0] * r[0] + G2.g[1] * r[1] + G2.g[2] * r[2];
         v_exact[i] = a1 * std::cos(p1) + a2 * std::cos(p2);
-        rho[i] = a1 * (G1.g2 / (4.0 * M_PI)) * std::cos(p1) +
-                 a2 * (G2.g2 / (4.0 * M_PI)) * std::cos(p2);
+        rho[i] = a1 * (G1.g2 / (4.0 * M_PI)) * std::cos(p1)
+                 + a2 * (G2.g2 / (4.0 * M_PI)) * std::cos(p2);
     }
 
     PoissonResult res = solve_poisson(grid, rho);
@@ -109,6 +111,7 @@ TEST(GpwPoissonFFT, ConstantDensityGivesZero) {
     UniformGrid grid = cubic_grid(12, 8.0);
     std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.37);
     PoissonResult res = solve_poisson(grid, rho);
-    for (double v : res.v_r) EXPECT_NEAR(v, 0.0, 1e-10);
+    for (double v : res.v_r)
+        EXPECT_NEAR(v, 0.0, 1e-10);
     EXPECT_NEAR(res.e_hartree, 0.0, 1e-10);
 }

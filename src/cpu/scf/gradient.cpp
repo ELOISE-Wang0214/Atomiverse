@@ -6,14 +6,15 @@
 ///   HF: one-electron + Coulomb + exchange + Pulay + nuclear
 ///   KS: one-electron + Coulomb + XC_grid  + Pulay + nuclear
 
-#include "atomiverse/cpu/scf/gradient.h"
+#include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/cpu/scf/integral_derivatives.h"
-#include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/internal/integral_derivatives.h"
+#include "atomiverse/cpu/scf/internal/scf_solver.h"
+#include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -490,7 +491,7 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
              method_label, spin_label, natm, n);
 
     const auto t_dpack = LogClock::now();
-    auto dpack = build_integral_derivatives(integrals);
+    auto dpack = IntegralDerivPack{integrals};
     ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
     // Restricted: P_alpha IS P_total (factor 2 included in SCFSolver::run)
@@ -626,7 +627,7 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
     // config.xc_grad_project_translation == true the projection is active
     // and the FD oracle pins the grid to match.
     SCFConfig fd_config = config;
-    const auto reference_integrals = build_integrals(frame, basis, charge);
+    const auto reference_integrals = IntegralPack{frame, basis, charge};
     MolecularGrid fixed_grid;
     if (config.method == MeanFieldType::KS
         && config.xc_grad_project_translation) {
@@ -642,7 +643,7 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
     SCFSolver solver{fd_config};
     solver.build(reference_integrals);
     auto energy_fn = [&](const Frame& f) {
-        auto integrals = build_integrals(f, basis, charge);
+        auto integrals = IntegralPack{f, basis, charge};
         return solver.run(integrals).energy;
     };
     double ref_energy = energy_fn(frame);

@@ -3,8 +3,8 @@
 ///        FFT, the CUDA mirror of cpu::pw::internal::FFTPlan3D.
 #pragma once
 
-#include <cufft.h>
 #include <cuda_runtime.h>
+#include <cufft.h>
 
 namespace ATV {
 namespace cuda {

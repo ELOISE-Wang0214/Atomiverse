@@ -14,7 +14,7 @@
 ///        P = mo * diag(occ) * mo^T
 ///      where occ is the per-atom fractional-occupation vector appended
 ///      in AO order.
-#include "atomiverse/cpu/scf/minao.h"
+#include "atomiverse/cpu/scf/internal/minao.h"
 
 #include <cmath>
 #include <vector>

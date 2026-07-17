@@ -35,9 +35,9 @@ constexpr double kEpsCn = 1.0e-6;
 /// Mirrors CP2K's dcnum_type entries: `dval` = dCN/dR along the unit vector to
 /// neighbour `k`, `rik` = R_i - R_k (the displacement used for the direction).
 struct DCN {
-    int k;                      ///< neighbour atom index.
-    double dval;                ///< dCN/dr_ik (CP2K dcnab).
-    std::array<double, 3> rik;  ///< R_i - R_k [Bohr].
+    int k;                     ///< neighbour atom index.
+    double dval;               ///< dCN/dr_ik (CP2K dcnab).
+    std::array<double, 3> rik; ///< R_i - R_k [Bohr].
 };
 
 /// @brief D3 coordination-number counting function and its radial derivative.
@@ -118,7 +118,8 @@ void getc6(const std::vector<D3C6Ref>& refs, double nci, double ncj, double& c6,
     double last_c6 = 0.0;
     for (const auto& rf : refs) {
         const double cr6 = rf.c6;
-        if (cr6 <= 0.0) continue;
+        if (cr6 <= 0.0)
+            continue;
         last_c6 = cr6;
         const double cn1 = rf.cn_a;
         const double cn2 = rf.cn_b;
@@ -137,7 +138,8 @@ void getc6(const std::vector<D3C6Ref>& refs, double nci, double ncj, double& c6,
         dzb += dtmpb * cr6;
         dwb += dtmpb;
     }
-    if (last_c6 == 0.0) c6mem = 0.0;
+    if (last_c6 == 0.0)
+        c6mem = 0.0;
     if (rsum > 1.0e-66) {
         c6 = csum / rsum;
         dc6a = (dza - c6 * dwa) / rsum;
@@ -153,12 +155,13 @@ void getc6(const std::vector<D3C6Ref>& refs, double nci, double ncj, double& c6,
 
 D3Result dftd3_pbe(const std::vector<int>& Z,
                    const std::vector<std::array<double, 3>>& pos_bohr,
-                   const double cell_bohr[3], bool periodic, const D3Params& params,
-                   double rcut_bohr) {
+                   const double cell_bohr[3], bool periodic,
+                   const D3Params& params, double rcut_bohr) {
     const int n = static_cast<int>(Z.size());
     D3Result res;
     res.forces.assign(n, {0.0, 0.0, 0.0});
-    if (n == 0) return res;
+    if (n == 0)
+        return res;
 
     const double rcut = rcut_bohr;
     const double rcut2 = rcut * rcut;
@@ -178,7 +181,8 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
             for (int tx = -m[0]; tx <= m[0]; ++tx)
                 for (int ty = -m[1]; ty <= m[1]; ++ty)
                     for (int tz = -m[2]; tz <= m[2]; ++tz) {
-                        if (j == i && tx == 0 && ty == 0 && tz == 0) continue;
+                        if (j == i && tx == 0 && ty == 0 && tz == 0)
+                            continue;
                         const double dx =
                             pos_bohr[i][0] - pos_bohr[j][0] - tx * cell_bohr[0];
                         const double dy =
@@ -186,11 +190,13 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
                         const double dz =
                             pos_bohr[i][2] - pos_bohr[j][2] - tz * cell_bohr[2];
                         const double r2 = dx * dx + dy * dy + dz * dz;
-                        if (r2 > rcut2 || r2 < 1.0e-12) continue;
+                        if (r2 > rcut2 || r2 < 1.0e-12)
+                            continue;
                         const double rab = std::sqrt(r2);
                         double cnab, dcnab;
                         cnparam_d3(rab, rcovab, cnab, dcnab);
-                        if (cnab <= kEpsCn) continue;
+                        if (cnab <= kEpsCn)
+                            continue;
                         cn[i] += cnab;
                         dcn[i].push_back({j, dcnab, {dx, dy, dz}});
                     }
@@ -208,7 +214,8 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
         for (int j = i; j < n; ++j) {
             const int zb = Z[j];
             const auto& refs = params.c6ab[za][zb];
-            if (refs.empty()) continue;
+            if (refs.empty())
+                continue;
             double c6, dc6a, dc6b;
             getc6(refs, cn[i], cn[j], c6, dc6a, dc6b);
             const double r2r4ab = params.r2r4[za] * params.r2r4[zb];
@@ -220,7 +227,8 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
             for (int tx = -m[0]; tx <= m[0]; ++tx)
                 for (int ty = -m[1]; ty <= m[1]; ++ty)
                     for (int tz = -m[2]; tz <= m[2]; ++tz) {
-                        if (j == i && tx == 0 && ty == 0 && tz == 0) continue;
+                        if (j == i && tx == 0 && ty == 0 && tz == 0)
+                            continue;
                         // ordered self-pair images counted once (fac=0.5).
                         const double fac = (i == j) ? 0.5 : 1.0;
                         // rij points from j(+T) to i  (CP2K r = r_i - r_j).
@@ -231,7 +239,8 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
                         const double rz =
                             pos_bohr[i][2] - pos_bohr[j][2] - tz * cell_bohr[2];
                         const double r2 = rx * rx + ry * ry + rz * rz;
-                        if (r2 > rcut2 || r2 <= 1.0e-6) continue;
+                        if (r2 > rcut2 || r2 <= 1.0e-6)
+                            continue;
                         const double dr = std::sqrt(r2);
                         const double r6 = r2 * r2 * r2;
                         const double r8 = r6 * r2;
@@ -244,8 +253,10 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
                         energy -= e6 + e8;
 
                         // explicit-R force (CP2K de6/de8); F on i from this pair.
-                        const double de6 = -kS6 * c6 / r6 * (dfdab6 - 6.0 * fdab6 / dr);
-                        const double de8 = -kS8 * c8 / r8 * (dfdab8 - 8.0 * fdab8 / dr);
+                        const double de6 =
+                            -kS6 * c6 / r6 * (dfdab6 - 6.0 * fdab6 / dr);
+                        const double de8 =
+                            -kS8 * c8 / r8 * (dfdab8 - 8.0 * fdab8 / dr);
                         const double pref = (de6 + de8) * fac / dr;
                         const double fx = pref * rx;
                         const double fy = pref * ry;
@@ -271,8 +282,9 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
     //   F_i -= dEdCN[i] · dCN_i/dr · r_ik/|r_ik|,  F_k += same.
     for (int i = 0; i < n; ++i) {
         for (const auto& d : dcn[i]) {
-            const double drk = std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
-                                         + d.rik[2] * d.rik[2]);
+            const double drk =
+                std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
+                          + d.rik[2] * d.rik[2]);
             const double s = dEdCN[i] * d.dval / drk;
             const double fx = s * d.rik[0];
             const double fy = s * d.rik[1];

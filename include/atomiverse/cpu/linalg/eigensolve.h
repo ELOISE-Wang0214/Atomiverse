@@ -59,7 +59,7 @@ struct CanonicalOrth {
     /// @param tau Keep-threshold on the raw S eigenvalues (dimensionless);
     ///            s_i >= tau is kept. tau <= 0 disables filtering (all n
     ///            columns kept). PySCF >= 2.13 uses 1e-6 on S eigenvalues;
-    ///            Atomiverse's SCF default is 1e-8 (SCFConfig::lindep_threshold).
+    ///            Atomiverse's SCF default is 1e-8 (cpu::scf::SCFConfig::lindep_threshold).
     /// @throws std::runtime_error when every column would be dropped
     ///         (no fallback values).
     CanonicalOrth(const RealMatrix& S, double tau) {
@@ -69,7 +69,8 @@ struct CanonicalOrth {
 
         int first_kept = 0;
         if (tau > 0) {
-            while (first_kept < n && s_eig(first_kept) < tau) ++first_kept;
+            while (first_kept < n && s_eig(first_kept) < tau)
+                ++first_kept;
         }
         n_dropped = first_kept;
         const int m = n - n_dropped;
@@ -98,7 +99,8 @@ inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
     int n = static_cast<int>(S.shape(0));
     auto [s_eig, U] = xt::linalg::eigh(S);
     RealMatrix s_inv_sqrt = xt::zeros<double>({n, n});
-    for (int i = 0; i < n; ++i) s_inv_sqrt(i, i) = 1.0 / std::sqrt(s_eig(i));
+    for (int i = 0; i < n; ++i)
+        s_inv_sqrt(i, i) = 1.0 / std::sqrt(s_eig(i));
     return xt::linalg::dot(xt::linalg::dot(U, s_inv_sqrt), xt::transpose(U));
 }
 
@@ -106,7 +108,8 @@ inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
 /// @return (orbital energies [n], AO MO coefficients [n x n]).
 inline std::pair<RealVector, RealMatrix> diagonalize_fock(const RealMatrix& F,
                                                           const RealMatrix& X) {
-    RealMatrix F_prime = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
+    RealMatrix F_prime =
+        xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
     auto [eig, C_prime] = xt::linalg::eigh(F_prime);
     RealMatrix C = xt::linalg::dot(X, C_prime);
     return {eig, C};
@@ -135,8 +138,9 @@ diagonalize_fock_generalized(const RealMatrix& F, const RealMatrix& S) {
     dsygvd_(&itype, &jobz, &uplo, &n, C.data(), &n, B.data(), &n, eig.data(),
             work.data(), &lwork, iwork.data(), &liwork, &info);
     if (info != 0)
-        throw std::runtime_error("diagonalize_fock_generalized: dsygvd failed, info=" +
-                                 std::to_string(info));
+        throw std::runtime_error(
+            "diagonalize_fock_generalized: dsygvd failed, info="
+            + std::to_string(info));
     return {eig, C};
 }
 

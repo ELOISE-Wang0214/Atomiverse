@@ -79,7 +79,8 @@ RealMatrix make_spd(const std::array<double, 4>& d) {
     RealMatrix q = make_q();
     RealMatrix qd = q;
     for (std::size_t i = 0; i < 4; ++i)
-        for (std::size_t j = 0; j < 4; ++j) qd(i, j) = q(i, j) * d[j];
+        for (std::size_t j = 0; j < 4; ++j)
+            qd(i, j) = q(i, j) * d[j];
     RealMatrix qt(xt::transpose(q));
     RealMatrix s(xt::linalg::dot(qd, qt));
     for (std::size_t i = 0; i < 4; ++i)

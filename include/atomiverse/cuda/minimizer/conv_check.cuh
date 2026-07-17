@@ -96,13 +96,13 @@ class ConvCheck {
     double max_force() const { return max_force_; }
 
   private:
-    int n_ = 0;                  ///< Atom count.
+    int n_ = 0;                   ///< Atom count.
     work_t* d_metrics_ = nullptr; ///< Device {max_f, sum_f2, max_disp, sum_d2}.
     work_t* h_metrics_ = nullptr; ///< Pinned mirror of d_metrics_.
     double* h_energy_ = nullptr;  ///< Pinned mirror of frame.scalars->energy.
     double energy_prev_ = 0;      ///< Energy at the previous measure [eV].
     double last_energy_ = 0;      ///< Energy at the latest measure [eV].
-    double max_force_ = 0;        ///< Max |F| at the latest measure [eV/Angstrom].
+    double max_force_ = 0; ///< Max |F| at the latest measure [eV/Angstrom].
 };
 
 } // namespace minimizer

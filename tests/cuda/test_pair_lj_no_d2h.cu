@@ -108,8 +108,8 @@ std::string extract_compute_body(const std::string& src) {
 // ── ac-001: no cudaStreamSynchronize OUTSIDE the first-launch cache path ──
 
 TEST(PairLJNoD2H, ComputeHasZeroStreamSyncOnHotPath) {
-    const std::string path = std::string(ATV_SOURCE_DIR)
-                             + "/src/cuda/potentials/pair_lj_cut.cu";
+    const std::string path =
+        std::string(ATV_SOURCE_DIR) + "/src/cuda/potentials/pair_lj_cut.cu";
     const std::string body =
         strip_comments(extract_compute_body(read_file(path)));
     ASSERT_FALSE(body.empty()) << "compute() body extraction failed";
@@ -136,8 +136,8 @@ TEST(PairLJNoD2H, ComputeHasZeroStreamSyncOnHotPath) {
 // ── ac-001: no D2H cudaMemcpy on the hot path ──
 
 TEST(PairLJNoD2H, ComputeHasZeroD2HOnHotPath) {
-    const std::string path = std::string(ATV_SOURCE_DIR)
-                             + "/src/cuda/potentials/pair_lj_cut.cu";
+    const std::string path =
+        std::string(ATV_SOURCE_DIR) + "/src/cuda/potentials/pair_lj_cut.cu";
     const std::string body =
         strip_comments(extract_compute_body(read_file(path)));
     ASSERT_FALSE(body.empty()) << "compute() body extraction failed";

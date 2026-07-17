@@ -5,8 +5,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/facade/stage.h"
 #include <algorithm>
 #include <cmath>
@@ -79,14 +79,12 @@ __global__ void kick_v_k(real_t* __restrict__ vx, real_t* __restrict__ vy,
                                 + dtfm * static_cast<work_t>(fz[i]));
 }
 
-__global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
-                              real_t* __restrict__ z,
-                              const real_t* __restrict__ vx,
-                              const real_t* __restrict__ vy,
-                              const real_t* __restrict__ vz, work_t ax,
-                              work_t ay, work_t az, work_t dx, work_t dy,
-                              work_t dz, work_t dt, prec_t* __restrict__ box,
-                              cuda::Box new_box, int n) {
+__global__ void
+propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
+              real_t* __restrict__ z, const real_t* __restrict__ vx,
+              const real_t* __restrict__ vy, const real_t* __restrict__ vz,
+              work_t ax, work_t ay, work_t az, work_t dx, work_t dy, work_t dz,
+              work_t dt, prec_t* __restrict__ box, cuda::Box new_box, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
         // Closed-form per-axis MTK position propagator (matches CPU
@@ -105,12 +103,12 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
         work_t inv_Lx = work_t(new_box.inv_l[0]),
                inv_Ly = work_t(new_box.inv_l[1]),
                inv_Lz = work_t(new_box.inv_l[2]);
-        x[i] -= static_cast<real_t>(
-            Lx * floor(static_cast<work_t>(x[i]) * inv_Lx));
-        y[i] -= static_cast<real_t>(
-            Ly * floor(static_cast<work_t>(y[i]) * inv_Ly));
-        z[i] -= static_cast<real_t>(
-            Lz * floor(static_cast<work_t>(z[i]) * inv_Lz));
+        x[i] -=
+            static_cast<real_t>(Lx * floor(static_cast<work_t>(x[i]) * inv_Lx));
+        y[i] -=
+            static_cast<real_t>(Ly * floor(static_cast<work_t>(y[i]) * inv_Ly));
+        z[i] -=
+            static_cast<real_t>(Lz * floor(static_cast<work_t>(z[i]) * inv_Lz));
     }
     // Thread 0 of block 0 writes the new box diagonal to device, so
     // downstream consumers reading raw `frame.box` see the updated
@@ -135,12 +133,10 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
 // all NPT scalars in one defer-stream round-trip.
 // Caller multiplies the KE slots by 0.5·kMvv2e to get eV.
 
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-reduce_ke_axes_k(const real_t* __restrict__ vx,
-                                 const real_t* __restrict__ vy,
-                                 const real_t* __restrict__ vz,
-                                 const real_t* __restrict__ mass,
-                                 double* __restrict__ buf, int n) {
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void reduce_ke_axes_k(
+    const real_t* __restrict__ vx, const real_t* __restrict__ vy,
+    const real_t* __restrict__ vz, const real_t* __restrict__ mass,
+    double* __restrict__ buf, int n) {
     extern __shared__ double warp_scratch[]; // per-warp staging cells
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     double mx = 0.0, my = 0.0, mz = 0.0;
@@ -212,8 +208,8 @@ __global__ void gather_box_diag_k(const prec_t* __restrict__ box,
 NoseHooverNPT::NoseHooverNPT(Config cfg)
     : T_target_(cfg.T_target),
       T_stop_(cfg.T_stop < 0 ? cfg.T_target : cfg.T_stop), tau_T_(cfg.tau_T),
-      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt),
-      drag_(cfg.drag), mtchain_(cfg.mtchain), mpchain_(cfg.mpchain),
+      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt), drag_(cfg.drag),
+      mtchain_(cfg.mtchain), mpchain_(cfg.mpchain),
       couple_axis_(cfg.couple_axis), T_live_(cfg.T_target) {
     pdim_ = 0;
     for (int a = 0; a < 3; ++a)
@@ -369,8 +365,8 @@ void NoseHooverNPT::refresh_npt_scalars_(const LaunchContext& ctx) {
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, d_npt, n);
 
     // Mirror stress[0..2] + energy → d_npt[4..7]
-    gather_npt_scalars_k<<<1, 1, 0, defer_stream>>>(
-        &f.scalars->stress[0], &f.scalars->energy, d_npt);
+    gather_npt_scalars_k<<<1, 1, 0, defer_stream>>>(&f.scalars->stress[0],
+                                                    &f.scalars->energy, d_npt);
 
     // Async D2H to pinned + event record. Host-block on event.
     cudaMemcpyAsync(h_npt_scratch_, d_npt, kNptScratchSize * sizeof(double),
@@ -692,7 +688,8 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
 
 // ── Conserved MTK Hamiltonian ───────────────────────────────────────
 
-double NoseHooverNPT::extended_hamiltonian_(const LaunchContext& /*ctx*/) const {
+double
+NoseHooverNPT::extended_hamiltonian_(const LaunchContext& /*ctx*/) const {
     // E_pot already pulled into `h_npt_scratch_[7]` by the most recent
     // refresh_npt_scalars_ call (compute_global_KE_ in end_of_step P8).
     // KE is host-side (`KE_global_` analytically maintained through the
@@ -731,24 +728,24 @@ void NoseHooverNPT::launch(const LaunchContext& ctx) {
         for (int k = 1; k < mtchain_; ++k)
             Q_t_[k] = kT_ * tau_T2;
 
-        nhc_baro_half_(half_dt);          // P1
-        nhc_atoms_half_(ctx, half_dt);    // P2
-        update_eps_dot_(ctx, half_dt);    // P3 (uses prev step's stress)
-        scale_v_by_baro_(ctx, half_dt);   // P4
-        kick_v_by_force_(ctx, half_dt);   // P5
-        propagate_x_and_box_(ctx);        // P6
+        nhc_baro_half_(half_dt);        // P1
+        nhc_atoms_half_(ctx, half_dt);  // P2
+        update_eps_dot_(ctx, half_dt);  // P3 (uses prev step's stress)
+        scale_v_by_baro_(ctx, half_dt); // P4
+        kick_v_by_force_(ctx, half_dt); // P5
+        propagate_x_and_box_(ctx);      // P6
 
     } else if (ctx.at(ATV::md::Phase::final_integrate)) {
-        kick_v_by_force_(ctx, half_dt);   // P7
+        kick_v_by_force_(ctx, half_dt); // P7
 
     } else if (ctx.at(ATV::md::Phase::end_of_step)) {
         // Reduce has run (single-GPU: no-op, but the order matches CPU).
         KE_global_ = compute_global_KE_(ctx);
 
-        scale_v_by_baro_(ctx, half_dt);   // P8
-        update_eps_dot_(ctx, half_dt);    // P9
-        nhc_atoms_half_(ctx, half_dt);    // P10
-        nhc_baro_half_(half_dt);          // P11
+        scale_v_by_baro_(ctx, half_dt); // P8
+        update_eps_dot_(ctx, half_dt);  // P9
+        nhc_atoms_half_(ctx, half_dt);  // P10
+        nhc_baro_half_(half_dt);        // P11
 
         // Rewrite frame.scalars.{kinetic, conserved} so downstream
         // observers see post-NPT values. Source must be pinned host

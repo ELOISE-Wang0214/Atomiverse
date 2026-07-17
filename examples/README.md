@@ -20,6 +20,20 @@ order.
 | 13 | `13_mp2.cpp` | Closed-shell MP2 correlation energy (`scf::mp2_energy`, AO→MO ovov transform) | `ATV_BUILD_RHF` |
 | 14 | `14_fci.cpp` | Exact correlation via tiny full CI (`scf::fci_energy`) on H2/STO-3G | `ATV_BUILD_RHF` |
 | 15 | `15_am1.cpp` | AM1 semiempirical: energy, ΔHf, forces, Minimize (`AM1Evaluator`) | — |
+| 16 | `16_density_cube.cpp` | Write H₂ density + HOMO Gaussian cubes for MolVis | `ATV_BUILD_RHF` |
+
+## Literature-facing results
+
+After a successful run, the printed numbers used by the documentation live in
+[`results/`](results/). Tutorials embed those values in tables and MolPlot
+charts. When you change physics that an example exercises:
+
+1. Re-run the binary.
+2. Update the matching `results/*.json`.
+3. Update any hard-coded tables/charts in `docs/tutorial/`.
+
+Do **not** invent numbers for the docs. References cite textbooks / experiment;
+Atomiverse columns always come from a real binary on this tree.
 
 ## Rules for adding an example
 
@@ -33,6 +47,8 @@ order.
    against LAMMPS / PySCF / QE belongs in `benchmarks/<domain>/<case>/`.
 5. Register the target in `CMakeLists.txt` behind the narrowest option gate
    (`ATV_BUILD_RHF`, `ATV_BUILD_CUDA`, …).
+6. **Ship a `results/<name>.json`** when the example produces a number the
+   docs should quote (energy, IP, drift, ΔH_f, …).
 
 Build: configure with `-DATV_BUILD_EXAMPLES=ON`, then
 `cmake --build build --target 02_rhf` (any number works the same way).

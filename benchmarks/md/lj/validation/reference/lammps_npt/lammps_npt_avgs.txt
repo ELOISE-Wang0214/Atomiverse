@@ -1,3 +1,0 @@
-# Time-averaged data for fix avgs
-# TimeStep c_ctemp c_cke c_cpe c_cpress v_vol_v v_lx_v
-50000 100.185 3.30222 -18.2093 2731.05 9533.96 21.2042

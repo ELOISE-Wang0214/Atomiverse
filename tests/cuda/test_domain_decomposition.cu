@@ -61,14 +61,17 @@ TEST(DomainDecomposition, OwnerMatchesSlab) {
             for (double z = 0.5; z < 12; z += 2.0) {
                 int s = dd.owner_of(x, y, z);
                 auto lo = dd.sublo(s), hi = dd.subhi(s);
-                EXPECT_GE(x, lo[0]); EXPECT_LT(x, hi[0]);
-                EXPECT_GE(y, lo[1]); EXPECT_LT(y, hi[1]);
-                EXPECT_GE(z, lo[2]); EXPECT_LT(z, hi[2]);
+                EXPECT_GE(x, lo[0]);
+                EXPECT_LT(x, hi[0]);
+                EXPECT_GE(y, lo[1]);
+                EXPECT_LT(y, hi[1]);
+                EXPECT_GE(z, lo[2]);
+                EXPECT_LT(z, hi[2]);
             }
 }
 
 TEST(DomainDecomposition, OwnerWrapsPbc) {
-    DD dd(2, 10.0, 10.0, 10.0); // 2x1x1
+    DD dd(2, 10.0, 10.0, 10.0);                                 // 2x1x1
     EXPECT_EQ(dd.owner_of(-1.0, 5, 5), dd.owner_of(9.0, 5, 5)); // -1 wraps to 9
     EXPECT_EQ(dd.owner_of(11.0, 5, 5), dd.owner_of(1.0, 5, 5)); // 11 wraps to 1
 }

@@ -153,7 +153,7 @@ biomolecular work is **rigid bodies** and **virtual sites**.
 `Deform` drives one axis at a time, with affine coordinate remap, in either
 engineering strain (`erate`, `L = L₀(1 + Rt)`) or true strain (`trate`,
 `L = L₀·exp(Rt)`). The CUDA port supports `erate` only. This is enough for a
-uniaxial tension/compression run (see `benchmarks/md/pe/`, polyethylene under
+uniaxial tension/compression run (see `/* benchmarks removed; re-add later */ pe/`, polyethylene under
 tension) and nothing more — no shear, no flow, no heat flux.
 
 ## 7. Ab Initio Molecular Dynamics
@@ -179,7 +179,7 @@ evaluators qualify is decided by one thing — whether they declare
   closed-shell).
 - `cpu::pw::PWEvaluator` is **energy-only** — plane waves cannot drive MD.
 - `cpu::semiempirical::AM1Evaluator` with `with_gradient(true)` (default) writes
-  nuclear forces [eV/Å] (validated vs re-SCF FD). Semiempirical BOMD is
+  nuclear forces (eV/Å) (validated vs re-SCF FD). Semiempirical BOMD is
   pinned by `regressions/semiempirical/am1_water_bomd` (short NVE-style smoke).
 - `cuda::scf::SCFEvaluator` has no gradient kernel — **there is no GPU AIMD**.
 

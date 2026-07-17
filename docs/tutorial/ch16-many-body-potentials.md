@@ -1,5 +1,24 @@
 # Chapter 16: Many-Body Potentials — Metals and Covalent Solids
 
+| | |
+|---|---|
+| **Components** | `cpu::EAM` (Sutton–Chen copper), `cpu::StillingerWeber` (Si) |
+| **Why** | pair potentials are *qualitatively* wrong for metals / covalent solids (Cauchy relation, vacancy paradox) |
+| **Validation** | finite-difference force oracles in the potential unit tests |
+
+```cpp
+sim.add_potential(cpu::EAM{/* Sutton-Chen Cu lookup */});
+// or
+sim.add_potential(cpu::StillingerWeber{/* Si parameters */});
+sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
+```
+
+Pair LJ NVE conservation ([Chapter 10](ch10-classical-md.md)) proves the MD
+pipeline; many-body styles reuse the same neighbor list and force reduction.
+Always re-check FD forces after parameter changes — the two-pass EAM force is a
+common source of sign/density bugs.
+
+
 Every classical potential in this book so far has been a **pair potential**: the
 energy is a sum over separations,
 
@@ -152,7 +171,7 @@ so it is bound explicitly rather than through `add_potential`:
 ```cpp
 #include "atomiverse/cpu/potentials/eam.h"
 
-const double cutoff = 10.0;  // [Å]
+const double cutoff = 10.0;  // (Å)
 
 cpu::md::MD sim;
 sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
@@ -266,7 +285,7 @@ The eight-atom conventional cell, which you will need for silicon and for any ot
 diamond-structure material:
 
 ```cpp
-const double a0 = 5.431;  // [Å]
+const double a0 = 5.431;  // (Å)
 const double basis[8][3] = {
     {0.00, 0.00, 0.00}, {0.25, 0.25, 0.25},
     {0.50, 0.50, 0.00}, {0.75, 0.75, 0.25},

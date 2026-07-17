@@ -18,8 +18,8 @@ namespace gpw {
 
 /// @brief XC result on the grid.
 struct XcOnGrid {
-    double e_xc = 0.0;          ///< total XC energy [Hartree].
-    std::vector<double> vxc_r;  ///< XC potential dE_xc/dρ at each grid point.
+    double e_xc = 0.0;         ///< total XC energy [Hartree].
+    std::vector<double> vxc_r; ///< XC potential dE_xc/dρ at each grid point.
 };
 
 /// @brief Evaluate the PADE (GTH Padé) LDA XC energy and potential on the grid.
@@ -32,7 +32,8 @@ struct XcOnGrid {
 /// @param grid  Uniform grid (supplies the integration weight).
 /// @param rho_r Total electron density on the grid, length grid.npts().
 /// @return XcOnGrid with the total energy and the real-space potential.
-XcOnGrid xc_grid_pade(const UniformGrid& grid, const std::vector<double>& rho_r);
+XcOnGrid xc_grid_pade(const UniformGrid& grid,
+                      const std::vector<double>& rho_r);
 
 } // namespace gpw
 } // namespace cpu

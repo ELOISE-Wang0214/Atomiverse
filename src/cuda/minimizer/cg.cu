@@ -1,8 +1,8 @@
 /// @file minimizer/cg.cu
 /// @brief Polak-Ribière+ CG kernels: device-resident β + fused step.
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/minimizer/cg.cuh"
 #include <cuda_runtime.h>
 
@@ -61,15 +61,12 @@ __global__ void pr_beta(work_t* __restrict__ pr) {
 /// measures displacement against them) and the current gradient /
 /// direction for the next iteration's β. PBC wrap matches the MD
 /// integrator form (by-value Box, cached inv_l).
-__global__ void cg_step(real_t* __restrict__ x, real_t* __restrict__ y,
-                        real_t* __restrict__ z, const real_t* __restrict__ fx,
-                        const real_t* __restrict__ fy,
-                        const real_t* __restrict__ fz,
-                        work_t* __restrict__ x_prev,
-                        work_t* __restrict__ g_prev,
-                        work_t* __restrict__ d_prev,
-                        const work_t* __restrict__ pr, work_t alpha0,
-                        cuda::Box box, int n) {
+__global__ void
+cg_step(real_t* __restrict__ x, real_t* __restrict__ y, real_t* __restrict__ z,
+        const real_t* __restrict__ fx, const real_t* __restrict__ fy,
+        const real_t* __restrict__ fz, work_t* __restrict__ x_prev,
+        work_t* __restrict__ g_prev, work_t* __restrict__ d_prev,
+        const work_t* __restrict__ pr, work_t alpha0, cuda::Box box, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -136,8 +133,7 @@ void CG::launch(const LaunchContext& ctx) {
 
     cudaMemsetAsync(d_pr_, 0, 2 * sizeof(work_t), stream);
     pr_dots<<<grid, block, shmem, stream>>>(frame.atoms.fx, frame.atoms.fy,
-                                            frame.atoms.fz, d_gprev_, d_pr_,
-                                            n);
+                                            frame.atoms.fz, d_gprev_, d_pr_, n);
     pr_beta<<<1, 1, 0, stream>>>(d_pr_);
     cg_step<<<grid, block, 0, stream>>>(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,

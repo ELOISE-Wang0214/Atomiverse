@@ -2,8 +2,8 @@
 /// @brief Verifies cuda::pw::internal::veff_assemble_g against the host
 ///        elementwise sum V_eff(G) = V_loc(G) + V_H(G) + V_xc(G).
 #include "atomiverse/cuda/pw/internal/veff.cuh"
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <random>
 #include <vector>
@@ -31,14 +31,15 @@ TEST(CudaPWVeff, MatchesHostSum) {
     }
 
     auto* d_vloc = static_cast<double*>(dmalloc(n_g * sizeof(double)));
-    auto* d_vh =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
-    auto* d_vxc =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
-    auto* d_veff =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_vh = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_vxc = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_veff = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
 
-    cudaMemcpy(d_vloc, vloc.data(), n_g * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_vloc, vloc.data(), n_g * sizeof(double),
+               cudaMemcpyHostToDevice);
     cudaMemcpy(d_vh, vh.data(), n_g * sizeof(cufftDoubleComplex),
                cudaMemcpyHostToDevice);
     cudaMemcpy(d_vxc, vxc.data(), n_g * sizeof(cufftDoubleComplex),
@@ -79,11 +80,12 @@ TEST(CudaPWVeff, InPlaceAliasing) {
         vxc[i] = {d(rng), d(rng)};
     }
     auto* d_vloc = static_cast<double*>(dmalloc(n_g * sizeof(double)));
-    auto* d_vh =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
-    auto* d_vxc =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
-    cudaMemcpy(d_vloc, vloc.data(), n_g * sizeof(double), cudaMemcpyHostToDevice);
+    auto* d_vh = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_vxc = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    cudaMemcpy(d_vloc, vloc.data(), n_g * sizeof(double),
+               cudaMemcpyHostToDevice);
     cudaMemcpy(d_vh, vh.data(), n_g * sizeof(cufftDoubleComplex),
                cudaMemcpyHostToDevice);
     cudaMemcpy(d_vxc, vxc.data(), n_g * sizeof(cufftDoubleComplex),

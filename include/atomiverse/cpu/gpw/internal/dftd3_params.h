@@ -32,7 +32,7 @@ constexpr int kMaxElem = 94;
 
 /// @brief Reference-state entry of the CN-resolved C6 table for one element pair.
 struct D3C6Ref {
-    double c6 = 0.0;  ///< Reference C6^AB [a.u.] for this (CN_A, CN_B) pair.
+    double c6 = 0.0;   ///< Reference C6^AB [a.u.] for this (CN_A, CN_B) pair.
     double cn_a = 0.0; ///< Reference coordination number of A.
     double cn_b = 0.0; ///< Reference coordination number of B.
 };
@@ -50,7 +50,8 @@ struct D3Params {
     /// @brief Cutoff radii r0ab[Za][Zb] [Bohr] (symmetric).
     std::array<std::array<double, kMaxElem + 1>, kMaxElem + 1> r0ab{};
     /// @brief CN-resolved reference C6 states per ordered element pair.
-    std::array<std::array<std::vector<D3C6Ref>, kMaxElem + 1>, kMaxElem + 1> c6ab{};
+    std::array<std::array<std::vector<D3C6Ref>, kMaxElem + 1>, kMaxElem + 1>
+        c6ab{};
 
     /// @brief Build the full parameter set from the in-tree tables.
     ///
@@ -64,8 +65,6 @@ struct D3Params {
     /// @return true iff `z` is one of the supported elements.
     static bool supports_element(int z);
 };
-
-
 
 } // namespace gpw
 } // namespace cpu

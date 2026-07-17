@@ -46,11 +46,19 @@ inline double gcomp(const GInfo& g, long idx, int d) {
     const int i1 = static_cast<int>((idx / g.n2c) % g.n1);
     const int i0 = static_cast<int>(idx / (static_cast<long>(g.n2c) * g.n1));
     int n, i;
-    if (d == 0) { n = g.n0; i = i0; }
-    else if (d == 1) { n = g.n1; i = i1; }
-    else { n = g.n2; i = i2; }
+    if (d == 0) {
+        n = g.n0;
+        i = i0;
+    } else if (d == 1) {
+        n = g.n1;
+        i = i1;
+    } else {
+        n = g.n2;
+        i = i2;
+    }
     const int m = (i <= n / 2) ? i : i - n; // r2c last dim has only m>=0
-    if (2 * (m < 0 ? -m : m) == n) return 0.0; // Nyquist -> zero
+    if (2 * (m < 0 ? -m : m) == n)
+        return 0.0; // Nyquist -> zero
     return m * g.gu[d];
 }
 
@@ -66,9 +74,12 @@ std::array<std::vector<double>, 3> gradient(const UniformGrid& grid,
         static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * g.ncplx));
     double* rout = static_cast<double*>(fftw_malloc(sizeof(double) * g.ntot));
 
-    for (long i = 0; i < g.ntot; ++i) rbuf[i] = f[i];
-    fftw_plan fwd = fftw_plan_dft_r2c_3d(g.n0, g.n1, g.n2, rbuf, fhat, FFTW_ESTIMATE);
-    fftw_plan bwd = fftw_plan_dft_c2r_3d(g.n0, g.n1, g.n2, cwork, rout, FFTW_ESTIMATE);
+    for (long i = 0; i < g.ntot; ++i)
+        rbuf[i] = f[i];
+    fftw_plan fwd =
+        fftw_plan_dft_r2c_3d(g.n0, g.n1, g.n2, rbuf, fhat, FFTW_ESTIMATE);
+    fftw_plan bwd =
+        fftw_plan_dft_c2r_3d(g.n0, g.n1, g.n2, cwork, rout, FFTW_ESTIMATE);
     fftw_execute(fwd);
 
     std::array<std::vector<double>, 3> out;
@@ -82,7 +93,8 @@ std::array<std::vector<double>, 3> gradient(const UniformGrid& grid,
         }
         fftw_execute(bwd); // cwork -> rout (= N * d f / d x_d)
         out[d].resize(static_cast<std::size_t>(g.ntot));
-        for (long i = 0; i < g.ntot; ++i) out[d][i] = rout[i] * inv_n;
+        for (long i = 0; i < g.ntot; ++i)
+            out[d][i] = rout[i] * inv_n;
     }
 
     fftw_destroy_plan(fwd);
@@ -104,13 +116,19 @@ std::vector<double> divergence(const UniformGrid& grid,
         static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * g.ncplx));
     double* rout = static_cast<double*>(fftw_malloc(sizeof(double) * g.ntot));
 
-    for (long idx = 0; idx < g.ncplx; ++idx) { acc[idx][0] = 0.0; acc[idx][1] = 0.0; }
+    for (long idx = 0; idx < g.ncplx; ++idx) {
+        acc[idx][0] = 0.0;
+        acc[idx][1] = 0.0;
+    }
 
-    fftw_plan fwd = fftw_plan_dft_r2c_3d(g.n0, g.n1, g.n2, rbuf, fhat, FFTW_ESTIMATE);
-    fftw_plan bwd = fftw_plan_dft_c2r_3d(g.n0, g.n1, g.n2, acc, rout, FFTW_ESTIMATE);
+    fftw_plan fwd =
+        fftw_plan_dft_r2c_3d(g.n0, g.n1, g.n2, rbuf, fhat, FFTW_ESTIMATE);
+    fftw_plan bwd =
+        fftw_plan_dft_c2r_3d(g.n0, g.n1, g.n2, acc, rout, FFTW_ESTIMATE);
 
     for (int d = 0; d < 3; ++d) {
-        for (long i = 0; i < g.ntot; ++i) rbuf[i] = v[d][i];
+        for (long i = 0; i < g.ntot; ++i)
+            rbuf[i] = v[d][i];
         fftw_execute(fwd); // rbuf -> fhat
         for (long idx = 0; idx < g.ncplx; ++idx) {
             const double gd = gcomp(g, idx, d);
@@ -123,7 +141,8 @@ std::vector<double> divergence(const UniformGrid& grid,
 
     std::vector<double> out(static_cast<std::size_t>(g.ntot));
     const double inv_n = 1.0 / static_cast<double>(g.ntot);
-    for (long i = 0; i < g.ntot; ++i) out[i] = rout[i] * inv_n;
+    for (long i = 0; i < g.ntot; ++i)
+        out[i] = rout[i] * inv_n;
 
     fftw_destroy_plan(fwd);
     fftw_destroy_plan(bwd);

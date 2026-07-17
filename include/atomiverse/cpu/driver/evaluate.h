@@ -28,7 +28,7 @@
 /// @code{.cpp}
 ///   // SCF energy + forces (default)
 ///   cpu::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCF{cpu::scf::default_config(integrals)});
+///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCF{cpu::scf::SCFConfig{cpu::scf::SCFConfig::RKS{}, integrals}});
 ///   eval.build();
 ///   eval.run(frame);
 ///

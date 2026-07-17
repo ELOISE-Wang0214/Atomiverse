@@ -39,8 +39,8 @@ void decode_index(int encoded, int& z, int& ref_index) {
 void fill_element_tables(D3Params& p) {
     for (int z = 1; z <= 103 && z <= kMaxElem; ++z) {
         p.rcov[z] = kK2 * basis_data::kRcovPyykko[z - 1] * kAngToBohr;
-        const double dum =
-            0.5 * basis_data::kR2r4Raw[z - 1] * std::sqrt(static_cast<double>(z));
+        const double dum = 0.5 * basis_data::kR2r4Raw[z - 1]
+                           * std::sqrt(static_cast<double>(z));
         p.r2r4[z] = std::sqrt(dum);
     }
     // Unpack the lower-triangular r0ab table: k runs i=1..N, j=1..i.
@@ -63,9 +63,11 @@ void add_c6_record(D3Params& p, double c6, double fiat, double fjat, double cna,
     int za = 0, ra = 0, zb = 0, rb = 0;
     decode_index(static_cast<int>(std::lround(fiat)), za, ra);
     decode_index(static_cast<int>(std::lround(fjat)), zb, rb);
-    if (za < 1 || zb < 1 || za > kMaxElem || zb > kMaxElem) return;
+    if (za < 1 || zb < 1 || za > kMaxElem || zb > kMaxElem)
+        return;
     p.c6ab[za][zb].push_back({c6, cna, cnb});
-    if (za != zb || cna != cnb) p.c6ab[zb][za].push_back({c6, cnb, cna});
+    if (za != zb || cna != cnb)
+        p.c6ab[zb][za].push_back({c6, cnb, cna});
 }
 
 } // namespace
@@ -80,7 +82,8 @@ D3Params::D3Params() {
 
 bool D3Params::supports_element(int z) {
     for (int s : basis_data::kD3SupportedZ)
-        if (s == z) return true;
+        if (s == z)
+            return true;
     return false;
 }
 

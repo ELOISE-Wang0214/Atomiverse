@@ -88,7 +88,7 @@ struct GpwConfig {
     /// periodic cell drive S toward linear dependence — without this the raw
     /// generalized solver fails outright (a 13726-AO slab aborted with
     /// `dsygvd failed, info=20590`) and the SCF oscillates. Matches
-    /// SCFConfig::lindep_threshold. 0 disables filtering.
+    /// cpu::scf::SCFConfig::lindep_threshold. 0 disables filtering.
     double lindep_threshold = 1e-8;
 
     /// @brief Virtual-orbital level shift [Hartree] applied inside the SCF's

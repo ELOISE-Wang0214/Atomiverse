@@ -20,8 +20,8 @@
 
 #include "atomiverse/cpu/async/analysis_executor.h"
 #include "atomiverse/cpu/async/async_component_base.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/component/context.h"
 
 using namespace ATV;
 

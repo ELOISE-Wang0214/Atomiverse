@@ -54,8 +54,8 @@ Vec grad(const Vec& x) {
 struct Phi {
     Vec x0, p;
     LsSample operator()(double alpha, bool /*need_slope*/) const {
-        const Vec xt = {{x0[0] + alpha * p[0], x0[1] + alpha * p[1],
-                         x0[2] + alpha * p[2]}};
+        const Vec xt = {
+            {x0[0] + alpha * p[0], x0[1] + alpha * p[1], x0[2] + alpha * p[2]}};
         LsSample s;
         s.f = energy(xt);
         s.dphi = dot(grad(xt), p);
@@ -83,7 +83,7 @@ TEST(LineSearch, StrongWolfeSatisfiesBothConditions) {
     // Recompute phi and phi' at the accepted step and assert both conditions.
     const Phi phi{x0, p};
     const LsSample at = phi(r.alpha, true);
-    EXPECT_LE(at.f, phi0 + c1 * r.alpha * dphi0);            // 3.7a
+    EXPECT_LE(at.f, phi0 + c1 * r.alpha * dphi0);              // 3.7a
     EXPECT_LE(std::abs(at.dphi), c2 * std::abs(dphi0) + 1e-9); // 3.7b
     EXPECT_GT(r.n_grad_evals, 0);
 }
@@ -156,8 +156,8 @@ TEST(LineSearch, RejectsNonDescentDirection) {
 
     auto rsw = strong_wolfe(Phi{x0, p}, phi0, dphi0, 1.0, 1e-4, 0.9, 30, 10.0);
     EXPECT_FALSE(rsw.ok);
-    auto rar = armijo_backtrack(Phi{x0, p}, phi0, dphi0, 1.0, 1e-4, 0.5, 30,
-                                1e-8);
+    auto rar =
+        armijo_backtrack(Phi{x0, p}, phi0, dphi0, 1.0, 1e-4, 0.5, 30, 1e-8);
     EXPECT_FALSE(rar.ok);
 }
 

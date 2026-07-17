@@ -39,7 +39,7 @@
 #include "atomiverse/cuda/async/async_bridge.cuh"
 
 #ifdef ATV_HAS_RHF
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #endif
 

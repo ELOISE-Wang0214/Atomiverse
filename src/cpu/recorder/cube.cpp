@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {

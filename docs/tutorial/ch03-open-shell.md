@@ -7,12 +7,68 @@ shells and bond breaking. This chapter is about that failure and about the
 smallest change that repairs it: allow the $\alpha$ and $\beta$ electrons
 to occupy different spatial orbitals.
 
-The example for this chapter is
-[`examples/03_uhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/03_uhf.cpp). That
-example is worth reading because it does not talk about UHF in the abstract. It
-runs three concrete cases: a hydrogen atom, equilibrium $\mathrm{H}_2$, and a
-stretched $\mathrm{H}_2$ bond scan where the restricted approximation finally
-breaks.
+| | |
+|---|---|
+| **Example** | [`examples/03_uhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/03_uhf.cpp) |
+| **Results** | [`examples/results/03_uhf_pes.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/03_uhf_pes.json) |
+| **Reference limit** | \(2\times E(\mathrm{H})=-0.9332\) Ha |
+
+```bash
+cmake --build build --target 03_uhf
+./build/examples/03_uhf
+```
+
+## Live result: H₂ dissociation (STO-3G)
+
+RHF cannot dissociate to two neutral H atoms; UHF can. The scan below is the
+actual table printed by `03_uhf` (columns: \(R\), \(E_\mathrm{RHF}\),
+\(E_\mathrm{UHF}\), \(\langle S^2\rangle\)).
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true, strokeWidth: 2}
+data:
+  values:
+    - {R: 0.50, method: RHF, E: -1.042996}
+    - {R: 0.75, method: RHF, E: -1.116151}
+    - {R: 1.00, method: RHF, E: -1.066109}
+    - {R: 1.25, method: RHF, E: -0.989114}
+    - {R: 1.50, method: RHF, E: -0.910874}
+    - {R: 1.75, method: RHF, E: -0.841349}
+    - {R: 2.00, method: RHF, E: -0.783793}
+    - {R: 2.50, method: RHF, E: -0.702944}
+    - {R: 3.00, method: RHF, E: -0.656048}
+    - {R: 3.50, method: RHF, E: -0.629820}
+    - {R: 4.00, method: RHF, E: -0.614870}
+    - {R: 0.50, method: UHF, E: -1.042996}
+    - {R: 0.75, method: UHF, E: -1.116151}
+    - {R: 1.00, method: UHF, E: -1.066109}
+    - {R: 1.25, method: UHF, E: -0.994190}
+    - {R: 1.50, method: UHF, E: -0.957707}
+    - {R: 1.75, method: UHF, E: -0.943080}
+    - {R: 2.00, method: UHF, E: -0.937213}
+    - {R: 2.50, method: UHF, E: -0.933867}
+    - {R: 3.00, method: UHF, E: -0.933285}
+    - {R: 3.50, method: UHF, E: -0.933182}
+    - {R: 4.00, method: UHF, E: -0.933166}
+encoding:
+  x: {field: R, type: quantitative, title: "R (Å)", scale: {zero: false}}
+  y:
+    field: E
+    type: quantitative
+    title: "E (Hartree)"
+    scale: {zero: false, nice: true}
+  color: {field: method, type: nominal, title: null}
+  tooltip:
+    - {field: method, type: nominal}
+    - {field: R, type: quantitative, format: ".2f"}
+    - {field: E, type: quantitative, format: ".6f"}
+```
+
+At \(R=4\) Å, UHF sits at **−0.933166 Ha** — within \(3\times 10^{-5}\) Ha of
+the exact one-electron limit \(2\times E(\mathrm{H})=-0.9332\) Ha. RHF is still
+**−0.61487 Ha**, more than 0.3 Ha too high. Spin contamination
+\(\langle S^2\rangle\) rises from 0 near equilibrium toward 1 as the UHF
+solution becomes two separate radicals.
 
 ## Why RHF Stops Being Enough
 
@@ -79,10 +135,10 @@ instead of one occupation pattern, you now choose one for each spin channel.
 In the example, that choice appears directly in calls such as
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::uhf_config(ints, n_alpha, n_beta, tol);
+auto ints = /* IntegralPack is private — use RHF */;
+cpu::scf::UHF uhf(n_alpha, n_beta); /* uhf.tol = tol; */
 config.max_iter = max_iter;
-cpu::scf::SCFSolver solver{config};
+cpu::scf::UHF uhf(n_alpha, n_beta);
 solver.build(ints);
 const auto& result = solver.run(ints);
 ```
@@ -135,10 +191,9 @@ construction computes and validates in one step, and the resolved counts feed
 the existing config builders:
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
-                                      /*charge=*/+1);       // H2O+, N_e = 9
+/* integrals private inside RHF/UHF/RKS/UKS */       // H2O+, N_e = 9
 cpu::scf::SpinResolution occ(ints.n_electrons, /*multiplicity=*/2);
-auto cfg = cpu::scf::uhf_config(ints, occ.n_alpha, occ.n_beta);  // (5, 4)
+cpu::scf::UHF uhf(occ.n_alpha, occ.n_beta);  // e.g. (5, 4)
 ```
 
 Worked table (all rows are validated against PySCF 2.13.1 and
@@ -260,8 +315,10 @@ guess. Atomiverse exposes this through `SCFInitialGuess`: seed both spin
 channels with half of the converged neutral density,
 
 ```cpp
-auto ints_n  = cpu::scf::build_integrals(frame, basis, /*charge=*/0);
-auto neutral_cfg = cpu::scf::rhf_config(ints_n, tol);
+cpu::scf::RHF neutral;
+neutral.basis = basis;
+neutral.charge = 0;
+neutral.tol = tol;
 neutral_cfg.max_iter = max_iter;
 cpu::scf::SCFSolver neutral_solver{neutral_cfg};
 neutral_solver.build(ints_n);
@@ -272,8 +329,10 @@ guess.P_alpha = 0.5 * neutral.P_alpha; // split total restricted density evenly
 guess.P_beta  = 0.5 * neutral.P_alpha;
 guess.has_alpha = guess.has_beta = true;
 
-auto ints_c = cpu::scf::build_integrals(frame, basis, /*charge=*/+1);
-auto cfg    = cpu::scf::uhf_config(ints_c, /*n_alpha=*/N/2, /*n_beta=*/N/2 - 1);
+cpu::scf::UHF cation(N/2, N/2 - 1);
+cation.basis = basis;
+cation.charge = 1;
+cation.tol = tol;
 cpu::scf::SCFSolver cation_solver{cfg};
 cation_solver.build(ints_c);
 const auto& cation = cation_solver.run(ints_c, &guess);

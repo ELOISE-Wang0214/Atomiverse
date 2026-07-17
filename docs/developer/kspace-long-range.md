@@ -12,7 +12,7 @@ Real-space and reciprocal-space halves are ordinary components that implement
 | Field | Meaning |
 |---|---|
 | `role` | `RealSpace` (`CoulLong`) or `ReciprocalSpace` (`KSpaceEwald` / `KSpacePME`) |
-| `alpha` | Ewald splitting α [1/Å] — **must match** between the pair |
+| `alpha` | Ewald splitting α (1/Å) — **must match** between the pair |
 | cutoff / accuracy | cold metadata only |
 
 `CPUDriver` validation at `build()` accepts **exactly one** real-space plus
@@ -83,6 +83,6 @@ fixture uses a box large enough that `cutoff + skin` fits in each subdomain
 | Unit + lifecycle | `tests/cpu/kspace/test_pme_coul.cpp` |
 | 1/2-rank parity | `tests/mpi/test_pme_nacl_parity.cpp` |
 | Literature regression | `regressions/md/npt_pme_nacl/` |
-| LAMMPS validation | `benchmarks/md/npt_pme/validation/bench_pme_nacl_lammps` |
+| LAMMPS validation | `/* benchmarks removed; re-add later */ npt_pme/validation/bench_pme_nacl_lammps` |
 
 Build with `-DATV_BUILD_KSPACE=ON` (FFTW3). MPI tests also need `-DATV_USE_MPI=ON`.

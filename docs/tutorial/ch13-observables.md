@@ -1,5 +1,20 @@
 # Chapter 13: Observables and Trajectory Analysis
 
+| | |
+|---|---|
+| **Observers** | RDF, MSD, VACF, VirialStress, Mulliken, density |
+| **Rule** | engine *measures*; molrs *analyzes/stores* (no analysis math in C++) |
+| **MD baseline** | NVE drift in [`07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
+
+Energy conservation is the first observable: if \(E_\mathrm{total}\) drifts,
+nothing downstream (RDF, MSD) is trustworthy. Chapter 10 already shows a flat
+total-energy series from a real Atomiverse NVE run.
+
+Charges and populations are Frame outputs (`kAtom_charge`, Mulliken observers)
+— colour atoms in MolVis by those columns after a SCF/AM1 evaluation
+([Chapter 17](ch17-semiempirical-am1.md) water charges).
+
+
 Every previous chapter produced a *trajectory* — a sequence of frames from an
 integrator ([Chapter 11](ch11-ensembles.md)), an optimizer
 ([Chapter 12](ch12-geometry-optimization.md)), or an AIMD run
@@ -142,7 +157,7 @@ sim.build();
 sim.run(frame, 100'000);
 
 const double E_total = frame.meta.get(kEnergy)
-                     + frame.meta.get(kKinetic);                  // [eV]
+                     + frame.meta.get(kKinetic);                  // (eV)
 ```
 
 In NVE, `E_total` should be constant to a small drift that scales with the
@@ -171,12 +186,12 @@ disk — the observable is computed as the run proceeds.
 normalisation all live in molrs; the observer keeps only O(n_bins) state:
 
 ```cpp
-// r_max [Å], n_bins, capture frequency [steps], output file
+// r_max (Å), n_bins, capture frequency [steps], output file
 ATV::RDF rdf{/*r_max=*/6.0, /*n_bins=*/200, /*freq=*/100, "rdf.dat"};
 sim.set_observer(rdf);
 sim.build();
 sim.run(frame, 1'000'000);
-// rdf.dat now holds two columns: r [Å], g(r); rdf.gr() exposes the curve
+// rdf.dat now holds two columns: r (Å), g(r); rdf.gr() exposes the curve
 ```
 
 Choose `r_max` no larger than half the shortest box length (the minimum-image
@@ -223,7 +238,7 @@ identical to the FFT-based, DOF-averaged batch autocorrelation) and reads the
 curve at `finalize()`:
 
 ```cpp
-// dt [fs], resolution (max lag in captured frames, >= 1), freq [steps], output
+// dt (fs), resolution (max lag in captured frames, >= 1), freq [steps], output
 ATV::VACF vacf{/*dt=*/100.0, /*resolution=*/256, /*freq=*/25, "vacf.dat"};
 sim.set_observer(vacf);
 sim.build();

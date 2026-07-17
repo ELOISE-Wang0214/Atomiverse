@@ -31,10 +31,10 @@ __global__ void harmonic_bond_k(
     const cuda::real_t* __restrict__ z, cuda::real_t* __restrict__ fx,
     cuda::real_t* __restrict__ fy, cuda::real_t* __restrict__ fz,
     cuda::prec_t* __restrict__ energy, cuda::prec_t* __restrict__ stress,
-    const int* __restrict__ bi,
-    const int* __restrict__ bj, const int* __restrict__ bt,
-    const cuda::work_t* __restrict__ K, const cuda::work_t* __restrict__ r0,
-    const cuda::prec_t* __restrict__ box, int n_bonds);
+    const int* __restrict__ bi, const int* __restrict__ bj,
+    const int* __restrict__ bt, const cuda::work_t* __restrict__ K,
+    const cuda::work_t* __restrict__ r0, const cuda::prec_t* __restrict__ box,
+    int n_bonds);
 
 } // namespace kernels
 } // namespace cuda

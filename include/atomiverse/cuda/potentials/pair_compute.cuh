@@ -16,8 +16,8 @@
 
 #include <cstddef>
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/potentials/pair_kernel.h"
 
@@ -73,15 +73,26 @@ inline void launch_pack_pos4(const real_t* x, const real_t* y, const real_t* z,
 }
 
 template <bool Ortho, bool Virial, bool Periodic, bool HasExcl, class Kernel>
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair_compute_verlet(
-    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
-    const float4* __restrict__ pos4, const real_t* __restrict__ q,
-    const int* __restrict__ vl_nbr, const int* __restrict__ vl_cnt,
-    int vl_stride, int n_rows, const int* __restrict__ rows, cuda::Box box,
-    Kernel kernel, work_t cutoff_sq, work_t min_pair_dist_sq,
-    const int* __restrict__ excl_offsets, const int* __restrict__ excl_partners,
-    work_t s_excl) {
+__global__ __launch_bounds__(
+    ATV::cuda::kDefaultBlock,
+    Virial ? 4
+           : 6) void pair_compute_verlet(real_t* __restrict__ fx,
+                                         real_t* __restrict__ fy,
+                                         real_t* __restrict__ fz,
+                                         prec_t* __restrict__ energy,
+                                         prec_t* __restrict__ stress,
+                                         const float4* __restrict__ pos4,
+                                         const real_t* __restrict__ q,
+                                         const int* __restrict__ vl_nbr,
+                                         const int* __restrict__ vl_cnt,
+                                         int vl_stride, int n_rows,
+                                         const int* __restrict__ rows,
+                                         cuda::Box box, Kernel kernel,
+                                         work_t cutoff_sq,
+                                         work_t min_pair_dist_sq,
+                                         const int* __restrict__ excl_offsets,
+                                         const int* __restrict__ excl_partners,
+                                         work_t s_excl) {
     // Row indirection (multi-GPU): thread t computes force row i = rows[t]
     // (an owned-atom subset — interior or boundary), or i = t when rows is
     // null (the full/prefix launch). Neighbor positions still come from the
@@ -132,7 +143,8 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
             real_t scale = real_t(1);
             if constexpr (HasExcl) {
                 if (end_excl > beg_excl
-                    && pc_excl_contains(excl_partners, beg_excl, end_excl, aj)) {
+                    && pc_excl_contains(excl_partners, beg_excl, end_excl,
+                                        aj)) {
                     if (sexcl_r == real_t(0))
                         continue;
                     scale = sexcl_r;

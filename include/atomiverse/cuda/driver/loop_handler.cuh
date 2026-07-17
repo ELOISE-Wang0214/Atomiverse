@@ -73,11 +73,12 @@ namespace cuda {
 
 /// @brief Everything a handler is allowed to look at.
 struct LoopState {
-    int iteration;                ///< 0-based index of the iteration just completed.
-    const cuda::Frame& frame;     ///< Device-resident state as it now stands.
-    const cuda::Context& runtime; ///< Execution context (streams, service slices).
-    const LoopMetrics& metrics;   ///< What this loop's components measured.
-                                  ///< @see facade/loop.h
+    int iteration; ///< 0-based index of the iteration just completed.
+    const cuda::Frame& frame; ///< Device-resident state as it now stands.
+    const cuda::Context&
+        runtime; ///< Execution context (streams, service slices).
+    const LoopMetrics& metrics; ///< What this loop's components measured.
+                                ///< @see facade/loop.h
 };
 
 /// @brief A termination policy, asked once after every iteration of the loop it is on.
@@ -122,8 +123,8 @@ class ForceConverged : public LoopHandler {
     explicit ForceConverged(double ftol = 0.05, double rms_ftol = 0.03,
                             double max_dtol = 0.002, double rms_dtol = 0.001,
                             double etol = 1e-5)
-        : ftol_(ftol), rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol),
-          etol_(etol) {}
+        : ftol_(ftol), rms_ftol_(rms_ftol), max_dtol_(max_dtol),
+          rms_dtol_(rms_dtol), etol_(etol) {}
 
     /// @brief Identifier reported as the stop reason.
     /// @return `"force_converged"`.
@@ -145,8 +146,8 @@ class ForceConverged : public LoopHandler {
         const bool disp_ok = !m.has_displacement
                              || (m.max_displacement < max_dtol_
                                  && m.rms_displacement < rms_dtol_);
-        const bool ok = m.max_force < ftol_ && m.rms_force < rms_ftol_ && disp_ok
-                        && m.energy_change < etol_;
+        const bool ok = m.max_force < ftol_ && m.rms_force < rms_ftol_
+                        && disp_ok && m.energy_change < etol_;
         return ok ? Verdict::Converged : Verdict::Continue;
     }
 

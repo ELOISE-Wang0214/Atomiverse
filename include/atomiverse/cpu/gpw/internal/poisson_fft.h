@@ -22,15 +22,16 @@ namespace gpw {
 
 /// @brief Result of the periodic Poisson solve.
 struct PoissonResult {
-    std::vector<double> v_r;    ///< Hartree potential V(r) on the grid [Hartree].
-    double e_hartree = 0.0;     ///< Hartree energy 0.5 ∫ ρ V dr [Hartree].
+    std::vector<double> v_r; ///< Hartree potential V(r) on the grid [Hartree].
+    double e_hartree = 0.0;  ///< Hartree energy 0.5 ∫ ρ V dr [Hartree].
 };
 
 /// @brief Solve the periodic Poisson equation for the Hartree potential.
 /// @param grid  Uniform orthorhombic grid.
 /// @param rho_r Electron density on the grid, length grid.npts().
 /// @return Hartree potential on the grid and the Hartree energy 0.5 Σ_g w ρ_g V_g.
-PoissonResult solve_poisson(const UniformGrid& grid, const std::vector<double>& rho_r);
+PoissonResult solve_poisson(const UniformGrid& grid,
+                            const std::vector<double>& rho_r);
 
 } // namespace gpw
 } // namespace cpu

@@ -78,7 +78,7 @@ write_restart 	restart.${simname}.dreiding2
 # unfix 1
 # unfix 2
 # write_restart 	restart.${simname}.dreiding3
-# 
+#
 # #####################################################
 # # Equilibration Stage 4 (NPT dynamics at 100 K)
 # fix		1 all npt temp 100 100 50 iso 0 0 1000 drag 2
@@ -91,7 +91,7 @@ write_restart 	restart.${simname}.dreiding2
 # unfix 1
 # unfix 2
 # write_restart 	restart.${simname}.dreiding4
-# 
+#
 # #####################################################
 # # Uniaxial Tensile Deformation
 # run 0
@@ -123,5 +123,5 @@ write_restart 	restart.${simname}.dreiding2
 # unfix 2
 # unfix def1
 # unfix def2
-# 
+#
 # print "All done"

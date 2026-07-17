@@ -2,19 +2,19 @@
 /// @brief cuda::md::MultiGpu — partition a global frame across GPUs + gather
 ///        back; atom conservation and position round-trip.
 
-#include <gtest/gtest.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 #include <set>
 #include <utility>
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/kspace/kspace.cuh"
 #include "atomiverse/cuda/comm/multi_gpu.cuh"
+#include "atomiverse/cuda/kspace/kspace.cuh"
 #include "atomiverse/cuda/potentials/pair.cuh"
 
 using namespace ATV;
@@ -28,7 +28,10 @@ namespace {
 struct StubLaunchCounts {
     static int pair;
     static int kspace;
-    static void reset() { pair = 0; kspace = 0; }
+    static void reset() {
+        pair = 0;
+        kspace = 0;
+    }
 };
 int StubLaunchCounts::pair = 0;
 int StubLaunchCounts::kspace = 0;
@@ -39,7 +42,9 @@ class StubPair : public cuda::Pair {
     std::string name() const override { return "stub-pair"; }
 
   protected:
-    void compute(const cuda::LaunchContext&) override { ++StubLaunchCounts::pair; }
+    void compute(const cuda::LaunchContext&) override {
+        ++StubLaunchCounts::pair;
+    }
 };
 
 class StubKSpace : public cuda::KSpace {
@@ -83,7 +88,9 @@ cpu::Frame make_bonded_grid(double L) {
     const int s = 4;
     // add_bond/add_angle resolve tags through the tag→local map; build it first.
     f.atoms.map_set(0, f.atoms.size());
-    auto tag_of = [&](int ix, int iy, int iz) { return (ix * s + iy) * s + iz; };
+    auto tag_of = [&](int ix, int iy, int iz) {
+        return (ix * s + iy) * s + iz;
+    };
     for (int iy = 0; iy < s; ++iy)
         for (int iz = 0; iz < s; ++iz) {
             for (int ix = 0; ix < s - 1; ++ix)
@@ -121,7 +128,7 @@ TEST(MultiGpu, PartitionRematerializesBondedTopology) {
         GTEST_SKIP() << "needs >=2 GPUs for cross-boundary bonds";
     auto g = make_bonded_grid(12.0); // x-bond length = spacing 3.0
     mg.partition(g);
-    mg.build_halo(3.5);              // ghost shell covers the 3.0 cross-split bond
+    mg.build_halo(3.5); // ghost shell covers the 3.0 cross-split bond
     mg.rebuild_bonded_tuples();
 
     // Reference: every bond once, from the global owner-filtered per-atom store.
@@ -144,8 +151,10 @@ TEST(MultiGpu, PartitionRematerializesBondedTopology) {
         std::vector<int> ai(nb), aj(nb);
         std::vector<long long> tags(nall);
         // UVA (cudaMemcpyDefault) infers the owning device — no set_device.
-        cudaMemcpy(ai.data(), F.bonds.atomi, nb * sizeof(int), cudaMemcpyDefault);
-        cudaMemcpy(aj.data(), F.bonds.atomj, nb * sizeof(int), cudaMemcpyDefault);
+        cudaMemcpy(ai.data(), F.bonds.atomi, nb * sizeof(int),
+                   cudaMemcpyDefault);
+        cudaMemcpy(aj.data(), F.bonds.atomj, nb * sizeof(int),
+                   cudaMemcpyDefault);
         cudaMemcpy(tags.data(), F.atoms.tag, nall * sizeof(long long),
                    cudaMemcpyDefault);
         for (int k = 0; k < nb; ++k) {
@@ -194,7 +203,8 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
     ASSERT_FALSE(ref.empty());
 
     mg.partition(g);
-    mg.setup_force_engine(3.5, 1e-12, 1.0); // halo 3.5 covers the 3.0 bond; eps≈0
+    mg.setup_force_engine(3.5, 1e-12,
+                          1.0); // halo 3.5 covers the 3.0 bond; eps≈0
     // ~4 A of rigid drift over 20 steps → atoms cross subdomain boundaries;
     // migrate (carrying topology) runs every step (reneigh_every=1).
     mg.run_nve_nlist(20, 0.1, 3.5, 1e-12, 1.0, 0.5, 1);
@@ -222,7 +232,8 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
                    cudaMemcpyDefault);
         for (int k = 0; k < nl; ++k)
             for (int m = 0; m < nbv[k]; ++m) {
-                long long a = tags[k], b = ba[static_cast<std::size_t>(k) * MB + m];
+                long long a = tags[k],
+                          b = ba[static_cast<std::size_t>(k) * MB + m];
                 got.insert({std::min(a, b), std::max(a, b)});
             }
     }
@@ -240,19 +251,20 @@ TEST(MultiGpu, BondForceParityVsSingleGpu) {
     cuda::md::MultiGpu mg; // all visible GPUs
     if (mg.count() < 2)
         GTEST_SKIP() << "needs >=2 GPUs for cross-boundary bonds";
-    auto g = make_bonded_grid(12.0); // x-bond length 3.0
+    auto g = make_bonded_grid(12.0);             // x-bond length 3.0
     const std::vector<double> K{100.0}, r0{2.0}; // stretched (force nonzero)
     const std::vector<double> aK{50.0}, aT{109.5};
     const std::vector<std::array<double, 5>> dC{{1.0, 0.5, -0.3, 0.2, 0.1}};
 
     auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
         m.partition(g);
-        m.setup_force_engine(3.5, 0.0, 1.0); // ctx box/stream; LJ unused (eps 0)
+        m.setup_force_engine(3.5, 0.0,
+                             1.0); // ctx box/stream; LJ unused (eps 0)
         m.setup_bonded(K, r0, aK, aT, dC);
-        m.build_halo(3.5);          // ghosts cover the 3.0 bond
-        m.rebuild_bonded_tuples();  // resolve partners to local/ghost rows
-        m.compute_bonded_forces();  // zero → bond (owned+ghost) → reverse_comm
-        m.gather_forces(out);       // owned bond forces by tag (out pre-sized)
+        m.build_halo(3.5);         // ghosts cover the 3.0 bond
+        m.rebuild_bonded_tuples(); // resolve partners to local/ghost rows
+        m.compute_bonded_forces(); // zero → bond (owned+ghost) → reverse_comm
+        m.gather_forces(out);      // owned bond forces by tag (out pre-sized)
         e = m.bonded_energy();
     };
 
@@ -267,9 +279,12 @@ TEST(MultiGpu, BondForceParityVsSingleGpu) {
     std::cerr << "[diag] bond E: multi=" << emulti << " ref=" << eref << "\n";
     EXPECT_NEAR(emulti, eref, 1e-3 * std::abs(eref) + 1e-3);
     for (int i = 0; i < g.atoms.size(); ++i) {
-        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.2) << "fx atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.2) << "fy atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.2) << "fz atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.2)
+            << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.2)
+            << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.2)
+            << "fz atom " << i;
     }
 }
 
@@ -288,11 +303,12 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
 
     auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
         m.partition(g);
-        m.setup_force_engine(5.0, 0.1, 2.0); // real LJ; halo 5.0+skin covers bonds
+        m.setup_force_engine(5.0, 0.1,
+                             2.0); // real LJ; halo 5.0+skin covers bonds
         m.setup_bonded(K, r0, aK, aT, dC);
         m.enable_special_bonds();
-        m.reneighbor();      // halo + re-materialize + exclusion CSR + nlist
-        m.compute_forces();  // LJ (excluded) + bonded, single reverse_comm
+        m.reneighbor();     // halo + re-materialize + exclusion CSR + nlist
+        m.compute_forces(); // LJ (excluded) + bonded, single reverse_comm
         m.gather_forces(out);
         e = m.bonded_energy(); // total PE here
     };
@@ -308,9 +324,12 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
     std::cerr << "[diag] full PE: multi=" << emulti << " ref=" << eref << "\n";
     EXPECT_NEAR(emulti, eref, 1e-3 * std::abs(eref) + 1e-3);
     for (int i = 0; i < g.atoms.size(); ++i) {
-        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.5) << "fx atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5) << "fy atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5) << "fz atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.5)
+            << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5)
+            << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5)
+            << "fz atom " << i;
     }
 }
 
@@ -330,8 +349,9 @@ TEST(MultiGpu, LJOwnedRowParityVsSingleGpu) {
 
     auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
         m.partition(g);
-        m.setup_force_engine(5.0, 0.1, 2.0); // spacing-3.0 grid: many live pairs
-        m.setup_bonded(K, r0);               // no special bonds: LJ unexcluded
+        m.setup_force_engine(5.0, 0.1,
+                             2.0); // spacing-3.0 grid: many live pairs
+        m.setup_bonded(K, r0);     // no special bonds: LJ unexcluded
         m.reneighbor();
         m.compute_forces(); // LJ owned-rows + (zero) bonded + reverse_comm
         m.gather_forces(out);
@@ -351,9 +371,12 @@ TEST(MultiGpu, LJOwnedRowParityVsSingleGpu) {
     ASSERT_NE(eref, 0.0);
     EXPECT_NEAR(emulti, eref, 1e-5 * std::abs(eref));
     for (int i = 0; i < g.atoms.size(); ++i) {
-        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 2e-3) << "fx atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 2e-3) << "fy atom " << i;
-        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 2e-3) << "fz atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 2e-3)
+            << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 2e-3)
+            << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 2e-3)
+            << "fz atom " << i;
     }
 }
 
@@ -372,7 +395,8 @@ TEST(MultiGpu, ForceFamilyFactoryDispatch) {
                           [] { return std::make_unique<StubPair>(); });
     // Optional reciprocal family: a stub KSpace per subdomain.
     mg.set_kspace([] { return std::make_unique<StubKSpace>(); });
-    mg.setup_bonded(K, r0); // real harmonic bond (exercises the rest of the path)
+    mg.setup_bonded(K,
+                    r0); // real harmonic bond (exercises the rest of the path)
     mg.reneighbor();
 
     StubLaunchCounts::reset();
@@ -406,8 +430,8 @@ TEST(MultiGpu, DISABLED_HotPathTiming) {
     }
     auto t0 = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < M; ++i) {
-        mg.forward_comm();    // per-step position halo (forward, packed)
-        mg.compute_forces();  // LJ + bonded + reverse halo (packed)
+        mg.forward_comm();   // per-step position halo (forward, packed)
+        mg.compute_forces(); // LJ + bonded + reverse halo (packed)
     }
     auto t1 = std::chrono::high_resolution_clock::now();
     double us = std::chrono::duration<double, std::micro>(t1 - t0).count() / M;
@@ -525,9 +549,11 @@ TEST(MultiGpu, ForwardCommRefreshesGhostPositions) {
     for (int s = 0; s < 2; ++s) {
         std::vector<float> ax, ay, az;
         read_ghosts(s, ax, ay, az);
-        ASSERT_EQ(ax.size(), bx[s].size()) << "ghost count changed on slot " << s;
+        ASSERT_EQ(ax.size(), bx[s].size())
+            << "ghost count changed on slot " << s;
         for (size_t k = 0; k < ax.size(); ++k) {
-            EXPECT_NEAR(ax[k], bx[s][k] + delta, 1e-5) << "slot " << s << " k " << k;
+            EXPECT_NEAR(ax[k], bx[s][k] + delta, 1e-5)
+                << "slot " << s << " k " << k;
             EXPECT_NEAR(ay[k], by[s][k], 1e-5);
             EXPECT_NEAR(az[k], bz[s][k], 1e-5);
         }
@@ -617,8 +643,9 @@ TEST(MultiGpu, LjForceParityDims2Overlap) {
     // many atoms in the overlap band AND makes them genuine cross-boundary
     // neighbors, so the bug would break parity. The dedup (mode=2 single send)
     // restores it.
-    auto g = make_grid_n(6, 16.0); // box/2 = 8; slab width 8, overlap band [3.5,4.5]
-    const int n = g.atoms.size();  // spacing 2.667 > sigma -> gentle forces
+    auto g =
+        make_grid_n(6, 16.0); // box/2 = 8; slab width 8, overlap band [3.5,4.5]
+    const int n = g.atoms.size(); // spacing 2.667 > sigma -> gentle forces
     for (int i = 0; i < n; ++i) {
         g.atoms.x[i] += 0.3 * std::sin(0.7 * i + 0.1);
         g.atoms.y[i] += 0.3 * std::sin(1.3 * i + 0.2);
@@ -701,7 +728,8 @@ TEST(MultiGpu, LjForceParityNlistVsSingleGpu) {
     double maxabs = 0, maxdiff_bf = 0;
     for (int i = 0; i < n; ++i) {
         maxabs = std::max(maxabs, std::abs(ref.atoms.fx[i]));
-        maxdiff_bf = std::max(maxdiff_bf, std::abs(ref.atoms.fx[i] - bf.atoms.fx[i]));
+        maxdiff_bf =
+            std::max(maxdiff_bf, std::abs(ref.atoms.fx[i] - bf.atoms.fx[i]));
     }
     EXPECT_GT(maxabs, 1e-2) << "reference forces should be nonzero";
     EXPECT_LT(maxdiff_bf, 5e-2) << "cluster path should match brute force";

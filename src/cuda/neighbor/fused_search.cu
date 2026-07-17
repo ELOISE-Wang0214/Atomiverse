@@ -141,9 +141,6 @@ void launch_cluster_displacement(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Kernel: Refresh atom-pair masks on the flat pair list.
 //
@@ -295,11 +292,11 @@ void launch_smart_rolling_prune(
 // ---------------------------------------------------------------------------
 template <typename work_t>
 void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
-                              const real_t* cluster_z, const int* flat_ci,
-                              const int* flat_cj,
-                              const int* num_flat_pairs_device, int pair_count,
-                              work_t search_sq, cuda::Box box,
-                              uint64_t* flat_mask, cudaStream_t stream) {
+                               const real_t* cluster_z, const int* flat_ci,
+                               const int* flat_cj,
+                               const int* num_flat_pairs_device, int pair_count,
+                               work_t search_sq, cuda::Box box,
+                               uint64_t* flat_mask, cudaStream_t stream) {
     if (pair_count <= 0)
         return;
     long long threads_needed =
@@ -319,12 +316,6 @@ void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
     }
     ATV_CUDA_CHECK(cudaGetLastError());
 }
-
-
-
-
-
-
 
 // ---------------------------------------------------------------------------
 // Kernel: build per-atom Verlet list from the cluster CSR
@@ -374,16 +365,20 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void build_verlet_list(
             work_t dy = cluster_y[cj * kClusterSize + sj] - yi;
             work_t dz = cluster_z[cj * kClusterSize + sj] - zi;
             if constexpr (Ortho) {
-                dx -= work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
-                dy -= work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
-                dz -= work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
+                dx -=
+                    work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
+                dy -=
+                    work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
+                dz -=
+                    work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
             } else {
                 box.min_image(dx, dy, dz);
             }
             work_t r2 = dx * dx + dy * dy + dz * dz;
             if (r2 < search_sq) {
                 if (cnt < max_neigh)
-                    verlet_nbr[static_cast<std::size_t>(cnt) * stride + ai] = aj;
+                    verlet_nbr[static_cast<std::size_t>(cnt) * stride + ai] =
+                        aj;
                 ++cnt;
             }
         }
@@ -394,12 +389,12 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void build_verlet_list(
 
 template <typename work_t>
 void launch_build_verlet_list(const real_t* cluster_x, const real_t* cluster_y,
-                             const real_t* cluster_z, const int* row_ptr,
-                             const int* col_idx, const int* original_index,
-                             int num_clusters, int stride, int max_neigh,
-                             work_t search_sq, cuda::Box box, int* verlet_nbr,
-                             int* verlet_cnt, int* overflow,
-                             cudaStream_t stream) {
+                              const real_t* cluster_z, const int* row_ptr,
+                              const int* col_idx, const int* original_index,
+                              int num_clusters, int stride, int max_neigh,
+                              work_t search_sq, cuda::Box box, int* verlet_nbr,
+                              int* verlet_cnt, int* overflow,
+                              cudaStream_t stream) {
     if (num_clusters <= 0)
         return;
     long long threads_needed =
@@ -466,9 +461,9 @@ void launch_atom_displacement_max(const real_t* pos_x, const real_t* pos_y,
     // need to OR into a multi-source flag eventually).
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    atom_displacement_max<work_t><<<grid, block, 0, stream>>>(
-        pos_x, pos_y, pos_z, ref_x, ref_y, ref_z, num_atoms, half_skin_sq,
-        rebuild_flag);
+    atom_displacement_max<work_t>
+        <<<grid, block, 0, stream>>>(pos_x, pos_y, pos_z, ref_x, ref_y, ref_z,
+                                     num_atoms, half_skin_sq, rebuild_flag);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 

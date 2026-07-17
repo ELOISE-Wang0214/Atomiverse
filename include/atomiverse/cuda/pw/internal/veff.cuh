@@ -3,8 +3,8 @@
 ///        mirroring the G-space sum in cpu::pw::internal::VeffBuilder::step.
 #pragma once
 
-#include <cufft.h>
 #include <cuda_runtime.h>
+#include <cufft.h>
 
 namespace ATV {
 namespace cuda {
@@ -23,7 +23,8 @@ namespace internal {
 /// @param d_Veff_G    Output V_eff(G), n_g complex (device). May alias an input.
 /// @param n_g         Number of G-vectors.
 /// @param stream      CUDA stream (default stream if null).
-void veff_assemble_g(const double* d_Vloc_real, const cufftDoubleComplex* d_VH_G,
+void veff_assemble_g(const double* d_Vloc_real,
+                     const cufftDoubleComplex* d_VH_G,
                      const cufftDoubleComplex* d_Vxc_G,
                      cufftDoubleComplex* d_Veff_G, int n_g,
                      cudaStream_t stream = nullptr);

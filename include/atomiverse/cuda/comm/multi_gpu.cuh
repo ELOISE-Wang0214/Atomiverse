@@ -19,9 +19,9 @@
 #include <memory>
 #include <vector>
 
+#include "atomiverse/cuda/comm/domain_decomposition.cuh"
 #include "atomiverse/cuda/component/context.cuh"
 #include "atomiverse/cuda/device/device_manager.cuh"
-#include "atomiverse/cuda/comm/domain_decomposition.cuh"
 #include "atomiverse/cuda/frame/frame.cuh"
 #include <array>
 
@@ -280,7 +280,8 @@ class MultiGpu {
     /// `reneigh_every` steps between full halo+neighbor rebuilds; positions are
     /// forward-communicated on the intervening steps.
     void run_nve_nlist(int steps, double dt, double cutoff, double epsilon,
-                       double sigma, double skin = -1.0, int reneigh_every = 10);
+                       double sigma, double skin = -1.0,
+                       int reneigh_every = 10);
 
     /// Velocity-Verlet NVE using the combined LJ + bonded force path
     /// (compute_forces). Requires setup_force_engine + setup_bonded (and, for a
@@ -296,19 +297,21 @@ class MultiGpu {
     /// `d_sx/sy/sz` (also src-device) and copied into dst's ghost region at
     /// [base, base+cnt). Stable for the life of a reneighbor interval.
     struct HaloPlan {
-        int src = 0;   // source subdomain slot
-        int dst = 0;   // destination subdomain slot
-        int axis = 0;  // cascade stage (0=x,1=y,2=z); replayed in order
-        int cnt = 0;   // atoms transferred
-        int base = 0;  // dst ghost offset (n_local + accumulated)
-        int* d_src_idx = nullptr;          // [cnt] src-array indices (owned OR
-                                           // prior-axis ghost) on src device
+        int src = 0;  // source subdomain slot
+        int dst = 0;  // destination subdomain slot
+        int axis = 0; // cascade stage (0=x,1=y,2=z); replayed in order
+        int cnt = 0;  // atoms transferred
+        int base = 0; // dst ghost offset (n_local + accumulated)
+        int* d_src_idx = nullptr; // [cnt] src-array indices (owned OR
+                                  // prior-axis ghost) on src device
         // Packed [3*cnt] halo staging, shared by the forward (positions) and
         // reverse (forces) exchanges — they never overlap within a step. One
         // buffer per device, so each forward/reverse transfer is a SINGLE
         // cudaMemcpyPeer (x|y|z blocks) instead of three. Allocated by build_halo.
-        real_t* d_pack_src = nullptr; // [3*cnt] src device (forward send / reverse recv)
-        real_t* d_pack_dst = nullptr; // [3*cnt] dst device (forward recv / reverse gather)
+        real_t* d_pack_src =
+            nullptr; // [3*cnt] src device (forward send / reverse recv)
+        real_t* d_pack_dst =
+            nullptr; // [3*cnt] dst device (forward recv / reverse gather)
         // Copy-done events for async P2P ordering across devices. forward_comm /
         // reverse_comm issue cudaMemcpyPeerAsync (non-blocking) so the independent
         // plans within one cascade axis overlap instead of serializing on the
@@ -344,7 +347,8 @@ class MultiGpu {
     std::unique_ptr<DomainDecomposition> dd_;
     std::vector<cuda::Frame> frames_; // per-slot device frame
     std::vector<int> n_local_;        // per-slot owned count
-    std::vector<HaloPlan> halo_plan_; // recorded by build_halo, replayed by forward_comm
+    std::vector<HaloPlan>
+        halo_plan_; // recorded by build_halo, replayed by forward_comm
     int n_global_ = 0;
     double box_L_[3] = {0, 0, 0}; // global orthorhombic box edge lengths
 
@@ -356,8 +360,10 @@ class MultiGpu {
     // factories passed to setup_force_engine / set_kspace / setup_bonded.
     std::vector<std::unique_ptr<cuda::Pair>> pair_;
     std::vector<std::unique_ptr<cuda::KSpace>> kspace_; // reciprocal (optional)
-    std::vector<char> nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
-    std::vector<int> nlist_cap_;    // per-slot: atom count the nlist buffers were built for
+    std::vector<char>
+        nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
+    std::vector<int>
+        nlist_cap_; // per-slot: atom count the nlist buffers were built for
     // Reused per-slot cell-sort scratch (cell-key/perm/cub-temp/staging) so the
     // per-reneighbor owned-atom cell-sort does NO cudaMalloc/Free in steady
     // state. unique_ptr to a forward-declared impl struct (defined in the .cu).
@@ -373,10 +379,11 @@ class MultiGpu {
     // (DeviceManager defer stream). Both are created with cudaStreamCreate
     // (legacy-blocking), so they overlap with each other as long as no
     // per-step work lands on stream 0 — which this pipeline guarantees.
-    std::vector<cudaEvent_t> ev_pos_;    // ctx: vv_first done, positions current
+    std::vector<cudaEvent_t> ev_pos_; // ctx: vv_first done, positions current
     std::vector<cudaEvent_t> ev_ghosts_; // comm: forward unpacks landed here
-    std::vector<cudaEvent_t> ev_force_;  // ctx: force kernels done (ghost rows final)
-    std::vector<cudaEvent_t> ev_rev_;    // comm: reverse scatter-adds landed here
+    std::vector<cudaEvent_t>
+        ev_force_; // ctx: force kernels done (ghost rows final)
+    std::vector<cudaEvent_t> ev_rev_; // comm: reverse scatter-adds landed here
     // Owned-row partition by ghost dependence, rebuilt each reneighbor:
     // rows_[s][0..n_interior_[s]) = owned atoms whose Verlet row holds no
     // ghost index (force computable before the halo lands — overlapped with
@@ -394,14 +401,17 @@ class MultiGpu {
     // partition when the system carries bonded topology (per-atom SoA filled).
     // The tag→local maps are rebuilt each reneighbor over owned+ghost.
     bool bonded_ = false;
-    std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
-    std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
-    std::vector<int*> drop_ctr_;            // [1] persistent dropped-tuple counter, per slot
+    std::vector<std::int64_t*>
+        tagmap_tag_; // [capacity] sorted global tags, per slot
+    std::vector<int*>
+        tagmap_idx_; // [capacity] parallel local indices, per slot
+    std::vector<int*>
+        drop_ctr_; // [1] persistent dropped-tuple counter, per slot
     // GPU tag-map sort scratch (CUB DeviceRadixSort SortPairs): per slot, an
     // iota value buffer [capacity] and a persistent CUB temp-storage blob. The
     // sort runs fully on device — no D2H/host-sort/H2D round-trip per reneighbor.
-    std::vector<int*> tagmap_iota_;         // [capacity] 0..na-1 (sort values-in)
-    std::vector<void*> tagmap_tmp_;         // CUB temp storage, per slot
+    std::vector<int*> tagmap_iota_; // [capacity] 0..na-1 (sort values-in)
+    std::vector<void*> tagmap_tmp_; // CUB temp storage, per slot
     std::vector<std::size_t> tagmap_tmp_sz_; // bytes of tagmap_tmp_[s]
 
     // Cross-GPU bonded force engine (one component per subdomain per type).

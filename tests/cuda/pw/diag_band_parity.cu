@@ -26,9 +26,15 @@ int main(int argc, char** argv) {
     double a = 5.43, h = a / 2;
     f.atoms.x[1] = f.atoms.y[1] = f.atoms.z[1] = a / 4;
     Mat3 cell;
-    cell(0, 0) = 0; cell(0, 1) = h; cell(0, 2) = h;
-    cell(1, 0) = h; cell(1, 1) = 0; cell(1, 2) = h;
-    cell(2, 0) = h; cell(2, 1) = h; cell(2, 2) = 0;
+    cell(0, 0) = 0;
+    cell(0, 1) = h;
+    cell(0, 2) = h;
+    cell(1, 0) = h;
+    cell(1, 1) = 0;
+    cell(1, 2) = h;
+    cell(2, 0) = h;
+    cell(2, 1) = h;
+    cell(2, 2) = 0;
     f.box = cell;
 
     internal::PWProblem prob;
@@ -45,16 +51,18 @@ int main(int argc, char** argv) {
 
     int nb = prob.n_bands;
     bool fresh = (argc > 3); // any 3rd arg: new solver per k-point
-    cuda::pw::internal::DeviceBandSolver solver(ws.fft_nx, ws.fft_ny,
-                                                ws.fft_nz, nb);
+    cuda::pw::internal::DeviceBandSolver solver(ws.fft_nx, ws.fft_ny, ws.fft_nz,
+                                                nb);
     solver.set_veff(ws.V_eff_r.data());
 
     double max_diff = 0;
     for (size_t ik = 0; ik < prob.gv_k.size(); ++ik) {
         ws.gvec = &prob.gv_k[ik];
         ws.n_g = prob.gv_k[ik].count();
-        if (!prob.kb_proj_k.empty()) ws.kb_proj = prob.kb_proj_k[ik];
-        if (!prob.atom_wfc_k.empty()) ws.atom_wfc = prob.atom_wfc_k[ik];
+        if (!prob.kb_proj_k.empty())
+            ws.kb_proj = prob.kb_proj_k[ik];
+        if (!prob.atom_wfc_k.empty())
+            ws.atom_wfc = prob.atom_wfc_k[ik];
 
         // Kinetic on q = k+G, sized to this k-sphere.
         ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
@@ -88,7 +96,8 @@ int main(int argc, char** argv) {
         for (int b = 0; b < nb; ++b) {
             std::printf(" %.6f", ws.eigenvalues[b]);
             double diff = std::abs(ws.eigenvalues[b] - e_cpu[b]);
-            if (diff > max_diff) max_diff = diff;
+            if (diff > max_diff)
+                max_diff = diff;
         }
         std::printf("\n");
 

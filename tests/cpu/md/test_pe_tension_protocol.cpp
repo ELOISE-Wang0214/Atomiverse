@@ -35,8 +35,7 @@ std::string slurp(const std::string& path) {
 // ─────────────────────────────────────────────────────────────────────
 
 TEST(PeTensionBenchmark, ExposesTrajEveryAndRdfFlags) {
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     ASSERT_FALSE(src.empty()) << "polyethylene_tension.cpp not found";
     EXPECT_NE(src.find("--traj-every"), std::string::npos)
         << "benchmark must accept a --traj-every flag";
@@ -70,8 +69,7 @@ std::string stage_section(const std::string& src, int id) {
 
 TEST(PeTensionBenchmark, BuildsAFreshDriverPerStage) {
     // ac-001 — each stage constructs and build()s its own cpu::md::MD.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     ASSERT_FALSE(src.empty());
     // There must be a per-stage construction helper that builds a driver.
     EXPECT_NE(src.find("cpu::md::MD"), std::string::npos)
@@ -90,8 +88,7 @@ TEST(PeTensionBenchmark, BuildsAFreshDriverPerStage) {
 
 TEST(PeTensionBenchmark, Stage1UsesNveLimitPlusLangevinAtDt1) {
     // ac-002 — stage 1 mirrors lammps.in `nve/limit 0.05` + `langevin 500`.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     const std::string s1 = stage_section(src, 1);
     ASSERT_FALSE(s1.empty()) << "stage 1 section marker not found";
     EXPECT_NE(s1.find("NVELimit"), std::string::npos)
@@ -107,8 +104,7 @@ TEST(PeTensionBenchmark, Stage1UsesNveLimitPlusLangevinAtDt1) {
 TEST(PeTensionBenchmark, Stages2And4UseIsotropicNoseHooverNpt) {
     // ac-004 — stages 2 and 4 are isotropic NoseHooverNPT (T_stop==T_start)
     // at dt 0.5 fs targeting P=0.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     for (int id : {2, 4}) {
         const std::string s = stage_section(src, id);
         ASSERT_FALSE(s.empty()) << "stage " << id << " section not found";
@@ -125,8 +121,7 @@ TEST(PeTensionBenchmark, Stages2And4UseIsotropicNoseHooverNpt) {
 TEST(PeTensionBenchmark, Stage3IsSingleRampedNoseHooverNpt) {
     // ac-003 — stage 3 is one NoseHooverNPT with T_start=500, T_stop=100
     // and a set_run_span, not a cool-segment loop.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     const std::string s3 = stage_section(src, 3);
     ASSERT_FALSE(s3.empty()) << "stage 3 section not found";
     EXPECT_NE(s3.find("NoseHooverNPT"), std::string::npos)
@@ -142,8 +137,7 @@ TEST(PeTensionBenchmark, Stage3IsSingleRampedNoseHooverNpt) {
 TEST(PeTensionBenchmark, Stage5IsAnisotropicNoseHooverNptPlusDeform) {
     // ac-005 — stage 5 is NoseHooverNPT couple_axis={false,true,true}
     // plus Deform on axis x at dt 1.0 fs.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     const std::string s5 = stage_section(src, 5);
     ASSERT_FALSE(s5.empty()) << "stage 5 section not found";
     EXPECT_NE(s5.find("NoseHooverNPT"), std::string::npos)
@@ -161,8 +155,7 @@ TEST(PeTensionBenchmark, Stage5IsAnisotropicNoseHooverNptPlusDeform) {
 TEST(PeTensionBenchmark, PerStageTimestepsMatchLammpsIn) {
     // ac-006 — the per-stage dt defaults are 1.0/0.5/0.5/0.5/1.0 fs,
     // byte-aligned with the lammps.in `timestep` budget.
-    const std::string src =
-        slurp(kBenchSrc);
+    const std::string src = slurp(kBenchSrc);
     ASSERT_FALSE(src.empty());
     EXPECT_NE(src.find("dt_stage1"), std::string::npos);
     EXPECT_NE(src.find("dt_stage2"), std::string::npos);

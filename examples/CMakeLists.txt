@@ -3,7 +3,7 @@
 #   NN_topic.cpp   CPU canonical example — one concept per file
 #   NN_topic.cu    optional CUDA twin of the same number (target NN_topic_cuda)
 # Examples demonstrate API usage only; speed / science comparisons
-# live in benchmarks/.
+# lived in benchmarks/ (removed; rebuild later).
 
 # CUDA example (source = <name>.cu, may carry an explicit target name).
 function(atv_add_cuda_example name src)
@@ -45,6 +45,8 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_example(12_delta_scf)
     atv_add_cpp_example(13_mp2)
     atv_add_cpp_example(14_fci)
+    # 16 — Gaussian cube density / HOMO dump for MolVis docs embeds
+    atv_add_cpp_example(16_density_cube)
     if(ATV_BUILD_CUDA)
         atv_add_cuda_example(02_rhf_cuda 02_rhf.cu)
     endif()

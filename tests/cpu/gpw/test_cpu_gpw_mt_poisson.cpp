@@ -34,14 +34,17 @@ std::vector<double> gaussian_density(const UniformGrid& g, double sigma) {
     for (long i = 0; i < g.npts(); ++i) {
         double r[3];
         g.point(i, r);
-        const double d2 = (r[0] - c[0]) * (r[0] - c[0]) + (r[1] - c[1]) * (r[1] - c[1]) +
-                          (r[2] - c[2]) * (r[2] - c[2]);
+        const double d2 = (r[0] - c[0]) * (r[0] - c[0])
+                          + (r[1] - c[1]) * (r[1] - c[1])
+                          + (r[2] - c[2]) * (r[2] - c[2]);
         rho[static_cast<std::size_t>(i)] = norm * std::exp(-d2 / (2.0 * s2));
     }
     return rho;
 }
 
-double analytic_self_energy(double sigma) { return 1.0 / (2.0 * sigma * std::sqrt(M_PI)); }
+double analytic_self_energy(double sigma) {
+    return 1.0 / (2.0 * sigma * std::sqrt(M_PI));
+}
 
 } // namespace
 
@@ -61,7 +64,8 @@ TEST(GpwMtPoisson, MatchesAnalyticGaussianPotential) {
     double max_rel = 0.0;
     for (int di = 2; di < n / 2; ++di) {
         const double r = di * h;
-        if (r > 0.6 * 0.5 * L) break; // stay well inside the cutoff sphere
+        if (r > 0.6 * 0.5 * L)
+            break; // stay well inside the cutoff sphere
         const long idx = (static_cast<long>(half + di) * n + half) * n + half;
         const double v_num = mt.v_r[static_cast<std::size_t>(idx)];
         const double v_ana = std::erf(r / (std::sqrt(2.0) * sigma)) / r;

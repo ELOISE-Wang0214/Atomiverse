@@ -43,8 +43,8 @@ TEST(GthIntegrals, LocalConstantClosedForm) {
     const double gamma = aa + ab + beta;
     const double expected = C1 * std::pow(kPi / gamma, 1.5);
 
-    const double got =
-        gth_local_sr(s_prim(aa, 0, 0, 0), s_prim(ab, 0, 0, 0), kOrigin, rloc, {C1});
+    const double got = gth_local_sr(s_prim(aa, 0, 0, 0), s_prim(ab, 0, 0, 0),
+                                    kOrigin, rloc, {C1});
     EXPECT_NEAR(got, expected, 1e-11);
 }
 
@@ -57,8 +57,8 @@ TEST(GthIntegrals, LocalMomentClosedForm) {
     const double expected =
         C2 / (rloc * rloc) * 3.0 * std::pow(kPi / gamma, 1.5) / (2.0 * gamma);
 
-    const double got = gth_local_sr(s_prim(aa, 0, 0, 0), s_prim(ab, 0, 0, 0), kOrigin,
-                                    rloc, {0.0, C2});
+    const double got = gth_local_sr(s_prim(aa, 0, 0, 0), s_prim(ab, 0, 0, 0),
+                                    kOrigin, rloc, {0.0, C2});
     EXPECT_NEAR(got, expected, 1e-11);
 }
 
@@ -82,8 +82,10 @@ TEST(GthIntegrals, LocalSymmetry) {
 TEST(GthIntegrals, ProjectorL0ClosedForm) {
     const double alpha = 1.4, r_l = 0.5;
     const double beta = 1.0 / (2.0 * r_l * r_l);
-    const double N = std::sqrt(2.0) / (std::pow(r_l, 1.5) * std::sqrt(std::tgamma(1.5)));
-    const double expected = N / std::sqrt(4.0 * kPi) * std::pow(kPi / (alpha + beta), 1.5);
+    const double N =
+        std::sqrt(2.0) / (std::pow(r_l, 1.5) * std::sqrt(std::tgamma(1.5)));
+    const double expected =
+        N / std::sqrt(4.0 * kPi) * std::pow(kPi / (alpha + beta), 1.5);
 
     const double got =
         gth_projector_overlap(s_prim(alpha, 0, 0, 0), kOrigin, 0, 1, r_l, 0);

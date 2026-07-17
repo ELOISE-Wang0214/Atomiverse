@@ -46,7 +46,7 @@ checks the physics rather than the plumbing.
 *and* carry a committed performance suite measured against a production engine.
 Today that is exactly one method family: the Lennard–Jones 12-6 pair style,
 benchmarked against LAMMPS/Kokkos on CPU (xsimd, `-march=native`) and on GPU
-(`benchmarks/md/lj/performance/`). Everything else that is correct but has no
+(`/* benchmarks removed; re-add later */ lj/performance/`). Everything else that is correct but has no
 standing performance gate is a ✓, including code that is fast in practice.
 
 **○** means not implemented. It does not distinguish "planned" from "not

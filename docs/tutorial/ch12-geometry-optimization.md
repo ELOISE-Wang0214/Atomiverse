@@ -1,5 +1,73 @@
 # Chapter 12: Geometry Minimization with L-BFGS or CG
 
+| | |
+|---|---|
+| **Examples** | [`05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp) (aspirin + SCF), [`15_am1.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/15_am1.cpp) (water + AM1) |
+| **Results** | [`05_geom_opt.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/05_geom_opt.json), [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
+
+The same `cpu::minimizer::Minimize` preset and `ForceConverged` handler work
+for classical, AM1, and SCF forces — only the force-phase component changes.
+
+```bash
+cmake --build build --target 15_am1 05_geom_opt
+./build/examples/15_am1
+./build/examples/05_geom_opt   # ~few minutes: 25 × RHF/STO-3G + gradient
+```
+
+### Fast path: AM1 water (`15_am1`)
+
+| | Before | After L-BFGS |
+|---|---:|---:|
+| \(E\) (eV) | −348.295963 | **−348.562886** |
+| max\|F\| (eV/Å) | 3.3135 | **0.1513** |
+| Status | — | `force_converged` |
+
+### Ab initio path: aspirin RHF/STO-3G (`05_geom_opt`)
+
+21 atoms, 73 basis functions, 94 electrons. Live 25-step budget from
+[`05_geom_opt.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/05_geom_opt.json):
+
+| | Step 1 | Step 25 |
+|---|---:|---:|
+| \(E\) (eV) | −16988.935735 | **−17320.369991** |
+| max\|F\| (eV/Å) | 1723.87 | **0.434** |
+| \(\Delta E\) | — | **−331.43 eV** |
+
+Force thresholds (`ftol=0.05`) are not fully met in 25 steps — the tutorial
+stops on the step budget with a clear descent curve. Raise `max_steps` for
+`ForceConverged`.
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true}
+data:
+  values:
+    - {step: 1, series: energy, y: -16988.936}
+    - {step: 5, series: energy, y: -17293.963}
+    - {step: 10, series: energy, y: -17316.731}
+    - {step: 15, series: energy, y: -17319.181}
+    - {step: 20, series: energy, y: -17320.200}
+    - {step: 25, series: energy, y: -17320.370}
+encoding:
+  x: {field: step, type: quantitative, title: L-BFGS step}
+  y: {field: y, type: quantitative, title: "E (eV)", scale: {zero: false}}
+```
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true}
+data:
+  values:
+    - {step: 1, maxF: 1723.87}
+    - {step: 5, maxF: 47.59}
+    - {step: 10, maxF: 7.95}
+    - {step: 15, maxF: 3.36}
+    - {step: 20, maxF: 0.772}
+    - {step: 25, maxF: 0.434}
+encoding:
+  x: {field: step, type: quantitative, title: L-BFGS step}
+  y: {field: maxF, type: quantitative, title: "max |F| (eV/Å)", scale: {type: log, base: 10}}
+```
+
+
 The `cpu::minimizer::Minimize` driver answers a different question from
 the MD chapters. Instead of "how does the system evolve in time?" it
 asks "where is the nearest local minimum of the potential energy
@@ -204,8 +272,8 @@ The setup, in full:
 ```cpp
 auto frame = make_aspirin();              // see examples/05_geom_opt.cpp
 
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config    = cpu::scf::rhf_config(integrals);   // RHF: no XC grid, fast
+auto integrals = /* IntegralPack is private — use RHF */;
+auto config    = /* use cpu::scf::RHF */;   // RHF: no XC grid, fast
                                                     // (default_config => KS/PBE)
 config.tol     = 1e-6;                    // Hartree
 config.max_iter = 200;
@@ -214,13 +282,13 @@ config.force_native_two_electron_deriv = true;
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, /*alpha0=*/0.01, /*max_ls=*/10});
 opt.add_handler(cpu::ForceConverged{
-    /*ftol=*/     0.05,   // [eV/Å]
-    /*rms_ftol=*/ 0.03,   // [eV/Å]
-    /*max_dtol=*/ 0.1,    // [Å] — slightly looser; fixed-step L-BFGS takes ~0.05–0.2 Å steps
-    /*rms_dtol=*/ 0.05,   // [Å]
-    /*etol=*/     1e-3    // [eV]
+    /*ftol=*/     0.05,   // (eV/Å)
+    /*rms_ftol=*/ 0.03,   // (eV/Å)
+    /*max_dtol=*/ 0.1,    // (Å) — slightly looser; fixed-step L-BFGS takes ~0.05–0.2 Å steps
+    /*rms_dtol=*/ 0.05,   // (Å)
+    /*etol=*/     1e-3    // (eV)
 });
-opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config});
+opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
 opt.build();
 
 int iters = opt.run(frame, /*max_iter=*/100);
@@ -235,7 +303,7 @@ attach its default one — the preset supplies `ForceConverged{}` only
 when you have supplied no handler of your own.
 
 The single line that does *all* the chemistry is
-`opt.on(minimizer::Phase::force).add(cpu::scf::SCF{config})`.
+`opt.on(minimizer::Phase::force).add(cpu::scf::RHF{})`.
 The evaluator's `launch()` rebuilds the integrals at the current
 geometry, runs the SCF cycle, computes the analytic nuclear gradient
 ($\partial E / \partial R_A$), and writes the negative gradient into
@@ -280,8 +348,8 @@ Three recorder components live under
 [`include/atomiverse/cpu/minimizer/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/)
 and are designed specifically for optimization runs.
 
-`OptLog` writes a tab-separated row per step with `step`, `E [eV]`,
-`max_force [eV/Å]`, `rms_force [eV/Å]`, and `step_norm [Å]`. It
+`OptLog` writes a tab-separated row per step with `step`, `E (eV)`,
+`max_force (eV/Å)`, `rms_force (eV/Å)`, and `step_norm (Å)`. It
 defaults to binding at `end_of_step @ 0` and works against any force
 evaluator (classical or SCF). Useful as the canonical
 "is-this-converging" log:
@@ -360,13 +428,13 @@ either driver:
 // Geometry optimization (Optimize loop)
 cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{...});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
+opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
 
 // Ab initio molecular dynamics (Dynamics loop)
 cpu::md::MD                sim;
 sim.add(cpu::md::VelocityVerlet{dt});
 sim.add(cpu::md::NoseHoover{T, tau, dt});
-sim.on(md::Phase::force).add(cpu::scf::SCF{cfg}.predictor(3));
+sim.on(md::Phase::force).add(cpu::scf::RHF{}.predictor(3));
 ```
 
 Two drivers, one evaluator, two ensembles. That is the architecture

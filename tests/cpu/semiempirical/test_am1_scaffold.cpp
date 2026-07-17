@@ -18,12 +18,12 @@
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
+#include "atomiverse/cpu/semiempirical/internal/nddo_system.h"
 #include "atomiverse/cpu/semiempirical/nddo_density.h"
 #include "atomiverse/cpu/semiempirical/nddo_fock.h"
 #include "atomiverse/cpu/semiempirical/nddo_hcore.h"
 #include "atomiverse/cpu/semiempirical/nddo_matrix.h"
 #include "atomiverse/cpu/semiempirical/nddo_overlap.h"
-#include "atomiverse/cpu/semiempirical/nddo_system.h"
 #include "atomiverse/cpu/semiempirical/nddo_two_electron.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/molrs.hpp"
@@ -341,7 +341,7 @@ TEST(AM1Solver, BuildRejectsElementsWithoutPortedParameters) {
 
 TEST(NDDOSystem, MethaneMatchesReferenceOrbitalAndElectronBookkeeping) {
     auto frame = make_methane_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
 
     ASSERT_EQ(system.atoms.size(), 5u);
     EXPECT_EQ(system.n_orbitals, 8);
@@ -371,7 +371,7 @@ TEST(NDDOSystem, DOrbitalBookkeepingComesFromReferenceButFockIsGuarded) {
     frame.span(ATV::kAtom_type)[0] = 42;
     frame.simbox = ATV::cpu::Box::cubic(20.0);
 
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     ASSERT_EQ(system.atoms.size(), 1u);
     EXPECT_EQ(system.n_orbitals, 9);
     EXPECT_EQ(system.n_electrons, 6);
@@ -383,7 +383,7 @@ TEST(NDDOSystem, DOrbitalBookkeepingComesFromReferenceButFockIsGuarded) {
 
 TEST(NDDOSystem, InitialDensityGuessFollowsReferencePdiagRule) {
     auto frame = make_methane_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto diag =
         ATV::cpu::semiempirical::initial_diagonal_density_guess(system);
 
@@ -395,7 +395,7 @@ TEST(NDDOSystem, InitialDensityGuessFollowsReferencePdiagRule) {
 
 TEST(NDDOSystem, PackedDensityPopulationsFollowReferenceChrgeRule) {
     auto frame = make_methane_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     std::vector<double> density(
         static_cast<std::size_t>(system.n_orbitals)
             * static_cast<std::size_t>(system.n_orbitals + 1) / 2u,
@@ -519,7 +519,7 @@ TEST(NDDODensityBuilder, RotatedOccupiedOrbitalProducesOffDiagonalDensity) {
 
 TEST(NDDOHCoreBuilder, OneCenterDiagonalMatchesReferenceUspdInitialization) {
     auto frame = make_methane_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto hcore =
         ATV::cpu::semiempirical::NDDOHCoreBuilder{}.build_one_center(system);
 
@@ -552,7 +552,7 @@ TEST(NDDOHCoreBuilder, OneCenterDiagonalMatchesReferenceUspdInitialization) {
 
 TEST(NDDOFockBuilder, OneCenterIntegralsMatchReferenceWstoreSpSubset) {
     auto frame = make_methane_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto* c = ATV::cpu::semiempirical::am1_parameter(6);
     ASSERT_NE(c, nullptr);
 
@@ -571,7 +571,7 @@ TEST(NDDOFockBuilder, OneCenterIntegralsMatchReferenceWstoreSpSubset) {
 
 TEST(NDDOFockBuilder, OneCenterFockUsesReferenceFock1Contraction) {
     auto frame = make_h_atom_frame();
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 2);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 2};
     const auto* h = ATV::cpu::semiempirical::am1_parameter(1);
     ASSERT_NE(h, nullptr);
 
@@ -615,7 +615,7 @@ TEST(NDDOHCoreBuilder, SPHcoreMatchesReferenceH2HcoreMatrix) {
     frame.span(ATV::kAtom_z)[1] = 0.74;
     frame.simbox = ATV::cpu::Box::cubic(20.0);
 
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto hcore =
         ATV::cpu::semiempirical::NDDOHCoreBuilder{}.build(system, frame);
 
@@ -643,7 +643,7 @@ TEST(NDDOTwoElectron, H2TwoCenterIntegralMatchesReferenceHcorePrint) {
     frame.span(ATV::kAtom_z)[1] = 0.74;
     frame.simbox = ATV::cpu::Box::cubic(20.0);
 
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto w = ATV::cpu::semiempirical::build_two_center_integral_block(
         system, frame.span(ATV::kAtom_x), frame.span(ATV::kAtom_y),
         frame.span(ATV::kAtom_z), 1, 0);
@@ -667,7 +667,7 @@ TEST(NDDOFockBuilder, H2FinalDensityFockMatchesReferenceEigenvalues) {
     frame.span(ATV::kAtom_z)[1] = 0.74;
     frame.simbox = ATV::cpu::Box::cubic(20.0);
 
-    const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
+    const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto hcore =
         ATV::cpu::semiempirical::NDDOHCoreBuilder{}.build(system, frame);
     const std::vector<double> density = {1.0, 1.0, 1.0};

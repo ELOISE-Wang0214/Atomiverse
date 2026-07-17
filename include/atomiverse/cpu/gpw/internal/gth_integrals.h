@@ -40,7 +40,7 @@ namespace gpw {
 
 /// @brief A primitive Cartesian Gaussian.
 struct Prim {
-    double alpha = 0.0;          ///< exponent.
+    double alpha = 0.0;           ///< exponent.
     double center[3] = {0, 0, 0}; ///< center A [Bohr].
     int l[3] = {0, 0, 0};         ///< Cartesian powers (lx, ly, lz).
 };

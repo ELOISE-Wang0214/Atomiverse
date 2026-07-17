@@ -8,9 +8,23 @@ diagonalization, so one solve is never enough. Then it replaces the abstract
 version of that loop with the smallest genuine molecular problem in the
 repository, closed-shell Restricted Hartree-Fock (RHF) on H₂.
 
-Keep two examples open as you read: [`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp)
-for the bare self-consistent loop, and [`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp)
-for the real RHF calculation the loop turns into.
+| | |
+|---|---|
+| **Examples** | [`01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp), [`02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp) |
+| **Results JSON** | [`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json) |
+| **Reference** | Szabo & Ostlund, *Modern Quantum Chemistry*, Table 3.7 |
+
+## The molecule
+
+H₂ at \(R = 0.74\) Å in the minimal STO-3G basis — two electrons, two basis
+functions, one occupied MO.
+
+```molvis {format="xyz" representation="ball-and-stick" controls="view" height="280px"}
+2
+name=H2 Connct="[0,1]"
+H  0.0000  0.0000  0.0000
+H  0.7400  0.0000  0.0000
+```
 
 ## Why SCF Has to Iterate
 
@@ -183,16 +197,15 @@ equilibrium bond length, each of charge $+1$, so two electrons to place into
 molecular orbitals. The rest of the file follows the RHF logic directly:
 
 ```cpp
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::rhf_config(integrals, tol);
-config.max_iter = 100;
-cpu::scf::SCFSolver solver{config};
-solver.build(integrals);
-const auto& result = solver.run(integrals);                   // energy [Hartree]
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = tol;
+rhf.max_iter = 100;
+const auto& result = rhf.run(frame);   // energy (Hartree)
 ```
 
 > **Element coverage:** the STO-3G integral path supports elements **H through O
-> (Z = 1–8)**. Atoms with higher atomic number throw at `build_integrals` rather
+> (Z = 1–8)**. Atoms with higher atomic number throw when resolving the basis rather
 > than returning a wrong answer (there are "no fallback values" by design).
 > Heavier-element basis sets are a planned extension.
 
@@ -208,15 +221,7 @@ If you want the same lesson expressed on CUDA, the companion file is
 [`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu), but the CPU example is the
 place to learn the method itself.
 
-## The Result That Convinces You
-
-At $R = 0.74$ Å in STO-3G, RHF should converge to a total energy near
-$\mathbf{-1.1167}$ **Hartree**. Small differences in the last digits from
-precision settings are normal; the point is that the example connects the
-equations you have just read to a real molecular energy that matches
-expectation. This is a **numerical-tolerance** result — the reference is the
-textbook/PySCF value, and the SCF benchmark suite pins Atomiverse's RHF energies
-against PySCF to `1e-7` (see the [benchmark validation policy](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md)).
+## The result that convinces you
 
 Build and run:
 
@@ -226,9 +231,74 @@ cmake --build build --target 02_rhf
 ./build/examples/02_rhf
 ```
 
-A useful check after convergence is that the reported electron count stays
-consistent with the molecule you asked for: the density must still represent two
-electrons in a closed-shell state.
+Numbers below are the live output of that binary, frozen in
+[`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json)
+— not a hand-tuned golden file.
+
+| Quantity | Atomiverse | Reference |
+|---|---:|---:|
+| \(E_\mathrm{total}\) (Ha) | **−1.1167593074** | −1.1168 (Szabo & Ostlund, Table 3.7) |
+| \(E_\mathrm{electronic}\) (Ha) | −1.8318636465 | — |
+| \(V_\mathrm{nuc}\) (Ha) | 0.7151043391 | — |
+| SCF iterations (\(\mathrm{tol}=10^{-10}\)) | 3 | — |
+| \(\varepsilon_0\) (occupied) (Ha) | −0.578554 | — |
+| \(\mathrm{Tr}(PS)\) | 2.000000 | 2 |
+
+The absolute error is \(\approx 4\times 10^{-5}\) Ha — well inside the
+textbook table's four-decimal rounding. SCF benchmarks pin Atomiverse RHF
+energies against PySCF to \(10^{-7}\) Ha (see
+[benchmark validation](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md)).
+After convergence, \(\mathrm{Tr}(PS)=N_e\) must still hold: the density
+represents two electrons in a closed-shell state.
+
+## Electron density (Gaussian cube)
+
+[`examples/16_density_cube.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/16_density_cube.cpp)
+runs the same H₂ / STO-3G RHF and writes ρ(r) plus the HOMO with
+`DensityCubeWriter` / `OrbitalCubeWriter`. Live files:
+
+- [`examples/results/h2_density.cube`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/h2_density.cube)
+- [`examples/results/h2_homo.cube`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/h2_homo.cube)
+
+On a 0.3 Bohr mesh, the grid-integrated density is **1.99945** electrons
+(target 2.0) — see [`16_density_cube.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/16_density_cube.json).
+
+```bash
+cmake --build build --target 16_density_cube
+./build/examples/16_density_cube examples/results/h2_density.cube examples/results/h2_homo.cube
+```
+
+<figure class="molcrafts-web-component-card">
+  <figcaption>
+    <span class="molcrafts-web-component-card__package">MolVis</span>
+    <strong>H₂ electron density (RHF/STO-3G)</strong>
+    <small>Gaussian cube from Atomiverse <code>16_density_cube</code>. Drag to rotate; density isosurface from <code>h2_density.cube</code>.</small>
+  </figcaption>
+  <div class="molcrafts-web-component-preview">
+    <molvis-viewer
+      format="cube"
+      src="../../assets/structures/h2_density.cube"
+      representation="ball-and-stick"
+      controls="view"
+      height="380px"
+    ></molvis-viewer>
+  </div>
+</figure>
+
+```cpp
+cpu::scf::SCF scf{config};
+auto handle = scf.result_handle();
+cpu::Evaluate eval;
+eval.on(evaluate::Phase::evaluate).add(std::move(scf).with_gradient(false));
+eval.on(evaluate::Phase::finalize)
+    .add(cpu::recorder::DensityCubeWriter{handle, "h2_density.cube", 4.0, 0.30});
+eval.on(evaluate::Phase::finalize)
+    .add(cpu::recorder::OrbitalCubeWriter{
+        handle, "h2_homo.cube", /*mo=*/0, cpu::recorder::OrbitalSpin::Alpha,
+        4.0, 0.30});
+eval.build();
+eval.run(frame);
+```
 
 ## Closed-Shell Validity
 
@@ -260,9 +330,8 @@ fails loudly: water cation ($\mathrm{H_2O^+}$, $N_e = 9$) routed through
 guard, and no SCF iteration ever runs.
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
-                                      /*charge=*/+1);   // H2O+, 9 electrons
-cpu::scf::SCFSolver solver{cpu::scf::rhf_config(ints)};
+/* integrals private inside RHF/UHF/RKS/UKS */   // H2O+, 9 electrons
+cpu::scf::RHF rhf;
 solver.build(ints);
 solver.run(ints);             // throws std::invalid_argument — not silence
 ```
@@ -412,13 +481,13 @@ dominates and the cancellation argument no longer holds.
 the sorted orbital energies; the HOMO is the last occupied one:
 
 ```cpp
-auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::rhf_config(ints, 1e-10);
+auto ints   = /* IntegralPack is private — use RHF */;
+auto config = /* SCFConfig is private — set RHF members */;
 config.max_iter = 100;
-cpu::scf::SCFSolver solver{config};
+cpu::scf::RHF rhf;
 solver.build(ints);
 const auto& result = solver.run(ints);
-double eps_homo = result.eigenvalues_alpha(ints.n_occ() - 1); // [Hartree]
+double eps_homo = result.eigenvalues_alpha(ints.n_occ() - 1); // (Hartree)
 double ip_eV    = -eps_homo * 27.211386245988;            // 1 Ha = 27.211386245988 eV
 ```
 
@@ -431,7 +500,7 @@ sweep is `examples/11_koopmans.cpp`.
 basis sets gives the Koopmans IP $= -\varepsilon_{\mathrm{HOMO}}$
 (eV column $= -\varepsilon_{\mathrm{HOMO}} \times 27.211386245988$):
 
-| system | STO-3G $-\varepsilon_{\mathrm{HOMO}}$ [Ha] | STO-3G IP [eV] | 6-31G $-\varepsilon_{\mathrm{HOMO}}$ [Ha] | 6-31G IP [eV] | exp. IP [eV] |
+| system | STO-3G $-\varepsilon_{\mathrm{HOMO}}$ (Ha) | STO-3G IP (eV) | 6-31G $-\varepsilon_{\mathrm{HOMO}}$ (Ha) | 6-31G IP (eV) | exp. IP (eV) |
 |---|---|---|---|---|---|
 | He  | 0.87603551 | 23.84 | 0.91412663 | 24.87 | 24.59 (vertical) |
 | H₂  | 0.57797481 | 15.73 | 0.59539276 | 16.20 | 15.43 (adiabatic) |
@@ -473,7 +542,7 @@ number you already computed, Koopmans is hard to beat.
 
 <!-- Every −ε_HOMO value quoted in this section is transcribed from the pinned
      PySCF 2.13.1 (cart=True, conv_tol=1e-12) table that is the single source
-     of truth in benchmarks/qc/rhf/validation/test_koopmans_parity.cpp; the
+     of truth in tests (Koopmans unit) / literature tables; the
      eV columns are those Ha values × 27.211386245988. The anchors in
      tests/cpu/scf/test_koopmans.cpp lock He/H2/H2O @ STO-3G + He @ 6-31G in
      the default gate. Change one side only in lockstep with the others. -->

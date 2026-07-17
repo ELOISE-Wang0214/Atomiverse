@@ -28,7 +28,9 @@ namespace {
 GridBasisFunction s_gauss(double alpha, double cx, double cy, double cz) {
     GridPrimitive p;
     p.alpha = alpha;
-    p.center[0] = cx; p.center[1] = cy; p.center[2] = cz;
+    p.center[0] = cx;
+    p.center[1] = cy;
+    p.center[2] = cz;
     p.coeff = 1.0;
     return {p};
 }
@@ -47,9 +49,9 @@ TEST(GpwMultigrid, GeometricLadder) {
     const double cell[3] = {10.0, 12.0, 14.0};
     MultiGrid mg = make_multigrid(cell, 320.0, 5, 50.0);
     ASSERT_EQ(mg.levels.size(), 5u);
-    EXPECT_DOUBLE_EQ(mg.level_cutoff_ry.front(), 320.0);       // finest
-    EXPECT_NEAR(mg.level_cutoff_ry.back(), 50.0, 1e-9);         // coarsest ~ rel_cutoff
-    for (std::size_t l = 1; l < mg.levels.size(); ++l)         // strictly coarsening
+    EXPECT_DOUBLE_EQ(mg.level_cutoff_ry.front(), 320.0); // finest
+    EXPECT_NEAR(mg.level_cutoff_ry.back(), 50.0, 1e-9); // coarsest ~ rel_cutoff
+    for (std::size_t l = 1; l < mg.levels.size(); ++l)  // strictly coarsening
         EXPECT_LT(mg.level_cutoff_ry[l], mg.level_cutoff_ry[l - 1]);
     // Coarser levels have fewer points per axis (coarser spacing).
     EXPECT_LT(mg.levels.back().n[0], mg.levels.front().n[0]);
@@ -60,12 +62,12 @@ TEST(GpwMultigrid, ExponentLevelAssignment) {
     const double cell[3] = {10.0, 10.0, 10.0};
     MultiGrid mg = make_multigrid(cell, 320.0, 5, 50.0);
     std::vector<GridBasisFunction> basis = {
-        s_gauss(20.0, 5, 5, 5),  // sharp -> fine
-        s_gauss(0.1, 5, 5, 5),   // diffuse -> coarse
+        s_gauss(20.0, 5, 5, 5), // sharp -> fine
+        s_gauss(0.1, 5, 5, 5),  // diffuse -> coarse
     };
     auto lev = assign_levels(mg, basis, 50.0);
-    EXPECT_EQ(lev[0], 0);                          // sharp on the finest
-    EXPECT_GT(lev[1], lev[0]);                     // diffuse on a coarser level
+    EXPECT_EQ(lev[0], 0);      // sharp on the finest
+    EXPECT_GT(lev[1], lev[0]); // diffuse on a coarser level
 }
 
 // THE property: restrict == transpose of prolong w.r.t. the grid inner products.
@@ -79,14 +81,19 @@ TEST(GpwMultigrid, ProlongRestrictAreAdjoint) {
     auto fill = [](long n, unsigned seed) {
         std::vector<double> v(static_cast<std::size_t>(n));
         unsigned s = seed;
-        for (auto& x : v) { s = s * 1664525u + 1013904223u; x = (s >> 8) / 16777216.0 - 0.5; }
+        for (auto& x : v) {
+            s = s * 1664525u + 1013904223u;
+            x = (s >> 8) / 16777216.0 - 0.5;
+        }
         return v;
     };
     std::vector<double> V = fill(fine.npts(), 7u);
     std::vector<double> g = fill(coarse.npts(), 13u);
 
-    std::vector<double> Pg = prolong_trilinear(coarse, fine, g, /*periodic=*/true);
-    std::vector<double> RV = restrict_transpose(fine, coarse, V, /*periodic=*/true);
+    std::vector<double> Pg =
+        prolong_trilinear(coarse, fine, g, /*periodic=*/true);
+    std::vector<double> RV =
+        restrict_transpose(fine, coarse, V, /*periodic=*/true);
 
     // Integration inner products (sum w * a * b).
     double lhs = 0.0; // <V, Pg>_fine
@@ -107,7 +114,8 @@ TEST(GpwMultigrid, ProlongConstantIsExact) {
     UniformGrid coarse = ATV::cpu::gpw::make_uniform_grid(cell, 50.0);
     std::vector<double> g(static_cast<std::size_t>(coarse.npts()), 2.5);
     auto Pg = prolong_trilinear(coarse, fine, g, true);
-    for (double v : Pg) EXPECT_NEAR(v, 2.5, 1e-10);
+    for (double v : Pg)
+        EXPECT_NEAR(v, 2.5, 1e-10);
 }
 
 #ifdef ATV_GPW_HAS_FFT
@@ -119,7 +127,10 @@ namespace {
 std::vector<double> fill_rand(long n, unsigned seed) {
     std::vector<double> v(static_cast<std::size_t>(n));
     unsigned s = seed;
-    for (auto& x : v) { s = s * 1664525u + 1013904223u; x = (s >> 8) / 16777216.0 - 0.5; }
+    for (auto& x : v) {
+        s = s * 1664525u + 1013904223u;
+        x = (s >> 8) / 16777216.0 - 0.5;
+    }
     return v;
 }
 } // namespace
@@ -139,9 +150,11 @@ TEST(GpwMultigridFFT, ProlongRestrictAreAdjoint) {
     std::vector<double> RV = restrict_fft(fine, coarse, V, /*periodic=*/true);
 
     double lhs = 0.0; // <V, Pg>_fine
-    for (long i = 0; i < fine.npts(); ++i) lhs += fine.weight() * V[i] * Pg[i];
+    for (long i = 0; i < fine.npts(); ++i)
+        lhs += fine.weight() * V[i] * Pg[i];
     double rhs = 0.0; // <RV, g>_coarse
-    for (long i = 0; i < coarse.npts(); ++i) rhs += coarse.weight() * RV[i] * g[i];
+    for (long i = 0; i < coarse.npts(); ++i)
+        rhs += coarse.weight() * RV[i] * g[i];
 
     EXPECT_NEAR(lhs, rhs, 1e-9 * (std::abs(lhs) + 1.0))
         << "restrict_fft is not the exact adjoint of prolong_fft";
@@ -158,10 +171,12 @@ TEST(GpwMultigridFFT, ProlongConservesMass) {
     std::vector<double> Pf = prolong_fft(coarse, fine, f, /*periodic=*/true);
 
     double m_coarse = 0.0;
-    for (double v : f) m_coarse += v;
+    for (double v : f)
+        m_coarse += v;
     m_coarse *= coarse.weight();
     double m_fine = 0.0;
-    for (double v : Pf) m_fine += v;
+    for (double v : Pf)
+        m_fine += v;
     m_fine *= fine.weight();
 
     EXPECT_NEAR(m_fine, m_coarse, 1e-9 * (std::abs(m_coarse) + 1.0))
@@ -180,19 +195,24 @@ TEST(GpwMultigridFFT, ProlongLowFreqIsExact) {
         const double kx = 2.0 * M_PI / cell[0];
         const double ky = 2.0 * M_PI / cell[1];
         const double kz = 2.0 * M_PI / cell[2];
-        return 0.3 + 0.7 * std::cos(kx * r[0]) * std::cos(2.0 * ky * r[1]) +
-               0.5 * std::sin(kz * r[2]);
+        return 0.3 + 0.7 * std::cos(kx * r[0]) * std::cos(2.0 * ky * r[1])
+               + 0.5 * std::sin(kz * r[2]);
     };
     std::vector<double> fc(static_cast<std::size_t>(coarse.npts()));
     for (long i = 0; i < coarse.npts(); ++i) {
-        double r[3]; coarse.point(i, r); fc[static_cast<std::size_t>(i)] = field(r);
+        double r[3];
+        coarse.point(i, r);
+        fc[static_cast<std::size_t>(i)] = field(r);
     }
     std::vector<double> Pf = prolong_fft(coarse, fine, fc, /*periodic=*/true);
     double max_err = 0.0;
     for (long i = 0; i < fine.npts(); ++i) {
-        double r[3]; fine.point(i, r);
-        max_err = std::max(max_err, std::abs(Pf[static_cast<std::size_t>(i)] - field(r)));
+        double r[3];
+        fine.point(i, r);
+        max_err = std::max(
+            max_err, std::abs(Pf[static_cast<std::size_t>(i)] - field(r)));
     }
-    EXPECT_LT(max_err, 1e-8) << "band-limited field not reproduced at fine points";
+    EXPECT_LT(max_err, 1e-8)
+        << "band-limited field not reproduced at fine points";
 }
 #endif // ATV_GPW_HAS_FFT

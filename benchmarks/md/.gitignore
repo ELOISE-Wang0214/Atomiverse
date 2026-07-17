@@ -1,4 +1,0 @@
-# scaling-benchmark scratch — keep results CSVs (committed), drop the rest
-.scanout/
-*/performance/runs/*/logs/
-*.png

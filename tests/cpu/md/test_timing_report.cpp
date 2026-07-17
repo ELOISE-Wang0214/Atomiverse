@@ -19,21 +19,20 @@ using cpu::md::StepTiming;
 
 namespace {
 int handle(TimerRegistry& r, const char* name, int phase) {
-    return r.register_op(TimerKey{name, phase,
-                                  static_cast<int>(StepTiming::classify(name)),
-                                  ""});
+    return r.register_op(TimerKey{
+        name, phase, static_cast<int>(StepTiming::classify(name)), ""});
 }
 } // namespace
 
 TEST(TimerRegistry, RecordRollupReset) {
     TimerRegistry r;
     r.set_enabled(true);
-    const int h_lj = handle(r, "lj", 2);                 // Pair
-    const int h_bond = handle(r, "harmonic_bond", 2);    // Bonded
-    const int h_vv = handle(r, "velocity_verlet", 0);    // Other
+    const int h_lj = handle(r, "lj", 2);              // Pair
+    const int h_bond = handle(r, "harmonic_bond", 2); // Bonded
+    const int h_vv = handle(r, "velocity_verlet", 0); // Other
 
     r.record(h_lj, 1.0);
-    r.record(h_lj, 3.0);   // Pair total 4.0, 2 calls, min1 max3
+    r.record(h_lj, 3.0); // Pair total 4.0, 2 calls, min1 max3
     r.record(h_bond, 0.5);
     r.record(h_vv, 0.25);
     r.set_loop(5.0, 1234);
@@ -61,7 +60,9 @@ TEST(TimerRegistry, RecordRollupReset) {
 
 TEST(TimerRegistry, ScopedTimerRecordsOnlyWhenEnabled) {
     TimerRegistry off;
-    { ScopedTimer st(&off, "region", 2, 0); }
+    {
+        ScopedTimer st(&off, "region", 2, 0);
+    }
     EXPECT_TRUE(off.scoped().empty());
 
     TimerRegistry on;
@@ -116,7 +117,8 @@ TEST(Report, CsvRoutesThroughMetricsFile) {
 
     {
         report::Csv csv(StepTiming::csv_header());
-        csv.row("stage1,1,10,0.5,100,100,100,0.4,0.05,0.05,0,0,0,80,10,10,0,0,0");
+        csv.row(
+            "stage1,1,10,0.5,100,100,100,0.4,0.05,0.05,0,0,0,80,10,10,0,0,0");
     }
     metrics_logger().flush();
 

@@ -25,12 +25,12 @@ comes only after the integrals and workflow are chosen.
 The CPU path exposes the solver lifecycle directly:
 
 ```cpp
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::rhf_config(integrals, tol);
+auto integrals = /* IntegralPack is private — use RHF */;
+auto config = /* use cpu::scf::RHF; rhf.tol = tol */;
 config.max_iter = 100;
-cpu::scf::SCFSolver solver{config};
-solver.build(integrals);
-const auto& result = solver.run(integrals);
+cpu::scf::RHF rhf /* was SCFSolver */;
+
+const auto& result = rhf.run(frame);
 ```
 
 This is the best path for learning, debugging, and validating the mathematics.
@@ -43,7 +43,7 @@ inside `cuda::scf::SCFSolver`, wrapped by the `cuda::scf::SCF`
 component:
 
 ```cpp
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+auto integrals = /* IntegralPack is private — use RHF */;
 
 cuda::scf::SCF scf{integrals, tol, /*max_iter=*/100};
 

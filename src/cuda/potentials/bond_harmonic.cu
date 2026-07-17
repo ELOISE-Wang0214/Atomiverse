@@ -1,11 +1,11 @@
 /// @file cuda/potentials/bond_harmonic.cu
 /// @brief CUDA BondHarmonic — V = K(r − r₀)² (kernel + class).
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 
@@ -18,15 +18,14 @@ using cuda::work_t;
 namespace cuda {
 namespace kernels {
 
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
-                const real_t* __restrict__ z, real_t* __restrict__ fx,
-                real_t* __restrict__ fy, real_t* __restrict__ fz,
-                prec_t* __restrict__ energy, prec_t* __restrict__ stress,
-                const int* __restrict__ bi,
-                const int* __restrict__ bj, const int* __restrict__ bt,
-                const work_t* __restrict__ K, const work_t* __restrict__ r0,
-                cuda::Box box, int n_bonds) {
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void harmonic_bond_k(
+    const real_t* __restrict__ x, const real_t* __restrict__ y,
+    const real_t* __restrict__ z, real_t* __restrict__ fx,
+    real_t* __restrict__ fy, real_t* __restrict__ fz,
+    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
+    const int* __restrict__ bi, const int* __restrict__ bj,
+    const int* __restrict__ bt, const work_t* __restrict__ K,
+    const work_t* __restrict__ r0, cuda::Box box, int n_bonds) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Per-bond locals — initialised to zero so out-of-range threads
@@ -75,15 +74,19 @@ harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
 
         // Bonded virial: w_ab = r_a · F_b (with our sign: dx = r_j - r_i,
         // F_b on atom j = f_over_r * d_ab). Filled here, reduced below.
-        my_v[0] = dx * f_x; my_v[1] = dy * f_y; my_v[2] = dz * f_z;
-        my_v[3] = dx * f_y; my_v[4] = dx * f_z; my_v[5] = dy * f_z;
+        my_v[0] = dx * f_x;
+        my_v[1] = dy * f_y;
+        my_v[2] = dz * f_z;
+        my_v[3] = dx * f_y;
+        my_v[4] = dx * f_z;
+        my_v[5] = dy * f_z;
     }
 
     // Packed warp-shuffle reduction: 7 scalars (energy + 6 stress
     // components) reduced via cg_reduce
     // (cuda-md-review-cleanup-05-reductions-and-atomics).
     extern __shared__ work_t warp_scratch[]; // per-warp staging cells
-    work_t my_vals[7] = {v,        my_v[0], my_v[1], my_v[2],
+    work_t my_vals[7] = {v,       my_v[0], my_v[1], my_v[2],
                          my_v[3], my_v[4], my_v[5]};
     work_t out[7];
     block_reduce_sum_n<7>(my_vals, warp_scratch, out);
@@ -138,9 +141,8 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     int shmem = warps_per_block(block) * sizeof(work_t);
     kernels::harmonic_bond_k<<<grid, block, shmem, stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
-        &f.scalars->energy, &f.scalars->stress[0], f.bonds.atomi,
-        f.bonds.atomj, f.bonds.type, state_->d_K, state_->d_r0,
-        ctx.runtime.host_box, nb);
+        &f.scalars->energy, &f.scalars->stress[0], f.bonds.atomi, f.bonds.atomj,
+        f.bonds.type, state_->d_K, state_->d_r0, ctx.runtime.host_box, nb);
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {

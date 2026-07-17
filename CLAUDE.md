@@ -158,10 +158,7 @@ regressions/                 <domain>/<case>/ — the ONLY home of end-to-end.
                              behind ATV_BUILD_REGRESSIONS; run via the
                              `regressions` target, never by default ctest.
                              Every feature ships one. See regressions/README.md.
-benchmarks/                  <domain>/<case>/{validation,performance} — see benchmarks/README.md
-                             Parity against an external ENGINE (LAMMPS/PySCF/
-                             CP2K) + speed/scaling. Run at acceptance time,
-                             never by ctest.
+benchmarks/                  (removed — rebuild later; not part of ctest)
 examples/                    flat numbered tutorial sequence — see examples/README.md
 docs/                        narrative docs (user-guide / tutorial / developer / api)
 tools/                       data generators + debug harnesses
@@ -286,6 +283,11 @@ a constructor — never a `make_md()` factory; see the OOP rule below.)
 | `cpu::vib::Hessian` | `vib::Phase` | — | fixed 6N displacements + finalize |
 | `cpu::mc::MC` | `sampling::Phase` | — (`Metropolis` **outcome**) | the trial budget |
 | `cpu::PathDriver` | `path::Phase` | `AllReplicasConverged` | every replica converged |
+| **SCF iteration (target)** — hosted by concrete `RHF`/`UHF`/`RKS`/`UKS` | SCF stages | residual / energy Δ handlers | SCF convergence, or budget |
+
+SCF is **not** a seventh "electronic structure category" bolted beside MD: it is
+the same Driver node shape. The **method** (RHF vs UHF vs UKS) is which
+components fill the stages — not an enum on a bag named `SCFSolver`.
 
 **Two orthogonal policy slots.** Every loop has both:
 
@@ -368,31 +370,67 @@ return one concrete type for every workflow. The `PhaseKind` beside the int is w
 it safe, `make_binding` is the only way to build the pair, the cross-workflow misbind gate
 throws at registration, and no caller ever types the int.
 
-**Methods are never categories.** A *method* — how energy/forces are computed
-(Gaussian SCF, plane-wave DFT, GPW, NDDO/AM1) — enters the architecture as an
-**inner Solver** (a public low-level class that owns its iteration loop and
-workspace; **not** a `Driver` subclass) wrapped by an **Evaluator component**
-that any driver binds at its force/energy phase:
+**A loop is a Driver. A method is concrete. There is no generic "SCFSolver".**
 
-| Method | Inner solver | Evaluator component |
+- **Driver = staged loop + termination.** MD, Minimize, MC, Path, and the
+  **self-consistent-field iteration** are all the same shape: stages, iterate,
+  stop by Handler. SCF *does not solve anything* — it only walks
+  Fock → diagonalize → density → mix → residual until a handler says
+  Converged/Stop. Calling that bag `SCFSolver` was a category error.
+- **The thing that is real is the concrete method:** `RHF`, `UHF`, `RKS`,
+  `UKS`, `AM1`, plane-wave DFT, GPW, … Each owns its Hamiltonian / density
+  build / parameters **as members**. There is no
+  `SCFSolver{config.method = HF}` bag that morphs via enum.
+- **Wrong:**
+  ```cpp
+  SCFSolver solver; solver.method = HF; solver.spin = Restricted;
+  solver.run(frame);
+  // or: SCFConfig cfg{RHF{}, ints}; SCFSolver{cfg}.run(ints);
+  ```
+- **Right (target shape):**
+  ```cpp
+  cpu::scf::RHF rhf;          // concrete method — parameters are members
+  rhf.tol = 1e-10;
+  rhf.basis = BasisSet::STO3G;
+  // SCF iteration is the Driver loop; RHF supplies the energy/force stages
+  rhf.run(frame);             // Frame in / Frame out — no IntegralPack, no Config
+  ```
+- When an outer MD/Minimize/Evaluate needs forces, it binds the **concrete
+  method** (or a thin force-slot component that owns that method) at its
+  force/energy phase — not a polymorphic "SCF" that pretends to be every
+  mean-field theory at once.
+
+| Concrete method (target) | What it is | Loop |
 |---|---|---|
-| Gaussian SCF (RHF/UHF/UKS) | `cpu::scf::SCFSolver` / `cuda::scf::SCFSolver` | `cpu::scf::SCF` / `cuda::scf::SCF` |
-| Plane-wave DFT | `cpu::pw::PWSolver` | `cpu::pw::PWEvaluator` |
-| Gaussian-and-plane-waves DFT | `cpu::gpw::GPWSolver` | `cpu::gpw::GPWEvaluator` |
-| NDDO/AM1 semiempirics | `cpu::semiempirical::NDDOSolver` (AM1 parameterization) | `cpu::semiempirical::AM1Evaluator` |
+| `RHF` / `UHF` / `RKS` / `UKS` | Gaussian-basis mean-field **method** | SCF iteration = **Driver** |
+| plane-wave DFT / GPW / AM1 | same: concrete methods | their SCF/OT loops = **Driver** shape |
 
-*Properties* (charges, dipoles, Mulliken populations, AM1-BCC charges, …) are
-component **outputs written to Frame** (typed meta / columns) — never Driver-level
-categories: there is no "charge driver", only components that write charge keys.
+*Properties* (charges, dipoles, Mulliken, AM1-BCC, …) are component **outputs
+written to Frame** — never Driver-level categories: no "charge driver".
 
-Single-point energy in user code is `Evaluate + <method>Evaluator` (or the
-`single_point` helper). There is **no `SinglePoint` class** and **no SCF phase
-enum** — `ATV::scf::Phase` is deleted and grep-gated (`test_scf_phase_scrub`,
-`test_cuda_scf_phase_scrub`). Functional solve wrappers are deleted; callers
-construct the corresponding solver and execute its `build`/`run` lifecycle. Solver step
-helpers (`*::scf::internal::*`, `*::pw::internal::*`) are owned by the solver,
-never inherit `Component`, and are never registered into a Plan;
-facade-public headers must not include them (tests may).
+**Frame is the only system.** There is no parallel `*System`, public
+`AtomList`, user-facing `IntegralPack`, or `*Config` bag:
+
+| Banned as public API | Why |
+|---|---|
+| `AtomList` | Frame already is the atoms (Å, Z). Bohr conversion is private scratch. |
+| `IntegralPack` | Integrals are method/Driver **private workspace**, rebuilt from Frame. |
+| `SCFConfig` / `*Config` bags | Parameters are **members of the concrete method/Driver**. |
+| `NDDOSystem` / any `*System` | Frame is the sole I/O currency. AO index is private scratch. |
+| `SCFSolver` as a bag | Not a thing — methods are `RHF`/`UHF`/…; the loop is a Driver. |
+| free-function factories | `build_*` / `*_config` / `make_*` — constructors or members only. |
+
+Single-point energy in user code is `Evaluate + <concrete method>` (or
+`single_point(frame, method)`). There is **no `SinglePoint` class**. Internal
+step helpers stay owned by the concrete method/Driver, never inherit
+`Component`, never register into a foreign Plan; facade-public headers must
+not include them (tests may).
+
+> **Debt (current tree):** still ships `cpu::scf::SCFSolver` + `SCFConfig` +
+> public `IntegralPack` / `AtomList` / `NDDOSystem`. That surface is
+> **transitional and scheduled for deletion** toward the table above. New
+> code and new APIs must not extend the debt. See `.claude/notes/notes.md`
+> `[2026-07-17] SCF is a Driver; methods are concrete`.
 
 ```
 Preset::run(frame, budget)              # the preset composes the loop primitives
@@ -556,9 +594,10 @@ Precision tiers map 1:1 across backends: `core/precision.h`
 lmptype role (`LocalInt`/`TagInt`/`ImageInt`/`BigInt`).
 
 Per the Frame-purity rule the frame holds **no** method-specific scratch: the
-SCF workspace is owned by `*::scf::SCFSolver`, the plane-wave workspace by
-`cpu::pw::PWSolver`, the neighbor pair list by `*::NeighborList` (published as
-a non-owning `ctx.md.pair_list`). No implicit transfer in low-level operators;
+Method/Driver **private** workspace (integrals, AO maps, grids, DIIS history)
+is owned by the concrete method object — never parked on Frame and never a
+public type. Neighbor pair list stays on `*::NeighborList` (published as a
+non-owning `ctx.md.pair_list`). No implicit transfer in low-level operators;
 CUDA pipelines stay on device between explicit transfers.
 
 ### CUDA execution model
@@ -585,10 +624,9 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 - **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`,
   `ATV::minimizer`, `ATV::sampling`, `ATV::path`, `ATV::scf`, `ATV::pw`,
   `ATV::evaluate`.
-  Inner solvers: `ATV::cpu::scf::SCFSolver`, `ATV::cuda::scf::SCFSolver`,
-  `ATV::cpu::pw::PWSolver`, `ATV::cpu::gpw::GPWSolver`,
-  `ATV::cpu::semiempirical::NDDOSolver`. SCF/PW internals:
-  `ATV::cpu::scf::internal` etc.
+  Concrete methods (target): `RHF` / `UHF` / `RKS` / `UKS`, PW/GPW/AM1.
+  Debt names still in tree: `SCFSolver`, `PWSolver`, `GPWSolver`, `NDDOSolver`.
+  Internals: `ATV::cpu::scf::internal` etc. — not public.
 - **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`.
   Documented exceptions: deliberately CUDA-free bridge headers under `cuda/`
   keep `.h` (`cuda/log_callback.h`, `cuda/timer.h`).
@@ -599,11 +637,39 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   Driver subclass headers include the matching `backend_traits.h`.
 - **OOP, not free-function soup.** Atomiverse is object-oriented: behaviour lives
   on classes, state is constructed, invariants are established in constructors.
-  - **No factory functions.** Components, potentials, basis/PP data, config —
-    all are classes with constructors. Never `make_X()` / `builtin_X()` /
-    `resolve_X()` / `parse_X()` free functions, and never a new config-builder
-    overload where a constructor would do. A lookup is a constructor:
+  - **No factory functions — ever.** Never `make_X()` / `builtin_X()` /
+    `resolve_X()` / `parse_X()` / `build_X()` / `*_config()` free functions that
+    return a constructed object. Grep-gated by
+    `tests/architecture/no_factory_scrub.sh`.
+  - **No public intermediate types for "building" a calculation.** Do **not**
+    invent `AtomList` / `IntegralPack` / `*Config` / `*System` as user-facing
+    steps. Frame is the molecule. Parameters are **members of the concrete
+    method or Driver**. Integrals, AO maps, grids are **private workspace**
+    inside that object — rebuilt from Frame when geometry moves.
+    **Wrong (factory era):**
+    ```cpp
+    auto ints = build_integrals(frame, BasisSet::STO3G);
+    auto cfg  = uhf_config(ints, n_alpha, n_beta, tol);
+    SCFSolver{cfg}.run(ints);
+    ```
+    **Wrong (constructor lipstick on the same layering):**
+    ```cpp
+    IntegralPack ints{frame, BasisSet::STO3G};
+    SCFConfig cfg{SCFConfig::UHF{}, n_alpha, n_beta, tol};
+    SCFSolver{cfg}.run(ints);
+    ```
+    **Right:**
+    ```cpp
+    cpu::scf::UHF uhf;                 // concrete method
+    uhf.n_alpha = n_alpha;
+    uhf.n_beta  = n_beta;
+    uhf.tol     = tol;
+    uhf.basis   = BasisSet::STO3G;
+    uhf.run(frame);                    // Frame in — private workspace inside
+    ```
+    A **lookup** (basis/PP table row) is still a constructor:
     `GthPotential(molrs::Element, name)`, `EAMPotential(molrs::Element, name)`.
+    That is not a factory for a parallel world-model type.
   - **Do not extract single-use code into a function.** If a block runs exactly
     once, from exactly one call site, it stays inline where it runs. A function
     exists to be called from more than one place, or to be tested on its own —
@@ -618,13 +684,17 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     textbook end-to-end case here, as an out-of-library consumer of the public
     API, checked against a **cited literature value** (not a golden snapshot of
     our own output), `<= 60 s`. Never in `tests/`.
-  - `benchmarks/` — external-engine parity and performance, at acceptance time.
+  - ~~`benchmarks/`~~ — removed for now; will be rebuilt later (never part of ctest).
 - **Phase naming:** Evaluate `prepare, evaluate, finalize`; MD LAMMPS-style
   (`initial_integrate, pre_force, force, post_force, final_integrate,
   end_of_step`); Minimizer `search_direction, line_search, force,
   convergence_check, end_of_step`; Vib `setup, displace, force, accumulate,
   diagonalize, thermochem, end_of_step`; Sampling `propose, energy,
-  end_of_step`. **No SCF phase enum** anywhere.
+  end_of_step`. SCF (the **Driver** loop) gets its own typed phase enum when
+  the concrete method is re-hosted as a preset — stages describe the
+  iteration (Fock / diagonalize / density / mix / …), not a fake top-level
+  "electronic structure category". The deleted free-floating `ATV::scf::Phase`
+  without a Driver node stays banned (`test_scf_phase_scrub`).
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversions in `core/units.h`. SCF/PW
   report internally in Hartree/Ry and write eV to
   `frame.meta.get(kEnergy)`.
@@ -655,22 +725,21 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   `f.meta.get(kKinetic)`. The public physical representation is exactly
   `blocks + meta + simbox`; there are no `atoms`, `scalars`, or `box` aliases.
   Header `atomiverse/cpu/frame/frame.h`.
-- **Gaussian integrals:** `cpu::scf::build_integrals(frame, BasisSet, charge=0,
-  compute_eri=false)`. **`compute_eri` defaults to false** — `SCFSolver` builds
-  Fock directly; pass `true` only when you read `integrals.ERI` or feed the CUDA
-  RHFFock kernel. `BasisSet`: `STO3G, Pople631G, Pople631Gs, Def2SVP, Def2TZVP`.
-- **SCF solves:** construct `cpu::scf::SCFSolver` from `rhf_config`,
-  `uhf_config`, `uks_config`, or `default_config`, then call `build(ints)` and
-  `run(ints[, guess])`. `XCType`: `LSDA, PBE, B3LYP, PBE0`.
-- **Evaluators (no categorical setter — bind explicitly):**
-  `eval.on(evaluate::Phase::evaluate).add(cpu::pw::PWEvaluator{cfg})`;
-  `aimd.on(md::Phase::force).add(cpu::scf::SCF{cfg})`. Or the
-  `cpu::single_point(frame, evaluator)` helper.
+- **Electronic structure (target API):** construct a **concrete method**
+  (`RHF` / `UHF` / `RKS` / `UKS` / AM1 / PW / GPW), set parameters as
+  **members**, `run(frame)`. Integrals and AO workspaces are private. Do not
+  document `IntegralPack` / `SCFConfig` / `SCFSolver` as the user path (debt
+  only). `BasisSet`: `STO3G, Pople631G, Pople631Gs, Def2SVP, Def2TZVP`.
+  `XCType`: `LSDA, PBE, B3LYP, PBE0`.
+- **Outer drivers bind concrete methods (no categorical energy setter):**
+  `eval.on(evaluate::Phase::evaluate).add(cpu::pw::PWEvaluator{…})`;
+  `aimd.on(md::Phase::force).add(/* concrete RHF/… force component */)`.
+  Or `cpu::single_point(frame, method)`.
 - **Plane wave:** `cpu::pw::PWConfig{upf_path, ecut_ry, k_mesh, tol, max_iter,
   mix_beta, pulay_depth}` → `PWSolver{cfg}.build(frame); run(frame)` →
   `PWResult{energy [Ry], energy_ha, converged, iterations}`. Empty `upf_path` = toy `V_loc`
-  (runs, unphysical). A real Si UPF ships at
-  `benchmarks/pw/si/validation/reference/Si_lda_nc.upf`.
+  (runs, unphysical). A real Si UPF for PW unit tests ships at
+  `tests/data/pw/Si_lda_nc.upf`.
 - **Categorical setters** (LAMMPS-shaped, on `cpu::md::MD` /
   `cpu::minimizer::Minimize` / `cpu::mc::MC`): `add_potential, set_bond, set_angle,
   set_dihedral, set_neighbor, set_observer, set_record, set_thermo` (shared);
@@ -681,13 +750,12 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   `on(phase).add()` remain public for hooks the categorical API lacks.
 
 ```cpp
-// Single-point RHF (CPU)
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto cfg = cpu::scf::rhf_config(ints, 1e-10);
-cfg.max_iter = 100;
-cpu::scf::SCFSolver solver{cfg};
-solver.build(ints);
-const auto& res = solver.run(ints);                   // res.energy [Hartree]
+// Single-point RHF (CPU) — target shape: concrete method, Frame only
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = 1e-10;
+rhf.max_iter = 100;
+rhf.run(frame);                                       // energy on frame.meta
 
 // Classical MD (Dynamics) — categorical setters
 cpu::md::MD sim;
@@ -697,10 +765,10 @@ sim.set_integrator(cpu::md::VelocityVerlet{0.01});
 sim.set_thermo(100);
 sim.build();  sim.run(frame, 1000);
 
-// AIMD (Dynamics + SCF force provider) — explicit bind (no default_bindings)
+// AIMD — outer MD Driver; force slot binds a concrete method, not SCFSolver
 cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
-aimd.on(md::Phase::force).add(cpu::scf::SCF{cfg});
+aimd.on(md::Phase::force).add(cpu::scf::RHF{/* members */});
 aimd.build();  aimd.run(frame, 100);
 
 // Geometry optimization
@@ -771,8 +839,10 @@ Each derives the loop node (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) **direc
 configures its defaults in its **constructor**. `cpu::SubDriver<P>` wraps any of them as a
 node in another driver's Plan (nesting, on one shared Runtime).
 
-SCF/PW/GPW/NDDO are inner solvers (`*::scf::SCFSolver`, `cpu::pw::PWSolver`,
-`cpu::gpw::GPWSolver`, `cpu::semiempirical::NDDOSolver`), not drivers.
+**Target:** SCF / PW / GPW / NDDO self-consistency loops are **Drivers** (or
+Driver-shaped presets on concrete methods `RHF`, `UHF`, …). **Debt:** the tree
+still has bag-shaped `SCFSolver` / `PWSolver` / `GPWSolver` / `NDDOSolver` —
+do not grow that pattern.
 
 ### MD components
 VelocityVerlet, NVELimit, InitVelocity, NoseHoover (Thermostat), NoseHooverNPT
@@ -816,13 +886,13 @@ LBFGS, CG (Polak-Ribière+), OptLog / TrajectoryWriter / FinalGeometry
 are DD-aware; recorders gather owners to rank 0.
 
 ### Gaussian SCF (`-DATV_BUILD_RHF=ON`)
-Inner solvers `cpu::scf::SCFSolver` / `cuda::scf::SCFSolver` (Hamiltonian →
-diagonalize → density → DIIS → convergence; loop internal). Components
-`cpu::scf::SCF` (`HF` kind; forces with `with_gradient(true)`; plugs into
-Evaluate/MD/Minimize) and the CUDA SCF evaluator (energy/density only — no
-CUDA SCF gradient). Gradients: `scf_gradient(frame, integrals, result, config)`
-(HF + KS). Utilities: `basis_eval.h`, `grid.h`, `xc_functional.h`,
-`aspc_predictor.h`.
+**Target:** concrete methods `RHF` / `UHF` / `RKS` / `UKS`; SCF iteration is a
+Driver loop; parameters are members; Frame in/out. **Debt (shipping):** still
+`cpu::scf::SCFSolver` + `SCFConfig` + public `IntegralPack`, plus component
+`cpu::scf::SCF` (`HF` kind; forces with `with_gradient(true)`). CUDA path is
+energy/density only (no CUDA SCF gradient). Gradients and utilities exist under
+`gradient.h`, `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`.
+New API work lands on the target shape, not the debt.
 
 ### GPW data (in-tree static `.h` tables, no parsing)
 GTH pseudopotentials, MOLOPT/PADE basis sets and the DFT-D3 reference tables

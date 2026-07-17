@@ -17,6 +17,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
+#include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
 #include "atomiverse/facade/stage.h"

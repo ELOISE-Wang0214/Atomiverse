@@ -14,8 +14,8 @@
 
 using ATV::cpu::gpw::make_uniform_grid;
 using ATV::cpu::gpw::UniformGrid;
-using ATV::cpu::gpw::XcOnGrid;
 using ATV::cpu::gpw::xc_grid_pbe;
+using ATV::cpu::gpw::XcOnGrid;
 
 namespace {
 std::vector<double> gaussian_density(const UniformGrid& grid, const double c[3],
@@ -42,10 +42,11 @@ TEST(GpwXcGGA, ConstantDensityLdaLimit) {
 
     XcOnGrid xc = xc_grid_pbe(grid, rho);
 
-    const ATV::cpu::scf::XCOutput ref =
-        ATV::cpu::scf::evaluate_xc(ATV::cpu::scf::XCType::PBE, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
+    const ATV::cpu::scf::XCOutput ref = ATV::cpu::scf::evaluate_xc(
+        ATV::cpu::scf::XCType::PBE, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
     const double volume = cell[0] * cell[1] * cell[2];
-    EXPECT_NEAR(xc.e_xc, volume * rho0 * ref.exc, 1e-9 * std::abs(volume * rho0 * ref.exc));
+    EXPECT_NEAR(xc.e_xc, volume * rho0 * ref.exc,
+                1e-9 * std::abs(volume * rho0 * ref.exc));
     // grad = 0 -> potential is purely the local vrho.
     EXPECT_NEAR(xc.vxc_r[0], ref.vrho_alpha, 1e-9);
     EXPECT_NEAR(xc.vxc_r[grid.npts() / 2], ref.vrho_alpha, 1e-9);
@@ -78,7 +79,8 @@ TEST(GpwXcGGA, PotentialIsFunctionalDerivative) {
 
     XcOnGrid xc0 = xc_grid_pbe(grid, rho);
     double analytic = 0.0; // integral v_xc * bump
-    for (long g = 0; g < ng; ++g) analytic += w * xc0.vxc_r[g] * bump[g];
+    for (long g = 0; g < ng; ++g)
+        analytic += w * xc0.vxc_r[g] * bump[g];
 
     const double eps = 1e-5;
     std::vector<double> rp(rho.size()), rm(rho.size());

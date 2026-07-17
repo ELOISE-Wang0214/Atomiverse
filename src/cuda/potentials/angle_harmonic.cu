@@ -1,10 +1,10 @@
 /// @file cuda/potentials/angle_harmonic.cu
 /// @brief CUDA AngleHarmonic — V = K(θ − θ₀)² (kernel + class).
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 
@@ -27,16 +27,15 @@ AngleHarmonic& AngleHarmonic::operator=(AngleHarmonic&&) noexcept = default;
 
 namespace {
 
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-harmonic_angle_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
-                 const real_t* __restrict__ z, real_t* __restrict__ fx,
-                 real_t* __restrict__ fy, real_t* __restrict__ fz,
-                 prec_t* __restrict__ energy, prec_t* __restrict__ stress,
-                 const int* __restrict__ ai,
-                 const int* __restrict__ aj, const int* __restrict__ ak,
-                 const int* __restrict__ at, const work_t* __restrict__ K,
-                 const work_t* __restrict__ theta0, cuda::Box box,
-                 int n_angles) {
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void harmonic_angle_k(
+    const real_t* __restrict__ x, const real_t* __restrict__ y,
+    const real_t* __restrict__ z, real_t* __restrict__ fx,
+    real_t* __restrict__ fy, real_t* __restrict__ fz,
+    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
+    const int* __restrict__ ai, const int* __restrict__ aj,
+    const int* __restrict__ ak, const int* __restrict__ at,
+    const work_t* __restrict__ K, const work_t* __restrict__ theta0,
+    cuda::Box box, int n_angles) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // See bond_harmonic.cu for the rationale: out-of-range threads must
@@ -129,7 +128,7 @@ harmonic_angle_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
     // components) via cg_reduce
     // (cuda-md-review-cleanup-05-reductions-and-atomics).
     extern __shared__ work_t warp_scratch[]; // per-warp staging cells
-    work_t my_vals[7] = {v,        my_v[0], my_v[1], my_v[2],
+    work_t my_vals[7] = {v,       my_v[0], my_v[1], my_v[2],
                          my_v[3], my_v[4], my_v[5]};
     work_t out[7];
     block_reduce_sum_n<7>(my_vals, warp_scratch, out);

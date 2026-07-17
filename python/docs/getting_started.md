@@ -223,7 +223,9 @@ print(sim.summary())   # per-phase wall-clock breakdown
 ## Next steps
 
 - **Examples** — `python/examples/pw_qe_compare.py` (plane-wave DFT vs
-  Quantum ESPRESSO for Si diamond).
+  Quantum ESPRESSO for Si diamond). Install extras with
+  `pip install -e './python[examples]'` (`molcrafts-molplot` + `molcrafts-molpy`;
+  not matplotlib / ASE).
 - **Benchmarks** — `python/benchmarks/bench_md.py` for system-size scaling.
 - **Tests** — `python/tests/test_surface.py` documents the exact exported
   surface and its fail-loud contract.

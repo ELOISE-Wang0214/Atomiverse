@@ -1,5 +1,29 @@
 # Chapter 1: Systems, Units, Precision, and Validation
 
+| | |
+|---|---|
+| **Units** | eV, Å, fs, amu, eV/Å, K (`core/units.h`) |
+| **Precision** | `StorageReal` / `WorkReal` / `AccReal` (accumulators always `double`) |
+| **IDs** | `LocalInt`, `TagInt`, `ImageInt`, `BigInt` (LAMMPS roles) |
+| **Frame** | `blocks` + `meta` + `simbox` — no method-specific scratch |
+
+Every later chapter reuses this model. Finite-difference gradient checks are the
+universal validation: analytic forces from any evaluator must match energy
+differences within a documented tolerance before they feed MD or Minimize.
+
+```cpp
+cpu::Frame f(n);
+auto x = f.span(kAtom_x);          // (Å)
+f.simbox = cpu::Box::cubic(L);     // (Å)
+// after a force evaluation:
+double E = f.meta.get(kEnergy);    // (eV) for classical/AM1; SCF writes eV too
+```
+
+Cross-check: run `02_rhf` and confirm the textbook energy in
+[`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json)
+— that is an end-to-end proof that units, Frame, and SCF agree.
+
+
 Before any method — Hartree-Fock, DFT, molecular dynamics — there is a
 system: a set of atoms in a box, described in a fixed set of units, stored
 at a chosen numerical precision, and only trusted once it has been
@@ -78,7 +102,7 @@ x[2] = 0.0; y[2] = -0.7555; z[2] = -0.4712;
 
 mass[0] = 15.999; mass[1] = 1.008; mass[2] = 1.008; // amu
 
-frame.simbox = cpu::Box::cubic(100.0);      // a big non-interacting cell [Å]
+frame.simbox = cpu::Box::cubic(100.0);      // a big non-interacting cell (Å)
 ```
 
 For a small molecule the initializer-list form used throughout the test
@@ -116,7 +140,7 @@ exposes the queries force kernels need:
 
 ```cpp
 cpu::Box box = cpu::Box::cubic(20.0);      // or Box::orthorhombic(lx, ly, lz)
-double lx  = box.length(0);                // edge along x [Å]
+double lx  = box.length(0);                // edge along x (Å)
 double vol = box.volume();                 // [Å^3]
 bool  cube = box.is_orthorhombic();        // true here
 ```
@@ -217,7 +241,7 @@ correct.
 
 Atomiverse ships this oracle as a public function so you can validate any
 geometry yourself, using the same
-[`scf_gradient`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient.h) /
+`RHF::forces` (private gradient engine) /
 `scf_finite_difference_gradient` pair the test suite uses:
 
 ```cpp
@@ -225,25 +249,14 @@ using namespace ATV;
 
 cpu::Frame frame = /* H2O, positions in Å, type = Z */;
 
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config    = cpu::scf::rhf_config(integrals);       // RHF, MINAO guess
-cpu::scf::SCFSolver solver{config};
-solver.build(integrals);
-const auto& result = solver.run(integrals);
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = 1e-12;   // tight for FD comparisons
+const auto& result = rhf.run(frame);
 
-// Analytic gradient: forces [n_atoms, 3] in eV/Å, energy in eV.
-auto analytic = cpu::scf::scf_gradient(frame, integrals, result, config);
-
-// Independent oracle: central differences, 6*n_atoms + 1 SCF solves.
-auto fd = cpu::scf::scf_finite_difference_gradient(
-    frame, config, /*charge=*/0, /*h=*/5e-5, cpu::scf::BasisSet::STO3G);
-
-double max_err = 0.0;
-for (int A = 0; A < frame.nlocal(); ++A)
-    for (int d = 0; d < 3; ++d)
-        max_err = std::max(max_err,
-                           std::abs(analytic.forces(A, d) - fd.forces(A, d)));
-// max_err should be ~1e-5 eV/Å or smaller for a gradient-stationary SCF.
+// Analytic forces [n_atoms, 3] eV/Å — method owns private workspace.
+auto analytic = rhf.forces(frame);
+// max |F| or FD comparisons use analytic.forces / analytic.energy
 ```
 
 Two details are worth internalizing because they recur:
@@ -251,7 +264,7 @@ Two details are worth internalizing because they recur:
 - **The SCF must be gradient-stationary.** Finite differences probe the
   *true* energy surface, so if the SCF is only loosely converged the ±h
   energies carry convergence noise and the FD gradient is dominated by it.
-  For a tight check, tighten the config: `rhf_config(ints, /*tol=*/1e-12)`
+  For a tight check, tighten the config: `rhf.tol = 1e-12`
   and set `config.conv_tol_grad = 1e-9`. (This is exactly what the vibration
   tests do — see [Chapter 14](ch14-vibrations.md).)
 - **The step size `h` trades truncation against round-off.** The default

@@ -23,7 +23,8 @@
 #include <vector>
 
 #ifndef ATV_PE_TENSION_BIN
-#error "ATV_PE_TENSION_BIN must be defined to the polyethylene_tension binary path"
+#error                                                                         \
+    "ATV_PE_TENSION_BIN must be defined to the polyethylene_tension binary path"
 #endif
 
 namespace {
@@ -35,12 +36,11 @@ namespace {
 /// @return system() exit code.
 int run_pe_tension(const std::string& out_dir, int sync_mode) {
     std::filesystem::create_directories(out_dir);
-    std::string cmd = "ATV_TEST_RECORD_SYNC=" + std::to_string(sync_mode)
-                      + " " + std::string(ATV_PE_TENSION_BIN)
+    std::string cmd = "ATV_TEST_RECORD_SYNC=" + std::to_string(sync_mode) + " "
+                      + std::string(ATV_PE_TENSION_BIN)
                       + " --backend cuda --mode stage:2 --scale 0.001"
-                      + " --seed 12345 --print-every 1"
-                      + " --quiet --out-dir " + out_dir
-                      + " > /dev/null 2>&1";
+                      + " --seed 12345 --print-every 1" + " --quiet --out-dir "
+                      + out_dir + " > /dev/null 2>&1";
     return std::system(cmd.c_str());
 }
 
@@ -104,8 +104,7 @@ TEST(CudaAsyncRecordCorrectness, AsyncMatchesSync) {
         << "async vs sync row count differs by more than 1: async=" << da
         << " sync=" << ds;
 
-    const std::size_t n_compare =
-        std::min(async_rows.size(), sync_rows.size());
+    const std::size_t n_compare = std::min(async_rows.size(), sync_rows.size());
     int compared_cells = 0;
     for (std::size_t i = 0; i < n_compare; ++i) {
         const auto& a = async_rows[i];
@@ -126,8 +125,8 @@ TEST(CudaAsyncRecordCorrectness, AsyncMatchesSync) {
                 << " finiteness mismatch: async=" << a[c] << " sync=" << s[c];
             const double tol = 1e-6 * std::max(std::abs(s[c]), 1.0);
             EXPECT_NEAR(a[c], s[c], tol)
-                << "row " << i << " col " << c
-                << " async=" << a[c] << " sync=" << s[c];
+                << "row " << i << " col " << c << " async=" << a[c]
+                << " sync=" << s[c];
             ++compared_cells;
         }
     }

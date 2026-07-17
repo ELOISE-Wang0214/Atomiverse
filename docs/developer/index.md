@@ -41,7 +41,7 @@ way it is, not to assume domain knowledge.
 | `include/atomiverse/cpu`, `src/cpu` | CPU backend — frame, drivers, MD, MC, minimizer, SCF, PW, GPW, semiempirics, observers |
 | `include/atomiverse/cuda`, `src/cuda` | CUDA backend — staged components, transfers, async observer bridges |
 | `tests` | **unit tests only** — one function or method each, at millisecond scale |
-| `benchmarks` | every end-to-end and external-parity check, run at acceptance time, never by `ctest` |
+| ~~`benchmarks`~~ | removed for rebuild; regressions hold textbook e2e |
 | `examples` | the numbered tutorial programs |
 | `docs` | this site |
 
@@ -63,7 +63,7 @@ Ask in order:
 5. Is it a new **algorithm** (integrator, optimizer, mover)? → a **Component**,
    never a driver subclass.
 6. Does it need a test? Unit test in `tests/`; anything end-to-end or compared
-   against an external engine goes in `benchmarks/`. This split is a hard rule.
+   against an external engine will live in a future benchmarks tree (currently removed). Unit tests stay in `tests/`.
 
 ## Maintaining these docs
 

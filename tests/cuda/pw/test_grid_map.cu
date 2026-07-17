@@ -3,8 +3,8 @@
 ///        G-vector list and the dense Hermitian half-complex FFT grid against
 ///        an identical host fold (the CPU PW_LDA / PW_Veff pad arithmetic).
 #include "atomiverse/cuda/pw/internal/grid_map.cuh"
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <random>
 #include <vector>
@@ -50,7 +50,8 @@ GList make_glist(int nx, int ny, int nz, unsigned seed) {
             for (int l = -nz / 2; l <= nz / 2; ++l) {
                 bool conj;
                 int idx = host_fold(h, k, l, nx, ny, nz, conj);
-                if (used[idx]) continue; // keep first → no scatter collision
+                if (used[idx])
+                    continue; // keep first → no scatter collision
                 used[idx] = 1;
                 g.h.push_back(h);
                 g.k.push_back(k);

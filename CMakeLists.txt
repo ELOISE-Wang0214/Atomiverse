@@ -354,6 +354,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/hamiltonian_builder.cpp
             src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/scf_solver.cpp
+            src/cpu/scf/methods.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp
             src/cpu/scf/xc_functional.cpp
@@ -845,8 +846,10 @@ if(NOT ATV_DOCS_ONLY)
         add_subdirectory(regressions)
     endif()
 
+    # Benchmarks tree removed (rebuild later under a fresh layout).
+    # option ATV_BUILD_BENCHMARKS kept OFF-only so existing CI scripts don't break.
     if(ATV_BUILD_BENCHMARKS)
-        add_subdirectory(benchmarks)
+        message(WARNING "ATV_BUILD_BENCHMARKS=ON but benchmarks/ was removed; skipping.")
     endif()
 
     if(ATV_BUILD_EXAMPLES)

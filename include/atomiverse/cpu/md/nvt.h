@@ -40,11 +40,11 @@ struct NVT {
     /// @brief Thermostat strategy bundled under NVT.
     enum class Thermostat { NoseHoover, CSVR };
 
-    double dt;                              ///< Timestep [fs].
-    double T;                               ///< Target temperature [K].
-    double tau;                             ///< Coupling time [fs] (CP2K TIMECON).
-    Thermostat thermo = Thermostat::CSVR;   ///< Thermostat kind.
-    std::uint32_t seed = 0u;                ///< RNG seed (CSVR; ignored by NH).
+    double dt;  ///< Timestep [fs].
+    double T;   ///< Target temperature [K].
+    double tau; ///< Coupling time [fs] (CP2K TIMECON).
+    Thermostat thermo = Thermostat::CSVR; ///< Thermostat kind.
+    std::uint32_t seed = 0u;              ///< RNG seed (CSVR; ignored by NH).
 
     /// @brief Optional linear-ramp end temperature [K]. NaN (default) = no ramp
     /// (constant T). When set, also set @ref ramp_first / @ref ramp_last.
@@ -55,7 +55,8 @@ struct NVT {
     /// @brief True when a `T_start → T_stop` ramp over [ramp_first, ramp_last]
     /// is configured.
     bool has_ramp() const {
-        return T_stop == T_stop /*not NaN*/ && ramp_first >= 0 && ramp_last >= 0;
+        return T_stop == T_stop /*not NaN*/ && ramp_first >= 0
+               && ramp_last >= 0;
     }
 
   private:

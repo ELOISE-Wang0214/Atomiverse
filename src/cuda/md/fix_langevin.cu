@@ -3,8 +3,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cmath>
 #include <cstdint>
@@ -35,7 +35,7 @@ __device__ inline std::uint64_t splitmix64(std::uint64_t x) {
 __device__ inline work_t u01_from(std::uint64_t h) {
     // Map upper 53 bits into [0, 1); avoid exact 0 for log() safety.
     work_t u = static_cast<work_t>((h >> 11) | std::uint64_t(1))
-              * (work_t(1) / work_t(9007199254740992.0)); // 2^53
+               * (work_t(1) / work_t(9007199254740992.0)); // 2^53
     return u;
 }
 
@@ -48,12 +48,13 @@ __device__ inline void box_muller(work_t u1, work_t u2, work_t& z1,
     z2 = r * sin(theta);
 }
 
-__global__ void apply_langevin(
-    const real_t* __restrict__ vx, const real_t* __restrict__ vy,
-    const real_t* __restrict__ vz, real_t* __restrict__ fx,
-    real_t* __restrict__ fy, real_t* __restrict__ fz,
-    const real_t* __restrict__ mass, const std::int64_t* __restrict__ tag,
-    std::uint64_t base_seed, work_t T_live, work_t damp, work_t dt, int n) {
+__global__ void
+apply_langevin(const real_t* __restrict__ vx, const real_t* __restrict__ vy,
+               const real_t* __restrict__ vz, real_t* __restrict__ fx,
+               real_t* __restrict__ fy, real_t* __restrict__ fz,
+               const real_t* __restrict__ mass,
+               const std::int64_t* __restrict__ tag, std::uint64_t base_seed,
+               work_t T_live, work_t damp, work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -62,8 +63,8 @@ __global__ void apply_langevin(
     // gfactor1 (drag): `-m / (damp · ftm2v)`. Force = gfactor1 · v.
     work_t gfactor1 = -m / (damp * kFtm2v);
     // gfactor2 (random): `sqrt(2 m kB T_live / (damp · dt · mvv2e)) / ftm2v`.
-    work_t gfactor2_inside = work_t(2) * m * kBoltzmann * T_live
-                             / (damp * dt * kMvv2e);
+    work_t gfactor2_inside =
+        work_t(2) * m * kBoltzmann * T_live / (damp * dt * kMvv2e);
     work_t gfactor2 = sqrt(gfactor2_inside) / kFtm2v;
 
     // Per-atom (seed, step, tag)-keyed RNG. Multiply the global tag by

@@ -49,8 +49,8 @@ struct D3Result {
 /// @return Energy [Hartree] and forces [Hartree/Bohr].
 D3Result dftd3_pbe(const std::vector<int>& Z,
                    const std::vector<std::array<double, 3>>& pos_bohr,
-                   const double cell_bohr[3], bool periodic, const D3Params& params,
-                   double rcut_bohr = 40.0);
+                   const double cell_bohr[3], bool periodic,
+                   const D3Params& params, double rcut_bohr = 40.0);
 
 } // namespace gpw
 } // namespace cpu

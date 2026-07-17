@@ -189,9 +189,8 @@ __device__ __forceinline__ void atomic_max_nonneg(float* addr, float val) {
 ///                     (≥ blockDim.x / 32 cells).
 /// @param out Per-block sums (length N; valid only on thread 0).
 template <int N, typename T>
-__device__ __forceinline__ void block_reduce_sum_n(const T (&values)[N],
-                                                   T* warp_scratch,
-                                                   T (&out)[N]) {
+__device__ __forceinline__ void
+block_reduce_sum_n(const T (&values)[N], T* warp_scratch, T (&out)[N]) {
 #pragma unroll
     for (int i = 0; i < N; ++i)
         out[i] = block_reduce_sum<T>(values[i], warp_scratch);

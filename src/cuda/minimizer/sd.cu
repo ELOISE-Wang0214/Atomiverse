@@ -2,10 +2,10 @@
 /// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * kFtm2v.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/minimizer/sd.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/minimizer/sd.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -87,8 +87,8 @@ void SteepestDescent::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     sd_step<<<grid, block, 0, stream>>>(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,
-        frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
-        ctx.runtime.host_box, alpha_, n);
+        frame.atoms.fy, frame.atoms.fz, frame.atoms.mass, ctx.runtime.host_box,
+        alpha_, n);
     ++step_;
 }
 

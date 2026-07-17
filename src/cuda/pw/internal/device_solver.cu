@@ -34,14 +34,14 @@ constexpr int kBlock = 256;
 
 inline void check_cufft(cufftResult r, const char* what) {
     if (r != CUFFT_SUCCESS)
-        throw std::runtime_error(std::string("cuda::pw cuFFT error in ")
-                                 + what + ": " + std::to_string(r));
+        throw std::runtime_error(std::string("cuda::pw cuFFT error in ") + what
+                                 + ": " + std::to_string(r));
 }
 
 inline void check_cublas(cublasStatus_t s, const char* what) {
     if (s != CUBLAS_STATUS_SUCCESS)
-        throw std::runtime_error(std::string("cuda::pw cuBLAS error in ")
-                                 + what + ": " + std::to_string(s));
+        throw std::runtime_error(std::string("cuda::pw cuBLAS error in ") + what
+                                 + ": " + std::to_string(s));
 }
 
 inline int n_blocks(int n) { return (n + kBlock - 1) / kBlock; }
@@ -183,17 +183,14 @@ __device__ double ylm_single(int l, int m, double x, double y, double z,
 /// β_{j}(G_i) = (4π/√Ω)·(−i)^l·Y_lm(Ĝ)·f_l(G)·exp(−iG·R_a), column-major
 /// (ng × ncol). Zero where the radial table is negligible or absent —
 /// identical to the CPU `continue` on |f_l| < 1e-30.
-__global__ void k_build_beta(const double* __restrict__ gx,
-                             const double* __restrict__ gy,
-                             const double* __restrict__ gz,
-                             const int* __restrict__ col_l,
-                             const int* __restrict__ col_m,
-                             const double* __restrict__ col_pos,
-                             const int* __restrict__ col_fgoff,
-                             const int* __restrict__ col_fglen,
-                             const double* __restrict__ fg, double pref,
-                             int ng, int ncol,
-                             cufftDoubleComplex* __restrict__ beta) {
+__global__ void
+k_build_beta(const double* __restrict__ gx, const double* __restrict__ gy,
+             const double* __restrict__ gz, const int* __restrict__ col_l,
+             const int* __restrict__ col_m, const double* __restrict__ col_pos,
+             const int* __restrict__ col_fgoff,
+             const int* __restrict__ col_fglen, const double* __restrict__ fg,
+             double pref, int ng, int ncol,
+             cufftDoubleComplex* __restrict__ beta) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y;
     if (i >= ng || j >= ncol)
@@ -222,14 +219,16 @@ __global__ void k_build_beta(const double* __restrict__ gx,
     beta[static_cast<size_t>(j) * ng + i] = out;
 }
 
-template <typename T> void device_free(T*& p) {
+template <typename T>
+void device_free(T*& p) {
     if (p) {
         cudaFree(p);
         p = nullptr;
     }
 }
 
-template <typename T> T* device_alloc(size_t n) {
+template <typename T>
+T* device_alloc(size_t n) {
     T* p = nullptr;
     ATV_CUDA_CHECK(cudaMalloc(&p, n * sizeof(T)));
     return p;
@@ -344,8 +343,8 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
     device_free(d_betad_);
     device_free(d_proj_c_);
     if (n_proj_ > 0) {
-        d_beta_ = device_alloc<cufftDoubleComplex>(
-            static_cast<size_t>(ng) * n_proj_);
+        d_beta_ =
+            device_alloc<cufftDoubleComplex>(static_cast<size_t>(ng) * n_proj_);
         d_betad_ = device_alloc<double>(n_proj_);
         d_proj_c_ = device_alloc<cufftDoubleComplex>(n_proj_);
         ATV_CUDA_CHECK(cudaMemcpy(d_betad_, col_d.data(),
@@ -374,11 +373,9 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
         ATV_CUDA_CHECK(cudaMemcpy(d_cp, col_pos.data(),
                                   3 * n_proj_ * sizeof(double),
                                   cudaMemcpyHostToDevice));
-        ATV_CUDA_CHECK(cudaMemcpy(d_co, col_fgoff.data(),
-                                  n_proj_ * sizeof(int),
+        ATV_CUDA_CHECK(cudaMemcpy(d_co, col_fgoff.data(), n_proj_ * sizeof(int),
                                   cudaMemcpyHostToDevice));
-        ATV_CUDA_CHECK(cudaMemcpy(d_cn, col_fglen.data(),
-                                  n_proj_ * sizeof(int),
+        ATV_CUDA_CHECK(cudaMemcpy(d_cn, col_fglen.data(), n_proj_ * sizeof(int),
                                   cudaMemcpyHostToDevice));
         if (!fg_flat.empty())
             ATV_CUDA_CHECK(cudaMemcpy(d_fg, fg_flat.data(),
@@ -387,9 +384,8 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
 
         double pref = 4.0 * M_PI / std::sqrt(static_cast<double>(ws.omega));
         dim3 grid(n_blocks(ng), n_proj_);
-        k_build_beta<<<grid, kBlock>>>(d_gx, d_gy, d_gz, d_cl, d_cm, d_cp,
-                                       d_co, d_cn, d_fg, pref, ng, n_proj_,
-                                       d_beta_);
+        k_build_beta<<<grid, kBlock>>>(d_gx, d_gy, d_gz, d_cl, d_cm, d_cp, d_co,
+                                       d_cn, d_fg, pref, ng, n_proj_, d_beta_);
         ATV_CUDA_CHECK(cudaGetLastError());
         ATV_CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -427,16 +423,15 @@ void DeviceBandSolver::ensure_subspace_capacity(int ng, int cap) {
     d_ritz_ = device_alloc<cufftDoubleComplex>(ngs * n_bands_);
     d_hritz_ = device_alloc<cufftDoubleComplex>(ngs * n_bands_);
     d_hs_ = device_alloc<cufftDoubleComplex>(static_cast<size_t>(cap) * cap);
-    d_x_ = device_alloc<cufftDoubleComplex>(static_cast<size_t>(cap)
-                                            * n_bands_);
+    d_x_ =
+        device_alloc<cufftDoubleComplex>(static_cast<size_t>(cap) * n_bands_);
     d_work_ = device_alloc<cufftDoubleComplex>(ngs);
     d_ovlp_ = device_alloc<cufftDoubleComplex>(cap);
 }
 
 void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
                                cufftDoubleComplex* hpsi) {
-    ATV_CUDA_CHECK(
-        cudaMemset(d_grid_, 0, nr_ * sizeof(cufftDoubleComplex)));
+    ATV_CUDA_CHECK(cudaMemset(d_grid_, 0, nr_ * sizeof(cufftDoubleComplex)));
     k_scatter<<<n_blocks(ng_), kBlock>>>(psi, d_idx_, ng_, d_grid_);
     check_cufft(cufftExecZ2Z(fft_plan_, d_grid_, d_grid_, CUFFT_INVERSE),
                 "Z2Z inverse (H·psi)");
@@ -444,8 +439,7 @@ void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
     check_cufft(cufftExecZ2Z(fft_plan_, d_grid_, d_grid_, CUFFT_FORWARD),
                 "Z2Z forward (H·psi)");
     k_gather_combine<<<n_blocks(ng_), kBlock>>>(
-        d_grid_, d_idx_, d_tg_, psi, 1.0 / static_cast<double>(nr_), ng_,
-        hpsi);
+        d_grid_, d_idx_, d_tg_, psi, 1.0 / static_cast<double>(nr_), ng_, hpsi);
     ATV_CUDA_CHECK(cudaGetLastError());
 
     if (n_proj_ > 0) {
@@ -453,9 +447,8 @@ void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
         // c = βᴴ ψ
         check_cublas(
             cublasZgemv(blas_, CUBLAS_OP_C, ng_, n_proj_, &one,
-                        reinterpret_cast<const cuDoubleComplex*>(d_beta_),
-                        ng_, reinterpret_cast<const cuDoubleComplex*>(psi),
-                        1, &zero,
+                        reinterpret_cast<const cuDoubleComplex*>(d_beta_), ng_,
+                        reinterpret_cast<const cuDoubleComplex*>(psi), 1, &zero,
                         reinterpret_cast<cuDoubleComplex*>(d_proj_c_), 1),
             "Zgemv beta^H psi");
         k_scale_cols<<<n_blocks(n_proj_), kBlock>>>(d_proj_c_, d_betad_,
@@ -464,11 +457,9 @@ void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
         // Hψ += β (D∘c)
         check_cublas(
             cublasZgemv(blas_, CUBLAS_OP_N, ng_, n_proj_, &one,
-                        reinterpret_cast<const cuDoubleComplex*>(d_beta_),
-                        ng_,
-                        reinterpret_cast<const cuDoubleComplex*>(d_proj_c_),
-                        1, &one, reinterpret_cast<cuDoubleComplex*>(hpsi),
-                        1),
+                        reinterpret_cast<const cuDoubleComplex*>(d_beta_), ng_,
+                        reinterpret_cast<const cuDoubleComplex*>(d_proj_c_), 1,
+                        &one, reinterpret_cast<cuDoubleComplex*>(hpsi), 1),
             "Zgemv beta c");
     }
 }
@@ -491,14 +482,13 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
     int max_david = std::min(max_iter, 20);
     int cap = std::min(ng, n_sub + nb * max_david);
     ensure_subspace_capacity(ng, cap);
-    ATV_CUDA_CHECK(cudaMemcpy(d_sub_, sub_host.data(),
-                              static_cast<size_t>(n_sub) * ng
-                                  * sizeof(cufftDoubleComplex),
-                              cudaMemcpyHostToDevice));
+    ATV_CUDA_CHECK(
+        cudaMemcpy(d_sub_, sub_host.data(),
+                   static_cast<size_t>(n_sub) * ng * sizeof(cufftDoubleComplex),
+                   cudaMemcpyHostToDevice));
     std::vector<bool> h_computed(n_sub, false);
 
-    const cuDoubleComplex c_one{1.0, 0.0}, c_zero{0.0, 0.0},
-        c_mone{-1.0, 0.0};
+    const cuDoubleComplex c_one{1.0, 0.0}, c_zero{0.0, 0.0}, c_mone{-1.0, 0.0};
 
     std::vector<std::complex<double>> hs_host;
     std::vector<Real> hs_real, sub_eig, sub_vecs;
@@ -516,12 +506,11 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
 
         // Subspace Hamiltonian Hs = Vᴴ (HV)
         check_cublas(
-            cublasZgemm(blas_, CUBLAS_OP_C, CUBLAS_OP_N, n_sub, n_sub, ng,
-                        &c_one,
-                        reinterpret_cast<const cuDoubleComplex*>(d_sub_), ng,
-                        reinterpret_cast<const cuDoubleComplex*>(d_hsub_),
-                        ng, &c_zero,
-                        reinterpret_cast<cuDoubleComplex*>(d_hs_), n_sub),
+            cublasZgemm(
+                blas_, CUBLAS_OP_C, CUBLAS_OP_N, n_sub, n_sub, ng, &c_one,
+                reinterpret_cast<const cuDoubleComplex*>(d_sub_), ng,
+                reinterpret_cast<const cuDoubleComplex*>(d_hsub_), ng, &c_zero,
+                reinterpret_cast<cuDoubleComplex*>(d_hs_), n_sub),
             "Zgemm V^H HV");
         hs_host.resize(static_cast<size_t>(n_sub) * n_sub);
         ATV_CUDA_CHECK(cudaMemcpy(hs_host.data(), d_hs_,
@@ -556,21 +545,18 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
 
         // ritz = V·X ; H·ritz = (HV)·X (H is linear, so no re-apply needed)
         check_cublas(
-            cublasZgemm(blas_, CUBLAS_OP_N, CUBLAS_OP_N, ng, nb, n_sub,
-                        &c_one,
+            cublasZgemm(blas_, CUBLAS_OP_N, CUBLAS_OP_N, ng, nb, n_sub, &c_one,
                         reinterpret_cast<const cuDoubleComplex*>(d_sub_), ng,
-                        reinterpret_cast<const cuDoubleComplex*>(d_x_),
-                        n_sub, &c_zero,
-                        reinterpret_cast<cuDoubleComplex*>(d_ritz_), ng),
+                        reinterpret_cast<const cuDoubleComplex*>(d_x_), n_sub,
+                        &c_zero, reinterpret_cast<cuDoubleComplex*>(d_ritz_),
+                        ng),
             "Zgemm ritz");
         check_cublas(
-            cublasZgemm(blas_, CUBLAS_OP_N, CUBLAS_OP_N, ng, nb, n_sub,
-                        &c_one,
-                        reinterpret_cast<const cuDoubleComplex*>(d_hsub_),
-                        ng,
-                        reinterpret_cast<const cuDoubleComplex*>(d_x_),
-                        n_sub, &c_zero,
-                        reinterpret_cast<cuDoubleComplex*>(d_hritz_), ng),
+            cublasZgemm(blas_, CUBLAS_OP_N, CUBLAS_OP_N, ng, nb, n_sub, &c_one,
+                        reinterpret_cast<const cuDoubleComplex*>(d_hsub_), ng,
+                        reinterpret_cast<const cuDoubleComplex*>(d_x_), n_sub,
+                        &c_zero, reinterpret_cast<cuDoubleComplex*>(d_hritz_),
+                        ng),
             "Zgemm Hritz");
 
         for (int b = 0; b < nb; ++b)
@@ -659,10 +645,9 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                                  1),
                     "Zdscal delta");
 
-                ATV_CUDA_CHECK(
-                    cudaMemcpy(d_sub_ + static_cast<size_t>(n_sub) * ng,
-                               d_work_, ng * sizeof(cufftDoubleComplex),
-                               cudaMemcpyDeviceToDevice));
+                ATV_CUDA_CHECK(cudaMemcpy(
+                    d_sub_ + static_cast<size_t>(n_sub) * ng, d_work_,
+                    ng * sizeof(cufftDoubleComplex), cudaMemcpyDeviceToDevice));
                 h_computed.push_back(false);
                 ++n_sub;
                 ++n_added;
@@ -676,15 +661,13 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
 void DeviceBandSolver::apply_h_host(const std::complex<Real>* psi,
                                     std::complex<Real>* hpsi) {
     ensure_subspace_capacity(ng_, 2);
-    ATV_CUDA_CHECK(cudaMemcpy(d_sub_, psi,
-                              static_cast<size_t>(ng_)
-                                  * sizeof(cufftDoubleComplex),
-                              cudaMemcpyHostToDevice));
+    ATV_CUDA_CHECK(cudaMemcpy(
+        d_sub_, psi, static_cast<size_t>(ng_) * sizeof(cufftDoubleComplex),
+        cudaMemcpyHostToDevice));
     apply_h(d_sub_, d_hsub_);
-    ATV_CUDA_CHECK(cudaMemcpy(hpsi, d_hsub_,
-                              static_cast<size_t>(ng_)
-                                  * sizeof(cufftDoubleComplex),
-                              cudaMemcpyDeviceToHost));
+    ATV_CUDA_CHECK(cudaMemcpy(
+        hpsi, d_hsub_, static_cast<size_t>(ng_) * sizeof(cufftDoubleComplex),
+        cudaMemcpyDeviceToHost));
 }
 
 void DeviceBandSolver::zero_density() {
@@ -692,8 +675,8 @@ void DeviceBandSolver::zero_density() {
 }
 
 void DeviceBandSolver::accumulate_density(Real weight, Real omega) {
-    double scale = static_cast<double>(weight) * 2.0
-                   / static_cast<double>(omega);
+    double scale =
+        static_cast<double>(weight) * 2.0 / static_cast<double>(omega);
     for (int b = 0; b < n_bands_; ++b) {
         ATV_CUDA_CHECK(
             cudaMemset(d_grid_, 0, nr_ * sizeof(cufftDoubleComplex)));
@@ -701,8 +684,7 @@ void DeviceBandSolver::accumulate_density(Real weight, Real omega) {
             d_ritz_ + static_cast<size_t>(b) * ng_, d_idx_, ng_, d_grid_);
         check_cufft(cufftExecZ2Z(fft_plan_, d_grid_, d_grid_, CUFFT_INVERSE),
                     "Z2Z inverse (density)");
-        k_accum_density<<<n_blocks(nr_), kBlock>>>(d_grid_, scale, nr_,
-                                                   d_rho_);
+        k_accum_density<<<n_blocks(nr_), kBlock>>>(d_grid_, scale, nr_, d_rho_);
         ATV_CUDA_CHECK(cudaGetLastError());
     }
 }
@@ -729,8 +711,7 @@ void DeviceBandSolver::fetch_density_g(
     k_gather_scaled<<<n_blocks(ng0), kBlock>>>(
         d_grid_, d_idx0, 1.0 / static_cast<double>(nr_), ng0, d_out);
     ATV_CUDA_CHECK(cudaGetLastError());
-    ATV_CUDA_CHECK(cudaMemcpy(rho_g, d_out,
-                              ng0 * sizeof(cufftDoubleComplex),
+    ATV_CUDA_CHECK(cudaMemcpy(rho_g, d_out, ng0 * sizeof(cufftDoubleComplex),
                               cudaMemcpyDeviceToHost));
     cudaFree(d_idx0);
     cudaFree(d_out);

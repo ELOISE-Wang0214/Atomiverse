@@ -1,10 +1,10 @@
-# SCF Learning Path
+# SCF Reading Map
 
-This page explains how to study the SCF part of Atomiverse without getting lost
-in either chemistry jargon or internal implementation details.
+A short map into the **Tutorial** electronic-structure arc — not a methods
+manual. Install and concepts stay in [Getting started](getting-started.md)
+and [Core concepts](concepts.md).
 
-The key idea is that all four SCF tutorials describe the same computational
-pattern:
+All SCF tutorials share the same computational pattern:
 
 1. start from a density guess
 2. build an effective matrix from that guess

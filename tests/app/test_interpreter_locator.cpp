@@ -135,7 +135,7 @@ TEST_F(FakePathTree, NonExecutableOverrideThrows) {
 // ── (d) PATH search: left-to-right over ':'-separated dirs ────────────────
 
 TEST_F(FakePathTree, Python3FoundInSecondPathDir) {
-    const std::string first = add_dir("first");  // no interpreter here
+    const std::string first = add_dir("first"); // no interpreter here
     const std::string second = add_dir("second");
     const std::string expected = add_exe(second, "python3");
     const std::string path_env = first + ":" + second;
@@ -191,8 +191,7 @@ TEST_F(FakePathTree, EmptyPathAndNoOverrideThrowsNamingAtvPython) {
 
 TEST_F(FakePathTree, InterpreterFreePathDirsThrow) {
     const std::string dir = add_dir("barren"); // exists, holds no interpreter
-    EXPECT_THROW(InterpreterLocator(nullptr, dir.c_str()),
-                 std::runtime_error);
+    EXPECT_THROW(InterpreterLocator(nullptr, dir.c_str()), std::runtime_error);
 }
 
 // ── (g) empty PATH segments ("::", leading/trailing ':') are skipped ──────

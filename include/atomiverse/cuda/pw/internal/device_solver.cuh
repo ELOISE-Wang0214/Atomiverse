@@ -76,8 +76,7 @@ class DeviceBandSolver {
     /// @brief Test hook: H·ψ for one host vector on the bound k-point
     /// (H2D → apply_h → D2H). Used by the band-parity diagnostics to
     /// compute residual norms of candidate eigenpairs.
-    void apply_h_host(const std::complex<Real>* psi,
-                      std::complex<Real>* hpsi);
+    void apply_h_host(const std::complex<Real>* psi, std::complex<Real>* hpsi);
 
   private:
     /// H·ψ for one device vector (cuFFT + V_eff + KB projectors).
@@ -86,11 +85,11 @@ class DeviceBandSolver {
 
     int nx_, ny_, nz_, nr_;
     int n_bands_;
-    int ng_ = 0;        ///< G-sphere size of the bound k-point.
-    int n_proj_ = 0;    ///< KB projector columns (Σ_atoms Σ_proj (2l+1)).
-    int cap_sub_ = 0;   ///< Allocated subspace capacity (vectors).
-    int ng_cap_ = 0;    ///< Allocated per-vector length (G-sphere size).
-    double omega_ = 0;  ///< Cell volume of the bound workspace [Bohr³].
+    int ng_ = 0;       ///< G-sphere size of the bound k-point.
+    int n_proj_ = 0;   ///< KB projector columns (Σ_atoms Σ_proj (2l+1)).
+    int cap_sub_ = 0;  ///< Allocated subspace capacity (vectors).
+    int ng_cap_ = 0;   ///< Allocated per-vector length (G-sphere size).
+    double omega_ = 0; ///< Cell volume of the bound workspace [Bohr³].
 
     cufftHandle fft_plan_ = 0;
     cublasHandle_t blas_ = nullptr;
@@ -101,10 +100,10 @@ class DeviceBandSolver {
     double* d_rho_ = nullptr;              ///< nr density accumulator.
 
     // Per-k-point buffers (sized to ng_)
-    int* d_idx_ = nullptr;    ///< G → flat FFT-grid index.
-    double* d_tg_ = nullptr;  ///< T(G) kinetic diagonal.
-    cufftDoubleComplex* d_beta_ = nullptr; ///< β matrix (ng × n_proj_).
-    double* d_betad_ = nullptr;            ///< per-column KB strength D.
+    int* d_idx_ = nullptr;                   ///< G → flat FFT-grid index.
+    double* d_tg_ = nullptr;                 ///< T(G) kinetic diagonal.
+    cufftDoubleComplex* d_beta_ = nullptr;   ///< β matrix (ng × n_proj_).
+    double* d_betad_ = nullptr;              ///< per-column KB strength D.
     cufftDoubleComplex* d_proj_c_ = nullptr; ///< ⟨β|ψ⟩ workspace (n_proj_).
 
     // Davidson buffers

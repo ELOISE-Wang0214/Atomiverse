@@ -96,7 +96,7 @@ class NeighborList {
     std::unique_ptr<ATV::NeighborList> nl_;
     cuda::Context ctx_;
     cuda::Frame cframe_;
-    PairList pairs_;   ///< Pair list owned by this NeighborList.
+    PairList pairs_; ///< Pair list owned by this NeighborList.
     bool built_ = false;
 };
 

@@ -17,7 +17,8 @@ inline double compute_spin_contamination(const RealMatrix& C_alpha,
                                          const RealMatrix& C_beta,
                                          const RealMatrix& S, int n_alpha,
                                          int n_beta) {
-    if (n_alpha == 0 || n_beta == 0) return 0.0;
+    if (n_alpha == 0 || n_beta == 0)
+        return 0.0;
     auto Ca = xt::view(C_alpha, xt::all(), xt::range(0, n_alpha));
     auto Cb = xt::view(C_beta, xt::all(), xt::range(0, n_beta));
     RealMatrix SCb = xt::linalg::dot(S, Cb);

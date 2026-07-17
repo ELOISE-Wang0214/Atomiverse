@@ -18,8 +18,8 @@ using ATV::cpu::gpw::prim_overlap;
 
 namespace {
 
-GridPrimitive prim(double alpha, double cx, double cy, double cz, int lx, int ly,
-                   int lz, double coeff = 1.0) {
+GridPrimitive prim(double alpha, double cx, double cy, double cz, int lx,
+                   int ly, int lz, double coeff = 1.0) {
     GridPrimitive p;
     p.alpha = alpha;
     p.center[0] = cx;
@@ -34,7 +34,8 @@ GridPrimitive prim(double alpha, double cx, double cy, double cz, int lx, int ly
 
 double dist2(const GridPrimitive& a, const GridPrimitive& b) {
     double d = 0.0;
-    for (int k = 0; k < 3; ++k) d += (a.center[k] - b.center[k]) * (a.center[k] - b.center[k]);
+    for (int k = 0; k < 3; ++k)
+        d += (a.center[k] - b.center[k]) * (a.center[k] - b.center[k]);
     return d;
 }
 
@@ -46,7 +47,8 @@ TEST(GpwOneElectron, SsOverlap) {
     GridPrimitive b = prim(1.3, 1.1, -0.4, 0.6, 0, 0, 0);
     const double p = a.alpha + b.alpha;
     const double mu = a.alpha * b.alpha / p;
-    const double expected = std::pow(M_PI / p, 1.5) * std::exp(-mu * dist2(a, b));
+    const double expected =
+        std::pow(M_PI / p, 1.5) * std::exp(-mu * dist2(a, b));
     EXPECT_NEAR(prim_overlap(a, b), expected, 1e-13 * std::abs(expected));
 }
 
@@ -57,8 +59,8 @@ TEST(GpwOneElectron, SsKinetic) {
     const double p = a.alpha + b.alpha;
     const double mu = a.alpha * b.alpha / p;
     const double R2 = dist2(a, b);
-    const double expected =
-        mu * (3.0 - 2.0 * mu * R2) * std::pow(M_PI / p, 1.5) * std::exp(-mu * R2);
+    const double expected = mu * (3.0 - 2.0 * mu * R2) * std::pow(M_PI / p, 1.5)
+                            * std::exp(-mu * R2);
     EXPECT_NEAR(prim_kinetic(a, b), expected, 1e-13 * std::abs(expected));
 }
 
@@ -67,7 +69,8 @@ TEST(GpwOneElectron, SsKinetic) {
 TEST(GpwOneElectron, PxSelfOverlap) {
     const double alpha = 0.9;
     GridPrimitive px = prim(alpha, 0, 0, 0, 1, 0, 0);
-    const double expected = (1.0 / (4.0 * alpha)) * std::pow(M_PI / (2.0 * alpha), 1.5);
+    const double expected =
+        (1.0 / (4.0 * alpha)) * std::pow(M_PI / (2.0 * alpha), 1.5);
     EXPECT_NEAR(prim_overlap(px, px), expected, 1e-13 * std::abs(expected));
     // Orthogonality: p_x and p_y on the same center do not overlap.
     GridPrimitive py = prim(alpha, 0, 0, 0, 0, 1, 0);
@@ -89,7 +92,8 @@ TEST(GpwOneElectron, ContractedIsSumOfPrimitives) {
     GridBasisFunction b = {prim(0.9, 0.8, 0, 0, 0, 0, 0, 0.5)};
     double manual = 0.0;
     for (const auto& pa : a)
-        for (const auto& pb : b) manual += prim_overlap(pa, pb);
+        for (const auto& pb : b)
+            manual += prim_overlap(pa, pb);
     EXPECT_NEAR(overlap(a, b), manual, 1e-14 * std::max(1.0, std::abs(manual)));
     EXPECT_GT(overlap(a, a), 0.0);
     EXPECT_GT(kinetic(a, a), 0.0); // kinetic energy is positive

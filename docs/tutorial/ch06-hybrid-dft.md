@@ -1,5 +1,27 @@
 # Chapter 6: Hybrid Functionals and Analytic Gradients
 
+| | |
+|---|---|
+| **Examples** | [`04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp) (LSDA baseline), [`05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp) (PBE forces + L-BFGS) |
+| **API** | `cpu::scf::uks_config` / hybrid `XCType::{B3LYP,PBE0}`, `scf_gradient` |
+
+Hybrids mix a fraction of exact Hartree–Fock exchange into the KS functional.
+Analytic nuclear gradients (`scf_gradient`, or `SCF{}.with_gradient(true)`) are
+what turn a single-point energy into geometry optimization and AIMD
+([Chapter 12](ch12-geometry-optimization.md), [Chapter 15](ch15-cross-method.md)).
+
+```bash
+# UKS-LSDA scan (energy components) — results in examples/results/04_uks.json
+./build/examples/04_uks
+# Geometry opt with DFT forces (aspirin) — longer run
+./build/examples/05_geom_opt
+```
+
+Validate gradients with finite differences (policy from
+[Chapter 1](ch01-foundations.md)): analytic and FD forces must agree within a
+documented tolerance before trusting an optimizer step.
+
+
 [Chapter 5](ch05-kohn-sham-dft.md) introduced Kohn-Sham DFT with the pure functionals
 LSDA and PBE, where the exchange-correlation energy is a semi-local integral
 over the density on a grid. This chapter adds the two most widely used
@@ -17,7 +39,7 @@ The six questions:
    means.
 2. **The Atomiverse representation.** `XCType::B3LYP` / `PBE0`, the
    exact-exchange fraction, and how the Fock builder splits the work.
-3. **The C++ API.** `b3lyp_config` / `pbe0_config`, `SCFSolver`, and
+3. **The C++ API.** `RKS` with `XCType::B3LYP` / `PBE0`, and
    `scf_gradient`.
 4. **The expected result.** A converged hybrid energy and forces that match
    PySCF's `grad.RKS`.
@@ -105,14 +127,15 @@ using namespace ATV;
 
 cpu::Frame frame = /* H2O, positions in Å, type = Z */;
 
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
-cpu::scf::SCFConfig cfg = cpu::scf::b3lyp_config(integrals);   // or pbe0_config
+/* integrals private inside RHF/UHF/RKS/UKS */
+cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);  // or XCType::PBE0
+rks.basis = cpu::scf::BasisSet::Pople631Gs;
 cfg.max_iter = 300;
 
-cpu::scf::SCFSolver solver{cfg};
-solver.build(integrals);
-const auto& result = solver.run(integrals);                    // SCFResult
-// result.energy [Hartree], result.converged, result.xc_energy, ...
+const auto& res = rks.run(frame);
+
+const auto& result = rhf.run(frame);                    // SCFResult
+// result.energy (Hartree), result.converged, result.xc_energy, ...
 ```
 
 `b3lyp_config` and `pbe0_config` both clone `default_config` and set only the
@@ -148,12 +171,13 @@ routine for a hybrid is:
 
 ```cpp
 auto run_hybrid = [](cpu::Frame& frame, cpu::scf::XCType xc) {
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
+    /* integrals private inside RHF/UHF/RKS/UKS */
     cpu::scf::SCFConfig cfg = (xc == cpu::scf::XCType::B3LYP)
-                                  ? cpu::scf::b3lyp_config(ints)
-                                  : cpu::scf::pbe0_config(ints);
+                                  ? cpu::scf::XCType::B3LYP
+                                  : cpu::scf::XCType::PBE0;
+    cpu::scf::RKS rks(xc);
     cfg.max_iter = 300;
-    cpu::scf::SCFSolver solver{cfg};
+    const auto& res = rks.run(frame);
     solver.build(ints);
     const auto& result = solver.run(ints);
     return cpu::scf::scf_gradient(frame, ints, result, cfg);
@@ -235,13 +259,13 @@ cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
 opt.add_handler(cpu::ForceConverged{/* the five tolerances */});
 opt.on(minimizer::Phase::force)
-   .add(cpu::scf::SCF{cpu::scf::b3lyp_config(integrals),
+   .add(cpu::scf::RKS(cpu::scf::XCType::B3LYP) /* basis via member */,
                                cpu::scf::BasisSet::Pople631Gs});
 opt.build();
 opt.run(frame, /*max_iter=*/100);
 ```
 
-The same `SCFEvaluator{b3lyp_config(...)}` drops into `cpu::md::MD` for
+The same `RKS{XCType::B3LYP}` drops into `cpu::md::MD` for
 hybrid-functional AIMD ([Chapter 15](ch15-cross-method.md)) and into `cpu::vib::Hessian`
 for hybrid vibrational frequencies ([Chapter 14](ch14-vibrations.md)). One
 gradient routine, one evaluator component, three drivers — the "swap the

@@ -1,170 +1,32 @@
 /// @file examples/04_uks.cpp
-/// @brief Tutorial example for unrestricted Kohn-Sham DFT.
-///
-/// Demonstrates:
-///   - UKS(LSDA) on atoms and molecules
-///   - Energy decomposition (E_1e + E_J + E_xc + V_nuc = E_total)
-///   - UKS vs UHF comparison
-///   - Grid-integrated electron counts
-///
-/// Build:
-///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-///   cmake --build build --target 04_uks
-///
-/// Run:
-///   ./build/examples/04_uks
+/// @brief Unrestricted Kohn–Sham via concrete `cpu::scf::UKS`.
 
-#ifdef ATV_HAS_RHF
-
-#include <cmath>
 #include <iomanip>
 #include <iostream>
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
-static cpu::Frame make_atom(int Z) {
+static cpu::Frame make_he() {
     cpu::Frame f(1);
-    f.span(ATV::kAtom_x)[0] = 0;
-    f.span(ATV::kAtom_y)[0] = 0;
-    f.span(ATV::kAtom_z)[0] = 0;
-    f.span(ATV::kAtom_type)[0] = Z;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_y)[0] = 0;
+    f.span(kAtom_z)[0] = 0;
+    f.span(kAtom_type)[0] = 2;
+    f.span(kAtom_mass)[0] = 4.0026;
+    f.simbox = cpu::Box::cubic(20.0);
     return f;
 }
 
-static cpu::Frame make_h2(double bond_angstrom) {
-    cpu::Frame f(2);
-    f.span(ATV::kAtom_x)[0] = 0;
-    f.span(ATV::kAtom_y)[0] = 0;
-    f.span(ATV::kAtom_z)[0] = 0;
-    f.span(ATV::kAtom_x)[1] = bond_angstrom;
-    f.span(ATV::kAtom_y)[1] = 0;
-    f.span(ATV::kAtom_z)[1] = 0;
-    f.span(ATV::kAtom_type)[0] = 1;
-    f.span(ATV::kAtom_type)[1] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
-    return f;
-}
-
-static void print_result(const char* name, const cpu::scf::SCFResult& r,
-                         double V_nuc) {
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "  " << name << ":\n";
-    std::cout << "    converged  = " << (r.converged ? "yes" : "NO") << " ("
-              << r.iterations << " iter)\n";
-    std::cout << "    E_total    = " << r.energy << " Ha\n";
-    std::cout << "    E_1e       = " << r.one_electron_energy << " Ha\n";
-    std::cout << "    E_J        = " << r.coulomb_energy << " Ha\n";
-    std::cout << "    E_xc       = " << r.xc_energy << " Ha\n";
-    std::cout << "    V_nuc      = " << V_nuc << " Ha\n";
-    std::cout << "    sum check  = "
-              << (r.one_electron_energy + r.coulomb_energy + r.xc_energy
-                  + V_nuc)
+int main() {
+    auto frame = make_he();
+    cpu::scf::UKS uks(/*n_alpha=*/1, /*n_beta=*/1, cpu::scf::XCType::LSDA);
+    uks.basis = cpu::scf::BasisSet::STO3G;
+    const auto& r = uks.run(frame);
+    std::cout << std::setprecision(10)
+              << "He UKS-LSDA converged=" << r.converged << " E=" << r.energy
               << " Ha\n";
-    std::cout << "    int(n_a)   = " << r.integrated_n_alpha << "\n";
-    std::cout << "    int(n_b)   = " << r.integrated_n_beta << "\n";
-    std::cout << "    <S^2> err  = " << r.spin_contamination << "\n";
+    return r.converged ? 0 : 1;
 }
-
-int main() {
-    std::cout << "=== Atomiverse UKS Examples ===\n\n";
-
-    // Example 1: He atom (closed-shell singlet)
-    {
-        std::cout << "--- Example 1: He atom (LSDA, singlet) ---\n";
-        auto frame = make_atom(2);
-        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto uks_config =
-            cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA);
-        cpu::scf::SCFSolver uks_solver{uks_config};
-        uks_solver.build(ints);
-        const auto& uks = uks_solver.run(ints);
-        auto uhf_config = cpu::scf::uhf_config(ints, 1, 1);
-        cpu::scf::SCFSolver uhf_solver{uhf_config};
-        uhf_solver.build(ints);
-        const auto& uhf = uhf_solver.run(ints);
-        print_result("UKS-LSDA", uks, ints.V_nuc);
-        std::cout << "    UHF E      = " << uhf.energy << " Ha\n";
-        std::cout << "    diff       = " << (uks.energy - uhf.energy)
-                  << " Ha\n\n";
-    }
-
-    // Example 2: H atom (doublet)
-    {
-        std::cout << "--- Example 2: H atom (LSDA, doublet) ---\n";
-        auto frame = make_atom(1);
-        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto config = cpu::scf::uks_config(ints, 1, 0, cpu::scf::XCType::LSDA);
-        cpu::scf::SCFSolver solver{config};
-        solver.build(ints);
-        const auto& uks = solver.run(ints);
-        print_result("UKS-LSDA", uks, ints.V_nuc);
-        std::cout << "\n";
-    }
-
-    // Example 3: Li atom (doublet)
-    {
-        std::cout << "--- Example 3: Li atom (LSDA, doublet) ---\n";
-        auto frame = make_atom(3);
-        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-        auto config = cpu::scf::uks_config(ints, 2, 1, cpu::scf::XCType::LSDA);
-        cpu::scf::SCFSolver solver{config};
-        solver.build(ints);
-        const auto& uks = solver.run(ints);
-        print_result("UKS-LSDA", uks, ints.V_nuc);
-        std::cout << "    eigenvalues alpha: ";
-        for (int i = 0; i < ints.n_basis; ++i)
-            std::cout << uks.eigenvalues_alpha[i] << " ";
-        std::cout << "\n    eigenvalues beta:  ";
-        for (int i = 0; i < ints.n_basis; ++i)
-            std::cout << uks.eigenvalues_beta[i] << " ";
-        std::cout << "\n\n";
-    }
-
-    // Example 4: H2 dissociation curve (UHF vs UKS-LSDA)
-    {
-        std::cout << "--- Example 4: H2 dissociation (UHF vs UKS-LSDA) ---\n";
-        std::cout << std::setw(8) << "R (A)" << std::setw(14) << "E_UHF"
-                  << std::setw(14) << "E_UKS" << std::setw(14) << "diff"
-                  << "\n";
-        for (double r : {0.5, 0.6, 0.74, 1.0, 1.5, 2.0, 2.5, 3.0}) {
-            auto frame = make_h2(r);
-            auto ints =
-                cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-            auto uhf_config = cpu::scf::uhf_config(ints, 1, 1, 1e-9);
-            uhf_config.max_iter = 400;
-            cpu::scf::SCFSolver uhf_solver{uhf_config};
-            uhf_solver.build(ints);
-            const auto& uhf = uhf_solver.run(ints);
-            auto uks_config =
-                cpu::scf::uks_config(ints, 1, 1, cpu::scf::XCType::LSDA, 1e-7);
-            uks_config.n_radial = 50;
-            uks_config.n_angular = 110;
-            uks_config.max_iter = 100;
-            cpu::scf::SCFSolver uks_solver{uks_config};
-            uks_solver.build(ints);
-            const auto& uks = uks_solver.run(ints);
-
-            std::cout << std::setw(8) << r << std::setw(14) << uhf.energy
-                      << std::setw(14) << uks.energy << std::setw(14)
-                      << (uks.energy - uhf.energy);
-            if (!uks.converged)
-                std::cout << " *";
-            std::cout << "\n";
-        }
-    }
-
-    return 0;
-}
-
-#else
-#include <iostream>
-int main() {
-    std::cout << "UKS requires -DATV_BUILD_RHF=ON\n";
-    return 1;
-}
-#endif

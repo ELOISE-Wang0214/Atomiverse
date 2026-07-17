@@ -12,7 +12,7 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/device.h"
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
 #include "atomiverse/cuda/driver/evaluate.cuh"
 #include "atomiverse/cuda/driver/single_point.cuh"
@@ -63,8 +63,7 @@ constexpr double kH2Vnuc = 0.7151;    // approx nuclear repulsion [Hartree]
 
 TEST(RHF, IntegralSymmetry) {
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
 
     int n = integrals.n_basis;
     EXPECT_EQ(n, 2);
@@ -85,8 +84,7 @@ TEST(RHF, IntegralSymmetry) {
 
 TEST(RHF, NuclearRepulsion) {
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     // V_nuc = Z_A * Z_B / R_AB (in Bohr) = 1*1 / (0.74 * 1.8897) ~ 0.7151
     EXPECT_NEAR(static_cast<double>(integrals.V_nuc), kH2Vnuc, 0.01);
 }
@@ -95,8 +93,7 @@ TEST(RHF, NuclearRepulsion) {
 
 TEST(RHF, Orthogonalization) {
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     int n = integrals.n_basis;
 
     // Compute X = S^{-1/2} the same way rhf_solve does
@@ -126,7 +123,7 @@ TEST(RHF, Orthogonalization) {
 TEST(RHF, FockBuild) {
     auto frame = make_h2();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
     int n = integrals.n_basis;
 
     // Use zero density -> G(0) = 0 -> F = Hcore
@@ -190,8 +187,7 @@ TEST(RHF, FockBuild) {
 
 TEST(RHF, CPUConvergence) {
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
 
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -208,8 +204,7 @@ TEST(RHF, CPUConvergence) {
 
 TEST(RHF, CPUDensityTrace) {
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
 
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -231,8 +226,7 @@ TEST(RHF, OddElectronThrowsHostIntegrals) {
     // represent it; n_occ() = 0 would silently drop the electron) with
     // std::invalid_argument — never a physically wrong converged state.
     auto frame = make_h_atom();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     ASSERT_EQ(integrals.n_electrons, 1);
 
     EXPECT_THROW((cuda::scf::SCFSolver{integrals, 1e-10, 100}),
@@ -243,8 +237,7 @@ TEST(RHF, EvenElectronConstructsHostIntegrals) {
     // Neutral H2 (2 electrons) constructs without throwing — the guard is
     // a strict no-op on the valid closed-shell path.
     auto frame = make_h2();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     ASSERT_EQ(integrals.n_electrons, 2);
 
     EXPECT_NO_THROW((cuda::scf::SCFSolver{integrals, 1e-10, 100}));
@@ -267,7 +260,7 @@ TEST(RHF, CUDASinglePointEnergy) {
     // reference -1.1167 Ha.
     auto frame = make_h2();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
 
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -293,9 +286,9 @@ TEST(RHF, CUDALevelShiftEnergyInvariant) {
     auto frame0 = make_h2();
     auto frame5 = make_h2();
     auto integrals0 =
-        cpu::scf::build_integrals(frame0, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame0, cpu::scf::BasisSet::STO3G, 0, true};
     auto integrals5 =
-        cpu::scf::build_integrals(frame5, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame5, cpu::scf::BasisSet::STO3G, 0, true};
 
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -326,10 +319,10 @@ TEST(RHF, CUDASinglePointHelper) {
     // cuda::Evaluate and add()-ing the evaluator directly.
     auto frame_direct = make_h2();
     auto frame_helper = make_h2();
-    auto integrals_d = cpu::scf::build_integrals(
-        frame_direct, cpu::scf::BasisSet::STO3G, 0, true);
-    auto integrals_h = cpu::scf::build_integrals(
-        frame_helper, cpu::scf::BasisSet::STO3G, 0, true);
+    auto integrals_d = cpu::scf::IntegralPack{
+        frame_direct, cpu::scf::BasisSet::STO3G, 0, true};
+    auto integrals_h = cpu::scf::IntegralPack{
+        frame_helper, cpu::scf::BasisSet::STO3G, 0, true};
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -354,7 +347,7 @@ TEST(RHF, CUDASinglePointHelper) {
 TEST(RHF, CPUCUDAParity) {
     auto frame = make_h2();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
 
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -449,8 +442,7 @@ constexpr double kLiHEnergy = -7.8634; // LiH/STO-3G/RHF [Hartree]
 
 TEST(RHF, HeAtom) {
     auto frame = make_he();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     EXPECT_EQ(integrals.n_basis, 1);
     EXPECT_EQ(integrals.n_electrons, 2);
     double tol =
@@ -463,8 +455,8 @@ TEST(RHF, HeAtom) {
 
 TEST(RHF, HeHPlus) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
-                                               1); // charge = +1
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G,
+                                            1}; // charge = +1
     EXPECT_EQ(integrals.n_basis, 2);
     EXPECT_EQ(integrals.n_electrons, 2); // He(2) + H(1) - 1 = 2
     EXPECT_EQ(integrals.n_occ(), 1);
@@ -478,8 +470,7 @@ TEST(RHF, HeHPlus) {
 
 TEST(RHF, LiH) {
     auto frame = make_lih();
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     EXPECT_EQ(integrals.n_basis,
               6); // Li: 1s+2s+2p(x,y,z)=5, H: 1s=1 -> total 6
     EXPECT_EQ(integrals.n_electrons, 4);
@@ -512,8 +503,7 @@ TEST(RHF, H2PESScan) {
         f.atoms.type[0] = 1;
         f.atoms.type[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals =
-            cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
+        auto integrals = cpu::scf::IntegralPack{f, cpu::scf::BasisSet::STO3G};
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         EXPECT_TRUE(result.converged) << "H2 scan failed at R=" << r;
         double e = static_cast<double>(result.energy);
@@ -533,7 +523,7 @@ TEST(RHF, H2PESScan) {
 TEST(RHF, CUDAHeAtom) {
     auto frame = make_he();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -556,7 +546,7 @@ TEST(RHF, CUDAHeAtom) {
 TEST(RHF, CUDALiH) {
     auto frame = make_lih();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -579,7 +569,7 @@ TEST(RHF, CUDALiH) {
 TEST(RHF, CUDAHeHPlus) {
     auto frame = make_heh_plus();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 1, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 1, true};
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -607,7 +597,7 @@ TEST(RHF, SCFIsEnergyDensityOrbitalsOnly) {
     // gradient kernel exists).
     auto frame = make_h2();
     auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+        cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
     cuda::scf::SCF eval{integrals, double(1e-6), 100};
     EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
     EXPECT_EQ(eval.capabilities(), Capability::Energy

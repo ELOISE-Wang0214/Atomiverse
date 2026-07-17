@@ -42,14 +42,14 @@ TEST(DeviceManager, PeerAccessAcrossGpus) {
     for (size_t k = 0; k < N; ++k)
         host[k] = static_cast<int>(k * 2654435761u);
     d.set_device(0);
-    ASSERT_EQ(cudaMemcpy(a0, host.data(), N * sizeof(int),
-                         cudaMemcpyHostToDevice),
-              cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpy(a0, host.data(), N * sizeof(int), cudaMemcpyHostToDevice),
+        cudaSuccess);
     ASSERT_EQ(cudaMemcpyPeer(a1, 1, a0, 0, N * sizeof(int)), cudaSuccess);
     d.set_device(1);
-    ASSERT_EQ(cudaMemcpy(back.data(), a1, N * sizeof(int),
-                         cudaMemcpyDeviceToHost),
-              cudaSuccess);
+    ASSERT_EQ(
+        cudaMemcpy(back.data(), a1, N * sizeof(int), cudaMemcpyDeviceToHost),
+        cudaSuccess);
     EXPECT_EQ(host, back);
     cudaFree(a0);
     cudaFree(a1);

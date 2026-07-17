@@ -4,11 +4,11 @@
 #include <cmath>
 
 #include "atomiverse/cpu/frame/transfer.h"
-#include "atomiverse/cuda/driver/backend.cuh"
-#include "atomiverse/cuda/driver/backend_traits.cuh"
 #include "atomiverse/cuda/device/error.cuh"
 #include "atomiverse/cuda/device/log_callback.h"
 #include "atomiverse/cuda/device/timer.cuh"
+#include "atomiverse/cuda/driver/backend.cuh"
+#include "atomiverse/cuda/driver/backend_traits.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/facade/driver_impl.h"
 #include "atomiverse/facade/stage.h"
@@ -89,11 +89,13 @@ void Backend::build_components() {
     for (auto& slot : plan_->slots)
         for (auto& op : slot.ops) {
             if (timer_)
-                timer_->impl()->begin(static_cast<cudaStream_t>(context_.stream));
+                timer_->impl()->begin(
+                    static_cast<cudaStream_t>(context_.stream));
             op.component->build(ctx);
             if (timer_) {
                 timer_->impl()->end(static_cast<cudaStream_t>(context_.stream),
-                            slot.phase, op.component->name() + "/build");
+                                    slot.phase,
+                                    op.component->name() + "/build");
             }
         }
     cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));

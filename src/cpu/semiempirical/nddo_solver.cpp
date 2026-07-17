@@ -11,11 +11,11 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
+#include "atomiverse/cpu/semiempirical/internal/nddo_system.h"
 #include "atomiverse/cpu/semiempirical/nddo_density.h"
 #include "atomiverse/cpu/semiempirical/nddo_fock.h"
 #include "atomiverse/cpu/semiempirical/nddo_hcore.h"
 #include "atomiverse/cpu/semiempirical/nddo_matrix.h"
-#include "atomiverse/cpu/semiempirical/nddo_system.h"
 #include "atomiverse/cpu/semiempirical/rm1_parameters.h"
 
 namespace ATV {
@@ -67,8 +67,8 @@ NDDOSolver::NDDOSolver(NDDOConfig config) : config_(config) {
 
 void NDDOSolver::build(const cpu::Frame& reference) {
     validate_supported_atoms_(reference);
-    system_ = build_nddo_system(reference, config_.charge, config_.multiplicity,
-                                config_.method);
+    system_ = NDDOSystem{reference, config_.charge, config_.multiplicity,
+                         config_.method};
     state_.initial_diagonal_density = initial_diagonal_density_guess(system_);
     state_.initial_packed_density =
         packed_density_from_diagonal(state_.initial_diagonal_density);

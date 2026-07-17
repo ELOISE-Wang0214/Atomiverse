@@ -1,11 +1,46 @@
 # Chapter 4: Gaussian Basis Sets and Convergence
 
+| | |
+|---|---|
+| **Example** | [`examples/11_koopmans.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/11_koopmans.cpp) |
+| **Results** | [`examples/results/11_koopmans.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/11_koopmans.json), [`12_delta_scf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/12_delta_scf.json) |
+
+Basis quality shows up immediately in ionization potentials. Koopmans'
+theorem says \(\mathrm{IP}\approx -\varepsilon_\mathrm{HOMO}\). Atomiverse
+RHF vs experiment (eV) for 6-31G — live data from `11_koopmans`:
+
+| System | Koopmans 6-31G | Experiment |
+|--------|---------------:|-----------:|
+| He | 24.875 | 24.587 |
+| H₂ | 16.201 | 15.426 |
+| H₂O | 13.643 | 12.620 |
+| NH₃ | 11.294 | 10.800 |
+| CH₄ | 14.804 | 13.600 |
+
+ΔSCF (orbital relaxation, from `12_delta_scf`) for the same basis:
+
+| System | Koopmans | ΔSCF | Experiment |
+|--------|---------:|-----:|-----------:|
+| He | 24.875 | 23.444 | 24.587 |
+| H₂O | 13.643 | 10.978 | 12.620 |
+| CH₄ | 14.796 | 13.419 | 13.600 |
+
+STO-3G vs 6-31G for water: 10.65 eV → 13.64 eV toward experiment 12.62 eV.
+Relaxation always lowers the IP relative to Koopmans; CH₄ and He move closer
+to experiment, while H₂O still needs correlation beyond single-reference HF.
+
+```bash
+cmake --build build --target 11_koopmans 12_delta_scf
+./build/examples/11_koopmans
+./build/examples/12_delta_scf
+```
+
 [Chapter 2](ch02-rhf.md) computed an RHF energy for H₂ in the minimal STO-3G
 basis and quietly accepted whatever number came out. This chapter goes back
 to that one line —
 
 ```cpp
-auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+auto integrals = /* IntegralPack is private — use RHF */;
 ```
 
 — and asks the question every practitioner eventually asks: **how much does
@@ -18,7 +53,7 @@ The six questions:
 
 1. **The concept.** What a Gaussian basis is and why bigger is (usually)
    better.
-2. **The Atomiverse representation.** `BasisSet`, `build_integrals`, and the
+2. **The Atomiverse representation.** `BasisSet`, `IntegralPack constructor (private)`, and the
    shell machinery behind them.
 3. **The C++ API.** Selecting a basis, reading the AO count, and running the
    same SCF across a series.
@@ -64,7 +99,7 @@ Two practical facts follow:
 ## The Representation: A `BasisSet` Enum Over a Shell Machine
 
 Atomiverse names each basis with an enum and resolves it to concrete shells
-inside `build_integrals`. From
+inside `IntegralPack constructor (private)`. From
 [`basis_set.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/basis_set.h):
 
 ```cpp
@@ -81,11 +116,11 @@ Under the hood a `BasisSet` + the frame's atoms is resolved into a
 `ShellList` — flat AO descriptors with per-shell contraction lengths, which
 is why the machine handles mixed contractions (6-31G's 6/3/1, def2-SVP's up
 to 7) without special-casing. You do not touch `ShellList` directly for a
-normal calculation; `build_integrals` builds it for you and reports the AO
+normal calculation; `IntegralPack constructor (private)` builds it for you and reports the AO
 count on the returned pack:
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
+/* integrals private inside RHF/UHF/RKS/UKS */
 int n_ao       = ints.n_basis;       // number of atomic orbitals
 int n_electron = ints.n_electrons;   // Σ Z − charge
 int n_occ      = ints.n_occ();       // doubly-occupied orbitals (closed shell)
@@ -101,7 +136,7 @@ wider window.
 STO-3G is implemented for **H through O (Z = 1–8)**; the larger Pople and
 def2 families extend the element range. Coverage is honest: if you ask for a
 basis/element combination that is not tabulated, `build_shell_list` (called
-inside `build_integrals`) **throws** `std::runtime_error` rather than
+inside `IntegralPack constructor (private)`) **throws** `std::runtime_error` rather than
 silently substituting a nearby basis. There are *no fallback values* by
 design — a wrong answer that runs is worse than an exception that stops you.
 Among the shipped sets, STO-3G through def2-SVP are production-ready;
@@ -123,10 +158,10 @@ for (auto basis : {cpu::scf::BasisSet::STO3G,
                    cpu::scf::BasisSet::Pople631G,
                    cpu::scf::BasisSet::Pople631Gs,
                    cpu::scf::BasisSet::Def2SVP}) {
-    auto ints = cpu::scf::build_integrals(frame, basis);
-    auto config = cpu::scf::rhf_config(ints, 1e-10);
+    auto ints = IntegralPack{frame, basis};
+    auto config = /* SCFConfig is private — set RHF members */;
     config.max_iter = 100;
-    cpu::scf::SCFSolver solver{config};
+    cpu::scf::RHF rhf /* was SCFSolver */;
     solver.build(ints);
     const auto& result = solver.run(ints);
 
@@ -144,9 +179,9 @@ the human-readable label for logs.
 Build the config from the integral pack and execute the solver lifecycle:
 
 ```cpp
-auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
-auto config = cpu::scf::rhf_config(ints);        // Restricted HF, MINAO guess
-cpu::scf::SCFSolver solver{config};
+auto ints   = IntegralPack{frame, cpu::scf::BasisSet::Def2SVP};
+auto config = /* use cpu::scf::RHF */;        // Restricted HF, MINAO guess
+cpu::scf::RHF rhf /* was SCFSolver */;
 solver.build(ints);
 const auto& result = solver.run(ints);            // SCFResult, energy in Ha
 ```
@@ -230,7 +265,7 @@ Basis-set correctness is pinned by the RHF/DFT-vs-PySCF parity suite,
 `test_cpu_scf_basis_vs_pyscf` (Atomiverse energy vs a checked-in genuine
 PySCF reference at the same basis, **1e-7 Ha**), with the reference
 generators and provenance under
-[`benchmarks/qc/rhf`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/qc/rhf). The basis-convergence
+[`/* benchmarks removed; re-add later */ rhf`](https://github.com/MolCrafts/Atomiverse/blob/dev//* benchmarks removed; re-add later */ rhf). The basis-convergence
 benchmark case (energy series with committed near-CBS references) is part of
 the manual build-out plan; until it lands, the parity tests plus the sweep
 recipe above are the way to certify a convergence study.

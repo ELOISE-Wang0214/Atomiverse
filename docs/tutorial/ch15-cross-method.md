@@ -1,5 +1,31 @@
 # Chapter 15: Cross-Method Workflows — Swap the Evaluator
 
+| | |
+|---|---|
+| **Example** | [`examples/06_aimd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/06_aimd.cpp) |
+| **Pattern** | one Driver, different force component |
+| **Examples** | `07_md_lj` (classical), `02_rhf` / `15_am1` (single-point), `06_aimd` (SCF forces in MD) |
+
+```cpp
+// Classical
+sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
+// AM1
+// sim.on(md::Phase::force).add(cpu::semiempirical::AM1Evaluator{}.with_gradient(true));
+// AIMD
+// sim.on(md::Phase::force).add(cpu::scf::RHF{});
+```
+
+```bash
+cmake --build build --target 06_aimd 07_md_lj 15_am1
+./build/examples/07_md_lj   # classical NVE — results/07_md_lj.json
+./build/examples/15_am1     # AM1 Evaluate + Minimize
+./build/examples/06_aimd    # BOMD / Nosé-Hoover + SCF
+```
+
+The architectural payoff of the whole book: method is a **Component**, never a
+new Driver category.
+
+
 Every chapter of this book has quietly repeated one sentence: *change method
 by swapping the evaluator, keep the driver.* This closing chapter stops
 repeating it and instead runs it, end to end. We take one molecular system
@@ -85,7 +111,7 @@ auto make_classical = []{ return cpu::PairLJCut{0.0104, 3.4, 6.8}; };
 
 // Quantum force provider: RHF/STO-3G, forces on by default
 auto make_quantum = [](const cpu::scf::IntegralPack& ints){
-    return cpu::scf::SCF{cpu::scf::rhf_config(ints)};
+    return cpu::scf::SCF{/* use cpu::scf::RHF */};
 };
 ```
 
@@ -97,11 +123,11 @@ gradient off so the evaluator drops `Capability::Force` and skips the gradient
 work:
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto scf  = cpu::scf::SCF{cpu::scf::rhf_config(ints)};
+auto ints = /* IntegralPack is private — use RHF */;
+auto scf  = cpu::scf::SCF{/* use cpu::scf::RHF */};
 scf.with_gradient(false);                 // energy only
 
-cpu::single_point(frame, scf);            // frame.meta.get(kEnergy) [eV] populated
+cpu::single_point(frame, scf);            // frame.meta.get(kEnergy) (eV) populated
 double e_ha = scf.last_result().energy;   // and in Hartree on the result
 ```
 
@@ -113,7 +139,7 @@ cpu::Evaluate eval;
 eval.add_potential(make_classical());
 eval.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 eval.build();
-eval.run(frame);                          // frame.meta.get(kEnergy) [eV]
+eval.run(frame);                          // frame.meta.get(kEnergy) (eV)
 ```
 
 ### Geometry optimization — `cpu::minimizer::Minimize`

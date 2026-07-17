@@ -1,3 +1,4 @@
+#include "atomiverse/cpu/scf/methods.h"
 /// @file tests/cpu/scf/test_scf_evaluator.cpp
 /// @brief Integration tests for SCF component, BOMD, and ASPC predictor.
 
@@ -13,8 +14,8 @@
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
+#include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -55,13 +56,9 @@ class SCFTest : public ::testing::Test {
 
 TEST_F(SCFTest, SinglePointRHF) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
 
@@ -73,13 +70,9 @@ TEST_F(SCFTest, SinglePointRHF) {
 
 TEST_F(SCFTest, SinglePointUHF) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::uhf_config(integrals, 1, 1);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
 
@@ -89,13 +82,9 @@ TEST_F(SCFTest, SinglePointUHF) {
 
 TEST_F(SCFTest, SinglePointKSLSDA) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
 
@@ -107,13 +96,9 @@ TEST_F(SCFTest, SinglePointKSLSDA) {
 
 TEST_F(SCFTest, SinglePointKSPBE) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 1);
 
@@ -127,13 +112,9 @@ class BOMDTest : public SCFTest {};
 
 TEST_F(BOMDTest, RHFEnergyConservation) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
 
@@ -143,13 +124,9 @@ TEST_F(BOMDTest, RHFEnergyConservation) {
 
 TEST_F(BOMDTest, RHFBondOscillation) {
     auto frame = make_h2(0.80, 0.0);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
 
@@ -161,17 +138,13 @@ TEST_F(BOMDTest, RHFBondOscillation) {
 
 TEST_F(BOMDTest, MomentumConservation) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     double px0 =
         frame.span(ATV::kAtom_mass)[0] * frame.span(ATV::kAtom_vx)[0]
         + frame.span(ATV::kAtom_mass)[1] * frame.span(ATV::kAtom_vx)[1];
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
 
@@ -183,11 +156,7 @@ TEST_F(BOMDTest, MomentumConservation) {
 
 TEST_F(BOMDTest, RHFWithASPC) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
-    cpu::scf::SCF evaluator{config};
+    cpu::scf::RHF evaluator{};
     evaluator.predictor(3, 2, double(1e-4), true);
 
     cpu::md::MD sim;
@@ -207,10 +176,6 @@ TEST_F(BOMDTest, RHFWithASPC) {
 
 TEST_F(BOMDTest, RHFNoseHooverNVT) {
     auto frame = make_h2(0.74, 0.0);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     const double dt = 0.5;         // fs
     const double T_target = 300.0; // K
     const double tau = 50.0;       // fs (tight coupling for short test)
@@ -219,7 +184,7 @@ TEST_F(BOMDTest, RHFNoseHooverNVT) {
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42u});
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::NoseHoover{T_target, tau, dt});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 30);
 
@@ -235,10 +200,6 @@ TEST_F(BOMDTest, RHFNoseHooverNVT) {
 
 TEST_F(BOMDTest, RHFLangevinNVT) {
     auto frame = make_h2(0.74, 0.0);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     const double dt = 0.5;
     const double T_target = 300.0;
     const double damp = 100.0;
@@ -251,7 +212,7 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
                                  /*seed=*/13u});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 30);
 
@@ -265,10 +226,6 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
 
 TEST_F(BOMDTest, RHFBerendsenNPT) {
     auto frame = make_h2(0.74, 0.0);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     const double dt = 0.5;
     const double T_target = 300.0;
     const double tau_T = 50.0;
@@ -282,7 +239,7 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.add(cpu::md::Barostat{P_target, tau_P, dt});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 20);
 
@@ -312,16 +269,12 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
 
 TEST_F(BOMDTest, ChainedBuilderOnTemporaryDoesNotSEGV) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
     // The whole point of this test: chained builder call on a temporary.
     // Pre-fix, this stored a non-owning pointer to a dangling temporary
     // and segfaulted on the first launch.
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config}.predictor(3));
+    sim.on(md::Phase::force).add(cpu::scf::RHF{}.predictor(3));
     sim.build();
     sim.run(frame, 3);
 
@@ -332,15 +285,11 @@ TEST_F(BOMDTest, ChainedBuilderOnTemporaryDoesNotSEGV) {
 
 TEST_F(BOMDTest, ChainedBuilderWithGradientToggleOnTemporary) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
     // Two consecutive builder calls on the same temporary chain.
     sim.on(md::Phase::force)
-        .add(cpu::scf::SCF{config}.with_gradient(true).predictor(2));
+        .add(cpu::scf::RHF{}.with_gradient(true).predictor(2));
     sim.build();
     sim.run(frame, 1);
 
@@ -395,13 +344,9 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
     frame.meta.get(ATV::kKinetic) = 0;
     frame.simbox = ATV::cpu::Box::cubic(100.0);
 
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config});
+    sim.on(md::Phase::force).add(cpu::scf::RHF{});
     sim.build();
     sim.run(frame, 5);
 

@@ -9,7 +9,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-XcOnGrid xc_grid_pade(const UniformGrid& grid, const std::vector<double>& rho_r) {
+XcOnGrid xc_grid_pade(const UniformGrid& grid,
+                      const std::vector<double>& rho_r) {
     const long ng = grid.npts();
     const double w = grid.weight();
     XcOnGrid out;
@@ -20,7 +21,8 @@ XcOnGrid xc_grid_pade(const UniformGrid& grid, const std::vector<double>& rho_r)
         const double rho = rho_r[g];
         // Spin-unpolarized: split evenly. pade_lsd applies its own low-density
         // cutoff, returning zeros below threshold.
-        const ATV::cpu::xc::PadeXC xc = ATV::cpu::xc::pade_lsd(0.5 * rho, 0.5 * rho);
+        const ATV::cpu::xc::PadeXC xc =
+            ATV::cpu::xc::pade_lsd(0.5 * rho, 0.5 * rho);
         e += w * rho * xc.exc;
         out.vxc_r[g] = xc.vrho_a; // = vrho_b in the unpolarized case
     }

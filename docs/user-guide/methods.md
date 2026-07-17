@@ -1,5 +1,10 @@
 # Methods
 
+Which **preset** and **evaluator** to use for each job. For the underlying
+vocabulary (Driver / Component / Frame / Handler), start with
+[Core concepts](concepts.md). Scientific theory and literature numbers live
+in the [Tutorial](../tutorial/).
+
 Every calculation is a **driver** (what kind of job) plus an **evaluator**
 component (how energy and forces are computed). The two axes are independent:
 any evaluator can be bound to any driver, which is how the same
@@ -60,10 +65,10 @@ with LAMMPS-shaped categorical setters.
 
 ```cpp
 cpu::md::MD sim;
-sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps [eV], sigma [Å], rcut [Å]
+sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});          // eps (eV), sigma (Å), rcut (Å)
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
-sim.set_integrator(cpu::md::VelocityVerlet{0.01});       // dt [fs]
-sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0});   // T [K], tau [fs]
+sim.set_integrator(cpu::md::VelocityVerlet{0.01});       // dt (fs)
+sim.set_thermostat(cpu::md::NoseHoover{300.0, 100.0});   // T (K), tau (fs)
 sim.set_thermo(100);
 sim.build();
 sim.run(frame, 1000);
@@ -78,13 +83,31 @@ RHF, UHF, and Kohn-Sham DFT (LSDA, PBE, B3LYP, PBE0) for molecules, with
 analytic gradients. Basis sets: `STO3G`, `Pople631G`, `Pople631Gs`, `Def2SVP`,
 `Def2TZVP`.
 
+There is **no** public `IntegralPack` / `SCFConfig` / `SCFSolver`. Construct a
+**concrete method**, set members, pass a `Frame`:
+
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::rhf_config(ints, 1e-10);
-config.max_iter = 100;
-cpu::scf::SCFSolver solver{config};
-solver.build(ints);
-const auto& res = solver.run(ints);                       // res.energy [Hartree]
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = 1e-10;
+rhf.max_iter = 100;
+const auto& res = rhf.run(frame);   // res.energy [Hartree]
+// forces:
+// auto g = rhf.forces(frame);      // eV/Å on frame force columns
+```
+
+Open-shell and KS:
+
+```cpp
+cpu::scf::UHF uhf(/*n_alpha=*/5, /*n_beta=*/4);
+uhf.charge = 1;
+uhf.run(frame);
+
+cpu::scf::RKS rks(cpu::scf::XCType::PBE);
+rks.run(frame);
+
+cpu::scf::UKS uks(1, 1, cpu::scf::XCType::LSDA);
+uks.run(frame);
 ```
 
 Chapters [2](../tutorial/ch02-rhf.md)–[7](../tutorial/ch07-correlation.md)
@@ -98,7 +121,7 @@ the whole point of the architecture: nothing about the loop changes.
 ```cpp
 cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
-aimd.on(md::Phase::force).add(cpu::scf::SCF{cfg});   // with_gradient(true)
+aimd.on(md::Phase::force).add(cpu::scf::RHF{});  // concrete method as force component
 aimd.build();
 aimd.run(frame, 100);
 ```
@@ -113,7 +136,7 @@ sets, and DFT-D3 dispersion, so it needs no external data files.
 
 ```cpp
 cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
-cpu::single_point(frame, pwe);            // frame.meta.get(kEnergy) [eV]
+cpu::single_point(frame, pwe);            // frame.meta.get(kEnergy) (eV)
 ```
 
 See [Chapter 8](../tutorial/ch08-plane-wave.md) and
@@ -130,7 +153,7 @@ opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});  // memory, alpha0, max_l
 // Convergence is the handler's, not the optimizer's. Omit it and Minimize
 // attaches cpu::ForceConverged{} with its defaults.
 opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
+opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
 opt.build();
 opt.run(frame, 100);
 ```
@@ -144,13 +167,13 @@ energies, so a system you can run with MD you can also sample with MC — you on
 add a **Mover**.
 
 ```cpp
-cpu::mc::MC mc{/*T [K]=*/300.0, /*seed=*/12345u};
+cpu::mc::MC mc{/*T (K)=*/300.0, /*seed=*/12345u};
 mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
-mc.set_mover(cpu::mc::TranslateMove{/*delta [Å]=*/0.2});
+mc.set_mover(cpu::mc::TranslateMove{/*delta (Å)=*/0.2});
 mc.build();
 mc.run(frame, 100000);                    // 100k trial moves
-double e = mc.current_energy();            // [eV]; mc.acceptance_ratio() in [0,1]
+double e = mc.current_energy();            // (eV); mc.acceptance_ratio() in [0,1]
 ```
 
 ## Semiempirical

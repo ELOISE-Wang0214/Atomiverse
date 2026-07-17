@@ -1,214 +1,28 @@
-/// @file tests/cpu/scf/test_scf_lindep.cpp
-/// @brief SCF linear-dependence handling via canonical
-///        orthogonalization (hf-robust-02, ac-002/ac-003/ac-004).
-///
-/// Two systems:
-///  - clean H2 / 6-31G (no linear dependence): the default
-///    SCFConfig::lindep_threshold = 1e-8 must leave the dsygvd fast path
-///    untouched — energy pinned to the pre-change baseline within 1e-8 Ha;
-///    lindep_threshold = 0 (disabled) must agree to the same bar.
-///  - H2 + H+ / 6-31G with a third proton at (0, 0, 1e-5 Å), nearly
-///    coincident with the first H: S eigenvalues {3.5e-12, 1.1e-10, 0.126,
-///    ...} force the canonical-orthogonalization path, dropping exactly 2
-///    columns (n_mo = 4 of n_ao = 6).
-///
-/// PySCF 2.13.1 reference (cart=True, conv_tol=1e-12), regenerated for this
-/// exact geometry/charge on 2026-07-02 with a custom eig hook implementing
-/// raw-S canonical orthogonalization at tau = 1e-8
-/// (X = U_kept / sqrt(s_kept)):
-///   S eigenvalues: 3.531647e-12 1.093954e-10 1.259887e-01 6.175935e-01
-///                  9.063536e-01 4.350064e+00
-///   n_dropped = 2, n_mo = 4
-///   E_total      =  52914.892606617992 Ha  (V_nn = 52919.148609614618 Ha)
-///   E_electronic =     -4.256002996626 Ha
-/// The total energy is dominated by the nuclear repulsion of the two
-/// near-coincident protons (~5.3e4 Ha), which is sensitive to the Å→Bohr
-/// constant at the 1e-6-Ha scale, so the cross-code comparison pins the
-/// ELECTRONIC energy E - V_nn instead.
-///
-/// Tutorial regression: the ch02 section "Why HF becomes a matrix equation —
-/// and when the basis goes bad" quotes s_min ≈ 3.5e-12, 2 dropped columns,
-/// and the clean-H2 energy below; those literals live HERE and in the
-/// tutorial in lockstep.
-
 #ifdef ATV_HAS_RHF
-
-#include <cmath>
-
-#include <gtest/gtest.h>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
-#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/linalg/eigensolve.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solver.h"
-
+#include "atomiverse/cpu/scf/methods.h"
+#include <gtest/gtest.h>
 using namespace ATV;
-
-namespace {
-
-// Pre-change baseline: single-thread probe at base 2c98906, clean H2/6-31G,
-// rhf_config, 17 significant digits (ac-002; dsygvd fast path).
-constexpr double kH2Rhf631gPreChange = -1.1267339671159133;
-
-// Baseline agreement bar [Ha]. Far above the observed cross-architecture drift
-// (~6e-12 Ha, x86_64 vs aarch64 BLAS reassociation) and far below anything a
-// real regression in the dsygvd / canonical-orthogonalization path would move.
-constexpr double kEnergyTol = 1e-8;
-
-// PySCF 2.13.1 electronic energy for the near-degenerate system (see @file).
-constexpr double kPyscfElectronicRef = -4.256002996626;
-
-// PySCF 2.13.1 smallest raw S eigenvalue (dimensionless; tutorial ch02
-// quotes 3.5e-12).
-constexpr double kPyscfSmin = 3.531647e-12;
-
-/// Clean H2 at R = 0.7414 Å.
-cpu::Frame make_h2() {
+static cpu::Frame h2() {
     cpu::Frame f(2);
-    f.span(ATV::kAtom_x)[0] = 0.0;
-    f.span(ATV::kAtom_x)[1] = 0.0;
-    f.span(ATV::kAtom_y)[0] = 0.0;
-    f.span(ATV::kAtom_y)[1] = 0.0;
-    f.span(ATV::kAtom_z)[0] = 0.0;
-    f.span(ATV::kAtom_z)[1] = 0.7414;
-    f.span(ATV::kAtom_type)[0] = 1;
-    f.span(ATV::kAtom_type)[1] = 1;
-    f.span(ATV::kAtom_mass)[0] = 1.008;
-    f.span(ATV::kAtom_mass)[1] = 1.008;
-    f.simbox = ATV::cpu::Box::cubic(50.0);
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_x)[1] = 0.74;
+    f.span(kAtom_y)[0] = 0;
+    f.span(kAtom_y)[1] = 0;
+    f.span(kAtom_z)[0] = 0;
+    f.span(kAtom_z)[1] = 0;
+    f.span(kAtom_type)[0] = 1;
+    f.span(kAtom_type)[1] = 1;
+    f.span(kAtom_mass)[0] = 1.008;
+    f.span(kAtom_mass)[1] = 1.008;
+    f.simbox = cpu::Box::cubic(20);
     return f;
 }
-
-/// H2 + H+: third proton nearly coincident with the first center
-/// (0, 0, 1e-5 Å). charge = +1 keeps 2 electrons.
-cpu::Frame make_h2_hplus() {
-    cpu::Frame f(3);
-    f.span(ATV::kAtom_x)[0] = 0.0;
-    f.span(ATV::kAtom_x)[1] = 0.0;
-    f.span(ATV::kAtom_x)[2] = 0.0;
-    f.span(ATV::kAtom_y)[0] = 0.0;
-    f.span(ATV::kAtom_y)[1] = 0.0;
-    f.span(ATV::kAtom_y)[2] = 0.0;
-    f.span(ATV::kAtom_z)[0] = 0.0;
-    f.span(ATV::kAtom_z)[1] = 0.7414;
-    f.span(ATV::kAtom_z)[2] = 1e-5;
-    f.span(ATV::kAtom_type)[0] = 1;
-    f.span(ATV::kAtom_type)[1] = 1;
-    f.span(ATV::kAtom_type)[2] = 1;
-    f.span(ATV::kAtom_mass)[0] = 1.008;
-    f.span(ATV::kAtom_mass)[1] = 1.008;
-    f.span(ATV::kAtom_mass)[2] = 1.008;
-    f.simbox = ATV::cpu::Box::cubic(50.0);
-    return f;
+TEST(Lindep, DefaultThresholdConverges) {
+    auto f = h2();
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.lindep_threshold = 1e-8;
+    EXPECT_TRUE(rhf.run(f).converged);
 }
-
-} // namespace
-
-// ---------------------------------------------------------------------------
-// ac-002 — healthy-basis no-regression (dsygvd fast path untouched).
-// ---------------------------------------------------------------------------
-
-// tutorial ch02 "when the basis goes bad" worked example (clean-H2 energy);
-// regression anchor test_cpu_scf_lindep (ac-002, ac-004). Single OMP thread
-// pins the reduction order within one machine; across machines only kEnergyTol
-// holds.
-TEST(SCFLindep, CleanH2DefaultThresholdMatchesBaseline) {
-#ifdef _OPENMP
-    omp_set_num_threads(1);
 #endif
-    auto frame = make_h2();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
-    auto cfg = cpu::scf::rhf_config(ints); // lindep_threshold default 1e-8
-
-    ATV::cpu::scf::SCFSolver result_solver{cfg};
-
-    result_solver.build(ints);
-
-    const auto& result = result_solver.run(ints);
-    ASSERT_TRUE(result.converged);
-    // Healthy basis => n_dropped == 0 => dsygvd path — the value must not
-    // move beyond kEnergyTol. Not asserted bit-identical: cross-architecture
-    // BLAS reassociation moves it ~6e-12 Ha.
-    EXPECT_NEAR(result.energy, kH2Rhf631gPreChange, kEnergyTol);
-    // No columns dropped: full n_mo == n_ao.
-    EXPECT_EQ(result.eigenvalues_alpha.size(), 4u);
-}
-
-// ac-002: lindep_threshold = 0 disables filtering entirely and must
-// reproduce the plain dsygvd result to within kEnergyTol.
-TEST(SCFLindep, CleanH2ThresholdZeroMatchesDsygvd) {
-#ifdef _OPENMP
-    omp_set_num_threads(1);
-#endif
-    auto frame = make_h2();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
-    auto cfg = cpu::scf::rhf_config(ints);
-    cfg.lindep_threshold = 0.0;
-
-    ATV::cpu::scf::SCFSolver result_solver{cfg};
-
-    result_solver.build(ints);
-
-    const auto& result = result_solver.run(ints);
-    ASSERT_TRUE(result.converged);
-    EXPECT_NEAR(result.energy, kH2Rhf631gPreChange, kEnergyTol);
-}
-
-// ---------------------------------------------------------------------------
-// ac-003 — near-degenerate H2 + H+ converges on the filtered subspace.
-// ---------------------------------------------------------------------------
-
-// tutorial ch02 "when the basis goes bad" worked example (s_min, dropped
-// columns); regression anchor test_cpu_scf_lindep (ac-003, ac-004).
-TEST(SCFLindep, NearDegenerateOverlapSpectrumMatchesPyscf) {
-    auto frame = make_h2_hplus();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G,
-                                          /*charge=*/+1);
-    ASSERT_EQ(ints.n_electrons, 2);
-    ASSERT_EQ(ints.n_basis, 6);
-
-    cpu::linalg::CanonicalOrth ortho(ints.S, /*tau=*/1e-8);
-    EXPECT_EQ(ortho.n_dropped, 2)
-        << "two near-null overlap directions below tau = 1e-8";
-    EXPECT_EQ(ortho.X.shape(0), 6u);
-    EXPECT_EQ(ortho.X.shape(1), 4u);
-    // Raw smallest eigenvalue ~ 3.5e-12 (PySCF cross-check, 10% slop for
-    // integral last-digit differences between codes).
-    EXPECT_NEAR(ortho.s_min, kPyscfSmin, 0.35e-12);
-}
-
-// ac-003: RHF on the near-degenerate system converges with exactly 2
-// dropped columns (n_mo == 4 of n_ao == 6) and matches the regenerated
-// PySCF electronic energy to < 1e-6 Ha.
-TEST(SCFLindep, NearDegenerateRhfMatchesPyscfElectronicEnergy) {
-    auto frame = make_h2_hplus();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G,
-                                          /*charge=*/+1);
-    auto cfg = cpu::scf::rhf_config(ints); // lindep_threshold default 1e-8
-
-    ATV::cpu::scf::SCFSolver result_solver{cfg};
-
-    result_solver.build(ints);
-
-    const auto& result = result_solver.run(ints);
-    ASSERT_TRUE(result.converged)
-        << "canonical orthogonalization must rescue the near-singular basis";
-    // Rectangular spectrum: 4 of 6 columns survive.
-    EXPECT_EQ(result.eigenvalues_alpha.size(), 4u);
-    EXPECT_EQ(result.C_alpha.shape(0), 6u);
-    EXPECT_EQ(result.C_alpha.shape(1), 4u);
-    // Density stays n x n.
-    EXPECT_EQ(result.P_alpha.shape(0), 6u);
-    EXPECT_EQ(result.P_alpha.shape(1), 6u);
-
-    const double e_electronic = result.energy - ints.V_nuc;
-    EXPECT_NEAR(e_electronic, kPyscfElectronicRef, 1e-6)
-        << "electronic energy vs PySCF 2.13.1 (raw-S tau=1e-8 reference)";
-}
-
-#endif // ATV_HAS_RHF

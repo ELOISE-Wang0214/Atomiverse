@@ -23,7 +23,7 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 
 namespace ATV {
 namespace cpu {

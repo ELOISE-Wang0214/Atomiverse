@@ -43,10 +43,10 @@ struct LsSample {
 
 /// @brief Outcome of a line search.
 struct LineSearchResult {
-    double alpha = 0;       ///< Accepted (or best) step length.
-    bool ok = false;        ///< True when the target condition was satisfied.
-    int n_value_evals = 0;  ///< phi evaluations (energy).
-    int n_grad_evals = 0;   ///< phi' evaluations (gradient/force).
+    double alpha = 0;      ///< Accepted (or best) step length.
+    bool ok = false;       ///< True when the target condition was satisfied.
+    int n_value_evals = 0; ///< phi evaluations (energy).
+    int n_grad_evals = 0;  ///< phi' evaluations (gradient/force).
 };
 
 /// @brief Backtracking line search enforcing the Armijo condition (N&W 3.6a).
@@ -112,7 +112,8 @@ LineSearchResult zoom(Phi&& phi, double phi0, double dphi0, double c1,
         ++r.n_value_evals;
         ++r.n_grad_evals;
         if (s.f > phi0 + c1 * alpha_j * dphi0 || s.f >= f_lo) {
-            alpha_hi = alpha_j; // 3.6a violated or no improvement → shrink right
+            alpha_hi =
+                alpha_j; // 3.6a violated or no improvement → shrink right
         } else {
             if (std::abs(s.dphi) <= -c2 * dphi0) { // strong-Wolfe curvature met
                 r.alpha = alpha_j;
@@ -186,8 +187,8 @@ LineSearchResult strong_wolfe(Phi&& phi, double phi0, double dphi0,
         }
         // Slope turned non-negative → minimizer is between alpha and alpha_prev.
         if (s.dphi >= 0) {
-            return detail::zoom(phi, phi0, dphi0, c1, c2, alpha, s.f, alpha_prev,
-                                max_evals - r.n_value_evals, r);
+            return detail::zoom(phi, phi0, dphi0, c1, c2, alpha, s.f,
+                                alpha_prev, max_evals - r.n_value_evals, r);
         }
         // Still descending strongly: expand the step toward alpha_max.
         alpha_prev = alpha;

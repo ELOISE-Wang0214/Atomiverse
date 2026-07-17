@@ -1,7 +1,7 @@
 /// @file src/cpu/semiempirical/nddo_system.cpp
 /// @brief NDDO reference-shaped NDDO system indexing and population helpers.
 
-#include "atomiverse/cpu/semiempirical/nddo_system.h"
+#include "atomiverse/cpu/semiempirical/internal/nddo_system.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -39,26 +39,25 @@ double am1_core_charge(int z) noexcept {
     return p == nullptr ? 0.0 : p->core_charge;
 }
 
-NDDOSystem build_nddo_system(const cpu::Frame& frame, int charge,
-                             int multiplicity, SemiEmpiricalMethod method) {
+NDDOSystem::NDDOSystem(const cpu::Frame& frame, int charge_in, int multiplicity,
+                       SemiEmpiricalMethod method_in) {
     if (multiplicity < 1) {
         throw std::runtime_error("NDDO multiplicity must be positive");
     }
 
     const char* method_name =
-        (method == SemiEmpiricalMethod::RM1) ? "RM1" : "AM1";
+        (method_in == SemiEmpiricalMethod::RM1) ? "RM1" : "AM1";
 
-    NDDOSystem system;
-    system.charge = charge;
-    system.method = method;
-    system.atoms.reserve(static_cast<std::size_t>(frame.nlocal()));
+    charge = charge_in;
+    method = method_in;
+    atoms.reserve(static_cast<std::size_t>(frame.nlocal()));
 
     int next_ao = 0;
-    double electron_count = -static_cast<double>(charge);
+    double electron_count = -static_cast<double>(charge_in);
     const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < frame.nlocal(); ++i) {
         const int z = sp_type[i];
-        const auto* p = nddo_parameter(method, z);
+        const auto* p = nddo_parameter(method_in, z);
         if (p == nullptr) {
             throw std::runtime_error(
                 std::string(method_name)
@@ -78,36 +77,29 @@ NDDOSystem build_nddo_system(const cpu::Frame& frame, int charge,
         atom.last_ao = next_ao + p->n_orbitals - 1;
         atom.core_charge = p->core_charge;
         atom.params = p;
-        system.atoms.push_back(atom);
+        atoms.push_back(atom);
         next_ao += p->n_orbitals;
         electron_count += p->core_charge;
     }
 
-    system.n_orbitals = next_ao;
-    system.n_electrons = static_cast<int>(std::lround(electron_count));
-    if (system.n_electrons < 0 || system.n_electrons > 2 * system.n_orbitals) {
+    n_orbitals = next_ao;
+    n_electrons = static_cast<int>(std::lround(electron_count));
+    if (n_electrons < 0 || n_electrons > 2 * n_orbitals) {
         throw std::runtime_error(
             "NDDO electron count is outside the AO capacity");
     }
 
     const int unpaired = multiplicity - 1;
-    if ((system.n_electrons + unpaired) % 2 != 0) {
+    if ((n_electrons + unpaired) % 2 != 0) {
         throw std::runtime_error(
             "NDDO multiplicity is inconsistent with the electron count");
     }
-    system.n_alpha = (system.n_electrons + unpaired) / 2;
-    system.n_beta = system.n_electrons - system.n_alpha;
-    if (system.n_beta < 0 || system.n_alpha > system.n_orbitals) {
+    n_alpha = (n_electrons + unpaired) / 2;
+    n_beta = n_electrons - n_alpha;
+    if (n_beta < 0 || n_alpha > n_orbitals) {
         throw std::runtime_error(
             "NDDO spin electron count is outside AO capacity");
     }
-    return system;
-}
-
-NDDOSystem build_am1_system(const cpu::Frame& frame, int charge,
-                            int multiplicity) {
-    return build_nddo_system(frame, charge, multiplicity,
-                             SemiEmpiricalMethod::AM1);
 }
 
 std::size_t packed_index(int i, int j) noexcept {

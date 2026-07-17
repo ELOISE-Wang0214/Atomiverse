@@ -85,7 +85,7 @@ std::array<double, 3> DomainDecomposition::subhi(int slot) const {
 
 int DomainDecomposition::face_neighbor(int slot, int face) const {
     auto c = coords(slot);
-    int axis = face / 2;          // 0:x 1:y 2:z
+    int axis = face / 2;            // 0:x 1:y 2:z
     int dir = (face & 1) ? +1 : -1; // even=-, odd=+
     int nc[3] = {c[0], c[1], c[2]};
     nc[axis] = (nc[axis] + dir + dims_[axis]) % dims_[axis]; // periodic wrap

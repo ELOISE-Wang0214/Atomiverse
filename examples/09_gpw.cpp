@@ -34,6 +34,7 @@
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 

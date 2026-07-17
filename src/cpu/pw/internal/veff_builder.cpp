@@ -46,8 +46,8 @@ void VeffBuilder::step(PWWorkspace& ws) {
             int idx = kx + nxc * (ky + ny * kz);
             if (idx >= 0 && idx < nc) {
                 vg[idx][0] = static_cast<double>(ws.V_eff_G[ig].real());
-                vg[idx][1] = static_cast<double>(
-                    conj ? -ws.V_eff_G[ig].imag() : ws.V_eff_G[ig].imag());
+                vg[idx][1] = static_cast<double>(conj ? -ws.V_eff_G[ig].imag()
+                                                      : ws.V_eff_G[ig].imag());
             }
         }
 

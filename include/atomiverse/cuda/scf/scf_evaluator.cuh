@@ -34,7 +34,7 @@
 #include "atomiverse/facade/component_role.h"
 
 #ifdef ATV_HAS_RHF
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #endif
 
 namespace ATV {

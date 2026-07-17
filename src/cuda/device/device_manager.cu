@@ -23,20 +23,21 @@ void check(cudaError_t e, const char* what) {
 
 struct DeviceManager::Impl {
     int n = 0;
-    std::vector<int> ids;             // slot -> cuda device id
-    std::vector<cudaStream_t> main;   // per-slot main stream
-    std::vector<cudaStream_t> defer;  // per-slot deferrable stream
-    std::vector<char> peer;           // n*n row-major: peer[a*n+b]
+    std::vector<int> ids;            // slot -> cuda device id
+    std::vector<cudaStream_t> main;  // per-slot main stream
+    std::vector<cudaStream_t> defer; // per-slot deferrable stream
+    std::vector<char> peer;          // n*n row-major: peer[a*n+b]
 };
 
-DeviceManager::DeviceManager(int n_requested) : impl_(std::make_unique<Impl>()) {
+DeviceManager::DeviceManager(int n_requested)
+    : impl_(std::make_unique<Impl>()) {
     auto& s = *impl_;
     int visible = 0;
     check(cudaGetDeviceCount(&visible), "cudaGetDeviceCount");
     if (visible <= 0)
         throw std::runtime_error("DeviceManager: no CUDA devices visible");
-    s.n = (n_requested <= 0) ? visible : (n_requested < visible ? n_requested
-                                                                 : visible);
+    s.n = (n_requested <= 0) ? visible
+                             : (n_requested < visible ? n_requested : visible);
     s.ids.resize(s.n);
     s.main.resize(s.n);
     s.defer.resize(s.n);

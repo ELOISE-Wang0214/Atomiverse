@@ -1,3 +1,4 @@
+#include "atomiverse/cpu/scf/methods.h"
 /// @file tests/cpu/recorder/test_density_cube.cpp
 /// @brief Tests for cpu::recorder::DensityCubeWriter and OrbitalCubeWriter.
 ///
@@ -16,8 +17,8 @@
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/recorder/density_cube_writer.h"
 #include "atomiverse/cpu/recorder/orbital_cube_writer.h"
+#include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -85,11 +86,7 @@ ParsedCube parse_cube(const std::string& path) {
 
 TEST(DensityCubeTest, H2DensityIntegratesToTwoElectrons) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
-    cpu::scf::SCF scf{config};
+    cpu::scf::RHF scf{};
     auto handle = scf.result_handle();
 
     auto tmp = std::filesystem::temp_directory_path() / "atv_rho_h2.cube";
@@ -122,11 +119,7 @@ TEST(DensityCubeTest, H2DensityIntegratesToTwoElectrons) {
 
 TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
-    cpu::scf::SCF scf{config};
+    cpu::scf::RHF scf{};
     auto handle = scf.result_handle();
 
     auto tmp = std::filesystem::temp_directory_path() / "atv_mo_h2.cube";

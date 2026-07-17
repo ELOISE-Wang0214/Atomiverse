@@ -13,8 +13,20 @@ dependencies = ["numpy", "molcrafts-molrs==0.7.0"]
 molpy    = ["molcrafts-molpy==0.7.0"]
 torch    = ["torch"]
 dev      = ["pytest", "pytest-cov", "numpy"]
-docs     = ["zensical>=0.0.45", "molcrafts-zensical-theme>=0.1.2"]
-examples = ["matplotlib", "ase"]
+# Docs: only the theme (+ zensical). MolVis and MolPlot fences both live in
+# molcrafts-zensical-theme; browser bundles load from the npm CDN in
+# zensical.toml. Do NOT add molcrafts-molplot here — that is for paper
+# charting in the `examples` extra, not for documentation builds.
+docs     = [
+  "zensical>=0.0.45",
+  "molcrafts-zensical-theme>=0.2.2",
+]
+# Python examples (pw_qe_compare, …): paper plots via molplot; systems via molpy.
+# Do not add matplotlib or ASE here — use the MolCrafts stack only.
+examples = [
+  "molcrafts-molplot>=0.1.2",
+  "molcrafts-molpy==0.7.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

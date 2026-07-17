@@ -9,7 +9,7 @@
 ///
 /// Usage:
 /// @code
-///   cpu::scf::SCF scf{cfg};
+///   cpu::scf::RHF scf{};
 ///   scf.with_gradient(false);
 ///   cpu::single_point(frame, scf);
 ///   // frame.energy populated; scf.last_result().energy in Hartree.

@@ -29,8 +29,8 @@ Semantics to know:
   not a Python-side per-step loop (that would pay one broadcast+gather
   per iteration anyway).
 - **`ev.last_result()` is serial-path only** for AM1: under the launcher
-  the solve happens inside per-rank materializers; energy [eV] and
-  Mulliken charges [e] come back through the Frame.
+  the solve happens inside per-rank materializers; energy (eV) and
+  Mulliken charges (e) come back through the Frame.
 - **Minimize returns control metadata separately from state**:
   `iterations`, `converged`, and `stop_reason` are the returned
   `MinimizeResult`; coordinates, forces, energy, box, and topology remain in

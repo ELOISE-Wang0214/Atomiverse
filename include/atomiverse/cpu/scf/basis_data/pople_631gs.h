@@ -5,7 +5,7 @@
 /// dictionary, so numerical values match the PySCF ground-truth path
 /// bit-for-bit. Contraction coefficients use the unnormalized
 /// convention (physical GTO normalization is applied by
-/// `build_shell_list`).
+/// `ShellList` constructor).
 ///
 /// Supported elements: H, C, N, O, F.
 ///

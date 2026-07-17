@@ -67,7 +67,8 @@ void spin_function(double x, double& f, double& df) {
 PadeXC pade_lsd(double rho_a, double rho_b) {
     PadeXC out;
     const double rhoab = rho_a + rho_b;
-    if (rhoab < kRhoMin) return out;
+    if (rhoab < kRhoMin)
+        return out;
 
     // rs = (3 / (4 pi rho))^(1/3).
     const double rsfac = std::cbrt(3.0 / (4.0 * M_PI));
@@ -91,7 +92,8 @@ PadeXC pade_lsd(double rho_a, double rho_b) {
     const double p = fa0 + (fa1 + (fa2 + fa3 * rs) * rs) * rs;
     const double q = (fb1 + (fb2 + (fb3 + fb4 * rs) * rs) * rs) * rs;
     const double dpv = fa1 + (2.0 * fa2 + 3.0 * fa3 * rs) * rs;
-    const double dq = fb1 + (2.0 * fb2 + (3.0 * fb3 + 4.0 * fb4 * rs) * rs) * rs;
+    const double dq =
+        fb1 + (2.0 * fb2 + (3.0 * fb3 + 4.0 * fb4 * rs) * rs) * rs;
     const double xp = da0 + (da1 + (da2 + da3 * rs) * rs) * rs;
     const double xq = (db1 + (db2 + (db3 + db4 * rs) * rs) * rs) * rs;
 
@@ -99,7 +101,7 @@ PadeXC pade_lsd(double rho_a, double rho_b) {
     const double dx = 2.0 * (xp * q - p * xq) / (q * q) * fx2 / rhoab;
     const double dc = f13 * rs * dr - p / q;
 
-    out.exc = -p / q;            // epade, energy per electron
+    out.exc = -p / q;             // epade, energy per electron
     out.vrho_a = dc - dx * rho_b; // CP2K pade_lsd_1 pota
     out.vrho_b = dc + dx * rho_a; // CP2K pade_lsd_1 potb
     return out;

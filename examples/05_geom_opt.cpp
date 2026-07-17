@@ -19,9 +19,7 @@
 #include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_types.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -102,37 +100,20 @@ int main() {
 
     auto frame = make_aspirin();
 
-    // Build integrals at the default baseline basis. STO-3G lets this
-    // tutorial complete quickly on a laptop; switch `BasisSet::Def2SVP` in
-    // production once the d-shell XC-grid extension ships (tracked in
-    // Phase 1.2).
-    ATV_INFO("[example] initial integrals start");
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    ATV_INFO("[example] initial integrals done basis={} electrons={}",
-             integrals.n_basis, integrals.n_electrons);
+    // Concrete RHF force provider — parameters are members.
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = double(1e-6);
+    rhf.max_iter = 200;
+    rhf.force_native_two_electron_deriv = true;
 
-    // Restricted Hartree-Fock with the MINAO initial guess. RHF needs no
-    // exchange-correlation grid, so each optimization step (a full SCF +
-    // analytic gradient on all 21 atoms) is fast enough for a tutorial. For
-    // DFT, swap in cpu::scf::default_config(integrals) (Restricted KS / PBE)
-    // — correct but much heavier because of the dense XC grid.
-    auto config = cpu::scf::rhf_config(integrals);
-    config.tol = double(1e-6);
-    config.max_iter = 200;
-    config.force_native_two_electron_deriv = true;
-
-    // Set up L-BFGS optimizer. The component carries ALGORITHM parameters only
-    // — curvature depth, initial step, line-search trial cap. L-BFGS uses a
-    // strong-Wolfe line search by default (the quasi-Newton step length is
-    // chosen to satisfy the Wolfe conditions).
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{
         5,            // memory
         double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
         20            // max_ls (line-search trial cap)
     });
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
+    opt.on(ATV::minimizer::Phase::force).add(std::move(rhf));
 
     // Convergence is a POLICY, not an algorithm parameter: it lives on a
     // LoopHandler, not on the optimizer. `ForceConverged` requires ALL five

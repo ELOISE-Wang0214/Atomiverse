@@ -1,15 +1,15 @@
 /// @file cpu/scf/integrals.cpp
-/// @brief `build_integrals` — production compositor over the decomposed
-///        single-responsibility builders (basis_set.h + one_electron.h +
-///        two_electron.h).
+/// @brief IntegralPack constructor — production compositor over the
+///        single-responsibility builders (AtomList / ShellList +
+///        one_electron.h + two_electron.h).
 ///
 /// This is the canonical entry point for assembling an `IntegralPack` from a
 /// `Frame` and a `BasisSet`. Low-level callers that need a single integral
 /// can call the underlying builders directly:
 ///
 /// @code
-///   auto atoms  = make_atom_list(frame, charge);
-///   auto shells = build_shell_list(atoms, cpu::scf::BasisSet::STO3G);
+///   AtomList atoms{frame, charge};
+///   ShellList shells{atoms, cpu::scf::BasisSet::STO3G};
 ///   auto S = build_overlap(shells);
 ///   auto T = build_kinetic(shells);
 ///   auto V = build_nuclear_attraction(shells, atoms);
@@ -18,64 +18,62 @@
 ///   // Optionally: auto ERI = build_eri_dense(shells);
 /// @endcode
 
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/scf/basis_set.h"
-#include "atomiverse/cpu/scf/one_electron.h"
-#include "atomiverse/cpu/scf/two_electron.h"
+#include "atomiverse/cpu/scf/internal/basis_workspace.h"
+#include "atomiverse/cpu/scf/internal/one_electron.h"
+#include "atomiverse/cpu/scf/internal/two_electron.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
 
-IntegralPack build_integrals(const Frame& frame, BasisSet basis, int charge,
-                             bool compute_eri) {
+IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
+                           bool compute_eri) {
     const auto t_total = LogClock::now();
 
-    auto atom_list = make_atom_list(frame, charge);
-    auto shell_list = build_shell_list(atom_list, basis);
+    AtomList atom_list{frame, charge};
+    ShellList shell_list{atom_list, basis};
 
     ATV_INFO(
         "[integrals] start natm={} basis={} n_basis={} electrons={} charge={}",
         static_cast<int>(atom_list.atoms.size()), basis_set_name(basis),
         shell_list.n_basis, atom_list.n_electrons, charge);
 
-    IntegralPack pack;
-    pack.n_basis = shell_list.n_basis;
-    pack.n_electrons = atom_list.n_electrons;
+    n_basis = shell_list.n_basis;
+    n_electrons = atom_list.n_electrons;
 
     const auto t_1e = LogClock::now();
-    pack.S = build_overlap(shell_list);
-    pack.T = build_kinetic(shell_list);
-    pack.V = build_nuclear_attraction(shell_list, atom_list);
-    pack.Hcore = pack.T + pack.V;
+    S = build_overlap(shell_list);
+    T = build_kinetic(shell_list);
+    V = build_nuclear_attraction(shell_list, atom_list);
+    Hcore = T + V;
     ATV_INFO("[integrals] one-electron done ms={:.1f}", elapsed_ms(t_1e));
 
     if (compute_eri) {
         const auto t_2e = LogClock::now();
-        pack.ERI = build_eri_dense(shell_list);
+        ERI = build_eri_dense(shell_list);
         ATV_INFO("[integrals] two-electron done ms={:.1f}", elapsed_ms(t_2e));
     }
 
-    pack.V_nuc = nuclear_repulsion_energy(atom_list);
+    V_nuc = nuclear_repulsion_energy(atom_list);
 
     // IntegralPack preserves owned shell storage because downstream
     // consumers (UKS grid, gradient, ASPC) hold references to it.
-    pack.atoms = atom_list.atoms;
-    pack.shell_data = shell_list.shell_storage;
-    pack.shells.resize(shell_list.n_basis);
+    atoms = atom_list.atoms;
+    shell_data = shell_list.shell_storage;
+    shells.resize(shell_list.n_basis);
     for (int i = 0; i < shell_list.n_basis; ++i) {
-        pack.shells[i] = shell_list.shells[i];
-        const int np = pack.shells[i].n_prim;
-        pack.shells[i].alpha = pack.shell_data[i].data();
-        pack.shells[i].coeff = pack.shell_data[i].data() + np;
+        shells[i] = shell_list.shells[i];
+        const int np = shells[i].n_prim;
+        shells[i].alpha = shell_data[i].data();
+        shells[i].coeff = shell_data[i].data() + np;
     }
 
     ATV_INFO("[integrals] done total_ms={:.1f} v_nuc={:.6f}",
-             elapsed_ms(t_total), pack.V_nuc);
-
-    return pack;
+             elapsed_ms(t_total), V_nuc);
 }
 
 } // namespace scf

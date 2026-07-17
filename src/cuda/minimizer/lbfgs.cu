@@ -2,8 +2,8 @@
 /// @brief L-BFGS kernels: device-resident two-loop recursion +
 ///        multi-criteria convergence via the shared ConvCheck.
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include <cuda_runtime.h>
 
@@ -35,14 +35,11 @@ __device__ __forceinline__ void wrap_store(real_t* __restrict__ x,
 
 /// @brief Pack frame positions + gradient (g = −F) into planar work_t
 ///        buffers for the history / two-loop vector algebra.
-__global__ void pack_xg(const real_t* __restrict__ x,
-                        const real_t* __restrict__ y,
-                        const real_t* __restrict__ z,
-                        const real_t* __restrict__ fx,
-                        const real_t* __restrict__ fy,
-                        const real_t* __restrict__ fz,
-                        work_t* __restrict__ xp, work_t* __restrict__ gp,
-                        int n) {
+__global__ void
+pack_xg(const real_t* __restrict__ x, const real_t* __restrict__ y,
+        const real_t* __restrict__ z, const real_t* __restrict__ fx,
+        const real_t* __restrict__ fy, const real_t* __restrict__ fz,
+        work_t* __restrict__ xp, work_t* __restrict__ gp, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -64,9 +61,8 @@ __global__ void sy_dot(const work_t* __restrict__ xc,
                        const work_t* __restrict__ gc,
                        const work_t* __restrict__ x_prev,
                        const work_t* __restrict__ g_prev,
-                       work_t* __restrict__ s_slot,
-                       work_t* __restrict__ y_slot, cuda::Box box,
-                       work_t* __restrict__ ys, int n) {
+                       work_t* __restrict__ s_slot, work_t* __restrict__ y_slot,
+                       cuda::Box box, work_t* __restrict__ ys, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     work_t my_ys = work_t(0);
@@ -162,16 +158,13 @@ __global__ void max_abs3n(const work_t* __restrict__ a,
 ///
 /// Thread (0,0) parks the applied α in ls[0] for the line search (read
 /// back on the host during the next convergence-check sync).
-__global__ void apply_step(real_t* __restrict__ x, real_t* __restrict__ y,
-                           real_t* __restrict__ z,
-                           const work_t* __restrict__ xc,
-                           const work_t* __restrict__ gc,
-                           const work_t* __restrict__ r,
-                           work_t* __restrict__ dir,
-                           work_t* __restrict__ x_prev,
-                           work_t* __restrict__ g_prev,
-                           const work_t* __restrict__ dir_max, work_t alpha0,
-                           work_t* __restrict__ ls, cuda::Box box, int n) {
+__global__ void
+apply_step(real_t* __restrict__ x, real_t* __restrict__ y,
+           real_t* __restrict__ z, const work_t* __restrict__ xc,
+           const work_t* __restrict__ gc, const work_t* __restrict__ r,
+           work_t* __restrict__ dir, work_t* __restrict__ x_prev,
+           work_t* __restrict__ g_prev, const work_t* __restrict__ dir_max,
+           work_t alpha0, work_t* __restrict__ ls, cuda::Box box, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -278,10 +271,9 @@ void LBFGS::launch(const LaunchContext& ctx) {
     int grid3 = cuda::grid_size(n3);
     int shmem = cuda::warps_per_block(block) * sizeof(work_t);
 
-    pack_xg<<<grid, block, 0, stream>>>(frame.atoms.x, frame.atoms.y,
-                                        frame.atoms.z, frame.atoms.fx,
-                                        frame.atoms.fy, frame.atoms.fz, d_x_,
-                                        d_g_, n);
+    pack_xg<<<grid, block, 0, stream>>>(
+        frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,
+        frame.atoms.fy, frame.atoms.fz, d_x_, d_g_, n);
 
     // ── Armijo rejection & rollback (host decision on cached scalars) ─
     //
@@ -307,7 +299,8 @@ void LBFGS::launch(const LaunchContext& ctx) {
         const int idx = (n_stored_ < memory_) ? n_stored_ : oldest_;
         cudaMemsetAsync(d_ys_, 0, sizeof(work_t), stream);
         sy_dot<<<grid, block, shmem, stream>>>(
-            d_x_, d_g_, d_xprev_, d_gprev_, d_s_ + static_cast<size_t>(idx) * n3,
+            d_x_, d_g_, d_xprev_, d_gprev_,
+            d_s_ + static_cast<size_t>(idx) * n3,
             d_y_ + static_cast<size_t>(idx) * n3, ctx.runtime.host_box, d_ys_,
             n);
         cudaMemcpyAsync(h_ys_, d_ys_, sizeof(work_t), cudaMemcpyDeviceToHost,

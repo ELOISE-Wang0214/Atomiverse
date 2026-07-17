@@ -88,9 +88,11 @@ cpu::Frame make_lj_system(int n_side, double density) {
 /// `CUDADriver` over `md::Phase`, which is what makes an `md::Phase`-bound component
 /// dispatchable in it and what a cross-workflow misbind is checked against.
 TEST(MDTaxonomy, IsALoopNodeOverMDPhase) {
-    static_assert(std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>,
-                  "cuda::md::MD must be a CUDADriver over md::Phase");
-    EXPECT_TRUE((std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>));
+    static_assert(
+        std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>,
+        "cuda::md::MD must be a CUDADriver over md::Phase");
+    EXPECT_TRUE(
+        (std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>));
 }
 
 /// The Zero* infrastructure components are phase-agnostic: they expose no
@@ -319,7 +321,8 @@ TEST(MD, InitVelocity) {
 
     // Temperature should be in the right ballpark (within factor 3 for 64 atoms)
     int ndof = 3 * n - 3;
-    double temp = double(2) * frame.scalars.kinetic / (double(ndof) * kBoltzmann);
+    double temp =
+        double(2) * frame.scalars.kinetic / (double(ndof) * kBoltzmann);
     EXPECT_GT(static_cast<double>(temp),
               static_cast<double>(target_temp) * 0.3);
     EXPECT_LT(static_cast<double>(temp),

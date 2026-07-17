@@ -29,18 +29,21 @@ using namespace ATV::test::delta_scf;
 namespace {
 
 // Tolerances for the internal-invariant assertions.
-constexpr double kExactRelaxTol = 1e-9;  ///< He / H₂ Koopmans==ΔSCF equality [Ha].
+constexpr double kExactRelaxTol =
+    1e-9; ///< He / H₂ Koopmans==ΔSCF equality [Ha].
 // A single-electron cation (He⁺, H₂⁺: n_beta = 0) is a pure doublet with ⟨S²⟩
 // exactly 0.75, so its contamination is machine-zero — assert it tight.
-constexpr double kSpinTolExact = 1e-8;   ///< single-electron cation contamination.
+constexpr double kSpinTolExact =
+    1e-8; ///< single-electron cation contamination.
 // A genuine multi-electron open-shell UHF cation (H₂O⁺) carries small, real
 // spin contamination from the unrestricted single determinant (H₂O⁺/STO-3G:
 // ⟨S²⟩−0.75 ≈ 0.0052, deterministic and warm/cold-invariant). 1e-4 was an
 // unphysically tight floor; 0.02 is an honest upper bound on real UHF
 // contamination for these small first-row cations.
-constexpr double kSpinTolUHF = 0.02;     ///< multi-electron UHF cation contamination.
-constexpr double kWarmColdTol = 1e-8;    ///< warm-vs-cold cation energy [Ha].
-constexpr double kBoundSlack = 1e-9;     ///< numerical slack on the ≤ bound [Ha].
+constexpr double kSpinTolUHF =
+    0.02; ///< multi-electron UHF cation contamination.
+constexpr double kWarmColdTol = 1e-8; ///< warm-vs-cold cation energy [Ha].
+constexpr double kBoundSlack = 1e-9;  ///< numerical slack on the ≤ bound [Ha].
 
 // One anchor evaluation, reused across the assertions.
 DeltaScfResult anchor(const SystemSpec& sys) {

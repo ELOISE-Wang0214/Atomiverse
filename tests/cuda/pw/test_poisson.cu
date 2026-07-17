@@ -2,9 +2,9 @@
 /// @brief Verifies cuda::pw::internal::poisson_hartree against the closed-form
 ///        CPU formula V_H(G) = 4π ρ(G)/|G|² (PW_Poisson::launch).
 #include "atomiverse/cuda/pw/internal/poisson.cuh"
-#include <cuda_runtime.h>
 #include <cmath>
 #include <complex>
+#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <random>
 #include <vector>
@@ -21,7 +21,8 @@ void* dmalloc(size_t bytes) {
 // Host reference identical to cpu::pw::PW_Poisson::launch.
 std::complex<double> host_poisson(std::complex<double> rho, double g2) {
     constexpr double four_pi = 4.0 * 3.141592653589793;
-    if (g2 < 1e-16) return {0.0, 0.0};
+    if (g2 < 1e-16)
+        return {0.0, 0.0};
     return four_pi * rho / g2;
 }
 } // namespace
@@ -43,11 +44,11 @@ TEST(CudaPWPoisson, MatchesCpuFormula) {
     g2[100] = 1e-20;
     g2[n_g - 1] = 0.0;
 
-    auto* d_rho =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_rho = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
     auto* d_g2 = static_cast<double*>(dmalloc(n_g * sizeof(double)));
-    auto* d_vh =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_vh = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
 
     ASSERT_EQ(cudaMemcpy(d_rho, rho.data(), n_g * sizeof(cufftDoubleComplex),
                          cudaMemcpyHostToDevice),
@@ -92,8 +93,8 @@ TEST(CudaPWPoisson, InPlaceAliasing) {
     }
     g2[0] = 0.0;
 
-    auto* d_rho =
-        static_cast<cufftDoubleComplex*>(dmalloc(n_g * sizeof(cufftDoubleComplex)));
+    auto* d_rho = static_cast<cufftDoubleComplex*>(
+        dmalloc(n_g * sizeof(cufftDoubleComplex)));
     auto* d_g2 = static_cast<double*>(dmalloc(n_g * sizeof(double)));
     ASSERT_EQ(cudaMemcpy(d_rho, rho.data(), n_g * sizeof(cufftDoubleComplex),
                          cudaMemcpyHostToDevice),

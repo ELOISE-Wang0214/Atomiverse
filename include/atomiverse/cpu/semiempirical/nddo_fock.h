@@ -6,7 +6,7 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/semiempirical/nddo_system.h"
+#include "atomiverse/cpu/semiempirical/internal/nddo_system.h"
 
 namespace ATV {
 namespace cpu {

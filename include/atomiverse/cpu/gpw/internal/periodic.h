@@ -25,7 +25,8 @@ namespace gpw {
 /// @param rcut Reach of the integrand [Bohr] (e.g. twice the basis radius for a
 ///        Gaussian *pair*).
 /// @param m Output: half-count per axis; images run t_d ∈ [-m[d], m[d]].
-inline void image_counts(const double L[3], bool periodic, double rcut, int m[3]) {
+inline void image_counts(const double L[3], bool periodic, double rcut,
+                         int m[3]) {
     for (int d = 0; d < 3; ++d)
         m[d] = (periodic && L[d] > 0.0)
                    ? static_cast<int>(std::ceil(rcut / L[d] - 1e-12))
@@ -49,11 +50,13 @@ inline void image_counts(const double L[3], bool periodic, double rcut, int m[3]
 /// @param periodic false ⇒ all counts 0 (isolated).
 /// @param rcut     Largest pair reach [Bohr] (e.g. 2·rmax).
 /// @param m        Out: images to sum per axis.
-inline void pair_image_counts(const double L[3], bool periodic, double rcut, int m[3]) {
+inline void pair_image_counts(const double L[3], bool periodic, double rcut,
+                              int m[3]) {
     image_counts(L, periodic, rcut, m);
     if (periodic)
         for (int d = 0; d < 3; ++d)
-            if (L[d] > 0.0) m[d] += 1;
+            if (L[d] > 0.0)
+                m[d] += 1;
 }
 
 } // namespace gpw

@@ -42,9 +42,6 @@ void launch_aos_to_soa(const double* positions_aos, int num_atoms, real_t* x,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Kernel: Compute Morton codes from SoA positions
 // ---------------------------------------------------------------------------
@@ -97,9 +94,6 @@ void launch_compute_morton(const real_t* pos_x, const real_t* pos_y,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // CUB radix sort wrapper — temp storage owned by DeviceVector
 // ---------------------------------------------------------------------------
@@ -133,9 +127,9 @@ CubTempBytes query_cub_temp_bytes(int num_atoms, int num_clusters) {
         // Radix sort of `num_atoms` Morton codes (uint32 keys + int values).
         uint32_t* dummy_keys = nullptr;
         int* dummy_values = nullptr;
-        cub::DeviceRadixSort::SortPairs(
-            nullptr, out.sort_bytes, dummy_keys, dummy_keys, dummy_values,
-            dummy_values, num_atoms, 0, 30, cudaStream_t{0});
+        cub::DeviceRadixSort::SortPairs(nullptr, out.sort_bytes, dummy_keys,
+                                        dummy_keys, dummy_values, dummy_values,
+                                        num_atoms, 0, 30, cudaStream_t{0});
         // Exclusive sum over `num_atoms` ints (largest scan path).
         int* dummy_in = nullptr;
         int* dummy_out = nullptr;
@@ -209,9 +203,6 @@ void launch_scatter_to_soa(const int* sorted_indices, const real_t* pos_x,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Fused kernel: AoS→SoA + Morton code (replaces separate K1+K2)
 // ---------------------------------------------------------------------------
@@ -267,9 +258,6 @@ void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
         atom_indices);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // Fused kernel: Scatter to cluster SoA + AABB (replaces separate K4+K5)
@@ -385,12 +373,6 @@ void launch_scatter_and_aabb(const int* sorted_indices, const real_t* pos_x,
         aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
-
-
-
-
-
-
 
 // ── Forced template instantiations ───────────────────────────────────
 // Instantiate each launcher template over the configured work_t type

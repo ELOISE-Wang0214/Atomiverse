@@ -5,10 +5,10 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/frame/box.cuh"
-#include "atomiverse/cuda/kspace/ewald.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/kspace/ewald.cuh"
 
 namespace ATV {
 
@@ -54,14 +54,15 @@ __global__ void ewald_energy(const double* __restrict__ kw,
 }
 
 /// @brief Reciprocal forces on owned atoms + per-atom self energy.
-__global__ void ewald_forces(
-    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    const real_t* __restrict__ x, const real_t* __restrict__ y,
-    const real_t* __restrict__ z, const real_t* __restrict__ q, int n,
-    const double* __restrict__ kx, const double* __restrict__ ky,
-    const double* __restrict__ kz, const double* __restrict__ kw,
-    const double* __restrict__ sr, const double* __restrict__ si, int ng,
-    double K, double self_pref, prec_t* __restrict__ energy) {
+__global__ void
+ewald_forces(real_t* __restrict__ fx, real_t* __restrict__ fy,
+             real_t* __restrict__ fz, const real_t* __restrict__ x,
+             const real_t* __restrict__ y, const real_t* __restrict__ z,
+             const real_t* __restrict__ q, int n, const double* __restrict__ kx,
+             const double* __restrict__ ky, const double* __restrict__ kz,
+             const double* __restrict__ kw, const double* __restrict__ sr,
+             const double* __restrict__ si, int ng, double K, double self_pref,
+             prec_t* __restrict__ energy) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -102,8 +103,8 @@ void KSpaceEwald::build(const BuildContext& ctx) {
         for (int c = 0; c < 3; ++c)
             b[i][c] = tp * double(box.inv_cell[c * 3 + i]);
     auto blen = [&](int i) {
-        return std::sqrt(b[i][0] * b[i][0] + b[i][1] * b[i][1] +
-                         b[i][2] * b[i][2]);
+        return std::sqrt(b[i][0] * b[i][0] + b[i][1] * b[i][1]
+                         + b[i][2] * b[i][2]);
     };
     const double gcut = 2.0 * alpha_ * std::sqrt(-std::log(accuracy_));
     const double gcut2 = gcut * gcut;

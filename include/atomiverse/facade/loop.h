@@ -19,9 +19,11 @@ namespace ATV {
 /// because a run that has gone numerically insane must not be able to report success by
 /// also happening to satisfy a force tolerance.
 enum class Verdict {
-    Continue = 0,  ///< Keep looping.
-    Converged = 1, ///< Terminate — successfully. The answer is the current state.
-    Stop = 2       ///< Terminate — without success (budget, NaN, wall clock, interrupt).
+    Continue = 0, ///< Keep looping.
+    Converged =
+        1, ///< Terminate — successfully. The answer is the current state.
+    Stop =
+        2 ///< Terminate — without success (budget, NaN, wall clock, interrupt).
 };
 
 /// @brief The most severe of two verdicts.
@@ -46,7 +48,7 @@ constexpr Verdict worse_of(Verdict a, Verdict b) {
 /// specific from the loop's point of view — a rejected iteration is a rejected
 /// iteration.
 enum class Outcome {
-    Commit,  ///< Keep the iteration's work. The default when no policy is attached.
+    Commit, ///< Keep the iteration's work. The default when no policy is attached.
     Rollback ///< Discard it and restore the pre-iteration state.
 };
 
@@ -63,13 +65,15 @@ enum class Outcome {
 /// whether the displacement pair is meaningful yet (it is not, on iteration 0, when
 /// there is no previous geometry to difference against).
 struct LoopMetrics {
-    double energy = 0.0;             ///< Total energy [eV].
-    double max_force = 0.0;          ///< Max atomic force magnitude [eV/Å].
-    double rms_force = 0.0;          ///< RMS force [eV/Å].
-    double max_displacement = 0.0;   ///< Max displacement since last iteration [Å].
-    double rms_displacement = 0.0;   ///< RMS displacement [Å].
-    double energy_change = 0.0;      ///< |ΔE| since last iteration [eV].
-    bool has_displacement = false;   ///< False on iteration 0 / after a migration reset.
+    double energy = 0.0;    ///< Total energy [eV].
+    double max_force = 0.0; ///< Max atomic force magnitude [eV/Å].
+    double rms_force = 0.0; ///< RMS force [eV/Å].
+    double max_displacement =
+        0.0; ///< Max displacement since last iteration [Å].
+    double rms_displacement = 0.0; ///< RMS displacement [Å].
+    double energy_change = 0.0;    ///< |ΔE| since last iteration [eV].
+    bool has_displacement =
+        false; ///< False on iteration 0 / after a migration reset.
 
     /// @brief Fraction of coupled replicas that have met their criterion, in [0,1].
     ///

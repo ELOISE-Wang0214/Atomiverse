@@ -17,12 +17,13 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-PoissonResult solve_poisson(const UniformGrid& grid, const std::vector<double>& rho_r) {
+PoissonResult solve_poisson(const UniformGrid& grid,
+                            const std::vector<double>& rho_r) {
     const int n0 = grid.n[0];
     const int n1 = grid.n[1];
     const int n2 = grid.n[2];
     const long ntot = static_cast<long>(n0) * n1 * n2;
-    const int n2c = n2 / 2 + 1;             // r2c last-dim (Hermitian) length
+    const int n2c = n2 / 2 + 1; // r2c last-dim (Hermitian) length
     const long ncplx = static_cast<long>(n0) * n1 * n2c;
 
     const double two_pi = 2.0 * M_PI;
@@ -36,7 +37,8 @@ PoissonResult solve_poisson(const UniformGrid& grid, const std::vector<double>& 
     fftw_complex* cbuf =
         static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * ncplx));
 
-    for (long i = 0; i < ntot; ++i) rbuf[i] = rho_r[i];
+    for (long i = 0; i < ntot; ++i)
+        rbuf[i] = rho_r[i];
 
     fftw_plan fwd = fftw_plan_dft_r2c_3d(n0, n1, n2, rbuf, cbuf, FFTW_ESTIMATE);
     fftw_plan bwd = fftw_plan_dft_c2r_3d(n0, n1, n2, cbuf, rbuf, FFTW_ESTIMATE);
@@ -72,12 +74,14 @@ PoissonResult solve_poisson(const UniformGrid& grid, const std::vector<double>& 
     PoissonResult out;
     out.v_r.resize(static_cast<std::size_t>(ntot));
     const double inv_n = 1.0 / static_cast<double>(ntot);
-    for (long i = 0; i < ntot; ++i) out.v_r[i] = rbuf[i] * inv_n;
+    for (long i = 0; i < ntot; ++i)
+        out.v_r[i] = rbuf[i] * inv_n;
 
     // Hartree energy 0.5 Σ_g w ρ_g V_g.
     const double w = grid.weight();
     double e = 0.0;
-    for (long i = 0; i < ntot; ++i) e += rho_r[i] * out.v_r[i];
+    for (long i = 0; i < ntot; ++i)
+        e += rho_r[i] * out.v_r[i];
     out.e_hartree = 0.5 * w * e;
 
     fftw_destroy_plan(fwd);

@@ -22,7 +22,7 @@ extern "C" {
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 
 #include <cmath>
 #include <numeric>
@@ -311,7 +311,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 ///        reusing the exact normalized shell data of an IntegralPack.
 ///
 /// @param frame Molecular geometry (positions in Angstrom, type = Z).
-/// @param pack  IntegralPack from `build_integrals(frame, basis, ...)`.
+/// @param pack  IntegralPack from `cpu::scf::IntegralPack{frame, basis, ...}`.
 /// @return Dense 4-index ERI tensor [n_basis^4], Cartesian, chemist's notation.
 inline xt::xtensor<double, 4>
 build_eri_libcint_from_pack(const cpu::Frame& frame,

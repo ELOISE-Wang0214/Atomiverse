@@ -86,12 +86,14 @@ class ReplicaSet {
             return 0.0;
         int n = 0;
         for (const bool c : converged_)
-            if (c) ++n;
+            if (c)
+                ++n;
         return static_cast<double>(n) / static_cast<double>(converged_.size());
     }
 
     /// @brief Fold the band back into the caller's single Frame. Frame in, Frame out.
-    void collapse_into(cpu::Frame& out, const ReplicaExpansion& expansion) const {
+    void collapse_into(cpu::Frame& out,
+                       const ReplicaExpansion& expansion) const {
         expansion.collapse(replicas_, out);
     }
 

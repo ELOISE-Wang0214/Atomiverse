@@ -66,14 +66,14 @@ The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
 
 Start with these CPU headers:
 
-- [`IntegralPack` and `build_integrals`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h)
-- [`SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solver.h)
+- [`methods.h` — RHF / UHF / RKS / UKS](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/methods.h)
+- [`scf_result.h` — SCFResult](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_result.h)
 - [`SCFConfig` and `SCFResult`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h)
 - [`XCType`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)
 
 ### Run SCF workflows on the CUDA backend
 
-CUDA SCF is an inner solver (`cuda::scf::SCFSolver`) wrapped by an evaluator
+CUDA SCF evaluator (device path; host public API is still `cpu::scf::RHF` etc.)
 component, not a staged driver. Start with these headers:
 
 - [`cuda::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_evaluator.cuh)

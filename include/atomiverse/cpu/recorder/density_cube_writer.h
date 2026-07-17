@@ -12,7 +12,7 @@
 ///
 /// Usage:
 /// @code
-///   cpu::scf::SCF scf{config};
+///   cpu::scf::RHF scf{};
 ///   auto handle = scf.result_handle();
 ///   opt.on(minimizer::Phase::force).add(std::move(scf));
 ///   opt.on(minimizer::Phase::end_of_step)

@@ -18,15 +18,15 @@
 ///   Szabo & Ostlund, Appendix C -- RHF gradient formulas
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 
-#include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
-#include "atomiverse/cpu/scf/shell_pair.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #ifdef _OPENMP
@@ -476,17 +476,16 @@ static void accumulate_quartet_into_gradient(xt::xtensor<double, 2>& grad,
 
 // ── Main entry point ─────────────────────────────────────────────────
 
-IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
+IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
     const int natm = static_cast<int>(ipack.atoms.size());
     const int n_basis = ipack.n_basis;
 
-    IntegralDerivPack pack;
-    pack.n_atoms = natm;
-    pack.n_basis = n_basis;
-    pack.dS = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dT = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dV = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dV_nuc = xt::zeros<double>({(int)natm, (int)3});
+    this->n_atoms = natm;
+    this->n_basis = n_basis;
+    dS = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    dT = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    dV = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
     // Reuse the shell list already resolved in the IntegralPack — same
     // normalization, same ordering as the SCF path, works for any l.
@@ -507,9 +506,9 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
             }
         }
         if (shell_to_atom[i] < 0) {
-            throw std::runtime_error(
-                "cpu::scf::build_integral_derivatives: shell "
-                + std::to_string(i) + " center has no matching atom");
+            throw std::runtime_error("cpu::scf::IntegralDerivPack: shell "
+                                     + std::to_string(i)
+                                     + " center has no matching atom");
         }
     }
 
@@ -551,21 +550,17 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
 
             // Assign to atom_i (derivative w.r.t. center of shell i)
             for (int d = 0; d < 3; ++d) {
-                pack.dS(atom_i, d, i, j) += static_cast<double>(dS_total[d]);
-                pack.dT(atom_i, d, i, j) += static_cast<double>(dT_total[d]);
+                dS(atom_i, d, i, j) += static_cast<double>(dS_total[d]);
+                dT(atom_i, d, i, j) += static_cast<double>(dT_total[d]);
                 // Translational invariance: d/dB = -d/dA for S and T
-                pack.dS(atom_j, d, i, j) += static_cast<double>(-dS_total[d]);
-                pack.dT(atom_j, d, i, j) += static_cast<double>(-dT_total[d]);
+                dS(atom_j, d, i, j) += static_cast<double>(-dS_total[d]);
+                dT(atom_j, d, i, j) += static_cast<double>(-dT_total[d]);
                 // Symmetry: S(i,j) = S(j,i)
                 if (i != j) {
-                    pack.dS(atom_i, d, j, i) +=
-                        static_cast<double>(dS_total[d]);
-                    pack.dT(atom_i, d, j, i) +=
-                        static_cast<double>(dT_total[d]);
-                    pack.dS(atom_j, d, j, i) +=
-                        static_cast<double>(-dS_total[d]);
-                    pack.dT(atom_j, d, j, i) +=
-                        static_cast<double>(-dT_total[d]);
+                    dS(atom_i, d, j, i) += static_cast<double>(dS_total[d]);
+                    dT(atom_i, d, j, i) += static_cast<double>(dT_total[d]);
+                    dS(atom_j, d, j, i) += static_cast<double>(-dS_total[d]);
+                    dT(atom_j, d, j, i) += static_cast<double>(-dT_total[d]);
                 }
             }
 
@@ -631,17 +626,15 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
                 }
 
                 for (int d = 0; d < 3; ++d) {
-                    pack.dV(atom_i, d, i, j) +=
-                        static_cast<double>(dV_center_i[d]);
-                    pack.dV(atom_j, d, i, j) +=
-                        static_cast<double>(dV_center_j[d]);
-                    pack.dV(c, d, i, j) += static_cast<double>(dV_nuc_c[d]);
+                    dV(atom_i, d, i, j) += static_cast<double>(dV_center_i[d]);
+                    dV(atom_j, d, i, j) += static_cast<double>(dV_center_j[d]);
+                    dV(c, d, i, j) += static_cast<double>(dV_nuc_c[d]);
                     if (i != j) {
-                        pack.dV(atom_i, d, j, i) +=
+                        dV(atom_i, d, j, i) +=
                             static_cast<double>(dV_center_i[d]);
-                        pack.dV(atom_j, d, j, i) +=
+                        dV(atom_j, d, j, i) +=
                             static_cast<double>(dV_center_j[d]);
-                        pack.dV(c, d, j, i) += static_cast<double>(dV_nuc_c[d]);
+                        dV(c, d, j, i) += static_cast<double>(dV_nuc_c[d]);
                     }
                 }
             }
@@ -661,13 +654,11 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
             double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             double r3_inv = 1.0 / (r * r * r);
             double ZZ = atoms[a].Z * atoms[b].Z;
-            pack.dV_nuc(a, 0) += static_cast<double>(ZZ * dx * r3_inv);
-            pack.dV_nuc(a, 1) += static_cast<double>(ZZ * dy * r3_inv);
-            pack.dV_nuc(a, 2) += static_cast<double>(ZZ * dz * r3_inv);
+            dV_nuc(a, 0) += static_cast<double>(ZZ * dx * r3_inv);
+            dV_nuc(a, 1) += static_cast<double>(ZZ * dy * r3_inv);
+            dV_nuc(a, 2) += static_cast<double>(ZZ * dz * r3_inv);
         }
     }
-
-    return pack;
 }
 
 void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,

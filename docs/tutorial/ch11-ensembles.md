@@ -1,5 +1,34 @@
 # Chapter 11: Ensembles — Thermostats and Barostats
 
+| | |
+|---|---|
+| **Baseline** | NVE energy conservation from [`07_md_lj`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) / [`07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
+| **Components** | `NoseHoover`, `FixLangevin`, `Barostat` (Berendsen), `NoseHooverNPT` |
+| **Tests** | `tests/cpu/md/` — unit checks per thermostat/barostat (no full e2e equilibration) |
+
+NVE must be solid before NVT/NPT. From the live NVE run (Chapter 10):
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true}
+data:
+  values:
+    - {step: 0, E: -9.622484}
+    - {step: 200, E: -9.622481}
+    - {step: 400, E: -9.622482}
+    - {step: 600, E: -9.622480}
+    - {step: 800, E: -9.622481}
+    - {step: 1000, E: -9.622481}
+encoding:
+  x: {field: step, type: quantitative, title: Step}
+  y: {field: E, type: quantitative, title: "E_total (eV)", scale: {zero: false}}
+```
+
+Relative drift \(\sim 3\times 10^{-7}\) over 1000 steps. Thermostats **exchange**
+energy with a bath (total energy is no longer conserved); acceptance is then
+mean temperature and pressure vs set points — exercised in unit tests and
+benchmarks, not in the 1000-step tutorial binary.
+
+
 [Chapter 10](ch10-classical-md.md) built a complete classical MD run and, at
 the end, added a thermostat and a barostat almost in passing. This chapter
 takes ensembles seriously. An MD trajectory does not just "run" — it samples
@@ -113,9 +142,9 @@ sim.run(frame, 10000);
 ### NVT with Nosé-Hoover — canonical, deterministic
 
 Add a `NoseHoover` thermostat via `set_thermostat`. Its constructor is
-`(T_start, tau_T, dt)`: the target temperature [K], the coupling time
-constant [fs] (LAMMPS `Tdamp` — how quickly the bath responds), and the time
-step [fs].
+`(T_start, tau_T, dt)`: the target temperature (K), the coupling time
+constant (fs) (LAMMPS `Tdamp` — how quickly the bath responds), and the time
+step (fs).
 
 ```cpp
 sim.set_integrator(cpu::md::VelocityVerlet{4.0});
@@ -303,7 +332,7 @@ cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
 aimd.set_thermostat(cpu::md::NoseHoover{300.0, 100.0, 0.5});   // NVT, unchanged
 aimd.on(md::Phase::force)
-    .add(cpu::scf::SCF{cfg}.predictor(3));            // quantum forces
+    .add(cpu::scf::RHF{}.predictor(3));            // quantum forces
 aimd.build();
 aimd.run(frame, n_steps);
 ```

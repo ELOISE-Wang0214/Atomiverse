@@ -3,16 +3,16 @@
 ///        Built only with ATV_BUILD_KSPACE.
 #include <cmath>
 #include <cstdio>
-#include <cufft.h>
 #include <cuda_runtime.h>
+#include <cufft.h>
 #include <stdexcept>
 #include <vector>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/frame/box.cuh"
-#include "atomiverse/cuda/kspace/pme.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/kspace/pme.cuh"
 
 namespace ATV {
 
@@ -41,8 +41,9 @@ __device__ inline void pme_bspline(double frac, int n, double* theta,
         const double div = 1.0 / (k - 1);
         theta[k - 1] = div * frac * theta[k - 2];
         for (int j = 1; j < k - 1; ++j)
-            theta[k - 1 - j] = div * ((frac + j) * theta[k - 2 - j] +
-                                      (k - j - frac) * theta[k - 1 - j]);
+            theta[k - 1 - j] = div
+                               * ((frac + j) * theta[k - 2 - j]
+                                  + (k - j - frac) * theta[k - 1 - j]);
         theta[0] = div * (1.0 - frac) * theta[0];
     }
     dtheta[0] = -theta[0];
@@ -51,8 +52,9 @@ __device__ inline void pme_bspline(double frac, int n, double* theta,
     const double div = 1.0 / (n - 1);
     theta[n - 1] = div * frac * theta[n - 2];
     for (int j = 1; j < n - 1; ++j)
-        theta[n - 1 - j] = div * ((frac + j) * theta[n - 2 - j] +
-                                  (n - j - frac) * theta[n - 1 - j]);
+        theta[n - 1 - j] = div
+                           * ((frac + j) * theta[n - 2 - j]
+                              + (n - j - frac) * theta[n - 1 - j]);
     theta[0] = div * (1.0 - frac) * theta[0];
 }
 
@@ -62,8 +64,8 @@ __device__ inline int wrap_idx(int v, int K) { return ((v % K) + K) % K; }
 __global__ void pme_spread(const real_t* __restrict__ x,
                            const real_t* __restrict__ y,
                            const real_t* __restrict__ z,
-                           const real_t* __restrict__ q, int natoms,
-                           PmeGeom g, cufftDoubleComplex* __restrict__ grid) {
+                           const real_t* __restrict__ q, int natoms, PmeGeom g,
+                           cufftDoubleComplex* __restrict__ grid) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= natoms)
         return;
@@ -75,8 +77,8 @@ __global__ void pme_spread(const real_t* __restrict__ x,
     double th[3][12], dth[3][12];
     int base[3];
     for (int d = 0; d < 3; ++d) {
-        const double s = g.inv_cell[0 * 3 + d] * rx +
-                         g.inv_cell[1 * 3 + d] * ry + g.inv_cell[2 * 3 + d] * rz;
+        const double s = g.inv_cell[0 * 3 + d] * rx + g.inv_cell[1 * 3 + d] * ry
+                         + g.inv_cell[2 * 3 + d] * rz;
         double u = s * g.K[d];
         u -= floor(u / g.K[d]) * g.K[d];
         const int u0 = int(floor(u));
@@ -103,8 +105,9 @@ __global__ void pme_spread(const real_t* __restrict__ x,
 __global__ void pme_influence(cufftDoubleComplex* __restrict__ grid, PmeGeom g,
                               const double* __restrict__ bsp0,
                               const double* __restrict__ bsp1,
-                              const double* __restrict__ bsp2, double inv_pi2_a2,
-                              double escale, prec_t* __restrict__ energy) {
+                              const double* __restrict__ bsp2,
+                              double inv_pi2_a2, double escale,
+                              prec_t* __restrict__ energy) {
     const int K0 = g.K[0], K1 = g.K[1], K2 = g.K[2];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= K0 * K1 * K2)
@@ -137,14 +140,13 @@ __global__ void pme_influence(cufftDoubleComplex* __restrict__ grid, PmeGeom g,
 }
 
 /// @brief Interpolate reciprocal forces onto atoms + per-atom self energy.
-__global__ void pme_interp(real_t* __restrict__ fx, real_t* __restrict__ fy,
-                           real_t* __restrict__ fz, const real_t* __restrict__ x,
-                           const real_t* __restrict__ y,
-                           const real_t* __restrict__ z,
-                           const real_t* __restrict__ q, int natoms, PmeGeom g,
-                           const cufftDoubleComplex* __restrict__ grid,
-                           double fscale, double self_pref,
-                           prec_t* __restrict__ energy) {
+__global__ void
+pme_interp(real_t* __restrict__ fx, real_t* __restrict__ fy,
+           real_t* __restrict__ fz, const real_t* __restrict__ x,
+           const real_t* __restrict__ y, const real_t* __restrict__ z,
+           const real_t* __restrict__ q, int natoms, PmeGeom g,
+           const cufftDoubleComplex* __restrict__ grid, double fscale,
+           double self_pref, prec_t* __restrict__ energy) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= natoms)
         return;
@@ -157,8 +159,8 @@ __global__ void pme_interp(real_t* __restrict__ fx, real_t* __restrict__ fy,
     double th[3][12], dth[3][12];
     int base[3];
     for (int d = 0; d < 3; ++d) {
-        const double s = g.inv_cell[0 * 3 + d] * rx +
-                         g.inv_cell[1 * 3 + d] * ry + g.inv_cell[2 * 3 + d] * rz;
+        const double s = g.inv_cell[0 * 3 + d] * rx + g.inv_cell[1 * 3 + d] * ry
+                         + g.inv_cell[2 * 3 + d] * rz;
         double u = s * g.K[d];
         u -= floor(u / g.K[d]) * g.K[d];
         const int u0 = int(floor(u));
@@ -224,8 +226,9 @@ std::vector<double> spline_moduli(int K, int n) {
             const double div = 1.0 / (k - 1);
             theta[k - 1] = div * frac * theta[k - 2];
             for (int j = 1; j < k - 1; ++j)
-                theta[k - 1 - j] = div * ((frac + j) * theta[k - 2 - j] +
-                                          (k - j - frac) * theta[k - 1 - j]);
+                theta[k - 1 - j] = div
+                                   * ((frac + j) * theta[k - 2 - j]
+                                      + (k - j - frac) * theta[k - 1 - j]);
             theta[0] = div * (1.0 - frac) * theta[0];
         }
         dtheta[0] = -theta[0];
@@ -234,8 +237,9 @@ std::vector<double> spline_moduli(int K, int n) {
         const double div = 1.0 / (n - 1);
         theta[n - 1] = div * frac * theta[n - 2];
         for (int j = 1; j < n - 1; ++j)
-            theta[n - 1 - j] = div * ((frac + j) * theta[n - 2 - j] +
-                                      (n - j - frac) * theta[n - 1 - j]);
+            theta[n - 1 - j] = div
+                               * ((frac + j) * theta[n - 2 - j]
+                                  + (n - j - frac) * theta[n - 1 - j]);
         theta[0] = div * (1.0 - frac) * theta[0];
     }
     std::vector<double> mod(K, 0.0);

@@ -114,10 +114,12 @@ TEST(ContextSlices, CoreFieldsStayFlatWithDefaults) {
     // LBFGS wrote `converged` unconditionally; probe 3: the first converged NEB image
     // would have stopped the chain). A pointer that points at the loop cannot reach the
     // loop above it.
-    static_assert(std::is_same_v<decltype(cpu::Context::loop), cpu::LoopServices>);
     static_assert(
-        std::is_same_v<decltype(cpu::LoopServices::status), ATV::IterationStatus*>);
-    static_assert(std::is_same_v<decltype(cpu::LoopServices::metrics), ATV::LoopMetrics*>);
+        std::is_same_v<decltype(cpu::Context::loop), cpu::LoopServices>);
+    static_assert(std::is_same_v<decltype(cpu::LoopServices::status),
+                                 ATV::IterationStatus*>);
+    static_assert(std::is_same_v<decltype(cpu::LoopServices::metrics),
+                                 ATV::LoopMetrics*>);
 
     cpu::Context ctx;
     EXPECT_EQ(ctx.n_threads, 0);

@@ -45,17 +45,17 @@ namespace ATV::cuda::md::nlist {
 /// Owns the cub radix-sort temp plus the key/index ping-pong arrays and a
 /// single real_t/int64 staging buffer reused to gather each per-atom column.
 struct AtomCellSortBuffers {
-    DeviceVector<int> cell_key;      ///< [n] cell index per owned atom.
-    DeviceVector<int> cell_key_out;  ///< [n] sorted keys (cub output).
-    DeviceVector<int> perm;          ///< [n] identity 0..n-1 (cub values in).
-    DeviceVector<int> perm_out;      ///< [n] sort order: perm_out[k] = old row.
-    DeviceVector<int> inverse;       ///< [n] inverse permutation (optional).
-    DeviceVector<char> sort_temp;    ///< cub temp storage.
+    DeviceVector<int> cell_key;     ///< [n] cell index per owned atom.
+    DeviceVector<int> cell_key_out; ///< [n] sorted keys (cub output).
+    DeviceVector<int> perm;         ///< [n] identity 0..n-1 (cub values in).
+    DeviceVector<int> perm_out;     ///< [n] sort order: perm_out[k] = old row.
+    DeviceVector<int> inverse;      ///< [n] inverse permutation (optional).
+    DeviceVector<char> sort_temp;   ///< cub temp storage.
 
-    DeviceVector<real_t> stage_r;       ///< staging for one real_t column.
+    DeviceVector<real_t> stage_r;         ///< staging for one real_t column.
     DeviceVector<std::int64_t> stage_i64; ///< staging for one int64 column.
-    DeviceVector<int> stage_i;          ///< staging for one int column.
-    DeviceVector<std::int8_t> stage_i8; ///< staging for the image column.
+    DeviceVector<int> stage_i;            ///< staging for one int column.
+    DeviceVector<std::int8_t> stage_i8;   ///< staging for the image column.
 
     void resize(int n) {
         cell_key.resize(n);

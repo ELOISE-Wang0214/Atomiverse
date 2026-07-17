@@ -67,12 +67,14 @@ std::size_t read_peak_rss_kb();
 /// each `cat_bytes` entry is SUMMED across ranks (total footprint), while the
 /// peak-RSS stats are per-rank min/avg/max + sum.
 struct MemReport {
-    static constexpr int kNumCat = 6; ///< Atoms, Pair, Bonded, Neigh, Comm, Other
+    static constexpr int kNumCat =
+        6; ///< Atoms, Pair, Bonded, Neigh, Comm, Other
     static constexpr std::array<std::string_view, kNumCat> kNames{
         "Atoms", "Pair", "Bonded", "Neigh", "Comm", "Other"};
-    std::array<std::size_t, kNumCat> cat_bytes{}; ///< per-category, summed over ranks
-    std::size_t accounted_bytes = 0;              ///< Σ cat_bytes (AV-attributed resident)
-    double rss_sum_mb = 0.0;                      ///< Σ per-rank peak RSS
+    std::array<std::size_t, kNumCat>
+        cat_bytes{};                 ///< per-category, summed over ranks
+    std::size_t accounted_bytes = 0; ///< Σ cat_bytes (AV-attributed resident)
+    double rss_sum_mb = 0.0;         ///< Σ per-rank peak RSS
     double rss_min_mb = 0.0, rss_avg_mb = 0.0, rss_max_mb = 0.0;
     int ranks = 1;
 };

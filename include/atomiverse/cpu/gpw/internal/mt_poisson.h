@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"   // UniformGrid
-#include "atomiverse/cpu/gpw/internal/poisson_fft.h"  // PoissonResult
+#include "atomiverse/cpu/gpw/internal/poisson_fft.h" // PoissonResult
 
 namespace ATV {
 namespace cpu {
@@ -33,7 +33,8 @@ namespace gpw {
 /// @param grid  Uniform orthorhombic grid; the charge must lie within R_c=min(L)/2.
 /// @param rho_r Density on the grid, length grid.npts().
 /// @return Open-boundary Hartree potential V(r) and energy 0.5 Σ_g w ρ_g V_g.
-PoissonResult solve_poisson_mt(const UniformGrid& grid, const std::vector<double>& rho_r);
+PoissonResult solve_poisson_mt(const UniformGrid& grid,
+                               const std::vector<double>& rho_r);
 
 } // namespace gpw
 } // namespace cpu

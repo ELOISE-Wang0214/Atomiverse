@@ -28,7 +28,8 @@ RealMatrix GpwDiis::step(const RealMatrix& H, const RealMatrix& e) {
     }
 
     const int m = static_cast<int>(h_hist_.size());
-    if (m < 2) return h_hist_.back(); // warm-up: not enough history to extrapolate
+    if (m < 2)
+        return h_hist_.back(); // warm-up: not enough history to extrapolate
 
     // Pulay B-matrix: B_ij = Tr(e_i e_j), bordered by the unit-sum constraint.
     const int dim = m + 1;
@@ -52,7 +53,8 @@ RealMatrix GpwDiis::step(const RealMatrix& H, const RealMatrix& e) {
         const RealMatrix c = xt::linalg::solve(B, rhs);
         const int n = static_cast<int>(H.shape(0));
         RealMatrix H_diis = xt::zeros<double>({n, n});
-        for (int i = 0; i < m; ++i) H_diis += c(i, 0) * h_hist_[i];
+        for (int i = 0; i < m; ++i)
+            H_diis += c(i, 0) * h_hist_[i];
         return H_diis;
     } catch (...) {
         // Singular subspace (e.g. linearly dependent errors): use the latest H.

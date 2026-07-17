@@ -2,6 +2,7 @@
 /// @brief Implementation of AtomList and ShellList builders.
 
 #include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/internal/basis_workspace.h"
 
 #include <stdexcept>
 #include <string>
@@ -63,31 +64,29 @@ void ShellList::move_from(ShellList&& o) noexcept {
     rebind_pointers();
 }
 
-// ── AtomList builder ─────────────────────────────────────────────────
+// ── AtomList constructor ─────────────────────────────────────────────
 
-AtomList make_atom_list(const Frame& frame, int charge) {
+AtomList::AtomList(const Frame& frame, int charge) {
     const int natm = static_cast<int>(frame.nlocal());
 
-    AtomList out;
-    out.atoms.resize(natm);
-    int n_electrons = -charge;
+    atoms.resize(natm);
+    int nelec = -charge;
     const int* __restrict sp_type = frame.span(kAtom_type);
     const StorageReal* __restrict sp_x = frame.span(kAtom_x);
     const StorageReal* __restrict sp_y = frame.span(kAtom_y);
     const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < natm; ++i) {
         const int Z = sp_type[i];
-        out.atoms[i].Z = Z;
+        atoms[i].Z = Z;
         // Frame positions are in Angstrom; SCF integrals live in Bohr.
         using units::convert;
         using units::Length;
-        out.atoms[i].pos[0] = convert(sp_x[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[1] = convert(sp_y[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[2] = convert(sp_z[i], Length::Angstrom, Length::Bohr);
-        n_electrons += Z;
+        atoms[i].pos[0] = convert(sp_x[i], Length::Angstrom, Length::Bohr);
+        atoms[i].pos[1] = convert(sp_y[i], Length::Angstrom, Length::Bohr);
+        atoms[i].pos[2] = convert(sp_z[i], Length::Angstrom, Length::Bohr);
+        nelec += Z;
     }
-    out.n_electrons = n_electrons;
-    return out;
+    n_electrons = nelec;
 }
 
 // ── Generic builder driven by a checked-in basis_data table ──────────
@@ -113,13 +112,12 @@ build_shell_list_from_table(const AtomList& atoms,
         if (Z < 1 || Z >= static_cast<int>(table.size())
             || table[static_cast<std::size_t>(Z)].shells.empty()) {
             throw std::runtime_error(
-                std::string("cpu::scf::build_shell_list: '")
-                + basis_set_name(basis_id)
+                std::string("cpu::scf::ShellList: '") + basis_set_name(basis_id)
                 + "' has no data for Z=" + std::to_string(Z));
         }
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
             if (sh.l < 0 || sh.l > kMaxL) {
-                throw std::runtime_error("cpu::scf::build_shell_list: l="
+                throw std::runtime_error("cpu::scf::ShellList: l="
                                          + std::to_string(sh.l)
                                          + " not yet supported.");
             }
@@ -183,24 +181,32 @@ build_shell_list_from_table(const AtomList& atoms,
 
 } // namespace
 
-ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
-    switch (basis) {
+ShellList::ShellList(const AtomList& atoms, BasisSet basis_id) {
+    ShellList tmp;
+    switch (basis_id) {
     case BasisSet::STO3G:
-        return build_shell_list_from_table(atoms, basis_data::sto3g(), basis);
+        tmp = build_shell_list_from_table(atoms, basis_data::sto3g(), basis_id);
+        break;
     case BasisSet::Pople631G:
-        return build_shell_list_from_table(atoms, basis_data::pople_631g(),
-                                           basis);
+        tmp = build_shell_list_from_table(atoms, basis_data::pople_631g(),
+                                          basis_id);
+        break;
     case BasisSet::Pople631Gs:
-        return build_shell_list_from_table(atoms, basis_data::pople_631gs(),
-                                           basis);
+        tmp = build_shell_list_from_table(atoms, basis_data::pople_631gs(),
+                                          basis_id);
+        break;
     case BasisSet::Def2SVP:
-        return build_shell_list_from_table(atoms, basis_data::def2_svp(),
-                                           basis);
+        tmp = build_shell_list_from_table(atoms, basis_data::def2_svp(),
+                                          basis_id);
+        break;
     case BasisSet::Def2TZVP:
-        return build_shell_list_from_table(atoms, basis_data::def2_tzvp(),
-                                           basis);
+        tmp = build_shell_list_from_table(atoms, basis_data::def2_tzvp(),
+                                          basis_id);
+        break;
+    default:
+        throw std::runtime_error("cpu::scf::ShellList: unknown BasisSet");
     }
-    throw std::runtime_error("cpu::scf::build_shell_list: unknown BasisSet");
+    *this = std::move(tmp);
 }
 
 } // namespace scf

@@ -42,7 +42,8 @@ class LauncherGateTest : public ::testing::Test {
     void SetUp() override {
         const char* prev = std::getenv("ATV_LAUNCHER");
         had_prev_ = (prev != nullptr);
-        if (had_prev_) prev_ = prev;
+        if (had_prev_)
+            prev_ = prev;
         ::unsetenv("ATV_LAUNCHER");
     }
 
@@ -137,7 +138,8 @@ TEST_F(LauncherGateTest, OwnPidMarkerNoMpiWarnsExactlyOnceAndStaysInactive) {
     EXPECT_FALSE(active_second);
     EXPECT_TRUE(err_second.empty())
         << "the warning is once per process (std::once_flag); second "
-           "construction emitted: " << err_second;
+           "construction emitted: "
+        << err_second;
 }
 
 } // namespace

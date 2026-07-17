@@ -1,48 +1,39 @@
 # User Guide
 
-Read this manual if your goal is to **run** Atomiverse — build it, run a
-calculation, modify an example — without first learning the internal
-architecture.
+How to **install**, **build**, and **use** Atomiverse — the Driver /
+Component / Frame model, method wiring, and backend notes.
 
-It assumes no computational-chemistry background and only basic modern C++:
-structs, loops, function calls. Every example in the repository assumes
-**C++17 or later**.
+Scientific methods (RHF theory, ensembles, basis sets, …) live in the
+[Tutorial](../tutorial/). Internals and extension points live in the
+[Developer guide](../developer/).
 
-## The one mental model
-
-Everything in Atomiverse is the same four steps:
-
-1. Fill a [`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h)
-   with geometry, masses, atom types, and optional topology.
-2. Pick a **driver** — the kind of calculation you want (single point, dynamics,
-   optimization, vibrations, sampling).
-3. Add **components** — the physics, in execution order.
-4. Run it, then read `frame`, the output files, or the result struct.
-
-The driver owns the loop; the components supply the physics. You change *method*
-by swapping a component, never by switching to a different program.
-
-## Read in this order
-
-1. **[Getting Started](getting-started.md)** — from a fresh checkout to a
-   converged calculation, including the HPC-module gotchas that trip people up.
-2. **[Methods](methods.md)** — what the engine can compute today, and which
-   driver plus which component runs each one.
-3. **[SCF Learning Path](scf-roadmap.md)** — how the electronic-structure
-   chapters fit together, if quantum chemistry is what brought you here.
-4. **[Tutorial](../tutorial/index.md)** — the long-form book; each chapter pairs
-   with a runnable program under `examples/`.
-5. **[The MPI Launcher](launcher.md)** — running the same Python script at
-   scale: `mpirun -np N atomiverse atv.py`, interpreter discovery, install
-   routes.
-6. **[Switching Backends](backend-switching.md)** — moving the same problem
-   between CPU and CUDA.
-7. **[LibTorch Backend](libtorch-backend.md)** — only if you need differentiable
-   operators or PyTorch interop.
-
-## When to switch manuals
-
-Use the **[Developer Manual](../developer/index.md)** when you want to know how
-`Driver`, `Plan`, `Component`, and `Frame` fit together, or when you need to add
-a feature. Use the **[API Reference](../api/index.md)** when you already know the
-class you need and want the exact signature.
+<div class="molcrafts-manual-list">
+  <a href="getting-started/">
+    <strong>Getting started</strong>
+    <em>Toolchain, CMake flags, first build and first run.</em>
+  </a>
+  <a href="concepts/">
+    <strong>Core concepts</strong>
+    <em>Driver, Component, Frame, Handler — the vocabulary every run uses.</em>
+  </a>
+  <a href="methods/">
+    <strong>Methods</strong>
+    <em>Which preset and evaluator for MD, MC, Minimize, SCF, PW, GPW, AM1.</em>
+  </a>
+  <a href="backend-switching/">
+    <strong>Backend switching</strong>
+    <em>CPU vs CUDA: same Frame API, explicit transfers.</em>
+  </a>
+  <a href="libtorch-backend/">
+    <strong>LibTorch backend</strong>
+    <em>Optional Torch path for differentiable workflows.</em>
+  </a>
+  <a href="launcher/">
+    <strong>MPI launcher</strong>
+    <em>The installable Atomiverse executable and Python driver notes.</em>
+  </a>
+  <a href="scf-roadmap/">
+    <strong>SCF reading map</strong>
+    <em>Which tutorial chapters to open for electronic structure.</em>
+  </a>
+</div>

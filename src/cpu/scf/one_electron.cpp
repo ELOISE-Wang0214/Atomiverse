@@ -1,13 +1,13 @@
 /// @file cpu/scf/one_electron.cpp
 /// @brief Native-engine implementations of the one-electron integral builders.
 
-#include "atomiverse/cpu/scf/one_electron.h"
+#include "atomiverse/cpu/scf/internal/one_electron.h"
 
 #include <cmath>
 
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/shell_pair.h"
 
 namespace ATV {
 namespace cpu {

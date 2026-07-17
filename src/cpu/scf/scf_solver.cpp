@@ -4,7 +4,8 @@
 ///
 /// `SCFSolver` is the sole low-level CPU SCF execution API.
 
-#include "atomiverse/cpu/scf/scf_solver.h"
+#include "atomiverse/cpu/scf/internal/scf_solver.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +29,7 @@
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h"
-#include "atomiverse/cpu/scf/minao.h"
+#include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
 #include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
 

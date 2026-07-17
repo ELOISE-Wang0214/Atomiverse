@@ -103,7 +103,8 @@ TEST(AngleHarmonic, AtEquilibrium) {
     // `theta - theta0_[type]`) and the polyethylene_tension benchmark
     // (passes `109.5° · π/180`). Pass `theta0` in radians here.
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::AngleHarmonic{{60.0}, {theta0}});
+    sim.on(evaluate::Phase::evaluate)
+        .add(cuda::AngleHarmonic{{60.0}, {theta0}});
     sim.build();
     sim.run(frame);
 
@@ -157,7 +158,8 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
                          std::abs(frame.atoms.fz[i])});
     }
     // A torsional force exists (not all zero) and obeys Newton's 3rd law.
-    EXPECT_GT(fmax, 1e-2) << "all dihedral forces ~0 -> kernel likely never launched";
+    EXPECT_GT(fmax, 1e-2)
+        << "all dihedral forces ~0 -> kernel likely never launched";
     EXPECT_NEAR(fsum_x, 0.0, 1e-3);
     EXPECT_NEAR(fsum_y, 0.0, 1e-3);
     EXPECT_NEAR(fsum_z, 0.0, 1e-3);

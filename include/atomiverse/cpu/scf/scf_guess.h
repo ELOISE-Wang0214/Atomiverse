@@ -16,7 +16,8 @@ namespace scf {
 /// @param C MO coefficient matrix [n x n], modified in place.
 inline void apply_homo_lumo_mixing(RealMatrix& C, int n_occ, int n,
                                    double theta = 0.3490658503988659) {
-    if (n_occ <= 0 || n_occ >= n) return;
+    if (n_occ <= 0 || n_occ >= n)
+        return;
     const double ca = std::cos(theta);
     const double sa = std::sin(theta);
     const int homo = n_occ - 1;

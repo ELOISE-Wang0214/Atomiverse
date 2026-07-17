@@ -11,6 +11,7 @@
 ///                => single determinant => FCI == RHF => e_corr == 0 exactly.
 
 #include "atomiverse/cpu/scf/fci.h"
+#include "atomiverse/cpu/scf/internal/fci_pack.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -23,6 +24,7 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
+#include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/mp2.h"
 
 namespace ATV {
@@ -33,7 +35,8 @@ namespace {
 
 /// @brief Binomial coefficient C(n, k) (dimensionless); 0 when out of range.
 long long choose(int n, int k) {
-    if (k < 0 || k > n) return 0;
+    if (k < 0 || k > n)
+        return 0;
     k = std::min(k, n - k);
     long long r = 1;
     for (int i = 0; i < k; ++i) {
@@ -48,7 +51,8 @@ std::vector<std::uint64_t> enumerate_strings(int n_mo, int n_elec) {
     std::vector<std::uint64_t> out;
     const std::uint64_t limit = std::uint64_t(1) << n_mo;
     for (std::uint64_t s = 0; s < limit; ++s) {
-        if (__builtin_popcountll(s) == n_elec) out.push_back(s);
+        if (__builtin_popcountll(s) == n_elec)
+            out.push_back(s);
     }
     return out;
 }
@@ -82,8 +86,10 @@ double diagonal_element(std::uint64_t a, std::uint64_t b,
     const std::vector<int> occ_b = occ_list(b);
 
     double e = v_nuc;
-    for (int i : occ_a) e += h(i, i);
-    for (int i : occ_b) e += h(i, i);
+    for (int i : occ_a)
+        e += h(i, i);
+    for (int i : occ_b)
+        e += h(i, i);
 
     // Same-spin alpha pairs: Coulomb minus exchange.
     for (std::size_t x = 0; x < occ_a.size(); ++x)
@@ -99,7 +105,8 @@ double diagonal_element(std::uint64_t a, std::uint64_t b,
         }
     // Opposite-spin pairs (alpha,beta): Coulomb only (no exchange).
     for (int i : occ_a)
-        for (int j : occ_b) e += g(i, i, j, j);
+        for (int j : occ_b)
+            e += g(i, i, j, j);
 
     return e;
 }
@@ -117,9 +124,11 @@ double single_element(std::uint64_t same_i, std::uint64_t same_j,
 
     double v = h(p, q);
     // Same-spin spectators (shared occupation in this channel): Coulomb - exchange.
-    for (int j : occ_list(same_i & same_j)) v += g(p, q, j, j) - g(p, j, j, q);
+    for (int j : occ_list(same_i & same_j))
+        v += g(p, q, j, j) - g(p, j, j, q);
     // Opposite-spin spectators: Coulomb only.
-    for (int j : occ_list(other)) v += g(p, q, j, j);
+    for (int j : occ_list(other))
+        v += g(p, q, j, j);
 
     return sign * v;
 }
@@ -167,14 +176,18 @@ double ci_element(std::uint64_t a_i, std::uint64_t b_i, std::uint64_t a_j,
     const int db = __builtin_popcountll(b_i & ~b_j); // beta excitation level
     const int level = da + db;
 
-    if (level == 0) return diagonal_element(a_i, b_i, h, g, v_nuc); // Case A
-    if (level == 1) {                                              // Case B
-        if (da == 1) return single_element(a_i, a_j, b_i, h, g);
+    if (level == 0)
+        return diagonal_element(a_i, b_i, h, g, v_nuc); // Case A
+    if (level == 1) {                                   // Case B
+        if (da == 1)
+            return single_element(a_i, a_j, b_i, h, g);
         return single_element(b_i, b_j, a_i, h, g);
     }
     if (level == 2) { // Case C
-        if (da == 2) return same_spin_double_element(a_i, a_i & ~a_j, a_j & ~a_i, g);
-        if (db == 2) return same_spin_double_element(b_i, b_i & ~b_j, b_j & ~b_i, g);
+        if (da == 2)
+            return same_spin_double_element(a_i, a_i & ~a_j, a_j & ~a_i, g);
+        if (db == 2)
+            return same_spin_double_element(b_i, b_i & ~b_j, b_j & ~b_i, g);
         return opposite_spin_double_element(a_i, a_j, b_i, b_j, g);
     }
     return 0.0; // Case D (differ by >= 3 spin-orbitals)
@@ -187,11 +200,12 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
     // No-fallback guards -- throw, never return a sentinel (mirror mp2_energy).
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
-            "fci_energy: ERI is not materialized; call build_integrals(..., "
-            "compute_eri=true).");
+            "fci_energy: ERI is not materialized; call IntegralPack{..., "
+            "compute_eri=true}.");
     }
     if (!scf.converged) {
-        throw std::invalid_argument("fci_energy: SCF result has not converged.");
+        throw std::invalid_argument(
+            "fci_energy: SCF result has not converged.");
     }
     if (scf.n_alpha != scf.n_beta) {
         throw std::invalid_argument(
@@ -207,17 +221,18 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
     // This is a validation/reference tool, not a production method.
     if (n_mo > 14) {
         throw std::invalid_argument(
-            "fci_energy: n_mo=" + std::to_string(n_mo) +
-            " exceeds the TINY cap (n_mo <= 14); this is a reference solver for "
-            "tiny systems, not a production correlation method.");
+            "fci_energy: n_mo=" + std::to_string(n_mo)
+            + " exceeds the TINY cap (n_mo <= 14); this is a reference solver "
+              "for "
+              "tiny systems, not a production correlation method.");
     }
-    const long long n_det =
-        choose(n_mo, n_alpha) * choose(n_mo, n_beta);
+    const long long n_det = choose(n_mo, n_alpha) * choose(n_mo, n_beta);
     if (n_det > 2000) {
         throw std::invalid_argument(
-            "fci_energy: N_det=" + std::to_string(n_det) +
-            " exceeds the TINY cap (N_det <= 2000); this is a reference solver "
-            "for tiny systems, not a production correlation method.");
+            "fci_energy: N_det=" + std::to_string(n_det)
+            + " exceeds the TINY cap (N_det <= 2000); this is a reference "
+              "solver "
+              "for tiny systems, not a production correlation method.");
     }
 
     // MO-basis one- and two-electron integrals (chemists' notation).
@@ -238,10 +253,11 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
             for (std::size_t ja = 0; ja < n_a; ++ja) {
                 for (std::size_t jb = 0; jb < n_b; ++jb) {
                     const std::size_t idx_j = ja * n_b + jb;
-                    if (idx_j < idx_i) continue; // upper triangle only
-                    const double e = ci_element(alphas[ia], betas[ib],
-                                                alphas[ja], betas[jb], h, g,
-                                                ints.V_nuc);
+                    if (idx_j < idx_i)
+                        continue; // upper triangle only
+                    const double e =
+                        ci_element(alphas[ia], betas[ib], alphas[ja], betas[jb],
+                                   h, g, ints.V_nuc);
                     hci(idx_i, idx_j) = e;
                     hci(idx_j, idx_i) = e; // symmetric fill
                 }
@@ -263,7 +279,8 @@ FCIResult fci_energy(const IntegralPack& ints, const SCFResult& scf) {
 
     auto [w, U] = xt::linalg::eigh(hci);
     (void)U;
-    const double e_fci = w(0); // eigenvalues ascending; lowest is the ground state
+    const double e_fci =
+        w(0); // eigenvalues ascending; lowest is the ground state
     return {e_fci, e_fci - scf.energy};
 }
 

@@ -29,9 +29,8 @@ namespace scf {
 struct SCFWorkspace {
     // -- Shared (toy-scf + RHF) --
     prec_t* H0 = nullptr; ///< Base Hamiltonian (toy) [device, n*n].
-    prec_t* H =
-        nullptr; ///< Effective Hamiltonian / Fock matrix [device, n*n].
-    prec_t* P = nullptr;     ///< Density matrix [device, n*n].
+    prec_t* H = nullptr; ///< Effective Hamiltonian / Fock matrix [device, n*n].
+    prec_t* P = nullptr; ///< Density matrix [device, n*n].
     prec_t* P_old = nullptr; ///< Previous density matrix [device, n*n].
     prec_t* C =
         nullptr; ///< Eigenvectors / MO coefficients [device, n*n, col-major].
@@ -50,25 +49,22 @@ struct SCFWorkspace {
 
     // -- RHF-specific --
     prec_t* Hcore = nullptr; ///< Core Hamiltonian T+V [device, n*n].
-    prec_t* X =
-        nullptr; ///< Orthogonalization matrix S^{-1/2} [device, n*n].
+    prec_t* X = nullptr; ///< Orthogonalization matrix S^{-1/2} [device, n*n].
     prec_t* F_prime = nullptr; ///< Transformed Fock X^T*F*X [device, n*n].
     prec_t* ERI = nullptr;     ///< Two-electron integrals [device, n^4].
     double V_nuc = 0;          ///< Nuclear repulsion energy (host-cached).
 
     // -- Basis data for GPU-native integral kernels --
-    prec_t* d_shell_alpha =
-        nullptr; ///< Exponents [device, n_shells * n_prim].
+    prec_t* d_shell_alpha = nullptr; ///< Exponents [device, n_shells * n_prim].
     prec_t* d_shell_coeff =
         nullptr; ///< Normalized coefficients [device, n_shells * n_prim].
     prec_t* d_shell_center =
-        nullptr; ///< Shell centers [device, n_shells * 3] (Bohr).
+        nullptr;             ///< Shell centers [device, n_shells * 3] (Bohr).
     int* d_atom_Z = nullptr; ///< Nuclear charges [device, natm].
-    prec_t* d_atom_pos =
-        nullptr;      ///< Atom positions [device, natm * 3] (Bohr).
-    int n_prim = 0;   ///< Primitives per shell (host-cached).
-    int n_shells = 0; ///< Number of shells (host-cached).
-    int natm = 0;     ///< Number of atoms (host-cached).
+    prec_t* d_atom_pos = nullptr; ///< Atom positions [device, natm * 3] (Bohr).
+    int n_prim = 0;               ///< Primitives per shell (host-cached).
+    int n_shells = 0;             ///< Number of shells (host-cached).
+    int natm = 0;                 ///< Number of atoms (host-cached).
 };
 
 } // namespace scf

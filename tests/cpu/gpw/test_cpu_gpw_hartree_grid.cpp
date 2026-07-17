@@ -36,7 +36,8 @@ TEST(GpwHartree, EnergyEqualsHalfTracePJ) {
 
     const double cA[3] = {5.5, 6.0, 6.0};
     const double cB[3] = {6.5, 6.0, 6.0};
-    std::vector<GridBasisFunction> basis = {s_function(0.9, cA), s_function(1.1, cB)};
+    std::vector<GridBasisFunction> basis = {s_function(0.9, cA),
+                                            s_function(1.1, cB)};
     std::vector<double> P = {1.0, 0.2, 0.2, 0.8};
 
     HartreeOnGrid h = hartree_grid(grid, basis, P);
@@ -44,10 +45,13 @@ TEST(GpwHartree, EnergyEqualsHalfTracePJ) {
     // Tr(P J) = sum_uv P_uv J_uv.
     double trpj = 0.0;
     for (int u = 0; u < 2; ++u)
-        for (int v = 0; v < 2; ++v) trpj += P[u * 2 + v] * h.j_matrix[u * 2 + v];
+        for (int v = 0; v < 2; ++v)
+            trpj += P[u * 2 + v] * h.j_matrix[u * 2 + v];
 
-    EXPECT_NEAR(h.e_hartree, 0.5 * trpj, 1e-10 * std::max(1.0, std::abs(h.e_hartree)));
+    EXPECT_NEAR(h.e_hartree, 0.5 * trpj,
+                1e-10 * std::max(1.0, std::abs(h.e_hartree)));
     EXPECT_GT(h.e_hartree, 0.0); // Hartree self-repulsion is positive
     // J symmetric.
-    EXPECT_NEAR(h.j_matrix[1], h.j_matrix[2], 1e-12 * std::max(1.0, std::abs(h.j_matrix[1])));
+    EXPECT_NEAR(h.j_matrix[1], h.j_matrix[2],
+                1e-12 * std::max(1.0, std::abs(h.j_matrix[1])));
 }

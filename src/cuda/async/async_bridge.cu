@@ -103,8 +103,8 @@ void AsyncBridge::launch(const LaunchContext& ctx) {
     // 4. Snapshot boundary: enqueue a host callback that runs after the D2H
     //    above completes. The callback fires on a CUDA worker thread; the main
     //    thread is free to issue the next step's kernels in parallel.
-    auto* payload = new CallbackPayload{this, &ctx.runtime, &ctx.frame,
-                                        ctx.stage, ctx.step, slot};
+    auto* payload = new CallbackPayload{this,      &ctx.runtime, &ctx.frame,
+                                        ctx.stage, ctx.step,     slot};
     cudaLaunchHostFunc(defer_stream, &AsyncBridge::cuda_callback_, payload);
 }
 

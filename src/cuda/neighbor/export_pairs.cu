@@ -87,16 +87,13 @@ __global__ void export_atom_pairs_kernel(
     }
 }
 
-void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
-                              const uint64_t* flat_mask,
-                              const int* num_flat_device, int n_flat,
-                              const int* original_index, const real_t* pos_x,
-                              const real_t* pos_y, const real_t* pos_z,
-                              bool periodic, cuda::Box box, int* out_i,
-                              int* out_j, real_t* out_dx, real_t* out_dy,
-                              real_t* out_dz, real_t* out_dist_sq,
-                              int* out_count, const int* capacity_ptr,
-                              cudaStream_t stream) {
+void launch_export_atom_pairs(
+    const int* flat_ci, const int* flat_cj, const uint64_t* flat_mask,
+    const int* num_flat_device, int n_flat, const int* original_index,
+    const real_t* pos_x, const real_t* pos_y, const real_t* pos_z,
+    bool periodic, cuda::Box box, int* out_i, int* out_j, real_t* out_dx,
+    real_t* out_dy, real_t* out_dz, real_t* out_dist_sq, int* out_count,
+    const int* capacity_ptr, cudaStream_t stream) {
     if (n_flat == 0)
         return;
     int block = ATV::cuda::kDefaultBlock;

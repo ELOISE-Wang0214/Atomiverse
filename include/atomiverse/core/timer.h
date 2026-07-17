@@ -48,7 +48,9 @@ struct TimerStat {
         if (s > max_s)
             max_s = s;
     }
-    double avg_s() const { return calls ? total_s / static_cast<double>(calls) : 0.0; }
+    double avg_s() const {
+        return calls ? total_s / static_cast<double>(calls) : 0.0;
+    }
 };
 
 /// @brief Per-component timing registry, owned by a Backend and reached by

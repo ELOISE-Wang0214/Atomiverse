@@ -73,9 +73,6 @@ void launch_assign_clusters_to_cells(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // CUB exclusive sum wrapper — temp storage owned by DeviceVector
 // ---------------------------------------------------------------------------
@@ -150,9 +147,6 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
         cluster_cell_idx, num_clusters, cell_start, cell_clusters, histogram);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
-
-
-
 
 // ── Forced template instantiations ───────────────────────────────────
 // Instantiate each launcher template over the configured work_t type

@@ -98,8 +98,7 @@ struct Box {
 
     /// @brief Wrap one axis into `[0, L_d)`. Orthorhombic only.
     template <typename T>
-    __host__ __device__ __forceinline__ T wrap_axis(T q,
-                                                    int d) const noexcept {
+    __host__ __device__ __forceinline__ T wrap_axis(T q, int d) const noexcept {
         const T L = T(cell[d * 3 + d]);
         if (L <= T(0))
             return q;

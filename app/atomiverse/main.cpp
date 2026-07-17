@@ -38,15 +38,15 @@ int main(int argc, char** argv) {
             // blocked in their command loop forever.
             try {
                 ATV::app::PythonHost host(args.script(), argc - 1, argv + 1);
-                exit_code = host.run();  // script runs; drivers destruct
+                exit_code = host.run(); // script runs; drivers destruct
             } catch (...) {
                 dispatcher.shutdown();
                 throw;
             }
-            dispatcher.shutdown();       // worker release, normal path
+            dispatcher.shutdown(); // worker release, normal path
         } else {
             ATV::cpu::task::WorkerLoop worker(MPI_COMM_WORLD);
-            worker.run();                // blocks until SHUTDOWN
+            worker.run(); // blocks until SHUTDOWN
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[atomiverse rank %d] %s\n", rank, e.what());

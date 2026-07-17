@@ -22,10 +22,10 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
-#include "atomiverse/cpu/scf/shell_pair.h"
 
 #ifdef ATV_HAS_LIBCINT
 #include "libcint_reference.cuh"
@@ -182,8 +182,8 @@ void compare_tensors(const xt::xtensor<double, 4>& a,
 // catches gross algebraic errors in rys_eri_block.
 TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
     auto frame = make_water();
-    auto pack =
-        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -192,8 +192,8 @@ TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
 
 TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     auto frame = make_co();
-    auto pack =
-        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -206,8 +206,8 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
 
 TEST(RysEri, MatchesLibcint_H2O) {
     auto frame = make_water();
-    auto pack =
-        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -217,8 +217,8 @@ TEST(RysEri, MatchesLibcint_H2O) {
 
 TEST(RysEri, MatchesLibcint_CO) {
     auto frame = make_co();
-    auto pack =
-        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -241,8 +241,8 @@ TEST(RysEri, MatchesLibcint_CO) {
 TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
     auto frame = make_water();
     // 6-31G* puts a d-shell on oxygen → d quartets appear in the tensor.
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs, 0,
-                                /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
     ASSERT_GT(sp.n_basis, 7)
         << "6-31G* H2O must have > 7 AOs (d-shell present)";
@@ -256,8 +256,8 @@ TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
 TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
     auto frame = make_co();
     // 6-31G* puts a d-shell on both C and O → (dd|dd) quartets present.
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs, 0,
-                                /*need_eri=*/true);
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
+                                       /*need_eri=*/true};
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);

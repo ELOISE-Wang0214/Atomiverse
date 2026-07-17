@@ -43,7 +43,8 @@ TEST(GpwXcGrid, ConstantDensityEnergyAndPotential) {
 
     XcOnGrid xc = xc_grid_pade(grid, rho_r);
 
-    const ATV::cpu::xc::PadeXC ref = ATV::cpu::xc::pade_lsd(0.5 * rho0, 0.5 * rho0);
+    const ATV::cpu::xc::PadeXC ref =
+        ATV::cpu::xc::pade_lsd(0.5 * rho0, 0.5 * rho0);
     const double volume = cell[0] * cell[1] * cell[2];
     const double e_expected = volume * rho0 * ref.exc;
 
@@ -61,7 +62,8 @@ TEST(GpwXcGrid, CollocatedDensityComposesToSymmetricBlock) {
 
     const double cA[3] = {5.5, 6.0, 6.0};
     const double cB[3] = {6.5, 6.0, 6.0};
-    std::vector<GridBasisFunction> basis = {s_function(0.9, cA), s_function(1.1, cB)};
+    std::vector<GridBasisFunction> basis = {s_function(0.9, cA),
+                                            s_function(1.1, cB)};
     std::vector<double> P = {1.0, 0.2, 0.2, 0.8};
 
     std::vector<double> rho = collocate_density(grid, basis, P);
@@ -71,7 +73,8 @@ TEST(GpwXcGrid, CollocatedDensityComposesToSymmetricBlock) {
     double e_manual = 0.0;
     const double w = grid.weight();
     for (double r : rho) {
-        if (r > 1e-12) e_manual += w * r * ATV::cpu::xc::pade_lsd(0.5 * r, 0.5 * r).exc;
+        if (r > 1e-12)
+            e_manual += w * r * ATV::cpu::xc::pade_lsd(0.5 * r, 0.5 * r).exc;
     }
     EXPECT_NEAR(xc.e_xc, e_manual, 1e-12 * std::max(1.0, std::abs(e_manual)));
     EXPECT_LT(xc.e_xc, 0.0); // XC energy is negative for a real density
@@ -80,5 +83,6 @@ TEST(GpwXcGrid, CollocatedDensityComposesToSymmetricBlock) {
     std::vector<double> Vxc = integrate_potential(grid, basis, xc.vxc_r);
     ASSERT_EQ(Vxc.size(), 4u);
     EXPECT_NEAR(Vxc[1], Vxc[2], 1e-12 * std::max(1.0, std::abs(Vxc[1])));
-    for (double v : Vxc) EXPECT_TRUE(std::isfinite(v));
+    for (double v : Vxc)
+        EXPECT_TRUE(std::isfinite(v));
 }

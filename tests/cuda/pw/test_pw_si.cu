@@ -62,6 +62,5 @@ TEST(CudaPWScf, MatchesCpu) {
     // Same SCF fixed point: backends differ only in Davidson arithmetic
     // order and the random 1e-4 startingwfc perturbation.
     EXPECT_NEAR(r_cpu.energy, r_cuda.energy, 1e-3)
-        << "CPU " << r_cpu.energy << " Ry vs CUDA " << r_cuda.energy
-        << " Ry";
+        << "CPU " << r_cpu.energy << " Ry vs CUDA " << r_cuda.energy << " Ry";
 }

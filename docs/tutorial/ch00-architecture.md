@@ -1,5 +1,37 @@
 # Chapter 0: A Tour of the CPU Backend
 
+This is the orientation chapter — no physics yet. By the end you know the
+three pillars (**Driver**, **Component**, **Frame**), how termination works
+(**LoopHandler** vs **OutcomePolicy**), and why swapping an evaluator changes
+the method without rewriting the loop.
+
+| Pillar | Owns | Example types |
+|--------|------|---------------|
+| **Runtime** (`cpu::Backend`) | frame binding, plan storage, MPI, timing | one per run |
+| **Driver** (`cpu::CPUDriver<P>`) | stages + plan + handlers | `MD`, `Minimize`, `MC`, `Evaluate`, … |
+| **Component** | one step of physics | `PairLJCut`, `SCF`, `LBFGS`, `Thermo` |
+| **Frame** | device-resident state | `blocks` + `meta` + `simbox` |
+
+```cpp
+// Same MD loop — different physics by swapping the force component
+cpu::md::MD sim;
+sim.set_integrator(cpu::md::VelocityVerlet{0.5});
+sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});       // classical
+// sim.on(md::Phase::force).add(cpu::scf::RHF{});       // AIMD
+sim.build();
+sim.run(frame, 1000);
+```
+
+Runnable proofs of the architecture (not full e2e science):
+
+```bash
+# classical MD energy conservation — proves the loop + potential pipeline
+cmake --build build --target 07_md_lj && ./build/examples/07_md_lj
+# RHF single point — proves SCFSolver as an inner solver, not a Driver
+cmake --build build --target 02_rhf && ./build/examples/02_rhf
+```
+
+
 If you arrived at Atomiverse looking for "how do I run a simulation?" the
 honest answer is: it depends on what you mean by *run*. Three different
 loops live inside the project, and the first thing a beginner needs is a
@@ -12,10 +44,10 @@ dynamics, geometry minimization, and electronic-structure self-consistent
 field. Each later chapter then drills into one of those loops with a
 concrete example.
 
-If you have already built the project, the example programs sitting under
-`examples/` correspond one-to-one with the loops described here.
-If you have not, see
-[Getting Started](../user-guide/getting-started.md) first.
+A shorter, task-oriented version of this vocabulary is in
+[User Guide → Core concepts](../user-guide/concepts.md). If you have not built
+the project yet, see [Getting Started](../user-guide/getting-started.md) first.
+Example programs under `examples/` map one-to-one to the loops described here.
 
 ## The One Truth: `cpu::Frame`
 

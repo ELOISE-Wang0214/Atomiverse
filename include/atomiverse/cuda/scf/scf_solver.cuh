@@ -52,7 +52,7 @@
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 #ifdef ATV_HAS_RHF
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
 #endif

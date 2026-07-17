@@ -34,27 +34,38 @@ FFTPlan3D::FFTPlan3D(int nx, int ny, int nz, cudaStream_t stream)
     // is x — matching FFTW's fftw_plan_dft_*_3d(nz, ny, nx, ...) in the CPU
     // class and the `ix + nx*(iy + ny*iz)` indexing used throughout pw_scf.
     try {
-        check_cufft(cufftPlan3d(&r2c_, nz, ny, nx, CUFFT_D2Z), "cufftPlan3d D2Z");
-        check_cufft(cufftPlan3d(&c2r_, nz, ny, nx, CUFFT_Z2D), "cufftPlan3d Z2D");
-        check_cufft(cufftPlan3d(&c2c_, nz, ny, nx, CUFFT_Z2Z), "cufftPlan3d Z2Z");
+        check_cufft(cufftPlan3d(&r2c_, nz, ny, nx, CUFFT_D2Z),
+                    "cufftPlan3d D2Z");
+        check_cufft(cufftPlan3d(&c2r_, nz, ny, nx, CUFFT_Z2D),
+                    "cufftPlan3d Z2D");
+        check_cufft(cufftPlan3d(&c2c_, nz, ny, nx, CUFFT_Z2Z),
+                    "cufftPlan3d Z2Z");
         check_cuda(cudaMalloc(&d_cbuf_, static_cast<size_t>(nc_)
                                             * sizeof(cufftDoubleComplex)),
                    "cudaMalloc scratch");
     } catch (...) {
-        if (r2c_) cufftDestroy(r2c_);
-        if (c2r_) cufftDestroy(c2r_);
-        if (c2c_) cufftDestroy(c2c_);
-        if (d_cbuf_) cudaFree(d_cbuf_);
+        if (r2c_)
+            cufftDestroy(r2c_);
+        if (c2r_)
+            cufftDestroy(c2r_);
+        if (c2c_)
+            cufftDestroy(c2c_);
+        if (d_cbuf_)
+            cudaFree(d_cbuf_);
         throw;
     }
     set_stream(stream_);
 }
 
 FFTPlan3D::~FFTPlan3D() {
-    if (r2c_) cufftDestroy(r2c_);
-    if (c2r_) cufftDestroy(c2r_);
-    if (c2c_) cufftDestroy(c2c_);
-    if (d_cbuf_) cudaFree(d_cbuf_);
+    if (r2c_)
+        cufftDestroy(r2c_);
+    if (c2r_)
+        cufftDestroy(c2r_);
+    if (c2c_)
+        cufftDestroy(c2c_);
+    if (d_cbuf_)
+        cudaFree(d_cbuf_);
 }
 
 void FFTPlan3D::set_stream(cudaStream_t stream) {
@@ -73,11 +84,11 @@ void FFTPlan3D::r2c(const double* d_in, cufftDoubleComplex* d_out) {
 void FFTPlan3D::c2r(const cufftDoubleComplex* d_in, double* d_out) {
     // cuFFT Z2D destroys its input; copy into scratch first so the caller's
     // buffer is preserved (matches the CPU class's memcpy-into-cbuf_ behavior).
-    check_cuda(cudaMemcpyAsync(d_cbuf_, d_in,
-                               static_cast<size_t>(nc_)
-                                   * sizeof(cufftDoubleComplex),
-                               cudaMemcpyDeviceToDevice, stream_),
-               "cudaMemcpyAsync c2r in");
+    check_cuda(
+        cudaMemcpyAsync(d_cbuf_, d_in,
+                        static_cast<size_t>(nc_) * sizeof(cufftDoubleComplex),
+                        cudaMemcpyDeviceToDevice, stream_),
+        "cudaMemcpyAsync c2r in");
     check_cufft(cufftExecZ2D(c2r_, d_cbuf_, d_out), "cufftExecZ2D");
 }
 

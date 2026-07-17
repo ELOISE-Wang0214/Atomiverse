@@ -24,12 +24,18 @@ using namespace ATV::cpu::gpw;
 namespace {
 
 int z_of(const std::string& sym) {
-    if (sym == "H") return 1;
-    if (sym == "O") return 8;
-    if (sym == "Na") return 11;
-    if (sym == "Cl") return 17;
-    if (sym == "Ar") return 18;
-    if (sym == "Zn") return 30;
+    if (sym == "H")
+        return 1;
+    if (sym == "O")
+        return 8;
+    if (sym == "Na")
+        return 11;
+    if (sym == "Cl")
+        return 17;
+    if (sym == "Ar")
+        return 18;
+    if (sym == "Zn")
+        return 30;
     std::fprintf(stderr, "unknown symbol %s\n", sym.c_str());
     std::exit(1);
 }
@@ -37,12 +43,14 @@ int z_of(const std::string& sym) {
 std::string ident(const std::string& sym, const std::string& name) {
     std::string s = sym + "_" + name;
     for (char& c : s)
-        if (c == '-') c = '_';
+        if (c == '-')
+            c = '_';
     return s;
 }
 
 void emit_doubles(const std::string& id, const std::vector<double>& v) {
-    if (v.empty()) return; // empty C arrays are ill-formed; rows use nullptr
+    if (v.empty())
+        return; // empty C arrays are ill-formed; rows use nullptr
     std::printf("inline constexpr double %s[] = {", id.c_str());
     for (std::size_t i = 0; i < v.size(); ++i)
         std::printf("%s%.17g", i ? ", " : "", v[i]);
@@ -121,14 +129,16 @@ void emit_basis(const std::string& sym, const std::string& name) {
 int main() {
     std::printf(
         "/// @file cpu/gpw/basis_data/gpw_tables.h\n"
-        "/// @brief GTH pseudopotential + MOLOPT/PADE Gaussian-basis static data"
+        "/// @brief GTH pseudopotential + MOLOPT/PADE Gaussian-basis static "
+        "data"
         " tables.\n"
         "///\n"
         "/// GENERATED ONCE by tools/gen_gpw_tables.cpp from the published"
         " parameter\n"
         "/// sets and committed as plain C++ data — nothing is parsed at build"
         " or run\n"
-        "/// time. Provenance: GTH-PBE — Krack, TCA 114, 145 (2005); GTH-PADE —\n"
+        "/// time. Provenance: GTH-PBE — Krack, TCA 114, 145 (2005); GTH-PADE "
+        "—\n"
         "/// Goedecker-Teter-Hutter, PRB 54, 1703 (1996) / Hartwigsen et al.,"
         " PRB 58,\n"
         "/// 3641 (1998); MOLOPT bases — VandeVondele & Hutter, JCP 127, 114105"

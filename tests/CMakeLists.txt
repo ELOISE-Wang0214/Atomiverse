@@ -580,7 +580,7 @@ if(ATV_BUILD_CUDA)
         # Parity needs a gapped system: uses the checked-in ONCV LDA Si
         # pseudopotential from the pw benchmark reference data.
         target_compile_definitions(test_cuda_pw_si PRIVATE
-            ATV_PW_UPF_PATH="${CMAKE_SOURCE_DIR}/benchmarks/pw/si/validation/reference/Si_lda_nc.upf")
+            ATV_PW_UPF_PATH="${CMAKE_SOURCE_DIR}/tests/data/pw/Si_lda_nc.upf")
     endif()
     atv_add_test(test_cuda_driver_role_validation cuda/test_cuda_driver_role_validation.cu)
     # Registration-time PhaseKind gate, CUDA mirror
@@ -630,6 +630,14 @@ add_test(
 add_test(
     NAME test_stage_typing_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate: domain objects are constructed via class constructors — never
+# free-function factories (build_integrals / *_config / make_atom_list / …).
+# Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
+add_test(
+    NAME test_no_factory_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_factory_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: compatibility-only CPU aliases/overloads stay deleted and the

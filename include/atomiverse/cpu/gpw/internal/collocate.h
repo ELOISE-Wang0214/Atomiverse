@@ -24,10 +24,10 @@ namespace gpw {
 /// @brief One primitive Cartesian Gaussian:
 /// f(r) = coeff * (x-cx)^lx (y-cy)^ly (z-cz)^lz * exp(-alpha |r-c|^2).
 struct GridPrimitive {
-    double alpha = 0.0;        ///< Gaussian exponent.
+    double alpha = 0.0;           ///< Gaussian exponent.
     double center[3] = {0, 0, 0}; ///< center c [Bohr].
-    int l[3] = {0, 0, 0};      ///< Cartesian powers (lx, ly, lz).
-    double coeff = 1.0;        ///< contraction coefficient (incl. any normalization).
+    int l[3] = {0, 0, 0};         ///< Cartesian powers (lx, ly, lz).
+    double coeff = 1.0; ///< contraction coefficient (incl. any normalization).
 };
 
 /// @brief A basis function is a contracted sum of primitives. φ(r) = Σ_p prim_p(r).
@@ -35,14 +35,16 @@ using GridBasisFunction = std::vector<GridPrimitive>;
 
 /// @brief Uniform orthorhombic real-space grid covering [0,L) per axis.
 struct UniformGrid {
-    int n[3] = {0, 0, 0};      ///< points per axis.
-    double L[3] = {0, 0, 0};   ///< box lengths [Bohr].
+    int n[3] = {0, 0, 0};         ///< points per axis.
+    double L[3] = {0, 0, 0};      ///< box lengths [Bohr].
     double origin[3] = {0, 0, 0}; ///< lower corner [Bohr].
 
     /// @brief Total number of grid points.
     long npts() const { return static_cast<long>(n[0]) * n[1] * n[2]; }
     /// @brief Uniform integration weight per point = cell_volume / npts.
-    double weight() const { return (L[0] * L[1] * L[2]) / static_cast<double>(npts()); }
+    double weight() const {
+        return (L[0] * L[1] * L[2]) / static_cast<double>(npts());
+    }
     /// @brief Cartesian coordinates of linear grid index `idx` (k fastest).
     void point(long idx, double r[3]) const;
 };
@@ -65,12 +67,12 @@ UniformGrid make_uniform_grid(const double cell_abc[3], double cutoff_ry);
 /// Built once per geometry; the min-image periodic wrap (and the non-periodic
 /// raw-displacement path) match `eval_basis_on_grid`.
 struct CompactBasisGrid {
-    std::vector<long> gidx;        ///< active grid-point linear indices (length na).
-    std::vector<std::size_t> off;  ///< CSR offsets into fu/fv (length na+1).
-    std::vector<int> fu;           ///< function index per nonzero (length nnz).
-    std::vector<double> fv;        ///< φ_fu(r_g) value per nonzero (length nnz).
-    long npts = 0;                 ///< total grid points (for output sizing).
-    double weight = 0.0;           ///< grid integration weight per point.
+    std::vector<long> gidx; ///< active grid-point linear indices (length na).
+    std::vector<std::size_t> off; ///< CSR offsets into fu/fv (length na+1).
+    std::vector<int> fu;          ///< function index per nonzero (length nnz).
+    std::vector<double> fv;       ///< φ_fu(r_g) value per nonzero (length nnz).
+    long npts = 0;                ///< total grid points (for output sizing).
+    double weight = 0.0;          ///< grid integration weight per point.
 };
 
 /// @brief Radius [Bohr] beyond which a contracted Gaussian basis function is
@@ -86,9 +88,10 @@ double basis_function_radius(const GridBasisFunction& bf, double eps);
 ///        (default 1e-12) that the dropped Gaussian tails are below the SCF
 ///        energy tolerance, so collocation/integration are bit-equivalent to the
 ///        dense path. @param periodic see `eval_basis_on_grid`.
-CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
-                                          const std::vector<GridBasisFunction>& basis,
-                                          bool periodic, double eps = 1e-12);
+CompactBasisGrid
+build_compact_basis_grid(const UniformGrid& grid,
+                         const std::vector<GridBasisFunction>& basis,
+                         bool periodic, double eps = 1e-12);
 
 /// @brief Collocate ρ(r) = Σ_uv P_uv φ_u(r) φ_v(r) over the compact representation.
 std::vector<double> collocate_density(const CompactBasisGrid& cbg, int nbasis,
@@ -104,24 +107,26 @@ std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
 ///        slab atoms) collocate through their nearest image. False = isolated
 ///        (Martyna-Tuckerman); raw displacement, Gaussians assumed inside the box.
 /// @return Row-major (npts x nbasis) matrix Phi, Phi[g*nbasis + u] = φ_u(r_g).
-std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
-                                       const std::vector<GridBasisFunction>& basis,
-                                       bool periodic = false);
+std::vector<double>
+eval_basis_on_grid(const UniformGrid& grid,
+                   const std::vector<GridBasisFunction>& basis,
+                   bool periodic = false);
 
 /// @brief Collocate the electron density ρ(r) = Σ_uv P_uv φ_u(r) φ_v(r).
 /// @param P Symmetric density matrix, row-major nbasis x nbasis.
 /// @return ρ(r) sampled on the grid, length npts.
-std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<GridBasisFunction>& basis,
-                                      const std::vector<double>& P);
+std::vector<double>
+collocate_density(const UniformGrid& grid,
+                  const std::vector<GridBasisFunction>& basis,
+                  const std::vector<double>& P);
 
 /// @brief Collocate density from a precomputed basis-on-grid matrix `phi`
 ///        (row-major npts x nbasis, from `eval_basis_on_grid`). The grid and
 ///        basis are geometry-fixed, so caching `phi` across SCF iterations avoids
 ///        recomputing every Gaussian at every point.
 std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<double>& phi, int nbasis,
-                                      const std::vector<double>& P);
+                                      const std::vector<double>& phi,
+                                      int nbasis, const std::vector<double>& P);
 
 /// @brief Grid-point indices where any basis function exceeds `eps` in magnitude.
 ///        The molecule occupies a small part of a large box, so collocation /
@@ -132,28 +137,31 @@ std::vector<long> active_grid_points(const std::vector<double>& phi, long npts,
 /// @brief Cached + screened collocation: precompute `phi` and `active` once
 ///        (both geometry-fixed) and reuse across SCF iterations.
 std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<double>& phi, int nbasis,
-                                      const std::vector<double>& P,
+                                      const std::vector<double>& phi,
+                                      int nbasis, const std::vector<double>& P,
                                       const std::vector<long>& active);
 
 /// @brief Integrate a grid potential into KS matrix elements
 ///        V_uv = Σ_g w φ_u(r_g) V(r_g) φ_v(r_g).
 /// @param V_r Potential sampled on the grid, length npts.
 /// @return Row-major nbasis x nbasis matrix.
-std::vector<double> integrate_potential(const UniformGrid& grid,
-                                        const std::vector<GridBasisFunction>& basis,
-                                        const std::vector<double>& V_r);
+std::vector<double>
+integrate_potential(const UniformGrid& grid,
+                    const std::vector<GridBasisFunction>& basis,
+                    const std::vector<double>& V_r);
 
 /// @brief Integrate a grid potential into KS matrix elements using a precomputed
 ///        basis-on-grid matrix `phi` (row-major npts x nbasis). See the cached
 ///        `collocate_density` overload.
 std::vector<double> integrate_potential(const UniformGrid& grid,
-                                        const std::vector<double>& phi, int nbasis,
+                                        const std::vector<double>& phi,
+                                        int nbasis,
                                         const std::vector<double>& V_r);
 
 /// @brief Cached + screened integration over `active` grid points.
 std::vector<double> integrate_potential(const UniformGrid& grid,
-                                        const std::vector<double>& phi, int nbasis,
+                                        const std::vector<double>& phi,
+                                        int nbasis,
                                         const std::vector<double>& V_r,
                                         const std::vector<long>& active);
 

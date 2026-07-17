@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/force_scratch.h"
-#include "atomiverse/cpu/potentials/bonded_cache.h"
 #include "atomiverse/cpu/potentials/bond.h"
+#include "atomiverse/cpu/potentials/bonded_cache.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
 
 namespace ATV {
 namespace cpu {

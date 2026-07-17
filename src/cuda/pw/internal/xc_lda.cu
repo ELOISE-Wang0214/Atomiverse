@@ -14,7 +14,7 @@ namespace {
 
 // ── Constants (verbatim from xc_functional.cpp) ──────────────────────────
 __device__ constexpr double kPi = 3.14159265358979323846;
-__device__ constexpr double kRhoMin = 1e-12;     // total density cutoff
+__device__ constexpr double kRhoMin = 1e-12;      // total density cutoff
 __device__ constexpr double kSpinDensMin = 1e-15; // per-spin density floor
 // Slater exchange constant C_x = (3/4)(3/π)^{1/3}.
 __device__ constexpr double kCx = 0.7385587663820224;
@@ -35,16 +35,17 @@ __device__ __forceinline__ double spin_df(double zeta) {
 
 // ── PW92 correlation G(r_s) for one parameter set ────────────────────────
 __device__ __forceinline__ void pw92_G(double rs, double A, double alpha1,
-                                        double beta1, double beta2, double beta3,
-                                        double beta4, double pp, double& G,
-                                        double& dG_drs) {
+                                       double beta1, double beta2, double beta3,
+                                       double beta4, double pp, double& G,
+                                       double& dG_drs) {
     double sqrt_rs = sqrt(rs);
     double rs_3_2 = rs * sqrt_rs;
     double rs_p1 = pow(rs, pp + 1.0);
     double rs_p = pow(rs, pp);
 
-    double q1 = 2.0 * A
-                * (beta1 * sqrt_rs + beta2 * rs + beta3 * rs_3_2 + beta4 * rs_p1);
+    double q1 =
+        2.0 * A
+        * (beta1 * sqrt_rs + beta2 * rs + beta3 * rs_3_2 + beta4 * rs_p1);
     double dq1_drs = 2.0 * A
                      * (0.5 * beta1 / sqrt_rs + beta2 + 1.5 * beta3 * sqrt_rs
                         + (pp + 1.0) * beta4 * rs_p);
@@ -59,8 +60,8 @@ __device__ __forceinline__ void pw92_G(double rs, double A, double alpha1,
 
 // PW92 spin-polarized correlation (Perdew & Wang, PRB 45, 13244 (1992)).
 __device__ __forceinline__ void pw92_correlation(double rho_a, double rho_b,
-                                                  double& ec, double& vc_a,
-                                                  double& vc_b) {
+                                                 double& ec, double& vc_a,
+                                                 double& vc_b) {
     rho_a = fmax(rho_a, kSpinDensMin);
     rho_b = fmax(rho_b, kSpinDensMin);
     double rho = rho_a + rho_b;
@@ -102,7 +103,8 @@ __global__ void xc_lda_kernel(const double* __restrict__ rho_r,
                               double* __restrict__ vxc_r,
                               double* __restrict__ exc_r, int nr) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= nr) return;
+    if (i >= nr)
+        return;
     double rho = rho_r[i];
     if (rho < kRhoMin) {
         vxc_r[i] = 0.0;
@@ -150,7 +152,8 @@ __global__ void scale_scalar_kernel(double* x, double factor) { *x *= factor; }
 
 void xc_lda_grid(const double* d_rho_r, double* d_vxc_r, double* d_exc_r,
                  int nr, cudaStream_t stream) {
-    if (nr <= 0) return;
+    if (nr <= 0)
+        return;
     constexpr int kBlock = 256;
     const int grid = (nr + kBlock - 1) / kBlock;
     xc_lda_kernel<<<grid, kBlock, 0, stream>>>(d_rho_r, d_vxc_r, d_exc_r, nr);
@@ -159,7 +162,8 @@ void xc_lda_grid(const double* d_rho_r, double* d_vxc_r, double* d_exc_r,
 void xc_energy(const double* d_rho_r, const double* d_exc_r, int nr, double dV,
                double* d_Exc, cudaStream_t stream) {
     cudaMemsetAsync(d_Exc, 0, sizeof(double), stream);
-    if (nr <= 0) return;
+    if (nr <= 0)
+        return;
     constexpr int kBlock = 256;
     const int grid = (nr + kBlock - 1) / kBlock;
     xc_energy_kernel<<<grid, kBlock, 0, stream>>>(d_rho_r, d_exc_r, nr, d_Exc);

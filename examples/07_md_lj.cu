@@ -71,7 +71,8 @@ int main() {
     // Argon LJ: epsilon = 0.0104 eV, sigma = 3.4 Å, cutoff = 8.5 Å.
     const double eps = 0.0104, sigma = 3.4, cutoff = 8.5, dt = 1.0;
 
-    cpu::Frame frame = make_argon(/*n_side=*/6, /*density=*/0.0177); // 216 atoms
+    cpu::Frame frame =
+        make_argon(/*n_side=*/6, /*density=*/0.0177); // 216 atoms
 
     std::cout << "=== CUDA NVE MD: " << frame.atoms.size()
               << " LJ argon atoms ===\n";

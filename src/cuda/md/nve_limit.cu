@@ -2,10 +2,10 @@
 /// @brief CUDA NVE/limit integrator kernels.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/nve_limit.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/nve_limit.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
 

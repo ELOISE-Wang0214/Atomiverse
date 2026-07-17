@@ -72,24 +72,22 @@ ReducedReport reduce_timing(const TimerRegistry& reg) {
         s.avg_s = vsum[c] / ranks;
         s.max_s = vmax[c];
         s.pct_var = s.avg_s > 0.0 ? 100.0 * (s.max_s - s.avg_s) / s.avg_s : 0.0;
-        s.pct_total =
-            rep.loop_avg > 0.0 ? 100.0 * s.avg_s / rep.loop_avg : 0.0;
+        s.pct_total = rep.loop_avg > 0.0 ? 100.0 * s.avg_s / rep.loop_avg : 0.0;
         rep.sections[c] = s;
     }
     return rep;
 }
 
 void emit_timing_table(const ReducedReport& rep, std::string_view stage) {
-    std::string title = "Timing breakdown [" + std::string(stage) + "]  ranks="
-                        + std::to_string(rep.ranks)
+    std::string title = "Timing breakdown [" + std::string(stage)
+                        + "]  ranks=" + std::to_string(rep.ranks)
                         + "  steps=" + std::to_string(rep.steps);
-    report::Table t(title,
-                    {{"Section", 9, report::Align::Left},
-                     {"min(s)"},
-                     {"avg(s)"},
-                     {"max(s)"},
-                     {"%varavg"},
-                     {"%total"}});
+    report::Table t(title, {{"Section", 9, report::Align::Left},
+                            {"min(s)"},
+                            {"avg(s)"},
+                            {"max(s)"},
+                            {"%varavg"},
+                            {"%total"}});
     for (std::size_t c = 0; c < kN; ++c) {
         const auto& s = rep.sections[c];
         t.row({std::string(StepTiming::kNames[c]), report::fmt(s.min_s),
@@ -101,8 +99,9 @@ void emit_timing_table(const ReducedReport& rep, std::string_view stage) {
     t.emit();
 
     // Load-balance line as a second one-row table.
-    report::Table lb("Load balance (owned atoms/rank)",
-                     {{"nlocal_min", 12}, {"nlocal_avg", 12}, {"nlocal_max", 12}});
+    report::Table lb(
+        "Load balance (owned atoms/rank)",
+        {{"nlocal_min", 12}, {"nlocal_avg", 12}, {"nlocal_max", 12}});
     lb.row({std::to_string(rep.nlocal_min), report::fmt(rep.nlocal_avg, 1),
             std::to_string(rep.nlocal_max)});
     lb.emit();
@@ -112,12 +111,11 @@ void emit_timing_csv(const ReducedReport& rep, report::Csv& csv,
                      std::string_view stage) {
     // Schema identical to StepTiming::csv_header():
     // stage,ranks,steps,total_s,nlocal_min,nlocal_max,nlocal_avg,<6>_s,<6>_pct
-    std::string r = std::string(stage) + "," + std::to_string(rep.ranks) + ","
-                    + std::to_string(rep.steps) + ","
-                    + report::fmt(rep.loop_avg, 6) + ","
-                    + std::to_string(rep.nlocal_min) + ","
-                    + std::to_string(rep.nlocal_max) + ","
-                    + report::fmt(rep.nlocal_avg, 6);
+    std::string r =
+        std::string(stage) + "," + std::to_string(rep.ranks) + ","
+        + std::to_string(rep.steps) + "," + report::fmt(rep.loop_avg, 6) + ","
+        + std::to_string(rep.nlocal_min) + "," + std::to_string(rep.nlocal_max)
+        + "," + report::fmt(rep.nlocal_avg, 6);
     for (std::size_t c = 0; c < kN; ++c)
         r += "," + report::fmt(rep.sections[c].avg_s, 6);
     for (std::size_t c = 0; c < kN; ++c)
@@ -150,11 +148,16 @@ int mem_category(const std::string& name) {
     if (name == "[domain]")
         return 4; // Comm
     switch (StepTiming::classify(name)) {
-    case StepTiming::Pair:   return 1;
-    case StepTiming::Bonded: return 2;
-    case StepTiming::Neigh:  return 3;
-    case StepTiming::Comm:   return 4;
-    default:                 return 5; // Reduce/Other → Other
+    case StepTiming::Pair:
+        return 1;
+    case StepTiming::Bonded:
+        return 2;
+    case StepTiming::Neigh:
+        return 3;
+    case StepTiming::Comm:
+        return 4;
+    default:
+        return 5; // Reduce/Other → Other
     }
 }
 } // namespace
@@ -211,14 +214,13 @@ void emit_memory_table(const MemReport& rep, std::string_view stage) {
     // "Allocated" = the capacity AV's data structures requested; the % column
     // is share of that AV total (NOT of RSS — allocated capacity includes
     // reserved-but-untouched slack, so it can exceed resident RSS).
-    report::Table t("Memory breakdown [" + std::string(stage)
-                        + "]  ranks=" + std::to_string(rep.ranks)
-                        + "  (AV-allocated, summed over ranks)",
-                    {{"Section", 14, report::Align::Left},
-                     {"alloc(GB)"},
-                     {"%AV"}});
+    report::Table t(
+        "Memory breakdown [" + std::string(stage) + "]  ranks="
+            + std::to_string(rep.ranks) + "  (AV-allocated, summed over ranks)",
+        {{"Section", 14, report::Align::Left}, {"alloc(GB)"}, {"%AV"}});
     for (int c = 0; c < MemReport::kNumCat; ++c) {
-        const double b = static_cast<double>(rep.cat_bytes[static_cast<std::size_t>(c)]);
+        const double b =
+            static_cast<double>(rep.cat_bytes[static_cast<std::size_t>(c)]);
         t.row({std::string(MemReport::kNames[static_cast<std::size_t>(c)]),
                report::fmt(b / gb, 3),
                report::fmt(acc > 0 ? 100.0 * b / acc : 0.0, 1)});
@@ -230,8 +232,8 @@ void emit_memory_table(const MemReport& rep, std::string_view stage) {
     // runtime / MPI library state / allocator overhead / libs (not AV data) —
     // the dominant term at high rank counts. When AV alloc > RSS, AV reserved
     // capacity it has not yet touched (lazy pages).
-    report::Table pr("Peak RSS (resident) vs AV-allocated [" + std::string(stage)
-                         + "]",
+    report::Table pr("Peak RSS (resident) vs AV-allocated ["
+                         + std::string(stage) + "]",
                      {{"metric", 18, report::Align::Left},
                       {"sum(GB)"},
                       {"per-rank avg(MB)"}});
@@ -246,7 +248,8 @@ void emit_memory_table(const MemReport& rep, std::string_view stage) {
                             / (rep.ranks ? rep.ranks : 1),
                         1)});
     pr.row({"RSS min/max (MB)",
-            report::fmt(rep.rss_min_mb, 1) + " / " + report::fmt(rep.rss_max_mb, 1),
+            report::fmt(rep.rss_min_mb, 1) + " / "
+                + report::fmt(rep.rss_max_mb, 1),
             ""});
     pr.emit();
 }
@@ -257,7 +260,8 @@ void emit_per_component(const TimerRegistry& reg, std::string_view stage) {
     const int n = static_cast<int>(stats.size());
     std::vector<double> local(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i)
-        local[static_cast<std::size_t>(i)] = stats[static_cast<std::size_t>(i)].total_s;
+        local[static_cast<std::size_t>(i)] =
+            stats[static_cast<std::size_t>(i)].total_s;
     std::vector<double> gmax = local;
     int rank = 0;
 #ifdef ATV_HAS_MPI
@@ -282,10 +286,12 @@ void emit_per_component(const TimerRegistry& reg, std::string_view stage) {
                      {"max_s"}});
     for (int i = 0; i < n; ++i) {
         const auto& k = keys[static_cast<std::size_t>(i)];
-        const char* cat = (k.category >= 0
-                           && k.category < static_cast<int>(StepTiming::kNumCategories))
-                              ? StepTiming::kNames[static_cast<std::size_t>(k.category)].data()
-                              : "?";
+        const char* cat =
+            (k.category >= 0
+             && k.category < static_cast<int>(StepTiming::kNumCategories))
+                ? StepTiming::kNames[static_cast<std::size_t>(k.category)]
+                      .data()
+                : "?";
         t.row({k.component.empty() ? "(scoped)" : k.component, cat,
                std::to_string(stats[static_cast<std::size_t>(i)].calls),
                report::fmt(gmax[static_cast<std::size_t>(i)], 6)});

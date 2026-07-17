@@ -1,3 +1,0 @@
-# Time-averaged data for fix avgs
-# TimeStep c_ctemp c_cke c_cpe
-99000 301.934 9.95214 -10.6207

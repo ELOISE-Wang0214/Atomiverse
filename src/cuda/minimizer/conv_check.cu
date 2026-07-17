@@ -3,8 +3,8 @@
 
 #include <cmath>
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/minimizer/conv_check.cuh"
 #include <cuda_runtime.h>
 
@@ -32,14 +32,12 @@ namespace {
 /// that the CPU components (which never wrap) cannot see.
 ///
 /// `x_prev` may be null (step 0) — displacement metrics stay 0.
-__global__ void conv_metrics(const real_t* __restrict__ fx,
-                             const real_t* __restrict__ fy,
-                             const real_t* __restrict__ fz,
-                             const real_t* __restrict__ x,
-                             const real_t* __restrict__ y,
-                             const real_t* __restrict__ z,
-                             const work_t* __restrict__ x_prev, cuda::Box box,
-                             work_t* __restrict__ metrics, int n) {
+__global__ void
+conv_metrics(const real_t* __restrict__ fx, const real_t* __restrict__ fy,
+             const real_t* __restrict__ fz, const real_t* __restrict__ x,
+             const real_t* __restrict__ y, const real_t* __restrict__ z,
+             const work_t* __restrict__ x_prev, cuda::Box box,
+             work_t* __restrict__ metrics, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     work_t f2 = work_t(0), fmag = work_t(0);
@@ -95,8 +93,8 @@ void ConvCheck::destroy() {
     h_energy_ = nullptr;
 }
 
-void ConvCheck::measure(const LaunchContext& ctx, const work_t* x_prev, int step,
-                        std::vector<OptRecord>& trace) {
+void ConvCheck::measure(const LaunchContext& ctx, const work_t* x_prev,
+                        int step, std::vector<OptRecord>& trace) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     const int n = n_;

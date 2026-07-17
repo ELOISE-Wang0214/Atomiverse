@@ -15,7 +15,7 @@ the migration primitives (`Atom::copy_row`, `pack/unpack_exchange`,
 `acquire_tag`). Single-rank; trial energy is an O(N) full recompute by design
 (the only form valid for all potentials — `energy_of_rows()` is the follow-up
 performance lever). NVT is validated against NIST LJ reference data
-(`benchmarks/mc/lj/validation/`); μVT and NPT against the analytic Mayer
+(`/* benchmarks removed; re-add later */ lj/validation/`); μVT and NPT against the analytic Mayer
 activity expansion / finite-N ⟨V⟩ relation for the exact cut-shifted
 potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 

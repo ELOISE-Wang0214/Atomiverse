@@ -3,8 +3,8 @@
 ///        mirror of cpu::pw::PW_Poisson::launch.
 #pragma once
 
-#include <cufft.h>
 #include <cuda_runtime.h>
+#include <cufft.h>
 
 namespace ATV {
 namespace cuda {

@@ -38,14 +38,14 @@ std::string probe_major_minor(const std::string& python) {
         python + " -c \"import sys;print('%d.%d'%sys.version_info[:2])\"";
     FILE* pipe = ::popen(cmd.c_str(), "r");
     if (pipe == nullptr)
-        throw std::runtime_error("atomiverse: cannot probe interpreter '" +
-                                 python + "'");
+        throw std::runtime_error("atomiverse: cannot probe interpreter '"
+                                 + python + "'");
     char buf[32] = {};
     const bool got = std::fgets(buf, sizeof(buf), pipe) != nullptr;
     ::pclose(pipe);
     if (!got)
-        throw std::runtime_error("atomiverse: interpreter '" + python +
-                                 "' did not report its version");
+        throw std::runtime_error("atomiverse: interpreter '" + python
+                                 + "' did not report its version");
     std::string v(buf);
     while (!v.empty() && (v.back() == '\n' || v.back() == '\r'))
         v.pop_back();
@@ -61,23 +61,23 @@ int PythonHost::run() {
     // sys.prefix / site-packages from THAT interpreter (pyvenv.cfg
     // honoured). No fallback to build-time paths.
     const InterpreterLocator locator;
-    const std::string built = std::to_string(PY_MAJOR_VERSION) + "." +
-                              std::to_string(PY_MINOR_VERSION);
+    const std::string built = std::to_string(PY_MAJOR_VERSION) + "."
+                              + std::to_string(PY_MINOR_VERSION);
     InterpreterLocator::check_abi(probe_major_minor(locator.executable()),
                                   built);
 
     PyConfig config;
     PyConfig_InitPythonConfig(&config);
 
-    PyStatus status = PyConfig_SetBytesString(
-        &config, &config.executable, locator.executable().c_str());
+    PyStatus status = PyConfig_SetBytesString(&config, &config.executable,
+                                              locator.executable().c_str());
     if (PyStatus_Exception(status)) {
         PyConfig_Clear(&config);
         throw std::runtime_error("atomiverse: PyConfig executable setup "
                                  "failed");
     }
-    status = PyConfig_SetBytesString(&config, &config.run_filename,
-                                     script_.c_str());
+    status =
+        PyConfig_SetBytesString(&config, &config.run_filename, script_.c_str());
     if (PyStatus_Exception(status)) {
         PyConfig_Clear(&config);
         throw std::runtime_error("atomiverse: PyConfig script setup failed");
@@ -97,8 +97,8 @@ int PythonHost::run() {
         if (PyStatus_IsExit(status))
             return status.exitcode;
         throw std::runtime_error(
-            std::string("atomiverse: Python initialization failed: ") +
-            (status.err_msg != nullptr ? status.err_msg : "unknown"));
+            std::string("atomiverse: Python initialization failed: ")
+            + (status.err_msg != nullptr ? status.err_msg : "unknown"));
     }
 
     // Runs the script as __main__, prints any traceback, finalizes the

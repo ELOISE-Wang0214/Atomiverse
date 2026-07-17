@@ -34,7 +34,8 @@ namespace {
 class Argv {
   public:
     explicit Argv(std::vector<std::string> args) : storage_(std::move(args)) {
-        for (auto& s : storage_) ptrs_.push_back(s.data());
+        for (auto& s : storage_)
+            ptrs_.push_back(s.data());
         ptrs_.push_back(nullptr);
     }
     int argc() const { return static_cast<int>(storage_.size()); }

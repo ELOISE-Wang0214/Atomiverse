@@ -50,7 +50,8 @@ TEST(GpwGridFFT, GradientOfPlaneWave) {
     for (long g = 0; g < ng; ++g) {
         double r[3];
         m.grid.point(g, r);
-        const double s = std::sin(m.G[0] * r[0] + m.G[1] * r[1] + m.G[2] * r[2]);
+        const double s =
+            std::sin(m.G[0] * r[0] + m.G[1] * r[1] + m.G[2] * r[2]);
         for (int d = 0; d < 3; ++d)
             max_err = std::max(max_err, std::abs(grad[d][g] - (-m.G[d] * s)));
     }
@@ -65,7 +66,8 @@ TEST(GpwGridFFT, DivGradIsLaplacian) {
     const double g2 = m.G[0] * m.G[0] + m.G[1] * m.G[1] + m.G[2] * m.G[2];
     const long ng = m.grid.npts();
     double max_err = 0.0;
-    for (long g = 0; g < ng; ++g) max_err = std::max(max_err, std::abs(div[g] + g2 * m.f[g]));
+    for (long g = 0; g < ng; ++g)
+        max_err = std::max(max_err, std::abs(div[g] + g2 * m.f[g]));
     EXPECT_LT(max_err, 1e-8);
 }
 
@@ -77,7 +79,8 @@ TEST(GpwGridFFT, DivergenceOfKnownField) {
     const double Gx = 2.0 * M_PI * 1 / L;
     const long ng = grid.npts();
     std::array<std::vector<double>, 3> v;
-    for (int d = 0; d < 3; ++d) v[d].assign(static_cast<std::size_t>(ng), 0.0);
+    for (int d = 0; d < 3; ++d)
+        v[d].assign(static_cast<std::size_t>(ng), 0.0);
     for (long g = 0; g < ng; ++g) {
         double r[3];
         grid.point(g, r);
@@ -88,7 +91,8 @@ TEST(GpwGridFFT, DivergenceOfKnownField) {
     for (long g = 0; g < ng; ++g) {
         double r[3];
         grid.point(g, r);
-        max_err = std::max(max_err, std::abs(div[g] - Gx * std::cos(Gx * r[0])));
+        max_err =
+            std::max(max_err, std::abs(div[g] - Gx * std::cos(Gx * r[0])));
     }
     EXPECT_LT(max_err, 1e-9);
 }

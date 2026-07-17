@@ -167,8 +167,7 @@ TEST(TorchMaterialize, RoundTrip) {
     tf.energy = ::torch::full({1}, -123.5, scalar_opts);
     tf.kinetic = ::torch::full({1}, 64.25, scalar_opts);
     tf.conserved = ::torch::full({1}, -59.25, scalar_opts);
-    tf.stress =
-        ::torch::tensor({1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, scalar_opts);
+    tf.stress = ::torch::tensor({1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, scalar_opts);
     tf.stress_kinetic =
         ::torch::tensor({10.0, 11.0, 12.0, 13.0, 14.0, 15.0}, scalar_opts);
 

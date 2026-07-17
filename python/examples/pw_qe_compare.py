@@ -2,15 +2,18 @@
 """Compare Atomiverse plane-wave DFT against Quantum ESPRESSO for Si diamond.
 
 Requires:
-    - atomiverse (with PW enabled): ``pip install -e .``
+    - atomiverse (with PW enabled): ``pip install -e './python'``
+    - examples extras: ``pip install -e './python[examples]'``
+      (``molcrafts-molplot`` for figures, ``molcrafts-molpy`` for the
+      MolCrafts system stack — not matplotlib / ASE)
     - Quantum ESPRESSO ``pw.x`` on PATH
     - Si pseudopotential (Si.upf) in pseudopotentials/ directory
 
-Generates comparison plots:
+Generates comparison plots (via **molplot**, not raw matplotlib):
     1. Total energy vs plane-wave cutoff (ecut)
     2. Total energy vs k-point mesh
     3. Total energy vs lattice constant (EOS)
-    4. SCF convergence history (for selected parameters)
+    4. |E_AV − E_QE| vs ecut
 
 Usage::
 
@@ -297,103 +300,134 @@ def sweep_alat(
     return results
 
 
-# ── Plotting ──
+# ── Plotting (molplot — not raw matplotlib) ──
 
 
-def plot_comparison(results: dict, save_path: str = ""):
-    """Generate multi-panel comparison plot."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle("Atomiverse vs Quantum ESPRESSO — Si Diamond", fontsize=14)
-
-    # Panel 1: Energy vs ecut
-    ax = axes[0, 0]
-    _plot_compare(
-        ax,
-        results.get("ecut", []),
-        "ecut",
-        "ecut [Ry]",
-        "E [Ry]",
-        "Total energy vs PW cutoff",
-    )
-
-    # Panel 2: Energy vs k-mesh
-    ax = axes[0, 1]
-    _plot_compare(
-        ax,
-        results.get("kmesh", []),
-        "kmesh",
-        "k-mesh",
-        "E [Ry]",
-        "Total energy vs k-point mesh",
-    )
-
-    # Panel 3: Energy vs alat (EOS)
-    ax = axes[1, 0]
-    _plot_compare(
-        ax, results.get("alat", []), "alat", "a [Å]", "E [Ry]", "Equation of state"
-    )
-
-    # Panel 4: Energy difference
-    ax = axes[1, 1]
-    _plot_difference(
-        ax, results.get("ecut", []), "ecut", "ecut [Ry]", "ΔE [eV] | E_AV − E_QE |"
-    )
-
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"\nSaved: {save_path}")
-    else:
-        plt.show()
-
-
-def _plot_compare(ax, data, param, xlabel, ylabel, title):
-    """Plot AV and QE results for one parameter sweep."""
-    if not data:
-        ax.set_title(f"{title}\n(no data)")
-        return
-
+def _series_av_qe(data: list) -> list[dict]:
+    """Build molplot line series for Atomiverse vs QE from a sweep list."""
     x_vals = [p["value"] for p in data]
-    av_vals = [p.get("atomiverse", {}).get("energy") for p in data]
-    qe_vals = [p.get("qe", {}).get("energy") for p in data]
+    av = [p.get("atomiverse", {}).get("energy") for p in data]
+    qe = [p.get("qe", {}).get("energy") for p in data]
+    series: list[dict] = []
+    if any(v is not None for v in av):
+        series.append(
+            {
+                "id": "av",
+                "label": "Atomiverse",
+                "x": x_vals,
+                "y": av,
+                "mode": "lines+markers",
+            }
+        )
+    if any(v is not None for v in qe):
+        series.append(
+            {
+                "id": "qe",
+                "label": "Quantum ESPRESSO",
+                "x": x_vals,
+                "y": qe,
+                "mode": "lines+markers",
+            }
+        )
+    return series
 
-    ax.plot(x_vals, av_vals, "o-", label="Atomiverse", markersize=6)
-    ax.plot(x_vals, qe_vals, "s--", label="Quantum ESPRESSO", markersize=6)
 
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-
-def _plot_difference(ax, data, param, xlabel, ylabel):
-    """Plot absolute energy difference."""
-    if not data:
-        ax.set_title("Energy difference (no data)")
-        return
-
-    x_vals = [p["value"] for p in data]
-    diffs = []
+def _series_abs_diff(data: list) -> list[dict]:
+    """|E_AV − E_QE| in eV (from Ry)."""
+    xs: list[float] = []
+    ys: list[float] = []
     for p in data:
         av_e = p.get("atomiverse", {}).get("energy")
         qe_e = p.get("qe", {}).get("energy")
-        if av_e is not None and qe_e is not None:
-            diffs.append(abs(av_e - qe_e) * 13.6057)  # Ry → eV
-        else:
-            diffs.append(None)
+        if av_e is None or qe_e is None:
+            continue
+        xs.append(p["value"])
+        ys.append(abs(av_e - qe_e) * 13.6057)  # Ry → eV
+    if not xs:
+        return []
+    return [
+        {
+            "id": "dE",
+            "label": "|E_AV − E_QE|",
+            "x": xs,
+            "y": ys,
+            "mode": "lines+markers",
+        }
+    ]
 
-    ax.semilogy(x_vals, diffs, "o-", markersize=6)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title("Energy difference")
-    ax.grid(True, alpha=0.3)
+
+def plot_comparison(results: dict, save_path: str = ""):
+    """Write comparison figures with molplot (Vega-Lite → paper renderer).
+
+    Four panels are saved next to ``save_path`` (or as
+    ``pw_qe_compare_*.png`` when ``save_path`` is empty). Requires
+    ``molcrafts-molplot`` (``pip install -e './python[examples]'``).
+    """
+    import molplot
+
+    molplot.use("molplot")
+
+    base = Path(save_path) if save_path else Path("pw_qe_compare.png")
+    stem = base.with_suffix("")  # drop .png / .json
+
+    panels = [
+        (
+            "ecut",
+            results.get("ecut", []),
+            "ecut (Ry)",
+            "E (Ry)",
+            False,
+            _series_av_qe,
+        ),
+        (
+            "kmesh",
+            results.get("kmesh", []),
+            "k-mesh",
+            "E (Ry)",
+            False,
+            _series_av_qe,
+        ),
+        (
+            "alat",
+            results.get("alat", []),
+            "a (Å)",
+            "E (Ry)",
+            False,
+            _series_av_qe,
+        ),
+        (
+            "delta",
+            results.get("ecut", []),
+            "ecut (Ry)",
+            "ΔE (eV) |E_AV − E_QE|",
+            True,
+            _series_abs_diff,
+        ),
+    ]
+
+    written: list[str] = []
+    for name, data, x_label, y_label, y_log, builder in panels:
+        series = builder(data) if data else []
+        if not series:
+            continue
+        fig, _ax = molplot.line(
+            series,
+            x_label=x_label,
+            y_label=y_label,
+            y_log=y_log,
+            show_legend=True,
+            height=360,
+        )
+        out = f"{stem}_{name}.png"
+        fig.savefig(out, dpi=150, bbox_inches="tight")
+        written.append(out)
+
+    if written:
+        print("\nSaved molplot figures:")
+        for path in written:
+            print(f"  {path}")
+    else:
+        print("\n(no sweep data to plot)")
 
 
 # ── Main ──

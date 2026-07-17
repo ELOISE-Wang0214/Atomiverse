@@ -77,23 +77,20 @@ Tensor wrap_image(std::int8_t* ptr, int n) {
         return Tensor();
     auto opts =
         ::torch::TensorOptions().dtype(kImageDtype).device(::torch::kCUDA);
-    return ::torch::from_blob(
-        ptr, {static_cast<int64_t>(n), 3}, opts);
+    return ::torch::from_blob(ptr, {static_cast<int64_t>(n), 3}, opts);
 }
 
 /// @brief Wrap `count` doubles starting at field index `offset` of a device
 ///        SystemScalars struct as a non-owning Tensor (Double dtype).
-Tensor wrap_scalars_field(const SystemScalars* scalars, int offset,
-                          int count) {
+Tensor wrap_scalars_field(const SystemScalars* scalars, int offset, int count) {
     if (!scalars)
         return Tensor();
-    auto* base = reinterpret_cast<double*>(
-        const_cast<SystemScalars*>(scalars));
+    auto* base = reinterpret_cast<double*>(const_cast<SystemScalars*>(scalars));
     auto opts = ::torch::TensorOptions()
                     .dtype(::at::ScalarType::Double)
                     .device(::torch::kCUDA);
-    return ::torch::from_blob(base + offset,
-                              {static_cast<int64_t>(count)}, opts);
+    return ::torch::from_blob(base + offset, {static_cast<int64_t>(count)},
+                              opts);
 }
 
 /// @brief Extract cuda::real_t* from a Tensor. Validates CUDA, contiguous, correct dtype.
@@ -287,8 +284,7 @@ void to_cuda(const Frame& src, cuda::Frame& dst) {
     // device-resident SystemScalars struct, which must already be allocated.
     if (dst.scalars) {
         auto* base = reinterpret_cast<double*>(dst.scalars);
-        cudaStream_t stream =
-            ::c10::cuda::getCurrentCUDAStream().stream();
+        cudaStream_t stream = ::c10::cuda::getCurrentCUDAStream().stream();
         auto copy_field = [&](const Tensor& t, int offset, int count) {
             if (!t.defined() || t.numel() != count)
                 return;
@@ -304,9 +300,7 @@ void to_cuda(const Frame& src, cuda::Frame& dst) {
         copy_field(src.stress_kinetic, 9, 6);
     }
 
-    dst.box = src.box.defined()
-                  ? src.box.data_ptr<cuda::prec_t>()
-                  : nullptr;
+    dst.box = src.box.defined() ? src.box.data_ptr<cuda::prec_t>() : nullptr;
 
     dst.bonds.atomi = unwrap_int(src.bonds.atomi, "bonds.atomi");
     dst.bonds.atomj = unwrap_int(src.bonds.atomj, "bonds.atomj");
@@ -354,23 +348,22 @@ void to_cpu(const Frame& src, cpu::Frame& dst) {
         dst.scalars.conserved = cpu_c.item<double>();
     }
     if (src.stress.defined() && src.stress.numel() == 6) {
-        auto cpu_s =
-            src.stress.to(::at::ScalarType::Double).to(::torch::kCPU)
-                .contiguous();
+        auto cpu_s = src.stress.to(::at::ScalarType::Double)
+                         .to(::torch::kCPU)
+                         .contiguous();
         std::memcpy(dst.scalars.stress, cpu_s.data_ptr<double>(),
                     6 * sizeof(double));
     }
     if (src.stress_kinetic.defined() && src.stress_kinetic.numel() == 6) {
-        auto cpu_sk =
-            src.stress_kinetic.to(::at::ScalarType::Double).to(::torch::kCPU)
-                .contiguous();
+        auto cpu_sk = src.stress_kinetic.to(::at::ScalarType::Double)
+                          .to(::torch::kCPU)
+                          .contiguous();
         std::memcpy(dst.scalars.stress_kinetic, cpu_sk.data_ptr<double>(),
                     6 * sizeof(double));
     }
     if (src.box.defined() && src.box.numel() == 9) {
         auto cpu_b =
-            src.box.to(::at::ScalarType::Double).to(::torch::kCPU)
-                .contiguous();
+            src.box.to(::at::ScalarType::Double).to(::torch::kCPU).contiguous();
         auto* bp = cpu_b.data_ptr<double>();
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
@@ -396,31 +389,26 @@ Frame from_cpu(const cpu::Frame& src) {
     dst.atoms.charge = xtensor_to_cuda<double, kRealDtype>(src.atoms.charge);
     dst.atoms.type = xtensor_to_cuda<int, kIntDtype>(src.atoms.type);
     dst.atoms.tag = xtensor_to_cuda<std::int64_t, kLongDtype>(src.atoms.tag);
-    dst.atoms.image = xtensor2_to_cuda<std::int8_t, kImageDtype>(
-        src.atoms.image);
+    dst.atoms.image =
+        xtensor2_to_cuda<std::int8_t, kImageDtype>(src.atoms.image);
 
     // System scalars: fresh zero Double Tensors on the device. The torch
     // frame mirrors core/system_scalars.h's SystemScalars field set.
     auto scalar_opts = ::torch::TensorOptions()
                            .dtype(::at::ScalarType::Double)
                            .device(::torch::kCUDA);
-    dst.energy = ::torch::full(
-        {1}, src.scalars.energy, scalar_opts);
-    dst.kinetic = ::torch::full(
-        {1}, src.scalars.kinetic, scalar_opts);
-    dst.conserved = ::torch::full(
-        {1}, src.scalars.conserved, scalar_opts);
+    dst.energy = ::torch::full({1}, src.scalars.energy, scalar_opts);
+    dst.kinetic = ::torch::full({1}, src.scalars.kinetic, scalar_opts);
+    dst.conserved = ::torch::full({1}, src.scalars.conserved, scalar_opts);
     {
         auto cpu_opts =
             ::torch::TensorOptions().dtype(::at::ScalarType::Double);
-        dst.stress = ::torch::from_blob(
-                         const_cast<double*>(src.scalars.stress), {6},
-                         cpu_opts)
+        dst.stress = ::torch::from_blob(const_cast<double*>(src.scalars.stress),
+                                        {6}, cpu_opts)
                          .to(::torch::kCUDA);
         dst.stress_kinetic =
-            ::torch::from_blob(
-                const_cast<double*>(src.scalars.stress_kinetic), {6},
-                cpu_opts)
+            ::torch::from_blob(const_cast<double*>(src.scalars.stress_kinetic),
+                               {6}, cpu_opts)
                 .to(::torch::kCUDA);
     }
 

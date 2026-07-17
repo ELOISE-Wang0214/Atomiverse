@@ -8,8 +8,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -37,14 +37,11 @@ namespace {
 /// Stress writes Σ m·vα·vβ (kMvv2e folded in, NO volume division);
 /// the consumer (`cuda::md::NoseHooverNPT::update_eps_dot_` /
 /// pressure observers) divides by V.
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-kinetic_energy_stress(const real_t* __restrict__ vx,
-                                      const real_t* __restrict__ vy,
-                                      const real_t* __restrict__ vz,
-                                      const real_t* __restrict__ mass,
-                                      prec_t* __restrict__ kinetic,
-                                      prec_t* __restrict__ stress_kinetic,
-                                      int n) {
+__global__
+__launch_bounds__(ATV::cuda::kDefaultBlock, 4) void kinetic_energy_stress(
+    const real_t* __restrict__ vx, const real_t* __restrict__ vy,
+    const real_t* __restrict__ vz, const real_t* __restrict__ mass,
+    prec_t* __restrict__ kinetic, prec_t* __restrict__ stress_kinetic, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     work_t my_ke = work_t(0);

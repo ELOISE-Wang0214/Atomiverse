@@ -1,7 +1,7 @@
 /// @file cpu/scf/two_electron.cpp
 /// @brief Dense ERI tensor assembly — thin wrapper over native::eri.
 
-#include "atomiverse/cpu/scf/two_electron.h"
+#include "atomiverse/cpu/scf/internal/two_electron.h"
 
 #include <array>
 #include <vector>

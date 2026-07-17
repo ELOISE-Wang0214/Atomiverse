@@ -5,8 +5,8 @@
 ///        cpu::pw::internal::VeffBuilder.
 #pragma once
 
-#include <cufft.h>
 #include <cuda_runtime.h>
+#include <cufft.h>
 
 namespace ATV {
 namespace cuda {
@@ -33,8 +33,9 @@ namespace internal {
 /// @param stream        CUDA stream (default stream if null).
 void scatter_g_to_halfcomplex(const cufftDoubleComplex* d_gspace,
                               const int* d_h, const int* d_k, const int* d_l,
-                              int n_g, cufftDoubleComplex* d_halfcomplex, int nx,
-                              int ny, int nz, cudaStream_t stream = nullptr);
+                              int n_g, cufftDoubleComplex* d_halfcomplex,
+                              int nx, int ny, int nz,
+                              cudaStream_t stream = nullptr);
 
 /// @brief Gather from the dense half-complex grid back to the sparse G-space
 ///        array (inverse of scatter), applying the same Hermitian fold and an

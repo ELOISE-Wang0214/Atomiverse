@@ -18,6 +18,7 @@
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/internal/basis_workspace.h"
 
 namespace ATV {
 namespace cpu {
@@ -54,7 +55,7 @@ scf::ShellList sto3g_shells(const std::vector<int>& type_id,
         n_electrons += type_id[i];
     }
     atoms.n_electrons = n_electrons;
-    return scf::build_shell_list(atoms, scf::BasisSet::STO3G);
+    return scf::ShellList{atoms, scf::BasisSet::STO3G};
 }
 
 } // namespace

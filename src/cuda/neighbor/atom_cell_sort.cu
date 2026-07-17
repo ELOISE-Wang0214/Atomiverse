@@ -42,13 +42,11 @@ __device__ __forceinline__ int sort_cell_of(real_t x, real_t y, real_t z,
     return (cx * dy + cy) * dz + cz;
 }
 
-__global__ void compute_cell_key_k(const real_t* __restrict__ x,
-                                   const real_t* __restrict__ y,
-                                   const real_t* __restrict__ z, int n,
-                                   real_t Lx, real_t Ly, real_t Lz, int dx,
-                                   int dy, int dz, bool periodic,
-                                   int* __restrict__ key,
-                                   int* __restrict__ perm) {
+__global__ void
+compute_cell_key_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
+                   const real_t* __restrict__ z, int n, real_t Lx, real_t Ly,
+                   real_t Lz, int dx, int dy, int dz, bool periodic,
+                   int* __restrict__ key, int* __restrict__ perm) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -93,8 +91,8 @@ void gather_rows(const T* src, T* dst, const int* order, int n, int cols,
 }
 
 // Permute one width-1 real_t array in place via stage_r (cols==1 fast path).
-void permute_r(real_t* arr, const int* order, int n, DeviceVector<real_t>& stage,
-               cudaStream_t stream) {
+void permute_r(real_t* arr, const int* order, int n,
+               DeviceVector<real_t>& stage, cudaStream_t stream) {
     if (arr == nullptr || n == 0)
         return;
     if (stage.size() < static_cast<std::size_t>(n))

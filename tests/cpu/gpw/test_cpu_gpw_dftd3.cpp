@@ -17,13 +17,11 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/gaussian_basis.h"
-#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::D3Params;
 using ATV::cpu::gpw::D3Result;
@@ -45,7 +43,8 @@ std::vector<std::array<double, 3>> water_dimer_bohr() {
     };
     std::vector<std::array<double, 3>> pos(6);
     for (int i = 0; i < 6; ++i)
-        for (int d = 0; d < 3; ++d) pos[i][d] = ang[i][d] * kAngToBohr;
+        for (int d = 0; d < 3; ++d)
+            pos[i][d] = ang[i][d] * kAngToBohr;
     return pos;
 }
 
@@ -121,6 +120,7 @@ TEST(GpwDftD3, PeriodicEnergyAndForces) {
             max_err = std::max(max_err, std::abs(fd - per.forces[i][d]));
         }
     }
-    std::printf("[D3] periodic max |F_analytic - F_fd| = %.2e Ha/Bohr\n", max_err);
+    std::printf("[D3] periodic max |F_analytic - F_fd| = %.2e Ha/Bohr\n",
+                max_err);
     EXPECT_LT(max_err, 1e-7);
 }

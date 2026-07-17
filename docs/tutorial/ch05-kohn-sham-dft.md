@@ -1,5 +1,59 @@
 # Chapter 5: Unrestricted Kohn-Sham DFT (UKS)
 
+| | |
+|---|---|
+| **Example** | [`examples/04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp) |
+| **Results** | [`examples/results/04_uks.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/04_uks.json) |
+
+```bash
+cmake --build build --target 04_uks && ./build/examples/04_uks
+```
+
+## Live atomic and H₂ numbers (UKS-LSDA)
+
+| System | Method | \(E_\mathrm{total}\) (Ha) |
+|--------|--------|--------------------------:|
+| He | UKS-LSDA | **−2.771886** |
+| He | UHF (same geometry) | −2.807784 |
+| H | UKS-LSDA | **−0.435670** |
+| Li | UKS-LSDA | **−7.221302** |
+
+H₂ scan: UHF vs UKS-LSDA from the same binary (STO-3G).
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true, strokeWidth: 2}
+data:
+  values:
+    - {R: 0.50, method: UHF, E: -1.042996}
+    - {R: 0.60, method: UHF, E: -1.101128}
+    - {R: 0.74, method: UHF, E: -1.116759}
+    - {R: 1.00, method: UHF, E: -1.066109}
+    - {R: 1.50, method: UHF, E: -0.957707}
+    - {R: 2.00, method: UHF, E: -0.937213}
+    - {R: 2.50, method: UHF, E: -0.933867}
+    - {R: 3.00, method: UHF, E: -0.933285}
+    - {R: 0.50, method: UKS-LSDA, E: -1.038469}
+    - {R: 0.60, method: UKS-LSDA, E: -1.099776}
+    - {R: 0.74, method: UKS-LSDA, E: -1.121207}
+    - {R: 1.00, method: UKS-LSDA, E: -1.084898}
+    - {R: 1.50, method: UKS-LSDA, E: -0.965796}
+    - {R: 2.00, method: UKS-LSDA, E: -0.874831}
+    - {R: 2.50, method: UKS-LSDA, E: -0.822541}
+    - {R: 3.00, method: UKS-LSDA, E: -0.796166}
+encoding:
+  x: {field: R, type: quantitative, title: "R (Å)", scale: {zero: false}}
+  y: {field: E, type: quantitative, title: "E (Hartree)", scale: {zero: false, nice: true}}
+  color: {field: method, type: nominal, title: null}
+  tooltip:
+    - {field: method, type: nominal}
+    - {field: R, type: quantitative, format: ".2f"}
+    - {field: E, type: quantitative, format: ".6f"}
+```
+
+Near equilibrium, LSDA sits slightly **below** UHF (correlation); at large
+\(R\) the local functional fails to recover the exact radical limit that UHF
+gets right — a known LDA limitation, not a bug.
+
 The move from RHF to UHF changed the spin structure of the SCF problem but kept
 the Hartree-Fock mean field. The move from UHF to UKS changes something deeper:
 it keeps the same spin-resolved SCF skeleton, but it replaces explicit
@@ -119,20 +173,19 @@ In [`examples/04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/exam
 basic call looks like this:
 
 ```cpp
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config = cpu::scf::uks_config(
-    ints, n_alpha, n_beta, cpu::scf::XCType::LSDA, tol);
+auto ints = /* IntegralPack is private — use RHF */;
+cpu::scf::UKS uks(n_alpha, n_beta, XCType::LSDA);
 config.n_radial = 50;
 config.n_angular = 110;
 config.max_iter = max_iter;
-cpu::scf::SCFSolver solver{config};
+cpu::scf::UKS uks(n_alpha, n_beta, cpu::scf::XCType::LSDA);
 solver.build(ints);
 const auto& uks = solver.run(ints);
 ```
 
 > **Element coverage:** like the other Gaussian-basis tutorials, STO-3G here
 > supports elements **H through O (Z = 1–8)**; heavier atoms throw at
-> `build_integrals` by design rather than returning a wrong number.
+> `IntegralPack constructor (private)` by design rather than returning a wrong number.
 
 The spin counts play the same role they did in UHF. The new ingredient is the
 choice of exchange-correlation functional and the numerical grid used to

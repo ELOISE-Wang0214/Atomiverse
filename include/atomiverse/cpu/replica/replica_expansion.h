@@ -118,7 +118,9 @@ class IdentityReplication : public ReplicaExpansion {
     ///        cannot ask for 8 replicas and supply 7 temperatures.
     explicit IdentityReplication(std::vector<double> parameters);
 
-    int n_replicas() const override { return static_cast<int>(parameters_.size()); }
+    int n_replicas() const override {
+        return static_cast<int>(parameters_.size());
+    }
     std::vector<Replica> expand(const cpu::Frame& initial) const override;
 
     /// @brief Collapse to replica 0.

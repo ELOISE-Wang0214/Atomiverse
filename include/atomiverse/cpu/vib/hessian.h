@@ -11,8 +11,8 @@
 /// exactly as AIMD registers a force evaluator into `cpu::md::MD`:
 ///
 /// @code{.cpp}
-///   auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-///   auto cfg  = cpu::scf::rhf_config(ints);
+///   auto ints = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
+///   auto cfg  = cpu::scf::SCFConfig{cpu::scf::SCFConfig::RHF{}, ints};
 ///
 ///   cpu::vib::Hessian driver;
 ///   driver.on(ATV::vib::Phase::force)

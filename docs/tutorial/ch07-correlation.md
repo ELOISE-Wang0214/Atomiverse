@@ -1,5 +1,44 @@
 # Chapter 7: Beyond Mean Field — Correlation Methods
 
+| | |
+|---|---|
+| **Examples** | [`13_mp2.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/13_mp2.cpp), [`14_fci.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/14_fci.cpp) |
+| **Results** | [`13_mp2.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/13_mp2.json), [`14_fci.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/14_fci.json) |
+
+```bash
+cmake --build build --target 13_mp2 14_fci
+./build/examples/13_mp2
+./build/examples/14_fci
+```
+
+## Live results
+
+### H₂O / STO-3G MP2 (`13_mp2`)
+
+| | (Ha) |
+|---|---:|
+| \(E_\mathrm{HF}\) | **−74.96302314** |
+| \(E_\mathrm{corr}\) (MP2) | **−0.03554565** (≤ 0 by construction) |
+| \(E_\mathrm{MP2}\) | **−74.99856879** |
+
+### H₂ / STO-3G full CI (`14_fci`, \(R=0.7414\) Å)
+
+```molvis {format="xyz" representation="ball-and-stick" controls="view" height="240px"}
+2
+name=H2 Connct="[0,1]"
+H  0.0000  0.0000  0.0000
+H  0.7414  0.0000  0.0000
+```
+
+| | Atomiverse (Ha) |
+|---|---:|
+| \(E_\mathrm{RHF}\) | −1.11668439 |
+| \(E_\mathrm{FCI}\) | **−1.13727017** |
+| \(E_\mathrm{corr}=E_\mathrm{FCI}-E_\mathrm{RHF}\) | **−0.02058579** |
+
+FCI in STO-3G is the **exact** non-relativistic energy inside that two-function
+space — the gold reference for how much correlation RHF misses on H₂.
+
 Every electronic-structure method in the previous chapters — Hartree-Fock
 ([Chapter 2](ch02-rhf.md), [Chapter 3](ch03-open-shell.md)) and Kohn-Sham DFT
 ([Chapter 5](ch05-kohn-sham-dft.md), [Chapter 6](ch06-hybrid-dft.md)) — is a **mean-field**
@@ -127,10 +166,10 @@ in principle, a correlated density and gradient).
 In Atomiverse's vocabulary that is not a new `Driver` at all. The Gaussian SCF
 engine already exposes exactly the inputs such a method needs:
 
-- `cpu::scf::build_integrals(frame, basis, charge, /*compute_eri=*/true)`
+- `cpu::scf::RHF rhf; rhf.compute_eri = true; rhf.mp2(frame);` (or `rhf.fci(frame)`)
   produces the two-electron integrals (`integrals.ERI`) that an MO-basis
   transform would consume — the same integrals the CUDA `RHFFock` kernel reads.
-- `cpu::scf::SCFSolver::run(...)` returns the converged orbitals and their energies.
+- `rhf.run(frame)` / `rhf.last_result()` holds orbitals and energies.
 
 A correlation method would therefore be a component that **reads the SCF result
 and writes a corrected energy into typed `frame.meta`** — architecturally an

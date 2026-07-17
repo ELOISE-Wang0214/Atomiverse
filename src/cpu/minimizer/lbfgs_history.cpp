@@ -33,9 +33,12 @@ LbfgsHistory::LbfgsHistory(int memory, int max_dim, Reducer sum)
         throw std::invalid_argument("LbfgsHistory: max_dim must be >= 1");
     if (!sum_)
         throw std::invalid_argument(
-            "LbfgsHistory: no Reducer — pass the identity for a serial/complete vector, "
-            "or an all-reduce under domain decomposition. It is not defaulted because a "
-            "silently-serial reduction gives every rank a different search direction.");
+            "LbfgsHistory: no Reducer — pass the identity for a "
+            "serial/complete vector, "
+            "or an all-reduce under domain decomposition. It is not defaulted "
+            "because a "
+            "silently-serial reduction gives every rank a different search "
+            "direction.");
 
     s_history_.assign(memory_, std::vector<double>(max_dim_, 0.0));
     y_history_.assign(memory_, std::vector<double>(max_dim_, 0.0));
@@ -48,10 +51,13 @@ LbfgsHistory::LbfgsHistory(int memory, int max_dim, Reducer sum)
 }
 
 void LbfgsHistory::grow(int max_dim) {
-    if (max_dim <= max_dim_) return;
+    if (max_dim <= max_dim_)
+        return;
     max_dim_ = max_dim;
-    for (auto& h : s_history_) h.resize(max_dim_, 0.0);
-    for (auto& h : y_history_) h.resize(max_dim_, 0.0);
+    for (auto& h : s_history_)
+        h.resize(max_dim_, 0.0);
+    for (auto& h : y_history_)
+        h.resize(max_dim_, 0.0);
     x_prev_.resize(max_dim_, 0.0);
     g_prev_.resize(max_dim_, 0.0);
     q_ws_.resize(max_dim_, 0.0);
@@ -65,7 +71,8 @@ void LbfgsHistory::reset() {
 }
 
 void LbfgsHistory::push(const double* x, const double* g, int dim) {
-    if (!has_prev_) return;
+    if (!has_prev_)
+        return;
 
     const int idx = (n_stored_ < memory_) ? n_stored_ : oldest_;
     auto& s = s_history_[idx];
@@ -102,7 +109,8 @@ void LbfgsHistory::direction(const double* g, double* dir_out, int dim) {
     for (int k = n_stored_ - 1; k >= 0; --k) {
         const int idx = (oldest_ + k) % memory_;
         const double a =
-            rho_history_[idx] * sum_(dot_local(s_history_[idx].data(), q_ws_.data(), dim));
+            rho_history_[idx]
+            * sum_(dot_local(s_history_[idx].data(), q_ws_.data(), dim));
         alpha_ws_[k] = a;
         const auto& yk = y_history_[idx];
 #pragma omp parallel for schedule(static)
@@ -115,8 +123,8 @@ void LbfgsHistory::direction(const double* g, double* dir_out, int dim) {
     double gamma = 1.0;
     if (n_stored_ > 0) {
         const int newest = (oldest_ + n_stored_ - 1) % memory_;
-        const double yy = sum_(
-            dot_local(y_history_[newest].data(), y_history_[newest].data(), dim));
+        const double yy = sum_(dot_local(y_history_[newest].data(),
+                                         y_history_[newest].data(), dim));
         if (yy > 1e-30)
             gamma = 1.0 / (rho_history_[newest] * yy);
     }
@@ -128,7 +136,8 @@ void LbfgsHistory::direction(const double* g, double* dir_out, int dim) {
     for (int k = 0; k < n_stored_; ++k) {
         const int idx = (oldest_ + k) % memory_;
         const double b =
-            rho_history_[idx] * sum_(dot_local(y_history_[idx].data(), r_ws_.data(), dim));
+            rho_history_[idx]
+            * sum_(dot_local(y_history_[idx].data(), r_ws_.data(), dim));
         const auto& sk = s_history_[idx];
         const double coeff = alpha_ws_[k] - b;
 #pragma omp parallel for schedule(static)

@@ -1,5 +1,70 @@
 # Architecture notes
 
+## [2026-07-17] SCF is a Driver; methods are concrete — kill the bag
+
+**Binding rule (AGENTS.md / CLAUDE.md).** Three mistakes, one correction:
+
+1. **`SCFSolver` is not a thing.** A solver is *concrete*: `RHF`, `UHF`,
+   `RKS`, `UKS`, AM1, PW, GPW. There is no bag that becomes RHF by setting
+   `method = HF` / `spin = Restricted`.
+2. **SCF does not solve.** SCF is only the self-consistency **loop**
+   (Fock → diagonalize → density → mix → residual). A loop is a **Driver**
+   (stages + iteration + Handler termination) — same shape as MD / Minimize.
+3. **No parallel world models.** Frame is the only system. Public
+   `AtomList` / `IntegralPack` / `*Config` / `*System` / free-function
+   factories are debt. Parameters are **members of the concrete method**.
+   Integrals and AO maps are **private workspace**.
+
+**Wrong (including the transitional "constructor rewrite"):**
+```cpp
+IntegralPack ints{frame, basis};
+SCFConfig cfg{SCFConfig::RHF{}, ints, tol};
+SCFSolver{cfg}.build(ints); SCFSolver::run(ints);
+```
+
+**Right (target):**
+```cpp
+cpu::scf::RHF rhf;
+rhf.basis = BasisSet::STO3G;
+rhf.tol = 1e-10;
+rhf.run(frame);   // Frame in/out; SCF loop is the Driver inside/as RHF
+```
+
+**Supersedes** the same-day note that stopped at "free functions →
+constructors". Turning `build_integrals` into `IntegralPack{…}` was
+necessary cleanup of factories, **not** the end state. New work must not
+extend `SCFSolver` / `SCFConfig` / public `IntegralPack` / `NDDOSystem`.
+
+**Progress (2026-07-17 cleanup, continued):**
+
+| Delivered | Status |
+|---|---|
+| Concrete methods `RHF`/`UHF`/`RKS`/`UKS` | **done** — Frame API; `mp2()` / `fci()` / `forces()` |
+| Intermediate types off public path | **done** — live under `cpu/scf/internal/`; public tombstones `#error` |
+| `AtomList` / `ShellList` | **private** — `internal/basis_workspace.h` only |
+| `IntegralPack` / `SCFConfig` / `SCFSolver` / deriv pack | **private** — `scf/internal/*` |
+| Public `basis_set.h` | **enum + name only** |
+| Examples | **Frame + methods only**; scrub-gated |
+| Grep gate | factories + examples intermediate types |
+
+**Further progress:**
+- Public `scf_result.h` (results only); `SCFConfig` private in `internal/scf_types.h`
+- `methods.h` no longer includes internal gradient/config headers
+- `NDDOSystem` moved to `semiempirical/internal/`; public tombstone `#error`
+- High-value unit tests (UHF/UKS/spin/evaluate/minimizer/mp2/fci) on method API
+
+**2026-07-17:** `benchmarks/` deleted (rebuild later). Si UPF kept at
+`tests/data/pw/Si_lda_nc.upf`. Docs + unit tests updated to method API.
+
+**Still debt:** bag-shaped `PWSolver` / `GPWSolver` / `NDDOSolver` / CUDA SCF;
+~200 benchmark lines still use `scf/internal/`; docs tutorials lag.
+
+**Historical note:** an earlier pass deleted a free-floating
+`ATV::scf::Phase` and pushed the SCF cycle into `SCFSolver` as an "inner
+solver". That fixed "SCF as a top-level category beside MD" but installed
+the wrong abstraction (`SCFSolver` bag). The loop belongs on the Driver
+node; the method is `RHF`/`UHF`/….
+
 ## [2026-06-10] cpu::pw migrated to PWSolver/PWEvaluator + MPI k-point parallelism; SCF audit fixes
 
 **PW now mirrors the gaussian-SCF shape exactly.** `cpu::pw::PWSolver`

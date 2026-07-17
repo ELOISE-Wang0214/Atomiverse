@@ -47,9 +47,7 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_types.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -99,29 +97,18 @@ int main() {
 
     auto frame = make_h2();
 
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     const double dt = 0.5; // fs
     const double T_target =
         100.0;                // K — well below RHF/STO-3G unphysical barrier
     const double tau = 200.0; // fs (loose coupling — H2 has only 3 DOFs)
     const int n_steps = 100;  // 50 fs total — captures ~7 vib periods (~7.6 fs)
-    // Note: instantaneous T fluctuates strongly for a 2-atom system because
-    // there are only 3 vibrational/rotational DOFs after COM removal. The
-    // ensemble average over many trajectories converges to T_target;
-    // a single short trajectory does not.
 
-    // Build the simulation. `SCF{config}.predictor(3)` is a
-    // chained rvalue builder: ref-qualified overloads in SCF
-    // make the temporary itself become the rvalue argument to add(),
-    // which moves it into driver-owned storage.
+    // Concrete RHF method as the force component (ASPC density warm-start).
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42u});
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::NoseHoover{T_target, tau, dt});
-    sim.on(md::Phase::force).add(cpu::scf::SCF{config}.predictor(/*order=*/3));
+    sim.on(md::Phase::force).add(cpu::scf::RHF{}.predictor(/*order=*/3));
     sim.build();
 
     // Take one step to populate frame.meta.get(ATV::kKinetic) and frame.meta.get(ATV::kEnergy) from the

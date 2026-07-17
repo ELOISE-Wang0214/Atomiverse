@@ -146,7 +146,7 @@ namespace ATV { namespace cpu { namespace minimizer {
 
 class FIRE : public cpu::Optimizer {
 public:
-    FIRE(double dt0,           // initial pseudo-timestep [fs]
+    FIRE(double dt0,           // initial pseudo-timestep (fs)
          double dt_max,        // step ceiling
          int    n_min,         // accelerate after this many P>0 hits
          double f_inc,         // dt growth factor

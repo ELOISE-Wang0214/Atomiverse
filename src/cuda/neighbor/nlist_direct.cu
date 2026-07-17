@@ -12,8 +12,8 @@
 
 #include "nlist_impl.cuh"
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
@@ -63,8 +63,8 @@ __global__ void bin_atoms_k(const real_t* __restrict__ x,
         // Co-locate position + atom index so the Verlet build reads BOTH from
         // one coalesced 16B load. .w carries the index via bit-exact cast
         // (__int_as_float is a reinterpret, lossless for any int32).
-        bin_pos[off] = make_float4(float(xi), float(yi), float(zi),
-                                   __int_as_float(i));
+        bin_pos[off] =
+            make_float4(float(xi), float(yi), float(zi), __int_as_float(i));
     } else {
         atomicMax(overflow, slot + 1);
     }
@@ -76,9 +76,8 @@ __global__ void build_verlet_direct_k(
     const real_t* __restrict__ z, int n, cuda::Box box, int dx, int dy, int dz,
     bool periodic, const int* __restrict__ sdx, const int* __restrict__ sdy,
     const int* __restrict__ sdz, const int* __restrict__ n_stencil_ptr,
-    const int* __restrict__ bincount,
-    const float4* __restrict__ bin_pos, int bin_cap,
-    work_t rsq_search, const std::int64_t* __restrict__ tag,
+    const int* __restrict__ bincount, const float4* __restrict__ bin_pos,
+    int bin_cap, work_t rsq_search, const std::int64_t* __restrict__ tag,
     const int* __restrict__ nspecial, const std::int64_t* __restrict__ special,
     int max_special, int* __restrict__ vl_nbr, int* __restrict__ vl_cnt,
     int vl_stride, int vl_max, int* __restrict__ overflow) {
@@ -159,7 +158,8 @@ __global__ void build_verlet_direct_k(
                     const std::int64_t jt = tag[j];
                     bool excluded = false;
                     for (int e = 0; e < nsp; ++e)
-                        if (special[static_cast<std::size_t>(i) * max_special + e]
+                        if (special[static_cast<std::size_t>(i) * max_special
+                                    + e]
                             == jt) {
                             excluded = true;
                             break;
@@ -195,10 +195,10 @@ void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
 
 template <typename work_t>
 void launch_build_verlet_direct(
-    const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
-    int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
-    const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const float4* bin_pos, int bin_cap, work_t rsq_search,
+    const real_t* x, const real_t* y, const real_t* z, int n,
+    ATV::cuda::Box box, int dx, int dy, int dz, bool periodic, const int* sdx,
+    const int* sdy, const int* sdz, const int* n_stencil_ptr,
+    const int* bincount, const float4* bin_pos, int bin_cap, work_t rsq_search,
     const std::int64_t* tag, const int* nspecial, const std::int64_t* special,
     int max_special, int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max,
     int* overflow, cudaStream_t stream) {

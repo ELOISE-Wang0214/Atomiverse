@@ -1,3 +1,4 @@
+#include "atomiverse/cpu/scf/methods.h"
 /// @file tests/cpu/scf/test_orbital_info_observer.cpp
 /// @brief Tests for cpu::scf::OrbitalInfoObserver.
 
@@ -10,9 +11,9 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/orbital_info_observer.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/cpu/scf/scf_types.h"
 
 using namespace ATV;
 
@@ -38,15 +39,11 @@ cpu::Frame make_h2(double bond_length) {
 
 TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
     auto frame = make_h2(0.74);
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto config = cpu::scf::rhf_config(integrals);
-
     auto tmp = std::filesystem::temp_directory_path() / "atv_obs_h2.tsv";
     std::error_code ec;
     std::filesystem::remove(tmp, ec);
 
-    cpu::scf::SCF scf{config};
+    cpu::scf::RHF scf{};
     auto handle = scf.result_handle();
 
     cpu::minimizer::Minimize opt;

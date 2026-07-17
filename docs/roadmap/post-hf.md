@@ -46,7 +46,7 @@ Coupled cluster and multireference theory are entirely absent.
 RMP2 runs four sequential O(N⁵) quarter transforms to the `(ia|jb)` ovov block,
 then the canonical energy expression. Energy only: no frozen core, no density
 fitting/RI, no gradients. It requires the full in-memory ERI tensor
-(`build_integrals(..., compute_eri=true)`), which is what bounds its system size.
+(`IntegralPack{..., compute_eri=true}`), which is what bounds its system size.
 
 ## 2. Configuration Interaction
 

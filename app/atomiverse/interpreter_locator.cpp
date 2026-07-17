@@ -21,15 +21,12 @@ bool is_executable(const std::string& path) {
 
 /// One left-to-right pass over a ':'-separated PATH for `name`;
 /// empty segments are skipped. Returns "" when not found.
-std::string search_path(const std::string& path_env,
-                        const std::string& name) {
+std::string search_path(const std::string& path_env, const std::string& name) {
     std::size_t begin = 0;
     while (begin <= path_env.size()) {
         const std::size_t end = path_env.find(':', begin);
-        const std::string dir =
-            path_env.substr(begin, end == std::string::npos
-                                       ? std::string::npos
-                                       : end - begin);
+        const std::string dir = path_env.substr(
+            begin, end == std::string::npos ? std::string::npos : end - begin);
         if (!dir.empty()) {
             const std::string candidate = dir + "/" + name;
             if (is_executable(candidate))
@@ -53,8 +50,8 @@ InterpreterLocator::InterpreterLocator(const char* atv_python_override,
         const std::string overridden = atv_python_override;
         if (!is_executable(overridden))
             throw std::runtime_error(
-                "atomiverse: ATV_PYTHON='" + overridden +
-                "' does not name an executable interpreter");
+                "atomiverse: ATV_PYTHON='" + overridden
+                + "' does not name an executable interpreter");
         executable_ = overridden;
         return;
     }
@@ -75,11 +72,11 @@ void InterpreterLocator::check_abi(const std::string& probed_major_minor,
                                    const std::string& built_major_minor) {
     if (probed_major_minor != built_major_minor)
         throw std::runtime_error(
-            "atomiverse: interpreter Python " + probed_major_minor +
-            " does not match the libpython " + built_major_minor +
-            " this launcher was built against (same minor version "
-            "required). Point ATV_PYTHON at a Python " +
-            built_major_minor + " interpreter.");
+            "atomiverse: interpreter Python " + probed_major_minor
+            + " does not match the libpython " + built_major_minor
+            + " this launcher was built against (same minor version "
+              "required). Point ATV_PYTHON at a Python "
+            + built_major_minor + " interpreter.");
 }
 
 } // namespace app

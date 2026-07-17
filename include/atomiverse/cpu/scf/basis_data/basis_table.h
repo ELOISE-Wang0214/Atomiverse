@@ -12,7 +12,7 @@
 /// and the physical GTO normalization (`phys_norm_s(alpha)` etc.) is
 /// applied by the shell-list builder.
 ///
-/// @see cpu::scf::build_shell_list for the builder that consumes these
+/// @see cpu::scf::ShellList for the constructor that consumes these
 ///      tables.
 /// @see tools/gen_basis_data.py for the generator that emits them.
 #pragma once

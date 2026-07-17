@@ -11,7 +11,7 @@ pair style, three bonded styles, no impropers, no many-body potentials.
 The Lennard–Jones 12-6 pair style is the only ⚡ in the roadmap: it is
 SIMD-vectorized (xsimd, `-march=native`) on CPU, has a device kernel on CUDA,
 and both are benchmarked against LAMMPS/Kokkos in
-`benchmarks/md/lj/performance/`.
+`/* benchmarks removed; re-add later */ lj/performance/`.
 
 ## 1. Classical Bonded Potentials
 
@@ -61,7 +61,7 @@ Neither is an OPLS parameterization table.
 (`regressions/md/improper_harmonic`). Periodic / CVFF impropers remain ○.
 
 Bonded forces are cross-validated against LAMMPS in
-`benchmarks/md/pe/validation/` (multi/harmonic path).
+`/* benchmarks removed; re-add later */ pe/validation/` (multi/harmonic path).
 
 ## 2. Classical Nonbonded Potentials
 

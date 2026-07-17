@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/basis_eval.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_types.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/scf_types.h"
 
 namespace ATV {
 namespace cpu {

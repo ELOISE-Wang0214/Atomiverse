@@ -32,8 +32,8 @@ namespace gpw {
 /// follow at geometrically smaller cutoffs. The finest grid is the reference on
 /// which Poisson + XC run.
 struct MultiGrid {
-    std::vector<UniformGrid> levels;             ///< finest first.
-    std::vector<double> level_cutoff_ry;         ///< per-level density cutoff [Ry].
+    std::vector<UniformGrid> levels;     ///< finest first.
+    std::vector<double> level_cutoff_ry; ///< per-level density cutoff [Ry].
 };
 
 /// @brief Build `ngrids` geometrically-spaced grid levels for an orthorhombic
@@ -96,8 +96,10 @@ std::vector<double> restrict_transpose(const UniformGrid& fine,
 /// @param f_coarse Coarse-grid field, length coarse.npts().
 /// @param periodic When false, defers to `prolong_trilinear`.
 /// @return Fine-grid field, length fine.npts().
-std::vector<double> prolong_fft(const UniformGrid& coarse, const UniformGrid& fine,
-                                const std::vector<double>& f_coarse, bool periodic);
+std::vector<double> prolong_fft(const UniformGrid& coarse,
+                                const UniformGrid& fine,
+                                const std::vector<double>& f_coarse,
+                                bool periodic);
 
 /// @brief Restrict a fine-grid field onto the coarse grid as the EXACT ADJOINT
 ///        of `prolong_fft` w.r.t. the grid integration inner products:
@@ -118,8 +120,10 @@ std::vector<double> prolong_fft(const UniformGrid& coarse, const UniformGrid& fi
 /// @param f_fine Fine-grid field, length fine.npts().
 /// @param periodic When false, defers to `restrict_transpose`.
 /// @return Coarse-grid field, length coarse.npts().
-std::vector<double> restrict_fft(const UniformGrid& fine, const UniformGrid& coarse,
-                                 const std::vector<double>& f_fine, bool periodic);
+std::vector<double> restrict_fft(const UniformGrid& fine,
+                                 const UniformGrid& coarse,
+                                 const std::vector<double>& f_fine,
+                                 bool periodic);
 
 /// @brief One primitive-pair PRODUCT Gaussian, assigned to a grid level.
 ///
@@ -136,22 +140,24 @@ std::vector<double> restrict_fft(const UniformGrid& fine, const UniformGrid& coa
 /// P[mu*nb+nu]·gweight, applied at collocation time. The KS scatter target is the
 /// (mu,nu) element.
 struct GridProduct {
-    double p = 0.0;            ///< combined exponent α_a + α_b.
-    double pc[3] = {0, 0, 0};  ///< product center P_ab [Bohr].
-    double ra[3] = {0, 0, 0};  ///< bra primitive center (shifted image) [Bohr].
-    double rb[3] = {0, 0, 0};  ///< ket primitive center (shifted image) [Bohr].
-    int la[3] = {0, 0, 0};     ///< bra Cartesian powers.
-    int lb[3] = {0, 0, 0};     ///< ket Cartesian powers.
-    double k = 0.0;            ///< Gaussian product prefactor exp(−α_a α_b/p |r_a−r_b|²).
-    int ua = 0, ub = 0;        ///< indices into ProductSet::prims (bra, ket cartesian prim).
-    int level = 0;             ///< assigned grid level (index into MultiGrid::levels).
+    double p = 0.0;           ///< combined exponent α_a + α_b.
+    double pc[3] = {0, 0, 0}; ///< product center P_ab [Bohr].
+    double ra[3] = {0, 0, 0}; ///< bra primitive center (shifted image) [Bohr].
+    double rb[3] = {0, 0, 0}; ///< ket primitive center (shifted image) [Bohr].
+    int la[3] = {0, 0, 0};    ///< bra Cartesian powers.
+    int lb[3] = {0, 0, 0};    ///< ket Cartesian powers.
+    double k = 0.0; ///< Gaussian product prefactor exp(−α_a α_b/p |r_a−r_b|²).
+    int ua = 0,
+        ub = 0; ///< indices into ProductSet::prims (bra, ket cartesian prim).
+    int level = 0; ///< assigned grid level (index into MultiGrid::levels).
 };
 
 /// @brief One spherical basis function μ that a cartesian primitive feeds, with
 ///        its real-solid-harmonic expansion coefficient.
 struct PrimContrib {
-    int mu = 0;        ///< basis-function index (KS row/col target).
-    double coeff = 0.0;///< harmonic·contraction coefficient of this cartesian term in μ.
+    int mu = 0; ///< basis-function index (KS row/col target).
+    double coeff =
+        0.0; ///< harmonic·contraction coefficient of this cartesian term in μ.
 };
 
 /// @brief A UNIQUE cartesian primitive (α, center, Cartesian powers l) shared by
@@ -161,19 +167,23 @@ struct PrimContrib {
 ///        monomial recurs across d_z²/d_x²-y², etc.) and the per-monomial window
 ///        recompute. Mirrors CP2K's primitive-cartesian collocation.
 struct PrimRef {
-    double alpha = 0.0;          ///< Gaussian exponent.
-    double center[3] = {0, 0, 0};///< home-cell center [Bohr].
-    int l[3] = {0, 0, 0};        ///< Cartesian powers.
-    int cbeg = 0, cn = 0;        ///< contributor slice [cbeg, cbeg+cn) in ProductSet::contribs.
-    double maxc = 0.0;           ///< max |coeff| over contributors (for the build screen).
+    double alpha = 0.0;           ///< Gaussian exponent.
+    double center[3] = {0, 0, 0}; ///< home-cell center [Bohr].
+    int l[3] = {0, 0, 0};         ///< Cartesian powers.
+    int cbeg = 0,
+        cn = 0; ///< contributor slice [cbeg, cbeg+cn) in ProductSet::contribs.
+    double maxc =
+        0.0; ///< max |coeff| over contributors (for the build screen).
 };
 
 /// @brief Products partitioned by grid level, plus the unique cartesian-primitive
 ///        table and the flat contributor pool the products index into.
 struct ProductSet {
-    std::vector<std::vector<GridProduct>> by_level; ///< products per level (index ua/ub into prims).
-    std::vector<PrimRef> prims;                     ///< unique cartesian primitives.
-    std::vector<PrimContrib> contribs;              ///< flat contributor pool (sliced by PrimRef).
+    std::vector<std::vector<GridProduct>>
+        by_level; ///< products per level (index ua/ub into prims).
+    std::vector<PrimRef> prims; ///< unique cartesian primitives.
+    std::vector<PrimContrib>
+        contribs; ///< flat contributor pool (sliced by PrimRef).
 };
 
 /// @brief Build the geometry-fixed primitive-pair product list (the product-based
@@ -217,12 +227,10 @@ std::vector<double> collocate_products(const UniformGrid& grid,
 ///        exp(−p|r_g−P_ab|²)·V_level(r_g). Adjointness keeps the KS matrix the
 ///        exact gradient of the collocated energy.
 /// @return Row-major nb×nb KS contribution from this level.
-std::vector<double> integrate_products(const UniformGrid& grid,
-                                       const std::vector<GridProduct>& prods,
-                                       const std::vector<PrimRef>& prims,
-                                       const std::vector<PrimContrib>& contribs,
-                                       int nb, const std::vector<double>& V_level,
-                                       double eps);
+std::vector<double> integrate_products(
+    const UniformGrid& grid, const std::vector<GridProduct>& prods,
+    const std::vector<PrimRef>& prims, const std::vector<PrimContrib>& contribs,
+    int nb, const std::vector<double>& V_level, double eps);
 
 } // namespace gpw
 } // namespace cpu

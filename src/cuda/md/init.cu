@@ -122,11 +122,11 @@ __global__ void remove_com(real_t* __restrict__ vx, real_t* __restrict__ vy,
 ///
 /// Each thread reads the 4-word scratch as broadcast — coalesced across
 /// the whole grid, served from L1 after the first warp.
-__global__ void
-remove_com_from_scratch(real_t* __restrict__ vx, real_t* __restrict__ vy,
-                        real_t* __restrict__ vz,
-                        const work_t* __restrict__ scratch_pM,
-                        const int* __restrict__ n_ptr) {
+__global__ void remove_com_from_scratch(real_t* __restrict__ vx,
+                                        real_t* __restrict__ vy,
+                                        real_t* __restrict__ vz,
+                                        const work_t* __restrict__ scratch_pM,
+                                        const int* __restrict__ n_ptr) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= *n_ptr)

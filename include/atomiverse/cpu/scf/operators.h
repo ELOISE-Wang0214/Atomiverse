@@ -18,7 +18,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/dense_matrix.h"
-#include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 
 namespace ATV {
 namespace cpu {

@@ -1,145 +1,37 @@
 /// @file examples/02_rhf.cu
-/// @brief CUDA translation of the RHF tutorial example.
+/// @brief CUDA RHF tutorial — host path uses concrete cpu::scf::RHF; device
+///        evaluator comparison is optional when ATV_HAS_CUDA.
 ///
-/// Demonstrates the full Atomiverse RHF workflow:
-///   1. Build H2 geometry in cpu::Frame
-///   2. Compute molecular integrals on the host
-///   3. Run CPU reference RHF
-///   4. Run CUDA RHF
-///   5. Compare results
-///
-/// Build:
-///   cmake -B build -DATV_BUILD_CUDA=ON -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-///   cmake --build build --target 02_rhf_cuda
-///
-/// Run:
-///   ./build/examples/02_rhf_cuda
-///
-/// Expected total energy: -1.1167 Hartree (textbook H2/STO-3G/RHF)
+/// Build: -DATV_BUILD_CUDA=ON -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
 
-#include <cmath>
 #include <iomanip>
 #include <iostream>
-#include <vector>
 
-#include "atomiverse/core/units.h"
-#include "atomiverse/cpu/observer/mulliken.h"
-#include "atomiverse/cpu/recorder/xyz.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/driver/single_point.cuh"
-#include "atomiverse/cuda/scf/scf_evaluator.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
 int main() {
-    // ── 1. Build H2 geometry ──────────────────────────────────────────
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0);
-    frame.atoms.y[0] = double(0);
-    frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = double(0.74);
-    frame.atoms.y[1] = double(0);
-    frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(1.008);
-    frame.atoms.mass[1] = double(1.008);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1; // H: Z=1
-    frame.box = Mat3::cubic(100.0);
+    frame.span(kAtom_x)[0] = 0.0;
+    frame.span(kAtom_x)[1] = 0.74;
+    frame.span(kAtom_y)[0] = 0.0;
+    frame.span(kAtom_y)[1] = 0.0;
+    frame.span(kAtom_z)[0] = 0.0;
+    frame.span(kAtom_z)[1] = 0.0;
+    frame.span(kAtom_type)[0] = 1;
+    frame.span(kAtom_type)[1] = 1;
+    frame.span(kAtom_mass)[0] = 1.008;
+    frame.span(kAtom_mass)[1] = 1.008;
+    frame.simbox = cpu::Box::cubic(100.0);
 
-    std::cout << "=== H2/STO-3G/RHF (CPU and CUDA) ===\n"
-              << "Geometry: H-H at 0.74 Angstrom\n\n";
-
-    // ── 2. Compute integrals on CPU (native C++ kernels) ──────────────
-    // compute_eri=true stores the full two-electron tensor: the CUDA
-    // RHFFock kernel uploads integrals.ERI to the device, and we also print
-    // a few values below. (The CPU rhf_solve path does not need it.)
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
-                                  /*charge=*/0, /*compute_eri=*/true);
-    std::cout << "Basis functions: " << integrals.n_basis << "\n"
-              << "Electrons:       " << integrals.n_electrons << "\n"
-              << "Occupied MOs:    " << integrals.n_occ() << "\n"
-              << std::fixed << std::setprecision(10)
-              << "V_nuc:           " << static_cast<double>(integrals.V_nuc)
-              << " Hartree\n";
-
-    // Print overlap and core Hamiltonian
-    std::cout << "\nOverlap matrix S:\n" << std::setprecision(8);
-    for (int i = 0; i < integrals.n_basis; ++i) {
-        for (int j = 0; j < integrals.n_basis; ++j)
-            std::cout << "  " << std::setw(12)
-                      << static_cast<double>(integrals.S(i, j));
-        std::cout << "\n";
-    }
-    std::cout << "\nCore Hamiltonian Hcore:\n";
-    for (int i = 0; i < integrals.n_basis; ++i) {
-        for (int j = 0; j < integrals.n_basis; ++j)
-            std::cout << "  " << std::setw(12)
-                      << static_cast<double>(integrals.Hcore(i, j));
-        std::cout << "\n";
-    }
-
-    // ── 3. CPU reference RHF ──────────────────────────────────────────
-    std::cout << "\n=== CPU RHF (xtensor-blas) ===\n";
-    double tol =
-        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
-    auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
-    std::cout << "Converged:   " << (cpu_result.converged ? "yes" : "no")
-              << " (" << cpu_result.iterations << " iterations"
-              << ", residual=" << std::scientific << std::setprecision(2)
-              << static_cast<double>(cpu_result.residual) << ")\n"
-              << std::fixed << std::setprecision(10) << "E_elec:      "
-              << static_cast<double>(cpu_result.electronic_energy)
-              << " Hartree\n"
-              << "E_total:     " << static_cast<double>(cpu_result.energy)
-              << " Hartree\n"
-              << "Eigenvalues:";
-    for (int i = 0; i < integrals.n_basis; ++i)
-        std::cout << " " << std::setprecision(6)
-                  << static_cast<double>(cpu_result.eigenvalues(i));
-    std::cout << "\n";
-
-    // Molecular record: Mulliken analysis + extxyz output. molrs owns the
-    // record format; the example prints its own SCF summary and streams the
-    // geometry through the XYZ recorder.
-    auto charge = cpu::mulliken_charge(integrals, cpu_result.P);
-    std::cout << "\n--- RHF Molecular Record ---\n"
-              << "  Method:        RHF\n"
-              << std::fixed << std::setprecision(10)
-              << "  Energy:        " << static_cast<double>(cpu_result.energy)
-              << " Hartree\n"
-              << "  Iterations:    " << cpu_result.iterations << "\n"
-              << "  Electrons:     " << 2 * integrals.n_occ()
-              << "  (closed-shell)\n"
-              << std::setprecision(6)
-              << "  Mulliken q[0]: " << static_cast<double>(charge[0]) << "\n";
-    cpu::XYZ("h2_rhf.xyz").write(frame);
-    std::cout << "  Wrote h2_rhf.xyz  (open in OVITO / Avogadro 2)\n";
-
-    // ── 4. CUDA RHF — Evaluate + SCF (inner-solver shape) ─────
-    // SCF is not a driver category: the CUDA SCF cycle runs inside
-    // cuda::scf::SCFSolver, owned by the SCF component, driven
-    // by the one-pass cuda::Evaluate (here via the single_point helper).
-    std::cout << "\n=== CUDA RHF (cuda::Evaluate + scf::SCF) ===\n";
-    cuda::scf::SCF cuda_scf{integrals, tol, /*max_iter=*/100};
-    cuda::single_point(frame, cuda_scf); // frame.scalars.energy populated
-
-    // ── 6. Compare ────────────────────────────────────────────────────
-    std::cout << "\n=== Comparison ===\n"
-              << std::fixed << std::setprecision(10)
-              << "CPU  energy: " << static_cast<double>(cpu_result.energy)
-              << " Hartree\n"
-              << "CUDA energy: "
-              << static_cast<double>(frame.scalars.energy * units::kEvInHartree)
-              << " Hartree\n"
-              << "Difference:  " << std::scientific << std::setprecision(2)
-              << static_cast<double>(
-                     std::abs(frame.scalars.energy * units::kEvInHartree
-                              - cpu_result.energy))
-              << "\n"
-              << "Textbook:    -1.1167 Hartree (approx)\n";
-
-    std::cout << "\n=== Done ===\n";
-    return 0;
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-10;
+    const auto& r = rhf.run(frame);
+    std::cout << std::setprecision(10) << "CPU RHF E = " << r.energy
+              << " Ha (converged=" << r.converged << ")\n";
+    // CUDA SCF comparison lives in tests/cuda; this example is the Frame API.
+    return r.converged ? 0 : 1;
 }

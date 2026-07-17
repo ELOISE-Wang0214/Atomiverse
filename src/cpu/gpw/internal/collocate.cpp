@@ -28,14 +28,17 @@ void UniformGrid::point(long idx, double r[3]) const {
 
 UniformGrid make_uniform_grid(const double cell_abc[3], double cutoff_ry) {
     UniformGrid g;
-    const double gmax = std::sqrt(cutoff_ry); // |G_max| [1/Bohr], E_cut[Ry] = G^2
+    const double gmax =
+        std::sqrt(cutoff_ry); // |G_max| [1/Bohr], E_cut[Ry] = G^2
     for (int d = 0; d < 3; ++d) {
         g.L[d] = cell_abc[d];
         g.origin[d] = 0.0;
         // Nyquist: G_max = pi * n / L  ->  n = L * gmax / pi. Round up to even.
         int n = static_cast<int>(std::ceil(cell_abc[d] * gmax / M_PI));
-        if (n < 2) n = 2;
-        if (n % 2 != 0) ++n;
+        if (n < 2)
+            n = 2;
+        if (n % 2 != 0)
+            ++n;
         g.n[d] = n;
     }
     return g;
@@ -65,16 +68,21 @@ inline double eval_primitive(const GridPrimitive& p, const double r[3],
     }
     const double r2 = dx * dx + dy * dy + dz * dz;
     double v = p.coeff * std::exp(-p.alpha * r2);
-    for (int i = 0; i < p.l[0]; ++i) v *= dx;
-    for (int i = 0; i < p.l[1]; ++i) v *= dy;
-    for (int i = 0; i < p.l[2]; ++i) v *= dz;
+    for (int i = 0; i < p.l[0]; ++i)
+        v *= dx;
+    for (int i = 0; i < p.l[1]; ++i)
+        v *= dy;
+    for (int i = 0; i < p.l[2]; ++i)
+        v *= dz;
     return v;
 }
 
-inline double eval_basis_function(const GridBasisFunction& bf, const double r[3],
-                                  const double L[3], bool periodic) {
+inline double eval_basis_function(const GridBasisFunction& bf,
+                                  const double r[3], const double L[3],
+                                  bool periodic) {
     double v = 0.0;
-    for (const auto& p : bf) v += eval_primitive(p, r, L, periodic);
+    for (const auto& p : bf)
+        v += eval_primitive(p, r, L, periodic);
     return v;
 }
 
@@ -88,10 +96,12 @@ double basis_function_radius(const GridBasisFunction& bf, double eps) {
     double rc = 0.0;
     const double leps = std::log(eps);
     for (const auto& p : bf) {
-        if (p.coeff == 0.0 || p.alpha <= 0.0) continue;
+        if (p.coeff == 0.0 || p.alpha <= 0.0)
+            continue;
         const int l = p.l[0] + p.l[1] + p.l[2];
         const double lc = std::log(std::abs(p.coeff));
-        double r2 = std::max(0.0, (lc - leps) / p.alpha); // pure-Gaussian root^2
+        double r2 =
+            std::max(0.0, (lc - leps) / p.alpha); // pure-Gaussian root^2
         // One correction for the r^l factor: ln|c| + l ln r - alpha r^2 = ln eps.
         for (int it = 0; it < 3; ++it) {
             const double r = std::sqrt(std::max(r2, 1e-12));
@@ -102,14 +112,20 @@ double basis_function_radius(const GridBasisFunction& bf, double eps) {
     return rc;
 }
 
-CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
-                                          const std::vector<GridBasisFunction>& basis,
-                                          bool periodic, double eps) {
+CompactBasisGrid
+build_compact_basis_grid(const UniformGrid& grid,
+                         const std::vector<GridBasisFunction>& basis,
+                         bool periodic, double eps) {
     const int nb = static_cast<int>(basis.size());
     const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
-    const double dx0 = grid.L[0] / n0, dx1 = grid.L[1] / n1, dx2 = grid.L[2] / n2;
+    const double dx0 = grid.L[0] / n0, dx1 = grid.L[1] / n1,
+                 dx2 = grid.L[2] / n2;
 
-    struct Triple { long g; int u; double v; };
+    struct Triple {
+        long g;
+        int u;
+        double v;
+    };
     std::vector<std::vector<Triple>> per_thread;
 #ifdef _OPENMP
     per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
@@ -120,7 +136,8 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
 #pragma omp parallel
     {
 #ifdef _OPENMP
-        std::vector<Triple>& out = per_thread[static_cast<std::size_t>(omp_get_thread_num())];
+        std::vector<Triple>& out =
+            per_thread[static_cast<std::size_t>(omp_get_thread_num())];
 #else
         std::vector<Triple>& out = per_thread[0];
 #endif
@@ -152,20 +169,26 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
             }
             for (long i = lo[0]; i <= hi[0]; ++i) {
                 const long ii = ((i % n0) + n0) % n0;
-                const double r0 = grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
+                const double r0 =
+                    grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
                 for (long j = lo[1]; j <= hi[1]; ++j) {
                     const long jj = ((j % n1) + n1) % n1;
-                    const double r1 = grid.origin[1] + grid.L[1] * static_cast<double>(j) / n1;
+                    const double r1 = grid.origin[1]
+                                      + grid.L[1] * static_cast<double>(j) / n1;
                     const long base = (ii * n1 + jj) * n2;
                     for (long k = lo[2]; k <= hi[2]; ++k) {
                         const long kk = ((k % n2) + n2) % n2;
-                        const double r2 = grid.origin[2] + grid.L[2] * static_cast<double>(k) / n2;
+                        const double r2 =
+                            grid.origin[2]
+                            + grid.L[2] * static_cast<double>(k) / n2;
                         const long g = base + kk;
                         // Raw displacement to the UNWRAPPED window position (the
                         // image offset is in r, so no min-image here).
                         const double r[3] = {r0, r1, r2};
-                        const double val = eval_basis_function(basis[u], r, grid.L, false);
-                        if (std::fabs(val) > eps) out.push_back({g, u, val});
+                        const double val =
+                            eval_basis_function(basis[u], r, grid.L, false);
+                        if (std::fabs(val) > eps)
+                            out.push_back({g, u, val});
                     }
                 }
             }
@@ -175,7 +198,8 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
     // Concatenate, then bucket by grid point via counting sort (O(nnz+ngrid),
     // no comparison sort) into the CSR-by-point layout.
     std::size_t total = 0;
-    for (const auto& v : per_thread) total += v.size();
+    for (const auto& v : per_thread)
+        total += v.size();
     std::vector<Triple> all;
     all.reserve(total);
     for (auto& v : per_thread) {
@@ -185,7 +209,8 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
 
     const long ng = grid.npts();
     std::vector<long> cnt(static_cast<std::size_t>(ng), 0);
-    for (const auto& t : all) ++cnt[static_cast<std::size_t>(t.g)];
+    for (const auto& t : all)
+        ++cnt[static_cast<std::size_t>(t.g)];
 
     CompactBasisGrid cbg;
     cbg.npts = ng;
@@ -196,7 +221,8 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
     cbg.off.push_back(0);
     std::size_t run = 0;
     for (long g = 0; g < ng; ++g) {
-        if (cnt[static_cast<std::size_t>(g)] == 0) continue;
+        if (cnt[static_cast<std::size_t>(g)] == 0)
+            continue;
         g2a[static_cast<std::size_t>(g)] = static_cast<long>(cbg.gidx.size());
         cbg.gidx.push_back(g);
         run += static_cast<std::size_t>(cnt[static_cast<std::size_t>(g)]);
@@ -207,8 +233,8 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
     std::vector<std::size_t> cur(cbg.gidx.size(), 0);
     for (const auto& t : all) {
         const long a = g2a[static_cast<std::size_t>(t.g)];
-        const std::size_t pos = cbg.off[static_cast<std::size_t>(a)] +
-                                cur[static_cast<std::size_t>(a)]++;
+        const std::size_t pos = cbg.off[static_cast<std::size_t>(a)]
+                                + cur[static_cast<std::size_t>(a)]++;
         cbg.fu[pos] = t.u;
         cbg.fv[pos] = t.v;
     }
@@ -227,11 +253,13 @@ std::vector<double> collocate_density(const CompactBasisGrid& cbg, int nbasis,
         // halving the inner work (exact; P = 2 C_occ C_occᵀ is symmetric).
         double acc = 0.0;
         for (std::size_t ia = s; ia < e; ++ia) {
-            const double* Pu = &P[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
+            const double* Pu =
+                &P[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
             const double va = cbg.fv[ia];
             acc += va * va * Pu[cbg.fu[ia]]; // diagonal
             double s2 = 0.0;
-            for (std::size_t ib = ia + 1; ib < e; ++ib) s2 += Pu[cbg.fu[ib]] * cbg.fv[ib];
+            for (std::size_t ib = ia + 1; ib < e; ++ib)
+                s2 += Pu[cbg.fu[ib]] * cbg.fv[ib];
             acc += 2.0 * va * s2; // upper triangle counted twice
         }
         rho[cbg.gidx[static_cast<std::size_t>(a)]] = acc;
@@ -255,19 +283,22 @@ std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
             const double vw = V_r[cbg.gidx[static_cast<std::size_t>(a)]] * w;
             for (std::size_t ia = s; ia < e; ++ia) {
                 const double fu = cbg.fv[ia] * vw;
-                double* Vu = &Vloc[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
-                for (std::size_t ib = s; ib < e; ++ib) Vu[cbg.fu[ib]] += fu * cbg.fv[ib];
+                double* Vu =
+                    &Vloc[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
+                for (std::size_t ib = s; ib < e; ++ib)
+                    Vu[cbg.fu[ib]] += fu * cbg.fv[ib];
             }
         }
 #pragma omp critical
-        for (std::size_t kk = 0; kk < nn; ++kk) V[kk] += Vloc[kk];
+        for (std::size_t kk = 0; kk < nn; ++kk)
+            V[kk] += Vloc[kk];
     }
     return V;
 }
 
-std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
-                                       const std::vector<GridBasisFunction>& basis,
-                                       bool periodic) {
+std::vector<double>
+eval_basis_on_grid(const UniformGrid& grid,
+                   const std::vector<GridBasisFunction>& basis, bool periodic) {
     const long ng = grid.npts();
     const int nb = static_cast<int>(basis.size());
     std::vector<double> phi(static_cast<std::size_t>(ng) * nb);
@@ -311,7 +342,8 @@ std::vector<double> collocate_density(const UniformGrid& grid,
         for (int u = 0; u < nb; ++u) {
             double s = 0.0;
             const double* Pu = &P[static_cast<std::size_t>(u) * nb];
-            for (int v = 0; v < nb; ++v) s += Pu[v] * row[v];
+            for (int v = 0; v < nb; ++v)
+                s += Pu[v] * row[v];
             acc += row[u] * s;
         }
         rho[g] = acc;
@@ -326,9 +358,10 @@ std::vector<double> collocate_density(const UniformGrid& grid,
                              active_grid_points(phi, grid.npts(), nb));
 }
 
-std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<GridBasisFunction>& basis,
-                                      const std::vector<double>& P) {
+std::vector<double>
+collocate_density(const UniformGrid& grid,
+                  const std::vector<GridBasisFunction>& basis,
+                  const std::vector<double>& P) {
     return collocate_density(grid, eval_basis_on_grid(grid, basis),
                              static_cast<int>(basis.size()), P);
 }
@@ -353,11 +386,13 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
             for (int u = 0; u < nb; ++u) {
                 const double fu = row[u] * vw;
                 double* Vu = &Vloc[static_cast<std::size_t>(u) * nb];
-                for (int v = 0; v < nb; ++v) Vu[v] += fu * row[v];
+                for (int v = 0; v < nb; ++v)
+                    Vu[v] += fu * row[v];
             }
         }
 #pragma omp critical
-        for (std::size_t k = 0; k < nn; ++k) V[k] += Vloc[k];
+        for (std::size_t k = 0; k < nn; ++k)
+            V[k] += Vloc[k];
     }
     return V;
 }
@@ -369,9 +404,10 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
                                active_grid_points(phi, grid.npts(), nb));
 }
 
-std::vector<double> integrate_potential(const UniformGrid& grid,
-                                        const std::vector<GridBasisFunction>& basis,
-                                        const std::vector<double>& V_r) {
+std::vector<double>
+integrate_potential(const UniformGrid& grid,
+                    const std::vector<GridBasisFunction>& basis,
+                    const std::vector<double>& V_r) {
     return integrate_potential(grid, eval_basis_on_grid(grid, basis),
                                static_cast<int>(basis.size()), V_r);
 }

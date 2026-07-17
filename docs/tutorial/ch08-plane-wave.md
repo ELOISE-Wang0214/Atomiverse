@@ -1,5 +1,49 @@
 # Chapter 8: Plane-Wave DFT for Periodic Systems
 
+| | |
+|---|---|
+| **Example** | [`examples/08_pw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/08_pw.cpp) |
+| **Results** | [`examples/results/08_pw.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/08_pw.json) |
+| **Flag** | `-DATV_BUILD_PW=ON` (needs FFTW3) |
+| **API** | `cpu::pw::PWConfig` → `PWEvaluator` / `PWSolver` |
+| **UPF** | empty path = toy \(V_\mathrm{loc}\); real Si UPF under `regressions/ or a future benchmarks tree/validation/reference/` |
+
+```bash
+cmake -B build -DATV_BUILD_PW=ON -DATV_BUILD_EXAMPLES=ON
+cmake --build build --target 08_pw
+./build/examples/08_pw tests/data/pw/Si_lda_nc.upf
+```
+
+## Live result: Si diamond / LDA / ONCVPSP (tutorial settings)
+
+Tutorial binary uses **ecut = 15 Ry**, **k_mesh = 2** (seconds, not production):
+
+| | Atomiverse |
+|---|---:|
+| Converged | yes (5 iters) |
+| \(E_\mathrm{total}\) | **−15.670898 Ry** |
+| | **−7.835449 Ha** |
+| | **−213.213424 eV** |
+
+For reference, the PseudoDojo deltafactor **converged** \(E_\mathrm{min}\) for
+this exact UPF is −16.916 Ry (−230.158 eV per cell at \(a_0\approx 5.47\) Å) —
+not the same ecut/k-mesh as the tutorial. Absolute PW energies shift with basis
+completeness; production acceptance in `regressions/ or a future benchmarks tree` compares **EOS**
+(\(a_0\), \(B_0\)) rather than raw total energy. See
+[`SOURCES.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/regressions/ or a future benchmarks tree/validation/reference/SOURCES.md).
+
+```cpp
+cpu::pw::PWConfig cfg;
+cfg.upf_path = "…/Si_lda_nc.upf";
+cfg.ecut_ry = 15.0;   // tutorial; ~30 Ry for production Si
+cfg.k_mesh = 2;
+cpu::pw::PWEvaluator pwe{cfg};
+cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) (eV)
+auto res = pwe.last_result();           // Ry / Ha on the result object
+```
+
+
+
 This tutorial assumes you have read
 [Chapter 2: Atomic Orbitals to Single-Point RHF](ch02-rhf.md) and
 [Chapter 5: Unrestricted Kohn-Sham DFT](ch05-kohn-sham-dft.md).
@@ -56,7 +100,7 @@ Format) XML files. A UPF file supplies the valence charge \f$Z_{\mathrm{val}}\f$
 the local potential \f$V_{\mathrm{loc}}(G)\f$, the Kleinman-Bylander non-local
 projectors \f$\beta_\ell\f$, and a reference atomic density. A silicon LDA
 pseudopotential ships with the repository at
-`benchmarks/pw/si/validation/reference/Si_lda_nc.upf` (for Si,
+`tests/data/pw/Si_lda_nc.upf` (for Si,
 \f$Z_{\mathrm{val}} = 4\f$).
 
 ## G-vectors and the energy cutoff
@@ -163,16 +207,16 @@ concisely via the `cpu::single_point` helper:
 #include "atomiverse/cpu/pw/pw_evaluator.h"
 
 cpu::pw::PWConfig cfg;
-cfg.upf_path = "benchmarks/pw/si/validation/reference/Si_lda_nc.upf";
+cfg.upf_path = "tests/data/pw/Si_lda_nc.upf";
 cfg.ecut_ry  = 30.0;   // wavefunction cutoff [Ry]
 cfg.k_mesh   = 4;      // 4x4x4 Monkhorst-Pack mesh
 cfg.tol      = 1e-6;   // SCF tolerance on the density change
 
 cpu::pw::PWEvaluator pwe{cfg};
-cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) [eV]
+cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) (eV)
 
 const auto& r = pwe.last_result();
-// r.energy [Ry], r.energy_ha [Hartree], r.converged, r.iterations
+// r.energy [Ry], r.energy_ha (Hartree), r.converged, r.iterations
 ```
 
 Low-level code uses the same explicit solver lifecycle:
@@ -201,7 +245,7 @@ cmake --build build --target 08_pw
 ./build/examples/08_pw
 
 # Real norm-conserving silicon pseudopotential (physical energy):
-./build/examples/08_pw benchmarks/pw/si/validation/reference/Si_lda_nc.upf
+./build/examples/08_pw tests/data/pw/Si_lda_nc.upf
 ```
 
 The example builds the 2-atom silicon diamond cell, configures `PWConfig`
@@ -243,7 +287,7 @@ A GPU path exists: `cuda::pw::pw_scf` runs the Davidson hot path on the device
    (`g_vector.h`, `fft.h`, `ewald.h`, `kpoint.h`, `upf_reader.h`, …)
 
 For a converged equation-of-state validation against CP2K, see
-`benchmarks/pw/si/`.
+`regressions/ or a future benchmarks tree/`.
 
 ## References
 

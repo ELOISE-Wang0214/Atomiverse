@@ -1,11 +1,11 @@
 /// @file cpu/scf/shell_pair.cpp
 /// @brief Build canonical shell pair list with Cauchy-Schwarz screening.
 
-#include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/cart.h"
-#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 
 #include <algorithm>
 #include <cmath>

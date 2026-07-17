@@ -41,7 +41,8 @@ RealMatrix sym_function(const RealMatrix& G, F f) {
     auto [theta, V] = xt::linalg::eigh(G);
     const std::size_t n = theta.size();
     RealMatrix D = xt::zeros<double>({n, n});
-    for (std::size_t k = 0; k < n; ++k) D(k, k) = f(theta(k));
+    for (std::size_t k = 0; k < n; ++k)
+        D(k, k) = f(theta(k));
     return dot(dot(V, D), xt::transpose(V));
 }
 
@@ -50,10 +51,10 @@ RealMatrix sym_function(const RealMatrix& G, F f) {
 RealMatrix ot_parameterize(const RealMatrix& C0, const RealMatrix& x,
                            const RealMatrix& S) {
     const RealMatrix G = dot(xt::transpose(x), dot(S, x)); // no x no, SPD
-    const RealMatrix cosU =
-        sym_function(G, [](double t) { return std::cos(std::sqrt(std::max(t, 0.0))); });
-    const RealMatrix sincU =
-        sym_function(G, [](double t) { return sinc(std::sqrt(std::max(t, 0.0))); });
+    const RealMatrix cosU = sym_function(
+        G, [](double t) { return std::cos(std::sqrt(std::max(t, 0.0))); });
+    const RealMatrix sincU = sym_function(
+        G, [](double t) { return sinc(std::sqrt(std::max(t, 0.0))); });
     return dot(C0, cosU) + dot(x, sincU);
 }
 
@@ -82,7 +83,9 @@ OtPrecond::OtPrecond(const RealMatrix& T, const RealMatrix& S) {
     m_inv_ = sym_function(M, [](double t) { return 1.0 / t; });
 }
 
-RealMatrix OtPrecond::apply(const RealMatrix& g) const { return dot(m_inv_, g); }
+RealMatrix OtPrecond::apply(const RealMatrix& g) const {
+    return dot(m_inv_, g);
+}
 
 OtPrecondSingleInverse::OtPrecondSingleInverse(const RealMatrix& H,
                                                const RealMatrix& S,
@@ -94,7 +97,8 @@ OtPrecondSingleInverse::OtPrecondSingleInverse(const RealMatrix& H,
     const RealMatrix eps = dot(xt::transpose(C), dot(H, C));
     auto [theta, V] = xt::linalg::eigh(eps);
     double lambda_lo = theta(0);
-    for (double t : theta) lambda_lo = std::min(lambda_lo, t);
+    for (double t : theta)
+        lambda_lo = std::min(lambda_lo, t);
     // Shift so M = H + a S has the occupied region at ~+margin in the S-metric
     // (positive-definite -> M^{-1} g is a descent direction). margin = 1 Ha.
     const double a = -lambda_lo + 1.0;
@@ -130,12 +134,14 @@ OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
         res.iters = it + 1;
         const RealMatrix g = ot_gradient(H, S, C);
         double gnorm = 0.0;
-        for (double v : g) gnorm = std::max(gnorm, std::abs(v));
+        for (double v : g)
+            gnorm = std::max(gnorm, std::abs(v));
         if (gnorm < tol) {
             res.converged = true;
             break;
         }
-        RealMatrix pz = ot_tangent(C, S, precond.apply(g)); // preconditioned, tangent
+        RealMatrix pz =
+            ot_tangent(C, S, precond.apply(g)); // preconditioned, tangent
 
         if (!have_prev) {
             d = -pz;
@@ -169,7 +175,8 @@ OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
             // Backtrack if the parabola overshoots to a non-decreasing point.
             for (int bt = 0; bt < 30; ++bt) {
                 const RealMatrix Ca = ot_parameterize(C, alpha * d, S);
-                if (band(Ca) < E0) break;
+                if (band(Ca) < E0)
+                    break;
                 alpha *= 0.5;
             }
         }

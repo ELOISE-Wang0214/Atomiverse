@@ -5,7 +5,7 @@
 /// The CUDA component owns no computation -- it lives here.
 ///
 /// The implementation resolves shells from the canonical auto-generated
-/// STO-3G table (`scf/basis_data/sto3g.h`) via `scf::build_shell_list`
+/// STO-3G table (`scf/basis_data/sto3g.h`) via `scf::ShellList`
 /// and evaluates basis functions with the shared `scf::eval_basis`
 /// (`scf/basis_eval.h`) -- the same path the cube writers use. Like the
 /// cube writers, the implementation is compiled only under

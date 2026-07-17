@@ -2,10 +2,10 @@
 /// @brief Verifies cuda::pw::internal::xc_lda_grid against the CPU per-point XC
 ///        cpu::pw::PW_LDA uses: evaluate_xc(PBE, rho/2, rho/2, sigma=0), with
 ///        the rho<1e-12 cutoff.
-#include "atomiverse/cuda/pw/internal/xc_lda.cuh"
 #include "atomiverse/cpu/scf/xc_functional.h"
-#include <cuda_runtime.h>
+#include "atomiverse/cuda/pw/internal/xc_lda.cuh"
 #include <cmath>
+#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <random>
 #include <vector>
@@ -38,9 +38,9 @@ TEST(CudaPWXcLda, MatchesCpuEvaluateXc) {
     // Density sweep: sub-cutoff, tiny, and a realistic range up to ~10.
     std::vector<double> rho;
     rho.push_back(0.0);
-    rho.push_back(1e-14);    // below cutoff → zero
-    rho.push_back(5e-13);    // below cutoff
-    rho.push_back(1e-12);    // at cutoff (not < 1e-12 → evaluated)
+    rho.push_back(1e-14); // below cutoff → zero
+    rho.push_back(5e-13); // below cutoff
+    rho.push_back(1e-12); // at cutoff (not < 1e-12 → evaluated)
     for (int i = 0; i < 200; ++i) {
         // log-spaced 1e-10 … 10
         double t = static_cast<double>(i) / 199.0;

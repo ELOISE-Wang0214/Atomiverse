@@ -242,7 +242,7 @@ home of single-point energy and force calculations.
 
 **SCF is not a driver family.** Both Gaussian-basis SCF and plane-wave DFT are
 *inner solvers* — plain low-level classes, not `Driver` subclasses. Gaussian SCF
-is `cpu::scf::SCFSolver` (and `cuda::scf::SCFSolver`), wrapped by the
+is a concrete method (`cpu::scf::RHF` / `UHF` / `RKS` / `UKS`; private loop engine under `scf/internal/`), used by the
 `cpu::scf::SCF` (`cpu::HF`) / the CUDA SCF evaluator; plane-wave DFT is
 `cpu::pw::PWSolver` behind `cpu::pw::PWEvaluator` (`PlaneWave`). There is no
 `Capability` write-set — components write Frame keys and plug into the *same*
@@ -251,7 +251,7 @@ Evaluate, MD, and Minimize drivers ("swap the energy source, keep the driver").
 The SCF cycle (Hamiltonian build → diagonalize → density → DIIS → convergence)
 is decomposed into `internal::` helpers — `HamiltonianBuilder`, `EigenSolver`,
 `DensityBuilder`, `DIISMixer`, `DualConvergenceCheck` — owned as direct members
-of `SCFSolver`. None inherit from `Component`, none are registered into a
+of the method. Private helpers do not inherit from `Component`, none are registered into a
 Plan, and there is deliberately **no `scf::Phase` enum**. That is why the SCF
 loop is neither a monolithic function nor a user-pluggable phase order.
 

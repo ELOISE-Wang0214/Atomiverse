@@ -20,11 +20,13 @@ namespace ATV::cuda::md::nlist {
 // dead-eliminated from the orthorhombic specialization
 // (cuda-md-review-cleanup-04-box-by-value-pbc).
 template <bool Ortho, typename work_t>
-__device__ work_t min_aabb_dist_sq(
-    work_t ci_min_x, work_t ci_min_y, work_t ci_min_z, work_t ci_max_x,
-    work_t ci_max_y, work_t ci_max_z, work_t cj_min_x, work_t cj_min_y,
-    work_t cj_min_z, work_t cj_max_x, work_t cj_max_y, work_t cj_max_z,
-    bool periodic, cuda::Box box) {
+__device__ work_t min_aabb_dist_sq(work_t ci_min_x, work_t ci_min_y,
+                                   work_t ci_min_z, work_t ci_max_x,
+                                   work_t ci_max_y, work_t ci_max_z,
+                                   work_t cj_min_x, work_t cj_min_y,
+                                   work_t cj_min_z, work_t cj_max_x,
+                                   work_t cj_max_y, work_t cj_max_z,
+                                   bool periodic, cuda::Box box) {
     work_t cx_i = (ci_min_x + ci_max_x) * work_t(0.5);
     work_t cy_i = (ci_min_y + ci_max_y) * work_t(0.5);
     work_t cz_i = (ci_min_z + ci_max_z) * work_t(0.5);
@@ -241,9 +243,6 @@ void launch_count_cluster_pairs(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Kernel: Write row_ptr sentinel on device (avoids D→H readback)
 // ---------------------------------------------------------------------------
@@ -305,9 +304,6 @@ void launch_compact_pairs(int* col_idx, const int* row_ptr_upper,
                                               pair_counts, num_clusters);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
-
-
-
 
 // ── Forced template instantiations ───────────────────────────────────
 // Instantiate each launcher template over the configured work_t type

@@ -35,6 +35,9 @@
 # Documentation
 docs/html/
 docs/latex/
+# Staged MolVis web-component bundle (built from molvis/core/dist; ~40MB).
+# Stage with: rsync -a --delete ../molvis/core/dist/ docs/assets/molvis-core/
+docs/assets/molvis-core/
 
 # CMake build directory
 build/
@@ -160,6 +163,10 @@ pyrightconfig.json
 !benchmarks/qc/rhf/validation/molecules/*.xyz
 # …and the checked-in MSU-PE reference plots (Phase 5 acceptance artifacts)
 !benchmarks/md/reference/polyethylene/*.png
+# …and literature-facing tutorial results (docs embed these)
+!examples/results/**
+!docs/assets/structures/**
+
 
 # Claude agent
 .claude/worktrees/**

@@ -1,5 +1,26 @@
 # Chapter 14: Vibrational Analysis and Thermochemistry
 
+| | |
+|---|---|
+| **Preset** | `cpu::vib::Hessian` (`vib::Phase`) |
+| **Method** | finite-difference Hessian + harmonic thermochemistry |
+| **Forces** | any force component (classical, AM1, SCF, …) |
+
+```cpp
+cpu::vib::Hessian vib;
+// bind the same force evaluator you trust for Minimize
+vib.on(vib::Phase::force).add(/* Potential or SCF or AM1 */);
+vib.build();
+vib.run(frame, /* budget unused — fixed 6N displacements */);
+```
+
+Frequencies are only as good as the underlying forces: validate analytic vs FD
+forces ([Chapter 1](ch01-foundations.md)) before trusting thermochemistry.
+Literature IR frequencies for small molecules (e.g. H₂O) are the acceptance
+target for a future `examples/results/` entry when a dedicated vib example is
+added.
+
+
 A geometry optimization ([Chapter 12](ch12-geometry-optimization.md)) finds a
 stationary point on the potential-energy surface, but it cannot tell you
 *what kind* of stationary point it is, nor what the molecule's thermodynamic
@@ -109,8 +130,8 @@ using namespace ATV;
 cpu::Frame frame = /* an OPTIMIZED geometry, positions in Å, type = Z */;
 
 // Tight SCF so each displaced force is gradient-stationary (see below).
-auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
-auto cfg  = cpu::scf::rhf_config(ints, /*tol=*/1e-12);
+/* integrals private inside RHF/UHF/RKS/UKS */
+auto cfg  = SCFConfig{SCFConfig::RHF{}, ints, /*tol=*/1e-12};
 cfg.conv_tol_grad = 1e-9;
 
 cpu::vib::Hessian driver;
@@ -143,7 +164,7 @@ Two API details that decide whether your result is meaningful:
   residual gradient.
 - **Converge each displaced SCF tightly.** Finite differences amplify noise:
   a loosely converged SCF injects convergence error into every $\pm h$ force,
-  and the second difference magnifies it. The `rhf_config(ints, 1e-12)` with
+  and the second difference magnifies it. The `SCFConfig{SCFConfig::RHF{}, ints, 1e-12}` with
   `conv_tol_grad = 1e-9` above is exactly what the parity tests use so each
   displaced force is gradient-stationary. This is the
   [Chapter 1](ch01-foundations.md) finite-difference discipline applied one
@@ -168,8 +189,8 @@ driver.on(ATV::vib::Phase::force)
 driver.build();
 auto H = driver.run(frame);
 
-double zpe       = H.zpe;        // harmonic zero-point energy [Hartree]
-double g_thermal = H.g_thermal;  // thermal Gibbs correction G(T) − E0 [Hartree]
+double zpe       = H.zpe;        // harmonic zero-point energy (Hartree)
+double g_thermal = H.g_thermal;  // thermal Gibbs correction G(T) − E0 (Hartree)
 double s_tot     = H.s_tot;      // total entropy [Hartree/K]
 ```
 

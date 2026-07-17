@@ -9,11 +9,11 @@ list, integrator, thermostat, barostat, and observers. By the end you
 will have built every layer of an LAMMPS-style script, but in C++, in
 about thirty lines.
 
-The runnable example for this chapter is
-[`examples/07_md_lj.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) — a complete NVE
-Lennard-Jones argon run on the CPU using the categorical setters
-(`add_potential` / `set_neighbor` / `set_integrator` / `set_thermo`). Build and run
-it with:
+| | |
+|---|---|
+| **Example** | [`examples/07_md_lj.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) (CUDA twin `07_md_lj.cu`) |
+| **Results** | [`examples/results/07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
+| **Acceptance** | NVE total-energy conservation |
 
 ```bash
 cmake -B build -DATV_BUILD_EXAMPLES=ON
@@ -21,13 +21,46 @@ cmake --build build --target 07_md_lj
 ./build/examples/07_md_lj
 ```
 
-It reports the total-energy drift over 1000 steps, which should be tiny
-(NVE conserves energy). The CUDA twin of the same lesson is
-`examples/07_md_lj.cu` (target `07_md_lj_cuda`). For more wiring — thermostats,
-barostats, bonded terms — the CPU MD test suite
-([`tests/cpu/md/test_md.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/md/test_md.cpp)) exercises every
-component under regression; some snippets below are written against its
-FCC-argon fixture.
+## Live result: NVE energy conservation (216 Ar, LJ)
+
+Thermo every 200 steps from the binary (total energy in eV):
+
+| step | \(E_\mathrm{pot}\) | \(E_\mathrm{kin}\) | \(E_\mathrm{total}\) |
+|-----:|-------------------:|-------------------:|---------------------:|
+| 0 | −10.0451 | 0.4226 | **−9.622484** |
+| 200 | −9.8187 | 0.1962 | −9.622481 |
+| 400 | −9.8734 | 0.2509 | −9.622482 |
+| 600 | −9.9145 | 0.2920 | −9.622480 |
+| 800 | −10.0050 | 0.3825 | −9.622481 |
+| 1000 | −10.2620 | 0.6395 | **−9.622481** |
+
+Drift over 1000 steps: **\(2.93\times 10^{-6}\) eV** (relative \(\sim 3\times 10^{-7}\)).
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true}
+data:
+  values:
+    - {step: 0, series: E_total, E: -9.622484}
+    - {step: 200, series: E_total, E: -9.622481}
+    - {step: 400, series: E_total, E: -9.622482}
+    - {step: 600, series: E_total, E: -9.622480}
+    - {step: 800, series: E_total, E: -9.622481}
+    - {step: 1000, series: E_total, E: -9.622481}
+    - {step: 0, series: E_pot, E: -10.0451}
+    - {step: 200, series: E_pot, E: -9.8187}
+    - {step: 400, series: E_pot, E: -9.8734}
+    - {step: 600, series: E_pot, E: -9.9145}
+    - {step: 800, series: E_pot, E: -10.0050}
+    - {step: 1000, series: E_pot, E: -10.2620}
+encoding:
+  x: {field: step, type: quantitative, title: Step}
+  y: {field: E, type: quantitative, title: "Energy (eV)", scale: {zero: false}}
+  color: {field: series, type: nominal, title: null}
+```
+
+Potential and kinetic trade off; **total** is flat — the NVE signature of a
+correct Velocity-Verlet + LJ force pipeline. The CUDA twin
+(`07_md_lj_cuda`) should match within floating-point noise.
 
 ## What "Classical" Means in This Code
 
@@ -314,7 +347,7 @@ headers for the currently shipped writers.)
 ## When the Force Producer Changes
 
 Everything above uses classical force evaluators at the `force` phase.
-Replace them with `cpu::scf::SCF{config}.predictor(3)` and
+Replace them with `cpu::scf::RHF{}.predictor(3)` and
 nothing else changes — the integrator, thermostat, barostat, and
 observers all keep working. That is the AIMD recipe of [Tutorial
 6](ch15-cross-method.md), and it is *the* reason the project has only one MD

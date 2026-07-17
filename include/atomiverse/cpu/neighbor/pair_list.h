@@ -30,7 +30,7 @@ namespace md {
 /// `inum` entries in place on each rebuild, so steady-state rebuilds
 /// never enter the allocator once capacity has stabilised.
 struct PairList {
-    int inum = 0;              ///< Number of I atoms with neighbor lists.
+    int inum = 0; ///< Number of I atoms with neighbor lists.
 
     /// @brief Rows that actually carry neighbour data — owners AND ghosts.
     ///

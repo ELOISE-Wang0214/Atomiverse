@@ -10,9 +10,9 @@
 
 #ifdef ATV_HAS_TORCH
 
+#include "atomiverse/torch/frame/transfer.cuh"
 #include "atomiverse/torch/neighbor/neighbor_list.cuh"
 #include "atomiverse/torch/potentials/lj.cuh"
-#include "atomiverse/torch/frame/transfer.cuh"
 
 #include <cmath>
 #include <cuda_runtime.h>
