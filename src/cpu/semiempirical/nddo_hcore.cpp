@@ -372,7 +372,7 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
             throw std::runtime_error(
                 "AM1 d-orbital two-center Hcore integrals are not ported yet");
         }
-        const auto* pi = am1_parameter(atom_i.atomic_number);
+        const auto* pi = atom_i.params;
         if (pi == nullptr) {
             throw std::runtime_error(
                 "AM1 parameters unavailable for Hcore atom");
@@ -385,7 +385,7 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
                     "AM1 d-orbital two-center Hcore integrals are not ported "
                     "yet");
             }
-            const auto* pj = am1_parameter(atom_j.atomic_number);
+            const auto* pj = atom_j.params;
             if (pj == nullptr) {
                 throw std::runtime_error(
                     "AM1 parameters unavailable for Hcore atom");
@@ -396,8 +396,7 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
                 continue;
             }
 
-            const auto h1 = one_electron_two_center(
-                atom_i.atomic_number, atom_j.atomic_number, xi, xj);
+            const auto h1 = one_electron_two_center(*pi, *pj, xi, xj);
             for (int local_i = 0; local_i < atom_i.n_orbitals; ++local_i) {
                 const int ao_i = atom_i.first_ao + local_i;
                 for (int local_j = 0; local_j < atom_j.n_orbitals; ++local_j) {
@@ -430,7 +429,7 @@ NDDOHCoreBuilder::build_one_center(const NDDOSystem& system) const {
         0.0);
 
     for (const auto& atom : system.atoms) {
-        const auto* p = am1_parameter(atom.atomic_number);
+        const auto* p = atom.params;
         if (p == nullptr) {
             throw std::runtime_error(
                 "AM1 parameters unavailable for Hcore atom");

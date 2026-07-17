@@ -72,7 +72,7 @@ double NDDOOneCenterIntegrals::at(int row, int col) const {
 
 NDDOOneCenterIntegrals
 NDDOOneCenterIntegralBuilder::build(const NDDOAtom& atom) const {
-    const auto* p = am1_parameter(atom.atomic_number);
+    const auto* p = atom.params;
     if (p == nullptr) {
         throw std::runtime_error(
             "AM1 parameters unavailable for one-center integrals");

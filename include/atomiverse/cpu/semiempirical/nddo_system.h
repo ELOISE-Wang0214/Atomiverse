@@ -6,10 +6,17 @@
 #include <vector>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/semiempirical/am1_parameters.h"
 
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
+
+/// @brief NDDO method family (parameter table selector).
+enum class SemiEmpiricalMethod {
+    AM1,
+    RM1,
+};
 
 struct NDDOAtom {
     int atomic_number = 0;
@@ -18,6 +25,8 @@ struct NDDOAtom {
     int n_orbitals = 0;
     double core_charge =
         0.0; ///< NDDO reference `tore`: valence electron/core charge.
+    /// Non-owning pointer into the static AM1/RM1 parameter table.
+    const AM1Parameter* params = nullptr;
 };
 
 struct NDDOSystem {
@@ -27,7 +36,14 @@ struct NDDOSystem {
     int n_alpha = 0;
     int n_beta = 0;
     int charge = 0;
+    SemiEmpiricalMethod method = SemiEmpiricalMethod::AM1;
 };
+
+/// @brief Parameter table lookup for the active NDDO method.
+const AM1Parameter* nddo_parameter(SemiEmpiricalMethod method, int z) noexcept;
+
+/// @brief True when the method table covers atomic number `z`.
+bool nddo_has_parameter(SemiEmpiricalMethod method, int z) noexcept;
 
 /// @brief Number of AM1 valence orbitals for atomic number `z`.
 int am1_orbital_count(int z) noexcept;
@@ -38,6 +54,10 @@ double am1_core_charge(int z) noexcept;
 /// @brief Build a NDDO reference-shaped AO indexing snapshot from an Atomiverse frame.
 NDDOSystem build_am1_system(const cpu::Frame& frame, int charge,
                             int multiplicity);
+
+/// @brief Build NDDO system for AM1 or RM1 (parameters bound per atom).
+NDDOSystem build_nddo_system(const cpu::Frame& frame, int charge,
+                             int multiplicity, SemiEmpiricalMethod method);
 
 /// @brief Packed lower-triangle index for 0-based AO indices.
 std::size_t packed_index(int i, int j) noexcept;

@@ -45,7 +45,7 @@ int parity_sign(int n) noexcept { return (n % 2 == 0) ? 1 : -1; }
 
 double parity_two(int n) noexcept { return (n % 2 == 0) ? 0.0 : 2.0; }
 
-const AM1Parameter& require_parameter(int z) {
+const AM1Parameter& require_am1_parameter(int z) {
     const auto* p = am1_parameter(z);
     if (p == nullptr) {
         throw std::runtime_error("AM1 parameters unavailable for overlap atom");
@@ -594,10 +594,9 @@ double& NDDOLocalMatrix9::at(int row, int col) {
                   + static_cast<std::size_t>(col)];
 }
 
-NDDOLocalMatrix9 diatomic_overlap(int z_i, int z_j,
+NDDOLocalMatrix9 diatomic_overlap(const AM1Parameter& pi,
+                                  const AM1Parameter& pj,
                                   const std::array<double, 3>& x_j_minus_i) {
-    const auto& pi = require_parameter(z_i);
-    const auto& pj = require_parameter(z_j);
 
     NDDOLocalMatrix9 out;
     const double r2 = x_j_minus_i[0] * x_j_minus_i[0]
@@ -622,8 +621,9 @@ NDDOLocalMatrix9 diatomic_overlap(int z_i, int z_j,
     const int a = ia - 1;
     const int b = ib_shell_max - 1;
 
-    if (use_diat2(z_i, pi) && use_diat2(z_j, pj)) {
-        diat2(z_i, pi.zs, pi.zp, r, z_j, pj.zs, pj.zp, s);
+    if (use_diat2(pi.atomic_number, pi) && use_diat2(pj.atomic_number, pj)) {
+        diat2(pi.atomic_number, pi.zs, pi.zp, r, pj.atomic_number, pj.zs, pj.zp,
+              s);
     } else {
         const int newk = std::min(a, b);
         const int nk1 = newk + 1;
@@ -691,11 +691,10 @@ NDDOLocalMatrix9 diatomic_overlap(int z_i, int z_j,
     return out;
 }
 
-NDDOLocalMatrix9 one_electron_two_center(int z_i, int z_j,
+NDDOLocalMatrix9 one_electron_two_center(const AM1Parameter& pi,
+                                         const AM1Parameter& pj,
                                          const std::array<double, 3>& x_i,
                                          const std::array<double, 3>& x_j) {
-    const auto& pi = require_parameter(z_i);
-    const auto& pj = require_parameter(z_j);
     const std::array<double, 3> delta = {x_j[0] - x_i[0], x_j[1] - x_i[1],
                                          x_j[2] - x_i[2]};
     const double r2 =
@@ -704,7 +703,7 @@ NDDOLocalMatrix9 one_electron_two_center(int z_i, int z_j,
         return {};
     }
 
-    auto smat = diatomic_overlap(z_i, z_j, delta);
+    auto smat = diatomic_overlap(pi, pj, delta);
     std::array<double, 9> bi{};
     std::array<double, 9> bj{};
     bi[0] = 0.5 * pi.betas;
@@ -725,6 +724,19 @@ NDDOLocalMatrix9 one_electron_two_center(int z_i, int z_j,
         }
     }
     return smat;
+}
+
+NDDOLocalMatrix9 diatomic_overlap(int z_i, int z_j,
+                                  const std::array<double, 3>& x_j_minus_i) {
+    return diatomic_overlap(require_am1_parameter(z_i),
+                            require_am1_parameter(z_j), x_j_minus_i);
+}
+
+NDDOLocalMatrix9 one_electron_two_center(int z_i, int z_j,
+                                         const std::array<double, 3>& x_i,
+                                         const std::array<double, 3>& x_j) {
+    return one_electron_two_center(require_am1_parameter(z_i),
+                                   require_am1_parameter(z_j), x_i, x_j);
 }
 
 } // namespace semiempirical

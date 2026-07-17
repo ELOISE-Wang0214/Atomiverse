@@ -153,6 +153,7 @@ if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/kspace/test_pme_coul.cpp)
 endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
+atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at
@@ -429,6 +430,7 @@ if(ATV_BUILD_PW)
     atv_add_cpp_test(test_cpu_pw_si         cpu/pw/test_pw_si.cpp)
     atv_add_cpp_test(test_cpu_pw_evaluator  cpu/pw/test_pw_evaluator.cpp)
     atv_add_cpp_test(test_cpu_pw_forces     cpu/pw/test_pw_forces.cpp)
+    atv_add_cpp_test(test_cpu_pw_stress     cpu/pw/test_pw_stress.cpp)
 
     # FFT test needs FFTW3 linkage
     add_executable(test_cpu_pw_fft cpu/pw/test_fft.cpp)

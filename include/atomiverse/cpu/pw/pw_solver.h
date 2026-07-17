@@ -31,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+// std::array used by pw_stress
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -137,9 +138,8 @@ class PWSolver {
 /// @brief Finite-difference ionic forces F_a = −dE/dR_a via central differences.
 ///
 /// Runs a full plane-wave SCF at ±h displacements of each atom along each
-/// Cartesian axis (6 N_atoms SCF solves). Correct but expensive; analytic
-/// Hellmann–Feynman + Pulay forces are a follow-on (mirrors GPW's first
-/// oracle path `gpw_forces_fd`).
+/// Cartesian axis (6 N_atoms SCF solves). Retained as the numerical oracle
+/// for analytic forces (`pw_forces_analytic`).
 ///
 /// @param frame Geometry [Å]; not mutated.
 /// @param cfg   Plane-wave configuration (UPF path, ecut, k-mesh, SCF tol).
@@ -148,6 +148,30 @@ class PWSolver {
 /// @throws std::invalid_argument if h_ang ≤ 0 or the frame has no atoms.
 std::vector<std::array<double, 3>>
 pw_forces_fd(const cpu::Frame& frame, const PWConfig& cfg, double h_ang = 1e-3);
+
+/// @brief Analytic ionic forces (local HF + Ewald + KB nonlocal).
+///
+/// Default force engine for `PWEvaluator::with_gradient(true)`. One SCF plus
+/// a gradient pass (local/Ewald from ρ; nonlocal from a final diagonalization
+/// per k-point). FD oracle remains `pw_forces_fd`.
+///
+/// @param frame Geometry [Å]; not mutated.
+/// @param cfg   Plane-wave configuration.
+/// @return Forces [eV/Å], one xyz triple per atom.
+/// @throws std::invalid_argument if the frame has no atoms.
+/// Non-converged SCF: forces are still returned from the last density (with
+/// a warning log), matching the practical FD oracle behaviour.
+std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
+                                                      const PWConfig& cfg);
+
+/// @brief Cell stress σ [eV/Å³], Voigt order xx,yy,zz,xy,xz,yz.
+///
+/// v1: central FD of the SCF energy under symmetric cell strain at fixed
+/// fractional coordinates (same oracle class as early ionic FD forces).
+/// @param frame Geometry [Å]; not mutated.
+/// @param cfg   Plane-wave configuration.
+/// @return Stress [eV/Å³] written into Frame as `kStress` by the evaluator.
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PWConfig& cfg);
 
 } // namespace pw
 } // namespace cpu

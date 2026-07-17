@@ -411,8 +411,8 @@ NDDOTwoCenterIntegralBlock build_two_center_integral_block(
             "AM1 d-orbital two-center electron-repulsion integrals are not "
             "ported yet");
     }
-    const auto* pi = am1_parameter(ai.atomic_number);
-    const auto* pj = am1_parameter(aj.atomic_number);
+    const auto* pi = ai.params;
+    const auto* pj = aj.params;
     if (pi == nullptr || pj == nullptr) {
         throw std::runtime_error(
             "AM1 parameters unavailable for two-center integrals");

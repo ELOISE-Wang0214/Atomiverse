@@ -16,6 +16,7 @@
 #include "atomiverse/cpu/semiempirical/nddo_hcore.h"
 #include "atomiverse/cpu/semiempirical/nddo_matrix.h"
 #include "atomiverse/cpu/semiempirical/nddo_system.h"
+#include "atomiverse/cpu/semiempirical/rm1_parameters.h"
 
 namespace ATV {
 namespace cpu {
@@ -59,12 +60,15 @@ double max_abs_delta(const std::vector<double>& a,
 
 NDDOSolver::NDDOSolver(NDDOConfig config) : config_(config) {
     result_.method = config_.method;
-    result_.reference = "Internal AM1/NDDO reference data";
+    result_.reference = (config_.method == SemiEmpiricalMethod::RM1)
+                            ? "Internal RM1/NDDO reference data (Rocha 2006)"
+                            : "Internal AM1/NDDO reference data";
 }
 
 void NDDOSolver::build(const cpu::Frame& reference) {
     validate_supported_atoms_(reference);
-    system_ = build_am1_system(reference, config_.charge, config_.multiplicity);
+    system_ = build_nddo_system(reference, config_.charge, config_.multiplicity,
+                                config_.method);
     state_.initial_diagonal_density = initial_diagonal_density_guess(system_);
     state_.initial_packed_density =
         packed_density_from_diagonal(state_.initial_diagonal_density);
@@ -163,13 +167,16 @@ NDDOResult& NDDOSolver::run(const cpu::Frame& frame) {
             double sum_eisol = 0.0;
             double sum_atheat = 0.0;
             for (const auto& atom : system_.atoms) {
-                const auto* p = am1_parameter(atom.atomic_number);
+                const auto* p = atom.params;
                 if (p == nullptr) {
                     throw std::runtime_error(
-                        "AM1 parameters missing during heat-of-formation");
+                        "NDDO parameters missing during heat-of-formation");
                 }
                 sum_eisol += p->eisol;
-                sum_atheat += am1_atomic_heat_kcal_mol(atom.atomic_number);
+                sum_atheat +=
+                    (config_.method == SemiEmpiricalMethod::RM1)
+                        ? rm1_atomic_heat_kcal_mol(atom.atomic_number)
+                        : am1_atomic_heat_kcal_mol(atom.atomic_number);
             }
             result_.heat_of_formation_kcal_mol =
                 (total_ev - sum_eisol) * kAm1EvToKcalMol + sum_atheat;
@@ -266,16 +273,17 @@ NDDOResult& NDDOSolver::compute_forces(cpu::Frame& frame,
 }
 
 void NDDOSolver::validate_supported_atoms_(const cpu::Frame& frame) const {
-    if (config_.method != SemiEmpiricalMethod::AM1) {
+    if (config_.method != SemiEmpiricalMethod::AM1
+        && config_.method != SemiEmpiricalMethod::RM1) {
         throw std::runtime_error(
             "NDDOSolver: unsupported semiempirical method");
     }
     const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < frame.nlocal(); ++i) {
         const int z = sp_type[i];
-        if (!am1_has_parameter(z)) {
+        if (!nddo_has_parameter(config_.method, z)) {
             throw std::runtime_error(
-                "AM1 parameters unavailable for atomic number "
+                "NDDO parameters unavailable for atomic number "
                 + std::to_string(z));
         }
     }

@@ -18,10 +18,6 @@ namespace ATV {
 namespace cpu {
 namespace semiempirical {
 
-enum class SemiEmpiricalMethod {
-    AM1,
-};
-
 struct NDDOConfig {
     SemiEmpiricalMethod method = SemiEmpiricalMethod::AM1;
     int charge = 0;

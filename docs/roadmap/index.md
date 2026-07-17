@@ -117,9 +117,10 @@ watch out for in the ones that do.
 
 ### Plane-wave DFT
 
-- **Forces via FD of energy; no stress.** `PWEvaluator::with_gradient(true)`
-  fills ionic forces with `pw_forces_fd` (6N SCF cost). Analytic PW forces and
-  the stress tensor remain open, so variable-cell work is still blocked.
+- **Ionic forces: analytic local HF + Ewald + KB nonlocal**
+  (`pw_forces_analytic`); FD (`pw_forces_fd`) remains the oracle.
+  **Cell stress via strain-FD of SCF energy** (`pw_stress`, Voigt `kStress`);
+  Nielsen–Martin analytic decomposition remains a follow-on.
 - **Effectively LDA.** The XC builder calls the PBE routine with `sigma = 0`,
   which is the Slater + PW92 LDA limit. There is no true GGA and no spin
   polarization in the plane-wave path.

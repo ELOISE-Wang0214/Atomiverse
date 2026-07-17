@@ -183,6 +183,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
         src/cpu/semiempirical/am1_parameters.cpp
+        src/cpu/semiempirical/rm1_parameters.cpp
         src/cpu/semiempirical/nddo_density.cpp
         src/cpu/semiempirical/nddo_fock.cpp
         src/cpu/semiempirical/nddo_hcore.cpp
@@ -192,6 +193,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/semiempirical/nddo_two_electron.cpp
         src/cpu/semiempirical/nddo_solver.cpp
         src/cpu/semiempirical/am1_evaluator.cpp
+        src/cpu/semiempirical/rm1_evaluator.cpp
         src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
         # CPU task infrastructure (TaskSpec + codec + materializer + protocol)
         src/cpu/task/task_spec.cpp
@@ -474,6 +476,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/kpoint.cpp
             src/cpu/pw/internal/ewald.cpp
             src/cpu/pw/internal/pw_setup.cpp
+            src/cpu/pw/internal/pw_forces.cpp
+            src/cpu/pw/internal/pw_stress.cpp
             src/cpu/pw/internal/pw_subspace.cpp
             src/cpu/pw/internal/poisson.cpp
             src/cpu/pw/internal/xc_builder.cpp

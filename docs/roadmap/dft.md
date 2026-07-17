@@ -189,9 +189,10 @@ path has no dispersion correction.
 Two periodic DFT engines exist, with disjoint strengths:
 
 - **Plane-wave DFT** (`cpu::pw::PWSolver`, `cuda::pw`) — k-points, norm-conserving
-  UPF pseudopotentials, block Davidson. **Ionic forces via central FD of the SCF
-  energy** (`pw_forces_fd`, `PWEvaluator::with_gradient(true)`); analytic
-  Hellmann–Feynman + Pulay is a follow-on. **No stress.** XC is the Slater +
+  UPF pseudopotentials, block Davidson. **Ionic forces via analytic local HF +
+  Ewald + Kleinman–Bylander nonlocal** (`pw_forces_analytic`, default for
+  `PWEvaluator::with_gradient(true)`); FD (`pw_forces_fd`) is the oracle.
+  **Cell stress via strain-FD** (`pw_stress` → `kStress`). XC is the Slater +
   PW92 LDA limit (PBE called with `sigma = 0`), spin-unpolarized.
 - **GPW**, Gaussian and plane waves (`cpu::gpw::GPWSolver`) — Gaussian basis
   collocated on a uniform grid, GTH pseudopotentials, LDA (Padé) or PBE, DFT-D3,
@@ -235,18 +236,19 @@ Which engine backs which ✓:
 | Method                                 | CPU | CUDA |
 | -------------------------------------- | :-: | :--: |
 | Periodic analytic forces               |  ✓  |   ○  |
-| Periodic analytic stress               |  ○  |   ○  |
+| Periodic analytic stress               |  ✓  |   ○  |
 | Density-functional perturbation theory |  ○  |   ○  |
 | Finite-displacement phonons            |  ○  |   ○  |
 | Berry-phase polarization               |  ○  |   ○  |
 | Maximally localized Wannier functions  |  ○  |   ○  |
 
-- **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay), validated
-  against finite differences. Plane-wave forces ship as **re-SCF central FD**
-  (`pw_forces_fd`); that is enough to drive Minimize / MD, at 6N SCF cost.
-  Analytic PW forces remain ○.
-- **No stress tensor on any periodic engine**, hence no variable-cell relaxation
-  (doubly blocked — see [Optimization](optimization.md)).
+- **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay) and
+  plane-wave **local HF + Ewald + KB nonlocal** (`pw_forces_analytic`). PW FD
+  remains as oracle. **PW stress** ships as strain-FD of energy (`pw_stress`);
+  GPW stress remains open.
+- **PW stress** is available via strain-FD (`pw_stress` → Frame `kStress`).
+  GPW still has no stress tensor; full variable-cell drivers remain productization
+  work (see [Optimization](optimization.md)).
 - **Finite-displacement phonons** is ○ even though a finite-difference Hessian
   exists: `cpu::vib::Hessian` is molecular (3N Cartesian displacements, no
   supercell or q-point machinery), so it yields no phonon band structure.

@@ -56,3 +56,6 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
 | `md` | `dihedral_charmm` | CHARMM periodic torsion \(V=K(1+\cos(n\phi-\delta))\) at \(\phi=\pi/2\) | MacKerell et al. (1998); LAMMPS `dihedral_style charmm` |
 | `md` | `improper_harmonic` | Harmonic improper \(V=K(\chi-\chi_0)^2\) at \(\chi=\pi/2\) | LAMMPS `improper_style harmonic` |
 | `pw` | `h_force_fd` | Plane-wave FD ionic force vanishes for one H (symmetry) | Martin *Electronic Structure*; FD oracle |
+| `pw` | `h_force_analytic` | Plane-wave analytic ionic force vanishes for one H (symmetry) | Martin; QE force_lc/ew; default evaluator path |
+| `pw` | `h_stress_cubic` | Plane-wave cell stress off-diagonals vanish for cubic H | strain-FD of SCF energy; cubic symmetry |
+| `semiempirical` | `rm1_water_energy` | RM1 water converges and differs from AM1 | Rocha et al. JCC 27, 1101 (2006) |

@@ -27,7 +27,7 @@ never a new Driver, and not under `NDDOSolver`.
 | Method                          | CPU | CUDA |
 | ------------------------------- | :-: | :--: |
 | AM1                             |  ✓  |   ○  |
-| RM1                             |  ○  |   ○  |
+| RM1                             |  ✓  |   ○  |
 | PM6                             |  ○  |   ○  |
 | PM7                             |  ○  |   ○  |
 | OM3                             |  ○  |   ○  |
@@ -36,10 +36,10 @@ never a new Driver, and not under `NDDOSolver`.
 | AM1 heat of formation (MOPAC-style ΔHf) |  ✓  |   ○  |
 
 The NDDO core (overlap, one-electron core Hamiltonian, two-electron integrals,
-Fock build, density, SCF, forces) is parameterization-agnostic in structure, but
-only the AM1 parameter set is transcribed. MNDO/PM3/PM6 are parameter tables
-away in principle. Analytic Hessian remains finite-difference via
-`cpu::vib::Hessian` over AM1 forces.
+Fock build, density, SCF, forces) is parameterization-agnostic in structure.
+**AM1** and **RM1** (H/C/N/O/P/S; Rocha et al. 2006 / MOPAC tables) are
+transcribed. PM6/PM7 remain tables away. Analytic Hessian remains
+finite-difference via `cpu::vib::Hessian` over SE forces.
 
 ## 2. Density-Functional Tight Binding
 

@@ -27,7 +27,9 @@
 #include "atomiverse/cpu/pw/internal/density_builder.h"
 #include "atomiverse/cpu/pw/internal/g_vector.h"
 #include "atomiverse/cpu/pw/internal/poisson.h"
+#include "atomiverse/cpu/pw/internal/pw_forces.h"
 #include "atomiverse/cpu/pw/internal/pw_setup.h"
+#include "atomiverse/cpu/pw/internal/pw_stress.h"
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
 #include "atomiverse/cpu/pw/internal/veff_builder.h"
@@ -233,6 +235,15 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
                  config_.max_iter, result_.energy);
 
     return result_;
+}
+
+std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
+                                                      const PWConfig& cfg) {
+    return internal::pw_forces_analytic_impl(frame, cfg);
+}
+
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PWConfig& cfg) {
+    return internal::pw_stress_analytic_impl(frame, cfg);
 }
 
 std::vector<std::array<double, 3>>
