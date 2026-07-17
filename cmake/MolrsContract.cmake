@@ -11,7 +11,7 @@
 #     still cannot bypass the CXX API version check.
 set(ATV_MOLRS_CXX_API_VERSION 1)
 set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
-set(ATV_MOLRS_GIT_REF "v0.7.0" CACHE STRING
+set(ATV_MOLRS_GIT_REF "v0.8.2" CACHE STRING
     "Pinned MolCrafts/molrs git tag or SHA for CI checkout")
 
 function(atv_validate_molrs_source_contract molrs_root)

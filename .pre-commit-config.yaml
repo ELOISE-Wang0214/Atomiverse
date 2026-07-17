@@ -1,14 +1,5 @@
-# Pre-commit gate for Atomiverse, aligned with .github/workflows/ci.yml.
-#
-# CI's heavy gate (CMake build + the ctest matrix) cannot run per-commit,
-# so this config covers the fast static half: C++/CUDA formatting via the
-# repo's pinned .clang-format, workflow-YAML validity, and file hygiene.
-# clang-format is pinned to the same major.minor as the local toolchain
-# (clang-format 22.1.x) so results are reproducible across machines.
-#
-# The pre-existing tree is not yet fully format-clean; hooks run only on
-# the files each commit touches, so formatting converges incrementally —
-# do not run `pre-commit run --all-files` on a dirty working tree.
+# Static half of CI. CI re-runs these hooks, then one cmake + unit ctest
+# (see .github/workflows/ci.yml). clang-format pin matches local 22.1.x.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

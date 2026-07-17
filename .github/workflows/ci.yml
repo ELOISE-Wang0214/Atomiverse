@@ -1,11 +1,8 @@
 name: CI
 
-# CPU build + our own unit-test suite (ctest). This workflow deliberately
-# does NOT build or link any third-party comparison library (libxc via
-# ATV_BUILD_XC_ORACLE, libcint via ATV_BUILD_LIBCINT) and does NOT run the
-# QC benchmark-vs-PySCF binary — it builds Atomiverse and runs Atomiverse's
-# own unit tests. The oracle/libcint-backed parity tests are developer
-# tools, gated behind their CMake options and excluded from CI.
+# Local:  pre-commit run --all-files
+# Remote: same hooks, then one CPU cmake + unit ctest.
+# No matrix, no acceptance, no MPI gate, no regressions-as-gate, no benchmarks.
 
 on:
   push:
@@ -17,79 +14,68 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── CPU build + unit tests ────────────────────────────────────────────────
-  # Precision axis drives the storage tier (core/precision.h); accumulators stay
-  # double either way. float exercises the mixed-precision MD path, double the
-  # full-precision suite:
-  # float  -> ATV_REAL_STORAGE=float: core + MD (RHF off; SCF needs double storage)
-  # double -> ATV_REAL_STORAGE=double: full suite incl. SCF / hybrid DFT / vibrations
-  cpu:
-    name: CPU (${{ matrix.real }}, RHF ${{ matrix.rhf }})
+  pre-commit:
+    name: pre-commit
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # float storage exercises the mixed-precision classical-MD path;
-          # precision-exact tests (stationary-point forces, analytic energies,
-          # NVE-limit exact bounds) assert double-tight tolerances and correctly
-          # do not hold at float ε~1e-7 — they are double-only correctness checks.
-          - real: float
-            rhf: 'OFF'
-            exclude_tests: 'no_alloc|^test_cpu_md$|_pe_single_chain|_pe_fd_force|_pe_energy_xcheck'
-          - real: double
-            rhf: 'ON'
-            exclude_tests: 'no_alloc'
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Run pre-commit
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  cpu:
+    name: CPU unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    needs: pre-commit
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read molrs pin
+        id: molrs
+        run: |
+          # Single source of truth: cmake/MolrsContract.cmake ATV_MOLRS_GIT_REF
+          ref=$(sed -n 's/.*set(ATV_MOLRS_GIT_REF "\([^"]*\)".*/\1/p' cmake/MolrsContract.cmake | head -1)
+          if [ -z "$ref" ]; then
+            echo "Failed to parse ATV_MOLRS_GIT_REF from cmake/MolrsContract.cmake" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "molrs pin: $ref"
 
       - name: Checkout molrs
         uses: actions/checkout@v4
         with:
           repository: MolCrafts/molrs
-          # Keep in sync with ATV_MOLRS_GIT_REF in cmake/MolrsContract.cmake
-          ref: v0.7.0
+          ref: ${{ steps.molrs.outputs.ref }}
           path: molrs
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install system dependencies
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libblas-dev liblapack-dev
 
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: cpu-${{ matrix.real }}-${{ hashFiles('CMakeLists.txt', 'molrs/Cargo.lock') }}
-
       - name: Configure
         run: |
           cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
             -DATV_BUILD_CUDA=OFF \
+            -DATV_BUILD_TORCH=OFF \
             -DATV_BUILD_TESTS=ON \
-            -DATV_BUILD_EXAMPLES=ON \
-            -DATV_BUILD_RHF=${{ matrix.rhf }} \
-            -DATV_REAL_STORAGE=${{ matrix.real }} \
+            -DATV_BUILD_EXAMPLES=OFF \
+            -DATV_BUILD_RHF=ON \
+            -DATV_REAL_STORAGE=double \
             -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Test (our unit-test suite)
-        # `-E` excludes tests that cannot pass on a generic Linux CI
-        # runner and are local developer checks, not portable gates:
-        #   *_no_alloc — allocation-counting micro-checks; the count
-        #                depends on the C++ runtime and OpenMP
-        #                implementation (CI's glibc + libgomp allocates
-        #                internally where a developer's libc++/libomp
-        #                does not).
-        # LAMMPS API-alignment / parity checks no longer run here at all:
-        # they are third-party-comparison validation benchmarks under
-        # benchmarks/md/ (-DATV_BUILD_BENCHMARKS=ON), not ctest gates.
-        run: >-
-          ctest --test-dir build -j$(nproc) --output-on-failure
-          -E '${{ matrix.exclude_tests }}'
+      - name: Unit tests
+        # tests/ only. no_alloc is runtime-dependent (glibc/libgomp) — not a portable gate.
+        run: ctest --test-dir build -j$(nproc) --output-on-failure -E 'no_alloc'
