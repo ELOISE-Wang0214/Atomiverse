@@ -39,8 +39,14 @@
 #include "atomiverse/cuda/async/async_bridge.cuh"
 
 #ifdef ATV_HAS_RHF
-#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
+namespace ATV {
+namespace cpu {
+namespace scf {
+struct IntegralPack; // cpu/scf/internal/integrals.h — not a public include
+} // namespace scf
+} // namespace cpu
+} // namespace ATV
 #endif
 
 namespace ATV {
@@ -63,9 +69,10 @@ class MullikenObs : public AsyncBridge {
     /// @param evaluator SCF evaluator whose converged workspace supplies the
     ///                  density matrix (borrowed -- must outlive this observer).
     /// @param every     Sampling stride in steps (1 = every step).
+    /// @param ints Borrowed integral pack (must outlive this observer).
     MullikenObs(const cpu::scf::IntegralPack& ints, const scf::SCF& evaluator,
                 int every = 1)
-        : integrals_(ints), evaluator_(&evaluator), every_(every) {}
+        : integrals_(&ints), evaluator_(&evaluator), every_(every) {}
 
     ~MullikenObs() override = default;
 
@@ -128,7 +135,7 @@ class MullikenObs : public AsyncBridge {
                                 std::vector<std::size_t>{nb, nb});
         const xt::xtensor<double, 2> P = P_view;
 
-        charges_ = cpu::mulliken_charge(integrals_, P);
+        charges_ = cpu::mulliken_charge(*integrals_, P);
         energy_val_ = *h_energy_[slot];
         iterations_ = evaluator_->workspace().iteration;
         n_occ_ = static_cast<int>(evaluator_->workspace().n_occ);
@@ -156,7 +163,8 @@ class MullikenObs : public AsyncBridge {
     }
 
   private:
-    cpu::scf::IntegralPack integrals_;
+    const cpu::scf::IntegralPack* integrals_ =
+        nullptr; ///< Borrowed pack (S, shells, atoms).
     const scf::SCF* evaluator_ =
         nullptr; ///< Borrowed SCF evaluator (density source).
     int every_;

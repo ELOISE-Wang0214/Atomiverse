@@ -3,6 +3,8 @@
 
 #include "atomiverse/cpu/observer/mulliken.h"
 
+#include "atomiverse/cpu/scf/internal/integrals.h"
+
 #include <stdexcept>
 
 #include <xtensor-blas/xlinalg.hpp>

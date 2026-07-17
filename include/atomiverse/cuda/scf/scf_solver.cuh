@@ -52,9 +52,15 @@
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 #ifdef ATV_HAS_RHF
-#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
+namespace ATV {
+namespace cpu {
+namespace scf {
+struct IntegralPack; // cpu/scf/internal/integrals.h — not a public include
+} // namespace scf
+} // namespace cpu
+} // namespace ATV
 #endif
 
 namespace ATV {

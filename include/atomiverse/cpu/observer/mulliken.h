@@ -23,10 +23,11 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/scf/internal/integrals.h"
-
 namespace ATV {
 namespace cpu {
+namespace scf {
+struct IntegralPack; // defined in cpu/scf/internal/integrals.h
+} // namespace scf
 
 /// @brief Mulliken net charges q_A = Z_A - Tr_A(P S).
 ///

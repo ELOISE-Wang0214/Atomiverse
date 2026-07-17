@@ -18,11 +18,13 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/dense_matrix.h"
-#include "atomiverse/cpu/scf/internal/shell_pair.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+struct ShellPairList;      // defined in cpu/scf/internal/shell_pair.h
+struct ShellBlockPairList; // defined in cpu/scf/internal/shell_pair.h
 
 /// @brief Build fused Coulomb + exchange G = J - 0.5*K (RHF stored-ERI path).
 /// @details G_ij = sum_kl P_kl [(ij|kl) - 0.5*(ik|jl)].

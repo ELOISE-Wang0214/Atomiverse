@@ -202,13 +202,8 @@ endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/md/test_pe_ff_constants.cpp)
 atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/md/test_pe_energy_xcheck.cpp)
-atv_add_cpp_test(test_cpu_md_pe_tension_protocol  cpu/md/test_pe_tension_protocol.cpp)
-target_compile_definitions(test_cpu_md_pe_tension_protocol PRIVATE
-    ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-# LAMMPS API-alignment / parity checks are third-party-comparison
-# validation benchmarks, not portable ctest gates — they live under
-# benchmarks/md/lj/validation/ and benchmarks/md/pe/validation/, built
-# with -DATV_BUILD_BENCHMARKS=ON.
+# pe_tension_protocol grepped benchmarks/md/pe/... which was deleted; re-add
+# when the PE tension app is restored under regressions/ or examples/.
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/md/test_full_neighbor_list.cpp)

@@ -425,7 +425,10 @@ std::size_t unpack_exchange(Frame& frame, PackPlan& plan, int row,
     for (const ColumnRef& col : plan.fields)
         if (col.group == ColGroup::Core)
             scan.skip(col.row_bytes());
-    std::array<int, 4> counts{};
+    // Must match kGroups.size() (Bond, Angle, Dihedral, Improper, Special).
+    // A too-short array was a silent OOB when Improper was added — arm64
+    // stack layout sometimes papered over it; Linux x86_64 did not.
+    std::array<int, kGroups.size()> counts{};
     for (std::size_t gi = 0; gi < kGroups.size(); ++gi) {
         const ColGroup group = kGroups[gi];
         int count = -1;
@@ -434,6 +437,8 @@ std::size_t unpack_exchange(Frame& frame, PackPlan& plan, int row,
                 continue;
             if (col.dtype != ColDType::Int || col.element_size != sizeof(int))
                 throw column_error("exchange count column must be native int");
+            if (col.cols < 1)
+                throw column_error("exchange count column has zero width");
             const std::byte* count_bytes = scan.take(col.row_bytes());
             std::memcpy(&count,
                         count_bytes

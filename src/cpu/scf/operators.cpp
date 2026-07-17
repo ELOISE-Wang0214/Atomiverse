@@ -2,7 +2,9 @@
 /// @brief Two-electron operator builders: stored-ERI and direct-SCF.
 
 #include "atomiverse/cpu/scf/operators.h"
+
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 #include <array>
