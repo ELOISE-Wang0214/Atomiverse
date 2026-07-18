@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Single source of truth for the CPU unit half of CI.
+# Single source of truth for the CPU unit gate.
 # Used by:
-#   - .pre-commit-config.yaml  (stage: pre-push)  — blocks a red push
-#   - .github/workflows/ci.yml (cpu job)          — same commands on Actions
+#   - .pre-commit-config.yaml  (stage: pre-push)  — THE gate; blocks a red push
+#   - .github/workflows/ci.yml (workflow_dispatch only) — optional remote re-run
 #
-# Flags match CI exactly. Do not fork a second matrix here.
+# Not run on every GitHub push. Multi-backend (CUDA) is machine-local, not GHA.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

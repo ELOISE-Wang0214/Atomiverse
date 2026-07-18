@@ -1,11 +1,13 @@
-# Local == CI. One pipeline, two stages:
+# THE quality gate for Atomiverse (GitHub Actions is not on push).
 #
 #   pre-commit  → format / hygiene (fast)
-#   pre-push    → tools/ci_cpu_unit.sh (same cmake + ctest as Actions)
+#   pre-push    → tools/ci_cpu_unit.sh — same cmake + ctest the optional
+#                 workflow_dispatch CI job would run
 #
-# Install BOTH hook types (default_install_hook_types below):
+# Install both:
 #   pre-commit install
-# A red unit suite fails the push; GitHub Actions is not the first gate.
+#   pre-commit install --hook-type pre-push
+# (default_install_hook_types below also installs both on `pre-commit install`)
 #
 # clang-format pin matches local 22.1.x.
 default_install_hook_types: [pre-commit, pre-push]
