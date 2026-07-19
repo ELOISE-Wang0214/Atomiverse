@@ -71,6 +71,19 @@ if(ATV_BUILD_KSPACE AND ATV_BUILD_MD)
     atv_add_regression(md npt_pme_nacl)
 endif()
 
+# ── pure-Python import (python-on-demand-install-02) ──────────────────────
+# No C++ link: isolated pure sources only. Needs a Python interpreter.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_custom_target(run_reg_python_pure_import
+        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/python/pure_import/reg_pure_import.sh
+                ${Python3_EXECUTABLE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/pure_import
+        COMMENT "python pure_import: soft import without C++ extension"
+        VERBATIM)
+    add_dependencies(regressions run_reg_python_pure_import)
+endif()
+
 # ── launcher parity (mpi-launcher-embedded-python-04) ─────────────────────
 # Not an atv_add_regression() case: it needs mpirun + a Python environment
 # with atomiverse/molrs importable (the ~/work/.x86_64 venv per the spec).

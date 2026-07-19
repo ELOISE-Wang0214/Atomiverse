@@ -12,9 +12,29 @@ import numpy as np
 import pytest
 import molrs
 
-from atomiverse.md import MD, InitVelocity
-from atomiverse.neighbor import NeighborList
-from atomiverse.potentials.pair import LJCut
+from atomiverse._binding import extension_available
+
+# Compute imports only when the native extension is present. Pure-import
+# tests (test_pure_import.py) never use these fixtures; they run in
+# isolated subprocesses.
+_HAS_EXT = extension_available()
+if _HAS_EXT:
+    from atomiverse.md import MD, InitVelocity
+    from atomiverse.neighbor import NeighborList
+    from atomiverse.potentials.pair import LJCut
+else:
+    MD = InitVelocity = NeighborList = LJCut = None  # type: ignore[misc, assignment]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip compute-suite tests when the C++ extension is absent."""
+    if _HAS_EXT:
+        return
+    skip = pytest.mark.skip(reason="C++ extension (_atomiverse) not installed")
+    for item in items:
+        if item.fspath.basename == "test_pure_import.py":
+            continue
+        item.add_marker(skip)
 
 
 def _argon_columns(n_atoms: int):
@@ -59,9 +79,11 @@ def argon_frame(n_atoms: int) -> "molrs.Frame":
 
 
 @pytest.fixture
-def full_lj_md() -> MD:
+def full_lj_md():
     """Full LJ MD via deep canonical paths: md.MD + md.InitVelocity +
     neighbor.NeighborList + potentials.pair.LJCut."""
+    if not _HAS_EXT:
+        pytest.skip("C++ extension (_atomiverse) not installed")
     cutoff = 8.5
     sim = MD(dt=0.001)
     sim.add(InitVelocity(10.0, 42))

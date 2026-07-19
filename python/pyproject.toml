@@ -1,5 +1,8 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "nanobind>=2.4"]
+# Default delivery is a pure-Python wheel (wheel.cmake = false below).
+# nanobind is only needed when CMake actually builds the extension
+# (optional-dependencies.native, or an install that forces cmake on).
+requires = ["scikit-build-core>=0.10"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -13,6 +16,8 @@ dependencies = ["numpy", "molcrafts-molrs==0.7.0"]
 molpy    = ["molcrafts-molpy==0.7.0"]
 torch    = ["torch"]
 dev      = ["pytest", "pytest-cov", "numpy"]
+# Native extension build (nanobind). Not required for the pure wheel.
+native   = ["nanobind>=2.4"]
 # Docs: only the theme (+ zensical). MolVis and MolPlot fences both live in
 # molcrafts-zensical-theme; browser bundles load from the npm CDN in
 # zensical.toml. Do NOT add molcrafts-molplot here — that is for paper
@@ -50,6 +55,11 @@ build-dir = "build/skbuild/{wheel_tag}"
 
 # Python package source tree (src-layout)
 wheel.packages = ["src/atomiverse"]
+
+# Default: pure-Python wheel — no CMake / no C++ compile at pip install time.
+# On-demand native build is `python -m atomiverse install` (phase 03) or an
+# override that re-enables cmake (e.g. -C wheel.cmake=true for dev wheels).
+wheel.cmake = false
 
 # Editable installs: redirect mode injects a finder that delegates to both
 # the CMake install tree and the Python source tree

@@ -1,7 +1,7 @@
 ---
 slug: python-on-demand-install-02-pure-wheel
 title: pure-Python wheel and soft extension import
-status: approved
+status: code-complete
 grilled: true
 created: 2026-07-19
 chain: python-on-demand-install
@@ -50,14 +50,14 @@ phase: 02-pure-wheel
 
 ## Tasks
 
-- [ ] Write failing tests for soft-binding and pure package import (`python/tests/test_pure_import.py`)
-- [ ] Generalize `_binding.py` soft-import, `extension_available` / `require_cpp`, and install-message `ImportError`
-- [ ] Soft-load package root with `__version__` and PEP 562 compute `__getattr__`; preserve PW `hasattr` when extension present
-- [ ] Add `__main__.py` stub so `python -m atomiverse` prints install-oriented guidance
-- [ ] Configure pure-Python wheel defaults in `python/pyproject.toml` (`wheel.cmake = false`; drop nanobind from `build-system.requires`; keep `cmake.define`)
-- [ ] Add regression example `regressions/python/pure_import/reg_pure_import.sh` plus `REFERENCE.md`
-- [ ] Wire Python-only `run_reg_python_pure_import` into `regressions/CMakeLists.txt`
-- [ ] Run full check + test suite
+- [x] Write failing tests for soft-binding and pure package import (`python/tests/test_pure_import.py`)
+- [x] Generalize `_binding.py` soft-import, `extension_available` / `require_cpp`, and install-message `ImportError`
+- [x] Soft-load package root with `__version__` and PEP 562 compute `__getattr__`; preserve PW `hasattr` when extension present
+- [x] Add `__main__.py` stub so `python -m atomiverse` prints install-oriented guidance
+- [x] Configure pure-Python wheel defaults in `python/pyproject.toml` (`wheel.cmake = false`; drop nanobind from `build-system.requires`; keep `cmake.define`)
+- [x] Add regression example `regressions/python/pure_import/reg_pure_import.sh` plus `REFERENCE.md`
+- [x] Wire Python-only `run_reg_python_pure_import` into `regressions/CMakeLists.txt`
+- [x] Run full check + test suite
 
 ## Testing strategy
 
