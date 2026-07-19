@@ -630,6 +630,25 @@ add_test(
 # Grep gate: domain objects are constructed via class constructors — never
 # free-function factories (build_integrals / *_config / make_atom_list / …).
 # Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
+# Product-module DAG + source gating (python-on-demand-install-01)
+add_test(
+    NAME test_module_dag_auto_enable
+    COMMAND ${CMAKE_COMMAND}
+            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_dag_auto_enable.cmake)
+set_tests_properties(test_module_dag_auto_enable PROPERTIES
+    LABELS "architecture;cmake"
+    TIMEOUT 300)
+
+add_test(
+    NAME test_module_off_excludes_sources
+    COMMAND ${CMAKE_COMMAND}
+            -DATV_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/architecture/module_off_excludes_sources.cmake)
+set_tests_properties(test_module_off_excludes_sources PROPERTIES
+    LABELS "architecture;cmake"
+    TIMEOUT 300)
+
 add_test(
     NAME test_no_factory_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_factory_scrub.sh

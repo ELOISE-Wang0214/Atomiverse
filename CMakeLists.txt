@@ -91,6 +91,10 @@ if(NOT ATV_DOCS_ONLY)
            "Build the atomiverse MPI launcher executable (rank-0 embedded CPython)" OFF)
     option(ATV_USE_MATPLOT "Enable matplotplusplus for plotting in examples (requires gnuplot)" OFF)
 
+    # Product-module gates (MD/MC/MINIMIZER/… + POTENTIALS/NEIGHBOR DAG).
+    # Must run after ATV_BUILD_KSPACE is declared (KSPACE → POTENTIALS edge).
+    include("${CMAKE_SOURCE_DIR}/cmake/AtvProductModules.cmake")
+
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/deps")
 
     # ── Dependencies ──
@@ -159,6 +163,7 @@ if(NOT ATV_DOCS_ONLY)
             "configure with -DATV_USE_MPI=OFF.")
     endif()
 
+    # Always-on core + product-module gated domain sources (see AtvProductModules.cmake).
     set(ATOMIVERSE_SRCS
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
@@ -174,6 +179,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observer/trajectory_metrics.cpp
         src/cpu/recorder/thermo.cpp
         src/cpu/recorder/xyz.cpp
+        src/cpu/recorder/timing_report.cpp
         # CPU backend infrastructure
         src/cpu/frame/frame.cpp
         src/cpu/driver/backend.cpp
@@ -182,93 +188,116 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/component/zero.cpp
         src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
-        src/cpu/semiempirical/am1_parameters.cpp
-        src/cpu/semiempirical/rm1_parameters.cpp
-        src/cpu/semiempirical/nddo_density.cpp
-        src/cpu/semiempirical/nddo_fock.cpp
-        src/cpu/semiempirical/nddo_hcore.cpp
-        src/cpu/semiempirical/nddo_matrix.cpp
-        src/cpu/semiempirical/nddo_overlap.cpp
-        src/cpu/semiempirical/nddo_system.cpp
-        src/cpu/semiempirical/nddo_two_electron.cpp
-        src/cpu/semiempirical/nddo_solver.cpp
-        src/cpu/semiempirical/am1_evaluator.cpp
-        src/cpu/semiempirical/rm1_evaluator.cpp
-        src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
         # CPU task infrastructure (TaskSpec + codec + materializer + protocol)
         src/cpu/task/task_spec.cpp
         src/cpu/task/task_codec.cpp
         src/cpu/task/task_materializer.cpp
         src/cpu/task/task_protocol.cpp
         src/cpu/task/launcher_gate.cpp
-        # CPU Monte Carlo (Sampling category)
-        src/cpu/mc/translate_move.cpp
-        src/cpu/mc/transaction.cpp
-        src/cpu/mc/volume_move.cpp
-        src/cpu/mc/insert_delete_move.cpp
         src/cpu/async/analysis_executor.cpp
         src/cpu/async/async_component_base.cpp
         src/cpu/async/snapshot_publisher.cpp
-        # CPU MD components
-        src/cpu/neighbor/cell_list.cpp
-        src/cpu/md/init.cpp
-        src/cpu/md/velocity_verlet.cpp
-        src/cpu/md/nve_limit.cpp
-        src/cpu/md/nose_hoover.cpp
-        src/cpu/md/nose_hoover_npt.cpp
-        src/cpu/md/fix_langevin.cpp
-        src/cpu/md/fix_csvr.cpp
-        src/cpu/md/fix_rattle.cpp
         src/cpu/observer/virial_stress.cpp
-        src/cpu/md/barostat.cpp
-        src/cpu/md/deform.cpp
-        src/cpu/recorder/timing_report.cpp
-        # CPU vibrational-analysis (Response category) driver
-        src/cpu/vib/hessian.cpp
-        src/cpu/vib/mass_weighting.cpp
-        src/cpu/vib/hessian_diagonalizer.cpp
-        src/cpu/vib/thermochem.cpp
-        src/cpu/vib/frequency_report.cpp
-        src/cpu/vib/normal_mode_writer.cpp
-        # CPU geometry-optimization (Optimize category) driver components.
-        # The minimizer is a general optimizer (it minimizes any Force-capable
-        # evaluator, classical or QM) — it does NOT depend on ATV_BUILD_RHF.
-        src/cpu/minimizer/lbfgs.cpp
-        src/cpu/minimizer/lbfgs_history.cpp
-        src/cpu/replica/replica_expansion.cpp
-        src/cpu/path/neb.cpp
-        src/cpu/path/remd.cpp
-        src/cpu/bias/distance_cv.cpp
-        src/cpu/bias/harmonic_bias.cpp
-        src/cpu/minimizer/cg.cpp
-        src/cpu/minimizer/trajectory_writer.cpp
-        src/cpu/minimizer/opt_log.cpp
-        src/cpu/minimizer/final_geometry.cpp
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/comm/atom_pack.cpp
         src/cpu/comm/bcast_frame.cpp
         src/cpu/comm/halo_exchange.cpp
         src/cpu/comm/atom_migration.cpp
-        # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/comm/domain.cpp
         src/cpu/comm/reduce.cpp
         src/cpu/comm/gather.cpp
         src/cpu/comm/gather_for_io.cpp
         src/cpu/comm/rcb.cpp
+        # Direct Ewald always (no external deps); PME gated by ATV_BUILD_KSPACE below
+        src/cpu/kspace/ewald.cpp
     )
-    # CPU potentials sources — globbed so new pair/bond/angle/dihedral
-    # styles (e.g. PairMorse, BondFENE) drop in with no CMake edit.
-    # CONFIGURE_DEPENDS makes the generator re-glob when files change,
-    # at the cost of one extra stat per source per configure.
-    file(GLOB CPU_POTENTIALS_SRCS CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/src/cpu/potentials/*.cpp"
-    )
-    list(APPEND ATOMIVERSE_SRCS ${CPU_POTENTIALS_SRCS})
 
-    # CPU reciprocal-space electrostatics. Direct Ewald has no external
-    # dependency and is always built; PME needs FFTW3 and is gated behind
-    # ATV_BUILD_KSPACE (wired further down, next to the FFTW discovery).
-    list(APPEND ATOMIVERSE_SRCS src/cpu/kspace/ewald.cpp)
+    if(ATV_BUILD_SEMIEMPIRICAL)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/semiempirical/am1_parameters.cpp
+            src/cpu/semiempirical/rm1_parameters.cpp
+            src/cpu/semiempirical/nddo_density.cpp
+            src/cpu/semiempirical/nddo_fock.cpp
+            src/cpu/semiempirical/nddo_hcore.cpp
+            src/cpu/semiempirical/nddo_matrix.cpp
+            src/cpu/semiempirical/nddo_overlap.cpp
+            src/cpu/semiempirical/nddo_system.cpp
+            src/cpu/semiempirical/nddo_two_electron.cpp
+            src/cpu/semiempirical/nddo_solver.cpp
+            src/cpu/semiempirical/am1_evaluator.cpp
+            src/cpu/semiempirical/rm1_evaluator.cpp
+            src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
+        )
+    endif()
+
+    if(ATV_BUILD_MC)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/mc/translate_move.cpp
+            src/cpu/mc/transaction.cpp
+            src/cpu/mc/volume_move.cpp
+            src/cpu/mc/insert_delete_move.cpp
+        )
+    endif()
+
+    if(ATV_BUILD_NEIGHBOR)
+        list(APPEND ATOMIVERSE_SRCS src/cpu/neighbor/cell_list.cpp)
+    endif()
+
+    if(ATV_BUILD_MD)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/md/init.cpp
+            src/cpu/md/velocity_verlet.cpp
+            src/cpu/md/nve_limit.cpp
+            src/cpu/md/nose_hoover.cpp
+            src/cpu/md/nose_hoover_npt.cpp
+            src/cpu/md/fix_langevin.cpp
+            src/cpu/md/fix_csvr.cpp
+            src/cpu/md/fix_rattle.cpp
+            src/cpu/md/barostat.cpp
+            src/cpu/md/deform.cpp
+        )
+    endif()
+
+    if(ATV_BUILD_VIB)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/vib/hessian.cpp
+            src/cpu/vib/mass_weighting.cpp
+            src/cpu/vib/hessian_diagonalizer.cpp
+            src/cpu/vib/thermochem.cpp
+            src/cpu/vib/frequency_report.cpp
+            src/cpu/vib/normal_mode_writer.cpp
+        )
+    endif()
+
+    if(ATV_BUILD_MINIMIZER)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/minimizer/lbfgs.cpp
+            src/cpu/minimizer/lbfgs_history.cpp
+            src/cpu/minimizer/cg.cpp
+            src/cpu/minimizer/trajectory_writer.cpp
+            src/cpu/minimizer/opt_log.cpp
+            src/cpu/minimizer/final_geometry.cpp
+        )
+    endif()
+
+    if(ATV_BUILD_PATH)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/replica/replica_expansion.cpp
+            src/cpu/path/neb.cpp
+            src/cpu/path/remd.cpp
+            src/cpu/bias/distance_cv.cpp
+            src/cpu/bias/harmonic_bias.cpp
+        )
+    endif()
+
+    # CPU potentials — globbed so new pair/bond/angle/dihedral styles drop in.
+    if(ATV_BUILD_POTENTIALS)
+        file(GLOB CPU_POTENTIALS_SRCS CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/src/cpu/potentials/*.cpp"
+        )
+        list(APPEND ATOMIVERSE_SRCS ${CPU_POTENTIALS_SRCS})
+    endif()
+
     if(ATV_BUILD_KSPACE)
         list(APPEND ATOMIVERSE_SRCS src/cpu/kspace/pme.cpp)
     endif()
@@ -285,28 +314,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/device/timer.cu
             src/cuda/driver/driver.cu
             src/cuda/comm/multi_gpu.cu
-            src/cuda/md/velocity_verlet.cu
-            src/cuda/md/nve_limit.cu
-            src/cuda/md/fix_langevin.cu
-            src/cuda/md/nose_hoover_npt.cu
-            src/cuda/md/init.cu
-            src/cuda/md/kinetic_energy.cu
-            src/cuda/neighbor/neighbor_list.cu
-            src/cuda/neighbor/sort_and_cluster.cu
-            src/cuda/neighbor/grid.cu
-            src/cuda/neighbor/pair_search.cu
-            src/cuda/neighbor/fused_search.cu
-            src/cuda/neighbor/nlist_direct.cu
-            src/cuda/neighbor/atom_cell_sort.cu
-            src/cuda/neighbor/setup.cu
-            src/cuda/neighbor/export_pairs.cu
-            src/cuda/minimizer/sd.cu
-            src/cuda/minimizer/cg.cu
-            src/cuda/minimizer/lbfgs.cu
-            src/cuda/minimizer/conv_check.cu
-            src/cuda/md/nose_hoover.cu
-            src/cuda/md/deform.cu
-            src/cuda/md/barostat.cu
             src/cuda/observer/stress.cu
             src/cuda/scf/hamiltonian.cu
             src/cuda/scf/eigen_solver.cu
@@ -314,22 +321,53 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/scf/convergence_check.cu
             src/cuda/scf/scf_solver.cu
             src/cuda/scf/scf_evaluator.cu
+            src/cuda/kspace/ewald.cu
         )
-        # CUDA potentials sources — globbed; same rationale as CPU.
-        file(GLOB CUDA_POTENTIALS_SRCS CONFIGURE_DEPENDS
-            "${CMAKE_SOURCE_DIR}/src/cuda/potentials/*.cu"
-        )
-        list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
-        # CUDA reciprocal-space: direct Ewald always; PME (cuFFT) gated.
-        list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/ewald.cu)
+        if(ATV_BUILD_MD)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cuda/md/velocity_verlet.cu
+                src/cuda/md/nve_limit.cu
+                src/cuda/md/fix_langevin.cu
+                src/cuda/md/nose_hoover_npt.cu
+                src/cuda/md/init.cu
+                src/cuda/md/kinetic_energy.cu
+                src/cuda/md/nose_hoover.cu
+                src/cuda/md/deform.cu
+                src/cuda/md/barostat.cu
+            )
+        endif()
+        if(ATV_BUILD_NEIGHBOR)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cuda/neighbor/neighbor_list.cu
+                src/cuda/neighbor/sort_and_cluster.cu
+                src/cuda/neighbor/grid.cu
+                src/cuda/neighbor/pair_search.cu
+                src/cuda/neighbor/fused_search.cu
+                src/cuda/neighbor/nlist_direct.cu
+                src/cuda/neighbor/atom_cell_sort.cu
+                src/cuda/neighbor/setup.cu
+                src/cuda/neighbor/export_pairs.cu
+            )
+        endif()
+        if(ATV_BUILD_MINIMIZER)
+            list(APPEND ATOMIVERSE_SRCS
+                src/cuda/minimizer/sd.cu
+                src/cuda/minimizer/cg.cu
+                src/cuda/minimizer/lbfgs.cu
+                src/cuda/minimizer/conv_check.cu
+            )
+        endif()
+        if(ATV_BUILD_POTENTIALS)
+            file(GLOB CUDA_POTENTIALS_SRCS CONFIGURE_DEPENDS
+                "${CMAKE_SOURCE_DIR}/src/cuda/potentials/*.cu"
+            )
+            list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
+        endif()
         if(ATV_BUILD_KSPACE)
             list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/pme.cu)
         endif()
     else()
-        # CUDA-free build still links against cuda::Timer (a CUDA-free PIMPL
-        # facade held by std::unique_ptr in facade/driver.h). The full impl
-        # lives in src/cuda/device/timer.cu; substitute an inert stub so CPU
-        # Driver instantiations resolve their destructors.
+        # CUDA-free build still links against cuda::Timer (PIMPL in facade/driver.h).
         list(APPEND ATOMIVERSE_SRCS src/cuda/device/timer_cpu_stub.cpp)
     endif()
 
@@ -337,6 +375,7 @@ if(NOT ATV_DOCS_ONLY)
     target_compile_definitions(atomiverse PRIVATE
         ATV_MOLRS_CXX_API_VERSION=${ATV_MOLRS_CXX_API_VERSION}
         ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
+    atv_apply_product_module_defs(atomiverse)
 
     if(ATV_BUILD_RHF)
         target_sources(atomiverse PRIVATE
@@ -779,13 +818,20 @@ if(NOT ATV_DOCS_ONLY)
         list(APPEND CMAKE_PREFIX_PATH "${NB_CMAKE_DIR}")
         find_package(nanobind CONFIG REQUIRED)
 
-        nanobind_add_module(_atomiverse
-            python/src/bindings/bind.cpp
-            python/src/bindings/bind_md.cpp
-            python/src/bindings/bind_minimizer.cpp
-            python/src/bindings/bind_pw.cpp
-            python/src/bindings/bind_semiempirical.cpp
-        )
+        set(_ATV_NB_SRCS python/src/bindings/bind.cpp)
+        if(ATV_BUILD_MD)
+            list(APPEND _ATV_NB_SRCS python/src/bindings/bind_md.cpp)
+        endif()
+        if(ATV_BUILD_MINIMIZER)
+            list(APPEND _ATV_NB_SRCS python/src/bindings/bind_minimizer.cpp)
+        endif()
+        if(ATV_BUILD_PW)
+            list(APPEND _ATV_NB_SRCS python/src/bindings/bind_pw.cpp)
+        endif()
+        if(ATV_BUILD_SEMIEMPIRICAL)
+            list(APPEND _ATV_NB_SRCS python/src/bindings/bind_semiempirical.cpp)
+        endif()
+        nanobind_add_module(_atomiverse ${_ATV_NB_SRCS})
         target_link_libraries(_atomiverse PRIVATE atomiverse)
         target_include_directories(_atomiverse PRIVATE include python/src/bindings)
         if(ATV_BUILD_PW)
