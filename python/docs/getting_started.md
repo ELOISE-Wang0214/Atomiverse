@@ -2,23 +2,72 @@
 
 ## Installation
 
-**From source (development):**
+Atomiverse uses a **two-phase** Python install: a pure-Python package first,
+then an optional on-demand native build.
+
+### Phase 1 — pure Python package
 
 ```bash
-git clone https://github.com/molcrafts/Atomiverse
-cd Atomiverse
-pip install --no-build-isolation -ve python/
+pip install atomiverse
+# or, from a source checkout (development):
+#   pip install -e python/
 ```
 
-Requirements: Python ≥ 3.9, NumPy, C++17 compiler, CMake ≥ 3.18, and a
-Rust toolchain. The wheel has an exact dependency on
-`molcrafts-molrs==0.7.0`, whose frame schema version is 2; a different molrs
-release is rejected rather than translated.
+This installs the Python API shell and CLI only — **no C++ compile**, no
+prebuilt `_atomiverse` binary. Requires Python ≥ 3.9, NumPy, and
+`molcrafts-molrs==0.7.0` (frame schema v2; other molrs releases are rejected).
 
-Optional backends at build time:
+After phase 1 you can run:
 
-- `CMAKE_ARGS='-DATV_BUILD_PW=ON'` — explicit plane-wave DFT solver (needs FFTW3).
-- `CMAKE_ARGS='-DATV_BUILD_CUDA=ON'` — CUDA backend (GPU host only).
+```bash
+python -m atomiverse          # shows version + install guidance
+python -m atomiverse status  # no native build yet
+```
+
+Importing compute symbols (`atomiverse.MD`, …) without a native extension
+raises `ImportError` pointing at phase 2.
+
+### Phase 2 — on-demand native build
+
+```bash
+python -m atomiverse install --md
+python -m atomiverse install --md mpi:yes --pw --global real_storage:double
+python -m atomiverse install --config atomiverse-build.toml
+```
+
+The CLI fetches source matching the **installed package version** (default
+GitHub tag tarball; override with `--src PATH` or `--url URL`), runs
+**scikit-build** (`pip install --force-reinstall --no-deps` + CMake defines),
+and writes a single `_atomiverse` extension into the current environment.
+Re-running install in the same env **overwrites** that binary (last install
+wins).
+
+**Config modes are mutually exclusive** (mixing fails with a non-zero exit):
+
+| Mode | Example | Notes |
+|------|---------|--------|
+| Inline modules | `install --md mpi:yes --pw` | `--<module> [k:v,…]`; cross-module via `--global k:v` |
+| TOML file | `install --config path.toml` | `[modules]`, per-module tables, `[global]`, optional `[cmake.unbound]` |
+
+Illegal: `install --config x.toml --md` (XOR).
+
+**Modules (CLI names):** `md`, `minimize`, `mc`, `evaluate`, `vib`, `path`,
+`pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`, `neighbor`.  
+Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`
+(CMake DAG). **`--hf` is rejected** until SCF Python bindings land.
+
+**Version lock:** source tree `python/pyproject.toml` version must equal
+`importlib.metadata.version("atomiverse")`. Mismatch → reject before compile.
+
+**Dry-run (no compile):**
+
+```bash
+python -m atomiverse install --md --src /path/to/Atomiverse --dry-run
+```
+
+**Developer path (optional):** monorepo scikit-build with CMake still works
+for contributors (`pip install -e python/` with native rebuild when needed).
+End-user primary path is pure pip + `python -m atomiverse install`.
 
 ## What this package exposes (and what it doesn't)
 

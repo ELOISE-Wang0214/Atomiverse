@@ -82,6 +82,14 @@ if(Python3_Interpreter_FOUND)
         COMMENT "python pure_import: soft import without C++ extension"
         VERBATIM)
     add_dependencies(regressions run_reg_python_pure_import)
+
+    add_custom_target(run_reg_python_install_cli
+        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/python/install_cli/reg_install_cli.sh
+                ${Python3_EXECUTABLE}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/install_cli
+        COMMENT "python install_cli: help / mutual exclusion / hf / version lock"
+        VERBATIM)
+    add_dependencies(regressions run_reg_python_install_cli)
 endif()
 
 # ── launcher parity (mpi-launcher-embedded-python-04) ─────────────────────

@@ -12,8 +12,10 @@ Atomiverse is a C++/CUDA molecular-simulation engine. One shared
   grid-based Hartree/XC and GTH pseudopotentials (experimental).
 - **Ab-initio molecular dynamics** — the MD loop driven by SCF forces.
 
-Everything in this README and in `docs/` targets the **C++ API**. (A Python
-wheel exists under `python/` but is out of scope here.)
+Everything in this README and in `docs/` targets the **C++ API**. For the
+Python package (pure `pip install` + on-demand native build via
+`python -m atomiverse install`), see
+[`python/docs/getting_started.md`](python/docs/getting_started.md).
 
 ## Quickstart: build and run your first calculation
 
