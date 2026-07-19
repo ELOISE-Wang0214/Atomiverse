@@ -26,13 +26,22 @@ else:
     MD = InitVelocity = NeighborList = LJCut = None  # type: ignore[misc, assignment]
 
 
+# Pure-Python tests that must run without the C++ extension.
+_PURE_TEST_FILES = frozenset(
+    {
+        "test_pure_import.py",
+        "test_install_cli.py",
+    }
+)
+
+
 def pytest_collection_modifyitems(config, items):
     """Skip compute-suite tests when the C++ extension is absent."""
     if _HAS_EXT:
         return
     skip = pytest.mark.skip(reason="C++ extension (_atomiverse) not installed")
     for item in items:
-        if item.fspath.basename == "test_pure_import.py":
+        if item.fspath.basename in _PURE_TEST_FILES:
             continue
         item.add_marker(skip)
 

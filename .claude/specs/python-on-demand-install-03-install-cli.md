@@ -1,7 +1,7 @@
 ---
 slug: python-on-demand-install-03-install-cli
 title: on-demand install CLI
-status: approved
+status: code-complete
 grilled: true
 created: 2026-07-19
 chain: python-on-demand-install
@@ -85,14 +85,14 @@ mpi = true
 
 ## Tasks
 
-- [ ] Write failing tests for InstallConfig resolve, mutual exclusion, HF/empty/bound-`-D` guards (`python/tests/test_install_cli.py`)
-- [ ] Implement binding table, TOML/inline parse, auto-enable closure, and `resolve_defines` in `python/src/atomiverse/cli/config.py`
-- [ ] Implement SourceSpec (importlib version, default tarball, `--src`/`--url`, pyproject version gate) in `python/src/atomiverse/cli/source.py`
-- [ ] Implement install orchestration (`pip` + cmake.define, always `ATV_BUILD_PYTHON=ON`) in `python/src/atomiverse/cli/install.py`
-- [ ] Implement status subcommand in `python/src/atomiverse/cli/status.py`
-- [ ] Wire `python -m atomiverse` argparse entry (`install` / `status`) in `__main__.py` and `cli/main.py`
-- [ ] Add regression example `regressions/python/install_cli_dryrun/reg_install_cli_dryrun.py` (no C++ compile)
-- [ ] Run full check + test suite
+- [x] Write failing tests for InstallConfig resolve, mutual exclusion, HF/empty/bound-`-D` guards (`python/tests/test_install_cli.py`)
+- [x] Implement binding table, TOML/inline parse, auto-enable closure, and `resolve_defines` in `python/src/atomiverse/cli/config.py`
+- [x] Implement SourceSpec (importlib version, default tarball, `--src`/`--url`, pyproject version gate) in `python/src/atomiverse/cli/source.py`
+- [x] Implement install orchestration (`pip` + cmake.define, always `ATV_BUILD_PYTHON=ON`) in `python/src/atomiverse/cli/install.py`
+- [x] Implement status subcommand in `python/src/atomiverse/cli/status.py`
+- [x] Wire `python -m atomiverse` argparse entry (`install` / `status`) in `__main__.py` and `cli/main.py`
+- [x] Add regression example `regressions/python/install_cli_dryrun/reg_install_cli_dryrun.py` (no C++ compile)
+- [x] Run full check + test suite
 
 ## Testing strategy
 
