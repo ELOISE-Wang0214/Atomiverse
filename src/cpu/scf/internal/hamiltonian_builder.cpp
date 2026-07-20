@@ -6,7 +6,8 @@
 #include <xtensor/reducers/xreducer.hpp>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/scf/operators.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
 
 namespace ATV {
@@ -19,8 +20,8 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                                  int n_angular,
                                  const MolecularGrid* fixed_grid) {
     if (!integrals.shells.empty()) {
-        sp_block_ = build_shell_block_pair_list(integrals);
-        sp_ = build_shell_pair_list(integrals);
+        sp_block_ = ShellBlockPairList{integrals};
+        sp_ = ShellPairList{integrals};
     }
 
     if (!is_hf && !integrals.atoms.empty()) {
@@ -61,17 +62,16 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         // Falls back to direct SCF when ERI is not stored.
         RealMatrix G;
         if (integrals.ERI.size() > 0) {
-            build_coulomb_exchange_fused(P_alpha, integrals.ERI, n, G);
+            integrals.coulomb_exchange_fused(P_alpha, G);
         } else {
-            build_g_rhf_direct_block(sp_block_, P_alpha, G);
+            sp_block_.g_rhf(P_alpha, G);
         }
         out.F_alpha = Hcore + G;
         out.F_beta = out.F_alpha;
     } else if (!restricted && is_hf) {
         RealMatrix P_total = P_alpha + P_beta;
         RealMatrix K_alpha, K_beta;
-        build_jk_uhf_direct(sp_, P_total, P_alpha, P_beta, out.J, K_alpha,
-                            K_beta);
+        sp_.jk_uhf(P_total, P_alpha, P_beta, out.J, K_alpha, K_beta);
         out.F_alpha = Hcore + out.J - K_alpha;
         out.F_beta = Hcore + out.J - K_beta;
     } else {
@@ -107,7 +107,7 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         if (is_hybrid && restricted) {
             // Restricted KS global hybrid.
             //
-            // Convention pin: build_k_direct_block returns the full
+            // Convention pin: ShellBlockPairList::k returns the full
             // exchange matrix K with the RHF normalization
             // F = Hcore + J - 0.5*K. The "bare K" (the matrix that, as
             // F = Hcore + J - K, reproduces pure HF) is K_bare = 0.5*K.
@@ -118,28 +118,28 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
 
             if (half_alpha == double(0)) {
                 // alpha_hf == 0 regression path (ac-004). J is built with
-                // the SAME build_j_direct call as the pure-KS branch and
+                // the SAME ShellPairList::j call as the pure-KS branch and
                 // the Fock / energy arithmetic is the byte-for-byte
                 // identical expression — so the hybrid path collapses
                 // exactly onto the pre-existing pure-DFT result. K is still
                 // built (the hybrid branch is genuinely exercised) but the
                 // 0.5*0*K term is omitted to avoid any -0.0/+0.0 artifact.
-                build_j_direct(sp_, P_total_J, out.J);
+                sp_.j(P_total_J, out.J);
                 RealMatrix K;
-                build_k_direct_block(sp_block_, P_total_J, K);
+                sp_block_.k(P_total_J, K);
                 out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
                 out.F_beta = out.F_alpha;
                 out.E_exact_exchange = double(0);
             } else {
                 // Production B3LYP / PBE0. Both J and K come from the fast
-                // shell-block builders: build_g_rhf_direct_block gives
-                // G = J - 0.5*K, build_k_direct_block gives K, hence
+                // shell-block builders: ShellBlockPairList::g_rhf gives
+                // G = J - 0.5*K, ShellBlockPairList::k gives K, hence
                 // J = G + 0.5*K. The Fock matrix is then
                 //   F = Hcore + J - 0.5*alpha_hf*K + Vxc
                 //     = Hcore + G + 0.5*(1 - alpha_hf)*K + Vxc.
                 RealMatrix G, K;
-                build_g_rhf_direct_block(sp_block_, P_total_J, G);
-                build_k_direct_block(sp_block_, P_total_J, K);
+                sp_block_.g_rhf(P_total_J, G);
+                sp_block_.k(P_total_J, K);
                 out.J = G + double(0.5) * K; // Coulomb-only, for E_J
                 out.F_alpha = Hcore + G
                               + double(0.5) * (double(1) - alpha_hf) * K
@@ -155,8 +155,8 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             // deliverable's scope, but kept correct: per-spin exchange via
             // the AO-level UHF builder. F^sigma = Hcore + J - alpha_hf*K^sigma.
             RealMatrix K_alpha, K_beta;
-            build_jk_uhf_direct(sp_, P_total_J, P_alpha_xc, P_beta_xc, out.J,
-                                K_alpha, K_beta);
+            sp_.jk_uhf(P_total_J, P_alpha_xc, P_beta_xc, out.J, K_alpha,
+                       K_beta);
             out.F_alpha = Hcore + out.J - alpha_hf * K_alpha + xc.Vxc_alpha;
             out.F_beta = Hcore + out.J - alpha_hf * K_beta + xc.Vxc_beta;
             const double E_K = double(-0.5)
@@ -166,7 +166,7 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         } else {
             // Pure KS: Coulomb only, no exchange matrix. Byte-for-byte
             // identical to the pre-hybrid path.
-            build_j_direct(sp_, P_total_J, out.J);
+            sp_.j(P_total_J, out.J);
             out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
             out.F_beta = Hcore + out.J + xc.Vxc_beta;
         }

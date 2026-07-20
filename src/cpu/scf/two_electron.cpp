@@ -1,7 +1,8 @@
 /// @file cpu/scf/two_electron.cpp
-/// @brief Dense ERI tensor assembly — thin wrapper over native::eri.
+/// @brief Dense ERI tensor assembly (IntegralPack::eri_dense) — thin wrapper
+///        over native::eri.
 
-#include "atomiverse/cpu/scf/internal/two_electron.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 
 #include <array>
 #include <vector>
@@ -13,7 +14,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-xt::xtensor<double, 4> build_eri_dense(const ShellList& shells) {
+xt::xtensor<double, 4> IntegralPack::eri_dense(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 4> ERI = xt::zeros<double>({n, n, n, n});
 

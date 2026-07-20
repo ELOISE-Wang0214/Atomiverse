@@ -1,11 +1,13 @@
 /// @file cpu/scf/one_electron.cpp
-/// @brief Native-engine implementations of the one-electron integral builders.
+/// @brief Native-engine implementations of the one-electron integral kernels
+///        (IntegralPack private static members) + nuclear repulsion energy.
 
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 
 #include <cmath>
 
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -71,7 +73,7 @@ void for_each_canonical_block_pair(
 
 } // anonymous namespace
 
-xt::xtensor<double, 2> build_overlap(const ShellList& shells) {
+xt::xtensor<double, 2> IntegralPack::overlap(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 2> S = xt::zeros<double>({n, n});
     const auto blocks = blocks_from_shells(shells.shells);
@@ -82,7 +84,7 @@ xt::xtensor<double, 2> build_overlap(const ShellList& shells) {
     return S;
 }
 
-xt::xtensor<double, 2> build_kinetic(const ShellList& shells) {
+xt::xtensor<double, 2> IntegralPack::kinetic(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 2> T = xt::zeros<double>({n, n});
     const auto blocks = blocks_from_shells(shells.shells);
@@ -93,8 +95,9 @@ xt::xtensor<double, 2> build_kinetic(const ShellList& shells) {
     return T;
 }
 
-xt::xtensor<double, 2> build_nuclear_attraction(const ShellList& shells,
-                                                const AtomList& atoms) {
+xt::xtensor<double, 2>
+IntegralPack::nuclear_attraction(const ShellList& shells,
+                                 const AtomList& atoms) {
     const int n = shells.n_basis;
     const int natm = static_cast<int>(atoms.atoms.size());
     xt::xtensor<double, 2> V = xt::zeros<double>({n, n});

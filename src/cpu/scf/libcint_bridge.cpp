@@ -18,6 +18,7 @@ extern "C" {
 #include <array>
 #include <cmath>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace ATV {
@@ -91,7 +92,7 @@ void append_shell(LibcintContext& ctx, int atom_index, int l,
 
 } // namespace
 
-LibcintContext build_libcint_context(const Frame& frame) {
+LibcintContext::LibcintContext(const Frame& frame) {
     LibcintContext ctx;
     ctx.natm = static_cast<int>(frame.nlocal());
     ctx.atm.resize(ctx.natm * ATM_SLOTS, 0);
@@ -136,7 +137,7 @@ LibcintContext build_libcint_context(const Frame& frame) {
         }
     }
 
-    return ctx;
+    *this = std::move(ctx);
 }
 
 } // namespace scf

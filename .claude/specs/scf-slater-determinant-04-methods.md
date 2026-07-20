@@ -1,7 +1,7 @@
 ---
 title: SCF Slater 行列式 · 04 cpu/scf build_* 自由函数收编为成员方法 + no_factory 通配门禁
 slug: scf-slater-determinant-04-methods
-status: approved
+status: code-complete
 chain: scf-slater-determinant
 link: 04/04
 depends: scf-slater-determinant-01-type, scf-slater-determinant-02-rehome, scf-slater-determinant-03-unbag
@@ -101,16 +101,16 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write the RED state: update tests/cpu/scf/test_integrals.cpp:389-394 and tests/cpu/scf/test_rys_eri.cpp:187,197,211,222,246,261 to member/constructor spellings and drop the operators.h include (build fails until members exist; parity assertions unchanged, no new fixture)
-- [ ] Implement ShellPairList / ShellBlockPairList constructors from (IntegralPack, thr) in include/atomiverse/cpu/scf/internal/shell_pair.h + src/cpu/scf/shell_pair.cpp, keeping default ctors and moving kernel bodies verbatim via the `out` + move-assign idiom
-- [ ] Implement the five pair-list Fock members (g_rhf / jk_uhf / j on ShellPairList; g_rhf / k on ShellBlockPairList) plus IntegralPack::coulomb_exchange_fused in src/cpu/scf/operators.cpp with `*this`-alias verbatim bodies; declarations into internal/shell_pair.h and internal/integrals.h; turn include/atomiverse/cpu/scf/operators.h into the #error shim
-- [ ] Implement IntegralPack private static members overlap / kinetic / nuclear_attraction / eri_dense (declarations in internal/integrals.h; definitions stay in src/cpu/scf/one_electron.cpp and src/cpu/scf/two_electron.cpp); update src/cpu/scf/integrals.cpp:49-57 call spellings; delete include/atomiverse/cpu/scf/internal/two_electron.h; refresh doc snippets in internal/one_electron.h and integrals.cpp
-- [ ] Implement LibcintContext::LibcintContext(const Frame&) in include/atomiverse/cpu/scf/libcint_bridge.h + src/cpu/scf/libcint_bridge.cpp under ATV_HAS_LIBCINT, keeping the default ctor
-- [ ] Update production call sites: src/cpu/scf/internal/hamiltonian_builder.cpp:22-23,64,66,73,127,129,141-142,158,169 and src/cpu/scf/integral_derivatives.cpp:689,1001 to member/constructor spellings only
-- [ ] Add doxygen (@brief/@param with units/@return) on every new member method and constructor per doc.style
-- [ ] Verify verbatim kernel move: git diff review of the six operator kernels + two pair-list builders + four integral builders + libcint bridge shows zero token changes inside loop/contraction bodies beyond signature, `*this`-alias line, indentation, and doc comments
-- [ ] Extend tests/architecture/no_factory_scrub.sh: 13-name tree-wide blacklist, cpu/scf-scoped `build_[a-z_0-9]*[[:space:]]*\(` wildcard with member-access/comment filters and the commented exemption whitelist (grid/minao/basis_set/shell_to_atom + linalg density.h scoping note); verify PASS on the completed tree and FAIL on an injected old-name probe
-- [ ] Run full check + test suite (`ATV_BUILD_HF=ON`, libcint 配置若可用则一并), recording test_integrals / test_rys_eri wall time against a pre-change baseline on the same node
+- [x] Write the RED state: update tests/cpu/scf/test_integrals.cpp:389-394 and tests/cpu/scf/test_rys_eri.cpp:187,197,211,222,246,261 to member/constructor spellings and drop the operators.h include (build fails until members exist; parity assertions unchanged, no new fixture)
+- [x] Implement ShellPairList / ShellBlockPairList constructors from (IntegralPack, thr) in include/atomiverse/cpu/scf/internal/shell_pair.h + src/cpu/scf/shell_pair.cpp, keeping default ctors and moving kernel bodies verbatim via the `out` + move-assign idiom
+- [x] Implement the five pair-list Fock members (g_rhf / jk_uhf / j on ShellPairList; g_rhf / k on ShellBlockPairList) plus IntegralPack::coulomb_exchange_fused in src/cpu/scf/operators.cpp with `*this`-alias verbatim bodies; declarations into internal/shell_pair.h and internal/integrals.h; turn include/atomiverse/cpu/scf/operators.h into the #error shim
+- [x] Implement IntegralPack private static members overlap / kinetic / nuclear_attraction / eri_dense (declarations in internal/integrals.h; definitions stay in src/cpu/scf/one_electron.cpp and src/cpu/scf/two_electron.cpp); update src/cpu/scf/integrals.cpp:49-57 call spellings; delete include/atomiverse/cpu/scf/internal/two_electron.h; refresh doc snippets in internal/one_electron.h and integrals.cpp
+- [x] Implement LibcintContext::LibcintContext(const Frame&) in include/atomiverse/cpu/scf/libcint_bridge.h + src/cpu/scf/libcint_bridge.cpp under ATV_HAS_LIBCINT, keeping the default ctor
+- [x] Update production call sites: src/cpu/scf/internal/hamiltonian_builder.cpp:22-23,64,66,73,127,129,141-142,158,169 and src/cpu/scf/integral_derivatives.cpp:689,1001 to member/constructor spellings only
+- [x] Add doxygen (@brief/@param with units/@return) on every new member method and constructor per doc.style
+- [x] Verify verbatim kernel move: git diff review of the six operator kernels + two pair-list builders + four integral builders + libcint bridge shows zero token changes inside loop/contraction bodies beyond signature, `*this`-alias line, indentation, and doc comments
+- [x] Extend tests/architecture/no_factory_scrub.sh: 13-name tree-wide blacklist, cpu/scf-scoped `build_[a-z_0-9]*[[:space:]]*\(` wildcard with member-access/comment filters and the commented exemption whitelist (grid/minao/basis_set/shell_to_atom + linalg density.h scoping note); verify PASS on the completed tree and FAIL on an injected old-name probe
+- [x] Run full check + test suite (`ATV_BUILD_HF=ON`, libcint 配置若可用则一并), recording test_integrals / test_rys_eri wall time against a pre-change baseline on the same node
 
 ## Testing strategy
 

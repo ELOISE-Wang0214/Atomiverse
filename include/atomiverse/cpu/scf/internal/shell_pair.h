@@ -4,13 +4,14 @@
 /// Pre-computes Schwarz bounds Q_ij = sqrt((ij|ij)) for all canonical pairs (i>=j).
 /// Used by direct-SCF Fock builders to skip negligible shell-quartet contributions.
 ///
-/// @see build_shell_pair_list
-/// @see build_g_rhf_direct, build_jk_uhf_direct, build_j_direct
+/// @see ShellPairList::ShellPairList(const IntegralPack&, double)
+/// @see ShellPairList::g_rhf, ShellPairList::jk_uhf, ShellPairList::j
 #pragma once
 
 #include <array>
 #include <vector>
 
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -39,18 +40,56 @@ struct ShellPairList {
         shell_data;  ///< Backing [α..., c...] per shell (length 2*n_prim).
     int n_basis = 0; ///< Total basis functions.
     double threshold = 1e-10; ///< Schwarz screening threshold.
-};
 
-/// @brief Build the canonical shell pair list from an IntegralPack.
-///
-/// Computes Q_ij = sqrt((ij|ij)) for all i >= j, retaining pairs where Q_ij > thr.
-/// The returned list owns all shell data (safe to use after the IntegralPack is destroyed).
-///
-/// @param pack Source integral pack (uses pack.shells, pack.shell_data, pack.atoms).
-/// @param thr  Cauchy-Schwarz screening threshold [default 1e-10].
-/// @return ShellPairList with screened pairs and owned data.
-ShellPairList build_shell_pair_list(const IntegralPack& pack,
-                                    double thr = 1e-10);
+    /// @brief Empty pair list (fields filled by the caller or left default).
+    ShellPairList() = default;
+
+    /// @brief Build the canonical shell pair list from an IntegralPack.
+    ///
+    /// Computes Q_ij = sqrt((ij|ij)) [Hartree^(1/2)] for all i >= j, retaining
+    /// pairs where Q_ij > thr. The list owns all shell data (safe to use after
+    /// the IntegralPack is destroyed).
+    ///
+    /// @param pack Source integral pack (uses pack.shells, pack.shell_data,
+    ///             pack.atoms).
+    /// @param thr  Cauchy-Schwarz screening threshold [Hartree^(1/2),
+    ///             default 1e-10].
+    explicit ShellPairList(const IntegralPack& pack, double thr = 1e-10);
+
+    /// @brief Direct RHF G = J - 0.5*K via on-the-fly ERI with 8-fold symmetry
+    ///        and Cauchy-Schwarz screening.
+    ///
+    /// Evaluates canonical shell quartets (pair_ij >= pair_kl, i>=j, k>=l) once
+    /// and scatters contributions to G using full 8-fold permutation symmetry.
+    /// Thread-local reduction ensures race-free OpenMP parallelism.
+    ///
+    /// @param P_total Total RHF density matrix P = 2 * P_occ [n x n, unitless].
+    /// @param[out] G  Fused G = J - 0.5*K [n x n, Hartree].
+    void g_rhf(const RealMatrix& P_total, RealMatrix& G) const;
+
+    /// @brief Direct UHF J, K_alpha, K_beta via one on-the-fly ERI pass.
+    ///
+    /// Computes three matrices in a single quartet loop:
+    ///   J       from P_total = P_alpha + P_beta  (Coulomb)
+    ///   K_alpha from P_alpha                     (alpha exchange)
+    ///   K_beta  from P_beta                      (beta exchange)
+    ///
+    /// @param P_total  Total density P_alpha + P_beta [n x n, unitless].
+    /// @param P_alpha  Alpha spin density [n x n, unitless].
+    /// @param P_beta   Beta spin density [n x n, unitless].
+    /// @param[out] J       Coulomb matrix [n x n, Hartree].
+    /// @param[out] K_alpha Alpha exchange matrix [n x n, Hartree].
+    /// @param[out] K_beta  Beta exchange matrix [n x n, Hartree].
+    void jk_uhf(const RealMatrix& P_total, const RealMatrix& P_alpha,
+                const RealMatrix& P_beta, RealMatrix& J, RealMatrix& K_alpha,
+                RealMatrix& K_beta) const;
+
+    /// @brief Direct Coulomb-only J matrix for UKS (exchange via XC functional).
+    ///
+    /// @param P_total Total density P_alpha + P_beta [n x n, unitless].
+    /// @param[out] J  Coulomb matrix [n x n, Hartree].
+    void j(const RealMatrix& P_total, RealMatrix& J) const;
+};
 
 // ── Shell-block pair list (libcint/PySCF approach) ────────────────────
 
@@ -79,19 +118,57 @@ struct ShellBlockPairList {
         block_data;  ///< Backing [α..., c...] per block (length 2*n_prim).
     int n_basis = 0; ///< Total AO basis functions.
     double threshold = 1e-10; ///< Schwarz screening threshold.
-};
 
-/// @brief Build the canonical shell-block pair list from an IntegralPack.
-///
-/// Groups consecutive AO-level shells into shell blocks, then computes
-/// block-level Schwarz bounds Q_{AB} = sqrt(max_{ia,ib} (ia ib|ia ib))
-/// using eri_block().  Pairs with Q_{AB} ≤ thr are dropped.
-///
-/// @param pack Source integral pack.
-/// @param thr  Cauchy-Schwarz screening threshold [default 1e-10].
-/// @return ShellBlockPairList with owned data.
-ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
-                                               double thr = 1e-10);
+    /// @brief Empty block pair list (fields filled by the caller or left
+    ///        default).
+    ShellBlockPairList() = default;
+
+    /// @brief Build the canonical shell-block pair list from an IntegralPack.
+    ///
+    /// Groups consecutive AO-level shells into shell blocks, then computes
+    /// block-level Schwarz bounds Q_{AB} = sqrt(max_{ia,ib} (ia ib|ia ib))
+    /// [Hartree^(1/2)] using eri_block().  Pairs with Q_{AB} ≤ thr are dropped.
+    ///
+    /// @param pack Source integral pack.
+    /// @param thr  Cauchy-Schwarz screening threshold [Hartree^(1/2),
+    ///             default 1e-10].
+    explicit ShellBlockPairList(const IntegralPack& pack, double thr = 1e-10);
+
+    /// @brief Shell-block direct RHF G = J - 0.5*K (libcint/PySCF approach).
+    ///
+    /// Iterates canonical shell-block pair quartets (block_left >= block_right)
+    /// and calls native::eri_block() to evaluate all AO ERIs within a
+    /// shell-block at once, amortizing Boys function and R-table computation.
+    ///
+    /// Key performance gain over the AO-level ShellPairList::g_rhf:
+    ///   For a (pp|pp) shell-block quartet with 3 primitives (STO-3G), this
+    ///   evaluates 81 primitive quartets × (1 Boys+R-table per quartet + 81
+    ///   cheap inner angular loops) vs 81×81 = 6561 full eri_prim_md() calls.
+    ///
+    /// OpenMP parallelism via thread-local G reduction (same as the AO-level
+    /// variant). Scatter uses the same 8-fold ERI symmetry with the exchange
+    /// mirror-permutation fix from the AO-level ShellPairList::g_rhf.
+    ///
+    /// @param P_total Total RHF density matrix P = 2*P_occ [n x n, unitless].
+    /// @param[out] G  Fused G = J - 0.5*K [n x n, Hartree].
+    void g_rhf(const RealMatrix& P_total, RealMatrix& G) const;
+
+    /// @brief Shell-block direct exchange-only matrix K (KS-hybrid path).
+    ///
+    /// Builds the full exchange matrix `K_ij = sum_kl P_kl (ik|jl)` (NO 0.5
+    /// factor, no Coulomb) using the same shell-block ERI amortization as
+    /// `g_rhf`. `K` is normalized so that the pure RHF Fock is
+    /// `F = Hcore + J - 0.5*K`; a KS global hybrid uses
+    /// `F = Hcore + J - 0.5*alpha_hf*K + Vxc`.
+    ///
+    /// Used by `HamiltonianBuilder` for the B3LYP / PBE0 restricted hybrid
+    /// Fock build. Far faster than the AO-level ShellPairList::jk_uhf exchange
+    /// path on benzene-scale systems (shell-block Boys/R-table amortization).
+    ///
+    /// @param P Total RHF density matrix P = 2*P_occ [n x n, unitless].
+    /// @param[out] K Exchange matrix [n x n, Hartree], symmetric, no 0.5 factor.
+    void k(const RealMatrix& P, RealMatrix& K) const;
+};
 
 /// @brief Group a flat vector of AO-level `native::Shell` entries into
 ///        libcint-style l-blocks without materializing Schwarz bounds.

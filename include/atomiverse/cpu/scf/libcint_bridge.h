@@ -29,17 +29,23 @@ struct LibcintContext {
     int natm = 0;                   ///< Number of atoms.
     int nshells = 0;                ///< Number of libcint shells.
     int nao = 0;                    ///< Number of cartesian AOs (s/p only).
-};
 
-/// @brief Build libcint atm/bas/env arrays for the molecule.
-///
-/// Reads the generic `basis_data::sto3g()` table and emits one libcint bas
-/// entry per shell (s, then s, then p for 2nd-row atoms). Because the basis
-/// only uses l <= 1, cartesian and spherical AO dimensions match.
-///
-/// @note Expects 3 primitives per shell (STO-3G). Callers must verify the
-///       resulting `nao` against the SCF basis dimension before use.
-LibcintContext build_libcint_context(const Frame& frame);
+    /// @brief Empty context (fields filled by the caller or left default).
+    LibcintContext() = default;
+
+    /// @brief Build libcint atm/bas/env arrays for the molecule.
+    ///
+    /// Reads the generic `basis_data::sto3g()` table and emits one libcint bas
+    /// entry per shell (s, then s, then p for 2nd-row atoms). Because the basis
+    /// only uses l <= 1, cartesian and spherical AO dimensions match.
+    ///
+    /// @param frame CPU Frame with atom positions (Angstrom, converted to Bohr
+    ///              internally) and nuclear charges on `kAtom_type`.
+    ///
+    /// @note Expects 3 primitives per shell (STO-3G). Callers must verify the
+    ///       resulting `nao` against the SCF basis dimension before use.
+    explicit LibcintContext(const Frame& frame);
+};
 
 #endif
 

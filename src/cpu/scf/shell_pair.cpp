@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace ATV {
 namespace cpu {
@@ -44,7 +45,7 @@ blocks_from_shells(const std::vector<native::Shell>& shells) {
     return blocks;
 }
 
-ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
+ShellPairList::ShellPairList(const IntegralPack& pack, double thr) {
     const int n = pack.n_basis;
 
     ShellPairList spl;
@@ -96,11 +97,10 @@ ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
     ATV_DEBUG("[shell_pair] built n_basis={} pairs={} screened={} thr={:.1e}",
               n, spl.pairs.size(), n_screened, thr);
 
-    return spl;
+    *this = std::move(spl);
 }
 
-ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
-                                               double thr) {
+ShellBlockPairList::ShellBlockPairList(const IntegralPack& pack, double thr) {
     const int n = pack.n_basis;
     const int n_raw_shells = static_cast<int>(pack.shells.size());
 
@@ -177,7 +177,7 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
               "screened={} thr={:.1e}",
               n_blocks, sbl.pairs.size(), n_screened, thr);
 
-    return sbl;
+    *this = std::move(sbl);
 }
 
 } // namespace scf

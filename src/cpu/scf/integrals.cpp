@@ -1,21 +1,16 @@
 /// @file cpu/scf/integrals.cpp
 /// @brief IntegralPack constructor — production compositor over the
-///        single-responsibility builders (AtomList / ShellList +
-///        one_electron.h + two_electron.h).
+///        private integral members (AtomList / ShellList +
+///        IntegralPack::overlap/kinetic/nuclear_attraction/eri_dense).
 ///
 /// This is the canonical entry point for assembling an `IntegralPack` from a
-/// `Frame` and a `BasisSet`. Low-level callers that need a single integral
-/// can call the underlying builders directly:
+/// `Frame` and a `BasisSet`. The single-responsibility integral kernels are
+/// private static members of `IntegralPack`, composed here:
 ///
 /// @code
-///   AtomList atoms{frame, charge};
-///   ShellList shells{atoms, cpu::scf::BasisSet::STO3G};
-///   auto S = build_overlap(shells);
-///   auto T = build_kinetic(shells);
-///   auto V = build_nuclear_attraction(shells, atoms);
-///   auto Hcore = xt::eval(T + V);
-///   double v_nuc = nuclear_repulsion_energy(atoms);
-///   // Optionally: auto ERI = build_eri_dense(shells);
+///   IntegralPack pack{frame, cpu::scf::BasisSet::STO3G};
+///   // pack.S, pack.T, pack.V, pack.Hcore, pack.V_nuc are filled;
+///   // pack.ERI additionally with IntegralPack{frame, basis, 0, true}.
 /// @endcode
 
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -24,7 +19,6 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
-#include "atomiverse/cpu/scf/internal/two_electron.h"
 
 namespace ATV {
 namespace cpu {
@@ -46,15 +40,15 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
     n_electrons = atom_list.n_electrons;
 
     const auto t_1e = LogClock::now();
-    S = build_overlap(shell_list);
-    T = build_kinetic(shell_list);
-    V = build_nuclear_attraction(shell_list, atom_list);
+    S = overlap(shell_list);
+    T = kinetic(shell_list);
+    V = nuclear_attraction(shell_list, atom_list);
     Hcore = T + V;
     ATV_INFO("[integrals] one-electron done ms={:.1f}", elapsed_ms(t_1e));
 
     if (compute_eri) {
         const auto t_2e = LogClock::now();
-        ERI = build_eri_dense(shell_list);
+        ERI = eri_dense(shell_list);
         ATV_INFO("[integrals] two-electron done ms={:.1f}", elapsed_ms(t_2e));
     }
 

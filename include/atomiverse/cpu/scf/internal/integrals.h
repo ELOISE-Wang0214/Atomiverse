@@ -16,6 +16,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -63,7 +64,7 @@ struct IntegralPack {
     /// charges from `kAtom_type`. Converts to Bohr internally.
     ///
     /// By default the two-electron ERI tensor is NOT computed (`compute_eri=false`).
-    /// The CPU SCF solver uses direct SCF via ShellPairList + build_g_rhf_direct,
+    /// The CPU SCF solver uses direct SCF via ShellPairList::g_rhf,
     /// so storing the full O(n^4) ERI tensor is unnecessary for CPU calculations.
     /// Pass `compute_eri=true` when the caller explicitly needs `ERI`:
     ///   - CUDA RHFFock (uploads ERI to device)
@@ -79,6 +80,49 @@ struct IntegralPack {
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.
     int n_occ() const { return n_electrons / 2; }
+
+    /// @brief Fused Coulomb + exchange G = J - 0.5*K (RHF stored-ERI path).
+    /// @details G_ij = sum_kl P_kl [(ij|kl) - 0.5*(ik|jl)].
+    ///          P is the total RHF density (includes factor of 2).
+    ///          Selected by `HamiltonianBuilder` when `ERI` holds a
+    ///          materialized dense tensor; otherwise the direct-SCF
+    ///          `ShellBlockPairList::g_rhf` path runs. Requires
+    ///          `compute_eri=true` at construction.
+    /// @param P_total Total RHF density matrix [n x n, unitless].
+    /// @param[out] G Fused two-electron matrix [n x n, Hartree].
+    void coulomb_exchange_fused(const RealMatrix& P_total, RealMatrix& G) const;
+
+  private:
+    /// @brief Overlap matrix S_ij = <φ_i|φ_j>.
+    /// @param shells Resolved shell list.
+    /// @return (n_basis × n_basis) symmetric matrix [unitless].
+    [[nodiscard]] static xt::xtensor<double, 2>
+    overlap(const ShellList& shells);
+
+    /// @brief Kinetic-energy matrix T_ij = <φ_i|-½∇²|φ_j>.
+    /// @param shells Resolved shell list.
+    /// @return (n_basis × n_basis) symmetric matrix [Hartree].
+    [[nodiscard]] static xt::xtensor<double, 2>
+    kinetic(const ShellList& shells);
+
+    /// @brief Nuclear-attraction matrix V_ij = -Σ_A Z_A <φ_i|1/|r - R_A||φ_j>.
+    /// @param shells Resolved shell list.
+    /// @param atoms  Atoms supplying nuclear charges and positions (Bohr).
+    /// @return (n_basis × n_basis) symmetric matrix [Hartree].
+    [[nodiscard]] static xt::xtensor<double, 2>
+    nuclear_attraction(const ShellList& shells, const AtomList& atoms);
+
+    /// @brief Dense two-electron repulsion tensor ERI(i,j,k,l) = (ij|kl).
+    ///
+    /// Dense ERI storage is O(N⁴) in memory and only appropriate for small
+    /// systems, validation, or code paths that must hand the full tensor to
+    /// another backend (e.g. CUDA RHFFock). The production CPU direct-SCF
+    /// path uses `ShellBlockPairList` in internal/shell_pair.h instead.
+    ///
+    /// @param shells Resolved shell list.
+    /// @return (n × n × n × n) dense tensor in Hartree.
+    [[nodiscard]] static xt::xtensor<double, 4>
+    eri_dense(const ShellList& shells);
 };
 
 } // namespace scf

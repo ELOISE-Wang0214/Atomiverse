@@ -184,7 +184,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
     auto frame = make_water();
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
 
     auto eri_rys = build_eri_via_rys(sp);
     compare_tensors(pack.ERI, eri_rys, 5e-7, "H2O rys vs native M-D");
@@ -194,7 +194,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     auto frame = make_co();
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
 
     auto eri_rys = build_eri_via_rys(sp);
     compare_tensors(pack.ERI, eri_rys, 5e-7, "CO rys vs native M-D");
@@ -208,7 +208,7 @@ TEST(RysEri, MatchesLibcint_H2O) {
     auto frame = make_water();
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
 
     auto eri_rys = build_eri_via_rys(sp);
     auto libcint_pack = test::build_integrals_libcint(frame);
@@ -219,7 +219,7 @@ TEST(RysEri, MatchesLibcint_CO) {
     auto frame = make_co();
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
 
     auto eri_rys = build_eri_via_rys(sp);
     auto libcint_pack = test::build_integrals_libcint(frame);
@@ -243,7 +243,7 @@ TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
     // 6-31G* puts a d-shell on oxygen → d quartets appear in the tensor.
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
     ASSERT_GT(sp.n_basis, 7)
         << "6-31G* H2O must have > 7 AOs (d-shell present)";
 
@@ -258,7 +258,7 @@ TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
     // 6-31G* puts a d-shell on both C and O → (dd|dd) quartets present.
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
                                        /*need_eri=*/true};
-    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    auto sp = ShellBlockPairList{pack, 1e-14};
 
     auto eri_rys = build_eri_via_rys(sp);
     auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);

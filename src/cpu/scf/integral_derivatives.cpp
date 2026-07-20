@@ -695,7 +695,7 @@ void accumulate_two_electron_gradient(
     const bool do_exchange = (alpha_hf > 0.0);
 
 #ifdef ATV_HAS_LIBCINT
-    auto cint_ctx = build_libcint_context(frame);
+    LibcintContext cint_ctx{frame};
     if (cint_ctx.nao == n && !force_native_two_electron_deriv) {
         const int nshells = cint_ctx.nshells;
         ATV_INFO("[gradient] two_e engine=libcint natm={} basis={} shells={}",
@@ -1003,7 +1003,7 @@ void accumulate_two_electron_gradient(
     // same-block cases (si==sj, or bp_l==bp_r) need explicit AO-level
     // canonicalization.
 
-    const auto bpl = build_shell_block_pair_list(integrals, /*thr=*/1e-10);
+    const ShellBlockPairList bpl{integrals, /*thr=*/1e-10};
     const int n_bpairs = static_cast<int>(bpl.pairs.size());
 
     // Shell-block → atom mapping (each block is single-centered).

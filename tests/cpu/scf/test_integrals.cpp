@@ -14,7 +14,6 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/operators.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -372,7 +371,7 @@ TEST(NativeIntegrals, PType_Orthogonality) {
         << "<py|pz> != 0";
 }
 
-/// @brief Verify build_g_rhf_direct_block matches build_g_rhf_direct for a given frame.
+/// @brief Verify block-level g_rhf matches AO-level g_rhf for a given frame.
 static void compare_g_ao_vs_block(const cpu::Frame& frame, const char* label) {
     auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
     int n = pack.n_basis;
@@ -386,12 +385,12 @@ static void compare_g_ao_vs_block(const cpu::Frame& frame, const char* label) {
         P(i + 1, i) = 0.1;
     }
 
-    auto sp_ao = build_shell_pair_list(pack);
-    auto sp_blk = build_shell_block_pair_list(pack);
+    auto sp_ao = ShellPairList{pack};
+    auto sp_blk = ShellBlockPairList{pack};
 
     RealMatrix G_ao, G_blk;
-    build_g_rhf_direct(sp_ao, P, G_ao);
-    build_g_rhf_direct_block(sp_blk, P, G_blk);
+    sp_ao.g_rhf(P, G_ao);
+    sp_blk.g_rhf(P, G_blk);
 
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)

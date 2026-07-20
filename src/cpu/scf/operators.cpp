@@ -1,9 +1,10 @@
 /// @file cpu/scf/operators.cpp
-/// @brief Two-electron operator builders: stored-ERI and direct-SCF.
-
-#include "atomiverse/cpu/scf/operators.h"
+/// @brief Two-electron Fock operator members: stored-ERI
+///        (IntegralPack::coulomb_exchange_fused) and direct-SCF
+///        (ShellPairList / ShellBlockPairList members).
 
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -25,15 +26,15 @@ namespace scf {
 
 // ── Stored-ERI operator (BLAS via xtensor-blas) ─────────────────────────
 //
-// `build_coulomb_exchange_fused` reshapes the 4-index ERI tensor into an
-// [n²×n²] matrix, turning the Coulomb double-sum into a single DGEMV call.
+// `IntegralPack::coulomb_exchange_fused` reshapes the 4-index ERI tensor into
+// an [n²×n²] matrix, turning the Coulomb double-sum into a single DGEMV call.
 // `HamiltonianBuilder` selects this path whenever `IntegralPack::ERI` is a
 // materialized dense tensor; otherwise the direct-SCF
-// `build_g_rhf_direct_block` path runs without ever materializing ERI.
+// `ShellBlockPairList::g_rhf` path runs without ever materializing ERI.
 
-void build_coulomb_exchange_fused(const RealMatrix& P_total,
-                                  const xt::xtensor<double, 4>& ERI, int n,
-                                  RealMatrix& G) {
+void IntegralPack::coulomb_exchange_fused(const RealMatrix& P_total,
+                                          RealMatrix& G) const {
+    const int n = n_basis;
     // PySCF approach: J via BLAS DGEMV, K via einsum-equivalent contraction.
     //   J(i,j) = einsum('ijkl,kl->', ERI, P)  → reshape(n²,n²) @ flatten(P)
     //   K(i,j) = einsum('ikjl,kl->', ERI, P)  → explicit contraction (no xt::einsum)
@@ -107,8 +108,8 @@ inline int thread_id() {
 
 } // anonymous namespace
 
-void build_g_rhf_direct(const ShellPairList& sp, const RealMatrix& P,
-                        RealMatrix& G) {
+void ShellPairList::g_rhf(const RealMatrix& P, RealMatrix& G) const {
+    const ShellPairList& sp = *this;
     const int n = sp.n_basis;
     const int nT = n_threads();
     const double thr = sp.threshold;
@@ -191,10 +192,10 @@ void build_g_rhf_direct(const ShellPairList& sp, const RealMatrix& P,
         G += gl;
 }
 
-void build_jk_uhf_direct(const ShellPairList& sp, const RealMatrix& P_total,
-                         const RealMatrix& P_alpha, const RealMatrix& P_beta,
-                         RealMatrix& J, RealMatrix& K_alpha,
-                         RealMatrix& K_beta) {
+void ShellPairList::jk_uhf(const RealMatrix& P_total, const RealMatrix& P_alpha,
+                           const RealMatrix& P_beta, RealMatrix& J,
+                           RealMatrix& K_alpha, RealMatrix& K_beta) const {
+    const ShellPairList& sp = *this;
     const int n = sp.n_basis;
     const int nT = n_threads();
     const double thr = sp.threshold;
@@ -237,7 +238,7 @@ void build_jk_uhf_direct(const ShellPairList& sp, const RealMatrix& P_total,
                 sym_add(Jl, c, d, fab * P_total(a, b) * val);
 
             // ── Exchange for alpha and beta spin (no 0.5 factor) ──────
-            // Same mirror-permutation fix as build_g_rhf_direct: when
+            // Same mirror-permutation fix as ShellPairList::g_rhf: when
             // left != right use explicit double-add to handle diagonal K(p,p).
             if (left != right) {
                 Kal(a, c) += P_alpha(b, d) * val;
@@ -290,8 +291,8 @@ void build_jk_uhf_direct(const ShellPairList& sp, const RealMatrix& P_total,
     }
 }
 
-void build_j_direct(const ShellPairList& sp, const RealMatrix& P_total,
-                    RealMatrix& J) {
+void ShellPairList::j(const RealMatrix& P_total, RealMatrix& J) const {
+    const ShellPairList& sp = *this;
     const int n = sp.n_basis;
     const int nT = n_threads();
     const double thr = sp.threshold;
@@ -347,9 +348,9 @@ inline void raw_sym_add(double* g, const int n, int p, int q, double v) {
 }
 } // namespace
 
-void build_k_direct_block(const ShellBlockPairList& sp, const RealMatrix& P,
-                          RealMatrix& K) {
-    // Exchange-only twin of build_g_rhf_direct_block: same shell-block ERI
+void ShellBlockPairList::k(const RealMatrix& P, RealMatrix& K) const {
+    const ShellBlockPairList& sp = *this;
+    // Exchange-only twin of ShellBlockPairList::g_rhf: same shell-block ERI
     // amortization and 8-fold symmetry scatter, but accumulates only the
     // exchange contribution with NO 0.5 factor and no Coulomb term. The
     // result K satisfies the RHF convention F = Hcore + J - 0.5*K.
@@ -499,8 +500,8 @@ void build_k_direct_block(const ShellBlockPairList& sp, const RealMatrix& P,
             Kout[i] += kraw[i];
 }
 
-void build_g_rhf_direct_block(const ShellBlockPairList& sp, const RealMatrix& P,
-                              RealMatrix& G) {
+void ShellBlockPairList::g_rhf(const RealMatrix& P, RealMatrix& G) const {
+    const ShellBlockPairList& sp = *this;
     const int n = sp.n_basis;
     const int nT = n_threads();
     const double thr = sp.threshold;
