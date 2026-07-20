@@ -7,9 +7,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from atomiverse.cli.build import state_path as build_state_path
-
-
 def _package_status_path() -> Path:
     import atomiverse
 
@@ -20,14 +17,23 @@ def load_install_state(path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """Load build or install state JSON.
 
     Prefers explicit *path*, then package ``_install_state.json``, then
-    the staged build state file.
+    ``<build_dir>/atomiverse_cli_state.json`` via the active-build pointer.
+    Never uses a home-directory cache.
     """
-    candidates = []
+    candidates: list[Path] = []
     if path is not None:
         candidates.append(path)
     else:
         candidates.append(_package_status_path())
-        candidates.append(build_state_path())
+        try:
+            from atomiverse.cli.build import (
+                read_active_build_dir,
+                state_file_in_build,
+            )
+
+            candidates.append(state_file_in_build(read_active_build_dir()))
+        except Exception:
+            pass
     for p in candidates:
         if not p.is_file():
             continue

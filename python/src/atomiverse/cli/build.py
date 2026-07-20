@@ -1,17 +1,18 @@
 """Native build pipeline aligned with CMake: config → compile → install.
 
-Streams **raw** cmake/pip output to the calling terminal (no capture).
+Streams **raw** cmake output to the calling terminal (no capture).
 
-State is persisted under the package (or ``$ATOMIVERSE_CACHE``) so the three
-stages can run as separate CLI invocations.
+Build tree defaults to ``<source_root>/build`` (normal cmake layout).
+Full state lives in ``<build_dir>/atomiverse_cli_state.json``.
+A tiny pointer file next to the installed package records which build_dir
+is active for subsequent ``compile`` / ``install`` / ``status`` calls.
+There is **no** home-directory cache.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
@@ -27,34 +28,61 @@ from atomiverse.cli.config import (
 )
 from atomiverse.cli.source import SourceSpec
 
+# Filename for full state inside the cmake binary dir.
+_STATE_NAME = "atomiverse_cli_state.json"
+# Pointer in the installed pure package: {"build_dir": "…"}.
+_ACTIVE_POINTER_NAME = "_active_build.json"
 
-def cache_root() -> Path:
-    """Root for on-demand build trees and state files."""
-    env = os.environ.get("ATOMIVERSE_CACHE")
-    if env:
-        return Path(env).expanduser().resolve()
-    return Path.home() / ".cache" / "atomiverse"
+
+def default_build_dir(source_root: Path) -> Path:
+    """Default cmake ``-B`` directory: ``<src>/build``."""
+    return source_root.resolve() / "build"
+
+
+def state_file_in_build(build_dir: Path) -> Path:
+    """Full CLI state path inside the build tree."""
+    return Path(build_dir).resolve() / _STATE_NAME
+
+
+def active_build_pointer_path() -> Path:
+    """Small pointer file beside the installed ``atomiverse`` package."""
+    import atomiverse
+
+    return Path(atomiverse.__file__).resolve().parent / _ACTIVE_POINTER_NAME
+
+
+def write_active_build_pointer(build_dir: Path) -> Path:
+    """Record which build tree subsequent compile/install should use."""
+    path = active_build_pointer_path()
+    path.write_text(
+        json.dumps({"build_dir": str(Path(build_dir).resolve())}, indent=2)
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def read_active_build_dir() -> Path:
+    """Resolve the active build dir from the package pointer."""
+    path = active_build_pointer_path()
+    if not path.is_file():
+        raise ConfigError(
+            "no active build — run `python -m atomiverse config … --src …` first"
+        )
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        bdir = Path(data["build_dir"])
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ConfigError(f"unreadable active-build pointer {path}: {exc}") from exc
+    return bdir.resolve()
 
 
 def state_path() -> Path:
-    """Path of the active build/install state JSON."""
-    import atomiverse
-
-    pkg = Path(atomiverse.__file__).resolve().parent
-    # Prefer writable package dir; fall back to cache.
-    candidate = pkg / "_build_state.json"
-    try:
-        candidate.parent.mkdir(parents=True, exist_ok=True)
-        if candidate.exists() or os.access(candidate.parent, os.W_OK):
-            return candidate
-    except OSError:
-        pass
-    root = cache_root()
-    root.mkdir(parents=True, exist_ok=True)
-    return root / "build_state.json"
+    """Path of the active full build state (inside the build tree)."""
+    return state_file_in_build(read_active_build_dir())
 
 
-# Back-compat alias used by status.py
+# Back-compat alias
 def install_state_path() -> Path:
     return state_path()
 
@@ -75,20 +103,33 @@ class BuildState:
     installed: bool = False
 
     def save(self, path: Optional[Path] = None) -> Path:
-        p = path if path is not None else state_path()
+        bdir = Path(self.build_dir)
+        p = path if path is not None else state_file_in_build(bdir)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
             json.dumps(asdict(self), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        # Keep package pointer so compile/install find this tree.
+        try:
+            write_active_build_pointer(bdir)
+        except OSError as exc:
+            print(
+                f"warning: could not write active-build pointer: {exc}",
+                file=sys.stderr,
+            )
         return p
 
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "BuildState":
-        p = path if path is not None else state_path()
+        if path is not None:
+            p = Path(path)
+        else:
+            p = state_file_in_build(read_active_build_dir())
         if not p.is_file():
             raise ConfigError(
-                "no build state — run `python -m atomiverse config …` first"
+                "no build state — run `python -m atomiverse config …` first "
+                f"(looked for {p})"
             )
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
@@ -119,11 +160,6 @@ def repo_root_from_source(source: SourceSpec) -> Path:
         "remote --url source is not yet supported for the staged cmake "
         "pipeline; use --src /path/to/Atomiverse for config/compile/install"
     )
-
-
-def default_build_dir(version: str, fingerprint: str) -> Path:
-    digest = hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
-    return cache_root() / "builds" / f"{version}-{digest}"
 
 
 def build_cmake_configure_command(
@@ -231,7 +267,7 @@ def run_config(
     bdir = (
         build_dir.expanduser().resolve()
         if build_dir is not None
-        else default_build_dir(source.version, fp)
+        else default_build_dir(source_root)
     )
 
     cmd = build_cmake_configure_command(
@@ -269,8 +305,9 @@ def run_config(
         installed=False,
     )
     if not dry_run:
-        state.save()
-        print(f"  state: {state_path()}", flush=True)
+        state_file = state.save()
+        print(f"  state: {state_file}", flush=True)
+        print(f"  active: {active_build_pointer_path()}", flush=True)
     print("config complete" if not dry_run else "config dry-run complete", flush=True)
     return 0
 

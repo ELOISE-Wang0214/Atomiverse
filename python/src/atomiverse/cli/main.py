@@ -177,7 +177,7 @@ def config_cmd(
     build_dir: Optional[Path] = typer.Option(
         None,
         "--build-dir",
-        help="cmake binary dir (default: ~/.cache/atomiverse/builds/…)",
+        help="cmake -B directory (default: <src>/build)",
     ),
     dry_run: bool = typer.Option(
         False,
