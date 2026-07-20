@@ -2,7 +2,7 @@
 /// @brief DensityCubeWriter -- Gaussian-cube electron-density dump.
 ///
 /// Reads the latest density matrix and shell descriptors from a sibling
-/// `SCF` via `SCFResultHandle`. Evaluates
+/// mean-field method via `MeanFieldOutputs`. Evaluates
 ///   rho(r) = sum_{mu,nu} [P_alpha + P_beta]_{mu,nu} * phi_mu(r) * phi_nu(r)
 /// on a uniform Cartesian grid and writes a Gaussian ".cube" file.
 ///
@@ -26,7 +26,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/recorder/cube.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/mean_field_method.h"
 
 namespace ATV {
 namespace cpu {
@@ -38,17 +38,17 @@ namespace recorder {
 class DensityCubeWriter : public cpu::Component {
   public:
     /// @brief Construct with automatic bounding-box grid.
-    /// @param handle     Shared view of the SCF's state.
+    /// @param handle     Shared view of the method's state.
     /// @param filename   Output cube path. Overwritten on each launch.
     /// @param padding    Bounding-box padding [Bohr].
     /// @param spacing    Isotropic grid spacing [Bohr].
     /// @param stride     Write every N steps (0 or 1 = every step).
-    DensityCubeWriter(scf::SCFResultHandle handle, std::string filename,
+    DensityCubeWriter(scf::MeanFieldOutputs handle, std::string filename,
                       double padding = 4.0, double spacing = 0.25,
                       int stride = 1);
 
     /// @brief Construct with an explicit grid.
-    DensityCubeWriter(scf::SCFResultHandle handle, std::string filename,
+    DensityCubeWriter(scf::MeanFieldOutputs handle, std::string filename,
                       CubeGrid grid, int stride = 1);
 
     std::string name() const override { return "density_cube_writer"; }
@@ -63,7 +63,7 @@ class DensityCubeWriter : public cpu::Component {
     double last_integrated_density() const { return last_integral_; }
 
   private:
-    scf::SCFResultHandle handle_;
+    scf::MeanFieldOutputs handle_;
     std::string filename_;
     bool auto_grid_;
     CubeGrid grid_{};

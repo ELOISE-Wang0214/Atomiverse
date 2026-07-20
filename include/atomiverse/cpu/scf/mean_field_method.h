@@ -8,21 +8,18 @@
 /// **members**; the only I/O currency is `Frame`.
 ///
 /// SCF self-consistency is a **Driver loop**: `MeanFieldMethod<D>` derives
-/// `cpu::CPUDriver<ATV::scf::Phase>` and drives the five sub-spec-02 stage
-/// components (Fock / Mix / Diagonalize / Density / ConvergenceMeasure) through
-/// `fock → mix → diagonalize → density → check`, budget = `max_iter`, with the
-/// default `ScfConverged` criterion registered via `add_criterion`. All entries
-/// (both `run` overloads, `forces`, the component `build`/`launch` path,
-/// `mp2`/`fci`) funnel through one private member `drive_scf_`. Integrals and AO
-/// workspaces are private. The concrete methods live in `rhf.h` / `uhf.h` /
-/// `rks.h` / `uks.h`; `methods.h` is their umbrella.
+/// `cpu::CPUDriver<ATV::scf::Phase>` and the pure tag `HF` (not a Component).
+/// Nested under an outer MD/Evaluate/Minimize force or energy phase it runs
+/// via `run_nested` → `drive_scf_`. Standalone entry is `run(frame)`. Integrals
+/// and AO workspaces are private. The concrete methods live in `rhf.h` /
+/// `uhf.h` / `rks.h` / `uks.h`; `methods.h` is their umbrella.
 ///
 /// @code
 ///   cpu::scf::RHF rhf;
 ///   rhf.basis = BasisSet::STO3G;
 ///   rhf.tol = 1e-10;
 ///   rhf.run(frame);                    // energy / orbitals on last_result()
-///   // forces: rhf.with_gradient(true) then use as HF component, or
+///   // forces: rhf.with_gradient(true) then nest at force phase, or
 ///   //         GradientResult g = rhf.forces(frame);
 /// @endcode
 #pragma once
@@ -41,6 +38,7 @@
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/scf_result.h"
 #include "atomiverse/cpu/scf/stages/density_stage.h"
 #include "atomiverse/cpu/scf/stages/diagonalize_stage.h"
@@ -53,14 +51,14 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Shared view for observers/recorders after a method launch.
+/// @brief Shared view for observers/recorders after a method run.
 ///
-/// `integrals` is opaque private workspace published only so cube writers can
-/// read shells; users never construct that type. Spin treatment is read from
-/// the result (`result->spin`) — the handle no longer snapshots a `SCFConfig`.
-struct SCFResultHandle {
+/// `shells` is the basis-function set (pointer storage owned by the method's
+/// private integral workspace via shared_ptr aliasing). Spin treatment is
+/// read from the result (`result->spin`). `IntegralPack` is not public.
+struct MeanFieldOutputs {
     std::shared_ptr<const SCFResult> result;
-    std::shared_ptr<const IntegralPack> integrals;
+    std::shared_ptr<const std::vector<native::Shell>> shells;
     std::shared_ptr<const bool> ready;
 };
 
@@ -69,19 +67,13 @@ struct SCFResultHandle {
 /// CRTP (`Derived` = `RHF`/`UHF`/`RKS`/`UKS`) so chaining
 /// (`RHF{}.predictor(3)`) keeps the concrete type for `Driver::add`.
 ///
-/// Derives BOTH `cpu::CPUDriver<ATV::scf::Phase>` (the self-consistency loop
-/// node) and `HF` (still a Component, so an outer `MD`/`Evaluate` can bind it at
-/// its force/energy phase and call `launch`). `run` (driver) and `launch`
-/// (component) COEXIST this sub-spec — a deliberate, temporary break of the
-/// "never coexist" rule; both funnel into `drive_scf_`. Sub-spec 04 deletes
-/// `build`/`launch` and narrows `HF` to a pure tag.
+/// Derives `cpu::CPUDriver<ATV::scf::Phase>` (the self-consistency loop node)
+/// and pure tag `HF` (not a Component). Nested binding is a native driver node;
+/// the sole compute entry is `drive_scf_` (via `run` / `forces` / nested
+/// `run_nested_erased`).
 template <typename Derived>
 class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
   public:
-    /// Un-hide the loop node's no-argument Plan `build()` (the Component base's
-    /// virtual `build(const BuildContext&)` below would otherwise hide it).
-    using cpu::CPUDriver<ATV::scf::Phase>::build;
-
     // ── Geometry / basis (inputs from Frame + these members) ──────────
     BasisSet basis = BasisSet::STO3G;
     int charge = 0;
@@ -115,7 +107,7 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @brief When true, materialize the dense ERI tensor (MP2/FCI/CUDA).
     bool compute_eri = false;
 
-    /// @brief When true (default), component `launch()` writes forces.
+    /// @brief When true (default), nested force-slot runs write forces.
     bool compute_force = true;
 
     MeanFieldMethod();
@@ -124,6 +116,23 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     MeanFieldMethod& operator=(MeanFieldMethod&&) noexcept;
     MeanFieldMethod(const MeanFieldMethod&) = delete;
     MeanFieldMethod& operator=(const MeanFieldMethod&) = delete;
+
+    /// @brief Nested budget defaults to the SCF iteration cap.
+    int default_budget() const override { return max_iter; }
+
+    /// @brief Nested force/energy slot: one full SCF (+ optional forces).
+    /// @param ctx Parent Context (borrowed; status isolation is internal).
+    /// @param f   System state.
+    /// @param budget SCF iteration budget; <0 → `max_iter`.
+    /// @return SCF iterations actually executed.
+    int run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
+                          int budget) override;
+
+    /// @brief Nested build is deferred to first `drive_scf_` (needs geometry).
+    void build_on(cpu::Backend& rt) override;
+
+    /// @brief Drop the method's private Plan / Backend wiring.
+    void destroy_on(cpu::Backend& rt) override;
 
     /// @brief Run SCF on `frame` (driver loop). Integrals are private workspace.
     /// @param frame  Geometry (Å) + Z in type column.
@@ -156,21 +165,17 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
 
     /// @brief Most recent converged (or last) SCF result [Hartree internals].
     const SCFResult& last_result() const { return *result_sp_; }
-    /// @brief Whether a result has been produced by any run/launch.
+    /// @brief Whether a result has been produced by any run.
     bool has_result() const { return *has_result_sp_; }
 
     /// @brief Observer handle (shared_ptrs survive driver ownership moves).
-    /// @return Shared view of result / integrals for cube writers.
-    SCFResultHandle result_handle() const {
-        return {result_sp_, integrals_sp_, has_result_sp_};
+    /// @return Shared view of result / shells for cube writers.
+    MeanFieldOutputs result_handle() const {
+        return {result_sp_,
+                std::shared_ptr<const std::vector<native::Shell>>(
+                    integrals_sp_, &integrals_sp_->shells),
+                has_result_sp_};
     }
-
-    /// @brief Component path — one-time setup (debt; 04 deletes build/launch).
-    /// @param ctx Build context (unused; drive_scf_ owns per-run setup).
-    void build(const cpu::BuildContext& ctx) override;
-    /// @brief Component path — SCF (+ optional forces) each force step.
-    /// @param ctx Launch context carrying the frame; funnels into drive_scf_.
-    void launch(const cpu::LaunchContext& ctx) override;
 
     Derived& with_gradient(bool enabled) & noexcept {
         compute_force = enabled;
@@ -267,6 +272,7 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
         bool unwrap = true;        ///< Unwrap positions (mutating paths only).
         int max_iter = -1;         ///< Budget override; <0 ⇒ member `max_iter`.
         double tol_override = -1;  ///< |ΔE| tol override; <0 ⇒ member `tol`.
+        bool apply_aspc = true;    ///< ASPC front/back; false on recursive call.
     };
 
     /// @brief RAII guard: unwrap positions for the integral build on entry,
@@ -287,12 +293,19 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
 
     /// @brief THE funnel: prologue (per-run assembly) → CPUDriver loop →
     ///        epilogue (de-shift / spin / result fill / energy / forces).
+    ///        ASPC predict/correct/record is gated only on `use_predictor_`
+    ///        (and `opts.apply_aspc` to prevent recursive re-entry).
     /// @param frame Geometry; mutated only on the mutating entries.
     /// @param guess Optional density guess.
     /// @param opts  Which shared behaviors apply on this entry.
     /// @return Reference to the owned `SCFResult`.
     SCFResult& drive_scf_(Frame& frame, const SCFInitialGuess* guess,
                           const DriveOpts& opts);
+
+    /// @brief Core SCF (no ASPC wrapper) — used by drive_scf_ after ASPC
+    ///        front-end resolves the density guess.
+    SCFResult& drive_scf_core_(Frame& frame, const SCFInitialGuess* guess,
+                               const DriveOpts& opts);
 
     /// @brief Lazily wire the five stages + `ScfConverged` and compile the Plan.
     ///        Deferred to first `drive_scf_` so member config (grid, level
@@ -307,7 +320,7 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     ///        when a move leaves the stages bound to a stale address.
     void reset_built_driver_();
 
-    // Shared workspace (also published via result_handle for observers).
+    // Shared workspace (shells published via result_handle aliasing).
     std::shared_ptr<IntegralPack> integrals_sp_{
         std::make_shared<IntegralPack>()};
     std::shared_ptr<SCFResult> result_sp_{std::make_shared<SCFResult>()};
@@ -324,10 +337,10 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// Address the stages were wired to; a mismatch on `this` flags a move.
     const void* wired_self_ = nullptr;
 
-    // Most recent analytic gradient (forces() return + component force write).
+    // Most recent analytic gradient (forces() return + force-slot write).
     GradientResult last_grad_;
 
-    // ASPC (component path)
+    // ASPC (density extrapolation across outer MD steps)
     bool use_predictor_ = false;
     int corrector_steps_ = 2;
     double corrector_tol_ = 1e-4;

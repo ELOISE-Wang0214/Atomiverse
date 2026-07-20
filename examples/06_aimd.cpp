@@ -54,7 +54,7 @@ using namespace ATV;
 namespace {
 
 /// @brief H2 starting geometry. Placement inside the simulation box is
-///        irrelevant because `SCF::launch` reassembles the
+///        irrelevant because the nested RHF method-driver reassembles the
 ///        molecule via minimum-image relative to atom 0 before each
 ///        integral build, so atoms split across a periodic boundary
 ///        are recomposed transparently.

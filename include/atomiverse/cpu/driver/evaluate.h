@@ -104,18 +104,24 @@ class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
     }
 
     /// @brief At least one energy/force kind (Potential, Bias, HF, …).
+    ///        Component nodes and nested method-drivers (pure HF tag) both count.
     void validate_components() const override {
         bool found = false;
-        for_each_pending([&](const cpu::Component& c) {
-            if (dynamic_cast<const Potential*>(&c)
-                || dynamic_cast<const Bias*>(&c)
-                || dynamic_cast<const PathCoupling*>(&c)
-                || dynamic_cast<const HF*>(&c)
-                || dynamic_cast<const Semiempirical*>(&c)
-                || dynamic_cast<const PlaneWave*>(&c)
-                || dynamic_cast<const GPW*>(&c))
-                found = true;
-        });
+        for_each_pending_kind(
+            [&](const cpu::Component& c) {
+                if (dynamic_cast<const Potential*>(&c)
+                    || dynamic_cast<const Bias*>(&c)
+                    || dynamic_cast<const PathCoupling*>(&c)
+                    || dynamic_cast<const HF*>(&c)
+                    || dynamic_cast<const Semiempirical*>(&c)
+                    || dynamic_cast<const PlaneWave*>(&c)
+                    || dynamic_cast<const GPW*>(&c))
+                    found = true;
+            },
+            [&](const cpu::Driver* d) {
+                if (dynamic_cast<const HF*>(d))
+                    found = true;
+            });
         if (!found)
             throw_missing(
                 "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");

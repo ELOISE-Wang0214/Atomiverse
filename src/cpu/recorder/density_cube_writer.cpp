@@ -6,31 +6,30 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/basis_eval.h"
-#include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/scf_result.h" // SCFResult / SpinType
 
 namespace ATV {
 namespace cpu {
 namespace recorder {
 
-DensityCubeWriter::DensityCubeWriter(scf::SCFResultHandle handle,
+DensityCubeWriter::DensityCubeWriter(scf::MeanFieldOutputs handle,
                                      std::string filename, double padding,
                                      double spacing, int stride)
     : handle_(std::move(handle)), filename_(std::move(filename)),
       auto_grid_(true), padding_(padding), spacing_(spacing),
       stride_(stride < 1 ? 1 : stride) {
-    if (!handle_.result || !handle_.integrals || !handle_.ready)
-        throw std::invalid_argument("DensityCubeWriter: null SCFResultHandle");
+    if (!handle_.result || !handle_.shells || !handle_.ready)
+        throw std::invalid_argument("DensityCubeWriter: null MeanFieldOutputs");
 }
 
-DensityCubeWriter::DensityCubeWriter(scf::SCFResultHandle handle,
+DensityCubeWriter::DensityCubeWriter(scf::MeanFieldOutputs handle,
                                      std::string filename, CubeGrid grid,
                                      int stride)
     : handle_(std::move(handle)), filename_(std::move(filename)),
       auto_grid_(false), grid_(grid), padding_(0), spacing_(0),
       stride_(stride < 1 ? 1 : stride) {
-    if (!handle_.result || !handle_.integrals || !handle_.ready)
-        throw std::invalid_argument("DensityCubeWriter: null SCFResultHandle");
+    if (!handle_.result || !handle_.shells || !handle_.ready)
+        throw std::invalid_argument("DensityCubeWriter: null MeanFieldOutputs");
 }
 
 void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
@@ -41,9 +40,8 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
     if ((ctx.step % stride_) != 0)
         return;
 
-    const auto& integrals = *handle_.integrals;
+    const auto& shells = *handle_.shells;
     const auto& result = *handle_.result;
-    const auto& shells = integrals.shells;
     const int n_basis = static_cast<int>(shells.size());
 
     // P_total convention (see src/cpu/scf/mean_field_method.cpp):
@@ -55,7 +53,7 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
         P_total += result.P_beta;
 
     CubeGrid grid =
-        auto_grid_ ? bounding_box_grid(integrals, padding_, spacing_) : grid_;
+        auto_grid_ ? bounding_box_grid(shells, padding_, spacing_) : grid_;
 
     std::vector<double> values;
     values.resize(static_cast<size_t>(grid.n_points()), 0.0);
@@ -90,7 +88,7 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
     last_integral_ = integrated * grid.voxel();
 
     write_cube(filename_, "Electron density from Atomiverse SCF",
-               "rho(r) in e / Bohr^3", integrals, grid, values);
+               "rho(r) in e / Bohr^3", ctx.frame, grid, values);
     ++n_writes_;
 }
 

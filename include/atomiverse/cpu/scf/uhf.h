@@ -28,7 +28,7 @@ class UHF : public MeanFieldMethod<UHF> {
     /// @param n_alpha Spin-up electrons.
     /// @param n_beta  Spin-down electrons.
     explicit UHF(int n_alpha, int n_beta);
-    std::string name() const override { return "uhf"; }
+    std::string name() const { return "uhf"; }
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`

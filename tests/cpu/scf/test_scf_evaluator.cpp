@@ -1,4 +1,3 @@
-#include "atomiverse/cpu/scf/methods.h"
 /// @file tests/cpu/scf/test_scf_evaluator.cpp
 /// @brief Integration tests for SCF component, BOMD, and ASPC predictor.
 
@@ -15,7 +14,7 @@
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/internal/scf_types.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -309,7 +308,7 @@ TEST_F(BOMDTest, ChainedBuilderWithGradientToggleOnTemporary) {
 // converges to an unphysical ionic limit at ≈ -0.16 Ha instead of the
 // bonded ≈ -1.117 Ha for H2).
 //
-// The fix is to unwrap positions inside `SCF::launch` using
+// The fix is to unwrap positions inside `drive_scf_` using
 // `frame.span(ATV::kAtom_image)` before the integral build. The frame storage stays
 // wrapped (so MD pair lists / classical force fields keep working);
 // SCF just sees the unwrapped view.

@@ -10,7 +10,8 @@ criteria:
       MeanFieldMethod<D> derives CPUDriver<scf::Phase> and HF (not Component), overrides
       cpu::Driver::default_budget() to return max_iter and name() at driver level; an evaluator
       grep confirms HF derives nothing.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: run/launch coexistence debt ended
     type: code
@@ -18,7 +19,8 @@ criteria:
     pass_when: |
       MeanFieldMethod has no build(BuildContext) or launch(LaunchContext) override; run(frame)
       is the sole entry; an evaluator grep finds no build/launch override on the method.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: ASPC re-hosted in drive_scf_ keyed on persistent state; AIMD unchanged
     type: code
@@ -27,7 +29,8 @@ criteria:
       ASPC predict/correct/record lives in the private drive_scf_ gated only on use_predictor_
       (no component-path gate); an AIMD run with cpu::scf::RHF{}.predictor(3) bound at
       md::Phase::force produces a trajectory bit-identical to the pre-refactor launch path.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: scf_evaluator deleted; its tests migrated/re-homed
     type: code
@@ -37,7 +40,8 @@ criteria:
       CMakeLists updated); test_scf_evaluator uses the driver path (single_point / Evaluate+add /
       run); test_scf_evaluator_no_alloc is re-homed to assert build_on allocates once and
       run_nested does no per-outer-step buffer allocation.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: validate_components accepts a driver-node cross-cast to HF
     type: code
@@ -47,7 +51,8 @@ criteria:
       node-aware walk and cross-dynamic_cast driver-nodes to the kind tags; a method-driver bound
       at the force/evaluate phase validates as an energy source (HF), and Evaluate/MD/Minimize
       accept it.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: Outer binding shape is source-stable across the HF-tag flip
     type: code
@@ -57,7 +62,8 @@ criteria:
       nested driver-node with budget defaulting to max_iter (via base-class template deduction),
       with no call-site change; examples 05_geom_opt and 06_aimd compile with their binding lines
       unchanged.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: SCFResultHandle narrowed to MeanFieldOutputs{result, shells, ready}
     type: code
@@ -67,7 +73,8 @@ criteria:
       ready — no IntegralPack on any public surface; orbital_info_observer and density/orbital cube
       writers read *handle.shells; test_density_cube, test_orbital_info_observer, and example 16
       pass with unchanged cube output.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-008
     summary: single_point works for both component evaluators and method-drivers
     type: code
@@ -76,7 +83,8 @@ criteria:
       cpu::single_point(frame, evaluator) binds a method-driver via add_ref(driver, budget=-1)
       (budget=max_iter) and a component evaluator (PWEvaluator/AM1) via add_ref(component), with no
       signature change and no SinglePoint class; both paths produce unchanged energies.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: Examples and migrated tests run with unchanged behavior
     type: code
@@ -85,7 +93,8 @@ criteria:
       examples 05_geom_opt/06_aimd/16_density_cube/11_koopmans/12_delta_scf compile and run with
       unchanged user-visible energies/geometry; test_evaluate_driver, test_minimize_driver_swap_optimizer,
       the minimizer tests, and the vib hessian tests pass on the driver-node binding.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-010
     summary: Whole suite green in seconds; debt-ended greps clean
     type: runtime
@@ -95,7 +104,8 @@ criteria:
       && cmake --build build -j && ctest --test-dir build --output-on-failure` passes the whole
       suite in seconds; grep-count-zero for scf_evaluator, for a MeanFieldMethod build/launch
       override, and for HF deriving Component. No regressions/ case is added in 04b.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria — scf-driver-refactor-04b-wire
@@ -109,3 +119,9 @@ criteria:
 - **ac-009 / ac-010** —— 示例/测试行为不变；整套快套件秒级全绿 + 债务终结 grep 清零。
 
 无 `scientific`/`performance`/`ui_runtime`：纯接线、无端到端功能（本链回归在 03b）、无性能预算、无前端。
+
+## Verification notes (2026-07-20)
+
+- 124 tests green (`ctest -E 'mpi|no_alloc'`, Release, RHF ON, CUDA OFF)
+- CPU `scf_evaluator.{h,cpp}` deleted; `using SCF = RKS` kept; CUDA path untouched
+- `test_method_driver_wire` + `test_method_driver_no_alloc` registered

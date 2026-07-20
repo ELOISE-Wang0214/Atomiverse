@@ -463,6 +463,9 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)
+    # scf-driver-refactor-04b-wire: method-driver nesting + MeanFieldOutputs.
+    atv_add_cpp_test(test_cpu_scf_method_driver_wire
+                     cpu/scf/test_method_driver_wire.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2           cpu/scf/test_mp2.cpp)
     atv_add_cpp_test(test_cpu_scf_fci           cpu/scf/test_fci.cpp)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)
@@ -498,7 +501,8 @@ if(ATV_BUILD_RHF)
                      cpu/scf/test_method_driver_parity.cpp)
     set_tests_properties(test_cpu_scf_method_driver_parity PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
-    atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)
+    atv_add_cpp_test(test_cpu_scf_method_driver_no_alloc
+                     cpu/scf/test_method_driver_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)

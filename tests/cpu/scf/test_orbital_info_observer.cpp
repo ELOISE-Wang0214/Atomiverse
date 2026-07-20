@@ -13,7 +13,6 @@
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/orbital_info_observer.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
 
 using namespace ATV;
 
@@ -84,7 +83,7 @@ TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
 }
 
 TEST(OrbitalInfoObserverTest, NullHandleThrows) {
-    cpu::scf::SCFResultHandle empty{};
+    cpu::scf::MeanFieldOutputs empty{};
     EXPECT_THROW(cpu::scf::OrbitalInfoObserver(empty, ""),
                  std::invalid_argument);
 }

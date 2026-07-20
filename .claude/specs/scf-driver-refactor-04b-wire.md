@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 04b 外层接线（HF 纯 tag，删 build/launch，MeanFieldOutputs 收窄，run/launch 债务终结）
 slug: scf-driver-refactor-04b-wire
-status: approved
+status: code-complete
 chain: scf-driver-refactor
 link: 04b/08
 created: 2026-07-20
@@ -71,15 +71,15 @@ struct MeanFieldOutputs {                    // 原 SCFResultHandle 重命名
 - `tests/CMakeLists.txt` — 注册更新。
 
 ## Tasks
-- [ ] Write failing tests (tests/cpu/scf/test_method_driver_wire.cpp) that bind a method-driver via on(force/evaluate).add + single_point and assert validate accepts it as an HF node, MeanFieldOutputs exposes shells, and the nested run allocates nothing per outer step; update tests/CMakeLists
-- [ ] Make HF a pure polymorphic tag (cpu/component/hf.h, virtual dtor, no Component) and MeanFieldMethod<D> derive CPUDriver<scf::Phase> + HF (not Component), overriding default_budget()→max_iter and name()
-- [ ] Delete MeanFieldMethod build()/launch() and re-host ASPC predict/correct/record into drive_scf_ keyed only on use_predictor_ (drop the 03a component-path gate)
-- [ ] Delete scf_evaluator.{h,cpp} (keep using SCF = RKS in methods.h; update root CMakeLists) and migrate test_scf_evaluator to the driver path + re-home test_scf_evaluator_no_alloc onto the nested method-driver run
-- [ ] Switch validate_components (evaluate.h, md.h, vib/hessian, minimize) to the 04a node-aware walk and cross-cast driver-nodes to the kind tags (HF etc.)
-- [ ] Narrow SCFResultHandle → MeanFieldOutputs{result, shells, ready} and migrate orbital_info_observer + density/orbital cube writers + their tests + example 16
-- [ ] Migrate examples 05_geom_opt/06_aimd/11_koopmans/12_delta_scf + the single_point doc (binding shape is source-stable; update stale SCF::launch comments)
-- [ ] Migrate tests test_evaluate_driver, test_minimize_driver_swap_optimizer, minimizer tests, and vib hessian tests to the driver-node binding
-- [ ] Run full check + test suite
+- [x] Write failing tests (tests/cpu/scf/test_method_driver_wire.cpp) that bind a method-driver via on(force/evaluate).add + single_point and assert validate accepts it as an HF node, MeanFieldOutputs exposes shells, and the nested run allocates nothing per outer step; update tests/CMakeLists
+- [x] Make HF a pure polymorphic tag (cpu/component/hf.h, virtual dtor, no Component) and MeanFieldMethod<D> derive CPUDriver<scf::Phase> + HF (not Component), overriding default_budget()→max_iter and name()
+- [x] Delete MeanFieldMethod build()/launch() and re-host ASPC predict/correct/record into drive_scf_ keyed only on use_predictor_ (drop the 03a component-path gate)
+- [x] Delete scf_evaluator.{h,cpp} (keep using SCF = RKS in methods.h; update root CMakeLists) and migrate test_scf_evaluator to the driver path + re-home test_scf_evaluator_no_alloc onto the nested method-driver run
+- [x] Switch validate_components (evaluate.h, md.h, vib/hessian, minimize) to the 04a node-aware walk and cross-cast driver-nodes to the kind tags (HF etc.)
+- [x] Narrow SCFResultHandle → MeanFieldOutputs{result, shells, ready} and migrate orbital_info_observer + density/orbital cube writers + their tests + example 16
+- [x] Migrate examples 05_geom_opt/06_aimd/11_koopmans/12_delta_scf + the single_point doc (binding shape is source-stable; update stale SCF::launch comments)
+- [x] Migrate tests test_evaluate_driver, test_minimize_driver_swap_optimizer, minimizer tests, and vib hessian tests to the driver-node binding
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **原生绑定为 HF（单元，秒级）**：`test_method_driver_wire` 断言 `Evaluate`/`MD`/`Minimize` 的 `validate_components` 接受一个 driver 节点（方法-driver）作 HF 能量源（跨投射）；`eval.on(evaluate::Phase::evaluate).add(RHF{})` 与 `single_point(frame, rhf)` 均绑定为嵌套节点、跑出与旧组件路径一致的能量。

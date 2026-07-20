@@ -307,6 +307,21 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         }
     }
 
+    /// @brief Node-aware pending walk: components and nested drivers.
+    ///
+    /// Used by outer `validate_components` so a method-driver (pure `HF` tag,
+    /// not a Component) is recognised as an energy/force source via
+    /// `dynamic_cast<const HF*>(driver_ptr)`.
+    template <typename CompFn, typename DrvFn>
+    void for_each_pending_kind(CompFn&& cfn, DrvFn&& dfn) const {
+        for (const auto& pb : this->pending_) {
+            if (pb.is_driver())
+                dfn(static_cast<const cpu::Driver*>(pb.nested_driver));
+            else
+                cfn(*pb.component);
+        }
+    }
+
     /// @brief Build-time halo wiring: collect every halo participant among
     /// the pending components (deduplicated — multi-binding components
     /// appear once) and hand the list to each exchange endpoint via

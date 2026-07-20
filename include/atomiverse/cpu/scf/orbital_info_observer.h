@@ -2,7 +2,7 @@
 /// @brief OrbitalInfoObserver -- per-step HOMO/LUMO/gap summary from SCFResult.
 ///
 /// Reads eigenvalues from the latest SCFResult published by a sibling
-/// `SCF` via `SCFResultHandle`. Writes a TSV log and optionally
+/// mean-field method via `MeanFieldOutputs`. Writes a TSV log and optionally
 /// mirrors to stdout.
 ///
 /// Usage:
@@ -26,7 +26,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/mean_field_method.h"
 
 namespace ATV {
 namespace cpu {
@@ -35,14 +35,14 @@ namespace scf {
 /// @brief Orbital-energy observer component.
 ///
 /// No default bindings: user chooses `end_of_step` of whichever driver hosts
-/// the SCF (MD, Minimize, or Evaluate).
+/// the method (MD, Minimize, or Evaluate).
 class OrbitalInfoObserver : public cpu::Component {
   public:
     /// @brief Construct.
-    /// @param handle        Shared view of the SCF's latest state.
+    /// @param handle        Shared view of the method's latest state.
     /// @param filename      Output TSV path. Empty string disables file output.
     /// @param also_stdout   If true, mirror each row to stdout.
-    OrbitalInfoObserver(SCFResultHandle handle, std::string filename = "",
+    OrbitalInfoObserver(MeanFieldOutputs handle, std::string filename = "",
                         bool also_stdout = false);
 
     std::string name() const override { return "orbital_info_observer"; }
@@ -64,7 +64,7 @@ class OrbitalInfoObserver : public cpu::Component {
     double gap_eV() const { return lumo_eV_ - homo_eV_; }
 
   private:
-    SCFResultHandle handle_;
+    MeanFieldOutputs handle_;
     std::string filename_;
     bool also_stdout_;
     std::ofstream os_;

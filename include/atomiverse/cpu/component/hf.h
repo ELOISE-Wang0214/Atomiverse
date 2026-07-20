@@ -1,14 +1,19 @@
 /// @file cpu/component/hf.h
-/// @brief cpu::HF — Gaussian-basis SCF (RHF / UHF / UKS).
+/// @brief cpu::HF — pure polymorphic tag for Gaussian-basis mean-field methods.
+///
+/// Not a Component. Concrete methods (`RHF` / `UHF` / `RKS` / `UKS`) derive
+/// `CPUDriver` + `HF` and bind as nested driver nodes. Outer drivers recognise
+/// energy/force sources via `dynamic_cast<const HF*>(driver_ptr)`.
 #pragma once
-
-#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief Gaussian-basis electronic structure (HF and hybrid KS).
-class HF : public Component {};
+/// @brief Gaussian-basis electronic structure (HF and hybrid KS) kind tag.
+class HF {
+  public:
+    virtual ~HF() = default;
+};
 
 } // namespace cpu
 } // namespace ATV

@@ -8,33 +8,34 @@
 #include <cstdio>
 #include <stdexcept>
 
-#include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace cpu {
 namespace recorder {
 
-CubeGrid bounding_box_grid(const scf::IntegralPack& integrals, double padding,
-                           double spacing) {
-    if (integrals.atoms.empty())
-        throw std::runtime_error("bounding_box_grid: empty integral pack");
+CubeGrid bounding_box_grid(const std::vector<scf::native::Shell>& shells,
+                           double padding, double spacing) {
+    if (shells.empty())
+        throw std::runtime_error("bounding_box_grid: empty shell list");
     if (spacing <= 0.0)
         throw std::invalid_argument("bounding_box_grid: spacing must be > 0");
 
-    double xmin = integrals.atoms[0].pos[0];
+    double xmin = shells[0].center[0];
     double xmax = xmin;
-    double ymin = integrals.atoms[0].pos[1];
+    double ymin = shells[0].center[1];
     double ymax = ymin;
-    double zmin = integrals.atoms[0].pos[2];
+    double zmin = shells[0].center[2];
     double zmax = zmin;
-    for (const auto& a : integrals.atoms) {
-        xmin = std::min(xmin, a.pos[0]);
-        xmax = std::max(xmax, a.pos[0]);
-        ymin = std::min(ymin, a.pos[1]);
-        ymax = std::max(ymax, a.pos[1]);
-        zmin = std::min(zmin, a.pos[2]);
-        zmax = std::max(zmax, a.pos[2]);
+    for (const auto& s : shells) {
+        xmin = std::min(xmin, s.center[0]);
+        xmax = std::max(xmax, s.center[0]);
+        ymin = std::min(ymin, s.center[1]);
+        ymax = std::max(ymax, s.center[1]);
+        zmin = std::min(zmin, s.center[2]);
+        zmax = std::max(zmax, s.center[2]);
     }
     CubeGrid g{};
     g.origin = {xmin - padding, ymin - padding, zmin - padding};
@@ -49,7 +50,7 @@ CubeGrid bounding_box_grid(const scf::IntegralPack& integrals, double padding,
 }
 
 void write_cube(const std::string& filename, const std::string& title1,
-                const std::string& title2, const scf::IntegralPack& integrals,
+                const std::string& title2, const Frame& frame,
                 const CubeGrid& grid, const std::vector<double>& values) {
     if (static_cast<long>(values.size()) != grid.n_points())
         throw std::invalid_argument(
@@ -59,7 +60,7 @@ void write_cube(const std::string& filename, const std::string& title1,
     if (!fp)
         throw std::runtime_error("write_cube: cannot open " + filename);
 
-    const int natm = static_cast<int>(integrals.atoms.size());
+    const int natm = static_cast<int>(frame.nlocal());
     std::fprintf(fp, "%s\n", title1.c_str());
     std::fprintf(fp, "%s\n", title2.c_str());
 
@@ -77,9 +78,17 @@ void write_cube(const std::string& filename, const std::string& title1,
                  grid.spacing[2]);
 
     // Atom block: Z, charge (placeholder = Z), x, y, z (Bohr).
-    for (const auto& a : integrals.atoms) {
-        std::fprintf(fp, "%5d %12.6f %12.6f %12.6f %12.6f\n", a.Z,
-                     static_cast<double>(a.Z), a.pos[0], a.pos[1], a.pos[2]);
+    const StorageReal* px = frame.span(kAtom_x);
+    const StorageReal* py = frame.span(kAtom_y);
+    const StorageReal* pz = frame.span(kAtom_z);
+    const LocalInt* type = frame.span(kAtom_type);
+    for (int i = 0; i < natm; ++i) {
+        const int Z = static_cast<int>(type[i]);
+        const double xb = static_cast<double>(px[i]) * units::kAngstromInBohr;
+        const double yb = static_cast<double>(py[i]) * units::kAngstromInBohr;
+        const double zb = static_cast<double>(pz[i]) * units::kAngstromInBohr;
+        std::fprintf(fp, "%5d %12.6f %12.6f %12.6f %12.6f\n", Z,
+                     static_cast<double>(Z), xb, yb, zb);
     }
 
     // Values: iz is the fastest-running axis. Format: 6 values per line,

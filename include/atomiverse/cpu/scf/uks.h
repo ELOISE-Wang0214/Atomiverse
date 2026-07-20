@@ -30,7 +30,7 @@ class UKS : public MeanFieldMethod<UKS> {
     /// @param n_beta  Spin-down electrons.
     /// @param xc      Exchange–correlation functional (default LSDA).
     UKS(int n_alpha, int n_beta, XCType xc = XCType::LSDA);
-    std::string name() const override { return "uks"; }
+    std::string name() const { return "uks"; }
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`

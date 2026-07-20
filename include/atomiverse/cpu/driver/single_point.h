@@ -1,11 +1,17 @@
 /// @file cpu/driver/single_point.h
 /// @brief cpu::single_point — free-function syntactic sugar for one-shot
-///        evaluator runs.
+///        evaluator / method-driver runs.
 ///
 /// **NOT a class.** The spec's binding rules permit a helper function as
-/// sugar for the `Evaluate + Evaluator` pattern, but explicitly forbid a
+/// sugar for the `Evaluate + evaluator` pattern, but explicitly forbid a
 /// `SinglePoint` driver class — single-point energy is one outer
 /// `Evaluate` task, not its own driver category.
+///
+/// Binds via `on(phase).add_ref`:
+/// - **Method-driver** (`cpu::scf::RHF` etc.): nested driver node, budget
+///   defaults to `default_budget()` (= `max_iter`).
+/// - **Component evaluator** (`PWEvaluator`, `AM1Evaluator`, …): component
+///   node on the evaluate phase.
 ///
 /// Usage:
 /// @code
@@ -27,13 +33,12 @@
 namespace ATV {
 namespace cpu {
 
-/// @brief Run a single-pass evaluation with one evaluator component.
+/// @brief Run a single-pass evaluation with one evaluator or method-driver.
 /// @param frame      System state, updated in place.
-/// @param evaluator  Evaluator component to run (lvalue — caller retains).
-/// @param phase      Phase slot to bind the evaluator on. Defaults to
-///                   `evaluate::Phase::evaluate`. Override only if the
-///                   evaluator needs to run during `prepare` or
-///                   `finalize` (rare).
+/// @param evaluator  Component evaluator or mean-field method-driver
+///                   (lvalue — caller retains).
+/// @param phase      Phase slot to bind on. Defaults to
+///                   `evaluate::Phase::evaluate`.
 template <typename Evaluator>
 void single_point(cpu::Frame& frame, Evaluator& evaluator,
                   ATV::evaluate::Phase phase = ATV::evaluate::Phase::evaluate) {

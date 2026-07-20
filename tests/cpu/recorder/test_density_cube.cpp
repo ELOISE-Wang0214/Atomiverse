@@ -18,7 +18,7 @@
 #include "atomiverse/cpu/recorder/density_cube_writer.h"
 #include "atomiverse/cpu/recorder/orbital_cube_writer.h"
 #include "atomiverse/cpu/scf/internal/scf_types.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
 
@@ -152,7 +152,7 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
 }
 
 TEST(DensityCubeTest, NullHandleThrows) {
-    cpu::scf::SCFResultHandle empty{};
+    cpu::scf::MeanFieldOutputs empty{};
     EXPECT_THROW(cpu::recorder::DensityCubeWriter(empty, "/tmp/x.cube"),
                  std::invalid_argument);
     EXPECT_THROW(

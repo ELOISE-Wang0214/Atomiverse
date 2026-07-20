@@ -12,14 +12,14 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-OrbitalInfoObserver::OrbitalInfoObserver(SCFResultHandle handle,
+OrbitalInfoObserver::OrbitalInfoObserver(MeanFieldOutputs handle,
                                          std::string filename, bool also_stdout)
     : handle_(std::move(handle)), filename_(std::move(filename)),
       also_stdout_(also_stdout) {
     if (!handle_.result || !handle_.ready)
         throw std::invalid_argument(
-            "OrbitalInfoObserver: null SCFResultHandle (did you forget "
-            "SCF::result_handle()?)");
+            "OrbitalInfoObserver: null MeanFieldOutputs (did you forget "
+            "method.result_handle()?)");
 }
 
 void OrbitalInfoObserver::build(const cpu::BuildContext& ctx) {

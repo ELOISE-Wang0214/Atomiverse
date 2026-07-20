@@ -146,18 +146,23 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     void validate_components() const override {
         bool has_force_writer = false;
         bool has_hessian_writer = false;
-        for_each_pending([&](const cpu::Component& c) {
-            if (dynamic_cast<const Potential*>(&c)
-                || dynamic_cast<const Bias*>(&c)
-                || dynamic_cast<const PathCoupling*>(&c)
-                || dynamic_cast<const HF*>(&c)
-                || dynamic_cast<const Semiempirical*>(&c)
-                || dynamic_cast<const PlaneWave*>(&c)
-                || dynamic_cast<const GPW*>(&c))
-                has_force_writer = true;
-            if (c.name() == "vib_hessian_accumulator")
-                has_hessian_writer = true;
-        });
+        for_each_pending_kind(
+            [&](const cpu::Component& c) {
+                if (dynamic_cast<const Potential*>(&c)
+                    || dynamic_cast<const Bias*>(&c)
+                    || dynamic_cast<const PathCoupling*>(&c)
+                    || dynamic_cast<const HF*>(&c)
+                    || dynamic_cast<const Semiempirical*>(&c)
+                    || dynamic_cast<const PlaneWave*>(&c)
+                    || dynamic_cast<const GPW*>(&c))
+                    has_force_writer = true;
+                if (c.name() == "vib_hessian_accumulator")
+                    has_hessian_writer = true;
+            },
+            [&](const cpu::Driver* d) {
+                if (dynamic_cast<const HF*>(d))
+                    has_force_writer = true;
+            });
         if (!has_force_writer)
             throw_missing(
                 "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");

@@ -421,7 +421,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
-            src/cpu/scf/scf_evaluator.cpp
             src/cpu/scf/orbital_info_observer.cpp
             src/cpu/recorder/cube.cpp
             src/cpu/recorder/density_cube_writer.cpp

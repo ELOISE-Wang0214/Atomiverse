@@ -12,11 +12,11 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/cpu/scf/native_integrals.h"
+
 namespace ATV {
 namespace cpu {
-namespace scf {
-struct IntegralPack;
-}
+class Frame;
 namespace recorder {
 
 /// @brief Uniform Cartesian grid in Bohr (cube-file native units).
@@ -36,25 +36,27 @@ struct CubeGrid {
 
 /// @brief Build a uniform grid that wraps the molecule with a padding margin.
 ///
-/// @param integrals Integral pack (used for atom positions -- already in Bohr).
-/// @param padding   Extra margin around the molecule bounding box [Bohr].
-/// @param spacing   Sample spacing [Bohr] (isotropic for all three axes).
+/// @param shells  Basis shells (centers already in Bohr).
+/// @param padding Extra margin around the shell-center bounding box [Bohr].
+/// @param spacing Sample spacing [Bohr] (isotropic for all three axes).
 /// @return CubeGrid centered on the bounding box.
-CubeGrid bounding_box_grid(const scf::IntegralPack& integrals,
+CubeGrid bounding_box_grid(const std::vector<scf::native::Shell>& shells,
                            double padding = 4.0, double spacing = 0.25);
 
 /// @brief Write a Gaussian cube file.
 ///
+/// Atom block positions and nuclear charges come from `frame` (Å → Bohr).
+///
 /// @param filename Output path.
 /// @param title1   First title line.
 /// @param title2   Second title line.
-/// @param integrals Integral pack -- source of atom positions (Bohr) and Z.
+/// @param frame    Geometry (Å) + Z in type column.
 /// @param grid     Grid description (all Bohr).
 /// @param values   Grid values in row-major order (ix, iy, iz) with
 ///                 iz the fastest axis -- cube-file convention.
 /// @throws std::runtime_error if the file cannot be opened.
 void write_cube(const std::string& filename, const std::string& title1,
-                const std::string& title2, const scf::IntegralPack& integrals,
+                const std::string& title2, const Frame& frame,
                 const CubeGrid& grid, const std::vector<double>& values);
 
 } // namespace recorder

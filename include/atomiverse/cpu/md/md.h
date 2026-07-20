@@ -356,22 +356,28 @@ class MD : public CPUDriver<ATV::md::Phase> {
 
   protected:
     /// @brief Integrator + energy/force kind (Potential / Bias / HF / …).
+    ///        Nested method-drivers count as HF force sources via cross-cast.
     void validate_components() const override {
         bool has_integrator = false;
         bool has_force_writer = false;
-        for_each_pending([&](const cpu::Component& c) {
-            if (dynamic_cast<const Integrator*>(&c))
-                has_integrator = true;
-            if (dynamic_cast<const Potential*>(&c)
-                || dynamic_cast<const Bias*>(&c)
-                || dynamic_cast<const PathCoupling*>(&c)
-                || dynamic_cast<const HF*>(&c)
-                || dynamic_cast<const Semiempirical*>(&c)
-                || dynamic_cast<const PlaneWave*>(&c)
-                || dynamic_cast<const GPW*>(&c) || c.name() == "langevin"
-                || c.name() == "fix_langevin")
-                has_force_writer = true;
-        });
+        for_each_pending_kind(
+            [&](const cpu::Component& c) {
+                if (dynamic_cast<const Integrator*>(&c))
+                    has_integrator = true;
+                if (dynamic_cast<const Potential*>(&c)
+                    || dynamic_cast<const Bias*>(&c)
+                    || dynamic_cast<const PathCoupling*>(&c)
+                    || dynamic_cast<const HF*>(&c)
+                    || dynamic_cast<const Semiempirical*>(&c)
+                    || dynamic_cast<const PlaneWave*>(&c)
+                    || dynamic_cast<const GPW*>(&c) || c.name() == "langevin"
+                    || c.name() == "fix_langevin")
+                    has_force_writer = true;
+            },
+            [&](const cpu::Driver* d) {
+                if (dynamic_cast<const HF*>(d))
+                    has_force_writer = true;
+            });
         if (!has_integrator)
             throw_missing("Integrator");
         if (!has_force_writer)

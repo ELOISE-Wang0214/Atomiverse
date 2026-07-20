@@ -27,7 +27,7 @@ class RKS : public MeanFieldMethod<RKS> {
     /// @brief Construct RKS with an explicit exchange–correlation functional.
     /// @param xc Functional to use (e.g. LSDA, PBE, B3LYP, PBE0).
     explicit RKS(XCType xc);
-    std::string name() const override { return "rks"; }
+    std::string name() const { return "rks"; }
 
   protected:
     /// @brief Closed-shell occupation (n_alpha = n_beta = n_electrons / 2);

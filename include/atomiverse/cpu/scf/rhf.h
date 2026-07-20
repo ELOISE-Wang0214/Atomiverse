@@ -20,7 +20,7 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @brief Construct with the RHF defaults (restricted HF; MINAO initial
     ///        guess; no density damping; energy tolerance 1e-9 Ha).
     RHF();
-    std::string name() const override { return "rhf"; }
+    std::string name() const { return "rhf"; }
 
   protected:
     /// @brief Closed-shell occupation: n_alpha = n_beta = n_electrons / 2

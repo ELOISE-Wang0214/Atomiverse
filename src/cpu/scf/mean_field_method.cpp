@@ -178,12 +178,118 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     wired_self_ = this;
 }
 
+// ── Nested driver lifecycle ───────────────────────────────────────────────────
+
+template <typename D>
+void MeanFieldMethod<D>::build_on(cpu::Backend& rt) {
+    // Stage wiring needs geometry (IntegralPack dimensions); deferred to the
+    // first drive_scf_. Parent Runtime does not own this method's Plan.
+    (void)rt;
+}
+
+template <typename D>
+void MeanFieldMethod<D>::destroy_on(cpu::Backend& rt) {
+    (void)rt;
+    reset_built_driver_();
+}
+
+template <typename D>
+int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
+                                          int budget) {
+    (void)ctx;
+    DriveOpts opts;
+    opts.unwrap = true;
+    opts.forces = compute_force;
+    opts.write_energy = true;
+    if (budget > 0)
+        opts.max_iter = budget;
+    drive_scf_(f, nullptr, opts);
+    return result_sp_->iterations;
+}
+
 // ── THE funnel ────────────────────────────────────────────────────────────────
 
 template <typename D>
 SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
                                           const SCFInitialGuess* guess,
                                           const DriveOpts& opts) {
+    // ASPC predict / correct / record — gated only on use_predictor_ (and
+    // opts.apply_aspc so the corrector/fallback recursion does not re-enter).
+    SCFInitialGuess density_guess;
+    const SCFInitialGuess* effective_guess = guess;
+    bool predicted = false;
+
+    if (opts.apply_aspc && use_predictor_ && aspc_alpha_ && aspc_beta_) {
+        xt::xtensor<double, 2> Pa_guess, Pb_guess;
+        const bool have_alpha = aspc_alpha_->predict(Pa_guess);
+        const bool have_beta = aspc_beta_->predict(Pb_guess);
+        if (have_alpha && have_beta) {
+            density_guess.P_alpha = std::move(Pa_guess);
+            density_guess.P_beta = std::move(Pb_guess);
+            density_guess.has_alpha = true;
+            density_guess.has_beta = true;
+            effective_guess = &density_guess;
+            predicted = true;
+        } else if (has_last_density_ && !guess) {
+            density_guess.P_alpha = last_P_alpha_;
+            density_guess.P_beta = last_P_beta_;
+            density_guess.has_alpha = true;
+            density_guess.has_beta = true;
+            effective_guess = &density_guess;
+        }
+    } else if (opts.apply_aspc && has_last_density_ && !guess) {
+        // Warm-start from the previous outer-step density (even without ASPC).
+        density_guess.P_alpha = last_P_alpha_;
+        density_guess.P_beta = last_P_beta_;
+        density_guess.has_alpha = true;
+        density_guess.has_beta = true;
+        effective_guess = &density_guess;
+    }
+
+    if (opts.apply_aspc && use_predictor_ && predicted) {
+        // ASPC corrector: short SCF at loosened tol; fall back to full solve.
+        DriveOpts copts = opts;
+        copts.max_iter = corrector_steps_;
+        copts.tol_override = corrector_tol_;
+        copts.apply_aspc = false;
+        drive_scf_core_(frame, effective_guess, copts);
+        if (!result_sp_->converged && fallback_full_scf_) {
+            DriveOpts full = opts;
+            full.apply_aspc = false;
+            drive_scf_core_(frame, effective_guess, full);
+        }
+    } else {
+        DriveOpts core = opts;
+        core.apply_aspc = false;
+        drive_scf_core_(frame, effective_guess, core);
+    }
+
+    const SCFResult& result = *result_sp_;
+    if (opts.apply_aspc && use_predictor_ && aspc_alpha_ && aspc_beta_) {
+        if (predicted) {
+            xt::xtensor<double, 2> Pa_corr, Pb_corr;
+            aspc_alpha_->correct(result.P_alpha, density_guess.P_alpha,
+                                 Pa_corr);
+            aspc_beta_->correct(result.P_beta, density_guess.P_beta, Pb_corr);
+            aspc_alpha_->record(Pa_corr);
+            aspc_beta_->record(Pb_corr);
+        } else {
+            aspc_alpha_->record(result.P_alpha);
+            aspc_beta_->record(result.P_beta);
+        }
+    }
+    if (opts.apply_aspc) {
+        has_last_density_ = true;
+        last_P_alpha_ = result.P_alpha;
+        last_P_beta_ = result.P_beta;
+    }
+    return *result_sp_;
+}
+
+template <typename D>
+SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
+                                               const SCFInitialGuess* guess,
+                                               const DriveOpts& opts) {
     // ── Prologue: per-run assembly ────────────────────────────────────────────
     PositionGuard guard(frame, opts.unwrap);
 
@@ -482,87 +588,6 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
     run(frame);
     compute_eri = prev;
     return fci_energy(*integrals_sp_, *result_sp_);
-}
-
-// ── Component path (coexistence debt; sub-spec 04 deletes build/launch) ───────
-
-template <typename D>
-void MeanFieldMethod<D>::build(const cpu::BuildContext& ctx) {
-    // Per-run integral rebuild, stage wiring and Plan compile all happen lazily
-    // in drive_scf_ (called from launch), so there is nothing to do here.
-    (void)ctx;
-}
-
-template <typename D>
-void MeanFieldMethod<D>::launch(const cpu::LaunchContext& ctx) {
-    auto& frame = ctx.frame;
-
-    DriveOpts opts;
-    opts.unwrap = true;
-    opts.forces = compute_force;
-    opts.write_energy = true;
-
-    SCFInitialGuess density_guess;
-    const SCFInitialGuess* guess = nullptr;
-    bool predicted = false;
-
-    if (use_predictor_ && aspc_alpha_ && aspc_beta_) {
-        xt::xtensor<double, 2> Pa_guess, Pb_guess;
-        const bool have_alpha = aspc_alpha_->predict(Pa_guess);
-        const bool have_beta = aspc_beta_->predict(Pb_guess);
-        if (have_alpha && have_beta) {
-            density_guess.P_alpha = std::move(Pa_guess);
-            density_guess.P_beta = std::move(Pb_guess);
-            density_guess.has_alpha = true;
-            density_guess.has_beta = true;
-            guess = &density_guess;
-            predicted = true;
-        } else if (has_last_density_) {
-            density_guess.P_alpha = last_P_alpha_;
-            density_guess.P_beta = last_P_beta_;
-            density_guess.has_alpha = true;
-            density_guess.has_beta = true;
-            guess = &density_guess;
-        }
-    } else if (has_last_density_) {
-        density_guess.P_alpha = last_P_alpha_;
-        density_guess.P_beta = last_P_beta_;
-        density_guess.has_alpha = true;
-        density_guess.has_beta = true;
-        guess = &density_guess;
-    }
-
-    if (predicted) {
-        // ASPC corrector: a short SCF from the predicted density at the
-        // LOOSENED corrector tolerance; fall back to a full solve (member tol,
-        // full budget) if it has not converged within corrector_steps_.
-        DriveOpts copts = opts;
-        copts.max_iter = corrector_steps_;
-        copts.tol_override = corrector_tol_;
-        drive_scf_(frame, guess, copts);
-        if (!result_sp_->converged && fallback_full_scf_)
-            drive_scf_(frame, guess, opts);
-    } else {
-        drive_scf_(frame, guess, opts);
-    }
-
-    const SCFResult& result = *result_sp_;
-    if (use_predictor_ && aspc_alpha_ && aspc_beta_) {
-        if (predicted) {
-            xt::xtensor<double, 2> Pa_corr, Pb_corr;
-            aspc_alpha_->correct(result.P_alpha, density_guess.P_alpha,
-                                 Pa_corr);
-            aspc_beta_->correct(result.P_beta, density_guess.P_beta, Pb_corr);
-            aspc_alpha_->record(Pa_corr);
-            aspc_beta_->record(Pb_corr);
-        } else {
-            aspc_alpha_->record(result.P_alpha);
-            aspc_beta_->record(result.P_beta);
-        }
-    }
-    has_last_density_ = true;
-    last_P_alpha_ = result.P_alpha;
-    last_P_beta_ = result.P_beta;
 }
 
 // explicit instantiations
