@@ -478,6 +478,10 @@ if(ATV_BUILD_HF)
     # Charge/multiplicity resolver + method run() validity guard
     # (hf-robust-01); tutorial ch02/ch03 regression anchor.
     atv_add_cpp_test(test_cpu_scf_spin_resolution cpu/scf/test_spin_resolution.cpp)
+    # SlaterDeterminant value type: validating ctors, per-spin density,
+    # expect/homo/lumo, with_occupation, validate(S)
+    # (scf-slater-determinant-01-type).
+    atv_add_cpp_test(test_cpu_scf_slater_determinant cpu/scf/test_slater_determinant.cpp)
     # SCF linear-dependence handling via canonical orthogonalization
     # (hf-robust-02); tutorial ch02 regression anchor.
     atv_add_cpp_test(test_cpu_scf_lindep         cpu/scf/test_scf_lindep.cpp)
