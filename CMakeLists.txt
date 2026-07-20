@@ -394,6 +394,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/one_electron.cpp
             src/cpu/scf/two_electron.cpp
             src/cpu/scf/integrals.cpp
+            src/cpu/scf/ecp_potential.cpp
+            src/cpu/scf/ecp_integrals.cpp
             src/cpu/scf/native_integrals.cpp
             src/cpu/scf/rys_roots.cpp
             src/cpu/scf/rys_roots_iterative.cpp

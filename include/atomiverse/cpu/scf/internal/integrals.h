@@ -11,6 +11,7 @@
 #pragma once
 
 #include <array>
+#include <string>
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
@@ -59,7 +60,17 @@ struct IntegralPack {
     [[nodiscard]] int n_ao_cart() const {
         return spherical() ? n_basis_cart : n_basis;
     }
-    int n_electrons = 0;        ///< Total number of electrons.
+    int n_electrons = 0;        ///< Total number of electrons (valence only
+                                ///< for ECP atoms: core electrons removed).
+
+    /// @brief ECP family name in effect ("" = all-electron pack).
+    std::string ecp;
+
+    /// @brief True when at least one atom carries an ECP (U added to Hcore,
+    ///        Z reduced to Z_val, n_electrons reduced by n_core). Consumers
+    ///        without ECP support (analytic gradient, MINAO guess) key off
+    ///        this flag.
+    bool has_ecp = false;
 
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.
@@ -91,12 +102,21 @@ struct IntegralPack {
     ///   - CUDA RHFFock (uploads ERI to device)
     ///   - Tests that verify ERI values directly
     ///
+    /// When `ecp` names a supported family ("def2-ECP"), atoms present in
+    /// that table switch to the valence-only description: nuclear attraction
+    /// and nuclear repulsion use Z_val = Z − n_core, `n_electrons` drops by
+    /// n_core per atom, and the semi-local ECP matrix U is added into the
+    /// nuclear-attraction block of Hcore (before any spherical sandwich).
+    /// Atoms absent from the table stay all-electron (def2 convention:
+    /// Z ≤ 36). S/T/ERI are untouched by the ECP.
+    ///
     /// @param frame       CPU Frame with atom positions and types (atoms.type = Z).
     /// @param basis       Which basis set to resolve (STO3G, 6-31G, ...).
     /// @param charge      Molecular charge (0 = neutral, +1 = cation, etc.).
     /// @param compute_eri If true, compute and store the full ERI tensor [default false].
+    /// @param ecp         ECP family name ("" = all-electron; unknown names throw).
     IntegralPack(const Frame& frame, BasisSet basis, int charge = 0,
-                 bool compute_eri = false);
+                 bool compute_eri = false, std::string ecp = {});
 
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.

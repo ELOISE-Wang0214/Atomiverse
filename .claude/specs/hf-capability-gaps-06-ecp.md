@@ -1,7 +1,7 @@
 ---
 title: HF 能力补全 · 06 半定域 ECP — def2-ECP 静态表 + 核哈密顿积分
 slug: hf-capability-gaps-06-ecp
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 06/21
 created: 2026-07-20
@@ -24,6 +24,28 @@ created: 2026-07-20
 ## Design
 
 数据面沿用 05 环模式:`basis_table.h` 增 `EcpGaussianTerm{n, alpha, coeff}` / `EcpChannel{l, terms}` / `AtomEcp{n_core, channels}`(空 `AtomEcp` = 该 Z 无 ECP,即全电子);`ecp_def2.h` 声明 `inline const std::vector<AtomEcp>& ecp_def2()` 按 Z 索引,由生成器字节确定地发出(头部 Regenerate 注释记录命令)。查表类 `cpu::scf::EcpPotential`:成员 `element / name / n_core / channels`(局域道 l=L 排末位),双构造器与 `GthPotential` 同形 —— 显式供参构造 + `(molrs::Element, std::string_view)` 查表构造,查表失败抛含支持项清单的 `std::runtime_error`。积分面:`internal/ecp_integrals.h` 的 `EcpIntegrals` 工作区类,构造器吃 `(shells, 带 ECP 的原子列表)`,成员方法产出 U 矩阵(type-1 局域 + type-2 半定域投影),径向积分用带尺度贝塞尔 + 高斯求积;类私有、绝不进公共 API(Frame 纯净规则:方法私有工作区)。接线:`IntegralPack` 构造器增 `ecp` 名字参数(默认空 = 全电子),命中表的原子做 Z_val=Z−n_core(核吸引 V、核排斥 V_nuc)与 n_electrons 扣减,`Hcore += U`;表外元素维持全电子(def2 约定 Z≤36 全电子)。方法层:`MeanFieldMethod` 增成员 `std::string ecp;`(空=全电子)与保留成员 `bool x2c = false;`(18 环接线),`drive_scf_` 序幕内联校验:x2c && 任一原子命中 ECP 表 → 抛含元素名的 `std::runtime_error`(逐元素互斥,单次使用不抽函数)。`def2_svp.h` 由生成器补 Z=37–86 价基行(def2-SVP 重元素价基本就只与 def2-ECP 成对定义)。本环不动 SlaterDeterminant/run() 签名等并行链表面,无 external-depends。
+
+**实现审计注记(2026-07-21)**:
+
+1. **f 投影道钉值改走合成 ECP**:PySCF 2.14.0 的 def2-ECP 数据全族最高投影道为
+   d(l=2),不存在 f 投影道(逐元素核实 Rb–La、Hf–Rn)。ac-002 的"高 l 投影道"
+   钉值因此经由 PySCF **用户自定义 ECP**(`mol.ecp = {...}`,合成 l=3 通道 + 局域
+   项)外部钉定 — 同一 oracle 协议(`mol.intor('ECPscalar')`),type-2 高 l 路径
+   (λ ≤ 6、带尺度贝塞尔)被真实覆盖;真实 def2-ECP(I)矩阵元另有 15 个钉值,
+   含 f AO(氢上离心)与 d 投影道。两组钉值均达 ≤3e-13,断言 1e-10。
+2. **范围外必要修复(阻塞 ac-006)**:`src/cpu/scf/operators.cpp` 的
+   `ShellBlockPairList::g_rhf` 与 `::k` 中 `AOpair ao_pairs[36]` 按 d 壳上限
+   (6×6)定容,f 壳块对产生最多 10×10=100 个 AO 对 → **栈缓冲溢出(静默 UB)**。
+   该缺陷随 f 壳支持既已存在(全电子 H₂O/def2-TZVP 即偏 PySCF 8e-9 Ha,AuH 偏
+   7.7e-6 Ha 并破坏线性分子的 π/δ 轨道简并),本环 AuH 回归首次将其暴露为可测
+   偏差;修为 `kMaxNCart² = 100`。修复后 AuH 对钉 7e-12 Ha。诊断链:S/T/V/U/
+   稠密 ERI 全部 ≤6e-13 对 PySCF、能量分解定位到直接 Fock 路径。
+3. **EcpPotential 附带两个 spec 未列的静态查表成员**:`family_table(name)`
+   (ECP 家族名 → Z 索引表;IntegralPack 接线与 x2c 门的单一解析来源)与
+   `element_symbol(Z)`(诊断消息:查表失败清单、x2c 门的元素名)。均为纯查表,
+   非工厂函数。`IntegralPack` 增 `ecp`(名字)与 `has_ecp` 成员,供
+   `ScfGradient::compute`(ECP pack 抛错,镜像球谐先例)与 `minao_supported`
+   (ECP pack 回退 Hcore 初猜 — MINAO 参考密度为全电子)守卫。
 
 ## Files to create or modify
 
@@ -48,14 +70,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests tests/cpu/scf/test_ecp.cpp(ecp_def2 表结构钉 PySCF:I/Au 的 n_core、通道数、首末指数;EcpPotential 表外元素/未知名字抛错;EcpIntegrals 若干 U 矩阵元含高 l 投影道钉外部 PySCF `mol.intor('ECPscalar')` 值;I₂ IntegralPack n_electrons=50、V_nuc 用 Z_val、S/T 与全电子路径逐元素相等;x2c+ecp 抛含元素名的 runtime_error)并注册 tests/CMakeLists.txt
-- [ ] Implement generator extension in tools/gen_basis_data.py(ecp_def2.h 发射 + def2_svp.h Z=37–86 行),生成两表并验证字节可复现(同命令再跑 `git diff` 为空)
-- [ ] Implement EcpPotential in ecp_potential.h / ecp_potential.cpp + basis_table.h 结构(查表构造器镜像 GthPotential,Doxygen 带单位)
-- [ ] Implement EcpIntegrals in internal/ecp_integrals.h / src/cpu/scf/ecp_integrals.cpp(type-1/type-2 McMurchie–Davidson 径向、带尺度贝塞尔 M_l(x)=e^{−x}i_l(x)、成员而非 build_* 自由函数)并注册 CMakeLists.txt
-- [ ] Wire ECP into IntegralPack + MeanFieldMethod(internal/integrals.h、integrals.cpp:ecp 参数、Z_val、n_electrons、Hcore+=U;mean_field_method.h/.cpp:`ecp`/`x2c` 成员与序幕互斥 THROW)
-- [ ] Add regression regressions/scf/ecp_heavy_atom(RHF I₂ 与 AuH,def2-SVP+def2-ECP,vs 钉住的 PySCF 值 ≤1e-6 Ha,≤60 s)并注册 regressions/CMakeLists.txt
-- [ ] Extend docs/tutorial/ch04-basis-sets.md:"有效核势" 一节(为何可替换芯电子、半定域形式、价电子计数;I₂ 上手示例;章末 PySCF 对照表行 —— 标量进表,不用柱状图)
-- [ ] Run full check + test suite
+- [x] Write failing tests tests/cpu/scf/test_ecp.cpp(ecp_def2 表结构钉 PySCF:I/Au 的 n_core、通道数、首末指数;EcpPotential 表外元素/未知名字抛错;EcpIntegrals 若干 U 矩阵元含高 l 投影道钉外部 PySCF `mol.intor('ECPscalar')` 值;I₂ IntegralPack n_electrons=50、V_nuc 用 Z_val、S/T 与全电子路径逐元素相等;x2c+ecp 抛含元素名的 runtime_error)并注册 tests/CMakeLists.txt
+- [x] Implement generator extension in tools/gen_basis_data.py(ecp_def2.h 发射 + def2_svp.h Z=37–86 行),生成两表并验证字节可复现(同命令再跑 `git diff` 为空)
+- [x] Implement EcpPotential in ecp_potential.h / ecp_potential.cpp + basis_table.h 结构(查表构造器镜像 GthPotential,Doxygen 带单位)
+- [x] Implement EcpIntegrals in internal/ecp_integrals.h / src/cpu/scf/ecp_integrals.cpp(type-1/type-2 McMurchie–Davidson 径向、带尺度贝塞尔 M_l(x)=e^{−x}i_l(x)、成员而非 build_* 自由函数)并注册 CMakeLists.txt
+- [x] Wire ECP into IntegralPack + MeanFieldMethod(internal/integrals.h、integrals.cpp:ecp 参数、Z_val、n_electrons、Hcore+=U;mean_field_method.h/.cpp:`ecp`/`x2c` 成员与序幕互斥 THROW)
+- [x] Add regression regressions/scf/ecp_heavy_atom(RHF I₂ 与 AuH,def2-SVP+def2-ECP,vs 钉住的 PySCF 值 ≤1e-6 Ha,≤60 s)并注册 regressions/CMakeLists.txt
+- [x] Extend docs/tutorial/ch04-basis-sets.md:"有效核势" 一节(为何可替换芯电子、半定域形式、价电子计数;I₂ 上手示例;章末 PySCF 对照表行 —— 标量进表,不用柱状图)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

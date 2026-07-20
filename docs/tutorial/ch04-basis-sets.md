@@ -441,3 +441,102 @@ encoding:
 读法与本章正文的水的阶梯相同:STO-3G → 6-31G 一大步(分裂价层),极化
 一小步,而 6-31+G* 这"额外"的一步对阴离子**不是**递减收益 — 它补的是
 别的基组根本没有的那类函数。
+
+## 有效核势(ECP):把惰性的芯换成一个算符
+
+### 为什么芯电子可以被替换
+
+碘有 53 个电子,金有 79 个。全电子处理它们意味着:为 1s…3d 这些深芯轨道
+配上超陡的高斯函数(指数动辄 10⁶)、承受由此而来的积分动态范围与线性相关
+问题 — 而这些芯电子在成键中几乎纹丝不动。化学发生在价层;芯的作用无非是
+(1) 屏蔽核电荷、(2) 通过 Pauli 排斥把价电子"顶"在芯区之外。这两件事都可以
+用一个作用在价电子上的**算符**代替 — 这就是有效核势(effective core
+potential,ECP;也叫赝势)。第三个、往往最重要的理由:重元素的芯电子是
+**相对论性的**(Au 的 1s 电子速度约 0.58c),把相对论解出来再拟合成势,
+比在价层薛定谔方程里显式处理便宜得多。
+
+### 半定域形式:每个角动量一张势
+
+价电子"看到"的芯不是各向同性的:s 价电子必须与芯的 s 轨道正交(Pauli),
+p 价电子与芯 p 正交 — 不同角动量通道感受到的有效排斥不同。所以 ECP 是
+**半定域**(semi-local)的(Kahn, Baybutt, Truhlar 1976):
+
+$$U(r) = U_L(r) + \sum_{l<L} \sum_{m} |lm\rangle\,[U_l(r) - U_L(r)]\,\langle lm|$$
+
+局域部分 U_L 作用于所有角动量;投影部分对每个低角动量通道 l 修正出
+U_l − U_L 的差。每张径向势都是高斯展开
+U_l(r) = Σ_k d_k r^{n_k−2} e^{−ζ_k r²}(def2-ECP 全部取 n=2,纯高斯),
+于是全部矩阵元解析/半解析可积(McMurchie–Davidson 1981 的 type-1/type-2
+积分;径向被积函数里的修正球贝塞尔 i_l(kr) 在引擎内用带尺度形式
+M_l(x)=e^{−x}i_l(x) 计算 — 高 l 下直接算 i_l 会灾难性消去)。
+
+### 价电子计数:Z 变成 Z_val
+
+替换芯的同时,三处记账同步改变(这是新手最容易漏的地方):
+
+| 量 | 全电子 | ECP(def2-ECP)|
+|---|---|---|
+| I 的核吸引/核排斥电荷 | Z = 53 | Z_val = 53 − 28 = 25 |
+| I₂ 的电子数 | 106 | 50(n_occ = 25)|
+| Au 的电荷 / AuH 电子数 | 79 / 80 | 19 / 20 |
+
+def2 家族的约定:**Z ≤ 36(H–Kr)全电子,Rb 之后配 ECP**(I 换掉 28 个
+芯电子,Au 换掉 60 个)。def2-SVP 的重元素行本来就是与 def2-ECP 成对
+定义的价层基组 — 基组与 ECP 是一张配方单的两半,不能混搭。
+
+### 相对论已经烘进去了(x2c 双重计数警告)
+
+def2-ECP 的参数(I:ECP28MWB,Bergner 1993;Au:ECP60MWB,Andrae 1990)
+是对**准相对论**(Wood–Boring)原子解拟合的 — 标量相对论效应(s 壳收缩、
+d/f 壳膨胀,金的颜色与汞的液态背后的那套物理)已经包含在势里。所以
+**ECP 元素绝不能再叠加显式标量相对论哈密顿**(如 x2c):那会把同一效应
+数两遍。Atomiverse 把这个约束做成了逐元素的硬门:
+
+```cpp
+cpu::scf::RHF rhf;
+rhf.ecp = "def2-ECP";
+rhf.x2c = true;        // 保留成员,后续链环接线
+rhf.run(i2_frame);     // throws:x2c + ECP 对元素 I 双重计数
+```
+
+全电子分子(表外元素)同样设置不抛 — 门是逐元素的,不是全局开关。
+
+### 上手:I₂ 的 RHF
+
+与第 2 章的 H₂ 相比只多一行 — `ecp` 是方法的成员,不是新的驱动器:
+
+```cpp
+cpu::Frame frame(2);                       // I(0,0,0); I(0,0,2.666) Å
+frame.span(kAtom_type)[0] = 53;
+frame.span(kAtom_type)[1] = 53;
+frame.span(kAtom_z)[1] = 2.666;
+frame.simbox = cpu::Box::cubic(20.0);
+
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Def2SVP;   // 价层基组(球谐)
+rhf.ecp = "def2-ECP";                      // 空字符串 = 全电子
+rhf.tol = 1e-12;
+rhf.run(frame);                            // E = -593.316182 Ha,52 AO
+```
+
+−593 Ha 这个数量级值得停一秒:全电子 I₂ 的 RHF 能量在 −13800 Ha 上下 —
+ECP 把"总能量里 98% 的化学惰性部分"连同它的基组代价一起删掉了,留下的
+50 个价电子用 52 个球谐 AO 就描述得与 PySCF 一致到 1e-9 Ha。工程面与
+基组表同一套纪律:def2-ECP 参数由 `tools/gen_basis_data.py` 从 PySCF 的
+`gto.basis.load_ecp` 一次性生成为静态表(`basis_data/ecp_def2.h`,字节可
+复现),查表类 `EcpPotential(molrs::Element::I, "def2-ECP")` 与 GPW 的
+`GthPotential` 同形,表外元素/未知名字抛错无回退;ECP 解析梯度尚未接线,
+`forces()` 对 ECP pack 显式抛出(与球谐基组同一先例)。
+
+### 章末对照:Atomiverse vs PySCF 2.14.0(标量,外部钉值)
+
+| 量 | Atomiverse | PySCF(钉定) | 差 |
+|---|---|---|---|
+| E_RHF(I₂, def2-SVP+def2-ECP)[Ha] | −593.316181880646 | −593.3161818794323 | 1.2×10⁻⁹ |
+| E_RHF(AuH, def2-SVP+def2-ECP)[Ha] | −135.342567007924 | −135.34256700791678 | 7×10⁻¹² |
+| V_nuc(I₂, Z_val=25)[Ha] | 124.056923040135 | 124.05692304013505 | <10⁻⁸ |
+| n_electrons(I₂)/(AuH) | 50 / 20 | 50 / 20 | — |
+
+(几何、命令与文献:`regressions/scf/ecp_heavy_atom/REFERENCE.md`;
+U 矩阵元级的钉值 — 含合成 f 投影道 — 在 `tests/cpu/scf/test_ecp.cpp`。
+标量一律进表。)

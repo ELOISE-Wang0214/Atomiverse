@@ -57,6 +57,36 @@ struct AtomBasis {
     std::vector<ContractedShell> shells;
 };
 
+/// @brief One Gaussian term of a semi-local ECP channel (Kahn form):
+///        `coeff * r^(n-2) * exp(-alpha * r^2)`.
+///
+/// Kahn, Baybutt, Truhlar, J. Chem. Phys. 65, 3826 (1976). All published
+/// def2-ECP terms use `n = 2` (pure Gaussians).
+struct EcpGaussianTerm {
+    int n;        ///< Radial power convention: the term carries r^(n-2).
+    double alpha; ///< Gaussian exponent [Bohr^-2].
+    double coeff; ///< Linear coefficient d_k [Hartree].
+};
+
+/// @brief One angular-momentum channel of a semi-local ECP.
+struct EcpChannel {
+    int l;                             ///< Angular momentum (0 = s, 1 = p, …).
+    std::vector<EcpGaussianTerm> terms; ///< Gaussian expansion of the channel.
+};
+
+/// @brief Semi-local effective core potential of one element:
+///        U = U_L + Σ_{l<L} Σ_m |lm⟩ (U_l − U_L) ⟨lm|.
+///
+/// `channels` is sorted by ascending l; the LAST channel is the local part
+/// U_L (relabeled from PySCF's l = -1 to l = L = 1 + max projector l) and
+/// applies to every angular momentum. The preceding projector channels
+/// store U_l − U_L directly (PySCF/def2 storage convention). An empty
+/// `AtomEcp` (no channels) marks an all-electron element.
+struct AtomEcp {
+    int n_core = 0;                  ///< Core electrons replaced by the ECP.
+    std::vector<EcpChannel> channels; ///< Projector channels, then local U_L.
+};
+
 } // namespace basis_data
 } // namespace scf
 } // namespace cpu

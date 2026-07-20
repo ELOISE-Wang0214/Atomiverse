@@ -17,11 +17,14 @@
 
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
+#include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/cart2sph.h"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 
@@ -32,16 +35,42 @@ namespace cpu {
 namespace scf {
 
 IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
-                           bool compute_eri) {
+                           bool compute_eri, std::string ecp_name) {
     const auto t_total = LogClock::now();
 
     AtomList atom_list{frame, charge};
     ShellList shell_list{atom_list, basis};
 
+    // ── ECP: valence-only description for atoms in the named table ───────
+    // Resolved BEFORE the integral kernels so nuclear attraction and
+    // nuclear repulsion see Z_val = Z − n_core and the electron count drops
+    // by n_core per hit atom. The shell list above used the full Z (basis
+    // rows are keyed by the element), so this runs after its construction.
+    ecp = std::move(ecp_name);
+    std::vector<internal::EcpCenter> ecp_centers;
+    if (!ecp.empty()) {
+        const auto& table = EcpPotential::family_table(ecp); // throws unknown
+        for (auto& at : atom_list.atoms) {
+            if (at.Z < 1 || at.Z >= static_cast<int>(table.size()))
+                continue;
+            const auto& row = table[static_cast<std::size_t>(at.Z)];
+            if (row.channels.empty())
+                continue; // all-electron element in this family
+            ecp_centers.push_back(internal::EcpCenter{
+                {at.pos[0], at.pos[1], at.pos[2]}, &row});
+            atom_list.n_electrons -= row.n_core;
+            at.Z -= row.n_core;
+        }
+        has_ecp = !ecp_centers.empty();
+    }
+
     ATV_INFO(
-        "[integrals] start natm={} basis={} n_basis={} electrons={} charge={}",
+        "[integrals] start natm={} basis={} n_basis={} electrons={} charge={}"
+        " ecp={} ecp_atoms={}",
         static_cast<int>(atom_list.atoms.size()), basis_set_name(basis),
-        shell_list.n_basis, atom_list.n_electrons, charge);
+        shell_list.n_basis, atom_list.n_electrons, charge,
+        ecp.empty() ? "-" : ecp.c_str(),
+        static_cast<int>(ecp_centers.size()));
 
     n_basis = shell_list.n_basis;
     n_electrons = atom_list.n_electrons;
@@ -50,6 +79,14 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
     S = overlap(shell_list);
     T = kinetic(shell_list);
     V = nuclear_attraction(shell_list, atom_list);
+    if (has_ecp) {
+        // Semi-local ECP matrix U in the Cartesian engine basis, added into
+        // the nuclear-attraction block so the spherical sandwich below (and
+        // Hcore = T + V) transforms it along with everything else.
+        internal::EcpIntegrals ecp_ints{shell_list.shells,
+                                        std::move(ecp_centers)};
+        V += ecp_ints.matrix();
+    }
     Hcore = T + V;
     ATV_INFO("[integrals] one-electron done ms={:.1f}", elapsed_ms(t_1e));
 

@@ -117,6 +117,11 @@ bool minao_supported(const IntegralPack& integrals) {
     // affects the iteration count.
     if (integrals.spherical())
         return false;
+    // ECP packs: the MINAO reference densities are all-electron; projecting
+    // them onto a valence-only pack would over-count the (removed) core.
+    // Falling back to the Hcore guess keeps the converged energy identical.
+    if (integrals.has_ecp)
+        return false;
     for (const auto& atom : integrals.atoms) {
         if (minao::element_basis(atom.Z) == nullptr)
             return false;

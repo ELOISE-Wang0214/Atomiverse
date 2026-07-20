@@ -27,6 +27,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
@@ -88,6 +89,23 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     // ── Geometry / basis (inputs from Frame + these members) ──────────
     BasisSet basis = BasisSet::STO3G;
     int charge = 0;
+
+    /// @brief Effective-core-potential family name; "" = all-electron.
+    ///
+    /// Currently "def2-ECP" (Weigend-Ahlrichs def2 family, Rb–Rn): atoms
+    /// present in the table run valence-only (Z_val nuclear terms, core
+    /// electrons removed, semi-local U added to the core Hamiltonian
+    /// [Hartree]); atoms absent stay all-electron (def2 convention: Z ≤ 36).
+    /// Unknown names throw std::runtime_error — no fallback.
+    std::string ecp;
+
+    /// @brief Reserved: exact-two-component scalar relativity (wired in a
+    ///        later chain link; no effect yet).
+    ///
+    /// Combining x2c with an ECP-carrying atom throws at run(): relativistic
+    /// ECPs already bake scalar relativity into their parameterization, so
+    /// stacking x2c on top would double-count it (per-element gate).
+    bool x2c = false;
 
     // ── Convergence (members, not a Config bag) ───────────────────────
     // "DIIS" below = direct inversion of the iterative subspace: the standard

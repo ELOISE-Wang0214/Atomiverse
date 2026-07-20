@@ -493,6 +493,11 @@ GradientResult ScfGradient::compute(const Frame& frame,
             "for spherical-harmonic basis sets (def2 family) yet — the "
             "derivative-integral c2s transform is a follow-up chain link. "
             "Use a Cartesian-convention basis or finite differences.");
+    if (integrals.has_ecp)
+        throw std::runtime_error(
+            "ScfGradient::compute: analytic gradients are not implemented "
+            "for ECP packs yet — dU/dR of the semi-local potential is a "
+            "follow-up chain link. Use finite differences.");
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;

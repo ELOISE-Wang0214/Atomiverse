@@ -435,7 +435,9 @@ void ShellBlockPairList::k(const RealMatrix& P, RealMatrix& K) const {
                 struct AOpair {
                     int ia, ib;
                 };
-                AOpair ao_pairs[36];
+                // Max AO pair count per block pair: f-f non-diag =
+                // 10*10 = 100 (kMaxNCart^2); diag pairs are fewer.
+                AOpair ao_pairs[kMaxNCart * kMaxNCart];
                 int n_ao_pairs = 0;
                 for (int ia = 0; ia < na; ++ia)
                     for (int ib = 0; ib < nb; ++ib) {
@@ -597,9 +599,11 @@ void ShellBlockPairList::g_rhf(const RealMatrix& P, RealMatrix& G) const {
                 struct AOpair {
                     int ia, ib;
                 };
-                // Max AO pair count per block pair: d-d non-diag = 6*6 = 36;
-                // d-d diag = 6*7/2 = 21. Size generously for s/p/d mix.
-                AOpair ao_pairs[36];
+                // Max AO pair count per block pair: f-f non-diag =
+                // 10*10 = 100 (kMaxNCart^2); diag pairs are fewer. The old
+                // d-sized 36 overflowed the stack for f blocks (silent UB
+                // that skewed AuH/def2-SVP by ~7e-6 Ha).
+                AOpair ao_pairs[kMaxNCart * kMaxNCart];
                 int n_ao_pairs = 0;
                 for (int ia = 0; ia < na; ++ia)
                     for (int ib = 0; ib < nb; ++ib) {

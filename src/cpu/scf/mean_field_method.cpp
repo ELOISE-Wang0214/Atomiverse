@@ -24,6 +24,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/scf/aspc_predictor.h"
+#include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
@@ -213,6 +214,30 @@ template <typename D>
 void MeanFieldMethod<D>::drive_scf_(Frame& frame,
                                     const SCFInitialGuess* guess,
                                     const DriveOpts& opts) {
+    // ECP ↔ x2c double-counting gate (per-element): relativistic ECPs bake
+    // scalar relativity into their parameterization, so an atom that hits
+    // the ECP table must not additionally be treated with x2c. All-electron
+    // molecules (no table hit) pass — the gate is per-element, not global.
+    if (x2c && !ecp.empty()) {
+        const auto& table = EcpPotential::family_table(ecp);
+        const int natm = static_cast<int>(frame.nlocal());
+        const int* __restrict sp_type = frame.span(kAtom_type);
+        for (int i = 0; i < natm; ++i) {
+            const int Z = sp_type[i];
+            if (Z >= 1 && Z < static_cast<int>(table.size())
+                && !table[static_cast<std::size_t>(Z)].channels.empty()) {
+                throw std::runtime_error(
+                    "MeanFieldMethod::run: x2c=true combined with ecp='"
+                    + ecp + "' would double-count scalar relativity for "
+                            "element "
+                    + EcpPotential::element_symbol(Z) + " (Z="
+                    + std::to_string(Z)
+                    + "): the relativistic ECP already includes it. Disable "
+                      "x2c or run this element all-electron.");
+            }
+        }
+    }
+
     // ASPC predict / correct / record — gated only on use_predictor_ (and
     // opts.apply_aspc so the corrector/fallback recursion does not re-enter).
     SCFInitialGuess density_guess;
@@ -294,7 +319,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // ── Prologue: per-run assembly ────────────────────────────────────────────
     PositionGuard guard(frame, opts.unwrap);
 
-    *integrals_sp_ = IntegralPack{frame, basis, charge, compute_eri};
+    *integrals_sp_ = IntegralPack{frame, basis, charge, compute_eri, ecp};
     const IntegralPack& ints = *integrals_sp_;
     resolve_occupation(ints.n_electrons);
 
