@@ -1,6 +1,5 @@
 # Specs index
 
-- [scf-driver-refactor-03a-convert](scf-driver-refactor-03a-convert.md) — 方法驱动化：MeanFieldMethod<D> 派生 CPUDriver<scf::Phase>、drive_scf_ 私有漏斗、按方法拆文件；旧 SCFSolver 留树作逐位对拍活参考 [approved]
 - [scf-driver-refactor-03b-retire](scf-driver-refactor-03b-retire.md) — 退役旧机器：删 SCFSolver/SCFConfig/make_config、梯度解耦、首个文献值回归 regressions/scf/h2o_rhf_sto3g [approved]
 - [scf-driver-refactor-04a-nest](scf-driver-refactor-04a-nest.md) — 原生 Driver 节点嵌套：DriverNode 擦除基 + PendingBinding 变体 + on(phase).add(driver) 重载；删 sub_driver.h [approved]
 - [scf-driver-refactor-04b-wire](scf-driver-refactor-04b-wire.md) — 外层接线：HF 纯多态 tag、删 build/launch（run/launch 债务终结）、MeanFieldOutputs 收窄、scf_evaluator 消亡 [approved]
