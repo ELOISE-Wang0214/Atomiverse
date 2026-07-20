@@ -36,7 +36,7 @@ def format_status(state: Optional[Dict[str, Any]]) -> str:
         lines.append("  modules: (none — no native install recorded)")
         lines.append("  fingerprint: (none)")
         lines.append(
-            "  hint: run `python -m atomiverse install --md` "
+            "  hint: run `python -m atomiverse install md` "
             "(or --config) to build the C++ extension"
         )
         return "\n".join(lines)
