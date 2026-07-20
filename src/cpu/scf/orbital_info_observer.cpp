@@ -27,11 +27,11 @@ void OrbitalInfoObserver::build(const cpu::BuildContext& ctx) {
         return;
     if (!filename_.empty()) {
         os_.open(filename_, std::ios::out | std::ios::trunc);
-        os_ << "step\thomo_eV\tlumo_eV\tgap_eV\n";
+        os_ << "step\thomo_eV\tlumo_eV\tgap_eV\tip_koopmans\n";
     }
     if (also_stdout_)
-        std::printf("%6s  %12s  %12s  %12s\n", "step", "HOMO[eV]", "LUMO[eV]",
-                    "gap[eV]");
+        std::printf("%6s  %12s  %12s  %12s  %12s\n", "step", "HOMO[eV]",
+                    "LUMO[eV]", "gap[eV]", "IP_K[eV]");
 }
 
 void OrbitalInfoObserver::launch(const cpu::LaunchContext& ctx) {
@@ -51,12 +51,12 @@ void OrbitalInfoObserver::launch(const cpu::LaunchContext& ctx) {
 
     if (os_.is_open()) {
         os_ << ctx.step << '\t' << homo_eV_ << '\t' << lumo_eV_ << '\t' << gap
-            << '\n';
+            << '\t' << ip_koopmans_eV() << '\n';
         os_.flush();
     }
     if (also_stdout_)
-        std::printf("%6d  %12.6f  %12.6f  %12.6f\n", ctx.step, homo_eV_,
-                    lumo_eV_, gap);
+        std::printf("%6d  %12.6f  %12.6f  %12.6f  %12.6f\n", ctx.step,
+                    homo_eV_, lumo_eV_, gap, ip_koopmans_eV());
     ++n_rows_;
 }
 

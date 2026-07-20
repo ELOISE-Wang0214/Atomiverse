@@ -547,6 +547,76 @@ number you already computed, Koopmans is hard to beat.
      tests/cpu/scf/test_koopmans.cpp lock He/H2/H2O @ STO-3G + He @ 6-31G in
      the default gate. Change one side only in lockstep with the others. -->
 
+### Hands-on: Koopmans vs ΔSCF (Jensen §3.4 style)
+
+Koopmans froze the orbitals; ΔSCF lets them relax. The ΔSCF ionization
+potential is simply the difference of **two independently converged SCF
+solutions** — the neutral and the cation — at the same (vertical) geometry:
+
+$$\mathrm{IP}_{\Delta\mathrm{SCF}} \;=\; E_{\mathrm{SCF}}(N-1) - E_{\mathrm{SCF}}(N).$$
+
+No new machinery is needed: the cation is configured entirely through the
+members that already exist — `charge` on any method, and the explicit
+`n_alpha` / `n_beta` electron counts on `UHF` (removing one electron leaves
+an open shell, so the cation is a UHF run):
+
+```cpp
+// Neutral N2 at the experimental bond length (1.0977 Å): RHF/6-31G*.
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Pople631Gs;
+rhf.tol = 1e-12;
+rhf.run(frame);
+double e_n2 = rhf.energy();                              // [Hartree]
+
+// Koopmans, read straight off the converged determinant (zero extra cost) —
+// or via cpu::scf::OrbitalInfoObserver::ip_koopmans_eV().
+double ip_koopmans =
+    -rhf.determinant().homo(cpu::scf::SlaterDeterminant::Spin::alpha)
+    * 27.211386245988;                                   // [eV]
+
+// Cation N2+: one α electron removed — members only, no new API.
+cpu::scf::UHF uhf;
+uhf.basis = cpu::scf::BasisSet::Pople631Gs;
+uhf.charge = 1;
+uhf.n_alpha = 7;   // 13 electrons: doublet
+uhf.n_beta = 6;
+uhf.tol = 1e-12;
+uhf.run(frame);
+double ip_delta = (uhf.energy() - e_n2) * 27.211386245988;   // [eV]
+```
+
+The N₂ numbers (RHF//UHF 6-31G*, cart, PySCF 2.14.0 cross-checked to
+≤1e-3 eV — `regressions/scf/n2_ionization`):
+
+| quantity | value (eV) | comment |
+|---|---|---|
+| −ε_HOMO (Koopmans) | 16.65 | frozen orbitals; HF-limit literature value ≈ 17.3 (Szabo-Ostlund §3.3) |
+| ΔSCF IP | 15.69 | orbital relaxation lowers the cation |
+| experiment (vertical) | 15.58 | NIST WebBook |
+
+Two things to read out of the table. First, ΔSCF < Koopmans **always** for
+the same solution — relaxation is variational, the cation energy can only go
+down. Second, ΔSCF lands within ~0.1 eV of experiment here while Koopmans
+overshoots by ~1 eV; part of that improvement is honest relaxation physics
+and part is the correlation-error cancellation shifting between the two
+recipes, so do not expect 0.1 eV routinely.
+
+> **Warning — electron affinities.** Do **not** compute an EA from
+> $-\varepsilon_{\mathrm{LUMO}}$. Koopmans' EA is a *basis-set artifact*: the
+> virtual orbitals of the neutral feel the $N$-electron potential rather than
+> the $(N{+}1)$-electron one, and as the basis grows the extra electron can
+> spread into ever-more-diffuse functions, so $-\varepsilon_{\mathrm{LUMO}}$
+> drifts toward 0 (a free electron) instead of converging to the physical
+> EA. If you need an affinity, run it as ΔSCF — a separate converged anion
+> (`charge = -1`, one more β or α electron) against the neutral — with a
+> basis containing diffuse functions, and be suspicious even then when the
+> anion is not bound (Jensen §3.4).
+
+ΔSCF here means the *ground-state* cation/anion. Non-Aufbau occupations
+(excited-state or core-hole ΔSCF) are a different tool —
+`SlaterDeterminant::with_occupation` — and come with their own collapse
+problems (MOM); they are out of scope for this chapter.
+
 ## What to Take Into Chapter 3
 
 The mental shift is now complete. The iteration still has the same shape it had

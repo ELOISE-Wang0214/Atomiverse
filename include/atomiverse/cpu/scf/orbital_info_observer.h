@@ -16,9 +16,11 @@
 /// @endcode
 ///
 /// Quantities logged (always written in eV):
-///   HOMO = highest-occupied orbital energy (alpha channel)
-///   LUMO = lowest-unoccupied orbital energy (alpha channel)
-///   gap  = LUMO - HOMO
+///   HOMO        = highest-occupied orbital energy (alpha channel)
+///   LUMO        = lowest-unoccupied orbital energy (alpha channel)
+///   gap         = LUMO - HOMO
+///   ip_koopmans = -HOMO (Koopmans ionization potential; Koopmans,
+///                 Physica 1, 104 (1934), DOI 10.1016/S0031-8914(34)90011-2)
 #pragma once
 
 #include <fstream>
@@ -63,6 +65,10 @@ class OrbitalInfoObserver : public cpu::Component {
 
     /// @brief HOMO-LUMO gap [eV] from the last launch.
     double gap_eV() const { return lumo_eV_ - homo_eV_; }
+
+    /// @brief Koopmans ionization potential IP = −ε_HOMO [eV] from the last
+    ///        launch (frozen-orbital estimate of the vertical IP).
+    double ip_koopmans_eV() const { return -homo_eV_; }
 
   private:
     MeanFieldOutputs handle_;
