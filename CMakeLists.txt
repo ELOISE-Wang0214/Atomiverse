@@ -396,7 +396,11 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp
             src/cpu/scf/scf_solver.cpp
-            src/cpu/scf/methods.cpp
+            src/cpu/scf/mean_field_method.cpp
+            src/cpu/scf/rhf.cpp
+            src/cpu/scf/uhf.cpp
+            src/cpu/scf/rks.cpp
+            src/cpu/scf/uks.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp
             src/cpu/scf/xc_functional.cpp

@@ -1,0 +1,25 @@
+/// @file cpu/scf/rhf.cpp
+/// @brief RHF constructor defaults + occupation resolution. The shared driver
+///        loop lives in mean_field_method.cpp (explicitly instantiated there).
+
+#include "atomiverse/cpu/scf/rhf.h"
+
+namespace ATV {
+namespace cpu {
+namespace scf {
+
+RHF::RHF() {
+    spin_ = SpinType::Restricted;
+    method_ = MeanFieldType::HF;
+    init_guess = InitGuess::MINAO;
+    damping_factor = 0.0;
+    tol = 1e-9;
+}
+void RHF::resolve_occupation(int n_electrons) {
+    n_alpha_ = n_electrons / 2;
+    n_beta_ = n_electrons / 2;
+}
+
+} // namespace scf
+} // namespace cpu
+} // namespace ATV

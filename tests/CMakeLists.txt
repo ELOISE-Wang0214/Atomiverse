@@ -496,6 +496,13 @@ if(ATV_BUILD_RHF)
     # the spec mandates bit-identity.
     set_tests_properties(test_cpu_scf_stages PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
+    # scf-driver-refactor-03a-convert: RHF/UHF/RKS/UKS as CPUDriver<scf::Phase>,
+    # bit-parity (1e-12 Ha) vs the retained in-tree SCFSolver reference. Pins
+    # serial execution for the same ULP-determinism reason as test_cpu_scf_stages.
+    atv_add_cpp_test(test_cpu_scf_method_driver_parity
+                     cpu/scf/test_method_driver_parity.cpp)
+    set_tests_properties(test_cpu_scf_method_driver_parity PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
     atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)

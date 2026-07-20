@@ -128,6 +128,19 @@ class ScfConverged : public cpu::Criterion {
         diis_error_ = 0.0;
     }
 
+    /// @brief Retarget the two tolerances for the next run.
+    ///
+    /// Parameters-are-members house style: the driver sets these so an ASPC
+    /// corrector can run against a loosened threshold (and restores the full
+    /// threshold afterwards) without a second criterion object. Judgement still
+    /// reads only these two members. @see verdict
+    /// @param tol_energy New |ΔE| tolerance [Hartree].
+    /// @param tol_grad New DIIS-error tolerance [dimensionless Frobenius norm].
+    void set_tolerances(double tol_energy, double tol_grad) {
+        tol_energy_ = tol_energy;
+        tol_grad_ = tol_grad;
+    }
+
   private:
     double tol_energy_;           ///< Energy tolerance [Hartree].
     double tol_grad_;             ///< DIIS-error tolerance [Frobenius norm].

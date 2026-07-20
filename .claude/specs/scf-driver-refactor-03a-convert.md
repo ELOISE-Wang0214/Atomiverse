@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 03a 方法驱动化（MeanFieldMethod→CPUDriver<scf::Phase>，逐位对拍，参考实现留存）
 slug: scf-driver-refactor-03a-convert
-status: approved
+status: code-complete
 chain: scf-driver-refactor
 link: 03a/06
 created: 2026-07-20
@@ -81,14 +81,14 @@ created: 2026-07-20
 - `tests/CMakeLists.txt` — 注册 `test_cpu_scf_method_driver_parity`。
 
 ## Tasks
-- [ ] Write failing per-method parity + stage-wiring unit tests (tests/cpu/scf/test_method_driver_parity.cpp) and register them in tests/CMakeLists.txt
-- [ ] Convert MeanFieldMethod<D> (in methods.h/methods.cpp) to derive CPUDriver<scf::Phase>, wire the five 02 stages config-free in the ctor (member→stage-ctor), register the ScfConverged default criterion via add_criterion, budget=max_iter, and remove the ScfLoop drive path (SCFSolver/SCFConfig/make_config retained only as parity reference + legacy handle snapshot) with Doxygen briefs
-- [ ] Implement the private member drive_scf_ prologue (position-unwrap via a private RAII guard class on mutating paths — no free helper functions, rebuild integrals_sp_, X Löwdin-vs-canonical + n_dropped, initial guess, member-state fill, MixStage/ScfConverged reset)
-- [ ] Implement the drive_scf_ epilogue (de-shift orbital energies, UHF spin analysis, SCFResult population + per-iteration trace, energy eV write, on_evaluate_, restore_wrapped)
-- [ ] Route both run overloads, forces(), and the Component build()/launch()+ASPC path through drive_scf_ (staged run/launch coexistence debt; in-code pointer to 04)
-- [ ] Adjust mp2()/fci() to consume integrals_sp_ + converged last_result() after drive_scf_(compute_eri=true), staying members
-- [ ] Split the methods into cpu/scf/{rhf,uhf,rks,uks}.{h,cpp} (ctor defaults + resolve_occupation + name() only), extract MeanFieldMethod<D> into cpu/scf/mean_field_method.{h,cpp}, make methods.h an umbrella, delete methods.cpp, and update the root CMakeLists ATV_BUILD_RHF source list
-- [ ] Run full check + test suite
+- [x] Write failing per-method parity + stage-wiring unit tests (tests/cpu/scf/test_method_driver_parity.cpp) and register them in tests/CMakeLists.txt
+- [x] Convert MeanFieldMethod<D> (in methods.h/methods.cpp) to derive CPUDriver<scf::Phase>, wire the five 02 stages config-free in the ctor (member→stage-ctor), register the ScfConverged default criterion via add_criterion, budget=max_iter, and remove the ScfLoop drive path (SCFSolver/SCFConfig/make_config retained only as parity reference + legacy handle snapshot) with Doxygen briefs
+- [x] Implement the private member drive_scf_ prologue (position-unwrap via a private RAII guard class on mutating paths — no free helper functions, rebuild integrals_sp_, X Löwdin-vs-canonical + n_dropped, initial guess, member-state fill, MixStage/ScfConverged reset)
+- [x] Implement the drive_scf_ epilogue (de-shift orbital energies, UHF spin analysis, SCFResult population + per-iteration trace, energy eV write, on_evaluate_, restore_wrapped)
+- [x] Route both run overloads, forces(), and the Component build()/launch()+ASPC path through drive_scf_ (staged run/launch coexistence debt; in-code pointer to 04)
+- [x] Adjust mp2()/fci() to consume integrals_sp_ + converged last_result() after drive_scf_(compute_eri=true), staying members
+- [x] Split the methods into cpu/scf/{rhf,uhf,rks,uks}.{h,cpp} (ctor defaults + resolve_occupation + name() only), extract MeanFieldMethod<D> into cpu/scf/mean_field_method.{h,cpp}, make methods.h an umbrella, delete methods.cpp, and update the root CMakeLists ATV_BUILD_RHF source list
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **Parity（逐位对拍，unit tier，秒级）**：`test_method_driver_parity` 对 `RHF`/`UHF`/`RKS`/`UKS` 各构造新驱动方法与在树 `SCFSolver` 参考（同一 `IntegralPack`/`SCFConfig`），在既有 `tests/cpu/scf/*` 已用的**同尺度小分子**（H₂/H₂O STO-3G 级）上跑到收敛，断言 `last_result().energy` 与参考差 ≤1e-12 Ha，并抽查 eig/P 一致。**为何仍属 unit tier 而非 e2e**：与已在快套件里的 `test_scf_solver`/`test_uhf_solver`/`test_uks_solver` 同尺度、秒级完成；无 out-of-library 消费方、无文献值、无计时、无第三方包读取。out-of-library 文献值 e2e 是 03b 的 `regressions/scf/<case>`。

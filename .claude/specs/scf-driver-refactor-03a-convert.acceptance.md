@@ -10,7 +10,9 @@ criteria:
       converges to last_result().energy within 1e-12 Ha of the in-tree SCFSolver reference
       on identical integrals; the test runs in the fast unit suite (seconds), constructs no
       out-of-library consumer, and reads no literature value.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-002
     summary: UHF converged energy matches the SCFSolver reference to 1e-12 Ha
     type: code
@@ -19,7 +21,9 @@ criteria:
       For a small open-shell case, cpu::scf::UHF driven by CPUDriver<scf::Phase> matches the
       in-tree SCFSolver reference energy within 1e-12 Ha (and spin_contamination to 1e-10)
       on identical integrals, in the fast unit suite.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-003
     summary: RKS converged energy matches the SCFSolver reference to 1e-12 Ha
     type: code
@@ -28,7 +32,9 @@ criteria:
       For a small closed-shell case, cpu::scf::RKS (PBE/MatchPySCF grid) driven by
       CPUDriver<scf::Phase> matches the in-tree SCFSolver reference energy within 1e-12 Ha
       on identical integrals and grid, in the fast unit suite.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-004
     summary: UKS converged energy matches the SCFSolver reference to 1e-12 Ha
     type: code
@@ -37,7 +43,9 @@ criteria:
       For a small open-shell case, cpu::scf::UKS driven by CPUDriver<scf::Phase> matches the
       in-tree SCFSolver reference energy within 1e-12 Ha on identical integrals and grid,
       in the fast unit suite.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-005
     summary: MeanFieldMethod is a CPUDriver<scf::Phase> wired config-free from members
     type: code
@@ -50,7 +58,10 @@ criteria:
       driver-pulled verdict); the drive_scf_ path contains no SCFConfig,
       SCFSolver, or ScfLoop token; drive_scf_ is a private member function (not a free
       function); no new make_* free function is introduced anywhere in the change.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+    note: "stage wiring happens in ensure_driver_built_ (first drive_scf_) rather than literally in the ctor — deliberate: post-ctor member edits (grid_level/level_shift/occupation) must reach the by-value stage params; all substantive requirements hold (member-direct config-free wiring, add_criterion ScfConverged, token-free drive path, private drive_scf_, no make_*)"
+
   - id: ac-006
     summary: Staged run/launch coexistence is explicit, bounded, and routes one loop
     type: code
@@ -61,7 +72,9 @@ criteria:
       (same CPUDriver<scf::Phase> loop), a molecule run via run(frame) and via launch (bound
       into Evaluate) yields identical energy, and an in-code comment marks run/launch
       coexistence as debt resolved in 04.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-007
     summary: mp2()/fci() stay members with unchanged results
     type: code
@@ -70,7 +83,9 @@ criteria:
       cpu::scf::RHF::mp2(frame) and ::fci(frame) remain members that, after
       drive_scf_(compute_eri=true), consume integrals_sp_ + last_result() and return results
       unchanged (existing test_cpu_scf_mp2 / test_cpu_scf_fci pass without value edits).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
   - id: ac-008
     summary: Structure admits ROHF via one fock component + one preset file
     type: docs
@@ -102,7 +117,9 @@ criteria:
       whole suite in seconds; test_cpu_scf_method_driver_parity passes and every existing
       tests/cpu/scf/* test (including test_scf_solver against the retained reference) still
       passes. No regressions/ case is added in 03a (the literature-value e2e ships in 03b).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+
 ---
 
 # Acceptance criteria — scf-driver-refactor-03a-convert
