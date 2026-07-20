@@ -18,13 +18,14 @@
 ///   cpu::scf::RHF scf{};
 ///   scf.with_gradient(false);
 ///   cpu::single_point(frame, scf);
-///   // frame.energy populated; scf.last_result().energy in Hartree.
+///   // frame.meta.get(kEnergy) populated [eV]; scf.energy() in Hartree;
+///   // wavefunction on scf.determinant().
 /// @endcode
 ///
 /// The evaluator is borrowed (lvalue ref) so the caller retains
-/// ownership and can inspect its `last_result()`-style state after the
-/// call. To register multiple components, construct a `cpu::Evaluate`
-/// directly and add them yourself.
+/// ownership and can inspect its result state (`determinant()` /
+/// `energy()`-style accessors) after the call. To register multiple
+/// components, construct a `cpu::Evaluate` directly and add them yourself.
 #pragma once
 
 #include "atomiverse/cpu/driver/evaluate.h"

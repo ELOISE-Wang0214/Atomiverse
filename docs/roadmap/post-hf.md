@@ -3,9 +3,11 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Correlated methods built on a converged [Hartree–Fock](hartree-fock.md)
-reference. Two exist, both as free functions consuming an `SCFResult` plus an
-explicitly materialized ERI tensor (they are not Drivers or Components, and
-register in no Plan):
+reference. Two exist, both as post-SCF members on the concrete method
+(`RHF::mp2(frame)` / `RHF::fci(frame)`) consuming the converged
+`SlaterDeterminant` plus the method's privately materialized ERI tensor (they
+are not Drivers or Components, and register in no Plan; both throw
+`std::invalid_argument` on a non-converged reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
@@ -45,8 +47,9 @@ Coupled cluster and multireference theory are entirely absent.
 
 RMP2 runs four sequential O(N⁵) quarter transforms to the `(ia|jb)` ovov block,
 then the canonical energy expression. Energy only: no frozen core, no density
-fitting/RI, no gradients. It requires the full in-memory ERI tensor
-(`IntegralPack{..., compute_eri=true}`), which is what bounds its system size.
+fitting/RI, no gradients. It requires the full in-memory ERI tensor (which
+`mp2()` materializes in the method's private workspace), and that is what
+bounds its system size.
 
 ## 2. Configuration Interaction
 

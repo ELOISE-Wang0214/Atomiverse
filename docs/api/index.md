@@ -68,9 +68,11 @@ The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
 
 Start with these CPU headers:
 
-- [`methods.h` — RHF / UHF / RKS / UKS](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/methods.h)
-- [`scf_result.h` — SCFResult](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_result.h)
-- [`SCFConfig` and `SCFResult`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h)
+- [`methods.h` — RHF / UHF / RKS / UKS (`run(frame)`, `energy()`, `converged()`, `determinant()`)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/methods.h)
+- [`slater_determinant.h` — SlaterDeterminant (per-spin orbitals, `homo()`/`lumo()`, densities, `spin_contamination()`)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/slater_determinant.h)
+- [`scf_enums.h` — SpinType / MeanFieldType / InitGuess](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_enums.h)
+- [`scf_guess.h` — SCFInitialGuess](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_guess.h)
+- [`gradient_result.h` — GradientResult (the `forces()` return)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient_result.h)
 - [`XCType`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)
 
 ### Run SCF workflows on the CUDA backend

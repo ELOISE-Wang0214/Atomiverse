@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/scf_enums.h"  // MeanFieldType / SpinType
-#include "atomiverse/cpu/scf/scf_result.h" // SCFResult
+#include "atomiverse/cpu/scf/slater_determinant.h" // SlaterDeterminant
 #include "atomiverse/cpu/scf/xc_functional.h" // XCType
 
 namespace ATV {
@@ -77,8 +77,10 @@ struct IntegralDerivPack {
 /// @param[out] grad      Gradient accumulator [n_atoms, 3] in Hartree/Bohr.
 /// @param frame          Frame supplying nuclear positions for libcint setup.
 /// @param integrals      Integral pack for the current geometry.
-/// @param P_total        Total density matrix (restricted: P_alpha, unrestricted: Pa+Pb).
-/// @param result         Converged SCF result with spin densities.
+/// @param P_total        Total density matrix P^alpha + P^beta (dimensionless).
+/// @param det            Converged mean-field wavefunction; supplies the
+///                       per-spin factor-1 densities for the unrestricted
+///                       exchange contraction.
 /// @param method         HF or KS mean field (selects the exchange fraction).
 /// @param spin           Restricted or unrestricted spin treatment.
 /// @param xc_type        XC functional (KS hybrid exact-exchange fraction).
@@ -87,7 +89,7 @@ struct IntegralDerivPack {
 void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad, const Frame& frame,
     const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
-    const SCFResult& result, MeanFieldType method, SpinType spin,
+    const SlaterDeterminant& det, MeanFieldType method, SpinType spin,
     XCType xc_type, bool force_native_two_electron_deriv);
 
 } // namespace scf

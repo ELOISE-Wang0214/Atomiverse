@@ -6,8 +6,6 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/basis_eval.h"
-#include "atomiverse/cpu/scf/scf_enums.h"  // SpinType
-#include "atomiverse/cpu/scf/scf_result.h" // SCFResult
 
 namespace ATV {
 namespace cpu {
@@ -42,16 +40,12 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
         return;
 
     const auto& shells = *handle_.shells;
-    const auto& result = *handle_.result;
+    const scf::SlaterDeterminant& det = *handle_.result;
     const int n_basis = static_cast<int>(shells.size());
 
-    // P_total convention (see src/cpu/scf/mean_field_method.cpp):
-    //   Restricted: `P_alpha` already holds the full double-occupied density
-    //               (built with factor 2); `P_beta` aliases the same matrix.
-    //   Unrestricted: `P_alpha` and `P_beta` are the individual spin densities.
-    xt::xtensor<double, 2> P_total = result.P_alpha;
-    if (result.spin == scf::SpinType::Unrestricted)
-        P_total += result.P_beta;
+    // Total density P^alpha + P^beta (factor-2 closed-shell density for the
+    // restricted form). By-value; hoisted here once, never inside the loops.
+    const xt::xtensor<double, 2> P_total = det.density_total();
 
     CubeGrid grid =
         auto_grid_ ? bounding_box_grid(shells, padding_, spacing_) : grid_;

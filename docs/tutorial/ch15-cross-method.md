@@ -128,7 +128,7 @@ auto scf  = cpu::scf::SCF{/* use cpu::scf::RHF */};
 scf.with_gradient(false);                 // energy only
 
 cpu::single_point(frame, scf);            // frame.meta.get(kEnergy) (eV) populated
-double e_ha = scf.last_result().energy;   // and in Hartree on the result
+double e_ha = scf.energy();   // and in Hartree on the result
 ```
 
 For a classical single point, drive `cpu::Evaluate` directly with the

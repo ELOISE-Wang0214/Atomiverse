@@ -22,7 +22,7 @@
 ///       cation is a single electron in a symmetry-fixed spatial orbital with
 ///       no relaxation freedom, so |I_ΔSCF − (−ε_HOMO)| = 0.
 ///   (3) Analytic doublet spin: a clean cation doublet has ⟨S²⟩ = S(S+1) =
-///       0.75 exactly, i.e. `SCFResult::spin_contamination` ≈ 0.
+///       0.75 exactly, i.e. `SlaterDeterminant::spin_contamination()` ≈ 0.
 ///       (Both solves use a tight `conv_tol_grad` so each reaches a reproducible
 ///       fixed point — the loose sqrt(tol) default leaves energies good to only
 ///       ~1e-5 and makes convergence thread-order dependent.)
@@ -253,18 +253,21 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     // energies wander (a single-electron cation such as He⁺/6-31G has a UNIQUE
     // minimum, yet loose warm/cold ends land ~1e-5 apart). Converging the
     // gradient tight pins the unique fixed point.
+    using Spin = SlaterDeterminant::Spin;
+
     RHF neutral_method;
     neutral_method.basis = basis;
     neutral_method.charge = 0;
     neutral_method.tol = tol;
     neutral_method.max_iter = 200;
     neutral_method.conv_tol_grad = 1e-9;
-    SCFResult neutral = neutral_method.run(frame);
-    out.neutral_converged = neutral.converged;
-    out.e_neutral = neutral.energy;
+    neutral_method.run(frame);
+    out.neutral_converged = neutral_method.converged();
+    out.e_neutral = neutral_method.energy();
+    const SlaterDeterminant& neutral = neutral_method.determinant();
     // Closed-shell RHF: the occupied count is n_alpha (= n_electrons / 2).
-    const int n_occ = neutral.n_alpha;
-    out.neg_eps_homo = -neutral.eigenvalues_alpha(n_occ - 1);
+    const int n_occ = neutral.n_electrons(Spin::alpha);
+    out.neg_eps_homo = -neutral.orbital_energies(Spin::alpha)(n_occ - 1);
 
     // ── Doublet cation: N−1 electrons, M = 2 ────────────────────────────
     // Remove one electron from the highest doubly-occupied level: alpha keeps
@@ -292,23 +295,27 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     // dependently) to a contaminated 2-electron-like state instead of the
     // symmetry-fixed σg¹ doublet, breaking exact-relaxation-zero.
     const double neutral_ne = static_cast<double>(2 * n_occ);
+    // The old restricted result's P_alpha was the factor-2 total density —
+    // that is `density_total()` on the determinant.
+    const RealMatrix P_neutral = neutral.density_total();
     SCFInitialGuess guess;
     guess.P_alpha =
-        (static_cast<double>(out.n_alpha) / neutral_ne) * neutral.P_alpha;
+        (static_cast<double>(out.n_alpha) / neutral_ne) * P_neutral;
     guess.P_beta =
-        (static_cast<double>(out.n_beta) / neutral_ne) * neutral.P_alpha;
+        (static_cast<double>(out.n_beta) / neutral_ne) * P_neutral;
     guess.has_alpha = true;
     guess.has_beta = true;
-    SCFResult cation = cation_method.run(frame, &guess);
-    out.cation_converged = cation.converged;
-    out.e_cation = cation.energy;
-    out.spin_contamination = cation.spin_contamination;
-    out.i_delta = cation.energy - neutral.energy;
+    cation_method.run(frame, &guess);
+    out.cation_converged = cation_method.converged();
+    out.e_cation = cation_method.energy();
+    out.spin_contamination =
+        cation_method.determinant().spin_contamination();
+    out.i_delta = out.e_cation - out.e_neutral;
 
     // Cold start: identical method, UHF Hcore default guess, no seed.
-    SCFResult cation_cold = cation_method.run(frame);
-    out.cation_cold_converged = cation_cold.converged;
-    out.e_cation_cold = cation_cold.energy;
+    cation_method.run(frame);
+    out.cation_cold_converged = cation_method.converged();
+    out.e_cation_cold = cation_method.energy();
 
     return out;
 }

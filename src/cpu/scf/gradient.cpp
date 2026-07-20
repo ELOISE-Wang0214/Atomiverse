@@ -116,14 +116,15 @@ static GradientResult make_result(const xt::xtensor<double, 2>& grad,
 /// restricted-KS-wide; they only surfaced on d-bearing bases because the sole
 /// restricted-KS gradient exercise (`default_config`) happened to use one:
 ///
-///  1. **Spin-density convention.** A converged restricted SCF stores
-///     `result.P_alpha == result.P_beta == P_total` (the full double-occupied
-///     density, factor 2 folded in). The XC functional is spin-resolved and
-///     must be fed `rho_alpha = rho_beta = rho_total/2`. The energy path
-///     (`hamiltonian_builder.cpp`) already halves it; this gradient assembly
-///     fed the unhalved `P_total` straight into the density build, so
-///     `vrho`/`vsigma` were evaluated at twice the density. Fixed by the
-///     `xc_spin_scale` factor below — the dominant ~24 eV/Å error.
+///  1. **Spin-density convention.** The XC functional is spin-resolved and
+///     must be fed the per-spin factor-1 densities (restricted:
+///     `rho_alpha = rho_beta = rho_total/2`). The old result bag stored the
+///     factor-2 total density in its alpha slot for restricted runs and this
+///     gradient assembly once fed it unhalved into the density build, so
+///     `vrho`/`vsigma` were evaluated at twice the density — the dominant
+///     ~24 eV/Å error. `SlaterDeterminant::density(Spin)` returns the
+///     per-spin factor-1 density in BOTH spin treatments, which is exactly
+///     what this assembly needs — no scale factor remains.
 ///
 ///  2. **GGA XC-potential factor of 2.** The GGA contribution to the XC
 ///     potential matrix in `xc_grid_engine.h` carried a spurious `* 2.0`,
@@ -137,8 +138,8 @@ static GradientResult make_result(const xt::xtensor<double, 2>& grad,
 ///
 /// @param grad_out      [natm,3] gradient accumulator, units Hartree/Bohr.
 /// @param integrals     Integral pack at the current geometry.
-/// @param result        Converged SCF result (density, MO coefficients).
-/// @param spin          Restricted or unrestricted spin treatment.
+/// @param det           Converged mean-field wavefunction (per-spin factor-1
+///                      densities via `density(Spin)`).
 /// @param xc_type       Exchange-correlation functional.
 /// @param grid_level    DFT integration-grid quality level.
 /// @param n_radial      Radial grid points per atom (SG0 grid only).
@@ -150,7 +151,7 @@ static GradientResult make_result(const xt::xtensor<double, 2>& grad,
 
 static void accumulate_xc_gradient(
     xt::xtensor<double, 2>& grad_out, const IntegralPack& integrals,
-    const SCFResult& result, SpinType spin, XCType xc_type,
+    const SlaterDeterminant& det, XCType xc_type,
     GridLevel grid_level, int n_radial, int n_angular,
     const std::vector<int>& shell_to_atom,
     const std::vector<std::vector<int>>& atom_shells, int natm, int n) {
@@ -225,24 +226,18 @@ static void accumulate_xc_gradient(
     // ── 2. Density via GEMM ────────────────────────────────────────────
     //
     // Spin-density convention (must match hamiltonian_builder.cpp's XC path):
-    //   - restricted:  result.P_alpha == result.P_beta == P_total (factor 2
-    //                  folded in). The XC functional is spin-resolved, so the
-    //                  per-spin density blocks fed to it are P_total/2.
-    //   - unrestricted: result.P_alpha / result.P_beta already carry one spin
-    //                   each — no scaling.
-    // Feeding the unhalved P_total into a restricted-KS XC gradient evaluates
-    // vrho/vsigma at twice the correct density and doubles drho/dR — the
-    // ~4-orders-of-magnitude defect this fix corrects.
-    const bool restricted_ks = (spin == SpinType::Restricted);
-    const double xc_spin_scale = restricted_ks ? 0.5 : 1.0;
-    xt::xtensor<double, 2> Pa({Ns, Ns}), Pb({Ns, Ns});
-    for (int mu = 0; mu < N; ++mu)
-        for (int nu = 0; nu < N; ++nu) {
-            Pa(mu, nu) =
-                xc_spin_scale * static_cast<double>(result.P_alpha(mu, nu));
-            Pb(mu, nu) =
-                xc_spin_scale * static_cast<double>(result.P_beta(mu, nu));
-        }
+    // the spin-resolved XC functional needs the per-spin FACTOR-1 densities,
+    // which is exactly what `SlaterDeterminant::density(Spin)` returns for
+    // both spin treatments (restricted: P^alpha = P^beta = P_total/2;
+    // unrestricted: one spin each). Feeding the unhalved P_total into a
+    // restricted-KS XC gradient evaluates vrho/vsigma at twice the correct
+    // density and doubles drho/dR — the ~4-orders-of-magnitude defect the
+    // per-spin convention prevents. Hoisted ONCE (density() returns by
+    // value); row-major copies to match the GEMM operands below.
+    const xt::xtensor<double, 2> Pa =
+        det.density(SlaterDeterminant::Spin::alpha);
+    const xt::xtensor<double, 2> Pb =
+        det.density(SlaterDeterminant::Spin::beta);
 
     auto T_a = xt::linalg::dot(Phi, Pa); // [G × N]
     auto T_b = xt::linalg::dot(Phi, Pb);
@@ -490,7 +485,8 @@ ScfGradient::ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
 
 GradientResult ScfGradient::compute(const Frame& frame,
                                     const IntegralPack& integrals,
-                                    const SCFResult& result) const {
+                                    const SlaterDeterminant& det,
+                                    double e_scf_ha) const {
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;
@@ -506,17 +502,23 @@ GradientResult ScfGradient::compute(const Frame& frame,
     auto dpack = IntegralDerivPack{integrals};
     ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
-    // Restricted: P_alpha IS P_total (factor 2 folded in by the driver-ized
-    //             method's density build, mean_field_method.cpp)
-    // Unrestricted: P_total = P_alpha + P_beta (per-spin)
-    xt::xtensor<double, 2> P =
-        restricted ? xt::xtensor<double, 2>(result.P_alpha)
-                   : xt::xtensor<double, 2>(result.P_alpha + result.P_beta);
+    // P_total = P^alpha + P^beta in both spin treatments (restricted:
+    // density_total() is the factor-2 closed-shell density). Hoisted ONCE —
+    // density_total() returns by value.
+    const xt::xtensor<double, 2> P = det.density_total();
+
+    // Row-major copies of the MO coefficients for accumulate_W (restricted
+    // determinants answer the beta query with the alpha channel, matching
+    // the old C_beta == C_alpha convention).
+    using Spin = SlaterDeterminant::Spin;
+    const xt::xtensor<double, 2> C_a = det.coefficients(Spin::alpha);
+    const xt::xtensor<double, 2> C_b = det.coefficients(Spin::beta);
 
     xt::xtensor<double, 2> W = xt::zeros<double>({n, n});
-    accumulate_W(W, result.C_alpha, result.eigenvalues_alpha, result.n_alpha,
-                 n);
-    accumulate_W(W, result.C_beta, result.eigenvalues_beta, result.n_beta, n);
+    accumulate_W(W, C_a, det.orbital_energies(Spin::alpha),
+                 det.n_electrons(Spin::alpha), n);
+    accumulate_W(W, C_b, det.orbital_energies(Spin::beta),
+                 det.n_electrons(Spin::beta), n);
 
     xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 
@@ -534,7 +536,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // Two-electron term: contracted on the fly to avoid materializing dERI.
     const auto t_two_e = LogClock::now();
     xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
-    accumulate_two_electron_gradient(grad_two_e, frame, integrals, P, result,
+    accumulate_two_electron_gradient(grad_two_e, frame, integrals, P, det,
                                      method_, spin_, xc_type_,
                                      force_native_two_electron_deriv_);
     grad += grad_two_e;
@@ -570,7 +572,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
             }
         }
         xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
-        accumulate_xc_gradient(grad_xc, integrals, result, spin_, xc_type_,
+        accumulate_xc_gradient(grad_xc, integrals, det, xc_type_,
                                grid_level_, n_radial_, n_angular_,
                                shell_to_atom, atom_shells, natm, n);
 
@@ -606,7 +608,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
             xc_max_abs, xc_max_atom_norm);
     }
 
-    auto out = make_result(grad, result.energy, natm);
+    auto out = make_result(grad, e_scf_ha, natm);
     double max_force = 0.0;
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)

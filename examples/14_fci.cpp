@@ -27,7 +27,7 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     auto fci = rhf.fci(frame);
-    std::cout << std::setprecision(10) << "E_SCF = " << rhf.last_result().energy
+    std::cout << std::setprecision(10) << "E_SCF = " << rhf.energy()
               << " Ha\n"
               << "E_FCI = " << fci.e_fci << " Ha\n"
               << "E_corr = " << fci.e_corr << " Ha\n";

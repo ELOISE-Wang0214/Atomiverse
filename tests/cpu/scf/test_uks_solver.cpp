@@ -3,7 +3,6 @@
 
 #ifdef ATV_HAS_HF
 
-#include <cmath>
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
@@ -51,9 +50,9 @@ TEST(UKS, HeLSDAConverges) {
     auto frame = make_he();
     cpu::scf::UKS uks(1, 1, cpu::scf::XCType::LSDA);
     uks.basis = cpu::scf::BasisSet::STO3G;
-    const auto& r = uks.run(frame);
-    EXPECT_TRUE(r.converged);
-    EXPECT_LT(r.energy, 0.0);
+    uks.run(frame);
+    EXPECT_TRUE(uks.converged());
+    EXPECT_LT(uks.energy(), 0.0);
 }
 
 TEST(UKS, WaterLSDAConverges) {
@@ -61,9 +60,9 @@ TEST(UKS, WaterLSDAConverges) {
     cpu::scf::UKS uks(5, 5, cpu::scf::XCType::LSDA);
     uks.basis = cpu::scf::BasisSet::STO3G;
     uks.max_iter = 100;
-    const auto& r = uks.run(frame);
-    EXPECT_TRUE(r.converged);
-    EXPECT_LT(r.energy, 0.0);
+    uks.run(frame);
+    EXPECT_TRUE(uks.converged());
+    EXPECT_LT(uks.energy(), 0.0);
 }
 
 TEST(RKS, WaterPBEConverges) {
@@ -75,8 +74,8 @@ TEST(RKS, WaterPBEConverges) {
     rks.grid_level = cpu::scf::GridLevel::SG0;
     rks.n_radial = 30;
     rks.n_angular = 50;
-    const auto& r = rks.run(frame);
-    EXPECT_TRUE(r.converged);
+    rks.run(frame);
+    EXPECT_TRUE(rks.converged());
 }
 
 #endif

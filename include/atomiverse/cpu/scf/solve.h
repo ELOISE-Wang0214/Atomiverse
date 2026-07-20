@@ -21,7 +21,7 @@ namespace toy {
 
 /// @brief Toy SCF solver result (synthetic reference solver only).
 ///
-/// Lives in `scf::toy` so it cannot collide with the production
+/// Lives in `scf::toy` so it cannot collide with the former production
 /// `ATV::cpu::scf::SCFResult` in `SCFSolver::run.h` (same name in the same
 /// namespace would be an ODR violation across the library).
 struct SCFResult {

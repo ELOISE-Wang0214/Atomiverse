@@ -163,9 +163,10 @@ enum. Two orthogonal mechanisms remain:
 
 Outputs are Frame keys (`kEnergy`, `kAtom_fx`, …), not capability bits.
 
-- `cpu::scf::SCF` inherits `cpu::HF`. With `with_gradient(true)` it
-  writes forces; Evaluate / MD / Minimize all accept any energy/force
-  kind (`Potential`, `HF`, `Bias`, …).
+- The concrete mean-field methods (`cpu::scf::RHF` / `UHF` / `RKS` /
+  `UKS`) carry the `cpu::HF` kind tag. With `with_gradient(true)` a
+  method nested at a force phase writes forces; Evaluate / MD / Minimize
+  all accept any energy/force kind (`Potential`, `HF`, `Bias`, …).
 - `cpu::md::FixLangevin` inherits `Thermostat` and writes additive
   forces; MD still special-cases Langevin by name when no Potential is
   present (pure Langevin diffusion).
@@ -216,9 +217,9 @@ Two practical consequences:
 - **Per-step state lives on the component.** The L-BFGS history vectors
   $(s_i, y_i)$ live in `cpu::minimizer::LBFGS` member arrays. The Verlet
   pair list lives in `cpu::md::NeighborList::pairs_`. The
-  predictor-corrector density-matrix history lives in `SCF`'s
-  `aspc_alpha_` / `aspc_beta_` members. Drivers and the Frame stay
-  stateless across iterations.
+  predictor-corrector density-matrix history lives in the mean-field
+  method's (`RHF`/…) `aspc_alpha_` / `aspc_beta_` members. Drivers and
+  the Frame stay stateless across iterations.
 - **The Frame is the *only* shared mutable state.** Components
   communicate by reading and writing typed atom columns and typed metadata
   (`kEnergy`, `kKinetic`, `kStress`). There is no driver-side scratch
@@ -278,74 +279,84 @@ Ownership rules:
   `reason`), but it **cannot declare convergence** — there is no field
   left for it to write. `converged` is set by the driver, and only when
   a criterion returns `Verdict::Converged`.
-- **SCF internals never touch any of this.** The SCF cycle's own
-  convergence is internal to `cpu::scf::SCFSolver` — it has its own
-  `DualConvergenceCheck` helper and its own loop.
+- **SCF is not an exception.** The self-consistency cycle inside
+  `RHF`/`UHF`/`RKS`/`UKS` is itself a `CPUDriver<scf::Phase>` loop whose
+  convergence test, `cpu::scf::ScfConverged`, is a `Criterion` like any
+  other; the method answers `converged()` / `stop_reason()` /
+  `iterations()` as Driver-owned loop state. The SCF *stage* components
+  never write `ctx.loop` — the criterion returns a verdict and the loop
+  node records it.
 
 There is no per-category table of "who reads which flag" any more,
 because there are no categories: every loop node runs the same
 `poll_criteria_` reduction, and what differs between an MD run and a
 minimization is only which criteria happen to be attached.
 
-## Why SCF Is an Inner Solver, Not a Driver
+## SCF Is a Driver; the Method Owns the Loop
 
-Neither backend implements SCF as a driver: CPU and CUDA both use the
-`scf::SCFSolver` inner-solver shape behind an `SCF` component,
-and the CPU plane-wave SCF follows the same shape
-(`cpu::pw::PWSolver` + `PWEvaluator`). This was a substantive design
-choice, and it is worth explaining because the asymmetry confuses new
-developers.
-
-There are two reasons CPU SCF is implemented as
-`cpu::scf::SCFSolver` (a public low-level class) rather than as a
-driver subclass:
-
-1. **SCF is reused by AIMD and minimization.** `SCF::launch`
-   constructs an `SCFSolver` once at `build()` time and calls
-   `solver_->run(integrals)` on every MD step or every minimizer step.
-   If SCF were itself a `Driver<>` subclass, AIMD would be one driver
-   running another driver inside its `force` phase — an awkward
-   nested-loop pattern that makes profiling, error reporting, and
-   parallel-region coordination harder.
-2. **The SCF cycle has no Plan structure visible to users.** No user
-   ever wants to insert their own "after diagonalize" component into
-   somebody else's SCF loop. The five inner steps — `HamiltonianBuilder`,
-   `EigenSolver`, `DensityBuilder`, `DIISMixer`, `DualConvergenceCheck`
-   — are an implementation, not a pluggable extension surface.
-
-The SCF inner-step helpers therefore live in
-[`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/),
-none of them inherit from `cpu::Component`, and none of them are
-registered into any Plan. They are owned by `SCFSolver` as direct
-members:
+CPU Gaussian SCF used to be an *inner solver* (`cpu::scf::SCFSolver`)
+hidden behind an `SCF` component. That shape is gone: `scf_solver.h` is
+an `#error` tombstone, and so is the `SCFResult` bag (`scf_result.h` is
+deleted). The concrete methods `RHF` / `UHF` / `RKS` / `UKS` share the
+CRTP base `cpu::scf::MeanFieldMethod<D>`, and that base **is** a
+`cpu::CPUDriver<scf::Phase>` — the same loop-node shape as MD and
+Minimize, with the typed stage enum
+`fock → mix → diagonalize → density → check`. The stage components live
+in `cpu/scf/stages/`, are owned by the method as direct members, and
+are wired by constructor reference to the method's plainly-named
+iteration state (`F_alpha_`, `P_alpha_`, `err_alpha_`, …):
 
 ```cpp
-class SCFSolver {
-    SCFConfig config_;
-    RealMatrix X_;                            // S^{-1/2}, built once
+template <typename Derived>
+class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
+    // parameters are members: basis, tol, max_iter, use_diis, ...
 
-    internal::HamiltonianBuilder    hamiltonian_;
-    internal::EigenSolver           eigen_;
-    internal::DensityBuilder        density_;
-    internal::DIISMixer             diis_;
-    internal::DualConvergenceCheck  convergence_;
+    std::unique_ptr<FockStage>        fock_stage_;
+    std::unique_ptr<MixStage>         mix_stage_;
+    std::unique_ptr<DiagonalizeStage> diag_stage_;
+    std::unique_ptr<DensityStage>     density_stage_;
+    std::unique_ptr<ScfConverged>     converged_stage_;   // a Criterion
 
-    SCFResult result_;
+    std::shared_ptr<IntegralPack>      integrals_sp_;  // private workspace
+    std::shared_ptr<SlaterDeterminant> det_sp_;        // the wavefunction
 };
 ```
 
-`SCFSolver::build(reference)` calls each helper's `prepare(...)` once.
-`SCFSolver::run(integrals, guess)` runs the SCF cycle, calling each
-helper's `step(...)` per iteration. The internals are public headers
-(tests need to include them), but the **facade-public** production
-headers — `evaluate.h`, `single_point.h`, `md.h`, `lbfgs.h` — must not
-include from `cpu/scf/internal/`. That prevents the `internal::` types
-from leaking into user-visible APIs.
+Two boundaries keep this from becoming the nested-loop mess the old
+design feared:
 
-If a user wants to run SCF directly without an outer driver, they
-construct an `SCFSolver` themselves; if they want SCF as a force
-provider in MD or minimization, they wrap it with `SCF`. Two
-public surfaces, one inner solver, no nested drivers.
+1. **The stage plan is fixed.** No user ever wants to insert their own
+   "after diagonalize" component into somebody else's SCF loop, and none
+   can: `ensure_driver_built_()` wires the five stages itself and
+   `validate_components()` is deliberately empty because nothing is
+   user-suppliable. The stages are an implementation, not a pluggable
+   extension surface — that half of the old rationale survives intact.
+2. **Nesting replaced wrapping.** AIMD and minimization no longer need
+   an adapter component: a Driver is an executable node, so the method
+   binds directly at the outer `force` phase
+   (`aimd.on(md::Phase::force).add(cpu::scf::RHF{…})`) and runs via
+   `run_nested` on the parent's Runtime — no second Backend, no re-bound
+   frame. The child keeps its own phase enum and its own status, so the
+   inner SCF verdict cannot stop the outer loop.
+
+Results follow the driver-world channels instead of a result bag.
+`run(frame)` is `void`: the eV energy always lands on
+`frame.meta.get(kEnergy)`; `energy()` reports Hartree; loop state is
+`converged()` / `stop_reason()` / `iterations()` on the method
+(Driver-owned); and the wavefunction is `determinant()` — a
+`const SlaterDeterminant&` carrying per-spin coefficients, orbital
+energies, occupations, `homo()`/`lumo()`, the derived densities, and
+the cached `spin_contamination()`.
+
+The remaining helpers in
+[`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/)
+(integrals, gradient kernels, MO transforms) stay private workspace:
+none register into any foreign Plan, and the **facade-public**
+production headers — `evaluate.h`, `single_point.h`, `md.h`, `lbfgs.h`
+— must not include from `cpu/scf/internal/` (tests may). Two surfaces
+elsewhere still use the old inner-solver shape as scheduled debt, not a
+pattern to extend: CUDA SCF (`cuda::scf::SCFSolver`) and the CPU
+plane-wave SCF (`cpu::pw::PWSolver` + `PWEvaluator`).
 
 ## Hot-Path Data Hygiene
 
@@ -463,9 +474,10 @@ A short rubric, with examples:
   `Thermostat`, plug into existing `cpu::md::MD`. No new driver class.
 - **New optimizer** (e.g. FIRE): new Component, role `Optimizer`, plug
   into existing `cpu::minimizer::Minimize`. No new driver class.
-- **New SCF inner step** (e.g. ADIIS replacing DIIS): new
-  `cpu::scf::internal::*` helper, owned as a member of
-  `cpu::scf::SCFSolver`. No new component, no new driver.
+- **New SCF inner step** (e.g. ADIIS replacing DIIS): a change to the
+  fixed stage set owned by `cpu::scf::MeanFieldMethod<D>` (the mix
+  stage, in this example). Not a user-pluggable component, and no new
+  driver — the SCF stage plan is not an extension surface.
 - **New evaluator** (e.g. EAM potential, MLIP): new Component, role
   `Evaluator`, capability `Energy | Force | Stress` (whichever it
   produces). Plugs into `cpu::md::MD` *and* `cpu::minimizer::Minimize`

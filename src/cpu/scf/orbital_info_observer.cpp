@@ -40,23 +40,13 @@ void OrbitalInfoObserver::launch(const cpu::LaunchContext& ctx) {
     if (!*handle_.ready)
         return; // no SCF completed yet this step
 
-    const SCFResult& r = *handle_.result;
-    const int n_occ_a = r.n_alpha;
-    const auto& eps = r.eigenvalues_alpha;
-    const int n_mo = static_cast<int>(eps.size());
+    const SlaterDeterminant& det = *handle_.result;
 
-    if (n_occ_a <= 0 || n_occ_a > n_mo)
-        throw std::runtime_error("OrbitalInfoObserver: invalid n_alpha="
-                                 + std::to_string(n_occ_a)
-                                 + " against n_mo=" + std::to_string(n_mo));
-
-    // HOMO is the last occupied; LUMO is the first virtual (or HOMO itself
-    // if there are no virtuals, which only happens at minimal basis on H-like
-    // systems -- flag that explicitly).
-    homo_eV_ = static_cast<double>(eps(n_occ_a - 1)) * units::kHartreeInEv;
-    lumo_eV_ = (n_occ_a < n_mo)
-                   ? static_cast<double>(eps(n_occ_a)) * units::kHartreeInEv
-                   : homo_eV_;
+    // homo()/lumo() are occupation-defined [Hartree]; lumo() returns homo()
+    // when the channel has no virtual orbital (minimal basis on H-like
+    // systems), matching the historical observer semantics.
+    homo_eV_ = det.homo(SlaterDeterminant::Spin::alpha) * units::kHartreeInEv;
+    lumo_eV_ = det.lumo(SlaterDeterminant::Spin::alpha) * units::kHartreeInEv;
     double gap = lumo_eV_ - homo_eV_;
 
     if (os_.is_open()) {

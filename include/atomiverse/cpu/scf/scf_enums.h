@@ -1,7 +1,7 @@
 /// @file cpu/scf/scf_enums.h
 /// @brief The light SCF selector enums — zero-dependency public header so
 ///        internal headers can take the enums without dragging in result
-///        types (rehomed verbatim from scf_result.h).
+///        types (rehomed from the since-deleted scf_result.h, 02-rehome).
 #pragma once
 
 namespace ATV {

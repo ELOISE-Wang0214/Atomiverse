@@ -46,26 +46,27 @@ TEST(UHF, HydrogenAtomConverges) {
     auto frame = make_h();
     cpu::scf::UHF uhf(1, 0);
     uhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& r = uhf.run(frame);
-    EXPECT_TRUE(r.converged);
-    EXPECT_EQ(r.n_alpha, 1);
-    EXPECT_EQ(r.n_beta, 0);
-    EXPECT_LT(r.energy, 0.0);
+    uhf.run(frame);
+    using Spin = cpu::scf::SlaterDeterminant::Spin;
+    EXPECT_TRUE(uhf.converged());
+    EXPECT_EQ(uhf.determinant().n_electrons(Spin::alpha), 1);
+    EXPECT_EQ(uhf.determinant().n_electrons(Spin::beta), 0);
+    EXPECT_LT(uhf.energy(), 0.0);
 }
 
 TEST(UHF, H2SingletMatchesRHFShape) {
     auto frame = make_h2();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& er = rhf.run(frame);
+    rhf.run(frame);
 
     cpu::scf::UHF uhf(1, 1);
     uhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& eu = uhf.run(frame);
-    EXPECT_TRUE(er.converged);
-    EXPECT_TRUE(eu.converged);
+    uhf.run(frame);
+    EXPECT_TRUE(rhf.converged());
+    EXPECT_TRUE(uhf.converged());
     // Closed-shell UHF should be near RHF for H2 equilibrium
-    EXPECT_NEAR(er.energy, eu.energy, 1e-4);
+    EXPECT_NEAR(rhf.energy(), uhf.energy(), 1e-4);
 }
 
 TEST(UHF, ForcesWriteToFrame) {

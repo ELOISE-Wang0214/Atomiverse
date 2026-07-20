@@ -3,7 +3,6 @@
 
 #ifdef ATV_HAS_HF
 
-#include <cmath>
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
@@ -49,9 +48,9 @@ TEST(MP2, HeSto3gZeroCorrelation) {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     auto r = rhf.mp2(frame);
-    EXPECT_TRUE(rhf.last_result().converged);
+    EXPECT_TRUE(rhf.converged());
     EXPECT_NEAR(r.e_corr, 0.0, 1e-14);
-    EXPECT_NEAR(r.e_tot, rhf.last_result().energy, 1e-14);
+    EXPECT_NEAR(r.e_tot, rhf.energy(), 1e-14);
 }
 
 TEST(MP2, H2Sto3gNegativeCorrelation) {
@@ -60,9 +59,9 @@ TEST(MP2, H2Sto3gNegativeCorrelation) {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     auto r = rhf.mp2(frame);
-    EXPECT_TRUE(rhf.last_result().converged);
+    EXPECT_TRUE(rhf.converged());
     EXPECT_LT(r.e_corr, 0.0);
-    EXPECT_NEAR(r.e_tot, rhf.last_result().energy + r.e_corr, 1e-12);
+    EXPECT_NEAR(r.e_tot, rhf.energy() + r.e_corr, 1e-12);
 }
 
 #endif

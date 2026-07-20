@@ -66,9 +66,9 @@ TEST(MethodDriverWire, EvaluateAcceptsNestedRhf) {
     EXPECT_NO_THROW(eval.build());
     eval.run(frame);
     EXPECT_TRUE(rhf.has_result());
-    EXPECT_LT(rhf.last_result().energy, 0.0);
+    EXPECT_LT(rhf.energy(), 0.0);
     EXPECT_NEAR(static_cast<double>(frame.meta.get(kEnergy)),
-                rhf.last_result().energy * units::kHartreeInEv, 1e-8);
+                rhf.energy() * units::kHartreeInEv, 1e-8);
 }
 
 TEST(MethodDriverWire, MdAcceptsNestedRhfForce) {
@@ -100,9 +100,11 @@ TEST(MethodDriverWire, SinglePointMatchesRun) {
     cpu::scf::RHF a, b;
     a.with_gradient(false);
     b.with_gradient(false);
-    a.run(frame_a, nullptr, true);
+    // 03-unbag: the mutating run(Frame&) entry always writes frame.meta
+    // kEnergy [eV] — the old write_energy=true third argument is gone.
+    a.run(frame_a);
     cpu::single_point(frame_b, b);
-    EXPECT_NEAR(a.last_result().energy, b.last_result().energy, 1e-10);
+    EXPECT_NEAR(a.energy(), b.energy(), 1e-10);
     EXPECT_NEAR(static_cast<double>(frame_a.meta.get(kEnergy)),
                 static_cast<double>(frame_b.meta.get(kEnergy)), 1e-8);
 }

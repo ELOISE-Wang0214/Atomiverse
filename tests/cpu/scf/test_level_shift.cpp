@@ -23,6 +23,7 @@ TEST(LevelShift, StillConverges) {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.level_shift = 0.5;
-    EXPECT_TRUE(rhf.run(f).converged);
+    rhf.run(f);
+    EXPECT_TRUE(rhf.converged());
 }
 #endif

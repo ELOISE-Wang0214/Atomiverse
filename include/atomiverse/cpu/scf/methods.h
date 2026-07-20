@@ -15,7 +15,9 @@
 ///   cpu::scf::RHF rhf;
 ///   rhf.basis = BasisSet::STO3G;
 ///   rhf.tol = 1e-10;
-///   rhf.run(frame);                    // energy / orbitals on last_result()
+///   rhf.run(frame);                    // frame.meta.get(kEnergy) [eV];
+///                                      // rhf.energy() [Hartree];
+///                                      // wavefunction on rhf.determinant()
 /// @endcode
 #pragma once
 

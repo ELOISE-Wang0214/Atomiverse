@@ -65,7 +65,8 @@ used above.
 
 ## What is checked
 
-`cpu::scf::RHF{basis = STO3G}.run(frame)` converges and
-`last_result().energy` [Hartree] lies within 1 × 10⁻³ Ha of the cited
-−74.961754 Ha. Non-convergence, a non-finite energy, or an out-of-tolerance
-value exits non-zero with `got / want / tol`.
+`cpu::scf::RHF{basis = STO3G}.run(frame)` converges (`rhf.converged()`) and
+the Frame energy `frame.meta.get(kEnergy)` [eV], converted to Hartree via
+`units::kHartreeInEv`, lies within 1 × 10⁻³ Ha of the cited −74.961754 Ha.
+Non-convergence, a non-finite energy, or an out-of-tolerance value exits
+non-zero with `got / want / tol`.

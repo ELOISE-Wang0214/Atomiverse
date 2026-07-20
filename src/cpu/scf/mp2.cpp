@@ -110,36 +110,36 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
     return xt::linalg::dot(xt::transpose(Cm), tmp);          // [n_mo x n_mo]
 }
 
-MP2Result mp2_energy(const IntegralPack& ints, const SCFResult& scf) {
-    // No-fallback guards -- throw, never return a sentinel.
+MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                     double e_scf_ha) {
+    using Spin = SlaterDeterminant::Spin;
+    // No-fallback guards -- throw, never return a sentinel. (Convergence of
+    // the reference is guarded by the caller, not here.)
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
             "mp2_energy: ERI is not materialized; call IntegralPack{..., "
             "compute_eri=true}.");
     }
-    if (!scf.converged) {
-        throw std::invalid_argument(
-            "mp2_energy: SCF result has not converged.");
-    }
-    if (scf.n_alpha != scf.n_beta) {
+    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
         throw std::invalid_argument(
             "mp2_energy: closed-shell reference only (n_alpha must equal "
             "n_beta).");
     }
 
-    const int n_occ = scf.n_alpha;
-    const int n_mo = static_cast<int>(scf.C_alpha.shape(1));
+    // Row-major copy of the alpha MO coefficients (hoisted once).
+    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
+    const int n_occ = det.n_electrons(Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape(1));
     const int n_vir = n_mo - n_occ;
 
     // No virtuals (e.g. He/STO-3G): correlation is exactly zero. Return a finite
     // 0.0 rather than entering the loop and dividing by an empty denominator.
     if (n_vir == 0) {
-        return {0.0, scf.energy};
+        return {0.0, e_scf_ha};
     }
 
-    const xt::xtensor<double, 4> ovov =
-        ao2mo_ovov(ints.ERI, scf.C_alpha, n_occ, n_mo);
-    const xt::xtensor<double, 1>& eps = scf.eigenvalues_alpha;
+    const xt::xtensor<double, 4> ovov = ao2mo_ovov(ints.ERI, C, n_occ, n_mo);
+    const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
 
     double e_corr = 0.0;
     for (int i = 0; i < n_occ; ++i) {
@@ -166,7 +166,7 @@ MP2Result mp2_energy(const IntegralPack& ints, const SCFResult& scf) {
         }
     }
 
-    return {e_corr, scf.energy + e_corr};
+    return {e_corr, e_scf_ha + e_corr};
 }
 
 } // namespace scf

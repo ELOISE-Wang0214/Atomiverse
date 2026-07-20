@@ -135,12 +135,13 @@ instead of one occupation pattern, you now choose one for each spin channel.
 In the example, that choice appears directly in calls such as
 
 ```cpp
-auto ints = /* IntegralPack is private — use RHF */;
-cpu::scf::UHF uhf(n_alpha, n_beta); /* uhf.tol = tol; */
-config.max_iter = max_iter;
 cpu::scf::UHF uhf(n_alpha, n_beta);
-solver.build(ints);
-const auto& result = solver.run(ints);
+uhf.basis = cpu::scf::BasisSet::STO3G;
+uhf.tol = tol;
+uhf.max_iter = max_iter;
+uhf.run(frame);                       // eV energy on frame.meta[kEnergy]
+double e_ha = uhf.energy();           // total energy [Hartree]
+const auto& det = uhf.determinant();  // per-spin orbitals and occupations
 ```
 
 The input you must choose carefully is the spin occupation. `n_alpha` and
@@ -188,11 +189,11 @@ exist.
 
 **Algorithm.** The resolver is a struct you instantiate directly —
 construction computes and validates in one step, and the resolved counts feed
-the existing config builders:
+the method constructor:
 
 ```cpp
-/* integrals private inside RHF/UHF/RKS/UKS */       // H2O+, N_e = 9
-cpu::scf::SpinResolution occ(ints.n_electrons, /*multiplicity=*/2);
+// H2O+ : N_e = Σ Z − q = 9, doublet
+cpu::scf::SpinResolution occ(/*n_electrons=*/9, /*multiplicity=*/2);
 cpu::scf::UHF uhf(occ.n_alpha, occ.n_beta);  // e.g. (5, 4)
 ```
 
@@ -315,27 +316,25 @@ guess. Atomiverse exposes this through `SCFInitialGuess`: seed both spin
 channels with half of the converged neutral density,
 
 ```cpp
+using Spin = cpu::scf::SlaterDeterminant::Spin;
+
 cpu::scf::RHF neutral;
 neutral.basis = basis;
 neutral.charge = 0;
 neutral.tol = tol;
-neutral_cfg.max_iter = max_iter;
-cpu::scf::SCFSolver neutral_solver{neutral_cfg};
-neutral_solver.build(ints_n);
-const auto& neutral = neutral_solver.run(ints_n);
+neutral.max_iter = max_iter;
+neutral.run(frame);
 
-cpu::scf::SCFInitialGuess guess;
-guess.P_alpha = 0.5 * neutral.P_alpha; // split total restricted density evenly
-guess.P_beta  = 0.5 * neutral.P_alpha;
+cpu::scf::SCFInitialGuess guess;                              // scf_guess.h
+guess.P_alpha = neutral.determinant().density(Spin::alpha);   // half the total
+guess.P_beta  = guess.P_alpha;                                // restricted density
 guess.has_alpha = guess.has_beta = true;
 
 cpu::scf::UHF cation(N/2, N/2 - 1);
 cation.basis = basis;
 cation.charge = 1;
 cation.tol = tol;
-cpu::scf::SCFSolver cation_solver{cfg};
-cation_solver.build(ints_c);
-const auto& cation = cation_solver.run(ints_c, &guess);
+cation.run(frame, &guess);
 ```
 
 A bare Hcore cold start converges to the same energy on these small systems —
@@ -351,8 +350,8 @@ same way the previous section did. A clean doublet has
 
 $$ \langle \hat S^2 \rangle = S(S+1) = \tfrac{1}{2}\cdot\tfrac{3}{2} = 0.75, $$
 
-so `SCFResult::spin_contamination` (which reports $\langle \hat S^2 \rangle -
-S(S+1)$) should sit at ≈ 0. The example prints $\langle \hat S^2 \rangle =
+so the cation's `determinant().spin_contamination()` (which reports
+$\langle \hat S^2 \rangle - S(S+1)$) should sit at ≈ 0. The example prints $\langle \hat S^2 \rangle =
 \text{spin\_contamination} + 0.75$ for every cation; values noticeably above
 0.75 warn that the unrestricted determinant has picked up higher-spin character
 and the ΔSCF number should be read with caution.

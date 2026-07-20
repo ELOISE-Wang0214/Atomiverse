@@ -51,9 +51,11 @@
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (path under test)
+#include "atomiverse/cpu/scf/slater_determinant.h" // wavefunction read surface
 #include "atomiverse/facade/stage.h" // ATV::scf::Phase, ATV::evaluate::Phase
 
 using namespace ATV;
+using Spin = cpu::scf::SlaterDeterminant::Spin;
 
 // ── Compile-time derivation: each concrete method IS a CPUDriver<scf::Phase> ───
 //
@@ -182,33 +184,37 @@ TEST(MethodDriverParity, RhfWaterMatchesPinnedEnergy) {
     auto frame = make_h2o();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
-    const cpu::scf::SCFResult& got = rhf.run(frame);
+    rhf.run(frame);
 
-    ASSERT_TRUE(got.converged);
-    EXPECT_NEAR(got.energy, kRhfWaterEnergy, kEnergyPin);
+    ASSERT_TRUE(rhf.converged());
+    EXPECT_NEAR(rhf.energy(), kRhfWaterEnergy, kEnergyPin);
 
+    const cpu::scf::SlaterDeterminant& det = rhf.determinant();
     // Pinned occupied+virtual orbital energies [Ha], ascending (STO-3G → 7).
     xt::xtensor<double, 1> ref_eigs = {
         -20.2417608103, -1.2682616792, -0.6178033132, -0.4529445213,
         -0.3912210574,  0.6053917496,  0.7420994336};
-    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
+    expect_vector_near(det.orbital_energies(Spin::alpha), ref_eigs, kEigPin);
 
     // Structural, reference-free: the density matrix is symmetric.
-    expect_matrix_near(got.P_alpha, xt::transpose(got.P_alpha), kPhysTol);
+    // (Restricted run: density_total() carries the old factor-2 P_alpha.)
+    const cpu::scf::RealMatrix P = det.density_total();
+    expect_matrix_near(P, xt::transpose(P), kPhysTol);
 }
 
 TEST(MethodDriverParity, UhfHydrogenMatchesPinnedEnergy) {
     auto frame = make_h();
     cpu::scf::UHF uhf(/*n_alpha=*/1, /*n_beta=*/0);
     uhf.basis = cpu::scf::BasisSet::STO3G;
-    const cpu::scf::SCFResult& got = uhf.run(frame);
+    uhf.run(frame);
 
-    ASSERT_TRUE(got.converged);
-    EXPECT_EQ(got.n_alpha, 1);
-    EXPECT_EQ(got.n_beta, 0);
-    EXPECT_NEAR(got.energy, kUhfHydrogenEnergy, kEnergyPin);
+    ASSERT_TRUE(uhf.converged());
+    const cpu::scf::SlaterDeterminant& det = uhf.determinant();
+    EXPECT_EQ(det.n_electrons(Spin::alpha), 1);
+    EXPECT_EQ(det.n_electrons(Spin::beta), 0);
+    EXPECT_NEAR(uhf.energy(), kUhfHydrogenEnergy, kEnergyPin);
     // A lone electron is a pure doublet ⇒ ⟨S²⟩ = 0.75, contamination = 0.
-    EXPECT_NEAR(got.spin_contamination, 0.0, kPhysTol);
+    EXPECT_NEAR(det.spin_contamination(), 0.0, kPhysTol);
 }
 
 TEST(MethodDriverParity, RksWaterMatchesPinnedEnergy) {
@@ -220,28 +226,32 @@ TEST(MethodDriverParity, RksWaterMatchesPinnedEnergy) {
     rks.grid_level = cpu::scf::GridLevel::SG0;
     rks.n_radial = 30;
     rks.n_angular = 50;
-    const cpu::scf::SCFResult& got = rks.run(frame);
+    rks.run(frame);
 
-    ASSERT_TRUE(got.converged);
-    EXPECT_NEAR(got.energy, kRksWaterEnergy, kEnergyPin);
+    ASSERT_TRUE(rks.converged());
+    EXPECT_NEAR(rks.energy(), kRksWaterEnergy, kEnergyPin);
 
     xt::xtensor<double, 1> ref_eigs = {
         -18.4438887162, -0.8425040694, -0.3887271763, -0.1610996780,
         -0.0653909417,  0.3103799258,  0.4203563646};
-    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
+    expect_vector_near(rks.determinant().orbital_energies(Spin::alpha),
+                       ref_eigs, kEigPin);
 }
 
 TEST(MethodDriverParity, UksHeliumMatchesPinnedEnergy) {
     auto frame = make_he();
     cpu::scf::UKS uks(/*n_alpha=*/1, /*n_beta=*/1, cpu::scf::XCType::LSDA);
     uks.basis = cpu::scf::BasisSet::STO3G;
-    const cpu::scf::SCFResult& got = uks.run(frame);
+    uks.run(frame);
 
-    ASSERT_TRUE(got.converged);
-    EXPECT_NEAR(got.energy, kUksHeliumEnergy, kEnergyPin);
+    ASSERT_TRUE(uks.converged());
+    EXPECT_NEAR(uks.energy(), kUksHeliumEnergy, kEnergyPin);
     // Closed-shell singlet: the α and β densities coincide, ⟨S²⟩ = 0.
-    expect_matrix_near(got.P_alpha, got.P_beta, kPhysTol);
-    EXPECT_NEAR(got.spin_contamination, 0.0, kPhysTol);
+    // (Unrestricted run: per-spin density(σ) matches the old P_alpha/P_beta.)
+    const cpu::scf::SlaterDeterminant& det = uks.determinant();
+    expect_matrix_near(det.density(Spin::alpha), det.density(Spin::beta),
+                       kPhysTol);
+    EXPECT_NEAR(det.spin_contamination(), 0.0, kPhysTol);
 }
 
 // ── Wiring: the loop node knows convergence via the ScfConverged criterion ─────
@@ -252,9 +262,10 @@ TEST(MethodDriverParity, ConvergenceWiringFlipsDriverStatus) {
     auto frame = make_h2o();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
-    const cpu::scf::SCFResult& got = rhf.run(frame);
+    rhf.run(frame);
 
-    EXPECT_TRUE(got.converged);   // SCFResult flag.
+    // The old duplicate SCFResult.converged flag is gone (03-unbag): the loop
+    // node's converged() is the single source of truth.
     EXPECT_TRUE(rhf.converged()); // the LOOP knows (CPUDriver::converged).
     EXPECT_EQ(rhf.stop_reason(), "scf_converged"); // ScfConverged ended it.
 }
@@ -265,11 +276,12 @@ TEST(MethodDriverParity, RunAndComponentLaunchAgree) {
     auto frame_run = make_h2o();
     cpu::scf::RHF direct;
     direct.basis = cpu::scf::BasisSet::STO3G;
-    const double e_run = direct.run(frame_run).energy; // [Hartree]
+    direct.run(frame_run);
+    const double e_run = direct.energy(); // [Hartree]
 
     // Same molecule, but driven through the Component `launch` path by binding
     // the method into Evaluate. compute_force=false so launch writes the pure
-    // SCF energy (no gradient recompute) and last_result() carries it.
+    // SCF energy (no gradient recompute) and energy() carries it.
     auto frame_eval = make_h2o();
     cpu::scf::RHF component;
     component.basis = cpu::scf::BasisSet::STO3G;
@@ -281,7 +293,7 @@ TEST(MethodDriverParity, RunAndComponentLaunchAgree) {
     eval.run(frame_eval);
 
     // Both entries route through the same private drive_scf_ → identical energy.
-    EXPECT_NEAR(component.last_result().energy, e_run, kFunnelTol);
+    EXPECT_NEAR(component.energy(), e_run, kFunnelTol);
     // Frame is the currency: the component wrote a bound electronic energy [eV].
     const double e_meta = static_cast<double>(frame_eval.meta.get(kEnergy));
     EXPECT_TRUE(std::isfinite(e_meta));
@@ -296,14 +308,15 @@ TEST(MethodDriverParity, LevelShiftMatchesPinnedDeShifted) {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.level_shift = 0.5;
-    const cpu::scf::SCFResult& got = rhf.run(frame);
+    rhf.run(frame);
 
-    ASSERT_TRUE(got.converged);
-    EXPECT_NEAR(got.energy, kLevelShiftEnergy, kEnergyPin);
+    ASSERT_TRUE(rhf.converged());
+    EXPECT_NEAR(rhf.energy(), kLevelShiftEnergy, kEnergyPin);
     // De-shift post-processing must reproduce the pinned UNSHIFTED eigenvalues
     // (STO-3G H₂ → 2 orbitals), not the level-shifted ones.
     xt::xtensor<double, 1> ref_eigs = {-0.5785538598, 0.6711434919};
-    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
+    expect_vector_near(rhf.determinant().orbital_energies(Spin::alpha),
+                       ref_eigs, kEigPin);
 }
 
 // ── Edge: mp2()/fci() still route through the driven method ────────────────────
@@ -317,18 +330,18 @@ TEST(MethodDriverParity, Mp2AndFciStillRouteThroughDrivenMethod) {
     rhf_mp2.basis = cpu::scf::BasisSet::STO3G;
     rhf_mp2.tol = 1e-12;
     const cpu::scf::MP2Result mp2 = rhf_mp2.mp2(frame_mp2);
-    EXPECT_TRUE(rhf_mp2.last_result().converged);
+    EXPECT_TRUE(rhf_mp2.converged());
     EXPECT_NEAR(mp2.e_corr, 0.0, 1e-14);
-    EXPECT_NEAR(mp2.e_tot, rhf_mp2.last_result().energy, 1e-12);
+    EXPECT_NEAR(mp2.e_tot, rhf_mp2.energy(), 1e-12);
 
     auto frame_fci = make_he();
     cpu::scf::RHF rhf_fci;
     rhf_fci.basis = cpu::scf::BasisSet::STO3G;
     rhf_fci.tol = 1e-12;
     const cpu::scf::FCIResult fci = rhf_fci.fci(frame_fci);
-    EXPECT_TRUE(rhf_fci.last_result().converged);
+    EXPECT_TRUE(rhf_fci.converged());
     EXPECT_NEAR(fci.e_corr, 0.0, 1e-12);
-    EXPECT_NEAR(fci.e_fci, rhf_fci.last_result().energy, 1e-12);
+    EXPECT_NEAR(fci.e_fci, rhf_fci.energy(), 1e-12);
 }
 
 #endif // ATV_HAS_HF

@@ -36,7 +36,7 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     auto mp2 = rhf.mp2(frame);
-    std::cout << std::setprecision(10) << "E_SCF = " << rhf.last_result().energy
+    std::cout << std::setprecision(10) << "E_SCF = " << rhf.energy()
               << " Ha\n"
               << "E_corr = " << mp2.e_corr << " Ha\n"
               << "E_MP2 = " << mp2.e_tot << " Ha\n";

@@ -1,7 +1,7 @@
 ---
 title: SCF Slater 行列式 · 03 SCFResult 消亡（方法持有波函数，消费面全迁）
 slug: scf-slater-determinant-03-unbag
-status: approved
+status: code-complete
 chain: scf-slater-determinant
 link: 03/04
 depends: scf-slater-determinant-01-type, scf-slater-determinant-02-rehome
@@ -39,7 +39,7 @@ created: 2026-07-20
 
 **1. 行列式所有权（mean_field_method.h:59-63,167-178,326）。** `result_sp_: shared_ptr<SCFResult>` → `det_sp_: shared_ptr<SlaterDeterminant>`；`determinant()` 返回 `*det_sp_` 的 `const&`。保留 shared_ptr 槽（而非裸值成员）的理由是既有 handle 存活契约：`test_density_cube.cpp:90` 先取 `result_handle()` 再 `add(std::move(scf))`——handle 必须在方法被 move 进 driver 后仍有效。`MeanFieldOutputs::result` 改型 `shared_ptr<const SlaterDeterminant>`；`shells`/`ready` 字段与 aliasing 模式不动；`has_result()` 保留。
 
-**2. `run()` 归 void。** 两个重载均 `void`：`run(Frame&, const SCFInitialGuess* = nullptr)`（`write_energy` 参数删除，**恒**写 `kEnergy` [eV]——Frame-out 原则，嵌套路径本已恒写）；`run(const Frame&, const SCFInitialGuess* = nullptr)`（保留，ΔSCF 需要 const 几何入口，`delta_scf_reference.h:241`；不触 frame）。`drive_scf_`/`drive_scf_core_`（`mean_field_method.cpp:213,290,541,551`）返回型随改 `void`，`DriveOpts::write_energy` 删除。
+**2. `run()` 归 void。** 两个重载均 `void`：`run(Frame&, const SCFInitialGuess* = nullptr)`（`write_energy` 参数删除，**恒**写 `kEnergy` [eV]——Frame-out 原则，嵌套路径本已恒写）；`run(const Frame&, const SCFInitialGuess* = nullptr)`（保留，ΔSCF 需要 const 几何入口，`delta_scf_reference.h:241`；不触 frame）。`drive_scf_`/`drive_scf_core_`（`mean_field_method.cpp:213,290,541,551`）返回型随改 `void`。（实现偏离注记：`DriveOpts::write_energy` **保留**为私有路由旗——const-Frame 入口需要不写 meta 的路径；公共 `run()` 的 `write_energy` 形参已删。）
 
 **3. `energy()` [Hartree] 与 `iterations()` 访问器。** 新增 `double energy() const`（读 `e_total_`）与 `int iterations() const`（epilogue 记录的 executed 计数，`run_nested_erased` 的返回值来源，`mean_field_method.cpp:207`）。理由：(a) const-Frame 入口不写 meta，Hartree 内部量（parity pins、mp2/fci 示例打印、ΔSCF）需一个非袋出口——标量访问器是方法自身 loop 状态（同 `last_grad_` 先例），不是平行世界模型；(b) `CPUDriver` 现无 `iterations()`（06 只交付了 converged/stop_reason），提升为 driver 通用访问器留给 driver 链，不在本篇顺手做。
 
@@ -75,16 +75,17 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests for the unbagged surface: migrate tests/cpu/scf/test_method_driver_parity.cpp, tests/cpu/scf/test_method_driver_wire.cpp, tests/cpu/test_evaluate_driver.cpp to determinant()/energy()/iterations()/converged() (RED: surface absent; pinned Hartree literals unchanged)
-- [ ] Implement SlaterDeterminant ownership in include/atomiverse/cpu/scf/mean_field_method.h + src/cpu/scf/mean_field_method.cpp: det_sp_ slot, determinant()/energy()/iterations(), typed MeanFieldOutputs, void run() both overloads (mutating entry always writes kEnergy [eV]), epilogue fills the determinant, delete last_result()/on_evaluate/DriveOpts::write_energy/trace-and-decomposition fills; doxygen with units
-- [ ] Implement the spin_contamination cache on SlaterDeterminant (include/atomiverse/cpu/scf/slater_determinant.h, 01 landing) filled in drive_scf_core_ epilogue via spin_analysis.h compute_spin_contamination (formula home unchanged)
-- [ ] Migrate internal packs to const SlaterDeterminant&: internal/gradient.h + gradient.cpp, internal/integral_derivatives.h + integral_derivatives.cpp, internal/mp2_pack.h + mp2.cpp (+e_scf param), internal/fci_pack.h + fci.cpp (+e_scf param); move the converged no-fallback guards into MeanFieldMethod::mp2()/fci()
-- [ ] Migrate observers/recorders: orbital_info_observer.h/.cpp to det.homo()/lumo() (delete the manual eigenvalue scan), density_cube_writer.cpp and orbital_cube_writer.cpp to the typed handle (drop scf_result.h includes)
-- [ ] Migrate remaining tests: test_scf_solver, test_koopmans, test_spin_resolution, test_uhf_solver, test_uks_solver, test_mp2, test_fci, test_orbital_info_observer, test_density_cube, delta_scf_reference.h (copy determinant scalars/matrices between warm/cold runs)
-- [ ] Migrate regressions and examples: reg_h2o_rhf_sto3g.cpp + REFERENCE.md to frame.meta.get(kEnergy)/converged(); examples 02_rhf.cpp, 02_rhf.cu, 03_uhf.cpp, 04_uks.cpp, 11_koopmans.cpp, 12_delta_scf.cpp, 13_mp2.cpp, 14_fci.cpp to energy()/determinant()
-- [ ] Delete include/atomiverse/cpu/scf/scf_result.h, reroute stale includes, update methods.h/single_point.h doc comments, and verify the SCFResult scrub (only scf::toy in solve.h/solve.cpp survives)
-- [ ] Update the docs (tutorial ch03/ch04/ch06/ch07, developer/cpu-internals.md, api/index.md, roadmap/post-hf.md) off the SCFResult user path — docs
-- [ ] Run full check + test suite
+- [x] Write failing tests for the unbagged surface: migrate tests/cpu/scf/test_method_driver_parity.cpp, tests/cpu/scf/test_method_driver_wire.cpp, tests/cpu/test_evaluate_driver.cpp to determinant()/energy()/iterations()/converged() (RED: surface absent; pinned Hartree literals unchanged)
+- [x] Implement SlaterDeterminant ownership in include/atomiverse/cpu/scf/mean_field_method.h + src/cpu/scf/mean_field_method.cpp: det_sp_ slot, determinant()/energy()/iterations(), typed MeanFieldOutputs, void run() both overloads (mutating entry always writes kEnergy [eV]), epilogue fills the determinant, delete last_result()/on_evaluate/DriveOpts::write_energy/trace-and-decomposition fills; doxygen with units
+- [x] Implement the spin_contamination cache on SlaterDeterminant (include/atomiverse/cpu/scf/slater_determinant.h, 01 landing) filled in drive_scf_core_ epilogue via spin_analysis.h compute_spin_contamination (formula home unchanged)
+- [x] Migrate internal packs to const SlaterDeterminant&: internal/gradient.h + gradient.cpp, internal/integral_derivatives.h + integral_derivatives.cpp, internal/mp2_pack.h + mp2.cpp (+e_scf param), internal/fci_pack.h + fci.cpp (+e_scf param); move the converged no-fallback guards into MeanFieldMethod::mp2()/fci()
+- [x] Migrate observers/recorders: orbital_info_observer.h/.cpp to det.homo()/lumo() (delete the manual eigenvalue scan), density_cube_writer.cpp and orbital_cube_writer.cpp to the typed handle (drop scf_result.h includes)
+- [x] Migrate remaining tests: test_scf_solver, test_koopmans, test_spin_resolution, test_uhf_solver, test_uks_solver, test_mp2, test_fci, test_orbital_info_observer, test_density_cube, delta_scf_reference.h (copy determinant scalars/matrices between warm/cold runs)
+- [x] Migrate regressions and examples: reg_h2o_rhf_sto3g.cpp + REFERENCE.md to frame.meta.get(kEnergy)/converged(); examples 02_rhf.cpp, 02_rhf.cu, 03_uhf.cpp, 04_uks.cpp, 11_koopmans.cpp, 12_delta_scf.cpp, 13_mp2.cpp, 14_fci.cpp to energy()/determinant()
+- [x] Delete include/atomiverse/cpu/scf/scf_result.h, reroute stale includes, update methods.h/single_point.h doc comments, and verify the SCFResult scrub (only scf::toy in solve.h/solve.cpp survives)
+- [x] Update the docs (tutorial ch03/ch04/ch06/ch07, developer/cpu-internals.md, api/index.md, roadmap/post-hf.md) off the SCFResult user path — docs
+- [x] Run full check + test suite
+- [x] Hygiene cleanup — /mol:simplify applied (janitor: 11 findings fixed, batch green, 2026-07-20)
 
 ## Testing strategy
 

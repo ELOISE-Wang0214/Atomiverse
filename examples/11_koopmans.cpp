@@ -36,12 +36,14 @@ int main() {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-10;
-    const auto& r = rhf.run(frame);
+    rhf.run(frame);
     // HOMO = last occupied (n_alpha - 1)
-    const int n_occ = r.n_alpha;
-    const double homo_ha = r.eigenvalues_alpha(n_occ - 1);
+    using Spin = cpu::scf::SlaterDeterminant::Spin;
+    const auto& det = rhf.determinant();
+    const int n_occ = det.n_electrons(Spin::alpha);
+    const double homo_ha = det.orbital_energies(Spin::alpha)(n_occ - 1);
     const double ip_ev = -homo_ha * units::kHartreeInEv;
     std::cout << std::setprecision(6) << "H2O RHF HOMO = " << homo_ha << " Ha\n"
               << "Koopmans IP  = " << ip_ev << " eV\n";
-    return r.converged ? 0 : 1;
+    return rhf.converged() ? 0 : 1;
 }

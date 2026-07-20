@@ -29,9 +29,9 @@ int main() {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-10;
-    const auto& r = rhf.run(frame);
-    std::cout << std::setprecision(10) << "CPU RHF E = " << r.energy
-              << " Ha (converged=" << r.converged << ")\n";
+    rhf.run(frame);
+    std::cout << std::setprecision(10) << "CPU RHF E = " << rhf.energy()
+              << " Ha (converged=" << rhf.converged() << ")\n";
     // CUDA SCF comparison lives in tests/cuda; this example is the Frame API.
-    return r.converged ? 0 : 1;
+    return rhf.converged() ? 0 : 1;
 }

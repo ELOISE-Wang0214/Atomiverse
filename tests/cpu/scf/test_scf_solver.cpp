@@ -4,7 +4,6 @@
 
 #ifdef ATV_HAS_HF
 
-#include <cmath>
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
@@ -41,20 +40,23 @@ TEST(RHF, H2OConvergesAcrossIndependentInstances) {
     auto frame = make_h2o();
     cpu::scf::RHF a;
     a.basis = cpu::scf::BasisSet::STO3G;
-    const auto& result = a.run(frame);
+    a.run(frame);
 
-    EXPECT_TRUE(result.converged) << "H2O / STO-3G RHF should converge";
-    EXPECT_GT(result.iterations, 0);
-    EXPECT_LT(result.iterations, a.max_iter);
+    EXPECT_TRUE(a.converged()) << "H2O / STO-3G RHF should converge";
+    EXPECT_GT(a.iterations(), 0);
+    EXPECT_LT(a.iterations(), a.max_iter);
 
     cpu::scf::RHF b;
     b.basis = cpu::scf::BasisSet::STO3G;
-    const auto& second = b.run(frame);
-    EXPECT_NEAR(result.energy, second.energy, 1e-10);
-    ASSERT_EQ(result.P_alpha.shape(0), second.P_alpha.shape(0));
-    for (std::size_t i = 0; i < result.P_alpha.shape(0); ++i) {
-        for (std::size_t j = 0; j < result.P_alpha.shape(1); ++j) {
-            EXPECT_NEAR(result.P_alpha(i, j), second.P_alpha(i, j), 1e-10);
+    b.run(frame);
+    EXPECT_NEAR(a.energy(), b.energy(), 1e-10);
+    // The old restricted result's P_alpha was the factor-2 total density.
+    const auto P_first = a.determinant().density_total();
+    const auto P_second = b.determinant().density_total();
+    ASSERT_EQ(P_first.shape(0), P_second.shape(0));
+    for (std::size_t i = 0; i < P_first.shape(0); ++i) {
+        for (std::size_t j = 0; j < P_first.shape(1); ++j) {
+            EXPECT_NEAR(P_first(i, j), P_second(i, j), 1e-10);
         }
     }
 }
@@ -64,15 +66,17 @@ TEST(RHF, RunIsIdempotentAcrossInvocations) {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
 
-    auto& r1 = rhf.run(frame);
-    const double e1 = r1.energy;
-    auto P1 = r1.P_alpha;
+    rhf.run(frame);
+    const double e1 = rhf.energy();
+    // The old restricted result's P_alpha was the factor-2 total density.
+    const auto P1 = rhf.determinant().density_total();
 
-    auto& r2 = rhf.run(frame);
-    EXPECT_NEAR(e1, r2.energy, 1e-10);
+    rhf.run(frame);
+    EXPECT_NEAR(e1, rhf.energy(), 1e-10);
+    const auto P2 = rhf.determinant().density_total();
     for (std::size_t i = 0; i < P1.shape(0); ++i)
         for (std::size_t j = 0; j < P1.shape(1); ++j)
-            EXPECT_NEAR(P1(i, j), r2.P_alpha(i, j), 1e-10);
+            EXPECT_NEAR(P1(i, j), P2(i, j), 1e-10);
 }
 
 TEST(UKS, H2OConverges) {
@@ -81,9 +85,9 @@ TEST(UKS, H2OConverges) {
     cpu::scf::UKS uks(/*n_alpha=*/5, /*n_beta=*/5, cpu::scf::XCType::LSDA);
     uks.basis = cpu::scf::BasisSet::STO3G;
     uks.max_iter = 80;
-    const auto& result = uks.run(frame);
-    EXPECT_TRUE(result.converged);
-    EXPECT_LT(result.energy, 0.0);
+    uks.run(frame);
+    EXPECT_TRUE(uks.converged());
+    EXPECT_LT(uks.energy(), 0.0);
 }
 
 #endif // ATV_HAS_HF

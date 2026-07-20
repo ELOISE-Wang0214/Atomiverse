@@ -40,7 +40,7 @@ basis and quietly accepted whatever number came out. This chapter goes back
 to that one line —
 
 ```cpp
-auto integrals = /* IntegralPack is private — use RHF */;
+rhf.basis = cpu::scf::BasisSet::STO3G;
 ```
 
 — and asks the question every practitioner eventually asks: **how much does
@@ -53,8 +53,8 @@ The six questions:
 
 1. **The concept.** What a Gaussian basis is and why bigger is (usually)
    better.
-2. **The Atomiverse representation.** `BasisSet`, `IntegralPack constructor (private)`, and the
-   shell machinery behind them.
+2. **The Atomiverse representation.** `BasisSet`, the method's private
+   integral workspace, and the shell machinery behind them.
 3. **The C++ API.** Selecting a basis, reading the AO count, and running the
    same SCF across a series.
 4. **The expected result.** A monotone-ish energy lowering from STO-3G to
@@ -99,7 +99,7 @@ Two practical facts follow:
 ## The Representation: A `BasisSet` Enum Over a Shell Machine
 
 Atomiverse names each basis with an enum and resolves it to concrete shells
-inside `IntegralPack constructor (private)`. From
+inside the method's private integral workspace. From
 [`basis_set.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/basis_set.h):
 
 ```cpp
@@ -116,17 +116,21 @@ Under the hood a `BasisSet` + the frame's atoms is resolved into a
 `ShellList` — flat AO descriptors with per-shell contraction lengths, which
 is why the machine handles mixed contractions (6-31G's 6/3/1, def2-SVP's up
 to 7) without special-casing. You do not touch `ShellList` directly for a
-normal calculation; `IntegralPack constructor (private)` builds it for you and reports the AO
-count on the returned pack:
+normal calculation; the method rebuilds it from the Frame on every
+`run(frame)`. The AO count surfaces on the wavefunction — it is the row
+dimension of the MO coefficient matrix:
 
 ```cpp
-/* integrals private inside RHF/UHF/RKS/UKS */
-int n_ao       = ints.n_basis;       // number of atomic orbitals
-int n_electron = ints.n_electrons;   // Σ Z − charge
-int n_occ      = ints.n_occ();       // doubly-occupied orbitals (closed shell)
+using Spin = cpu::scf::SlaterDeterminant::Spin;
+
+rhf.run(frame);
+const auto& det = rhf.determinant();
+int n_ao    = static_cast<int>(det.coefficients(Spin::alpha).shape()[0]);
+int n_alpha = det.n_electrons(Spin::alpha);   // (Σ Z − charge) split by spin;
+                                              // = n_occ for a closed shell
 ```
 
-`n_basis` is the number you watch: it is the dimension of every matrix in
+`n_ao` is the number you watch: it is the dimension of every matrix in
 the SCF, and cost scales steeply with it (roughly $N^3$ for the
 diagonalization, worse for conventional integrals), which is the price of a
 wider window.
@@ -135,8 +139,8 @@ wider window.
 
 STO-3G is implemented for **H through O (Z = 1–8)**; the larger Pople and
 def2 families extend the element range. Coverage is honest: if you ask for a
-basis/element combination that is not tabulated, `build_shell_list` (called
-inside `IntegralPack constructor (private)`) **throws** `std::runtime_error` rather than
+basis/element combination that is not tabulated, the shell-list build inside
+`run(frame)` **throws** `std::runtime_error` rather than
 silently substituting a nearby basis. There are *no fallback values* by
 design — a wrong answer that runs is worse than an exception that stops you.
 Among the shipped sets, STO-3G through def2-SVP are production-ready;
@@ -151,6 +155,7 @@ enum:
 
 ```cpp
 using namespace ATV;
+using Spin = cpu::scf::SlaterDeterminant::Spin;
 
 cpu::Frame frame = /* fixed H2O geometry, positions in Å, type = Z */;
 
@@ -158,38 +163,40 @@ for (auto basis : {cpu::scf::BasisSet::STO3G,
                    cpu::scf::BasisSet::Pople631G,
                    cpu::scf::BasisSet::Pople631Gs,
                    cpu::scf::BasisSet::Def2SVP}) {
-    auto ints = IntegralPack{frame, basis};
-    auto config = /* SCFConfig is private — set RHF members */;
-    config.max_iter = 100;
-    cpu::scf::RHF rhf /* was SCFSolver */;
-    solver.build(ints);
-    const auto& result = solver.run(ints);
+    cpu::scf::RHF rhf;
+    rhf.basis = basis;
+    rhf.max_iter = 100;
+    rhf.run(frame);
 
+    const int n_ao = static_cast<int>(
+        rhf.determinant().coefficients(Spin::alpha).shape()[0]);
     std::printf("%-12s  n_ao=%3d  E = %.8f Ha  (%d iters)\n",
-                cpu::scf::basis_set_name(basis), ints.n_basis,
-                result.energy, result.iterations);
+                cpu::scf::basis_set_name(basis), n_ao,
+                rhf.energy(), rhf.iterations());
 }
 ```
 
-`SCFSolver::run` returns its owned `SCFResult`; `energy` is the total
-(electronic + nuclear) energy in **Hartree**, alongside `converged`,
-`iterations`, and spin-resolved orbital eigenvalues. `basis_set_name` gives
-the human-readable label for logs.
+`run(frame)` writes the eV total energy to `frame.meta.get(kEnergy)`;
+`energy()` reports the same total (electronic + nuclear) energy in
+**Hartree**, alongside `converged()` and `iterations()` on the method, with
+the spin-resolved orbital eigenvalues on `determinant()`. `basis_set_name`
+gives the human-readable label for logs.
 
-Build the config from the integral pack and execute the solver lifecycle:
+Select the basis as a member and run — there is no separate integral or
+config step:
 
 ```cpp
-auto ints   = IntegralPack{frame, cpu::scf::BasisSet::Def2SVP};
-auto config = /* use cpu::scf::RHF */;        // Restricted HF, MINAO guess
-cpu::scf::RHF rhf /* was SCFSolver */;
-solver.build(ints);
-const auto& result = solver.run(ints);            // SCFResult, energy in Ha
+cpu::scf::RHF rhf;                            // Restricted HF, MINAO guess
+rhf.basis = cpu::scf::BasisSet::Def2SVP;
+rhf.run(frame);                               // rhf.energy() in Ha
 ```
 
-The config's electron counts (`n_alpha`, `n_beta`) are taken from the pack's
-`n_occ()`, so a config is tied to the basis it was built against — rebuild it
-when you change basis. That coupling is the same one the `SCFEvaluator`
-relies on in the dynamics and optimization chapters.
+The electron counts (`n_alpha`, `n_beta`) are resolved from the Frame
+(Σ Z − charge) on every run, and the private integral workspace is rebuilt
+whenever the geometry or the `basis` member changes — nothing is tied to a
+stale pack. That rebuild-from-Frame contract is the same one the dynamics
+and optimization chapters rely on when the method is bound at a `force`
+phase.
 
 ## The Expected Result: Monotone Lowering, Diminishing Returns
 
@@ -234,7 +241,7 @@ row is independently certified to be the *right* energy for its basis, so the
 *differences* between rows genuinely measure basis incompleteness and not a
 bug that happens to cancel.
 
-The production recommendation follows directly: build integrals at
+The production recommendation follows directly: set the method's `basis` to
 `BasisSet::Def2SVP` for real closed-shell work (`BasisSet::Pople631G` for
 quick tests), knowing STO-3G exists for pedagogy and fast regressions, and
 def2-TZVP for pushing toward the basis-set limit where its f-shell support

@@ -8,7 +8,8 @@ criteria:
       include/atomiverse/cpu/scf/scf_result.h does not exist; `rg -l 'SCFResult'
       include src tests examples regressions` returns only
       include/atomiverse/cpu/scf/solve.h and src/cpu/scf/solve.cpp (toy namespace).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: Method surface unbagged — determinant()/energy()/iterations(), void run()
     type: code
@@ -20,7 +21,8 @@ criteria:
       include/atomiverse/cpu/scf, src/cpu/scf, src/cpu/recorder, tests/cpu/scf,
       tests/cpu/recorder, regressions/scf and the eight migrated examples
       returns zero hits.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: Pinned parity energies and eigenvalues unchanged through new surface
     type: runtime
@@ -28,7 +30,8 @@ criteria:
       test_method_driver_parity passes with the five pinned Hartree literals
       (lines 154-158) and pinned eigenvalue vectors unmodified, reading
       energy()/determinant()/converged().
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: MeanFieldOutputs handle survives method move into a driver
     type: runtime
@@ -36,7 +39,8 @@ criteria:
       test_density_cube passes: handle taken before add(std::move(scf)) still
       yields a valid determinant view after the run (n_writes > 0, integrated
       density matches n_electrons at existing tolerance).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: Nested force-slot (AIMD) path behavior preserved
     type: runtime
@@ -44,7 +48,8 @@ criteria:
       test_method_driver_wire and test_driver_nesting pass: frame.meta kEnergy
       [eV] matches energy()*kHartreeInEv at existing tolerances; inner SCF
       convergence does not stop the outer loop.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: Spin-contamination invariants preserved on SlaterDeterminant
     type: scientific
@@ -68,7 +73,8 @@ criteria:
       test_mp2, test_fci and parity Mp2AndFciStillRouteThroughDrivenMethod pass;
       calling mp2()/fci() on a non-converged reference throws
       std::invalid_argument (asserted by unit test).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: Internal packs consume const SlaterDeterminant&
     type: code
@@ -77,7 +83,8 @@ criteria:
       SCFResult token and no scf_result.h include; ScfGradient::compute and
       accumulate_two_electron_gradient take const SlaterDeterminant&; build
       succeeds with ATV_BUILD_HF=ON.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-010
     summary: OrbitalInfoObserver uses det.homo()/lumo(), values unchanged
     type: runtime
@@ -85,7 +92,8 @@ criteria:
       test_orbital_info_observer passes with identical HOMO/LUMO/gap eV values;
       orbital_info_observer.cpp no longer indexes eigenvalues_alpha manually
       (scan deleted, homo()/lumo() called).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-011
     summary: Full suite and examples green
     type: runtime
@@ -93,7 +101,8 @@ criteria:
       cmake build with ATV_BUILD_TESTS=ON ATV_BUILD_HF=ON ATV_BUILD_EXAMPLES=ON
       compiles all migrated examples; ctest full suite passes with no new
       failures vs the pre-change baseline.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-012
     summary: Docs off the SCFResult user path
     type: docs

@@ -204,15 +204,15 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
     if (budget > 0)
         opts.max_iter = budget;
     drive_scf_(f, nullptr, opts);
-    return result_sp_->iterations;
+    return iterations_;
 }
 
 // ── THE funnel ────────────────────────────────────────────────────────────────
 
 template <typename D>
-SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
-                                          const SCFInitialGuess* guess,
-                                          const DriveOpts& opts) {
+void MeanFieldMethod<D>::drive_scf_(Frame& frame,
+                                    const SCFInitialGuess* guess,
+                                    const DriveOpts& opts) {
     // ASPC predict / correct / record — gated only on use_predictor_ (and
     // opts.apply_aspc so the corrector/fallback recursion does not re-enter).
     SCFInitialGuess density_guess;
@@ -253,7 +253,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
         copts.tol_override = corrector_tol_;
         copts.apply_aspc = false;
         drive_scf_core_(frame, effective_guess, copts);
-        if (!result_sp_->converged && fallback_full_scf_) {
+        if (!this->converged() && fallback_full_scf_) {
             DriveOpts full = opts;
             full.apply_aspc = false;
             drive_scf_core_(frame, effective_guess, full);
@@ -264,32 +264,33 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
         drive_scf_core_(frame, effective_guess, core);
     }
 
-    const SCFResult& result = *result_sp_;
+    // Converged densities live on the plainly-named members; the restricted
+    // alpha member carries the factor-2 total density (old result convention).
+    const RealMatrix& P_alpha = P_alpha_;
+    const RealMatrix& P_beta = restricted_ ? P_alpha_ : P_beta_;
     if (opts.apply_aspc && use_predictor_ && aspc_alpha_ && aspc_beta_) {
         if (predicted) {
             xt::xtensor<double, 2> Pa_corr, Pb_corr;
-            aspc_alpha_->correct(result.P_alpha, density_guess.P_alpha,
-                                 Pa_corr);
-            aspc_beta_->correct(result.P_beta, density_guess.P_beta, Pb_corr);
+            aspc_alpha_->correct(P_alpha, density_guess.P_alpha, Pa_corr);
+            aspc_beta_->correct(P_beta, density_guess.P_beta, Pb_corr);
             aspc_alpha_->record(Pa_corr);
             aspc_beta_->record(Pb_corr);
         } else {
-            aspc_alpha_->record(result.P_alpha);
-            aspc_beta_->record(result.P_beta);
+            aspc_alpha_->record(P_alpha);
+            aspc_beta_->record(P_beta);
         }
     }
     if (opts.apply_aspc) {
         has_last_density_ = true;
-        last_P_alpha_ = result.P_alpha;
-        last_P_beta_ = result.P_beta;
+        last_P_alpha_ = P_alpha;
+        last_P_beta_ = P_beta;
     }
-    return *result_sp_;
 }
 
 template <typename D>
-SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
-                                               const SCFInitialGuess* guess,
-                                               const DriveOpts& opts) {
+void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
+                                         const SCFInitialGuess* guess,
+                                         const DriveOpts& opts) {
     // ── Prologue: per-run assembly ────────────────────────────────────────────
     PositionGuard guard(frame, opts.unwrap);
 
@@ -408,12 +409,6 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     eig_alpha_ = eig0;
     eig_beta_ = eig0;
 
-    *result_sp_ = SCFResult{};
-    SCFResult& res = *result_sp_;
-    res.n_alpha = n_alpha;
-    res.n_beta = n_beta;
-    res.nuclear_repulsion = ints.V_nuc;
-
     mix_stage_->reset();
     converged_stage_->reset();
     // Retarget the criterion for this run: a loosened threshold for the ASPC
@@ -456,7 +451,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     const bool did_converge = this->converged();
 
-    // ── Epilogue: de-shift, spin, result fill, energy / forces ────────────────
+    // ── Epilogue: de-shift, wavefunction publish, energy / forces ────────────────
     // De-shifted orbital energies: rebuild one UNSHIFTED Fock from the
     // converged density and diagonalize it.
     if (did_converge && shift_active) {
@@ -475,31 +470,26 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         }
     }
 
-    res.converged = did_converge;
-    res.iterations = executed;
-    res.spin = spin_;
-    res.energy = e_total_;
-    res.one_electron_energy = e_one_;
-    res.coulomb_energy = e_coulomb_;
-    res.xc_energy = e_xc_grid_;
-    // HF carries exchange inside F (recovered by subtraction); KS sets it from
-    // the hybrid term so the decomposition closes (zero for pure KS).
-    res.exchange_energy =
-        is_hf ? ((e_total_ - v_nuc_) - e_one_ - e_coulomb_ - e_xc_grid_)
-              : e_exact_exchange_;
-    res.residual = converged_stage_->diis_error();
-    res.eigenvalues_alpha = eig_alpha_;
-    res.eigenvalues_beta = eig_beta_;
-    res.P_alpha = P_alpha_;
-    res.P_beta = restricted ? P_alpha_ : P_beta_;
-    res.C_alpha = C_alpha_;
-    res.C_beta = restricted ? C_alpha_ : C_beta_;
-    res.integrated_n_alpha = int_n_alpha_;
-    res.integrated_n_beta = int_n_beta_;
+    iterations_ = executed; // loop state lives on the Driver (converged()).
 
-    if (!restricted)
-        res.spin_contamination = compute_spin_contamination(
-            res.C_alpha, res.C_beta, S_, n_alpha, n_beta);
+    // Publish the wavefunction: assign into the stable shared slot (the
+    // handle-before-run contract). Integer Aufbau occupations per spin.
+    const int n_mo = static_cast<int>(C_alpha_.shape()[1]);
+    RealVector f_alpha = xt::zeros<double>({n_mo});
+    for (int i = 0; i < n_alpha && i < n_mo; ++i)
+        f_alpha(i) = 1.0;
+    if (restricted) {
+        *det_sp_ = SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha);
+    } else {
+        RealVector f_beta = xt::zeros<double>({n_mo});
+        for (int i = 0; i < n_beta && i < n_mo; ++i)
+            f_beta(i) = 1.0;
+        *det_sp_ =
+            SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha, C_beta_,
+                              eig_beta_, f_beta, n_beta);
+        det_sp_->set_spin_contamination(compute_spin_contamination(
+            C_alpha_, C_beta_, S_, n_alpha, n_beta));
+    }
 
     *has_result_sp_ = true;
 
@@ -512,7 +502,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                        n_angular,
                                        force_native_two_electron_deriv,
                                        xc_grad_project_translation};
-        last_grad_ = gradient.compute(frame, ints, res);
+        last_grad_ = gradient.compute(frame, ints, *det_sp_, e_total_);
         const int natm = static_cast<int>(frame.nlocal());
         AccReal* __restrict fx = frame.span(kAtom_fx);
         AccReal* __restrict fy = frame.span(kAtom_fy);
@@ -524,30 +514,24 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         }
         frame.meta.get(kEnergy) = last_grad_.energy;
     } else if (opts.write_energy) {
-        frame.meta.get(kEnergy) = res.energy * units::kHartreeInEv;
+        frame.meta.get(kEnergy) = e_total_ * units::kHartreeInEv;
     }
-
-    if (on_evaluate_)
-        on_evaluate_(res);
-
-    return res;
 }
 
 // ── Entry points ──────────────────────────────────────────────────────────────
 
 template <typename D>
-SCFResult& MeanFieldMethod<D>::run(Frame& frame, const SCFInitialGuess* guess,
-                                   bool write_energy) {
+void MeanFieldMethod<D>::run(Frame& frame, const SCFInitialGuess* guess) {
     DriveOpts opts;
     opts.unwrap = true;
-    opts.write_energy = write_energy;
+    opts.write_energy = true; // Frame-out: the mutating entry always writes.
     opts.forces = false;
-    return drive_scf_(frame, guess, opts);
+    drive_scf_(frame, guess, opts);
 }
 
 template <typename D>
-SCFResult& MeanFieldMethod<D>::run(const Frame& frame,
-                                   const SCFInitialGuess* guess) {
+void MeanFieldMethod<D>::run(const Frame& frame,
+                             const SCFInitialGuess* guess) {
     // SCF is read-only w.r.t. the frame: the stages compute on private member
     // matrices, never frame fields; this entry unwraps nothing and writes
     // nothing back. The const_cast is therefore never a mutation of the
@@ -557,7 +541,7 @@ SCFResult& MeanFieldMethod<D>::run(const Frame& frame,
     opts.unwrap = false;
     opts.write_energy = false;
     opts.forces = false;
-    return drive_scf_(const_cast<Frame&>(frame), guess, opts);
+    drive_scf_(const_cast<Frame&>(frame), guess, opts);
 }
 
 template <typename D>
@@ -576,7 +560,12 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
     compute_eri = true;
     run(frame);
     compute_eri = prev;
-    return mp2_energy(*integrals_sp_, *result_sp_);
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
+            "to compute a correlation correction on a non-stationary "
+            "determinant (no fallback)");
+    return mp2_energy(*integrals_sp_, *det_sp_, e_total_);
 }
 
 template <typename D>
@@ -585,7 +574,12 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
     compute_eri = true;
     run(frame);
     compute_eri = prev;
-    return fci_energy(*integrals_sp_, *result_sp_);
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::fci: SCF reference did not converge — refusing "
+            "to compute a correlation correction on a non-stationary "
+            "determinant (no fallback)");
+    return fci_energy(*integrals_sp_, *det_sp_, e_total_);
 }
 
 // explicit instantiations

@@ -49,9 +49,9 @@ theory does not fully capture that avoidance.
 
 This chapter explains what mean-field theories miss, sketches the hierarchy of
 methods built to recover it, and then puts two of them to work: Atomiverse
-implements **closed-shell MP2** (`cpu::scf::mp2_energy`) and an **exact tiny full
-CI** (`cpu::scf::fci_energy`) as post-SCF pure functions. Both consume a
-converged SCF result and return a correlation energy — real, runnable, and
+implements **closed-shell MP2** (`RHF::mp2`) and an **exact tiny full
+CI** (`RHF::fci`) as post-SCF steps on the concrete method. Both require a
+converged SCF reference and return a correlation energy — real, runnable, and
 validated against reference values. What remains out of scope is the expensive
 tail of the hierarchy: coupled cluster, multi-reference, and large-scale CI. DFT
 ([Chapter 6](ch06-hybrid-dft.md)) stays the engine's affordable workhorse for
@@ -132,16 +132,16 @@ majority of ground-state structures, energies, and forces — and for every
 gradient-driven workflow in this manual (AIMD, geometry optimization,
 vibrations) — DFT is the method of choice.
 
-On top of the SCF result, Atomiverse also implements two **wavefunction**
-correlation methods as post-SCF pure functions:
+On top of the SCF reference, Atomiverse also implements two **wavefunction**
+correlation methods as post-SCF steps on the concrete method:
 
-- **Closed-shell MP2** — `cpu::scf::mp2_energy(ints, scf)` returns the
+- **Closed-shell MP2** — `rhf.mp2(frame)` returns an `MP2Result` with the
   second-order correlation energy from the `(ia|jb)` MO integral block built by
   `ao2mo_ovov`. For water in STO-3G it recovers E_HF = −74.96302314 Ha →
   E_corr = −0.03554565 Ha → E_MP2 = −74.99856879 Ha (see
   [`examples/13_mp2.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/13_mp2.cpp); every digit is pinned by
   `val_mp2_vs_pyscf`).
-- **Exact tiny full CI** — `cpu::scf::fci_energy(ints, scf)` gives the *exact*
+- **Exact tiny full CI** — `rhf.fci(frame)` gives the *exact*
   in-basis energy for a handful of orbitals (the "Exact correlation in a finite
   basis" section below); for H₂/STO-3G, E_FCI = −1.1372702 Ha.
 
@@ -155,7 +155,7 @@ and full CI give you honest wavefunction reference points to calibrate against.
 
 It is worth seeing where a correlation method fits, because the answer
 reinforces the architectural through-line of the whole manual — and because
-`mp2_energy` and `fci_energy` occupy exactly this slot.
+`mp2()` and `fci()` occupy exactly this slot.
 
 A post-Hartree-Fock method is not a new kind of loop. It is a **post-SCF
 step**: it consumes the *converged* output of an SCF solve — the occupied and
@@ -166,10 +166,11 @@ in principle, a correlated density and gradient).
 In Atomiverse's vocabulary that is not a new `Driver` at all. The Gaussian SCF
 engine already exposes exactly the inputs such a method needs:
 
-- `cpu::scf::RHF rhf; rhf.compute_eri = true; rhf.mp2(frame);` (or `rhf.fci(frame)`)
-  produces the two-electron integrals (`integrals.ERI`) that an MO-basis
-  transform would consume — the same integrals the CUDA `RHFFock` kernel reads.
-- `rhf.run(frame)` / `rhf.last_result()` holds orbitals and energies.
+- `cpu::scf::RHF rhf; rhf.mp2(frame);` (or `rhf.fci(frame)`) drives a fresh
+  SCF with the dense two-electron (ERI) tensor materialized in the method's
+  private workspace — the same integrals the CUDA `RHFFock` kernel reads.
+- `rhf.run(frame)` puts the orbitals and their energies on
+  `rhf.determinant()` and the total energy on `rhf.energy()`.
 
 A correlation method would therefore be a component that **reads the SCF result
 and writes a corrected energy into typed `frame.meta`** — architecturally an
@@ -178,9 +179,12 @@ and writes a corrected energy into typed `frame.meta`** — architecturally an
 would reuse the existing integral engine rather than introduce a parallel one,
 exactly as the hybrid-gradient routine in [Chapter 6](ch06-hybrid-dft.md) reuses
 the ERI machinery. "One loop, many physics" extends cleanly to "one SCF result,
-many post-processings" — and `mp2_energy` / `fci_energy` are exactly that: free
-functions in `ATV::cpu::scf` that read a converged `SCFResult` and return a
-correlation energy, in the same family as `scf_gradient`, registered in no Plan.
+many post-processings" — and `mp2()` / `fci()` are exactly that: post-SCF
+members of the concrete method that read the converged `SlaterDeterminant` and
+return a correlation energy, in the same family as `forces()`, registered in
+no Plan. Both throw `std::invalid_argument` when the SCF reference did not
+converge — a correlation correction on top of a non-stationary mean field is
+meaningless, and there is no fallback.
 
 ## Exact correlation in a finite basis: full CI for tiny systems
 
@@ -188,7 +192,7 @@ There is one place where Atomiverse computes correlation *exactly* — not
 approximated by a functional, not truncated at second order, but the true
 lowest energy the basis can express. That is **full configuration interaction
 (full CI)**, available as a small post-SCF reference solver
-(`cpu::scf::fci_energy`) for *tiny* systems only.
+(`RHF::fci`) for *tiny* systems only.
 
 **The determinant expansion.** Hartree-Fock uses a single Slater determinant:
 each electron in its own molecular orbital, the occupied set fixed. Full CI
@@ -235,7 +239,7 @@ tests encode this correct inequality.)
 factorially with system size, and the dense $N_\text{det} \times N_\text{det}$
 eigenproblem grows as its cube. A handful of orbitals is already thousands of
 determinants; a real molecule is astronomically out of reach. Atomiverse
-therefore caps `fci_energy` at a hard TINY limit ($n_\text{mo} \le 14$,
+therefore caps `fci()` at a hard TINY limit ($n_\text{mo} \le 14$,
 $N_\text{det} \le 2000$) and throws past it. Its job is to be *exactly right*
 on toy systems, as the golden yardstick that validates MP2 today and coupled
 cluster tomorrow — the same role Szabo & Ostlund's hand-worked H2 table plays

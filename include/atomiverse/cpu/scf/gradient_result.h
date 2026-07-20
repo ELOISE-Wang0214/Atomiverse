@@ -1,6 +1,6 @@
 /// @file cpu/scf/gradient_result.h
-/// @brief `GradientResult` — the public forces-API return type (rehomed
-///        verbatim from scf_result.h; the public gradient.h stays a
+/// @brief `GradientResult` — the public forces-API return type (rehomed from the
+///        since-deleted scf_result.h; the public gradient.h stays a
 ///        tombstone).
 #pragma once
 

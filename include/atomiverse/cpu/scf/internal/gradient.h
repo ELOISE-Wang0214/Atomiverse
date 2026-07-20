@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
-#include "atomiverse/cpu/scf/scf_result.h"
+#include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
@@ -57,10 +57,14 @@ class ScfGradient {
     /// @brief Unified analytic nuclear gradient at the current geometry.
     /// @param frame     System geometry (positions in Angstrom, type_id = Z).
     /// @param integrals Precomputed integrals at current geometry (atomic units).
-    /// @param result    Converged SCF result (densities, MO coefficients).
+    /// @param det       Converged mean-field wavefunction (per-spin densities,
+    ///                  MO coefficients, orbital energies).
+    /// @param e_scf_ha  Converged SCF total energy [Hartree] (reported on the
+    ///                  returned GradientResult in eV).
     /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
     GradientResult compute(const Frame& frame, const IntegralPack& integrals,
-                           const SCFResult& result) const;
+                           const SlaterDeterminant& det,
+                           double e_scf_ha) const;
 
   private:
     MeanFieldType method_;                 ///< HF or KS mean field.

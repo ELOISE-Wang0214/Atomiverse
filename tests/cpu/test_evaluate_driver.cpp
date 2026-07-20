@@ -3,7 +3,6 @@
 
 #ifdef ATV_HAS_HF
 
-#include <cmath>
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/driver/evaluate.h"
@@ -60,14 +59,15 @@ TEST(EvaluateDriver, MatchesDirectRHFOnH2O) {
     cpu::scf::RHF direct;
     direct.basis = cpu::scf::BasisSet::STO3G;
     direct.with_gradient(false);
-    const double e_direct = direct.run(frame).energy;
+    direct.run(frame);
+    const double e_direct = direct.energy(); // [Hartree]
 
     cpu::scf::RHF via_eval;
     via_eval.basis = cpu::scf::BasisSet::STO3G;
     via_eval.with_gradient(false);
     cpu::single_point(frame, via_eval);
 
-    EXPECT_NEAR(e_direct, via_eval.last_result().energy, 1e-10);
+    EXPECT_NEAR(e_direct, via_eval.energy(), 1e-10);
 }
 
 TEST(EvaluateDriver, SinglePointHelper) {
@@ -76,7 +76,7 @@ TEST(EvaluateDriver, SinglePointHelper) {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.with_gradient(false);
     cpu::single_point(frame, rhf);
-    EXPECT_TRUE(rhf.last_result().converged);
+    EXPECT_TRUE(rhf.converged());
     EXPECT_LT(frame.meta.get(kEnergy), 0.0);
 }
 

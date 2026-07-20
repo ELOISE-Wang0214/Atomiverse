@@ -25,8 +25,9 @@ int main() {
     cpu::scf::UHF uhf(/*n_alpha=*/1, /*n_beta=*/0);
     uhf.basis = cpu::scf::BasisSet::STO3G;
     uhf.tol = 1e-8;
-    const auto& r = uhf.run(frame);
-    std::cout << std::setprecision(10) << "H atom UHF converged=" << r.converged
-              << " E=" << r.energy << " Ha\n";
-    return r.converged ? 0 : 1;
+    uhf.run(frame);
+    std::cout << std::setprecision(10)
+              << "H atom UHF converged=" << uhf.converged()
+              << " E=" << uhf.energy() << " Ha\n";
+    return uhf.converged() ? 0 : 1;
 }

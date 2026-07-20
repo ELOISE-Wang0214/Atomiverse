@@ -27,8 +27,11 @@ TEST(Koopmans, HomoNegative) {
     auto f = water();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& r = rhf.run(f);
-    ASSERT_TRUE(r.converged);
-    EXPECT_LT(r.eigenvalues_alpha(r.n_alpha - 1), 0.0);
+    rhf.run(f);
+    ASSERT_TRUE(rhf.converged());
+    using Spin = cpu::scf::SlaterDeterminant::Spin;
+    const auto& det = rhf.determinant();
+    EXPECT_LT(det.orbital_energies(Spin::alpha)(det.n_electrons(Spin::alpha) - 1),
+              0.0);
 }
 #endif

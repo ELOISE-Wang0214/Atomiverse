@@ -1,9 +1,10 @@
 /// @file cpu/scf/orbital_info_observer.h
-/// @brief OrbitalInfoObserver -- per-step HOMO/LUMO/gap summary from SCFResult.
+/// @brief OrbitalInfoObserver -- per-step HOMO/LUMO/gap summary from the
+///        method's SlaterDeterminant.
 ///
-/// Reads eigenvalues from the latest SCFResult published by a sibling
-/// mean-field method via `MeanFieldOutputs`. Writes a TSV log and optionally
-/// mirrors to stdout.
+/// Reads orbital energies from the latest `SlaterDeterminant` published by a
+/// sibling mean-field method via `MeanFieldOutputs`. Writes a TSV log and
+/// optionally mirrors to stdout.
 ///
 /// Usage:
 /// @code

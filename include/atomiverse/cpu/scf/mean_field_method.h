@@ -18,13 +18,14 @@
 ///   cpu::scf::RHF rhf;
 ///   rhf.basis = BasisSet::STO3G;
 ///   rhf.tol = 1e-10;
-///   rhf.run(frame);                    // energy / orbitals on last_result()
+///   rhf.run(frame);                    // eV energy on frame.meta[kEnergy];
+///                                      // Hartree on rhf.energy();
+///                                      // wavefunction on rhf.determinant()
 ///   // forces: rhf.with_gradient(true) then nest at force phase, or
 ///   //         GradientResult g = rhf.forces(frame);
 /// @endcode
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -42,7 +43,7 @@
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/scf_guess.h"
-#include "atomiverse/cpu/scf/scf_result.h"
+#include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/stages/density_stage.h"
 #include "atomiverse/cpu/scf/stages/diagonalize_stage.h"
 #include "atomiverse/cpu/scf/stages/fock_stage.h"
@@ -58,9 +59,10 @@ namespace scf {
 ///
 /// `shells` is the basis-function set (pointer storage owned by the method's
 /// private integral workspace via shared_ptr aliasing). Spin treatment is
-/// read from the result (`result->spin`). `IntegralPack` is not public.
+/// read from the wavefunction (`result->restricted()`). `IntegralPack` is
+/// not public.
 struct MeanFieldOutputs {
-    std::shared_ptr<const SCFResult> result;
+    std::shared_ptr<const SlaterDeterminant> result;
     std::shared_ptr<const std::vector<native::Shell>> shells;
     std::shared_ptr<const bool> ready;
 };
@@ -137,18 +139,19 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @brief Drop the method's private Plan / Backend wiring.
     void destroy_on(cpu::Backend& rt) override;
 
-    /// @brief Run SCF on `frame` (driver loop). Integrals are private workspace.
+    /// @brief Run SCF on `frame` (driver loop). Integrals are private
+    ///        workspace. Frame-out: always writes the eV energy to
+    ///        `frame.meta[kEnergy]`; Hartree internals via `energy()`,
+    ///        loop state via `converged()`/`stop_reason()`/`iterations()`,
+    ///        wavefunction via `determinant()`.
     /// @param frame  Geometry (Å) + Z in type column.
     /// @param guess  Optional density guess.
-    /// @param write_energy  If true, write eV energy to `frame.meta[kEnergy]`.
-    /// @return Reference to owned `last_result()` (Hartree internals).
-    SCFResult& run(Frame& frame, const SCFInitialGuess* guess = nullptr,
-                   bool write_energy = false);
-    /// @brief Const-geometry energy (does not write Frame meta or move atoms).
+    void run(Frame& frame, const SCFInitialGuess* guess = nullptr);
+    /// @brief Const-geometry energy (does not write Frame meta or move
+    ///        atoms). Results via `energy()`/`converged()`/`determinant()`.
     /// @param frame  Geometry; left untouched.
     /// @param guess  Optional density guess.
-    /// @return Reference to owned `last_result()` (Hartree internals).
-    SCFResult& run(const Frame& frame, const SCFInitialGuess* guess = nullptr);
+    void run(const Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Analytic forces [eV/Å] after (or including) a fresh SCF.
     /// @param frame  Geometry; forces written to fx/fy/fz and energy to meta.
@@ -166,15 +169,23 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @return Full-CI correlation + total energy.
     FCIResult fci(Frame& frame);
 
-    /// @brief Most recent converged (or last) SCF result [Hartree internals].
-    const SCFResult& last_result() const { return *result_sp_; }
+    /// @brief The wavefunction of the most recent run (last iterate when not
+    ///        converged). Empty (0 electrons, 0 orbitals) before any run.
+    /// @return The owned Slater determinant (Hartree internals).
+    const SlaterDeterminant& determinant() const { return *det_sp_; }
+    /// @brief Total SCF energy of the most recent run.
+    /// @return E_total [Hartree].
+    double energy() const { return e_total_; }
+    /// @brief SCF iterations executed by the most recent run.
+    /// @return Iteration count (dimensionless).
+    int iterations() const { return iterations_; }
     /// @brief Whether a result has been produced by any run.
     bool has_result() const { return *has_result_sp_; }
 
     /// @brief Observer handle (shared_ptrs survive driver ownership moves).
-    /// @return Shared view of result / shells for cube writers.
+    /// @return Shared view of determinant / shells for cube writers.
     MeanFieldOutputs result_handle() const {
-        return {result_sp_,
+        return {det_sp_,
                 std::shared_ptr<const std::vector<native::Shell>>(
                     integrals_sp_, &integrals_sp_->shells),
                 has_result_sp_};
@@ -186,15 +197,6 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     }
     Derived&& with_gradient(bool enabled) && noexcept {
         compute_force = enabled;
-        return static_cast<Derived&&>(*this);
-    }
-
-    Derived& on_evaluate(std::function<void(const SCFResult&)> cb) & {
-        on_evaluate_ = std::move(cb);
-        return static_cast<Derived&>(*this);
-    }
-    Derived&& on_evaluate(std::function<void(const SCFResult&)> cb) && {
-        on_evaluate_ = std::move(cb);
         return static_cast<Derived&&>(*this);
     }
 
@@ -270,7 +272,9 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @brief Options selecting which of the shared entry behaviors apply.
     ///        Private, per-call — routing flags, not a config bag.
     struct DriveOpts {
-        bool write_energy = false; ///< Write eV energy to `frame.meta`.
+        bool write_energy = false; ///< Write eV energy to `frame.meta`
+                                   ///< (mutating entries; forces path writes
+                                   ///< its own energy).
         bool forces = false;       ///< Compute + write analytic forces.
         bool unwrap = true;        ///< Unwrap positions (mutating paths only).
         int max_iter = -1;         ///< Budget override; <0 ⇒ member `max_iter`.
@@ -301,14 +305,13 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @param frame Geometry; mutated only on the mutating entries.
     /// @param guess Optional density guess.
     /// @param opts  Which shared behaviors apply on this entry.
-    /// @return Reference to the owned `SCFResult`.
-    SCFResult& drive_scf_(Frame& frame, const SCFInitialGuess* guess,
-                          const DriveOpts& opts);
+    void drive_scf_(Frame& frame, const SCFInitialGuess* guess,
+                    const DriveOpts& opts);
 
     /// @brief Core SCF (no ASPC wrapper) — used by drive_scf_ after ASPC
     ///        front-end resolves the density guess.
-    SCFResult& drive_scf_core_(Frame& frame, const SCFInitialGuess* guess,
-                               const DriveOpts& opts);
+    void drive_scf_core_(Frame& frame, const SCFInitialGuess* guess,
+                         const DriveOpts& opts);
 
     /// @brief Lazily wire the five stages + `ScfConverged` and compile the Plan.
     ///        Deferred to first `drive_scf_` so member config (grid, level
@@ -323,11 +326,17 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     ///        when a move leaves the stages bound to a stale address.
     void reset_built_driver_();
 
-    // Shared workspace (shells published via result_handle aliasing).
+    // Shared workspace (shells published via result_handle aliasing). The
+    // determinant slot is stable (handle-before-run contract): it starts as
+    // the empty determinant (0 electrons, 0 orbitals) and each run assigns
+    // the fresh wavefunction into the same pointee.
     std::shared_ptr<IntegralPack> integrals_sp_{
         std::make_shared<IntegralPack>()};
-    std::shared_ptr<SCFResult> result_sp_{std::make_shared<SCFResult>()};
+    std::shared_ptr<SlaterDeterminant> det_sp_{
+        std::make_shared<SlaterDeterminant>(RealMatrix{}, RealVector{},
+                                            RealVector{}, 0)};
     std::shared_ptr<bool> has_result_sp_{std::make_shared<bool>(false)};
+    int iterations_ = 0; ///< SCF iterations executed by the most recent run.
 
     // Stage components (heap-owned; borrowed into the Plan by add_ref). Null
     // until ensure_driver_built_ wires them to this method's members.
@@ -353,7 +362,6 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     bool has_last_density_ = false;
     xt::xtensor<double, 2> last_P_alpha_;
     xt::xtensor<double, 2> last_P_beta_;
-    std::function<void(const SCFResult&)> on_evaluate_;
 };
 
 } // namespace scf

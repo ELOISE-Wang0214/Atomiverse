@@ -1,6 +1,6 @@
 /// @file cpu/scf/scf_guess.h
 /// @brief SCF initial guesses: the optional density-matrix guess carrier
-///        (`SCFInitialGuess`, rehomed verbatim from scf_result.h) and
+///        (`SCFInitialGuess`, rehomed from the since-deleted scf_result.h) and
 ///        broken-symmetry HOMO-LUMO mixing for locating spin-broken
 ///        solutions (e.g. stretched H2).
 #pragma once

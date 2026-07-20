@@ -196,26 +196,26 @@ double ci_element(std::uint64_t a_i, std::uint64_t b_i, std::uint64_t a_j,
 } // namespace
 
 xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
-                                       const SCFResult& scf) {
-    // No-fallback guards -- throw, never return a sentinel (mirror mp2_energy).
+                                       const SlaterDeterminant& det) {
+    using Spin = SlaterDeterminant::Spin;
+    // No-fallback guards -- throw, never return a sentinel (mirror
+    // mp2_energy). Convergence of the reference is guarded by the caller.
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
             "fci_energy: ERI is not materialized; call IntegralPack{..., "
             "compute_eri=true}.");
     }
-    if (!scf.converged) {
-        throw std::invalid_argument(
-            "fci_energy: SCF result has not converged.");
-    }
-    if (scf.n_alpha != scf.n_beta) {
+    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
         throw std::invalid_argument(
             "fci_energy: closed-shell reference only (n_alpha must equal "
             "n_beta).");
     }
 
-    const int n_mo = static_cast<int>(scf.C_alpha.shape(1));
-    const int n_alpha = scf.n_alpha;
-    const int n_beta = scf.n_beta;
+    // Row-major copy of the alpha MO coefficients (hoisted once).
+    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape(1));
+    const int n_alpha = det.n_electrons(Spin::alpha);
+    const int n_beta = det.n_electrons(Spin::beta);
 
     // TINY solvability cap: the dense CI matrix and its eigh grow factorially.
     // This is a validation/reference tool, not a production method.
@@ -236,8 +236,8 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
     }
 
     // MO-basis one- and two-electron integrals (chemists' notation).
-    const xt::xtensor<double, 2> h = mo_hcore(ints.Hcore, scf.C_alpha, n_mo);
-    const xt::xtensor<double, 4> g = ao2mo_full(ints.ERI, scf.C_alpha, n_mo);
+    const xt::xtensor<double, 2> h = mo_hcore(ints.Hcore, C, n_mo);
+    const xt::xtensor<double, 4> g = ao2mo_full(ints.ERI, C, n_mo);
 
     const std::vector<std::uint64_t> alphas = enumerate_strings(n_mo, n_alpha);
     const std::vector<std::uint64_t> betas = enumerate_strings(n_mo, n_beta);
@@ -267,21 +267,22 @@ xt::xtensor<double, 2> fci_hamiltonian(const IntegralPack& ints,
     return hci;
 }
 
-FCIResult fci_energy(const IntegralPack& ints, const SCFResult& scf) {
-    const xt::xtensor<double, 2> hci = fci_hamiltonian(ints, scf);
+FCIResult fci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                     double e_scf_ha) {
+    const xt::xtensor<double, 2> hci = fci_hamiltonian(ints, det);
     const std::size_t nd = hci.shape(0);
 
     // Single-determinant boundary (e.g. He/STO-3G, no virtuals): full CI is the
     // RHF reference itself; correlation is exactly zero.
     if (nd == 1) {
-        return {scf.energy, 0.0};
+        return {e_scf_ha, 0.0};
     }
 
     auto [w, U] = xt::linalg::eigh(hci);
     (void)U;
     const double e_fci =
         w(0); // eigenvalues ascending; lowest is the ground state
-    return {e_fci, e_fci - scf.energy};
+    return {e_fci, e_fci - e_scf_ha};
 }
 
 } // namespace scf

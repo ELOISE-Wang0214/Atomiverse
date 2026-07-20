@@ -1,6 +1,6 @@
 /// @file cpu/scf/internal/scf_types.h
 /// @brief **PRIVATE** SpinResolution — (electron count, multiplicity) →
-///        (n_alpha, n_beta). Results live in public scf_result.h.
+///        (n_alpha, n_beta). Results live on the concrete method (`energy()` / `determinant()`).
 #pragma once
 
 #include <stdexcept>

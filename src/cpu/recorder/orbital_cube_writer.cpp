@@ -6,7 +6,6 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/basis_eval.h"
-#include "atomiverse/cpu/scf/scf_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -43,11 +42,12 @@ void OrbitalCubeWriter::launch(const cpu::LaunchContext& ctx) {
         return;
 
     const auto& shells = *handle_.shells;
-    const auto& result = *handle_.result;
+    const scf::SlaterDeterminant& det = *handle_.result;
     const int n_basis = static_cast<int>(shells.size());
 
-    const auto& C =
-        (spin_ == OrbitalSpin::Alpha) ? result.C_alpha : result.C_beta;
+    const auto& C = det.coefficients(spin_ == OrbitalSpin::Alpha
+                                         ? scf::SlaterDeterminant::Spin::alpha
+                                         : scf::SlaterDeterminant::Spin::beta);
     if (C.size() == 0)
         throw std::runtime_error(
             "OrbitalCubeWriter: empty MO matrix for requested spin");

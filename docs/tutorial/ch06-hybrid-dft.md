@@ -3,10 +3,11 @@
 | | |
 |---|---|
 | **Examples** | [`04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp) (LSDA baseline), [`05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp) (PBE forces + L-BFGS) |
-| **API** | `cpu::scf::uks_config` / hybrid `XCType::{B3LYP,PBE0}`, `scf_gradient` |
+| **API** | `cpu::scf::RKS` with hybrid `XCType::{B3LYP,PBE0}`, `forces()` / `GradientResult` |
 
 Hybrids mix a fraction of exact Hartree–Fock exchange into the KS functional.
-Analytic nuclear gradients (`scf_gradient`, or `SCF{}.with_gradient(true)`) are
+Analytic nuclear gradients (`RKS::forces(frame)`, or the method nested at a
+`force` phase with `with_gradient(true)`) are
 what turn a single-point energy into geometry optimization and AIMD
 ([Chapter 12](ch12-geometry-optimization.md), [Chapter 15](ch15-cross-method.md)).
 
@@ -40,16 +41,17 @@ The six questions:
 2. **The Atomiverse representation.** `XCType::B3LYP` / `PBE0`, the
    exact-exchange fraction, and how the Fock builder splits the work.
 3. **The C++ API.** `RKS` with `XCType::B3LYP` / `PBE0`, and
-   `scf_gradient`.
+   `forces()`.
 4. **The expected result.** A converged hybrid energy and forces that match
    PySCF's `grad.RKS`.
 5. **The validation.** Analytic force vs PySCF *and* vs an independent
    finite-difference oracle, to 1e-5 Ha/Bohr.
-6. **The recurring pattern.** The gradient plugs into the same
-   `SCFEvaluator` that drives AIMD and geometry optimization.
+6. **The recurring pattern.** The gradient plugs into the same force-phase
+   binding that drives AIMD and geometry optimization.
 
 This chapter assumes you are comfortable with the SCF loop and the
-`SCFConfig` / `SCFResult` types from Tutorials 2 and 4.
+concrete-method surface — `run(frame)`, `energy()`, `determinant()` — from
+Tutorials 2 and 4.
 
 ## The Concept: A Fraction of Exact Exchange
 
@@ -114,54 +116,51 @@ Hartree-Fock exchange (K) matrix build every SCF iteration, so it is
 meaningfully more expensive than a pure GGA. That expense is the price of the
 self-interaction correction.
 
-## The C++ API: Two Config Builders, Then Gradients
+## The C++ API: A Concrete Method, Then Gradients
 
-The convenience builders in
-[`scf_types.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_types.h) preset a
-production-grade closed-shell hybrid configuration — restricted KS, the
-PySCF-matching `GridLevel::MatchPySCF` integration grid, MINAO initial guess,
-`tol = 1e-9`, DIIS on — and differ only in the functional:
+Constructing `RKS` with a hybrid `XCType` presets a production-grade
+closed-shell configuration — restricted KS, the PySCF-matching
+`GridLevel::MatchPySCF` integration grid, MINAO initial guess, `tol = 1e-9`,
+DIIS on — the two hybrids differ only in the functional:
 
 ```cpp
 using namespace ATV;
 
 cpu::Frame frame = /* H2O, positions in Å, type = Z */;
 
-/* integrals private inside RHF/UHF/RKS/UKS */
 cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);  // or XCType::PBE0
 rks.basis = cpu::scf::BasisSet::Pople631Gs;
-cfg.max_iter = 300;
+rks.max_iter = 300;
 
-const auto& res = rks.run(frame);
-
-const auto& result = rhf.run(frame);                    // SCFResult
-// result.energy (Hartree), result.converged, result.xc_energy, ...
+rks.run(frame);                  // eV energy on frame.meta[kEnergy]
+double e_ha = rks.energy();      // total energy [Hartree]
+bool   ok   = rks.converged();   // loop state lives on the method's driver
 ```
 
-`b3lyp_config` and `pbe0_config` both clone `default_config` and set only the
-`xc_type`, so everything else — grid, guess, convergence — is the same locked
-production default. The hybrids use a GGA grid, so a polarized basis such as
+Either constructor argument sets only the functional, so everything else —
+grid, guess, convergence — is the same locked production default. The
+hybrids use a GGA grid, so a polarized basis such as
 6-31G* (`Pople631Gs`) or def2-SVP is the natural choice; see
 [Chapter 4](ch04-basis-sets.md).
 
-Forces come from a *separate* call on the converged result. From
-[`gradient.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient.h):
+Forces come from `forces(frame)` on the same method object, which runs a
+fresh SCF and then the analytic gradient. The return type is
+[`gradient_result.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient_result.h):
 
 ```cpp
-cpu::scf::GradientResult grad =
-    cpu::scf::scf_gradient(frame, integrals, result, cfg);
+cpu::scf::GradientResult grad = rks.forces(frame);
 
 // grad.forces : xtensor [n_atoms, 3] in eV/Å   (FORCE = -dE/dR)
 // grad.energy : total energy in eV
 ```
 
-`scf_gradient` is the *unified* analytic gradient for every mean-field
-method — it dispatches on the config, computing the HF Coulomb+exchange
-two-electron terms for HF configs and Coulomb + XC-grid contributions for KS,
+`forces()` is the *unified* analytic gradient for every mean-field
+method — underneath, one routine computes the HF Coulomb+exchange
+two-electron terms for HF methods and Coulomb + XC-grid contributions for KS,
 with the hybrid case adding the exchange gradient weighted by
-$\alpha_{\text{HF}}$. The same function serves RHF, UHF, RKS, UKS, and both
+$\alpha_{\text{HF}}$. The same entry point serves RHF, UHF, RKS, UKS, and both
 hybrids; you never pick a method-specific gradient routine. Note the units
-and sign: `scf_gradient` returns **forces** (the negative energy gradient) in
+and sign: `forces()` returns **forces** (the negative energy gradient) in
 eV/Å, consistent with what the frame's `fx/fy/fz` arrays expect, whereas
 PySCF's `grad` returns $\partial E/\partial R$ in Hartree/Bohr — convert with
 `core/units.h` before comparing.
@@ -171,16 +170,10 @@ routine for a hybrid is:
 
 ```cpp
 auto run_hybrid = [](cpu::Frame& frame, cpu::scf::XCType xc) {
-    /* integrals private inside RHF/UHF/RKS/UKS */
-    cpu::scf::SCFConfig cfg = (xc == cpu::scf::XCType::B3LYP)
-                                  ? cpu::scf::XCType::B3LYP
-                                  : cpu::scf::XCType::PBE0;
     cpu::scf::RKS rks(xc);
-    cfg.max_iter = 300;
-    const auto& res = rks.run(frame);
-    solver.build(ints);
-    const auto& result = solver.run(ints);
-    return cpu::scf::scf_gradient(frame, ints, result, cfg);
+    rks.basis = cpu::scf::BasisSet::Pople631Gs;
+    rks.max_iter = 300;
+    return rks.forces(frame);   // runs the SCF, then the analytic gradient
 };
 ```
 
@@ -215,17 +208,26 @@ deliberate:
    engine.
 2. **Against a moving-grid finite difference.** Because a shared bug could in
    principle affect *both* Atomiverse and PySCF's analytic derivations, the
-   test *also* compares the analytic force against
-   `scf_finite_difference_gradient` — central differences of the hybrid
-   energy, with the XC grid regenerated at each displaced geometry — again to
-   **≤ 1e-5 Ha/Bohr**. This oracle trusts nothing but the energy itself (the
-   pattern from [Chapter 1](ch01-foundations.md)):
+   test *also* compares the analytic force against central differences of the
+   hybrid energy, with the XC grid regenerated at each displaced geometry —
+   again to **≤ 1e-5 Ha/Bohr**. This oracle trusts nothing but the energy
+   itself (the pattern from [Chapter 1](ch01-foundations.md)), and you can
+   write it from the public surface alone — each displaced energy is just a
+   fresh `run(frame)`:
 
 ```cpp
 const double h_ang = 1e-3 / ATV::units::kAngstromInBohr;   // 1e-3 Bohr in Å
-auto fd = cpu::scf::scf_finite_difference_gradient(
-    frame, cfg, /*charge=*/0, h_ang, cpu::scf::BasisSet::Pople631Gs);
-// compare fd.forces(A, d) against scf_gradient(...).forces(A, d)
+auto e_at = [&](int A, int d, double h) {         // E at a displaced geometry
+    cpu::Frame moved = frame;
+    /* shift atom A's coordinate d by h [Å] */
+    cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);
+    rks.basis = cpu::scf::BasisSet::Pople631Gs;
+    rks.run(moved);
+    return rks.energy();                          // [Hartree]
+};
+const double f_fd =                               // force, central difference
+    -(e_at(A, d, +h_ang) - e_at(A, d, -h_ang)) / (2 * h_ang);
+// compare (after unit conversion) against rks.forces(frame).forces(A, d)
 ```
 
 The moving-grid FD check matters for hybrids specifically: the XC grid moves
@@ -247,20 +249,20 @@ optimized-geometry-vs-experiment gap is a **physical-approximation** claim
 
 Everything in this chapter produced a `GradientResult` by hand, which is the
 right way to *validate* a gradient. In a real workflow you rarely call
-`scf_gradient` directly — you let the **`SCFEvaluator`** call it for you.
-`SCFEvaluator` wraps exactly this "build integrals → run SCF → compute
-analytic gradient → write forces into the frame" sequence into a `force`-phase
-component, and it is functional-agnostic: hand it a `b3lyp_config` and it
+`forces()` directly — you bind the **method itself** at the `force` phase.
+Nested there, `RKS` runs exactly this "rebuild integrals → run SCF → compute
+analytic gradient → write forces into the frame" sequence on every outer
+step, and it is functional-agnostic: construct it with `XCType::B3LYP` and it
 provides B3LYP forces to whichever driver it is plugged into.
 
 ```cpp
 // B3LYP geometry optimization: hybrid forces into the Minimize driver
 cpu::minimizer::Minimize opt;
-opt.add(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
+opt.set_optimizer(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
 opt.add_criterion(cpu::ForceConverged{/* the five tolerances */});
-opt.on(minimizer::Phase::force)
-   .add(cpu::scf::RKS(cpu::scf::XCType::B3LYP) /* basis via member */,
-                               cpu::scf::BasisSet::Pople631Gs});
+cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);
+rks.basis = cpu::scf::BasisSet::Pople631Gs;
+opt.on(minimizer::Phase::force).add(std::move(rks));
 opt.build();
 opt.run(frame, /*max_iter=*/100);
 ```
@@ -268,10 +270,10 @@ opt.run(frame, /*max_iter=*/100);
 The same `RKS{XCType::B3LYP}` drops into `cpu::md::MD` for
 hybrid-functional AIMD ([Chapter 15](ch15-cross-method.md)) and into `cpu::vib::Hessian`
 for hybrid vibrational frequencies ([Chapter 14](ch14-vibrations.md)). One
-gradient routine, one evaluator component, three drivers — the "swap the
-evaluator, keep the driver" architecture that
+gradient routine, one method object, three drivers — the "swap the
+method, keep the driver" architecture that
 [Chapter 15](ch15-cross-method.md) makes explicit. The functional you chose
-in this chapter travels with the evaluator wherever forces are needed.
+in this chapter travels with the method wherever forces are needed.
 
 ## Validation Reference
 

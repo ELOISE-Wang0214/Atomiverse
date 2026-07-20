@@ -3,11 +3,12 @@
 ///        LibreTexts literature value — the chain's only Gaussian-SCF e2e.
 ///
 /// Out-of-library consumer: includes only the public `cpu/scf/methods.h` +
-/// `cpu/frame/frame.h` and links `atomiverse` (public API only; no internal
-/// headers and no intermediate config/integral objects). Builds water at
-/// R(OH) = 0.95 Å, ∠HOH = 104.5°, runs the concrete `cpu::scf::RHF` method
-/// (parameters are members; Frame is the sole I/O currency), and checks
-/// `last_result().energy` against E_RHF/STO-3G(H2O) = −74.961754 Ha
+/// `cpu/frame/frame.h` + `core/units.h` and links `atomiverse` (public API
+/// only; no internal headers and no intermediate config/integral objects).
+/// Builds water at R(OH) = 0.95 Å, ∠HOH = 104.5°, runs the concrete
+/// `cpu::scf::RHF` method (parameters are members; Frame is the sole I/O
+/// currency), and checks the Frame energy `frame.meta.get(kEnergy)` [eV],
+/// converted to Hartree, against E_RHF/STO-3G(H2O) = −74.961754 Ha
 /// (LibreTexts "Live Textbook of Physical Chemistry", §28.2; cross-checked
 /// against PySCF 2.13) within 1e-3 Ha. See REFERENCE.md.
 ///
@@ -16,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
 
@@ -47,18 +49,19 @@ int main() {
     frame.simbox = cpu::Box::cubic(20.0);
 
     // ── Concrete RHF method, STO-3G. Parameters are members and Frame is the
-    //    sole I/O currency. `run(frame)` returns a reference to `last_result()`
-    //    (Hartree internals).
+    //    sole I/O currency. `run(frame)` writes the eV energy to
+    //    `frame.meta[kEnergy]`; loop state via `converged()`.
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& result = rhf.run(frame);
+    rhf.run(frame);
 
-    // ── Literature check: total RHF/STO-3G energy [Hartree].
+    // ── Literature check: total RHF/STO-3G energy [Hartree], read from the
+    //    Frame (eV) and converted back to Hartree.
     constexpr double kEnergyRef = -74.961754; // Ha — LibreTexts PChem §28.2
     constexpr double kTol = 1.0e-3; // Ha — end-to-end sanity magnitude
-    const double got = result.energy;
+    const double got = frame.meta.get(kEnergy) / units::kHartreeInEv;
 
-    if (!result.converged) {
+    if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G(H2O) did not converge\n");
         return 1;
     }

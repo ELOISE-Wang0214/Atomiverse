@@ -91,6 +91,43 @@ class SlaterDeterminant {
     /// @return true for the restricted form (β accessors forward to α).
     bool restricted() const { return restricted_; }
 
+    /// @brief MO coefficient matrix of channel σ.
+    /// @param s Spin channel.
+    /// @return C^σ [n x n_mo] (dimensionless).
+    const RealMatrix& coefficients(Spin s) const { return channel_(s).C; }
+
+    /// @brief Orbital energies of channel σ.
+    /// @param s Spin channel.
+    /// @return ε^σ, one per MO column [Hartree].
+    const RealVector& orbital_energies(Spin s) const {
+        return channel_(s).epsilon;
+    }
+
+    /// @brief Per-spin occupations of channel σ.
+    /// @param s Spin channel.
+    /// @return f^σ in [0, 1] per spin orbital (dimensionless).
+    const RealVector& occupations(Spin s) const {
+        return channel_(s).occupation;
+    }
+
+    /// @brief Electron count of channel σ.
+    /// @param s Spin channel.
+    /// @return N^σ (dimensionless count).
+    int n_electrons(Spin s) const {
+        return (s == Spin::beta) ? n_beta_ : n_alpha_;
+    }
+
+    /// @brief Cached spin-contamination diagnostic ⟨S²⟩ − S(S+1)
+    ///        (Amos-Hall; 0 for a pure spin state and for the restricted
+    ///        form). Filled by the producing method's epilogue — evaluation
+    ///        needs the AO overlap S, which is method-private workspace.
+    /// @return ⟨S²⟩ deviation (dimensionless).
+    double spin_contamination() const { return spin_contamination_; }
+
+    /// @brief Cache the spin-contamination diagnostic (producer-side).
+    /// @param value ⟨S²⟩ − S(S+1) deviation (dimensionless).
+    void set_spin_contamination(double value) { spin_contamination_ = value; }
+
     /// @brief Spin density matrix P^σ = Σ_i f_i^σ c_i c_iᵀ (AO basis,
     ///        dimensionless), built by delegating the GEMM to
     ///        `linalg::build_density_matrix`.
@@ -371,6 +408,7 @@ class SlaterDeterminant {
     int n_alpha_ = 0;  ///< Alpha electron count N^α.
     int n_beta_ = 0;   ///< Beta electron count N^β.
     bool restricted_ = true; ///< Restricted (β forwards to α) or not.
+    double spin_contamination_ = 0; ///< Cached ⟨S²⟩ − S(S+1) deviation.
 };
 
 } // namespace scf

@@ -396,7 +396,7 @@ step keeps overshooting. Cure: turn on the line search, or tighten
 
 **The SCF is the problem** when the energy jumps non-monotonically,
 the forces blow up, or the atoms move by tens of Ångström in one step.
-Symptoms: SCF's `last_result().converged` is false; the
+Symptoms: SCF's `converged()` is false; the
 trajectory shows atoms passing through each other. Cure: this is not
 an optimizer bug. Either the SCF tolerance is set too loose
 (`config.tol > 1e-6` produces noisy gradients near minimum), the

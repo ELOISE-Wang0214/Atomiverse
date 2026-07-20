@@ -72,8 +72,8 @@ TEST(UHF, CorrectOccupationConverges) {
     auto frame = make_water();
     cpu::scf::UHF uhf(5, 5);
     uhf.basis = cpu::scf::BasisSet::STO3G;
-    const auto& r = uhf.run(frame);
-    EXPECT_TRUE(r.converged);
+    uhf.run(frame);
+    EXPECT_TRUE(uhf.converged());
 }
 
 #endif

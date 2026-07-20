@@ -43,26 +43,25 @@ int main() {
     rhf.tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     rhf.max_iter = 100;
 
-    const auto& result = rhf.run(frame);
+    rhf.run(frame); // eV energy on frame.meta[kEnergy]; Hartree on energy()
 
     std::cout << "=== RHF Result ===\n"
-              << "Converged:        " << (result.converged ? "yes" : "no")
-              << " (" << result.iterations << " iterations)\n"
+              << "Converged:        " << (rhf.converged() ? "yes" : "no")
+              << " (" << rhf.iterations() << " iterations)\n"
               << std::fixed << std::setprecision(10)
-              << "E_total:          " << static_cast<double>(result.energy)
-              << " Hartree\n\n";
+              << "E_total:          " << rhf.energy() << " Hartree\n\n";
 
+    using Spin = cpu::scf::SlaterDeterminant::Spin;
+    const auto& eps = rhf.determinant().orbital_energies(Spin::alpha);
     std::cout << "Orbital energies:\n" << std::setprecision(6);
-    for (int i = 0; i < static_cast<int>(result.eigenvalues_alpha.size()); ++i)
+    for (int i = 0; i < static_cast<int>(eps.size()); ++i)
         std::cout << "  epsilon[" << i << "] = " << std::setw(12)
-                  << static_cast<double>(result.eigenvalues_alpha(i))
-                  << " Hartree\n";
+                  << static_cast<double>(eps(i)) << " Hartree\n";
 
     std::cout << "\n--- Textbook comparison (Szabo & Ostlund) ---\n"
               << "  Reference: -1.1168 Hartree\n"
               << std::setprecision(4)
-              << "  This:      " << static_cast<double>(result.energy)
-              << " Hartree\n";
+              << "  This:      " << rhf.energy() << " Hartree\n";
 
     std::cout << "\n=== Done ===\n";
     return 0;

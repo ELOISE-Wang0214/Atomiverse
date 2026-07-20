@@ -664,13 +664,22 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
 void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad, const Frame& frame,
     const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
-    const SCFResult& result, MeanFieldType method, SpinType spin,
+    const SlaterDeterminant& det, MeanFieldType method, SpinType spin,
     XCType xc_type, bool force_native_two_electron_deriv) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
     const bool is_ks = (method == MeanFieldType::KS);
     const bool restricted = (spin == SpinType::Restricted);
+
+    // Per-spin factor-1 densities for the unrestricted exchange contraction
+    // and Schwarz bound. Hoisted ONCE (density() returns by value); the
+    // restricted branches read only P_total, so skip the build there.
+    xt::xtensor<double, 2> Pa, Pb;
+    if (!restricted) {
+        Pa = det.density(SlaterDeterminant::Spin::alpha);
+        Pb = det.density(SlaterDeterminant::Spin::beta);
+    }
 
     // Exact-exchange (K-channel) fraction.
     //
@@ -904,14 +913,10 @@ void accumulate_two_electron_gradient(
                                     } else {
                                         density_factor =
                                             -0.5 * alpha_hf * 0.5
-                                            * (result.P_alpha(i, k)
-                                                   * result.P_alpha(j, l)
-                                               + result.P_alpha(j, k)
-                                                     * result.P_alpha(i, l)
-                                               + result.P_beta(i, k)
-                                                     * result.P_beta(j, l)
-                                               + result.P_beta(j, k)
-                                                     * result.P_beta(i, l));
+                                            * (Pa(i, k) * Pa(j, l)
+                                               + Pa(j, k) * Pa(i, l)
+                                               + Pb(i, k) * Pb(j, l)
+                                               + Pb(j, k) * Pb(i, l));
                                     }
 
                                     const double factor =
@@ -1028,7 +1033,7 @@ void accumulate_two_electron_gradient(
         if (restricted)
             D_max = max_abs(P_total);
         else
-            D_max = std::max(max_abs(result.P_alpha), max_abs(result.P_beta));
+            D_max = std::max(max_abs(Pa), max_abs(Pb));
         if (D_max < 1.0)
             D_max = 1.0; // keep Schwarz conservative at startup
     }
@@ -1142,14 +1147,10 @@ void accumulate_two_electron_gradient(
                                            + P_total(j, k) * P_total(i, l));
                                 } else {
                                     factor_K = -0.5 * mult * alpha_hf * 0.5
-                                               * (result.P_alpha(i, k)
-                                                      * result.P_alpha(j, l)
-                                                  + result.P_alpha(j, k)
-                                                        * result.P_alpha(i, l)
-                                                  + result.P_beta(i, k)
-                                                        * result.P_beta(j, l)
-                                                  + result.P_beta(j, k)
-                                                        * result.P_beta(i, l));
+                                               * (Pa(i, k) * Pa(j, l)
+                                                  + Pa(j, k) * Pa(i, l)
+                                                  + Pb(i, k) * Pb(j, l)
+                                                  + Pb(j, k) * Pb(i, l));
                                 }
                             }
                             const double factor = factor_J + factor_K;

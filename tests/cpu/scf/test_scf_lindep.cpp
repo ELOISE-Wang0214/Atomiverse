@@ -23,6 +23,7 @@ TEST(Lindep, DefaultThresholdConverges) {
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.lindep_threshold = 1e-8;
-    EXPECT_TRUE(rhf.run(f).converged);
+    rhf.run(f);
+    EXPECT_TRUE(rhf.converged());
 }
 #endif
