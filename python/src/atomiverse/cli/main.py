@@ -1,15 +1,15 @@
-"""``python -m atomiverse`` Typer entry — scheme B install CLI.
+"""``python -m atomiverse`` Typer entry — CMake-aligned stages.
 
-Modules are **positional names** (not ``--md k:v``)::
+Pipeline (matches cmake)::
 
-    python -m atomiverse install md --mpi
-    python -m atomiverse install md pw --real-storage double
-    python -m atomiverse install --config path.toml
+    python -m atomiverse config md pw --mpi --src /path/to/Atomiverse
+    python -m atomiverse compile -j 8
+    python -m atomiverse install
 
-``--config`` is mutually exclusive with CLI modules/options.
+``--mpi``, ``--real-storage``, … are **global** config options (not per-module).
+Modules are positional: ``config md pw``.
 
-This module must **not** import ``atomiverse._binding`` or ``_atomiverse``
-at import time (pure-Python wheel / soft-extension contract).
+Raw cmake stdout/stderr is streamed to the terminal.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from typing import List, Optional, Sequence
 
 import typer
 
+from atomiverse.cli.build import run_compile, run_config, run_install_stage
 from atomiverse.cli.config import (
     MODULE_TO_DEFINE,
     ConfigError,
@@ -30,16 +31,14 @@ from atomiverse.cli.config import (
     merge_unbound_cli,
     validate_mode,
 )
-from atomiverse.cli.install import run_install
 from atomiverse.cli.source import resolve_source
 from atomiverse.cli.status import run_status
 
 app = typer.Typer(
     name="atomiverse",
     help=(
-        "Atomiverse on-demand native install. "
-        "Pure-Python wheels ship without the C++ extension; "
-        "use `install` to compile selected modules into site-packages."
+        "Atomiverse native build CLI (cmake config → compile → install). "
+        "Pure-Python wheels ship without the C++ extension."
     ),
     add_completion=False,
     no_args_is_help=False,
@@ -48,15 +47,11 @@ app = typer.Typer(
 
 
 class RealPrecision(str, Enum):
-    """Storage / work precision tier (CMake ``ATV_REAL_*``)."""
-
     float = "float"
     double = "double"
 
 
 class IdSize(str, Enum):
-    """Integer-ID width (CMake ``ATV_ID_SIZE``)."""
-
     bigbig = "bigbig"
     smallbig = "smallbig"
 
@@ -68,13 +63,30 @@ def _print_banner() -> None:
         __version__ = "unknown"
     print(f"atomiverse {__version__}")
     print()
-    print("On-demand native install (scheme B — no k:v strings):")
-    print("  python -m atomiverse install md")
-    print("  python -m atomiverse install md pw --mpi --real-storage double")
-    print("  python -m atomiverse install --config path.toml")
+    print("CMake-aligned native build (raw cmake output is streamed):")
+    print("  python -m atomiverse config md pw --mpi --src /path/to/Atomiverse")
+    print("  python -m atomiverse compile -j 8")
+    print("  python -m atomiverse install")
     print("  python -m atomiverse status")
     print()
+    print("Or from a TOML recipe:")
+    print("  python -m atomiverse config --config build.toml --src /path/to/Atomiverse")
+    print()
     print("Run `python -m atomiverse --help` for full options.")
+
+
+def _global_options(
+    mpi: Optional[bool],
+    real_storage: Optional[RealPrecision],
+    real_work: Optional[RealPrecision],
+    id_size: Optional[IdSize],
+) -> dict:
+    return {
+        "mpi": mpi,
+        "real_storage": real_storage.value if real_storage is not None else None,
+        "real_work": real_work.value if real_work is not None else None,
+        "id_size": id_size.value if id_size is not None else None,
+    }
 
 
 @app.callback(invoke_without_command=True)
@@ -86,7 +98,6 @@ def _root(
         help="print the installed atomiverse package version and exit",
     ),
 ) -> None:
-    """Atomiverse CLI root."""
     if version:
         from atomiverse.cli.source import package_version
 
@@ -102,43 +113,42 @@ def _root(
         raise typer.Exit(0)
 
 
-@app.command("install")
-def install_cmd(
+@app.command("config")
+def config_cmd(
     modules: Optional[List[str]] = typer.Argument(
         None,
         help=(
-            "product modules to enable (scheme B): md, minimize, mc, evaluate, "
-            "vib, path, pw, gpw, am1, cuda, kspace, potentials, neighbor"
+            "product modules to enable: md, minimize, mc, evaluate, vib, path, "
+            "pw, gpw, am1, cuda, kspace, potentials, neighbor"
         ),
         metavar="MODULE",
     ),
     config: Optional[Path] = typer.Option(
         None,
         "--config",
-        help="unified TOML config (XOR with CLI modules/options)",
+        help="unified TOML recipe (XOR with positional modules)",
         exists=False,
         dir_okay=False,
-        readable=True,
     ),
     mpi: Optional[bool] = typer.Option(
         None,
         "--mpi/--no-mpi",
-        help="global: ATV_USE_MPI",
+        help="global: enable MPI (ATV_USE_MPI) — not a per-module option",
     ),
     real_storage: Optional[RealPrecision] = typer.Option(
         None,
         "--real-storage",
-        help="global: ATV_REAL_STORAGE (float|double)",
+        help="global: ATV_REAL_STORAGE",
     ),
     real_work: Optional[RealPrecision] = typer.Option(
         None,
         "--real-work",
-        help="global: ATV_REAL_WORK (float|double)",
+        help="global: ATV_REAL_WORK",
     ),
     id_size: Optional[IdSize] = typer.Option(
         None,
         "--id-size",
-        help="global: ATV_ID_SIZE (bigbig|smallbig)",
+        help="global: ATV_ID_SIZE",
     ),
     hf: bool = typer.Option(
         False,
@@ -148,7 +158,7 @@ def install_cmd(
     src: Optional[Path] = typer.Option(
         None,
         "--src",
-        help="local Atomiverse checkout (python/pyproject version must match)",
+        help="Atomiverse checkout root (required for local cmake config)",
         exists=False,
         file_okay=False,
         dir_okay=True,
@@ -156,23 +166,27 @@ def install_cmd(
     url: Optional[str] = typer.Option(
         None,
         "--url",
-        help="source tarball/URL override (default: GitHub tag of installed version)",
+        help="(reserved) remote source URL — use --src for staged cmake builds",
     ),
     define: Optional[List[str]] = typer.Option(
         None,
         "-D",
         "--define",
-        help="unbound CMake cache entry KEY=VALUE (bound keys are rejected)",
+        help="unbound CMake -D KEY=VALUE (bound keys rejected)",
+    ),
+    build_dir: Optional[Path] = typer.Option(
+        None,
+        "--build-dir",
+        help="cmake binary dir (default: ~/.cache/atomiverse/builds/…)",
     ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="resolve modules/defines and print the pip command without building",
+        help="print cmake configure command without running it",
     ),
 ) -> None:
-    """Build/install the native ``_atomiverse`` extension for selected modules."""
+    """Configure the native build (``cmake -S -B -D…``). Streams raw cmake output."""
     mod_list = list(modules or [])
-    # Reject unknown module tokens early with a clear message.
     for m in mod_list:
         if m not in MODULE_TO_DEFINE and m != "hf":
             typer.echo(
@@ -181,12 +195,7 @@ def install_cmd(
             )
             raise typer.Exit(2)
 
-    cli_options = {
-        "mpi": mpi,
-        "real_storage": real_storage.value if real_storage is not None else None,
-        "real_work": real_work.value if real_work is not None else None,
-        "id_size": id_size.value if id_size is not None else None,
-    }
+    cli_options = _global_options(mpi, real_storage, real_work, id_size)
     has_cli_options = any(v is not None for v in cli_options.values())
 
     try:
@@ -198,21 +207,81 @@ def install_cmd(
         )
         if config is not None:
             cfg = load_toml_config(config)
+            # Allow global CLI overrides on top of TOML only when no XOR conflict
+            # — validate_mode already forbids mixing modules; for pure --config
+            # with global flags, fold globals in.
+            if has_cli_options:
+                apply_cli_modules(cfg, [], options=cli_options)
         else:
             cfg = InstallConfig()
             apply_cli_modules(cfg, mod_list, options=cli_options)
         if define:
             merge_unbound_cli(cfg, define)
+        if src is None and url is None:
+            raise ConfigError(
+                "config requires --src /path/to/Atomiverse "
+                "(staged cmake pipeline)"
+            )
         source = resolve_source(
             src=str(src) if src is not None else None,
             url=url,
         )
+        code = run_config(
+            cfg,
+            source,
+            build_dir=build_dir,
+            dry_run=dry_run,
+        )
     except ConfigError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
+    if code != 0:
+        raise typer.Exit(code)
 
+
+@app.command("compile")
+def compile_cmd(
+    jobs: Optional[int] = typer.Option(
+        None,
+        "-j",
+        "--jobs",
+        help="parallel build jobs (cmake --build -j)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="print cmake --build command without running it",
+    ),
+) -> None:
+    """Compile the native extension (``cmake --build``). Streams raw cmake output."""
     try:
-        code = run_install(cfg, source, dry_run=dry_run)
+        code = run_compile(jobs=jobs, dry_run=dry_run)
+    except ConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if code != 0:
+        raise typer.Exit(code)
+
+
+@app.command("install")
+def install_cmd(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="print cmake --install command without running it",
+    ),
+    prefix: Optional[Path] = typer.Option(
+        None,
+        "--prefix",
+        help="cmake install prefix (default: this env's site-packages)",
+    ),
+) -> None:
+    """Install built artifacts into the environment (``cmake --install``).
+
+    Streams raw cmake output. Requires a prior successful ``config`` + ``compile``.
+    """
+    try:
+        code = run_install_stage(dry_run=dry_run, prefix=prefix)
     except ConfigError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
@@ -222,21 +291,16 @@ def install_cmd(
 
 @app.command("status")
 def status_cmd() -> None:
-    """Show enabled modules and define fingerprint from the last install."""
+    """Show modules / fingerprint from the last config or install."""
     code = run_status()
     if code != 0:
         raise typer.Exit(code)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """CLI entry point compatible with tests and ``python -m atomiverse``.
-
-    @param argv: Arguments without the program name (default: ``sys.argv[1:]``).
-    @return Process exit code.
-    """
+    """CLI entry point for tests and ``python -m atomiverse``."""
     args = list(sys.argv[1:] if argv is None else argv)
     try:
-        # standalone_mode=False: Click may *return* the exit code or raise Exit.
         result = app(args=args, standalone_mode=False)
         if isinstance(result, int):
             return result

@@ -1,4 +1,4 @@
-"""``python -m atomiverse status`` — enabled modules + define fingerprint."""
+"""``python -m atomiverse status`` — modules / fingerprint / build dirs."""
 
 from __future__ import annotations
 
@@ -7,37 +7,44 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from atomiverse.cli.install import state_path
+from atomiverse.cli.build import state_path as build_state_path
+
+
+def _package_status_path() -> Path:
+    import atomiverse
+
+    return Path(atomiverse.__file__).resolve().parent / "_install_state.json"
 
 
 def load_install_state(path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
-    """Load install-state JSON written by a previous successful install.
+    """Load build or install state JSON.
 
-    @param path: Override state file path (tests).
-    @return Parsed dict, or None if absent/unreadable.
+    Prefers explicit *path*, then package ``_install_state.json``, then
+    the staged build state file.
     """
-    p = path if path is not None else state_path()
-    if not p.is_file():
-        return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+    candidates = []
+    if path is not None:
+        candidates.append(path)
+    else:
+        candidates.append(_package_status_path())
+        candidates.append(build_state_path())
+    for p in candidates:
+        if not p.is_file():
+            continue
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 def format_status(state: Optional[Dict[str, Any]]) -> str:
-    """Render a human-readable status report.
-
-    @param state: Install-state dict or None.
-    @return Multi-line status text.
-    """
     lines = ["atomiverse status"]
     if state is None:
-        lines.append("  modules: (none — no native install recorded)")
+        lines.append("  modules: (none — run `atomiverse config …` first)")
         lines.append("  fingerprint: (none)")
         lines.append(
-            "  hint: run `python -m atomiverse install md` "
-            "(or --config) to build the C++ extension"
+            "  hint: python -m atomiverse config md --mpi --src /path/to/Atomiverse"
         )
         return "\n".join(lines)
 
@@ -50,6 +57,14 @@ def format_status(state: Optional[Dict[str, Any]]) -> str:
     fp = state.get("fingerprint") or ""
     lines.append(f"  fingerprint: {fp if fp else '(none)'}")
 
+    for key in ("source_root", "build_dir"):
+        if state.get(key):
+            lines.append(f"  {key}: {state[key]}")
+
+    for flag in ("configured", "compiled", "installed"):
+        if flag in state:
+            lines.append(f"  {flag}: {state[flag]}")
+
     defines = state.get("defines") or {}
     if isinstance(defines, dict) and defines:
         lines.append("  defines:")
@@ -59,12 +74,6 @@ def format_status(state: Optional[Dict[str, Any]]) -> str:
 
 
 def run_status(*, path: Optional[Path] = None, stream=None) -> int:
-    """Print status and return 0.
-
-    @param path: Optional state-file override.
-    @param stream: Output stream (default stdout).
-    @return Always 0.
-    """
     out = stream if stream is not None else sys.stdout
     state = load_install_state(path)
     print(format_status(state), file=out)

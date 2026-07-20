@@ -47,13 +47,23 @@ AUTO_ENABLE: Dict[str, tuple[str, ...]] = {
     "kspace": ("potentials",),
 }
 
+# Global-only bound options (CLI: top-level ``--mpi``, ``--real-storage``, …;
+# TOML: only under ``[global]`` — never under ``[md]`` / ``[pw]``).
+GLOBAL_OPTION_KEYS: frozenset[str] = frozenset(
+    {
+        "mpi",
+        "real_storage",
+        "real_work",
+        "id_size",
+    }
+)
+
 # Friendly option keys → ATV_* CMake cache names (01 names).
-# Cross-module options live under [global] / --global only.
 # Module flags themselves are also bound (cannot pass as -D / unbound).
 BINDING_TABLE: Dict[str, str] = {
     # module enable flags
     **MODULE_TO_DEFINE,
-    # common options
+    # global build options
     "mpi": "ATV_USE_MPI",
     "real_storage": "ATV_REAL_STORAGE",
     "real_work": "ATV_REAL_WORK",
@@ -179,7 +189,13 @@ def load_toml_config(path: Path | str) -> InstallConfig:
         # it be enabled (or enable it implicitly when the table is non-empty
         # only if modules already said so). Spec: modules table enables.
         for key, value in body.items():
-            _set_bound_option(cfg, str(key), value, where=f"[{section}]")
+            key_s = str(key)
+            if key_s in GLOBAL_OPTION_KEYS:
+                raise ConfigError(
+                    f"{key_s!r} is a global option — put it under [global], "
+                    f"not [{section}]"
+                )
+            _set_bound_option(cfg, key_s, value, where=f"[{section}]")
 
     return cfg
 
@@ -350,37 +366,36 @@ def validate_mode(
     hf: bool,
     has_cli_options: bool = False,
 ) -> None:
-    """Enforce XOR of ``--config`` vs CLI modules/options; reject ``--hf`` / empty.
+    """Enforce XOR of ``--config`` vs positional modules; reject ``--hf`` / empty.
+
+    Global CLI options (``--mpi``, ``--real-storage``, …) may accompany either
+    mode. They are **not** per-module.
 
     @param config_path: Path from ``--config``, or None.
     @param modules: Positional module names (scheme B).
     @param hf: Whether ``--hf`` was passed.
-    @param has_cli_options: True if any bound CLI option was set (mpi, …).
-        Options alone without modules still count as empty install.
+    @param has_cli_options: True if any global CLI option was set. Alone
+        (without modules or --config) still counts as empty.
 
-    @raises ConfigError: on mutual exclusion, empty install, or --hf.
+    @raises ConfigError: on mutual exclusion, empty config, or --hf.
     """
     if hf:
         raise ConfigError(HF_REJECT_MSG)
 
     mod_list = [m for m in modules if m]
-    cli_mode = bool(mod_list)
-    if config_path and cli_mode:
+    if config_path and mod_list:
         raise ConfigError(
             "mutual exclusion: use either --config PATH.toml or CLI modules "
-            "(e.g. `install md pw`), not both"
-        )
-    if config_path and has_cli_options and not cli_mode:
-        # --config with extra bound options is also mixed mode
-        raise ConfigError(
-            "mutual exclusion: use either --config PATH.toml or CLI modules/"
-            "options, not both"
+            "(e.g. `config md pw`), not both"
         )
     if not config_path and not mod_list:
         raise ConfigError(
-            "empty install: pass --config PATH.toml or at least one module "
-            "(e.g. `install md` or `install md pw`)"
+            "empty config: pass --config PATH.toml or at least one module "
+            "(e.g. `config md` or `config md pw --mpi`)"
         )
+    # has_cli_options alone is insufficient — already covered when no modules
+    # and no config_path above. Keep the parameter for call-site clarity.
+    _ = has_cli_options
 
 
 def merge_unbound_cli(cfg: InstallConfig, pairs: Iterable[str]) -> None:

@@ -27,52 +27,65 @@ python -m atomiverse status  # no native build yet
 Importing compute symbols (`atomiverse.MD`, …) without a native extension
 raises `ImportError` pointing at phase 2.
 
-### Phase 2 — on-demand native build (Typer scheme B)
+### Phase 2 — native build (CMake stages)
+
+The CLI mirrors the cmake pipeline and **streams raw cmake output**:
 
 ```bash
-# modules are positional names; options are real flags (no k:v strings)
-python -m atomiverse install md
-python -m atomiverse install md pw --mpi --real-storage double
-python -m atomiverse install --config atomiverse-build.toml
+# 1) configure  (cmake -S -B -D…)
+python -m atomiverse config md pw --mpi --src /path/to/Atomiverse
+
+# 2) compile    (cmake --build)
+python -m atomiverse compile -j 8
+
+# 3) install    (cmake --install → site-packages)
+python -m atomiverse install
+
+python -m atomiverse status
 ```
 
-The CLI fetches source matching the **installed package version** (default
-GitHub tag tarball; override with `--src PATH` or `--url URL`), runs
-**scikit-build** (`pip install --force-reinstall --no-deps` + CMake defines),
-and writes a single `_atomiverse` extension into the current environment.
-Re-running install in the same env **overwrites** that binary (last install
-wins).
+**Modules** are positional on `config` only: `md`, `minimize`, `mc`, `evaluate`,
+`vib`, `path`, `pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`, `neighbor`.  
+Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`.
 
-**Config modes are mutually exclusive** (mixing fails with a non-zero exit):
+**Global options** (on `config`, never under a module name):
 
-| Mode | Example | Notes |
-|------|---------|--------|
-| CLI modules | `install md pw --mpi` | positional modules + native options (`--mpi`, `--real-storage`, …) |
-| TOML file | `install --config path.toml` | `[modules]`, per-module tables, `[global]`, optional `[cmake.unbound]` |
+| Flag | CMake |
+|------|--------|
+| `--mpi` / `--no-mpi` | `ATV_USE_MPI` |
+| `--real-storage {float,double}` | `ATV_REAL_STORAGE` |
+| `--real-work {float,double}` | `ATV_REAL_WORK` |
+| `--id-size {bigbig,smallbig}` | `ATV_ID_SIZE` |
+| `-D KEY=VALUE` | unbound defines only |
 
-Illegal: `install --config x.toml md` (XOR).
-
-**Modules:** `md`, `minimize`, `mc`, `evaluate`, `vib`, `path`,
-`pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`, `neighbor`.  
-Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`
-(CMake DAG). **`--hf` is rejected** until SCF Python bindings land.
-
-**Global options (examples):** `--mpi` / `--no-mpi`, `--real-storage {float,double}`,
-`--real-work`, `--id-size {bigbig,smallbig}`. Unbound CMake only via
-`-D KEY=VALUE` when no friendly binding exists.
-
-**Version lock:** source tree `python/pyproject.toml` version must equal
-`importlib.metadata.version("atomiverse")`. Mismatch → reject before compile.
-
-**Dry-run (no compile):**
+TOML recipe (XOR with positional modules; globals in `[global]` only):
 
 ```bash
-python -m atomiverse install md --src /path/to/Atomiverse --dry-run
+python -m atomiverse config --config atomiverse-build.toml --src /path/to/Atomiverse
 ```
 
-**Developer path (optional):** monorepo scikit-build with CMake still works
-for contributors (`pip install -e python/` with native rebuild when needed).
-End-user primary path is pure pip + `python -m atomiverse install`.
+```toml
+[modules]
+md = true
+pw = true
+
+[global]
+mpi = true
+real_storage = "double"
+```
+
+**`--hf` is rejected** until SCF Python bindings land.
+
+**Version lock:** checkout `python/pyproject.toml` must match the installed
+package version. **`--src` is required** for the staged cmake pipeline.
+
+**Dry-run:**
+
+```bash
+python -m atomiverse config md --mpi --src /path/to/Atomiverse --dry-run
+python -m atomiverse compile --dry-run
+python -m atomiverse install --dry-run
+```
 
 ## What this package exposes (and what it doesn't)
 
