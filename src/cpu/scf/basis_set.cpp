@@ -37,6 +37,19 @@ const char* basis_set_name(BasisSet basis) {
     return "unknown";
 }
 
+basis_data::AngularConvention angular_convention(BasisSet basis) {
+    switch (basis) {
+    case BasisSet::STO3G:
+    case BasisSet::Pople631G:
+    case BasisSet::Pople631Gs:
+        return basis_data::AngularConvention::Cartesian;
+    case BasisSet::Def2SVP:
+    case BasisSet::Def2TZVP:
+        return basis_data::AngularConvention::Spherical;
+    }
+    throw std::runtime_error("angular_convention: unknown BasisSet");
+}
+
 // ── ShellList copy / move rebind ─────────────────────────────────────
 
 void ShellList::rebind_pointers() {

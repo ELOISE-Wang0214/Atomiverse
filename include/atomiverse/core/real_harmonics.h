@@ -1,7 +1,9 @@
-/// @file cpu/gpw/internal/real_harmonics.h
+/// @file core/real_harmonics.h
 /// @brief Arbitrary-l real solid / spherical harmonics as Cartesian polynomials.
 ///
-/// GPW needs two angular-momentum representations, both as Cartesian-power ->
+/// Shared angular-momentum utility (primary consumer: GPW; the Gaussian-SCF
+/// cart2sph tables are convention-pinned separately). Two representations,
+/// both as Cartesian-power ->
 /// coefficient lists so the downstream Gaussian machinery (Hermite-recurrence
 /// overlap/kinetic, grid collocation, GTH moment integrals — all already general
 /// in the Cartesian powers) can consume them for any l:
@@ -28,8 +30,6 @@
 #include <vector>
 
 namespace ATV {
-namespace cpu {
-namespace gpw {
 
 /// @brief One Cartesian term c * x^lx y^ly z^lz of a real harmonic.
 struct HarmTerm {
@@ -70,6 +70,4 @@ std::vector<RealHarmonic> real_solid_harmonics(int l);
 /// @return 2l+1 normalized components.
 std::vector<RealHarmonic> real_spherical_harmonics_normalized(int l);
 
-} // namespace gpw
-} // namespace cpu
 } // namespace ATV

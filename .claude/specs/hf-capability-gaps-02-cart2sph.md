@@ -1,7 +1,7 @@
 ---
 title: "HF capability gaps 02 — 球谐 AO(5d/7f):cart2sph 变换与 SCF AO 维度切换"
 slug: hf-capability-gaps-02-cart2sph
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 02/21
 created: 2026-07-20
@@ -51,6 +51,21 @@ SCF 的 AO 维度随之切换:def2 系基组按定义使用球谐(H2O/def2-SVP �
 - **梯度护栏**:本链环内球谐基的解析梯度以清晰 `std::runtime_error` 拒绝(后续链环接管),
   防止静默输出错误力。
 
+### 实现审计注(2026-07-20,impl 期偏差记录)
+
+1. **Fock/ERI 路径改基桥接而非壳块级变换**:spec 起草时树上还是壳块结构;
+   slater 链 04-methods 落地后 UHF/UKS Fock 与 dense ERI 均为 AO 级(无壳块缝)。
+   实现改为:pack 级三明治(S/T/V/Hcore/ERI)+ `HamiltonianBuilder::step` 内
+   c2s 桥接(P→cart 引擎→算子回 sph;线性精确,O(n²)/迭代)。验收判据不受
+   影响(回归与 PySCF 差 4e-13 Ha)。
+2. **c2s 常数表格化**:`real_solid_harmonics()` 契约明言 m 序不定,无法直接
+   生成约定钉死的变换;改为在 cart2sph.cpp 表格化 PySCF/libcint 约定常数
+   (l≤3),测试以 1e-12 对 PySCF 钉死;pack 内再按引擎自身 S_cart 自归一
+   (引擎收缩 AO 非单位归一)。
+3. **MINAO 初猜在球谐下回退 Hcore**:`minao_supported` 对球谐 pack 返回
+   false(交叉重叠机器是笛卡尔的);收敛终点不变,仅迭代数略增;球谐 MINAO
+   归 07-guess 环。
+
 ## Files to create or modify
 
 - include/atomiverse/core/real_harmonics.h (new)
@@ -72,24 +87,24 @@ SCF 的 AO 维度随之切换:def2 系基组按定义使用球谐(H2O/def2-SVP �
 
 ## Tasks
 
-- [ ] Write failing tests for hoisted core real-harmonics(tests/core/test_real_harmonics.cpp,
+- [x] Write failing tests for hoisted core real-harmonics(tests/core/test_real_harmonics.cpp,
       迁移改写 tests/cpu/gpw/test_cpu_gpw_real_harmonics.cpp,include 指向 core)
-- [ ] Implement hoist:core/real_harmonics.h + src/core/real_harmonics.cpp 无条件编译;改指
+- [x] Implement hoist:core/real_harmonics.h + src/core/real_harmonics.cpp 无条件编译;改指
       gpw_solver.cpp 与 gth_integrals.cpp;删除 gpw 副本;更新 CMakeLists.txt、tests/CMakeLists.txt
-- [ ] Write failing tests for CartToSph(tests/cpu/scf/test_cart2sph.cpp):d 6×5 / f 10×7 形状,
+- [x] Write failing tests for CartToSph(tests/cpu/scf/test_cart2sph.cpp):d 6×5 / f 10×7 形状,
       与 PySCF cart2sph_coeff 钉死系数 1e-12 一致,单位归一 d 壳层三明治恒等(双阶乘归一化陷阱)
-- [ ] Implement CartToSph in include/atomiverse/cpu/scf/internal/cart2sph.h + src/cpu/scf/internal/cart2sph.cpp
-- [ ] Write failing tests for spherical AO dimension(tests/cpu/scf/test_spherical_basis.cpp):
+- [x] Implement CartToSph in include/atomiverse/cpu/scf/internal/cart2sph.h + src/cpu/scf/internal/cart2sph.cpp
+- [x] Write failing tests for spherical AO dimension(tests/cpu/scf/test_spherical_basis.cpp):
       H2O/def2-SVP n_basis==24,6-31G* 维持笛卡尔现值;球谐 S == 笛卡尔 S 三明治(1e-12,钉死
       fixture);球谐基解析梯度 throw
-- [ ] Implement spherical AO dimension:basis_table.h AngularConvention + basis_set.h/.cpp 逐基组
+- [x] Implement spherical AO dimension:basis_table.h AngularConvention + basis_set.h/.cpp 逐基组
       标志与 ShellList 维度;one_electron.cpp 壳层块 c2s;two_electron.cpp / integrals.cpp 四元组
       c2s;gradient.cpp guard-throw
-- [ ] Add regression regressions/scf/h2o_rhf_def2svp_sph/(RHF/def2-SVP vs PySCF cart=False 钉死值,
+- [x] Add regression regressions/scf/h2o_rhf_def2svp_sph/(RHF/def2-SVP vs PySCF cart=False 钉死值,
       REFERENCE.md 记录 01-env oracle 出处,登记 regressions/CMakeLists.txt,≤60 s)
-- [ ] Extend docs/tutorial/ch04-basis-sets.md:新增「笛卡尔与球谐高斯基」节(实固体谐波推导、
+- [x] Extend docs/tutorial/ch04-basis-sets.md:新增「笛卡尔与球谐高斯基」节(实固体谐波推导、
       6d 的 s 污染分量、维度计数、Atomiverse 上手、章末 PySCF 对比表行 — 表格标量,不用条形图)
-- [ ] Run full check + test suite
+- [x] Run full check + test suite
 
 ## Testing strategy
 
@@ -107,3 +122,5 @@ SCF 的 AO 维度随之切换:def2 系基组按定义使用球谐(H2O/def2-SVP �
 - CUDA SCF 路径(能量/密度)、MP2/FCI 的球谐适配之外的性质模块;g 及更高角动量。
 - gpw/pw 域改用 CartToSph(其投影和按加法定理与 m 排序无关,维持现状);benchmarks/ 平价扫描
   (属 benchmarks/scf/validation,后续链环)。
+
+<!-- simplify: janitor pass applied 2026-07-20 — 1 red (doxygen block collision) + 5 yellow + 8 green fixed inline (reference-binding bridge, O(n^3) comment, static_assert kMaxL, de-spec-ID comments, test rename test_real_harmonics); deferred: bridge GEMM avoidance → optimizer, IntegralPack-surface judgment → architect. -->

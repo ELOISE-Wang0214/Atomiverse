@@ -8,14 +8,20 @@ criteria:
       include/atomiverse/core/real_harmonics.h and src/core/real_harmonics.cpp exist and
       compile unconditionally (no ATV_BUILD_GPW gate); rg "gpw/internal/real_harmonics" over
       include/ src/ tests/ returns zero matches; gpw unit tests pass unchanged.
-    status: pending
+    note: AUDIT — gpw suite run under a dedicated ATV_BUILD_GPW=ON config: 14/15 pass;
+      the single failure (GpwSolverClass.WarmStartReachesColdFixedPoint) reproduces
+      byte-identically on a pristine-HEAD worktree in the same config, i.e.
+      pre-existing and unrelated to the hoist ("unchanged" holds).
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: core real-harmonics unit tests pass after migration
     type: runtime
     pass_when: |
       ctest test_real_harmonics (tests/core/test_real_harmonics.cpp) passes, preserving the
       migrated orthonormality / sphere_monomial_integral assertions at 1e-12.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: CartToSph matches PySCF cart2sph_coeff and absorbs Cartesian norms
     type: runtime
@@ -23,7 +29,8 @@ criteria:
       ctest test_cart2sph passes: d is 6x5 and f is 10x7; every coefficient equals the pinned
       PySCF gto.mole.cart2sph_coeff values to 1e-12; the unit-normalized d-shell self-overlap
       sandwich (double-factorial normalization pitfall) yields the 5x5 identity to 1e-12.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: AO dimension switches per basis convention gate
     type: runtime
@@ -31,7 +38,11 @@ criteria:
       ctest test_spherical_basis passes: H2O/def2-SVP n_basis == 24 (was 25 Cartesian);
       H2O/6-31G* n_basis unchanged from current Cartesian value; spherical overlap S equals
       the c2s sandwich of the Cartesian S fixture to 1e-12.
-    status: pending
+    note: the sandwich identity is pinned at 1e-12 in test_cart2sph (explicit 5x5 fixture);
+      test_spherical_basis pins the end-to-end consequence (unit spherical diagonal at
+      1e-12 + pinned PySCF S spot values).
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: RHF/def2-SVP energy matches pinned PySCF cart=False value
     type: scientific
@@ -40,7 +51,10 @@ criteria:
       reg_h2o_rhf_def2svp_sph (regressions/scf/h2o_rhf_def2svp_sph/) converges and its total
       RHF energy agrees with the externally pinned PySCF cart=False number recorded in
       REFERENCE.md to within 1e-8 Ha, in <= 60 s, via the `regressions` target.
-    status: pending
+    note: AUDIT — scientific criterion executed directly via the regressions target
+      (mol_project.bench.repo unset): PASS, |E - E_PySCF| = 4.1e-13 Ha (tolerance 1e-8).
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: spherical-basis analytic gradient rejected, never silently wrong
     type: code
@@ -48,7 +62,8 @@ criteria:
       requesting the analytic SCF gradient with a Spherical-convention basis throws
       std::runtime_error with a message naming the unsupported combination; a unit test in
       test_spherical_basis.cpp asserts the throw.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: tutorial ch04 gains the Cartesian-vs-spherical section
     type: docs
@@ -64,7 +79,8 @@ criteria:
       every new public/internal symbol in core/real_harmonics.h, cart2sph.h, basis_table.h,
       basis_set.h carries @brief/@param(units)/@return; tests/architecture/no_factory_scrub.sh
       and the full unit suite pass in the standard HF+PW CPU configure.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria

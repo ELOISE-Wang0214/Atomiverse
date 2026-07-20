@@ -36,7 +36,7 @@
 #include "atomiverse/cpu/gpw/internal/ot.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
-#include "atomiverse/cpu/gpw/internal/real_harmonics.h"
+#include "atomiverse/core/real_harmonics.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/linalg/density.h"    // build_density_matrix

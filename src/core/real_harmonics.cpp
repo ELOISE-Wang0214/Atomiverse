@@ -1,4 +1,4 @@
-/// @file src/cpu/gpw/internal/real_harmonics.cpp
+/// @file core/real_harmonics.cpp
 /// @brief Implementation of arbitrary-l real solid / spherical harmonics.
 ///
 /// real_solid_harmonics(l) expands the complex solid harmonic Y_l^{|m|} of
@@ -6,7 +6,7 @@
 /// (m >= 0) or imaginary part (m < 0). real_spherical_harmonics_normalized(l)
 /// divides each by its exact L2(S^2) norm computed from sphere_monomial_integral.
 
-#include "atomiverse/cpu/gpw/internal/real_harmonics.h"
+#include "atomiverse/core/real_harmonics.h"
 
 #include <array>
 #include <cmath>
@@ -14,8 +14,6 @@
 #include <map>
 
 namespace ATV {
-namespace cpu {
-namespace gpw {
 
 namespace {
 
@@ -138,6 +136,4 @@ std::vector<RealHarmonic> real_spherical_harmonics_normalized(int l) {
     return out;
 }
 
-} // namespace gpw
-} // namespace cpu
 } // namespace ATV

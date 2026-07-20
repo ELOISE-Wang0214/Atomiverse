@@ -18,7 +18,7 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/gpw/internal/real_harmonics.h"
+#include "atomiverse/core/real_harmonics.h"
 
 namespace ATV {
 namespace cpu {

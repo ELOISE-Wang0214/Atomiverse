@@ -5,6 +5,8 @@
 /// they are private workspace inside concrete methods (`RHF`, `UHF`, …).
 #pragma once
 
+#include "atomiverse/cpu/scf/basis_data/basis_table.h"
+
 namespace ATV {
 namespace cpu {
 namespace scf {
@@ -20,6 +22,14 @@ enum class BasisSet {
 
 /// @brief Human-readable name for a BasisSet (logs / reports).
 [[nodiscard]] const char* basis_set_name(BasisSet basis);
+
+/// @brief Angular convention the basis set is defined with.
+///
+/// STO-3G / 6-31G / 6-31G* are Cartesian (6d by definition); def2-SVP /
+/// def2-TZVP are spherical (5d/7f). Throws on an unknown enum value.
+/// @param basis Basis-set identifier.
+/// @return The defining convention (no fallback).
+[[nodiscard]] basis_data::AngularConvention angular_convention(BasisSet basis);
 
 } // namespace scf
 } // namespace cpu

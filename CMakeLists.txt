@@ -177,6 +177,7 @@ if(NOT ATV_DOCS_ONLY)
     set(ATOMIVERSE_SRCS
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
+        src/core/real_harmonics.cpp
         src/core/molrs_contract.cpp
         src/cpu/scf/solve.cpp
         src/cpu/io/frame_writer.cpp
@@ -399,6 +400,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rys_eri.cpp
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
+            src/cpu/scf/internal/cart2sph.cpp
             src/cpu/scf/internal/diis_mixer.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp
             src/cpu/scf/internal/level_shift.cpp
@@ -461,7 +463,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/gaussian_basis.cpp
             src/cpu/gpw/gth_potential.cpp
             src/cpu/gpw/internal/gth_integrals.cpp
-            src/cpu/gpw/internal/real_harmonics.cpp
             src/cpu/gpw/internal/diis.cpp
             src/cpu/gpw/internal/ot.cpp
             src/cpu/gpw/internal/collocate.cpp

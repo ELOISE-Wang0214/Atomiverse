@@ -36,6 +36,18 @@ struct ContractedShell {
         coeff; ///< Contraction coefficients (unnormalized), length `n_prim`.
 };
 
+/// @brief Angular-function convention a basis set is DEFINED with.
+///
+/// Pople sets (6-31G family) are defined with 6 Cartesian d components;
+/// def2/cc- sets are defined with real spherical harmonics (5d/7f).
+/// The ShellList/IntegralPack pipeline reads this per-set flag to pick the
+/// AO dimension; there is no runtime override (the convention is part of
+/// the basis-set definition, not a user knob).
+enum class AngularConvention {
+    Cartesian, ///< (l+1)(l+2)/2 components per shell (6d/10f).
+    Spherical, ///< 2l+1 components per shell (5d/7f).
+};
+
 /// @brief All shells belonging to one element.
 ///
 /// `shells` is empty for atomic numbers that the basis set does not

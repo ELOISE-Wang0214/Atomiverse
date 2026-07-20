@@ -1,4 +1,4 @@
-/// @file tests/cpu/gpw/test_cpu_gpw_real_harmonics.cpp
+/// @file tests/core/test_real_harmonics.cpp
 /// @brief Arbitrary-l real solid (Use A) / normalized real spherical (Use B)
 ///        harmonic generators vs the verified l <= 3 closed forms + orthonormality.
 
@@ -9,13 +9,13 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/gpw/internal/real_harmonics.h"
+#include "atomiverse/core/real_harmonics.h"
 
-using ATV::cpu::gpw::HarmTerm;
-using ATV::cpu::gpw::real_solid_harmonics;
-using ATV::cpu::gpw::real_spherical_harmonics_normalized;
-using ATV::cpu::gpw::RealHarmonic;
-using ATV::cpu::gpw::sphere_monomial_integral;
+using ATV::HarmTerm;
+using ATV::real_solid_harmonics;
+using ATV::real_spherical_harmonics_normalized;
+using ATV::RealHarmonic;
+using ATV::sphere_monomial_integral;
 
 namespace {
 

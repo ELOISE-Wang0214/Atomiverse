@@ -102,6 +102,7 @@ endfunction()
 
 atv_add_cpp_test(test_mat3  core/test_mat3.cpp)
 atv_add_cpp_test(test_vec3  core/test_vec3.cpp)
+atv_add_cpp_test(test_real_harmonics core/test_real_harmonics.cpp)
 atv_add_cpp_test(test_box   core/test_box.cpp)
 atv_add_cpp_test(test_units core/test_units.cpp)
 
@@ -166,7 +167,6 @@ if(ATV_BUILD_GPW)
     # third-party file read. E2E (converged SCF / AIMD / geoopt / anchors) lives
     # in benchmarks/qc/gpw/validation and never runs under ctest.
     atv_add_cpp_test(test_cpu_gpw_gth_integrals    cpu/gpw/test_cpu_gpw_gth_integrals.cpp)
-    atv_add_cpp_test(test_cpu_gpw_real_harmonics   cpu/gpw/test_cpu_gpw_real_harmonics.cpp)
     atv_add_cpp_test(test_cpu_gpw_collocate        cpu/gpw/test_cpu_gpw_collocate.cpp)
     atv_add_cpp_test(test_cpu_gpw_multigrid        cpu/gpw/test_cpu_gpw_multigrid.cpp)
     if(ATV_BUILD_PW)  # FFT transfer (prolong_fft / restrict_fft) needs FFTW3
@@ -459,6 +459,8 @@ atv_add_cpp_test(test_cpu_linalg_canonical_orth
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
 
 if(ATV_BUILD_HF)
+    atv_add_cpp_test(test_cpu_scf_cart2sph     cpu/scf/test_cart2sph.cpp)
+    atv_add_cpp_test(test_cpu_scf_spherical    cpu/scf/test_spherical_basis.cpp)
     atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)

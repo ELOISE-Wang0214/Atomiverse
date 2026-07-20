@@ -276,3 +276,51 @@ generators and provenance under
 benchmark case (energy series with committed near-CBS references) is part of
 the manual build-out plan; until it lands, the parity tests plus the sweep
 recipe above are the way to certify a convergence study.
+
+## 笛卡尔与球谐高斯基(6d vs 5d)
+
+同一个 d 壳层可以用两种角函数展开。**笛卡尔**形式取所有 lx+ly+lz=2 的单项式
+——xx, xy, xz, yy, yz, zz,共 (l+1)(l+2)/2 = 6 个分量;**球谐**形式取实球谐
+Y₂ₘ,m = −2…+2,共 2l+1 = 5 个。两者张成的空间差一个维度:六个笛卡尔 d 里
+藏着一个 r² = x²+y²+z² 的组合,它的角行为是 **s 型**(所谓 s-污染分量)。
+f 壳同理:10 个笛卡尔 = 7 个球谐 ⊕ 3 个 p 型污染分量。
+
+去掉污染分量的字典是实固体谐波(Helgaker 第 6 章;闭式系数见 Schlegel &
+Frisch 1995,DOI 10.1002/qua.560540202)。例如:
+
+- Y₂,₀ ∝ 2z² − x² − y²(表格里的 −0.3154, −0.3154, +0.6308 一列),
+- Y₂,₊₂ ∝ x² − y²,
+- Y₂,₋₂ ∝ xy(单项,系数 1.0925 = √(15/4π))。
+
+**约定属于基组定义,不是用户选项**:Pople 系(6-31G*)按定义用笛卡尔 6d;
+def2/cc 系按定义用球谐。Atomiverse 由 `angular_convention(BasisSet)` 逐基组
+判定,`IntegralPack` 在装配后把矩阵三明治到球谐维度(引擎内部保持笛卡尔,
+Fock 构建经 `c2s` 桥接 — 数学上与逐壳块变换严格等价)。
+
+一个必须小心的坑:**逐分量单位归一的笛卡尔 d 中,d_xx 与 d_xy 的归一化常数
+差 √3**(双阶乘比 √((2lx−1)!!(2ly−1)!!(2lz−1)!!)),c2s 系数必须吸收这个比率
+——判据是单位归一 d 壳自重叠经三明治后精确回到 5×5 单位阵
+(`tests/cpu/scf/test_cart2sph.cpp` 以 1e-12 钉住)。
+
+### 上手:H₂O/def2-SVP
+
+```cpp
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Def2SVP;   // 球谐,按定义
+rhf.run(frame);                             // n_basis = 24(笛卡尔为 25)
+```
+
+注意:球谐基的解析梯度尚未接管(积分导数的 c2s 变换属后续链环),
+`forces()` 会显式抛出而不是静默给错力。
+
+### 与 PySCF 对照(2.14.0,外部运行钉值;方法学见附录)
+
+| 量 | Atomiverse | PySCF(钉定) | 差 |
+|---|---|---|---|
+| n_basis(def2-SVP, H₂O) | 24 | 24 | — |
+| E_RHF/def2-SVP(球谐)[Ha] | −75.96098398708 | −75.96098398708 | 4×10⁻¹³ |
+| E_RHF/def2-SVP(笛卡尔 6d 参照)[Ha] | — | −75.96221975499 | Δ≈1.2 mHa |
+
+那 1.2 mHa 就是 6d 的 s-污染分量的变分贡献 — 两种约定不是数值误差,
+而是**不同的基组**;这正是"约定跟随基组定义"的理由。
+(几何与完整命令:`regressions/scf/h2o_rhf_def2svp_sph/REFERENCE.md`。)

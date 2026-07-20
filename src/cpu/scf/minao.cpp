@@ -111,6 +111,12 @@ static void build_minao_ao_list(const IntegralPack& integrals,
 } // namespace
 
 bool minao_supported(const IntegralPack& integrals) {
+    // Spherical-convention packs: the MINAO cross-overlap machinery is
+    // Cartesian; the MINAO→spherical projection is deferred. Falling back to
+    // the Hcore guess keeps the converged energy identical — the guess only
+    // affects the iteration count.
+    if (integrals.spherical())
+        return false;
     for (const auto& atom : integrals.atoms) {
         if (minao::element_basis(atom.Z) == nullptr)
             return false;

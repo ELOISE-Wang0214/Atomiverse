@@ -37,7 +37,28 @@ struct IntegralPack {
         Hcore;                  ///< Core Hamiltonian T + V [n_basis x n_basis].
     xt::xtensor<double, 4> ERI; ///< Two-electron integrals (ij|kl) [n^4].
     double V_nuc = 0;           ///< Nuclear repulsion energy [Hartree].
-    int n_basis = 0;            ///< Number of basis functions.
+    int n_basis = 0;            ///< Number of basis functions (AO dimension
+                                ///< of S/T/V/Hcore/ERI: spherical count when
+                                ///< the basis convention is Spherical).
+
+    /// @brief Cartesian AO count (== shells.size()). Equals n_basis for
+    ///        Cartesian-convention bases; differs (larger) for spherical.
+    int n_basis_cart = 0;
+
+    /// @brief Block-diagonal Cartesian→spherical transform (n_basis_cart ×
+    ///        n_basis), engine convention (CartToSph::block per shell block).
+    ///        Empty ⇒ Cartesian basis, no transform anywhere.
+    xt::xtensor<double, 2> c2s;
+
+    /// @brief True when the basis is spherical (c2s is in effect).
+    /// @return True iff the pack was sandwiched to spherical AOs.
+    [[nodiscard]] bool spherical() const { return c2s.size() > 0; }
+
+    /// @brief AO dimension the Cartesian integral engines work in.
+    /// @return n_basis_cart when spherical, else n_basis.
+    [[nodiscard]] int n_ao_cart() const {
+        return spherical() ? n_basis_cart : n_basis;
+    }
     int n_electrons = 0;        ///< Total number of electrons.
 
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the

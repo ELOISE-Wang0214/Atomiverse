@@ -19,6 +19,13 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
+#include "atomiverse/cpu/scf/internal/cart2sph.h"
+
+#include <cmath>
+#include <vector>
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
+
+#include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -50,6 +57,82 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         const auto t_2e = LogClock::now();
         ERI = eri_dense(shell_list);
         ATV_INFO("[integrals] two-electron done ms={:.1f}", elapsed_ms(t_2e));
+    }
+
+    // Spherical-convention bases (def2 family): the Cartesian engines above
+    // stay untouched; the pack-level matrices are sandwiched to the 2l+1
+    // spherical AO basis with the block-diagonal engine-convention transform
+    // (CartToSph::block per shell block). Fock builds bridge back through
+    // `c2s` (HamiltonianBuilder), so the transform lives here exactly once.
+    if (angular_convention(basis) == basis_data::AngularConvention::Spherical) {
+        const internal::CartToSph c2s_tables;
+        const auto blocks = blocks_from_shells(shell_list.shells);
+        int n_sph = 0;
+        for (const auto& b : blocks)
+            n_sph += 2 * b.l + 1;
+        n_basis_cart = n_basis;
+        c2s = xt::zeros<double>(
+            {std::size_t(n_basis_cart), std::size_t(n_sph)});
+        // Per-block construction, self-normalized against the engine's own
+        // Cartesian overlap: the engine primitive-normalizes but does NOT
+        // unit-normalize contracted AOs, so the tabulated block(l) (which
+        // assumes unit-normalized components) is first rescaled by
+        // 1/sqrt(S_ii) per Cartesian row, and each spherical column is then
+        // normalized in the S_cart metric. Row ratios (the double-factorial
+        // pitfall) come from block(l); the column normalization makes the
+        // spherical AOs exactly unit — convention-independent by
+        // construction, degenerating to block(l) when S_ii == 1.
+        int col = 0;
+        for (const auto& b : blocks) {
+            const auto& m = c2s_tables.block(b.l);
+            const int nc = b.n_cart;
+            const int ns = 2 * b.l + 1;
+            for (int j = 0; j < ns; ++j) {
+                std::vector<double> v(nc);
+                for (int i = 0; i < nc; ++i)
+                    v[i] = m(i, j)
+                           / std::sqrt(S(b.ao_start + i, b.ao_start + i));
+                double nrm2 = 0.0;
+                for (int i = 0; i < nc; ++i)
+                    for (int k = 0; k < nc; ++k)
+                        nrm2 +=
+                            v[i] * S(b.ao_start + i, b.ao_start + k) * v[k];
+                const double inv = 1.0 / std::sqrt(nrm2);
+                for (int i = 0; i < nc; ++i)
+                    c2s(b.ao_start + i, col + j) = v[i] * inv;
+            }
+            col += ns;
+        }
+        const auto ct = xt::transpose(c2s);
+        S = xt::linalg::dot(ct, xt::linalg::dot(S, c2s));
+        T = xt::linalg::dot(ct, xt::linalg::dot(T, c2s));
+        V = xt::linalg::dot(ct, xt::linalg::dot(V, c2s));
+        Hcore = T + V;
+        if (ERI.size() > 0) {
+            // Four-index transform, one index at a time (small systems only —
+            // the dense path is validation/MP2/FCI scale by charter).
+            const int nc = n_basis_cart;
+            auto e1 = xt::reshape_view(ERI, {nc * nc * nc, nc});
+            xt::xtensor<double, 2> h1 = xt::linalg::dot(e1, c2s); // l index
+            // rotate axes: (ijk,l)->(l,ijk) etc., four times
+            xt::xtensor<double, 4> cur = xt::reshape_view(
+                h1, {std::size_t(nc), std::size_t(nc), std::size_t(nc),
+                     std::size_t(n_sph)});
+            for (int rep = 0; rep < 3; ++rep) {
+                xt::xtensor<double, 4> perm =
+                    xt::transpose(cur, {3, 0, 1, 2});
+                const auto sh = perm.shape();
+                auto flat = xt::reshape_view(
+                    perm, {sh[0] * sh[1] * sh[2], sh[3]});
+                xt::xtensor<double, 2> hx = xt::linalg::dot(flat, c2s);
+                cur = xt::reshape_view(
+                    hx, {sh[0], sh[1], sh[2], std::size_t(n_sph)});
+            }
+            ERI = xt::transpose(cur, {3, 0, 1, 2});
+        }
+        n_basis = n_sph;
+        ATV_INFO("[integrals] spherical convention: n_basis {} -> {}",
+                 n_basis_cart, n_basis);
     }
 
     V_nuc = nuclear_repulsion_energy(atom_list);

@@ -46,7 +46,7 @@ blocks_from_shells(const std::vector<native::Shell>& shells) {
 }
 
 ShellPairList::ShellPairList(const IntegralPack& pack, double thr) {
-    const int n = pack.n_basis;
+    const int n = pack.n_ao_cart(); // Cartesian engine dimension
 
     ShellPairList spl;
     spl.n_basis = n;
@@ -101,7 +101,7 @@ ShellPairList::ShellPairList(const IntegralPack& pack, double thr) {
 }
 
 ShellBlockPairList::ShellBlockPairList(const IntegralPack& pack, double thr) {
-    const int n = pack.n_basis;
+    const int n = pack.n_ao_cart(); // Cartesian engine dimension
     const int n_raw_shells = static_cast<int>(pack.shells.size());
 
     ShellBlockPairList sbl;

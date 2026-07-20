@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/reducers/xreducer.hpp>
 
 #include "atomiverse/core/log.h"
@@ -57,6 +58,36 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
     const RealMatrix& Hcore = integrals.Hcore;
     const int n = integrals.n_basis;
 
+    // Spherical-basis bridge: the direct two-electron / XC engines are
+    // Cartesian (they walk pack.shells). With a spherical pack the incoming
+    // densities are converted to the Cartesian engine space and every
+    // engine-built operator is sandwiched back with `c2s`. Both maps are the
+    // same linear transform, so the bridge is mathematically exact; cost is
+    // O(n^3) GEMMs per iteration, noise next to the Fock build. The stored-ERI
+    // path needs no bridge — pack.ERI is already spherical.
+    const bool sph = integrals.spherical();
+    const auto& Csp = integrals.c2s;
+    const auto to_eng = [&](const RealMatrix& M) {
+        return sph ? RealMatrix(xt::linalg::dot(
+                         Csp, RealMatrix(xt::linalg::dot(
+                                  M, xt::transpose(Csp)))))
+                   : M;
+    };
+    const auto to_ao = [&](auto& M) {
+        if (sph)
+            M = xt::linalg::dot(xt::transpose(Csp),
+                                RealMatrix(xt::linalg::dot(M, Csp)));
+    };
+    RealMatrix Pa_scratch, Pb_scratch;
+    if (sph) {
+        Pa_scratch = to_eng(P_alpha);
+        if (!restricted)
+            Pb_scratch = to_eng(P_beta);
+    }
+    const RealMatrix& Pa_eng = sph ? Pa_scratch : P_alpha;
+    const RealMatrix& Pb_eng =
+        sph ? (restricted ? Pa_scratch : Pb_scratch) : P_beta;
+
     if (restricted && is_hf) {
         // RHF: PySCF approach — store ERI once, then BLAS contraction.
         // Falls back to direct SCF when ERI is not stored.
@@ -64,14 +95,18 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         if (integrals.ERI.size() > 0) {
             integrals.coulomb_exchange_fused(P_alpha, G);
         } else {
-            sp_block_.g_rhf(P_alpha, G);
+            sp_block_.g_rhf(Pa_eng, G);
+            to_ao(G);
         }
         out.F_alpha = Hcore + G;
         out.F_beta = out.F_alpha;
     } else if (!restricted && is_hf) {
-        RealMatrix P_total = P_alpha + P_beta;
+        RealMatrix P_total = Pa_eng + Pb_eng;
         RealMatrix K_alpha, K_beta;
-        sp_.jk_uhf(P_total, P_alpha, P_beta, out.J, K_alpha, K_beta);
+        sp_.jk_uhf(P_total, Pa_eng, Pb_eng, out.J, K_alpha, K_beta);
+        to_ao(out.J);
+        to_ao(K_alpha);
+        to_ao(K_beta);
         out.F_alpha = Hcore + out.J - K_alpha;
         out.F_beta = Hcore + out.J - K_beta;
     } else {
@@ -81,13 +116,13 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         // Unrestricted convention: P_alpha and P_beta each carry one spin.
         RealMatrix P_total_J, P_alpha_xc, P_beta_xc;
         if (restricted) {
-            P_total_J = P_alpha;
-            P_alpha_xc = double(0.5) * P_alpha;
+            P_total_J = Pa_eng;
+            P_alpha_xc = double(0.5) * Pa_eng;
             P_beta_xc = P_alpha_xc;
         } else {
-            P_total_J = P_alpha + P_beta;
-            P_alpha_xc = P_alpha;
-            P_beta_xc = P_beta;
+            P_total_J = Pa_eng + Pb_eng;
+            P_alpha_xc = Pa_eng;
+            P_beta_xc = Pb_eng;
         }
 
         // Hybrid exact-exchange admixture. alpha_hf is taken from the
@@ -101,8 +136,11 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         const bool is_hybrid =
             (alpha_hf > double(0)) || (hybrid_alpha_override >= double(0));
 
-        auto xc = evaluate_xc_batched(grid_, integrals.shells, n, P_alpha_xc,
+        auto xc = evaluate_xc_batched(grid_, integrals.shells,
+                                      integrals.n_ao_cart(), P_alpha_xc,
                                       P_beta_xc, xc_type);
+        to_ao(xc.Vxc_alpha);
+        to_ao(xc.Vxc_beta);
 
         if (is_hybrid && restricted) {
             // Restricted KS global hybrid.
@@ -125,6 +163,7 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
                 // built (the hybrid branch is genuinely exercised) but the
                 // 0.5*0*K term is omitted to avoid any -0.0/+0.0 artifact.
                 sp_.j(P_total_J, out.J);
+                to_ao(out.J);
                 RealMatrix K;
                 sp_block_.k(P_total_J, K);
                 out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
@@ -140,15 +179,18 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
                 RealMatrix G, K;
                 sp_block_.g_rhf(P_total_J, G);
                 sp_block_.k(P_total_J, K);
+                // E_K = -0.5*Tr[P*K_bare] = -0.25*Tr[P*K]; traces are
+                // basis-invariant, so compute in engine space BEFORE the
+                // spherical bridge. The hybrid contribution is alpha_hf*E_K.
+                const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
+                out.E_exact_exchange = alpha_hf * E_K;
+                to_ao(G);
+                to_ao(K);
                 out.J = G + double(0.5) * K; // Coulomb-only, for E_J
                 out.F_alpha = Hcore + G
                               + double(0.5) * (double(1) - alpha_hf) * K
                               + xc.Vxc_alpha;
                 out.F_beta = out.F_alpha;
-                // E_K = -0.5*Tr[P*K_bare] = -0.25*Tr[P*K]; the hybrid
-                // contribution to E_total is alpha_hf*E_K.
-                const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
-                out.E_exact_exchange = alpha_hf * E_K;
             }
         } else if (is_hybrid) {
             // Unrestricted KS hybrid (open-shell). Out of the closed-shell
@@ -157,16 +199,20 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             RealMatrix K_alpha, K_beta;
             sp_.jk_uhf(P_total_J, P_alpha_xc, P_beta_xc, out.J, K_alpha,
                        K_beta);
-            out.F_alpha = Hcore + out.J - alpha_hf * K_alpha + xc.Vxc_alpha;
-            out.F_beta = Hcore + out.J - alpha_hf * K_beta + xc.Vxc_beta;
             const double E_K = double(-0.5)
                                * (xt::sum(P_alpha_xc * K_alpha)()
                                   + xt::sum(P_beta_xc * K_beta)());
             out.E_exact_exchange = alpha_hf * E_K;
+            to_ao(out.J);
+            to_ao(K_alpha);
+            to_ao(K_beta);
+            out.F_alpha = Hcore + out.J - alpha_hf * K_alpha + xc.Vxc_alpha;
+            out.F_beta = Hcore + out.J - alpha_hf * K_beta + xc.Vxc_beta;
         } else {
             // Pure KS: Coulomb only, no exchange matrix. Byte-for-byte
             // identical to the pre-hybrid path.
             sp_.j(P_total_J, out.J);
+            to_ao(out.J);
             out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
             out.F_beta = Hcore + out.J + xc.Vxc_beta;
         }
