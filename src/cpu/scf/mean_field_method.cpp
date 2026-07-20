@@ -447,8 +447,6 @@ SCFResult& MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         mutable_outer_status().reset();
         step_once(iter_);
         ++executed;
-        res.trace.push_back({iter_ + 1, e_total_,
-                             converged_stage_->diis_error(), diis_active_});
         if (poll_criteria_(iter_) != ATV::Verdict::Continue)
             break;
     }

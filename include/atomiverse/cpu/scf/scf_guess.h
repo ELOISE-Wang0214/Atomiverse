@@ -1,15 +1,27 @@
 /// @file cpu/scf/scf_guess.h
-/// @brief SCF initial-guess perturbations. Broken-symmetry HOMO-LUMO mixing for
-///        locating spin-broken solutions (e.g. stretched H2).
+/// @brief SCF initial guesses: the optional density-matrix guess carrier
+///        (`SCFInitialGuess`, rehomed verbatim from scf_result.h) and
+///        broken-symmetry HOMO-LUMO mixing for locating spin-broken
+///        solutions (e.g. stretched H2).
 #pragma once
 
 #include <cmath>
+
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/dense_matrix.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Optional density-matrix initial guess.
+struct SCFInitialGuess {
+    xt::xtensor<double, 2> P_alpha; ///< Alpha density guess [n x n] (dimensionless).
+    xt::xtensor<double, 2> P_beta;  ///< Beta density guess [n x n] (dimensionless).
+    bool has_alpha = false;         ///< Whether P_alpha is set.
+    bool has_beta = false;          ///< Whether P_beta is set.
+};
 
 /// @brief Rotate the HOMO and LUMO columns of C by `theta` to seed a broken-
 ///        symmetry guess (an asymmetric starting density).

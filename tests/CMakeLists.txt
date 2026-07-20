@@ -482,6 +482,10 @@ if(ATV_BUILD_HF)
     # expect/homo/lumo, with_occupation, validate(S)
     # (scf-slater-determinant-01-type).
     atv_add_cpp_test(test_cpu_scf_slater_determinant cpu/scf/test_slater_determinant.cpp)
+    # Public SCF vocabulary types re-homed into dedicated headers: scf_enums.h,
+    # gradient_result.h, scf_guess.h — without including scf_result.h
+    # (scf-slater-determinant-02-rehome).
+    atv_add_cpp_test(test_scf_type_homes cpu/scf/test_scf_type_homes.cpp)
     # SCF linear-dependence handling via canonical orthogonalization
     # (hf-robust-02); tutorial ch02 regression anchor.
     atv_add_cpp_test(test_cpu_scf_lindep         cpu/scf/test_scf_lindep.cpp)

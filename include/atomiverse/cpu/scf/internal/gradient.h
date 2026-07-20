@@ -17,6 +17,8 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
+#include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/scf_result.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 

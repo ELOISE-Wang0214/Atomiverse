@@ -1,36 +1,18 @@
 /// @file cpu/scf/scf_result.h
-/// @brief Public SCF **results** and light enums — no IntegralPack, no SCFConfig.
-///
-/// User code: construct `RHF`/`UHF`/`RKS`/`UKS`, call `run(frame)`, read
-/// `last_result()`. Config bags and integral packs are private.
+/// @brief Public SCF result bag — `SCFResult` only. Transitional: scheduled
+///        for deletion by scf-slater-determinant-03-unbag (wavefunction moves
+///        to `SlaterDeterminant`, scalars to Frame meta, loop state to the
+///        Driver). Enums live in scf_enums.h, the initial guess in
+///        scf_guess.h, the gradient result in gradient_result.h.
 #pragma once
 
-#include <vector>
 #include <xtensor/containers/xtensor.hpp>
+
+#include "atomiverse/cpu/scf/scf_enums.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-/// @brief Per-iteration convergence record.
-struct IterationRecord {
-    int iter = 0;
-    double energy = 0; ///< [Hartree]
-    double residual = 0;
-    bool diis_active = false;
-};
-
-enum class MeanFieldType { HF, KS };
-enum class SpinType { Restricted, Unrestricted };
-enum class InitGuess { Hcore, MINAO };
-
-/// @brief Optional density-matrix initial guess.
-struct SCFInitialGuess {
-    xt::xtensor<double, 2> P_alpha;
-    xt::xtensor<double, 2> P_beta;
-    bool has_alpha = false;
-    bool has_beta = false;
-};
 
 /// @brief Converged (or last) mean-field result.
 struct SCFResult {
@@ -58,16 +40,8 @@ struct SCFResult {
     xt::xtensor<double, 2> C_alpha;
     xt::xtensor<double, 2> C_beta;
 
-    std::vector<IterationRecord> trace;
-
     double integrated_n_alpha = 0;
     double integrated_n_beta = 0;
-};
-
-/// @brief Analytic / FD nuclear gradient result (public forces API).
-struct GradientResult {
-    xt::xtensor<double, 2> forces; ///< [n_atoms, 3] eV/Å
-    double energy = 0;             ///< eV
 };
 
 } // namespace scf

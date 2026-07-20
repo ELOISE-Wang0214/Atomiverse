@@ -1,7 +1,7 @@
 ---
 title: SCF Slater 行列式重构 · 02 疏散 scf_result.h 同住者（类型各归其家，SCFResult 留守待删）
 slug: scf-slater-determinant-02-rehome
-status: approved
+status: done
 chain: scf-slater-determinant
 link: 02/04
 created: 2026-07-20
@@ -57,14 +57,15 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing include-surface test tests/cpu/scf/test_scf_type_homes.cpp (includes ONLY scf_enums.h / scf_guess.h / gradient_result.h; uses all three enums, constructs SCFInitialGuess and GradientResult) and register it in tests/CMakeLists.txt
-- [ ] Implement include/atomiverse/cpu/scf/scf_enums.h with MeanFieldType/SpinType/InitGuess moved verbatim from scf_result.h, doxygen per doc.style
-- [ ] Implement include/atomiverse/cpu/scf/gradient_result.h with GradientResult moved verbatim (forces [eV/Å], energy [eV] doc retained)
-- [ ] Move SCFInitialGuess verbatim into include/atomiverse/cpu/scf/scf_guess.h with the xtensor include added
-- [ ] Delete IterationRecord, the SCFResult::trace member, and the res.trace.push_back at src/cpu/scf/mean_field_method.cpp:450-451 (redundant: zero readers tree-wide)
-- [ ] Trim include/atomiverse/cpu/scf/scf_result.h to SCFResult-only (drop <vector>, update @file doc) and fix the direct includers: mean_field_method.h adds scf_enums.h/scf_guess.h/gradient_result.h; internal/hamiltonian_builder.h:16 switches to scf_enums.h; internal/gradient.h and internal/integral_derivatives.h add scf_enums.h (+gradient_result.h where used); src/cpu/recorder/density_cube_writer.cpp adds scf_enums.h
-- [ ] Verify end state by grep: scf_result.h defines only SCFResult; IterationRecord count is zero tree-wide; scf::toy::SCFResult and semiempirical types untouched
-- [ ] Run full check + test suite
+- [x] Write failing include-surface test tests/cpu/scf/test_scf_type_homes.cpp (includes ONLY scf_enums.h / scf_guess.h / gradient_result.h; uses all three enums, constructs SCFInitialGuess and GradientResult) and register it in tests/CMakeLists.txt
+- [x] Implement include/atomiverse/cpu/scf/scf_enums.h with MeanFieldType/SpinType/InitGuess moved verbatim from scf_result.h, doxygen per doc.style
+- [x] Implement include/atomiverse/cpu/scf/gradient_result.h with GradientResult moved verbatim (forces [eV/Å], energy [eV] doc retained)
+- [x] Move SCFInitialGuess verbatim into include/atomiverse/cpu/scf/scf_guess.h with the xtensor include added
+- [x] Delete IterationRecord, the SCFResult::trace member, and the res.trace.push_back at src/cpu/scf/mean_field_method.cpp:450-451 (redundant: zero readers tree-wide)
+- [x] Trim include/atomiverse/cpu/scf/scf_result.h to SCFResult-only (drop <vector>, update @file doc) and fix the direct includers: mean_field_method.h adds scf_enums.h/scf_guess.h/gradient_result.h; internal/hamiltonian_builder.h:16 switches to scf_enums.h; internal/gradient.h and internal/integral_derivatives.h add scf_enums.h (+gradient_result.h where used); src/cpu/recorder/density_cube_writer.cpp adds scf_enums.h
+- [x] Verify end state by grep: scf_result.h defines only SCFResult; IterationRecord count is zero tree-wide; scf::toy::SCFResult and semiempirical types untouched
+- [x] Run full check + test suite
+- [x] Hygiene cleanup — /mol:simplify ran clean (janitor: zero findings, 2026-07-20)
 
 ## Testing strategy
 

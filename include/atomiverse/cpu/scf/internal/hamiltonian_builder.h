@@ -13,7 +13,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/scf_result.h"    // MeanFieldType / SpinType
+#include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType
 #include "atomiverse/cpu/scf/xc_functional.h" // XCType
 
 namespace ATV {

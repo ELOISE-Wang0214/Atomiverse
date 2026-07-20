@@ -6,7 +6,8 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/basis_eval.h"
-#include "atomiverse/cpu/scf/scf_result.h" // SCFResult / SpinType
+#include "atomiverse/cpu/scf/scf_enums.h"  // SpinType
+#include "atomiverse/cpu/scf/scf_result.h" // SCFResult
 
 namespace ATV {
 namespace cpu {
