@@ -2,10 +2,10 @@
 /// @brief Comprehensive validation of native C++ molecular integrals.
 ///
 /// Two test suites:
-///   NativeIntegrals     -- always-on (ATV_HAS_RHF): symmetry, analytical, multi-geometry
+///   NativeIntegrals     -- always-on (ATV_HAS_HF): symmetry, analytical, multi-geometry
 ///   NativeVsLibcint     -- libcint comparison (ATV_HAS_LIBCINT): element-by-element ground truth
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -517,11 +517,11 @@ TEST(NativeVsLibcint, CO) { compare_integrals_vs_libcint(make_co(), "CO"); }
 
 #endif // ATV_HAS_LIBCINT
 
-#else // !ATV_HAS_RHF
+#else // !ATV_HAS_HF
 
 #include <gtest/gtest.h>
 TEST(NativeIntegrals, Disabled) {
-    GTEST_SKIP() << "Native integral tests require -DATV_BUILD_RHF=ON";
+    GTEST_SKIP() << "Native integral tests require -DATV_BUILD_HF=ON";
 }
 
 #endif

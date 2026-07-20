@@ -6,7 +6,7 @@
 /// Uses analytical identities (symmetry, self-overlap, positivity)
 /// and finite-difference cross-checks.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include <cmath>
@@ -165,4 +165,4 @@ TEST(PrimitiveIntegrals, ERIPrim_Positive) {
     EXPECT_GT(val, 0.0) << "Self-repulsion (ss|ss) must be positive";
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

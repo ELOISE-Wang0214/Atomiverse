@@ -2,7 +2,7 @@
 /// @brief CUDA RHF tutorial — host path uses concrete cpu::scf::RHF; device
 ///        evaluator comparison is optional when ATV_HAS_CUDA.
 ///
-/// Build: -DATV_BUILD_CUDA=ON -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+/// Build: -DATV_BUILD_CUDA=ON -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 
 #include <iomanip>
 #include <iostream>

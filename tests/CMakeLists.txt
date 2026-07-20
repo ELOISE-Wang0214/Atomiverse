@@ -458,7 +458,7 @@ atv_add_cpp_test(test_cpu_linalg_canonical_orth
 
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
 
-if(ATV_BUILD_RHF)
+if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)

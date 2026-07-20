@@ -11,7 +11,7 @@
 /// `build_integrals_libcint`, with a tighter tolerance, so any residual
 /// normalization drift vs. libcint is surfaced.
 
-#if defined(ATV_HAS_RHF)
+#if defined(ATV_HAS_HF)
 
 #include <gtest/gtest.h>
 
@@ -267,4 +267,4 @@ TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
 
 #endif // ATV_HAS_LIBCINT
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

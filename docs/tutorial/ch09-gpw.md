@@ -9,7 +9,7 @@
 | **API** | `GthPotential(Element, name)`, `GaussianBasis(Element, name)`, `GPWEvaluator` |
 
 ```bash
-cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
+cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
       -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 09_gpw
 ./build/examples/09_gpw
@@ -86,7 +86,7 @@ You will learn:
    Evaluate / MD / Minimize drivers as the Gaussian and plane-wave ones.
 
 GPW needs FFTW3 and is off by default; build with
-`-DATV_BUILD_GPW=ON` (alongside `-DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON`).
+`-DATV_BUILD_GPW=ON` (alongside `-DATV_BUILD_HF=ON -DATV_BUILD_PW=ON`).
 
 ## The Concept: Two Representations, One Density
 

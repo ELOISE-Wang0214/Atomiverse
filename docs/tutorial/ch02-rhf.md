@@ -226,7 +226,7 @@ place to learn the method itself.
 Build and run:
 
 ```bash
-cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 02_rhf
 ./build/examples/02_rhf
 ```

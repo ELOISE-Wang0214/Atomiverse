@@ -1,4 +1,4 @@
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include <gtest/gtest.h>

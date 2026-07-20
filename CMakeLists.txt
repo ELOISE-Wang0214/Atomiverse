@@ -62,7 +62,7 @@ if(NOT ATV_DOCS_ONLY)
     set(ATV_ID_SIZE "bigbig" CACHE STRING "Global-ID integer width: bigbig (64-bit IDs, default) or smallbig (32-bit IDs)")
     set_property(CACHE ATV_ID_SIZE PROPERTY STRINGS smallbig bigbig)
 
-    option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
+    option(ATV_BUILD_HF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
     option(ATV_BUILD_GPW "Build GPW DFT module (Gaussian + uniform-grid Hartree/XC + GTH PP)" OFF)
     option(ATV_BUILD_KSPACE "Build Particle-Mesh Ewald (PME) electrostatics (CPU: FFTW3, CUDA: cuFFT)" OFF)
@@ -387,7 +387,7 @@ if(NOT ATV_DOCS_ONLY)
         ATV_MOLRS_CXX_REQUIRED_CAPABILITIES=${ATV_MOLRS_CXX_REQUIRED_CAPABILITIES})
     atv_apply_product_module_defs(atomiverse)
 
-    if(ATV_BUILD_RHF)
+    if(ATV_BUILD_HF)
         target_sources(atomiverse PRIVATE
             src/cpu/scf/basis_set.cpp
             src/cpu/scf/one_electron.cpp
@@ -429,7 +429,7 @@ if(NOT ATV_DOCS_ONLY)
             # eval_density_grid resolves shells via scf::build_shell_list
             # (basis_set.cpp above), so it is gated with the SCF sources —
             # same as the cube writers and mulliken. Its only consumer,
-            # cuda::DensityRecorder, is #ifdef ATV_HAS_RHF anyway.
+            # cuda::DensityRecorder, is #ifdef ATV_HAS_HF anyway.
             src/cpu/observer/density.cpp
         )
         if(ATV_BUILD_CUDA)
@@ -439,13 +439,13 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/scf/device_integrals.cu
             )
         endif()
-        target_compile_definitions(atomiverse PUBLIC ATV_HAS_RHF)
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_HF)
     endif()
 
     if(ATV_BUILD_GPW)
-        if(NOT ATV_BUILD_RHF)
+        if(NOT ATV_BUILD_HF)
             message(FATAL_ERROR
-                "ATV_BUILD_GPW=ON requires ATV_BUILD_RHF=ON (Gaussian SCF).")
+                "ATV_BUILD_GPW=ON requires ATV_BUILD_HF=ON (Gaussian SCF).")
         endif()
         if(NOT ATV_BUILD_PW)
             message(FATAL_ERROR
@@ -543,7 +543,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/pw_solver.cpp
             src/cpu/pw/pw_evaluator.cpp
         )
-        if(NOT ATV_BUILD_RHF)
+        if(NOT ATV_BUILD_HF)
             target_sources(atomiverse PRIVATE
                 src/cpu/scf/xc_functional.cpp
                 src/cpu/scf/xc_gga.cpp

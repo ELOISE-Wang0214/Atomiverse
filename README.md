@@ -29,7 +29,7 @@ the `module load` / `LD_LIBRARY_PATH` lines.
 ```bash
 # 1. Configure a CPU build with the Gaussian-SCF methods and the examples.
 cmake -B build -DCMAKE_BUILD_TYPE=Release \
-      -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+      -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 
 # 2. Build the first real-chemistry example.
 cmake --build build --target 02_rhf -j
@@ -81,11 +81,11 @@ read in order. Each tutorial chapter is written around the matching example.
 | # | File | Method | Build flag |
 |---|------|--------|------------|
 | 01 | `examples/01_scf.cpp` | The bare SCF loop (no chemistry) | — |
-| 02 | `examples/02_rhf.cpp` | Restricted Hartree-Fock (H₂) | `ATV_BUILD_RHF` |
-| 03 | `examples/03_uhf.cpp` | Unrestricted Hartree-Fock | `ATV_BUILD_RHF` |
-| 04 | `examples/04_uks.cpp` | Kohn-Sham DFT (UKS-LSDA) | `ATV_BUILD_RHF` |
-| 05 | `examples/05_geom_opt.cpp` | Geometry optimization (L-BFGS + DFT) | `ATV_BUILD_RHF` |
-| 06 | `examples/06_aimd.cpp` | Ab-initio MD (NVT) | `ATV_BUILD_RHF` |
+| 02 | `examples/02_rhf.cpp` | Restricted Hartree-Fock (H₂) | `ATV_BUILD_HF` |
+| 03 | `examples/03_uhf.cpp` | Unrestricted Hartree-Fock | `ATV_BUILD_HF` |
+| 04 | `examples/04_uks.cpp` | Kohn-Sham DFT (UKS-LSDA) | `ATV_BUILD_HF` |
+| 05 | `examples/05_geom_opt.cpp` | Geometry optimization (L-BFGS + DFT) | `ATV_BUILD_HF` |
+| 06 | `examples/06_aimd.cpp` | Ab-initio MD (NVT) | `ATV_BUILD_HF` |
 | 07 | `examples/07_md_lj.cpp` | Classical MD (argon, LJ) | — (CUDA twin `07_md_lj.cu`: `ATV_BUILD_CUDA`) |
 | 08 | `examples/08_pw.cpp` | Plane-wave DFT (silicon) | `ATV_BUILD_PW` |
 | 09 | `examples/09_gpw.cpp` | GPW DFT (water) | `ATV_BUILD_GPW` (needs `ATV_BUILD_PW`) |

@@ -46,7 +46,7 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
 TEST(CudaDriverBindingKind, MdAddScfEvaluatorThrows) {
     ATV::cuda::md::MD md;
     // Synthetic-path constructor (n_occ, alpha, tol, max_iter) — available
-    // with or without ATV_HAS_RHF.
+    // with or without ATV_HAS_HF.
     EXPECT_THROW(md.add(ATV::cuda::scf::SCF{2, 0.1, 1e-6, 100}),
                  std::runtime_error);
 }

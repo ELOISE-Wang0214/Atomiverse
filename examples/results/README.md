@@ -6,7 +6,7 @@ Machine-readable outputs captured from the numbered tutorial binaries under
 refresh the matching JSON:
 
 ```bash
-cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 02_rhf 03_uhf 04_uks 07_md_lj \
   11_koopmans 12_delta_scf 13_mp2 14_fci 15_am1 -j
 # then re-run each binary and update the JSON below

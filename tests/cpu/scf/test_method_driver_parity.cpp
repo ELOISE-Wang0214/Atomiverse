@@ -37,7 +37,7 @@
 /// retired machinery. Threads are pinned to 1 in CMake so the pinned literals are
 /// reproducible (see `test_cpu_scf_stages` for the same reason).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <cstddef>
@@ -331,4 +331,4 @@ TEST(MethodDriverParity, Mp2AndFciStillRouteThroughDrivenMethod) {
     EXPECT_NEAR(fci.e_fci, rhf_fci.last_result().energy, 1e-12);
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

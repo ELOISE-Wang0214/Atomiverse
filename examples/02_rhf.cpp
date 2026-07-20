@@ -7,7 +7,7 @@
 ///   3. Print results and compare with textbook
 ///
 /// Build:
-///   cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+///   cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 ///   cmake --build build --target 02_rhf
 ///
 /// Expected total energy: about -1.1168 Hartree (Szabo & Ostlund, Table 3.7)

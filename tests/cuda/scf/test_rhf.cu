@@ -1,7 +1,7 @@
 /// @file test_rhf.cu
 /// @brief Integration tests for H2/STO-3G/RHF: integrals, CPU solver, CUDA solver, parity.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -644,9 +644,9 @@ TEST(RHF, RHFResultHasNoCUDA) {
         "RHFResult.eigenvalues must be xtensor, not a device pointer");
 }
 
-#else // !ATV_HAS_RHF
+#else // !ATV_HAS_HF
 
 #include <gtest/gtest.h>
-TEST(RHF, Disabled) { GTEST_SKIP() << "RHF tests require -DATV_BUILD_RHF=ON"; }
+TEST(RHF, Disabled) { GTEST_SKIP() << "RHF tests require -DATV_BUILD_HF=ON"; }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

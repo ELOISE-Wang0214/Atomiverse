@@ -17,7 +17,7 @@ namespace scf {
 SCF::SCF(int n_occ, double alpha, double tol, int max_iter)
     : solver_(std::make_unique<SCFSolver>(n_occ, alpha, tol, max_iter)) {}
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 SCF::SCF(const cpu::scf::IntegralPack& integrals, double tol, int max_iter,
          double level_shift)
@@ -29,7 +29,7 @@ SCF::SCF(int n_prim, const double* exponents, const double* coefficients,
     : solver_(std::make_unique<SCFSolver>(n_prim, exponents, coefficients,
                                           n_occ, tol, max_iter)) {}
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
 
 void SCF::build(const BuildContext& ctx) {
     solver_->build(ctx.runtime.stream, ctx.frame);

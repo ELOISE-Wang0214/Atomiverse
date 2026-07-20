@@ -2,7 +2,7 @@
 /// @brief Concrete methods `RHF` / `UKS` converge on H2O and are stable
 ///        across independent instances and repeated `run()` calls.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -86,4 +86,4 @@ TEST(UKS, H2OConverges) {
     EXPECT_LT(result.energy, 0.0);
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

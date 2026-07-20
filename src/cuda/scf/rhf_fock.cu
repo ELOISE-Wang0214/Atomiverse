@@ -2,7 +2,7 @@
 /// @brief internal::RHFFock: upload integrals, build G(P), F=Hcore+G,
 ///        F'=X^T*F*X.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
@@ -508,4 +508,4 @@ void RHFFockDevice::destroy(const SolverContext& /*ctx*/,
 } // namespace cuda
 } // namespace ATV
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

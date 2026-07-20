@@ -5,7 +5,7 @@
 /// the concrete methods' SCF loop; this file adds direct, isolated
 /// verification of their internal mechanics.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -183,4 +183,4 @@ TEST(LevelShift, SkipThresholdIsElementwiseIdentity) {
             EXPECT_EQ(F_out(i, j), fx.F(i, j));
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

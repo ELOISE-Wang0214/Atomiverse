@@ -2,7 +2,7 @@
 /// @brief internal::RHFDensity: C = X*C', P = 2*C_occ*C_occ^T,
 ///        E = 0.5*Tr[(Hcore+F)*P]+V_nuc.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "cublas_dispatch.cuh"
@@ -106,4 +106,4 @@ void RHFDensity::destroy(const SolverContext& /*ctx*/, SCFWorkspace& /*ws*/) {
 } // namespace cuda
 } // namespace ATV
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

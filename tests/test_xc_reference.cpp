@@ -10,7 +10,7 @@
 ///   - VWN5:   Vosko, Wilk, Nusair, Can. J. Phys. 58, 1200 (1980), param. V
 ///   - PBE:    Perdew, Burke, Ernzerhof, PRL 77, 3865 (1996)
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -585,7 +585,7 @@ TEST(XCReference, BoysFn_ZeroArgLimits) {
 #include <gtest/gtest.h>
 TEST(XCReference, SkippedNoBuildRHF) {
     GTEST_SKIP()
-        << "ATV_BUILD_RHF=OFF — XC reference tests require -DATV_BUILD_RHF=ON";
+        << "ATV_BUILD_HF=OFF — XC reference tests require -DATV_BUILD_HF=ON";
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

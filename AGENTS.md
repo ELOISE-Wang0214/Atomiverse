@@ -3,7 +3,7 @@ mol_project:
   name: atomiverse
   language: cpp
   build:
-    install: "cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON"
+    install: "cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON"
     check: "cmake --build build -j$(nproc)"
     test: "ctest --test-dir build --output-on-failure"
     test_single: "ctest --test-dir build -R {path} --output-on-failure"
@@ -38,7 +38,7 @@ and NDDO/AM1 semiempirics). C++17, `ATV::` namespace.
 ## Build & Test
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON
 cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ./build/tests/test_md             # single test binary
@@ -69,7 +69,7 @@ bash -lc '
   export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"   # see runtime note below
   git submodule update --init --recursive molrs             # once per clone
   cmake -B build -DCMAKE_BUILD_TYPE=Release \
-        -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON \
+        -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON \
         -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc)
   ctest --test-dir build --output-on-failure
@@ -128,9 +128,9 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | Option | Default | Enables / sets |
 |---|---|---|
 | `ATV_BUILD_CUDA` | ON | CUDA backend; defines `ATV_HAS_CUDA` |
-| `ATV_BUILD_RHF` | OFF | Gaussian SCF (RHF/UHF/UKS); defines `ATV_HAS_RHF` |
+| `ATV_BUILD_HF` | OFF | Gaussian SCF (RHF/UHF/UKS); defines `ATV_HAS_HF` |
 | `ATV_BUILD_PW` | OFF | Plane-wave DFT (needs FFTW3) |
-| `ATV_BUILD_GPW` | OFF | Gaussian-and-plane-waves DFT (needs `ATV_BUILD_RHF` + `ATV_BUILD_PW`) |
+| `ATV_BUILD_GPW` | OFF | Gaussian-and-plane-waves DFT (needs `ATV_BUILD_HF` + `ATV_BUILD_PW`) |
 | `ATV_BUILD_KSPACE` | OFF | Reciprocal-space electrostatics PME (needs FFTW3) |
 | `ATV_BUILD_TORCH` | OFF | LibTorch backend; defines `ATV_HAS_TORCH` |
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
@@ -888,7 +888,7 @@ LBFGS, CG (Polak-Ribière+), OptLog / TrajectoryWriter / FinalGeometry
 `install_defaults()` folds Migrate/Halo/Reduce into the `force` phase; LBFGS/CG
 are DD-aware; recorders gather owners to rank 0.
 
-### Gaussian SCF (`-DATV_BUILD_RHF=ON`)
+### Gaussian SCF (`-DATV_BUILD_HF=ON`)
 **Target:** concrete methods `RHF` / `UHF` / `RKS` / `UKS`; SCF iteration is a
 Driver loop; parameters are members; Frame in/out. **Debt (shipping):** still
 `cpu::scf::SCFSolver` + `SCFConfig` + public `IntegralPack`, plus component

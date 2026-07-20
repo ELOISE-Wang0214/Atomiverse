@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/recorder/zarr.h"
 #endif
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
@@ -168,4 +168,4 @@ class DensityRecorder : public AsyncBridge {
 } // namespace cuda
 } // namespace ATV
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

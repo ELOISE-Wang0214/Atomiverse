@@ -4,7 +4,7 @@
 /// Launches GPU kernels, copies results to host, compares element-by-element
 /// against CPU native integrals.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -257,7 +257,7 @@ TEST(DeviceIntegrals, ERI) {
 
 #include <gtest/gtest.h>
 TEST(DeviceIntegrals, Disabled) {
-    GTEST_SKIP() << "Device integral tests require -DATV_BUILD_RHF=ON";
+    GTEST_SKIP() << "Device integral tests require -DATV_BUILD_HF=ON";
 }
 
 #endif

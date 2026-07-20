@@ -19,7 +19,7 @@
 ///   4. Run 200 steps and report initial / final energy + temperature.
 ///
 /// Build:
-///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON \
+///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON \
 ///         -DATV_BUILD_EXAMPLES=ON
 ///   cmake --build build --target 06_aimd
 ///

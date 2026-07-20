@@ -18,7 +18,7 @@ execute_process(
         -DATV_BUILD_CUDA=OFF
         -DATV_BUILD_TESTS=OFF
         -DATV_BUILD_PYTHON=OFF
-        -DATV_BUILD_RHF=OFF
+        -DATV_BUILD_HF=OFF
         -DATV_BUILD_PW=OFF
         -DATV_BUILD_MD=ON
         -DATV_BUILD_POTENTIALS=OFF

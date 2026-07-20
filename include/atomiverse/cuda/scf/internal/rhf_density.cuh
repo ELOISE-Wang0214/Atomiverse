@@ -23,7 +23,7 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 /// @brief Back-transform MO coefficients, rebuild density, compute RHF energy.
 class RHFDensity {
@@ -54,7 +54,7 @@ class RHFDensity {
         nullptr; ///< Temporary Hcore+F for energy [device, n*n].
 };
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
 
 } // namespace internal
 } // namespace scf

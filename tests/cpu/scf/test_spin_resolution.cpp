@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_spin_resolution.cpp
 /// @brief SpinResolution + UHF/RHF occupation guards via concrete methods.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <gtest/gtest.h>
 

@@ -15,7 +15,7 @@
 /// The Stage-1 `test_gradient_vs_libcint.cpp` handles absolute
 /// correctness vs libcint at the gradient-contraction level.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <array>
 #include <cmath>
@@ -325,4 +325,4 @@ TEST(RysEriDeriv, DDDD_All4Centers) {
 
 } // namespace
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

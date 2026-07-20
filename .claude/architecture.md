@@ -76,7 +76,7 @@ CPU observer domain:
 CPU recorder domain:
 - `include/atomiverse/cpu/recorder/{thermo,trajectory,xyz,cube,density_cube_writer,orbital_cube_writer}.h` → I/O sinks.
 
-CPU scf domain (gated `ATV_BUILD_RHF`):
+CPU scf domain (gated `ATV_BUILD_HF`):
 - `include/atomiverse/cpu/scf/scf_solver.h` → `cpu::scf::SCFSolver` (public inner solver, NOT a Driver).
 - `include/atomiverse/cpu/scf/scf_evaluator.h` → `cpu::scf::SCF` (`cpu::HF` kind).
 - `include/atomiverse/cpu/scf/scf_solve.h`, `rhf_solve.h`, `uhf_solve.h`, `uks_solve.h`, `solve.h` → unified `scf_solve()` + per-method shims, `SCFConfig`, `SCFResult`.
@@ -116,7 +116,7 @@ CUDA observer domain:
 CUDA recorder domain:
 - `include/atomiverse/cuda/recorder/{recorder,thermo,density_recorder}.cuh` → CPU-bridge recorders.
 
-CUDA scf domain (gated `ATV_BUILD_RHF`):
+CUDA scf domain (gated `ATV_BUILD_HF`):
 - `include/atomiverse/cuda/scf/scf.cuh` → legacy `scf::SCF : Driver<Phase>`.
 - `include/atomiverse/cuda/scf/{hamiltonian,eigen_solver,density_builder,convergence_check,rhf_fock,rhf_density,device_integrals}.cuh` → SCF step components.
 
@@ -138,7 +138,7 @@ CUDA scf domain (gated `ATV_BUILD_RHF`):
 - `python/tests/test_*.py`, `python/examples/*.py`, `python/benchmarks/bench_md.py` → pytest tests + examples + benchmarks.
 
 #### Build / infra
-- `CMakeLists.txt` → top-level build (`ATV_BUILD_RHF`, `ATV_BUILD_CUDA`, `ATV_BUILD_TORCH`, `ATV_USE_MPI`, `ATV_USE_LIBXC`, `ATV_BUILD_LIBCINT`, `ATV_BUILD_PYTHON`, `ATV_BUILD_TESTS`, `ATV_BUILD_BENCHMARKS`, `ATV_BUILD_EXAMPLES`).
+- `CMakeLists.txt` → top-level build (`ATV_BUILD_HF`, `ATV_BUILD_CUDA`, `ATV_BUILD_TORCH`, `ATV_USE_MPI`, `ATV_USE_LIBXC`, `ATV_BUILD_LIBCINT`, `ATV_BUILD_PYTHON`, `ATV_BUILD_TESTS`, `ATV_BUILD_BENCHMARKS`, `ATV_BUILD_EXAMPLES`).
 - `cmake/deps/` → dependency finders.
 - `Doxyfile`, `docs/` → Doxygen + tutorial / user-guide / developer / api docs.
 - `tests/{cpu,cuda,torch,facade}/` → GoogleTest suites mirroring `src/` layout.
@@ -189,7 +189,7 @@ CUDA scf domain (gated `ATV_BUILD_RHF`):
 - Observers: RDF, MSD, VACF, Virial, density, Mulliken, …
 - Recorders: Thermo, XYZ, cube writers, …
 
-#### CPU scf (public — gated `ATV_BUILD_RHF`)
+#### CPU scf (public — gated `ATV_BUILD_HF`)
 - Inner solver: `ATV::cpu::scf::SCFSolver` (NOT a Driver).
 - Component: `ATV::cpu::scf::SCF : cpu::HF`; `SCFResultHandle`.
 - Config / result: `SCFConfig`, `SCFResult`, `XCType`, …
@@ -216,7 +216,7 @@ Owned by `SCFSolver`, never `Component`, never registered into a Plan:
 #### CUDA observer / recorder
 - `ATV::cuda::RDF`, `Mulliken`, `Stress`, `Recorder`, `Thermo`, `DensityRecorder`.
 
-#### CUDA scf (gated `ATV_BUILD_RHF`)
+#### CUDA scf (gated `ATV_BUILD_HF`)
 - Driver: `ATV::scf::SCF : Driver<Phase>` (legacy algorithm-as-driver).
 - Components: `Hamiltonian`, `EigenSolver`, `DensityBuilder`, `ConvergenceCheck`, `RHFFock`, `RHFFockDevice`, `RHFDensity`, `ZeroDensity`, device-integral kernels.
 

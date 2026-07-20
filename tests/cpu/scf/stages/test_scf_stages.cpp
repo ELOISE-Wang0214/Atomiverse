@@ -71,7 +71,7 @@
 /// component tests under tests/cpu/); `ctx.at(scf::Phase::…)` is the phase
 /// self-guard. `build()` runs once before `launch()`.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <cstring>
@@ -1002,4 +1002,4 @@ TEST(ScfConverged, CombinesAlphaBetaFrobeniusUnrestricted) {
     }
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

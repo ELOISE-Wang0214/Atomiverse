@@ -9,7 +9,7 @@
 /// and evaluates basis functions with the shared `scf::eval_basis`
 /// (`scf/basis_eval.h`) -- the same path the cube writers use. Like the
 /// cube writers, the implementation is compiled only under
-/// `ATV_BUILD_RHF` (`ATV_HAS_RHF`); its sole consumer,
+/// `ATV_BUILD_HF` (`ATV_HAS_HF`); its sole consumer,
 /// `cuda::DensityRecorder`, is gated the same way.
 ///
 /// **Phase 1 note:** unlike `cpu::observer::RDF`, this is **not** wrapped as

@@ -1,7 +1,7 @@
 /// @file test_xc_functional.cpp
 /// @brief Unit tests for XC functional evaluator (Slater exchange, VWN5 correlation, PBE).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -184,7 +184,7 @@ TEST(XCFunctional, FullyPolarizedNoNaN) {
 #include <gtest/gtest.h>
 TEST(XCFunctional, SkippedNoBuildRHF) {
     GTEST_SKIP()
-        << "ATV_BUILD_RHF=OFF — XC functional tests require -DATV_BUILD_RHF=ON";
+        << "ATV_BUILD_HF=OFF — XC functional tests require -DATV_BUILD_HF=ON";
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

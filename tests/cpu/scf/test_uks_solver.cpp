@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_uks_solver.cpp
 /// @brief UKS/RKS via the concrete member API (Frame in / out).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>

@@ -6,7 +6,7 @@
 /// whole SCF machine each step (stages are wired once via ensure_driver_built_).
 /// Fixed-buffer reallocation is not instrumented here; the behavioral pin is
 /// multi-step AIMD-style nesting stays finite and physical.
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"

@@ -14,7 +14,7 @@
 ///     m = 0..2N-1 — a libcint-independent mathematical check that holds
 ///     even without -DATV_BUILD_LIBCINT.
 
-#if defined(ATV_HAS_RHF)
+#if defined(ATV_HAS_HF)
 
 #include <gtest/gtest.h>
 
@@ -202,4 +202,4 @@ TEST(RysRoots, IterativeSatisfiesMomentIdentity) {
     }
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

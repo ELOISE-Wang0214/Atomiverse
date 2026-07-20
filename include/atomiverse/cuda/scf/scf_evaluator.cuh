@@ -33,7 +33,7 @@
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 #include "atomiverse/facade/component_role.h"
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 namespace ATV {
 namespace cpu {
 namespace scf {
@@ -62,7 +62,7 @@ class SCF : public cuda::Component {
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
     SCF(int n_occ, double alpha, double tol, int max_iter);
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
     /// @brief Construct an RHF evaluator driven by host-computed integrals.
     /// @param integrals Precomputed molecular integral pack
     ///        (Hcore, ERI, S, V_nuc).

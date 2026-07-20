@@ -48,7 +48,7 @@ SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
     density_ = std::make_unique<internal::DensityBuilder>();
 }
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
                      int max_iter, double level_shift)
@@ -98,7 +98,7 @@ SCFSolver::SCFSolver(int n_prim, const double* exponents,
     rhf_density_ = std::make_unique<internal::RHFDensity>(n_occ);
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
 
 void SCFSolver::build(void* stream, cuda::Frame& frame) {
     internal::SolverContext ctx{stream, frame, 0};
@@ -112,7 +112,7 @@ void SCFSolver::build(void* stream, cuda::Frame& frame) {
         density_->build(ctx, workspace_);
         convergence_->build(ctx, workspace_);
         break;
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
     case Path::RHFHostIntegrals:
         rhf_fock_->build(ctx, workspace_);
         eigen_->build(ctx, workspace_);
@@ -159,7 +159,7 @@ void SCFSolver::run(void* stream, cuda::Frame& frame) {
             density_->step(ctx, workspace_);
             convergence_->step(ctx, workspace_);
             break;
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
         case Path::RHFHostIntegrals:
             rhf_fock_->step(ctx, workspace_);
             eigen_->step(ctx, workspace_);
@@ -203,7 +203,7 @@ void SCFSolver::destroy(void* stream, cuda::Frame& frame) {
         eigen_->destroy(ctx, workspace_);
         hamiltonian_->destroy(ctx, workspace_);
         break;
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
     case Path::RHFHostIntegrals:
         convergence_->destroy(ctx, workspace_);
         rhf_density_->destroy(ctx, workspace_);

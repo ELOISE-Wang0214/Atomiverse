@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_mp2.cpp
 /// @brief Unit checks for RHF::mp2(frame) (no public IntegralPack).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>

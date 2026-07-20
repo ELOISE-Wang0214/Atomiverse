@@ -8,7 +8,7 @@
 ///   - Interpreting energy, forces, and displacement convergence criteria
 ///
 /// Build:
-///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 ///   cmake --build build --target 05_geom_opt
 ///
 /// Run:

@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_uhf_solver.cpp
 /// @brief UHF via the concrete member API (RHF/UHF, Frame in / out).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>

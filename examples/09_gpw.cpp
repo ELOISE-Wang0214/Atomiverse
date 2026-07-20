@@ -14,7 +14,7 @@
 /// cpu::pw::PWEvaluator and cpu::scf::SCF.
 ///
 /// Build:
-///   cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
+///   cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
 ///                  -DATV_BUILD_EXAMPLES=ON                 # needs FFTW3
 ///   cmake --build build --target 09_gpw
 ///

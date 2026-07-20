@@ -35,7 +35,7 @@ target_link_libraries(01_scf PRIVATE xtensor xtensor-blas ${LAPACK_LIBRARIES} ${
 target_include_directories(01_scf PRIVATE $<BUILD_INTERFACE:${_xt_compat}>)
 set_target_properties(01_scf PROPERTIES CXX_STANDARD 17)
 
-if(ATV_BUILD_RHF)
+if(ATV_BUILD_HF)
     atv_add_cpp_example(02_rhf)
     atv_add_cpp_example(03_uhf)
     atv_add_cpp_example(04_uks)

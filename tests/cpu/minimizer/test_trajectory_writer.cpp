@@ -1,4 +1,4 @@
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"

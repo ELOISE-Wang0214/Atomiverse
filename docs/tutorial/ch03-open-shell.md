@@ -375,7 +375,7 @@ to adiabatic. The worked table for all five systems in both bases is
 The build path is straightforward:
 
 ```bash
-cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 03_uhf
 ./build/examples/03_uhf
 ```

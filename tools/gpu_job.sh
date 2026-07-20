@@ -16,7 +16,7 @@ env | grep -iE "OPENBLAS|FFTW|BLAS" || true
 cmake -B build-cuda \
       -DATV_BUILD_CUDA=ON \
       -DATV_BUILD_PW=ON \
-      -DATV_BUILD_RHF=ON \
+      -DATV_BUILD_HF=ON \
       -DATV_BUILD_TESTS=ON \
       -DATV_BUILD_BENCHMARKS=ON \
       -DBLA_VENDOR=OpenBLAS \

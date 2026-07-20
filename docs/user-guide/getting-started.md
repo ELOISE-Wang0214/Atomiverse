@@ -21,7 +21,7 @@ Requires **C++17** and **CMake ≥ 3.18**.
 
 | Option | Turns on |
 |---|---|
-| `ATV_BUILD_RHF` | Gaussian SCF (RHF / UHF / UKS) |
+| `ATV_BUILD_HF` | Gaussian SCF (RHF / UHF / UKS) |
 | `ATV_BUILD_PW` | Plane-wave DFT (needs FFTW3) |
 | `ATV_BUILD_GPW` | GPW DFT (needs RHF + PW) |
 | `ATV_BUILD_CUDA` | CUDA backend |
@@ -51,7 +51,7 @@ Smallest useful start — Gaussian SCF + examples, CPU only:
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release \
-      -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON \
+      -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON \
       -DBLA_VENDOR=OpenBLAS
 cmake --build build --target 02_rhf -j
 ```
@@ -91,11 +91,11 @@ cmake --build build --target <name> -j
 | Program | Topic | Flag |
 |---|---|---|
 | `01_scf` | bare SCF loop (no chemistry) | — |
-| `02_rhf` | RHF single point | `ATV_BUILD_RHF` |
-| `03_uhf` | open shell / bond breaking | `ATV_BUILD_RHF` |
-| `04_uks` | Kohn–Sham DFT | `ATV_BUILD_RHF` |
-| `05_geom_opt` | L-BFGS + SCF | `ATV_BUILD_RHF` |
-| `06_aimd` | ab-initio MD | `ATV_BUILD_RHF` |
+| `02_rhf` | RHF single point | `ATV_BUILD_HF` |
+| `03_uhf` | open shell / bond breaking | `ATV_BUILD_HF` |
+| `04_uks` | Kohn–Sham DFT | `ATV_BUILD_HF` |
+| `05_geom_opt` | L-BFGS + SCF | `ATV_BUILD_HF` |
+| `06_aimd` | ab-initio MD | `ATV_BUILD_HF` |
 | `07_md_lj` | classical LJ MD | always |
 | `08_pw` | plane-wave crystal | `ATV_BUILD_PW` |
 | `09_gpw` | GPW DFT | `ATV_BUILD_GPW` |

@@ -212,7 +212,7 @@ occupations.
 Build and run it with
 
 ```bash
-cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 04_uks
 ./build/examples/04_uks
 ```

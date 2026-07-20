@@ -15,7 +15,7 @@
 ///   - doublet spin_contamination ≤ 1e-4 (⟨S²⟩ ≈ 0.75);
 ///   - warm-start and Hcore cold-start reach the same cation energy to 1e-8.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -108,7 +108,7 @@ TEST(DeltaScfAnchor, WaterStO3G) {
 
 #include <gtest/gtest.h>
 TEST(DeltaScfAnchor, SkippedNoBuildRHF) {
-    GTEST_SKIP() << "ATV_BUILD_RHF=OFF — ΔSCF tests require -DATV_BUILD_RHF=ON";
+    GTEST_SKIP() << "ATV_BUILD_HF=OFF — ΔSCF tests require -DATV_BUILD_HF=ON";
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

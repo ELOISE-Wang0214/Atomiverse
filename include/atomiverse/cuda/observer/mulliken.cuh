@@ -38,7 +38,7 @@
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cuda/async/async_bridge.cuh"
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 namespace ATV {
 namespace cpu {
@@ -52,7 +52,7 @@ struct IntegralPack; // cpu/scf/internal/integrals.h — not a public include
 namespace ATV {
 namespace cuda {
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 /// @brief Mulliken population observer for the CUDA RHF SCF pipeline.
 ///
@@ -181,7 +181,7 @@ class MullikenObs : public AsyncBridge {
     double* h_energy_[kRingDepth] = {}; ///< pinned host energy [eV]
 };
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
 
 } // namespace cuda
 } // namespace ATV

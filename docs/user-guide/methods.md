@@ -47,10 +47,10 @@ Two policy slots let you change *when* a run ends without writing a driver:
 | Method | Component (kind) | Build flag |
 |---|---|---|
 | Lennard-Jones + bonded styles | `PairLJCut` / `BondHarmonic` / … (`Potential`) | *(always on)* |
-| Gaussian SCF — RHF / UHF / Kohn-Sham DFT | `cpu::scf::SCF` (`HF`) | `ATV_BUILD_RHF` |
+| Gaussian SCF — RHF / UHF / Kohn-Sham DFT | `cpu::scf::SCF` (`HF`) | `ATV_BUILD_HF` |
 | Plane-wave DFT | `cpu::pw::PWEvaluator` (`PlaneWave`) | `ATV_BUILD_PW` |
 | Gaussian-and-plane-waves DFT | `cpu::gpw::GPWEvaluator` (`GPW`) | `ATV_BUILD_GPW` |
-| NDDO / AM1 semiempirics | `cpu::semiempirical::AM1Evaluator` (`Semiempirical`) | `ATV_BUILD_RHF` |
+| NDDO / AM1 semiempirics | `cpu::semiempirical::AM1Evaluator` (`Semiempirical`) | `ATV_BUILD_HF` |
 
 Each method's iteration loop lives in an inner **solver**
 (`cpu::scf::SCFSolver`, `cpu::pw::PWSolver`, `cpu::gpw::GPWSolver`,

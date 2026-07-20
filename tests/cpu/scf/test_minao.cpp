@@ -5,7 +5,7 @@
 /// precision (see tools/gen_minao_data.py for how the MINAO basis itself
 /// is extracted). This test guards against drift in either the basis
 /// tables or the projection math.
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -205,4 +205,4 @@ TEST(MinaoGuess, SupportedElements) {
     EXPECT_TRUE(cpu::scf::minao_supported(integrals_h2o));
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF

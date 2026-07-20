@@ -1,7 +1,7 @@
 /// @file tests/cpu/scf/test_fci.cpp
 /// @brief Unit checks for RHF::fci(frame) (no public IntegralPack).
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>

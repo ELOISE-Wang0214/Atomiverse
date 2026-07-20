@@ -15,7 +15,7 @@ MOLRS=/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/molrs
 SPACK_VIEW=/nobackup/proj/disk/teoroo/personal/jicli594/work/cp2k/spack/spack/opt/spack/view
 B=build-full
 cmake -B "$B" -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_CUDA=OFF -DATV_BUILD_TESTS=ON \
-  -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON -DATV_BUILD_XC_ORACLE=ON \
+  -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON -DATV_BUILD_XC_ORACLE=ON \
   -DBLA_VENDOR=OpenBLAS -DCMAKE_PREFIX_PATH="${FFTW_ROOT:-};${OPENBLAS_ROOT:-};${SPACK_VIEW}" \
   -DATV_MOLRS_PATH="$MOLRS" >/dev/null
 cmake --build "$B" -j"$(nproc)" 2>&1 | grep -iE 'error:' | head -20 || true

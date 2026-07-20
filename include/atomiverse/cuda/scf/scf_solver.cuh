@@ -20,9 +20,9 @@
 /// Three run paths are surfaced as distinct constructors:
 ///  - **Synthetic** — `H(P) = H0 + alpha*P` toy self-consistency cycle.
 ///  - **RHF (host integrals)** — Fock build from a precomputed
-///    `cpu::scf::IntegralPack` (`ATV_HAS_RHF` only).
+///    `cpu::scf::IntegralPack` (`ATV_HAS_HF` only).
 ///  - **RHF (device integrals)** — Fock build from GPU-native integral
-///    kernels, zero CPU integral computation (`ATV_HAS_RHF` only).
+///    kernels, zero CPU integral computation (`ATV_HAS_HF` only).
 ///
 /// Usage (low-level direct SCF):
 /// @code
@@ -51,7 +51,7 @@
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
 namespace ATV {
@@ -83,7 +83,7 @@ class SCFSolver {
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
     SCFSolver(int n_occ, double alpha, double tol, int max_iter);
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
     /// @brief Construct an RHF solver driven by host-computed integrals.
     /// @param integrals Precomputed molecular integral pack
     ///        (Hcore, ERI, S, V_nuc).
@@ -186,7 +186,7 @@ class SCFSolver {
     std::unique_ptr<internal::Hamiltonian> hamiltonian_;
     std::unique_ptr<internal::DensityBuilder> density_;
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
     // RHF-path helpers (one Fock builder is active per solver).
     std::unique_ptr<internal::RHFFock> rhf_fock_;
     std::unique_ptr<internal::RHFFockDevice> rhf_fock_device_;

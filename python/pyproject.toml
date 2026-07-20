@@ -85,7 +85,7 @@ ATV_BUILD_TESTS      = "OFF"
 ATV_BUILD_BENCHMARKS = "OFF"
 ATV_BUILD_EXAMPLES   = "OFF"
 ATV_BUILD_PW         = {env = "ATV_BUILD_PW",  default = "OFF"}
-ATV_BUILD_RHF        = {env = "ATV_BUILD_RHF", default = "ON"}
+ATV_BUILD_HF        = {env = "ATV_BUILD_HF", default = "ON"}
 
 # Optional backends: driven by environment variable with a safe default
 # Override: ATV_BUILD_CUDA=ON pip install .

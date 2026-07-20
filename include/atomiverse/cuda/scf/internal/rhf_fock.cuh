@@ -19,7 +19,7 @@
 #include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #endif
 
@@ -28,7 +28,7 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 /// @brief Build Fock matrix and transform to orthogonal basis (CPU integral path).
 ///
@@ -113,7 +113,7 @@ class RHFFockDevice {
     double* d_V_ = nullptr;            ///< Nuclear (device, temp).
 };
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
 
 } // namespace internal
 } // namespace scf

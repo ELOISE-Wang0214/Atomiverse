@@ -15,7 +15,7 @@
 ///
 /// Flag-gated placement: the `Criterion` base (`cpu/component/criterion.h`) is
 /// unconditional, but this concrete SCF criterion lives in the SCF domain dir
-/// and is only compiled into `ATV_BUILD_RHF` translation units.
+/// and is only compiled into `ATV_BUILD_HF` translation units.
 #pragma once
 
 #include <cmath>

@@ -1,7 +1,7 @@
 /// @file tests/cpu/test_evaluate_driver.cpp
 /// @brief Evaluate driver + concrete RHF force/energy component.
 
-#ifdef ATV_HAS_RHF
+#ifdef ATV_HAS_HF
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -80,4 +80,4 @@ TEST(EvaluateDriver, SinglePointHelper) {
     EXPECT_LT(frame.meta.get(kEnergy), 0.0);
 }
 
-#endif // ATV_HAS_RHF
+#endif // ATV_HAS_HF
