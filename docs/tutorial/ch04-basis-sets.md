@@ -107,8 +107,10 @@ enum class BasisSet {
     STO3G,       // minimal (H–O). The production baseline.
     Pople631G,   // 6-31G  split-valence, no polarization
     Pople631Gs,  // 6-31G* d-polarization on heavy atoms
+    Pople631pGs, // 6-31+G* heavy-atom diffuse sp + d-polarization
     Def2SVP,     // def2-SVP  Ahlrichs split-valence polarized
     Def2TZVP,    // def2-TZVP triple-zeta
+    AugCcPVDZ,   // aug-cc-pVDZ Dunning DZ + diffuse augmentation
 };
 ```
 
@@ -138,7 +140,9 @@ wider window.
 ### Element and basis coverage — the no-fallback rule
 
 STO-3G is implemented for **H through O (Z = 1–8)**; the larger Pople and
-def2 families extend the element range. Coverage is honest: if you ask for a
+def2/cc families extend the range through the **third period (Na–Ar, Z =
+11–18)**, with the Pople sets additionally carrying K/Ca. Coverage is
+honest: if you ask for a
 basis/element combination that is not tabulated, the shell-list build inside
 `run(frame)` **throws** `std::runtime_error` rather than
 silently substituting a nearby basis. There are *no fallback values* by
@@ -324,3 +328,116 @@ rhf.run(frame);                             // n_basis = 24(笛卡尔为 25)
 那 1.2 mHa 就是 6d 的 s-污染分量的变分贡献 — 两种约定不是数值误差,
 而是**不同的基组**;这正是"约定跟随基组定义"的理由。
 (几何与完整命令:`regressions/scf/h2o_rhf_def2svp_sph/REFERENCE.md`。)
+
+## 极化、弥散与第三周期
+
+### 命名法解码:一个名字就是一张配方单
+
+Pople 命名法把基组的全部构造信息压进一个字符串,逐字符读:
+
+| 记号 | 含义 | 例 |
+|---|---|---|
+| `6-31G` | 内核壳 6 个高斯缩并成 1 个函数;价壳**分裂**为 3-高斯 + 1-高斯两层 | Ditchfield-Hehre-Pople 1971 |
+| `*`(即 `(d)`)| 重原子(非 H)加一组 **d 极化函数** — 让 p 电子云能偏离原子中心极化 | 6-31G*(Hariharan-Pople 1973)|
+| `**`(即 `(d,p)`)| 再给 H 加一组 p 极化 | 6-31G** |
+| `+` | 重原子加一组**弥散 sp**(共享指数、很小的 α,如 O 的 0.0845)— 描述离原子核很远的松散电子 | 6-31+G* |
+| `++` | 再给 H 加弥散 s | 6-31++G* |
+
+Dunning 相关一致(correlation-consistent)系用另一套语法:`cc-pVDZ` =
+双 ζ 价层 + 极化一并按能量贡献分层收进;前缀 `aug-` 表示**每个角动量通道
+各加一层弥散**(H 加弥散 s、p;O 加弥散 s、p、d — Kendall, Dunning,
+Harrison 1992)。所以 aug-cc-pVDZ 的 O 是 4s3p2d(球谐 23 个 AO),
+比 cc-pVDZ 整整多出一层慢衰减的窗口。
+
+极化与弥散回答两个正交的问题:**极化**加的是更高角动量(d、f),让电子云
+能"变形";**弥散**加的是更小的指数(更慢的径向衰减),让电子云能"变远"。
+中性分子的基态主要吃极化;**阴离子、里德堡态、氢键尾部、极化率**主要吃
+弥散 — 判据永远是"你关心的电子密度住在哪儿"。
+
+### 弥散函数的物理:OH⁻ 的 ε_HOMO
+
+阴离子的多余电子结合得很松(OH⁻ 的实验电子亲和能只有 ~1.8 eV),它的
+HOMO 尾巴伸到离核很远的地方。紧凑基组没有慢衰减函数,变分只能把这个
+电子硬塞进价层窗口 — 极端时 ε_HOMO 干脆变成**正数**:一个自称"束缚阴
+离子"的波函数,其最高占据轨道却宣称电子会自发飞走。这不是物理,是基组
+伪像。观察它只需要把 [第 3 章](ch03-open-shell.md) 的 `charge` 成员设成
+−1,换基组重跑:
+
+```cpp
+using Spin = cpu::scf::SlaterDeterminant::Spin;
+
+cpu::Frame frame = /* O(0,0,0), H(0,0,0.9640) Å */;
+for (auto basis : {cpu::scf::BasisSet::STO3G,
+                   cpu::scf::BasisSet::Pople631Gs,
+                   cpu::scf::BasisSet::Pople631pGs}) {
+    cpu::scf::RHF rhf;
+    rhf.basis = basis;
+    rhf.charge = -1;                    // OH⁻:10 电子闭壳层
+    rhf.tol = 1e-12;
+    rhf.run(frame);
+    std::printf("%-10s eps_HOMO = %+.6f Ha\n",
+                cpu::scf::basis_set_name(basis),
+                rhf.determinant().homo(Spin::alpha));
+}
+```
+
+实测阶梯(r(OH) = 0.9640 Å;全部与 PySCF 同基组钉值一致,见下表):
+
+```text
+STO-3G     eps_HOMO = +0.251912 Ha    非束缚伪像:HOMO 是正的
+6-31G*     eps_HOMO = -0.037774 Ha    勉强束缚(极化救不了弥散的缺席)
+6-31+G*    eps_HOMO = -0.103580 Ha    弥散 sp 使束缚加深近 3 倍
+```
+
+注意 6-31G* → 6-31+G* 这一步:**总能量只降了 50 mHa,ε_HOMO 却加深了
+66 mHa** — 弥散函数对总能量是小修正,对"住在远处"的可观测量(HOMO、
+电子亲和能、极化率、氢键)是决定性的。这也是为什么"能量收敛了"不等于
+"性质收敛了":每个性质有它自己的基组阶梯。
+
+### 第三周期(Na–Ar)与 Cl⁻
+
+六套表(6-31G / 6-31G* / 6-31+G* / def2-SVP / def2-TZVP / aug-cc-pVDZ)
+现在全部覆盖 **Z = 11–18(Na–Ar)**,Pople 系另带 K/Ca。第三周期原子的
+内核多一层(1s2s2p 全成核),6-31G 系为它们缩并 5s4p — Cl 在 6-31+G*
+下是 5s4p1d、23 个笛卡尔 AO。Cl⁻ 是最干净的演示:18 电子闭壳层单原子,
+`charge = -1`,一行 `rhf.run(frame)`,总能量与 PySCF 对到 1e-13 Ha
+(回归 `regressions/scf/diffuse_anion` 的钉值)。
+
+数据面的工程约定不变:所有表由 `tools/gen_basis_data.py` 从 PySCF 的
+`mol._basis` 字典一次性生成、checked-in 为静态 C++ 头(字节可复现,头部
+Regenerate 注释记录完整命令),**运行时零解析**;aug-cc-pVDZ 的 s 块是
+广义缩并(同一组原语、多列系数),生成器把每列拆成独立缩并壳 — 张成的
+AO 空间严格不变。不支持的 Z 依旧空行 + 抛含基组名的异常,无回退。
+
+### 章末对照:Atomiverse vs PySCF 2.14.0(标量,外部钉值)
+
+| 量 | Atomiverse | PySCF(钉定) | 差 |
+|---|---|---|---|
+| ε_HOMO(OH⁻, STO-3G)[Ha] | +0.251911715730 | +0.251911715713 | 2×10⁻¹¹ |
+| ε_HOMO(OH⁻, 6-31G*)[Ha] | −0.037774390716 | −0.037774390226 | 5×10⁻¹⁰ |
+| ε_HOMO(OH⁻, 6-31+G*)[Ha] | −0.103579759566 | −0.103579773338 | 1.4×10⁻⁸ |
+| E_RHF(OH⁻, 6-31+G*)[Ha] | −75.376293363749 | −75.376293363750 | 6×10⁻¹³ |
+| E_RHF(Cl⁻, 6-31+G*)[Ha] | −459.539661044387 | −459.539661044387 | 2×10⁻¹³ |
+| E_RHF(H₂O, aug-cc-pVDZ, 球谐)[Ha] | −76.041393519988 | −76.041393519987 | 6×10⁻¹³ |
+
+(几何、命令与容差:`regressions/scf/diffuse_anion/REFERENCE.md`;Pople 系
+PySCF 侧 `cart=True`,aug-cc 系球谐默认。标量一律进表 — 曲线才作图。)
+
+OH⁻ 的基组收敛曲线(总能量阶梯;ε_HOMO 的阶梯在上面的文本块里):
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true, strokeWidth: 2}
+data:
+  values:
+    - {basis: "STO-3G",  n_ao: 6,  E: -74.056328}
+    - {basis: "6-31G",   n_ao: 11, E: -75.311529}
+    - {basis: "6-31G*",  n_ao: 17, E: -75.326597}
+    - {basis: "6-31+G*", n_ao: 21, E: -75.376293}
+encoding:
+  x: {field: basis, type: ordinal, sort: null, title: "基组(窗口递增)"}
+  y: {field: E, type: quantitative, title: "E_RHF(OH⁻) [Ha]", scale: {zero: false}}
+```
+
+读法与本章正文的水的阶梯相同:STO-3G → 6-31G 一大步(分裂价层),极化
+一小步,而 6-31+G* 这"额外"的一步对阴离子**不是**递减收益 — 它补的是
+别的基组根本没有的那类函数。

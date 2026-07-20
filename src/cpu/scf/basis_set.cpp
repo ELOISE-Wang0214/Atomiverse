@@ -10,10 +10,12 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/basis_data/aug_ccpvdz.h"
 #include "atomiverse/cpu/scf/basis_data/def2_svp.h"
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631gs.h"
+#include "atomiverse/cpu/scf/basis_data/pople_631pgs.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/cart.h"
 
@@ -29,10 +31,14 @@ const char* basis_set_name(BasisSet basis) {
         return "6-31G";
     case BasisSet::Pople631Gs:
         return "6-31G*";
+    case BasisSet::Pople631pGs:
+        return "6-31+G*";
     case BasisSet::Def2SVP:
         return "def2-SVP";
     case BasisSet::Def2TZVP:
         return "def2-TZVP";
+    case BasisSet::AugCcPVDZ:
+        return "aug-cc-pVDZ";
     }
     return "unknown";
 }
@@ -42,9 +48,11 @@ basis_data::AngularConvention angular_convention(BasisSet basis) {
     case BasisSet::STO3G:
     case BasisSet::Pople631G:
     case BasisSet::Pople631Gs:
+    case BasisSet::Pople631pGs:
         return basis_data::AngularConvention::Cartesian;
     case BasisSet::Def2SVP:
     case BasisSet::Def2TZVP:
+    case BasisSet::AugCcPVDZ:
         return basis_data::AngularConvention::Spherical;
     }
     throw std::runtime_error("angular_convention: unknown BasisSet");
@@ -206,6 +214,14 @@ ShellList::ShellList(const AtomList& atoms, BasisSet basis_id) {
         break;
     case BasisSet::Pople631Gs:
         tmp = build_shell_list_from_table(atoms, basis_data::pople_631gs(),
+                                          basis_id);
+        break;
+    case BasisSet::Pople631pGs:
+        tmp = build_shell_list_from_table(atoms, basis_data::pople_631pgs(),
+                                          basis_id);
+        break;
+    case BasisSet::AugCcPVDZ:
+        tmp = build_shell_list_from_table(atoms, basis_data::aug_ccpvdz(),
                                           basis_id);
         break;
     case BasisSet::Def2SVP:

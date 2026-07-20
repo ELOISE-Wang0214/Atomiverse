@@ -1,7 +1,7 @@
 ---
 title: HF 能力补全 · 05 基组扩容 — 第三周期 + 弥散(6-31+G*) + aug-cc-pVDZ 静态表
 slug: hf-capability-gaps-05-basis
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 05/21
 created: 2026-07-20
@@ -25,6 +25,25 @@ created: 2026-07-20
 
 数据模型不变:每套基组一个 `basis_data/*.h`,`inline const std::vector<AtomBasis>&`,按 Z 索引、空 `AtomBasis` 即不支持(`build_shell_list_from_table` 已在 `src/cpu/scf/basis_set.cpp:112-117` 抛错,本环零改动该逻辑)。角动量上限已达 l=3(`rys_eri.h`),def2-TZVP 第三周期的 f 壳与 aug-cc-pVDZ 的 d 壳均在既有引擎能力内。新符号:`BasisSet::Pople631pGs`、`BasisSet::AugCcPVDZ`(`basis_set.h` 枚举 + Doxygen),`basis_data::pople_631pgs()`、`basis_data::aug_ccpvdz()`;`basis_set_name` 返回 "6-31+G*" / "aug-cc-pVDZ";`ShellList` 构造器 switch 各加一臂;02 环引入的 per-set 纯球谐旗标登记处同步两行(Pople631pGs=cartesian-6d,AugCcPVDZ=spherical)。生成器扩展:`tools/gen_basis_data.py` 增加 "6-31+g*"→`pople_631pgs`、"aug-cc-pvdz"→`aug_ccpvdz` 的名字映射与元素清单,输出必须字节确定(同输入两次运行逐字节一致),头部 Regenerate 注释照旧记录完整命令。STO-3G 表不在本环范围。生命周期:表为 static 局部、首次调用构造,无所有权问题。依赖假设:01 环(生成器已恢复)、02 环(旗标已存在)先行落地。
 
+### 实现审计注记(2026-07-20,实现时落定)
+
+1. **OH⁻ 束缚性翻转的真实位置**:Domain basis 叙事预期"6-31G* 下
+   ε_HOMO ≥ 0 伪像";外部 PySCF 2.14.0 实测(r(OH)=0.9640 Å, cart=True)
+   6-31G* 已勉强束缚(−0.037774 Ha),真正的非束缚伪像在 STO-3G
+   (+0.251912 Ha)。回归按 ac-006 字面判据实现(逐基组对钉 ≤1e-6 Ha、
+   6-31+G* 严格更低且与钉值同号),并加钉 STO-3G 行保留真实的
+   非束缚→束缚符号翻转演示(REFERENCE.md"已知偏差"节同步记录)。
+2. **生成器新增广义缩并拆列**:PySCF `mol._basis` 里 aug-cc-pVDZ 的
+   s/p 块是多列广义缩并(同一原语组、nctr 列系数);原生成器只取第一列,
+   会静默丢基函数。现按列拆成独立 `ContractedShell`(张成 AO 空间严格
+   不变,列序循 PySCF nctr 序);四套分段缩并表(单列)输出不受影响。
+3. **单元测试目标名**:注册为 `test_basis_tables`(与 spec 文件名对齐,
+   实现指令固定 `./build/tests/test_basis_tables`);同目录旧测试沿用
+   `test_cpu_scf_*` 前缀,命名对齐留给后续统一环,不在本环顺手改。
+4. **生成器短形式**:`SETS` 注册表(名字→表干名+元素清单)允许
+   `gen_basis_data.py 6-31+g*` 短调用;表头 Regenerate 注释仍记录完整
+   显式命令,`--check` 两种形式均可复现逐字节输出。
+
 ## Files to create or modify
 
 - `tools/gen_basis_data.py` — 新基组名字映射 + 第三周期元素清单 + 字节确定性输出
@@ -44,14 +63,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests tests/cpu/scf/test_basis_tables.cpp(新表逐元素壳数/AO 数钉 PySCF `mol._basis`;四套既有表 Z=11–18 行非空;不支持 Z 经 ShellList 抛含基组名的 runtime_error)并注册 tests/CMakeLists.txt
-- [ ] Implement generator extension in tools/gen_basis_data.py(6-31+g*→pople_631pgs、aug-cc-pvdz→aug_ccpvdz、第三周期元素清单、字节确定输出)
-- [ ] Regenerate pople_631g.h / pople_631gs.h / def2_svp.h / def2_tzvp.h 补 Z=11–18,并验证字节可复现(同命令再跑一次 `git diff` 为空)
-- [ ] Implement new tables:生成并 check in basis_data/pople_631pgs.h 与 basis_data/aug_ccpvdz.h
-- [ ] Implement enum + dispatch in basis_set.h / basis_set.cpp(枚举、basis_set_name、switch、02 环 cart/sph 旗标两行、Doxygen @brief)
-- [ ] Add regression regressions/scf/diffuse_anion(OH⁻ ε_HOMO 束缚性翻转 6-31G* vs 6-31+G*;Cl⁻/6-31+G* 与 H2O/aug-cc-pVDZ RHF 总能量 vs 钉住的 PySCF 值 ≤1e-7 Ha;≤60 s)并注册 regressions/CMakeLists.txt
-- [ ] Extend docs/tutorial/ch04-basis-sets.md:命名法解码、OH⁻ 弥散演示、章末 PySCF 对照表行(标量进表)、molplot 基组收敛曲线
-- [ ] Run full check + test suite
+- [x] Write failing tests tests/cpu/scf/test_basis_tables.cpp(新表逐元素壳数/AO 数钉 PySCF `mol._basis`;四套既有表 Z=11–18 行非空;不支持 Z 经 ShellList 抛含基组名的 runtime_error)并注册 tests/CMakeLists.txt
+- [x] Implement generator extension in tools/gen_basis_data.py(6-31+g*→pople_631pgs、aug-cc-pvdz→aug_ccpvdz、第三周期元素清单、字节确定输出)
+- [x] Regenerate pople_631g.h / pople_631gs.h / def2_svp.h / def2_tzvp.h 补 Z=11–18,并验证字节可复现(同命令再跑一次 `git diff` 为空)
+- [x] Implement new tables:生成并 check in basis_data/pople_631pgs.h 与 basis_data/aug_ccpvdz.h
+- [x] Implement enum + dispatch in basis_set.h / basis_set.cpp(枚举、basis_set_name、switch、02 环 cart/sph 旗标两行、Doxygen @brief)
+- [x] Add regression regressions/scf/diffuse_anion(OH⁻ ε_HOMO 束缚性翻转 6-31G* vs 6-31+G*;Cl⁻/6-31+G* 与 H2O/aug-cc-pVDZ RHF 总能量 vs 钉住的 PySCF 值 ≤1e-7 Ha;≤60 s)并注册 regressions/CMakeLists.txt
+- [x] Extend docs/tutorial/ch04-basis-sets.md:命名法解码、OH⁻ 弥散演示、章末 PySCF 对照表行(标量进表)、molplot 基组收敛曲线
+- [x] Run full check + test suite
 
 ## Testing strategy
 
