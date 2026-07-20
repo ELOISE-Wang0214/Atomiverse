@@ -11,7 +11,8 @@ criteria:
       default_budget(), and a virtual destructor; CPUDriver<P> derives and implements it, with
       build_on = compile()+build_plan, run_nested_erased = run_nested, destroy_on = destroy_plan
       (the sub_driver.h:94-115 ops).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: PendingBinding + Plan node is a Component*/cpu::Driver variant threaded through build()
     type: code
@@ -21,7 +22,8 @@ criteria:
       Component* and DriverBinding{cpu::Driver*, budget}; Driver::build() (driver.h:219-225)
       compiles both node kinds into plan_; the driver-node alternative is device-parameterized
       so backends without nesting still compile.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: on(phase).add/add_ref driver overloads with ownership + budget default; bare add deleted
     type: code
@@ -31,7 +33,8 @@ criteria:
       (vector<unique_ptr<cpu::Driver>>); on(phase).add_ref(CPUDriver<InnerPhase>&, order, budget)
       borrows; budget<0 uses child.default_budget(); the bare add(driver) is deleted with a
       use-on(phase) message; the driver overloads are SFINAE-disabled on backends without nesting.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: CPU backend dispatches node kind; component probes skip driver-nodes
     type: code
@@ -42,7 +45,8 @@ criteria:
       component-oriented walks (for_each_pending cpu_driver.h:276, bind_halo_participants_ :303,
       constraint scan :191, validate_long_range_contract_ :335, validate_components) skip
       driver-nodes (they carry no Role).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: Native nesting runs the inner budget each outer iteration
     type: code
@@ -51,7 +55,8 @@ criteria:
       In test_driver_nesting, an inner Minimize bound via outer.on(md::Phase::end_of_step).add_ref(inner,50)
       runs up to its budget on each outer iteration, behaving identically to the deleted SubDriver
       path, built once and looped per outer step (no per-iteration allocation).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: Inner convergence cannot stop the outer loop (isolation preserved)
     type: code
@@ -60,7 +65,8 @@ criteria:
       With an inner loop that converges early, the outer loop still runs its full step budget;
       the assertion is preserved from the old test_sub_driver, backed by the unchanged run_nested
       ctx.loop re-point (cpu_driver.h:432-437) so the child verdict lands only on the child status_.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: Borrowed inner driver is inspectable after the parent run
     type: code
@@ -68,7 +74,8 @@ criteria:
     pass_when: |
       An inner driver bound via add_ref exposes converged()/stop_reason() reflecting its last
       nested run after outer.run() returns (the non-owning lvalue-registration contract).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-008
     summary: validate_binding_kinds_ unchanged for components; driver-nodes bypass it correctly
     type: code
@@ -78,7 +85,8 @@ criteria:
       target another workflow (test_driver_binding_kind passes); a driver-node has no default_bindings
       and is bound only via on(parent-phase), so its slot PhaseKind is trivially the parent's and the
       child's internal phase enum never reaches the parent's kind gate.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: sub_driver.h deleted; no SubDriver token; SCF untouched; CUDA additive
     type: code
@@ -88,7 +96,8 @@ criteria:
       no SubDriver token under include/, src/, tests/ (excluding git history); MeanFieldMethod is
       still a Component via HF (no SCF change this link); the facade variant change is additive and
       the driver overloads SFINAE-guarded so CUDA facade compiles unchanged.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-010
     summary: Whole suite green in seconds
     type: runtime
@@ -98,7 +107,8 @@ criteria:
       && cmake --build build -j && ctest --test-dir build --output-on-failure` passes the whole
       suite in seconds; test_cpu_driver_nesting passes and no existing driver/MD/minimizer/evaluate
       test regresses. No regressions/ case is added in 04a.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria — scf-driver-refactor-04a-nest

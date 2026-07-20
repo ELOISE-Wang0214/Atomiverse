@@ -5,6 +5,7 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/async/analysis_executor.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/step_timing.h"
 #include "atomiverse/facade/molrs_contract.h"
 
@@ -256,6 +257,16 @@ void Backend::build_components() {
         auto& slot = plan_->slots[s];
         op_handle_[s].reserve(slot.ops.size());
         for (auto& op : slot.ops) {
+            if (op.is_driver()) {
+                auto* nested = static_cast<cpu::Driver*>(op.nested_driver);
+                ATV_DEBUG("building nested driver");
+                nested->build_on(*this);
+                op_handle_[s].push_back(timing_.register_op(
+                    TimerKey{"nested_driver", slot.phase,
+                             static_cast<int>(md::StepTiming::Category::Other),
+                             ""}));
+                continue;
+            }
             const std::string nm = op.component->name();
             ATV_DEBUG("building component '{}'", nm);
             op.component->build(ctx);
@@ -281,6 +292,20 @@ void Backend::step(int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            if (op.is_driver()) {
+                auto* nested = static_cast<cpu::Driver*>(op.nested_driver);
+                const auto t0 = timing && have_handles
+                                    ? std::chrono::steady_clock::now()
+                                    : std::chrono::steady_clock::time_point{};
+                nested->run_nested_erased(context_, *frame_, op.nested_budget);
+                if (timing && have_handles) {
+                    const auto t1 = std::chrono::steady_clock::now();
+                    timing_.record(
+                        op_handle_[s][o],
+                        std::chrono::duration<double>(t1 - t0).count());
+                }
+                continue;
+            }
             // Resolution-discipline window (frame-block-01): a component that
             // looks mapping keys up inside a loop blows the budget and throws
             // — the 13.7x cliff is machine-checked, not reviewed.
@@ -320,6 +345,10 @@ void Backend::build_plan(const Plan<cpu::Component>& plan) {
     BuildContext ctx{context_, *frame_};
     for (const auto& slot : plan.slots) {
         for (const auto& op : slot.ops) {
+            if (op.is_driver()) {
+                static_cast<cpu::Driver*>(op.nested_driver)->build_on(*this);
+                continue;
+            }
             ATV_DEBUG("building nested component '{}'", op.component->name());
             op.component->build(ctx);
         }
@@ -333,6 +362,11 @@ void Backend::step_plan(const Plan<cpu::Component>& plan, int step_idx) {
         for (const auto& op : slot.ops) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
+            if (op.is_driver()) {
+                static_cast<cpu::Driver*>(op.nested_driver)
+                    ->run_nested_erased(context_, *frame_, op.nested_budget);
+                continue;
+            }
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
             const auto saved = frame_->resolution_window();
             frame_->begin_resolution_window(kResolveBudgetPerLaunch);
@@ -348,9 +382,13 @@ void Backend::destroy_plan(const Plan<cpu::Component>& plan) {
     for (int s = static_cast<int>(plan.slots.size()) - 1; s >= 0; --s) {
         const auto& slot = plan.slots[s];
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
-            ATV_DEBUG("destroying nested component '{}'",
-                      slot.ops[o].component->name());
-            slot.ops[o].component->destroy(ctx);
+            const auto& op = slot.ops[o];
+            if (op.is_driver()) {
+                static_cast<cpu::Driver*>(op.nested_driver)->destroy_on(*this);
+                continue;
+            }
+            ATV_DEBUG("destroying nested component '{}'", op.component->name());
+            op.component->destroy(ctx);
         }
     }
 }
@@ -366,6 +404,8 @@ void Backend::run_slot_(int slot_index, int step_idx) {
         if (slot.phase != slot_index)
             continue;
         for (auto& op : slot.ops) {
+            if (op.is_driver())
+                continue; // nested drivers are not force-phase trial replayers
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
             // This replay runs INSIDE the caller's launch (an optimizer's line
             // search). Give each replayed component its own resolution window
@@ -403,6 +443,8 @@ Backend::collect_component_memory() const {
         std::vector<const cpu::Component*> seen;
         for (const auto& slot : plan_->slots) {
             for (const auto& op : slot.ops) {
+                if (op.is_driver())
+                    continue;
                 const cpu::Component* c = op.component;
                 if (!c || std::find(seen.begin(), seen.end(), c) != seen.end())
                     continue;
@@ -437,9 +479,13 @@ void Backend::destroy_components() {
     for (int s = static_cast<int>(plan_->slots.size()) - 1; s >= 0; --s) {
         auto& slot = plan_->slots[s];
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
-            ATV_DEBUG("destroying component '{}'",
-                      slot.ops[o].component->name());
-            slot.ops[o].component->destroy(ctx);
+            auto& op = slot.ops[o];
+            if (op.is_driver()) {
+                static_cast<cpu::Driver*>(op.nested_driver)->destroy_on(*this);
+                continue;
+            }
+            ATV_DEBUG("destroying component '{}'", op.component->name());
+            op.component->destroy(ctx);
         }
     }
 }

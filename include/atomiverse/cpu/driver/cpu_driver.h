@@ -171,9 +171,10 @@ struct PhaseTraits<ATV::scf::Phase> {
 
 /// @brief CPU-backend loop node — the one class every CPU preset derives from.
 template <typename PhaseEnum>
-class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
+class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
+                  public cpu::Driver {
   public:
-    using Base = Driver<PhaseEnum, cpu::device_tag>;
+    using Base = ATV::Driver<PhaseEnum, cpu::device_tag>;
     using Traits = PhaseTraits<PhaseEnum>;
 
     /// @brief Compile the Plan after installing infrastructure and
@@ -284,23 +285,24 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// (including any auto-injected by `install_defaults()`).
     virtual void validate_components() const = 0;
 
-    /// @brief Walk every (component, phase, order) pending binding.
+    /// @brief Walk every **component** pending binding (driver-nodes skipped).
     /// Components with multiple `default_bindings()` entries appear once
     /// per binding — duplicate-tolerant predicates expected.
     template <typename Fn>
     void for_each_pending(Fn&& fn) const {
         for (const auto& pb : this->pending_) {
+            if (pb.is_driver())
+                continue;
             fn(*pb.component);
         }
     }
 
-    /// @brief Mutable variant (named per the `cuda_driver.cuh`
-    /// `for_each_pending_mut` precedent) — the halo-protocol probes
-    /// (`halo_participant()`) are non-const because the bind pass hands
-    /// endpoints a participant list to store.
+    /// @brief Mutable component walk (driver-nodes skipped).
     template <typename Fn>
     void for_each_pending_mut(Fn&& fn) {
         for (auto& pb : this->pending_) {
+            if (pb.is_driver())
+                continue;
             fn(*pb.component);
         }
     }
@@ -316,6 +318,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         std::vector<cpu::HaloParticipant*> endpoints;
         std::unordered_set<const cpu::Component*> seen;
         for (auto& pb : this->pending_) {
+            if (pb.is_driver())
+                continue;
             cpu::Component* c = pb.component;
             if (!seen.insert(c).second)
                 continue;
@@ -649,16 +653,31 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     //
     // Type erasure happens at the NODE boundary, never at the stage boundary: the child
     // keeps its own Phase ENUM, distinct from its parent's, and the two never have to
-    // agree about anything. @see cpu::SubDriver, which is the adapter that puts one in a
-    // slot.
+    // agree about anything. A nested driver is bound via
+    // `on(parent_phase).add(child, budget)` — no Component adapter.
 
     /// @brief Compile this loop's Plan without running it. The nested `build()`.
     ///
-    /// A sub-driver is built once, when its PARENT is built, and it allocates nothing
-    /// per outer iteration. Identical to `build()` — it *is* `build()` — and named for
-    /// the call site so a reader of `SubDriver::build` can see that the child's Plan is
-    /// compiled exactly once.
+    /// A nested driver is built once, when its PARENT is built, and it allocates
+    /// nothing per outer iteration. Identical to `build()` — it *is* `build()`.
     void compile() { this->build(); }
+
+    /// @brief `cpu::Driver` — compile Plan and build components on the parent Runtime.
+    void build_on(cpu::Backend& rt) override {
+        compile();
+        rt.build_plan(this->plan());
+    }
+
+    /// @brief `cpu::Driver` — run this loop nested on a borrowed Context/Frame.
+    int run_nested_erased(cpu::Context& ctx, cpu::Frame& f, int budget) override {
+        return run_nested(ctx, f, budget);
+    }
+
+    /// @brief `cpu::Driver` — destroy components on the parent Runtime.
+    void destroy_on(cpu::Backend& rt) override { rt.destroy_plan(this->plan()); }
+
+    /// @brief Default nested budget (presets may override; methods set max_iter in 04b).
+    int default_budget() const override { return 0; }
 
     /// @brief Run this loop on a BORROWED Runtime — the nested entry point.
     ///

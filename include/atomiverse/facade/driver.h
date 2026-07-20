@@ -4,6 +4,10 @@
 /// Backend-agnostic template: DeviceTag selects CPU or CUDA at compile time.
 /// All method bodies are defined inline (template class). Explicit
 /// instantiations live in src/cpu/driver/driver.cpp and src/cuda/driver/driver.cu.
+///
+/// Plan slots hold a Component* **or** a nested-driver binding (CPU only).
+/// Nested drivers are registered via `on(phase).add(driver, order, budget)` /
+/// `add_ref` and erased as `cpu::Driver*` (stored as void* in pending/plan).
 #pragma once
 
 #include <memory>
@@ -16,6 +20,7 @@
 #include "atomiverse/core/backend_traits.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/device.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/facade/plan.h"
@@ -24,26 +29,22 @@
 namespace ATV {
 
 /// @brief GPU profiler type held by `Driver` (CUDA-free PIMPL facade).
-///
-/// `cuda::Timer` has a complete CUDA-free definition (`cuda/timer.h`)
-/// with all special members declared and defined out-of-line in
-/// `src/cuda/device/timer.cu`. This lets every translation unit — CUDA or not —
-/// hold and destroy a `std::unique_ptr<Timer>` member. On non-CUDA builds
-/// the profiler is simply never constructed (`enable_timing()` is a
-/// no-op for `cpu::device_tag`).
 using Timer = cuda::Timer;
 
 namespace detail {
-/// @brief Unresolved component binding collected before `Driver::build()`.
+/// @brief Unresolved binding collected before `Driver::build()`.
 ///
-/// The driver stores these lightweight records while the user is still calling
-/// `add()` and `on(...).add(...)`. `PlanBuilder` later resolves them into
-/// sorted `StageSlot` operations.
+/// Exactly one of `component` / `nested_driver` is non-null.
 template <typename Component>
 struct PendingBinding {
-    int phase;            ///< Target phase index.
-    int order;            ///< Ordering within the phase (lower runs earlier).
-    Component* component; ///< Non-owning pointer to the registered component.
+    int phase = 0;              ///< Target phase index.
+    int order = 0;              ///< Ordering within the phase (lower runs earlier).
+    Component* component = nullptr; ///< Component node.
+    void* nested_driver = nullptr;  ///< Nested-driver node (`cpu::Driver*`).
+    int nested_budget = 0;          ///< Budget for nested-driver nodes.
+
+    /// @brief True when this binding is a nested driver.
+    bool is_driver() const { return nested_driver != nullptr; }
 };
 } // namespace detail
 
@@ -53,15 +54,7 @@ class PhaseBuilder {
     using Component = typename backend_traits<DeviceTag>::component_type;
 
   public:
-    /// @brief Register a component explicitly on the current phase.
-    ///
-    /// Rvalues are moved into the driver. Borrowing is deliberately a different
-    /// spelling (`add_ref`) so the Plan's lifetime cannot be misread at the call
-    /// site.
-    /// @tparam Comp Concrete component type.
-    /// @param comp Component instance.
-    /// @param order Ordering within the phase (lower runs earlier).
-    /// @return `*this` for fluent chaining.
+    /// @brief Register a component explicitly on the current phase (owned rvalue).
     template <typename Comp,
               std::enable_if_t<
                   std::is_base_of_v<Component, std::remove_reference_t<Comp>>
@@ -72,7 +65,8 @@ class PhaseBuilder {
         auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
         auto* raw = ptr.get();
         owned_->push_back(std::move(ptr));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        bindings_->push_back(
+            {ATV::slot_of(phase_), order, raw, nullptr, 0});
         return *this;
     }
 
@@ -84,16 +78,64 @@ class PhaseBuilder {
             throw std::invalid_argument("PhaseBuilder::add: null component");
         Component* raw = comp.get();
         owned_->push_back(std::move(comp));
-        bindings_->push_back({ATV::slot_of(phase_), order, raw});
+        bindings_->push_back(
+            {ATV::slot_of(phase_), order, raw, nullptr, 0});
         return *this;
     }
 
     /// @brief Borrow a component whose lifetime is owned by the caller.
-    template <typename Comp>
+    ///
+    /// Prefer Component binding when the type is dual-identity
+    /// (Component + cpu::Driver), e.g. transitional MeanFieldMethod.
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
     PhaseBuilder& add_ref(Comp& comp, int order = 0) {
-        static_assert(std::is_base_of_v<Component, Comp>,
-                      "add_ref requires a backend component subclass");
-        bindings_->push_back({ATV::slot_of(phase_), order, &comp});
+        bindings_->push_back(
+            {ATV::slot_of(phase_), order, &comp, nullptr, 0});
+        return *this;
+    }
+
+    /// @brief Own a nested driver on this phase (CPU only).
+    ///
+    /// Moves `child` into the parent's `owned_drivers_`. `budget < 0` uses
+    /// `child.default_budget()`. Disabled for types that are also Components
+    /// (e.g. transitional MeanFieldMethod = HF + CPUDriver) so they keep
+    /// binding as force/energy components until 04b drops the dual identity.
+    template <
+        typename Nested,
+        std::enable_if_t<
+            std::is_same_v<DeviceTag, cpu::device_tag>
+                && std::is_base_of_v<cpu::Driver, std::remove_reference_t<Nested>>
+                && !std::is_base_of_v<Component, std::remove_reference_t<Nested>>
+                && !std::is_lvalue_reference_v<Nested>,
+            int> = 0>
+    PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
+        using N = std::remove_reference_t<Nested>;
+        auto ptr = std::make_unique<N>(std::forward<Nested>(child));
+        cpu::Driver* raw = ptr.get();
+        const int b = (budget < 0) ? raw->default_budget() : budget;
+        owned_drivers_->push_back(std::move(ptr));
+        bindings_->push_back(
+            {ATV::slot_of(phase_), order, nullptr, static_cast<void*>(raw), b});
+        return *this;
+    }
+
+    /// @brief Borrow a nested driver on this phase (CPU only).
+    ///
+    /// Non-owning: the caller may inspect `child.converged()` after the parent
+    /// run. `budget < 0` uses `child.default_budget()`. See rvalue `add` for
+    /// the Component dual-identity exclusion.
+    template <
+        typename Nested,
+        std::enable_if_t<std::is_same_v<DeviceTag, cpu::device_tag>
+                             && std::is_base_of_v<cpu::Driver, Nested>
+                             && !std::is_base_of_v<Component, Nested>,
+                         int> = 0>
+    PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
+        cpu::Driver* raw = &child;
+        const int b = (budget < 0) ? raw->default_budget() : budget;
+        bindings_->push_back(
+            {ATV::slot_of(phase_), order, nullptr, static_cast<void*>(raw), b});
         return *this;
     }
 
@@ -105,10 +147,12 @@ class PhaseBuilder {
     template <typename PE, typename DT>
     friend class Driver;
     PhaseBuilder(std::vector<detail::PendingBinding<Component>>* b,
-                 std::vector<std::unique_ptr<Component>>* o, PhaseEnum p)
-        : bindings_(b), owned_(o), phase_(p) {}
+                 std::vector<std::unique_ptr<Component>>* o,
+                 std::vector<std::unique_ptr<cpu::Driver>>* d, PhaseEnum p)
+        : bindings_(b), owned_(o), owned_drivers_(d), phase_(p) {}
     std::vector<detail::PendingBinding<Component>>* bindings_;
     std::vector<std::unique_ptr<Component>>* owned_;
+    std::vector<std::unique_ptr<cpu::Driver>>* owned_drivers_;
     PhaseEnum phase_;
 };
 
@@ -132,6 +176,7 @@ class Driver {
     Driver(Driver&& o) noexcept
         : pending_(std::move(o.pending_)),
           owned_components_(std::move(o.owned_components_)),
+          owned_drivers_(std::move(o.owned_drivers_)),
           plan_(std::move(o.plan_)), backend_(std::move(o.backend_)),
           timer_(std::move(o.timer_)) {}
 
@@ -140,6 +185,7 @@ class Driver {
             shutdown();
             pending_ = std::move(o.pending_);
             owned_components_ = std::move(o.owned_components_);
+            owned_drivers_ = std::move(o.owned_drivers_);
             plan_ = std::move(o.plan_);
             backend_ = std::move(o.backend_);
             timer_ = std::move(o.timer_);
@@ -147,17 +193,13 @@ class Driver {
         return *this;
     }
 
-    /// @brief Add a component using its `default_bindings()`.
-    ///
-    /// The driver owns the rvalue. Borrowing uses the intentionally different
-    /// `add_ref(component)` spelling.
-    ///
-    /// @tparam Comp Concrete component type (deduced).
-    /// @param comp Component instance.
+    /// @brief Add a component using its `default_bindings()` (owned rvalue).
     template <typename Comp,
               std::enable_if_t<
                   std::is_base_of_v<Component, std::remove_reference_t<Comp>>
-                      && !std::is_lvalue_reference_v<Comp>,
+                      && !std::is_lvalue_reference_v<Comp>
+                      && !std::is_base_of_v<cpu::Driver,
+                                            std::remove_reference_t<Comp>>,
                   int> = 0>
     void add(Comp&& comp) {
         using C = std::remove_reference_t<Comp>;
@@ -179,14 +221,15 @@ class Driver {
         Component* raw = comp.get();
         owned_components_.push_back(std::move(comp));
         for (const auto& db : bindings)
-            pending_.push_back({db.phase, db.order, raw});
+            pending_.push_back({db.phase, db.order, raw, nullptr, 0});
     }
 
     /// @brief Borrow a component whose lifetime is owned by the caller.
-    template <typename Comp>
+    template <typename Comp,
+              std::enable_if_t<std::is_base_of_v<Component, Comp>
+                                   && !std::is_base_of_v<cpu::Driver, Comp>,
+                               int> = 0>
     void add_ref(Comp& comp) {
-        static_assert(std::is_base_of_v<Component, Comp>,
-                      "add_ref requires a backend component subclass");
         auto bindings = comp.default_bindings();
         if (bindings.empty())
             throw std::runtime_error(
@@ -194,8 +237,20 @@ class Driver {
                 + "' has no default bindings. Use .on(phase).add_ref().");
         validate_binding_kinds_(comp.name(), bindings);
         for (const auto& db : bindings)
-            pending_.push_back({db.phase, db.order, &comp});
+            pending_.push_back({db.phase, db.order, &comp, nullptr, 0});
     }
+
+    /// Drivers have no default bindings — use `.on(phase).add(...)`.
+    template <typename Nested,
+              std::enable_if_t<std::is_base_of_v<cpu::Driver,
+                                                 std::remove_reference_t<Nested>>,
+                               int> = 0>
+    void add(Nested&&) = delete;
+
+    /// Drivers have no default bindings — use `.on(phase).add_ref(...)`.
+    template <typename Nested,
+              std::enable_if_t<std::is_base_of_v<cpu::Driver, Nested>, int> = 0>
+    void add_ref(Nested&) = delete;
 
     /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
     template <typename Comp>
@@ -205,21 +260,24 @@ class Driver {
     /// @param phase Phase value returned by the driver's `Phase` enum.
     /// @return A `PhaseBuilder` bound to that phase.
     PhaseBuilder<PhaseEnum, DeviceTag> on(PhaseEnum phase) {
-        return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_,
-                                                  phase);
+        return PhaseBuilder<PhaseEnum, DeviceTag>(
+            &pending_, &owned_components_, &owned_drivers_, phase);
     }
 
     /// @brief Read-only access to the compiled Plan (after `build()`).
-    /// Useful for tests that need to compare Plans built two ways
-    /// (e.g. Plan-equivalence between the categorical setter API and
-    /// the raw `add()`/`on()` path).
     const Plan<Component>& plan() const { return plan_; }
 
     /// @brief Compile the execution Plan.
     void build() {
         PlanBuilder<Component> builder;
-        for (auto& pb : pending_)
-            builder.add({pb.phase, pb.order, pb.component});
+        for (auto& pb : pending_) {
+            if (pb.is_driver())
+                builder.add({pb.phase, pb.order, nullptr, pb.nested_driver,
+                             pb.nested_budget});
+            else
+                builder.add(
+                    {pb.phase, pb.order, pb.component, nullptr, 0});
+        }
         pending_.clear();
         plan_ = builder.build(ATV::slot_count<PhaseEnum>());
     }
@@ -242,10 +300,9 @@ class Driver {
   protected:
     // Internals are protected (not private) so the backend loop node
     // (cpu::CPUDriver / cuda::CUDADriver) can drive the per-iteration loop itself.
-    // User code does not subclass `Driver<>` directly — it uses a preset
-    // (cpu::md::MD, cpu::minimizer::Minimize, …) or subclasses the loop node.
     std::vector<detail::PendingBinding<Component>> pending_;
     std::vector<std::unique_ptr<Component>> owned_components_;
+    std::vector<std::unique_ptr<cpu::Driver>> owned_drivers_;
     Plan<Component> plan_;
     std::unique_ptr<BackendT> backend_;
     std::unique_ptr<Timer> timer_;
@@ -253,20 +310,6 @@ class Driver {
   private:
     /// @brief Registration-time gate: reject default bindings built from
     ///        another workflow's Phase enum.
-    ///
-    /// The five Phase enums share overlapping numeric values (all start at
-    /// 0), so an unchecked cross-workflow binding lands on a syntactically
-    /// valid but semantically wrong slot (e.g. `evaluate::evaluate` == 1 ==
-    /// `md::post_integrate`) and runs silently in the wrong lifecycle
-    /// position. The `PhaseKind` discriminant carried by every binding (via
-    /// `ATV::make_binding`) makes the mismatch detectable exactly where the
-    /// user can fix it — the `add()` call.
-    ///
-    /// @param name Component name, for the error message.
-    /// @param bindings Bindings returned by the component's
-    ///        `default_bindings()`.
-    /// @throws std::runtime_error naming both workflows and pointing at
-    ///         `.on(phase).add()` when any binding's kind mismatches.
     void
     validate_binding_kinds_(const std::string& name,
                             const std::vector<DefaultBinding>& bindings) const {

@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 04a 原生 Driver 节点嵌套（cpu::Driver 擦除基 + PendingBinding 变体，删 SubDriver）
 slug: scf-driver-refactor-04a-nest
-status: approved
+status: done
 chain: scf-driver-refactor
 link: 04a/08
 created: 2026-07-20
@@ -63,13 +63,13 @@ created: 2026-07-20
 - `tests/CMakeLists.txt` — 更新该测试注册名。
 
 ## Tasks
-- [ ] Migrate tests/cpu/driver/test_sub_driver.cpp to a failing native-API test tests/cpu/driver/test_driver_nesting.cpp (bind an inner driver via on(phase).add / add_ref, assert it runs its budget each outer iteration, inner convergence cannot stop outer, and borrowed-form post-run inner.converged()/stop_reason()) and update tests/CMakeLists
-- [ ] Add cpu::Driver erased base + node trait (cpu/driver/driver.h) and make CPUDriver<P> implement build_on/run_nested_erased/destroy_on/default_budget, promoting the sub_driver.h:94-115 ops, with Doxygen briefs
-- [ ] Make facade PendingBinding + Plan/PlanBuilder nodes a variant<Component*, DriverBinding> and thread both kinds through Driver::build() (facade/driver.h:219-225, plan.h)
-- [ ] Add on(phase).add(driver&&, order, budget)/add_ref(driver&, order, budget) overloads (own via owned_drivers_, borrow), budget defaulting to child.default_budget(); delete the bare add(driver) with a use-on(phase) message; SFINAE-guard so backends without nesting compile unchanged
-- [ ] Dispatch node kind in the CPU backend (backend.h/backend.cpp: build_components→build_on, step→run_nested_erased, destroy_components→destroy_on) and make for_each_pending + the direct pending_ probes (cpu_driver.h:191,303,335) node-aware so component probes skip driver-nodes
-- [ ] Delete cpu/driver/sub_driver.h and the old test_sub_driver.cpp; sweep any SubDriver references
-- [ ] Run full check + test suite
+- [x] Migrate tests/cpu/driver/test_sub_driver.cpp to a failing native-API test tests/cpu/driver/test_driver_nesting.cpp (bind an inner driver via on(phase).add / add_ref, assert it runs its budget each outer iteration, inner convergence cannot stop outer, and borrowed-form post-run inner.converged()/stop_reason()) and update tests/CMakeLists
+- [x] Add cpu::Driver erased base + node trait (cpu/driver/driver.h) and make CPUDriver<P> implement build_on/run_nested_erased/destroy_on/default_budget, promoting the sub_driver.h:94-115 ops, with Doxygen briefs
+- [x] Make facade PendingBinding + Plan/PlanBuilder nodes a variant<Component*, DriverBinding> and thread both kinds through Driver::build() (facade/driver.h:219-225, plan.h)
+- [x] Add on(phase).add(driver&&, order, budget)/add_ref(driver&, order, budget) overloads (own via owned_drivers_, borrow), budget defaulting to child.default_budget(); delete the bare add(driver) with a use-on(phase) message; SFINAE-guard so backends without nesting compile unchanged
+- [x] Dispatch node kind in the CPU backend (backend.h/backend.cpp: build_components→build_on, step→run_nested_erased, destroy_components→destroy_on) and make for_each_pending + the direct pending_ probes (cpu_driver.h:191,303,335) node-aware so component probes skip driver-nodes
+- [x] Delete cpu/driver/sub_driver.h and the old test_sub_driver.cpp; sweep any SubDriver references
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **原生嵌套（单元，秒级）**：`test_driver_nesting` 用 `cpu::minimizer::Minimize` 作内层、`cpu::md::MD` 作外层，`outer.on(md::Phase::end_of_step).add_ref(inner, /*budget=*/50)`（及 rvalue `add(...)` 拥有式），断言：内层每个外层迭代跑到其预算/收敛；外层跑满自己的步数不被内层收敛打断（**内层收敛不能停外层**，复用 `ctx.loop` 重指）；借用式 run 后 `inner.converged()`/`stop_reason()` 可读。

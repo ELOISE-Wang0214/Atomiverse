@@ -218,7 +218,7 @@ atv_add_cpp_test(test_cpu_md_write_sets  cpu/md/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
 atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
 atv_add_cpp_test(test_cpu_loop_handler    cpu/driver/test_loop_handler.cpp)
-atv_add_cpp_test(test_cpu_sub_driver      cpu/driver/test_sub_driver.cpp)
+atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)
 # scf-driver-refactor-01-plumb: scf::Phase / PhaseKind::SCF / PhaseTraits<scf::Phase>
 # / the Criterion component kind + driver pull-poll. Pure type-foundation plumbing —
 # no consumer yet.

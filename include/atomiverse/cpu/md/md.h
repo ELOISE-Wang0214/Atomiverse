@@ -288,7 +288,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
     /// `first_partition=true` re-scan that misinterprets the previous
     /// stage's stale frame tail as owned atoms.
     void adopt_dd(std::unique_ptr<cpu::md::mpi::DomainDecomposition> dd) {
-        using Base = Driver<ATV::md::Phase, cpu::device_tag>;
+        using Base = ATV::Driver<ATV::md::Phase, cpu::device_tag>;
         if (!this->backend_)
             this->backend_ = std::make_unique<typename Base::BackendT>();
         this->backend_->adopt_dd(std::move(dd));

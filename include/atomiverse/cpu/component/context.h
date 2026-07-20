@@ -187,7 +187,7 @@ struct LoopServices {
 ///
 /// Non-owning, and deliberately a back-pointer: the Backend owns the Context, and
 /// publishes itself here in `init()` so a node reached through a `LaunchContext` can ask
-/// the Runtime to execute a Plan. @see cpu::SubDriver
+/// the Runtime to execute a Plan. @see cpu::Driver
 struct ExecServices {
     /// @brief The Backend running this node tree. Null outside a run.
     Backend* runtime = nullptr;
