@@ -27,11 +27,13 @@ __all__ = [
 
 INSTALL_HINT = (
     "The Atomiverse C++ extension (_atomiverse) is not installed.\n"
-    "Install the native compute backend with:\n"
+    "Build it with the staged cmake CLI:\n"
+    "  python -m atomiverse config md --src /path/to/Atomiverse\n"
+    "  python -m atomiverse compile\n"
     "  python -m atomiverse install\n"
-    "Alternatively, build from a source checkout:\n"
+    "Or configure/build manually:\n"
     "  cmake -B build -DATV_BUILD_PYTHON=ON && cmake --build build\n"
-    "Then install the wheel or add the build directory to PYTHONPATH."
+    "Then install into the env or add the build directory to PYTHONPATH."
 )
 
 

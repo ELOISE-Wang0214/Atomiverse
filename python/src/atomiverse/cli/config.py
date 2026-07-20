@@ -319,7 +319,7 @@ def resolve_defines(cfg: InstallConfig) -> Dict[str, str]:
     if not enabled:
         raise ConfigError(
             "empty install: enable at least one module "
-            "(e.g. `install md`, or [modules] in --config)"
+            "(e.g. `config md`, or [modules] in --config)"
         )
 
     defines: Dict[str, str] = {}
