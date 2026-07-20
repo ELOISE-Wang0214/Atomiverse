@@ -12,7 +12,8 @@ criteria:
       (e.g. RealMatrix& F_alpha), plus discrete parameters; the isolated unit tests wire
       test-local matrices into those constructors. No DIIS history is shared state
       (it is a MixStage member).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: FockStage reproduces HamiltonianBuilder bit-identically, config-free
     type: code
@@ -24,7 +25,8 @@ criteria:
       constructor takes discrete parameters only (no SCFConfig token anywhere in the
       FockStage or its HamiltonianBuilder discrete entry); build() allocates, launch()
       allocates no fixed buffer.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: MixStage reproduces DIIS error + extrapolation + level shift; history internal
     type: code
@@ -36,7 +38,8 @@ criteria:
       across restricted (single-channel) and unrestricted (dual-channel) branches; the
       DIIS history is a member of MixStage (not shared state) and is cleared by a
       reset() the method driver calls at run start.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: DiagonalizeStage privately holds the closed EigenSolver kernel
     type: code
@@ -46,7 +49,8 @@ criteria:
       scf::Phase::diagonalize, holds EigenSolver as a private member, and for a fixed
       workspace F produces C/eig bit-identical to EigenSolver::step (n_dropped==0) or
       step_orthogonal (n_dropped>0), reusing the alpha result when restricted.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: DensityStage reproduces density build + damping + energy for all branches
     type: code
@@ -58,7 +62,8 @@ criteria:
       bit-identical to internal::DensityBuilder + the scf_solver.cpp energy formulas
       across all four branches (restricted/unrestricted × HF/KS), using old P for HF
       and new P for KS.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: ScfConverged is one Criterion component — launch measures, verdict judges
     type: code
@@ -72,7 +77,8 @@ criteria:
       |delta_energy_|<tol_energy && diis_error_<tol_grad, else Verdict::Continue,
       judging its own members only (never the iteration counter); the component never
       writes loop status (verdict is driver-pulled).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: New stages are config-free Components wired by named references via ctors
     type: code
@@ -83,7 +89,8 @@ criteria:
       config-struct / Workspace-bag references (internal included); each stage inherits
       cpu::Component, declares its phase via make_binding, guards work with
       ctx.at(scf::Phase::…), and accesses state only through its ctor-wired references.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-008
     summary: New stage sources registered and documented
     type: docs
@@ -103,7 +110,8 @@ criteria:
       whole suite in seconds; test_cpu_scf_stages passes and every pre-existing
       tests/cpu/scf/* test (test_scf_solver, test_uhf_solver, test_uks_solver, …) still
       passes with unchanged energies (old ScfLoop/SCFSolver remains authoritative).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria — scf-driver-refactor-02-stages

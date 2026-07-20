@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 02 阶段组件化（五阶段组件，状态经构造器引用直连 + ScfConverged）
 slug: scf-driver-refactor-02-stages
-status: approved
+status: code-complete
 created: 2026-07-20
 chain: scf-driver-refactor
 link: 02/05
@@ -58,14 +58,14 @@ link: 02/05
 - `tests/CMakeLists.txt` — 注册 `test_cpu_scf_stages`。
 
 ## Tasks
-- [ ] Write failing tests for the SCF stage components + ScfConverged (tests/cpu/scf/stages/test_scf_stages.cpp), wiring test-local matrices into the stage constructors by reference, and register them in tests/CMakeLists.txt
-- [ ] Implement FockStage (bind fock) wrapping HamiltonianBuilder and generalize HamiltonianBuilder with a config-free discrete-parameter entry, in cpu/scf/stages/fock_stage.{h,cpp} + internal/hamiltonian_builder.{h,cpp}
-- [ ] Implement MixStage (bind mix) wrapping diis_error + DIISMixer + apply_level_shift with component-owned DIIS history, in cpu/scf/stages/mix_stage.{h,cpp}
-- [ ] Implement DiagonalizeStage (bind diagonalize) privately holding internal::EigenSolver (closed kernel, not a Component) in cpu/scf/stages/diagonalize_stage.h
-- [ ] Implement DensityStage (bind density) wrapping DensityBuilder + damping + the four-branch energy evaluation in cpu/scf/stages/density_stage.{h,cpp}
-- [ ] Implement ScfConverged (Criterion kind, bind check) measuring delta_energy_/diis_error_ into its own plainly-named members in launch() and judging tolerances in verdict(), in cpu/scf/stages/scf_converged.h
-- [ ] Register the new stage sources in the root CMakeLists.txt ATV_BUILD_RHF list
-- [ ] Run full check + test suite
+- [x] Write failing tests for the SCF stage components + ScfConverged (tests/cpu/scf/stages/test_scf_stages.cpp), wiring test-local matrices into the stage constructors by reference, and register them in tests/CMakeLists.txt
+- [x] Implement FockStage (bind fock) wrapping HamiltonianBuilder and generalize HamiltonianBuilder with a config-free discrete-parameter entry, in cpu/scf/stages/fock_stage.{h,cpp} + internal/hamiltonian_builder.{h,cpp}
+- [x] Implement MixStage (bind mix) wrapping diis_error + DIISMixer + apply_level_shift with component-owned DIIS history, in cpu/scf/stages/mix_stage.{h,cpp}
+- [x] Implement DiagonalizeStage (bind diagonalize) privately holding internal::EigenSolver (closed kernel, not a Component) in cpu/scf/stages/diagonalize_stage.h
+- [x] Implement DensityStage (bind density) wrapping DensityBuilder + damping + the four-branch energy evaluation in cpu/scf/stages/density_stage.{h,cpp}
+- [x] Implement ScfConverged (Criterion kind, bind check) measuring delta_energy_/diis_error_ into its own plainly-named members in launch() and judging tolerances in verdict(), in cpu/scf/stages/scf_converged.h
+- [x] Register the new stage sources in the root CMakeLists.txt ATV_BUILD_RHF list
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **Happy path（隔离对拍，unit tier）**：每个 stage 组件对同一输入产出与其所包装 helper **逐位一致**的输出——`FockStage.launch(ws)` 的 F/J/E_xc == `HamiltonianBuilder`；`MixStage` 的 err 与外推 F == `diis_error()`+`DIISMixer`+`apply_level_shift`；`DiagonalizeStage` 的 C/eig == `EigenSolver`；`DensityStage` 的 P/E == `DensityBuilder`+阻尼+能量式；`ScfConverged.launch()` 算出的 `delta_energy_`/`diis_error_` 数值正确，`verdict()` 在给定量下返回 `Converged`/`Continue`。测试用小尺寸合成矩阵（如 2×2 或 H₂/STO-3G 规模的单步输入），**绝不跑整轮 SCF 自洽**（那是 e2e，禁入 tests/）。

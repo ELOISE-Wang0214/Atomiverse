@@ -487,6 +487,15 @@ if(ATV_BUILD_RHF)
     # The grep gate needs the source tree — ctest runs from the build dir.
     target_compile_definitions(test_cpu_scf_solver_internal_isolation
         PRIVATE ATV_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    # scf-driver-refactor-02-stages: five scf::Phase stage components wrapping
+    # the internal SCF helpers, isolated bit-identical parity (unit tier).
+    atv_add_cpp_test(test_cpu_scf_stages cpu/scf/stages/test_scf_stages.cpp)
+    # Bit-identical parity compares two independent builds of the same kernels;
+    # parallel reduction order (OpenMP / BLAS) is ULP-non-deterministic, so this
+    # test pins serial execution. Do NOT loosen the assertions to tolerances —
+    # the spec mandates bit-identity.
+    set_tests_properties(test_cpu_scf_stages PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
     atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)

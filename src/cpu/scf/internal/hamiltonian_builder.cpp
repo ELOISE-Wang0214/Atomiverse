@@ -14,19 +14,28 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-void HamiltonianBuilder::prepare(const IntegralPack& integrals,
-                                 const SCFConfig& config) {
+// ── Shared discrete cores ────────────────────────────────────────────────────
+// The one site the setup / Fock-build logic lives. Both the config-taking
+// overloads (which unpack their config) and the config-free discrete overloads
+// (which forward straight through) call these, so the two entries are
+// bit-identical by construction — the bodies below moved here verbatim from the
+// former config-taking overloads, with each `config.<field>` replaced by the
+// matching discrete parameter.
+
+void HamiltonianBuilder::prepare_core(const IntegralPack& integrals, bool is_hf,
+                                      GridLevel grid_level, int n_radial,
+                                      int n_angular,
+                                      const MolecularGrid* fixed_grid) {
     if (!integrals.shells.empty()) {
         sp_block_ = build_shell_block_pair_list(integrals);
         sp_ = build_shell_pair_list(integrals);
     }
 
-    const bool is_hf = (config.method == MeanFieldType::HF);
     if (!is_hf && !integrals.atoms.empty()) {
-        if (config.fixed_grid != nullptr) {
+        if (fixed_grid != nullptr) {
             // Externally supplied grid: used by the fixed-grid FD KS
             // gradient oracle so the +/- displacements share one grid.
-            grid_ = *config.fixed_grid;
+            grid_ = *fixed_grid;
             ATV_INFO(
                 "[scf] grid build skipped: using supplied fixed grid points={}",
                 grid_.points.size());
@@ -34,25 +43,25 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals,
             const auto t_grid = LogClock::now();
             ATV_INFO(
                 "[scf] grid build start natm={} level={} radial={} angular={}",
-                integrals.atoms.size(), static_cast<int>(config.grid_level),
-                config.n_radial, config.n_angular);
-            grid_ = build_molecular_grid(
-                integrals.atoms.data(),
-                static_cast<int>(integrals.atoms.size()), config.grid_level,
-                config.n_radial, config.n_angular);
+                integrals.atoms.size(), static_cast<int>(grid_level), n_radial,
+                n_angular);
+            grid_ =
+                build_molecular_grid(integrals.atoms.data(),
+                                     static_cast<int>(integrals.atoms.size()),
+                                     grid_level, n_radial, n_angular);
             ATV_INFO("[scf] grid build done points={} ms={:.1f}",
                      grid_.points.size(), elapsed_ms(t_grid));
         }
     }
 }
 
-FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
-                                    const SCFConfig& config,
-                                    const RealMatrix& P_alpha,
-                                    const RealMatrix& P_beta) const {
+FockResult HamiltonianBuilder::step_core(const IntegralPack& integrals,
+                                         bool restricted, bool is_hf,
+                                         XCType xc_type,
+                                         double hybrid_alpha_override,
+                                         const RealMatrix& P_alpha,
+                                         const RealMatrix& P_beta) const {
     FockResult out;
-    const bool restricted = (config.spin == SpinType::Restricted);
-    const bool is_hf = (config.method == MeanFieldType::HF);
     const RealMatrix& Hcore = integrals.Hcore;
     const int n = integrals.n_basis;
 
@@ -95,14 +104,14 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         // applied at exactly ONE site below: the bare K matrix is scaled
         // by alpha_hf once, and both the Fock term (-alpha_hf*K) and the
         // energy term (alpha_hf*E_K) consume that single scaled matrix.
-        const double alpha_hf = (config.hybrid_alpha_override >= double(0))
-                                    ? config.hybrid_alpha_override
-                                    : hybrid_exchange_fraction(config.xc_type);
-        const bool is_hybrid = (alpha_hf > double(0))
-                               || (config.hybrid_alpha_override >= double(0));
+        const double alpha_hf = (hybrid_alpha_override >= double(0))
+                                    ? hybrid_alpha_override
+                                    : hybrid_exchange_fraction(xc_type);
+        const bool is_hybrid =
+            (alpha_hf > double(0)) || (hybrid_alpha_override >= double(0));
 
         auto xc = evaluate_xc_batched(grid_, integrals.shells, n, P_alpha_xc,
-                                      P_beta_xc, config.xc_type);
+                                      P_beta_xc, xc_type);
 
         if (is_hybrid && restricted) {
             // Restricted KS global hybrid.
@@ -177,6 +186,42 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
     }
 
     return out;
+}
+
+// ── Config-taking overloads: thin unpackers over the shared core ─────────────
+
+void HamiltonianBuilder::prepare(const IntegralPack& integrals,
+                                 const SCFConfig& config) {
+    prepare_core(integrals, config.method == MeanFieldType::HF,
+                 config.grid_level, config.n_radial, config.n_angular,
+                 config.fixed_grid);
+}
+
+FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
+                                    const SCFConfig& config,
+                                    const RealMatrix& P_alpha,
+                                    const RealMatrix& P_beta) const {
+    return step_core(integrals, config.spin == SpinType::Restricted,
+                     config.method == MeanFieldType::HF, config.xc_type,
+                     config.hybrid_alpha_override, P_alpha, P_beta);
+}
+
+// ── Config-free discrete overloads: pass straight through to the shared core ─
+
+void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
+                                 GridLevel grid_level, int n_radial,
+                                 int n_angular,
+                                 const MolecularGrid* fixed_grid) {
+    prepare_core(integrals, is_hf, grid_level, n_radial, n_angular, fixed_grid);
+}
+
+FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
+                                    bool restricted, bool is_hf, XCType xc_type,
+                                    double hybrid_alpha_override,
+                                    const RealMatrix& P_alpha,
+                                    const RealMatrix& P_beta) const {
+    return step_core(integrals, restricted, is_hf, xc_type,
+                     hybrid_alpha_override, P_alpha, P_beta);
 }
 
 } // namespace internal
