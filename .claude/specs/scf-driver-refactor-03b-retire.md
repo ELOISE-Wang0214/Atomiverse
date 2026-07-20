@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 03b 退役旧机器 + 首个高斯 SCF 回归（删 SCFSolver/SCFConfig，梯度解耦，文献值 e2e）
 slug: scf-driver-refactor-03b-retire
-status: approved
+status: code-complete
 chain: scf-driver-refactor
 link: 03b/06
 created: 2026-07-20
@@ -78,7 +78,8 @@ created: 2026-07-20
 - [x] Retire test_scf_solver_internals + test_scf_solver_internal_isolation, moving their meaningful helper assertions onto the 02 stage test; delete tests/cuda/scf_solver_isolation.sh + its ctest registration and sweep the stale rdf_molrs_migration.sh comment
 - [x] Update the root CMakeLists (drop scf_solver.cpp) and tests/CMakeLists (drop the three retired registrations)
 - [x] Add the regression regressions/scf/h2o_rhf_sto3g (reg_h2o_rhf_sto3g.cpp + REFERENCE.md) and register it in regressions/CMakeLists.txt
-- [ ] Run full check + test suite
+- [x] Run full check + test suite
+- [x] Hygiene: fold prepare_core/step_core pass-throughs; drop uncalled ScfGradient::finite_difference; refresh stale SCFSolver comments; Capability→kind docs on vib/hessian
 
 ## Testing strategy
 - **Regression（端到端，文献值，ATV_BUILD_REGRESSIONS，只经 `regressions` target）**：`reg_h2o_rhf_sto3g.cpp` 作**库外消费方**（仅 include 公开 `cpu/scf/methods.h`+`frame.h`，链 atomiverse）：构 `cpu::scf::RHF{basis=STO3G}`、`run(frame)`、断言 `last_result().energy` 与 `REFERENCE.md` 引用值 −74.961754 Ha 差 ≤1e-3 Ha，≤60s；绝不进默认 ctest。

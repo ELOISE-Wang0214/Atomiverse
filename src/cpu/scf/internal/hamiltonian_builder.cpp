@@ -14,18 +14,10 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-// ── Shared discrete cores ────────────────────────────────────────────────────
-// The one site the setup / Fock-build logic lives. Both the config-taking
-// overloads (which unpack their config) and the config-free discrete overloads
-// (which forward straight through) call these, so the two entries are
-// bit-identical by construction — the bodies below moved here verbatim from the
-// former config-taking overloads, with each `config.<field>` replaced by the
-// matching discrete parameter.
-
-void HamiltonianBuilder::prepare_core(const IntegralPack& integrals, bool is_hf,
-                                      GridLevel grid_level, int n_radial,
-                                      int n_angular,
-                                      const MolecularGrid* fixed_grid) {
+void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
+                                 GridLevel grid_level, int n_radial,
+                                 int n_angular,
+                                 const MolecularGrid* fixed_grid) {
     if (!integrals.shells.empty()) {
         sp_block_ = build_shell_block_pair_list(integrals);
         sp_ = build_shell_pair_list(integrals);
@@ -55,12 +47,11 @@ void HamiltonianBuilder::prepare_core(const IntegralPack& integrals, bool is_hf,
     }
 }
 
-FockResult HamiltonianBuilder::step_core(const IntegralPack& integrals,
-                                         bool restricted, bool is_hf,
-                                         XCType xc_type,
-                                         double hybrid_alpha_override,
-                                         const RealMatrix& P_alpha,
-                                         const RealMatrix& P_beta) const {
+FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
+                                    bool restricted, bool is_hf, XCType xc_type,
+                                    double hybrid_alpha_override,
+                                    const RealMatrix& P_alpha,
+                                    const RealMatrix& P_beta) const {
     FockResult out;
     const RealMatrix& Hcore = integrals.Hcore;
     const int n = integrals.n_basis;
@@ -186,24 +177,6 @@ FockResult HamiltonianBuilder::step_core(const IntegralPack& integrals,
     }
 
     return out;
-}
-
-// ── Discrete entries: pass straight through to the shared core ───────────────
-
-void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
-                                 GridLevel grid_level, int n_radial,
-                                 int n_angular,
-                                 const MolecularGrid* fixed_grid) {
-    prepare_core(integrals, is_hf, grid_level, n_radial, n_angular, fixed_grid);
-}
-
-FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
-                                    bool restricted, bool is_hf, XCType xc_type,
-                                    double hybrid_alpha_override,
-                                    const RealMatrix& P_alpha,
-                                    const RealMatrix& P_beta) const {
-    return step_core(integrals, restricted, is_hf, xc_type,
-                     hybrid_alpha_override, P_alpha, P_beta);
 }
 
 } // namespace internal

@@ -11,7 +11,7 @@
 /// Iteration 0 always reports `converged=false` (no `E_prev` yet).
 ///
 /// Stateful: caches `prev_energy` between `step()` calls. Reset at the
-/// start of each `SCFSolver::run()` invocation.
+/// start of each SCF loop (`MeanFieldMethod::run` / `ScfConverged` setup).
 #pragma once
 
 #include <cmath>
@@ -39,7 +39,7 @@ class DualConvergenceCheck {
     DualConvergenceCheck(double tol_energy, double tol_grad)
         : tol_energy_(tol_energy), tol_grad_(tol_grad) {}
 
-    /// @brief Reset internal state at the start of a new SCFSolver run.
+    /// @brief Reset internal state at the start of a new SCF loop.
     void reset() {
         prev_energy_ = 0.0;
         has_prev_ = false;

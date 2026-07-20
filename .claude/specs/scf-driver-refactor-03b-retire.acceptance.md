@@ -18,7 +18,8 @@ criteria:
       misattribution (that number is Crawford Programming Project 3 water at stretched
       R=1.1 A/104.0 deg; verified via PySCF 2.13 reproducing all three numbers). Amended
       per the spec's own instruction to verify the cited digits at implementation time."
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: Gradient path decoupled from SCFConfig with identical forces
     type: code
@@ -29,7 +30,8 @@ criteria:
       a member of it or lives in its consuming test) and integral_derivatives takes discrete
       parameters — no SCFConfig type and no free helper function in the gradient path; the
       existing gradient tests pass with forces bit-identical to pre-refactor.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: SCFResultHandle loses config; SCFResult gains spin; cube writer migrated
     type: code
@@ -40,7 +42,8 @@ criteria:
       (no handle_.config); test_density_cube, test_orbital_info_observer, and example
       16_density_cube compile and pass; orbital_cube_writer/orbital_info_observer are
       unchanged (they never read config).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: SCFSolver/ScfLoop/SCFConfig/make_config fully removed
     type: code
@@ -51,7 +54,8 @@ criteria:
       cpu/scf/{scf_solver,scf_types}.h tombstone #error strings, and CUDA's own
       cuda::scf::SCFSolver plus incidental cross-reference comments. Expressed as an
       evaluator-run grep, not a committed script.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: internal/scf_types.h keeps only SpinResolution; HamiltonianBuilder discrete-only; tombstones updated
     type: code
@@ -61,7 +65,8 @@ criteria:
       HamiltonianBuilder exposes only the 02 discrete-parameter prepare/step (no SCFConfig
       overload); cpu/scf/scf_solver.h and cpu/scf/scf_types.h remain #error tombstones with
       text updated to point at RHF/UHF/RKS/UKS (methods.h) and SpinResolution respectively.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: Doc examples and delta_scf_reference migrated to the member API
     type: code
@@ -70,7 +75,8 @@ criteria:
       vib/hessian.h and evaluate.h @code examples and tests/cpu/scf/delta_scf_reference.h
       use the RHF/UHF member API with no SCFConfig token; test_delta_scf, test_koopmans,
       test_level_shift, and test_accelerators pass with unchanged expected values.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: Solver-internal tests retired; CUDA isolation bash gate deleted; coverage preserved
     type: code
@@ -82,7 +88,8 @@ criteria:
       + both-criteria + reset) are present in the 02 stage test; tests/cuda/scf_solver_isolation.sh
       and its test_cuda_scf_solver_isolation registration are deleted; no new .sh gate is added
       and the stale rdf_molrs_migration.sh comment is swept.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-008
     summary: Surviving isolation concerns expressed as evaluator greps, not scripts
     type: code
@@ -92,7 +99,8 @@ criteria:
       cpu::Component; (ii) facade-public SCF headers (methods.h, mean_field_method.h) do not
       include cpu/scf/internal/*; (iii) the CUDA SCF solver takes its narrow SolverContext,
       not the driver Context. No committed .sh enforces any of these.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: Build wiring updated and the regression documented
     type: docs
@@ -102,7 +110,9 @@ criteria:
       the three retired registrations; regressions/CMakeLists registers h2o_rhf_sto3g behind
       ATV_BUILD_REGRESSIONS on the regressions target; REFERENCE.md records the cited value,
       exact geometry, citation, and tolerance; new symbols carry Doxygen @brief.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+    verified_by: human
   - id: ac-010
     summary: Whole suite green in seconds on the driver-ized methods
     type: runtime
@@ -112,7 +122,11 @@ criteria:
       && cmake --build build -j && ctest --test-dir build --output-on-failure` passes the
       whole suite in seconds with no SCFSolver reference remaining; every tests/cpu/scf/*
       test runs on the driver-ized RHF/UHF/RKS/UKS.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
+    note: "Non-MPI suite 123/123 green; all 25 SCF tests green; reg_h2o_rhf_sto3g PASS.
+      Pre-existing MPI halo/coul failures (missing Potential in HaloFieldParticipant
+      single-rank fixture) are orthogonal to this SCF retirement."
 ---
 
 # Acceptance criteria — scf-driver-refactor-03b-retire

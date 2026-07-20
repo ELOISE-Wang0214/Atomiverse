@@ -2,8 +2,9 @@
 /// @brief internal::DIISMixer — combined DIIS accelerator for spin-resolved SCF.
 ///
 /// **Internal SCF helper.** Does NOT inherit `cpu::Component` and is
-/// not registered into any outer Driver Plan. Owned by `cpu::scf::SCFSolver`
-/// (and by tests, via direct include of this header).
+/// not registered into any outer Driver Plan. Owned by the DIIS / mix stage
+/// inside the driver-ized RHF/UHF/RKS/UKS loop (and by tests, via direct
+/// include of this header).
 ///
 /// Pulay's Direct Inversion of the Iterative Subspace (DIIS) with combined
 /// error metric across alpha/beta spin channels. Shared extrapolation

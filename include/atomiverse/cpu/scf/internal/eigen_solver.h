@@ -4,9 +4,9 @@
 /// **Internal SCF helper.** Does NOT inherit `cpu::Component`.
 ///
 /// Thin stateful wrapper around `diagonalize_fock_generalized` (LAPACK
-/// dsygvd via xtensor-blas). Held as a member of `cpu::scf::SCFSolver`
-/// so future LAPACK workspace pre-allocation can land in `prepare()`
-/// without touching call sites.
+/// dsygvd via xtensor-blas). Held by the diagonalize stage inside the
+/// driver-ized RHF/UHF/RKS/UKS loop so future LAPACK workspace
+/// pre-allocation can land in `prepare()` without touching call sites.
 #pragma once
 
 #include <utility>

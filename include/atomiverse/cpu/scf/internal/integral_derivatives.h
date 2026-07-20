@@ -11,7 +11,7 @@
 /// Output in Hartree/Bohr.
 ///
 /// @see cpu::scf::native for the undifferentiated integrals
-/// @see cpu::scf::scf_gradient for the gradient assembly
+/// @see cpu::scf::internal::ScfGradient for the gradient assembly
 #pragma once
 
 #include <xtensor/containers/xtensor.hpp>

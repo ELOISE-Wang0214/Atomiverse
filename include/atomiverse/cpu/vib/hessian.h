@@ -6,10 +6,10 @@
 /// finite-difference (central-difference) molecular Hessian and exposes the
 /// result via `run()` / `last_result()`.
 ///
-/// Usage — register any `Capability::Force` evaluator on
-/// `vib::Phase::force` (an FF evaluator or a concrete SCF method such as
-/// `cpu::scf::RHF`), exactly as AIMD registers a force evaluator into
-/// `cpu::md::MD`:
+/// Usage — register any force/energy kind (`Potential` / `Bias` / `HF` /
+/// `Semiempirical` / `PlaneWave` / `GPW`) on `vib::Phase::force` (an FF
+/// evaluator or a concrete SCF method such as `cpu::scf::RHF`), exactly as
+/// AIMD registers a force evaluator into `cpu::md::MD`:
 ///
 /// @code{.cpp}
 ///   cpu::scf::RHF rhf;
@@ -68,7 +68,7 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     /// @brief Tag type to construct a driver WITHOUT the HessianAccumulator.
     ///
     /// Exists only so tests can verify `validate_components()` throws when no
-    /// `Capability::Hessian` component is present. Production code uses the default
+    /// `HessianAccumulator` is present. Production code uses the default
     /// constructor.
     struct WithoutAccumulator {};
 
@@ -89,7 +89,7 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     /// `HessianDiagonalizer`, plus the thermochemistry chain (`Thermochem`,
     /// `FrequencyReport`, `NormalModeWriter`), all bound to a
     /// driver-owned shared `HessianWorkspace`. The caller must still
-    /// register a `Capability::Force` evaluator on `vib::Phase::force`.
+    /// register a force/energy kind on `vib::Phase::force`.
     ///
     /// Thermochemistry uses standard conditions (298.15 K, 1 atm,
     /// closed-shell singlet, symmetry number 1). Use the
@@ -120,7 +120,7 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     /// Registers only `ReferenceGeometry`, `DisplaceStep`, and
     /// `Symmetrize`. `build()` then throws from
     /// `Hessian::validate_components()` for the missing
-    /// `Capability::Hessian` component.
+    /// `HessianAccumulator`.
     /// @param tag Disambiguating tag (`WithoutAccumulator{}`).
     explicit Hessian(WithoutAccumulator tag);
 

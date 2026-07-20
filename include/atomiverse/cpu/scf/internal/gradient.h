@@ -4,8 +4,7 @@
 /// Entry point: `internal::ScfGradient` — constructed from the discrete method
 /// parameters (method / spin / xc_type / grid) the gradient assembly reads, its
 /// `compute(...)` member dispatches to HF (Coulomb + exchange) or KS (Coulomb +
-/// XC grid). A static `finite_difference(...)` member is the central-difference
-/// validation oracle over any SCF-energy callback (no SCFConfig anywhere).
+/// XC grid).
 ///
 /// References:
 ///   Pulay, Mol. Phys. 17, 197 (1969) -- Pulay forces
@@ -13,7 +12,6 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 #pragma once
 
-#include <functional>
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame/frame.h"
@@ -29,8 +27,8 @@ namespace internal {
 
 /// @brief Unified analytic nuclear gradient for all mean-field methods.
 ///
-/// Holds the discrete method parameters the gradient assembly reads (formerly
-/// taken from `SCFConfig`); `compute(...)` dispatches on them:
+/// Holds the discrete method parameters the gradient assembly reads;
+/// `compute(...)` dispatches on them:
 ///   - HF (Restricted or Unrestricted): Coulomb + exchange two-electron terms
 ///   - KS (Restricted or Unrestricted): Coulomb only + XC grid contribution
 ///
@@ -61,26 +59,6 @@ class ScfGradient {
     /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
     GradientResult compute(const Frame& frame, const IntegralPack& integrals,
                            const SCFResult& result) const;
-
-    /// @brief Central-difference nuclear gradient oracle for validating
-    ///        `compute(...)`.
-    ///
-    /// Displaces each atom by ±`h` [Angstrom] and central-differences the SCF
-    /// total energy returned by `scf_energy`. The caller owns the method /
-    /// charge / basis / grid choices behind the callback (driving whatever
-    /// concrete method or reference solver it wants at the displaced geometry,
-    /// including pinning a fixed integration grid for the fixed-grid
-    /// convention), which is why the oracle carries no SCFConfig. Cost:
-    /// 6*n_atoms + 1 callback evaluations.
-    ///
-    /// @param frame      Reference geometry (positions in Angstrom).
-    /// @param scf_energy Converged SCF total energy [Hartree] at a geometry.
-    /// @param h          Displacement step [Angstrom] (default 5e-5).
-    /// @return Forces on all atoms (eV/Angstrom) and reference energy (eV).
-    static GradientResult
-    finite_difference(const Frame& frame,
-                      const std::function<double(const Frame&)>& scf_energy,
-                      double h = 5e-5);
 
   private:
     MeanFieldType method_;                 ///< HF or KS mean field.

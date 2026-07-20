@@ -42,10 +42,7 @@ class HamiltonianBuilder {
 
     /// @brief One-time setup from discrete method parameters — the entry used
     ///        by the driver-side `FockStage`.
-    /// @details Passes the discrete parameters straight through to the shared
-    ///          private core `prepare_core`, so the shell-pair lists and
-    ///          integration grid are byte-for-byte the same across every call
-    ///          site.
+    /// @details Builds shell-pair lists and (for KS) the XC integration grid.
     /// @param integrals Reference IntegralPack (ownership stays with caller).
     /// @param is_hf     true → Hartree-Fock (no grid); false → Kohn-Sham
     ///                  (builds the XC integration grid).
@@ -58,9 +55,7 @@ class HamiltonianBuilder {
                  const MolecularGrid* fixed_grid);
 
     /// @brief Build F from the current α/β densities.
-    /// @details Passes the discrete parameters straight through to the shared
-    ///          private core `step_core`, so the Fock matrices and energies are
-    ///          byte-for-byte the same across every call site.
+    /// @details Method-dispatched F = Hcore + J − αK + V_xc.
     /// @param integrals Same IntegralPack passed to prepare() — caller-owned.
     /// @param restricted true → restricted spin (α mirrors β); false → open.
     /// @param is_hf      true → Hartree-Fock; false → Kohn-Sham.
@@ -75,37 +70,6 @@ class HamiltonianBuilder {
                     const RealMatrix& P_alpha, const RealMatrix& P_beta) const;
 
   private:
-    /// @brief Shared one-time-setup core over discrete parameters.
-    /// @details Holds the shell-pair-list + (KS) grid build — the single site
-    ///          the setup logic lives, called by `prepare`.
-    /// @param integrals  Reference IntegralPack (ownership stays with caller).
-    /// @param is_hf      true → Hartree-Fock (no grid); false → Kohn-Sham.
-    /// @param grid_level Named DFT integration-grid quality level (KS only).
-    /// @param n_radial   Radial grid points per atom (SG0 only).
-    /// @param n_angular  Angular grid points per atom (SG0 only).
-    /// @param fixed_grid Optional external grid (KS only; not owned).
-    void prepare_core(const IntegralPack& integrals, bool is_hf,
-                      GridLevel grid_level, int n_radial, int n_angular,
-                      const MolecularGrid* fixed_grid);
-
-    /// @brief Shared Fock-build core over discrete parameters.
-    /// @details Holds the method-dispatched F = Hcore + J − αK + V_xc build —
-    ///          the single site the Fock arithmetic lives, called by `step`.
-    /// @param integrals  Same IntegralPack passed to prepare() — caller-owned.
-    /// @param restricted true → restricted spin (α mirrors β); false → open.
-    /// @param is_hf      true → Hartree-Fock; false → Kohn-Sham.
-    /// @param xc_type    Exchange-correlation functional (KS only).
-    /// @param hybrid_alpha_override Regression override for the exact-exchange
-    ///                   fraction; `< 0` uses the functional's own α_hf.
-    /// @param P_alpha    α density (full density when restricted).
-    /// @param P_beta     β density (alias of P_alpha when restricted).
-    /// @return Filled FockResult.
-    FockResult step_core(const IntegralPack& integrals, bool restricted,
-                         bool is_hf, XCType xc_type,
-                         double hybrid_alpha_override,
-                         const RealMatrix& P_alpha,
-                         const RealMatrix& P_beta) const;
-
     ShellBlockPairList sp_block_; ///< RHF/RKS shell-block list (libcint-style).
     ShellPairList sp_;            ///< AO-level list for UHF/UKS J/K paths.
     MolecularGrid grid_;          ///< KS XC grid (empty for HF).

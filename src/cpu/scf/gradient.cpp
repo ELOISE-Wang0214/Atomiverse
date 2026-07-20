@@ -16,7 +16,6 @@
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
-#include <functional>
 #include <utility>
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/io/xio.hpp>
@@ -617,68 +616,6 @@ GradientResult ScfGradient::compute(const Frame& frame,
              "max_force_component_eVA={:.6f}",
              elapsed_ms(t_total), out.energy, max_force);
 
-    return out;
-}
-
-// ── Finite-difference gradient ───────────────────────────────────────
-
-GradientResult ScfGradient::finite_difference(
-    const Frame& frame, const std::function<double(const Frame&)>& scf_energy,
-    double h) {
-    int natm = static_cast<int>(frame.nlocal());
-
-    // FD-oracle grid policy is now owned by the caller's `scf_energy`
-    // callback, not this oracle. The analytic KS XC gradient
-    // (accumulate_xc_gradient) assembles the genuine Becke grid-response term
-    // (weight-derivative + grid-coordinate), so the correct oracle is a
-    // MOVING-grid central difference: the callback should regenerate the
-    // integration grid at each displaced geometry (atom-centered grids ride
-    // with their atoms). The legacy fixed-grid convention (Johnson-Gill-Pople,
-    // JCP 98, 5612 (1993)) -- grid pinned to the reference geometry, only
-    // basis-function centers move -- is reachable by a callback that pins the
-    // grid across displacements to match the fixed-grid analytic gradient.
-    double ref_energy = scf_energy(frame);
-
-    xt::xtensor<double, 2> forces = xt::zeros<double>({(int)natm, (int)3});
-
-    for (int A = 0; A < natm; ++A) {
-        for (int d = 0; d < 3; ++d) {
-            Frame fwd = frame;
-            StorageReal* __restrict fwd_x = fwd.span(kAtom_x);
-            StorageReal* __restrict fwd_y = fwd.span(kAtom_y);
-            StorageReal* __restrict fwd_z = fwd.span(kAtom_z);
-            if (d == 0)
-                fwd_x[A] += h;
-            else if (d == 1)
-                fwd_y[A] += h;
-            else
-                fwd_z[A] += h;
-            double e_fwd = scf_energy(fwd);
-
-            Frame bwd = frame;
-            StorageReal* __restrict bwd_x = bwd.span(kAtom_x);
-            StorageReal* __restrict bwd_y = bwd.span(kAtom_y);
-            StorageReal* __restrict bwd_z = bwd.span(kAtom_z);
-            if (d == 0)
-                bwd_x[A] -= h;
-            else if (d == 1)
-                bwd_y[A] -= h;
-            else
-                bwd_z[A] -= h;
-            double e_bwd = scf_energy(bwd);
-
-            // FD uses Å step, so dE/dr is already in eV/Å once the Hartree
-            // energy is converted — no extra 1/Bohr factor.
-            forces(A, d) =
-                -units::convert((e_fwd - e_bwd) / (2.0 * h),
-                                units::Energy::Hartree, units::Energy::eV);
-        }
-    }
-
-    GradientResult out;
-    out.forces = forces;
-    out.energy =
-        units::convert(ref_energy, units::Energy::Hartree, units::Energy::eV);
     return out;
 }
 
