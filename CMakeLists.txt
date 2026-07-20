@@ -407,6 +407,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/observer/esp_charges.cpp
             src/cpu/scf/internal/cart2sph.cpp
             src/cpu/scf/internal/diis_mixer.cpp
+            src/cpu/scf/internal/ediis_adiis.cpp
+            src/cpu/scf/internal/hueckel_guess.cpp
+            src/cpu/scf/internal/sap_guess.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp
             src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/stages/fock_stage.cpp

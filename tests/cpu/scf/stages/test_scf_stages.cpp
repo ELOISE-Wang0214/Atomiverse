@@ -37,9 +37,10 @@
 ///
 ///   MixStage(bool restricted, bool use_diis, int diis_start_iter,
 ///            int diis_max_vectors, double level_shift,
+///            MixerKind mixer_kind, double mixer_switch_tol,
 ///            const RealMatrix& S, const RealMatrix& X,
 ///            const RealMatrix& P_alpha, const RealMatrix& P_beta,
-///            const int& iter,
+///            const int& iter, const double& energy,
 ///            RealMatrix& F_alpha, RealMatrix& F_beta,
 ///            RealMatrix& err_alpha, RealMatrix& err_beta)   // + reset()
 ///
@@ -442,11 +443,13 @@ TEST(MixStage, ReproducesDiisErrorAndExtrapolationRestricted) {
                            sym2(-1.15, 0.33, -0.52)};
 
     int iter = 0;
+    double e_tot = 0.0;
     RealMatrix F_a, F_b, err_a, err_b;
     cpu::scf::MixStage mix(/*restricted=*/true, /*use_diis=*/true,
                            /*diis_start_iter=*/0, /*diis_max_vectors=*/6,
-                           /*level_shift=*/0.0, S, X, P, P, iter, F_a, F_b,
-                           err_a, err_b);
+                           /*level_shift=*/0.0, cpu::scf::MixerKind::CDIIS,
+                           /*mixer_switch_tol=*/1e-2, S, X, P, P, iter, e_tot,
+                           F_a, F_b, err_a, err_b);
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
     cpu::BuildContext bc{rt, fr};
@@ -476,11 +479,13 @@ TEST(MixStage, ReproducesDiisErrorAndExtrapolationUnrestricted) {
     RealMatrix Fb_seq[2] = {sym2(-0.8, 0.2, -0.5), sym2(-0.82, 0.19, -0.49)};
 
     int iter = 0;
+    double e_tot = 0.0;
     RealMatrix F_a, F_b, err_a, err_b;
     cpu::scf::MixStage mix(/*restricted=*/false, /*use_diis=*/true,
                            /*diis_start_iter=*/0, /*diis_max_vectors=*/6,
-                           /*level_shift=*/0.0, S, X, Pa, Pb, iter, F_a, F_b,
-                           err_a, err_b);
+                           /*level_shift=*/0.0, cpu::scf::MixerKind::CDIIS,
+                           /*mixer_switch_tol=*/1e-2, S, X, Pa, Pb, iter,
+                           e_tot, F_a, F_b, err_a, err_b);
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
     cpu::BuildContext bc{rt, fr};
@@ -511,12 +516,14 @@ TEST(MixStage, AppliesLevelShiftRestrictedWhenAboveThreshold) {
     RealMatrix F_in = sym2(-1.0, 0.4, -0.6);
 
     int iter = 0;
+    double e_tot = 0.0;
     RealMatrix F_a = F_in, F_b = F_in, err_a, err_b;
     const double lambda = 0.5;
     cpu::scf::MixStage mix(/*restricted=*/true, /*use_diis=*/false,
                            /*diis_start_iter=*/0, /*diis_max_vectors=*/6,
-                           /*level_shift=*/lambda, S, X, P, P, iter, F_a, F_b,
-                           err_a, err_b);
+                           /*level_shift=*/lambda, cpu::scf::MixerKind::CDIIS,
+                           /*mixer_switch_tol=*/1e-2, S, X, P, P, iter, e_tot,
+                           F_a, F_b, err_a, err_b);
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
     cpu::BuildContext bc{rt, fr};
@@ -540,10 +547,12 @@ TEST(MixStage, SkipsLevelShiftAtOrBelowThreshold) {
     RealMatrix F_in = sym2(-1.0, 0.4, -0.6);
 
     int iter = 0;
+    double e_tot = 0.0;
     RealMatrix F_a = F_in, F_b = F_in, err_a, err_b;
     cpu::scf::MixStage mix(true, /*use_diis=*/false, 0, 6,
-                           /*level_shift=*/1e-5, S, X, P, P, iter, F_a, F_b,
-                           err_a, err_b);
+                           /*level_shift=*/1e-5, cpu::scf::MixerKind::CDIIS,
+                           /*mixer_switch_tol=*/1e-2, S, X, P, P, iter, e_tot,
+                           F_a, F_b, err_a, err_b);
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
     cpu::BuildContext bc{rt, fr};
@@ -567,9 +576,11 @@ TEST(MixStage, ResetClearsDiisHistory) {
 
     // Fresh mixer, single step on F0.
     int iterA = 0;
+    double e_totA = 0.0;
     RealMatrix Fa_A = F0, Fb_A = F0, ea_A, eb_A;
-    cpu::scf::MixStage fresh(true, true, 0, 6, 0.0, S, X, P, P, iterA, Fa_A,
-                             Fb_A, ea_A, eb_A);
+    cpu::scf::MixStage fresh(true, true, 0, 6, 0.0,
+                             cpu::scf::MixerKind::CDIIS, 1e-2, S, X, P, P,
+                             iterA, e_totA, Fa_A, Fb_A, ea_A, eb_A);
     cpu::BuildContext bcA{rt, fr};
     fresh.build(bcA);
     Fa_A = F0;
@@ -579,9 +590,11 @@ TEST(MixStage, ResetClearsDiisHistory) {
 
     // Grown mixer: two steps (history size 2), reset(), then the same F0 step.
     int iterB = 0;
+    double e_totB = 0.0;
     RealMatrix Fa_B, Fb_B, ea_B, eb_B;
-    cpu::scf::MixStage grown(true, true, 0, 6, 0.0, S, X, P, P, iterB, Fa_B,
-                             Fb_B, ea_B, eb_B);
+    cpu::scf::MixStage grown(true, true, 0, 6, 0.0,
+                             cpu::scf::MixerKind::CDIIS, 1e-2, S, X, P, P,
+                             iterB, e_totB, Fa_B, Fb_B, ea_B, eb_B);
     cpu::BuildContext bcB{rt, fr};
     grown.build(bcB);
     for (iterB = 0; iterB < 2; ++iterB) {

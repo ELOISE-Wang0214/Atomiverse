@@ -119,6 +119,20 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     int diis_start_iter = 1;
     double damping_factor = 0.0;
     InitGuess init_guess = InitGuess::MINAO;
+
+    /// @brief Fock-mixer family (dimensionless selector). Default `CDIIS`
+    ///        keeps the shipping loop bit-identical. `EDIIS_CDIIS` /
+    ///        `ADIIS_CDIIS` run the far-field mixer first and permanently
+    ///        switch to CDIIS once max|DIIS error| < `mixer_switch_tol`
+    ///        (EDIIS/ADIIS are far-from-convergence mixers only; see
+    ///        `internal/ediis_adiis.h` for the DOIs).
+    MixerKind mixer = MixerKind::CDIIS;
+
+    /// @brief max|DIIS error| threshold (dimensionless) for the permanent
+    ///        EDIIS/ADIIS → CDIIS escalation switch. Ignored when
+    ///        `mixer == MixerKind::CDIIS`.
+    double mixer_switch_tol = 1e-2;
+
     double level_shift = 0.0;
     double lindep_threshold = 1e-8;
 

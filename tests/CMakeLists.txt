@@ -490,6 +490,11 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
+    # hf-capability-gaps-07-guess: Hückel/SAP guess matrices + EDIIS/ADIIS
+    # far-field mixers (single-call math only; iteration-count contrast is
+    # regressions/scf/h2o_scf_convergence).
+    atv_add_cpp_test(test_cpu_scf_init_guess    cpu/scf/test_init_guess.cpp)
+    atv_add_cpp_test(test_cpu_scf_ediis_adiis   cpu/scf/test_ediis_adiis.cpp)
     # Charge/multiplicity resolver + method run() validity guard
     # (hf-robust-01); tutorial ch02/ch03 regression anchor.
     atv_add_cpp_test(test_cpu_scf_spin_resolution cpu/scf/test_spin_resolution.cpp)

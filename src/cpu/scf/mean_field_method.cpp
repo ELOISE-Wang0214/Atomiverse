@@ -28,7 +28,9 @@
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
+#include "atomiverse/cpu/scf/internal/hueckel_guess.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
@@ -152,8 +154,8 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         int_n_beta_);
     mix_stage_ = std::make_unique<MixStage>(
         restricted_, use_diis, diis_start_iter, diis_max_vectors, level_shift,
-        S_, X_, P_alpha_, P_beta_, iter_, F_alpha_, F_beta_, err_alpha_,
-        err_beta_);
+        mixer, mixer_switch_tol, S_, X_, P_alpha_, P_beta_, iter_, e_total_,
+        F_alpha_, F_beta_, err_alpha_, err_beta_);
     diag_stage_ = std::make_unique<DiagonalizeStage>(
         restricted_, F_alpha_, F_beta_, S_, X_, n_dropped_, C_alpha_, C_beta_,
         eig_alpha_, eig_beta_);
@@ -392,6 +394,31 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     RealMatrix P_minao;
     if (want_minao)
         P_minao = build_minao_density(ints);
+
+    // Hückel / SAP: diagonalize a guess Fock instead of Hcore, then flow
+    // through the same orbital-based density branches below (open shell
+    // keeps the existing split + HOMO-LUMO mixing rule — both guesses are
+    // spin-symmetric; see the guess headers for the averaging limitation).
+    const bool want_hueckel =
+        (init_guess == InitGuess::Hueckel) && !valid_guess_alpha;
+    const bool want_sap = (init_guess == InitGuess::SAP) && !valid_guess_alpha;
+    if ((want_hueckel || want_sap) && ints.has_ecp)
+        throw std::runtime_error(
+            "MeanFieldMethod::run: the Hueckel/SAP initial guesses are not "
+            "available with an ECP (the pack stores valence-reduced Z, so "
+            "the atomic tables would resolve the wrong element). Use "
+            "InitGuess::MINAO or InitGuess::Hcore.");
+    if (want_hueckel) {
+        internal::HueckelGuess hueckel(ints.shells, ints.S, ints.atoms);
+        std::tie(eig0, C0) = diagonalize(hueckel.F);
+    } else if (want_sap) {
+        const MolecularGrid sap_grid = build_molecular_grid(
+            ints.atoms.data(), static_cast<int>(ints.atoms.size()), grid_level,
+            n_radial, n_angular);
+        internal::SapGuess sap(ints.shells, ints.T, ints.atoms, sap_grid,
+                               ints.c2s);
+        std::tie(eig0, C0) = diagonalize(sap.F);
+    }
 
     if (restricted && valid_guess_alpha) {
         P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));

@@ -1,7 +1,7 @@
 ---
 title: SCF 收敛层 I — Hückel/SAP 初猜与 EDIIS/ADIIS 远域混合器
 slug: hf-capability-gaps-07-guess
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 07/21
 external-depends: scf-slater-determinant-02-rehome
@@ -30,6 +30,31 @@ created: 2026-07-20
 - `MixStage` 升级接线:新枚举 `MixerKind { CDIIS, EDIIS_CDIIS, ADIIS_CDIIS }`(入 `scf_enums.h`);方法新成员 `mixer`(默认 `CDIIS`,行为零变化)与 `mixer_switch_tol`(max|DIIS err| 低于其值即永久切至 CDIIS)。EDIIS 所需 E_i 经 `MixStage` 构造函数新增 `const double&` 电子能引用传入(沿用命名引用风格,无 Context 切片)。
 - 单元测试只验证单次调用的矩阵/系数数学;任何跑到收敛的 SCF 属 regressions(tests/ 禁 E2E)。
 
+### 实现审计注记(2026-07-21)
+- **SAP 数据源**:采用 Lehtola 的高斯拟合 erf 展开形式(PySCF 2.14.0
+  `pyscf/gto/basis/sap_grasp_large.dat`,BSE "sap_grasp_large",Z=1..118),
+  转录生成器 `tools/gen_sap_data.py`(命令与出处记录于 `sap_data.h` 头注释;
+  额外引用 DOI 10.1063/5.0004046,即高斯拟合文献)。V_A(r) =
+  −(Z + Σ_k c_k erf(√α_k r))/r,逐元素电荷和校验 Σc_k = −Z 通过。
+- **SapGuess 构造函数偏差**:实际签名为 (shells, T, atoms, grid, **c2s**)
+  ——比规格多一个 c2s 参数:IntegralPack 的 T 已被夹到球谐工作维度,而求积
+  在笛卡尔壳上进行,c2s(笛卡尔基组传空张量)是把 V_cart 夹回工作维度的
+  唯一桥梁。
+- **EDIIS 能量通道滞后**:能量在 density 阶段结算,故 mix 阶段经
+  `const double&` 传入的 E 相对其 (F, D) 对滞后一次迭代(mix_stage.h Doxygen
+  已记录)。ADIIS 不需要能量、无此近似——困难例回归因此选 ADIIS_CDIIS。
+- **Hückel VSIP 表**:H–Ar,s/p 取标准 EHT 参数(Hoffmann 1963/Alvarez 汇编,
+  eV→Hartree);极化壳层(H/He 的 p、主族的 d)复用该元素最高已表价壳 VSIP,
+  作为静态表条目逐行写出(是表内容而非运行时回退)。表外 (Z,l) 抛异常。
+  Hückel/SAP 与 ECP 组合抛异常(pack 存的是价约化 Z,查表会解析错元素)。
+- **单纯形最小化器**:按规格 t² 参数化 + 确定性多起点投影梯度下降(固定预算),
+  另加检测支撑集上的精确 KKT 抛光(等式约束线性解,含 FP 平手偏好),使两点
+  闭式解达 1e-14;退化历史回退最新 F,无 NaN。
+- **困难例定标**:规格建议 2×r_e 拉伸 H2O UHF——实测 2.0× 时 CDIIS 仍在预算内
+  收敛(54–58 步),**2.6×r_e** 才出现真实对比:CDIIS 60 步失速于不稳定自旋
+  对称解(≈−75.357 Ha,PySCF 稳定性分析确认不稳定),ADIIS→CDIIS 38 步收敛到
+  PySCF 钉定碎对称极小 −75.71896632261 Ha(引擎 −75.71896632254,|Δ|≈7e-11)。
+
 ## Files to create or modify
 - `include/atomiverse/cpu/scf/internal/hueckel_guess.h` (new) — `HueckelGuess` + VSIP 静态表
 - `include/atomiverse/cpu/scf/internal/sap_guess.h` (new)、`include/atomiverse/cpu/scf/internal/sap_data.h` (new)
@@ -44,15 +69,15 @@ created: 2026-07-20
 - `docs/tutorial/ch18-scf-techniques.md` — 填充"初猜与 DIIS 家族"半章(骨架来自链环 01;若缺则先建骨架)
 
 ## Tasks
-- [ ] Write failing tests for HueckelGuess/SapGuess (tests/cpu/scf/test_init_guess.cpp:F_μν 公式与 VSIP 对角、SAP 矩阵对称性与 H 原子手算参考元、不支持 Z 抛异常;登记 tests/CMakeLists.txt)
-- [ ] Write failing tests for EDIISMixer/ADIISMixer (tests/cpu/scf/test_ediis_adiis.cpp:两点历史闭式最优系数、Σc=1 且 c≥0、ADIIS 目标函数值、退化历史无 NaN;登记 tests/CMakeLists.txt)
-- [ ] Implement HueckelGuess and SapGuess in include/atomiverse/cpu/scf/internal/{hueckel_guess.h,sap_guess.h,sap_data.h} + src/cpu/scf/internal/{hueckel_guess.cpp,sap_guess.cpp},并在 scf_enums.h 给 InitGuess 加 Hueckel/SAP;登记根 CMakeLists.txt
-- [ ] Wire guess dispatch in src/cpu/scf/mean_field_method.cpp 初猜块(开壳沿用 P/2 分裂 + HOMO-LUMO 混合;头文件记录占据平均化陷阱)
-- [ ] Implement EDIISMixer/ADIISMixer in include/atomiverse/cpu/scf/internal/ediis_adiis.h + src/cpu/scf/internal/ediis_adiis.cpp(t² 单纯形参数化求解;DOI 注释)
-- [ ] Wire MixerKind escalation in stages/mix_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 mixer/mixer_switch_tol,默认 CDIIS 行为零变化;能量经 const double& 引用入 MixStage)
-- [ ] Implement regression regressions/scf/h2o_scf_convergence/(H2O/def2-SVP 各初猜迭代数表 + CDIIS 失速/ADIIS→CDIIS 收敛困难例;REFERENCE.md 钉定 PySCF 能量与迭代数;≤60 s;登记 regressions 构建)
-- [ ] Write "初猜与 DIIS 家族" half of docs/tutorial/ch18-scf-techniques.md(Jensen 3.8 叙事:发散成因→初猜质量→damping/level-shift 回顾→DIIS→EDIIS/ADIIS 家族与适用域陷阱;molplot 收敛曲线图 + 章末 PySCF 迭代数对照表)
-- [ ] Run full check + test suite
+- [x] Write failing tests for HueckelGuess/SapGuess (tests/cpu/scf/test_init_guess.cpp:F_μν 公式与 VSIP 对角、SAP 矩阵对称性与 H 原子手算参考元、不支持 Z 抛异常;登记 tests/CMakeLists.txt)
+- [x] Write failing tests for EDIISMixer/ADIISMixer (tests/cpu/scf/test_ediis_adiis.cpp:两点历史闭式最优系数、Σc=1 且 c≥0、ADIIS 目标函数值、退化历史无 NaN;登记 tests/CMakeLists.txt)
+- [x] Implement HueckelGuess and SapGuess in include/atomiverse/cpu/scf/internal/{hueckel_guess.h,sap_guess.h,sap_data.h} + src/cpu/scf/internal/{hueckel_guess.cpp,sap_guess.cpp},并在 scf_enums.h 给 InitGuess 加 Hueckel/SAP;登记根 CMakeLists.txt
+- [x] Wire guess dispatch in src/cpu/scf/mean_field_method.cpp 初猜块(开壳沿用 P/2 分裂 + HOMO-LUMO 混合;头文件记录占据平均化陷阱)
+- [x] Implement EDIISMixer/ADIISMixer in include/atomiverse/cpu/scf/internal/ediis_adiis.h + src/cpu/scf/internal/ediis_adiis.cpp(t² 单纯形参数化求解;DOI 注释)
+- [x] Wire MixerKind escalation in stages/mix_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 mixer/mixer_switch_tol,默认 CDIIS 行为零变化;能量经 const double& 引用入 MixStage)
+- [x] Implement regression regressions/scf/h2o_scf_convergence/(H2O/def2-SVP 各初猜迭代数表 + CDIIS 失速/ADIIS→CDIIS 收敛困难例;REFERENCE.md 钉定 PySCF 能量与迭代数;≤60 s;登记 regressions 构建)
+- [x] Write "初猜与 DIIS 家族" half of docs/tutorial/ch18-scf-techniques.md(Jensen 3.8 叙事:发散成因→初猜质量→damping/level-shift 回顾→DIIS→EDIIS/ADIIS 家族与适用域陷阱;molplot 收敛曲线图 + 章末 PySCF 迭代数对照表)
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **快乐路径(单元,秒级)**:Hückel F 的对角=VSIP、非对角=½K(H_μμ+H_νν)S_μν 逐元素校验;SAP V 矩阵对称、初猜密度 Tr(PS)=N_elec;EDIIS/ADIIS 两点闭式解匹配 ≤1e-10。

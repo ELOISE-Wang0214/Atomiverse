@@ -4,7 +4,11 @@
 
 #include "atomiverse/cpu/scf/stages/mix_stage.h"
 
+#include <algorithm>
 #include <cmath>
+
+#include <xtensor/core/xmath.hpp>
+#include <xtensor/reducers/xreducer.hpp>
 
 #include "atomiverse/cpu/scf/internal/level_shift.h"
 
@@ -21,16 +25,55 @@ void MixStage::launch(const cpu::LaunchContext& ctx) {
     if (!restricted_)
         err_beta_ = internal::diis_error(F_beta_, P_beta_, S_, X_);
 
-    // Step 2: DIIS extrapolation in Fock space (scf_solver.cpp:251-263).
+    // Far-field escalation latch: once max|DIIS error| falls below the
+    // switch tolerance, an EDIIS/ADIIS run permanently hands over to CDIIS
+    // (EDIIS/ADIIS stall near convergence — far-field mixers only).
+    bool cdiis_now = (mixer_kind_ == MixerKind::CDIIS) || switched_;
+    if (!cdiis_now) {
+        double err_max = xt::amax(xt::abs(err_alpha_))();
+        if (!restricted_)
+            err_max = std::max(err_max, xt::amax(xt::abs(err_beta_))());
+        if (err_max < mixer_switch_tol_) {
+            switched_ = true;
+            cdiis_now = true;
+        }
+    }
+
+    // Step 2: mixer extrapolation in Fock space. The CDIIS branch is
+    // byte-for-byte the shipping loop (scf_solver.cpp:251-263); EDIIS/ADIIS
+    // extrapolate from their own (F, D[, E]) histories and push the
+    // UNSHIFTED Fock exactly like CDIIS does.
     if (use_diis_ && iter_ >= diis_start_iter_) {
-        if (restricted_) {
-            F_alpha_ = diis_.step(F_alpha_, err_alpha_);
-            F_beta_ = F_alpha_;
-        } else {
-            auto [Fa_diis, Fb_diis] =
-                diis_.step(F_alpha_, err_alpha_, F_beta_, err_beta_);
-            F_alpha_ = Fa_diis;
-            F_beta_ = Fb_diis;
+        if (cdiis_now) {
+            if (restricted_) {
+                F_alpha_ = diis_.step(F_alpha_, err_alpha_);
+                F_beta_ = F_alpha_;
+            } else {
+                auto [Fa_diis, Fb_diis] =
+                    diis_.step(F_alpha_, err_alpha_, F_beta_, err_beta_);
+                F_alpha_ = Fa_diis;
+                F_beta_ = Fb_diis;
+            }
+        } else if (mixer_kind_ == MixerKind::EDIIS_CDIIS) {
+            if (restricted_) {
+                F_alpha_ = ediis_.step(F_alpha_, P_alpha_, energy_);
+                F_beta_ = F_alpha_;
+            } else {
+                auto [Fa_e, Fb_e] = ediis_.step(F_alpha_, P_alpha_, F_beta_,
+                                                P_beta_, energy_);
+                F_alpha_ = Fa_e;
+                F_beta_ = Fb_e;
+            }
+        } else { // MixerKind::ADIIS_CDIIS
+            if (restricted_) {
+                F_alpha_ = adiis_.step(F_alpha_, P_alpha_);
+                F_beta_ = F_alpha_;
+            } else {
+                auto [Fa_a, Fb_a] =
+                    adiis_.step(F_alpha_, P_alpha_, F_beta_, P_beta_);
+                F_alpha_ = Fa_a;
+                F_beta_ = Fb_a;
+            }
         }
     }
 
