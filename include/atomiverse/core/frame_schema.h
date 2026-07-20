@@ -218,6 +218,12 @@ inline constexpr MetaKey<std::int64_t> kNextTag{"next_tag", false};
 
 inline constexpr MetaKey<std::int64_t> kStep{"step", true};
 inline constexpr MetaKey<double> kEnergy{"energy", true};
+/// Molecular dipole moment [Debye], written by cpu::MultipoleObserver.
+inline constexpr MetaKey<MetaF64x3> kDipole{"dipole", true};
+/// Traceless Buckingham quadrupole [D*Angstrom], packed xx,xy,xz,yy,yz,zz.
+inline constexpr MetaKey<MetaF64x6> kQuadrupole{"quadrupole", true};
+/// Multipole expansion origin (center of nuclear charge) [Angstrom].
+inline constexpr MetaKey<MetaF64x3> kMultipoleOrigin{"multipole_origin", true};
 inline constexpr MetaKey<double> kEnergyPair{"energy_pair", true};
 inline constexpr MetaKey<double> kEnergyBond{"energy_bond", true};
 inline constexpr MetaKey<double> kEnergyAngle{"energy_angle", true};

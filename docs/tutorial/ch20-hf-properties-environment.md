@@ -4,9 +4,37 @@
 > 本章把"从收敛的波函数读出物理"讲成一条弧:期望值 → 布居 → 响应(频率/激发)
 > → 环境(外场/嵌入/溶剂)→ 相对论,对应 Jensen 性质诸章的 HF 侧。
 
-## 20.1 分子多极矩(骨架)
+## 20.1 分子多极矩
 
-<!-- 填充:03-multipole — 期望值 Tr(P·O)、原点依赖推导、molvis 偶极矢量渲染 -->
+收敛的波函数里能读出的第一个物理量是**偶极矩**。对单行列式,任何单电子
+算符的期望值都是一个迹:⟨Φ|Ô|Φ⟩ = Tr(P·O) — 这正是 `SlaterDeterminant::expect`
+的契约(双电子算符没有这种形式;把 Fock 矩阵塞进去得到的 Σε 会双计电子互斥)。
+于是
+
+μ = Σ_A Z_A R_A − Tr(P·r),  Θ_ab = ½ Σ q (3 r_a r_b − r² δ_ab)(无迹 Buckingham)。
+
+**原点问题**:把原点平移 d,偶极变换为 μ′ = μ − q_tot·d — 中性分子原点无关,
+带电体系则不然;四极矩同理带上偶极交叉项。所以约定必须随数值一起报告:
+Atomiverse 取**核电荷中心**为原点并写入 `kMultipoleOrigin`,这样全局平移下
+报告值不变(原点随体系移动)。
+
+### 上手
+
+```cpp
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Pople631Gs;
+rhf.run(frame);
+
+cpu::MultipoleObserver obs{rhf.result_handle()};
+// 生产用法:挂到宿主驱动的 end_of_step;单点后也可直接 launch 一次。
+// frame.meta 里出现 kDipole [Debye]、kQuadrupole [D·Å]、kMultipoleOrigin [Å]。
+```
+
+molvis 渲染:把 `kDipole` 矢量画在 `kMultipoleOrigin` 上即得教科书的
+"偶极箭头"图(场景 API 见 molvis 文档)。
+
+积分内核是移位中心闭式(Obara & Saika 1986, DOI 10.1063/1.450106),
+平移恒等式 M¹(C′) = M¹(C) + (C−C′)·S 由单元测试在 1e-13 钉住。
 
 ## 20.2 布居分析与 ESP 电荷(骨架)
 
@@ -38,7 +66,8 @@
 
 | 体系/设置 | 量 | Atomiverse | PySCF(钉定) | 容差 | 环 |
 |---|---|---|---|---|---|
-| _待 03 填充_ | H2O 偶极 | — | — | 1e-6 a.u. | 03 |
+| H2O RHF/6-31G* | μ_z [a.u.] | −0.8757858700 | −0.8757858708 | 1e-6 a.u.(实差 8e-10) | 03 |
+| H2O RHF/6-31G* | μ_z [D] | −2.226026 | −2.2260255980 | —(HF 高估 vs 1.85 D 实验) | 03 |
 | _待 13 填充_ | H2O 频率 | — | — | 1 cm⁻¹ | 13 |
 | _待 14 填充_ | CH2O 激发能 | — | — | 1e-4 eV | 14 |
 

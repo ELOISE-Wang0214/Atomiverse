@@ -44,6 +44,10 @@ inline constexpr double kEvPerAngstromInHartreePerBohr =
     / 1.8897261245650618; // = (1 eV / 1 Å) in (Hartree / Bohr)
 
 inline constexpr double kBohrInAngstrom = 1.0 / kAngstromInBohr;
+
+/// Electric dipole: 1 atomic unit (e*Bohr) in Debye (PySCF nist value, so
+/// pinned oracle comparisons convert identically).
+inline constexpr double kAuDipoleInDebye = 2.541746473;
 inline constexpr double kHartreeInEv = 1.0 / kEvInHartree;
 inline constexpr double kHartreePerBohrInEvPerAngstrom =
     1.0 / kEvPerAngstromInHartreePerBohr;

@@ -460,6 +460,8 @@ atv_add_cpp_test(test_cpu_linalg_canonical_orth
 
 if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_cart2sph     cpu/scf/test_cart2sph.cpp)
+    atv_add_cpp_test(test_cpu_scf_multipole_ints cpu/scf/test_multipole_integrals.cpp)
+    atv_add_cpp_test(test_cpu_observer_multipole cpu/observer/test_multipole.cpp)
     atv_add_cpp_test(test_cpu_scf_spherical    cpu/scf/test_spherical_basis.cpp)
     atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)

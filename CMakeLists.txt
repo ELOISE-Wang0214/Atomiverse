@@ -400,6 +400,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rys_eri.cpp
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
+            src/cpu/observer/multipole.cpp
             src/cpu/scf/internal/cart2sph.cpp
             src/cpu/scf/internal/diis_mixer.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp

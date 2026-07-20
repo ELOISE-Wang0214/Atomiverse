@@ -65,6 +65,12 @@ struct MeanFieldOutputs {
     std::shared_ptr<const SlaterDeterminant> result;
     std::shared_ptr<const std::vector<native::Shell>> shells;
     std::shared_ptr<const bool> ready;
+
+    /// @brief Cartesian→spherical transform of the pack (empty tensor for
+    ///        Cartesian-convention bases). Consumers that rebuild integrals
+    ///        from `shells` (Cartesian) sandwich with this to match the
+    ///        determinant's AO dimension.
+    std::shared_ptr<const xt::xtensor<double, 2>> c2s;
 };
 
 /// @brief Shared members and Frame API for concrete mean-field methods.
@@ -188,7 +194,9 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
         return {det_sp_,
                 std::shared_ptr<const std::vector<native::Shell>>(
                     integrals_sp_, &integrals_sp_->shells),
-                has_result_sp_};
+                has_result_sp_,
+                std::shared_ptr<const xt::xtensor<double, 2>>(
+                    integrals_sp_, &integrals_sp_->c2s)};
     }
 
     Derived& with_gradient(bool enabled) & noexcept {
