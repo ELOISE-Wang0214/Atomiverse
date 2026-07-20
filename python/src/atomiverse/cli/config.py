@@ -101,39 +101,6 @@ def parse_bool(raw: str) -> Optional[bool]:
     return None
 
 
-def parse_inline_kv(spec: str) -> Dict[str, Any]:
-    """Parse ``k:v,k:v`` inline options.
-
-    Items are comma-separated; the **first** ``:`` splits key from value.
-    Bool synonyms ``yes/no/true/false/on/off/1/0`` become ``bool``; other
-    values stay as strings.
-
-    @param spec: Inline option string (may be empty).
-    @return Mapping of friendly key → value.
-    @raises ConfigError: on empty key or missing colon.
-    """
-    out: Dict[str, Any] = {}
-    text = (spec or "").strip()
-    if not text:
-        return out
-    for item in text.split(","):
-        piece = item.strip()
-        if not piece:
-            continue
-        if ":" not in piece:
-            raise ConfigError(
-                f"inline option {piece!r} missing key:value (first-colon split)"
-            )
-        key, _, value = piece.partition(":")
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            raise ConfigError(f"inline option has empty key in {piece!r}")
-        b = parse_bool(value)
-        out[key] = b if b is not None else value
-    return out
-
-
 def _load_toml(path: Path) -> Mapping[str, Any]:
     try:
         import tomllib  # py>=3.11
@@ -259,32 +226,39 @@ def _set_unbound(cfg: InstallConfig, key: str, value: Any) -> None:
     cfg.unbound[key] = _stringify_cmake_value(value)
 
 
-def apply_inline_modules(
+def apply_cli_modules(
     cfg: InstallConfig,
-    module_flags: Mapping[str, Optional[str]],
-    global_spec: Optional[str] = None,
+    modules: Iterable[str],
+    *,
+    options: Optional[Mapping[str, Any]] = None,
 ) -> InstallConfig:
-    """Merge inline ``--md [k:v]`` / ``--global k:v`` into *cfg*.
+    """Enable product modules from CLI positionals and apply bound options.
 
-    Presence of a module flag enables that module (even with empty k:v).
+    Scheme B (Typer): modules are bare names (``md``, ``pw``, …), not
+    ``--md k:v`` strings. Options are native flags (``--mpi``,
+    ``--real-storage``, …) collected into *options*.
 
     @param cfg: Config to mutate (returned for chaining).
-    @param module_flags: Module name → inline k:v string or None (absent).
-    @param global_spec: Optional ``--global`` inline k:v string.
+    @param modules: Product module names to enable.
+    @param options: Bound friendly-key → value (bool or str); ``None`` values skipped.
     """
-    for name, spec in module_flags.items():
-        if spec is None:
+    for name in modules:
+        name = str(name).strip()
+        if not name:
             continue
         if name == "hf":
             raise ConfigError(HF_REJECT_MSG)
         if name not in MODULE_TO_DEFINE:
-            raise ConfigError(f"unknown module flag --{name}")
+            raise ConfigError(
+                f"unknown module {name!r}; "
+                f"known: {sorted(MODULE_TO_DEFINE)}"
+            )
         cfg.modules[name] = True
-        for key, value in parse_inline_kv(spec).items():
-            _set_bound_option(cfg, key, value, where=f"--{name}")
-    if global_spec is not None:
-        for key, value in parse_inline_kv(global_spec).items():
-            _set_bound_option(cfg, key, value, where="--global")
+    if options:
+        for key, value in options.items():
+            if value is None:
+                continue
+            _set_bound_option(cfg, str(key), value, where="CLI option")
     return cfg
 
 
@@ -369,36 +343,43 @@ def define_fingerprint(defines: Mapping[str, str]) -> str:
     return "|".join(parts)
 
 
-def any_module_flag_present(module_flags: Mapping[str, Optional[str]]) -> bool:
-    """True if any module flag was supplied on the CLI (value not None)."""
-    return any(v is not None for v in module_flags.values())
-
-
 def validate_mode(
     *,
     config_path: Optional[str],
-    module_flags: Mapping[str, Optional[str]],
-    global_spec: Optional[str],
+    modules: Iterable[str],
     hf: bool,
+    has_cli_options: bool = False,
 ) -> None:
-    """Enforce XOR of ``--config`` vs inline flags; reject ``--hf`` and empty.
+    """Enforce XOR of ``--config`` vs CLI modules/options; reject ``--hf`` / empty.
+
+    @param config_path: Path from ``--config``, or None.
+    @param modules: Positional module names (scheme B).
+    @param hf: Whether ``--hf`` was passed.
+    @param has_cli_options: True if any bound CLI option was set (mpi, …).
+        Options alone without modules still count as empty install.
 
     @raises ConfigError: on mutual exclusion, empty install, or --hf.
     """
     if hf:
         raise ConfigError(HF_REJECT_MSG)
 
-    inline = any_module_flag_present(module_flags) or global_spec is not None
-    if config_path and inline:
+    mod_list = [m for m in modules if m]
+    cli_mode = bool(mod_list)
+    if config_path and cli_mode:
         raise ConfigError(
-            "mutual exclusion: use either --config PATH.toml or inline "
-            "module flags (--md/--pw/…/--global), not both"
+            "mutual exclusion: use either --config PATH.toml or CLI modules "
+            "(e.g. `install md pw`), not both"
         )
-    if not config_path and not any_module_flag_present(module_flags):
-        # --global alone is not an install
+    if config_path and has_cli_options and not cli_mode:
+        # --config with extra bound options is also mixed mode
+        raise ConfigError(
+            "mutual exclusion: use either --config PATH.toml or CLI modules/"
+            "options, not both"
+        )
+    if not config_path and not mod_list:
         raise ConfigError(
             "empty install: pass --config PATH.toml or at least one module "
-            "flag (e.g. --md, --pw)"
+            "(e.g. `install md` or `install md pw`)"
         )
 
 

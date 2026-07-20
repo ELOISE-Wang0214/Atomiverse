@@ -1,4 +1,12 @@
-"""``python -m atomiverse`` argparse entry — ``install`` / ``status``.
+"""``python -m atomiverse`` Typer entry — scheme B install CLI.
+
+Modules are **positional names** (not ``--md k:v``)::
+
+    python -m atomiverse install md --mpi
+    python -m atomiverse install md pw --real-storage double
+    python -m atomiverse install --config path.toml
+
+``--config`` is mutually exclusive with CLI modules/options.
 
 This module must **not** import ``atomiverse._binding`` or ``_atomiverse``
 at import time (pure-Python wheel / soft-extension contract).
@@ -6,16 +14,18 @@ at import time (pure-Python wheel / soft-extension contract).
 
 from __future__ import annotations
 
-import argparse
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Sequence
+
+import typer
 
 from atomiverse.cli.config import (
     MODULE_TO_DEFINE,
     ConfigError,
     InstallConfig,
-    apply_inline_modules,
+    apply_cli_modules,
     load_toml_config,
     merge_unbound_cli,
     validate_mode,
@@ -24,191 +34,223 @@ from atomiverse.cli.install import run_install
 from atomiverse.cli.source import resolve_source
 from atomiverse.cli.status import run_status
 
-# Product-module CLI flags (excluding the special --global / --hf).
-_MODULE_FLAGS: tuple[str, ...] = tuple(
-    m for m in MODULE_TO_DEFINE if m != "global"
+app = typer.Typer(
+    name="atomiverse",
+    help=(
+        "Atomiverse on-demand native install. "
+        "Pure-Python wheels ship without the C++ extension; "
+        "use `install` to compile selected modules into site-packages."
+    ),
+    add_completion=False,
+    no_args_is_help=False,
+    invoke_without_command=True,
 )
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python -m atomiverse",
-        description=(
-            "Atomiverse on-demand native install. "
-            "Pure-Python wheels ship without the C++ extension; "
-            "use `install` to compile modules into site-packages."
-        ),
-    )
-    parser.add_argument(
+class RealPrecision(str, Enum):
+    """Storage / work precision tier (CMake ``ATV_REAL_*``)."""
+
+    float = "float"
+    double = "double"
+
+
+class IdSize(str, Enum):
+    """Integer-ID width (CMake ``ATV_ID_SIZE``)."""
+
+    bigbig = "bigbig"
+    smallbig = "smallbig"
+
+
+def _print_banner() -> None:
+    try:
+        from atomiverse import __version__
+    except Exception:  # pragma: no cover
+        __version__ = "unknown"
+    print(f"atomiverse {__version__}")
+    print()
+    print("On-demand native install (scheme B — no k:v strings):")
+    print("  python -m atomiverse install md")
+    print("  python -m atomiverse install md pw --mpi --real-storage double")
+    print("  python -m atomiverse install --config path.toml")
+    print("  python -m atomiverse status")
+    print()
+    print("Run `python -m atomiverse --help` for full options.")
+
+
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
         "--version",
-        action="store_true",
         help="print the installed atomiverse package version and exit",
-    )
+    ),
+) -> None:
+    """Atomiverse CLI root."""
+    if version:
+        from atomiverse.cli.source import package_version
 
-    sub = parser.add_subparsers(dest="command")
+        try:
+            typer.echo(package_version())
+        except ConfigError:
+            from atomiverse import __version__
 
-    # ── install ──────────────────────────────────────────────────────────
-    inst = sub.add_parser(
-        "install",
-        help="build/install the native _atomiverse extension for selected modules",
-    )
-    inst.add_argument(
+            typer.echo(__version__)
+        raise typer.Exit(0)
+    if ctx.invoked_subcommand is None:
+        _print_banner()
+        raise typer.Exit(0)
+
+
+@app.command("install")
+def install_cmd(
+    modules: Optional[List[str]] = typer.Argument(
+        None,
+        help=(
+            "product modules to enable (scheme B): md, minimize, mc, evaluate, "
+            "vib, path, pw, gpw, am1, cuda, kspace, potentials, neighbor"
+        ),
+        metavar="MODULE",
+    ),
+    config: Optional[Path] = typer.Option(
+        None,
         "--config",
-        metavar="PATH.toml",
-        default=None,
-        help="unified TOML config (XOR with inline --md/--pw/… flags)",
-    )
-    for name in _MODULE_FLAGS:
-        inst.add_argument(
-            f"--{name}",
-            nargs="?",
-            const="",
-            default=None,
-            metavar="k:v,...",
-            help=f"enable module '{name}' with optional inline options",
-        )
-    inst.add_argument(
-        "--global",
-        dest="global_opts",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="k:v,...",
-        help="cross-module options (real_storage, mpi, …)",
-    )
-    inst.add_argument(
+        help="unified TOML config (XOR with CLI modules/options)",
+        exists=False,
+        dir_okay=False,
+        readable=True,
+    ),
+    mpi: Optional[bool] = typer.Option(
+        None,
+        "--mpi/--no-mpi",
+        help="global: ATV_USE_MPI",
+    ),
+    real_storage: Optional[RealPrecision] = typer.Option(
+        None,
+        "--real-storage",
+        help="global: ATV_REAL_STORAGE (float|double)",
+    ),
+    real_work: Optional[RealPrecision] = typer.Option(
+        None,
+        "--real-work",
+        help="global: ATV_REAL_WORK (float|double)",
+    ),
+    id_size: Optional[IdSize] = typer.Option(
+        None,
+        "--id-size",
+        help="global: ATV_ID_SIZE (bigbig|smallbig)",
+    ),
+    hf: bool = typer.Option(
+        False,
         "--hf",
-        action="store_true",
         help="(rejected) HF/SCF bindings are not available yet",
-    )
-    inst.add_argument(
+    ),
+    src: Optional[Path] = typer.Option(
+        None,
         "--src",
-        default=None,
-        metavar="PATH",
         help="local Atomiverse checkout (python/pyproject version must match)",
-    )
-    inst.add_argument(
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+    ),
+    url: Optional[str] = typer.Option(
+        None,
         "--url",
-        default=None,
-        metavar="URL",
         help="source tarball/URL override (default: GitHub tag of installed version)",
-    )
-    inst.add_argument(
+    ),
+    define: Optional[List[str]] = typer.Option(
+        None,
         "-D",
-        dest="defines",
-        action="append",
-        default=[],
-        metavar="KEY=VALUE",
-        help="unbound CMake cache entry (bound keys are rejected)",
-    )
-    inst.add_argument(
+        "--define",
+        help="unbound CMake cache entry KEY=VALUE (bound keys are rejected)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
         "--dry-run",
-        action="store_true",
         help="resolve modules/defines and print the pip command without building",
-    )
+    ),
+) -> None:
+    """Build/install the native ``_atomiverse`` extension for selected modules."""
+    mod_list = list(modules or [])
+    # Reject unknown module tokens early with a clear message.
+    for m in mod_list:
+        if m not in MODULE_TO_DEFINE and m != "hf":
+            typer.echo(
+                f"error: unknown module {m!r}; known: {sorted(MODULE_TO_DEFINE)}",
+                err=True,
+            )
+            raise typer.Exit(2)
 
-    # ── status ───────────────────────────────────────────────────────────
-    sub.add_parser(
-        "status",
-        help="show enabled modules and define fingerprint from last install",
-    )
+    cli_options = {
+        "mpi": mpi,
+        "real_storage": real_storage.value if real_storage is not None else None,
+        "real_work": real_work.value if real_work is not None else None,
+        "id_size": id_size.value if id_size is not None else None,
+    }
+    has_cli_options = any(v is not None for v in cli_options.values())
 
-    return parser
-
-
-def _module_flags_from_args(args: argparse.Namespace) -> dict:
-    return {name: getattr(args, name.replace("-", "_"), None) for name in _MODULE_FLAGS}
-
-
-def _cmd_install(args: argparse.Namespace) -> int:
-    module_flags = _module_flags_from_args(args)
     try:
         validate_mode(
-            config_path=args.config,
-            module_flags=module_flags,
-            global_spec=args.global_opts,
-            hf=bool(args.hf),
+            config_path=str(config) if config is not None else None,
+            modules=mod_list,
+            hf=hf,
+            has_cli_options=has_cli_options,
         )
-        if args.config:
-            cfg = load_toml_config(Path(args.config))
+        if config is not None:
+            cfg = load_toml_config(config)
         else:
             cfg = InstallConfig()
-            apply_inline_modules(cfg, module_flags, global_spec=args.global_opts)
-        if args.defines:
-            merge_unbound_cli(cfg, args.defines)
-        source = resolve_source(src=args.src, url=args.url)
+            apply_cli_modules(cfg, mod_list, options=cli_options)
+        if define:
+            merge_unbound_cli(cfg, define)
+        source = resolve_source(
+            src=str(src) if src is not None else None,
+            url=url,
+        )
     except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
 
     try:
-        return run_install(cfg, source, dry_run=bool(args.dry_run))
+        code = run_install(cfg, source, dry_run=dry_run)
     except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    if code != 0:
+        raise typer.Exit(code)
 
 
-def _cmd_status(_args: argparse.Namespace) -> int:
-    return run_status()
+@app.command("status")
+def status_cmd() -> None:
+    """Show enabled modules and define fingerprint from the last install."""
+    code = run_status()
+    if code != 0:
+        raise typer.Exit(code)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """CLI entry point.
+    """CLI entry point compatible with tests and ``python -m atomiverse``.
 
     @param argv: Arguments without the program name (default: ``sys.argv[1:]``).
     @return Process exit code.
     """
-    argv_list: List[str] = list(sys.argv[1:] if argv is None else argv)
-    parser = _build_parser()
-
-    # Bare invocation: friendly guidance (pure-wheel contract / pure_import).
-    if not argv_list:
-        try:
-            from atomiverse import __version__
-        except Exception:  # pragma: no cover
-            __version__ = "unknown"
-        print(f"atomiverse {__version__}")
-        print()
-        print("On-demand native install:")
-        print("  python -m atomiverse install --md")
-        print("  python -m atomiverse install --config path.toml")
-        print("  python -m atomiverse status")
-        print()
-        print("Run `python -m atomiverse --help` for full options.")
+    args = list(sys.argv[1:] if argv is None else argv)
+    try:
+        # standalone_mode=False: Click may *return* the exit code or raise Exit.
+        result = app(args=args, standalone_mode=False)
+        if isinstance(result, int):
+            return result
         return 0
-
-    # `python -m atomiverse --version` (package version — not an install flag)
-    if argv_list == ["--version"] or argv_list == ["-v"]:
-        from atomiverse.cli.source import package_version
-
-        try:
-            print(package_version())
-        except ConfigError:
-            from atomiverse import __version__
-
-            print(__version__)
-        return 0
-
-    args = parser.parse_args(argv_list)
-
-    if getattr(args, "version", False) and not args.command:
-        from atomiverse.cli.source import package_version
-
-        try:
-            print(package_version())
-        except ConfigError:
-            from atomiverse import __version__
-
-            print(__version__)
-        return 0
-
-    if args.command == "install":
-        return _cmd_install(args)
-    if args.command == "status":
-        return _cmd_status(args)
-
-    parser.print_help()
-    return 0
+    except typer.Exit as exc:
+        code = getattr(exc, "exit_code", None)
+        if code is None:
+            code = getattr(exc, "code", 0)
+        return int(code) if code is not None else 0
+    except SystemExit as exc:  # pragma: no cover
+        code = exc.code
+        if code is None:
+            return 0
+        return int(code) if isinstance(code, int) else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

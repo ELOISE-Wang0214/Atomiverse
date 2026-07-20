@@ -61,8 +61,8 @@ def main() -> int:
         return 1
     print("ok: --help")
 
-    # 2) mutual exclusion
-    proc = _run(["install", "--config", "x.toml", "--md"])
+    # 2) mutual exclusion (scheme B: positional modules, not --md k:v)
+    proc = _run(["install", "--config", "x.toml", "md"])
     if proc.returncode == 0:
         print("FAIL: expected mutual exclusion failure")
         return 1
@@ -96,11 +96,11 @@ def main() -> int:
         return 1
     print("ok: --hf rejected")
 
-    # 5) dry-run --md (closure + PYTHON=ON)
+    # 5) dry-run install md (closure + PYTHON=ON)
     proc = _run(
         [
             "install",
-            "--md",
+            "md",
             "--src",
             str(PYTHON_PKG),
             "--dry-run",
@@ -108,7 +108,7 @@ def main() -> int:
     )
     out = proc.stdout + proc.stderr
     if proc.returncode != 0:
-        print("FAIL: dry-run --md failed")
+        print("FAIL: dry-run install md failed")
         print(out)
         return 1
     for needle in (
@@ -124,7 +124,7 @@ def main() -> int:
     if "dry-run" not in out.lower():
         print("FAIL: dry-run marker missing")
         return 1
-    print("ok: dry-run --md defines (closure + PYTHON=ON)")
+    print("ok: dry-run install md defines (closure + PYTHON=ON)")
 
     # 6) status
     proc = _run(["status"])

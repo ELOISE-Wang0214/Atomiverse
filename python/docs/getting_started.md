@@ -27,11 +27,12 @@ python -m atomiverse status  # no native build yet
 Importing compute symbols (`atomiverse.MD`, …) without a native extension
 raises `ImportError` pointing at phase 2.
 
-### Phase 2 — on-demand native build
+### Phase 2 — on-demand native build (Typer scheme B)
 
 ```bash
-python -m atomiverse install --md
-python -m atomiverse install --md mpi:yes --pw --global real_storage:double
+# modules are positional names; options are real flags (no k:v strings)
+python -m atomiverse install md
+python -m atomiverse install md pw --mpi --real-storage double
 python -m atomiverse install --config atomiverse-build.toml
 ```
 
@@ -46,15 +47,19 @@ wins).
 
 | Mode | Example | Notes |
 |------|---------|--------|
-| Inline modules | `install --md mpi:yes --pw` | `--<module> [k:v,…]`; cross-module via `--global k:v` |
+| CLI modules | `install md pw --mpi` | positional modules + native options (`--mpi`, `--real-storage`, …) |
 | TOML file | `install --config path.toml` | `[modules]`, per-module tables, `[global]`, optional `[cmake.unbound]` |
 
-Illegal: `install --config x.toml --md` (XOR).
+Illegal: `install --config x.toml md` (XOR).
 
-**Modules (CLI names):** `md`, `minimize`, `mc`, `evaluate`, `vib`, `path`,
+**Modules:** `md`, `minimize`, `mc`, `evaluate`, `vib`, `path`,
 `pw`, `gpw`, `am1`, `cuda`, `kspace`, `potentials`, `neighbor`.  
 Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`
 (CMake DAG). **`--hf` is rejected** until SCF Python bindings land.
+
+**Global options (examples):** `--mpi` / `--no-mpi`, `--real-storage {float,double}`,
+`--real-work`, `--id-size {bigbig,smallbig}`. Unbound CMake only via
+`-D KEY=VALUE` when no friendly binding exists.
 
 **Version lock:** source tree `python/pyproject.toml` version must equal
 `importlib.metadata.version("atomiverse")`. Mismatch → reject before compile.
@@ -62,7 +67,7 @@ Enabling `md` / `mc` / `minimize` auto-enables `potentials` + `neighbor`
 **Dry-run (no compile):**
 
 ```bash
-python -m atomiverse install --md --src /path/to/Atomiverse --dry-run
+python -m atomiverse install md --src /path/to/Atomiverse --dry-run
 ```
 
 **Developer path (optional):** monorepo scikit-build with CMake still works

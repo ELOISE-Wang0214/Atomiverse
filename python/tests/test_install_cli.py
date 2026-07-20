@@ -1,6 +1,7 @@
-"""Unit tests for on-demand install CLI (spec 03-install-cli).
+"""Unit tests for on-demand install CLI (Typer scheme B — no k:v).
 
-Covers ac-001..006, 008, 010, 011 — pure Python, no C++ compile.
+Covers mutual exclusion, empty install, --hf, CLI options, DAG closure,
+bound -D reject, version gate, status, import hygiene.
 """
 
 from __future__ import annotations
@@ -21,10 +22,9 @@ from atomiverse.cli.config import (  # noqa: E402
     BINDING_TABLE,
     ConfigError,
     InstallConfig,
-    apply_inline_modules,
+    apply_cli_modules,
     load_toml_config,
     merge_unbound_cli,
-    parse_inline_kv,
     resolve_defines,
     validate_mode,
 )
@@ -45,24 +45,29 @@ from atomiverse.cli.status import format_status, run_status  # noqa: E402
 # ── ac-001 mutual exclusion ──────────────────────────────────────────────────
 
 
-def test_ac001_mutual_exclusion_config_vs_inline() -> None:
+def test_ac001_mutual_exclusion_config_vs_modules() -> None:
     with pytest.raises(ConfigError, match="mutual exclusion"):
         validate_mode(
             config_path="x.toml",
-            module_flags={"md": ""},
-            global_spec=None,
+            modules=["md"],
             hf=False,
         )
-    # CLI path
-    rc = main(["install", "--config", "x.toml", "--md"])
+    rc = main(["install", "--config", "x.toml", "md"])
     assert rc != 0
 
 
 def test_ac001_cli_stderr_names_mutual_exclusion(capsys) -> None:
-    rc = main(["install", "--config", "does-not-matter.toml", "--pw"])
+    rc = main(["install", "--config", "does-not-matter.toml", "pw"])
     assert rc != 0
     err = capsys.readouterr().err
-    assert "mutual exclusion" in err.lower() or "mutual" in err.lower()
+    assert "mutual" in err.lower() or "exclusion" in err.lower()
+
+
+def test_ac001_config_with_cli_options_rejected(capsys) -> None:
+    rc = main(["install", "--config", "x.toml", "--mpi"])
+    assert rc != 0
+    err = capsys.readouterr().err.lower()
+    assert "mutual" in err or "exclusion" in err
 
 
 # ── ac-002 empty install ─────────────────────────────────────────────────────
@@ -70,24 +75,21 @@ def test_ac001_cli_stderr_names_mutual_exclusion(capsys) -> None:
 
 def test_ac002_empty_install_fails() -> None:
     with pytest.raises(ConfigError, match="empty install"):
-        validate_mode(
-            config_path=None,
-            module_flags={"md": None, "pw": None},
-            global_spec=None,
-            hf=False,
-        )
+        validate_mode(config_path=None, modules=[], hf=False)
     rc = main(["install"])
     assert rc != 0
 
 
-def test_ac002_global_only_is_empty() -> None:
+def test_ac002_options_only_is_empty() -> None:
     with pytest.raises(ConfigError, match="empty install"):
         validate_mode(
             config_path=None,
-            module_flags={"md": None},
-            global_spec="mpi:yes",
+            modules=[],
             hf=False,
+            has_cli_options=True,
         )
+    rc = main(["install", "--mpi"])
+    assert rc != 0
 
 
 # ── ac-003 --hf rejected ─────────────────────────────────────────────────────
@@ -95,15 +97,10 @@ def test_ac002_global_only_is_empty() -> None:
 
 def test_ac003_hf_flag_rejected() -> None:
     with pytest.raises(ConfigError, match="HF/SCF|not available"):
-        validate_mode(
-            config_path=None,
-            module_flags={"md": ""},
-            global_spec=None,
-            hf=True,
-        )
+        validate_mode(config_path=None, modules=["md"], hf=True)
     rc = main(["install", "--hf"])
     assert rc != 0
-    rc = main(["install", "--md", "--hf"])
+    rc = main(["install", "md", "--hf"])
     assert rc != 0
 
 
@@ -114,29 +111,31 @@ def test_ac003_modules_hf_in_toml(tmp_path: Path) -> None:
         load_toml_config(cfg)
 
 
-# ── ac-004 inline k:v + bool synonyms + first-colon ──────────────────────────
+# ── scheme B: positional modules + native options ────────────────────────────
 
 
-def test_ac004_parse_inline_kv_bool_synonyms() -> None:
-    for token in ("yes", "true", "on", "1", "YES", "True"):
-        assert parse_inline_kv(f"mpi:{token}") == {"mpi": True}
-    for token in ("no", "false", "off", "0"):
-        assert parse_inline_kv(f"mpi:{token}") == {"mpi": False}
-
-
-def test_ac004_first_colon_split() -> None:
-    # value may contain colons; only the first splits
-    got = parse_inline_kv("url:https://example.com/x")
-    assert got == {"url": "https://example.com/x"}
-
-
-def test_ac004_md_mpi_maps_via_binding_table() -> None:
+def test_apply_cli_modules_md_mpi() -> None:
     cfg = InstallConfig()
-    apply_inline_modules(cfg, {"md": "mpi:yes"})
+    apply_cli_modules(cfg, ["md"], options={"mpi": True})
     defines = resolve_defines(cfg)
     assert defines["ATV_BUILD_MD"] == "ON"
     assert defines[BINDING_TABLE["mpi"]] == "ON"
     assert BINDING_TABLE["mpi"] == "ATV_USE_MPI"
+
+
+def test_apply_cli_modules_unknown() -> None:
+    with pytest.raises(ConfigError, match="unknown module"):
+        apply_cli_modules(InstallConfig(), ["notamodule"])
+
+
+def test_cli_multi_module_md_pw() -> None:
+    cfg = InstallConfig()
+    apply_cli_modules(cfg, ["md", "pw"])
+    defines = resolve_defines(cfg)
+    assert defines["ATV_BUILD_MD"] == "ON"
+    assert defines["ATV_BUILD_PW"] == "ON"
+    assert defines["ATV_BUILD_POTENTIALS"] == "ON"
+    assert defines["ATV_BUILD_NEIGHBOR"] == "ON"
 
 
 # ── ac-005 md auto-enable closure ────────────────────────────────────────────
@@ -148,7 +147,6 @@ def test_ac005_md_closure_enables_potentials_and_neighbor() -> None:
     assert defines["ATV_BUILD_MD"] == "ON"
     assert defines["ATV_BUILD_POTENTIALS"] == "ON"
     assert defines["ATV_BUILD_NEIGHBOR"] == "ON"
-    # unrelated product modules stay OFF
     assert defines["ATV_BUILD_PW"] == "OFF"
     assert defines["ATV_BUILD_MC"] == "OFF"
 
@@ -203,7 +201,7 @@ def test_ac006_cli_D_bound_key(capsys) -> None:
     rc = main(
         [
             "install",
-            "--md",
+            "md",
             "-D",
             "ATV_BUILD_MD=ON",
             "--dry-run",
@@ -220,7 +218,6 @@ def test_ac006_cli_D_bound_key(capsys) -> None:
 
 
 def test_ac008_version_mismatch_rejects_before_pip(tmp_path: Path) -> None:
-    # Minimal fake checkout
     py_dir = tmp_path / "python"
     py_dir.mkdir()
     (py_dir / "src" / "atomiverse").mkdir(parents=True)
@@ -246,7 +243,7 @@ def test_ac008_matching_version_ok(tmp_path: Path) -> None:
     assert spec.location.endswith("python")
 
 
-# ── ac-009 / install always PYTHON=ON (code path via dry_run) ────────────────
+# ── install always PYTHON=ON ─────────────────────────────────────────────────
 
 
 def test_install_always_sets_python_on() -> None:
@@ -261,11 +258,10 @@ def test_install_always_sets_python_on() -> None:
     assert any("cmake.define.ATV_BUILD_PYTHON=ON" in a for a in cmd)
     assert "--force-reinstall" in cmd
     assert "--no-deps" in cmd
-    # no hand cmake -B
     assert not any(a == "cmake" or a.startswith("cmake ") for a in cmd)
 
 
-# ── ac-010 status ────────────────────────────────────────────────────────────
+# ── status ───────────────────────────────────────────────────────────────────
 
 
 def test_ac010_status_prints_modules_and_fingerprint(tmp_path: Path, capsys) -> None:
@@ -301,19 +297,16 @@ def test_ac010_format_status_none() -> None:
     assert "none" in text.lower() or "(none)" in text
 
 
-# ── ac-011 CLI loads without _binding ────────────────────────────────────────
+# ── CLI loads without native extension ───────────────────────────────────────
 
 
-def test_ac011_cli_import_does_not_load_binding() -> None:
-    """Importing cli submodules must not pull in _binding / _atomiverse."""
-    import importlib
+def test_ac011_cli_import_does_not_load_extension() -> None:
     import subprocess
 
     script = textwrap.dedent(
         f"""\
         import sys
         sys.path.insert(0, {str(_SRC)!r})
-        # Drop any preloaded atomiverse bits
         for k in list(sys.modules):
             if k == "atomiverse" or k.startswith("atomiverse.") or k == "_atomiverse":
                 del sys.modules[k]
@@ -322,8 +315,6 @@ def test_ac011_cli_import_does_not_load_binding() -> None:
         import atomiverse.cli.install
         import atomiverse.cli.status
         import atomiverse.cli.main
-        # Soft _binding may load via package root (no .so); the native extension
-        # itself must not be required for CLI import.
         bad = [
             k
             for k in sys.modules
@@ -387,7 +378,6 @@ def test_default_tarball_url_uses_version() -> None:
     assert url == (
         "https://github.com/Roy-Kid/Atomiverse/archive/refs/tags/v0.1.0.tar.gz"
     )
-    # package_version is callable (importlib.metadata path)
     ver = package_version()
     assert isinstance(ver, str) and ver
 
@@ -397,15 +387,24 @@ def test_help_mentions_install(capsys) -> None:
     assert rc == 0
     out = capsys.readouterr().out.lower()
     assert "install" in out
-    # argparse --help raises SystemExit(0)
-    with pytest.raises(SystemExit) as exc:
-        main(["--help"])
-    assert exc.value.code in (0, None)
+    # Typer --help exits via typer.Exit(0)
+    rc = main(["--help"])
+    assert rc == 0
+
+
+def test_install_help_lists_modules(capsys) -> None:
+    rc = main(["install", "--help"])
+    assert rc == 0
+    out = capsys.readouterr().out.lower()
+    assert "module" in out
+    assert "--config" in out
+    assert "--mpi" in out or "mpi" in out
+    # no k:v dialect
+    assert "k:v" not in out
 
 
 def test_dry_run_md_via_main(tmp_path: Path, capsys) -> None:
     """End-to-end dry-run with matching local source (no pip/C++)."""
-    # Point --src at the real repo python/ tree if version matches.
     repo_python = _SRC.parent  # python/
     pyproject = repo_python / "pyproject.toml"
     if not pyproject.is_file():
@@ -413,8 +412,8 @@ def test_dry_run_md_via_main(tmp_path: Path, capsys) -> None:
     rc = main(
         [
             "install",
-            "--md",
-            "mpi:yes",
+            "md",
+            "--mpi",
             "--src",
             str(repo_python),
             "--dry-run",
@@ -422,10 +421,10 @@ def test_dry_run_md_via_main(tmp_path: Path, capsys) -> None:
     )
     out = capsys.readouterr().out
     if rc != 0:
-        # version mismatch in weird envs — still validate resolve path unit-tested
         pytest.skip(f"dry-run skipped (rc={rc}): {out}")
     assert "ATV_BUILD_MD=ON" in out
     assert "ATV_BUILD_POTENTIALS=ON" in out
     assert "ATV_BUILD_NEIGHBOR=ON" in out
     assert "ATV_BUILD_PYTHON=ON" in out
+    assert "ATV_USE_MPI=ON" in out
     assert "dry-run" in out.lower()

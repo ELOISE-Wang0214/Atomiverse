@@ -18,18 +18,17 @@ OUT="$("$PYTHON" -m atomiverse install --help 2>&1)" || {
     echo "FAIL: install --help failed"; echo "$OUT"; exit 1
 }
 echo "$OUT" | grep -q -- '--config' || { echo "FAIL: help missing --config"; exit 1; }
-echo "$OUT" | grep -q -- '--md' || { echo "FAIL: help missing --md"; exit 1; }
-echo "$OUT" | grep -q -- '--global' || { echo "FAIL: help missing --global"; exit 1; }
 echo "$OUT" | grep -q -- '--src' || { echo "FAIL: help missing --src"; exit 1; }
 echo "$OUT" | grep -q -- '--url' || { echo "FAIL: help missing --url"; exit 1; }
-echo "ok: help lists --config/--md/--global/--src/--url"
+echo "$OUT" | grep -qi module || { echo "FAIL: help missing MODULE"; exit 1; }
+echo "ok: help lists --config/--src/--url/MODULE"
 
-# mutual exclusion
-if "$PYTHON" -m atomiverse install --config "$HERE/fixtures/minimal_ok.toml" --md >/dev/null 2>&1; then
+# mutual exclusion (scheme B: positional module names)
+if "$PYTHON" -m atomiverse install --config "$HERE/fixtures/minimal_ok.toml" md >/dev/null 2>&1; then
     echo "FAIL: expected mutual exclusion failure"
     exit 1
 fi
-echo "ok: --config + --md rejected"
+echo "ok: --config + md rejected"
 
 # --hf
 if "$PYTHON" -m atomiverse install --hf >/dev/null 2>&1; then
@@ -47,7 +46,7 @@ cat > "$TMP/python/pyproject.toml" <<'EOF'
 name = "atomiverse"
 version = "0.0.0-mismatch"
 EOF
-if "$PYTHON" -m atomiverse install --md --src "$TMP" --dry-run >/dev/null 2>&1; then
+if "$PYTHON" -m atomiverse install md --src "$TMP" --dry-run >/dev/null 2>&1; then
     echo "FAIL: expected version mismatch rejection"
     exit 1
 fi
