@@ -26,7 +26,7 @@ cmake --build build-cuda -j$(nproc)
 export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 TEST_RC=0
 ctest --test-dir build-cuda --output-on-failure \
-      -R "test_cuda_pw_si|test_pw_si|test_pw_components|test_cuda_scf_phase_scrub" \
+      -R "test_cuda_pw_si|test_pw_si|test_pw_components" \
       || TEST_RC=$?
 
 # ── CUDA benchmarks: Si EOS (science) + SCF timing (performance) ──

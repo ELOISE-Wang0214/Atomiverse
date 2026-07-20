@@ -71,6 +71,7 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
+#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
@@ -93,8 +94,8 @@ namespace cpu {
 ///
 /// Maps PhaseEnum → the eval phase (where pair/bonded forces run) and
 /// the end-of-step phase (where thermo output runs). One specialization
-/// below for each of the six workflows (md, minimizer, evaluate, vib,
-/// sampling, path).
+/// below for each of the seven workflows (md, minimizer, evaluate, vib,
+/// sampling, path, scf).
 template <typename PhaseEnum>
 struct PhaseTraits;
 
@@ -152,6 +153,20 @@ struct PhaseTraits<ATV::path::Phase> {
     static constexpr auto eval_phase = ATV::path::Phase::force;
     static constexpr auto neighbor_phase = ATV::path::Phase::force;
     static constexpr auto end_phase = ATV::path::Phase::end_of_step;
+};
+
+/// SCF (`cpu::CPUDriver<scf::Phase>` — the gaussian-basis self-consistency loop):
+/// the Fock/Hamiltonian build IS the energy slot, so `eval_phase` is `fock`. SCF
+/// has no neighbor list (integrals are rebuilt from Frame, not a pair list), so
+/// `neighbor_phase` folds into `fock` like minimizer/evaluate. The end-of-iteration
+/// slot is `check`, where convergence is judged. Without this specialization the
+/// categorical setters inherited from CPUDriver do not instantiate — the whole
+/// reason the specialization exists as a separate step from adding the enum.
+template <>
+struct PhaseTraits<ATV::scf::Phase> {
+    static constexpr auto eval_phase = ATV::scf::Phase::fock;
+    static constexpr auto neighbor_phase = ATV::scf::Phase::fock;
+    static constexpr auto end_phase = ATV::scf::Phase::check;
 };
 
 /// @brief CPU-backend loop node — the one class every CPU preset derives from.
@@ -558,11 +573,15 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @brief This loop's metrics — what its components measured, for handlers to judge.
     LoopMetrics& metrics() { return metrics_; }
 
-    /// @brief Ask every handler about the iteration just completed, and reduce.
+    /// @brief Ask every handler AND every criterion about the iteration just
+    ///        completed, and reduce.
     ///
     /// Composition: **Stop > Converged > Continue** — the most severe verdict wins, so a
     /// run that has gone numerically insane cannot report success by also happening to
-    /// satisfy a force tolerance.
+    /// satisfy a force tolerance. Handlers (`add_handler`) and criteria
+    /// (`add_criterion`) feed into the SAME single composition; a criterion is a
+    /// Component the driver PULLS a `verdict()` from, but it can no more write the loop's
+    /// status than a handler can — the driver alone writes `converged`/`stop_requested`.
     ///
     /// The verdict is all-reduced across ranks HERE, once, rather than in each handler.
     /// Ranks that disagree about when to stop deadlock at the next collective, and that
@@ -597,6 +616,14 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 status_.reason = h->name();
             }
             v = worse_of(v, hv);
+        }
+        // Criteria feed the SAME severity composition as handlers.
+        for (auto* c : criteria_) {
+            const Verdict cv = c->verdict(st);
+            if (cv != Verdict::Continue && worse_of(v, cv) == cv && v != cv) {
+                status_.reason = c->name();
+            }
+            v = worse_of(v, cv);
         }
         v = reduce_verdict_(v, ctx);
         if (v == Verdict::Converged)
@@ -791,6 +818,52 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 
     /// @brief Whether any handler is attached (a preset injects a default if not).
     bool has_handler() const { return !handlers_.empty(); }
+
+    /// @brief Attach a termination Criterion. Plural — criteria compose with handlers.
+    ///
+    /// One ownership, two registrations: the driver OWNS the moved-in criterion,
+    /// and it (1) enters the per-iteration polling list and (2) — only if the
+    /// criterion declares phase bindings (`default_bindings()` non-empty, e.g. an
+    /// `ScfConverged` that binds `check` to measure) — is ALSO borrowed into the
+    /// Plan via `add_ref` so its stage runs. A verdict-only criterion (no bindings,
+    /// the common case) enters only the polling list. @see poll_handlers_
+    ///
+    /// @tparam C A cpu::Criterion subclass (rvalue only; use `add_criterion_ref`
+    ///         to borrow).
+    /// @param c Criterion instance, moved in (owned by this driver).
+    template <typename C,
+              std::enable_if_t<!std::is_lvalue_reference_v<C>, int> = 0>
+    void add_criterion(C&& c) {
+        using D = std::decay_t<C>;
+        static_assert(std::is_base_of_v<cpu::Criterion, D>,
+                      "add_criterion requires a cpu::Criterion subclass");
+        auto owned = std::make_unique<D>(std::forward<C>(c));
+        cpu::Criterion* raw = owned.get();
+        criteria_owned_.push_back(std::move(owned));
+        criteria_.push_back(raw);
+        if (!raw->default_bindings().empty())
+            this->add_ref(*raw); // Plan borrows; this driver owns.
+    }
+
+    /// @brief Borrow a caller-owned termination Criterion (lvalue). @see add_criterion
+    ///
+    /// Same two registrations as `add_criterion`, but the criterion's lifetime
+    /// stays with the caller: the pointer enters the polling list, and a criterion
+    /// that declares phase bindings is additionally borrowed into the Plan.
+    /// @tparam C A cpu::Criterion subclass.
+    /// @param c Criterion instance, borrowed (caller retains ownership).
+    template <typename C>
+    void add_criterion_ref(C& c) {
+        static_assert(std::is_base_of_v<cpu::Criterion, C>,
+                      "add_criterion_ref requires a cpu::Criterion subclass");
+        criteria_.push_back(&c);
+        if (!c.default_bindings().empty())
+            this->add_ref(c);
+    }
+
+    /// Implicit lvalue owning is forbidden. Use `add_criterion_ref(c)`.
+    template <typename C>
+    void add_criterion(C&) = delete;
 
     /// @brief Attach the per-iteration commit/rollback policy. Singular — replaces.
     ///
@@ -1050,6 +1123,13 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     LoopMetrics metrics_{};
     /// Termination policies — plural, composed by severity. @see poll_handlers_
     std::vector<std::unique_ptr<cpu::LoopHandler>> handlers_;
+    /// Termination criteria — polled alongside handlers into the same
+    /// severity composition. `criteria_owned_` holds the ones added by value (this
+    /// driver owns them); `criteria_` is the non-owning polling list (owned +
+    /// borrowed). A criterion that also declares phase bindings is additionally
+    /// borrowed into the Plan. @see add_criterion
+    std::vector<std::unique_ptr<cpu::Criterion>> criteria_owned_;
+    std::vector<cpu::Criterion*> criteria_;
     /// Commit/rollback policy — singular, null on every loop but MC.
     std::unique_ptr<cpu::OutcomePolicy> outcome_;
 

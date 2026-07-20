@@ -219,6 +219,10 @@ atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
 atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
 atv_add_cpp_test(test_cpu_loop_handler    cpu/driver/test_loop_handler.cpp)
 atv_add_cpp_test(test_cpu_sub_driver      cpu/driver/test_sub_driver.cpp)
+# scf-driver-refactor-01-plumb: scf::Phase / PhaseKind::SCF / PhaseTraits<scf::Phase>
+# / the Criterion component kind + driver pull-poll. Pure type-foundation plumbing —
+# no consumer yet.
+atv_add_cpp_test(test_cpu_scf_phase_plumbing cpu/driver/test_scf_phase_plumbing.cpp)
 atv_add_cpp_test(test_cpu_component_ownership cpu/driver/test_component_ownership.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
@@ -589,20 +593,6 @@ if(ATV_BUILD_CUDA)
 
 endif()
 
-# Grep gate: no SCF phase-enum token anywhere in the tree. SCF (gaussian
-# or plane-wave, CPU or CUDA) is an inner solver behind an Evaluator
-# component — the enum itself was deleted with the cpu::pw migration.
-# Pure grep — runs in every build configuration.
-add_test(
-    NAME test_scf_phase_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_phase_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: no hand-written static_cast<int> on a Phase enum. The six workflow
-# Phase enums all start at 0, so an int phase cannot be told apart across
-# workflows; ATV::slot_of is the one sanctioned conversion and the typed entry
-# points (slot_of / slot_count / ctx.at / run_stage / make_binding) are the only
-# way in. Pure grep — runs in every build configuration.
 # Grep gate: the frame-block registry is THE single per-atom field
 # enumeration (frame-block-01, ac-001). set_capacity / copy_row /
 # pack_exchange / unpack_exchange / max_exchange_doubles iterate the
@@ -622,6 +612,11 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/direct_access_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# Grep gate: no hand-written static_cast<int> on a Phase enum. The seven workflow
+# Phase enums all start at 0, so an int phase cannot be told apart across
+# workflows; ATV::slot_of is the one sanctioned conversion and the typed entry
+# points (slot_of / slot_count / ctx.at / run_stage / make_binding) are the only
+# way in. Pure grep — runs in every build configuration.
 add_test(
     NAME test_stage_typing_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh

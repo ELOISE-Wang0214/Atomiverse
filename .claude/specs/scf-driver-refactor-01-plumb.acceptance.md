@@ -12,7 +12,8 @@ criteria:
       scf_solver.cpp:241-291); slot_of(scf::Phase::fock)==0 through
       slot_of(scf::Phase::check)==4 and slot_count<ATV::scf::Phase>()==5,
       with no hand-written static_cast<int> over the enum.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: PhaseKind::SCF added and kind_of/make_binding route scf::Phase to it
     type: code
@@ -21,7 +22,8 @@ criteria:
       PhaseKind (core/binding.h) has an SCF value, phase_kind_name(PhaseKind::SCF)
       returns "SCF", kind_of(scf::Phase::fock)==PhaseKind::SCF, and
       make_binding(scf::Phase::fock, 0).kind==PhaseKind::SCF.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: facade/loop.h and cpu/component/context.h are untouched (bags withdrawn)
     type: code
@@ -31,7 +33,8 @@ criteria:
       byte-for-byte unchanged) and NO ScfServices/ctx.scf slice or ScfWorkspace forward
       declaration (cpu/component/context.h is byte-for-byte unchanged). SCF state will
       flow via method-member matrices wired into stage constructors by reference (02/03a).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: CPUDriver<scf::Phase> instantiates via a PhaseTraits<scf::Phase> spec
     type: code
@@ -40,7 +43,8 @@ criteria:
       cpu_driver.h contains a PhaseTraits<ATV::scf::Phase> specialization with
       eval_phase==fock, neighbor_phase==fock, end_phase==check, and
       CPUDriver<ATV::scf::Phase> instantiates in test_scf_phase_plumbing.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: scf_phase_scrub script and its ctest registration removed, no dangling refs
     type: code
@@ -51,7 +55,8 @@ criteria:
       over include/, src/, tests/, examples/, tools/ returns zero live references
       (the removed stale comments in scf_solver_isolation.sh and pw_scf.cuh are gone).
       No new .sh gate is added.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: New public symbols documented; stage.h NOTE rewritten
     type: docs
@@ -71,7 +76,8 @@ criteria:
       && cmake --build build -j && ctest --test-dir build --output-on-failure` completes
       with the whole suite passing in seconds; test_scf_phase_plumbing passes and no
       pre-existing test regresses.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: Criterion component kind + driver-pulled verdict polling landed additively
     type: code
@@ -84,7 +90,8 @@ criteria:
       once over MPI together with the existing handler poll; components still cannot
       write loop status (ctx.loop borrow semantics unchanged); existing LoopHandler and
       add_handler are untouched; test_scf_phase_plumbing exercises a toy Criterion.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria — scf-driver-refactor-01-plumb

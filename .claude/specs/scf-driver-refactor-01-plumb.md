@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 01 门面管道铺设（scf::Phase / PhaseKind::SCF / PhaseTraits / Criterion）
 slug: scf-driver-refactor-01-plumb
-status: in-progress
+status: code-complete
 created: 2026-07-20
 revised: 2026-07-20
 chain: scf-driver-refactor

@@ -6,7 +6,6 @@
 # cuda::Context / BuildContext / LaunchContext / DestroyContext — the
 # solver consumes only (void* stream, cuda::Frame&) via
 # internal::SolverContext. Pure grep, runs on any node (no CUDA needed).
-# Mirrors tests/cuda/scf_phase_scrub.sh.
 set -u
 
 root="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"

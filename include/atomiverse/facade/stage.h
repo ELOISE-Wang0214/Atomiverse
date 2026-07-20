@@ -129,12 +129,55 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace evaluate
 
-// NOTE: there is deliberately no `scf::Phase`. SCF — gaussian-basis
-// (`cpu::scf::SCFSolver`, `cuda::scf::SCFSolver`) and plane-wave
-// (`cpu::pw::PWSolver`) — is an *inner* solver behind an Evaluator
-// component, never an outer driver category, so it carries no outer
-// phase enum. The historical `scf::Phase` was deleted with the
-// `cpu::pw` migration onto the PWSolver/PWEvaluator shape.
+/// @brief Self-consistent-field (SCF) iteration phases.
+///
+/// The old NOTE here concluded there was *deliberately* no `scf::Phase`: SCF
+/// was treated as an *inner* solver behind an Evaluator component, so it carried
+/// no outer phase enum. **That conclusion is reversed.** A self-consistency loop
+/// is a staged loop with a termination criterion — exactly a Driver — so the
+/// gaussian-basis SCF iteration becomes a `cpu::CPUDriver<scf::Phase>`, and the
+/// concrete methods (`RHF`/`UHF`/`RKS`/`UKS`) supply the components that fill its
+/// stages. (The CUDA and plane-wave paths stay inner solvers for now; this enum
+/// is CPU-only.)
+///
+/// The phase order reflects what runs within one self-consistent iteration:
+/// build the Fock/Hamiltonian matrix (`fock`), extrapolate it in **Fock space**
+/// via DIIS (Direct Inversion in the Iterative Subspace; `mix`) — which must
+/// precede diagonalization, matching the shipping solver (build F →
+/// DIIS-extrapolate F + level shift → diagonalize) — then
+/// diagonalize (`diagonalize`), build the new density (`density`), and test
+/// convergence (`check`). DIIS in Fock space: Pulay, *Chem. Phys. Lett.* **73**,
+/// 393 (1980); *J. Comp. Chem.* **3**, 556 (1982). `COUNT` is the sentinel for
+/// `slot_count`.
+namespace scf {
+
+/// @brief Phase order for one self-consistent-field iteration.
+enum class Phase {
+    fock,        ///< Build the Fock / Hamiltonian matrix from the density.
+    mix,         ///< DIIS extrapolation in Fock space (precedes diagonalize).
+    diagonalize, ///< Solve the generalized eigenproblem for the orbitals.
+    density,     ///< Build the new density from the occupied orbitals.
+    check,       ///< Convergence test (energy Δ / DIIS residual).
+    COUNT        ///< Sentinel -- total number of phases.
+};
+
+/// @brief Human-readable names for the SCF phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in the same order as the enum values, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"fock", "mix", "diagonalize", "density", "check"};
+}
+
+/// @brief Workflow discriminant for `scf::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::SCF`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::SCF;
+}
+
+} // namespace scf
 
 /// @brief Vibrational-analysis (finite-difference response) phases.
 ///
@@ -291,9 +334,9 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 /// asking "is this my stage?", a driver replaying a phase, a binding being declared —
 /// goes through a typed entry point that calls this. The rule is enforceable by grep,
 /// which is the point: `static_cast<int>` applied to a Phase enum anywhere else is a
-/// bug, because the six Phase enums all start at 0 and an `int` cannot tell them apart.
+/// bug, because the seven Phase enums all start at 0 and an `int` cannot tell them apart.
 ///
-/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
+/// @tparam PhaseEnum One of the seven workflow Phase enums in this header.
 /// @param p Typed phase value.
 /// @return Its dense slot index within that workflow's Plan.
 template <typename PhaseEnum>
@@ -302,7 +345,7 @@ constexpr int slot_of(PhaseEnum p) {
 }
 
 /// @brief Number of Plan slots a workflow's Phase enum declares (its COUNT sentinel).
-/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
+/// @tparam PhaseEnum One of the seven workflow Phase enums in this header.
 /// @return `PhaseEnum::COUNT` as a slot count.
 template <typename PhaseEnum>
 constexpr int slot_count() {
@@ -322,7 +365,7 @@ constexpr int slot_count() {
 /// concrete type for every workflow. The `PhaseKind` travelling beside it is what
 /// makes the int safe, and `make_binding` is the only way to make the pair.
 ///
-/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
+/// @tparam PhaseEnum One of the seven workflow Phase enums in this header.
 /// @param p Typed phase value the component wants to run in.
 /// @param order Ordering within the phase (lower runs earlier; negative =
 ///        infrastructure, 0 = the op, positive = consumers).

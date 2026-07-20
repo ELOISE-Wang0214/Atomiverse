@@ -11,7 +11,7 @@
 ///
 /// Like the Gaussian-basis `cuda::scf::SCFSolver`, the plane-wave CUDA
 /// solver is an inner solver: no Driver, no phase enum, no Plan
-/// registration (see tests/cuda/scf_phase_scrub.sh).
+/// registration.
 #pragma once
 
 #include "atomiverse/cpu/frame/frame.h"
