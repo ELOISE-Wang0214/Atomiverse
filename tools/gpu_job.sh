@@ -12,6 +12,7 @@ echo "cmake: $(command -v cmake)"
 
 env | grep -iE "OPENBLAS|FFTW|BLAS" || true
 
+# molrs: git submodule at ./molrs (default ATV_MOLRS_PATH). Override only if needed.
 cmake -B build-cuda \
       -DATV_BUILD_CUDA=ON \
       -DATV_BUILD_PW=ON \
@@ -19,8 +20,7 @@ cmake -B build-cuda \
       -DATV_BUILD_TESTS=ON \
       -DATV_BUILD_BENCHMARKS=ON \
       -DBLA_VENDOR=OpenBLAS \
-      -DCMAKE_PREFIX_PATH="$OPENBLAS_ROOT;$FFTW3_ROOT;$FFTW_ROOT" \
-      -DATV_MOLRS_PATH=$HOME/work/molcrafts/molrs
+      -DCMAKE_PREFIX_PATH="$OPENBLAS_ROOT;$FFTW3_ROOT;$FFTW_ROOT"
 cmake --build build-cuda -j$(nproc)
 
 export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"

@@ -4,15 +4,17 @@
 # version lives in molrs-cxxapi/CXX_API_VERSION and is checked even when a
 # developer supplies ATV_MOLRS_PATH.
 #
-# Pin policy (cpu-breadth-01 ac-002):
+# Pin policy:
+#   - molrs is a **git submodule** at ./molrs (.gitmodules → MolCrafts/molrs).
+#     The recorded submodule commit is the authoritative source pin.
 #   - ATV_MOLRS_CXX_API_VERSION must match molrs-cxxapi/CXX_API_VERSION exactly.
-#   - ATV_MOLRS_GIT_REF is the CI checkout ref of MolCrafts/molrs (tag or SHA).
-#     Bump both together when promoting a new molrs release. Local ATV_MOLRS_PATH
-#     still cannot bypass the CXX API version check.
+#   - ATV_MOLRS_GIT_REF documents the intended release tag for that pin
+#     (informational; bump it when advancing the submodule to a new tag).
+#   - Local -DATV_MOLRS_PATH overrides do not bypass the CXX API version check.
 set(ATV_MOLRS_CXX_API_VERSION 1)
 set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
 set(ATV_MOLRS_GIT_REF "v0.8.2" CACHE STRING
-    "Pinned MolCrafts/molrs git tag or SHA for CI checkout")
+    "Documented MolCrafts/molrs tag matching the ./molrs submodule pin")
 
 function(atv_validate_molrs_source_contract molrs_root)
     set(version_file "${molrs_root}/molrs-cxxapi/CXX_API_VERSION")
@@ -24,7 +26,9 @@ function(atv_validate_molrs_source_contract molrs_root)
         message(FATAL_ERROR
             "Atomiverse requires molrs CXX API v${ATV_MOLRS_CXX_API_VERSION}, "
             "but ${version_file} does not exist. ATV_MOLRS_PATH='${molrs_root}' "
-            "is not a compatible molrs source tree.")
+            "is not a compatible molrs source tree. "
+            "If using the default path, run: "
+            "git submodule update --init --recursive molrs")
     endif()
 
     file(READ "${version_file}" actual_version)

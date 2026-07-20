@@ -67,10 +67,10 @@ bash -lc '
   export OPENBLAS_ROOT="$OPENBLASDIR"                       # see BLAS note below
   export RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu   # see Rust note below
   export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"   # see runtime note below
+  git submodule update --init --recursive molrs             # once per clone
   cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON -DATV_BUILD_PW=ON \
-        -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS \
-        -DATV_MOLRS_PATH=/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/molrs
+        -DATV_BUILD_CUDA=OFF -DBLA_VENDOR=OpenBLAS
   cmake --build build -j$(nproc)
   ctest --test-dir build --output-on-failure
 '
@@ -85,11 +85,14 @@ bash -lc '
 directory"). Force `RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu`. On the
 GPU node the default (aarch64) is correct — do **not** set the override there.
 
-**molrs path:** molrs is a hard dependency built via corrosion. The CMake
-default `../molrs` breaks from a worktree, and `$HOME/work/...` is wrong when
-the tree lives under `/nobackup`. Always pass an absolute
-`-DATV_MOLRS_PATH=<abs path to molrs>` (here:
-`/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/molrs`).
+**molrs (git submodule):** molrs is a hard dependency built via corrosion,
+vendored at `./molrs` (`.gitmodules` → `MolCrafts/molrs`, pin `v0.8.2`).
+CMake defaults `ATV_MOLRS_PATH` to `${CMAKE_SOURCE_DIR}/molrs`. After clone
+or worktree create, run `git submodule update --init --recursive molrs`.
+Override with `-DATV_MOLRS_PATH=...` only for local experiments — the CXX
+API version gate still applies. Bump the pin by checking out a new tag
+inside `molrs/` and committing the submodule pointer (also update
+`ATV_MOLRS_GIT_REF` in `cmake/MolrsContract.cmake`).
 
 **Runtime gotcha (#1 cause of `libopenblas.so.0` / `GLIBCXX_3.4.32 not found`):**
 the module sets `LIBRARY_PATH` (link time) but not `LD_LIBRARY_PATH` (run
@@ -114,8 +117,8 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
   ```bash
   #!/bin/bash -l
   module load GPU/buildenv-gcccuda/2026.03-cu13.0
-  cmake -B build-cuda -DATV_BUILD_CUDA=ON -DATV_BUILD_TESTS=ON \
-        -DATV_MOLRS_PATH=$HOME/work/molcrafts/molrs   # adjust to the real path
+  # molrs comes from the ./molrs submodule (default ATV_MOLRS_PATH)
+  cmake -B build-cuda -DATV_BUILD_CUDA=ON -DATV_BUILD_TESTS=ON
   cmake --build build-cuda -j$(nproc)
   ctest --test-dir build-cuda --output-on-failure
   ```

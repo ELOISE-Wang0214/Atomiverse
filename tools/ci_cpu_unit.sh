@@ -15,12 +15,12 @@ BUILD_DIR="${ATV_CI_BUILD_DIR:-build}"
 
 if [[ -n "${ATV_MOLRS_PATH:-}" && -d "${ATV_MOLRS_PATH}" ]]; then
   MOLRS="$(cd "${ATV_MOLRS_PATH}" && pwd)"
-elif [[ -d "${ROOT}/molrs" ]]; then
+elif [[ -d "${ROOT}/molrs" && -f "${ROOT}/molrs/Cargo.toml" ]]; then
   MOLRS="${ROOT}/molrs"
-elif [[ -d "${ROOT}/../molrs" ]]; then
-  MOLRS="$(cd "${ROOT}/../molrs" && pwd)"
 else
-  echo "ci_cpu_unit: set ATV_MOLRS_PATH or place molrs at ./molrs or ../molrs" >&2
+  echo "ci_cpu_unit: molrs missing. Init the submodule:" >&2
+  echo "  git submodule update --init --recursive molrs" >&2
+  echo "Or set ATV_MOLRS_PATH to a compatible molrs tree." >&2
   exit 1
 fi
 

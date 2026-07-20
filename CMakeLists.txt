@@ -71,8 +71,18 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_XC_ORACLE
            "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
            OFF)
-    set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
+    # Default: git submodule at ${CMAKE_SOURCE_DIR}/molrs (see .gitmodules).
+    # Override with -DATV_MOLRS_PATH=... only for local experiments; CI and
+    # normal builds use the submodule pin.
+    set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/molrs" CACHE PATH
+        "Path to molrs source tree (default: git submodule ./molrs)")
     include("${CMAKE_SOURCE_DIR}/cmake/MolrsContract.cmake")
+    if(NOT EXISTS "${ATV_MOLRS_PATH}/Cargo.toml")
+        message(FATAL_ERROR
+            "molrs not found at ATV_MOLRS_PATH='${ATV_MOLRS_PATH}'.\n"
+            "  Init the submodule:  git submodule update --init --recursive molrs\n"
+            "  Or point explicitly: -DATV_MOLRS_PATH=/path/to/molrs")
+    endif()
     atv_validate_molrs_source_contract("${ATV_MOLRS_PATH}")
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     # The nanobind module is a shared object linking the static atomiverse

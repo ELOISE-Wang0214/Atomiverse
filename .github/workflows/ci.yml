@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -33,24 +35,8 @@ jobs:
     needs: pre-commit
     steps:
       - uses: actions/checkout@v4
-
-      - name: Read molrs pin
-        id: molrs
-        run: |
-          ref=$(sed -n 's/.*set(ATV_MOLRS_GIT_REF "\([^"]*\)".*/\1/p' cmake/MolrsContract.cmake | head -1)
-          if [ -z "$ref" ]; then
-            echo "Failed to parse ATV_MOLRS_GIT_REF from cmake/MolrsContract.cmake" >&2
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "molrs pin: $ref"
-
-      - name: Checkout molrs
-        uses: actions/checkout@v4
         with:
-          repository: MolCrafts/molrs
-          ref: ${{ steps.molrs.outputs.ref }}
-          path: molrs
+          submodules: recursive
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -59,8 +45,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libblas-dev liblapack-dev
 
+      - name: Report molrs submodule pin
+        run: |
+          echo "molrs submodule:"
+          git -C molrs rev-parse HEAD
+          git -C molrs describe --tags --always
+          cat molrs/molrs-cxxapi/CXX_API_VERSION
+
       - name: CPU unit (same script as local pre-push)
         env:
+          # Default CMake path is ./molrs (submodule); keep explicit for clarity.
           ATV_MOLRS_PATH: ${{ github.workspace }}/molrs
           ATV_CI_BUILD_DIR: build
         run: bash tools/ci_cpu_unit.sh
