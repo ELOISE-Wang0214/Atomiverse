@@ -86,7 +86,7 @@ TEST(MethodDriverWire, MinimizeAcceptsNestedRhf) {
     auto frame = make_h2(0.80);
     cpu::minimizer::Minimize opt;
     opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
-    opt.add_handler(cpu::ForceConverged{0.5});
+    opt.add_criterion(cpu::ForceConverged{0.5});
     opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
     EXPECT_NO_THROW(opt.build());
     opt.run(frame, 3);

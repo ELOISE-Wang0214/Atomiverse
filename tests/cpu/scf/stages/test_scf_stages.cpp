@@ -86,7 +86,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/criterion.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/loop.h"
 #include "atomiverse/facade/stage.h"
@@ -854,9 +854,9 @@ TEST(DensityStage, UnrestrictedKSNewDensityEnergy) {
 namespace {
 
 /// @brief A LoopState carrying sentinel metrics — ScfConverged must ignore it
-///        (it judges its own members, never LoopMetrics).
+///        (it judges its own members, never ConvergenceMetrics).
 cpu::LoopState garbage_state(cpu::Frame& fr, cpu::Context& rt,
-                             LoopMetrics& metrics) {
+                             ConvergenceMetrics& metrics) {
     metrics.energy = 1e300; // sentinel: a metrics-reader would trip on this
     metrics.max_force = 1e300;
     return cpu::LoopState{/*iteration=*/7, fr, rt, metrics};
@@ -879,7 +879,7 @@ TEST(ScfConverged, BindsCheckPhaseAndFirstIterationContinues) {
 
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
-    LoopMetrics m;
+    ConvergenceMetrics m;
     crit.reset();
     auto lc = at_stage(rt, fr, scf::Phase::check);
     crit.launch(lc); // measures: ΔE = +∞ on the first iteration
@@ -899,7 +899,7 @@ TEST(ScfConverged, ConvergesOnlyWhenBothCriteriaMet) {
                                 err_b);
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
-    LoopMetrics m;
+    ConvergenceMetrics m;
     crit.reset();
 
     auto lc = at_stage(rt, fr, scf::Phase::check);
@@ -952,7 +952,7 @@ TEST(ScfConverged, MatchesDualConvergenceCheckRestricted) {
 
     cpu::Context rt;
     cpu::Frame fr = atv_test::make_trivial_frame();
-    LoopMetrics m;
+    ConvergenceMetrics m;
     auto lc = at_stage(rt, fr, scf::Phase::check);
 
     const double energies[4] = {-1.0, -1.0000001, -1.0000001, -1.0000001};

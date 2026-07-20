@@ -25,7 +25,7 @@ with `force_to_accel = 1/103.6427` (`core/units.h`, LAMMPS metal).
 
 One user-defined `Energy|Force` evaluator type is registered into four public
 presets (`Evaluate`, `MD`, `Minimize`, `Hessian`) without any private header.
-A user-defined `LoopHandler` stops the MD path by a step budget. No library
+A user-defined `Criterion` stops the MD path by a step budget. No library
 code knows these types.
 
 ## Tolerances

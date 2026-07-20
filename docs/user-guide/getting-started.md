@@ -123,7 +123,7 @@ Read energy from `frame.meta.get(kEnergy)` (eV). Details:
 ## 6. Recommended path
 
 1. This page — build and run something.
-2. [Core concepts](concepts.md) — Driver / Component / Frame / Handler.
+2. [Core concepts](concepts.md) — Driver / Component / Frame / Criterion.
 3. [Methods](methods.md) — which preset for your job.
 4. [Tutorial](../tutorial/) — the method you care about (MD, SCF, PW, …).
 5. [Developer](../developer/) — only when you need internals or extensions.

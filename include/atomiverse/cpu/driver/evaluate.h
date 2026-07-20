@@ -67,7 +67,7 @@ namespace cpu {
 /// add_potential, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
 /// CPUDriver.
 ///
-/// **No handler.** One pass is not a termination policy — there is no loop to terminate.
+/// **No criterion.** One pass is not a termination policy — there is no loop to terminate.
 class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
   public:
     Evaluate() {

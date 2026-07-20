@@ -1,5 +1,5 @@
 /// @file cpu/driver/cpu_driver.h
-/// @brief cpu::CPUDriver — a loop node: stages + plan + handlers. **Not a category.**
+/// @brief cpu::CPUDriver — a loop node: stages + plan + criteria. **Not a category.**
 ///
 /// ## There is no category any more
 ///
@@ -27,16 +27,17 @@
 /// @endcode
 ///
 /// Four levels became two. A **preset** is not an architectural layer: it is a class
-/// whose *constructor* attaches the default handler and infrastructure that a given kind
-/// of run wants (`Minimize` attaches `ForceConverged`, `MC` attaches `Metropolis`). It
-/// contributes defaults, not semantics, and a user can override every one of them.
+/// whose *constructor* attaches the default criterion and infrastructure that a given
+/// kind of run wants (`Minimize` attaches `ForceConverged`, `MC` attaches `Metropolis`).
+/// It contributes defaults, not semantics, and a user can override every one of them.
 ///
 /// ## The two policy slots
 ///
-/// Both are plain objects, both are user-definable, and they are orthogonal:
+/// Both are user-definable, and they are orthogonal:
 ///
-///   - `LoopHandler`   — *should the loop stop?*      `add_handler(…)`, plural, composed
-///                       by severity: **Stop > Converged > Continue**. @see loop_handler.h
+///   - `Criterion`     — *should the loop stop?*      `add_criterion(…)`, plural,
+///                       composed by severity: **Stop > Converged > Continue**.
+///                       A Component the driver polls. @see component/criterion.h
 ///   - `OutcomePolicy` — *does this iteration count?* `set_outcome(…)`, singular.
 ///                       @see outcome_policy.h
 ///
@@ -44,12 +45,13 @@
 ///
 ///   1. `build()` — installs infrastructure, then validates the component set.
 ///   2. The loop primitives every preset composes its `run()` from: `setup_pass`,
-///      `step_once`, `poll_handlers_`, `teardown_pass`, plus the continuation
+///      `step_once`, `poll_criteria_`, `teardown_pass`, plus the continuation
 ///      machinery (`begin_run_` / `flush_live_`) that MD and MC share.
-///   3. **This loop's own** `IterationStatus` + `LoopMetrics` — owned here, borrowed by
-///      the Context. A nested loop cannot reach the loop above it. @see LoopServices.
-///   4. The MPI contract: a handler's verdict is all-reduced by the driver, once, so a
-///      handler author never has to think about ranks disagreeing on when to stop.
+///   3. **This loop's own** `IterationStatus` + `ConvergenceMetrics` — owned here,
+///      borrowed by the Context. A nested loop cannot reach the loop above it.
+///      @see LoopServices.
+///   4. The MPI contract: a criterion's verdict is all-reduced by the driver, once, so a
+///      criterion author never has to think about ranks disagreeing on when to stop.
 ///   5. The categorical setter API (add_potential / add_potential / … / set_thermo).
 #pragma once
 
@@ -78,7 +80,6 @@
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/driver/dof.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/driver/outcome_policy.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/component_role.h"
@@ -471,7 +472,7 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         this->backend_->context().loop.metrics = &metrics_;
         this->backend_->build_components();
         status_.reset();
-        metrics_ = LoopMetrics{};
+        metrics_ = ConvergenceMetrics{};
     }
 
     /// @brief Single iteration through the compiled Plan.
@@ -589,29 +590,27 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// `reset()`). **Owned here, not on the Context.**
     IterationStatus& mutable_outer_status() { return status_; }
 
-    /// @brief This loop's metrics — what its components measured, for handlers to judge.
-    LoopMetrics& metrics() { return metrics_; }
+    /// @brief This loop's metrics — what its components measured, for criteria to judge.
+    ConvergenceMetrics& metrics() { return metrics_; }
 
-    /// @brief Ask every handler AND every criterion about the iteration just
-    ///        completed, and reduce.
+    /// @brief Ask every criterion about the iteration just completed, and reduce.
     ///
     /// Composition: **Stop > Converged > Continue** — the most severe verdict wins, so a
     /// run that has gone numerically insane cannot report success by also happening to
-    /// satisfy a force tolerance. Handlers (`add_handler`) and criteria
-    /// (`add_criterion`) feed into the SAME single composition; a criterion is a
-    /// Component the driver PULLS a `verdict()` from, but it can no more write the loop's
-    /// status than a handler can — the driver alone writes `converged`/`stop_requested`.
+    /// satisfy a force tolerance. A criterion is a Component the driver PULLS a
+    /// `verdict()` from, but it cannot write the loop's status — the driver alone
+    /// writes `converged`/`stop_requested`. This poll is the ONLY verdict channel.
     ///
-    /// The verdict is all-reduced across ranks HERE, once, rather than in each handler.
-    /// Ranks that disagree about when to stop deadlock at the next collective, and that
-    /// is not a hazard a handler author should have to know about. `Verdict` is ordered
-    /// by severity precisely so the reduction is a `MAX`.
+    /// The verdict is all-reduced across ranks HERE, once, rather than in each
+    /// criterion. Ranks that disagree about when to stop deadlock at the next
+    /// collective, and that is not a hazard a criterion author should have to know
+    /// about. `Verdict` is ordered by severity precisely so the reduction is a `MAX`.
     ///
     /// @param iteration Index of the iteration just completed.
     /// @return The reduced verdict; also folds `stop_requested` (which a *component* may
     ///         set — components request stops, they never declare convergence).
-    Verdict poll_handlers_(int iteration) {
-        return poll_handlers_(iteration, this->backend_->frame(),
+    Verdict poll_criteria_(int iteration) {
+        return poll_criteria_(iteration, this->backend_->frame(),
                               this->backend_->context());
     }
 
@@ -625,18 +624,10 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// @param frame The system state as it now stands.
     /// @param ctx The Context of the Runtime executing this loop.
     /// @return The reduced verdict.
-    Verdict poll_handlers_(int iteration, const cpu::Frame& frame,
+    Verdict poll_criteria_(int iteration, const cpu::Frame& frame,
                            const cpu::Context& ctx) {
         const cpu::LoopState st{iteration, frame, ctx, metrics_};
         Verdict v = status_.stop_requested ? Verdict::Stop : Verdict::Continue;
-        for (auto& h : handlers_) {
-            const Verdict hv = h->after_iteration(st);
-            if (hv != Verdict::Continue && worse_of(v, hv) == hv && v != hv) {
-                status_.reason = h->name();
-            }
-            v = worse_of(v, hv);
-        }
-        // Criteria feed the SAME severity composition as handlers.
         for (auto* c : criteria_) {
             const Verdict cv = c->verdict(st);
             if (cv != Verdict::Continue && worse_of(v, cv) == cv && v != cv) {
@@ -731,14 +722,14 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         ctx.loop.status = &status_;
         ctx.loop.metrics = &metrics_;
         status_.reset();
-        metrics_ = LoopMetrics{};
+        metrics_ = ConvergenceMetrics{};
 
         int iters = 0;
         for (int s = 0; s < budget; ++s) {
             status_.reset();
             runtime->step_plan(this->plan_, s);
             ++iters;
-            if (poll_handlers_(s, frame, ctx) != Verdict::Continue)
+            if (poll_criteria_(s, frame, ctx) != Verdict::Continue)
                 break;
         }
 
@@ -833,34 +824,23 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     template <typename R>
     void set_record(R&) = delete;
 
-    /// @brief Attach a termination policy. Plural — handlers compose.
-    ///
-    /// `opt.add_handler(ForceConverged{0.01});`
-    /// `sim.add_handler(StopOnNaN{}).add_handler(StopWhenTooHot{2000});`
-    ///
-    /// This is the seam that used to be a class hierarchy. @see cpu/driver/loop_handler.h
-    /// @param h A LoopHandler subclass, moved in.
-    /// @return Reference to self, for chaining.
-    template <typename H>
-    CPUDriver& add_handler(H&& h) {
-        using D = std::decay_t<H>;
-        static_assert(std::is_base_of_v<cpu::LoopHandler, D>,
-                      "add_handler requires a cpu::LoopHandler subclass");
-        handlers_.push_back(std::make_unique<D>(std::forward<H>(h)));
-        return *this;
-    }
+    /// @brief Whether any criterion is attached (a preset injects a default if not).
+    bool has_criterion() const { return !criteria_.empty(); }
 
-    /// @brief Whether any handler is attached (a preset injects a default if not).
-    bool has_handler() const { return !handlers_.empty(); }
-
-    /// @brief Attach a termination Criterion. Plural — criteria compose with handlers.
+    /// @brief Attach a termination Criterion. Plural — criteria compose by severity.
+    ///
+    /// `opt.add_criterion(ForceConverged{0.01});`
+    /// `sim.add_criterion(StopOnNaN{});  sim.add_criterion(StopWhenTooHot{2000});`
+    ///
+    /// This is the seam that used to be a class hierarchy — twice. @see
+    /// cpu/component/criterion.h
     ///
     /// One ownership, two registrations: the driver OWNS the moved-in criterion,
     /// and it (1) enters the per-iteration polling list and (2) — only if the
     /// criterion declares phase bindings (`default_bindings()` non-empty, e.g. an
     /// `ScfConverged` that binds `check` to measure) — is ALSO borrowed into the
     /// Plan via `add_ref` so its stage runs. A verdict-only criterion (no bindings,
-    /// the common case) enters only the polling list. @see poll_handlers_
+    /// the common case) enters only the polling list. @see poll_criteria_
     ///
     /// @tparam C A cpu::Criterion subclass (rvalue only; use `add_criterion_ref`
     ///         to borrow).
@@ -901,7 +881,7 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
 
     /// @brief Attach the per-iteration commit/rollback policy. Singular — replaces.
     ///
-    /// The loop's *other* policy slot, orthogonal to `add_handler`: a handler says
+    /// The loop's *other* policy slot, orthogonal to `add_criterion`: a criterion says
     /// whether to stop, an outcome policy says whether the iteration that just ran
     /// counts. `MC` attaches `Metropolis{T, seed}` in its constructor; swapping in a
     /// GCMC or REMD acceptance rule is a `set_outcome` call, not a new driver class.
@@ -921,7 +901,7 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         return *raw;
     }
 
-    /// @brief Did this loop terminate because a handler declared success?
+    /// @brief Did this loop terminate because a criterion declared success?
     ///
     /// **The loop knows; the algorithm does not.** `LBFGS::converged()` and
     /// `CG::converged()` are deleted: an optimizer that publishes metrics and does not
@@ -929,7 +909,7 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// the policy got welded to the algorithm in the first place.
     bool converged() const { return status_.converged; }
 
-    /// @brief Which handler ended the loop (empty if it simply ran out of budget).
+    /// @brief Which criterion ended the loop (empty if it simply ran out of budget).
     const std::string& stop_reason() const { return status_.reason; }
 
     /// @brief Configure the thermo print cadence (LAMMPS `thermo N`).
@@ -1130,7 +1110,7 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         }
     }
 
-    /// @brief Reduce a verdict across ranks (MAX by severity). @see poll_handlers_
+    /// @brief Reduce a verdict across ranks (MAX by severity). @see poll_criteria_
     ///
     /// Severity is the enum's integer value, so "the most severe verdict any rank
     /// reached" is a plain MPI_MAX. Every rank therefore leaves the loop on the same
@@ -1154,14 +1134,11 @@ class CPUDriver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
   protected:
     /// This loop's own status and metrics. **Not on the Context** — see LoopServices.
     IterationStatus status_{};
-    LoopMetrics metrics_{};
-    /// Termination policies — plural, composed by severity. @see poll_handlers_
-    std::vector<std::unique_ptr<cpu::LoopHandler>> handlers_;
-    /// Termination criteria — polled alongside handlers into the same
-    /// severity composition. `criteria_owned_` holds the ones added by value (this
-    /// driver owns them); `criteria_` is the non-owning polling list (owned +
-    /// borrowed). A criterion that also declares phase bindings is additionally
-    /// borrowed into the Plan. @see add_criterion
+    ConvergenceMetrics metrics_{};
+    /// Termination criteria — plural, composed by severity. `criteria_owned_`
+    /// holds the ones added by value (this driver owns them); `criteria_` is the
+    /// non-owning polling list (owned + borrowed). A criterion that also declares
+    /// phase bindings is additionally borrowed into the Plan. @see add_criterion
     std::vector<std::unique_ptr<cpu::Criterion>> criteria_owned_;
     std::vector<cpu::Criterion*> criteria_;
     /// Commit/rollback policy — singular, null on every loop but MC.

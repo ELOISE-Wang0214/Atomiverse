@@ -8,10 +8,11 @@
 /// ## Termination
 ///
 /// The driver publishes `ReplicaSet::converged_fraction()` onto
-/// `LoopMetrics::replicas_converged`, and the `cpu::AllReplicasConverged` handler this
-/// preset attaches applies the AND (converged at exactly 1.0). One unconverged image
-/// keeps the whole chain running. The rule is a policy object, so a user can compose or
-/// replace it (`neb.add_handler(StopOnNaN{})`) without touching a driver class.
+/// `ConvergenceMetrics::replicas_converged`, and the `cpu::AllReplicasConverged`
+/// criterion this preset attaches applies the AND (converged at exactly 1.0). One
+/// unconverged image keeps the whole chain running. The rule is a criterion component,
+/// so a user can compose or replace it (`neb.add_criterion(StopOnNaN{})`) without
+/// touching a driver class.
 ///
 /// ## The loop
 ///
@@ -42,7 +43,7 @@
 /// is replayed once per replica by re-pointing the backend's frame; the band-wide phases
 /// run once and see everything. Per-replica convergence lives on `ReplicaSet`, not on N
 /// copies of `IterationStatus`; `PathDriver` publishes it as a fraction onto
-/// `LoopMetrics` and the handler applies the AND.
+/// `ConvergenceMetrics` and the criterion applies the AND.
 ///
 /// Known ceiling of the one-backend route: force-phase components that cache per-frame
 /// state (a neighbor list's bins) get invalidated on every replica switch and rebuild N
@@ -62,6 +63,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/replica/replica_set.h"
 #include "atomiverse/facade/stage.h"
@@ -71,18 +73,19 @@ namespace cpu {
 
 class PathDriver : public CPUDriver<ATV::path::Phase> {
   public:
-    /// @brief The coupled-replica preset. Attaches its default termination policy.
+    /// @brief The coupled-replica preset. Attaches its default termination criterion.
     ///
-    /// `AllReplicasConverged` reads `LoopMetrics::replicas_converged` (the fraction of
-    /// the band that has met its criterion) and stops the loop only at 1 — the AND over
-    /// every image that this driver used to spell out by hand inside its own `run()`.
+    /// `AllReplicasConverged` reads `ConvergenceMetrics::replicas_converged` (the
+    /// fraction of the band that has met its criterion) and stops the loop only at 1 —
+    /// the AND over every image that this driver used to spell out by hand inside its
+    /// own `run()`.
     ///
     /// That hand-written `if` is exactly the shape probe 3 was forced into, and exactly
     /// what a category makes unavoidable: the termination rule could not be named, so it
-    /// could not be replaced. Now it can — `neb.add_handler(StopOnNaN{})` composes with
-    /// it, and a user who wants "stop when the barrier estimate settles" writes that
-    /// handler instead of a seventh driver class.
-    PathDriver() { this->add_handler(cpu::AllReplicasConverged{}); }
+    /// could not be replaced. Now it can — `neb.add_criterion(StopOnNaN{})` composes
+    /// with it, and a user who wants "stop when the barrier estimate settles" writes
+    /// that criterion instead of a seventh driver class.
+    PathDriver() { this->add_criterion(cpu::AllReplicasConverged{}); }
 
     /// @brief Advance the band until every replica converges, or `max_iter` runs out.
     ///
@@ -131,13 +134,13 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
 
             ++iters;
 
-            // PUBLISH what the band measured; let the handler DECIDE. The driver used to
-            // write `converged = true` itself the moment every replica had settled — the
-            // same "the algorithm judges itself" mistake LBFGS made, and the reason the
-            // replica table had to exist in the first place.
+            // PUBLISH what the band measured; let the criterion DECIDE. The driver used
+            // to write `converged = true` itself the moment every replica had settled —
+            // the same "the algorithm judges itself" mistake LBFGS made, and the reason
+            // the replica table had to exist in the first place.
             metrics().replicas_converged = band.converged_fraction();
 
-            if (poll_handlers_(s) != Verdict::Continue)
+            if (poll_criteria_(s) != Verdict::Continue)
                 break;
         }
 

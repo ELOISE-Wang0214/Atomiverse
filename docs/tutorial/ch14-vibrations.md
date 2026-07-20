@@ -101,7 +101,7 @@ That fixed-budget, no-early-stop structure is what
 [`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian.h)
 is: a preset over the CPU loop node (`cpu::CPUDriver<vib::Phase>`), like
 `MD` and `Minimize`, but with its own phase enum and **no termination
-handler at all** — the displacement schedule *is* the budget, and there is
+criterion at all** — the displacement schedule *is* the budget, and there is
 nothing to converge. Its phase order —
 
 ```text
@@ -259,7 +259,7 @@ that no tolerance applies to.
 Vibrational analysis is the clearest proof that Atomiverse's "swap the
 evaluator, keep the driver" architecture is not confined to MD. `cpu::vib::
 Hessian` is its own loop — its own phase enum, its own fixed
-$6N$-displacement schedule, no termination handler — yet it consumes the
+$6N$-displacement schedule, no termination criterion — yet it consumes the
 *identical* `SCF{config}` that:
 
 - MD ([Chapter 15](ch15-cross-method.md)) plugs into `cpu::md::MD` for AIMD,

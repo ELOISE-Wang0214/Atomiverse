@@ -163,7 +163,7 @@ watch out for in the ones that do.
   via a ghost-of-ghost halo; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)).
   Tersoff/MEAM remain absent, as does any CUDA mirror.
 - **Transition states: CI-NEB runs** (`cpu::PathDriver` — N coupled replicas, stopping
-  on the `AllReplicasConverged` handler). It is CPU-only and single-replica-
+  on the `AllReplicasConverged` criterion). It is CPU-only and single-replica-
   per-rank (the band is replicated; the spatial decomposition lives inside each image).
   No dimer, no string method, no IRC. The replica infrastructure (`ReplicaSet`,
   `ReplicaExpansion`) is deliberately general — REMD/PIMD/umbrella would reuse it — but

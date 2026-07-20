@@ -1,6 +1,6 @@
 /// @file regressions/architecture/harmonic_driver_matrix/reg_harmonic_driver_matrix.cpp
 /// @brief END-TO-END: one user Energy|Force evaluator across Evaluate, MD,
-///        Minimize, Hessian (+ user LoopHandler). Public headers only.
+///        Minimize, Hessian (+ user Criterion). Public headers only.
 ///
 /// See REFERENCE.md. Exits non-zero on failure. ≤ 60 s.
 
@@ -10,7 +10,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/evaluate.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -54,11 +54,12 @@ class HarmonicOscillator : public cpu::Potential {
 };
 
 /// Stop after a fixed iteration count (user-defined, outside the library).
-class StopAfterSteps : public cpu::LoopHandler {
+class StopAfterSteps : public cpu::Criterion {
   public:
     explicit StopAfterSteps(int n) : n_(n) {}
-    const char* name() const override { return "stop_after_steps"; }
-    Verdict after_iteration(const cpu::LoopState& s) override {
+    std::string name() const override { return "stop_after_steps"; }
+    void launch(const cpu::LaunchContext&) override {} // verdict-only
+    Verdict verdict(const cpu::LoopState& s) override {
         return (s.iteration + 1 >= n_) ? Verdict::Stop : Verdict::Continue;
     }
 
@@ -114,8 +115,8 @@ int main() {
     {
         auto frame = make_atom(A, mass);
         cpu::minimizer::Minimize opt;
-        // Replace default handler tolerances with something reachable.
-        opt.add_handler(cpu::ForceConverged{1e-4, 1e-4, 1e-3, 1e-3, 1e-8});
+        // Replace default criterion tolerances with something reachable.
+        opt.add_criterion(cpu::ForceConverged{1e-4, 1e-4, 1e-3, 1e-3, 1e-8});
         opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.1, 20});
         opt.on(minimizer::Phase::force)
             .add(HarmonicOscillator{k, r0x, r0y, r0z});
@@ -186,7 +187,7 @@ int main() {
         }
     }
 
-    // ── MD NVE: short run with user LoopHandler; energy stable, force
+    // ── MD NVE: short run with user Criterion; energy stable, force
     // restoring. (Full period sampling is covered by classical unit tests;
     // this gate proves the public MD composition path.)
     {
@@ -200,7 +201,7 @@ int main() {
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{dt});
         sim.on(md::Phase::force).add(HarmonicOscillator{k, r0x, r0y, r0z});
-        sim.add_handler(StopAfterSteps{n_steps});
+        sim.add_criterion(StopAfterSteps{n_steps});
         sim.enable_timing(false);
         sim.build();
 
@@ -227,7 +228,7 @@ int main() {
             ok = false;
         }
         if (sim.stop_reason().find("stop_after_steps") == std::string::npos) {
-            std::printf("FAIL: user LoopHandler did not fire "
+            std::printf("FAIL: user Criterion did not fire "
                         "(reason=%s)\n",
                         sim.stop_reason().c_str());
             ok = false;

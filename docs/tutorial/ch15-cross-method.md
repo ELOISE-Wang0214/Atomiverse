@@ -151,7 +151,7 @@ one-line change:
 ```cpp
 cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
-opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});
+opt.add_criterion(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});
 
 // Classical relaxation:
 opt.on(minimizer::Phase::force).add(make_classical());

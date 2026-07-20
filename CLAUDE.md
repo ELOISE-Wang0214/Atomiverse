@@ -187,7 +187,7 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
 ```
 <backend>/
   frame/       Frame pillar: device-resident state + residency ops
-  driver/      Driver pillar: the loop node (CPUDriver), LoopHandler, OutcomePolicy,
+  driver/      Driver pillar: the loop node (CPUDriver), built-in criteria, OutcomePolicy,
                SubDriver (nesting), concrete Evaluate, single_point,
                step executor, backend_traits, step-loop instrumentation
   component/   Component pillar: Component, Launch/Context, generic + shared bases
@@ -249,9 +249,9 @@ potentials/  backend-agnostic pair force/energy kernels shared by CPU/CUDA
 molrs.hpp    stable CXX FFI header
 ```
 
-### Runtime / Driver / Handler — there is no Driver "category"
+### Runtime / Driver / Criterion — there is no Driver "category"
 
-**A Driver is a staged loop. Termination is a Handler.** There are no category base
+**A Driver is a staged loop. Termination is a Criterion.** There are no category base
 classes: `EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` / `ResponseDriver` /
 `SamplingDriver` are **deleted** (CPU and CUDA alike). They were six classes that
 differed from one another by one `if`, every new method demanded a seventh, and no user
@@ -264,8 +264,8 @@ welded into the hierarchy. Hand it to a policy object and no category remains:
 | | what it is | how many |
 |---|---|---|
 | **Runtime** (`cpu::Backend`) | frame binding, node storage, timing, MPI, domain decomposition | **one per run**, shared by the whole driver tree |
-| **Driver** (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) | **one loop node**: stages + plan + handlers | any number, **nestable** |
-| **Handler** (`cpu::LoopHandler`) | asked once per iteration | any number, composable, **user-definable** |
+| **Driver** (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) | **one loop node**: stages + plan + criteria | any number, **nestable** |
+| **Criterion** (`cpu::Criterion`) | a Component the driver polls once per iteration | any number, composable, **user-definable** |
 
 ```
 Driver<PhaseEnum, DeviceTag>      plan / dispatch primitive
@@ -274,11 +274,11 @@ Driver<PhaseEnum, DeviceTag>      plan / dispatch primitive
 ```
 
 Two levels, not four. A **preset** is *not* an architectural layer: it is a class whose
-**constructor** attaches the default handler + infrastructure a given kind of run wants.
+**constructor** attaches the default criterion + infrastructure a given kind of run wants.
 It contributes defaults, not semantics, and the user overrides any of them. (A class with
 a constructor — never a `make_md()` factory; see the OOP rule below.)
 
-| Preset | Phase enum | Default handler | Termination |
+| Preset | Phase enum | Default criterion | Termination |
 |---|---|---|---|
 | `cpu::Evaluate` / `cuda::Evaluate` | `evaluate::Phase` | — | one pass |
 | `cpu::md::MD` / `cuda::md::MD` | `md::Phase` | — | the step budget |
@@ -286,7 +286,7 @@ a constructor — never a `make_md()` factory; see the OOP rule below.)
 | `cpu::vib::Hessian` | `vib::Phase` | — | fixed 6N displacements + finalize |
 | `cpu::mc::MC` | `sampling::Phase` | — (`Metropolis` **outcome**) | the trial budget |
 | `cpu::PathDriver` | `path::Phase` | `AllReplicasConverged` | every replica converged |
-| **SCF iteration (target)** — hosted by concrete `RHF`/`UHF`/`RKS`/`UKS` | SCF stages | residual / energy Δ handlers | SCF convergence, or budget |
+| **SCF iteration (target)** — hosted by concrete `RHF`/`UHF`/`RKS`/`UKS` | SCF stages | residual / energy Δ criteria | SCF convergence, or budget |
 
 SCF is **not** a seventh "electronic structure category" bolted beside MD: it is
 the same Driver node shape. The **method** (RHF vs UHF vs UKS) is which
@@ -294,27 +294,30 @@ components fill the stages — not an enum on a bag named `SCFSolver`.
 
 **Two orthogonal policy slots.** Every loop has both:
 
-- **`LoopHandler`** — *should the loop stop?* `add_handler(…)`, **plural**, composed by
-  severity: **Stop > Converged > Continue**. Deliberately **not** a template: it sees a
-  `LoopState` and *never a phase*, which is exactly what lets ONE handler serve MD,
-  Minimize, MC and Path alike. Ships `ForceConverged`, `AllReplicasConverged`,
-  `StopOnNaN`; a user writes `StopWhenTooHot{2000}` (LAMMPS `fix halt`) from **outside**
-  the library. Its verdict is all-reduced across MPI ranks **by the driver**, once —
-  handler authors never think about it.
+- **`Criterion`** — *should the loop stop?* `add_criterion(…)`, **plural**, composed by
+  severity: **Stop > Converged > Continue**. A Criterion **is a Component**
+  (`cpu/component/criterion.h`) the driver polls once per iteration. Deliberately **not**
+  a template: it sees a `LoopState` and *never a phase*, which is exactly what lets ONE
+  criterion serve MD, Minimize, MC and Path alike. Ships `ForceConverged`,
+  `AllReplicasConverged`, `StopOnNaN` (`cpu/driver/criteria.h`); a user writes
+  `StopWhenTooHot{2000}` (LAMMPS `fix halt`) from **outside** the library. Its verdict is
+  all-reduced across MPI ranks **by the driver**, once — criterion authors never think
+  about it. (CUDA still uses its own `cuda::LoopHandler`; its criterion migration is
+  deferred.)
 - **`OutcomePolicy`** — *does this iteration count?* `set_outcome(…)`, **singular**,
   `Commit`/`Rollback`. MC's accept/reject was never a termination: rejecting a trial move
   discards one iteration's work and keeps going. `Metropolis` is one implementation. The
   policy **decides**; whoever recorded the changeset **undoes**.
 
 **Algorithms never judge themselves.** `LBFGS`/`CG` **publish metrics** (`max_force`,
-`rms_force`, displacement, ΔE) into `LoopMetrics`; a **handler judges** them.
+`rms_force`, displacement, ΔE) into `ConvergenceMetrics`; a **criterion judges** them.
 `LBFGS::converged()` is deleted — `Driver::converged()` replaces it, because the *loop*
 knows and the algorithm does not. Changing the convergence criteria does not touch the
 optimizer. A component may **request** a stop; it **cannot declare convergence** — there
 is no field left for it to write.
 
 **Status belongs to the loop, not the Context.** Each loop node **owns** its
-`IterationStatus` + `LoopMetrics`; `Context::loop` (a `LoopServices` slice) only *borrows*
+`IterationStatus` + `ConvergenceMetrics`; `Context::loop` (a `LoopServices` slice) only *borrows*
 the active loop's. `run_nested` re-points them at the child and restores the parent's on
 exit, so **an inner loop cannot stop its enclosing loop** — a pointer that points at the
 current loop cannot reach the loop above it. This bug shipped twice (LBFGS's unconditional
@@ -329,7 +332,7 @@ erasure happens at the NODE boundary, never at the stage boundary** — the chil
 own phase enum, and stages stay typed enums all the way down (see *Stage typing*, below).
 
 **Replica count was never an axis of a taxonomy — it is a nested loop.** So REMD/PIMD need
-**no new category**: they are "a replica loop + a budget handler + a different `couple`
+**no new category**: they are "a replica loop + a budget criterion + a different `couple`
 component". The replica machinery is infrastructure (`cpu/replica/`: `ReplicaSet`,
 `ReplicaExpansion`), never inside a driver.
 
@@ -347,7 +350,7 @@ there is no `clone()` on `Component`. Nesting makes this **sharper**, not softer
 
 **Adding a new preset is cheap and adding a new "category" is meaningless.** If you catch
 yourself wanting a new driver class, ask what *terminates* differently — and write a
-`LoopHandler` instead.
+`Criterion` instead.
 
 ### Stage typing — `slot_of` is the only cast
 
@@ -377,8 +380,8 @@ throws at registration, and no caller ever types the int.
 
 - **Driver = staged loop + termination.** MD, Minimize, MC, Path, and the
   **self-consistent-field iteration** are all the same shape: stages, iterate,
-  stop by Handler. SCF *does not solve anything* — it only walks
-  Fock → diagonalize → density → mix → residual until a handler says
+  stop by Criterion. SCF *does not solve anything* — it only walks
+  Fock → diagonalize → density → mix → residual until a criterion says
   Converged/Stop. Calling that bag `SCFSolver` was a category error.
 - **The thing that is real is the concrete method:** `RHF`, `UHF`, `RKS`,
   `UKS`, `AM1`, plane-wave DFT, GPW, … Each owns its Hamiltonian / density
@@ -440,9 +443,9 @@ Preset::run(frame, budget)              # the preset composes the loop primitive
   setup_pass(frame)                     # binds ctx.loop at THIS loop's status+metrics
   for each iteration:
     status.reset()
-    backend.step(idx)                   # components measure into LoopMetrics
+    backend.step(idx)                   # components measure into ConvergenceMetrics
     outcome = outcome_policy?           # Commit | Rollback  (MC only)
-    verdict = poll_handlers(idx)        # Stop > Converged > Continue, MPI-allreduced
+    verdict = poll_criteria(idx)        # Stop > Converged > Continue, MPI-allreduced
     if verdict != Continue: break
   teardown_pass()
 
@@ -454,7 +457,7 @@ Driver::run_nested(ctx, frame, budget)  # the SAME loop, on a BORROWED Runtime
 
 User code does not subclass `Driver<>` directly — it uses a **preset**, or subclasses the
 loop node (`CPUDriver<PhaseEnum>`) when it needs a genuinely new loop shape. A preset adds
-default handlers + infrastructure in its **constructor**; no runtime behaviour beyond the
+default criteria + infrastructure in its **constructor**; no runtime behaviour beyond the
 loop node.
 
 ### Component tagging
@@ -512,14 +515,14 @@ probes for (no `dynamic_cast`, no dead default virtuals):
 (`CPUDriver::status_`) and reset before each iteration. The Context only *borrows* the
 active loop's, through the non-owning `ctx.loop` (`LoopServices{status, metrics}`) — so a
 nested loop physically cannot reach its parent's. A component **measures** into
-`ctx.loop.metrics` and may **request** a stop; only a `LoopHandler` declares convergence,
+`ctx.loop.metrics` and may **request** a stop; only a `Criterion` declares convergence,
 and only the driver writes it. SCF/PW internals never touch any of it.
 
 **Rules:**
 - **Driver owns the loop.** Evaluators, integrators, thermostats are
   Components — never standalone classes with their own loops.
-- **Termination is a Handler, never a class.** Want a new stopping rule? Write a
-  `LoopHandler`. A new driver class is almost never the answer.
+- **Termination is a Criterion, never a class hierarchy.** Want a new stopping rule?
+  Write a `Criterion`. A new driver class is almost never the answer.
 - **Energy/force sources are kinds** (`Potential`, `HF`, `Semiempirical`,
   `PlaneWave`, `GPW`, `Bias`, `PathCoupling`) with required (`!Deferred`) Role;
   presets type-check via `dynamic_cast` to those kinds (no free-function classifier).
@@ -777,7 +780,7 @@ aimd.build();  aimd.run(frame, 100);
 // Geometry optimization
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});   // memory, alpha0, max_ls
-opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});  // the tolerances
+opt.add_criterion(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});  // the tolerances
 opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
 opt.build();  opt.run(frame, 100);
 
@@ -795,12 +798,13 @@ cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
 cpu::single_point(frame, pwe);   // frame.meta.get(kEnergy) [eV]
                                  // pwe.last_result() [Ry/Ha]
 
-// Termination is a policy — compose handlers, or write your own (LAMMPS `fix halt`)
-class StopWhenEnergyAbove : public cpu::LoopHandler {
+// Termination is a Criterion — compose them, or write your own (LAMMPS `fix halt`)
+class StopWhenEnergyAbove : public cpu::Criterion {
   public:
     explicit StopWhenEnergyAbove(double e_max) : e_max_(e_max) {}
-    const char* name() const override { return "stop_when_energy_above"; }
-    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+    std::string name() const override { return "stop_when_energy_above"; }
+    void launch(const cpu::LaunchContext&) override {}  // verdict-only
+    ATV::Verdict verdict(const cpu::LoopState& s) override {
         return (s.frame.meta.get(ATV::kEnergy) > e_max_)
                    ? ATV::Verdict::Stop
                    : ATV::Verdict::Continue;
@@ -808,14 +812,14 @@ class StopWhenEnergyAbove : public cpu::LoopHandler {
   private:
     double e_max_;
 };
-sim.add_handler(cpu::StopOnNaN{});            // plural — Stop > Converged > Continue
-sim.add_handler(StopWhenEnergyAbove{10.0});   // written OUTSIDE the library
+sim.add_criterion(cpu::StopOnNaN{});            // plural — Stop > Converged > Continue
+sim.add_criterion(StopWhenEnergyAbove{10.0});   // written OUTSIDE the library
 sim.run(frame, 1000);
 if (sim.converged()) { /* ... */ }            // the LOOP knows; the algorithm does not
-sim.stop_reason();                            // which handler ended it
+sim.stop_reason();                            // which criterion ended it
 
 // A Driver is a node: nest one in another, on ONE shared Runtime
-cpu::minimizer::Minimize inner;                     // its own phases + handlers
+cpu::minimizer::Minimize inner;                     // its own phases + criteria
 inner.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
 inner.on(minimizer::Phase::force).add(forces);
 cpu::md::MD outer;                                  // a DIFFERENT phase enum
@@ -833,10 +837,10 @@ outer.run(frame, 1000);                             // inner's convergence CANNO
 |--------|---------|------------|----------------|
 | `cpu::Evaluate` / `cuda::Evaluate` | CPU/CUDA | `evaluate::Phase` | — (one pass) |
 | `cpu::md::MD` / `cuda::md::MD` | CPU/CUDA | `md::Phase` | — (the step budget) |
-| `cpu::minimizer::Minimize` / `cuda::minimizer::Minimize` | CPU/CUDA | `minimizer::Phase` | handler `ForceConverged` |
+| `cpu::minimizer::Minimize` / `cuda::minimizer::Minimize` | CPU/CUDA | `minimizer::Phase` | criterion `ForceConverged` |
 | `cpu::vib::Hessian` | CPU | `vib::Phase` | — (fixed 6N + finalize) |
 | `cpu::mc::MC` | CPU | `sampling::Phase` | **outcome** `Metropolis` |
-| `cpu::PathDriver` | CPU | `path::Phase` | handler `AllReplicasConverged` |
+| `cpu::PathDriver` | CPU | `path::Phase` | criterion `AllReplicasConverged` |
 
 Each derives the loop node (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) **directly** and
 configures its defaults in its **constructor**. `cpu::SubDriver<P>` wraps any of them as a

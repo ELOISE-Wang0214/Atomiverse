@@ -91,7 +91,7 @@ The full phase sequence and the `(phase, order)` binding model are documented in
 The CPU side uses the `cpu::minimizer::Minimize` preset, which takes
 any `Optimizer`-role component (`LBFGS`, `CG`, …) plus an `Evaluator`
 at the force phase, and attaches a `cpu::ForceConverged` termination
-handler in its constructor. The same wiring drives classical relaxation
+criterion in its constructor. The same wiring drives classical relaxation
 (`PairLJCut` at force) and *ab initio* geometry optimization
 (`SCFEvaluator` at force). The CUDA side mirrors this exactly:
 `cuda::minimizer::Minimize` takes `SteepestDescent`, `CG`, or `LBFGS`

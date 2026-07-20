@@ -25,7 +25,7 @@ namespace mc {
 ///
 /// The loop has two orthogonal policy slots, and only MC uses the second:
 ///
-///   - `LoopHandler`   — should the loop stop?      (MC attaches none; the
+///   - `Criterion`     — should the loop stop?      (MC attaches none; the
 ///                                                   budget is it)
 ///   - `OutcomePolicy` — does this iteration count? (this preset attaches
 ///                                                   `Metropolis`, in its

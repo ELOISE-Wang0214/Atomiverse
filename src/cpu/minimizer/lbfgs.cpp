@@ -198,13 +198,13 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         rec.energy_change = energy_change;
         trace_.push_back(rec);
 
-        // PUBLISH, do not decide. The optimizer measures; a LoopHandler judges
-        // (cpu/driver/loop_handler.h). Until this line, LBFGS carried five convergence
+        // PUBLISH, do not decide. The optimizer measures; a Criterion judges
+        // (cpu/driver/criteria.h). Until this line, LBFGS carried five convergence
         // tolerances in its constructor and wrote `outer_status.converged = true`
         // itself — so the criteria could not be changed without touching the algorithm,
         // CG had to duplicate the identical five-way test, and a nested optimizer's
         // convergence stopped the ENCLOSING loop. That last one shipped twice.
-        if (LoopMetrics* m = ctx.runtime.loop.metrics) {
+        if (ConvergenceMetrics* m = ctx.runtime.loop.metrics) {
             m->energy = f.meta.get(kEnergy);
             m->max_force = max_force_;
             m->rms_force = rms_force;

@@ -86,14 +86,15 @@ sim.on(md::Phase::force).add(cpu::scf::RHF{});
 
 Termination is a **policy**, not a hard-coded `if` inside a driver class.
 
-- **`LoopHandler`** (plural) — *should we stop?* Compose with
-  `add_handler(...)`. Severity: **Stop > Converged > Continue**.
+- **`Criterion`** (plural) — *should we stop?* A Component the driver polls
+  once per iteration. Compose with
+  `add_criterion(...)`. Severity: **Stop > Converged > Continue**.
   Built-ins: `ForceConverged`, `StopOnNaN`, `AllReplicasConverged`.
   You can write your own outside the library (LAMMPS-style `fix halt`).
 - **`OutcomePolicy`** (singular) — *does this iteration count?*
   `Commit` / `Rollback`. MC attaches `Metropolis`; reject undoes the trial.
 
-Algorithms publish metrics (`max_force`, energy, …); **handlers judge them**.
+Algorithms publish metrics (`max_force`, energy, …); **criteria judge them**.
 `driver.converged()` and `driver.stop_reason()` are on the loop, not on L-BFGS.
 
 ## Mental model for a new calculation

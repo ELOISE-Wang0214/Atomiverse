@@ -7,12 +7,12 @@ hosts the optimizer as a hot-swappable Component, so any force-providing
 evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. What is
 missing is breadth of algorithm (no FIRE, no quasi-Newton beyond L-BFGS) and,
 more consequentially, **any notion of relaxing the cell**. The convergence rule
-itself is no longer part of any of this: it is a `cpu::ForceConverged` handler,
-and a different stopping criterion costs a handler, not an optimizer.
+itself is no longer part of any of this: it is a `cpu::ForceConverged` criterion,
+and a different stopping criterion costs a criterion component, not an optimizer.
 
 **Climbing-image NEB runs** (`cpu::PathDriver` + `cpu::path::NebCoupling` +
 `cpu::path::BandLBFGS`) — a coupled chain of images terminating when *every*
-image has converged (the `AllReplicasConverged` handler), and the engine's only
+image has converged (the `AllReplicasConverged` criterion), and the engine's only
 multi-replica driver. The replicas are generated from one Frame by a
 `ReplicaExpansion` strategy, so `run()` still takes one Frame and returns one
 (for CI-NEB, the saddle configuration).

@@ -91,8 +91,8 @@ Same `Minimize` preset as classical or RHF — only the force component changes:
 ```cpp
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.02, 8});
-opt.add_handler(cpu::ForceConverged{/*max_f*/0.2, /*rms_f*/0.1,
-                                    /*max_d*/0.1, /*rms_d*/0.05, /*dE*/1e-3});
+opt.add_criterion(cpu::ForceConverged{/*max_f*/0.2, /*rms_f*/0.1,
+                                      /*max_d*/0.1, /*rms_d*/0.05, /*dE*/1e-3});
 opt.on(minimizer::Phase::force)
    .add(cpu::semiempirical::AM1Evaluator{}.with_gradient(true));
 opt.build();

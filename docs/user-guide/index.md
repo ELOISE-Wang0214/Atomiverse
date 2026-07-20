@@ -14,7 +14,7 @@ Scientific methods (RHF theory, ensembles, basis sets, …) live in the
   </a>
   <a href="concepts/">
     <strong>Core concepts</strong>
-    <em>Driver, Component, Frame, Handler — the vocabulary every run uses.</em>
+    <em>Driver, Component, Frame, Criterion — the vocabulary every run uses.</em>
   </a>
   <a href="methods/">
     <strong>Methods</strong>

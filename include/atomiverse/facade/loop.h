@@ -1,6 +1,6 @@
 /// @file facade/loop.h
-/// @brief Verdict + LoopMetrics — the vocabulary a loop's termination is decided in.
-///        Backend-agnostic, CUDA-free.
+/// @brief Verdict + ConvergenceMetrics — the vocabulary a loop's termination is
+///        decided in. Backend-agnostic, CUDA-free.
 ///
 /// Termination used to be a **class**. `OptimizeDriver` stopped on convergence,
 /// `DynamicsDriver` ran a budget, `SamplingDriver` ran trials, `PathDriver` waited for
@@ -12,10 +12,10 @@
 
 namespace ATV {
 
-/// @brief What a handler says after an iteration. Ordered by severity.
+/// @brief What a criterion says after an iteration. Ordered by severity.
 ///
 /// Composition rule, and it is not negotiable: **Stop > Converged > Continue**. With
-/// several handlers attached, the most severe verdict wins. `Stop` outranks `Converged`
+/// several criteria attached, the most severe verdict wins. `Stop` outranks `Converged`
 /// because a run that has gone numerically insane must not be able to report success by
 /// also happening to satisfy a force tolerance.
 enum class Verdict {
@@ -41,7 +41,7 @@ constexpr Verdict worse_of(Verdict a, Verdict b) {
 ///
 /// So there are two orthogonal policy slots on a loop, and every loop has both:
 ///
-///   - `LoopHandler`   — *should the loop stop?*        (after the outcome is applied)
+///   - `Criterion`     — *should the loop stop?*        (after the outcome is applied)
 ///   - `OutcomePolicy` — *does this iteration count?*   (before the loop asks that)
 ///
 /// Metropolis is one implementation of the second. Nothing about it is Monte-Carlo-
@@ -52,9 +52,12 @@ enum class Outcome {
     Rollback ///< Discard it and restore the pre-iteration state.
 };
 
-/// @brief What the loop's components measured this iteration, for handlers to judge.
+/// @brief What the loop's components measured this iteration, for criteria to judge.
 ///
-/// **The split this struct exists to enforce**: an optimizer *measures*; a handler
+/// Named for what it carries: the convergence-judgment quantities (forces,
+/// displacements, ΔE, band fraction) that a termination `Criterion` reads.
+///
+/// **The split this struct exists to enforce**: an optimizer *measures*; a criterion
 /// *decides*. Until now `LBFGS` did both — it carried five convergence tolerances in its
 /// constructor and wrote `outer_status.converged = true` itself. So changing the
 /// stopping criteria meant editing the optimizer, two algorithms had to duplicate the
@@ -64,7 +67,7 @@ enum class Outcome {
 /// Fields not written this iteration keep their previous value; `has_displacement` says
 /// whether the displacement pair is meaningful yet (it is not, on iteration 0, when
 /// there is no previous geometry to difference against).
-struct LoopMetrics {
+struct ConvergenceMetrics {
     double energy = 0.0;    ///< Total energy [eV].
     double max_force = 0.0; ///< Max atomic force magnitude [eV/Å].
     double rms_force = 0.0; ///< RMS force [eV/Å].
@@ -79,8 +82,15 @@ struct LoopMetrics {
     ///
     /// A band is converged only when this is 1 — the AND that `PathDriver` used to spell
     /// out by hand. Left at 0 by every non-replica loop, which is why
-    /// `AllReplicasConverged` is the only handler that reads it.
+    /// `AllReplicasConverged` is the only criterion that reads it.
     double replicas_converged = 0.0;
 };
+
+/// @brief CUDA-only compatibility alias for the pre-rename name.
+///
+/// The CUDA backend still spells `LoopMetrics` (its handler machinery is
+/// unchanged until CUDA grows a Criterion kind — deferred GPU-node work); CPU
+/// code must use `ConvergenceMetrics`. Remove with the CUDA criterion migration.
+using LoopMetrics = ConvergenceMetrics;
 
 } // namespace ATV

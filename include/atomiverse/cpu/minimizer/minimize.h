@@ -2,10 +2,10 @@
 /// @brief cpu::minimizer::Minimize — concrete energy-minimizer driver.
 ///
 /// `Minimize` is the user-facing CPU geometry-optimization preset — a
-/// `CPUDriver<minimizer::Phase>` whose constructor attaches `cpu::ForceConverged`.
+/// `CPUDriver<minimizer::Phase>` which attaches `cpu::ForceConverged` as a build-time default in `install_defaults()`.
 /// It iterates an optimizer component (LBFGS / CG / future FIRE), which publishes
-/// force/displacement/energy metrics onto `LoopMetrics`, until a handler judges
-/// them converged or `max_iter` is reached.
+/// force/displacement/energy metrics onto `ConvergenceMetrics`, until a criterion
+/// judges them converged or `max_iter` is reached.
 ///
 /// Exposes the same LAMMPS-shaped categorical setter API as
 /// `cpu::md::MD` (minus the time-evolution setters): add_potential,
@@ -63,6 +63,7 @@
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/facade/stage.h"
 
@@ -83,7 +84,7 @@ namespace minimizer {
 ///
 /// Inheritance: Minimize → CPUDriver<minimizer::Phase> →
 /// Driver<minimizer::Phase, cpu::device_tag>. There is no `OptimizeDriver` category in
-/// between any more: "stop when converged" is a `ForceConverged` handler this preset
+/// between any more: "stop when converged" is a `ForceConverged` criterion this preset
 /// attaches in `install_defaults()`, and the user can replace it without touching a
 /// driver class or an optimizer.
 /// CPUDriver provides the shared categorical setters and slot variables.
@@ -203,16 +204,16 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
     }
 
     void install_defaults() override {
-        // A Minimize with no handler would never stop early — the optimizer publishes
+        // A Minimize with no criterion would never stop early — the optimizer publishes
         // metrics and nobody judges them. So the PRESET supplies the policy it is a
         // preset for. This is what "MD-style pipelines become a default-constructed
-        // driver + handler" means in practice: the class contributes a default, not a
+        // driver + criterion" means in practice: the class contributes a default, not a
         // category.
         //
         // Textbook LAMMPS/ASE-ish defaults; override wholesale with
-        // `opt.add_handler(cpu::ForceConverged{ftol, ...})` before build().
-        if (!this->has_handler())
-            this->add_handler(cpu::ForceConverged{});
+        // `opt.add_criterion(cpu::ForceConverged{ftol, ...})` before build().
+        if (!this->has_criterion())
+            this->add_criterion(cpu::ForceConverged{});
 
         const auto s = this->scan_pending_infra_();
 
@@ -265,8 +266,8 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
             mutable_outer_status().reset();
             step_once(s);
             ++iters;
-            // The optimizer publishes metrics; handlers alone judge convergence.
-            if (poll_handlers_(s) != Verdict::Continue)
+            // The optimizer publishes metrics; criteria alone judge convergence.
+            if (poll_criteria_(s) != Verdict::Continue)
                 break;
         }
 

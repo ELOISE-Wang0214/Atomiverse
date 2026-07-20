@@ -55,7 +55,7 @@ define the public execution skeleton:
 - `PhaseBuilder` supports the fluent `.on(phase).add(...)` syntax
 - `PlanBuilder` compiles unordered registrations into a sorted execution plan
 - `stage.h` defines the phase order for each workflow (MD, minimization, evaluation, vibrational analysis, Monte Carlo sampling, and coupled-replica paths) plus the `kind_of(Phase)` overloads behind `make_binding`
-- `loop.h` defines `Verdict` and `LoopMetrics` — the vocabulary a loop's termination is decided in (a `LoopHandler` judges the metrics and returns a verdict; the driver reduces the verdicts across handlers and across MPI ranks)
+- `loop.h` defines `Verdict` and `ConvergenceMetrics` — the vocabulary a loop's termination is decided in (a `Criterion` judges the metrics and returns a verdict; the driver reduces the verdicts across criteria and across MPI ranks)
 
 The facade is deliberately CUDA-free. Its job is to collect intent, not to run
 the algorithm itself.

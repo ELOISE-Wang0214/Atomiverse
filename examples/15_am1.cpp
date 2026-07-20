@@ -13,7 +13,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/driver/evaluate.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
@@ -96,7 +96,7 @@ int main() {
 
         cpu::minimizer::Minimize opt;
         opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.02, 8});
-        opt.add_handler(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
+        opt.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
         opt.on(minimizer::Phase::force)
             .add(cpu::semiempirical::AM1Evaluator{}.with_gradient(true));
         opt.build();

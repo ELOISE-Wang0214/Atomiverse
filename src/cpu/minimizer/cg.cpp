@@ -1,5 +1,5 @@
 /// @file cpu/minimizer/cg.cpp
-/// @brief Polak-Ribière+ CG step; publishes LoopMetrics (mirrors LBFGS).
+/// @brief Polak-Ribière+ CG step; publishes ConvergenceMetrics (mirrors LBFGS).
 ///        MPI-aware: owned-row loops + cross-rank reductions.
 
 #include "atomiverse/cpu/minimizer/cg.h"
@@ -147,8 +147,8 @@ void CG::launch(const cpu::LaunchContext& ctx) {
 
         // PUBLISH, do not decide — see the same note in lbfgs.cpp. This five-way test
         // existed here TOO, character for character. One policy, two copies, and no way
-        // for a user to supply a third: that is what a handler replaces.
-        if (LoopMetrics* m = ctx.runtime.loop.metrics) {
+        // for a user to supply a third: that is what a criterion replaces.
+        if (ConvergenceMetrics* m = ctx.runtime.loop.metrics) {
             m->energy = f.meta.get(kEnergy);
             m->max_force = max_force_;
             m->rms_force = rms_force;

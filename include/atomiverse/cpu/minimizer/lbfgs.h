@@ -21,7 +21,7 @@
 /// @code
 ///   cpu::minimizer::Minimize opt;
 ///   opt.add(cpu::minimizer::LBFGS{memory, alpha, max_ls});
-///   opt.add_handler(cpu::ForceConverged{});   // the convergence policy
+///   opt.add_criterion(cpu::ForceConverged{});   // the convergence policy
 ///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCF{config});
 ///   opt.on(ATV::minimizer::Phase::end_of_step).add(Thermo{1});
 ///   opt.build();
@@ -71,12 +71,12 @@ struct OptRecord {
 /// Binds to search_direction + line_search + convergence_check phases.
 ///
 /// At the `convergence_check` phase it **publishes** force / displacement /
-/// energy metrics onto `LoopMetrics`; it never judges them. The convergence
-/// *policy* is a `LoopHandler` — by default `cpu::ForceConverged`, which owns
+/// energy metrics onto `ConvergenceMetrics`; it never judges them. The convergence
+/// *policy* is a `Criterion` — by default `cpu::ForceConverged`, which owns
 /// the five tolerances (`ftol`, `rms_ftol`, `max_dtol`, `rms_dtol`, `etol`).
 /// Changing a tolerance therefore never touches the algorithm:
 /// @code
-///   opt.add_handler(cpu::ForceConverged{/*ftol=*/0.02, /*rms_ftol=*/0.01});
+///   opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.02, /*rms_ftol=*/0.01});
 /// @endcode
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS direction.

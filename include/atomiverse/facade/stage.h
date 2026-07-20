@@ -183,7 +183,7 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 ///
 /// Used by `cpu::vib::Hessian`, which runs a fixed `6N` displacement budget
 /// followed by one finalize pass. Every displacement must complete for the
-/// Hessian to be defined, so there is nothing for a handler to decide and
+/// Hessian to be defined, so there is nothing for a criterion to decide and
 /// none is attached — the budget IS the termination. The phase
 /// ordering reflects what runs within a single displacement pass
 /// (`setup` → `displace` → `force` → `accumulate`) plus the
@@ -271,9 +271,9 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 /// @brief Path phases — N coupled replicas advanced together.
 ///
-/// Used by `cpu::PathDriver`, whose default handler (`cpu::AllReplicasConverged`)
+/// Used by `cpu::PathDriver`, whose default criterion (`cpu::AllReplicasConverged`)
 /// stops the loop only when **every** replica of a coupled chain has converged —
-/// an AND over the band, judged from the `LoopMetrics::replicas_converged`
+/// an AND over the band, judged from the `ConvergenceMetrics::replicas_converged`
 /// fraction the driver publishes each iteration.
 ///
 /// @note **These names are deliberately generic, and that is load-bearing.**
@@ -299,7 +299,7 @@ enum class Phase {
             ///< climbing-image flip; later, PIMD's ring-polymer spring.
     search_direction, ///< Per-replica descent direction from the coupled force.
     line_search,      ///< Reserved — line search along the direction.
-    convergence_check, ///< Per-replica stopping criteria → LoopMetrics.
+    convergence_check, ///< Per-replica stopping criteria → ConvergenceMetrics.
     end_of_step,       ///< Per-iteration observers / recorders.
     COUNT              ///< Sentinel -- total number of phases.
 };

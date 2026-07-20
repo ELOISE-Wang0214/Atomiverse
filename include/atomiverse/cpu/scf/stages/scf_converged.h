@@ -8,7 +8,7 @@
 /// plainly-named members; its `verdict()` JUDGES those members against the two
 /// tolerances and nothing else.
 ///
-/// It never writes `LoopMetrics` or the loop's status — it only RETURNS a
+/// It never writes `ConvergenceMetrics` or the loop's status — it only RETURNS a
 /// `Verdict`, which the driver pulls once per iteration and composes by
 /// severity (Stop > Converged > Continue). A component still cannot declare its
 /// own loop converged.
@@ -74,7 +74,7 @@ class ScfConverged : public cpu::Criterion {
     /// error reproduces `DualConvergenceCheck::step` exactly
     /// (dual_convergence_check.h:60-66): restricted uses ‖err_α‖_F; unrestricted
     /// combines √(‖err_α‖² + ‖err_β‖²). Writes only its own members — never
-    /// `LoopMetrics`.
+    /// `ConvergenceMetrics`.
     /// @param ctx Launch context; `ctx.at(scf::Phase::check)` is the self-guard.
     void launch(const LaunchContext& ctx) override {
         if (!ctx.at(ATV::scf::Phase::check))

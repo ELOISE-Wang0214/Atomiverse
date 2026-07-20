@@ -1,6 +1,6 @@
 /// @file cpu/md/md.h
 /// @brief cpu::md::MD — the classical time-advance preset. Its termination is the
-///        step budget: it runs every step it was asked for, unless a handler stops it.
+///        step budget: it runs every step it was asked for, unless a criterion stops it.
 #pragma once
 
 #include <cstdlib>
@@ -64,9 +64,9 @@ namespace md {
 /// set_record, set_thermo) and the slot variables. MD adds
 /// driver-specific setters (set_integrator, set_thermostat, set_barostat).
 ///
-/// **No default handler.** The step budget IS the termination, and time evolution has no
-/// convergence success path. But MD is a loop like any other, so a user can now attach
-/// one: `sim.add_handler(cpu::StopOnNaN{})`, or their own `StopWhenTooHot{2000}` —
+/// **No default criterion.** The step budget IS the termination, and time evolution has
+/// no convergence success path. But MD is a loop like any other, so a user can now
+/// attach one: `sim.add_criterion(cpu::StopOnNaN{})`, or their own `StopWhenTooHot{2000}` —
 /// LAMMPS's `fix halt`, which was impossible to write when "stop or not" was a private
 /// `if` inside DynamicsDriver.
 ///
@@ -107,7 +107,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
     /// @param frame Host-resident system state, updated in place.
     /// @param n_steps Step budget.
     /// @return Number of iterations actually executed (may be below the
-    ///         budget when a user handler stops the loop).
+    ///         budget when a user criterion stops the loop).
     int run(cpu::Frame& frame, int n_steps) {
         this->begin_run_(frame);
         int iterations = 0;
@@ -119,7 +119,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
             this->backend_->context().md.is_last_step = (s == n_steps - 1);
             this->step_once(this->next_step_());
             ++iterations;
-            if (this->poll_handlers_(s) != Verdict::Continue)
+            if (this->poll_criteria_(s) != Verdict::Continue)
                 break;
         }
         this->backend_->context().md.is_last_step = false;

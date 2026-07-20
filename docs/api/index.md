@@ -33,16 +33,18 @@ Start with these facade headers:
 - [`Driver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/driver.h)
 - [`Plan`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/plan.h)
 - [`Phase` enums](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)
-- [`Verdict` / `LoopMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h) — the vocabulary termination is decided in
+- [`Verdict` / `ConvergenceMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h) — the vocabulary termination is decided in
 
 ### Decide when a run stops
 
 The loop node (`cpu::CPUDriver<P>`, which every CPU driver derives from) has two
 policy slots. Both are user-definable from outside the library:
 
-- [`cpu::LoopHandler`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/loop_handler.h) —
-  *should the loop stop?* `driver.add_handler(h)`, plural. Ships `ForceConverged`,
-  `AllReplicasConverged`, `StopOnNaN`.
+- [`cpu::Criterion`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/criterion.h) —
+  *should the loop stop?* A Component the driver polls once per iteration:
+  `driver.add_criterion(c)`, plural. Ships `ForceConverged`,
+  `AllReplicasConverged`, `StopOnNaN`
+  ([`cpu/driver/criteria.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/criteria.h)).
 - [`cpu::OutcomePolicy`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/outcome_policy.h) —
   *does this iteration count?* `driver.set_outcome(p)`, singular. Ships `Metropolis`.
 - [`cpu::SubDriver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/sub_driver.h) —

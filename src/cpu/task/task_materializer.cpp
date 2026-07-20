@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -111,8 +111,8 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
     budget_ = static_cast<int>(task.max_iter);
     minimize_.emplace();
     const auto& c = task.convergence;
-    minimize_->add_handler(cpu::ForceConverged{c.ftol, c.rms_ftol, c.max_dtol,
-                                               c.rms_dtol, c.etol});
+    minimize_->add_criterion(cpu::ForceConverged{c.ftol, c.rms_ftol, c.max_dtol,
+                                                 c.rms_dtol, c.etol});
     for (const auto& entry : task.entries)
         register_minimize_entry(*minimize_, entry);
     minimize_->build();

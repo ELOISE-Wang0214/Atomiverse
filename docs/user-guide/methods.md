@@ -1,7 +1,7 @@
 # Methods
 
 Which **preset** and **evaluator** to use for each job. For the underlying
-vocabulary (Driver / Component / Frame / Handler), start with
+vocabulary (Driver / Component / Frame / Criterion), start with
 [Core concepts](concepts.md). Scientific theory and literature numbers live
 in the [Tutorial](../tutorial/).
 
@@ -21,7 +21,7 @@ serves them all, and *when the loop stops* is a policy object you can replace.
 |---|---|---|
 | `cpu::Evaluate` | single point | after exactly one pass |
 | `cpu::md::MD` | molecular dynamics | the step budget is exhausted |
-| `cpu::minimizer::Minimize` | geometry optimization | the `ForceConverged` handler says so |
+| `cpu::minimizer::Minimize` | geometry optimization | the `ForceConverged` criterion says so |
 | `cpu::vib::Hessian` | vibrational analysis | all 6N displacements are done |
 | `cpu::mc::MC` | Monte Carlo sampling | the trial-move budget is exhausted |
 | `cpu::PathDriver` | transition path (CI-NEB) | every replica of the band has converged |
@@ -31,8 +31,9 @@ first three on the GPU with the same API.
 
 Two policy slots let you change *when* a run ends without writing a driver:
 
-- `driver.add_handler(h)` — **plural**. A `cpu::LoopHandler` is asked once per
-  iteration and returns `Continue`, `Converged`, or `Stop`; several compose,
+- `driver.add_criterion(c)` — **plural**. A `cpu::Criterion` is a Component the
+  driver polls once per
+  iteration; it returns `Continue`, `Converged`, or `Stop`; several compose,
   most-severe-wins. In-tree: `ForceConverged`, `AllReplicasConverged`,
   `StopOnNaN`. Writing your own (LAMMPS's `fix halt`: "stop above 2000 K") is
   about ten lines, from outside the library. Ask the driver for the outcome:
@@ -150,9 +151,9 @@ over *any* force provider — classical or quantum.
 ```cpp
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});  // memory, alpha0, max_ls
-// Convergence is the handler's, not the optimizer's. Omit it and Minimize
+// Convergence is the criterion's, not the optimizer's. Omit it and Minimize
 // attaches cpu::ForceConverged{} with its defaults.
-opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05});
+opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.05});
 opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
 opt.build();
 opt.run(frame, 100);

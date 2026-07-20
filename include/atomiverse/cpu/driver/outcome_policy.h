@@ -3,7 +3,7 @@
 ///
 /// A loop has two policy slots, and they are orthogonal:
 ///
-///   - `LoopHandler`   — *should the loop stop?*        (`loop_handler.h`)
+///   - `Criterion`     — *should the loop stop?*        (`component/criterion.h`)
 ///   - `OutcomePolicy` — *does this iteration count?*   (here)
 ///
 /// Monte Carlo is why the second one exists. Its accept/reject test is **not** a
@@ -33,7 +33,7 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/facade/loop.h"
 
 namespace ATV {
@@ -41,7 +41,7 @@ namespace cpu {
 
 /// @brief Per-iteration commit/rollback policy. Asked once, after the stages have run.
 ///
-/// Like `LoopHandler`, deliberately **not** a template: it sees a `LoopState` and never
+/// Like `Criterion`, deliberately **not** a template: it sees a `LoopState` and never
 /// a phase, so one policy serves any workflow.
 class OutcomePolicy {
   public:

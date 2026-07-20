@@ -2,13 +2,13 @@
 
 This is the orientation chapter — no physics yet. By the end you know the
 three pillars (**Driver**, **Component**, **Frame**), how termination works
-(**LoopHandler** vs **OutcomePolicy**), and why swapping an evaluator changes
+(**Criterion** vs **OutcomePolicy**), and why swapping an evaluator changes
 the method without rewriting the loop.
 
 | Pillar | Owns | Example types |
 |--------|------|---------------|
 | **Runtime** (`cpu::Backend`) | frame binding, plan storage, MPI, timing | one per run |
-| **Driver** (`cpu::CPUDriver<P>`) | stages + plan + handlers | `MD`, `Minimize`, `MC`, `Evaluate`, … |
+| **Driver** (`cpu::CPUDriver<P>`) | stages + plan + criteria | `MD`, `Minimize`, `MC`, `Evaluate`, … |
 | **Component** | one step of physics | `PairLJCut`, `SCF`, `LBFGS`, `Thermo` |
 | **Frame** | device-resident state | `blocks` + `meta` + `simbox` |
 
@@ -139,10 +139,10 @@ The three you will meet in this tutorial are the first three; the rest
 appear in the later chapters.
 
 *How the loop decides to stop* is not a property of the class at all.
-It is a **handler** — a small policy object (`cpu::LoopHandler`) the
-driver asks once per iteration, which answers `Continue`, `Converged`,
-or `Stop`. `Minimize` attaches a `ForceConverged` handler in its
-constructor; `MD` attaches none and simply runs its budget. You can
+It is a **criterion** — a Component (`cpu::Criterion`) the
+driver polls once per iteration, which answers `Continue`, `Converged`,
+or `Stop`. `Minimize` attaches a `ForceConverged` criterion in its
+constructor (via `add_criterion`); `MD` attaches none and simply runs its budget. You can
 attach your own, and you can attach several — their verdicts compose by
 severity (`Stop` beats `Converged` beats `Continue`). We come back to
 this at the end of the chapter.
@@ -213,9 +213,9 @@ loop for n_steps:
 
 `MD::run(frame, n_steps)` exits after `n_steps` iterations. There is no
 convergence concept — time evolution does not "succeed" and "fail", it
-just runs — so `MD` attaches no handler by default. If you want it to
+just runs — so `MD` attaches no criterion by default. If you want it to
 bail out early (energy has gone to NaN, the box has melted), attach a
-handler: `sim.add_handler(cpu::StopOnNaN{})`.
+criterion: `sim.add_criterion(cpu::StopOnNaN{})`.
 
 ### Geometry minimization — `cpu::minimizer::Minimize`
 
@@ -228,20 +228,20 @@ loop until converged or max_iter:
     end_of_step        ← OptLog, FinalGeometry, TrajectoryWriter
 ```
 
-`Minimize::run(frame, max_iter)` exits as soon as its handler says
+`Minimize::run(frame, max_iter)` exits as soon as its criterion says
 `Converged`. Note the division of labour, because it is the one thing
 newcomers get backwards: at the `convergence_check` phase the optimizer
 **measures** (it publishes max force, RMS force, displacement and ΔE
-into the loop's `LoopMetrics`), and the **handler decides** whether
+into the loop's `ConvergenceMetrics`), and the **criterion decides** whether
 those numbers are good enough. `Minimize` attaches `cpu::ForceConverged`
 — the five-criteria test — for you, so a single `LBFGS{...}` instance is
-still all you have to add. But the tolerances live on the handler, and
+still all you have to add. But the tolerances live on the criterion, and
 you ask the *driver* for the verdict afterwards:
 
 ```cpp
 opt.run(frame, 100);
 if (opt.converged()) { /* … */ }
-std::cout << opt.stop_reason() << "\n";   // which handler ended the loop
+std::cout << opt.stop_reason() << "\n";   // which criterion ended the loop
 ```
 
 ### Single-point evaluation — `cpu::Evaluate`
@@ -326,14 +326,14 @@ math; an `xsimd` batched overload (`min_image_batch<B>`) lives in
 loops. You will rarely call these directly; force kernels and
 thermostats use them on your behalf.
 
-[`LoopMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h)
+[`ConvergenceMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h)
 is how a component tells the loop what it measured: energy, max force,
 RMS force, the displacement since the previous iteration, |ΔE|. The
-optimizer writes it; the handler reads it; the driver records the
+optimizer writes it; the criterion reads it; the driver records the
 resulting verdict in an
 [`IterationStatus`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h)
 (`converged`, `stop_requested`, and a human-readable `reason`) that it
-**owns**. A component may *request* a stop; only a handler can declare
+**owns**. A component may *request* a stop; only a criterion can declare
 convergence. And because each loop owns its own status rather than
 sharing one on the Context, a loop nested inside another cannot
 accidentally stop its parent. SCF internals manage their own internal
@@ -343,11 +343,12 @@ That is the whole termination story, and it is why writing your own
 stopping rule takes about ten lines:
 
 ```cpp
-class StopWhenTooHot : public cpu::LoopHandler {
+class StopWhenTooHot : public cpu::Criterion {
   public:
     explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
-    const char* name() const override { return "stop_when_too_hot"; }
-    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+    std::string name() const override { return "stop_when_too_hot"; }
+    void launch(const cpu::LaunchContext&) override {}  // verdict-only
+    ATV::Verdict verdict(const cpu::LoopState& s) override {
         return (temperature(s.frame) > t_max_) ? ATV::Verdict::Stop
                                                       : ATV::Verdict::Continue;
     }
@@ -355,7 +356,7 @@ class StopWhenTooHot : public cpu::LoopHandler {
     double t_max_;
 };
 
-sim.add_handler(StopWhenTooHot{2000.0});   // LAMMPS's `fix halt`, from outside the library
+sim.add_criterion(StopWhenTooHot{2000.0});   // LAMMPS's `fix halt`, from outside the library
 ```
 
 ## What Each Later Chapter Adds

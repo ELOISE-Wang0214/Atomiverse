@@ -1,7 +1,7 @@
 ---
 title: SCF 驱动化重构 · 06 终止即组件统一（Handler→Criterion，删 LoopHandler/add_handler）
 slug: scf-driver-refactor-06-criterion-unify
-status: approved
+status: code-complete
 chain: scf-driver-refactor
 link: 06/08
 created: 2026-07-20
@@ -56,14 +56,15 @@ created: 2026-07-20
 - `tests/CMakeLists.txt` — `test_criterion` 注册。
 
 ## Tasks
-- [ ] Migrate tests/cpu/driver/test_loop_handler.cpp to a failing tests/cpu/driver/test_criterion.cpp asserting the three built-in Criterion verdicts + severity composition + Minimize/Path terminate identically; update tests/CMakeLists
-- [ ] Migrate ForceConverged/StopOnNaN/AllReplicasConverged to Criterion components in cpu/driver/criteria.h (verdict body verbatim, empty launch, no bindings) and relocate LoopState into cpu/component/criterion.h
-- [ ] Migrate preset defaults (Minimize ctor ForceConverged, PathDriver ctor AllReplicasConverged, any StopOnNaN default) from add_handler to add_criterion
-- [ ] Migrate every remaining add_handler call site + custom LoopHandler subclass in tests and examples to add_criterion / Criterion
-- [ ] Delete LoopHandler + add_handler + poll_handlers_ and the legacy handler poll, unify cpu_driver.h to the single criterion poll, delete loop_handler.h, and reroute includes to criterion.h/criteria.h
-- [ ] Rename LoopMetrics to ConvergenceMetrics (facade/loop.h + all consumers, mechanical, fields unchanged)
-- [ ] Update the docs (CLAUDE.md/AGENTS.md custom-handler example, concepts + tutorials + developer docs) from Handler to Criterion — docs
-- [ ] Run full check + test suite
+- [x] Migrate tests/cpu/driver/test_loop_handler.cpp to a failing tests/cpu/driver/test_criterion.cpp asserting the three built-in Criterion verdicts + severity composition + Minimize/Path terminate identically; update tests/CMakeLists
+- [x] Migrate ForceConverged/StopOnNaN/AllReplicasConverged to Criterion components in cpu/driver/criteria.h (verdict body verbatim, empty launch, no bindings) and relocate LoopState into cpu/component/criterion.h
+- [x] Migrate preset defaults (Minimize ctor ForceConverged, PathDriver ctor AllReplicasConverged, any StopOnNaN default) from add_handler to add_criterion
+- [x] Migrate every remaining add_handler call site + custom LoopHandler subclass in tests and examples to add_criterion / Criterion
+- [x] Delete LoopHandler + add_handler + poll_handlers_ and the legacy handler poll, unify cpu_driver.h to the single criterion poll, delete loop_handler.h, and reroute includes to criterion.h/criteria.h
+- [x] Rename LoopMetrics to ConvergenceMetrics (facade/loop.h + all consumers, mechanical, fields unchanged)
+- [x] Update the docs (CLAUDE.md/AGENTS.md custom-handler example, concepts + tutorials + developer docs) from Handler to Criterion — docs
+- [x] Run full check + test suite
+- [x] Hygiene cleanup (/mol:simplify): 19 janitor fixes applied — stale handler prose, test-name drift, include precision, formatting; deferred greens are pre-existing debt
 
 ## Testing strategy
 - **判据 verdict + 组合（单元，秒级）**：`test_criterion` 断言三内置 Criterion 的 `verdict()` 与旧 handler 逐位一致；severity 组合 Stop>Converged>Continue、单 MPI 归约不变。

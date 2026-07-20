@@ -95,7 +95,7 @@ TEST(DensityCubeTest, H2DensityIntegratesToTwoElectrons) {
 
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
-    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
+    opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::recorder::DensityCubeWriter{
@@ -130,7 +130,7 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
     constexpr int homo_idx = 0;
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
-    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
+    opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::recorder::OrbitalCubeWriter{

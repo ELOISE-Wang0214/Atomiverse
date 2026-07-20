@@ -290,7 +290,7 @@ TEST(TaskMaterializer, MinimizePlanMatchesDirectTypedConstruction) {
     EXPECT_EQ(materialized.kind(), TaskKind::Minimize);
 
     cpu::minimizer::Minimize direct;
-    direct.add_handler(cpu::ForceConverged{
+    direct.add_criterion(cpu::ForceConverged{
         convergence.ftol, convergence.rms_ftol, convergence.max_dtol,
         convergence.rms_dtol, convergence.etol});
     direct.on(ATV::minimizer::Phase::force)

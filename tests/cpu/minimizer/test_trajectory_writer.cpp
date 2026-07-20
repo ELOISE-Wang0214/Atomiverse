@@ -1,5 +1,5 @@
 #ifdef ATV_HAS_HF
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
@@ -26,7 +26,7 @@ TEST(TrajectoryWriter, MinimizeWithRHFRuns) {
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
-    opt.add_handler(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
+    opt.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
     opt.build();
     opt.run(frame, 10);
     SUCCEED();

@@ -186,10 +186,10 @@ Notice what is *not* there: no `ftol`, no `rms_dtol`, no `etol`, and no
 `converged()` accessor. **An algorithm never judges itself.** At its
 `convergence_check` binding, FIRE *measures* — max force, RMS force,
 max and RMS displacement since the previous iteration, |ΔE| — and
-publishes them into `ctx.loop.metrics` (`ATV::LoopMetrics`):
+publishes them into `ctx.loop.metrics` (`ATV::ConvergenceMetrics`):
 
 ```cpp
-if (ATV::LoopMetrics* m = ctx.runtime.loop.metrics) {
+if (ATV::ConvergenceMetrics* m = ctx.runtime.loop.metrics) {
     m->energy            = e;
     m->max_force         = fmax;
     m->rms_force         = frms;
@@ -200,20 +200,20 @@ if (ATV::LoopMetrics* m = ctx.runtime.loop.metrics) {
 }
 ```
 
-Whether those numbers mean "converged" is decided by a `LoopHandler`.
+Whether those numbers mean "converged" is decided by a `Criterion`.
 `cpu::minimizer::Minimize` attaches `cpu::ForceConverged` by default,
 which is the five-criteria test (max force, RMS force, max displacement,
 RMS displacement, ΔE — **all five** must hold), with the tolerances now
-living on the handler where the policy belongs. A user who wants
-different tolerances writes `opt.add_handler(cpu::ForceConverged{0.01})`
+living on the criterion where the policy belongs. A user who wants
+different tolerances writes `opt.add_criterion(cpu::ForceConverged{0.01})`
 and never touches the optimizer; a user who wants a genuinely different
-criterion writes their own handler. `LBFGS::converged()` and
+criterion writes their own `Criterion`. `LBFGS::converged()` and
 `CG::converged()` used to exist and are deleted — ask the loop:
 `opt.converged()`, `opt.stop_reason()`.
 
 This is why FIRE is easier to add than it used to be: the exotic
 convergence definition that once demanded "its own convergence
-component" is now just a handler, and it is about ten lines.
+component" is now just a criterion, and it is about ten lines.
 
 **Lifecycle.** `build()` allocates `v_`, `x_prev_`, and `trace_` to
 sizes proportional to `frame.capacity()`. `launch()` reads forces
@@ -373,8 +373,8 @@ Three questions, in order:
    *algorithm*?**
    - Algorithm change: Component, plug in. (FIRE replacing L-BFGS;
      ADIIS replacing Pulay; CSVR replacing Nose-Hoover.)
-   - Termination change: a `cpu::LoopHandler`, attached with
-     `add_handler(...)`. Not a driver class. ("Stop above 2000 K",
+   - Termination change: a `cpu::Criterion`, attached with
+     `add_criterion(...)`. Not a driver class. ("Stop above 2000 K",
      "give up after an hour", "stop when every replica is converged".)
    - Accept/reject change: a `cpu::OutcomePolicy`, attached with
      `set_outcome(...)`. (A GCMC insertion rule, a REMD exchange.) Only

@@ -2,11 +2,11 @@
 /// @brief IterationStatus — one loop's outcome. **Owned by the loop, not the Context.**
 ///
 ///   - **converged** — the loop terminated successfully. Written ONLY by the driver,
-///     from the reduced verdict of its `LoopHandler`s. A component cannot write it:
+///     from the reduced verdict of its `Criterion`s. A component cannot write it:
 ///     there is no path from a component to this field, by construction.
 ///   - **stop_requested** — explicit early termination. A component MAY request this
-///     (a NaN detector, a wall-time guard, a user interrupt); a handler may too.
-///   - **reason** — which handler ended the loop, for logs and diagnostics.
+///     (a NaN detector, a wall-time guard, a user interrupt); a criterion may too.
+///   - **reason** — which criterion ended the loop, for logs and diagnostics.
 ///
 /// ## The ownership rule, and the bug it kills
 ///

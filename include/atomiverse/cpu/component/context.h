@@ -165,16 +165,16 @@ struct PathServices {
 
 /// @brief The active loop node's status + metrics (publisher: the running Driver).
 ///
-/// Non-owning: a Driver owns its own IterationStatus and LoopMetrics and points these
+/// Non-owning: a Driver owns its own IterationStatus and ConvergenceMetrics and points these
 /// here for the duration of its loop, restoring the previous pair on exit. So a nested
 /// driver's components write to the NESTED loop's status, never the parent's.
 struct LoopServices {
     /// @brief Stop channel. A component may set `stop_requested`; it must NOT set
-    /// `converged` — declaring success is a LoopHandler's job, not a component's.
+    /// `converged` — declaring success is a Criterion's job, not a component's.
     IterationStatus* status = nullptr;
 
-    /// @brief Where components publish what they measured, for handlers to judge.
-    LoopMetrics* metrics = nullptr;
+    /// @brief Where components publish what they measured, for criteria to judge.
+    ConvergenceMetrics* metrics = nullptr;
 };
 
 /// @brief The Runtime executing this node tree (publisher: `Backend::init()`).
@@ -226,7 +226,7 @@ struct Context {
     /// parent's — it is not a rule to remember, it is a pointer that does not go there.
     ///
     /// A component **measures** into `metrics` and may **request a stop** via `status`.
-    /// It does not declare convergence: that is a `LoopHandler`'s job.
+    /// It does not declare convergence: that is a `Criterion`'s job.
     LoopServices loop;
 
     ExecServices exec;         ///< The Runtime executing this node tree.

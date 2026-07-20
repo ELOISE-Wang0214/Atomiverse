@@ -6,21 +6,21 @@
 /// must not be halted by some component's private idea of convergence. The rule was a
 /// shield over a hole in the design.
 ///
-/// The hole is gone. Under `LoopHandler`, **a component cannot declare convergence at
+/// The hole is gone. Under `Criterion`, **a component cannot declare convergence at
 /// all** — it may *request a stop* (`status->stop_requested`) and it may *publish
-/// metrics*, and a handler does the judging. So Dynamics no longer needs to ignore
+/// metrics*, and a criterion does the judging. So Dynamics no longer needs to ignore
 /// anything:
 ///
-///   A) with no handler attached, an MD run has no early exit — it runs its budget
-///      (`cpu::md::MD`, unlike `Minimize`, attaches no default handler);
+///   A) with no criterion attached, an MD run has no early exit — it runs its budget
+///      (`cpu::md::MD`, unlike `Minimize`, attaches no default criterion);
 ///   B) a component that requests a stop still stops it;
-///   C) a user-supplied handler that returns `Converged` DOES stop it — which is new,
+///   C) a user-supplied criterion that returns `Converged` DOES stop it — which is new,
 ///      and is the point. "Run until the temperature settles" is a thing a user is
 ///      allowed to want, and there was no way to say it before.
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/facade/stage.h"
 
@@ -46,13 +46,14 @@ struct StopAtStep : ATV::cpu::Component {
     }
 };
 
-/// A user-written handler, defined outside the library's own vocabulary. THIS is the
+/// A user-written criterion, defined outside the library's own vocabulary. THIS is the
 /// thing that was impossible before: "stop or not" was a private `if` inside a driver.
-class ConvergeAtIteration : public ATV::cpu::LoopHandler {
+class ConvergeAtIteration : public ATV::cpu::Criterion {
   public:
     explicit ConvergeAtIteration(int at) : at_(at) {}
-    const char* name() const override { return "converge_at_iteration"; }
-    ATV::Verdict after_iteration(const ATV::cpu::LoopState& s) override {
+    std::string name() const override { return "converge_at_iteration"; }
+    void launch(const ATV::cpu::LaunchContext&) override {} // verdict-only
+    ATV::Verdict verdict(const ATV::cpu::LoopState& s) override {
         return (s.iteration >= at_) ? ATV::Verdict::Converged
                                     : ATV::Verdict::Continue;
     }
@@ -63,8 +64,8 @@ class ConvergeAtIteration : public ATV::cpu::LoopHandler {
 
 } // namespace
 
-/// A) No handler ⇒ no early exit. The budget is the only termination.
-TEST(DynamicsTermination, NoHandlerRunsTheFullBudget) {
+/// A) No criterion ⇒ no early exit. The budget is the only termination.
+TEST(DynamicsTermination, NoCriterionRunsTheFullBudget) {
     using namespace ATV;
     // Components BEFORE the driver: `cpu::md::MD` is continuable, so the component
     // destroy() pass is deferred to ~MD — the driver must be destroyed first (declared
@@ -103,10 +104,10 @@ TEST(DynamicsTermination, BreaksOnStopRequested) {
     EXPECT_EQ(integ.step_count, 4);
 }
 
-/// C) THE NEW CAPABILITY: a user handler halts an MD run. Dynamics does not "ignore
-/// converged" any more — it simply has no default handler, so nothing converges it
+/// C) THE NEW CAPABILITY: a user criterion halts an MD run. Dynamics does not "ignore
+/// converged" any more — it simply has no default criterion, so nothing converges it
 /// unless the user says what convergence would mean.
-TEST(DynamicsTermination, AUserHandlerCanHaltAnMdRun) {
+TEST(DynamicsTermination, AUserCriterionCanHaltAnMdRun) {
     using namespace ATV;
     StubIntegrator integ;
     StubForceEvaluator force;
@@ -114,11 +115,11 @@ TEST(DynamicsTermination, AUserHandlerCanHaltAnMdRun) {
 
     d.on(md::Phase::initial_integrate).add_ref(integ);
     d.on(md::Phase::force).add_ref(force);
-    d.add_handler(ConvergeAtIteration{2});
+    d.add_criterion(ConvergeAtIteration{2});
     d.build();
 
     auto frame = make_trivial_frame();
     d.run(frame, /*n_steps=*/10);
     EXPECT_EQ(integ.step_count, 3)
-        << "iterations 0,1,2 run; the handler halts after 2";
+        << "iterations 0,1,2 run; the criterion halts after 2";
 }

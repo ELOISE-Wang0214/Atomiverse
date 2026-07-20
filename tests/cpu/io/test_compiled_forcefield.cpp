@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/driver/evaluate.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -76,11 +76,12 @@ void install_tip3p(Driver& d, Phase force_phase) {
                                        std::vector<double>{1.824218}});
 }
 
-class StopAfter : public cpu::LoopHandler {
+class StopAfter : public cpu::Criterion {
   public:
     explicit StopAfter(int n) : n_(n) {}
-    const char* name() const override { return "stop_after"; }
-    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+    std::string name() const override { return "stop_after"; }
+    void launch(const cpu::LaunchContext&) override {} // verdict-only
+    ATV::Verdict verdict(const cpu::LoopState& s) override {
         return (s.iteration + 1 >= n_) ? ATV::Verdict::Stop
                                        : ATV::Verdict::Continue;
     }
@@ -118,7 +119,7 @@ TEST(PotentialCompose, EvaluateMDMinimize) {
         f.span(kAtom_x)[1] = 1.2;
         cpu::minimizer::Minimize opt;
         opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 5});
-        opt.add_handler(StopAfter{3});
+        opt.add_criterion(StopAfter{3});
         install_tip3p(opt, minimizer::Phase::force);
         opt.build();
         opt.run(f, 10);

@@ -9,7 +9,8 @@ criteria:
       ForceConverged, StopOnNaN, and AllReplicasConverged are Criterion subclasses in
       cpu/driver/criteria.h with the verdict() body carried over verbatim, an empty launch(),
       and default_bindings() returning {}; LoopState now lives in cpu/component/criterion.h.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-002
     summary: The criterion poll is the only verdict channel
     type: code
@@ -18,7 +19,8 @@ criteria:
       cpu_driver.h polls only criteria_ per iteration (severity-composed Stop>Converged>Continue,
       single MPI reduce); LoopHandler, add_handler, and poll_handlers_ are deleted along with the
       legacy handler poll path; loop_handler.h is removed and includes reroute to criterion.h/criteria.h.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-003
     summary: Preset defaults attach Criteria
     type: code
@@ -27,7 +29,11 @@ criteria:
       The Minimize ctor attaches ForceConverged and the PathDriver ctor attaches
       AllReplicasConverged via add_criterion (not add_handler); any StopOnNaN default is attached
       the same way.
-    status: pending
+    note: Minimize's default was already attached in install_defaults() pre-change (guarded by
+      has_criterion(), formerly has_handler()); that placement is preserved. PathDriver attaches in
+      its ctor. No StopOnNaN default existed.
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-004
     summary: All add_handler call sites migrated; grep-count-zero
     type: code
@@ -36,7 +42,8 @@ criteria:
       An evaluator grep for add_handler or LoopHandler over CPU include/, src/, tests/, examples/
       returns zero matches (CUDA loop_handler.cuh excluded); custom LoopHandler subclasses in tests
       and examples are rewritten as Criterion subclasses.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-005
     summary: Termination behavior preserved
     type: code
@@ -45,7 +52,8 @@ criteria:
       test_optimize_driver_early_stop, test_dynamics_full_budget, and test_minimize_driver_swap_optimizer
       show Minimize converging at the same iteration as before; the NEB band terminates identically
       (path tests + neb_muller_brown regression); StopOnNaN still aborts a diverged run.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-006
     summary: Nested criterion isolation preserved
     type: code
@@ -53,7 +61,8 @@ criteria:
     pass_when: |
       An inner loop whose criterion converges early does not stop the outer loop (test_driver_nesting),
       because criteria_ is per-loop and run_nested re-points ctx.loop as before.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-007
     summary: Docs migrated from Handler to Criterion
     type: docs
@@ -70,7 +79,8 @@ criteria:
     pass_when: |
       outcome_policy.h, mc_base.h, and gcmc.h are unchanged; MC accept/reject (test_ensemble_policies)
       is unaffected; the OutcomePolicy socket remains a separate, still-present mechanism.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-009
     summary: CUDA termination untouched (deferred)
     type: code
@@ -78,7 +88,8 @@ criteria:
     pass_when: |
       cuda/driver/loop_handler.cuh and cuda_driver.cuh handler poll are unchanged; no CUDA source is
       edited by this link (CUDA has no Criterion kind; its criterion migration is deferred).
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-011
     summary: LoopMetrics renamed ConvergenceMetrics, fields unchanged
     type: code
@@ -88,7 +99,8 @@ criteria:
       field set; an evaluator grep finds zero LoopMetrics tokens under CPU include/, src/,
       tests/, examples/ (CUDA excluded); all consumers (built-in criteria, LBFGS/CG publish
       side, ctx.loop.metrics) compile against the new name; SCF code does not reference it.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
   - id: ac-010
     summary: Whole suite green in seconds
     type: runtime
@@ -97,7 +109,8 @@ criteria:
       `cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_HF=ON
       && cmake --build build -j && ctest --test-dir build --output-on-failure` passes the whole suite
       in seconds; test_criterion passes and no termination-dependent test regresses.
-    status: pending
+    status: verified
+    last_checked: 2026-07-20
 ---
 
 # Acceptance criteria — scf-driver-refactor-06-criterion-unify

@@ -31,12 +31,12 @@ CPU backend now has three collaborating pieces:
 | | What it is | How many |
 |---|---|---|
 | **Runtime** (`cpu::Backend`) | frame binding, plan execution, timing, MPI, domain decomposition | one per run, shared by the whole driver tree |
-| **Driver** (`cpu::CPUDriver<P>`) | one **loop node**: stages + plan + handlers | any number, nestable |
-| **Handler** (`cpu::LoopHandler`) | asked once per iteration: stop or not? | any number, composable, user-definable |
+| **Driver** (`cpu::CPUDriver<P>`) | one **loop node**: stages + plan + criteria | any number, nestable |
+| **Criterion** (`cpu::Criterion`) | a Component polled once per iteration: stop or not? | any number, composable, user-definable |
 
 What survives of the old table is the list of **presets** — the classes
 users actually construct. A preset is *not* an architectural layer: it
-is a class whose **constructor** attaches the default handler and the
+is a class whose **constructor** attaches the default criterion and the
 infrastructure a given kind of run wants. It contributes defaults, not
 semantics, and every one of them can be overridden.
 
@@ -44,10 +44,10 @@ semantics, and every one of them can be overridden.
 |---|---|---|---|
 | `cpu::Evaluate` | `evaluate::Phase` | — | exactly one pass |
 | `cpu::md::MD` | `md::Phase` | — | the step budget |
-| `cpu::minimizer::Minimize` | `minimizer::Phase` | handler `ForceConverged` | convergence, or the budget |
+| `cpu::minimizer::Minimize` | `minimizer::Phase` | criterion `ForceConverged` | convergence, or the budget |
 | `cpu::vib::Hessian` | `vib::Phase` | — | fixed 6N displacements, then finalize |
 | `cpu::mc::MC` | `sampling::Phase` | **outcome** `Metropolis` | the trial budget |
-| `cpu::PathDriver` | `path::Phase` | handler `AllReplicasConverged` | every replica converged |
+| `cpu::PathDriver` | `path::Phase` | criterion `AllReplicasConverged` | every replica converged |
 
 The wrong reflex is to subclass `Driver<>` for every algorithm
 ("LBFGSDriver", "CGDriver", "FIREDriver"). The right reflex is to
@@ -56,7 +56,7 @@ implement the algorithm as a Component and plug it into the existing
 the original `cpu::minimizer::LBFGS` *driver class* was renamed to
 `Minimize`, and `LBFGSStep` became `LBFGS`. The second-wrong reflex is
 to reach for a new driver class because your run stops differently.
-That is a `LoopHandler`, and it is about ten lines.
+That is a `Criterion`, and it is about ten lines.
 
 ## The Hierarchy in One Diagram
 
@@ -78,13 +78,13 @@ provides:
 1. A `build()` override that runs `validate_components()` *before* the
    plan is compiled. Each preset overrides `validate_components()` to
    enforce its required role + capability set.
-2. `setup_pass(frame)`, `step_once(iter_idx)`, `poll_handlers_(iter)`,
+2. `setup_pass(frame)`, `step_once(iter_idx)`, `poll_criteria_(iter)`,
    `teardown_pass()` — the loop primitives each preset's `run(...)`
    composes, plus the continuation machinery (`begin_run_` /
    `flush_live_`) that MD and MC share.
-3. **This loop's own** `IterationStatus` and `LoopMetrics` — owned by
+3. **This loop's own** `IterationStatus` and `ConvergenceMetrics` — owned by
    the node, borrowed by the Context (see below).
-4. The two policy slots: `add_handler(...)` (plural, termination) and
+4. The two policy slots: `add_criterion(...)` (plural, termination) and
    `set_outcome(...)` (singular, commit/rollback).
 5. The categorical setter API (`add_potential`, `add_potential`, …, `set_thermo`).
 
@@ -92,30 +92,33 @@ The presets are thin: their constructors auto-add infrastructure
 components (zeroing, kinetic accumulator, snapshot publisher) and
 attach a default policy, and add nothing else. They each own a `run()`
 that composes the primitives above — but the termination decision
-inside it is delegated to whatever handlers are attached, which is why
+inside it is delegated to whatever criteria are attached, which is why
 adding a stopping rule never means adding a class.
 
-## Termination Is a Handler
+## Termination Is a Criterion
 
-A `LoopHandler` ([`cpu/driver/loop_handler.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/loop_handler.h))
-is asked once per iteration and answers with an `ATV::Verdict`:
-`Continue`, `Converged`, or `Stop`. Handlers are **plural** — several
-can be attached, and their verdicts compose by severity, **Stop >
-Converged > Continue**, so a run that has gone numerically insane
-cannot report success by also happening to satisfy a force tolerance.
+A `Criterion` ([`cpu/component/criterion.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/criterion.h))
+is a Component the driver polls once per iteration; it answers with an
+`ATV::Verdict`: `Continue`, `Converged`, or `Stop`. Criteria are
+**plural** — several can be attached, and their verdicts compose by
+severity, **Stop > Converged > Continue**, so a run that has gone
+numerically insane cannot report success by also happening to satisfy a
+force tolerance.
 
-The handler sees a `cpu::LoopState` — iteration index, frame, Context,
+The criterion sees a `cpu::LoopState` — iteration index, frame, Context,
 metrics — and deliberately **never a phase**. That is what lets one
-handler serve MD, Minimize, MC and Path alike. Three ship in-tree:
+criterion serve MD, Minimize, MC and Path alike. Three ship in-tree
+([`cpu/driver/criteria.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/criteria.h)):
 `ForceConverged` (the five-criteria geometry test), `AllReplicasConverged`,
 and `StopOnNaN`. A user writes their own from outside the library:
 
 ```cpp
-class StopWhenTooHot : public cpu::LoopHandler {
+class StopWhenTooHot : public cpu::Criterion {
   public:
     explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
-    const char* name() const override { return "stop_when_too_hot"; }
-    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+    std::string name() const override { return "stop_when_too_hot"; }
+    void launch(const cpu::LaunchContext&) override {}  // verdict-only
+    ATV::Verdict verdict(const cpu::LoopState& s) override {
         return (temperature(s.frame) > t_max_) ? ATV::Verdict::Stop
                                                       : ATV::Verdict::Continue;
     }
@@ -123,15 +126,15 @@ class StopWhenTooHot : public cpu::LoopHandler {
     double t_max_;
 };
 
-sim.add_handler(StopWhenTooHot{2000.0});
+sim.add_criterion(StopWhenTooHot{2000.0});
 ```
 
 This is LAMMPS's `fix halt`, and it was impossible to write before.
 
 Under MPI the driver all-reduces the verdict across ranks, once, before
-acting on it. Handler authors write `after_iteration` as if the process
+acting on it. Criterion authors write `verdict` as if the process
 were alone; ranks that disagreed about when to stop would deadlock at
-the next collective, and that is not a hazard a handler author should
+the next collective, and that is not a hazard a criterion author should
 have to know about.
 
 The loop's *other* policy slot is the `OutcomePolicy`
@@ -230,7 +233,7 @@ Two practical consequences:
 Two small structs carry the loop's verdict and the evidence for it.
 `ATV::IterationStatus`
 ([`facade/iteration_status.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h))
-is the verdict; `ATV::LoopMetrics`
+is the verdict; `ATV::ConvergenceMetrics`
 ([`facade/loop.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h))
 is the evidence.
 
@@ -242,7 +245,7 @@ struct IterationStatus {
     void reset() noexcept;
 };
 
-struct LoopMetrics {          // what the components measured this iteration
+struct ConvergenceMetrics {   // what the components measured this iteration
     double energy, max_force, rms_force;
     double max_displacement, rms_displacement, energy_change;
     bool   has_displacement;
@@ -251,7 +254,7 @@ struct LoopMetrics {          // what the components measured this iteration
 ```
 
 **Status belongs to the loop, not to the Context.** Each loop node owns
-its own `IterationStatus` and `LoopMetrics` as members
+its own `IterationStatus` and `ConvergenceMetrics` as members
 (`CPUDriver::status_`, `CPUDriver::metrics_`); the Context only
 *borrows* the active loop's, through the non-owning `ctx.loop`
 (`LoopServices{status, metrics}`). A nested driver re-points `ctx.loop`
@@ -264,25 +267,25 @@ first converged NEB image stopping the whole band) is now unwritable.
 Ownership rules:
 
 - The **loop node** owns the status. It calls `reset()` at the start of
-  every iteration and polls its handlers at the end of every iteration.
+  every iteration and polls its criteria at the end of every iteration.
 - **Components measure, they do not judge.** `LBFGS` and `CG` publish
   `max_force`, `rms_force`, the displacements and ΔE into
   `ctx.loop.metrics`. They do not decide whether those numbers mean
-  convergence — a `LoopHandler` does. `LBFGS::converged()` and
+  convergence — a `Criterion` does. `LBFGS::converged()` and
   `CG::converged()` are deleted; ask the driver: `opt.converged()` and
   `opt.stop_reason()`.
 - A component may **request** a stop (`stop_requested = true` with a
   `reason`), but it **cannot declare convergence** — there is no field
   left for it to write. `converged` is set by the driver, and only when
-  a handler returns `Verdict::Converged`.
+  a criterion returns `Verdict::Converged`.
 - **SCF internals never touch any of this.** The SCF cycle's own
   convergence is internal to `cpu::scf::SCFSolver` — it has its own
   `DualConvergenceCheck` helper and its own loop.
 
 There is no per-category table of "who reads which flag" any more,
 because there are no categories: every loop node runs the same
-`poll_handlers_` reduction, and what differs between an MD run and a
-minimization is only which handlers happen to be attached.
+`poll_criteria_` reduction, and what differs between an MD run and a
+minimization is only which criteria happen to be attached.
 
 ## Why SCF Is an Inner Solver, Not a Driver
 
@@ -468,8 +471,8 @@ A short rubric, with examples:
   produces). Plugs into `cpu::md::MD` *and* `cpu::minimizer::Minimize`
   *and* `cpu::Evaluate`.
 - **New stopping rule** (e.g. "halt above 2000 K", "give up after an
-  hour", "stop when the band is flat"): new `cpu::LoopHandler`,
-  attached with `add_handler(...)`. No new driver class, and no edit to
+  hour", "stop when the band is flat"): new `cpu::Criterion`,
+  attached with `add_criterion(...)`. No new driver class, and no edit to
   any algorithm.
 - **New acceptance rule** (e.g. GCMC insertion, a REMD exchange): new
   `cpu::OutcomePolicy`, attached with `set_outcome(...)`. No new driver

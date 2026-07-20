@@ -257,7 +257,7 @@ provides B3LYP forces to whichever driver it is plugged into.
 // B3LYP geometry optimization: hybrid forces into the Minimize driver
 cpu::minimizer::Minimize opt;
 opt.add(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
-opt.add_handler(cpu::ForceConverged{/* the five tolerances */});
+opt.add_criterion(cpu::ForceConverged{/* the five tolerances */});
 opt.on(minimizer::Phase::force)
    .add(cpu::scf::RKS(cpu::scf::XCType::B3LYP) /* basis via member */,
                                cpu::scf::BasisSet::Pople631Gs});

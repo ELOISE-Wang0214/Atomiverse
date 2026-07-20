@@ -88,7 +88,7 @@ class McBase : public CPUDriver<ATV::sampling::Phase> {
                 // The frame must reflect the restored state, not the trial.
                 frame.meta.get(kEnergy) = e_before;
             }
-            if (this->poll_handlers_(s) != Verdict::Continue)
+            if (this->poll_criteria_(s) != Verdict::Continue)
                 break;
         }
     }

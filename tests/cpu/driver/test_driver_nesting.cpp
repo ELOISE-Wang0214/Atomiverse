@@ -14,6 +14,7 @@
 
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/stage.h"
 
@@ -33,7 +34,7 @@ class OuterLoop : public cpu::CPUDriver<ATV::md::Phase> {
             mutable_outer_status().reset();
             step_once(s);
             ++iters;
-            if (poll_handlers_(s) != Verdict::Continue)
+            if (poll_criteria_(s) != Verdict::Continue)
                 break;
         }
         teardown_pass();
@@ -139,14 +140,14 @@ TEST(DriverNesting, NestedConvergenceDoesNotStopTheParent) {
     InnerLoop inner;
     ConvergeAt converge{/*at=*/2};
     inner.on(ATV::minimizer::Phase::convergence_check).add_ref(converge);
-    inner.add_handler(cpu::ForceConverged{});
+    inner.add_criterion(cpu::ForceConverged{});
 
     OuterLoop outer;
     PublishForce big{1e3};
     outer.on(ATV::md::Phase::force).add_ref(big);
     outer.on(ATV::md::Phase::end_of_step)
         .add_ref(inner, /*order=*/0, /*budget=*/10);
-    outer.add_handler(cpu::ForceConverged{});
+    outer.add_criterion(cpu::ForceConverged{});
     outer.build();
 
     const int outer_iters = outer.run(frame, /*budget=*/5);

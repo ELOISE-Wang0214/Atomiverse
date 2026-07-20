@@ -27,7 +27,7 @@ struct PolicyHarness {
     cpu::Frame frame{4};
     cpu::Context ctx{};
     cpu::mc::Transaction txn{};
-    LoopMetrics metrics{};
+    ConvergenceMetrics metrics{};
     std::mt19937_64 rng{99u};
 
     PolicyHarness() {

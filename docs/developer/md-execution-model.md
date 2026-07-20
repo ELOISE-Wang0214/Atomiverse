@@ -13,7 +13,7 @@ It assumes the user-level mental model from the
 [CPU overview tutorial](../tutorial/ch00-architecture.md) — `Frame` (the system
 state), `Component` (one unit of work), `Driver` (the loop) — and the
 [CPU Backend Internals](cpu-internals.md) chapter (why there is one loop node
-and a handful of presets, and why termination is a handler). Here we zoom into
+and a handful of presets, and why termination is a criterion). Here we zoom into
 *one step of the MD driver*.
 
 The phase enum (`ATV::md::Phase`) is backend-agnostic, so this skeleton is
@@ -39,8 +39,8 @@ run(frame, n_steps):
     for s in [0, n_steps):           # the run loop
         status_.reset()
         backend.step(s)              #   one full timestep (walks every phase)
-        poll_handlers_(s)            #   ask every LoopHandler; Stop > Converged > Continue
-        # MD attaches no handler by default, so a plain MD run simply exhausts
+        poll_criteria_(s)            #   ask every Criterion; Stop > Converged > Continue
+        # MD attaches no criterion by default, so a plain MD run simply exhausts
         # its budget. Attach one (StopOnNaN, a `fix halt` analogue) and the same
         # loop gains an early exit with no change to the driver.
     backend.drain_analysis()         # flush async observers

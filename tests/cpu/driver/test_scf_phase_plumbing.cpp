@@ -25,7 +25,7 @@
 ///
 /// Harness mirrors `tests/cpu/driver/test_sub_driver.cpp` (`OuterLoop`): a minimal
 /// `CPUDriver<>` subclass whose `run()` composes the protected loop primitives
-/// (`setup_pass` / `step_once` / `poll_handlers_` / `teardown_pass`). Unit-scale: an
+/// (`setup_pass` / `step_once` / `poll_criteria_` / `teardown_pass`). Unit-scale: an
 /// (almost) empty plan over a 1-atom frame, no physics, milliseconds.
 
 #include <gtest/gtest.h>
@@ -37,7 +37,6 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/loop.h"
 #include "atomiverse/facade/stage.h"
@@ -141,7 +140,7 @@ struct ScfPhaseProbe : cpu::CPUDriver<ATV::scf::Phase> {
             mutable_outer_status().reset();
             step_once(s);
             ++iters;
-            if (poll_handlers_(s) != Verdict::Continue)
+            if (poll_criteria_(s) != Verdict::Continue)
                 break;
         }
         teardown_pass();

@@ -119,7 +119,7 @@ TEST(ContextSlices, CoreFieldsStayFlatWithDefaults) {
     static_assert(std::is_same_v<decltype(cpu::LoopServices::status),
                                  ATV::IterationStatus*>);
     static_assert(std::is_same_v<decltype(cpu::LoopServices::metrics),
-                                 ATV::LoopMetrics*>);
+                                 ATV::ConvergenceMetrics*>);
 
     cpu::Context ctx;
     EXPECT_EQ(ctx.n_threads, 0);

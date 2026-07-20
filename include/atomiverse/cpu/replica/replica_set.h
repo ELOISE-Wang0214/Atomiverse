@@ -19,7 +19,7 @@
 /// their own, and each would re-implement ~90 % of the replica machinery that NEB already
 /// needed. So the replica machinery lives HERE, reusable, and `PathDriver` contributes
 /// exactly one thing on top of it: it publishes `converged_fraction()` onto
-/// `LoopMetrics`, where `cpu::AllReplicasConverged` judges it.
+/// `ConvergenceMetrics`, where `cpu::AllReplicasConverged` judges it.
 ///
 /// A budget-terminating replica preset (REMD) would reuse this class unchanged and
 /// contribute *its* one thing (the exchange attempt). That is the test of whether this
@@ -73,8 +73,8 @@ class ReplicaSet {
 
     /// @brief Fraction of the band that has converged, in [0,1]. Empty band → 0.
     ///
-    /// Published each iteration onto `LoopMetrics::replicas_converged` so that a
-    /// *handler* applies the AND (the band is converged at exactly 1.0) instead of the
+    /// Published each iteration onto `ConvergenceMetrics::replicas_converged` so that a
+    /// *criterion* applies the AND (the band is converged at exactly 1.0) instead of the
     /// driver hardcoding it. AND, not OR, and not "the climbing image converged": a band
     /// whose saddle image is converged but whose neighbours are still sliding has not
     /// found a path — the tangent that defines the saddle is computed FROM those

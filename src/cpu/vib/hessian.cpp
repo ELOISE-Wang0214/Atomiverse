@@ -76,7 +76,7 @@ HessianResult Hessian::run(cpu::Frame& frame) {
 
     // The 6N-displacement loop: two displacements per Cartesian coordinate. A fixed
     // budget, not a policy — every displacement must complete for the Hessian to be
-    // defined, so there is nothing for a handler to decide and none is polled.
+    // defined, so there is nothing for a criterion to decide and none is polled.
     const int n_disp = 6 * n_atoms;
     setup_pass(frame);
     for (int d = 0; d < n_disp; ++d)

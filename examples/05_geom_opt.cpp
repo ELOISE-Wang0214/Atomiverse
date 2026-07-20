@@ -16,7 +16,7 @@
 #include <cmath>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/methods.h"
@@ -116,7 +116,7 @@ int main() {
     opt.on(ATV::minimizer::Phase::force).add(std::move(rhf));
 
     // Convergence is a POLICY, not an algorithm parameter: it lives on a
-    // LoopHandler, not on the optimizer. `ForceConverged` requires ALL five
+    // Criterion, not on the optimizer. `ForceConverged` requires ALL five
     // criteria simultaneously. These are looser than the built-in defaults,
     // which is the point of stating them — a tutorial that must finish in 25
     // steps cannot ask for a 0.002 Å displacement tolerance.
@@ -125,9 +125,9 @@ int main() {
     //   max_dtol=0.05 Å  (max disp)
     //   rms_dtol=0.02 Å  (RMS disp)
     //   etol=1e-3 eV     (energy diff)
-    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05, /*rms_ftol=*/0.03,
-                                        /*max_dtol=*/0.05,
-                                        /*rms_dtol=*/0.02, /*etol=*/1e-3});
+    opt.add_criterion(cpu::ForceConverged{/*ftol=*/0.05, /*rms_ftol=*/0.03,
+                                          /*max_dtol=*/0.05,
+                                          /*rms_dtol=*/0.02, /*etol=*/1e-3});
     ATV_INFO("[example] optimizer build start");
     opt.build();
     ATV_INFO("[example] optimizer build done");

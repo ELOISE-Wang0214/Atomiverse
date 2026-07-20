@@ -125,7 +125,7 @@ TEST(ReplicaExpansion, LinearInterpolationCollapsesToTheHighestEnergyImage) {
 
 /// THE termination rule of a coupled band: AND, not OR.
 ///
-/// The band publishes `converged_fraction()` onto LoopMetrics and
+/// The band publishes `converged_fraction()` onto ConvergenceMetrics and
 /// `cpu::AllReplicasConverged` applies the AND — the band is converged at exactly 1.0.
 /// If a component could write convergence straight onto a single shared status, the
 /// first image to settle would have stopped the entire chain, leaving the rest of the

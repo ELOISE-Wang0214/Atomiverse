@@ -59,7 +59,7 @@ namespace vib {
 /// Termination is a **fixed `6N`-displacement budget** followed by one finalize pass —
 /// every displacement must complete for the Hessian to be defined, so there is no
 /// convergence path and no early stop. `6N` is derived from the frame inside `run()`,
-/// never passed in. The budget is the loop bound; no handler is attached.
+/// never passed in. The budget is the loop bound; no criterion is attached.
 ///
 /// Inheritance: Hessian → CPUDriver<vib::Phase> → Driver<vib::Phase, cpu::device_tag>.
 /// There is no `ResponseDriver` category in between any more.

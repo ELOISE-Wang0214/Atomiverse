@@ -1,14 +1,14 @@
 /// @file tests/cpu/test_optimize_driver_early_stop.cpp
 /// @brief Phase 1.7 — `cpu::minimizer::Minimize` breaks the loop when the metrics a
 ///        ConvergenceCheck-tagged component publishes satisfy the attached
-///        `ForceConverged` handler. Returns the iteration count actually run.
+///        `ForceConverged` criterion. Returns the iteration count actually run.
 ///
 /// Acceptance: ac-005 (Optimize half) in
 /// `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/facade/stage.h"
 
@@ -35,8 +35,8 @@ struct ConvergeAtStep : ATV::cpu::Component {
         ++launch_count;
         // A component no longer declares convergence — it publishes what it measured.
         // Here: pretend the force collapses to zero once the target step is reached, and
-        // let a ForceConverged handler draw the conclusion. That separation IS the fix.
-        if (ATV::LoopMetrics* m = ctx.runtime.loop.metrics) {
+        // let a ForceConverged criterion draw the conclusion. That separation IS the fix.
+        if (ATV::ConvergenceMetrics* m = ctx.runtime.loop.metrics) {
             const bool done = ctx.step >= converge_at_step;
             m->max_force = done ? 0.0 : 1.0;
             m->rms_force = done ? 0.0 : 1.0;
@@ -64,7 +64,7 @@ TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
     // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
     // we attach it explicitly so this test pins the tolerances it judges against
     // instead of inheriting whatever the preset's defaults happen to be.
-    opt.add_handler(cpu::ForceConverged{});
+    opt.add_criterion(cpu::ForceConverged{});
     opt.build();
 
     auto frame = make_trivial_frame();
@@ -91,7 +91,7 @@ TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
     // we attach it explicitly so this test pins the tolerances it judges against
     // instead of inheriting whatever the preset's defaults happen to be.
-    opt.add_handler(cpu::ForceConverged{});
+    opt.add_criterion(cpu::ForceConverged{});
     opt.build();
 
     auto frame = make_trivial_frame();

@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
@@ -33,17 +33,14 @@ using cpu::task::MinimizeBinding;
 using cpu::task::MinimizeComponentEntry;
 using cpu::task::TaskResult;
 
-cpu::ForceConverged make_handler(const ForceConvergedParams& p) {
-    return cpu::ForceConverged{p.ftol, p.rms_ftol, p.max_dtol, p.rms_dtol,
-                               p.etol};
-}
-
 struct MinimizeHandle {
     explicit MinimizeHandle(ForceConvergedParams convergence_)
         : convergence(std::move(convergence_)) {
         // Validate through the exact wire-boundary type used by launcher runs.
         (void)cpu::task::TaskSpec{cpu::task::MinimizeTask{{}, 1, convergence}};
-        driver.add_handler(make_handler(convergence));
+        driver.add_criterion(cpu::ForceConverged{
+            convergence.ftol, convergence.rms_ftol, convergence.max_dtol,
+            convergence.rms_dtol, convergence.etol});
     }
 
     cpu::minimizer::Minimize driver;

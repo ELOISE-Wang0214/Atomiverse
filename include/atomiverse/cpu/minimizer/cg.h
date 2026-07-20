@@ -4,8 +4,8 @@
 /// Pluggable alternative to `cpu::minimizer::LBFGS` inside
 /// `cpu::minimizer::Minimize`. Same outer contract: binds
 /// `search_direction` (computes the step) and `convergence_check`
-/// (publishes force / displacement / energy metrics onto `LoopMetrics`,
-/// where a `LoopHandler` — by default `cpu::ForceConverged` — judges them).
+/// (publishes force / displacement / energy metrics onto `ConvergenceMetrics`,
+/// where a `Criterion` — by default `cpu::ForceConverged` — judges them).
 /// The component measures; it never declares convergence.
 ///
 /// Algorithm (Polak-Ribière+):
@@ -21,11 +21,11 @@
 /// already handles ill-conditioned regions.
 ///
 /// Convergence is not this class's business: `CG` and `LBFGS` publish the
-/// identical `LoopMetrics`, and one `LoopHandler` (`cpu::ForceConverged`)
+/// identical `ConvergenceMetrics`, and one `Criterion` (`cpu::ForceConverged`)
 /// judges both. That is what makes the optimizer hot-swap test
 /// (`tests/cpu/test_minimize_driver_swap_optimizer.cpp`) meaningful — the two
-/// classes are judged by the same policy object, not by two copies of the same
-/// five tolerances.
+/// classes are judged by the same criterion component, not by two copies of the
+/// same five tolerances.
 ///
 /// References:
 ///   Polak & Ribière, ESAIM Math. Modelling Numer. Anal. 3, 35 (1969)
@@ -51,7 +51,7 @@ class CG : public cpu::Optimizer {
     /// @brief Construct CG optimizer.
     ///
     /// Convergence tolerances are **not** arguments here — they belong to the
-    /// `cpu::ForceConverged` handler (`opt.add_handler(...)`).
+    /// `cpu::ForceConverged` criterion (`opt.add_criterion(...)`).
     /// @param alpha0    Step size [Å²/eV] (default 0.01).
     explicit CG(double alpha0 = 0.01);
 
