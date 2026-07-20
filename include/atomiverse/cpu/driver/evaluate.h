@@ -17,8 +17,8 @@
 /// write to them.
 ///
 /// `add()` and `on(phase).add()` from the underlying `Driver<>`
-/// remain public for user-defined hooks (e.g. SCF evaluators
-/// registered via `add(SCF{...})`).
+/// remain public for user-defined hooks (e.g. a concrete SCF method
+/// registered via `add(cpu::scf::RHF{})`).
 ///
 /// Inheritance: Evaluate → CPUDriver<evaluate::Phase> →
 /// Driver<evaluate::Phase, cpu::device_tag>. There is no `EvaluateDriver` category in
@@ -26,9 +26,11 @@
 /// *budget of one*, not a taxonomy.
 ///
 /// @code{.cpp}
-///   // SCF energy + forces (default)
+///   // SCF energy + forces (default) — bind a concrete method
+///   cpu::scf::RKS rks;
+///   rks.basis = cpu::scf::BasisSet::STO3G;
 ///   cpu::Evaluate eval;
-///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCF{cpu::scf::SCFConfig{cpu::scf::SCFConfig::RKS{}, integrals}});
+///   eval.on(evaluate::Phase::evaluate).add(std::move(rks));
 ///   eval.build();
 ///   eval.run(frame);
 ///

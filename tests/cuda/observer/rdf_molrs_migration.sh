@@ -6,7 +6,6 @@
 # The forbidden tokens are assembled by concatenation below so the repo-wide
 # deletion grep (acceptance ac-004) does not match this gate's own source.
 # Pure grep, runs on any node (no CUDA needed).
-# Mirrors tests/cuda/scf_solver_isolation.sh.
 set -u
 
 root="${1:-$(cd "$(dirname "$0")/../../.." && pwd)}"

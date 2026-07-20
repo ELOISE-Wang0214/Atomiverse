@@ -47,6 +47,8 @@ struct SCFResult {
 
     int n_alpha = 0;
     int n_beta = 0;
+    SpinType spin = SpinType::
+        Restricted; ///< Spin treatment used (restricted/unrestricted).
     double spin_contamination = 0;
 
     xt::xtensor<double, 1> eigenvalues_alpha;

@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_uks_solver.cpp
-/// @brief UKS via concrete method (no IntegralPack / SCFConfig).
+/// @brief UKS/RKS via the concrete member API (Frame in / out).
 
 #ifdef ATV_HAS_RHF
 

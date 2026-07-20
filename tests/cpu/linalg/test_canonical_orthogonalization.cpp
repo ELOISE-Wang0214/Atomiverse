@@ -49,7 +49,7 @@ namespace {
 
 /// Injected near-null eigenvalue (dimensionless overlap eigenvalue).
 constexpr double kTinyEig = 1e-12;
-/// Default linear-dependence threshold from the spec (SCFConfig default).
+/// Default linear-dependence threshold from the spec (method-member default).
 constexpr double kTau = 1e-8;
 
 /// 4x4 Givens rotation in the (i,j) plane with literal cosine/sine.
@@ -239,7 +239,7 @@ TEST(CanonicalOrthogonalization, TauEqualToEigenvalueKeepsThatColumn) {
 
 // Healthy basis: the lowdin member must be BITWISE identical to
 // build_orthogonalization_matrix(S) — same eigendecomposition, same
-// operations — so SCFSolver can pay one eigh per run() instead of two
+// operations — so the SCF loop can pay one eigh per run() instead of two
 // without moving any pre-existing result.
 TEST(CanonicalOrthogonalization, LowdinBitwiseMatchesLegacyBuilder) {
     RealMatrix s = make_healthy_s();

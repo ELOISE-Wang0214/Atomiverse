@@ -661,17 +661,16 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
     }
 }
 
-void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
-                                      const Frame& frame,
-                                      const IntegralPack& integrals,
-                                      const xt::xtensor<double, 2>& P_total,
-                                      const SCFResult& result,
-                                      const SCFConfig& config) {
+void accumulate_two_electron_gradient(
+    xt::xtensor<double, 2>& grad, const Frame& frame,
+    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
+    const SCFResult& result, MeanFieldType method, SpinType spin,
+    XCType xc_type, bool force_native_two_electron_deriv) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
-    const bool is_ks = (config.method == MeanFieldType::KS);
-    const bool restricted = (config.spin == SpinType::Restricted);
+    const bool is_ks = (method == MeanFieldType::KS);
+    const bool restricted = (spin == SpinType::Restricted);
 
     // Exact-exchange (K-channel) fraction.
     //
@@ -683,13 +682,12 @@ void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
     // PBE0) for a KS hybrid. It enters as a pure scalar multiplier on top of
     // the existing closed-shell exchange prefactors and the
     // 0.5*[P(i,k)P(j,l)+P(j,k)P(i,l)] symmetrization, which are unchanged.
-    const double alpha_hf =
-        is_ks ? hybrid_exchange_fraction(config.xc_type) : 1.0;
+    const double alpha_hf = is_ks ? hybrid_exchange_fraction(xc_type) : 1.0;
     const bool do_exchange = (alpha_hf > 0.0);
 
 #ifdef ATV_HAS_LIBCINT
     auto cint_ctx = build_libcint_context(frame);
-    if (cint_ctx.nao == n && !config.force_native_two_electron_deriv) {
+    if (cint_ctx.nao == n && !force_native_two_electron_deriv) {
         const int nshells = cint_ctx.nshells;
         ATV_INFO("[gradient] two_e engine=libcint natm={} basis={} shells={}",
                  natm, n, nshells);
@@ -971,7 +969,7 @@ void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
         return;
     }
 
-    if (config.force_native_two_electron_deriv) {
+    if (force_native_two_electron_deriv) {
         ATV_INFO("[gradient] two_e engine=native "
                  "(force_native_two_electron_deriv=true)");
     } else {

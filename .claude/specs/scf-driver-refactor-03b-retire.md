@@ -15,7 +15,7 @@ created: 2026-07-20
 ## Domain basis
 本环两个领域锚点：
 1. **行为保持**——删除/迁移都是机械改写，不改任何数值路径：解析梯度改为吃离散成员而非 `SCFConfig`（读的字段不变），故既有 `test_gradient*`/`test_gradient_vs_libcint` 力值不变；四方法能量在 03a 已逐位一致。参考实现在此才删，正因为 03a 已证毕（参考先于替换物存活）。
-2. **文献值 e2e**——本链首个高斯 SCF 回归：H₂O/STO-3G 限制性 Hartree–Fock 总能量。引用值取自 Szabo & Ostlund, *Modern Quantum Chemistry*（Dover, 1996）标准 STO-3G 水示例；几何 R(OH)=0.9584 Å、∠HOH=104.45°；**E_RHF/STO-3G(H₂O) = −74.9420 Hartree**，容差 **1×10⁻³ Ha**（端到端理智核对量级，非高精度基准）。精确数字 + 几何 + 引用逐字记入该案例 `REFERENCE.md`（遵 `regressions/README.md` 约定）；实现时对照所引版次核实该数位。梯度导数参考：Pulay, *Mol. Phys.* **17**, 197 (1969)；Szabo & Ostlund, App. C。
+2. **文献值 e2e**——本链首个高斯 SCF 回归：H₂O/STO-3G 限制性 Hartree–Fock 总能量。引用值（实现期已按规格要求核实并修正：原 −74.9420 Ha/Szabo–Ostlund 配对系误引，实为 Crawford Project #3 拉伸几何值）：LibreTexts *Live Textbook of Physical Chemistry*（Peverati）§28.2；几何 R(OH)=0.95 Å、∠HOH=104.5°；**E_RHF/STO-3G(H₂O) = −74.961754 Hartree**，容差 **1×10⁻³ Ha**（端到端理智核对量级，非高精度基准）。精确数字 + 几何 + 引用逐字记入该案例 `REFERENCE.md`（遵 `regressions/README.md` 约定）；实现时对照所引版次核实该数位。梯度导数参考：Pulay, *Mol. Phys.* **17**, 197 (1969)；Szabo & Ostlund, App. C。
 
 沿用整链决策日志（01/02/03a 已固化）。
 
@@ -71,17 +71,17 @@ created: 2026-07-20
 - `regressions/scf/h2o_rhf_sto3g/reg_h2o_rhf_sto3g.cpp` (new) + `regressions/scf/h2o_rhf_sto3g/REFERENCE.md` (new) + `regressions/CMakeLists.txt` (modify) — 注册该案例。
 
 ## Tasks
-- [ ] Decouple the gradient path from SCFConfig by classifying it as internal::ScfGradient (ctor takes the discrete method parameters; FD oracle becomes a member or relocates into its consuming test; no free helper functions) with integral_derivatives re-signatured to discrete parameters (existing gradient tests must keep identical forces)
-- [ ] Remove SCFResultHandle::config + config_sp_ + make_config/publish_config_ remnants; add SCFResult::spin (set in the method epilogue); migrate density_cube_writer to result.spin
-- [ ] Migrate the vib/hessian.h + evaluate.h @code doc examples and tests/cpu/scf/delta_scf_reference.h to the member API (no SCFConfig token)
-- [ ] Delete SCFSolver (internal/scf_solver.{h,cpp}), the SCFConfig struct (internal/scf_types.h, keeping SpinResolution), and HamiltonianBuilder's SCFConfig overloads; update the root scf_solver.h/scf_types.h tombstone text
-- [ ] Retire test_scf_solver_internals + test_scf_solver_internal_isolation, moving their meaningful helper assertions onto the 02 stage test; delete tests/cuda/scf_solver_isolation.sh + its ctest registration and sweep the stale rdf_molrs_migration.sh comment
-- [ ] Update the root CMakeLists (drop scf_solver.cpp) and tests/CMakeLists (drop the three retired registrations)
-- [ ] Add the regression regressions/scf/h2o_rhf_sto3g (reg_h2o_rhf_sto3g.cpp + REFERENCE.md) and register it in regressions/CMakeLists.txt
+- [x] Decouple the gradient path from SCFConfig by classifying it as internal::ScfGradient (ctor takes the discrete method parameters; FD oracle becomes a member or relocates into its consuming test; no free helper functions) with integral_derivatives re-signatured to discrete parameters (existing gradient tests must keep identical forces)
+- [x] Remove SCFResultHandle::config + config_sp_ + make_config/publish_config_ remnants; add SCFResult::spin (set in the method epilogue); migrate density_cube_writer to result.spin
+- [x] Migrate the vib/hessian.h + evaluate.h @code doc examples and tests/cpu/scf/delta_scf_reference.h to the member API (no SCFConfig token)
+- [x] Delete SCFSolver (internal/scf_solver.{h,cpp}), the SCFConfig struct (internal/scf_types.h, keeping SpinResolution), and HamiltonianBuilder's SCFConfig overloads; update the root scf_solver.h/scf_types.h tombstone text
+- [x] Retire test_scf_solver_internals + test_scf_solver_internal_isolation, moving their meaningful helper assertions onto the 02 stage test; delete tests/cuda/scf_solver_isolation.sh + its ctest registration and sweep the stale rdf_molrs_migration.sh comment
+- [x] Update the root CMakeLists (drop scf_solver.cpp) and tests/CMakeLists (drop the three retired registrations)
+- [x] Add the regression regressions/scf/h2o_rhf_sto3g (reg_h2o_rhf_sto3g.cpp + REFERENCE.md) and register it in regressions/CMakeLists.txt
 - [ ] Run full check + test suite
 
 ## Testing strategy
-- **Regression（端到端，文献值，ATV_BUILD_REGRESSIONS，只经 `regressions` target）**：`reg_h2o_rhf_sto3g.cpp` 作**库外消费方**（仅 include 公开 `cpu/scf/methods.h`+`frame.h`，链 atomiverse）：构 `cpu::scf::RHF{basis=STO3G}`、`run(frame)`、断言 `last_result().energy` 与 `REFERENCE.md` 引用值 −74.9420 Ha 差 ≤1e-3 Ha，≤60s；绝不进默认 ctest。
+- **Regression（端到端，文献值，ATV_BUILD_REGRESSIONS，只经 `regressions` target）**：`reg_h2o_rhf_sto3g.cpp` 作**库外消费方**（仅 include 公开 `cpu/scf/methods.h`+`frame.h`，链 atomiverse）：构 `cpu::scf::RHF{basis=STO3G}`、`run(frame)`、断言 `last_result().energy` 与 `REFERENCE.md` 引用值 −74.961754 Ha 差 ≤1e-3 Ha，≤60s；绝不进默认 ctest。
 - **梯度解耦不变性**：既有 `test_gradient*` / `test_gradient_vs_libcint` 以迁移后离散签名跑出**逐位相同**力值（证 `SCFConfig`→离散只是形参改写）。`scf_gradient_fd`（FD 校验 oracle）以离散参数或 SCF-runner 回调重写，由既有 FD 梯度测试保绿。
 - **Handle 收窄**：`test_density_cube` / `test_orbital_info_observer` / example 16 编译+通过；`density_cube_writer` 经 `result.spin` 得到与旧 `cfg.spin` 相同的限制/非限制分支。
 - **迁移测试**：`test_delta_scf`（经迁移后的 `delta_scf_reference.h`）、`test_koopmans`/`test_level_shift`/`test_accelerators`（本已成员 API）全绿、值不变。

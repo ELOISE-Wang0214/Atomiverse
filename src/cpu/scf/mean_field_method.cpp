@@ -31,23 +31,12 @@
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
-#include "atomiverse/cpu/scf/internal/scf_solver.h" // SCFSolver (retained reference)
-#include "atomiverse/cpu/scf/internal/scf_types.h" // SCFConfig (retained reference)
-#include "atomiverse/cpu/scf/scf_guess.h"          // apply_homo_lumo_mixing
-#include "atomiverse/cpu/scf/spin_analysis.h"      // compute_spin_contamination
+#include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
+#include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
 
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-// Retained parity-reference wrapper (the SCFSolver-backed inner loop the
-// methods no longer drive through). Kept alive alongside SCFSolver/SCFConfig
-// per sub-spec 03a; sub-spec 03b retires it once four-method bit-parity is
-// proven against the reference.
-class ScfLoop : public SCFSolver {
-  public:
-    using SCFSolver::SCFSolver;
-};
 
 // ── PositionGuard: unwrap for the integral build, restore on exit ─────────────
 
@@ -99,8 +88,7 @@ MeanFieldMethod<D>::PositionGuard::~PositionGuard() {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 template <typename D>
-MeanFieldMethod<D>::MeanFieldMethod()
-    : config_sp_(std::make_shared<SCFConfig>()) {}
+MeanFieldMethod<D>::MeanFieldMethod() = default;
 template <typename D>
 MeanFieldMethod<D>::~MeanFieldMethod() = default;
 template <typename D>
@@ -118,33 +106,6 @@ void MeanFieldMethod<D>::set_predictor_(int order, int corrector_steps,
     fallback_full_scf_ = fallback;
     aspc_alpha_ = std::make_unique<ASPCPredictor>(order);
     aspc_beta_ = std::make_unique<ASPCPredictor>(order);
-}
-
-template <typename D>
-void MeanFieldMethod<D>::publish_config_() {
-    SCFConfig& c = *config_sp_;
-    c.spin = spin_;
-    c.method = method_;
-    c.xc_type = xc_type_;
-    c.n_alpha = n_alpha_;
-    c.n_beta = n_beta_;
-    c.tol = tol;
-    c.conv_tol_grad = conv_tol_grad;
-    c.max_iter = max_iter;
-    c.use_diis = use_diis;
-    c.diis_max_vectors = diis_max_vectors;
-    c.diis_start_iter = diis_start_iter;
-    c.damping_factor = damping_factor;
-    c.init_guess = init_guess;
-    c.level_shift = level_shift;
-    c.lindep_threshold = lindep_threshold;
-    c.grid_level = grid_level;
-    c.n_radial = n_radial;
-    c.n_angular = n_angular;
-    c.force_native_two_electron_deriv = force_native_two_electron_deriv;
-    c.xc_grad_project_translation = xc_grad_project_translation;
-    c.hybrid_alpha_override = hybrid_alpha_override;
-    c.fixed_grid = fixed_grid;
 }
 
 // ── Stage wiring + Plan compile (lazy, once) ──────────────────────────────────
@@ -238,7 +199,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
     const int n_alpha = n_alpha_;
     const int n_beta = n_beta_;
 
-    // Occupation validity guard — mirrors SCFSolver::run (no-fallback discipline).
+    // Occupation validity guard (no-fallback discipline).
     if (n_alpha < 0 || n_beta < 0 || n_alpha + n_beta != ints.n_electrons
         || (restricted && n_alpha != n_beta)) {
         throw std::invalid_argument(
@@ -252,7 +213,6 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
     }
 
     ensure_driver_built_();
-    publish_config_();
 
     S_ = ints.S;
     Hcore_ = ints.Hcore;
@@ -264,8 +224,8 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
     int_n_alpha_ = 0;
     int_n_beta_ = 0;
 
-    // Orthogonalization matrix X + linear-dependence handling
-    // (scf_solver.cpp:122-139) — canonical-orth path only when columns drop.
+    // Orthogonalization matrix X + linear-dependence handling —
+    // canonical-orth path only when columns drop.
     internal::EigenSolver eigen;
     internal::DensityBuilder density;
     n_dropped_ = 0;
@@ -283,7 +243,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
                                 : eigen.step(F, S_);
     };
 
-    // Initial guess (scf_solver.cpp:154-213), reusing diagonalize + density once.
+    // Initial guess, reusing diagonalize + density once.
     auto [eig0, C0] = diagonalize(Hcore_);
 
     RealMatrix P_alpha, P_beta;
@@ -368,8 +328,8 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
 
     int executed = 0;
     for (iter_ = 0; iter_ < budget; ++iter_) {
-        // diis_active mirrors SCFSolver::run exactly: (diis_->size() >= 2)
-        // AFTER the MixStage's step this iteration. DIISMixer::step pushes one
+        // diis_active is (diis_->size() >= 2) AFTER the MixStage's step this
+        // iteration. DIISMixer::step pushes one
         // pair then trims to max_vectors, so size == min(pushes, max_vectors).
         if (use_diis && iter_ >= diis_start_iter) {
             diis_pairs_ = std::min(diis_pairs_ + 1, diis_max_vectors);
@@ -393,8 +353,8 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
     const bool did_converge = this->converged();
 
     // ── Epilogue: de-shift, spin, result fill, energy / forces ────────────────
-    // De-shifted orbital energies (scf_solver.cpp:402-421): rebuild one
-    // UNSHIFTED Fock from the converged density and diagonalize it.
+    // De-shifted orbital energies: rebuild one UNSHIFTED Fock from the
+    // converged density and diagonalize it.
     if (did_converge && shift_active) {
         internal::HamiltonianBuilder deshift;
         deshift.prepare(ints, is_hf, grid_level, n_radial, n_angular,
@@ -413,6 +373,7 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
 
     res.converged = did_converge;
     res.iterations = executed;
+    res.spin = spin_;
     res.energy = e_total_;
     res.one_electron_energy = e_one_;
     res.coulomb_energy = e_coulomb_;
@@ -439,7 +400,15 @@ SCFResult& MeanFieldMethod<D>::drive_scf_(Frame& frame,
     *has_result_sp_ = true;
 
     if (opts.forces) {
-        last_grad_ = scf_gradient(frame, ints, res, *config_sp_);
+        internal::ScfGradient gradient{method_,
+                                       spin_,
+                                       xc_type_,
+                                       grid_level,
+                                       n_radial,
+                                       n_angular,
+                                       force_native_two_electron_deriv,
+                                       xc_grad_project_translation};
+        last_grad_ = gradient.compute(frame, ints, res);
         const int natm = static_cast<int>(frame.nlocal());
         AccReal* __restrict fx = frame.span(kAtom_fx);
         AccReal* __restrict fy = frame.span(kAtom_fy);

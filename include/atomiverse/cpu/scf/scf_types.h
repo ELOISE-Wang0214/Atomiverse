@@ -1,7 +1,7 @@
 /// @file cpu/scf/scf_types.h
-/// @brief **REMOVED from public API.** Intermediate SCF types are private
-///        workspace. Use concrete methods in `methods.h` (`RHF`, `UHF`,
-///        `RKS`, `UKS`) with Frame. Internal headers live under
-///        `cpu/scf/internal/` for unit tests of kernels only.
+/// @brief **DELETED.** `SCFConfig` no longer exists — parameters are members
+///        of the concrete methods in `methods.h` (`RHF`, `UHF`, `RKS`,
+///        `UKS`). The `SpinResolution` occupation helper still lives in
+///        `cpu/scf/internal/scf_types.h`.
 #error                                                                         \
-    "atomiverse/cpu/scf/scf_types.h is not public — use cpu/scf/methods.h (RHF/UHF/RKS/UKS). Internal: cpu/scf/internal/scf_types.h"
+    "SCFConfig was deleted; parameters are method members; SpinResolution lives in cpu/scf/internal/scf_types.h"

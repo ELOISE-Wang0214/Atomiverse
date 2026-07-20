@@ -59,3 +59,4 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
 | `pw` | `h_force_analytic` | Plane-wave analytic ionic force vanishes for one H (symmetry) | Martin; QE force_lc/ew; default evaluator path |
 | `pw` | `h_stress_cubic` | Plane-wave cell stress off-diagonals vanish for cubic H | strain-FD of SCF energy; cubic symmetry |
 | `semiempirical` | `rm1_water_energy` | RM1 water converges and differs from AM1 | Rocha et al. JCC 27, 1101 (2006) |
+| `scf` | `h2o_rhf_sto3g` | RHF/STO-3G water total energy via the driver-ized `cpu::scf::RHF` | LibreTexts PChem (Peverati) §28.2; Hehre/Stewart/Pople JCP 51, 2657 (1969) |

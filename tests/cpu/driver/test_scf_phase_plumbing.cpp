@@ -131,7 +131,7 @@ class AlwaysStop : public cpu::Criterion {
 // composes the protected loop primitives, and `validate_components()` requires nothing.
 // Instantiating this at all is the proof that `PhaseTraits<scf::Phase>` is specialized —
 // without the specialization the inherited categorical setters do not compile.
-struct ScfLoopProbe : cpu::CPUDriver<ATV::scf::Phase> {
+struct ScfPhaseProbe : cpu::CPUDriver<ATV::scf::Phase> {
     /// @brief Walk `budget` iterations, polling the composed termination verdict after the
     ///        stages of each. Returns the number of iterations actually executed.
     int run(cpu::Frame& frame, int budget) {
@@ -210,9 +210,9 @@ TEST(ScfPhasePlumbing, PhaseTraitsSpecialization) {
     EXPECT_EQ(cpu::PhaseTraits<scf::Phase>::end_phase, scf::Phase::check);
 
     // The whole point of the specialization: `CPUDriver<scf::Phase>` must instantiate.
-    static_assert(std::is_base_of_v<cpu::CPUDriver<scf::Phase>, ScfLoopProbe>,
+    static_assert(std::is_base_of_v<cpu::CPUDriver<scf::Phase>, ScfPhaseProbe>,
                   "the loop node instantiates over scf::Phase");
-    ScfLoopProbe probe; // and it is actually constructible
+    ScfPhaseProbe probe; // and it is actually constructible
     (void)probe;
     SUCCEED();
 }
@@ -242,7 +242,7 @@ TEST(ScfPhasePlumbing, CriterionPolledOncePerIterationAfterStages) {
     StageProbe stage;
     ContinueCriterion watcher{&stage};
 
-    ScfLoopProbe probe;
+    ScfPhaseProbe probe;
     probe.on(scf::Phase::fock)
         .add_ref(stage); // a real stage to walk each iteration
     // Owning form must COMPILE and run — a harmless owned Continue vote (nullptr stage:
@@ -271,7 +271,7 @@ TEST(ScfPhasePlumbing, ConvergedCriterionStopsLoopViaTheDriverPoll) {
     // Continue on polls 0,1 then Converged on poll 2 — the loop ends on iteration 2.
     ConvergeAfter crit{/*at=*/2};
 
-    ScfLoopProbe probe;
+    ScfPhaseProbe probe;
     probe.add_criterion_ref(crit);
     probe.build();
 
@@ -288,7 +288,7 @@ TEST(ScfPhasePlumbing, ConvergedCriterionStopsLoopViaTheDriverPoll) {
     // component, owns the verdict.
     StageProbe stage2;
     ContinueCriterion never{&stage2};
-    ScfLoopProbe probe2;
+    ScfPhaseProbe probe2;
     probe2.add_criterion_ref(never);
     probe2.build();
     const int iters2 = probe2.run(frame, /*budget=*/4);
@@ -306,7 +306,7 @@ TEST(ScfPhasePlumbing, StopBeatsConvergedInComposition) {
     AlwaysConverged converged_vote;
     AlwaysStop stop_vote;
 
-    ScfLoopProbe probe;
+    ScfPhaseProbe probe;
     probe.add_criterion_ref(converged_vote); // registered first ...
     probe.add_criterion_ref(stop_vote);      // ... Stop still wins by severity
     probe.build();

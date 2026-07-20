@@ -1,7 +1,7 @@
 /// @file cpu/scf/scf_solver.h
-/// @brief **REMOVED from public API.** Intermediate SCF types are private
-///        workspace. Use concrete methods in `methods.h` (`RHF`, `UHF`,
-///        `RKS`, `UKS`) with Frame. Internal headers live under
-///        `cpu/scf/internal/` for unit tests of kernels only.
+/// @brief **DELETED.** `SCFSolver` no longer exists. SCF is the
+///        `CPUDriver<scf::Phase>` loop inside the concrete methods in
+///        `methods.h` (`RHF`, `UHF`, `RKS`, `UKS`) — construct one, set
+///        parameters as members, and call `run(frame)`.
 #error                                                                         \
-    "atomiverse/cpu/scf/scf_solver.h is not public — use cpu/scf/methods.h (RHF/UHF/RKS/UKS). Internal: cpu/scf/internal/scf_solver.h"
+    "SCFSolver was deleted; SCF is the CPUDriver<scf::Phase> loop inside RHF/UHF/RKS/UKS — include atomiverse/cpu/scf/methods.h"

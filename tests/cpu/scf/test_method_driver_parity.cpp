@@ -1,55 +1,47 @@
 /// @file tests/cpu/scf/test_method_driver_parity.cpp
-/// @brief scf-driver-refactor-03a — RHF/UHF/RKS/UKS become
-///        `cpu::CPUDriver<ATV::scf::Phase>` and stay bit-parity with the
-///        RETAINED in-tree `SCFSolver` reference.
+/// @brief scf-driver-refactor-03 — RHF/UHF/RKS/UKS are
+///        `cpu::CPUDriver<ATV::scf::Phase>` loop nodes; this file pins their
+///        converged energies/eigenvalues and their internal-consistency wiring.
 ///
-/// ## RED-first (this file fails to COMPILE until 03a lands)
+/// ## History
 ///
-/// The four `static_assert`s below require `MeanFieldMethod<D>` to derive
-/// `cpu::CPUDriver<ATV::scf::Phase>`. Today it derives only `HF`, so each
-/// assertion is `false` and the translation unit does not compile — that is the
-/// intended RED (spec Testing strategy: "断言 `MeanFieldMethod` 派生
-/// `CPUDriver<scf::Phase>`"). The wiring test additionally calls the loop-node
-/// API `converged()` / `stop_reason()`, which the concrete methods only gain by
-/// deriving `CPUDriver`; those missing members are the same not-yet-implemented
-/// contract, not harness breakage.
+/// Spec 03a converted the four concrete methods to the driver loop and proved
+/// each bit-identical (1e-12 Ha) to the in-tree solver reference while that
+/// reference still shipped. Spec 03b RETIRES that reference. With one
+/// implementation left, "parity vs a second implementation" is meaningless, so
+/// this file becomes a REGRESSION guard: the per-method expectations are PINNED
+/// literals captured from the driver-ized methods at 03a bit-parity (see the
+/// provenance on each constant), and the remaining checks are engine-internal
+/// invariants that need no external oracle.
 ///
-/// ## What the GREEN suite pins
+/// ## What the suite pins
 ///
-///   - **Parity (the domain validation).** For each of RHF/UHF/RKS/UKS on the
-///     same-scale small molecules the existing `tests/cpu/scf/*` use
-///     (H₂ / H₂O / He / H, STO-3G), the NEW driver path (`method.run(frame)`)
-///     matches the in-tree `SCFSolver` reference — built on an IDENTICAL
-///     `IntegralPack` + `SCFConfig` mirroring the method's private
-///     `make_config` — to `1e-12` Ha, plus eig / P / spin-contamination
-///     spot-checks (acceptance ac-001..004). This is a unit-tier check: same
-///     scale as `test_scf_solver`, seconds, no out-of-library consumer, no
-///     literature value (that e2e is 03b's `regressions/scf/<case>`).
+///   - **Derivation (compile-time).** Each method IS a
+///     `cpu::CPUDriver<ATV::scf::Phase>` (four static_asserts).
+///   - **Energy / eigenvalue regression.** RHF/UHF/RKS/UKS on the small
+///     molecules the other `tests/cpu/scf/*` use (H / H₂ / He / H₂O, STO-3G)
+///     reproduce the pinned converged energies (and, for the water cases and the
+///     level shift, the pinned orbital energies).
 ///   - **One funnel, two entries.** The same molecule via `run(frame)` and via
-///     binding the method as an `HF` component into `cpu::Evaluate` (the
-///     `launch` path) yields the identical SCF energy — proving both route
-///     through the private `drive_scf_` (ac-006).
-///   - **Wiring.** After a converging run the loop node reports `converged()`
-///     and `stop_reason() == "scf_converged"` — evidence that the ctor
-///     registered `ScfConverged` via `add_criterion` and the driver polled it
-///     (ac-005).
+///     binding the method as an `HF` component into `cpu::Evaluate` (the `launch`
+///     path) yields the identical SCF energy — both route through the private
+///     `drive_scf_`.
+///   - **Wiring.** After a converging run the loop node reports `converged()` and
+///     `stop_reason() == "scf_converged"` — the ctor registered `ScfConverged`
+///     and the driver polled it.
 ///   - **Edges.** `level_shift ≠ 0` converges and reports de-shifted orbital
-///     energies matching the reference; `mp2()` / `fci()` still route through
-///     the driven method unchanged (ac-007).
+///     energies matching the pinned unshifted eigenvalues; `mp2()` / `fci()`
+///     still route through the driven method (both corrections vanish for He).
 ///
-/// The reference side deliberately uses `SCFConfig` / `SCFSolver` /
-/// `IntegralPack` — the RETAINED living-parity machinery (spec 03a). The NEW
-/// path (`method.run`, `Evaluate` + the method component) never names them.
-/// Threads are pinned to 1 in CMake so the `1e-12` bit-parity is deterministic
-/// (see `test_cpu_scf_stages` for the same reason).
+/// The path under test (`method.run`, `Evaluate` + the method component) names no
+/// retired machinery. Threads are pinned to 1 in CMake so the pinned literals are
+/// reproducible (see `test_cpu_scf_stages` for the same reason).
 
 #ifdef ATV_HAS_RHF
 
 #include <cmath>
 #include <cstddef>
 #include <string>
-#include <type_traits>
-#include <utility>
 
 #include <gtest/gtest.h>
 #include <xtensor/containers/xtensor.hpp>
@@ -58,18 +50,15 @@
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (NEW path)
-// Retained living-parity reference only — SCFSolver + SCFConfig + IntegralPack.
-#include "atomiverse/cpu/scf/internal/scf_solver.h"
+#include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (path under test)
 #include "atomiverse/facade/stage.h" // ATV::scf::Phase, ATV::evaluate::Phase
 
 using namespace ATV;
 
-// ── Compile-time RED: each concrete method IS a CPUDriver<scf::Phase> ──────────
+// ── Compile-time derivation: each concrete method IS a CPUDriver<scf::Phase> ───
 //
-// TODAY these are `false` (RHF/UHF/RKS/UKS derive `HF`, not the loop node), so
-// the file fails to compile. After 03a `MeanFieldMethod<D>` derives BOTH
-// `CPUDriver<ATV::scf::Phase>` and `HF`, and all four flip to `true`.
+// After 03a `MeanFieldMethod<D>` derives BOTH `CPUDriver<ATV::scf::Phase>` and
+// `HF`, so all four hold.
 static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::RHF>,
               "03a: RHF must derive cpu::CPUDriver<ATV::scf::Phase>");
 static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::UHF>,
@@ -149,9 +138,24 @@ cpu::Frame make_h2() {
 }
 
 // ── FP tolerances (project scientific-test table) ─────────────────────────────
-constexpr double kEnergyExact = 1e-12;  ///< Ha — spec 03a parity mandate.
-constexpr double kEigExact = 1e-10;     ///< Ha — orbital-energy spot-check.
-constexpr double kDensityExact = 1e-10; ///< density-matrix / spin spot-check.
+constexpr double kEnergyPin = 1e-9; ///< Ha — pinned converged-energy tol.
+constexpr double kEigPin = 1e-8;    ///< Ha — pinned orbital-energy tol.
+constexpr double kPhysTol = 1e-8;   ///< reference-free physical invariants.
+constexpr double kFunnelTol =
+    1e-10; ///< Ha — same-code run() vs launch() agree.
+
+// ── Pinned reference values ───────────────────────────────────────────────────
+//
+// Captured 2026-07-20 from the driver-ized RHF/UHF/RKS/UKS on the geometries
+// above, which spec 03a proved bit-identical (1e-12 Ha) to the retired solver
+// reference — these literals ARE that reference, frozen (spec 03b). Regenerate
+// only with OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 (as CMake pins this test).
+// All energies [Hartree].
+constexpr double kRhfWaterEnergy = -74.9629648020;   ///< H₂O/STO-3G RHF [Ha].
+constexpr double kUhfHydrogenEnergy = -0.4665818496; ///< H/STO-3G UHF [Ha].
+constexpr double kRksWaterEnergy = -75.2242376913; ///< H₂O/STO-3G RKS-PBE [Ha].
+constexpr double kUksHeliumEnergy = -2.7718860444; ///< He/STO-3G UKS-LSDA [Ha].
+constexpr double kLevelShiftEnergy = -1.1167593074; ///< H₂/STO-3G RHF [Ha].
 
 void expect_vector_near(const xt::xtensor<double, 1>& got,
                         const xt::xtensor<double, 1>& ref, double tol) {
@@ -170,141 +174,79 @@ void expect_matrix_near(const xt::xtensor<double, 2>& got,
                 << "(" << i << "," << j << ")";
 }
 
-// ── Living-parity reference (SCFSolver on an identical pack + config) ──────────
-
-/// @brief The `SCFConfig` the method's private `make_config` produces: every
-///        shared knob copied from the method's PUBLIC members, and only the
-///        concrete (spin, mean-field type, xc, occupation) tuple supplied per
-///        method. Copying from members keeps the reference tracking any knob the
-///        test overrides (e.g. `level_shift`, the RKS grid) so parity is exact.
-template <typename Method>
-cpu::scf::SCFConfig reference_config(const Method& m, cpu::scf::SpinType spin,
-                                     cpu::scf::MeanFieldType mf,
-                                     cpu::scf::XCType xc, int n_alpha,
-                                     int n_beta) {
-    cpu::scf::SCFConfig c;
-    c.spin = spin;
-    c.method = mf;
-    c.xc_type = xc;
-    c.n_alpha = n_alpha;
-    c.n_beta = n_beta;
-    c.tol = m.tol;
-    c.conv_tol_grad = m.conv_tol_grad;
-    c.max_iter = m.max_iter;
-    c.use_diis = m.use_diis;
-    c.diis_max_vectors = m.diis_max_vectors;
-    c.diis_start_iter = m.diis_start_iter;
-    c.damping_factor = m.damping_factor;
-    c.init_guess = m.init_guess;
-    c.level_shift = m.level_shift;
-    c.lindep_threshold = m.lindep_threshold;
-    c.grid_level = m.grid_level;
-    c.n_radial = m.n_radial;
-    c.n_angular = m.n_angular;
-    c.force_native_two_electron_deriv = m.force_native_two_electron_deriv;
-    c.xc_grad_project_translation = m.xc_grad_project_translation;
-    c.hybrid_alpha_override = m.hybrid_alpha_override;
-    c.fixed_grid = m.fixed_grid;
-    return c;
-}
-
-/// @brief Run the retained `SCFSolver` reference on the same geometry + basis as
-///        `m`, returning a copy of its converged `SCFResult` [Hartree].
-template <typename Method>
-cpu::scf::SCFResult
-reference_result(const Method& m, const cpu::Frame& frame,
-                 cpu::scf::SpinType spin, cpu::scf::MeanFieldType mf,
-                 cpu::scf::XCType xc, int n_alpha, int n_beta) {
-    cpu::scf::IntegralPack ints{frame, m.basis, m.charge, m.compute_eri};
-    cpu::scf::SCFConfig cfg =
-        reference_config(m, spin, mf, xc, n_alpha, n_beta);
-    cpu::scf::SCFSolver ref{cfg};
-    ref.build(ints);
-    return ref.run(ints);
-}
-
 } // namespace
 
-// ── Per-method parity (ac-001..004) ───────────────────────────────────────────
+// ── Per-method energy / eigenvalue regression (pinned) ────────────────────────
 
-TEST(MethodDriverParity, RhfWaterMatchesReference) {
+TEST(MethodDriverParity, RhfWaterMatchesPinnedEnergy) {
     auto frame = make_h2o();
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     const cpu::scf::SCFResult& got = rhf.run(frame);
 
-    // H₂O closed-shell: 10 electrons → 5 doubly-occupied.
-    const cpu::scf::SCFResult ref =
-        reference_result(rhf, frame, cpu::scf::SpinType::Restricted,
-                         cpu::scf::MeanFieldType::HF, cpu::scf::XCType::LSDA,
-                         /*n_alpha=*/5, /*n_beta=*/5);
-
     ASSERT_TRUE(got.converged);
-    ASSERT_TRUE(ref.converged);
-    EXPECT_NEAR(got.energy, ref.energy, kEnergyExact);
-    expect_vector_near(got.eigenvalues_alpha, ref.eigenvalues_alpha, kEigExact);
-    expect_matrix_near(got.P_alpha, ref.P_alpha, kDensityExact);
+    EXPECT_NEAR(got.energy, kRhfWaterEnergy, kEnergyPin);
+
+    // Pinned occupied+virtual orbital energies [Ha], ascending (STO-3G → 7).
+    xt::xtensor<double, 1> ref_eigs = {
+        -20.2417608103, -1.2682616792, -0.6178033132, -0.4529445213,
+        -0.3912210574,  0.6053917496,  0.7420994336};
+    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
+
+    // Structural, reference-free: the density matrix is symmetric.
+    expect_matrix_near(got.P_alpha, xt::transpose(got.P_alpha), kPhysTol);
 }
 
-TEST(MethodDriverParity, UhfHydrogenMatchesReference) {
+TEST(MethodDriverParity, UhfHydrogenMatchesPinnedEnergy) {
     auto frame = make_h();
     cpu::scf::UHF uhf(/*n_alpha=*/1, /*n_beta=*/0);
     uhf.basis = cpu::scf::BasisSet::STO3G;
     const cpu::scf::SCFResult& got = uhf.run(frame);
 
-    const cpu::scf::SCFResult ref =
-        reference_result(uhf, frame, cpu::scf::SpinType::Unrestricted,
-                         cpu::scf::MeanFieldType::HF, cpu::scf::XCType::LSDA,
-                         uhf.n_alpha, uhf.n_beta);
-
     ASSERT_TRUE(got.converged);
-    ASSERT_TRUE(ref.converged);
-    EXPECT_NEAR(got.energy, ref.energy, kEnergyExact);
-    EXPECT_NEAR(got.spin_contamination, ref.spin_contamination, kDensityExact);
-    expect_matrix_near(got.P_alpha, ref.P_alpha, kDensityExact);
+    EXPECT_EQ(got.n_alpha, 1);
+    EXPECT_EQ(got.n_beta, 0);
+    EXPECT_NEAR(got.energy, kUhfHydrogenEnergy, kEnergyPin);
+    // A lone electron is a pure doublet ⇒ ⟨S²⟩ = 0.75, contamination = 0.
+    EXPECT_NEAR(got.spin_contamination, 0.0, kPhysTol);
 }
 
-TEST(MethodDriverParity, RksWaterMatchesReference) {
+TEST(MethodDriverParity, RksWaterMatchesPinnedEnergy) {
     auto frame = make_h2o();
     cpu::scf::RKS rks(cpu::scf::XCType::PBE);
     rks.basis = cpu::scf::BasisSet::STO3G;
-    // Light grid for unit-test speed (test_uks_solver.cpp:69-80); the reference
-    // tracks it because reference_config copies grid_level/n_radial/n_angular.
+    // Light grid for unit-test speed (test_uks_solver.cpp:69-80); the pinned
+    // eigenvalues below were captured at exactly this grid.
     rks.grid_level = cpu::scf::GridLevel::SG0;
     rks.n_radial = 30;
     rks.n_angular = 50;
     const cpu::scf::SCFResult& got = rks.run(frame);
 
-    const cpu::scf::SCFResult ref = reference_result(
-        rks, frame, cpu::scf::SpinType::Restricted, cpu::scf::MeanFieldType::KS,
-        rks.xc, /*n_alpha=*/5, /*n_beta=*/5);
-
     ASSERT_TRUE(got.converged);
-    ASSERT_TRUE(ref.converged);
-    EXPECT_NEAR(got.energy, ref.energy, kEnergyExact);
-    expect_vector_near(got.eigenvalues_alpha, ref.eigenvalues_alpha, kEigExact);
+    EXPECT_NEAR(got.energy, kRksWaterEnergy, kEnergyPin);
+
+    xt::xtensor<double, 1> ref_eigs = {
+        -18.4438887162, -0.8425040694, -0.3887271763, -0.1610996780,
+        -0.0653909417,  0.3103799258,  0.4203563646};
+    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
 }
 
-TEST(MethodDriverParity, UksHeliumMatchesReference) {
+TEST(MethodDriverParity, UksHeliumMatchesPinnedEnergy) {
     auto frame = make_he();
     cpu::scf::UKS uks(/*n_alpha=*/1, /*n_beta=*/1, cpu::scf::XCType::LSDA);
     uks.basis = cpu::scf::BasisSet::STO3G;
     const cpu::scf::SCFResult& got = uks.run(frame);
 
-    const cpu::scf::SCFResult ref = reference_result(
-        uks, frame, cpu::scf::SpinType::Unrestricted,
-        cpu::scf::MeanFieldType::KS, uks.xc, uks.n_alpha, uks.n_beta);
-
     ASSERT_TRUE(got.converged);
-    ASSERT_TRUE(ref.converged);
-    EXPECT_NEAR(got.energy, ref.energy, kEnergyExact);
-    expect_matrix_near(got.P_alpha, ref.P_alpha, kDensityExact);
-    expect_matrix_near(got.P_beta, ref.P_beta, kDensityExact);
+    EXPECT_NEAR(got.energy, kUksHeliumEnergy, kEnergyPin);
+    // Closed-shell singlet: the α and β densities coincide, ⟨S²⟩ = 0.
+    expect_matrix_near(got.P_alpha, got.P_beta, kPhysTol);
+    EXPECT_NEAR(got.spin_contamination, 0.0, kPhysTol);
 }
 
 // ── Wiring: the loop node knows convergence via the ScfConverged criterion ─────
-// (ac-005) — probed behaviorally through the public CPUDriver API, not by
-// introspecting the Plan.
+// Probed behaviorally through the public CPUDriver API, not by introspecting the
+// Plan.
 
 TEST(MethodDriverParity, ConvergenceWiringFlipsDriverStatus) {
     auto frame = make_h2o();
@@ -318,7 +260,6 @@ TEST(MethodDriverParity, ConvergenceWiringFlipsDriverStatus) {
 }
 
 // ── One funnel, two entries: run(frame) vs Evaluate + method component ─────────
-// (ac-006)
 
 TEST(MethodDriverParity, RunAndComponentLaunchAgree) {
     auto frame_run = make_h2o();
@@ -340,7 +281,7 @@ TEST(MethodDriverParity, RunAndComponentLaunchAgree) {
     eval.run(frame_eval);
 
     // Both entries route through the same private drive_scf_ → identical energy.
-    EXPECT_NEAR(component.last_result().energy, e_run, kEigExact);
+    EXPECT_NEAR(component.last_result().energy, e_run, kFunnelTol);
     // Frame is the currency: the component wrote a bound electronic energy [eV].
     const double e_meta = static_cast<double>(frame_eval.meta.get(kEnergy));
     EXPECT_TRUE(std::isfinite(e_meta));
@@ -350,26 +291,22 @@ TEST(MethodDriverParity, RunAndComponentLaunchAgree) {
 
 // ── Edge: level shift converges and reports de-shifted orbital energies ────────
 
-TEST(MethodDriverParity, LevelShiftMatchesReferenceDeShifted) {
+TEST(MethodDriverParity, LevelShiftMatchesPinnedDeShifted) {
     auto frame = make_h2(); // test_level_shift.cpp geometry (H₂, r = 0.74).
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.level_shift = 0.5;
     const cpu::scf::SCFResult& got = rhf.run(frame);
 
-    const cpu::scf::SCFResult ref =
-        reference_result(rhf, frame, cpu::scf::SpinType::Restricted,
-                         cpu::scf::MeanFieldType::HF, cpu::scf::XCType::LSDA,
-                         /*n_alpha=*/1, /*n_beta=*/1);
-
     ASSERT_TRUE(got.converged);
-    ASSERT_TRUE(ref.converged);
-    EXPECT_NEAR(got.energy, ref.energy, kEnergyExact);
-    // De-shift post-processing must reproduce the reference's unshifted eigs.
-    expect_vector_near(got.eigenvalues_alpha, ref.eigenvalues_alpha, kEigExact);
+    EXPECT_NEAR(got.energy, kLevelShiftEnergy, kEnergyPin);
+    // De-shift post-processing must reproduce the pinned UNSHIFTED eigenvalues
+    // (STO-3G H₂ → 2 orbitals), not the level-shifted ones.
+    xt::xtensor<double, 1> ref_eigs = {-0.5785538598, 0.6711434919};
+    expect_vector_near(got.eigenvalues_alpha, ref_eigs, kEigPin);
 }
 
-// ── Edge: mp2()/fci() still route through the driven method (ac-007) ───────────
+// ── Edge: mp2()/fci() still route through the driven method ────────────────────
 
 TEST(MethodDriverParity, Mp2AndFciStillRouteThroughDrivenMethod) {
     // He / STO-3G has no virtuals → both correlation corrections vanish, and

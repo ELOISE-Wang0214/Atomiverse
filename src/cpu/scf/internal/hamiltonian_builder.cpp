@@ -188,25 +188,7 @@ FockResult HamiltonianBuilder::step_core(const IntegralPack& integrals,
     return out;
 }
 
-// ── Config-taking overloads: thin unpackers over the shared core ─────────────
-
-void HamiltonianBuilder::prepare(const IntegralPack& integrals,
-                                 const SCFConfig& config) {
-    prepare_core(integrals, config.method == MeanFieldType::HF,
-                 config.grid_level, config.n_radial, config.n_angular,
-                 config.fixed_grid);
-}
-
-FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
-                                    const SCFConfig& config,
-                                    const RealMatrix& P_alpha,
-                                    const RealMatrix& P_beta) const {
-    return step_core(integrals, config.spin == SpinType::Restricted,
-                     config.method == MeanFieldType::HF, config.xc_type,
-                     config.hybrid_alpha_override, P_alpha, P_beta);
-}
-
-// ── Config-free discrete overloads: pass straight through to the shared core ─
+// ── Discrete entries: pass straight through to the shared core ───────────────
 
 void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                                  GridLevel grid_level, int n_radial,

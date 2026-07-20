@@ -18,7 +18,8 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_types.h"
+#include "atomiverse/cpu/scf/scf_result.h" // MeanFieldType / SpinType / SCFResult
+#include "atomiverse/cpu/scf/xc_functional.h" // XCType
 
 namespace ATV {
 namespace cpu {
@@ -68,7 +69,7 @@ struct IntegralDerivPack {
 /// channel scaled by the exact-exchange fraction `alpha_hf`: `1.0` for pure
 /// HF, `0.0` for a pure (semi-local) functional — in which case the K loop
 /// is skipped entirely — and the global-hybrid admixture
-/// (`hybrid_exchange_fraction(config.xc_type)`, 0.20 for B3LYP, 0.25 for
+/// (`hybrid_exchange_fraction(xc_type)`, 0.20 for B3LYP, 0.25 for
 /// PBE0) for a KS hybrid. `alpha_hf` multiplies the existing closed-shell
 /// exchange prefactors and density symmetrization as a pure scalar.
 ///
@@ -77,14 +78,16 @@ struct IntegralDerivPack {
 /// @param integrals      Integral pack for the current geometry.
 /// @param P_total        Total density matrix (restricted: P_alpha, unrestricted: Pa+Pb).
 /// @param result         Converged SCF result with spin densities.
-/// @param config         SCF configuration selecting HF/KS, hybrid functional,
-///                       and spin treatment.
-void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
-                                      const Frame& frame,
-                                      const IntegralPack& integrals,
-                                      const xt::xtensor<double, 2>& P_total,
-                                      const SCFResult& result,
-                                      const SCFConfig& config);
+/// @param method         HF or KS mean field (selects the exchange fraction).
+/// @param spin           Restricted or unrestricted spin treatment.
+/// @param xc_type        XC functional (KS hybrid exact-exchange fraction).
+/// @param force_native_two_electron_deriv Force the native derivative engine
+///                       even when libcint is available (test knob).
+void accumulate_two_electron_gradient(
+    xt::xtensor<double, 2>& grad, const Frame& frame,
+    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
+    const SCFResult& result, MeanFieldType method, SpinType spin,
+    XCType xc_type, bool force_native_two_electron_deriv);
 
 } // namespace scf
 } // namespace cpu

@@ -395,7 +395,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/stages/fock_stage.cpp
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp
-            src/cpu/scf/scf_solver.cpp
             src/cpu/scf/mean_field_method.cpp
             src/cpu/scf/rhf.cpp
             src/cpu/scf/uhf.cpp

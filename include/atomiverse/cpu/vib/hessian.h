@@ -7,16 +7,17 @@
 /// result via `run()` / `last_result()`.
 ///
 /// Usage — register any `Capability::Force` evaluator on
-/// `vib::Phase::force` (an FF evaluator or `cpu::scf::SCF`),
-/// exactly as AIMD registers a force evaluator into `cpu::md::MD`:
+/// `vib::Phase::force` (an FF evaluator or a concrete SCF method such as
+/// `cpu::scf::RHF`), exactly as AIMD registers a force evaluator into
+/// `cpu::md::MD`:
 ///
 /// @code{.cpp}
-///   auto ints = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G};
-///   auto cfg  = cpu::scf::SCFConfig{cpu::scf::SCFConfig::RHF{}, ints};
+///   cpu::scf::RHF rhf;
+///   rhf.basis = cpu::scf::BasisSet::STO3G;
 ///
 ///   cpu::vib::Hessian driver;
 ///   driver.on(ATV::vib::Phase::force)
-///         .add(cpu::scf::SCF{cfg});
+///         .add(std::move(rhf));
 ///   driver.build();
 ///   cpu::vib::HessianResult H = driver.run(frame);   // [3N,3N] eV/Angstrom^2
 /// @endcode

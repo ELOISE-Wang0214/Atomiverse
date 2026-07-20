@@ -7,7 +7,7 @@
 
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_types.h"
+#include "atomiverse/cpu/scf/scf_result.h"
 
 namespace ATV {
 namespace cpu {

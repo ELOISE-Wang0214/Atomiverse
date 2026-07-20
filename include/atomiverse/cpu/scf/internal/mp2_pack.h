@@ -3,8 +3,8 @@
 #pragma once
 
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/scf_result.h" // SCFResult
 
 namespace ATV {
 namespace cpu {

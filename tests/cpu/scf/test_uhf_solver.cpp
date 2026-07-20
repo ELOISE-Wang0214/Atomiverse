@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_uhf_solver.cpp
-/// @brief UHF via concrete method (no IntegralPack / SCFConfig).
+/// @brief UHF via the concrete member API (RHF/UHF, Frame in / out).
 
 #ifdef ATV_HAS_RHF
 

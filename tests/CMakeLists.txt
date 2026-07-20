@@ -472,7 +472,7 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
-    # Charge/multiplicity resolver + SCFSolver::run validity guard
+    # Charge/multiplicity resolver + method run() validity guard
     # (hf-robust-01); tutorial ch02/ch03 regression anchor.
     atv_add_cpp_test(test_cpu_scf_spin_resolution cpu/scf/test_spin_resolution.cpp)
     # SCF linear-dependence handling via canonical orthogonalization
@@ -482,11 +482,6 @@ if(ATV_BUILD_RHF)
     # (hf-robust-03); tutorial ch02 regression anchor.
     atv_add_cpp_test(test_cpu_scf_level_shift    cpu/scf/test_level_shift.cpp)
     atv_add_cpp_test(test_cpu_scf_solver        cpu/scf/test_scf_solver.cpp)
-    atv_add_cpp_test(test_cpu_scf_solver_internals cpu/scf/test_scf_solver_internals.cpp)
-    atv_add_cpp_test(test_cpu_scf_solver_internal_isolation cpu/scf/test_scf_solver_internal_isolation.cpp)
-    # The grep gate needs the source tree — ctest runs from the build dir.
-    target_compile_definitions(test_cpu_scf_solver_internal_isolation
-        PRIVATE ATV_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     # scf-driver-refactor-02-stages: five scf::Phase stage components wrapping
     # the internal SCF helpers, isolated bit-identical parity (unit tier).
     atv_add_cpp_test(test_cpu_scf_stages cpu/scf/stages/test_scf_stages.cpp)
@@ -497,8 +492,8 @@ if(ATV_BUILD_RHF)
     set_tests_properties(test_cpu_scf_stages PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
     # scf-driver-refactor-03a-convert: RHF/UHF/RKS/UKS as CPUDriver<scf::Phase>,
-    # bit-parity (1e-12 Ha) vs the retained in-tree SCFSolver reference. Pins
-    # serial execution for the same ULP-determinism reason as test_cpu_scf_stages.
+    # regression-pinned against the 03a-parity energies/eigenvalues. Pins serial
+    # execution for the same ULP-determinism reason as test_cpu_scf_stages.
     atv_add_cpp_test(test_cpu_scf_method_driver_parity
                      cpu/scf/test_method_driver_parity.cpp)
     set_tests_properties(test_cpu_scf_method_driver_parity PROPERTIES
@@ -671,16 +666,6 @@ add_test(
 add_test(
     NAME test_cpu_compatibility_surface_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/compatibility_surface_scrub.sh
-            ${CMAKE_SOURCE_DIR})
-
-# Grep gate: the CUDA SCF inner solver must not see the component layer
-# (arch-refactor-04-engines) — everything under cuda/scf/ except the
-# SCFEvaluator wrapper is component-free by construction; the solver's
-# only inputs are (void* stream, cuda::Frame&). Pure grep — runs in
-# every build configuration, no CUDA toolchain needed.
-add_test(
-    NAME test_cuda_scf_solver_isolation
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_solver_isolation.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: cuda::RDF must be migrated off the deleted legacy host histogram

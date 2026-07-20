@@ -7,7 +7,7 @@
 
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_types.h"
+#include "atomiverse/cpu/scf/scf_result.h" // SCFResult / SpinType
 
 namespace ATV {
 namespace cpu {
@@ -46,16 +46,12 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
     const auto& shells = integrals.shells;
     const int n_basis = static_cast<int>(shells.size());
 
-    // P_total convention (see src/cpu/scf/scf_solver.cpp):
+    // P_total convention (see src/cpu/scf/mean_field_method.cpp):
     //   Restricted: `P_alpha` already holds the full double-occupied density
     //               (built with factor 2); `P_beta` aliases the same matrix.
     //   Unrestricted: `P_alpha` and `P_beta` are the individual spin densities.
-    if (!handle_.config)
-        throw std::runtime_error(
-            "DensityCubeWriter: SCFResultHandle missing config pointer");
-    const auto& cfg = *handle_.config;
     xt::xtensor<double, 2> P_total = result.P_alpha;
-    if (cfg.spin == scf::SpinType::Unrestricted)
+    if (result.spin == scf::SpinType::Unrestricted)
         P_total += result.P_beta;
 
     CubeGrid grid =

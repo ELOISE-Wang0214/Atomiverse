@@ -1,9 +1,9 @@
 /// @file tests/cpu/scf/test_accelerators.cpp
 /// @brief Isolated unit tests for DIIS extrapolator and ASPC predictor.
 ///
-/// These SCF accelerators are currently only tested transitively through
-/// SCFSolver::run convergence; this file adds direct, isolated verification
-/// of their internal mechanics.
+/// These SCF accelerators are otherwise exercised only transitively through
+/// the concrete methods' SCF loop; this file adds direct, isolated
+/// verification of their internal mechanics.
 
 #ifdef ATV_HAS_RHF
 

@@ -53,22 +53,15 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-// Forward declaration for the retained parity-reference config. `SCFConfig` is
-// kept only as the bit-parity reference / observer-handle snapshot until
-// sub-spec 03b deletes it — it no longer drives the method (see
-// mean_field_method.cpp). `IntegralPack` is already complete here via the stage
-// headers above.
-struct SCFConfig;
-
 /// @brief Shared view for observers/recorders after a method launch.
 ///
-/// `integrals` / `config` are opaque private workspace published only so
-/// cube writers can read shells. Users never construct those types.
+/// `integrals` is opaque private workspace published only so cube writers can
+/// read shells; users never construct that type. Spin treatment is read from
+/// the result (`result->spin`) — the handle no longer snapshots a `SCFConfig`.
 struct SCFResultHandle {
     std::shared_ptr<const SCFResult> result;
     std::shared_ptr<const IntegralPack> integrals;
     std::shared_ptr<const bool> ready;
-    std::shared_ptr<const SCFConfig> config; // incomplete outside internal
 };
 
 /// @brief Shared members and Frame API for concrete mean-field methods.
@@ -167,9 +160,9 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     bool has_result() const { return *has_result_sp_; }
 
     /// @brief Observer handle (shared_ptrs survive driver ownership moves).
-    /// @return Shared view of result / integrals / config for cube writers.
+    /// @return Shared view of result / integrals for cube writers.
     SCFResultHandle result_handle() const {
-        return {result_sp_, integrals_sp_, has_result_sp_, config_sp_};
+        return {result_sp_, integrals_sp_, has_result_sp_};
     }
 
     /// @brief Component path — one-time setup (debt; 04 deletes build/launch).
@@ -225,9 +218,6 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
 
     /// @brief Set n_alpha/n_beta from electron count (and subclass rules).
     virtual void resolve_occupation(int n_electrons) = 0;
-
-    /// @brief Snapshot members into the retained `SCFConfig` (handle + gradient).
-    void publish_config_();
 
   private:
     // ── Per-run SCF iteration state — plainly-named private members ────────────
@@ -322,7 +312,6 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
         std::make_shared<IntegralPack>()};
     std::shared_ptr<SCFResult> result_sp_{std::make_shared<SCFResult>()};
     std::shared_ptr<bool> has_result_sp_{std::make_shared<bool>(false)};
-    std::shared_ptr<SCFConfig> config_sp_;
 
     // Stage components (heap-owned; borrowed into the Plan by add_ref). Null
     // until ensure_driver_built_ wires them to this method's members.

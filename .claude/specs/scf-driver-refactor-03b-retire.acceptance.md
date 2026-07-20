@@ -9,9 +9,15 @@ criteria:
       Built with -DATV_BUILD_REGRESSIONS=ON and run via the `regressions` target,
       regressions/scf/h2o_rhf_sto3g/reg_h2o_rhf_sto3g.cpp (an out-of-library consumer:
       only public cpu/scf/methods.h + frame.h, linking atomiverse) drives cpu::scf::RHF
-      with STO-3G on H2O at the REFERENCE.md geometry and reproduces the cited
-      E_RHF/STO-3G = -74.9420 Ha (Szabo & Ostlund) within 1e-3 Ha in <=60 s; it is not
-      part of the default ctest run.
+      with STO-3G on H2O at the REFERENCE.md geometry (R(OH)=0.95 A, HOH=104.5 deg) and
+      reproduces the cited E_RHF/STO-3G = -74.961754 Ha (LibreTexts Live Textbook of
+      Physical Chemistry, Peverati, sec. 28.2; cross-checked vs PySCF 2.13; STO-3G origin
+      Hehre/Stewart/Pople JCP 51, 2657 (1969)) within 1e-3 Ha in <=60 s; not part of the
+      default ctest run.
+    amended: "2026-07-20 — spec's original -74.9420 Ha/Szabo-Ostlund pairing was a
+      misattribution (that number is Crawford Programming Project 3 water at stretched
+      R=1.1 A/104.0 deg; verified via PySCF 2.13 reproducing all three numbers). Amended
+      per the spec's own instruction to verify the cited digits at implementation time."
     status: pending
   - id: ac-002
     summary: Gradient path decoupled from SCFConfig with identical forces

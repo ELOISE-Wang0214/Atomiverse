@@ -50,8 +50,6 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
-#include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_solver.h"
 #include "atomiverse/cpu/scf/methods.h"
 
 namespace ATV {
@@ -223,14 +221,15 @@ struct DeltaScfResult {
 
 /// @brief Run the full ΔSCF workflow for one (geometry, basis) pair.
 ///
-/// Neutral N-electron RHF (`cpu::scf::IntegralPack{charge=0}` + `SCFSolver`) then the
-/// (N−1)-electron doublet cation both warm-started from the neutral density
+/// Neutral N-electron `cpu::scf::RHF` (charge 0), then the (N−1)-electron
+/// doublet `cpu::scf::UHF` cation both warm-started from the neutral density
 /// (`SCFInitialGuess`: P_sigma = (n_sigma/N)·P_neutral, so each channel's seed
 /// trace is exactly n_sigma — the beta seed is ZERO when n_beta = 0) and
-/// cold-started from the Hcore guess. Spin bookkeeping for the doublet cation:
-/// n_alpha = N/2
-/// (= neutral n_occ), n_beta = N/2 − 1. Koopmans −ε_HOMO is the neutral
-/// eigenvalue at index n_occ − 1.
+/// cold-started from the UHF Hcore guess. Parameters are method members; Frame
+/// is the only I/O currency (no intermediate config or integral-pack objects).
+/// Spin bookkeeping for the doublet cation: n_alpha = N/2 (= neutral n_occ),
+/// n_beta = N/2 − 1. Koopmans −ε_HOMO is the neutral eigenvalue at index
+/// n_occ − 1.
 ///
 /// @param frame Neutral geometry (atom types = Z).
 /// @param basis Gaussian basis set (STO-3G, 6-31G, …).
@@ -254,18 +253,17 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     // energies wander (a single-electron cation such as He⁺/6-31G has a UNIQUE
     // minimum, yet loose warm/cold ends land ~1e-5 apart). Converging the
     // gradient tight pins the unique fixed point.
-    IntegralPack ints_neutral =
-        cpu::scf::IntegralPack{frame, basis, /*charge=*/0};
-    SCFConfig neutral_cfg =
-        cpu::scf::SCFConfig{cpu::scf::SCFConfig::RHF{}, ints_neutral, tol};
-    neutral_cfg.max_iter = 200;
-    neutral_cfg.conv_tol_grad = 1e-9;
-    SCFSolver neutral_solver{neutral_cfg};
-    neutral_solver.build(ints_neutral);
-    SCFResult neutral = neutral_solver.run(ints_neutral);
+    RHF neutral_method;
+    neutral_method.basis = basis;
+    neutral_method.charge = 0;
+    neutral_method.tol = tol;
+    neutral_method.max_iter = 200;
+    neutral_method.conv_tol_grad = 1e-9;
+    SCFResult neutral = neutral_method.run(frame);
     out.neutral_converged = neutral.converged;
     out.e_neutral = neutral.energy;
-    const int n_occ = ints_neutral.n_occ();
+    // Closed-shell RHF: the occupied count is n_alpha (= n_electrons / 2).
+    const int n_occ = neutral.n_alpha;
     out.neg_eps_homo = -neutral.eigenvalues_alpha(n_occ - 1);
 
     // ── Doublet cation: N−1 electrons, M = 2 ────────────────────────────
@@ -274,15 +272,15 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     out.n_alpha = n_occ;
     out.n_beta = n_occ - 1;
 
-    IntegralPack ints_cation =
-        cpu::scf::IntegralPack{frame, basis, /*charge=*/+1};
-    SCFConfig cfg = cpu::scf::SCFConfig{cpu::scf::SCFConfig::UHF{}, out.n_alpha,
-                                        out.n_beta, tol};
-    cfg.max_iter = 300;
+    UHF cation_method{out.n_alpha, out.n_beta};
+    cation_method.basis = basis;
+    cation_method.charge = +1;
+    cation_method.tol = tol;
+    cation_method.max_iter = 300;
     // Tight gradient convergence (same rationale as the neutral): the loose
     // sqrt(tol) default leaves the cation energy reproducible only to ~1e-5,
     // which — combined with threading — is what let warm/cold energies wander.
-    cfg.conv_tol_grad = 1e-9;
+    cation_method.conv_tol_grad = 1e-9;
 
     // Warm start: partition the neutral total density BETWEEN the two spin
     // channels IN PROPORTION to each channel's electron count. The neutral P
@@ -301,16 +299,14 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
         (static_cast<double>(out.n_beta) / neutral_ne) * neutral.P_alpha;
     guess.has_alpha = true;
     guess.has_beta = true;
-    SCFSolver cation_solver{cfg};
-    cation_solver.build(ints_cation);
-    SCFResult cation = cation_solver.run(ints_cation, &guess);
+    SCFResult cation = cation_method.run(frame, &guess);
     out.cation_converged = cation.converged;
     out.e_cation = cation.energy;
     out.spin_contamination = cation.spin_contamination;
     out.i_delta = cation.energy - neutral.energy;
 
-    // Cold start: identical config, Hcore guess (uhf_config default), no seed.
-    SCFResult cation_cold = cation_solver.run(ints_cation);
+    // Cold start: identical method, UHF Hcore default guess, no seed.
+    SCFResult cation_cold = cation_method.run(frame);
     out.cation_cold_converged = cation_cold.converged;
     out.e_cation_cold = cation_cold.energy;
 

@@ -6,7 +6,7 @@
 
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/scf_types.h"
+#include "atomiverse/cpu/scf/scf_result.h" // SCFResult
 
 namespace ATV {
 namespace cpu {

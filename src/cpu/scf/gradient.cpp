@@ -1,7 +1,7 @@
 /// @file cpu/scf/gradient.cpp
 /// @brief Unified analytic nuclear gradient for all mean-field methods.
 ///
-/// Single function `scf_gradient()` handles RHF, UHF, RKS, and UKS.
+/// `internal::ScfGradient::compute()` handles RHF, UHF, RKS, and UKS.
 /// Method dispatch:
 ///   HF: one-electron + Coulomb + exchange + Pulay + nuclear
 ///   KS: one-electron + Coulomb + XC_grid  + Pulay + nuclear
@@ -13,8 +13,6 @@
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
-#include "atomiverse/cpu/scf/internal/scf_solver.h"
-#include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -141,7 +139,11 @@ static GradientResult make_result(const xt::xtensor<double, 2>& grad,
 /// @param grad_out      [natm,3] gradient accumulator, units Hartree/Bohr.
 /// @param integrals     Integral pack at the current geometry.
 /// @param result        Converged SCF result (density, MO coefficients).
-/// @param config        SCF configuration (spin, xc_type, grid sizes).
+/// @param spin          Restricted or unrestricted spin treatment.
+/// @param xc_type       Exchange-correlation functional.
+/// @param grid_level    DFT integration-grid quality level.
+/// @param n_radial      Radial grid points per atom (SG0 grid only).
+/// @param n_angular     Angular grid points per atom (SG0 grid only).
 /// @param shell_to_atom Map from basis-function index to owning atom.
 /// @param atom_shells   Per-atom list of owned basis-function indices.
 /// @param natm          Number of atoms.
@@ -149,7 +151,8 @@ static GradientResult make_result(const xt::xtensor<double, 2>& grad,
 
 static void accumulate_xc_gradient(
     xt::xtensor<double, 2>& grad_out, const IntegralPack& integrals,
-    const SCFResult& result, const SCFConfig& config,
+    const SCFResult& result, SpinType spin, XCType xc_type,
+    GridLevel grid_level, int n_radial, int n_angular,
     const std::vector<int>& shell_to_atom,
     const std::vector<std::vector<int>>& atom_shells, int natm, int n) {
     // GGA semi-local XC gradient route. True for PBE and the B3LYP / PBE0
@@ -158,13 +161,12 @@ static void accumulate_xc_gradient(
     // the vsigma_* arrays from evaluate_xc_batch. Note: the local name
     // `is_gga` deliberately shadows the free function below; the
     // ATV::cpu::scf:: qualifier disambiguates the one call site.
-    const bool is_gga = ATV::cpu::scf::is_gga(config.xc_type);
+    const bool is_gga = ATV::cpu::scf::is_gga(xc_type);
     const int N = static_cast<int>(n);
     const size_t Ns = static_cast<size_t>(N);
 
-    auto grid =
-        build_molecular_grid(integrals.atoms.data(), natm, config.grid_level,
-                             config.n_radial, config.n_angular);
+    auto grid = build_molecular_grid(integrals.atoms.data(), natm, grid_level,
+                                     n_radial, n_angular);
     const int G = static_cast<int>(grid.points.size());
     const size_t Gs = static_cast<size_t>(G);
 
@@ -232,7 +234,7 @@ static void accumulate_xc_gradient(
     // Feeding the unhalved P_total into a restricted-KS XC gradient evaluates
     // vrho/vsigma at twice the correct density and doubles drho/dR — the
     // ~4-orders-of-magnitude defect this fix corrects.
-    const bool restricted_ks = (config.spin == SpinType::Restricted);
+    const bool restricted_ks = (spin == SpinType::Restricted);
     const double xc_spin_scale = restricted_ks ? 0.5 : 1.0;
     xt::xtensor<double, 2> Pa({Ns, Ns}), Pb({Ns, Ns});
     for (int mu = 0; mu < N; ++mu)
@@ -280,7 +282,7 @@ static void accumulate_xc_gradient(
         vsigma_bb_arr = xt::zeros<double>({Gs});
     }
 
-    evaluate_xc_batch(config.xc_type, G, rho_a_arr.data(), rho_b_arr.data(),
+    evaluate_xc_batch(xc_type, G, rho_a_arr.data(), rho_b_arr.data(),
                       is_gga ? sigma_aa_arr.data() : nullptr,
                       is_gga ? sigma_ab_arr.data() : nullptr,
                       is_gga ? sigma_bb_arr.data() : nullptr, exc_arr.data(),
@@ -461,8 +463,7 @@ static void accumulate_xc_gradient(
                 continue;
             const double w_parent = becke_weight_derivative(
                 integrals.atoms.data(), natm, grid.points[g].x,
-                grid.points[g].y, grid.points[g].z, P, config.grid_level,
-                dw.data());
+                grid.points[g].y, grid.points[g].z, P, grid_level, dw.data());
             if (w_parent < 1e-300)
                 continue;
             // dW_g/dR_A = (W_g / w_parent) * d(w_parent_normalized)/dR_A.
@@ -477,13 +478,25 @@ static void accumulate_xc_gradient(
 
 // ── Unified gradient ─────────────────────────────────────────────────
 
-GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
-                            const SCFResult& result, const SCFConfig& config) {
+namespace internal {
+
+ScfGradient::ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
+                         GridLevel grid_level, int n_radial, int n_angular,
+                         bool force_native_two_electron_deriv,
+                         bool xc_grad_project_translation)
+    : method_(method), spin_(spin), xc_type_(xc_type), grid_level_(grid_level),
+      n_radial_(n_radial), n_angular_(n_angular),
+      force_native_two_electron_deriv_(force_native_two_electron_deriv),
+      xc_grad_project_translation_(xc_grad_project_translation) {}
+
+GradientResult ScfGradient::compute(const Frame& frame,
+                                    const IntegralPack& integrals,
+                                    const SCFResult& result) const {
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;
-    bool is_ks = (config.method == MeanFieldType::KS);
-    bool restricted = (config.spin == SpinType::Restricted);
+    bool is_ks = (method_ == MeanFieldType::KS);
+    bool restricted = (spin_ == SpinType::Restricted);
     const char* method_label = is_ks ? "KS" : "HF";
     const char* spin_label = restricted ? "restricted" : "unrestricted";
 
@@ -494,7 +507,8 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
     auto dpack = IntegralDerivPack{integrals};
     ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
-    // Restricted: P_alpha IS P_total (factor 2 included in SCFSolver::run)
+    // Restricted: P_alpha IS P_total (factor 2 folded in by the driver-ized
+    //             method's density build, mean_field_method.cpp)
     // Unrestricted: P_total = P_alpha + P_beta (per-spin)
     xt::xtensor<double, 2> P =
         restricted ? xt::xtensor<double, 2>(result.P_alpha)
@@ -522,7 +536,8 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
     const auto t_two_e = LogClock::now();
     xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
     accumulate_two_electron_gradient(grad_two_e, frame, integrals, P, result,
-                                     config);
+                                     method_, spin_, xc_type_,
+                                     force_native_two_electron_deriv_);
     grad += grad_two_e;
     const auto [two_e_max_abs, two_e_max_atom_norm] =
         gradient_metrics(grad_two_e);
@@ -556,7 +571,8 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
             }
         }
         xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
-        accumulate_xc_gradient(grad_xc, integrals, result, config,
+        accumulate_xc_gradient(grad_xc, integrals, result, spin_, xc_type_,
+                               grid_level_, n_radial_, n_angular_,
                                shell_to_atom, atom_shells, natm, n);
 
         // Optional debug: enforce translational invariance of the XC
@@ -568,11 +584,12 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
         // accumulate_xc_gradient (weight-derivative + grid-coordinate), the
         // net translational force already vanishes from first principles
         // (<= 1e-8 Ha/Bohr), so this projection is a no-op and is OFF by
-        // default. It is retained behind SCFConfig::xc_grad_project_translation
+        // default. It is retained behind the `xc_grad_project_translation`
+        // method member (ScfGradient::xc_grad_project_translation_)
         // purely as a debug / fixed-grid-comparison aid: with a grid held
         // fixed in space the AO-derivative term alone leaves a ~4e-4 Ha/Bohr
         // net residual that this projection removes.
-        if (config.xc_grad_project_translation && natm > 0) {
+        if (xc_grad_project_translation_ && natm > 0) {
             for (int d = 0; d < 3; ++d) {
                 double net = 0.0;
                 for (int A = 0; A < natm; ++A)
@@ -605,48 +622,22 @@ GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
 
 // ── Finite-difference gradient ───────────────────────────────────────
 
-GradientResult scf_finite_difference_gradient(const Frame& frame,
-                                              const SCFConfig& config,
-                                              int charge, double h,
-                                              BasisSet basis) {
+GradientResult ScfGradient::finite_difference(
+    const Frame& frame, const std::function<double(const Frame&)>& scf_energy,
+    double h) {
     int natm = static_cast<int>(frame.nlocal());
 
-    // FD-oracle grid policy.
-    //
-    // The analytic KS XC gradient (accumulate_xc_gradient) now assembles
-    // the genuine Becke grid-response term (weight-derivative +
-    // grid-coordinate), so the correct FD oracle is a MOVING-grid central
-    // difference: the integration grid is regenerated at each displaced
-    // geometry (atom-centered grids ride with their atoms). This is the
-    // default path (config.xc_grad_project_translation == false).
-    //
-    // The legacy fixed-grid convention (Johnson-Gill-Pople, JCP 98, 5612
-    // (1993)) -- grid pinned to the reference geometry, only basis-function
-    // centers move -- is still reachable for regression tests that compare
-    // against the fixed-grid analytic gradient: when
-    // config.xc_grad_project_translation == true the projection is active
-    // and the FD oracle pins the grid to match.
-    SCFConfig fd_config = config;
-    const auto reference_integrals = IntegralPack{frame, basis, charge};
-    MolecularGrid fixed_grid;
-    if (config.method == MeanFieldType::KS
-        && config.xc_grad_project_translation) {
-        if (!reference_integrals.atoms.empty()) {
-            fixed_grid = build_molecular_grid(
-                reference_integrals.atoms.data(),
-                static_cast<int>(reference_integrals.atoms.size()),
-                config.grid_level, config.n_radial, config.n_angular);
-            fd_config.fixed_grid = &fixed_grid;
-        }
-    }
-
-    SCFSolver solver{fd_config};
-    solver.build(reference_integrals);
-    auto energy_fn = [&](const Frame& f) {
-        auto integrals = IntegralPack{f, basis, charge};
-        return solver.run(integrals).energy;
-    };
-    double ref_energy = energy_fn(frame);
+    // FD-oracle grid policy is now owned by the caller's `scf_energy`
+    // callback, not this oracle. The analytic KS XC gradient
+    // (accumulate_xc_gradient) assembles the genuine Becke grid-response term
+    // (weight-derivative + grid-coordinate), so the correct oracle is a
+    // MOVING-grid central difference: the callback should regenerate the
+    // integration grid at each displaced geometry (atom-centered grids ride
+    // with their atoms). The legacy fixed-grid convention (Johnson-Gill-Pople,
+    // JCP 98, 5612 (1993)) -- grid pinned to the reference geometry, only
+    // basis-function centers move -- is reachable by a callback that pins the
+    // grid across displacements to match the fixed-grid analytic gradient.
+    double ref_energy = scf_energy(frame);
 
     xt::xtensor<double, 2> forces = xt::zeros<double>({(int)natm, (int)3});
 
@@ -662,7 +653,7 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
                 fwd_y[A] += h;
             else
                 fwd_z[A] += h;
-            double e_fwd = energy_fn(fwd);
+            double e_fwd = scf_energy(fwd);
 
             Frame bwd = frame;
             StorageReal* __restrict bwd_x = bwd.span(kAtom_x);
@@ -674,7 +665,7 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
                 bwd_y[A] -= h;
             else
                 bwd_z[A] -= h;
-            double e_bwd = energy_fn(bwd);
+            double e_bwd = scf_energy(bwd);
 
             // FD uses Å step, so dE/dr is already in eV/Å once the Hartree
             // energy is converted — no extra 1/Bohr factor.
@@ -690,6 +681,8 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
         units::convert(ref_energy, units::Energy::Hartree, units::Energy::eV);
     return out;
 }
+
+} // namespace internal
 
 } // namespace scf
 } // namespace cpu

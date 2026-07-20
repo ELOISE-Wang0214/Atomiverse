@@ -21,7 +21,7 @@
 ///
 /// ## Contract encoded here (the RED-defined constructor shapes)
 /// Every stage inherits `cpu::Component`; state flows through NAMED ctor
-/// references (const& for reads, & for writes) — no `SCFConfig`, no Workspace
+/// references (const& for reads, & for writes) — no config bag, no Workspace
 /// bag, no `ctx.scf` slice. `ScfConverged` derives `cpu::Criterion`. The
 /// constructor signatures this file assumes (discrete params, then read refs,
 /// then write refs) are:
@@ -250,6 +250,60 @@ static_assert(std::is_base_of_v<cpu::Component, cpu::scf::ScfConverged>,
 static_assert(!std::is_base_of_v<cpu::Component, EigenSolver>,
               "EigenSolver stays a closed numeric kernel, not a Component");
 
+// ── Absorbed helper known-answer pins (from the retired
+//    test_scf_solver_internals.cpp; scf-driver-refactor-03b) ─────────────────
+//
+// The retired solver-internals test carried six meaningful helper assertions.
+// The three DualConvergence assertions (iter-0-is-never-converged with dE=∞,
+// both-criteria-required, reset-clears-history) are ALREADY covered here on the
+// ScfConverged Criterion — see ScfConverged.BindsCheckPhaseAndFirstIteration-
+// Continues, ScfConverged.ConvergesOnlyWhenBothCriteriaMet, and
+// ScfConverged.ResetClearsPrevEnergy below. The remaining three are absorbed as
+// the explicit known-answer pins below: the stage-parity tests exercise
+// DensityBuilder / EigenSolver only as bit-parity ORACLES (a shared kernel bug
+// would move both sides together), so the standalone known-answer numbers were
+// not otherwise pinned.
+
+TEST(DensityBuilder, RestrictedFactor2KnownAnswer) {
+    // One occupied orbital c0 = (1, 0)^T with the restricted factor 2 ⇒
+    // P = 2 · c0 c0^T has a single nonzero entry P(0,0) = 2.
+    RealMatrix C = xt::zeros<double>({2, 2});
+    C(0, 0) = 1.0;
+    DensityBuilder db;
+    db.prepare(2);
+    RealMatrix P = db.step(C, /*n_occ=*/1, /*n_basis=*/2, /*factor=*/2.0);
+    EXPECT_NEAR(P(0, 0), 2.0, 1e-12);
+    EXPECT_NEAR(P(0, 1), 0.0, 1e-12);
+    EXPECT_NEAR(P(1, 0), 0.0, 1e-12);
+    EXPECT_NEAR(P(1, 1), 0.0, 1e-12);
+}
+
+TEST(DensityBuilder, EmptyOccupationYieldsZero) {
+    // n_occ = 0 ⇒ no occupied columns ⇒ P is the zero matrix (e.g. the β
+    // channel of a one-electron cation). Edge case: no factor is applied.
+    RealMatrix C = xt::eye<double>(3);
+    DensityBuilder db;
+    RealMatrix P = db.step(C, /*n_occ=*/0, /*n_basis=*/3);
+    for (std::size_t i = 0; i < 3; ++i)
+        for (std::size_t j = 0; j < 3; ++j)
+            EXPECT_NEAR(P(i, j), 0.0, 1e-12);
+}
+
+TEST(EigenSolver, GeneralizedEigIdentityOverlap) {
+    // F = diag(2, 1), S = I ⇒ the generalized eigenproblem F C = S C ε reduces
+    // to the standard one; eigenvalues are returned ascending {1, 2}.
+    RealMatrix F = xt::eye<double>(2);
+    F(0, 0) = 2.0;
+    F(1, 1) = 1.0;
+    RealMatrix S = xt::eye<double>(2);
+    EigenSolver es;
+    auto [eig, C] = es.step(F, S);
+    EXPECT_NEAR(eig(0), 1.0, 1e-12);
+    EXPECT_NEAR(eig(1), 2.0, 1e-12);
+    EXPECT_EQ(C.shape()[0], 2u);
+    EXPECT_EQ(C.shape()[1], 2u);
+}
+
 // ── FockStage: wraps HamiltonianBuilder bit-identically, config-free ─────────
 
 TEST(FockStage, ReproducesHamiltonianBuilderRestrictedHF) {
@@ -264,11 +318,15 @@ TEST(FockStage, ReproducesHamiltonianBuilderRestrictedHF) {
     DensityBuilder db;
     RealMatrix P = db.step(C0, ints.n_occ(), ints.n_basis, 2.0);
 
-    // Oracle: the shipping SCFConfig path.
-    cpu::scf::SCFConfig cfg{cpu::scf::SCFConfig::RHF{}, ints};
+    // Oracle: the surviving discrete prepare/step entries, called with the same
+    // parameters the FockStage ctor forwards. The discrete and (retired) config
+    // entries share one private core, so this is bit-identical by construction.
     HamiltonianBuilder hb;
-    hb.prepare(ints, cfg);
-    FockResult ref = hb.step(ints, cfg, P, P);
+    hb.prepare(ints, /*is_hf=*/true, cpu::scf::GridLevel::SG0,
+               /*n_radial=*/50, /*n_angular=*/110, /*fixed_grid=*/nullptr);
+    FockResult ref = hb.step(ints, /*restricted=*/true, /*is_hf=*/true,
+                             cpu::scf::XCType::LSDA,
+                             /*hybrid_alpha_override=*/-1.0, P, P);
 
     // Under test: the config-free discrete FockStage on the same P.
     RealMatrix F_a, F_b, J;
@@ -304,19 +362,15 @@ TEST(FockStage, ReproducesHamiltonianBuilderRestrictedKS) {
     DensityBuilder db;
     RealMatrix P = db.step(C0, ints.n_occ(), ints.n_basis, 2.0);
 
-    // Oracle: explicit KS config, SG0 grid so the discrete entry can match it.
-    cpu::scf::SCFConfig cfg;
-    cfg.spin = cpu::scf::SpinType::Restricted;
-    cfg.method = cpu::scf::MeanFieldType::KS;
-    cfg.xc_type = cpu::scf::XCType::LSDA;
-    cfg.grid_level = cpu::scf::GridLevel::SG0;
-    cfg.n_radial = 50;
-    cfg.n_angular = 110;
-    cfg.n_alpha = ints.n_occ();
-    cfg.n_beta = ints.n_occ();
+    // Oracle: the surviving discrete prepare/step entries with the SG0 grid, the
+    // same parameters the FockStage ctor forwards. The discrete and (retired) KS
+    // config entries share one private core, so this is bit-identical.
     HamiltonianBuilder hb;
-    hb.prepare(ints, cfg);
-    FockResult ref = hb.step(ints, cfg, P, P);
+    hb.prepare(ints, /*is_hf=*/false, cpu::scf::GridLevel::SG0,
+               /*n_radial=*/50, /*n_angular=*/110, /*fixed_grid=*/nullptr);
+    FockResult ref = hb.step(ints, /*restricted=*/true, /*is_hf=*/false,
+                             cpu::scf::XCType::LSDA,
+                             /*hybrid_alpha_override=*/-1.0, P, P);
 
     RealMatrix F_a, F_b, J;
     double e_xc = 0, e_exact = 0, int_na = 0, int_nb = 0;
