@@ -1,99 +1,113 @@
 # Chapter 18. Convergence of the SCF
 
-The Roothaan–Hall process
+Roothaan–Hall iteration is a fixed-point search: nothing guarantees that it
+converges. This chapter covers three staged controls—initial guess, Fock/density
+mixing, and second-order orbital updates—each written as **Theory → Practice →
+Results**.
 
-\[
-F(P_k)\,C = SC\,\varepsilon
-\quad\rightarrow\quad
-P_{k+1}
-\]
-
-is a fixed-point iteration. Nothing guarantees that it converges. This chapter
-treats three complementary controls, in the order they are usually applied:
-a better initial guess, better density or Fock mixing, and—near
-self-consistency—a second-order orbital update.
+| | |
+|---|---|
+| **Examples / regressions** | `regressions/scf/h2o_scf_convergence`, hard cases in Ch. 18 tables |
+| **Related** | [Ch. 2](ch02-rhf.md) (RHF loop), [Ch. 3](ch03-open-shell.md) (UHF) |
 
 ---
 
 ## 18.1 Why iterations fail
 
-Two failure modes dominate.
+### Theory
 
-**Charge oscillation.** For two nearly degenerate configurations \(A\) and
-\(B\), the Fock operator built from \(P_A\) prefers \(B\), and that from
-\(P_B\) prefers \(A\). The density alternates with period two. Small
-HOMO–LUMO gaps, stretched bonds, and diradical character favour this
-behaviour.
+Two common failure modes:
 
-**Overshoot.** Each update is too large, so the new density is farther from
-the fixed point than the old one. A bare-nuclear (Hcore) guess is a common
-trigger: without electronic screening the first iteration pushes charge too
-strongly toward the nuclei.
+1. **Charge oscillation.** For nearly degenerate configurations \(A\) and \(B\),
+   \(F[P_A]\) prefers \(B\) and \(F[P_B]\) prefers \(A\). Density flips every
+   step. Small HOMO–LUMO gaps and stretched bonds favour this.
+2. **Overshoot.** Updates are too large; a bare-nuclear (Hcore) first step often
+   pushes charge too hard toward the nuclei.
 
-Two classical remedies appear earlier in the tutorial.
+Classical remedies:
 
-- **Density damping**,
-  \(P\leftarrow(1-\alpha)P_{\mathrm{new}}+\alpha P_{\mathrm{old}}\)
-  (member `damping_factor`; \(\alpha\) is the fraction of the *old* density
-  retained). Oscillation is reduced at the cost of slower progress.
-- **Level shift** (Saunders–Hillier): virtual levels are raised by
-  \(\lambda\). Larger \(\lambda\) is more stable and slower. After
-  convergence the engine re-diagonalises the unshifted Fock matrix so that
-  the shift does not remain in the final eigenvalues.
+- **Damping** \(P\leftarrow(1-\alpha)P_{\mathrm{new}}+\alpha P_{\mathrm{old}}\)
+  (`damping_factor`; \(\alpha\) = fraction of *old* density kept).
+- **Level shift** (Saunders–Hillier): raise virtual levels by \(\lambda\). After
+  convergence the engine re-diagonalises the unshifted Fock matrix.
 
-A systematic recipe is staged: a good guess (§18.2), a far-from-SCF mixer
-(EDIIS/ADIIS, §18.3), then CDIIS or a second-order method near convergence
-(§18.3–18.4).
+Recommended staging: good guess (§18.2) → far-region mixer (§18.3) → CDIIS or
+SOSCF near SCF (§18.3–18.4).
+
+### Practice
+
+```cpp
+cpu::scf::RHF rhf;
+rhf.damping_factor = 0.5;  // retain half the previous density
+rhf.level_shift = 0.2;     // Hartree; 0 disables
+rhf.run(frame);
+```
+
+### Results
+
+No single universal number: damping and shift trade stability for speed. Use
+them when the residual oscillates or diverges; turn them off (or reduce them)
+once the iteration is stable enough for CDIIS.
 
 ---
 
 ## 18.2 Initial guesses
 
-SCF is local. The guess selects which basin is entered and how far the
-iteration starts from a stationary point. In order of increasing physical
-content:
+### Theory
 
-| Guess | Role |
+SCF is local. The guess chooses the basin and the starting distance to a
+stationary point.
+
+| Guess | Idea |
 |---|---|
-| Hcore | Diagonalise \(T+V_{ne}\). No screening; poorest, always available. |
-| MINAO / SAD | Superposition of atomic densities; default. Sensible density, not an eigenstate of any Fock operator. |
-| Extended Hückel | Empirical \(F_{\mu\nu}\) (VSIP and Wolfsberg–Helmholz \(K=1.75\)); one diagonalisation yields orbitals. |
-| SAP | Superposition of atomic potentials; \(F=T+V_{\mathrm{SAP}}\); density-free. |
+| Hcore | Diagonalise \(T+V_{ne}\). Always available; poorest. |
+| MINAO / SAD | Superposition of atomic densities (default). |
+| Extended Hückel | Empirical \(F\); one diagonalisation → orbitals (H–Ar tables). |
+| SAP | Superposition of atomic potentials; density-free (\(Z\le 118\)). |
 
-Hückel tables cover H–Ar; unsupported elements raise an error. SAP covers
-\(Z\le 118\). For open shells a spin-symmetric guess cannot by itself produce
-spin polarisation; symmetry breaking still relies on mixing and occupation.
+Open-shell spin polarisation still needs mixing/occupation after a
+spin-symmetric guess.
+
+### Practice
 
 ```cpp
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::Def2SVP;
 rhf.init_guess = cpu::scf::InitGuess::Hueckel; // or SAP, MINAO, Hcore
+rhf.tol = 1e-9;
 rhf.run(frame);
 ```
 
-For water/def2-SVP RHF at \(10^{-9}\) tolerance, Hückel and SAP need fewer
-iterations than Hcore (about 14 versus 16). Different codes parameterise
-Hückel differently; compare relative ordering, not absolute iteration counts.
+### Results
+
+Water / def2-SVP / RHF / \(10^{-9}\):
+
+| Guess | Iterations (this engine) | Note |
+|---|---:|---|
+| Hcore | 16 | baseline |
+| MINAO | 16 | default density guess |
+| Hückel | 14 | fewer than Hcore |
+| SAP | 14 | fewer than Hcore |
+
+Compare *ordering* across codes, not absolute iteration counts (Hückel
+parameterisations differ). Regression: `h2o_scf_convergence`.
 
 ---
 
-## 18.3 Mixing: CDIIS, EDIIS, and ADIIS
+## 18.3 Mixing: CDIIS, EDIIS, ADIIS
 
-**CDIIS** (Pulay) forms an unconstrained least-squares combination of past
-Fock matrices from commutator error vectors
-\(e_i=X^\top(F_i P_i S-S P_i F_i)X\). Near self-consistency the error is
-approximately linear in the density residual and convergence is nearly
-quadratic. Far from SCF the linearisation fails; large coefficients can
-drive the density out of the physical region.
+### Theory
 
-**EDIIS** (Kudin–Scuseria–Cancès) minimises a quadratic energy model on the
-simplex \(\sum c_i=1\), \(c_i\ge 0\). The new density is a convex combination
-of history densities and resists overshoot. **ADIIS** (Hu–Yang) uses a
-related augmented Roothaan–Hall model that does not need an explicit energy
-channel. Both are for the **far** region. Near convergence the optimum
-collapses to the latest step and they stall around errors of \(10^{-4}\).
-The intended use is a permanent switch: EDIIS/ADIIS far away, then CDIIS
-once \(\max|e|\) drops below a threshold.
+**CDIIS** (Pulay) extrapolates Fock matrices from commutator errors
+\(e_i=X^\top(F_iP_iS-SP_iF_i)X\). Near SCF, convergence is nearly quadratic.
+Far from SCF, large coefficients can overshoot.
+
+**EDIIS** / **ADIIS** minimise a model on the simplex \(c_i\ge 0\),
+\(\sum c_i=1\) (convex combinations). They are **far-region** tools and stall
+near \(10^{-4}\) residual. Intended use: ADIIS/EDIIS first, then **permanent**
+switch to CDIIS when \(\max|e|\) falls below a threshold.
+
+### Practice
 
 ```cpp
 cpu::scf::UHF uhf(5, 5);
@@ -102,99 +116,62 @@ uhf.mixer_switch_tol = 1e-2;
 uhf.run(frame);
 ```
 
-Example: water stretched by a factor 2.6, def2-SVP UHF, Hcore guess. The
-spin-restricted solution is unstable; the true minimum is a broken-symmetry
-diradical (\(\langle S^2\rangle\approx 1.97\)). Pure CDIIS oscillates for 60
-steps; ADIIS→CDIIS converges in about 38 steps to
-\(-75.718966\,\mathrm{Ha}\) (within \(10^{-6}\,\mathrm{Ha}\) of PySCF).
+Default `MixerKind::CDIIS` leaves the historical path unchanged.
 
-In this engine EDIIS energies lag the density by one iteration—an acceptable
-far-region approximation. ADIIS avoids that lag. The near-region switch is
-controlled by `mixer_switch_tol` (default \(10^{-2}\)).
+### Results
+
+Water stretched \(\times 2.6\), def2-SVP, UHF, Hcore guess (broken-symmetry
+diradical target, \(\langle S^2\rangle\approx 1.97\)):
+
+| Path | Outcome | \(E\) / Ha vs PySCF |
+|---|---|---|
+| Pure CDIIS | stalls / oscillates within 60 steps | — |
+| ADIIS→CDIIS | converges ~38 steps | \(-75.718966\) within \(10^{-6}\) |
 
 ---
 
-## 18.4 Second-order SCF
+## 18.4 Second-order SCF (SOSCF / CIAH)
 
-The previous sections improve the fixed-point *path*. A qualitative change is
-to minimise energy on the orbital manifold. Updates that preserve
-\(C^\top S C=I\) can be written
+### Theory
 
-\[
-C(\kappa)=C\,e^{\kappa},
-\qquad
-\kappa^\top=-\kappa,
-\]
+Minimise energy on the orbital manifold:
+\(C(\kappa)=C\,e^{\kappa}\), \(\kappa^\top=-\kappa\), with independent
+parameters only in the occupied–virtual block. Newton steps use the orbital
+Hessian \({}^1(A+B)\) (same operator as stability analysis). **CIAH** solves
+an augmented eigenproblem with matrix-free \(\sigma\)-products (Sun). Trust
+radius and energy backtracking stabilise the macro-iterations.
 
-with independent parameters only in the occupied–virtual block
-\(\kappa_{ai}\). Expanding the energy to second order gives
-\(E_0+g^\top\kappa+\frac12\kappa^\top H\kappa+\cdots\). For closed-shell real
-orbitals \(g_{ai}=4F_{ai}\); the Hessian is the same \({}^1(A+B)\) operator
-that appears in stability analysis. The Newton step \(\kappa=-H^{-1}g\)
-converges quadratically near a minimum.
+Cost per Newton step exceeds one CDIIS extrapolation. Staging: DIIS until
+\(\max|e|<\texttt{soscf\_start}\), then SOSCF. Implemented for RHF/UHF only
+(not KS).
 
-Building \(H\) explicitly is expensive, and far from the minimum \(H\) need
-not be positive definite. **CIAH** (co-iterative augmented Hessian; Sun)
-solves
-
-\[
-\begin{pmatrix}0&g^\top\\ g&H\end{pmatrix}
-\begin{pmatrix}1\\ \kappa\end{pmatrix}
-=\lambda
-\begin{pmatrix}1\\ \kappa\end{pmatrix}
-\]
-
-for the lowest root. Davidson iteration needs only products \(H\cdot v\),
-which reuses the stability \(\sigma\)-vector. A trust radius bounds
-\(\|\kappa\|_2\); energy increases trigger a reduced trust radius and
-rollback. The exponential map is evaluated with scaling-and-squaring Taylor
-series so orthonormality is retained.
-
-A Newton macro-iteration is more expensive than one CDIIS extrapolation
-(occupied–virtual integral transformation). On well-behaved molecules CDIIS
-suffices. On pathological cases the same staging as for mixers is
-recommended: **DIIS first, SOSCF later**.
+### Practice
 
 ```cpp
 cpu::scf::UHF uhf(5, 5);
 uhf.soscf = true;
-uhf.soscf_start = 0.25;   // switch after max|DIIS error| falls below this
+uhf.soscf_start = 0.25;
 uhf.soscf_max_micro = 12;
 uhf.soscf_trust = 0.4;
 uhf.run(frame);
+// uhf.soscf_iterations() — Newton macro-steps (diagnostic)
 ```
 
-Switching is not allowed before iteration 1: iteration 0 performs a Roothaan
-diagonalisation so that density-only guesses are consistent with the
-coefficients. After convergence an unshifted Fock matrix is diagonalised once
-more to obtain canonical orbital energies (eigenvalues during SOSCF are only
-semi-canonical).
+### Results
 
-For the stretched water example, Newton engages near step 4 and reaches the
-broken-symmetry minimum in about nine macro-iterations, agreeing with PySCF
-`mf.newton()` to better than \(10^{-11}\,\mathrm{Ha}\). For N₂ at
-\(R=2.5\,\mathrm{Å}\)/6-31G RHF, CDIIS already converges; the Newton phase
-of SOSCF is about four steps, comparable to PySCF’s macro-iteration count.
-
-SOSCF is implemented for HF (RHF/UHF) only. Kohn–Sham needs the XC second
-derivative kernel; enabling `soscf` on RKS/UKS is rejected.
+| System | Quantity | Engine | PySCF `mf.newton()` |
+|---|---|---:|---:|
+| 2.6× H₂O def2-SVP UHF + SOSCF | \(E\) / Ha | −75.71896632262 | −75.71896632262 |
+| 2.6× H₂O def2-SVP UHF + SOSCF | Newton macros | ~9 | ~8 (comparable seed) |
+| N₂ \(R=2.5\) Å 6-31G RHF + SOSCF | \(E\) / Ha | −108.211223079 | −108.211223079 |
+| N₂ \(R=2.5\) Å 6-31G RHF + SOSCF | Newton macros | 4 | 4 |
 
 ---
 
-## Numerical checks
-
-| System | Observation |
-|---|---|
-| H₂O def2-SVP RHF | Hückel/SAP need fewer iterations than Hcore |
-| 2.6× H₂O def2-SVP UHF | ADIIS→CDIIS converges; pure CDIIS stalls |
-| Same + SOSCF | Energy matches PySCF newton to \(\lesssim10^{-8}\,\mathrm{Ha}\) |
-| N₂ \(R=2.5\,\mathrm{Å}\) 6-31G RHF + SOSCF | Energy matches PySCF newton |
-
-### Further reading
+## Further reading
 
 - Jensen, *Introduction to Computational Chemistry*, SCF techniques.
-- Pulay, *Chem. Phys. Lett.* **73**, 393 (1980) (DIIS).
-- Kudin, Scuseria, Cancès, *J. Chem. Phys.* **116**, 8255 (2002) (EDIIS).
-- Hu & Yang, *J. Chem. Phys.* **132**, 054109 (2010) (ADIIS).
+- Pulay, *Chem. Phys. Lett.* **73**, 393 (1980); Kudin et al., *J. Chem. Phys.*
+  **116**, 8255 (2002); Hu & Yang, *J. Chem. Phys.* **132**, 054109 (2010).
 - Sun, arXiv:1610.08423 (CIAH).
 - Helgaker, Jørgensen, Olsen, *Molecular Electronic-Structure Theory*, Ch. 10.

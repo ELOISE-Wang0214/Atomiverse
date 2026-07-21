@@ -41,7 +41,7 @@ nav = [
       "tutorial/ch00-architecture.md",
       "tutorial/ch01-foundations.md",
     ] },
-    { "II · Localized-basis SCF" = [
+    { "II · Hartree–Fock core" = [
       "tutorial/ch02-rhf.md",
       "tutorial/ch03-open-shell.md",
       "tutorial/ch04-basis-sets.md",
@@ -73,7 +73,7 @@ nav = [
     { "IX · Semiempirical" = [
       "tutorial/ch17-semiempirical-am1.md",
     ] },
-    { "X · Hartree–Fock arc" = [
+    { "X · Hartree–Fock advanced" = [
       "tutorial/ch18-scf-techniques.md",
       "tutorial/ch19-hf-large-systems.md",
       "tutorial/ch20-hf-properties-environment.md",

@@ -1,26 +1,20 @@
-# Chapter 2: Atomic Orbitals to Single-Point RHF
+# Chapter 2: Restricted Hartree–Fock (single point)
 
-This chapter builds the first real quantum-chemical result in the manual — the
-total energy of a molecule — and it does so in two deliberate steps. First it
-isolates the one idea that makes electronic structure hard: the matrix you want
-to diagonalize depends on the eigenvectors that come out of that same
-diagonalization, so one solve is never enough. Then it replaces the abstract
-version of that loop with the smallest genuine molecular problem in the
-repository, closed-shell Restricted Hartree-Fock (RHF) on H₂.
+Closed-shell RHF energy of H₂ in STO-3G — the first end-to-end electronic
+structure result in this manual. Layout: **Theory → Practice → Results**
+([tutorial contract](index.md)).
 
 | | |
 |---|---|
-| **Examples** | [`01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp), [`02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp) |
-| **Results JSON** | [`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json) |
+| **Examples** | [`01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp), [`02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp), [`16_density_cube.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/16_density_cube.cpp) |
+| **Results** | [`02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json) |
 | **Reference** | Szabo & Ostlund, *Modern Quantum Chemistry*, Table 3.7 |
 
-## The molecule
+---
 
-H₂ at \(R = 0.74\) Å in the minimal STO-3G basis — two electrons, two basis
-functions, one occupied MO. Geometry alone is not interesting; after the SCF
-converges, the same calculation can emit density and orbital cubes (§ below).
+## Theory
 
-## Why SCF Has to Iterate
+### Why SCF has to iterate
 
 Suppose there is a fixed symmetric matrix $H_0$, a current density-like matrix
 $P$, and a scalar coupling strength $\alpha$. A stripped-down model of the
@@ -48,20 +42,10 @@ If you keep only one picture from the first half of this chapter, keep this one:
 **SCF is an attempt to make the matrix used for the solve consistent with the
 orbitals that the solve itself produces.**
 
-## Reading the Bare Loop
+### Warm-up: a density-free loop
 
-[`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp) is deliberately stripped down
-— a realistic molecular example would hide the SCF pattern under too many new
-ideas at once. It builds a fixed matrix $H_0$, sets the first density guess to
-zero, and then runs exactly the equations above: form $H^{(k)}$, diagonalize,
-keep the occupied columns, rebuild the density. The most important object is not
-$H_0$ but the projector $P = C_{\mathrm{occ}} C_{\mathrm{occ}}^T$ — the
-mathematical record of which states are occupied, and the thing fed back into
-the next iteration.
-
-The example prints an energy-like scalar $E = \mathrm{Tr}(H P)$ and the density
-residual at every step; here those are only diagnostics that let you watch the
-iteration settle. Build and run it:
+[`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp)
+is a stripped fixed-point demo (no chemistry). Build:
 
 ```bash
 cmake -B build -DATV_BUILD_EXAMPLES=ON
@@ -69,9 +53,10 @@ cmake --build build --target 01_scf
 ./build/examples/01_scf
 ```
 
-The residual should shrink until the loop stops changing. That is the whole
-lesson of the first half: SCF is not a single diagonalization, it is a search for
-a density that reproduces itself.
+The residual shrinks until the density reproduces itself. That is the structure
+carried into molecular RHF below.
+
+### Molecular RHF
 
 ## What Changes When the Problem Becomes Molecular
 
@@ -172,7 +157,7 @@ nuclear gradients through the filtered subspace are not yet validated.
      tests/cpu/linalg/test_canonical_orthogonalization.cpp
      (test_cpu_linalg_canonical_orth). Change one side only in lockstep. -->
 
-## Reading the RHF Example
+## Practice
 
 The setup in [`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp) is intentionally
 short:
@@ -215,7 +200,7 @@ If you want the same lesson expressed on CUDA, the companion file is
 [`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu), but the CPU example is the
 place to learn the method itself.
 
-## The result that convinces you
+## Results
 
 Build and run:
 
@@ -245,7 +230,9 @@ energies against PySCF to \(10^{-7}\) Ha (see
 After convergence, \(\mathrm{Tr}(PS)=N_e\) must still hold: the density
 represents two electrons in a closed-shell state.
 
-## Electron density (Gaussian cube)
+### Density and HOMO (computed fields)
+
+Not a geometry canvas — isosurfaces from the SCF:
 
 [`examples/16_density_cube.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/16_density_cube.cpp)
 runs the same H₂ / STO-3G RHF and writes ρ(r) plus the HOMO with

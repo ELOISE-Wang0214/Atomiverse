@@ -1,104 +1,110 @@
 # Tutorials
 
-Scientific methods end-to-end: theory, runnable examples, and literature
-comparisons. Install, build, and the Driver / Component vocabulary are in the
-[User Guide](../user-guide/) — start there if you have not built the project
-yet.
+Each chapter teaches one scientific method. Install and build first if needed:
+[User Guide](../user-guide/).
 
-Every chapter shares the same `cpu::Frame` data model, the same
-Driver/Component pattern, and the same units (eV, Å, fs, amu): **one loop,
-many physics**.
+All examples share `cpu::Frame`, the Driver/Component pattern, and units
+(eV, Å, fs, amu).
 
-## How to use a chapter
+## How every chapter is organized
 
-1. **Build the example** named at the top (`-DATV_BUILD_EXAMPLES=ON`).
-2. **Run it** and compare printed numbers to
-   [`examples/results/`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/).
-3. **Read the theory** with the code beside you.
-4. **Check the literature column** — docs never invent Atomiverse numbers.
+Every chapter (and every major section inside multi-topic chapters) follows
+the same three blocks:
 
-Interactive figures use **MolPlot** (line / scatter trends) and **MolVis**
-(structures). Sparse two-point comparisons stay in tables.
+| Block | What it is |
+|-------|------------|
+| **1. Theory** | Why the method exists, equations, assumptions, limitations |
+| **2. Practice** | Minimal C++ that runs in Atomiverse (members, `run`, outputs) |
+| **3. Results** | Numbers from the engine **vs** literature / PySCF / other reference |
 
-Quantum-chemistry path: **Chapter 2**. Classical MD path: **Chapter 10**.
-Architecture orientation: [Chapter 0](ch00-architecture.md) or
-[User Guide → Core concepts](../user-guide/concepts.md).
+How to read:
+
+1. Skim **Theory** with a pen, not a compiler.
+2. Build and run the **Practice** snippet (or the named example binary).
+3. Check **Results** against the table; do not invent numbers.
+
+Interactive figures (MolPlot curves, MolVis **density/orbital cubes**) appear
+only when they show a computed field or a quantitative trend—not bare toy
+geometries.
+
+Suggested first paths:
+
+- Electronic structure: [Ch. 2](ch02-rhf.md) → [3](ch03-open-shell.md) → [4](ch04-basis-sets.md) → [18](ch18-scf-techniques.md)–[20](ch20-hf-properties-environment.md)
+- Classical MD: [Ch. 10](ch10-classical-md.md)
+- Architecture: [Ch. 0](ch00-architecture.md)
 
 ## I. Foundations
 
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [0](ch00-architecture.md) | Tour of the CPU backend | — | — |
-| [1](ch01-foundations.md) | Systems, units, precision, validation | — | FD gradient checks |
+| Ch | Title |
+|----|-------|
+| [0](ch00-architecture.md) | Tour of the CPU backend |
+| [1](ch01-foundations.md) | Systems, units, precision, validation |
 
-## II. Localized-basis electronic structure
-
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [2](ch02-rhf.md) | Atomic orbitals → single-point RHF | `01_scf`, `02_rhf`, `16_density_cube` | [`02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json), cubes |
-| [3](ch03-open-shell.md) | Unrestricted Hartree–Fock | `03_uhf` | [`03_uhf_pes.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/03_uhf_pes.json) |
-| [4](ch04-basis-sets.md) | Gaussian basis sets and convergence | `11_koopmans` | [`11_koopmans.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/11_koopmans.json) |
-
-## III. Density-functional theory
-
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [5](ch05-kohn-sham-dft.md) | Unrestricted Kohn–Sham DFT | `04_uks` | [`04_uks.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/04_uks.json) |
-| [6](ch06-hybrid-dft.md) | Hybrids and analytic gradients | `05_geom_opt` | energy / force convergence |
-
-## IV. Correlation methods
-
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [7](ch07-correlation.md) | Beyond mean field (MP2, FCI) | `13_mp2`, `14_fci` | [`13_mp2.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/13_mp2.json), [`14_fci.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/14_fci.json) |
-
-## V. Periodic / plane-wave electronic structure
-
-| Ch | Title | Example | Flag |
-|----|-------|---------|------|
-| [8](ch08-plane-wave.md) | Plane-wave DFT | `08_pw` | [`08_pw.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/08_pw.json) (`-DATV_BUILD_PW=ON`) |
-| [9](ch09-gpw.md) | Gaussian and plane waves | `09_gpw` | [`09_gpw.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/09_gpw.json) (`-DATV_BUILD_GPW=ON`) |
-
-## VI. Classical simulation
-
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [10](ch10-classical-md.md) | Classical MD on the CPU | `07_md_lj` | [`07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
-| [11](ch11-ensembles.md) | Thermostats and barostats | `07_md_lj` + tests | NVT/NPT conservation |
-| [12](ch12-geometry-optimization.md) | L-BFGS / CG minimization | `05_geom_opt`, `15_am1` | [`05_geom_opt.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/05_geom_opt.json), [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
-
-## VII. Analysis & response
+## II. Hartree–Fock core
 
 | Ch | Title | Example |
 |----|-------|---------|
-| [13](ch13-observables.md) | Observables and trajectories | RDF / MSD observers |
-| [14](ch14-vibrations.md) | Vibrations and thermochemistry | `cpu::vib::Hessian` |
-| [15](ch15-cross-method.md) | Swap the evaluator | `06_aimd` |
+| [2](ch02-rhf.md) | Restricted HF single point | `02_rhf`, `16_density_cube` |
+| [3](ch03-open-shell.md) | Open shells (UHF, ROHF, GHF) | `03_uhf` |
+| [4](ch04-basis-sets.md) | Gaussian basis sets | basis regressions |
 
-## VIII–IX. Beyond pairs & semiempirical
+## III. DFT
 
-| Ch | Title | Example | Results |
-|----|-------|---------|---------|
-| [16](ch16-many-body-potentials.md) | EAM and Stillinger–Weber | potentials tests | FD oracles |
-| [17](ch17-semiempirical-am1.md) | AM1 | `15_am1` | [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
+| Ch | Title | Example |
+|----|-------|---------|
+| [5](ch05-kohn-sham-dft.md) | Unrestricted Kohn–Sham | `04_uks` |
+| [6](ch06-hybrid-dft.md) | Hybrids and forces | `05_geom_opt` |
 
-## X. Hartree–Fock arc
+## IV. Correlation
 
-Chapters 2–4 together with 18–20 cover the HF core of Jensen’s
-*Introduction to Computational Chemistry*: methods, convergence, basis sets,
-large-molecule Coulomb work, and molecular properties. How external codes may
-be cited is described in the appendix.
+| Ch | Title | Example |
+|----|-------|---------|
+| [7](ch07-correlation.md) | MP2 and full CI | `13_mp2`, `14_fci` |
+
+## V. Periodic electronic structure
+
+| Ch | Title | Example |
+|----|-------|---------|
+| [8](ch08-plane-wave.md) | Plane-wave DFT | `08_pw` |
+| [9](ch09-gpw.md) | Gaussian and plane waves | `09_gpw` |
+
+## VI. Classical simulation
+
+| Ch | Title | Example |
+|----|-------|---------|
+| [10](ch10-classical-md.md) | Classical MD | `07_md_lj` |
+| [11](ch11-ensembles.md) | Thermostats and barostats | — |
+| [12](ch12-geometry-optimization.md) | Geometry optimization | `05_geom_opt` |
+
+## VII. Analysis and response
+
+| Ch | Title |
+|----|-------|
+| [13](ch13-observables.md) | Observables and trajectories |
+| [14](ch14-vibrations.md) | Vibrations and thermochemistry |
+| [15](ch15-cross-method.md) | Swapping evaluators |
+
+## VIII–IX. Beyond pairs and semiempirical
+
+| Ch | Title | Example |
+|----|-------|---------|
+| [16](ch16-many-body-potentials.md) | EAM and Stillinger–Weber | — |
+| [17](ch17-semiempirical-am1.md) | AM1 | `15_am1` |
+
+## X. Hartree–Fock advanced
+
+Continuation of §II: convergence tools, large-system Coulomb, properties and
+environment (Jensen-style arc).
 
 | Ch | Title |
 |----|-------|
 | [18](ch18-scf-techniques.md) | Convergence of the SCF |
 | [19](ch19-hf-large-systems.md) | Large molecules and the Coulomb bottleneck |
 | [20](ch20-hf-properties-environment.md) | Molecular properties and environment |
-| [Appendix](appendix-pyscf-oracle.md) | Comparison with external quantum-chemistry codes |
+| [Appendix](appendix-pyscf-oracle.md) | External reference numbers |
 
 ---
 
-Acceptance policy (external-engine parity) lives in
+External-engine parity policy:
 [`benchmarks/README.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md).
-For a one-page SCF map see the
-[SCF Learning Path](../user-guide/scf-roadmap.md).
+One-page SCF map: [User Guide → SCF Learning Path](../user-guide/scf-roadmap.md).

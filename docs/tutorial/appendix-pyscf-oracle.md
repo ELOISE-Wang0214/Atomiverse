@@ -1,8 +1,7 @@
 # Appendix. Comparison with external quantum-chemistry codes
 
-This appendix states how tutorial tables and regressions may cite numerical
-results from PySCF (or other reference implementations). The goal is
-reproducibility, not a build-time dependency on those codes.
+Rules for the **Results** block of every tutorial chapter: how to cite PySCF
+(or other references) without making them build dependencies.
 
 ## 1. External codes are not build dependencies
 
