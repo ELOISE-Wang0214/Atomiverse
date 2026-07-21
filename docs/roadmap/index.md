@@ -85,8 +85,9 @@ watch out for in the ones that do.
 - **No analytic Hessian anywhere.** Every second derivative in the engine —
   frequencies, thermochemistry — is a central finite difference of analytic
   forces (`cpu::vib::Hessian`). CPHF is not implemented.
-- **Open shell means unrestricted.** ROHF and ROKS do not exist; the SCF config
-  is the 2×2 product of {restricted, unrestricted} × {HF, KS}.
+- **Open shell defaults to unrestricted.** ROKS does not exist; ROHF exists as
+  an energy-only method (`cpu::scf::ROHF`, PySCF canonical / Guest–Saunders
+  convention) — no analytic gradient, no ROHF-MP2.
 - **CUDA SCF is a restricted-HF energy engine, not a general one.** It runs the
   Fock build, density build, and diagonalization (cuSOLVER) on device, but it
   has no DIIS, no UHF, no Kohn–Sham path, and **no gradients** — so there is no

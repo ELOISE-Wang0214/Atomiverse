@@ -120,6 +120,7 @@ void MeanFieldMethod<D>::reset_built_driver_() {
     // current object. Reaches the loop-node internals directly (they are
     // protected precisely so a subclass can drive its own loop).
     fock_stage_.reset();
+    rohf_couple_stage_.reset();
     mix_stage_.reset();
     diag_stage_.reset();
     density_stage_.reset();
@@ -148,11 +149,24 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     // state bag); the discrete method config is captured by value now that all
     // knobs are finalized. restricted_ / is_hf_ are set by the caller
     // (drive_scf_) before this runs.
+    //
+    // ROHF (RestrictedOpen) is the same stage sequence with a hybrid wiring:
+    // unrestricted Fock build → RohfCoupleStage (F_α/F_β → Roothaan F_eff in
+    // the α channel; mix @ order −1) → single-channel DIIS on F_eff with the
+    // P_tot commutator → restricted diagonalization (one MO set, C_β = C_α) →
+    // unrestricted split-occupation density whose energy reads the preserved
+    // TRUE spin Focks (never F_eff).
+    const bool rohf = (spin_ == SpinType::RestrictedOpen);
     fock_stage_ = std::make_unique<FockStage>(
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
         int_n_beta_);
+    if (rohf) {
+        rohf_couple_stage_ = std::make_unique<RohfCoupleStage>(
+            S_, P_alpha_, P_beta_, F_alpha_, F_beta_, F_alpha_uncoupled_,
+            F_beta_uncoupled_, P_total_);
+    }
     if (soscf) {
         soscf_stepper_ = std::make_unique<internal::SOSCFStepper>(
             restricted_, *integrals_sp_, n_alpha_, n_beta_, Hcore_, v_nuc_,
@@ -160,23 +174,27 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
             eig_alpha_, eig_beta_, soscf_max_micro, soscf_trust);
     }
     mix_stage_ = std::make_unique<MixStage>(
-        restricted_, use_diis, diis_start_iter, diis_max_vectors, level_shift,
-        mixer, mixer_switch_tol, soscf, soscf_start, S_, X_, P_alpha_,
-        P_beta_, iter_, e_total_, F_alpha_, F_beta_, err_alpha_, err_beta_,
-        soscf_active_);
+        restricted_ || rohf, use_diis, diis_start_iter, diis_max_vectors,
+        level_shift, mixer, mixer_switch_tol, soscf, soscf_start, S_, X_,
+        rohf ? P_total_ : P_alpha_, P_beta_, iter_, e_total_, F_alpha_,
+        F_beta_, err_alpha_, err_beta_, soscf_active_);
     diag_stage_ = std::make_unique<DiagonalizeStage>(
-        restricted_, F_alpha_, F_beta_, S_, X_, n_dropped_, C_alpha_, C_beta_,
-        eig_alpha_, eig_beta_, soscf_stepper_.get(), soscf_active_);
+        restricted_ || rohf, F_alpha_, F_beta_, S_, X_, n_dropped_, C_alpha_,
+        C_beta_, eig_alpha_, eig_beta_, soscf_stepper_.get(), soscf_active_);
     density_stage_ = std::make_unique<DensityStage>(
-        restricted_, is_hf_, damping_factor, C_alpha_, C_beta_, F_alpha_,
-        F_beta_, Hcore_, J_, n_alpha_, n_beta_, n_basis_, diis_active_,
-        e_xc_grid_, e_exact_exchange_, v_nuc_, P_alpha_, P_beta_, e_total_,
-        e_one_, e_coulomb_);
+        restricted_, is_hf_, damping_factor, C_alpha_, C_beta_,
+        rohf ? F_alpha_uncoupled_ : F_alpha_,
+        rohf ? F_beta_uncoupled_ : F_beta_, Hcore_, J_, n_alpha_, n_beta_,
+        n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_,
+        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_);
     converged_stage_ = std::make_unique<ScfConverged>(
-        tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol), restricted_,
-        e_total_, err_alpha_, err_beta_);
+        tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol),
+        restricted_ || rohf, e_total_, err_alpha_, err_beta_);
 
     this->on(ATV::scf::Phase::fock).add_ref(*fock_stage_);
+    if (rohf)
+        this->on(ATV::scf::Phase::mix).add_ref(*rohf_couple_stage_,
+                                               /*order=*/-1);
     this->on(ATV::scf::Phase::mix).add_ref(*mix_stage_);
     this->on(ATV::scf::Phase::diagonalize).add_ref(*diag_stage_);
     this->on(ATV::scf::Phase::density).add_ref(*density_stage_);
@@ -347,6 +365,28 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "only — the Kohn-Sham orbital Hessian needs the XC second-order "
             "kernel, which this SOSCF link does not include. Disable soscf "
             "or run RHF/UHF.");
+
+    // ROHF-unsupported knobs — explicit refusal instead of a silently wrong
+    // Restricted/Unrestricted branch (no fallback).
+    const bool rohf = (spin_ == SpinType::RestrictedOpen);
+    if (rohf) {
+        if (opts.forces)
+            throw std::invalid_argument(
+                "MeanFieldMethod::forces: ROHF analytic forces are not "
+                "implemented — the gradient Lagrangian needs the Roothaan "
+                "coupling terms (follow-up chain link). Use finite "
+                "differences or UHF.");
+        if (soscf)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: soscf=true is not supported for ROHF "
+                "— the CIAH orbital Hessian does not include the Roothaan "
+                "coupling terms. Disable soscf.");
+        if (std::abs(level_shift) > internal::kLevelShiftSkipThreshold)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: level_shift is not supported for ROHF "
+                "— the restricted shift projector 0.5*P_tot is not the "
+                "open-shell occupied projector. Set level_shift = 0.");
+    }
     const int n = ints.n_basis;
     const int n_alpha = n_alpha_;
     const int n_beta = n_beta_;
@@ -451,7 +491,10 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         P_alpha = 0.5 * P_minao;
         P_beta = 0.5 * P_minao;
         const bool is_ks = (method_ == MeanFieldType::KS);
-        const bool skip_mixing = is_ks && (n_alpha == n_beta);
+        // ROHF never wants the UHF symmetry-breaking guess perturbation: the
+        // coupled F_eff restores one MO set anyway, so start from the plain
+        // Aufbau split (PySCF-matching).
+        const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
         if (method_ == MeanFieldType::HF && n_alpha > 0 && n_beta > 0
             && !skip_mixing && n_alpha != n_beta) {
             RealMatrix C_alpha_init = C0;
@@ -465,7 +508,8 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     } else {
         RealMatrix C_alpha_init = C0;
         const bool is_ks = (method_ == MeanFieldType::KS);
-        const bool skip_mixing = is_ks && (n_alpha == n_beta);
+        // See the MINAO branch: ROHF skips the UHF symmetry-breaking guess.
+        const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
         if (n_alpha > 0 && n_beta > 0 && !skip_mixing)
             apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
         P_alpha = density.step(C_alpha_init, n_alpha, n);
@@ -632,6 +676,12 @@ GradientResult MeanFieldMethod<D>::forces(Frame& frame) {
 
 template <typename D>
 MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2: an ROHF reference is not supported — the "
+            "closed-shell MP2 pack would silently treat the single MO set as "
+            "a doubly-occupied one. Use RHF (closed shell) — ROHF-MP2 is a "
+            "follow-up chain link.");
     const bool prev = compute_eri;
     compute_eri = true;
     run(frame);
@@ -646,6 +696,10 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
 
 template <typename D>
 FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "MeanFieldMethod::fci: an ROHF reference is not supported — the "
+            "FCI pack requires a closed-shell reference. Use RHF.");
     const bool prev = compute_eri;
     compute_eri = true;
     run(frame);
@@ -660,6 +714,7 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
 
 // explicit instantiations
 template class MeanFieldMethod<RHF>;
+template class MeanFieldMethod<ROHF>;
 template class MeanFieldMethod<UHF>;
 template class MeanFieldMethod<RKS>;
 template class MeanFieldMethod<UKS>;

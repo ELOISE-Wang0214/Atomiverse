@@ -1,7 +1,7 @@
 /// @file cpu/scf/mean_field_method.h
 /// @brief Shared CRTP (curiously recurring template pattern) base for the
 ///        concrete Gaussian mean-field methods: `MeanFieldMethod<D>` (base of
-///        RHF / UHF / RKS / UKS).
+///        RHF / ROHF / UHF / RKS / UKS).
 ///
 /// There is no bag named `SCFSolver` and no user-facing `SCFConfig` /
 /// `IntegralPack` step. Each method is a concrete class; parameters are
@@ -49,6 +49,7 @@
 #include "atomiverse/cpu/scf/stages/diagonalize_stage.h"
 #include "atomiverse/cpu/scf/stages/fock_stage.h"
 #include "atomiverse/cpu/scf/stages/mix_stage.h"
+#include "atomiverse/cpu/scf/stages/rohf_couple_stage.h"
 #include "atomiverse/cpu/scf/stages/scf_converged.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
@@ -338,6 +339,13 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     RealVector eig_beta_;         ///< β orbital energies [Hartree].
     RealMatrix P_alpha_;          ///< α density (old-in / new-out).
     RealMatrix P_beta_;           ///< β density (old-in / new-out).
+    // ROHF-only channels (untouched in the other spin modes): the couple
+    // stage preserves the physical spin Focks here (the density stage's
+    // energy functional reads them, never F_eff) and publishes P_α+P_β for
+    // the single-channel DIIS commutator.
+    RealMatrix F_alpha_uncoupled_; ///< ROHF: true α Fock [Hartree].
+    RealMatrix F_beta_uncoupled_;  ///< ROHF: true β Fock [Hartree].
+    RealMatrix P_total_;           ///< ROHF: total density P_α + P_β.
     double e_total_ = 0;          ///< Total SCF energy [Hartree].
     double e_one_ = 0;            ///< One-electron energy [Hartree].
     double e_coulomb_ = 0;        ///< Coulomb (J) energy [Hartree].
@@ -426,6 +434,7 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     // Stage components (heap-owned; borrowed into the Plan by add_ref). Null
     // until ensure_driver_built_ wires them to this method's members.
     std::unique_ptr<FockStage> fock_stage_;
+    std::unique_ptr<RohfCoupleStage> rohf_couple_stage_;
     std::unique_ptr<MixStage> mix_stage_;
     std::unique_ptr<DiagonalizeStage> diag_stage_;
     std::unique_ptr<DensityStage> density_stage_;

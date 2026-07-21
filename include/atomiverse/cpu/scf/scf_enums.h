@@ -11,9 +11,16 @@ namespace scf {
 /// @brief Mean-field flavor: Hartree-Fock or Kohn-Sham (dimensionless tag).
 enum class MeanFieldType { HF, KS };
 
-/// @brief Spin treatment: restricted (shared spatial orbitals) or
-///        unrestricted (independent alpha/beta channels).
-enum class SpinType { Restricted, Unrestricted };
+/// @brief Spin treatment: restricted (shared spatial orbitals),
+///        unrestricted (independent alpha/beta channels), or
+///        restricted-open (single MO set with split alpha/beta occupation —
+///        ROHF; Roothaan effective-Fock coupling).
+///
+/// Paths that dispatch on this enum and do not implement the
+/// restricted-open case (analytic gradients, MP2/FCI packs) throw
+/// explicitly for `RestrictedOpen` — no silent Restricted/Unrestricted
+/// branch is ever taken.
+enum class SpinType { Restricted, Unrestricted, RestrictedOpen };
 
 /// @brief SCF initial-guess flavor.
 ///

@@ -1,7 +1,7 @@
 ---
 title: "ROHF 具体方法(Roothaan 有效 Fock,PySCF/Guest–Saunders 正则化约定)"
 slug: hf-capability-gaps-10-rohf
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 10/21
 external-depends: scf-slater-determinant-03-unbag
@@ -29,11 +29,20 @@ created: 2026-07-20
 - `methods.h` 注册 `rohf.h`;禁止任何 `build_*`/`make_*` 自由函数;公有符号全部带 Doxygen(`@brief`/`@param` 含单位/`@return`),类文档记录正则化约定与耦合系数陷阱。
 - 定标几何(oracle 钉定必须用同一几何,写入测试文件头):O₂ 三重态 R=1.2075 Å(n_α,n_β)=(9,7);CH₃ 双重态平面 D₃ₕ R(C–H)=1.079 Å(5,4);基组 STO-3G。
 
+### 实现审计注记(2026-07-21)
+- **PySCF 版本**:spec 写 2.13.1,oracle venv(`~/work/.x86_64`)实际为 **2.14.0**;钉定值以 2.14.0 生成并逐字记录(测试文件头 + REFERENCE.md 均注明)。
+- **SpinType 现居 `scf_enums.h`**(02-rehome 已落地,`scf_result.h` 已删除);spec 文件清单里的 `scf_result.h` 改为 `scf_enums.h`。
+- **RohfCoupleStage 绑定位置**:`scf::Phase::mix` @ order −1(在 MixStage 之前,因而也在 diagonalize 之前)——DIIS 必须看到 F_eff 才能用单通道 F_eff·S·P_tot 对易子;绑定在 diagonalize 相位内做不到这一点。
+- **能量泛函读真实自旋 Fock**:couple stage 把 F_α/F_β 先保存到 `F_alpha_uncoupled_`/`F_beta_uncoupled_` 再覆写 F_eff;DensityStage 的 HF 能量分支接线到保存副本(F_eff 与 F_σ 在收敛点也不相等,直接读会永久偏差)。
+- **额外显式拒绝**(spec 之外、同一"不静默走错分支"原则):ROHF + `soscf` 抛出(CIAH Hessian 无耦合项)、ROHF + `level_shift` 抛出(restricted 分支的 0.5·P_tot 不是开壳占据投影子)、ROHF 跳过 UHF 的 HOMO-LUMO 对称破缺初猜扰动。
+- **UHF 对照的初猜**:本引擎 UHF 在 O₂ 上用 Hcore/MINAO 冷初猜收敛到更高的局部解(−147.3786 Ha,污染 1.27e-2);回归件与单测用收敛 ROHF 密度热启动 UHF(constrained-UHF 图像),落到 PySCF 同一全局解 −147.633946785450 Ha、污染 3.410858e-3。
+- **文档顺带修正**:`docs/roadmap/hartree-fock.md` 与 `docs/roadmap/index.md` 中"ROHF does not exist"的过时陈述随本链节更新。
+
 ## Files to create or modify
 - include/atomiverse/cpu/scf/rohf.h (new)
 - src/cpu/scf/rohf.cpp (new)
 - include/atomiverse/cpu/scf/stages/rohf_couple_stage.h (new)
-- include/atomiverse/cpu/scf/scf_result.h
+- include/atomiverse/cpu/scf/scf_enums.h(SpinType 现居于此;spec 原文的 scf_result.h 已被 02-rehome 删除)
 - include/atomiverse/cpu/scf/mean_field_method.h
 - src/cpu/scf/mean_field_method.cpp
 - include/atomiverse/cpu/scf/methods.h
@@ -46,14 +55,14 @@ created: 2026-07-20
 - docs/tutorial/ch03-open-shell.md
 
 ## Tasks
-- [ ] Write failing tests for ROHF(tests/cpu/scf/test_rohf_solver.cpp,tests/CMakeLists.txt 注册 test_cpu_scf_rohf_solver):外部运行 PySCF 2.13.1 钉定 O₂/CH₃ 的 E_ROHF 与(Guest–Saunders 约定)轨道能,数值与几何写入文件头注释;含闭壳退化(H₂:ROHF(1,1) ≡ RHF 到 1e-8 Ha)、自旋纯性、n_α<n_β 抛出用例
-- [ ] Implement RohfCoupleStage in include/atomiverse/cpu/scf/stages/rohf_couple_stage.h(PySCF get_roothaan_fock 的 Guest–Saunders 投影装配 + F_eff DIIS 误差)
-- [ ] Implement SpinType::RestrictedOpen seam in scf_result.h + mean_field_method.h/.cpp(接线耦合 stage、限制式对角化、分裂占据密度、`MeanFieldMethod<ROHF>` 显式实例化、gradient/mp2/fci 显式抛出)
-- [ ] Implement ROHF in include/atomiverse/cpu/scf/rohf.h + src/cpu/scf/rohf.cpp,并在 methods.h 与根 CMakeLists.txt 注册
-- [ ] Add docstring per Doxygen with units:rohf.h 类文档记录 PySCF/Guest–Saunders 正则化约定与"同能量、不同轨道能"陷阱
-- [ ] Verify against literature via regression regressions/scf/o2_rohf_sto3g(REFERENCE.md 引 Roothaan 1960 DOI + 钉定 PySCF 值与命令;≤60 s;regressions/CMakeLists.txt 注册)
-- [ ] Extend docs/tutorial/ch03-open-shell.md ROHF 一节(UHF 自旋污染回顾 → ROHF 自旋纯替代 → 耦合系数歧义如实讲清 → 何时选谁;O₂/CH₃ 上手;章末 PySCF 表行 E_total、⟨S²⟩,表格标量、无柱状图)
-- [ ] Run full check + test suite(login 节点 CPU 配方,-DATV_BUILD_HF=ON;含 no_factory_scrub 与 stage-typing scrub)
+- [x] Write failing tests for ROHF(tests/cpu/scf/test_rohf_solver.cpp,tests/CMakeLists.txt 注册 test_cpu_scf_rohf_solver):外部运行 PySCF 2.14.0(见审计注记)钉定 O₂/CH₃ 的 E_ROHF 与(Guest–Saunders 约定)轨道能,数值与几何写入文件头注释;含闭壳退化(H₂:ROHF(1,1) ≡ RHF 到 1e-8 Ha)、自旋纯性、n_α<n_β 抛出用例
+- [x] Implement RohfCoupleStage in include/atomiverse/cpu/scf/stages/rohf_couple_stage.h(PySCF get_roothaan_fock 的 Guest–Saunders 投影装配 + F_eff DIIS 误差)
+- [x] Implement SpinType::RestrictedOpen seam in scf_enums.h + mean_field_method.h/.cpp(接线耦合 stage、限制式对角化、分裂占据密度、`MeanFieldMethod<ROHF>` 显式实例化、gradient/mp2/fci 显式抛出)
+- [x] Implement ROHF in include/atomiverse/cpu/scf/rohf.h + src/cpu/scf/rohf.cpp,并在 methods.h 与根 CMakeLists.txt 注册
+- [x] Add docstring per Doxygen with units:rohf.h 类文档记录 PySCF/Guest–Saunders 正则化约定与"同能量、不同轨道能"陷阱
+- [x] Verify against literature via regression regressions/scf/o2_rohf_sto3g(REFERENCE.md 引 Roothaan 1960 DOI + 钉定 PySCF 值与命令;≤60 s;regressions/CMakeLists.txt 注册)
+- [x] Extend docs/tutorial/ch03-open-shell.md ROHF 一节(UHF 自旋污染回顾 → ROHF 自旋纯替代 → 耦合系数歧义如实讲清 → 何时选谁;O₂/CH₃ 上手;章末 PySCF 表行 E_total、⟨S²⟩,表格标量、无柱状图)
+- [x] Run full check + test suite(login 节点 CPU 配方,-DATV_BUILD_HF=ON;含 no_factory_scrub 与 stage-typing scrub)
 
 ## Testing strategy
 - 快乐路径(单元,秒级):O₂(9,7)/CH₃(5,4) STO-3G 收敛,`converged` 为真,总能量 vs 钉定 PySCF 到 1e-8 Ha;轨道能仅在 PySCF 约定下比较(1e-6 Ha)。

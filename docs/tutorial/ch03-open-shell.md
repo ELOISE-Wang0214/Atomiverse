@@ -523,6 +523,91 @@ PySCF 自身的 `mf.stability(external=True)` 在 R = 1.5 Å 给出
 "internal stable / external **unstable**" 的同一判定——教科书陷阱
 (internal 稳定 ≠ 稳定)在两套实现里读数一致。
 
+## ROHF:自旋纯的开壳层替代(Restricted Open-shell HF)
+
+回顾一下本章反复出现的交换条件:UHF 给 α 与 β 各自独立的空间轨道,换来了
+变分自由度,也换来了自旋污染——⟨S²⟩ 不再等于 S(S+1),波函数混入了更高
+自旋态的成分。对拉伸 H₂ 那样的静态关联问题,污染是症状同时也是解药;但
+对一个平衡几何附近、性质良好的开壳层分子(基态 O₂、甲基自由基),你常常
+既想要开壳层占据,又想要一个**干净的自旋本征态**。这就是 ROHF 的位置:
+**一套**空间轨道,分成闭壳(双占)、开壳(单占 α)、虚轨道三个空间,
+β 占据严格是 α 占据的子集。单 MO 集这一个约束就解析地保证
+⟨S²⟩ = S(S+1)——不是数值上碰巧小,而是恒等式(Roothaan, *Rev. Mod.
+Phys.* **32**, 179 (1960))。
+
+代价在哪里?能量泛函本身与 UHF 相同(Pople–Nesbet 双密度形式,对
+O₂ 是 E = ½Tr[P_α(H+F_α)] + ½Tr[P_β(H+F_β)] + V_nn),但"一套轨道"
+意味着 F_α 与 F_β 不能各自对角化——必须把两个自旋 Fock 耦合成**一个**
+有效 Fock 再做一次限制式对角化。Roothaan 的分块办法是:在闭/开/虚三空间
+的非对角块上放物理约定俗成的组合(co = F_β、ov = F_α、cv = F_c),对角块
+放 F_c ≡ (F_α+F_β)/2。Atomiverse 复刻的是 PySCF canonical ROHF 的装配
+(Guest–Saunders 系数族,`get_roothaan_fock` 的密度投影子代数),逐项一致。
+
+### 诚实地讲清楚:耦合系数是约定,不是物理
+
+对角块系数(教科书里的 A、B"耦合系数")有好几个著名选择:Roothaan 原始、
+Guest–Saunders、McWeeny–Diercksen……它们**收敛到同一个总能量**——能量
+泛函里根本没有这些系数——但给出**不同的轨道能**。换句话说:ROHF 的
+E_total 是可移植的观测量,ε 是约定绑定量。拿 Atomiverse 的 ROHF 轨道能与
+文献表格对照时,先确认对方用的是哪个系数族;本引擎只承诺与 PySCF canonical
+(Guest–Saunders)约定逐位一致,验收也只在这个约定下比较 ε。把别的约定的
+ε 差异当成 bug 来"修",是这个方法最经典的陷阱。
+
+### 上手:O₂ 三重态与甲基自由基
+
+与 UHF 完全同形——具体方法类、参数即成员、Frame 进 Frame 出:
+
+```cpp
+// O2 三重态, R = 1.2075 Å, (n_alpha, n_beta) = (9, 7), STO-3G
+cpu::scf::ROHF rohf(9, 7);          // 要求 n_alpha >= n_beta,违反即抛
+rohf.basis = cpu::scf::BasisSet::STO3G;
+rohf.tol = 1e-12;
+rohf.run(frame);
+// rohf.energy()                          = -147.632166990682 Ha
+// rohf.determinant().spin_contamination() = 0(解析恒等式,≤ 1e-10)
+
+// 平面 D3h 甲基自由基, R(C-H) = 1.079 Å, (5, 4)
+cpu::scf::ROHF ch3(5, 4);
+ch3.basis = cpu::scf::BasisSet::STO3G;
+ch3.run(frame_ch3);                 // -39.072132718153 Ha, <S2> = 0.75
+```
+
+尚未支持的路径都是显式拒绝而非静默走错分支:`forces()`(解析梯度需要含
+耦合项的 Lagrangian,后续链节)、`mp2()`/`fci()`、`soscf`、`level_shift`
+对 ROHF 一律抛出。
+
+### 何时选谁
+
+- **要自旋纯的参考态**(后续做以 ROHF 为参考的相关方法、算自旋密度相关
+  性质、或对照要求 ⟨S²⟩ 干净的谱学量):ROHF。
+- **要变分最优的单行列式、或处理静态关联/键断裂**:UHF——O₂ 上释放自旋
+  约束能再降 1.8 mHa(见下表),污染 3.4e-3 就是这份自由度的收据;
+  Tsuchimochi–Scuseria(*J. Chem. Phys.* **133**, 141102 (2010))把 ROHF
+  重新表述为"约束 UHF",正是这幅图像。
+- 平衡几何、污染本来就小:两者能量差别微小,选哪个更多取决于下游方法对
+  参考态的要求。
+
+### 章末对照:PySCF ROHF/UHF 标量
+
+外部 oracle(PySCF 2.14.0,`scf.ROHF`/`scf.UHF`,STO-3G,`cart=True`,
+`conv_tol=1e-12`;几何与命令逐字记录在
+`regressions/scf/o2_rohf_sto3g/REFERENCE.md` 与
+`tests/cpu/scf/test_rohf_solver.cpp` 文件头)与 Atomiverse 的逐项对照:
+
+| 体系 | 量 | Atomiverse | PySCF 2.14.0 | 差 |
+|---|---|---|---|---|
+| O₂ (9,7) | E_total(ROHF) [Ha] | −147.632166990682 | −147.632166990682 | < 1e-12 |
+| O₂ (9,7) | ⟨S²⟩(ROHF) | 2.000000000000 | 2.000000000000 | < 1e-14 |
+| O₂ (9,7) | E_total(UHF) [Ha] | −147.633946785450 | −147.633946785450 | < 1e-12 |
+| O₂ (9,7) | ⟨S²⟩(UHF) | 2.003410857681 | 2.003410857681 | < 1e-9 |
+| CH₃ (5,4) | E_total(ROHF) [Ha] | −39.072132718153 | −39.072132718153 | < 1e-12 |
+| CH₃ (5,4) | ⟨S²⟩(ROHF) | 0.750000000000 | 0.750000000000 | < 1e-14 |
+| H₂ (1,1) | E(ROHF) − E(RHF) [Ha] | < 1e-8 | 0(精确退化) | — |
+
+ROHF 的 ⟨S²⟩ 行不依赖任何外部引擎——它是单 MO 集的解析恒等式;表里放它
+是为了与 UHF 行的 2.0034 形成对照:同一几何、同一基组,一行是约定保证的
+2,一行是变分换来的污染。
+
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree-Fock exchange, it uses an
 exchange-correlation functional evaluated on a real-space grid:

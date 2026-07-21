@@ -498,6 +498,12 @@ GradientResult ScfGradient::compute(const Frame& frame,
             "ScfGradient::compute: analytic gradients are not implemented "
             "for ECP packs yet — dU/dR of the semi-local potential is a "
             "follow-up chain link. Use finite differences.");
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::runtime_error(
+            "ScfGradient::compute: the ROHF analytic gradient is not "
+            "implemented — the Lagrangian needs the Roothaan effective-Fock "
+            "coupling terms (follow-up chain link); refusing to take the "
+            "unrestricted branch silently. Use finite differences.");
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;

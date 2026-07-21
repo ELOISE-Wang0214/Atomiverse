@@ -475,6 +475,9 @@ if(ATV_BUILD_HF)
     # valence wiring, x2c double-counting gate (hf-capability-gaps-06-ecp).
     atv_add_cpp_test(test_ecp                  cpu/scf/test_ecp.cpp)
     atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
+    # hf-capability-gaps-10-rohf: ROHF (Roothaan effective Fock, PySCF
+    # canonical / Guest-Saunders convention) vs externally pinned PySCF.
+    atv_add_cpp_test(test_cpu_scf_rohf_solver  cpu/scf/test_rohf_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)

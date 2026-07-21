@@ -13,7 +13,7 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | ------------------------------------------ | :-: | :--: |
 | Restricted Hartree–Fock, RHF               |  ✓  |   ✓  |
 | Unrestricted Hartree–Fock, UHF             |  ✓  |   ○  |
-| Restricted open-shell Hartree–Fock, ROHF   |  ○  |   ○  |
+| Restricted open-shell Hartree–Fock, ROHF   |  ✓  |   ○  |
 | Generalized Hartree–Fock, GHF              |  ○  |   ○  |
 | Complex generalized Hartree–Fock           |  ○  |   ○  |
 | Spinor Hartree–Fock                        |  ○  |   ○  |
@@ -31,8 +31,11 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | ROHF analytic Hessian                      |  ○  |   ○  |
 | Hartree–Fock stability analysis            |  ○  |   ○  |
 
-**Open shell means unrestricted.** ROHF does not exist; spin contamination
-⟨S²⟩ is reported instead.
+ROHF is the Roothaan single-effective-Fock method in the PySCF canonical
+(Guest–Saunders) convention (`cpu::scf::ROHF`): energy only — the analytic
+gradient (coupling-term Lagrangian), ROHF-MP2, SOSCF and level shift throw.
+UHF remains the default open-shell workhorse; ROHF adds the spin-pure
+(⟨S²⟩ = S(S+1) exactly) alternative.
 
 Second derivatives are finite-difference everywhere (see the vibrational driver
 in [Molecular Dynamics](molecular-dynamics.md)); no CPHF is implemented, so

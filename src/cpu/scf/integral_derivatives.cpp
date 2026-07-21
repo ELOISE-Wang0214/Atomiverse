@@ -670,6 +670,11 @@ void accumulate_two_electron_gradient(
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
     const bool is_ks = (method == MeanFieldType::KS);
+    if (spin == SpinType::RestrictedOpen)
+        throw std::runtime_error(
+            "accumulate_two_electron_gradient: SpinType::RestrictedOpen "
+            "(ROHF) has no analytic two-electron gradient — refusing to "
+            "take the unrestricted branch silently.");
     const bool restricted = (spin == SpinType::Restricted);
 
     // Per-spin factor-1 densities for the unrestricted exchange contraction
