@@ -488,6 +488,12 @@ if(ATV_BUILD_HF)
     # regressions/scf/h2_rhf_stability.
     atv_add_cpp_test(test_cpu_scf_orbital_hessian cpu/scf/test_orbital_hessian.cpp)
     atv_add_cpp_test(test_cpu_scf_stability       cpu/scf/test_stability.cpp)
+    # hf-capability-gaps-09-soscf: CIAH stepper units — exp(κ) unitarity,
+    # gradient vs FD, matrix-free CIAH vs dense augmented eigensolve, trust
+    # region, MixStage latch; plus the allowed micro H2/STO-3G default-off
+    # invariance pin (milliseconds). The hard-case contrast is
+    # regressions/scf/soscf_hard_case.
+    atv_add_cpp_test(test_soscf                   cpu/scf/test_soscf.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2           cpu/scf/test_mp2.cpp)
     atv_add_cpp_test(test_cpu_scf_fci           cpu/scf/test_fci.cpp)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)

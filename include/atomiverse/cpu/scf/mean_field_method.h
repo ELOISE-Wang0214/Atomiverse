@@ -136,6 +136,36 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     double level_shift = 0.0;
     double lindep_threshold = 1e-8;
 
+    // ── Second-order SCF (SOSCF / CIAH; hf-capability-gaps-09) ────────
+    /// @brief Enable the second-order finishing path: DIIS runs the early
+    ///        iterations, then — once max|DIIS error| < `soscf_start` — the
+    ///        orbital update switches permanently (per run) to CIAH
+    ///        augmented-Hessian Newton rotations C ← C·exp(κ)
+    ///        (Sun, arXiv:1610.08423; quadratic convergence). HF only
+    ///        (RHF/UHF); enabling on RKS/UKS throws (the XC second-order
+    ///        kernel is out of scope). Default false — the shipping path is
+    ///        bit-identical when off.
+    bool soscf = false;
+
+    /// @brief SOSCF activation threshold on max|DIIS error| (dimensionless,
+    ///        ∞-norm of the AO-basis DIIS error matrix). <= 0 activates at
+    ///        the earliest eligible iteration. Eligibility starts at
+    ///        iteration 1: iteration 0 always runs one Roothaan
+    ///        diagonalization so the coefficients are synchronized with a
+    ///        density-only initial guess (MINAO / caller-provided) before
+    ///        Newton rotations act on them.
+    double soscf_start = 0.25;
+
+    /// @brief Davidson micro-iteration budget of each CIAH augmented-Hessian
+    ///        solve (dimensionless count per macro step); at the budget the
+    ///        best Ritz pair is used (co-iteration, not failure).
+    int soscf_max_micro = 12;
+
+    /// @brief Trust radius bound on the rotation step norm ‖κ‖₂
+    ///        (dimensionless); steps are clipped to it and it halves
+    ///        whenever a step raises the energy (reject-and-retry).
+    double soscf_trust = 0.4;
+
     // ── KS grid (ignored for pure HF) ─────────────────────────────────
     GridLevel grid_level = GridLevel::SG0;
     int n_radial = 50;
@@ -217,6 +247,14 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @brief SCF iterations executed by the most recent run.
     /// @return Iteration count (dimensionless).
     int iterations() const { return iterations_; }
+    /// @brief Macro iterations the CIAH stepper executed in the most recent
+    ///        run (0 when `soscf` is off or never activated) — the count
+    ///        comparable to a PySCF `mf.newton()` macro-cycle count, since
+    ///        each unit is one Fock build in Newton mode.
+    /// @return SOSCF macro iteration count (dimensionless).
+    int soscf_iterations() const {
+        return soscf_stepper_ ? soscf_stepper_->macro_steps() : 0;
+    }
     /// @brief Whether a result has been produced by any run.
     bool has_result() const { return *has_result_sp_; }
 
@@ -392,6 +430,12 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     std::unique_ptr<DiagonalizeStage> diag_stage_;
     std::unique_ptr<DensityStage> density_stage_;
     std::unique_ptr<ScfConverged> converged_stage_;
+    /// CIAH workspace (DIISMixer precedent: internal class, not a
+    /// Component); null unless `soscf` was set when the driver wired.
+    std::unique_ptr<internal::SOSCFStepper> soscf_stepper_;
+    /// SOSCF activation latch: set by MixStage when max|DIIS error| falls
+    /// under `soscf_start`, read by DiagonalizeStage; reset each run.
+    bool soscf_active_ = false;
     bool driver_built_ = false;
     /// Address the stages were wired to; a mismatch on `this` flags a move.
     const void* wired_self_ = nullptr;

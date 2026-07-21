@@ -124,6 +124,7 @@ void MeanFieldMethod<D>::reset_built_driver_() {
     diag_stage_.reset();
     density_stage_.reset();
     converged_stage_.reset();
+    soscf_stepper_.reset();
     this->pending_.clear();
     this->owned_components_.clear();
     this->plan_ = {};
@@ -152,13 +153,20 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
         int_n_beta_);
+    if (soscf) {
+        soscf_stepper_ = std::make_unique<internal::SOSCFStepper>(
+            restricted_, *integrals_sp_, n_alpha_, n_beta_, Hcore_, v_nuc_,
+            F_alpha_, F_beta_, P_alpha_, P_beta_, C_alpha_, C_beta_,
+            eig_alpha_, eig_beta_, soscf_max_micro, soscf_trust);
+    }
     mix_stage_ = std::make_unique<MixStage>(
         restricted_, use_diis, diis_start_iter, diis_max_vectors, level_shift,
-        mixer, mixer_switch_tol, S_, X_, P_alpha_, P_beta_, iter_, e_total_,
-        F_alpha_, F_beta_, err_alpha_, err_beta_);
+        mixer, mixer_switch_tol, soscf, soscf_start, S_, X_, P_alpha_,
+        P_beta_, iter_, e_total_, F_alpha_, F_beta_, err_alpha_, err_beta_,
+        soscf_active_);
     diag_stage_ = std::make_unique<DiagonalizeStage>(
         restricted_, F_alpha_, F_beta_, S_, X_, n_dropped_, C_alpha_, C_beta_,
-        eig_alpha_, eig_beta_);
+        eig_alpha_, eig_beta_, soscf_stepper_.get(), soscf_active_);
     density_stage_ = std::make_unique<DensityStage>(
         restricted_, is_hf_, damping_factor, C_alpha_, C_beta_, F_alpha_,
         F_beta_, Hcore_, J_, n_alpha_, n_beta_, n_basis_, diis_active_,
@@ -329,6 +337,16 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     is_hf_ = (method_ == MeanFieldType::HF);
     const bool restricted = restricted_;
     const bool is_hf = is_hf_;
+
+    // SOSCF is HF-only in this link: the CIAH Hessian products carry no XC
+    // second-order kernel, so a Kohn-Sham run would silently Newton-step the
+    // wrong surface. Refuse — no fallback.
+    if (soscf && !is_hf)
+        throw std::invalid_argument(
+            "MeanFieldMethod::run: soscf=true is supported for HF (RHF/UHF) "
+            "only — the Kohn-Sham orbital Hessian needs the XC second-order "
+            "kernel, which this SOSCF link does not include. Disable soscf "
+            "or run RHF/UHF.");
     const int n = ints.n_basis;
     const int n_alpha = n_alpha_;
     const int n_beta = n_beta_;
@@ -463,6 +481,9 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     mix_stage_->reset();
     converged_stage_->reset();
+    soscf_active_ = false; // per-run SOSCF latch + stepper state
+    if (soscf_stepper_)
+        soscf_stepper_->reset();
     // Retarget the criterion for this run: a loosened threshold for the ASPC
     // corrector (opts.tol_override), else the method's own tol — restoring the
     // old corrector_loop's tolerance behavior without a second criterion.
@@ -505,8 +526,11 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     // ── Epilogue: de-shift, wavefunction publish, energy / forces ────────────────
     // De-shifted orbital energies: rebuild one UNSHIFTED Fock from the
-    // converged density and diagonalize it.
-    if (did_converge && shift_active) {
+    // converged density and diagonalize it. The SOSCF finish shares this
+    // block: after CIAH rotations the orbitals are only semicanonical, so a
+    // final diagonalization of the Fock of the converged density restores
+    // the canonical ε (and canonical C) the published determinant carries.
+    if (did_converge && (shift_active || soscf_active_)) {
         internal::HamiltonianBuilder deshift;
         deshift.prepare(ints, is_hf, grid_level, n_radial, n_angular,
                         fixed_grid);

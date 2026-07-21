@@ -25,6 +25,28 @@ void MixStage::launch(const cpu::LaunchContext& ctx) {
     if (!restricted_)
         err_beta_ = internal::diis_error(F_beta_, P_beta_, S_, X_);
 
+    // SOSCF escalation latch: once max|DIIS error| falls below soscf_start
+    // (or from the earliest eligible iteration when soscf_start <= 0), the
+    // CIAH Newton step owns the orbital update — the DIIS error above is
+    // still built every iteration (the convergence criterion reads it), but
+    // extrapolation and the level shift are skipped for the rest of the run.
+    //
+    // iter >= 1 gate: at iteration 0 a density-only initial guess (MINAO /
+    // caller-provided P) coexists with COEFFICIENTS from the prologue's
+    // Hcore diagonalization — C and P describe different states, and a
+    // Newton rotation of that C is meaningless (observed: MINAO + SOSCF
+    // diverged by ~7 Hartree). One Roothaan diagonalize+density round first
+    // synchronizes C with the guess; SOSCF may take over from iteration 1.
+    if (soscf_ && !soscf_active_ && iter_ >= 1) {
+        double err_inf = xt::amax(xt::abs(err_alpha_))();
+        if (!restricted_)
+            err_inf = std::max(err_inf, xt::amax(xt::abs(err_beta_))());
+        if (soscf_start_ <= 0.0 || err_inf < soscf_start_)
+            soscf_active_ = true;
+    }
+    if (soscf_active_)
+        return;
+
     // Far-field escalation latch: once max|DIIS error| falls below the
     // switch tolerance, an EDIIS/ADIIS run permanently hands over to CDIIS
     // (EDIIS/ADIIS stall near convergence — far-field mixers only).

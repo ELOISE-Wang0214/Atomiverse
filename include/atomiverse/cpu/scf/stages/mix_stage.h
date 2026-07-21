@@ -55,6 +55,20 @@ class MixStage : public cpu::Component {
     /// @param mixer_switch_tol max|DIIS error| threshold (dimensionless) below
     ///                         which an EDIIS/ADIIS run switches to CDIIS —
     ///                         permanently for the rest of the run.
+    /// @param soscf            Second-order SCF escalation enabled: once the
+    ///                         latch fires, this stage still builds the DIIS
+    ///                         error (the convergence criterion reads it) but
+    ///                         skips extrapolation AND the level shift — the
+    ///                         CIAH Newton step owns convergence from there.
+    /// @param soscf_start      max|DIIS error| threshold (dimensionless)
+    ///                         below which SOSCF activates permanently for
+    ///                         the run; <= 0 activates at the earliest
+    ///                         eligible iteration. Activation is gated to
+    ///                         iteration >= 1 either way: iteration 0 must
+    ///                         run the Roothaan diagonalization once so the
+    ///                         coefficients are synchronized with a
+    ///                         density-only initial guess before Newton
+    ///                         rotations act on them.
     /// @param S                Overlap matrix (dimensionless), n x n [read].
     /// @param X                Canonical orthogonalization transform, n x n
     ///                         [read].
@@ -72,19 +86,28 @@ class MixStage : public cpu::Component {
     /// @param F_beta           Beta Fock matrix [Hartree], in/out [write].
     /// @param err_alpha        Alpha DIIS error matrix, output [write].
     /// @param err_beta         Beta DIIS error matrix, output [write].
+    /// @param soscf_active     SOSCF activation latch [write]: set true (and
+    ///                         never cleared within a run) once the
+    ///                         activation condition holds; the diagonalize
+    ///                         stage reads it to route to the CIAH stepper.
+    ///                         Owned and reset per run by the method driver.
     MixStage(bool restricted, bool use_diis, int diis_start_iter,
              int diis_max_vectors, double level_shift, MixerKind mixer_kind,
-             double mixer_switch_tol, const RealMatrix& S, const RealMatrix& X,
+             double mixer_switch_tol, bool soscf, double soscf_start,
+             const RealMatrix& S, const RealMatrix& X,
              const RealMatrix& P_alpha, const RealMatrix& P_beta,
              const int& iter, const double& energy, RealMatrix& F_alpha,
-             RealMatrix& F_beta, RealMatrix& err_alpha, RealMatrix& err_beta)
+             RealMatrix& F_beta, RealMatrix& err_alpha, RealMatrix& err_beta,
+             bool& soscf_active)
         : restricted_(restricted), use_diis_(use_diis),
           diis_start_iter_(diis_start_iter),
           diis_max_vectors_(diis_max_vectors), level_shift_(level_shift),
-          mixer_kind_(mixer_kind), mixer_switch_tol_(mixer_switch_tol), S_(S),
+          mixer_kind_(mixer_kind), mixer_switch_tol_(mixer_switch_tol),
+          soscf_(soscf), soscf_start_(soscf_start), S_(S),
           X_(X), P_alpha_(P_alpha), P_beta_(P_beta), iter_(iter),
           energy_(energy), F_alpha_(F_alpha), F_beta_(F_beta),
-          err_alpha_(err_alpha), err_beta_(err_beta), diis_(diis_max_vectors),
+          err_alpha_(err_alpha), err_beta_(err_beta),
+          soscf_active_(soscf_active), diis_(diis_max_vectors),
           ediis_(diis_max_vectors), adiis_(diis_max_vectors) {}
 
     /// @brief Component identity.
@@ -118,6 +141,8 @@ class MixStage : public cpu::Component {
     double level_shift_;
     MixerKind mixer_kind_;
     double mixer_switch_tol_;
+    bool soscf_;         ///< SOSCF escalation enabled for this run.
+    double soscf_start_; ///< max|DIIS err| activation threshold; <=0 ⇒ iter 0.
 
     const RealMatrix& S_;
     const RealMatrix& X_;
@@ -130,6 +155,7 @@ class MixStage : public cpu::Component {
     RealMatrix& F_beta_;
     RealMatrix& err_alpha_;
     RealMatrix& err_beta_;
+    bool& soscf_active_; ///< SOSCF latch (method-owned; write-once per run).
 
     internal::DIISMixer diis_;   ///< Private CDIIS subspace history.
     internal::EDIISMixer ediis_; ///< Far-field EDIIS history (F, D, E).

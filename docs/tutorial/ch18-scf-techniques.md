@@ -1,7 +1,7 @@
 # Chapter 18 — SCF 技巧:初猜、混合与二阶方法
 
-> **状态:半章**(初猜与 DIIS 家族由 hf-capability-gaps-07-guess 填充;
-> 18.4 二阶方法归 09-soscf 环)。本章成文后,读者读完应相当于读完 Jensen
+> **状态:全章**(初猜与 DIIS 家族由 hf-capability-gaps-07-guess 填充;
+> 18.4 二阶方法由 09-soscf 环填充)。读者读完本章应相当于读完 Jensen
 > 《Introduction to Computational Chemistry》§3.8 前半("SCF techniques"):
 > 以**方法为主干**,把算法与技巧织进收敛叙事,而不是罗列功能。
 
@@ -181,10 +181,151 @@ CDIIS(上方平台)被不稳定对称解捕获;ADIIS 的凸组合先把能量单
 ADIIS 的原因之一;ADIIS 完全不用能量,无此近似。二者失速的另一面
 (近域必须切回 CDIIS)由 `mixer_switch_tol` 负责,阈值默认 1e-2。
 
-## 18.4 二阶方法:SOSCF / CIAH(骨架)
+## 18.4 二阶方法:SOSCF / CIAH
 
-<!-- 填充:09-soscf — 轨道旋转上的 Newton-Raphson、增广 Hessian、信赖域、
-     为何二次收敛、何时划算;DIIS vs SOSCF 收敛曲线 -->
+前三节的所有技巧——初猜、阻尼、移位、DIIS 家族——都在同一个框架内打转:
+Roothaan-Hall 不动点迭代。它们改善迭代的**路径**,却改不了迭代的**本性**:
+不动点迭代至多线性收敛,病态体系里连线性都保不住。要质变,得换问题本身。
+
+### 18.4.1 把 SCF 写成一个优化问题
+
+SCF 的真身不是"解不动点",而是**在轨道空间里求能量极小**。参数化用轨道
+旋转:给定当前系数 \(C\),任何保持正交归一(\(C^{\mathsf T} S C = I\))的
+新系数都可写成
+
+\[ C(\kappa) = C\,e^{\kappa},\qquad \kappa^{\mathsf T} = -\kappa , \]
+
+其中反对称生成元 \(\kappa\) 只需占据-虚拟块 \(\kappa_{ai}\)(占据-占据与
+虚拟-虚拟旋转不改变行列式)。能量对 \(\kappa\) 作二阶展开
+(Helgaker, Jørgensen, Olsen, *Molecular Electronic-Structure Theory*,
+Wiley 2000, ch. 10):
+
+\[ E(\kappa) = E_0 + g^{\mathsf T}\kappa
+   + \tfrac12\,\kappa^{\mathsf T} H \kappa + \cdots \]
+
+闭壳层实轨道下梯度就是 Fock 矩阵的占据-虚拟块,\(g_{ai} = 4F_{ai}\)
+(Hartree;引擎单元测试用旋转能量的有限差分逐分量钉住这个 4 的约定);
+Hessian \(H = 4\,{}^1(A+B)\) 恰是第 15 章稳定性分析里那对 A/B 矩阵的单重态
+组合——**能量极小化的 Hessian 与内稳定性判据是同一个算符**,这不是巧合:
+"是否存在下降方向"与"Newton 往哪走"本来就是一个问题的两问。UHF 则是
+α/β 两道拼接的旋转向量,\(g^{\sigma}_{ai} = 2F^{\sigma}_{ai}\),同自旋块含
+库仑-交换响应、异自旋块只有库仑项。
+
+Newton-Raphson 步 \(\kappa = -H^{-1}g\) 在极小点附近**二次收敛**:误差
+平方地缩小,三四步内从 1e-3 干到 1e-12。DIIS 用历史差分**近似**这条曲率
+信息,Newton 直接**拥有**它——这就是质变的来源。
+
+### 18.4.2 CIAH:增广 Hessian + 矩阵自由 σ-vector
+
+直接 Newton 有两个工程障碍。其一,\(H\) 是 \(n_{occ}n_{virt} \times
+n_{occ}n_{virt}\) 的庞然大物,显式构造与求逆都不可接受;其二,远离极小点
+时 \(H\) 未必正定,裸 Newton 步会奔向鞍点。CIAH(co-iterative augmented
+Hessian;Sun, [arXiv:1610.08423](https://arxiv.org/abs/1610.08423),PySCF
+`mf.newton()` 的内核)一石二鸟——解**增广 Hessian** 本征问题
+
+\[ \begin{pmatrix} 0 & g^{\mathsf T} \\ g & H \end{pmatrix}
+   \begin{pmatrix} 1 \\ \kappa \end{pmatrix}
+   = \lambda \begin{pmatrix} 1 \\ \kappa \end{pmatrix} , \]
+
+取最低根。展开即 \((H-\lambda)\kappa = -g\):最低根保证 \(\lambda \le 0\),
+于是 \(H-\lambda\) 在极小点附近正定,\(\lambda\) 自动扮演能级移位的角色;
+收敛时 \(g \to 0\)、\(\lambda \to 0\),回到精确 Newton 步。本征问题用
+Davidson 迭代解,而 Davidson 只需要**矩阵-向量积** \(H\cdot v\)——这正是
+第 15 章稳定性分析交付的 σ-vector 内核(O(N⁵) 的 MO 积分变换一次,之后每个
+σ 积只花 O(n_{ov}^2)),\(H\) 从头到尾不显式存在。每宏迭代的 Davidson
+展开数由成员 `soscf_max_micro`(默认 12)封顶:预算内拿不到收敛根就用
+当前最优 Ritz 向量走步——这正是 CIAH"共迭代"的本意,近似 Newton 步
+照样超线性。
+
+两道保险负责全局收敛。**信赖域**:\(\lVert\kappa\rVert_2\) 超过
+`soscf_trust`(默认 0.4,无量纲)就按比例缩回;**升能回退**:一步之后
+能量不降反升,就恢复上一个被接受的迭代点、把信赖域减半重走(引擎在
+diagonalize 阶段做旋转,回退只需把系数换回快照,下一轮 Fock/密度自动
+重建)。最后,\(C \leftarrow C\,e^{\kappa}\) 的指数用缩放-平方 Taylor 求值:
+反对称生成元的精确指数是正交阵,\(C^{\mathsf T} S C = I\) 保持到 1e-12
+(单元测试逐位钉住)。
+
+### 18.4.3 何时划算:DIIS 早期,SOSCF 收尾
+
+Newton 步不是免费的:每宏迭代一次 O(N⁵) 的占据-虚拟 MO 变换,外加
+Davidson 的若干 σ 积;而一次 CDIIS 外推只花一次矩阵求逆。健康体系里
+CDIIS 五六步就进 1e-9,SOSCF 纯属浪费。二阶方法的用武之地是 18.1 那种
+病理:CDIIS 在两个构型之间永久振荡,而 Newton 只要落进正确的收敛盆,
+二次收敛就是铁律。
+
+所以引擎的配方与 18.3 的远域-近域切换一脉相承——**升级链**,而不是
+替换:
+
+```cpp
+cpu::scf::UHF uhf(5, 5);
+uhf.basis = BasisSet::Def2SVP;
+uhf.soscf = true;          // DIIS 早期,CIAH 收尾
+uhf.soscf_start = 0.25;    // max|DIIS 误差| 低于此阈值即切换(∞-范数)
+uhf.soscf_max_micro = 12;  // 每宏迭代的 Davidson 展开预算
+uhf.soscf_trust = 0.4;     // ‖κ‖₂ 信赖域
+uhf.run(frame);
+uhf.soscf_iterations();    // Newton 相的宏迭代数(诊断)
+```
+
+`soscf_start` 的角色和 `mixer_switch_tol` 对称:DIIS 把迭代拖到误差
+∞-范数 0.25 以内(收敛盆边缘),Newton 接管后二次收敛锁定。切换从第 1
+迭代起才有资格发生——第 0 迭代必须先做一次 Roothaan 对角化,把密度型
+初猜(MINAO / 外部密度)与系数同步,否则 Newton 旋转的是与密度无关的
+轨道(实测发散约 7 Hartree,引擎以 iter ≥ 1 门槛根除)。收敛后引擎自动
+用收敛密度的未移位 Fock 补一次终末对角化,行列式携带**正则**轨道能——
+SOSCF 迭代中间的轨道能只是半正则的(occ-occ/virt-virt 块对角化的副产品),
+不能拿去做 Koopmans。
+
+18.3 的困难例——2.6× 拉伸 H₂O/def2-SVP UHF,Hcore 初猜——现在有了
+第三条曲线。CDIIS 在不稳定对称解附近振荡满 60 步预算;`soscf = true`
+在第 4 迭代切换,9 个 Newton 宏迭代后锁定碎对称极小(总 13 步),
+终能量与 PySCF `mf.newton()` 钉值 −75.71896632262 Ha 差 < 1e-11:
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: line
+data:
+  values:
+    - {iter: 2, series: CDIIS, E: -62.204}
+    - {iter: 4, series: CDIIS, E: -80.771}
+    - {iter: 6, series: CDIIS, E: -73.833}
+    - {iter: 8, series: CDIIS, E: -76.205}
+    - {iter: 10, series: CDIIS, E: -75.478}
+    - {iter: 14, series: CDIIS, E: -75.357}
+    - {iter: 18, series: CDIIS, E: -75.358}
+    - {iter: 22, series: CDIIS, E: -75.358}
+    - {iter: 26, series: CDIIS, E: -75.357}
+    - {iter: 30, series: CDIIS, E: -75.358}
+    - {iter: 2, series: DIIS→SOSCF, E: -62.204}
+    - {iter: 4, series: DIIS→SOSCF, E: -80.771}
+    - {iter: 5, series: DIIS→SOSCF, E: -74.848}
+    - {iter: 6, series: DIIS→SOSCF, E: -74.939}
+    - {iter: 7, series: DIIS→SOSCF, E: -75.217}
+    - {iter: 8, series: DIIS→SOSCF, E: -75.466}
+    - {iter: 9, series: DIIS→SOSCF, E: -75.655}
+    - {iter: 10, series: DIIS→SOSCF, E: -75.7175}
+    - {iter: 11, series: DIIS→SOSCF, E: -75.71897}
+    - {iter: 13, series: DIIS→SOSCF, E: -75.71897}
+encoding:
+  x: {field: iter, type: quantitative, title: "SCF iteration"}
+  y: {field: E, type: quantitative, title: "E (Hartree)", scale: {zero: false}}
+  color: {field: series, type: nominal, title: null}
+```
+
+第 9–11 迭代之间能量从 −75.655 一步到 −75.7175、再一步到小数点后五位
+不动——这三步就是教科书上的二次收敛:误差每步平方。对照组里 PySCF
+`mf.newton()` 从等价升级点(混合 Hcore 初猜 + 6 步 DIIS 预热)到同一
+碎对称极小要 8 个宏迭代,与引擎的 9 个同量级;而从更冷的种子出发,
+PySCF 的纯 Newton 会停在**别的**驻点上(−75.44,⟨S²⟩≈1.0)——这正是
+"DIIS 早期、SOSCF 收尾"胜过"从头 Newton"的实验证据:远域让凸组合
+混合器选盆,近域让曲率收割。
+
+拉伸 N₂(R = 2.5 Å,6-31G,RHF)给出另一面:那里 CDIIS 并不失败
+(13 步收敛),但 SOSCF 总共 6 步、其中 Newton 相 4 步——与 PySCF
+`mf.newton()` 的 4 个宏迭代逐一对应,终能量差 2e-11 Ha,HOMO 差
+< 1e-8 Ha(拉伸 N₂ 的 RHF 有多个自洽解,HOMO 是盆的指纹)。注意本环
+的 SOSCF 只覆盖 HF(RHF/UHF):Kohn-Sham 的轨道 Hessian 还需要 XC
+二阶核,`RKS/UKS` 上开 `soscf` 会直接抛异常,而不是悄悄 Newton 一个
+错误的曲面。
 
 ## 章末:与 PySCF 对照(累积表)
 
@@ -197,6 +338,11 @@ ADIIS 的原因之一;ADIIS 完全不用能量,无此近似。二者失速的另
 | H2O/def2-SVP RHF | E (Ha) | −75.96098399 | −75.96098398708 | 1e-7 | 07 |
 | 2.6×H2O/def2-SVP UHF, ADIIS→CDIIS | E (Ha) | −75.71896632 | −75.71896632261 | 1e-6 | 07 |
 | 2.6×H2O/def2-SVP UHF, 纯 CDIIS | 60 步内收敛? | 否(失速) | —(对称解不稳定) | — | 07 |
-| _待 09-soscf 填充_ | 难例迭代数/终能量 | — | — | — | 09 |
+| N₂ R=2.5 Å/6-31G RHF, SOSCF | E (Ha) | −108.21122307941 | −108.21122307939 | 1e-8 | 09 |
+| N₂ R=2.5 Å/6-31G RHF, SOSCF | Newton 宏迭代数 | 4 | 4(`mf.newton()`) | ≤ 2× | 09 |
+| 2.6×H2O/def2-SVP UHF, SOSCF | E (Ha) | −75.71896632262 | −75.71896632262 | 1e-8 | 09 |
+| 2.6×H2O/def2-SVP UHF, SOSCF | ⟨S²⟩ | 1.9710 | 1.9710 | 1e-3 | 09 |
+| 2.6×H2O/def2-SVP UHF, SOSCF | Newton 宏迭代数 | 9 | 8(升级等价种子) | ≤ 2× | 09 |
+| 2.6×H2O/def2-SVP UHF, 纯 CDIIS | 60 步内收敛? | 否(失速) | —(SOSCF 13 步收敛) | — | 09 |
 
 对照方法学见[附录:PySCF 对照方法学](appendix-pyscf-oracle.md)。

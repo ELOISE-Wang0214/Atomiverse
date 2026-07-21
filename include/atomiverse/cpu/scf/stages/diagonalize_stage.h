@@ -14,6 +14,12 @@
 ///
 /// The `EigenSolver` stays a closed kernel held PRIVATELY here; it does NOT
 /// inherit `cpu::Component`.
+///
+/// SOSCF branch (hf-capability-gaps-09): when a `internal::SOSCFStepper` is
+/// wired and the method-owned activation latch is set, `launch()` routes the
+/// orbital update through the CIAH rotation (`stepper->step()`) instead of
+/// the eigensolve — orbital energies are then semicanonical until the
+/// driver's post-convergence final diagonalization.
 #pragma once
 
 #include <string>
@@ -23,6 +29,7 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
+#include "atomiverse/cpu/scf/internal/soscf.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -53,14 +60,21 @@ class DiagonalizeStage : public cpu::Component {
     /// @param C_beta [out] β MO coefficients (dimensionless), n × m.
     /// @param eig_alpha [out] α orbital energies [Hartree], length m.
     /// @param eig_beta [out] β orbital energies [Hartree], length m.
+    /// @param soscf Borrowed CIAH stepper (nullptr when SOSCF is disabled —
+    ///        the eigensolve path is then bit-identical to before).
+    /// @param soscf_active Method-owned SOSCF activation latch [read]: while
+    ///        true, `launch()` calls `soscf->step()` instead of the
+    ///        eigensolve.
     DiagonalizeStage(bool restricted, const RealMatrix& F_alpha,
                      const RealMatrix& F_beta, const RealMatrix& S,
                      const RealMatrix& X, const int& n_dropped,
                      RealMatrix& C_alpha, RealMatrix& C_beta,
-                     RealVector& eig_alpha, RealVector& eig_beta)
+                     RealVector& eig_alpha, RealVector& eig_beta,
+                     internal::SOSCFStepper* soscf, const bool& soscf_active)
         : restricted_(restricted), F_alpha_(F_alpha), F_beta_(F_beta), S_(S),
           X_(X), n_dropped_(n_dropped), C_alpha_(C_alpha), C_beta_(C_beta),
-          eig_alpha_(eig_alpha), eig_beta_(eig_beta) {}
+          eig_alpha_(eig_alpha), eig_beta_(eig_beta), soscf_(soscf),
+          soscf_active_(soscf_active) {}
 
     /// @brief Component name.
     /// @return "scf_diagonalize".
@@ -88,6 +102,12 @@ class DiagonalizeStage : public cpu::Component {
     void launch(const cpu::LaunchContext& ctx) override {
         if (!ctx.at(ATV::scf::Phase::diagonalize))
             return;
+        if (soscf_ && soscf_active_) {
+            // SOSCF: CIAH orbital rotation replaces the eigensolve; the
+            // stepper updates the wired C/eig references in place.
+            soscf_->step();
+            return;
+        }
         auto diagonalize = [&](const RealMatrix& F) {
             return (n_dropped_ > 0) ? eigen_.step_orthogonal(F, X_)
                                     : eigen_.step(F, S_);
@@ -112,6 +132,8 @@ class DiagonalizeStage : public cpu::Component {
     RealMatrix& C_beta_;          ///< β MO coefficients (write).
     RealVector& eig_alpha_;       ///< α orbital energies [Hartree] (write).
     RealVector& eig_beta_;        ///< β orbital energies [Hartree] (write).
+    internal::SOSCFStepper* soscf_; ///< Borrowed CIAH stepper (may be null).
+    const bool& soscf_active_;    ///< SOSCF latch (read; method-owned).
     internal::EigenSolver eigen_; ///< Closed numeric kernel (NOT a Component).
 };
 
