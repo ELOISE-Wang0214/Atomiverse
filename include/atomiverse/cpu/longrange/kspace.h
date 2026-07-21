@@ -1,4 +1,4 @@
-/// @file cpu/kspace/kspace.h
+/// @file cpu/longrange/kspace.h
 /// @brief Abstract base for reciprocal-space (long-range) electrostatics — CPU.
 ///
 /// A first-class force *family*, sibling to `cpu::Pair` / `cpu::Bond` /
@@ -8,10 +8,10 @@
 /// `compute()`; the short-range real-space coulomb is a separate evaluator
 /// (`cpu::CoulLong`). The two share the Ewald splitting parameter α.
 ///
-/// The reciprocal sum needs a *global* structure factor
-/// `S(k) = Σ_i q_i e^{ik·r_i}`, so the multi-rank reduction (MPI_Allreduce over
-/// partial S(k)) is a KSpace-specific communication distinct from the per-atom
-/// halo (force-infra-04 formalizes that hook on this base).
+/// Pure operator math lives in `atomiverse/longrange/*`. The multi-rank
+/// reduction (MPI_Allreduce over partial S(k) / grid) is a KSpace-specific
+/// communication owned by the concrete wrappers, distinct from the per-atom
+/// halo.
 #pragma once
 
 #include <cstdint>

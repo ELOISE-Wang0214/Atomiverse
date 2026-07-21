@@ -1,7 +1,7 @@
 ---
 title: 长程库仑重构 — 顶层 longrange/ 算子数学抽取与 cpu/kspace/ 更名
 slug: hf-capability-gaps-19-longrange
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 19/21
 created: 2026-07-20
@@ -48,14 +48,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests for facade 算子数学(`tests/cpu/longrange/test_ewald_sum.cpp`、`test_pme_math.cpp`):B 样条单位分解与 Essmann 附录值、`spline_moduli`/`good_fft_size` 钉值、双离子小盒 EwaldSum k 表规模与 S(k)/倒空间能量 — 期望值取自当前 `cpu/kspace/` 实现(pinning)
-- [ ] Implement `EwaldSum` in `include/atomiverse/longrange/ewald_sum.h`(两调用内核 API;验证式构造;`recommend_alpha` 静态成员;逐 k 位力)
-- [ ] Implement PME 纯数学 in `include/atomiverse/longrange/pme_spline.h` + `pme_influence.h`(grid-view;无 FFTW/MPI/Frame include)
-- [ ] Implement 更名与薄包装:git mv `cpu/kspace/`→`cpu/longrange/`(3 头 + 2 cpp),`KSpaceEwald`/`KSpacePME` 委托 facade,Allreduce 保持在部分 S(k) 与力调用之间;类名与 `ATV_BUILD_KSPACE` 不动
-- [ ] Update include 路径与构建:git mv `tests/cpu/kspace/`→`tests/cpu/longrange/`,改 `tests/mpi/test_pme_nacl_parity.cpp`、`regressions/md/npt_pme_nacl/reg_npt_pme_nacl.cpp`、`tests/CMakeLists.txt`、根 `CMakeLists.txt`
-- [ ] Verify 纯度与清场:grep `include/atomiverse/longrange/` 无 Component/Frame/mpi.h/fftw include;全树 grep 零 `cpu/kspace`;新公有符号 Doxygen(`@brief`/`@param` 带单位)齐全
-- [ ] Add docs:`docs/developer/kspace-long-range.md` 更新路径;`CLAUDE.md` 三处编辑;新写 `docs/tutorial/ch19-hf-large-systems.md` 之"长程库仑 I:Ewald 与 PME"节(条件收敛、实/倒空间劈分、PME 为何 O(N log N)、NaCl Madelung 动手、章末标量表)并在 `docs/tutorial/index.md` 登记
-- [ ] Run full check + test suite(含 `test_cpu_ewald_coul`/`test_cpu_pme_coul` 原容差通过)+ `reg_npt_pme_nacl` 回归
+- [x] Write failing tests for facade 算子数学(`tests/cpu/longrange/test_ewald_sum.cpp`、`test_pme_math.cpp`):B 样条单位分解与 Essmann 附录值、`spline_moduli`/`good_fft_size` 钉值、双离子小盒 EwaldSum k 表规模与 S(k)/倒空间能量 — 期望值取自当前 `cpu/kspace/` 实现(pinning)
+- [x] Implement `EwaldSum` in `include/atomiverse/longrange/ewald_sum.h`(两调用内核 API;验证式构造;`recommend_alpha` 静态成员;逐 k 位力)
+- [x] Implement PME 纯数学 in `include/atomiverse/longrange/pme_spline.h` + `pme_influence.h`(grid-view;无 FFTW/MPI/Frame include)
+- [x] Implement 更名与薄包装:git mv `cpu/kspace/`→`cpu/longrange/`(3 头 + 2 cpp),`KSpaceEwald`/`KSpacePME` 委托 facade,Allreduce 保持在部分 S(k) 与力调用之间;类名与 `ATV_BUILD_KSPACE` 不动
+- [x] Update include 路径与构建:git mv `tests/cpu/kspace/`→`tests/cpu/longrange/`,改 `tests/mpi/test_pme_nacl_parity.cpp`、`regressions/md/npt_pme_nacl/reg_npt_pme_nacl.cpp`、`tests/CMakeLists.txt`、根 `CMakeLists.txt`
+- [x] Verify 纯度与清场:grep `include/atomiverse/longrange/` 无 Component/Frame/mpi.h/fftw include;全树 grep 零 `cpu/kspace`;新公有符号 Doxygen(`@brief`/`@param` 带单位)齐全
+- [x] Add docs:`docs/developer/kspace-long-range.md` 更新路径;`CLAUDE.md` 三处编辑;新写 `docs/tutorial/ch19-hf-large-systems.md` 之"长程库仑 I:Ewald 与 PME"节(条件收敛、实/倒空间劈分、PME 为何 O(N log N)、NaCl Madelung 动手、章末标量表)并在 `docs/tutorial/index.md` 登记
+- [x] Run full check + test suite(含 `test_cpu_ewald_coul`/`test_cpu_pme_coul` 原容差通过)+ `reg_npt_pme_nacl` 回归
 
 ## Testing strategy
 

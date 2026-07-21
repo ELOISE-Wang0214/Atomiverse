@@ -92,10 +92,84 @@ rhf.run(frame);          // frame.meta[kEnergy];rhf.energy() [Ha]
 会多张出低阶函数,拟合虽仍变分,但数值就对不上 PySCF 的
 def2-universal-jkfit 了。
 
-## 19.3 长程库仑 I:Ewald 与 PME(骨架)
+## 19.3 长程库仑 I:Ewald 与 PME
 
-<!-- 填充:19-longrange — 周期库仑的条件收敛、实/倒空间劈分、PME O(N log N);
-     NaCl Madelung −1.7476 动手;longrange/ 新居所导览 -->
+周期体系中的库仑和是**条件收敛**的:裸的 ∑_{i<j} q_i q_j / r_{ij} 在
+PBC 下按求和顺序发散(正/负表面偶极层)。Ewald 求和把 1/r 劈成短程
+(在实空间用 erfc 截断)与长程(在倒空间用高斯平滑的 Poisson 解):
+
+\[
+\frac{1}{r}
+  = \frac{\mathrm{erfc}(\alpha r)}{r}
+  + \frac{\mathrm{erf}(\alpha r)}{r}
+\]
+
+实空间半截 `CoulLong(α, cutoff)` 只走邻居列表;倒空间半截由
+`KSpaceEwald` 或 `KSpacePME` 提供。两边**必须共用同一个 α**
+(计划在 `build()` 时 fail-closed 校验,见
+[`docs/developer/kspace-long-range.md`](../developer/kspace-long-range.md))。
+
+### 为何 PME 是 O(N log N)
+
+直接 Ewald 对每个 k 向量累加结构因子 S(k)=∑_j q_j e^{ik·r_j},
+k 点数随精度与体积增长 → 整体 O(N²)(固定精度、密度时对 N)。
+**光滑粒子网格 Ewald**(SPME; Essmann *et al.*, *J. Chem. Phys.*
+**103**, 8577 (1995), DOI: [10.1063/1.470117](https://doi.org/10.1063/1.470117))
+把电荷用 B 样条铺到规则网格,一次 3D FFT 完成所有 k 模的卷积,再
+样条插回原子力:
+
+| 步骤 | 复杂度 |
+|---|---|
+| 电荷铺展(B 样条 stencil) | O(N · n³)(n = 样条阶,常数) |
+| 正/逆 FFT | O(K log K), K ∝ N(固定网格密度) |
+| 力插值 | O(N · n³) |
+
+于是总标度 O(N log N)。Ewald 1921 原始公式见 *Ann. Phys.* **369**,
+253, DOI: [10.1002/andp.19213690304](https://doi.org/10.1002/andp.19213690304)。
+
+### 代码居所(facade + 薄包装)
+
+| 层 | 路径 | 内容 |
+|---|---|---|
+| 纯算子数学 | `include/atomiverse/longrange/` | `EwaldSum`, `bspline` / `spline_moduli` / `good_fft_size`, 影响函数与力插值 — **无** Frame / Component / MPI / FFT |
+| CPU 包装 | `include/atomiverse/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` — Frame span、Allreduce、FFTW 计划、meta 写回 |
+| 开关 | `-DATV_BUILD_KSPACE=ON` | 门控 FFTW3 / PME(名字保留) |
+
+规则(为后续 FMM/CFMM 立此存照):**SCF 侧只许 include
+`atomiverse/longrange/*`,永不 `cpu/longrange/*`。**
+
+```cpp
+// Classical MD: real-space CoulLong + reciprocal KSpacePME
+cpu::md::MD sim;
+const double alpha = 0.3;   // 1/Å — must match both halves
+const double cutoff = 8.0;  // Å
+sim.add_potential(cpu::CoulLong{alpha, cutoff});
+sim.add(cpu::KSpacePME{alpha, /*grid_spacing=*/1.0, /*order=*/6});
+// … integrator, neighbor, build, run …
+```
+
+### 动手:NaCl Madelung 常数
+
+岩盐结构(交替 ±1 电荷的简单立方)每离子对的 Madelung 常数
+
+\[
+M = 1.74756459\ldots
+\quad\Rightarrow\quad
+E = -\tfrac12 N\, M\, k_C / d
+\]
+
+(`k_C = units::coulomb`, d = 最近邻间距)。回归
+`regressions/md/npt_pme_nacl` 与单元
+`tests/cpu/longrange/test_{ewald,pme}_coul.cpp` 钉住 M ≈ 1.7476
+(相对 1e-4 级);构建需 `-DATV_BUILD_KSPACE=ON`。
+
+### 章末标量表(长程 I)
+
+| 方法 | 标度 | 边界 | 何时用 |
+|---|---|---|---|
+| 直接 Ewald (`KSpaceEwald`) | O(N²) | PBC | 小盒、对照、无 FFTW |
+| SPME (`KSpacePME`) | O(N log N) | PBC | 生产 MD / NPT |
+| FMM / CFMM | O(N) | 开边界或 PBC | 下两节(环 20/21) |
 
 ## 19.4 长程库仑 II:快速多极方法(骨架)
 
@@ -115,6 +189,7 @@ def2-universal-jkfit 了。
 |---|---|---|---|---|---|
 | H2O / def2-TZVP, RI-JK | E(RHF) | −76.058999347289 | −76.058999347289 | 1e-6(实测 3.3e-13) | 12 |
 | H2O / def2-TZVP, 精确 ERI | E(RHF) | −76.059004760577 | −76.059004760577 | 1e-8 | 12 |
+| NaCl rock-salt / Ewald+PME | Madelung M | 1.74756… | 文献 −1.7476/离子对 | 1e-4 rel | 19 |
 | _待 21-cfmm 填充_ | CFMM-J 精度 / 交叉点 | — | — | — | 21 |
 
 速度(甘氨酸 / def2-SVP RHF,tol 1e-9,8 线程,3 次取中位;

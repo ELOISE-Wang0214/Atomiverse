@@ -25,7 +25,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/gather.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/kspace/pme.h"
+#include "atomiverse/cpu/longrange/pme.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"

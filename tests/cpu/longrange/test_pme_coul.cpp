@@ -1,4 +1,4 @@
-/// @file tests/cpu/kspace/test_pme_coul.cpp
+/// @file tests/cpu/longrange/test_pme_coul.cpp
 /// @brief Validation of CPU Particle-Mesh Ewald (CoulLong + KSpacePME).
 ///
 /// Same checks as the direct-Ewald test, plus a direct PME-vs-Ewald total
@@ -16,8 +16,8 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/kspace/ewald.h"
-#include "atomiverse/cpu/kspace/pme.h"
+#include "atomiverse/cpu/longrange/ewald.h"
+#include "atomiverse/cpu/longrange/pme.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"

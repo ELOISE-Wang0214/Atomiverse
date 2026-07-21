@@ -212,7 +212,7 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   gpw/         domain: Gaussian-and-plane-waves DFT (GPWSolver, GPWEvaluator; CPU only)
   xc/          domain: shared exchange-correlation pieces (Padé LDA parameterization)
   vib/         domain: finite-difference Hessian, thermochemistry (CPU only)
-  kspace/      domain: reciprocal-space electrostatics (Ewald, PME)
+  longrange/   domain: reciprocal-space electrostatics (Ewald, PME)
   potentials/  domain: real-space force-field evaluators (pair + bonded styles)
   observer/    domain: derived quantities (RDF, virial stress, Mulliken, density)
   recorder/    domain: I/O (XYZ, cube, thermo, timing report)
@@ -227,7 +227,8 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   backend.** Virial stress is `observer/`, neighbor structures `neighbor/`,
   decomposition `comm/` — on CPU and CUDA alike.
 - Electrostatics splits LAMMPS-style: real-space pair styles in `potentials/`
-  (`coul_long`), reciprocal-space solvers in `kspace/`.
+  (`coul_long`), reciprocal-space solvers in `longrange/`; shared operator
+  math is written once in top-level `longrange/` (never duplicated in SCF).
 - Namespaces are not yet aligned to directories (`cpu::md::mpi::Reduce` lives in
   `cpu/comm/`, `cpu::Frame` in `cpu/frame/`); aligning them is a deliberate
   follow-up, not a drive-by.
@@ -246,6 +247,7 @@ ket-loop because member-load-through-`this` defeats hoisting there (~7%/step).
 core/        precision tiers, Mat3, units, Frame schema, device tags, backend_traits
 facade/      Driver<PhaseEnum, DeviceTag>, Plan, Stage (phase enums)
 potentials/  backend-agnostic pair force/energy kernels shared by CPU/CUDA
+longrange/   backend-agnostic Ewald/PME operator math (no Frame/Component/MPI/FFT)
 molrs.hpp    stable CXX FFI header
 ```
 

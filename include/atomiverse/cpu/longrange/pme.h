@@ -1,16 +1,17 @@
-/// @file cpu/kspace/pme.h
+/// @file cpu/longrange/pme.h
 /// @brief Smooth Particle-Mesh Ewald reciprocal sum (LAMMPS `kspace_style
 /// pppm`/`pme`) — CPU. Requires `ATV_BUILD_KSPACE` (FFTW3).
 ///
-/// A drop-in replacement for `KSpaceEwald`: same real-space `CoulLong`,
-/// same self / net-charge terms, but the O(N²) reciprocal sum is replaced
-/// by B-spline charge spreading → FFT → influence-function multiply →
+/// Thin Frame/MPI/FFTW wrapper over `atomiverse/longrange/{pme_spline,
+/// pme_influence}`. A drop-in replacement for `KSpaceEwald`: same real-space
+/// `CoulLong`, same self / net-charge terms, but the O(N²) reciprocal sum is
+/// replaced by B-spline charge spreading → FFT → influence-function multiply →
 /// inverse FFT → force interpolation, giving O(N log N) scaling.
 ///
 /// Smooth PME of Essmann et al., J. Chem. Phys. 103, 8577 (1995):
 ///   E_recip = units::coulomb/(2πV) · Σ_{m≠0} exp(−π²m²/α²)/m² · B(m) · |F(Q)(m)|²
 /// with Q the spline-interpolated charge grid and B(m) the Euler spline
-/// modulus.
+/// modulus. DOI: 10.1063/1.470117.
 ///
 /// **Distributed (MPI) operation.** Each rank spreads its owned charges onto
 /// a replicated grid; the grids are `MPI_Allreduce`-summed, every rank runs
@@ -27,7 +28,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/precision.h"
-#include "atomiverse/cpu/kspace/kspace.h"
+#include "atomiverse/cpu/longrange/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 

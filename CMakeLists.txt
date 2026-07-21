@@ -220,7 +220,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/comm/gather_for_io.cpp
         src/cpu/comm/rcb.cpp
         # Direct Ewald always (no external deps); PME gated by ATV_BUILD_KSPACE below
-        src/cpu/kspace/ewald.cpp
+        src/cpu/longrange/ewald.cpp
     )
 
     if(ATV_BUILD_SEMIEMPIRICAL)
@@ -310,7 +310,7 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_KSPACE)
-        list(APPEND ATOMIVERSE_SRCS src/cpu/kspace/pme.cpp)
+        list(APPEND ATOMIVERSE_SRCS src/cpu/longrange/pme.cpp)
     endif()
 
     if(ATV_BUILD_CUDA)

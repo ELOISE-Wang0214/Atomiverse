@@ -4,6 +4,19 @@ This note is the durable contract for `CoulLong` + `KSpaceEwald` /
 `KSpacePME` composition, cell refresh, stress, and MPI scope. It closes
 cpu-breadth-03 **ac-009** documentation.
 
+## Layout (after hf-capability-gaps-19-longrange)
+
+| Layer | Path | Owns |
+|---|---|---|
+| Facade math | `include/atomiverse/longrange/` | `EwaldSum`, PME B-spline / moduli / influence / force interpolation — no Frame, Component, MPI, or FFT engine |
+| CPU wrappers | `include/atomiverse/cpu/longrange/`, `src/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` — Frame spans, DD/MPI Allreduce, FFTW plans, meta write-back |
+| Build flag | `ATV_BUILD_KSPACE` | Gates FFTW3 / PME (name unchanged) |
+
+SCF and future consumers include only `atomiverse/longrange/*`, never
+`cpu/longrange/*`. Citations travel with the math:
+Ewald 1921 (DOI: 10.1002/andp.19213690304); Essmann et al. 1995
+(DOI: 10.1063/1.470117).
+
 ## Pairing (fail closed)
 
 Real-space and reciprocal-space halves are ordinary components that implement
@@ -80,7 +93,8 @@ fixture uses a box large enough that `cutoff + skin` fits in each subdomain
 
 | Consumer | Path |
 |---|---|
-| Unit + lifecycle | `tests/cpu/kspace/test_pme_coul.cpp` |
+| Facade math | `tests/cpu/longrange/test_ewald_sum.cpp`, `test_pme_math.cpp` |
+| Unit + lifecycle | `tests/cpu/longrange/test_pme_coul.cpp` |
 | 1/2-rank parity | `tests/mpi/test_pme_nacl_parity.cpp` |
 | Literature regression | `regressions/md/npt_pme_nacl/` |
 | LAMMPS validation | `/* benchmarks removed; re-add later */ npt_pme/validation/bench_pme_nacl_lammps` |

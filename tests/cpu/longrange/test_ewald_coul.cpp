@@ -1,4 +1,4 @@
-/// @file tests/cpu/kspace/test_ewald_coul.cpp
+/// @file tests/cpu/longrange/test_ewald_coul.cpp
 /// @brief Validation of the CPU Ewald electrostatics (CoulLong + KSpaceEwald).
 ///
 /// Three checks, none requiring external references:
@@ -20,7 +20,7 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/kspace/ewald.h"
+#include "atomiverse/cpu/longrange/ewald.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
 
