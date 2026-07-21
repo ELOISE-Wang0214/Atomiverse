@@ -384,14 +384,24 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // ── Prologue: per-run assembly ────────────────────────────────────────────
     PositionGuard guard(frame, opts.unwrap);
 
-    *integrals_sp_ = IntegralPack{frame, basis, charge, compute_eri, ecp};
-    const IntegralPack& ints = *integrals_sp_;
-    resolve_occupation(ints.n_electrons);
-
     restricted_ = (spin_ == SpinType::Restricted);
     is_hf_ = (method_ == MeanFieldType::HF);
     const bool restricted = restricted_;
     const bool is_hf = is_hf_;
+
+    // Ghost atoms are HF-only in this link: KS grids key atomic radii off Z,
+    // and a ghost Z=0 would silently pick the wrong radius. Refuse — no
+    // fallback (counterpoise for KS is a follow-up chain link).
+    if (!ghost_atoms.empty() && !is_hf)
+        throw std::invalid_argument(
+            "MeanFieldMethod::run: ghost_atoms is non-empty but the method is "
+            "Kohn-Sham (RKS/UKS) — ghost / counterpoise support is pure HF "
+            "only in this link. Use RHF/UHF, or clear ghost_atoms.");
+
+    *integrals_sp_ =
+        IntegralPack{frame, basis, charge, compute_eri, ecp, ghost_atoms};
+    const IntegralPack& ints = *integrals_sp_;
+    resolve_occupation(ints.n_electrons);
 
     // SOSCF is HF-only in this link: the CIAH Hessian products carry no XC
     // second-order kernel, so a Kohn-Sham run would silently Newton-step the

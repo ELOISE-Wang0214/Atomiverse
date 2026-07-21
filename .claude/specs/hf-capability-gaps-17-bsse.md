@@ -1,7 +1,7 @@
 ---
 title: BSSE counterpoise correction (ghost basis + 5-SCF orchestration)
 slug: hf-capability-gaps-17-bsse
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 17/21
 external-depends: scf-slater-determinant-03-unbag
@@ -39,19 +39,19 @@ created: 2026-07-20
 - tests/cpu/scf/test_ghost_basis.cpp (new) — workspace 级单元测试
 - tests/cpu/scf/test_counterpoise.cpp (new) — He–He STO-3G 编排恒等式
 - tests/CMakeLists.txt — 注册两个新测试
-- regressions/scf/h2o_dimer_cp_hf631gs/reg_h2o_dimer_cp.cpp (new) + REFERENCE.md (new)
+- regressions/scf/h2o_dimer_cp_hf631gs/reg_h2o_dimer_cp_hf631gs.cpp (new) + REFERENCE.md (new)
 - regressions/CMakeLists.txt — 注册回归用例
 - docs/tutorial/ch04-basis-sets.md — "BSSE 与 counterpoise"收尾节
 
 ## Tasks
-- [ ] Write failing tests for ghost-basis workspace (tests/cpu/scf/test_ghost_basis.cpp;含 tests/CMakeLists.txt 注册):ghost 后 `n_electrons` 不含其 Z、`V_nuc` 不含其对、`n_basis` 仍含其壳层、V 矩阵无其核项、越界下标抛异常
-- [ ] Implement ghost support in AtomList/ShellList(internal/basis_workspace.h + src/cpu/scf/basis_set.cpp:Z→0、`basis_z` 查表)
-- [ ] Implement ghost threading:IntegralPack 参数(internal/integrals.h + src/cpu/scf/integrals.cpp)与 `MeanFieldMethod::ghost_atoms` 成员 + 非 HF 守卫(mean_field_method.h + mean_field_method.cpp),doxygen 带单位
-- [ ] Write failing tests for Counterpoise orchestration (tests/cpu/scf/test_counterpoise.cpp):He–He/STO-3G 恒等式 `e_int_cp == e_dimer − e_a_ghost − e_b_ghost`、`bsse ≤ 0`(锁定约定)且 |bsse| 有限、run 后方法 `ghost_atoms` 恢复原值
-- [ ] Implement cpu::scf::Counterpoise in include/atomiverse/cpu/scf/counterpoise.h(构造子取单体下标集;5-SCF `run`;doxygen 编入符号约定与过度校正/size-consistency/形变校正三条 pitfall)
-- [ ] Add regression regressions/scf/h2o_dimer_cp_hf631gs/(reg_h2o_dimer_cp.cpp + REFERENCE.md + regressions/CMakeLists.txt):水二聚体 HF/6-31G* 对 PySCF ghost 定标值 1e-6 Ha,≤60 s,仅公开头文件
-- [ ] Extend docs/tutorial/ch04-basis-sets.md:"BSSE 与 counterpoise"一节(有限基组"借邻居函数"直觉、5-SCF 配方、过度校正诚实段、水二聚体动手示例、章末 PySCF 对照表标量行)
-- [ ] Run full check + test suite
+- [x] Write failing tests for ghost-basis workspace (tests/cpu/scf/test_ghost_basis.cpp;含 tests/CMakeLists.txt 注册):ghost 后 `n_electrons` 不含其 Z、`V_nuc` 不含其对、`n_basis` 仍含其壳层、V 矩阵无其核项、越界下标抛异常
+- [x] Implement ghost support in AtomList/ShellList(internal/basis_workspace.h + src/cpu/scf/basis_set.cpp:Z→0、`basis_z` 查表)
+- [x] Implement ghost threading:IntegralPack 参数(internal/integrals.h + src/cpu/scf/integrals.cpp)与 `MeanFieldMethod::ghost_atoms` 成员 + 非 HF 守卫(mean_field_method.h + mean_field_method.cpp),doxygen 带单位
+- [x] Write failing tests for Counterpoise orchestration (tests/cpu/scf/test_counterpoise.cpp):He–He/STO-3G 恒等式 `e_int_cp == e_dimer − e_a_ghost − e_b_ghost`、`bsse ≤ 0`(锁定约定)且 |bsse| 有限、run 后方法 `ghost_atoms` 恢复原值
+- [x] Implement cpu::scf::Counterpoise in include/atomiverse/cpu/scf/counterpoise.h(构造子取单体下标集;5-SCF `run`;doxygen 编入符号约定与过度校正/size-consistency/形变校正三条 pitfall)
+- [x] Add regression regressions/scf/h2o_dimer_cp_hf631gs/(reg_h2o_dimer_cp_hf631gs.cpp + REFERENCE.md + regressions/CMakeLists.txt):水二聚体 HF/6-31G* 对 PySCF ghost 定标值 1e-6 Ha,≤60 s,仅公开头文件
+- [x] Extend docs/tutorial/ch04-basis-sets.md:"BSSE 与 counterpoise"一节(有限基组"借邻居函数"直觉、5-SCF 配方、过度校正诚实段、水二聚体动手示例、章末 PySCF 对照表标量行)
+- [x] Run full check + test suite
 
 ## Testing strategy
 - 快乐路径:`test_ghost_basis` 在 workspace 层验证 ghost 语义(不跑 SCF 循环);`test_counterpoise` 用最小 He–He/STO-3G 验证编排恒等式与状态恢复,秒级。

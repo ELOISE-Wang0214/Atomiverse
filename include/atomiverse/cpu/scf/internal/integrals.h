@@ -115,8 +115,12 @@ struct IntegralPack {
     /// @param charge      Molecular charge (0 = neutral, +1 = cation, etc.).
     /// @param compute_eri If true, compute and store the full ERI tensor [default false].
     /// @param ecp         ECP family name ("" = all-electron; unknown names throw).
+    /// @param ghost_atoms Local atom indices treated as ghosts (basis only;
+    ///                    Z → 0 for nuclear attraction / repulsion and electron
+    ///                    count). Empty = no ghosts. Out-of-range indices throw.
     IntegralPack(const Frame& frame, BasisSet basis, int charge = 0,
-                 bool compute_eri = false, std::string ecp = {});
+                 bool compute_eri = false, std::string ecp = {},
+                 const std::vector<int>& ghost_atoms = {});
 
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.

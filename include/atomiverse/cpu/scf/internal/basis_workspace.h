@@ -16,12 +16,30 @@ namespace cpu {
 namespace scf {
 
 /// @brief Private: atoms in Bohr + electron count (from Frame + charge).
+///
+/// Ghost atoms (BSSE counterpoise): listed by local Frame index. Their
+/// nuclear charge is zeroed (`atoms[i].Z = 0`) so nuclear attraction,
+/// nuclear repulsion, and electron counting exclude them, while
+/// `basis_z[i]` keeps the true elemental Z for ShellList table lookup
+/// so their basis functions still enter the AO space.
 struct AtomList {
     std::vector<native::Atom> atoms;
+    /// @brief True elemental Z for each atom (parallel to `atoms`). Used
+    ///        only for basis-table lookup; equals `atoms[i].Z` for real
+    ///        atoms and the pre-ghost Z for ghost atoms.
+    std::vector<int> basis_z;
     int n_electrons = 0;
 
     AtomList() = default;
-    AtomList(const Frame& frame, int charge = 0);
+    /// @brief Build from Frame geometry.
+    /// @param frame       Geometry (Å) + Z in `kAtom_type`.
+    /// @param charge      Molecular charge (0 = neutral).
+    /// @param ghost_atoms Local atom indices treated as ghosts (basis only;
+    ///                    Z → 0 for nuclear/electron terms). Empty = none.
+    /// @throws std::out_of_range when a ghost index is outside
+    ///         `[0, nlocal)`.
+    AtomList(const Frame& frame, int charge = 0,
+             const std::vector<int>& ghost_atoms = {});
 };
 
 /// @brief Private: shells + owned coefficient storage for one basis.
@@ -32,6 +50,10 @@ struct ShellList {
     BasisSet basis = BasisSet::STO3G;
 
     ShellList() = default;
+    /// @brief Orbital shell list. Basis-table lookup uses `basis_z[a]`
+    ///        when non-empty, else `atoms[a].Z` (manual AtomList builders).
+    /// @param atoms Atom list (Bohr positions + Z / basis_z).
+    /// @param basis Orbital basis identifier.
     ShellList(const AtomList& atoms, BasisSet basis);
 
     /// @brief Auxiliary (density-fitting) shell list — same table→shell

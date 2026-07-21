@@ -96,6 +96,17 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     BasisSet basis = BasisSet::STO3G;
     int charge = 0;
 
+    /// @brief Local atom indices treated as ghosts (BSSE counterpoise).
+    ///
+    /// Ghost atoms contribute basis functions to the AO space but carry
+    /// zero nuclear charge and contribute no electrons (Boys–Bernardi
+    /// counterpoise: basis-only sites). Empty = no ghosts (default;
+    /// bit-identical to the pre-ghost path). Ghost markers live on the
+    /// method, never on Frame (Frame purity; molrs Element forbids Z ≤ 0).
+    /// Non-empty + Kohn–Sham (RKS/UKS) throws — KS grid radii key off Z
+    /// and are not wired for ghosts in this link.
+    std::vector<int> ghost_atoms;
+
     /// @brief Effective-core-potential family name; "" = all-electron.
     ///
     /// Currently "def2-ECP" (Weigend-Ahlrichs def2 family, Rb–Rn): atoms

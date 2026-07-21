@@ -36,10 +36,11 @@ namespace cpu {
 namespace scf {
 
 IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
-                           bool compute_eri, std::string ecp_name) {
+                           bool compute_eri, std::string ecp_name,
+                           const std::vector<int>& ghost_atoms) {
     const auto t_total = LogClock::now();
 
-    AtomList atom_list{frame, charge};
+    AtomList atom_list{frame, charge, ghost_atoms};
     ShellList shell_list{atom_list, basis};
 
     // ── ECP: valence-only description for atoms in the named table ───────

@@ -505,6 +505,12 @@ if(ATV_BUILD_HF)
     # hf-capability-gaps-16-solvent: C-PCM cavity/Born oracle, f(ε), H2O
     # solvent vs gas, solvent_eps=0 vacuum identity, forces throw.
     atv_add_cpp_test(test_cpu_scf_pcm             cpu/scf/test_pcm.cpp)
+    # hf-capability-gaps-17-bsse: ghost AtomList/ShellList/IntegralPack
+    # workspace semantics + Boys–Bernardi Counterpoise 5-SCF identities
+    # (He–He/STO-3G; locked bsse ≤ 0). Water-dimer e2e lives in
+    # regressions/scf/h2o_dimer_cp_hf631gs.
+    atv_add_cpp_test(test_ghost_basis             cpu/scf/test_ghost_basis.cpp)
+    atv_add_cpp_test(test_counterpoise            cpu/scf/test_counterpoise.cpp)
     # hf-capability-gaps-13-cphf: second/skeleton derivative-integral FD
     # gates, B^x sum rules, CPHF iterative-vs-dense parity + the link-08
     # sigma_plus LHS identity (micro HeH+), and the H2/STO-3G analytic-

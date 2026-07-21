@@ -96,10 +96,23 @@ void ShellList::move_from(ShellList&& o) noexcept {
 
 // ── AtomList constructor ─────────────────────────────────────────────
 
-AtomList::AtomList(const Frame& frame, int charge) {
+AtomList::AtomList(const Frame& frame, int charge,
+                   const std::vector<int>& ghost_atoms) {
     const int natm = static_cast<int>(frame.nlocal());
 
-    atoms.resize(natm);
+    // Validate ghost indices up front (no fallback / silent clamp).
+    std::vector<char> is_ghost(static_cast<std::size_t>(natm), 0);
+    for (int g : ghost_atoms) {
+        if (g < 0 || g >= natm) {
+            throw std::out_of_range(
+                "cpu::scf::AtomList: ghost atom index " + std::to_string(g)
+                + " is outside [0, " + std::to_string(natm) + ")");
+        }
+        is_ghost[static_cast<std::size_t>(g)] = 1;
+    }
+
+    atoms.resize(static_cast<std::size_t>(natm));
+    basis_z.resize(static_cast<std::size_t>(natm));
     int nelec = -charge;
     const int* __restrict sp_type = frame.span(kAtom_type);
     const StorageReal* __restrict sp_x = frame.span(kAtom_x);
@@ -107,14 +120,22 @@ AtomList::AtomList(const Frame& frame, int charge) {
     const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < natm; ++i) {
         const int Z = sp_type[i];
-        atoms[i].Z = Z;
+        // True elemental Z always stored for basis-table lookup.
+        basis_z[static_cast<std::size_t>(i)] = Z;
+        // Ghost: basis stays, nuclear charge and electron count drop to 0.
+        atoms[static_cast<std::size_t>(i)].Z =
+            is_ghost[static_cast<std::size_t>(i)] ? 0 : Z;
         // Frame positions are in Angstrom; SCF integrals live in Bohr.
         using units::convert;
         using units::Length;
-        atoms[i].pos[0] = convert(sp_x[i], Length::Angstrom, Length::Bohr);
-        atoms[i].pos[1] = convert(sp_y[i], Length::Angstrom, Length::Bohr);
-        atoms[i].pos[2] = convert(sp_z[i], Length::Angstrom, Length::Bohr);
-        nelec += Z;
+        atoms[static_cast<std::size_t>(i)].pos[0] =
+            convert(sp_x[i], Length::Angstrom, Length::Bohr);
+        atoms[static_cast<std::size_t>(i)].pos[1] =
+            convert(sp_y[i], Length::Angstrom, Length::Bohr);
+        atoms[static_cast<std::size_t>(i)].pos[2] =
+            convert(sp_z[i], Length::Angstrom, Length::Bohr);
+        if (!is_ghost[static_cast<std::size_t>(i)])
+            nelec += Z;
     }
     n_electrons = nelec;
 }
@@ -131,6 +152,20 @@ namespace {
 // engines, kMaxL (g) for density-fitting auxiliary bases that only ever
 // reach the 2-/3-center Rys paths.
 
+/// @brief Elemental Z used for basis-table lookup.
+///        Prefer `basis_z[a]` (true Z for ghosts); fall back to
+///        `atoms[a].Z` for manually assembled AtomList (e.g. density fitting).
+int basis_lookup_z(const AtomList& atoms, int a) {
+    if (!atoms.basis_z.empty()) {
+        if (a < 0 || a >= static_cast<int>(atoms.basis_z.size())) {
+            throw std::out_of_range(
+                "cpu::scf::ShellList: basis_z index out of range");
+        }
+        return atoms.basis_z[static_cast<std::size_t>(a)];
+    }
+    return atoms.atoms[static_cast<std::size_t>(a)].Z;
+}
+
 ShellList
 build_shell_list_from_table(const AtomList& atoms,
                             const std::vector<basis_data::AtomBasis>& table,
@@ -140,7 +175,7 @@ build_shell_list_from_table(const AtomList& atoms,
     // First pass: count AOs and validate element coverage.
     int n_basis = 0;
     for (int a = 0; a < natm; ++a) {
-        const int Z = atoms.atoms[a].Z;
+        const int Z = basis_lookup_z(atoms, a);
         if (Z < 1 || Z >= static_cast<int>(table.size())
             || table[static_cast<std::size_t>(Z)].shells.empty()) {
             throw std::runtime_error(
@@ -165,10 +200,10 @@ build_shell_list_from_table(const AtomList& atoms,
 
     int shell_idx = 0;
     for (int a = 0; a < natm; ++a) {
-        const int Z = atoms.atoms[a].Z;
-        const double cx = atoms.atoms[a].pos[0];
-        const double cy = atoms.atoms[a].pos[1];
-        const double cz = atoms.atoms[a].pos[2];
+        const int Z = basis_lookup_z(atoms, a);
+        const double cx = atoms.atoms[static_cast<std::size_t>(a)].pos[0];
+        const double cy = atoms.atoms[static_cast<std::size_t>(a)].pos[1];
+        const double cz = atoms.atoms[static_cast<std::size_t>(a)].pos[2];
 
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
             const int np = static_cast<int>(sh.alpha.size());

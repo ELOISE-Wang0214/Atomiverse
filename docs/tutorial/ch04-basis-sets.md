@@ -528,6 +528,73 @@ ECP 把"总能量里 98% 的化学惰性部分"连同它的基组代价一起删
 `GthPotential` 同形,表外元素/未知名字抛错无回退;ECP 解析梯度尚未接线,
 `forces()` 对 ECP pack 显式抛出(与球谐基组同一先例)。
 
+## BSSE 与 counterpoise
+
+有限基组下,单体 A 在二聚体几何中会"借"邻居 B 的基函数来描述自己的电子密度 —
+这不是物理上的相互作用,而是**基组重叠误差**(BSSE,basis-set superposition
+error)。结果是未校正的相互作用能 \(\Delta E_{\mathrm{raw}} = E_{AB}^{AB} -
+E_A^A - E_B^B\) 系统性地偏深(更负)。
+
+Boys–Bernardi counterpoise(CP)校正用**同一套二聚体基组**重算两个单体:
+
+\[
+\Delta E_{\mathrm{CP}} = E_{AB}^{AB} - E_A^{AB} - E_B^{AB},
+\]
+
+其中 \(E_A^{AB}\) 是 A 在完整二聚体基组中的能量(B 的位置放 **ghost
+原子**:只贡献基函数,核电荷与电子数均为 0)。符号约定锁定为
+
+\[
+\mathrm{bsse} = (E_A^{AB} - E_A^A) + (E_B^{AB} - E_B^B) \le 0
+\]
+
+——单体在更大的二聚体基组中能量必然降低,`|bsse|` 即基组重叠误差幅度。
+
+### 诚实的坑(Jensen《Introduction to Computational Chemistry》基组/BSSE 节)
+
+1. **过度校正。** 小基组(STO-3G、6-31G*)下 CP 常把真实相互作用也削掉一部分;
+   大基组(def2-TZVP 及以上)BSSE 本身就小,CP 的必要性下降。
+2. **多体簇不是 size-consistent。** site–site CP 与 full-cluster CP 不一致;
+   本 API 只做二聚体 5-SCF 编排。
+3. **形变校正是另一项。** 单体从自由几何放松到二聚体几何的能量变化不在
+   `Counterpoise` 内;固定几何上的 CP 与几何优化后的 CP 不是同一数字。
+
+### 5-SCF 配方与 Atomiverse API
+
+Ghost 标记是方法成员 `ghost_atoms`(局部原子下标),**不进 Frame**(Frame
+纯净性;molrs `Element` 禁止 Z ≤ 0)。`cpu::scf::Counterpoise` 是纯编排类 —
+不继承 Component、不注册 Plan、不新增 Driver — 串行借用用户已配置的方法
+对象跑 5 次 `run(const Frame&)`:
+
+```cpp
+// 水二聚体 HF/6-31G*:单体 A = 原子 0..2,单体 B = 3..5
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::Pople631Gs;
+rhf.tol = 1e-10;
+
+cpu::scf::Counterpoise cp({0, 1, 2}, {3, 4, 5});
+auto r = cp.run(dimer_frame, rhf);
+// r.e_dimer, r.e_a, r.e_b, r.e_a_ghost, r.e_b_ghost  [Hartree]
+// r.e_int_cp = e_dimer − e_a_ghost − e_b_ghost
+// r.bsse     = (e_a_ghost − e_a) + (e_b_ghost − e_b)  ≤ 0
+// 返回后 rhf.ghost_atoms 恢复为 run 前的值
+```
+
+五次 SCF 顺序:(1) 二聚体全基组;(2) 自由单体 A;(3) 自由单体 B;
+(4) A + B-ghost;(5) B + A-ghost。KS(RKS/UKS)与非空 `ghost_atoms` 组合
+显式抛异常(格点半径按 Z 取,本链节未接线)。
+
+### 上手:水二聚体 CP
+
+完整几何、PySCF 钉值与文献见
+`regressions/scf/h2o_dimer_cp_hf631gs/REFERENCE.md`。在 6-31G* 下 CP 校正
+约 1.7 mHa,落在文献 milli-Hartree 量级。
+
+```bash
+cmake --build build --target reg_h2o_dimer_cp_hf631gs
+./build/regressions/reg_h2o_dimer_cp_hf631gs
+```
+
 ### 章末对照:Atomiverse vs PySCF 2.14.0(标量,外部钉值)
 
 | 量 | Atomiverse | PySCF(钉定) | 差 |
@@ -536,7 +603,10 @@ ECP 把"总能量里 98% 的化学惰性部分"连同它的基组代价一起删
 | E_RHF(AuH, def2-SVP+def2-ECP)[Ha] | −135.342567007924 | −135.34256700791678 | 7×10⁻¹² |
 | V_nuc(I₂, Z_val=25)[Ha] | 124.056923040135 | 124.05692304013505 | <10⁻⁸ |
 | n_electrons(I₂)/(AuH) | 50 / 20 | 50 / 20 | — |
+| ΔE_CP(H₂O 二聚体, HF/6-31G* cart)[Ha] | −0.007542440802 | −0.00754244121519 | ≤1×10⁻⁶ |
+| bsse(H₂O 二聚体, HF/6-31G* cart)[Ha] | −0.001483681 | −0.00148368102643 | ≤1×10⁻⁶ |
 
-(几何、命令与文献:`regressions/scf/ecp_heavy_atom/REFERENCE.md`;
+(ECP 几何、命令与文献:`regressions/scf/ecp_heavy_atom/REFERENCE.md`;
 U 矩阵元级的钉值 — 含合成 f 投影道 — 在 `tests/cpu/scf/test_ecp.cpp`。
-标量一律进表。)
+水二聚体 CP:`regressions/scf/h2o_dimer_cp_hf631gs/REFERENCE.md`,
+Boys & Bernardi 1970 DOI 10.1080/00268977000101561。标量一律进表。)

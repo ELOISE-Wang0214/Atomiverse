@@ -22,6 +22,7 @@
 /// @endcode
 #pragma once
 
+#include "atomiverse/cpu/scf/counterpoise.h"
 #include "atomiverse/cpu/scf/ghf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rhf.h"
