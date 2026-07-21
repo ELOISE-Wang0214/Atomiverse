@@ -2,9 +2,10 @@
 /// @brief Cross-rank reduction + rendering of TimerRegistry data into a
 /// LAMMPS-`timing breakdown`-comparable table (console) and CSV (metrics file).
 ///
-/// Lives in `cpu/md` because it knows the 6 MD timing categories and their
-/// names (`StepTiming`). The registry/data model is domain-agnostic
-/// (`core/timer.h`); output is routed through the log module (`core/report.h`).
+/// Lives in `cpu/md` because it knows the 8 LAMMPS-aligned MD timing
+/// categories and their names (`StepTiming`). The registry/data model is
+/// domain-agnostic (`core/timer.h`); output is routed through the log module
+/// (`core/report.h`).
 #pragma once
 
 #include <array>

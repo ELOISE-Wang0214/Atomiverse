@@ -80,7 +80,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
-#pragma omp parallel reduction(+ : energy_total)
+#pragma omp parallel if (scratch_.n_threads() > 1) reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP

@@ -152,13 +152,12 @@ void CoulLong::launch(const LaunchContext& ctx) {
                 continue;
             const int jnum = numneigh[i];
             const int off = firstneigh[i];
-            const std::int64_t i_tag = any_special_ ? tag_ptr[i] : 0;
             double fi_x = 0, fi_y = 0, fi_z = 0;
             for (int jj = 0; jj < jnum; ++jj) {
                 const int j = neighbors[off + jj];
                 double sc = 1.0;
                 if (any_special_) {
-                    sc = special_.scale(i_tag, tag_ptr[j]);
+                    sc = special_.scale_owner(i, tag_ptr[j]);
                     if (sc == 0.0)
                         continue;
                 }

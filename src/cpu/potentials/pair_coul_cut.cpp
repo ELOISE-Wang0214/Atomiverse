@@ -98,14 +98,14 @@ void PairCoulCut::rebuild_filtered_list(const Frame& f,
     const TagInt* __restrict tag = f.span(kAtom_tag);
 
     for (int i = 0; i < n; ++i) {
-        const std::int64_t i_tag = tag[i];
+
         const int off = firstneigh[i];
         const int jn = numneigh[i];
         filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
         int kept = 0;
         for (int jj = 0; jj < jn; ++jj) {
             const int j = neighbors[off + jj];
-            const double sc = special_.scale(i_tag, tag[j]);
+            const double sc = special_.scale_owner(i, tag[j]);
             if (sc == 0.0)
                 continue;
             filtered_neighbors_.push_back(j);

@@ -45,6 +45,7 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
+#include "atomiverse/cpu/md/atom_sort.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
@@ -86,6 +87,18 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
           every_(every < 1 ? 1 : every), delay_(delay < 0 ? 0 : delay),
           check_(check) {}
 
+    /// @brief LAMMPS `atom_modify sort Nfreq binsize` — spatial reorder of
+    ///        owned atoms. Multi-rank: applied in HaloSend before borders;
+    ///        serial: at NeighborList reneighbor. Default: enabled, nfreq=1000.
+    NeighborList& set_atom_sort(AtomSortParams p) & {
+        sort_state_.configure(p);
+        return *this;
+    }
+    NeighborList set_atom_sort(AtomSortParams p) && {
+        set_atom_sort(p);
+        return std::move(*this);
+    }
+
     std::string name() const override { return "neighbor_list"; }
 
     /// @brief Supply side of the neighbor contract — the driver
@@ -116,13 +129,23 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
         // it has, via `pre_force`; under `Evaluate` there is no halo
         // launch before the first force eval, hence the
         // `is_multi_rank` guard.)
-        if (is_multi_rank(ctx.runtime))
+        if (is_multi_rank(ctx.runtime)) {
             last_halo_generation_ = ctx.runtime.md.dd->halo_generation;
+            // Publish sort cadence for HaloSend (exchange → sort → borders).
+            auto* dd = ctx.runtime.md.dd;
+            dd->atom_sort_enabled = sort_state_.params.enabled;
+            dd->atom_sort_nfreq = sort_state_.params.nfreq;
+            dd->atom_sort_binsize = sort_state_.params.binsize;
+            dd->atom_sort_neigh_cut = cutoff_ + strategy_.skin();
+            dd->atom_sort_step = sort_state_.step;
+            dd->atom_sort_next = sort_state_.next_sort;
+        }
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
         const int n_active = active_count(ctx.runtime, ctx.frame);
         ++ago_;
+        ++sort_state_.step; // LAMMPS ntimestep proxy for atom_modify sort
 
         // Rebuild decision mirrors LAMMPS `Neighbor::decide()` (neighbor.cpp:2360):
         //     ago++;
@@ -167,6 +190,24 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
             delay_ok && every_ok
             && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
         if (mode_stale || size_stale || halo_stale || disp_rebuild) {
+            // Serial only: multi-rank sort runs in HaloSend before borders
+            // (LAMMPS exchange → sort → borders). Sorting here after halo
+            // would invalidate reverse send_lists.
+            //
+            // Must notify_sorted so BondedTupleCache rebuilds: on serial MD
+            // `dd` still exists, and cache staleness is keyed on
+            // neighbor_generation. Skipping the bump leaves bonded forces
+            // on pre-sort local indices → GAFF trajectory explosion at
+            // nfreq=1.
+            if (!is_multi_rank(ctx.runtime) && sort_state_.due()) {
+                auto& f = ctx.frame;
+                const double bs =
+                    sort_state_.resolved_binsize(cutoff_ + strategy_.skin());
+                if (sort_owned_atoms(f, f.nlocal(), bs))
+                    notify_sorted(ctx.runtime.md.dd, f,
+                                  /*clear_ghosts=*/true);
+                sort_state_.mark_sorted();
+            }
             strategy_.build(ctx.frame, n_active);
             refresh_(ctx.runtime, ctx.frame, n_active);
             ++pairs_.version;
@@ -269,6 +310,7 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
 
     Strategy strategy_;
     PairList pairs_;
+    AtomSortState sort_state_{}; ///< LAMMPS atom_modify sort (at reneighbor)
     /// @brief Mode the currently-published CSR was built in. A mismatch against
     /// `ctx.md.full_list_requested` forces a rebuild (see `launch()`).
     bool built_full_ = false;

@@ -219,14 +219,13 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     const TagInt* __restrict tag = f.span(kAtom_tag);
 
     for (int i = 0; i < n; ++i) {
-        const std::int64_t i_tag = tag[i];
         const int off = firstneigh[i];
         const int jn = numneigh[i];
         filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
         int kept = 0;
         for (int jj = 0; jj < jn; ++jj) {
             const int j = neighbors[off + jj];
-            const double sc = special_.scale(i_tag, tag[j]);
+            const double sc = special_.scale_owner(i, tag[j]);
             if (sc == 0.0)
                 continue;
             filtered_neighbors_.push_back(j);
@@ -836,9 +835,10 @@ std::size_t PairLJCut::memory_bytes() const {
     n += (filtered_shift_x_.size() + filtered_shift_y_.size()
           + filtered_shift_z_.size() + filtered_scale_.size())
          * sizeof(double);
-    for (const auto& kv : special_.by_tag)
-        n += 48 + kv.second.size()
-                 * sizeof(std::pair<std::int64_t, double>);
+    for (const auto& list : special_.by_owner)
+        n += list.capacity() * sizeof(std::pair<std::int64_t, double>);
+    n += special_.tag_to_owner.size()
+         * (sizeof(std::int64_t) + sizeof(int) + 16);
     return n;
 }
 

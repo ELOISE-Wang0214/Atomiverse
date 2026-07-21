@@ -137,6 +137,7 @@ atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nve               cpu/md/test_pe_nve.cpp)
 # test_cpu_md_csvr / test_cpu_md_nvt relocated to benchmarks/md/lj/validation/
 # (val_md_csvr / val_md_nvt) — full thermostat equilibrations, not ms unit tests.
+atv_add_cpp_test(test_cpu_md_atom_sort            cpu/md/test_atom_sort.cpp)
 atv_add_cpp_test(test_cpu_md_step_timing          cpu/md/test_step_timing.cpp)
 atv_add_cpp_test(test_cpu_md_timing_report        cpu/md/test_timing_report.cpp)
 atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
@@ -147,6 +148,7 @@ atv_add_cpp_test(test_cpu_pair_kernel             cpu/potentials/test_pair_kerne
 atv_add_cpp_test(test_cpu_pair_coul_cut           cpu/potentials/test_pair_coul_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_special_scale      cpu/potentials/test_pair_special_scale.cpp)
 atv_add_cpp_test(test_cpu_coul_long_special       cpu/potentials/test_coul_long_special.cpp)
+atv_add_cpp_test(test_cpu_pair_lj_cut_coul_long   cpu/potentials/test_pair_lj_cut_coul_long.cpp)
 atv_add_cpp_test(test_cpu_dihedral_charmm         cpu/potentials/test_dihedral_charmm.cpp)
 atv_add_cpp_test(test_cpu_improper_harmonic       cpu/potentials/test_improper_harmonic.cpp)
 atv_add_cpp_test(test_cpu_compiled_forcefield     cpu/io/test_compiled_forcefield.cpp)
@@ -158,6 +160,7 @@ atv_add_cpp_test(test_cpu_pme_math                cpu/longrange/test_pme_math.cp
 atv_add_cpp_test(test_cpu_ewald_coul              cpu/longrange/test_ewald_coul.cpp)
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/longrange/test_pme_coul.cpp)
+    atv_add_cpp_test(test_cpu_pppm_coul           cpu/longrange/test_pppm_coul.cpp)
 endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
@@ -336,6 +339,12 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
                         test_mpi_pme_nacl_parity 1)
         atv_add_mpi_run(test_mpi_pme_nacl_parity_n2
                         test_mpi_pme_nacl_parity 2)
+        atv_add_mpi_exec(test_mpi_pppm_brick_parity
+                         mpi/test_pppm_brick_parity.cpp)
+        atv_add_mpi_run(test_mpi_pppm_brick_parity_n1
+                        test_mpi_pppm_brick_parity 1)
+        atv_add_mpi_run(test_mpi_pppm_brick_parity_n2
+                        test_mpi_pppm_brick_parity 2)
     endif()
 
     atv_add_mpi_exec(test_mpi_bonded_energy_bruteforce
