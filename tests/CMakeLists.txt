@@ -501,6 +501,7 @@ if(ATV_BUILD_HF)
     # Formaldehyde oracle e2e lives in regressions/scf/ch2o_tdhf.
     atv_add_cpp_test(test_cpu_scf_tdhf_pack       cpu/scf/test_tdhf_pack.cpp)
     atv_add_cpp_test(test_cpu_scf_tdhf_method     cpu/scf/test_tdhf_method.cpp)
+    atv_add_cpp_test(test_cpu_scf_embedding       cpu/scf/test_embedding.cpp)
     # hf-capability-gaps-13-cphf: second/skeleton derivative-integral FD
     # gates, B^x sum rules, CPHF iterative-vs-dense parity + the link-08
     # sigma_plus LHS identity (micro HeH+), and the H2/STO-3G analytic-

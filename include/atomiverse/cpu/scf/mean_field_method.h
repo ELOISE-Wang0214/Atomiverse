@@ -26,6 +26,7 @@
 /// @endcode
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -199,6 +200,30 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
 
     /// @brief When true (default), nested force-slot runs write forces.
     bool compute_force = true;
+
+    // ── Environment (hf-capability-gaps-15-embed) ─────────────────────
+    /// @brief External point charge (QM/MM electrostatic embedding, QM side).
+    ///
+    /// Positions in Å, charge in e. Empty vector = no embedding (bit-identical
+    /// to the vacuum path). Wired into the private Hcore / classical energy
+    /// in `drive_scf_core_`; never stored on Frame.
+    struct PointCharge {
+        double x = 0; ///< Position x [Å].
+        double y = 0; ///< Position y [Å].
+        double z = 0; ///< Position z [Å].
+        double q = 0; ///< Charge [e].
+    };
+
+    /// @brief External MM-like point charges (positions [Å], charges [e]).
+    std::vector<PointCharge> point_charges;
+
+    /// @brief Uniform external electric field (Ex, Ey, Ez) [a.u.].
+    ///
+    /// Origin is the center of nuclear charge (same as the multipole
+    /// observer). **Finite-field collapse hazard:** keep |F| ≲ 1e-4 a.u.;
+    /// a static field makes the energy unbounded below (diffuse bases can
+    /// "ionize"). Zero field = vacuum path (bit-identical).
+    std::array<double, 3> external_field{{0.0, 0.0, 0.0}};
 
     MeanFieldMethod();
     ~MeanFieldMethod() override;

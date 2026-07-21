@@ -1,7 +1,7 @@
 ---
 title: External point-charge embedding and uniform electric field in the core Hamiltonian
 slug: hf-capability-gaps-15-embed
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 15/21
 external-depends: scf-slater-determinant-03-unbag
@@ -46,14 +46,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests for embedding and external field (tests/cpu/scf/test_embedding.cpp,注册进 tests/CMakeLists.txt):单电荷核矩阵 == Z=q 的核吸引矩阵(机器恒等);经典核-电荷/电荷-电荷手算和;ExternalField 原点 == link 03 偶极原点(非对称分子);小场能移 E(F)−E(0) ≈ −μ·F;环境非空时 forces() 抛异常
-- [ ] Implement internal::PointChargeEmbedding in include/atomiverse/cpu/scf/internal/point_charges.h + src/cpu/scf/internal/point_charges.cpp(复用核吸引原语;构造函数校验,无 build_*)
-- [ ] Implement internal::ExternalField in include/atomiverse/cpu/scf/internal/external_field.h + src/cpu/scf/internal/external_field.cpp(link 03 偶极积分 + 核电荷中心原点)
-- [ ] Implement 成员 point_charges / external_field 于 include/atomiverse/cpu/scf/mean_field_method.h 并在 src/cpu/scf/mean_field_method.cpp 的 drive_scf_core_ 序幕接线(Hcore += 环境矩阵;v_nuc_ += 经典项;环境非空 + forces 路径抛异常)
-- [ ] Add Doxygen(@brief/@param 带单位/@return)到所有新符号,含坍缩风险警告
-- [ ] Write regression regressions/scf/h2o_embedding_field/reg_h2o_embedding_field.cpp(注册进 regressions/CMakeLists.txt):H₂O/STO-3G,F=1e-4 a.u. 中心差分偶极 vs 解析偶极 ≤1e-5 a.u.;点电荷嵌入能量 vs 外部钉定 PySCF qmmm.mm_charge ≤1e-8 Ha(MM–MM 常数项在断言中显式手算处理);≤60 s
-- [ ] Write docs/tutorial/ch20-hf-properties-environment.md 的「外场与点电荷嵌入」节:QM/MM 嵌入叙事(环境如何进 Fock 算符)、有限场 vs 解析偶极对照表、坍缩风险的诚实警告、章末 PySCF 标量表行
-- [ ] Run full check + test suite
+- [x] Write failing tests for embedding and external field (tests/cpu/scf/test_embedding.cpp,注册进 tests/CMakeLists.txt):单电荷核矩阵 == Z=q 的核吸引矩阵(机器恒等);经典核-电荷/电荷-电荷手算和;ExternalField 原点 == link 03 偶极原点(非对称分子);小场能移 E(F)−E(0) ≈ −μ·F;环境非空时 forces() 抛异常
+- [x] Implement internal::PointChargeEmbedding in include/atomiverse/cpu/scf/internal/point_charges.h + src/cpu/scf/internal/point_charges.cpp(复用核吸引原语;构造函数校验,无 build_*)
+- [x] Implement internal::ExternalField in include/atomiverse/cpu/scf/internal/external_field.h + src/cpu/scf/internal/external_field.cpp(link 03 偶极积分 + 核电荷中心原点)
+- [x] Implement 成员 point_charges / external_field 于 include/atomiverse/cpu/scf/mean_field_method.h 并在 src/cpu/scf/mean_field_method.cpp 的 drive_scf_core_ 序幕接线(Hcore += 环境矩阵;v_nuc_ += 经典项;环境非空 + forces 路径抛异常)
+- [x] Add Doxygen(@brief/@param 带单位/@return)到所有新符号,含坍缩风险警告
+- [x] Write regression regressions/scf/h2o_embedding_field/reg_h2o_embedding_field.cpp(注册进 regressions/CMakeLists.txt):H₂O/STO-3G,F=1e-4 a.u. 中心差分偶极 vs 解析偶极 ≤1e-5 a.u.;点电荷嵌入能量 vs 外部钉定 PySCF qmmm.mm_charge ≤1e-8 Ha(MM–MM 常数项在断言中显式手算处理);≤60 s
+- [x] Write docs/tutorial/ch20-hf-properties-environment.md 的「外场与点电荷嵌入」节:QM/MM 嵌入叙事(环境如何进 Fock 算符)、有限场 vs 解析偶极对照表、坍缩风险的诚实警告、章末 PySCF 标量表行
+- [x] Run full check + test suite
 
 ## Testing strategy
 

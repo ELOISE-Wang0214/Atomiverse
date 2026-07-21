@@ -26,11 +26,13 @@
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
+#include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/hueckel_guess.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
@@ -479,19 +481,75 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     ensure_driver_built_();
 
+    // Environment (point charges / external field) — refuse silent wrong
+    // forces when either is active (analytic gradient of the environment
+    // terms is a follow-up link).
+    const bool field_active =
+        std::abs(external_field[0]) > 0.0 || std::abs(external_field[1]) > 0.0
+        || std::abs(external_field[2]) > 0.0;
+    const bool env_active = !point_charges.empty() || field_active;
+    if (opts.forces && env_active)
+        throw std::runtime_error(
+            "MeanFieldMethod::forces: analytic forces are not implemented "
+            "with point_charges or external_field set — the environment "
+            "gradient (QM/MM + field) is a follow-up chain link. Clear the "
+            "environment members, or use finite differences.");
+
+    // Apply environment to the n-dimensional Hcore / classical energy
+    // *before* any GHF spinor embed so both spin blocks share the same
+    // one-electron environment (Frame-pure: env is never parked on Frame).
+    RealMatrix H = ints.Hcore;
+    double v_nuc = ints.V_nuc;
+    if (!point_charges.empty()) {
+        std::vector<internal::PointChargeSite> sites;
+        sites.reserve(point_charges.size());
+        for (const auto& c : point_charges)
+            sites.push_back({c.x, c.y, c.z, c.q});
+        const internal::PointChargeEmbedding emb(sites);
+        RealMatrix Venv = emb.core_matrix(ints.shells);
+        if (ints.spherical()) {
+            const auto ct = xt::transpose(ints.c2s);
+            Venv = xt::linalg::dot(ct, xt::linalg::dot(Venv, ints.c2s));
+        }
+        H += Venv;
+        v_nuc += emb.nuclear_energy(ints.atoms) + emb.self_energy();
+    }
+    if (field_active) {
+        const internal::ExternalField field(external_field, ints.atoms);
+        RealMatrix Vf = field.core_matrix(ints.shells);
+        if (ints.spherical()) {
+            const auto ct = xt::transpose(ints.c2s);
+            Vf = xt::linalg::dot(ct, xt::linalg::dot(Vf, ints.c2s));
+        }
+        H += Vf;
+        v_nuc += field.nuclear_energy(ints.atoms);
+    }
+
+    // Publish the environment-augmented Hcore back onto the private pack so
+    // FockStage / HamiltonianBuilder (which read `integrals.Hcore`, not the
+    // method member) build F = H_env + G. Energy uses Hcore_ + v_nuc_ below;
+    // if only the member were updated, ½Tr[(H_env+F_vac)P] would undercount
+    // the field/embedding by exactly ½.
+    integrals_sp_->Hcore = H;
+    integrals_sp_->V_nuc = v_nuc;
+
+    // n-dimensional Hcore (with environment) kept for the GHF n-dim aufbau
+    // seed below; the loop members may then be spinor-embedded.
+    const RealMatrix& H_ao = integrals_sp_->Hcore;
+
     // Generalized (GHF): the loop members live at spinor dimension 2n. The
     // spin-independent one-electron operators are embedded block-diagonally
     // (S⊗1₂, h⊗1₂ in the blocked [α-rows; β-rows] layout); the AO integrals
     // themselves stay n-dimensional inside the FockStage spinor branch.
     if (generalized) {
         S_ = internal::DensityBuilder::spinor_embed(ints.S);
-        Hcore_ = internal::DensityBuilder::spinor_embed(ints.Hcore);
+        Hcore_ = internal::DensityBuilder::spinor_embed(H_ao);
     } else {
         S_ = ints.S;
-        Hcore_ = ints.Hcore;
+        Hcore_ = H_ao;
     }
     n_basis_ = n;
-    v_nuc_ = ints.V_nuc;
+    v_nuc_ = v_nuc;
     diis_pairs_ = 0;
     e_xc_grid_ = 0;
     e_exact_exchange_ = 0;
@@ -550,7 +608,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             } else {
                 Xn = linalg::build_orthogonalization_matrix(ints.S);
             }
-            auto [eig_n, C_n] = eigen.step_orthogonal(ints.Hcore, Xn);
+            auto [eig_n, C_n] = eigen.step_orthogonal(H_ao, Xn);
             (void)eig_n;
             const RealMatrix P_c = density.step(C_n, n_a, n)
                                    + density.step(C_n, n_b, n);

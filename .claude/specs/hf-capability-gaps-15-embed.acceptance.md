@@ -9,7 +9,8 @@ criteria:
       internal::PointChargeEmbedding / internal::ExternalField with validating constructors;
       `rg 'build_point|build_external' include/ src/` is empty; mean_field_method.h does not
       include either new internal header.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-002
     summary: Point-charge core matrix equals nuclear-attraction machinery with Z=q; classical sums exact
     type: runtime
@@ -17,7 +18,8 @@ criteria:
       test_cpu_scf_embedding passes: PointChargeEmbedding::core_matrix for one unit charge
       matches the nuclear-attraction machinery with a Z=1 pseudo-atom elementwise to 1e-12,
       and nuclear_energy/self_energy match hand-computed sums to 1e-12 Ha.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-003
     summary: External-field origin convention identical to link 03 dipole origin (center of nuclear charge)
     type: runtime
@@ -25,7 +27,8 @@ criteria:
       test_cpu_scf_embedding asserts, on an asymmetric molecule, that ExternalField's R0 equals
       the link-03 dipole origin to 1e-12 Bohr, and that E(F)-E(0) at F=1e-4 a.u. equals
       -mu·F to first order (relative error < 1e-2).
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-004
     summary: Finite-field dipole equals analytic dipole for H2O/STO-3G to 1e-5 a.u.
     type: scientific
@@ -48,7 +51,8 @@ criteria:
       test_cpu_scf_embedding: forces() throws std::runtime_error when point_charges or
       external_field is non-zero; with empty/zero members, Hcore and e_total are unchanged
       (elementwise identical) vs a run without the members set.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-007
     summary: Tutorial ch20 environment section with finite-field table and collapse hazard
     type: docs
@@ -63,7 +67,8 @@ criteria:
     pass_when: |
       cmake --build build succeeds and ctest --test-dir build passes with test_cpu_scf_embedding
       registered; no SCF-to-convergence-vs-external-engine comparison lives under tests/.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
 ---
 
 # Acceptance criteria
