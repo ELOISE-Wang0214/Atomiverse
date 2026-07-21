@@ -27,7 +27,8 @@ criteria:
       extent formula documented in Bohr); rg '"atomiverse/cpu/longrange' over
       include/atomiverse/cpu/scf src/cpu/scf returns zero matches while cfmm_j.*
       includes only top-level longrange/ facade headers.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-004
     summary: Third J route wired member-driven; default bitwise-unchanged; no factories
     type: code
@@ -37,7 +38,8 @@ criteria:
       HamiltonianBuilder; with default Coulomb::Direct all pre-existing scf unit
       tests pass unmodified; setting Coulomb::CFMM together with RI::J/JK throws;
       tests/architecture/no_factory_scrub.sh passes (no new build_* free function).
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-005
     summary: Unit tests for extent classification and CfmmJ pass in seconds
     type: runtime
@@ -47,7 +49,8 @@ criteria:
       <=1e-12, near/far pair lists complementary with no double counting, single
       H2O/STO-3G j(P) vs dense direct J <=1e-8) green, with no converged-SCF loop
       inside tests/.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-006
     summary: Alkane crossover table pinned — CFMM J-build beats direct beyond crossover
     type: performance
