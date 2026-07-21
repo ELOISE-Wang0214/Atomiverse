@@ -275,13 +275,75 @@ encoding:
   color: {field: series, type: nominal, title: null}
 ```
 
-FMM 近似斜率 1(近线性);直和斜率 2。链环 21 会把同一算子核接到
+FMM 近似斜率 1(近线性);直和斜率 2。链环 21 把同一算子核接到
 高斯分布(CFMM)并写入 HF 的 J 矩阵。
 
-## 19.5 长程库仑 III:CFMM 加速 HF(骨架)
+## 19.5 长程库仑 III:CFMM 加速 HF
 
-<!-- 填充:21-cfmm — 高斯分布延伸分类、CFMM-J 接入、硬门(逐元素复现
-     direct J)、交叉点规模表;direct→RI→CFMM 叙事收束 -->
+Jensen 线性标度叙事的收官:分子库仑从
+
+1. **Direct + Schwarz**(精确 ERI,O(N²) 筛选后仍超线性)——**这正是 PySCF 的做法**;PySCF **不含** FMM/CFMM(可选 DF 是另一条路),故 CFMM 正确性的 oracle 是我们自家已被 PySCF 钉定的 Direct J,而非外部 FMM 数;
+2. **RI-J / RI-JK**(链环 12,拟合辅助基,中等体系的速度赢家);
+3. **CFMM**(本环):连续高斯分布的快速多极,线性标度选项。
+
+### 延伸分类(WJGH 1994)
+
+乘积高斯(总指数 ζ = ζ_a+ζ_b)不是点电荷。赋予延伸
+
+\[
+r_\mathrm{ext} = \sqrt{2/\zeta}\,\mathrm{erfc}^{-1}(\varepsilon_\mathrm{thr})
+\quad[\mathrm{Bohr}]
+\]
+
+两分布仅当 \(|R_A-R_B| > r_\mathrm{ext}(A)+r_\mathrm{ext}(B)\) 才允许走多极,否则归近场解析 ERI。公式与判据在门面头 `longrange/gaussian_extent.h`(header-only)。
+
+### 接入(成员驱动,第三条 J 路)
+
+```cpp
+#include "atomiverse/cpu/scf/methods.h"
+
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.coulomb = cpu::scf::Coulomb::CFMM; // Direct | RI | CFMM
+rhf.cfmm_order = 10;                  // 多极截断阶 p
+rhf.cfmm_threshold = 1e-9;            // ε_thr → r_ext
+rhf.run(frame);                       // K 永远不走 CFMM
+// rhf.coulomb = CFMM 且 rhf.ri = RI::J/JK 会抛异常(J 路二选一)
+```
+
+默认 `Coulomb::Direct` 下现路**位级不变**。SCF 只 include 顶层
+`atomiverse/longrange/*`,永不 include `cpu/longrange/`。
+
+### 精度表(硬门:先于任何速度论断)
+
+| 体系 | 量 | 容差 | 备注 |
+|---|---|---|---|
+| H2O / STO-3G | max_ij \|J_CFMM−J_direct\| | ≤ 1e-8 Ha | `test_cfmm_j`(单次 J,无收敛 SCF) |
+| C10H22 / STO-3G | \|E_CFMM−E_Direct\| | ≤ 1e-7 Ha | `regressions/scf/c10h22_cfmm_j` |
+| 参数 | `cfmm_order=10`, `cfmm_threshold=1e-9` | — | WJGH 延伸 + M2L 截断 |
+
+Oracle = 自家 Schwarz Direct(PySCF 无 FMM)。收紧 `cfmm_threshold` 误差单调不增。
+
+### 交叉点规模表(标量;无柱状图)
+
+方法学与机器环境钉于
+`benchmarks/scf/validation/cfmm_scaling/README.md`(不进 ctest)。
+跑完后把实测中位墙钟填入下表:
+
+| n (C_nH_{2n+2}/STO-3G) | t_Direct [s] | t_CFMM [s] | 备注 |
+|---|---|---|---|
+| 4 | _TBD_ | _TBD_ | 小体系 Direct 通常更快 |
+| 8 | _TBD_ | _TBD_ | |
+| 10 | _TBD_ | _TBD_ | 回归体系 |
+| 16 | _TBD_ | _TBD_ | 交叉点候选 |
+| 交叉点 n* | — | — | 首个 t_CFMM < t_Direct 的 n |
+
+### 误差控制语义
+
+| 成员 | 含义 | 单位 |
+|---|---|---|
+| `cfmm_order` | 多极截断阶 p;远场 M2L 误差随 p 几何衰减 | 无量纲 |
+| `cfmm_threshold` | 穿透阈值 ε_thr;控制 r_ext 与近/远场划分 | 无量纲电荷份额 |
 
 ## 章末:与 PySCF 对照(累积表)
 
@@ -292,7 +354,7 @@ FMM 近似斜率 1(近线性);直和斜率 2。链环 21 会把同一算子核�
 | H2O / def2-TZVP, RI-JK | E(RHF) | −76.058999347289 | −76.058999347289 | 1e-6(实测 3.3e-13) | 12 |
 | H2O / def2-TZVP, 精确 ERI | E(RHF) | −76.059004760577 | −76.059004760577 | 1e-8 | 12 |
 | NaCl rock-salt / Ewald+PME | Madelung M | 1.74756… | 文献 −1.7476/离子对 | 1e-4 rel | 19 |
-| _待 21-cfmm 填充_ | CFMM-J 精度 / 交叉点 | — | — | — | 21 |
+| C10H22 / STO-3G, CFMM-J | \|E−Direct\| | ≤1e-7 | (PySCF 无 FMM;oracle=Direct) | 1e-7 | 21 |
 
 速度(甘氨酸 / def2-SVP RHF,tol 1e-9,8 线程,3 次取中位;
 方法学与机器环境钉于 benchmarks/scf/validation/ri_speed/README.md,

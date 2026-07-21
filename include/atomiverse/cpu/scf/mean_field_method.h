@@ -181,6 +181,23 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     ///        throws at Fock-build setup — no fallback.
     AuxBasis aux_basis = AuxBasis::Def2JKFIT;
 
+    // ── Coulomb algorithm (CFMM) — hf-capability-gaps-21-cfmm ─────────
+    /// @brief J-matrix algorithm. `Coulomb::Direct` (default) keeps the
+    ///        exact-ERI path bit-identical. `Coulomb::CFMM` selects the
+    ///        continuous fast multipole method for J (K stays direct/RI).
+    ///        Combining `Coulomb::CFMM` with `ri = RI::J/JK` throws.
+    Coulomb coulomb = Coulomb::Direct;
+
+    /// @brief Multipole truncation order p for CFMM-J (dimensionless).
+    ///        Error of the far-field M2L decays geometrically with p under
+    ///        the well-separated criterion. Default 10.
+    int cfmm_order = 10;
+
+    /// @brief Extent / multipole threshold ε_thr for CFMM-J (dimensionless
+    ///        charge fraction outside the WJGH ball). Sets
+    ///        r_ext = √(2/ζ)·erfc⁻¹(ε) [Bohr]. Default 1e-9.
+    double cfmm_threshold = 1e-9;
+
     // ── Second-order SCF (SOSCF / CIAH; hf-capability-gaps-09) ────────
     /// @brief Enable the second-order finishing path: DIIS runs the early
     ///        iterations, then — once max|DIIS error| < `soscf_start` — the

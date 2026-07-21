@@ -417,6 +417,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/hueckel_guess.cpp
             src/cpu/scf/internal/sap_guess.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp
+            src/cpu/scf/internal/cfmm_j.cpp
             src/cpu/scf/internal/density_fitting.cpp
             src/cpu/scf/internal/external_field.cpp
             src/cpu/scf/internal/level_shift.cpp

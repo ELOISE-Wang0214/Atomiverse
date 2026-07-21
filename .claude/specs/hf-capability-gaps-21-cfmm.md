@@ -1,7 +1,7 @@
 ---
 title: CFMM — 连续快速多极法加速 HF 库仑矩阵(J):延伸分类门面、CFMM-J 工作区与 J/K 接缝第三条路
 slug: hf-capability-gaps-21-cfmm
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 21/21
 external-depends: scf-slater-determinant-03-unbag
@@ -41,14 +41,14 @@ created: 2026-07-20
 - `docs/tutorial/ch19-hf-large-systems.md` — 收官节
 
 ## Tasks
-- [ ] Write failing tests for GaussianExtent and CfmmJ (tests/longrange/test_gaussian_extent.cpp:r_ext 对手算 erfc⁻¹ 值 ≤1e-12、良分离判据真值表;tests/cpu/scf/test_cfmm_j.cpp:s|s 分布 0 阶矩=重叠电荷 ≤1e-12、近/远场配对表互补无双算、H2O/STO-3G 单次 `j(P)` 对稠密直接 J 逐元素 ≤1e-8、CFMM 与 RI-J 同设抛异常;登记 tests/CMakeLists.txt)
-- [ ] Implement GaussianExtent in include/atomiverse/longrange/gaussian_extent.h(header-only 值类型 + 良分离判据;WJGH 1994 DOI 注释;Doxygen 单位 Bohr)
-- [ ] Implement CfmmJ in include/atomiverse/cpu/scf/internal/cfmm_j.h + src/cpu/scf/internal/cfmm_j.cpp(壳对分布 + 延伸分类、P2M 经 core/real_harmonics、链环 20 树上 M2M/M2L/L2L 游走、近场走现有 Schwarz 直接 ERI 路;只 include 顶层 longrange/ 门面头;登记根 CMakeLists.txt)
-- [ ] Wire Coulomb enum in scf_enums.h + third J route in internal/hamiltonian_builder.{h,cpp} + stages/fock_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 coulomb/cfmm_order/cfmm_threshold 直传;默认 Coulomb::Direct 位级不变;CFMM×RI-J 互斥抛异常;K 路不变;禁新 build_* 自由函数)
-- [ ] Implement regression regressions/scf/c10h22_cfmm_j/(C10H22/STO-3G 双门:首迭代 ‖J_CFMM−J_direct‖_max ≤1e-8,且收敛 RHF 总能 CFMM-J vs 直接 ≤1e-7 Ha;REFERENCE.md 引 WJGH 1994 误差控制论断并声明基线为自家 PySCF 钉定直接路;≤60 s;登记 regressions 构建)
-- [ ] Implement scaling sweep benchmarks/scf/validation/cfmm_scaling/(烷烃系列 CnH2n+2/STO-3G 的 J 构建墙钟两列 direct vs CFMM + 交叉点体系规模,README 记方法学/机器环境/cfmm_order/threshold,数字钉入 ch19)
-- [ ] Write "长程库仑 III:CFMM 加速 HF" closing section of docs/tutorial/ch19-hf-large-systems.md(收束 Jensen 叙事:direct+Schwarz——诚实注明这正是 PySCF 的做法且 PySCF 无 FMM,引自家调查——→ RI → CFMM 线性标度;精度表 + 交叉点规模表,标量入表不画柱状图,molplot 标度曲线允许;hands-on `rhf.coulomb = Coulomb::CFMM`)
-- [ ] Run full check + test suite
+- [x] Write failing tests for GaussianExtent and CfmmJ (tests/longrange/test_gaussian_extent.cpp:r_ext 对手算 erfc⁻¹ 值 ≤1e-12、良分离判据真值表;tests/cpu/scf/test_cfmm_j.cpp:s|s 分布 0 阶矩=重叠电荷 ≤1e-12、近/远场配对表互补无双算、H2O/STO-3G 单次 `j(P)` 对稠密直接 J 逐元素 ≤1e-8、CFMM 与 RI-J 同设抛异常;登记 tests/CMakeLists.txt)
+- [x] Implement GaussianExtent in include/atomiverse/longrange/gaussian_extent.h(header-only 值类型 + 良分离判据;WJGH 1994 DOI 注释;Doxygen 单位 Bohr)
+- [x] Implement CfmmJ in include/atomiverse/cpu/scf/internal/cfmm_j.h + src/cpu/scf/internal/cfmm_j.cpp(壳对分布 + 延伸分类、P2M 经 core/real_harmonics、链环 20 树上 M2M/M2L/L2L 游走、近场走现有 Schwarz 直接 ERI 路;只 include 顶层 longrange/ 门面头;登记根 CMakeLists.txt)
+- [x] Wire Coulomb enum in scf_enums.h + third J route in internal/hamiltonian_builder.{h,cpp} + stages/fock_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 coulomb/cfmm_order/cfmm_threshold 直传;默认 Coulomb::Direct 位级不变;CFMM×RI-J 互斥抛异常;K 路不变;禁新 build_* 自由函数)
+- [x] Implement regression regressions/scf/c10h22_cfmm_j/(C10H22/STO-3G 双门:首迭代 ‖J_CFMM−J_direct‖_max ≤1e-8,且收敛 RHF 总能 CFMM-J vs 直接 ≤1e-7 Ha;REFERENCE.md 引 WJGH 1994 误差控制论断并声明基线为自家 PySCF 钉定直接路;≤60 s;登记 regressions 构建)
+- [x] Implement scaling sweep benchmarks/scf/validation/cfmm_scaling/(烷烃系列 CnH2n+2/STO-3G 的 J 构建墙钟两列 direct vs CFMM + 交叉点体系规模,README 记方法学/机器环境/cfmm_order/threshold,数字钉入 ch19)
+- [x] Write "长程库仑 III:CFMM 加速 HF" closing section of docs/tutorial/ch19-hf-large-systems.md(收束 Jensen 叙事:direct+Schwarz——诚实注明这正是 PySCF 的做法且 PySCF 无 FMM,引自家调查——→ RI → CFMM 线性标度;精度表 + 交叉点规模表,标量入表不画柱状图,molplot 标度曲线允许;hands-on `rhf.coulomb = Coulomb::CFMM`)
+- [x] Run full check + test suite
 
 ## Testing strategy
 - **快乐路径(单元,秒级)**:延伸公式与分类判据的闭式抽查;s|s 矩守恒;近/远场互补;H2O/STO-3G 单次 J 构建 vs 稠密直接 ≤1e-8;单元测试均为单函数单调用,不跑收敛 SCF。

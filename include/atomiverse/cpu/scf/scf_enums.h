@@ -55,6 +55,19 @@ enum class InitGuess { Hcore, MINAO, Hueckel, SAP };
 /// pairs (Weigend, PCCP 8, 1057 (2006), DOI 10.1039/b515623h).
 enum class RI { None, J, JK };
 
+/// @brief Coulomb-matrix (J) algorithm for the two-electron Fock build.
+///
+/// - `Direct`: Schwarz-screened analytic ERIs (shipping default;
+///             bit-identical when `ri == RI::None`).
+/// - `RI`:     density-fitted J (same engine as `ri = RI::J` / `RI::JK`);
+///             selecting this with `ri == RI::None` is treated as RI-J.
+/// - `CFMM`:   continuous fast multipole method for J (White–Johnson–Gill–
+///             Head-Gordon extent classification + multipole far field;
+///             Chem. Phys. Lett. 230, 8 (1994),
+///             DOI 10.1016/0009-2614(94)01128-1). Mutually exclusive with
+///             `ri = RI::J/JK` — both set throws. Exchange (K) never uses CFMM.
+enum class Coulomb { Direct, RI, CFMM };
+
 /// @brief SCF Fock-mixer family for the mix stage.
 ///
 /// - `CDIIS`:       Pulay commutator-DIIS only (the shipping default).

@@ -21,11 +21,21 @@ namespace internal {
 void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                                  GridLevel grid_level, int n_radial,
                                  int n_angular, const MolecularGrid* fixed_grid,
-                                 RI ri, AuxBasis aux_basis) {
+                                 RI ri, AuxBasis aux_basis, Coulomb coulomb,
+                                 int cfmm_order, double cfmm_threshold) {
     if (!integrals.shells.empty()) {
         sp_block_ = ShellBlockPairList{integrals};
         sp_ = ShellPairList{integrals};
     }
+
+    coulomb_ = coulomb;
+    // Coulomb::RI with ri==None is treated as RI-J (member-driven seam).
+    if (coulomb_ == Coulomb::RI && ri == RI::None)
+        ri = RI::J;
+    if (coulomb_ == Coulomb::CFMM && ri != RI::None)
+        throw std::runtime_error(
+            "HamiltonianBuilder: Coulomb::CFMM is mutually exclusive with "
+            "RI::J/JK — pick one J route (CFMM multipole or density fitting).");
 
     ri_ = ri;
     if (ri_ != RI::None) {
@@ -41,6 +51,23 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                  df_->n_ao(), df_->n_aux(), elapsed_ms(t_df));
     } else {
         df_.reset();
+    }
+
+    if (coulomb_ == Coulomb::CFMM) {
+        if (integrals.shells.empty())
+            throw std::runtime_error(
+                "HamiltonianBuilder: Coulomb::CFMM requested but the integral "
+                "pack carries no shell workspace.");
+        const auto t_cfmm = LogClock::now();
+        cfmm_ = std::make_unique<CfmmJ>(integrals.shells, cfmm_order,
+                                        cfmm_threshold);
+        cfmm_->prepare();
+        ATV_INFO("[scf] CFMM-J workspace built n_ao={} n_dist={} order={} "
+                 "thr={:.1e} ms={:.1f}",
+                 integrals.shells.size(), cfmm_->n_distributions(), cfmm_order,
+                 cfmm_threshold, elapsed_ms(t_cfmm));
+    } else {
+        cfmm_.reset();
     }
 
     if (!is_hf && !integrals.atoms.empty()) {
@@ -128,9 +155,39 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         to_ao(G);
         out.F_alpha = Hcore + G;
         out.F_beta = out.F_alpha;
+    } else if (restricted && is_hf && coulomb_ == Coulomb::CFMM) {
+        // RHF with CFMM-J. Production path uses the shell-block fused G route
+        // for the near-field bulk (identical arithmetic to Direct RHF). Far
+        // multipole replacement is applied only when CfmmJ classified a
+        // non-empty far list AND the AO-level J is rebuilt so the subtract
+        // step stays consistent with the ERI path (shell-block scatter is not
+        // AO-pair-addressable). For compact systems / tight thresholds the far
+        // list is empty and this branch is bit-identical to Direct.
+        // Exchange never routes through CFMM.
+        RealMatrix K;
+        sp_block_.k(Pa_eng, K);
+        if (cfmm_->far_pairs().empty()) {
+            RealMatrix G;
+            sp_block_.g_rhf(Pa_eng, G);
+            out.J = G + double(0.5) * K;
+            to_ao(out.J);
+            to_ao(G);
+            out.F_alpha = Hcore + G;
+            out.F_beta = out.F_alpha;
+        } else {
+            // AO-level CFMM J (exact near + multipole far); keeps the
+            // subtract/add bookkeeping consistent.
+            out.J = cfmm_->j(Pa_eng);
+            RealMatrix G = out.J - double(0.5) * K;
+            to_ao(out.J);
+            to_ao(G);
+            out.F_alpha = Hcore + G;
+            out.F_beta = out.F_alpha;
+        }
     } else if (restricted && is_hf) {
         // RHF: PySCF approach — store ERI once, then BLAS contraction.
         // Falls back to direct SCF when ERI is not stored.
+        // Default Coulomb::Direct — bit-identical to the pre-CFMM path.
         RealMatrix G;
         if (integrals.ERI.size() > 0) {
             integrals.coulomb_exchange_fused(P_alpha, G);
@@ -154,6 +211,18 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             sp_block_.k(Pa_eng, K_alpha);
             sp_block_.k(Pb_eng, K_beta);
         }
+        to_ao(out.J);
+        to_ao(K_alpha);
+        to_ao(K_beta);
+        out.F_alpha = Hcore + out.J - K_alpha;
+        out.F_beta = Hcore + out.J - K_beta;
+    } else if (!restricted && is_hf && coulomb_ == Coulomb::CFMM) {
+        RealMatrix P_total = Pa_eng + Pb_eng;
+        out.J = cfmm_->j(P_total);
+        RealMatrix K_alpha, K_beta;
+        // Exchange-only via the UHF builder (J discarded).
+        RealMatrix J_discard;
+        sp_.jk_uhf(P_total, Pa_eng, Pb_eng, J_discard, K_alpha, K_beta);
         to_ao(out.J);
         to_ao(K_alpha);
         to_ao(K_beta);
@@ -230,6 +299,17 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
                 to_ao(F2e);
                 out.F_alpha = Hcore + F2e + xc.Vxc_alpha;
                 out.F_beta = out.F_alpha;
+            } else if (coulomb_ == Coulomb::CFMM) {
+                out.J = cfmm_->j(P_total_J);
+                RealMatrix K;
+                sp_block_.k(P_total_J, K);
+                const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
+                out.E_exact_exchange = alpha_hf * E_K;
+                RealMatrix F2e = out.J - half_alpha * K;
+                to_ao(out.J);
+                to_ao(F2e);
+                out.F_alpha = Hcore + F2e + xc.Vxc_alpha;
+                out.F_beta = out.F_alpha;
             } else if (half_alpha == double(0)) {
                 // alpha_hf == 0 regression path (ac-004). J is built with
                 // the SAME ShellPairList::j call as the pure-KS branch and
@@ -297,9 +377,12 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             out.F_beta = Hcore + out.J - alpha_hf * K_beta + xc.Vxc_beta;
         } else {
             // Pure KS: Coulomb only, no exchange matrix. Byte-for-byte
-            // identical to the pre-hybrid path when `ri_ == RI::None`.
+            // identical to the pre-hybrid path when `ri_ == RI::None` and
+            // coulomb_ == Direct.
             if (ri_ != RI::None)
                 out.J = df_->j_fitted(P_total_J);
+            else if (coulomb_ == Coulomb::CFMM)
+                out.J = cfmm_->j(P_total_J);
             else
                 sp_.j(P_total_J, out.J);
             to_ao(out.J);

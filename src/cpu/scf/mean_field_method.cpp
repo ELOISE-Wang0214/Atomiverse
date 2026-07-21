@@ -192,12 +192,20 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
                 "matrices internally and would be inconsistent with the "
                 "fitted SCF loop.");
     }
+    if (coulomb == Coulomb::CFMM && ri != RI::None)
+        throw std::runtime_error(
+            "MeanFieldMethod: Coulomb::CFMM is mutually exclusive with "
+            "RI::J/JK — pick one J route (CFMM multipole or density fitting).");
+    if (coulomb == Coulomb::CFMM && generalized)
+        throw std::runtime_error(
+            "MeanFieldMethod: Coulomb::CFMM is not wired for GHF — use "
+            "coulomb = Coulomb::Direct with GHF.");
     fock_stage_ = std::make_unique<FockStage>(
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
         int_n_beta_, ri, aux_basis, generalized, pcm_.get(), e_solvent_,
-        e_pcm_fock_half_);
+        e_pcm_fock_half_, coulomb, cfmm_order, cfmm_threshold);
     if (rohf) {
         rohf_couple_stage_ = std::make_unique<RohfCoupleStage>(
             S_, P_alpha_, P_beta_, F_alpha_, F_beta_, F_alpha_uncoupled_,
@@ -857,7 +865,8 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         // energies must diagonalize the SAME (possibly fitted) Fock the
         // SCF converged, or ε would carry the fit error as an artifact.
         deshift.prepare(ints, is_hf, grid_level, n_radial, n_angular,
-                        fixed_grid, ri, aux_basis);
+                        fixed_grid, ri, aux_basis, coulomb, cfmm_order,
+                        cfmm_threshold);
         internal::FockResult fock =
             deshift.step(ints, restricted, is_hf, xc_type_,
                          hybrid_alpha_override, P_alpha_, P_beta_);

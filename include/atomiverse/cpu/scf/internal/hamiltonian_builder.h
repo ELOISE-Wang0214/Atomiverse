@@ -14,10 +14,11 @@
 #include "atomiverse/cpu/scf/basis_set.h" // AuxBasis
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/cfmm_j.h"
 #include "atomiverse/cpu/scf/internal/density_fitting.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType / RI
+#include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType / RI / Coulomb
 #include "atomiverse/cpu/scf/xc_functional.h" // XCType
 
 namespace ATV {
@@ -62,10 +63,18 @@ class HamiltonianBuilder {
     /// @param aux_basis  Auxiliary basis for the fit (ignored when
     ///                   `ri == RI::None`); an element without a table row
     ///                   throws — no fallback.
+    /// @param coulomb    J-matrix algorithm (`Coulomb::Direct` default =
+    ///                   bit-identical vacuum path). `Coulomb::CFMM` builds
+    ///                   the `internal::CfmmJ` workspace; combining CFMM with
+    ///                   `ri != RI::None` throws (J route is exclusive).
+    /// @param cfmm_order Multipole truncation order p for CFMM (default 10).
+    /// @param cfmm_threshold Extent threshold ε_thr for CFMM (default 1e-9).
     void prepare(const IntegralPack& integrals, bool is_hf,
                  GridLevel grid_level, int n_radial, int n_angular,
                  const MolecularGrid* fixed_grid, RI ri = RI::None,
-                 AuxBasis aux_basis = AuxBasis::Def2JKFIT);
+                 AuxBasis aux_basis = AuxBasis::Def2JKFIT,
+                 Coulomb coulomb = Coulomb::Direct, int cfmm_order = 10,
+                 double cfmm_threshold = 1e-9);
 
     /// @brief Build F from the current α/β densities.
     /// @details Method-dispatched F = Hcore + J − αK + V_xc.
@@ -87,9 +96,12 @@ class HamiltonianBuilder {
     ShellPairList sp_;            ///< AO-level list for UHF/UKS J/K paths.
     MolecularGrid grid_;          ///< KS XC grid (empty for HF).
     RI ri_ = RI::None;            ///< Density-fitting mode set by prepare().
+    Coulomb coulomb_ = Coulomb::Direct; ///< J-matrix algorithm.
     /// RI workspace ((μν|P), metric Cholesky, B tensor); null when
     /// `ri_ == RI::None` — the exact path never touches it.
     std::unique_ptr<DensityFitting> df_;
+    /// CFMM-J workspace; null unless `coulomb_ == Coulomb::CFMM`.
+    std::unique_ptr<CfmmJ> cfmm_;
 };
 
 } // namespace internal

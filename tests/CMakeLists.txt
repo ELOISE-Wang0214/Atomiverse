@@ -156,6 +156,8 @@ atv_add_cpp_test(test_cpu_ewald_coul              cpu/longrange/test_ewald_coul.
 atv_add_cpp_test(test_multipole_expansion         longrange/test_multipole_expansion.cpp)
 atv_add_cpp_test(test_fmm_operators               longrange/test_fmm_operators.cpp)
 atv_add_cpp_test(test_fmm_tree                    longrange/test_fmm_tree.cpp)
+# hf-capability-gaps-21-cfmm: WJGH Gaussian extent (header-only facade)
+atv_add_cpp_test(test_gaussian_extent             longrange/test_gaussian_extent.cpp)
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/longrange/test_pme_coul.cpp)
 endif()
@@ -545,6 +547,9 @@ if(ATV_BUILD_HF)
     # hf-capability-gaps-12-df: def2-JKFIT table, g-shell 2c/3c integrals,
     # metric whitening, fitted J/K vs dense (single calls, no SCF).
     atv_add_cpp_test(test_density_fitting       cpu/scf/test_density_fitting.cpp)
+    # hf-capability-gaps-21-cfmm: shell-pair distributions, near/far tables,
+    # single H2O/STO-3G j(P) vs dense direct J (no converged SCF).
+    atv_add_cpp_test(test_cfmm_j                cpu/scf/test_cfmm_j.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
     # hf-capability-gaps-07-guess: Hückel/SAP guess matrices + EDIIS/ADIIS
