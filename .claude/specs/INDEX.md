@@ -27,3 +27,16 @@ pw-breadth, se-breadth / RM1, python-on-demand-install).
 - [hf-capability-gaps-19-longrange](hf-capability-gaps-19-longrange.md) — 行为保持重构:顶层 longrange/ facade + cpu/kspace→cpu/longrange 更名 [approved]
 - [hf-capability-gaps-20-fmm](hf-capability-gaps-20-fmm.md) — Greengard-Rokhlin FMM 算子核(点电荷开边界,M2M/M2L/L2L + 八叉树) [approved]
 - [hf-capability-gaps-21-cfmm](hf-capability-gaps-21-cfmm.md) — CFMM 高斯分布 J-builder 接入 HF(硬门:逐元素复现 direct J 先于速度论断) [approved]
+
+## Chain: gaff-md-path (GAFF / flexible PEO MD path)
+
+Target: ability to load charged GAFF topology and run classical MD stages
+needed by molpack-paper `figures/flexible` (not 30 ns paper parity).
+
+- [gaff-md-path-01-io-full](gaff-md-path-01-io-full.md) — LAMMPS atom_style full + charges + special_list [approved]
+- [gaff-md-path-02-pair-specials](gaff-md-path-02-pair-specials.md) — PairLJCut/PairCoulCut true Amber 1–4 scaling [approved]
+- [gaff-md-path-03-coul-long-specials](gaff-md-path-03-coul-long-specials.md) — CoulLong real-space special_bonds [approved]
+- [gaff-md-path-04-ff-compose](gaff-md-path-04-ff-compose.md) — real→eV units + single-term fourier→Charmm [approved]
+- [gaff-md-path-05-xcheck](gaff-md-path-05-xcheck.md) — GAFF fragment single-point energy vs pins [approved]
+- [gaff-md-path-06-protocol-smoke](gaff-md-path-06-protocol-smoke.md) — short min/NVT/NPT smoke on charged polymer [approved]
+- [gaff-md-path-07-docs](gaff-md-path-07-docs.md) — roadmap/tutorial accuracy for GAFF path [approved]
