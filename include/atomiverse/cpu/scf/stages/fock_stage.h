@@ -59,13 +59,20 @@ class FockStage : public cpu::Component {
     /// @param e_exact_exchange Hybrid exact-exchange energy, Hartree (write).
     /// @param int_n_alpha  Grid-integrated α electron count (KS only) (write).
     /// @param int_n_beta   Grid-integrated β electron count (KS only) (write).
+    /// @param generalized  True for the GHF spinor build: `P_alpha` then
+    ///                     carries the 2n×2n spinor density and `F_alpha`
+    ///                     receives the 2n×2n spinor Fock
+    ///                     F^{σσ'} = δ_{σσ'}(h + J[P^αα+P^ββ]) − K[P^{σσ'}]
+    ///                     [Hartree], contracted per n×n spin block from the
+    ///                     stored dense ERI (requires `integrals.ERI`;
+    ///                     HF only).
     FockStage(bool restricted, bool is_hf, XCType xc_type, GridLevel grid_level,
               int n_radial, int n_angular, double hybrid_alpha_override,
               const MolecularGrid* fixed_grid, const IntegralPack& integrals,
               const RealMatrix& P_alpha, const RealMatrix& P_beta,
               RealMatrix& F_alpha, RealMatrix& F_beta, RealMatrix& J,
               double& e_xc_grid, double& e_exact_exchange, double& int_n_alpha,
-              double& int_n_beta);
+              double& int_n_beta, bool generalized = false);
 
     /// @brief Component name.
     /// @return `"scf_fock_stage"`.
@@ -86,6 +93,7 @@ class FockStage : public cpu::Component {
   private:
     bool restricted_;
     bool is_hf_;
+    bool generalized_; ///< GHF spinor build (2n×2n densities/Fock).
     XCType xc_type_;
     GridLevel grid_level_;
     int n_radial_;

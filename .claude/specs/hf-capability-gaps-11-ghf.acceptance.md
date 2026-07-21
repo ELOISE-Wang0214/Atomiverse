@@ -9,14 +9,25 @@ criteria:
       stores C(2n x N_mo); density() is 2n x 2n; spin-block accessors return
       the four blocks; validate(S) enforces Tr(P·S⊗1₂)=N and idempotency;
       dimension/occupation violations throw std::invalid_argument.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: GhfSpinorDeterminant.{GeneralizedFormAndSpinBlocks,
+      ValidateSpinorMetric,ConstructionGuards} pass (analytic 4x4 spinor
+      determinant; blocks match cos/sin closed forms to 1e-14; validate
+      passes at tol 1e-10 with S = I2 and throws std::invalid_argument on
+      3x3 S, odd rows, eps-size mismatch, f>1, sum(f)!=N).
   - id: ac-002
     summary: GHF collapses to UHF on unfrustrated H2/STO-3G
     type: code
     pass_when: |
       In tests/cpu/scf/test_ghf.cpp, converged GHF on H2/STO-3G satisfies
       |E_GHF - E_UHF| <= 1e-8 Ha against a UHF run on the same geometry.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: GHF.CollapsesToUhfOnH2 passes — measured |E_GHF - E_UHF| =
+      4.4e-16 Ha (both -1.116759307396 Ha, matching the PySCF pin
+      -1.11675930739643 to <1e-10), with the default nonzero
+      guess_spin_rotation = 0.2.
   - id: ac-003
     summary: Non-collinear GHF below UHF on triangular H3, matches PySCF
     type: scientific
@@ -25,7 +36,18 @@ criteria:
       collinearity-breaking guess gives E_GHF <= E_UHF - 1e-6 Ha and
       |E_GHF - E_pinned(PySCF scf.GHF)| <= 1e-8 Ha (pinned value recorded
       in regressions/scf/h3_ghf_sto3g/REFERENCE.md).
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: GHF.NoncollinearBelowUhfOnTriangularH3 +
+      GHF.CollinearGuessStaysOnUhfSaddle pass. Measured E_GHF =
+      -1.340440343541 Ha vs PySCF 2.14.0 scf.GHF pin -1.34044034354119
+      (|dE| = 1.5e-14); below the engine UHF (-1.328175755381, symmetric
+      doublet) and below the best PySCF collinear UHF (-1.33598005401819)
+      by 4.46 mHa; ||P_ab||_F = 0.9780588 (PySCF witness identical).
+      Noncollinear minimum certified externally: PySCF mf_g.stability()
+      internal-stable, collinear UHF stability(external=True) reports
+      UHF->GHF instability. Trap: theta = 0 converges to
+      -1.335980054018 (the collinear saddle), 4.5 mHa above the minimum.
   - id: ac-004
     summary: GHF registered as concrete CRTP method, no factory/config debt
     type: code
@@ -34,7 +56,12 @@ criteria:
       `template class MeanFieldMethod<GHF>;`; parameters are members
       (n_electrons, guess_spin_rotation); tests/architecture/
       no_factory_scrub.sh and test_stage_typing_scrub pass.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: ghf.h included from methods.h; explicit instantiation added
+      beside the other five; no Config bag / factory (members only).
+      ctest: test_no_factory_scrub Passed (3.52 s),
+      test_stage_typing_scrub Passed (0.18 s).
   - id: ac-005
     summary: Regression h3_ghf_sto3g passes against pinned oracle in <=60 s
     type: scientific
@@ -43,7 +70,13 @@ criteria:
       consumer (public headers + link atomiverse only), checks the
       REFERENCE.md pinned PySCF values, and completes in <= 60 s; it is
       not registered in default ctest.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: run_reg_h3_ghf_sto3g PASS in 1.0 s (H2 collapse |dE| = 4.4e-16;
+      H3 E_GHF dE vs pin = -1.5e-14; ||P_ab|| = 0.9780588; theta=0 trap on
+      -1.335980054018). Registered via atv_add_regression inside the
+      ATV_BUILD_HF gate; not in ctest (custom target only). All 11
+      pre-existing SCF regressions re-run green (1.0-4.8 s each).
   - id: ac-006
     summary: Tutorial ch03 gains the GHF spin-symmetry-breaking section
     type: docs
@@ -69,7 +102,14 @@ criteria:
       ctest --test-dir build passes with ATV_BUILD_HF=ON including
       test_cpu_scf_ghf; the whole tests/ suite still completes in seconds
       (no e2e added to ctest).
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
+    note: full ctest 2026-07-21 — only the exactly-5 pre-existing MPI
+      failures (test_mpi_halo_exchange_n{1,2,8},
+      test_mpi_coul_energy_bruteforce_n{1,8}); baseline unchanged.
+      test_cpu_scf_ghf: 8 tests, 0.36 s standalone / 0.02 s under ctest;
+      test_slater_determinant and the whole SCF family stay green. No
+      bitwise assertions (1e-8 pins; OpenMP-safe).
 ---
 
 # Acceptance criteria

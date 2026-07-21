@@ -675,6 +675,11 @@ void accumulate_two_electron_gradient(
             "accumulate_two_electron_gradient: SpinType::RestrictedOpen "
             "(ROHF) has no analytic two-electron gradient — refusing to "
             "take the unrestricted branch silently.");
+    if (spin == SpinType::Generalized)
+        throw std::runtime_error(
+            "accumulate_two_electron_gradient: SpinType::Generalized (GHF) "
+            "has no analytic two-electron gradient — refusing to take the "
+            "unrestricted branch silently.");
     const bool restricted = (spin == SpinType::Restricted);
 
     // Per-spin factor-1 densities for the unrestricted exchange contraction

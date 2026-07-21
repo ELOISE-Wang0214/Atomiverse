@@ -12,15 +12,19 @@ namespace scf {
 enum class MeanFieldType { HF, KS };
 
 /// @brief Spin treatment: restricted (shared spatial orbitals),
-///        unrestricted (independent alpha/beta channels), or
+///        unrestricted (independent alpha/beta channels),
 ///        restricted-open (single MO set with split alpha/beta occupation —
-///        ROHF; Roothaan effective-Fock coupling).
+///        ROHF; Roothaan effective-Fock coupling), or generalized (GHF:
+///        two-component real spinor orbitals φ_i = (φ_i^α; φ_i^β), one
+///        2n×2n density with a spin-off-diagonal P^αβ block — the
+///        noncollinear-spin mean field; Fukutome, Int. J. Quantum Chem. 20,
+///        955 (1981), DOI 10.1002/qua.560200502).
 ///
 /// Paths that dispatch on this enum and do not implement the
-/// restricted-open case (analytic gradients, MP2/FCI packs) throw
-/// explicitly for `RestrictedOpen` — no silent Restricted/Unrestricted
-/// branch is ever taken.
-enum class SpinType { Restricted, Unrestricted, RestrictedOpen };
+/// restricted-open or generalized case (analytic gradients, MP2/FCI packs,
+/// SOSCF, level shift) throw explicitly for `RestrictedOpen` /
+/// `Generalized` — no silent Restricted/Unrestricted branch is ever taken.
+enum class SpinType { Restricted, Unrestricted, RestrictedOpen, Generalized };
 
 /// @brief SCF initial-guess flavor.
 ///

@@ -478,6 +478,10 @@ if(ATV_BUILD_HF)
     # hf-capability-gaps-10-rohf: ROHF (Roothaan effective Fock, PySCF
     # canonical / Guest-Saunders convention) vs externally pinned PySCF.
     atv_add_cpp_test(test_cpu_scf_rohf_solver  cpu/scf/test_rohf_solver.cpp)
+    # hf-capability-gaps-11-ghf: real two-component GHF — spinor
+    # SlaterDeterminant invariants, H2 collapse to UHF, noncollinear win on
+    # the frustrated H3 triangle vs externally pinned PySCF, collinear trap.
+    atv_add_cpp_test(test_cpu_scf_ghf          cpu/scf/test_ghf.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solver   cpu/scf/test_uks_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)

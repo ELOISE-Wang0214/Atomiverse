@@ -22,11 +22,13 @@ DensityStage::DensityStage(bool restricted, bool is_hf, double damping,
                            const double& e_xc_grid,
                            const double& e_exact_exchange, const double& v_nuc,
                            RealMatrix& P_alpha, RealMatrix& P_beta,
-                           double& e_total, double& e_one, double& e_coulomb)
-    : restricted_(restricted), is_hf_(is_hf), damping_(damping),
-      C_alpha_(C_alpha), C_beta_(C_beta), F_alpha_(F_alpha), F_beta_(F_beta),
-      Hcore_(Hcore), J_(J), n_alpha_(n_alpha), n_beta_(n_beta),
-      n_basis_(n_basis), diis_active_(diis_active), e_xc_grid_(e_xc_grid),
+                           double& e_total, double& e_one, double& e_coulomb,
+                           bool generalized)
+    : restricted_(restricted), is_hf_(is_hf), generalized_(generalized),
+      damping_(damping), C_alpha_(C_alpha), C_beta_(C_beta),
+      F_alpha_(F_alpha), F_beta_(F_beta), Hcore_(Hcore), J_(J),
+      n_alpha_(n_alpha), n_beta_(n_beta), n_basis_(n_basis),
+      diis_active_(diis_active), e_xc_grid_(e_xc_grid),
       e_exact_exchange_(e_exact_exchange), v_nuc_(v_nuc), P_alpha_(P_alpha),
       P_beta_(P_beta), e_total_(e_total), e_one_(e_one), e_coulomb_(e_coulomb) {
 }
@@ -43,6 +45,28 @@ void DensityStage::build(const cpu::BuildContext& ctx) {
 void DensityStage::launch(const cpu::LaunchContext& ctx) {
     if (!ctx.at(ATV::scf::Phase::density))
         return;
+
+    if (generalized_) {
+        // GHF spinor path: single channel at dimension 2n. New density
+        // P = C_occ C_occᵀ over the lowest n_alpha (= N) spinors, damping
+        // toward the retained OLD spinor density, and the single-channel HF
+        // energy E = ½Tr[P_old(H + F)] + E_nn on the OLD density (the Fock
+        // wired in this iteration was built from it) — the unrestricted-HF
+        // convention at spinor dimension.
+        const RealMatrix P_old = P_alpha_; // OLD spinor density
+        const int dim = 2 * n_basis_;
+        RealMatrix P_new = density_.step(C_alpha_, n_alpha_, dim);
+        if (!diis_active_)
+            P_new = (double(1) - damping_) * P_new + damping_ * P_old;
+
+        e_one_ = xt::sum(Hcore_ * P_old)();
+        e_coulomb_ = 0; // folded into ½Tr[P(H+F)] for HF (never split out)
+        e_total_ =
+            double(0.5) * xt::sum((Hcore_ + F_alpha_) * P_old)() + v_nuc_;
+        P_alpha_ = std::move(P_new);
+        P_beta_ = P_alpha_;
+        return;
+    }
 
     // Local mirrors of the shipping solver's names (scf_solver.cpp:293-348).
     // The wired P references are old-in/new-out: cache the OLD density so the

@@ -2,10 +2,10 @@
 /// @brief Umbrella header for the concrete Gaussian mean-field methods.
 ///
 /// Includes the shared CRTP base `MeanFieldMethod<D>` (`mean_field_method.h`)
-/// and the five concrete methods `RHF` / `ROHF` / `UHF` / `RKS` / `UKS`
-/// (`rhf.h` / `rohf.h` / `uhf.h` / `rks.h` / `uks.h`), and keeps the
-/// historical `cpu::scf::SCF` alias. Existing includers of `methods.h`
-/// compile unchanged.
+/// and the six concrete methods `RHF` / `ROHF` / `UHF` / `GHF` / `RKS` /
+/// `UKS` (`rhf.h` / `rohf.h` / `uhf.h` / `ghf.h` / `rks.h` / `uks.h`), and
+/// keeps the historical `cpu::scf::SCF` alias. Existing includers of
+/// `methods.h` compile unchanged.
 ///
 /// There is no bag named `SCFSolver` and no user-facing `SCFConfig` /
 /// `IntegralPack` step. Each method is a concrete class; parameters are
@@ -22,6 +22,7 @@
 /// @endcode
 #pragma once
 
+#include "atomiverse/cpu/scf/ghf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"

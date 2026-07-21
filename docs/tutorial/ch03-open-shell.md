@@ -608,6 +608,131 @@ ROHF 的 ⟨S²⟩ 行不依赖任何外部引擎——它是单 MO 集的解析
 是为了与 UHF 行的 2.0034 形成对照:同一几何、同一基组,一行是约定保证的
 2,一行是变分换来的污染。
 
+## GHF 与自旋对称破缺
+
+把本章走过的路摆成一排,你会发现它其实是一架**约束移除的梯子**:
+
+| 方法 | 空间轨道 | 自旋结构 | 被移除的约束 |
+|---|---|---|---|
+| RHF | 一套,α/β 共享 | 共线,成对 | — |
+| ROHF | 一套,分裂占据 | 共线,自旋纯 | "全部双占" |
+| UHF | α/β 各一套 | 共线,可污染 | "α/β 同轨道" |
+| **GHF** | 二分量旋量 | **非共线** | "自旋沿一根轴量子化" |
+
+RHF、ROHF、UHF 的每个轨道都还是"纯 α"或"纯 β"——整个分子共享一根
+自旋量子化轴,区别只在占据方式。GHF(generalized Hartree-Fock)拆掉
+最后这根轴:每个分子轨道是一个**二分量旋量**
+φ_i = (φ_i^α; φ_i^β),两个分量各自是完整的 AO 展开。密度矩阵随之变成
+2n×2n 的 2×2 自旋分块 [[P^αα, P^αβ], [P^βα, P^ββ]],多出来的
+**自旋非对角块 P^αβ** 正是两条独立自旋通道(UHF 的数据结构)原则上
+无法表示的东西——自旋方向可以逐点变化,这就是非共线磁性的语言。
+Fock 矩阵的结构很能说明物理:库仑项只看电荷密度
+(F 的对角块含 J[P^αα+P^ββ]),交换作用于全部四块
+(F^{σσ'} = δ_{σσ'}(h + J) − K[P^{σσ'}])——把自旋块耦合起来的是交换,
+不是静电。
+
+诚实地交代分类学:Fukutome 早在 1981 年就把 HF 平均场按时间反演与自旋
+对称性的破缺方式完整分成**八类**(*Int. J. Quantum Chem.* **20**, 955
+(1981), DOI 10.1002/qua.560200502)——RHF(他叫 TICS)、UHF(ASDW)、
+本节的实代数 GHF 落在其中的 torsional spin density wave(TSDW)类;
+完整的八类还需要复系数(电流承载态)与自旋轨道耦合才全部现身。本引擎
+这一环**只做实代数 GHF**:磁化强度被限制在自旋空间的一张平面里
+(实代数中 σ_x、σ_z 是实矩阵而 σ_y 不是),共面的非共线自旋恰好够用;
+复 GHF 与自旋轨道耦合是后续链节。一般自旋轨道的系统表述见
+Helgaker–Jørgensen–Olsen《Molecular Electronic-Structure Theory》§10。
+
+### 塌缩定理:多出来的自由度什么时候真的有用?
+
+没有自旋轨道项时,**每一个 UHF 解都是 GHF 的驻点**——把 UHF 密度嵌成
+块对角的旋量密度,SCF 映射保持它不动。更强的是:对自旋**无阻挫**的
+体系,GHF 的极小值就是共线的,E_GHF = E_UHF 严格成立。这是 GHF 实现
+最重要的正确性哨兵——在 H₂ 上跑 GHF,能量必须塌缩回 UHF 到 1e-8 Ha,
+差一点都说明旋量 Fock 装配有 bug。
+
+自由度真正兑现的地方是**自旋阻挫**:正三角形 H₃,三个自旋两两都想
+反平行,共线世界里三角形凑不齐(两个反平行了,第三个对谁都不对)。
+GHF 的出路是把三个磁矩摆成共面 120° 的 Néel 扇形——每一对夹角 120°,
+"尽可能反平行"被三方平摊。代价函数上这是实打实的能量:
+
+```molvis {format="xyz" representation="ball-and-stick" controls="view" height="260px"}
+3
+name=H3_equilateral Connct="[0,1],[1,2],[2,0]"
+H  0.0000  0.0000  0.0000
+H  1.0000  0.0000  0.0000
+H  0.5000  0.8660254  0.0000
+```
+
+收敛后的每原子 Mulliken 自旋矢量(实代数:磁化位于 x–z 自旋平面,
+分量 m_x = diag[(P^αβ+P^βα)S]、m_z = diag[(P^αα−P^ββ)S] 按原子求和)
+就是教科书图像本身——molvis 的自旋矢量渲染把它画在结构上,数值上:
+
+| 原子 | m_x | m_z | \|m\| | 方向角 |
+|---|---|---|---|---|
+| H(0) | −0.000000 | +0.622166 | 0.622166 | 0° |
+| H(1) | +0.538812 | −0.311083 | 0.622166 | +120° |
+| H(2) | −0.538812 | −0.311083 | 0.622166 | −120° |
+
+三个磁矩等长、两两严格 120°——不是初猜的残影,是变分收敛的结果
+(初猜角度并不精确等于 120° 也收敛到这里)。
+
+### 上手:三角 H₃
+
+与 UHF/ROHF 同形:具体方法类、参数即成员、Frame 进 Frame 出。两个
+GHF 特有的成员:`n_electrons`(旋量占据需要总电子数,不设即抛)与
+`guess_spin_rotation`(初猜磁矩方向角步长,弧度)。
+
+```cpp
+// 正三角 H3, 边长 1.0 Å, STO-3G —— 与 PySCF oracle 逐字同一几何
+cpu::scf::GHF ghf(3);               // N = 3 个电子进 2n 个旋量的 aufbau
+ghf.basis = cpu::scf::BasisSet::STO3G;
+ghf.tol = 1e-12;
+ghf.guess_spin_rotation = 2.0 * M_PI / 3.0;   // 三角形的几何适配 Néel 角
+ghf.run(frame);
+// ghf.energy()  = -1.340440343541 Ha —— 低于最优共线 UHF 4.46 mHa
+// ghf.determinant().generalized()   = true
+// ghf.determinant().spin_block(Spin::alpha, Spin::beta)  // P^αβ ≠ 0
+```
+
+**初猜必须显式破坏共线性,这是本方法第一陷阱。** 共线初猜被 SCF 映射
+严格保持(共线密度的 Fock 是块对角的,迭代永远出不了共线子空间),
+DIIS 会安安稳稳收敛到共线驻点——能量正是 UHF 的 −1.335980 Ha,收敛
+判据全绿,你却停在鞍点上。`guess_spin_rotation = 0` 的这个行为被测试
+钉死(`test_cpu_scf_ghf` 的 CollinearGuessStaysOnUhfSaddle)。初猜的
+构造是非共线磁性的标准做法(平面波世界的 MAGMOM/SAXIS):电荷密度
+½P_c⊗1₂ 不旋转,每个 AO 叠加一个满强度局域磁矩,方向角
+θ_μ = `guess_spin_rotation`·μ;角度太小(≤0.3 rad)会滑回共线吸引盆,
+三角 H₃ 要用几何适配的 2π/3。
+
+还有一个值得诚实交代的细节:同一几何上共线 UHF 本身就有**两个**驻点
+——对称自旋纯二重态(−1.328176 Ha,⟨S²⟩ = 0.75)与更低的对称破缺解
+(−1.335980 Ha,⟨S²⟩ = 0.838)。本引擎的冷启动 UHF 落在前者,PySCF 的
+MINAO 初猜落在后者;GHF 的非共线极小值在**两者之下**,并且
+PySCF `mf.stability()` 证认它是真极小(内部稳定),而对共线 UHF 做
+`stability(external=True)` 报告 UHF→GHF 不稳定——阻挫的谱学签名。
+完整的证认流程逐字记录在 `regressions/scf/h3_ghf_sto3g/REFERENCE.md`。
+
+本环节未支持的路径一律显式拒绝(不静默走错分支):解析梯度 `forces()`、
+`mp2()`/`fci()`、`soscf`、`level_shift`、EDIIS/ADIIS、非 Hcore 初猜,
+对 GHF 全部抛出;旋量交换需要稠密 ERI(`compute_eri`,构造时默认打开)。
+
+### 章末对照:PySCF GHF/UHF 标量
+
+外部 oracle(PySCF 2.14.0,`scf.GHF`/`scf.UHF`,STO-3G,`cart=True`,
+`conv_tol ≤ 1e-12`;几何、命令与非共线极小值的证认流程逐字记录在
+`regressions/scf/h3_ghf_sto3g/REFERENCE.md`):
+
+| 体系 | 量 | Atomiverse | PySCF 2.14.0 | 差 |
+|---|---|---|---|---|
+| H₃ 正三角 | E_total(GHF, 非共线) [Ha] | −1.340440343541 | −1.340440343541 | < 1e-12 |
+| H₃ 正三角 | E_total(UHF, 对称破缺共线) [Ha] | −1.335980054018¹ | −1.335980054018 | < 1e-10 |
+| H₃ 正三角 | E_total(UHF, 对称二重态) [Ha] | −1.328175755381 | −1.328175755381 | < 1e-10 |
+| H₃ 正三角 | ‖P^αβ‖_F(GHF) | 0.9780588 | 0.9780588 | < 1e-6 |
+| H₃ 正三角 | E_GHF − E_UHF(最优共线) [Ha] | −0.004460 | −0.004460 | — |
+| H₂ (R=0.74) | E_GHF − E_UHF [Ha](塌缩) | < 1e-15 | 0(定理) | — |
+
+¹ 引擎的 GHF 在 `guess_spin_rotation = 0` 时收敛到的共线驻点能量——
+即"共线陷阱"行;引擎冷启动 UHF 本身落在对称二重态一行。
+
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree-Fock exchange, it uses an
 exchange-correlation functional evaluated on a real-space grid:

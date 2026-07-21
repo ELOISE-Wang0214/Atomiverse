@@ -504,6 +504,12 @@ GradientResult ScfGradient::compute(const Frame& frame,
             "implemented — the Lagrangian needs the Roothaan effective-Fock "
             "coupling terms (follow-up chain link); refusing to take the "
             "unrestricted branch silently. Use finite differences.");
+    if (spin_ == SpinType::Generalized)
+        throw std::runtime_error(
+            "ScfGradient::compute: the GHF analytic gradient is not "
+            "implemented — the spinor density has no per-spin channel this "
+            "assembly understands; refusing to take the unrestricted branch "
+            "silently. Use finite differences.");
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;

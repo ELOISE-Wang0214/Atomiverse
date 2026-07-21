@@ -422,6 +422,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rhf.cpp
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
+            src/cpu/scf/ghf.cpp
             src/cpu/scf/rks.cpp
             src/cpu/scf/uks.cpp
             src/cpu/scf/minao_data.cpp

@@ -7,6 +7,10 @@
 /// factor-2 closed-shell total density is only ever a derived value
 /// (`density_total()`). Restricted (RHF/RKS) determinants store one channel
 /// and answer every β query with the α data (view semantics, no copy).
+/// The generalized (GHF spinor) form stores ONE channel whose rows are the
+/// stacked (α; β) components of two-component real spinors — C is 2n×N_mo,
+/// the spinor density `density()` is 2n×2n with spin blocks reachable via
+/// `spin_block`, and the overlap metric is S⊗1₂ (`validate`).
 ///
 /// Construction validates the S-free invariants and throws
 /// `std::invalid_argument` with numeric context (no fallback values);
@@ -45,8 +49,14 @@ namespace scf {
 class SlaterDeterminant {
   public:
     /// @brief Spin channel selector. Restricted determinants answer both
-    ///        values with the single stored channel.
+    ///        values with the single stored channel; so does the generalized
+    ///        (spinor) form, whose single channel carries both components.
     enum class Spin { alpha, beta };
+
+    /// @brief Tag type selecting the generalized (two-component real spinor)
+    ///        construction form (dimensionless; disambiguates the otherwise
+    ///        identical constructor signature — std::in_place_t precedent).
+    struct Generalized {};
 
     /// @brief Restricted (RHF/RKS) constructor: one spatial channel shared
     ///        by both spins.
@@ -86,10 +96,41 @@ class SlaterDeterminant {
         check_channel_("beta", beta_, n_beta_);
     }
 
+    /// @brief Generalized (GHF) constructor: one channel of two-component
+    ///        real spinor MOs. Row μ < n is the α component on AO μ, row
+    ///        n + μ the β component (blocked spinor layout).
+    /// @param tag Generalized-form selector (dimensionless tag).
+    /// @param C Spinor MO coefficient matrix [2n x n_mo] (dimensionless);
+    ///        the row count must be even.
+    /// @param epsilon Spinor orbital energies [Hartree], one per MO column.
+    /// @param occupation Spinor occupations f_i in [0, 1] (dimensionless;
+    ///        each spinor holds at most one electron).
+    /// @param n_electrons Total electron count N.
+    /// @throws std::invalid_argument on dimension mismatch, odd spinor row
+    ///         count, f_i outside [0, 1], or |Σf − N| > 1e-12·max(1, N).
+    SlaterDeterminant(Generalized tag, RealMatrix C, RealVector epsilon,
+                      RealVector occupation, int n_electrons)
+        : alpha_{std::move(C), std::move(epsilon), std::move(occupation)},
+          n_alpha_(n_electrons), n_beta_(0), restricted_(false),
+          generalized_(true) {
+        (void)tag;
+        check_channel_("spinor", alpha_, n_alpha_);
+        if (alpha_.C.shape()[0] % 2 != 0)
+            throw std::invalid_argument(
+                "SlaterDeterminant: generalized (spinor) C has "
+                + std::to_string(alpha_.C.shape()[0])
+                + " rows — must be even (2n: stacked alpha/beta components)");
+    }
+
     /// @brief Whether this is a restricted (single spatial channel)
     ///        determinant.
     /// @return true for the restricted form (β accessors forward to α).
     bool restricted() const { return restricted_; }
+
+    /// @brief Whether this is the generalized (two-component spinor) form.
+    /// @return true when constructed with the `Generalized` tag: C is
+    ///         2n×N_mo and `density()` is the 2n×2n spinor density.
+    bool generalized() const { return generalized_; }
 
     /// @brief MO coefficient matrix of channel σ.
     /// @param s Spin channel.
@@ -113,9 +154,22 @@ class SlaterDeterminant {
     /// @brief Electron count of channel σ.
     /// @param s Spin channel.
     /// @return N^σ (dimensionless count).
+    /// @throws std::invalid_argument for the generalized form — a spinor
+    ///         determinant has no sharp per-spin electron count (use
+    ///         `n_electrons_total()`).
     int n_electrons(Spin s) const {
+        if (generalized_)
+            throw std::invalid_argument(
+                "SlaterDeterminant::n_electrons(Spin): the generalized "
+                "(spinor) form has no sharp per-spin electron count — use "
+                "n_electrons_total()");
         return (s == Spin::beta) ? n_beta_ : n_alpha_;
     }
+
+    /// @brief Total electron count N = N^α + N^β (the spinor count N for
+    ///        the generalized form).
+    /// @return N (dimensionless count).
+    int n_electrons_total() const { return n_alpha_ + n_beta_; }
 
     /// @brief Cached spin-contamination diagnostic ⟨S²⟩ − S(S+1)
     ///        (Amos-Hall; 0 for a pure spin state and for the restricted
@@ -130,39 +184,62 @@ class SlaterDeterminant {
 
     /// @brief Spin density matrix P^σ = Σ_i f_i^σ c_i c_iᵀ (AO basis,
     ///        dimensionless), built by delegating the GEMM to
-    ///        `linalg::build_density_matrix`.
+    ///        `linalg::build_density_matrix`. For the generalized form this
+    ///        is the σσ diagonal spin block of the spinor density
+    ///        (`spin_block(s, s)`).
     /// @param s Spin channel.
     /// @return P^σ [n x n] (dimensionless). For integer Aufbau occupations
     ///         this is bit-identical to C_occ C_occᵀ.
     RealMatrix density(Spin s) const {
-        const Channel& ch = channel_(s);
-        const int n = static_cast<int>(ch.C.shape()[0]);
-        const int n_mo = static_cast<int>(ch.C.shape()[1]);
-        // Gather occupied columns weighted by sqrt(f) so that
-        // C' C'^T = sum_i f_i c_i c_i^T; integer occupations copy columns
-        // unchanged (sqrt(1) = 1) and reproduce the plain GEMM bitwise.
-        int n_occ = 0;
-        for (int i = 0; i < n_mo; ++i)
-            if (ch.occupation(i) > 0.0)
-                ++n_occ;
-        RealMatrix C_occ = xt::zeros<double>({n, n_occ});
-        int col = 0;
-        for (int i = 0; i < n_mo; ++i) {
-            const double f = ch.occupation(i);
-            if (f <= 0.0)
-                continue;
-            const double w = (f == 1.0) ? 1.0 : std::sqrt(f);
-            xt::view(C_occ, xt::all(), col) = w * xt::view(ch.C, xt::all(), i);
-            ++col;
-        }
-        return linalg::build_density_matrix(C_occ, n_occ, n, 1.0);
+        if (generalized_)
+            return spin_block(s, s);
+        return density_of_(channel_(s));
+    }
+
+    /// @brief Spinor density matrix P = Σ_i f_i c_i c_iᵀ over the
+    ///        two-component spinor MOs (generalized form only).
+    /// @return P [2n x 2n] (dimensionless), spin-blocked
+    ///         [[P^αα, P^αβ], [P^βα, P^ββ]].
+    /// @throws std::invalid_argument when the determinant is not
+    ///         generalized (use `density(Spin)` / `density_total()`).
+    RealMatrix density() const {
+        if (!generalized_)
+            throw std::invalid_argument(
+                "SlaterDeterminant::density(): the 2n x 2n spinor density "
+                "is defined for the generalized form only — use "
+                "density(Spin) or density_total()");
+        return density_of_(alpha_);
+    }
+
+    /// @brief Spin block P^{σσ'} of the spinor density (generalized form
+    ///        only): rows from the σ component, columns from the σ'
+    ///        component. P^βα = (P^αβ)ᵀ for real spinors.
+    /// @param bra Row spin component σ.
+    /// @param ket Column spin component σ'.
+    /// @return P^{σσ'} [n x n] (dimensionless).
+    /// @throws std::invalid_argument when the determinant is not generalized.
+    RealMatrix spin_block(Spin bra, Spin ket) const {
+        if (!generalized_)
+            throw std::invalid_argument(
+                "SlaterDeterminant::spin_block: spin blocks are defined for "
+                "the generalized (spinor) form only");
+        const RealMatrix P = density_of_(alpha_);
+        const std::size_t n = P.shape()[0] / 2;
+        const std::size_t r = (bra == Spin::beta) ? n : 0;
+        const std::size_t c = (ket == Spin::beta) ? n : 0;
+        return xt::view(P, xt::range(r, r + n), xt::range(c, c + n));
     }
 
     /// @brief Total density P^α + P^β (AO basis, dimensionless). For the
     ///        restricted form this is the factor-2 closed-shell density
     ///        2·C_occ C_occᵀ — a derived value, not the storage convention.
+    ///        For the generalized form it is the n×n charge density
+    ///        P^αα + P^ββ (the spin-off-diagonal blocks carry no charge).
     /// @return P_total [n x n] (dimensionless).
     RealMatrix density_total() const {
+        if (generalized_)
+            return spin_block(Spin::alpha, Spin::alpha)
+                   + spin_block(Spin::beta, Spin::beta);
         if (restricted_)
             return 2.0 * density(Spin::alpha);
         return density(Spin::alpha) + density(Spin::beta);
@@ -283,16 +360,40 @@ class SlaterDeterminant {
     ///        channel, and — only when every f is integer (a true single
     ///        determinant) — idempotency P^σSP^σ = P^σ. Fractional
     ///        occupations skip the idempotency check (it fails exactly
-    ///        then, by construction).
-    /// @param S AO overlap matrix [n x n] (dimensionless).
+    ///        then, by construction). The generalized form validates the
+    ///        spinor density against the spinor metric S⊗1₂ built from the
+    ///        given AO overlap: Tr(P·S⊗1₂) = N and P(S⊗1₂)P = P.
+    /// @param S AO overlap matrix [n x n] (dimensionless) — always the
+    ///        n-dimensional AO overlap, also for the generalized form.
     /// @param tol Absolute tolerance on both checks (dimensionless).
+    /// @throws std::invalid_argument when S does not match the AO dimension
+    ///         (generalized: 2·n_S must equal the spinor row count).
     /// @throws std::runtime_error naming the channel and deviation on
     ///         violation (a runtime numerical invariant, not an argument
     ///         error — CanonicalOrth precedent).
     void validate(const RealMatrix& S, double tol = 1e-8) const {
-        validate_channel_("alpha", channel_(Spin::alpha), n_alpha_, S, tol);
+        if (generalized_) {
+            const std::size_t two_n = alpha_.C.shape()[0];
+            if (S.shape()[0] * 2 != two_n || S.shape()[1] * 2 != two_n)
+                throw std::invalid_argument(
+                    "SlaterDeterminant::validate: AO overlap is "
+                    + std::to_string(S.shape()[0]) + "x"
+                    + std::to_string(S.shape()[1])
+                    + " but the spinor dimension is "
+                    + std::to_string(two_n) + " (expected 2n x N_mo C)");
+            const std::size_t n = two_n / 2;
+            RealMatrix S_spinor = xt::zeros<double>({two_n, two_n});
+            xt::view(S_spinor, xt::range(0, n), xt::range(0, n)) = S;
+            xt::view(S_spinor, xt::range(n, two_n), xt::range(n, two_n)) = S;
+            validate_density_("spinor", alpha_, density_of_(alpha_), S_spinor,
+                              tol);
+            return;
+        }
+        validate_density_("alpha", channel_(Spin::alpha),
+                          density_of_(channel_(Spin::alpha)), S, tol);
         if (!restricted_)
-            validate_channel_("beta", channel_(Spin::beta), n_beta_, S, tol);
+            validate_density_("beta", channel_(Spin::beta),
+                              density_of_(channel_(Spin::beta)), S, tol);
     }
 
   private:
@@ -303,11 +404,40 @@ class SlaterDeterminant {
         RealVector occupation; ///< Per-spin occupations in [0, 1].
     };
 
+    // Restricted AND generalized forms hold a single channel — β queries
+    // forward to it; only the unrestricted form has a distinct β channel.
     const Channel& channel_(Spin s) const {
-        return (s == Spin::beta && !restricted_) ? beta_ : alpha_;
+        return (s == Spin::beta && !restricted_ && !generalized_) ? beta_
+                                                                  : alpha_;
     }
     Channel& channel_(Spin s) {
-        return (s == Spin::beta && !restricted_) ? beta_ : alpha_;
+        return (s == Spin::beta && !restricted_ && !generalized_) ? beta_
+                                                                  : alpha_;
+    }
+
+    /// Density of one stored channel: P = Σ_i f_i c_i c_iᵀ (spinor-dimension
+    /// 2n×2n when the channel holds spinor coefficients).
+    static RealMatrix density_of_(const Channel& ch) {
+        const int n = static_cast<int>(ch.C.shape()[0]);
+        const int n_mo = static_cast<int>(ch.C.shape()[1]);
+        // Gather occupied columns weighted by sqrt(f) so that
+        // C' C'^T = sum_i f_i c_i c_i^T; integer occupations copy columns
+        // unchanged (sqrt(1) = 1) and reproduce the plain GEMM bitwise.
+        int n_occ = 0;
+        for (int i = 0; i < n_mo; ++i)
+            if (ch.occupation(i) > 0.0)
+                ++n_occ;
+        RealMatrix C_occ = xt::zeros<double>({n, n_occ});
+        int col = 0;
+        for (int i = 0; i < n_mo; ++i) {
+            const double f = ch.occupation(i);
+            if (f <= 0.0)
+                continue;
+            const double w = (f == 1.0) ? 1.0 : std::sqrt(f);
+            xt::view(C_occ, xt::all(), col) = w * xt::view(ch.C, xt::all(), i);
+            ++col;
+        }
+        return linalg::build_density_matrix(C_occ, n_occ, n, 1.0);
     }
 
     static void check_channel_(const char* name, const Channel& ch, int n_el) {
@@ -359,15 +489,20 @@ class SlaterDeterminant {
                 + std::to_string(ch.occupation(to)) + ")");
         ch.occupation(from) = 0.0;
         ch.occupation(to) = 1.0;
-        check_channel_(restricted_ ? "alpha(restricted)"
-                                   : (s == Spin::beta ? "beta" : "alpha"),
-                       ch, s == Spin::beta ? n_beta_ : n_alpha_);
+        const bool single_channel = restricted_ || generalized_;
+        check_channel_(generalized_
+                           ? "spinor"
+                           : (restricted_ ? "alpha(restricted)"
+                                          : (s == Spin::beta ? "beta"
+                                                             : "alpha")),
+                       ch,
+                       (s == Spin::beta && !single_channel) ? n_beta_
+                                                            : n_alpha_);
     }
 
-    void validate_channel_(const char* name, const Channel& ch, int n_el,
-                           const RealMatrix& S, double tol) const {
-        const RealMatrix P =
-            density(name[0] == 'b' ? Spin::beta : Spin::alpha);
+    void validate_density_(const char* name, const Channel& ch,
+                           const RealMatrix& P, const RealMatrix& S,
+                           double tol) const {
         const RealMatrix PS = xt::linalg::dot(P, S);
         double tr = 0.0;
         for (std::size_t i = 0; i < PS.shape()[0]; ++i)
@@ -408,6 +543,7 @@ class SlaterDeterminant {
     int n_alpha_ = 0;  ///< Alpha electron count N^α.
     int n_beta_ = 0;   ///< Beta electron count N^β.
     bool restricted_ = true; ///< Restricted (β forwards to α) or not.
+    bool generalized_ = false; ///< Generalized (two-component spinor) form.
     double spin_contamination_ = 0; ///< Cached ⟨S²⟩ − S(S+1) deviation.
 };
 

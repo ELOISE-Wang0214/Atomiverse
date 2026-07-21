@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <xtensor-blas/xlinalg.hpp>
@@ -156,12 +157,19 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     // P_tot commutator → restricted diagonalization (one MO set, C_β = C_α) →
     // unrestricted split-occupation density whose energy reads the preserved
     // TRUE spin Focks (never F_eff).
+    // Generalized (GHF) is a single-channel loop at spinor dimension 2n:
+    // FockStage/DensityStage take the explicit spinor branch, while the
+    // mix / diagonalize / converged stages run their restricted
+    // (single-channel) path unchanged — on the 2n-dimensional members with
+    // the spinor metric S⊗1₂ (the DIIS error FPS − SPF is then exactly the
+    // spinor commutator).
     const bool rohf = (spin_ == SpinType::RestrictedOpen);
+    const bool generalized = (spin_ == SpinType::Generalized);
     fock_stage_ = std::make_unique<FockStage>(
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
-        int_n_beta_);
+        int_n_beta_, generalized);
     if (rohf) {
         rohf_couple_stage_ = std::make_unique<RohfCoupleStage>(
             S_, P_alpha_, P_beta_, F_alpha_, F_beta_, F_alpha_uncoupled_,
@@ -174,22 +182,23 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
             eig_alpha_, eig_beta_, soscf_max_micro, soscf_trust);
     }
     mix_stage_ = std::make_unique<MixStage>(
-        restricted_ || rohf, use_diis, diis_start_iter, diis_max_vectors,
-        level_shift, mixer, mixer_switch_tol, soscf, soscf_start, S_, X_,
-        rohf ? P_total_ : P_alpha_, P_beta_, iter_, e_total_, F_alpha_,
-        F_beta_, err_alpha_, err_beta_, soscf_active_);
+        restricted_ || rohf || generalized, use_diis, diis_start_iter,
+        diis_max_vectors, level_shift, mixer, mixer_switch_tol, soscf,
+        soscf_start, S_, X_, rohf ? P_total_ : P_alpha_, P_beta_, iter_,
+        e_total_, F_alpha_, F_beta_, err_alpha_, err_beta_, soscf_active_);
     diag_stage_ = std::make_unique<DiagonalizeStage>(
-        restricted_ || rohf, F_alpha_, F_beta_, S_, X_, n_dropped_, C_alpha_,
-        C_beta_, eig_alpha_, eig_beta_, soscf_stepper_.get(), soscf_active_);
+        restricted_ || rohf || generalized, F_alpha_, F_beta_, S_, X_,
+        n_dropped_, C_alpha_, C_beta_, eig_alpha_, eig_beta_,
+        soscf_stepper_.get(), soscf_active_);
     density_stage_ = std::make_unique<DensityStage>(
         restricted_, is_hf_, damping_factor, C_alpha_, C_beta_,
         rohf ? F_alpha_uncoupled_ : F_alpha_,
         rohf ? F_beta_uncoupled_ : F_beta_, Hcore_, J_, n_alpha_, n_beta_,
         n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_,
-        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_);
+        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_, generalized);
     converged_stage_ = std::make_unique<ScfConverged>(
         tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol),
-        restricted_ || rohf, e_total_, err_alpha_, err_beta_);
+        restricted_ || rohf || generalized, e_total_, err_alpha_, err_beta_);
 
     this->on(ATV::scf::Phase::fock).add_ref(*fock_stage_);
     if (rohf)
@@ -366,6 +375,47 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "kernel, which this SOSCF link does not include. Disable soscf "
             "or run RHF/UHF.");
 
+    // GHF-unsupported knobs — explicit refusal instead of a silently wrong
+    // Restricted/Unrestricted branch (no fallback).
+    const bool generalized = (spin_ == SpinType::Generalized);
+    if (generalized) {
+        if (opts.forces)
+            throw std::invalid_argument(
+                "MeanFieldMethod::forces: GHF analytic forces are not "
+                "implemented — the spinor gradient assembly is a follow-up "
+                "chain link. Use finite differences or UHF.");
+        if (soscf)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: soscf=true is not supported for GHF "
+                "— the CIAH orbital Hessian has no spinor rotation blocks. "
+                "Disable soscf.");
+        if (std::abs(level_shift) > internal::kLevelShiftSkipThreshold)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: level_shift is not supported for GHF "
+                "— the restricted shift projector 0.5*P is not the spinor "
+                "occupied projector. Set level_shift = 0.");
+        if (mixer != MixerKind::CDIIS)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: EDIIS/ADIIS mixers are not validated "
+                "for the GHF spinor loop — use MixerKind::CDIIS.");
+        if (use_predictor_)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: the ASPC density predictor is not "
+                "supported for GHF in this link.");
+        if (init_guess != InitGuess::Hcore)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: GHF supports InitGuess::Hcore only — "
+                "the MINAO/Hueckel/SAP guesses are spin-balanced, which "
+                "makes the collinearity-breaking spin rotation a no-op "
+                "(silent UHF-saddle trap). Keep the GHF default.");
+        if (!compute_eri)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: GHF requires compute_eri = true — "
+                "the spinor exchange K[P^ab] of the non-symmetric "
+                "spin-off-diagonal block needs the stored dense ERI tensor "
+                "(no direct-SCF spinor path in this link).");
+    }
+
     // ROHF-unsupported knobs — explicit refusal instead of a silently wrong
     // Restricted/Unrestricted branch (no fallback).
     const bool rohf = (spin_ == SpinType::RestrictedOpen);
@@ -406,8 +456,17 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
 
     ensure_driver_built_();
 
-    S_ = ints.S;
-    Hcore_ = ints.Hcore;
+    // Generalized (GHF): the loop members live at spinor dimension 2n. The
+    // spin-independent one-electron operators are embedded block-diagonally
+    // (S⊗1₂, h⊗1₂ in the blocked [α-rows; β-rows] layout); the AO integrals
+    // themselves stay n-dimensional inside the FockStage spinor branch.
+    if (generalized) {
+        S_ = internal::DensityBuilder::spinor_embed(ints.S);
+        Hcore_ = internal::DensityBuilder::spinor_embed(ints.Hcore);
+    } else {
+        S_ = ints.S;
+        Hcore_ = ints.Hcore;
+    }
     n_basis_ = n;
     v_nuc_ = ints.V_nuc;
     diis_pairs_ = 0;
@@ -435,6 +494,72 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                 : eigen.step(F, S_);
     };
 
+    if (generalized) {
+        // GHF initial guess: the noncollinear-magnetism standard "charge
+        // density + per-site moment directions" construction (the shape of
+        // a plane-wave code's MAGMOM/SAXIS guess). The spin-scalar charge
+        // half of an n-dimensional aufbau reference is embedded unrotated
+        // (½P_c⊗1₂ — rotating charge would leak spurious spin-off-diagonal
+        // weight), and each AO μ is decorated with a full-strength local
+        // moment of magnitude d_μ = clamp(P_c(μ,μ), 0, 2−P_c(μ,μ)) pointing
+        // along (sin θ_μ, 0, cos θ_μ) in the real-algebra x-z spin plane,
+        // θ_μ = guess_spin_rotation·μ. θ = 0 keeps the guess collinear —
+        // DIIS then converges onto a collinear UHF stationary point (a
+        // saddle on spin-frustrated systems); this trap is test-pinned.
+        const int N = n_alpha; // resolve_occupation put the total N here
+        const int n_a = (N + 1) / 2;
+        const int n_b = N / 2;
+        const bool valid_spinor_guess =
+            guess && guess->has_alpha && guess->P_alpha.dimension() == 2
+            && static_cast<int>(guess->P_alpha.shape()[0]) == 2 * n
+            && static_cast<int>(guess->P_alpha.shape()[1]) == 2 * n;
+        RealMatrix P0;
+        if (valid_spinor_guess) {
+            P0 = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
+        } else {
+            // n-dim aufbau charge density (own n-dim orthogonalization —
+            // the member X_ is spinor).
+            RealMatrix Xn;
+            if (lindep_threshold > 0) {
+                linalg::CanonicalOrth ortho_n(ints.S, lindep_threshold);
+                Xn = (ortho_n.n_dropped > 0) ? std::move(ortho_n.X)
+                                             : std::move(ortho_n.lowdin);
+            } else {
+                Xn = linalg::build_orthogonalization_matrix(ints.S);
+            }
+            auto [eig_n, C_n] = eigen.step_orthogonal(ints.Hcore, Xn);
+            (void)eig_n;
+            const RealMatrix P_c = density.step(C_n, n_a, n)
+                                   + density.step(C_n, n_b, n);
+            P0 = xt::zeros<double>({2 * n, 2 * n});
+            xt::view(P0, xt::range(0, n), xt::range(0, n)) = 0.5 * P_c;
+            xt::view(P0, xt::range(n, 2 * n), xt::range(n, 2 * n)) =
+                0.5 * P_c;
+
+            double theta = 0.0;
+            if constexpr (std::is_same_v<D, GHF>)
+                theta = static_cast<D*>(this)->guess_spin_rotation;
+            for (int mu = 0; mu < n; ++mu) {
+                const double d = std::min(
+                    std::max(P_c(mu, mu), 0.0), 2.0 - P_c(mu, mu));
+                const double th = theta * mu;
+                const double mz = 0.5 * d * std::cos(th);
+                const double mx = 0.5 * d * std::sin(th);
+                P0(mu, mu) += mz;
+                P0(n + mu, n + mu) -= mz;
+                P0(mu, n + mu) += mx;
+                P0(n + mu, mu) += mx;
+            }
+        }
+        P_alpha_ = std::move(P0);
+        P_beta_ = P_alpha_;
+        // Placeholders only: the diagonalize stage overwrites C/ε before the
+        // density stage ever reads them (fock → mix → diagonalize → density).
+        C_alpha_ = xt::zeros<double>({2 * n, 2 * n});
+        C_beta_ = C_alpha_;
+        eig_alpha_ = xt::zeros<double>({2 * n});
+        eig_beta_ = eig_alpha_;
+    } else {
     // Initial guess, reusing diagonalize + density once.
     auto [eig0, C0] = diagonalize(Hcore_);
 
@@ -522,6 +647,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     C_beta_ = C0;
     eig_alpha_ = eig0;
     eig_beta_ = eig0;
+    } // end !generalized guess flow
 
     mix_stage_->reset();
     converged_stage_->reset();
@@ -598,7 +724,12 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     RealVector f_alpha = xt::zeros<double>({n_mo});
     for (int i = 0; i < n_alpha && i < n_mo; ++i)
         f_alpha(i) = 1.0;
-    if (restricted) {
+    if (generalized) {
+        // Spinor determinant: one channel, N electrons aufbau over the 2n
+        // spinors (n_alpha carries the total N for the generalized form).
+        *det_sp_ = SlaterDeterminant(SlaterDeterminant::Generalized{},
+                                     C_alpha_, eig_alpha_, f_alpha, n_alpha);
+    } else if (restricted) {
         *det_sp_ = SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha);
     } else {
         RealVector f_beta = xt::zeros<double>({n_mo});
@@ -682,6 +813,11 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
             "closed-shell MP2 pack would silently treat the single MO set as "
             "a doubly-occupied one. Use RHF (closed shell) — ROHF-MP2 is a "
             "follow-up chain link.");
+    if (spin_ == SpinType::Generalized)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2: a GHF (spinor) reference is not supported "
+            "— the closed-shell MP2 pack has no spinor transformation. Use "
+            "RHF.");
     const bool prev = compute_eri;
     compute_eri = true;
     run(frame);
@@ -700,6 +836,10 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
         throw std::invalid_argument(
             "MeanFieldMethod::fci: an ROHF reference is not supported — the "
             "FCI pack requires a closed-shell reference. Use RHF.");
+    if (spin_ == SpinType::Generalized)
+        throw std::invalid_argument(
+            "MeanFieldMethod::fci: a GHF (spinor) reference is not supported "
+            "— the FCI pack requires a closed-shell reference. Use RHF.");
     const bool prev = compute_eri;
     compute_eri = true;
     run(frame);
@@ -716,6 +856,7 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
 template class MeanFieldMethod<RHF>;
 template class MeanFieldMethod<ROHF>;
 template class MeanFieldMethod<UHF>;
+template class MeanFieldMethod<GHF>;
 template class MeanFieldMethod<RKS>;
 template class MeanFieldMethod<UKS>;
 

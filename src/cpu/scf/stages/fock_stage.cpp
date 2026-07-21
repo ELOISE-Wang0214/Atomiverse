@@ -3,6 +3,12 @@
 
 #include "atomiverse/cpu/scf/stages/fock_stage.h"
 
+#include <stdexcept>
+
+#include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/views/xview.hpp>
+
+#include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -17,14 +23,14 @@ FockStage::FockStage(bool restricted, bool is_hf, XCType xc_type,
                      const RealMatrix& P_beta, RealMatrix& F_alpha,
                      RealMatrix& F_beta, RealMatrix& J, double& e_xc_grid,
                      double& e_exact_exchange, double& int_n_alpha,
-                     double& int_n_beta)
-    : restricted_(restricted), is_hf_(is_hf), xc_type_(xc_type),
-      grid_level_(grid_level), n_radial_(n_radial), n_angular_(n_angular),
-      hybrid_alpha_override_(hybrid_alpha_override), fixed_grid_(fixed_grid),
-      integrals_(integrals), P_alpha_(P_alpha), P_beta_(P_beta),
-      F_alpha_(F_alpha), F_beta_(F_beta), J_(J), e_xc_grid_(e_xc_grid),
-      e_exact_exchange_(e_exact_exchange), int_n_alpha_(int_n_alpha),
-      int_n_beta_(int_n_beta) {}
+                     double& int_n_beta, bool generalized)
+    : restricted_(restricted), is_hf_(is_hf), generalized_(generalized),
+      xc_type_(xc_type), grid_level_(grid_level), n_radial_(n_radial),
+      n_angular_(n_angular), hybrid_alpha_override_(hybrid_alpha_override),
+      fixed_grid_(fixed_grid), integrals_(integrals), P_alpha_(P_alpha),
+      P_beta_(P_beta), F_alpha_(F_alpha), F_beta_(F_beta), J_(J),
+      e_xc_grid_(e_xc_grid), e_exact_exchange_(e_exact_exchange),
+      int_n_alpha_(int_n_alpha), int_n_beta_(int_n_beta) {}
 
 std::vector<DefaultBinding> FockStage::default_bindings() const {
     return {ATV::make_binding(ATV::scf::Phase::fock, 0)};
@@ -41,6 +47,54 @@ void FockStage::build(const cpu::BuildContext& ctx) {
 void FockStage::launch(const cpu::LaunchContext& ctx) {
     if (!ctx.at(ATV::scf::Phase::fock))
         return;
+
+    if (generalized_) {
+        // GHF spinor Fock: F^{σσ'} = δ_{σσ'}(h + J[P^αα+P^ββ]) − K[P^{σσ'}].
+        // The AO integrals stay n-dimensional; each n×n spin block of the
+        // 2n×2n spinor density is contracted separately against the stored
+        // dense ERI (chemist notation (ij|kl)):
+        //   J_kl[D] = Σ_ij (ij|kl) D_ji,   K_il[D] = Σ_jk (ij|kl) D_jk.
+        // The Coulomb term sees only the charge density P^αα + P^ββ; the
+        // exchange acts on all four blocks (P^αβ is NOT symmetric — the
+        // 8-fold-symmetry direct builders assume symmetric densities, hence
+        // the stored-ERI requirement).
+        if (integrals_.ERI.size() == 0)
+            throw std::runtime_error(
+                "FockStage: the generalized (GHF) Fock build requires the "
+                "stored dense ERI tensor (compute_eri = true) — there is no "
+                "direct-SCF spinor exchange path in this link.");
+        using DB = internal::DensityBuilder;
+        const std::size_t n = static_cast<std::size_t>(integrals_.n_basis);
+        const RealMatrix Paa = DB::spin_block(P_alpha_, 0, 0);
+        const RealMatrix Pab = DB::spin_block(P_alpha_, 0, 1);
+        const RealMatrix Pba = DB::spin_block(P_alpha_, 1, 0);
+        const RealMatrix Pbb = DB::spin_block(P_alpha_, 1, 1);
+        const RealMatrix Pc = Paa + Pbb;
+
+        const auto& eri = integrals_.ERI;
+        const std::vector<std::size_t> ax01{0, 1}, ax10{1, 0}, ax12{1, 2};
+        const RealMatrix Jn = xt::linalg::tensordot(eri, Pc, ax01, ax10);
+        const RealMatrix Kaa = xt::linalg::tensordot(eri, Paa, ax12, ax01);
+        const RealMatrix Kbb = xt::linalg::tensordot(eri, Pbb, ax12, ax01);
+        const RealMatrix Kab = xt::linalg::tensordot(eri, Pab, ax12, ax01);
+        const RealMatrix Kba = xt::linalg::tensordot(eri, Pba, ax12, ax01);
+
+        const RealMatrix& h = integrals_.Hcore;
+        RealMatrix F = xt::zeros<double>({2 * n, 2 * n});
+        xt::view(F, xt::range(0, n), xt::range(0, n)) = h + Jn - Kaa;
+        xt::view(F, xt::range(0, n), xt::range(n, 2 * n)) = -Kab;
+        xt::view(F, xt::range(n, 2 * n), xt::range(0, n)) = -Kba;
+        xt::view(F, xt::range(n, 2 * n), xt::range(n, 2 * n)) = h + Jn - Kbb;
+
+        F_alpha_ = std::move(F);
+        F_beta_ = F_alpha_;
+        J_ = DB::spinor_embed(Jn);
+        e_xc_grid_ = 0;
+        e_exact_exchange_ = 0;
+        int_n_alpha_ = 0;
+        int_n_beta_ = 0;
+        return;
+    }
 
     // Same core, same order, no extra arithmetic: the discrete step() forwards
     // to the shared HamiltonianBuilder core, so the outputs are bit-identical to

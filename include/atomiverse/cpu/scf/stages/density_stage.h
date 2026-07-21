@@ -59,6 +59,13 @@ class DensityStage : public cpu::Component {
     /// @param e_total           Total SCF energy, Hartree (write).
     /// @param e_one             One-electron energy, Hartree (write).
     /// @param e_coulomb         Coulomb (J) energy, Hartree (write).
+    /// @param generalized       True for the GHF spinor path: `C_alpha` is
+    ///                          the 2n×2n_mo spinor coefficient matrix,
+    ///                          `n_alpha` the total spinor occupation N,
+    ///                          `P_alpha` the 2n×2n spinor density, `Hcore`
+    ///                          the spinor core Hamiltonian h⊗1₂ [Hartree];
+    ///                          the energy is the single-channel
+    ///                          E = ½Tr[P(H+F)] + E_nn on the OLD density.
     DensityStage(bool restricted, bool is_hf, double damping,
                  const RealMatrix& C_alpha, const RealMatrix& C_beta,
                  const RealMatrix& F_alpha, const RealMatrix& F_beta,
@@ -67,7 +74,7 @@ class DensityStage : public cpu::Component {
                  const bool& diis_active, const double& e_xc_grid,
                  const double& e_exact_exchange, const double& v_nuc,
                  RealMatrix& P_alpha, RealMatrix& P_beta, double& e_total,
-                 double& e_one, double& e_coulomb);
+                 double& e_one, double& e_coulomb, bool generalized = false);
 
     /// @brief Component name.
     /// @return `"scf_density_stage"`.
@@ -88,6 +95,7 @@ class DensityStage : public cpu::Component {
   private:
     bool restricted_;
     bool is_hf_;
+    bool generalized_; ///< GHF spinor path (2n dimensions, single channel).
     double damping_;
 
     const RealMatrix& C_alpha_;
