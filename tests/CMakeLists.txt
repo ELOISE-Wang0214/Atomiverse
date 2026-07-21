@@ -495,6 +495,12 @@ if(ATV_BUILD_HF)
     # regressions/scf/h2_rhf_stability.
     atv_add_cpp_test(test_cpu_scf_orbital_hessian cpu/scf/test_orbital_hessian.cpp)
     atv_add_cpp_test(test_cpu_scf_stability       cpu/scf/test_stability.cpp)
+    # hf-capability-gaps-14-tdhf: TDA + TDHF/RPA lowest roots over the same
+    # A/B kernel (dense vs full-supermatrix vs Davidson parity, the
+    # triplet-instability throw) + the RHF::tda()/tdhf() method surface.
+    # Formaldehyde oracle e2e lives in regressions/scf/ch2o_tdhf.
+    atv_add_cpp_test(test_cpu_scf_tdhf_pack       cpu/scf/test_tdhf_pack.cpp)
+    atv_add_cpp_test(test_cpu_scf_tdhf_method     cpu/scf/test_tdhf_method.cpp)
     # hf-capability-gaps-13-cphf: second/skeleton derivative-integral FD
     # gates, B^x sum rules, CPHF iterative-vs-dense parity + the link-08
     # sigma_plus LHS identity (micro HeH+), and the H2/STO-3G analytic-

@@ -1,7 +1,7 @@
 ---
 title: "HF capability gaps 14 — TDHF/RPA 与 TDA 激发能(A/B kernel 的第四种配置)"
 slug: hf-capability-gaps-14-tdhf
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 14/21
 external-depends: scf-slater-determinant-03-unbag
@@ -43,13 +43,36 @@ created: 2026-07-20
 - docs/tutorial/ch20-hf-properties-environment.md — "激发态:TDHF/RPA 与 TDA" 节(骨架由链环 01/03 创建)
 
 ## Tasks
-- [ ] Write failing tests for TDHFPack (tests/cpu/scf/test_tdhf_pack.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 上 TDA 稠密根 == A 的本征值;约化形式 RPA 根与完整 2n_ov×2n_ov [[A,B],[−B,−A]] 非对称稠密本征值一致到 1e-10;每个最低根 ω_RPA ≤ ω_TDA;Davidson == 稠密到 1e-8;构造 triplet-不稳定 kernel 时 `rpa()` throw 而 `tda()` 实数
-- [ ] Implement TDHFPack in include/atomiverse/cpu/scf/internal/tdhf_pack.h + src/cpu/scf/tdhf.cpp(matrix-free σ 复用 OrbitalHessian;CMakeLists.txt HF 源列表;Doxygen 带单位)
-- [ ] Write failing tests for RHF::tda()/tdhf() 薄表面 (tests/cpu/scf/test_tdhf_method.cpp,注册 tests/CMakeLists.txt):未 run 先调 throw;拉伸 H₂(R=1.5 Å,STO-3G,链环 08 判定 external 不稳定)上 `tdhf(…, triplet)` throw 且消息含稳定性诊断、`tda()` 返回实激发能;singlet 跃迁偶极非零而 triplet 通道 μ=0、f=0;f 与 (2/3)ω|μ|² 恒等式到 1e-12;energy_ev 单位换算正确
-- [ ] Implement ExcitedStatesResult + RHF::tda()/tdhf() in include/atomiverse/cpu/scf/tdhf.h、include/atomiverse/cpu/scf/rhf.h、src/cpu/scf/rhf.cpp(稳定性前置检查;跃迁偶极经链环 03 偶极内核;Doxygen 带单位)
-- [ ] Verify against 甲醛 oracle:regressions/scf/ch2o_tdhf(reg cpp 为库外消费者 + REFERENCE.md 钉外部运行 PySCF tdscf.TDA/tdscf.TDHF 各前 3 个 singlet 根与 n→π* 归属、PySCF 版本与输入,注册 regressions/CMakeLists.txt,≤ 60 s)
-- [ ] Extend docs/tutorial/ch20-hf-properties-environment.md:"激发态:TDHF/RPA 与 TDA" 节——响应叙事(极化率的极点、A/B kernel 的第四次生命)、TDA-vs-RPA 的诚实对比(triplet instability 回链 ch03 稳定性节)、甲醛上手 + molvis 轨道/跃迁可视化、章末 PySCF 激发能对照表(标量入表,禁止条形图)
-- [ ] Run full check + test suite(含 no-factory / stage-typing scrub 与 regressions 目标)
+- [x] Write failing tests for TDHFPack (tests/cpu/scf/test_tdhf_pack.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 上 TDA 稠密根 == A 的本征值;约化形式 RPA 根与完整 2n_ov×2n_ov [[A,B],[−B,−A]] 非对称稠密本征值一致到 1e-10;每个最低根 ω_RPA ≤ ω_TDA;Davidson == 稠密到 1e-8;构造 triplet-不稳定 kernel 时 `rpa()` throw 而 `tda()` 实数
+- [x] Implement TDHFPack in include/atomiverse/cpu/scf/internal/tdhf_pack.h + src/cpu/scf/tdhf.cpp(matrix-free σ 复用 OrbitalHessian;CMakeLists.txt HF 源列表;Doxygen 带单位)
+- [x] Write failing tests for RHF::tda()/tdhf() 薄表面 (tests/cpu/scf/test_tdhf_method.cpp,注册 tests/CMakeLists.txt):未 run 先调 throw;拉伸 H₂(R=1.5 Å,STO-3G,链环 08 判定 external 不稳定)上 `tdhf(…, triplet)` throw 且消息含稳定性诊断、`tda()` 返回实激发能;singlet 跃迁偶极非零而 triplet 通道 μ=0、f=0;f 与 (2/3)ω|μ|² 恒等式到 1e-12;energy_ev 单位换算正确
+- [x] Implement ExcitedStatesResult + RHF::tda()/tdhf() in include/atomiverse/cpu/scf/tdhf.h、include/atomiverse/cpu/scf/rhf.h、src/cpu/scf/rhf.cpp(稳定性前置检查;跃迁偶极经链环 03 偶极内核;Doxygen 带单位)
+- [x] Verify against 甲醛 oracle:regressions/scf/ch2o_tdhf(reg cpp 为库外消费者 + REFERENCE.md 钉外部运行 PySCF tdscf.TDA/tdscf.TDHF 各前 3 个 singlet 根与 n→π* 归属、PySCF 版本与输入,注册 regressions/CMakeLists.txt,≤ 60 s)
+- [x] Extend docs/tutorial/ch20-hf-properties-environment.md:"激发态:TDHF/RPA 与 TDA" 节——响应叙事(极化率的极点、A/B kernel 的第四次生命)、TDA-vs-RPA 的诚实对比(triplet instability 回链 ch03 稳定性节)、甲醛上手 + molvis 轨道/跃迁可视化、章末 PySCF 激发能对照表(标量入表,禁止条形图)
+- [x] Run full check + test suite(含 no-factory / stage-typing scrub 与 regressions 目标)
+
+## 实现审计注记(2026-07-21)
+
+- **方法薄表面落在 tdhf.cpp,rhf.cpp 未动**:文件清单原写 rhf.cpp 承载
+  "方法入口接线",实际 `RHF::tda()/tdhf()` 连同稳定性前置检查一起实现在
+  src/cpu/scf/tdhf.cpp(与 TDHFPack 同 TU;spec 同页 "tdhf.cpp — pack 实现
+  + 方法薄表面实现" 即此含义),rhf.h 只加声明。
+- **公共通道枚举**:`internal::Channel` 不可出现在公共头,故 tdhf.h 新增
+  公共 `ExcitationChannel{singlet, triplet}`,tdhf.cpp 内映射到 internal。
+- **RPA matrix-free 路线**:采用 spec 建议里的 Stratmann-Scuseria-Frisch
+  约化子空间方案(JCP 109, 8218 (1998)):单一正交子空间 V,σ± 投影出
+  P/Q,(A−B) 仅在 m 维子空间内本征分解,Q^{1/2}PQ^{1/2}z=ω²z,残差
+  r₁=(A+B)(X+Y)−ω(X−Y)、r₂=(A−B)(X−Y)−ω(X+Y) 双向扩展;确定性种子
+  (diagonal_plus 最小元坐标向量)。
+- **单测合成 kernel 的 ERI 缩放 0.03**(链环 08 原型为 0.1):0.1 缩放的
+  合成 kernel 本身就是 RPA-不稳定的(完整超矩阵出现复本征值,约化形式
+  正确地 throw)——RPA 一致性测试需要一个双通道稳定的 kernel,故加了
+  scale 参数;0.1 版行为反而被 TripletUnstable 测试覆盖(经拉伸 H₂)。
+- **PySCF 钉定命令用 nstates=8, conv_tol=1e-10**:nstates=3 且
+  conv_tol=1e-12 时 PySCF 自身的 TDHF Davidson 会跳过 9.71 eV 根(其
+  求解器 root-homing 伪影);前 3 根数值在收敛成功的各设置间 <1e-12 Ha
+  一致,REFERENCE.md 已记录。
+- ch20 §20.4 教程内容已写入(响应叙事/内核四配置/TDA-vs-RPA 与 triplet-instability 回链 ch03/甲醛上手 + molvis/章末 PySCF 对照 8 行);ac-007 按验收流程保持 pending 等 human review。
 
 ## Testing strategy
 - **happy path(单元,秒级)**:H₂/STO-3G(n_ov=1)与合成小 kernel 上,TDA/RPA 稠密与 matrix-free/Davidson 全链一致;约化形式 vs 完整非对称 RPA 矩阵;f 恒等式与单位换算。tests/ 内不放甲醛级 e2e。

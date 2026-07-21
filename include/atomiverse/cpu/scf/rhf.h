@@ -5,6 +5,7 @@
 #include <string>
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
 
 namespace ATV {
@@ -62,6 +63,56 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         std::invalid_argument when the system has no virtual
     ///         orbitals (e.g. He/STO-3G — no fallback).
     StabilityResult stability() const;
+
+    /// @brief Tamm-Dancoff excitation energies (CIS on the HF reference) of
+    ///        the most recent `run()`: the lowest `n_states` roots of the
+    ///        Hermitian A X = ωX eigenproblem in the requested spin channel
+    ///        — the link-08 orbital-Hessian A/B kernel's fourth
+    ///        configuration (after stability, SOSCF, and CPHF). The TDA
+    ///        spectrum stays real on any reference, including ones carrying
+    ///        a triplet instability (Hirata & Head-Gordon 1999,
+    ///        DOI 10.1016/S0009-2614(99)01149-5). The dense
+    ///        working-dimension ERI tensor is rebuilt from the private
+    ///        shell workspace (stability() precedent).
+    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @param channel  Spin channel: singlet roots carry length-gauge
+    ///                 transition dipoles [a.u.] and oscillator strengths
+    ///                 f = (2/3)·ω[Ha]·|μ|²; triplet roots are
+    ///                 spin-forbidden (μ = 0, f = 0).
+    /// @return Excitation energies [eV], transition dipoles [a.u.],
+    ///         oscillator strengths (dimensionless), `tda = true`.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when n_states is outside
+    ///         [1, n_occ·n_virt] or the system has no virtual orbitals
+    ///         (e.g. He/STO-3G — no fallback).
+    ExcitedStatesResult
+    tda(int n_states,
+        ExcitationChannel channel = ExcitationChannel::singlet) const;
+
+    /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
+    ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian
+    ///        reduced form (A−B)^{1/2}(A+B)(A−B)^{1/2} Z = ω²Z (Dreuw &
+    ///        Head-Gordon 2005, DOI 10.1021/cr0505627; Szabo & Ostlund §7).
+    ///        Runs the link-08 stability analysis of the requested
+    ///        channel's (A + B) block first: an unstable reference makes ω
+    ///        imaginary in that channel, so the call throws with the lowest
+    ///        eigenvalue instead of solving (use `tda()` — real on any
+    ///        reference — or reconverge along `stability().rotated_C`).
+    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @param channel  Spin channel (transition properties as in `tda()`).
+    /// @return Excitation energies [eV] (ω_RPA ≤ ω_TDA root by root),
+    ///         transition dipoles [a.u.], oscillator strengths, `tda = false`.
+    /// @throws std::runtime_error when called before `run()`, when the
+    ///         requested channel's (A + B) block is unstable (message
+    ///         carries the lowest eigenvalue [Hartree] and the guidance
+    ///         above), or when (A − B) is not positive definite — no
+    ///         fallback values.
+    /// @throws std::invalid_argument as `tda()`.
+    ExcitedStatesResult
+    tdhf(int n_states,
+         ExcitationChannel channel = ExcitationChannel::singlet) const;
 
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib
