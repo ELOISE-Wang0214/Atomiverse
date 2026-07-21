@@ -1,7 +1,7 @@
 ---
 title: HF 能力补全 · 18 标量相对论 x2c-1e — 精确二分量核哈密顿替换
 slug: hf-capability-gaps-18-x2c
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 18/21
 external-depends: scf-slater-determinant-03-unbag
@@ -48,14 +48,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests tests/cpu/scf/test_x2c.cpp(H₂/HeH⁺ STO-3G 的 W 矩阵元钉外部 PySCF `mol.intor('int1e_pnucp')` 值 ≤1e-10,W 对称;X2cWorkspace 注入 c=1e8 时 h^X2C 与 T+V 逐元素 ≤1e-6;H 原子/def2-SVP 精确退耦恒等式:h^X2C 最低本征值 == Dirac 矩阵最低正能本征值 ≤1e-10;互斥门双向:含 I 的 Frame `ecp="def2-ECP"; x2c=true` 抛含元素名 runtime_error,全电子 H₂ + x2c 正常收敛不抛;`x2c=true` 时 forces() 抛;x2c=false 时 Hcore/能量与现状逐字节不变)并注册 tests/CMakeLists.txt
-- [ ] Implement pvp kernel in src/cpu/scf/one_electron.cpp + 声明于 include/atomiverse/cpu/scf/internal/integrals.h(核吸引 OS 原语的 l±1 导数装配;IntegralPack 私有成员形态,过 no_factory_scrub 通配门)
-- [ ] Implement internal::X2cWorkspace in include/atomiverse/cpu/scf/internal/x2c.h + src/cpu/scf/internal/x2c.cpp(收缩基一步退耦:Dirac 块矩阵、广义本征、X、S̃、R、h^X2C;kLightSpeedAU;病态抛错)并注册 CMakeLists.txt
-- [ ] Wire x2c consumption in src/cpu/scf/integrals.cpp + src/cpu/scf/mean_field_method.cpp(x2c 时装配 W;drive_scf_core_ 序幕互斥门后 Hcore_ ← h^X2C;forces()+x2c 抛 runtime_error)
-- [ ] Add Doxygen(@brief/@param 带单位/@return)到所有新符号,并在 include/atomiverse/cpu/scf/mean_field_method.h 的 `x2c` 成员写明 PCE 警告(属性期望值未 picture-change 变换)
-- [ ] Add regression regressions/scf/x2c_argon/reg_x2c_argon.cpp(公开 API `cpu::scf::RHF`,Ar/def2-TZVP:x2c 能量 vs 钉死的 PySCF `x2c1e()`(xuncontract=False)≤1e-5 Ha;E_x2c−E_nonrel<0 且与钉死 Δ 相差 ≤5%;≤60 s)并注册 regressions/CMakeLists.txt
-- [ ] Extend docs/tutorial/ch20-hf-properties-environment.md:"标量相对论:x2c" 一节(重元素为何需要相对论——s/p 轨道收缩、d/f 膨胀叙事;x2c-1e 一页讲清;ECP vs x2c 决策指引与互斥;picture-change 诚实警告;Ar 上手示例;章末 PySCF 对照表行——标量进表)
-- [ ] Run full check + test suite
+- [x] Write failing tests tests/cpu/scf/test_x2c.cpp(H₂/HeH⁺ STO-3G 的 W 矩阵元钉外部 PySCF `mol.intor('int1e_pnucp')` 值 ≤1e-7(Boys floor),W 对称;X2cWorkspace 注入 c=1e8 时 h^X2C 与 T+V 逐元素 ≤1e-6;H 原子/def2-SVP 精确退耦恒等式:h^X2C 最低本征值 == Dirac 矩阵最低正能本征值 ≤1e-10;互斥门双向:含 I 的 Frame `ecp="def2-ECP"; x2c=true` 抛含元素名 runtime_error,全电子 H₂ + x2c 正常收敛不抛;`x2c=true` 时 forces() 抛;x2c=false 时 Hcore/能量与现状逐字节不变)并注册 tests/CMakeLists.txt
+- [x] Implement pvp kernel in src/cpu/scf/one_electron.cpp + 声明于 include/atomiverse/cpu/scf/internal/integrals.h(核吸引 OS 原语的 l±1 导数装配;IntegralPack 私有成员形态,过 no_factory_scrub 通配门)
+- [x] Implement internal::X2cWorkspace in include/atomiverse/cpu/scf/internal/x2c.h + src/cpu/scf/internal/x2c.cpp(收缩基一步退耦:Dirac 块矩阵、广义本征、X、S̃、R、h^X2C;kLightSpeedAU;病态抛错)并注册 CMakeLists.txt
+- [x] Wire x2c consumption in src/cpu/scf/integrals.cpp + src/cpu/scf/mean_field_method.cpp(x2c 时装配 W;drive_scf_core_ 序幕互斥门后 Hcore_ ← h^X2C;forces()+x2c 抛 runtime_error)
+- [x] Add Doxygen(@brief/@param 带单位/@return)到所有新符号,并在 include/atomiverse/cpu/scf/mean_field_method.h 的 `x2c` 成员写明 PCE 警告(属性期望值未 picture-change 变换)
+- [x] Add regression regressions/scf/x2c_argon/reg_x2c_argon.cpp(公开 API `cpu::scf::RHF`,Ar/def2-TZVP:x2c 能量 vs 钉死的 PySCF `x2c1e()`(xuncontract=False)≤1e-5 Ha;E_x2c−E_nonrel<0 且与钉死 Δ 相差 ≤5%;≤60 s)并注册 regressions/CMakeLists.txt
+- [x] Extend docs/tutorial/ch20-hf-properties-environment.md:"标量相对论:x2c" 一节(重元素为何需要相对论——s/p 轨道收缩、d/f 膨胀叙事;x2c-1e 一页讲清;ECP vs x2c 决策指引与互斥;picture-change 诚实警告;Ar 上手示例;章末 PySCF 对照表行——标量进表)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

@@ -36,6 +36,10 @@ struct IntegralPack {
         V; ///< Nuclear attraction matrix [n_basis x n_basis].
     xt::xtensor<double, 2>
         Hcore;                  ///< Core Hamiltonian T + V [n_basis x n_basis].
+    /// @brief Spin-free nuclear pVp matrix W_μν = ⟨∇μ|V|∇ν⟩ [Hartree/Bohr²]
+    ///        (PySCF `int1e_pnucp` convention). Empty unless the pack was
+    ///        constructed with `compute_pvp=true` (x2c path).
+    xt::xtensor<double, 2> W;
     xt::xtensor<double, 4> ERI; ///< Two-electron integrals (ij|kl) [n^4].
     double V_nuc = 0;           ///< Nuclear repulsion energy [Hartree].
     int n_basis = 0;            ///< Number of basis functions (AO dimension
@@ -118,9 +122,13 @@ struct IntegralPack {
     /// @param ghost_atoms Local atom indices treated as ghosts (basis only;
     ///                    Z → 0 for nuclear attraction / repulsion and electron
     ///                    count). Empty = no ghosts. Out-of-range indices throw.
+    /// @param compute_pvp If true, assemble the spin-free nuclear pVp matrix
+    ///                    `W` (needed by scalar-relativistic x2c-1e). Default
+    ///                    false keeps the non-relativistic path untouched.
     IntegralPack(const Frame& frame, BasisSet basis, int charge = 0,
                  bool compute_eri = false, std::string ecp = {},
-                 const std::vector<int>& ghost_atoms = {});
+                 const std::vector<int>& ghost_atoms = {},
+                 bool compute_pvp = false);
 
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.
@@ -168,6 +176,20 @@ struct IntegralPack {
     /// @return (n_basis × n_basis) symmetric matrix [Hartree].
     [[nodiscard]] static xt::xtensor<double, 2>
     nuclear_attraction(const ShellList& shells, const AtomList& atoms);
+
+    /// @brief Spin-free nuclear pVp matrix W_ij = ⟨∇φ_i|V̂|∇φ_j⟩
+    ///        = Σ_d ⟨∂φ_i/∂x_d | V̂ | ∂φ_j/∂x_d⟩ with
+    ///        V̂ = −Σ_A Z_A / |r−R_A| (PySCF `int1e_pnucp` convention).
+    ///
+    /// Built from nuclear-attraction OS primitives via the Gaussian derivative
+    /// identity ∂_d g(a) = 2α g(a+e_d) − a_d g(a−e_d). Cartesian engine
+    /// convention; spherical packs sandwich through `c2s` in the constructor.
+    ///
+    /// @param shells Resolved shell list (Cartesian AO order).
+    /// @param atoms  Atoms supplying nuclear charges and positions [Bohr].
+    /// @return (n_basis × n_basis) symmetric matrix [Hartree / Bohr²].
+    [[nodiscard]] static xt::xtensor<double, 2>
+    pvp(const ShellList& shells, const AtomList& atoms);
 
     /// @brief Dense two-electron repulsion tensor ERI(i,j,k,l) = (ij|kl).
     ///

@@ -38,6 +38,7 @@
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
+#include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
 #include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
 
@@ -398,8 +399,23 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "Kohn-Sham (RKS/UKS) — ghost / counterpoise support is pure HF "
             "only in this link. Use RHF/UHF, or clear ghost_atoms.");
 
-    *integrals_sp_ =
-        IntegralPack{frame, basis, charge, compute_eri, ecp, ghost_atoms};
+    *integrals_sp_ = IntegralPack{frame, basis, charge, compute_eri, ecp,
+                                  ghost_atoms, /*compute_pvp=*/x2c};
+    // x2c-1e: replace the non-relativistic core Hamiltonian with the
+    // one-step exact-two-component h^X2C. S / ERI / Fock loop are untouched
+    // (two-electron integrals stay non-relativistic by definition of
+    // x2c-1e). W was assembled only when x2c=true.
+    if (x2c) {
+        // RealMatrix is column-major; IntegralPack stores row-major
+        // xtensor — copy into RealMatrix so the workspace binds cleanly.
+        const RealMatrix S = integrals_sp_->S;
+        const RealMatrix T = integrals_sp_->T;
+        const RealMatrix V = integrals_sp_->V;
+        const RealMatrix W = integrals_sp_->W;
+        const internal::X2cWorkspace x2c_ws(S, T, V, W,
+                                           internal::kLightSpeedAU);
+        integrals_sp_->Hcore = x2c_ws.hcore();
+    }
     const IntegralPack& ints = *integrals_sp_;
     resolve_occupation(ints.n_electrons);
 
@@ -453,6 +469,16 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                 "spin-off-diagonal block needs the stored dense ERI tensor "
                 "(no direct-SCF spinor path in this link).");
     }
+
+    // x2c-1e analytic forces are not derived (picture-change of the
+    // nuclear-gradient operator + dX/dR of the decoupling matrix). Refuse
+    // rather than return a non-relativistic force under an x2c energy.
+    if (opts.forces && x2c)
+        throw std::runtime_error(
+            "MeanFieldMethod::forces: analytic forces are not implemented "
+            "for x2c=true — the h^X2C nuclear gradient (picture-change + "
+            "decoupling-matrix response) is a follow-up chain link. Disable "
+            "x2c or use finite differences.");
 
     // ROHF-unsupported knobs — explicit refusal instead of a silently wrong
     // Restricted/Unrestricted branch (no fallback).

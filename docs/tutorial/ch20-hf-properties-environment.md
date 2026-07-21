@@ -449,9 +449,104 @@ H₂O RHF/6-31G*、ε=78.4、Bondi×1.2、x=0、Lebedev 302:
 
 完整钉定见 `regressions/scf/h2o_rhf_631gs_cpcm/REFERENCE.md`。
 
-## 20.7 标量相对论:x2c(骨架)
+## 20.7 标量相对论:x2c
 
-<!-- 填充:18-x2c — 轨道收缩叙事、x2c-1e、ECP vs x2c 决策、picture-change 警告 -->
+### 重元素为什么需要相对论
+
+电子在重核附近局域加速,Dirac 方程的动能修正使 **s/p 轨道径向收缩**
+(有效核电荷升高 → 能量降低、半径变小),而 d/f 因壳层屏蔽变化反而
+**径向膨胀**。对第三周期及以后(Cl、Ar、Br、I …)的全电子计算,忽略
+标量相对论会把内层能量系统抬高 ~eV–Ha 量级;外层性质(键长、电离能)
+也会通过屏蔽间接偏移。
+
+自旋–轨道耦合(SOC)是另一条相对论通道,本环**不**处理——我们只做
+无自旋(spin-free)的一电子精确二分量修正。
+
+### x2c-1e 一页讲清
+
+**精确二分量(exact two-component, x2c)** 把四分量 Dirac 方程用
+一步 Foldy–Wouthuysen 型变换退耦到正能二分量空间
+(Kutzelnigg–Liu 2005; Peng–Reiher 2012)。**x2c-1e** 只对一电子哈密顿
+做这件事:
+
+1. 在收缩 AO 基里组装 {S, T, V, W},其中
+   \(W_{\mu\nu}=\langle\nabla\mu|V|\nabla\nu\rangle\)
+   (PySCF `int1e_pnucp`);
+2. 动能平衡基下的无自旋 Dirac 矩阵
+   \(h=\begin{pmatrix}V&T\\T&W/(4c^2)-T\end{pmatrix}\)、
+   度规 \(M=\begin{pmatrix}S&0\\0&T/(2c^2)\end{pmatrix}\);
+3. 取正能解得退耦矩阵 \(X=C_S C_L^{-1}\),重整化 \(R\),得到
+   \(h^{\mathrm{X2C}}\);
+4. SCF 的 **Hcore ← h^X2C**,S / ERI / Fock 循环逐字节不动
+   (二电子积分保持非相对论——这就是 x2c-1e 的定义)。
+
+光速取 PySCF 同值 \(c=137.03599967994\) a.u.。退耦在**收缩** AO 基内
+完成;PySCF 默认 `xuncontract=True`,对账时必须显式
+`xuncontract=False`。
+
+### ECP vs x2c:怎么选
+
+| | ECP(第 06 环) | x2c-1e(本环) |
+|---|---|---|
+| 覆盖 | 重元素价层(def2-ECP: Rb–Rn) | 全电子基组覆盖的元素(当前 Z≤18) |
+| 效应 | 参数化进有效核势(含标量相对论) | 显式改造一电子哈密顿 |
+| 基组 | 价层基(def2-SVP/TZVP + ECP) | 全电子基(def2-SVP/TZVP 等) |
+| 力 | `forces()` throw | `forces()` throw |
+| 互斥 | **与 x2c 永久互斥** | **与 ECP 永久互斥** |
+
+**规则:同一原子绝不能 ECP + x2c。** 相对论 ECP 已经把标量相对论烘进
+参数,再叠 x2c 就是双重计数——引擎在 `run()` 入口按元素 THROW,错误
+信息带元素符号。
+
+- 有 def2-ECP 覆盖的重原子 → 用 ECP,`x2c=false`(默认)。
+- 轻/中等元素全电子、想看相对论内层收缩 → `x2c=true`,`ecp=""`。
+- 混合体系(轻原子全电子 + 重原子 ECP)→ 只开 ECP,不要开 x2c
+  (门是 per-element 的:只要有一个 ECP 命中原子且 `x2c=true` 就抛)。
+
+### 诚实警告:picture-change 误差(PCE)
+
+x2c 轨道是在变换后的算符下变分得到的。若用**未变换**的非相对论算符
+(偶极 \(\mathbf{r}\)、ESP、多极)去算期望值,结果含
+**picture-change error**。本环**只替换 Hcore,不变换属性算符**——
+偶极/ESP/多极(第 03/04 环)在 `x2c=true` 时仍走非相对论算符路径,
+数值可用作粗估,但不得当作 picture-change 修正后的真值。属性算符
+的 PCE 变换是后续环。
+
+`forces()` 在 `x2c=true` 时 throw(h^X2C 核梯度未推导;无静默错误力)。
+
+### 上手:Ar 原子 x2c-1e RHF
+
+```cpp
+cpu::Frame ar(1);
+ar.span(kAtom_type)[0] = 18;
+ar.span(kAtom_x)[0] = ar.span(kAtom_y)[0] = ar.span(kAtom_z)[0] = 0.0;
+ar.simbox = cpu::Box::cubic(30.0);
+
+cpu::scf::RHF nr;
+nr.basis = cpu::scf::BasisSet::Def2TZVP;
+nr.tol = 1e-12;
+nr.run(ar);
+double e_nr = ar.meta.get(kEnergy) / units::kHartreeInEv;
+
+cpu::scf::RHF x2c;
+x2c.basis = cpu::scf::BasisSet::Def2TZVP;
+x2c.tol = 1e-12;
+x2c.x2c = true;                 // 标量相对论 x2c-1e
+x2c.run(ar);
+double e_x2c = ar.meta.get(kEnergy) / units::kHartreeInEv;
+// 期望: e_x2c < e_nr, |e_x2c - e_nr| ≈ 1.84 Ha (Ar/def2-TZVP)
+```
+
+端到端钉定见 `regressions/scf/x2c_argon/`。
+
+### 与 PySCF 对照
+
+Ar RHF/def2-TZVP、`xuncontract=False`、c = 137.03599967994:
+
+| 量 | Atomiverse | PySCF 2.14.0 x2c1e | 容差 |
+|---|---|---|---|
+| E_x2c [Ha] | (回归断言) | −528.6442231685685 | 1e-5 Ha |
+| E_x2c − E_nonrel [Ha] | (回归断言) | −1.84146283604 | 符号 + 幅值 5% |
 
 ## 章末:与 PySCF 对照(累积表占位)
 
@@ -478,5 +573,7 @@ H₂O RHF/6-31G*、ε=78.4、Bondi×1.2、x=0、Lebedev 302:
 | H2O RHF/STO-3G + 2×±0.5e @ ±3 Å | E_embed − E_MM-MM [Ha] | −74.9841893192 | −74.9841893192 | 1e-8 Ha | 15 |
 | H2O RHF/STO-3G | μ_z 有限场 vs 解析 [a.u.] | ≈ −0.678787 | −0.678787 | 1e-5 a.u. | 15 |
 | H2O RHF/6-31G* C-PCM ε=78.4 Bondi×1.2 x=0 | ΔG_el [kcal/mol] | −8.018 | −7.960 | 0.1 kcal/mol | 16 |
+| Ar RHF/def2-TZVP x2c-1e (xuncontract=False) | E_x2c [Ha] | (reg) | −528.6442231685685 | 1e-5 Ha | 18 |
+| Ar RHF/def2-TZVP x2c-1e (xuncontract=False) | E_x2c−E_nr [Ha] | (reg) | −1.84146283604 | 符号+5% | 18 |
 
 对照方法学见[附录:PySCF 对照方法学](appendix-pyscf-oracle.md)。

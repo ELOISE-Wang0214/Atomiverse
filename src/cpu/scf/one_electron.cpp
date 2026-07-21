@@ -111,6 +111,117 @@ IntegralPack::nuclear_attraction(const ShellList& shells,
     return V;
 }
 
+namespace {
+
+/// @brief ⟨∂g_a/∂x_d | 1/r_C | ∂g_b/∂x_d⟩ for one Cartesian direction via
+///        the Gaussian derivative identity (without −Z).
+///
+/// ∂_d g(a,α) = 2α g(a+e_d) − a_d g(a−e_d). Expanding the product yields
+/// four nuclear-attraction primitives of raised/lowered angular momenta.
+inline double pvp_prim_dir(const int a_ang[3], const int b_ang[3], double aa,
+                           double ab, double gamma, const double PA[3],
+                           const double PB[3], const double PC[3], double K_AB,
+                           int d) {
+    int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
+    int b_plus[3] = {b_ang[0], b_ang[1], b_ang[2]};
+    a_plus[d] += 1;
+    b_plus[d] += 1;
+
+    // (2α_a)(2α_b) ⟨a+e|1/r|b+e⟩
+    double acc = 4.0 * aa * ab
+                 * native::nuclear_prim(a_plus, b_plus, gamma, PA, PB, PC, K_AB);
+
+    if (b_ang[d] > 0) {
+        int b_minus[3] = {b_ang[0], b_ang[1], b_ang[2]};
+        b_minus[d] -= 1;
+        // − (2α_a) b_d ⟨a+e|1/r|b−e⟩
+        acc -= 2.0 * aa * static_cast<double>(b_ang[d])
+               * native::nuclear_prim(a_plus, b_minus, gamma, PA, PB, PC, K_AB);
+    }
+    if (a_ang[d] > 0) {
+        int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
+        a_minus[d] -= 1;
+        // − a_d (2α_b) ⟨a−e|1/r|b+e⟩
+        acc -= static_cast<double>(a_ang[d]) * 2.0 * ab
+               * native::nuclear_prim(a_minus, b_plus, gamma, PA, PB, PC, K_AB);
+        if (b_ang[d] > 0) {
+            int b_minus[3] = {b_ang[0], b_ang[1], b_ang[2]};
+            b_minus[d] -= 1;
+            // + a_d b_d ⟨a−e|1/r|b−e⟩
+            acc += static_cast<double>(a_ang[d] * b_ang[d])
+                   * native::nuclear_prim(a_minus, b_minus, gamma, PA, PB, PC,
+                                          K_AB);
+        }
+    }
+    return acc;
+}
+
+/// @brief Cartesian pVp shell-block: Σ_d ⟨∂A|V|∂B⟩ with V = −Σ Z/r.
+void pvp_block(const native::ShellBlock& A, const native::ShellBlock& B,
+               const native::Atom* atoms, int natm, double* out) {
+    int a_ang[kMaxNCart][3], b_ang[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang);
+    fill_cart_comps(B.l, b_ang);
+
+    for (int p = 0; p < A.n_prim; ++p) {
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p];
+            const double ab = B.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double R2_AB = (A.center[0] - B.center[0])
+                                     * (A.center[0] - B.center[0])
+                                 + (A.center[1] - B.center[1])
+                                       * (A.center[1] - B.center[1])
+                                 + (A.center[2] - B.center[2])
+                                       * (A.center[2] - B.center[2]);
+            const double K_AB = std::exp(-mu * R2_AB);
+            const double cpq = A.coeff[p] * B.coeff[q];
+
+            double P_c[3], PA[3], PB[3];
+            for (int d = 0; d < 3; ++d) {
+                P_c[d] = (aa * A.center[d] + ab * B.center[d]) / gamma;
+                PA[d] = P_c[d] - A.center[d];
+                PB[d] = P_c[d] - B.center[d];
+            }
+
+            for (int c = 0; c < natm; ++c) {
+                if (atoms[c].Z == 0)
+                    continue;
+                double PC[3];
+                for (int d = 0; d < 3; ++d)
+                    PC[d] = P_c[d] - atoms[c].pos[d];
+                const double mz = -static_cast<double>(atoms[c].Z);
+
+                for (int ia = 0; ia < A.n_cart; ++ia) {
+                    for (int ib = 0; ib < B.n_cart; ++ib) {
+                        double w_ab = 0.0;
+                        for (int d = 0; d < 3; ++d)
+                            w_ab += pvp_prim_dir(a_ang[ia], b_ang[ib], aa, ab,
+                                                 gamma, PA, PB, PC, K_AB, d);
+                        out[ia * B.n_cart + ib] += cpq * mz * w_ab;
+                    }
+                }
+            }
+        }
+    }
+}
+
+} // namespace
+
+xt::xtensor<double, 2> IntegralPack::pvp(const ShellList& shells,
+                                         const AtomList& atoms) {
+    const int n = shells.n_basis;
+    const int natm = static_cast<int>(atoms.atoms.size());
+    xt::xtensor<double, 2> Wmat = xt::zeros<double>({n, n});
+    const auto blocks = blocks_from_shells(shells.shells);
+    for_each_canonical_block_pair(
+        Wmat, blocks,
+        [&](const native::ShellBlock& A, const native::ShellBlock& B,
+            double* buf) { pvp_block(A, B, atoms.atoms.data(), natm, buf); });
+    return Wmat;
+}
+
 double nuclear_repulsion_energy(const AtomList& atoms) {
     const int natm = static_cast<int>(atoms.atoms.size());
     double e = 0.0;

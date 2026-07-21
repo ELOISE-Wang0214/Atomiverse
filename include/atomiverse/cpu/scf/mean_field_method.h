@@ -116,12 +116,24 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// Unknown names throw std::runtime_error — no fallback.
     std::string ecp;
 
-    /// @brief Reserved: exact-two-component scalar relativity (wired in a
-    ///        later chain link; no effect yet).
+    /// @brief Spin-free exact-two-component scalar relativity (x2c-1e).
+    ///
+    /// When true, the one-electron core Hamiltonian is replaced by the
+    /// one-step x2c-1e h^X2C built from {S, T, V, W=⟨∇|V|∇⟩} in the
+    /// contracted AO basis (`internal::X2cWorkspace`; Kutzelnigg–Liu /
+    /// Peng–Reiher). S, ERI, and the Fock loop are unchanged (two-electron
+    /// integrals stay non-relativistic — that is the x2c-1e definition).
     ///
     /// Combining x2c with an ECP-carrying atom throws at run(): relativistic
     /// ECPs already bake scalar relativity into their parameterization, so
     /// stacking x2c on top would double-count it (per-element gate).
+    /// Analytic forces with x2c=true throw (h^X2C gradient not derived).
+    ///
+    /// **Picture-change warning:** expectation values of property operators
+    /// (dipole, ESP, multipoles) evaluated on x2c orbitals with the
+    /// untransformed non-relativistic operator contain picture-change error
+    /// (PCE). This method does **not** apply a picture-change transform to
+    /// property operators — document or correct PCE externally if needed.
     bool x2c = false;
 
     // ── Convergence (members, not a Config bag) ───────────────────────

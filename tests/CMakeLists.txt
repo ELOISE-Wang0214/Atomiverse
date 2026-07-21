@@ -474,6 +474,10 @@ if(ATV_BUILD_HF)
     # EcpIntegrals U-matrix vs external PySCF ECPscalar pins, IntegralPack
     # valence wiring, x2c double-counting gate (hf-capability-gaps-06-ecp).
     atv_add_cpp_test(test_ecp                  cpu/scf/test_ecp.cpp)
+    # hf-capability-gaps-18-x2c: spin-free pVp kernel pins, X2cWorkspace
+    # nonrel/exact-decoupling identities, ECP↔x2c mutual exclusion both
+    # ways, forces() intercept. No heavy-atom SCF in this unit binary.
+    atv_add_cpp_test(test_cpu_scf_x2c           cpu/scf/test_x2c.cpp)
     atv_add_cpp_test(test_cpu_scf_uhf_solver   cpu/scf/test_uhf_solver.cpp)
     # hf-capability-gaps-10-rohf: ROHF (Roothaan effective Fock, PySCF
     # canonical / Guest-Saunders convention) vs externally pinned PySCF.

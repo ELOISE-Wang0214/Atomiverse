@@ -37,7 +37,8 @@ namespace scf {
 
 IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
                            bool compute_eri, std::string ecp_name,
-                           const std::vector<int>& ghost_atoms) {
+                           const std::vector<int>& ghost_atoms,
+                           bool compute_pvp) {
     const auto t_total = LogClock::now();
 
     AtomList atom_list{frame, charge, ghost_atoms};
@@ -81,10 +82,14 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
     S = overlap(shell_list);
     T = kinetic(shell_list);
     V = nuclear_attraction(shell_list, atom_list);
+    if (compute_pvp)
+        W = pvp(shell_list, atom_list);
     if (has_ecp) {
         // Semi-local ECP matrix U in the Cartesian engine basis, added into
         // the nuclear-attraction block so the spherical sandwich below (and
         // Hcore = T + V) transforms it along with everything else.
+        // (x2c is mutually exclusive with ECP at the method level; W is
+        // never assembled together with U.)
         internal::EcpIntegrals ecp_ints{shell_list.shells,
                                         std::move(ecp_centers)};
         V += ecp_ints.matrix();
@@ -146,6 +151,8 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         S = xt::linalg::dot(ct, xt::linalg::dot(S, c2s));
         T = xt::linalg::dot(ct, xt::linalg::dot(T, c2s));
         V = xt::linalg::dot(ct, xt::linalg::dot(V, c2s));
+        if (W.size() > 0)
+            W = xt::linalg::dot(ct, xt::linalg::dot(W, c2s));
         Hcore = T + V;
         if (ERI.size() > 0)
             ERI = eri_to_spherical(ERI, c2s);
