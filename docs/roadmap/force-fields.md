@@ -87,16 +87,16 @@ Bonded forces are cross-validated against LAMMPS in
 
 Notes:
 
-- **LJ 12-6** is energy-shifted, honours LAMMPS `special_bonds` 1-2/1-3/1-4
-  exclusions, and optionally accumulates the per-pair virial. It carries a
-  single ε/σ, **not a per-type mixing table** — multi-component fluids are not
-  yet expressible.
+- **LJ 12-6** is energy-shifted, supports a **per-type ε/σ table** with
+  Lorentz–Berthelot mixing (and a single-ε fast path), honours LAMMPS
+  `special_bonds` **scales** (0 = drop; Amber/GAFF 1–4 uses 0.5), and
+  optionally accumulates the per-pair virial. See `set_special_bonds(0,0,0.5)`.
 - **Morse** exists as a demo style: O(N²) all-pairs, deliberately opting out of
   the neighbor list. Correct, but not a production style — and CPU-only.
-- **Cut-off Coulomb** is `PairCoulCut` (CPU; special_bonds aware). The plain
-  "Coulomb potential" row should be read as that style once the roadmap
-  matrix is refreshed — `CoulLong` remains the real-space Ewald-screened
-  `erfc(αr)/r` half of the PME/Ewald split.
+- **Cut-off Coulomb** is `PairCoulCut` (CPU; special_bonds scales). **CoulLong**
+  (real-space `erfc(αr)/r`) also applies special-bonds scales on the real-space
+  loop; reciprocal/self terms are unscaled (LAMMPS convention). GAFF path
+  regression: `regressions/forcefield/gaff_peo_fragment`.
 - The PME implementation is Essmann **smooth** PME (B-spline charge spreading →
   FFT → influence function), so the "Particle Mesh Ewald" and "Smooth Particle
   Mesh Ewald" rows are the same code. Despite an in-code reference to LAMMPS

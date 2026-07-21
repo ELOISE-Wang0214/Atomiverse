@@ -287,21 +287,33 @@ columns when you assemble the topology.
 
 A subtle detail that is easy to miss: by default, `PairLJCut` does *not* know
 about your topology. If you want LAMMPS-style "special bonds" — i.e.
-skip the LJ pair on 1–2 (bonded), 1–3 (across an angle vertex), or 1–4
-(across a dihedral) atom pairs — you must opt in:
+weight the LJ pair on 1–2 (bonded), 1–3 (across an angle vertex), or 1–4
+(across a dihedral) atom pairs — you must opt in after
+`Frame::build_special_list()`:
 
 ```cpp
+// Water-style full exclusions:
 auto lj = cpu::PairLJCut{eps, sigma, cutoff}
             .set_special_bonds(/*s12=*/0.0, /*s13=*/0.0, /*s14=*/0.0);
-sim.on(md::Phase::force).add(std::move(lj));
+
+// Amber / GAFF: 1–2 and 1–3 off, 1–4 at half weight (scales energy *and* force):
+auto lj_gaff = cpu::PairLJCut{eps, sigma, cutoff}
+            .set_special_bonds(/*s12=*/0.0, /*s13=*/0.0, /*s14=*/0.5);
+// Mirror the same triple on PairCoulCut / CoulLong for charged molecules.
 ```
 
-The current implementation accepts only 0 or 1 for each scaling factor;
-fractional 1–4 scaling (`s14 = 0.5`, OPLS-AA convention) is tracked
-under the `msu-pe-validation` Phase A.5 spec and not yet shipped. If you
-forget the call, your simulation will still run, but bonded atoms will
-clash through the LJ wall and the trajectory will explode. Always set
-exclusions when topology is present.
+Scales are true weights: `0` drops the pair, values in `(0,1]` multiply
+pair energy and force. Charged GAFF stacks also need `load_lammps_data`
+with **atom_style full** (partial charges) — see
+`regressions/forcefield/gaff_peo_fragment` and `cpu/io/lammps_real.h` for
+kcal/mol → eV helpers. If you forget specials when topology is present,
+bonded atoms clash through the nonbonded wall and the trajectory will
+explode.
+
+**Still future work for a full GAFF product path:** multi-term
+`dihedral_style fourier` (single-term maps to `DihedralCharmm` today), a
+complete `.ff` text parser, CUDA Amber specials parity, and paper-length
+polymer equilibration protocols.
 
 ## What `end_of_step` Is Good For
 

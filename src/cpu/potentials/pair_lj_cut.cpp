@@ -168,96 +168,38 @@ void PairLJCut::build(const BuildContext& ctx) {
         }
     }
 
-    // Tag-indexed special-bonds exclusion: active when any special-bonds
-    // tier is fully excluded (scale 0). The map itself is (re)built from
-    // the live per-atom topology by `refresh_exclusion_map`, called on
-    // every neighbor-list rebuild via `rebuild_filtered_list` — NOT cached
-    // once here. A build-time-only map goes stale the moment multi-rank
-    // `Migrate` moves an atom into a rank whose snapshot never held
-    // that tag, dropping its exclusions and feeding a ~1.5 Å bonded pair
-    // to the LJ kernel (MSU-PE multi-rank NPT collapse). We still build it
-    // once here so a no-migration / single-`compute()` caller (e.g.
-    // `Evaluate`) has a valid map before the first filtered walk.
-    any_excl_ = (s12_ == 0.0) || (s13_ == 0.0) || (s14_ == 0.0);
-    excluded_by_tag_.clear();
-    if (!any_excl_)
+    special_.s12 = s12_;
+    special_.s13 = s13_;
+    special_.s14 = s14_;
+    any_special_ = special_.active();
+    has_partial_special_ =
+        (s12_ > 0.0 && s12_ < 1.0) || (s13_ > 0.0 && s13_ < 1.0)
+        || (s14_ > 0.0 && s14_ < 1.0);
+    special_.clear();
+    if (!any_special_)
         return;
     const auto* dd = ctx.runtime.md.dd;
     const int n_owners =
         (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.nlocal();
-    refresh_exclusion_map(ctx.frame, n_owners);
-}
-
-void PairLJCut::refresh_exclusion_map(const Frame& f, int n_owners) {
-    // Rebuild the tag-keyed exclusion lists from the CURRENT per-atom
-    // `nspecial` / `special` topology of owner rows `[0, n_owners)`.
-    // `special(i, ·)` holds GLOBAL TAGS, populated by `materialize` /
-    // the LAMMPS-data reader via `Frame::build_special_list`, and travels
-    // with the atom across migration (pack/unpack/move_row). Iterating
-    // owners and recording each owner's own partners makes
-    // `excluded_by_tag_[tag_i]` complete for every owner `i` the filtered
-    // walk consults — correct under any partition.
-    excluded_by_tag_.clear();
-    const bool has_excl_12 = (s12_ == 0.0);
-    const bool has_excl_13 = (s13_ == 0.0);
-    const bool has_excl_14 = (s14_ == 0.0);
-    if (!(has_excl_12 || has_excl_13 || has_excl_14))
-        return;
-
-    auto add_pair = [&](std::int64_t a, std::int64_t b) {
-        if (a == b)
-            return;
-        excluded_by_tag_[a].push_back(b);
-        excluded_by_tag_[b].push_back(a);
-    };
-
-    const auto nspecial = f.span(kAtom_nspecial);
-    const auto special = f.span(kAtom_special);
-    const TagInt* __restrict tag_ptr = f.span(kAtom_tag);
-    for (int i = 0; i < n_owners; ++i) {
-        const std::int64_t ti = tag_ptr[i];
-        const int n12 = nspecial(i, 0);
-        const int n13 = nspecial(i, 1);
-        const int n14 = nspecial(i, 2);
-        if (has_excl_12) {
-            for (int s = 0; s < n12; ++s)
-                add_pair(ti, special(i, s));
-        }
-        if (has_excl_13) {
-            for (int s = n12; s < n13; ++s)
-                add_pair(ti, special(i, s));
-        }
-        if (has_excl_14) {
-            for (int s = n13; s < n14; ++s)
-                add_pair(ti, special(i, s));
-        }
-    }
-
-    for (auto& kv : excluded_by_tag_) {
-        auto& list = kv.second;
-        std::sort(list.begin(), list.end());
-        list.erase(std::unique(list.begin(), list.end()), list.end());
-    }
+    special_.rebuild(ctx.frame, n_owners);
 }
 
 void PairLJCut::rebuild_filtered_list(const Frame& f,
                                       const md::PairList& pairs) {
-    // Walk the upstream CSR once, drop excluded pairs, write a dense CSR
-    // into `filtered_*`. Runs once per NL rebuild (~every `every` steps)
-    // amortizing the `tag_ptr[j]` gather + `binary_search` that the old
-    // in-kernel path paid on every launch × every pair.
+    // Drop scale-0 specials; keep partial/full with per-pair scale.
+    // Rebuilds with every NL version advance so multi-rank Migrate stays safe.
     const int n = pairs.inum;
-    // Refresh the exclusion map from the live topology of the current
-    // owners before filtering. `pairs.inum` is the authoritative owned
-    // count (trimmed to `dd->n_local` in multi-rank). This is what keeps
-    // special-bonds exclusions correct after an `Migrate` reshuffles
-    // ownership — the stale build-time map was the MSU-PE collapse cause.
-    refresh_exclusion_map(f, n);
+    special_.s12 = s12_;
+    special_.s13 = s13_;
+    special_.s14 = s14_;
+    special_.rebuild(f, n);
     filtered_inum_ = n;
     filtered_numneigh_.assign(n, 0);
     filtered_firstneigh_.assign(n, 0);
     filtered_neighbors_.clear();
+    filtered_scale_.clear();
     filtered_neighbors_.reserve(pairs.total_pairs);
+    filtered_scale_.reserve(pairs.total_pairs);
     filtered_has_shifts_ = pairs.has_shifts;
     if (filtered_has_shifts_) {
         filtered_shift_x_.clear();
@@ -278,22 +220,17 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
 
     for (int i = 0; i < n; ++i) {
         const std::int64_t i_tag = tag[i];
-        auto it = excluded_by_tag_.find(i_tag);
-        const std::vector<std::int64_t>* my_excl =
-            (it != excluded_by_tag_.end()) ? &it->second : nullptr;
-
         const int off = firstneigh[i];
         const int jn = numneigh[i];
         filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
         int kept = 0;
         for (int jj = 0; jj < jn; ++jj) {
             const int j = neighbors[off + jj];
-            if (my_excl) {
-                const std::int64_t j_tag = tag[j];
-                if (std::binary_search(my_excl->begin(), my_excl->end(), j_tag))
-                    continue;
-            }
+            const double sc = special_.scale(i_tag, tag[j]);
+            if (sc == 0.0)
+                continue;
             filtered_neighbors_.push_back(j);
+            filtered_scale_.push_back(sc);
             if (filtered_has_shifts_) {
                 filtered_shift_x_.push_back(sx[off + jj]);
                 filtered_shift_y_.push_back(sy[off + jj]);
@@ -397,11 +334,13 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // `rebuild_filtered_list` for the invariant. When no exclusions are
     // configured we iterate the upstream CSR directly — no copy, no
     // allocation, no per-pair branch.
-    const bool use_filtered = any_excl_;
+    const bool use_filtered = any_special_;
     if (use_filtered && pairs.version != filtered_version_) {
         rebuild_filtered_list(f, pairs);
         filtered_version_ = pairs.version;
     }
+    const double* __restrict k_scales =
+        use_filtered ? filtered_scale_.data() : nullptr;
     const int k_inum = use_filtered ? filtered_inum_ : pairs.inum;
     const int* __restrict k_ilist = use_filtered ? nullptr // contiguous 0..n-1
                                                  : pairs.ilist.data();
@@ -511,6 +450,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         // loop is skipped entirely and every neighbour goes down the scalar path. The
         // single-epsilon path — the one benchmarked against LAMMPS — is untouched.
         const bool k_multi = (n_types_ > 0);
+        // Partial special scales force scalar path (per-pair weight).
+        const bool use_simd = !k_multi && !has_partial_special_;
         const int k_ntypes = n_types_;
         const double* k_eps = k_multi ? eps_tab_.data() : nullptr;
         const double* k_sig6 = k_multi ? sig6_tab_.data() : nullptr;
@@ -609,7 +550,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             // ── SIMD ket loop: W neighbors per iteration ────────────
             // Skipped wholesale under a per-type table: the coefficients vary per pair,
             // so nothing hoists and the scalar tail below handles every neighbour.
-            for (; !k_multi && jj + static_cast<int>(W) <= jnum;
+            for (; use_simd && jj + static_cast<int>(W) <= jnum;
                  jj += static_cast<int>(W)) {
                 // Manual gather: pack the next W neighbor coords into the
                 // aligned stack buffers. j-indices are non-contiguous (NL
@@ -806,8 +747,10 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
                 const double r2inv = double(1) / r2;
                 const double r6inv = r2inv * r2inv * r2inv * p_sig6;
+                const double sc =
+                    (k_scales != nullptr) ? k_scales[off + jj] : double(1);
                 const double fpair =
-                    p_eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
+                    sc * p_eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
                 const double fxp = fpair * dx;
                 const double fyp = fpair * dy;
@@ -828,7 +771,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                     v_yz += dy * fzp;
                 }
 
-                energy_total += p_eps4 * (r6inv * r6inv - r6inv) - p_shift;
+                energy_total +=
+                    sc * (p_eps4 * (r6inv * r6inv - r6inv) - p_shift);
             }
             fxt_ptr[i] += fi_x;
             fyt_ptr[i] += fi_y;
@@ -862,16 +806,19 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 }
 
 void PairLJCut::destroy(const DestroyContext& ctx) {
+    (void)ctx;
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    excluded_by_tag_.clear();
+    special_.clear();
     filtered_neighbors_.clear();
+    filtered_scale_.clear();
     filtered_numneigh_.clear();
     filtered_firstneigh_.clear();
     filtered_inum_ = 0;
     filtered_version_ = 0;
-    any_excl_ = false;
+    any_special_ = false;
+    has_partial_special_ = false;
 }
 
 std::size_t PairLJCut::memory_bytes() const {
@@ -887,11 +834,11 @@ std::size_t PairLJCut::memory_bytes() const {
           + filtered_firstneigh_.size())
          * sizeof(int);
     n += (filtered_shift_x_.size() + filtered_shift_y_.size()
-          + filtered_shift_z_.size())
+          + filtered_shift_z_.size() + filtered_scale_.size())
          * sizeof(double);
-    // Exclusion map (special-bonds only): rough node payload + partner lists.
-    for (const auto& kv : excluded_by_tag_)
-        n += 48 + kv.second.size() * sizeof(std::int64_t);
+    for (const auto& kv : special_.by_tag)
+        n += 48 + kv.second.size()
+                 * sizeof(std::pair<std::int64_t, double>);
     return n;
 }
 

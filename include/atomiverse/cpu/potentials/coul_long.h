@@ -6,15 +6,11 @@
 ///   E_real = units::coulomb · Σ_{i<j} q_i q_j · erfc(α r_ij) / r_ij
 ///
 /// over the neighbor list, where α is the Ewald splitting parameter shared
-/// with the reciprocal-space `KSpaceEwald` / `KSpacePME` component. The
-/// complementary `erf` part of the full 1/r interaction is supplied by the
-/// reciprocal sum; the two must use the **same** α and the neighbor-list
-/// cutoff must be ≥ this component's cutoff.
+/// with the reciprocal-space `KSpaceEwald` / `KSpacePME` component.
 ///
-/// This is a cross-driver force component (added via `.on(force).add()`),
-/// not a `add_potential` style, so it coexists with a Lennard-Jones (or other)
-/// `Pair` evaluator in the same force phase. It reads the shared
-/// `runtime.md.pair_list` built by `NeighborList`.
+/// Optional special-bonds scales apply to this real-space loop only
+/// (Amber/GAFF: `set_special_bonds(0.0, 0.0, 0.5)`). Reciprocal + self terms
+/// are unchanged (LAMMPS convention).
 #pragma once
 
 #include <vector>
@@ -23,6 +19,7 @@
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/potential.h"
+#include "atomiverse/cpu/potentials/special_scale.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {
@@ -40,10 +37,6 @@ class CoulLong : public cpu::Potential,
     CoulLong(double alpha, double cutoff);
 
     std::string name() const override { return "coul/long"; }
-    /* role via Potential/kind base */
-    /// @brief Real-space electrostatics is a neighbor consumer; reporting
-    /// through the protocol also fixes the former silent halo-sizing gap
-    /// (the pre-protocol cutoff hint was never overridden here).
     const NeighborConsumer* as_neighbor_consumer() const override {
         return this;
     }
@@ -54,12 +47,15 @@ class CoulLong : public cpu::Potential,
         return {LongRangeRole::RealSpace, alpha_, cutoff_, AccReal(0)};
     }
 
-    /// @brief The neighbor list must cover the real-space cutoff.
-    /// @return `cutoff_` [Å].
     AccReal neighbor_cutoff() const override { return cutoff_; }
-
-    /// @brief Real-space cutoff [Å] (mirrors `PairEvaluator::pair_cutoff`).
     AccReal pair_cutoff() const { return cutoff_; }
+
+    /// @brief Real-space special-bonds weights (LAMMPS special_bonds).
+    /// @param s12 1-2 scale (0 = skip pair).
+    /// @param s13 1-3 scale.
+    /// @param s14 1-4 scale (Amber/GAFF: 0.5).
+    CoulLong& set_special_bonds(double s12, double s13, double s14) &;
+    CoulLong set_special_bonds(double s12, double s13, double s14) &&;
 
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
@@ -68,11 +64,11 @@ class CoulLong : public cpu::Potential,
   private:
     double alpha_;
     double cutoff_, cutoff_sq_;
+    double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
+    bool any_special_ = false;
+    md::SpecialScaleTable special_;
+    unsigned long long special_version_ = 0;
 
-    // Per-thread force reduction buffers (Newton's 3rd law), mirroring
-    // PairLJCut. Index range covers owned + ghost atoms under MPI. Ghost
-    // charges arrive via the build_halo border message (x,y,z,tag,q), so
-    // f.span(kAtom_charge)[j] is valid for ghost j — no tag→charge lookup table.
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
 };

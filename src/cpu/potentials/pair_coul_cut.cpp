@@ -51,69 +51,34 @@ void PairCoulCut::build(const BuildContext& ctx) {
     fy_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fz_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
 
-    any_excl_ = (s12_ == 0.0) || (s13_ == 0.0) || (s14_ == 0.0);
-    excluded_by_tag_.clear();
-    if (!any_excl_)
+    special_.s12 = s12_;
+    special_.s13 = s13_;
+    special_.s14 = s14_;
+    any_special_ = special_.active();
+    special_.clear();
+    if (!any_special_)
         return;
     const auto* dd = ctx.runtime.md.dd;
     const int n_owners =
         (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.nlocal();
-    refresh_exclusion_map(ctx.frame, n_owners);
-}
-
-void PairCoulCut::refresh_exclusion_map(const Frame& f, int n_owners) {
-    excluded_by_tag_.clear();
-    const bool has_excl_12 = (s12_ == 0.0);
-    const bool has_excl_13 = (s13_ == 0.0);
-    const bool has_excl_14 = (s14_ == 0.0);
-    if (!(has_excl_12 || has_excl_13 || has_excl_14))
-        return;
-
-    auto add_pair = [&](std::int64_t a, std::int64_t b) {
-        if (a == b)
-            return;
-        excluded_by_tag_[a].push_back(b);
-        excluded_by_tag_[b].push_back(a);
-    };
-
-    const auto nspecial = f.span(kAtom_nspecial);
-    const auto special = f.span(kAtom_special);
-    const TagInt* __restrict tag_ptr = f.span(kAtom_tag);
-    for (int i = 0; i < n_owners; ++i) {
-        const std::int64_t ti = tag_ptr[i];
-        const int n12 = nspecial(i, 0);
-        const int n13 = nspecial(i, 1);
-        const int n14 = nspecial(i, 2);
-        if (has_excl_12) {
-            for (int s = 0; s < n12; ++s)
-                add_pair(ti, special(i, s));
-        }
-        if (has_excl_13) {
-            for (int s = n12; s < n13; ++s)
-                add_pair(ti, special(i, s));
-        }
-        if (has_excl_14) {
-            for (int s = n13; s < n14; ++s)
-                add_pair(ti, special(i, s));
-        }
-    }
-
-    for (auto& kv : excluded_by_tag_) {
-        auto& list = kv.second;
-        std::sort(list.begin(), list.end());
-        list.erase(std::unique(list.begin(), list.end()), list.end());
-    }
+    special_.rebuild(ctx.frame, n_owners);
 }
 
 void PairCoulCut::rebuild_filtered_list(const Frame& f,
                                         const md::PairList& pairs) {
     const int n = pairs.inum;
-    refresh_exclusion_map(f, n);
+    special_.s12 = s12_;
+    special_.s13 = s13_;
+    special_.s14 = s14_;
+    special_.rebuild(f, n);
+
     filtered_inum_ = n;
     filtered_numneigh_.assign(n, 0);
     filtered_firstneigh_.assign(n, 0);
     filtered_neighbors_.clear();
+    filtered_scale_.clear();
     filtered_neighbors_.reserve(pairs.total_pairs);
+    filtered_scale_.reserve(pairs.total_pairs);
     filtered_has_shifts_ = pairs.has_shifts;
     if (filtered_has_shifts_) {
         filtered_shift_x_.clear();
@@ -134,22 +99,17 @@ void PairCoulCut::rebuild_filtered_list(const Frame& f,
 
     for (int i = 0; i < n; ++i) {
         const std::int64_t i_tag = tag[i];
-        auto it = excluded_by_tag_.find(i_tag);
-        const std::vector<std::int64_t>* my_excl =
-            (it != excluded_by_tag_.end()) ? &it->second : nullptr;
-
         const int off = firstneigh[i];
         const int jn = numneigh[i];
         filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
         int kept = 0;
         for (int jj = 0; jj < jn; ++jj) {
             const int j = neighbors[off + jj];
-            if (my_excl) {
-                const std::int64_t j_tag = tag[j];
-                if (std::binary_search(my_excl->begin(), my_excl->end(), j_tag))
-                    continue;
-            }
+            const double sc = special_.scale(i_tag, tag[j]);
+            if (sc == 0.0)
+                continue;
             filtered_neighbors_.push_back(j);
+            filtered_scale_.push_back(sc);
             if (filtered_has_shifts_) {
                 filtered_shift_x_.push_back(sx[off + jj]);
                 filtered_shift_y_.push_back(sy[off + jj]);
@@ -187,7 +147,7 @@ void PairCoulCut::compute(const LaunchContext& ctx) {
         }
     }
 
-    const bool use_filtered = any_excl_;
+    const bool use_filtered = any_special_;
     if (use_filtered && pairs.version != filtered_version_) {
         rebuild_filtered_list(f, pairs);
         filtered_version_ = pairs.version;
@@ -200,6 +160,8 @@ void PairCoulCut::compute(const LaunchContext& ctx) {
         use_filtered ? filtered_firstneigh_.data() : pairs.firstneigh.data();
     const int* __restrict neighbors =
         use_filtered ? filtered_neighbors_.data() : pairs.neighbors.data();
+    const double* __restrict scales =
+        use_filtered ? filtered_scale_.data() : nullptr;
     const bool has_shifts =
         use_filtered ? filtered_has_shifts_ : pairs.has_shifts;
     const double* __restrict shx =
@@ -259,6 +221,7 @@ void PairCoulCut::compute(const LaunchContext& ctx) {
             double fi_x = 0, fi_y = 0, fi_z = 0;
             for (int jj = 0; jj < jnum; ++jj) {
                 const int j = neighbors[off + jj];
+                const double sc = scales ? scales[off + jj] : 1.0;
                 double dx, dy, dz;
                 if (has_shifts) {
                     dx = xi - (x_ptr[j] + shx[off + jj]);
@@ -281,7 +244,7 @@ void PairCoulCut::compute(const LaunchContext& ctx) {
 
                 const double r = std::sqrt(r2);
                 const double r2inv = 1.0 / r2;
-                const double prefactor = qqr2e * qi * qj / r;
+                const double prefactor = sc * qqr2e * qi * qj / r;
                 const double fpair = prefactor * r2inv;
 
                 const double fxp = dx * fpair;
@@ -332,8 +295,9 @@ void PairCoulCut::destroy(const DestroyContext&) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    excluded_by_tag_.clear();
+    special_.clear();
     filtered_neighbors_.clear();
+    filtered_scale_.clear();
     filtered_numneigh_.clear();
     filtered_firstneigh_.clear();
     filtered_shift_x_.clear();
@@ -341,7 +305,7 @@ void PairCoulCut::destroy(const DestroyContext&) {
     filtered_shift_z_.clear();
     filtered_inum_ = 0;
     filtered_version_ = 0;
-    any_excl_ = false;
+    any_special_ = false;
 }
 
 } // namespace cpu
