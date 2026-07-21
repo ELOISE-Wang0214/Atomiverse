@@ -10,7 +10,8 @@ criteria:
       core/(real_harmonics.h、vec3.h、precision.h);构造函数校验参数(order<0、
       max_per_leaf<1 抛异常),无 make_*/build_* 自由函数;公共符号有含单位说明
       (无量纲 q/r 核,eV 换算属链环 21)的 Doxygen。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-002
     summary: 展开单元测试通过(P2M/M2P/L2P 逐阶收敛 + 单极精确)
     type: runtime
@@ -18,7 +19,8 @@ criteria:
       test_multipole_expansion 在 ctest 通过且秒级:单点电荷 P2M+M2P 误差随 p
       几何衰减;l=0 单极对 q/r 精确(1e-12);LocalExpansion L2P 收敛;
       非法 order 构造抛异常。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-003
     summary: 平移算子单元测试通过(M2M/L2L 阶内精确,M2L 几何衰减)
     type: runtime
@@ -26,7 +28,8 @@ criteria:
       test_fmm_operators 在 ctest 通过:M2M 平移结果与对父中心直接 P2M 的多极
       系数/求值一致(<1e-12);L2L 同式(<1e-12);固定间隔比 c 下 M2L+L2P 误差
       逐阶几何衰减,衰减因子与 (1/c) 量级一致。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-004
     summary: FmmTree 单元测试通过(vs 直和、交互列表判据、退化例)
     type: runtime
@@ -34,7 +37,8 @@ criteria:
       test_fmm_tree 在 ctest 通过且秒级(N≤512):随机点集 energy/potentials 与
       O(N²) 直和相对误差 <1e-6;交互列表每一对满足 ≥1 胞宽 well-separated 判据;
       叶容量 ≤ max_per_leaf;N=1、N=2、单叶退化例正确。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-005
     summary: regression:逐阶误差表几何衰减至文档 p 处 ≤1e-10(随机+晶格 vs 直和)
     type: scientific
@@ -43,7 +47,8 @@ criteria:
       对随机与晶格点电荷集输出逐阶 p 误差表:相邻阶误差比 <1 且近似恒定(几何衰减),
       在 REFERENCE.md 文档标注的 p 处相对误差 ≤1e-10;REFERENCE.md 引
       DOI 10.1016/0021-9991(87)90140-9、DOI 10.1063/1.468354 及误差界公式。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-006
     summary: 标度烟检:N vs 4N 墙钟比宽松钉住近线性
     type: performance
@@ -51,7 +56,8 @@ criteria:
       同一 regression 内 4N 与 N 两次求值(相同 order/叶容量)的墙钟比 < 8
       (明显低于 O(N²) 的 16),断言写入 regression 输出;总时长仍 ≤60 s;
       tests/ 内无任何计时断言。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-007
     summary: ch19「长程库仑 II:快速多极方法」节:叙事 + 误差表格 + molplot 标度曲线
     type: docs
@@ -59,7 +65,8 @@ criteria:
       docs/tutorial/ch19-hf-large-systems.md 含「长程库仑 II:快速多极方法」一节:
       多极压缩远场与 M2M/M2L/L2L 游走叙事、与 PME 的开边界对偶说明、误差-阶数
       收敛表格(标量表格,无条形图)、molplot 标度曲线图(曲线允许)。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-008
     summary: 全套构建与测试门通过,tests/ 无新增 e2e
     type: runtime
@@ -67,7 +74,8 @@ criteria:
       带 -DATV_BUILD_TESTS=ON 的完整构建通过;ctest 全绿且新增测试为秒级单测;
       no_factory_scrub 与 test_stage_typing_scrub 通过;src/longrange 为无条件
       编译(不挂任何 ATV_BUILD_* 门)。
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
 ---
 
 # Acceptance criteria

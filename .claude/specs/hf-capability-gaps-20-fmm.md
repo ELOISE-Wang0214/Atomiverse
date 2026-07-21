@@ -1,7 +1,7 @@
 ---
 title: "HF capability gaps 20 — 快速多极方法:点电荷 FMM 算子核(开边界)"
 slug: hf-capability-gaps-20-fmm
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 20/21
 created: 2026-07-20
@@ -71,27 +71,27 @@ O(N²) 直和呈几何衰减,至文档标注的 p 达 ≤1e-10;N 对 4N 的墙�
 
 ## Tasks
 
-- [ ] Write failing tests for multipole/local expansions(tests/longrange/test_multipole_expansion.cpp,
+- [x] Write failing tests for multipole/local expansions(tests/longrange/test_multipole_expansion.cpp,
       登记 tests/CMakeLists.txt):单点电荷 P2M+M2P 对 1/r 逐阶几何收敛;l=0 单极精确;L2P 对
       well-separated 源的收敛;order<0 构造 throw
-- [ ] Implement MultipoleExpansion/LocalExpansion in include/atomiverse/longrange/multipole_expansion.h
+- [x] Implement MultipoleExpansion/LocalExpansion in include/atomiverse/longrange/multipole_expansion.h
       + src/longrange/multipole_expansion.cpp;CMakeLists.txt 登记(带单位说明的 Doxygen)
-- [ ] Write failing tests for translation operators(tests/longrange/test_fmm_operators.cpp):
+- [x] Write failing tests for translation operators(tests/longrange/test_fmm_operators.cpp):
       M2M 平移后 M2P 与直接对父中心 P2M 一致(1e-12,阶内精确);L2L 同式精确;M2L+L2P 在固定
       间隔比 c 下逐阶几何衰减且不劣于 (1/(c−1))(1/c)^p 量级
-- [ ] Implement M2M/M2L/L2L in include/atomiverse/longrange/fmm_operators.h + src/longrange/fmm_operators.cpp
+- [x] Implement M2M/M2L/L2L in include/atomiverse/longrange/fmm_operators.h + src/longrange/fmm_operators.cpp
       (构造期预计算系数表;apply 零分配)
-- [ ] Write failing tests for FmmTree(tests/longrange/test_fmm_tree.cpp,秒级:N≤512、p≤8):
+- [x] Write failing tests for FmmTree(tests/longrange/test_fmm_tree.cpp,秒级:N≤512、p≤8):
       随机点集能量/电势 vs O(N²) 直和相对误差 <1e-6;交互列表逐对满足 ≥1 胞宽间隔;叶容量约束;
       退化例(N=1、N=2、全部落入单叶 → 纯直和)
-- [ ] Implement FmmTree in include/atomiverse/longrange/fmm_tree.h + src/longrange/fmm_tree.cpp
-- [ ] Add regression regressions/longrange/fmm_point_charges/(随机 + 晶格点电荷集:逐阶 p 误差表
+- [x] Implement FmmTree in include/atomiverse/longrange/fmm_tree.h + src/longrange/fmm_tree.cpp
+- [x] Add regression regressions/longrange/fmm_point_charges/(随机 + 晶格点电荷集:逐阶 p 误差表
       几何衰减至文档 p 处 ≤1e-10;N vs 4N 墙钟比宽松钉住近 O(N);REFERENCE.md 记录 Greengard-Rokhlin
       与 White-Head-Gordon DOI、误差界、文档 p;登记 regressions/CMakeLists.txt,≤60 s)
-- [ ] Extend docs/tutorial/ch19-hf-large-systems.md:新增「长程库仑 II:快速多极方法」节
+- [x] Extend docs/tutorial/ch19-hf-large-systems.md:新增「长程库仑 II:快速多极方法」节
       (多极压缩远场的层级叙事、M2M/M2L/L2L 游走、为何是 PME 的开边界对偶;误差-阶数收敛**表格**
       ——标量进表格、禁用条形图;molplot 标度曲线图)
-- [ ] Run full check + test suite
+- [x] Run full check + test suite
 
 ## Testing strategy
 

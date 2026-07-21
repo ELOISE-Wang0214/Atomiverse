@@ -179,6 +179,12 @@ if(NOT ATV_DOCS_ONLY)
         src/core/log.cpp
         src/core/real_harmonics.cpp
         src/core/molrs_contract.cpp
+        # Backend-agnostic longrange operator math (Ewald/PME headers are
+        # header-only; FMM needs translation-operator / tree sources). Always
+        # compiled — not gated by ATV_BUILD_*.
+        src/longrange/multipole_expansion.cpp
+        src/longrange/fmm_operators.cpp
+        src/longrange/fmm_tree.cpp
         src/cpu/scf/solve.cpp
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp

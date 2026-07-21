@@ -91,6 +91,8 @@ endif()
 if(ATV_BUILD_KSPACE AND ATV_BUILD_MD)
     atv_add_regression(md npt_pme_nacl)
 endif()
+# FMM operator math is always-on (facade longrange/); no product-module gate.
+atv_add_regression(longrange fmm_point_charges)
 
 # ── pure-Python import (python-on-demand-install-02) ──────────────────────
 # No C++ link: isolated pure sources only. Needs a Python interpreter.

@@ -1,6 +1,6 @@
 # Chapter 19 — 大体系 HF:从 Schwarz 筛选到线性标度库仑
 
-> **状态:部分成文**(19.1–19.2 由 12-df 填充;19.3–19.5 仍为骨架)。各节由标注的链环填充;
+> **状态:部分成文**(19.1–19.4 已填充;19.5 仍为骨架)。各节由标注的链环填充;
 > 本章对应 Jensen《Introduction to Computational Chemistry》§3.8 后半
 > ("the SCF bottleneck" / linear scaling):方法为主干,把 direct SCF、密度
 > 拟合与多极方法编成一条"库仑瓶颈如何被逐级击破"的叙事。
@@ -171,10 +171,112 @@ E = -\tfrac12 N\, M\, k_C / d
 | SPME (`KSpacePME`) | O(N log N) | PBC | 生产 MD / NPT |
 | FMM / CFMM | O(N) | 开边界或 PBC | 下两节(环 20/21) |
 
-## 19.4 长程库仑 II:快速多极方法(骨架)
+## 19.4 长程库仑 II:快速多极方法
 
-<!-- 填充:20-fmm — 多极压缩远场、M2M/M2L/L2L、与 PME 的开边界对偶;
-     误差-阶数收敛表(标量表格);molplot 标度曲线 -->
+周期边界的长程库仑用 Ewald/PME(§19.3)在倒空间卷积;开边界分子体系
+没有周期像,远场压缩换一条路——**快速多极方法**(FMM)。Greengard &
+Rokhlin(*J. Comput. Phys.* **73**, 325 (1987),
+DOI:[10.1016/0021-9991(87)90140-9](https://doi.org/10.1016/0021-9991(87)90140-9))
+把一球电荷在远处的势写成多极级数;White & Head-Gordon
+(*J. Chem. Phys.* **101**, 6593 (1994),
+DOI:[10.1063/1.468354](https://doi.org/10.1063/1.468354))给出实固体谐波
+形式的平移算子,使层级八叉树上的游走可以按 O(N) 组装全部远场。
+
+### 多极压缩远场
+
+一点电荷 q 在 |r| 大处的势是 q/|r|。一**团**落在中心 c 附近的电荷,
+在 |r−c| 大于团半径时可以写成
+
+\[
+\Phi(\mathbf r)
+  = \sum_{n=0}^{p}\sum_{m=-n}^{n}
+      M_n^m\, I_n^m(\mathbf r-\mathbf c)
+      \;+\; O\!\left(\frac{1}{c-1}\Big(\frac{1}{c}\Big)^{p}\right)
+\]
+
+其中 \(M_n^m\) 是多极系数(对每个源做 P2M 累加),\(I_n^m\) 是非正则
+固体谐波,截断阶 p 的误差按间隔比 c 几何衰减——这就是验收时"误差表
+逐阶几何衰减"的来源。对**接收**侧,同一势可以在无源球内再展成局部
+(Taylor)级数 \(L_n^m R_n^m\),求值是 L2P。
+
+### M2M / M2L / L2L 游走
+
+自适应八叉树罩住包围立方体,叶容量为成员 `max_per_leaf`:
+
+| 阶段 | 算子 | 作用 |
+|---|---|---|
+| 上行 | P2M → M2M | 叶上累加多极,向父胞精确平移(阶内 exact) |
+| 交互 | M2L | 对 well-separated 胞对(≥1 胞宽间隔)把源多极译成目标局部展开;唯一引入截断误差的一步 |
+| 下行 | L2L | 父局部展开精确下传到子胞 |
+| 叶层 | L2P + 近场直和 | 远场用局部展开求值;相邻叶用 O(n_leaf²) 直和补齐 |
+
+M2M 与 L2L 在截断阶 p 内是**恒等式**(单元测试钉 1e-12);只有 M2L 带
+几何截断。这与 PME 的分工对偶:**PME 用网格 FFT 处理周期长程,FMM 用
+层级多极处理开边界远场**——两者都把 O(N²) 的库仑和压到近线性,但边界
+条件不同,不能互相替代。
+
+### 代码居所
+
+| 层 | 路径 | 内容 |
+|---|---|---|
+| 展开 | `longrange/multipole_expansion.h` | `MultipoleExpansion` / `LocalExpansion`(P2M、M2P、L2P) |
+| 平移 | `longrange/fmm_operators.h` | `M2M` / `M2L` / `L2L` |
+| 树 | `longrange/fmm_tree.h` | `FmmTree{order, max_per_leaf}` → `energy` / `potentials` |
+| 核 | 无量纲 Σ q_i q_j / r_ij | e²/Å → eV 的换算留给链环 21(CFMM/HF 接线) |
+
+```cpp
+#include "atomiverse/longrange/fmm_tree.h"
+
+ATV::longrange::FmmTree tree(/*order=*/8, /*max_per_leaf=*/8);
+// positions: std::vector<ATV::Vec3>, charges: std::vector<ATV::AccReal>
+double e = tree.energy(positions, charges);   // 无量纲;× units::coulomb → eV
+std::vector<ATV::AccReal> phi;
+tree.potentials(positions, charges, phi);     // Φ_i = Σ_{j≠i} q_j / r_ij
+```
+
+### 误差-阶数收敛(标量表)
+
+随机与晶格点电荷集对 O(N²) 直和的相对能量误差(回归
+`regressions/longrange/fmm_point_charges`,叶容量 8,MAC c≥2;完整表见该目录
+`REFERENCE.md`)。每两阶取一点看包络;文档阶 **p★ = 16** 处相对误差 ≤ 1e-10。
+
+| p | 双团簇随机(2×32) rel.err | 双晶格块(2×3³) rel.err |
+|---:|---:|---:|
+| 2 | 6.4e-6 | 1.0e-8 |
+| 4 | 1.2e-7 | 1.6e-9 |
+| 8 | 3.4e-10 | 7.4e-11 |
+| 12 | 3.3e-13 | 2.3e-12 |
+| **16** | **1.7e-15** | **2.0e-14** |
+
+包络误差比 < 1 → 几何衰减,与 Greengard–Rokhlin 界
+\((1/(c-1))(1/c)^p\) 同型(间隔比 c≥2 由 well-separated MAC 保证)。
+
+### 标度:近线性(曲线)
+
+同一回归对 N 与 4N 两次求值(相同 p、叶容量)的墙钟比 < 8(O(N²)
+期望 16)。下图是示意性的 FMM vs 直和标度(对数坐标;实测点随机器浮动,
+断言只钉比值上界)。
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true}
+data:
+  values:
+    - {N: 64, series: FMM, t: 1.0}
+    - {N: 128, series: FMM, t: 2.1}
+    - {N: 256, series: FMM, t: 4.3}
+    - {N: 512, series: FMM, t: 8.8}
+    - {N: 64, series: direct, t: 1.0}
+    - {N: 128, series: direct, t: 4.0}
+    - {N: 256, series: direct, t: 16.0}
+    - {N: 512, series: direct, t: 64.0}
+encoding:
+  x: {field: N, type: quantitative, title: "N (particles)", scale: {type: log}}
+  y: {field: t, type: quantitative, title: "Relative wall time", scale: {type: log}}
+  color: {field: series, type: nominal, title: null}
+```
+
+FMM 近似斜率 1(近线性);直和斜率 2。链环 21 会把同一算子核接到
+高斯分布(CFMM)并写入 HF 的 J 矩阵。
 
 ## 19.5 长程库仑 III:CFMM 加速 HF(骨架)
 
