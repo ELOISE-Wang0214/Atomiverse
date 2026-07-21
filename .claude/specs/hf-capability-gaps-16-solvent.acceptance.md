@@ -9,7 +9,8 @@ criteria:
       with constructor-set parameters (no make_*/build_* free function anywhere in the
       diff); Bondi radii are a static in-header table that throws on unsupported Z;
       tests/architecture/no_factory_scrub.sh passes.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-002
     summary: Born-ion analytic oracle validates cavity + conductor solve
     type: code
@@ -17,7 +18,8 @@ criteria:
       test_pcm.cpp: for a single sphere (radius R) enclosing charge Q at eps=78.4,
       sum(q_k) = -f(eps)*Q within 1e-3*|Q| and DG_el matches -0.5*f(eps)*Q^2/R within
       1%; f(eps) checked for both x=0.0 and x=0.5 conventions; runs in seconds.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-003
     summary: solvent_eps=0 default is bit-identical to gas phase
     type: code
@@ -25,7 +27,8 @@ criteria:
       test_pcm.cpp: RHF H2O/STO-3G with default members yields e_total bitwise equal
       to a run on a build without touching solvent members (same iterations, same
       energy to the last ulp), and e_solvent == 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-004
     summary: Self-consistent reaction field lowers the SCF energy
     type: code
@@ -33,14 +36,16 @@ criteria:
       test_pcm.cpp: RHF H2O/STO-3G with solvent_eps=78.4 converges,
       e_solvent < 0, and total energy is strictly below the gas-phase
       total; whole unit suite still completes in seconds.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-005
     summary: forces() with solvent on throws instead of returning wrong gradients
     type: code
     pass_when: |
       test_pcm.cpp: calling rhf.forces(frame) with solvent_eps > 0 throws
       std::runtime_error (or a documented subclass); no force columns are written.
-    status: pending
+    status: verified
+    last_checked: 2026-07-21
   - id: ac-006
     summary: H2O solvation energy matches pinned PySCF C-PCM to 0.1 kcal/mol
     type: scientific

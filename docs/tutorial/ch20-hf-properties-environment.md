@@ -364,9 +364,90 @@ PySCF 2.14.0 `qmmm.mm_charge` 在 **1e-8 Ha** 内一致。注意 PySCF 的
 `mm_charge` **不含** MM–MM 自能,Atomiverse 的 `v_nuc` **含**——断言时把
 经典 MM–MM 常数显式加回去(见 `REFERENCE.md`)。
 
-## 20.6 隐式溶剂(骨架)
+## 20.6 隐式溶剂:C-PCM
 
-<!-- 填充:16-solvent — 导体近似、空腔、x 约定分歧、非静电项诚实声明 -->
+把溶剂当成介电常数为 ε 的**连续介质**,溶质坐在一个由原子中心球构成的
+**空腔**里——这是导体类 PCM(Polarizable Continuum Model)的基本图景。
+空腔表面的**表观表面电荷**(apparent surface charge, ASC)响应溶质静电势,
+自洽地写回 Fock 矩阵;与 ch20.5 的静态点电荷嵌入不同,溶剂电荷**随密度
+更新**(每次 SCF 迭代解一次导体方程)。
+
+### 导体方程与缩放约定
+
+在 tessera 点电荷离散下:
+
+S q = −f(ε) V,   f(ε) = (ε − 1)/(ε + x),   ΔG_el = ½ Σ_k q_k V_k
+
+- **x = 0** → **C-PCM**(Barone–Cossi 1998;PySCF `solvent.PCM` 默认) —
+  `f = (ε−1)/ε`
+- **x = 0.5** → 原始 **COSMO**(Klamt 1993) — `f = (ε−1)/(ε+½)`
+
+低 ε 时两约定可差几个百分点;高 ε(水 78.4)下几乎重合。Atomiverse 成员
+`solvent_x` 默认 0(C-PCM)。S 的非对角是(高斯模糊的)1/r,对角用
+Lange–Herbert / PySCF 的 ξ 宽度表;Lebedev 默认 302 点/球。
+
+### 空腔:Bondi × 缩放,硬剔除
+
+空腔球半径 = **Bondi 半径 × `solvent_radii_scale`**(默认 1.2,Q-Chem/PySCF
+惯例)。氢用 PCM 常见的 **modified Bondi 1.1 Å**(经典 Bondi 为 1.20 Å)。
+落在**其他球内部**的 Lebedev 点直接丢掉(硬开关)——空腔表面在核坐标上
+**不连续**,几何扫描会出现能量折角。
+
+> **诚实声明(范围裁定)**
+>
+> 1. **只含静电** ΔG_el。空穴化、色散、排斥等**非静电项一律不含** —
+>    与实验水合自由能差几个 kcal/mol 是预期的,不要拿本环数字当 ΔG_solv。
+> 2. **表面未做 SWIG 平滑**(York–Karplus / Lange–Herbert 开关函数)。
+>    PySCF 默认 SWIG;两者对小分子差 ≲ 0.1 kcal/mol,大分子/几何扫描时
+>    不连续更明显。平滑与 ddCOSMO 线性标度求解器是后续路线。
+> 3. **`forces()` 在 `solvent_eps > 0` 时 throw**——解析 PCM 梯度未实现;
+>    需要力时用有限差分或先关溶剂。
+
+### 上手:H₂O 溶剂化能
+
+```cpp
+cpu::scf::RHF gas;
+gas.basis = cpu::scf::BasisSet::Pople631Gs;
+gas.tol = 1e-10;
+gas.run(frame);                          // solvent_eps 默认 0 = 气相
+
+cpu::scf::RHF sol;
+sol.basis = cpu::scf::BasisSet::Pople631Gs;
+sol.tol = 1e-10;
+sol.solvent_eps = 78.4;                  // 水
+sol.solvent_radii_scale = 1.2;           // Bondi × 1.2
+sol.solvent_x = 0.0;                     // C-PCM
+sol.run(frame);
+
+double dg_el_ha   = sol.e_solvent();     // ½ q·V [Hartree]
+double dg_el_kcal = dg_el_ha * 627.509474;
+// 期望: dg_el < 0, sol.energy() < gas.energy()
+```
+
+`solvent_eps == 0` 路径与完全不碰溶剂成员的气相**逐位相同**(零开销关断)。
+
+### molvis:空腔与表面电荷
+
+收敛后,ASC 与 tessera 坐标是 `internal::Pcm` 的私有工作区(不写 Frame)。
+教程可视化路线:
+
+1. 用 `solvent_eps > 0` 跑一次 SCF,从回归/调试钩子导出 tessera 位置与 q_k
+   (或在本机用 PySCF `mf.with_solvent.surface` 对照);
+2. molvis 把每个 tessera 画成带符号着色的小球(正电荷红 / 负电荷蓝),
+   原子 vdW 球半透明叠加即得教科书的"表面电荷云"图。
+
+生产 API 若要把 ASC 挂到 Frame meta,是后续观测器环的事——本环只保证
+能量自洽。
+
+### 与 PySCF 对照
+
+H₂O RHF/6-31G*、ε=78.4、Bondi×1.2、x=0、Lebedev 302:
+
+| 量 | Atomiverse | PySCF 2.14.0 C-PCM | 容差 |
+|---|---|---|---|
+| ΔG_el [kcal/mol] | −8.018 | −7.960 | 0.1 kcal/mol |
+
+完整钉定见 `regressions/scf/h2o_rhf_631gs_cpcm/REFERENCE.md`。
 
 ## 20.7 标量相对论:x2c(骨架)
 
@@ -396,5 +477,6 @@ PySCF 2.14.0 `qmmm.mm_charge` 在 **1e-8 Ha** 内一致。注意 PySCF 的
 | CH2O RHF/6-31G* | π→π* f(TDHF)(长度规范) | 0.1795989 | 0.1795988961 | 1e-3(实差 ~1e-8) | 14 |
 | H2O RHF/STO-3G + 2×±0.5e @ ±3 Å | E_embed − E_MM-MM [Ha] | −74.9841893192 | −74.9841893192 | 1e-8 Ha | 15 |
 | H2O RHF/STO-3G | μ_z 有限场 vs 解析 [a.u.] | ≈ −0.678787 | −0.678787 | 1e-5 a.u. | 15 |
+| H2O RHF/6-31G* C-PCM ε=78.4 Bondi×1.2 x=0 | ΔG_el [kcal/mol] | −8.018 | −7.960 | 0.1 kcal/mol | 16 |
 
 对照方法学见[附录:PySCF 对照方法学](appendix-pyscf-oracle.md)。

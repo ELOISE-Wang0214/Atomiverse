@@ -415,6 +415,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/external_field.cpp
             src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/internal/point_charges.cpp
+            src/cpu/scf/internal/pcm.cpp
             src/cpu/scf/internal/soscf.cpp
             src/cpu/scf/stages/fock_stage.cpp
             src/cpu/scf/stages/mix_stage.cpp

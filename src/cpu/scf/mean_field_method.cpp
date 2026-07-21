@@ -32,6 +32,7 @@
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/hueckel_guess.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
@@ -194,7 +195,8 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
-        int_n_beta_, ri, aux_basis, generalized);
+        int_n_beta_, ri, aux_basis, generalized, pcm_.get(), e_solvent_,
+        e_pcm_fock_half_);
     if (rohf) {
         rohf_couple_stage_ = std::make_unique<RohfCoupleStage>(
             S_, P_alpha_, P_beta_, F_alpha_, F_beta_, F_alpha_uncoupled_,
@@ -220,7 +222,8 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         rohf ? F_alpha_uncoupled_ : F_alpha_,
         rohf ? F_beta_uncoupled_ : F_beta_, Hcore_, J_, n_alpha_, n_beta_,
         n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_,
-        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_, generalized);
+        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_, generalized,
+        e_solvent_, e_pcm_fock_half_);
     converged_stage_ = std::make_unique<ScfConverged>(
         tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol),
         restricted_ || rohf || generalized, e_total_, err_alpha_, err_beta_);
@@ -479,21 +482,21 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
               "molecular charge / spin multiplicity.");
     }
 
-    ensure_driver_built_();
-
-    // Environment (point charges / external field) — refuse silent wrong
-    // forces when either is active (analytic gradient of the environment
-    // terms is a follow-up link).
+    // Environment (point charges / external field / C-PCM) — refuse silent
+    // wrong forces when any is active (analytic gradients of environment
+    // terms are follow-up links).
     const bool field_active =
         std::abs(external_field[0]) > 0.0 || std::abs(external_field[1]) > 0.0
         || std::abs(external_field[2]) > 0.0;
-    const bool env_active = !point_charges.empty() || field_active;
+    const bool solvent_active = solvent_eps > 0.0;
+    const bool env_active =
+        !point_charges.empty() || field_active || solvent_active;
     if (opts.forces && env_active)
         throw std::runtime_error(
             "MeanFieldMethod::forces: analytic forces are not implemented "
-            "with point_charges or external_field set — the environment "
-            "gradient (QM/MM + field) is a follow-up chain link. Clear the "
-            "environment members, or use finite differences.");
+            "with point_charges, external_field, or solvent_eps > 0 — the "
+            "environment / C-PCM gradient is a follow-up chain link. Clear "
+            "the environment members, or use finite differences.");
 
     // Apply environment to the n-dimensional Hcore / classical energy
     // *before* any GHF spinor embed so both spin blocks share the same
@@ -532,6 +535,37 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // the field/embedding by exactly ½.
     integrals_sp_->Hcore = H;
     integrals_sp_->V_nuc = v_nuc;
+
+    // C-PCM: private reaction-field workspace. Rebuilt every run (geometry
+    // may have moved). solvent_eps == 0 keeps pcm_ null so FockStage is a
+    // pure vacuum path. FockStage captures pcm_.get() at wire time, so any
+    // rebuild of pcm_ (or a toggle on/off) must re-wire the stages.
+    e_solvent_ = 0;
+    e_pcm_fock_half_ = 0;
+    const bool had_pcm = (pcm_ != nullptr);
+    if (solvent_active) {
+        if (generalized)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: solvent_eps > 0 is not supported for "
+                "GHF in this link — clear solvent_eps or use RHF/UHF/RKS/UKS.");
+        pcm_ = std::make_unique<internal::Pcm>(
+            ints.atoms, solvent_eps, solvent_radii_scale, solvent_x,
+            /*lebedev_n=*/302);
+        if (ints.spherical())
+            pcm_->prepare(ints.shells, ints.c2s);
+        else
+            pcm_->prepare(ints.shells);
+    } else {
+        pcm_.reset();
+    }
+    // Rebind whenever the solvent workspace is present (pointer always new)
+    // or when it was dropped after a previous solvent run.
+    if (driver_built_ && (solvent_active || had_pcm))
+        reset_built_driver_();
+
+    // Wire stages after pcm_ is ready so FockStage's non-owning pointer is
+    // live for the whole SCF loop.
+    ensure_driver_built_();
 
     // n-dimensional Hcore (with environment) kept for the GHF n-dim aufbau
     // seed below; the loop members may then be spinor-embedded.

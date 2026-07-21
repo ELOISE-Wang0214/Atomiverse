@@ -1,7 +1,7 @@
 ---
 title: C-PCM implicit solvation at the SCF Fock seam
 slug: hf-capability-gaps-16-solvent
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 16/21
 external-depends: scf-slater-determinant-03-unbag
@@ -73,23 +73,23 @@ C-PCM:由原子中心球(Bondi 半径 × 缩放系数)构成空腔,用现有 Leb
 
 ## Tasks
 
-- [ ] Write failing tests for `internal::Pcm`:空腔面积/埋点剔除、f(ε) 两约定取值、Born 离子
+- [x] Write failing tests for `internal::Pcm`:空腔面积/埋点剔除、f(ε) 两约定取值、Born 离子
       `ΔG=−½f(ε)Q²/R` 1% 内、Σq=−f(ε)Q(`tests/cpu/scf/test_pcm.cpp` (new),注册进 `tests/CMakeLists.txt`)
-- [ ] Implement `internal::Pcm` in `include/atomiverse/cpu/scf/internal/pcm.h` (new) +
-      `src/cpu/scf/pcm.cpp` (new),注册进根 `CMakeLists.txt`
-- [ ] Write failing tests for 方法成员与 fock 缝自洽:H2O/STO-3G `solvent_eps=78.4` 收敛且
+- [x] Implement `internal::Pcm` in `include/atomiverse/cpu/scf/internal/pcm.h` (new) +
+      `src/cpu/scf/internal/pcm.cpp` (new),注册进根 `CMakeLists.txt`
+- [x] Write failing tests for 方法成员与 fock 缝自洽:H2O/STO-3G `solvent_eps=78.4` 收敛且
       `e_solvent<0`、总能低于气相;`solvent_eps=0` 与气相逐位一致;`forces()` 开溶剂时 throw
       (扩展 `tests/cpu/scf/test_pcm.cpp`)
-- [ ] Implement 成员 + 接线 in `include/atomiverse/cpu/scf/mean_field_method.h`、
+- [x] Implement 成员 + 接线 in `include/atomiverse/cpu/scf/mean_field_method.h`、
       `src/cpu/scf/mean_field_method.cpp`、`include/atomiverse/cpu/scf/stages/fock_stage.h`、
-      `src/cpu/scf/stages/fock_stage.cpp`、`include/atomiverse/cpu/scf/scf_result.h`
-- [ ] Verify against 外部钉定的 PySCF `solvent.PCM`(C-PCM 设置逐项匹配):
+      `src/cpu/scf/stages/fock_stage.cpp` (e_solvent on MeanFieldMethod accessor; no scf_result.h)
+- [x] Verify against 外部钉定的 PySCF `solvent.PCM`(C-PCM 设置逐项匹配):
       `regressions/scf/h2o_rhf_631gs_cpcm/` (new),`REFERENCE.md` 钉定版本/ε/半径/网格与数值,
       注册进 `regressions/CMakeLists.txt`
-- [ ] Add 教程「隐式溶剂」节 in `docs/tutorial/ch20-hf-properties-environment.md`(导体叙事、空腔
+- [x] Add 教程「隐式溶剂」节 in `docs/tutorial/ch20-hf-properties-environment.md`(导体叙事、空腔
       是什么、x 约定分歧、诚实声明:非静电项不含、表面不连续未平滑;动手算溶剂化能 + molvis
       空腔/表面电荷渲染 + 章末 PySCF 标量对照表)并为全部新公共符号补 Doxygen(含单位)
-- [ ] Run full check + test suite
+- [x] Run full check + test suite
 
 ## Testing strategy
 

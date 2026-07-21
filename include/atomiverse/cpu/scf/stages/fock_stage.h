@@ -21,6 +21,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
@@ -73,6 +74,17 @@ class FockStage : public cpu::Component {
     ///                     [Hartree], contracted per n×n spin block from the
     ///                     stored dense ERI (requires `integrals.ERI`;
     ///                     HF only).
+    /// @param pcm          Optional non-owning C-PCM workspace (null = off).
+    ///                     When set, each fock iteration updates the reaction
+    ///                     field from the total density and adds V_pcm to both
+    ///                     spin Focks.
+    /// @param e_solvent    Electrostatic free energy ΔG_el = ½ q·V [Hartree]
+    ///                     (write; 0 when pcm is null).
+    /// @param e_pcm_fock_half Half-trace ½ Tr[V_pcm P_total] [Hartree] already
+    ///                     folded into the HF energy ½ Tr[(H+F)P] when V_pcm
+    ///                     sits on F — DensityStage subtracts it and adds
+    ///                     `e_solvent` so the free-energy convention matches
+    ///                     PySCF (write; 0 when pcm is null).
     FockStage(bool restricted, bool is_hf, XCType xc_type, GridLevel grid_level,
               int n_radial, int n_angular, double hybrid_alpha_override,
               const MolecularGrid* fixed_grid, const IntegralPack& integrals,
@@ -81,7 +93,9 @@ class FockStage : public cpu::Component {
               double& e_xc_grid, double& e_exact_exchange, double& int_n_alpha,
               double& int_n_beta, RI ri = RI::None,
               AuxBasis aux_basis = AuxBasis::Def2JKFIT,
-              bool generalized = false);
+              bool generalized = false, internal::Pcm* pcm = nullptr,
+              double& e_solvent = FockStage::discard_double_(),
+              double& e_pcm_fock_half = FockStage::discard_double_());
 
     /// @brief Component name.
     /// @return `"scf_fock_stage"`.
@@ -100,6 +114,13 @@ class FockStage : public cpu::Component {
     void launch(const cpu::LaunchContext& ctx) override;
 
   private:
+    /// Sink for optional default-bound double& parameters when the caller
+    /// does not care about the PCM energy channels (vacuum path).
+    static double& discard_double_() {
+        static double sink = 0;
+        return sink;
+    }
+
     bool restricted_;
     bool is_hf_;
     bool generalized_; ///< GHF spinor build (2n×2n densities/Fock).
@@ -123,6 +144,10 @@ class FockStage : public cpu::Component {
     double& e_exact_exchange_;
     double& int_n_alpha_;
     double& int_n_beta_;
+
+    internal::Pcm* pcm_ = nullptr; ///< Non-owning; null = vacuum.
+    double& e_solvent_;
+    double& e_pcm_fock_half_;
 
     internal::HamiltonianBuilder hamiltonian_;
 };

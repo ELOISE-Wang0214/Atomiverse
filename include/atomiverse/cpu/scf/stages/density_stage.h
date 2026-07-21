@@ -66,6 +66,12 @@ class DensityStage : public cpu::Component {
     ///                          the spinor core Hamiltonian h⊗1₂ [Hartree];
     ///                          the energy is the single-channel
     ///                          E = ½Tr[P(H+F)] + E_nn on the OLD density.
+    /// @param e_solvent         C-PCM free energy ΔG_el [Hartree] (read; 0
+    ///                          when solvent is off). Added to every energy
+    ///                          branch; for HF the half-trace of V_pcm on F
+    ///                          is subtracted first via `e_pcm_fock_half`.
+    /// @param e_pcm_fock_half   ½ Tr[V_pcm P_total] [Hartree] already inside
+    ///                          the HF ½ Tr[(H+F)P] formula (read; 0 off).
     DensityStage(bool restricted, bool is_hf, double damping,
                  const RealMatrix& C_alpha, const RealMatrix& C_beta,
                  const RealMatrix& F_alpha, const RealMatrix& F_beta,
@@ -74,7 +80,10 @@ class DensityStage : public cpu::Component {
                  const bool& diis_active, const double& e_xc_grid,
                  const double& e_exact_exchange, const double& v_nuc,
                  RealMatrix& P_alpha, RealMatrix& P_beta, double& e_total,
-                 double& e_one, double& e_coulomb, bool generalized = false);
+                 double& e_one, double& e_coulomb, bool generalized = false,
+                 const double& e_solvent = DensityStage::discard_double_(),
+                 const double& e_pcm_fock_half =
+                     DensityStage::discard_double_());
 
     /// @brief Component name.
     /// @return `"scf_density_stage"`.
@@ -93,6 +102,11 @@ class DensityStage : public cpu::Component {
     void launch(const cpu::LaunchContext& ctx) override;
 
   private:
+    static const double& discard_double_() {
+        static double sink = 0;
+        return sink;
+    }
+
     bool restricted_;
     bool is_hf_;
     bool generalized_; ///< GHF spinor path (2n dimensions, single channel).
@@ -112,6 +126,8 @@ class DensityStage : public cpu::Component {
     const double& e_xc_grid_;
     const double& e_exact_exchange_;
     const double& v_nuc_;
+    const double& e_solvent_;
+    const double& e_pcm_fock_half_;
 
     RealMatrix& P_alpha_;
     RealMatrix& P_beta_;
