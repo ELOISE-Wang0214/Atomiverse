@@ -82,20 +82,18 @@ Architecture orientation: [Chapter 0](ch00-architecture.md) or
 | [16](ch16-many-body-potentials.md) | EAM and Stillinger–Weber | potentials tests | FD oracles |
 | [17](ch17-semiempirical-am1.md) | AM1 | `15_am1` | [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
 
-## X. The Hartree–Fock arc (Jensen-style)
+## X. Hartree–Fock（教程弧）
 
-读完 ch02–ch04 + ch18–ch20,应相当于读完 Frank Jensen《Introduction to
-Computational Chemistry》的 Hartree–Fock 理论部分:方法为主干,算法、技巧与
-技术织入其中。每章以"与 PySCF 对照"表收尾(标量一律表格,禁止柱状图;方法学
-见附录)。ch02(HF 理论)、ch03(开壳方法)、ch04(基组近似)随
-hf-capability-gaps 链扩写;下列三章为该链新增:
+第 2–4 章与第 18–20 章合在一起，覆盖 Jensen《Introduction to Computational
+Chemistry》中与 HF 相关的主干：方法、收敛、基组、大体系库仑与分子性质。
+数值与外部程序的对照方法见附录。
 
-| Ch | Title | 填充环 |
-|----|-------|--------|
-| [18](ch18-scf-techniques.md) | SCF 技巧:初猜、混合与二阶方法 | 07, 09 |
-| [19](ch19-hf-large-systems.md) | 大体系 HF:Schwarz → RI → Ewald/PME → FMM/CFMM | 12, 19–21 |
-| [20](ch20-hf-properties-environment.md) | HF 性质与环境:偶极到相对论 | 03–04, 13–16, 18 |
-| [附录](appendix-pyscf-oracle.md) | PySCF 对照方法学(oracle 协议) | 01 |
+| 章 | 题目 |
+|----|------|
+| [18](ch18-scf-techniques.md) | 自洽场的收敛 |
+| [19](ch19-hf-large-systems.md) | 大分子与库仑瓶颈 |
+| [20](ch20-hf-properties-environment.md) | 分子性质与环境 |
+| [附录](appendix-pyscf-oracle.md) | 与外部量子化学程序对照 |
 
 ---
 

@@ -1,74 +1,55 @@
-# 附录:PySCF 对照方法学(oracle 协议)
+# 附录　与外部量子化学程序对照
 
-本附录是 HF 教程弧(ch02–ch04、ch18–ch20)全部"与 PySCF 对照"表格的方法学总纲。
-四条铁律,任何一章、任何回归用例、任何基准数字都必须遵守:
+本附录约定如何在教程与回归中引用 PySCF（或其他参考实现）的数值。目标是
+可复现，而不是把外部程序接入构建系统。
 
-## 1. PySCF 只在外部运行——永不成为构建/测试依赖
+## 1. 外部程序不是构建依赖
 
-禁的是**依赖**,不是知识。PySCF(以及 CP2K 等其它参考引擎)的数字由开发者在
-oracle venv 里离线运行一次,然后**钉入**(pin)文档、回归源码注释或
-`REFERENCE.md`。CMake、ctest、单元测试在任何配置下都不得 import、调用或读取
-PySCF 及其数据文件。守卫:`grep -ri pyscf CMakeLists.txt cmake/ tests/` 只允许
-命中注释/出处说明。
+参考能量、性质与基组参数由开发者在独立环境中预先计算，写入文档表格、
+回归源码注释或 `REFERENCE.md`。CMake、ctest 与单元测试不得 import、调用
+或读取 PySCF 及其数据文件。允许在注释中写出版本与出处。
 
-环境搭建(幂等,登录 shell 安全):
+本地搭建对照环境（可选）：
 
 ```bash
 bash tools/setup_pyscf_env.sh
 ```
 
-装入 `~/work/.x86_64` venv:pip(ensurepip 引导)、pyscf、molvis(本地
-`~/work/molcrafts/molvis/python` 的 editable 安装)。
-**molplot 现状(2026-07)**:molplot 是 molvis 仓库内的 TypeScript 子包,
-尚无 Python 发行;教程图形工具链 = molvis(3D 分子/场景渲染,Python)+
-molplot(曲线/图表,TS,经 molvis 页面工具产出)。Python 侧出现可安装的
-molplot 后,本附录与 setup 脚本同步更新。
+## 2. 每个对照数字应可独立复算
 
-## 2. 每个钉定数字都携带完整复算元数据
+写入库内的参考值应同时记录：
 
-pin 进任何地方的 PySCF 参考值必须同时记录:
-
-| 字段 | 示例 |
+| 项目 | 示例 |
 |---|---|
-| 几何(坐标 + 单位) | H2O,O(0,0,0.1173)/H(0,±0.7572,−0.4692) Å |
-| 基组(+ cart/sph 约定) | 6-31G*(cartesian-6d)/ def2-SVP(spherical) |
-| 收敛设置 | `conv_tol=1e-12`, `max_cycle=100` |
-| PySCF 版本 | 2.14.0 |
-| 完整命令/脚本 | `mf = scf.RHF(mol); mf.kernel()` |
+| 几何与单位 | H₂O，O(0, 0, 0.1173)，H(0, ±0.7572, −0.4692) Å |
+| 基组与角函数约定 | 6-31G*（笛卡尔 d）/ def2-SVP（球谐） |
+| 收敛设置 | `conv_tol=1e-12` |
+| 程序版本 | PySCF 2.14.0 |
+| 调用方式 | `mf = scf.RHF(mol); mf.kernel()` |
 
-任何人拿这五项应能离线复算出同一数字。引文:Sun et al.,
-*WIREs Comput. Mol. Sci.* 8, e1340 (2018), DOI 10.1002/wcms.1340。
+## 3. 单位与容差
 
-## 3. 单位与容差分级
+- 能量：内部 Hartree；写入 Frame 与多数用户接口时换算为 eV。
+- 性质容差按量纲选取，例如能量 \(10^{-8}\)–\(10^{-6}\,\mathrm{Ha}\)，
+  偶极 \(10^{-6}\)–\(10^{-5}\) a.u.，频率约 \(1\,\mathrm{cm}^{-1}\)，
+  溶剂化能约 \(0.1\,\mathrm{kcal\,mol}^{-1}\)。具体以各章表格为准。
 
-- 能量:内部 Hartree;Frame/教程报告 eV(`core/units.h`)。表格标明单位。
-- 容差分级(章末表格用):能量对账 ≤1e-8…1e-6 Ha(按环 spec);性质
-  (偶极等)≤1e-6…1e-5 a.u.;频率 ≤1 cm⁻¹;电荷 ≤1e-6…0.01 e(方法依赖);
-  溶剂化能 ≤0.1 kcal/mol。每张表沿用其所属环 acceptance 的 pass_when 容差。
+## 4. 表格与图
 
-## 4. 标量只进表格,禁止柱状图
+标量结果用表格给出。收敛曲线、基组阶梯等连续数据可用图；图应服务于
+论述，而不是重复已写清的数值。
 
-标量结果(能量、偶极、迭代数、墙钟)一律用 Markdown 表格呈现——**禁止柱状图**。
-曲线类数据(收敛轨迹、基组收敛、标度)允许作图,图一律由 molvis/molplot 产出。
+## 5. 基组表与生成器
 
-## 回归口径(字节一致性守卫)
-
-基组静态表与 PySCF 基组库的逐位一致由生成器的 `--check` 模式守卫:
+静态基组头文件与 PySCF 基组库的一致性由生成器的检查模式维护：
 
 ```bash
-~/work/.x86_64/bin/python tools/gen_basis_data.py --check \
-    include/atomiverse/cpu/scf/basis_data/sto3g.h sto-3g sto3g H He Li Be B C N O
+python tools/gen_basis_data.py --check \
+    include/atomiverse/cpu/scf/basis_data/sto3g.h sto-3g sto3g H He …
 ```
 
-### 漂移基线(2026-07-20,PySCF 2.14.0)
+修改表时优先重新生成，并在表头注释中保留生成命令与版本。
 
-| 表 | `--check` 结果 | 说明 |
-|---|---|---|
-| sto3g.h | 逐字节一致 | 验收门 |
-| pople_631gs.h | 逐字节一致 | — |
-| def2_svp.h | 仅空白差 | 入库时经 clang-format 重折行;数值逐 token 一致 |
-| def2_tzvp.h | 仅空白差 | 同上 |
-| pople_631g.h | 有差 | He 行系 PySCF 2.13.1 手工钉入(见该文件头注);其余为空白差 |
+### 进一步阅读
 
-漂移的处置(重排 or 重生成)不在 01 环范围;后续动这些表的环(05-basis)
-以重生成收敛到生成器格式。
+- Sun 等, *WIREs Comput. Mol. Sci.* **8**, e1340 (2018)（PySCF）。
