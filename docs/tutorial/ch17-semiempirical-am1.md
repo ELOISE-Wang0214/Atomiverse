@@ -28,16 +28,6 @@ Preset (Evaluate / MD / Minimize / Hessian)
 There is **no** `SemiempiricalDriver`. DFTB and xTB, if added later, get their
 own Solver + Evaluator + kind — not a seat on `NDDOSolver`.
 
-## The molecule: water
-
-```molvis {format="xyz" representation="ball-and-stick" controls="view" height="300px"}
-3
-name=water Connct="[0,1,0,2]"
-O  0.0000  0.0000  0.0000
-H  0.9572  0.0000  0.0000
-H -0.2390  0.9266  0.0000
-```
-
 ## What AM1 computes
 
 | Quantity | Units | Where |

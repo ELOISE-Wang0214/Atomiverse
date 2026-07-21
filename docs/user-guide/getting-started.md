@@ -69,14 +69,9 @@ Add `-DATV_BUILD_PW=ON` for plane-wave, `-DATV_BUILD_TESTS=ON` for tests.
 ```
 
 H₂ / STO-3G restricted Hartree–Fock. You should see a converged total energy
-and a small iteration count. That proves the build chain works.
-
-```molvis {format="xyz" representation="ball-and-stick" controls="view" height="260px"}
-2
-name=H2 Connct="[0,1]"
-H  0.0000  0.0000  0.0000
-H  0.7400  0.0000  0.0000
-```
+and a small iteration count. That proves the build chain works. Chapter 2
+walks through the theory and shows **density and HOMO cubes** produced from
+the same SCF — not a bare geometry canvas.
 
 Theory, literature comparison, and a line-by-line walk-through:
 [Chapter 2 — Restricted Hartree-Fock](../tutorial/ch02-rhf.md).

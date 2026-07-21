@@ -25,13 +25,9 @@ CP2K getting-started geometry (Martyna–Tuckerman isolated electrostatics):
 | \(E_\mathrm{total}\) (Ha) | **−17.21275807** | −17.21233714 |
 | \(\lvert\Delta E\rvert\) (Ha) | **0.000421** | — |
 
-```molvis {format="xyz" representation="ball-and-stick" controls="view" height="280px"}
-3
-name=water Connct="[0,1,0,2]"
-O  5.0000  5.0000  5.0000
-H  5.7586  5.0000  5.5043
-H  4.2414  5.0000  5.5043
-```
+Geometry is the CP2K getting-started water (coordinates in the example source).
+What matters is the converged energy against the literature reference, not a
+ball-and-stick view of three atoms.
 
 ```cpp
 const cpu::gpw::Kind O{

@@ -23,13 +23,6 @@ cmake --build build --target 13_mp2 14_fci
 
 ### H₂ / STO-3G full CI (`14_fci`, \(R=0.7414\) Å)
 
-```molvis {format="xyz" representation="ball-and-stick" controls="view" height="240px"}
-2
-name=H2 Connct="[0,1]"
-H  0.0000  0.0000  0.0000
-H  0.7414  0.0000  0.0000
-```
-
 | | Atomiverse (Ha) |
 |---|---:|
 | \(E_\mathrm{RHF}\) | −1.11668439 |

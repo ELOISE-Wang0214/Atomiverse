@@ -17,14 +17,8 @@ repository, closed-shell Restricted Hartree-Fock (RHF) on H₂.
 ## The molecule
 
 H₂ at \(R = 0.74\) Å in the minimal STO-3G basis — two electrons, two basis
-functions, one occupied MO.
-
-```molvis {format="xyz" representation="ball-and-stick" controls="view" height="280px"}
-2
-name=H2 Connct="[0,1]"
-H  0.0000  0.0000  0.0000
-H  0.7400  0.0000  0.0000
-```
+functions, one occupied MO. Geometry alone is not interesting; after the SCF
+converges, the same calculation can emit density and orbital cubes (§ below).
 
 ## Why SCF Has to Iterate
 
@@ -271,16 +265,31 @@ cmake --build build --target 16_density_cube
 <figure class="molcrafts-web-component-card">
   <figcaption>
     <span class="molcrafts-web-component-card__package">MolVis</span>
-    <strong>H₂ electron density (RHF/STO-3G)</strong>
-    <small>Gaussian cube from Atomiverse <code>16_density_cube</code>. Drag to rotate; density isosurface from <code>h2_density.cube</code>.</small>
+    <strong>Total density</strong>
+    <small>Isosurface from <code>h2_density.cube</code> (RHF/STO-3G, example <code>16_density_cube</code>).</small>
   </figcaption>
   <div class="molcrafts-web-component-preview">
     <molvis-viewer
       format="cube"
       src="../../assets/structures/h2_density.cube"
-      representation="ball-and-stick"
       controls="view"
-      height="380px"
+      height="320px"
+    ></molvis-viewer>
+  </div>
+</figure>
+
+<figure class="molcrafts-web-component-card">
+  <figcaption>
+    <span class="molcrafts-web-component-card__package">MolVis</span>
+    <strong>HOMO (bonding σ)</strong>
+    <small>Isosurface from <code>h2_homo.cube</code> — the single occupied MO of the closed-shell solution.</small>
+  </figcaption>
+  <div class="molcrafts-web-component-preview">
+    <molvis-viewer
+      format="cube"
+      src="../../assets/structures/h2_homo.cube"
+      controls="view"
+      height="320px"
     ></molvis-viewer>
   </div>
 </figure>
