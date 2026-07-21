@@ -34,6 +34,15 @@ struct ShellList {
     ShellList() = default;
     ShellList(const AtomList& atoms, BasisSet basis);
 
+    /// @brief Auxiliary (density-fitting) shell list — same table→shell
+    ///        conversion as the orbital path, but allows l up to kMaxL
+    ///        (g) since aux shells only reach the 2-/3-center Rys paths.
+    ///        `basis` keeps its default value (not meaningful here).
+    /// @param atoms Atom list (Bohr positions + Z).
+    /// @param aux   Auxiliary basis identifier (throws when an atom has
+    ///              no table row — no fallback).
+    ShellList(const AtomList& atoms, AuxBasis aux);
+
     ShellList(const ShellList& o) { copy_from(o); }
     ShellList(ShellList&& o) noexcept { move_from(std::move(o)); }
     ShellList& operator=(const ShellList& o) {

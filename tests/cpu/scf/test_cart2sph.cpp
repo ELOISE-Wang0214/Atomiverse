@@ -110,9 +110,15 @@ TEST(CartToSph, UnitNormalizedDShellSandwichIsIdentity) {
     }
 }
 
-/// Unsupported l throws — no fallback.
+/// Unsupported l throws — no fallback. l = 4 (g) became supported with
+/// the density-fitting link (def2-JKFIT carries g shells); the first
+/// unsupported l is now 5 (h).
 TEST(CartToSph, UnsupportedLThrows) {
     const CartToSph t;
-    EXPECT_THROW(t.matrix(4), std::out_of_range);
-    EXPECT_THROW(t.block(4), std::out_of_range);
+    EXPECT_THROW(t.matrix(5), std::out_of_range);
+    EXPECT_THROW(t.block(5), std::out_of_range);
+    EXPECT_THROW(t.matrix(-1), std::out_of_range);
+    // l = 4 is served (15 × 9).
+    EXPECT_EQ(t.matrix(4).shape()[0], 15u);
+    EXPECT_EQ(t.matrix(4).shape()[1], 9u);
 }

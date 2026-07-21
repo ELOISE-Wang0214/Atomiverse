@@ -37,6 +37,7 @@ double phys_norm(double alpha) { return ATV::phys_norm_s(alpha); }
 double phys_norm_p(double alpha) { return ATV::phys_norm_p(alpha); }
 double phys_norm_d(double alpha) { return ATV::phys_norm_d(alpha); }
 double phys_norm_f(double alpha) { return ATV::phys_norm_f(alpha); }
+double phys_norm_g(double alpha) { return ATV::phys_norm_g(alpha); }
 
 // ── Phase 4 prerequisite: Boys function ───────────────────────────────
 
@@ -615,10 +616,10 @@ double overlap_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
 
         // Build 1D overlap table up to (imax, jmax). Sized for
         // derivative callers that pass a_ang or b_ang bumped by 1:
-        // max entry is (kMaxL+1)*(kMaxL+1) = 4*4 = 16 for kMaxL=2.
+        // max entry is (kMaxLOrbital+1)*(kMaxLOrbital+1) = 4*4 = 16 for kMaxLOrbital=2.
         const int imax = a_ang[d];
         const int jmax = b_ang[d];
-        constexpr int kMaxOverlapCells = (kMaxL + 2) * (kMaxL + 2);
+        constexpr int kMaxOverlapCells = (kMaxLOrbital + 2) * (kMaxLOrbital + 2);
         double S[kMaxOverlapCells];
         os_overlap_1d(PA, PB, inv2g, S00, imax, jmax, S);
 
@@ -645,13 +646,13 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
         if (b_ang[d] > jmax_base)
             jmax_base = b_ang[d];
     }
-    const int im = imax_all;      // max kMaxL+1 = 3 (derivative bump)
-    const int jm = jmax_base + 2; // max kMaxL+1+2 = 5
+    const int im = imax_all;      // max kMaxLOrbital+1 = 3 (derivative bump)
+    const int jm = jmax_base + 2; // max kMaxLOrbital+1+2 = 5
     const int jstride = jm + 1;   // max 6
 
     // Build 1D overlap tables in each direction with uniform size.
-    // Max table cells: (kMaxL+2) * (kMaxL+4) = 4 * 6 = 24 per direction.
-    constexpr int kMaxKineticCells = (kMaxL + 2) * (kMaxL + 4);
+    // Max table cells: (kMaxLOrbital+2) * (kMaxLOrbital+4) = 4 * 6 = 24 per direction.
+    constexpr int kMaxKineticCells = (kMaxLOrbital + 2) * (kMaxLOrbital + 4);
     double Sd[3][kMaxKineticCells];
     double S1d[3];
 
@@ -697,10 +698,10 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
 // Nuclear- and ERI-integral paths reuse the same McMurchie-Davidson
 // Hermite coefficients E^{i,j}_t. Gradient paths raise one Gaussian
 // center's angular momentum by +1 on the fly (ai+1 or bj+1), so every
-// table must be sized for ai or bj reaching kMaxL+1 — not just kMaxL.
+// table must be sized for ai or bj reaching kMaxLOrbital+1 — not just kMaxLOrbital.
 
 /// Per-center i/j upper bound after a +1 derivative raise.
-inline constexpr int kDerivL = kMaxL + 1;
+inline constexpr int kDerivL = kMaxLOrbital + 1;
 /// t-index dim in E^{i,j}_t (t ∈ [0, ai+bj]; +1 slack lets the recurrence
 /// read E[t+1] without a bounds branch when t hits the real max).
 inline constexpr int kMDEDim = 2 * kDerivL + 1; // 7 for d-shells
@@ -708,7 +709,7 @@ inline constexpr int kMDEDim = 2 * kDerivL + 1; // 7 for d-shells
 inline constexpr int kMDEIDim = kDerivL + 1; // 4 for d-shells
 
 /// @brief McMurchie-Davidson E coefficients E^{ai,bj}_t.
-/// @details Supports ai, bj up to kDerivL = kMaxL + 1 to accommodate the
+/// @details Supports ai, bj up to kDerivL = kMaxLOrbital + 1 to accommodate the
 ///   gradient path which raises one center's angular by +1. Output is
 ///   populated for t = 0..ai+bj; entries past that are zero.
 static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
@@ -891,8 +892,8 @@ double eri_prim(const int a_ang[3], const int b_ang[3], const int c_ang[3],
                              * K_CD;
 
     // Angular momentum totals per direction. Derivative path raises one
-    // of a/b/c/d on one axis by +1, so per-pair Lxi may reach kDerivL+kMaxL
-    // and the grand Ltot may reach 4*kMaxL+1 (all angular on one axis).
+    // of a/b/c/d on one axis by +1, so per-pair Lxi may reach kDerivL+kMaxLOrbital
+    // and the grand Ltot may reach 4*kMaxLOrbital+1 (all angular on one axis).
     const int Lx1 = a_ang[0] + b_ang[0];
     const int Ly1 = a_ang[1] + b_ang[1];
     const int Lz1 = a_ang[2] + b_ang[2];
@@ -902,8 +903,8 @@ double eri_prim(const int a_ang[3], const int b_ang[3], const int c_ang[3],
     const int Ltot = Lx1 + Ly1 + Lz1 + Lx2 + Ly2 + Lz2;
 
     // R-table sizing: m ∈ [0, Ltot] and per-axis index ∈ [0, Lxi+Lx2_i].
-    // Max = 4*kMaxL+1 for 1st derivatives of a (dd|dd) quartet.
-    constexpr int kERIRDim = 4 * kMaxL + 2; // 10 for d-shells
+    // Max = 4*kMaxLOrbital+1 for 1st derivatives of a (dd|dd) quartet.
+    constexpr int kERIRDim = 4 * kMaxLOrbital + 2; // 10 for d-shells
 
     // Boys functions F_m(T) for m = 0..Ltot
     double Fm[kERIRDim];
@@ -923,7 +924,7 @@ double eri_prim(const int a_ang[3], const int b_ang[3], const int c_ang[3],
         md_e_coeffs(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
     }
 
-    // R table — max Ltot = 4*kMaxL+1, max per-dir = 4*kMaxL+1 (all ang on
+    // R table — max Ltot = 4*kMaxLOrbital+1, max per-dir = 4*kMaxLOrbital+1 (all ang on
     // one axis in the derivative limit). Stack footprint: 10^4 doubles
     // ≈ 80 KB per call; only used in gradient paths, not hot SCF loop.
     const int Rx_max = Lx1 + Lx2;
@@ -1039,8 +1040,8 @@ void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
 
             // Build 1D overlap tables once per primitive pair, per axis.
             // Sized for the largest shell pair: (imax+1)(jmax+1) with
-            // imax, jmax <= kMaxL — 16 for f-shells.
-            double S1d[3][(kMaxL + 1) * (kMaxL + 1)];
+            // imax, jmax <= kMaxLOrbital — 16 for f-shells.
+            double S1d[3][(kMaxLOrbital + 1) * (kMaxLOrbital + 1)];
             for (int d = 0; d < 3; ++d) {
                 const double dd = A.center[d] - B.center[d];
                 const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
@@ -1087,9 +1088,9 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
             const double cpq = A.coeff[p] * B.coeff[q];
 
             // 1D overlap tables with the (jmax+2) extension needed for T.
-            // (imax+1)(jmax_k+1) with imax <= kMaxL, jmax_k = B.l+2 <=
-            // kMaxL+2 — 4*6 = 24 for f-shells.
-            double S1d[3][(kMaxL + 1) * (kMaxL + 2 + 1)];
+            // (imax+1)(jmax_k+1) with imax <= kMaxLOrbital, jmax_k = B.l+2 <=
+            // kMaxLOrbital+2 — 4*6 = 24 for f-shells.
+            double S1d[3][(kMaxLOrbital + 1) * (kMaxLOrbital + 2 + 1)];
             for (int d = 0; d < 3; ++d) {
                 const double dd = A.center[d] - B.center[d];
                 const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
@@ -1165,11 +1166,11 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B, const Atom* atoms,
 
             // E_full[d][ai][bj][t] — Hermite expansion of xA^ai * xB^bj.
             // Dimensions: 3 axes × (imax+1) × (jmax+1) × (Lmax_dir+1)
-            // with imax, jmax <= kMaxL. t runs to ai+bj <= 2*kMaxL, so
-            // the Hermite-index dimension is 2*kMaxL+1 (7 for f-shells).
+            // with imax, jmax <= kMaxLOrbital. t runs to ai+bj <= 2*kMaxLOrbital, so
+            // the Hermite-index dimension is 2*kMaxLOrbital+1 (7 for f-shells).
             // No zero-init: every entry read is explicitly written below.
-            constexpr int kAng = kMaxL + 1;   // 4 for f
-            constexpr int kL = 2 * kMaxL + 1; // 7 for f
+            constexpr int kAng = kMaxLOrbital + 1;   // 4 for f
+            constexpr int kL = 2 * kMaxLOrbital + 1; // 7 for f
             double E_full[3][kAng][kAng][kL];
             for (int d = 0; d < 3; ++d) {
                 for (int ai = 0; ai <= imax; ++ai) {
@@ -1194,19 +1195,19 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B, const Atom* atoms,
                 const double T = gamma * PC2;
 
                 // Boys functions F_0..F_{Ltot_max} — Ltot_max = 3 * Lmax_dir.
-                // Lmax_dir = imax+jmax <= 2*kMaxL, so Ltot_max <= 6*kMaxL
-                // (18 for f-shells) and Fm needs 6*kMaxL+1 = 19 entries.
+                // Lmax_dir = imax+jmax <= 2*kMaxLOrbital, so Ltot_max <= 6*kMaxLOrbital
+                // (18 for f-shells) and Fm needs 6*kMaxLOrbital+1 = 19 entries.
                 const int Ltot_max = 3 * Lmax_dir;
-                constexpr int kBoysN = 6 * kMaxL + 1; // 19 for f
+                constexpr int kBoysN = 6 * kMaxLOrbital + 1; // 19 for f
                 double Fm[kBoysN];
                 boys_fn_vec(T, Ltot_max, Fm);
 
                 // R_tab[m][t][u][v] — McMurchie–Davidson recurrence.
-                // m ∈ [0, Ltot_max] ≤ 6*kMaxL; t, u, v ∈ [0, Lmax_dir]
-                // ≤ 2*kMaxL. No zero-init needed: the recurrence only
+                // m ∈ [0, Ltot_max] ≤ 6*kMaxLOrbital; t, u, v ∈ [0, Lmax_dir]
+                // ≤ 2*kMaxLOrbital. No zero-init needed: the recurrence only
                 // reads entries it has already written.
-                constexpr int kRm = 6 * kMaxL + 1; // 19 for f
-                constexpr int kRd = 2 * kMaxL + 1; // 7 for f
+                constexpr int kRm = 6 * kMaxLOrbital + 1; // 19 for f
+                constexpr int kRd = 2 * kMaxLOrbital + 1; // 7 for f
                 double R_tab[kRm][kRd][kRd][kRd];
                 double pow_neg2g = 1.0;
                 const double neg2g = -2.0 * gamma;

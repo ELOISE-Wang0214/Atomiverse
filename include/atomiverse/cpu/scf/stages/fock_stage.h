@@ -59,6 +59,13 @@ class FockStage : public cpu::Component {
     /// @param e_exact_exchange Hybrid exact-exchange energy, Hartree (write).
     /// @param int_n_alpha  Grid-integrated α electron count (KS only) (write).
     /// @param int_n_beta   Grid-integrated β electron count (KS only) (write).
+    /// @param ri           Density-fitting mode (RI::None = exact ERIs,
+    ///                     bit-identical shipping path). Combining a
+    ///                     non-None mode with `generalized` throws — the
+    ///                     GHF spinor build contracts the stored dense
+    ///                     ERI directly and has no RI wiring.
+    /// @param aux_basis    Auxiliary basis for the fit (ignored when
+    ///                     `ri == RI::None`).
     /// @param generalized  True for the GHF spinor build: `P_alpha` then
     ///                     carries the 2n×2n spinor density and `F_alpha`
     ///                     receives the 2n×2n spinor Fock
@@ -72,7 +79,9 @@ class FockStage : public cpu::Component {
               const RealMatrix& P_alpha, const RealMatrix& P_beta,
               RealMatrix& F_alpha, RealMatrix& F_beta, RealMatrix& J,
               double& e_xc_grid, double& e_exact_exchange, double& int_n_alpha,
-              double& int_n_beta, bool generalized = false);
+              double& int_n_beta, RI ri = RI::None,
+              AuxBasis aux_basis = AuxBasis::Def2JKFIT,
+              bool generalized = false);
 
     /// @brief Component name.
     /// @return `"scf_fock_stage"`.
@@ -100,6 +109,8 @@ class FockStage : public cpu::Component {
     int n_angular_;
     double hybrid_alpha_override_;
     const MolecularGrid* fixed_grid_;
+    RI ri_;              ///< Density-fitting mode (member-driven seam).
+    AuxBasis aux_basis_; ///< Auxiliary basis for the fit.
 
     const IntegralPack& integrals_;
     const RealMatrix& P_alpha_;

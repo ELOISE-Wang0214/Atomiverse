@@ -3,6 +3,8 @@
 
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 
+#include <stdexcept>
+
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/reducers/xreducer.hpp>
 
@@ -18,11 +20,27 @@ namespace internal {
 
 void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                                  GridLevel grid_level, int n_radial,
-                                 int n_angular,
-                                 const MolecularGrid* fixed_grid) {
+                                 int n_angular, const MolecularGrid* fixed_grid,
+                                 RI ri, AuxBasis aux_basis) {
     if (!integrals.shells.empty()) {
         sp_block_ = ShellBlockPairList{integrals};
         sp_ = ShellPairList{integrals};
+    }
+
+    ri_ = ri;
+    if (ri_ != RI::None) {
+        if (integrals.shells.empty())
+            throw std::runtime_error(
+                "HamiltonianBuilder: RI requested but the integral pack "
+                "carries no shell workspace.");
+        const auto t_df = LogClock::now();
+        df_ = std::make_unique<DensityFitting>(integrals.shells,
+                                               integrals.atoms, aux_basis);
+        ATV_INFO("[scf] density-fitting workspace built n_ao={} n_aux={} "
+                 "ms={:.1f}",
+                 df_->n_ao(), df_->n_aux(), elapsed_ms(t_df));
+    } else {
+        df_.reset();
     }
 
     if (!is_hf && !integrals.atoms.empty()) {
@@ -88,7 +106,29 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
     const RealMatrix& Pb_eng =
         sph ? (restricted ? Pa_scratch : Pb_scratch) : P_beta;
 
-    if (restricted && is_hf) {
+    // RI (density-fitting) routing: when `ri_ != RI::None` J (and for
+    // RI::JK also K) come from the DensityFitting workspace in the
+    // Cartesian engine space and bridge back through `to_ao` exactly like
+    // the direct builders. The `RI::None` branches below are untouched —
+    // bit-identical to the pre-RI path. K normalization convention:
+    // `k_fitted*` matches `ShellBlockPairList::k` (K[P], no 0.5), so the
+    // Fock assembly lines mirror the exact-path arithmetic one-to-one.
+    if (restricted && is_hf && ri_ != RI::None) {
+        // RHF with RI-J / RI-JK: F = Hcore + J − 0.5·K on the total
+        // density. RI::J fits only J (exchange stays exact via the
+        // shell-block K builder); RI::JK fits both.
+        out.J = df_->j_fitted(Pa_eng);
+        RealMatrix K;
+        if (ri_ == RI::JK)
+            K = df_->k_fitted_from_density(Pa_eng);
+        else
+            sp_block_.k(Pa_eng, K);
+        RealMatrix G = out.J - double(0.5) * K;
+        to_ao(out.J);
+        to_ao(G);
+        out.F_alpha = Hcore + G;
+        out.F_beta = out.F_alpha;
+    } else if (restricted && is_hf) {
         // RHF: PySCF approach — store ERI once, then BLAS contraction.
         // Falls back to direct SCF when ERI is not stored.
         RealMatrix G;
@@ -100,6 +140,25 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         }
         out.F_alpha = Hcore + G;
         out.F_beta = out.F_alpha;
+    } else if (!restricted && is_hf && ri_ != RI::None) {
+        // UHF with RI-J / RI-JK: one fitted J from the total density,
+        // per-spin exchange (fitted for RI::JK, exact K[P_σ] otherwise —
+        // the shell-block K builder is linear in its density argument).
+        RealMatrix P_total = Pa_eng + Pb_eng;
+        out.J = df_->j_fitted(P_total);
+        RealMatrix K_alpha, K_beta;
+        if (ri_ == RI::JK) {
+            K_alpha = df_->k_fitted_from_density(Pa_eng);
+            K_beta = df_->k_fitted_from_density(Pb_eng);
+        } else {
+            sp_block_.k(Pa_eng, K_alpha);
+            sp_block_.k(Pb_eng, K_beta);
+        }
+        to_ao(out.J);
+        to_ao(K_alpha);
+        to_ao(K_beta);
+        out.F_alpha = Hcore + out.J - K_alpha;
+        out.F_beta = Hcore + out.J - K_beta;
     } else if (!restricted && is_hf) {
         RealMatrix P_total = Pa_eng + Pb_eng;
         RealMatrix K_alpha, K_beta;
@@ -154,7 +213,24 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             // energy term (E_K = -0.25*Tr[P*K]).
             const double half_alpha = double(0.5) * alpha_hf;
 
-            if (half_alpha == double(0)) {
+            if (ri_ != RI::None) {
+                // Restricted KS hybrid with RI: fitted J; exchange fitted
+                // for RI::JK, exact shell-block K for RI::J. Same single
+                // application site of alpha_hf as the exact branch.
+                out.J = df_->j_fitted(P_total_J);
+                RealMatrix K;
+                if (ri_ == RI::JK)
+                    K = df_->k_fitted_from_density(P_total_J);
+                else
+                    sp_block_.k(P_total_J, K);
+                const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
+                out.E_exact_exchange = alpha_hf * E_K;
+                RealMatrix F2e = out.J - half_alpha * K;
+                to_ao(out.J);
+                to_ao(F2e);
+                out.F_alpha = Hcore + F2e + xc.Vxc_alpha;
+                out.F_beta = out.F_alpha;
+            } else if (half_alpha == double(0)) {
                 // alpha_hf == 0 regression path (ac-004). J is built with
                 // the SAME ShellPairList::j call as the pure-KS branch and
                 // the Fock / energy arithmetic is the byte-for-byte
@@ -197,8 +273,19 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             // deliverable's scope, but kept correct: per-spin exchange via
             // the AO-level UHF builder. F^sigma = Hcore + J - alpha_hf*K^sigma.
             RealMatrix K_alpha, K_beta;
-            sp_.jk_uhf(P_total_J, P_alpha_xc, P_beta_xc, out.J, K_alpha,
-                       K_beta);
+            if (ri_ != RI::None) {
+                out.J = df_->j_fitted(P_total_J);
+                if (ri_ == RI::JK) {
+                    K_alpha = df_->k_fitted_from_density(P_alpha_xc);
+                    K_beta = df_->k_fitted_from_density(P_beta_xc);
+                } else {
+                    sp_block_.k(P_alpha_xc, K_alpha);
+                    sp_block_.k(P_beta_xc, K_beta);
+                }
+            } else {
+                sp_.jk_uhf(P_total_J, P_alpha_xc, P_beta_xc, out.J, K_alpha,
+                           K_beta);
+            }
             const double E_K = double(-0.5)
                                * (xt::sum(P_alpha_xc * K_alpha)()
                                   + xt::sum(P_beta_xc * K_beta)());
@@ -210,8 +297,11 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             out.F_beta = Hcore + out.J - alpha_hf * K_beta + xc.Vxc_beta;
         } else {
             // Pure KS: Coulomb only, no exchange matrix. Byte-for-byte
-            // identical to the pre-hybrid path.
-            sp_.j(P_total_J, out.J);
+            // identical to the pre-hybrid path when `ri_ == RI::None`.
+            if (ri_ != RI::None)
+                out.J = df_->j_fitted(P_total_J);
+            else
+                sp_.j(P_total_J, out.J);
             to_ao(out.J);
             out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
             out.F_beta = Hcore + out.J + xc.Vxc_beta;

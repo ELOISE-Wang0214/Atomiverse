@@ -23,14 +23,22 @@ FockStage::FockStage(bool restricted, bool is_hf, XCType xc_type,
                      const RealMatrix& P_beta, RealMatrix& F_alpha,
                      RealMatrix& F_beta, RealMatrix& J, double& e_xc_grid,
                      double& e_exact_exchange, double& int_n_alpha,
-                     double& int_n_beta, bool generalized)
+                     double& int_n_beta, RI ri, AuxBasis aux_basis,
+                     bool generalized)
     : restricted_(restricted), is_hf_(is_hf), generalized_(generalized),
       xc_type_(xc_type), grid_level_(grid_level), n_radial_(n_radial),
       n_angular_(n_angular), hybrid_alpha_override_(hybrid_alpha_override),
-      fixed_grid_(fixed_grid), integrals_(integrals), P_alpha_(P_alpha),
-      P_beta_(P_beta), F_alpha_(F_alpha), F_beta_(F_beta), J_(J),
-      e_xc_grid_(e_xc_grid), e_exact_exchange_(e_exact_exchange),
-      int_n_alpha_(int_n_alpha), int_n_beta_(int_n_beta) {}
+      fixed_grid_(fixed_grid), ri_(ri), aux_basis_(aux_basis),
+      integrals_(integrals), P_alpha_(P_alpha), P_beta_(P_beta),
+      F_alpha_(F_alpha), F_beta_(F_beta), J_(J), e_xc_grid_(e_xc_grid),
+      e_exact_exchange_(e_exact_exchange), int_n_alpha_(int_n_alpha),
+      int_n_beta_(int_n_beta) {
+    if (generalized_ && ri_ != RI::None)
+        throw std::runtime_error(
+            "FockStage: RI (density fitting) is not wired for the "
+            "generalized (GHF) spinor Fock build — GHF contracts the "
+            "stored dense ERI directly. Use ri = RI::None with GHF.");
+}
 
 std::vector<DefaultBinding> FockStage::default_bindings() const {
     return {ATV::make_binding(ATV::scf::Phase::fock, 0)};
@@ -41,7 +49,7 @@ void FockStage::build(const cpu::BuildContext& ctx) {
     // One-time allocation of shell-pair lists + (KS) the integration grid,
     // via HamiltonianBuilder's config-free entry.
     hamiltonian_.prepare(integrals_, is_hf_, grid_level_, n_radial_, n_angular_,
-                         fixed_grid_);
+                         fixed_grid_, ri_, aux_basis_);
 }
 
 void FockStage::launch(const cpu::LaunchContext& ctx) {

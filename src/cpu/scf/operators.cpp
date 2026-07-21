@@ -382,7 +382,8 @@ void ShellBlockPairList::k(const RealMatrix& P, RealMatrix& K) const {
             const native::ShellBlock& Bsl = sp.blocks[bp_r.sj];
             const int nc = Bsk.n_cart, nd = Bsl.n_cart;
 
-            double blk[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart] = {};
+            double blk[kMaxNCartOrbital * kMaxNCartOrbital * kMaxNCartOrbital
+                       * kMaxNCartOrbital] = {};
             native::eri_block(Bsi, Bsj, Bsk, Bsl, blk);
 
             if (left != right) {
@@ -437,7 +438,7 @@ void ShellBlockPairList::k(const RealMatrix& P, RealMatrix& K) const {
                 };
                 // Max AO pair count per block pair: f-f non-diag =
                 // 10*10 = 100 (kMaxNCart^2); diag pairs are fewer.
-                AOpair ao_pairs[kMaxNCart * kMaxNCart];
+                AOpair ao_pairs[kMaxNCartOrbital * kMaxNCartOrbital];
                 int n_ao_pairs = 0;
                 for (int ia = 0; ia < na; ++ia)
                     for (int ib = 0; ib < nb; ++ib) {
@@ -537,7 +538,8 @@ void ShellBlockPairList::g_rhf(const RealMatrix& P, RealMatrix& G) const {
 
             // Max block size is (ff|ff) = n_cart_of(kMaxL)^4 — 10^4 =
             // 10000 doubles for f-shells.
-            double blk[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart] = {};
+            double blk[kMaxNCartOrbital * kMaxNCartOrbital * kMaxNCartOrbital
+                       * kMaxNCartOrbital] = {};
             native::eri_block(Bsi, Bsj, Bsk, Bsl, blk);
 
             if (left != right) {
@@ -603,7 +605,7 @@ void ShellBlockPairList::g_rhf(const RealMatrix& P, RealMatrix& G) const {
                 // 10*10 = 100 (kMaxNCart^2); diag pairs are fewer. The old
                 // d-sized 36 overflowed the stack for f blocks (silent UB
                 // that skewed AuH/def2-SVP by ~7e-6 Ha).
-                AOpair ao_pairs[kMaxNCart * kMaxNCart];
+                AOpair ao_pairs[kMaxNCartOrbital * kMaxNCartOrbital];
                 int n_ao_pairs = 0;
                 for (int ia = 0; ia < na; ++ia)
                     for (int ib = 0; ib < nb; ++ib) {

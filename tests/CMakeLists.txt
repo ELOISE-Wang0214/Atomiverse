@@ -508,6 +508,9 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_roots     cpu/scf/test_rys_roots.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
+    # hf-capability-gaps-12-df: def2-JKFIT table, g-shell 2c/3c integrals,
+    # metric whitening, fitted J/K vs dense (single calls, no SCF).
+    atv_add_cpp_test(test_density_fitting       cpu/scf/test_density_fitting.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
     # hf-capability-gaps-07-guess: Hückel/SAP guess matrices + EDIIS/ADIIS

@@ -88,6 +88,32 @@ SETS = {
     "def2-svp": ("def2_svp", ["H", "C", "N", "O", "F"] + PERIOD3 + HEAVY_DEF2),
     "def2-tzvp": ("def2_tzvp", ["H", "C", "N", "O", "F"] + PERIOD3),
     "aug-cc-pvdz": ("aug_ccpvdz", ["H", "C", "N", "O", "F"] + PERIOD3),
+    # def2 universal JKFIT auxiliary basis (Weigend 2002, DOI
+    # 10.1039/B204199P). Coverage mirrors the light-element orbital def2
+    # sets: H + first/second row (max l = 4, g). The heavy def2 elements
+    # (Rb-Rn) carry h/i JKFIT shells (l >= 5) beyond the engine's l = 4
+    # cap and are deliberately not emitted — no fallback, the aux
+    # ShellList constructor throws for them.
+    "def2-universal-jkfit": ("def2_jkfit", ["H", "C", "N", "O", "F"] + PERIOD3),
+}
+
+# Extra per-stem Doxygen note lines inserted into the emitted header
+# (deterministic — part of the byte-reproducible output).
+EXTRA_NOTES = {
+    "def2_jkfit": [
+        "///",
+        "/// Density-fitting AUXILIARY basis (not an orbital basis).",
+        "/// Single-table decision: only the universal JKFIT set is shipped,",
+        "/// deliberately without a separate JFIT table — the exchange fit",
+        "/// (RI-K) REQUIRES the larger JKFIT set (Weigend, PCCP 4, 4285",
+        "/// (2002), DOI 10.1039/B204199P), and reusing JKFIT for the Coulomb",
+        "/// fit (RI-J) only costs a slightly larger auxiliary dimension at",
+        "/// unchanged accuracy (Weigend, PCCP 8, 1057 (2006), DOI",
+        "/// 10.1039/b515623h). Robust-fit background: Vahtras, Almlof,",
+        "/// Feyereisen, CPL 213, 514 (1993), DOI 10.1016/0009-2614(93)89151-7.",
+        "/// Rows include l = 4 (g) shells; heavy def2 elements (Rb-Rn) need",
+        "/// l >= 5 and are not emitted (aux ShellList throws, no fallback).",
+    ],
 }
 
 # Registered ECP sets: PySCF ECP name -> (header stem, canonical elements).
@@ -194,6 +220,8 @@ def render(basis_name, stem, symbols):
     a("/// bit-for-bit. Contraction coefficients use the unnormalized")
     a("/// convention (physical GTO normalization is applied by")
     a("/// `ShellList` constructor).")
+    for note in EXTRA_NOTES.get(stem, []):
+        a(note)
     a("///")
     a(f"/// Supported elements: {syms_comma}.")
     a("///")

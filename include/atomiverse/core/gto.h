@@ -56,6 +56,21 @@ inline double phys_norm_f(double alpha) {
     return std::pow(2.0 * alpha / M_PI, 0.75) * std::pow(4.0 * alpha, 1.5);
 }
 
+/// @brief GTO normalization factor for Cartesian g shells (l=4).
+/// @details Shared across all fifteen Cartesian components
+///   (g_xxxx .. g_zzzz), extending the libcint / PySCF cart convention
+///   of phys_norm_d / phys_norm_f one rung up the
+///   N = (2*alpha/pi)^{3/4} * (4*alpha)^{l/2} ladder with l = 4:
+///   N = (2*alpha/pi)^{3/4} * (4*alpha)^2. Needed by the def2 JKFIT
+///   auxiliary basis (density fitting), whose first/second-row rows
+///   carry one g shell each; validated against PySCF `cart=True`
+///   2-/3-center integrals in tests/cpu/scf/test_density_fitting.cpp.
+/// @param alpha Gaussian exponent [Bohr^-2].
+/// @return Normalization factor.
+inline double phys_norm_g(double alpha) {
+    return std::pow(2.0 * alpha / M_PI, 0.75) * 16.0 * alpha * alpha;
+}
+
 /// @brief GTO normalization factor (libcint convention, matches CINTgto_norm).
 /// @details Includes the 2*sqrt(pi) spherical harmonic factor on top of phys_norm.
 ///   For validation against libcint only.

@@ -89,6 +89,13 @@ double phys_norm_p(double alpha);
 /// @return Shared normalization factor for all ten Cartesian f AOs.
 double phys_norm_f(double alpha);
 
+/// @brief Physical normalization for g-type (l=4) Gaussians (libcint
+///        convention). Delegates to ATV::phys_norm_g. Auxiliary-basis
+///        (density-fitting) shells only.
+/// @param alpha Gaussian exponent.
+/// @return Shared normalization factor for all fifteen Cartesian g AOs.
+double phys_norm_g(double alpha);
+
 /// @brief Boys function F_0(x) = integral_0^1 exp(-x*t^2) dt.
 /// @details F_0(0) = 1. For x > 0: F_0(x) = 0.5 * sqrt(pi/x) * erf(sqrt(x)).
 /// @param x Non-negative argument.

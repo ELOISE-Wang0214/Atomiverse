@@ -9,11 +9,15 @@
 /// (n_basis fixed) and `step()` is reused across all SCF iterations.
 #pragma once
 
+#include <memory>
+
+#include "atomiverse/cpu/scf/basis_set.h" // AuxBasis
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/density_fitting.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType
+#include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType / RI
 #include "atomiverse/cpu/scf/xc_functional.h" // XCType
 
 namespace ATV {
@@ -50,9 +54,18 @@ class HamiltonianBuilder {
     /// @param n_radial   Radial grid points per atom (SG0 only).
     /// @param n_angular  Angular grid points per atom (SG0 only).
     /// @param fixed_grid Optional external grid (KS only; not owned).
+    /// @param ri         Density-fitting mode; `RI::None` (default) keeps
+    ///                   the exact-ERI path bit-identical. Non-None builds
+    ///                   the `internal::DensityFitting` workspace over the
+    ///                   pack's Cartesian shells (this seam is reused by
+    ///                   the CFMM link).
+    /// @param aux_basis  Auxiliary basis for the fit (ignored when
+    ///                   `ri == RI::None`); an element without a table row
+    ///                   throws — no fallback.
     void prepare(const IntegralPack& integrals, bool is_hf,
                  GridLevel grid_level, int n_radial, int n_angular,
-                 const MolecularGrid* fixed_grid);
+                 const MolecularGrid* fixed_grid, RI ri = RI::None,
+                 AuxBasis aux_basis = AuxBasis::Def2JKFIT);
 
     /// @brief Build F from the current α/β densities.
     /// @details Method-dispatched F = Hcore + J − αK + V_xc.
@@ -73,6 +86,10 @@ class HamiltonianBuilder {
     ShellBlockPairList sp_block_; ///< RHF/RKS shell-block list (libcint-style).
     ShellPairList sp_;            ///< AO-level list for UHF/UKS J/K paths.
     MolecularGrid grid_;          ///< KS XC grid (empty for HF).
+    RI ri_ = RI::None;            ///< Density-fitting mode set by prepare().
+    /// RI workspace ((μν|P), metric Cholesky, B tensor); null when
+    /// `ri_ == RI::None` — the exact path never touches it.
+    std::unique_ptr<DensityFitting> df_;
 };
 
 } // namespace internal

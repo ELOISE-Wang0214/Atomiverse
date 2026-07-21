@@ -38,6 +38,23 @@ enum class SpinType { Restricted, Unrestricted, RestrictedOpen, Generalized };
 ///              same reference.
 enum class InitGuess { Hcore, MINAO, Hueckel, SAP };
 
+/// @brief Density-fitting (resolution-of-the-identity) mode for the
+///        two-electron Fock build.
+///
+/// - `None`: exact 4-index ERIs (the shipping path, bit-identical).
+/// - `J`:    fit only the Coulomb matrix (RI-J, γ_P route); exchange
+///           stays exact. Vahtras-Almlöf-Feyereisen robust Coulomb fit,
+///           CPL 213, 514 (1993), DOI 10.1016/0009-2614(93)89151-7.
+/// - `JK`:   fit Coulomb AND exchange (RI-JK, B half-transform route);
+///           Weigend, PCCP 4, 4285 (2002), DOI 10.1039/B204199P.
+///
+/// The auxiliary basis is selected by `AuxBasis` (def2 universal JKFIT —
+/// one table serves both modes; see basis_set.h for the no-JFIT
+/// decision). Fit errors are second order in the fitting residual under
+/// the Coulomb metric: tens of μHa/atom for matched orbital/auxiliary
+/// pairs (Weigend, PCCP 8, 1057 (2006), DOI 10.1039/b515623h).
+enum class RI { None, J, JK };
+
 /// @brief SCF Fock-mixer family for the mix stage.
 ///
 /// - `CDIIS`:       Pulay commutator-DIIS only (the shipping default).

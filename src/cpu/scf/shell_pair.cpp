@@ -140,7 +140,8 @@ ShellBlockPairList::ShellBlockPairList(const IntegralPack& pack, double thr) {
     // Temporary buffer for the self-ERI block. Max across all shell
     // types is (ff|ff) = n_cart_of(kMaxL)^4 — 10^4 = 10000 doubles for
     // f-shells.
-    double blk_buf[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart];
+    double blk_buf[kMaxNCartOrbital * kMaxNCartOrbital * kMaxNCartOrbital
+                   * kMaxNCartOrbital];
 
     for (int si = 0; si < n_blocks; ++si) {
         for (int sj = 0; sj <= si; ++sj) {

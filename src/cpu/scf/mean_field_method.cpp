@@ -165,11 +165,34 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     // spinor commutator).
     const bool rohf = (spin_ == SpinType::RestrictedOpen);
     const bool generalized = (spin_ == SpinType::Generalized);
+    // RI (density fitting) is wired for the RHF/UHF and RKS/UKS Fock
+    // builds only. ROHF routes through the unrestricted Fock build but is
+    // deliberately refused until its RI path is validated; GHF contracts
+    // the stored dense ERI directly; the SOSCF stepper builds its own
+    // exact-ERI Fock internally and would silently desynchronize from a
+    // fitted loop. No silent fallback — throw with the reason.
+    if (ri != RI::None) {
+        if (rohf)
+            throw std::runtime_error(
+                "MeanFieldMethod: RI (density fitting) is not wired for "
+                "ROHF in this link — use ri = RI::None with ROHF.");
+        if (generalized)
+            throw std::runtime_error(
+                "MeanFieldMethod: RI (density fitting) is not wired for "
+                "GHF (generalized spinor Fock uses the dense ERI) — use "
+                "ri = RI::None with GHF.");
+        if (soscf)
+            throw std::runtime_error(
+                "MeanFieldMethod: RI (density fitting) cannot be combined "
+                "with soscf — the CIAH stepper builds exact-ERI Fock "
+                "matrices internally and would be inconsistent with the "
+                "fitted SCF loop.");
+    }
     fock_stage_ = std::make_unique<FockStage>(
         restricted_, is_hf_, xc_type_, grid_level, n_radial, n_angular,
         hybrid_alpha_override, fixed_grid, *integrals_sp_, P_alpha_, P_beta_,
         F_alpha_, F_beta_, J_, e_xc_grid_, e_exact_exchange_, int_n_alpha_,
-        int_n_beta_, generalized);
+        int_n_beta_, ri, aux_basis, generalized);
     if (rohf) {
         rohf_couple_stage_ = std::make_unique<RohfCoupleStage>(
             S_, P_alpha_, P_beta_, F_alpha_, F_beta_, F_alpha_uncoupled_,
@@ -702,8 +725,11 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // the canonical ε (and canonical C) the published determinant carries.
     if (did_converge && (shift_active || soscf_active_)) {
         internal::HamiltonianBuilder deshift;
+        // Same ri/aux as the loop's Fock build: the de-shifted orbital
+        // energies must diagonalize the SAME (possibly fitted) Fock the
+        // SCF converged, or ε would carry the fit error as an artifact.
         deshift.prepare(ints, is_hf, grid_level, n_radial, n_angular,
-                        fixed_grid);
+                        fixed_grid, ri, aux_basis);
         internal::FockResult fock =
             deshift.step(ints, restricted, is_hf, xc_type_,
                          hybrid_alpha_override, P_alpha_, P_beta_);
@@ -745,6 +771,12 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     *has_result_sp_ = true;
 
     if (opts.forces) {
+        if (ri != RI::None)
+            throw std::runtime_error(
+                "MeanFieldMethod: analytic forces are not wired for RI "
+                "(density fitting) — the gradient of the fitted energy "
+                "needs the 2-/3-center derivative integrals (a later "
+                "link). Use ri = RI::None for forces.");
         internal::ScfGradient gradient{method_,
                                        spin_,
                                        xc_type_,

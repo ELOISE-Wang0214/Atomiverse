@@ -36,6 +36,7 @@
 /// @see native_integrals.h for the ShellBlock data structure.
 #pragma once
 
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -44,16 +45,31 @@ namespace scf {
 namespace native {
 
 /// @brief Maximum supported angular momentum per shell (inclusive).
-/// l = 0 (s), 1 (p), 2 (d), 3 (f). f-shell quartets push the total
-/// angular momentum to Ltot = 12 ((ff|ff)) and Ltot = 13 for the first
-/// derivative of an (ff|ff) quartet, both of which need a 7-point Rys
-/// quadrature served by the iterative root finder (rys_roots_iterative).
-constexpr int kRysMaxL = 3;
+/// l = 0 (s), 1 (p), 2 (d), 3 (f), 4 (g). g shells serve the 2-center /
+/// 3-center density-fitting paths only (def2 JKFIT auxiliary basis);
+/// the orbital basis stays capped at f (`kMaxLOrbital`), so f-shell
+/// quartets remain the heaviest 4-center case: Ltot = 12 ((ff|ff)) and
+/// Ltot = 13 for the first derivative of an (ff|ff) quartet, both
+/// served by the 7-point iterative root finder (rys_roots_iterative).
+constexpr int kRysMaxL = 4;
 
 /// @brief Maximum Rys roots supported. nroots = floor(Ltot/2) + 1; the
 /// largest case is the +1-derivative of an (ff|ff) quartet — Ltot = 13,
-/// nroots = 7.
+/// nroots = 7. Quartets demanding more roots (only reachable by
+/// misusing g shells in a 4-center quartet) throw std::runtime_error.
 constexpr int kRysMaxRoots = 7;
+
+// Root-budget proof for the density-fitting g extension: the heaviest
+// 3-center case is (ff|g·1) — Ltot = 3+3+4 = 10 → 6 roots; the heaviest
+// 2-center case is (g·1|g·1) — Ltot = 8 → 5 roots; the heaviest 4-center
+// orbital case stays (ff|ff)+deriv — Ltot = 13 → 7 roots. All within
+// kRysMaxRoots; no new root order is required.
+static_assert((2 * 3 + kMaxL) / 2 + 1 <= kRysMaxRoots,
+              "3-center (ff|g) exceeds the Rys root budget");
+static_assert((2 * kMaxL) / 2 + 1 <= kRysMaxRoots,
+              "2-center (g|g) exceeds the Rys root budget");
+static_assert((4 * 3 + 1) / 2 + 1 <= kRysMaxRoots,
+              "4-center (ff|ff) derivative exceeds the Rys root budget");
 
 /// @brief Compute the full Cartesian ERI block (AB|CD) using Rys
 ///        quadrature.

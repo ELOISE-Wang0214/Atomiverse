@@ -16,7 +16,7 @@ namespace internal {
 
 namespace {
 
-static_assert(kMaxL == 3, "resize CartToSph::matrix_/block_ arrays");
+static_assert(kMaxL == 4, "resize CartToSph::matrix_/block_ arrays");
 
 /// (2n-1)!! with (-1)!! = 1.
 double dfact(int n) {
@@ -69,6 +69,45 @@ CartToSph::CartToSph() {
     for (int i = 0; i < 10; ++i)
         for (int j = 0; j < 7; ++j)
             matrix_[3](i, j) = kF[i][j];
+
+    // l = 4 — rows xxxx,xxxy,xxxz,xxyy,xxyz,xxzz,xyyy,xyyz,xyzz,xzzz,
+    //              yyyy,yyyz,yyzz,yzzz,zzzz; cols m = -4..+4. Digit-exact
+    // copy of `pyscf.gto.mole.cart2sph(4, normalized='sp')` (PySCF
+    // 2.14.0), exercised end-to-end against PySCF spherical 2-center
+    // integrals by tests/cpu/scf/test_density_fitting.cpp. g shells
+    // appear only in density-fitting auxiliary bases (def2 JKFIT).
+    static const double kG[15][9] = {
+        {0.0, 0.0, 0.0, 0.0, 0.31735664074561293, 0.0, -0.47308734787878, 0.0,
+         0.6258357354491761},
+        {2.5033429417967046, 0.0, -0.94617469575756, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.0, -2.0071396306718676, 0.0,
+         1.7701307697799304, 0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.6347132814912259, 0.0, 0.0, 0.0,
+         -3.755014412695057},
+        {0.0, 5.310392309339791, 0.0, -2.0071396306718676, 0.0, 0.0, 0.0, 0.0,
+         0.0},
+        {0.0, 0.0, 0.0, 0.0, -2.5388531259649034, 0.0, 2.8385240872726802,
+         0.0, 0.0},
+        {-2.5033429417967046, 0.0, -0.94617469575756, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.0, -2.0071396306718676, 0.0,
+         -5.310392309339791, 0.0},
+        {0.0, 0.0, 5.6770481745453605, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.0, 2.676186174229157, 0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.31735664074561293, 0.0, 0.47308734787878, 0.0,
+         0.6258357354491761},
+        {0.0, -1.7701307697799304, 0.0, -2.0071396306718676, 0.0, 0.0, 0.0,
+         0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0, -2.5388531259649034, 0.0, -2.8385240872726802,
+         0.0, 0.0},
+        {0.0, 0.0, 0.0, 2.676186174229157, 0.0, 0.0, 0.0, 0.0, 0.0},
+        {0.0, 0.0, 0.0, 0.0, 0.8462843753216345, 0.0, 0.0, 0.0, 0.0},
+    };
+    matrix_[4] = xt::zeros<double>({std::size_t(15), std::size_t(9)});
+    for (int i = 0; i < 15; ++i)
+        for (int j = 0; j < 9; ++j)
+            matrix_[4](i, j) = kG[i][j];
 
     // Engine convention: block(l) = D(l) · matrix(l), with
     // D_i = sqrt(4π (2lx−1)!!(2ly−1)!!(2lz−1)!! / (2l+1)!!) for l ≥ 2

@@ -25,6 +25,26 @@ enum class BasisSet {
 /// @brief Human-readable name for a BasisSet (logs / reports).
 [[nodiscard]] const char* basis_set_name(BasisSet basis);
 
+/// @brief Identifier for a density-fitting auxiliary basis set.
+///
+/// Single-table decision: only the def2 **universal JKFIT** family is
+/// shipped — there is deliberately no separate JFIT table. The exchange
+/// fit (RI-K) *requires* the larger JKFIT set (a Coulomb-only JFIT basis
+/// leaves K errors an order of magnitude above the μHa/atom target;
+/// Weigend, PCCP 4, 4285 (2002), DOI 10.1039/B204199P), while using
+/// JKFIT for a pure Coulomb fit (RI-J) merely costs a slightly larger
+/// auxiliary dimension at unchanged accuracy (Weigend, PCCP 8, 1057
+/// (2006), DOI 10.1039/b515623h). One table therefore serves both
+/// `RI::J` and `RI::JK`.
+enum class AuxBasis {
+    Def2JKFIT, ///< def2 universal JKFIT (Weigend 2002); spherical, ≤ g.
+};
+
+/// @brief Human-readable name for an AuxBasis (logs / error messages).
+/// @param aux Auxiliary-basis identifier.
+/// @return PySCF-convention name, e.g. "def2-universal-jkfit".
+[[nodiscard]] const char* aux_basis_name(AuxBasis aux);
+
 /// @brief Angular convention the basis set is defined with.
 ///
 /// STO-3G / 6-31G / 6-31G* / 6-31+G* are Cartesian (6d by definition);

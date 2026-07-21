@@ -16,8 +16,9 @@
 ///  * Shell-level swaps are avoided: we pick `i_base = li >= lj` and
 ///    `k_base = lk >= ll` and run the 2D-VRR in the base direction,
 ///    then apply HRR in the shift direction.
-///  * Support range: s, p, d shells (l ∈ {0,1,2}). Higher-l needs
-///    iterative Rys roots (not ported).
+///  * Support range: s, p, d, f shells (l ≤ 3) on all four centers;
+///    g shells (l = 4) on the 2-/3-center density-fitting paths, where
+///    the root demand stays within kRysMaxRoots (see rys_eri.h).
 ///  * Scalar fast path first; xsimd / xtensor-blas optimisations are
 ///    layered on top without changing the public API.
 
@@ -28,6 +29,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace ATV {
@@ -45,6 +48,27 @@ constexpr double kTwoPi25 = 2.0 * 17.493418327624863; // 2 * π^(5/2)
 struct CartComp {
     int nx, ny, nz;
 };
+
+// Root-budget gate shared by the plain and derivative public wrappers.
+// g shells (l = 4) are supported for the 2-/3-center density-fitting
+// paths, whose heaviest case is Ltot = 10 (6 roots); a 4-center quartet
+// that pushes past the 7-root budget (e.g. (gg|gg)) throws instead of
+// silently producing garbage roots.
+static void check_root_budget(const ShellBlock& A, const ShellBlock& B,
+                              const ShellBlock& C, const ShellBlock& D,
+                              int extra_l) {
+    const int ltot = A.l + B.l + C.l + D.l + extra_l;
+    const int nroots = ltot / 2 + 1;
+    if (nroots > kRysMaxRoots) {
+        throw std::runtime_error(
+            "rys_eri_block: shell quartet (l = " + std::to_string(A.l) + ","
+            + std::to_string(B.l) + "|" + std::to_string(C.l) + ","
+            + std::to_string(D.l) + ") needs " + std::to_string(nroots)
+            + " Rys roots (budget " + std::to_string(kRysMaxRoots)
+            + "). l = 4 (g) shells are supported only on the 2-/3-center "
+              "auxiliary-basis paths; the orbital basis is capped at f.");
+    }
+}
 
 static void fill_cart_comps_struct(int l, CartComp* out) {
     int tmp[kMaxNCart][3];
@@ -370,7 +394,7 @@ static void rys_eri_block_canonical(const ShellBlock& A, const ShellBlock& B,
         tls_g_buf.resize(need);
     double* g = tls_g_buf.data();
 
-    CartComp ci[10], cj[10], ck[10], cl[10];
+    CartComp ci[kMaxNCart], cj[kMaxNCart], ck[kMaxNCart], cl[kMaxNCart];
     fill_cart_comps_struct(env.li, ci);
     fill_cart_comps_struct(env.lj, cj);
     fill_cart_comps_struct(env.lk, ck);
@@ -681,7 +705,7 @@ static void rys_eri_block_deriv_canonical(const ShellBlock& A,
         tls_g_buf.resize(need);
     double* g = tls_g_buf.data();
 
-    CartComp ci[10], cj[10], ck[10], cl[10];
+    CartComp ci[kMaxNCart], cj[kMaxNCart], ck[kMaxNCart], cl[kMaxNCart];
     fill_cart_comps_struct(env.li, ci);
     fill_cart_comps_struct(env.lj, cj);
     fill_cart_comps_struct(env.lk, ck);
@@ -968,6 +992,7 @@ static inline int remap_deriv_center(int dc, bool swap_ab, bool swap_cd) {
 void rys_eri_block_deriv(const ShellBlock& A, const ShellBlock& B,
                          const ShellBlock& C, const ShellBlock& D,
                          int deriv_center, double* out_axes) {
+    check_root_budget(A, B, C, D, /*extra_l=*/1);
     const bool swap_ab = A.l < B.l;
     const bool swap_cd = C.l < D.l;
 
@@ -1023,6 +1048,7 @@ void rys_eri_block_deriv(const ShellBlock& A, const ShellBlock& B,
 
 void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
                    const ShellBlock& C, const ShellBlock& D, double* out) {
+    check_root_budget(A, B, C, D, /*extra_l=*/0);
     const bool swap_ab = A.l < B.l;
     const bool swap_cd = C.l < D.l;
 

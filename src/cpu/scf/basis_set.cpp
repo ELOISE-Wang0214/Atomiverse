@@ -11,6 +11,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_data/aug_ccpvdz.h"
+#include "atomiverse/cpu/scf/basis_data/def2_jkfit.h"
 #include "atomiverse/cpu/scf/basis_data/def2_svp.h"
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
@@ -39,6 +40,14 @@ const char* basis_set_name(BasisSet basis) {
         return "def2-TZVP";
     case BasisSet::AugCcPVDZ:
         return "aug-cc-pVDZ";
+    }
+    return "unknown";
+}
+
+const char* aux_basis_name(AuxBasis aux) {
+    switch (aux) {
+    case AuxBasis::Def2JKFIT:
+        return "def2-universal-jkfit";
     }
     return "unknown";
 }
@@ -115,15 +124,17 @@ namespace {
 //
 // Walks a `std::vector<basis_data::AtomBasis>` indexed by Z and emits
 // one native::Shell per Cartesian AO, applying the physical GTO
-// normalization (phys_norm_s / phys_norm_p) to the stored contraction
-// coefficients. Supports l ∈ {0, 1}; d-shells (l = 2) will land in
-// Stage B2b alongside the per-Cartesian-component normalization
-// plumbing.
+// normalization (phys_norm_s .. phys_norm_g) to the stored contraction
+// coefficients. `set_name` labels error messages (orbital BasisSet or
+// auxiliary AuxBasis name); `max_l` is the caller's angular cap —
+// kMaxLOrbital (f) for orbital bases whose shells feed the 4-center
+// engines, kMaxL (g) for density-fitting auxiliary bases that only ever
+// reach the 2-/3-center Rys paths.
 
 ShellList
 build_shell_list_from_table(const AtomList& atoms,
                             const std::vector<basis_data::AtomBasis>& table,
-                            BasisSet basis_id) {
+                            const char* set_name, int max_l) {
     const int natm = static_cast<int>(atoms.atoms.size());
 
     // First pass: count AOs and validate element coverage.
@@ -133,14 +144,15 @@ build_shell_list_from_table(const AtomList& atoms,
         if (Z < 1 || Z >= static_cast<int>(table.size())
             || table[static_cast<std::size_t>(Z)].shells.empty()) {
             throw std::runtime_error(
-                std::string("cpu::scf::ShellList: '") + basis_set_name(basis_id)
+                std::string("cpu::scf::ShellList: '") + set_name
                 + "' has no data for Z=" + std::to_string(Z));
         }
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
-            if (sh.l < 0 || sh.l > kMaxL) {
-                throw std::runtime_error("cpu::scf::ShellList: l="
-                                         + std::to_string(sh.l)
-                                         + " not yet supported.");
+            if (sh.l < 0 || sh.l > max_l) {
+                throw std::runtime_error(
+                    std::string("cpu::scf::ShellList: '") + set_name + "' l="
+                    + std::to_string(sh.l) + " exceeds the supported maximum l="
+                    + std::to_string(max_l) + ".");
             }
             n_basis += n_cart_of(sh.l);
         }
@@ -148,7 +160,6 @@ build_shell_list_from_table(const AtomList& atoms,
 
     ShellList out;
     out.n_basis = n_basis;
-    out.basis = basis_id;
     out.shells.resize(static_cast<std::size_t>(n_basis));
     out.shell_storage.resize(static_cast<std::size_t>(n_basis));
 
@@ -192,7 +203,8 @@ build_shell_list_from_table(const AtomList& atoms,
             double (*norm_at)(double) = (sh.l == 0)   ? native::phys_norm
                                         : (sh.l == 1) ? native::phys_norm_p
                                         : (sh.l == 2) ? native::phys_norm_d
-                                                      : native::phys_norm_f;
+                                        : (sh.l == 3) ? native::phys_norm_f
+                                                      : native::phys_norm_g;
             for (int cart = 0; cart < n_cart; ++cart)
                 emit_shell(sh.l, cart, norm_at);
         }
@@ -203,37 +215,57 @@ build_shell_list_from_table(const AtomList& atoms,
 } // namespace
 
 ShellList::ShellList(const AtomList& atoms, BasisSet basis_id) {
+    const char* name = basis_set_name(basis_id);
     ShellList tmp;
     switch (basis_id) {
     case BasisSet::STO3G:
-        tmp = build_shell_list_from_table(atoms, basis_data::sto3g(), basis_id);
+        tmp = build_shell_list_from_table(atoms, basis_data::sto3g(), name,
+                                          kMaxLOrbital);
         break;
     case BasisSet::Pople631G:
         tmp = build_shell_list_from_table(atoms, basis_data::pople_631g(),
-                                          basis_id);
+                                          name, kMaxLOrbital);
         break;
     case BasisSet::Pople631Gs:
         tmp = build_shell_list_from_table(atoms, basis_data::pople_631gs(),
-                                          basis_id);
+                                          name, kMaxLOrbital);
         break;
     case BasisSet::Pople631pGs:
         tmp = build_shell_list_from_table(atoms, basis_data::pople_631pgs(),
-                                          basis_id);
+                                          name, kMaxLOrbital);
         break;
     case BasisSet::AugCcPVDZ:
         tmp = build_shell_list_from_table(atoms, basis_data::aug_ccpvdz(),
-                                          basis_id);
+                                          name, kMaxLOrbital);
         break;
     case BasisSet::Def2SVP:
-        tmp = build_shell_list_from_table(atoms, basis_data::def2_svp(),
-                                          basis_id);
+        tmp = build_shell_list_from_table(atoms, basis_data::def2_svp(), name,
+                                          kMaxLOrbital);
         break;
     case BasisSet::Def2TZVP:
-        tmp = build_shell_list_from_table(atoms, basis_data::def2_tzvp(),
-                                          basis_id);
+        tmp = build_shell_list_from_table(atoms, basis_data::def2_tzvp(), name,
+                                          kMaxLOrbital);
         break;
     default:
         throw std::runtime_error("cpu::scf::ShellList: unknown BasisSet");
+    }
+    tmp.basis = basis_id;
+    *this = std::move(tmp);
+}
+
+ShellList::ShellList(const AtomList& atoms, AuxBasis aux) {
+    ShellList tmp;
+    switch (aux) {
+    case AuxBasis::Def2JKFIT:
+        // Auxiliary shells may carry l = 4 (g) — they are consumed only
+        // by the 2-/3-center Rys density-fitting paths, never by the
+        // 4-center orbital engines, so the cap is kMaxL rather than
+        // kMaxLOrbital.
+        tmp = build_shell_list_from_table(atoms, basis_data::def2_jkfit(),
+                                          aux_basis_name(aux), kMaxL);
+        break;
+    default:
+        throw std::runtime_error("cpu::scf::ShellList: unknown AuxBasis");
     }
     *this = std::move(tmp);
 }

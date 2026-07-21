@@ -1,7 +1,7 @@
 ---
 title: RI-J / RI-JK 密度拟合 — def2-JKFIT 静态表、DF 工作区与成员驱动 J/K 接缝
 slug: hf-capability-gaps-12-df
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 12/21
 external-depends: scf-slater-determinant-02-rehome
@@ -44,15 +44,47 @@ created: 2026-07-20
 - `docs/tutorial/ch19-hf-large-systems.md`(链环 01 骨架;若缺先建)
 
 ## Tasks
-- [ ] Write failing tests for DensityFitting (tests/cpu/scf/test_density_fitting.cpp:JKFIT 表行对 Weigend 2002 发表值抽查、g 壳 (g|g)/(ss|g) 积分对外部钉定 PySCF 参考值 ≤1e-10、V_PQ 对称正定、H2/STO-3G 上 j_fitted/k_fitted 对稠密精确 J/K 的逐元素拟合误差上界、无 JKFIT 行元素抛异常;登记 tests/CMakeLists.txt)
-- [ ] Implement l=4 (g) per-shell extension in cart.h/rys_eri.h + src/cpu/scf/{rys_eri.cpp,native_integrals.cpp}(kMaxL/kRysMaxL 3→4、15 个 g 笛卡尔分量表;仅 2c/3c 路径需要,根预算不变并静态断言)
-- [ ] Extend tools/gen_basis_data.py and emit include/atomiverse/cpu/scf/basis_data/def2_jkfit.h;add AuxBasis to basis_set.h + aux ShellList path in basis_set.cpp(单表 JKFIT 取舍写入头文件 Doxygen)
-- [ ] Implement DensityFitting in include/atomiverse/cpu/scf/internal/density_fitting.h + src/cpu/scf/internal/density_fitting.cpp((μν|P) 经零指数 s 哑壳、V_PQ、Cholesky/V^{-1/2}、j_fitted/k_fitted;DOI 注释;登记根 CMakeLists.txt)
-- [ ] Wire RI enum in scf_enums.h + member-driven seam in internal/hamiltonian_builder.{h,cpp} + stages/fock_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 ri/aux_basis 直传;默认 RI::None 位级不变;禁新 build_* 自由函数)
-- [ ] Implement regression regressions/scf/h2o_ri_jk/(H2O/def2-TZVP:RI-JK vs 自家精确 ERI ≤50 μHa,且对 REFERENCE.md 钉定的 PySCF mf.density_fit() 能量 ≤1e-6 Ha;≤60 s;登记 regressions 构建)
-- [ ] Implement speed sweep benchmarks/scf/validation/ri_speed/(glycine/def2-SVP 墙钟三列表 ours-RI-JK / ours-exact / PySCF-DF,README 记方法学与机器环境,一次跑完数字钉入 ch19)
-- [ ] Write "密度拟合 RI" section of docs/tutorial/ch19-hf-large-systems.md(Jensen SCF 瓶颈叙事:4-指标→3-指标为何压缩;μHa 误差预算诚实表;hands-on `rhf.ri = RI::JK`;章末 PySCF 精度表 + 速度表,标量表格不画柱状图)
-- [ ] Run full check + test suite
+- [x] Write failing tests for DensityFitting (tests/cpu/scf/test_density_fitting.cpp:JKFIT 表行对 Weigend 2002 发表值抽查、g 壳 (g|g)/(ss|g) 积分对外部钉定 PySCF 参考值 ≤1e-10、V_PQ 对称正定、H2/STO-3G 上 j_fitted/k_fitted 对稠密精确 J/K 的逐元素拟合误差上界、无 JKFIT 行元素抛异常;登记 tests/CMakeLists.txt)
+- [x] Implement l=4 (g) per-shell extension in cart.h/rys_eri.h + src/cpu/scf/{rys_eri.cpp,native_integrals.cpp}(kMaxL/kRysMaxL 3→4、15 个 g 笛卡尔分量表;仅 2c/3c 路径需要,根预算不变并静态断言)
+- [x] Extend tools/gen_basis_data.py and emit include/atomiverse/cpu/scf/basis_data/def2_jkfit.h;add AuxBasis to basis_set.h + aux ShellList path in basis_set.cpp(单表 JKFIT 取舍写入头文件 Doxygen)
+- [x] Implement DensityFitting in include/atomiverse/cpu/scf/internal/density_fitting.h + src/cpu/scf/internal/density_fitting.cpp((μν|P) 经零指数 s 哑壳、V_PQ、Cholesky/V^{-1/2}、j_fitted/k_fitted;DOI 注释;登记根 CMakeLists.txt)
+- [x] Wire RI enum in scf_enums.h + member-driven seam in internal/hamiltonian_builder.{h,cpp} + stages/fock_stage.{h,cpp} + mean_field_method.{h,cpp}(成员 ri/aux_basis 直传;默认 RI::None 位级不变;禁新 build_* 自由函数)
+- [x] Implement regression regressions/scf/h2o_ri_jk/(H2O/def2-TZVP:RI-JK vs 自家精确 ERI ≤50 μHa,且对 REFERENCE.md 钉定的 PySCF mf.density_fit() 能量 ≤1e-6 Ha;≤60 s;登记 regressions 构建)
+- [x] Implement speed sweep benchmarks/scf/validation/ri_speed/(glycine/def2-SVP 墙钟三列表 ours-RI-JK / ours-exact / PySCF-DF,README 记方法学与机器环境,一次跑完数字钉入 ch19)
+- [x] Write "密度拟合 RI" section of docs/tutorial/ch19-hf-large-systems.md(Jensen SCF 瓶颈叙事:4-指标→3-指标为何压缩;μHa 误差预算诚实表;hands-on `rhf.ri = RI::JK`;章末 PySCF 精度表 + 速度表,标量表格不画柱状图)
+- [x] Run full check + test suite
+
+## 实现审计注记(2026-07-21)
+
+- **k_fitted 的密度路线补充**:除谱面 `k_fitted(C_occ)`(B 半变换)外,
+  Fock 接缝实际走新增的 `k_fitted_from_density(P)`(P 谱分解 →
+  带符号 √|λ| 因子 → k_fitted)。原因:SCF 中途的密度(MINAO 猜测、
+  damping、ASPC 外推)并非来自当前 SlaterDeterminant 的 C_occ,用方法
+  持有的 C 会与实际密度失同步;谱分解路线对任意对称 P 精确,且与
+  k_fitted(C_occ) 在单元测试里锁到 1e-11。
+- **JKFIT 元素覆盖为轻元素**(H, C, N, O, F, Na–Ar):def2 重元素
+  (Rb–Rn)的 JKFIT 行含 l≥5(h/i)壳,超出引擎 l=4 上限,故不发射;
+  缺行元素抛异常(无回退),生成器注释与 def2_jkfit.h Doxygen 均说明。
+- **RI 拒绝面**:ROHF、GHF、SOSCF、解析力 与 `ri != RI::None` 组合均
+  显式抛异常(GHF 走稠密 ERI 旋量路径;SOSCF 的 CIAH 内部自建精确
+  Fock 会与拟合循环失一致;DF 解析梯度是后续环)。level_shift 的
+  de-shift 终末 Fock 重建改为透传 ri/aux(收敛的是拟合 Fock,ε 必须
+  对同一算符对角化)。
+- **4-中心路径保持 f 上限**:新增 `kMaxLOrbital = 3` /
+  `kMaxNCartOrbital`,4-中心栈缓冲与 MD 递推表尺寸逐字节保持原状;
+  `rys_eri_block` 公共入口对超根预算的四中心 g 夸特显式抛异常
+  (单元测试 FourCenterGQuartetThrows)。
+- **g 积分钉值容差为相对 1e-10**:引擎 cart 约定的 g 自归一 O(10²),
+  绝对 1e-10 等价于亚 ULP;测试用 1e-10·max(1,|want|),注释记录引擎/
+  PySCF 归一幅度比 s_g = 8.671834327921664 的推导与原始 PySCF 命令。
+- **性能修正**:B 收缩必须先实体化 Wᵀ(惰性 transpose 视图会把
+  xt::linalg::dot 推下 dgemm 快径,glycine 上 2.3 s → 30 ms);3c 建
+  造带 Schwarz 预筛(1e-11)+ 融合 c2s/散射循环。基准:glycine/SVP
+  ours-RI-JK 1.617 s < ours-exact 2.516 s(中位,8 线程);PySCF-DF
+  0.104 s(差距为引擎整体速度,能量对齐 1e-9 Ha,README 已记)。
+- **RI::J 的交换**:按设计走精确壳块 K(`ShellBlockPairList::k`,对
+  密度线性);烟雾验证 RHF/UHF 的 RI::J 与 RI::JK 收敛且拟合误差
+  ~5e-5 Ha 量级(OH 自由基 def2-SVP)。
 
 ## Testing strategy
 - **快乐路径(单元,秒级)**:JKFIT 表值抽查(H/C/O 各一壳);g 壳 2c/3c 积分对钉定参考 ≤1e-10;V^{-1/2}·V·V^{-1/2}=I ≤1e-12;H2/STO-3G 上 ‖J_fit−J_exact‖∞ 与 ‖K_fit−K_exact‖∞ 落在文档化的拟合误差上界内。

@@ -137,6 +137,22 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     double level_shift = 0.0;
     double lindep_threshold = 1e-8;
 
+    // ── Density fitting (RI) — hf-capability-gaps-12-df ───────────────
+    /// @brief Density-fitting mode for the two-electron Fock build
+    ///        (dimensionless selector). `RI::None` (default) keeps the
+    ///        exact-ERI path bit-identical; `RI::J` fits the Coulomb
+    ///        matrix only; `RI::JK` fits Coulomb and exchange over the
+    ///        def2 universal JKFIT auxiliary basis. Wired for RHF/UHF
+    ///        and the RKS/UKS Fock builds; combining with ROHF, GHF,
+    ///        SOSCF, or analytic forces throws (not wired — no silent
+    ///        fallback). See scf_enums.h for the DOI trail.
+    RI ri = RI::None;
+
+    /// @brief Auxiliary basis for the RI fit (ignored when
+    ///        `ri == RI::None`). An element without a JKFIT table row
+    ///        throws at Fock-build setup — no fallback.
+    AuxBasis aux_basis = AuxBasis::Def2JKFIT;
+
     // ── Second-order SCF (SOSCF / CIAH; hf-capability-gaps-09) ────────
     /// @brief Enable the second-order finishing path: DIIS runs the early
     ///        iterations, then — once max|DIIS error| < `soscf_start` — the

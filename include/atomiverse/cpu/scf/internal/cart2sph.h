@@ -19,7 +19,8 @@
 ///     d_xx and d_xy — the classic pitfall). Sandwiching the unit-normalized
 ///     Cartesian overlap with block(l) yields exactly the spherical overlap.
 ///
-/// The four matrices are a static data table (l ≤ 3, 46 non-zero constants),
+/// The matrices are a static data table (l ≤ 4; the g rows are needed by
+/// the def2-JKFIT auxiliary basis of the density-fitting path),
 /// not generated at run time: the community m-ordering/phase convention is
 /// exactly what downstream comparisons against PySCF require, and
 /// `core/real_harmonics.h`'s generator deliberately leaves m-ordering
@@ -40,7 +41,8 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-/// @brief Cartesian→spherical transform matrices for shells with l ≤ 3.
+/// @brief Cartesian→spherical transform matrices for shells with l ≤ 4
+///        (g rows serve the density-fitting auxiliary basis only).
 class CartToSph {
   public:
     /// @brief Build the transform tables (constructor computes block(l) from
@@ -48,22 +50,22 @@ class CartToSph {
     CartToSph();
 
     /// @brief PySCF-convention coefficients, (l+1)(l+2)/2 × (2l+1).
-    /// @param l Angular momentum (0..3); throws std::out_of_range above.
+    /// @param l Angular momentum (0..4); throws std::out_of_range above.
     /// @return Coefficient matrix identical to
     ///         `pyscf.gto.mole.cart2sph(l, normalized='sp')` [dimensionless].
     const xt::xtensor<double, 2>& matrix(int l) const;
 
     /// @brief Engine-convention transform (unit-normalized Cartesian AOs),
     ///        (l+1)(l+2)/2 × (2l+1).
-    /// @param l Angular momentum (0..3); throws std::out_of_range above.
+    /// @param l Angular momentum (0..4); throws std::out_of_range above.
     /// @return D(l)·matrix(l) — sandwiching the engine's Cartesian matrices
     ///         with this block yields the spherical-basis matrices
     ///         [dimensionless].
     const xt::xtensor<double, 2>& block(int l) const;
 
   private:
-    xt::xtensor<double, 2> matrix_[4];
-    xt::xtensor<double, 2> block_[4];
+    xt::xtensor<double, 2> matrix_[5];
+    xt::xtensor<double, 2> block_[5];
 };
 
 } // namespace internal
