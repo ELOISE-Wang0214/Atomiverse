@@ -646,13 +646,16 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
         if (b_ang[d] > jmax_base)
             jmax_base = b_ang[d];
     }
-    const int im = imax_all;      // max kMaxLOrbital+1 = 3 (derivative bump)
-    const int jm = jmax_base + 2; // max kMaxLOrbital+1+2 = 5
+    const int im = imax_all;      // max kMaxLOrbital+2 = 5 (2nd-derivative bump)
+    const int jm = jmax_base + 2; // max kMaxLOrbital+2 = 5
     const int jstride = jm + 1;   // max 6
 
     // Build 1D overlap tables in each direction with uniform size.
-    // Max table cells: (kMaxLOrbital+2) * (kMaxLOrbital+4) = 4 * 6 = 24 per direction.
-    constexpr int kMaxKineticCells = (kMaxLOrbital + 2) * (kMaxLOrbital + 4);
+    // Sized for the SECOND-derivative path (hf-capability-gaps-13-cphf),
+    // which raises the bra angular momentum by up to +2 on one axis:
+    // im ≤ kMaxLOrbital+2 and jm ≤ kMaxLOrbital+2, so the table needs
+    // (kMaxLOrbital+3)² = 36 cells per direction for f-shells.
+    constexpr int kMaxKineticCells = (kMaxLOrbital + 3) * (kMaxLOrbital + 3);
     double Sd[3][kMaxKineticCells];
     double S1d[3];
 
@@ -703,10 +706,14 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
 /// Per-center i/j upper bound after a +1 derivative raise.
 inline constexpr int kDerivL = kMaxLOrbital + 1;
 /// t-index dim in E^{i,j}_t (t ∈ [0, ai+bj]; +1 slack lets the recurrence
-/// read E[t+1] without a bounds branch when t hits the real max).
-inline constexpr int kMDEDim = 2 * kDerivL + 1; // 7 for d-shells
-/// i-index dim in the E_buf[i][t] intermediate.
-inline constexpr int kMDEIDim = kDerivL + 1; // 4 for d-shells
+/// read E[t+1] without a bounds branch when t hits the real max). The
+/// second-derivative path (hf-capability-gaps-13-cphf) raises AT MOST +2
+/// in total across the two centers of one integral, so t stays ≤
+/// kMaxLOrbital + (kMaxLOrbital + 2) = 2·kDerivL — within this dim.
+inline constexpr int kMDEDim = 2 * kDerivL + 1; // 9 for f-shells
+/// i-index dim in the E_buf[i][t] intermediate. Sized for the
+/// second-derivative +2 raise on ONE center (ai ≤ kMaxLOrbital + 2).
+inline constexpr int kMDEIDim = kMaxLOrbital + 3; // 6 for f-shells
 
 /// @brief McMurchie-Davidson E coefficients E^{ai,bj}_t.
 /// @details Supports ai, bj up to kDerivL = kMaxLOrbital + 1 to accommodate the

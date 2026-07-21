@@ -495,6 +495,14 @@ if(ATV_BUILD_HF)
     # regressions/scf/h2_rhf_stability.
     atv_add_cpp_test(test_cpu_scf_orbital_hessian cpu/scf/test_orbital_hessian.cpp)
     atv_add_cpp_test(test_cpu_scf_stability       cpu/scf/test_stability.cpp)
+    # hf-capability-gaps-13-cphf: second/skeleton derivative-integral FD
+    # gates, B^x sum rules, CPHF iterative-vs-dense parity + the link-08
+    # sigma_plus LHS identity (micro HeH+), and the H2/STO-3G analytic-
+    # Hessian-vs-FD-of-analytic-forces first gate. The H2O/6-31G* e2e lives
+    # in regressions/scf/h2o_rhf_freq.
+    atv_add_cpp_test(test_cpu_scf_cphf            cpu/scf/test_cphf.cpp)
+    atv_add_cpp_test(test_cpu_scf_analytic_hessian
+                     cpu/scf/test_analytic_hessian.cpp)
     # hf-capability-gaps-09-soscf: CIAH stepper units — exp(κ) unitarity,
     # gradient vs FD, matrix-free CIAH vs dense augmented eigensolve, trust
     # region, MixStage latch; plus the allowed micro H2/STO-3G default-off

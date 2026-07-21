@@ -1,7 +1,7 @@
 ---
 title: CPHF 线性响应与解析 HF Hessian(振动频率)
 slug: hf-capability-gaps-13-cphf
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 13/21
 external-depends: scf-slater-determinant-03-unbag
@@ -51,15 +51,44 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests for 二阶/skeleton 导数积分 (tests/cpu/scf/test_cphf.cpp,注册 tests/CMakeLists.txt):HeH⁺/STO-3G 上 d²S/d²T/d²V vs 一阶导数的中心差分 ≤ 1e-7;MO 基 S^{(x)}/F^{(x)} vs S/F 的 FD ≤ 1e-6;B^x 平动零和
-- [ ] Implement 积分二阶导数与 skeleton F^{(x)}/S^{(x)} in include/atomiverse/cpu/scf/internal/integral_derivatives.h + src/cpu/scf/integral_derivatives.cpp
-- [ ] Write failing tests for CphfPack 求解 (test_cphf.cpp 追加):迭代 U^x vs 稠密 ¹(A+B) 直解 ≤ 1e-10;LHS 作用 == 08 环 `sigma_plus(v, singlet)` 逐位一致
-- [ ] Implement CphfPack in include/atomiverse/cpu/scf/internal/cphf_pack.h + src/cpu/scf/cphf_pack.cpp(CG/DIIS 迭代 + 稠密回退;登记 CMakeLists.txt;Doxygen 带单位)
-- [ ] Write failing tests for RHF::hessian (tests/cpu/scf/test_analytic_hessian.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 解析 Hessian vs 解析力的中心差分逐元 ≤ 1e-6 eV/Å²(第一道闸的微型体现);对称性 H=Hᵀ;行平动零和 Σ_j H_ij ≈ 0
-- [ ] Implement RHF::hessian in include/atomiverse/cpu/scf/rhf.h + src/cpu/scf/rhf.cpp(返回 vib::HessianResult,eV/Å²,n_atoms 填好)
-- [ ] Verify against H₂O oracle:regressions/scf/h2o_rhf_freq(6-31G*;第一道闸解析-vs-自家-FD 频率 ≤ 1 cm⁻¹,后对 REFERENCE.md 钉定的 PySCF hessian.RHF 频率 ≤ 1 cm⁻¹;频率经既有 vib 件产出;注册 regressions/CMakeLists.txt,≤ 60 s)
-- [ ] Write docs/tutorial/ch20-hf-properties-environment.md 之"解析 Hessian 与振动频率"节:为何二阶导数需要轨道响应(U^x)、稳定性内核的第三次复用叙事、H₂O 频率上手、molvis 简正模可视化(molplot 辅助),章末 PySCF 频率对照表(标量入表)
-- [ ] Run full check + test suite
+- [x] Write failing tests for 二阶/skeleton 导数积分 (tests/cpu/scf/test_cphf.cpp,注册 tests/CMakeLists.txt):HeH⁺/STO-3G 上 d²S/d²T/d²V vs 一阶导数的中心差分 ≤ 1e-7;MO 基 S^{(x)}/F^{(x)} vs S/F 的 FD ≤ 1e-6;B^x 平动零和
+- [x] Implement 积分二阶导数与 skeleton F^{(x)}/S^{(x)} in include/atomiverse/cpu/scf/internal/integral_derivatives.h + src/cpu/scf/integral_derivatives.cpp
+- [x] Write failing tests for CphfPack 求解 (test_cphf.cpp 追加):迭代 U^x vs 稠密 ¹(A+B) 直解 ≤ 1e-10;LHS 作用 == 08 环 `sigma_plus(v, singlet)` 逐位一致
+- [x] Implement CphfPack in include/atomiverse/cpu/scf/internal/cphf_pack.h + src/cpu/scf/cphf_pack.cpp(CG/DIIS 迭代 + 稠密回退;登记 CMakeLists.txt;Doxygen 带单位)
+- [x] Write failing tests for RHF::hessian (tests/cpu/scf/test_analytic_hessian.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 解析 Hessian vs 解析力的中心差分逐元 ≤ 1e-6 eV/Å²(第一道闸的微型体现);对称性 H=Hᵀ;行平动零和 Σ_j H_ij ≈ 0
+- [x] Implement RHF::hessian in include/atomiverse/cpu/scf/rhf.h + src/cpu/scf/rhf.cpp(返回 vib::HessianResult,eV/Å²,n_atoms 填好)
+- [x] Verify against H₂O oracle:regressions/scf/h2o_rhf_freq(6-31G*;第一道闸解析-vs-自家-FD 频率 ≤ 1 cm⁻¹,后对 REFERENCE.md 钉定的 PySCF hessian.RHF 频率 ≤ 1 cm⁻¹;频率经既有 vib 件产出;注册 regressions/CMakeLists.txt,≤ 60 s)
+- [x] Write docs/tutorial/ch20-hf-properties-environment.md 之"解析 Hessian 与振动频率"节:为何二阶导数需要轨道响应(U^x)、稳定性内核的第三次复用叙事、H₂O 频率上手、molvis 简正模可视化(molplot 辅助),章末 PySCF 频率对照表(标量入表)
+- [x] Run full check + test suite
+
+## 实现审计注记(2026-07-21)
+
+- **Hessian 响应项的等价改写**:装配式用约定无关的
+  `E^{xy} += Tr[P^y F^{(x)}] − Tr[W^y S^{(x)}]`(P^y/W^y 为密度与能量加权
+  密度响应,W = ½ P F P 的导数)替代教科书的 `4 Σ_ai U^y_ai B^x_ai + occ-occ
+  伴随项`。两式代数等价;所选形式对 occ-occ 旋转规范不敏感(只有对称组合
+  U_ji + U_ij = −S^{(y)}_ij 进入),从构造上规避"响应耦合因子"这一经典
+  bug 源。因子由 FD 门禁钉死:H₂ 解析-vs-FD ≤1e-6 eV/Å²、密度响应
+  ∂P/∂x-vs-FD ≤1e-6(约定无关的独立符号/因子检验)、H₂O 频率 vs 自家 FD
+  0.0092 cm⁻¹ / vs PySCF 0.0003 cm⁻¹。
+- **l+2 内部升角动量**:一阶导数缓冲已含 +1 裕量;二阶只需两处
+  native_integrals.cpp 常量扩容(`kMaxKineticCells` 25→36、`kMDEIDim`
+  kDerivL+1→kMaxLOrbital+3),f 壳(l=3)+2=5 由此覆盖;nuclear R 表
+  (dim 9,Ltot≤8)经逐项核算无需扩。二阶 ERI 不经 eri_prim——
+  integral_derivatives.cpp 自带共享 R 表(至 Ltot+2)+ 升角 Hermite E 表
+  内核。
+- **d²ERI 缩并**:每原始四元组一次 R 表,45 个独立二阶元素经 bra/ket
+  部分缩并(Gket/Hbra/K 中间量)装配,D 中心行列由平移不变性补全;
+  四指标二阶张量从不落地。OpenMP 逐 canonical block pair + Schwarz 筛。
+- **skeleton dF 的 2e 部分**:全序 block 四元组枚举(无 8 重对称计数),
+  O(n_block⁴) 无 Schwarz 筛——Hessian 装配尺度每次调用仅一遍,微型/回归
+  体系代价可忽略;规模化留给 DF/RI 消费(链环 12 备注级)。
+- **超出 spec 列表新增一项门禁**:`DensityResponseMatchesFdOfConvergedDensity`
+  (HeH⁺,∂P/∂x 解析 vs 收敛密度的 5 点 FD)——约定无关地钉 CPHF 符号与
+  因子,置于任何 Hessian 装配之前。
+- **回归中 vib 消费端的接线**:`MassWeighting`/`HessianDiagonalizer` 以
+  公开组件身份手工 launch(finalize 步 = 6N);`ws.r0`(平衡几何)需由
+  调用方填——FD 生产线由 `ReferenceGeometry` 填,解析生产线自填。
 
 ## Testing strategy
 
