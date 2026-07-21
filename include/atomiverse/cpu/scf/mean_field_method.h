@@ -269,6 +269,13 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
     /// @brief Set n_alpha/n_beta from electron count (and subclass rules).
     virtual void resolve_occupation(int n_electrons) = 0;
 
+    /// @brief Read access to the private integral workspace of the most
+    ///        recent run (shells, S, c2s, dense ERI when materialized) for
+    ///        derived-method post-run analyses (e.g. `RHF::stability()`).
+    ///        Never exposed publicly — Frame stays the sole I/O currency.
+    /// @return The method-owned IntegralPack (borrowed const view).
+    const IntegralPack& integral_workspace_() const { return *integrals_sp_; }
+
   private:
     // ── Per-run SCF iteration state — plainly-named private members ────────────
     //

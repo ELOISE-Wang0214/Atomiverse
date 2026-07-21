@@ -133,6 +133,18 @@ struct IntegralPack {
     /// @param[out] G Fused two-electron matrix [n x n, Hartree].
     void coulomb_exchange_fused(const RealMatrix& P_total, RealMatrix& G) const;
 
+    /// @brief Materialize the dense two-electron tensor in the pack's
+    ///        working AO dimension from the stored shell workspace, without
+    ///        re-running the one-electron build: Cartesian `eri_dense` over
+    ///        `shells`, sandwiched through `c2s` for spherical-convention
+    ///        bases. O(N⁴) memory — validation / post-run analysis scale
+    ///        (orbital-Hessian stability, MP2/FCI-sized systems).
+    /// @return (n_basis × n_basis × n_basis × n_basis) chemist-notation
+    ///         tensor (ij|kl) [Hartree], same dimension as S/Hcore.
+    /// @throws std::runtime_error when the shell workspace is empty (pack
+    ///         not built from a Frame — no fallback).
+    [[nodiscard]] xt::xtensor<double, 4> eri_working() const;
+
   private:
     /// @brief Overlap matrix S_ij = <φ_i|φ_j>.
     /// @param shells Resolved shell list.
@@ -164,6 +176,16 @@ struct IntegralPack {
     /// @return (n × n × n × n) dense tensor in Hartree.
     [[nodiscard]] static xt::xtensor<double, 4>
     eri_dense(const ShellList& shells);
+
+    /// @brief Four-index Cartesian→spherical sandwich of a dense ERI tensor
+    ///        (one index at a time; shared by the constructor and
+    ///        `eri_working`).
+    /// @param eri_cart Cartesian-dimension tensor (n_cart⁴) [Hartree].
+    /// @param c2s      Cartesian→spherical transform (n_cart × n_sph).
+    /// @return Spherical-dimension tensor (n_sph⁴) [Hartree].
+    [[nodiscard]] static xt::xtensor<double, 4>
+    eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
+                     const xt::xtensor<double, 2>& c2s);
 };
 
 } // namespace scf

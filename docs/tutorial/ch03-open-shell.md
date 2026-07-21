@@ -399,6 +399,130 @@ densities, orbital energies, and contamination all look like the restricted
 solution, then the unrestricted machinery has not actually changed the physics,
 even if the solver was configured for UHF.
 
+## SCF Stability Analysis(SCF 解的稳定性)
+
+前面几节反复出现一个措辞:RHF 在拉伸的 H₂ 上"失败"。现在把这句话说精确。
+SCF 收敛只保证你落在能量对轨道旋转的一个**驻点**上——梯度为零,仅此而已。
+驻点可以是极小点,也可以是鞍点。判定属于哪一种的工具与几何优化里完全同源:
+看二阶导。对轨道旋转参数求二阶导得到**轨道 Hessian**,其占据-虚轨道块由两
+个矩阵 A、B 组成(实轨道、闭壳层空间轨道形式,化学家记号):
+
+$$
+{}^1A_{ai,bj} = \delta_{ab}\delta_{ij}(\varepsilon_a-\varepsilon_i)
+              + 2(ai|jb) - (ij|ab), \qquad
+{}^1B_{ai,bj} = 2(ai|bj) - (aj|bi)
+$$
+$$
+{}^3A_{ai,bj} = \delta_{ab}\delta_{ij}(\varepsilon_a-\varepsilon_i)
+              - (ij|ab), \qquad\qquad\;\;
+{}^3B_{ai,bj} = -(aj|bi)
+$$
+
+**本征值的含义**:¹(A+B) 与 ³(A+B) 的最低本征值(单位 Hartree)就是能量面
+沿最软一条轨道旋转方向的曲率。它 ≥ 0,驻点在该通道内是极小点;它 < 0,
+存在一条严格下山的方向——你收敛到的不是"这个理论里最好的单行列式"。
+
+Seeger 与 Pople(*J. Chem. Phys.* **66**, 3045 (1977))把方向分了类,这正是
+**internal / external** 的区别:
+
+- **internal(¹,单重态通道)**:旋转后仍是实的闭壳层 RHF 行列式。
+  ¹(A+B) 最低本征值 < 0 意味着存在**另一个更低的 RHF 解**。
+- **external(³,三重态通道)**:旋转打破 α/β 空间轨道的等同性,离开 RHF
+  流形进入 UHF。³(A+B) 最低本征值 < 0 意味着**存在能量更低的 UHF 解**——
+  RHF 在约束下是极小点,放开约束就是鞍点。
+
+两个通道是不同的矩阵块:internal 稳定完全不担保 external 稳定。拉伸的 H₂
+恰好就卡在这个陷阱里。
+
+### 上手:拉伸 H₂ 的稳定性判定
+
+`RHF::stability()` 在 `run()` 之后调用,返回两个通道的最低本征值、稳定标志,
+以及(external 不稳定时)沿不稳定模式旋转过的系数矩阵——直接当 UHF 初猜用:
+
+```cpp
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = 1e-12;
+rhf.run(frame);                                   // H2, R = 1.5 Å
+
+auto st = rhf.stability();
+// st.internal_eigenvalue = +0.7089 Ha  -> internal 稳定
+// st.external_eigenvalue = -0.2092 Ha  -> external 不稳定!
+if (!st.external_stable) {
+    // 破缺对称初猜:α 密度取旋转后的轨道,β 保持 RHF 轨道
+    cpu::scf::SCFInitialGuess guess;
+    // P_alpha 由 st.rotated_C 的占据列构成,P_beta 用 rhf.determinant()
+    // 的密度 —— 完整代码见 regressions/scf/h2_rhf_stability。
+    cpu::scf::UHF uhf{1, 1};
+    uhf.basis = cpu::scf::BasisSet::STO3G;
+    uhf.run(frame, &guess);
+    // uhf.energy() = -0.95771 Ha < rhf.energy() = -0.91087 Ha
+}
+```
+
+结果正是本章开头那条 RHF vs UHF 的 \(E(R)\) 曲线(见"Live result"一节的
+molplot 图)在单点上的解释:R = 1.5 Å 处两条曲线的 0.047 Ha 间隙,就是
+external 负本征值指出的那条下山路。沿 R 扫描两个通道的最低本征值,可以
+看到 UHF 从 RHF 分岔的精确位置——³(A+B) 的最低本征值在 R ≈ 1.15 Å 处过零
+(Coulson-Fischer 点),此后 RHF 一路是鞍点:
+
+```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
+mark: {type: line, point: true, tooltip: true, strokeWidth: 2}
+data:
+  values:
+    - {R: 0.50, channel: "internal ¹(A+B)", eig: 1.478867}
+    - {R: 0.735, channel: "internal ¹(A+B)", eig: 1.135177}
+    - {R: 1.00, channel: "internal ¹(A+B)", eig: 0.910609}
+    - {R: 1.20, channel: "internal ¹(A+B)", eig: 0.806038}
+    - {R: 1.50, channel: "internal ¹(A+B)", eig: 0.708897}
+    - {R: 2.00, channel: "internal ¹(A+B)", eig: 0.636671}
+    - {R: 2.50, channel: "internal ¹(A+B)", eig: 0.617935}
+    - {R: 3.00, channel: "internal ¹(A+B)", eig: 0.620746}
+    - {R: 0.50, channel: "external ³(A+B)", eig: 0.803386}
+    - {R: 0.735, channel: "external ³(A+B)", eig: 0.411452}
+    - {R: 1.00, channel: "external ³(A+B)", eig: 0.123446}
+    - {R: 1.20, channel: "external ³(A+B)", eig: -0.033128}
+    - {R: 1.50, channel: "external ³(A+B)", eig: -0.209247}
+    - {R: 2.00, channel: "external ³(A+B)", eig: -0.399883}
+    - {R: 2.50, channel: "external ³(A+B)", eig: -0.510906}
+    - {R: 3.00, channel: "external ³(A+B)", eig: -0.576100}
+encoding:
+  x: {field: R, type: quantitative, title: "R (Å)", scale: {zero: false}}
+  y:
+    field: eig
+    type: quantitative
+    title: "λ_min (Hartree)"
+    scale: {nice: true}
+  color: {field: channel, type: nominal, title: null}
+  tooltip:
+    - {field: channel, type: nominal}
+    - {field: R, type: quantitative, format: ".2f"}
+    - {field: eig, type: quantitative, format: ".6f"}
+```
+
+工程上还有一点值得记下:internal / external 只是同一个轨道 Hessian 核
+(σ = (A±B)v 的 matrix-free 形式)的两个通道。这个核同时是二阶 SCF、CPHF
+响应方程与 TDHF 激发能的底座——稳定性分析是它最小的消费者,却把它的数学
+一次性验证到位。
+
+### 章末对照:PySCF 最低本征值
+
+外部 oracle(PySCF 2.14.0,`cart=True`,`conv_tol=1e-12`;命令与构建方式
+逐字记录在 `regressions/scf/h2_rhf_stability/REFERENCE.md`)与 Atomiverse
+`rhf.stability()` 的逐项对照,单位 Hartree:
+
+| R (Å) | 通道 | Atomiverse | PySCF 2.14.0 | 差 |
+|---|---|---|---|---|
+| 0.735 | internal ¹(A+B) | +1.1351770407 | +1.1351770407 | < 1e-9 |
+| 0.735 | external ³(A+B) | +0.4114522416 | +0.4114522416 | < 1e-9 |
+| 1.5 | internal ¹(A+B) | +0.7088965814 | +0.7088965814 | < 1e-9 |
+| 1.5 | external ³(A+B) | −0.2092471629 | −0.2092471629 | < 1e-9 |
+| 1.5 | E_UHF(破缺) − E_RHF | −0.0468332388 | −0.0468332388 | < 1e-9 |
+
+PySCF 自身的 `mf.stability(external=True)` 在 R = 1.5 Å 给出
+"internal stable / external **unstable**" 的同一判定——教科书陷阱
+(internal 稳定 ≠ 稳定)在两套实现里读数一致。
+
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree-Fock exchange, it uses an
 exchange-correlation functional evaluated on a real-space grid:

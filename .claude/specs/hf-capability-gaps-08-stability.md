@@ -1,7 +1,7 @@
 ---
 title: Orbital Hessian A/B kernel + Seeger-Pople stability analysis
 slug: hf-capability-gaps-08-stability
-status: approved
+status: code-complete
 chain: hf-capability-gaps
 link: 08/21
 external-depends: scf-slater-determinant-03-unbag
@@ -34,6 +34,32 @@ created: 2026-07-20
 - `RHF::stability()`(方法成员,run 之后调用):从 determinant + 私有 shell 工作区重建稠密 ERI,装配上述两类并返回 `StabilityResult`;未 run 先调 throw(no-fallback)。
 - 生命周期:全部为方法私有工作区,不上 Frame,不新增公共中间类型。
 
+### 实现审计注记(2026-07-21)
+
+- **ac-002 的措辞与物理**:¹A 对角元的严格值是 Δε + 2(ai|ai) − (ii|aa),
+  不是裸的 ε_a − ε_i。单测按"element-wise 精确公式"验证(测试内独立做
+  AO→MO 四重循环变换),并单独断言 A(0,0) − (2(ai|ai) − (ii|aa)) == Δε
+  到 1e-12——δδ(ε_a−ε_i) 项即以此形式钉定。
+- **kernel 附加成员**:`diagonal_plus(ch)`(Davidson 预条件子;09/13/14 的
+  迭代求解器同样要用),超出 spec 成员清单但属 sigma 接口的自然配套。
+- **稠密 ERI 重建路径**:`IntegralPack` 增公共成员 `eri_working()`
+  (工作维稠密 ERI:Cartesian `eri_dense` + 球谐三明治),球谐三明治按
+  "第二个调用者才提取"规则从构造函数提为私有静态 `eri_to_spherical`。
+  `MeanFieldMethod` 增 **protected** `integral_workspace_()` 只读访问器
+  (RHF::stability() 从私有 shell 工作区重建;不新增公共面)。
+- **StabilityAnalysis 可测性**:公开 `lowest_dense(ch)` / `lowest_davidson(ch)`
+  与 `dense_threshold` 成员(缺省 512),Davidson==稠密 的平价单测据此
+  强制走两条路径;`lowest(ch)` 按 n_ov 自动分派。
+- **rotated_C → UHF 桥**:走既有公共机制——α 密度由 rotated_C 占据列构成、
+  β 用未旋转行列式密度,经 `SCFInitialGuess` 传入 `uhf.run(frame, &guess)`;
+  旋转量取 `apply_homo_lumo_mixing` 的缺省 20°(kRotationTheta),
+  U = exp(K) 泰勒级数(‖K‖ ≤ 0.35,机器精度收敛)。未发明新公共 API。
+- **单测几何**:r_e 用 acceptance 约束的 0.735 Å(prompt 的 0.7414 Å 亦跑了
+  oracle:internal +1.1280718048 / external +0.4029165720 Ha,记录于此)。
+- **单测无 SCF 循环**:H₂/STO-3G 收敛行列式由对称性闭式构造
+  (φ_g/φ_u 由 S₁₂ 定,ε 来自对称密度上的**一次** Fock 构建,该密度即
+  自洽解),Davidson 平价用确定性 LCG 合成体系(n_ov = 32)。
+
 ## Files to create or modify
 
 - include/atomiverse/cpu/scf/internal/orbital_hessian.h (new)
@@ -53,14 +79,14 @@ created: 2026-07-20
 
 ## Tasks
 
-- [ ] Write failing tests for OrbitalHessian (tests/cpu/scf/test_orbital_hessian.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 上 ¹A 对角元 = ε_a−ε_i;随机 v 的 dense_±·v 与 sigma_± 一致到 1e-12;singlet/triplet 块互异
-- [ ] Implement OrbitalHessian in include/atomiverse/cpu/scf/internal/orbital_hessian.h + src/cpu/scf/orbital_hessian.cpp(CMakeLists.txt HF 源列表;Doxygen 带单位)
-- [ ] Write failing tests for StabilityAnalysis 与 RHF::stability() (tests/cpu/scf/test_stability.cpp):r_e 处双通道 ≥ 0;R = 1.5 Å 处 internal ≥ 0 而 external < 0(Seeger-Pople 陷阱);Davidson 最低根 == 稠密最低根到 1e-10
-- [ ] Implement StabilityAnalysis in include/atomiverse/cpu/scf/internal/stability.h + src/cpu/scf/stability.cpp(Davidson + linalg 稠密回退)
-- [ ] Implement RHF::stability() + StabilityResult in include/atomiverse/cpu/scf/rhf.h / src/cpu/scf/rhf.cpp(rotated_C 破缺对称初猜,桥 scf_guess.h;未 run 先调 throw)
-- [ ] Verify against 拉伸-H₂ oracle:regressions/scf/h2_rhf_stability(reg cpp + REFERENCE.md 钉 PySCF `mf.stability()` 本征值与文献 UHF 解离行为,注册 regressions/CMakeLists.txt,≤ 60 s)
-- [ ] Extend docs/tutorial/ch03-open-shell.md:"SCF Stability Analysis(SCF 解的稳定性)" 节——RHF 何时破缺、本征值含义、internal vs external,拉伸-H₂ 上手示例与 RHF vs UHF 能量-R 曲线(molplot),章末 PySCF 最低本征值对照表(标量入表)
-- [ ] Run full check + test suite
+- [x] Write failing tests for OrbitalHessian (tests/cpu/scf/test_orbital_hessian.cpp,注册 tests/CMakeLists.txt):H₂/STO-3G 上 ¹A 对角元 = ε_a−ε_i;随机 v 的 dense_±·v 与 sigma_± 一致到 1e-12;singlet/triplet 块互异
+- [x] Implement OrbitalHessian in include/atomiverse/cpu/scf/internal/orbital_hessian.h + src/cpu/scf/orbital_hessian.cpp(CMakeLists.txt HF 源列表;Doxygen 带单位)
+- [x] Write failing tests for StabilityAnalysis 与 RHF::stability() (tests/cpu/scf/test_stability.cpp):r_e 处双通道 ≥ 0;R = 1.5 Å 处 internal ≥ 0 而 external < 0(Seeger-Pople 陷阱);Davidson 最低根 == 稠密最低根到 1e-10
+- [x] Implement StabilityAnalysis in include/atomiverse/cpu/scf/internal/stability.h + src/cpu/scf/stability.cpp(Davidson + linalg 稠密回退)
+- [x] Implement RHF::stability() + StabilityResult in include/atomiverse/cpu/scf/rhf.h / src/cpu/scf/rhf.cpp(rotated_C 破缺对称初猜,桥 scf_guess.h;未 run 先调 throw)
+- [x] Verify against 拉伸-H₂ oracle:regressions/scf/h2_rhf_stability(reg cpp + REFERENCE.md 钉 PySCF `mf.stability()` 本征值与文献 UHF 解离行为,注册 regressions/CMakeLists.txt,≤ 60 s)
+- [x] Extend docs/tutorial/ch03-open-shell.md:"SCF Stability Analysis(SCF 解的稳定性)" 节——RHF 何时破缺、本征值含义、internal vs external,拉伸-H₂ 上手示例与 RHF vs UHF 能量-R 曲线(molplot),章末 PySCF 最低本征值对照表(标量入表)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

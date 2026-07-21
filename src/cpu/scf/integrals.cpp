@@ -24,6 +24,7 @@
 #include "atomiverse/cpu/scf/internal/cart2sph.h"
 
 #include <cmath>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
@@ -145,28 +146,8 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         T = xt::linalg::dot(ct, xt::linalg::dot(T, c2s));
         V = xt::linalg::dot(ct, xt::linalg::dot(V, c2s));
         Hcore = T + V;
-        if (ERI.size() > 0) {
-            // Four-index transform, one index at a time (small systems only —
-            // the dense path is validation/MP2/FCI scale by charter).
-            const int nc = n_basis_cart;
-            auto e1 = xt::reshape_view(ERI, {nc * nc * nc, nc});
-            xt::xtensor<double, 2> h1 = xt::linalg::dot(e1, c2s); // l index
-            // rotate axes: (ijk,l)->(l,ijk) etc., four times
-            xt::xtensor<double, 4> cur = xt::reshape_view(
-                h1, {std::size_t(nc), std::size_t(nc), std::size_t(nc),
-                     std::size_t(n_sph)});
-            for (int rep = 0; rep < 3; ++rep) {
-                xt::xtensor<double, 4> perm =
-                    xt::transpose(cur, {3, 0, 1, 2});
-                const auto sh = perm.shape();
-                auto flat = xt::reshape_view(
-                    perm, {sh[0] * sh[1] * sh[2], sh[3]});
-                xt::xtensor<double, 2> hx = xt::linalg::dot(flat, c2s);
-                cur = xt::reshape_view(
-                    hx, {sh[0], sh[1], sh[2], std::size_t(n_sph)});
-            }
-            ERI = xt::transpose(cur, {3, 0, 1, 2});
-        }
+        if (ERI.size() > 0)
+            ERI = eri_to_spherical(ERI, c2s);
         n_basis = n_sph;
         ATV_INFO("[integrals] spherical convention: n_basis {} -> {}",
                  n_basis_cart, n_basis);
@@ -188,6 +169,44 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
 
     ATV_INFO("[integrals] done total_ms={:.1f} v_nuc={:.6f}",
              elapsed_ms(t_total), V_nuc);
+}
+
+xt::xtensor<double, 4>
+IntegralPack::eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
+                               const xt::xtensor<double, 2>& c2s) {
+    // Four-index transform, one index at a time (small systems only — the
+    // dense path is validation/MP2/FCI scale by charter).
+    const std::size_t nc = c2s.shape()[0];
+    const std::size_t n_sph = c2s.shape()[1];
+    auto e1 = xt::reshape_view(eri_cart, {nc * nc * nc, nc});
+    xt::xtensor<double, 2> h1 = xt::linalg::dot(e1, c2s); // l index
+    // rotate axes: (ijk,l)->(l,ijk) etc., four times
+    xt::xtensor<double, 4> cur =
+        xt::reshape_view(h1, {nc, nc, nc, n_sph});
+    for (int rep = 0; rep < 3; ++rep) {
+        xt::xtensor<double, 4> perm = xt::transpose(cur, {3, 0, 1, 2});
+        const auto sh = perm.shape();
+        auto flat = xt::reshape_view(perm, {sh[0] * sh[1] * sh[2], sh[3]});
+        xt::xtensor<double, 2> hx = xt::linalg::dot(flat, c2s);
+        cur = xt::reshape_view(hx, {sh[0], sh[1], sh[2], n_sph});
+    }
+    return xt::transpose(cur, {3, 0, 1, 2});
+}
+
+xt::xtensor<double, 4> IntegralPack::eri_working() const {
+    if (shells.empty())
+        throw std::runtime_error(
+            "IntegralPack::eri_working: empty shell workspace — the pack "
+            "was not built from a Frame");
+    // Local view of the stored shells: the Shell descriptors point into this
+    // pack's owned shell_data, which stays alive for the whole call.
+    ShellList shell_list;
+    shell_list.shells = shells;
+    shell_list.n_basis = static_cast<int>(shells.size());
+    xt::xtensor<double, 4> eri = eri_dense(shell_list);
+    if (spherical())
+        eri = eri_to_spherical(eri, c2s);
+    return eri;
 }
 
 } // namespace scf

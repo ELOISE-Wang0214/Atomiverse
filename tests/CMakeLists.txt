@@ -481,6 +481,13 @@ if(ATV_BUILD_HF)
     # scf-driver-refactor-04b-wire: method-driver nesting + MeanFieldOutputs.
     atv_add_cpp_test(test_cpu_scf_method_driver_wire
                      cpu/scf/test_method_driver_wire.cpp)
+    # hf-capability-gaps-08-stability: MO orbital-Hessian A/B kernel +
+    # Seeger-Pople stability analysis. NO SCF loop: the converged H2/STO-3G
+    # determinant is symmetry-exact in closed form (one Fock build, no
+    # iteration); the full RHF.run()+stability() path is
+    # regressions/scf/h2_rhf_stability.
+    atv_add_cpp_test(test_cpu_scf_orbital_hessian cpu/scf/test_orbital_hessian.cpp)
+    atv_add_cpp_test(test_cpu_scf_stability       cpu/scf/test_stability.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2           cpu/scf/test_mp2.cpp)
     atv_add_cpp_test(test_cpu_scf_fci           cpu/scf/test_fci.cpp)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)

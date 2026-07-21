@@ -416,6 +416,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp
             src/cpu/scf/mean_field_method.cpp
+            src/cpu/scf/orbital_hessian.cpp
+            src/cpu/scf/stability.cpp
             src/cpu/scf/rhf.cpp
             src/cpu/scf/uhf.cpp
             src/cpu/scf/rks.cpp
