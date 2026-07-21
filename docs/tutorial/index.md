@@ -82,18 +82,19 @@ Architecture orientation: [Chapter 0](ch00-architecture.md) or
 | [16](ch16-many-body-potentials.md) | EAM and Stillinger–Weber | potentials tests | FD oracles |
 | [17](ch17-semiempirical-am1.md) | AM1 | `15_am1` | [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
 
-## X. Hartree–Fock（教程弧）
+## X. Hartree–Fock arc
 
-第 2–4 章与第 18–20 章合在一起，覆盖 Jensen《Introduction to Computational
-Chemistry》中与 HF 相关的主干：方法、收敛、基组、大体系库仑与分子性质。
-数值与外部程序的对照方法见附录。
+Chapters 2–4 together with 18–20 cover the HF core of Jensen’s
+*Introduction to Computational Chemistry*: methods, convergence, basis sets,
+large-molecule Coulomb work, and molecular properties. How external codes may
+be cited is described in the appendix.
 
-| 章 | 题目 |
-|----|------|
-| [18](ch18-scf-techniques.md) | 自洽场的收敛 |
-| [19](ch19-hf-large-systems.md) | 大分子与库仑瓶颈 |
-| [20](ch20-hf-properties-environment.md) | 分子性质与环境 |
-| [附录](appendix-pyscf-oracle.md) | 与外部量子化学程序对照 |
+| Ch | Title |
+|----|-------|
+| [18](ch18-scf-techniques.md) | Convergence of the SCF |
+| [19](ch19-hf-large-systems.md) | Large molecules and the Coulomb bottleneck |
+| [20](ch20-hf-properties-environment.md) | Molecular properties and environment |
+| [Appendix](appendix-pyscf-oracle.md) | Comparison with external quantum-chemistry codes |
 
 ---
 

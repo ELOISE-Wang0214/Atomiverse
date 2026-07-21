@@ -73,6 +73,12 @@ nav = [
     { "IX · Semiempirical" = [
       "tutorial/ch17-semiempirical-am1.md",
     ] },
+    { "X · Hartree–Fock arc" = [
+      "tutorial/ch18-scf-techniques.md",
+      "tutorial/ch19-hf-large-systems.md",
+      "tutorial/ch20-hf-properties-environment.md",
+      "tutorial/appendix-pyscf-oracle.md",
+    ] },
   ] },
   { "Roadmap" = [
     "roadmap/index.md",
@@ -140,6 +146,7 @@ custom_fences = [
 
 [project.theme]
 name = "molcrafts"
+language = "en"
 
 [project.extra.molcrafts]
 product = "atomiverse"

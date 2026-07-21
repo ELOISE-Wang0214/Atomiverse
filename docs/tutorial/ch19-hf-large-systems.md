@@ -1,36 +1,41 @@
-# 第 19 章　大分子与库仑瓶颈
+# Chapter 19. Large molecules and the Coulomb bottleneck
 
-Hartree–Fock 的 Fock 矩阵只有 \(O(N^2)\) 个元素，但构造它所需的双电子
-积分 \((\mu\nu|\lambda\sigma)\) 在形式上是 \(O(N^4)\) 的。大分子计算的
-核心困难在此。本章按“如何降低库仑代价”展开：直接积分与筛选、密度拟合、
-周期体系的 Ewald/PME、开边界多极方法，以及连续高斯分布上的快速多极
-（CFMM）。
+The Fock matrix has \(O(N^2)\) elements, but the two-electron integrals that
+build it scale formally as \(O(N^4)\). That mismatch is the central cost of
+large-molecule HF. This chapter follows successive reductions of the Coulomb
+work: direct integrals with screening, density fitting, periodic Ewald/PME,
+open-boundary multipoles, and continuous fast multipoles (CFMM) for the
+Coulomb matrix \(J\).
 
 ---
 
-## 19.1 四中心积分与直接 SCF
+## 19.1 Four-centre integrals and direct SCF
 
-把四中心张量存入内存通常不可行，因此采用 **direct SCF**：每步迭代重算
-所需积分。Cauchy–Schwarz 上界
+Storing the full four-centre tensor is usually impossible, so **direct SCF**
+recomputes integrals each iteration. The Cauchy–Schwarz bound
 
 \[
 |(\mu\nu|\lambda\sigma)|
   \le \sqrt{(\mu\nu|\mu\nu)}\,\sqrt{(\lambda\sigma|\lambda\sigma)}
 \]
 
-允许在壳对层面丢弃指数小的贡献，把实际代价压到大约 \(O(N^2)\)（固定
-密度、固定精度时）。本引擎的壳块 Schwarz 筛选与 Rys 求积即此路径。
+allows whole shell pairs with exponentially small contributions to be
+discarded, bringing the practical cost near \(O(N^2)\) at fixed density and
+precision. Shell-block Schwarz screening and Rys quadrature in this engine
+implement that path.
 
-筛选不能改变渐近阶的“常数因子”：远距离壳对仍可能被反复触及。进一步
-加速需要换一种表示——用低秩近似压缩库仑，或把远场交给多极/网格方法。
+Screening does not remove the prefactor of repeatedly evaluating surviving
+shells. Further speed-ups need a compressed representation of Coulomb—low-rank
+fitting or multipole/grid methods for the far field.
 
 ---
 
-## 19.2 密度拟合
+## 19.2 Density fitting
 
-乘积密度 \(\rho_{\mu\nu}(\mathbf r)=\chi_\mu(\mathbf r)\chi_\nu(\mathbf r)\)
-在空间上高度线性相关。用一组 \(O(N)\) 规模的辅助基 \(\{P\}\) 展开，并在
-**库仑度规**下拟合（Vahtras–Almlöf–Feyereisen），得到
+Product densities
+\(\rho_{\mu\nu}(\mathbf r)=\chi_\mu(\mathbf r)\chi_\nu(\mathbf r)\) are highly
+linearly dependent. Expanding them in an auxiliary set of size \(O(N)\) and
+fitting in the **Coulomb metric** (Vahtras–Almlöf–Feyereisen) yields
 
 \[
 (\mu\nu|\lambda\sigma)
@@ -40,10 +45,12 @@ Hartree–Fock 的 Fock 矩阵只有 \(O(N^2)\) 个元素，但构造它所需�
 V_{PQ}=(P|Q).
 \]
 
-四中心张量不再出现；存储的是三中心量 \((\mu\nu|P)\)。库仑度规使能量误差
-对拟合残差为二阶小量。常用辅助基分为只拟合 \(J\) 的 JFIT 与同时拟合
-\(J\) 与 \(K\) 的 JKFIT；交换对辅助基质量更敏感。本引擎仅提供
-**def2 通用 JKFIT** 表（含 \(g\) 壳），`RI::J` 与 `RI::JK` 共用该表。
+The four-centre tensor never appears; three-centre quantities
+\((\mu\nu|P)\) are stored instead. The Coulomb metric makes the energy error
+second order in the fitting residual. Auxiliary bases used only for \(J\)
+(JFIT) differ from those for \(J\) and \(K\) (JKFIT); exchange is more
+sensitive to auxiliary quality. This engine ships a single **def2 universal
+JKFIT** table (including \(g\) shells) for both `RI::J` and `RI::JK`.
 
 ```cpp
 cpu::scf::RHF rhf;
@@ -53,21 +60,23 @@ rhf.aux_basis = cpu::scf::AuxBasis::Def2JKFIT;
 rhf.run(frame);
 ```
 
-`RI::None` 为精确四中心路径。未接线的组合（如部分开壳、解析力与 RI 同开）
-会明确拒绝，而不是静默降级。
+`RI::None` is the exact four-centre path. Unsupported combinations (for
+example analytic forces with RI) raise errors rather than degrading silently.
 
-水分子 def2-TZVP 上，RI-JK 与精确 ERI 的总能量差约 \(5\,\mu\mathrm{Ha}\)
-（约 \(2\,\mu\mathrm{Ha}/\)原子），与 PySCF `density_fit()` 在同一拟合
-空间内对齐到 \(10^{-12}\,\mathrm{Ha}\) 量级。拟合误差是系统偏移，对
-反应能差往往部分抵消。辅助基须按球谐约定计数，否则与标准 def2-JKFIT
-定义不一致。
+For water/def2-TZVP, RI-JK and exact ERI differ by about
+\(5\,\mu\mathrm{Ha}\) (\(\sim 2\,\mu\mathrm{Ha}\) per atom) and match PySCF
+`density_fit()` in the same fitting space to \(\sim10^{-12}\,\mathrm{Ha}\).
+Fitting errors are systematic shifts; they often cancel in energy differences.
+Auxiliary shells must be counted in the spherical convention to match the
+standard def2-JKFIT definition.
 
 ---
 
-## 19.3 周期边界：Ewald 与 PME
+## 19.3 Periodic systems: Ewald and PME
 
-周期库仑和是条件收敛的：裸求和 \(\sum q_i q_j/r_{ij}\) 依赖于求和顺序。
-Ewald 将 \(1/r\) 拆成短程与长程，
+The periodic Coulomb sum is conditionally convergent: a naive
+\(\sum q_i q_j/r_{ij}\) depends on the order of summation. Ewald splits
+\(1/r\) into short- and long-range parts,
 
 \[
 \frac1r
@@ -75,24 +84,27 @@ Ewald 将 \(1/r\) 拆成短程与长程，
   + \frac{\mathrm{erf}(\alpha r)}{r},
 \]
 
-实空间用截断的 erfc 项（与邻居列表配合），倒空间解平滑电荷分布的
-Poisson 方程。两侧必须使用**同一个** \(\alpha\)。
+with the erfc term evaluated in real space (neighbour lists) and the erf term
+as a Poisson problem in reciprocal space. Both halves must share the same
+\(\alpha\).
 
-直接 Ewald 对每个 \(\mathbf k\) 累加结构因子，固定精度下代价随体系增大
-接近 \(O(N^2)\)。光滑粒子网格 Ewald（SPME；Essmann 等，1995）把电荷用
-B 样条铺到规则网格，以三维 FFT 完成卷积，再把力插回粒子，总标度
-\(O(N\log N)\)。
+Direct Ewald accumulates a structure factor for each \(\mathbf k\) and, at
+fixed precision, approaches \(O(N^2)\). Smooth particle-mesh Ewald (SPME;
+Essmann et al., 1995) spreads charges onto a grid with B-splines, performs a
+3D FFT convolution, and interpolates forces back to particles, giving
+\(O(N\log N)\) overall.
 
-| 方法 | 标度 | 适用 |
+| Method | Scaling | Use |
 |---|---|---|
-| 直接 Ewald | \(\sim O(N^2)\) | 小盒、对照、无 FFT |
-| SPME | \(O(N\log N)\) | 常规周期 MD |
-| FMM / CFMM | \(\sim O(N)\) | 开边界分子库仑（下两节） |
+| Direct Ewald | \(\sim O(N^2)\) | Small boxes, reference, no FFT |
+| SPME | \(O(N\log N)\) | Production periodic MD |
+| FMM / CFMM | \(\sim O(N)\) | Open-boundary molecular Coulomb (§19.4–19.5) |
 
-实现分为两层：纯数学在 `include/atomiverse/longrange/`（无 Frame、无
-MPI、无 FFT）；CPU 上的 `KSpaceEwald` / `KSpacePME` 负责网格、通信与
-FFTW。开关名仍为 `-DATV_BUILD_KSPACE`。电子结构侧若需长程算子，应只
-依赖 `atomiverse/longrange/*`。
+Implementation is split: pure mathematics under
+`include/atomiverse/longrange/` (no Frame, MPI, or FFT); CPU wrappers
+`KSpaceEwald` / `KSpacePME` own grids, communication, and FFTW. The build
+flag remains `-DATV_BUILD_KSPACE`. Electronic-structure code that needs the
+operators should include only `atomiverse/longrange/*`.
 
 ```cpp
 const double alpha = 0.3;  // 1/Å
@@ -101,14 +113,16 @@ sim.add_potential(cpu::CoulLong{alpha, cutoff});
 sim.add(cpu::KSpacePME{alpha, /*grid_spacing=*/1.0, /*order=*/6});
 ```
 
-岩盐结构的 Madelung 常数 \(M\approx 1.7476\)（每离子对）可作为倒空间
-实现的文献检验（`tests/cpu/longrange/` 与相关回归）。
+The rock-salt Madelung constant \(M\approx 1.7476\) per ion pair is a standard
+check of the reciprocal implementation (`tests/cpu/longrange/` and related
+regressions).
 
 ---
 
-## 19.4 开边界：快速多极方法
+## 19.4 Open boundaries: the fast multipole method
 
-无周期像时，远场可用多极级数压缩。一电荷团在充分分离的观察点处，
+Without periodic images the far field can be compressed with multipole series.
+For a cluster of charges observed at a well-separated point,
 
 \[
 \Phi(\mathbf r)
@@ -117,45 +131,47 @@ sim.add(cpu::KSpacePME{alpha, /*grid_spacing=*/1.0, /*order=*/6});
   + O\!\Big(\frac1{c-1}\Big(\frac1c\Big)^p\Big),
 \]
 
-截断阶 \(p\) 的误差随间隔比 \(c\) 几何下降（Greengard–Rokhlin）。自适应
-八叉树上的标准流程为：叶上 P2M，向上 M2M，对充分分离的胞对做 M2L，
-向下 L2L，叶上 L2P，相邻叶用直接求和补近场。M2M 与 L2L 在阶 \(p\) 内
-精确；截断误差仅来自 M2L。
+truncation error falls geometrically with separation ratio \(c\)
+(Greengard–Rokhlin). On an adaptive octree the standard pipeline is P2M on
+leaves, M2M upward, M2L between well-separated cells, L2L downward, L2P on
+leaves, and direct near-field sums for adjacent leaves. M2M and L2L are exact
+within order \(p\); truncation enters only through M2L.
 
-这与 PME 互补：PME 处理**周期**长程，FMM 处理**开边界**远场。二者边界
-条件不同，不能互换。
+PME and FMM are complementary: PME handles **periodic** long-range Coulomb;
+FMM handles **open-boundary** far fields. They are not interchangeable.
 
 ```cpp
 #include "atomiverse/longrange/fmm_tree.h"
 
 ATV::longrange::FmmTree tree(/*order=*/8, /*max_per_leaf=*/8);
-double e = tree.energy(positions, charges); // 无量纲库仑和
+double e = tree.energy(positions, charges); // dimensionless Coulomb sum
 ```
 
-对随机与晶格点电荷集，相对直接 \(O(N^2)\) 求和的能量误差随 \(p\) 下降；
-\(p=16\) 时相对误差可低于 \(10^{-10}\)（见
-`regressions/longrange/fmm_point_charges`）。将 \(N\) 增至 \(4N\) 时，
-墙钟比应明显低于二次标度的期望值 16。
+Relative to direct \(O(N^2)\) sums on random and lattice charge sets, the
+energy error decreases with \(p\); at \(p=16\) relative errors below
+\(10^{-10}\) are typical (`regressions/longrange/fmm_point_charges`).
+Scaling \(N\) to \(4N\) should give a wall-time ratio well below the quadratic
+expectation of 16.
 
 ---
 
-## 19.5 连续快速多极与 HF 库仑矩阵
+## 19.5 Continuous FMM and the HF Coulomb matrix
 
-分子积分中的库仑矩阵 \(J\) 来自高斯乘积分布，不是点电荷。White、
-Johnson、Gill 与 Head-Gordon（1994）给每个乘积分布一个延伸半径
+The HF Coulomb matrix \(J\) is built from Gaussian product distributions, not
+point charges. White, Johnson, Gill, and Head-Gordon (1994) assign each
+product (total exponent \(\zeta=\zeta_a+\zeta_b\)) an extent
 
 \[
 r_{\mathrm{ext}}
-  = \sqrt{2/\zeta}\,\mathrm{erfc}^{-1}(\varepsilon_{\mathrm{thr}}),
-\qquad
-\zeta=\zeta_a+\zeta_b,
+  = \sqrt{2/\zeta}\,\mathrm{erfc}^{-1}(\varepsilon_{\mathrm{thr}}).
 \]
 
-仅当两分布中心距大于延伸半径之和时才允许多极远场，否则走解析 ERI
-近场。该判据在 `longrange/gaussian_extent.h`。
+Multipoles are allowed only when the centre–centre distance exceeds the sum of
+extents; otherwise analytic ERIs are used. The predicate lives in
+`longrange/gaussian_extent.h`.
 
-在 HF 中，CFMM 作为 **\(J\) 的第三条路径**（精确四中心、密度拟合、CFMM）
-接入；**交换 \(K\) 仍走精确或 RI 路径，不经多极。**
+In HF, CFMM is a **third route for \(J\)** (exact four-centre, density fitting,
+CFMM). **Exchange \(K\) never uses multipoles.**
 
 ```cpp
 cpu::scf::RHF rhf;
@@ -166,37 +182,40 @@ rhf.cfmm_threshold = 1e-9;
 rhf.run(frame);
 ```
 
-默认 `Coulomb::Direct` 与历史精确路径一致。`Coulomb::CFMM` 与
-`ri = RI::J` 或 `RI::JK` 同时设置会被拒绝。
+Default `Coulomb::Direct` matches the historical exact path. Setting
+`Coulomb::CFMM` together with `ri = RI::J` or `RI::JK` is rejected.
 
-正确性标准必须先于任何速度比较：CFMM 的 \(J\) 应在给定容差内复现
-Schwarz 直接 \(J\)。PySCF 分子代码不提供 FMM/CFMM，因此外部对照只能
-钉直接路径；CFMM 的 oracle 是本库的 Direct。水/STO-3G 上单次 \(J\) 的
-元素最大偏差 \(\le 10^{-8}\,\mathrm{Ha}\)；正癸烷 C₁₀H₂₂/STO-3G 上
-收敛总能偏差 \(\le 10^{-7}\,\mathrm{Ha}\)。
+Correctness must precede any timing claim: CFMM \(J\) should reproduce
+Schwarz direct \(J\) within a stated tolerance. Molecular PySCF has no
+FMM/CFMM, so the external reference can only pin the direct path; CFMM’s
+oracle is this engine’s Direct. On water/STO-3G a single \(J\) agrees
+elementwise to \(\le 10^{-8}\,\mathrm{Ha}\); on \(n\)-decane C₁₀H₂₂/STO-3G the
+converged total energies differ by \(\le 10^{-7}\,\mathrm{Ha}\).
 
-`cfmm_order` 控制多极截断；`cfmm_threshold` 控制延伸半径与近远场划分。
-小分子在默认阈值下可能几乎全部落在近场，此时 CFMM 与 Direct 数值重合，
-墙钟优势要到更大体系才出现。标度测量方法见
-`benchmarks/scf/validation/cfmm_scaling/`。
+`cfmm_order` is the multipole truncation; `cfmm_threshold` sets extents and
+the near/far partition. Small molecules at default thresholds may be entirely
+near-field, so CFMM and Direct coincide numerically and any wall-time gain
+appears only for larger systems. Scaling methodology is documented under
+`benchmarks/scf/validation/cfmm_scaling/`.
 
 ---
 
-## 数值对照摘要
+## Summary of numerical checks
 
-| 体系 | 量 | 说明 |
-|---|---|---|
-| H₂O def2-TZVP | RI-JK 与精确 ERI | \(\Delta E\sim 5\,\mu\mathrm{Ha}\) |
-| 岩盐 | Madelung | \(\approx 1.7476\) / 离子对 |
-| 点电荷 FMM | 相对直接和 | \(p=16\) 时 \(\lesssim 10^{-10}\) |
-| C₁₀H₂₂ STO-3G | CFMM vs Direct 总能 | \(\le 10^{-7}\,\mathrm{Ha}\) |
+| System | Note |
+|---|---|
+| H₂O def2-TZVP | RI-JK vs exact ERI: \(\Delta E\sim 5\,\mu\mathrm{Ha}\) |
+| Rock salt | Madelung \(\approx 1.7476\) per ion pair |
+| Point-charge FMM | vs direct sum: \(\lesssim 10^{-10}\) at \(p=16\) |
+| C₁₀H₂₂ STO-3G | CFMM vs Direct total energy \(\le 10^{-7}\,\mathrm{Ha}\) |
 
-更完整的 PySCF 能量对照见章内回归与 [附录](appendix-pyscf-oracle.md)。
+Broader external energy comparisons are collected in the
+[appendix](appendix-pyscf-oracle.md).
 
-### 进一步阅读
+### Further reading
 
-- Jensen, *Introduction to Computational Chemistry*，SCF 瓶颈与线性标度。
-- Weigend, *Phys. Chem. Chem. Phys.* **8**, 1057 (2006)（辅助基）。
-- Essmann 等, *J. Chem. Phys.* **103**, 8577 (1995)（SPME）。
-- Greengard & Rokhlin, *J. Comput. Phys.* **73**, 325 (1987)（FMM）。
-- White 等, *Chem. Phys. Lett.* **230**, 8 (1994)（CFMM）。
+- Jensen, *Introduction to Computational Chemistry*, SCF bottleneck and linear scaling.
+- Weigend, *Phys. Chem. Chem. Phys.* **8**, 1057 (2006) (auxiliary bases).
+- Essmann et al., *J. Chem. Phys.* **103**, 8577 (1995) (SPME).
+- Greengard & Rokhlin, *J. Comput. Phys.* **73**, 325 (1987) (FMM).
+- White et al., *Chem. Phys. Lett.* **230**, 8 (1994) (CFMM).

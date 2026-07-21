@@ -1,55 +1,62 @@
-# 附录　与外部量子化学程序对照
+# Appendix. Comparison with external quantum-chemistry codes
 
-本附录约定如何在教程与回归中引用 PySCF（或其他参考实现）的数值。目标是
-可复现，而不是把外部程序接入构建系统。
+This appendix states how tutorial tables and regressions may cite numerical
+results from PySCF (or other reference implementations). The goal is
+reproducibility, not a build-time dependency on those codes.
 
-## 1. 外部程序不是构建依赖
+## 1. External codes are not build dependencies
 
-参考能量、性质与基组参数由开发者在独立环境中预先计算，写入文档表格、
-回归源码注释或 `REFERENCE.md`。CMake、ctest 与单元测试不得 import、调用
-或读取 PySCF 及其数据文件。允许在注释中写出版本与出处。
+Reference energies, properties, and basis parameters are computed offline by
+developers and written into tables, regression comments, or `REFERENCE.md`
+files. CMake, ctest, and unit tests must not import, invoke, or read PySCF or
+its data files. Version strings and provenance in comments are allowed.
 
-本地搭建对照环境（可选）：
+Optional local setup for offline comparison:
 
 ```bash
 bash tools/setup_pyscf_env.sh
 ```
 
-## 2. 每个对照数字应可独立复算
+## 2. Every tabulated reference should be independently reproducible
 
-写入库内的参考值应同时记录：
+Each pinned value should record:
 
-| 项目 | 示例 |
+| Item | Example |
 |---|---|
-| 几何与单位 | H₂O，O(0, 0, 0.1173)，H(0, ±0.7572, −0.4692) Å |
-| 基组与角函数约定 | 6-31G*（笛卡尔 d）/ def2-SVP（球谐） |
-| 收敛设置 | `conv_tol=1e-12` |
-| 程序版本 | PySCF 2.14.0 |
-| 调用方式 | `mf = scf.RHF(mol); mf.kernel()` |
+| Geometry and units | H₂O; O(0, 0, 0.1173), H(0, ±0.7572, −0.4692) Å |
+| Basis and angular convention | 6-31G* (Cartesian d) / def2-SVP (spherical) |
+| Convergence settings | `conv_tol=1e-12` |
+| Program version | PySCF 2.14.0 |
+| Call sequence | `mf = scf.RHF(mol); mf.kernel()` |
 
-## 3. 单位与容差
+## 3. Units and tolerances
 
-- 能量：内部 Hartree；写入 Frame 与多数用户接口时换算为 eV。
-- 性质容差按量纲选取，例如能量 \(10^{-8}\)–\(10^{-6}\,\mathrm{Ha}\)，
-  偶极 \(10^{-6}\)–\(10^{-5}\) a.u.，频率约 \(1\,\mathrm{cm}^{-1}\)，
-  溶剂化能约 \(0.1\,\mathrm{kcal\,mol}^{-1}\)。具体以各章表格为准。
+- Energy: Hartree internally; many user-facing paths convert to eV.
+- Property tolerances depend on the quantity—for example
+  \(10^{-8}\)–\(10^{-6}\,\mathrm{Ha}\) for energies,
+  \(10^{-6}\)–\(10^{-5}\) a.u. for dipoles, \(\sim 1\,\mathrm{cm}^{-1}\) for
+  frequencies, \(\sim 0.1\,\mathrm{kcal\,mol}^{-1}\) for solvation energies.
+  Use the tolerances stated in each chapter table.
 
-## 4. 表格与图
+## 4. Tables and figures
 
-标量结果用表格给出。收敛曲线、基组阶梯等连续数据可用图；图应服务于
-论述，而不是重复已写清的数值。
+Scalar results belong in tables. Continuous data (convergence histories, basis
+ladders) may use figures when a figure clarifies the argument; figures should
+not merely restate numbers already in a table.
 
-## 5. 基组表与生成器
+## 5. Basis tables and the generator
 
-静态基组头文件与 PySCF 基组库的一致性由生成器的检查模式维护：
+Consistency of static basis headers with the PySCF basis library is checked
+with the generator:
 
 ```bash
 python tools/gen_basis_data.py --check \
     include/atomiverse/cpu/scf/basis_data/sto3g.h sto-3g sto3g H He …
 ```
 
-修改表时优先重新生成，并在表头注释中保留生成命令与版本。
+When editing tables, prefer regenerating them and keep the generator command
+and version in the header comment.
 
-### 进一步阅读
+### Further reading
 
-- Sun 等, *WIREs Comput. Mol. Sci.* **8**, e1340 (2018)（PySCF）。
+- Sun et al., *WIREs Comput. Mol. Sci.* **8**, e1340 (2018) (PySCF).
