@@ -487,12 +487,9 @@ GradientResult ScfGradient::compute(const Frame& frame,
                                     const IntegralPack& integrals,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha) const {
-    if (integrals.spherical())
-        throw std::runtime_error(
-            "ScfGradient::compute: analytic gradients are not implemented "
-            "for spherical-harmonic basis sets (def2 family) yet — the "
-            "derivative-integral c2s transform is a follow-up chain link. "
-            "Use a Cartesian-convention basis or finite differences.");
+    // Spherical-convention packs (def2 family) are supported: the derivative
+    // integrals are sandwiched through the stored c2s in IntegralDerivPack, and
+    // the two-electron path back-transforms the density (both reuse ipack.c2s).
     if (integrals.has_ecp)
         throw std::runtime_error(
             "ScfGradient::compute: analytic gradients are not implemented "

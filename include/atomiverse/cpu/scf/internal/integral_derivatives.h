@@ -45,13 +45,20 @@ struct IntegralDerivPack {
     IntegralDerivPack() = default;
 
     /// @brief Compute one-electron integral derivatives using the shells
-    ///        already resolved inside `pack`.
+    ///        already resolved inside `pack` [Hartree/Bohr, 1/Bohr for dS].
     ///
     /// The returned dS / dT / dV tensors have the same n_basis dimension as
     /// `pack.S`, so gradient contractions align regardless of basis.
     /// Supports any l ≤ kMaxL — the primitive helpers delegate to
     /// `native::overlap_prim_3d` / `kinetic_prim_3d` / `nuclear_prim`,
     /// which handle s, p, and d shells identically.
+    ///
+    /// For a spherical-convention pack (`pack.spherical()`, def2 family) the
+    /// Cartesian derivative blocks are sandwiched down to the spherical AO
+    /// basis with the SAME stored `pack.c2s` the energy path used —
+    /// `dO^sph[A,d] = c2sᵀ · dO^cart[A,d] · c2s` — reusing it (never rebuilt).
+    /// The transform is geometry-independent, so no extra terms arise; dV_nuc
+    /// is basis-independent and untouched.
     ///
     /// @param pack Integral pack (provides atoms in Bohr + resolved shells).
     explicit IntegralDerivPack(const IntegralPack& pack);
@@ -65,6 +72,10 @@ struct IntegralDerivPack {
 ///
 /// Works for any basis: the libcint engine handles STO-3G (when compiled in)
 /// and the native Rys-quadrature block-derivative engine handles all l ≤ kMaxL.
+/// For a spherical-convention pack the density is back-transformed to Cartesian
+/// (`P^cart = c2s · P^sph · c2sᵀ`, reusing `integrals.c2s`) before the Cartesian
+/// on-the-fly contraction — the density dual of the operator sandwich, so no
+/// dERI tensor is ever materialized.
 ///
 /// Both engines assemble the Coulomb (J) channel always and the exchange (K)
 /// channel scaled by the exact-exchange fraction `alpha_hf`: `1.0` for pure

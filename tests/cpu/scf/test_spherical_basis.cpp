@@ -15,9 +15,12 @@
 
 #include <stdexcept>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
+#include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 
@@ -110,20 +113,92 @@ TEST(SphericalBasis, SphericalOverlapMatchesPinnedPyscf) {
     EXPECT_NEAR(p.S(9, 10), 0.0, 1e-12); // dxy ⊥ dyz on the same center
 }
 
-/// Analytic gradients refuse spherical bases loudly — never silently wrong.
-TEST(SphericalBasis, AnalyticGradientThrowsForSpherical) {
+/// ac-002: the spherical derivative pack reports spherical AO dimensions —
+/// dS/dT/dV collapse to n_sph (24 for H2O/def2-SVP), not n_cart (25).
+TEST(SphericalGradient, DerivPackReportsSphericalDim) {
     const auto f = water();
     const IntegralPack p{f, BasisSet::Def2SVP};
-    // Minimal valid restricted determinant; the guard throws before any use.
-    cpu::linalg::RealMatrix C = xt::zeros<double>({std::size_t(1), std::size_t(1)});
-    C(0, 0) = 1.0;
-    cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});
-    cpu::linalg::RealVector occ = xt::ones<double>({std::size_t(1)});
-    const cpu::scf::SlaterDeterminant det{C, eps, occ, 1};
-    const cpu::scf::internal::ScfGradient grad{
-        cpu::scf::MeanFieldType::HF, cpu::scf::SpinType::Restricted,
-        cpu::scf::XCType::LSDA,      cpu::scf::GridLevel::SG0,
-        0,                           0,
-        false,                       false};
-    EXPECT_THROW(grad.compute(f, p, det, 0.0), std::runtime_error);
+    ASSERT_TRUE(p.spherical());
+    const cpu::scf::IntegralDerivPack dp{p};
+    EXPECT_EQ(dp.n_basis, p.n_basis); // 24, spherical
+    EXPECT_EQ(static_cast<int>(dp.dS.shape(0)), 3); // n_atoms
+    EXPECT_EQ(static_cast<int>(dp.dS.shape(1)), 3); // x,y,z
+    EXPECT_EQ(static_cast<int>(dp.dS.shape(2)), p.n_basis);
+    EXPECT_EQ(static_cast<int>(dp.dT.shape(3)), p.n_basis);
+    EXPECT_EQ(static_cast<int>(dp.dV.shape(3)), p.n_basis);
+}
+
+/// ac-001: the analytic spherical overlap derivative equals the central
+/// difference of the spherical overlap S — i.e. dS is the derivative of the
+/// SAME spherical S the energy path builds (the c2s sandwich is applied
+/// correctly to the derivative). Discriminates a correct sandwich from a
+/// missing/wrong one; no SCF solve, just three integral-pack builds.
+TEST(SphericalGradient, SphericalOverlapDerivMatchesFiniteDifference) {
+    const auto f = water();
+    const IntegralPack p{f, BasisSet::Def2SVP};
+    const cpu::scf::IntegralDerivPack dp{p};
+
+    // Central difference of S w.r.t. the O atom's z coordinate, in Bohr.
+    // dS is in 1/Bohr; the Frame stores Å, so displace by h_bohr·(Å/Bohr).
+    constexpr int atom = 0; // O
+    constexpr int axis = 2; // z
+    constexpr double h_bohr = 1e-3;
+    const double h_ang = h_bohr * units::kBohrInAngstrom;
+
+    auto perturbed = [&](double dz_ang) {
+        cpu::Frame g = water();
+        g.span(kAtom_z)[atom] += dz_ang;
+        return IntegralPack{g, BasisSet::Def2SVP}.S;
+    };
+    const auto S_plus = perturbed(+h_ang);
+    const auto S_minus = perturbed(-h_ang);
+    const xt::xtensor<double, 2> fd = (S_plus - S_minus) / (2.0 * h_bohr);
+
+    auto analytic = xt::view(dp.dS, atom, axis, xt::all(), xt::all());
+    double max_err = xt::amax(xt::abs(analytic - fd))();
+    EXPECT_LT(max_err, 1e-6) << "spherical dS vs finite-difference S";
+}
+
+/// ac-003: the RHF spherical guard is removed (compute runs), while the ROHF
+/// and GHF spherical guards stay shut. Uses a single O atom (def2-SVP, d
+/// shell exercises the 6→5 sandwich): translational invariance forces the
+/// single-atom gradient to zero for any density, so no SCF solve is needed.
+TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
+    cpu::Frame f(1);
+    f.span(kAtom_type)[0] = 8; // O
+    f.simbox = cpu::Box::cubic(50.0);
+    const IntegralPack p{f, BasisSet::Def2SVP};
+    ASSERT_TRUE(p.spherical());
+
+    const int n = p.n_basis;
+    const int nocc = 4; // garbage density; dims only (translational inv. → 0)
+    cpu::linalg::RealMatrix C = xt::eye<double>(n);
+    cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(n)});
+    cpu::linalg::RealVector occ = xt::zeros<double>({std::size_t(n)});
+    for (int i = 0; i < nocc; ++i)
+        occ(i) = 1.0;
+    const cpu::scf::SlaterDeterminant det{C, eps, occ, nocc};
+
+    auto make_grad = [](cpu::scf::SpinType spin) {
+        return cpu::scf::internal::ScfGradient{
+            cpu::scf::MeanFieldType::HF, spin,
+            cpu::scf::XCType::LSDA,      cpu::scf::GridLevel::SG0,
+            0,                           0,
+            false,                       false};
+    };
+
+    const auto rhf = make_grad(cpu::scf::SpinType::Restricted);
+    cpu::scf::GradientResult res;
+    ASSERT_NO_THROW(res = rhf.compute(f, p, det, 0.0));
+    // Single atom: total force is zero by translational invariance.
+    double fmax = xt::amax(xt::abs(res.forces))();
+    EXPECT_LT(fmax, 1e-8) << "single-atom translational invariance";
+
+    // Siblings remain refused on spherical packs.
+    EXPECT_THROW(make_grad(cpu::scf::SpinType::RestrictedOpen)
+                     .compute(f, p, det, 0.0),
+                 std::runtime_error);
+    EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
+                     .compute(f, p, det, 0.0),
+                 std::runtime_error);
 }

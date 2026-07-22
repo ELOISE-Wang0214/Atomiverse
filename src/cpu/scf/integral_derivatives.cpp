@@ -40,6 +40,7 @@ extern "C" {
 }
 #endif
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -478,7 +479,11 @@ static void accumulate_quartet_into_gradient(xt::xtensor<double, 2>& grad,
 
 IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
     const int natm = static_cast<int>(ipack.atoms.size());
-    const int n_basis = ipack.n_basis;
+    // Build the Cartesian derivative blocks in the engine's Cartesian AO count
+    // (== shells.size()); for a spherical pack these are sandwiched down to the
+    // spherical AO count at the end of the constructor. Equals ipack.n_basis
+    // for a Cartesian-convention pack (no sandwich).
+    const int n_basis = ipack.n_ao_cart();
 
     this->n_atoms = natm;
     this->n_basis = n_basis;
@@ -659,16 +664,57 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
             dV_nuc(a, 2) += static_cast<double>(ZZ * dz * r3_inv);
         }
     }
+
+    // ── Spherical convention: sandwich the 1e derivative blocks ──────────
+    // The cart2sph coefficients are geometry-independent, so each nuclear
+    // derivative block transforms by the SAME stored c2s the energy path used:
+    //   dO^sph[A,d] = c2sᵀ · dO^cart[A,d] · c2s
+    // (Schlegel & Frisch 1995; reuse ipack.c2s — never rebuilt). dV_nuc is
+    // basis-independent and untouched. After this the dS/dT/dV blocks align
+    // with the spherical P/W that ScfGradient::compute contracts against.
+    if (ipack.spherical()) {
+        const auto& c2s = ipack.c2s;
+        const auto ct = xt::transpose(c2s);
+        const int n_sph = ipack.n_basis;
+        xt::xtensor<double, 4> dS_s =
+            xt::zeros<double>({natm, 3, n_sph, n_sph});
+        xt::xtensor<double, 4> dT_s =
+            xt::zeros<double>({natm, 3, n_sph, n_sph});
+        xt::xtensor<double, 4> dV_s =
+            xt::zeros<double>({natm, 3, n_sph, n_sph});
+        for (int a = 0; a < natm; ++a) {
+            for (int d = 0; d < 3; ++d) {
+                const xt::xtensor<double, 2> S_blk =
+                    xt::view(dS, a, d, xt::all(), xt::all());
+                const xt::xtensor<double, 2> T_blk =
+                    xt::view(dT, a, d, xt::all(), xt::all());
+                const xt::xtensor<double, 2> V_blk =
+                    xt::view(dV, a, d, xt::all(), xt::all());
+                xt::view(dS_s, a, d, xt::all(), xt::all()) =
+                    xt::linalg::dot(ct, xt::linalg::dot(S_blk, c2s));
+                xt::view(dT_s, a, d, xt::all(), xt::all()) =
+                    xt::linalg::dot(ct, xt::linalg::dot(T_blk, c2s));
+                xt::view(dV_s, a, d, xt::all(), xt::all()) =
+                    xt::linalg::dot(ct, xt::linalg::dot(V_blk, c2s));
+            }
+        }
+        dS = std::move(dS_s);
+        dT = std::move(dT_s);
+        dV = std::move(dV_s);
+        this->n_basis = n_sph;
+    }
 }
 
 void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad, const Frame& frame,
-    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
+    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total_sph,
     const SlaterDeterminant& det, MeanFieldType method, SpinType spin,
     XCType xc_type, bool force_native_two_electron_deriv) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
-    const int n = integrals.n_basis;
+    // The on-the-fly ERI-derivative engines index Cartesian AOs; n is the
+    // Cartesian count (== ipack.n_basis for a Cartesian pack).
+    const int n = integrals.n_ao_cart();
     const bool is_ks = (method == MeanFieldType::KS);
     if (spin == SpinType::RestrictedOpen)
         throw std::runtime_error(
@@ -690,6 +736,29 @@ void accumulate_two_electron_gradient(
         Pa = det.density(SlaterDeterminant::Spin::alpha);
         Pb = det.density(SlaterDeterminant::Spin::beta);
     }
+
+    // Spherical convention: the densities arrive in the spherical AO basis but
+    // the Cartesian on-the-fly ERI-derivative engine below indexes Cartesian
+    // AOs. Because c2s is geometry-independent, contracting the Cartesian
+    // derivative ERIs with the back-transformed density reproduces the
+    // spherical gradient exactly (the density dual of the operator sandwich):
+    //   P^cart = c2s · P^sph · c2sᵀ
+    // This preserves the no-dERI-materialization charter (only the n×n density
+    // is transformed). `P_total` below aliases the Cartesian density for a
+    // spherical pack, or the original for a Cartesian pack (no transform).
+    xt::xtensor<double, 2> P_total_cart;
+    if (integrals.spherical()) {
+        const auto& c2s = integrals.c2s;
+        const auto ct = xt::transpose(c2s);
+        P_total_cart =
+            xt::linalg::dot(c2s, xt::linalg::dot(P_total_sph, ct));
+        if (!restricted) {
+            Pa = xt::linalg::dot(c2s, xt::linalg::dot(Pa, ct));
+            Pb = xt::linalg::dot(c2s, xt::linalg::dot(Pb, ct));
+        }
+    }
+    const xt::xtensor<double, 2>& P_total =
+        integrals.spherical() ? P_total_cart : P_total_sph;
 
     // Exact-exchange (K-channel) fraction.
     //

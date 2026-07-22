@@ -57,8 +57,10 @@ Priority is product / textbook impact, not historical chain order.
 
 ### P0 — Forces and geometry (largest user gap)
 
-- [ ] Analytic gradients for **spherical** bases (today `forces()` blocked /
-      incomplete; Cartesian path is the production default).
+- [x] Analytic gradients for **spherical** bases (shipped 2026-07-22, child spec
+      `scf-spherical-gradients`: RHF def2-family forces via the c2s sandwich on
+      the derivative integrals; H2O def2-SVP regression vs pinned PySCF 1e-6
+      Ha/Bohr). UHF/UKS spherical forces follow the same path if needed.
 - [ ] Analytic **ECP** nuclear derivatives (energy-only ECP today).
 - [ ] Analytic forces for **ROHF** and **GHF** (explicit throw / out of scope
       in the closed campaign).
