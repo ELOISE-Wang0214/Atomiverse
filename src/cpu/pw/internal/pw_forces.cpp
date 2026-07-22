@@ -3,7 +3,6 @@
 
 #include "atomiverse/cpu/pw/internal/pw_forces.h"
 
-#include "atomiverse/core/box.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
@@ -354,15 +353,7 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg) {
                                                 static_cast<AccReal>(sy[i]),
                                                 static_cast<AccReal>(sz[i])};
 
-    ::ATV::Box box_ang;
-    {
-        const auto& c = frame.simbox.cell();
-        Mat3 cell;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                cell(i, j) = c(i, j);
-        box_ang.cell = cell;
-    }
+    const cpu::Box& box_ang = frame.simbox;
     AccReal ecut_ht = static_cast<AccReal>(cfg.ecut_ry) * AccReal(0.5);
     EwaldSummation ewald(pos_ang, ewald_charges, box_ang, ecut_ht);
     const auto& few = ewald.forces_bohr();

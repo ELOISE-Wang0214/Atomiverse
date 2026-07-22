@@ -13,11 +13,12 @@ namespace internal {
 
 EwaldSummation::EwaldSummation(const std::vector<Vec3>& pos_ang,
                                const std::vector<AccReal>& charges,
-                               const ::ATV::Box& cell, AccReal ecut) {
+                               const cpu::Box& cell, AccReal ecut) {
     // Convert to Bohr internally
     AccReal a2b = AccReal(1.8897259886);
-    Box cell_bohr = cell;
-    cell_bohr.cell = cell_bohr.cell * a2b;
+    cpu::Box cell_bohr;
+    cell_bohr.set_cell(cell.cell() * a2b);
+    const Mat3& cb = cell_bohr.cell();
 
     const int n = static_cast<int>(charges.size());
     std::vector<Vec3> pos(static_cast<std::size_t>(n));
@@ -59,19 +60,19 @@ EwaldSummation::EwaldSummation(const std::vector<Vec3>& pos_ang,
                     for (int hz = -ncell_r; hz <= ncell_r; ++hz) {
                         Vec3 dr = {pos[static_cast<std::size_t>(i)][0]
                                        - pos[static_cast<std::size_t>(j)][0]
-                                       + AccReal(hx) * cell_bohr.cell(0, 0)
-                                       + AccReal(hy) * cell_bohr.cell(0, 1)
-                                       + AccReal(hz) * cell_bohr.cell(0, 2),
+                                       + AccReal(hx) * cb(0, 0)
+                                       + AccReal(hy) * cb(0, 1)
+                                       + AccReal(hz) * cb(0, 2),
                                    pos[static_cast<std::size_t>(i)][1]
                                        - pos[static_cast<std::size_t>(j)][1]
-                                       + AccReal(hx) * cell_bohr.cell(1, 0)
-                                       + AccReal(hy) * cell_bohr.cell(1, 1)
-                                       + AccReal(hz) * cell_bohr.cell(1, 2),
+                                       + AccReal(hx) * cb(1, 0)
+                                       + AccReal(hy) * cb(1, 1)
+                                       + AccReal(hz) * cb(1, 2),
                                    pos[static_cast<std::size_t>(i)][2]
                                        - pos[static_cast<std::size_t>(j)][2]
-                                       + AccReal(hx) * cell_bohr.cell(2, 0)
-                                       + AccReal(hy) * cell_bohr.cell(2, 1)
-                                       + AccReal(hz) * cell_bohr.cell(2, 2)};
+                                       + AccReal(hx) * cb(2, 0)
+                                       + AccReal(hy) * cb(2, 1)
+                                       + AccReal(hz) * cb(2, 2)};
                         AccReal r = dr.norm();
                         if (r > AccReal(0) && r < r_cut) {
                             AccReal erfc_ar = std::erfc(alpha * r);

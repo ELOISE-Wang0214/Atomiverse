@@ -3,7 +3,6 @@
 ///        the pre-loop section of the solver) shared by both backends.
 
 #include "atomiverse/cpu/pw/internal/pw_setup.h"
-#include "atomiverse/core/box.h"
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
@@ -141,30 +140,6 @@ void setup_toy_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
                              * std::complex<AccReal>(s_re, s_im);
         }
     }
-}
-
-::ATV::Box to_core_box(const cpu::Frame& frame) {
-    const auto& c = frame.simbox.cell();
-    Mat3 cell;
-    cell(0, 0) = c(0, 0);
-    cell(0, 1) = c(0, 1);
-    cell(0, 2) = c(0, 2);
-    cell(1, 0) = c(1, 0);
-    cell(1, 1) = c(1, 1);
-    cell(1, 2) = c(1, 2);
-    cell(2, 0) = c(2, 0);
-    cell(2, 1) = c(2, 1);
-    cell(2, 2) = c(2, 2);
-    ::ATV::Box box;
-    box.cell = cell;
-    return box;
-}
-
-::ATV::Box box_to_bohr(const ::ATV::Box& box_ang) {
-    AccReal a2b = AccReal(1.8897259886);
-    ::ATV::Box box = box_ang;
-    box.cell = box.cell * a2b;
-    return box;
 }
 
 std::vector<Vec3> pos_to_bohr(const cpu::Frame& frame) {
@@ -453,8 +428,9 @@ int valence_from_z(int z) {
 void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
                       double ecut_ry, int k_mesh, PWProblem& out) {
     int n_atoms = static_cast<int>(frame.nlocal());
-    ::ATV::Box box_ang = to_core_box(frame);
-    ::ATV::Box box_bohr = box_to_bohr(box_ang);
+    const cpu::Box& box_ang = frame.simbox;
+    cpu::Box box_bohr;
+    box_bohr.set_cell(box_ang.cell() * AccReal(1.8897259886));
 
     AccReal ecut_ht = static_cast<AccReal>(ecut_ry) * AccReal(0.5);
     AccReal vol_bohr = box_bohr.volume();

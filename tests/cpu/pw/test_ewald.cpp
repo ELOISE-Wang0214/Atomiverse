@@ -1,5 +1,5 @@
 /// @file test_ewald.cpp
-#include "atomiverse/core/box.h"
+#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/vec3.h"
 #include "atomiverse/cpu/pw/internal/ewald.h"
@@ -10,7 +10,7 @@ using namespace ATV;
 using namespace ATV::cpu::pw::internal;
 
 TEST(Ewald, SiTwoAtoms) {
-    Box box = Box::cubic(10.26); // Å (Si-scale cell)
+    cpu::Box box = cpu::Box::cubic(10.26); // Å (Si-scale cell)
     std::vector<Vec3> pos = {{0, 0, 0}, {2.565, 2.565, 2.565}};
     std::vector<AccReal> charges = {4, 4};
     AccReal ecut = AccReal(15); // Hartree
@@ -22,7 +22,7 @@ TEST(Ewald, SiTwoAtoms) {
 }
 
 TEST(Ewald, ZeroCharges) {
-    Box box = Box::cubic(10);
+    cpu::Box box = cpu::Box::cubic(10);
     std::vector<Vec3> pos = {{0, 0, 0}, {2, 2, 2}};
     std::vector<AccReal> charges = {0, 0};
     EwaldSummation e(pos, charges, box, AccReal(15));
@@ -31,7 +31,7 @@ TEST(Ewald, ZeroCharges) {
 
 TEST(Ewald, ForceMatchesEnergyFd) {
     // Analytic Ewald force vs central FD of total_energy (same functional).
-    Box box = Box::cubic(8.0); // Å
+    cpu::Box box = cpu::Box::cubic(8.0); // Å
     std::vector<Vec3> pos = {{0.0, 0.0, 0.0}, {1.5, 0.2, -0.1}};
     std::vector<AccReal> charges = {1.0, 1.0};
     AccReal ecut = AccReal(10.0);

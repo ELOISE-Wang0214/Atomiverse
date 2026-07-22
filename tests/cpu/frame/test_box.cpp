@@ -1,7 +1,9 @@
-/// @file tests/cpu/test_box.cpp
+/// @file tests/cpu/frame/test_box.cpp
 /// @brief Coverage for `cpu::Box`: API, ortho min-image parity, triclinic
 ///        roundtrip identity, wrap-axis parity, mutation cache coherence,
 ///        xsimd batch parity.
+///
+/// Layout mirrors `include/atomiverse/cpu/frame/box.h` (+ `box_simd.h`).
 ///
 /// Reference forms are written inline in the tests, independent of
 /// `Box::*` implementations, so the assertions catch implementation
@@ -142,6 +144,60 @@ TEST(BoxApi, ExplicitSetCell) {
     EXPECT_DOUBLE_EQ(bx.length(0), 5.0);
     EXPECT_DOUBLE_EQ(bx.cell()(0, 0), 5.0);
     EXPECT_DOUBLE_EQ(bx.cell()(1, 2), 0.0);
+}
+
+/// @brief `recip = 2π (cell^{-1})^T` ⇒ `recip^T · cell = 2π I`.
+///        Hard-coded analytical identity — covers the cold path retained
+///        when `core/box.h` was deleted in favour of `cpu::Box`.
+TEST(BoxApi, RecipCellTransposeTimesCellIs2PiI) {
+    using ATV::units::pi;
+    const double two_pi = 2.0 * pi;
+
+    auto check = [&](const Box& bx, double tol, const char* tag) {
+        // recip^T = 2π inv_cell  (by definition of recip_cell)
+        const Mat3 recip = bx.recip_cell();
+        Mat3 recip_T{};
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                recip_T(i, j) = recip(j, i);
+        const Mat3 prod = mat_mul(recip_T, bx.cell());
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+                const double expected = (i == j) ? two_pi : 0.0;
+                EXPECT_NEAR(prod(i, j), expected, tol)
+                    << tag << " recip^T*cell != 2πI at (" << i << "," << j
+                    << ")";
+            }
+    };
+
+    check(Box::orthorhombic(5.0, 12.0, 9.0), 1e-12, "ortho");
+
+    Mat3 cell = Mat3::diagonal(10.0, 11.0, 12.0);
+    cell(0, 1) = 1.5;
+    cell(0, 2) = 0.4;
+    check(Box{cell}, 1e-10, "triclinic");
+}
+
+/// @brief `lengths()` = Euclidean norms of cell rows (not only diagonal).
+TEST(BoxApi, LengthsRowNorms) {
+    auto ortho = Box::cubic(10.0);
+    const auto lo = ortho.lengths();
+    EXPECT_NEAR(lo[0], 10.0, 1e-12);
+    EXPECT_NEAR(lo[1], 10.0, 1e-12);
+    EXPECT_NEAR(lo[2], 10.0, 1e-12);
+
+    Mat3 cell = Mat3::diagonal(3.0, 4.0, 5.0);
+    cell(0, 1) = 0.0;
+    cell(0, 2) = 0.0;
+    // Row 0 = (6, 8, 0) → length 10.
+    cell(0, 0) = 6.0;
+    cell(0, 1) = 8.0;
+    cell(0, 2) = 0.0;
+    Box tri(cell);
+    const auto lt = tri.lengths();
+    EXPECT_NEAR(lt[0], 10.0, 1e-12);
+    EXPECT_NEAR(lt[1], 4.0, 1e-12);
+    EXPECT_NEAR(lt[2], 5.0, 1e-12);
 }
 
 // ── ac-006: ortho min-image numerical parity ───────────────────────────

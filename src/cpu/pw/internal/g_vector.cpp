@@ -10,7 +10,7 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
-GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, AccReal ecut,
+GVectorList enumerate_g_vectors(const cpu::Box& cell_bohr, AccReal ecut,
                                 const Vec3& k) {
     auto recip = cell_bohr.recip_cell();
     Vec3 b0{recip(0, 0), recip(0, 1), recip(0, 2)};

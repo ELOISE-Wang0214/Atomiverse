@@ -5,7 +5,7 @@
 /// `cpu::pw::PWSolver` — tests may include the internal headers directly
 /// (same policy as `cpu/scf/internal/`). They must NOT be
 /// `cpu::Component` subclasses (static-asserted below).
-#include "atomiverse/core/box.h"
+#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/vec3.h"
 #include "atomiverse/cpu/component/component.h"
@@ -57,8 +57,7 @@ struct PWFixture {
         cell(2, 0) = h;
         cell(2, 1) = h;
         cell(2, 2) = 0;
-        ::ATV::Box box;
-        box.cell = cell;
+        cpu::Box box(cell);
         ws.gvec0 = enumerate_g_vectors(box, AccReal(15), Vec3::zeros());
         auto& gv = ws.gvec0;
 

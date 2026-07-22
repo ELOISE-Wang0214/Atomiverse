@@ -2,10 +2,10 @@
 /// @brief G-vector enumeration for plane-wave basis.
 #pragma once
 
-#include "atomiverse/core/box.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/frame/box.h"
 #include <vector>
 
 namespace ATV {
@@ -24,7 +24,7 @@ struct GVectorList {
     int count() const { return static_cast<int>(g.size()); }
 };
 
-GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, AccReal ecut,
+GVectorList enumerate_g_vectors(const cpu::Box& cell_bohr, AccReal ecut,
                                 const Vec3& k);
 
 } // namespace internal

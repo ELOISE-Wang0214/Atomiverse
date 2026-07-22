@@ -33,6 +33,8 @@
 #include <cstdint>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/core/vec3.h"
 
 namespace ATV {
 namespace cpu {
@@ -233,6 +235,26 @@ class Box {
     /// @return Reference to `cell^{-1}` [Angstrom^{-1}].
     [[gnu::always_inline]] inline const Mat3& inv_cell() const noexcept {
         return inv_cell_;
+    }
+
+    // ── Derived geometry (cold; returns a small value) ──────────────────
+
+    /// @brief Reciprocal lattice `2*pi * (cell^{-1})^T`.
+    /// @return Reciprocal cell matrix [Angstrom^{-1}] (rows are b0, b1, b2).
+    Mat3 recip_cell() const noexcept {
+        return inv_cell_.transpose() * AccReal(2.0 * units::pi);
+    }
+
+    /// @brief Euclidean lengths of the three lattice vectors (cell rows).
+    /// @return Vector of edge lengths [Angstrom]. For an orthorhombic cell
+    ///         these equal `length(d)`; for triclinic they are the row norms.
+    Vec3 lengths() const noexcept {
+        return {std::sqrt(cell_(0, 0) * cell_(0, 0) + cell_(0, 1) * cell_(0, 1)
+                          + cell_(0, 2) * cell_(0, 2)),
+                std::sqrt(cell_(1, 0) * cell_(1, 0) + cell_(1, 1) * cell_(1, 1)
+                          + cell_(1, 2) * cell_(1, 2)),
+                std::sqrt(cell_(2, 0) * cell_(2, 0) + cell_(2, 1) * cell_(2, 1)
+                          + cell_(2, 2) * cell_(2, 2))};
     }
 
     /// @brief Monotonic mutation revision for cell-dependent component caches.

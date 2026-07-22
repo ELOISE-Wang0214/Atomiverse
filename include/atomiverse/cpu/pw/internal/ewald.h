@@ -2,9 +2,9 @@
 /// @brief 3D Ewald summation for periodic point charges (energy + ionic forces).
 #pragma once
 
-#include "atomiverse/core/box.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/frame/box.h"
 #include <vector>
 
 namespace ATV {
@@ -29,7 +29,7 @@ class EwaldSummation {
     /// @param cell Simulation cell [Å].
     /// @param ecut_hartree Wavefunction cutoff [Hartree] (sets recip G cut).
     EwaldSummation(const std::vector<Vec3>& pos_ang,
-                   const std::vector<AccReal>& charges, const ::ATV::Box& cell,
+                   const std::vector<AccReal>& charges, const cpu::Box& cell,
                    AccReal ecut_hartree);
 
     AccReal total_energy() const { return e_real_ + e_recip_ + e_self_; }
