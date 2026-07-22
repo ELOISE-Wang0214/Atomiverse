@@ -155,11 +155,14 @@ watch out for in the ones that do.
 
 ### Classical force fields
 
-- **The pair-style catalogue is thin**: LJ 12-6, a demo Morse (O(N²),
-  neighbor-list-opting-out), and the real-space Ewald `coul/long`. LJ now carries a
-  per-type ε/σ table with Lorentz–Berthelot mixing, but the per-type path is scalar —
-  only the single-type path takes the xsimd ket loop.
-- **No impropers**, no reactive potentials (ReaxFF, AIREBO), no coarse-grained models.
+- **The pair-style catalogue is thin but GAFF-capable on CPU**: LJ 12-6 (multi-type
+  + Lorentz–Berthelot; per-type path is scalar), cut Coulomb, real-space
+  `coul/long` + PME, and **Amber `special_bonds` scales** (including 1–4 = 0.5)
+  on LJ, CoulCut, and CoulLong. `load_lammps_data` reads `atom_style full` (charges).
+  Still missing for full GAFF productization: multi-term Fourier dihedral component,
+  complete `.ff` text parser, CUDA Amber parity, paper-length polymer protocols.
+- **Improper harmonic exists** (periodic/CVFF still open). No reactive potentials
+  (ReaxFF, AIREBO), no coarse-grained models.
 - **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element, MPI-parallel
   via a ghost-of-ghost halo; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)).
   Tersoff/MEAM remain absent, as does any CUDA mirror.

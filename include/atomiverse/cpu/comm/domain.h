@@ -118,6 +118,16 @@ struct DomainDecomposition {
     /// `.claude/notes/msu_stage2_conserved_drift_2026-05-27.md`.)
     std::uint64_t halo_generation = 0;
 
+    // ── atom_modify sort (LAMMPS: exchange → sort → borders) ──────────
+    // NeighborList publishes these; HaloSend applies sort on full rebuild
+    // *before* rebuilding ghost slots so reverse send_lists stay valid.
+    bool atom_sort_enabled = true;
+    int atom_sort_nfreq = 1000;
+    double atom_sort_binsize = 0.0;      ///< ≤0 → 0.5 * atom_sort_neigh_cut
+    double atom_sort_neigh_cut = 0.0;    ///< neighbor cutoff+skin for auto binsize
+    int atom_sort_step = 0;
+    int atom_sort_next = 1000;           ///< first sort after nfreq steps
+
     /// @brief Per-face send lists: owned-atom indices shadowed to each face neighbor.
     /// Order matches `face_neighbors`. Empty in single-rank mode. Rebuilt by
     /// `HaloSend::launch()` each step; consumed by both

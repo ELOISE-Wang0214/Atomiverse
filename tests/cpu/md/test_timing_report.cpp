@@ -28,24 +28,28 @@ TEST(TimerRegistry, RecordRollupReset) {
     TimerRegistry r;
     r.set_enabled(true);
     const int h_lj = handle(r, "lj", 2);              // Pair
-    const int h_bond = handle(r, "harmonic_bond", 2); // Bonded
-    const int h_vv = handle(r, "velocity_verlet", 0); // Other
+    const int h_bond = handle(r, "harmonic_bond", 2); // Bond
+    const int h_vv = handle(r, "velocity_verlet", 0); // Modify
+    const int h_pp = handle(r, "pppm", 2);            // Kspace
 
     r.record(h_lj, 1.0);
     r.record(h_lj, 3.0); // Pair total 4.0, 2 calls, min1 max3
     r.record(h_bond, 0.5);
     r.record(h_vv, 0.25);
+    r.record(h_pp, 2.0);
     r.set_loop(5.0, 1234);
     r.tick_step();
 
     const auto roll = r.rollup_by_category();
-    ASSERT_GE(roll.size(), static_cast<std::size_t>(StepTiming::Other) + 1);
+    // Rollup is sized to (max registered category id + 1), not full enum.
+    ASSERT_GT(roll.size(), static_cast<std::size_t>(StepTiming::Modify));
     EXPECT_DOUBLE_EQ(roll[StepTiming::Pair].total_s, 4.0);
     EXPECT_EQ(roll[StepTiming::Pair].calls, 2u);
     EXPECT_DOUBLE_EQ(roll[StepTiming::Pair].min_s, 1.0);
     EXPECT_DOUBLE_EQ(roll[StepTiming::Pair].max_s, 3.0);
-    EXPECT_DOUBLE_EQ(roll[StepTiming::Bonded].total_s, 0.5);
-    EXPECT_DOUBLE_EQ(roll[StepTiming::Other].total_s, 0.25);
+    EXPECT_DOUBLE_EQ(roll[StepTiming::Bond].total_s, 0.5);
+    EXPECT_DOUBLE_EQ(roll[StepTiming::Modify].total_s, 0.25);
+    EXPECT_DOUBLE_EQ(roll[StepTiming::Kspace].total_s, 2.0);
     EXPECT_DOUBLE_EQ(r.loop_seconds(), 5.0);
     EXPECT_EQ(r.nlocal(), 1234);
     EXPECT_EQ(r.steps(), 1u);
@@ -82,7 +86,7 @@ TEST(TimerReport, ReduceSingleRank) {
     TimerRegistry r;
     r.set_enabled(true);
     r.record(handle(r, "lj", 2), 4.0);            // Pair
-    r.record(handle(r, "harmonic_bond", 2), 1.0); // Bonded
+    r.record(handle(r, "harmonic_bond", 2), 1.0); // Bond
     r.set_loop(5.0, 100);
     r.tick_step();
 
@@ -92,7 +96,7 @@ TEST(TimerReport, ReduceSingleRank) {
     EXPECT_DOUBLE_EQ(rep.sections[StepTiming::Pair].min_s, 4.0);
     EXPECT_DOUBLE_EQ(rep.sections[StepTiming::Pair].max_s, 4.0);
     EXPECT_NEAR(rep.sections[StepTiming::Pair].pct_total, 80.0, 1e-9);
-    EXPECT_NEAR(rep.sections[StepTiming::Bonded].pct_total, 20.0, 1e-9);
+    EXPECT_NEAR(rep.sections[StepTiming::Bond].pct_total, 20.0, 1e-9);
     EXPECT_DOUBLE_EQ(rep.loop_avg, 5.0);
     EXPECT_EQ(rep.nlocal_min, 100);
     EXPECT_EQ(rep.nlocal_max, 100);

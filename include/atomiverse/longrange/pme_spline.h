@@ -156,6 +156,21 @@ inline void pme_fill_atom_splines(const StorageReal* x, const StorageReal* y,
 /// @param base    Per-atom base indices (length 3·n_atoms).
 /// @param theta   Per-atom B-spline weights (length 3·order·n_atoms).
 /// @param[in,out] grid Complex charge grid, length K0·K1·K2.
+/// @brief Wrap grid index into [0, K) without double-modulo.
+inline int pme_wrap(int g, int K) {
+    // base ∈ [0,K), offset ∈ [-(n-1), n-1] → at most one wrap either side
+    // for typical order ≤ 8; fall back to while for safety.
+    if (g >= K)
+        g -= K;
+    if (g < 0)
+        g += K;
+    if (g >= K)
+        g -= K;
+    if (g < 0)
+        g += K;
+    return g;
+}
+
 inline void pme_spread_charges(const StorageReal* q, int n_atoms, int order,
                                const int K[3], const int* base,
                                const double* theta,
@@ -170,17 +185,55 @@ inline void pme_spread_charges(const StorageReal* q, int n_atoms, int order,
         const double* thx = &theta[(3 * i + 0) * n];
         const double* thy = &theta[(3 * i + 1) * n];
         const double* thz = &theta[(3 * i + 2) * n];
+        const int b0 = base[3 * i + 0] - nm1;
+        const int b1 = base[3 * i + 1] - nm1;
+        const int b2 = base[3 * i + 2] - nm1;
         // theta[k] = M_n(frac + n-1-k) pairs with grid point u0 - (n-1) + k.
         for (int a = 0; a < n; ++a) {
-            const int g0 = ((base[3 * i + 0] - nm1 + a) % K0 + K0) % K0;
+            const int g0 = pme_wrap(b0 + a, K0);
             const double wa = qi * thx[a];
             for (int b = 0; b < n; ++b) {
-                const int g1 = ((base[3 * i + 1] - nm1 + b) % K1 + K1) % K1;
+                const int g1 = pme_wrap(b1 + b, K1);
                 const double wab = wa * thy[b];
+                const int plane = K2 * (g1 + K1 * g0);
                 for (int c = 0; c < n; ++c) {
-                    const int g2 = ((base[3 * i + 2] - nm1 + c) % K2 + K2) % K2;
-                    const int idx = g2 + K2 * (g1 + K1 * g0);
-                    grid[idx] += wab * thz[c];
+                    const int g2 = pme_wrap(b2 + c, K2);
+                    // Charge is real — write only .real to cut complex ops.
+                    grid[plane + g2].real(grid[plane + g2].real()
+                                          + wab * thz[c]);
+                }
+            }
+        }
+    }
+}
+
+/// @brief Spread onto a real grid (for r2c paths / faster charge assignment).
+inline void pme_spread_charges_real(const StorageReal* q, int n_atoms, int order,
+                                    const int K[3], const int* base,
+                                    const double* theta, double* grid) {
+    const int K0 = K[0], K1 = K[1], K2 = K[2];
+    const int n = order;
+    const int nm1 = n - 1;
+    for (int i = 0; i < n_atoms; ++i) {
+        const double qi = q[i];
+        if (qi == 0.0)
+            continue;
+        const double* thx = &theta[(3 * i + 0) * n];
+        const double* thy = &theta[(3 * i + 1) * n];
+        const double* thz = &theta[(3 * i + 2) * n];
+        const int b0 = base[3 * i + 0] - nm1;
+        const int b1 = base[3 * i + 1] - nm1;
+        const int b2 = base[3 * i + 2] - nm1;
+        for (int a = 0; a < n; ++a) {
+            const int g0 = pme_wrap(b0 + a, K0);
+            const double wa = qi * thx[a];
+            for (int b = 0; b < n; ++b) {
+                const int g1 = pme_wrap(b1 + b, K1);
+                const double wab = wa * thy[b];
+                const int plane = K2 * (g1 + K1 * g0);
+                for (int c = 0; c < n; ++c) {
+                    const int g2 = pme_wrap(b2 + c, K2);
+                    grid[plane + g2] += wab * thz[c];
                 }
             }
         }

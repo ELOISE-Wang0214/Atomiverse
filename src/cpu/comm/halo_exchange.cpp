@@ -36,6 +36,7 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/schema_mpi.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/atom_sort.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -969,6 +970,7 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     // and the tag→slot map carry through unchanged, which lets downstream
     // `NeighborList` reuse its CSR from the last reneighbor step.
     ++ago_;
+    ++dd->atom_sort_step; // MD-step proxy (HaloSend once per step)
     const bool generation_changed =
         dd->neighbor_generation != last_rebuild_generation_;
     const bool full_rebuild = generation_changed || (ago_ >= every_);
@@ -994,6 +996,23 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     int frame_cap = frame.capacity();
 
     if (full_rebuild) {
+        // LAMMPS: after exchange, before borders — spatial sort owned atoms
+        // so pair/neighbor walks are cache-friendly. Must run *before*
+        // send_lists / ghost slots are built (reverse uses those indices).
+        if (dd->atom_sort_enabled && dd->atom_sort_nfreq > 0
+            && dd->atom_sort_step >= dd->atom_sort_next) {
+            double bs = dd->atom_sort_binsize;
+            if (!(bs > 0.0))
+                bs = 0.5 * (dd->atom_sort_neigh_cut > 0.0
+                                ? dd->atom_sort_neigh_cut
+                                : cutoff_);
+            if (md::sort_owned_atoms(frame, dd->n_local, bs))
+                md::notify_sorted(dd, frame, /*clear_ghosts=*/true);
+            dd->atom_sort_next =
+                dd->atom_sort_step
+                + (dd->atom_sort_nfreq > 0 ? dd->atom_sort_nfreq : 1);
+        }
+
         frame.set_nghost(0);
         // Re-check the build-time geometry guards: an NPT/deform run can
         // shrink the subdomain AFTER build() validated it (both the

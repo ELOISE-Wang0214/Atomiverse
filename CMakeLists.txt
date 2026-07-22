@@ -263,6 +263,7 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_MD)
         list(APPEND ATOMIVERSE_SRCS
             src/cpu/md/init.cpp
+            src/cpu/md/atom_sort.cpp
             src/cpu/md/velocity_verlet.cpp
             src/cpu/md/nve_limit.cpp
             src/cpu/md/nose_hoover.cpp
@@ -316,7 +317,10 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_KSPACE)
-        list(APPEND ATOMIVERSE_SRCS src/cpu/longrange/pme.cpp)
+        list(APPEND ATOMIVERSE_SRCS
+            src/cpu/longrange/pme.cpp
+            src/cpu/longrange/pppm.cpp) # true Hockney–Eastwood PPPM (r2c + HE green)
+
     endif()
 
     if(ATV_BUILD_CUDA)
@@ -616,6 +620,20 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_KSPACE)
+        # FFTW3 MPI (slab/pencil distributed FFT for multi-rank PPPM).
+        if(ATV_USE_MPI)
+            find_library(FFTW3_MPI_LIB fftw3_mpi HINTS
+                $ENV{FFTW3_ROOT}/lib $ENV{FFTW3_ROOT}/lib64
+                $ENV{FFTW_ROOT}/lib $ENV{FFTW_ROOT}/lib64)
+            if(FFTW3_MPI_LIB)
+                target_link_libraries(atomiverse PUBLIC ${FFTW3_MPI_LIB})
+                target_compile_definitions(atomiverse PUBLIC ATV_HAS_FFTW_MPI)
+                message(STATUS "KSPACE: FFTW3 MPI enabled (${FFTW3_MPI_LIB})")
+            else()
+                message(WARNING "KSPACE: libfftw3_mpi not found — multi-rank "
+                                "PPPM falls back to replicated-grid Allreduce")
+            endif()
+        endif()
         # CUDA PME (cuFFT) — only when the CUDA backend is also enabled.
         if(ATV_BUILD_CUDA)
             target_link_libraries(atomiverse PUBLIC CUDA::cufft)
@@ -949,6 +967,11 @@ if(NOT ATV_DOCS_ONLY)
         "Build debug_amorphous LAMMPS-comparison runner" OFF)
     if(ATV_BUILD_DEBUG_AMORPHOUS)
         add_subdirectory(tools/debug_amorphous)
+    endif()
+    option(ATV_BUILD_BENCH_GAFF
+        "Build tools/bench_gaff_lammps (GAFF vs LAMMPS timing)" OFF)
+    if(ATV_BUILD_BENCH_GAFF)
+        add_subdirectory(tools/bench_gaff_lammps)
     endif()
 endif()
 

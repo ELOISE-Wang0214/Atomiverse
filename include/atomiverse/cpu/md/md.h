@@ -329,18 +329,22 @@ class MD : public CPUDriver<ATV::md::Phase> {
             return;
         const auto rep = cpu::md::reduce_timing(this->backend_->timing());
         cpu::md::emit_timing_table(rep, stage);
-        if (std::getenv("ATV_TIMER_VERBOSE"))
+        // Always print per-component (bond vs angle vs dihedral vs pair vs
+        // pppm) so the LAMMPS "Bond" bucket can be un-lumped for diagnosis.
+        // Set ATV_TIMER_VERBOSE=0 to suppress.
+        const char* pv = std::getenv("ATV_TIMER_VERBOSE");
+        if (!pv || pv[0] != '0')
             cpu::md::emit_per_component(this->backend_->timing(), stage);
         if (csv)
             cpu::md::emit_timing_csv(rep, *csv, stage);
     }
 
     /// @brief Built-in end-of-run summary: the LAMMPS-style time breakdown
-    /// (Pair/Bonded/Neigh/Comm/Reduce/Other + Loop, min/avg/max across ranks)
-    /// AND a memory breakdown (Atoms/Pair/Bonded/Neigh/Comm/Other + AV-accounted
-    /// vs runtime/MPI vs peak RSS). Always emitted at the end of every `run()`;
-    /// disable the underlying timing with ATV_TIMER=0. Collective (the reduces
-    /// run on all ranks); rendered on rank 0.
+    /// (Pair/Bond/Kspace/Neigh/Comm/Output/Modify/Other + Loop) PLUS a
+    /// per-component table (harmonic_bond / harmonic_angle / charmm_dihedral /
+    /// lj/cut/coul/long / pppm / …) so bonded terms are not opaque, AND a
+    /// memory breakdown. Always emitted at the end of every `run()`; disable
+    /// timing with ATV_TIMER=0. Collective; rendered on rank 0.
     void emit_run_summary(std::string_view stage) override {
         // On by default; ATV_TIMER=0 / enable_timing(false) opts out (and makes
         // the one-time report allocation-free for hot-loop micro-benchmarks).
@@ -348,6 +352,9 @@ class MD : public CPUDriver<ATV::md::Phase> {
             return;
         const auto t = cpu::md::reduce_timing(this->backend_->timing());
         cpu::md::emit_timing_table(t, stage);
+        const char* pv = std::getenv("ATV_TIMER_VERBOSE");
+        if (!pv || pv[0] != '0')
+            cpu::md::emit_per_component(this->backend_->timing(), stage);
         const auto m =
             cpu::md::reduce_memory(this->backend_->collect_component_memory(),
                                    cpu::md::read_peak_rss_kb());

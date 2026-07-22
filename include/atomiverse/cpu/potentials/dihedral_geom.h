@@ -22,6 +22,8 @@ struct Geometry {
     double b3x = 0, b3y = 0, b3z = 0;
     double n1x = 0, n1y = 0, n1z = 0;
     double n2x = 0, n2y = 0, n2z = 0;
+    double n1_inv = 0; ///< 1/|n1| cached for forces_from_dV_dcos
+    double n2_inv = 0;
     double cos_phi = 0;
     double sin_phi = 0; ///< signed: sign((n1 × n2) · b2)
 };
@@ -62,22 +64,22 @@ inline bool fill(double r1x, double r1y, double r1z, double r2x, double r2y,
     if (n1_sq < 1e-20 || n2_sq < 1e-20)
         return false;
 
-    const double n1_inv = 1.0 / std::sqrt(n1_sq);
-    const double n2_inv = 1.0 / std::sqrt(n2_sq);
+    g.n1_inv = 1.0 / std::sqrt(n1_sq);
+    g.n2_inv = 1.0 / std::sqrt(n2_sq);
     const double b2_sq = g.b2x * g.b2x + g.b2y * g.b2y + g.b2z * g.b2z;
     if (b2_sq < 1e-20)
         return false;
     const double b2_inv = 1.0 / std::sqrt(b2_sq);
 
-    double cos_phi =
-        (g.n1x * g.n2x + g.n1y * g.n2y + g.n1z * g.n2z) * n1_inv * n2_inv;
+    double cos_phi = (g.n1x * g.n2x + g.n1y * g.n2y + g.n1z * g.n2z)
+                     * g.n1_inv * g.n2_inv;
     cos_phi = std::max(-1.0, std::min(1.0, cos_phi));
 
     // Signed sin via (n1 × n2) · û_b2 / (|n1||n2|).
     double mx, my, mz;
     cross(g.n1x, g.n1y, g.n1z, g.n2x, g.n2y, g.n2z, mx, my, mz);
     double sin_phi =
-        (mx * g.b2x + my * g.b2y + mz * g.b2z) * n1_inv * n2_inv * b2_inv;
+        (mx * g.b2x + my * g.b2y + mz * g.b2z) * g.n1_inv * g.n2_inv * b2_inv;
     sin_phi = std::max(-1.0, std::min(1.0, sin_phi));
 
     g.cos_phi = cos_phi;
@@ -94,10 +96,9 @@ inline void forces_from_dV_dcos(const Geometry& g, double dV_dcos, double& f1x,
                                 double& f2y, double& f2z, double& f3x,
                                 double& f3y, double& f3z, double& f4x,
                                 double& f4y, double& f4z) {
-    const double n1_sq = g.n1x * g.n1x + g.n1y * g.n1y + g.n1z * g.n1z;
-    const double n2_sq = g.n2x * g.n2x + g.n2y * g.n2y + g.n2z * g.n2z;
-    const double n1_inv = 1.0 / std::sqrt(n1_sq);
-    const double n2_inv = 1.0 / std::sqrt(n2_sq);
+    // Reuse inverses from fill() — saves two sqrts per dihedral.
+    const double n1_inv = g.n1_inv;
+    const double n2_inv = g.n2_inv;
     const double cos_phi = g.cos_phi;
 
     const double n1h_x = g.n1x * n1_inv, n1h_y = g.n1y * n1_inv,

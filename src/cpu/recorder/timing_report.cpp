@@ -17,7 +17,7 @@ namespace cpu {
 namespace md {
 
 namespace {
-constexpr std::size_t kN = StepTiming::kNumCategories; // 6
+constexpr std::size_t kN = StepTiming::kNumCategories; // 8 LAMMPS sections
 } // namespace
 
 ReducedReport reduce_timing(const TimerRegistry& reg) {
@@ -141,7 +141,8 @@ std::size_t read_peak_rss_kb() {
 
 namespace {
 // Map a component name to a memory category index into MemReport::kNames
-// {Atoms, Pair, Bonded, Neigh, Comm, Other}.
+// {Atoms, Pair, Bonded, Neigh, Comm, Other}. Timing Kspace → Pair bucket
+// (electrostatics footprint); Output/Modify → Other.
 int mem_category(const std::string& name) {
     if (name == "[atoms]")
         return 0; // Atoms
@@ -149,15 +150,16 @@ int mem_category(const std::string& name) {
         return 4; // Comm
     switch (StepTiming::classify(name)) {
     case StepTiming::Pair:
+    case StepTiming::Kspace:
         return 1;
-    case StepTiming::Bonded:
+    case StepTiming::Bond:
         return 2;
     case StepTiming::Neigh:
         return 3;
     case StepTiming::Comm:
         return 4;
     default:
-        return 5; // Reduce/Other → Other
+        return 5; // Output/Modify/Other
     }
 }
 } // namespace

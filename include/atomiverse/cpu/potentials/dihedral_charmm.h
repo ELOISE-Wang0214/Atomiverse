@@ -33,6 +33,17 @@ class DihedralCharmm : public Dihedral {
 
     std::string name() const override { return "charmm_dihedral"; }
 
+    /// @brief Skip pair-virial from dihedrals when no barostat needs stress
+    ///        (~extra 3 outer products per torsion). Default true.
+    DihedralCharmm& set_compute_stress(bool on) & {
+        compute_stress_ = on;
+        return *this;
+    }
+    DihedralCharmm set_compute_stress(bool on) && {
+        compute_stress_ = on;
+        return std::move(*this);
+    }
+
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
@@ -43,6 +54,10 @@ class DihedralCharmm : public Dihedral {
     std::vector<double> K_;
     std::vector<int> n_;
     std::vector<double> delta_;
+    /// Precomputed cos(δ), sin(δ) — avoids per-tuple sin/cos of phase.
+    std::vector<double> cos_delta_;
+    std::vector<double> sin_delta_;
+    bool compute_stress_ = true;
 
     md::BondedForceScratch scratch_;
     md::DropTally drops_;

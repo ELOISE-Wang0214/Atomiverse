@@ -67,24 +67,30 @@ void configure_sim(cpu::md::MD& sim) {
 
 } // namespace
 
-// ── classify: every concrete CPU MD component name maps correctly ──────
+// ── classify: LAMMPS-aligned sections ──────────────────────────────────
 TEST(StepTiming, ClassifyKnownComponentNames) {
     EXPECT_EQ(StepTiming::classify("lj"), StepTiming::Pair);
+    EXPECT_EQ(StepTiming::classify("lj/cut/coul/long"), StepTiming::Pair);
+    EXPECT_EQ(StepTiming::classify("coul/long"), StepTiming::Pair);
     EXPECT_EQ(StepTiming::classify("morse"), StepTiming::Pair);
-    EXPECT_EQ(StepTiming::classify("harmonic_bond"), StepTiming::Bonded);
-    EXPECT_EQ(StepTiming::classify("harmonic_angle"), StepTiming::Bonded);
-    EXPECT_EQ(StepTiming::classify("multi_harmonic_dihedral"),
-              StepTiming::Bonded);
+    EXPECT_EQ(StepTiming::classify("harmonic_bond"), StepTiming::Bond);
+    EXPECT_EQ(StepTiming::classify("harmonic_angle"), StepTiming::Bond);
+    EXPECT_EQ(StepTiming::classify("multi_harmonic_dihedral"), StepTiming::Bond);
+    EXPECT_EQ(StepTiming::classify("charmm_dihedral"), StepTiming::Bond);
+    EXPECT_EQ(StepTiming::classify("pppm"), StepTiming::Kspace);
+    EXPECT_EQ(StepTiming::classify("pme"), StepTiming::Kspace);
+    EXPECT_EQ(StepTiming::classify("ewald"), StepTiming::Kspace);
     EXPECT_EQ(StepTiming::classify("neighbor_list"), StepTiming::Neigh);
     EXPECT_EQ(StepTiming::classify("halo_send"), StepTiming::Comm);
     EXPECT_EQ(StepTiming::classify("halo_recv"), StepTiming::Comm);
     EXPECT_EQ(StepTiming::classify("migrate"), StepTiming::Comm);
     EXPECT_EQ(StepTiming::classify("rebalance"), StepTiming::Comm);
-    EXPECT_EQ(StepTiming::classify("reduce"), StepTiming::Reduce);
-    EXPECT_EQ(StepTiming::classify("velocity_verlet"), StepTiming::Other);
-    EXPECT_EQ(StepTiming::classify("nose_hoover_npt"), StepTiming::Other);
-    EXPECT_EQ(StepTiming::classify("fix_langevin"), StepTiming::Other);
-    EXPECT_EQ(StepTiming::classify("kinetic_energy"), StepTiming::Other);
+    EXPECT_EQ(StepTiming::classify("reduce"), StepTiming::Comm);
+    EXPECT_EQ(StepTiming::classify("thermo"), StepTiming::Output);
+    EXPECT_EQ(StepTiming::classify("velocity_verlet"), StepTiming::Modify);
+    EXPECT_EQ(StepTiming::classify("nose_hoover_npt"), StepTiming::Modify);
+    EXPECT_EQ(StepTiming::classify("fix_langevin"), StepTiming::Modify);
+    EXPECT_EQ(StepTiming::classify("kinetic_energy"), StepTiming::Modify);
 }
 
 // ── always-on: timing is ENABLED by default so every driver emits the

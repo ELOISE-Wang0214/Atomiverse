@@ -25,6 +25,8 @@ DihedralCharmm::DihedralCharmm(std::vector<double> K, std::vector<int> n,
         throw std::invalid_argument(
             "DihedralCharmm: K, n, delta must be non-empty and same size");
     }
+    cos_delta_.resize(delta_.size());
+    sin_delta_.resize(delta_.size());
     for (std::size_t t = 0; t < K_.size(); ++t) {
         if (!std::isfinite(K_[t]) || !std::isfinite(delta_[t])) {
             throw std::invalid_argument(
@@ -36,6 +38,8 @@ DihedralCharmm::DihedralCharmm(std::vector<double> K, std::vector<int> n,
                 "DihedralCharmm: multiplicity n must be >= 1 (type "
                 + std::to_string(t) + ")");
         }
+        cos_delta_[t] = std::cos(delta_[t]);
+        sin_delta_[t] = std::sin(delta_[t]);
     }
 }
 
@@ -92,9 +96,26 @@ void DihedralCharmm::compute(const LaunchContext& ctx) {
     const StorageReal* __restrict y_ptr = f.span(kAtom_y);
     const StorageReal* __restrict z_ptr = f.span(kAtom_z);
 
+    // Hoist orthorhombic min-image constants (avoids per-bond virtual/ indirections).
+    const double lx = f.simbox.length(0), ly = f.simbox.length(1),
+                 lz = f.simbox.length(2);
+    const double inv_lx = 1.0 / lx, inv_ly = 1.0 / ly, inv_lz = 1.0 / lz;
+    auto min_image = [&](double& ax, double& ay, double& az) {
+        ax -= lx * std::nearbyint(ax * inv_lx);
+        ay -= ly * std::nearbyint(ay * inv_ly);
+        az -= lz * std::nearbyint(az * inv_lz);
+    };
+    const bool do_virial = compute_stress_;
+
+    const double* __restrict Ktab = K_.data();
+    const int* __restrict ntab = n_.data();
+    const double* __restrict cosd = cos_delta_.data();
+    const double* __restrict sind = sin_delta_.data();
+    const std::size_t ntypes = K_.size();
+
     scratch_.bind(f);
 
-#pragma omp parallel reduction(+ : energy_total)
+#pragma omp parallel if (scratch_.n_threads() > 1) reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -110,34 +131,58 @@ void DihedralCharmm::compute(const LaunchContext& ctx) {
             const int i3 = tup[5 * t + 2];
             const int i4 = tup[5 * t + 3];
             const int type = tup[5 * t + 4];
-            if (type < 0 || static_cast<std::size_t>(type) >= K_.size())
+            if (type < 0 || static_cast<std::size_t>(type) >= ntypes)
                 continue;
 
             dihedral_geom::Geometry g;
             const bool ok = dihedral_geom::fill(
                 x_ptr[i1], y_ptr[i1], z_ptr[i1], x_ptr[i2], y_ptr[i2],
                 z_ptr[i2], x_ptr[i3], y_ptr[i3], z_ptr[i3], x_ptr[i4],
-                y_ptr[i4], z_ptr[i4],
-                [&](double& ax, double& ay, double& az) {
-                    f.simbox.min_image(ax, ay, az);
-                },
-                g);
+                y_ptr[i4], z_ptr[i4], min_image, g);
             if (!ok)
                 continue;
 
-            const double K = K_[static_cast<std::size_t>(type)];
-            const int n = n_[static_cast<std::size_t>(type)];
-            const double delta = delta_[static_cast<std::size_t>(type)];
-            const double phi = std::atan2(g.sin_phi, g.cos_phi);
-            const double arg = static_cast<double>(n) * phi - delta;
-            const double energy = K * (1.0 + std::cos(arg));
-            energy_total += energy;
+            const double K = Ktab[static_cast<std::size_t>(type)];
+            const int n = ntab[static_cast<std::size_t>(type)];
+            // cos(nφ), sin(nφ) by recurrence — no atan2 / sincos.
+            // GAFF n is almost always 1..3; special-case those.
+            const double c = g.cos_phi;
+            const double s = g.sin_phi;
+            double cn, sn;
+            if (n == 1) {
+                cn = c;
+                sn = s;
+            } else if (n == 2) {
+                cn = c * c - s * s;
+                sn = 2.0 * s * c;
+            } else if (n == 3) {
+                // cos3φ = 4c³−3c, sin3φ = 3s−4s³
+                cn = (4.0 * c * c - 3.0) * c;
+                sn = (3.0 - 4.0 * s * s) * s;
+            } else {
+                cn = 1.0;
+                sn = 0.0;
+                for (int k = 0; k < n; ++k) {
+                    const double cn1 = cn * c - sn * s;
+                    const double sn1 = sn * c + cn * s;
+                    cn = cn1;
+                    sn = sn1;
+                }
+            }
+            // cos(nφ−δ) = cn cosδ + sn sinδ
+            // sin(nφ−δ) = sn cosδ − cn sinδ
+            const double cd = cosd[static_cast<std::size_t>(type)];
+            const double sd = sind[static_cast<std::size_t>(type)];
+            const double carg = cn * cd + sn * sd;
+            const double sarg = sn * cd - cn * sd;
+
+            // V = K(1 + cos(nφ − δ))
+            energy_total += K * (1.0 + carg);
 
             // dE/dφ = −K n sin(nφ − δ)
-            // d²E/dφ² = −K n² cos(nφ − δ)  (for sinφ → 0 limit)
-            const double dE_dphi = -K * static_cast<double>(n) * std::sin(arg);
+            const double dE_dphi = -K * static_cast<double>(n) * sarg;
             const double d2E_dphi2 =
-                -K * static_cast<double>(n * n) * std::cos(arg);
+                -K * static_cast<double>(n * n) * carg;
             const double dV_dcos = dihedral_geom::dV_dcos_from_dE_dphi(
                 dE_dphi, g.sin_phi, g.cos_phi, d2E_dphi2);
 
@@ -159,20 +204,25 @@ void DihedralCharmm::compute(const LaunchContext& ctx) {
             tf.fy[i4] += f4y;
             tf.fz[i4] += f4z;
 
-            vir_local.add_pair(-g.b1x, -g.b1y, -g.b1z, f1x, f1y, f1z);
-            vir_local.add_pair(g.b2x, g.b2y, g.b2z, f3x + f4x, f3y + f4y,
-                               f3z + f4z);
-            vir_local.add_pair(g.b3x, g.b3y, g.b3z, f4x, f4y, f4z);
+            if (do_virial) {
+                vir_local.add_pair(-g.b1x, -g.b1y, -g.b1z, f1x, f1y, f1z);
+                vir_local.add_pair(g.b2x, g.b2y, g.b2z, f3x + f4x, f3y + f4y,
+                                   f3z + f4z);
+                vir_local.add_pair(g.b3x, g.b3y, g.b3z, f4x, f4y, f4z);
+            }
         }
+        if (do_virial) {
 #pragma omp critical
-        vir += vir_local;
+            vir += vir_local;
+        }
     }
 
     scratch_.reduce_into(n_force);
 
     f.meta.get(kEnergy) += energy_total;
     f.meta.get(kEnergyDihedral) += energy_total;
-    vir.flush_to(f.meta.get(kStress));
+    if (do_virial)
+        vir.flush_to(f.meta.get(kStress));
 
     drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }

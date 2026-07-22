@@ -15,13 +15,12 @@
 #endif
 
 #ifdef ATV_HAS_MPI
-#include "atomiverse/cpu/comm/domain.h" // DomainDecomposition (dd->n_local/n_ghost)
+#include "atomiverse/cpu/comm/domain.h"
 #endif
 
 namespace ATV {
 namespace cpu {
 
-// 2/sqrt(pi), the erfc-derivative prefactor (LAMMPS EWALD_F).
 static constexpr double kEwaldF = 1.1283791670955126;
 
 CoulLong::CoulLong(double alpha, double cutoff)
@@ -30,6 +29,20 @@ CoulLong::CoulLong(double alpha, double cutoff)
         throw std::invalid_argument("CoulLong: alpha must be > 0");
     if (cutoff <= 0.0)
         throw std::invalid_argument("CoulLong: cutoff must be > 0");
+}
+
+CoulLong& CoulLong::set_special_bonds(double s12, double s13, double s14) & {
+    s12_ = s12;
+    s13_ = s13;
+    s14_ = s14;
+    return *this;
+}
+
+CoulLong CoulLong::set_special_bonds(double s12, double s13, double s14) && {
+    s12_ = s12;
+    s13_ = s13;
+    s14_ = s14;
+    return std::move(*this);
 }
 
 void CoulLong::build(const BuildContext& ctx) {
@@ -41,6 +54,19 @@ void CoulLong::build(const BuildContext& ctx) {
     fx_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fy_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fz_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
+
+    special_.s12 = s12_;
+    special_.s13 = s13_;
+    special_.s14 = s14_;
+    any_special_ = special_.active();
+    special_.clear();
+    special_version_ = 0;
+    if (!any_special_)
+        return;
+    const auto* dd = ctx.runtime.md.dd;
+    const int n_owners =
+        (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.nlocal();
+    special_.rebuild(ctx.frame, n_owners);
 }
 
 void CoulLong::launch(const LaunchContext& ctx) {
@@ -57,16 +83,20 @@ void CoulLong::launch(const LaunchContext& ctx) {
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
     const int n_force = mpi ? dd->n_local + dd->n_ghost : f.nlocal();
 
-    // Ghost charges arrive via the build_halo border message (x,y,z,tag,q), so
-    // The charge column is valid for ghost rows too — no tag→charge map.
-
-    // Grow per-thread force arenas to cover the ghost region if needed.
     if (static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
         for (int t = 0; t < n_threads_; ++t) {
             fx_thr_[t].resize(n_force, 0.0);
             fy_thr_[t].resize(n_force, 0.0);
             fz_thr_[t].resize(n_force, 0.0);
         }
+    }
+
+    if (any_special_ && pairs.version != special_version_) {
+        special_.s12 = s12_;
+        special_.s13 = s13_;
+        special_.s14 = s14_;
+        special_.rebuild(f, pairs.inum);
+        special_version_ = pairs.version;
     }
 
     const int* __restrict ilist = pairs.ilist.data();
@@ -77,9 +107,9 @@ void CoulLong::launch(const LaunchContext& ctx) {
     const double* __restrict shx = has_shifts ? pairs.shift_x.data() : nullptr;
     const double* __restrict shy = has_shifts ? pairs.shift_y.data() : nullptr;
     const double* __restrict shz = has_shifts ? pairs.shift_z.data() : nullptr;
+    const TagInt* __restrict tag_ptr =
+        any_special_ ? f.span(kAtom_tag).data() : nullptr;
 
-    // Resolve every schema column ONCE, before the OMP parallel region opens
-    // (never inside it — the span resolution counter is not thread-safe).
     const StorageReal* __restrict x_ptr = f.span(kAtom_x);
     const StorageReal* __restrict y_ptr = f.span(kAtom_y);
     const StorageReal* __restrict z_ptr = f.span(kAtom_z);
@@ -125,6 +155,12 @@ void CoulLong::launch(const LaunchContext& ctx) {
             double fi_x = 0, fi_y = 0, fi_z = 0;
             for (int jj = 0; jj < jnum; ++jj) {
                 const int j = neighbors[off + jj];
+                double sc = 1.0;
+                if (any_special_) {
+                    sc = special_.scale_owner(i, tag_ptr[j]);
+                    if (sc == 0.0)
+                        continue;
+                }
                 double dx, dy, dz;
                 if (has_shifts) {
                     dx = xi - (x_ptr[j] + shx[off + jj]);
@@ -141,8 +177,6 @@ void CoulLong::launch(const LaunchContext& ctx) {
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc_sq || r2 == 0.0)
                     continue;
-                // Ghost charge is carried in the charge column by the border halo,
-                // so a single read covers both owned and ghost j.
                 const double qj = q_ptr[j];
                 if (qj == 0.0)
                     continue;
@@ -152,7 +186,7 @@ void CoulLong::launch(const LaunchContext& ctx) {
                 const double grij = alpha * r;
                 const double expm2 = std::exp(-grij * grij);
                 const double erfcv = std::erfc(grij);
-                const double prefactor = qqr2e * qi * qj / r;
+                const double prefactor = sc * qqr2e * qi * qj / r;
                 const double forcecoul =
                     prefactor * (erfcv + kEwaldF * grij * expm2);
                 const double fpair = forcecoul * r2inv;
@@ -205,6 +239,9 @@ void CoulLong::destroy(const DestroyContext&) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
+    special_.clear();
+    any_special_ = false;
+    special_version_ = 0;
 }
 
 } // namespace cpu

@@ -8,9 +8,10 @@ cpu-breadth-03 **ac-009** documentation.
 
 | Layer | Path | Owns |
 |---|---|---|
-| Facade math | `include/atomiverse/longrange/` | `EwaldSum`, PME B-spline / moduli / influence / force interpolation — no Frame, Component, MPI, or FFT engine |
-| CPU wrappers | `include/atomiverse/cpu/longrange/`, `src/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` — Frame spans, DD/MPI Allreduce, FFTW plans, meta write-back |
-| Build flag | `ATV_BUILD_KSPACE` | Gates FFTW3 / PME (name unchanged) |
+| Facade math | `include/atomiverse/longrange/` | `EwaldSum`, PME B-spline / moduli / influence; HE green tables (`pppm_green.h`) for future IK path — no Frame/MPI/FFT |
+| CPU wrappers | `include/atomiverse/cpu/longrange/`, `src/cpu/longrange/` | `KSpaceEwald` / `KSpacePME` (complex c2c SPME) / **`KSpacePPPM` (real brick + r2c/c2r, SPME H(m))** |
+| Build flag | `ATV_BUILD_KSPACE` | Gates FFTW3 / mesh reciprocal |
+| Science gate | `tests/cpu/longrange/test_pppm_coul.cpp` | Madelung, Ewald/PME parity, α-independence, FD forces |
 
 SCF and future consumers include only `atomiverse/longrange/*`, never
 `cpu/longrange/*`. Citations travel with the math:
@@ -24,7 +25,7 @@ Real-space and reciprocal-space halves are ordinary components that implement
 
 | Field | Meaning |
 |---|---|
-| `role` | `RealSpace` (`CoulLong`) or `ReciprocalSpace` (`KSpaceEwald` / `KSpacePME`) |
+| `role` | `RealSpace` (`CoulLong`) or `ReciprocalSpace` (`KSpaceEwald` / `KSpacePME` / `KSpacePPPM`) |
 | `alpha` | Ewald splitting α (1/Å) — **must match** between the pair |
 | cutoff / accuracy | cold metadata only |
 
@@ -65,20 +66,37 @@ distinct Box identities still refresh.
 Instrumentation gate: `PmeLifecycle.StableGridRefreshIsReplanFreeAndMemoryStable`
 and related unit tests.
 
-## MPI ceiling (replicated grid)
+## MPI: PME vs PPPM FFT
 
-Current PME is **replicated-grid**: each rank spreads owned charges, the grid
-is `MPI_Allreduce`-summed, every rank runs the full FFT, forces are
-interpolated on owned atoms. Reciprocal energy/stress and net-charge terms
-are added on rank 0; self-energy partitions over owned atoms; `Reduce`
-all-reduces frame energy/stress.
+| Style | Multi-rank (default) | Optional / debug |
+|---|---|---|
+| **PME** | Replicated-grid: `MPI_Allreduce` full charge mesh; rank-0 FFT; `MPI_Bcast` potential | — |
+| **PPPM** | Brick + reverse/forward + Alltoallv brick↔FFT + FFTW-MPI slabs (`libfftw3_mpi`). Gate: `test_mpi_pppm_brick_parity` n=1/2. | `ATV_PPPM_ALLREDUCE=1` dens_full Allreduce + rank-0 FFT (PME-like compare path). |
 
-This is correct under domain decomposition. Distributed FFT decomposition is
-out of scope for the first charged-NPT acceptance.
+Self-energy partitions over owned atoms; reciprocal energy/net-charge on
+rank 0; `Reduce` all-reduces frame energy/stress.
 
 Halo still only exchanges immediate neighbour ranks — the charged NPT MPI
 fixture uses a box large enough that `cutoff + skin` fits in each subdomain
-(see `test_mpi_pme_nacl_parity`, n=6 rock-salt).
+(see `test_mpi_pme_nacl_parity`, `test_mpi_pppm_brick_parity`, n=6 rock-salt).
+
+## Atom spatial sort (not kspace, but cache locality)
+
+LAMMPS `atom_modify sort`: **exchange → sort → borders** (not domain
+decomposition). Atomiverse:
+
+| Mode | Where sort runs |
+|---|---|
+| **Multi-rank** | `HaloSend` full rebuild, *before* ghost slots / send_lists |
+| **Serial** | `NeighborList` reneighbor before cell-list rebuild |
+
+After a successful reorder, `notify_sorted` bumps `neighbor_generation`
+so `BondedTupleCache` re-resolves tag→local (serial MD still has a `dd`).
+Without that bump, nfreq=1 sort leaves bonded forces on stale local
+indices and the trajectory explodes.
+
+Cadence: first sort after `nfreq` steps (default 1000), matching LAMMPS
+`nextsort` init — not on step 0.
 
 ## Accepted scope
 

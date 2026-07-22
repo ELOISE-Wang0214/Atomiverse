@@ -1,14 +1,10 @@
 /// @file cpu/io/lammps_data.cpp
-/// @brief Self-contained C++ reader for LAMMPS atom_style=molecular data
-///        files, sufficient for the MSU PE benchmark.
+/// @brief Self-contained C++ reader for LAMMPS atom_style full and molecular.
 ///
-/// We parse the file directly here rather than going through molrs because
-/// molrs's atom-style auto-detection misclassifies the MSU file: it sees a
-/// 6-column atoms line whose third token parses as a float, and routes it
-/// through the `charge` branch, which then mislabels mol_id as `type` in
-/// the resulting frame. The MSU file format is simple enough (single atom
-/// type, orthogonal box, standard sections) that an in-house parser is
-/// cleaner than fighting that heuristic.
+/// We parse the file directly rather than going through molrs because molrs's
+/// atom-style auto-detection misclassifies molecular 6-column lines (third
+/// token looks like a float → charge branch → mol_id becomes type). Full
+/// (7-column, with q) is detected from the first Atoms data row token count.
 
 #include "atomiverse/cpu/io/lammps_data.h"
 #include "atomiverse/core/frame_schema.h"
@@ -153,32 +149,75 @@ Frame load_lammps_data(const std::string& path) {
             continue; // `line` now holds the next section header
         }
         if (is_section("Atoms")) {
-            // atom_style=molecular: id mol-id type x y z
-            // Resolved once before the per-row lambda -- the 13.7x rule (the
-            // lambda below runs n_atoms times via consume_n).
+            // Detect style from the first data row token count:
+            //   full:      id mol type q x y z   (≥7 tokens)
+            //   molecular: id mol type x y z     (6 tokens)
+            // Do NOT stream 6-field extraction on a 7-field line — that
+            // silently maps charge → x and shifts coordinates.
+            if (!next_data_line(in, line))
+                die(path, "unexpected EOF in Atoms section");
+            {
+                std::istringstream count_iss(line);
+                std::string tok;
+                int ntok = 0;
+                while (count_iss >> tok)
+                    ++ntok;
+                if (ntok < 6)
+                    die(path, "malformed Atoms row (need full or molecular): "
+                                  + line);
+            }
+            std::istringstream probe(line);
+            int id0 = 0, mol0 = 0, type0 = 0;
+            double a = 0, b = 0, c = 0, d = 0;
+            if (!(probe >> id0 >> mol0 >> type0 >> a >> b >> c))
+                die(path, "malformed Atoms row: " + line);
+            const bool is_full = static_cast<bool>(probe >> d);
+
             StorageReal* __restrict sp_x = frame.span(kAtom_x);
             StorageReal* __restrict sp_y = frame.span(kAtom_y);
             StorageReal* __restrict sp_z = frame.span(kAtom_z);
             int* __restrict sp_type = frame.span(kAtom_type);
             StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
-            consume_n(n_atoms, [&](const std::string& l) {
-                std::istringstream iss(l);
-                int id, mol_id, atype;
-                double x, y, z;
-                if (!(iss >> id >> mol_id >> atype >> x >> y >> z)) {
-                    die(path, "malformed Atoms row: " + l);
-                }
+            StorageReal* __restrict sp_q = frame.span(kAtom_charge);
+
+            auto store_atom = [&](int id, int /*mol_id*/, int atype, double q,
+                                  double x, double y, double z) {
                 const int idx = next_idx++;
                 id_to_idx[id] = idx;
                 sp_x[idx] = static_cast<StorageReal>(x);
                 sp_y[idx] = static_cast<StorageReal>(y);
                 sp_z[idx] = static_cast<StorageReal>(z);
                 sp_type[idx] = atype - 1; // 0-indexed
+                sp_q[idx] = static_cast<StorageReal>(q);
                 auto it = type_to_mass.find(atype);
                 sp_mass[idx] = static_cast<StorageReal>(
                     (it != type_to_mass.end()) ? it->second : 0.0);
-            });
-            // Fetch next header.
+            };
+
+            // First row (already in `line`).
+            if (is_full) {
+                store_atom(id0, mol0, type0, a, b, c, d);
+            } else {
+                store_atom(id0, mol0, type0, /*q=*/0.0, a, b, c);
+            }
+
+            for (int i = 1; i < n_atoms; ++i) {
+                if (!next_data_line(in, line))
+                    die(path, "unexpected EOF in Atoms section");
+                std::istringstream iss(line);
+                int id, mol_id, atype;
+                if (is_full) {
+                    double q, x, y, z;
+                    if (!(iss >> id >> mol_id >> atype >> q >> x >> y >> z))
+                        die(path, "malformed Atoms row: " + line);
+                    store_atom(id, mol_id, atype, q, x, y, z);
+                } else {
+                    double x, y, z;
+                    if (!(iss >> id >> mol_id >> atype >> x >> y >> z))
+                        die(path, "malformed Atoms row: " + line);
+                    store_atom(id, mol_id, atype, 0.0, x, y, z);
+                }
+            }
             if (!next_data_line(in, line))
                 line.clear();
             continue;

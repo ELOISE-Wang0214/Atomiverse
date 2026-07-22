@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 #include <utility>
 
@@ -44,9 +45,9 @@ KSpacePME::KSpacePME(KSpacePME&& other) noexcept
       order_(other.order_), box_identity_(other.box_identity_),
       cell_revision_(other.cell_revision_), have_grid_(other.have_grid_),
       grid_(std::move(other.grid_)), plan_fwd_(other.plan_fwd_),
-      plan_bwd_(other.plan_bwd_), atom_capacity_(other.atom_capacity_),
-      base_(std::move(other.base_)), theta_(std::move(other.theta_)),
-      dtheta_(std::move(other.dtheta_)) {
+      plan_bwd_(other.plan_bwd_), influence_(std::move(other.influence_)),
+      atom_capacity_(other.atom_capacity_), base_(std::move(other.base_)),
+      theta_(std::move(other.theta_)), dtheta_(std::move(other.dtheta_)) {
     for (int d = 0; d < 3; ++d) {
         K_[d] = other.K_[d];
         bsp_mod_[d] = std::move(other.bsp_mod_[d]);
@@ -96,14 +97,15 @@ void KSpacePME::ensure_grid(const cpu::Frame& frame, bool initial_build) {
             bsp_mod_[d] = longrange::spline_moduli(K_[d], order_);
         }
         const int ntot = K_[0] * K_[1] * K_[2];
-        grid_.resize(static_cast<std::size_t>(ntot));
+        grid_.assign(static_cast<std::size_t>(ntot),
+                     std::complex<double>(0, 0));
         auto* data = reinterpret_cast<fftw_complex*>(grid_.data());
-        // fftw_plan_dft_3d(n0,n1,n2): n0 slowest, n2 fastest. Lay out grid
-        // with axis 2 fastest: idx = k2 + K2*(k1 + K1*k0).
+        // FFTW_MEASURE times the planner once; overwrites the buffer (ok —
+        // we rebuild before first physics step). Plans bind to this array.
         plan_fwd_ = fftw_plan_dft_3d(K_[0], K_[1], K_[2], data, data,
-                                     FFTW_FORWARD, FFTW_ESTIMATE);
+                                     FFTW_FORWARD, FFTW_MEASURE);
         plan_bwd_ = fftw_plan_dft_3d(K_[0], K_[1], K_[2], data, data,
-                                     FFTW_BACKWARD, FFTW_ESTIMATE);
+                                     FFTW_BACKWARD, FFTW_MEASURE);
         if (!plan_fwd_ || !plan_bwd_) {
             if (plan_fwd_)
                 fftw_destroy_plan(static_cast<fftw_plan>(plan_fwd_));
@@ -113,7 +115,16 @@ void KSpacePME::ensure_grid(const cpu::Frame& frame, bool initial_build) {
             plan_bwd_ = nullptr;
             throw std::runtime_error("KSpacePME: FFTW plan creation failed");
         }
+        // MEASURE dirties the grid — clear for the first spread.
+        std::fill(grid_.begin(), grid_.end(), std::complex<double>(0, 0));
     }
+
+    // Influence depends on inv_cell (and α, mesh). Rebuild whenever the cell
+    // or mesh changes — not every MD step.
+    longrange::pme_build_influence_tables(K_, bsp_mod_[0].data(),
+                                          bsp_mod_[1].data(),
+                                          bsp_mod_[2].data(), box.inv_cell(),
+                                          alpha_, influence_);
 
     box_identity_ = &box;
     cell_revision_ = box.revision();
@@ -162,7 +173,8 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     const auto& ic = f.simbox.inv_cell();
     const double vol = f.simbox.volume();
 
-    std::fill(grid_.begin(), grid_.end(), std::complex<double>(0, 0));
+    // Zero charge grid (complex). memset is faster than per-element fill.
+    std::memset(grid_.data(), 0, static_cast<std::size_t>(ntot) * sizeof(grid_[0]));
 
     // ── Spread owned charges onto the grid ─────────────────────────────
     longrange::pme_fill_atom_splines(x, y, z, n_local, ic, K_, order_,
@@ -177,22 +189,26 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                       2 * ntot, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
 #endif
 
-    // ── Forward FFT ────────────────────────────────────────────────────
-    fftw_execute_dft(static_cast<fftw_plan>(plan_fwd_),
-                     reinterpret_cast<fftw_complex*>(grid_.data()),
-                     reinterpret_cast<fftw_complex*>(grid_.data()));
-
-    // ── Influence function: energy + virial + convolution ──────────────
+    // ── FFT + influence + iFFT (rank 0 only under multi-rank) ──────────
+    // Replicated-grid MPI: every rank held a full mesh and ran redundant
+    // FFTs. Now only rank 0 transforms; the force-side grid is broadcast.
     double e_recip = 0;
-    double stress[6];
-    longrange::pme_apply_influence(grid_.data(), K_, bsp_mod_[0].data(),
-                                   bsp_mod_[1].data(), bsp_mod_[2].data(), ic,
-                                   alpha_, vol, e_recip, stress);
-
-    // ── Inverse FFT → real-space convolution grid ──────────────────────
-    fftw_execute_dft(static_cast<fftw_plan>(plan_bwd_),
-                     reinterpret_cast<fftw_complex*>(grid_.data()),
-                     reinterpret_cast<fftw_complex*>(grid_.data()));
+    double stress[6] = {0, 0, 0, 0, 0, 0};
+    if (first_rank) {
+        fftw_execute_dft(static_cast<fftw_plan>(plan_fwd_),
+                         reinterpret_cast<fftw_complex*>(grid_.data()),
+                         reinterpret_cast<fftw_complex*>(grid_.data()));
+        longrange::pme_apply_influence_tables(grid_.data(), ntot, influence_,
+                                              vol, e_recip, stress);
+        fftw_execute_dft(static_cast<fftw_plan>(plan_bwd_),
+                         reinterpret_cast<fftw_complex*>(grid_.data()),
+                         reinterpret_cast<fftw_complex*>(grid_.data()));
+    }
+#ifdef ATV_HAS_MPI
+    if (mpi)
+        MPI_Bcast(reinterpret_cast<double*>(grid_.data()), 2 * ntot,
+                  MPI_DOUBLE, 0, dd->cart_comm);
+#endif
 
     // ── Interpolate reciprocal forces onto owned atoms ─────────────────
     longrange::pme_interpolate_forces(q, n_local, order_, K_, ic, vol,
@@ -206,7 +222,6 @@ void KSpacePME::compute(const LaunchContext& ctx) {
         qsq_local += q[i] * q[i];
         q_local += q[i];
     }
-    // Same formulas as longrange::EwaldSum::{self_energy,net_charge_energy}.
     const double e_self =
         -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi) * qsq_local;
     f.meta.get(kEnergy) += e_self;
@@ -224,9 +239,6 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                              * q_total;
         f.meta.get(kEnergy) += e_recip + e_net;
         f.meta.get(kEnergyPair) += e_recip + e_net;
-        // Reciprocal virial only (same as KSpaceEwald): the net-charge term
-        // is pure 1/V energy with zero contribution on a neutral cell, and
-        // is intentionally omitted from the stress tally for parity.
         f.meta.get(kStress)[0] += stress[0];
         f.meta.get(kStress)[1] += stress[1];
         f.meta.get(kStress)[2] += stress[2];
@@ -247,6 +259,7 @@ void KSpacePME::release_storage() noexcept {
     std::vector<std::complex<double>>().swap(grid_);
     for (auto& moduli : bsp_mod_)
         std::vector<double>().swap(moduli);
+    influence_ = longrange::PmeInfluenceTables{};
     std::vector<int>().swap(base_);
     std::vector<double>().swap(theta_);
     std::vector<double>().swap(dtheta_);
@@ -264,6 +277,11 @@ std::size_t KSpacePME::memory_bytes() const {
     std::size_t bytes = grid_.capacity() * sizeof(std::complex<double>);
     for (const auto& moduli : bsp_mod_)
         bytes += moduli.capacity() * sizeof(double);
+    bytes += influence_.H.capacity() * sizeof(double);
+    bytes += influence_.mx.capacity() * sizeof(double);
+    bytes += influence_.my.capacity() * sizeof(double);
+    bytes += influence_.mz.capacity() * sizeof(double);
+    bytes += influence_.inv_msq.capacity() * sizeof(double);
     bytes += base_.capacity() * sizeof(int);
     bytes += (theta_.capacity() + dtheta_.capacity()) * sizeof(double);
     return bytes;

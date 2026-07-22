@@ -13,12 +13,11 @@
 /// with Q the spline-interpolated charge grid and B(m) the Euler spline
 /// modulus. DOI: 10.1063/1.470117.
 ///
-/// **Distributed (MPI) operation.** Each rank spreads its owned charges onto
-/// a replicated grid; the grids are `MPI_Allreduce`-summed, every rank runs
-/// the (redundant) FFT and interpolates forces on its own atoms. Reciprocal
-/// energy / net-charge are added on rank 0; self-energy partitions per rank.
-/// (Replicated-grid PME — correct under domain decomposition; a distributed
-/// parallel FFT is a future scalability refinement.)
+/// **Performance.** Influence geometry tables are rebuilt only when the mesh
+/// or cell changes (not every step). FFTW plans use `FFTW_MEASURE`. Under MPI
+/// (replicated grid) only rank 0 runs FFT + influence + iFFT; the force grid
+/// is broadcast — every rank still spreads owned charges and interpolates.
+/// (Distributed slab FFT is a future scalability refinement.)
 #pragma once
 
 #include <complex>
@@ -31,6 +30,7 @@
 #include "atomiverse/cpu/longrange/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
+#include "atomiverse/longrange/pme_influence.h"
 
 namespace ATV {
 namespace cpu {
@@ -89,6 +89,9 @@ class KSpacePME : public cpu::KSpace {
     std::vector<std::complex<double>> grid_;
     void* plan_fwd_ = nullptr;
     void* plan_bwd_ = nullptr;
+
+    // Cached influence (geometry). Rebuilt with mesh/cell; applied every step.
+    longrange::PmeInfluenceTables influence_;
 
     // Persistent per-atom spline workspace. Growth is an explicit rebuild.
     int atom_capacity_ = 0;

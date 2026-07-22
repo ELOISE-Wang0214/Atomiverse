@@ -9,6 +9,7 @@
 
 #include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/pair.h"
+#include "atomiverse/cpu/potentials/special_scale.h"
 
 namespace ATV {
 namespace cpu {
@@ -30,13 +31,10 @@ struct LJTypeCoeff {
 /// V(r) = 4ε[(σ/r)¹² − (σ/r)⁶] − V_shift
 /// F(r) = (24ε/r)·[2·(σ/r)¹² − (σ/r)⁶]·r̂
 ///
-/// Optional special-bonds exclusions (LAMMPS convention): pairs that are
-/// 1-2 (bonded), 1-3 (across an angle vertex) or 1-4 (across a dihedral)
-/// are skipped during the pair loop. Enable via `set_special_bonds()`.
-/// Lists are derived from the canonical per-atom topology columns in the
-/// `atoms` Block.
-/// at `build()` time and consulted with a per-atom binary search at
-/// `compute()` time. Default: no exclusions.
+/// Optional special-bonds (LAMMPS convention): 1-2 / 1-3 / 1-4 weights
+/// multiply pair energy and force. Scale 0 drops the pair; Amber/GAFF uses
+/// `set_special_bonds(0.0, 0.0, 0.5)`. Lists come from `kAtom_nspecial` /
+/// `kAtom_special` (via `Frame::build_special_list`). Default: no specials.
 ///
 /// Thread-parallel with per-thread force reduction buffers
 /// (Newton's 3rd law). xsimd ket-loop in the inner pair walk (Track B.2,
@@ -148,20 +146,6 @@ class PairLJCut : public Pair {
     /// has advanced past the last snapshot we filtered.
     void rebuild_filtered_list(const Frame& frame, const md::PairList& pairs);
 
-    /// @brief (Re)build `excluded_by_tag_` from the CURRENT per-atom
-    /// `nspecial`/`special` topology of the first `n_owners` rows.
-    ///
-    /// Must run whenever the owned-atom set changes (multi-rank
-    /// `Migrate`): the per-atom special lists travel WITH the atom
-    /// (pack/unpack/move_row), but a map cached once at `build()` goes
-    /// stale the moment an atom migrates into a rank whose build-time map
-    /// never held that tag — its 1-2/1-3/1-4 partners then escape the
-    /// exclusion filter and the LJ kernel sees a ~1.5 Å bonded pair,
-    /// producing a catastrophic repulsive spike (MSU-PE multi-rank NPT
-    /// collapse). Called from `rebuild_filtered_list`, which is itself
-    /// gated on `pairs.version` so the refresh tracks every NL rebuild.
-    void refresh_exclusion_map(const Frame& frame, int n_owners);
-
     double epsilon_, sigma_;
 
     /// Per-type coefficient tables, flattened `n_types_ x n_types_`. Empty = the
@@ -177,8 +161,7 @@ class PairLJCut : public Pair {
     std::vector<char> set_tab_; ///< 1 = explicitly set by the user
     double sigma6_, cutoff_sq_, v_shift_;
 
-    // Special-bonds: when any of these is < 1, the corresponding bonded
-    // pair list is built at build() time and consulted at launch() time.
+    // Special-bonds weights (LAMMPS special_bonds). Amber: (0, 0, 0.5).
     double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
 
     // When false, the inner loop skips the 6-component pair virial and the
@@ -186,29 +169,21 @@ class PairLJCut : public Pair {
     // unchanged. Default true to preserve behavior for pressure/NPT runs.
     bool compute_stress_ = true;
 
-    // True when any special-bonds tier is fully excluded (scale 0). Gates
-    // the exclusion-filtered CSR path independently of whether the current
-    // exclusion map happens to be non-empty, so the filter (and its
-    // per-rebuild map refresh) stays active across migrations even on a
-    // step where this rank momentarily owns no excluded pair.
-    bool any_excl_ = false;
-
-    // Tag-indexed exclusion lists. See pre-refactor LJ for full docs;
-    // unchanged by the rename.
-    std::unordered_map<std::int64_t, std::vector<std::int64_t>>
-        excluded_by_tag_;
+    /// True when any of s12/s13/s14 != 1 — activates filtered CSR + scales.
+    bool any_special_ = false;
+    /// True when any scale is in (0,1) — forces scalar path (scale × E,F).
+    bool has_partial_special_ = false;
+    md::SpecialScaleTable special_;
 
     // Per-thread force reduction buffers
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
 
-    // Exclusion-filtered neighbor CSR — see pre-refactor LJ for full docs.
+    // Special-filtered neighbor CSR (+ per-pair scale parallel to neighbors).
     std::vector<int> filtered_neighbors_;
     std::vector<int> filtered_numneigh_;
     std::vector<int> filtered_firstneigh_;
-    // Per-pair PBC shifts parallel to filtered_neighbors_ (copied from the
-    // upstream PairList when it carries shifts) so the kernel can skip the
-    // per-pair min-image. Empty when the upstream list has no shifts.
+    std::vector<double> filtered_scale_;
     std::vector<double> filtered_shift_x_;
     std::vector<double> filtered_shift_y_;
     std::vector<double> filtered_shift_z_;
