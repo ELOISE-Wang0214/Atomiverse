@@ -9,7 +9,7 @@
 ///
 /// Now it reduces the four metrics on the device, brings them (plus the potential
 /// energy) to the host in one pinned D2H, and PUBLISHES them into
-/// `ctx.runtime.loop.metrics`. A `cuda::LoopHandler` — `cuda::ForceConverged` by
+/// `ctx.runtime.loop.metrics`. A `cuda::Criterion` — `cuda::ForceConverged` by
 /// default, attached by the `Minimize` preset — reads them and returns the `Verdict`.
 /// The tolerances live with the policy, in the handler.
 ///
@@ -24,7 +24,7 @@
 /// evaluation; the deferred `AsyncBridge` ring is not applicable because its K-step lag
 /// would overrun the convergence point).
 ///
-/// @see cuda/driver/loop_handler.cuh for the handler that judges these metrics
+/// @see cuda/driver/criterion.cuh for the handler that judges these metrics
 /// @see cpu/minimizer/lbfgs.cpp for the CPU publish-don't-decide sibling
 #pragma once
 

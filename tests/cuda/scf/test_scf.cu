@@ -8,7 +8,7 @@
 #include <type_traits>
 
 #include "atomiverse/cpu/scf/solve.h"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/evaluate/single_point.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
@@ -110,9 +110,9 @@ TEST(SCF, EvaluateIsALoopNodeOverTheEvaluatePhase) {
     // still has content, and is what the SCF single point actually depends on, is that
     // Evaluate is a loop node over the `evaluate::Phase` stage domain: that is what lets
     // an SCF bind `evaluate::Phase::evaluate` and be dispatched.
-    static_assert(std::is_base_of_v<cuda::CUDADriver<ATV::evaluate::Phase>,
+    static_assert(std::is_base_of_v<cuda::Driver<ATV::evaluate::Phase>,
                                     cuda::Evaluate>,
-                  "cuda::Evaluate must be a CUDADriver over evaluate::Phase");
+                  "cuda::Evaluate must be a Driver over evaluate::Phase");
     SUCCEED();
 }
 

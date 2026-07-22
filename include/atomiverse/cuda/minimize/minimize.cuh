@@ -2,7 +2,7 @@
 /// @brief cuda::minimizer::Minimize — the CUDA energy-minimizer preset.
 ///
 /// `Minimize` is the single user-facing CUDA minimizer: a
-/// `cuda::CUDADriver<minimizer::Phase>` that owns a `run(frame, max_iter)` loop and a
+/// `cuda::Driver<minimizer::Phase>` that owns a `run(frame, max_iter)` loop and a
 /// build-time `validate_components()` contract (≥ 1 `Optimizer`-role component and ≥ 1
 /// `Evaluator` carrying `Capability::Energy` or `Capability::Force`).
 ///
@@ -15,8 +15,8 @@
 /// @code{.cpp}
 ///   cuda::minimizer::Minimize min;
 ///   min.add(cuda::minimizer::LBFGS{});
-///   min.add_handler(cuda::ForceConverged{/*ftol=*/1e-3});   // replaces the default
-///   min.add_handler(cuda::StopOnNaN{});                     // …and composes with it
+///   min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-3});   // replaces the default
+///   min.add_criterion(cuda::StopOnNaN{});                     // …and composes with it
 /// @endcode
 ///
 /// Algorithms are hot-swappable components, not driver subclasses:
@@ -29,16 +29,16 @@
 /// The constructor adds only infrastructure components. The phase-agnostic `Zero*`
 /// initializers (`cuda/md/init.cuh`) are bound explicitly to `minimizer::Phase`.
 ///
-/// @see cuda::CUDADriver for the loop primitives + the handler slot
-/// @see cuda/driver/loop_handler.cuh for ForceConverged / StopOnNaN
+/// @see cuda::Driver for the loop primitives + the handler slot
+/// @see cuda/driver/criterion.cuh for ForceConverged / StopOnNaN
 /// @see cuda::minimizer::SteepestDescent / CG / LBFGS for the Optimizer components
 /// @see minimizer::Phase for the minimizer phase sequence
 #pragma once
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
-#include "atomiverse/cuda/driver/loop_handler.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
+#include "atomiverse/cuda/driver/criterion.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
@@ -66,9 +66,9 @@ namespace minimizer {
 /// bool ok = min.converged();          // the LOOP knows — not the optimizer
 /// @endcode
 ///
-/// Inheritance: Minimize → cuda::CUDADriver<minimizer::Phase> →
+/// Inheritance: Minimize → cuda::Driver<minimizer::Phase> →
 /// Driver<minimizer::Phase, cuda::device_tag>.
-class Minimize : public cuda::CUDADriver<ATV::minimizer::Phase> {
+class Minimize : public cuda::Driver<ATV::minimizer::Phase> {
   public:
     /// @brief Construct the minimizer, binding the phase-agnostic `Zero*`
     ///        infrastructure components to `minimizer::Phase::force`.
@@ -135,11 +135,11 @@ class Minimize : public cuda::CUDADriver<ATV::minimizer::Phase> {
     /// metrics and nobody judges them. So the PRESET supplies the policy it is a preset
     /// for. It contributes a default, not a semantics: textbook LAMMPS/ASE-ish
     /// tolerances, overridden wholesale with
-    /// `min.add_handler(cuda::ForceConverged{ftol, …})` before `build()`. Same rule and
+    /// `min.add_criterion(cuda::ForceConverged{ftol, …})` before `build()`. Same rule and
     /// same defaults as `cpu::minimizer::Minimize`.
     void install_defaults() override {
         if (!this->has_handler())
-            this->add_handler(cuda::ForceConverged{});
+            this->add_criterion(cuda::ForceConverged{});
     }
 };
 

@@ -7,7 +7,7 @@
 ///
 /// Plan slots hold a Component* **or** a nested-driver binding (CPU only).
 /// Nested drivers are registered via `on(phase).add(driver, order, budget)` /
-/// `add_ref` and erased as `cpu::Driver*` (stored as void* in pending/plan).
+/// `add_ref` and erased as `cpu::DriverNode*` (stored as void* in pending/plan).
 #pragma once
 
 #include <memory>
@@ -20,7 +20,7 @@
 #include "atomiverse/core/backend_traits.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/device.h"
-#include "atomiverse/cpu/driver/driver.h"
+#include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/core/plan.h"
@@ -40,7 +40,7 @@ struct PendingBinding {
     int phase = 0;              ///< Target phase index.
     int order = 0;              ///< Ordering within the phase (lower runs earlier).
     Component* component = nullptr; ///< Component node.
-    void* nested_driver = nullptr;  ///< Nested-driver node (`cpu::Driver*`).
+    void* nested_driver = nullptr;  ///< Nested-driver node (`cpu::DriverNode*`).
     int nested_budget = 0;          ///< Budget for nested-driver nodes.
 
     /// @brief True when this binding is a nested driver.
@@ -86,7 +86,7 @@ class PhaseBuilder {
     /// @brief Borrow a component whose lifetime is owned by the caller.
     ///
     /// Prefer Component binding when the type is dual-identity
-    /// (Component + cpu::Driver), e.g. transitional MeanFieldMethod.
+    /// (Component + cpu::DriverNode), e.g. transitional MeanFieldMethod.
     template <typename Comp,
               std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
     PhaseBuilder& add_ref(Comp& comp, int order = 0) {
@@ -99,20 +99,20 @@ class PhaseBuilder {
     ///
     /// Moves `child` into the parent's `owned_drivers_`. `budget < 0` uses
     /// `child.default_budget()`. Disabled for types that are also Components
-    /// (e.g. transitional MeanFieldMethod = HF + CPUDriver) so they keep
+    /// (e.g. transitional MeanFieldMethod = HF + Driver) so they keep
     /// binding as force/energy components until 04b drops the dual identity.
     template <
         typename Nested,
         std::enable_if_t<
             std::is_same_v<DeviceTag, cpu::device_tag>
-                && std::is_base_of_v<cpu::Driver, std::remove_reference_t<Nested>>
+                && std::is_base_of_v<cpu::DriverNode, std::remove_reference_t<Nested>>
                 && !std::is_base_of_v<Component, std::remove_reference_t<Nested>>
                 && !std::is_lvalue_reference_v<Nested>,
             int> = 0>
     PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
         using N = std::remove_reference_t<Nested>;
         auto ptr = std::make_unique<N>(std::forward<Nested>(child));
-        cpu::Driver* raw = ptr.get();
+        cpu::DriverNode* raw = ptr.get();
         const int b = (budget < 0) ? raw->default_budget() : budget;
         owned_drivers_->push_back(std::move(ptr));
         bindings_->push_back(
@@ -128,11 +128,11 @@ class PhaseBuilder {
     template <
         typename Nested,
         std::enable_if_t<std::is_same_v<DeviceTag, cpu::device_tag>
-                             && std::is_base_of_v<cpu::Driver, Nested>
+                             && std::is_base_of_v<cpu::DriverNode, Nested>
                              && !std::is_base_of_v<Component, Nested>,
                          int> = 0>
     PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
-        cpu::Driver* raw = &child;
+        cpu::DriverNode* raw = &child;
         const int b = (budget < 0) ? raw->default_budget() : budget;
         bindings_->push_back(
             {ATV::slot_of(phase_), order, nullptr, static_cast<void*>(raw), b});
@@ -148,11 +148,11 @@ class PhaseBuilder {
     friend class Driver;
     PhaseBuilder(std::vector<detail::PendingBinding<Component>>* b,
                  std::vector<std::unique_ptr<Component>>* o,
-                 std::vector<std::unique_ptr<cpu::Driver>>* d, PhaseEnum p)
+                 std::vector<std::unique_ptr<cpu::DriverNode>>* d, PhaseEnum p)
         : bindings_(b), owned_(o), owned_drivers_(d), phase_(p) {}
     std::vector<detail::PendingBinding<Component>>* bindings_;
     std::vector<std::unique_ptr<Component>>* owned_;
-    std::vector<std::unique_ptr<cpu::Driver>>* owned_drivers_;
+    std::vector<std::unique_ptr<cpu::DriverNode>>* owned_drivers_;
     PhaseEnum phase_;
 };
 
@@ -198,7 +198,7 @@ class Driver {
               std::enable_if_t<
                   std::is_base_of_v<Component, std::remove_reference_t<Comp>>
                       && !std::is_lvalue_reference_v<Comp>
-                      && !std::is_base_of_v<cpu::Driver,
+                      && !std::is_base_of_v<cpu::DriverNode,
                                             std::remove_reference_t<Comp>>,
                   int> = 0>
     void add(Comp&& comp) {
@@ -227,7 +227,7 @@ class Driver {
     /// @brief Borrow a component whose lifetime is owned by the caller.
     template <typename Comp,
               std::enable_if_t<std::is_base_of_v<Component, Comp>
-                                   && !std::is_base_of_v<cpu::Driver, Comp>,
+                                   && !std::is_base_of_v<cpu::DriverNode, Comp>,
                                int> = 0>
     void add_ref(Comp& comp) {
         auto bindings = comp.default_bindings();
@@ -242,14 +242,14 @@ class Driver {
 
     /// Drivers have no default bindings — use `.on(phase).add(...)`.
     template <typename Nested,
-              std::enable_if_t<std::is_base_of_v<cpu::Driver,
+              std::enable_if_t<std::is_base_of_v<cpu::DriverNode,
                                                  std::remove_reference_t<Nested>>,
                                int> = 0>
     void add(Nested&&) = delete;
 
     /// Drivers have no default bindings — use `.on(phase).add_ref(...)`.
     template <typename Nested,
-              std::enable_if_t<std::is_base_of_v<cpu::Driver, Nested>, int> = 0>
+              std::enable_if_t<std::is_base_of_v<cpu::DriverNode, Nested>, int> = 0>
     void add_ref(Nested&) = delete;
 
     /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
@@ -299,10 +299,10 @@ class Driver {
 
   protected:
     // Internals are protected (not private) so the backend loop node
-    // (cpu::CPUDriver / cuda::CUDADriver) can drive the per-iteration loop itself.
+    // (cpu::Driver / cuda::Driver) can drive the per-iteration loop itself.
     std::vector<detail::PendingBinding<Component>> pending_;
     std::vector<std::unique_ptr<Component>> owned_components_;
-    std::vector<std::unique_ptr<cpu::Driver>> owned_drivers_;
+    std::vector<std::unique_ptr<cpu::DriverNode>> owned_drivers_;
     Plan<Component> plan_;
     std::unique_ptr<BackendT> backend_;
     std::unique_ptr<Timer> timer_;

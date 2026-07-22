@@ -85,7 +85,7 @@ TEST(InstallInfraHook, AsNeighborProviderDefaultsToNull) {
 /// Subclasses the `cpu::md::MD` preset (the category bases are gone). MD *itself*
 /// overrides `install_defaults()` — it injects `mpi::Reduce`, the halo pair and the
 /// neighbor-list guard — so the override must chain to `MD::install_defaults()`, not to
-/// `CPUDriver`'s empty base hook, or that infrastructure silently disappears.
+/// `Driver`'s empty base hook, or that infrastructure silently disappears.
 class HookCounterDynamics : public ATV::cpu::md::MD {
   public:
     int install_calls = 0;

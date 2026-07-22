@@ -4,7 +4,7 @@
 ///        capability set is not satisfied, and builds successfully when it is.
 ///
 /// The three category bases (`cuda::EvaluateDriver` / `DynamicsDriver` /
-/// `OptimizeDriver`) are deleted: termination is a `LoopHandler`, not a class, and with
+/// `OptimizeDriver`) are deleted: termination is a `Criterion`, not a class, and with
 /// termination gone the bases had nothing left to be. Their `validate_components()`
 /// contracts were folded DOWN into the presets, and this file drives them through the
 /// preset's `build()` — which is the only way a user ever reached them anyway (nobody
@@ -211,7 +211,7 @@ TEST(CUDADriverRoleValidation, MinimizeKeepsTheUserHandler) {
     cuda::minimizer::Minimize o;
     StubOptimizer opt;
     StubEnergyEvaluator energy;
-    o.add_handler(cuda::ForceConverged{/*ftol=*/1e-4});
+    o.add_criterion(cuda::ForceConverged{/*ftol=*/1e-4});
     o.on(minimizer::Phase::search_direction).add(opt);
     o.on(minimizer::Phase::force).add(energy);
     EXPECT_TRUE(o.has_handler());

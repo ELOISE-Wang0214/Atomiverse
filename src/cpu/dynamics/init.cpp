@@ -198,7 +198,7 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
         n_global = ng;
     }
 #endif
-    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    // Ndof: single owner, constraint-aware. @see Driver::publish_dof_
     const long long ndof = ctx.runtime.md.n_dof_global;
     (void)n_global;
     if (ndof > 0 && sum_mv2 > 0.0) {

@@ -50,7 +50,7 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    // Ndof is published by CPUDriver::publish_dof_ before any component builds,
+    // Ndof is published by Driver::publish_dof_ before any component builds,
     // and already accounts for constraints (3N - 3 - n_constraints).
     n_dof_global_ = ctx.runtime.md.n_dof_global;
     (void)n_global;

@@ -38,7 +38,7 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/vibration/displace_step.h"
 #include "atomiverse/cpu/vibration/hessian_accumulator.h"
@@ -61,9 +61,9 @@ namespace vib {
 /// convergence path and no early stop. `6N` is derived from the frame inside `run()`,
 /// never passed in. The budget is the loop bound; no criterion is attached.
 ///
-/// Inheritance: Hessian → CPUDriver<vib::Phase> → Driver<vib::Phase, cpu::device_tag>.
+/// Inheritance: Hessian → Driver<vib::Phase> → Driver<vib::Phase, cpu::device_tag>.
 /// There is no `ResponseDriver` category in between any more.
-class Hessian : public CPUDriver<ATV::vib::Phase> {
+class Hessian : public Driver<ATV::vib::Phase> {
   public:
     /// @brief Tag type to construct a driver WITHOUT the HessianAccumulator.
     ///
@@ -159,7 +159,7 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
                 if (c.name() == "vib_hessian_accumulator")
                     has_hessian_writer = true;
             },
-            [&](const cpu::Driver* d) {
+            [&](const cpu::DriverNode* d) {
                 if (dynamic_cast<const HF*>(d))
                     has_force_writer = true;
             });

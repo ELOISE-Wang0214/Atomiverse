@@ -1,13 +1,13 @@
 /// @file cuda/md/md.cuh
 /// @brief cuda::md::MD -- molecular dynamics preset with LAMMPS-style phases.
 ///
-/// `MD` is the CUDA molecular-dynamics preset: a `cuda::CUDADriver<md::Phase>` that owns
+/// `MD` is the CUDA molecular-dynamics preset: a `cuda::Driver<md::Phase>` that owns
 /// a continuable `run(frame, n_steps)` and a build-time `validate_components()` contract
 /// (≥ 1 `Integrator`-role component and ≥ 1 component carrying `Capability::Force`).
 ///
 /// There is no `cuda::DynamicsDriver` category above it any more. **The step budget IS
-/// the termination**, so MD attaches no default `LoopHandler` — but it honours every
-/// handler the user attaches (`sim.add_handler(cuda::StopOnNaN{})`, a wall-clock guard,
+/// the termination**, so MD attaches no default `Criterion` — but it honours every
+/// handler the user attaches (`sim.add_criterion(cuda::StopOnNaN{})`, a wall-clock guard,
 /// a temperature halt), which is a thing that could not be expressed at all while "stop
 /// or not" was a private `if` inside a driver class.
 ///
@@ -51,7 +51,7 @@
 /// ## Auto-injection at build()
 ///
 /// `MD::install_defaults()` runs *before* `validate_components()` (the order
-/// `CUDADriver::build()` fixes), so auto-injected components count toward validation.
+/// `Driver::build()` fixes), so auto-injected components count toward validation.
 /// Single-GPU subset of the CPU rules, keyed on capability-typed virtuals (no string
 /// proxies, no RTTI casts):
 ///
@@ -86,7 +86,7 @@
 /// sim.run(frame, 10000);
 /// @endcode
 ///
-/// @see cuda::CUDADriver for the loop primitives + the handler slot
+/// @see cuda::Driver for the loop primitives + the handler slot
 /// @see md::Phase for the LAMMPS-style phase sequence
 /// @see cpu::md::MD for the CPU sibling driver with the same API surface
 #pragma once
@@ -99,7 +99,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/cuda/dynamics/kinetic_energy.cuh"
 #include "atomiverse/cuda/observe/stress.cuh"
@@ -111,7 +111,7 @@ namespace ATV {
 namespace cuda {
 namespace md {
 
-/// @brief CUDA MD preset — a `cuda::CUDADriver<md::Phase>` with the LAMMPS-style
+/// @brief CUDA MD preset — a `cuda::Driver<md::Phase>` with the LAMMPS-style
 ///        phase sequence and the 11-method categorical setter API that mirrors
 ///        `cpu::md::MD`.
 ///
@@ -120,7 +120,7 @@ namespace md {
 /// `add()` / `on(phase).add()` escape hatch).
 ///
 /// @see cuda::minimizer::Minimize for the energy minimizer preset
-class MD : public cuda::CUDADriver<ATV::md::Phase> {
+class MD : public cuda::Driver<ATV::md::Phase> {
   public:
     /// @brief Construct MD driver, binding the phase-agnostic Zero* and
     ///        KineticEnergy infrastructure components to `md::Phase`.
@@ -323,7 +323,7 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
 
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.
     ///
-    /// Runs before `validate_components()` (see `CUDADriver::build()`). Two checks,
+    /// Runs before `validate_components()` (see `Driver::build()`). Two checks,
     /// both keyed on capability-typed probes (`reads()`, `capabilities()`, and the
     /// `as_neighbor_consumer()` / `as_neighbor_provider()` protocol accessors) — no
     /// `name()` string matching, no RTTI cast:
@@ -336,7 +336,7 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
     ///      the first offender.
     ///
     /// **No default handler.** A time budget is not a policy — MD stops when the steps
-    /// run out, and anything else the user wants is a `LoopHandler` they attach.
+    /// run out, and anything else the user wants is a `Criterion` they attach.
     void install_defaults() override {
         bool needs_stress_input = false;
         bool has_stress_producer = false;
@@ -391,7 +391,7 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
         }
     }
 
-    // ── Singular-setter helpers (CUDA side, mirroring cpu::CPUDriver) ──
+    // ── Singular-setter helpers (CUDA side, mirroring cpu::Driver) ──
 
     /// @brief Singular setter at an explicit phase / order. Used for
     /// components without `default_bindings()` (NeighborList) or where

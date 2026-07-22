@@ -7,8 +7,8 @@
 ///
 /// Nodes are either a Component* or a nested-driver binding
 /// (`nested_driver` + `nested_budget`). Nested drivers are type-erased as
-/// `void*` here so this header stays free of `cpu::Driver`; the CPU backend
-/// casts to `cpu::Driver*`. CUDA never populates driver nodes.
+/// `void*` here so this header stays free of `cpu::DriverNode`; the CPU backend
+/// casts to `cpu::DriverNode*`. CUDA never populates driver nodes.
 ///
 /// @see Driver::build() for how Plans are created
 /// @see Backend::step() for how Plans are executed
@@ -73,7 +73,7 @@ class PlanBuilder {
         int phase;                    ///< Target phase index.
         int order;                    ///< Ordering within phase (lower = earlier).
         Component* component = nullptr; ///< Component node (xor nested_driver).
-        void* nested_driver = nullptr;  ///< Nested-driver node (cpu::Driver*).
+        void* nested_driver = nullptr;  ///< Nested-driver node (cpu::DriverNode*).
         int nested_budget = 0;          ///< Budget for nested-driver nodes.
     };
 

@@ -7,7 +7,7 @@
 /// `cuda::minimizer::Minimize`. Same outer contract as the CPU class —
 /// binds `search_direction` (computes and applies the step) and
 /// `convergence_check` (PUBLISHES its metrics into `ctx.runtime.loop.metrics`;
-/// a `cuda::LoopHandler` judges them — the component decides nothing).
+/// a `cuda::Criterion` judges them — the component decides nothing).
 ///
 /// Algorithm (Polak-Ribière+):
 ///   d_0 = -g_0
@@ -26,7 +26,7 @@
 ///
 /// **Tolerances are not here.** They belong to the termination policy —
 /// `cuda::ForceConverged`, which `cuda::minimizer::Minimize` attaches by default and
-/// which the user replaces with `min.add_handler(cuda::ForceConverged{ftol, …})`. This
+/// which the user replaces with `min.add_criterion(cuda::ForceConverged{ftol, …})`. This
 /// component measures; it does not decide. That is why it no longer carries five of its
 /// six constructor arguments, and why `CG::converged()` is gone: ask the loop
 /// (`min.converged()`), which is the thing that actually knows.

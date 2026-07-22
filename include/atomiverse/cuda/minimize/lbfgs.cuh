@@ -22,7 +22,7 @@
 ///
 /// **Tolerances are not here.** They belong to the termination policy —
 /// `cuda::ForceConverged`, which `cuda::minimizer::Minimize` attaches by default and
-/// which the user replaces with `min.add_handler(cuda::ForceConverged{ftol, …})`. This
+/// which the user replaces with `min.add_criterion(cuda::ForceConverged{ftol, …})`. This
 /// component measures (all five metrics: max/RMS force, max/RMS displacement, energy
 /// change) and publishes them; it does not decide. Hence five fewer constructor
 /// arguments, and no `LBFGS::converged()` — ask the loop (`min.converged()`).

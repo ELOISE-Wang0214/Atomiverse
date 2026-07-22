@@ -123,7 +123,7 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    // Ndof: single owner, constraint-aware. @see Driver::publish_dof_
     n_dof_ = ctx.runtime.md.n_dof_global;
     (void)N;
     kT_ = units::kB_ev_per_k * T_target_;

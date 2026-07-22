@@ -135,7 +135,7 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 /// was treated as an *inner* solver behind an Evaluator component, so it carried
 /// no outer phase enum. **That conclusion is reversed.** A self-consistency loop
 /// is a staged loop with a termination criterion — exactly a Driver — so the
-/// gaussian-basis SCF iteration becomes a `cpu::CPUDriver<scf::Phase>`, and the
+/// gaussian-basis SCF iteration becomes a `cpu::Driver<scf::Phase>`, and the
 /// concrete methods (`RHF`/`UHF`/`RKS`/`UKS`) supply the components that fill its
 /// stages. (The CUDA and plane-wave paths stay inner solvers for now; this enum
 /// is CPU-only.)

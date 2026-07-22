@@ -600,7 +600,7 @@ if(ATV_BUILD_HF)
     # the spec mandates bit-identity.
     set_tests_properties(test_cpu_scf_stages PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1")
-    # scf-driver-refactor-03a-convert: RHF/UHF/RKS/UKS as CPUDriver<scf::Phase>,
+    # scf-driver-refactor-03a-convert: RHF/UHF/RKS/UKS as Driver<scf::Phase>,
     # regression-pinned against the 03a-parity energies/eigenvalues. Pins serial
     # execution for the same ULP-determinism reason as test_cpu_scf_stages.
     atv_add_cpp_test(test_cpu_scf_method_driver_parity
@@ -768,6 +768,13 @@ add_test(
 add_test(
     NAME test_path_words_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/path_words_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# backend-mirror-04-driver gate: the loop node is Driver (no backend-prefixed
+# driver class), erased base is DriverNode, CUDA termination API is Criterion.
+add_test(
+    NAME test_driver_names_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/driver_names_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: domain objects are constructed via class constructors — never

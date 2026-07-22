@@ -1,5 +1,5 @@
-/// @file cuda/driver/loop_handler.cuh
-/// @brief LoopHandler — termination as a reusable, user-definable policy (CUDA).
+/// @file cuda/driver/criterion.cuh
+/// @brief Criterion — termination as a reusable, user-definable policy (CUDA).
 ///
 /// The CUDA mirror of `cpu/driver/loop_handler.h`. Same vocabulary
 /// (`ATV::Verdict` / `ATV::LoopMetrics`, from the CUDA-free `facade/loop.h`), same
@@ -9,7 +9,7 @@
 ///
 /// ## Why this is not a template
 ///
-/// `LoopHandler` sees a `LoopState` and **never a phase**. That is the whole point: a
+/// `Criterion` sees a `LoopState` and **never a phase**. That is the whole point: a
 /// handler that knew about `md::Phase` could only ever serve MD. Knowing nothing about
 /// stages, one handler serves every workflow — `StopOnNaN` is as meaningful to a
 /// minimization as to an MD trajectory, and neither of them had any way to say so
@@ -22,7 +22,7 @@
 /// ## Writing one
 ///
 /// @code
-///   class StopWhenTooHot : public cuda::LoopHandler {
+///   class StopWhenTooHot : public cuda::Criterion {
 ///     public:
 ///       explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
 ///       const char* name() const override { return "stop_when_too_hot"; }
@@ -33,7 +33,7 @@
 ///       double t_max_;
 ///   };
 ///
-///   sim.add_handler(StopWhenTooHot{2000.0});
+///   sim.add_criterion(StopWhenTooHot{2000.0});
 /// @endcode
 ///
 /// This is LAMMPS's `fix halt`, and it was **impossible** to write before: "stop or not"
@@ -51,12 +51,12 @@
 ///
 /// ## MPI
 ///
-/// `cpu::CPUDriver` all-reduces the handler verdict across ranks (`MPI_MAX` over the
+/// `cpu::Driver` all-reduces the handler verdict across ranks (`MPI_MAX` over the
 /// severity) so that ranks cannot disagree about when to stop and deadlock at the next
 /// collective. The CUDA driver is **single-rank** — it has no communicator and no
 /// `comm/` layer wired into the driver — so there is no reduction here. Handler authors
 /// write `after_iteration` as if the process were alone on both backends; the day CUDA
-/// grows a multi-GPU driver loop, the reduction goes into `CUDADriver::poll_handlers_`,
+/// grows a multi-GPU driver loop, the reduction goes into `Driver::poll_handlers_`,
 /// exactly as on the CPU, and no handler changes.
 #pragma once
 
@@ -82,9 +82,9 @@ struct LoopState {
 };
 
 /// @brief A termination policy, asked once after every iteration of the loop it is on.
-class LoopHandler {
+class Criterion {
   public:
-    virtual ~LoopHandler() = default;
+    virtual ~Criterion() = default;
 
     /// @brief Identifier, used in the stop reason the driver reports.
     virtual const char* name() const = 0;
@@ -112,7 +112,7 @@ class LoopHandler {
 /// Identical rule, identical defaults, identical units as `cpu::ForceConverged` — the
 /// two backends must converge on the same criteria or a CPU/GPU parity test means
 /// nothing.
-class ForceConverged : public LoopHandler {
+class ForceConverged : public Criterion {
   public:
     /// @brief Construct the convergence test from its five tolerances.
     /// @param ftol Max force [eV/Å].
@@ -163,7 +163,7 @@ class ForceConverged : public LoopHandler {
 ///
 /// Reads only `LoopMetrics::energy`, i.e. what a component already brought back to the
 /// host. It does not — and on this backend must not — read the device frame.
-class StopOnNaN : public LoopHandler {
+class StopOnNaN : public Criterion {
   public:
     /// @brief Identifier reported as the stop reason.
     /// @return `"stop_on_nan"`.

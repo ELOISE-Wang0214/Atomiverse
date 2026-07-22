@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/core/stage.h"
@@ -25,7 +25,7 @@ using namespace ATV;
 namespace {
 
 /// @brief Minimal loop over md::Phase — the PARENT.
-class OuterLoop : public cpu::CPUDriver<ATV::md::Phase> {
+class OuterLoop : public cpu::Driver<ATV::md::Phase> {
   public:
     int run(cpu::Frame& frame, int budget) {
         setup_pass(frame);
@@ -46,7 +46,7 @@ class OuterLoop : public cpu::CPUDriver<ATV::md::Phase> {
 };
 
 /// @brief Minimal loop over minimizer::Phase — the CHILD (different enum).
-class InnerLoop : public cpu::CPUDriver<ATV::minimizer::Phase> {
+class InnerLoop : public cpu::Driver<ATV::minimizer::Phase> {
   public:
     int default_budget() const override { return 10; }
 
@@ -214,14 +214,14 @@ TEST(DriverNesting, InnerBuildRunsOnceAtOuterBuild) {
 // ── Child keeps its own phase enum ──────────────────────────────────────────
 
 TEST(DriverNesting, ChildKeepsItsOwnPhaseEnum) {
-    static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::md::Phase>, OuterLoop>,
+    static_assert(std::is_base_of_v<cpu::Driver<ATV::md::Phase>, OuterLoop>,
                   "parent loops over md::Phase");
     static_assert(
-        std::is_base_of_v<cpu::CPUDriver<ATV::minimizer::Phase>, InnerLoop>,
+        std::is_base_of_v<cpu::Driver<ATV::minimizer::Phase>, InnerLoop>,
         "child loops over minimizer::Phase");
-    static_assert(std::is_base_of_v<cpu::Driver, OuterLoop>,
-                  "a CPUDriver IS a nestable Driver node");
-    static_assert(std::is_base_of_v<cpu::Driver, InnerLoop>,
+    static_assert(std::is_base_of_v<cpu::DriverNode, OuterLoop>,
+                  "a Driver IS a nestable Driver node");
+    static_assert(std::is_base_of_v<cpu::DriverNode, InnerLoop>,
                   "child is a nestable Driver node");
     SUCCEED();
 }

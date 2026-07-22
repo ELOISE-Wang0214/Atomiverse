@@ -99,7 +99,7 @@ struct DynamicsServices {
 /// the NESTED loop's status, never the parent's. Mirrors `cpu::LoopServices`.
 struct LoopServices {
     /// @brief Stop channel. A component may set `stop_requested`; it must NOT set
-    /// `converged` — declaring success is a LoopHandler's job, not a component's.
+    /// `converged` — declaring success is a Criterion's job, not a component's.
     IterationStatus* status = nullptr;
 
     /// @brief Where components publish what they measured, for handlers to judge.
@@ -119,7 +119,7 @@ struct Context {
 
     /// @brief The **active loop node's** status and metrics.
     ///
-    /// Both are OWNED BY THE LOOP (`cuda::CUDADriver` holds them as members), not by
+    /// Both are OWNED BY THE LOOP (`cuda::Driver` holds them as members), not by
     /// the Context — the Context only points at whichever loop is currently running.
     /// It used to be an `IterationStatus` here BY VALUE, and that is the shape of a bug
     /// that shipped twice on the CPU side: a component (there `LBFGS`, here
@@ -128,8 +128,8 @@ struct Context {
     /// current loop cannot reach the loop above it.
     ///
     /// A component **measures** into `metrics` and may **request a stop** via `status`.
-    /// It does not declare convergence: that is a `cuda::LoopHandler`'s job.
-    /// @see cuda/driver/loop_handler.cuh
+    /// It does not declare convergence: that is a `cuda::Criterion`'s job.
+    /// @see cuda/driver/criterion.cuh
     LoopServices loop;
 
     /// @brief Host-resident snapshot of the simulation cell, passed by

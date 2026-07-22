@@ -5,9 +5,9 @@
 ///        mirror of tests/cpu/test_minimize_driver_swap_optimizer.cpp).
 ///
 /// The five convergence tolerances used to be constructor arguments of `CG`. They are
-/// now the state of the `cuda::ForceConverged` LoopHandler — the component measures,
+/// now the state of the `cuda::ForceConverged` Criterion — the component measures,
 /// the handler decides — so every tolerance below is expressed with
-/// `min.add_handler(cuda::ForceConverged{…})`, which also suppresses the default
+/// `min.add_criterion(cuda::ForceConverged{…})`, which also suppresses the default
 /// handler `Minimize` would otherwise attach. Same numbers, same intent.
 
 #include <cmath>
@@ -15,7 +15,7 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 
-#include "atomiverse/cuda/driver/loop_handler.cuh"
+#include "atomiverse/cuda/driver/criterion.cuh"
 #include "atomiverse/cuda/minimize/cg.cuh"
 #include "atomiverse/cuda/minimize/lbfgs.cuh"
 #include "atomiverse/cuda/minimize/minimize.cuh"
@@ -113,7 +113,7 @@ TEST(MinimizerCG, EnergyDecreases) {
     cuda::minimizer::Minimize min;
     // Tight tolerances: exercise the full 50-iteration budget.
     min.add(cuda::minimizer::CG{kStableAlpha});
-    min.add_handler(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
+    min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
                                          /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
                                          /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
@@ -140,7 +140,7 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
     // after run() (the documented add() lvalue contract).
     cuda::minimizer::CG cg{kStableAlpha};
     min.add(cg);
-    min.add_handler(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
+    min.add_criterion(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
                                          /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
                                          /*etol=*/10.0});
     min.on(minimizer::Phase::force)

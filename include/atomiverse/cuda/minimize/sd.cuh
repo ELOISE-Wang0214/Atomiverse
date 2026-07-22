@@ -21,7 +21,7 @@
 ///
 /// At `convergence_check` it runs the shared `ConvCheck` reduction and PUBLISHES the
 /// force + energy metrics into `ctx.runtime.loop.metrics`, where the loop's
-/// `cuda::LoopHandler`s judge them. It keeps no previous geometry (the step is applied
+/// `cuda::Criterion`s judge them. It keeps no previous geometry (the step is applied
 /// in place, with nothing to roll back to), so it measures **no displacement** and says
 /// so — `has_displacement = false` — and `cuda::ForceConverged` then simply leaves the
 /// two displacement criteria out of its test rather than guessing.
@@ -30,7 +30,7 @@
 /// would read an all-zero `LoopMetrics` and declare an untouched system converged.
 ///
 /// @see cuda::minimizer::Minimize for the driver that owns the loop
-/// @see cuda/driver/loop_handler.cuh for the handler that judges the metrics
+/// @see cuda/driver/criterion.cuh for the handler that judges the metrics
 /// @see minimizer::Phase for the minimizer phase sequence
 #pragma once
 

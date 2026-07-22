@@ -1,5 +1,5 @@
-/// @file cuda/driver/cuda_driver.cuh
-/// @brief cuda::CUDADriver — a loop node: stages + plan + handlers. **Not a category.**
+/// @file cuda/driver/driver.cuh
+/// @brief cuda::Driver — a loop node: stages + plan + handlers. **Not a category.**
 ///
 /// ## There is no category any more
 ///
@@ -22,8 +22,8 @@
 ///
 /// @code
 ///   Driver<PhaseEnum, DeviceTag>       ← plan / dispatch primitive (facade/driver.h)
-///     ├─ cpu::CPUDriver<PhaseEnum>     ← the CPU loop node
-///     └─ cuda::CUDADriver<PhaseEnum>   ← THE loop node             (this file)
+///     ├─ cpu::Driver<PhaseEnum>     ← the CPU loop node
+///     └─ cuda::Driver<PhaseEnum>   ← THE loop node             (this file)
 ///          └─ {cuda::Evaluate, cuda::md::MD, cuda::minimizer::Minimize}  ← presets
 /// @endcode
 ///
@@ -44,10 +44,10 @@
 ///   3. **This loop's own** `IterationStatus` + `LoopMetrics` — owned here, borrowed by
 ///      the Context (`cuda::LoopServices`). A nested loop cannot reach the loop above
 ///      it.
-///   4. The termination policy slot: `add_handler(…)`, plural, composed by severity —
-///      **Stop > Converged > Continue**. @see cuda/driver/loop_handler.cuh
+///   4. The termination policy slot: `add_criterion(…)`, plural, composed by severity —
+///      **Stop > Converged > Continue**. @see cuda/driver/criterion.cuh
 ///
-/// Unlike `cpu::CPUDriver`, this layer deliberately provides **no** categorical-setter
+/// Unlike `cpu::Driver`, this layer deliberately provides **no** categorical-setter
 /// API (`add_potential`, `add_potential`, …) — `cuda::md::MD` carries its own — and no MPI. The
 /// CPU driver all-reduces the handler verdict across ranks (`MPI_MAX` over the
 /// severity); the CUDA driver loop is single-rank, so `poll_handlers_` reduces nothing.
@@ -69,7 +69,7 @@
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/driver/backend_traits.cuh"
-#include "atomiverse/cuda/driver/loop_handler.cuh"
+#include "atomiverse/cuda/driver/criterion.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/driver_template.h"
 #include "atomiverse/core/iteration_status.h"
@@ -83,7 +83,7 @@ namespace cuda {
 /// @tparam PhaseEnum Phase enum type for the workflow (must end with a `COUNT`
 ///         sentinel).
 template <typename PhaseEnum>
-class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
+class Driver : public ATV::Driver<PhaseEnum, cuda::device_tag> {
   public:
     using Base = Driver<PhaseEnum, cuda::device_tag>;
 
@@ -103,18 +103,18 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
 
     /// @brief Attach a termination policy. Plural — handlers compose.
     ///
-    /// `min.add_handler(cuda::ForceConverged{0.01});`
-    /// `sim.add_handler(cuda::StopOnNaN{});`
+    /// `min.add_criterion(cuda::ForceConverged{0.01});`
+    /// `sim.add_criterion(cuda::StopOnNaN{});`
     ///
     /// This is the seam that used to be a class hierarchy.
-    /// @see cuda/driver/loop_handler.cuh
-    /// @param h A LoopHandler subclass, moved in.
+    /// @see cuda/driver/criterion.cuh
+    /// @param h A Criterion subclass, moved in.
     /// @return Reference to self, for chaining.
     template <typename H>
-    CUDADriver& add_handler(H&& h) {
+    Driver& add_criterion(H&& h) {
         using D = std::decay_t<H>;
-        static_assert(std::is_base_of_v<cuda::LoopHandler, D>,
-                      "add_handler requires a cuda::LoopHandler subclass");
+        static_assert(std::is_base_of_v<cuda::Criterion, D>,
+                      "add_criterion requires a cuda::Criterion subclass");
         handlers_.push_back(std::make_unique<D>(std::forward<H>(h)));
         return *this;
     }
@@ -217,7 +217,7 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
     /// request stops, they never declare convergence: `IterationStatus::converged` is
     /// written here, from the handlers' reduced verdict, and nowhere else.
     ///
-    /// Single-rank: unlike `cpu::CPUDriver::poll_handlers_` there is no `MPI_Allreduce`
+    /// Single-rank: unlike `cpu::Driver::poll_handlers_` there is no `MPI_Allreduce`
     /// of the severity, because the CUDA driver loop has no communicator.
     ///
     /// @param iteration Index of the iteration just completed.
@@ -257,7 +257,7 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
     IterationStatus status_{};
     LoopMetrics metrics_{};
     /// Termination policies — plural, composed by severity. @see poll_handlers_
-    std::vector<std::unique_ptr<cuda::LoopHandler>> handlers_;
+    std::vector<std::unique_ptr<cuda::Criterion>> handlers_;
 };
 
 } // namespace cuda

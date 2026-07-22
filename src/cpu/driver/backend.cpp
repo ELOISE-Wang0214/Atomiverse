@@ -5,7 +5,7 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/asynchronous/analysis_executor.h"
 #include "atomiverse/cpu/communication/domain.h"
-#include "atomiverse/cpu/driver/driver.h"
+#include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/driver/step_timing.h"
 #include "atomiverse/core/molrs_contract.h"
 
@@ -258,7 +258,7 @@ void Backend::build_components() {
         op_handle_[s].reserve(slot.ops.size());
         for (auto& op : slot.ops) {
             if (op.is_driver()) {
-                auto* nested = static_cast<cpu::Driver*>(op.nested_driver);
+                auto* nested = static_cast<cpu::DriverNode*>(op.nested_driver);
                 ATV_DEBUG("building nested driver");
                 nested->build_on(*this);
                 op_handle_[s].push_back(timing_.register_op(
@@ -293,7 +293,7 @@ void Backend::step(int step_idx) {
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
             if (op.is_driver()) {
-                auto* nested = static_cast<cpu::Driver*>(op.nested_driver);
+                auto* nested = static_cast<cpu::DriverNode*>(op.nested_driver);
                 const auto t0 = timing && have_handles
                                     ? std::chrono::steady_clock::now()
                                     : std::chrono::steady_clock::time_point{};
@@ -346,7 +346,7 @@ void Backend::build_plan(const Plan<cpu::Component>& plan) {
     for (const auto& slot : plan.slots) {
         for (const auto& op : slot.ops) {
             if (op.is_driver()) {
-                static_cast<cpu::Driver*>(op.nested_driver)->build_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)->build_on(*this);
                 continue;
             }
             ATV_DEBUG("building nested component '{}'", op.component->name());
@@ -363,7 +363,7 @@ void Backend::step_plan(const Plan<cpu::Component>& plan, int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             if (op.is_driver()) {
-                static_cast<cpu::Driver*>(op.nested_driver)
+                static_cast<cpu::DriverNode*>(op.nested_driver)
                     ->run_nested_erased(context_, *frame_, op.nested_budget);
                 continue;
             }
@@ -384,7 +384,7 @@ void Backend::destroy_plan(const Plan<cpu::Component>& plan) {
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
             const auto& op = slot.ops[o];
             if (op.is_driver()) {
-                static_cast<cpu::Driver*>(op.nested_driver)->destroy_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)->destroy_on(*this);
                 continue;
             }
             ATV_DEBUG("destroying nested component '{}'", op.component->name());
@@ -481,7 +481,7 @@ void Backend::destroy_components() {
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
             auto& op = slot.ops[o];
             if (op.is_driver()) {
-                static_cast<cpu::Driver*>(op.nested_driver)->destroy_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)->destroy_on(*this);
                 continue;
             }
             ATV_DEBUG("destroying component '{}'", op.component->name());

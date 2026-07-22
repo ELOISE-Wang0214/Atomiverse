@@ -1,5 +1,5 @@
 /// @file tests/mpi/test_serial_on_replica.cpp
-/// @brief `CPUDriver::set_serial_on_replica()` seam under mpirun
+/// @brief `Driver::set_serial_on_replica()` seam under mpirun
 ///        (mpi-launcher-embedded-python-04, spec verdict 方案 a).
 ///
 /// Launched under `mpirun -n N`, runs at N=1, 2, 4. With the flag set,

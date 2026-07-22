@@ -23,7 +23,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/dynamics/fix_csvr.h"
 #include "atomiverse/cpu/dynamics/init.h"
@@ -44,7 +44,7 @@ namespace md {
 /// in the constructor, exposes a LAMMPS-shaped categorical setter API
 /// (add_potential, add_potential, set_neighbor, set_integrator, set_thermostat,
 /// set_barostat, set_observer, set_record, set_thermo — the first six
-/// are inherited from CPUDriver), and runs `install_defaults()` at `build()`
+/// are inherited from Driver), and runs `install_defaults()` at `build()`
 /// time to derive opt-in infrastructure from declared component requirements:
 ///
 ///   - Stress capability dependency → auto-injects `Virial`
@@ -56,10 +56,10 @@ namespace md {
 ///     registered without a corresponding `set_neighbor()` →
 ///     `build()` throws naming the offending component.
 ///
-/// Inheritance: MD → CPUDriver<md::Phase> → Driver<md::Phase, cpu::device_tag>.
+/// Inheritance: MD → Driver<md::Phase> → Driver<md::Phase, cpu::device_tag>.
 /// There is no `DynamicsDriver` category in between any more: "run a step budget" is a
 /// loop bound, not a taxonomy.
-/// CPUDriver provides the shared categorical setter API (add_potential,
+/// Driver provides the shared categorical setter API (add_potential,
 /// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record, set_thermo) and the slot variables. MD adds
 /// driver-specific setters (set_integrator, set_thermostat, set_barostat).
@@ -94,7 +94,7 @@ namespace md {
 /// sim.build();
 /// sim.run(frame, 1000);
 /// @endcode
-class MD : public CPUDriver<ATV::md::Phase> {
+class MD : public Driver<ATV::md::Phase> {
   public:
     /// @brief Flush the deferred component `destroy()` of a live continuable run.
     ~MD() { this->flush_live_(); }
@@ -102,7 +102,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
     /// @brief Advance the system for `n_steps` MD steps.
     ///
     /// **Continuable.** Consecutive calls extend one trajectory — the standard
-    /// `run(burn_in); run(sample); …` pattern. @see CPUDriver::begin_run_
+    /// `run(burn_in); run(sample); …` pattern. @see Driver::begin_run_
     ///
     /// @param frame Host-resident system state, updated in place.
     /// @param n_steps Step budget.
@@ -175,7 +175,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
     // ─── MD-specific categorical setters ────────────────────────────
     //
     // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
-    // set_observer, set_record, set_thermo are inherited from CPUDriver.
+    // set_observer, set_record, set_thermo are inherited from Driver.
 
     /// @brief Configure the time integrator (LAMMPS `fix … nve|nvt|npt`).
     template <typename I>
@@ -304,7 +304,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
         return this->backend_->release_dd();
     }
 
-    // enable_timing() / reset_timing() are inherited from CPUDriver — the timing
+    // enable_timing() / reset_timing() are inherited from Driver — the timing
     // registry is Backend infrastructure that every category owns, not an MD
     // privilege.
 
@@ -381,7 +381,7 @@ class MD : public CPUDriver<ATV::md::Phase> {
                     || c.name() == "fix_langevin")
                     has_force_writer = true;
             },
-            [&](const cpu::Driver* d) {
+            [&](const cpu::DriverNode* d) {
                 if (dynamic_cast<const HF*>(d))
                     has_force_writer = true;
             });

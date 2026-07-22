@@ -2,7 +2,7 @@
 /// @brief cpu::minimizer::Minimize — concrete energy-minimizer driver.
 ///
 /// `Minimize` is the user-facing CPU geometry-optimization preset — a
-/// `CPUDriver<minimizer::Phase>` which attaches `cpu::ForceConverged` as a build-time default in `install_defaults()`.
+/// `Driver<minimizer::Phase>` which attaches `cpu::ForceConverged` as a build-time default in `install_defaults()`.
 /// It iterates an optimizer component (LBFGS / CG / future FIRE), which publishes
 /// force/displacement/energy metrics onto `ConvergenceMetrics`, until a criterion
 /// judges them converged or `max_iter` is reached.
@@ -11,7 +11,7 @@
 /// `cpu::md::MD` (minus the time-evolution setters): add_potential,
 /// add_potential, set_angle, set_dihedral, set_neighbor, set_optimizer,
 /// set_observer, set_record, set_thermo — all except set_optimizer
-/// are inherited from CPUDriver.
+/// are inherited from Driver.
 ///
 /// `add()` and `on(phase).add()` from the underlying `Driver<>`
 /// remain public for user-defined hooks.
@@ -62,7 +62,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/core/stage.h"
@@ -82,13 +82,13 @@ namespace minimizer {
 /// `CG`) and ≥ 1 `Evaluator` with `Capability::Energy` or `Capability::Force`
 /// (e.g. `SCF`).
 ///
-/// Inheritance: Minimize → CPUDriver<minimizer::Phase> →
+/// Inheritance: Minimize → Driver<minimizer::Phase> →
 /// Driver<minimizer::Phase, cpu::device_tag>. There is no `OptimizeDriver` category in
 /// between any more: "stop when converged" is a `ForceConverged` criterion this preset
 /// attaches in `install_defaults()`, and the user can replace it without touching a
 /// driver class or an optimizer.
-/// CPUDriver provides the shared categorical setters and slot variables.
-class Minimize : public CPUDriver<ATV::minimizer::Phase> {
+/// Driver provides the shared categorical setters and slot variables.
+class Minimize : public Driver<ATV::minimizer::Phase> {
   public:
     /// @brief Completed run plus the still-live owner decomposition.
     struct DetachedRun {
@@ -143,7 +143,7 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
     // ─── Minimizer-specific categorical setters ─────────────────────
     //
     // add_potential, add_potential, set_angle, set_dihedral, set_neighbor,
-    // set_observer, set_record, set_thermo are inherited from CPUDriver.
+    // set_observer, set_record, set_thermo are inherited from Driver.
 
     /// @brief Configure the optimization algorithm (LAMMPS `min_style`).
     template <typename O>
@@ -192,7 +192,7 @@ class Minimize : public CPUDriver<ATV::minimizer::Phase> {
                     || dynamic_cast<const GPW*>(&c))
                     has_energy_or_force = true;
             },
-            [&](const cpu::Driver* d) {
+            [&](const cpu::DriverNode* d) {
                 if (dynamic_cast<const HF*>(d))
                     has_energy_or_force = true;
             });

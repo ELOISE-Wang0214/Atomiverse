@@ -49,7 +49,7 @@ cpu::Frame make_h2(double bond = 0.74) {
 // ac-001: HF is pure tag; MeanFieldMethod is Driver, not Component.
 TEST(MethodDriverWire, HfIsPureTagNotComponent) {
     static_assert(!std::is_base_of_v<cpu::Component, cpu::HF>);
-    static_assert(std::is_base_of_v<cpu::Driver, cpu::scf::RHF>);
+    static_assert(std::is_base_of_v<cpu::DriverNode, cpu::scf::RHF>);
     static_assert(std::is_base_of_v<cpu::HF, cpu::scf::RHF>);
     static_assert(!std::is_base_of_v<cpu::Component, cpu::scf::RHF>);
     cpu::scf::RHF rhf;

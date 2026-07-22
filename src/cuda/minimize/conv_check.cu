@@ -145,7 +145,7 @@ void ConvCheck::measure(const LaunchContext& ctx, const work_t* x_prev,
     rec.energy_change = energy_change;
     trace.push_back(rec);
 
-    // PUBLISH, do not decide. `cuda::ForceConverged` (cuda/driver/loop_handler.cuh)
+    // PUBLISH, do not decide. `cuda::ForceConverged` (cuda/driver/criterion.cuh)
     // owns the tolerances and returns the Verdict; this class owns the reduction.
     // Until this line, ConvCheck wrote `outer_status.converged = true` itself, so the
     // criteria could not be changed without touching the optimizer — and a nested

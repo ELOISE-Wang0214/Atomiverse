@@ -1,6 +1,6 @@
 /// @file cpu/scf/mean_field_method.cpp
 /// @brief `MeanFieldMethod<D>` template implementation — Frame API; a
-///        CPUDriver<scf::Phase> loop over the sub-spec-02 stages, funneled
+///        Driver<scf::Phase> loop over the sub-spec-02 stages, funneled
 ///        through the private drive_scf_. Explicit instantiations for the four
 ///        concrete methods live here; the per-method ctor defaults +
 ///        resolve_occupation live in rhf/uhf/rks/uks.cpp.
@@ -248,7 +248,7 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
 
     // Whole-molecule serial evaluator — no spatial decomposition.
     this->set_serial_on_replica();
-    this->build(); // CPUDriver::build — compile the Plan (un-hidden via using).
+    this->build(); // Driver::build — compile the Plan (un-hidden via using).
     driver_built_ = true;
     wired_self_ = this;
 }

@@ -9,7 +9,7 @@
 #include <type_traits>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
@@ -83,16 +83,16 @@ cpu::Frame make_lj_system(int n_side, double density) {
 /// cuda::md::MD is a loop node over the MD phase domain.
 ///
 /// It used to assert `is_base_of<cuda::DynamicsDriver, MD>` — "MD is in the Dynamics
-/// category". The category is gone (termination is a LoopHandler, not a class), so that
+/// category". The category is gone (termination is a Criterion, not a class), so that
 /// assertion now asserts nothing. What still has content is the stage domain: MD is a
-/// `CUDADriver` over `md::Phase`, which is what makes an `md::Phase`-bound component
+/// `Driver` over `md::Phase`, which is what makes an `md::Phase`-bound component
 /// dispatchable in it and what a cross-workflow misbind is checked against.
 TEST(MDTaxonomy, IsALoopNodeOverMDPhase) {
     static_assert(
-        std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>,
-        "cuda::md::MD must be a CUDADriver over md::Phase");
+        std::is_base_of_v<cuda::Driver<ATV::md::Phase>, cuda::md::MD>,
+        "cuda::md::MD must be a Driver over md::Phase");
     EXPECT_TRUE(
-        (std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>));
+        (std::is_base_of_v<cuda::Driver<ATV::md::Phase>, cuda::md::MD>));
 }
 
 /// The Zero* infrastructure components are phase-agnostic: they expose no

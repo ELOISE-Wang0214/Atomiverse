@@ -96,7 +96,7 @@ class Backend {
     //
     // These take the Plan explicitly rather than using the bound `plan_`. They do not
     // record timing: the `op_handle_` table is dense over the bound Plan's slots, and a
-    // nested Plan's ops are not in it. @see cpu::Driver
+    // nested Plan's ops are not in it. @see cpu::DriverNode
 
     /// @brief Build the components of an arbitrary Plan (a sub-driver's).
     /// @param plan Plan whose components to build, in Plan order.

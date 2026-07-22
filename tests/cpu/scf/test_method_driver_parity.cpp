@@ -1,6 +1,6 @@
 /// @file tests/cpu/scf/test_method_driver_parity.cpp
 /// @brief scf-driver-refactor-03 — RHF/UHF/RKS/UKS are
-///        `cpu::CPUDriver<ATV::scf::Phase>` loop nodes; this file pins their
+///        `cpu::Driver<ATV::scf::Phase>` loop nodes; this file pins their
 ///        converged energies/eigenvalues and their internal-consistency wiring.
 ///
 /// ## History
@@ -17,7 +17,7 @@
 /// ## What the suite pins
 ///
 ///   - **Derivation (compile-time).** Each method IS a
-///     `cpu::CPUDriver<ATV::scf::Phase>` (four static_asserts).
+///     `cpu::Driver<ATV::scf::Phase>` (four static_asserts).
 ///   - **Energy / eigenvalue regression.** RHF/UHF/RKS/UKS on the small
 ///     molecules the other `tests/cpu/scf/*` use (H / H₂ / He / H₂O, STO-3G)
 ///     reproduce the pinned converged energies (and, for the water cases and the
@@ -47,7 +47,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (path under test)
@@ -57,18 +57,18 @@
 using namespace ATV;
 using Spin = cpu::scf::SlaterDeterminant::Spin;
 
-// ── Compile-time derivation: each concrete method IS a CPUDriver<scf::Phase> ───
+// ── Compile-time derivation: each concrete method IS a Driver<scf::Phase> ───
 //
-// After 03a `MeanFieldMethod<D>` derives BOTH `CPUDriver<ATV::scf::Phase>` and
+// After 03a `MeanFieldMethod<D>` derives BOTH `Driver<ATV::scf::Phase>` and
 // `HF`, so all four hold.
-static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::RHF>,
-              "03a: RHF must derive cpu::CPUDriver<ATV::scf::Phase>");
-static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::UHF>,
-              "03a: UHF must derive cpu::CPUDriver<ATV::scf::Phase>");
-static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::RKS>,
-              "03a: RKS must derive cpu::CPUDriver<ATV::scf::Phase>");
-static_assert(std::is_base_of_v<cpu::CPUDriver<ATV::scf::Phase>, cpu::scf::UKS>,
-              "03a: UKS must derive cpu::CPUDriver<ATV::scf::Phase>");
+static_assert(std::is_base_of_v<cpu::Driver<ATV::scf::Phase>, cpu::scf::RHF>,
+              "03a: RHF must derive cpu::Driver<ATV::scf::Phase>");
+static_assert(std::is_base_of_v<cpu::Driver<ATV::scf::Phase>, cpu::scf::UHF>,
+              "03a: UHF must derive cpu::Driver<ATV::scf::Phase>");
+static_assert(std::is_base_of_v<cpu::Driver<ATV::scf::Phase>, cpu::scf::RKS>,
+              "03a: RKS must derive cpu::Driver<ATV::scf::Phase>");
+static_assert(std::is_base_of_v<cpu::Driver<ATV::scf::Phase>, cpu::scf::UKS>,
+              "03a: UKS must derive cpu::Driver<ATV::scf::Phase>");
 
 namespace {
 
@@ -255,7 +255,7 @@ TEST(MethodDriverParity, UksHeliumMatchesPinnedEnergy) {
 }
 
 // ── Wiring: the loop node knows convergence via the ScfConverged criterion ─────
-// Probed behaviorally through the public CPUDriver API, not by introspecting the
+// Probed behaviorally through the public Driver API, not by introspecting the
 // Plan.
 
 TEST(MethodDriverParity, ConvergenceWiringFlipsDriverStatus) {
@@ -266,7 +266,7 @@ TEST(MethodDriverParity, ConvergenceWiringFlipsDriverStatus) {
 
     // The old duplicate SCFResult.converged flag is gone (03-unbag): the loop
     // node's converged() is the single source of truth.
-    EXPECT_TRUE(rhf.converged()); // the LOOP knows (CPUDriver::converged).
+    EXPECT_TRUE(rhf.converged()); // the LOOP knows (Driver::converged).
     EXPECT_EQ(rhf.stop_reason(), "scf_converged"); // ScfConverged ended it.
 }
 

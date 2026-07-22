@@ -14,7 +14,7 @@
 ///
 /// **No handler.** One pass is not a termination policy — there is no loop to terminate.
 ///
-/// Inheritance: Evaluate → cuda::CUDADriver<evaluate::Phase> →
+/// Inheritance: Evaluate → cuda::Driver<evaluate::Phase> →
 /// Driver<evaluate::Phase, cuda::device_tag>. There is no `cuda::EvaluateDriver`
 /// category in between any more — a class whose whole contribution was "loop exactly
 /// once" is a *budget of one*, not a taxonomy.
@@ -31,7 +31,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
 
@@ -39,7 +39,7 @@ namespace ATV {
 namespace cuda {
 
 /// @brief One-pass CUDA evaluator preset.
-class Evaluate : public CUDADriver<ATV::evaluate::Phase> {
+class Evaluate : public Driver<ATV::evaluate::Phase> {
   public:
     /// @brief Run a single evaluation pass through the compiled Plan.
     /// @param frame Host-resident system state; transferred H2D, evaluated

@@ -60,7 +60,7 @@ void FixCSVR::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    // Ndof: single owner, constraint-aware. @see Driver::publish_dof_
     n_dof_global_ = ctx.runtime.md.n_dof_global;
     (void)n_global;
 }

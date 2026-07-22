@@ -20,7 +20,7 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
 
     auto& f = ctx.frame;
     int n = f.nlocal();
-    // Ndof has ONE owner (CPUDriver::publish_dof_): 3N - 3 - n_constraints. This
+    // Ndof has ONE owner (Driver::publish_dof_): 3N - 3 - n_constraints. This
     // used to be hardcoded as 3N - 3 here, which is simply wrong the moment
     // anything is constrained — a rigid-water box would report T ~33% low.
     int n_dof = ctx.runtime.md.n_dof_global;
@@ -57,7 +57,7 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
 void thermo_print(int step, double pe, double ke, int n_dof,
                   bool& header_printed, std::ofstream& file) {
     // Temperature: T = 2*KE / (Ndof * kB). Ndof is supplied by the caller — it is
-    // owned by CPUDriver::publish_dof_ and accounts for constraints.
+    // owned by Driver::publish_dof_ and accounts for constraints.
     const int ndof = n_dof;
     const double temp =
         (ndof > 0) ? 2.0 * ke / (static_cast<double>(ndof) * units::kB_ev_per_k)

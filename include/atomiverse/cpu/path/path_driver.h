@@ -62,7 +62,7 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/replica/replica_set.h"
@@ -71,7 +71,7 @@
 namespace ATV {
 namespace cpu {
 
-class PathDriver : public CPUDriver<ATV::path::Phase> {
+class PathDriver : public Driver<ATV::path::Phase> {
   public:
     /// @brief The coupled-replica preset. Attaches its default termination criterion.
     ///

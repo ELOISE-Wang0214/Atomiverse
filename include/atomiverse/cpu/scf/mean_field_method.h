@@ -8,7 +8,7 @@
 /// **members**; the only I/O currency is `Frame`.
 ///
 /// SCF self-consistency is a **Driver loop**: `MeanFieldMethod<D>` derives
-/// `cpu::CPUDriver<ATV::scf::Phase>` and the pure tag `HF` (not a Component).
+/// `cpu::Driver<ATV::scf::Phase>` and the pure tag `HF` (not a Component).
 /// Nested under an outer MD/Evaluate/Minimize force or energy phase it runs
 /// via `run_nested` → `drive_scf_`. Standalone entry is `run(frame)`. Integrals
 /// and AO workspaces are private. The concrete methods live in `rhf.h` /
@@ -34,7 +34,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/component/hf.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
@@ -85,12 +85,12 @@ struct MeanFieldOutputs {
 /// CRTP (`Derived` = `RHF`/`UHF`/`RKS`/`UKS`) so chaining
 /// (`RHF{}.predictor(3)`) keeps the concrete type for `Driver::add`.
 ///
-/// Derives `cpu::CPUDriver<ATV::scf::Phase>` (the self-consistency loop node)
+/// Derives `cpu::Driver<ATV::scf::Phase>` (the self-consistency loop node)
 /// and pure tag `HF` (not a Component). Nested binding is a native driver node;
 /// the sole compute entry is `drive_scf_` (via `run` / `forces` / nested
 /// `run_nested_erased`).
 template <typename Derived>
-class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
+class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
   public:
     // ── Geometry / basis (inputs from Frame + these members) ──────────
     BasisSet basis = BasisSet::STO3G;
@@ -498,7 +498,7 @@ class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
         std::vector<StorageReal> x_, y_, z_;
     };
 
-    /// @brief THE funnel: prologue (per-run assembly) → CPUDriver loop →
+    /// @brief THE funnel: prologue (per-run assembly) → Driver loop →
     ///        epilogue (de-shift / spin / result fill / energy / forces).
     ///        ASPC predict/correct/record is gated only on `use_predictor_`
     ///        (and `opts.apply_aspc` to prevent recursive re-entry).

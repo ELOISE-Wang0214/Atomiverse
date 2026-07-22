@@ -3,8 +3,8 @@
 ///        system through the migrated `Minimize + SteepestDescent` shape.
 ///
 /// Post driver-taxonomy migration the CUDA minimizer is a single
-/// `cuda::minimizer::Minimize` preset (a `cuda::CUDADriver<minimizer::Phase>` — the
-/// `cuda::OptimizeDriver` category base is deleted; termination is a `LoopHandler`)
+/// `cuda::minimizer::Minimize` preset (a `cuda::Driver<minimizer::Phase>` — the
+/// `cuda::OptimizeDriver` category base is deleted; termination is a `Criterion`)
 /// with a hot-swappable `cuda::minimizer::SteepestDescent` Optimizer
 /// component — the legacy `cuda::minimizer::SD` / `CG` driver classes and
 /// the old `SteepestDescentStep` component name no longer exist. This
@@ -14,7 +14,7 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 
-#include "atomiverse/cuda/driver/cuda_driver.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/minimize/minimize.cuh"
 #include "atomiverse/cuda/minimize/sd.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
@@ -73,11 +73,11 @@ cpu::Frame make_displaced_system(int n_side, double density,
 //
 // The old assertion was `is_base_of<cuda::OptimizeDriver, Minimize>` — "Minimize is in
 // the Optimize category". The category is gone, so the assertion with content left is
-// the stage domain: Minimize is a CUDADriver over minimizer::Phase.
+// the stage domain: Minimize is a Driver over minimizer::Phase.
 static_assert(
-    std::is_base_of<cuda::CUDADriver<ATV::minimizer::Phase>,
+    std::is_base_of<cuda::Driver<ATV::minimizer::Phase>,
                     cuda::minimizer::Minimize>::value,
-    "cuda::minimizer::Minimize must be a CUDADriver over minimizer::Phase");
+    "cuda::minimizer::Minimize must be a Driver over minimizer::Phase");
 static_assert(
     std::is_base_of<cuda::Component, cuda::minimizer::SteepestDescent>::value,
     "cuda::minimizer::SteepestDescent must be a cuda::Component");

@@ -2,7 +2,7 @@
 /// @brief cpu::Evaluate — concrete one-pass evaluator driver.
 ///
 /// `cpu::Evaluate` is the user-facing CPU single-point preset — a
-/// `CPUDriver<evaluate::Phase>` that runs the registered evaluator components
+/// `Driver<evaluate::Phase>` that runs the registered evaluator components
 /// exactly once on the current `cpu::Frame` and returns. One pass IS the
 /// termination: no time advance, no minimization loop.
 ///
@@ -10,7 +10,7 @@
 /// the same LAMMPS-shaped categorical setter API as `cpu::md::MD`
 /// (minus the time-evolution and optimizer setters): add_potential,
 /// add_potential, set_angle, set_dihedral, set_neighbor, set_observer,
-/// set_record — all inherited from CPUDriver.
+/// set_record — all inherited from Driver.
 ///
 /// Auto-adds ZeroForces and ZeroEnergy at `evaluate::Phase::prepare`
 /// (orders -1000 / -999) so frame fields start clean before evaluators
@@ -20,7 +20,7 @@
 /// remain public for user-defined hooks (e.g. a concrete SCF method
 /// registered via `add(cpu::scf::RHF{})`).
 ///
-/// Inheritance: Evaluate → CPUDriver<evaluate::Phase> →
+/// Inheritance: Evaluate → Driver<evaluate::Phase> →
 /// Driver<evaluate::Phase, cpu::device_tag>. There is no `EvaluateDriver` category in
 /// between any more — a class whose whole contribution was "loop exactly once" is a
 /// *budget of one*, not a taxonomy.
@@ -52,7 +52,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/core/role.h"
@@ -65,10 +65,10 @@ namespace cpu {
 ///
 /// Single-point energy, force, density, dipole, charge. Categorical setters (add_potential,
 /// add_potential, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
-/// CPUDriver.
+/// Driver.
 ///
 /// **No criterion.** One pass is not a termination policy — there is no loop to terminate.
-class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
+class Evaluate : public Driver<ATV::evaluate::Phase> {
   public:
     Evaluate() {
         this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroForces{}, -1000);
@@ -118,7 +118,7 @@ class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
                     || dynamic_cast<const GPW*>(&c))
                     found = true;
             },
-            [&](const cpu::Driver* d) {
+            [&](const cpu::DriverNode* d) {
                 if (dynamic_cast<const HF*>(d))
                     found = true;
             });

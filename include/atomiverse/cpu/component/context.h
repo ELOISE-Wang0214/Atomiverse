@@ -85,7 +85,7 @@ struct DynamicsServices {
 
     /// @brief Global degrees of freedom, `3N - 3 - n_constraints`.
     ///
-    /// **The single owner.** Published by `CPUDriver::setup_pass()` after the frame
+    /// **The single owner.** Published by `Driver::setup_pass()` after the frame
     /// is bound and BEFORE any component builds, because thermostats cache it in
     /// their own `build()`. Every consumer of Ndof reads it from here — Thermo,
     /// InitVelocity, NoseHoover, NoseHooverNPT, FixCSVR — instead of each
@@ -187,7 +187,7 @@ struct LoopServices {
 ///
 /// Non-owning, and deliberately a back-pointer: the Backend owns the Context, and
 /// publishes itself here in `init()` so a node reached through a `LaunchContext` can ask
-/// the Runtime to execute a Plan. @see cpu::Driver
+/// the Runtime to execute a Plan. @see cpu::DriverNode
 struct ExecServices {
     /// @brief The Backend running this node tree. Null outside a run.
     Backend* runtime = nullptr;

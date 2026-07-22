@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/montecarlo/transaction.h"
 #include "atomiverse/core/role.h"
@@ -51,7 +51,7 @@ namespace mc {
 /// evaluation of the *initial* configuration before the first trial move
 /// (step index `kBootstrapStep`; a Mover proposes nothing on a negative
 /// step). Without it the first ΔE is measured against zero.
-class McBase : public CPUDriver<ATV::sampling::Phase> {
+class McBase : public Driver<ATV::sampling::Phase> {
   public:
     /// @brief Flush the deferred component `destroy()` of a live chain.
     ~McBase() { this->flush_live_(); }

@@ -2,7 +2,7 @@
 /// @brief cpu::HF — pure polymorphic tag for Gaussian-basis mean-field methods.
 ///
 /// Not a Component. Concrete methods (`RHF` / `UHF` / `RKS` / `UKS`) derive
-/// `CPUDriver` + `HF` and bind as nested driver nodes. Outer drivers recognise
+/// `Driver` + `HF` and bind as nested driver nodes. Outer drivers recognise
 /// energy/force sources via `dynamic_cast<const HF*>(driver_ptr)`.
 #pragma once
 
