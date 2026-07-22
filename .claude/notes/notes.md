@@ -1,5 +1,25 @@
 # Architecture notes
 
+## [2026-07-22] DEBT: CUDA backend does not compile on `dev`
+
+Surfaced by a GH200 configure+build during backend-mirror-04's GPU validation.
+The CUDA backend is **red on `dev`, independent of backend-mirror** — ~180
+errors, all stale references to CPU-side refactors never propagated to `cuda/`:
+
+- `cpu::Frame` has no member `atoms` / `box` / `scalars` (~150×) — CUDA still
+  uses the pre-`blocks+meta+simbox` Frame API.
+- `core/real.h` gone + `Real` undefined — the catch-all `Real`/`Int` types were
+  deleted; CUDA never moved to `StorageReal`/`WorkReal`/`AccReal`.
+- `ATV::kPI`/`kCoulomb`/`kFtm2v`/`kBoltzmann`/`kMvv2e` undefined — units
+  constants renamed in `core/units.h`; CUDA references the old names.
+
+Confirmed pre-existing (`git show dev:src/cuda/frame/transfer.cu` uses `Real`).
+**Backend-mirror's CUDA dir/class renames are grep-consistent and correct, but
+un-build-validatable until the backend is resurrected** — a separate task
+(sync `cuda/` to the current Frame/precision/units API), NOT backend-mirror.
+Decision (2026-07-22): continue backend-mirror on CPU verification; resurrect
+CUDA separately.
+
 ## [2026-07-17] SCF is a Driver; methods are concrete — kill the bag
 
 **Binding rule (AGENTS.md / CLAUDE.md).** Three mistakes, one correction:
