@@ -111,8 +111,8 @@ class RuntimeProbe : public cpu::Component {
     }
     int builds = 0;
     int calls = 0;
-    cpu::Backend* build_runtime = nullptr;
-    cpu::Backend* launch_runtime = nullptr;
+    cpu::Runtime* build_runtime = nullptr;
+    cpu::Runtime* launch_runtime = nullptr;
     const void* launch_dd = nullptr;
     const void* frame_addr = nullptr;
 };

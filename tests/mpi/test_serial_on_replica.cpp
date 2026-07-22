@@ -33,7 +33,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
@@ -99,7 +99,7 @@ void run_serial_on_replica_am1(cpu::Frame& frame) {
 TEST(SerialOnReplica, BackendFlagSkipsTopologyAndKeepsFrameWhole) {
     auto frame = make_h2_frame();
 
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.set_serial_on_replica();
     backend.init();
     backend.set_frame(frame);

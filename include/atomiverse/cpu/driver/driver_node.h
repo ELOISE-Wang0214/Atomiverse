@@ -13,7 +13,7 @@
 namespace ATV {
 namespace cpu {
 
-class Backend;
+class Runtime;
 class Context;
 class Frame;
 
@@ -28,7 +28,7 @@ class DriverNode {
 
     /// @brief Compile this loop's Plan and build its components on `rt`.
     /// @param rt Parent Backend — one Runtime for the whole driver tree.
-    virtual void build_on(Backend& rt) = 0;
+    virtual void build_on(Runtime& rt) = 0;
 
     /// @brief Run this loop on a borrowed Runtime / Context / Frame.
     /// @param ctx Parent Context (re-pointed at this loop's status while nested).
@@ -39,7 +39,7 @@ class DriverNode {
 
     /// @brief Destroy this loop's components on `rt` (reverse Plan order).
     /// @param rt Parent Backend.
-    virtual void destroy_on(Backend& rt) = 0;
+    virtual void destroy_on(Runtime& rt) = 0;
 
     /// @brief Default nested-run budget when the caller passes budget < 0.
     /// @return Preset-specific default (0 unless overridden).

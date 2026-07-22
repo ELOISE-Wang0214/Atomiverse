@@ -303,10 +303,10 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
                           int budget) override;
 
     /// @brief Nested build is deferred to first `drive_scf_` (needs geometry).
-    void build_on(cpu::Backend& rt) override;
+    void build_on(cpu::Runtime& rt) override;
 
     /// @brief Drop the method's private Plan / Backend wiring.
-    void destroy_on(cpu::Backend& rt) override;
+    void destroy_on(cpu::Runtime& rt) override;
 
     /// @brief Run SCF on `frame` (driver loop). Integrals are private
     ///        workspace. Frame-out: always writes the eV energy to

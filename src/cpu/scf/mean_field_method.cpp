@@ -256,14 +256,14 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
 // ── Nested driver lifecycle ───────────────────────────────────────────────────
 
 template <typename D>
-void MeanFieldMethod<D>::build_on(cpu::Backend& rt) {
+void MeanFieldMethod<D>::build_on(cpu::Runtime& rt) {
     // Stage wiring needs geometry (IntegralPack dimensions); deferred to the
     // first drive_scf_. Parent Runtime does not own this method's Plan.
     (void)rt;
 }
 
 template <typename D>
-void MeanFieldMethod<D>::destroy_on(cpu::Backend& rt) {
+void MeanFieldMethod<D>::destroy_on(cpu::Runtime& rt) {
     (void)rt;
     reset_built_driver_();
 }

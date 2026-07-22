@@ -23,7 +23,7 @@
 #include "atomiverse/cpu/communication/atom_migration.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -72,7 +72,7 @@ TEST(Migrate, AtomDriftsAcrossPosXBoundary) {
         frame.span(kMigrationAux)(i, 0) = StorageReal(100 + i);
         frame.span(kMigrationAux)(i, 1) = StorageReal(-200 - i);
     }
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
     auto* dd = backend.context().md.dd;
@@ -190,7 +190,7 @@ TEST(Migrate, SingleRankIsNoOp) {
     }
 
     auto frame = make_chain_frame(20.0, 8);
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
 

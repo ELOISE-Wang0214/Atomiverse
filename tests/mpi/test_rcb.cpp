@@ -21,7 +21,7 @@
 #include "atomiverse/cpu/communication/atom_migration.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/rcb.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -55,7 +55,7 @@ TEST(Rebalance, SingleRankIsNoOp) {
         GTEST_SKIP() << "single-rank guard";
 
     auto frame = make_skewed_frame(20.0, 64);
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
 
@@ -84,7 +84,7 @@ TEST(Rebalance, RebalancesSkewedDistribution) {
         GTEST_SKIP() << "8-rank specific";
 
     auto frame = make_skewed_frame(20.0, 512);
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
     auto* dd = backend.context().md.dd;

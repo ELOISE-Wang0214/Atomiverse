@@ -34,7 +34,7 @@ namespace cpu {
 
 class AnalysisExecutor;
 class ReplicaSet;
-class Backend; ///< The Runtime; published on `Context::exec`. @see ExecServices
+class Runtime; ///< The Runtime; published on `Context::exec`. @see ExecServices
 
 namespace md {
 struct PairList;
@@ -190,7 +190,7 @@ struct LoopServices {
 /// the Runtime to execute a Plan. @see cpu::DriverNode
 struct ExecServices {
     /// @brief The Backend running this node tree. Null outside a run.
-    Backend* runtime = nullptr;
+    Runtime* runtime = nullptr;
 };
 
 /// @brief Async-analysis services (publisher: `AnalysisExecutor::install`).

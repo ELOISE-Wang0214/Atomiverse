@@ -44,7 +44,7 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/potential.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
@@ -97,7 +97,7 @@ struct ForwardResult {
 ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
     auto frame = make_uniform_grid(n_per_side, box_len);
 
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
 
@@ -186,7 +186,7 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     }
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
     auto* dd = backend.context().md.dd;
@@ -295,7 +295,7 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
         cpu::ColumnSpec{ColDType::Storage, 1, ColGroup::Core, 0,
                         kColMigrate | kColExchange | kColReverse,
                         kDynamicFieldId});
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
     auto* dd = backend.context().md.dd;
@@ -385,7 +385,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     auto frame_small = make_uniform_grid(2, 10.0); // 8 atoms
     auto frame_big = make_uniform_grid(6, 10.0);   // 216 atoms
 
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame_small);
 

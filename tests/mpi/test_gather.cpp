@@ -17,7 +17,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/gather.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -68,7 +68,7 @@ TEST(Gather, SingleRankCopiesOwners) {
         GTEST_SKIP() << "single-rank guard";
 
     auto frame = make_grid_frame(30.0, 3); // 27 atoms
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
 
@@ -100,7 +100,7 @@ TEST(Gather, MultiRankSortsByTag) {
         GTEST_SKIP() << "multi-rank test";
 
     auto frame = make_grid_frame(30.0, 3); // 27 atoms
-    cpu::Backend backend;
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
 

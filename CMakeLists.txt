@@ -197,9 +197,12 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/record/thermo.cpp
         src/cpu/record/xyz.cpp
         src/cpu/record/timing_report.cpp
-        # CPU backend infrastructure
+        # CPU runtime infrastructure (Runtime + composed sub-runtimes)
         src/cpu/frame/frame.cpp
-        src/cpu/driver/backend.cpp
+        src/cpu/driver/runtime.cpp
+        src/cpu/communication/domain_runtime.cpp
+        src/cpu/device/device_runtime.cpp
+        src/cpu/asynchronous/analysis_runtime.cpp
         src/cpu/driver/dof.cpp
         src/cpu/frame/box.cpp
         src/cpu/component/zero.cpp

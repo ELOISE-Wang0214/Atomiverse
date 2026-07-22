@@ -669,7 +669,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     void compile() { this->build(); }
 
     /// @brief `cpu::DriverNode` — compile Plan and build components on the parent Runtime.
-    void build_on(cpu::Backend& rt) override {
+    void build_on(cpu::Runtime& rt) override {
         compile();
         rt.build_plan(this->plan());
     }
@@ -680,7 +680,7 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     }
 
     /// @brief `cpu::DriverNode` — destroy components on the parent Runtime.
-    void destroy_on(cpu::Backend& rt) override { rt.destroy_plan(this->plan()); }
+    void destroy_on(cpu::Runtime& rt) override { rt.destroy_plan(this->plan()); }
 
     /// @brief Default nested budget (presets may override; methods set max_iter in 04b).
     int default_budget() const override { return 0; }
@@ -710,11 +710,11 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     /// @throws std::runtime_error if no Runtime is published (the driver was not nested
     ///         under a running parent).
     int run_nested(cpu::Context& ctx, cpu::Frame& frame, int budget) {
-        cpu::Backend* runtime = ctx.exec.runtime;
+        cpu::Runtime* runtime = ctx.exec.runtime;
         if (!runtime)
             throw std::runtime_error("Driver::run_nested: no Runtime on the "
                                      "Context. A sub-driver runs on "
-                                     "its parent's Backend; this one was not "
+                                     "its parent runtime; this one was not "
                                      "nested under a running parent.");
 
         // Point the Context at THIS loop's status + metrics, and remember the parent's.

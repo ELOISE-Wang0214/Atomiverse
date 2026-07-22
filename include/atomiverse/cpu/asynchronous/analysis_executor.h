@@ -1,7 +1,7 @@
 /// @file cpu/async/analysis_executor.h
 /// @brief `AnalysisExecutor` -- per-rank async worker pool for observers/recorders.
 ///
-/// Owned by `cpu::Backend`. Lifetime is strictly enclosed by the backend's
+/// Owned by `cpu::Runtime`. Lifetime is strictly enclosed by the backend's
 /// init/shutdown bracket: no construction in `launch()`, no state carried
 /// across plan swaps. Uses `std::thread` + `std::condition_variable`
 /// (C++17, not `std::jthread` which requires C++20).

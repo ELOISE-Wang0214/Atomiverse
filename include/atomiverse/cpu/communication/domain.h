@@ -1,7 +1,7 @@
 /// @file cpu/comm/domain.h
 /// @brief `DomainDecomposition` -- MD-specific spatial domain decomposition state.
 ///
-/// Owned by `cpu::Backend`; non-owning pointer published through `cpu::Context::dd`.
+/// Owned by `cpu::Runtime`; non-owning pointer published through `cpu::Context::dd`.
 /// In single-rank mode the topology is `dims={1,1,1}` and `n_ghost==0`; the
 /// struct is still allocated so components can read it without null-checks beyond
 /// the usual `mpi_size==1` shortcut.

@@ -12,7 +12,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
@@ -31,8 +31,8 @@ cpu::Frame make_small_frame(int n) {
     return frame;
 }
 
-cpu::Backend make_backend_for(cpu::Frame& frame) {
-    cpu::Backend backend;
+cpu::Runtime make_backend_for(cpu::Frame& frame) {
+    cpu::Runtime backend;
     backend.init();
     backend.set_frame(frame);
     return backend;

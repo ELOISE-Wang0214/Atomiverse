@@ -777,6 +777,13 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/driver_names_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# backend-mirror-05-dissolve gate: no CPU Backend god class; the loop runtime is
+# composed from communication / device / asynchronous sub-runtimes.
+add_test(
+    NAME test_no_backend_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_backend_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # Grep gate: domain objects are constructed via class constructors — never
 # free-function factories (build_integrals / *_config / make_atom_list / …).
 # Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
