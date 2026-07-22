@@ -79,9 +79,18 @@ Priority is product / textbook impact, not historical chain order.
 - [ ] Analytic **GHF** forces — SPLIT OUT: PySCF has no analytic GHF gradient
       (no clean oracle; needs FD-of-energy), and the spinor 2e/W contraction is
       new code. Defer until a real consumer appears.
-- [ ] Forces through environment members that currently throw:
-      **C-PCM**, **x2c**, **point-charge embed / external field**, **RI-JK**,
-      **CFMM-J**.
+- [~] Forces through environment members (`hf-parity-03-environment-forces`,
+      umbrella — one member at a time):
+      - [x] **point-charge embed** (shipped 2026-07-22: semi-numerical
+            dV_embed/dR + analytic nucleus–MM Coulomb; H2O vs PySCF qmmm
+            5.4e-11 Ha/Bohr).
+      - [ ] **external field** (same fixed-1e pattern; oracle is FD-only — the
+            field-gradient isn't turnkey in PySCF).
+      - [ ] **RI-JK** (DF gradient: 3-index derivative + metric derivative).
+      - [ ] **C-PCM** (density-dependent self-consistent surface charges — not a
+            fixed 1e term; see [[hf-parity-07-cpcm-gate]]).
+      - [ ] **x2c** (picture-change h^X2C derivative; see [[hf-parity-06-x2c-gate]]).
+      - [ ] **CFMM-J** (FMM gradient).
 - [ ] Validate FD / filtered-subspace nuclear gradients where still unpinned.
 - [~] IR intensities (dipole derivatives) — dipole-derivative tensor (atomic
       polar tensor ∂μ/∂R) SHIPPED 2026-07-22 (`hf-parity-04-ir-intensities`:

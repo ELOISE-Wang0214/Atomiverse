@@ -15,6 +15,7 @@
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
+#include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
@@ -640,6 +641,67 @@ GradientResult ScfGradient::compute(const Frame& frame,
                 grad(A, d) += xt::sum(P * dU)();
             }
         ATV_INFO("[gradient] ecp semi-numerical dU/dR term added (h={:.0e})", h);
+    }
+
+    // ── Point-charge embedding (QM/MM) gradient ──────────────────────────
+    // The embed 1e operator V_embed = Σ_C −q_C⟨μ|1/|r−R_C||ν⟩ is folded into
+    // Hcore before the SCF (density-independent, ECP-U-like), and the classical
+    // nucleus–MM Coulomb Σ_A Σ_C Z_A q_C/|R_A−R_C| into V_nuc. The gradient adds
+    // both explicit derivatives (the density response is already in P/W):
+    //   electron–MM: Tr[P·dV_embed/dR_A]  (central-differenced 1e block)
+    //   nucleus–MM:  −Σ_C Z_A q_C (R_A−R_C)/|R_A−R_C|³  (analytic)
+    // MM–MM is constant w.r.t. QM nuclei (zero derivative).
+    if (!integrals.embed_charges.empty()) {
+        const internal::PointChargeEmbedding emb{integrals.embed_charges};
+        const bool sph = integrals.spherical();
+        const auto& c2s = integrals.c2s;
+        xt::xtensor<double, 2> ct;
+        if (sph)
+            ct = xt::transpose(c2s);
+        const double h = 1e-4; // Bohr
+        const auto v_sph = [&](std::vector<native::Shell>& sh) {
+            xt::xtensor<double, 2> V = emb.core_matrix(sh);
+            if (sph)
+                V = xt::linalg::dot(ct, xt::linalg::dot(V, c2s));
+            return V;
+        };
+        for (int A = 0; A < natm; ++A) {
+            const double* ap = integrals.atoms[A].pos;
+            const auto on_A = [&](const double* c) {
+                return c[0] == ap[0] && c[1] == ap[1] && c[2] == ap[2];
+            };
+            for (int d = 0; d < 3; ++d) {
+                // Electron–MM Hellmann–Feynman via FD of V_embed.
+                std::vector<native::Shell> shp = integrals.shells;
+                std::vector<native::Shell> shm = integrals.shells;
+                for (auto& s : shp)
+                    if (on_A(s.center))
+                        s.center[d] += h;
+                for (auto& s : shm)
+                    if (on_A(s.center))
+                        s.center[d] -= h;
+                const xt::xtensor<double, 2> dV =
+                    (v_sph(shp) - v_sph(shm)) / (2.0 * h);
+                grad(A, d) += xt::sum(P * dV)();
+            }
+            // Nucleus–MM Coulomb derivative (analytic; charges in Å → Bohr).
+            for (const auto& site : integrals.embed_charges) {
+                const double rc[3] = {site.x * units::kAngstromInBohr,
+                                      site.y * units::kAngstromInBohr,
+                                      site.z * units::kAngstromInBohr};
+                const double dx = ap[0] - rc[0];
+                const double dy = ap[1] - rc[1];
+                const double dz = ap[2] - rc[2];
+                const double r2 = dx * dx + dy * dy + dz * dz;
+                const double r3 = r2 * std::sqrt(r2);
+                const double zq = integrals.atoms[A].Z * site.q;
+                grad(A, 0) += -zq * dx / r3;
+                grad(A, 1) += -zq * dy / r3;
+                grad(A, 2) += -zq * dz / r3;
+            }
+        }
+        ATV_INFO("[gradient] embed (QM/MM) gradient term added (n_charges={})",
+                 emb.n_charges());
     }
     ATV_DEBUG("[gradient] two_e_ms={:.1f}", elapsed_ms(t_two_e));
     ATV_INFO("[gradient] two_e_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",

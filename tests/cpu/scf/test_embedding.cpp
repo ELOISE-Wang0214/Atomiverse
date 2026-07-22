@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observer/multipole.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
@@ -214,15 +215,21 @@ TEST(ExternalField, SmallFieldEnergyShiftMatchesDipole) {
     EXPECT_LT(rel, 1e-2) << "dE=" << dE << " want=" << want;
 }
 
-TEST(MeanFieldEnvironment, ForcesThrowWhenEnvironmentActive) {
+TEST(MeanFieldEnvironment, PointChargeForcesRunFieldStillThrows) {
     auto frame = make_h2o();
+    // Point-charge embedding forces are supported (hf-parity-03): value bar
+    // vs pinned PySCF qmmm lives in regressions/scf/embed_h2o_grad.
     RHF rhf;
     rhf.basis = BasisSet::STO3G;
     rhf.tol = 1e-8;
     rhf.max_iter = 50;
     rhf.point_charges = {{0.0, 0.0, 3.0, 0.5}};
-    EXPECT_THROW(rhf.forces(frame), std::runtime_error);
+    cpu::scf::GradientResult g;
+    ASSERT_NO_THROW(g = rhf.forces(frame));
+    EXPECT_EQ(g.forces.shape(0), 3u);
+    EXPECT_TRUE(std::isfinite(g.energy));
 
+    // External-field forces remain a follow-up link (FD-only oracle).
     RHF rhf2;
     rhf2.basis = BasisSet::STO3G;
     rhf2.tol = 1e-8;

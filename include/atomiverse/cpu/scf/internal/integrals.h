@@ -20,6 +20,7 @@
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
+#include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -81,6 +82,13 @@ struct IntegralPack {
     ///        ECP matrix U at displaced geometries for dU/dR. Empty unless
     ///        has_ecp. The table-row pointers reference static storage.
     std::vector<internal::EcpCenter> ecp_centers;
+
+    /// @brief External MM point charges (positions [Å], charge [e]), retained
+    ///        by the method when point-charge embedding is active so the
+    ///        semi-numerical gradient can rebuild the embed 1e matrix V_embed
+    ///        for dV_embed/dR and take the analytic nucleus–MM Coulomb
+    ///        derivative. Empty ⇒ no embedding.
+    std::vector<internal::PointChargeSite> embed_charges;
 
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.

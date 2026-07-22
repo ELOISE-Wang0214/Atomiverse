@@ -527,14 +527,15 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         std::abs(external_field[0]) > 0.0 || std::abs(external_field[1]) > 0.0
         || std::abs(external_field[2]) > 0.0;
     const bool solvent_active = solvent_eps > 0.0;
-    const bool env_active =
-        !point_charges.empty() || field_active || solvent_active;
-    if (opts.forces && env_active)
+    // Point-charge embedding forces ARE supported (semi-numerical dV_embed/dR
+    // + analytic nucleus–MM Coulomb, added in ScfGradient::compute). External-
+    // field and C-PCM gradients remain follow-up links.
+    if (opts.forces && (field_active || solvent_active))
         throw std::runtime_error(
             "MeanFieldMethod::forces: analytic forces are not implemented "
-            "with point_charges, external_field, or solvent_eps > 0 — the "
-            "environment / C-PCM gradient is a follow-up chain link. Clear "
-            "the environment members, or use finite differences.");
+            "with external_field or solvent_eps > 0 — the field / C-PCM "
+            "gradient is a follow-up chain link. Clear these environment "
+            "members (point_charges are supported), or use finite differences.");
 
     // Apply environment to the n-dimensional Hcore / classical energy
     // *before* any GHF spinor embed so both spin blocks share the same
@@ -554,6 +555,9 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         }
         H += Venv;
         v_nuc += emb.nuclear_energy(ints.atoms) + emb.self_energy();
+        // Retain the charges on the pack so the analytic gradient can rebuild
+        // dV_embed/dR (FD) + the nucleus–MM Coulomb derivative.
+        integrals_sp_->embed_charges = std::move(sites);
     }
     if (field_active) {
         const internal::ExternalField field(external_field, ints.atoms);
