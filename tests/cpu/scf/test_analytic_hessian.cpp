@@ -120,6 +120,19 @@ TEST(AnalyticHessian, H2SymmetricAndTranslationClean) {
                 sum += res.hessian(x, 3 * B + d);
             EXPECT_NEAR(sum, 0.0, 1e-6) << "row " << x << " axis " << d;
         }
+
+    // Dipole derivatives (atomic polar tensor, hf-parity-04) are produced
+    // alongside the Hessian, shape [3N,3], and are translationally invariant
+    // (Σ_atoms ∂μ_a/∂R_{A,j} = 0). Value bar lives in regressions/scf/h2o_rhf_ir.
+    ASSERT_EQ(res.dipole_derivatives.shape(0), 6u);
+    ASSERT_EQ(res.dipole_derivatives.shape(1), 3u);
+    for (int j = 0; j < 3; ++j)
+        for (int a = 0; a < 3; ++a) {
+            double sum = 0.0;
+            for (int B = 0; B < 2; ++B)
+                sum += res.dipole_derivatives(3 * B + j, a);
+            EXPECT_NEAR(sum, 0.0, 1e-6) << "APT trans. inv. j=" << j << " a=" << a;
+        }
 }
 
 TEST(AnalyticHessian, HeliumNoVirtualsThrows) {

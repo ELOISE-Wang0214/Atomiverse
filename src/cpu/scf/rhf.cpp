@@ -15,6 +15,7 @@
 #include "atomiverse/cpu/scf/internal/cphf_pack.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
 
@@ -177,11 +178,55 @@ vib::HessianResult RHF::hessian(Frame& frame) {
 
     // Frame/vib working units: eV/Å² (vib::HessianResult contract).
     const int natm = static_cast<int>(frame.nlocal());
+
+    // ── Dipole derivatives (atomic polar tensor) for IR intensities ─────
+    // ∂μ_a/∂R_{A,j} = −Tr[∂P/∂R_{A,j}·r_a] − Tr[P·∂r_a/∂R_{A,j}] + Z_A δ_{aj}
+    // Reuses the CPHF density response ∂P/∂x (solved above); the dipole-
+    // integral derivative ∂⟨μ|r_a|ν⟩/∂R is central-differenced (the dipole
+    // matrix is a cheap 1e block — same semi-numerical pattern as the ECP
+    // gradient). Cartesian-only, matching the analytic Hessian's own scope.
+    // ponytail: FD of the dipole 1e block; analytic ∂⟨μ|r|ν⟩/∂R only if hot.
+    xt::xtensor<double, 2> apt = xt::zeros<double>({3 * natm, 3});
+    {
+        const int n = pack.n_basis;
+        const double origin[3] = {0.0, 0.0, 0.0}; // origin-free for neutral dμ/dR
+        const MultipoleIntegrals mp0{pack.shells.data(), n, origin};
+        const double h = 1e-4; // Bohr
+        for (int A = 0; A < natm; ++A) {
+            const double* ap = pack.atoms[A].pos;
+            const auto on_A = [&](const double* c) {
+                return c[0] == ap[0] && c[1] == ap[1] && c[2] == ap[2];
+            };
+            for (int j = 0; j < 3; ++j) {
+                const int x = 3 * A + j;
+                const RealMatrix dP = cphf.density_response(x);
+                std::vector<native::Shell> shp = pack.shells;
+                std::vector<native::Shell> shm = pack.shells;
+                for (auto& s : shp)
+                    if (on_A(s.center))
+                        s.center[j] += h;
+                for (auto& s : shm)
+                    if (on_A(s.center))
+                        s.center[j] -= h;
+                const MultipoleIntegrals mpp{shp.data(), n, origin};
+                const MultipoleIntegrals mpm{shm.data(), n, origin};
+                for (int a = 0; a < 3; ++a) {
+                    const xt::xtensor<double, 2> dr =
+                        (mpp.dipole(a) - mpm.dipole(a)) / (2.0 * h);
+                    apt(x, a) = -xt::sum(dP * mp0.dipole(a))()
+                                - xt::sum(P * dr)()
+                                + (a == j ? pack.atoms[A].Z : 0.0);
+                }
+            }
+        }
+    }
+
     const double to_ev_ang2 =
         units::kHartreeInEv / (units::kBohrInAngstrom * units::kBohrInAngstrom);
     vib::HessianResult out;
     out.n_atoms = natm;
     out.hessian = H_ha * to_ev_ang2;
+    out.dipole_derivatives = std::move(apt);
     return out;
 }
 

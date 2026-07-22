@@ -62,6 +62,21 @@ struct HessianResult {
     ///        nonlinear rotor (`3N-6` modes).
     bool is_linear = false;
 
+    // ── Dipole derivatives / IR intensities (hf-parity-04) ─────────────
+    //
+    // The atomic polar tensor (APT) ∂μ_a/∂R_x, populated by the analytic
+    // gradient method (RHF::hessian) alongside the Hessian, reusing the CPHF
+    // density response. IR intensities per normal mode follow by projecting
+    // this tensor onto `normal_modes`. Empty for the finite-difference
+    // vib::Hessian driver (which never solves CPHF).
+
+    /// @brief Atomic polar tensor ∂μ_a/∂R_x, shape `[3N, 3]` in atomic units
+    ///        (e·Bohr per Bohr = e). Row `x = 3·atom + axis` is the nuclear
+    ///        coordinate; column `a` is the dipole Cartesian axis. Σ_atoms of
+    ///        each column-block is ~0 (translational invariance of the dipole
+    ///        derivative). Empty unless produced by the analytic Hessian.
+    xt::xtensor<double, 2> dipole_derivatives;
+
     // ── Thermochemistry link (phase4-vibrations-03) ────────────────────
     //
     // Populated by `cpu::vib::Thermochem` during the `thermochem` pass,

@@ -83,7 +83,11 @@ Priority is product / textbook impact, not historical chain order.
       **C-PCM**, **x2c**, **point-charge embed / external field**, **RI-JK**,
       **CFMM-J**.
 - [ ] Validate FD / filtered-subspace nuclear gradients where still unpinned.
-- [ ] IR intensities (dipole derivatives) on top of CPHF Hessian.
+- [~] IR intensities (dipole derivatives) — dipole-derivative tensor (atomic
+      polar tensor ∂μ/∂R) SHIPPED 2026-07-22 (`hf-parity-04-ir-intensities`:
+      CPHF density response + semi-numerical dipole-integral derivative on
+      `RHF::hessian`; H2O STO-3G matches PySCF FD to 4e-7 au). Per-mode km/mol
+      intensity projection deferred — needs a `pyscf.prop` oracle to validate.
 
 ### P1 — Hard gates left open when 01–21 were closed
 
