@@ -77,7 +77,7 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
         sp_z[i] = z[static_cast<std::size_t>(i)];
     }
 
-    auto h = molrs::frame_simbox(frame);
+    auto h = molrs::frame_box(frame);
     if (h.size() == 9u) {
         Mat3 cell;
         for (int i = 0; i < 3; ++i) {

@@ -86,7 +86,7 @@ directory"). Force `RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu`. On the
 GPU node the default (aarch64) is correct — do **not** set the override there.
 
 **molrs (git submodule):** molrs is a hard dependency built via corrosion,
-vendored at `./molrs` (`.gitmodules` → `MolCrafts/molrs`, pin `v0.8.2`).
+vendored at `./molrs` (`.gitmodules` → `MolCrafts/molrs`, pin `b8f6084` / molrs 0.9.0+).
 CMake defaults `ATV_MOLRS_PATH` to `${CMAKE_SOURCE_DIR}/molrs`. After clone
 or worktree create, run `git submodule update --init --recursive molrs`.
 Override with `-DATV_MOLRS_PATH=...` only for local experiments — the CXX

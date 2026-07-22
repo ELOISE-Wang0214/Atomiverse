@@ -139,7 +139,7 @@ namespace {
     // Cubic box, row-major 3x3 H.
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_simbox(*fr,
+    molrs::frame_set_box(*fr,
                             ::rust::Slice<const double>(h.data(), h.size()));
 
     return fr;
@@ -266,7 +266,7 @@ TEST(Materialize, RoundTrip) {
     EXPECT_EQ(cf.span(ATV::kAtom_dihedral_atom)(1, 2), 12);
 
     // Box round-trips.
-    auto h = molrs::frame_simbox(*fr);
+    auto h = molrs::frame_box(*fr);
     ASSERT_EQ(h.size(), 9u);
     EXPECT_DOUBLE_EQ(h[0], 20.0);
     EXPECT_DOUBLE_EQ(h[4], 20.0);
@@ -409,7 +409,7 @@ TEST(Materialize, MaterializedFrameIsRunnable) {
         ::rust::Slice<const std::int32_t>(type.data(), type.size()));
     const std::vector<double> h = {30.0, 0.0, 0.0, 0.0, 30.0,
                                    0.0,  0.0, 0.0, 30.0};
-    molrs::frame_set_simbox(*fr,
+    molrs::frame_set_box(*fr,
                             ::rust::Slice<const double>(h.data(), h.size()));
 
     Frame cf = materialize(*fr);
@@ -572,7 +572,7 @@ TEST(WriteBackContract, NonContractFieldsUntouched) {
     EXPECT_EQ(dl[0], 12);
 
     // Box keeps the pre-materialize 20 A cube despite the cpu-side 42 A cell.
-    auto h = molrs::frame_simbox(*fr);
+    auto h = molrs::frame_box(*fr);
     ASSERT_EQ(h.size(), 9u);
     EXPECT_DOUBLE_EQ(h[0], 20.0) << "box is non-write-back";
     EXPECT_DOUBLE_EQ(h[4], 20.0);

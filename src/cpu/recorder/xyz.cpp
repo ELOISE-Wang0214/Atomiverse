@@ -92,7 +92,7 @@ int ZarrReader::read_into(Frame& frame) {
     auto img_y = molrs::frame_column_f64(fr, "atoms", "image_y");
     auto img_z = molrs::frame_column_f64(fr, "atoms", "image_z");
     auto type = molrs::frame_column_f64(fr, "atoms", "type");
-    auto box_h = molrs::frame_simbox(fr);
+    auto box_h = molrs::frame_box(fr);
 
     const int n = static_cast<int>(x.size());
     if (n == 0)

@@ -230,7 +230,7 @@ Frame materialize(const molrs::FrameRef& src) {
     }
     frame.build_special_list();
 
-    auto cell_values = molrs::frame_simbox(src);
+    auto cell_values = molrs::frame_box(src);
     if (cell_values.size() == 9u) {
         Mat3 cell;
         for (int i = 0; i < 3; ++i)

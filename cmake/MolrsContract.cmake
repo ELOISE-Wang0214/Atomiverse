@@ -13,8 +13,8 @@
 #   - Local -DATV_MOLRS_PATH overrides do not bypass the CXX API version check.
 set(ATV_MOLRS_CXX_API_VERSION 1)
 set(ATV_MOLRS_CXX_REQUIRED_CAPABILITIES 7) # Frame-block v2 | Element | AM1-BCC
-set(ATV_MOLRS_GIT_REF "v0.8.2" CACHE STRING
-    "Documented MolCrafts/molrs tag matching the ./molrs submodule pin")
+set(ATV_MOLRS_GIT_REF "b8f6084121c26c64d05b27116bf5135d4f86dc36" CACHE STRING
+    "Documented MolCrafts/molrs ref matching the ./molrs submodule pin (v0.9.0 + smarts/GAFF gates)")
 
 function(atv_validate_molrs_source_contract molrs_root)
     set(version_file "${molrs_root}/molrs-cxxapi/CXX_API_VERSION")

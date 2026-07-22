@@ -18,7 +18,7 @@ Frame load_extxyz(const std::string& path) {
     // The periodic box is required: a missing `Lattice=` header leaves no
     // simbox, and materialize treats the box as optional. Fail loud rather
     // than silently substituting a degenerate/identity box (no fallback).
-    if (molrs::frame_simbox(*fref).size() != 9u) {
+    if (molrs::frame_box(*fref).size() != 9u) {
         throw std::runtime_error("cpu::load_extxyz(" + path
                                  + "): ExtXYZ is missing the required "
                                    "Lattice=\"...\" header (no box)");

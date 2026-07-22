@@ -118,7 +118,7 @@ namespace {
     // Cubic box, row-major 3x3 H.
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_simbox(*fr,
+    molrs::frame_set_box(*fr,
                             ::rust::Slice<const double>(h.data(), h.size()));
 
     return fr;
