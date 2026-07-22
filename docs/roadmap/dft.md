@@ -55,7 +55,7 @@ Kohn–Sham path on CUDA at all — the device SCF solver is restricted HF only.
 `LSDA` = Slater (Dirac) exchange + VWN5 correlation. VWN-RPA is also
 implemented, as the LDA correlation component inside B3LYP. PW92 is present as
 the LDA base of PBE. The CUDA column here is **plane-wave only**: Slater + PW92
-on the PW grid (`cuda/pw/internal/xc_lda.cu`), spin-unpolarized — see
+on the PW grid (`cuda/planewave/internal/xc_lda.cu`), spin-unpolarized — see
 [Periodic Kohn–Sham Methods](#10-periodic-kohnsham-methods) below. There is no
 XC on the device in the Gaussian path.
 

@@ -42,7 +42,7 @@ eigenvector-following, no string method, and no IRC.
 
 Notes:
 
-- **Steepest descent is CUDA-only** as a distinct component (`cuda/minimizer/sd.cuh`).
+- **Steepest descent is CUDA-only** as a distinct component (`cuda/minimize/sd.cuh`).
   On CPU, SD exists only as the degenerate β = 0 limit of CG — there is no SD
   component to select.
 - The CG flavour is **Polak–Ribière⁺** (restart by β clamp) on both backends;

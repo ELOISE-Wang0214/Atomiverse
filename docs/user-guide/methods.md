@@ -14,7 +14,7 @@ any evaluator can be bound to any driver, which is how the same
 
 Each driver below is a **preset**: an ordinary loop whose constructor
 pre-attaches the policy and infrastructure that kind of job wants. There is
-no category hierarchy behind them — one loop-node class (`cpu::CPUDriver<P>`)
+no category hierarchy behind them — one loop-node class (`cpu::Driver<P>`)
 serves them all, and *when the loop stops* is a policy object you can replace.
 
 | Driver | Job type | Stops when |

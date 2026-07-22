@@ -93,8 +93,8 @@ atoms that is $6N$ force evaluations plus one reference — a fixed budget with
 no convergence loop.
 
 That fixed-budget, no-early-stop structure is what
-[`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian.h)
-is: a preset over the CPU loop node (`cpu::CPUDriver<vib::Phase>`), like
+[`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vibration/hessian.h)
+is: a preset over the CPU loop node (`cpu::Driver<vib::Phase>`), like
 `MD` and `Minimize`, but with its own phase enum and **no termination
 criterion at all** — the displacement schedule *is* the budget, and there is
 nothing to converge. Its phase order —
@@ -138,7 +138,7 @@ cpu::vib::HessianResult H = driver.run(frame);   // 6N + 1 force evaluations
 ```
 
 `HessianResult`
-([`hessian_result.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian_result.h))
+([`hessian_result.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vibration/hessian_result.h))
 carries the full analysis:
 
 ```cpp
@@ -289,11 +289,11 @@ empirical or quantum — which is exactly the invariant
 ## Validation Reference
 
 Vibrational frequencies are validated against PySCF's analytic Hessian in
-[`tests/cpu/vib/test_frequencies_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_frequencies_vs_pyscf.cpp)
+[`tests/cpu/vibration/test_frequencies_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vibration/test_frequencies_vs_pyscf.cpp)
 (H₂O / NH₃ / CH₄ to **≤ 5 cm⁻¹**, plus the exact `3N−6` mode-count assertion),
 thermochemistry against PySCF `thermo()` in
-[`tests/cpu/vib/test_thermochem_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_thermochem_vs_pyscf.cpp),
+[`tests/cpu/vibration/test_thermochem_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vibration/test_thermochem_vs_pyscf.cpp),
 the raw numerical Hessian and translation/rotation projection in
-[`tests/cpu/vib/test_numerical_hessian.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_numerical_hessian.cpp)
+[`tests/cpu/vibration/test_numerical_hessian.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vibration/test_numerical_hessian.cpp)
 and `test_tr_projection.cpp`. Reference data provenance is recorded alongside
-each generator under `tests/cpu/vib/reference/`.
+each generator under `tests/cpu/vibration/reference/`.

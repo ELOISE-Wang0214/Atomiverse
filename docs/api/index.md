@@ -37,7 +37,7 @@ Start with these facade headers:
 
 ### Decide when a run stops
 
-The loop node (`cpu::CPUDriver<P>`, which every CPU driver derives from) has two
+The loop node (`cpu::Driver<P>`, which every CPU driver derives from) has two
 policy slots. Both are user-definable from outside the library:
 
 - [`cpu::Criterion`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/criterion.h) —
@@ -55,13 +55,13 @@ policy slots. Both are user-definable from outside the library:
 Start with these CPU driver and component headers (the ones the tutorials
 use; each has a CUDA counterpart under `cuda/` with the same name):
 
-- [`cpu::md::MD`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/md/md.h)
-- [`cpu::md::VelocityVerlet`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/md/velocity_verlet.h)
+- [`cpu::md::MD`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/dynamics/md.h)
+- [`cpu::md::VelocityVerlet`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/dynamics/velocity_verlet.h)
 - [`cpu::md::NeighborList`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/neighbor/neighbor_list.h)
 - [`cpu::PairLJCut`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/potentials/pair_lj_cut.h)
-- [`cpu::minimizer::Minimize`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/minimize.h) + `LBFGS` / `CG`
+- [`cpu::minimizer::Minimize`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimize/minimize.h) + `LBFGS` / `CG`
 
-The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
+The CUDA equivalents are `cuda::md::MD` (`cuda/dynamics/md.cuh`),
 `cuda::PairLJCut`, `cuda::minimizer::Minimize`, etc. — same API, GPU-resident.
 
 ### Run electronic-structure calculations on the CPU
@@ -89,13 +89,13 @@ component, not a staged driver. Start with these headers:
 
 Start with these types:
 
-- [`cpu::Thermo`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/recorder/thermo.h)
+- [`cpu::Thermo`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/thermo.h)
 - [`cpu::write_frame_xyz` / `cpu::write_frame_zarr` (molrs-backed frame writers)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/io/frame_writer.h)
-- [`ATV::RDF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/rdf.h)
-- [trajectory analysis (`cpu::compute::*` batch computes + streaming accumulators)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/trajectory_metrics.h)
-- [`cpu::XYZ`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/recorder/xyz.h)
-- [`mulliken_charge` and related helpers](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/mulliken.h)
-- [`DensityGrid`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/density.h)
+- [`ATV::RDF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/rdf.h)
+- [trajectory analysis (`cpu::compute::*` batch computes + streaming accumulators)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/trajectory_metrics.h)
+- [`cpu::XYZ`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/record/xyz.h)
+- [`mulliken_charge` and related helpers](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/mulliken.h)
+- [`DensityGrid`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observe/density.h)
 
 ## When To Leave The API Reference
 

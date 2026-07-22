@@ -190,7 +190,7 @@ concisely via the `cpu::single_point` helper:
 
 ```cpp
 #include "atomiverse/cpu/driver/single_point.h"
-#include "atomiverse/cpu/pw/pw_evaluator.h"
+#include "atomiverse/cpu/planewave/pw_evaluator.h"
 
 cpu::pw::PWConfig cfg;
 cfg.upf_path = "tests/data/pw/Si_lda_nc.upf";
@@ -208,7 +208,7 @@ const auto& r = pwe.last_result();
 Low-level code uses the same explicit solver lifecycle:
 
 ```cpp
-#include "atomiverse/cpu/pw/pw_solver.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
 cpu::pw::PWSolver solver{cfg};
 solver.build(frame);
 const cpu::pw::PWResult& r = solver.run(frame);
@@ -252,13 +252,13 @@ optimization). Under MPI the solver distributes k-points round-robin across
 A GPU path exists: `cuda::pw::pw_scf` runs the Davidson hot path on the device
 (cuFFT for \f$H\psi\f$, cuBLAS for the subspace algebra) and reuses the CPU
 `internal` helpers for every other step, so CPU and CUDA agree numerically
-(asserted by `tests/cuda/pw/test_pw_si.cu`).
+(asserted by `tests/cuda/planewave/test_pw_si.cu`).
 
 ## Where to read the code
 
-1. [`include/atomiverse/cpu/pw/pw_evaluator.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_evaluator.h) — the user-facing component
-2. [`include/atomiverse/cpu/pw/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
-3. `include/atomiverse/cpu/pw/internal/` — the step helpers and numerics
+1. [`include/atomiverse/cpu/planewave/pw_evaluator.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_evaluator.h) — the user-facing component
+2. [`include/atomiverse/cpu/planewave/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
+3. `include/atomiverse/cpu/planewave/internal/` — the step helpers and numerics
    (`g_vector.h`, `fft.h`, `ewald.h`, `kpoint.h`, `upf_reader.h`, …)
 
 For a converged equation-of-state validation against CP2K, see

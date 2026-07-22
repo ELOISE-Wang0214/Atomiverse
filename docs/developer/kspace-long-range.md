@@ -29,7 +29,7 @@ Real-space and reciprocal-space halves are ordinary components that implement
 | `alpha` | Ewald splitting α (1/Å) — **must match** between the pair |
 | cutoff / accuracy | cold metadata only |
 
-`CPUDriver` validation at `build()` accepts **exactly one** real-space plus
+`Driver` validation at `build()` accepts **exactly one** real-space plus
 **exactly one** reciprocal partner with matching `alpha`. Missing, duplicate,
 or mismatched partners throw before launch with component names and α values.
 There is no short-range or energy-only fallback.

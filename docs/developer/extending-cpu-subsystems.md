@@ -30,10 +30,10 @@ inside `cpu::md::MD` exactly the way they pick the existing
 `VelocityVerlet`.
 
 **Where it lives.** A header at
-`include/atomiverse/cpu/md/<name>.h` and an implementation at
-`src/cpu/md/<name>.cpp`. The MD subdirectory is the right home because
+`include/atomiverse/cpu/dynamics/<name>.h` and an implementation at
+`src/cpu/dynamics/<name>.cpp`. The MD subdirectory is the right home because
 the component will only ever participate in MD (its phase enum is
-`md::Phase`). Putting it under `cpu/md/` also keeps it out of the
+`md::Phase`). Putting it under `cpu/dynamics/` also keeps it out of the
 minimizer/SCF dependency footprint.
 
 **The skeleton.** Inherit the matching kind (`Integrator`, `Potential`, …),
@@ -102,7 +102,7 @@ walks the registered set and requires at least one `Integrator` (and an
 energy/force kind). Inheriting `cpu::Integrator` makes Beeman a valid
 replacement for `VelocityVerlet`. No driver-side change is needed.
 
-**Test recipe.** Add `tests/cpu/md/test_beeman.cpp` that builds a small
+**Test recipe.** Add `tests/cpu/dynamics/test_beeman.cpp` that builds a small
 NVE system (typically the FCC Argon fixture from `test_md.cpp`),
 substitutes Beeman for VelocityVerlet, runs a few thousand steps, and
 asserts:
@@ -124,9 +124,9 @@ correct.
 PRL 97, 170201, 2006) optimizer alongside the existing
 `cpu::minimizer::LBFGS` and `cpu::minimizer::CG`.
 
-**Where it lives.** `include/atomiverse/cpu/minimizer/fire.h` and
-`src/cpu/minimizer/fire.cpp`. Same reasoning as above: minimizer
-components live under `cpu/minimizer/`.
+**Where it lives.** `include/atomiverse/cpu/minimize/fire.h` and
+`src/cpu/minimize/fire.cpp`. Same reasoning as above: minimizer
+components live under `cpu/minimize/`.
 
 **The skeleton.** FIRE is structurally similar to LBFGS — it computes a
 search direction *and* publishes the numbers by which the loop will be
@@ -139,7 +139,7 @@ judged. It does **not** judge them itself. Mirror the existing pattern:
 #include <vector>
 
 #include "atomiverse/cpu/component/optimizer.h"
-#include "atomiverse/cpu/minimizer/lbfgs.h"   // for OptRecord
+#include "atomiverse/cpu/minimize/lbfgs.h"   // for OptRecord
 #include "atomiverse/facade/stage.h"
 
 namespace ATV { namespace cpu { namespace minimizer {
@@ -352,7 +352,7 @@ both reach the same converged total energy to $10^{-9}$ Hartree.
 
 Because the helper is in the `internal::` namespace, *production*
 facade-public headers (`cpu/driver/evaluate.h`, `cpu/driver/single_point.h`,
-`cpu/md/md.h`, `cpu/minimizer/lbfgs.h`) must not include from
+`cpu/dynamics/md.h`, `cpu/minimize/lbfgs.h`) must not include from
 `cpu/scf/internal/`. Tests can include these headers directly. The
 boundary keeps `internal::` types from leaking into user-visible APIs.
 

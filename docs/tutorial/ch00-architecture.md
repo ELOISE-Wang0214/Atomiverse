@@ -8,7 +8,7 @@ the method without rewriting the loop.
 | Pillar | Owns | Example types |
 |--------|------|---------------|
 | **Runtime** (`cpu::Backend`) | frame binding, plan storage, MPI, timing | one per run |
-| **Driver** (`cpu::CPUDriver<P>`) | stages + plan + criteria | `MD`, `Minimize`, `MC`, `Evaluate`, … |
+| **Driver** (`cpu::Driver<P>`) | stages + plan + criteria | `MD`, `Minimize`, `MC`, `Evaluate`, … |
 | **Component** | one step of physics | `PairLJCut`, `SCF`, `LBFGS`, `Thermo` |
 | **Frame** | device-resident state | `blocks` + `meta` + `simbox` |
 
@@ -110,7 +110,7 @@ then iterates that plan with the right termination condition for the
 job at hand.
 
 There is exactly **one** driver class in each backend — the *loop node*,
-`cpu::CPUDriver<PhaseEnum>` — and the classes you actually construct are
+`cpu::Driver<PhaseEnum>` — and the classes you actually construct are
 **presets** over it. A preset is a class whose constructor attaches the
 default policy and infrastructure a given kind of run wants. It is a
 convenience, not a layer of the architecture.

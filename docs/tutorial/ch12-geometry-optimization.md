@@ -72,8 +72,8 @@ the Practice block.
 ## What the Minimize Driver Actually Does
 
 `cpu::minimizer::Minimize`
-([`cpu/minimizer/minimize.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/minimize.h))
-is a **preset** over the CPU loop node, `cpu::CPUDriver<minimizer::Phase>`.
+([`cpu/minimize/minimize.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimize/minimize.h))
+is a **preset** over the CPU loop node, `cpu::Driver<minimizer::Phase>`.
 "Preset" means: it is an ordinary driver whose constructor pre-attaches
 the pieces a geometry optimization wants — the zeroing components, and a
 termination policy. It owns the loop:
@@ -332,7 +332,7 @@ when you publish a geometry, not just the force tolerance.
 ## Recorders for the Optimization Trace
 
 Three recorder components live under
-[`include/atomiverse/cpu/minimizer/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/)
+[`include/atomiverse/cpu/minimize/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimize/)
 and are designed specifically for optimization runs.
 
 `OptLog` writes a tab-separated row per step with `step`, `E (eV)`,

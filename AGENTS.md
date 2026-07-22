@@ -30,8 +30,8 @@ structure (Gaussian-basis SCF, plane-wave DFT, Gaussian-and-plane-waves DFT,
 and NDDO/AM1 semiempirics). C++17, `ATV::` namespace.
 
 > **Branch note:** active development is on **`dev`**. `master` is a single
-> squashed snapshot with the *old* pre-2026 layout (`cpu/frame.h`, `cpu/md/lj.h`,
-> no `pw/`/`potentials/`); do not read it for current behaviour. New git
+> squashed snapshot with the *old* pre-2026 flat layout (`cpu/frame.h`, abbreviated domain dirs,
+> no `planewave/`); do not read it for current behaviour. New git
 > worktrees default-base from `origin/master`, so branch a worktree off `dev`
 > explicitly (`git worktree add -b <name> <path> dev`).
 
@@ -177,45 +177,49 @@ cmake/                       CMake helper modules
 
 Three pillars: **Driver** (owns the loop), **Component** (one single-step
 operation), **Frame** (device-resident state). Three execution backends
-(`cpu/`, `cuda/`, `torch/`) sit behind one CUDA-free facade.
+(`cpu/`, `cuda/`, `torch/`) sit behind one CUDA-free contract layer in `core/`.
+There is **no backward compatibility** in this layout — no shims, no alias
+headers, no deprecated forwarding.
 
 ### Backend directory layering
 
 Each backend root contains **directories only — no loose files**. Every
 directory is a pillar layer, an infrastructure cluster, or a method domain:
 
+Directory names are **full English words, mirrored across `cpu/` and `cuda/`**
+(a CPU-only domain is simply absent on `cuda`, never renamed). Namespaces are
+**not yet** aligned to these directories (`ATV::cpu::md::MD` still lives under
+`cpu/dynamics/`, `md::Phase` unchanged) — a deliberate follow-up.
+
 ```
 <backend>/
-  frame/       Frame pillar: device-resident state + residency ops
-  driver/      Driver pillar: the loop node (CPUDriver), LoopHandler, OutcomePolicy,
-               SubDriver (nesting), concrete Evaluate, single_point,
-               step executor, backend_traits, step-loop instrumentation
-  component/   Component pillar: Component, Launch/Context, generic + shared bases
-  io/          external formats / molrs bridge (extxyz, frame_writer, lammps_data; CPU only)
-  device/      CUDA/torch runtime utilities (device_manager, error, launch, timer)
-  comm/        infra: domain decomposition, halo exchange, migration, reductions
-  neighbor/    infra: cell/Verlet neighbor structures + the published PairList
-  async/       infra: async analysis pipeline (snapshot ring, D2H bridge, executors)
-  linalg/      infra: shared dense linear algebra (eigensolve, density build; CPU only)
-  md/          domain: integrators, thermostats, barostats, deform, velocity init
-  mc/          domain: Monte Carlo — the MC preset, movers,
-               trial transaction (CPU only)
-  minimizer/   domain: SD, CG, L-BFGS + opt recorders (LbfgsHistory: the curvature
-               history + two-loop recursion, over a plain vector — shared with path/)
-  replica/     infra: ReplicaSet + ReplicaExpansion (one Frame -> N coupled replicas)
-  path/        domain: coupled-replica methods — CI-NEB (tangent/spring/climb as
-               `couple`-slot components); PIMD/REMD would live here too
-  scf/         domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
-  semiempirical/ domain: NDDO/AM1 semiempirical SCF (NDDOSolver, AM1Evaluator,
-               AM1-BCC charge assigner; CPU only)
-  pw/          domain: plane-wave DFT (PWSolver, PWEvaluator)
-  gpw/         domain: Gaussian-and-plane-waves DFT (GPWSolver, GPWEvaluator; CPU only)
-  xc/          domain: shared exchange-correlation pieces (Padé LDA parameterization)
-  vib/         domain: finite-difference Hessian, thermochemistry (CPU only)
-  longrange/   domain: reciprocal-space electrostatics (Ewald, PME)
-  potentials/  domain: real-space force-field evaluators (pair + bonded styles)
-  observer/    domain: derived quantities (RDF, virial stress, Mulliken, density)
-  recorder/    domain: I/O (XYZ, cube, thermo, timing report)
+  frame/         Frame pillar: device-resident state + residency ops
+  driver/        Driver pillar: the loop node Driver<P>, the erased base DriverNode,
+                 the Runtime coordinator (composes the sub-runtimes below), Criterion,
+                 OutcomePolicy, SubDriver (nesting), step executor, backend_traits
+  component/     Component pillar: Component, Launch/Context, generic + shared bases
+  evaluate/      domain: the Evaluate preset + single_point
+  io/            external formats / molrs bridge (extxyz, frame_writer, lammps_data; CPU only)
+  device/        infra: DeviceRuntime — threads/streams + timing (OpenMP on CPU, streams on CUDA)
+  communication/ infra: DomainRuntime (domain decomposition), halo exchange, migration, reductions
+  neighbor/      infra: cell/Verlet neighbor structures + the published PairList
+  asynchronous/  infra: AnalysisRuntime — async analysis pipeline (snapshot ring, D2H bridge)
+  linalg/        infra: shared dense linear algebra (eigensolve, density build; CPU only)
+  dynamics/      domain: MD — integrators, thermostats, barostats, deform, velocity init
+  montecarlo/    domain: Monte Carlo — the MC preset, movers, trial transaction (CPU only)
+  minimize/      domain: SD, CG, L-BFGS + opt recorders (LbfgsHistory, shared with path/)
+  replica/       infra: ReplicaSet + ReplicaExpansion (one Frame -> N coupled replicas)
+  path/          domain: coupled-replica methods — CI-NEB + the PathDriver preset
+  scf/           domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
+  semiempirical/ domain: NDDO/AM1 semiempirical SCF (CPU only)
+  planewave/     domain: plane-wave DFT (PWSolver, PWEvaluator)
+  gpw/           domain: Gaussian-and-plane-waves DFT (CPU only)
+  xc/            domain: shared exchange-correlation pieces (Padé LDA parameterization)
+  vibration/     domain: finite-difference Hessian, thermochemistry (CPU only)
+  longrange/     domain: reciprocal-space electrostatics (Ewald/PME/PPPM) + absorbed operator math
+  potentials/    domain: real-space force-field evaluators (pair + bonded styles)
+  observe/       domain: derived quantities (RDF, virial stress, Mulliken, density)
+  record/        domain: I/O (XYZ, cube, thermo, timing report)
 ```
 
 **Rules:**
@@ -224,13 +228,13 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   multi-file infra cluster gets its own root dir (like `comm/`, `neighbor/`,
   `async/`). Never park shared code inside a domain subdir.
 - **Orthogonality: the same feature lives in the same directory on every
-  backend.** Virial stress is `observer/`, neighbor structures `neighbor/`,
-  decomposition `comm/` — on CPU and CUDA alike.
+  backend.** Virial stress is `observe/`, neighbor structures `neighbor/`,
+  decomposition `communication/` — on CPU and CUDA alike.
 - Electrostatics splits LAMMPS-style: real-space pair styles in `potentials/`
-  (`coul_long`), reciprocal-space solvers in `longrange/`; shared operator
-  math is written once in top-level `longrange/` (never duplicated in SCF).
+  (`coul_long`), reciprocal-space solvers + their operator math in each
+  backend's own `longrange/`; there is **no** top-level shared-math module.
 - Namespaces are not yet aligned to directories (`cpu::md::mpi::Reduce` lives in
-  `cpu/comm/`, `cpu::Frame` in `cpu/frame/`); aligning them is a deliberate
+  `cpu/communication/`, `cpu::Frame` in `cpu/frame/`); aligning them is a deliberate
   follow-up, not a drive-by.
 
 **Box** (`cpu::Box` in `cpu/frame/box.h`, `cuda::Box` in `cuda/frame/box.cuh`)
@@ -241,13 +245,17 @@ and exposes `length(d)`, `volume()`, `min_image(...)`, `wrap_axis(...)`,
 `cpu/frame/box_simd.h`. LJ keeps an inlined branchy min-image in its xsimd
 ket-loop because member-load-through-`this` defeats hoisting there (~7%/step).
 
-### Facade (CUDA-free)
+### Core (CUDA-free contracts)
+
+The device-independent contracts live in **`core/`** — the old separate
+contract-layer directory is gone (its headers moved into `core/`). There are
+**no** top-level `longrange/` or `potentials/` modules; reciprocal-space and
+pair math are backend-owned.
 
 ```
-core/        precision tiers, Mat3, units, Frame schema, device tags, backend_traits
-facade/      Driver<PhaseEnum, DeviceTag>, Plan, Stage (phase enums)
-potentials/  backend-agnostic pair force/energy kernels shared by CPU/CUDA
-longrange/   backend-agnostic Ewald/PME operator math (no Frame/Component/MPI/FFT)
+core/        precision tiers, Mat3, units, Frame schema, device tags, backend_traits;
+             the Driver<PhaseEnum, DeviceTag> dispatch template + Plan, Stage, role.h,
+             verdict.h, iteration_status.h, molrs_contract.h (all relocated here)
 molrs.hpp    stable CXX FFI header
 ```
 
@@ -265,13 +273,13 @@ welded into the hierarchy. Hand it to a policy object and no category remains:
 
 | | what it is | how many |
 |---|---|---|
-| **Runtime** (`cpu::Backend`) | frame binding, node storage, timing, MPI, domain decomposition | **one per run**, shared by the whole driver tree |
-| **Driver** (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) | **one loop node**: stages + plan + handlers | any number, **nestable** |
-| **Handler** (`cpu::LoopHandler`) | asked once per iteration | any number, composable, **user-definable** |
+| **Runtime** (`cpu::Runtime`) | thin coordinator composing DomainRuntime (communication/), DeviceRuntime (device/), AnalysisRuntime (asynchronous/); frame binding, node storage, Plan dispatch | **one per run**, shared by the whole driver tree |
+| **Driver** (`cpu::Driver<P>` / `cuda::Driver<P>`) | **one loop node**: stages + plan + handlers | any number, **nestable** |
+| **Handler** (`cpu::Criterion`) | asked once per iteration | any number, composable, **user-definable** |
 
 ```
 Driver<PhaseEnum, DeviceTag>      plan / dispatch primitive
-  └─ cpu::CPUDriver<PhaseEnum>    THE loop node
+  └─ cpu::Driver<PhaseEnum>    THE loop node
        └─ {MD, Minimize, MC, Evaluate, Hessian, PathDriver}    presets
 ```
 
@@ -296,7 +304,7 @@ components fill the stages — not an enum on a bag named `SCFSolver`.
 
 **Two orthogonal policy slots.** Every loop has both:
 
-- **`LoopHandler`** — *should the loop stop?* `add_handler(…)`, **plural**, composed by
+- **`Criterion`** — *should the loop stop?* `add_criterion(…)`, **plural**, composed by
   severity: **Stop > Converged > Continue**. Deliberately **not** a template: it sees a
   `LoopState` and *never a phase*, which is exactly what lets ONE handler serve MD,
   Minimize, MC and Path alike. Ships `ForceConverged`, `AllReplicasConverged`,
@@ -349,13 +357,13 @@ there is no `clone()` on `Component`. Nesting makes this **sharper**, not softer
 
 **Adding a new preset is cheap and adding a new "category" is meaningless.** If you catch
 yourself wanting a new driver class, ask what *terminates* differently — and write a
-`LoopHandler` instead.
+`Criterion` instead.
 
 ### Stage typing — `slot_of` is the only cast
 
 The six Phase enums all start at 0, so an `int` phase **cannot** be told apart across
 workflows (`stage == 1` is simultaneously `md::pre_force`, `minimizer::line_search` and
-`evaluate::evaluate`). `Backend::run_phase(int)` is gone. Everything a human writes goes
+`evaluate::evaluate`). The old per-phase `run_phase(int)` dispatch is gone. Everything a human writes goes
 through a typed entry point:
 
 | Use | Typed entry point |
@@ -428,7 +436,7 @@ written to Frame** — never Driver-level categories: no "charge driver".
 Single-point energy in user code is `Evaluate + <concrete method>` (or
 `single_point(frame, method)`). There is **no `SinglePoint` class**. Internal
 step helpers stay owned by the concrete method/Driver, never inherit
-`Component`, never register into a foreign Plan; facade-public headers must
+`Component`, never register into a foreign Plan; public contract headers must
 not include them (tests may).
 
 > **Debt (current tree):** still ships `cpu::scf::SCFSolver` + `SCFConfig` +
@@ -455,7 +463,7 @@ Driver::run_nested(ctx, frame, budget)  # the SAME loop, on a BORROWED Runtime
 ```
 
 User code does not subclass `Driver<>` directly — it uses a **preset**, or subclasses the
-loop node (`CPUDriver<PhaseEnum>`) when it needs a genuinely new loop shape. A preset adds
+loop node (`Driver<PhaseEnum>`) when it needs a genuinely new loop shape. A preset adds
 default handlers + infrastructure in its **constructor**; no runtime behaviour beyond the
 loop node.
 
@@ -509,19 +517,19 @@ probes for (no `dynamic_cast`, no dead default virtuals):
 | `PairEvaluator` (`component/pair_evaluator.h`) | shared non-bonded pair-style base (cutoff, special-bonds) | — |
 | `AsyncComponent` (`async/async_component_base.h`; CUDA analogue `AsyncBridge`) | deferred snapshot-ring analysis off the hot path | `scheduling() == deferrable` |
 
-**Iteration status channel** (`facade/iteration_status.h`):
+**Iteration status channel** (`core/iteration_status.h`):
 `IterationStatus` is `{converged, stop_requested, reason}`, **owned by the loop node**
-(`CPUDriver::status_`) and reset before each iteration. The Context only *borrows* the
+(`Driver::status_`) and reset before each iteration. The Context only *borrows* the
 active loop's, through the non-owning `ctx.loop` (`LoopServices{status, metrics}`) — so a
 nested loop physically cannot reach its parent's. A component **measures** into
-`ctx.loop.metrics` and may **request** a stop; only a `LoopHandler` declares convergence,
+`ctx.loop.metrics` and may **request** a stop; only a `Criterion` declares convergence,
 and only the driver writes it. SCF/PW internals never touch any of it.
 
 **Rules:**
 - **Driver owns the loop.** Evaluators, integrators, thermostats are
   Components — never standalone classes with their own loops.
 - **Termination is a Handler, never a class.** Want a new stopping rule? Write a
-  `LoopHandler`. A new driver class is almost never the answer.
+  `Criterion`. A new driver class is almost never the answer.
 - **Energy/force sources are kinds** (`Potential`, `HF`, `Semiempirical`,
   `PlaneWave`, `GPW`, `Bias`, `PathCoupling`) with required (`!Deferred`) Role;
   presets type-check via `dynamic_cast` to those kinds (no free-function classifier).
@@ -616,13 +624,13 @@ exception). See `.claude/notes/notes.md` for the classification tables.
 molrs (Rust) is a hard dependency for I/O and trajectory analysis. The engine
 *measures*; molrs *analyzes/stores*: bridge calls are raw-array FFI wrappers —
 per-frame writers in `cpu/io/frame_writer.h`, batch computes + streaming
-accumulators (`cpu::compute::*`) in `cpu/observer/trajectory_metrics.h`
+accumulators (`cpu::compute::*`) in `cpu/observe/trajectory_metrics.h`
 (PIMPL) — with no `rust/cxx.h` in public headers. `molrs.hpp` is the only
 include for CXX-generated code. **No analysis math lives in C++ on either
 backend**: both the CPU and CUDA RDF observers stream positions + per-frame
 cell into the molrs accumulator (binning + normalization are molrs-only,
 grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
-`cpu::rdf_write_curve` (`cpu/observer/rdf_curve.h`, CUDA-safe).
+`cpu::rdf_write_curve` (`cpu/observe/rdf_curve.h`, CUDA-safe).
 
 ## Conventions
 
@@ -632,12 +640,12 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   Concrete methods (target): `RHF` / `UHF` / `RKS` / `UKS`, PW/GPW/AM1.
   Debt names still in tree: `SCFSolver`, `PWSolver`, `GPWSolver`, `NDDOSolver`.
   Internals: `ATV::cpu::scf::internal` etc. — not public.
-- **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`.
+- **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, core `.h`.
   Documented exceptions: deliberately CUDA-free bridge headers under `cuda/`
   keep `.h` (`cuda/log_callback.h`, `cuda/timer.h`).
 - **Driver template:** use a **preset** (`cpu::md::MD`, `cpu::minimizer::Minimize`,
   `cpu::mc::MC`, `cpu::Evaluate`, `cpu::vib::Hessian`, `cpu::PathDriver`), or subclass the
-  loop node `cpu::CPUDriver<PhaseEnum>` / `cuda::CUDADriver<PhaseEnum>` for a genuinely
+  loop node `cpu::Driver<PhaseEnum>` / `cuda::Driver<PhaseEnum>` for a genuinely
   new loop shape. Never `Driver<>` directly. There are no category bases.
   Driver subclass headers include the matching `backend_traits.h`.
 - **OOP, not free-function soup.** Atomiverse is object-oriented: behaviour lives
@@ -779,7 +787,7 @@ aimd.build();  aimd.run(frame, 100);
 // Geometry optimization
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});   // memory, alpha0, max_ls
-opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});  // the tolerances
+opt.add_criterion(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});  // the tolerances
 opt.on(minimizer::Phase::force).add(cpu::scf::SCF{cfg});
 opt.build();  opt.run(frame, 100);
 
@@ -798,7 +806,7 @@ cpu::single_point(frame, pwe);   // frame.meta.get(kEnergy) [eV]
                                  // pwe.last_result() [Ry/Ha]
 
 // Termination is a policy — compose handlers, or write your own (LAMMPS `fix halt`)
-class StopWhenEnergyAbove : public cpu::LoopHandler {
+class StopWhenEnergyAbove : public cpu::Criterion {
   public:
     explicit StopWhenEnergyAbove(double e_max) : e_max_(e_max) {}
     const char* name() const override { return "stop_when_energy_above"; }
@@ -810,8 +818,8 @@ class StopWhenEnergyAbove : public cpu::LoopHandler {
   private:
     double e_max_;
 };
-sim.add_handler(cpu::StopOnNaN{});            // plural — Stop > Converged > Continue
-sim.add_handler(StopWhenEnergyAbove{10.0});   // written OUTSIDE the library
+sim.add_criterion(cpu::StopOnNaN{});            // plural — Stop > Converged > Continue
+sim.add_criterion(StopWhenEnergyAbove{10.0});   // written OUTSIDE the library
 sim.run(frame, 1000);
 if (sim.converged()) { /* ... */ }            // the LOOP knows; the algorithm does not
 sim.stop_reason();                            // which handler ended it
@@ -840,7 +848,7 @@ outer.run(frame, 1000);                             // inner's convergence CANNO
 | `cpu::mc::MC` | CPU | `sampling::Phase` | **outcome** `Metropolis` |
 | `cpu::PathDriver` | CPU | `path::Phase` | handler `AllReplicasConverged` |
 
-Each derives the loop node (`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) **directly** and
+Each derives the loop node (`cpu::Driver<P>` / `cuda::Driver<P>`) **directly** and
 configures its defaults in its **constructor**. `cpu::SubDriver<P>` wraps any of them as a
 node in another driver's Plan (nesting, on one shared Runtime).
 

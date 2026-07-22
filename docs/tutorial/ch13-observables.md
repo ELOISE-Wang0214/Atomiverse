@@ -331,11 +331,11 @@ The three observers are exercised as fast, millisecond-scale unit tests that
 assert the molrs FFI round-trip and the observer plumbing:
 
 - MSD (analytic curve to `1e-9`, Einstein-D bridge, empty-on-degenerate):
-  [`tests/cpu/observer/test_msd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_msd.cpp)
+  [`tests/cpu/observe/test_msd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observe/test_msd.cpp)
 - VACF (FFI round-trip, buffer accumulation):
-  [`tests/cpu/observer/test_vacf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_vacf.cpp)
+  [`tests/cpu/observe/test_vacf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observe/test_vacf.cpp)
 - RDF (histogram accumulation, first-peak position, output format, frequency):
-  [`tests/cpu/observer/test_rdf_observer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_rdf_observer.cpp)
+  [`tests/cpu/observe/test_rdf_observer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observe/test_rdf_observer.cpp)
 
 Energy conservation and ensemble-level observable averages are physical
 benchmark cases under [`benchmarks/md`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/md) (the LJ and

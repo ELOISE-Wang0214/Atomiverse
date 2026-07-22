@@ -26,7 +26,7 @@ empty — a concrete instance of the empty-phase principle below.
 ## The three-stage driver lifetime
 
 Every driver runs the same shape, composed from the loop primitives
-`CPUDriver` provides:
+`Driver` provides:
 
 ```
 run(frame, n_steps):

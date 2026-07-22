@@ -96,7 +96,7 @@ criterion in its constructor. The same wiring drives classical relaxation
 (`SCFEvaluator` at force). The CUDA side mirrors this exactly:
 `cuda::minimizer::Minimize` takes `SteepestDescent`, `CG`, or `LBFGS`
 Optimizer components. Both are presets over the one loop node
-(`cpu::CPUDriver<P>` / `cuda::CUDADriver<P>`) — there is no category
+(`cpu::Driver<P>` / `cuda::Driver<P>`) — there is no category
 base class between them. Ask the driver for the verdict
 (`opt.converged()`, `opt.stop_reason()`), never the optimizer.
 

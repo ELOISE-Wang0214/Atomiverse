@@ -792,6 +792,13 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/layout_mirror_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# backend-mirror-07-docs gate: CLAUDE.md / AGENTS.md Architecture prose is free
+# of the pre-restructure vocabulary (legacy class + path names). Pure grep.
+add_test(
+    NAME test_docs_vocab_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/docs_vocab_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # Grep gate: domain objects are constructed via class constructors — never
 # free-function factories (build_integrals / *_config / make_atom_list / …).
 # Pure grep — runs in every build configuration. See AGENTS.md OOP rule.

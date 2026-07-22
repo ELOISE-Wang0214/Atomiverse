@@ -341,7 +341,7 @@ For per-frame trajectory output, append a writer at `end_of_step`:
 sim.on(md::Phase::end_of_step).add(cpu::XYZ{"traj.xyz"});
 ```
 
-(The exact recorder API is still consolidating — see `cpu/recorder/`
+(The exact recorder API is still consolidating — see `cpu/record/`
 headers for the currently shipped writers.)
 
 ## When the Force Producer Changes
@@ -388,10 +388,10 @@ Three pieces of MD machinery exist on the CPU side and are not
 discussed in detail here:
 
 - **`Deform`** — affine box deformation for NVT-deformation studies.
-  Implemented in `cpu/md/deform.h`.
+  Implemented in `cpu/dynamics/deform.h`.
 - **`NoseHooverNPT`** — a single integrator that does both thermostat
   and barostat work, implemented as a Martyna–Tobias–Klein chain. Used
-  by `tests/cpu/md/test_md.cpp::NoseHooverNPT`. Prefer it over the
+  by `tests/cpu/dynamics/test_md.cpp::NoseHooverNPT`. Prefer it over the
   Berendsen barostat when you need rigorous NPT statistics.
 - **MPI sub-namespace under `cpu::md::mpi`** — domain decomposition,
   halo exchange, atom migration. Single-rank runs ship every MPI

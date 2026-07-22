@@ -31,7 +31,7 @@ CPU backend now has three collaborating pieces:
 | | What it is | How many |
 |---|---|---|
 | **Runtime** (`cpu::Backend`) | frame binding, plan execution, timing, MPI, domain decomposition | one per run, shared by the whole driver tree |
-| **Driver** (`cpu::CPUDriver<P>`) | one **loop node**: stages + plan + criteria | any number, nestable |
+| **Driver** (`cpu::Driver<P>`) | one **loop node**: stages + plan + criteria | any number, nestable |
 | **Criterion** (`cpu::Criterion`) | a Component polled once per iteration: stop or not? | any number, composable, user-definable |
 
 What survives of the old table is the list of **presets** — the classes
@@ -62,17 +62,17 @@ That is a `Criterion`, and it is about ten lines.
 
 ```text
 Driver<PhaseEnum, DeviceTag>            facade/driver.h — Plan/Backend ownership
-    └─ cpu::CPUDriver<PhaseEnum>        cpu/driver/cpu_driver.h — THE loop node
+    └─ cpu::Driver<PhaseEnum>        cpu/driver/cpu_driver.h — THE loop node
          ├─ cpu::Evaluate               cpu/driver/evaluate.h
-         ├─ cpu::md::MD                 cpu/md/md.h
-         ├─ cpu::minimizer::Minimize    cpu/minimizer/minimize.h
-         ├─ cpu::vib::Hessian           cpu/vib/hessian.h
-         ├─ cpu::mc::MC                 cpu/mc/mc.h
+         ├─ cpu::md::MD                 cpu/dynamics/md.h
+         ├─ cpu::minimizer::Minimize    cpu/minimize/minimize.h
+         ├─ cpu::vib::Hessian           cpu/vibration/hessian.h
+         ├─ cpu::mc::MC                 cpu/montecarlo/mc.h
          └─ cpu::PathDriver             cpu/driver/path_driver.h
 ```
 
 Two levels, not four. `Driver<>` is the underlying primitive — it owns
-the `Plan` and the `Backend`. `cpu::CPUDriver<P>` is the loop node, and
+the `Plan` and the `Backend`. `cpu::Driver<P>` is the loop node, and
 provides:
 
 1. A `build()` override that runs `validate_components()` *before* the
@@ -256,7 +256,7 @@ struct ConvergenceMetrics {   // what the components measured this iteration
 
 **Status belongs to the loop, not to the Context.** Each loop node owns
 its own `IterationStatus` and `ConvergenceMetrics` as members
-(`CPUDriver::status_`, `CPUDriver::metrics_`); the Context only
+(`Driver::status_`, `Driver::metrics_`); the Context only
 *borrows* the active loop's, through the non-owning `ctx.loop`
 (`LoopServices{status, metrics}`). A nested driver re-points `ctx.loop`
 at its own on entry and restores the parent's on exit, so **an inner
@@ -280,7 +280,7 @@ Ownership rules:
   left for it to write. `converged` is set by the driver, and only when
   a criterion returns `Verdict::Converged`.
 - **SCF is not an exception.** The self-consistency cycle inside
-  `RHF`/`UHF`/`RKS`/`UKS` is itself a `CPUDriver<scf::Phase>` loop whose
+  `RHF`/`UHF`/`RKS`/`UKS` is itself a `Driver<scf::Phase>` loop whose
   convergence test, `cpu::scf::ScfConverged`, is a `Criterion` like any
   other; the method answers `converged()` / `stop_reason()` /
   `iterations()` as Driver-owned loop state. The SCF *stage* components
@@ -299,7 +299,7 @@ hidden behind an `SCF` component. That shape is gone: `scf_solver.h` is
 an `#error` tombstone, and so is the `SCFResult` bag (`scf_result.h` is
 deleted). The concrete methods `RHF` / `UHF` / `RKS` / `UKS` share the
 CRTP base `cpu::scf::MeanFieldMethod<D>`, and that base **is** a
-`cpu::CPUDriver<scf::Phase>` — the same loop-node shape as MD and
+`cpu::Driver<scf::Phase>` — the same loop-node shape as MD and
 Minimize, with the typed stage enum
 `fock → mix → diagonalize → density → check`. The stage components live
 in `cpu/scf/stages/`, are owned by the method as direct members, and
@@ -308,7 +308,7 @@ iteration state (`F_alpha_`, `P_alpha_`, `err_alpha_`, …):
 
 ```cpp
 template <typename Derived>
-class MeanFieldMethod : public cpu::CPUDriver<ATV::scf::Phase>, public HF {
+class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     // parameters are members: basis, tol, max_iter, use_diis, ...
 
     std::unique_ptr<FockStage>        fock_stage_;
@@ -428,7 +428,7 @@ order" goes through these stages:
    driver's `pending_` vector. `driver.on(p).add(Component{...}, ord)` owns and
    skips the defaults. The corresponding `add_ref` calls borrow an existing
    instance; plain `add(lvalue)` is deleted.
-2. **Validation.** `cpu::CPUDriver::build()` calls
+2. **Validation.** `cpu::Driver::build()` calls
    `validate_components()` (overridden by each preset) which walks
    `pending_` and checks role + capability requirements.
 3. **Plan compilation.** The base `Driver<>::build()` then asks the
@@ -490,7 +490,7 @@ A short rubric, with examples:
   `cpu::OutcomePolicy`, attached with `set_outcome(...)`. No new driver
   class.
 - **New loop shape** (a genuinely different stage sequence — a new
-  phase enum): subclass `cpu::CPUDriver<YourPhase>` and specialize
+  phase enum): subclass `cpu::Driver<YourPhase>` and specialize
   `cpu::PhaseTraits` for it. This is rare, and it is the *only* case
   that justifies a new driver class.
 
