@@ -90,6 +90,10 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         // Hcore = T + V) transforms it along with everything else.
         // (x2c is mutually exclusive with ECP at the method level; W is
         // never assembled together with U.)
+        // Keep the centers on the pack so the semi-numerical gradient can
+        // rebuild U at displaced geometries (dU/dR); then move into the
+        // energy-matrix builder.
+        this->ecp_centers = ecp_centers;
         internal::EcpIntegrals ecp_ints{shell_list.shells,
                                         std::move(ecp_centers)};
         V += ecp_ints.matrix();

@@ -12,6 +12,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
@@ -490,11 +491,8 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // Spherical-convention packs (def2 family) are supported: the derivative
     // integrals are sandwiched through the stored c2s in IntegralDerivPack, and
     // the two-electron path back-transforms the density (both reuse ipack.c2s).
-    if (integrals.has_ecp)
-        throw std::runtime_error(
-            "ScfGradient::compute: analytic gradients are not implemented "
-            "for ECP packs yet — dU/dR of the semi-local potential is a "
-            "follow-up chain link. Use finite differences.");
+    // ECP packs are supported via a semi-numerical dU/dR term added to the
+    // gradient below (the analytic non-ECP terms already use Z_val).
     if (spin_ == SpinType::RestrictedOpen)
         throw std::runtime_error(
             "ScfGradient::compute: the ROHF analytic gradient is not "
@@ -562,6 +560,52 @@ GradientResult ScfGradient::compute(const Frame& frame,
     grad += grad_two_e;
     const auto [two_e_max_abs, two_e_max_atom_norm] =
         gradient_metrics(grad_two_e);
+
+    // ── ECP nuclear-gradient term (semi-numerical dU/dR) ─────────────────
+    // The only ECP-specific gradient term is Tr[P·dU/dR]; U is a cheap 1e
+    // matrix (built once per geometry, not O(N⁴)), so dU/dR is obtained by a
+    // central finite difference. Displacing atom A moves its shells AND its
+    // ECP center together, so dU captures ∂U/∂R_A (basis-function part +
+    // ECP-center part) to FD order; the Pulay −W·S^X term already handles the
+    // orthonormality/density response and is ECP-agnostic. U is sandwiched to
+    // spherical by the SAME geometry-independent c2s the energy path used.
+    // ponytail: FD of the ECP 1e block; write analytic dU/dR recurrences only
+    // if a hot ECP-force path ever needs it.
+    if (integrals.has_ecp) {
+        const double h = 1e-4; // Bohr — central diff of a smooth 1e matrix
+        const bool sph = integrals.spherical();
+        const auto& c2s = integrals.c2s;
+        xt::xtensor<double, 2> ct;
+        if (sph)
+            ct = xt::transpose(c2s);
+        const auto build_U_sph = [&](int A, int d, double sign) {
+            std::vector<native::Shell> sh = integrals.shells;
+            std::vector<internal::EcpCenter> ce = integrals.ecp_centers;
+            const double* ap = integrals.atoms[A].pos;
+            const auto on_A = [&](const double* c) {
+                return c[0] == ap[0] && c[1] == ap[1] && c[2] == ap[2];
+            };
+            for (auto& s : sh)
+                if (on_A(s.center))
+                    s.center[d] += sign * h;
+            for (auto& c : ce)
+                if (on_A(c.pos))
+                    c.pos[d] += sign * h;
+            internal::EcpIntegrals e{sh, std::move(ce)};
+            xt::xtensor<double, 2> U = e.matrix();
+            if (sph)
+                U = xt::linalg::dot(ct, xt::linalg::dot(U, c2s));
+            return U;
+        };
+        for (int A = 0; A < natm; ++A)
+            for (int d = 0; d < 3; ++d) {
+                const xt::xtensor<double, 2> dU =
+                    (build_U_sph(A, d, +1.0) - build_U_sph(A, d, -1.0))
+                    / (2.0 * h);
+                grad(A, d) += xt::sum(P * dU)();
+            }
+        ATV_INFO("[gradient] ecp semi-numerical dU/dR term added (h={:.0e})", h);
+    }
     ATV_DEBUG("[gradient] two_e_ms={:.1f}", elapsed_ms(t_two_e));
     ATV_INFO("[gradient] two_e_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
              two_e_max_abs, two_e_max_atom_norm);

@@ -488,6 +488,7 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_observer_lowdin cpu/observer/test_lowdin.cpp)
     atv_add_cpp_test(test_cpu_observer_esp_charges cpu/observer/test_esp_charges.cpp)
     atv_add_cpp_test(test_cpu_scf_spherical    cpu/scf/test_spherical_basis.cpp)
+    atv_add_cpp_test(test_cpu_scf_ecp_gradient cpu/scf/test_ecp_gradient.cpp)
     # Static basis-table structure for the third-period + diffuse extension
     # (hf-capability-gaps-05-basis) — table pins vs PySCF, no SCF solve.
     atv_add_cpp_test(test_basis_tables         cpu/scf/test_basis_tables.cpp)

@@ -15,6 +15,13 @@ supersedes: >
 
 # HF deferred backlog — residual Jensen / PySCF gaps
 
+> **Decomposed 2026-07-22:** this inventory is now expanded into the 21-link
+> **`hf-parity` chain** (`hf-parity-01-ecp-forces` … `-21-retire-scf-debt`, all
+> `[draft]` — see INDEX.md). This file stays the priority map; the chain holds
+> the per-theme scope/design. When a chain link ships, strike its matching row
+> below (as the P0 spherical-gradient bullet already is). Do **not** `/mol:impl`
+> this umbrella — work the chain links.
+
 ## Summary
 
 After the 2026 HF capability campaign (`hf-capability-gaps-01`–`21`) and the
@@ -61,7 +68,10 @@ Priority is product / textbook impact, not historical chain order.
       `scf-spherical-gradients`: RHF def2-family forces via the c2s sandwich on
       the derivative integrals; H2O def2-SVP regression vs pinned PySCF 1e-6
       Ha/Bohr). UHF/UKS spherical forces follow the same path if needed.
-- [ ] Analytic **ECP** nuclear derivatives (energy-only ECP today).
+- [x] **ECP** nuclear derivatives (shipped 2026-07-22, `hf-parity-01-ecp-forces`:
+      **semi-numerical** dU/dR — FD of the cheap ECP 1e block, everything else
+      analytic; I₂ def2-SVP+ECP matches PySCF analytic gradient to 1e-9 Ha/Bohr).
+      Full analytic dU/dR recurrences remain a future upgrade.
 - [ ] Analytic forces for **ROHF** and **GHF** (explicit throw / out of scope
       in the closed campaign).
 - [ ] Forces through environment members that currently throw:

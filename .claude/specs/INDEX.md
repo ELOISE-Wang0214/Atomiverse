@@ -7,3 +7,36 @@ in the inventory below; **do not** `/mol:impl` the umbrella — split a child
 spec when work resumes.
 
 - [hf-deferred-backlog](hf-deferred-backlog.md) — residual Jensen/PySCF HF gaps (forces, hard gates, response, solvent/x2c depth, basis, backends); parking lot only [approved]
+
+## `hf-parity` chain — P0–P5 backlog decomposed (2026-07-22)
+
+The whole `hf-deferred-backlog` inventory is expanded into the 21-link
+`hf-parity` chain below, **all `[draft]`** (roadmap). Each is a real theme with
+scope / design direction / files / provisional tasks / testing, but **no
+acceptance ledger yet** — most need `/mol:litrev` + a pinned PySCF/literature
+oracle before "done" is definable. To work a link: `/mol:spec <slug>` (adds the
+researched design + acceptance, promotes to `approved`) → `/mol:impl <slug>`.
+Priority = numeric order (P0 forces first; P5 debt last). Speculative links
+(14–16, 20) promote only when a concrete consumer appears.
+
+- ~~hf-parity-01-ecp-forces~~ — **SHIPPED 2026-07-22** (semi-numerical dU/dR; I₂ vs PySCF 1e-9 Ha/Bohr); spec deleted, history in git log
+- [hf-parity-02-openshell-forces](hf-parity-02-openshell-forces.md) — analytic ROHF + GHF nuclear forces [draft]
+- [hf-parity-03-environment-forces](hf-parity-03-environment-forces.md) — forces through C-PCM/x2c/embed/RI-JK/CFMM-J (umbrella; splits per member) [draft]
+- [hf-parity-04-ir-intensities](hf-parity-04-ir-intensities.md) — IR intensities (dipole derivatives) on the CPHF Hessian [draft]
+- [hf-parity-05-cfmm-j-gate](hf-parity-05-cfmm-j-gate.md) — CFMM-J hard gate (energy identity + crossover + honest ch19) [draft]
+- [hf-parity-06-x2c-gate](hf-parity-06-x2c-gate.md) — x2c-1e hard gate (pVp vs PySCF, decoupling, Ar energy) [draft]
+- [hf-parity-07-cpcm-gate](hf-parity-07-cpcm-gate.md) — C-PCM hard gate (ΔG_solv vs PySCF + honest docs) [draft]
+- [hf-parity-08-embed-gate](hf-parity-08-embed-gate.md) — embed/field hard gate (finite-field dipole, MM bookkeeping) [draft]
+- [hf-parity-09-docs-honesty](hf-parity-09-docs-honesty.md) — docs/Doxygen honesty sweep (Handler/SCFSolver/Results) [draft]
+- [hf-parity-10-polarizability](hf-parity-10-polarizability.md) — static polarizability (E-field CPHF); optional β [draft]
+- [hf-parity-11-uhf-ks-hessian](hf-parity-11-uhf-ks-hessian.md) — UHF CPHF/Hessian + RKS/UKS second derivatives (XC kernel) [draft]
+- [hf-parity-12-tddft](hf-parity-12-tddft.md) — UHF-TDHF / spin-flip TDA; TDDFT (RKS/UKS A/B) [draft]
+- [hf-parity-13-delta-scf-occupation](hf-parity-13-delta-scf-occupation.md) — MOM/IMOM/non-Aufbau ΔSCF + fractional occupation / Fermi smearing [draft]
+- [hf-parity-14-advanced-solvent](hf-parity-14-advanced-solvent.md) — IEF-PCM/SS(V)PE/SMD, ddCOSMO, surface switching (speculative) [draft]
+- [hf-parity-15-mm-embedding](hf-parity-15-mm-embedding.md) — polarizable/periodic MM embedding; Ewald-corrected charges (speculative) [draft]
+- [hf-parity-16-relativity-depth](hf-parity-16-relativity-depth.md) — x2c picture-change props; DKH; SO-ECP; SOC/complex GHF (speculative) [draft]
+- [hf-parity-17-population-analysis](hf-parity-17-population-analysis.md) — NPA/NBO, IAO/IBO, RESP [draft]
+- [hf-parity-18-basis-expansion](hf-parity-18-basis-expansion.md) — static-table basis expansion + g angular momentum (no parsers) [draft]
+- [hf-parity-19-ri-mp2](hf-parity-19-ri-mp2.md) — RI-MP2 product path / DF-ao2mo completeness [draft]
+- [hf-parity-20-cuda-scf-gradients](hf-parity-20-cuda-scf-gradients.md) — CUDA SCF gradients (energy/density-only today; GPU node) [draft]
+- [hf-parity-21-retire-scf-debt](hf-parity-21-retire-scf-debt.md) — retire SCFSolver/SCFConfig/IntegralPack/AtomList debt (do last; refactor) [draft]

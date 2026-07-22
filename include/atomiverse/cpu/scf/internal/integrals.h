@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
+#include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -72,9 +73,14 @@ struct IntegralPack {
 
     /// @brief True when at least one atom carries an ECP (U added to Hcore,
     ///        Z reduced to Z_val, n_electrons reduced by n_core). Consumers
-    ///        without ECP support (analytic gradient, MINAO guess) key off
-    ///        this flag.
+    ///        without ECP support (MINAO guess) key off this flag.
     bool has_ecp = false;
+
+    /// @brief ECP-carrying centers (position [Bohr] + borrowed static table
+    ///        row), retained so the semi-numerical gradient can rebuild the
+    ///        ECP matrix U at displaced geometries for dU/dR. Empty unless
+    ///        has_ecp. The table-row pointers reference static storage.
+    std::vector<internal::EcpCenter> ecp_centers;
 
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.
