@@ -21,7 +21,7 @@ Priority = numeric order (P0 forces first; P5 debt last). Speculative links
 
 - ~~hf-parity-01-ecp-forces~~ — **SHIPPED 2026-07-22** (semi-numerical dU/dR; I₂ vs PySCF 1e-9 Ha/Bohr); spec deleted, history in git log
 - ~~hf-parity-02-openshell-forces~~ — **ROHF forces SHIPPED 2026-07-22** (spin-Fock W; O2 vs PySCF 5.8e-11); GHF split out (no PySCF oracle); spec deleted, history in git log
-- [hf-parity-03-environment-forces](hf-parity-03-environment-forces.md) — environment forces (umbrella): **point-charge embed SHIPPED 2026-07-22** (H2O vs PySCF qmmm 5.4e-11); field/RI-JK/C-PCM/x2c/CFMM-J members remain [draft, in progress]
+- [hf-parity-03-environment-forces](hf-parity-03-environment-forces.md) — environment forces (umbrella): **embed + external-field forces SHIPPED 2026-07-22** (qmmm 5.4e-11; field FD 1.5e-7); RI-JK/C-PCM/x2c/CFMM-J members remain [draft, in progress]
 - ~◐ hf-parity-04-ir-intensities — **APT (∂μ/∂R) tensor SHIPPED 2026-07-22** (H2O vs PySCF FD 4e-7 au); per-mode km/mol intensity projection deferred (no pyscf.prop oracle); spec deleted, history in git log
 - [hf-parity-05-cfmm-j-gate](hf-parity-05-cfmm-j-gate.md) — CFMM-J hard gate (energy identity + crossover + honest ch19) [draft]
 - [hf-parity-06-x2c-gate](hf-parity-06-x2c-gate.md) — x2c-1e hard gate (pVp vs PySCF, decoupling, Ar energy) [draft]

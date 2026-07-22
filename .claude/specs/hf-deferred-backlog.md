@@ -84,8 +84,8 @@ Priority is product / textbook impact, not historical chain order.
       - [x] **point-charge embed** (shipped 2026-07-22: semi-numerical
             dV_embed/dR + analytic nucleus–MM Coulomb; H2O vs PySCF qmmm
             5.4e-11 Ha/Bohr).
-      - [ ] **external field** (same fixed-1e pattern; oracle is FD-only — the
-            field-gradient isn't turnkey in PySCF).
+      - [x] **external field** (shipped 2026-07-22: same fixed-1e pattern;
+            analytic force = FD of the validated field-SCF energy to 1.5e-7).
       - [ ] **RI-JK** (DF gradient: 3-index derivative + metric derivative).
       - [ ] **C-PCM** (density-dependent self-consistent surface charges — not a
             fixed 1e term; see [[hf-parity-07-cpcm-gate]]).

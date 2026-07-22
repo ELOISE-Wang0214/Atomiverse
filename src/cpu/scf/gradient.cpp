@@ -13,6 +13,7 @@
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
+#include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
@@ -702,6 +703,58 @@ GradientResult ScfGradient::compute(const Frame& frame,
         }
         ATV_INFO("[gradient] embed (QM/MM) gradient term added (n_charges={})",
                  emb.n_charges());
+    }
+
+    // ── Uniform external electric field gradient ─────────────────────────
+    // The field 1e operator V_field = Σ_a F_a⟨μ|(r−R₀)_a|ν⟩ is folded into
+    // Hcore and the classical nuclear field energy −Σ_A Z_A F·(R_A−R₀) into
+    // V_nuc (both density-independent). dE_field/dR_A adds the explicit
+    // derivative of both (the density response is already in P/W), obtained by
+    // central difference — displacing atom A moves its shells AND the nuclear-
+    // charge center R₀, both recomputed by rebuilding ExternalField.
+    const std::array<double, 3>& fld = integrals.external_field;
+    if (fld[0] != 0.0 || fld[1] != 0.0 || fld[2] != 0.0) {
+        const bool sph = integrals.spherical();
+        const auto& c2s = integrals.c2s;
+        xt::xtensor<double, 2> ct;
+        if (sph)
+            ct = xt::transpose(c2s);
+        const double h = 1e-4; // Bohr
+        for (int A = 0; A < natm; ++A) {
+            const double ax = integrals.atoms[A].pos[0];
+            const double ay = integrals.atoms[A].pos[1];
+            const double az = integrals.atoms[A].pos[2];
+            const auto on_A = [&](const double* c) {
+                return c[0] == ax && c[1] == ay && c[2] == az;
+            };
+            for (int d = 0; d < 3; ++d) {
+                std::vector<native::Atom> atoms_p = integrals.atoms;
+                std::vector<native::Atom> atoms_m = integrals.atoms;
+                atoms_p[A].pos[d] += h;
+                atoms_m[A].pos[d] -= h;
+                std::vector<native::Shell> shp = integrals.shells;
+                std::vector<native::Shell> shm = integrals.shells;
+                for (auto& s : shp)
+                    if (on_A(s.center))
+                        s.center[d] += h;
+                for (auto& s : shm)
+                    if (on_A(s.center))
+                        s.center[d] -= h;
+                const internal::ExternalField fp{fld, atoms_p};
+                const internal::ExternalField fm{fld, atoms_m};
+                xt::xtensor<double, 2> Vp = fp.core_matrix(shp);
+                xt::xtensor<double, 2> Vm = fm.core_matrix(shm);
+                if (sph) {
+                    Vp = xt::linalg::dot(ct, xt::linalg::dot(Vp, c2s));
+                    Vm = xt::linalg::dot(ct, xt::linalg::dot(Vm, c2s));
+                }
+                const double d_enuc = (fp.nuclear_energy(atoms_p)
+                                       - fm.nuclear_energy(atoms_m))
+                                      / (2.0 * h);
+                grad(A, d) += xt::sum(P * (Vp - Vm))() / (2.0 * h) + d_enuc;
+            }
+        }
+        ATV_INFO("[gradient] external-field gradient term added");
     }
     ATV_DEBUG("[gradient] two_e_ms={:.1f}", elapsed_ms(t_two_e));
     ATV_INFO("[gradient] two_e_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",

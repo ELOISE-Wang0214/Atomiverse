@@ -90,6 +90,12 @@ struct IntegralPack {
     ///        derivative. Empty ⇒ no embedding.
     std::vector<internal::PointChargeSite> embed_charges;
 
+    /// @brief Uniform external electric field [a.u.], retained by the method
+    ///        when a field is active so the semi-numerical gradient can rebuild
+    ///        the field 1e matrix + nuclear field energy for dE_field/dR.
+    ///        All-zero ⇒ no field.
+    std::array<double, 3> external_field{{0.0, 0.0, 0.0}};
+
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.
     std::vector<native::Atom> atoms;

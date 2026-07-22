@@ -215,7 +215,7 @@ TEST(ExternalField, SmallFieldEnergyShiftMatchesDipole) {
     EXPECT_LT(rel, 1e-2) << "dE=" << dE << " want=" << want;
 }
 
-TEST(MeanFieldEnvironment, PointChargeForcesRunFieldStillThrows) {
+TEST(MeanFieldEnvironment, PointChargeAndFieldForcesRunSolventStillThrows) {
     auto frame = make_h2o();
     // Point-charge embedding forces are supported (hf-parity-03): value bar
     // vs pinned PySCF qmmm lives in regressions/scf/embed_h2o_grad.
@@ -229,13 +229,21 @@ TEST(MeanFieldEnvironment, PointChargeForcesRunFieldStillThrows) {
     EXPECT_EQ(g.forces.shape(0), 3u);
     EXPECT_TRUE(std::isfinite(g.energy));
 
-    // External-field forces remain a follow-up link (FD-only oracle).
+    // External-field forces are supported (value bar in field_h2o_grad).
     RHF rhf2;
     rhf2.basis = BasisSet::STO3G;
     rhf2.tol = 1e-8;
     rhf2.max_iter = 50;
     rhf2.external_field = {0.0, 0.0, 1e-4};
-    EXPECT_THROW(rhf2.forces(frame), std::runtime_error);
+    EXPECT_NO_THROW(rhf2.forces(frame));
+
+    // C-PCM (self-consistent solvent) forces remain a follow-up link.
+    RHF rhf3;
+    rhf3.basis = BasisSet::STO3G;
+    rhf3.tol = 1e-8;
+    rhf3.max_iter = 50;
+    rhf3.solvent_eps = 78.4;
+    EXPECT_THROW(rhf3.forces(frame), std::runtime_error);
 }
 
 TEST(MeanFieldEnvironment, EmptyEnvironmentIsNoOp) {
