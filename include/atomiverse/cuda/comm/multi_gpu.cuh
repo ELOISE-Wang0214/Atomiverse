@@ -29,7 +29,7 @@
 // Force families are composed by abstract base pointer + factory (de-hardcoded
 // from PairLJCut/BondHarmonic/...); concrete styles are pulled in only by the
 // default factories in multi_gpu.cu, not by this header.
-#include "atomiverse/cuda/kspace/kspace.cuh"
+#include "atomiverse/cuda/longrange/kspace.cuh"
 #include "atomiverse/cuda/potentials/angle.cuh"
 #include "atomiverse/cuda/potentials/bond.cuh"
 #include "atomiverse/cuda/potentials/dihedral.cuh"

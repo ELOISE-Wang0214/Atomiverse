@@ -1,6 +1,6 @@
-/// @file tests/cuda/kspace/test_pme_coul.cu
-/// @brief Validation of CUDA Particle-Mesh Ewald (CoulLong + KSpacePME)
-///        against the NaCl Madelung constant. Needs ATV_BUILD_KSPACE.
+/// @file tests/cuda/longrange/test_ewald_coul.cu
+/// @brief Validation of CUDA Ewald electrostatics (CoulLong + KSpaceEwald)
+///        against the NaCl Madelung constant.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -8,7 +8,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/kspace/pme.cuh"
+#include "atomiverse/cuda/longrange/ewald.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
@@ -44,26 +44,28 @@ cpu::Frame make_rocksalt(double d, int n) {
 
 } // namespace
 
-TEST(CudaPmeCoul, MadelungNaCl) {
+TEST(CudaEwaldCoul, MadelungNaCl) {
     const double d = 2.82;
-    const int n = 4;
+    const int n = 4; // 64 ions; cutoff < L/2 = 2d
     auto frame = make_rocksalt(d, n);
 
     const double cutoff = 1.9 * d;
-    const double alpha =
-        3.5 / cutoff; // moderate α so the grid resolves k-space
+    const double alpha = 5.0 / cutoff;
 
+    // First MD step does not move atoms (v=0, prior force=0), so the
+    // force-phase energy reflects the input configuration.
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.add_potential(cuda::CoulLong{alpha, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
-    sim.on(md::Phase::force).add(cuda::KSpacePME{alpha, 0.5, 6}, 100);
+    sim.on(md::Phase::force).add(cuda::KSpaceEwald{alpha, 1e-7}, 100);
     sim.build();
     sim.run(frame, 1);
 
     const int N = n * n * n;
     const double e_expected = -0.5 * N * kMadelungNaCl * ATV::kCoulomb / d;
     const double e = static_cast<double>(frame.scalars.energy);
-    EXPECT_NEAR(e / e_expected, 1.0, 3e-3)
+    // real_t positions are single precision on the CUDA path → looser tol.
+    EXPECT_NEAR(e / e_expected, 1.0, 2e-3)
         << "E=" << e << " expected=" << e_expected;
 }

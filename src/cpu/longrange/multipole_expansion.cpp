@@ -1,7 +1,7 @@
 /// @file longrange/multipole_expansion.cpp
 /// @brief Solid-harmonic multipole / local expansions (open-boundary Coulomb).
 
-#include "atomiverse/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/longrange/multipole_expansion.h"
 
 #include <cmath>
 #include <utility>

@@ -9,7 +9,7 @@
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_compute.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/potentials/pair_kernel.h"
+#include "atomiverse/cuda/potentials/pair_kernel.h"
 #include <cstddef>
 #include <cstdint>
 #include <cuda_runtime.h>

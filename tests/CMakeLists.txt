@@ -147,7 +147,6 @@ atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
 atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp)
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
-atv_add_cpp_test(test_cpu_pair_kernel             cpu/potentials/test_pair_kernel.cpp)
 atv_add_cpp_test(test_cpu_pair_coul_cut           cpu/potentials/test_pair_coul_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_special_scale      cpu/potentials/test_pair_special_scale.cpp)
 atv_add_cpp_test(test_cpu_coul_long_special       cpu/potentials/test_coul_long_special.cpp)
@@ -161,12 +160,12 @@ atv_add_cpp_test(test_cpu_bias_distance_cv        cpu/bias/test_distance_cv.cpp)
 atv_add_cpp_test(test_cpu_ewald_sum               cpu/longrange/test_ewald_sum.cpp)
 atv_add_cpp_test(test_cpu_pme_math                cpu/longrange/test_pme_math.cpp)
 atv_add_cpp_test(test_cpu_ewald_coul              cpu/longrange/test_ewald_coul.cpp)
-# Backend-agnostic FMM operator math (facade longrange/, always on)
-atv_add_cpp_test(test_multipole_expansion         longrange/test_multipole_expansion.cpp)
-atv_add_cpp_test(test_fmm_operators               longrange/test_fmm_operators.cpp)
-atv_add_cpp_test(test_fmm_tree                    longrange/test_fmm_tree.cpp)
+# Backend-agnostic FMM operator math (absorbed into cpu/longrange/, always on)
+atv_add_cpp_test(test_multipole_expansion cpu/longrange/test_multipole_expansion.cpp)
+atv_add_cpp_test(test_fmm_operators cpu/longrange/test_fmm_operators.cpp)
+atv_add_cpp_test(test_fmm_tree cpu/longrange/test_fmm_tree.cpp)
 # hf-capability-gaps-21-cfmm: WJGH Gaussian extent (header-only facade)
-atv_add_cpp_test(test_gaussian_extent             longrange/test_gaussian_extent.cpp)
+atv_add_cpp_test(test_gaussian_extent cpu/longrange/test_gaussian_extent.cpp)
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/longrange/test_pme_coul.cpp)
     atv_add_cpp_test(test_cpu_pppm_coul           cpu/longrange/test_pppm_coul.cpp)
@@ -675,9 +674,12 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_observer_rdf_molrs cuda/observer/test_rdf_molrs.cu)
     atv_add_test(test_cuda_pair_lj_special_bonds cuda/potentials/test_pair_lj_special_bonds.cu)
     atv_add_test(test_cuda_potentials_bonded cuda/potentials/test_bonded.cu)
-    atv_add_test(test_cuda_ewald_coul cuda/kspace/test_ewald_coul.cu)
+    # pair_kernel is cuda-owned (backend-mirror-02-absorb); its scalar-math test
+    # moved here from the former cpu/potentials/test_pair_kernel.cpp.
+    atv_add_test(test_cuda_pair_kernel cuda/potentials/test_pair_kernel.cu)
+    atv_add_test(test_cuda_ewald_coul cuda/longrange/test_ewald_coul.cu)
     if(ATV_BUILD_KSPACE)
-        atv_add_test(test_cuda_pme_coul cuda/kspace/test_pme_coul.cu)
+        atv_add_test(test_cuda_pme_coul cuda/longrange/test_pme_coul.cu)
     endif()
     if(ATV_BUILD_PW)
         atv_add_test(test_cuda_pw_fft cuda/pw/test_fft.cu)
@@ -750,6 +752,14 @@ add_test(
 add_test(
     NAME test_no_facade_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/core/no_facade_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# backend-mirror-02-absorb gate: no top-level shared-math module; reciprocal /
+# pair kernels are owned per backend, and cuda uses the full word longrange
+# (never kspace). Pure grep — every build configuration.
+add_test(
+    NAME test_no_toplevel_shared_math_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_toplevel_shared_math_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: domain objects are constructed via class constructors — never

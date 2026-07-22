@@ -13,7 +13,7 @@
 #include <xsimd/xsimd.hpp>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/potentials/pair_kernel.h"
+#include "atomiverse/cuda/potentials/pair_kernel.h"
 
 using namespace ATV;
 using potentials::CoulKernel;

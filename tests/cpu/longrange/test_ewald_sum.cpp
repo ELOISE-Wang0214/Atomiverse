@@ -13,7 +13,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/longrange/ewald_sum.h"
+#include "atomiverse/cpu/longrange/ewald_sum.h"
 
 using namespace ATV;
 using ATV::longrange::EwaldSum;

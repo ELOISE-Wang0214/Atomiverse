@@ -1,4 +1,4 @@
-/// @file cuda/kspace/ewald.cu
+/// @file cuda/longrange/ewald.cu
 /// @brief Reciprocal-space Ewald summation implementation (CUDA).
 #include <cmath>
 #include <cuda_runtime.h>
@@ -8,7 +8,7 @@
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/cuda/kspace/ewald.cuh"
+#include "atomiverse/cuda/longrange/ewald.cuh"
 
 namespace ATV {
 

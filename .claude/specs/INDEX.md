@@ -7,7 +7,7 @@ full-word dirs; per-backend implementations; Driver/Criterion; dissolve Backend;
 **no backward compatibility; rewrite tests**. Implement in order:
 
 - [backend-mirror-01-core](backend-mirror-01-core.md) — move contracts facade→core; delete facade [done]
-- [backend-mirror-02-absorb](backend-mirror-02-absorb.md) — absorb top-level longrange/potentials; cuda kspace→longrange [approved]
+- [backend-mirror-02-absorb](backend-mirror-02-absorb.md) — absorb top-level longrange/potentials; cuda kspace→longrange [done]
 - [backend-mirror-03-paths](backend-mirror-03-paths.md) — full-word renames (dynamics, communication, …) [approved]
 - [backend-mirror-04-driver](backend-mirror-04-driver.md) — Driver/DriverNode rename; Criterion on CUDA [approved]
 - [backend-mirror-05-dissolve](backend-mirror-05-dissolve.md) — dissolve Backend into communication/device/asynchronous/driver [approved]

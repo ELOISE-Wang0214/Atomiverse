@@ -1,7 +1,7 @@
 /// @file longrange/fmm_tree.cpp
 /// @brief Adaptive octree FMM for open-boundary point charges.
 
-#include "atomiverse/longrange/fmm_tree.h"
+#include "atomiverse/cpu/longrange/fmm_tree.h"
 
 #include <algorithm>
 #include <cmath>

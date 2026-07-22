@@ -16,7 +16,7 @@
 
 #include <stdexcept>
 
-#include "atomiverse/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/longrange/multipole_expansion.h"
 
 namespace ATV {
 namespace longrange {

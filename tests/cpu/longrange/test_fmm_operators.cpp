@@ -7,8 +7,8 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/longrange/fmm_operators.h"
-#include "atomiverse/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/longrange/fmm_operators.h"
+#include "atomiverse/cpu/longrange/multipole_expansion.h"
 
 using namespace ATV;
 using ATV::longrange::L2L;

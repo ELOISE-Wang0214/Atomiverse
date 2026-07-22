@@ -22,8 +22,8 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/longrange/fmm_operators.h"
-#include "atomiverse/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/longrange/fmm_operators.h"
+#include "atomiverse/cpu/longrange/multipole_expansion.h"
 
 namespace ATV {
 namespace longrange {

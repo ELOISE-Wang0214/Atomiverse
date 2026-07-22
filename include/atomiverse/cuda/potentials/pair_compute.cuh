@@ -19,7 +19,7 @@
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/potentials/pair_kernel.h"
+#include "atomiverse/cuda/potentials/pair_kernel.h"
 
 namespace ATV {
 namespace cuda {

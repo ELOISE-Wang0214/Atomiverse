@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/longrange/fmm_tree.h"
+#include "atomiverse/cpu/longrange/fmm_tree.h"
 
 using namespace ATV;
 using ATV::longrange::FmmTree;

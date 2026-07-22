@@ -32,6 +32,7 @@ endfunction()
 # Layout guarantee (always on): out-of-library consumer of the core contract
 # headers — backend-mirror-01-core moved these from facade/ into core/.
 atv_add_regression(layout core_contract_includes)
+atv_add_regression(layout backend_owned_longrange)
 
 if(ATV_BUILD_MD)
     atv_add_regression(md lj_argon)

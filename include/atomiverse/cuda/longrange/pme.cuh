@@ -1,4 +1,4 @@
-/// @file cuda/kspace/pme.cuh
+/// @file cuda/longrange/pme.cuh
 /// @brief Smooth Particle-Mesh Ewald reciprocal sum — CUDA (cuFFT).
 ///        Requires `ATV_BUILD_KSPACE`.
 ///
@@ -11,7 +11,7 @@
 #include <array>
 #include <string>
 
-#include "atomiverse/cuda/kspace/kspace.cuh"
+#include "atomiverse/cuda/longrange/kspace.cuh"
 
 namespace ATV {
 namespace cuda {

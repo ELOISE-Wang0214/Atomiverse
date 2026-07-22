@@ -1,4 +1,4 @@
-/// @file cuda/kspace/kspace.cuh
+/// @file cuda/longrange/kspace.cuh
 /// @brief Abstract base for reciprocal-space (long-range) electrostatics — CUDA.
 ///
 /// Mirror of `cpu::KSpace`. A first-class force *family*, sibling to

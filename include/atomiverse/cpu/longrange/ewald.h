@@ -29,7 +29,7 @@
 #include "atomiverse/cpu/longrange/kspace.h"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
-#include "atomiverse/longrange/ewald_sum.h"
+#include "atomiverse/cpu/longrange/ewald_sum.h"
 
 namespace ATV {
 namespace cpu {

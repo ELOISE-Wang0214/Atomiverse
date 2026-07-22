@@ -1,4 +1,4 @@
-/// @file cuda/kspace/ewald.cuh
+/// @file cuda/longrange/ewald.cuh
 /// @brief Reciprocal-space Ewald summation (LAMMPS `kspace_style ewald`) — CUDA.
 ///
 /// GPU mirror of `cpu::KSpaceEwald`. Adds the long-range reciprocal sum,
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/kspace/kspace.cuh"
+#include "atomiverse/cuda/longrange/kspace.cuh"
 
 namespace ATV {
 namespace cuda {

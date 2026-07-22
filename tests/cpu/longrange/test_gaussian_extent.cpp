@@ -7,7 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/longrange/gaussian_extent.h"
+#include "atomiverse/cpu/longrange/gaussian_extent.h"
 
 using namespace ATV;
 using ATV::longrange::GaussianExtent;

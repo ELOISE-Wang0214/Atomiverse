@@ -10,7 +10,7 @@
 /// pairs use the existing Schwarz-screened analytic ERI path. K never routes
 /// through CFMM.
 ///
-/// Includes only `atomiverse/longrange/*` (never `cpu/longrange/*`).
+/// Includes only `atomiverse/cpu/longrange/*` (never `cpu/longrange/*`).
 /// Class + constructor only — no `build_*` free function.
 #pragma once
 
@@ -21,9 +21,9 @@
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/longrange/fmm_operators.h"
-#include "atomiverse/longrange/gaussian_extent.h"
-#include "atomiverse/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/longrange/fmm_operators.h"
+#include "atomiverse/cpu/longrange/gaussian_extent.h"
+#include "atomiverse/cpu/longrange/multipole_expansion.h"
 
 namespace ATV {
 namespace cpu {

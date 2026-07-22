@@ -14,7 +14,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/comm/multi_gpu.cuh"
-#include "atomiverse/cuda/kspace/kspace.cuh"
+#include "atomiverse/cuda/longrange/kspace.cuh"
 #include "atomiverse/cuda/potentials/pair.cuh"
 
 using namespace ATV;

@@ -23,8 +23,8 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/longrange/pme_influence.h"
-#include "atomiverse/longrange/pme_spline.h"
+#include "atomiverse/cpu/longrange/pme_influence.h"
+#include "atomiverse/cpu/longrange/pme_spline.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>

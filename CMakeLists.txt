@@ -182,9 +182,9 @@ if(NOT ATV_DOCS_ONLY)
         # Backend-agnostic longrange operator math (Ewald/PME headers are
         # header-only; FMM needs translation-operator / tree sources). Always
         # compiled — not gated by ATV_BUILD_*.
-        src/longrange/multipole_expansion.cpp
-        src/longrange/fmm_operators.cpp
-        src/longrange/fmm_tree.cpp
+        src/cpu/longrange/multipole_expansion.cpp
+        src/cpu/longrange/fmm_operators.cpp
+        src/cpu/longrange/fmm_tree.cpp
         src/cpu/scf/solve.cpp
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
@@ -342,7 +342,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/scf/convergence_check.cu
             src/cuda/scf/scf_solver.cu
             src/cuda/scf/scf_evaluator.cu
-            src/cuda/kspace/ewald.cu
+            src/cuda/longrange/ewald.cu
         )
         if(ATV_BUILD_MD)
             list(APPEND ATOMIVERSE_SRCS
@@ -385,7 +385,7 @@ if(NOT ATV_DOCS_ONLY)
             list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
         endif()
         if(ATV_BUILD_KSPACE)
-            list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/pme.cu)
+            list(APPEND ATOMIVERSE_SRCS src/cuda/longrange/pme.cu)
         endif()
     else()
         # CUDA-free build still links against cuda::Timer (PIMPL in core/driver_template.h).
