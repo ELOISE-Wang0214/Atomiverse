@@ -105,7 +105,7 @@ CfmmJ::CfmmJ(const std::vector<native::Shell>& shells, int order,
     }
 }
 
-void CfmmJ::build_distributions_() {
+void CfmmJ::form_distributions_() {
     dists_.clear();
     dists_.reserve(static_cast<std::size_t>(n_ao_ * (n_ao_ + 1) / 2));
     for (int i = 0; i < n_ao_; ++i) {
@@ -177,7 +177,7 @@ void CfmmJ::classify_pairs_() {
 }
 
 void CfmmJ::prepare() {
-    build_distributions_();
+    form_distributions_();
     classify_pairs_();
     // Own a ShellPairList for the exact near-field baseline. Built from the
     // owned shells via a thin IntegralPack-free path: fill pairs from dists_.

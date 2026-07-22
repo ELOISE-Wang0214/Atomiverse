@@ -129,7 +129,7 @@ class CfmmJ {
         bool spherical = false;  ///< both shells l == 0
     };
 
-    void build_distributions_();
+    void form_distributions_();
     void classify_pairs_();
 
     int n_ao_ = 0;

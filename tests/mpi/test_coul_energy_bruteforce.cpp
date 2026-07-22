@@ -21,6 +21,8 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
+#include "atomiverse/cpu/component/long_range_protocol.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -106,6 +108,26 @@ double brute_force_coul_energy(const cpu::Frame& frame, double alpha,
     return e;
 }
 
+// CoulLong is the real-space half of split electrostatics; the driver requires
+// a matching reciprocal partner before it will build. This stub declares that
+// half with the same alpha but contributes zero energy, so the reported energy
+// is exactly the real-space part the brute-force oracle computes.
+class NullReciprocal : public cpu::Potential, public cpu::LongRangeParticipant {
+  public:
+    explicit NullReciprocal(double alpha) : alpha_(alpha) {}
+    std::string name() const override { return "null/kspace"; }
+    const cpu::LongRangeParticipant* as_long_range_participant() const override {
+        return this;
+    }
+    cpu::LongRangeContract long_range_contract() const override {
+        return {cpu::LongRangeRole::ReciprocalSpace, alpha_, 0, 0};
+    }
+    void launch(const cpu::LaunchContext&) override {}
+
+  private:
+    double alpha_;
+};
+
 } // namespace
 
 // ── Real-space Coulomb energy matches brute force at 1 and 8 ranks ───────────
@@ -127,6 +149,7 @@ TEST(CoulEnergyBruteForce, GlobalEnergyMatchesBruteForce) {
     sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
+    sim.on(ATV::md::Phase::force).add(NullReciprocal{alpha});
     sim.on(ATV::md::Phase::pre_force).add(cpu::comm::HaloSend{cutoff}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
     sim.build();

@@ -43,6 +43,7 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/component/halo_participant.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
@@ -427,10 +428,11 @@ namespace {
 
 /// @brief No-op Force evaluator so `cpu::md::MD` validation passes without
 /// dragging a pair potential + neighbor list into the field-participant tests.
-class NullForce : public cpu::Component {
+// A zero force. Inherits the Potential kind so the MD driver's energy-source
+// validation is satisfied; it plants nothing, keeping owner rows static.
+class NullForce : public cpu::Potential {
   public:
     std::string name() const override { return "null_force"; }
-    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext&) override {}
 };
 
