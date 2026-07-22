@@ -16,6 +16,24 @@ full-word dirs; per-backend implementations; Driver/Criterion; dissolve Backend;
 
 Start: `/mol:impl backend-mirror-01-core` (or `/mol:impl-all backend-mirror`).
 
+**COMPLETE 2026-07-22** — all 7 phases shipped + verified (CPU 236/236); spec
+files deleted, history in git log (`dev..backend-mirror`, commits ba03fac0…18b8a6ee).
+Follow-ons split out: namespace→directory alignment; CUDA resurrection (below).
+
+## `cuda-resurrect` — revive the dead CUDA backend (2026-07-22)
+
+The CUDA backend does not compile on `dev`/`backend-mirror` (~180 pre-existing
+errors: stale `Frame::atoms/box/scalars`, deleted `Real`/`core/real.h`, renamed
+units constants) — orthogonal to backend-mirror, surfaced by its GPU validation.
+Revive it purely by mirroring the current CPU Frame/precision/units API; **CPU
+untouched (stays 236/236)**; GPU-node build+ctest is the acceptance.
+
+- [cuda-resurrect](cuda-resurrect.md) — single spec, staged tasks (precision/units → frame boundary → domains → GPU-green) [approved, ungrilled]
+
+Start: `/mol:grilling cuda-resurrect` (optional) then `/mol:impl cuda-resurrect`
+in a fresh session with GPU-node access (each build cycle is a ~6-15 min sbatch).
+See memory `cuda-backend-rotted-on-dev` + `cuda-gpu-node-build-recipe`.
+
 ---
 
 Completed HF campaign work lives in the git log (`hf-capability-gaps-01`…`21`,
