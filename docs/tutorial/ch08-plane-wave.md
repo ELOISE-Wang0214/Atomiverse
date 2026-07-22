@@ -1,22 +1,11 @@
-# Chapter 8: Plane-Wave DFT for Periodic Systems
+# Chapter 8. Plane-Wave DFT
 
-| | |
-|---|---|
-| **Example** | [`examples/08_pw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/08_pw.cpp) |
-| **Results** | [`examples/results/08_pw.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/08_pw.json) |
-| **Flag** | `-DATV_BUILD_PW=ON` (needs FFTW3) |
-| **API** | `cpu::pw::PWConfig` → `PWEvaluator` / `PWSolver` |
-| **UPF** | empty path = toy \(V_\mathrm{loc}\); real Si UPF under `regressions/ or a future benchmarks tree/validation/reference/` |
+API: `cpu::pw::PWConfig` → `PWEvaluator` / `PWSolver`. Empty UPF path is a toy
+\(V_\mathrm{loc}\); real Si UPF lives in the regression data tree.
 
-```bash
-cmake -B build -DATV_BUILD_PW=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 08_pw
-./build/examples/08_pw tests/data/pw/Si_lda_nc.upf
-```
+## Live Result: Silicon Diamond
 
-## Live result: Si diamond / LDA / ONCVPSP (tutorial settings)
-
-Tutorial binary uses **ecut = 15 Ry**, **k_mesh = 2** (seconds, not production):
+Tutorial settings: **ecut = 15 Ry**, **k_mesh = 2** (seconds, not production):
 
 | | Atomiverse |
 |---|---:|
@@ -28,9 +17,9 @@ Tutorial binary uses **ecut = 15 Ry**, **k_mesh = 2** (seconds, not production):
 For reference, the PseudoDojo deltafactor **converged** \(E_\mathrm{min}\) for
 this exact UPF is −16.916 Ry (−230.158 eV per cell at \(a_0\approx 5.47\) Å) —
 not the same ecut/k-mesh as the tutorial. Absolute PW energies shift with basis
-completeness; production acceptance in `regressions/ or a future benchmarks tree` compares **EOS**
+completeness; production acceptance in the regressions suite compares **EOS**
 (\(a_0\), \(B_0\)) rather than raw total energy. See
-[`SOURCES.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/regressions/ or a future benchmarks tree/validation/reference/SOURCES.md).
+the regression reference notes.
 
 ```cpp
 cpu::pw::PWConfig cfg;
@@ -42,17 +31,14 @@ cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) (eV)
 auto res = pwe.last_result();           // Ry / Ha on the result object
 ```
 
-
-
 This tutorial assumes you have read
-[Chapter 2: Atomic Orbitals to Single-Point RHF](ch02-rhf.md) and
-[Chapter 5: Unrestricted Kohn-Sham DFT](ch05-kohn-sham-dft.md).
+[Chapter 2](ch02-rhf.md) and
+[Chapter 5](ch05-kohn-sham-dft.md).
 
 The first four tutorials covered **molecular** electronic structure with
 atom-centered Gaussian basis sets. This tutorial moves to **periodic** systems —
 crystals, surfaces, bulk materials — where the natural basis is **plane waves**.
-The runnable example is [`examples/08_pw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/08_pw.cpp), which
-computes the energy of bulk silicon. Keep it open beside this text.
+The Practice block below computes the energy of bulk silicon.
 
 The guiding question:
 
@@ -235,18 +221,7 @@ physically meaningful. Use a real UPF for real numbers.
 
 ## Build and run the example
 
-The plane-wave module is gated behind `ATV_BUILD_PW` and needs **FFTW3**.
-
-```bash
-cmake -B build -DATV_BUILD_PW=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 08_pw
-
-# Toy local potential (runs with no arguments, ~30 s, unphysical energy):
-./build/examples/08_pw
-
-# Real norm-conserving silicon pseudopotential (physical energy):
-./build/examples/08_pw tests/data/pw/Si_lda_nc.upf
-```
+The plane-wave path needs FFTW3 at build time.
 
 The example builds the 2-atom silicon diamond cell, configures `PWConfig`
 (15 Ry, \f$2\times2\times2\f$ mesh), runs it as a `PWEvaluator`, and prints the

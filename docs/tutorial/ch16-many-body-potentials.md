@@ -1,10 +1,7 @@
-# Chapter 16: Many-Body Potentials — Metals and Covalent Solids
+# Chapter 16. Many-Body Potentials
 
-| | |
-|---|---|
-| **Components** | `cpu::EAM` (Sutton–Chen copper), `cpu::StillingerWeber` (Si) |
-| **Why** | pair potentials are *qualitatively* wrong for metals / covalent solids (Cauchy relation, vacancy paradox) |
-| **Validation** | finite-difference force oracles in the potential unit tests |
+Pair potentials are qualitatively wrong for metals and covalent solids.
+This chapter uses `cpu::EAM` and `cpu::StillingerWeber`.
 
 ```cpp
 sim.add_potential(cpu::EAM{/* Sutton-Chen Cu lookup */});
@@ -17,7 +14,6 @@ Pair LJ NVE conservation ([Chapter 10](ch10-classical-md.md)) proves the MD
 pipeline; many-body styles reuse the same neighbor list and force reduction.
 Always re-check FD forces after parameter changes — the two-pass EAM force is a
 common source of sign/density bugs.
-
 
 Every classical potential in this book so far has been a **pair potential**: the
 energy is a sum over separations,
@@ -36,11 +32,6 @@ the **embedded-atom method** (EAM) for metals and the **Stillinger–Weber** (SW
 potential for covalent silicon.
 
 Runnable end-to-end cases, checked against the original papers:
-
-```bash
-cmake -B build -DATV_BUILD_REGRESSIONS=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target regressions      # builds AND runs every case
-```
 
 - [`regressions/md/eam_cu/`](https://github.com/MolCrafts/Atomiverse/blob/dev/regressions/md/eam_cu/reg_eam_cu.cpp) — EAM copper
 - [`regressions/md/sw_si/`](https://github.com/MolCrafts/Atomiverse/blob/dev/regressions/md/sw_si/reg_sw_si.cpp) — SW silicon
@@ -347,7 +338,7 @@ test of three-bodyness rather than of bookkeeping.
 
 ---
 
-## 4. How the Force Is Computed (and Verified)
+## 4. How the Force Is Computed
 
 ### Two passes for EAM
 

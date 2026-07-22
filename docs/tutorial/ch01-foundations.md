@@ -1,11 +1,8 @@
-# Chapter 1: Systems, Units, Precision, and Validation
+# Chapter 1. Systems and Units
 
-| | |
-|---|---|
-| **Units** | eV, Å, fs, amu, eV/Å, K (`core/units.h`) |
-| **Precision** | `StorageReal` / `WorkReal` / `AccReal` (accumulators always `double`) |
-| **IDs** | `LocalInt`, `TagInt`, `ImageInt`, `BigInt` (LAMMPS roles) |
-| **Frame** | `blocks` + `meta` + `simbox` — no method-specific scratch |
+Units are eV, Å, fs, amu, eV/Å, K. Precision is tiered
+(`StorageReal` / `WorkReal` / always-double `AccReal`). Frame is
+`blocks` + `meta` + `simbox` only.
 
 Every later chapter reuses this model. Finite-difference gradient checks are the
 universal validation: analytic forces from any evaluator must match energy
@@ -19,10 +16,8 @@ f.simbox = cpu::Box::cubic(L);     // (Å)
 double E = f.meta.get(kEnergy);    // (eV) for classical/AM1; SCF writes eV too
 ```
 
-Cross-check: run `02_rhf` and confirm the textbook energy in
-[`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json)
-— that is an end-to-end proof that units, Frame, and SCF agree.
-
+Cross-check the textbook energy in the RHF results table of Chapter 2 —
+an end-to-end proof that units, Frame, and SCF agree.
 
 Before any method — Hartree-Fock, DFT, molecular dynamics — there is a
 system: a set of atoms in a box, described in a fixed set of units, stored
@@ -47,7 +42,7 @@ The six questions this book asks of every topic apply here too:
    independent check" discipline reappears in every method chapter.
 
 If the architecture (Driver / Component / Frame) is new to you, read
-[Chapter 0: A Tour of the CPU Backend](ch00-architecture.md) first. This
+[Chapter 0](ch00-architecture.md) first. This
 chapter assumes you know that a `cpu::Frame` is the shared state object and
 picks up from there.
 

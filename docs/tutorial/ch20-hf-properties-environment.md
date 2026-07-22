@@ -1,12 +1,11 @@
-# Chapter 20. Molecular properties and environment
+# Chapter 20. Properties and Environment
 
 Extract observables from a mean-field wave function, and place the molecule in
 an external field, continuum solvent, or scalar-relativistic one-electron
 Hamiltonian. Each topic uses **Theory → Practice → Results**.
 
-| | |
-|---|---|
-| **Related** | [Ch. 2](ch02-rhf.md), [Ch. 14](ch14-vibrations.md), [Appendix](appendix-pyscf-oracle.md) |
+See also [Ch. 2](ch02-rhf.md), [Ch. 14](ch14-vibrations.md), and the
+[Appendix](appendix-pyscf-oracle.md).
 
 ---
 
@@ -211,7 +210,7 @@ this engine includes it in nuclear repulsion.
 
 ---
 
-## 20.6 Continuum solvation (C-PCM)
+## 20.6 Continuum Solvation
 
 ### Theory
 
@@ -245,7 +244,7 @@ Regression: `h2o_rhf_631gs_cpcm`.
 
 ---
 
-## 20.7 Scalar relativity (x2c-1e)
+## 20.7 Scalar Relativity
 
 ### Theory
 

@@ -1,10 +1,7 @@
-# Chapter 13: Observables and Trajectory Analysis
+# Chapter 13. Observables
 
-| | |
-|---|---|
-| **Observers** | RDF, MSD, VACF, VirialStress, Mulliken, density |
-| **Rule** | engine *measures*; molrs *analyzes/stores* (no analysis math in C++) |
-| **MD baseline** | NVE drift in [`07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
+Observers measure RDF, MSD, VACF, virial stress, Mulliken, and density.
+The engine measures; molrs analyzes and stores — analysis math stays out of C++.
 
 Energy conservation is the first observable: if \(E_\mathrm{total}\) drifts,
 nothing downstream (RDF, MSD) is trustworthy. Chapter 10 already shows a flat
@@ -13,7 +10,6 @@ total-energy series from a real Atomiverse NVE run.
 Charges and populations are Frame outputs (`kAtom_charge`, Mulliken observers)
 — colour atoms in MolVis by those columns after a SCF/AM1 evaluation
 ([Chapter 17](ch17-semiempirical-am1.md) water charges).
-
 
 Every previous chapter produced a *trajectory* — a sequence of frames from an
 integrator ([Chapter 11](ch11-ensembles.md)), an optimizer

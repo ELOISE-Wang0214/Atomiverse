@@ -1,4 +1,4 @@
-# Chapter 10: Classical Molecular Dynamics on the CPU
+# Chapter 10. Classical Molecular Dynamics
 
 The previous chapters introduced the SCF machinery and showed that the
 same `cpu::md::MD` driver that ran *ab initio* MD will also run classical
@@ -9,19 +9,7 @@ list, integrator, thermostat, barostat, and observers. By the end you
 will have built every layer of an LAMMPS-style script, but in C++, in
 about thirty lines.
 
-| | |
-|---|---|
-| **Example** | [`examples/07_md_lj.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) (CUDA twin `07_md_lj.cu`) |
-| **Results** | [`examples/results/07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
-| **Acceptance** | NVE total-energy conservation |
-
-```bash
-cmake -B build -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 07_md_lj
-./build/examples/07_md_lj
-```
-
-## Live result: NVE energy conservation (216 Ar, LJ)
+## Live Result: NVE Energy Conservation
 
 Thermo every 200 steps from the binary (total energy in eV):
 
@@ -60,7 +48,7 @@ encoding:
 
 Potential and kinetic trade off; **total** is flat — the NVE signature of a
 correct Velocity-Verlet + LJ force pipeline. The CUDA twin
-(`07_md_lj_cuda`) should match within floating-point noise.
+should match within floating-point noise.
 
 ## What "Classical" Means in This Code
 
@@ -136,7 +124,7 @@ The `cpu::Box` is constructed last from the side length. A frame is a
 plain value object — there is no "open" or "init" call to make, no
 implicit registration. Hand it to the driver and you are done.
 
-## Wiring a Lennard-Jones Run (NVE)
+## Wiring a Lennard-Jones Run
 
 The simplest possible classical MD is an NVE run with a single pair
 potential. The full driver setup is:
@@ -193,7 +181,7 @@ constructor before the user code runs. You almost never have to think
 about them, but if you ever wonder why `frame.meta.get(kEnergy)` is zero before the
 first force component runs each step, that is why.
 
-## Adding a Thermostat (NVT)
+## Adding a Thermostat
 
 Two thermostats ship today. They differ in *how* they enforce
 temperature, not in the wiring you write:
@@ -236,7 +224,7 @@ set advertises `Capability::Force`. That lets a *pure* Langevin run
 `cpu::md::MD`'s "something must produce forces" build-time check.
 Roles describe structure; capabilities describe data flow.
 
-## Adding a Barostat (NPT)
+## Adding a Barostat
 
 For NPT, combine a thermostat with the Berendsen barostat:
 

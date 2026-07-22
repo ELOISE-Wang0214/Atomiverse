@@ -1,19 +1,7 @@
-# Chapter 9: Gaussian and Plane Waves (GPW)
+# Chapter 9. Gaussian and Plane Waves
 
-| | |
-|---|---|
-| **Example** | [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp) |
-| **Results** | [`examples/results/09_gpw.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/09_gpw.json) |
-| **Flag** | `-DATV_BUILD_GPW=ON` (needs RHF + PW + FFTW3) |
-| **Data** | in-tree GTH / MOLOPT tables — no parsers at run time |
-| **API** | `GthPotential(Element, name)`, `GaussianBasis(Element, name)`, `GPWEvaluator` |
-
-```bash
-cmake -B build -DATV_BUILD_HF=ON -DATV_BUILD_PW=ON -DATV_BUILD_GPW=ON \
-      -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 09_gpw
-./build/examples/09_gpw
-```
+Data: in-tree GTH / MOLOPT tables — no runtime parsers.
+API: `GthPotential(Element, name)`, `GaussianBasis(Element, name)`, `GPWEvaluator`.
 
 ## Live result: isolated H₂O / PBE / DZVP-MOLOPT-GTH
 
@@ -48,7 +36,6 @@ Analytic forces must match finite differences; a known pitfall is
 `GpwConfig.local_pp_on_grid` — energy and gradient both read it
 (see `cpu/gpw/internal/local_pp.h`).
 
-
 The manual has now presented the two great basis families of electronic
 structure. The molecular chapters ([Chapter 2](ch02-rhf.md) through
 [Chapter 6](ch06-hybrid-dft.md)) used **atom-centered Gaussians** — compact,
@@ -75,14 +62,14 @@ You will learn:
 2. **The representation** — a `gpw_solver` inner engine behind a
    `GPWEvaluator` component, the third member of the evaluator family.
 3. **The C++ API** — `Element`, `GpwEvaluatorConfig`, and `single_point`,
-   walked through `examples/09_gpw.cpp` (an isolated water molecule).
+   walked through for an isolated water molecule.
 4. **The expected result** — CP2K Quickstep parity, to the sub-µHartree.
 5. **The validation** — against CP2K, and the honest experimental scope.
 6. **The recurring pattern** — a third evaluator that drops into the same
    Evaluate / MD / Minimize drivers as the Gaussian and plane-wave ones.
 
 GPW needs FFTW3 and is off by default; build with
-`-DATV_BUILD_GPW=ON` (alongside `-DATV_BUILD_HF=ON -DATV_BUILD_PW=ON`).
+GPW enabled in the build.
 
 ## The Concept: Two Representations, One Density
 
@@ -135,7 +122,7 @@ plugs into the `Evaluate`, `MD`, and `Minimize` drivers with no special support.
 
 ## The C++ API: Elements, Config, `single_point`
 
-The runnable companion is [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp) —
+Practice:
 an isolated water molecule, the electronic structure of CP2K's getting-started
 `h2o.inp`. Keep it open beside this text.
 
@@ -209,7 +196,7 @@ Martyna-Tuckerman) the CP2K reference total energy is
 
 $$ E_\text{total} = -17.21233714\ \text{Hartree}, $$
 
-and `examples/09_gpw.cpp` prints `|dE|` against it. The `GpwResult` also exposes
+and the run reports `|dE|` against it. The `GpwResult` also exposes
 the energy decomposition — `e_kinetic`, `e_loc_sr` (short-range local PP),
 `e_nonlocal`, `e_es` (total electrostatic), `e_xc` — so you can check parity
 term by term, which is how you localise a discrepancy if the total drifts.
@@ -280,7 +267,7 @@ The runnable GPW example validates against a pinned reference energy printed at
 the end of the run:
 
 - Isolated H₂O (PBE, DZVP-MOLOPT-GTH, Martyna-Tuckerman) vs the pinned anchor
-  `-17.21233714` Ha: [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp).
+  `-17.21233714` Ha.
 
 The full anchor suite (H₂ / Ar / H₂O / ZnO / NaCl single points, forces vs the
 FD oracle, geoopt, AIMD, OT-vs-diag) lives in `/* benchmarks removed; re-add later */ gpw/validation/` —

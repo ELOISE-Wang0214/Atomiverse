@@ -73,25 +73,9 @@ and a small iteration count. That proves the build chain works. Chapter 2
 walks through the theory and shows **density and HOMO cubes** produced from
 the same SCF — not a bare geometry canvas.
 
-Theory, literature comparison, and a line-by-line walk-through:
-[Chapter 2 — Restricted Hartree-Fock](../tutorial/ch02-rhf.md).
-
-Build any other example the same way:
-
-```bash
-cmake --build build --target <name> -j
-./build/examples/<name>
-```
-
-| Program | Topic | Flag |
-|---|---|---|
-| `01_scf` | bare SCF loop (no chemistry) | — |
-| `02_rhf` | RHF single point | `ATV_BUILD_HF` |
-| `03_uhf` | open shell / bond breaking | `ATV_BUILD_HF` |
-| `04_uks` | Kohn–Sham DFT | `ATV_BUILD_HF` |
-| `05_geom_opt` | L-BFGS + SCF | `ATV_BUILD_HF` |
-| `06_aimd` | ab-initio MD | `ATV_BUILD_HF` |
-| `07_md_lj` | classical LJ MD | always |
+Theory and Practice snippets: [Chapter 2](../tutorial/ch02-rhf.md). Other
+runnable demos live under `examples/` and document themselves; the handbook
+does not catalogue them.
 | `08_pw` | plane-wave crystal | `ATV_BUILD_PW` |
 | `09_gpw` | GPW DFT | `ATV_BUILD_GPW` |
 | `15_am1` | AM1 + Minimize | — |

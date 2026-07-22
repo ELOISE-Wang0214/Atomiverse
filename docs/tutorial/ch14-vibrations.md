@@ -1,25 +1,20 @@
-# Chapter 14: Vibrational Analysis and Thermochemistry
+# Chapter 14. Vibrations
 
-| | |
-|---|---|
-| **Preset** | `cpu::vib::Hessian` (`vib::Phase`) |
-| **Method** | finite-difference Hessian + harmonic thermochemistry |
-| **Forces** | any force component (classical, AM1, SCF, …) |
+Preset `cpu::vib::Hessian` builds a finite-difference Hessian and harmonic
+thermochemistry. Bind any force component you trust for Minimize.
 
 ```cpp
 cpu::vib::Hessian vib;
-// bind the same force evaluator you trust for Minimize
 vib.on(vib::Phase::force).add(/* Potential or SCF or AM1 */);
 vib.build();
-vib.run(frame, /* budget unused — fixed 6N displacements */);
+vib.run(frame);
 ```
 
 Frequencies are only as good as the underlying forces: validate analytic vs FD
 forces ([Chapter 1](ch01-foundations.md)) before trusting thermochemistry.
 Literature IR frequencies for small molecules (e.g. H₂O) are the acceptance
-target for a future `examples/results/` entry when a dedicated vib example is
+recorded once a dedicated vibrational regression is
 added.
-
 
 A geometry optimization ([Chapter 12](ch12-geometry-optimization.md)) finds a
 stationary point on the potential-energy surface, but it cannot tell you

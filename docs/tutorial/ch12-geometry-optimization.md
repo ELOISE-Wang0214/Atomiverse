@@ -1,20 +1,9 @@
-# Chapter 12: Geometry Minimization with L-BFGS or CG
-
-| | |
-|---|---|
-| **Examples** | [`05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp) (aspirin + SCF), [`15_am1.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/15_am1.cpp) (water + AM1) |
-| **Results** | [`05_geom_opt.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/05_geom_opt.json), [`15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
+# Chapter 12. Geometry Optimization
 
 The same `cpu::minimizer::Minimize` preset and `ForceConverged` criterion work
 for classical, AM1, and SCF forces — only the force-phase component changes.
 
-```bash
-cmake --build build --target 15_am1 05_geom_opt
-./build/examples/15_am1
-./build/examples/05_geom_opt   # ~few minutes: 25 × RHF/STO-3G + gradient
-```
-
-### Fast path: AM1 water (`15_am1`)
+### Fast path: AM1 water
 
 | | Before | After L-BFGS |
 |---|---:|---:|
@@ -22,10 +11,9 @@ cmake --build build --target 15_am1 05_geom_opt
 | max\|F\| (eV/Å) | 3.3135 | **0.1513** |
 | Status | — | `force_converged` |
 
-### Ab initio path: aspirin RHF/STO-3G (`05_geom_opt`)
+### Ab initio path: aspirin RHF/STO-3G
 
-21 atoms, 73 basis functions, 94 electrons. Live 25-step budget from
-[`05_geom_opt.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/05_geom_opt.json):
+21 atoms, 73 basis functions, 94 electrons. Live 25-step budget:
 
 | | Step 1 | Step 25 |
 |---|---:|---:|
@@ -67,7 +55,6 @@ encoding:
   y: {field: maxF, type: quantitative, title: "max |F| (eV/Å)", scale: {type: log, base: 10}}
 ```
 
-
 The `cpu::minimizer::Minimize` driver answers a different question from
 the MD chapters. Instead of "how does the system evolve in time?" it
 asks "where is the nearest local minimum of the potential energy
@@ -80,7 +67,7 @@ successive geometries fall below tolerance.
 This chapter walks through the full geometry-optimization recipe with
 an aspirin (acetylsalicylic acid) molecule at RHF / STO-3G. The example
 to read alongside this chapter is
-[`examples/05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp).
+the Practice block.
 
 ## What the Minimize Driver Actually Does
 
@@ -270,7 +257,7 @@ see L-BFGS doing useful work.
 The setup, in full:
 
 ```cpp
-auto frame = make_aspirin();              // see examples/05_geom_opt.cpp
+auto frame = make_aspirin();              // aspirin geometry
 
 auto integrals = /* IntegralPack is private — use RHF */;
 auto config    = /* use cpu::scf::RHF */;   // RHF: no XC grid, fast
@@ -420,7 +407,7 @@ classical relaxation. Replace the SCF with `cpu::PairLJCut` and
 The optimizer does not know the difference, and the convergence
 tolerances stay in the same units.
 
-If you came here from [Chapter 15: AIMD](ch15-cross-method.md), the symmetry is
+If you came here from [Chapter 15](ch15-cross-method.md), the symmetry is
 worth pausing on. The same `SCF{config}` instance plugs into
 either driver:
 

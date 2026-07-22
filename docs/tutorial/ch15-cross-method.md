@@ -1,10 +1,6 @@
-# Chapter 15: Cross-Method Workflows — Swap the Evaluator
+# Chapter 15. Cross-Method Workflows
 
-| | |
-|---|---|
-| **Example** | [`examples/06_aimd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/06_aimd.cpp) |
-| **Pattern** | one Driver, different force component |
-| **Examples** | `07_md_lj` (classical), `02_rhf` / `15_am1` (single-point), `06_aimd` (SCF forces in MD) |
+One Driver, different force-phase component.
 
 ```cpp
 // Classical
@@ -15,16 +11,8 @@ sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
 // sim.on(md::Phase::force).add(cpu::scf::RHF{});
 ```
 
-```bash
-cmake --build build --target 06_aimd 07_md_lj 15_am1
-./build/examples/07_md_lj   # classical NVE — results/07_md_lj.json
-./build/examples/15_am1     # AM1 Evaluate + Minimize
-./build/examples/06_aimd    # BOMD / Nosé-Hoover + SCF
-```
-
 The architectural payoff of the whole book: method is a **Component**, never a
 new Driver category.
-
 
 Every chapter of this book has quietly repeated one sentence: *change method
 by swapping the evaluator, keep the driver.* This closing chapter stops
@@ -202,7 +190,7 @@ The MD row above is the single most consequential cell in the grid — *ab initi
 molecular dynamics (AIMD), where a fully converged SCF supplies the forces at
 every time step. The most common variant, running a converged SCF at each
 nuclear configuration, is **Born-Oppenheimer MD (BOMD)**. The runnable companion
-is [`examples/06_aimd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/06_aimd.cpp), which propagates H₂ for
+propagates H₂ for
 50 fs of NVT at 100 K on RHF/STO-3G forces. Nothing in the loop "knows" the
 forces are quantum mechanical: the `SCF` advertises `Capability::Force`
 and the driver treats it like any other force provider. But four practical

@@ -1,4 +1,4 @@
-# Chapter 0: A Tour of the CPU Backend
+# Chapter 0. CPU Backend
 
 This is the orientation chapter — no physics yet. By the end you know the
 three pillars (**Driver**, **Component**, **Frame**), how termination works
@@ -22,16 +22,6 @@ sim.build();
 sim.run(frame, 1000);
 ```
 
-Runnable proofs of the architecture (not full e2e science):
-
-```bash
-# classical MD energy conservation — proves the loop + potential pipeline
-cmake --build build --target 07_md_lj && ./build/examples/07_md_lj
-# RHF single point — proves SCFSolver as an inner solver, not a Driver
-cmake --build build --target 02_rhf && ./build/examples/02_rhf
-```
-
-
 If you arrived at Atomiverse looking for "how do I run a simulation?" the
 honest answer is: it depends on what you mean by *run*. Three different
 loops live inside the project, and the first thing a beginner needs is a
@@ -47,7 +37,6 @@ concrete example.
 A shorter, task-oriented version of this vocabulary is in
 [User Guide → Core concepts](../user-guide/concepts.md). If you have not built
 the project yet, see [Getting Started](../user-guide/getting-started.md) first.
-Example programs under `examples/` map one-to-one to the loops described here.
 
 ## The One Truth: `cpu::Frame`
 
@@ -384,6 +373,6 @@ You can now read the rest of the manual without losing your bearings.
   component, keeps the `SCF` at the force phase.
 
 If you only have time for one example to start with, build and run
-`examples/01_scf.cpp` (the SCF toy) and read Chapter 1 next.
+Chapter 1 next for systems and units.
 Everything that follows reuses the same loop with progressively more
 realistic physics.

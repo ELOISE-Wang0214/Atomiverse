@@ -24,7 +24,7 @@ native   = ["nanobind>=2.4"]
 # charting in the `examples` extra, not for documentation builds.
 docs     = [
   "zensical>=0.0.45",
-  "molcrafts-zensical-theme>=0.2.2",
+  "molcrafts-zensical-theme>=0.2.3",
 ]
 # Python examples (pw_qe_compare, …): paper plots via molplot; systems via molpy.
 # Do not add matplotlib or ASE here — use the MolCrafts stack only.

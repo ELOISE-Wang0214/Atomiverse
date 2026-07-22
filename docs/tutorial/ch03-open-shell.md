@@ -1,4 +1,4 @@
-# Chapter 3: Unrestricted Hartree-Fock
+# Chapter 3. Unrestricted Hartree–Fock
 
 Restricted Hartree-Fock is a good first model because it explains molecular
 orbitals, density matrices, and self-consistency with the least amount of
@@ -7,21 +7,12 @@ shells and bond breaking. This chapter is about that failure and about the
 smallest change that repairs it: allow the $\alpha$ and $\beta$ electrons
 to occupy different spatial orbitals.
 
-| | |
-|---|---|
-| **Example** | [`examples/03_uhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/03_uhf.cpp) |
-| **Results** | [`examples/results/03_uhf_pes.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/03_uhf_pes.json) |
-| **Reference limit** | \(2\times E(\mathrm{H})=-0.9332\) Ha |
+Dissociation limit: \(2\times E(\mathrm{H})=-0.9332\) Ha.
 
-```bash
-cmake --build build --target 03_uhf
-./build/examples/03_uhf
-```
-
-## Live result: H₂ dissociation (STO-3G)
+## Live Result: H₂ Dissociation
 
 RHF cannot dissociate to two neutral H atoms; UHF can. The scan below is the
-actual table printed by `03_uhf` (columns: \(R\), \(E_\mathrm{RHF}\),
+actual dissociation scan (columns: \(R\), \(E_\mathrm{RHF}\),
 \(E_\mathrm{UHF}\), \(\langle S^2\rangle\)).
 
 ```molplot preset="molplot" theme="auto" width="100%" aspect="16:9"
@@ -255,7 +246,7 @@ trace of that symmetry breaking.
 ## ΔSCF: Ionization Energies Beyond Koopmans
 
 The previous chapter's Koopmans section (see the Koopmans discussion in
-[Chapter 2: Restricted Hartree-Fock](ch02-rhf.md)) estimated the ionization
+[Chapter 2](ch02-rhf.md)) estimated the ionization
 energy of a closed-shell molecule as $I_K = -\varepsilon_\text{HOMO}$: the
 negative of the highest occupied orbital energy. That estimate is free — you
 already have the orbital energies once the neutral SCF converges — but it rests
@@ -367,17 +358,11 @@ the pedagogy of relaxation, not for spectroscopic accuracy. Enlarging the basis
 (STO-3G → 6-31G) and, eventually, adding correlation (a later chapter) moves the
 numbers toward experiment; relaxing the cation geometry would convert vertical
 to adiabatic. The worked table for all five systems in both bases is
-[`examples/12_delta_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/12_delta_scf.cpp).
+a second UHF run on the cation with adjusted `charge` / `n_alpha` / `n_beta`.
 
 ## Running The Example
 
 The build path is straightforward:
-
-```bash
-cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 03_uhf
-./build/examples/03_uhf
-```
 
 The example is a good companion to this chapter because it places RHF and UHF
 side by side instead of treating UHF as a separate world. You can watch the
@@ -485,7 +470,7 @@ PySCF’s `mf.stability(external=True)` at \(R=1.5\,\mathrm{Å}\) reports the
 same internal-stable / external-unstable diagnosis. Geometry and commands are
 in `regressions/scf/h2_rhf_stability/REFERENCE.md`.
 
-## Restricted open-shell HF (ROHF)
+## Restricted Open-Shell HF
 
 UHF gives α and β independent spatial orbitals and therefore spin
 contamination: \(\langle S^2\rangle\) is no longer \(S(S+1)\). For stretched
@@ -630,4 +615,4 @@ requires a stored dense ERI (`compute_eri`, on by default in the constructor).
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree–Fock exchange, it uses an
 exchange-correlation functional on a real-space grid:
-[Chapter 5: Unrestricted Kohn–Sham DFT (UKS)](ch05-kohn-sham-dft.md).
+[Chapter 5](ch05-kohn-sham-dft.md).

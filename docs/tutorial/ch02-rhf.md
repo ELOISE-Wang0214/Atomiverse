@@ -1,16 +1,9 @@
-# Chapter 2: Restricted Hartree–Fock (single point)
+# Chapter 2. Restricted Hartree–Fock
 
 Closed-shell RHF energy of H₂ in STO-3G — the first end-to-end electronic
 structure result in this manual. Layout: **Theory → Practice → Results**
-([tutorial contract](index.md)).
-
-| | |
-|---|---|
-| **Examples** | [`01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp), [`02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp), [`16_density_cube.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/16_density_cube.cpp) |
-| **Results** | [`02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json) |
-| **Reference** | Szabo & Ostlund, *Modern Quantum Chemistry*, Table 3.7 |
-
----
+([tutorial contract](index.md)). Textbook anchor: Szabo & Ostlund, *Modern
+Quantum Chemistry*, Table 3.7.
 
 ## Theory
 
@@ -44,17 +37,8 @@ orbitals that the solve itself produces.**
 
 ### Warm-up: a density-free loop
 
-[`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp)
-is a stripped fixed-point demo (no chemistry). Build:
-
-```bash
-cmake -B build -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 01_scf
-./build/examples/01_scf
-```
-
-The residual shrinks until the density reproduces itself. That is the structure
-carried into molecular RHF below.
+A density-free fixed-point demo makes the residual shrink until \(P\)
+reproduces itself. That structure carries into molecular RHF below.
 
 ### Molecular RHF
 
@@ -159,9 +143,6 @@ nuclear gradients through the filtered subspace are not yet validated.
 
 ## Practice
 
-The setup in [`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp) is intentionally
-short:
-
 ```cpp
 cpu::Frame frame(2);
 frame.span(kAtom_x)[0] = 0;    frame.span(kAtom_y)[0] = 0; frame.span(kAtom_z)[0] = 0;
@@ -169,50 +150,24 @@ frame.span(kAtom_x)[1] = 0.74; frame.span(kAtom_y)[1] = 0; frame.span(kAtom_z)[1
 frame.span(kAtom_type)[0] = 1;
 frame.span(kAtom_type)[1] = 1;
 frame.simbox = cpu::Box::cubic(100.0);
-```
 
-Those lines carry more chemistry than they appear to: two nuclei fixed at the
-equilibrium bond length, each of charge $+1$, so two electrons to place into
-molecular orbitals. The rest of the file follows the RHF logic directly:
-
-```cpp
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;
-rhf.tol = tol;
+rhf.tol = 1e-10;
 rhf.max_iter = 100;
-const auto& result = rhf.run(frame);   // energy (Hartree)
+const auto& result = rhf.run(frame);   // energy [Hartree]
 ```
 
-> **Element coverage:** the STO-3G integral path supports elements **H through O
-> (Z = 1–8)**. Atoms with higher atomic number throw when resolving the basis rather
-> than returning a wrong answer (there are "no fallback values" by design).
-> Heavier-element basis sets are a planned extension.
+Two nuclei at the equilibrium bond length, each of charge \(+1\), give two
+electrons for one occupied spatial orbital under RHF. STO-3G here covers
+**H–O (Z = 1–8)**; heavier nuclei throw rather than invent a basis row.
 
-The first line prepares the fixed molecular quantities (overlap, one-electron
-terms, electron-electron repulsion, nuclear repulsion). The second starts the
-SCF cycle — exactly the loop from the first half of this chapter, except the
-effective matrix is now the Fock matrix and the energy is a real observable:
+The electronic energy is the usual closed-shell trace form:
 
 $$ E_{\mathrm{RHF}} =
 \tfrac{1}{2}\mathrm{Tr}\!\left[P(H_{\mathrm{core}} + F)\right] + V_{\mathrm{nuc}}. $$
 
-If you want the same lesson expressed on CUDA, the companion file is
-[`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu), but the CPU example is the
-place to learn the method itself.
-
 ## Results
-
-Build and run:
-
-```bash
-cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_HF=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target 02_rhf
-./build/examples/02_rhf
-```
-
-Numbers below are the live output of that binary, frozen in
-[`examples/results/02_rhf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/02_rhf.json)
-— not a hand-tuned golden file.
 
 | Quantity | Atomiverse | Reference |
 |---|---:|---:|
@@ -230,30 +185,30 @@ energies against PySCF to \(10^{-7}\) Ha (see
 After convergence, \(\mathrm{Tr}(PS)=N_e\) must still hold: the density
 represents two electrons in a closed-shell state.
 
-### Density and HOMO (computed fields)
+### Density and HOMO
 
-Not a geometry canvas — isosurfaces from the SCF:
+Isosurfaces from the same H₂ / STO-3G RHF via `DensityCubeWriter` /
+`OrbitalCubeWriter`. On a 0.3 Bohr mesh the grid-integrated density is
+**1.99945** electrons (target 2.0).
 
-[`examples/16_density_cube.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/16_density_cube.cpp)
-runs the same H₂ / STO-3G RHF and writes ρ(r) plus the HOMO with
-`DensityCubeWriter` / `OrbitalCubeWriter`. Live files:
-
-- [`examples/results/h2_density.cube`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/h2_density.cube)
-- [`examples/results/h2_homo.cube`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/h2_homo.cube)
-
-On a 0.3 Bohr mesh, the grid-integrated density is **1.99945** electrons
-(target 2.0) — see [`16_density_cube.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/16_density_cube.json).
-
-```bash
-cmake --build build --target 16_density_cube
-./build/examples/16_density_cube examples/results/h2_density.cube examples/results/h2_homo.cube
+```cpp
+cpu::Evaluate eval;
+eval.on(evaluate::Phase::evaluate).add(std::move(rhf).with_gradient(false));
+eval.on(evaluate::Phase::finalize)
+    .add(cpu::recorder::DensityCubeWriter{handle, "h2_density.cube", 4.0, 0.30});
+eval.on(evaluate::Phase::finalize)
+    .add(cpu::recorder::OrbitalCubeWriter{
+        handle, "h2_homo.cube", /*mo=*/0, cpu::recorder::OrbitalSpin::Alpha,
+        4.0, 0.30});
+eval.build();
+eval.run(frame);
 ```
 
 <figure class="molcrafts-web-component-card">
   <figcaption>
     <span class="molcrafts-web-component-card__package">MolVis</span>
     <strong>Total density</strong>
-    <small>Isosurface from <code>h2_density.cube</code> (RHF/STO-3G, example <code>16_density_cube</code>).</small>
+    <small>Isosurface from <code>h2_density.cube</code>, RHF/STO-3G.</small>
   </figcaption>
   <div class="molcrafts-web-component-preview">
     <molvis-viewer
@@ -268,8 +223,8 @@ cmake --build build --target 16_density_cube
 <figure class="molcrafts-web-component-card">
   <figcaption>
     <span class="molcrafts-web-component-card__package">MolVis</span>
-    <strong>HOMO (bonding σ)</strong>
-    <small>Isosurface from <code>h2_homo.cube</code> — the single occupied MO of the closed-shell solution.</small>
+    <strong>HOMO</strong>
+    <small>Bonding \(\sigma\) isosurface from <code>h2_homo.cube</code>.</small>
   </figcaption>
   <div class="molcrafts-web-component-preview">
     <molvis-viewer
@@ -280,21 +235,6 @@ cmake --build build --target 16_density_cube
     ></molvis-viewer>
   </div>
 </figure>
-
-```cpp
-cpu::scf::SCF scf{config};
-auto handle = scf.result_handle();
-cpu::Evaluate eval;
-eval.on(evaluate::Phase::evaluate).add(std::move(scf).with_gradient(false));
-eval.on(evaluate::Phase::finalize)
-    .add(cpu::recorder::DensityCubeWriter{handle, "h2_density.cube", 4.0, 0.30});
-eval.on(evaluate::Phase::finalize)
-    .add(cpu::recorder::OrbitalCubeWriter{
-        handle, "h2_homo.cube", /*mo=*/0, cpu::recorder::OrbitalSpin::Alpha,
-        4.0, 0.30});
-eval.build();
-eval.run(frame);
-```
 
 ## Closed-Shell Validity
 
@@ -489,8 +429,7 @@ double ip_eV    = -eps_homo * 27.211386245988;            // 1 Ha = 27.211386245
 
 For a component-based workflow, `cpu::scf::OrbitalInfoObserver` (bound at the
 `finalize` phase of a `cpu::Evaluate` driver and sharing the SCF state via
-`scf.result_handle()`) exposes `homo_eV()` / `lumo_eV()` directly. The worked
-sweep is `examples/11_koopmans.cpp`.
+`scf.result_handle()`) exposes `homo_eV()` / `lumo_eV()` directly.
 
 **The property.** Running RHF single points on five closed-shell systems in two
 basis sets gives the Koopmans IP $= -\varepsilon_{\mathrm{HOMO}}$
@@ -543,7 +482,7 @@ number you already computed, Koopmans is hard to beat.
      tests/cpu/scf/test_koopmans.cpp lock He/H2/H2O @ STO-3G + He @ 6-31G in
      the default gate. Change one side only in lockstep with the others. -->
 
-### Hands-on: Koopmans vs ΔSCF (Jensen §3.4 style)
+### Hands-on: Koopmans vs ΔSCF
 
 Koopmans froze the orbitals; ΔSCF lets them relax. The ΔSCF ionization
 potential is simply the difference of **two independently converged SCF
@@ -621,4 +560,4 @@ electronic density matrix, the effective matrix is a Fock matrix, and the final
 scalar is a real molecular energy. The next chapter keeps this machinery but
 drops the closed-shell restriction — where RHF stops being enough and
 unrestricted Hartree-Fock begins:
-[Chapter 3: Unrestricted Hartree-Fock (UHF)](ch03-open-shell.md).
+[Chapter 3](ch03-open-shell.md).

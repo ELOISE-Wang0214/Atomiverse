@@ -1,14 +1,11 @@
-# Chapter 18. Convergence of the SCF
+# Chapter 18. SCF Convergence
 
 Roothaan–Hall iteration is a fixed-point search: nothing guarantees that it
 converges. This chapter covers three staged controls—initial guess, Fock/density
 mixing, and second-order orbital updates—each written as **Theory → Practice →
 Results**.
 
-| | |
-|---|---|
-| **Examples / regressions** | `regressions/scf/h2o_scf_convergence`, hard cases in Ch. 18 tables |
-| **Related** | [Ch. 2](ch02-rhf.md) (RHF loop), [Ch. 3](ch03-open-shell.md) (UHF) |
+See also [Ch. 2](ch02-rhf.md) and [Ch. 3](ch03-open-shell.md).
 
 ---
 
@@ -130,7 +127,7 @@ diradical target, \(\langle S^2\rangle\approx 1.97\)):
 
 ---
 
-## 18.4 Second-order SCF (SOSCF / CIAH)
+## 18.4 Second-Order SCF
 
 ### Theory
 

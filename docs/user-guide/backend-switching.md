@@ -13,12 +13,9 @@ masses, atom types, and optional topology live there first. That is true even
 when the eventual calculation runs on CUDA. The backend decision changes how
 the calculation is executed, not how the physical system is described.
 
-This is easiest to see in the RHF pair of examples. The CPU reference path is
-[`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp). The CUDA
-translation of the same problem is
-[`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu). Both begin
-by constructing the same molecular geometry in `cpu::Frame`. The difference
-comes only after the integrals and workflow are chosen.
+This is easiest to see for RHF. The [tutorial Practice block](../tutorial/ch02-rhf.md)
+builds the molecule in `cpu::Frame` and calls `cpu::scf::RHF`. The CUDA path
+starts from the same `cpu::Frame`; only the evaluator and solver backend change.
 
 ## CPU Solver Versus CUDA Driver
 
@@ -60,12 +57,8 @@ CUDA evaluator.
 ## A Good Progression
 
 When you are building a new workflow or debugging a result, start on the CPU
-side first. The tutorial sequence is arranged that way on purpose:
-`examples/01_scf.cpp`, `examples/02_rhf.cpp`,
-`examples/03_uhf.cpp`, and `examples/04_uks.cpp` are all
-CPU-first examples. Once the result looks correct, move one representative case
-to CUDA. For RHF, that representative translation is
-`examples/02_rhf.cu`.
+side first. Work through the tutorial Practice snippets for RHF, UHF, and UKS
+on CPU, then move one representative case to CUDA with the same `cpu::Frame`.
 
 This progression keeps two concerns separate. First, you confirm that the
 method and the inputs are right. Second, you change the backend and check that

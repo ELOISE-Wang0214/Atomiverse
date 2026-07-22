@@ -1,4 +1,4 @@
-# Chapter 17: Semiempirical AM1 — Cheap Quantum Forces
+# Chapter 17. Semiempirical AM1
 
 Gaussian SCF and GPW give transferable electronic structure at a price.
 Classical force fields are fast but parameterized. **Semiempirical** methods
@@ -6,16 +6,7 @@ sit in the middle: a minimal valence electronic Hamiltonian with element
 parameters fitted once, then reused for organic chemistry at a cost between
 classical MD and RHF.
 
-| | |
-|---|---|
-| **Example** | [`examples/15_am1.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/15_am1.cpp) |
-| **Results** | [`examples/results/15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json) |
-| **Reference** | MOPAC / openmopac AM1 \(\Delta H_f(\mathrm{H_2O})\approx -57.8\) kcal/mol |
-
-```bash
-cmake --build build --target 15_am1
-./build/examples/15_am1
-```
+Reference: MOPAC / openmopac AM1 \(\Delta H_f(\mathrm{H_2O})\approx -57.8\) kcal/mol.
 
 ## Architecture
 
@@ -89,9 +80,9 @@ opt.build();
 opt.run(frame, 50);
 ```
 
-## Live results (`15_am1`)
+## Live Results
 
-From [`examples/results/15_am1.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/15_am1.json):
+Pinned results:
 
 | Quantity | Atomiverse | Reference |
 |----------|-----------:|----------:|

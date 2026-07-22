@@ -1,4 +1,4 @@
-# Appendix. Comparison with external quantum-chemistry codes
+# Appendix. External References
 
 Rules for the **Results** block of every tutorial chapter: how to cite PySCF
 (or other references) without making them build dependencies.

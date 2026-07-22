@@ -1,10 +1,7 @@
-# Chapter 11: Ensembles — Thermostats and Barostats
+# Chapter 11. Ensembles
 
-| | |
-|---|---|
-| **Baseline** | NVE energy conservation from [`07_md_lj`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) / [`07_md_lj.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/07_md_lj.json) |
-| **Components** | `NoseHoover`, `FixLangevin`, `Barostat` (Berendsen), `NoseHooverNPT` |
-| **Tests** | `tests/cpu/md/` — unit checks per thermostat/barostat (no full e2e equilibration) |
+Thermostats and barostats: `NoseHoover`, `FixLangevin`, Berendsen `Barostat`,
+`NoseHooverNPT`.
 
 NVE must be solid before NVT/NPT. From the live NVE run (Chapter 10):
 
@@ -27,7 +24,6 @@ Relative drift \(\sim 3\times 10^{-7}\) over 1000 steps. Thermostats **exchange*
 energy with a bath (total energy is no longer conserved); acceptance is then
 mean temperature and pressure vs set points — exercised in unit tests and
 benchmarks, not in the 1000-step tutorial binary.
-
 
 [Chapter 10](ch10-classical-md.md) built a complete classical MD run and, at
 the end, added a thermostat and a barostat almost in passing. This chapter

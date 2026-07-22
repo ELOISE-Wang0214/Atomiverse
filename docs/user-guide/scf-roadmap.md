@@ -42,21 +42,17 @@ Chapter 8 moves from molecules to periodic solids, replacing atom-centered
 Gaussian basis sets with plane waves and introducing pseudopotentials, FFT
 acceleration, k-point sampling, and Ewald summation.
 
-## Which Example Matches Which Tutorial?
+## Which Tutorial Teaches What
 
-| Tutorial | Primary example | Why it matters |
-|---|---|---|
-| SCF introduction | `examples/01_scf.cpp` | Learn the loop before learning chemistry |
-| RHF | `examples/02_rhf.cpp` | First physically meaningful calculation |
-| UHF | `examples/03_uhf.cpp` | Open-shell systems and spin contamination |
-| UKS | `examples/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
-| Plane-Wave DFT | `examples/08_pw.cpp` | Periodic systems, pseudopotentials, FFT acceleration |
+| Tutorial | Focus |
+|---|---|
+| [Ch. 2](../tutorial/ch02-rhf.md) | Closed-shell RHF single point |
+| [Ch. 3](../tutorial/ch03-open-shell.md) | UHF, spin contamination, ROHF/GHF |
+| [Ch. 5](../tutorial/ch05-kohn-sham-dft.md) | Kohn–Sham DFT, grids, XC |
+| [Ch. 8](../tutorial/ch08-plane-wave.md) | Plane-wave DFT, pseudopotentials, k-points |
 
-Note: tutorial numbers and example numbers do **not** line up. The example
-files are numbered in their own pedagogical order (so plane-wave DFT, which
-comes last among the example programs, is `examples/08_pw.cpp` even though it is
-Chapter 8). Always follow the "Primary example" column above rather than
-assuming the numbers match. Read the theory and the matching code side by side.
+Each chapter embeds the Practice snippet; runnable demos under `examples/` are
+optional and self-documented.
 
 ## When To Use CPU Solvers Versus CUDA SCF Components
 

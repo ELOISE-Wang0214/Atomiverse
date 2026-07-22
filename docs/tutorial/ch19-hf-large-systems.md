@@ -1,13 +1,10 @@
-# Chapter 19. Large molecules and the Coulomb bottleneck
+# Chapter 19. Large Molecules
 
 The Fock matrix has \(O(N^2)\) elements; four-centre integrals scale as
 \(O(N^4)\). Each section below is one remedy, in the fixed order
 **Theory → Practice → Results**.
 
-| | |
-|---|---|
-| **Build flags** | RI always with HF; PME needs `-DATV_BUILD_KSPACE=ON` |
-| **Related** | [Ch. 2](ch02-rhf.md), [Appendix](appendix-pyscf-oracle.md) |
+See also [Ch. 2](ch02-rhf.md) and the [Appendix](appendix-pyscf-oracle.md).
 
 ---
 
@@ -37,7 +34,7 @@ This is the baseline against which RI and CFMM are judged (energy tables in
 
 ---
 
-## 19.2 Density fitting (RI)
+## 19.2 Density Fitting
 
 ### Theory
 
@@ -96,7 +93,6 @@ const double alpha = 0.3;  // 1/Å — same on both halves
 const double cutoff = 8.0; // Å
 sim.add_potential(cpu::CoulLong{alpha, cutoff});
 sim.add(cpu::KSpacePME{alpha, /*grid_spacing=*/1.0, /*order=*/6});
-// build requires -DATV_BUILD_KSPACE=ON
 ```
 
 Pure math lives in `include/atomiverse/longrange/`; CPU wrappers are
@@ -111,7 +107,7 @@ Pure math lives in `include/atomiverse/longrange/`; CPU wrappers are
 
 ---
 
-## 19.4 Open-boundary FMM (point charges)
+## 19.4 Open-Boundary FMM
 
 ### Theory
 
@@ -140,7 +136,7 @@ Regression: `regressions/longrange/fmm_point_charges`.
 
 ---
 
-## 19.5 CFMM for the HF \(J\) matrix
+## 19.5 CFMM for the HF \(J\) Matrix
 
 ### Theory
 

@@ -1,9 +1,6 @@
-# Chapter 6: Hybrid Functionals and Analytic Gradients
+# Chapter 6. Hybrid Functionals
 
-| | |
-|---|---|
-| **Examples** | [`04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp) (LSDA baseline), [`05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp) (PBE forces + L-BFGS) |
-| **API** | `cpu::scf::RKS` with hybrid `XCType::{B3LYP,PBE0}`, `forces()` / `GradientResult` |
+Use `cpu::scf::RKS` with hybrid `XCType::{B3LYP,PBE0}` and `forces()`.
 
 Hybrids mix a fraction of exact Hartree–Fock exchange into the KS functional.
 Analytic nuclear gradients (`RKS::forces(frame)`, or the method nested at a
@@ -11,17 +8,9 @@ Analytic nuclear gradients (`RKS::forces(frame)`, or the method nested at a
 what turn a single-point energy into geometry optimization and AIMD
 ([Chapter 12](ch12-geometry-optimization.md), [Chapter 15](ch15-cross-method.md)).
 
-```bash
-# UKS-LSDA scan (energy components) — results in examples/results/04_uks.json
-./build/examples/04_uks
-# Geometry opt with DFT forces (aspirin) — longer run
-./build/examples/05_geom_opt
-```
-
 Validate gradients with finite differences (policy from
 [Chapter 1](ch01-foundations.md)): analytic and FD forces must agree within a
 documented tolerance before trusting an optimizer step.
-
 
 [Chapter 5](ch05-kohn-sham-dft.md) introduced Kohn-Sham DFT with the pure functionals
 LSDA and PBE, where the exchange-correlation energy is a semi-local integral

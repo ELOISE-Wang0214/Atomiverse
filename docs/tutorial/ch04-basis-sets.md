@@ -1,13 +1,8 @@
-# Chapter 4: Gaussian Basis Sets and Convergence
-
-| | |
-|---|---|
-| **Example** | [`examples/11_koopmans.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/11_koopmans.cpp) |
-| **Results** | [`examples/results/11_koopmans.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/11_koopmans.json), [`12_delta_scf.json`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/results/12_delta_scf.json) |
+# Chapter 4. Basis Sets
 
 Basis quality shows up immediately in ionization potentials. Koopmans'
 theorem says \(\mathrm{IP}\approx -\varepsilon_\mathrm{HOMO}\). Atomiverse
-RHF vs experiment (eV) for 6-31G — live data from `11_koopmans`:
+RHF vs experiment (eV) for 6-31G — table below:
 
 | System | Koopmans 6-31G | Experiment |
 |--------|---------------:|-----------:|
@@ -17,7 +12,7 @@ RHF vs experiment (eV) for 6-31G — live data from `11_koopmans`:
 | NH₃ | 11.294 | 10.800 |
 | CH₄ | 14.804 | 13.600 |
 
-ΔSCF (orbital relaxation, from `12_delta_scf`) for the same basis:
+ΔSCF (orbital relaxation, with charge-shifted SCF) for the same basis:
 
 | System | Koopmans | ΔSCF | Experiment |
 |--------|---------:|-----:|-----------:|
@@ -28,12 +23,6 @@ RHF vs experiment (eV) for 6-31G — live data from `11_koopmans`:
 STO-3G vs 6-31G for water: 10.65 eV → 13.64 eV toward experiment 12.62 eV.
 Relaxation always lowers the IP relative to Koopmans; CH₄ and He move closer
 to experiment, while H₂O still needs correlation beyond single-reference HF.
-
-```bash
-cmake --build build --target 11_koopmans 12_delta_scf
-./build/examples/11_koopmans
-./build/examples/12_delta_scf
-```
 
 [Chapter 2](ch02-rhf.md) computed an RHF energy for H₂ in the minimal STO-3G
 basis and quietly accepted whatever number came out. This chapter goes back
