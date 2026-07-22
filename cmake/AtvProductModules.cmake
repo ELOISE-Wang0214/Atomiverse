@@ -13,10 +13,10 @@
 #   KSPACE → POTENTIALS
 # GPW → RHF ∧ PW, TORCH → CUDA, LAUNCHER → MPI∧PYTHON remain FATAL elsewhere.
 
-option(ATV_BUILD_MD "Build classical MD domain (cpu/md, cuda/md)" ON)
-option(ATV_BUILD_MC "Build Monte Carlo domain (cpu/mc)" ON)
+option(ATV_BUILD_MD "Build classical MD domain (cpu/dynamics, cuda/dynamics)" ON)
+option(ATV_BUILD_MC "Build Monte Carlo domain (cpu/montecarlo)" ON)
 option(ATV_BUILD_MINIMIZER "Build geometry optimization (cpu/minimizer, cuda/minimizer)" ON)
-option(ATV_BUILD_VIB "Build vibrational analysis (cpu/vib)" ON)
+option(ATV_BUILD_VIB "Build vibrational analysis (cpu/vibration)" ON)
 option(ATV_BUILD_PATH "Build path methods + replica + bias (cpu/path, replica, bias)" ON)
 option(ATV_BUILD_SEMIEMPIRICAL "Build NDDO/AM1/RM1 semiempirical domain" ON)
 option(ATV_BUILD_POTENTIALS "Build real-space force-field potentials" ON)

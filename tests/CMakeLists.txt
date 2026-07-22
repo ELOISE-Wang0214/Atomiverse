@@ -714,7 +714,7 @@ if(ATV_BUILD_CUDA)
     # AsyncRecordBase / AsyncBridge contract guards. The subdir registers
     # benchmark-independent tests unconditionally and gates the
     # polyethylene_tension-dependent ones on ATV_BUILD_BENCHMARKS internally.
-    add_subdirectory(cuda/async)
+    add_subdirectory(cuda/asynchronous)
 
 endif()
 
