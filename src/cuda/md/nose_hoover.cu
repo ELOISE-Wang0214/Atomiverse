@@ -5,7 +5,7 @@
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/md/nose_hoover.cuh"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 #include <cuda_runtime.h>
 
 namespace ATV {

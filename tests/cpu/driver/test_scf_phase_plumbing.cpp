@@ -38,8 +38,8 @@
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/loop.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/verdict.h"
+#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

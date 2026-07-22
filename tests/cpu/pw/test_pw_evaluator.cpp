@@ -13,7 +13,7 @@
 #include "atomiverse/cpu/pw/pw_evaluator.h"
 #include "atomiverse/cpu/pw/pw_solver.h"
 #include "atomiverse/cpu/pw/qe_units.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 #include <cmath>
 #include <gtest/gtest.h>
 #include <type_traits>

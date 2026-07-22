@@ -48,8 +48,8 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

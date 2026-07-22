@@ -15,7 +15,7 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace {
 

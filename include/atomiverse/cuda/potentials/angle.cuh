@@ -1,7 +1,7 @@
 /// @file cuda/potentials/angle.cuh
 /// @brief LAMMPS-style abstract base for bonded 3-body styles (CUDA).
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include <cstdint>
 #include <functional>

@@ -25,7 +25,7 @@
 #include "atomiverse/cpu/semiempirical/nddo_matrix.h"
 #include "atomiverse/cpu/semiempirical/nddo_overlap.h"
 #include "atomiverse/cpu/semiempirical/nddo_two_electron.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {

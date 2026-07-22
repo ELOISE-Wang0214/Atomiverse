@@ -23,8 +23,8 @@
 #include <random>
 #include <type_traits>
 
-#include "atomiverse/facade/iteration_status.h"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/iteration_status.h"
+#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 

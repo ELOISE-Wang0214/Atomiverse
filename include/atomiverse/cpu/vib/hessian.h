@@ -47,8 +47,8 @@
 #include "atomiverse/cpu/vib/reference_geometry.h"
 #include "atomiverse/cpu/vib/symmetrize.h"
 #include "atomiverse/cpu/vib/thermochem.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

@@ -66,7 +66,7 @@
 
 #include "atomiverse/cuda/component/context.cuh"
 #include "atomiverse/cuda/frame/frame.cuh"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cuda {

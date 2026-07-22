@@ -29,7 +29,7 @@
 #include "atomiverse/cpu/comm/schema_mpi.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace debug_amorphous {

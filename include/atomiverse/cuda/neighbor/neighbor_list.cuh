@@ -10,7 +10,7 @@
 /// bound explicitly via `sim.on(phase).add(NeighborList{...})`.
 /// CUDA-free header.
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include <cstdint>
 #include <memory>

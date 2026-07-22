@@ -29,7 +29,7 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/mc/transaction.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
-#include "atomiverse/facade/iteration_status.h"
+#include "atomiverse/core/iteration_status.h"
 
 using namespace ATV;
 

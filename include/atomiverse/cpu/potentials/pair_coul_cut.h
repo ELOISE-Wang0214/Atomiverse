@@ -10,7 +10,7 @@
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/special_scale.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 namespace ATV {
 namespace cpu {

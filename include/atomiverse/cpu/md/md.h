@@ -32,7 +32,7 @@
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/cpu/recorder/timing_report.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

@@ -27,8 +27,8 @@
 
 #include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

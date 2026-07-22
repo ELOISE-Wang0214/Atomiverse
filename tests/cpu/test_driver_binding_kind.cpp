@@ -43,9 +43,9 @@
 #include "atomiverse/cpu/path/neb.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/vib/hessian.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/plan.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/plan.h"
+#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

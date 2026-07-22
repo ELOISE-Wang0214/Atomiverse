@@ -15,7 +15,7 @@
 #include <variant>
 #include <vector>
 
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV::cpu::task {
 

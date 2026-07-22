@@ -9,7 +9,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/integrator.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

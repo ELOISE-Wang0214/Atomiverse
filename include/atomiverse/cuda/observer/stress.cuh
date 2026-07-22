@@ -27,7 +27,7 @@
 /// Cross-driver component: empty default_bindings(), bound by the
 /// install_infra_ injector at post_force @ -50. CUDA-free header.
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include <memory>
 #include <string>

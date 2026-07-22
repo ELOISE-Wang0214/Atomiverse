@@ -8,7 +8,7 @@
 
 #include "atomiverse/cpu/bias/collective_variable.h"
 #include "atomiverse/cpu/component/bias.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 namespace ATV {
 namespace cpu {

@@ -4,7 +4,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

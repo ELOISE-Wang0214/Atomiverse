@@ -44,7 +44,7 @@
 #pragma once
 
 #include "atomiverse/cpu/component/component.h"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cpu {

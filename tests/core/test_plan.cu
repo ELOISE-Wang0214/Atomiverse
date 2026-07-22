@@ -2,8 +2,8 @@
 #include <stdexcept>
 
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/facade/plan.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/plan.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

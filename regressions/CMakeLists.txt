@@ -29,6 +29,10 @@ function(atv_add_regression domain case)
     add_dependencies(regressions run_${target})
 endfunction()
 
+# Layout guarantee (always on): out-of-library consumer of the core contract
+# headers — backend-mirror-01-core moved these from facade/ into core/.
+atv_add_regression(layout core_contract_includes)
+
 if(ATV_BUILD_MD)
     atv_add_regression(md lj_argon)
     atv_add_regression(md pe_bonded_nve)

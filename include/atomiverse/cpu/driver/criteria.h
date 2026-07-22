@@ -44,7 +44,7 @@
 #include <string>
 
 #include "atomiverse/cpu/component/criterion.h"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cpu {

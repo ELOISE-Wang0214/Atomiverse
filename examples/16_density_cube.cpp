@@ -8,7 +8,7 @@
 #include "atomiverse/cpu/recorder/density_cube_writer.h"
 #include "atomiverse/cpu/recorder/orbital_cube_writer.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

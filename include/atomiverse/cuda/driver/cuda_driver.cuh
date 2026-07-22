@@ -70,10 +70,10 @@
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/driver/backend_traits.cuh"
 #include "atomiverse/cuda/driver/loop_handler.cuh"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/driver.h"
-#include "atomiverse/facade/iteration_status.h"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/driver_template.h"
+#include "atomiverse/core/iteration_status.h"
+#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cuda {

@@ -388,7 +388,7 @@ if(NOT ATV_DOCS_ONLY)
             list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/pme.cu)
         endif()
     else()
-        # CUDA-free build still links against cuda::Timer (PIMPL in facade/driver.h).
+        # CUDA-free build still links against cuda::Timer (PIMPL in core/driver_template.h).
         list(APPEND ATOMIVERSE_SRCS src/cuda/device/timer_cpu_stub.cpp)
     endif()
 

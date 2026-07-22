@@ -15,7 +15,7 @@
 #include "atomiverse/cpu/mc/gcmc.h"
 #include "atomiverse/cpu/mc/npt_mc.h"
 #include "atomiverse/cpu/mc/transaction.h"
-#include "atomiverse/facade/loop.h"
+#include "atomiverse/core/verdict.h"
 
 using namespace ATV;
 using Verb = cpu::mc::Transaction::Verb;

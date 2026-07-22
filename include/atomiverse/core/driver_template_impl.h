@@ -9,7 +9,7 @@
 #pragma once
 
 #include "atomiverse/core/device.h"
-#include "atomiverse/facade/driver.h"
+#include "atomiverse/core/driver_template.h"
 
 #include <type_traits>
 

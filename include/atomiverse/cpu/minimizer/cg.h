@@ -38,8 +38,8 @@
 
 #include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h" // for OptRecord
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

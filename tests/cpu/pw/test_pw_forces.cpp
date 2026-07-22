@@ -14,7 +14,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_evaluator.h"
 #include "atomiverse/cpu/pw/pw_solver.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::pw;

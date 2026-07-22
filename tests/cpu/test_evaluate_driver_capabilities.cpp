@@ -7,7 +7,7 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

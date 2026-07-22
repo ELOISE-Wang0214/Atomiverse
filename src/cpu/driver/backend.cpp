@@ -7,7 +7,7 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/step_timing.h"
-#include "atomiverse/facade/molrs_contract.h"
+#include "atomiverse/core/molrs_contract.h"
 
 #include <algorithm>
 #include <chrono>

@@ -18,8 +18,8 @@
 #include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/facade/driver.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/driver_template.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

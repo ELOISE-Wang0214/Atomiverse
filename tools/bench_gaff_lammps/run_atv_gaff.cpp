@@ -34,7 +34,7 @@
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_charmm.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut_coul_long.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

@@ -19,7 +19,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/path/neb.h"
 #include "atomiverse/cpu/replica/replica_expansion.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

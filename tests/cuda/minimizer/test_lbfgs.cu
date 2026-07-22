@@ -19,7 +19,7 @@
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 using namespace ATV;
 

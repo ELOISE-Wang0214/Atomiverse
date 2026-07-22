@@ -45,7 +45,7 @@
 #include "atomiverse/cpu/minimizer/lbfgs_history.h"
 #include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

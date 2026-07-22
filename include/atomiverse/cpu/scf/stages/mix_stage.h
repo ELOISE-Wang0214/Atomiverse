@@ -31,7 +31,7 @@
 #include "atomiverse/cpu/scf/internal/diis_mixer.h"
 #include "atomiverse/cpu/scf/internal/ediis_adiis.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

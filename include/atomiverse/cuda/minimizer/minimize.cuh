@@ -40,8 +40,8 @@
 #include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/cuda/driver/loop_handler.cuh"
 #include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

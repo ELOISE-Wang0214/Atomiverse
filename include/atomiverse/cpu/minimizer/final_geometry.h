@@ -27,7 +27,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/recorder.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

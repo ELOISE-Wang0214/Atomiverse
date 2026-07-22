@@ -9,7 +9,7 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/scf/internal/density_builder.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

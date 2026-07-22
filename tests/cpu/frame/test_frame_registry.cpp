@@ -16,7 +16,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 using namespace ATV;
 

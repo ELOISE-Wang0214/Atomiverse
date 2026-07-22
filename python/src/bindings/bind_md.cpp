@@ -33,7 +33,7 @@
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/cpu/task/launcher_gate.h"
 #include "atomiverse/cpu/task/task_spec.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>

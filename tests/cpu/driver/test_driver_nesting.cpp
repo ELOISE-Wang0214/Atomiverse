@@ -16,7 +16,7 @@
 #include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

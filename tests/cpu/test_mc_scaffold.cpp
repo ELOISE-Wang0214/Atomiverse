@@ -16,7 +16,7 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/mc/mc.h"
 #include "atomiverse/cpu/mc/transaction.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

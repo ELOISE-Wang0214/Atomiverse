@@ -82,11 +82,11 @@
 #include "atomiverse/cpu/driver/dof.h"
 #include "atomiverse/cpu/driver/outcome_policy.h"
 #include "atomiverse/cpu/recorder/thermo.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/driver.h"
-#include "atomiverse/facade/iteration_status.h"
-#include "atomiverse/facade/loop.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/driver_template.h"
+#include "atomiverse/core/iteration_status.h"
+#include "atomiverse/core/verdict.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

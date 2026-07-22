@@ -52,7 +52,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (path under test)
 #include "atomiverse/cpu/scf/slater_determinant.h" // wavefunction read surface
-#include "atomiverse/facade/stage.h" // ATV::scf::Phase, ATV::evaluate::Phase
+#include "atomiverse/core/stage.h" // ATV::scf::Phase, ATV::evaluate::Phase
 
 using namespace ATV;
 using Spin = cpu::scf::SlaterDeterminant::Spin;

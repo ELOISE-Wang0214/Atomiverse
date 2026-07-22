@@ -649,7 +649,7 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_frame      cuda/test_frame.cu)
     atv_add_test(test_cuda_materialize cuda/test_materialize.cu)
     atv_add_test(test_cuda_backend    cuda/test_backend.cu)
-    atv_add_test(test_facade_plan     facade/test_plan.cu)
+    atv_add_test(test_core_plan       core/test_plan.cu)
     atv_add_test(test_cuda_md         cuda/md/test_md.cu)
     atv_add_test(test_cuda_md_thermostat cuda/md/test_thermostat.cu)
     atv_add_test(test_cuda_md_zero_momentum cuda/md/test_zero_momentum.cu)
@@ -742,7 +742,14 @@ add_test(
 # way in. Pure grep — runs in every build configuration.
 add_test(
     NAME test_stage_typing_scrub
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/core/stage_typing_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# backend-mirror-01-core gate: the facade layer is gone; contracts live under
+# core/ and nothing includes the old facade include path. Pure grep — every config.
+add_test(
+    NAME test_no_facade_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/core/no_facade_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: domain objects are constructed via class constructors — never

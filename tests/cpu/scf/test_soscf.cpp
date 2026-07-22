@@ -34,7 +34,7 @@
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/stages/mix_stage.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using cpu::scf::BasisSet;

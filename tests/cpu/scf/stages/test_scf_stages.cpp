@@ -93,8 +93,8 @@
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/facade/loop.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/verdict.h"
+#include "atomiverse/core/stage.h"
 
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"

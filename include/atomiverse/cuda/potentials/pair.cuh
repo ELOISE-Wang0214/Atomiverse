@@ -4,7 +4,7 @@
 /// Mirror of `cpu::Pair`. Independent hierarchy — no shared ancestor
 /// between CPU and CUDA potential layers; only the names match.
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/component/neighbor_protocol.cuh"

@@ -23,8 +23,8 @@
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
-#include "atomiverse/facade/plan.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/plan.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 

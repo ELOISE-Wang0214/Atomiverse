@@ -14,7 +14,7 @@
 #include "atomiverse/cpu/semiempirical/rm1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/rm1_parameters.h"
 #include "atomiverse/cpu/semiempirical/rm1_solver.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::semiempirical;

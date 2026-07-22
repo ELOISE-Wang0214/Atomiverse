@@ -21,13 +21,13 @@
 /// @see Virial for the stress_kinetic[] zeroing
 /// @see Thermo for the component that reads frame.scalars->kinetic
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include <string>
 #include <vector>
 
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

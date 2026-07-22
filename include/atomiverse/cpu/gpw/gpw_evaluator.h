@@ -24,7 +24,7 @@
 
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {

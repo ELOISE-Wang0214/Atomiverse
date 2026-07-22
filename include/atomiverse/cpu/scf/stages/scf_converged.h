@@ -27,7 +27,7 @@
 
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

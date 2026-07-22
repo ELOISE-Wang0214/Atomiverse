@@ -35,7 +35,7 @@
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/task/task_materializer.h"
 #include "atomiverse/cpu/task/task_spec.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::task;

@@ -5,7 +5,7 @@
 /// today; `select_owned_tuples` is a shim returning `0..n_bonds-1`
 /// until DD lands.
 #pragma once
-#include "atomiverse/facade/component_role.h"
+#include "atomiverse/core/role.h"
 
 #include <cstdint>
 #include <functional>

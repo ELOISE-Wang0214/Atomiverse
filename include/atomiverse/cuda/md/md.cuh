@@ -104,8 +104,8 @@
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

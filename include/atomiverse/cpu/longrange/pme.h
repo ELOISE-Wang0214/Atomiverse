@@ -28,8 +28,8 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/longrange/kspace.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/longrange/pme_influence.h"
 
 namespace ATV {

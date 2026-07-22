@@ -51,7 +51,7 @@ for dir in "include/atomiverse" "src" "examples" "tests" "regressions" "benchmar
 done
 
 # The one sanctioned conversion must still exist, or the gate above is vacuous.
-if ! grep -q 'return static_cast<int>(p);' "${ROOT}/include/atomiverse/facade/stage.h"; then
+if ! grep -q 'return static_cast<int>(p);' "${ROOT}/include/atomiverse/core/stage.h"; then
     echo "FAIL: ATV::slot_of's cast is gone from facade/stage.h — the gate is vacuous."
     status=1
 fi

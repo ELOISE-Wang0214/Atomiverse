@@ -5,7 +5,7 @@
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/md/fix_langevin.cuh"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 #include <cmath>
 #include <cstdint>
 #include <cuda_runtime.h>

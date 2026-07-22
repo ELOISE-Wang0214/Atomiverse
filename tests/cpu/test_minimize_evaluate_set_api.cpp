@@ -12,7 +12,7 @@
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

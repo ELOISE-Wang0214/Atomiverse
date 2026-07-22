@@ -5,7 +5,7 @@
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 #include <cuda_runtime.h>
 
 namespace ATV {

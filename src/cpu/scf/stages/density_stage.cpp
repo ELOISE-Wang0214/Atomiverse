@@ -7,7 +7,7 @@
 #include <xtensor/core/xmath.hpp>
 #include <xtensor/reducers/xreducer.hpp>
 
-#include "atomiverse/facade/stage.h"
+#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {
