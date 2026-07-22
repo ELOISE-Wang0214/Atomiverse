@@ -25,9 +25,9 @@
 #include <stdexcept>
 #include <string>
 
-#include "atomiverse/cuda/driver/evaluate.cuh"
-#include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
+#include "atomiverse/cuda/dynamics/md.cuh"
+#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
 namespace {

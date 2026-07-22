@@ -15,8 +15,8 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/comm/gather.h"
+#include "atomiverse/cpu/communication/domain.h"
+#include "atomiverse/cpu/communication/gather.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
 

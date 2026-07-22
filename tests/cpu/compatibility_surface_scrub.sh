@@ -119,7 +119,7 @@ for removed in \
     include/atomiverse/cpu/scf/rhf_solve.h \
     include/atomiverse/cpu/scf/uhf_solve.h \
     include/atomiverse/cpu/scf/uks_solve.h \
-    include/atomiverse/cpu/pw/pw_scf.h \
+    include/atomiverse/cpu/planewave/pw_scf.h \
     src/cpu/scf/scf_solve.cpp \
     src/cpu/scf/rhf_solve.cpp \
     src/cpu/scf/uhf_solve.cpp \
@@ -176,7 +176,7 @@ matches="$(awk '
 ' "${GRID_H}")"
 fail_matches 'implicit-SG0 build_molecular_grid overload remains' "${matches}"
 
-UPF_H="${ROOT}/include/atomiverse/cpu/pw/internal/upf_reader.h"
+UPF_H="${ROOT}/include/atomiverse/cpu/planewave/internal/upf_reader.h"
 UPF_CPP="${ROOT}/src/cpu/pw/internal/upf_reader.cpp"
 matches="$(grep -nE '(^|[^[:alnum:]_])kb(\[[^]]+\])?\.d([^[:alnum:]_]|$)|Real[[:space:]]+d[[:space:]]*;' \
     "${UPF_H}" "${UPF_CPP}" 2>/dev/null)"

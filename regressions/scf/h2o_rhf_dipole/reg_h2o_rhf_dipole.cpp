@@ -16,7 +16,7 @@
 
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/observer/multipole.h"
+#include "atomiverse/cpu/observe/multipole.h"
 #include "atomiverse/cpu/scf/methods.h"
 
 int main() {

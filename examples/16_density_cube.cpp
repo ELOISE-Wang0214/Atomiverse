@@ -3,10 +3,10 @@
 
 #include <iostream>
 
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/recorder/density_cube_writer.h"
-#include "atomiverse/cpu/recorder/orbital_cube_writer.h"
+#include "atomiverse/cpu/record/density_cube_writer.h"
+#include "atomiverse/cpu/record/orbital_cube_writer.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/core/stage.h"
 

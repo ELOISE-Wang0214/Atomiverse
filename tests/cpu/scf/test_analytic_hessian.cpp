@@ -20,7 +20,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/rhf.h"
-#include "atomiverse/cpu/vib/hessian_result.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 using namespace ATV;
 using cpu::scf::BasisSet;

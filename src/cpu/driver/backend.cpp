@@ -3,8 +3,8 @@
 
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/async/analysis_executor.h"
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/asynchronous/analysis_executor.h"
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/step_timing.h"
 #include "atomiverse/core/molrs_contract.h"

@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/observer/esp_charges.h"
-#include "atomiverse/cpu/observer/lowdin.h"
+#include "atomiverse/cpu/observe/esp_charges.h"
+#include "atomiverse/cpu/observe/lowdin.h"
 #include "atomiverse/cpu/scf/methods.h"
 
 namespace {

@@ -4,7 +4,7 @@
 #include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/domain.h"
 
 #include <algorithm>
 #include <cmath>

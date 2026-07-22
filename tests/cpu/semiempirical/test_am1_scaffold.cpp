@@ -13,7 +13,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/semiempirical/am1_bcc_charge_assigner.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"

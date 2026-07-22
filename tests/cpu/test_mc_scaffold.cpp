@@ -14,8 +14,8 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/cpu/component/potential.h"
-#include "atomiverse/cpu/mc/mc.h"
-#include "atomiverse/cpu/mc/transaction.h"
+#include "atomiverse/cpu/montecarlo/mc.h"
+#include "atomiverse/cpu/montecarlo/transaction.h"
 #include "atomiverse/core/stage.h"
 
 using namespace ATV;

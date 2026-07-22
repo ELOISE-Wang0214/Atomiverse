@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/comm/atom_migration.h"
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/atom_migration.h"
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"

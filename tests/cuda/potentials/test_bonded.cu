@@ -5,9 +5,9 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/driver/evaluate.cuh"
-#include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
+#include "atomiverse/cuda/dynamics/md.cuh"
+#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"

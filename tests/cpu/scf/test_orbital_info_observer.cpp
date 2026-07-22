@@ -11,7 +11,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/orbital_info_observer.h"
 

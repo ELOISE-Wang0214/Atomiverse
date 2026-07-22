@@ -27,7 +27,7 @@
 
 #include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/component/path_coupling.h"
-#include "atomiverse/cpu/minimizer/lbfgs_history.h"
+#include "atomiverse/cpu/minimize/lbfgs_history.h"
 #include "atomiverse/core/stage.h"
 
 namespace ATV {

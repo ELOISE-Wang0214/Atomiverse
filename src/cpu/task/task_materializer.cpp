@@ -8,16 +8,16 @@
 #include <utility>
 
 #include "atomiverse/cpu/driver/criteria.h"
-#include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/nose_hoover.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/dynamics/init.h"
+#include "atomiverse/cpu/dynamics/nose_hoover.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/recorder/thermo.h"
+#include "atomiverse/cpu/record/thermo.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 
 namespace ATV::cpu::task {

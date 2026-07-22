@@ -14,7 +14,7 @@
 
 #include "atomiverse/cpu/bias/distance_cv.h"
 #include "atomiverse/cpu/bias/harmonic_bias.h"
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;

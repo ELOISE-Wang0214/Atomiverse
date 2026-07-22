@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/path/remd.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"

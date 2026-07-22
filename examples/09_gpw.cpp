@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/driver/single_point.h"
+#include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"

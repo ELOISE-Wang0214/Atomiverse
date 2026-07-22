@@ -48,7 +48,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/driver/cpu_driver.h"
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h" // RHF/UHF/RKS/UKS umbrella (path under test)
 #include "atomiverse/cpu/scf/slater_determinant.h" // wavefunction read surface

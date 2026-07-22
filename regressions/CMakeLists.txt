@@ -35,6 +35,8 @@ atv_add_regression(layout core_contract_includes)
 atv_add_regression(layout backend_owned_longrange)
 
 if(ATV_BUILD_MD)
+    # Layout: full-word backend include paths (backend-mirror-03-paths).
+    atv_add_regression(layout path_words)
     atv_add_regression(md lj_argon)
     atv_add_regression(md pe_bonded_nve)
     atv_add_regression(md eam_cu)

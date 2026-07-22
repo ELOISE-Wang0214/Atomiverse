@@ -19,10 +19,10 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/cpu/vib/hessian.h"
-#include "atomiverse/cpu/vib/hessian_diagonalizer.h"
-#include "atomiverse/cpu/vib/hessian_workspace.h"
-#include "atomiverse/cpu/vib/mass_weighting.h"
+#include "atomiverse/cpu/vibration/hessian.h"
+#include "atomiverse/cpu/vibration/hessian_diagonalizer.h"
+#include "atomiverse/cpu/vibration/hessian_workspace.h"
+#include "atomiverse/cpu/vibration/mass_weighting.h"
 
 int main() {
     using namespace ATV;

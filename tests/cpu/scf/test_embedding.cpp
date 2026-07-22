@@ -18,7 +18,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/observer/multipole.h"
+#include "atomiverse/cpu/observe/multipole.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"

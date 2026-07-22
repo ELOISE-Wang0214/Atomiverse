@@ -26,9 +26,9 @@
 #include <vector>
 
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/driver/evaluate.cuh"
-#include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/minimizer/minimize.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
+#include "atomiverse/cuda/dynamics/md.cuh"
+#include "atomiverse/cuda/minimize/minimize.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
 

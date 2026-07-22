@@ -124,29 +124,29 @@ atv_add_cpp_test(test_cpu_box cpu/frame/test_box.cpp)
 # physics.
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
-atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
-atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/mc/test_transaction_rollback.cpp)
-atv_add_cpp_test(test_cpu_mc_ensemble_policies cpu/mc/test_ensemble_policies.cpp)
-atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/mc/test_gcmc_npt_movers.cpp)
+atv_add_cpp_test(test_cpu_mc_move cpu/montecarlo/test_mc_move.cpp)
+atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/montecarlo/test_transaction_rollback.cpp)
+atv_add_cpp_test(test_cpu_mc_ensemble_policies cpu/montecarlo/test_ensemble_policies.cpp)
+atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/montecarlo/test_gcmc_npt_movers.cpp)
 # The MC physics-validation gates (pair_distribution / acceptance_ratio /
 # lj_nist) drive MC::run over many sweeps — e2e, not unit. They now live in
 # benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.
-atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
-atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
-atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
+atv_add_cpp_test(test_cpu_md cpu/dynamics/test_md.cpp)
+atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/dynamics/test_pe_thermo_schema.cpp)
+atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/dynamics/test_pe_single_chain.cpp)
 # Multi-step PE bonded NVE conservation is a regression
 # (regressions/md/pe_bonded_nve), not a unit test.
 # test_cpu_md_csvr / test_cpu_md_nvt relocated to benchmarks/md/lj/validation/
 # (val_md_csvr / val_md_nvt) — full thermostat equilibrations, not ms unit tests.
-atv_add_cpp_test(test_cpu_md_atom_sort            cpu/md/test_atom_sort.cpp)
-atv_add_cpp_test(test_cpu_md_step_timing          cpu/md/test_step_timing.cpp)
-atv_add_cpp_test(test_cpu_md_timing_report        cpu/md/test_timing_report.cpp)
-atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
+atv_add_cpp_test(test_cpu_md_atom_sort            cpu/dynamics/test_atom_sort.cpp)
+atv_add_cpp_test(test_cpu_md_step_timing          cpu/dynamics/test_step_timing.cpp)
+atv_add_cpp_test(test_cpu_md_timing_report        cpu/dynamics/test_timing_report.cpp)
+atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/dynamics/test_pe_fd_force.cpp)
 # Multi-chain multi-step NVE was e2e; multi-chain unit surface is
 # special-bonds / net-force one-launch only in pe_multi_chain.
-atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp)
-atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
-atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
+atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/dynamics/test_pe_multi_chain.cpp)
+atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/dynamics/test_lj_exclusions.cpp)
+atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/dynamics/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_coul_cut           cpu/potentials/test_pair_coul_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_special_scale      cpu/potentials/test_pair_special_scale.cpp)
 atv_add_cpp_test(test_cpu_coul_long_special       cpu/potentials/test_coul_long_special.cpp)
@@ -216,22 +216,22 @@ if(ATV_BUILD_GPW)
     # term, against a finite-difference check. Reference-free.
     atv_add_cpp_test(test_cpu_gpw_dftd3         cpu/gpw/test_cpu_gpw_dftd3.cpp)
 endif()
-atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
-atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/md/test_pe_ff_constants.cpp)
-atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/md/test_pe_energy_xcheck.cpp)
+atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/dynamics/test_pair_morse_smoke.cpp)
+atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/dynamics/test_pe_ff_constants.cpp)
+atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/dynamics/test_pe_energy_xcheck.cpp)
 # pe_tension_protocol grepped benchmarks/md/pe/... which was deleted; re-add
 # when the PE tension app is restored under regressions/ or examples/.
-atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
-atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
-atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/md/test_full_neighbor_list.cpp)
-atv_add_cpp_test(test_cpu_md_cell_list_grid_stale  cpu/md/test_cell_list_grid_stale.cpp)
+atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/dynamics/test_neighbor_list_arena.cpp)
+atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/dynamics/test_neighbor_list_rebuild.cpp)
+atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/dynamics/test_full_neighbor_list.cpp)
+atv_add_cpp_test(test_cpu_md_cell_list_grid_stale  cpu/dynamics/test_cell_list_grid_stale.cpp)
 atv_add_cpp_test(test_cpu_atom_variable_n  cpu/test_atom_variable_n.cpp)
 atv_add_cpp_test(test_cpu_frame_registry  cpu/frame/test_frame_registry.cpp)
 atv_add_cpp_test(test_cpu_eam  cpu/potentials/test_eam.cpp)
 atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
-atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/md/test_fix_rattle.cpp)
-atv_add_cpp_test(test_cpu_md_write_sets  cpu/md/test_write_sets.cpp)
+atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/dynamics/test_fix_rattle.cpp)
+atv_add_cpp_test(test_cpu_md_write_sets  cpu/dynamics/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
 atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
 atv_add_cpp_test(test_cpu_criterion       cpu/driver/test_criterion.cpp)
@@ -243,15 +243,15 @@ atv_add_cpp_test(test_cpu_scf_phase_plumbing cpu/driver/test_scf_phase_plumbing.
 atv_add_cpp_test(test_cpu_component_ownership cpu/driver/test_component_ownership.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
-atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)
-atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/md/test_domain_decomposition.cpp)
-atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/md/test_mpi_stubs.cpp)
+atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/dynamics/test_frame_tag_image.cpp)
+atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/dynamics/test_domain_decomposition.cpp)
+atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/dynamics/test_mpi_stubs.cpp)
 atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp)
 atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
-atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
-atv_add_cpp_test(test_cpu_observer_msd            cpu/observer/test_msd.cpp)
-atv_add_cpp_test(test_cpu_observer_vacf           cpu/observer/test_vacf.cpp)
+atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observe/test_rdf_observer.cpp)
+atv_add_cpp_test(test_cpu_observer_msd            cpu/observe/test_msd.cpp)
+atv_add_cpp_test(test_cpu_observer_vacf           cpu/observe/test_vacf.cpp)
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)
 # Registration-time PhaseKind gate + five-driver plan-shape regression
@@ -261,8 +261,8 @@ atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driv
 atv_add_cpp_test(test_cpu_optimize_driver_early_stop      cpu/test_optimize_driver_early_stop.cpp)
 atv_add_cpp_test(test_cpu_dynamics_full_budget            cpu/test_dynamics_full_budget.cpp)
 atv_add_cpp_test(test_cpu_install_infra_hook              cpu/test_install_infra_hook.cpp)
-atv_add_cpp_test(test_cpu_md_set_api                      cpu/md/test_md_set_api.cpp)
-atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_equivalence.cpp)
+atv_add_cpp_test(test_cpu_md_set_api                      cpu/dynamics/test_md_set_api.cpp)
+atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/dynamics/test_md_plan_equivalence.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 atv_add_cpp_test(test_cpu_molrs_contract                  cpu/test_molrs_contract.cpp)
@@ -443,19 +443,19 @@ endif()
 
 if(ATV_BUILD_PW)
     # Naming convention: test_{backend}_{domain}_{component}.
-    atv_add_cpp_test(test_cpu_pw_g_vector   cpu/pw/test_g_vector.cpp)
-    atv_add_cpp_test(test_cpu_pw_upf        cpu/pw/test_upf.cpp)
-    atv_add_cpp_test(test_cpu_pw_kpoint     cpu/pw/test_kpoint.cpp)
-    atv_add_cpp_test(test_cpu_pw_crystal    cpu/pw/test_crystal.cpp)
-    atv_add_cpp_test(test_cpu_pw_ewald      cpu/pw/test_ewald.cpp)
-    atv_add_cpp_test(test_cpu_pw_components cpu/pw/test_pw_components.cpp)
-    atv_add_cpp_test(test_cpu_pw_si         cpu/pw/test_pw_si.cpp)
-    atv_add_cpp_test(test_cpu_pw_evaluator  cpu/pw/test_pw_evaluator.cpp)
-    atv_add_cpp_test(test_cpu_pw_forces     cpu/pw/test_pw_forces.cpp)
-    atv_add_cpp_test(test_cpu_pw_stress     cpu/pw/test_pw_stress.cpp)
+    atv_add_cpp_test(test_cpu_pw_g_vector   cpu/planewave/test_g_vector.cpp)
+    atv_add_cpp_test(test_cpu_pw_upf        cpu/planewave/test_upf.cpp)
+    atv_add_cpp_test(test_cpu_pw_kpoint     cpu/planewave/test_kpoint.cpp)
+    atv_add_cpp_test(test_cpu_pw_crystal    cpu/planewave/test_crystal.cpp)
+    atv_add_cpp_test(test_cpu_pw_ewald      cpu/planewave/test_ewald.cpp)
+    atv_add_cpp_test(test_cpu_pw_components cpu/planewave/test_pw_components.cpp)
+    atv_add_cpp_test(test_cpu_pw_si         cpu/planewave/test_pw_si.cpp)
+    atv_add_cpp_test(test_cpu_pw_evaluator  cpu/planewave/test_pw_evaluator.cpp)
+    atv_add_cpp_test(test_cpu_pw_forces     cpu/planewave/test_pw_forces.cpp)
+    atv_add_cpp_test(test_cpu_pw_stress     cpu/planewave/test_pw_stress.cpp)
 
     # FFT test needs FFTW3 linkage
-    add_executable(test_cpu_pw_fft cpu/pw/test_fft.cpp)
+    add_executable(test_cpu_pw_fft cpu/planewave/test_fft.cpp)
     target_link_libraries(test_cpu_pw_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
     set_target_properties(test_cpu_pw_fft PROPERTIES CXX_STANDARD 17)
     target_include_directories(test_cpu_pw_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -484,11 +484,11 @@ atv_add_cpp_test(test_cpu_linalg_canonical_orth
 if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_cart2sph     cpu/scf/test_cart2sph.cpp)
     atv_add_cpp_test(test_cpu_scf_multipole_ints cpu/scf/test_multipole_integrals.cpp)
-    atv_add_cpp_test(test_cpu_observer_multipole cpu/observer/test_multipole.cpp)
+    atv_add_cpp_test(test_cpu_observer_multipole cpu/observe/test_multipole.cpp)
     # Löwdin populations + MK/CHELPG ESP fit — hand-built shells/determinant
     # and synthetic point-charge potentials only (hf-capability-gaps-04).
-    atv_add_cpp_test(test_cpu_observer_lowdin cpu/observer/test_lowdin.cpp)
-    atv_add_cpp_test(test_cpu_observer_esp_charges cpu/observer/test_esp_charges.cpp)
+    atv_add_cpp_test(test_cpu_observer_lowdin cpu/observe/test_lowdin.cpp)
+    atv_add_cpp_test(test_cpu_observer_esp_charges cpu/observe/test_esp_charges.cpp)
     atv_add_cpp_test(test_cpu_scf_spherical    cpu/scf/test_spherical_basis.cpp)
     atv_add_cpp_test(test_cpu_scf_ecp_gradient cpu/scf/test_ecp_gradient.cpp)
     # Static basis-table structure for the third-period + diffuse extension
@@ -614,14 +614,14 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
     # (val_min_lbfgs_geoopt) — full SCF-driven H2 geometry optimizations.
-    atv_add_cpp_test(test_cpu_minimizer_line_search cpu/minimizer/test_line_search.cpp)
-    atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
+    atv_add_cpp_test(test_cpu_minimizer_line_search cpu/minimize/test_line_search.cpp)
+    atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimize/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
     # Vibrational analysis (finite-difference Hessian) is an end-to-end /
     # PySCF-parity suite — too slow for the unit gate. RELOCATED to
     # benchmarks/qc/vib/validation/ (run under -DATV_BUILD_BENCHMARKS=ON).
-    atv_add_cpp_test(test_cpu_recorder_density_cube cpu/recorder/test_density_cube.cpp)
+    atv_add_cpp_test(test_cpu_recorder_density_cube cpu/record/test_density_cube.cpp)
     # Mirrors cpu/scf/xc_functional.h — analytical hard-coded goldens (no live libxc).
     atv_add_cpp_test(test_xc_reference         cpu/scf/test_xc_reference.cpp)
     # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/
@@ -644,18 +644,18 @@ endif()
 if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_device_manager cuda/test_device_manager.cu)
     atv_add_test(test_cuda_domain_decomposition cuda/test_domain_decomposition.cu)
-    atv_add_test(test_cuda_multi_gpu  cuda/md/test_multi_gpu.cu)
+    atv_add_test(test_cuda_multi_gpu  cuda/dynamics/test_multi_gpu.cu)
     atv_add_test(test_cuda_frame      cuda/test_frame.cu)
     atv_add_test(test_cuda_materialize cuda/test_materialize.cu)
     atv_add_test(test_cuda_backend    cuda/test_backend.cu)
     atv_add_test(test_core_plan       core/test_plan.cu)
-    atv_add_test(test_cuda_md         cuda/md/test_md.cu)
-    atv_add_test(test_cuda_md_thermostat cuda/md/test_thermostat.cu)
-    atv_add_test(test_cuda_md_zero_momentum cuda/md/test_zero_momentum.cu)
-    atv_add_test(test_cuda_md_components cuda/md/test_cuda_md_components.cu)
-    atv_add_test(test_cuda_install_infra_capability cuda/md/test_install_infra_capability.cu)
-    atv_add_test(test_cuda_neighborlist_skin_gating cuda/md/test_neighborlist_skin_gating.cu)
-    atv_add_test(test_cuda_atom_cell_sort cuda/md/test_atom_cell_sort.cu)
+    atv_add_test(test_cuda_md         cuda/dynamics/test_md.cu)
+    atv_add_test(test_cuda_md_thermostat cuda/dynamics/test_thermostat.cu)
+    atv_add_test(test_cuda_md_zero_momentum cuda/dynamics/test_zero_momentum.cu)
+    atv_add_test(test_cuda_md_components cuda/dynamics/test_cuda_md_components.cu)
+    atv_add_test(test_cuda_install_infra_capability cuda/dynamics/test_install_infra_capability.cu)
+    atv_add_test(test_cuda_neighborlist_skin_gating cuda/dynamics/test_neighborlist_skin_gating.cu)
+    atv_add_test(test_cuda_atom_cell_sort cuda/dynamics/test_atom_cell_sort.cu)
     # Pulls in the private primitive header src/cuda/neighbor/atom_cell_sort.cuh
     target_include_directories(test_cuda_atom_cell_sort PRIVATE
         ${CMAKE_SOURCE_DIR}/src/cuda/neighbor)
@@ -665,13 +665,13 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_driver_no_per_phase_sync cuda/test_driver_no_per_phase_sync.cu)
     target_compile_definitions(test_cuda_driver_no_per_phase_sync PRIVATE
         ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    atv_add_test(test_cuda_md_nve_limit cuda/md/test_nve_limit.cu)
-    atv_add_test(test_cuda_md_fix_langevin cuda/md/test_fix_langevin.cu)
-    atv_add_test(test_cuda_md_nose_hoover_npt cuda/md/test_cuda_nose_hoover_npt.cu)
+    atv_add_test(test_cuda_md_nve_limit cuda/dynamics/test_nve_limit.cu)
+    atv_add_test(test_cuda_md_fix_langevin cuda/dynamics/test_fix_langevin.cu)
+    atv_add_test(test_cuda_md_nose_hoover_npt cuda/dynamics/test_cuda_nose_hoover_npt.cu)
     # cuda::RDF on the molrs streaming accumulator (arch-refactor-07-molrs):
     # static-trajectory g(r) parity vs a host-fed cpu::compute::RDFAccumulator
     # + fail-fast ctor edges. Needs a GPU node (runs a cuda::md::MD).
-    atv_add_test(test_cuda_observer_rdf_molrs cuda/observer/test_rdf_molrs.cu)
+    atv_add_test(test_cuda_observer_rdf_molrs cuda/observe/test_rdf_molrs.cu)
     atv_add_test(test_cuda_pair_lj_special_bonds cuda/potentials/test_pair_lj_special_bonds.cu)
     atv_add_test(test_cuda_potentials_bonded cuda/potentials/test_bonded.cu)
     # pair_kernel is cuda-owned (backend-mirror-02-absorb); its scalar-math test
@@ -682,25 +682,25 @@ if(ATV_BUILD_CUDA)
         atv_add_test(test_cuda_pme_coul cuda/longrange/test_pme_coul.cu)
     endif()
     if(ATV_BUILD_PW)
-        atv_add_test(test_cuda_pw_fft cuda/pw/test_fft.cu)
+        atv_add_test(test_cuda_pw_fft cuda/planewave/test_fft.cu)
         target_link_libraries(test_cuda_pw_fft PRIVATE CUDA::cufft)
-        atv_add_test(test_cuda_pw_poisson cuda/pw/test_poisson.cu)
+        atv_add_test(test_cuda_pw_poisson cuda/planewave/test_poisson.cu)
         target_link_libraries(test_cuda_pw_poisson PRIVATE CUDA::cufft)
-        atv_add_test(test_cuda_pw_grid_map cuda/pw/test_grid_map.cu)
+        atv_add_test(test_cuda_pw_grid_map cuda/planewave/test_grid_map.cu)
         target_link_libraries(test_cuda_pw_grid_map PRIVATE CUDA::cufft)
-        atv_add_test(test_cuda_pw_xc_lda cuda/pw/test_xc_lda.cu)
+        atv_add_test(test_cuda_pw_xc_lda cuda/planewave/test_xc_lda.cu)
         target_link_libraries(test_cuda_pw_xc_lda PRIVATE CUDA::cufft)
-        atv_add_test(test_cuda_pw_veff cuda/pw/test_veff.cu)
+        atv_add_test(test_cuda_pw_veff cuda/planewave/test_veff.cu)
         target_link_libraries(test_cuda_pw_veff PRIVATE CUDA::cufft)
     endif()
-    atv_add_test(test_cuda_minimizer_sd cuda/minimizer/test_sd.cu)
-    atv_add_test(test_cuda_minimizer_cg cuda/minimizer/test_cg.cu)
-    atv_add_test(test_cuda_minimizer_lbfgs cuda/minimizer/test_lbfgs.cu)
+    atv_add_test(test_cuda_minimizer_sd cuda/minimize/test_sd.cu)
+    atv_add_test(test_cuda_minimizer_cg cuda/minimize/test_cg.cu)
+    atv_add_test(test_cuda_minimizer_lbfgs cuda/minimize/test_lbfgs.cu)
     atv_add_test(test_cuda_scf        cuda/scf/test_scf.cu)
     atv_add_test(test_cuda_scf_rhf    cuda/scf/test_rhf.cu)
     atv_add_test(test_cuda_scf_device_integrals cuda/scf/test_device_integrals.cu)
     if(ATV_BUILD_PW)
-        atv_add_test(test_cuda_pw_si  cuda/pw/test_pw_si.cu)
+        atv_add_test(test_cuda_pw_si  cuda/planewave/test_pw_si.cu)
         # Parity needs a gapped system: uses the checked-in ONCV LDA Si
         # pseudopotential from the pw benchmark reference data.
         target_compile_definitions(test_cuda_pw_si PRIVATE
@@ -762,6 +762,14 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_toplevel_shared_math_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# backend-mirror-03-paths gate: backend subdirectories are full English words,
+# mirrored across cpu/ and cuda/ — no abbreviated legacy dir names or include
+# paths. Pure grep — every build configuration.
+add_test(
+    NAME test_path_words_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/path_words_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # Grep gate: domain objects are constructed via class constructors — never
 # free-function factories (build_integrals / *_config / make_atom_list / …).
 # Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
@@ -804,7 +812,7 @@ add_test(
 # gate script. Pure grep — runs in every build configuration, no CUDA needed.
 add_test(
     NAME test_cuda_rdf_molrs_migration
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/observer/rdf_molrs_migration.sh
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/observe/rdf_molrs_migration.sh
             ${CMAKE_SOURCE_DIR})
 
 # ── Torch backend tests ─────────────────────────────────────────────
@@ -820,7 +828,7 @@ endif()
 
 # Diagnostic helper (not registered as a test): fixed-V_eff band parity.
 if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
-    add_executable(diag_band_parity cuda/pw/diag_band_parity.cu)
+    add_executable(diag_band_parity cuda/planewave/diag_band_parity.cu)
     target_link_libraries(diag_band_parity PRIVATE atomiverse)
     set_target_properties(diag_band_parity PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()

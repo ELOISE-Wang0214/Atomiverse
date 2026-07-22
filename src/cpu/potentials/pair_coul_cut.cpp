@@ -14,7 +14,7 @@
 #include <omp.h>
 #endif
 
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/domain.h"
 
 namespace ATV {
 namespace cpu {

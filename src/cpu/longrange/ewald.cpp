@@ -13,7 +13,7 @@
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
 
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/domain.h"
 #endif
 
 namespace ATV {

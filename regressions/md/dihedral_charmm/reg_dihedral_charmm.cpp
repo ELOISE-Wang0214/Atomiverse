@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/dihedral_charmm.h"
 

@@ -17,11 +17,11 @@
 #include <iomanip>
 #include <iostream>
 
-#include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/dynamics/md.cuh"
+#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/recorder/thermo.cuh"
+#include "atomiverse/cuda/record/thermo.cuh"
 
 using namespace ATV;
 

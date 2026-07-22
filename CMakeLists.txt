@@ -189,14 +189,14 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
-        src/cpu/observer/rdf.cpp
-        src/cpu/observer/rdf_curve.cpp
-        src/cpu/observer/msd.cpp
-        src/cpu/observer/vacf.cpp
-        src/cpu/observer/trajectory_metrics.cpp
-        src/cpu/recorder/thermo.cpp
-        src/cpu/recorder/xyz.cpp
-        src/cpu/recorder/timing_report.cpp
+        src/cpu/observe/rdf.cpp
+        src/cpu/observe/rdf_curve.cpp
+        src/cpu/observe/msd.cpp
+        src/cpu/observe/vacf.cpp
+        src/cpu/observe/trajectory_metrics.cpp
+        src/cpu/record/thermo.cpp
+        src/cpu/record/xyz.cpp
+        src/cpu/record/timing_report.cpp
         # CPU backend infrastructure
         src/cpu/frame/frame.cpp
         src/cpu/driver/backend.cpp
@@ -211,20 +211,20 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/task/task_materializer.cpp
         src/cpu/task/task_protocol.cpp
         src/cpu/task/launcher_gate.cpp
-        src/cpu/async/analysis_executor.cpp
-        src/cpu/async/async_component_base.cpp
-        src/cpu/async/snapshot_publisher.cpp
-        src/cpu/observer/virial_stress.cpp
+        src/cpu/asynchronous/analysis_executor.cpp
+        src/cpu/asynchronous/async_component_base.cpp
+        src/cpu/asynchronous/snapshot_publisher.cpp
+        src/cpu/observe/virial_stress.cpp
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
-        src/cpu/comm/atom_pack.cpp
-        src/cpu/comm/bcast_frame.cpp
-        src/cpu/comm/halo_exchange.cpp
-        src/cpu/comm/atom_migration.cpp
-        src/cpu/comm/domain.cpp
-        src/cpu/comm/reduce.cpp
-        src/cpu/comm/gather.cpp
-        src/cpu/comm/gather_for_io.cpp
-        src/cpu/comm/rcb.cpp
+        src/cpu/communication/atom_pack.cpp
+        src/cpu/communication/bcast_frame.cpp
+        src/cpu/communication/halo_exchange.cpp
+        src/cpu/communication/atom_migration.cpp
+        src/cpu/communication/domain.cpp
+        src/cpu/communication/reduce.cpp
+        src/cpu/communication/gather.cpp
+        src/cpu/communication/gather_for_io.cpp
+        src/cpu/communication/rcb.cpp
         # Direct Ewald always (no external deps); PME gated by ATV_BUILD_KSPACE below
         src/cpu/longrange/ewald.cpp
     )
@@ -249,10 +249,10 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_MC)
         list(APPEND ATOMIVERSE_SRCS
-            src/cpu/mc/translate_move.cpp
-            src/cpu/mc/transaction.cpp
-            src/cpu/mc/volume_move.cpp
-            src/cpu/mc/insert_delete_move.cpp
+            src/cpu/montecarlo/translate_move.cpp
+            src/cpu/montecarlo/transaction.cpp
+            src/cpu/montecarlo/volume_move.cpp
+            src/cpu/montecarlo/insert_delete_move.cpp
         )
     endif()
 
@@ -262,39 +262,39 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_MD)
         list(APPEND ATOMIVERSE_SRCS
-            src/cpu/md/init.cpp
-            src/cpu/md/atom_sort.cpp
-            src/cpu/md/velocity_verlet.cpp
-            src/cpu/md/nve_limit.cpp
-            src/cpu/md/nose_hoover.cpp
-            src/cpu/md/nose_hoover_npt.cpp
-            src/cpu/md/fix_langevin.cpp
-            src/cpu/md/fix_csvr.cpp
-            src/cpu/md/fix_rattle.cpp
-            src/cpu/md/barostat.cpp
-            src/cpu/md/deform.cpp
+            src/cpu/dynamics/init.cpp
+            src/cpu/dynamics/atom_sort.cpp
+            src/cpu/dynamics/velocity_verlet.cpp
+            src/cpu/dynamics/nve_limit.cpp
+            src/cpu/dynamics/nose_hoover.cpp
+            src/cpu/dynamics/nose_hoover_npt.cpp
+            src/cpu/dynamics/fix_langevin.cpp
+            src/cpu/dynamics/fix_csvr.cpp
+            src/cpu/dynamics/fix_rattle.cpp
+            src/cpu/dynamics/barostat.cpp
+            src/cpu/dynamics/deform.cpp
         )
     endif()
 
     if(ATV_BUILD_VIB)
         list(APPEND ATOMIVERSE_SRCS
-            src/cpu/vib/hessian.cpp
-            src/cpu/vib/mass_weighting.cpp
-            src/cpu/vib/hessian_diagonalizer.cpp
-            src/cpu/vib/thermochem.cpp
-            src/cpu/vib/frequency_report.cpp
-            src/cpu/vib/normal_mode_writer.cpp
+            src/cpu/vibration/hessian.cpp
+            src/cpu/vibration/mass_weighting.cpp
+            src/cpu/vibration/hessian_diagonalizer.cpp
+            src/cpu/vibration/thermochem.cpp
+            src/cpu/vibration/frequency_report.cpp
+            src/cpu/vibration/normal_mode_writer.cpp
         )
     endif()
 
     if(ATV_BUILD_MINIMIZER)
         list(APPEND ATOMIVERSE_SRCS
-            src/cpu/minimizer/lbfgs.cpp
-            src/cpu/minimizer/lbfgs_history.cpp
-            src/cpu/minimizer/cg.cpp
-            src/cpu/minimizer/trajectory_writer.cpp
-            src/cpu/minimizer/opt_log.cpp
-            src/cpu/minimizer/final_geometry.cpp
+            src/cpu/minimize/lbfgs.cpp
+            src/cpu/minimize/lbfgs_history.cpp
+            src/cpu/minimize/cg.cpp
+            src/cpu/minimize/trajectory_writer.cpp
+            src/cpu/minimize/opt_log.cpp
+            src/cpu/minimize/final_geometry.cpp
         )
     endif()
 
@@ -327,15 +327,15 @@ if(NOT ATV_DOCS_ONLY)
         list(APPEND ATOMIVERSE_SRCS
             src/cuda/device/log_callback.cpp
             src/cuda/device/device_manager.cu
-            src/cuda/comm/domain_decomposition.cu
-            src/cuda/async/async_bridge.cu
-            src/cuda/async/record_base.cu
+            src/cuda/communication/domain_decomposition.cu
+            src/cuda/asynchronous/async_bridge.cu
+            src/cuda/asynchronous/record_base.cu
             src/cuda/frame/transfer.cu
             src/cuda/frame/materialize.cu
             src/cuda/device/timer.cu
             src/cuda/driver/driver.cu
-            src/cuda/comm/multi_gpu.cu
-            src/cuda/observer/stress.cu
+            src/cuda/communication/multi_gpu.cu
+            src/cuda/observe/stress.cu
             src/cuda/scf/hamiltonian.cu
             src/cuda/scf/eigen_solver.cu
             src/cuda/scf/density_builder.cu
@@ -346,15 +346,15 @@ if(NOT ATV_DOCS_ONLY)
         )
         if(ATV_BUILD_MD)
             list(APPEND ATOMIVERSE_SRCS
-                src/cuda/md/velocity_verlet.cu
-                src/cuda/md/nve_limit.cu
-                src/cuda/md/fix_langevin.cu
-                src/cuda/md/nose_hoover_npt.cu
-                src/cuda/md/init.cu
-                src/cuda/md/kinetic_energy.cu
-                src/cuda/md/nose_hoover.cu
-                src/cuda/md/deform.cu
-                src/cuda/md/barostat.cu
+                src/cuda/dynamics/velocity_verlet.cu
+                src/cuda/dynamics/nve_limit.cu
+                src/cuda/dynamics/fix_langevin.cu
+                src/cuda/dynamics/nose_hoover_npt.cu
+                src/cuda/dynamics/init.cu
+                src/cuda/dynamics/kinetic_energy.cu
+                src/cuda/dynamics/nose_hoover.cu
+                src/cuda/dynamics/deform.cu
+                src/cuda/dynamics/barostat.cu
             )
         endif()
         if(ATV_BUILD_NEIGHBOR)
@@ -372,10 +372,10 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         if(ATV_BUILD_MINIMIZER)
             list(APPEND ATOMIVERSE_SRCS
-                src/cuda/minimizer/sd.cu
-                src/cuda/minimizer/cg.cu
-                src/cuda/minimizer/lbfgs.cu
-                src/cuda/minimizer/conv_check.cu
+                src/cuda/minimize/sd.cu
+                src/cuda/minimize/cg.cu
+                src/cuda/minimize/lbfgs.cu
+                src/cuda/minimize/conv_check.cu
             )
         endif()
         if(ATV_BUILD_POTENTIALS)
@@ -412,9 +412,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rys_eri.cpp
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
-            src/cpu/observer/multipole.cpp
-            src/cpu/observer/lowdin.cpp
-            src/cpu/observer/esp_charges.cpp
+            src/cpu/observe/multipole.cpp
+            src/cpu/observe/lowdin.cpp
+            src/cpu/observe/esp_charges.cpp
             src/cpu/scf/internal/cart2sph.cpp
             src/cpu/scf/internal/diis_mixer.cpp
             src/cpu/scf/internal/ediis_adiis.cpp
@@ -455,15 +455,15 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/orbital_info_observer.cpp
-            src/cpu/recorder/cube.cpp
-            src/cpu/recorder/density_cube_writer.cpp
-            src/cpu/recorder/orbital_cube_writer.cpp
-            src/cpu/observer/mulliken.cpp
+            src/cpu/record/cube.cpp
+            src/cpu/record/density_cube_writer.cpp
+            src/cpu/record/orbital_cube_writer.cpp
+            src/cpu/observe/mulliken.cpp
             # eval_density_grid resolves shells via scf::build_shell_list
             # (basis_set.cpp above), so it is gated with the SCF sources —
             # same as the cube writers and mulliken. Its only consumer,
             # cuda::DensityRecorder, is #ifdef ATV_HAS_HF anyway.
-            src/cpu/observer/density.cpp
+            src/cpu/observe/density.cpp
         )
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
@@ -557,23 +557,23 @@ if(NOT ATV_DOCS_ONLY)
         target_include_directories(fftw3_stub INTERFACE ${FFTW3_INC})
 
         target_sources(atomiverse PRIVATE
-            src/cpu/pw/internal/g_vector.cpp
-            src/cpu/pw/internal/fft.cpp
-            src/cpu/pw/internal/upf_reader.cpp
-            src/cpu/pw/internal/kpoint.cpp
-            src/cpu/pw/internal/ewald.cpp
-            src/cpu/pw/internal/pw_setup.cpp
-            src/cpu/pw/internal/pw_forces.cpp
-            src/cpu/pw/internal/pw_stress.cpp
-            src/cpu/pw/internal/pw_subspace.cpp
-            src/cpu/pw/internal/poisson.cpp
-            src/cpu/pw/internal/xc_builder.cpp
-            src/cpu/pw/internal/veff_builder.cpp
-            src/cpu/pw/internal/davidson.cpp
-            src/cpu/pw/internal/density_builder.cpp
-            src/cpu/pw/internal/convergence.cpp
-            src/cpu/pw/pw_solver.cpp
-            src/cpu/pw/pw_evaluator.cpp
+            src/cpu/planewave/internal/g_vector.cpp
+            src/cpu/planewave/internal/fft.cpp
+            src/cpu/planewave/internal/upf_reader.cpp
+            src/cpu/planewave/internal/kpoint.cpp
+            src/cpu/planewave/internal/ewald.cpp
+            src/cpu/planewave/internal/pw_setup.cpp
+            src/cpu/planewave/internal/pw_forces.cpp
+            src/cpu/planewave/internal/pw_stress.cpp
+            src/cpu/planewave/internal/pw_subspace.cpp
+            src/cpu/planewave/internal/poisson.cpp
+            src/cpu/planewave/internal/xc_builder.cpp
+            src/cpu/planewave/internal/veff_builder.cpp
+            src/cpu/planewave/internal/davidson.cpp
+            src/cpu/planewave/internal/density_builder.cpp
+            src/cpu/planewave/internal/convergence.cpp
+            src/cpu/planewave/pw_solver.cpp
+            src/cpu/planewave/pw_evaluator.cpp
         )
         if(NOT ATV_BUILD_HF)
             target_sources(atomiverse PRIVATE
@@ -590,13 +590,13 @@ if(NOT ATV_DOCS_ONLY)
         # (cuFFT + cuBLAS Davidson). Only built when CUDA is also enabled.
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
-                src/cuda/pw/internal/fft.cu
-                src/cuda/pw/internal/poisson.cu
-                src/cuda/pw/internal/grid_map.cu
-                src/cuda/pw/internal/xc_lda.cu
-                src/cuda/pw/internal/veff.cu
-                src/cuda/pw/internal/device_solver.cu
-                src/cuda/pw/pw_scf.cu
+                src/cuda/planewave/internal/fft.cu
+                src/cuda/planewave/internal/poisson.cu
+                src/cuda/planewave/internal/grid_map.cu
+                src/cuda/planewave/internal/xc_lda.cu
+                src/cuda/planewave/internal/veff.cu
+                src/cuda/planewave/internal/device_solver.cu
+                src/cuda/planewave/pw_scf.cu
             )
             target_link_libraries(atomiverse PUBLIC CUDA::cufft)
         endif()
@@ -769,8 +769,8 @@ if(NOT ATV_DOCS_ONLY)
     #     "-ffast-math")` after measuring a real benefit AND verifying
     #     bit-identical NVE energy (≤1e-12 relative) on the targeted
     #     test_lj_nve / test_pe_small_box test.
-    #   - Integrator translation units (`src/cpu/md/velocity_verlet.cpp`,
-    #     `src/cpu/md/nose_hoover.cpp`, `src/cpu/md/init.cpp`) MUST NOT
+    #   - Integrator translation units (`src/cpu/dynamics/velocity_verlet.cpp`,
+    #     `src/cpu/dynamics/nose_hoover.cpp`, `src/cpu/dynamics/init.cpp`) MUST NOT
     #     be in any per-file opt-in list. Document any opt-in here and
     #     in the relevant run's notes under `benchmarks/md/<sys>/performance/runs/`
     #     with the exact compiler + flag string used to produce the
@@ -939,7 +939,7 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_TESTS)
         # Surface the build option as a compile definition so library code
         # that wants to enable test-only hooks (e.g. the
-        # cuda::stream_synchronize counter in src/cuda/async/record_base.cu
+        # cuda::stream_synchronize counter in src/cuda/asynchronous/record_base.cu
         # used by msu-pe-cuda-components-07's hot-path zero-sync gate) can
         # compile in those hooks. PUBLIC so test executables that link
         # atomiverse pick up the same definition.

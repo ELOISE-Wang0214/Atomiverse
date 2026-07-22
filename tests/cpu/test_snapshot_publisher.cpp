@@ -19,17 +19,17 @@
 #include <thread>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/async/async_component_base.h"
-#include "atomiverse/cpu/async/async_observer.h"
-#include "atomiverse/cpu/async/frame_snapshot.h"
-#include "atomiverse/cpu/async/snapshot_publisher.h"
+#include "atomiverse/cpu/asynchronous/async_component_base.h"
+#include "atomiverse/cpu/asynchronous/async_observer.h"
+#include "atomiverse/cpu/asynchronous/frame_snapshot.h"
+#include "atomiverse/cpu/asynchronous/snapshot_publisher.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 
 #include "cpu/driver_test_helpers.h"
 

@@ -34,7 +34,7 @@
 #include <string>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/comm/bcast_frame.h"
+#include "atomiverse/cpu/communication/bcast_frame.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;

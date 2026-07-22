@@ -18,7 +18,7 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;

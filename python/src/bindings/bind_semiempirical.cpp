@@ -15,7 +15,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
-#include "atomiverse/cpu/driver/single_point.h"
+#include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/task/launcher_gate.h"

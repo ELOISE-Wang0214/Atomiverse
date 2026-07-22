@@ -5,8 +5,8 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/driver/evaluate.h"
-#include "atomiverse/cpu/driver/single_point.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
+#include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/core/stage.h"

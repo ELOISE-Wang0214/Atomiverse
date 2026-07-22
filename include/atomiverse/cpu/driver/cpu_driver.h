@@ -70,7 +70,7 @@
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/core/precision.h"
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/cpu/component/criterion.h"
@@ -81,7 +81,7 @@
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/driver/dof.h"
 #include "atomiverse/cpu/driver/outcome_policy.h"
-#include "atomiverse/cpu/recorder/thermo.h"
+#include "atomiverse/cpu/record/thermo.h"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/driver_template.h"
 #include "atomiverse/core/iteration_status.h"

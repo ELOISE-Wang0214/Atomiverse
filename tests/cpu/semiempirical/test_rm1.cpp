@@ -7,7 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 #include "atomiverse/cpu/semiempirical/am1_solver.h"

@@ -9,8 +9,8 @@
 
 #include "atomiverse/cpu/scf/solve.h"
 #include "atomiverse/cuda/driver/cuda_driver.cuh"
-#include "atomiverse/cuda/driver/evaluate.cuh"
-#include "atomiverse/cuda/driver/single_point.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
+#include "atomiverse/cuda/evaluate/single_point.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"

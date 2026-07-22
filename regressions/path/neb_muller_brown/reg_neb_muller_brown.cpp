@@ -15,7 +15,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/driver/path_driver.h"
+#include "atomiverse/cpu/path/path_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/path/neb.h"
 #include "atomiverse/cpu/replica/replica_expansion.h"

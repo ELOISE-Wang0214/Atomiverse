@@ -6,7 +6,7 @@
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
-#include "atomiverse/cpu/vib/hessian_result.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {

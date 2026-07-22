@@ -42,10 +42,10 @@
 
 #include <string>
 
-#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
-#include "atomiverse/cpu/md/atom_sort.h"
+#include "atomiverse/cpu/dynamics/atom_sort.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 

@@ -7,7 +7,7 @@
 
 #ifdef ATV_HAS_PW
 #include "atomiverse/cpu/frame/materialize.h"
-#include "atomiverse/cpu/pw/pw_solver.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
 #endif
 
 void bind_pw(nb::module_& m) {
