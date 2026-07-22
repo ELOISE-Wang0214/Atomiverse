@@ -31,6 +31,7 @@ endfunction()
 
 if(ATV_BUILD_MD)
     atv_add_regression(md lj_argon)
+    atv_add_regression(md pe_bonded_nve)
     atv_add_regression(md eam_cu)
     atv_add_regression(md sw_si)
     atv_add_regression(md rigid_water)

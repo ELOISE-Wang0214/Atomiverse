@@ -1,75 +1,114 @@
 /// @file tests/cpu/md/test_pair_morse_smoke.cpp
-/// @brief Live demonstration that adding `cpu::PairMorse` cost two files.
+/// @brief Unit checks for `cpu::PairMorse` energy/force at fixed geometry.
 ///
-/// 2-atom NVE for 100 steps; asserts (a) energy conservation at 1e-4
-/// relative, (b) the atoms stay near the Morse equilibrium r₀.
+/// Multi-step NVE is a regression property (see `regressions/md/lj_argon` for
+/// the integrator conservation story). This file only launches one force
+/// evaluation — analytic Morse well \(V=D(1-e^{-\alpha(r-r_0)})^2\).
 
 #include <gtest/gtest.h>
 
 #include <cmath>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/pair_morse.h"
 
-TEST(PairMorseDemo, TwoAtomNveOscillates) {
-    // Morse parameters: shallow, slow-oscillating bond.
-    const double D = 0.5;      // well depth [eV]
-    const double alpha = 1.5;  // width [Å⁻¹]
-    const double r0 = 2.0;     // equilibrium [Å]
-    const double rcut = 6.0;   // cutoff [Å]
-    const double r_init = 2.2; // small displacement off r₀
+namespace {
+
+double morse_v(double D, double alpha, double r0, double r) {
+    const double e = std::exp(-alpha * (r - r0));
+    return D * (1.0 - e) * (1.0 - e);
+}
+
+} // namespace
+
+TEST(PairMorse, EnergyAtEquilibriumIsZero) {
+    const double D = 0.5;
+    const double alpha = 1.5;
+    const double r0 = 2.0;
+    const double rcut = 6.0;
 
     ATV::cpu::Frame frame(2);
     frame.span(ATV::kAtom_x)[0] = 0.0;
-    frame.span(ATV::kAtom_x)[1] = r_init;
+    frame.span(ATV::kAtom_x)[1] = r0;
     frame.span(ATV::kAtom_y)[0] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[0] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.0;
     frame.span(ATV::kAtom_mass)[0] = 12.0;
     frame.span(ATV::kAtom_mass)[1] = 12.0;
-    frame.span(ATV::kAtom_vx)[0] = 0.0;
-    frame.span(ATV::kAtom_vx)[1] = 0.0;
-    frame.span(ATV::kAtom_vy)[0] = 0.0;
-    frame.span(ATV::kAtom_vy)[1] = 0.0;
-    frame.span(ATV::kAtom_vz)[0] = 0.0;
-    frame.span(ATV::kAtom_vz)[1] = 0.0;
     frame.simbox = ATV::cpu::Box::cubic(50.0);
 
-    ATV::cpu::md::MD sim;
-    sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.1}); // 0.1 fs
-    sim.add_potential(ATV::cpu::PairMorse{D, alpha, r0, rcut});
-    sim.build();
+    ATV::cpu::Context ctx;
+    ATV::cpu::BuildContext bctx{ctx, frame};
+    ATV::cpu::PairMorse morse{D, alpha, r0, rcut};
+    morse.build(bctx);
 
-    // Capture initial total energy at step 1 (one launch + one integration).
-    sim.run(frame, 1);
-    const double E0 =
-        frame.meta.get(ATV::kEnergy) + 0.0; // PE only at step 1 (v=0 → KE=0)
+    frame.meta.get(ATV::kEnergy) = 0;
+    for (int i = 0; i < 2; ++i) {
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
+    }
+    ATV::cpu::LaunchContext lctx{ctx, frame, 0, 0};
+    morse.launch(lctx);
 
-    // Run 100 more steps; check NVE conservation and r stays in well basin.
-    sim.run(frame, 100);
+    // Shifted Morse: V(r) = D(1−e^{−α(r−r₀)})² − V(rcut). At r = r₀ the
+    // unshifted well is zero, so the reported energy is −V(rcut). Force = 0.
+    const double want = -morse_v(D, alpha, r0, rcut);
+    EXPECT_NEAR(frame.meta.get(ATV::kEnergy), want, 1e-12);
+    EXPECT_NEAR(frame.span(ATV::kAtom_fx)[0], 0.0, 1e-12);
+    EXPECT_NEAR(frame.span(ATV::kAtom_fx)[1], 0.0, 1e-12);
 
-    // Final separation.
-    const double dx = frame.span(ATV::kAtom_x)[1] - frame.span(ATV::kAtom_x)[0];
-    const double r_final = std::abs(dx);
+    morse.destroy({ctx, frame});
+}
 
-    // (a) Energy conservation. The harness reports `frame.meta.get(ATV::kEnergy)` as
-    // potential only; with conservative forces and zero initial v, the
-    // bound oscillation keeps KE+PE constant. The PE alone at r ≈ r₀
-    // is ≈ 0 (well bottom); at the turning point r ≈ r_init it's the
-    // initial PE. So |PE_final - PE_initial| ≤ |PE_initial| + a small
-    // KE-redistribution allowance. A loose 5% relative bound suffices
-    // for the demo (the live demo cares about "does it run", not "is
-    // it bit-identical to a reference impl").
-    EXPECT_LT(std::abs(frame.meta.get(ATV::kEnergy) - E0) / std::abs(E0), 5e-2)
-        << "PE drift: E0=" << E0 << " E_final=" << frame.meta.get(ATV::kEnergy);
+TEST(PairMorse, EnergyMatchesAnalyticAtDisplacement) {
+    const double D = 0.5;
+    const double alpha = 1.5;
+    const double r0 = 2.0;
+    const double rcut = 6.0;
+    const double r = 2.2;
 
-    // (b) Atoms stay in the Morse well basin (r within 50% of r₀).
-    EXPECT_GT(r_final, 0.5 * r0)
-        << "atoms escaped the Morse well — r_final=" << r_final;
-    EXPECT_LT(r_final, 1.5 * r0)
-        << "atoms drifted past the cutoff — r_final=" << r_final;
+    ATV::cpu::Frame frame(2);
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = r;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.0;
+    frame.span(ATV::kAtom_mass)[0] = 12.0;
+    frame.span(ATV::kAtom_mass)[1] = 12.0;
+    frame.simbox = ATV::cpu::Box::cubic(50.0);
+
+    ATV::cpu::Context ctx;
+    ATV::cpu::BuildContext bctx{ctx, frame};
+    ATV::cpu::PairMorse morse{D, alpha, r0, rcut};
+    morse.build(bctx);
+
+    frame.meta.get(ATV::kEnergy) = 0;
+    for (int i = 0; i < 2; ++i) {
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
+    }
+    ATV::cpu::LaunchContext lctx{ctx, frame, 0, 0};
+    morse.launch(lctx);
+
+    // Pair styles may apply a constant shift so V(rcut)=0; relative to r0
+    // the unshifted Morse value is the closed form. Check against that with
+    // the same shift the implementation uses: V_shift = V(rcut).
+    const double v_unshifted = morse_v(D, alpha, r0, r);
+    const double v_shift = morse_v(D, alpha, r0, rcut);
+    const double want = v_unshifted - v_shift;
+    EXPECT_NEAR(frame.meta.get(ATV::kEnergy), want, 1e-12);
+    // Attractive when stretched: force on atom 0 points +x (toward atom 1).
+    EXPECT_GT(frame.span(ATV::kAtom_fx)[0], 0.0);
+    EXPECT_LT(frame.span(ATV::kAtom_fx)[1], 0.0);
+    EXPECT_NEAR(frame.span(ATV::kAtom_fx)[0], -frame.span(ATV::kAtom_fx)[1],
+                1e-12);
+
+    morse.destroy({ctx, frame});
 }

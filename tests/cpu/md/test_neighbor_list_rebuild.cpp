@@ -160,47 +160,6 @@ TEST(NeighborListRebuild, DelayZeroAllowsImmediateRebuild) {
         << nl.n_rebuilds();
 }
 
-// ── NVE drift guard ───────────────────────────────────────────────────
-
-TEST(NeighborListRebuild, NveDriftWithinTolerance) {
-    // Run 1000 NVE steps with default LAMMPS cadence (delay=10, every=1)
-    // and verify NVE energy drift ≤ 1e-4 — same tolerance as test_pe_nve.
-    auto frame = make_fcc_argon();
-
-    // Small initial kick for non-trivial dynamics.
-    for (int i = 0; i < frame.nlocal(); ++i) {
-        const double sign = (i % 2 == 0) ? +1.0 : -1.0;
-        frame.span(ATV::kAtom_vx)[i] = sign * 1e-3;
-        frame.span(ATV::kAtom_vy)[i] = sign * 1e-3;
-        frame.span(ATV::kAtom_vz)[i] = sign * 1e-3;
-    }
-
-    constexpr double cutoff = 6.8;
-    constexpr double skin = 0.3 * cutoff; // auto-skin
-
-    cpu::md::NeighborList<> nl{cutoff, skin, /*every=*/1, /*delay=*/10};
-
-    cpu::md::MD sim;
-    sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.add_potential(cpu::PairLJCut{0.0104, 3.4, cutoff});
-    sim.set_neighbor_ref(nl);
-    sim.build();
-
-    sim.run(frame, 1);
-    const double e0 =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-    ASSERT_GT(std::abs(e0), 0.0) << "initial energy must be nonzero";
-
-    sim.run(frame, 999);
-    const double e1 =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-
-    const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-4)
-        << "NVE drift " << drift
-        << " exceeds 1e-4 over 1000 steps with LAMMPS-default cadence"
-        << " (E0=" << e0 << ", E1=" << e1 << ")";
-
-    // With delay=10, we rebuild less often, but correctness is unchanged.
-    EXPECT_GE(nl.n_rebuilds(), 1);
-}
+// Multi-step NVE drift with default rebuild cadence is a regression property
+// (regressions/md/lj_argon exercises neighbor list + VV conservation). Rebuild
+// *counting* under delay/skin is covered by the unit tests above.

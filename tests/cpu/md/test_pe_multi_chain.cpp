@@ -1,13 +1,10 @@
 /// @file tests/cpu/md/test_pe_multi_chain.cpp
-/// @brief Phase A.3 (msu-pe-validation, internal-consistency variant) --
-///        many independent PE chains in a single box, bonded-only.
+/// @brief Unit surface for multi-molecule bonded topology + LJ specials.
 ///
-/// Builds 8 parallel C20H42 united-atom chains laid along x and arranged on
-/// a 2×4 (y,z) grid wide enough that the chains do not interact through
-/// any pair potential. With LJ off, the chains are dynamically independent,
-/// so NVE conservation of the total energy implies per-chain conservation
-/// and lets us validate the bonded pipeline at multi-molecule scale before
-/// we add LJ + special-bonds exclusions in the next test.
+/// Multi-step NVE conservation is a **regression**
+/// (`regressions/md/pe_bonded_nve`). This file only exercises one force
+/// launch: net force ≈ 0 (Newton 3) and finite LJ energy with special-bonds
+/// exclusions on 8 independent C20 chains.
 
 #include <gtest/gtest.h>
 
@@ -16,9 +13,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
@@ -39,22 +36,19 @@ inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
-        -4.49 * kKcalPerMolToEv, // C1
-        0.776 * kKcalPerMolToEv, // C2
-        6.99 * kKcalPerMolToEv,  // C3
-        0.0,                     // C4
+        1.73 * kKcalPerMolToEv,
+        -4.49 * kKcalPerMolToEv,
+        0.776 * kKcalPerMolToEv,
+        6.99 * kKcalPerMolToEv,
+        0.0,
     };
 }
 
-// 8-chain box: chains laid along x in a 2×4 (y,z) grid. Inter-chain spacing
-// `chain_dy`, `chain_dz` should be larger than any non-bonded cutoff in the
-// downstream LJ tests, so the chains stay non-interacting.
 struct MultiChainConfig {
     int n_chains_y = 2;
     int n_chains_z = 4;
     int n_carbons = 20;
-    double chain_dy = 12.0; // Å; chain-to-chain spacing in y
+    double chain_dy = 12.0;
     double chain_dz = 12.0;
 };
 
@@ -67,11 +61,7 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
 
-    const double Lx = (cfg.n_carbons - 1) * dx_step + 6.0; // padding so PBC
-                                                           // image of the chain
-                                                           // ends does not meet
-                                                           // its head within a
-                                                           // bonded distance.
+    const double Lx = (cfg.n_carbons - 1) * dx_step + 6.0;
     const double Ly = cfg.n_chains_y * cfg.chain_dy;
     const double Lz = cfg.n_chains_z * cfg.chain_dz;
 
@@ -81,8 +71,7 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
             const double y0 = (cy + 0.5) * cfg.chain_dy;
             const double z0 = (cz + 0.5) * cfg.chain_dz;
             for (int i = 0; i < cfg.n_carbons; ++i) {
-                frame.span(ATV::kAtom_x)[idx] =
-                    3.0 + i * dx_step; // start a bit inside box
+                frame.span(ATV::kAtom_x)[idx] = 3.0 + i * dx_step;
                 frame.span(ATV::kAtom_y)[idx] =
                     y0 + (i % 2 == 0 ? 0.0 : dy_step);
                 frame.span(ATV::kAtom_z)[idx] = z0;
@@ -93,18 +82,6 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
         }
     }
 
-    // Per-chain transverse kick that sums to zero on each chain so the
-    // chain's centre of mass does not drift between PBC images during the
-    // NVE run.
-    for (int c = 0; c < n_chains; ++c) {
-        const int base = c * cfg.n_carbons;
-        for (int i = 0; i < cfg.n_carbons; ++i) {
-            const double sign = (i % 2 == 0) ? +1.0 : -1.0;
-            frame.span(ATV::kAtom_vz)[base + i] = sign * 1e-3;
-        }
-    }
-
-    // Per-chain bond / angle / dihedral lists, contiguous in index space.
     const int n_bonds_per = cfg.n_carbons - 1;
     const int n_angles_per = cfg.n_carbons - 2;
     const int n_dihedrals_per = cfg.n_carbons - 3;
@@ -113,107 +90,105 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
     frame.rebuild_tag_index(0, frame.nlocal());
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * cfg.n_carbons;
-        for (int k = 0; k < n_bonds_per; ++k) {
+        for (int k = 0; k < n_bonds_per; ++k)
             frame.add_bond(base + k, base + k + 1, 0);
-        }
-        for (int k = 0; k < n_angles_per; ++k) {
+        for (int k = 0; k < n_angles_per; ++k)
             frame.add_angle(base + k, base + k + 1, base + k + 2, 0);
-        }
-        for (int k = 0; k < n_dihedrals_per; ++k) {
+        for (int k = 0; k < n_dihedrals_per; ++k)
             frame.add_dihedral(base + k, base + k + 1, base + k + 2,
                                base + k + 3, 0);
-        }
     }
     frame.build_special_list();
-
     frame.simbox = ATV::cpu::Box::orthorhombic(Lx, Ly, Lz);
     return frame;
 }
 
+void zero_forces(cpu::Frame& f) {
+    for (int i = 0; i < f.nlocal(); ++i) {
+        f.span(ATV::kAtom_fx)[i] = 0;
+        f.span(ATV::kAtom_fy)[i] = 0;
+        f.span(ATV::kAtom_fz)[i] = 0;
+    }
+    f.meta.get(ATV::kEnergy) = 0;
+}
+
 } // namespace
 
-// ── Bonded-only NVE on 8 independent chains ──────────────────────────
+// ── One force launch: Newton's 3rd on bonded multi-molecule topology ──
 
-TEST(PeMultiChain, BondedOnlyNveConservation) {
+TEST(PeMultiChain, BondedOnlyNetForceOneLaunch) {
     MultiChainConfig cfg;
     auto frame = make_multi_chain_box(cfg);
 
-    cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
-        .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
-        .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
-    sim.build();
+    cpu::BondHarmonic bond{{bond_K_eV()}, {kBondR0}};
+    cpu::AngleHarmonic angle{{angle_K_eV()}, {kAngleTheta0}};
+    cpu::DihedralMultiHarmonic dih{{dihedral_Cn_eV()}};
 
-    sim.run(frame, 1);
-    const double e0 =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-    ASSERT_GT(std::abs(e0), 0.0);
+    cpu::Context ctx;
+    cpu::BuildContext bctx{ctx, frame};
+    bond.build(bctx);
+    angle.build(bctx);
+    dih.build(bctx);
 
-    sim.run(frame, 999);
-    const double e1 =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-    const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-4) << "8-chain bonded NVE drift " << drift
-                           << " exceeds 1e-4 over 1000 steps (E0=" << e0
-                           << ", E1=" << e1 << ")";
+    zero_forces(frame);
+    cpu::LaunchContext lctx{ctx, frame, 0, 0};
+    bond.launch(lctx);
+    angle.launch(lctx);
+    dih.launch(lctx);
 
-    // Net force should sum to zero (Newton's 3rd law on a closed system).
     double sum_fx = 0, sum_fy = 0, sum_fz = 0;
     for (int i = 0; i < frame.nlocal(); ++i) {
         sum_fx += frame.span(ATV::kAtom_fx)[i];
         sum_fy += frame.span(ATV::kAtom_fy)[i];
         sum_fz += frame.span(ATV::kAtom_fz)[i];
+        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_fx)[i]));
     }
     EXPECT_NEAR(sum_fx, 0.0, 1e-9);
     EXPECT_NEAR(sum_fy, 0.0, 1e-9);
     EXPECT_NEAR(sum_fz, 0.0, 1e-9);
+    EXPECT_TRUE(std::isfinite(frame.meta.get(ATV::kEnergy)));
+
+    bond.destroy({ctx, frame});
+    angle.destroy({ctx, frame});
+    dih.destroy({ctx, frame});
 }
 
-// ── Same box, now with LJ + special-bonds exclusions ────────────────
+// ── One force launch: LJ + specials stay finite on multi-chain box ──
+// Mirrors tests/cpu/md/test_lj_exclusions.cpp launch order.
 
-TEST(PeMultiChain, BondedPlusLjNveConservation) {
+TEST(PeMultiChain, BondedPlusLjSpecialsFiniteOneLaunch) {
     MultiChainConfig cfg;
     auto frame = make_multi_chain_box(cfg);
 
-    // OPLS-AA UA CH2: σ = 4.01 Å, ε = 0.118 kcal/mol = 0.00512 eV.
-    // r_cut = 10.5 Å is well below half the smallest box edge (12 Å) so
-    // the pair list does not see PBC images of an atom.
     const double lj_eps = 0.00512;
     const double lj_sig = 4.01;
     const double lj_cut = 10.5;
 
-    cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});
-    sim.on(ATV::md::Phase::force)
-        .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
-        .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
-        .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}})
-        .add(cpu::md::NeighborList<>{lj_cut}, -10)
-        .add(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,
-                                                                      0.0));
-    sim.build();
+    cpu::Context ctx;
+    cpu::BuildContext bctx{ctx, frame};
+    cpu::LaunchContext lctx{ctx, frame, 0, 0};
 
-    // Single sim.run() to avoid the Driver re-init overhead. We can't
-    // capture E_after_step_1 separately without a per-step observer, so we
-    // assert (a) the run completes without a NaN explosion, (b) the final
-    // E remains finite. Per-step conservation against E_after_step_1 is
-    // covered by the single-chain Phase A.4 test; this test's job is to
-    // prove LJ exclusions keep the multi-chain box stable.
-    sim.run(frame, 200);
-    const double e1 =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-    EXPECT_FALSE(std::isnan(e1)) << "200-step run returned NaN total energy";
-    EXPECT_LT(std::abs(e1), 1e6)
-        << "total energy " << e1
-        << " is wildly large -- LJ exclusions likely broken";
+    cpu::md::NeighborList<> nlist(lj_cut);
+    nlist.build(bctx);
+    nlist.launch(lctx);
 
-    // No NaN explosion.
+    cpu::PairLJCut lj(lj_eps, lj_sig, lj_cut);
+    lj.set_special_bonds(0.0, 0.0, 0.0);
+    lj.build(bctx);
+
+    zero_forces(frame);
+    lj.launch(lctx);
+
+    EXPECT_FALSE(std::isnan(frame.meta.get(ATV::kEnergy)))
+        << "LJ + specials produced NaN energy";
+    EXPECT_LT(std::abs(frame.meta.get(ATV::kEnergy)), 1e6)
+        << "energy " << frame.meta.get(ATV::kEnergy)
+        << " is wildly large — LJ exclusions likely broken";
     for (int i = 0; i < frame.nlocal(); ++i) {
-        ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_x)[i]))
-            << "atom " << i << " x went NaN -- LJ exclusions may be broken";
         ASSERT_FALSE(std::isnan(frame.span(ATV::kAtom_fx)[i]))
             << "atom " << i << " fx went NaN";
     }
+
+    lj.destroy({ctx, frame});
+    nlist.destroy({ctx, frame});
 }

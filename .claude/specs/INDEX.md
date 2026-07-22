@@ -1,5 +1,23 @@
 # Specs index
 
+## `backend-mirror` chain — CPU/CUDA layout rewrite (2026-07-22)
+
+Discuss decisions: pillar=`frame` data only; no facade/shared/runtime/loop;
+full-word dirs; per-backend implementations; Driver/Criterion; dissolve Backend;
+**no backward compatibility; rewrite tests**. Implement in order:
+
+- [backend-mirror-01-core](backend-mirror-01-core.md) — move contracts facade→core; delete facade [approved]
+- [backend-mirror-02-absorb](backend-mirror-02-absorb.md) — absorb top-level longrange/potentials; cuda kspace→longrange [approved]
+- [backend-mirror-03-paths](backend-mirror-03-paths.md) — full-word renames (dynamics, communication, …) [approved]
+- [backend-mirror-04-driver](backend-mirror-04-driver.md) — Driver/DriverNode rename; Criterion on CUDA [approved]
+- [backend-mirror-05-dissolve](backend-mirror-05-dissolve.md) — dissolve Backend into communication/device/asynchronous/driver [approved]
+- [backend-mirror-06-gates](backend-mirror-06-gates.md) — architecture scrubs + test layout freeze [approved]
+- [backend-mirror-07-docs](backend-mirror-07-docs.md) — CLAUDE/AGENTS/architecture.md narrative sync [approved]
+
+Start: `/mol:impl backend-mirror-01-core` (or `/mol:impl-all backend-mirror`).
+
+---
+
 Completed HF campaign work lives in the git log (`hf-capability-gaps-01`…`21`,
 `scf-driver-refactor-06-criterion-unify` — closed 2026-07-21 by operator
 manual attestation after review). Residual HF/Jensen/PySCF gaps are parked

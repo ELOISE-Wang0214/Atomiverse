@@ -53,6 +53,7 @@ the **textbook**?"* — it needs nothing, so it can run every cycle.
 | Domain | Case | What it pins | Reference |
 |---|---|---|---|
 | `md` | `lj_argon` | NVE energy conservation of the LJ argon fluid | Rahman (1964); Frenkel & Smit §4.3 |
+| `md` | `pe_bonded_nve` | Bonded-only PE UA-chain NVE energy conservation | Frenkel & Smit §4.3; Tschopp 2010 (OPLS-AA UA) |
 | `md` | `dihedral_charmm` | CHARMM periodic torsion \(V=K(1+\cos(n\phi-\delta))\) at \(\phi=\pi/2\) | MacKerell et al. (1998); LAMMPS `dihedral_style charmm` |
 | `md` | `improper_harmonic` | Harmonic improper \(V=K(\chi-\chi_0)^2\) at \(\chi=\pi/2\) | LAMMPS `improper_style harmonic` |
 | `pw` | `h_force_fd` | Plane-wave FD ionic force vanishes for one H (symmetry) | Martin *Electronic Structure*; FD oracle |

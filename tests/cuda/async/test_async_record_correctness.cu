@@ -1,6 +1,11 @@
 /// @file tests/cuda/async/test_async_record_correctness.cu
 /// @brief Async vs sync recorder CSV field-by-field parity gate.
 ///
+/// **Not registered under ctest** (tester contract: no e2e under `tests/`).
+/// This TU shells out via `system()` to the full `polyethylene_tension`
+/// binary — re-home under `benchmarks/` or `regressions/` when that path is
+/// rebuilt. Source kept as a reference harness only.
+///
 /// Runs `polyethylene_tension --backend cuda --mode stage:2 --scale 0.001`
 /// twice with the same seed: once with the default AsyncRecordBase path
 /// (env `ATV_TEST_RECORD_SYNC=0`) and once with the synchronous D2H path

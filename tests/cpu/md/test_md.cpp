@@ -449,48 +449,8 @@ TEST_F(CpuMdTest, CellListGrowingNActive) {
            "have rebuilt";
 }
 
-// ── NVE energy conservation ─────────────────────────────────────────
-
-TEST_F(CpuMdTest, NveEnergyConservation) {
-    auto frame = make_fcc_argon(3, double(5.26));
-    double dt = double(1.0);
-
-    {
-        cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{dt});
-        sim.add(cpu::md::InitVelocity{double(50.0), 42});
-        sim.on(ATV::md::Phase::force)
-            .add(cpu::md::NeighborList<>{kCutoff}, -10)
-            .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
-        sim.build();
-        sim.run(frame, 100);
-    }
-
-    double e_first =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-
-    {
-        cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{dt});
-        sim.on(ATV::md::Phase::force)
-            .add(cpu::md::NeighborList<>{kCutoff}, -10)
-            .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
-        sim.build();
-        sim.run(frame, 100);
-    }
-
-    double e_second =
-        frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
-
-    double e1 = static_cast<double>(e_first);
-    double e2 = static_cast<double>(e_second);
-    ASSERT_FALSE(std::isnan(e1)) << "First energy is NaN";
-    ASSERT_FALSE(std::isnan(e2)) << "Second energy is NaN";
-    ASSERT_NE(e1, 0.0) << "First energy is zero";
-
-    double relative_drift = std::abs(e2 - e1) / std::abs(e1);
-    EXPECT_LT(relative_drift, 0.05);
-}
+// Multi-step NVE energy conservation is a regression (regressions/md/lj_argon),
+// not a unit test. NVELimit component behaviour is tested below.
 
 // ── Bonded forces ───────────────────────────────────────────────────
 

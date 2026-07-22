@@ -103,7 +103,6 @@ endfunction()
 atv_add_cpp_test(test_mat3  core/test_mat3.cpp)
 atv_add_cpp_test(test_vec3  core/test_vec3.cpp)
 atv_add_cpp_test(test_real_harmonics core/test_real_harmonics.cpp)
-atv_add_cpp_test(test_box   core/test_box.cpp)
 atv_add_cpp_test(test_units core/test_units.cpp)
 
 add_test(
@@ -117,7 +116,8 @@ set_tests_properties(test_molrs_source_contract_mismatch PROPERTIES
 
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
-atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
+# Mirrors include/atomiverse/cpu/frame/box.h (+ box_simd.h).
+atv_add_cpp_test(test_cpu_box cpu/frame/test_box.cpp)
 # Context service slices (arch-refactor-05-context): flat core fields + nested
 # md/mc/opt/analysis pure-aggregate slices, exact field mapping, all-null
 # defaults, trivially-copyable / non-polymorphic guards. Layout-only, no
@@ -134,13 +134,16 @@ atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/mc/test_gcmc_npt_movers.cpp)
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
-atv_add_cpp_test(test_cpu_md_pe_nve               cpu/md/test_pe_nve.cpp)
+# Multi-step PE bonded NVE conservation is a regression
+# (regressions/md/pe_bonded_nve), not a unit test.
 # test_cpu_md_csvr / test_cpu_md_nvt relocated to benchmarks/md/lj/validation/
 # (val_md_csvr / val_md_nvt) — full thermostat equilibrations, not ms unit tests.
 atv_add_cpp_test(test_cpu_md_atom_sort            cpu/md/test_atom_sort.cpp)
 atv_add_cpp_test(test_cpu_md_step_timing          cpu/md/test_step_timing.cpp)
 atv_add_cpp_test(test_cpu_md_timing_report        cpu/md/test_timing_report.cpp)
 atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
+# Multi-chain multi-step NVE was e2e; multi-chain unit surface is
+# special-bonds / net-force one-launch only in pe_multi_chain.
 atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp)
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
@@ -620,7 +623,8 @@ if(ATV_BUILD_HF)
     # PySCF-parity suite — too slow for the unit gate. RELOCATED to
     # benchmarks/qc/vib/validation/ (run under -DATV_BUILD_BENCHMARKS=ON).
     atv_add_cpp_test(test_cpu_recorder_density_cube cpu/recorder/test_density_cube.cpp)
-    atv_add_cpp_test(test_xc_reference         test_xc_reference.cpp)
+    # Mirrors cpu/scf/xc_functional.h — analytical hard-coded goldens (no live libxc).
+    atv_add_cpp_test(test_xc_reference         cpu/scf/test_xc_reference.cpp)
     # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/
     # subdirectory; this block lands ahead of it so the option flips on
     # cleanly the moment the directory exists).

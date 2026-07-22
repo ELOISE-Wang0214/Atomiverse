@@ -1,5 +1,8 @@
-/// @file test_xc_reference.cpp
+/// @file tests/cpu/scf/test_xc_reference.cpp
 /// @brief Accuracy tests for native XC functionals against analytical reference values.
+///
+/// Layout mirrors `cpu/scf/xc_functional.h`. Goldens are hard-coded analytical
+/// formulas (no live libxc).
 ///
 /// Validates our native Slater exchange, VWN5 correlation, and PBE GGA against
 /// independently computed analytical formulas. This replaces the role of a libxc
