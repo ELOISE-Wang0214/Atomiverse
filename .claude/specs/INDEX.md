@@ -11,7 +11,7 @@ full-word dirs; per-backend implementations; Driver/Criterion; dissolve Backend;
 - [backend-mirror-03-paths](backend-mirror-03-paths.md) — full-word renames (dynamics, communication, …) [done]
 - [backend-mirror-04-driver](backend-mirror-04-driver.md) — Driver/DriverNode rename; Criterion on CUDA [done]
 - [backend-mirror-05-dissolve](backend-mirror-05-dissolve.md) — dissolve Backend into communication/device/asynchronous/driver [done]
-- [backend-mirror-06-gates](backend-mirror-06-gates.md) — architecture scrubs + test layout freeze [approved]
+- [backend-mirror-06-gates](backend-mirror-06-gates.md) — architecture scrubs + test layout freeze [done]
 - [backend-mirror-07-docs](backend-mirror-07-docs.md) — CLAUDE/AGENTS/architecture.md narrative sync [approved]
 
 Start: `/mol:impl backend-mirror-01-core` (or `/mol:impl-all backend-mirror`).

@@ -784,6 +784,14 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_backend_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# backend-mirror-06-gates: cross-backend layout invariants not covered by the
+# per-phase scrubs — no runtime/loop/shared dirs, cuda mirrors cpu, tests mirror
+# source. Pure grep/find — every build configuration.
+add_test(
+    NAME test_layout_mirror_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/layout_mirror_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # Grep gate: domain objects are constructed via class constructors — never
 # free-function factories (build_integrals / *_config / make_atom_list / …).
 # Pure grep — runs in every build configuration. See AGENTS.md OOP rule.
