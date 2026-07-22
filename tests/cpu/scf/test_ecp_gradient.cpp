@@ -69,10 +69,7 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
     const double fmax = xt::amax(xt::abs(res.forces))();
     EXPECT_LT(fmax, 1e-8) << "single-atom ECP translational invariance";
 
-    // Siblings remain refused on ECP packs.
-    EXPECT_THROW(make_grad(cpu::scf::SpinType::RestrictedOpen)
-                     .compute(f, p, det, 0.0),
-                 std::runtime_error);
+    // GHF remains refused on ECP packs (ROHF forces are now supported).
     EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
                      .compute(f, p, det, 0.0),
                  std::runtime_error);

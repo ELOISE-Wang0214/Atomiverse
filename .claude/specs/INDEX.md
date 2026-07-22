@@ -20,7 +20,7 @@ Priority = numeric order (P0 forces first; P5 debt last). Speculative links
 (14–16, 20) promote only when a concrete consumer appears.
 
 - ~~hf-parity-01-ecp-forces~~ — **SHIPPED 2026-07-22** (semi-numerical dU/dR; I₂ vs PySCF 1e-9 Ha/Bohr); spec deleted, history in git log
-- [hf-parity-02-openshell-forces](hf-parity-02-openshell-forces.md) — analytic ROHF + GHF nuclear forces [draft]
+- ~~hf-parity-02-openshell-forces~~ — **ROHF forces SHIPPED 2026-07-22** (spin-Fock W; O2 vs PySCF 5.8e-11); GHF split out (no PySCF oracle); spec deleted, history in git log
 - [hf-parity-03-environment-forces](hf-parity-03-environment-forces.md) — forces through C-PCM/x2c/embed/RI-JK/CFMM-J (umbrella; splits per member) [draft]
 - [hf-parity-04-ir-intensities](hf-parity-04-ir-intensities.md) — IR intensities (dipole derivatives) on the CPHF Hessian [draft]
 - [hf-parity-05-cfmm-j-gate](hf-parity-05-cfmm-j-gate.md) — CFMM-J hard gate (energy identity + crossover + honest ch19) [draft]

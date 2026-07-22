@@ -716,11 +716,9 @@ void accumulate_two_electron_gradient(
     // Cartesian count (== ipack.n_basis for a Cartesian pack).
     const int n = integrals.n_ao_cart();
     const bool is_ks = (method == MeanFieldType::KS);
-    if (spin == SpinType::RestrictedOpen)
-        throw std::runtime_error(
-            "accumulate_two_electron_gradient: SpinType::RestrictedOpen "
-            "(ROHF) has no analytic two-electron gradient — refusing to "
-            "take the unrestricted branch silently.");
+    // ROHF feeds the unrestricted (per-spin density) branch unchanged: its
+    // α/β densities from shared spatial orbitals give the correct open-shell
+    // J−K exchange contraction.
     if (spin == SpinType::Generalized)
         throw std::runtime_error(
             "accumulate_two_electron_gradient: SpinType::Generalized (GHF) "

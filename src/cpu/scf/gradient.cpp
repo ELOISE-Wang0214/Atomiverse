@@ -13,6 +13,7 @@
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
+#include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
@@ -493,12 +494,10 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // the two-electron path back-transforms the density (both reuse ipack.c2s).
     // ECP packs are supported via a semi-numerical dU/dR term added to the
     // gradient below (the analytic non-ECP terms already use Z_val).
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::runtime_error(
-            "ScfGradient::compute: the ROHF analytic gradient is not "
-            "implemented — the Lagrangian needs the Roothaan effective-Fock "
-            "coupling terms (follow-up chain link); refusing to take the "
-            "unrestricted branch silently. Use finite differences.");
+    // ROHF reuses the unrestricted J−K derivative contraction (its α/β
+    // densities come from shared spatial orbitals; the ROHF energy equals the
+    // constrained-UHF energy at the same density). The only ROHF-specific piece
+    // is the energy-weighted density W, built below from the spin Fock matrices.
     if (spin_ == SpinType::Generalized)
         throw std::runtime_error(
             "ScfGradient::compute: the GHF analytic gradient is not "
@@ -533,10 +532,46 @@ GradientResult ScfGradient::compute(const Frame& frame,
     const xt::xtensor<double, 2> C_b = det.coefficients(Spin::beta);
 
     xt::xtensor<double, 2> W = xt::zeros<double>({n, n});
-    accumulate_W(W, C_a, det.orbital_energies(Spin::alpha),
-                 det.n_electrons(Spin::alpha), n);
-    accumulate_W(W, C_b, det.orbital_energies(Spin::beta),
-                 det.n_electrons(Spin::beta), n);
+    if (spin_ == SpinType::RestrictedOpen) {
+        // ROHF energy-weighted density (PySCF grad/rohf.py `make_rdm1e`):
+        //   W = O_a·F_a·O_a + O_b·F_b·O_b
+        // where F_a/F_b are the SPIN Fock matrices at the converged density
+        // (NOT the effective ROHF Fock, NOT Σ ε_i C C^T — that is ~7× wrong for
+        // ROHF), and O_a/O_b are the occupied-α / doubly-occupied MO
+        // projectors. The spin Focks are rebuilt from the density here (ROHF is
+        // always HF; grid/RI unused). hybrid_alpha_override = -1 → method
+        // default = full HF exchange.
+        const xt::xtensor<double, 2> Pa = det.density(Spin::alpha);
+        const xt::xtensor<double, 2> Pb = det.density(Spin::beta);
+        HamiltonianBuilder hb;
+        hb.prepare(integrals, /*is_hf=*/true, grid_level_, n_radial_,
+                   n_angular_, /*fixed_grid=*/nullptr);
+        const FockResult fock =
+            hb.step(integrals, /*restricted=*/false, /*is_hf=*/true, xc_type_,
+                    /*hybrid_alpha_override=*/-1.0, Pa, Pb);
+        // Occupied-MO projector O = Σ_{i<nocc} c_i c_iᵀ (C_a is the shared
+        // ROHF MO set; the first n_alpha columns are occupied-α, the first
+        // n_beta are doubly-occupied).
+        const auto projector = [&](int nocc) {
+            xt::xtensor<double, 2> O = xt::zeros<double>({n, n});
+            for (int i = 0; i < nocc; ++i)
+                for (int mu = 0; mu < n; ++mu)
+                    for (int nu = 0; nu < n; ++nu)
+                        O(mu, nu) += C_a(mu, i) * C_a(nu, i);
+            return O;
+        };
+        const xt::xtensor<double, 2> Oa =
+            projector(det.n_electrons(Spin::alpha));
+        const xt::xtensor<double, 2> Ob =
+            projector(det.n_electrons(Spin::beta));
+        W = xt::linalg::dot(Oa, xt::linalg::dot(fock.F_alpha, Oa))
+            + xt::linalg::dot(Ob, xt::linalg::dot(fock.F_beta, Ob));
+    } else {
+        accumulate_W(W, C_a, det.orbital_energies(Spin::alpha),
+                     det.n_electrons(Spin::alpha), n);
+        accumulate_W(W, C_b, det.orbital_energies(Spin::beta),
+                     det.n_electrons(Spin::beta), n);
+    }
 
     xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 

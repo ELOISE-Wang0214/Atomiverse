@@ -43,6 +43,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/methods.h"
 
 using namespace ATV;
@@ -214,11 +215,29 @@ TEST(ROHF, UnsupportedPathsThrow) {
     auto frame = make_h2();
     cpu::scf::ROHF rohf(1, 1);
     rohf.basis = cpu::scf::BasisSet::STO3G;
-    // Analytic forces: the gradient Lagrangian lacks the coupling terms.
-    EXPECT_THROW(rohf.forces(frame), std::invalid_argument);
     // Post-SCF correlation on an ROHF reference is refused, not mistreated.
     EXPECT_THROW(rohf.mp2(frame), std::invalid_argument);
     EXPECT_THROW(rohf.fci(frame), std::invalid_argument);
+}
+
+// ROHF analytic forces (hf-parity-02): the gradient reuses the unrestricted
+// J−K contraction with the correct spin-Fock energy-weighted density
+// W = O_a·F_a·O_a + O_b·F_b·O_b. Value bar vs pinned PySCF lives in
+// regressions/scf/o2_rohf_grad; here just the shape + translational invariance.
+TEST(ROHF, ForcesRunTranslationallyInvariant) {
+    auto frame = make_h2();
+    cpu::scf::ROHF rohf(1, 1);
+    rohf.basis = cpu::scf::BasisSet::STO3G;
+    cpu::scf::GradientResult g;
+    ASSERT_NO_THROW(g = rohf.forces(frame));
+    ASSERT_EQ(g.forces.shape(0), 2u);
+    EXPECT_TRUE(std::isfinite(g.energy));
+    double net[3] = {0, 0, 0};
+    for (std::size_t A = 0; A < 2; ++A)
+        for (int d = 0; d < 3; ++d)
+            net[d] += g.forces(A, d);
+    for (int d = 0; d < 3; ++d)
+        EXPECT_NEAR(net[d], 0.0, 1e-6) << "ROHF force not translationally invariant";
 }
 
 #endif

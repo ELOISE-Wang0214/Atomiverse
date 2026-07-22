@@ -492,12 +492,6 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // Restricted/Unrestricted branch (no fallback).
     const bool rohf = (spin_ == SpinType::RestrictedOpen);
     if (rohf) {
-        if (opts.forces)
-            throw std::invalid_argument(
-                "MeanFieldMethod::forces: ROHF analytic forces are not "
-                "implemented — the gradient Lagrangian needs the Roothaan "
-                "coupling terms (follow-up chain link). Use finite "
-                "differences or UHF.");
         if (soscf)
             throw std::invalid_argument(
                 "MeanFieldMethod::run: soscf=true is not supported for ROHF "

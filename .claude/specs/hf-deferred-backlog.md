@@ -72,8 +72,13 @@ Priority is product / textbook impact, not historical chain order.
       **semi-numerical** dU/dR — FD of the cheap ECP 1e block, everything else
       analytic; I₂ def2-SVP+ECP matches PySCF analytic gradient to 1e-9 Ha/Bohr).
       Full analytic dU/dR recurrences remain a future upgrade.
-- [ ] Analytic forces for **ROHF** and **GHF** (explicit throw / out of scope
-      in the closed campaign).
+- [x] Analytic **ROHF** forces (shipped 2026-07-22, `hf-parity-02-openshell-forces`:
+      reuses the unrestricted J−K contraction with the correct spin-Fock
+      energy-weighted density W = O_a·F_a·O_a + O_b·F_b·O_b — the stock Σεᵢ·CCᵀ
+      is 7× wrong; O2 STO-3G matches PySCF analytic gradient to 5.8e-11 Ha/Bohr).
+- [ ] Analytic **GHF** forces — SPLIT OUT: PySCF has no analytic GHF gradient
+      (no clean oracle; needs FD-of-energy), and the spinor 2e/W contraction is
+      new code. Defer until a real consumer appears.
 - [ ] Forces through environment members that currently throw:
       **C-PCM**, **x2c**, **point-charge embed / external field**, **RI-JK**,
       **CFMM-J**.

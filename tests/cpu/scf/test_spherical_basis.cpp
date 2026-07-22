@@ -194,10 +194,8 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     double fmax = xt::amax(xt::abs(res.forces))();
     EXPECT_LT(fmax, 1e-8) << "single-atom translational invariance";
 
-    // Siblings remain refused on spherical packs.
-    EXPECT_THROW(make_grad(cpu::scf::SpinType::RestrictedOpen)
-                     .compute(f, p, det, 0.0),
-                 std::runtime_error);
+    // GHF remains refused on spherical packs (ROHF forces are now supported;
+    // GHF spinor forces are a separate follow-up with no PySCF oracle).
     EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
                      .compute(f, p, det, 0.0),
                  std::runtime_error);
