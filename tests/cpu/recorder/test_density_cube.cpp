@@ -144,10 +144,20 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
     EXPECT_EQ(cube.n_atoms, 2);
     // Orbital should be normalized: integral of |psi|^2 ≈ 1.
     double norm = 0;
-    for (double v : cube.values)
+    double v_min = cube.values.empty() ? 0.0 : cube.values[0];
+    double v_max = v_min;
+    for (double v : cube.values) {
         norm += v * v;
+        if (v < v_min)
+            v_min = v;
+        if (v > v_max)
+            v_max = v;
+    }
     norm *= cube.voxel();
     EXPECT_NEAR(norm, 1.0, 0.1);
+    // Phase gauge: largest lobe is positive so density-style +iso viewers
+    // (MolVis default channel) show a surface without a sign flip.
+    EXPECT_GE(v_max, -v_min);
     std::filesystem::remove(tmp, ec);
 }
 

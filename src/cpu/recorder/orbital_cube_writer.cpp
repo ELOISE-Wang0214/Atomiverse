@@ -81,6 +81,24 @@ void OrbitalCubeWriter::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
+    // Global phase of an MO is arbitrary. Many viewers (MolVis included)
+    // load a single-field cube as channel "density" and draw only the
+    // *positive* isosurface by default. If the SCF phase leaves the
+    // largest lobe negative, the default surface is empty. Flip so the
+    // peak magnitude is positive — still a valid eigenfunction.
+    double v_min = values[0];
+    double v_max = values[0];
+    for (double v : values) {
+        if (v < v_min)
+            v_min = v;
+        if (v > v_max)
+            v_max = v;
+    }
+    if (-v_min > v_max) {
+        for (double& v : values)
+            v = -v;
+    }
+
     write_cube(filename_, "Molecular orbital from Atomiverse SCF",
                std::string("MO index=") + std::to_string(mo_index_) + " spin="
                    + (spin_ == OrbitalSpin::Alpha ? "alpha" : "beta"),
