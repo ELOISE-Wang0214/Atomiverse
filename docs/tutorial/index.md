@@ -95,7 +95,7 @@ Suggested paths:
 ## Method tutorials
 
 Campaign handbook pages (technical-report style, one per regression slug).
-Index and template: [methods/README](methods/README.md).
+Full index and template: [methods/README](methods/README.md).
 
 | Method | Page | Regression |
 |--------|------|------------|
@@ -115,15 +115,27 @@ Index and template: [methods/README](methods/README.md).
 | ROKS analytic gradient | [roks-grad-o2-sto3g](methods/roks-grad-o2-sto3g.md) | `…/roks-grad-o2-sto3g` |
 | Hybrid full-LR TDDFT (B3LYP RPA) | [h2-b3lyp-rpa-tddft](methods/h2-b3lyp-rpa-tddft.md) | `…/h2-b3lyp-rpa-tddft` |
 | Spin-flip TDA (SF-CIS) | [spin-flip-tda-o2](methods/spin-flip-tda-o2.md) | `…/spin-flip-tda-o2` |
+| Spin-flip full TDDFT (SF-RPA) | [sf-tddft-o2](methods/sf-tddft-o2.md) | `…/sf-tddft-o2` |
 | ROHF nuclear Hessian | [rohf-hessian-o2](methods/rohf-hessian-o2.md) | `…/rohf-hessian-o2` |
 | ADC(2) | [adc2-h2co-sto3g](methods/adc2-h2co-sto3g.md) | `…/adc2-h2co-sto3g` |
+| ADC(2)-x | [adc2x-h2co-sto3g](methods/adc2x-h2co-sto3g.md) | `…/adc2x-h2co-sto3g` |
+| IP-ADC(2) | [ip-adc2-h2o-sto3g](methods/ip-adc2-h2o-sto3g.md) | `…/ip-adc2-h2o-sto3g` |
+| EA-ADC(2) | [ea-adc2-h2-sto3g](methods/ea-adc2-h2-sto3g.md) | `…/ea-adc2-h2-sto3g` |
 | RMP3 | [mp3-h2-sto3g](methods/mp3-h2-sto3g.md) | `…/mp3-h2-sto3g` |
+| RMP4(SDTQ) | [mp4-h2-sto3g](methods/mp4-h2-sto3g.md) | `…/mp4-h2-sto3g` |
 | CCSD | [ccsd-h2-sto3g](methods/ccsd-h2-sto3g.md) | `…/ccsd-h2-sto3g` |
+| CC2 | [cc2-h2-sto3g](methods/cc2-h2-sto3g.md) | `…/cc2-h2-sto3g` |
 | CCSD(T) | [ccsd-t-h2o-sto3g](methods/ccsd-t-h2o-sto3g.md) | `…/ccsd-t-h2o-sto3g` |
 | G0W0 | [g0w0-h2-sto3g](methods/g0w0-h2-sto3g.md) | `…/g0w0-h2-sto3g` |
+| BSE@G0W0 | [bse-h2-sto3g](methods/bse-h2-sto3g.md) | `…/bse-h2-sto3g` |
+| Direct RPA | [direct-rpa-h2-sto3g](methods/direct-rpa-h2-sto3g.md) | `…/direct-rpa-h2-sto3g` |
+| One-shot GF2 (G0F2) | [gf2-h2-sto3g](methods/gf2-h2-sto3g.md) | `…/gf2-h2-sto3g` |
 | B2PLYP double hybrid | [b2plyp-h2o](methods/b2plyp-h2o.md) | `…/b2plyp-h2o` |
+| DFT-D4 (PBE params) | [dft-d4-h2o-pbe](methods/dft-d4-h2o-pbe.md) | `…/dft-d4-h2o-pbe` |
 | CASCI | [casci-h2-sto3g](methods/casci-h2-sto3g.md) | `…/casci-h2-sto3g` |
 | ΔSCF (IMOM) | [delta-scf-n2](methods/delta-scf-n2.md) | `…/delta-scf-n2` |
 | EOM-EE-CCSD | [eom-ee-ccsd](methods/eom-ee-ccsd.md) | `…/eom-ee-ccsd` |
+| EOM-EA-CCSD | [eom-ea-ccsd](methods/eom-ea-ccsd.md) | `…/eom-ea-ccsd` |
+| EOM-SF-CCSD | [eom-sf-ccsd-o2](methods/eom-sf-ccsd-o2.md) | `…/eom-sf-ccsd-o2` |
 
 SCF reading map: [User Guide → SCF Learning Path](../user-guide/scf-roadmap.md).

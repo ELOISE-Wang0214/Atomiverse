@@ -5,20 +5,20 @@ Last harness pass: **2026-07-23 wave 1 (post re-census)** on `dev`
 
 ## Wave 1 (post re-census) summary
 
-| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
-| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
-| `eom-ea-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ea-ccsd` | **0.068** |
-| `adc2x-h2co-sto3g` | excited-states | **merged → done** | `regressions/scf/adc2x-h2co-sto3g` | **0.240** |
-| `ip-adc2-h2o-sto3g` | excited-states | **merged → done** | `regressions/scf/ip-adc2-h2o-sto3g` | **0.191** |
-| `ea-adc2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/ea-adc2-h2-sto3g` | **0.213** |
-| `sf-tddft-o2` | excited-states | **merged → done** | `regressions/scf/sf-tddft-o2` | **9.51** |
-| `mp4-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/mp4-h2-sto3g` | **0.031** |
-| `cc2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/cc2-h2-sto3g` | **0.392** |
-| `direct-rpa-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/direct-rpa-h2-sto3g` | **0.760** |
-| `bse-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/bse-h2-sto3g` | **0.060** |
-| `dft-d4-h2o-pbe` | dft | **merged → done** | `regressions/scf/dft-d4-h2o-pbe` | **2.17** |
-| `eom-sf-ccsd-o2` | excited-states | **merged → done** | `regressions/scf/eom-sf-ccsd-o2` | **3.12** |
-| `gf2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/gf2-h2-sto3g` | **0.071** |
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) | Tutorial |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- | -------- |
+| `eom-ea-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ea-ccsd` | **0.068** | `methods/eom-ea-ccsd.md` |
+| `adc2x-h2co-sto3g` | excited-states | **merged → done** | `regressions/scf/adc2x-h2co-sto3g` | **0.240** | `methods/adc2x-h2co-sto3g.md` |
+| `ip-adc2-h2o-sto3g` | excited-states | **merged → done** | `regressions/scf/ip-adc2-h2o-sto3g` | **0.191** | `methods/ip-adc2-h2o-sto3g.md` |
+| `ea-adc2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/ea-adc2-h2-sto3g` | **0.213** | `methods/ea-adc2-h2-sto3g.md` |
+| `sf-tddft-o2` | excited-states | **merged → done** | `regressions/scf/sf-tddft-o2` | **9.51** | `methods/sf-tddft-o2.md` |
+| `mp4-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/mp4-h2-sto3g` | **0.031** | `methods/mp4-h2-sto3g.md` |
+| `cc2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/cc2-h2-sto3g` | **0.392** | `methods/cc2-h2-sto3g.md` |
+| `direct-rpa-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/direct-rpa-h2-sto3g` | **0.760** | `methods/direct-rpa-h2-sto3g.md` |
+| `bse-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/bse-h2-sto3g` | **0.060** | `methods/bse-h2-sto3g.md` |
+| `dft-d4-h2o-pbe` | dft | **merged → done** | `regressions/scf/dft-d4-h2o-pbe` | **2.17** | `methods/dft-d4-h2o-pbe.md` |
+| `eom-sf-ccsd-o2` | excited-states | **merged → done** | `regressions/scf/eom-sf-ccsd-o2` | **3.12** | `methods/eom-sf-ccsd-o2.md` |
+| `gf2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/gf2-h2-sto3g` | **0.071** | `methods/gf2-h2-sto3g.md` |
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
