@@ -13,7 +13,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
-  python tools/pyscf_oracle/pin_scf.py ghf --geom h3 --basis sto-3g --spin 1 --grad
+  python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ _HA_TO_EV = 27.211386245988
 
 def _mol(geom: str, basis: str, charge: int, spin: int, cart: bool | None):
     from pyscf import gto
-    import numpy as np
 
     presets = {
         "water": """
@@ -56,12 +55,6 @@ H -0.629118 -0.629118  0.629118
 H  0.629118 -0.629118 -0.629118
 H -0.629118  0.629118 -0.629118
 """,
-        # Equilateral H3, side 1.0 Å (GHF spin-frustration geometry).
-        "h3": f"""
-H  0.000000  0.000000  0.000000
-H  1.000000  0.000000  0.000000
-H  0.500000  {0.5 * np.sqrt(3):.12f}  0.000000
-""",
     }
     if geom not in presets:
         raise SystemExit(f"unknown geom preset {geom!r}; choose {sorted(presets)}")
@@ -89,7 +82,6 @@ def main() -> int:
             "rhf",
             "uhf",
             "rohf",
-            "ghf",
             "rks",
             "uks",
             "mp2",
@@ -116,6 +108,29 @@ def main() -> int:
     )
     p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)
     p.add_argument("--grad", action="store_true")
+    p.add_argument(
+        "--pcm",
+        action="store_true",
+        help="Attach PySCF solvent.PCM (C-PCM) before SCF / gradient",
+    )
+    p.add_argument("--pcm-eps", type=float, default=78.4, help="PCM dielectric ε")
+    p.add_argument(
+        "--pcm-scale",
+        type=float,
+        default=1.2,
+        help="PCM vdw radii scale (Bondi × scale)",
+    )
+    p.add_argument(
+        "--pcm-lebedev-order",
+        type=int,
+        default=29,
+        help="PySCF Lebedev algebraic order (29 → 302 points)",
+    )
+    p.add_argument(
+        "--pcm-method",
+        default="C-PCM",
+        help="PySCF solvent method string (default C-PCM)",
+    )
     args = p.parse_args()
 
     try:
@@ -147,8 +162,6 @@ def main() -> int:
         mf = scf.UHF(mol)
     elif m == "rohf":
         mf = scf.ROHF(mol)
-    elif m == "ghf":
-        mf = scf.GHF(mol)
     elif m in ("rks", "rks-tda", "rks-tddft"):
         mf = dft.RKS(mol)
         mf.xc = args.xc
@@ -161,84 +174,39 @@ def main() -> int:
         # tda / tdhf / mp2 ground state: RHF
         mf = scf.RHF(mol)
 
+    if args.pcm:
+        if m not in ("rhf", "uhf", "rohf", "rks", "uks"):
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"--pcm not supported for method {m!r}",
+                    }
+                )
+            )
+            return 2
+        mf = mf.PCM()
+        mf.with_solvent.method = args.pcm_method
+        mf.with_solvent.eps = args.pcm_eps
+        mf.with_solvent.vdw_scale = args.pcm_scale
+        mf.with_solvent.lebedev_order = args.pcm_lebedev_order
+        out["pcm"] = {
+            "method": args.pcm_method,
+            "eps": args.pcm_eps,
+            "vdw_scale": args.pcm_scale,
+            "lebedev_order": args.pcm_lebedev_order,
+        }
+
     mf.conv_tol = args.conv_tol
-    # GHF on frustrated H3 needs a noncollinear Néel guess (collinear traps).
-    if m == "ghf" and args.geom == "h3":
-        import numpy as np
-
-        n = mol.nao
-        dm0 = np.zeros((2 * n, 2 * n))
-        dm0[:n, :n] = np.eye(n)
-
-        def _rot(dm, theta):
-            G = np.zeros((2 * n, 2 * n))
-            for mu in range(n):
-                th = theta * mu
-                c, s = np.cos(th / 2), np.sin(th / 2)
-                G[mu, mu] = c
-                G[mu, n + mu] = -s
-                G[n + mu, mu] = s
-                G[n + mu, n + mu] = c
-            return G @ dm @ G.T
-
-        e = mf.kernel(dm0=_rot(dm0, 2.0 * np.pi / 3.0))
-    else:
-        e = mf.kernel()
+    e = mf.kernel()
     out["e_tot_ha"] = float(e)
     out["converged"] = bool(mf.converged)
+    if args.pcm and hasattr(mf, "with_solvent"):
+        out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
     if args.grad and m in ("rhf", "uhf", "rohf", "rks", "uks"):
         g = mf.nuc_grad_method().kernel()
         out["grad_ha_bohr"] = g.tolist()
-    elif args.grad and m == "ghf":
-        # PySCF has no scf.GHF.nuc_grad_method; pin analytic dE/dR at the
-        # converged spinor density with central-FD dAO integrals (Ha/Bohr).
-        import numpy as np
-
-        n = mol.nao
-        dm = mf.make_rdm1()
-        Paa, Pab = dm[:n, :n], dm[:n, n:]
-        Pba, Pbb = dm[n:, :n], dm[n:, n:]
-        Pc = Paa + Pbb
-        mo, e_mo, occ = mf.mo_coeff, mf.mo_energy, mf.mo_occ
-        W = np.zeros_like(dm)
-        for i in range(mo.shape[1]):
-            if occ[i] < 0.5:
-                continue
-            W += e_mo[i] * np.outer(mo[:, i], mo[:, i]) * occ[i]
-        Wc = W[:n, :n] + W[n:, n:]
-        h = 1e-5
-        coords0 = mol.atom_coords(unit="Bohr").copy()
-        grad = np.zeros((mol.natm, 3))
-        for A in range(mol.natm):
-            for d in range(3):
-
-                def _mats(sign, _A=A, _d=d):
-                    coords = coords0.copy()
-                    coords[_A, _d] += sign * h
-                    m2 = mol.copy()
-                    m2.set_geom_(coords, unit="Bohr")
-                    m2.build(0, 0)
-                    S = m2.intor("int1e_ovlp")
-                    H = m2.intor("int1e_kin") + m2.intor("int1e_nuc")
-                    eri = m2.intor("int2e", aosym="s1").reshape(n, n, n, n)
-                    return S, H, eri, m2.energy_nuc()
-
-                Sp, Hp, ep, Vp = _mats(+1)
-                Sm, Hm, em, Vm = _mats(-1)
-                dS = (Sp - Sm) / (2 * h)
-                dH = (Hp - Hm) / (2 * h)
-                deri = (ep - em) / (2 * h)
-                dVn = (Vp - Vm) / (2 * h)
-                gA = float(np.sum(Pc * dH) - np.sum(Wc * dS) + dVn)
-                gA += 0.5 * float(np.einsum("ij,kl,ijkl->", Pc, Pc, deri))
-                for D, E in ((Paa, Paa), (Pbb, Pbb), (Pab, Pba), (Pba, Pab)):
-                    gA += -0.5 * float(np.einsum("jk,li,ijkl->", D, E, deri))
-                grad[A, d] = gA
-        out["grad_ha_bohr"] = grad.tolist()
-        out["grad_note"] = (
-            "analytic GHF at fixed dm with FD dAO (PySCF has no GHF nuc_grad)"
-        )
 
     if m == "mp2":
         m2 = mp.MP2(mf).run()

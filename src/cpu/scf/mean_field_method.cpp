@@ -517,23 +517,14 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
               "molecular charge / spin multiplicity.");
     }
 
-    // Environment (point charges / external field / C-PCM) — refuse silent
-    // wrong forces when any is active (analytic gradients of environment
-    // terms are follow-up links).
+    // Environment: point charges, external field, and C-PCM all have force
+    // paths in ScfGradient::compute (embed/field = semi-numerical 1e +
+    // classical; C-PCM = vacuum HF terms on the solvent density + fixed-P
+    // finite difference of ΔG_el over the rebuilt cavity).
     const bool field_active =
         std::abs(external_field[0]) > 0.0 || std::abs(external_field[1]) > 0.0
         || std::abs(external_field[2]) > 0.0;
     const bool solvent_active = solvent_eps > 0.0;
-    // Point-charge embedding and external-field forces ARE supported
-    // (semi-numerical 1e-block derivative + analytic classical terms, in
-    // ScfGradient::compute). The C-PCM gradient (density-dependent surface
-    // charges) remains a follow-up link.
-    if (opts.forces && solvent_active)
-        throw std::runtime_error(
-            "MeanFieldMethod::forces: analytic forces are not implemented "
-            "with solvent_eps > 0 — the C-PCM gradient (self-consistent "
-            "surface charges) is a follow-up chain link. Clear the solvent, "
-            "or use finite differences.");
 
     // Apply environment to the n-dimensional Hcore / classical energy
     // *before* any GHF spinor embed so both spin blocks share the same
@@ -598,8 +589,16 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             pcm_->prepare(ints.shells, ints.c2s);
         else
             pcm_->prepare(ints.shells);
+        // Retain solvent parameters so ScfGradient can rebuild the cavity at
+        // displaced geometries for ∂ΔG_el/∂R at fixed density.
+        integrals_sp_->solvent_eps = solvent_eps;
+        integrals_sp_->solvent_radii_scale = solvent_radii_scale;
+        integrals_sp_->solvent_x = solvent_x;
     } else {
         pcm_.reset();
+        integrals_sp_->solvent_eps = 0.0;
+        integrals_sp_->solvent_radii_scale = solvent_radii_scale;
+        integrals_sp_->solvent_x = solvent_x;
     }
     // Rebind whenever the solvent workspace is present (pointer always new)
     // or when it was dropped after a previous solvent run.

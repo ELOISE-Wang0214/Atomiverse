@@ -16,6 +16,7 @@
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
+#include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
@@ -782,6 +783,66 @@ GradientResult ScfGradient::compute(const Frame& frame,
             }
         }
         ATV_INFO("[gradient] external-field gradient term added");
+    }
+
+    // ── C-PCM / COSMO free-energy gradient (fixed-P semi-numerical) ─────
+    // Free energy G = E_HF_vac[P] + ΔG_el[P,R]. The vacuum HF terms above use
+    // the solvent-polarized density P and energy-weighted W from the full
+    // (vacuum+V_pcm) Fock eigenvalues — orbital response cancels by the
+    // Brillouin condition of the solvent Fock. The remaining piece is
+    // ∂ΔG_el/∂R|_P, obtained by central difference: rebuild the cavity +
+    // unit-charge AO potentials at R±h with the FIXED reference density.
+    // Hard bury-delete makes the surface discontinuous; h is small enough
+    // that equilibrium H₂O stays off the topology jumps.
+    // Refs: Barone & Cossi, J. Phys. Chem. A 102, 1995 (1998); free-energy
+    // form ΔG = ½ q·V with q = −f S^{-1} V ⇒ ∂ΔG/∂R|_P = q·∂V/∂R − ½ q·∂S·q.
+    if (integrals.solvent_eps > 0.0) {
+        const double h = 1e-4; // Bohr
+        const bool sph = integrals.spherical();
+        const auto& c2s = integrals.c2s;
+        const double eps = integrals.solvent_eps;
+        const double scale = integrals.solvent_radii_scale;
+        const double x = integrals.solvent_x;
+        constexpr int kLeb = 302;
+        const auto delta_g_at = [&](std::vector<native::Atom> atoms,
+                                   std::vector<native::Shell> shells) {
+            internal::Pcm pcm(std::move(atoms), eps, scale, x, kLeb);
+            if (sph)
+                pcm.prepare(shells, c2s);
+            else
+                pcm.prepare(shells);
+            return pcm.update(P).delta_g_el;
+        };
+        for (int A = 0; A < natm; ++A) {
+            const double ax = integrals.atoms[static_cast<std::size_t>(A)].pos[0];
+            const double ay = integrals.atoms[static_cast<std::size_t>(A)].pos[1];
+            const double az = integrals.atoms[static_cast<std::size_t>(A)].pos[2];
+            const auto on_A = [&](const double* c) {
+                return c[0] == ax && c[1] == ay && c[2] == az;
+            };
+            for (int d = 0; d < 3; ++d) {
+                std::vector<native::Atom> atoms_p = integrals.atoms;
+                std::vector<native::Atom> atoms_m = integrals.atoms;
+                atoms_p[static_cast<std::size_t>(A)].pos[d] += h;
+                atoms_m[static_cast<std::size_t>(A)].pos[d] -= h;
+                std::vector<native::Shell> shp = integrals.shells;
+                std::vector<native::Shell> shm = integrals.shells;
+                for (auto& s : shp)
+                    if (on_A(s.center))
+                        s.center[d] += h;
+                for (auto& s : shm)
+                    if (on_A(s.center))
+                        s.center[d] -= h;
+                const double d_dg =
+                    (delta_g_at(std::move(atoms_p), std::move(shp))
+                     - delta_g_at(std::move(atoms_m), std::move(shm)))
+                    / (2.0 * h);
+                grad(A, d) += d_dg;
+            }
+        }
+        ATV_INFO("[gradient] C-PCM free-energy gradient term added "
+                 "(eps={}, x={}, leb={})",
+                 eps, x, kLeb);
     }
     ATV_DEBUG("[gradient] two_e_ms={:.1f}", elapsed_ms(t_two_e));
     ATV_INFO("[gradient] two_e_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
