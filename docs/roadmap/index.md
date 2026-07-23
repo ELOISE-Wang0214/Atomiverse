@@ -132,7 +132,7 @@ a proven shape.
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | MP2 gradients; frozen-core; UMP2 |
+| Post-HF | MP2 gradients; frozen-core; ROMP2 |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -168,9 +168,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Post-Hartree–Fock
 
-- **MP2 is closed-shell only** — RHF reference. Canonical path: full O(N⁵)
-  AO→MO transform. **RI-MP2** when `ri = RI::{J,JK}` + aux basis
-  (`reg_h2o_ri_mp2`, `MP2Result::ri`). No frozen core, no gradients, no UMP2.
+- **MP2** — closed-shell RMP2 on RHF; **UMP2** on UHF (`UHF::mp2`,
+  `reg_ump2-o2-sto3g`). Canonical path: full O(N⁵) AO→MO transform.
+  **RI-MP2** when `ri = RI::{J,JK}` + aux basis on RHF only
+  (`reg_h2o_ri_mp2`, `MP2Result::ri`). No frozen core, no gradients, no ROMP2.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 

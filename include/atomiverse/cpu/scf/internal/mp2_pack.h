@@ -21,6 +21,31 @@ namespace scf {
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                      double e_scf_ha);
 
+/// @brief Unrestricted canonical MP2 (UMP2) on a UHF/UKS-style reference.
+///
+/// Spin-orbital second-order energy decomposed into same-spin αα/ββ
+/// (antisymmetrized integrals, factor ¼) and opposite-spin αβ channels:
+///
+/// \f[
+///   E^{(2)}_{\sigma\sigma}
+///     = \tfrac14\sum_{ijab}
+///       \frac{|(ia|jb)-(ib|ja)|^2}{\varepsilon_i+\varepsilon_j-\varepsilon_a-\varepsilon_b},
+/// \quad
+///   E^{(2)}_{\alpha\beta}
+///     = \sum_{i_\alpha j_\beta a_\alpha b_\beta}
+///       \frac{(i_\alpha a_\alpha|j_\beta b_\beta)^2}
+///            {\varepsilon_{i\alpha}+\varepsilon_{j\beta}
+///             -\varepsilon_{a\alpha}-\varepsilon_{b\beta}}.
+/// \f]
+///
+/// Matches raw (unprojected) PySCF `mp.UMP2`. No frozen core.
+/// @param ints     Integral pack with the ERI tensor materialized.
+/// @param det      Converged unrestricted determinant (independent α/β MOs).
+/// @param e_scf_ha Converged UHF total energy [Hartree].
+/// @return UMP2 correlation and total energies [Hartree].
+MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                      double e_scf_ha);
+
 /// @brief Closed-shell RI-MP2 correlation energy via Coulomb-metric density
 ///        fitting (same `DensityFitting` workspace as SCF RI-J/JK). Does not
 ///        require a materialized 4-center ERI tensor.

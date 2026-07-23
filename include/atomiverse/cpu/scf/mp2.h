@@ -1,9 +1,10 @@
 /// @file cpu/scf/mp2.h
-/// @brief Closed-shell canonical MP2 correlation energy (public API).
+/// @brief Canonical MP2 correlation energy (public API).
 ///
-/// User path: `RHF::mp2(frame)` (see methods.h). Free functions below are
-/// thin wrappers / BLAS kernels — they do **not** introduce IntegralPack as a
-/// user type (that type is private under `scf/internal/`).
+/// User path: `RHF::mp2(frame)` (closed-shell RMP2 / RI-MP2) or
+/// `UHF::mp2(frame)` (UMP2). Free functions below are BLAS kernels — they do
+/// **not** introduce IntegralPack as a user type (that type is private under
+/// `scf/internal/`).
 #pragma once
 
 #include <xtensor/containers/xtensor.hpp>
@@ -12,9 +13,9 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Closed-shell (canonical or RI) MP2 energy.
+/// @brief Canonical or density-fitted MP2 energy (RMP2 / UMP2 / RI-MP2).
 struct MP2Result {
-    double e_corr; ///< MP2 correlation energy [Hartree] (<= 0).
+    double e_corr; ///< MP2 correlation energy [Hartree] (<= 0 for stable refs).
     double e_tot;  ///< Total MP2 energy = scf.energy + e_corr [Hartree].
     /// @brief true when the correlation energy used density-fitted (ia|jb).
     bool ri = false;
@@ -34,7 +35,8 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
                                 const xt::xtensor<double, 2>& C, int n_mo);
 
 // Pack-based entry is private implementation — declared in
-// internal/mp2_pack.h if needed by unit tests. Public: RHF::mp2(frame).
+// internal/mp2_pack.h if needed by unit tests.
+// Public: RHF::mp2(frame) / UHF::mp2(frame).
 
 } // namespace scf
 } // namespace cpu

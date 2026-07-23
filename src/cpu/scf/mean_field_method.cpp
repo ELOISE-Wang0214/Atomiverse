@@ -977,7 +977,7 @@ GradientResult MeanFieldMethod<D>::forces(Frame& frame) {
 }
 
 template <typename D>
-MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
+MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
     if (spin_ == SpinType::RestrictedOpen)
         throw std::invalid_argument(
             "MeanFieldMethod::mp2: an ROHF reference is not supported — the "
@@ -987,21 +987,27 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
     if (spin_ == SpinType::Generalized)
         throw std::invalid_argument(
             "MeanFieldMethod::mp2: a GHF (spinor) reference is not supported "
-            "— the closed-shell MP2 pack has no spinor transformation. Use "
-            "RHF.");
+            "— the MP2 pack has no spinor transformation. Use RHF or UHF.");
     const bool prev = compute_eri;
     // Canonical MP2 needs a dense ERI; RI-MP2 builds 3-center integrals only.
     if (ri == RI::None)
         compute_eri = true;
-    run(frame);
+    run(frame, guess);
     compute_eri = prev;
     if (!this->converged())
         throw std::invalid_argument(
             "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    if (ri != RI::None)
+    if (ri != RI::None) {
+        if (spin_ != SpinType::Restricted)
+            throw std::invalid_argument(
+                "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
+                "ri=RI::None for UMP2, or use RHF.");
         return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis);
+    }
+    if (spin_ == SpinType::Unrestricted)
+        return ump2_energy(*integrals_sp_, *det_sp_, e_total_);
     return mp2_energy(*integrals_sp_, *det_sp_, e_total_);
 }
 

@@ -1,5 +1,5 @@
 /// @file cpu/scf/mp2.cpp
-/// @brief Implementation of ao2mo_ovov + closed-shell / RI MP2 (see mp2.h).
+/// @brief Implementation of ao2mo_ovov + closed-shell / UMP2 / RI MP2.
 
 #include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/internal/density_fitting.h"
@@ -16,6 +16,59 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+namespace {
+
+/// @brief Four-index AO→MO transform to chemist (p q | r s) with independent
+///        coefficient blocks per index (OrbitalHessian::transform_block_ pattern).
+xt::xtensor<double, 4> ao2mo_mixed_(const xt::xtensor<double, 4>& eri_ao,
+                                    const xt::xtensor<double, 2>& C0,
+                                    const xt::xtensor<double, 2>& C1,
+                                    const xt::xtensor<double, 2>& C2,
+                                    const xt::xtensor<double, 2>& C3) {
+    xt::xtensor<double, 4> cur = eri_ao;
+    const xt::xtensor<double, 2>* Cs[4] = {&C3, &C2, &C1, &C0};
+    for (int round = 0; round < 4; ++round) {
+        const auto sh = cur.shape();
+        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
+        xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
+        xt::xtensor<double, 4> next = xt::reshape_view(
+            h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        cur = xt::transpose(next, {3, 0, 1, 2});
+    }
+    return cur; // (C0, C1, C2, C3) → (i, a, j, b) when C0=CoL, C1=CvL, …
+}
+
+/// @brief Same-spin UMP2 channel: ¼ Σ | (ia|jb) − (ib|ja) |² / Δ.
+double same_spin_corr_(const xt::xtensor<double, 4>& ovov,
+                       const xt::xtensor<double, 1>& eps, int n_occ,
+                       int n_vir) {
+    if (n_occ < 2 || n_vir < 2)
+        return 0.0;
+    double e = 0.0;
+    for (int i = 0; i < n_occ; ++i) {
+        for (int j = 0; j < n_occ; ++j) {
+            for (int a = 0; a < n_vir; ++a) {
+                for (int b = 0; b < n_vir; ++b) {
+                    const double iajb = ovov(i, a, j, b);
+                    const double ibja = ovov(i, b, j, a);
+                    const double t = iajb - ibja;
+                    const double denom =
+                        eps(i) + eps(j) - eps(n_occ + a) - eps(n_occ + b);
+                    if (denom >= 0.0) {
+                        throw std::invalid_argument(
+                            "ump2_energy: non-negative same-spin orbital-energy "
+                            "denominator; reference is degenerate or non-aufbau.");
+                    }
+                    e += t * t / denom;
+                }
+            }
+        }
+    }
+    return 0.25 * e;
+}
+
+} // namespace
 
 xt::xtensor<double, 4> ao2mo_ovov(const xt::xtensor<double, 4>& ERI,
                                   const xt::xtensor<double, 2>& C, int n_occ,
@@ -163,6 +216,103 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             "non-aufbau.");
                     }
                     e_corr += iajb * (2.0 * iajb - ibja) / denom;
+                }
+            }
+        }
+    }
+
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false};
+}
+
+MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                      double e_scf_ha) {
+    using Spin = SlaterDeterminant::Spin;
+    if (ints.ERI.size() == 0) {
+        throw std::invalid_argument(
+            "ump2_energy: ERI is not materialized; call IntegralPack{..., "
+            "compute_eri=true}.");
+    }
+    if (det.generalized()) {
+        throw std::invalid_argument(
+            "ump2_energy: GHF (spinor) reference is not supported.");
+    }
+    if (det.restricted()) {
+        throw std::invalid_argument(
+            "ump2_energy: restricted reference — use mp2_energy (RMP2).");
+    }
+
+    const xt::xtensor<double, 2>& Ca = det.coefficients(Spin::alpha);
+    const xt::xtensor<double, 2>& Cb = det.coefficients(Spin::beta);
+    const xt::xtensor<double, 1>& eps_a = det.orbital_energies(Spin::alpha);
+    const xt::xtensor<double, 1>& eps_b = det.orbital_energies(Spin::beta);
+    const int n_occ_a = det.n_electrons(Spin::alpha);
+    const int n_occ_b = det.n_electrons(Spin::beta);
+    const int n_mo_a = static_cast<int>(Ca.shape(1));
+    const int n_mo_b = static_cast<int>(Cb.shape(1));
+    const int n_vir_a = n_mo_a - n_occ_a;
+    const int n_vir_b = n_mo_b - n_occ_b;
+
+    if (n_vir_a < 0 || n_vir_b < 0) {
+        throw std::invalid_argument(
+            "ump2_energy: n_electrons exceeds MO count on a spin channel.");
+    }
+    // No doubles possible when either both same-spin channels lack space or
+    // the opposite-spin product of virtuals/occs vanishes — still return finite 0.
+    if ((n_occ_a < 2 || n_vir_a < 2) && (n_occ_b < 2 || n_vir_b < 2) &&
+        (n_occ_a == 0 || n_occ_b == 0 || n_vir_a == 0 || n_vir_b == 0)) {
+        return {0.0, e_scf_ha, /*ri=*/false};
+    }
+
+    double e_corr = 0.0;
+
+    // Same-spin αα / ββ.
+    if (n_occ_a >= 2 && n_vir_a >= 2) {
+        xt::xtensor<double, 2> Co =
+            xt::view(Ca, xt::all(), xt::range(0, n_occ_a));
+        xt::xtensor<double, 2> Cv =
+            xt::view(Ca, xt::all(), xt::range(n_occ_a, n_mo_a));
+        const xt::xtensor<double, 4> ovov =
+            ao2mo_mixed_(ints.ERI, Co, Cv, Co, Cv);
+        e_corr += same_spin_corr_(ovov, eps_a, n_occ_a, n_vir_a);
+    }
+    if (n_occ_b >= 2 && n_vir_b >= 2) {
+        xt::xtensor<double, 2> Co =
+            xt::view(Cb, xt::all(), xt::range(0, n_occ_b));
+        xt::xtensor<double, 2> Cv =
+            xt::view(Cb, xt::all(), xt::range(n_occ_b, n_mo_b));
+        const xt::xtensor<double, 4> ovov =
+            ao2mo_mixed_(ints.ERI, Co, Cv, Co, Cv);
+        e_corr += same_spin_corr_(ovov, eps_b, n_occ_b, n_vir_b);
+    }
+
+    // Opposite-spin αβ: Σ (i_a a_a | j_b b_b)² / Δ  (no exchange).
+    if (n_occ_a > 0 && n_occ_b > 0 && n_vir_a > 0 && n_vir_b > 0) {
+        xt::xtensor<double, 2> Coa =
+            xt::view(Ca, xt::all(), xt::range(0, n_occ_a));
+        xt::xtensor<double, 2> Cva =
+            xt::view(Ca, xt::all(), xt::range(n_occ_a, n_mo_a));
+        xt::xtensor<double, 2> Cob =
+            xt::view(Cb, xt::all(), xt::range(0, n_occ_b));
+        xt::xtensor<double, 2> Cvb =
+            xt::view(Cb, xt::all(), xt::range(n_occ_b, n_mo_b));
+        const xt::xtensor<double, 4> ovov_ab =
+            ao2mo_mixed_(ints.ERI, Coa, Cva, Cob, Cvb);
+        for (int i = 0; i < n_occ_a; ++i) {
+            for (int j = 0; j < n_occ_b; ++j) {
+                for (int a = 0; a < n_vir_a; ++a) {
+                    for (int b = 0; b < n_vir_b; ++b) {
+                        const double v = ovov_ab(i, a, j, b);
+                        const double denom = eps_a(i) + eps_b(j) -
+                                             eps_a(n_occ_a + a) -
+                                             eps_b(n_occ_b + b);
+                        if (denom >= 0.0) {
+                            throw std::invalid_argument(
+                                "ump2_energy: non-negative opposite-spin "
+                                "orbital-energy denominator; reference is "
+                                "degenerate or non-aufbau.");
+                        }
+                        e_corr += v * v / denom;
+                    }
                 }
             }
         }

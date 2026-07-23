@@ -327,11 +327,16 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @return Forces + energy in eV / eV·Å⁻¹.
     GradientResult forces(Frame& frame);
 
-    /// @brief Closed-shell MP2 on top of a fresh RHF-style run (materializes ERI).
+    /// @brief Canonical MP2 on top of a fresh SCF run (materializes ERI).
+    ///
+    /// Closed-shell `RHF` → RMP2 (or RI-MP2 when `ri != RI::None`);
+    /// unrestricted `UHF` → UMP2 (spin-orbital, unprojected). ROHF and GHF
+    /// throw. Optional density guess is forwarded to the reference SCF (needed
+    /// for multi-minima cases such as triplet O₂ UHF).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
-    /// @return MP2 correlation + total energy.
-    /// @pre Derived method is closed-shell HF (use `RHF`).
-    MP2Result mp2(Frame& frame);
+    /// @param guess  Optional density-matrix guess for the reference SCF.
+    /// @return MP2 correlation + total energy [Hartree].
+    MP2Result mp2(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Tiny full-CI on top of a fresh RHF-style run (materializes ERI).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.

@@ -10,6 +10,7 @@ are not Drivers or Components, and register in no Plan; both throw
 `std::invalid_argument` on a non-converged reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
+- **UMP2** — unrestricted spin-orbital MP2 on a UHF reference (`UHF::mp2`).
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
@@ -20,7 +21,7 @@ Coupled cluster and multireference theory are entirely absent.
 | Method                             | CPU | CUDA | Kokkos |
 | ---------------------------------- | :-: | :--: | :---: |
 | Restricted MP2, RMP2               |  ✓  |   ○  |   ○  |
-| Unrestricted MP2, UMP2             |  ○  |   ○  |   ○  |
+| Unrestricted MP2, UMP2             |  ✓  |   ○  |   ○  |
 | Restricted open-shell MP2, ROMP2   |  ○  |   ○  |   ○  |
 | Frozen-core MP2                    |  ○  |   ○  |   ○  |
 | Density-fitted MP2                 |  ✓  |   ○  |   ○  |
@@ -46,11 +47,13 @@ Coupled cluster and multireference theory are entirely absent.
 | Full MP4                           |  ○  |   ○  |   ○  |
 
 RMP2 runs four sequential O(N⁵) quarter transforms to the `(ia|jb)` ovov block,
-then the canonical energy expression. **RI-MP2** is the same entry point with
-`rhf.ri = RI::{J,JK}` and an aux basis (`MP2Result::ri = true`,
+then the canonical energy expression. **UMP2** (`UHF::mp2`) uses independent
+α/β MOs with same-spin (¼ antisymmetrized) and opposite-spin channels
+(`reg_ump2-o2-sto3g` vs PySCF `mp.UMP2`). **RI-MP2** is the closed-shell entry
+with `rhf.ri = RI::{J,JK}` and an aux basis (`MP2Result::ri = true`,
 `reg_h2o_ri_mp2`) — Coulomb-metric density fitting for `(ia|jb)`. Energy only:
-no frozen core, no gradients. Canonical mode still materializes the full
-in-memory ERI tensor in the method's private workspace.
+no frozen core, no gradients, no RI-UMP2. Canonical mode still materializes the
+full in-memory ERI tensor in the method's private workspace.
 
 ## 2. Configuration Interaction
 

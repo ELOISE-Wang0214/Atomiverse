@@ -62,3 +62,4 @@ args:
 (autonomous closes append lines here)
 
 - `h2-b3lyp-hybrid-tda` | Hybrid TDDFT-TDA (B3LYP exact-exchange kernel) | S1=25.928364822972 eV (PySCF 2.14.0) | perf_status=n_a | status=closed
+- `ump2-o2-sto3g` | UMP2/O2/STO-3G (triplet, cart, conv_tol=1e-12) | e_corr=-0.096393144130 Ha, e_tot=-147.730339929580 Ha (UHF e_hf=-147.633946785450 Ha; PySCF 2.14.0; tol 1e-6 Ha) | perf_status=ok | status=closed

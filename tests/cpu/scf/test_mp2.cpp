@@ -1,5 +1,5 @@
 /// @file tests/cpu/scf/test_mp2.cpp
-/// @brief Unit checks for RHF::mp2(frame) (no public IntegralPack).
+/// @brief Unit checks for RHF::mp2 / UHF::mp2 (no public IntegralPack).
 
 #ifdef ATV_HAS_HF
 
@@ -39,6 +39,17 @@ cpu::Frame make_h2() {
     return f;
 }
 
+cpu::Frame make_h() {
+    cpu::Frame f(1);
+    f.span(kAtom_x)[0] = 0.0;
+    f.span(kAtom_y)[0] = 0.0;
+    f.span(kAtom_z)[0] = 0.0;
+    f.span(kAtom_type)[0] = 1;
+    f.span(kAtom_mass)[0] = 1.008;
+    f.simbox = cpu::Box::cubic(20.0);
+    return f;
+}
+
 } // namespace
 
 TEST(MP2, HeSto3gZeroCorrelation) {
@@ -62,6 +73,38 @@ TEST(MP2, H2Sto3gNegativeCorrelation) {
     EXPECT_TRUE(rhf.converged());
     EXPECT_LT(r.e_corr, 0.0);
     EXPECT_NEAR(r.e_tot, rhf.energy() + r.e_corr, 1e-12);
+}
+
+TEST(UMP2, HAtomSto3gZeroCorrelation) {
+    // H/STO-3G UHF(1,0): single α electron, no doubles → E_corr == 0
+    auto frame = make_h();
+    cpu::scf::UHF uhf(1, 0);
+    uhf.basis = cpu::scf::BasisSet::STO3G;
+    uhf.tol = 1e-12;
+    auto r = uhf.mp2(frame);
+    EXPECT_TRUE(uhf.converged());
+    EXPECT_NEAR(r.e_corr, 0.0, 1e-14);
+    EXPECT_NEAR(r.e_tot, uhf.energy(), 1e-14);
+    EXPECT_FALSE(r.ri);
+}
+
+TEST(UMP2, H2ClosedShellMatchesRMP2) {
+    // Equilibrium H2: UHF(1,1) recovers the RHF solution → UMP2 == RMP2.
+    auto frame_r = make_h2();
+    auto frame_u = make_h2();
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-12;
+    const auto rmp2 = rhf.mp2(frame_r);
+
+    cpu::scf::UHF uhf(1, 1);
+    uhf.basis = cpu::scf::BasisSet::STO3G;
+    uhf.tol = 1e-12;
+    const auto ump2 = uhf.mp2(frame_u);
+
+    EXPECT_TRUE(uhf.converged());
+    EXPECT_NEAR(ump2.e_corr, rmp2.e_corr, 1e-9);
+    EXPECT_NEAR(ump2.e_tot, rmp2.e_tot, 1e-9);
 }
 
 #endif
