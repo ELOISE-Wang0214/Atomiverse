@@ -1359,6 +1359,9 @@ def main() -> int:
         t2a = _np.asarray(t2).ravel()
         out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
         out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+        if args.grad:
+            g = mycc.nuc_grad_method().kernel()
+            out["grad_ha_bohr"] = _np.asarray(g, dtype=float).tolist()
     elif m == "ccsd-t":
         # Closed-shell CCSD(T): CCSD + non-iterative (T) (PySCF cc.CCSD.ccsd_t).
         import numpy as _np
