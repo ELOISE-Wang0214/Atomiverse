@@ -59,9 +59,8 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         z_val_total += static_cast<double>(
             find_kind(kinds, sp_type_build[i]).pot.zion);
 
-    // Assemble the solver configuration from the build-time frame. The
-    // ATV_GPW_OT diagnostic switch is read once here — re-reading an
-    // environment variable per launch had no meaning.
+    // Assemble the solver from the build-time frame. Product path is the
+    // `use_ot` member; env `ATV_GPW_OT` remains a diagnostic force-on.
     GpwDft cfg;
     cfg.cell[0] = ctx.frame.simbox.length(0) * kAng2Bohr;
     cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
@@ -74,9 +73,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.xc = xc;
     cfg.nonperiodic = nonperiodic;
     cfg.d3 = d3;
-    cfg.d3bj = d3bj;
-    if (std::getenv("ATV_GPW_OT"))
-        cfg.use_ot = true; // diagnostic: force OT path
+    cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     built_cell_ = {cfg.cell[0], cfg.cell[1], cfg.cell[2]};
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
