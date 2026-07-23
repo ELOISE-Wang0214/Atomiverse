@@ -13,14 +13,13 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | CCSD energy foothold lands (`RHF::ccsd`); triples (T) next; PySCF cc.CCSD.ccsd_t
-- [ ] `casci-h2-sto3g` | CASCI | post-hf | h2 | sto-3g | e_tot | active-space on existing FCI kernel; PySCF mcscf.CASCI
-- [ ] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
-- [ ] `eom-ee-ccsd` | EOM-EE-CCSD | excited-states | h2 | sto-3g | ω | CCSD energy foothold now ships; EOM layer still ○; PySCF cc.eom_rccsd
+(empty)
 
 ## in_progress
 
-(empty)
+- [~] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | CCSD energy foothold lands (`RHF::ccsd`); triples (T) next; PySCF cc.CCSD.ccsd_t
+- [~] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
+- [~] `eom-ee-ccsd` | EOM-EE-CCSD | excited-states | h2 | sto-3g | ω | CCSD energy foothold now ships; EOM layer still ○; PySCF cc.eom_rccsd
 
 ## blocked
 
@@ -32,6 +31,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## done
 
+- [x] `casci-h2-sto3g` | CASCI | regressions/scf/casci-h2-sto3g | H2 CASCI(2,2)/STO-3G cart; PySCF 2.14.0 e_tot=-1.137283834489 Ha; `RHF::casci(frame,2,2)`; tol 1e-6 Ha; ratio 0.076
 - [x] `adc2-h2co-sto3g` | ADC(2) | regressions/scf/adc2-h2co-sto3g | H2CO/STO-3G cart strict ADC(2) EE; PySCF 2.14.0 S1=4.535317180049 eV; `RHF::adc2`; tol 1e-4 eV; ratio 0.267
 - [x] `mp3-h2-sto3g` | MP3 | regressions/scf/mp3-h2-sto3g | H2/STO-3G cart RMP3; offline pin e_corr=-0.017974146227 Ha (Szabo–Ostlund on PySCF RHF orbs); `RHF::mp3`; tol 1e-6 Ha; ratio 0.774
 - [x] `ccsd-h2-sto3g` | CCSD | regressions/scf/ccsd-h2-sto3g | H2/STO-3G cart CCSD; PySCF 2.14.0 e_corr=-0.020524527092 Ha, e_tot=-1.137283834489 Ha; `RHF::ccsd`; tol 1e-6 Ha; ratio 0.317

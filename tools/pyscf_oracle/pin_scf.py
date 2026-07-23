@@ -15,6 +15,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py mp3 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
@@ -106,7 +107,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "b2plyp"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "casci", "b2plyp"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -114,6 +115,18 @@ def main() -> int:
     p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")
     p.add_argument("--xc", default="b3lyp")
     p.add_argument("--nstates", type=int, default=3)
+    p.add_argument(
+        "--ncas",
+        type=int,
+        default=2,
+        help="Active spatial orbitals for casci (default 2)",
+    )
+    p.add_argument(
+        "--nelecas",
+        type=int,
+        default=2,
+        help="Active electrons for casci (default 2; closed-shell even)",
+    )
     p.add_argument("--conv-tol", type=float, default=1e-12)
     p.add_argument(
         "--frozen",
@@ -766,6 +779,21 @@ def main() -> int:
         t2a = _np.asarray(t2).ravel()
         out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
         out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+    elif m == "casci":
+        # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
+        from pyscf import mcscf
+
+        ncas = int(args.ncas)
+        nelecas = int(args.nelecas)
+        mc = mcscf.CASCI(mf, ncas, nelecas)
+        mc.kernel()
+        out["e_hf_ha"] = float(e)
+        out["ncas"] = ncas
+        out["nelecas"] = nelecas
+        out["e_casci_ha"] = float(mc.e_tot)
+        out["e_tot_ha"] = float(mc.e_tot)
+        out["e_corr_ha"] = float(mc.e_tot) - float(e)
+        out["e_cas_ha"] = float(mc.e_cas)
     elif m == "b2plyp":
         # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.
         m2 = mp.MP2(mf).run()
