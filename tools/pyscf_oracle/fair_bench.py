@@ -121,6 +121,60 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "e3+=-4*np.einsum('bcrt,atsc,rsab,bctr,abrs',MO[o,o,v,v],MO[o,v,v,o],MO[v,v,o,o],D,D)\n"
             "float(e2+e3)"
         ),
+        # Closed-shell RMP4(SDTQ) oracle (PySCF has no mp.MP4): det-space RSPT-4 twin.
+        "mp4": (
+            "from pyscf import scf, ao2mo\nfrom itertools import combinations\nimport numpy as np\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel()\n"
+            "C=np.asarray(mf.mo_coeff); eps=np.asarray(mf.mo_energy)\n"
+            "nmo=C.shape[1]; ndocc=mol.nelectron//2; nocc=2*ndocc; nso=2*nmo\n"
+            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
+            "hmo=C.T@mf.get_hcore()@C\n"
+            "hso=np.zeros((nso,nso))\n"
+            "for p in range(nmo):\n"
+            "  for q in range(nmo):\n"
+            "    hso[2*p,2*q]=hmo[p,q]; hso[2*p+1,2*q+1]=hmo[p,q]\n"
+            "V=np.zeros((nso,nso,nso,nso))\n"
+            "for p in range(nso):\n"
+            "  for q in range(nso):\n"
+            "    for r in range(nso):\n"
+            "      for s in range(nso):\n"
+            "        val=0.0\n"
+            "        if (p%2)==(r%2) and (q%2)==(s%2): val+=eri[p//2,r//2,q//2,s//2]\n"
+            "        if (p%2)==(s%2) and (q%2)==(r%2): val-=eri[p//2,s//2,q//2,r//2]\n"
+            "        V[p,q,r,s]=val\n"
+            "eso=np.repeat(eps,2); dets=list(combinations(range(nso),nocc)); nd=len(dets); iref=dets.index(tuple(range(nocc)))\n"
+            "def phase(di,holes,parts):\n"
+            "  orb=list(di); ph=1\n"
+            "  for h in holes:\n"
+            "    p=orb.index(h); ph*=(-1)**p; orb.pop(p)\n"
+            "  for p in parts:\n"
+            "    ph*=(-1)**sum(1 for o in orb if o<p); orb.append(p); orb.sort()\n"
+            "  return ph\n"
+            "def Hme(d1,d2):\n"
+            "  s1,s2=set(d1),set(d2); o1=sorted(s1-s2); o2=sorted(s2-s1); n=len(o1)\n"
+            "  if n>2: return 0.0\n"
+            "  if n==0:\n"
+            "    e=sum(hso[i,i] for i in d1)\n"
+            "    for i in d1:\n"
+            "      for j in d1: e+=0.5*V[i,j,i,j]\n"
+            "    return e\n"
+            "  if n==1:\n"
+            "    h,p=o1[0],o2[0]; ph=phase(d1,[h],[p]); com=sorted(s1&s2)\n"
+            "    return ph*(hso[h,p]+sum(V[h,k,p,k] for k in com))\n"
+            "  i,j=o1; a,b=o2; return phase(d1,[i,j],[a,b])*V[i,j,a,b]\n"
+            "H=np.array([[Hme(a,b) for b in dets] for a in dets])\n"
+            "H0=np.diag([sum(eso[p] for p in d) for d in dets]); Vm=H-H0\n"
+            "E0=H0[iref,iref]; E1=Vm[iref,iref]; P0=np.zeros(nd); P0[iref]=1.0\n"
+            "def R0(v):\n"
+            "  o=np.zeros_like(v)\n"
+            "  for i in range(nd):\n"
+            "    if i!=iref: o[i]=v[i]/(E0-H0[i,i])\n"
+            "  return o\n"
+            "P1=R0(Vm@P0); e2=float(P0@Vm@P1)\n"
+            "P2=R0(Vm@P1-E1*P1-e2*P0); e3=float(P0@Vm@P2)\n"
+            "P3=R0(Vm@P2-E1*P2-e2*P1-e3*P0); e4=float(P0@Vm@P3)\n"
+            "float(e2+e3+e4)"
+        ),
         "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
         "ccsd_t": (
             "from pyscf import scf, cc\n"
@@ -235,7 +289,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "mp4", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)
