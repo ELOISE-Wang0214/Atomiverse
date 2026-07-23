@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Branch | Spec | Status |
+| ------ | ---- | ------ |
+| `wf/pw-lda-si` | `pw-lda-si` | open — PW LDA Si k-mesh energy re-pin (CP2K loop) |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
