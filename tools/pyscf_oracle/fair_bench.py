@@ -336,18 +336,26 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "          acc+=eri[p,q,i,nocc+a]*Pi[ia,jb]*eri[j,nocc+b,r,s]\n"
             "  return acc\n"
             "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
-            "for a in range(nvir):\n"
-            "  for i in range(nocc):\n"
             "    ia=a*nocc+i; aa=nocc+a\n"
-            "    for b in range(nvir):\n"
-            "      for j in range(nocc):\n"
             "        jb=b*nocc+j; bb=nocc+b; vc=eri[i,aa,j,bb]\n"
             "        A[ia,jb]=2*vc-W(i,j,aa,bb); B[ia,jb]=2*vc-W(i,bb,aa,j)\n"
             "        if ia==jb: A[ia,jb]+=eps[aa]-eps[i]\n"
             "ApB=0.5*((A+B)+(A+B).T); AmB=0.5*((A-B)+(A-B).T)\n"
             "sm,Um=np.linalg.eigh(AmB); T=(Um*np.sqrt(sm))@Um.T\n"
             "M=0.5*(T@ApB@T+(T@ApB@T).T); np.sqrt(np.linalg.eigvalsh(M))"
-        ),
+        # One-shot GF2 / G0F2 — twin of RHF::gf2().
+        "gf2": (
+            "from pyscf import scf, agf2\n"
+            "from pyscf.agf2.chempot import binsearch_chempot\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
+            "g1=agf2.RAGF2(mf); g1.verbose=0\n"
+            "eri=g1.ao2mo(); g0=g1.init_gf(); se0=g1.build_se(eri,g0)\n"
+            "fock=np.diag(np.asarray(mf.mo_energy,dtype=float))\n"
+            "w,v=se0.eig(fock)\n"
+            "mu,_=binsearch_chempot((w,v),g1.nmo,g1.nocc*2)\n"
+            "g_one=agf2.GreensFunction(w,v[:g1.nmo],chempot=mu)\n"
+            "g1.get_ip(g_one,nroots=1); g1.get_ea(g_one,nroots=1)\n"
+            "g1.energy_mp2(mf.mo_energy,se0)"        ),
         # UHF ΔSCF IMOM (PySCF mom_occ_) — twin of UHF::delta_scf HOMO→LUMO.
         "delta_scf": (
             "from pyscf import scf\n"
@@ -407,8 +415,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "--geom", "water", "ea-adc2", "--basis", "sto-3g", "sf_tddft", "--charge", "mp4", "--spin", "cc2", "--xc", "b3lyp", "direct_rpa", "--nstates", "bse", "--cart", "d4", "--repeat", "eom-sf-ccsd"])    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0)    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)    p.add_argument("--repeat", type=int, default=3)    p.add_argument("--max-ratio", type=float, default=10.0,
-                   help="within_10x if T_atv/T_pyscf <= this (default 10)")
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "--geom", "water", "ea-adc2", "--basis", "sto-3g", "sf_tddft", "--charge", "mp4", "--spin", "cc2", "--xc", "b3lyp", "direct_rpa", "--nstates", "bse", "--cart", "d4", "--repeat", "eom-sf-ccsd", "--max-ratio", "gf2"])    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0)    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)    p.add_argument("--repeat", type=int, default=3)    p.add_argument("--max-ratio", type=float, default=10.0,                   help="within_10x if T_atv/T_pyscf <= this (default 10)")
     p.add_argument("atv_cmd", nargs=argparse.REMAINDER,
                    help="optional: -- ./path/to/reg_binary [args…]")
     args = p.parse_args()

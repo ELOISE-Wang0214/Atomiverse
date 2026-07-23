@@ -15,7 +15,7 @@
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/rpa.h"
-#include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/gf2.h"#include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
 
@@ -296,7 +296,18 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when `n_states` is out of range or the
     ///         system has no virtual orbitals.
     BSEResult bse(int n_states = 1, bool tda = false) const;
-    /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
+    /// @brief One-shot second-order Green's function (G0F2 / GF2)
+    ///        quasiparticle energies of the most recent `run()` (closed-shell
+    ///        RHF). Builds the 2h1p+2p1h auxiliary self-energy from the HF
+    ///        Green's function and solves the Dyson equation once with
+    ///        F = diag(ε_HF). Matches PySCF `agf2.RAGF2` one-shot poles
+    ///        (SE from `init_gf` → `se.get_greens_function(F_HF)`). Not
+    ///        self-consistent AGF2 (separate roadmap item).
+    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV],
+    ///         Galitskii–Migdal e_corr [Hartree].
+    /// @throws std::runtime_error when called before `run()` or on a
+    ///         non-restricted reference.
+    GF2Result gf2() const;    /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib
     ///        pipeline (`vib::MassWeighting` → `vib::HessianDiagonalizer`).
     ///
