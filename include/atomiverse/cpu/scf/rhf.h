@@ -191,6 +191,22 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
     ADC2Result adc2(int n_states = 1) const;
 
+    /// @brief Strict ADC(2) ionization potentials of the most recent
+    ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982).
+    ///        Closed-shell 1h / 2h1p intermediate-state representation;
+    ///        matches PySCF `adc.ADC` with `method='adc(2)'` and
+    ///        `method_type='ip'`. Second-order M_ij (occupied–occupied),
+    ///        first-order 1h–2h1p coupling via (ia|jk), zeroth-order 2h1p
+    ///        diagonal D_ajk = ε_j + ε_k − ε_a; eigenvalues of the
+    ///        sign-flipped ISR matrix are the ionization potentials.
+    /// @param n_states Number of lowest IP roots (1 ≤ n_states ≤ n_occ).
+    /// @return Ionization potentials [eV] and the MP2 correlation energy
+    ///         [Hartree] of the RHF reference.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when n_states is outside [1, n_occ]
+    ///         or the system has no virtual orbitals.
+    IPADC2Result ip_adc2(int n_states = 1) const;
+
     /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
     ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
     ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,

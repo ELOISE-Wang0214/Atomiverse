@@ -1,11 +1,16 @@
 /// @file cpu/scf/adc.cpp
-/// @brief Strict ADC(2) excitation energies on closed-shell RHF (PySCF twin).
+/// @brief Strict ADC(2) EE and IP on closed-shell RHF (PySCF twin).
 ///
-/// Formulas follow PySCF `pyscf.adc.radc_ee` (get_imds / matvec for
+/// EE (`RHF::adc2`): PySCF `pyscf.adc.radc_ee` (get_imds / matvec for
 /// `method='adc(2)'`) and `radc_amplitudes` first-order doubles t2:
 /// t_ij^ab = (ia|bj) / (ε_i + ε_j − ε_a − ε_b). Non-symmetric Davidson on
 /// the singles+doubles ISR matrix; zeroth-order doubles diagonal only
 /// (strict ADC(2), not ADC(2)-x).
+///
+/// IP (`RHF::ip_adc2`): PySCF `pyscf.adc.radc_ip` (get_imds / matvec for
+/// `method='adc(2)'`, `method_type='ip'`). Second-order M_ij, first-order
+/// 1h–2h1p coupling, zeroth-order 2h1p diagonal; sigma is sign-flipped so
+/// eigenvalues are positive ionization potentials.
 ///
 /// References: Schirmer, Phys. Rev. A 26, 2395 (1982); Trofimov & Schirmer,
 /// J. Phys. B 28, 2299 (1995); PySCF ADC module (doi:10.1063/5.0135290).
@@ -806,6 +811,205 @@ ADC2Result RHF::adc2(int n_states) const {
     for (int s = 0; s < n_states; ++s)
         out.energy_ev[static_cast<std::size_t>(s)] =
             omega_ha[static_cast<std::size_t>(s)] * units::kHartreeInEv;
+    return out;
+}
+
+// ── IP-ADC(2) (PySCF radc_ip, method='adc(2)') ─────────────────────────
+
+inline int idx_ajk_(int a, int j, int k, int nocc) {
+    return (a * nocc + j) * nocc + k;
+}
+
+/// Second-order occupied–occupied intermediate M_ij [nocc × nocc].
+/// Twin of PySCF `radc_ip.get_imds` for `method == "adc(2)"` (no ADC(3)).
+xt::xtensor<double, 2> build_mij_ip_(const xt::xtensor<double, 4>& t2,
+                                     const xt::xtensor<double, 4>& ovvo,
+                                     const RealVector& eps, int nocc,
+                                     int nvir) {
+    xt::xtensor<double, 2> M =
+        xt::zeros<double>({static_cast<std::size_t>(nocc),
+                           static_cast<std::size_t>(nocc)});
+    // Zeroth order: M_ij = δ_ij ε_j
+    for (int i = 0; i < nocc; ++i)
+        M(i, i) = eps(static_cast<std::size_t>(i));
+
+    // Second-order t2 × ovvo (PySCF radc_ip get_imds, adc(2) branch only).
+    for (int i = 0; i < nocc; ++i) {
+        for (int j = 0; j < nocc; ++j) {
+            double s = 0.0;
+            for (int l = 0; l < nocc; ++l) {
+                for (int d = 0; d < nvir; ++d) {
+                    for (int e = 0; e < nvir; ++e) {
+                        const double t_ilde = t2(i, l, d, e);
+                        const double t_lide = t2(l, i, d, e);
+                        const double v_jdel = ovvo(j, d, e, l); // (jd|el)
+                        const double v_jedl = ovvo(j, e, d, l); // (je|dl)
+                        // 0.25*(ilde,jdel) − 0.25*(lide,jdel)
+                        // −0.25*(ilde,jedl) + 0.25*(lide,jedl)
+                        // +0.5*(ilde,jdel)
+                        s += 0.25 * t_ilde * v_jdel;
+                        s -= 0.25 * t_lide * v_jdel;
+                        s -= 0.25 * t_ilde * v_jedl;
+                        s += 0.25 * t_lide * v_jedl;
+                        s += 0.5 * t_ilde * v_jdel;
+
+                        const double t_jlde = t2(j, l, d, e);
+                        const double t_ljde = t2(l, j, d, e);
+                        const double v_idel = ovvo(i, d, e, l); // (id|el)
+                        const double v_ldei = ovvo(l, d, e, i); // (ld|ei)
+                        // 0.25*(jlde,idel) − 0.25*(ljde,idel)
+                        // −0.25*(jlde,ldei) + 0.25*(ljde,ldei)
+                        // +0.5*(jlde,idel)
+                        s += 0.25 * t_jlde * v_idel;
+                        s -= 0.25 * t_ljde * v_idel;
+                        s -= 0.25 * t_jlde * v_ldei;
+                        s += 0.25 * t_ljde * v_ldei;
+                        s += 0.5 * t_jlde * v_idel;
+                    }
+                }
+            }
+            M(i, j) += s;
+        }
+    }
+    return M;
+}
+
+/// IP-ADC(2) matvec in the PySCF pre-flip convention (caller applies s*=−1).
+/// Layout: r[0:nocc] = 1h; r[nocc:] = 2h1p with index a*nocc*nocc + j*nocc + k.
+void matvec_ip_(const xt::xtensor<double, 2>& Mij,
+                const xt::xtensor<double, 4>& ovoo, const RealVector& eps,
+                int nocc, int nvir, const std::vector<double>& r,
+                std::vector<double>& s) {
+    const int ns = nocc;
+    const int nd = nvir * nocc * nocc;
+    const int dim = ns + nd;
+    s.assign(static_cast<std::size_t>(dim), 0.0);
+
+    // s1 = M_ij @ r1
+    for (int i = 0; i < nocc; ++i) {
+        double v = 0.0;
+        for (int j = 0; j < nocc; ++j)
+            v += Mij(i, j) * r[static_cast<std::size_t>(j)];
+        s[static_cast<std::size_t>(i)] = v;
+    }
+
+    // s1 += 2 * einsum('jaki,ajk->i', ovoo, r2)
+    //     −     einsum('kaji,ajk->i', ovoo, r2)
+    for (int i = 0; i < nocc; ++i) {
+        double acc = 0.0;
+        for (int a = 0; a < nvir; ++a) {
+            for (int j = 0; j < nocc; ++j) {
+                for (int k = 0; k < nocc; ++k) {
+                    const double r2 =
+                        r[static_cast<std::size_t>(
+                            ns + idx_ajk_(a, j, k, nocc))];
+                    // ovoo[j,a,k,i] = (ja|ki)
+                    acc += 2.0 * ovoo(j, a, k, i) * r2;
+                    // ovoo[k,a,j,i] = (ka|ji)
+                    acc -= ovoo(k, a, j, i) * r2;
+                }
+            }
+        }
+        s[static_cast<std::size_t>(i)] += acc;
+    }
+
+    // s2 = D_ajk * r2 + einsum('jaki,i->ajk', ovoo, r1)
+    // D_ajk = ε_j + ε_k − ε_a
+    for (int a = 0; a < nvir; ++a) {
+        for (int j = 0; j < nocc; ++j) {
+            for (int k = 0; k < nocc; ++k) {
+                const int p = ns + idx_ajk_(a, j, k, nocc);
+                const double D =
+                    eps(static_cast<std::size_t>(j))
+                    + eps(static_cast<std::size_t>(k))
+                    - eps(static_cast<std::size_t>(nocc + a));
+                double acc = D * r[static_cast<std::size_t>(p)];
+                for (int i = 0; i < nocc; ++i)
+                    acc += ovoo(j, a, k, i) * r[static_cast<std::size_t>(i)];
+                s[static_cast<std::size_t>(p)] = acc;
+            }
+        }
+    }
+
+    // PySCF flips the sign so eigenvalues are positive IPs.
+    for (double& v : s)
+        v = -v;
+}
+
+/// Dense eigenproblem for IP-ADC(2); returns lowest nroots real positive IPs.
+std::vector<double> solve_ip_adc_(const xt::xtensor<double, 2>& Mij,
+                                  const xt::xtensor<double, 4>& ovoo,
+                                  const RealVector& eps, int nocc, int nvir,
+                                  int nroots) {
+    const int ns = nocc;
+    const int nd = nvir * nocc * nocc;
+    const int dim = ns + nd;
+
+    xt::xtensor<double, 2> H =
+        xt::zeros<double>({static_cast<std::size_t>(dim),
+                           static_cast<std::size_t>(dim)});
+    std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
+    std::vector<double> s;
+    for (int k = 0; k < dim; ++k) {
+        e[static_cast<std::size_t>(k)] = 1.0;
+        matvec_ip_(Mij, ovoo, eps, nocc, nvir, e, s);
+        for (int i = 0; i < dim; ++i)
+            H(i, k) = s[static_cast<std::size_t>(i)];
+        e[static_cast<std::size_t>(k)] = 0.0;
+    }
+    auto w = dgeev_real_sorted_(H);
+    if (static_cast<int>(w.size()) < nroots)
+        throw std::runtime_error(
+            "RHF::ip_adc2: fewer real eigenvalues than n_states");
+    w.resize(static_cast<std::size_t>(nroots));
+    return w;
+}
+
+IPADC2Result RHF::ip_adc2(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RHF::ip_adc2: no SCF result — call run(frame) first");
+
+    const SlaterDeterminant& det = determinant();
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri_ao =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    const RealMatrix& C =
+        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
+    const RealVector& eps =
+        det.orbital_energies(SlaterDeterminant::Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape()[1]);
+    int n_occ = 0;
+    for (int p = 0; p < n_mo; ++p)
+        if (f(static_cast<std::size_t>(p)) > 0.0)
+            ++n_occ;
+    const int n_vir = n_mo - n_occ;
+    if (n_occ == 0 || n_vir == 0)
+        throw std::invalid_argument(
+            "RHF::ip_adc2: no virtual orbitals (e.g. He/STO-3G — no "
+            "fallback)");
+    if (n_states < 1 || n_states > n_occ)
+        throw std::invalid_argument(
+            "RHF::ip_adc2: n_states must be in [1, n_occ="
+            + std::to_string(n_occ) + "]");
+
+    const xt::xtensor<double, 4> eri_mo = ao2mo_full(eri_ao, C, n_mo);
+    const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
+    const xt::xtensor<double, 4> t2 = mp2_t2_(eri_mo, eps, n_occ, n_vir);
+    const xt::xtensor<double, 2> Mij =
+        build_mij_ip_(t2, bl.ovvo, eps, n_occ, n_vir);
+
+    const std::vector<double> ip_ha =
+        solve_ip_adc_(Mij, bl.ovoo, eps, n_occ, n_vir, n_states);
+
+    IPADC2Result out;
+    out.e_corr_mp2_ha = mp2_corr_ha_(t2, bl.ovvo, n_occ, n_vir);
+    out.energy_ev.resize(static_cast<std::size_t>(n_states));
+    for (int s = 0; s < n_states; ++s)
+        out.energy_ev[static_cast<std::size_t>(s)] =
+            ip_ha[static_cast<std::size_t>(s)] * units::kHartreeInEv;
     return out;
 }
 
