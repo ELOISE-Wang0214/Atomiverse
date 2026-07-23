@@ -1,0 +1,497 @@
+/// @file cpu/scf/ccsd.cpp
+/// @brief Closed-shell spin-orbital CCSD (Gauss–Stanton intermediates).
+///
+/// Occupied spin-orbitals: α then β over spatial occupied MOs; virtuals
+/// likewise. Chemist MO ERIs (pq|rs) from `ao2mo_full` expand to physicist
+/// antisymmetrized ⟨pq||rs⟩. Canonical HF: f_pq = δ_pq ε_p (f_ia = 0).
+///
+/// References:
+/// - Stanton, Gauss, Watts, Bartlett, J. Chem. Phys. 94, 4334 (1991)
+/// - Gauss & Stanton, J. Chem. Phys. 103, 3561 (1995) Table III
+/// Matches PySCF `cc.GCCSD` / closed-shell `cc.CCSD` energies on RHF orbitals.
+
+#include "atomiverse/cpu/scf/ccsd.h"
+#include "atomiverse/cpu/scf/internal/ccsd_pack.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include <xtensor/containers/xtensor.hpp>
+
+#include "atomiverse/cpu/scf/mp2.h"
+
+namespace ATV {
+namespace cpu {
+namespace scf {
+namespace {
+
+struct SO {
+    int p; ///< Spatial MO index.
+    int s; ///< Spin (0 = α, 1 = β).
+};
+
+inline double so_eri(const xt::xtensor<double, 4>& eri, const SO& p, const SO& q,
+                     const SO& r, const SO& s) {
+    double v = 0.0;
+    if (p.s == r.s && q.s == s.s)
+        v += eri(p.p, r.p, q.p, s.p); // (pr|qs)
+    if (p.s == s.s && q.s == r.s)
+        v -= eri(p.p, s.p, q.p, r.p); // (ps|qr)
+    return v;
+}
+
+/// τ_ij^ab = t_ij^ab + ½ fac · P(ij)P(ab) t_i^a t_j^b  (PySCF gintermediates).
+xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
+                                const xt::xtensor<double, 2>& t1, double fac) {
+    const std::size_t no = t1.shape(0);
+    const std::size_t nv = t1.shape(1);
+    xt::xtensor<double, 4> tau = t2;
+    const double c = 0.5 * fac;
+    for (std::size_t i = 0; i < no; ++i) {
+        for (std::size_t j = 0; j < no; ++j) {
+            for (std::size_t a = 0; a < nv; ++a) {
+                for (std::size_t b = 0; b < nv; ++b) {
+                    // t1t1 = c * t_ia * t_jb
+                    // antisym i↔j, then a↔b of that result
+                    const double t1t1_ijab = c * t1(i, a) * t1(j, b);
+                    const double t1t1_jiab = c * t1(j, a) * t1(i, b);
+                    const double a_ij = t1t1_ijab - t1t1_jiab;
+                    const double t1t1_ijba = c * t1(i, b) * t1(j, a);
+                    const double t1t1_jiba = c * t1(j, b) * t1(i, a);
+                    const double a_ij_ba = t1t1_ijba - t1t1_jiba;
+                    tau(i, j, a, b) += a_ij - a_ij_ba;
+                }
+            }
+        }
+    }
+    return tau;
+}
+
+} // namespace
+
+CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                       double e_scf_ha, double tol, int max_iter) {
+    using Spin = SlaterDeterminant::Spin;
+    if (ints.ERI.size() == 0) {
+        throw std::invalid_argument(
+            "ccsd_energy: ERI is not materialized; need compute_eri=true.");
+    }
+    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
+        throw std::invalid_argument(
+            "ccsd_energy: closed-shell reference only (n_alpha must equal "
+            "n_beta).");
+    }
+    if (det.generalized()) {
+        throw std::invalid_argument(
+            "ccsd_energy: GHF (spinor) reference is not supported.");
+    }
+    if (max_iter < 1) {
+        throw std::invalid_argument("ccsd_energy: max_iter must be ≥ 1.");
+    }
+    if (!(tol > 0.0)) {
+        throw std::invalid_argument("ccsd_energy: tol must be > 0.");
+    }
+
+    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
+    const int n_occ_sp = det.n_electrons(Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape(1));
+    const int n_vir_sp = n_mo - n_occ_sp;
+    if (n_vir_sp <= 0) {
+        return CCSDResult{0.0, e_scf_ha, 0, true};
+    }
+
+    const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
+    const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
+
+    const int no = 2 * n_occ_sp;
+    const int nv = 2 * n_vir_sp;
+    std::vector<SO> so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < n_occ_sp; ++i)
+        so[static_cast<std::size_t>(i)] = SO{i, 0};
+    for (int i = 0; i < n_occ_sp; ++i)
+        so[static_cast<std::size_t>(n_occ_sp + i)] = SO{i, 1};
+    for (int a = 0; a < n_vir_sp; ++a)
+        so[static_cast<std::size_t>(no + a)] = SO{n_occ_sp + a, 0};
+    for (int a = 0; a < n_vir_sp; ++a)
+        so[static_cast<std::size_t>(no + n_vir_sp + a)] = SO{n_occ_sp + a, 1};
+
+    auto g = [&](int p, int q, int r, int s) -> double {
+        return so_eri(eri_mo, so[static_cast<std::size_t>(p)],
+                      so[static_cast<std::size_t>(q)],
+                      so[static_cast<std::size_t>(r)],
+                      so[static_cast<std::size_t>(s)]);
+    };
+
+    const std::size_t No = static_cast<std::size_t>(no);
+    const std::size_t Nv = static_cast<std::size_t>(nv);
+    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
+    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
+    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
+    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
+    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
+    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
+
+#pragma omp parallel for collapse(2) schedule(static) if (no * no > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < no; ++q) {
+            for (int r = 0; r < no; ++r) {
+                for (int s = 0; s < no; ++s)
+                    oooo(p, q, r, s) = g(p, q, r, s);
+                for (int s = 0; s < nv; ++s)
+                    ooov(p, q, r, s) = g(p, q, r, no + s);
+            }
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (no * nv > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < nv; ++q) {
+            for (int r = 0; r < no; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (nv > 2)
+    for (int p = 0; p < nv; ++p)
+        for (int q = 0; q < nv; ++q)
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
+
+    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < n_occ_sp; ++i) {
+        const double e = eps(static_cast<std::size_t>(i));
+        eps_so[static_cast<std::size_t>(i)] = e;
+        eps_so[static_cast<std::size_t>(n_occ_sp + i)] = e;
+    }
+    for (int a = 0; a < n_vir_sp; ++a) {
+        const double e = eps(static_cast<std::size_t>(n_occ_sp + a));
+        eps_so[static_cast<std::size_t>(no + a)] = e;
+        eps_so[static_cast<std::size_t>(no + n_vir_sp + a)] = e;
+    }
+
+    xt::xtensor<double, 2> fov = xt::zeros<double>({No, Nv});
+    xt::xtensor<double, 2> foo = xt::zeros<double>({No, No});
+    xt::xtensor<double, 2> fvv = xt::zeros<double>({Nv, Nv});
+    for (int i = 0; i < no; ++i)
+        foo(i, i) = eps_so[static_cast<std::size_t>(i)];
+    for (int a = 0; a < nv; ++a)
+        fvv(a, a) = eps_so[static_cast<std::size_t>(no + a)];
+
+    xt::xtensor<double, 2> eia = xt::zeros<double>({No, Nv});
+    xt::xtensor<double, 4> eijab = xt::zeros<double>({No, No, Nv, Nv});
+    for (int i = 0; i < no; ++i) {
+        for (int a = 0; a < nv; ++a) {
+            const double d = eps_so[static_cast<std::size_t>(i)] -
+                             eps_so[static_cast<std::size_t>(no + a)];
+            if (d >= 0.0) {
+                throw std::invalid_argument(
+                    "ccsd_energy: non-negative T1 denominator; reference is "
+                    "degenerate or non-aufbau.");
+            }
+            eia(i, a) = d;
+        }
+    }
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    eijab(i, j, a, b) = eia(i, a) + eia(j, b);
+
+    xt::xtensor<double, 2> t1 = xt::zeros<double>({No, Nv});
+    xt::xtensor<double, 4> t2 = xt::zeros<double>({No, No, Nv, Nv});
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    t2(i, j, a, b) = oovv(i, j, a, b) / eijab(i, j, a, b);
+
+    auto energy_of = [&](const xt::xtensor<double, 2>& T1,
+                         const xt::xtensor<double, 4>& T2) -> double {
+        double e = 0.0;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a)
+                e += fov(i, a) * T1(i, a);
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b) {
+                        e += 0.25 * T2(i, j, a, b) * oovv(i, j, a, b);
+                        e += 0.5 * T1(i, a) * T1(j, b) * oovv(i, j, a, b);
+                    }
+        return e;
+    };
+
+    int iters = 0;
+    bool ok = false;
+    for (int it = 0; it < max_iter; ++it) {
+        const xt::xtensor<double, 4> tau = make_tau(t2, t1, 1.0);
+        const xt::xtensor<double, 4> tau_h = make_tau(t2, t1, 0.5);
+
+        // ── F intermediates ──────────────────────────────────────────
+        xt::xtensor<double, 2> Fae = fvv;
+        for (int a = 0; a < nv; ++a) {
+            for (int e = 0; e < nv; ++e) {
+                double s = Fae(a, e);
+                for (int m = 0; m < no; ++m)
+                    s -= 0.5 * fov(m, e) * t1(m, a);
+                // Fae += einsum('mf,amef->ae', t1, ovvv.T(1,0,3,2))
+                // amef = ovvv(m,a,f,e)
+                for (int m = 0; m < no; ++m)
+                    for (int f = 0; f < nv; ++f)
+                        s += t1(m, f) * ovvv(m, a, f, e);
+                for (int m = 0; m < no; ++m)
+                    for (int n = 0; n < no; ++n)
+                        for (int f = 0; f < nv; ++f)
+                            s -= 0.5 * tau_h(m, n, a, f) * oovv(m, n, e, f);
+                Fae(a, e) = s;
+            }
+        }
+        xt::xtensor<double, 2> Fmi = foo;
+        for (int m = 0; m < no; ++m) {
+            for (int i = 0; i < no; ++i) {
+                double s = Fmi(m, i);
+                for (int e = 0; e < nv; ++e)
+                    s += 0.5 * fov(m, e) * t1(i, e);
+                for (int n = 0; n < no; ++n)
+                    for (int e = 0; e < nv; ++e)
+                        s += t1(n, e) * ooov(m, n, i, e);
+                for (int n = 0; n < no; ++n)
+                    for (int e = 0; e < nv; ++e)
+                        for (int f = 0; f < nv; ++f)
+                            s += 0.5 * tau_h(i, n, e, f) * oovv(m, n, e, f);
+                Fmi(m, i) = s;
+            }
+        }
+        xt::xtensor<double, 2> Fme = fov;
+        for (int m = 0; m < no; ++m)
+            for (int e = 0; e < nv; ++e) {
+                double s = Fme(m, e);
+                for (int n = 0; n < no; ++n)
+                    for (int f = 0; f < nv; ++f)
+                        s += t1(n, f) * oovv(m, n, e, f);
+                Fme(m, e) = s;
+            }
+
+        // ── W intermediates ──────────────────────────────────────────
+        xt::xtensor<double, 4> Wmnij = oooo;
+        for (int m = 0; m < no; ++m)
+            for (int n = 0; n < no; ++n)
+                for (int i = 0; i < no; ++i)
+                    for (int j = 0; j < no; ++j) {
+                        double s = Wmnij(m, n, i, j);
+                        for (int e = 0; e < nv; ++e) {
+                            s += t1(j, e) * ooov(m, n, i, e);
+                            s -= t1(i, e) * ooov(m, n, j, e);
+                        }
+                        for (int e = 0; e < nv; ++e)
+                            for (int f = 0; f < nv; ++f)
+                                s += 0.25 * tau(i, j, e, f) * oovv(m, n, e, f);
+                        Wmnij(m, n, i, j) = s;
+                    }
+
+        xt::xtensor<double, 4> Wabef = vvvv;
+        for (int a = 0; a < nv; ++a)
+            for (int b = 0; b < nv; ++b)
+                for (int e = 0; e < nv; ++e)
+                    for (int f = 0; f < nv; ++f) {
+                        double s = Wabef(a, b, e, f);
+                        // tmp = einsum('mb,mafe->bafe', t1, ovvv)
+                        // W = vvvv - tmp + tmp.transpose(1,0,2,3)
+                        double tmp_baef = 0.0;
+                        double tmp_abef = 0.0;
+                        for (int m = 0; m < no; ++m) {
+                            tmp_baef += t1(m, b) * ovvv(m, a, f, e);
+                            tmp_abef += t1(m, a) * ovvv(m, b, f, e);
+                        }
+                        s += -tmp_baef + tmp_abef;
+                        for (int m = 0; m < no; ++m)
+                            for (int n = 0; n < no; ++n)
+                                s += 0.25 * tau(m, n, a, b) * oovv(m, n, e, f);
+                        Wabef(a, b, e, f) = s;
+                    }
+
+        // Wmbej: eris_ovvo(m,b,e,j) = -ovov(m,b,j,e)
+        xt::xtensor<double, 4> Wmbej = xt::zeros<double>({No, Nv, Nv, No});
+        for (int m = 0; m < no; ++m)
+            for (int b = 0; b < nv; ++b)
+                for (int e = 0; e < nv; ++e)
+                    for (int j = 0; j < no; ++j) {
+                        double s = -ovov(m, b, j, e);
+                        for (int f = 0; f < nv; ++f)
+                            s += t1(j, f) * ovvv(m, b, e, f);
+                        // - einsum('nb,mnej->mbej', t1, eris_oovo)
+                        // eris_oovo(m,n,e,j) = -ooov(m,n,j,e)
+                        for (int n = 0; n < no; ++n)
+                            s -= t1(n, b) * (-ooov(m, n, j, e));
+                        for (int n = 0; n < no; ++n)
+                            for (int f = 0; f < nv; ++f)
+                                s -= 0.5 * t2(j, n, f, b) * oovv(m, n, e, f);
+                        for (int n = 0; n < no; ++n)
+                            for (int f = 0; f < nv; ++f)
+                                s -= t1(j, f) * t1(n, b) * oovv(m, n, e, f);
+                        Wmbej(m, b, e, j) = s;
+                    }
+
+        // Strip orbital energies (moved into denominators).
+        xt::xtensor<double, 2> Fvv = Fae;
+        xt::xtensor<double, 2> Foo = Fmi;
+        for (int a = 0; a < nv; ++a)
+            Fvv(a, a) -= eps_so[static_cast<std::size_t>(no + a)];
+        for (int i = 0; i < no; ++i)
+            Foo(i, i) -= eps_so[static_cast<std::size_t>(i)];
+
+        // ── T1 ───────────────────────────────────────────────────────
+        xt::xtensor<double, 2> t1new = fov;
+        for (int i = 0; i < no; ++i) {
+            for (int a = 0; a < nv; ++a) {
+                double s = t1new(i, a);
+                for (int e = 0; e < nv; ++e)
+                    s += t1(i, e) * Fvv(a, e);
+                for (int m = 0; m < no; ++m)
+                    s -= t1(m, a) * Foo(m, i);
+                for (int m = 0; m < no; ++m)
+                    for (int e = 0; e < nv; ++e)
+                        s += t2(i, m, a, e) * Fme(m, e);
+                for (int n = 0; n < no; ++n)
+                    for (int f = 0; f < nv; ++f)
+                        s -= t1(n, f) * ovov(n, a, i, f);
+                for (int m = 0; m < no; ++m)
+                    for (int e = 0; e < nv; ++e)
+                        for (int f = 0; f < nv; ++f)
+                            s -= 0.5 * t2(i, m, e, f) * ovvv(m, a, e, f);
+                for (int m = 0; m < no; ++m)
+                    for (int n = 0; n < no; ++n)
+                        for (int e = 0; e < nv; ++e)
+                            s -= 0.5 * t2(m, n, a, e) * ooov(m, n, i, e);
+                t1new(i, a) = s / eia(i, a);
+            }
+        }
+
+        // ── T2 ───────────────────────────────────────────────────────
+        xt::xtensor<double, 4> t2new = xt::zeros<double>({No, No, Nv, Nv});
+        auto ring_at = [&](int ii, int jj, int aa, int bb) -> double {
+            double r = 0.0;
+            for (int m = 0; m < no; ++m)
+                for (int e = 0; e < nv; ++e)
+                    r += t2(ii, m, aa, e) * Wmbej(m, bb, e, jj);
+            // tmp -= -einsum('ie,ma,mbje->ijab', t1, t1, ovov)
+            for (int m = 0; m < no; ++m)
+                for (int e = 0; e < nv; ++e)
+                    r += t1(ii, e) * t1(m, aa) * ovov(m, bb, jj, e);
+            return r;
+        };
+
+        for (int i = 0; i < no; ++i) {
+            for (int j = 0; j < no; ++j) {
+                for (int a = 0; a < nv; ++a) {
+                    for (int b = 0; b < nv; ++b) {
+                        double s = oovv(i, j, a, b);
+
+                        // P(ab) Σ_e t2_ijae Ftmp_be
+                        for (int e = 0; e < nv; ++e) {
+                            double Fbe = Fvv(b, e);
+                            double Fae_ = Fvv(a, e);
+                            for (int m = 0; m < no; ++m) {
+                                Fbe -= 0.5 * t1(m, b) * Fme(m, e);
+                                Fae_ -= 0.5 * t1(m, a) * Fme(m, e);
+                            }
+                            s += t2(i, j, a, e) * Fbe - t2(i, j, b, e) * Fae_;
+                        }
+                        // − P(ij) Σ_m t2_imab Ftmp_mj
+                        for (int m = 0; m < no; ++m) {
+                            double Fmj = Foo(m, j);
+                            double Fmi_ = Foo(m, i);
+                            for (int e = 0; e < nv; ++e) {
+                                Fmj += 0.5 * t1(j, e) * Fme(m, e);
+                                Fmi_ += 0.5 * t1(i, e) * Fme(m, e);
+                            }
+                            s -= t2(i, m, a, b) * Fmj - t2(j, m, a, b) * Fmi_;
+                        }
+                        for (int m = 0; m < no; ++m)
+                            for (int n = 0; n < no; ++n)
+                                s += 0.5 * tau(m, n, a, b) * Wmnij(m, n, i, j);
+                        for (int e = 0; e < nv; ++e)
+                            for (int f = 0; f < nv; ++f)
+                                s += 0.5 * tau(i, j, e, f) * Wabef(a, b, e, f);
+
+                        // P(ij)P(ab) ring
+                        s += ring_at(i, j, a, b) - ring_at(j, i, a, b) -
+                             ring_at(i, j, b, a) + ring_at(j, i, b, a);
+
+                        // + P(ij) einsum('ie,jeba->ijab', t1, ovvv)
+                        double v1 = 0.0, v2 = 0.0;
+                        for (int e = 0; e < nv; ++e) {
+                            v1 += t1(i, e) * ovvv(j, e, b, a);
+                            v2 += t1(j, e) * ovvv(i, e, b, a);
+                        }
+                        s += v1 - v2;
+
+                        // − P(ab) einsum('ma,ijmb->ijab', t1, ooov)
+                        double o1 = 0.0, o2 = 0.0;
+                        for (int m = 0; m < no; ++m) {
+                            o1 += t1(m, a) * ooov(i, j, m, b);
+                            o2 += t1(m, b) * ooov(i, j, m, a);
+                        }
+                        s -= o1 - o2;
+
+                        t2new(i, j, a, b) = s / eijab(i, j, a, b);
+                    }
+                }
+            }
+        }
+
+        // Antisymmetrize T2.
+        xt::xtensor<double, 4> t2sym = xt::zeros<double>({No, No, Nv, Nv});
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b)
+                        t2sym(i, j, a, b) =
+                            0.25 * (t2new(i, j, a, b) - t2new(i, j, b, a) -
+                                    t2new(j, i, a, b) + t2new(j, i, b, a));
+        t2new = t2sym;
+
+        double dt1 = 0.0, dt2 = 0.0;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a)
+                dt1 = std::max(dt1, std::abs(t1new(i, a) - t1(i, a)));
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b)
+                        dt2 = std::max(
+                            dt2, std::abs(t2new(i, j, a, b) - t2(i, j, a, b)));
+
+        t1 = t1new;
+        t2 = t2new;
+        iters = it + 1;
+        if (std::max(dt1, dt2) < tol) {
+            ok = true;
+            break;
+        }
+    }
+
+    if (!ok) {
+        throw std::invalid_argument(
+            "ccsd_energy: amplitudes did not converge in " +
+            std::to_string(max_iter) + " iterations (tol=" +
+            std::to_string(tol) + ").");
+    }
+
+    const double e_corr = energy_of(t1, t2);
+    return CCSDResult{e_corr, e_scf_ha + e_corr, iters, true};
+}
+
+} // namespace scf
+} // namespace cpu
+} // namespace ATV
