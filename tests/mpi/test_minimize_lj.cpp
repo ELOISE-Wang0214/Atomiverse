@@ -32,6 +32,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimize/cg.h"
+#include "atomiverse/cpu/minimize/fire.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
@@ -158,6 +159,37 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
     EXPECT_LT(iters, budget)
         << "CG failed to converge in " << budget
         << " iterations (max_force=" << cg.max_force() << ")";
+    EXPECT_TRUE(opt.converged());
+    EXPECT_LT(e_min, e_start) << "energy did not decrease";
+    EXPECT_LT(std::abs(e_min - e_ref) / std::abs(e_ref), 1e-3)
+        << "minimized energy " << e_min
+        << " does not match perfect-lattice reference " << e_ref;
+}
+
+TEST(MinimizeLj, FireRelaxesPerturbedLatticeAnyRankCount) {
+    const double e_ref = reference_energy();
+    cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.05);
+
+    cpu::minimizer::Minimize opt;
+    opt.add_potential(cpu::PairLJCut{kEps, kSigma, kCut});
+    opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
+    cpu::minimizer::FIRE fire{};
+    // Soft LJ crystal needs a larger pseudo-time scale than ASE metal defaults.
+    fire.dt0 = 1.0;
+    fire.dt_max = 20.0;
+    opt.set_optimizer_ref(fire);
+    opt.build();
+
+    const int budget = 2000;
+    const int iters = opt.run(frame, budget);
+
+    ASSERT_FALSE(fire.trace().empty());
+    const double e_start = fire.trace().front().energy;
+    const double e_min = frame.meta.get(ATV::kEnergy);
+
+    EXPECT_LT(iters, budget)
+        << "FIRE failed to converge in " << budget
+        << " iterations (max_force=" << fire.max_force() << ")";
     EXPECT_TRUE(opt.converged());
     EXPECT_LT(e_min, e_start) << "energy did not decrease";
     EXPECT_LT(std::abs(e_min - e_ref) / std::abs(e_ref), 1e-3)

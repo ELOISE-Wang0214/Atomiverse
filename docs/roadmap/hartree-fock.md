@@ -14,7 +14,7 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | Restricted Hartree–Fock, RHF               |  ✓  |   ✓  |
 | Unrestricted Hartree–Fock, UHF             |  ✓  |   ○  |
 | Restricted open-shell Hartree–Fock, ROHF   |  ✓  |   ○  |
-| Generalized Hartree–Fock, GHF              |  ○  |   ○  |
+| Generalized Hartree–Fock, GHF              |  ✓  |   ○  |
 | Complex generalized Hartree–Fock           |  ○  |   ○  |
 | Spinor Hartree–Fock                        |  ○  |   ○  |
 | Finite-temperature Hartree–Fock            |  ○  |   ○  |
@@ -24,22 +24,25 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | Maximum-overlap excited-state Hartree–Fock |  ○  |   ○  |
 | RHF analytic gradient                      |  ✓  |   ○  |
 | UHF analytic gradient                      |  ✓  |   ○  |
-| ROHF analytic gradient                     |  ○  |   ○  |
+| ROHF analytic gradient                     |  ✓  |   ○  |
 | GHF analytic gradient                      |  ○  |   ○  |
 | RHF analytic Hessian                       |  ○  |   ○  |
 | UHF analytic Hessian                       |  ○  |   ○  |
 | ROHF analytic Hessian                      |  ○  |   ○  |
-| Hartree–Fock stability analysis            |  ○  |   ○  |
+| Hartree–Fock stability analysis            |  ✓  |   ○  |
 
 ROHF is the Roothaan single-effective-Fock method in the PySCF canonical
-(Guest–Saunders) convention (`cpu::scf::ROHF`): energy only — the analytic
-gradient (coupling-term Lagrangian), ROHF-MP2, SOSCF and level shift throw.
-UHF remains the default open-shell workhorse; ROHF adds the spin-pure
-(⟨S²⟩ = S(S+1) exactly) alternative.
+(Guest–Saunders) convention (`cpu::scf::ROHF`): energy + **analytic nuclear
+forces** (spin-Fock energy-weighted density; O₂ vs PySCF). ROHF-MP2, SOSCF
+and level shift still throw. UHF remains the default open-shell workhorse;
+ROHF is the spin-pure (⟨S²⟩ = S(S+1) exactly) alternative. GHF is **energy
+only** (real two-component spinors; forces / mp2 / fci throw) — validated on
+equilateral H₃.
 
-Second derivatives are finite-difference everywhere (see the vibrational driver
-in [Molecular Dynamics](molecular-dynamics.md)); no CPHF is implemented, so
-every analytic-Hessian row in this roadmap is ○.
+Second derivatives are finite-difference everywhere (see the vibrational
+driver in [Molecular Dynamics](molecular-dynamics.md)); no CPHF, so every
+analytic-Hessian row stays ○. Seeger–Pople stability analysis over the
+orbital Hessian is implemented (internal channel + triplet RHF→UHF).
 
 ## 2. Periodic Hartree–Fock
 
@@ -64,21 +67,30 @@ would need is partly in place; the four-index periodic exchange is not.
 | DIIS | ✓ | ○ |
 | Linear damping | ✓ | ○ |
 | Virtual-orbital level shift (Saunders–Hillier) | ✓ | ✓ |
+| SOSCF (second-order SCF) | ✓ | ○ |
 | Canonical orthogonalization + linear-dependence filtering | ✓ | ○ |
 | Dual energy + DIIS-error convergence test | ✓ | ○ |
 | Hcore initial guess | ✓ | ✓ |
 | MINAO initial guess | ✓ | ○ |
 | ASPC density predictor (AIMD warm start) | ✓ | ○ |
 | ⟨S²⟩ spin-contamination analysis | ✓ | ○ |
+| Spherical (pure) AO transform | ✓ | ○ |
+| RI-J / RI-JK density fitting | ✓ | ○ |
+| CFMM-J (continuous FMM for Coulomb) | ✓ | ○ |
 | Native Rys ERI engine (l ≤ 3, s/p/d/f) | ✓ | ○ |
+| Effective core potentials (ECP) | ✓ | ○ |
+| x2c-1e scalar relativity (energy) | ✓ | ○ |
 | Device ERI kernels | — | ○ (s-type only) |
 | Diagonalization | ✓ (LAPACK) | ✓ (cuSOLVER) |
 
-Basis sets: STO-3G, 6-31G, 6-31G\*, def2-SVP, def2-TZVP — **Cartesian only**, no
-spherical-harmonic transform. Density fitting / RI is not implemented.
+Basis sets: STO-3G, 6-31G, 6-31G\*, def2-SVP, def2-TZVP. Cartesian is the
+default engine space; spherical (pure) is available for sets defined that way
+(def2-SVP regression). Density fitting is RI-J / RI-JK over def2-universal
+JKFIT (SCF only — not RI-MP2). CFMM-J is an alternate Coulomb algorithm
+(`Coulomb::CFMM`). ECP forces are semi-numerical; x2c forces throw.
 
-The MINAO guess table covers H, C, N, O, F only; other elements silently fall
-back to Hcore.
+The MINAO guess table covers H, C, N, O, F only; other elements fall back to
+Hcore.
 
 **The CUDA column is a restricted-HF energy engine, not a general SCF.** Fock
 build, density build, and diagonalization run on device, but there is no DIIS,

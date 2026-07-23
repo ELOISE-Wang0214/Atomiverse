@@ -2,6 +2,7 @@
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimize/cg.h"
+#include "atomiverse/cpu/minimize/fire.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/scf/methods.h"
@@ -37,6 +38,17 @@ TEST(MinimizeSwap, LBFGSThenCG) {
     opt2.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
     opt2.build();
     opt2.run(frame, 5);
+    SUCCEED();
+}
+
+TEST(MinimizeSwap, ThenFIRE) {
+    auto frame = h2();
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::FIRE{});
+    opt.on(minimizer::Phase::force).add(cpu::scf::RHF{});
+    opt.add_criterion(cpu::ForceConverged{0.5, 0.3, 0.5, 0.3, 1e-3});
+    opt.build();
+    opt.run(frame, 5);
     SUCCEED();
 }
 #endif

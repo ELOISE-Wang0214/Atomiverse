@@ -5,10 +5,11 @@ Legend and caveats: [Roadmap index](index.md).
 The minimizer preset (`cpu::minimizer::Minimize`, `cuda::minimizer::Minimize`)
 hosts the optimizer as a hot-swappable Component, so any force-providing
 evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. What is
-missing is breadth of algorithm (no FIRE, no quasi-Newton beyond L-BFGS) and,
-more consequentially, **any notion of relaxing the cell**. The convergence rule
-itself is no longer part of any of this: it is a `cpu::ForceConverged` criterion,
-and a different stopping criterion costs a criterion component, not an optimizer.
+missing is further breadth of algorithm (no quasi-Newton beyond L-BFGS; FIRE
+1.0 now ships as `cpu::minimizer::FIRE`) and, more consequentially, **any
+notion of relaxing the cell**. The convergence rule itself is no longer part
+of any of this: it is a `cpu::ForceConverged` criterion, and a different
+stopping criterion costs a criterion component, not an optimizer.
 
 **Climbing-image NEB runs** (`cpu::PathDriver` + `cpu::path::NebCoupling` +
 `cpu::path::BandLBFGS`) — a coupled chain of images terminating when *every*
@@ -32,7 +33,7 @@ eigenvector-following, no string method, and no IRC.
 | Rational-function optimization             |  ○  |   ○  |
 | Partitioned rational-function optimization |  ○  |   ○  |
 | Augmented-Hessian optimization             |  ○  |   ○  |
-| FIRE minimization                          |  ○  |   ○  |
+| FIRE minimization                          |  ✓  |   ○  |
 | Cartesian-coordinate optimization          |  ✓  |   ✓  |
 | Internal-coordinate optimization           |  ○  |   ○  |
 | Redundant-internal-coordinate optimization |  ○  |   ○  |

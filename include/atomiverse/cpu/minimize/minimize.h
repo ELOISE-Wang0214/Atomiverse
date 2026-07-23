@@ -3,7 +3,7 @@
 ///
 /// `Minimize` is the user-facing CPU geometry-optimization preset — a
 /// `Driver<minimizer::Phase>` which attaches `cpu::ForceConverged` as a build-time default in `install_defaults()`.
-/// It iterates an optimizer component (LBFGS / CG / future FIRE), which publishes
+/// It iterates an optimizer component (LBFGS / CG / FIRE), which publishes
 /// force/displacement/energy metrics onto `ConvergenceMetrics`, until a criterion
 /// judges them converged or `max_iter` is reached.
 ///

@@ -1,24 +1,29 @@
 # Architecture notes
 
+## [2026-07-23] Roadmap sync + breadth-first next queue
+
+Roadmap under `docs/roadmap/` brought current against `dev` after
+backend-mirror + cuda-resurrect + HF/REMD/umbrella/… shipping. Status marks
+fixed for: ROHF forces, GHF energy, spherical AO, RI/CFMM, C-PCM, embed/field,
+ECP, x2c energy, TDA/TDHF, stability, REMD, umbrella, RATTLE rigid-water,
+counterpoise, SOSCF, etc.
+
+**Campaign principle (operator):** CPU breadth-first — simple diverse methods
+that test framework generality, not deep productization of one family.
+**CUDA is out of this track** (separate ownership; do not assign
+cuda-pme-accuracy / CUDA CoulCut / device ports here). Recommended CPU queue
+in `docs/roadmap/index.md` § Campaign principle: FIRE → soft-core LJ → Widom →
+PIMD skeleton → variable-cell min → dimer. Depth (hf-parity-10+, GAFF polymers,
+multi-window WHAM, metadynamics) stays parked.
+
 ## [2026-07-22] DEBT: CUDA backend does not compile on `dev`
 
-Surfaced by a GH200 configure+build during backend-mirror-04's GPU validation.
-The CUDA backend is **red on `dev`, independent of backend-mirror** — ~180
-errors, all stale references to CPU-side refactors never propagated to `cuda/`:
-
-- `cpu::Frame` has no member `atoms` / `box` / `scalars` (~150×) — CUDA still
-  uses the pre-`blocks+meta+simbox` Frame API.
-- `core/real.h` gone + `Real` undefined — the catch-all `Real`/`Int` types were
-  deleted; CUDA never moved to `StorageReal`/`WorkReal`/`AccReal`.
-- `ATV::kPI`/`kCoulomb`/`kFtm2v`/`kBoltzmann`/`kMvv2e` undefined — units
-  constants renamed in `core/units.h`; CUDA references the old names.
-
-Confirmed pre-existing (`git show dev:src/cuda/frame/transfer.cu` uses `Real`).
-**Backend-mirror's CUDA dir/class renames are grep-consistent and correct, but
-un-build-validatable until the backend is resurrected** — a separate task
-(sync `cuda/` to the current Frame/precision/units API), NOT backend-mirror.
-Decision (2026-07-22): continue backend-mirror on CPU verification; resurrect
-CUDA separately.
+**SUPERSEDED 2026-07-23 by cuda-resurrect** — CUDA configures, builds, and
+links on GH200; 276/278 ctest after kind-base port. Residual only:
+`cuda-pme-accuracy` (PME reciprocal energy ~3% off Madelung; CPU ~5e-4) and
+the aarch64-only `test_cpu_scf_ghf` FP basin (CPU SCF, not CUDA). Historical
+detail of the ~180 stale-API errors retained in git log / cuda-resurrect spec
+history; do not re-open "CUDA does not compile" as active debt.
 
 ## [2026-07-17] SCF is a Driver; methods are concrete — kill the bag
 

@@ -107,7 +107,7 @@ driving the ramp yourself, but the engine ships no annealing schedule.
 | CCMA                         |  ○  |   ○  |
 | Distance constraints         |  ✓  |   ○  |
 | Angle constraints            |  ✓  |   ○  |
-| Rigid-water dynamics         |  ○  |   ○  |
+| Rigid-water dynamics         |  ✓  |   ○  |
 | General rigid-body dynamics  |  ○  |   ○  |
 | Virtual-site dynamics        |  ○  |   ○  |
 | Hydrogen-mass repartitioning |  ○  |   ○  |
@@ -115,7 +115,8 @@ driving the ramp yourself, but the engine ships no annealing schedule.
 `cpu::md::FixRattle` (Andersen 1983) holds distance and 1–3 (angle) constraints, runs
 under MPI, and throws rather than return a molecule that is merely *nearly* rigid. It
 holds TIP3P geometry to 5 × 10⁻¹¹ relative over 5 ps at `dt = 2 fs`
-(`regressions/md/rigid_water`).
+(`regressions/md/rigid_water`) — that is the **rigid-water** path today (general
+RATTLE, not a water-only closed form).
 
 **SETTLE** is listed and unwritten. It is a closed-form solution for exactly one cluster
 shape — a three-site rigid water — so it is an *optimization* of the general solver rather
@@ -162,6 +163,7 @@ tension) and nothing more — no shear, no flow, no heat flux.
 | --------------------------------------- | :-: | :--: |
 | Hartree–Fock Born–Oppenheimer MD        |  ✓  |   ○  |
 | Kohn–Sham Born–Oppenheimer MD           |  ✓  |   ○  |
+| Plane-wave Born–Oppenheimer MD          |  ✓  |   ○  |
 | Semiempirical Born–Oppenheimer MD       |  ✓  |   ○  |
 | DFTB molecular dynamics                 |  ○  |   ○  |
 | xTB molecular dynamics                  |  ○  |   ○  |
@@ -169,19 +171,19 @@ tension) and nothing more — no shear, no flow, no heat flux.
 | Extended-Lagrangian Born–Oppenheimer MD |  ○  |   ○  |
 | Second-generation Car–Parrinello MD     |  ○  |   ○  |
 
-AIMD works by binding a force-providing Evaluator to `md::Phase::force`. Which
-evaluators qualify is decided by one thing — whether they declare
-`Capability::Force`:
+AIMD works by binding a force-providing method/component to `md::Phase::force`
+(energy/force kinds: `HF`, `PlaneWave`, `GPW`, `Semiempirical`, `Potential`, …):
 
-- `cpu::scf::SCF` with `with_gradient(true)` → **HF and KS BOMD** (both
-  restricted and unrestricted), with an ASPC density predictor for warm starts.
-- `cpu::gpw::GPWEvaluator` with `compute_forces` → **periodic KS BOMD** (Γ-point,
+- Concrete `RHF`/`UHF`/`RKS`/`UKS` (or nested SCF) with gradients → **HF and KS
+  BOMD**, with an ASPC density predictor for warm starts.
+- `cpu::gpw::GPWEvaluator` with forces on → **periodic KS BOMD** (Γ-point,
   closed-shell).
-- `cpu::pw::PWEvaluator` is **energy-only** — plane waves cannot drive MD.
+- `cpu::pw::PWEvaluator` with `with_gradient(true)` → **plane-wave BOMD**
+  (analytic local + Ewald + KB forces; default is energy-only).
 - `cpu::semiempirical::AM1Evaluator` with `with_gradient(true)` (default) writes
-  nuclear forces (eV/Å) (validated vs re-SCF FD). Semiempirical BOMD is
-  pinned by `regressions/semiempirical/am1_water_bomd` (short NVE-style smoke).
-- `cuda::scf::SCFEvaluator` has no gradient kernel — **there is no GPU AIMD**.
+  nuclear forces (eV/Å). Semiempirical BOMD is pinned by
+  `regressions/semiempirical/am1_water_bomd`.
+- CUDA SCF has no gradient kernel — **there is no GPU AIMD**.
 
 ASPC is a density *predictor* (warm start), not an extended-Lagrangian
 propagator, so the XL-BOMD row stays ○.

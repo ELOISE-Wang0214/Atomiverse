@@ -615,6 +615,7 @@ if(ATV_BUILD_HF)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
     # (val_min_lbfgs_geoopt) — full SCF-driven H2 geometry optimizations.
     atv_add_cpp_test(test_cpu_minimizer_line_search cpu/minimize/test_line_search.cpp)
+    atv_add_cpp_test(test_cpu_minimizer_fire cpu/minimize/test_fire.cpp)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimize/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)

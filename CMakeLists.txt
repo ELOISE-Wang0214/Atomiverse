@@ -295,6 +295,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/minimize/lbfgs.cpp
             src/cpu/minimize/lbfgs_history.cpp
             src/cpu/minimize/cg.cpp
+            src/cpu/minimize/fire.cpp
             src/cpu/minimize/trajectory_writer.cpp
             src/cpu/minimize/opt_log.cpp
             src/cpu/minimize/final_geometry.cpp
