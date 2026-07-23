@@ -2,10 +2,25 @@
 
 Last assign pass: **wave 2 — 2026-07-24** on `dev`
 (`chore(queue): metalwalls assign wave 2`). Last harness: **wave 1 — 2026-07-23**.
+Last recover: **2026-07-24** on `dev` (`chore(queue): metalwalls recover incomplete`).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
+
+## Recover inventory (2026-07-24)
+
+| Source | Result |
+| ------ | ------ |
+| A queue `## in_progress` `[~]` | **10** wave-2 staff batch (unchanged; already `[~]`) |
+| B open `.claude/specs/` MD/electrochem | **0** (workers must create on `wf/<slug>`) |
+| C unmerged `wf/<slug>` (this loop) | **0** (no wave-2 branches; wave-1 tips `ahead_of_dev=0`) |
+| D handoff incomplete rows | wave-2 list only (not merged) |
+| E half-written `regressions/{md,forcefield}/` wave-2 | **0** |
+
+**Resume set (staff=10, incomplete ≫ pending):** all 10 wave-2 `[~]` rows.
+No demotion; no brand-new pending. Spec-first on each `wf/<slug>` under
+`/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`.
 
 ## Wave 1 summary
 

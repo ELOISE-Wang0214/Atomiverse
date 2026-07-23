@@ -19,9 +19,11 @@ plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 Census: **2026-07-23** (parent `dev`). **Harness wave 1 2026-07-23:** all **10**
 staff-batch `[~]` merged → `## done` (regressions + pins on `dev`). **Assign
 wave 2 2026-07-24:** **10** unblocked pending → `## in_progress` `[~]` (staff=10).
-Skipped `dipole-electrode-joint` (dep **PIM** still open). Open MD/electrochem
-specs: **none** (workers re-create on `wf/<slug>`). Unmerged in-scope wave-1
-`wf/<slug>` tips: HEADs already merged into `dev` (not incomplete).
+Skipped `dipole-electrode-joint` (dep **PIM** still open). **Recover
+2026-07-24:** inventory confirmed **10** incomplete = wave-2 `[~]` only; open
+MD/electrochem specs **none**; unmerged wave-2 `wf/<slug>` **none** (no
+branches started); wave-1 `wf/*` tips still `ahead_of_dev=0` (stale names, not
+incomplete). Queue already normalized — no demotion.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
   integrators), SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked),
