@@ -10,6 +10,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/cisd.h"
+#include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/bse.h"
@@ -307,6 +308,18 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CCSD / n_states out of range.
     EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief Singlet EOM-CC2 excitation energies — drives a fresh RHF
+    ///        (materializes ERI), spin-orbital Christiansen–Koch–Jørgensen
+    ///        CC2 ground state, then the same non-symmetric EOM-EE Jacobian
+    ///        evaluated at the CC2 amplitudes (matches PySCF
+    ///        `cc.RCCSD` with `cc2=True` followed by `eomee_ccsd_singlet`).
+    /// @param frame Geometry; drives SCF + CC2 + EOM.
+    /// @param n_states Number of lowest singlet roots (≥ 1).
+    /// @return Singlet ω [eV] plus CC2 energetics [Hartree].
+    /// @throws std::invalid_argument on open-shell / missing virtuals /
+    ///         non-converged SCF or CC2 / n_states out of range.
+    EOMCC2Result eom_cc2(Frame& frame, int n_states = 1);
 
     /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
     ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)

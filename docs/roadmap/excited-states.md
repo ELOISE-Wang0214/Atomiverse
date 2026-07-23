@@ -29,6 +29,8 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 **EOM-EE-CCSD** singlet excitation energies ship on closed-shell RHF+CCSD
 (`RHF::eom_ee_ccsd`; `reg_eom-ee-ccsd` H₂/STO-3G S1 vs PySCF
 `cc.CCSD(...).eomee_ccsd_singlet`).
+**EOM-CC2** singlet roots ship on closed-shell RHF+CC2
+(`RHF::eom_cc2`; `reg_eom-cc2-h2` vs PySCF `RCCSD(cc2=True).eomee_ccsd_singlet`).
 **EOM-EA-CCSD** attachment roots ship (`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`).
 **EOM-SF-CCSD** spin-flip roots ship on UHF+UCCSD (`UHF::eom_sf_ccsd`;
 `reg_eom-sf-ccsd-o2`).
@@ -102,18 +104,21 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | EOM-DIP-CCSD               |  ○  |   ○  |   ○  |
 | EOM-DEA-CCSD               |  ○  |   ○  |   ○  |
 | CVS-EOM-CCSD               |  ○  |   ○  |   ○  |
-| EOM-CC2                    |  ○  |   ○  |   ○  |
+| EOM-CC2                    |  ✓  |   ○  |   ○  |
 | EOM-MP2                    |  ○  |   ○  |   ○  |
 | STEOM-CCSD                 |  ○  |   ○  |   ○  |
 | EOM-CCSD analytic gradient |  ○  |   ○  |   ○  |
 
 **EOM-EE-CCSD** (`RHF::eom_ee_ccsd`) builds the spin-orbital EE Jacobian on a
 converged closed-shell CCSD reference and returns singlet roots
-(`reg_eom-ee-ccsd` vs PySCF). **EOM-EA-CCSD** (`RHF::eom_ea_ccsd`;
-`reg_eom-ea-ccsd`) and **EOM-SF-CCSD** (`UHF::eom_sf_ccsd`;
-`reg_eom-sf-ccsd-o2`) ship. EOM-IP, DIP/DEA, CVS, STEOM, and EOM gradients
-remain open. See also [Post-Hartree–Fock](post-hf.md#3-coupled-cluster)
-for ground-state CCSD / CCSD(T) / CC2.
+(`reg_eom-ee-ccsd` vs PySCF). **EOM-CC2** (`RHF::eom_cc2`) is the same EE
+Jacobian at Christiansen–Koch–Jørgensen CC2 amplitudes
+(`reg_eom-cc2-h2` vs PySCF `RCCSD(cc2=True).eomee_ccsd_singlet`).
+**EOM-EA-CCSD** (`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`) and **EOM-SF-CCSD**
+(`UHF::eom_sf_ccsd`; `reg_eom-sf-ccsd-o2`) ship. EOM-IP, DIP/DEA, CVS, STEOM,
+and EOM gradients remain open. See also
+[Post-Hartree–Fock](post-hf.md#3-coupled-cluster) for ground-state CCSD /
+CCSD(T) / CC2.
 
 ## 4. Simplified Excited-State Methods
 
