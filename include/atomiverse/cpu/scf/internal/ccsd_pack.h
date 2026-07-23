@@ -6,6 +6,7 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
+#include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
@@ -76,9 +77,26 @@ CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det
 
 /// @brief Same as `ccsd_energy` but also returns amplitudes and SO integral
 ///        blocks for EOM-EE-CCSD (private).
+/// @param cc2 When true, use the CC2 doubles residual (Christiansen 1995)
+///            instead of full CCSD; singles residual stays full CCSD.
 CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                         double e_scf_ha, double tol = 1e-10,
-                        int max_iter = 100);
+                        int max_iter = 100, bool cc2 = false);
+
+/// @brief Closed-shell CC2 correlation energy (Christiansen–Koch–Jørgensen).
+///
+/// Same spin-orbital infrastructure as `ccsd_energy` with the CC2 T₂
+/// truncation. Matches PySCF `cc.RCCSD(mf)` with `cc2=True`.
+///
+/// @param ints     Integral pack with the dense ERI tensor materialized.
+/// @param det      Converged closed-shell determinant (MO coeffs, ε, n_e).
+/// @param e_scf_ha Converged SCF total energy [Hartree].
+/// @param tol      Amplitude residual tolerance (dimensionless max-norm).
+/// @param max_iter Jacobi iteration budget (dimensionless).
+/// @return CC2 correlation and total energies [Hartree].
+/// @throws std::invalid_argument as for `ccsd_energy`.
+CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                     double e_scf_ha, double tol = 1e-10, int max_iter = 100);
 
 } // namespace scf
 } // namespace cpu
