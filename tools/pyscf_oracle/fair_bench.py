@@ -90,6 +90,7 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
         "mp2": "from pyscf import scf, mp\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()",
         "ump2": "from pyscf import scf, mp\nmf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
 "romp2": "from pyscf import scf, mp\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
+        "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
         "tda": (
             "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
             f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
@@ -151,7 +152,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "rks_tda", "rks_tddft", "sf_tda"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "ccsd", "tda", "tdhf", "rks_tda", "rks_tddft", "sf_tda"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

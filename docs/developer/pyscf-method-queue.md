@@ -13,20 +13,20 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
-- [ ] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
-- [ ] `ccsd-h2-sto3g` | CCSD | post-hf | h2 | sto-3g | e_corr+e_tot | coupled-cluster doubles foothold; PySCF cc.CCSD
 - [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | needs CCSD; PySCF cc.CCSD.ccsd_t
 - [ ] `casci-h2-sto3g` | CASCI | post-hf | h2 | sto-3g | e_tot | active-space on existing FCI kernel; PySCF mcscf.CASCI
-- [ ] `g0w0-h2-sto3g` | G0W0 | excited-states | h2 | sto-3g | QP gaps | Green's-function foothold; PySCF gw.G0W0
-- [ ] `b2plyp-h2o` | B2PLYP double hybrid | dft | water | sto-3g | e_tot | hybrid KS + MP2 composition; ingredients exist separately
 - [ ] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
 
 ## in_progress
 
+- [~] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
+- [~] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
+- [~] `g0w0-h2-sto3g` | G0W0 | excited-states | h2 | sto-3g | QP gaps | Green's-function foothold; PySCF gw.G0W0
+- [~] `b2plyp-h2o` | B2PLYP double hybrid | dft | water | sto-3g | e_tot | hybrid KS + MP2 composition; ingredients exist separately
+
 ## blocked
 
-- [!] `eom-ee-ccsd` | blocked upstream — no CCSD product path yet (queue `ccsd-h2-sto3g` first)
+- [!] `eom-ee-ccsd` | excited-states | EOM-EE on CCSD amplitudes — product EOM path not yet; CCSD foothold landed (`ccsd-h2-sto3g`)
 - [!] `cam-b3lyp` | blocked — range-separated / erf-attenuated ERI engine absent (Rys has no attenuation)
 - [!] `periodic-rhf-gamma` | blocked — no periodic exact exchange; PW/GPW are semi-local DFT only
 - [!] `td-dftb` | blocked upstream — DFTB2 has no response path; not a PySCF twin
@@ -35,6 +35,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## done
 
+- [x] `ccsd-h2-sto3g` | CCSD | regressions/scf/ccsd-h2-sto3g | H2 RHF-CCSD/STO-3G; PySCF 2.14.0 e_corr=-0.020524527092 Ha, e_tot=-1.137283834489 Ha; `RHF::ccsd`; tol 1e-6 Ha; ratio 0.317
 - [x] `romp2-o2-sto3g` | ROMP2 | regressions/scf/romp2-o2-sto3g | O2 triplet ROHF→ROMP2/STO-3G cart; PySCF 2.14.0 UMP2(ROHF) e_corr=-0.096718716392 Ha, e_tot=-147.728885707074 Ha; `ROHF::mp2`; tol 1e-6 Ha; ratio 1.37
 - [x] `roks-grad-o2-sto3g` | ROKS analytic gradient | regressions/scf/roks-grad-o2-sto3g | O2 ROKS-LSDA/STO-3G cart forces; PySCF 2.14.0 g_z=±0.162926534046 Ha/Bohr; `ROKS::forces` spin-Fock W; tol 2e-5 Ha/Bohr; ratio 1.117
 - [x] `h2-b3lyp-rpa-tddft` | Hybrid full-LR TDDFT (B3LYP RPA) | regressions/scf/h2-b3lyp-rpa-tddft | H2 RKS-B3LYP/STO-3G Casida A/B; PySCF 2.14.0 S1=25.307797345333 eV; `RKS::tddft`; tol 1e-4 eV; ratio 0.430

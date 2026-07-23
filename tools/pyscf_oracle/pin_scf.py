@@ -17,6 +17,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
+  python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
@@ -117,6 +118,7 @@ def main() -> int:
             "tda",
             "tdhf",
             "cisd",
+            "ccsd",
             "rks-tda",
             "rks-tddft",
             "uks-tda",
@@ -166,7 +168,7 @@ def main() -> int:
 
     try:
         import pyscf
-        from pyscf import scf, dft, mp, tdscf
+        from pyscf import scf, dft, mp, tdscf, cc as pyscf_cc
     except ImportError as e:
         print(json.dumps({"ok": False, "error": f"pyscf missing: {e}"}))
         return 2
@@ -537,6 +539,23 @@ def main() -> int:
         out["excitation_cisd_ev"] = [r["cisd_ev"] for r in roots]
         if hasattr(td, "converged"):
             out["td_converged"] = [bool(c) for c in td.converged]
+    elif m == "ccsd":
+        # Closed-shell CCSD on the RHF reference (PySCF cc.CCSD).
+        # Local import: other branches also re-bind `np`, so use a fresh name.
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, t1, t2 = mycc.kernel()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        t1a = _np.asarray(t1).ravel()
+        t2a = _np.asarray(t2).ravel()
+        out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
+        out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
 
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0 if out.get("converged", True) else 1
