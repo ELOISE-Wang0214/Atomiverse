@@ -288,6 +288,8 @@ atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observe/test_rdf_observer.
 atv_add_cpp_test(test_cpu_observer_msd            cpu/observe/test_msd.cpp)
 atv_add_cpp_test(test_cpu_observer_vacf           cpu/observe/test_vacf.cpp)
 atv_add_cpp_test(test_cpu_observer_widom          cpu/observe/test_widom.cpp)
+atv_add_cpp_test(test_cpu_observer_electrode_charge cpu/observe/test_electrode_charge_observer.cpp)
+
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)
 # Registration-time PhaseKind gate + five-driver plan-shape regression

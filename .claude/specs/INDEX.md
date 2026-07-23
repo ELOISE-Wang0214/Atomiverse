@@ -7,7 +7,9 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — E1 electrode \(Q_{\mathrm{tot}}\) observer |
 | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — GPW PBE-D3(BJ) periodic water dimer |
+
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
