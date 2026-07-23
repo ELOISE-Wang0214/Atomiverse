@@ -94,12 +94,9 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
             f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
         ),
-        "roks": (
-            f"from pyscf import dft\nmf=dft.ROKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel()"
-        ),
-        "roks_grad": (
-            f"from pyscf import dft\nmf=dft.ROKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
-            "mf.nuc_grad_method().kernel()"
+        "rks_tddft": (
+            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
+            f"td=tdscf.TDDFT(mf); td.nstates={nstates}; td.kernel()"
         ),
     }.get(method)
     if body is None:
@@ -119,7 +116,8 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "tda", "tdhf", "rks_tda"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "mp2", "ump2",
+                            "tda", "tdhf", "rks_tda", "rks_tddft"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)
