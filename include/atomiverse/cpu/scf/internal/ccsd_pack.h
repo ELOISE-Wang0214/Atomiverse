@@ -1,6 +1,10 @@
 /// @file cpu/scf/internal/ccsd_pack.h
-/// @brief Private pack-based closed-shell CCSD / CCSD(T) entries.
+/// @brief Private pack-based closed-shell CCSD / CCSD(T) / EOM amplitude entry.
 #pragma once
+
+#include <vector>
+
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -9,6 +13,32 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Converged spin-orbital CCSD amplitudes and antisymmetrized MO blocks
+///        shared with EOM-EE-CCSD and CCSD(T) (private).
+struct CCSDSolution {
+    CCSDResult result;
+    /// Spin-orbital T₁ [no, nv] and T₂ [no, no, nv, nv] (physicist ⟨⟩).
+    xt::xtensor<double, 2> t1;
+    xt::xtensor<double, 4> t2;
+    /// Antisymmetrized spin-orbital ERI blocks ⟨pq||rs⟩.
+    xt::xtensor<double, 4> oooo;
+    xt::xtensor<double, 4> ooov;
+    xt::xtensor<double, 4> oovv;
+    xt::xtensor<double, 4> ovov;
+    xt::xtensor<double, 4> ovvv;
+    xt::xtensor<double, 4> vvvv;
+    /// Canonical Fock blocks (diagonal ε in spin-orbital basis).
+    xt::xtensor<double, 2> foo;
+    xt::xtensor<double, 2> fvv;
+    xt::xtensor<double, 2> fov;
+    /// Spin-orbital orbital energies [no+nv].
+    std::vector<double> eps_so;
+    int no = 0; ///< Occupied spin-orbitals.
+    int nv = 0; ///< Virtual spin-orbitals.
+    int n_occ_sp = 0; ///< Occupied spatial MOs.
+    int n_vir_sp = 0; ///< Virtual spatial MOs.
+};
 
 /// @brief Closed-shell CCSD correlation energy from a converged RHF reference.
 ///
@@ -43,6 +73,12 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                           double e_scf_ha, double tol = 1e-10,
                           int max_iter = 100);
+
+/// @brief Same as `ccsd_energy` but also returns amplitudes and SO integral
+///        blocks for EOM-EE-CCSD (private).
+CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, double tol = 1e-10,
+                        int max_iter = 100);
 
 } // namespace scf
 } // namespace cpu

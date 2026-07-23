@@ -10,6 +10,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/cisd.h"
+#include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
@@ -189,6 +190,18 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when n_states is outside
     ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
     ADC2Result adc2(int n_states = 1) const;
+
+    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
+    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
+    ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,
+    ///        5567 (2014); Stanton & Bartlett, J. Chem. Phys. **98**, 7029
+    ///        (1993)). Matches PySCF `cc.CCSD(...).eomee_ccsd_singlet()`.
+    /// @param frame Geometry; drives SCF + CCSD + EOM.
+    /// @param n_states Number of lowest singlet roots (≥ 1).
+    /// @return Singlet ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on open-shell / missing virtuals /
+    ///         non-converged SCF or CCSD / n_states out of range.
+    EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
 
     /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
     ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)

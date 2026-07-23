@@ -1,5 +1,5 @@
 /// @file cpu/scf/ccsd.cpp
-/// @brief Closed-shell spin-orbital CCSD / CCSD(T) (Gauss–Stanton + (T)).
+/// @brief Closed-shell spin-orbital CCSD (Gauss–Stanton intermediates).
 ///
 /// Occupied spin-orbitals: α then β over spatial occupied MOs; virtuals
 /// likewise. Chemist MO ERIs (pq|rs) from `ao2mo_full` expand to physicist
@@ -8,9 +8,7 @@
 /// References:
 /// - Stanton, Gauss, Watts, Bartlett, J. Chem. Phys. 94, 4334 (1991)
 /// - Gauss & Stanton, J. Chem. Phys. 103, 3561 (1995) Table III
-/// - Raghavachari et al., Chem. Phys. Lett. 157, 479 (1989)
-/// - Watts, Gauss, Bartlett, J. Chem. Phys. 98, 8718 (1993) (spin-orbital (T))
-/// Matches PySCF `cc.GCCSD` / closed-shell `cc.CCSD` (+ `ccsd_t`) on RHF.
+/// Matches PySCF `cc.GCCSD` / closed-shell `cc.CCSD` energies on RHF orbitals.
 
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
@@ -57,6 +55,8 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
         for (std::size_t j = 0; j < no; ++j) {
             for (std::size_t a = 0; a < nv; ++a) {
                 for (std::size_t b = 0; b < nv; ++b) {
+                    // t1t1 = c * t_ia * t_jb
+                    // antisym i↔j, then a↔b of that result
                     const double t1t1_ijab = c * t1(i, a) * t1(j, b);
                     const double t1t1_jiab = c * t1(j, a) * t1(i, b);
                     const double a_ij = t1t1_ijab - t1t1_jiab;
@@ -71,23 +71,10 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
     return tau;
 }
 
-/// Converged amplitudes + MO blocks needed for energy and (T).
-struct CcsdAmps {
-    xt::xtensor<double, 2> t1;
-    xt::xtensor<double, 4> t2;
-    xt::xtensor<double, 4> oovv;
-    xt::xtensor<double, 4> ooov;
-    xt::xtensor<double, 4> ovvv;
-    xt::xtensor<double, 2> fov; ///< f_ia (zero for canonical HF).
-    std::vector<double> eps_so;
-    double e_corr = 0.0;
-    int iterations = 0;
-    int no = 0;
-    int nv = 0;
-};
+} // namespace
 
-CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
-                    double tol, int max_iter) {
+CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, double tol, int max_iter) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
@@ -114,10 +101,11 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
     const int n_mo = static_cast<int>(C.shape(1));
     const int n_vir_sp = n_mo - n_occ_sp;
     if (n_vir_sp <= 0) {
-        CcsdAmps empty;
-        empty.e_corr = 0.0;
-        empty.iterations = 0;
-        return empty;
+        CCSDSolution sol;
+        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
+        sol.n_occ_sp = n_occ_sp;
+        sol.n_vir_sp = 0;
+        return sol;
     }
 
     const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
@@ -260,6 +248,8 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                 double s = Fae(a, e);
                 for (int m = 0; m < no; ++m)
                     s -= 0.5 * fov(m, e) * t1(m, a);
+                // Fae += einsum('mf,amef->ae', t1, ovvv.T(1,0,3,2))
+                // amef = ovvv(m,a,f,e)
                 for (int m = 0; m < no; ++m)
                     for (int f = 0; f < nv; ++f)
                         s += t1(m, f) * ovvv(m, a, f, e);
@@ -319,6 +309,8 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                 for (int e = 0; e < nv; ++e)
                     for (int f = 0; f < nv; ++f) {
                         double s = Wabef(a, b, e, f);
+                        // tmp = einsum('mb,mafe->bafe', t1, ovvv)
+                        // W = vvvv - tmp + tmp.transpose(1,0,2,3)
                         double tmp_baef = 0.0;
                         double tmp_abef = 0.0;
                         for (int m = 0; m < no; ++m) {
@@ -332,6 +324,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                         Wabef(a, b, e, f) = s;
                     }
 
+        // Wmbej: eris_ovvo(m,b,e,j) = -ovov(m,b,j,e)
         xt::xtensor<double, 4> Wmbej = xt::zeros<double>({No, Nv, Nv, No});
         for (int m = 0; m < no; ++m)
             for (int b = 0; b < nv; ++b)
@@ -340,6 +333,8 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                         double s = -ovov(m, b, j, e);
                         for (int f = 0; f < nv; ++f)
                             s += t1(j, f) * ovvv(m, b, e, f);
+                        // - einsum('nb,mnej->mbej', t1, eris_oovo)
+                        // eris_oovo(m,n,e,j) = -ooov(m,n,j,e)
                         for (int n = 0; n < no; ++n)
                             s -= t1(n, b) * (-ooov(m, n, j, e));
                         for (int n = 0; n < no; ++n)
@@ -351,6 +346,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                         Wmbej(m, b, e, j) = s;
                     }
 
+        // Strip orbital energies (moved into denominators).
         xt::xtensor<double, 2> Fvv = Fae;
         xt::xtensor<double, 2> Foo = Fmi;
         for (int a = 0; a < nv; ++a)
@@ -392,6 +388,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
             for (int m = 0; m < no; ++m)
                 for (int e = 0; e < nv; ++e)
                     r += t2(ii, m, aa, e) * Wmbej(m, bb, e, jj);
+            // tmp -= -einsum('ie,ma,mbje->ijab', t1, t1, ovov)
             for (int m = 0; m < no; ++m)
                 for (int e = 0; e < nv; ++e)
                     r += t1(ii, e) * t1(m, aa) * ovov(m, bb, jj, e);
@@ -404,6 +401,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                     for (int b = 0; b < nv; ++b) {
                         double s = oovv(i, j, a, b);
 
+                        // P(ab) Σ_e t2_ijae Ftmp_be
                         for (int e = 0; e < nv; ++e) {
                             double Fbe = Fvv(b, e);
                             double Fae_ = Fvv(a, e);
@@ -413,6 +411,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                             }
                             s += t2(i, j, a, e) * Fbe - t2(i, j, b, e) * Fae_;
                         }
+                        // − P(ij) Σ_m t2_imab Ftmp_mj
                         for (int m = 0; m < no; ++m) {
                             double Fmj = Foo(m, j);
                             double Fmi_ = Foo(m, i);
@@ -429,9 +428,11 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                             for (int f = 0; f < nv; ++f)
                                 s += 0.5 * tau(i, j, e, f) * Wabef(a, b, e, f);
 
+                        // P(ij)P(ab) ring
                         s += ring_at(i, j, a, b) - ring_at(j, i, a, b) -
                              ring_at(i, j, b, a) + ring_at(j, i, b, a);
 
+                        // + P(ij) einsum('ie,jeba->ijab', t1, ovvv)
                         double v1 = 0.0, v2 = 0.0;
                         for (int e = 0; e < nv; ++e) {
                             v1 += t1(i, e) * ovvv(j, e, b, a);
@@ -439,6 +440,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
                         }
                         s += v1 - v2;
 
+                        // − P(ab) einsum('ma,ijmb->ijab', t1, ooov)
                         double o1 = 0.0, o2 = 0.0;
                         for (int m = 0; m < no; ++m) {
                             o1 += t1(m, a) * ooov(i, j, m, b);
@@ -452,6 +454,7 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
             }
         }
 
+        // Antisymmetrize T2.
         xt::xtensor<double, 4> t2sym = xt::zeros<double>({No, No, Nv, Nv});
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
@@ -490,24 +493,36 @@ CcsdAmps solve_ccsd(const IntegralPack& ints, const SlaterDeterminant& det,
     }
 
     const double e_corr = energy_of(t1, t2);
-
-    CcsdAmps out;
-    out.t1 = std::move(t1);
-    out.t2 = std::move(t2);
-    out.oovv = std::move(oovv);
-    out.ooov = std::move(ooov);
-    out.ovvv = std::move(ovvv);
-    out.fov = std::move(fov);
-    out.eps_so = std::move(eps_so);
-    out.e_corr = e_corr;
-    out.iterations = iters;
-    out.no = no;
-    out.nv = nv;
-    return out;
+    CCSDSolution sol;
+    sol.result = CCSDResult{e_corr, e_scf_ha + e_corr, iters, true};
+    sol.t1 = std::move(t1);
+    sol.t2 = std::move(t2);
+    sol.oooo = std::move(oooo);
+    sol.ooov = std::move(ooov);
+    sol.oovv = std::move(oovv);
+    sol.ovov = std::move(ovov);
+    sol.ovvv = std::move(ovvv);
+    sol.vvvv = std::move(vvvv);
+    sol.foo = std::move(foo);
+    sol.fvv = std::move(fvv);
+    sol.fov = std::move(fov);
+    sol.eps_so = std::move(eps_so);
+    sol.no = no;
+    sol.nv = nv;
+    sol.n_occ_sp = n_occ_sp;
+    sol.n_vir_sp = n_vir_sp;
+    return sol;
 }
 
-/// Spin-orbital (T) — Watts/Gauss/Bartlett JCP 98, 8718 (1993); PySCF gccsd_t.
-double triples_energy(const CcsdAmps& amps) {
+
+CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                       double e_scf_ha, double tol, int max_iter) {
+    return ccsd_solve(ints, det, e_scf_ha, tol, max_iter).result;
+}
+
+namespace {
+
+double triples_energy(const CCSDSolution& amps) {
     const int no = amps.no;
     const int nv = amps.nv;
     if (no < 3 || nv < 3)
@@ -620,20 +635,13 @@ double triples_energy(const CcsdAmps& amps) {
 
 } // namespace
 
-CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                       double e_scf_ha, double tol, int max_iter) {
-    CcsdAmps amps = solve_ccsd(ints, det, tol, max_iter);
-    return CCSDResult{amps.e_corr, e_scf_ha + amps.e_corr, amps.iterations,
-                      true};
-}
-
 CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                           double e_scf_ha, double tol, int max_iter) {
-    CcsdAmps amps = solve_ccsd(ints, det, tol, max_iter);
-    const double e_t = triples_energy(amps);
-    const double e_corr = amps.e_corr + e_t;
-    return CCSDTResult{e_corr, e_scf_ha + e_corr, amps.e_corr, e_t,
-                       amps.iterations, true};
+    CCSDSolution sol = ccsd_solve(ints, det, e_scf_ha, tol, max_iter);
+    const double e_t = triples_energy(sol);
+    const double e_corr = sol.result.e_corr + e_t;
+    return CCSDTResult{e_corr, e_scf_ha + e_corr, sol.result.e_corr, e_t,
+                       sol.result.iterations, sol.result.converged};
 }
 
 } // namespace scf
