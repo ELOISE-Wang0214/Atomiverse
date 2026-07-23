@@ -76,6 +76,7 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw ot-minimizer-water)
     atv_add_regression(gpw gpw-water-pbe-mt)
     atv_add_regression(gpw gpw-forces-water)
+    atv_add_regression(gpw gpw-uks-o2-gamma)
     # remaining green GPW e2e land with their branches
 endif()
 if(ATV_BUILD_HF)

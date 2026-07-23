@@ -30,6 +30,28 @@ XcOnGrid xc_grid_pade(const UniformGrid& grid,
     return out;
 }
 
+XcOnGridSpin xc_grid_pade_lsd(const UniformGrid& grid,
+                              const std::vector<double>& rho_a,
+                              const std::vector<double>& rho_b) {
+    const long ng = grid.npts();
+    const double w = grid.weight();
+    XcOnGridSpin out;
+    out.vxc_a.assign(static_cast<std::size_t>(ng), 0.0);
+    out.vxc_b.assign(static_cast<std::size_t>(ng), 0.0);
+    double e = 0.0;
+#pragma omp parallel for reduction(+ : e) schedule(static)
+    for (long g = 0; g < ng; ++g) {
+        const double ra = rho_a[static_cast<std::size_t>(g)];
+        const double rb = rho_b[static_cast<std::size_t>(g)];
+        const ATV::cpu::xc::PadeXC xc = ATV::cpu::xc::pade_lsd(ra, rb);
+        e += w * (ra + rb) * xc.exc;
+        out.vxc_a[static_cast<std::size_t>(g)] = xc.vrho_a;
+        out.vxc_b[static_cast<std::size_t>(g)] = xc.vrho_b;
+    }
+    out.e_xc = e;
+    return out;
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

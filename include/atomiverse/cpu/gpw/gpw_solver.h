@@ -1,5 +1,5 @@
 /// @file cpu/gpw/gpw_solver.h
-/// @brief Self-contained GPW (Gaussian and Plane Waves) closed-shell SCF solver.
+/// @brief Self-contained GPW (Gaussian and Plane Waves) SCF solver.
 ///
 /// Structurally parallel to `cpu::scf::SCFSolver` and `cpu::pw::PW`: a
 /// self-contained inner solver for one electronic-structure method. The Kohn-Sham
@@ -10,9 +10,10 @@
 /// headers — `cpu::linalg` (generalized eigensolve, density build) and
 /// `cpu::xc::pade` (functional) — never another domain's `internal`.
 ///
-/// Scope: closed-shell, Gamma point, LDA (PADE). Periodic neutral electrostatics
-/// via the GTH Gaussian core charge. Forces / GGA / nonlocal-for-all-l and full
-/// CP2K bit-parity are follow-on milestones.
+/// Scope: Γ-point closed-shell (RKS, `n_occ`) **and** unrestricted (UKS,
+/// `n_alpha`/`n_beta` with PADE LSD). Periodic neutral electrostatics via the
+/// GTH Gaussian core charge. UKS PBE-GGA, k-points, and UKS analytic forces
+/// are follow-on.
 #pragma once
 
 #include <array>
@@ -66,22 +67,27 @@ enum class XcKind { PADE, PBE };
 struct GpwResult {
     double e_total = 0.0;    ///< total energy [Hartree] (includes e_disp).
     double e_kinetic = 0.0;  ///< Tr(P T).
+    double e_total = 0.0;    ///< total energy [Hartree].
+    double e_kinetic = 0.0;  ///< Tr(P T)  (RKS: closed P; UKS: Tr((Pα+Pβ)T)).
     double e_loc_sr = 0.0;   ///< Tr(P V_loc^sr).
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3 dispersion [Hartree] (0 when d3/d3bj off).
+    double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     bool converged = false;
     int iters = 0;
 
     /// @name Converged wavefunction (populated on convergence; empty otherwise).
-    /// Consistent set from a final diagonalization of the converged KS matrix:
-    /// `P == build_density_matrix(C, n_occ)`. Used to assemble analytic forces
-    /// (energy-weighted density matrix W = Σ_i 2 ε_i c_i c_iᵀ).
+    /// RKS: `P == build_density_matrix(C, n_occ, ·, 2)` from the closed H.
+    /// UKS: `C`/`P`/`eps` are α; `C_beta`/`P_beta`/`eps_beta` are β.
     /// @{
-    linalg::RealMatrix C;    ///< MO coefficients, columns = orbitals (nb×nb).
-    linalg::RealMatrix P;    ///< Converged density matrix (nb×nb).
-    std::vector<double> eps; ///< Orbital energies ε_i [Hartree], length nb.
+    linalg::RealMatrix C;    ///< MO coefficients α (or RKS), columns = orbitals.
+    linalg::RealMatrix P;    ///< Density matrix α (or RKS closed-shell P).
+    std::vector<double> eps; ///< Orbital energies α (or RKS) [Hartree].
+    linalg::RealMatrix C_beta;    ///< UKS β MO coefficients (empty for RKS).
+    linalg::RealMatrix P_beta;    ///< UKS β density (empty for RKS).
+    std::vector<double> eps_beta; ///< UKS β orbital energies (empty for RKS).
     /// @}
 };
 
@@ -102,7 +108,12 @@ class GpwDft {
     double cutoff_ry = 300.0; ///< density grid cutoff [Ry].
     int ngrids = 1; ///< CP2K multigrid levels.
     double rel_cutoff = 0.0; ///< CP2K REL_CUTOFF [Ry].
-    int n_occ = 0; ///< doubly-occupied orbitals (N_elec / 2).
+    int n_occ = 0; ///< RKS: doubly-occupied orbitals (N_elec / 2).
+    /// UKS occupations (valence electrons per spin). When
+    /// `n_alpha + n_beta > 0`, the unrestricted path is used and `n_occ` is
+    /// ignored. High-spin O₂ (GTH-q6, 12 valence e⁻, multiplicity 3) → (7, 5).
+    int n_alpha = 0;
+    int n_beta = 0;
     int max_iter = 100; ///< max SCF iterations.
     double tol = 1e-8; ///< SCF energy convergence [Hartree].
     double eps_default = 1e-8; ///< Gaussian-tail cutoff.
@@ -130,11 +141,15 @@ class GpwDft {
     /// @param reference Atoms the solver will be run on (used for
     ///        structural validation only; `run()` takes the live set).
     /// @throws std::invalid_argument when the atom set is empty, when
-    ///         `config.n_occ < 1`, or when a periodic cell edge is
+    ///         neither RKS (`n_occ >= 1`) nor UKS (`n_alpha+n_beta >= 1`) is
+    ///         set, UKS+PBE is requested, or a periodic cell edge is
     ///         non-positive.
     void build(const std::vector<GpwAtom>& reference);
 
-    /// @brief Run the closed-shell GPW SCF at the given geometry.
+    /// @return true when this method is configured for UKS (`n_alpha+n_beta>0`).
+    bool is_uks() const { return n_alpha + n_beta > 0; }
+
+    /// @brief Run the GPW SCF (RKS or UKS) at the given geometry.
     ///
     /// Re-entrant: geometry-dependent structures are rebuilt per call.
     /// @param atoms Atom set at the current geometry [Bohr].
