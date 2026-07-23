@@ -106,12 +106,9 @@ __global__ void cluster_displacement(
         (lane < count) ? (cluster_z[idx] - ref_cluster_z[idx]) : work_t(0);
     work_t d2 = dx * dx + dy * dy + dz * dz;
 
-    // Warp-level max reduction within the kClusterSize-thread group (CS=32 ⇒ full warp).
+    // Warp-level max reduction (OpenMM CS=32 ⇒ full warp).
+    static_assert(kClusterSize == 32, "cluster_displacement assumes CS=32");
     unsigned mask = 0xffffffffu;
-    if constexpr (kClusterSize < 32) {
-        unsigned bits = (1u << kClusterSize) - 1u;
-        mask = bits << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
-    }
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
         work_t tmp = __shfl_down_sync(mask, d2, offset);
         d2 = fmax(d2, tmp);

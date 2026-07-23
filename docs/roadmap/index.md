@@ -72,148 +72,194 @@ is a section of the DFT chapter, periodic HF a section of the Hartree–Fock one
 | [Sampling and Free Energy](sampling.md) | Monte Carlo, enhanced sampling, free-energy methods |
 | [Multiscale and Properties](multiscale.md) | Atomic charges, implicit solvent, QM/MM, embedding, relativistic, intermolecular interactions |
 
+## Campaign principle (breadth-first)
+
+As of **2026-07-23**, active development is on **`dev`**. Architecture work that
+recently closed: **backend-mirror** (layout rewrite) + **cuda-resurrect**
+(CUDA builds and mostly passes on GH200). The CPU breadth campaign
+(frame-block + cpu-breadth-01…07) already proved the Driver / Component /
+Frame spine across Evaluate, MD, Minimize, Hessian, MC, Path/NEB, REMD, and
+umbrella bias.
+
+**Principle going forward: breadth before depth.** Prefer simple, diverse
+methods that exercise a *new* combination of (workflow × backend × physics
+axis) over productizing one method family. Depth (GAFF polymers, full
+Jensen/PySCF HF parity, multi-window WHAM campaigns, CUDA SCF gradients) is
+parked until the framework has been poked from more angles.
+
+What already counts as **framework-proven** (do not re-prove with another
+variant of the same shape):
+
+| Axis | Proven on |
+| ---- | --------- |
+| Loop shapes | Evaluate, MD, Minimize, Hessian, MC (NVT/NPT/μVT), Path/NEB, REMD, single-window umbrella |
+| Serial + MPI DD | classical MD / NPT-PME / RATTLE |
+| Energy families | LJ+bonded, CoulCut/Long+PME, EAM/SW, RHF/UHF/ROHF/GHF, RKS/UKS, AM1/RM1, PW, GPW |
+| Dual backend (MD/Minimize/Evaluate classical) | CUDA resurrected; residual **cuda-pme-accuracy** debt |
+| Replicas | `ReplicaSet` + expansions; NEB coupled band; REMD N owned MD programs; IdentityReplication seed |
+
+What is **not** yet framework-proven (good breadth targets — see next section):
+
+- Cell DOFs in Minimize (variable-cell / joint atom+cell)
+- Nuclear quantum beads (PIMD / RPMD)
+- Free-energy *estimation* beyond a single biased window (Widom, FEP/TI one-leg, multi-window WHAM)
+- A second transition-state algorithm (dimer / string) — NEB alone is not enough
+- Soft-core / λ-dependent potentials (alchemical parameterization)
+- Sampling / path / bias / constraints on CUDA
+- A non-MD Minimizer algorithm beyond L-BFGS/CG (FIRE)
+
+### Recommended next queue (CPU breadth-first)
+
+**This track is CPU-only.** Dual-backend / CUDA residuals
+(`cuda-pme-accuracy`, CUDA PairCoulCut, CUDA SCF gradients, CUDA MC/path/bias
+mirrors) are a **separate ownership lane** — they do not appear in the
+numbered queue below and are not assigned to the CPU breadth campaign.
+
+Ordered for **cheap diversity** that stress-tests the API, not for production
+completeness. Each item should ship one textbook regression under
+`regressions/` with a literature/analytic oracle. **CPU only.**
+
+| # | Task | Why it is breadth | Stay out of scope |
+| - | ---- | ----------------- | ----------------- |
+| 1 | **FIRE minimizer** | New optimizer component on existing Minimize loop | Quasi-Newton catalogue, internal coords, CUDA mirror |
+| 2 | **Soft-core LJ (λ)** | New potential shape; unblocks one-leg FEP later without inventing free-energy infra now | Full alchemical suite, soft-core Coulomb, CUDA pair styles |
+| 3 | **Widom insertion** (NVT, hard-sphere or cut LJ) | Free-energy *estimator* on MC/MD energy eval; different from μVT GCMC | CBMC, absolute solvation protocols |
+| 4 | **PIMD skeleton** (harmonic or free particle first) | Second real consumer of `IdentityReplication` + bead coupling; nuclear-quantum axis | RPMD estimators, ring-polymer contraction, multi-GPU |
+| 5 | **Variable-cell Minimize** (classical virial or PW strain-FD stress) | Cell DOFs in the optimizer — never exercised | Fully anisotropic PR cell dynamics, joint cell+atom fancy coords |
+| 6 | **Dimer TS** (or growing string) | Second path method; proves PathDriver is not NEB-only | IRC, conical intersections, CUDA path |
+
+**Explicitly deprioritized right now** (depth / productization / gated backlog):
+
+- Entire **CUDA ownership lane** (PME accuracy residual, device coulomb cut,
+  CUDA SCF gradients, sampling/path/bias ports) — not this track
+- `hf-parity` chain past hard-gates of *already-shipped* code (CFMM-J / C-PCM /
+  x2c / embed docs honesty) — only promote when a concrete consumer needs it
+- Polarizability, full UHF/KS analytic Hessian, TDDFT gradients, RI-MP2
+  (`hf-parity-10+`)
+- Multi-window umbrella + production molrs WHAM campaign
+- ReaxFF / AIREBO / ML potentials / full GAFF polymer protocols
+- Metadynamics / OPES / ABF (wait until CV layer has ≥2 CVs + free-energy path)
+
+Active parking lots (do not `/mol:impl` the umbrella): `hf-deferred-backlog`,
+`hf-parity-*` drafts. CUDA residuals live under their own specs
+(`cuda-pme-accuracy`, …) and are out of this queue.
+
 ## Work in progress — known gaps and caveats
 
 The tables tell you *whether* a method exists. This section tells you what to
-watch out for in the ones that do.
+watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Gaussian SCF
 
-- **Cartesian basis functions only.** There is no spherical-harmonic (pure)
-  transform, so `d` and higher shells carry their contaminant `s`/`p`
-  components. The native Rys ERI engine covers `l ≤ 3` (s/p/d/f).
-- **No analytic Hessian anywhere.** Every second derivative in the engine —
-  frequencies, thermochemistry — is a central finite difference of analytic
-  forces (`cpu::vib::Hessian`). CPHF is not implemented.
-- **Open shell defaults to unrestricted.** ROKS does not exist; ROHF exists as
-  an energy-only method (`cpu::scf::ROHF`, PySCF canonical / Guest–Saunders
-  convention) — no analytic gradient, no ROHF-MP2.
-- **CUDA SCF is a restricted-HF energy engine, not a general one.** It runs the
-  Fock build, density build, and diagonalization (cuSOLVER) on device, but it
-  has no DIIS, no UHF, no Kohn–Sham path, and **no gradients** — so there is no
-  GPU AIMD. Its device-native integral kernels are s-type only; anything beyond
-  s shells must be fed a host-built integral pack.
-- **MINAO guess covers H, C, N, O, F only**; other elements silently fall back
-  to the Hcore guess.
+- **Cartesian is the default engine space**; a **spherical (pure) path exists**
+  for sets defined that way (def2-SVP spherical regression
+  `regressions/scf/h2o_rhf_def2svp_sph`). Native Rys ERI covers `l ≤ 3`
+  (s/p/d/f).
+- **No analytic Hessian anywhere.** Frequencies / thermochemistry are
+  central FD of analytic forces (`cpu::vib::Hessian`). CPHF is not
+  implemented; static polarizability is absent.
+- **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
+  gradient** (O₂ vs PySCF). **GHF** is energy-only (real two-component;
+  `regressions/scf/h3_ghf_sto3g`). ROKS does not exist. No ROHF-MP2.
+- **Shipped infra (CPU):** DIIS, level shift, SOSCF (hard cases), stability
+  analysis, RI-J/RI-JK, CFMM-J, C-PCM, point-charge embedding + external
+  field forces, ECP (semi-numerical forces), x2c-1e energy (forces throw),
+  counterpoise, RHF TDA/TDHF (`RHF::tda` / `RHF::tdhf`), APT/IR dipole
+  derivatives. Hard gates / docs honesty for some of these are still in the
+  `hf-parity` parking lot.
+- **CUDA SCF is still a restricted-HF energy engine.** Device Fock/density/
+  diagonalization; no DIIS, no UHF/KS, **no gradients** → no GPU AIMD.
+  Device-native integrals are s-type only.
+- **MINAO guess covers H, C, N, O, F only**; other elements fall back to Hcore.
 
 ### Post-Hartree–Fock
 
-- **MP2 is closed-shell canonical only** — an RHF reference, a full O(N⁵)
-  AO→MO transform, no frozen core, no density fitting/RI, no gradients.
-- **FCI is a reference tool, not a production method.** It builds the dense
-  determinant CI matrix and diagonalizes it, and throws past a hard cap
-  (`n_mo > 14` or `N_det > 2000`). It exists to pin the exact answer for tiny
-  systems (H₂/STO-3G), not to correlate real ones.
+- **MP2 is closed-shell canonical only** — RHF reference, full O(N⁵) AO→MO
+  transform, no frozen core, no RI-MP2 product path yet, no gradients.
+  Density fitting exists for SCF J/K (`RI::{J,JK}`), not for MP2.
+- **FCI is a reference tool**, not production: dense CI matrix, hard cap
+  (`n_mo > 14` or `N_det > 2000`).
+
+### Excited states
+
+- **RHF TDA (CIS) and TDHF/RPA** ship as post-SCF members (`RHF::tda` /
+  `RHF::tdhf`) with CH₂O regression. No TDDFT, no excited-state gradients,
+  no nonadiabatic couplings — so surface hopping stays blocked.
 
 ### Exchange-correlation
 
-- The functional set is exactly `{LSDA, PBE, B3LYP, PBE0}`. B88 exchange and
-  LYP correlation are implemented, but only as B3LYP components — there is no
-  standalone BLYP or BP86 selector.
-- **libxc is not a runtime dependency.** All functionals are hand-coded; libxc
-  appears only as an optional *test oracle* (`ATV_BUILD_XC_ORACLE`) that the
-  native implementations must match to 1e-12.
-- **No XC on the GPU outside plane waves.** The only device functional is
-  Slater + PW92 LDA on the plane-wave grid.
+- Molecular selectors: `{LSDA, PBE, B3LYP, PBE0}`. B88/LYP exist only as
+  B3LYP pieces — no standalone BLYP/BP86.
+- libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
+- GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 
 ### Plane-wave DFT
 
-- **Ionic forces: analytic local HF + Ewald + KB nonlocal**
-  (`pw_forces_analytic`); FD (`pw_forces_fd`) remains the oracle.
-  **Cell stress via strain-FD of SCF energy** (`pw_stress`, Voigt `kStress`);
-  Nielsen–Martin analytic decomposition remains a follow-on.
-- **Effectively LDA.** The XC builder calls the PBE routine with `sigma = 0`,
-  which is the Slater + PW92 LDA limit. There is no true GGA and no spin
-  polarization in the plane-wave path.
-- Pseudopotentials are norm-conserving UPF (v1/v2) with KB projectors. No
-  ultrasoft, no PAW. An empty UPF path selects a toy local potential that runs
-  but is unphysical.
-- On CUDA the Davidson H·ψ hot path, FFTs (cuFFT), Poisson, V_eff, and LDA all
-  run on device; the Rayleigh–Ritz subspace bookkeeping and the SCF control
-  loop stay on the host.
+- Analytic local + Ewald + KB forces; FD oracle remains.
+  **Cell stress via strain-FD** of SCF energy (`pw_stress`); Nielsen–Martin
+  analytic stress is a follow-on.
+- Effectively LDA on the PW path (`sigma = 0` into the PBE routine). No
+  spin polarization.
+- Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
+- CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
 ### GPW
 
-- **Γ-point only, closed-shell only.** No k-points, no spin polarization, no
-  stress tensor, no hybrids.
-- Analytic forces (Hellmann–Feynman + Pulay) are available and validated, so
-  GPW *can* drive AIMD. `GpwConfig.local_pp_on_grid` must be consistent between
-  energy and gradient — the force is the derivative of whatever functional the
-  SCF actually converged.
-- **DFT-D3 is zero-damping only**, with PBE parameters. Becke–Johnson damping,
-  D2, and D4 are not implemented.
+- Γ-point, closed-shell only. No k-points, spin, stress, or hybrids.
+- Analytic forces available → can drive AIMD; keep
+  `GpwConfig.local_pp_on_grid` consistent between energy and gradient.
+- DFT-D3 zero-damping + PBE params only.
 
 ### Semiempirical
 
-- AM1 is the only parameterization (no MNDO/PM3/PM6/PM7/RM1). **Analytic
-  nuclear forces** are available via `AM1Evaluator` (`with_gradient`, default
-  on) on the shared `NDDOSolver` path, so AM1 can drive Evaluate / MD / Minimize
-  force phases. Hessian remains finite-difference (`cpu::vib::Hessian`).
-- AM1-BCC charges are implemented on top of it (AM1 Mulliken + molrs BCC typing).
-- DFTB / xTB are not implemented; when they are, they get their own Solver +
-  Evaluator (+ kind), not a new Driver and not `NDDOSolver`.
+- **AM1 and RM1** on the shared NDDO path with analytic forces → Evaluate /
+  MD / Minimize. Hessian remains FD. AM1-BCC charges via molrs typing.
+- No DFTB / xTB (separate method families when they land — not `NDDOSolver`).
 
 ### Classical force fields
 
-- **The pair-style catalogue is thin but GAFF-capable on CPU**: LJ 12-6 (multi-type
-  + Lorentz–Berthelot; per-type path is scalar), cut Coulomb, real-space
-  `coul/long` + PME, and **Amber `special_bonds` scales** (including 1–4 = 0.5)
-  on LJ, CoulCut, and CoulLong. `load_lammps_data` reads `atom_style full` (charges).
-  Still missing for full GAFF productization: multi-term Fourier dihedral component,
-  complete `.ff` text parser, CUDA Amber parity, paper-length polymer protocols.
-- **Improper harmonic exists** (periodic/CVFF still open). No reactive potentials
-  (ReaxFF, AIREBO), no coarse-grained models.
-- **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element, MPI-parallel
-  via a ghost-of-ghost halo; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)).
-  Tersoff/MEAM remain absent, as does any CUDA mirror.
-- **Transition states: CI-NEB runs** (`cpu::PathDriver` — N coupled replicas, stopping
-  on the `AllReplicasConverged` criterion). It is CPU-only and single-replica-
-  per-rank (the band is replicated; the spatial decomposition lives inside each image).
-  No dimer, no string method, no IRC. The replica infrastructure (`ReplicaSet`,
-  `ReplicaExpansion`) is deliberately general — REMD/PIMD/umbrella would reuse it — but
-  none of those exist.
-- **Constraints: RATTLE runs** (`cpu::md::FixRattle`, CPU, MPI-parallel). SETTLE and
-  LINCS are deliberately not written — they are optimizations of a solver that already
-  holds rigid geometry to 5 × 10⁻¹¹. No rigid bodies, no virtual sites.
-- **The torch backend is not a machine-learning potential.** It is a
-  differentiable classical force field: LJ and harmonic bond with autograd
-  backward passes w.r.t. positions *and* parameters (ε, σ, K, r₀) — a
-  parameter-fitting surface. It has no integrator, no driver, no thermostat.
+- **GAFF-capable on CPU**: multi-type LJ, CoulCut, CoulLong+PME, Amber
+  specials (incl. 1–4 = 0.5), harmonic bond/angle, CHARMM + multi/harmonic
+  dihedrals, harmonic improper. Gaps: multi-term Fourier dihedral as a
+  first-class style, `.ff` text parser, CUDA Amber parity, paper-length
+  polymer protocols.
+- **Many-body:** EAM + Stillinger–Weber (CPU, MPI, ghost-of-ghost halo).
+  No Tersoff/MEAM/ReaxFF/CUDA many-body.
+- **Open-boundary FMM tree math** is validated (`reg_fmm_point_charges`) —
+  not yet a MD `KSpace` / pair-style drop-in under PBC.
+- **Constraints:** RATTLE (CPU, MPI) holds TIP3P geometry at `dt = 2 fs`.
+  No SETTLE/LINCS/rigid bodies/virtual sites.
+- **Torch backend** is a differentiable classical FF (LJ + harmonic bond),
+  not an ML potential and not a dynamics engine.
 
 ### Molecular dynamics
 
-- The standalone `NoseHoover` thermostat is a **single** chain (scalar ξ), a
-  documented divergence from LAMMPS. The real M-chain NHC (default M = 3) exists
-  only inside the MTK NPT integrator.
-- The MTK barostat couples the **diagonal** of the cell only. There is no
-  off-diagonal/shear coupling, hence no true Parrinello–Rahman and no
-  constant-stress dynamics.
-- **NPH is not reachable**: the MTK integrator fuses the thermostat chain with
-  the barostat, and there is no thermostat-free barostat integrator.
-- `Deform` is **uniaxial only** (one axis, engineering or true strain). No
-  shear, no SLLOD, no Lees–Edwards.
-- The reciprocal-space solvers (Ewald, PME) are **single-GPU only** on CUDA, and
-  the CPU PME replicates the grid across ranks rather than distributing the FFT.
+- NVE / NVT / NPT on CPU and CUDA. Standalone `NoseHoover` is a **single**
+  chain; M-chain NHC lives inside MTK NPT only. Bussi/CSVR is CPU-only.
+- MTK couples the **cell diagonal** only → no PR / shear / constant-stress.
+- **NPH unreachable** (thermostat fused into MTK barostat).
+- `Deform` uniaxial only. CUDA reciprocal space is single-GPU; CPU PME
+  replicates the grid rather than distributing the FFT.
+- **CUDA residual:** PME reciprocal energy accuracy debt
+  (`cuda-pme-accuracy` spec) — classical MD path otherwise green after
+  cuda-resurrect.
 
-### Sampling
+### Sampling and paths
 
-- Monte Carlo is CPU-only, **three ensembles**: NVT (`mc::MC`), NPT
-  (`mc::NptMc`, isotropic volume moves), and μVT GCMC (`mc::Gcmc`,
-  single-species insert/delete, single rank). Mixed-move ensembles compose via
-  `MoveSelector`. Trial energy is a deliberate O(N) full recompute
-  (`energy_of_rows()` is the follow-up performance lever). No CBMC, no Widom
-  insertion, no Gibbs ensemble.
-- There is **no enhanced sampling and no free-energy machinery** — no umbrella
-  sampling, metadynamics, FEP, TI, or BAR.
-- Transition states: **CI-NEB runs** (`cpu::PathDriver`; see Force Fields
-  above). No dimer, no string method.
+- MC: NVT / NPT / μVT GCMC on CPU (single rank; O(N) trial energy by design).
+  No CBMC, Widom, Gibbs.
+- **Umbrella sampling exists** (`bias::DistanceCV` + `HarmonicBias`,
+  `reg_umbrella_harmonic`). Multi-window WHAM production path still thin
+  (molrs-owned analysis incomplete).
+- **REMD exists** (`cpu::path::Remd`, per-replica owned MD programs,
+  `reg_remd_harmonic`). Hamiltonian RE / REST2 / multidimensional RE absent.
+- **CI-NEB runs** (`PathDriver` + `NebCoupling` + `BandLBFGS`). No dimer,
+  string, IRC. PIMD not yet a second IdentityReplication consumer.
 
 ### Optimization
 
-- CPU minimizers are LBFGS and Polak–Ribière⁺ CG (steepest descent exists only
-  as the degenerate β = 0 case); CUDA additionally ships a true steepest-descent
-  component. FIRE is not implemented.
-- All minimizers move **atoms only** — there is no cell or variable-cell
-  optimization.
-- Optimization is Cartesian; there are no internal or redundant-internal
-  coordinates.
+- CPU: L-BFGS + Polak–Ribière⁺ CG. CUDA: those + steepest descent. **FIRE
+  is ○** (good breadth candidate).
+- **Atoms only** — no cell / variable-cell / joint optimization (good
+  breadth candidate once stress/virial is wired into Minimize).
+- Cartesian only; no internal coordinates.

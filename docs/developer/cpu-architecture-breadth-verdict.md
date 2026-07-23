@@ -46,9 +46,23 @@ Evidence from frame-block-04 and cpu-breadth links 01–06 (CPU only; GPU deferr
 
 All GPU criteria remain `deferred` and do not count toward CPU closure.
 
-## Next CPU work
+## Next work (superseded 2026-07-23 — CPU breadth-first)
 
-1. molrs ForceField CXX snapshot FFI + release pin (04 full acceptance).
-2. Multi-window umbrella + molrs WHAM PMF regression (06 scientific close).
-3. frame-block-04 ASan/perf matrices on controlled runners.
-4. Extract shared ReplicaExecutor from PathDriver when umbrella+REMD+NEB share a second production scheduler path.
+Depth close-outs from the original campaign (molrs ForceField CXX snapshot,
+multi-window WHAM, frame-block ASan/perf, ReplicaExecutor extract) remain
+valid *debt*, but they are **not** the default next queue. Active principle:
+**simple, diverse CPU methods that exercise new framework axes** — see
+`docs/roadmap/index.md` § Campaign principle. **CUDA is a separate lane**
+(not owned by this campaign).
+
+Recommended CPU order (summary):
+
+1. FIRE minimizer.
+2. Soft-core LJ (λ).
+3. Widom insertion.
+4. PIMD skeleton (IdentityReplication second consumer).
+5. Variable-cell Minimize (classical virial or PW stress).
+6. Dimer (or string) TS — second path method.
+
+Parked / other lane: all CUDA residuals and mirrors; hf-parity depth; GAFF
+productization; metadynamics; ReaxFF/ML.

@@ -2,11 +2,12 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-This is the thinnest area of the engine relative to its infrastructure. The
-MD machinery around the potentials (neighbor lists, domain decomposition, halo
-exchange, PME, special-bonds exclusions, virial accumulation) is mature and
-LAMMPS-shaped; the *catalogue of styles plugged into it* is small — one real
-pair style, three bonded styles, no impropers, no many-body potentials.
+The MD machinery around the potentials (neighbor lists, domain decomposition,
+halo exchange, PME, special-bonds exclusions, virial accumulation) is mature
+and LAMMPS-shaped. The *catalogue of styles* is now GAFF-capable on CPU
+(LJ multi-type, CoulCut/Long, harmonic bond/angle, CHARMM + multi/harmonic
+dihedrals, harmonic improper) plus EAM/SW many-body — still thin relative to
+LAMMPS, but no longer "one pair style and nothing else".
 
 The Lennard–Jones 12-6 pair style is the only ⚡ in the roadmap: it is
 SIMD-vectorized (xsimd, `-march=native`) on CPU, has a device kernel on CUDA,
@@ -102,7 +103,12 @@ Notes:
   Mesh Ewald" rows are the same code. Despite an in-code reference to LAMMPS
   `kspace_style pppm`, this is SPME, not PPPM.
 - Reciprocal space is **single-GPU only** on CUDA; the CPU PME replicates the
-  grid across MPI ranks rather than distributing the FFT.
+  grid across MPI ranks rather than distributing the FFT. CUDA PME energy
+  accuracy vs the NaCl Madelung reference is an open residual
+  (`cuda-pme-accuracy` — CPU hits ~5e-4, CUDA ~3% off).
+- Open-boundary **FMM tree math** (`FmmTree`) is validated against direct
+  Coulomb sums (`reg_fmm_point_charges`) and powers CFMM-J on the SCF path;
+  it is **not** a periodic MD `KSpace` style, so the FMM row above stays ○.
 
 ## 3. Polarizable Force Fields
 

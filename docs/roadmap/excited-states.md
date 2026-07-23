@@ -2,17 +2,15 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-**Nothing in this chapter is implemented.** Atomiverse is a ground-state engine:
-there is no response solver, no excited-state root finder, and no self-energy.
+**Ground-state engine with a closed-shell TDHF foothold.** `RHF::tda` (CIS /
+TDA) and `RHF::tdhf` (full RPA) return excitation energies and length-gauge
+transition dipoles on a converged RHF reference
+(`regressions/scf/ch2o_tdhf`). There is no TDDFT, no excited-state gradient,
+no nonadiabatic coupling, and no self-energy method — so nonadiabatic
+dynamics in [Molecular Dynamics](molecular-dynamics.md) remains blocked.
 
-This has knock-on effects elsewhere in the roadmap — nonadiabatic dynamics
-(surface hopping, Ehrenfest) in [Molecular Dynamics](molecular-dynamics.md) is
-blocked on the same gap, since it needs excited-state surfaces and couplings.
-
-The nearest existing footholds, if these are ever built: the SCF solver already
-exposes orbitals and the density matrix as Capabilities, and the ERI tensor can
-be materialized and transformed to the MO basis (the MP2 `ovov` transform),
-which is the same machinery a CIS/TDHF/TDDFT kernel would consume.
+The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
+analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 
 ## 1. SCF and Linear-Response Methods
 
@@ -22,11 +20,11 @@ which is the same machinery a CIS/TDHF/TDDFT kernel would consume.
 | MOM excited states                 |  ○  |   ○  |
 | IMOM excited states                |  ○  |   ○  |
 | ROKS excited states                |  ○  |   ○  |
-| CIS excitation energies            |  ○  |   ○  |
+| CIS excitation energies            |  ✓  |   ○  |
 | CIS(D)                             |  ○  |   ○  |
 | SCS-CIS(D)                         |  ○  |   ○  |
 | SOS-CIS(D)                         |  ○  |   ○  |
-| Time-dependent Hartree–Fock, TDHF  |  ○  |   ○  |
+| Time-dependent Hartree–Fock, TDHF  |  ✓  |   ○  |
 | Tamm–Dancoff TDDFT                 |  ○  |   ○  |
 | Full linear-response TDDFT         |  ○  |   ○  |
 | Spin-flip TDA                      |  ○  |   ○  |

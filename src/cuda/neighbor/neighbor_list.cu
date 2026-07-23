@@ -126,6 +126,11 @@ struct NeighborList::State {
     cudaEvent_t rebuild_flag_event = nullptr;
     cudaEvent_t flat_pair_count_event = nullptr;
     bool flat_pair_count_event_valid = false;
+
+    // Skip the expensive single-thread setup_cell stencil rebuild when the box
+    // is unchanged (NVE/NVT). nsys: setup_cell_from_device ~1.3 ms/rebuild.
+    bool cell_setup_valid = false;
+    double cached_box_diag[3] = {0, 0, 0};
 };
 
 // ============================================================================
@@ -169,6 +174,13 @@ void NeighborList::build(const BuildContext& ctx) {
                cudaMemcpyDeviceToHost);
     cudaMemcpy(&s.dims_z, s.d_dims.data() + 2, sizeof(int),
                cudaMemcpyDeviceToHost);
+    {
+        const auto& hb = ctx.runtime.host_box;
+        s.cached_box_diag[0] = static_cast<double>(hb.cell[0]);
+        s.cached_box_diag[1] = static_cast<double>(hb.cell[4]);
+        s.cached_box_diag[2] = static_cast<double>(hb.cell[8]);
+        s.cell_setup_valid = true;
+    }
     int ncells = s.dims_x * s.dims_y * s.dims_z;
 
     // Box volume — read once here, reused for both the cluster-pair capacity
@@ -346,6 +358,9 @@ void NeighborList::build(const BuildContext& ctx) {
     pairs_.cl_col_idx = s.buf.col_idx.data();
     pairs_.cl_orig_index = s.buf.original_index.data();
     pairs_.cl_mask = s.buf.interaction_mask.data();
+    pairs_.cl_x = s.buf.cluster_x.data();
+    pairs_.cl_y = s.buf.cluster_y.data();
+    pairs_.cl_z = s.buf.cluster_z.data();
     pairs_.num_clusters = nc;
 
     // Publish the pair list to the execution context for downstream pair
@@ -434,15 +449,39 @@ void NeighborList::launch(const LaunchContext& ctx) {
     if (rebuild_needed) {
         s.rebuild_count++;
 
-        // Re-run cell/inv_cell/dims/stencil setup — gated on rebuild so
-        // NVE/NVT (fixed box) skips entirely after the build() call and
-        // NPT re-runs only when the box has drifted enough to invalidate
-        // the cached neighbor list (which is what triggered the rebuild).
-        launch_setup_cell_device(
-            frame.box, s.d_cell.data(), s.d_inv_cell.data(), s.d_dims.data(),
-            s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
-            s.d_n_stencil.data(), s.d_ncells.data(), r_search, s.periodic,
-            kMaxStencil, stream);
+        // Re-run cell/inv_cell/dims/stencil only when the box changed.
+        // setup_cell_from_device is a serial stencil builder (~1 ms on GH200)
+        // and is invariant for NVE/NVT fixed boxes.
+        {
+            const auto& hb = ctx.runtime.host_box;
+            const double bx = static_cast<double>(hb.cell[0]);
+            const double by = static_cast<double>(hb.cell[4]);
+            const double bz = static_cast<double>(hb.cell[8]);
+            const bool box_changed =
+                !s.cell_setup_valid
+                || std::abs(bx - s.cached_box_diag[0]) > 1e-12
+                || std::abs(by - s.cached_box_diag[1]) > 1e-12
+                || std::abs(bz - s.cached_box_diag[2]) > 1e-12;
+            if (box_changed) {
+                launch_setup_cell_device(
+                    frame.box, s.d_cell.data(), s.d_inv_cell.data(),
+                    s.d_dims.data(), s.stencil_dx.data(), s.stencil_dy.data(),
+                    s.stencil_dz.data(), s.d_n_stencil.data(),
+                    s.d_ncells.data(), r_search, s.periodic, kMaxStencil,
+                    stream);
+                cudaStreamSynchronize(stream);
+                cudaMemcpy(&s.dims_x, s.d_dims.data(), sizeof(int),
+                           cudaMemcpyDeviceToHost);
+                cudaMemcpy(&s.dims_y, s.d_dims.data() + 1, sizeof(int),
+                           cudaMemcpyDeviceToHost);
+                cudaMemcpy(&s.dims_z, s.d_dims.data() + 2, sizeof(int),
+                           cudaMemcpyDeviceToHost);
+                s.cached_box_diag[0] = bx;
+                s.cached_box_diag[1] = by;
+                s.cached_box_diag[2] = bz;
+                s.cell_setup_valid = true;
+            }
+        }
 
         int ncells = s.dims_x * s.dims_y * s.dims_z;
 
@@ -456,6 +495,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
         pairs_.cl_col_idx = s.buf.col_idx.data();
         pairs_.cl_orig_index = s.buf.original_index.data();
         pairs_.cl_mask = s.buf.interaction_mask.data();
+        pairs_.cl_x = s.buf.cluster_x.data();
+        pairs_.cl_y = s.buf.cluster_y.data();
+        pairs_.cl_z = s.buf.cluster_z.data();
         pairs_.num_clusters = nc;
 
         launch_compute_morton<work_t>(frame.atoms.x, frame.atoms.y,
@@ -664,6 +706,9 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
     pairs_.cl_col_idx = s.buf.col_idx.data();
     pairs_.cl_orig_index = s.buf.original_index.data();
     pairs_.cl_mask = s.buf.interaction_mask.data();
+    pairs_.cl_x = s.buf.cluster_x.data();
+    pairs_.cl_y = s.buf.cluster_y.data();
+    pairs_.cl_z = s.buf.cluster_z.data();
 
     launch_compute_morton<work_t>(frame.atoms.x, frame.atoms.y, frame.atoms.z,
                                   n, s.d_inv_cell.data(), s.periodic,

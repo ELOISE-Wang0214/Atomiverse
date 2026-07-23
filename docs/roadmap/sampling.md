@@ -19,9 +19,13 @@ performance lever). NVT is validated against NIST LJ reference data
 activity expansion / finite-N ⟨V⟩ relation for the exact cut-shifted
 potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 
-Enhanced sampling and free-energy machinery do not exist at all. Neither does
-any biasing/collective-variable infrastructure to build them on — there is no
-CV layer, no bias component, no PLUMED interface.
+**Enhanced sampling has a foothold, not a product suite.** A CV protocol
+(`cpu::bias::CollectiveVariable`) plus `DistanceCV` and `HarmonicBias` support
+single-window umbrella sampling on MD (`reg_umbrella_harmonic`). REMD is a
+method preset over N owned `MD` programs (`cpu::path::Remd`,
+`reg_remd_harmonic`). Free-energy *estimators* (WHAM multi-window production,
+FEP/TI/BAR, Widom) and history-dependent biases (metadynamics / OPES / ABF)
+are still absent. No PLUMED interface.
 
 ## 1. Monte Carlo Methods
 
@@ -60,7 +64,7 @@ insertion needs the topology loaders re-run per trial).
 
 | Method                                  | CPU | CUDA |
 | --------------------------------------- | :-: | :--: |
-| Umbrella sampling                       |  ○  |   ○  |
+| Umbrella sampling                       |  ✓  |   ○  |
 | Adaptive umbrella sampling              |  ○  |   ○  |
 | Multidimensional umbrella sampling      |  ○  |   ○  |
 | Well-tempered metadynamics              |  ○  |   ○  |
@@ -82,7 +86,7 @@ insertion needs the topology loaders re-run per trial).
 | Integrated tempering sampling           |  ○  |   ○  |
 | Solute tempering                        |  ○  |   ○  |
 | REST2                                   |  ○  |   ○  |
-| Replica-exchange molecular dynamics     |  ○  |   ○  |
+| Replica-exchange molecular dynamics     |  ✓  |   ○  |
 | Hamiltonian replica exchange            |  ○  |   ○  |
 | Multidimensional replica exchange       |  ○  |   ○  |
 | Expanded-ensemble sampling              |  ○  |   ○  |
@@ -114,5 +118,8 @@ insertion needs the topology loaders re-run per trial).
 | Alchemical lambda dynamics              |  ○  |   ○  |
 | Constant-pH free-energy calculation     |  ○  |   ○  |
 
-Alchemical free energy additionally needs soft-core potentials, which are also
-absent (see [Force Fields](force-fields.md#2-classical-nonbonded-potentials)).
+Umbrella *samples* are collected by `HarmonicBias` on MD; multi-window WHAM /
+a production PMF curve is still ○ (analysis ownership: molrs; synthetic
+in-process WHAM unit path only). Alchemical free energy additionally needs
+soft-core potentials, which are also absent (see
+[Force Fields](force-fields.md#2-classical-nonbonded-potentials)).

@@ -328,11 +328,10 @@ __global__ void scatter_and_aabb(
 
     static_assert(kClusterSize == 32 || (32 % kClusterSize) == 0,
                   "kClusterSize must divide 32 for sub-warp AABB");
+    // OpenMM CS=32: one cluster = full warp. (If CS is ever <32, use a
+    // dedicated sub-warp mask path — do not `1u << kClusterSize` when CS==32.)
+    static_assert(kClusterSize == 32, "AABB reduction assumes OpenMM CS=32");
     unsigned mask = 0xffffffffu;
-    if constexpr (kClusterSize < 32) {
-        unsigned bits = (1u << kClusterSize) - 1u;
-        mask = bits << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
-    }
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
         work_t tmp;
         tmp = __shfl_down_sync(mask, lo_x, offset);

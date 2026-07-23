@@ -2,10 +2,13 @@
 /// @brief Single-GPU LJ NVE wall timing for the OpenMM cluster MD path.
 ///
 /// Usage:
-///   ./cuda_nonbonded_style_bench [n_side] [n_steps] [warmup]
+///   ./cuda_nonbonded_style_bench [N_or_n_side] [n_steps] [warmup]
 ///
-/// Prints ms/step after warmup. Not a substitute for ncu; relative only.
-/// Dual-style A/B (openmm|lammps) was removed with cuda-openmm-md-01-contract.
+/// If the first argument is ≥ 1000, it is treated as **atom count N** and a
+/// cubic lattice is built with n_side = ceil(N^{1/3}) (actual N = n_side³ ≥
+/// requested). If < 1000, it is n_side (legacy).
+///
+/// Prints ms/step, M atoms·step/s, and energy. Dual-style A/B removed.
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -43,18 +46,31 @@ static cpu::Frame make_lj(int n_side, double density) {
     return frame;
 }
 
+static int side_for_n(long long want_n) {
+    int s = static_cast<int>(std::ceil(std::cbrt(static_cast<double>(want_n))));
+    if (s < 2)
+        s = 2;
+    return s;
+}
+
 int main(int argc, char** argv) {
-    int n_side = (argc > 1) ? std::atoi(argv[1]) : 16;
+    long long arg1 = (argc > 1) ? std::atoll(argv[1]) : 10000;
     int steps = (argc > 2) ? std::atoi(argv[2]) : 50;
     int warm = (argc > 3) ? std::atoi(argv[3]) : 10;
-    if (n_side < 4)
-        n_side = 4;
     if (steps < 5)
         steps = 5;
+    if (warm < 1)
+        warm = 1;
+
+    // ≥1000 → atom count; <1000 → n_side (legacy small lattices).
+    int n_side = (arg1 >= 1000) ? side_for_n(arg1) : static_cast<int>(arg1);
+    if (n_side < 2)
+        n_side = 2;
+    const long long N = static_cast<long long>(n_side) * n_side * n_side;
 
     auto frame = make_lj(n_side, 0.8);
     const double cutoff = 2.5;
-    const double skin = 0.3; // production-like skin (not hostile rebuild spam)
+    const double skin = 0.3;
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff, skin});
@@ -67,9 +83,11 @@ int main(int argc, char** argv) {
     auto t1 = std::chrono::steady_clock::now();
     double ms =
         std::chrono::duration<double, std::milli>(t1 - t0).count() / steps;
-    std::printf(
-        "path=openmm_cluster n_side=%d N=%d steps=%d  ms/step=%.4f  energy=%.6f\n",
-        n_side, n_side * n_side * n_side, steps, ms,
-        static_cast<double>(frame.meta.get(kEnergy)));
+    // throughput: million atom-steps per second
+    double matom_step_s = (static_cast<double>(N) / ms) * 1e-3;
+    std::printf("path=openmm_cluster n_side=%d N=%lld steps=%d  "
+                "ms/step=%.4f  Matom*step/s=%.3f  energy=%.6f\n",
+                n_side, N, steps, ms, matom_step_s,
+                static_cast<double>(frame.meta.get(kEnergy)));
     return 0;
 }

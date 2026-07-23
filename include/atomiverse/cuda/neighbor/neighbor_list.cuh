@@ -74,6 +74,12 @@ struct PairList {
     /// Per-CSR-entry multi-word interaction mask: `kOpenmmMaskWords` uint64s
     /// per entry (32×32 bitflags). See `openmm_mask_jbits`. Null until rebuild.
     const uint64_t* cl_mask = nullptr;
+    /// Optional Morton-sorted cluster SoA positions (Å), length
+    /// `num_clusters * kOpenmmClusterSize`. When non-null, force kernels use
+    /// these directly and skip a per-step gather from `frame.atoms.x/y/z`.
+    const real_t* cl_x = nullptr;
+    const real_t* cl_y = nullptr;
+    const real_t* cl_z = nullptr;
     int num_clusters = 0; ///< cluster count (host scalar).
 };
 

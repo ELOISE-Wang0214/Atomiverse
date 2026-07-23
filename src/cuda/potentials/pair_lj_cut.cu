@@ -459,6 +459,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     constexpr int CS = kOpenmmClusterSize;
     const int nc = pairs->num_clusters;
     const int n_slots = nc * CS;
+    // Live positions from frame (not rebuild-time cluster_x). Prefer published
+    // cl_x only as a gather target cache when present is wrong — always gather
+    // current frame.atoms into scratch so force is skin-correct.
     if (n_slots > spos_cap_) {
         if (spx_) {
             cudaFree(spx_);
