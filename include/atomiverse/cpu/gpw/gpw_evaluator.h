@@ -49,8 +49,10 @@ class GPWEvaluator : public cpu::GPW {
     bool compute_forces = false;
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
-    /// @brief Grimme DFT-D3 (zero damping, PBE params).
+    /// @brief Grimme DFT-D3 (zero damping, PBE params). Mutually exclusive with d3bj.
     bool d3 = false;
+    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Mutually exclusive with d3.
+    bool d3bj = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of
     ///        diagonalization + DIIS. Same gapped ground state; preferred for
     ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).
@@ -68,7 +70,7 @@ class GPWEvaluator : public cpu::GPW {
     /// @param nonperiodic Cluster BC when true.
     /// @param compute_forces Enable analytic forces.
     /// @param fd_step FD step [Bohr].
-    /// @param d3 Enable DFT-D3.
+    /// @param d3 Enable DFT-D3 zero damping.
     /// @param use_ot Enable OT minimizer (product path; no env required).
     explicit GPWEvaluator(std::vector<Kind> kinds, double cutoff_ry = 300.0,
                           int max_iter = 200, double tol = 1e-7, double mix = 0.3,

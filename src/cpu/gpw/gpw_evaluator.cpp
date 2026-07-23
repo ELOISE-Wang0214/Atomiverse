@@ -73,6 +73,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.xc = xc;
     cfg.nonperiodic = nonperiodic;
     cfg.d3 = d3;
+    cfg.d3bj = d3bj;
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     built_cell_ = {cfg.cell[0], cfg.cell[1], cfg.cell[2]};
 

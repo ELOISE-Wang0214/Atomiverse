@@ -338,7 +338,7 @@ PWResult& PW::run(const cpu::Frame& frame) {
         } else {
             // ── Restricted (spin-unpolarized) path — unchanged ──
             poisson_->step(ws);
-            xc_->step(ws);
+            xc_->step(ws, xc);
             veff_->step(ws);
 
             density_->begin(ws);
