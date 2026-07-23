@@ -321,6 +321,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/fix_langevin.cpp
             src/cpu/dynamics/fix_efield.cpp
             src/cpu/dynamics/fix_addforce.cpp
+            src/cpu/dynamics/fix_oscillating_efield.cpp
             src/cpu/dynamics/fix_wall_lj1043.cpp
             src/cpu/dynamics/fix_csvr.cpp
             src/cpu/dynamics/fix_rattle.cpp
