@@ -37,7 +37,8 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## in_progress
 
-- [~] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
+- [~] `frozen-core-mp2-h2o` | Frozen-core MP2 | post-hf | water | 6-31g* | e_corr | freeze O 1s; canonical RMP2 already ✓; PySCF frozen_core
+- [x] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
 - [~] `blyp-water-sto3g` | BLYP GGA | dft | water | sto-3g | e_tot | B88+LYP already in B3LYP pieces; expose XCType::BLYP; PySCF xc=blyp
 - [~] `ghf-grad-h3-sto3g` | GHF analytic gradient | hartree-fock | h3 | sto-3g | forces | GHF energy ✓ (reg_h3_ghf); forces throw; PySCF GHF grad
 - [~] `pcm-grad-h2o` | Implicit-solvent analytic gradient | multiscale | water | 6-31g* | forces | C-PCM energy ✓; PCM forces ○; PySCF with_solvent grad
@@ -59,7 +60,6 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [x] `rmp2-h2o-sto3g` | RMP2 | regressions/scf/h2o_mp2_sto3g | PySCF mp.MP2
 - [x] `ri-mp2-h2o` | RI-MP2 | regressions/scf/h2o_ri_mp2 | density-fitted MP2
 - [x] `ump2-o2-sto3g` | UMP2 | regressions/scf/ump2-o2-sto3g | UMP2/O2/STO-3G triplet cart conv_tol=1e-12 PySCF 2.14.0: e_corr=-0.096393144130 Ha, e_tot=-147.730339929580 Ha (UHF e_hf=-147.633946785450 Ha); tol 1e-6 Ha
-- [x] `frozen-core-mp2-h2o` | Frozen-core RMP2 | regressions/scf/frozen-core-mp2-h2o | H2O/6-31G* cart frozen=1 (O 1s); PySCF 2.14.0 e_corr=-0.186119540118 Ha, e_tot=-76.196624528375 Ha; `rhf.frozen=1`; tol 1e-6 Ha
 - [x] `rhf-tda-tdhf-ch2o` | RHF TDA/TDHF | regressions/scf/ch2o_tdhf | CIS/TDHF vs PySCF
 - [x] `rks-tda-alda` | RKS TDA full-grid ALDA | regressions/scf/h2_full_grid_alda | LSDA ALDA kernel
 - [x] `hybrid-tda-b3lyp-h2` | Hybrid TDDFT-TDA | regressions/scf/h2-b3lyp-hybrid-tda | B3LYP exact-exchange kernel; S1=25.928364822972 eV (PySCF 2.14.0)
