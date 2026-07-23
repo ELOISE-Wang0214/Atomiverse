@@ -315,6 +315,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/parrinello_rahman_npt.cpp
             src/cpu/dynamics/nph_integrator.cpp
             src/cpu/dynamics/fix_langevin.cpp
+            src/cpu/dynamics/fix_efield.cpp
             src/cpu/dynamics/fix_csvr.cpp
             src/cpu/dynamics/fix_rattle.cpp
             src/cpu/dynamics/fix_settle.cpp
