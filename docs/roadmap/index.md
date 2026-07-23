@@ -102,7 +102,7 @@ What is **not** yet framework-proven (good breadth targets — see next section)
 
 - Cell DOFs in Minimize (variable-cell / joint atom+cell)
 - Nuclear quantum beads (PIMD / RPMD)
-- Free-energy *estimation* beyond a single biased window (Widom, FEP/TI one-leg, multi-window WHAM)
+- Free-energy *estimation* beyond Widom snapshot + single biased window (FEP/TI one-leg, multi-window WHAM)
 - A second transition-state algorithm (dimer / string) — NEB alone is not enough
 - Soft-core / λ-dependent potentials (alchemical parameterization)
 - Sampling / path / bias / constraints on CUDA
@@ -123,7 +123,7 @@ completeness. Each item should ship one textbook regression under
 | - | ---- | ----------------- | ----------------- |
 | 1 | ~~**FIRE minimizer**~~ | **SHIPPED 2026-07-23** (`cpu::minimizer::FIRE`, `reg_fire_lj_dimer`) | — |
 | 2 | ~~**Soft-core LJ (λ)**~~ | **SHIPPED 2026-07-23** (`cpu::PairLJSoft`, `reg_lj_soft_dimer`) | — |
-| 3 | **Widom insertion** (NVT, hard-sphere or cut LJ) | Free-energy *estimator* on MC/MD energy eval; different from μVT GCMC | CBMC, absolute solvation protocols |
+| 3 | ~~**Widom insertion**~~ | **SHIPPED 2026-07-23** (`cpu::Widom`, `reg_widom_hs`) | — |
 | 4 | **PIMD skeleton** (harmonic or free particle first) | Second real consumer of `IdentityReplication` + bead coupling; nuclear-quantum axis | RPMD estimators, ring-polymer contraction, multi-GPU |
 | 5 | **Variable-cell Minimize** (classical virial or PW strain-FD stress) | Cell DOFs in the optimizer — never exercised | Fully anisotropic PR cell dynamics, joint cell+atom fancy coords |
 | 6 | **Dimer TS** (or growing string) | Second path method; proves PathDriver is not NEB-only | IRC, conical intersections, CUDA path |

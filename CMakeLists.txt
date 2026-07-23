@@ -218,6 +218,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/asynchronous/async_component_base.cpp
         src/cpu/asynchronous/snapshot_publisher.cpp
         src/cpu/observe/virial_stress.cpp
+        src/cpu/observe/widom.cpp
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/communication/atom_pack.cpp
         src/cpu/communication/bcast_frame.cpp

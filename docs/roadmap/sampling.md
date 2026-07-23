@@ -110,7 +110,7 @@ insertion needs the topology loaders re-run per trial).
 | Crooks fluctuation theorem              |  ○  |   ○  |
 | Nonequilibrium switching                |  ○  |   ○  |
 | Bidirectional nonequilibrium estimation |  ○  |   ○  |
-| Widom insertion                         |  ○  |   ○  |
+| Widom insertion                         |  ✓  |   ○  |
 | Absolute solvation free energy          |  ○  |   ○  |
 | Relative binding free energy            |  ○  |   ○  |
 | Absolute binding free energy            |  ○  |   ○  |
@@ -120,6 +120,9 @@ insertion needs the topology loaders re-run per trial).
 
 Umbrella *samples* are collected by `HarmonicBias` on MD; multi-window WHAM /
 a production PMF curve is still ○ (analysis ownership: molrs; synthetic
-in-process WHAM unit path only). Alchemical free energy additionally needs
-soft-core potentials, which are also absent (see
+in-process WHAM unit path only). **Widom insertion** ships as
+`cpu::Widom` (Observer / snapshot estimator): μ_ex = −kT ln⟨e^{−βΔU}⟩ via
+ghost insertions (LJ cut-and-shift or hard sphere). Not GCMC; not absolute
+solvation protocols. Soft-core LJ for alchemical work is
+`cpu::PairLJSoft` (see
 [Force Fields](force-fields.md#2-classical-nonbonded-potentials)).
