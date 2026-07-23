@@ -381,7 +381,12 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "        A[ia,jb]+=v; B[ia,jb]+=v\n"
             "T=np.real(sqrtm(A-B)); M=0.5*((T@(A+B)@T)+(T@(A+B)@T).T)\n"
             "w2,_=eigh(M); Om=np.sqrt(np.maximum(w2,0)); 0.5*(Om.sum()-np.trace(A))"
-        ),
+        # Geometry-only DFT-D4 twin of cpu::scf::D4{}.energy(frame).
+        # Loop amortizes import/construction (matches ATV multi-iter argv).
+        "d4": (
+            f"from pyscf.dispersion import dftd4 as d4m\n"
+            f"m=d4m.DFTD4Dispersion(mol, xc={xc!r}, version='d4', atm=True)\n"
+            f"for _ in range(2000): m.get_dispersion()"        ),
     }.get(method)
     if body is None:
         raise SystemExit(f"unsupported --method {method!r}")
@@ -400,8 +405,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "--geom", "water", "ea-adc2", "--basis", "sto-3g", "sf_tddft", "--charge", "mp4", "--spin", "cc2", "--xc", "b3lyp", "direct_rpa", "--nstates", "bse"])    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0)    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)
-    p.add_argument("--repeat", type=int, default=3)
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "--geom", "water", "ea-adc2", "--basis", "sto-3g", "sf_tddft", "--charge", "mp4", "--spin", "cc2", "--xc", "b3lyp", "direct_rpa", "--nstates", "bse", "--cart", "d4"])    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0)    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)    p.add_argument("--repeat", type=int, default=3)
     p.add_argument("--max-ratio", type=float, default=10.0,
                    help="within_10x if T_atv/T_pyscf <= this (default 10)")
     p.add_argument("atv_cmd", nargs=argparse.REMAINDER,

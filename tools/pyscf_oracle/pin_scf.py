@@ -32,6 +32,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
   python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
+  python tools/pyscf_oracle/pin_scf.py d4 --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py g0w0 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py bse --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py delta-scf --geom n2 --basis sto-3g
@@ -118,8 +119,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)
-    p.add_argument(
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse", "--nstates", "d4"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument(
         "--ncas",
         type=int,
         default=2,
@@ -229,6 +229,41 @@ def main() -> int:
         mf1.xc = xc
         mf1.conv_tol = args.conv_tol
         mf1.disp = "d3bj"
+        e1 = float(mf1.kernel())
+        out["e_tot_no_disp_ha"] = e0
+        out["e_tot_with_disp_ha"] = e1
+        out["e_tot_ha"] = e1
+        out["converged"] = bool(mf1.converged)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0
+
+    if m == "d4":
+        # Geometry-only DFT-D4. Requires pyscf-dispersion (libdftd4).
+        try:
+            from pyscf.dispersion import dftd4 as dftd4_mod
+        except ImportError as e:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"pyscf-dispersion missing (need dftd4): {e}",
+                    }
+                )
+            )
+            return 2
+        xc = args.xc if args.xc else "pbe"
+        out["xc"] = xc
+        model = dftd4_mod.DFTD4Dispersion(mol, xc=xc, version="d4", atm=True)
+        ed = _as_float(model.get_dispersion())
+        out["e_disp_ha"] = ed
+        mf0 = dft.RKS(mol)
+        mf0.xc = xc
+        mf0.conv_tol = args.conv_tol
+        e0 = float(mf0.kernel())
+        mf1 = dft.RKS(mol)
+        mf1.xc = xc
+        mf1.conv_tol = args.conv_tol
+        mf1.disp = "d4"
         e1 = float(mf1.kernel())
         out["e_tot_no_disp_ha"] = e0
         out["e_tot_with_disp_ha"] = e1
