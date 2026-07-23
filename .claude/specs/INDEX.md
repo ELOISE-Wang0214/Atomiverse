@@ -42,3 +42,4 @@ Do not re-create closed slugs without superseding intent.
 | [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
 | [gpw-bomd-water](gpw-bomd-water/) | `wf/gpw-bomd-water` | open — GPW BOMD water NVE energy-drift pin |
 | [pw-analytic-stress-si](pw-analytic-stress-si/) | `wf/pw-analytic-stress-si` | open — PW Nielsen–Martin analytic stress (Si NC-UPF) |
+| [fd-phonon-supercell](fd-phonon-supercell/) | `wf/fd-phonon-supercell` | open — FD supercell phonons (Γ) |
