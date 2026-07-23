@@ -35,3 +35,13 @@
   \(R=40\): \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=0)=4.620945546104\times 10^{-3}\,e\),
   \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=2\,\mathrm{Å})=3.934601758679\times 10^{-3}\,e\)
 - **perf_exempt:** no MetalWalls twin binary
+## dipole-electrode-joint (2026-07-24)
+
+- **Oracle:** MetalWalls multipole + Gaussian electrode BO form (JCP 2022 / JOSS 2020)
+- **Why not LAMMPS:** no SCF PIM ⊕ const-pot joint twin (ELECTRODE non-polarizable; Drude ≠ PIM)
+- **Binary:** no `mw` on agent host → offline algebraic pin
+- **Script:** `tools/metalwalls_oracle/inputs/metalwalls/dipole-electrode-joint/pin_joint.py`
+- **Command:** `python3 .../pin_joint.py`
+- **Pin (joint α>0):** Q_top = +7.3285008958883610e-02 e; μ_cat,z = 5.8951916148990660e-02 e·Å; μ_an,z = 8.7432701391015569e-02 e·Å
+- **Pin (α=0):** Q_top = +7.5339627935767609e-02 e (matches ConstPotBO)
+- **perf_exempt:** no MetalWalls twin binary
