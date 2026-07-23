@@ -252,6 +252,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
             src/cpu/multiscale/qmmm_electrostatic.cpp
+            src/cpu/multiscale/qmmm_polarizable.cpp
         )
     endif()
 
