@@ -5,8 +5,11 @@ Dense, sectioned, validation-first. **Not** the narrative Theory→Practice chap
 in `docs/tutorial/ch*.md`. A house narrative style will be applied in a later
 rewrite pass.
 
-Produced/updated by workflow `pyscf-method-loop` **Tutorial** phase after each
-successful merge wave (arg `write_tutorials`, default true).
+Produced/updated by workflow **Tutorial** phases after each successful merge
+wave:
+
+- `pyscf-method-loop` — molecular post-HF / response (arg `write_tutorials`)
+- `cp2k-method-loop` — GPW / PW / periodic DFT vs offline CP2K pins
 
 ## Required sections
 
@@ -15,8 +18,8 @@ successful merge wave (arg `write_tutorials`, default true).
 | Summary | What / when / API / regression path |
 | Method | Equations, assumptions, exclusions |
 | Implementation | Minimal public C++; how to run `reg_<slug>` |
-| Validation (vs PySCF) | Hard-coded pins from `REFERENCE.md` |
-| Performance | Fair wall \(T_{\mathrm{ATV}}/T_{\mathrm{PySCF}}\) |
+| Validation | Hard-coded pins from `REFERENCE.md` (PySCF or CP2K) |
+| Performance | Fair wall \(T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) (or `perf_exempt`) |
 | Limitations | Scope + known debt |
 | References | Paths + literature |
 
@@ -32,11 +35,35 @@ docs/tutorial/methods/<slug>.md
 
 ## Data sources (do not invent)
 
+**PySCF campaign (molecular):**
+
 - Accuracy: `regressions/scf/<slug>/REFERENCE.md`
 - Speed: `docs/developer/pyscf-method-perf.md` or `tools/pyscf_oracle/fair_bench.py`
 - Oracle rules: `docs/tutorial/appendix-pyscf-oracle.md` (PySCF never in ctest)
 
-## Index (campaign methods)
+**CP2K capability (GPW / PW / periodic):**
+
+- Accuracy: `regressions/{gpw,pw}/<slug>/REFERENCE.md`
+- Speed / ratios: `docs/developer/cp2k-method-handoff.md` (fair wall or `perf_exempt`)
+- Oracle: `tools/cp2k_oracle/README.md` (offline pins only; CP2K never in ctest)
+- Queue / design: `docs/developer/cp2k-method-queue.md`, `cp2k-method-loop.md`
+
+## Index — CP2K capability wave 1 (2026-07-23)
+
+| Method | Page | Regression |
+| ------ | ---- | ---------- |
+| GPW Γ-RKS H₂O PBE (MT) | [gpw-water-pbe-mt](gpw-water-pbe-mt.md) | `regressions/gpw/gpw-water-pbe-mt` |
+| GPW analytic forces H₂O | [gpw-forces-water](gpw-forces-water.md) | `regressions/gpw/gpw-forces-water` |
+| Γ-UKS GPW O₂ | [gpw-uks-o2-gamma](gpw-uks-o2-gamma.md) | `regressions/gpw/gpw-uks-o2-gamma` |
+| GPW PBE-D3(BJ) ice dimer | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice.md) | `regressions/gpw/gpw-pbe-d3bj-ice` |
+| PW LDA Si (k-mesh) | [pw-lda-si](pw-lda-si.md) | `regressions/pw/pw-lda-si` |
+| PW true PBE GGA Si | [pw-pbe-gga-si](pw-pbe-gga-si.md) | `regressions/pw/pw-pbe-gga-si` |
+| Metallic Fermi–Dirac Al | [pw-smearing-al](pw-smearing-al.md) | `regressions/pw/pw-smearing-al` |
+| PW collinear spin O₂ | [pw-spin-polarized-o2](pw-spin-polarized-o2.md) | `regressions/pw/pw-spin-polarized-o2` |
+| PW BOMD H (NVE foothold) | [pw-bomd-h](pw-bomd-h.md) | `regressions/pw/pw-bomd-h` |
+| OT SCF water (GPW PBE) | [ot-minimizer-water](ot-minimizer-water.md) | `regressions/gpw/ot-minimizer-water` |
+
+## Index — PySCF campaign methods
 
 | Method | Page | Regression |
 | ------ | ---- | ---------- |

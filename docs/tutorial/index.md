@@ -97,6 +97,27 @@ Suggested paths:
 Campaign handbook pages (technical-report style, one per regression slug).
 Full index and template: [methods/README](methods/README.md).
 
+### CP2K capability wave 1 (GPW / PW / periodic)
+
+Offline CP2K pins only — see [cp2k-method-handoff](../developer/cp2k-method-handoff.md)
+and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
+[Ch. 9 GPW](ch09-gpw.md).
+
+| Method | Page | Regression |
+|--------|------|------------|
+| GPW Γ-RKS H₂O PBE (MT) | [gpw-water-pbe-mt](methods/gpw-water-pbe-mt.md) | `regressions/gpw/gpw-water-pbe-mt` |
+| GPW analytic forces H₂O | [gpw-forces-water](methods/gpw-forces-water.md) | `regressions/gpw/gpw-forces-water` |
+| Γ-UKS GPW O₂ | [gpw-uks-o2-gamma](methods/gpw-uks-o2-gamma.md) | `regressions/gpw/gpw-uks-o2-gamma` |
+| GPW PBE-D3(BJ) ice dimer | [gpw-pbe-d3bj-ice](methods/gpw-pbe-d3bj-ice.md) | `regressions/gpw/gpw-pbe-d3bj-ice` |
+| PW LDA Si (k-mesh) | [pw-lda-si](methods/pw-lda-si.md) | `regressions/pw/pw-lda-si` |
+| PW true PBE GGA Si | [pw-pbe-gga-si](methods/pw-pbe-gga-si.md) | `regressions/pw/pw-pbe-gga-si` |
+| Metallic Fermi–Dirac Al | [pw-smearing-al](methods/pw-smearing-al.md) | `regressions/pw/pw-smearing-al` |
+| PW collinear spin O₂ | [pw-spin-polarized-o2](methods/pw-spin-polarized-o2.md) | `regressions/pw/pw-spin-polarized-o2` |
+| PW BOMD H (NVE foothold) | [pw-bomd-h](methods/pw-bomd-h.md) | `regressions/pw/pw-bomd-h` |
+| OT SCF water (GPW PBE) | [ot-minimizer-water](methods/ot-minimizer-water.md) | `regressions/gpw/ot-minimizer-water` |
+
+### PySCF campaign (molecular post-HF / response)
+
 | Method | Page | Regression |
 |--------|------|------------|
 | UMP2 | [ump2-o2-sto3g](methods/ump2-o2-sto3g.md) | `regressions/scf/ump2-o2-sto3g` |
