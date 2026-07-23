@@ -18,6 +18,8 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
 `analytic=false`. **CIS(D)** second-order doubles correction on RHF TDA ships
 (`RHF::cisd`; `reg_cisd-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
+**Strict ADC(2)** electronic excitation energies on RHF ship
+(`RHF::adc2`; `reg_adc2-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -60,7 +62,7 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | Method                | CPU | CUDA | Kokkos |
 | --------------------- | :-: | :--: | :---: |
 | ADC(1)                |  ○  |   ○  |   ○  |
-| ADC(2)                |  ○  |   ○  |   ○  |
+| ADC(2)                |  ✓  |   ○  |   ○  |
 | ADC(2)-x              |  ○  |   ○  |   ○  |
 | ADC(3)                |  ○  |   ○  |   ○  |
 | CVS-ADC(2)            |  ○  |   ○  |   ○  |

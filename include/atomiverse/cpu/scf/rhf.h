@@ -8,6 +8,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
@@ -169,6 +170,24 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when n_states is outside
     ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
     CISDResult cisd(int n_states = 1) const;
+
+    /// @brief Strict ADC(2) electronic excitation energies of the most recent
+    ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982); Trofimov &
+    ///        Schirmer, J. Phys. B **28**, 2299 (1995). Closed-shell singlet
+    ///        manifold; matches PySCF `adc.ADC` with `method='adc(2)'` and
+    ///        `method_type='ee'`. Builds the second-order singles intermediate
+    ///        M_ss, first-order singles–doubles coupling, and zeroth-order
+    ///        doubles diagonal; solves the non-symmetric ADC eigenvalue
+    ///        problem with a matvec Davidson iteration (no ADC(2)-x or
+    ///        ADC(3) terms).
+    /// @param n_states Number of lowest ADC(2) roots (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @return Excitation energies [eV] and the MP2 correlation energy
+    ///         [Hartree] of the RHF reference.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when n_states is outside
+    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
+    ADC2Result adc2(int n_states = 1) const;
 
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib

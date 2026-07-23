@@ -17,6 +17,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
+  python tools/pyscf_oracle/pin_scf.py adc2 --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
@@ -117,6 +118,7 @@ def main() -> int:
             "tda",
             "tdhf",
             "cisd",
+            "adc2",
             "rks-tda",
             "rks-tddft",
             "uks-tda",
@@ -537,6 +539,21 @@ def main() -> int:
         out["excitation_cisd_ev"] = [r["cisd_ev"] for r in roots]
         if hasattr(td, "converged"):
             out["td_converged"] = [bool(c) for c in td.converged]
+    elif m == "adc2":
+        # Strict ADC(2) electronic excitation energies (singlet, EE).
+        # Schirmer PRA 26, 2395 (1982); Trofimov & Schirmer JPB 28, 2299 (1995).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ee"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["excitation_ha"] = [float(x) for x in e_adc]
+        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["s1_ha"] = float(e_adc[0])
+        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
 
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0 if out.get("converged", True) else 1
