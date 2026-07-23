@@ -5,6 +5,8 @@
 /// today; `select_owned_tuples` is a shim returning `0..n_bonds-1`
 /// until DD lands.
 #pragma once
+
+#include "atomiverse/cuda/component/potential.cuh"
 #include "atomiverse/core/role.h"
 
 #include <cstdint>
@@ -16,7 +18,7 @@
 namespace ATV {
 namespace cuda {
 
-class Bond : public Component {
+class Bond : public cuda::Potential {
   public:
     Role role() const override { return 0; }
     ~Bond() override = default;

@@ -11,6 +11,7 @@
 /// helpers from `cpu/pw/internal/pw_subspace.h` for numerical parity.
 #pragma once
 
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
 #include "atomiverse/cpu/planewave/internal/pw_workspace.h"
 #include <complex>
@@ -49,34 +50,34 @@ class DeviceBandSolver {
     DeviceBandSolver& operator=(const DeviceBandSolver&) = delete;
 
     /// @brief Upload V_eff(r) (size nr) for the current SCF iteration.
-    void set_veff(const Real* v_eff_r);
+    void set_veff(const AccReal* v_eff_r);
 
     /// @brief Bind the k-point currently selected in `ws` (gvec/n_g/T_G):
     /// uploads T(G), G-vectors, the G→FFT-grid index map and rebuilds the
     /// KB projector matrix β (ng × n_proj_columns) on device.
-    void set_kpoint(const cpu::pw::PWWorkspace& ws);
+    void set_kpoint(const cpu::pw::internal::PWWorkspace& ws);
 
     /// @brief Block-Davidson diagonalization for the bound k-point,
     /// algorithmically identical to `cpu::pw::PW_Davidson::launch`.
     /// Writes ws.eigenvalues; band wavefunctions stay device-resident.
-    void solve(cpu::pw::PWWorkspace& ws, Real tol, int max_iter);
+    void solve(cpu::pw::internal::PWWorkspace& ws, AccReal tol, int max_iter);
 
     /// @brief Reset the device real-space density accumulator.
     void zero_density();
 
     /// @brief rho_r += weight·2·|ψ_b(r)|²/Ω over the bands of the most
     /// recent solve() (occupations = 2, as on CPU).
-    void accumulate_density(Real weight, Real omega);
+    void accumulate_density(AccReal weight, AccReal omega);
 
     /// @brief Forward-FFT the accumulated density and gather ρ(G) on the
     /// Γ-centred sphere `gv0` (host output, gv0.count() entries).
     void fetch_density_g(const cpu::pw::internal::GVectorList& gv0,
-                         std::complex<Real>* rho_g);
+                         std::complex<AccReal>* rho_g);
 
     /// @brief Test hook: H·ψ for one host vector on the bound k-point
     /// (H2D → apply_h → D2H). Used by the band-parity diagnostics to
     /// compute residual norms of candidate eigenpairs.
-    void apply_h_host(const std::complex<Real>* psi, std::complex<Real>* hpsi);
+    void apply_h_host(const std::complex<AccReal>* psi, std::complex<AccReal>* hpsi);
 
   private:
     /// H·ψ for one device vector (cuFFT + V_eff + KB projectors).

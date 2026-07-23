@@ -28,11 +28,28 @@ units constants) — orthogonal to backend-mirror, surfaced by its GPU validatio
 Revive it purely by mirroring the current CPU Frame/precision/units API; **CPU
 untouched (stays 236/236)**; GPU-node build+ctest is the acceptance.
 
-- [cuda-resurrect](cuda-resurrect.md) — single spec, staged tasks (precision/units → frame boundary → domains → GPU-green) [approved, ungrilled]
+- [cuda-resurrect](cuda-resurrect.md) — single spec, staged tasks (precision/units → frame boundary → domains → GPU-green) [done]
 
-Start: `/mol:grilling cuda-resurrect` (optional) then `/mol:impl cuda-resurrect`
-in a fresh session with GPU-node access (each build cycle is a ~6-15 min sbatch).
-See memory `cuda-backend-rotted-on-dev` + `cuda-gpu-node-build-recipe`.
+**COMPLETE 2026-07-23** — the CUDA backend configures, **builds and links** on
+GH200 (`BUILD EXIT 0`) and passes **276/278** ctest; login-node CPU suite
+**217/217 green** (zero CPU code touched). 14 GPU build rounds. Beyond the
+Frame/precision/units mirror the operator also approved finishing the
+**kind-base validation port** (6 CUDA kind tags + 15 components reparented + the
+3 presets switched from name-substring to `dynamic_cast`, matching CPU's
+contract and throw messages) — that retired the "CUDA kind bases pending" debt
+and took ctest from 8 failures to 0 validation failures.
+Gate: `tests/architecture/cuda_no_stale_api_scrub.sh` (ctest #212, login-node
+runnable) locks the stale host-Frame / `Real` / units API out.
+
+Two residual failures are **pre-existing and orthogonal** (documented, split out):
+
+- [cuda-pme-accuracy](cuda-pme-accuracy.md) — CUDA PME reciprocal energy 3% off the
+  NaCl Madelung reference (CPU hits 5e-4 on identical params). Ruled out: unit
+  renames, float precision (fails under `-DATV_CUDA_REAL=double` too), missing
+  terms, the Frame/scalars bridge. Needs on-device numerical bisect. [approved]
+- `test_cpu_scf_ghf` — **CPU** UHF-pin test; PASSES on x86_64, fails only on
+  aarch64 (FP-sensitive GHF/UHF basin). Not CUDA; routed to the SCF owner —
+  see `.claude/notes/notes.md` debt entry.
 
 ---
 

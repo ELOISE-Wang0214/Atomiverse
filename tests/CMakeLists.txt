@@ -653,7 +653,6 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_md_thermostat cuda/dynamics/test_thermostat.cu)
     atv_add_test(test_cuda_md_zero_momentum cuda/dynamics/test_zero_momentum.cu)
     atv_add_test(test_cuda_md_components cuda/dynamics/test_cuda_md_components.cu)
-    atv_add_test(test_cuda_install_infra_capability cuda/dynamics/test_install_infra_capability.cu)
     atv_add_test(test_cuda_neighborlist_skin_gating cuda/dynamics/test_neighborlist_skin_gating.cu)
     atv_add_test(test_cuda_atom_cell_sort cuda/dynamics/test_atom_cell_sort.cu)
     # Pulls in the private primitive header src/cuda/neighbor/atom_cell_sort.cuh
@@ -797,6 +796,15 @@ add_test(
 add_test(
     NAME test_docs_vocab_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/docs_vocab_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# cuda-resurrect gate: the CUDA backend must not reference the deleted host CPU
+# API (catch-all Real / core/real.h, renamed unit constants, stale host
+# cpu::Frame accessor shapes). Pure grep over the cuda trees — runs on the login
+# node without CUDA. Device cuda::Frame .atoms/.box/.scalars pointers stay legal.
+add_test(
+    NAME test_cuda_no_stale_api_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/cuda_no_stale_api_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: domain objects are constructed via class constructors — never

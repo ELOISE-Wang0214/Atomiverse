@@ -33,18 +33,18 @@ cpu::Frame make_thermal_box(int n_side) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (ix + 0.5) * 4.0;
-                frame.atoms.y[idx] = (iy + 0.5) * 4.0;
-                frame.atoms.z[idx] = (iz + 0.5) * 4.0;
-                frame.atoms.vx[idx] = 0.0;
-                frame.atoms.vy[idx] = 0.0;
-                frame.atoms.vz[idx] = 0.0;
-                frame.atoms.mass[idx] = 16.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.tag[idx] = idx;
+                frame.span(kAtom_x)[idx] = (ix + 0.5) * 4.0;
+                frame.span(kAtom_y)[idx] = (iy + 0.5) * 4.0;
+                frame.span(kAtom_z)[idx] = (iz + 0.5) * 4.0;
+                frame.span(kAtom_vx)[idx] = 0.0;
+                frame.span(kAtom_vy)[idx] = 0.0;
+                frame.span(kAtom_vz)[idx] = 0.0;
+                frame.span(kAtom_mass)[idx] = 16.0;
+                frame.span(kAtom_type)[idx] = 0;
+                frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.box = Mat3::cubic(double(n_side) * 4.0);
+    frame.simbox = cpu::Box::cubic(double(n_side) * 4.0);
     return frame;
 }
 
@@ -52,11 +52,8 @@ cpu::Frame make_thermal_box(int n_side) {
 
 TEST(CudaFixLangevin, ContractRoleCapabilityBindings) {
     cuda::md::FixLangevin lang{300.0, -1.0, 100.0, 0.001, 42u};
-    EXPECT_EQ(lang.role(), ComponentRole::Thermostat);
+    EXPECT_EQ(lang.role(), 0);
     EXPECT_EQ(lang.name(), "fix_langevin");
-    // Capability::Force advertised so a pure-Langevin driver satisfies
-    // cuda::md::MD's "≥1 Force-capable component" gate.
-    EXPECT_TRUE(has_capability(lang.capabilities(), Capability::Force));
     auto bindings = lang.default_bindings();
     ASSERT_EQ(bindings.size(), 1u);
     EXPECT_EQ(bindings[0].phase,
@@ -78,7 +75,7 @@ TEST(CudaFixLangevin, TemperatureRampHonouredAtMidpoint) {
     lang.set_run_span(0, 100);
     cuda::md::MD sim;
     sim.add(cuda::md::NVELimit{1.0, 0.05}); // Integrator + Force-cap
-    sim.add(lang);
+    sim.add_ref(lang);
     sim.build();
     sim.run(frame,
             50); // step 0..49 ⇒ T_live at step 49 = 200 + 49/100·300 ≈ 347
@@ -91,9 +88,11 @@ TEST(CudaFixLangevin, TemperatureRampHonouredAtMidpoint) {
     // Note: we can't read lang.T_target() back from the lvalue here (the
     // driver took it by value via add()). Skip the strict midpoint
     // assertion and just verify no NaN forces appeared.
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.atoms.fx[i])));
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.atoms.vx[i])));
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_fx)[i])));
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_vx)[i])));
     }
 }
 
@@ -108,8 +107,9 @@ TEST(CudaFixLangevin, PureLangevinDriverBuildsAndRuns) {
     sim.add(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 10));
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.atoms.vx[i])));
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_vx)[i])));
     }
 }
 
@@ -128,12 +128,12 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
     sim.add(cuda::md::FixLangevin{T_target, -1.0, damp, dt, 42u});
     sim.build();
     sim.run(frame, 1);
-    const int n = frame.atoms.size();
+    const int n = frame.nlocal();
     double v2_sum = 0.0;
     for (int i = 0; i < n; ++i) {
-        double vx = frame.atoms.vx[i];
-        double vy = frame.atoms.vy[i];
-        double vz = frame.atoms.vz[i];
+        double vx = frame.span(kAtom_vx)[i];
+        double vy = frame.span(kAtom_vy)[i];
+        double vz = frame.span(kAtom_vz)[i];
         v2_sum += vx * vx + vy * vy + vz * vz;
     }
     double v2_mean = v2_sum / (3 * n);
@@ -143,8 +143,8 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
     //   = 0.25 · dt² · (2 m kBT / (damp dt mvv2e)) / ftm2v² · ftm2v² / m²
     //   = 0.5 · dt · kBT / (m · damp · mvv2e)
     double m_atom = 16.0;
-    double expected =
-        0.5 * dt * kBoltzmann * T_target / (m_atom * damp * kMvv2e);
+    double expected = 0.5 * dt * ATV::units::kB_ev_per_k * T_target
+                      / (m_atom * damp * ATV::units::mass_v2_to_energy);
     std::fprintf(stderr,
                  "[box-muller] ⟨v²⟩_mean=%.3e expected=%.3e ratio=%.3f\n",
                  v2_mean, expected, v2_mean / expected);
@@ -179,36 +179,37 @@ TEST(CudaFixLangevin, ThermalisesToTargetTemperature) {
     // Compute mean kinetic-temperature over the next 3000 steps.
     double T_sum = 0.0;
     int T_count = 0;
-    const int n_atoms = frame.atoms.size();
+    const int n_atoms = frame.nlocal();
     for (int s = 0; s < sample / 100; ++s) {
         sim.run(frame, 100);
         // Compute T from kinetic energy: T = 2*KE / (n_dof * kB),
         // n_dof = 3 * n_atoms - 3.
         double ke = 0.0;
         for (int i = 0; i < n_atoms; ++i) {
-            double vx = frame.atoms.vx[i];
-            double vy = frame.atoms.vy[i];
-            double vz = frame.atoms.vz[i];
-            ke += frame.atoms.mass[i] * (vx * vx + vy * vy + vz * vz);
+            double vx = frame.span(kAtom_vx)[i];
+            double vy = frame.span(kAtom_vy)[i];
+            double vz = frame.span(kAtom_vz)[i];
+            ke += frame.span(kAtom_mass)[i] * (vx * vx + vy * vy + vz * vz);
         }
-        ke *= 0.5 * kMvv2e;
+        ke *= 0.5 * ATV::units::mass_v2_to_energy;
         int ndof = 3 * n_atoms - 3;
-        double T = 2.0 * ke / (ndof * kBoltzmann);
+        double T = 2.0 * ke / (ndof * ATV::units::kB_ev_per_k);
         // Compute COM velocity + KE_COM to separate thermal from drift.
         double vcm_x = 0, vcm_y = 0, vcm_z = 0, mtot = 0;
         for (int i = 0; i < n_atoms; ++i) {
-            vcm_x += frame.atoms.mass[i] * frame.atoms.vx[i];
-            vcm_y += frame.atoms.mass[i] * frame.atoms.vy[i];
-            vcm_z += frame.atoms.mass[i] * frame.atoms.vz[i];
-            mtot += frame.atoms.mass[i];
+            vcm_x += frame.span(kAtom_mass)[i] * frame.span(kAtom_vx)[i];
+            vcm_y += frame.span(kAtom_mass)[i] * frame.span(kAtom_vy)[i];
+            vcm_z += frame.span(kAtom_mass)[i] * frame.span(kAtom_vz)[i];
+            mtot += frame.span(kAtom_mass)[i];
         }
         vcm_x /= mtot;
         vcm_y /= mtot;
         vcm_z /= mtot;
         double KE_COM = 0.5 * mtot
                         * (vcm_x * vcm_x + vcm_y * vcm_y + vcm_z * vcm_z)
-                        * kMvv2e;
-        double T_thermal = 2.0 * (ke - KE_COM) / (ndof * kBoltzmann);
+                        * ATV::units::mass_v2_to_energy;
+        double T_thermal =
+            2.0 * (ke - KE_COM) / (ndof * ATV::units::kB_ev_per_k);
         T_sum += T;
         ++T_count;
         std::fprintf(stderr,

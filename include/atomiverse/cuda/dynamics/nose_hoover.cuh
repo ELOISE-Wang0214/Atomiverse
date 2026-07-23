@@ -6,6 +6,8 @@
 /// CUDA-free header.
 #pragma once
 
+#include "atomiverse/cuda/component/thermostat.cuh"
+
 #include <memory>
 #include <string>
 
@@ -20,7 +22,7 @@ namespace md {
 ///
 /// Composes with VelocityVerlet (runs after it at same phases via order +100).
 /// Maintains thermostat variable ξ on device. Rescales velocities to target temperature.
-class NoseHoover : public Component {
+class NoseHoover : public cuda::Thermostat {
   public:
     /// @brief Construct thermostat.
     /// @param T_target Target temperature [K].

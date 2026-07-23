@@ -5,7 +5,7 @@
 ///   σ_αβ = (1/V) [Σ_i m_i v_iα v_iβ + Σ_{pairs} r_ij_α F_ij_β]
 ///
 /// Producer split:
-///   - Kinetic term `Σ m·vα·vβ · kMvv2e` → `cuda::md::KineticEnergy`
+///   - Kinetic term `Σ m·vα·vβ · ATV::units::mass_v2_to_energy` → `cuda::md::KineticEnergy`
 ///     atomic-adds it into `frame.scalars->stress_kinetic[6]` via the
 ///     packed warp-shuffle reduction it does for KE (one fused kernel
 ///     since cuda-md-review-cleanup-05).

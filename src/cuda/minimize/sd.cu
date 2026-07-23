@@ -1,5 +1,5 @@
 /// @file minimizer/sd.cu
-/// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * kFtm2v.
+/// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * ATV::units::force_to_accel.
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
@@ -21,7 +21,7 @@ namespace {
 /// @brief Steepest descent position update.
 ///
 /// Moves each atom along the force direction:
-///   x[i] += alpha * fx[i] / mass[i] * kFtm2v
+///   x[i] += alpha * fx[i] / mass[i] * ATV::units::force_to_accel
 ///
 /// Same unit conversion as VelocityVerlet. At step 0, forces are zero
 /// (from initialization), so positions remain unchanged.
@@ -39,13 +39,13 @@ __global__ void sd_step(real_t* __restrict__ x, real_t* __restrict__ y,
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     x[i] = static_cast<real_t>(static_cast<work_t>(x[i])
                                + alpha * static_cast<work_t>(fx[i]) * inv_m
-                                     * kFtm2v);
+                                     * ATV::units::force_to_accel);
     y[i] = static_cast<real_t>(static_cast<work_t>(y[i])
                                + alpha * static_cast<work_t>(fy[i]) * inv_m
-                                     * kFtm2v);
+                                     * ATV::units::force_to_accel);
     z[i] = static_cast<real_t>(static_cast<work_t>(z[i])
                                + alpha * static_cast<work_t>(fz[i]) * inv_m
-                                     * kFtm2v);
+                                     * ATV::units::force_to_accel);
     // PBC wrap via cached inv_l on the by-value Box — same form as the
     // MD integrators (cuda-md-review-cleanup-04-box-by-value-pbc).
     work_t Lx = work_t(box.cell[0]), Ly = work_t(box.cell[4]),

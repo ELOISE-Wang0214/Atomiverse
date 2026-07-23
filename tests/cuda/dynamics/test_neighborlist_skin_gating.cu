@@ -42,17 +42,17 @@ cpu::Frame make_frozen_lattice(int n_side, double spacing) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + 0.5) * spacing;
-                frame.atoms.y[idx] = (double(iy) + 0.5) * spacing;
-                frame.atoms.z[idx] = (double(iz) + 0.5) * spacing;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.vx[idx] = 0.0;
-                frame.atoms.vy[idx] = 0.0;
-                frame.atoms.vz[idx] = 0.0;
+                frame.span(kAtom_x)[idx] = (double(ix) + 0.5) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + 0.5) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + 0.5) * spacing;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
+                frame.span(kAtom_vx)[idx] = 0.0;
+                frame.span(kAtom_vy)[idx] = 0.0;
+                frame.span(kAtom_vz)[idx] = 0.0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -156,7 +156,7 @@ TEST(NeighborListSkinGating, RebuildsWhenDisplacementExceedsHalfSkin) {
     // Perturb one atom by 0.5 (> half_skin=0.45) on the device side.
     // The simplest way: re-materialize the frame after editing the
     // host copy.
-    frame.atoms.x[0] += 0.5;
+    frame.span(kAtom_x)[0] += 0.5;
     backend.materialize(frame);
 
     // Two more launches: the first arrives with the lagged flag from

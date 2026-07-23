@@ -20,11 +20,11 @@ int main(int argc, char** argv) {
     const char* upf = (argc > 1) ? argv[1] : "";
     double ecut = (argc > 2) ? atof(argv[2]) : 12.0;
     cpu::Frame f(2);
-    f.atoms.type[0] = f.atoms.type[1] = 14;
-    f.atoms.mass[0] = f.atoms.mass[1] = 28.0855;
-    f.atoms.x[0] = f.atoms.y[0] = f.atoms.z[0] = 0;
+    f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 14;
+    f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 28.0855;
+    f.span(kAtom_x)[0] = f.span(kAtom_y)[0] = f.span(kAtom_z)[0] = 0;
     double a = 5.43, h = a / 2;
-    f.atoms.x[1] = f.atoms.y[1] = f.atoms.z[1] = a / 4;
+    f.span(kAtom_x)[1] = f.span(kAtom_y)[1] = f.span(kAtom_z)[1] = a / 4;
     Mat3 cell;
     cell(0, 0) = 0;
     cell(0, 1) = h;
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.box = cell;
+    f.simbox.set_cell(cell);
 
     internal::PWProblem prob;
     internal::setup_pw_problem(f, upf, ecut, 2, prob);
@@ -72,13 +72,13 @@ int main(int argc, char** argv) {
         d.prepare(ws);
         d.step(ws);
         std::printf("k%zu CPU :", ik);
-        std::vector<Real> e_cpu(nb);
+        std::vector<AccReal> e_cpu(nb);
         for (int b = 0; b < nb; ++b) {
             e_cpu[b] = ws.eigenvalues[b];
             std::printf(" %.6f", e_cpu[b]);
         }
         std::printf("\n");
-        std::vector<std::complex<Real>> wfc_cpu_b0(ws.n_g);
+        std::vector<std::complex<AccReal>> wfc_cpu_b0(ws.n_g);
         for (int ig = 0; ig < ws.n_g; ++ig)
             wfc_cpu_b0[ig] = ws.wfc(0, ig);
 
@@ -87,10 +87,10 @@ int main(int argc, char** argv) {
                                                     ws.fft_nz, nb);
             s2.set_veff(ws.V_eff_r.data());
             s2.set_kpoint(ws);
-            s2.solve(ws, Real(1e-9), 40);
+            s2.solve(ws, AccReal(1e-9), 40);
         } else {
             solver.set_kpoint(ws);
-            solver.solve(ws, Real(1e-9), 40);
+            solver.solve(ws, AccReal(1e-9), 40);
         }
         std::printf("k%zu CUDA:", ik);
         for (int b = 0; b < nb; ++b) {
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
         // round-by-round trace).
         {
             int ngk = ws.n_g;
-            std::vector<std::complex<Real>> psi(ngk), hpsi(ngk);
+            std::vector<std::complex<AccReal>> psi(ngk), hpsi(ngk);
             for (int ig = 0; ig < ngk; ++ig)
                 psi[ig] = wfc_cpu_b0[ig];
             cuda::pw::internal::DeviceBandSolver s3(ws.fft_nx, ws.fft_ny,
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
             s3.apply_h_host(psi.data(), hpsi.data());
             double r2 = 0, n2 = 0;
             for (int ig = 0; ig < ngk; ++ig) {
-                auto r = hpsi[ig] - std::complex<Real>(e_cpu[0]) * psi[ig];
+                auto r = hpsi[ig] - std::complex<AccReal>(e_cpu[0]) * psi[ig];
                 r2 += std::norm(r);
                 n2 += std::norm(psi[ig]);
             }

@@ -46,6 +46,8 @@
 /// @see cpu::minimizer::CG for the CPU mirror
 #pragma once
 
+#include "atomiverse/cuda/component/optimizer.cuh"
+
 #include <string>
 #include <vector>
 
@@ -66,7 +68,7 @@ namespace minimizer {
 /// build, which reproduces the CPU step-0 behaviour exactly: forces are
 /// zero at step 0, `g_prev · g_prev = 0` forces β = 0, and the first
 /// moving step is plain steepest descent.
-class CG : public Component {
+class CG : public cuda::Optimizer {
   public:
     /// @brief Construct CG optimizer.
     /// @param alpha0    Step size [Angstrom^2/eV] (default 0.01).

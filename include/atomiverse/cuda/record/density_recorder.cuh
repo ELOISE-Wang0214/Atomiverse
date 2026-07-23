@@ -1,8 +1,7 @@
 /// @file cuda/recorder/density_recorder.cuh
 /// @brief DensityRecorder -- header-only electron density grid recorder (async D2H bridge).
 ///
-/// @see cpu::eval_density_grid (cpu/observer/density.h)
-/// @see cpu::zarr_append_density (cpu/recorder/zarr.h)
+/// @see cpu::eval_density_grid (cpu/observe/density.h)
 #pragma once
 
 #include <string>
@@ -14,10 +13,6 @@
 #include "atomiverse/cpu/observe/density.h"
 #include "atomiverse/cuda/asynchronous/async_bridge.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-
-#ifdef ATV_HAS_ZARR
-#include "atomiverse/cpu/record/zarr.h"
-#endif
 
 #ifdef ATV_HAS_HF
 
@@ -131,9 +126,13 @@ class DensityRecorder : public AsyncBridge {
                                            n_basis_, nx_, ny_, nz_, padding_);
         if (grid.empty())
             return;
-#ifdef ATV_HAS_ZARR
-        cpu::zarr_append_density(store_path_, grid, ctx.step);
-#endif
+        // NOTE (cuda-resurrect): the zarr density store was removed CPU-side
+        // (cpu/record/zarr.h + cpu::zarr_append_density deleted). The async
+        // density pipeline (grid eval + ring buffering) is preserved; the sink
+        // is disconnected until a cube-writer equivalent is wired in. Reviving
+        // the file sink is a follow-up, not part of the API-mirror scope.
+        (void)ctx;
+        (void)grid;
     }
 
     void on_destroy(const DestroyContext&) override {

@@ -39,33 +39,33 @@ cpu::Frame make_lj_system(int n_side, double density) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + 0.5) * spacing;
-                frame.atoms.y[idx] = (double(iy) + 0.5) * spacing;
-                frame.atoms.z[idx] = (double(iz) + 0.5) * spacing;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_x)[idx] = (double(ix) + 0.5) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + 0.5) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + 0.5) * spacing;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = cpu::Box::cubic(box_len);
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
-        frame.atoms.vy[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
-        frame.atoms.vz[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vx)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vy)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vz)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
     }
     double mvx = 0, mvy = 0, mvz = 0;
     for (int i = 0; i < n; ++i) {
-        mvx += frame.atoms.vx[i];
-        mvy += frame.atoms.vy[i];
-        mvz += frame.atoms.vz[i];
+        mvx += frame.span(kAtom_vx)[i];
+        mvy += frame.span(kAtom_vy)[i];
+        mvz += frame.span(kAtom_vz)[i];
     }
     mvx /= n;
     mvy /= n;
     mvz /= n;
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] -= mvx;
-        frame.atoms.vy[i] -= mvy;
-        frame.atoms.vz[i] -= mvz;
+        frame.span(kAtom_vx)[i] -= mvx;
+        frame.span(kAtom_vy)[i] -= mvy;
+        frame.span(kAtom_vz)[i] -= mvz;
     }
     return frame;
 }
@@ -215,7 +215,7 @@ TEST(CudaMdCategoricalApi, SmokeAllSetters) {
     sim.build();
     sim.run(frame, 10);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
-    EXPECT_GT(frame.scalars.kinetic, 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kKinetic))));
+    EXPECT_GT(frame.meta.get(kKinetic), 0.0);
 }

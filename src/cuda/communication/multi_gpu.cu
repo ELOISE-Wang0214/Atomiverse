@@ -720,36 +720,58 @@ void MultiGpu::reverse_comm() {
 void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
     destroy_frames();
     const int N = dm_.count();
-    const int ng = global.atoms.size();
+    const int ng = global.nlocal();
     n_global_ = ng;
 
     // Global orthorhombic box edge lengths.
-    const double Lx = global.box(0, 0);
-    const double Ly = global.box(1, 1);
-    const double Lz = global.box(2, 2);
+    const Mat3& gcell = global.simbox.cell();
+    const double Lx = gcell(0, 0);
+    const double Ly = gcell(1, 1);
+    const double Lz = gcell(2, 2);
     box_L_[0] = Lx;
     box_L_[1] = Ly;
     box_L_[2] = Lz;
     dd_ = std::make_unique<DomainDecomposition>(N, Lx, Ly, Lz);
 
+    // Global per-atom columns (host spans; blocks+meta+simbox frame).
+    const auto gx = global.span(kAtom_x);
+    const auto gy = global.span(kAtom_y);
+    const auto gz = global.span(kAtom_z);
+    const auto gvx = global.span(kAtom_vx);
+    const auto gvy = global.span(kAtom_vy);
+    const auto gvz = global.span(kAtom_vz);
+    const auto gmass = global.span(kAtom_mass);
+    const auto gcharge = global.span(kAtom_charge);
+    const auto gtype = global.span(kAtom_type);
+    const auto gtag = global.span(kAtom_tag);
+
     // Bucket global atom indices by owner slab.
     std::vector<std::vector<int>> buckets(N);
     for (int i = 0; i < ng; ++i) {
-        int owner = dd_->owner_of(global.atoms.x[i], global.atoms.y[i],
-                                  global.atoms.z[i]);
+        int owner = dd_->owner_of(gx[i], gy[i], gz[i]);
         buckets[owner].push_back(i);
     }
 
     // Detect bonded topology once: only then do we carry per-atom bonded SoA to
     // each subdomain (so a pure-LJ system keeps the device SoA null — the
-    // single-GPU/LJ path is byte-unchanged).
+    // single-GPU/LJ path is byte-unchanged). A frame with no bonded storage has
+    // no topology columns at all.
     bool has_bonded = false;
-    for (int i = 0; i < ng; ++i)
-        if (global.atoms.num_bond[i] || global.atoms.num_angle[i]
-            || global.atoms.num_dihedral[i]) {
-            has_bonded = true;
-            break;
-        }
+    int MB = 0, MA = 0, MD = 0, MS = 0;
+    if (global.has_bonded()) {
+        MB = static_cast<int>(global.meta.get(kBondPerAtom));
+        MA = static_cast<int>(global.meta.get(kAnglePerAtom));
+        MD = static_cast<int>(global.meta.get(kDihedralPerAtom));
+        MS = static_cast<int>(global.meta.get(kMaxSpecial));
+        const auto gnb = global.span(kAtom_num_bond);
+        const auto gna = global.span(kAtom_num_angle);
+        const auto gnd = global.span(kAtom_num_dihedral);
+        for (int i = 0; i < ng; ++i)
+            if (gnb[i] || gna[i] || gnd[i]) {
+                has_bonded = true;
+                break;
+            }
+    }
 
     frames_.resize(N);
     n_local_.assign(N, 0);
@@ -762,61 +784,93 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         // GLOBAL cell — positions are global coordinates and PBC is global, so
         // each subdomain's neighbor list min-images against the full box.
         cpu::Frame sub(cnt > 0 ? cnt : 1);
-        sub.atoms.nlocal = cnt;
-        sub.box = global.box;
+        sub.set_nlocal(cnt);
+        sub.simbox = global.simbox;
         // The partition writes the wide bonded arrays directly (not via
         // add_bond), so explicitly size them on the fresh sub frame to the
         // global frame's runtime strides — otherwise the lazy
         // atom_style-molecular storage stays empty (all strides 0) and the
         // per-atom writes below run out of bounds.
         if (has_bonded)
-            sub.atoms.reserve_topology(
-                global.atoms.bond_per_atom, global.atoms.angle_per_atom,
-                global.atoms.dihedral_per_atom, global.atoms.maxspecial);
+            sub.reserve_topology(MB, MA, MD, MS);
+
+        auto sx = sub.span(kAtom_x);
+        auto sy = sub.span(kAtom_y);
+        auto sz = sub.span(kAtom_z);
+        auto svx = sub.span(kAtom_vx);
+        auto svy = sub.span(kAtom_vy);
+        auto svz = sub.span(kAtom_vz);
+        auto smass = sub.span(kAtom_mass);
+        auto scharge = sub.span(kAtom_charge);
+        auto stype = sub.span(kAtom_type);
+        auto stag = sub.span(kAtom_tag);
         for (int k = 0; k < cnt; ++k) {
             const int g = idx[k];
-            sub.atoms.x[k] = global.atoms.x[g];
-            sub.atoms.y[k] = global.atoms.y[g];
-            sub.atoms.z[k] = global.atoms.z[g];
-            sub.atoms.vx[k] = global.atoms.vx[g];
-            sub.atoms.vy[k] = global.atoms.vy[g];
-            sub.atoms.vz[k] = global.atoms.vz[g];
-            sub.atoms.mass[k] = global.atoms.mass[g];
-            sub.atoms.charge[k] = global.atoms.charge[g];
-            sub.atoms.type[k] = global.atoms.type[g];
-            sub.atoms.tag[k] = global.atoms.tag[g];
+            sx[k] = gx[g];
+            sy[k] = gy[g];
+            sz[k] = gz[g];
+            svx[k] = gvx[g];
+            svy[k] = gvy[g];
+            svz[k] = gvz[g];
+            smass[k] = gmass[g];
+            scharge[k] = gcharge[g];
+            stype[k] = gtype[g];
+            stag[k] = gtag[g];
+        }
 
-            // Owner-filtered per-atom bonded topology, partners as GLOBAL TAGS
-            // (resolved to local rows each reneighbor via the tag→local map).
-            if (has_bonded) {
-                sub.atoms.num_bond[k] = global.atoms.num_bond[g];
-                for (int m = 0; m < global.atoms.bond_per_atom; ++m) {
-                    sub.atoms.bond_atom(k, m) = global.atoms.bond_atom(g, m);
-                    sub.atoms.bond_type(k, m) = global.atoms.bond_type(g, m);
+        // Owner-filtered per-atom bonded topology, partners as GLOBAL TAGS
+        // (resolved to local rows each reneighbor via the tag→local map).
+        if (has_bonded) {
+            const auto gnum_bond = global.span(kAtom_num_bond);
+            const auto gbond_atom = global.span(kAtom_bond_atom);
+            const auto gbond_type = global.span(kAtom_bond_type);
+            const auto gnum_angle = global.span(kAtom_num_angle);
+            const auto gangle_atom = global.span(kAtom_angle_atom);
+            const auto gangle_type = global.span(kAtom_angle_type);
+            const auto gnum_dih = global.span(kAtom_num_dihedral);
+            const auto gdih_atom = global.span(kAtom_dihedral_atom);
+            const auto gdih_type = global.span(kAtom_dihedral_type);
+            const auto gnspecial = global.span(kAtom_nspecial);
+            const auto gspecial = global.span(kAtom_special);
+            auto snum_bond = sub.span(kAtom_num_bond);
+            auto sbond_atom = sub.span(kAtom_bond_atom);
+            auto sbond_type = sub.span(kAtom_bond_type);
+            auto snum_angle = sub.span(kAtom_num_angle);
+            auto sangle_atom = sub.span(kAtom_angle_atom);
+            auto sangle_type = sub.span(kAtom_angle_type);
+            auto snum_dih = sub.span(kAtom_num_dihedral);
+            auto sdih_atom = sub.span(kAtom_dihedral_atom);
+            auto sdih_type = sub.span(kAtom_dihedral_type);
+            auto snspecial = sub.span(kAtom_nspecial);
+            auto sspecial = sub.span(kAtom_special);
+            for (int k = 0; k < cnt; ++k) {
+                const int g = idx[k];
+                snum_bond[k] = gnum_bond[g];
+                for (int m = 0; m < MB; ++m) {
+                    sbond_atom[k * MB + m] = gbond_atom[g * MB + m];
+                    sbond_type[k * MB + m] = gbond_type[g * MB + m];
                 }
-                sub.atoms.num_angle[k] = global.atoms.num_angle[g];
-                for (int m = 0; m < global.atoms.angle_per_atom; ++m) {
-                    sub.atoms.angle_atom(k, 2 * m) =
-                        global.atoms.angle_atom(g, 2 * m);
-                    sub.atoms.angle_atom(k, 2 * m + 1) =
-                        global.atoms.angle_atom(g, 2 * m + 1);
-                    sub.atoms.angle_type(k, m) = global.atoms.angle_type(g, m);
+                snum_angle[k] = gnum_angle[g];
+                for (int m = 0; m < MA; ++m) {
+                    sangle_atom[k * 2 * MA + 2 * m] =
+                        gangle_atom[g * 2 * MA + 2 * m];
+                    sangle_atom[k * 2 * MA + 2 * m + 1] =
+                        gangle_atom[g * 2 * MA + 2 * m + 1];
+                    sangle_type[k * MA + m] = gangle_type[g * MA + m];
                 }
-                sub.atoms.num_dihedral[k] = global.atoms.num_dihedral[g];
-                for (int m = 0; m < global.atoms.dihedral_per_atom; ++m) {
-                    sub.atoms.dihedral_atom(k, 3 * m) =
-                        global.atoms.dihedral_atom(g, 3 * m);
-                    sub.atoms.dihedral_atom(k, 3 * m + 1) =
-                        global.atoms.dihedral_atom(g, 3 * m + 1);
-                    sub.atoms.dihedral_atom(k, 3 * m + 2) =
-                        global.atoms.dihedral_atom(g, 3 * m + 2);
-                    sub.atoms.dihedral_type(k, m) =
-                        global.atoms.dihedral_type(g, m);
+                snum_dih[k] = gnum_dih[g];
+                for (int m = 0; m < MD; ++m) {
+                    sdih_atom[k * 3 * MD + 3 * m] = gdih_atom[g * 3 * MD + 3 * m];
+                    sdih_atom[k * 3 * MD + 3 * m + 1] =
+                        gdih_atom[g * 3 * MD + 3 * m + 1];
+                    sdih_atom[k * 3 * MD + 3 * m + 2] =
+                        gdih_atom[g * 3 * MD + 3 * m + 2];
+                    sdih_type[k * MD + m] = gdih_type[g * MD + m];
                 }
                 for (int t = 0; t < 3; ++t)
-                    sub.atoms.nspecial(k, t) = global.atoms.nspecial(g, t);
-                for (int t = 0; t < global.atoms.maxspecial; ++t)
-                    sub.atoms.special(k, t) = global.atoms.special(g, t);
+                    snspecial[k * 3 + t] = gnspecial[g * 3 + t];
+                for (int t = 0; t < MS; ++t)
+                    sspecial[k * MS + t] = gspecial[g * MS + t];
             }
         }
 
@@ -1950,7 +2004,7 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
     // velocity-Verlet diverges within a few steps here: atoms accelerate under
     // the overlap force spikes, the system clumps, and the neighbor count grows
     // without bound until it overflows int32 at ~1M atoms. Match LAMMPS:
-    // displacement-capped integration (kFtm2v units + orthorhombic PBC wrap).
+    // displacement-capped integration (ATV::units::force_to_accel units + orthorhombic PBC wrap).
     constexpr work_t kNveLimitXmax = work_t(0.05); // Å, == `fix nve/limit 0.05`
     if (reneigh_every < 1)
         reneigh_every = 1;
@@ -2616,9 +2670,13 @@ void MultiGpu::migrate() {
 }
 
 void MultiGpu::gather_forces(cpu::Frame& out) const {
-    if (out.atoms.size() < n_global_)
+    if (out.nlocal() < n_global_)
         throw std::runtime_error(
             "MultiGpu::gather_forces: out frame too small");
+    const int nout = out.nlocal();
+    auto ofx = out.span(kAtom_fx);
+    auto ofy = out.span(kAtom_fy);
+    auto ofz = out.span(kAtom_fz);
     for (int s = 0; s < count(); ++s) {
         const int cnt = n_local_[s];
         if (cnt == 0)
@@ -2628,21 +2686,31 @@ void MultiGpu::gather_forces(cpu::Frame& out) const {
         cuda::to_cpu(frames_[s], tmp);
         // Resolve each owned atom's global slot by its persistent TAG (robust
         // after migration, since an atom's owner subdomain changes).
-        const int nout = out.atoms.size();
+        const auto ttag = tmp.span(kAtom_tag);
+        const auto tfx = tmp.span(kAtom_fx);
+        const auto tfy = tmp.span(kAtom_fy);
+        const auto tfz = tmp.span(kAtom_fz);
         for (int k = 0; k < cnt; ++k) {
-            const int g = static_cast<int>(tmp.atoms.tag[k]);
+            const int g = static_cast<int>(ttag[k]);
             if (g < 0 || g >= nout)
                 continue;
-            out.atoms.fx[g] = tmp.atoms.fx[k];
-            out.atoms.fy[g] = tmp.atoms.fy[k];
-            out.atoms.fz[g] = tmp.atoms.fz[k];
+            ofx[g] = tfx[k];
+            ofy[g] = tfy[k];
+            ofz[g] = tfz[k];
         }
     }
 }
 
 void MultiGpu::gather(cpu::Frame& out) const {
-    if (out.atoms.size() < n_global_)
+    if (out.nlocal() < n_global_)
         throw std::runtime_error("MultiGpu::gather: out frame too small");
+    const int nout = out.nlocal();
+    auto ox = out.span(kAtom_x);
+    auto oy = out.span(kAtom_y);
+    auto oz = out.span(kAtom_z);
+    auto ovx = out.span(kAtom_vx);
+    auto ovy = out.span(kAtom_vy);
+    auto ovz = out.span(kAtom_vz);
     for (int s = 0; s < count(); ++s) {
         const int cnt = n_local_[s];
         if (cnt == 0)
@@ -2653,17 +2721,23 @@ void MultiGpu::gather(cpu::Frame& out) const {
         // Scatter owned atoms back to their global slots by persistent TAG
         // (to_cpu round-trips tags D2H); tag resolution survives migration,
         // where an atom's owner subdomain changes.
-        const int nout = out.atoms.size();
+        const auto ttag = tmp.span(kAtom_tag);
+        const auto tx = tmp.span(kAtom_x);
+        const auto ty = tmp.span(kAtom_y);
+        const auto tz = tmp.span(kAtom_z);
+        const auto tvx = tmp.span(kAtom_vx);
+        const auto tvy = tmp.span(kAtom_vy);
+        const auto tvz = tmp.span(kAtom_vz);
         for (int k = 0; k < cnt; ++k) {
-            const int g = static_cast<int>(tmp.atoms.tag[k]);
+            const int g = static_cast<int>(ttag[k]);
             if (g < 0 || g >= nout)
                 continue;
-            out.atoms.x[g] = tmp.atoms.x[k];
-            out.atoms.y[g] = tmp.atoms.y[k];
-            out.atoms.z[g] = tmp.atoms.z[k];
-            out.atoms.vx[g] = tmp.atoms.vx[k];
-            out.atoms.vy[g] = tmp.atoms.vy[k];
-            out.atoms.vz[g] = tmp.atoms.vz[k];
+            ox[g] = tx[k];
+            oy[g] = ty[k];
+            oz[g] = tz[k];
+            ovx[g] = tvx[k];
+            ovy[g] = tvy[k];
+            ovz[g] = tvz[k];
         }
     }
 }

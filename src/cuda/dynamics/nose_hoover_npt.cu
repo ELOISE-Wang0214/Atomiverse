@@ -70,7 +70,7 @@ __global__ void kick_v_k(real_t* __restrict__ vx, real_t* __restrict__ vy,
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
-    work_t dtfm = half_dt * kFtm2v / static_cast<work_t>(mass[i]);
+    work_t dtfm = half_dt * ATV::units::force_to_accel / static_cast<work_t>(mass[i]);
     vx[i] = static_cast<real_t>(static_cast<work_t>(vx[i])
                                 + dtfm * static_cast<work_t>(fx[i]));
     vy[i] = static_cast<real_t>(static_cast<work_t>(vy[i])
@@ -131,7 +131,7 @@ propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
 // Slots [4..6] hold the stress[0..2] mirror; [7] the energy mirror —
 // both filled by `gather_npt_scalars_k` so a single async D2H pulls
 // all NPT scalars in one defer-stream round-trip.
-// Caller multiplies the KE slots by 0.5·kMvv2e to get eV.
+// Caller multiplies the KE slots by 0.5·ATV::units::mass_v2_to_energy to get eV.
 
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void reduce_ke_axes_k(
     const real_t* __restrict__ vx, const real_t* __restrict__ vy,
@@ -220,7 +220,7 @@ NoseHooverNPT::NoseHooverNPT(Config cfg)
 void NoseHooverNPT::build(const BuildContext& ctx) {
     n_atoms_ = ctx.frame.n_atoms();
     n_dof_ = 3 * n_atoms_ - 3;
-    kT_ = kBoltzmann * T_target_;
+    kT_ = ATV::units::kB_ev_per_k * T_target_;
 
     Q_t_.assign(static_cast<std::size_t>(mtchain_), 0.0);
     Q_b_.assign(static_cast<std::size_t>(mpchain_), 0.0);
@@ -377,7 +377,7 @@ void NoseHooverNPT::refresh_npt_scalars_(const LaunchContext& ctx) {
 
 double NoseHooverNPT::compute_global_KE_(const LaunchContext& ctx) {
     refresh_npt_scalars_(ctx);
-    return 0.5 * kMvv2e * h_npt_scratch_[0];
+    return 0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[0];
 }
 
 void NoseHooverNPT::refresh_box_diag_(const LaunchContext& ctx) {
@@ -413,7 +413,7 @@ void NoseHooverNPT::compute_temp_target_(int step) {
             delta = 1.0;
     }
     T_live_ = T_target_ + delta * (T_stop_ - T_target_);
-    kT_ = kBoltzmann * T_live_;
+    kT_ = ATV::units::kB_ev_per_k * T_live_;
 }
 
 // ── NHC chain helpers ───────────────────────────────────────────────
@@ -523,9 +523,9 @@ void NoseHooverNPT::update_eps_dot_(const LaunchContext& ctx, double half_dt) {
     // ke_axes + ke_total + stress[0..2] + energy — via defer_stream +
     // event-sync (no main_stream drain).
     refresh_npt_scalars_(ctx);
-    std::array<double, 3> ke_axis = {0.5 * kMvv2e * h_npt_scratch_[1],
-                                     0.5 * kMvv2e * h_npt_scratch_[2],
-                                     0.5 * kMvv2e * h_npt_scratch_[3]};
+    std::array<double, 3> ke_axis = {0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[1],
+                                     0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[2],
+                                     0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[3]};
     double stress_diag[3] = {h_npt_scratch_[4], h_npt_scratch_[5],
                              h_npt_scratch_[6]};
 

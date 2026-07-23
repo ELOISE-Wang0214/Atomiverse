@@ -19,6 +19,8 @@
 /// @see md::Phase::initial_integrate, md::Phase::final_integrate
 #pragma once
 
+#include "atomiverse/cuda/component/integrator.cuh"
+
 #include <string>
 #include <vector>
 
@@ -35,7 +37,7 @@ namespace md {
 /// Dispatches to the appropriate kernel based on `ctx.stage`:
 /// - `Phase::initial_integrate`: updates velocities (half-step) and positions.
 /// - `Phase::final_integrate`: updates velocities (half-step).
-class VelocityVerlet : public Component {
+class VelocityVerlet : public cuda::Integrator {
   public:
     /// @brief Construct with a time step.
     /// @param dt Time step [fs].

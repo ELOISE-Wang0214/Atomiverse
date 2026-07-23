@@ -12,7 +12,7 @@
 /// @code
 ///   cuda::scf::SCF scf{integrals, tol, max_iter};
 ///   cuda::single_point(frame, scf);
-///   // frame.scalars.energy populated.
+///   // frame.meta.get(kEnergy) populated.
 /// @endcode
 ///
 /// The evaluator is borrowed (lvalue ref) so the caller retains ownership
@@ -38,7 +38,7 @@ template <typename Evaluator>
 void single_point(cpu::Frame& frame, Evaluator& evaluator,
                   ATV::evaluate::Phase phase = ATV::evaluate::Phase::evaluate) {
     cuda::Evaluate eval;
-    eval.on(phase).add(evaluator);
+    eval.on(phase).add_ref(evaluator); // lvalue borrow — caller retains
     eval.build();
     eval.run(frame);
 }

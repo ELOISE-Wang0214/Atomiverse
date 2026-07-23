@@ -34,7 +34,7 @@ namespace {
 /// `cuda-md-review-cleanup-05-reductions-and-atomics`) — the second
 /// launch + its 12 KiB shared-mem sweep are eliminated.
 ///
-/// Stress writes Σ m·vα·vβ (kMvv2e folded in, NO volume division);
+/// Stress writes Σ m·vα·vβ (ATV::units::mass_v2_to_energy folded in, NO volume division);
 /// the consumer (`cuda::md::NoseHooverNPT::update_eps_dot_` /
 /// pressure observers) divides by V.
 __global__
@@ -52,7 +52,7 @@ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void kinetic_energy_stress(
         work_t vyi = static_cast<work_t>(vy[i]);
         work_t vzi = static_cast<work_t>(vz[i]);
         work_t v2 = vxi * vxi + vyi * vyi + vzi * vzi;
-        my_ke = work_t(0.5) * kMvv2e * m * v2;
+        my_ke = work_t(0.5) * ATV::units::mass_v2_to_energy * m * v2;
         if (stress_kinetic != nullptr) {
             my_s[0] = m * vxi * vxi; // xx
             my_s[1] = m * vyi * vyi; // yy
@@ -71,7 +71,7 @@ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void kinetic_energy_stress(
     if (threadIdx.x == 0) {
         atomicAdd(kinetic, static_cast<prec_t>(out[0]));
         if (stress_kinetic != nullptr) {
-            const work_t mvv2e = static_cast<work_t>(kMvv2e);
+            const work_t mvv2e = static_cast<work_t>(ATV::units::mass_v2_to_energy);
 #pragma unroll
             for (int c = 0; c < 6; ++c)
                 atomicAdd(&stress_kinetic[c],

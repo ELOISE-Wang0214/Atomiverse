@@ -36,27 +36,27 @@ cpu::Frame make_drifting_lj(int n_side, double vx, double vy, double vz) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + 0.5) * spacing;
-                frame.atoms.y[idx] = (double(iy) + 0.5) * spacing;
-                frame.atoms.z[idx] = (double(iz) + 0.5) * spacing;
-                frame.atoms.vx[idx] = vx;
-                frame.atoms.vy[idx] = vy;
-                frame.atoms.vz[idx] = vz;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_x)[idx] = (double(ix) + 0.5) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + 0.5) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + 0.5) * spacing;
+                frame.span(kAtom_vx)[idx] = vx;
+                frame.span(kAtom_vy)[idx] = vy;
+                frame.span(kAtom_vz)[idx] = vz;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(double(n_side) * spacing);
+    frame.simbox = cpu::Box::cubic(double(n_side) * spacing);
     return frame;
 }
 
 void com_momentum(const cpu::Frame& f, double p[3]) {
     p[0] = p[1] = p[2] = 0.0;
-    for (int i = 0; i < f.atoms.size(); ++i) {
-        const double m = f.atoms.mass[i];
-        p[0] += m * f.atoms.vx[i];
-        p[1] += m * f.atoms.vy[i];
-        p[2] += m * f.atoms.vz[i];
+    for (int i = 0; i < f.nlocal(); ++i) {
+        const double m = f.span(kAtom_mass)[i];
+        p[0] += m * f.span(kAtom_vx)[i];
+        p[1] += m * f.span(kAtom_vy)[i];
+        p[2] += m * f.span(kAtom_vz)[i];
     }
 }
 
@@ -64,7 +64,7 @@ void com_momentum(const cpu::Frame& f, double p[3]) {
 
 TEST(ZeroMomentum, RoleIsStructuralNone) {
     cuda::md::ZeroMomentum zm{1};
-    EXPECT_EQ(zm.role(), ComponentRole::None);
+    EXPECT_EQ(zm.role(), 0);
     EXPECT_EQ(zm.name(), "zero_momentum");
     auto bindings = zm.default_bindings();
     ASSERT_EQ(bindings.size(), 1u);

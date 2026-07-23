@@ -23,7 +23,7 @@
 ///   cuda::Evaluate eval;
 ///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{integrals, tol, max_iter});
 ///   eval.build();
-///   eval.run(frame);            // frame.scalars.energy populated
+///   eval.run(frame);            // frame.meta.get(kEnergy) populated
 /// @endcode
 ///
 /// @see cuda::single_point for the free-function single-evaluator helper
@@ -31,6 +31,8 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/potential.cuh"
+#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
@@ -55,13 +57,13 @@ class Evaluate : public Driver<ATV::evaluate::Phase> {
     void validate_components() const override {
         bool found = false;
         for_each_pending([&](const cuda::Component& c) {
-            if (loop_required(c.role())
-                && !has_role(c.role(), RoleFlag::FrameImmutable)
-                && !has_role(c.role(), RoleFlag::ExternalIO))
+            if (dynamic_cast<const cuda::Potential*>(&c)
+                || dynamic_cast<const cuda::HF*>(&c))
                 found = true;
         });
         if (!found)
-            throw_missing("hot-path energy/force Component");
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
     }
 };
 

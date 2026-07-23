@@ -80,7 +80,7 @@ ewald_forces(real_t* __restrict__ fx, real_t* __restrict__ fy,
     fx[i] += real_t(fxi);
     fy[i] += real_t(fyi);
     fz[i] += real_t(fzi);
-    // Self energy (partitions per atom): -kCoulomb·(α/√π)·q_i².
+    // Self energy (partitions per atom): -ATV::units::coulomb·(α/√π)·q_i².
     atomicAdd(energy, static_cast<prec_t>(self_pref * qi * qi));
 }
 
@@ -97,7 +97,7 @@ KSpaceEwald::~KSpaceEwald() {}
 void KSpaceEwald::build(const BuildContext& ctx) {
     // Reciprocal basis b_i = 2π·(column i of inv_cell); g = Σ m_i b_i.
     const cuda::Box& box = ctx.runtime.host_box;
-    const double tp = 2.0 * ATV::kPI;
+    const double tp = 2.0 * ATV::units::pi;
     double b[3][3];
     for (int i = 0; i < 3; ++i)
         for (int c = 0; c < 3; ++c)
@@ -152,8 +152,8 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
         return;
 
     const double vol = static_cast<double>(ctx.runtime.host_box.volume());
-    const double K = ATV::kCoulomb * 2.0 * ATV::kPI / vol;
-    const double self_pref = -ATV::kCoulomb * alpha_ / std::sqrt(ATV::kPI);
+    const double K = ATV::units::coulomb * 2.0 * ATV::units::pi / vol;
+    const double self_pref = -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
 
     const int blk = kDefaultBlock;
     kernels::ewald_structure_factor<<<grid_size(ng_), blk, 0, stream>>>(

@@ -28,6 +28,9 @@
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
+#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
+#include "atomiverse/cuda/component/potential.cuh"
+#include "atomiverse/cuda/component/optimizer.cuh"
 #include "atomiverse/cuda/minimize/minimize.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
@@ -38,58 +41,64 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
     return std::string(e.what()).find(needle) != std::string::npos;
 }
 
-// ─── CUDA component stubs ───────────────────────────────────────────
+// ─── CUDA component stubs — current Role/kind model ─────────────────
+//
+// The old per-component role enum and the write-set bitset are both
+// DELETED. A CUDA Component now carries only a `Role` bitset (`RoleFlag`s from
+// core/role.h): a frame-mutating main-loop component has `role() == 0`,
+// a frame-immutable structural component sets `RoleFlag::FrameImmutable`
+// (plus `Deferred`). "Which KIND is it" (Integrator / Optimizer / force
+// source) is decided by the concrete component and detected in the preset's
+// `validate_components()` — the CUDA presets do this by the integrator/
+// optimizer name token plus the `role()` flags (CUDA kind bases are not yet
+// split; see cuda/dynamics/md.cuh + cuda/minimize/minimize.cuh). These stubs
+// mirror the kind-derived helpers in tests/cpu/driver_test_helpers.h.
 
-/// @brief Integrator-role stub. No default bindings — bound explicitly.
-class StubIntegrator : public ATV::cuda::Component {
+/// @brief Integrator stub — reuses the real `cuda::md::VelocityVerlet`, the
+///        integrator `cuda::md::MD::validate_components()` accepts (name
+///        "velocity_verlet"; `role() == 0`). Bound explicitly in each test.
+class StubIntegrator : public ATV::cuda::md::VelocityVerlet {
   public:
-    std::string name() const override { return "stub_integrator"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Integrator;
-    }
-    void launch(const ATV::cuda::LaunchContext&) override {}
+    StubIntegrator() : ATV::cuda::md::VelocityVerlet(/*dt [fs]=*/1.0) {}
 };
 
-/// @brief Evaluator-role stub advertising `Energy | Force`.
-class StubForceEvaluator : public ATV::cuda::Component {
+/// @brief Hot-path force source — `role() == 0` (main-loop, frame-mutating),
+///        not an integrator/optimizer name, not a NeighborConsumer.
+class StubForceEvaluator : public ATV::cuda::Potential {
   public:
     std::string name() const override { return "stub_force"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Evaluator;
-    }
-    ATV::Capability capabilities() const override {
-        return ATV::Capability::Energy | ATV::Capability::Force;
-    }
     void launch(const ATV::cuda::LaunchContext&) override {}
 };
 
-/// @brief Evaluator-role stub advertising only `Energy` (no `Force`).
-class StubEnergyEvaluator : public ATV::cuda::Component {
+/// @brief Hot-path energy source — `role() == 0`. The current CUDA
+///        `validate_components()` has no Energy-vs-Force distinction (that
+///        lived on the now-deleted component write-set), so this is a
+///        generic frame-mutating source, structurally identical to
+///        StubForceEvaluator.
+class StubEnergyEvaluator : public ATV::cuda::Potential {
   public:
     std::string name() const override { return "stub_energy"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Evaluator;
-    }
-    ATV::Capability capabilities() const override {
-        return ATV::Capability::Energy;
-    }
     void launch(const ATV::cuda::LaunchContext&) override {}
 };
 
-/// @brief Optimizer-role stub.
-class StubOptimizer : public ATV::cuda::Component {
+/// @brief Optimizer stub — `name()` carries the "opt" token
+///        `cuda::minimizer::Minimize::validate_components()` matches on;
+///        `role() == 0` (an optimizer mutates x).
+class StubOptimizer : public ATV::cuda::Optimizer {
   public:
     std::string name() const override { return "stub_optimizer"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::Optimizer;
-    }
     void launch(const ATV::cuda::LaunchContext&) override {}
 };
 
-/// @brief `role()` defaults to `None` — structural-only stub.
+/// @brief Structural-only stub — `RoleFlag::FrameImmutable | Deferred`, so it
+///        is never counted as a hot-path energy/force source. Mirrors
+///        `atv_test::StubBareInfra`.
 class StubBareInfra : public ATV::cuda::Component {
   public:
-    std::string name() const override { return "stub_bare"; }
+    std::string name() const override { return "stub_bare_infra"; }
+    ATV::Role role() const override {
+        return ATV::RoleFlag::FrameImmutable | ATV::RoleFlag::Deferred;
+    }
     void launch(const ATV::cuda::LaunchContext&) override {}
 };
 
@@ -101,7 +110,7 @@ TEST(CUDADriverRoleValidation, MDThrowsWithoutIntegrator) {
     using namespace ATV;
     cuda::md::MD d;
     StubForceEvaluator force;
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::force).add_ref(force);
     try {
         d.build();
         FAIL() << "expected throw — MD missing Integrator";
@@ -114,14 +123,16 @@ TEST(CUDADriverRoleValidation, MDThrowsWithoutForceEvaluator) {
     using namespace ATV;
     cuda::md::MD d;
     StubIntegrator integ;
-    StubEnergyEvaluator energy_only;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(energy_only);
+    StubBareInfra bare; // non-force component: MD still needs a Potential/HF
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(bare);
     try {
         d.build();
         FAIL() << "expected throw — MD missing Force-capable evaluator";
     } catch (const std::runtime_error& e) {
-        EXPECT_TRUE(message_mentions(e, "Force")) << e.what();
+        EXPECT_TRUE(message_mentions(e, "Potential")
+                    || message_mentions(e, "Bias") || message_mentions(e, "HF"))
+            << e.what();
     }
 }
 
@@ -130,8 +141,8 @@ TEST(CUDADriverRoleValidation, MDBuildsWithIntegratorAndForce) {
     cuda::md::MD d;
     StubIntegrator integ;
     StubForceEvaluator force;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
     EXPECT_NO_THROW(d.build());
 }
 
@@ -142,8 +153,8 @@ TEST(CUDADriverRoleValidation, MDAttachesNoDefaultHandler) {
     cuda::md::MD d;
     StubIntegrator integ;
     StubForceEvaluator force;
-    d.on(md::Phase::initial_integrate).add(integ);
-    d.on(md::Phase::force).add(force);
+    d.on(md::Phase::initial_integrate).add_ref(integ);
+    d.on(md::Phase::force).add_ref(force);
     d.build();
     EXPECT_FALSE(d.has_handler());
 }
@@ -154,7 +165,7 @@ TEST(CUDADriverRoleValidation, MinimizeThrowsWithoutOptimizer) {
     using namespace ATV;
     cuda::minimizer::Minimize o;
     StubForceEvaluator force;
-    o.on(minimizer::Phase::force).add(force);
+    o.on(minimizer::Phase::force).add_ref(force);
     try {
         o.build();
         FAIL() << "expected throw — Minimize missing Optimizer";
@@ -168,14 +179,14 @@ TEST(CUDADriverRoleValidation, MinimizeThrowsWithoutEnergyOrForceEvaluator) {
     cuda::minimizer::Minimize o;
     StubOptimizer opt;
     StubBareInfra infra;
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::end_of_step).add(infra);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::end_of_step).add_ref(infra);
     try {
         o.build();
         FAIL() << "expected throw — Minimize missing Energy/Force evaluator";
     } catch (const std::runtime_error& e) {
-        EXPECT_TRUE(message_mentions(e, "Energy")
-                    || message_mentions(e, "Force"))
+        EXPECT_TRUE(message_mentions(e, "Potential")
+                    || message_mentions(e, "Bias") || message_mentions(e, "HF"))
             << e.what();
     }
 }
@@ -185,8 +196,8 @@ TEST(CUDADriverRoleValidation, MinimizeBuildsWithOptimizerAndEnergy) {
     cuda::minimizer::Minimize o;
     StubOptimizer opt;
     StubEnergyEvaluator energy;
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::force).add(energy);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::force).add_ref(energy);
     EXPECT_NO_THROW(o.build());
 }
 
@@ -198,8 +209,8 @@ TEST(CUDADriverRoleValidation, MinimizeAttachesDefaultForceConvergedHandler) {
     cuda::minimizer::Minimize o;
     StubOptimizer opt;
     StubEnergyEvaluator energy;
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::force).add(energy);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::force).add_ref(energy);
     EXPECT_FALSE(o.has_handler());
     o.build();
     EXPECT_TRUE(o.has_handler());
@@ -212,8 +223,8 @@ TEST(CUDADriverRoleValidation, MinimizeKeepsTheUserHandler) {
     StubOptimizer opt;
     StubEnergyEvaluator energy;
     o.add_criterion(cuda::ForceConverged{/*ftol=*/1e-4});
-    o.on(minimizer::Phase::search_direction).add(opt);
-    o.on(minimizer::Phase::force).add(energy);
+    o.on(minimizer::Phase::search_direction).add_ref(opt);
+    o.on(minimizer::Phase::force).add_ref(energy);
     EXPECT_TRUE(o.has_handler());
     EXPECT_NO_THROW(o.build());
 }
@@ -224,12 +235,15 @@ TEST(CUDADriverRoleValidation, EvaluateThrowsWithoutEvaluator) {
     using namespace ATV;
     cuda::Evaluate e;
     StubBareInfra infra;
-    e.on(evaluate::Phase::prepare).add(infra);
+    e.on(evaluate::Phase::prepare).add_ref(infra);
     try {
         e.build();
         FAIL() << "expected throw — Evaluate missing Evaluator";
     } catch (const std::runtime_error& ex) {
-        EXPECT_TRUE(message_mentions(ex, "Evaluator")) << ex.what();
+        EXPECT_TRUE(message_mentions(ex, "Potential")
+                    || message_mentions(ex, "Bias")
+                    || message_mentions(ex, "HF"))
+            << ex.what();
     }
 }
 
@@ -237,6 +251,6 @@ TEST(CUDADriverRoleValidation, EvaluateBuildsWithEnergyEvaluator) {
     using namespace ATV;
     cuda::Evaluate e;
     StubEnergyEvaluator energy;
-    e.on(evaluate::Phase::evaluate).add(energy);
+    e.on(evaluate::Phase::evaluate).add_ref(energy);
     EXPECT_NO_THROW(e.build());
 }

@@ -2,7 +2,9 @@
 /// @brief CPU/CUDA parity test for the plane-wave SCF on toy Si.
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/planewave/pw_scf.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
+#include "atomiverse/cpu/planewave/internal/g_vector.h"
+#include "atomiverse/cpu/planewave/internal/pw_workspace.h"
 #include "atomiverse/cuda/planewave/pw_scf.cuh"
 #include <cmath>
 #include <gtest/gtest.h>
@@ -13,16 +15,16 @@ using namespace ATV;
 namespace {
 cpu::Frame make_si_fcc(double a) {
     cpu::Frame f(2);
-    f.atoms.type[0] = 14;
-    f.atoms.type[1] = 14;
-    f.atoms.mass[0] = 28.0855;
-    f.atoms.mass[1] = 28.0855;
-    f.atoms.x[0] = 0;
-    f.atoms.y[0] = 0;
-    f.atoms.z[0] = 0;
-    f.atoms.x[1] = a / 4.0;
-    f.atoms.y[1] = a / 4.0;
-    f.atoms.z[1] = a / 4.0;
+    f.span(kAtom_type)[0] = 14;
+    f.span(kAtom_type)[1] = 14;
+    f.span(kAtom_mass)[0] = 28.0855;
+    f.span(kAtom_mass)[1] = 28.0855;
+    f.span(kAtom_x)[0] = 0;
+    f.span(kAtom_y)[0] = 0;
+    f.span(kAtom_z)[0] = 0;
+    f.span(kAtom_x)[1] = a / 4.0;
+    f.span(kAtom_y)[1] = a / 4.0;
+    f.span(kAtom_z)[1] = a / 4.0;
     double h = a / 2.0;
     Mat3 cell;
     cell(0, 0) = 0;
@@ -34,7 +36,7 @@ cpu::Frame make_si_fcc(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.box = cell;
+    f.simbox.set_cell(cell);
     return f;
 }
 } // namespace
@@ -55,7 +57,18 @@ TEST(CudaPWScf, RunsAndFinite) {
 TEST(CudaPWScf, MatchesCpu) {
     auto frame = make_si_fcc(5.43);
     const std::string upf = ATV_PW_UPF_PATH;
-    auto r_cpu = cpu::pw::pw_scf(frame, upf, 12.0, 2, 1e-6, 30);
+    // CPU reference via the concrete PWSolver (the free cpu::pw::pw_scf wrapper
+    // was deleted — callers construct/build/run PWSolver). Same knobs the old
+    // wrapper took: ecut 12 Ry, 2^3 k-mesh, tol 1e-6, 30 iters.
+    cpu::pw::PWConfig cfg;
+    cfg.upf_path = upf;
+    cfg.ecut_ry = 12.0;
+    cfg.k_mesh = 2;
+    cfg.tol = 1e-6;
+    cfg.max_iter = 30;
+    cpu::pw::PWSolver solver{cfg};
+    solver.build(frame);
+    auto r_cpu = solver.run(frame);
     auto r_cuda = cuda::pw::pw_scf(frame, upf, 12.0, 2, 1e-6, 30);
     ASSERT_TRUE(r_cpu.converged);
     ASSERT_TRUE(r_cuda.converged);

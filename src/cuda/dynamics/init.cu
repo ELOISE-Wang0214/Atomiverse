@@ -53,7 +53,7 @@ namespace {
 
 /// @brief Generate Gaussian-distributed velocities at target temperature.
 ///
-/// v_i ~ N(0, sigma) where sigma = sqrt(kB*T / (kMvv2e * m_i)).
+/// v_i ~ N(0, sigma) where sigma = sqrt(kB*T / (ATV::units::mass_v2_to_energy * m_i)).
 /// Uses cuRAND device API (per-thread state, Philox generator).
 __global__ void
 generate_velocities(real_t* __restrict__ vx, real_t* __restrict__ vy,
@@ -156,8 +156,8 @@ void InitVelocity::build(const BuildContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
 
-    // sigma^2 = kB * T / (kMvv2e * m)  =>  pass kB*T/kMvv2e as common factor
-    work_t kbt_over_mvv2e = kBoltzmann * temperature_ / kMvv2e;
+    // sigma^2 = kB * T / (ATV::units::mass_v2_to_energy * m)  =>  pass kB*T/ATV::units::mass_v2_to_energy as common factor
+    work_t kbt_over_mvv2e = ATV::units::kB_ev_per_k * temperature_ / ATV::units::mass_v2_to_energy;
 
     // 1. Generate Gaussian velocities
     generate_velocities<<<grid, block, 0, stream>>>(

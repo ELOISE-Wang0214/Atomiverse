@@ -159,7 +159,7 @@ void CoulLong::compute(const LaunchContext& ctx) {
             frame.atoms.y, frame.atoms.z, frame.atoms.charge, pairs->cl_row_ptr,
             pairs->cl_col_idx, pairs->cl_orig_index, pairs->num_clusters, box,
             /*periodic=*/true, static_cast<work_t>(alpha_), cutoff_sq,
-            static_cast<work_t>(ATV::kCoulomb));
+            static_cast<work_t>(ATV::units::coulomb));
     } else {
         kernels::coul_long_cluster<false><<<grid, block, shmem, stream>>>(
             frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
@@ -167,7 +167,7 @@ void CoulLong::compute(const LaunchContext& ctx) {
             frame.atoms.y, frame.atoms.z, frame.atoms.charge, pairs->cl_row_ptr,
             pairs->cl_col_idx, pairs->cl_orig_index, pairs->num_clusters, box,
             /*periodic=*/true, static_cast<work_t>(alpha_), cutoff_sq,
-            static_cast<work_t>(ATV::kCoulomb));
+            static_cast<work_t>(ATV::units::coulomb));
     }
 }
 

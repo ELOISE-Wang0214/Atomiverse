@@ -27,18 +27,17 @@ cpu::Frame make_rocksalt(double d, int n) {
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             for (int k = 0; k < n; ++k) {
-                frame.atoms.x[idx] = i * d;
-                frame.atoms.y[idx] = j * d;
-                frame.atoms.z[idx] = k * d;
-                frame.atoms.charge[idx] = ((i + j + k) % 2 == 0) ? 1.0 : -1.0;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.tag[idx] = idx;
+                frame.span(kAtom_x)[idx] = i * d;
+                frame.span(kAtom_y)[idx] = j * d;
+                frame.span(kAtom_z)[idx] = k * d;
+                frame.span(kAtom_charge)[idx] =
+                    ((i + j + k) % 2 == 0) ? 1.0 : -1.0;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
+                frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.box = Mat3::cubic(n * d);
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.simbox = cpu::Box::cubic(n * d);
     return frame;
 }
 
@@ -63,8 +62,8 @@ TEST(CudaEwaldCoul, MadelungNaCl) {
     sim.run(frame, 1);
 
     const int N = n * n * n;
-    const double e_expected = -0.5 * N * kMadelungNaCl * ATV::kCoulomb / d;
-    const double e = static_cast<double>(frame.scalars.energy);
+    const double e_expected = -0.5 * N * kMadelungNaCl * ATV::units::coulomb / d;
+    const double e = static_cast<double>(frame.meta.get(kEnergy));
     // real_t positions are single precision on the CUDA path → looser tol.
     EXPECT_NEAR(e / e_expected, 1.0, 2e-3)
         << "E=" << e << " expected=" << e_expected;

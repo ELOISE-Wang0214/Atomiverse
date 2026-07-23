@@ -246,7 +246,7 @@ std::vector<double> spline_moduli(int K, int n) {
     for (int i = 0; i < K; ++i) {
         double sr = 0, si = 0;
         for (int k = 0; k < n - 1; ++k) {
-            const double arg = 2.0 * ATV::kPI * i * k / K;
+            const double arg = 2.0 * ATV::units::pi * i * k / K;
             sr += data[k] * std::cos(arg);
             si += data[k] * std::sin(arg);
         }
@@ -315,10 +315,10 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     geom.K[2] = K_[2];
     geom.order = order_;
 
-    const double escale = ATV::kCoulomb / (2.0 * ATV::kPI * vol_);
-    const double fscale = ATV::kCoulomb / (ATV::kPI * vol_);
-    const double inv_pi2_a2 = ATV::kPI * ATV::kPI / (alpha_ * alpha_);
-    const double self_pref = -ATV::kCoulomb * alpha_ / std::sqrt(ATV::kPI);
+    const double escale = ATV::units::coulomb / (2.0 * ATV::units::pi * vol_);
+    const double fscale = ATV::units::coulomb / (ATV::units::pi * vol_);
+    const double inv_pi2_a2 = ATV::units::pi * ATV::units::pi / (alpha_ * alpha_);
+    const double self_pref = -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
     const int blk = kDefaultBlock;
 
     cudaMemsetAsync(grid, 0, ntot_ * sizeof(cufftDoubleComplex), stream);

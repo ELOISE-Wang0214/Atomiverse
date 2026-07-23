@@ -401,3 +401,61 @@ Driver. Classical terms register as Components via
 Bias, PathCoupling, HF, Semiempirical, PlaneWave, GPW, Integrator, …).
 No free-function component classifier. Stress assembly uses
 `requires_system_stress()` / `provides_system_stress()` on Component.
+
+## [2026-07-23] CUDA backend resurrected — and the kind-base debt retired
+
+`cuda-resurrect` shipped. The backend that was **red on `dev`** (see the
+[2026-07-22] DEBT entry) now **configures, builds and links on GH200**
+(`BUILD EXIT 0`, `-DATV_BUILD_CUDA=ON -DATV_BUILD_TESTS=ON +HF +PW +KSPACE`) and
+passes **276/278** ctest. Login-node CPU suite **217/217 green** — zero CPU code
+was touched. 14 GPU build rounds.
+
+**Scope correction found during impl (worth remembering):** the spec estimated
+"~404 stale `.atoms/.box/.scalars` across ~50 files". That was mostly a mirage —
+the **device** `cuda::Frame` legitimately owns `.atoms` / `.box` / `.scalars` as
+its raw-device-pointer layout. Only **host** `cpu::Frame` access was stale, and
+it was confined to the transfer/materialize/partition boundary. The acceptance's
+blanket "no `.atoms/.box/.scalars` in the cuda tree" grep was therefore
+**unsatisfiable**; the shipped gate
+(`tests/architecture/cuda_no_stale_api_scrub.sh`, ctest #212, login-node
+runnable) is **host-frame-scoped by accessor shape** — it bans the deleted
+shapes (`.atoms.<col>.data()`, `.atoms.size()`, method-form
+`.bond_atom(`/`.angle_atom(`/`.dihedral_atom(`, host `.scalars.<field>`), plus
+`Real`/`core/real.h` (code only — "Real-space" prose is legit physics) and the
+old unit constants. It covers `include/atomiverse/cuda/`, `src/cuda/` **and**
+`tests/cuda/`.
+
+**No SystemScalars↔meta bridge existed anywhere.** `cpu::Frame` no longer embeds
+`SystemScalars`; the torch backend's copy is itself rotted (its layout
+static_asserts predate the per-term energy fields). So `cuda/frame/transfer.cu`
+now **gathers** a `SystemScalars` from typed meta on H2D and **scatters** it back
+on D2H (`contains ? set : insert`).
+
+**Kind bases are no longer "pending".** The operator approved finishing the
+component-taxonomy port inside this spec: 6 CUDA kind tags
+(`cuda/component/{integrator,optimizer,potential,thermostat,barostat,hf}.cuh`,
+mirroring `cpu/component/`), 15 components reparented, and `md.cuh` /
+`minimize.cuh` / `evaluate.cuh` switched from **name-substring + Role bitset**
+to `dynamic_cast` with CPU's exact throw messages. This alone took ctest from 8
+failures to 0 validation failures — it was the root cause behind
+`NoseHooverNPT` being unrecognized as an Integrator, `ZeroForces` counting as a
+force source, and the energy/force conflation. Test stubs now derive the kinds
+exactly as `tests/cpu/driver_test_helpers.h` does.
+
+### Residual debt (both PRE-EXISTING, orthogonal to the mirror)
+
+- **CUDA PME 3% Madelung** → split out as spec `cuda-pme-accuracy`. Ruled out:
+  unit renames (cancel in the ratio), float precision (**fails identically under
+  `-DATV_CUDA_REAL=double`**), missing terms (reciprocal + self present;
+  net-charge correction is zero for neutral NaCl), and the Frame/scalars bridge
+  (all other CUDA energy tests green). Needs an on-device numerical bisect of the
+  reciprocal path (B-spline normalization / grid dims / influence function).
+
+- **DEBT: `test_cpu_scf_ghf` fails on aarch64 only.** `GHF.NoncollinearBelowUhfOnTriangularH3`
+  (`tests/cpu/scf/test_ghf.cpp:241`) — a **CPU** UHF energy pin inside the GHF
+  test. It **PASSES on the x86_64 login node** (217/217) and fails only in the
+  GH200 aarch64 build: UHF converges to **-1.33598** vs the pin **-1.32818**
+  (Δ=0.0078) — i.e. UHF finds a *lower* broken-symmetry basin than when the pin
+  was authored (commit `8d4cc048`, hf-capability-gaps-11-ghf). Nothing to do with
+  CUDA. **Owner: SCF.** Fix = stabilize the UHF initial guess or re-derive the
+  pin against the PySCF oracle; do not paper over it by loosening the tolerance.

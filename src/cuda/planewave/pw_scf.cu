@@ -6,6 +6,7 @@
 /// energy report) are the exact same code as the CPU backend; only the
 /// band solve + density accumulation are replaced by the device solver.
 
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/planewave/internal/convergence.h"
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
 #include "atomiverse/cpu/planewave/internal/poisson.h"
@@ -26,7 +27,7 @@ namespace pw {
 
 PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
                 double ecut_ry, int k_mesh, double tol, int max_iter) {
-    using cpu::pw::PWWorkspace;
+    using cpu::pw::internal::PWWorkspace;
     namespace cpw = cpu::pw;
 
     PWResult result;
@@ -38,7 +39,7 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
     auto& gv_k = prob.gv_k;
     int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     int n_bands = prob.n_bands;
-    Real vol_bohr = prob.vol_bohr;
+    AccReal vol_bohr = prob.vol_bohr;
 
     std::cout << "  [cuda::pw] device band solver on " << ws.fft_nx << "x"
               << ws.fft_ny << "x" << ws.fft_nz << " grid" << std::endl;
@@ -54,7 +55,7 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
     lda.prepare(ws);
     cpw::internal::VeffBuilder v;
     v.prepare(ws);
-    cpw::internal::ConvergenceCheck conv{Real(tol), 2};
+    cpw::internal::ConvergenceCheck conv{AccReal(tol), 2};
 
     bool converged = false;
     for (int iter = 0; iter < max_iter; ++iter) {
@@ -65,7 +66,7 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
         solver.set_veff(ws.V_eff_r.data());
         solver.zero_density();
 
-        Real e_band = 0;
+        AccReal e_band = 0;
         for (int ik = 0; ik < n_kpts; ++ik) {
             int n_g_k = gv_k[ik].count();
             auto* saved_gvec = ws.gvec;
@@ -82,11 +83,11 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
                 ws.T_G[ig] = gv_k[ik].ekin[ig];
 
             solver.set_kpoint(ws);
-            solver.solve(ws, Real(tol) * Real(0.1), 40);
+            solver.solve(ws, AccReal(tol) * AccReal(0.1), 40);
 
-            Real weight = prob.kg.weights[ik];
+            AccReal weight = prob.kg.weights[ik];
             for (int b = 0; b < n_bands; ++b)
-                e_band += weight * ws.eigenvalues[b] * Real(2);
+                e_band += weight * ws.eigenvalues[b] * AccReal(2);
 
             solver.accumulate_density(weight, ws.omega);
 

@@ -1,12 +1,18 @@
 /// @file test_scf.cu
-/// @brief Integration tests for the CUDA SCF inner solver (`SCFSolver`),
-///        the `SCF` component, single-point via `cuda::Evaluate`,
-///        CPU/CUDA parity, and the structural migration guards.
+/// @brief Contract + synthetic-path tests for the CUDA SCF inner solver
+///        (`SCFSolver`) and its `SCF` component: structural guards (SCFSolver
+///        is not a Driver; the relocated step helpers are not Components;
+///        Evaluate is a loop node over evaluate::Phase; SCF is a Component with
+///        role()==0), the synthetic `H(P)=H0+alpha*P` device path, single-point
+///        via `cuda::Evaluate`, and CPU/CUDA parity against the `cpu::scf::toy`
+///        reference solver. The numeric H2/STO-3G/RHF check lives in
+///        test_rhf.cu.
 
 #include <cmath>
 #include <gtest/gtest.h>
 #include <type_traits>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/scf/solve.h"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
@@ -28,55 +34,26 @@ namespace {
 cpu::Frame make_scf_system(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = double(i);
-        frame.atoms.y[i] = double(0);
-        frame.atoms.z[i] = double(0);
-        frame.atoms.mass[i] = double(1);
-        frame.atoms.type[i] = 0;
+        frame.span(kAtom_x)[i] = double(i);
+        frame.span(kAtom_y)[i] = double(0);
+        frame.span(kAtom_z)[i] = double(0);
+        frame.span(kAtom_mass)[i] = double(1);
+        frame.span(kAtom_type)[i] = 0;
     }
-    frame.box = Mat3::cubic(100.0);
+    frame.simbox = cpu::Box::cubic(100.0);
     return frame;
 }
 
 } // anonymous namespace
 
-// ── Structural-guard sentinels (ac-001) ──────────────────────────────
+// ── Structural guards (ac-002 / ac-003 / ac-004 / ac-005) ─────────────
 //
-// The migration removes the legacy `cuda::scf::SCF` driver class and
-// forbids any `cuda::scf::SinglePoint`. To turn "this type must NOT
-// exist" into a *compile-time* guard, the test injects its own unique
-// sentinel types of those exact names into `ATV::cuda::scf` and then
-// asserts that the names resolve to the sentinels. If a future change
-// re-introduces a production `cuda::scf::SCF` / `SinglePoint`, this
-// translation unit fails to compile (redefinition / ambiguity).
-namespace ATV {
-namespace cuda {
-namespace scf {
-namespace migration_guard {
-struct SCFSentinel {};
-struct SinglePointSentinel {};
-} // namespace migration_guard
-using SCF = migration_guard::SCFSentinel;
-using SinglePoint = migration_guard::SinglePointSentinel;
-} // namespace scf
-} // namespace cuda
-} // namespace ATV
-
-// ── Structural guards (ac-001 / ac-002 / ac-003 / ac-004 / ac-005) ────
-
-TEST(SCF, NoCudaScfSCFDriverClass) {
-    // ac-001: `cuda::scf::SCF` resolves only to the test's sentinel — no
-    // production driver class of that name survives the migration.
-    static_assert(
-        std::is_same_v<cuda::scf::SCF, cuda::scf::migration_guard::SCFSentinel>,
-        "cuda::scf::SCF driver class must not exist after migration");
-    // ac-001: `cuda::scf::SinglePoint` resolves only to the sentinel.
-    static_assert(
-        std::is_same_v<cuda::scf::SinglePoint,
-                       cuda::scf::migration_guard::SinglePointSentinel>,
-        "cuda::scf::SinglePoint must not exist");
-    SUCCEED();
-}
+// NOTE: the former ac-001 "cuda::scf::SCF must not exist" sentinel guard is
+// GONE. `cuda::scf::SCF` (the Evaluator component) intentionally ships as
+// transitional debt per CLAUDE.md, so a test asserting its absence was a
+// stale, self-contradictory premise (it then constructed the very type it
+// claimed was deleted). The guards below assert what is actually true of the
+// shipping type: it is a Component, not a Driver, with role()==0.
 
 TEST(SCF, SCFSolverIsNotADriver) {
     // ac-002: SCFSolver is an inner solver, NOT a Driver<> subclass.
@@ -116,18 +93,17 @@ TEST(SCF, EvaluateIsALoopNodeOverTheEvaluatePhase) {
     SUCCEED();
 }
 
-TEST(SCF, SCFRoleAndCapabilities) {
-    // ac-005: SCF is an Evaluator-role component with the exact
-    // Energy|DensityMatrix|Orbitals capability set (no Force).
+TEST(SCF, SCFRoleIsMainLoopEnergySource) {
+    // ac-005 (restated after the role/capability enums were deleted): SCF is a
+    // real cuda::Component and a main-loop energy source, so role() == 0 — no
+    // FrameImmutable/Deferred/ExternalIO Role flags set. (The old
+    // Energy|DensityMatrix|Orbitals Capability write-set no longer exists;
+    // outputs are Frame keys, validation is by kind.)
     static_assert(std::is_base_of_v<cuda::Component, cuda::scf::SCF>,
                   "cuda::scf::SCF must inherit cuda::Component");
     cuda::scf::SCF eval{/*n_occ=*/2, /*alpha=*/0.1, /*tol=*/1e-6,
                         /*max_iter=*/50};
-    EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
-    EXPECT_EQ(eval.capabilities(), Capability::Energy
-                                       | Capability::DensityMatrix
-                                       | Capability::Orbitals);
-    EXPECT_FALSE(has_capability(eval.capabilities(), Capability::Force));
+    EXPECT_EQ(eval.role(), 0);
 }
 
 // ── CUDA SCFSolver synthetic-path tests ──────────────────────────────
@@ -143,8 +119,8 @@ TEST(SCF, CUDAConvergence) {
     eval.build();
     eval.run(frame);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
-    EXPECT_GT(frame.scalars.energy, double(0));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
+    EXPECT_GT(frame.meta.get(kEnergy), double(0));
 }
 
 TEST(SCF, CUDAReproducibility) {
@@ -162,8 +138,8 @@ TEST(SCF, CUDAReproducibility) {
         eval.run(*f);
     }
 
-    EXPECT_NEAR(static_cast<double>(frame1.scalars.energy),
-                static_cast<double>(frame2.scalars.energy), 1e-10);
+    EXPECT_NEAR(static_cast<double>(frame1.meta.get(kEnergy)),
+                static_cast<double>(frame2.meta.get(kEnergy)), 1e-10);
 }
 
 TEST(SCF, CUDASinglePointHelper) {
@@ -185,8 +161,8 @@ TEST(SCF, CUDASinglePointHelper) {
         cuda::single_point(frame_helper, scf);
     }
 
-    EXPECT_NEAR(static_cast<double>(frame_direct.scalars.energy),
-                static_cast<double>(frame_helper.scalars.energy), 1e-10);
+    EXPECT_NEAR(static_cast<double>(frame_direct.meta.get(kEnergy)),
+                static_cast<double>(frame_helper.meta.get(kEnergy)), 1e-10);
 }
 
 TEST(SCF, CUDAAlphaEffect) {
@@ -209,9 +185,9 @@ TEST(SCF, CUDAAlphaEffect) {
         eval.run(frame_a1);
     }
 
-    EXPECT_NE(frame_a0.scalars.energy, frame_a1.scalars.energy);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a0.scalars.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a1.scalars.energy)));
+    EXPECT_NE(frame_a0.meta.get(kEnergy), frame_a1.meta.get(kEnergy));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a0.meta.get(kEnergy))));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a1.meta.get(kEnergy))));
 }
 
 TEST(SCF, CUDAMaxIterCap) {
@@ -229,7 +205,7 @@ TEST(SCF, CUDAMaxIterCap) {
 
     // The run must terminate (no hang) and leave a finite energy even
     // though the tight tolerance is not met within 3 iterations.
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
 }
 
 TEST(SCF, EvaluateRejectsFrameWithNoEvaluator) {
@@ -294,7 +270,7 @@ TEST(SCF, CPUCUDAParity) {
 
     // Energy must agree within float tolerance
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.scalars.energy);
+    double cuda_e = static_cast<double>(frame.meta.get(kEnergy));
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
@@ -319,7 +295,7 @@ TEST(SCF, CPUCUDAParityN16) {
     }
 
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.scalars.energy);
+    double cuda_e = static_cast<double>(frame.meta.get(kEnergy));
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)

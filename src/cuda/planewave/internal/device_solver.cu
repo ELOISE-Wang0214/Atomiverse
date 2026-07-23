@@ -8,6 +8,7 @@
 /// kernels; subspace algebra runs as cuBLAS ZGEMM/ZGEMV on column-major
 /// matrices whose column j is subspace vector j.
 
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/planewave/internal/pw_subspace.h"
 #include "atomiverse/cuda/device/error.cuh"
 #include "atomiverse/cuda/planewave/internal/device_solver.cuh"
@@ -24,7 +25,7 @@ namespace cuda {
 namespace pw {
 namespace internal {
 
-static_assert(std::is_same<Real, double>::value,
+static_assert(std::is_same<AccReal, double>::value,
               "cuda::pw requires ATV_REAL=double (cuFFT Z2Z path, matching "
               "the CPU PW solver which always runs FFTW in double)");
 
@@ -274,12 +275,12 @@ DeviceBandSolver::~DeviceBandSolver() {
         cublasDestroy(blas_);
 }
 
-void DeviceBandSolver::set_veff(const Real* v_eff_r) {
+void DeviceBandSolver::set_veff(const AccReal* v_eff_r) {
     ATV_CUDA_CHECK(cudaMemcpy(d_veff_, v_eff_r, nr_ * sizeof(double),
                               cudaMemcpyHostToDevice));
 }
 
-void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
+void DeviceBandSolver::set_kpoint(const cpu::pw::internal::PWWorkspace& ws) {
     int ng = ws.n_g;
     const auto& gv = *ws.gvec;
     ng_ = ng;
@@ -317,7 +318,7 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
         const auto& pos = ws.atom_pos_bohr[ia];
         for (size_t ip = 0; ip < ws.kb_proj[ia].size(); ++ip) {
             const auto& proj = ws.kb_proj[ia][ip];
-            if (std::abs(proj.d) < Real(1e-16))
+            if (std::abs(proj.d) < AccReal(1e-16))
                 continue;
             int fg_off = static_cast<int>(fg_flat.size());
             int fg_len = static_cast<int>(
@@ -464,7 +465,7 @@ void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
     }
 }
 
-void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
+void DeviceBandSolver::solve(cpu::pw::internal::PWWorkspace& ws, AccReal /*tol*/,
                              int max_iter) {
     int ng = ws.n_g;
     int nb = n_bands_;
@@ -476,7 +477,7 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
     ws.eigenvalues.resize({static_cast<std::size_t>(nb)});
 
     // ── Initial subspace: identical to the CPU solver ──
-    std::vector<std::complex<Real>> sub_host;
+    std::vector<std::complex<AccReal>> sub_host;
     int n_sub = cpu::pw::internal::init_subspace(ws, nb, sub_host);
 
     int max_david = std::min(max_iter, 20);
@@ -491,7 +492,7 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
     const cuDoubleComplex c_one{1.0, 0.0}, c_zero{0.0, 0.0}, c_mone{-1.0, 0.0};
 
     std::vector<std::complex<double>> hs_host;
-    std::vector<Real> hs_real, sub_eig, sub_vecs;
+    std::vector<AccReal> hs_real, sub_eig, sub_vecs;
     std::vector<std::complex<double>> x_host;
 
     for (int idavid = 0; idavid < max_david; ++idavid) {
@@ -518,16 +519,16 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                                   cudaMemcpyDeviceToHost));
 
         // Real symmetric part, row-major — matches the CPU Hs assembly.
-        hs_real.assign(static_cast<size_t>(n_sub) * n_sub, Real(0));
+        hs_real.assign(static_cast<size_t>(n_sub) * n_sub, AccReal(0));
         for (int mu = 0; mu < n_sub; ++mu)
             for (int nu = mu; nu < n_sub; ++nu) {
-                Real v = static_cast<Real>(
+                AccReal v = static_cast<AccReal>(
                     hs_host[static_cast<size_t>(nu) * n_sub + mu].real());
                 hs_real[mu * n_sub + nu] = hs_real[nu * n_sub + mu] = v;
             }
 
-        sub_eig.assign(n_sub, Real(0));
-        sub_vecs.assign(static_cast<size_t>(n_sub) * n_sub, Real(0));
+        sub_eig.assign(n_sub, AccReal(0));
+        sub_vecs.assign(static_cast<size_t>(n_sub) * n_sub, AccReal(0));
         cpu::pw::internal::jacobi_eigh(n_sub, hs_real.data(), sub_eig.data(),
                                        sub_vecs.data());
 
@@ -658,8 +659,8 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
     }
 }
 
-void DeviceBandSolver::apply_h_host(const std::complex<Real>* psi,
-                                    std::complex<Real>* hpsi) {
+void DeviceBandSolver::apply_h_host(const std::complex<AccReal>* psi,
+                                    std::complex<AccReal>* hpsi) {
     ensure_subspace_capacity(ng_, 2);
     ATV_CUDA_CHECK(cudaMemcpy(
         d_sub_, psi, static_cast<size_t>(ng_) * sizeof(cufftDoubleComplex),
@@ -674,7 +675,7 @@ void DeviceBandSolver::zero_density() {
     ATV_CUDA_CHECK(cudaMemset(d_rho_, 0, nr_ * sizeof(double)));
 }
 
-void DeviceBandSolver::accumulate_density(Real weight, Real omega) {
+void DeviceBandSolver::accumulate_density(AccReal weight, AccReal omega) {
     double scale =
         static_cast<double>(weight) * 2.0 / static_cast<double>(omega);
     for (int b = 0; b < n_bands_; ++b) {
@@ -690,7 +691,7 @@ void DeviceBandSolver::accumulate_density(Real weight, Real omega) {
 }
 
 void DeviceBandSolver::fetch_density_g(
-    const cpu::pw::internal::GVectorList& gv0, std::complex<Real>* rho_g) {
+    const cpu::pw::internal::GVectorList& gv0, std::complex<AccReal>* rho_g) {
     int ng0 = gv0.count();
     k_real_to_cplx<<<n_blocks(nr_), kBlock>>>(d_rho_, nr_, d_grid_);
     ATV_CUDA_CHECK(cudaGetLastError());

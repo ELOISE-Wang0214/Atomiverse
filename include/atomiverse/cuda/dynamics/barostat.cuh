@@ -6,6 +6,8 @@
 /// CUDA-free header.
 #pragma once
 
+#include "atomiverse/cuda/component/barostat.cuh"
+
 #include <memory>
 #include <string>
 
@@ -20,7 +22,7 @@ namespace md {
 ///
 /// Binds to final_integrate at order +200 (after VelocityVerlet + NoseHoover).
 /// Requires Virial at post_force to populate DeviceFrame::stress.
-class Barostat : public Component {
+class Barostat : public cuda::Barostat {
   public:
     /// @brief Construct barostat.
     /// @param P_target Target pressure [eV/Angstrom^3].

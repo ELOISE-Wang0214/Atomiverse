@@ -4,7 +4,7 @@
 
 #ifdef ATV_HAS_HF
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
@@ -225,7 +225,7 @@ void RHFFock::destroy(const SolverContext& /*ctx*/, SCFWorkspace& /*ws*/) {
 // RHFFockDevice — CUDA-only path: GPU integral kernels, zero CPU integrals
 // ══════════════════════════════════════════════════════════════════════
 
-// kAngstromToBohr is in core/constants.h
+// Angstrom -> Bohr via ATV::units::kAngstromInBohr (core/units.h)
 
 static void call_1e_integrals(ATV::cuda::prec_t* S, ATV::cuda::prec_t* T,
                               ATV::cuda::prec_t* V, const ATV::cuda::prec_t* a,
@@ -290,9 +290,9 @@ void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
                cudaMemcpyDeviceToHost);
 
     for (int a = 0; a < natm; ++a) {
-        double cx = static_cast<double>(h_x[a]) * kAngstromToBohr;
-        double cy = static_cast<double>(h_y[a]) * kAngstromToBohr;
-        double cz = static_cast<double>(h_z[a]) * kAngstromToBohr;
+        double cx = static_cast<double>(h_x[a]) * ATV::units::kAngstromInBohr;
+        double cy = static_cast<double>(h_y[a]) * ATV::units::kAngstromInBohr;
+        double cz = static_cast<double>(h_z[a]) * ATV::units::kAngstromInBohr;
         h_centers[a * 3 + 0] = work_t(cx);
         h_centers[a * 3 + 1] = work_t(cy);
         h_centers[a * 3 + 2] = work_t(cz);

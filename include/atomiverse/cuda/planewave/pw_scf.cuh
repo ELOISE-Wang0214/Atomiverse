@@ -15,7 +15,9 @@
 #pragma once
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/planewave/pw_scf.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
+#include "atomiverse/cpu/planewave/internal/g_vector.h"
+#include "atomiverse/cpu/planewave/internal/pw_workspace.h"
 #include <string>
 
 namespace ATV {

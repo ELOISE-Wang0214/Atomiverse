@@ -4,6 +4,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
@@ -20,15 +21,23 @@ using namespace ATV;
 TEST(BondHarmonic, DimerAtEquilibrium) {
     // 2-atom system at r0 → V=0, F=0
     cpu::Frame frame(2);
-    frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.53});
-    frame.atoms.y = xt::xtensor<double, 1>({0.0, 0.0});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0});
-    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0});
-    frame.box = Mat3::cubic(20.0);
+    {
+        auto x = frame.span(kAtom_x);
+        auto y = frame.span(kAtom_y);
+        auto z = frame.span(kAtom_z);
+        auto mass = frame.span(kAtom_mass);
+        auto tag = frame.span(kAtom_tag);
+        x[0] = 0.0;  x[1] = 1.53;
+        y[0] = 0.0;  y[1] = 0.0;
+        z[0] = 0.0;  z[1] = 0.0;
+        mass[0] = 14.0;  mass[1] = 14.0;
+        tag[0] = 0;  tag[1] = 1;
+    }
+    frame.simbox = cpu::Box::cubic(20.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(0, 1, 0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(0, 1, 0);
 
     // Single-pass force evaluation -> use cuda::Evaluate (no Integrator
     // required, unlike cuda::md::MD which validates one in build()).
@@ -40,24 +49,32 @@ TEST(BondHarmonic, DimerAtEquilibrium) {
     // CUDA kernels compute in real_t (single precision), so "zero" force
     // at equilibrium carries float round-off (~1e-5), not the double-grade
     // 1e-10 the CPU sibling can assert. Use a float-appropriate tolerance.
-    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
-    EXPECT_NEAR(frame.atoms.fx[0], 0.0, 1e-3);
-    EXPECT_NEAR(frame.atoms.fx[1], 0.0, 1e-3);
+    EXPECT_NEAR(frame.meta.get(kEnergy), 0.0, 1e-6);
+    EXPECT_NEAR(frame.span(kAtom_fx)[0], 0.0, 1e-3);
+    EXPECT_NEAR(frame.span(kAtom_fx)[1], 0.0, 1e-3);
 }
 
 TEST(BondHarmonic, DimerDisplaced) {
     // 2-atom system at r != r0 → V > 0
     cpu::Frame frame(2);
     double r = 1.60;
-    frame.atoms.x = xt::xtensor<double, 1>({0.0, r});
-    frame.atoms.y = xt::xtensor<double, 1>({0.0, 0.0});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0});
-    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0});
-    frame.box = Mat3::cubic(20.0);
+    {
+        auto x = frame.span(kAtom_x);
+        auto y = frame.span(kAtom_y);
+        auto z = frame.span(kAtom_z);
+        auto mass = frame.span(kAtom_mass);
+        auto tag = frame.span(kAtom_tag);
+        x[0] = 0.0;  x[1] = r;
+        y[0] = 0.0;  y[1] = 0.0;
+        z[0] = 0.0;  z[1] = 0.0;
+        mass[0] = 14.0;  mass[1] = 14.0;
+        tag[0] = 0;  tag[1] = 1;
+    }
+    frame.simbox = cpu::Box::cubic(20.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(0, 1, 0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(0, 1, 0);
 
     double K = 350.0, r0 = 1.53;
 
@@ -68,13 +85,13 @@ TEST(BondHarmonic, DimerDisplaced) {
 
     double expected_V = K * (r - r0) * (r - r0);
     // Single-precision kernel: ~1e-6 relative round-off on a V≈1.7 energy.
-    EXPECT_NEAR(frame.scalars.energy, expected_V, 1e-4);
+    EXPECT_NEAR(frame.meta.get(kEnergy), expected_V, 1e-4);
 
     // Forces should be attractive (pulling atoms together)
-    EXPECT_GT(frame.atoms.fx[0], 0.0); // atom 0 pushed right
-    EXPECT_LT(frame.atoms.fx[1], 0.0); // atom 1 pushed left
+    EXPECT_GT(frame.span(kAtom_fx)[0], 0.0); // atom 0 pushed right
+    EXPECT_LT(frame.span(kAtom_fx)[1], 0.0); // atom 1 pushed left
     // Newton's 3rd law
-    EXPECT_NEAR(frame.atoms.fx[0] + frame.atoms.fx[1], 0.0, 1e-10);
+    EXPECT_NEAR(frame.span(kAtom_fx)[0] + frame.span(kAtom_fx)[1], 0.0, 1e-10);
 }
 
 // ── cuda::AngleHarmonic ──────────────────────────────────────────────────
@@ -86,17 +103,23 @@ TEST(AngleHarmonic, AtEquilibrium) {
     double theta0 = theta0_deg * M_PI / 180.0;
     double r = 1.53;
 
-    frame.atoms.x = xt::xtensor<double, 1>(
-        {double(0), r, double(r + r * cos(M_PI - theta0))});
-    frame.atoms.y = xt::xtensor<double, 1>(
-        {double(0), double(0), double(r * sin(M_PI - theta0))});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0});
-    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0});
-    frame.box = Mat3::cubic(20.0);
+    {
+        auto x = frame.span(kAtom_x);
+        auto y = frame.span(kAtom_y);
+        auto z = frame.span(kAtom_z);
+        auto mass = frame.span(kAtom_mass);
+        auto tag = frame.span(kAtom_tag);
+        x[0] = 0.0;  x[1] = r;  x[2] = r + r * cos(M_PI - theta0);
+        y[0] = 0.0;  y[1] = 0.0;  y[2] = r * sin(M_PI - theta0);
+        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;
+        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;
+        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;
+    }
+    frame.simbox = cpu::Box::cubic(20.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_angle(0, 1, 2, 0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_angle(0, 1, 2, 0);
 
     // AngleHarmonic API contract: theta0 is in RADIANS, matching the CPU
     // sibling (cpu::AngleHarmonic uses theta0_[type] directly in
@@ -108,7 +131,7 @@ TEST(AngleHarmonic, AtEquilibrium) {
     sim.build();
     sim.run(frame);
 
-    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
+    EXPECT_NEAR(frame.meta.get(kEnergy), 0.0, 1e-6);
 }
 
 // ── cuda::DihedralMultiHarmonic ──────────────────────────────────────────
@@ -123,15 +146,23 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
     //   atom0=(0,1,0) atom1=(0,0,0) atom2=(1.5,0,0) atom3=(1.5,0,1)
     // Planes (0,1,2) and (1,2,3) have normals along -z and -y → φ=90°.
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<double, 1>({0.0, 0.0, 1.5, 1.5});
-    frame.atoms.y = xt::xtensor<double, 1>({1.0, 0.0, 0.0, 0.0});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 1.0});
-    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
-    frame.box = Mat3::cubic(20.0);
+    {
+        auto x = frame.span(kAtom_x);
+        auto y = frame.span(kAtom_y);
+        auto z = frame.span(kAtom_z);
+        auto mass = frame.span(kAtom_mass);
+        auto tag = frame.span(kAtom_tag);
+        x[0] = 0.0;  x[1] = 0.0;  x[2] = 1.5;  x[3] = 1.5;
+        y[0] = 1.0;  y[1] = 0.0;  y[2] = 0.0;  y[3] = 0.0;
+        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;  z[3] = 1.0;
+        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;  mass[3] = 14.0;
+        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;  tag[3] = 3;
+    }
+    frame.simbox = cpu::Box::cubic(20.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_dihedral(0, 1, 2, 3, 0);
 
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
@@ -142,20 +173,23 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
 
     // At φ=90°, cos φ=0 ⇒ V = C0 = 1.73 eV, and dV/dφ = -C1 = 4.49 ≠ 0 ⇒ a
     // real torsional force. Both being nonzero proves the kernel executed.
-    EXPECT_TRUE(std::isfinite(frame.scalars.energy));
-    EXPECT_NEAR(frame.scalars.energy, 1.73, 0.05)
+    EXPECT_TRUE(std::isfinite(frame.meta.get(kEnergy)));
+    EXPECT_NEAR(frame.meta.get(kEnergy), 1.73, 0.05)
         << "dihedral energy not ~C0 -> kernel likely never launched";
     double fsum_x = 0.0, fsum_y = 0.0, fsum_z = 0.0, fmax = 0.0;
+    auto fx = frame.span(kAtom_fx);
+    auto fy = frame.span(kAtom_fy);
+    auto fz = frame.span(kAtom_fz);
     for (int i = 0; i < 4; ++i) {
-        EXPECT_TRUE(std::isfinite(frame.atoms.fx[i]));
-        EXPECT_TRUE(std::isfinite(frame.atoms.fy[i]));
-        EXPECT_TRUE(std::isfinite(frame.atoms.fz[i]));
-        fsum_x += frame.atoms.fx[i];
-        fsum_y += frame.atoms.fy[i];
-        fsum_z += frame.atoms.fz[i];
-        fmax = std::max({fmax, std::abs(frame.atoms.fx[i]),
-                         std::abs(frame.atoms.fy[i]),
-                         std::abs(frame.atoms.fz[i])});
+        EXPECT_TRUE(std::isfinite(fx[i]));
+        EXPECT_TRUE(std::isfinite(fy[i]));
+        EXPECT_TRUE(std::isfinite(fz[i]));
+        fsum_x += fx[i];
+        fsum_y += fy[i];
+        fsum_z += fz[i];
+        fmax = std::max({fmax, std::abs(fx[i]),
+                         std::abs(fy[i]),
+                         std::abs(fz[i])});
     }
     // A torsional force exists (not all zero) and obeys Newton's 3rd law.
     EXPECT_GT(fmax, 1e-2)
@@ -170,17 +204,25 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
 TEST(Bonded, ChainWithLJ) {
     // 4-atom chain with bonds + LJ, 10 steps, finite results
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.53, 3.06, 4.59});
-    frame.atoms.y = xt::xtensor<double, 1>({0.0, 0.3, -0.3, 0.3});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
-    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
-    frame.box = Mat3::cubic(20.0);
+    {
+        auto x = frame.span(kAtom_x);
+        auto y = frame.span(kAtom_y);
+        auto z = frame.span(kAtom_z);
+        auto mass = frame.span(kAtom_mass);
+        auto tag = frame.span(kAtom_tag);
+        x[0] = 0.0;  x[1] = 1.53;  x[2] = 3.06;  x[3] = 4.59;
+        y[0] = 0.0;  y[1] = 0.3;  y[2] = -0.3;  y[3] = 0.3;
+        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;  z[3] = 0.0;
+        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;  mass[3] = 14.0;
+        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;  tag[3] = 3;
+    }
+    frame.simbox = cpu::Box::cubic(20.0);
 
-    frame.atoms.map_clear();
-    frame.atoms.map_set(0, frame.atoms.nlocal);
-    frame.atoms.add_bond(0, 1, 0);
-    frame.atoms.add_bond(1, 2, 0);
-    frame.atoms.add_bond(2, 3, 0);
+    frame.clear_tag_index();
+    frame.rebuild_tag_index(0, frame.nlocal());
+    frame.add_bond(0, 1, 0);
+    frame.add_bond(1, 2, 0);
+    frame.add_bond(2, 3, 0);
 
     cuda::md::MD sim;
     sim.add(cuda::md::VelocityVerlet{0.1});
@@ -188,8 +230,10 @@ TEST(Bonded, ChainWithLJ) {
     sim.build();
     sim.run(frame, 10);
 
+    auto x = frame.span(kAtom_x);
+    auto vx = frame.span(kAtom_vx);
     for (int i = 0; i < 4; ++i) {
-        EXPECT_TRUE(std::isfinite(frame.atoms.x[i]));
-        EXPECT_TRUE(std::isfinite(frame.atoms.vx[i]));
+        EXPECT_TRUE(std::isfinite(x[i]));
+        EXPECT_TRUE(std::isfinite(vx[i]));
     }
 }

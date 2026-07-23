@@ -72,14 +72,14 @@ cpu::Frame make_lj_cube(int n_side = 4, double density = 0.8) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + 0.5) * spacing;
-                frame.atoms.y[idx] = (double(iy) + 0.5) * spacing;
-                frame.atoms.z[idx] = (double(iz) + 0.5) * spacing;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_x)[idx] = (double(ix) + 0.5) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + 0.5) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + 0.5) * spacing;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(static_cast<double>(box_len));
+    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 
@@ -97,7 +97,7 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOver100Steps) {
         .add(cuda::PairLJCut{1.0, 1.0, 2.5});
     sim.add(cuda::md::VelocityVerlet{0.001});
     sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-    sim.add(rec);
+    sim.add_ref(rec);
     sim.build();
 
     // Reset once at the very start; AsyncRecordBase never calls the wrapper,
@@ -127,7 +127,7 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
                                                 /*P_target=*/0.0,
                                                 /*tau_P=*/1000.0,
                                                 /*dt=*/0.001}});
-    sim.add(rec);
+    sim.add_ref(rec);
     sim.build();
 
     cuda::detail::reset_sync_count();
@@ -149,7 +149,7 @@ TEST(CudaAsyncHotPathNoSync, LifecycleRoundTrip) {
             .add(cuda::PairLJCut{1.0, 1.0, 2.5});
         sim.add(cuda::md::VelocityVerlet{0.001});
         sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-        sim.add(rec);
+        sim.add_ref(rec);
         sim.build();
         sim.run(frame, 5);
         // After sim destruction at scope exit, AsyncRecordBase::destroy()

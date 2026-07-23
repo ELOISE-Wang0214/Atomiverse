@@ -2,6 +2,8 @@
 /// @brief CUDA Langevin thermostat — LAMMPS-equivalent `fix langevin`.
 #pragma once
 
+#include "atomiverse/cuda/component/thermostat.cuh"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -55,7 +57,7 @@ namespace md {
 ///
 /// @see cpu::md::FixLangevin for the CPU reference + LAMMPS audit
 ///      verdict table.
-class FixLangevin : public Component {
+class FixLangevin : public cuda::Thermostat {
   public:
     /// @brief Construct Langevin thermostat.
     /// @param T_start Ramp start temperature [K].

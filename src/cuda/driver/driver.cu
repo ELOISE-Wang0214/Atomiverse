@@ -44,9 +44,10 @@ void Backend::materialize(const cpu::Frame& frame) {
     // diagonal; for fixed-box (NVE/NVT) runs the build-time value
     // here is the value forever.
     auto& hb = context_.host_box;
+    const auto& cell = frame.simbox.cell();
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
-            hb.cell[i * 3 + j] = static_cast<real_t>(frame.box(i, j));
+            hb.cell[i * 3 + j] = static_cast<real_t>(cell(i, j));
     // Ortho test: off-diagonal entries within FP roundoff. Threshold
     // lives on cuda::Box so it stays in lock-step with cpu::Box.
     hb.ortho = (std::abs(hb.cell[1]) < cuda::Box::kOrthoEps)

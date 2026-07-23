@@ -139,10 +139,9 @@ TEST(CudaMaterialize, RoundTrip) {
         EXPECT_NEAR(rq[i], charge[i], 1e-5);
     }
 
-    // System scalars round-trip through the dedicated "scalars" block.
-    auto se = molrs::frame_column_f64(*fr, "scalars", "energy");
-    ASSERT_EQ(se.size(), 1u);
-    EXPECT_DOUBLE_EQ(se[0], 0.0);
+    // System scalars cross the boundary as exact typed meta, never a synthetic
+    // "scalars" block (schema v2) — mirrors tests/cpu/test_materialize.cpp.
+    EXPECT_FALSE(molrs::frame_has_block(*fr, "scalars"));
 
     cuda::destroy(d);
 }

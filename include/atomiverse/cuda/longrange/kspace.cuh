@@ -14,13 +14,15 @@
 /// header except for the component base it extends.
 #pragma once
 
+#include "atomiverse/cuda/component/potential.cuh"
+
 #include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {
 
 /// @brief Abstract base for reciprocal-space electrostatics styles (CUDA).
-class KSpace : public Component {
+class KSpace : public cuda::Potential {
   public:
     ~KSpace() override = default;
 

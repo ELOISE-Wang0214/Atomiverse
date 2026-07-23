@@ -13,6 +13,7 @@
 
 #include <cuda_runtime.h>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -20,7 +21,7 @@
 
 using namespace ATV;
 
-static constexpr double kA2B = ATV::kAngstromToBohr;
+static constexpr double kA2B = ATV::units::kAngstromInBohr;
 static constexpr double sto3g_exp[3] = {3.42525091, 0.62391373, 0.16885540};
 static constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
@@ -71,17 +72,17 @@ struct DeviceBasis {
     DeviceBasis() : n_shells(2), n_prim(3), natm(2) {
         // Compute CPU reference
         cpu::Frame frame(2);
-        frame.atoms.x[0] = double(0);
-        frame.atoms.y[0] = double(0);
-        frame.atoms.z[0] = double(0);
-        frame.atoms.x[1] = double(0.74);
-        frame.atoms.y[1] = double(0);
-        frame.atoms.z[1] = double(0);
-        frame.atoms.mass[0] = double(1.008);
-        frame.atoms.mass[1] = double(1.008);
-        frame.atoms.type[0] = 1;
-        frame.atoms.type[1] = 1;
-        frame.box = Mat3::cubic(100.0);
+        frame.span(kAtom_x)[0] = double(0);
+        frame.span(kAtom_y)[0] = double(0);
+        frame.span(kAtom_z)[0] = double(0);
+        frame.span(kAtom_x)[1] = double(0.74);
+        frame.span(kAtom_y)[1] = double(0);
+        frame.span(kAtom_z)[1] = double(0);
+        frame.span(kAtom_mass)[0] = double(1.008);
+        frame.span(kAtom_mass)[1] = double(1.008);
+        frame.span(kAtom_type)[0] = 1;
+        frame.span(kAtom_type)[1] = 1;
+        frame.simbox = cpu::Box::cubic(100.0);
         // compute_eri=true: the ERI test reads ref.ERI directly.
         ref = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0, true};
 

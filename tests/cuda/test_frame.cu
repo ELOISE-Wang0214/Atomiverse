@@ -15,9 +15,8 @@ TEST(Frame, HostCreate) {
     cpu::Frame frame(100);
     EXPECT_EQ(frame.nlocal(), 100);
     EXPECT_GE(frame.capacity(), 100);
-    EXPECT_EQ(static_cast<int>(frame.span(kAtom_x).size()), frame.capacity());
-    EXPECT_EQ(static_cast<int>(frame.span(kAtom_mass).size()),
-              frame.capacity());
+    // The atoms block (x, mass, ... columns) is allocated to `capacity` rows.
+    EXPECT_EQ(frame.block("atoms").rows(), frame.capacity());
 }
 
 TEST(Frame, Mat3Box) {

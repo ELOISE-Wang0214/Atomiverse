@@ -10,7 +10,13 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+
+// xsimd is the CPU SIMD path only; it is guarded out under __CUDACC__ exactly
+// as in pair_kernel.h (nvcc's device pass cannot parse <arm_neon.h> on aarch64).
+// The batch-lane test below is likewise CPU-only.
+#if !defined(__CUDACC__)
 #include <xsimd/xsimd.hpp>
+#endif
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/potentials/pair_kernel.h"
@@ -65,6 +71,7 @@ TEST(PairKernel, CoulMatchesClosedForm) {
     EXPECT_NEAR(c.fpair, f_ref, 1e-12);
 }
 
+#if !defined(__CUDACC__) // CPU-only: xsimd batch overloads (see pair_kernel.h)
 TEST(PairKernel, BatchLanesAgreeWithScalar) {
     using batch = xsimd::batch<double>;
     auto lj = make_lj(0.0104, 3.4, 10.0);
@@ -97,6 +104,7 @@ TEST(PairKernel, BatchLanesAgreeWithScalar) {
         EXPECT_NEAR(coe[k], sco.energy, 1e-12) << "coul lane " << k;
     }
 }
+#endif // !__CUDACC__
 
 TEST(PairKernel, SumComposesLJAndCoul) {
     auto lj = make_lj(0.0104, 3.4, 10.0);

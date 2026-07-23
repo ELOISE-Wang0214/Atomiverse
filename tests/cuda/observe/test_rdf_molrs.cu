@@ -53,17 +53,17 @@ cpu::Frame make_static_lj_lattice(int n_side, double density) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
-                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
-                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
-                frame.atoms.vx[idx] = double(0);
-                frame.atoms.vy[idx] = double(0);
-                frame.atoms.vz[idx] = double(0);
-                frame.atoms.mass[idx] = double(1.0);
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_x)[idx] = (double(ix) + double(0.5)) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + double(0.5)) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + double(0.5)) * spacing;
+                frame.span(kAtom_vx)[idx] = double(0);
+                frame.span(kAtom_vy)[idx] = double(0);
+                frame.span(kAtom_vz)[idx] = double(0);
+                frame.span(kAtom_mass)[idx] = double(1.0);
+                frame.span(kAtom_type)[idx] = 0;
                 idx++;
             }
-    frame.box = Mat3::cubic(static_cast<double>(box_len));
+    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 
@@ -110,11 +110,11 @@ std::vector<double> host_reference_gr(const cpu::Frame& frame, int n,
     std::vector<double> positions(static_cast<std::size_t>(3 * n));
     for (int i = 0; i < n; ++i) {
         positions[static_cast<std::size_t>(i)] =
-            static_cast<double>(frame.atoms.x[i]);
+            static_cast<double>(frame.span(kAtom_x)[i]);
         positions[static_cast<std::size_t>(n + i)] =
-            static_cast<double>(frame.atoms.y[i]);
+            static_cast<double>(frame.span(kAtom_y)[i]);
         positions[static_cast<std::size_t>(2 * n + i)] =
-            static_cast<double>(frame.atoms.z[i]);
+            static_cast<double>(frame.span(kAtom_z)[i]);
     }
     const std::array<double, 9> cell = {box_len, 0.0, 0.0, 0.0,    box_len,
                                         0.0,     0.0, 0.0, box_len};

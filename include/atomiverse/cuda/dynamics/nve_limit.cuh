@@ -3,6 +3,8 @@
 ///        (LAMMPS-equivalent `fix nve/limit`).
 #pragma once
 
+#include "atomiverse/cuda/component/integrator.cuh"
+
 #include <string>
 #include <vector>
 
@@ -22,7 +24,7 @@ namespace md {
 /// Component/LaunchContext path (used by the multi-GPU PE driver, which owns
 /// raw per-subdomain SoA pointers rather than a single Frame). `xmax` is the
 /// per-step displacement cap [Å]; `vmax = xmax/dt` is computed internally.
-/// These mirror LAMMPS `fix nve/limit` exactly (kFtm2v units, Euclidean speed
+/// These mirror LAMMPS `fix nve/limit` exactly (ATV::units::force_to_accel units, Euclidean speed
 /// cap, orthorhombic PBC wrap on the position update).
 void launch_nve_limit_initial(real_t* x, real_t* y, real_t* z, real_t* vx,
                               real_t* vy, real_t* vz, const real_t* fx,
@@ -67,7 +69,7 @@ void launch_nve_limit_final(real_t* vx, real_t* vy, real_t* vz,
 ///
 /// @see cpu::md::NVELimit for the CPU reference + LAMMPS audit table
 /// @see cuda::md::VelocityVerlet for the unconstrained sibling
-class NVELimit : public Component {
+class NVELimit : public cuda::Integrator {
   public:
     /// @brief Construct NVE/limit integrator.
     /// @param dt   Timestep [fs].

@@ -40,26 +40,26 @@ cpu::Frame make_displaced_system(int n_side, double density,
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] =
+                frame.span(kAtom_x)[idx] =
                     (double(ix) + double(0.5)) * spacing
                     + displacement
                           * (double(std::rand()) / double(RAND_MAX)
                              - double(0.5));
-                frame.atoms.y[idx] =
+                frame.span(kAtom_y)[idx] =
                     (double(iy) + double(0.5)) * spacing
                     + displacement
                           * (double(std::rand()) / double(RAND_MAX)
                              - double(0.5));
-                frame.atoms.z[idx] =
+                frame.span(kAtom_z)[idx] =
                     (double(iz) + double(0.5)) * spacing
                     + displacement
                           * (double(std::rand()) / double(RAND_MAX)
                              - double(0.5));
-                frame.atoms.mass[idx] = double(1.0);
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_mass)[idx] = double(1.0);
+                frame.span(kAtom_type)[idx] = 0;
                 idx++;
             }
-    frame.box = Mat3::cubic(static_cast<double>(box_len));
+    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 
@@ -81,7 +81,7 @@ double initial_energy(const cpu::Frame& frame, double cutoff) {
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.build();
     min.run(f, 1);
-    return f.scalars.energy;
+    return f.meta.get(kEnergy);
 }
 
 } // anonymous namespace
@@ -92,7 +92,7 @@ static_assert(std::is_base_of<cuda::Component, cuda::minimizer::CG>::value,
 
 TEST(MinimizerCG, IsOptimizerRole) {
     cuda::minimizer::CG step{double(0.01)};
-    EXPECT_EQ(step.role(), ComponentRole::Optimizer);
+    EXPECT_EQ(step.role(), 0);
 }
 
 TEST(MinimizerCG, BindsSearchDirectionAndConvergenceCheck) {
@@ -122,8 +122,8 @@ TEST(MinimizerCG, EnergyDecreases) {
     min.build();
     min.run(frame, 50);
 
-    EXPECT_LT(static_cast<double>(frame.scalars.energy), e0);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_LT(static_cast<double>(frame.meta.get(kEnergy)), e0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
 }
 
 TEST(MinimizerCG, ConvergesAndStopsEarly) {
@@ -139,7 +139,7 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
     // it. Lvalue registration stores a reference, so the component remains inspectable
     // after run() (the documented add() lvalue contract).
     cuda::minimizer::CG cg{kStableAlpha};
-    min.add(cg);
+    min.add_ref(cg);
     min.add_criterion(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
                                          /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
                                          /*etol=*/10.0});
@@ -187,6 +187,6 @@ TEST(MinimizerCG, SwapOptimizerCGvsLBFGS) {
         min.run(f_lbfgs, 100);
     }
 
-    EXPECT_LT(static_cast<double>(f_cg.scalars.energy), e0);
-    EXPECT_LT(static_cast<double>(f_lbfgs.scalars.energy), e0);
+    EXPECT_LT(static_cast<double>(f_cg.meta.get(kEnergy)), e0);
+    EXPECT_LT(static_cast<double>(f_lbfgs.meta.get(kEnergy)), e0);
 }

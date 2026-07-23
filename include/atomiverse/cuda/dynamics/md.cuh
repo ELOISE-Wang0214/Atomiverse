@@ -99,6 +99,9 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/integrator.cuh"
+#include "atomiverse/cuda/component/potential.cuh"
+#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/cuda/dynamics/kinetic_energy.cuh"
@@ -200,8 +203,8 @@ class MD : public cuda::Driver<ATV::md::Phase> {
     /// @brief Configure the bond force evaluator (LAMMPS `bond_style`).
     ///        Bound at `md::Phase::force @ 0`.
     template <typename B>
-    MD& add_potential(B&& b) {
-        set_singular_at_(std::forward<B>(b), bond_set_, "add_potential",
+    MD& set_bond(B&& b) {
+        set_singular_at_(std::forward<B>(b), bond_set_, "set_bond",
                          ATV::md::Phase::force, 0);
         return *this;
     }
@@ -302,23 +305,20 @@ class MD : public cuda::Driver<ATV::md::Phase> {
         bool has_integrator = false;
         bool has_force_writer = false;
         for_each_pending([&](const cuda::Component& c) {
-            // CUDA kind bases pending; integrators identified by name for now.
-            if (c.name() == "velocity_verlet" || c.name() == "nve_limit"
-                || c.name().find("verlet") != std::string::npos)
+            if (dynamic_cast<const cuda::Integrator*>(&c))
                 has_integrator = true;
-            // Force sources: hot-path and not FrameImmutable, not
-            // named integrators/thermostats/barostats alone.
-            if (loop_required(c.role())
-                && !has_role(c.role(), RoleFlag::FrameImmutable)
-                && c.name() != "velocity_verlet" && c.name() != "nve_limit"
-                && c.name() != "nose_hoover" && c.name() != "berendsen"
-                && c.name().find("barostat") == std::string::npos)
+            // Energy/force sources are kinds; Langevin is a Thermostat that
+            // also writes force, matched by name exactly as on CPU.
+            if (dynamic_cast<const cuda::Potential*>(&c)
+                || dynamic_cast<const cuda::HF*>(&c) || c.name() == "langevin"
+                || c.name() == "fix_langevin")
                 has_force_writer = true;
         });
         if (!has_integrator)
             throw_missing("Integrator");
         if (!has_force_writer)
-            throw_missing("hot-path force Component");
+            throw_missing("Potential / Bias / HF / Semiempirical / PlaneWave / "
+                          "GPW (or Langevin)");
     }
 
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.

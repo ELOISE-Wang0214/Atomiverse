@@ -85,7 +85,7 @@ namespace cuda {
 template <typename PhaseEnum>
 class Driver : public ATV::Driver<PhaseEnum, cuda::device_tag> {
   public:
-    using Base = Driver<PhaseEnum, cuda::device_tag>;
+    using Base = ATV::Driver<PhaseEnum, cuda::device_tag>;
 
     /// @brief Install infrastructure, validate the component set, compile the Plan.
     ///

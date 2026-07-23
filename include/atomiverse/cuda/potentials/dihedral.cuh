@@ -1,6 +1,8 @@
 /// @file cuda/potentials/dihedral.cuh
 /// @brief LAMMPS-style abstract base for bonded 4-body styles (CUDA).
 #pragma once
+
+#include "atomiverse/cuda/component/potential.cuh"
 #include "atomiverse/core/role.h"
 
 #include <cstdint>
@@ -12,7 +14,7 @@
 namespace ATV {
 namespace cuda {
 
-class Dihedral : public Component {
+class Dihedral : public cuda::Potential {
   public:
     Role role() const override { return 0; }
     ~Dihedral() override = default;

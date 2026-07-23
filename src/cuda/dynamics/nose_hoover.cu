@@ -109,7 +109,7 @@ __global__ void scale_vel(real_t* __restrict__ vx, real_t* __restrict__ vy,
 void NoseHoover::build(const BuildContext& ctx) {
     int n = ctx.frame.n_atoms();
     state_->ndof = 3 * n - 3;
-    state_->Q = static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_
+    state_->Q = static_cast<work_t>(state_->ndof) * ATV::units::kB_ev_per_k * T_target_
                 * tau_ * tau_;
 
     cudaMalloc(&state_->d_xi, sizeof(work_t));
@@ -132,14 +132,14 @@ void NoseHoover::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
 
     work_t ndof_kbT =
-        static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_;
+        static_cast<work_t>(state_->ndof) * ATV::units::kB_ev_per_k * T_target_;
     work_t half_dt = work_t(0.5) * dt_;
 
     // Fused: reduce KE + update xi/scale (last block computes scale)
     cudaMemsetAsync(state_->d_ke_temp, 0, sizeof(work_t), stream);
     reduce_ke_and_update<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, state_->d_ke_temp, n,
-        kMvv2e, state_->d_xi, state_->d_scale, state_->Q, ndof_kbT, half_dt,
+        ATV::units::mass_v2_to_energy, state_->d_xi, state_->d_scale, state_->Q, ndof_kbT, half_dt,
         state_->d_block_count);
 
     // Scale velocities (reads scale written by the last block above)

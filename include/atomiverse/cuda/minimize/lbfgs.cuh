@@ -39,6 +39,8 @@
 /// @see cpu::minimizer::LBFGS for the CPU mirror
 #pragma once
 
+#include "atomiverse/cuda/component/optimizer.cuh"
+
 #include <string>
 #include <vector>
 
@@ -52,7 +54,7 @@ namespace cuda {
 namespace minimizer {
 
 /// @brief L-BFGS Optimizer component (two-loop recursion on device).
-class LBFGS : public Component {
+class LBFGS : public cuda::Optimizer {
   public:
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).

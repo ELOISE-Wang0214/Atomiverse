@@ -37,6 +37,9 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/optimizer.cuh"
+#include "atomiverse/cuda/component/potential.cuh"
+#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/driver/criterion.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
@@ -107,26 +110,17 @@ class Minimize : public cuda::Driver<ATV::minimizer::Phase> {
         bool has_optimizer = false;
         bool has_energy_or_force = false;
         for_each_pending([&](const cuda::Component& c) {
-            // CUDA kinds not yet split — use Role flags.
-            if (c.name().find("lbfgs") != std::string::npos
-                || c.name().find("cg") != std::string::npos
-                || c.name().find("sd") != std::string::npos
-                || c.name().find("opt") != std::string::npos)
+            if (dynamic_cast<const cuda::Optimizer*>(&c))
                 has_optimizer = true;
-            if (loop_required(c.role())
-                && !has_role(c.role(), RoleFlag::FrameImmutable))
+            if (dynamic_cast<const cuda::Potential*>(&c)
+                || dynamic_cast<const cuda::HF*>(&c))
                 has_energy_or_force = true;
-        });
-        // Prefer name-based optimizer detection until CUDA kinds land.
-        for_each_pending([&](const cuda::Component& c) {
-            if (c.name() == "lbfgs" || c.name() == "cg" || c.name() == "sd"
-                || c.name() == "steepest_descent")
-                has_optimizer = true;
         });
         if (!has_optimizer)
             throw_missing("Optimizer");
         if (!has_energy_or_force)
-            throw_missing("hot-path energy/force Component");
+            throw_missing(
+                "Potential / Bias / HF / Semiempirical / PlaneWave / GPW");
     }
 
     /// @brief Attach the default termination policy, if the user attached none.

@@ -36,6 +36,8 @@
 /// @see LAMMPS `fix_nh.cpp` lines 2541-2569 (`mtk_term1` / `mtk_term2`).
 #pragma once
 
+#include "atomiverse/cuda/component/integrator.cuh"
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -51,7 +53,7 @@ namespace md {
 
 /// @brief CUDA MTK NPT integrator. Same API surface and Trotter ordering
 ///        as `cpu::md::NoseHooverNPT`.
-class NoseHooverNPT : public Component {
+class NoseHooverNPT : public cuda::Integrator {
   public:
     /// @brief Configuration aggregate (mirror of `cpu::md::NoseHooverNPT::Config`).
     struct Config {

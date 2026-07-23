@@ -24,13 +24,13 @@ static cpu::Frame make_cubic(int n_side, double spacing) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = ix * spacing;
-                frame.atoms.y[idx] = iy * spacing;
-                frame.atoms.z[idx] = iz * spacing;
-                frame.atoms.mass[idx] = 14.0;
+                frame.span(kAtom_x)[idx] = ix * spacing;
+                frame.span(kAtom_y)[idx] = iy * spacing;
+                frame.span(kAtom_z)[idx] = iz * spacing;
+                frame.span(kAtom_mass)[idx] = 14.0;
                 ++idx;
             }
-    frame.box = Mat3::cubic(n_side * spacing);
+    frame.simbox = cpu::Box::cubic(n_side * spacing);
     return frame;
 }
 
@@ -50,14 +50,14 @@ TEST(NoseHoover, TemperatureControl) {
     sim.run(frame, 50);
 
     // After 50 steps with thermostat, results should be finite
-    EXPECT_TRUE(std::isfinite(frame.scalars.kinetic));
-    for (int i = 0; i < frame.atoms.size(); ++i)
-        EXPECT_TRUE(std::isfinite(frame.atoms.x[i]));
+    EXPECT_TRUE(std::isfinite(frame.meta.get(kKinetic)));
+    for (int i = 0; i < frame.nlocal(); ++i)
+        EXPECT_TRUE(std::isfinite(frame.span(kAtom_x)[i]));
 }
 
 TEST(Deform, BoxGrows) {
     auto frame = make_cubic(3, 5.0);
-    double L0 = frame.box(0, 0);
+    double L0 = frame.simbox.cell()(0, 0);
 
     double rate = 1e-4;
     double dt = 0.01;
@@ -73,8 +73,8 @@ TEST(Deform, BoxGrows) {
     sim.run(frame, n_steps);
 
     double expected_L = L0 * pow(1.0 + rate * dt, n_steps);
-    EXPECT_NEAR(frame.box(0, 0), expected_L, expected_L * 0.01);
-    EXPECT_NEAR(frame.box(1, 1), L0, 1e-6);
+    EXPECT_NEAR(frame.simbox.cell()(0, 0), expected_L, expected_L * 0.01);
+    EXPECT_NEAR(frame.simbox.cell()(1, 1), L0, 1e-6);
 }
 
 TEST(Virial, FiniteStress) {
@@ -92,9 +92,9 @@ TEST(Virial, FiniteStress) {
 
     // Stress tensor should be finite
     for (int c = 0; c < 6; ++c)
-        EXPECT_TRUE(std::isfinite(frame.scalars.stress[c]));
+        EXPECT_TRUE(std::isfinite(frame.meta.get(kStress)[c]));
     // Kinetic contribution guarantees non-zero diagonal
-    EXPECT_NE(frame.scalars.stress[0], 0.0);
+    EXPECT_NE(frame.meta.get(kStress)[0], 0.0);
 }
 
 TEST(Barostat, FiniteResults) {
@@ -114,10 +114,10 @@ TEST(Barostat, FiniteResults) {
     sim.run(frame, 50);
 
     // All results finite
-    for (int i = 0; i < frame.atoms.size(); ++i) {
-        EXPECT_TRUE(std::isfinite(frame.atoms.x[i]));
-        EXPECT_TRUE(std::isfinite(frame.atoms.vx[i]));
+    for (int i = 0; i < frame.nlocal(); ++i) {
+        EXPECT_TRUE(std::isfinite(frame.span(kAtom_x)[i]));
+        EXPECT_TRUE(std::isfinite(frame.span(kAtom_vx)[i]));
     }
-    EXPECT_TRUE(std::isfinite(frame.box(0, 0)));
-    EXPECT_GT(frame.box(0, 0), 0.0);
+    EXPECT_TRUE(std::isfinite(frame.simbox.cell()(0, 0)));
+    EXPECT_GT(frame.simbox.cell()(0, 0), 0.0);
 }

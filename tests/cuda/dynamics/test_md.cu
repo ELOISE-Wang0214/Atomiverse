@@ -8,6 +8,7 @@
 #include <string>
 #include <type_traits>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
@@ -34,25 +35,25 @@ cpu::Frame make_lj_system(int n_side, double density) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
-                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
-                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
-                frame.atoms.mass[idx] = double(1.0);
-                frame.atoms.type[idx] = 0;
+                frame.span(kAtom_x)[idx] = (double(ix) + double(0.5)) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + double(0.5)) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + double(0.5)) * spacing;
+                frame.span(kAtom_mass)[idx] = double(1.0);
+                frame.span(kAtom_type)[idx] = 18; // Ar (valid Z; molrs XYZ writer rejects Z=0)
                 idx++;
             }
-    frame.box = Mat3::cubic(static_cast<double>(box_len));
+    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
 
     // Small random velocities
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] =
+        frame.span(kAtom_vx)[i] =
             double(0.001)
             * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-        frame.atoms.vy[i] =
+        frame.span(kAtom_vy)[i] =
             double(0.001)
             * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-        frame.atoms.vz[i] =
+        frame.span(kAtom_vz)[i] =
             double(0.001)
             * (double(std::rand()) / double(RAND_MAX) - double(0.5));
     }
@@ -60,17 +61,17 @@ cpu::Frame make_lj_system(int n_side, double density) {
     // Remove center-of-mass velocity
     double mvx = 0, mvy = 0, mvz = 0;
     for (int i = 0; i < n; ++i) {
-        mvx += frame.atoms.vx[i];
-        mvy += frame.atoms.vy[i];
-        mvz += frame.atoms.vz[i];
+        mvx += frame.span(kAtom_vx)[i];
+        mvy += frame.span(kAtom_vy)[i];
+        mvz += frame.span(kAtom_vz)[i];
     }
     mvx /= double(n);
     mvy /= double(n);
     mvz /= double(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] -= mvx;
-        frame.atoms.vy[i] -= mvy;
-        frame.atoms.vz[i] -= mvz;
+        frame.span(kAtom_vx)[i] -= mvx;
+        frame.span(kAtom_vy)[i] -= mvy;
+        frame.span(kAtom_vz)[i] -= mvz;
     }
 
     return frame;
@@ -138,7 +139,7 @@ TEST(MD, NVEEnergyConservation) {
         sim.build();
         sim.run(frame1, 1);
     }
-    double e_initial = frame1.scalars.energy + frame1.scalars.kinetic;
+    double e_initial = frame1.meta.get(kEnergy) + frame1.meta.get(kKinetic);
 
     // Run 100 steps
     cpu::Frame frame2 = frame;
@@ -151,10 +152,10 @@ TEST(MD, NVEEnergyConservation) {
         sim.build();
         sim.run(frame2, 100);
     }
-    double e_final = frame2.scalars.energy + frame2.scalars.kinetic;
+    double e_final = frame2.meta.get(kEnergy) + frame2.meta.get(kKinetic);
 
     // KE should be positive after integration
-    EXPECT_GT(frame2.scalars.kinetic, double(0));
+    EXPECT_GT(frame2.meta.get(kKinetic), double(0));
 
     // Total energy should be conserved within tolerance
     // (small dt = 0.001 fs, 100 steps, float precision)
@@ -265,17 +266,17 @@ TEST(MD, InitVelocity) {
     for (int ix = 0; ix < 4; ++ix)
         for (int iy = 0; iy < 4; ++iy)
             for (int iz = 0; iz < 4; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
-                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
-                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
-                frame.atoms.mass[idx] = double(1.0);
+                frame.span(kAtom_x)[idx] = (double(ix) + double(0.5)) * spacing;
+                frame.span(kAtom_y)[idx] = (double(iy) + double(0.5)) * spacing;
+                frame.span(kAtom_z)[idx] = (double(iz) + double(0.5)) * spacing;
+                frame.span(kAtom_mass)[idx] = double(1.0);
                 idx++;
             }
-    frame.box = Mat3::cubic(static_cast<double>(box_len));
+    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
 
     // All velocities should be zero initially
     for (int i = 0; i < n; ++i) {
-        ASSERT_EQ(frame.atoms.vx[i], double(0));
+        ASSERT_EQ(frame.span(kAtom_vx)[i], double(0));
     }
 
     double target_temp = double(300.0);
@@ -296,8 +297,9 @@ TEST(MD, InitVelocity) {
     // Velocities should now be non-zero
     bool has_nonzero = false;
     for (int i = 0; i < n; ++i) {
-        if (frame.atoms.vx[i] != double(0) || frame.atoms.vy[i] != double(0)
-            || frame.atoms.vz[i] != double(0))
+        if (frame.span(kAtom_vx)[i] != double(0)
+            || frame.span(kAtom_vy)[i] != double(0)
+            || frame.span(kAtom_vz)[i] != double(0))
             has_nonzero = true;
     }
     EXPECT_TRUE(has_nonzero);
@@ -305,10 +307,10 @@ TEST(MD, InitVelocity) {
     // Center-of-mass velocity should be near zero
     double mvx = 0, mvy = 0, mvz = 0, M = 0;
     for (int i = 0; i < n; ++i) {
-        mvx += frame.atoms.mass[i] * frame.atoms.vx[i];
-        mvy += frame.atoms.mass[i] * frame.atoms.vy[i];
-        mvz += frame.atoms.mass[i] * frame.atoms.vz[i];
-        M += frame.atoms.mass[i];
+        mvx += frame.span(kAtom_mass)[i] * frame.span(kAtom_vx)[i];
+        mvy += frame.span(kAtom_mass)[i] * frame.span(kAtom_vy)[i];
+        mvz += frame.span(kAtom_mass)[i] * frame.span(kAtom_vz)[i];
+        M += frame.span(kAtom_mass)[i];
     }
     // After 1 step of VV, COM velocity may drift slightly from forces,
     // but should still be small
@@ -317,12 +319,12 @@ TEST(MD, InitVelocity) {
     EXPECT_NEAR(static_cast<double>(mvz / M), 0.0, 0.01);
 
     // Kinetic energy should be positive (velocities were generated)
-    EXPECT_GT(frame.scalars.kinetic, double(0));
+    EXPECT_GT(frame.meta.get(kKinetic), double(0));
 
     // Temperature should be in the right ballpark (within factor 3 for 64 atoms)
     int ndof = 3 * n - 3;
-    double temp =
-        double(2) * frame.scalars.kinetic / (double(ndof) * kBoltzmann);
+    double temp = double(2) * frame.meta.get(kKinetic)
+                  / (double(ndof) * ATV::units::kB_ev_per_k);
     EXPECT_GT(static_cast<double>(temp),
               static_cast<double>(target_temp) * 0.3);
     EXPECT_LT(static_cast<double>(temp),

@@ -4,7 +4,7 @@
 ///
 /// `SteepestDescent` is an `Optimizer`-role component that moves atoms
 /// along the force (negative gradient) direction each iteration:
-/// `x += alpha * f / m * kFtm2v`. It is hot-swappable: it plugs into the
+/// `x += alpha * f / m * ATV::units::force_to_accel`. It is hot-swappable: it plugs into the
 /// single `cuda::minimizer::Minimize` driver exactly as the CPU
 /// `cpu::minimizer::LBFGS` / `CG` Optimizer components plug into
 /// `cpu::minimizer::Minimize`.
@@ -34,6 +34,8 @@
 /// @see minimizer::Phase for the minimizer phase sequence
 #pragma once
 
+#include "atomiverse/cuda/component/optimizer.cuh"
+
 #include <string>
 #include <vector>
 
@@ -46,7 +48,7 @@ namespace ATV {
 namespace cuda {
 namespace minimizer {
 
-/// @brief Steepest-descent Optimizer component: `x += alpha * f / m * kFtm2v`.
+/// @brief Steepest-descent Optimizer component: `x += alpha * f / m * ATV::units::force_to_accel`.
 ///
 /// Binds `search_direction` (the step) and `convergence_check` (the metric publish).
 /// The `alpha` parameter controls the step size (a pseudo-timestep in fs) — same unit
@@ -55,7 +57,7 @@ namespace minimizer {
 /// required optimization step.
 ///
 /// @see cuda::minimizer::Minimize for the driver this component plugs into
-class SteepestDescent : public Component {
+class SteepestDescent : public cuda::Optimizer {
   public:
     /// @brief Construct a steepest-descent step.
     /// @param alpha Step size [fs] (pseudo-timestep, same units as

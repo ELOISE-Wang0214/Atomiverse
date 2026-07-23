@@ -19,12 +19,14 @@
 ///   cuda::Evaluate eval;
 ///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCF{integrals, tol, max_iter});
 ///   eval.build();
-///   eval.run(frame);            // frame.scalars.energy populated
+///   eval.run(frame);            // frame.meta.get(kEnergy) populated
 /// @endcode
 ///
 /// @see cuda::scf::SCFSolver for the inner SCF self-consistency loop
 /// @see cuda::Evaluate for the one-pass driver this component plugs into
 #pragma once
+
+#include "atomiverse/cuda/component/hf.cuh"
 
 #include <memory>
 #include <string>
@@ -52,7 +54,7 @@ namespace scf {
 /// Owns an `SCFSolver`, built once in `build()` and run in `launch()`.
 /// Three constructors map onto the three `SCFSolver` run paths. Declares no
 /// default bindings — attach explicitly with `.on(phase).add()`.
-class SCF : public cuda::Component {
+class SCF : public cuda::Component, public cuda::HF {
   public:
     /// @brief Construct a synthetic-path SCF evaluator `H(P) = H0 + alpha*P`.
     /// @param n_occ Number of occupied orbitals [dimensionless].

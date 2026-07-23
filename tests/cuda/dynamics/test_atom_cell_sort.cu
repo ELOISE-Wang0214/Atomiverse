@@ -182,7 +182,7 @@ TEST_F(AtomCellSort, ConsistentPermutationAndSortedByCell) {
     const double L = double(n_side) * spacing;
 
     cpu::Frame frame = make_bonded_lattice(n_side, spacing);
-    const int n = frame.atoms.nlocal;
+    const int n = frame.nlocal();
 
     cuda::Frame d = cpu::to_cuda(frame, /*capacity=*/n);
     cuda::materialize_per_atom_bonded(d, frame);
@@ -261,7 +261,7 @@ TEST_F(AtomCellSort, PermuteThenInverseIsIdentity) {
     const double L = double(n_side) * spacing;
 
     cpu::Frame frame = make_bonded_lattice(n_side, spacing);
-    const int n = frame.atoms.nlocal;
+    const int n = frame.nlocal();
 
     // Two device frames from the same source: `ref` untouched, `d` sorted then
     // inverse-applied. They must end byte-for-byte equal.

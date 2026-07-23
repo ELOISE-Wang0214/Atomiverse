@@ -30,9 +30,9 @@ __global__ void initial_integrate(
         return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    work_t ax = static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
-    work_t ay = static_cast<work_t>(fy[i]) * inv_m * kFtm2v;
-    work_t az = static_cast<work_t>(fz[i]) * inv_m * kFtm2v;
+    work_t ax = static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
+    work_t ay = static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
+    work_t az = static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
     vx[i] += hdt * ax;
     vy[i] += hdt * ay;
     vz[i] += hdt * az;
@@ -61,9 +61,9 @@ final_integrate(real_t* __restrict__ vx, real_t* __restrict__ vy,
         return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    vx[i] += hdt * static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
-    vy[i] += hdt * static_cast<work_t>(fy[i]) * inv_m * kFtm2v;
-    vz[i] += hdt * static_cast<work_t>(fz[i]) * inv_m * kFtm2v;
+    vx[i] += hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
+    vy[i] += hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
+    vz[i] += hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
 }
 
 } // anonymous namespace

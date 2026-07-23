@@ -28,20 +28,20 @@ cpu::Frame make_lj_block(int n_side, double density) {
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (ix + 0.5) * spacing;
-                frame.atoms.y[idx] = (iy + 0.5) * spacing;
-                frame.atoms.z[idx] = (iz + 0.5) * spacing;
-                frame.atoms.mass[idx] = 1.0;
-                frame.atoms.type[idx] = 0;
-                frame.atoms.tag[idx] = idx;
+                frame.span(kAtom_x)[idx] = (ix + 0.5) * spacing;
+                frame.span(kAtom_y)[idx] = (iy + 0.5) * spacing;
+                frame.span(kAtom_z)[idx] = (iz + 0.5) * spacing;
+                frame.span(kAtom_mass)[idx] = 1.0;
+                frame.span(kAtom_type)[idx] = 0;
+                frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.box = Mat3::cubic(box_len);
+    frame.simbox = cpu::Box::cubic(box_len);
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
-        frame.atoms.vy[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
-        frame.atoms.vz[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vx)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vy)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
+        frame.span(kAtom_vz)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
     }
     return frame;
 }
@@ -55,7 +55,7 @@ TEST(CudaNoseHooverNPT, ContractRoleBindings) {
                                         .tau_P = 1000.0,
                                         .dt = 0.001};
     cuda::md::NoseHooverNPT npt{cfg};
-    EXPECT_EQ(npt.role(), ComponentRole::Integrator);
+    EXPECT_EQ(npt.role(), 0);
     EXPECT_EQ(npt.name(), "nose_hoover_npt");
     auto bindings = npt.default_bindings();
     ASSERT_EQ(bindings.size(), 3u);
@@ -95,19 +95,19 @@ TEST(CudaNoseHooverNPT, IsoNPTBuildsAndRunsFinite) {
     sim.build();
     sim.run(frame, 200);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.conserved)));
-    EXPECT_GT(frame.scalars.kinetic, 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kKinetic))));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kConserved))));
+    EXPECT_GT(frame.meta.get(kKinetic), 0.0);
     // Box must remain positive (not collapsed or NaN).
-    EXPECT_GT(frame.box(0, 0), 0.0);
-    EXPECT_GT(frame.box(1, 1), 0.0);
-    EXPECT_GT(frame.box(2, 2), 0.0);
+    EXPECT_GT(frame.simbox.cell()(0, 0), 0.0);
+    EXPECT_GT(frame.simbox.cell()(1, 1), 0.0);
+    EXPECT_GT(frame.simbox.cell()(2, 2), 0.0);
 }
 
 TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     auto frame = make_lj_block(2, 0.8);
-    const double box_x_initial = frame.box(0, 0);
+    const double box_x_initial = frame.simbox.cell()(0, 0);
     const double cutoff = 3.0;
     cuda::md::NoseHooverNPT::Config cfg{.T_target = 100.0,
                                         .tau_T = 100.0,
@@ -127,10 +127,10 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     // that cuda::Box stores edges in real_t (single precision), so the
     // double box edge is quantized to float each step — rigid to float
     // round-off, not double bit-equality.
-    EXPECT_NEAR(frame.box(0, 0), box_x_initial, box_x_initial * 1e-6);
+    EXPECT_NEAR(frame.simbox.cell()(0, 0), box_x_initial, box_x_initial * 1e-6);
     // y and z edges may have moved (they are barostatted).
-    EXPECT_GT(frame.box(1, 1), 0.0);
-    EXPECT_GT(frame.box(2, 2), 0.0);
+    EXPECT_GT(frame.simbox.cell()(1, 1), 0.0);
+    EXPECT_GT(frame.simbox.cell()(2, 2), 0.0);
 }
 
 TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
@@ -150,7 +150,7 @@ TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
-    sim.add(npt);
+    sim.add_ref(npt);
     sim.build();
     sim.run(frame, 50);
     // At step 50, delta = 50/99 ≈ 0.505; T_live ≈ 500 + 0.505·(100-500) ≈ 298.
@@ -158,12 +158,12 @@ TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
     // hasn't moved. Just verify the run did not NaN — the ramp behaviour
     // is structurally tested by the no-NaN guarantee + the deterministic
     // host-side compute_temp_target formula (code-review verified).
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
-    EXPECT_GT(frame.scalars.kinetic, 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kKinetic))));
+    EXPECT_GT(frame.meta.get(kKinetic), 0.0);
 }
 
 TEST(CudaNoseHooverNPT, WritesConservedHamiltonian) {
-    // After run, frame.scalars.conserved must be populated (non-zero,
+    // After run, frame.meta.get(kConserved) must be populated (non-zero,
     // finite). The integrator writes it every end_of_step.
     auto frame = make_lj_block(2, 0.8);
     const double cutoff = 3.0;
@@ -178,8 +178,8 @@ TEST(CudaNoseHooverNPT, WritesConservedHamiltonian) {
     sim.set_integrator(cuda::md::NoseHooverNPT{cfg});
     sim.build();
     sim.run(frame, 50);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.conserved)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kConserved))));
     // Conserved Hamiltonian should not be exactly zero (the integrator
     // writes a non-trivial sum every step).
-    EXPECT_NE(frame.scalars.conserved, 0.0);
+    EXPECT_NE(frame.meta.get(kConserved), 0.0);
 }

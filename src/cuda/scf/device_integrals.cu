@@ -11,7 +11,7 @@
 ///   Szabo & Ostlund, "Modern Quantum Chemistry" (1996), Appendix A
 ///   Ufimtsev & Martinez, JCTC 4(2), 222-231 (2008)
 
-#include "atomiverse/core/constants.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 
@@ -38,7 +38,7 @@ __device__ __forceinline__ work_t boys_f0_device(work_t x) {
     if (x < kBoysEpsilon)
         return work_t(1);
     work_t sx = sqrt(x);
-    return work_t(0.5) * sqrt(work_t(kPI) / x) * erf(sx);
+    return work_t(0.5) * sqrt(work_t(ATV::units::pi) / x) * erf(sx);
 }
 
 /// Squared distance between two 3D points.
@@ -125,7 +125,7 @@ compute_1e_kernel(prec_t* S, prec_t* T, prec_t* V,
                 work_t mu = alpha_p * alpha_q / gamma;
                 // EXPENSIVE: exp() — done ONCE, shared by S, T, V
                 work_t K_AB = exp(-mu * R2);
-                work_t pig = work_t(kPI) / gamma;
+                work_t pig = work_t(ATV::units::pi) / gamma;
                 work_t S_pq = pig * sqrt(pig) * K_AB;
 
                 // Overlap accumulation
@@ -141,7 +141,7 @@ compute_1e_kernel(prec_t* S, prec_t* T, prec_t* V,
                 work_t Py = (alpha_p * Ay + alpha_q * By) * inv_gamma;
                 work_t Pz = (alpha_p * Az + alpha_q * Bz) * inv_gamma;
                 work_t v_prefactor =
-                    c_pq * work_t(2) * work_t(kPI) * inv_gamma * K_AB;
+                    c_pq * work_t(2) * work_t(ATV::units::pi) * inv_gamma * K_AB;
 
                 for (int a = 0; a < natm; ++a) {
                     work_t Cx = static_cast<work_t>(atom_pos[a * 3 + 0]);
@@ -273,7 +273,7 @@ compute_eri_kernel(prec_t* ERI,
                         work_t rho = gamma1 * gamma2 / (gamma1 + gamma2);
                         work_t PQ2 = dist2_device(Px, Py, Pz, Qx, Qy, Qz);
 
-                        work_t pi_val = work_t(kPI);
+                        work_t pi_val = work_t(ATV::units::pi);
                         result += c_p * c_q * c_r * c_s * work_t(2) * pi_val
                                   * pi_val * sqrt(pi_val)
                                   / (gamma1 * gamma2 * sqrt(gamma1 + gamma2))
