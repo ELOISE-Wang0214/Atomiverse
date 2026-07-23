@@ -156,9 +156,12 @@ struct IntegralSecondDerivPack {
 ///                    one-electron part dT + dV.
 /// @param integrals   Integral pack for the current geometry.
 /// @param P_total     Total (factor-2 closed-shell) density (dimensionless).
+/// @param alpha_hf    Exact-exchange fraction in [0, 1]: 1 for pure HF,
+///                    0 for pure semi-local KS, hybrid_exchange_fraction(xc)
+///                    for global hybrids. Scales the −½K channel only.
 void accumulate_two_electron_fock_derivative(
     xt::xtensor<double, 4>& dF, const IntegralPack& integrals,
-    const xt::xtensor<double, 2>& P_total);
+    const xt::xtensor<double, 2>& P_total, double alpha_hf = 1.0);
 
 /// @brief Unrestricted skeleton Fock derivatives into separate α/β
 ///        accumulators: F^{α(x)} += J^{(x)}[P] − K^{(x)}[P^α] and
@@ -193,9 +196,13 @@ void accumulate_two_electron_fock_derivative_uhf(
 ///                    row/column index c = 3·atom + axis.
 /// @param integrals   Integral pack for the current geometry.
 /// @param P_total     Total (factor-2 closed-shell) density (dimensionless).
+/// @param alpha_hf    Exact-exchange fraction in [0, 1] (see
+///                    `accumulate_two_electron_fock_derivative`); scales the
+///                    exchange second-derivative channel only.
 void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
                                      const IntegralPack& integrals,
-                                     const xt::xtensor<double, 2>& P_total);
+                                     const xt::xtensor<double, 2>& P_total,
+                                     double alpha_hf = 1.0);
 
 /// @brief Unrestricted skeleton two-electron second-derivative energy
 ///        contraction into `hess`:
