@@ -103,3 +103,4 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 tutorial: methods/eom-sf-ccsd-o2.md
 - 2026-07-23 tutorial: methods/gf2-h2-sto3g.md
 - 2026-07-23 tutorial index: methods/README.md + tutorial/index.md Method tutorials
+- 2026-07-23 assign wave 2 (post re-census): eom-cc2-h2 (excited-states, new) + re-dispatch eom-ip-ccsd, uks-full-lr-o2-lsda, casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g, uks-hessian-o2-sto3g → in_progress (8); skip=[nevpt2 needs CASSCF]; pending_left=1

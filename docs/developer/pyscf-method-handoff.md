@@ -106,12 +106,12 @@ pin path; merge-fix commits re-unioned multi-channel ADC / CC2+UCCSD.
 
 ## Next assign candidates (pending head)
 
-1. `eom-cc2-h2` — CC2 energy ✓; EOM-CC2 roots now eligible
-2. `nevpt2-h2-sto3g` — still gated on CASSCF (`casscf-h2-sto3g` in_progress)
+1. `nevpt2-h2-sto3g` — still gated on CASSCF (`casscf-h2-sto3g` in_progress)
 
-**in_progress retained** (finish or re-merge before re-assign): eom-ip-ccsd,
-uks-full-lr-o2-lsda, casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g,
-ump2-grad-o2-sto3g, uks-hessian-o2-sto3g.
+**Wave 2 assigned (in_progress, 8):** eom-cc2-h2 (new from pending; CC2 ✓),
+plus re-dispatch of wave-1 retain: eom-ip-ccsd, uks-full-lr-o2-lsda,
+casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g,
+uks-hessian-o2-sto3g.
 
 Historical **blocked** rows stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2,
 PM6/7, CASPT2).

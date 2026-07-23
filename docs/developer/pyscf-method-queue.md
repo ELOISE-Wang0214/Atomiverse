@@ -11,18 +11,16 @@ without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
 CASPT2 (no stock PySCF). **Wave 1 merged (12):** eom-ea-ccsd, adc2x-h2co-sto3g,
 ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g,
 direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g.
-**in_progress retained** (mid-flight / not in this merge set): eom-ip-ccsd,
-uks-full-lr-o2-lsda, casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g,
-ump2-grad-o2-sto3g, uks-hessian-o2-sto3g. **pending** still gated: nevpt2
-(needs CASSCF), eom-cc2 (CC2 energy now ✓ — eligible next assign).
+**Wave 2 assign:** `eom-cc2-h2` (newly eligible — CC2 energy ✓) + re-dispatch
+of 7 retained mid-flight. **pending** still gated: nevpt2 (needs CASSCF).
 
 ## pending
 
 - [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | needs CASSCF; partially/strongly contracted; PySCF mrpt.NEVPT
-- [ ] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
 
 ## in_progress
 
+- [~] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
 - [~] `eom-ip-ccsd` | EOM-IP-CCSD | excited-states | h2o | sto-3g | IP eV | EOM-EE ✓; ionization channel; PySCF cc.eom_rccsd IP
 - [~] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | excited-states | o2 | sto-3g | roots eV | UKS-TDA ✓; RKS full-LR ✓; open-shell Casida A/B; PySCF tdscf.TDDFT(UKS)
 - [~] `casscf-h2-sto3g` | CASSCF | post-hf | h2 | sto-3g | e_tot | CASCI ✓; orbital optimization; PySCF mcscf.CASSCF
