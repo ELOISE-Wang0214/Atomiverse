@@ -360,8 +360,10 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
 
     /// @brief Analytic forces [eV/Å] after (or including) a fresh SCF.
     /// @param frame  Geometry; forces written to fx/fy/fz and energy to meta.
+    /// @param guess  Optional density-matrix guess for the SCF (needed for
+    ///               multi-minima / continuous FD paths such as ROHF Hessian).
     /// @return Forces + energy in eV / eV·Å⁻¹.
-    GradientResult forces(Frame& frame);
+    GradientResult forces(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Canonical MP2 on top of a fresh SCF run (materializes ERI).
     ///
