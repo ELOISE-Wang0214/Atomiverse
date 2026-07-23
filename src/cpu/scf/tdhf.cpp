@@ -21,6 +21,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/alda_kernel.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
+#include "atomiverse/cpu/scf/internal/tda_gradient.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
 #include "atomiverse/cpu/scf/rhf.h"
@@ -659,12 +660,8 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     return out;
 }
 
-std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state,
-                                    double h) const {
-    if (!(h > 0.0))
-        throw std::invalid_argument("RHF::tda_forces: h must be > 0");
-    const int n = frame.nlocal();
-    // Fresh RHF at each geometry (MeanFieldMethod is non-copyable).
+std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state, double h,
+                                    bool analytic) const {
     auto make_rhf = [this]() {
         RHF r;
         r.basis = this->basis;
@@ -673,6 +670,26 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state,
         r.charge = this->charge;
         return r;
     };
+
+    if (analytic) {
+        RHF probe = make_rhf();
+        const bool prev = probe.compute_eri;
+        probe.compute_eri = true;
+        probe.run(frame);
+        probe.compute_eri = prev;
+        if (!probe.converged())
+            throw std::runtime_error("RHF::tda_forces: SCF did not converge");
+        auto es0 = probe.tda(state + 1);
+        if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
+            throw std::invalid_argument("RHF::tda_forces: state out of range");
+        return internal::tda_analytic_forces(frame, probe.integral_workspace_(),
+                                             probe.determinant(),
+                                             probe.energy(), state);
+    }
+
+    if (!(h > 0.0))
+        throw std::invalid_argument("RHF::tda_forces: h must be > 0");
+    const int n = frame.nlocal();
     {
         RHF probe = make_rhf();
         probe.run(frame);
@@ -708,32 +725,64 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state,
     return F;
 }
 
-double RHF::tda_nac_strength(cpu::Frame& frame, int state_i, int state_j,
-                             double h) const {
+std::vector<double> RHF::tda_nac_vectors(cpu::Frame& frame, int state_i,
+                                         int state_j) const {
     if (state_i == state_j)
-        throw std::invalid_argument("RHF::tda_nac_strength: distinct states");
-    if (state_i > state_j)
-        std::swap(state_i, state_j);
-    auto Fi = tda_forces(frame, state_i, h);
-    auto Fj = tda_forces(frame, state_j, h);
+        throw std::invalid_argument(
+            "RHF::tda_nac_vectors: i and j must differ (no fallback)");
+    // d_ij = (F_i − F_j) / (E_j − E_i)  [1/Å] (force eV/Å over energy eV).
+    // Antisymmetry: d_ji = −d_ij exactly by construction (same F, E).
+    // Phase: only when state_i < state_j, flip so the first large component
+    // is non-negative; for state_i > state_j return −d_ji without re-phasing.
+    const bool swap = state_i > state_j;
+    const int lo = swap ? state_j : state_i;
+    const int hi = swap ? state_i : state_j;
+    // Use FD forces for the vector construction so the gap factor and force
+    // difference share one consistent oracle (analytic CIS 2-RDM path is
+    // still calibrating against FD on H2).
+    auto Flo = tda_forces(frame, lo, 2e-3, /*analytic=*/false);
+    auto Fhi = tda_forces(frame, hi, 2e-3, /*analytic=*/false);
     RHF r;
     r.basis = basis;
     r.tol = tol;
     r.max_iter = max_iter;
     r.charge = charge;
     r.run(frame);
-    auto es = r.tda(state_j + 1);
-    const double dE = es.energy_ev[static_cast<std::size_t>(state_j)]
-                      - es.energy_ev[static_cast<std::size_t>(state_i)];
-    // Convert eV → same unit as force eV/Å: |dE| in eV
+    if (!r.converged())
+        throw std::runtime_error("RHF::tda_nac_vectors: SCF did not converge");
+    auto es = r.tda(hi + 1);
+    const double Elo = es.energy_ev[static_cast<std::size_t>(lo)];
+    const double Ehi = es.energy_ev[static_cast<std::size_t>(hi)];
+    const double dE = Ehi - Elo;
     if (!(std::fabs(dE) > 1e-12))
-        throw std::runtime_error("RHF::tda_nac_strength: degenerate roots");
-    double n2 = 0;
-    for (std::size_t k = 0; k < Fi.size(); ++k) {
-        const double d = Fi[k] - Fj[k];
-        n2 += d * d;
+        throw std::runtime_error("RHF::tda_nac_vectors: degenerate roots");
+    std::vector<double> d(Flo.size());
+    for (std::size_t k = 0; k < Flo.size(); ++k)
+        d[k] = (Flo[k] - Fhi[k]) / dE; // d_lo,hi
+    // Phase fix on the ordered pair only.
+    for (double& v : d) {
+        if (std::fabs(v) > 1e-8) {
+            if (v < 0.0) {
+                for (double& w : d)
+                    w = -w;
+            }
+            break;
+        }
     }
-    return std::sqrt(n2) / std::fabs(dE);
+    if (swap) {
+        for (double& w : d)
+            w = -w; // d_hi,lo = −d_lo,hi
+    }
+    return d;
+}
+
+double RHF::tda_nac_strength(cpu::Frame& frame, int state_i, int state_j,
+                             double /*h*/) const {
+    auto d = tda_nac_vectors(frame, state_i, state_j);
+    double n2 = 0.0;
+    for (double v : d)
+        n2 += v * v;
+    return std::sqrt(n2);
 }
 
 ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {

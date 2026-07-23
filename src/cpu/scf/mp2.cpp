@@ -1,11 +1,13 @@
 /// @file cpu/scf/mp2.cpp
-/// @brief Implementation of ao2mo_ovov + closed-shell MP2 (see mp2.h).
+/// @brief Implementation of ao2mo_ovov + closed-shell / RI MP2 (see mp2.h).
 
 #include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/internal/density_fitting.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
 
 #include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
@@ -166,7 +168,101 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
         }
     }
 
-    return {e_corr, e_scf_ha + e_corr};
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false};
+}
+
+MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, AuxBasis aux) {
+    using Spin = SlaterDeterminant::Spin;
+    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta))
+        throw std::invalid_argument(
+            "ri_mp2_energy: closed-shell reference only (n_alpha must equal "
+            "n_beta).");
+    if (ints.shells.empty())
+        throw std::invalid_argument(
+            "ri_mp2_energy: IntegralPack has no shells for density fitting.");
+
+    const RealMatrix& C_rm = det.coefficients(Spin::alpha);
+    // Working AO coefficients may be spherical; DensityFitting lives in
+    // Cartesian engine AO. Bridge with pack.c2s when present.
+    const int n_occ = det.n_electrons(Spin::alpha);
+    const int n_mo = static_cast<int>(C_rm.shape()[1]);
+    const int n_vir = n_mo - n_occ;
+    if (n_vir == 0)
+        return {0.0, e_scf_ha, /*ri=*/true};
+
+    internal::DensityFitting df(ints.shells, ints.atoms, aux);
+    const int n_cart = df.n_ao();
+    const int n_aux = df.n_aux();
+    const RealMatrix& B = df.b_tensor(); // (n_cart² × n_aux), column-major
+
+    RealMatrix C_cart;
+    if (ints.spherical()) {
+        C_cart = xt::linalg::dot(ints.c2s, C_rm); // [n_cart × n_mo]
+    } else {
+        if (static_cast<int>(C_rm.shape()[0]) != n_cart)
+            throw std::invalid_argument(
+                "ri_mp2_energy: AO dimension mismatch with DensityFitting");
+        C_cart = C_rm;
+    }
+
+    // B_ia^P = Σ_μν C_μi C_νa B_μν^P
+    // Layout: for each P, M_P[μ,ν] = B(μ*n_cart+ν, P) is column-major flat.
+    const int nov = n_occ * n_vir;
+    // Store B_ov[ia, P]
+    xt::xtensor<double, 2> B_ov = xt::zeros<double>(
+        {static_cast<std::size_t>(nov), static_cast<std::size_t>(n_aux)});
+
+    for (int P = 0; P < n_aux; ++P) {
+        // M[μ,ν] = B(μ*n + ν, P)
+        RealMatrix M = xt::zeros<double>(
+            {static_cast<std::size_t>(n_cart), static_cast<std::size_t>(n_cart)});
+        for (int mu = 0; mu < n_cart; ++mu)
+            for (int nu = 0; nu < n_cart; ++nu)
+                M(mu, nu) =
+                    B(static_cast<std::size_t>(mu * n_cart + nu),
+                      static_cast<std::size_t>(P));
+        // (i a) block: Co^T M Cv
+        RealMatrix Co = xt::view(C_cart, xt::all(), xt::range(0, n_occ));
+        RealMatrix Cv =
+            xt::view(C_cart, xt::all(), xt::range(n_occ, n_mo));
+        RealMatrix tmp = xt::linalg::dot(xt::transpose(Co), M);
+        RealMatrix ia = xt::linalg::dot(tmp, Cv); // [n_occ × n_vir]
+        for (int i = 0; i < n_occ; ++i)
+            for (int a = 0; a < n_vir; ++a)
+                B_ov(static_cast<std::size_t>(i * n_vir + a),
+                     static_cast<std::size_t>(P)) = ia(i, a);
+    }
+
+    // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P)
+    const RealVector& eps = det.orbital_energies(Spin::alpha);
+    double e_corr = 0.0;
+    for (int i = 0; i < n_occ; ++i) {
+        for (int j = 0; j < n_occ; ++j) {
+            for (int a = 0; a < n_vir; ++a) {
+                for (int b = 0; b < n_vir; ++b) {
+                    const int ia = i * n_vir + a;
+                    const int jb = j * n_vir + b;
+                    const int ib = i * n_vir + b;
+                    const int ja = j * n_vir + a;
+                    double iajb = 0.0, ibja = 0.0;
+                    for (int P = 0; P < n_aux; ++P) {
+                        iajb += B_ov(ia, P) * B_ov(jb, P);
+                        ibja += B_ov(ib, P) * B_ov(ja, P);
+                    }
+                    const double denom =
+                        eps(i) + eps(j) - eps(n_occ + a) - eps(n_occ + b);
+                    if (denom >= 0.0)
+                        throw std::invalid_argument(
+                            "ri_mp2_energy: non-negative orbital-energy "
+                            "denominator; reference is degenerate or "
+                            "non-aufbau.");
+                    e_corr += iajb * (2.0 * iajb - ibja) / denom;
+                }
+            }
+        }
+    }
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/true};
 }
 
 } // namespace scf

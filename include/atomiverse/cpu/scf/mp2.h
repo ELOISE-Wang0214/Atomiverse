@@ -12,10 +12,12 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Closed-shell canonical MP2 energy.
+/// @brief Closed-shell (canonical or RI) MP2 energy.
 struct MP2Result {
     double e_corr; ///< MP2 correlation energy [Hartree] (<= 0).
     double e_tot;  ///< Total MP2 energy = scf.energy + e_corr [Hartree].
+    /// @brief true when the correlation energy used density-fitted (ia|jb).
+    bool ri = false;
 };
 
 /// @brief Transform AO two-electron integrals to the MO (ia|jb) ovov block.

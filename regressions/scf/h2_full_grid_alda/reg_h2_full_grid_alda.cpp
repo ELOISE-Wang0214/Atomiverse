@@ -40,14 +40,10 @@ int main() {
     }
     // Hard-coded S1 [eV]: Atomiverse full-grid ALDA (H2 r=0.74 Å, STO-3G,
     // LSDA, SG0 50×110), 2026-07-23. Tolerance 0.05 eV covers grid noise.
-    constexpr double kS1Ref = 16.0; // placeholder — tightened after first run
-    constexpr double kTol = 15.0;   // wide until pinned
+    constexpr double kS1Ref = 7.653049; // eV
+    constexpr double kTol = 0.05;       // eV
     if (!(std::fabs(es.energy_ev[0] - kS1Ref) < kTol)) {
         std::printf("FAIL S1 out of window\n");
-        return 1;
-    }
-    if (!(es.energy_ev[0] > 1.0 && es.energy_ev[0] < 30.0)) {
-        std::printf("FAIL S1 physical range\n");
         return 1;
     }
     std::printf("PASS\n");
