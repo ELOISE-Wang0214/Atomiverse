@@ -17,9 +17,12 @@ namespace scf {
 ///                 coefficients, orbital energies, electron counts).
 /// @param e_scf_ha Converged SCF total energy [Hartree] (reported as the
 ///                 reference part of `MP2Result::e_tot`).
+/// @param n_frozen Number of lowest occupied spatial MOs excluded from the
+///                 correlation sum (frozen core). 0 = all occupied correlated.
+///                 Matches PySCF `mp.MP2(mf, frozen=n_frozen)`.
 /// @return MP2 correlation and total energies [Hartree].
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                     double e_scf_ha);
+                     double e_scf_ha, int n_frozen = 0);
 
 /// @brief Unrestricted canonical MP2 (UMP2) on a UHF/UKS-style reference.
 ///
@@ -53,9 +56,11 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @param det      Converged closed-shell RHF determinant.
 /// @param e_scf_ha SCF energy [Hartree].
 /// @param aux      Auxiliary basis (def2 universal JKFIT).
+/// @param n_frozen Lowest occupied spatial MOs frozen (same convention as
+///                 `mp2_energy`).
 /// @return MP2Result with RI (ia|jb)≈Σ_P B_ia^P B_jb^P [Hartree].
 MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, AuxBasis aux);
+                        double e_scf_ha, AuxBasis aux, int n_frozen = 0);
 
 } // namespace scf
 } // namespace cpu

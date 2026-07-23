@@ -166,7 +166,7 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
 }
 
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                     double e_scf_ha) {
+                     double e_scf_ha, int n_frozen) {
     using Spin = SlaterDeterminant::Spin;
     // No-fallback guards -- throw, never return a sentinel. (Convergence of
     // the reference is guarded by the caller, not here.)
@@ -187,18 +187,26 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int n_mo = static_cast<int>(C.shape(1));
     const int n_vir = n_mo - n_occ;
 
-    // No virtuals (e.g. He/STO-3G): correlation is exactly zero. Return a finite
-    // 0.0 rather than entering the loop and dividing by an empty denominator.
-    if (n_vir == 0) {
-        return {0.0, e_scf_ha};
+    if (n_frozen < 0 || n_frozen > n_occ) {
+        throw std::invalid_argument(
+            "mp2_energy: n_frozen must satisfy 0 <= n_frozen <= n_occ.");
+    }
+
+    // No virtuals (e.g. He/STO-3G) or all occupied frozen: correlation is
+    // exactly zero. Return a finite 0.0 rather than empty-denominator loops.
+    if (n_vir == 0 || n_frozen == n_occ) {
+        return {0.0, e_scf_ha, /*ri=*/false, n_frozen};
     }
 
     const xt::xtensor<double, 4> ovov = ao2mo_ovov(ints.ERI, C, n_occ, n_mo);
     const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
 
+    // Frozen-core: skip the lowest n_frozen occupied spatial MOs in the
+    // doubles sum (PySCF mp.MP2(mf, frozen=n_frozen) convention). Virtuals
+    // remain fully correlated.
     double e_corr = 0.0;
-    for (int i = 0; i < n_occ; ++i) {
-        for (int j = 0; j < n_occ; ++j) {
+    for (int i = n_frozen; i < n_occ; ++i) {
+        for (int j = n_frozen; j < n_occ; ++j) {
             for (int a = 0; a < n_vir; ++a) {
                 for (int b = 0; b < n_vir; ++b) {
                     const double iajb = ovov(i, a, j, b);
@@ -221,7 +229,7 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
         }
     }
 
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/false};
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, n_frozen};
 }
 
 MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
@@ -318,11 +326,11 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
         }
     }
 
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/false};
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, /*frozen=*/0};
 }
 
 MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, AuxBasis aux) {
+                        double e_scf_ha, AuxBasis aux, int n_frozen) {
     using Spin = SlaterDeterminant::Spin;
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta))
         throw std::invalid_argument(
@@ -338,8 +346,11 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int n_occ = det.n_electrons(Spin::alpha);
     const int n_mo = static_cast<int>(C_rm.shape()[1]);
     const int n_vir = n_mo - n_occ;
-    if (n_vir == 0)
-        return {0.0, e_scf_ha, /*ri=*/true};
+    if (n_frozen < 0 || n_frozen > n_occ)
+        throw std::invalid_argument(
+            "ri_mp2_energy: n_frozen must satisfy 0 <= n_frozen <= n_occ.");
+    if (n_vir == 0 || n_frozen == n_occ)
+        return {0.0, e_scf_ha, /*ri=*/true, n_frozen};
 
     internal::DensityFitting df(ints.shells, ints.atoms, aux);
     const int n_cart = df.n_ao();
@@ -387,8 +398,8 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P)
     const RealVector& eps = det.orbital_energies(Spin::alpha);
     double e_corr = 0.0;
-    for (int i = 0; i < n_occ; ++i) {
-        for (int j = 0; j < n_occ; ++j) {
+    for (int i = n_frozen; i < n_occ; ++i) {
+        for (int j = n_frozen; j < n_occ; ++j) {
             for (int a = 0; a < n_vir; ++a) {
                 for (int b = 0; b < n_vir; ++b) {
                     const int ia = i * n_vir + a;
@@ -412,7 +423,7 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             }
         }
     }
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/true};
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/true, n_frozen};
 }
 
 } // namespace scf

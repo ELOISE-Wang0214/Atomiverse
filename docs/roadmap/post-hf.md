@@ -23,7 +23,7 @@ Coupled cluster and multireference theory are entirely absent.
 | Restricted MP2, RMP2               |  ✓  |   ○  |   ○  |
 | Unrestricted MP2, UMP2             |  ✓  |   ○  |   ○  |
 | Restricted open-shell MP2, ROMP2   |  ○  |   ○  |   ○  |
-| Frozen-core MP2                    |  ○  |   ○  |   ○  |
+| Frozen-core MP2                    |  ✓  |   ○  |   ○  |
 | Density-fitted MP2                 |  ✓  |   ○  |   ○  |
 | RI-MP2                             |  ✓  |   ○  |   ○  |
 | Laplace-transformed MP2            |  ○  |   ○  |   ○  |
@@ -51,8 +51,11 @@ then the canonical energy expression. **UMP2** (`UHF::mp2`) uses independent
 α/β MOs with same-spin (¼ antisymmetrized) and opposite-spin channels
 (`reg_ump2-o2-sto3g` vs PySCF `mp.UMP2`). **RI-MP2** is the closed-shell entry
 with `rhf.ri = RI::{J,JK}` and an aux basis (`MP2Result::ri = true`,
-`reg_h2o_ri_mp2`) — Coulomb-metric density fitting for `(ia|jb)`. Energy only:
-no frozen core, no gradients, no RI-UMP2. Canonical mode still materializes the
+`reg_h2o_ri_mp2`) — Coulomb-metric density fitting for `(ia|jb)`. **Frozen-core**
+is the member `rhf.frozen = N` (lowest N occupied spatial MOs excluded from the
+doubles sum; PySCF `mp.MP2(mf, frozen=N)` convention) on closed-shell RMP2 and
+RI-MP2 (`reg_frozen-core-mp2-h2o`, `MP2Result::frozen`). Energy only: no
+gradients, no frozen-core UMP2, no RI-UMP2. Canonical mode still materializes the
 full in-memory ERI tensor in the method's private workspace.
 
 ## 2. Configuration Interaction
