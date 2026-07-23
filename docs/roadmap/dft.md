@@ -157,7 +157,10 @@ integral engine); the Rys kernel has no attenuation parameter.
 | ωB97X-2                                 |  ○  |   ○  |   ○  |
 | Spin-component-scaled double-hybrid DFT |  ○  |   ○  |   ○  |
 
-The ingredients exist separately (hybrid KS + MP2), but nothing composes them.
+**B2PLYP** (`XCType::B2PLYP` + `RKS::mp2` with `hybrid_pt2_fraction` a_c=0.27)
+composes hybrid KS (a_x=0.53 HF + 0.47 B88 + 0.73 LYP) with scaled RMP2 on the
+KS orbitals (`reg_b2plyp-h2o` vs offline PySCF-composed pin). Other double
+hybrids and SCS-DH remain ○.
 
 ## 8. Dispersion and Nonlocal Correlation
 

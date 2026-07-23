@@ -13,20 +13,17 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | needs CCSD; PySCF cc.CCSD.ccsd_t
+- [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | CCSD energy foothold lands (`RHF::ccsd`); triples (T) next; PySCF cc.CCSD.ccsd_t
 - [ ] `casci-h2-sto3g` | CASCI | post-hf | h2 | sto-3g | e_tot | active-space on existing FCI kernel; PySCF mcscf.CASCI
 - [ ] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
+- [ ] `eom-ee-ccsd` | EOM-EE-CCSD | excited-states | h2 | sto-3g | ω | CCSD energy foothold now ships; EOM layer still ○; PySCF cc.eom_rccsd
 
 ## in_progress
 
-- [~] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
-- [~] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
-- [~] `ccsd-h2-sto3g` | CCSD | post-hf | h2 | sto-3g | e_corr+e_tot | coupled-cluster doubles foothold; PySCF cc.CCSD
-- [~] `g0w0-h2-sto3g` | G0W0 | excited-states | h2 | sto-3g | QP gaps | Green's-function foothold; PySCF gw.G0W0
+(empty)
 
 ## blocked
 
-- [!] `eom-ee-ccsd` | blocked upstream — no CCSD product path yet (queue `ccsd-h2-sto3g` first)
 - [!] `cam-b3lyp` | blocked — range-separated / erf-attenuated ERI engine absent (Rys has no attenuation)
 - [!] `periodic-rhf-gamma` | blocked — no periodic exact exchange; PW/GPW are semi-local DFT only
 - [!] `td-dftb` | blocked upstream — DFTB2 has no response path; not a PySCF twin
@@ -35,6 +32,10 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## done
 
+- [x] `adc2-h2co-sto3g` | ADC(2) | regressions/scf/adc2-h2co-sto3g | H2CO/STO-3G cart strict ADC(2) EE; PySCF 2.14.0 S1=4.535317180049 eV; `RHF::adc2`; tol 1e-4 eV; ratio 0.267
+- [x] `mp3-h2-sto3g` | MP3 | regressions/scf/mp3-h2-sto3g | H2/STO-3G cart RMP3; offline pin e_corr=-0.017974146227 Ha (Szabo–Ostlund on PySCF RHF orbs); `RHF::mp3`; tol 1e-6 Ha; ratio 0.774
+- [x] `ccsd-h2-sto3g` | CCSD | regressions/scf/ccsd-h2-sto3g | H2/STO-3G cart CCSD; PySCF 2.14.0 e_corr=-0.020524527092 Ha, e_tot=-1.137283834489 Ha; `RHF::ccsd`; tol 1e-6 Ha; ratio 0.317
+- [x] `g0w0-h2-sto3g` | G0W0 | regressions/scf/g0w0-h2-sto3g | H2 RHF/STO-3G spectral G0W0 QP gap=35.007583892680 eV (PySCF 2.14.0 GWExact+dRPA); `RHF::g0w0`; tol 1e-4 eV; ratio 0.109
 - [x] `b2plyp-h2o` | B2PLYP double hybrid | regressions/scf/b2plyp-h2o | H2O/STO-3G cart; PySCF 2.14.0 composed E_KS+a_c·MP2 e_tot=-75.210908483134 Ha; `XCType::B2PLYP` a_x=0.53 a_c=0.27 + `RKS::mp2`; tol 1e-6 Ha; ratio 1.75
 - [x] `romp2-o2-sto3g` | ROMP2 | regressions/scf/romp2-o2-sto3g | O2 triplet ROHF→ROMP2/STO-3G cart; PySCF 2.14.0 UMP2(ROHF) e_corr=-0.096718716392 Ha, e_tot=-147.728885707074 Ha; `ROHF::mp2`; tol 1e-6 Ha; ratio 1.37
 - [x] `roks-grad-o2-sto3g` | ROKS analytic gradient | regressions/scf/roks-grad-o2-sto3g | O2 ROKS-LSDA/STO-3G cart forces; PySCF 2.14.0 g_z=±0.162926534046 Ha/Bohr; `ROKS::forces` spin-Fock W; tol 2e-5 Ha/Bohr; ratio 1.117

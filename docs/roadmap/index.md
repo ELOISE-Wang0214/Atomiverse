@@ -101,7 +101,7 @@ a proven shape.
 | Scale | Methods (do not re-prove) |
 | ----- | ------------------------- |
 | Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS** (+ **ROKS forces**); concrete AM1/RM1 / PW / GPW; **RHF/UHF CPHF Hessian** + **ROHF FD Hessian**; RHF CPHF polarizability |
-| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`UKS::tda`** (LSDA); **`UHF::sf_tda`**; **`RKS::tddft` full Casida A/B** (pure KS + hybrid B3LYP); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + SCS/SOS + **ROMP2** + **RMP2 grad** `RHF::mp2` / `ROHF::mp2` / `mp2_forces` |
+| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`UKS::tda`** (LSDA); **`UHF::sf_tda`**; **`RKS::tddft` full Casida A/B** (pure KS + hybrid B3LYP); **ADC(2)**; **G0W0**; analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + SCS/SOS + **ROMP2** + **RMP3** + **CCSD** + **RMP2 grad** `RHF::mp2` / `mp3` / `ccsd` / `ROHF::mp2` / `mp2_forces`; **B2PLYP** double hybrid |
 | Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT (MTK diag + **PR full-cell**); **NPH**; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; ADC foothold; UKS full-LR TDDFT |
+| Response | Surface-hopping consumer of NAC; EOM-EE-CCSD; UKS full-LR TDDFT; ADC(2)-x / IP-ADC |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | MP3/CCSD foothold (ROMP2 + RMP2 grad + SCS/SOS + frozen-core ✓) |
+| Post-HF | CCSD(T) / CASCI (MP3 + CCSD + ROMP2 + RMP2 grad + SCS/SOS + frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,

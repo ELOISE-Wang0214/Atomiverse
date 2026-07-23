@@ -3,19 +3,23 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Correlated methods built on a converged [Hartree–Fock](hartree-fock.md)
-reference. MP2 and FCI ship as post-SCF members on the concrete method
-(`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::fci`) consuming the converged
-`SlaterDeterminant` plus the method's privately materialized ERI tensor (they
-are not Drivers or Components, and register in no Plan; they throw
-`std::invalid_argument` on a non-converged reference):
+reference. MP2 / MP3 / CCSD / FCI ship as post-SCF members on the concrete
+method (`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::mp3` / `RHF::ccsd` /
+`RHF::fci`) consuming the converged `SlaterDeterminant` plus the method's
+privately materialized ERI tensor (they are not Drivers or Components, and
+register in no Plan; they throw `std::invalid_argument` on a non-converged
+reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
 - **UMP2** — unrestricted spin-orbital MP2 on a UHF reference (`UHF::mp2`).
 - **ROMP2** — UMP2 on a spin-pure ROHF reference (`ROHF::mp2`).
+- **RMP3** — closed-shell third-order MP (`RHF::mp3`; `reg_mp3-h2-sto3g`).
+- **CCSD** — closed-shell coupled-cluster singles and doubles (`RHF::ccsd`;
+  `reg_ccsd-h2-sto3g`).
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
-Coupled cluster and multireference theory are entirely absent.
+Multireference theory and CC triples (T) / gradients remain absent.
 
 ## 1. Møller–Plesset Perturbation Theory
 
@@ -41,7 +45,7 @@ Coupled cluster and multireference theory are entirely absent.
 | MP2 analytic gradient              |  ✓  |   ○  |   ○  |
 | MP2 analytic Hessian               |  ○  |   ○  |   ○  |
 | MP2.5                              |  ○  |   ○  |   ○  |
-| MP3                                |  ○  |   ○  |   ○  |
+| MP3                                |  ✓  |   ○  |   ○  |
 | SCS-MP3                            |  ○  |   ○  |   ○  |
 | Orbital-optimized MP3              |  ○  |   ○  |   ○  |
 | MP4(SDTQ)                          |  ○  |   ○  |   ○  |
@@ -64,9 +68,11 @@ RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 `reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). **ROMP2**
 (`ROHF::mp2`) is UMP2 on the spin-pure ROHF reference with semi-canonical
 spin-Fock denominators (PySCF `mp.UMP2(ROHF)` convention;
-`reg_romp2-o2-sto3g`). No UMP2/ROMP2 gradients, no frozen-core UMP2, no
-RI-UMP2. Canonical mode still materializes the full in-memory ERI tensor in
-the method's private workspace.
+`reg_romp2-o2-sto3g`). **RMP3** (`RHF::mp3`) adds the third-order doubles
+diagrams on the same closed-shell MO ERIs (`reg_mp3-h2-sto3g`; offline pin on
+PySCF RHF orbitals — PySCF 2.x has no `mp.MP3`). No UMP2/ROMP2 gradients, no
+frozen-core UMP2, no RI-UMP2. Canonical mode still materializes the full
+in-memory ERI tensor in the method's private workspace.
 
 ## 2. Configuration Interaction
 
@@ -97,7 +103,7 @@ correlate real ones.
 | Coupled-cluster doubles, CCD |  ○  |   ○  |   ○  |
 | Brueckner doubles, BD        |  ○  |   ○  |   ○  |
 | CC2                          |  ○  |   ○  |   ○  |
-| CCSD                         |  ○  |   ○  |   ○  |
+| CCSD                         |  ✓  |   ○  |   ○  |
 | CCSD(T)                      |  ○  |   ○  |   ○  |
 | CCSDT-1a                     |  ○  |   ○  |   ○  |
 | CCSDT-1b                     |  ○  |   ○  |   ○  |
@@ -118,6 +124,10 @@ correlate real ones.
 | CCSD analytic gradient       |  ○  |   ○  |   ○  |
 | CCSD analytic Hessian        |  ○  |   ○  |   ○  |
 | CCSD(T) analytic gradient    |  ○  |   ○  |   ○  |
+
+**CCSD** (`RHF::ccsd`) is closed-shell spin-orbital Gauss–Stanton on a
+converged RHF reference (`reg_ccsd-h2-sto3g` vs PySCF `cc.CCSD`). Energy only —
+no (T), no gradients, no open-shell, no density fitting.
 
 ### Local-correlation coupled cluster
 

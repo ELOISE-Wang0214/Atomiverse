@@ -20,6 +20,9 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 (`RHF::cisd`; `reg_cisd-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
 **Strict ADC(2)** electronic excitation energies on RHF ship
 (`RHF::adc2`; `reg_adc2-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
+**Spectral G0W0** quasiparticle energies on RHF ship
+(`RHF::g0w0`; `reg_g0w0-h2-sto3g` H2/STO-3G QP gap vs PySCF
+`gw.gw_exact.GWExact` + dRPA).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -87,8 +90,8 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | STEOM-CCSD                 |  ○  |   ○  |   ○  |
 | EOM-CCSD analytic gradient |  ○  |   ○  |   ○  |
 
-Blocked upstream: there is no coupled cluster to build EOM on
-(see [Post-Hartree–Fock](post-hf.md#3-coupled-cluster)).
+CCSD energy ships (`RHF::ccsd`; see [Post-Hartree–Fock](post-hf.md#3-coupled-cluster));
+the EOM layer (Jacobian / σ-vector) is still absent.
 
 ## 4. Simplified Excited-State Methods
 
@@ -109,7 +112,7 @@ Blocked upstream: no DFTB, no xTB
 | --------------------------------------------- | :-: | :--: | :---: |
 | Second-order Green's function, GF2            |  ○  |   ○  |   ○  |
 | Self-consistent GF2                           |  ○  |   ○  |   ○  |
-| G0W0                                          |  ○  |   ○  |   ○  |
+| G0W0                                          |  ✓  |   ○  |   ○  |
 | Eigenvalue-self-consistent GW                 |  ○  |   ○  |   ○  |
 | Quasiparticle self-consistent GW              |  ○  |   ○  |   ○  |
 | Fully self-consistent GW                      |  ○  |   ○  |   ○  |
@@ -119,3 +122,8 @@ Blocked upstream: no DFTB, no xTB
 | SOSEX                                         |  ○  |   ○  |   ○  |
 | Renormalized second-order perturbation theory |  ○  |   ○  |   ○  |
 | ACFDT-RPA                                     |  ○  |   ○  |   ○  |
+
+**G0W0** (`RHF::g0w0`) is spectral (frequency-exact) quasiparticle energies with
+direct-RPA screening of \(W\) on a closed-shell RHF reference
+(`reg_g0w0-h2-sto3g` vs PySCF `gw.gw_exact.GWExact` + dRPA). No self-consistent
+GW, no BSE, no analytic continuation product path.

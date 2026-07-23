@@ -72,3 +72,5 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 tutorial: methods/spin-flip-tda-o2.md
 - 2026-07-23 tutorial: methods/rohf-hessian-o2.md
 - 2026-07-23 assign wave 5: adc2-h2co-sto3g (excited-states), mp3-h2-sto3g (post-hf), ccsd-h2-sto3g (post-hf), g0w0-h2-sto3g (excited-states), b2plyp-h2o (dft) → in_progress; skip ccsd-t (needs CCSD), casci, delta-scf; pending_left=3
+- 2026-07-23 wave 5 merge: all five green HEADs → dev (adc2-h2co-sto3g, mp3-h2-sto3g, ccsd-h2-sto3g, g0w0-h2-sto3g, b2plyp-h2o); blocked=[]; merge-failed=[]
+- 2026-07-23 harness wave 5: queue merged→done (5); in_progress cleared; eom-ee-ccsd unblocked→pending (CCSD energy ships); roadmaps ○→✓ for MP3, CCSD, G0W0 (ADC(2)+B2PLYP already ✓); ratios adc2=0.267 mp3=0.774 ccsd=0.317 g0w0=0.109 b2plyp=1.75; no ⚡ (no standing perf suite); handoff written; queue_remaining=4
