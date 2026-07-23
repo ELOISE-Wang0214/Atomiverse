@@ -90,12 +90,12 @@ const auto& r = pw.run(frame); // r.magnetization == 2; e_tot vs pin
 
 ## Tasks
 
-- [ ] Spec + acceptance (this directory)
-- [ ] Unit: `k_mesh≥2` + spin_polarized + multiplicity 3 → |M−2| unit tol
-- [ ] Offline pin in REFERENCE (method string; CP2K if available else frozen ATV)
-- [ ] E2E regression public API only
-- [ ] Build + run unit + regression; perf gate or `perf_exempt`
-- [ ] Commit on `wf/pw-uks-kmesh-fe`
+- [x] Spec + acceptance (this directory)
+- [x] Unit: `k_mesh≥2` + spin_polarized + multiplicity 3 → |M−2| unit tol
+- [x] Offline pin in REFERENCE (method string; CP2K if available else frozen ATV)
+- [x] E2E regression public API only
+- [x] Build + run unit + regression; perf gate or `perf_exempt`
+- [x] Commit on `wf/pw-uks-kmesh-fe`
 
 ## Testing strategy
 

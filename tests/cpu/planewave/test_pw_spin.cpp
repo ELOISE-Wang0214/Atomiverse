@@ -70,3 +70,24 @@ TEST(PWSpin, O2TripletMagnetizationIdentity) {
     EXPECT_TRUE(std::isfinite(r.energy_ha));
     EXPECT_NEAR(r.magnetization, 2.0, 1e-12);
 }
+
+TEST(PWSpin, O2TripletMultiKMagnetizationIdentity) {
+    // k-point collinear UKS (pw-uks-kmesh-fe): fixed occupations still set
+    // M = multiplicity − 1 with Monkhorst–Pack mesh ≥ 2. One SCF iter is
+    // enough for the occupation identity; keep wall in the unit-test budget.
+    auto f = o2_frame(5.5);
+    PW pw;
+    pw.ecut_ry = 4.0;
+    pw.k_mesh = 2;
+    pw.tol = 1e-1;
+    pw.max_iter = 1;
+    pw.mix_beta = 0.5;
+    pw.spin_polarized = true;
+    pw.multiplicity = 3;
+
+    pw.build(f);
+    const auto& r = pw.run(f);
+    EXPECT_TRUE(std::isfinite(r.energy));
+    EXPECT_TRUE(std::isfinite(r.energy_ha));
+    EXPECT_NEAR(r.magnetization, 2.0, 1e-12);
+}
