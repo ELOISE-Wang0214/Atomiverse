@@ -165,6 +165,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | RMP3 | [mp3-h2-sto3g](methods/mp3-h2-sto3g.md) | `…/mp3-h2-sto3g` |
 | RMP4(SDTQ) | [mp4-h2-sto3g](methods/mp4-h2-sto3g.md) | `…/mp4-h2-sto3g` |
 | CCSD | [ccsd-h2-sto3g](methods/ccsd-h2-sto3g.md) | `…/ccsd-h2-sto3g` |
+| CCSD nuclear gradient | [ccsd-grad-h2o-sto3g](methods/ccsd-grad-h2o-sto3g.md) | `…/ccsd-grad-h2o-sto3g` |
 | CC2 | [cc2-h2-sto3g](methods/cc2-h2-sto3g.md) | `…/cc2-h2-sto3g` |
 | CCSD(T) | [ccsd-t-h2o-sto3g](methods/ccsd-t-h2o-sto3g.md) | `…/ccsd-t-h2o-sto3g` |
 | G0W0 | [g0w0-h2-sto3g](methods/g0w0-h2-sto3g.md) | `…/g0w0-h2-sto3g` |
@@ -174,9 +175,15 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | B2PLYP double hybrid | [b2plyp-h2o](methods/b2plyp-h2o.md) | `…/b2plyp-h2o` |
 | DFT-D4 (PBE params) | [dft-d4-h2o-pbe](methods/dft-d4-h2o-pbe.md) | `…/dft-d4-h2o-pbe` |
 | CASCI | [casci-h2-sto3g](methods/casci-h2-sto3g.md) | `…/casci-h2-sto3g` |
+| CASSCF | [casscf-h2-sto3g](methods/casscf-h2-sto3g.md) | `…/casscf-h2-sto3g` |
 | ΔSCF (IMOM) | [delta-scf-n2](methods/delta-scf-n2.md) | `…/delta-scf-n2` |
 | EOM-EE-CCSD | [eom-ee-ccsd](methods/eom-ee-ccsd.md) | `…/eom-ee-ccsd` |
 | EOM-EA-CCSD | [eom-ea-ccsd](methods/eom-ea-ccsd.md) | `…/eom-ea-ccsd` |
+| EOM-IP-CCSD | [eom-ip-ccsd](methods/eom-ip-ccsd.md) | `…/eom-ip-ccsd` |
 | EOM-SF-CCSD | [eom-sf-ccsd-o2](methods/eom-sf-ccsd-o2.md) | `…/eom-sf-ccsd-o2` |
+| EOM-CC2 | [eom-cc2-h2](methods/eom-cc2-h2.md) | `…/eom-cc2-h2` |
+| RKS nuclear Hessian (FD of forces) | [rks-hessian-h2o-sto3g](methods/rks-hessian-h2o-sto3g.md) | `…/rks-hessian-h2o-sto3g` |
+| UKS full-LR TDDFT (LSDA O₂) | [uks-full-lr-o2-lsda](methods/uks-full-lr-o2-lsda.md) | `…/uks-full-lr-o2-lsda` |
+| UMP2 analytic gradient | [ump2-grad-o2-sto3g](methods/ump2-grad-o2-sto3g.md) | `…/ump2-grad-o2-sto3g` |
 
 SCF reading map: [User Guide → SCF Learning Path](../user-guide/scf-roadmap.md).

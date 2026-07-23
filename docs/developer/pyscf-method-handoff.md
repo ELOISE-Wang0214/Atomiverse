@@ -5,15 +5,15 @@ Last harness pass: **2026-07-24 wave 2 (post re-census)** on `dev`
 
 ## Wave 2 (post re-census) summary
 
-| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
-| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
-| `eom-cc2-h2` | excited-states | **merged → done** | `regressions/scf/eom-cc2-h2` | **0.300** |
-| `eom-ip-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ip-ccsd` | **0.754** |
-| `uks-full-lr-o2-lsda` | excited-states | **merged → done** | `regressions/scf/uks-full-lr-o2-lsda` | **2.937** |
-| `casscf-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/casscf-h2-sto3g` | **0.0435** |
-| `ccsd-grad-h2o-sto3g` | post-hf | **merged → done** | `regressions/scf/ccsd-grad-h2o-sto3g` | **1.665** |
-| `rks-hessian-h2o-sto3g` | dft | **merged → done** | `regressions/scf/rks-hessian-h2o-sto3g` | **3.08** (vs FD twin) |
-| `ump2-grad-o2-sto3g` | post-hf | **merged → done** | `regressions/scf/ump2-grad-o2-sto3g` | **1.37** |
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) | Tutorial |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- | -------- |
+| `eom-cc2-h2` | excited-states | **merged → done** | `regressions/scf/eom-cc2-h2` | **0.300** | [methods/eom-cc2-h2](../tutorial/methods/eom-cc2-h2.md) |
+| `eom-ip-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ip-ccsd` | **0.754** | [methods/eom-ip-ccsd](../tutorial/methods/eom-ip-ccsd.md) |
+| `uks-full-lr-o2-lsda` | excited-states | **merged → done** | `regressions/scf/uks-full-lr-o2-lsda` | **2.937** | [methods/uks-full-lr-o2-lsda](../tutorial/methods/uks-full-lr-o2-lsda.md) |
+| `casscf-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/casscf-h2-sto3g` | **0.0435** | [methods/casscf-h2-sto3g](../tutorial/methods/casscf-h2-sto3g.md) |
+| `ccsd-grad-h2o-sto3g` | post-hf | **merged → done** | `regressions/scf/ccsd-grad-h2o-sto3g` | **1.665** | [methods/ccsd-grad-h2o-sto3g](../tutorial/methods/ccsd-grad-h2o-sto3g.md) |
+| `rks-hessian-h2o-sto3g` | dft | **merged → done** | `regressions/scf/rks-hessian-h2o-sto3g` | **3.08** (vs FD twin) | [methods/rks-hessian-h2o-sto3g](../tutorial/methods/rks-hessian-h2o-sto3g.md) |
+| `ump2-grad-o2-sto3g` | post-hf | **merged → done** | `regressions/scf/ump2-grad-o2-sto3g` | **1.37** | [methods/ump2-grad-o2-sto3g](../tutorial/methods/ump2-grad-o2-sto3g.md) |
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
