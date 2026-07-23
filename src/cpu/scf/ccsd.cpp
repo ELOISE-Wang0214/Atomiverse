@@ -20,9 +20,7 @@
 #include <string>
 #include <vector>
 
-#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
-#include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/scf/mp2.h"
 
@@ -132,16 +130,59 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                       so[static_cast<std::size_t>(s)]);
     };
 
-/// Shared spin-orbital Jacobi CCSD once SO integrals / ε are assembled.
-static CCSDSolution so_ccsd_kernel(
-    int no, int nv, xt::xtensor<double, 4> oooo, xt::xtensor<double, 4> ooov,
-    xt::xtensor<double, 4> oovv, xt::xtensor<double, 4> ovov,
-    xt::xtensor<double, 4> ovvv, xt::xtensor<double, 4> vvvv,
-    std::vector<double> eps_so, double e_scf_ha, double tol, int max_iter,
-    int n_occ_sp, int n_vir_sp, int n_alpha, int n_beta, int n_vir_a,
-    int n_vir_b) {
     const std::size_t No = static_cast<std::size_t>(no);
     const std::size_t Nv = static_cast<std::size_t>(nv);
+    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
+    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
+    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
+    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
+    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
+    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
+
+#pragma omp parallel for collapse(2) schedule(static) if (no * no > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < no; ++q) {
+            for (int r = 0; r < no; ++r) {
+                for (int s = 0; s < no; ++s)
+                    oooo(p, q, r, s) = g(p, q, r, s);
+                for (int s = 0; s < nv; ++s)
+                    ooov(p, q, r, s) = g(p, q, r, no + s);
+            }
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (no * nv > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < nv; ++q) {
+            for (int r = 0; r < no; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (nv > 2)
+    for (int p = 0; p < nv; ++p)
+        for (int q = 0; q < nv; ++q)
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
+
+    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < n_occ_sp; ++i) {
+        const double e = eps(static_cast<std::size_t>(i));
+        eps_so[static_cast<std::size_t>(i)] = e;
+        eps_so[static_cast<std::size_t>(n_occ_sp + i)] = e;
+    }
+    for (int a = 0; a < n_vir_sp; ++a) {
+        const double e = eps(static_cast<std::size_t>(n_occ_sp + a));
+        eps_so[static_cast<std::size_t>(no + a)] = e;
+        eps_so[static_cast<std::size_t>(no + n_vir_sp + a)] = e;
+    }
+
     xt::xtensor<double, 2> fov = xt::zeros<double>({No, Nv});
     xt::xtensor<double, 2> foo = xt::zeros<double>({No, No});
     xt::xtensor<double, 2> fvv = xt::zeros<double>({Nv, Nv});
@@ -555,129 +596,9 @@ static CCSDSolution so_ccsd_kernel(
     sol.nv = nv;
     sol.n_occ_sp = n_occ_sp;
     sol.n_vir_sp = n_vir_sp;
-    sol.n_alpha = n_alpha;
-    sol.n_beta = n_beta;
-    sol.n_vir_a = n_vir_a;
-    sol.n_vir_b = n_vir_b;
     return sol;
 }
 
-CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, double tol, int max_iter) {
-    using Spin = SlaterDeterminant::Spin;
-    if (ints.ERI.size() == 0) {
-        throw std::invalid_argument(
-            "ccsd_energy: ERI is not materialized; need compute_eri=true.");
-    }
-    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
-        throw std::invalid_argument(
-            "ccsd_energy: closed-shell reference only (n_alpha must equal "
-            "n_beta).");
-    }
-    if (det.generalized()) {
-        throw std::invalid_argument(
-            "ccsd_energy: GHF (spinor) reference is not supported.");
-    }
-    if (max_iter < 1) {
-        throw std::invalid_argument("ccsd_energy: max_iter must be ≥ 1.");
-    }
-    if (!(tol > 0.0)) {
-        throw std::invalid_argument("ccsd_energy: tol must be > 0.");
-    }
-
-    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
-    const int n_occ_sp = det.n_electrons(Spin::alpha);
-    const int n_mo = static_cast<int>(C.shape(1));
-    const int n_vir_sp = n_mo - n_occ_sp;
-    if (n_vir_sp <= 0) {
-        CCSDSolution sol;
-        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
-        sol.n_occ_sp = n_occ_sp;
-        sol.n_vir_sp = 0;
-        return sol;
-    }
-
-    const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
-    const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
-
-    const int no = 2 * n_occ_sp;
-    const int nv = 2 * n_vir_sp;
-    std::vector<SO> so(static_cast<std::size_t>(no + nv));
-    for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(i)] = SO{i, 0};
-    for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(n_occ_sp + i)] = SO{i, 1};
-    for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + a)] = SO{n_occ_sp + a, 0};
-    for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + n_vir_sp + a)] = SO{n_occ_sp + a, 1};
-
-    auto g = [&](int p, int q, int r, int s) -> double {
-        return so_eri(eri_mo, so[static_cast<std::size_t>(p)],
-                      so[static_cast<std::size_t>(q)],
-                      so[static_cast<std::size_t>(r)],
-                      so[static_cast<std::size_t>(s)]);
-    };
-
-    const std::size_t No = static_cast<std::size_t>(no);
-    const std::size_t Nv = static_cast<std::size_t>(nv);
-    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
-    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
-    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
-    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
-    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
-    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
-
-#pragma omp parallel for collapse(2) schedule(static) if (no * no > 4)
-    for (int p = 0; p < no; ++p) {
-        for (int q = 0; q < no; ++q) {
-            for (int r = 0; r < no; ++r) {
-                for (int s = 0; s < no; ++s)
-                    oooo(p, q, r, s) = g(p, q, r, s);
-                for (int s = 0; s < nv; ++s)
-                    ooov(p, q, r, s) = g(p, q, r, no + s);
-            }
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
-        }
-    }
-#pragma omp parallel for collapse(2) schedule(static) if (no * nv > 4)
-    for (int p = 0; p < no; ++p) {
-        for (int q = 0; q < nv; ++q) {
-            for (int r = 0; r < no; ++r)
-                for (int s = 0; s < nv; ++s)
-                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
-        }
-    }
-#pragma omp parallel for collapse(2) schedule(static) if (nv > 2)
-    for (int p = 0; p < nv; ++p)
-        for (int q = 0; q < nv; ++q)
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
-
-    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
-    for (int i = 0; i < n_occ_sp; ++i) {
-        const double e = eps(static_cast<std::size_t>(i));
-        eps_so[static_cast<std::size_t>(i)] = e;
-        eps_so[static_cast<std::size_t>(n_occ_sp + i)] = e;
-    }
-    for (int a = 0; a < n_vir_sp; ++a) {
-        const double e = eps(static_cast<std::size_t>(n_occ_sp + a));
-        eps_so[static_cast<std::size_t>(no + a)] = e;
-        eps_so[static_cast<std::size_t>(no + n_vir_sp + a)] = e;
-    }
-
-    return so_ccsd_kernel(no, nv, std::move(oooo), std::move(ooov),
-                           std::move(oovv), std::move(ovov), std::move(ovvv),
-                           std::move(vvvv), std::move(eps_so), e_scf_ha, tol,
-                           max_iter, n_occ_sp, n_vir_sp, n_occ_sp, n_occ_sp,
-                           n_vir_sp, n_vir_sp);
-}
 
 CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                        double e_scf_ha, double tol, int max_iter) {
@@ -693,26 +614,129 @@ CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 
 namespace {
 
-/// Chemist (C0 C1 | C2 C3) AO→MO transform (local; matches mp2 ao2mo_mixed_).
-xt::xtensor<double, 4> ao2mo_uhf_block(const xt::xtensor<double, 4>& eri_ao,
-                                       const xt::xtensor<double, 2>& C0,
-                                       const xt::xtensor<double, 2>& C1,
-                                       const xt::xtensor<double, 2>& C2,
-                                       const xt::xtensor<double, 2>& C3) {
-    xt::xtensor<double, 4> cur = eri_ao;
-    const xt::xtensor<double, 2>* Cs[4] = {&C3, &C2, &C1, &C0};
-    for (int round = 0; round < 4; ++round) {
-        const auto sh = cur.shape();
-        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
-        xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
-        xt::xtensor<double, 4> next =
-            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
-        cur = xt::transpose(next, {3, 0, 1, 2});
+double triples_energy(const CCSDSolution& amps) {
+    const int no = amps.no;
+    const int nv = amps.nv;
+    if (no < 3 || nv < 3)
+        return 0.0; // no unique a>b>c (or ijk) triples in the basis
+
+    const auto& t1 = amps.t1;
+    const auto& t2 = amps.t2;
+    const auto& oovv = amps.oovv;
+    const auto& ooov = amps.ooov;
+    const auto& ovvv = amps.ovvv;
+    const auto& eps = amps.eps_so;
+    // f_ai = 0 for canonical HF (fov is f_ia = 0).
+
+    // Pre-cache bcei[b,c,e,i] = ovvv(i,e,c,b) and majk[m,a,j,k] = ooov(j,k,m,a)
+    // and bcjk[b,c,j,k] = oovv(j,k,b,c).
+    const std::size_t No = static_cast<std::size_t>(no);
+    const std::size_t Nv = static_cast<std::size_t>(nv);
+    xt::xtensor<double, 4> bcei = xt::zeros<double>({Nv, Nv, Nv, No});
+    xt::xtensor<double, 4> majk = xt::zeros<double>({No, Nv, No, No});
+    xt::xtensor<double, 4> bcjk = xt::zeros<double>({Nv, Nv, No, No});
+    for (int b = 0; b < nv; ++b)
+        for (int c = 0; c < nv; ++c)
+            for (int e = 0; e < nv; ++e)
+                for (int i = 0; i < no; ++i)
+                    bcei(b, c, e, i) = ovvv(i, e, c, b);
+    for (int m = 0; m < no; ++m)
+        for (int a = 0; a < nv; ++a)
+            for (int j = 0; j < no; ++j)
+                for (int k = 0; k < no; ++k)
+                    majk(m, a, j, k) = ooov(j, k, m, a);
+    for (int b = 0; b < nv; ++b)
+        for (int c = 0; c < nv; ++c)
+            for (int j = 0; j < no; ++j)
+                for (int k = 0; k < no; ++k)
+                    bcjk(b, c, j, k) = oovv(j, k, b, c);
+
+    // get_wv(a,b,c) → (w_ijk, v_ijk) for fixed virtuals a,b,c.
+    auto get_wv = [&](int a, int b, int c, xt::xtensor<double, 3>& w,
+                      xt::xtensor<double, 3>& v) {
+        for (int i = 0; i < no; ++i) {
+            for (int j = 0; j < no; ++j) {
+                for (int k = 0; k < no; ++k) {
+                    double ww = 0.0;
+                    // Σ_e t2(j,k,a,e) * bcei(b,c,e,i)
+                    for (int e = 0; e < nv; ++e)
+                        ww += t2(j, k, a, e) * bcei(b, c, e, i);
+                    // − Σ_m t2(i,m,b,c) * majk(m,a,j,k)
+                    for (int m = 0; m < no; ++m)
+                        ww -= t2(i, m, b, c) * majk(m, a, j, k);
+                    w(i, j, k) = ww;
+                    // v = t1(i,a)*bcjk(b,c,j,k) + fvo(a,i)*t2(j,k,b,c) + w
+                    // fvo = 0 for canonical HF
+                    v(i, j, k) = t1(i, a) * bcjk(b, c, j, k) + ww;
+                }
+            }
+        }
+        // Cyclic permutation of occupied indices on w only:
+        // w = w + w.transpose(2,0,1) + w.transpose(1,2,0)
+        xt::xtensor<double, 3> w0 = w;
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int k = 0; k < no; ++k)
+                    w(i, j, k) = w0(i, j, k) + w0(k, i, j) + w0(j, k, i);
+    };
+
+    double et = 0.0;
+    xt::xtensor<double, 3> wabc = xt::zeros<double>({No, No, No});
+    xt::xtensor<double, 3> vabc = xt::zeros<double>({No, No, No});
+    xt::xtensor<double, 3> wcab = xt::zeros<double>({No, No, No});
+    xt::xtensor<double, 3> vcab = xt::zeros<double>({No, No, No});
+    xt::xtensor<double, 3> wbac = xt::zeros<double>({No, No, No});
+    xt::xtensor<double, 3> vbac = xt::zeros<double>({No, No, No});
+
+    // a > b > c restricted sum (PySCF gccsd_t)
+    for (int a = 0; a < nv; ++a) {
+        for (int b = 0; b < a; ++b) {
+            for (int c = 0; c < b; ++c) {
+                get_wv(a, b, c, wabc, vabc);
+                get_wv(c, a, b, wcab, vcab);
+                get_wv(b, a, c, wbac, vbac);
+
+                const double ea = eps[static_cast<std::size_t>(no + a)];
+                const double eb = eps[static_cast<std::size_t>(no + b)];
+                const double ec = eps[static_cast<std::size_t>(no + c)];
+                const double eabc = ea + eb + ec;
+
+                for (int i = 0; i < no; ++i) {
+                    const double ei = eps[static_cast<std::size_t>(i)];
+                    for (int j = 0; j < no; ++j) {
+                        const double ej = eps[static_cast<std::size_t>(j)];
+                        for (int k = 0; k < no; ++k) {
+                            const double ek = eps[static_cast<std::size_t>(k)];
+                            const double den = ei + ej + ek - eabc;
+                            if (std::abs(den) < 1e-14)
+                                continue;
+                            const double w = (wabc(i, j, k) + wcab(i, j, k) -
+                                              wbac(i, j, k)) /
+                                             den;
+                            const double v = vabc(i, j, k) + vcab(i, j, k) -
+                                             vbac(i, j, k);
+                            et += w * v;
+                        }
+                    }
+                }
+            }
+        }
     }
-    return cur; // (C0,C1,C2,C3) → chemist (p q | r s)
+    return 0.5 * et;
 }
 
 } // namespace
+
+CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                          double e_scf_ha, double tol, int max_iter) {
+    CCSDSolution sol =
+        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false);
+    const double e_t = triples_energy(sol);
+    const double e_corr = sol.result.e_corr + e_t;
+    return CCSDTResult{e_corr, e_scf_ha + e_corr, sol.result.e_corr, e_t,
+                       sol.result.iterations, sol.result.converged};
+}
+
 
 CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                          double e_scf_ha, double tol, int max_iter) {
@@ -878,131 +902,6 @@ CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                           std::move(vvvv), std::move(eps_so), e_scf_ha, tol,
                           max_iter, /*n_occ_sp=*/na, /*n_vir_sp=*/nva, na, nb,
                           nva, nvb);
-}
-
-namespace {
-
-double triples_energy(const CCSDSolution& amps) {
-    const int no = amps.no;
-    const int nv = amps.nv;
-    if (no < 3 || nv < 3)
-        return 0.0; // no unique a>b>c (or ijk) triples in the basis
-
-    const auto& t1 = amps.t1;
-    const auto& t2 = amps.t2;
-    const auto& oovv = amps.oovv;
-    const auto& ooov = amps.ooov;
-    const auto& ovvv = amps.ovvv;
-    const auto& eps = amps.eps_so;
-    // f_ai = 0 for canonical HF (fov is f_ia = 0).
-
-    // Pre-cache bcei[b,c,e,i] = ovvv(i,e,c,b) and majk[m,a,j,k] = ooov(j,k,m,a)
-    // and bcjk[b,c,j,k] = oovv(j,k,b,c).
-    const std::size_t No = static_cast<std::size_t>(no);
-    const std::size_t Nv = static_cast<std::size_t>(nv);
-    xt::xtensor<double, 4> bcei = xt::zeros<double>({Nv, Nv, Nv, No});
-    xt::xtensor<double, 4> majk = xt::zeros<double>({No, Nv, No, No});
-    xt::xtensor<double, 4> bcjk = xt::zeros<double>({Nv, Nv, No, No});
-    for (int b = 0; b < nv; ++b)
-        for (int c = 0; c < nv; ++c)
-            for (int e = 0; e < nv; ++e)
-                for (int i = 0; i < no; ++i)
-                    bcei(b, c, e, i) = ovvv(i, e, c, b);
-    for (int m = 0; m < no; ++m)
-        for (int a = 0; a < nv; ++a)
-            for (int j = 0; j < no; ++j)
-                for (int k = 0; k < no; ++k)
-                    majk(m, a, j, k) = ooov(j, k, m, a);
-    for (int b = 0; b < nv; ++b)
-        for (int c = 0; c < nv; ++c)
-            for (int j = 0; j < no; ++j)
-                for (int k = 0; k < no; ++k)
-                    bcjk(b, c, j, k) = oovv(j, k, b, c);
-
-    // get_wv(a,b,c) → (w_ijk, v_ijk) for fixed virtuals a,b,c.
-    auto get_wv = [&](int a, int b, int c, xt::xtensor<double, 3>& w,
-                      xt::xtensor<double, 3>& v) {
-        for (int i = 0; i < no; ++i) {
-            for (int j = 0; j < no; ++j) {
-                for (int k = 0; k < no; ++k) {
-                    double ww = 0.0;
-                    // Σ_e t2(j,k,a,e) * bcei(b,c,e,i)
-                    for (int e = 0; e < nv; ++e)
-                        ww += t2(j, k, a, e) * bcei(b, c, e, i);
-                    // − Σ_m t2(i,m,b,c) * majk(m,a,j,k)
-                    for (int m = 0; m < no; ++m)
-                        ww -= t2(i, m, b, c) * majk(m, a, j, k);
-                    w(i, j, k) = ww;
-                    // v = t1(i,a)*bcjk(b,c,j,k) + fvo(a,i)*t2(j,k,b,c) + w
-                    // fvo = 0 for canonical HF
-                    v(i, j, k) = t1(i, a) * bcjk(b, c, j, k) + ww;
-                }
-            }
-        }
-        // Cyclic permutation of occupied indices on w only:
-        // w = w + w.transpose(2,0,1) + w.transpose(1,2,0)
-        xt::xtensor<double, 3> w0 = w;
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int k = 0; k < no; ++k)
-                    w(i, j, k) = w0(i, j, k) + w0(k, i, j) + w0(j, k, i);
-    };
-
-    double et = 0.0;
-    xt::xtensor<double, 3> wabc = xt::zeros<double>({No, No, No});
-    xt::xtensor<double, 3> vabc = xt::zeros<double>({No, No, No});
-    xt::xtensor<double, 3> wcab = xt::zeros<double>({No, No, No});
-    xt::xtensor<double, 3> vcab = xt::zeros<double>({No, No, No});
-    xt::xtensor<double, 3> wbac = xt::zeros<double>({No, No, No});
-    xt::xtensor<double, 3> vbac = xt::zeros<double>({No, No, No});
-
-    // a > b > c restricted sum (PySCF gccsd_t)
-    for (int a = 0; a < nv; ++a) {
-        for (int b = 0; b < a; ++b) {
-            for (int c = 0; c < b; ++c) {
-                get_wv(a, b, c, wabc, vabc);
-                get_wv(c, a, b, wcab, vcab);
-                get_wv(b, a, c, wbac, vbac);
-
-                const double ea = eps[static_cast<std::size_t>(no + a)];
-                const double eb = eps[static_cast<std::size_t>(no + b)];
-                const double ec = eps[static_cast<std::size_t>(no + c)];
-                const double eabc = ea + eb + ec;
-
-                for (int i = 0; i < no; ++i) {
-                    const double ei = eps[static_cast<std::size_t>(i)];
-                    for (int j = 0; j < no; ++j) {
-                        const double ej = eps[static_cast<std::size_t>(j)];
-                        for (int k = 0; k < no; ++k) {
-                            const double ek = eps[static_cast<std::size_t>(k)];
-                            const double den = ei + ej + ek - eabc;
-                            if (std::abs(den) < 1e-14)
-                                continue;
-                            const double w = (wabc(i, j, k) + wcab(i, j, k) -
-                                              wbac(i, j, k)) /
-                                             den;
-                            const double v = vabc(i, j, k) + vcab(i, j, k) -
-                                             vbac(i, j, k);
-                            et += w * v;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return 0.5 * et;
-}
-
-} // namespace
-
-CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                          double e_scf_ha, double tol, int max_iter) {
-    CCSDSolution sol =
-        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false);
-    const double e_t = triples_energy(sol);
-    const double e_corr = sol.result.e_corr + e_t;
-    return CCSDTResult{e_corr, e_scf_ha + e_corr, sol.result.e_corr, e_t,
-                       sol.result.iterations, sol.result.converged};
 }
 
 } // namespace scf

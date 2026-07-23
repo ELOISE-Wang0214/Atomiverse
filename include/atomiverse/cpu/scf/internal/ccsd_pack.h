@@ -37,16 +37,8 @@ struct CCSDSolution {
     std::vector<double> eps_so;
     int no = 0; ///< Occupied spin-orbitals.
     int nv = 0; ///< Virtual spin-orbitals.
-    int n_occ_sp = 0; ///< Occupied spatial MOs (closed-shell: n_α = n_β).
-    int n_vir_sp = 0; ///< Virtual spatial MOs (closed-shell).
-    /// Open-shell (UHF) channel sizes for EOM-SF root selection. Layout of
-    /// spin-orbitals: occ = [α₀…α_{nα−1} | β₀…β_{nβ−1}],
-    /// vir = [α₀…α_{nva−1} | β₀…β_{nvb−1}]. For closed-shell RHF these match
-    /// `n_occ_sp` / `n_vir_sp` on both spins.
-    int n_alpha = 0;
-    int n_beta = 0;
-    int n_vir_a = 0;
-    int n_vir_b = 0;
+    int n_occ_sp = 0; ///< Occupied spatial MOs.
+    int n_vir_sp = 0; ///< Virtual spatial MOs.
 };
 
 /// @brief Closed-shell CCSD correlation energy from a converged RHF reference.
@@ -87,24 +79,9 @@ CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det
 ///        blocks for EOM-EE-CCSD (private).
 /// @param cc2 When true, use the CC2 doubles residual (Christiansen 1995)
 ///            instead of full CCSD; singles residual stays full CCSD.
-///        blocks for EOM-EE-CCSD (private). Closed-shell RHF only.CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                         double e_scf_ha, double tol = 1e-10,
                         int max_iter = 100, bool cc2 = false);
-
-/// @brief Closed-shell CC2 correlation energy (Christiansen–Koch–Jørgensen).
-///
-/// Same spin-orbital infrastructure as `ccsd_energy` with the CC2 T₂
-/// truncation. Matches PySCF `cc.RCCSD(mf)` with `cc2=True`.
-///
-/// @param ints     Integral pack with the dense ERI tensor materialized.
-/// @param det      Converged closed-shell determinant (MO coeffs, ε, n_e).
-/// @param e_scf_ha Converged SCF total energy [Hartree].
-/// @param tol      Amplitude residual tolerance (dimensionless max-norm).
-/// @param max_iter Jacobi iteration budget (dimensionless).
-/// @return CC2 correlation and total energies [Hartree].
-/// @throws std::invalid_argument as for `ccsd_energy`.
-CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                     double e_scf_ha, double tol = 1e-10, int max_iter = 100);
 
 /// @brief Unrestricted (UHF) spin-orbital CCSD — same Gauss–Stanton
 ///        equations as `ccsd_solve`, with independent α/β MO coefficients
@@ -121,6 +98,21 @@ CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                          double e_scf_ha, double tol = 1e-10,
                          int max_iter = 100);
+
+/// @brief Closed-shell CC2 correlation energy (Christiansen–Koch–Jørgensen).
+///
+/// Same spin-orbital infrastructure as `ccsd_energy` with the CC2 T₂
+/// truncation. Matches PySCF `cc.RCCSD(mf)` with `cc2=True`.
+///
+/// @param ints     Integral pack with the dense ERI tensor materialized.
+/// @param det      Converged closed-shell determinant (MO coeffs, ε, n_e).
+/// @param e_scf_ha Converged SCF total energy [Hartree].
+/// @param tol      Amplitude residual tolerance (dimensionless max-norm).
+/// @param max_iter Jacobi iteration budget (dimensionless).
+/// @return CC2 correlation and total energies [Hartree].
+/// @throws std::invalid_argument as for `ccsd_energy`.
+CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                     double e_scf_ha, double tol = 1e-10, int max_iter = 100);
 
 } // namespace scf
 } // namespace cpu

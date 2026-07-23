@@ -84,7 +84,7 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
         "rohf": "from pyscf import scf\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel()",
         "rks": f"from pyscf import dft\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel()",
         "uks": f"from pyscf import dft\nmf=dft.UKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel()",
-"roks": (
+        "roks": (
             f"from pyscf import dft\nmf=dft.ROKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel()"
         ),
         "roks_grad": (
@@ -93,8 +93,7 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
         ),
         "mp2": "from pyscf import scf, mp\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()",
         "ump2": "from pyscf import scf, mp\nmf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
-"romp2": "from pyscf import scf, mp\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
-        # Closed-shell RMP3 oracle (PySCF has no mp.MP3): RHF + Szabo/Psi4NumPy diagrams.
+        "romp2": "from pyscf import scf, mp\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
         "mp3": (
             "from pyscf import scf, ao2mo\nimport numpy as np\n"
             "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel()\n"
@@ -121,7 +120,144 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "e3+=-4*np.einsum('bcrt,atsc,rsab,bctr,abrs',MO[o,o,v,v],MO[o,v,v,o],MO[v,v,o,o],D,D)\n"
             "float(e2+e3)"
         ),
-        # Closed-shell RMP4(SDTQ) oracle (PySCF has no mp.MP4): det-space RSPT-4 twin.
+        "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
+        "ccsd_t": (
+            "from pyscf import scf, cc\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            "my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.ccsd_t()"
+        ),
+        "casci": (
+            "from pyscf import scf, mcscf\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            "mcscf.CASCI(mf, 2, 2).kernel()"
+        ),
+        "eom-ee-ccsd": (
+            "from pyscf import scf, cc\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eomee_ccsd_singlet(nroots={nstates})"
+        ),
+        "b2plyp": (
+            "from pyscf import dft, mp\n"
+            "mf=dft.RKS(mol); mf.xc='0.53*HF + 0.47*GGA_X_B88 + 0.73*GGA_C_LYP'; "
+            "mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()"
+        ),
+        "tda": (
+            "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
+        ),
+        "tdhf": (
+            "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"td=tdscf.TDHF(mf); td.nstates={nstates}; td.kernel()"
+        ),
+        "rks_tda": (
+            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
+            f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
+        ),
+        "rks_tddft": (
+            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
+            f"td=tdscf.TDDFT(mf); td.nstates={nstates}; td.kernel()"
+        ),
+        "sf_tda": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
+            "dm=np.asarray(ro.make_rdm1())\n"
+            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
+            "mf.kernel(dmin)\n"
+            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
+            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
+            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
+            "ab=len(oa)>=len(ob)\n"
+            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
+            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
+            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
+            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
+            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
+            "A=np.zeros((nov,nov))\n"
+            "for i in range(no):\n"
+            "  for a in range(nv):\n"
+            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
+            "    for j in range(no):\n"
+            "      for b in range(nv):\n"
+            "        A[p,j*nv+b]-=ijab[i,j,a,b]\n"
+            f"np.linalg.eigvalsh(A)[:{nstates}]"
+        ),
+        "adc2": (
+            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ee'; "
+            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
+        ),
+        "g0w0": (
+            "from pyscf import dft, tdscf\n"
+            "from pyscf.gw import gw_exact\n"
+            "mf=dft.RKS(mol); mf.xc='hf'; mf.conv_tol=1e-12; mf.kernel()\n"
+            "nocc=mol.nelectron//2; nvir=mf.mo_coeff.shape[1]-nocc\n"
+            "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
+            "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()"
+        ),
+        "delta_scf": (
+            "from pyscf import scf\n"
+            "from pyscf.scf import addons\n"
+            "import numpy as np\n"
+            "mf0=scf.RHF(mol); mf0.conv_tol=1e-12; mf0.kernel()\n"
+            "nmo=mf0.mo_coeff.shape[1]; nocc=mol.nelectron//2\n"
+            "mo0=np.asarray(mf0.mo_coeff)\n"
+            "occ_a=np.zeros(nmo); occ_b=np.zeros(nmo)\n"
+            "occ_a[:nocc]=1.0; occ_b[:nocc]=1.0\n"
+            "occ_a[nocc-1]=0.0; occ_a[nocc]=1.0\n"
+            "dm=(np.einsum('pi,i,qi->pq',mo0,occ_a,mo0),"
+            "np.einsum('pi,i,qi->pq',mo0,occ_b,mo0))\n"
+            "mfu=addons.mom_occ_(scf.UHF(mol),(mo0,mo0),(occ_a.copy(),occ_b.copy()))\n"
+            "mfu.conv_tol=1e-12; mfu.max_cycle=200; mfu.kernel(dm)"
+        ),
+        "eom-ea-ccsd": (
+            "from pyscf import scf, cc\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eaccsd(nroots={nstates})"
+        ),
+        "adc2x": (
+            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=adc.ADC(mf); my.method='adc(2)-x'; my.method_type='ee'; "
+            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
+        ),
+        "ip-adc2": (
+            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ip'; "
+            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
+        ),
+        "ea-adc2": (
+            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ea'; "
+            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
+        ),
+        "sf_tddft": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
+            "dm=np.asarray(ro.make_rdm1())\n"
+            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
+            "mf.kernel(dmin)\n"
+            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
+            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
+            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
+            "ab=len(oa)>=len(ob)\n"
+            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
+            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
+            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
+            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
+            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
+            "ibaj=ao2mo.general(mol,(Co,Cv,Cv,Co),compact=False).reshape(no,nv,nv,no)\n"
+            "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
+            "for i in range(no):\n"
+            "  for a in range(nv):\n"
+            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
+            "    for j in range(no):\n"
+            "      for b in range(nv):\n"
+            "        q=j*nv+b; A[p,q]-=ijab[i,j,a,b]; B[p,q]-=ibaj[i,b,a,j]\n"
+            "A=0.5*(A+A.T); B=0.5*(B+B.T)\n"
+            "M=np.block([[A,B],[-B,-A]]); w=np.linalg.eigvals(M)\n"
+            f"sorted([float(z.real) for z in w if z.real>1e-8 and abs(z.imag)<=1e-8])[:{nstates}]"
+        ),
         "mp4": (
             "from pyscf import scf, ao2mo\nfrom itertools import combinations\nimport numpy as np\n"
             "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel()\n"
@@ -175,138 +311,30 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "P3=R0(Vm@P2-E1*P2-e2*P1-e3*P0); e4=float(P0@Vm@P3)\n"
             "float(e2+e3+e4)"
         ),
-        "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
-        # Stock PySCF: RCCSD with cc2=True (no top-level cc.CC2).
         "cc2": (
             "from pyscf import scf\nfrom pyscf.cc import rccsd\n"
             "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
             "my=rccsd.RCCSD(mf); my.cc2=True; my.conv_tol=1e-10; my.kernel()"
         ),
-        "ccsd_t": (
-            "from pyscf import scf, cc\n"
-            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            "my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.ccsd_t()"
-        ),
-        # Closed-shell CASCI(2e,2o) — twin of RHF::casci(frame, 2, 2) on H2/STO-3G.
-        "casci": (
-            "from pyscf import scf, mcscf\n"
-            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            "mcscf.CASCI(mf, 2, 2).kernel()"
-        ),
-        "eom-ee-ccsd": (
-            "from pyscf import scf, cc\n"
-            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eomee_ccsd_singlet(nroots={nstates})"
-        ),
-        "eom-ea-ccsd": (
-            "from pyscf import scf, cc\n"
-            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eaccsd(nroots={nstates})"
-        "eom-sf-ccsd": (
-            "mf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"my=cc.UCCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eomsf_ccsd(nroots={nstates})"        ),
-        # B2PLYP double hybrid: hybrid KS (a_x=0.53 B88+LYP) + scaled MP2 (a_c=0.27).
-        "b2plyp": (
-            "from pyscf import dft, mp\n"
-            "mf=dft.RKS(mol); mf.xc='0.53*HF + 0.47*GGA_X_B88 + 0.73*GGA_C_LYP'; "
-            "mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()"
-        ),
-        "tda": (
-            "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
-        ),
-        "tdhf": (
-            "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"td=tdscf.TDHF(mf); td.nstates={nstates}; td.kernel()"
-        ),
-        "rks_tda": (
-            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
-            f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
-        ),
-        "rks_tddft": (
-            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
-            f"td=tdscf.TDDFT(mf); td.nstates={nstates}; td.kernel()"
-        ),
-        # Collinear SF-CIS twin (PySCF has no product SF-TDA): ROHF warm-start
-        # → UHF (matches reg_spin-flip-tda-o2) + dense exchange-only SF A.
-        "sf_tda": (
+        "direct_rpa": (
             "from pyscf import scf, ao2mo\nimport numpy as np\n"
-            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
-            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
-            "dm=np.asarray(ro.make_rdm1())\n"
-            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
-            "mf.kernel(dmin)\n"
-            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
-            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
-            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
-            "ab=len(oa)>=len(ob)\n"
-            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
-            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
-            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
-            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
-            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
-            "A=np.zeros((nov,nov))\n"
-            "for i in range(no):\n"
-            "  for a in range(nv):\n"
-            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
-            "    for j in range(no):\n"
-            "      for b in range(nv):\n"
-            "        A[p,j*nv+b]-=ijab[i,j,a,b]\n"
-            f"np.linalg.eigvalsh(A)[:{nstates}]"
+            "from numpy.linalg import eigh\nfrom scipy.linalg import sqrtm\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
+            "C=np.asarray(mf.mo_coeff); eps=np.asarray(mf.mo_energy)\n"
+            "nmo=C.shape[1]; nocc=mol.nelectron//2; nvir=nmo-nocc\n"
+            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
+            "nov=nocc*nvir\n"
+            "A=np.zeros((nov,nov)); B=np.zeros_like(A)\n"
+            "for i in range(nocc):\n"
+            "  for a in range(nvir):\n"
+            "    ia=i*nvir+a; aa=nocc+a; A[ia,ia]=eps[aa]-eps[i]\n"
+            "    for j in range(nocc):\n"
+            "      for b in range(nvir):\n"
+            "        jb=j*nvir+b; bb=nocc+b; v=2*eri[i,aa,j,bb]\n"
+            "        A[ia,jb]+=v; B[ia,jb]+=v\n"
+            "T=np.real(sqrtm(A-B)); M=0.5*((T@(A+B)@T)+(T@(A+B)@T).T)\n"
+            "w2,_=eigh(M); Om=np.sqrt(np.maximum(w2,0)); 0.5*(Om.sum()-np.trace(A))"
         ),
-        # Collinear full SF-RPA twin (matches reg_sf-tddft-o2): ROHF→UHF + A/B
-        # non-Hermitian RPA; B_ia,jb = -(ib|aj).
-        "sf_tddft": (
-            "from pyscf import scf, ao2mo\nimport numpy as np\n"
-            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
-            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
-            "dm=np.asarray(ro.make_rdm1())\n"
-            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
-            "mf.kernel(dmin)\n"
-            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
-            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
-            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
-            "ab=len(oa)>=len(ob)\n"
-            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
-            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
-            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
-            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
-            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
-            "ibaj=ao2mo.general(mol,(Co,Cv,Cv,Co),compact=False).reshape(no,nv,nv,no)\n"
-            "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
-            "for i in range(no):\n"
-            "  for a in range(nv):\n"
-            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
-            "    for j in range(no):\n"
-            "      for b in range(nv):\n"
-            "        q=j*nv+b; A[p,q]-=ijab[i,j,a,b]; B[p,q]-=ibaj[i,b,a,j]\n"
-            "A=0.5*(A+A.T); B=0.5*(B+B.T)\n"
-            "M=np.block([[A,B],[-B,-A]]); w=np.linalg.eigvals(M)\n"
-            f"sorted([float(z.real) for z in w if z.real>1e-8 and abs(z.imag)<=1e-8])[:{nstates}]"
-        ),
-        "adc2": (
-            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ee'; "
-            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
-        ),
-        "adc2x": (
-            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
-            f"my=adc.ADC(mf); my.method='adc(2)-x'; my.method_type='ee'; "
-            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
-        ),
-        "ip-adc2": (
-            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ip'; "        # Spectral G0W0 (dRPA + GWExact) — twin of RHF::g0w0().
-        "ea-adc2": (
-            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ea'; "
-        # Spectral G0W0 (dRPA + GWExact) — twin of RHF::g0w0().        "g0w0": (
-            "from pyscf import dft, tdscf\n"
-            "from pyscf.gw import gw_exact\n"
-            "mf=dft.RKS(mol); mf.xc='hf'; mf.conv_tol=1e-12; mf.kernel()\n"
-            "nocc=mol.nelectron//2; nvir=mf.mo_coeff.shape[1]-nocc\n"
-            "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
-            "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()"
-        ),
-        # Exact-ERI BSE@spectral-G0W0 — twin of RHF::bse().
         "bse": (
             "from pyscf import dft, tdscf, ao2mo\n"
             "from pyscf.gw import gw_exact\n"
@@ -336,16 +364,31 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "          acc+=eri[p,q,i,nocc+a]*Pi[ia,jb]*eri[j,nocc+b,r,s]\n"
             "  return acc\n"
             "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
+            "for a in range(nvir):\n"
+            "  for i in range(nocc):\n"
             "    ia=a*nocc+i; aa=nocc+a\n"
+            "    for b in range(nvir):\n"
+            "      for j in range(nocc):\n"
             "        jb=b*nocc+j; bb=nocc+b; vc=eri[i,aa,j,bb]\n"
             "        A[ia,jb]=2*vc-W(i,j,aa,bb); B[ia,jb]=2*vc-W(i,bb,aa,j)\n"
             "        if ia==jb: A[ia,jb]+=eps[aa]-eps[i]\n"
             "ApB=0.5*((A+B)+(A+B).T); AmB=0.5*((A-B)+(A-B).T)\n"
             "sm,Um=np.linalg.eigh(AmB); T=(Um*np.sqrt(sm))@Um.T\n"
             "M=0.5*(T@ApB@T+(T@ApB@T).T); np.sqrt(np.linalg.eigvalsh(M))"
-        # One-shot GF2 / G0F2 — twin of RHF::gf2().
+        ),
+        "d4": (
+            f"from pyscf.dispersion import dftd4 as d4m\n"
+            f"m=d4m.DFTD4Dispersion(mol, xc={xc!r}, version='d4', atm=True)\n"
+            f"for _ in range(2000): m.get_dispersion()"
+        ),
+        "eom-sf-ccsd": (
+            "from pyscf import scf, cc\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=cc.UCCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eomsf_ccsd(nroots={nstates})"
+        ),
         "gf2": (
             "from pyscf import scf, agf2\n"
+            "import numpy as np\n"
             "from pyscf.agf2.chempot import binsearch_chempot\n"
             "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
             "g1=agf2.RAGF2(mf); g1.verbose=0\n"
@@ -355,48 +398,8 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "mu,_=binsearch_chempot((w,v),g1.nmo,g1.nocc*2)\n"
             "g_one=agf2.GreensFunction(w,v[:g1.nmo],chempot=mu)\n"
             "g1.get_ip(g_one,nroots=1); g1.get_ea(g_one,nroots=1)\n"
-            "g1.energy_mp2(mf.mo_energy,se0)"        ),
-        # UHF ΔSCF IMOM (PySCF mom_occ_) — twin of UHF::delta_scf HOMO→LUMO.
-        "delta_scf": (
-            "from pyscf import scf\n"
-            "from pyscf.scf import addons\n"
-            "import numpy as np\n"
-            "mf0=scf.RHF(mol); mf0.conv_tol=1e-12; mf0.kernel()\n"
-            "nmo=mf0.mo_coeff.shape[1]; nocc=mol.nelectron//2\n"
-            "mo0=np.asarray(mf0.mo_coeff)\n"
-            "occ_a=np.zeros(nmo); occ_b=np.zeros(nmo)\n"
-            "occ_a[:nocc]=1.0; occ_b[:nocc]=1.0\n"
-            "occ_a[nocc-1]=0.0; occ_a[nocc]=1.0\n"
-            "dm=(np.einsum('pi,i,qi->pq',mo0,occ_a,mo0),"
-            "np.einsum('pi,i,qi->pq',mo0,occ_b,mo0))\n"
-            "mfu=addons.mom_occ_(scf.UHF(mol),(mo0,mo0),(occ_a.copy(),occ_b.copy()))\n"
-            "mfu.conv_tol=1e-12; mfu.max_cycle=200; mfu.kernel(dm)"
+            "g1.energy_mp2(mf.mo_energy,se0)"
         ),
-        # Exact dRPA plasmon (non-DF) — twin of RHF::direct_rpa().
-        "direct_rpa": (
-            "from pyscf import scf, ao2mo\nimport numpy as np\n"
-            "from numpy.linalg import eigh\nfrom scipy.linalg import sqrtm\n"
-            "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
-            "C=np.asarray(mf.mo_coeff); eps=np.asarray(mf.mo_energy)\n"
-            "nmo=C.shape[1]; nocc=mol.nelectron//2; nvir=nmo-nocc\n"
-            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
-            "nov=nocc*nvir\n"
-            "A=np.zeros((nov,nov)); B=np.zeros_like(A)\n"
-            "for i in range(nocc):\n"
-            "  for a in range(nvir):\n"
-            "    ia=i*nvir+a; aa=nocc+a; A[ia,ia]=eps[aa]-eps[i]\n"
-            "    for j in range(nocc):\n"
-            "      for b in range(nvir):\n"
-            "        jb=j*nvir+b; bb=nocc+b; v=2*eri[i,aa,j,bb]\n"
-            "        A[ia,jb]+=v; B[ia,jb]+=v\n"
-            "T=np.real(sqrtm(A-B)); M=0.5*((T@(A+B)@T)+(T@(A+B)@T).T)\n"
-            "w2,_=eigh(M); Om=np.sqrt(np.maximum(w2,0)); 0.5*(Om.sum()-np.trace(A))"
-        # Geometry-only DFT-D4 twin of cpu::scf::D4{}.energy(frame).
-        # Loop amortizes import/construction (matches ATV multi-iter argv).
-        "d4": (
-            f"from pyscf.dispersion import dftd4 as d4m\n"
-            f"m=d4m.DFTD4Dispersion(mol, xc={xc!r}, version='d4', atm=True)\n"
-            f"for _ in range(2000): m.get_dispersion()"        ),
     }.get(method)
     if body is None:
         raise SystemExit(f"unsupported --method {method!r}")
@@ -415,7 +418,17 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "--geom", "water", "ea-adc2", "--basis", "sto-3g", "sf_tddft", "--charge", "mp4", "--spin", "cc2", "--xc", "b3lyp", "direct_rpa", "--nstates", "bse", "--cart", "d4", "--repeat", "eom-sf-ccsd", "--max-ratio", "gf2"])    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0)    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)    p.add_argument("--repeat", type=int, default=3)    p.add_argument("--max-ratio", type=float, default=10.0,                   help="within_10x if T_atv/T_pyscf <= this (default 10)")
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf_tddft", "mp4", "cc2", "direct_rpa", "bse", "d4", "eom-sf-ccsd", "gf2"])
+    p.add_argument("--geom", default="water")
+    p.add_argument("--basis", default="sto-3g")
+    p.add_argument("--charge", type=int, default=0)
+    p.add_argument("--spin", type=int, default=0)
+    p.add_argument("--xc", default="b3lyp")
+    p.add_argument("--nstates", type=int, default=3)
+    p.add_argument("--cart", action=argparse.BooleanOptionalAction, default=None)
+    p.add_argument("--repeat", type=int, default=3)
+    p.add_argument("--max-ratio", type=float, default=10.0,
+                   help="within_10x if T_atv/T_pyscf <= this (default 10)")
     p.add_argument("atv_cmd", nargs=argparse.REMAINDER,
                    help="optional: -- ./path/to/reg_binary [args…]")
     args = p.parse_args()

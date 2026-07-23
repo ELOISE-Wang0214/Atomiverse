@@ -1,31 +1,22 @@
 /// @file cpu/scf/adc.h
 /// @brief ADC(2) / ADC(2)-x excitation energies (public API, result-only).
 ///
-/// User path: `RHF::adc2(n_states)` or `RHF::adc2x(n_states)` on a converged
+/// User paths on a converged closed-shell RHF:
+/// - `RHF::adc2` / `RHF::adc2x` — electronic excitation (EE)
+/// - `RHF::ip_adc2` — ionization potential (IP)
+/// - `RHF::ea_adc2` — electron attachment (EA)
+///
+/// EE path: `RHF::adc2(n_states)` or `RHF::adc2x(n_states)` on a converged
 /// closed-shell RHF reference. Intermediate-state representation of the PP
 /// propagator through second order (Schirmer, Phys. Rev. A **26**, 2395
 /// (1982); Trofimov & Schirmer, J. Phys. B **28**, 2299 (1995)).
+///
 /// - Strict ADC(2): second-order singles block, first-order singles–doubles
 ///   coupling, **zeroth-order** doubles diagonal only.
 /// - ADC(2)-x: same singles + coupling, plus **first-order** doubles–doubles
 ///   (vvvv / oovv / ovvo / oooo) — PySCF `method='adc(2)-x'`.
-/// @brief Strict ADC(2) EE and IP results (public API, result-only header).
-/// User paths on a converged closed-shell RHF reference:
-/// - `RHF::adc2(n_states)` — electronic excitation (EE) manifold
-/// - `RHF::ip_adc2(n_states)` — ionization potential (IP) manifold
-/// Intermediate-state representation of the PP / 1p propagators through
-/// second order (Schirmer, Phys. Rev. A **26**, 2395 (1982); Trofimov &
-/// Schirmer, J. Phys. B **28**, 2299 (1995)). Strict ADC(2) (not ADC(2)-x):
-/// second-order 1h/1p–1h block, first-order singles–doubles coupling,
-/// zeroth-order 2h1p doubles diagonal.#pragma once
-/// @brief Strict ADC(2) excitation / attachment energies (public API).
-/// - `RHF::ea_adc2(n_states)` — electron-attachment (EA) manifold
-/// Intermediate-state representation of the PP / EA propagator through second
-/// order (Schirmer, Phys. Rev. A **26**, 2395 (1982); Trofimov & Schirmer,
-/// J. Phys. B **28**, 2299 (1995)). Strict ADC(2) (not ADC(2)-x): second-order
-/// singles block, first-order singles–doubles coupling, zeroth-order doubles
-/// diagonal.
 #pragma once
+
 #include <vector>
 
 namespace ATV {

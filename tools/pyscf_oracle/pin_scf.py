@@ -15,26 +15,21 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py mp3 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
-  python tools/pyscf_oracle/pin_scf.py cc2 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd-t --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
-  python tools/pyscf_oracle/pin_scf.py eom-ea-ccsd --geom h2 --basis sto-3g --nstates 1
-  python tools/pyscf_oracle/pin_scf.py eom-sf-ccsd --geom o2 --basis sto-3g --spin 2 --nstates 5  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py adc2 --geom h2co --basis sto-3g --nstates 3
-  python tools/pyscf_oracle/pin_scf.py ip-adc2 --geom water --basis sto-3g --nstates 5
-  python tools/pyscf_oracle/pin_scf.py ea-adc2 --geom h2 --basis sto-3g --nstates 2  python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
+  python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
   python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
-  python tools/pyscf_oracle/pin_scf.py d4 --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py g0w0 --geom h2 --basis sto-3g
-  python tools/pyscf_oracle/pin_scf.py bse --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py delta-scf --geom n2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
@@ -119,7 +114,17 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse", "--nstates", "d4", "eom-sf-ccsd", "--ncas", "gf2"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument(        "--ncas",        type=int,
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
+    )
+    p.add_argument("--geom", default="water")
+    p.add_argument("--basis", default="sto-3g")
+    p.add_argument("--charge", type=int, default=0)
+    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")
+    p.add_argument("--xc", default="b3lyp")
+    p.add_argument("--nstates", type=int, default=3)
+    p.add_argument(
+        "--ncas",
+        type=int,
         default=2,
         help="Active spatial orbitals for casci (default 2)",
     )
@@ -235,6 +240,118 @@ def main() -> int:
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
 
+    if m == "bse":
+        # Exact-ERI static-RPA BSE on spectral G0W0 poles — twin of
+        # Atomiverse RHF::bse(). Stock DF pyscf.gw.bse is reported as
+        # s1_df_ev for comparison only (~meV DF discrepancy on H2/STO-3G).
+        import numpy as np
+        from pyscf import ao2mo as ao2mo_mod
+        from pyscf.gw import gw_exact
+        from pyscf import tdscf as tdscf_mod
+
+        mf = dft.RKS(mol)
+        mf.xc = "hf"
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        C = np.asarray(mf.mo_coeff, dtype=float)
+        nmo = int(C.shape[1])
+        nocc = int(mol.nelectron // 2)
+        nvir = nmo - nocc
+        eri = ao2mo_mod.restore(1, ao2mo_mod.full(mol, C), nmo)
+        td = tdscf_mod.dRPA(mf)
+        td.nstates = max(1, nocc * nvir)
+        td.verbose = 0
+        td.kernel()
+        ge = gw_exact.GWExact(mf, tdmf=td)
+        ge.verbose = 0
+        ge.kernel()
+        eps = np.asarray(ge.mo_energy, dtype=float)
+        nov = nocc * nvir
+        S = np.zeros((nov, nov), dtype=float)
+        for a in range(nvir):
+            for i in range(nocc):
+                p = a * nocc + i
+                S[p, p] = eps[i] - eps[nocc + a]
+                for b in range(nvir):
+                    for j in range(nocc):
+                        q = b * nocc + j
+                        v = float(eri[i, nocc + a, j, nocc + b])
+                        S[p, q] -= 4.0 * v
+        Pi = 4.0 * np.linalg.inv(S)
+
+        def W(p: int, q: int, r: int, s: int) -> float:
+            acc = float(eri[p, q, r, s])
+            for a in range(nvir):
+                for i in range(nocc):
+                    ia = a * nocc + i
+                    for b in range(nvir):
+                        for j in range(nocc):
+                            jb = b * nocc + j
+                            acc += (
+                                float(eri[p, q, i, nocc + a])
+                                * Pi[ia, jb]
+                                * float(eri[j, nocc + b, r, s])
+                            )
+            return acc
+
+        A = np.zeros((nov, nov), dtype=float)
+        B = np.zeros((nov, nov), dtype=float)
+        for a in range(nvir):
+            for i in range(nocc):
+                ia = a * nocc + i
+                aa = nocc + a
+                for b in range(nvir):
+                    for j in range(nocc):
+                        jb = b * nocc + j
+                        bb = nocc + b
+                        vc = float(eri[i, aa, j, bb])
+                        A[ia, jb] = 2.0 * vc - W(i, j, aa, bb)
+                        B[ia, jb] = 2.0 * vc - W(i, bb, aa, j)
+                        if ia == jb:
+                            A[ia, jb] += float(eps[aa] - eps[i])
+        ApB = 0.5 * ((A + B) + (A + B).T)
+        AmB = 0.5 * ((A - B) + (A - B).T)
+        # Casida: M = (A-B)^{1/2} (A+B) (A-B)^{1/2}
+        s_m, U_m = np.linalg.eigh(AmB)
+        if s_m[0] <= 0.0:
+            raise RuntimeError(f"BSE (A-B) not PD: min eig = {s_m[0]}")
+        T = (U_m * np.sqrt(s_m)) @ U_m.T
+        M = T @ ApB @ T
+        M = 0.5 * (M + M.T)
+        w2 = np.linalg.eigvalsh(M)
+        w = np.sqrt(np.maximum(w2, 0.0))
+        tda = np.linalg.eigvalsh(A)
+        nstates = max(1, min(int(args.nstates), nov))
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["qp_energy_ha"] = eps.tolist()
+        out["gap_ev"] = float((eps[nocc] - eps[nocc - 1]) * _HA_TO_EV)
+        out["s1_ev"] = float(w[0] * _HA_TO_EV)
+        out["energy_ev"] = (w[:nstates] * _HA_TO_EV).tolist()
+        out["tda_s1_ev"] = float(tda[0] * _HA_TO_EV)
+        out["tda_energy_ev"] = (tda[:nstates] * _HA_TO_EV).tolist()
+        out["oracle"] = "exact_eri_bse_on_gw_exact_poles"
+        # Optional DF stock twin (info only).
+        try:
+            from pyscf import gw as gw_mod
+            from pyscf.gw import bse as bse_mod
+
+            mf_rhf = scf.RHF(mol)
+            mf_rhf.conv_tol = args.conv_tol
+            mf_rhf.kernel()
+            gdf = gw_mod.GW(mf_rhf)
+            gdf.verbose = 0
+            gdf.kernel()
+            bb = bse_mod.BSE(gdf)
+            bb.verbose = 0
+            bb.TDA = False
+            exci, _, _ = bb.full_diagonalization(multi="s")
+            out["s1_df_ev"] = float(exci[0] * _HA_TO_EV)
+        except Exception as df_err:  # pragma: no cover — optional twin
+            out["df_bse_error"] = str(df_err)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if out.get("converged", True) else 1
+
     if m == "d4":
         # Geometry-only DFT-D4. Requires pyscf-dispersion (libdftd4).
         try:
@@ -269,6 +386,48 @@ def main() -> int:
         out["converged"] = bool(mf1.converged)
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
+
+    if m == "gf2":
+        # One-shot GF2 / G0F2 (AGF2 SE from HF GF + single Dyson solve) —
+        # twin of Atomiverse RHF::gf2(). Not self-consistent RAGF2.kernel().
+        import numpy as np
+        from pyscf import agf2
+        from pyscf.agf2.chempot import binsearch_chempot
+
+        mf = scf.RHF(mol)
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        g1 = agf2.RAGF2(mf)
+        g1.verbose = 0
+        eri = g1.ao2mo()
+        g0 = g1.init_gf()
+        se0 = g1.build_se(eri, g0)
+        fock = np.diag(np.asarray(mf.mo_energy, dtype=float))
+        w, v = se0.eig(fock)
+        mu, nerr = binsearch_chempot((w, v), g1.nmo, g1.nocc * 2)
+        g_one = agf2.GreensFunction(w, v[: g1.nmo], chempot=mu)
+        ip = float(g1.get_ip(g_one, nroots=1)[0][0])
+        ea = float(g1.get_ea(g_one, nroots=1)[0][0])
+        e_init = float(g1.energy_mp2(mf.mo_energy, se0))
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["eps_hf_ha"] = np.asarray(mf.mo_energy, dtype=float).tolist()
+        out["qp_homo_ha"] = float(-ip)
+        out["qp_lumo_ha"] = float(ea)
+        out["gap_ha"] = float(ip + ea)
+        out["gap_ev"] = float((ip + ea) * _HA_TO_EV)
+        out["ip_ev"] = float(ip * _HA_TO_EV)
+        out["ea_ev"] = float(ea * _HA_TO_EV)
+        out["ip_ha"] = ip
+        out["ea_ha"] = ea
+        out["e_corr_ha"] = e_init
+        out["e_tot_gf2_ha"] = float(e + e_init)
+        out["chempot_ha"] = float(mu)
+        out["nerr"] = float(nerr)
+        out["pole_energy_ha"] = np.asarray(w, dtype=float).tolist()
+        out["oracle"] = "pyscf_agf2_ragf2_oneshot"
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if out.get("converged", True) else 1
 
     if m == "delta-scf":
         # UHF ΔSCF with IMOM occupation locking (PySCF scf.addons.mom_occ_).
@@ -385,146 +544,10 @@ def main() -> int:
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0 if out.get("converged", True) else 1
 
-    if m == "bse":
-        # Exact-ERI static-RPA BSE on spectral G0W0 poles — twin of
-        # Atomiverse RHF::bse(). Stock DF pyscf.gw.bse is reported as
-        # s1_df_ev for comparison only (~meV DF discrepancy on H2/STO-3G).
-        import numpy as np
-        from pyscf import ao2mo as ao2mo_mod
-        from pyscf.gw import gw_exact
-        from pyscf import tdscf as tdscf_mod
-        mf = dft.RKS(mol)
-        mf.xc = "hf"
-        mf.conv_tol = args.conv_tol
-        e = float(mf.kernel())
-        C = np.asarray(mf.mo_coeff, dtype=float)
-        nmo = int(C.shape[1])
-        nocc = int(mol.nelectron // 2)
-        nvir = nmo - nocc
-        eri = ao2mo_mod.restore(1, ao2mo_mod.full(mol, C), nmo)
-        td = tdscf_mod.dRPA(mf)
-        td.nstates = max(1, nocc * nvir)
-        td.verbose = 0
-        td.kernel()
-        ge = gw_exact.GWExact(mf, tdmf=td)
-        ge.verbose = 0
-        ge.kernel()
-        eps = np.asarray(ge.mo_energy, dtype=float)
-        nov = nocc * nvir
-        S = np.zeros((nov, nov), dtype=float)
-        for a in range(nvir):
-            for i in range(nocc):
-                p = a * nocc + i
-                S[p, p] = eps[i] - eps[nocc + a]
-                for b in range(nvir):
-                    for j in range(nocc):
-                        q = b * nocc + j
-                        v = float(eri[i, nocc + a, j, nocc + b])
-                        S[p, q] -= 4.0 * v
-        Pi = 4.0 * np.linalg.inv(S)
-        def W(p: int, q: int, r: int, s: int) -> float:
-            acc = float(eri[p, q, r, s])
-            for a in range(nvir):
-                for i in range(nocc):
-                    ia = a * nocc + i
-                    for b in range(nvir):
-                        for j in range(nocc):
-                            jb = b * nocc + j
-                            acc += (
-                                float(eri[p, q, i, nocc + a])
-                                * Pi[ia, jb]
-                                * float(eri[j, nocc + b, r, s])
-                            )
-            return acc
-        A = np.zeros((nov, nov), dtype=float)
-        B = np.zeros((nov, nov), dtype=float)
-                ia = a * nocc + i
-                aa = nocc + a
-                        jb = b * nocc + j
-                        bb = nocc + b
-                        vc = float(eri[i, aa, j, bb])
-                        A[ia, jb] = 2.0 * vc - W(i, j, aa, bb)
-                        B[ia, jb] = 2.0 * vc - W(i, bb, aa, j)
-                        if ia == jb:
-                            A[ia, jb] += float(eps[aa] - eps[i])
-        ApB = 0.5 * ((A + B) + (A + B).T)
-        AmB = 0.5 * ((A - B) + (A - B).T)
-        # Casida: M = (A-B)^{1/2} (A+B) (A-B)^{1/2}
-        s_m, U_m = np.linalg.eigh(AmB)
-        if s_m[0] <= 0.0:
-            raise RuntimeError(f"BSE (A-B) not PD: min eig = {s_m[0]}")
-        T = (U_m * np.sqrt(s_m)) @ U_m.T
-        M = T @ ApB @ T
-        M = 0.5 * (M + M.T)
-        w2 = np.linalg.eigvalsh(M)
-        w = np.sqrt(np.maximum(w2, 0.0))
-        tda = np.linalg.eigvalsh(A)
-        nstates = max(1, min(int(args.nstates), nov))
-        out["e_tot_ha"] = e
-        out["converged"] = bool(mf.converged)
-        out["qp_energy_ha"] = eps.tolist()
-        out["gap_ev"] = float((eps[nocc] - eps[nocc - 1]) * _HA_TO_EV)
-        out["s1_ev"] = float(w[0] * _HA_TO_EV)
-        out["energy_ev"] = (w[:nstates] * _HA_TO_EV).tolist()
-        out["tda_s1_ev"] = float(tda[0] * _HA_TO_EV)
-        out["tda_energy_ev"] = (tda[:nstates] * _HA_TO_EV).tolist()
-        out["oracle"] = "exact_eri_bse_on_gw_exact_poles"
-        # Optional DF stock twin (info only).
-        try:
-            from pyscf import gw as gw_mod
-            from pyscf.gw import bse as bse_mod
-            mf_rhf = scf.RHF(mol)
-            mf_rhf.conv_tol = args.conv_tol
-            mf_rhf.kernel()
-            gdf = gw_mod.GW(mf_rhf)
-            gdf.verbose = 0
-            gdf.kernel()
-            bb = bse_mod.BSE(gdf)
-            bb.verbose = 0
-            bb.TDA = False
-            exci, _, _ = bb.full_diagonalization(multi="s")
-            out["s1_df_ev"] = float(exci[0] * _HA_TO_EV)
-        except Exception as df_err:  # pragma: no cover — optional twin
-            out["df_bse_error"] = str(df_err)
-    if m == "gf2":
-        # One-shot GF2 / G0F2 (AGF2 SE from HF GF + single Dyson solve) —
-        # twin of Atomiverse RHF::gf2(). Not self-consistent RAGF2.kernel().
-        from pyscf import agf2
-        from pyscf.agf2.chempot import binsearch_chempot
-        mf = scf.RHF(mol)
-        g1 = agf2.RAGF2(mf)
-        g1.verbose = 0
-        eri = g1.ao2mo()
-        g0 = g1.init_gf()
-        se0 = g1.build_se(eri, g0)
-        fock = np.diag(np.asarray(mf.mo_energy, dtype=float))
-        w, v = se0.eig(fock)
-        mu, nerr = binsearch_chempot((w, v), g1.nmo, g1.nocc * 2)
-        g_one = agf2.GreensFunction(w, v[: g1.nmo], chempot=mu)
-        ip = float(g1.get_ip(g_one, nroots=1)[0][0])
-        ea = float(g1.get_ea(g_one, nroots=1)[0][0])
-        e_init = float(g1.energy_mp2(mf.mo_energy, se0))
-        out["eps_hf_ha"] = np.asarray(mf.mo_energy, dtype=float).tolist()
-        out["qp_homo_ha"] = float(-ip)
-        out["qp_lumo_ha"] = float(ea)
-        out["gap_ha"] = float(ip + ea)
-        out["gap_ev"] = float((ip + ea) * _HA_TO_EV)
-        out["ip_ev"] = float(ip * _HA_TO_EV)
-        out["ea_ev"] = float(ea * _HA_TO_EV)
-        out["ip_ha"] = ip
-        out["ea_ha"] = ea
-        out["e_corr_ha"] = e_init
-        out["e_tot_gf2_ha"] = float(e + e_init)
-        out["chempot_ha"] = float(mu)
-        out["nerr"] = float(nerr)
-        out["pole_energy_ha"] = np.asarray(w, dtype=float).tolist()
-        out["oracle"] = "pyscf_agf2_ragf2_oneshot"        print(json.dumps(out, indent=2, sort_keys=True))
-        return 0 if out.get("converged", True) else 1
-
     if m == "rhf":
         mf = scf.RHF(mol)
     elif m in ("uhf", "ump2", "sf-tda", "sf-tddft"):
-    elif m in ("uhf", "ump2", "sf-tda", "eom-sf-ccsd"):        mf = scf.UHF(mol)
+        mf = scf.UHF(mol)
     elif m in ("rohf", "romp2"):
         mf = scf.ROHF(mol)
     elif m in ("rks", "rks-tda", "rks-tddft"):
@@ -549,8 +572,289 @@ def main() -> int:
         mf = dft.ROKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
+    elif m == "eom-ea-ccsd":
+        # EOM-EA-CCSD attachment energies on closed-shell CCSD (PySCF eaccsd).
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.eaccsd(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        # De-duplicate spin degeneracy (α/β attachment) like ATV product path.
+        e_sorted = _np.sort(e_eom)
+        uniq = []
+        for w in e_sorted:
+            if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
+                uniq.append(float(w))
+        e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        out["ea_ha"] = e_uniq.tolist()
+        out["ea_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["ea0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["omega_ha"] = e_uniq.tolist()
+        out["omega_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
+    elif m == "adc2x":
+        # Extended ADC(2)-x EE (first-order doubles–doubles).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)-x"
+        myadc.method_type = "ee"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["excitation_ha"] = [float(x) for x in e_adc]
+        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["s1_ha"] = float(e_adc[0])
+        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ip-adc2":
+        # Strict ADC(2) ionization potentials (1h / 2h1p ISR).
+        # Schirmer PRA 26, 2395 (1982); Schirmer et al. PRA 28, 1237 (1983).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ip"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["ip_ha"] = [float(x) for x in e_adc]
+        out["ip_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["ip1_ha"] = float(e_adc[0])
+        out["ip1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ea-adc2":
+        # Strict EA-ADC(2) electron-attachment energies (1p / 2p–1h).
+        # Schirmer PRA 26, 2395 (1982); PySCF adc.ADC method_type='ea'.
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ea"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, p_spec, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["ea_ha"] = [float(x) for x in e_adc]
+        out["ea_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["ea0_ha"] = float(e_adc[0])
+        out["ea0_ev"] = float(e_adc[0]) * _HA_TO_EV
+        out["spec_factor"] = [float(x) for x in p_spec]
+    elif m == "mp4":
+        # Closed-shell RMP4(SDTQ). PySCF 2.x has no mp.MP4 — exact intermediate-
+        # normalization RSPT through order 4 on the full determinant basis built
+        # from PySCF RHF MOs + ao2mo ERIs (H₂/STO-3G product gate; C(2 nmo, ne)
+        # must stay tiny). Algebraic spin-orbital SDTQ residual form matches.
+        from pyscf import ao2mo
+        from itertools import combinations
+        import numpy as np
+
+        m2 = mp.MP2(mf).run()
+        C = np.asarray(mf.mo_coeff)
+        eps = np.asarray(mf.mo_energy)
+        nmo = C.shape[1]
+        ndocc = mol.nelectron // 2
+        nocc_so = 2 * ndocc
+        nso = 2 * nmo
+        if nso > 12 or nocc_so > 6:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": "mp4 pin: determinant RSPT limited to tiny "
+                        "spaces (nso<=12, nocc_so<=6); use algebraic path",
+                    }
+                )
+            )
+            return 2
+        eri_chem = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
+        h_ao = mf.get_hcore()
+        h_mo = C.T @ h_ao @ C
+        h_so = np.zeros((nso, nso))
+        for p in range(nmo):
+            for q in range(nmo):
+                h_so[2 * p, 2 * q] = h_mo[p, q]
+                h_so[2 * p + 1, 2 * q + 1] = h_mo[p, q]
+        # Antisym <pq||rs>
+        Vaa = np.zeros((nso, nso, nso, nso))
+        for p in range(nso):
+            for q in range(nso):
+                for r in range(nso):
+                    for s in range(nso):
+                        val = 0.0
+                        if (p % 2) == (r % 2) and (q % 2) == (s % 2):
+                            val += eri_chem[p // 2, r // 2, q // 2, s // 2]
+                        if (p % 2) == (s % 2) and (q % 2) == (r % 2):
+                            val -= eri_chem[p // 2, s // 2, q // 2, r // 2]
+                        Vaa[p, q, r, s] = val
+        eso = np.repeat(eps, 2)
+        dets = list(combinations(range(nso), nocc_so))
+        nd = len(dets)
+        iref = dets.index(tuple(range(nocc_so)))
+
+        def phase_exc(di, holes, particles):
+            orb = list(di)
+            phase = 1
+            for h in holes:
+                pos = orb.index(h)
+                phase *= (-1) ** pos
+                orb.pop(pos)
+            for p_ in particles:
+                n_before = sum(1 for o in orb if o < p_)
+                phase *= (-1) ** n_before
+                orb.append(p_)
+                orb.sort()
+            return phase
+
+        def H_me(d1, d2):
+            s1, s2 = set(d1), set(d2)
+            only1 = sorted(s1 - s2)
+            only2 = sorted(s2 - s1)
+            n = len(only1)
+            if n > 2:
+                return 0.0
+            if n == 0:
+                e_ = sum(h_so[i, i] for i in d1)
+                for i in d1:
+                    for j in d1:
+                        e_ += 0.5 * Vaa[i, j, i, j]
+                return e_
+            if n == 1:
+                h, p_ = only1[0], only2[0]
+                ph = phase_exc(d1, [h], [p_])
+                common = sorted(s1 & s2)
+                val = h_so[h, p_] + sum(Vaa[h, k, p_, k] for k in common)
+                return ph * val
+            i, j = only1
+            a, b = only2
+            ph = phase_exc(d1, [i, j], [a, b])
+            return ph * Vaa[i, j, a, b]
+
+        H = np.array([[H_me(d1, d2) for d2 in dets] for d1 in dets])
+        H0 = np.diag([sum(eso[p_] for p_ in d) for d in dets])
+        Vmat = H - H0
+        E0 = H0[iref, iref]
+        E1 = Vmat[iref, iref]
+        Psi0 = np.zeros(nd)
+        Psi0[iref] = 1.0
+
+        def R0(vec):
+            out = np.zeros_like(vec)
+            for i in range(nd):
+                if i != iref:
+                    out[i] = vec[i] / (E0 - H0[i, i])
+            return out
+
+        Psi1 = R0(Vmat @ Psi0)
+        e2 = float(Psi0 @ Vmat @ Psi1)
+        Psi2 = R0(Vmat @ Psi1 - E1 * Psi1 - e2 * Psi0)
+        e3 = float(Psi0 @ Vmat @ Psi2)
+        Psi3 = R0(Vmat @ Psi2 - E1 * Psi2 - e2 * Psi1 - e3 * Psi0)
+        e4 = float(Psi0 @ Vmat @ Psi3)
+        e_corr = e2 + e3 + e4
+        out["e_hf_ha"] = float(e)
+        out["e_corr_mp2_ha"] = e2
+        out["e_corr_mp3_ha"] = e3
+        out["e_corr_mp4_ha"] = e4
+        out["e_corr_ha"] = e_corr
+        out["e_tot_mp4_ha"] = float(e) + e_corr
+        out["e_corr_mp2_pyscf_ha"] = float(m2.e_corr)
+        out["oracle"] = "rspt4_det_on_pyscf_rhf_ao2mo"
+    elif m == "cc2":
+        # Closed-shell CC2 (Christiansen 1995). Stock PySCF has no cc.CC2;
+        # oracle is rccsd.RCCSD with cc2=True (same as rccsd_slow).
+        import numpy as _np
+        from pyscf.cc import rccsd as _rccsd
+
+        mycc = _rccsd.RCCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        mycc.conv_tol_normt = min(args.conv_tol, 1e-10)
+        mycc.cc2 = True
+        e_corr, t1, t2 = mycc.kernel()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_cc2_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["cc2_converged"] = bool(mycc.converged)
+        t1a = _np.asarray(t1).ravel()
+        t2a = _np.asarray(t2).ravel()
+        out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
+        out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+        out["oracle"] = "pyscf_cc_rccsd_cc2"
+    elif m == "direct-rpa":
+        # Exact dRPA correlation (Furche plasmon) on RHF orbitals + MO ERIs.
+        # Stock pyscf.gw.rpa.RPA uses DF + Legendre quadrature (near twin).
+        import numpy as np
+        from numpy.linalg import eigh
+        from scipy.linalg import sqrtm
+        from pyscf import ao2mo
+        from pyscf.gw import rpa as rpa_mod
+
+        C = np.asarray(mf.mo_coeff)
+        eps = np.asarray(mf.mo_energy)
+        nmo = C.shape[1]
+        nocc = mol.nelectron // 2
+        nvir = nmo - nocc
+        eri = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
+        n_ov = nocc * nvir
+        A = np.zeros((n_ov, n_ov))
+        B = np.zeros_like(A)
+        for i in range(nocc):
+            for a in range(nvir):
+                ia = i * nvir + a
+                aa = nocc + a
+                A[ia, ia] = eps[aa] - eps[i]
+                for j in range(nocc):
+                    for b in range(nvir):
+                        jb = j * nvir + b
+                        bb = nocc + b
+                        v = 2.0 * eri[i, aa, j, bb]
+                        A[ia, jb] += v
+                        B[ia, jb] += v
+        Mm = A - B
+        Mp = A + B
+        T = np.real(sqrtm(Mm))
+        M = T @ Mp @ T
+        M = 0.5 * (M + M.T)
+        w2, _Z = eigh(M)
+        omega = np.sqrt(np.maximum(w2, 0.0))
+        tr_A = float(np.trace(A))
+        e_corr = 0.5 * (float(omega.sum()) - tr_A)
+        rdf = rpa_mod.RPA(mf)
+        rdf.kernel(nw=100)
+        out["e_rhf_ha"] = float(e)
+        out["e_corr_ha"] = e_corr
+        out["e_tot_ha"] = float(e) + e_corr
+        out["omega_ha"] = omega.tolist()
+        out["tr_A_ha"] = tr_A
+        out["e_corr_df_rpa_ha"] = float(rdf.e_corr)
+        out["method"] = "direct-rpa"
+    elif m == "eom-sf-ccsd":
+        # Spin-flip EOM-CCSD on UHF → UCCSD (PySCF eomsf_ccsd).
+        import numpy as _np
+
+        mycc = pyscf_cc.UCCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.eomsf_ccsd(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        out["omega_ha"] = e_eom.tolist()
+        out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
+        out["sf_channel"] = "eomsf_ccsd"
     else:
-        # tda / tdhf / mp2 / mp3 / mp4 / ccsd ground state: RHF
+        # tda / tdhf / mp2 / mp3 / ccsd ground state: RHF
         mf = scf.RHF(mol)
 
 
@@ -786,126 +1090,6 @@ def main() -> int:
         out["e_tot_mp3_ha"] = float(e) + e_corr
         out["e_corr_mp2_pyscf_ha"] = float(m2.e_corr)
         out["oracle"] = "szabo_psi4numpy_on_pyscf_rhf_ao2mo"
-    elif m == "mp4":
-        # Closed-shell RMP4(SDTQ). PySCF 2.x has no mp.MP4 — exact intermediate-
-        # normalization RSPT through order 4 on the full determinant basis built
-        # from PySCF RHF MOs + ao2mo ERIs (H₂/STO-3G product gate; C(2 nmo, ne)
-        # must stay tiny). Algebraic spin-orbital SDTQ residual form matches.
-        from pyscf import ao2mo
-        from itertools import combinations
-        import numpy as np
-
-        m2 = mp.MP2(mf).run()
-        C = np.asarray(mf.mo_coeff)
-        eps = np.asarray(mf.mo_energy)
-        nmo = C.shape[1]
-        ndocc = mol.nelectron // 2
-        nocc_so = 2 * ndocc
-        nso = 2 * nmo
-        if nso > 12 or nocc_so > 6:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "error": "mp4 pin: determinant RSPT limited to tiny "
-                        "spaces (nso<=12, nocc_so<=6); use algebraic path",
-                    }
-                )
-            )
-            return 2
-        eri_chem = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
-        h_ao = mf.get_hcore()
-        h_mo = C.T @ h_ao @ C
-        h_so = np.zeros((nso, nso))
-        for p in range(nmo):
-            for q in range(nmo):
-                h_so[2 * p, 2 * q] = h_mo[p, q]
-                h_so[2 * p + 1, 2 * q + 1] = h_mo[p, q]
-        # Antisym <pq||rs>
-        Vaa = np.zeros((nso, nso, nso, nso))
-        for p in range(nso):
-            for q in range(nso):
-                for r in range(nso):
-                    for s in range(nso):
-                        val = 0.0
-                        if (p % 2) == (r % 2) and (q % 2) == (s % 2):
-                            val += eri_chem[p // 2, r // 2, q // 2, s // 2]
-                        if (p % 2) == (s % 2) and (q % 2) == (r % 2):
-                            val -= eri_chem[p // 2, s // 2, q // 2, r // 2]
-                        Vaa[p, q, r, s] = val
-        eso = np.repeat(eps, 2)
-        dets = list(combinations(range(nso), nocc_so))
-        nd = len(dets)
-        iref = dets.index(tuple(range(nocc_so)))
-
-        def phase_exc(di, holes, particles):
-            orb = list(di)
-            phase = 1
-            for h in holes:
-                pos = orb.index(h)
-                phase *= (-1) ** pos
-                orb.pop(pos)
-            for p_ in particles:
-                n_before = sum(1 for o in orb if o < p_)
-                phase *= (-1) ** n_before
-                orb.append(p_)
-                orb.sort()
-            return phase
-
-        def H_me(d1, d2):
-            s1, s2 = set(d1), set(d2)
-            only1 = sorted(s1 - s2)
-            only2 = sorted(s2 - s1)
-            n = len(only1)
-            if n > 2:
-                return 0.0
-            if n == 0:
-                e_ = sum(h_so[i, i] for i in d1)
-                for i in d1:
-                    for j in d1:
-                        e_ += 0.5 * Vaa[i, j, i, j]
-                return e_
-            if n == 1:
-                h, p_ = only1[0], only2[0]
-                ph = phase_exc(d1, [h], [p_])
-                common = sorted(s1 & s2)
-                val = h_so[h, p_] + sum(Vaa[h, k, p_, k] for k in common)
-                return ph * val
-            i, j = only1
-            a, b = only2
-            ph = phase_exc(d1, [i, j], [a, b])
-            return ph * Vaa[i, j, a, b]
-
-        H = np.array([[H_me(d1, d2) for d2 in dets] for d1 in dets])
-        H0 = np.diag([sum(eso[p_] for p_ in d) for d in dets])
-        Vmat = H - H0
-        E0 = H0[iref, iref]
-        E1 = Vmat[iref, iref]
-        Psi0 = np.zeros(nd)
-        Psi0[iref] = 1.0
-
-        def R0(vec):
-            out = np.zeros_like(vec)
-            for i in range(nd):
-                if i != iref:
-                    out[i] = vec[i] / (E0 - H0[i, i])
-            return out
-
-        Psi1 = R0(Vmat @ Psi0)
-        e2 = float(Psi0 @ Vmat @ Psi1)
-        Psi2 = R0(Vmat @ Psi1 - E1 * Psi1 - e2 * Psi0)
-        e3 = float(Psi0 @ Vmat @ Psi2)
-        Psi3 = R0(Vmat @ Psi2 - E1 * Psi2 - e2 * Psi1 - e3 * Psi0)
-        e4 = float(Psi0 @ Vmat @ Psi3)
-        e_corr = e2 + e3 + e4
-        out["e_hf_ha"] = float(e)
-        out["e_corr_mp2_ha"] = e2
-        out["e_corr_mp3_ha"] = e3
-        out["e_corr_mp4_ha"] = e4
-        out["e_corr_ha"] = e_corr
-        out["e_tot_mp4_ha"] = float(e) + e_corr
-        out["e_corr_mp2_pyscf_ha"] = float(m2.e_corr)
-        out["oracle"] = "rspt4_det_on_pyscf_rhf_ao2mo"
     elif m == "ump2":
         # Explicit UMP2 on the UHF reference (triplet O2, etc.).
         m2 = mp.UMP2(mf).run()
@@ -949,6 +1133,8 @@ def main() -> int:
             out["td_converged"] = [bool(c) for c in td.converged]
         if hasattr(td, "oscillator_strength"):
             out["oscillator_strength"] = [float(x) for x in td.oscillator_strength()]
+    elif m in ("uhf", "ump2", "sf-tda", "sf-tddft"):
+        mf = scf.UHF(mol)
     elif m in ("sf-tda", "sf-tddft"):
         # Collinear spin-flip response (Shao, Head-Gordon, Krylov JCP 118, 4807
         # (2003)). PySCF mainline has no product SF-TDA/SF-RPA; build the
@@ -1156,39 +1342,8 @@ def main() -> int:
         out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
         out["s1_ha"] = float(e_adc[0])
         out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
-    elif m == "adc2x":
-        # Extended ADC(2)-x EE (first-order doubles–doubles).
-        from pyscf import adc as pyscf_adc
-        myadc = pyscf_adc.ADC(mf)
-        myadc.method = "adc(2)-x"
-        myadc.method_type = "ee"
-        myadc.conv_tol = min(args.conv_tol, 1e-10)
-        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
-        out["e_corr_mp2_ha"] = float(myadc.e_corr)
-        out["excitation_ha"] = [float(x) for x in e_adc]
-        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["s1_ha"] = float(e_adc[0])
-        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
-    elif m == "ip-adc2":
-        # Strict ADC(2) ionization potentials (1h / 2h1p ISR).
-        # Schirmer PRA 26, 2395 (1982); Schirmer et al. PRA 28, 1237 (1983).
-        myadc.method = "adc(2)"
-        myadc.method_type = "ip"
-        out["ip_ha"] = [float(x) for x in e_adc]
-        out["ip_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["ip1_ha"] = float(e_adc[0])
-        out["ip1_ev"] = float(e_adc[0]) * _HA_TO_EV    elif m == "ccsd":
-    elif m == "ea-adc2":
-        # Strict EA-ADC(2) electron-attachment energies (1p / 2p–1h).
-        # Schirmer PRA 26, 2395 (1982); PySCF adc.ADC method_type='ea'.
-        myadc.method_type = "ea"
-        e_adc, _v, p_spec, _x = myadc.kernel(nroots=args.nstates)
-        out["ea_ha"] = [float(x) for x in e_adc]
-        out["ea_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["ea0_ha"] = float(e_adc[0])
-        out["ea0_ev"] = float(e_adc[0]) * _HA_TO_EV
-        out["spec_factor"] = [float(x) for x in p_spec]
-    elif m == "ccsd":        # Closed-shell CCSD on the RHF reference (PySCF cc.CCSD).
+    elif m == "ccsd":
+        # Closed-shell CCSD on the RHF reference (PySCF cc.CCSD).
         # Local import: other branches also re-bind `np`, so use a fresh name.
         import numpy as _np
 
@@ -1204,27 +1359,6 @@ def main() -> int:
         t2a = _np.asarray(t2).ravel()
         out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
         out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
-    elif m == "cc2":
-        # Closed-shell CC2 (Christiansen 1995). Stock PySCF has no cc.CC2;
-        # oracle is rccsd.RCCSD with cc2=True (same as rccsd_slow).
-        import numpy as _np
-        from pyscf.cc import rccsd as _rccsd
-
-        mycc = _rccsd.RCCSD(mf)
-        mycc.conv_tol = min(args.conv_tol, 1e-10)
-        mycc.conv_tol_normt = min(args.conv_tol, 1e-10)
-        mycc.cc2 = True
-        e_corr, t1, t2 = mycc.kernel()
-        out["e_hf_ha"] = float(e)
-        out["e_corr_ha"] = float(e_corr)
-        out["e_tot_cc2_ha"] = float(mycc.e_tot)
-        out["e_tot_ha"] = float(mycc.e_tot)
-        out["cc2_converged"] = bool(mycc.converged)
-        t1a = _np.asarray(t1).ravel()
-        t2a = _np.asarray(t2).ravel()
-        out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
-        out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
-        out["oracle"] = "pyscf_cc_rccsd_cc2"
     elif m == "ccsd-t":
         # Closed-shell CCSD(T): CCSD + non-iterative (T) (PySCF cc.CCSD.ccsd_t).
         import numpy as _np
@@ -1263,88 +1397,8 @@ def main() -> int:
         out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
         out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
         out["nstates"] = int(args.nstates)
-    elif m == "eom-ea-ccsd":
-        # EOM-EA-CCSD attachment energies on closed-shell CCSD (PySCF eaccsd).
-        import numpy as _np
-        mycc = pyscf_cc.CCSD(mf)
-        mycc.conv_tol = min(args.conv_tol, 1e-10)
-        e_corr, _t1, _t2 = mycc.kernel()
-        e_eom, _v = mycc.eaccsd(nroots=args.nstates)
-        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
-        # De-duplicate spin degeneracy (α/β attachment) like ATV product path.
-        e_sorted = _np.sort(e_eom)
-        uniq = []
-        for w in e_sorted:
-            if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
-                uniq.append(float(w))
-        e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
-    elif m == "eom-sf-ccsd":
-        # Spin-flip EOM-CCSD on UHF → UCCSD (PySCF eomsf_ccsd).
-        mycc = pyscf_cc.UCCSD(mf)
-        e_eom, _v = mycc.eomsf_ccsd(nroots=args.nstates)        out["e_hf_ha"] = float(e)
-        out["e_corr_ha"] = float(e_corr)
-        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
-        out["e_tot_ha"] = float(mycc.e_tot)
-        out["ccsd_converged"] = bool(mycc.converged)
-        out["ea_ha"] = e_uniq.tolist()
-        out["ea_ev"] = (e_uniq * _HA_TO_EV).tolist()
-        out["ea0_ev"] = float(e_uniq[0] * _HA_TO_EV)
-        out["omega_ha"] = e_uniq.tolist()
-        out["omega_ev"] = (e_uniq * _HA_TO_EV).tolist()
-        out["omega0_ev"] = float(e_uniq[0] * _HA_TO_EV)
-        out["nstates"] = int(args.nstates)
-    elif m == "direct-rpa":
-        # Exact dRPA correlation (Furche plasmon) on RHF orbitals + MO ERIs.
-        # Stock pyscf.gw.rpa.RPA uses DF + Legendre quadrature (near twin).
-        import numpy as np
-        from numpy.linalg import eigh
-        from scipy.linalg import sqrtm
-        from pyscf import ao2mo
-        from pyscf.gw import rpa as rpa_mod
-        C = np.asarray(mf.mo_coeff)
-        eps = np.asarray(mf.mo_energy)
-        nmo = C.shape[1]
-        nocc = mol.nelectron // 2
-        nvir = nmo - nocc
-        eri = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
-        n_ov = nocc * nvir
-        A = np.zeros((n_ov, n_ov))
-        B = np.zeros_like(A)
-        for i in range(nocc):
-            for a in range(nvir):
-                ia = i * nvir + a
-                aa = nocc + a
-                A[ia, ia] = eps[aa] - eps[i]
-                for j in range(nocc):
-                    for b in range(nvir):
-                        jb = j * nvir + b
-                        bb = nocc + b
-                        v = 2.0 * eri[i, aa, j, bb]
-                        A[ia, jb] += v
-                        B[ia, jb] += v
-        Mm = A - B
-        Mp = A + B
-        T = np.real(sqrtm(Mm))
-        M = T @ Mp @ T
-        M = 0.5 * (M + M.T)
-        w2, _Z = eigh(M)
-        omega = np.sqrt(np.maximum(w2, 0.0))
-        tr_A = float(np.trace(A))
-        e_corr = 0.5 * (float(omega.sum()) - tr_A)
-        rdf = rpa_mod.RPA(mf)
-        rdf.kernel(nw=100)
-        out["e_rhf_ha"] = float(e)
-        out["e_corr_ha"] = e_corr
-        out["e_tot_ha"] = float(e) + e_corr
-        out["omega_ha"] = omega.tolist()
-        out["tr_A_ha"] = tr_A
-        out["e_corr_df_rpa_ha"] = float(rdf.e_corr)
-        out["method"] = "direct-rpa"    elif m == "casci":
-        out["omega_ha"] = e_eom.tolist()
-        out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
-        out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
-        out["sf_channel"] = "eomsf_ccsd"
-    elif m == "casci":        # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
+    elif m == "casci":
+        # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
         from pyscf import mcscf
 
         ncas = int(args.ncas)

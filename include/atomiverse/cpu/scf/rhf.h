@@ -9,13 +9,14 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
-#include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
-#include "atomiverse/cpu/scf/g0w0.h"
+#include "atomiverse/cpu/scf/bse.h"
+#include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/rpa.h"
-#include "atomiverse/cpu/scf/gf2.h"#include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/g0w0.h"
+#include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
 
@@ -207,6 +208,7 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when n_states is outside
     ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
     ADC2Result adc2x(int n_states = 1) const;
+
     /// @brief Strict ADC(2) ionization potentials of the most recent
     ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982).
     ///        Closed-shell 1h / 2h1p intermediate-state representation;
@@ -217,9 +219,12 @@ class RHF : public MeanFieldMethod<RHF> {
     ///        sign-flipped ISR matrix are the ionization potentials.
     /// @param n_states Number of lowest IP roots (1 ≤ n_states ≤ n_occ).
     /// @return Ionization potentials [eV] and the MP2 correlation energy
+    ///         [Hartree] of the RHF reference.
+    /// @throws std::runtime_error when called before `run()`.
     /// @throws std::invalid_argument when n_states is outside [1, n_occ]
     ///         or the system has no virtual orbitals.
     IPADC2Result ip_adc2(int n_states = 1) const;
+
     /// @brief Strict EA-ADC(2) electron-attachment energies of the most recent
     ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982); matches
     ///        PySCF `adc.ADC` with `method='adc(2)'` and `method_type='ea'`.
@@ -230,19 +235,10 @@ class RHF : public MeanFieldMethod<RHF> {
     ///                 n_virt + n_occ·n_virt²; dimensionless count).
     /// @return Attachment energies ω [eV] and the MP2 correlation energy
     ///         [Hartree] of the N-electron RHF reference.
+    /// @throws std::runtime_error when called before `run()`.
     /// @throws std::invalid_argument when n_states is out of range or the
     ///         system has no virtual orbitals.
-    EAADC2Result ea_adc2(int n_states = 1) const;    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
-    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
-    ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,
-    ///        5567 (2014); Stanton & Bartlett, J. Chem. Phys. **98**, 7029
-    ///        (1993)). Matches PySCF `cc.CCSD(...).eomee_ccsd_singlet()`.
-    /// @param frame Geometry; drives SCF + CCSD + EOM.
-    /// @param n_states Number of lowest singlet roots (≥ 1).
-    /// @return Singlet ω [eV] plus CCSD energetics [Hartree].
-    /// @throws std::invalid_argument on open-shell / missing virtuals /
-    ///         non-converged SCF or CCSD / n_states out of range.
-    EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
+    EAADC2Result ea_adc2(int n_states = 1) const;
 
     /// @brief EOM-EA-CCSD electron-attachment energies — drives a fresh RHF
     ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
@@ -255,6 +251,62 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CCSD / n_states out of range.
     EOMEACCSDResult eom_ea_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief Direct RPA (dRPA) correlation energy of the most recent `run()`
+    ///        (closed-shell RHF reference). Coulomb-only Casida A/B
+    ///        (α_hf = 0); correlation via the Furche plasmon formula
+    ///        \(E_c = \frac12(\sum_s\Omega_s - \mathrm{Tr} A)\). Exact
+    ///        (non-DF) twin of PySCF `gw.rpa.RPA` / `DirectRPA` in the
+    ///        complete-auxiliary limit; stock PySCF uses density fitting.
+    /// @return Correlation and total energy [Hartree], plus the dRPA
+    ///         poles \(\Omega_s\) [Hartree].
+    /// @throws std::runtime_error when called before `run()`, on a
+    ///         non-restricted reference, or when dRPA is ill-conditioned.
+    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
+    DirectRPAResult direct_rpa() const;
+
+    /// @brief Singlet BSE@G0W0 excitation energies of the most recent
+    ///        `run()` (closed-shell RHF). Spectral G0W0 poles
+    ///        (`g0w0()`) enter the ph energy differences and the static
+    ///        direct-RPA screened interaction \(W\) (exact 4-centre form).
+    ///        Full BSE (default) solves the Casida A/B RPA problem; with
+    ///        `tda = true` only A is diagonalized (BSE-TDA).
+    ///        Working equations match PySCF `pyscf.gw.bse.BSE` (non-DF ERIs
+    ///        + frequency-exact G0W0 poles — see `reg_bse-h2-sto3g`).
+    /// @param n_states Number of lowest singlet roots in `[1, n_occ·n_virt]`.
+    /// @param tda If true, Tamm–Dancoff (B = 0); else full BSE.
+    /// @return Excitation energies [eV] plus the underlying G0W0 result.
+    /// @throws std::runtime_error when called before `run()`, on a
+    ///         non-restricted reference, or when G0W0 / BSE is ill-conditioned.
+    /// @throws std::invalid_argument when `n_states` is out of range or the
+    ///         system has no virtual orbitals.
+    BSEResult bse(int n_states = 1, bool tda = false) const;
+
+    /// @brief One-shot second-order Green's function (G0F2 / GF2)
+    ///        quasiparticle energies of the most recent `run()` (closed-shell
+    ///        RHF). Builds the 2h1p+2p1h auxiliary self-energy from the HF
+    ///        Green's function and solves the Dyson equation once with
+    ///        F = diag(ε_HF). Matches PySCF `agf2.RAGF2` one-shot poles
+    ///        (SE from `init_gf` → `se.get_greens_function(F_HF)`). Not
+    ///        self-consistent AGF2 (separate roadmap item).
+    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV],
+    ///         Galitskii–Migdal e_corr [Hartree].
+    /// @throws std::runtime_error when called before `run()` or on a
+    ///         non-restricted reference.
+    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
+    GF2Result gf2() const;
+
+    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
+    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
+    ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,
+    ///        5567 (2014); Stanton & Bartlett, J. Chem. Phys. **98**, 7029
+    ///        (1993)). Matches PySCF `cc.CCSD(...).eomee_ccsd_singlet()`.
+    /// @param frame Geometry; drives SCF + CCSD + EOM.
+    /// @param n_states Number of lowest singlet roots (≥ 1).
+    /// @return Singlet ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on open-shell / missing virtuals /
+    ///         non-converged SCF or CCSD / n_states out of range.
+    EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
 
     /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
     ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)
@@ -269,45 +321,7 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     G0W0Result g0w0() const;
 
-    /// @brief Direct RPA (dRPA) correlation energy of the most recent `run()`
-    ///        (closed-shell RHF reference). Coulomb-only Casida A/B
-    ///        (α_hf = 0); correlation via the Furche plasmon formula
-    ///        \(E_c = \frac12(\sum_s\Omega_s - \mathrm{Tr} A)\). Exact
-    ///        (non-DF) twin of PySCF `gw.rpa.RPA` / `DirectRPA` in the
-    ///        complete-auxiliary limit; stock PySCF uses density fitting.
-    /// @return Correlation and total energy [Hartree], plus the dRPA
-    ///         poles \(\Omega_s\) [Hartree].
-    /// @throws std::runtime_error when called before `run()`, on a
-    ///         non-restricted reference, or when dRPA is ill-conditioned.
-    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
-    DirectRPAResult direct_rpa() const;
-    /// @brief Singlet BSE@G0W0 excitation energies of the most recent
-    ///        `run()` (closed-shell RHF). Spectral G0W0 poles
-    ///        (`g0w0()`) enter the ph energy differences and the static
-    ///        direct-RPA screened interaction \(W\) (exact 4-centre form).
-    ///        Full BSE (default) solves the Casida A/B RPA problem; with
-    ///        `tda = true` only A is diagonalized (BSE-TDA).
-    ///        Working equations match PySCF `pyscf.gw.bse.BSE` (non-DF ERIs
-    ///        + frequency-exact G0W0 poles — see `reg_bse-h2-sto3g`).
-    /// @param n_states Number of lowest singlet roots in `[1, n_occ·n_virt]`.
-    /// @param tda If true, Tamm–Dancoff (B = 0); else full BSE.
-    /// @return Excitation energies [eV] plus the underlying G0W0 result.
-    ///         non-restricted reference, or when G0W0 / BSE is ill-conditioned.
-    /// @throws std::invalid_argument when `n_states` is out of range or the
-    ///         system has no virtual orbitals.
-    BSEResult bse(int n_states = 1, bool tda = false) const;
-    /// @brief One-shot second-order Green's function (G0F2 / GF2)
-    ///        quasiparticle energies of the most recent `run()` (closed-shell
-    ///        RHF). Builds the 2h1p+2p1h auxiliary self-energy from the HF
-    ///        Green's function and solves the Dyson equation once with
-    ///        F = diag(ε_HF). Matches PySCF `agf2.RAGF2` one-shot poles
-    ///        (SE from `init_gf` → `se.get_greens_function(F_HF)`). Not
-    ///        self-consistent AGF2 (separate roadmap item).
-    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV],
-    ///         Galitskii–Migdal e_corr [Hartree].
-    /// @throws std::runtime_error when called before `run()` or on a
-    ///         non-restricted reference.
-    GF2Result gf2() const;    /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
+    /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib
     ///        pipeline (`vib::MassWeighting` → `vib::HessianDiagonalizer`).
     ///
