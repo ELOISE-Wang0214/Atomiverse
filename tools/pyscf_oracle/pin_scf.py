@@ -10,6 +10,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py scs-mp2 --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
@@ -230,6 +231,9 @@ def main() -> int:
         out["e_tot_mp2_ha"] = float(m2.e_tot)
         out["e_corr_ss_ha"] = float(m2.e_corr_ss)
         out["e_corr_os_ha"] = float(m2.e_corr_os)
+        if args.grad:
+            g = m2.nuc_grad_method().kernel()
+            out["grad_ha_bohr"] = g.tolist()
     elif m == "mp2-fc":
         # Frozen-core RMP2: freeze lowest N occupied MOs (default 1 = O 1s on H2O).
         n_frozen = 1 if args.frozen is None else int(args.frozen)
