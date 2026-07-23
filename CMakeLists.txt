@@ -542,6 +542,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/eom_ip_ccsd.cpp
             src/cpu/scf/fci.cpp
             src/cpu/scf/casscf.cpp
+            src/cpu/scf/nevpt2.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/orbital_info_observer.cpp

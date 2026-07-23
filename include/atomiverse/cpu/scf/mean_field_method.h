@@ -40,6 +40,7 @@
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/casci.h"
 #include "atomiverse/cpu/scf/casscf.h"
+#include "atomiverse/cpu/scf/nevpt2.h"
 #include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/fci.h"
@@ -482,6 +483,19 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @param nelecas Number of active electrons (even; closed-shell).
     /// @return CASSCF total + correlation energy [Hartree].
     CASSCFResult casscf(Frame& frame, int ncas, int nelecas);
+
+    /// @brief Closed-shell strongly contracted NEVPT2 on a fresh RHF→CASSCF
+    ///        reference (materializes ERI).
+    ///
+    /// Runs CASSCF(ncas, nelecas) then the eight Angeli SC-NEVPT2 perturber
+    /// classes (PySCF `mrpt.NEVPT`). On a full-valence CAS with no external
+    /// orbitals the PT2 correction is identically zero. Open-shell
+    /// (UHF/ROHF/GHF) throws — no silent fallback.
+    /// @param frame   Geometry; drives a fresh SCF then CASSCF + NEVPT2.
+    /// @param ncas    Number of active spatial orbitals (dimensionless).
+    /// @param nelecas Number of active electrons (even; closed-shell).
+    /// @return NEVPT2 total + PT2 correlation [Hartree] vs CASSCF.
+    NEVPT2Result nevpt2(Frame& frame, int ncas, int nelecas);
 
     /// @brief Closed-shell CCSD on top of a fresh RHF run (materializes ERI).
     ///

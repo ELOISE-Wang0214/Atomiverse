@@ -18,6 +18,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ccsd-t --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py casscf --geom h2 --basis sto-3g --ncas 2 --nelecas 2
+  python tools/pyscf_oracle/pin_scf.py nevpt2 --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py eom-ip-ccsd --geom water --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
@@ -117,7 +118,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks-tddft", "casscf", "nevpt2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -129,13 +130,13 @@ def main() -> int:
         "--ncas",
         type=int,
         default=2,
-        help="Active spatial orbitals for casci/casscf (default 2)",
+        help="Active spatial orbitals for casci/casscf/nevpt2 (default 2)",
     )
     p.add_argument(
         "--nelecas",
         type=int,
         default=2,
-        help="Active electrons for casci/casscf (default 2; closed-shell even)",
+        help="Active electrons for casci/casscf/nevpt2 (default 2; closed-shell even)",
     )
     p.add_argument(
         "--from-mo",
@@ -1486,6 +1487,30 @@ def main() -> int:
         out["e_corr_ha"] = float(e_mc) - float(e)
         out["casscf_converged"] = bool(mc.converged)
         out["e_cas_ha"] = float(mc.e_cas)
+    elif m == "nevpt2":
+        # Strongly contracted NEVPT2 on CASSCF (PySCF mrpt.NEVPT).
+        from pyscf import mcscf, mrpt
+
+        ncas = int(args.ncas)
+        nelecas = int(args.nelecas)
+        mc = mcscf.CASSCF(mf, ncas, nelecas)
+        mc.conv_tol = float(args.conv_tol)
+        e_mc = mc.kernel()[0]
+        nev = mrpt.NEVPT(mc)
+        e_pt2 = float(nev.kernel())
+        nmo = int(mc.mo_coeff.shape[1])
+        ncore = int(mc.ncore)
+        out["e_hf_ha"] = float(e)
+        out["ncas"] = ncas
+        out["nelecas"] = nelecas
+        out["ncore"] = ncore
+        out["nvirt"] = nmo - ncore - ncas
+        out["e_casscf_ha"] = float(e_mc)
+        out["e_corr_ha"] = e_pt2  # PT2 vs CASSCF (PySCF NEVPT.e_corr)
+        out["e_tot_ha"] = float(e_mc) + e_pt2
+        out["e_corr_vs_hf_ha"] = float(e_mc) + e_pt2 - float(e)
+        out["casscf_converged"] = bool(mc.converged)
+        out["nevpt2_converged"] = bool(nev.converged)
     elif m == "b2plyp":
         # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.
         m2 = mp.MP2(mf).run()
