@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
@@ -67,6 +69,41 @@ std::vector<GridBasisFunction> global_basis(const std::vector<GpwAtom>& atoms) {
         for (const auto& bf : a.basis)
             b.push_back(bf);
     return b;
+}
+
+// Parallel AO tags (atom index + ℓ) in the same order as global_basis.
+std::vector<internal::AoShellTag>
+global_ao_tags(const std::vector<GpwAtom>& atoms) {
+    std::vector<internal::AoShellTag> tags;
+    for (int ia = 0; ia < static_cast<int>(atoms.size()); ++ia) {
+        const auto& a = atoms[static_cast<std::size_t>(ia)];
+        const int nbf = static_cast<int>(a.basis.size());
+        const int nl = static_cast<int>(a.basis_l.size());
+        for (int k = 0; k < nbf; ++k) {
+            internal::AoShellTag t;
+            t.atom = ia;
+            t.l = (k < nl) ? a.basis_l[static_cast<std::size_t>(k)] : -1;
+            tags.push_back(t);
+        }
+    }
+    return tags;
+}
+
+// Convert public PlusU (eV) list into solver-side (Z, l, U_ha) tables.
+void pack_plus_u(const std::vector<PlusU>& plus_u,
+                 std::vector<int>& z_keys,
+                 std::vector<internal::PlusUHa>& slots) {
+    z_keys.clear();
+    slots.clear();
+    for (const auto& pu : plus_u) {
+        if (!(pu.u_minus_j_ev > 0.0) || pu.l < 0)
+            continue;
+        z_keys.push_back(static_cast<int>(pu.element));
+        internal::PlusUHa s;
+        s.l = pu.l;
+        s.U_ha = pu.u_minus_j_ev / units::kHartreeInEv;
+        slots.push_back(s);
+    }
 }
 
 Prim to_prim(const GridPrimitive& p) {
@@ -732,8 +769,10 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
                             bf.push_back(p);
                         }
                     }
-                    if (!bf.empty())
+                    if (!bf.empty()) {
                         this->basis.push_back(std::move(bf));
+                        this->basis_l.push_back(L);
+                    }
                 }
             }
         }
@@ -754,7 +793,18 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         fftw_plan_with_nthreads(omp_get_max_threads());
 #endif
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
+    const std::vector<internal::AoShellTag> ao_tags = global_ao_tags(atoms);
     const int nb = static_cast<int>(basis.size());
+    if (static_cast<int>(ao_tags.size()) != nb)
+        throw std::runtime_error(
+            "GPW: AO tag count does not match basis size (internal)");
+    std::vector<int> z_of_atom(atoms.size());
+    for (std::size_t i = 0; i < atoms.size(); ++i)
+        z_of_atom[i] = atoms[i].z;
+    std::vector<int> plus_u_z;
+    std::vector<internal::PlusUHa> plus_u_slots;
+    pack_plus_u(cfg.plus_u, plus_u_z, plus_u_slots);
+    const bool do_dftu = !plus_u_slots.empty();
     UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
 
     // Γ-point lattice-image extent, shared by the analytic S/T/Vpp lattice sums
@@ -993,6 +1043,30 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     RealMatrix Pb =
         uks ? linalg::build_density_matrix(C0, cfg.n_beta, nb, 1.0)
             : RealMatrix{};
+    // AFM/FM cold-start bias: scale per-atom spin density on the diagonal of
+    // Pa/Pb using atom_spin_guess (units-free). Does not alter Tr(P) much when
+    // guesses cancel; breaks spin symmetry for AFM NiO.
+    if (uks && !cfg.atom_spin_guess.empty()) {
+        if (static_cast<int>(cfg.atom_spin_guess.size())
+            != static_cast<int>(atoms.size()))
+            throw std::invalid_argument(
+                "GpwDft: atom_spin_guess size must be 0 or n_atoms");
+        constexpr double kBias = 0.15; // fraction of local diagonal shift
+        for (int i = 0; i < nb; ++i) {
+            const int ia = ao_tags[static_cast<std::size_t>(i)].atom;
+            const double g =
+                cfg.atom_spin_guess[static_cast<std::size_t>(ia)];
+            if (g == 0.0)
+                continue;
+            const double d = kBias * g * 0.5 * (Pa(i, i) + Pb(i, i));
+            Pa(i, i) += d;
+            Pb(i, i) -= d;
+            if (Pa(i, i) < 0.0)
+                Pa(i, i) = 0.0;
+            if (Pb(i, i) < 0.0)
+                Pb(i, i) = 0.0;
+        }
+    }
     smark("init_eigensolve");
 
     // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
@@ -1239,8 +1313,17 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
             const RealMatrix Va = integrate_V(veff_a);
             const RealMatrix Vb = integrate_V(veff_b);
-            const RealMatrix Ha = H0 + Va;
-            const RealMatrix Hb = H0 + Vb;
+            RealMatrix Ha = H0 + Va;
+            RealMatrix Hb = H0 + Vb;
+
+            double e_dftu = 0.0;
+            if (do_dftu) {
+                e_dftu += internal::apply_dft_plus_u(
+                    Ha, Pa, S, ao_tags, z_of_atom, plus_u_slots, plus_u_z);
+                e_dftu += internal::apply_dft_plus_u(
+                    Hb, Pb, S, ao_tags, z_of_atom, plus_u_slots, plus_u_z);
+            }
+            res.e_dftu = e_dftu;
 
             // Total density for one-electron traces (Pa+Pb).
             const RealMatrix Ptot = Pa + Pb;
@@ -1250,7 +1333,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             res.e_es = es.e_hartree - e_self;
             res.e_xc = xc.e_xc;
             const double e_total =
-                res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+                res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
             res.iters = iter + 1;
             res.e_total = e_total;
 
@@ -1273,11 +1356,16 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                              res.e_es, res.e_xc, std::abs(e_total - e_prev),
                              err_norm);
 
+            // DFT+U softens the DIIS residual; require energy Δ and either the
+            // standard commutator tol or a looser residual when PLUS_U is on.
+            const double err_gate = do_dftu ? 5e-3 : kDiisErrTol;
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
-                && err_norm < kDiisErrTol) {
+                && err_norm < err_gate) {
                 res.converged = true;
                 store_converged_state_uks(res, Ha, Hb, orth().X, S, cfg.n_alpha,
                                          cfg.n_beta, nb);
+                res.mulliken_spin = internal::mulliken_spin_populations(
+                    Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
                 res.e_total += e_d3;
                 return res;
             }
@@ -1302,8 +1390,15 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             RealMatrix Pb_new =
                 linalg::build_density_matrix(Cb, cfg.n_beta, nb, 1.0);
             if (use_diis) {
-                Pa = std::move(Pa_new);
-                Pb = std::move(Pb_new);
+                // With DFT+U, pure DIIS can oscillate — damp with linear mix.
+                if (do_dftu) {
+                    const double a = std::min(std::max(cfg.mix, 0.15), 0.6);
+                    Pa = (1.0 - a) * Pa + a * Pa_new;
+                    Pb = (1.0 - a) * Pb + a * Pb_new;
+                } else {
+                    Pa = std::move(Pa_new);
+                    Pb = std::move(Pb_new);
+                }
             } else {
                 Pa = (1.0 - cfg.mix) * Pa + cfg.mix * Pa_new;
                 Pb = (1.0 - cfg.mix) * Pb + cfg.mix * Pb_new;
@@ -1312,6 +1407,30 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         // Budget exhausted: expose last mixed densities; leave converged=false.
         res.P = Pa;
         res.P_beta = Pb;
+        res.C = Ca_prev;
+        res.C_beta = Cb_prev;
+        {
+            // Löwdin ⟨S²⟩ from the last MO coefficients (even if not converged).
+            const double sz =
+                0.5 * static_cast<double>(cfg.n_alpha - cfg.n_beta);
+            double ov = 0.0;
+            if (cfg.n_alpha > 0 && cfg.n_beta > 0) {
+                const RealMatrix Ca_occ =
+                    xt::view(Ca_prev, xt::all(), xt::range(0, cfg.n_alpha));
+                const RealMatrix Cb_occ =
+                    xt::view(Cb_prev, xt::all(), xt::range(0, cfg.n_beta));
+                const RealMatrix Sab = xt::linalg::dot(
+                    xt::transpose(Ca_occ), xt::linalg::dot(S, Cb_occ));
+                for (int i = 0; i < cfg.n_alpha; ++i)
+                    for (int j = 0; j < cfg.n_beta; ++j) {
+                        const double s = Sab(i, j);
+                        ov += s * s;
+                    }
+            }
+            res.s2 = sz * (sz + 1.0) + static_cast<double>(cfg.n_beta) - ov;
+        }
+        res.mulliken_spin = internal::mulliken_spin_populations(
+            Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
         res.e_total += e_d3;
         return res;
     }
@@ -1584,6 +1703,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
     p.use_ot = m.use_ot;
+    p.plus_u = m.plus_u;
+    p.atom_spin_guess = m.atom_spin_guess;
     return p;
 }
 } // namespace
