@@ -118,6 +118,11 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "float(e2+e3)"
         ),
         "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
+        "eom-ee-ccsd": (
+            "from pyscf import scf, cc\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=cc.CCSD(mf); my.conv_tol=1e-10; my.kernel(); my.eomee_ccsd_singlet(nroots={nstates})"
+        ),
         # B2PLYP double hybrid: hybrid KS (a_x=0.53 B88+LYP) + scaled MP2 (a_c=0.27).
         "b2plyp": (
             "from pyscf import dft, mp\n"
@@ -199,7 +204,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "b2plyp"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "eom-ee-ccsd", "b2plyp"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

@@ -15,6 +15,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py mp3 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
@@ -106,7 +107,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "b2plyp"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "eom-ee-ccsd", "b2plyp"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -766,6 +767,24 @@ def main() -> int:
         t2a = _np.asarray(t2).ravel()
         out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
         out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+    elif m == "eom-ee-ccsd":
+        # Singlet EOM-EE-CCSD on closed-shell CCSD (PySCF eomee_ccsd_singlet).
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.eomee_ccsd_singlet(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        out["omega_ha"] = e_eom.tolist()
+        out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
     elif m == "b2plyp":
         # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.
         m2 = mp.MP2(mf).run()

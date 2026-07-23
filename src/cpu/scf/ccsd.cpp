@@ -73,8 +73,8 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
 
 } // namespace
 
-CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                       double e_scf_ha, double tol, int max_iter) {
+CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, double tol, int max_iter) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
@@ -101,7 +101,11 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int n_mo = static_cast<int>(C.shape(1));
     const int n_vir_sp = n_mo - n_occ_sp;
     if (n_vir_sp <= 0) {
-        return CCSDResult{0.0, e_scf_ha, 0, true};
+        CCSDSolution sol;
+        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
+        sol.n_occ_sp = n_occ_sp;
+        sol.n_vir_sp = 0;
+        return sol;
     }
 
     const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
@@ -489,7 +493,30 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     }
 
     const double e_corr = energy_of(t1, t2);
-    return CCSDResult{e_corr, e_scf_ha + e_corr, iters, true};
+    CCSDSolution sol;
+    sol.result = CCSDResult{e_corr, e_scf_ha + e_corr, iters, true};
+    sol.t1 = std::move(t1);
+    sol.t2 = std::move(t2);
+    sol.oooo = std::move(oooo);
+    sol.ooov = std::move(ooov);
+    sol.oovv = std::move(oovv);
+    sol.ovov = std::move(ovov);
+    sol.ovvv = std::move(ovvv);
+    sol.vvvv = std::move(vvvv);
+    sol.foo = std::move(foo);
+    sol.fvv = std::move(fvv);
+    sol.fov = std::move(fov);
+    sol.eps_so = std::move(eps_so);
+    sol.no = no;
+    sol.nv = nv;
+    sol.n_occ_sp = n_occ_sp;
+    sol.n_vir_sp = n_vir_sp;
+    return sol;
+}
+
+CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                       double e_scf_ha, double tol, int max_iter) {
+    return ccsd_solve(ints, det, e_scf_ha, tol, max_iter).result;
 }
 
 } // namespace scf
