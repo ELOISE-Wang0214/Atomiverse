@@ -525,6 +525,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/mp3.cpp
             src/cpu/scf/ccsd.cpp
             src/cpu/scf/eom_ee_ccsd.cpp
+            src/cpu/scf/eom_ea_ccsd.cpp
             src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
