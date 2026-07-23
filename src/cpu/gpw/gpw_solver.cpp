@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 /// @file src/cpu/gpw/gpw_solver.cpp
-/// @brief Implementation of the closed-shell GPW SCF (see header).
+/// @brief Implementation of the GPW SCF — RKS and UKS (see header).
 ///
 /// Electrostatics use the GTH Gaussian core charge: the long-range local PP
 /// -Z erf(r/(sqrt2 rloc))/r is the potential of a negative Gaussian -Z g(rloc).
@@ -622,6 +622,41 @@ void store_converged_state(GpwResult& res, const RealMatrix& H,
     res.P = linalg::build_density_matrix(C, n_occ, nb, 2.0);
 }
 
+// UKS: store α/β orbitals and Löwdin ⟨S²⟩.
+// ⟨S²⟩ = s_z(s_z+1) + N_β − Σ_{i∈α,j∈β} |⟨φ_i^α|φ_j^β⟩|²
+// with ⟨φ_i^α|φ_j^β⟩ = C_αᵀ S C_β (Löwdin 1955; Szabo & Ostlund §2.5).
+void store_converged_state_uks(GpwResult& res, const RealMatrix& Ha,
+                               const RealMatrix& Hb, const RealMatrix& X,
+                               const RealMatrix& S, int n_alpha, int n_beta,
+                               int nb) {
+    auto [eiga, Ca] = linalg::diagonalize_fock(Ha, X);
+    auto [eigb, Cb] = linalg::diagonalize_fock(Hb, X);
+    res.C = Ca;
+    res.C_beta = Cb;
+    res.eps.assign(eiga.begin(), eiga.end());
+    res.eps_beta.assign(eigb.begin(), eigb.end());
+    res.P = linalg::build_density_matrix(Ca, n_alpha, nb, 1.0);
+    res.P_beta = linalg::build_density_matrix(Cb, n_beta, nb, 1.0);
+
+    const double sz = 0.5 * static_cast<double>(n_alpha - n_beta);
+    double ov = 0.0;
+    if (n_alpha > 0 && n_beta > 0) {
+        const RealMatrix Ca_occ =
+            xt::view(Ca, xt::all(), xt::range(0, n_alpha));
+        const RealMatrix Cb_occ =
+            xt::view(Cb, xt::all(), xt::range(0, n_beta));
+        // Sab = C_a† S C_b  (n_alpha × n_beta)
+        const RealMatrix Sab = xt::linalg::dot(
+            xt::transpose(Ca_occ), xt::linalg::dot(S, Cb_occ));
+        for (int i = 0; i < n_alpha; ++i)
+            for (int j = 0; j < n_beta; ++j) {
+                const double s = Sab(i, j);
+                ov += s * s;
+            }
+    }
+    res.s2 = sz * (sz + 1.0) + static_cast<double>(n_beta) - ov;
+}
+
 } // namespace
 
 namespace {
@@ -901,10 +936,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                     "lindep_threshold={:.1e})",
                     orth_cache->n_dropped, nb, orth_cache->s_min,
                     cfg.lindep_threshold);
-            if (cfg.n_occ > m)
+            const int n_need =
+                cfg.is_uks() ? std::max(cfg.n_alpha, cfg.n_beta) : cfg.n_occ;
+            if (n_need > m)
                 throw std::runtime_error(
-                    "GPW: n_occ=" + std::to_string(cfg.n_occ) + " exceeds the "
-                    + std::to_string(m)
+                    "GPW: occupation=" + std::to_string(n_need)
+                    + " exceeds the " + std::to_string(m)
                     + " linearly independent basis directions that survive "
                       "lindep_threshold — the basis cannot represent the "
                       "occupied "
@@ -912,6 +949,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         }
         return *orth_cache;
     };
+
+    const bool uks = cfg.is_uks();
 
     // cold start falls back to diagonalizing the core Hamiltonian H0.
     RealMatrix C0;
@@ -921,8 +960,22 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     } else {
         C0 = std::get<1>(linalg::diagonalize_fock(H0, orth().X));
     }
-    RealMatrix P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
+    RealMatrix P;
+    if (uks) {
+        P = linalg::build_density_matrix(C0, cfg.n_alpha, nb, 1.0)
+            + linalg::build_density_matrix(C0, cfg.n_beta, nb, 1.0);
+    } else {
+        P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
+    }
     RealMatrix C_prev = C0; // level-shift needs the previous occupied space
+    RealMatrix Ca_prev = C0;
+    RealMatrix Cb_prev = C0;
+    RealMatrix Pa =
+        uks ? linalg::build_density_matrix(C0, cfg.n_alpha, nb, 1.0)
+            : RealMatrix{};
+    RealMatrix Pb =
+        uks ? linalg::build_density_matrix(C0, cfg.n_beta, nb, 1.0)
+            : RealMatrix{};
     smark("init_eigensolve");
 
     // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
@@ -1111,6 +1164,140 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.e_xc = xc.e_xc;
         return {H, res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc};
     };
+
+    // ── UKS (spin-unrestricted, Γ-point, PADE LSD) ─────────────────────────
+    // Separate Pa/Pb, spin-resolved XC, dual KS matrices. Multigrid products
+    // and OT are not wired for UKS in this foothold — single-grid collocate.
+    if (uks) {
+        if (cfg.xc != XcKind::PADE)
+            throw std::runtime_error(
+                "GPW UKS: only XcKind::PADE is supported (PBE GGA UKS is out "
+                "of scope for gpw-uks-o2-gamma)");
+        if (cfg.use_ot)
+            throw std::runtime_error(
+                "GPW UKS: OT path is not implemented for unrestricted SCF");
+        if (use_prod)
+            throw std::runtime_error(
+                "GPW UKS: multigrid product collocation is not wired — use "
+                "ngrids=1 (single-grid CompactBasisGrid path)");
+
+        auto collocate_P = [&](const RealMatrix& Pin) {
+            return collocate_density(cbg, nb, mat_to_vec(Pin, nb));
+        };
+        auto integrate_V = [&](const std::vector<double>& veff) {
+            return vec_to_mat(integrate_potential(cbg, nb, veff), nb);
+        };
+
+        internal::GpwDiis diis_a(use_diis ? cfg.diis_depth : 1);
+        internal::GpwDiis diis_b(use_diis ? cfg.diis_depth : 1);
+
+        for (int iter = 0; iter < cfg.max_iter; ++iter) {
+            std::vector<double> rho_a = collocate_P(Pa);
+            std::vector<double> rho_b = collocate_P(Pb);
+            std::vector<double> rho(rho_a.size());
+            for (std::size_t g = 0; g < rho.size(); ++g)
+                rho[g] = rho_a[g] + rho_b[g];
+
+            std::vector<double> n_tot(rho.size());
+            for (std::size_t g = 0; g < rho.size(); ++g)
+                n_tot[g] = rho[g] - n_ion[g];
+            const PoissonResult es = cfg.nonperiodic
+                                         ? solve_poisson_mt(grid, n_tot)
+                                         : solve_poisson(grid, n_tot);
+            const XcOnGridSpin xc = xc_grid_pade_lsd(grid, rho_a, rho_b);
+
+            std::vector<double> veff_a(rho.size()), veff_b(rho.size());
+            double e_locgrid = 0.0;
+            const double gw = grid.weight();
+            for (std::size_t g = 0; g < rho.size(); ++g) {
+                double vloc = 0.0;
+                if (!v_locsr.empty()) {
+                    vloc = v_locsr[g];
+                    e_locgrid += rho[g] * vloc;
+                }
+                veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
+                veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
+            }
+            e_locgrid *= gw;
+
+            const RealMatrix Va = integrate_V(veff_a);
+            const RealMatrix Vb = integrate_V(veff_b);
+            const RealMatrix Ha = H0 + Va;
+            const RealMatrix Hb = H0 + Vb;
+
+            // Total density for one-electron traces (Pa+Pb).
+            const RealMatrix Ptot = Pa + Pb;
+            res.e_kinetic = trace_product(Ptot, T, nb);
+            res.e_nonlocal = 0.0;
+            res.e_loc_sr = trace_product(Ptot, Vpp, nb) + e_locgrid;
+            res.e_es = es.e_hartree - e_self;
+            res.e_xc = xc.e_xc;
+            const double e_total =
+                res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+            res.iters = iter + 1;
+            res.e_total = e_total;
+
+            // Commutator residuals for both spins (DIIS-style convergence).
+            const RealMatrix err_a =
+                internal::gpw_diis_error(Ha, Pa, S, orth().X);
+            const RealMatrix err_b =
+                internal::gpw_diis_error(Hb, Pb, S, orth().X);
+            double err_norm = 0.0;
+            for (const double v : err_a)
+                err_norm = std::max(err_norm, std::abs(v));
+            for (const double v : err_b)
+                err_norm = std::max(err_norm, std::abs(v));
+
+            if (std::getenv("ATV_GPW_TRACE"))
+                std::fprintf(stderr,
+                             "[gpw UKS %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                             "xc=%.4f  dE=%.2e err=%.2e\n",
+                             iter, e_total, res.e_kinetic, res.e_loc_sr,
+                             res.e_es, res.e_xc, std::abs(e_total - e_prev),
+                             err_norm);
+
+            if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
+                && err_norm < kDiisErrTol) {
+                res.converged = true;
+                store_converged_state_uks(res, Ha, Hb, orth().X, S, cfg.n_alpha,
+                                         cfg.n_beta, nb);
+                res.e_total += e_d3;
+                return res;
+            }
+            e_prev = e_total;
+
+            RealMatrix Ha_use = Ha;
+            RealMatrix Hb_use = Hb;
+            if (use_diis) {
+                Ha_use = diis_a.step(Ha, err_a);
+                Hb_use = diis_b.step(Hb, err_b);
+            }
+            auto [eiga, Ca] = diagonalize_fock_shifted(
+                Ha_use, orth().X, S, Ca_prev, cfg.n_alpha, cfg.level_shift);
+            auto [eigb, Cb] = diagonalize_fock_shifted(
+                Hb_use, orth().X, S, Cb_prev, cfg.n_beta, cfg.level_shift);
+            (void)eiga;
+            (void)eigb;
+            Ca_prev = Ca;
+            Cb_prev = Cb;
+            RealMatrix Pa_new =
+                linalg::build_density_matrix(Ca, cfg.n_alpha, nb, 1.0);
+            RealMatrix Pb_new =
+                linalg::build_density_matrix(Cb, cfg.n_beta, nb, 1.0);
+            if (use_diis) {
+                Pa = std::move(Pa_new);
+                Pb = std::move(Pb_new);
+            } else {
+                Pa = (1.0 - cfg.mix) * Pa + cfg.mix * Pa_new;
+                Pb = (1.0 - cfg.mix) * Pb + cfg.mix * Pb_new;
+            }
+        }
+        // Budget exhausted: expose last mixed densities; leave converged=false.
+        res.P = Pa;
+        res.P_beta = Pb;
+        res.e_total += e_d3;
+        return res;
+    }
 
     // ── OT (orbital transformation) path ────────────────────────────────────
     // Diagonalization-free SCF: each outer step rebuilds H, then takes one
@@ -1304,9 +1491,23 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     if (reference.empty())
         throw std::invalid_argument(
             "GpwDft::build: empty atom set (nothing to solve)");
-    if (n_occ < 1)
-        throw std::invalid_argument("GpwDft::build: n_occ must be >= 1 (got "
-                                    + std::to_string(n_occ) + ")");
+    if (is_uks()) {
+        if (n_alpha < 0 || n_beta < 0 || n_alpha + n_beta < 1)
+            throw std::invalid_argument(
+                "GpwDft::build: UKS needs n_alpha,n_beta >= 0 with "
+                "n_alpha+n_beta >= 1 (got n_alpha="
+                + std::to_string(n_alpha) + " n_beta="
+                + std::to_string(n_beta) + ")");
+        if (xc != XcKind::PADE)
+            throw std::invalid_argument(
+                "GpwDft::build: UKS supports XcKind::PADE only "
+                "(PBE GGA UKS is out of scope)");
+    } else if (n_occ < 1) {
+        throw std::invalid_argument(
+            "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
+            + std::to_string(n_occ)
+            + "); or set n_alpha/n_beta for UKS");
+    }
     if (!nonperiodic) {
         for (int d = 0; d < 3; ++d)
             if (!(cell[d] > 0.0))
@@ -1349,6 +1550,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.ngrids = m.ngrids;
     p.rel_cutoff = m.rel_cutoff;
     p.n_occ = m.n_occ;
+    p.n_alpha = m.n_alpha;
+    p.n_beta = m.n_beta;
     p.max_iter = m.max_iter;
     p.tol = m.tol;
     p.eps_default = m.eps_default;

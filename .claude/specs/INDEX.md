@@ -5,8 +5,11 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Spec | Branch | Loop |
+|------|--------|------|
+| `gpw-uks-o2-gamma` | `wf/gpw-uks-o2-gamma` | cp2k-method-loop (Γ-UKS GPW O₂) |
+
+*(other CPU next A/B/C/D campaign closed 2026-07-23)*
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 

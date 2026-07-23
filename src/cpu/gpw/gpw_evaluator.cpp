@@ -67,7 +67,14 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
     cfg.cell[2] = ctx.frame.simbox.length(2) * kAng2Bohr;
     cfg.cutoff_ry = cutoff_ry;
-    cfg.n_occ = static_cast<int>(std::lround(z_val_total / 2.0));
+    cfg.n_alpha = n_alpha;
+    cfg.n_beta = n_beta;
+    if (n_alpha + n_beta > 0) {
+        // UKS: occupations are explicit; n_occ unused.
+        cfg.n_occ = 0;
+    } else {
+        cfg.n_occ = static_cast<int>(std::lround(z_val_total / 2.0));
+    }
     cfg.max_iter = max_iter;
     cfg.tol = tol;
     cfg.mix = mix;

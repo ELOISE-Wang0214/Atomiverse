@@ -51,6 +51,10 @@ class GPWEvaluator : public cpu::GPW {
     double fd_step = 1e-3;
     /// @brief Grimme DFT-D3 (zero damping, PBE params).
     bool d3 = false;
+    /// UKS spin occupations. When both zero, closed-shell RKS from valence/2.
+    /// O₂ GTH-q6 triplet: n_alpha=7, n_beta=5.
+    int n_alpha = 0;
+    int n_beta = 0;
     /// @brief One Kind per distinct element in the system.
     std::vector<Kind> kinds;
 
@@ -79,6 +83,8 @@ class GPWEvaluator : public cpu::GPW {
     void launch(const cpu::LaunchContext& ctx) override;
 
     double last_energy_hartree() const { return last_.e_total; }
+    /// @brief ⟨S²⟩ from the last UKS run (0 for closed-shell).
+    double last_s2() const { return last_.s2; }
     const GpwResult& last_result() const { return last_; }
 
   private:
