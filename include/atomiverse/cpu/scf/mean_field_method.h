@@ -428,6 +428,16 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @return CCSD correlation + total energy [Hartree], iteration count.
     CCSDResult ccsd(Frame& frame);
 
+    /// @brief Closed-shell CCSD(T) on top of a fresh RHF run (materializes ERI).
+    ///
+    /// Runs the same CCSD amplitude solve as `ccsd`, then the non-iterative
+    /// (T) correction (Raghavachari 1989; Watts–Gauss–Bartlett 1993). Matches
+    /// PySCF `cc.CCSD(...).ccsd_t()` on the same RHF reference. Open-shell
+    /// throws — no silent fallback.
+    /// @param frame Geometry; drives a fresh SCF then CCSD + (T).
+    /// @return CCSD(T) correlation pieces + total energy [Hartree].
+    CCSDTResult ccsd_t(Frame& frame);
+
     /// @brief The wavefunction of the most recent run (last iterate when not
     ///        converged). Empty (0 electrons, 0 orbitals) before any run.
     /// @return The owned Slater determinant (Hartree internals).

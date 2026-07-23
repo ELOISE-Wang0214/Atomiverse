@@ -1151,6 +1151,24 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
     return ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
 }
 
+template <typename D>
+CCSDTResult MeanFieldMethod<D>::ccsd_t(Frame& frame) {
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_t: closed-shell RHF reference only — UHF / "
+            "ROHF / GHF CCSD(T) is not implemented (no fallback). Use RHF.");
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_t: SCF reference did not converge — refusing "
+            "to compute a correlation correction on a non-stationary "
+            "determinant (no fallback)");
+    return ccsd_t_energy(*integrals_sp_, *det_sp_, e_total_);
+}
+
 // explicit instantiations
 template class MeanFieldMethod<RHF>;
 template class MeanFieldMethod<ROHF>;

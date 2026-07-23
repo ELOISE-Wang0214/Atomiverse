@@ -41,7 +41,8 @@ RHF orbitals.
 
 - Single-reference, closed-shell RHF only (no UCCSD / ROCCSD).
 - Energy only — no \(\Lambda\) equations, no 1-RDM/2-RDM, no analytic gradient.
-- No perturbative triples (T); no higher \(T_n\).
+- No higher \(T_n\) here; perturbative (T) is a separate product path
+  (`RHF::ccsd_t` / `ccsd-t-h2o-sto3g`).
 - Canonical MO integrals; no DF/CD/F12/local CC.
 - Jacobi micro-iteration on \(t_1,t_2\) until max\(|\Delta t|\) below internal tol;
   product gate also requires `converged == true`.
@@ -159,7 +160,7 @@ required on this case.
 - **No DF/CD/F12/local** CC; full MO \(O(N^6)\) path only.
 - **CUDA / Kokkos:** ○ (CPU only).
 - **Roadmap next axes** (queue / post-hf): `ccsd-t-h2o-sto3g` (perturbative
-  triples), `eom-ee-ccsd` (EOM-EE on this energy path); higher CC / local /
+  triples — **shipped**); `eom-ee-ccsd` (EOM-EE on this energy path); higher CC / local /
   open-shell still ○ — see `docs/roadmap/post-hf.md`,
   `docs/roadmap/excited-states.md`.
 - **Perf twin** is the same method family on a minimal system; wall times are
