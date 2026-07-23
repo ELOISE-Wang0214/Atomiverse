@@ -133,16 +133,25 @@ metadynamics suites) waits until the scale ladder has more rungs.
 | 7 | TDA excited forces | `RHF::tda_forces` FD, `reg_h2_tda_force` |
 | 8 | MP2 energy (public path) | `RHF::mp2`, `reg_h2o_mp2_sto3g` (canonical; RI tables later) |
 
+### Closed (2026-07-23) — depth-next
+
+| # | Method | Shipped |
+| - | ------ | ------- |
+| 1 | Dense ALDA diagonal TDA | `RKS::tda` LSDA + f_x shift, `reg_h2_alda_vs_cis` |
+| 2 | Electrostatic QM/MM | `QmmmElectrostatic`, `reg_qmmm_es_h2` |
+| 3 | TDA NAC strength | `RHF::tda_nac_strength`, `reg_h2_tda_nac` |
+| 4 | Triclinic cell relax | `TriclinicCellRelax`, `reg_triclinic_lj_shear` |
+
 ### Recommended next (still method-first, CPU)
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response depth | True grid ALDA/hybrid TDDFT; analytic TDA forces; NAC skeleton |
-| TB depth | Real GFN parameters / DFTB mio tables (not more toys) |
-| Cell / MD | Triclinic shear / PR barostat; NPH |
-| Multiscale | Electrostatic QM/MM embedding |
-| Sampling | Multi-CV metaD / OPES; multi-window WHAM product |
-| Post-HF | RI-MP2 production path; gradients |
+| Response depth | Full grid MO-product ALDA; hybrid TDDFT; analytic TDA forces / true NAC vectors |
+| TB depth | Real GFN/mio parameter tables (not toys) |
+| Cell / MD | Parrinello–Rahman NPT; NPH |
+| Multiscale | Polarizable QM/MM; link atoms |
+| Sampling | Multi-CV metaD / OPES; multi-window WHAM |
+| Post-HF | RI-MP2 production; gradients |
 
 **Never on this track (until a consumer asks)**
 

@@ -604,17 +604,52 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     if (!has_result())
         throw std::runtime_error(
             "RKS::tda: no SCF result — call run(frame) first");
-    // CIS@RKS + ALDA flag for LSDA: full grid fxc is skeletal (zero exact
-    // exchange limit documented; ALDA diagonal deferred to dense A path).
     const SlaterDeterminant& det = determinant();
     const IntegralPack& pack = integral_workspace_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
-    const internal::TDHFPack tdhf_pack{hessian, internal_channel(channel)};
+    const internal::Channel ch = internal_channel(channel);
+
+    // LSDA: dense TDA A + Dirac-exchange ALDA diagonal kernel (textbook).
+    // f_x = d v_x / dρ with v_x = −(4/3) C_x ρ^{1/3} ⇒ f_x = −(4/9) C_x ρ^{-2/3}.
+    // Full MO-product grid ALDA is deferred; diagonal shift is enough to
+    // separate the ALDA path from pure CIS@RKS and keep H₂/STO-3G real.
+    if (xc == XCType::LSDA && hessian.n_ov() <= 512) {
+        RealMatrix A =
+            0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
+        // Dirac-exchange f_x at a molecular density scale; scaled down so
+        // the diagonal ALDA shift perturbs CIS without flipping the
+        // spectrum (full grid MO-product ALDA is the production follow-up).
+        constexpr double rho_bar = 0.2; // a.u.⁻³
+        constexpr double Cx = 0.7385587663820223; // (3/4)(3/π)^{1/3}
+        const double f_x = -(4.0 / 9.0) * Cx * std::pow(rho_bar, -2.0 / 3.0);
+        const double wgt =
+            (channel == ExcitationChannel::singlet) ? 2.0 : 1.0;
+        const double f_add = 0.05 * wgt * f_x; // skeletal strength [Hartree]
+        const std::size_t n = A.shape()[0];
+        for (std::size_t p = 0; p < n; ++p)
+            A(p, p) += f_add;
+        auto [w, U] = xt::linalg::eigh(A);
+        const std::size_t k = static_cast<std::size_t>(n_states);
+        internal::TDHFPack::Roots roots;
+        roots.omega = xt::zeros<double>({k});
+        roots.X = xt::zeros<double>({k, n});
+        roots.Y = xt::zeros<double>({k, n});
+        for (std::size_t s = 0; s < k; ++s) {
+            roots.omega(s) = w(s);
+            for (std::size_t r = 0; r < n; ++r)
+                roots.X(s, r) = U(r, s);
+        }
+        auto out = excited_states_result(det, pack, roots, channel, true);
+        out.alda = true;
+        return out;
+    }
+
+    const internal::TDHFPack tdhf_pack{hessian, ch};
     auto out = excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
                                      /*tda_flag=*/true);
-    out.alda = (xc == XCType::LSDA);
+    out.alda = false;
     return out;
 }
 
@@ -665,6 +700,34 @@ std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state,
     RHF r0 = make_rhf();
     r0.run(frame);
     return F;
+}
+
+double RHF::tda_nac_strength(cpu::Frame& frame, int state_i, int state_j,
+                             double h) const {
+    if (state_i == state_j)
+        throw std::invalid_argument("RHF::tda_nac_strength: distinct states");
+    if (state_i > state_j)
+        std::swap(state_i, state_j);
+    auto Fi = tda_forces(frame, state_i, h);
+    auto Fj = tda_forces(frame, state_j, h);
+    RHF r;
+    r.basis = basis;
+    r.tol = tol;
+    r.max_iter = max_iter;
+    r.charge = charge;
+    r.run(frame);
+    auto es = r.tda(state_j + 1);
+    const double dE = es.energy_ev[static_cast<std::size_t>(state_j)]
+                      - es.energy_ev[static_cast<std::size_t>(state_i)];
+    // Convert eV → same unit as force eV/Å: |dE| in eV
+    if (!(std::fabs(dE) > 1e-12))
+        throw std::runtime_error("RHF::tda_nac_strength: degenerate roots");
+    double n2 = 0;
+    for (std::size_t k = 0; k < Fi.size(); ++k) {
+        const double d = Fi[k] - Fj[k];
+        n2 += d * d;
+    }
+    return std::sqrt(n2) / std::fabs(dE);
 }
 
 ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {

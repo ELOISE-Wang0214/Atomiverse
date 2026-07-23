@@ -167,6 +167,8 @@ atv_add_cpp_test(test_cpu_pair_yukawa             cpu/potentials/test_pair_yukaw
 atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_cell.cpp)
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
 atv_add_cpp_test(test_cpu_qmmm_mechanical         cpu/multiscale/test_qmmm_mechanical.cpp)
+atv_add_cpp_test(test_cpu_qmmm_electrostatic      cpu/multiscale/test_qmmm_electrostatic.cpp)
+atv_add_cpp_test(test_cpu_minimize_triclinic      cpu/minimize/test_triclinic_cell.cpp)
 atv_add_cpp_test(test_cpu_bond_fene               cpu/potentials/test_bond_fene.cpp)
 atv_add_cpp_test(test_cpu_pair_wca                cpu/potentials/test_pair_wca.cpp)
 atv_add_cpp_test(test_cpu_pair_dpd                cpu/potentials/test_pair_dpd.cpp)
@@ -555,7 +557,9 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_tdhf_method     cpu/scf/test_tdhf_method.cpp)
     atv_add_cpp_test(test_cpu_scf_rks_tda         cpu/scf/test_rks_tda.cpp)
     atv_add_cpp_test(test_cpu_scf_tda_forces      cpu/scf/test_tda_forces.cpp)
+    atv_add_cpp_test(test_cpu_scf_tda_nac         cpu/scf/test_tda_nac.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2_public      cpu/scf/test_mp2_public.cpp)
+    atv_add_cpp_test(test_cpu_scf_alda_diff       cpu/scf/test_alda_diff.cpp)
     atv_add_cpp_test(test_cpu_scf_embedding       cpu/scf/test_embedding.cpp)
     # hf-capability-gaps-16-solvent: C-PCM cavity/Born oracle, f(ε), H2O
     # solvent vs gas, solvent_eps=0 vacuum identity, forces throw.

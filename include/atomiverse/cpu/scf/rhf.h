@@ -103,6 +103,17 @@ class RHF : public MeanFieldMethod<RHF> {
     std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
                                    double h = 1e-3) const;
 
+    /// @brief FD nonadiabatic coupling *strength* skeleton between TDA roots
+    ///        `i` and `j`: returns ‖F_i − F_j‖ / |E_i − E_j| [1/Å] as a
+    ///        phase-less scale (surface-hopping prep, not full derivative
+    ///        coupling vectors).
+    /// @param frame Geometry [Å].
+    /// @param state_i Lower root index (0-based).
+    /// @param state_j Upper root index (0-based).
+    /// @param h FD step for forces [Å].
+    double tda_nac_strength(cpu::Frame& frame, int state_i = 0,
+                            int state_j = 1, double h = 2e-3) const;
+
     /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
     ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian
     ///        reduced form (A−B)^{1/2}(A+B)(A−B)^{1/2} Z = ω²Z (Dreuw &
