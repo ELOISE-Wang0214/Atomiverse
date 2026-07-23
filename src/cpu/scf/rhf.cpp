@@ -230,6 +230,110 @@ vib::HessianResult RHF::hessian(Frame& frame) {
     return out;
 }
 
+xt::xtensor<double, 2> RHF::polarizability() const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RHF::polarizability: no SCF result — call run(frame) first");
+
+    const SlaterDeterminant& det = determinant();
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    // Link-08 singlet (A+B) — throws std::invalid_argument when n_virt = 0.
+    const internal::OrbitalHessian oh{det, eri};
+
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
+    const int n = static_cast<int>(C.shape()[0]);
+    const int n_mo = static_cast<int>(C.shape()[1]);
+    std::vector<int> occ, virt;
+    for (int p = 0; p < n_mo; ++p)
+        (f(p) == 1.0 ? occ : virt).push_back(p);
+    const int no = static_cast<int>(occ.size());
+    const int nv = static_cast<int>(virt.size());
+    if (no != oh.n_occ() || nv != oh.n_virt())
+        throw std::runtime_error(
+            "RHF::polarizability: occ/virt split disagrees with OrbitalHessian");
+
+    RealMatrix Co = xt::zeros<double>({n, no});
+    RealMatrix Cv = xt::zeros<double>({n, nv});
+    for (int i = 0; i < no; ++i)
+        for (int mu = 0; mu < n; ++mu)
+            Co(mu, i) = C(mu, occ[static_cast<std::size_t>(i)]);
+    for (int a = 0; a < nv; ++a)
+        for (int mu = 0; mu < n; ++mu)
+            Cv(mu, a) = C(mu, virt[static_cast<std::size_t>(a)]);
+
+    // Length-gauge dipole about the center of nuclear charge — same origin
+    // as ExternalField / MultipoleObserver (origin-free for neutral systems
+    // only after response; keep the convention for charged systems).
+    double origin[3] = {0.0, 0.0, 0.0};
+    double zsum = 0.0;
+    for (const auto& A : pack.atoms) {
+        const double z = static_cast<double>(A.Z);
+        zsum += z;
+        origin[0] += z * A.pos[0];
+        origin[1] += z * A.pos[1];
+        origin[2] += z * A.pos[2];
+    }
+    if (zsum == 0.0)
+        throw std::invalid_argument(
+            "RHF::polarizability: total nuclear charge is zero — center of "
+            "nuclear charge is undefined");
+    origin[0] /= zsum;
+    origin[1] /= zsum;
+    origin[2] /= zsum;
+
+    const MultipoleIntegrals mi{pack.shells.data(),
+                                static_cast<int>(pack.shells.size()), origin};
+    const int nov = nv * no;
+    // B^a_ai = ⟨a|r_a|i⟩ = (C_vᵀ r_a C_o)_ai  [Bohr]; matches ExternalField
+    // ∂h/∂F_a (electron charge −1 a.u. → h += F · r).
+    xt::xtensor<double, 2> B = xt::zeros<double>({3, nov});
+    for (int axis = 0; axis < 3; ++axis) {
+        xt::xtensor<double, 2> D = mi.dipole(axis);
+        if (pack.spherical()) {
+            const auto& c2s = pack.c2s;
+            D = xt::linalg::dot(
+                xt::transpose(c2s),
+                xt::xtensor<double, 2>(xt::linalg::dot(D, c2s)));
+        }
+        const RealMatrix r_vo =
+            xt::linalg::dot(xt::transpose(Cv), xt::linalg::dot(D, Co));
+        for (int a = 0; a < nv; ++a)
+            for (int i = 0; i < no; ++i)
+                B(axis, a * no + i) = r_vo(a, i);
+    }
+
+    // Solve ¹(A+B) U^b = −B^b for b = x,y,z (dense — nov is tiny for the
+    // textbook cases that exercise this API; nuclear CPHF reuses CG for 3N).
+    const RealMatrix Aplus = oh.dense_plus(internal::Channel::singlet);
+    RealMatrix rhs = xt::zeros<double>({nov, 3});
+    for (int b = 0; b < 3; ++b)
+        for (int p = 0; p < nov; ++p)
+            rhs(p, b) = -B(b, p);
+    const RealMatrix U = xt::linalg::solve(Aplus, rhs);
+
+    // α_ab = −4 Σ_ai U^b_ai ⟨a|r_a|i⟩  [a.u.].
+    xt::xtensor<double, 2> alpha = xt::zeros<double>({3, 3});
+    for (int a = 0; a < 3; ++a)
+        for (int b = 0; b < 3; ++b) {
+            double acc = 0.0;
+            for (int p = 0; p < nov; ++p)
+                acc += U(p, b) * B(a, p);
+            alpha(a, b) = -4.0 * acc;
+        }
+    // Exact symmetry up to solver noise — enforce it.
+    for (int a = 0; a < 3; ++a)
+        for (int b = 0; b < a; ++b) {
+            const double s = 0.5 * (alpha(a, b) + alpha(b, a));
+            alpha(a, b) = s;
+            alpha(b, a) = s;
+        }
+    return alpha;
+}
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV
