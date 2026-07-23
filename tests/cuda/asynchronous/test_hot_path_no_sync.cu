@@ -122,11 +122,7 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
         .add(cuda::NeighborList{2.5}, -10)
         .add(cuda::PairLJCut{1.0, 1.0, 2.5});
     sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-    sim.set_integrator(cuda::md::NoseHooverNPT{{/*T_target=*/1.0,
-                                                /*tau_T=*/100.0,
-                                                /*P_target=*/0.0,
-                                                /*tau_P=*/1000.0,
-                                                /*dt=*/0.001}});
+    sim.set_integrator(cuda::md::NoseHooverNPT{1.0, 100.0, 0.0, 1000.0, 0.001});
     sim.add_ref(rec);
     sim.build();
 

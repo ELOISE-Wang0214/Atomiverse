@@ -96,14 +96,7 @@ int main() {
     {
         cpu::md::MD sim;
         install_ff(sim, md::Phase::force);
-        cpu::md::NoseHooverNPT::Config cfg;
-        cfg.T_target = 400.0;
-        cfg.T_stop = 500.0;
-        cfg.tau_T = 100.0;
-        cfg.P_target = 0.0;
-        cfg.tau_P = 1000.0;
-        cfg.dt = 1.0;
-        auto npt = cpu::md::NoseHooverNPT{cfg};
+        auto npt = cpu::md::NoseHooverNPT{400.0, 100.0, 0.0, 1000.0, 1.0, 0.0, 3, 3, {true, true, true}, 500.0};
         npt.set_run_span(0, 50);
         sim.set_integrator(std::move(npt));
         sim.build();

@@ -31,7 +31,7 @@ TEST(Remd, BuildsAndRunsExchangeRounds) {
     }
     f.simbox = cpu::Box::cubic(20.0);
 
-    cpu::path::Remd remd({{100.0, 200.0, 300.0, 400.0}, 1.0, 5, 42});
+    cpu::path::Remd remd({100.0, 200.0, 300.0, 400.0}, 1.0, 5, 42);
     remd.set_program_builder(&build_lj, nullptr);
     remd.run(f, /*n_exchanges=*/4);
     EXPECT_GT(remd.exchange_attempts(), 0);
@@ -42,6 +42,6 @@ TEST(Remd, BuildsAndRunsExchangeRounds) {
 }
 
 TEST(Remd, RejectsNonMonotoneTemperatures) {
-    EXPECT_THROW(cpu::path::Remd({{300.0, 200.0}, 1.0, 1, 1}),
+    EXPECT_THROW(cpu::path::Remd({300.0, 200.0}, 1.0, 1, 1),
                  std::invalid_argument);
 }

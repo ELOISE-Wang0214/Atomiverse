@@ -11,6 +11,7 @@
 #include "atomiverse/cpu/dynamics/pbc.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #ifdef _OPENMP
@@ -73,17 +74,19 @@ inline double expm1c(double x) {
 
 } // namespace
 
-NoseHooverNPT::NoseHooverNPT(Config cfg)
-    : T_target_(cfg.T_target),
+NoseHooverNPT::NoseHooverNPT(double T_target, double tau_T, double P_target,
+                             double tau_P, double dt, double drag, int mtchain,
+                             int mpchain, std::array<bool, 3> couple_axis,
+                             double T_stop)
+    : T_target_(T_target),
       // `T_stop` defaults to the -1 sentinel meaning "no ramp" — fold it
       // to `T_target` so `compute_temp_target` sees `T_start == T_stop`
       // and the linear interpolation degenerates to the constant
       // setpoint. This mirrors LAMMPS `fix_nh.cpp` ctor line
       // `t_target = t_start` when only one temperature is given.
-      T_stop_(cfg.T_stop < 0.0 ? cfg.T_target : cfg.T_stop), tau_T_(cfg.tau_T),
-      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt), drag_(cfg.drag),
-      mtchain_(cfg.mtchain), mpchain_(cfg.mpchain),
-      couple_axis_(cfg.couple_axis) {
+      T_stop_(T_stop < 0.0 ? T_target : T_stop), tau_T_(tau_T),
+      P_target_(P_target), tau_P_(tau_P), dt_(dt), drag_(drag),
+      mtchain_(mtchain), mpchain_(mpchain), couple_axis_(couple_axis) {
     // `pdim` = number of barostatted axes (LAMMPS `fix_nh.cpp`
     // `pdim = p_flag[0] + p_flag[1] + p_flag[2]`).
     pdim_ = (couple_axis_[0] ? 1 : 0) + (couple_axis_[1] ? 1 : 0)

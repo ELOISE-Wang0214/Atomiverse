@@ -31,31 +31,21 @@ cpu::Frame one_particle(double mass = 1.0) {
 } // namespace
 
 TEST(Pimd, RejectsSingleBead) {
-    cpu::path::PimdConfig cfg;
-    cfg.n_beads = 1;
-    EXPECT_THROW(cpu::path::Pimd{cfg}, std::invalid_argument);
+    EXPECT_THROW((cpu::path::Pimd{1, 300.0, 0.5, 10, 1, 0.0}),
+                 std::invalid_argument);
 }
 
 TEST(Pimd, SpringConstantPositive) {
-    cpu::path::PimdConfig cfg;
-    cfg.n_beads = 4;
-    cfg.temperature = 300.0;
-    cpu::path::Pimd pimd(cfg);
+        cpu::path::Pimd pimd(4, 300.0, 0.5, 10, 1, 0.0);
     auto f = one_particle(1.0);
     pimd.run(f, 1);
     EXPECT_GT(pimd.spring_constant(), 0.0);
-    EXPECT_EQ(pimd.n_beads(), 4);
+    EXPECT_EQ(pimd.n_beads, 4);
 }
 
 TEST(Pimd, FreeParticleCentroidFinite) {
-    cpu::path::PimdConfig cfg;
-    cfg.n_beads = 4;
-    cfg.temperature = 300.0;
-    cfg.dt = 0.25;
-    cfg.steps_per_block = 5;
-    cfg.seed = 11;
-    cfg.k_external = 0.0; // free particle
-    cpu::path::Pimd pimd(cfg);
+    cpu::path::Pimd pimd(/*n_beads*/ 4, /*T*/ 300.0, /*dt*/ 0.25,
+                         /*steps_per_block*/ 5, /*seed*/ 11, /*k_ext*/ 0.0);
     auto f = one_particle(1.0);
     pimd.run(f, 10);
     EXPECT_TRUE(std::isfinite(f.span(kAtom_x)[0]));
@@ -68,14 +58,8 @@ TEST(Pimd, HarmonicTrapRunsFinite) {
     // External trap is optional scaffolding; skeleton checks it does not
     // crash and leaves a finite centroid (NVE free-particle + trap without
     // thermostat is not a production thermostat path).
-    cpu::path::PimdConfig cfg;
-    cfg.n_beads = 4;
-    cfg.temperature = 50.0;
-    cfg.dt = 0.05;
-    cfg.steps_per_block = 5;
-    cfg.seed = 3;
-    cfg.k_external = 1.0; // eV/Å²
-    cpu::path::Pimd pimd(cfg);
+    cpu::path::Pimd pimd(/*n_beads*/ 4, /*T*/ 50.0, /*dt*/ 0.05,
+                         /*steps_per_block*/ 5, /*seed*/ 3, /*k_ext*/ 1.0);
     auto f = one_particle(1.0);
     pimd.run(f, 5);
     EXPECT_TRUE(std::isfinite(f.span(kAtom_x)[0]));
@@ -84,13 +68,7 @@ TEST(Pimd, HarmonicTrapRunsFinite) {
 }
 
 TEST(Pimd, BeadSpreadGrowsFromIdenticalStart) {
-    cpu::path::PimdConfig cfg;
-    cfg.n_beads = 8;
-    cfg.temperature = 300.0;
-    cfg.dt = 0.2;
-    cfg.steps_per_block = 10;
-    cfg.seed = 99;
-    cpu::path::Pimd pimd(cfg);
+        cpu::path::Pimd pimd(8, 300.0, 0.2, 10, 99, 0.0);
     auto f = one_particle(1.0);
     pimd.run(f, 5);
     // Thermal velocities + springs → finite polymer size.

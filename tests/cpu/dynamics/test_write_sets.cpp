@@ -20,18 +20,11 @@
 
 using namespace ATV;
 
-namespace {
-cpu::md::NoseHooverNPT::Config npt_cfg() {
-    return {/*T_target=*/300.0, /*tau_T=*/100.0, /*P_target=*/0.0,
-            /*tau_P=*/1000.0, /*dt=*/1.0};
-}
-} // namespace
-
 TEST(WriteSets, IntegratorsAreIntegratorKind) {
     static_assert(std::is_base_of_v<cpu::Integrator, cpu::md::VelocityVerlet>);
     cpu::md::VelocityVerlet vv{1.0};
     cpu::md::NVELimit nve{1.0, 0.1};
-    cpu::md::NoseHooverNPT npt{npt_cfg()};
+    cpu::md::NoseHooverNPT npt{300.0, 100.0, 0.0, 1000.0, 1.0};
     cpu::md::ParrinelloRahmanNPT pr{300.0, 0.0, 100.0, 1000.0, 1.0};
     cpu::md::NphIntegrator nph{0.0, 1000.0, 1.0};
     EXPECT_NE(dynamic_cast<const cpu::Integrator*>(&vv), nullptr);
@@ -50,7 +43,7 @@ TEST(WriteSets, ThermostatsAreThermostatKind) {
 }
 
 TEST(WriteSets, NPTRequiresSystemStress) {
-    cpu::md::NoseHooverNPT npt{npt_cfg()};
+    cpu::md::NoseHooverNPT npt{300.0, 100.0, 0.0, 1000.0, 1.0};
     EXPECT_TRUE(npt.requires_system_stress());
     cpu::md::ParrinelloRahmanNPT pr{300.0, 0.0, 100.0, 1000.0, 1.0};
     EXPECT_TRUE(pr.requires_system_stress());

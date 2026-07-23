@@ -119,11 +119,7 @@ int main() {
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T, /*seed=*/42u});
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = T,
-                                               .tau_T = tau_T,
-                                               .P_target = 0.0,
-                                               .tau_P = tau_P,
-                                               .dt = dt}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T, tau_T, 0.0, tau_P, dt});
     sim.add_potential(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
     sim.set_neighbor(cpu::md::NeighborList<>{neigh_cut, /*skin=*/0.5});
     sim.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});

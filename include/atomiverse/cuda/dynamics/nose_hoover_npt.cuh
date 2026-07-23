@@ -55,21 +55,12 @@ namespace md {
 ///        as `cpu::md::NoseHooverNPT`.
 class NoseHooverNPT : public cuda::Integrator {
   public:
-    /// @brief Configuration aggregate (mirror of `cpu::md::NoseHooverNPT::Config`).
-    struct Config {
-        double T_target;   ///< Target temperature [K].
-        double tau_T;      ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
-        double P_target;   ///< Target pressure [eV/Å³] (LAMMPS sign, +).
-        double tau_P;      ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
-        double dt;         ///< Timestep [fs].
-        double drag = 0.0; ///< Empirical NHC drag (LAMMPS `drag`).
-        int mtchain = 3;   ///< Atom-NHC chain length.
-        int mpchain = 3;   ///< Baro-NHC chain length.
-        std::array<bool, 3> couple_axis = {true, true, true};
-        double T_stop = -1.0; ///< Ramp end T [K]; <0 folds to T_target.
-    };
+    /// @brief Construct MTK NPT (mirror of cpu::md::NoseHooverNPT; no Config bag).
+    NoseHooverNPT(double T_target, double tau_T, double P_target, double tau_P,
+                  double dt, double drag = 0.0, int mtchain = 3, int mpchain = 3,
+                  std::array<bool, 3> couple_axis = {true, true, true},
+                  double T_stop = -1.0);
 
-    explicit NoseHooverNPT(Config cfg);
 
     /// @brief Set the temperature-ramp run span `[nfirst, nlast]`.
     /// @return `*this`, chainable.

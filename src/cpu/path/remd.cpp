@@ -13,20 +13,22 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-Remd::Remd(RemdConfig cfg) : cfg_(std::move(cfg)) {
-    if (cfg_.temperatures.size() < 2)
+Remd::Remd(std::vector<double> temperatures_, double dt_, int steps_per_exchange_, std::uint64_t seed_)
+    : temperatures(std::move(temperatures_)), dt(dt_),
+      steps_per_exchange(steps_per_exchange_), seed(seed_) {
+    if (temperatures.size() < 2)
         throw std::invalid_argument("Remd: need ≥ 2 temperatures");
-    for (std::size_t i = 1; i < cfg_.temperatures.size(); ++i) {
-        if (!(cfg_.temperatures[i] > cfg_.temperatures[i - 1]))
+    for (std::size_t i = 1; i < temperatures.size(); ++i) {
+        if (!(temperatures[i] > temperatures[i - 1]))
             throw std::invalid_argument(
                 "Remd: temperatures must be strictly increasing");
-        if (!(cfg_.temperatures[i] > 0.0) || !(cfg_.temperatures[i - 1] > 0.0))
+        if (!(temperatures[i] > 0.0) || !(temperatures[i - 1] > 0.0))
             throw std::invalid_argument("Remd: temperatures must be positive");
     }
-    if (cfg_.steps_per_exchange < 1)
+    if (steps_per_exchange < 1)
         throw std::invalid_argument("Remd: steps_per_exchange must be ≥ 1");
-    expansion_ = std::make_unique<IdentityReplication>(cfg_.temperatures);
-    exchange_rng_.seed(cfg_.seed);
+    expansion_ = std::make_unique<IdentityReplication>(temperatures);
+    exchange_rng_.seed(seed);
 }
 
 void Remd::set_program_builder(ProgramBuilder builder, void* user) {
@@ -46,12 +48,12 @@ void Remd::ensure_built_(cpu::Frame& frame) {
     programs_.reserve(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         auto md = std::make_unique<cpu::md::MD>();
-        md->set_integrator(cpu::md::VelocityVerlet{cfg_.dt});
+        md->set_integrator(cpu::md::VelocityVerlet{dt});
         // Independent InitVelocity stream per replica (seed ^ (i+1)).
         md->add(cpu::md::InitVelocity{
-            cfg_.temperatures[static_cast<std::size_t>(i)],
-            static_cast<unsigned>(cfg_.seed ^ (i + 1u))});
-        builder_(*md, cfg_.temperatures[static_cast<std::size_t>(i)],
+            temperatures[static_cast<std::size_t>(i)],
+            static_cast<unsigned>(seed ^ (i + 1u))});
+        builder_(*md, temperatures[static_cast<std::size_t>(i)],
                  builder_user_);
         md->enable_timing(false);
         md->build();
@@ -64,7 +66,7 @@ void Remd::propagate_() {
     const int n = band_->size();
     for (int i = 0; i < n; ++i)
         programs_[static_cast<std::size_t>(i)]->run(band_->frame(i),
-                                                    cfg_.steps_per_exchange);
+                                                    steps_per_exchange);
 }
 
 void Remd::exchange_round_(bool even_edges) {
@@ -76,8 +78,8 @@ void Remd::exchange_round_(bool even_edges) {
         auto& fj = band_->frame(i + 1);
         const double Ui = fi.meta.get(kEnergy);
         const double Uj = fj.meta.get(kEnergy);
-        const double Ti = cfg_.temperatures[static_cast<std::size_t>(i)];
-        const double Tj = cfg_.temperatures[static_cast<std::size_t>(i + 1)];
+        const double Ti = temperatures[static_cast<std::size_t>(i)];
+        const double Tj = temperatures[static_cast<std::size_t>(i + 1)];
         const double beta_i = 1.0 / (units::kB_ev_per_k * Ti);
         const double beta_j = 1.0 / (units::kB_ev_per_k * Tj);
         const double dbeta = beta_i - beta_j;

@@ -602,8 +602,7 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/777});
-    sim.add(
-        cpu::md::NoseHooverNPT{{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt}});
+    sim.add(cpu::md::NoseHooverNPT{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kCutoff}, -10);
     sim.on(ATV::md::Phase::force)
         .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});

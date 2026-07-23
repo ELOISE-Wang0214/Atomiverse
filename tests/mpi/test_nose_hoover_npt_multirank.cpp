@@ -99,12 +99,7 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     const double tau_P = 1000.0;
 
     cpu::md::MD sim;
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = T_target,
-                                               .tau_T = tau_T,
-                                               .P_target = 0.0,
-                                               .tau_P = tau_P,
-                                               .dt = dt,
-                                               .drag = 2.0}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T_target, tau_T, 0.0, tau_P, dt, 2.0});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
     sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
@@ -246,12 +241,7 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
     const double T_target = 300.0;
 
     cpu::md::MD sim;
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = T_target,
-                                               .tau_T = 100.0,
-                                               .P_target = 0.0,
-                                               .tau_P = 1000.0,
-                                               .dt = dt,
-                                               .drag = 2.0}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T_target, 100.0, 0.0, 1000.0, dt, 2.0});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
     sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(
@@ -317,12 +307,7 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
     const double T_target = 300.0;
 
     cpu::md::MD sim;
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = T_target,
-                                               .tau_T = 100.0,
-                                               .P_target = 0.0,
-                                               .tau_P = 1000.0,
-                                               .dt = dt,
-                                               .drag = 2.0}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T_target, 100.0, 0.0, 1000.0, dt, 2.0});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/42});
     sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
     sim.add_potential(cpu::PairLJCut{lj_eps, lj_sig, lj_cut}.set_special_bonds(

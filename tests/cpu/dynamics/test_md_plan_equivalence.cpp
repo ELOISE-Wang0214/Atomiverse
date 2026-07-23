@@ -103,11 +103,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     cpu::md::MD via_setters;
     via_setters.add_potential(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
-    via_setters.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 300.0,
-                                                       .tau_T = 100.0,
-                                                       .P_target = 0.0,
-                                                       .tau_P = 1000.0,
-                                                       .dt = kDt}});
+    via_setters.set_integrator(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
     via_setters.build();
 
     // The raw path adds Virial explicitly — what existing
@@ -124,11 +120,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     via_raw2.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     via_raw2.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw2.add(cpu::md::NoseHooverNPT{{.T_target = 300.0,
-                                         .tau_T = 100.0,
-                                         .P_target = 0.0,
-                                         .tau_P = 1000.0,
-                                         .dt = kDt}});
+    via_raw2.add(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
     via_raw2.add(cpu::md::Virial{}); // explicit — what existing NPT tests do
     via_raw2.build();
 

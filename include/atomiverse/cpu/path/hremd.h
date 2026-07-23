@@ -16,32 +16,38 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-/// @brief Configuration for Hamiltonian REMD (fixed temperature, λ ladder).
-struct HRemdConfig {
-    std::vector<double> lambdas; ///< Distinct λ values, size ≥ 2.
-    double temperature = 300.0;  ///< Fixed T [K] for all replicas.
-    double dt = 1.0;             ///< Nested MD timestep [fs].
-    int steps_per_exchange = 10; ///< Nested MD steps between exchange rounds.
-    std::uint64_t seed = 1;      ///< Master seed.
-};
-
 /// @brief Hamiltonian REMD: outer exchange loop + per-replica MD programs.
 ///
 /// Exchange uses the fixed-T Hamiltonian criterion with dual energy
 /// evaluation U_i(x_j), U_j(x_i) on adjacent λ pairs. Sibling of `Remd`
-/// (temperature ladder); does not replace it.
+/// (temperature ladder); does not replace it. No `HRemdConfig` bag.
 class HRemd {
   public:
-    explicit HRemd(HRemdConfig cfg);
+    /// @brief Distinct λ values, size ≥ 2.
+    std::vector<double> lambdas;
+    /// @brief Fixed T [K] for all replicas.
+    double temperature = 300.0;
+    /// @brief Nested MD timestep [fs].
+    double dt = 1.0;
+    /// @brief Nested MD steps between exchange rounds.
+    int steps_per_exchange = 10;
+    /// @brief Master seed.
+    std::uint64_t seed = 1;
+
+    /// @param lambdas Distinct λ values, size ≥ 2.
+    /// @param temperature Fixed T [K] (> 0).
+    /// @param dt Nested MD timestep [fs].
+    /// @param steps_per_exchange Nested MD steps between exchanges (≥ 1).
+    /// @param seed Master RNG seed.
+    explicit HRemd(std::vector<double> lambdas, double temperature = 300.0,
+                   double dt = 1.0, int steps_per_exchange = 10,
+                   std::uint64_t seed = 1);
 
     /// @brief Program builder: register forces for one λ (e.g. PairLJSoft).
     using ProgramBuilder = void (*)(cpu::md::MD& md, double lambda, void* user);
     void set_program_builder(ProgramBuilder builder, void* user = nullptr);
 
     /// @brief Optional energy evaluator for dual U(λ) on a foreign frame.
-    /// If unset, uses each program's last `kEnergy` only (same-λ energies —
-    /// valid only when soft potentials expose λ on a shared component).
-    /// Preferred: call `set_energy_fn` to compute U at arbitrary λ.
     using EnergyFn = double (*)(const cpu::Frame& frame, double lambda,
                                 void* user);
     void set_energy_fn(EnergyFn fn, void* user = nullptr);
@@ -57,7 +63,6 @@ class HRemd {
     void exchange_round_(bool even_edges);
     double energy_at_(const cpu::Frame& frame, double lambda);
 
-    HRemdConfig cfg_;
     ProgramBuilder builder_ = nullptr;
     void* builder_user_ = nullptr;
     EnergyFn energy_fn_ = nullptr;

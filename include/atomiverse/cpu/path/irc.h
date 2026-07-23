@@ -1,8 +1,5 @@
 /// @file cpu/path/irc.h
 /// @brief Intrinsic reaction coordinate (Fukui) skeleton — CPU.
-///
-/// Mass-weighted steepest descent from a saddle in both directions.
-/// Ref: Fukui, Acc. Chem. Res. 14, 363 (1981).
 #pragma once
 
 #include <functional>
@@ -14,27 +11,29 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-/// @brief IRC configuration.
-struct IrcConfig {
-    double step = 0.01;     ///< SD step [coord units].
-    int max_steps = 500;    ///< Max steps per branch.
-    double f_tol = 1e-3;    ///< Stop when |F| < f_tol.
-    double kick = 0.05;     ///< Initial displacement along mode [coord].
-};
-
 /// @brief Fukui IRC from a first-order saddle (1-particle / few-atom Frames).
+/// No `IrcConfig` bag.
 class Irc {
   public:
-    explicit Irc(IrcConfig cfg = {});
+    /// @brief SD step [coord units].
+    double step = 0.01;
+    /// @brief Max steps per branch.
+    int max_steps = 500;
+    /// @brief Stop when |F| < f_tol.
+    double f_tol = 1e-3;
+    /// @brief Initial displacement along mode [coord].
+    double kick = 0.05;
+
+    /// @param step SD step [coord units].
+    /// @param max_steps Max steps per branch.
+    /// @param f_tol Force magnitude stop threshold.
+    /// @param kick Initial displacement along mode [coord].
+    explicit Irc(double step = 0.01, int max_steps = 500, double f_tol = 1e-3,
+                 double kick = 0.05);
 
     using ForceFn = std::function<void(cpu::Frame&)>;
     void set_force_fn(ForceFn fn);
     void use_muller_brown();
-
-    /// @brief Run both branches from `saddle`; fills forward/backward paths.
-    /// @param saddle Starting geometry (near first-order saddle).
-    /// @param mode_x Optional initial mode x-component (unit free); if 0, use F.
-    /// @param mode_y Optional initial mode y-component.
     void run(const cpu::Frame& saddle, double mode_x = 0.0,
              double mode_y = 1.0);
 
@@ -46,7 +45,6 @@ class Irc {
   private:
     void branch_(cpu::Frame f, double mx, double my, bool forward);
 
-    IrcConfig cfg_;
     ForceFn force_;
     std::vector<double> path_E_fwd_, path_E_bwd_;
     double E_fwd_ = 0, E_bwd_ = 0;

@@ -98,10 +98,10 @@ namespace md {
 ///
 /// ── Per-parameter audit (`lammps-api-align-04`) ──────────────────────
 ///
-/// Every `Config` field maps to a `fix npt` keyword. Audit verdict —
+/// Every constructor parameter maps to a `fix npt` keyword. Audit verdict —
 /// each row checked against `src/fix_nh.cpp` (branch `stable`):
 ///
-///   | `Config` field   | LAMMPS `fix npt` keyword            | Verdict |
+///   | Parameter        | LAMMPS `fix npt` keyword            | Verdict |
 ///   |------------------|-------------------------------------|---------|
 ///   | `T_target`       | `temp Tstart ...` (ramp start)      | aligned |
 ///   | `T_stop`         | `temp ... Tstop ...` (ramp end)     | aligned |
@@ -122,7 +122,7 @@ namespace md {
 ///
 /// ── Anisotropic per-axis barostat (msu-pe-align-01) ──────────────────
 ///
-/// `Config::couple_axis` (`std::array<bool,3>`, default `{true,true,true}`)
+/// `couple_axis` (`std::array<bool,3>`, default `{true,true,true}`)
 /// selects which of x, y, z are barostatted. The barostat momentum is a
 /// per-axis vector `ε̇_α` (member `eps_dot_`), mirroring LAMMPS's per-axis
 /// `omega_dot[]` and `p_flag[]`. For each active axis α the driving force
@@ -140,7 +140,7 @@ namespace md {
 ///
 /// ── Continuous temperature ramp (msu-pe-align-01) ────────────────────
 ///
-/// `Config::T_stop` (default `= T_target`) enables a linear thermostat
+/// `T_stop` (default folds to `T_target` when < 0) enables a linear thermostat
 /// setpoint ramp. With the run span `[nfirst, nlast]` supplied via
 /// `set_run_span()` (mirrors LAMMPS capturing `update->beginstep` /
 /// `endstep` at run setup), the live setpoint each step is
@@ -158,48 +158,21 @@ namespace md {
 /// output bound at `end_of_step @ > -40` reads the post-NPT value.
 class NoseHooverNPT : public cpu::Integrator {
   public:
-    /// @brief All NPT parameters, grouped so each field is named at the
-    /// call site and the order of `tau_T` vs `tau_P` can't be swapped
-    /// silently. Built as an aggregate (no defaulted fields) so the
-    /// compiler flags any omission via `-Wmissing-field-initializers`.
-    struct Config {
-        double T_target;   ///< Target temperature [K].
-        double tau_T;      ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
-        double P_target;   ///< Target pressure [eV/Å³], LAMMPS-standard
-                           ///  sign (`+trace(σ)/(3V)`, positive ⇔
-                           ///  compressive) — same convention as LAMMPS
-                           ///  `fix npt iso`. 1 bar = 6.2415e-7 eV/Å³.
-        double tau_P;      ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
-        double dt;         ///< Timestep [fs].
-        double drag = 0.0; ///< LAMMPS-style empirical drag on the
-                           ///  innermost thermostat and barostat NHC
-                           ///  momenta (applied at each chain update as
-                           ///  `eta_dot[0] *= 1 - drag*half_dt/tau`).
-                           ///  Zero disables. `fix npt ... drag 2`.
-        int mtchain = 3;   ///< Atom-NHC chain length. LAMMPS default 3.
-        int mpchain = 3;   ///< Baro-NHC chain length. LAMMPS default 3.
-
-        /// @brief Per-axis barostat enable flags `{x, y, z}`.
-        ///
-        /// `true` ⇒ that box edge is barostatted toward `P_target`;
-        /// `false` ⇒ that edge is held rigid (its `ε̇_α` stays 0 and it
-        /// is never rescaled). Default `{true,true,true}` = the isotropic
-        /// LAMMPS `fix npt iso` behaviour. Mirrors LAMMPS `p_flag[0..2]`.
-        std::array<bool, 3> couple_axis = {true, true, true};
-
-        /// @brief Final thermostat setpoint of the temperature ramp [K].
-        ///
-        /// `T_target` is treated as `T_start`. If `T_stop != T_target`,
-        /// the live setpoint sweeps linearly from `T_target` to `T_stop`
-        /// across the run span set by `set_run_span()`. Default
-        /// `T_stop == T_target` ⇒ a constant-temperature run (no ramp),
-        /// so existing aggregate-initialised callers are unaffected.
-        /// Mirrors LAMMPS `fix npt temp T_start T_stop tau`.
-        double T_stop = -1.0; ///< -1 sentinel: ctor folds to `T_target`.
-    };
-
-    /// @param cfg Aggregate NPT configuration. See `Config` for units.
-    explicit NoseHooverNPT(Config cfg);
+    /// @brief Construct MTK NPT integrator (parameters assigned immediately).
+    /// @param T_target Target temperature [K] (also ramp start).
+    /// @param tau_T Thermostat coupling time [fs] (LAMMPS Tdamp).
+    /// @param P_target Target pressure [eV/Å³] (LAMMPS sign, positive compressive).
+    /// @param tau_P Barostat coupling time [fs] (LAMMPS Pdamp).
+    /// @param dt Timestep [fs].
+    /// @param drag Empirical NHC drag (LAMMPS drag); 0 disables.
+    /// @param mtchain Atom-NHC chain length (default 3).
+    /// @param mpchain Baro-NHC chain length (default 3).
+    /// @param couple_axis Per-axis barostat enable {x,y,z}.
+    /// @param T_stop Ramp end T [K]; <0 folds to T_target (no ramp).
+    NoseHooverNPT(double T_target, double tau_T, double P_target, double tau_P,
+                  double dt, double drag = 0.0, int mtchain = 3, int mpchain = 3,
+                  std::array<bool, 3> couple_axis = {true, true, true},
+                  double T_stop = -1.0);
 
     /// @brief Set the temperature-ramp run span `[nfirst, nlast]` (in MD
     ///        step indices), mirroring LAMMPS `update->beginstep` /

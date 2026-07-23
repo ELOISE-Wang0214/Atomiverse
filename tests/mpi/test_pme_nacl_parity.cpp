@@ -196,11 +196,7 @@ TEST(PmeNaclParity, ShortNptConservedAndCellOn1And2Ranks) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T, /*seed=*/42u});
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = T,
-                                               .tau_T = 50.0,
-                                               .P_target = 0.0,
-                                               .tau_P = 500.0,
-                                               .dt = dt}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{T, 50.0, 0.0, 500.0, dt});
     sim.add_potential(cpu::PairLJCut{lj_eps, lj_sigma, lj_cut});
     sim.set_neighbor(cpu::md::NeighborList<>{neigh_cut, /*skin=*/0.5});
     sim.on(md::Phase::force).add(cpu::CoulLong{kAlpha, kCutoff});

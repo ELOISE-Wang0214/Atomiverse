@@ -100,8 +100,8 @@ std::vector<double> to_std_vector(const ::rust::Vec<double>& values) {
 
 } // namespace
 
-AM1BCCChargeAssigner::AM1BCCChargeAssigner(AM1BCCChargeConfig config)
-    : config_(std::move(config)), solver_(std::move(config_.am1)) {}
+AM1BCCChargeAssigner::AM1BCCChargeAssigner(AM1 am1, std::string parameter_set)
+    : solver_(std::move(am1)), parameter_set_(std::move(parameter_set)) {}
 
 std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
     cpu::Frame work = build_am1_frame(frame);
@@ -117,7 +117,7 @@ std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
         frame,
         ::rust::Slice<const double>(am1.mulliken_charges.data(),
                                     am1.mulliken_charges.size()),
-        {config_.parameter_set.data(), config_.parameter_set.size()});
+        {parameter_set_.data(), parameter_set_.size()});
     last_charges_ = to_std_vector(bcc);
     return last_charges_;
 }

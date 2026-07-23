@@ -13,19 +13,22 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-HRemd::HRemd(HRemdConfig cfg) : cfg_(std::move(cfg)) {
-    if (cfg_.lambdas.size() < 2)
+HRemd::HRemd(std::vector<double> lambdas_, double temperature_, double dt_,
+             int steps_per_exchange_, std::uint64_t seed_)
+    : lambdas(std::move(lambdas_)), temperature(temperature_), dt(dt_),
+      steps_per_exchange(steps_per_exchange_), seed(seed_) {
+    if (lambdas.size() < 2)
         throw std::invalid_argument("HRemd: need ≥ 2 lambdas");
-    for (std::size_t i = 1; i < cfg_.lambdas.size(); ++i) {
-        if (cfg_.lambdas[i] == cfg_.lambdas[i - 1])
+    for (std::size_t i = 1; i < lambdas.size(); ++i) {
+        if (lambdas[i] == lambdas[i - 1])
             throw std::invalid_argument("HRemd: lambdas must be distinct");
     }
-    if (!(cfg_.temperature > 0.0))
+    if (!(temperature > 0.0))
         throw std::invalid_argument("HRemd: temperature must be > 0");
-    if (cfg_.steps_per_exchange < 1)
+    if (steps_per_exchange < 1)
         throw std::invalid_argument("HRemd: steps_per_exchange must be ≥ 1");
-    expansion_ = std::make_unique<IdentityReplication>(cfg_.lambdas);
-    exchange_rng_.seed(cfg_.seed);
+    expansion_ = std::make_unique<IdentityReplication>(lambdas);
+    exchange_rng_.seed(seed);
 }
 
 void HRemd::set_program_builder(ProgramBuilder builder, void* user) {
@@ -53,11 +56,11 @@ void HRemd::ensure_built_(cpu::Frame& frame) {
     programs_.reserve(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         auto md = std::make_unique<cpu::md::MD>();
-        md->set_integrator(cpu::md::VelocityVerlet{cfg_.dt});
+        md->set_integrator(cpu::md::VelocityVerlet{dt});
         md->add(cpu::md::InitVelocity{
-            cfg_.temperature,
-            static_cast<unsigned>(cfg_.seed ^ (i + 1u))});
-        builder_(*md, cfg_.lambdas[static_cast<std::size_t>(i)],
+            temperature,
+            static_cast<unsigned>(seed ^ (i + 1u))});
+        builder_(*md, lambdas[static_cast<std::size_t>(i)],
                  builder_user_);
         md->enable_timing(false);
         md->build();
@@ -70,7 +73,7 @@ void HRemd::propagate_() {
     const int n = band_->size();
     for (int i = 0; i < n; ++i)
         programs_[static_cast<std::size_t>(i)]->run(band_->frame(i),
-                                                    cfg_.steps_per_exchange);
+                                                    steps_per_exchange);
 }
 
 double HRemd::energy_at_(const cpu::Frame& frame, double lambda) {
@@ -80,13 +83,13 @@ double HRemd::energy_at_(const cpu::Frame& frame, double lambda) {
 void HRemd::exchange_round_(bool even_edges) {
     const int n = band_->size();
     std::uniform_real_distribution<double> u01(0.0, 1.0);
-    const double beta = 1.0 / (units::kB_ev_per_k * cfg_.temperature);
+    const double beta = 1.0 / (units::kB_ev_per_k * temperature);
     for (int i = even_edges ? 0 : 1; i + 1 < n; i += 2) {
         ++attempts_;
         auto& fi = band_->frame(i);
         auto& fj = band_->frame(i + 1);
-        const double li = cfg_.lambdas[static_cast<std::size_t>(i)];
-        const double lj = cfg_.lambdas[static_cast<std::size_t>(i + 1)];
+        const double li = lambdas[static_cast<std::size_t>(i)];
+        const double lj = lambdas[static_cast<std::size_t>(i + 1)];
         // Dual evaluation: Δ = [U_i(x_j)+U_j(x_i)] − [U_i(x_i)+U_j(x_j)]
         const double Ui_xi = energy_at_(fi, li);
         const double Uj_xj = energy_at_(fj, lj);

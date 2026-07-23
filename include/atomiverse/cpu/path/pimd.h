@@ -30,53 +30,45 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-/// @brief Configuration for one PIMD ring polymer.
-struct PimdConfig {
-    int n_beads = 4;             ///< Trotter number P (≥ 2).
-    double temperature = 300.0;  ///< Physical temperature [K] (> 0).
-    double dt = 0.5;             ///< Nested MD timestep [fs] (> 0).
-    int steps_per_block = 10;    ///< MD steps between outer bookkeeping.
-    std::uint64_t seed = 1;      ///< InitVelocity seeds.
-    /// @brief Optional external harmonic trap k |r|²/2 [eV/Å²]; 0 = free particle.
-    double k_external = 0.0;
-};
-
 /// @brief Ring-polymer MD preset over IdentityReplication (bead indices).
 ///
 /// Not a new Driver category — owns N `MD` programs + `ReplicaSet`, like Remd.
+/// No `PimdConfig` bag — parameters are constructor args / public members.
 class Pimd {
   public:
-    explicit Pimd(PimdConfig cfg);
+    /// @brief Trotter number P (≥ 2).
+    int n_beads = 4;
+    /// @brief Physical temperature [K] (> 0).
+    double temperature = 300.0;
+    /// @brief Nested MD timestep [fs] (> 0).
+    double dt = 0.5;
+    /// @brief MD steps between outer bookkeeping.
+    int steps_per_block = 10;
+    /// @brief InitVelocity seeds.
+    std::uint64_t seed = 1;
+    /// @brief Optional external harmonic trap k |r|²/2 [eV/Å²]; 0 = free particle.
+    double k_external = 0.0;
 
-    /// @brief Install physical force program (called once per bead at setup).
-    /// @param md Nested MD for this bead (integrator already set).
-    /// @param bead_index Bead index in [0, P).
-    /// @param user Opaque user pointer.
+    /// @param n_beads Trotter number P (≥ 2).
+    /// @param temperature Physical T [K] (> 0).
+    /// @param dt Nested MD timestep [fs] (> 0).
+    /// @param steps_per_block MD steps between outer blocks.
+    /// @param seed InitVelocity seed.
+    /// @param k_external External trap [eV/Å²]; 0 = free particle.
+    explicit Pimd(int n_beads = 4, double temperature = 300.0, double dt = 0.5,
+                  int steps_per_block = 10, std::uint64_t seed = 1,
+                  double k_external = 0.0);
+
     using ProgramBuilder = void (*)(cpu::md::MD& md, int bead_index, void* user);
     void set_program_builder(ProgramBuilder builder, void* user = nullptr);
 
     /// @brief Expand, build P MD programs, run `n_blocks` blocks, collapse centroid.
-    /// @param frame Input geometry (copied to every bead); overwritten with centroid.
-    /// @param n_blocks Number of outer blocks (≥ 1).
     void run(cpu::Frame& frame, int n_blocks);
 
-    /// @brief Number of beads P.
-    int n_beads() const { return cfg_.n_beads; }
-
-    /// @brief Spring constant k used for the ring [eV/Å²].
+    int n_beads_count() const { return n_beads; }
     double spring_constant() const { return k_spring_; }
-
-    /// @brief Mean squared bead–centroid displacement after last run [Å²]
-    ///        (diagnostic; free particle should grow then stabilize vs springs).
     double mean_bead_spread() const { return mean_spread_; }
-
-    /// @brief Instantaneous ring-polymer radius of gyration squared [Å²]
-    ///        after last run: R_g² = (1/P) Σ_b |r_b − r_c|² (3D).
     double radius_of_gyration_sq() const { return rg2_; }
-
-    /// @brief Analytic free-particle ⟨R_g²⟩ [Å²] for the current (T, P, m):
-    ///        ⟨R_g²⟩ = (ℏ² β² /(4 m_eff)) (1 − 1/P²) with m_eff from
-    ///        mass_v2_to_energy (3D free polymer; Tuckerman / Chandler–Wolynes).
     double free_particle_rg2_analytic() const;
 
   private:
@@ -86,13 +78,10 @@ class Pimd {
     static double compute_k_spring_(double temperature_K, int n_beads,
                                     double mass_amu);
 
-    PimdConfig cfg_;
     ProgramBuilder builder_ = nullptr;
     void* builder_user_ = nullptr;
     std::unique_ptr<IdentityReplication> expansion_;
     std::unique_ptr<ReplicaSet> band_;
-    // springs_ must outlive programs_ (add_ref borrow) — declared first so
-    // it is destroyed last.
     std::vector<std::unique_ptr<RingPolymerSpring>> springs_;
     std::vector<std::unique_ptr<cpu::md::MD>> programs_;
     double k_spring_ = 0;

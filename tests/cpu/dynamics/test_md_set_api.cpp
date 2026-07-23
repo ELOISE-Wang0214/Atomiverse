@@ -127,11 +127,7 @@ std::string build_error(ATV::cpu::md::MD& sim) {
 // ─── Component-level overrides ──────────────────────────────────────
 
 TEST(MDSetApi, NPTRequiresSystemStress) {
-    ATV::cpu::md::NoseHooverNPT npt({.T_target = kT,
-                                     .tau_T = 100.0,
-                                     .P_target = kP,
-                                     .tau_P = 1000.0,
-                                     .dt = kDt});
+    ATV::cpu::md::NoseHooverNPT npt{kT, 100.0, kP, 1000.0, kDt};
     EXPECT_TRUE(npt.requires_system_stress());
 }
 
@@ -155,11 +151,7 @@ TEST(MDSetApi, LJIsNeighborConsumerReportingCtorCutoff) {
 
 TEST(MDSetApi, NPTIsNotANeighborConsumer) {
     // NPT is not a pair evaluator — as_neighbor_consumer() defaults null.
-    ATV::cpu::md::NoseHooverNPT npt({.T_target = kT,
-                                     .tau_T = 100.0,
-                                     .P_target = kP,
-                                     .tau_P = 1000.0,
-                                     .dt = kDt});
+    ATV::cpu::md::NoseHooverNPT npt{kT, 100.0, kP, 1000.0, kDt};
     EXPECT_EQ(npt.as_neighbor_consumer(), nullptr);
 }
 
@@ -320,11 +312,7 @@ TEST(MDSetApi, SetIntegratorRejectsDifferentTypeAfterFirst) {
     ATV::cpu::md::MD sim;
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
     EXPECT_THROW(
-        sim.set_integrator(ATV::cpu::md::NoseHooverNPT{{.T_target = kT,
-                                                        .tau_T = 100.0,
-                                                        .P_target = kP,
-                                                        .tau_P = 1000.0,
-                                                        .dt = kDt}}),
+        sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt}),
         std::invalid_argument);
 }
 
@@ -334,11 +322,7 @@ TEST(MDSetApi, NPTAutoInjectsVirialStress) {
     IntrospectMD sim;
     sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
-    sim.set_integrator(ATV::cpu::md::NoseHooverNPT{{.T_target = kT,
-                                                    .tau_T = 100.0,
-                                                    .P_target = kP,
-                                                    .tau_P = 1000.0,
-                                                    .dt = kDt}});
+    sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt});
     EXPECT_NO_THROW(sim.build());
     EXPECT_EQ(sim.name_counts["virial"], 1)
         << "NPT::reads()==Stress → install_infra must add Virial once";
@@ -348,11 +332,7 @@ TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
     IntrospectMD sim;
     sim.add_potential(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
-    sim.set_integrator(ATV::cpu::md::NoseHooverNPT{{.T_target = kT,
-                                                    .tau_T = 100.0,
-                                                    .P_target = kP,
-                                                    .tau_P = 1000.0,
-                                                    .dt = kDt}});
+    sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt});
     sim.set_observer(ATV::cpu::md::Virial{});
     EXPECT_NO_THROW(sim.build());
     EXPECT_EQ(sim.name_counts["virial"], 1)

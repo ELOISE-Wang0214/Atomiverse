@@ -412,11 +412,7 @@ TEST(LongRangePlanContract, NptAcceptsPmeWithReciprocalStress) {
     constexpr double alpha = 0.3;
     constexpr double cutoff = 8.0;
     cpu::md::MD sim;
-    sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 300.0,
-                                               .tau_T = 100.0,
-                                               .P_target = 0.0,
-                                               .tau_P = 1000.0,
-                                               .dt = 1.0}});
+    sim.set_integrator(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, 1.0});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.3});
     sim.on(md::Phase::force).add(cpu::CoulLong{alpha, cutoff});
     sim.add(cpu::KSpacePME{alpha, 1.0, 6});

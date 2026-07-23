@@ -40,8 +40,9 @@ void muller_brown_force(cpu::Frame& f) {
 
 } // namespace
 
-Irc::Irc(IrcConfig cfg) : cfg_(cfg) {
-    if (!(cfg_.step > 0.0))
+Irc::Irc(double step_, int max_steps_, double f_tol_, double kick_)
+    : step(step_), max_steps(max_steps_), f_tol(f_tol_), kick(kick_) {
+    if (!(step > 0.0))
         throw std::invalid_argument("Irc: step > 0");
 }
 
@@ -55,23 +56,23 @@ void Irc::branch_(cpu::Frame f, double mx, double my, bool forward) {
     const double sign = forward ? 1.0 : -1.0;
     const double nrm = std::hypot(mx, my);
     if (nrm > 0) {
-        f.span(kAtom_x)[0] += sign * cfg_.kick * mx / nrm;
-        f.span(kAtom_y)[0] += sign * cfg_.kick * my / nrm;
+        f.span(kAtom_x)[0] += sign * kick * mx / nrm;
+        f.span(kAtom_y)[0] += sign * kick * my / nrm;
     }
     force_(f);
     path.push_back(f.meta.get(kEnergy));
 
-    for (int s = 0; s < cfg_.max_steps; ++s) {
+    for (int s = 0; s < max_steps; ++s) {
         const double fx = f.span(kAtom_fx)[0];
         const double fy = f.span(kAtom_fy)[0];
         const double fz = f.span(kAtom_fz)[0];
         const double fn = std::sqrt(fx * fx + fy * fy + fz * fz);
-        if (fn < cfg_.f_tol)
+        if (fn < f_tol)
             break;
         // Mass-weighted SD with m=1: x += step * F/|F|
-        f.span(kAtom_x)[0] += cfg_.step * fx / fn;
-        f.span(kAtom_y)[0] += cfg_.step * fy / fn;
-        f.span(kAtom_z)[0] += cfg_.step * fz / fn;
+        f.span(kAtom_x)[0] += step * fx / fn;
+        f.span(kAtom_y)[0] += step * fy / fn;
+        f.span(kAtom_z)[0] += step * fz / fn;
         force_(f);
         const double E = f.meta.get(kEnergy);
         // Allow tiny numerical rises near flat regions; record always.

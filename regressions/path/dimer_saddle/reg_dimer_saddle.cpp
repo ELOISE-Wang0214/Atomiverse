@@ -24,14 +24,8 @@ int main() {
     f.span(kAtom_tag)[0] = 1;
     f.simbox = cpu::Box::cubic(20.0);
 
-    cpu::path::DimerConfig cfg;
-    cfg.delta = 0.01;
-    cfg.dR = 0.03;
-    cfg.max_rotations = 12;
-    cfg.f_tol = 0.02;
-    cfg.seed = 42;
-
-    cpu::path::Dimer dimer(cfg);
+    
+    cpu::path::Dimer dimer(0.01, 0.03, 12, 1e-3, 0.02, 42);
     dimer.use_inverted_harmonic(1.0, 1.0);
     const int steps = dimer.run(f, 300);
 

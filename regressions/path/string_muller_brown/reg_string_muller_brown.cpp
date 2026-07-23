@@ -23,12 +23,7 @@ static cpu::Frame at(double x, double y) {
 int main() {
     // Seed endpoints near the two MB wells; string with a path that initially
     // goes through the published saddle so the energy max starts elevated.
-    cpu::path::StringConfig cfg;
-    cfg.n_images = 21;
-    cfg.step = 0.002;
-    cfg.max_iter = 80;
-    cfg.f_tol = 0.2;
-    cpu::path::StringMethod sm(cfg);
+        cpu::path::StringMethod sm(21, 0.002, 80, 0.2);
     sm.use_muller_brown();
     // Start: min A; end: min B (published stationary points)
     sm.run(at(-0.558, 1.442), at(0.623, 0.028));
@@ -40,7 +35,7 @@ int main() {
     // Also check endpoints stayed near wells (string keeps ends fixed).
     cpu::Frame e0(1), eN(1);
     sm.image(0, e0);
-    sm.image(sm.n_images() - 1, eN);
+    sm.image(sm.n_images - 1, eN);
     std::printf("String MB: Emax=%.4f E_saddle=%.4f ends=(%.3f,%.3f)->(%.3f,%.3f)\n",
                 Emax, E_saddle, e0.span(kAtom_x)[0], e0.span(kAtom_y)[0],
                 eN.span(kAtom_x)[0], eN.span(kAtom_y)[0]);

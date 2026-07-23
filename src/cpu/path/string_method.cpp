@@ -55,10 +55,11 @@ cpu::Frame lerp_frame(const cpu::Frame& a, const cpu::Frame& b, double t) {
 
 } // namespace
 
-StringMethod::StringMethod(StringConfig cfg) : cfg_(cfg) {
-    if (cfg_.n_images < 3)
+StringMethod::StringMethod(int n_images_, double step_, int max_iter_, double f_tol_)
+    : n_images(n_images_), step(step_), max_iter(max_iter_), f_tol(f_tol_) {
+    if (n_images < 3)
         throw std::invalid_argument("StringMethod: n_images >= 3");
-    if (!(cfg_.step > 0.0))
+    if (!(step > 0.0))
         throw std::invalid_argument("StringMethod: step > 0");
 }
 
@@ -71,7 +72,7 @@ void StringMethod::image(int i, cpu::Frame& out) const {
 }
 
 void StringMethod::reparameterize_() {
-    const int N = cfg_.n_images;
+    const int N = n_images;
     std::vector<double> s(static_cast<size_t>(N), 0.0);
     for (int i = 1; i < N; ++i) {
         double d2 = 0;
@@ -108,7 +109,7 @@ void StringMethod::reparameterize_() {
 }
 
 void StringMethod::evolve_once_() {
-    const int N = cfg_.n_images;
+    const int N = n_images;
     energies_.assign(static_cast<size_t>(N), 0.0);
     max_energy_ = -1e300;
     double max_fperp = 0;
@@ -161,20 +162,20 @@ void StringMethod::evolve_once_() {
             const double fpz = im.span(kAtom_fz)[a] -
                                fdot * tau[static_cast<size_t>(3 * a + 2)];
             fperp2 += fpx * fpx + fpy * fpy + fpz * fpz;
-            im.span(kAtom_x)[a] += cfg_.step * fpx;
-            im.span(kAtom_y)[a] += cfg_.step * fpy;
-            im.span(kAtom_z)[a] += cfg_.step * fpz;
+            im.span(kAtom_x)[a] += step * fpx;
+            im.span(kAtom_y)[a] += step * fpy;
+            im.span(kAtom_z)[a] += step * fpz;
         }
         max_fperp = std::max(max_fperp, std::sqrt(fperp2));
     }
     reparameterize_();
-    converged_ = (max_fperp < cfg_.f_tol);
+    converged_ = (max_fperp < f_tol);
 }
 
 int StringMethod::run(const cpu::Frame& start, const cpu::Frame& end) {
     if (!force_)
         throw std::runtime_error("StringMethod: force function not set");
-    const int N = cfg_.n_images;
+    const int N = n_images;
     images_.clear();
     images_.reserve(static_cast<size_t>(N));
     for (int i = 0; i < N; ++i) {
@@ -183,7 +184,7 @@ int StringMethod::run(const cpu::Frame& start, const cpu::Frame& end) {
     }
     converged_ = false;
     int it = 0;
-    for (; it < cfg_.max_iter; ++it) {
+    for (; it < max_iter; ++it) {
         evolve_once_();
         if (converged_)
             break;

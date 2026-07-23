@@ -50,8 +50,8 @@ TEST(HRemd, ConstructsAndRunsTwoLambda) {
 
     // PairLJSoft may need NeighborList — try without first; if MD validate fails
     // we'll fix in build.
-    cpu::path::HRemd h(
-        {{0.0, 1.0}, /*T=*/300.0, /*dt=*/1.0, /*steps=*/5, /*seed=*/3});
+    cpu::path::HRemd h({0.0, 1.0}, /*T=*/300.0, /*dt=*/1.0, /*steps=*/5,
+                       /*seed=*/3);
     h.set_program_builder(
         [](cpu::md::MD& md, double lambda, void*) {
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);

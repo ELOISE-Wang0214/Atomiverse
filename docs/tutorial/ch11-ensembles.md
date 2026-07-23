@@ -241,22 +241,24 @@ constructed with designated initializers (the idiom the test suite uses):
 ```cpp
 sim.add_potential(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
-sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 100.0,
-                                           .tau_T    = 200.0,
-                                           .P_target = 6.2415e-7,   // eV/Å³
-                                           .tau_P    = 2000.0,
-                                           .dt       = 4.0}});
+sim.set_integrator(cpu::md::NoseHooverNPT{
+    /*T_target*/ 100.0,
+    /*tau_T*/ 200.0,
+    /*P_target*/ 6.2415e-7, // eV/Å³
+    /*tau_P*/ 2000.0,
+    /*dt*/ 4.0});
 sim.set_thermo(100);
 ```
 
-The first five fields (`T_target`, `tau_T`, `P_target`, `tau_P`, `dt`) are
-required; the rest default sensibly (`drag = 0`, `mtchain = mpchain = 3`,
-`couple_axis = {true,true,true}` for isotropic coupling, `T_stop = T_target`
-for no ramp). Like the Berendsen barostat it declares `reads() == Stress`, so
-`Virial` is auto-injected. It writes the full MTK extended Hamiltonian to
-`frame.meta.get(kConserved)` — the flat trace of *that* quantity is the rigorous
-correctness check for an NPT run. Set `couple_axis` to barostat individual
-axes (e.g. `{false,false,true}` for uniaxial), and use `set_run_span` with a
+The first five constructor arguments (`T_target`, `tau_T`, `P_target`, `tau_P`,
+`dt`) are required; the rest default sensibly (`drag = 0`, `mtchain = mpchain =
+3`, `couple_axis = {true,true,true}` for isotropic coupling, `T_stop` folds to
+`T_target` for no ramp). Like the Berendsen barostat it declares
+`reads() == Stress`, so `Virial` is auto-injected. It writes the full MTK
+extended Hamiltonian to `frame.meta.get(kConserved)` — the flat trace of *that*
+quantity is the rigorous correctness check for an NPT run. Pass `couple_axis`
+to barostat individual axes (e.g. `{false,false,true}` for uniaxial), and use
+`set_run_span` with a
 non-default `T_stop` for a temperature ramp.
 
 ### The `set_nvt` shortcut

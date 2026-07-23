@@ -105,20 +105,23 @@ double Pimd::compute_k_spring_(double temperature_K, int n_beads,
            / (beta_hbar * beta_hbar);
 }
 
-Pimd::Pimd(PimdConfig cfg) : cfg_(cfg) {
-    if (cfg_.n_beads < 2)
+Pimd::Pimd(int n_beads_, double temperature_, double dt_, int steps_per_block_,
+           std::uint64_t seed_, double k_external_)
+    : n_beads(n_beads_), temperature(temperature_), dt(dt_),
+      steps_per_block(steps_per_block_), seed(seed_), k_external(k_external_) {
+    if (n_beads < 2)
         throw std::invalid_argument("Pimd: n_beads must be ≥ 2");
-    if (!(cfg_.temperature > 0.0))
+    if (!(temperature > 0.0))
         throw std::invalid_argument("Pimd: temperature must be > 0 K");
-    if (!(cfg_.dt > 0.0))
+    if (!(dt > 0.0))
         throw std::invalid_argument("Pimd: dt must be > 0 fs");
-    if (cfg_.steps_per_block < 1)
+    if (steps_per_block < 1)
         throw std::invalid_argument("Pimd: steps_per_block must be ≥ 1");
-    if (!(cfg_.k_external >= 0.0))
+    if (!(k_external >= 0.0))
         throw std::invalid_argument("Pimd: k_external must be ≥ 0");
 
-    std::vector<double> bead_ids(static_cast<std::size_t>(cfg_.n_beads));
-    for (int i = 0; i < cfg_.n_beads; ++i)
+    std::vector<double> bead_ids(static_cast<std::size_t>(n_beads));
+    for (int i = 0; i < n_beads; ++i)
         bead_ids[static_cast<std::size_t>(i)] = static_cast<double>(i);
     expansion_ = std::make_unique<IdentityReplication>(std::move(bead_ids));
 }
@@ -139,7 +142,7 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
     if (!(mass > 0.0))
         throw std::invalid_argument("Pimd: atom mass must be > 0 amu");
     mass_amu_ = mass;
-    k_spring_ = compute_k_spring_(cfg_.temperature, cfg_.n_beads, mass);
+    k_spring_ = compute_k_spring_(temperature, n_beads, mass);
 
     band_ = std::make_unique<ReplicaSet>(frame, *expansion_);
     const int P = band_->size();
@@ -155,9 +158,9 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
     }
     for (int s = 0; s < P; ++s) {
         auto md = std::make_unique<cpu::md::MD>();
-        md->set_integrator(cpu::md::VelocityVerlet{cfg_.dt});
-        if (cfg_.k_external > 0.0)
-            md->on(ATV::md::Phase::force).add(HarmonicTrap{cfg_.k_external});
+        md->set_integrator(cpu::md::VelocityVerlet{dt});
+        if (k_external > 0.0)
+            md->on(ATV::md::Phase::force).add(HarmonicTrap{k_external});
         // Spring after optional trap / user forces (borrow springs_[s]).
         md->on(ATV::md::Phase::force).add_ref(*springs_[static_cast<std::size_t>(s)]);
         if (builder_)
@@ -167,8 +170,8 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
         // Seed Maxwell–Boltzmann velocities on the replica Frame.
         // InitVelocity always subtracts COM velocity; for nlocal==1 that
         // zeros v entirely — seed without COM removal in that case.
-        seed_bead_velocity_(band_->frame(s), cfg_.temperature,
-                           static_cast<unsigned>(cfg_.seed ^ (s + 1u)));
+        seed_bead_velocity_(band_->frame(s), temperature,
+                           static_cast<unsigned>(seed ^ (s + 1u)));
         programs_.push_back(std::move(md));
     }
     built_ = true;
@@ -178,7 +181,7 @@ void Pimd::propagate_() {
     const int P = band_->size();
     for (int s = 0; s < P; ++s)
         programs_[static_cast<std::size_t>(s)]->run(
-            band_->frame(s), cfg_.steps_per_block);
+            band_->frame(s), steps_per_block);
 }
 
 void Pimd::collapse_centroid_(cpu::Frame& out) {
@@ -239,10 +242,10 @@ double Pimd::free_particle_rg2_analytic() const {
     // with m_eff = mass_v2_to_energy * m [eV fs² / Å²], ℏ in eV·fs.
     // Ref: Tuckerman, Statistical Mechanics; Chandler & Wolynes (1981).
     const double hbar = units::h_planck_ev_fs / (2.0 * units::pi);
-    const double kT = units::kB_ev_per_k * cfg_.temperature;
+    const double kT = units::kB_ev_per_k * temperature;
     const double beta = 1.0 / kT;
     const double m_eff = units::mass_v2_to_energy * mass_amu_;
-    const double P = static_cast<double>(cfg_.n_beads);
+    const double P = static_cast<double>(n_beads);
     const double hb = hbar * beta;
     return (hb * hb / (4.0 * m_eff)) * (1.0 - 1.0 / (P * P));
 }

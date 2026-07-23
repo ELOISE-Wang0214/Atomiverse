@@ -374,16 +374,7 @@ int main(int argc, char** argv) {
         const double tau_P = 1000.0; // LAMMPS Pdamp
 
         cpu::md::MD sim;
-        sim.add(cpu::md::NoseHooverNPT{{
-            /*.T_target=*/T_tgt,
-            /*.tau_T   =*/tau_T,
-            /*.P_target=*/P_tgt,
-            /*.tau_P   =*/tau_P,
-            /*.dt      =*/dt,
-            /*.drag    =*/2.0, // LAMMPS `drag 2`
-            /*.mtchain =*/3,   // LAMMPS default
-            /*.mpchain =*/3,   // LAMMPS default
-        }});
+        sim.add(cpu::md::NoseHooverNPT{*/T_tgt, */tau_T, */P_tgt, */tau_P, */dt, */2.0, */3, */3});
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
         sim.add(cpu::md::ZeroMomentum{1});
         sim.on(ATV::md::Phase::pre_force)

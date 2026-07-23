@@ -27,8 +27,8 @@ int main() {
     }
     f.simbox = cpu::Box::cubic(30.0);
 
-    cpu::path::HRemd h(
-        {{0.2, 0.8}, /*T=*/300.0, /*dt=*/1.0, /*steps=*/15, /*seed=*/11});
+    cpu::path::HRemd h({0.2, 0.8}, /*T=*/300.0, /*dt=*/1.0, /*steps=*/15,
+                       /*seed=*/11);
     h.set_program_builder(
         [](cpu::md::MD& md, double lambda, void*) {
             cpu::PairLJSoft soft(0.0104, 3.4, 8.5);

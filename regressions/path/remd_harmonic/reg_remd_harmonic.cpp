@@ -41,8 +41,7 @@ int main() {
     f.simbox = cpu::Box::cubic(30.0);
 
     const std::vector<double> T = {100.0, 150.0, 200.0, 250.0};
-    cpu::path::Remd remd(
-        {T, /*dt=*/1.0, /*steps_per_exchange=*/20, /*seed=*/7});
+    cpu::path::Remd remd(T, /*dt=*/1.0, /*steps_per_exchange=*/20, /*seed=*/7);
     remd.set_program_builder(&build_lj, nullptr);
     constexpr int n_ex = 40;
     remd.run(f, n_ex);
@@ -102,8 +101,7 @@ int main() {
         f2.span(kAtom_tag)[i] = i + 1;
     }
     f2.simbox = cpu::Box::cubic(30.0);
-    cpu::path::Remd remd2(
-        {T, /*dt=*/1.0, /*steps_per_exchange=*/20, /*seed=*/7});
+    cpu::path::Remd remd2(T, /*dt=*/1.0, /*steps_per_exchange=*/20, /*seed=*/7);
     remd2.set_program_builder(&build_lj, nullptr);
     remd2.run(f2, n_ex);
     if (remd2.exchange_accepts() != accepts

@@ -72,13 +72,9 @@ int main() {
         cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
         cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
 
-    cpu::gpw::GpwEvaluatorConfig cfg;
-    cfg.cutoff_ry = 400.0;
-    cfg.xc = cpu::gpw::XcKind::PBE;
-    cfg.nonperiodic = true; // isolated molecule (Martyna-Tuckerman)
-    cfg.kinds = {O, H};
-
-    cpu::gpw::GPWEvaluator eval(cfg);
+    cpu::gpw::GPWEvaluator eval(
+        /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
+        /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
     cpu::single_point(frame, eval);
 
     const double e_ha = eval.last_energy_hartree();

@@ -19,14 +19,8 @@ TEST(Dimer, InvertedHarmonicFindsOrigin) {
     f.span(kAtom_tag)[0] = 1;
     f.simbox = cpu::Box::cubic(20.0);
 
-    cpu::path::DimerConfig cfg;
-    cfg.delta = 0.01;
-    cfg.dR = 0.02;
-    cfg.max_rotations = 10;
-    cfg.f_tol = 0.05;
-    cfg.seed = 7;
-
-    cpu::path::Dimer dimer(cfg);
+    
+    cpu::path::Dimer dimer(0.01, 0.02, 10, 1e-3, 0.05, 7);
     dimer.use_inverted_harmonic(1.0, 1.0);
     const int steps = dimer.run(f, 200);
 
@@ -38,7 +32,6 @@ TEST(Dimer, InvertedHarmonicFindsOrigin) {
 }
 
 TEST(Dimer, RejectsBadDelta) {
-    cpu::path::DimerConfig cfg;
-    cfg.delta = 0.0;
-    EXPECT_THROW(cpu::path::Dimer{cfg}, std::invalid_argument);
+    EXPECT_THROW((cpu::path::Dimer{0.0, 0.05, 8, 1e-3, 0.05, 1}),
+                 std::invalid_argument);
 }

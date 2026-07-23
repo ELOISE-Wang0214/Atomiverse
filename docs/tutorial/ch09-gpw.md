@@ -23,12 +23,9 @@ const cpu::gpw::Kind O{
     cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 // … H kind …
-cpu::gpw::GpwEvaluatorConfig cfg;
-cfg.cutoff_ry = 400.0;
-cfg.xc = cpu::gpw::XcKind::PBE;
-cfg.nonperiodic = true;
-cfg.kinds = {O, H};
-cpu::gpw::GPWEvaluator eval(cfg);
+cpu::gpw::GPWEvaluator eval(
+    /*kinds*/ {O, H}, /*cutoff_ry*/ 400.0, /*max_iter*/ 200, /*tol*/ 1e-7,
+    /*mix*/ 0.3, /*xc*/ cpu::gpw::XcKind::PBE, /*nonperiodic*/ true);
 cpu::single_point(frame, eval);
 ```
 
@@ -61,7 +58,7 @@ You will learn:
    better than pure Gaussians for the electrostatics.
 2. **The representation** — a `gpw_solver` inner engine behind a
    `GPWEvaluator` component, the third member of the evaluator family.
-3. **The C++ API** — `Element`, `GpwEvaluatorConfig`, and `single_point`,
+3. **The C++ API** — `Element`, `GPWEvaluator` (constructor parameters), and `single_point`,
    walked through for an isolated water molecule.
 4. **The expected result** — CP2K Quickstep parity, to the sub-µHartree.
 5. **The validation** — against CP2K, and the honest experimental scope.
@@ -162,29 +159,31 @@ const cpu::gpw::Kind H{molrs::Element::H,
 The `q6`/`q1` suffixes are the valence electron counts the pseudopotential keeps
 (6 for oxygen, 1 for hydrogen) — the core is replaced by the GTH form.
 
-**Step 3 — configure and run.** `GpwEvaluatorConfig` carries the grid cutoff, XC
-choice, electrostatic boundary condition, and the element list:
+**Step 3 — construct and run.** `GPWEvaluator` takes kinds and SCF/grid knobs
+in the constructor (no public Config bag):
 
 ```cpp
-cpu::gpw::GpwEvaluatorConfig cfg;
-cfg.cutoff_ry  = 400.0;                     // real-space grid resolution [Ry]
-cfg.xc         = cpu::gpw::XcKind::PBE;      // PADE (LDA) or PBE (GGA)
-cfg.nonperiodic = true;                      // isolated: Martyna-Tuckerman electrostatics
-cfg.kinds      = {O, H};
+cpu::gpw::GPWEvaluator eval(
+    /*kinds*/ {O, H},
+    /*cutoff_ry*/ 400.0,                   // real-space grid resolution [Ry]
+    /*max_iter*/ 200,
+    /*tol*/ 1e-7,
+    /*mix*/ 0.3,
+    /*xc*/ cpu::gpw::XcKind::PBE,          // PADE (LDA) or PBE (GGA)
+    /*nonperiodic*/ true);                 // isolated: Martyna-Tuckerman electrostatics
 
-cpu::gpw::GPWEvaluator eval(cfg);
-cpu::single_point(frame, eval);              // kEnergy now set (eV)
+cpu::single_point(frame, eval);            // kEnergy now set (eV)
 
 const double e_ha = eval.last_energy_hartree();          // total energy (Hartree)
 const bool   ok   = eval.last_result().converged;
 const int    n    = eval.last_result().iters;
 ```
 
-Set `cfg.nonperiodic = false` for a genuinely periodic system (a crystal or
+Set `nonperiodic = false` for a genuinely periodic system (a crystal or
 slab) — then the grid electrostatics are periodic, as in the small wurtzite-ZnO
-cell of `/* benchmarks removed; re-add later */ gpw/validation/test_cpu_gpw_zno.cpp`. Optional knobs: `cfg.mix` (density
-mixing), `cfg.max_iter`, `cfg.tol`, `cfg.d3` (Grimme DFT-D3 dispersion from the
-in-tree tables), and `cfg.compute_forces` (analytic forces — see
+cell of `/* benchmarks removed; re-add later */ gpw/validation/test_cpu_gpw_zno.cpp`. Optional knobs: `mix` (density
+mixing), `max_iter`, `tol`, `d3` (Grimme DFT-D3 dispersion from the
+in-tree tables), and `compute_forces` (analytic forces — see
 the scope note below).
 
 ## The Expected Result: CP2K Quickstep Parity

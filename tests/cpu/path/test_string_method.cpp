@@ -26,19 +26,14 @@ cpu::Frame at(double x, double y) {
 } // namespace
 
 TEST(StringMethod, ReparameterizeEqualSpacing) {
-    cpu::path::StringConfig cfg;
-    cfg.n_images = 5;
-    cfg.max_iter = 0; // only setup + reparam via run with 0 iters still builds
-    cfg.max_iter = 1;
-    cfg.step = 1e-9; // almost no evolution
-    cfg.f_tol = 1e30;
-    cpu::path::StringMethod sm(cfg);
+    cpu::path::StringMethod sm(/*n_images*/ 5, /*step*/ 1e-9, /*max_iter*/ 1,
+                               /*f_tol*/ 1e30);
     sm.use_muller_brown();
     // Endpoints of a straight line
     sm.run(at(0, 0), at(4, 0));
     // Arc lengths between consecutive images should be nearly equal
     std::vector<double> s;
-    for (int i = 1; i < sm.n_images(); ++i) {
+    for (int i = 1; i < sm.n_images; ++i) {
         cpu::Frame a(1), b(1);
         sm.image(i - 1, a);
         sm.image(i, b);

@@ -11,12 +11,15 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-Dimer::Dimer(DimerConfig cfg) : cfg_(cfg) {
-    if (!(cfg_.delta > 0.0))
+Dimer::Dimer(double delta_, double dR_, int max_rotations_, double rot_tol_,
+             double f_tol_, std::uint64_t seed_)
+    : delta(delta_), dR(dR_), max_rotations(max_rotations_), rot_tol(rot_tol_),
+      f_tol(f_tol_), seed(seed_) {
+    if (!(delta > 0.0))
         throw std::invalid_argument("Dimer: delta must be > 0");
-    if (!(cfg_.dR > 0.0))
+    if (!(dR > 0.0))
         throw std::invalid_argument("Dimer: dR must be > 0");
-    if (cfg_.max_rotations < 1)
+    if (max_rotations < 1)
         throw std::invalid_argument("Dimer: max_rotations must be ≥ 1");
 }
 
@@ -93,12 +96,11 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
     if (frame.nlocal() < 1)
         throw std::invalid_argument("Dimer::run: empty frame");
 
-    random_mode_(cfg_.seed);
+    random_mode_(seed);
     converged_ = false;
     f_mod_ = 1e30;
 
     const int n = frame.nlocal();
-    const double delta = cfg_.delta;
 
     // Working copies for the two dimer ends.
     cpu::Frame f1 = frame;
@@ -113,7 +115,7 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
         eval_force_(frame);
 
         // --- Rotate N (finite-difference curvature) ---
-        for (int rot = 0; rot < cfg_.max_rotations; ++rot) {
+        for (int rot = 0; rot < max_rotations; ++rot) {
             for (int i = 0; i < n; ++i) {
                 f1.span(kAtom_x)[i] = frame.span(kAtom_x)[i] + delta * nx_;
                 f1.span(kAtom_y)[i] = frame.span(kAtom_y)[i] + delta * ny_;
@@ -149,7 +151,7 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
                 tz = -frz;
             }
             const double tnorm = std::sqrt(tx * tx + ty * ty + tz * tz);
-            if (tnorm < cfg_.rot_tol)
+            if (tnorm < rot_tol)
                 break;
             // Mix toward the soft-mode estimate (stable under pure power iter).
             const double mix = 0.5;
@@ -176,7 +178,7 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
         const double fmy = fpy - 2.0 * f_par * ny_;
         const double fmz = fpz - 2.0 * f_par * nz_;
         f_mod_ = std::sqrt(fmx * fmx + fmy * fmy + fmz * fmz);
-        if (f_mod_ < cfg_.f_tol) {
+        if (f_mod_ < f_tol) {
             converged_ = true;
             return it + 1;
         }
@@ -185,7 +187,7 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
         double ux = fmx, uy = fmy, uz = fmz;
         normalize3_(ux, uy, uz);
         // Step size: min(dR, 0.5 * |F_mod| / max(k,1)) for inverted-harmonic scale.
-        double step = cfg_.dR;
+        double step = dR;
         if (f_mod_ < 1.0)
             step = std::min(step, 0.5 * f_mod_);
         for (int i = 0; i < n; ++i) {
