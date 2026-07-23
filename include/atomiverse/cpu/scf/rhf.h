@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
+#include "atomiverse/cpu/scf/eom_ip_ccsd.h"
 #include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/rpa.h"
@@ -251,6 +252,18 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CCSD / n_states out of range.
     EOMEACCSDResult eom_ea_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief EOM-IP-CCSD ionization potentials — drives a fresh RHF
+    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
+    ///        non-symmetric EOM-IP Jacobian (Tu, Wang & Li, J. Chem. Phys.
+    ///        **136**, 174102 (2012)). Matches PySCF
+    ///        `cc.CCSD(...).ipccsd()` / `eom_gccsd.EOMIP`.
+    /// @param frame Geometry; drives SCF + CCSD + EOM.
+    /// @param n_states Number of lowest unique ionization roots (≥ 1).
+    /// @return Ionization ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on open-shell / missing occupieds /
+    ///         non-converged SCF or CCSD / n_states out of range.
+    EOMIPCCSDResult eom_ip_ccsd(Frame& frame, int n_states = 1);
 
     /// @brief Direct RPA (dRPA) correlation energy of the most recent `run()`
     ///        (closed-shell RHF reference). Coulomb-only Casida A/B
