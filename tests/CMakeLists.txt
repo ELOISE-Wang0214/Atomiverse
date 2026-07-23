@@ -172,6 +172,7 @@ atv_add_cpp_test(test_cpu_bias_metadynamics_nd    cpu/bias/test_metadynamics_nd.
 atv_add_cpp_test(test_cpu_wham                    cpu/observe/test_wham.cpp)
 atv_add_cpp_test(test_cpu_pair_yukawa             cpu/potentials/test_pair_yukawa.cpp)
 atv_add_cpp_test(test_cpu_gaussian_charge         cpu/potentials/test_gaussian_charge.cpp)
+atv_add_cpp_test(test_cpu_pair_buck               cpu/potentials/test_pair_buck.cpp)
 atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_cell.cpp)
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
 atv_add_cpp_test(test_cpu_qmmm_mechanical         cpu/multiscale/test_qmmm_mechanical.cpp)
