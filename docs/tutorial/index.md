@@ -136,6 +136,24 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | PW BOMD H (NVE foothold) | [pw-bomd-h](methods/pw-bomd-h.md) | `regressions/pw/pw-bomd-h` |
 | OT SCF water (GPW PBE) | [ot-minimizer-water](methods/ot-minimizer-water.md) | `regressions/gpw/ot-minimizer-water` |
 
+### CP2K capability wave 2 (GPW / PW / periodic)
+
+Offline CP2K pins only — see [cp2k-method-handoff](../developer/cp2k-method-handoff.md)
+and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
+[Ch. 9 GPW](ch09-gpw.md). Full index: [methods/README](methods/README.md).
+
+| Method | Page | Regression |
+|--------|------|------------|
+| GPW cell stress strain-FD H₂O (NUMERICAL pin) | [gpw-stress-water](methods/gpw-stress-water.md) | `regressions/gpw/gpw-stress-water` |
+| GPW BOMD H₂O NVE energy-drift foothold | [gpw-bomd-water](methods/gpw-bomd-water.md) | `regressions/gpw/gpw-bomd-water` |
+| PW Nielsen–Martin analytic stress Si | [pw-analytic-stress-si](methods/pw-analytic-stress-si.md) | `regressions/pw/pw-analytic-stress-si` |
+| FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](methods/fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` |
+| Dudarev DFT+U NiO mol (Γ-UKS GPW) | [gpw-dftu-nio](methods/gpw-dftu-nio.md) | `regressions/gpw/gpw-dftu-nio` |
+| PW bands + DOS bulk Si | [bands-dos-si](methods/bands-dos-si.md) | `regressions/pw/bands-dos-si` |
+| PW k-point collinear UKS O₂ | [pw-uks-kmesh-fe](methods/pw-uks-kmesh-fe.md) | `regressions/pw/pw-uks-kmesh-fe` |
+| GPW Γ-RKS PBEsol Si₂ (MT) | [gpw-pbesol-si](methods/gpw-pbesol-si.md) | `regressions/gpw/gpw-pbesol-si` |
+| GPW PBE-D4 periodic water dimer | [gpw-d4-water](methods/gpw-d4-water.md) | `regressions/gpw/gpw-d4-water` |
+
 ### PySCF campaign (molecular post-HF / response)
 
 | Method | Page | Regression |

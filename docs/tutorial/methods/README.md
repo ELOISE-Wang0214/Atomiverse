@@ -95,6 +95,23 @@ overlaps; MetalWalls / literature for MW-only physics.
 | PW BOMD H (NVE foothold) | [pw-bomd-h](pw-bomd-h.md) | `regressions/pw/pw-bomd-h` |
 | OT SCF water (GPW PBE) | [ot-minimizer-water](ot-minimizer-water.md) | `regressions/gpw/ot-minimizer-water` |
 
+## Index — CP2K capability wave 2 (2026-07-24)
+
+Offline CP2K pins only — see [cp2k-method-handoff](../../developer/cp2k-method-handoff.md)
+and `tools/cp2k_oracle/`. Fair walls from harness (`ratio` or `perf_exempt`).
+
+| Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ------ | ---- | ---------- | --------------------------------------------- |
+| GPW cell stress strain-FD H₂O (NUMERICAL pin) | [gpw-stress-water](gpw-stress-water.md) | `regressions/gpw/gpw-stress-water` | **4.75** |
+| GPW BOMD H₂O NVE energy-drift foothold | [gpw-bomd-water](gpw-bomd-water.md) | `regressions/gpw/gpw-bomd-water` | **perf_exempt** |
+| PW Nielsen–Martin analytic stress Si | [pw-analytic-stress-si](pw-analytic-stress-si.md) | `regressions/pw/pw-analytic-stress-si` | **perf_exempt** |
+| FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` | **perf_exempt** |
+| Dudarev DFT+U NiO mol (Γ-UKS GPW) | [gpw-dftu-nio](gpw-dftu-nio.md) | `regressions/gpw/gpw-dftu-nio` | **0.21** |
+| PW bands + DOS bulk Si | [bands-dos-si](bands-dos-si.md) | `regressions/pw/bands-dos-si` | **perf_exempt** |
+| PW k-point collinear UKS O₂ | [pw-uks-kmesh-fe](pw-uks-kmesh-fe.md) | `regressions/pw/pw-uks-kmesh-fe` | **perf_exempt** |
+| GPW Γ-RKS PBEsol Si₂ (MT) | [gpw-pbesol-si](gpw-pbesol-si.md) | `regressions/gpw/gpw-pbesol-si` | **perf_exempt** |
+| GPW PBE-D4 periodic water dimer | [gpw-d4-water](gpw-d4-water.md) | `regressions/gpw/gpw-d4-water` | **perf_exempt** |
+
 ## Index — PySCF campaign methods
 
 | Method | Page | Regression |
