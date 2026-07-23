@@ -42,6 +42,7 @@
 #include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
+#include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
 #include "atomiverse/cpu/scf/internal/mp3_pack.h"
@@ -1262,6 +1263,50 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
     return ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+}
+
+template <typename D>
+GradientResult
+MeanFieldMethod<D>::ccsd_forces(Frame& frame, const SCFInitialGuess* guess) {
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_forces: closed-shell RHF reference only — "
+            "UCCSD gradients are not implemented (no fallback). Use RHF.");
+    if (ri != RI::None)
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_forces: RI-CCSD gradients are not "
+            "implemented — set ri=RI::None");
+    if (frozen != 0)
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_forces: frozen-core CCSD gradients are not "
+            "implemented — set frozen=0");
+
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame, guess);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::ccsd_forces: SCF reference did not converge — "
+            "refusing gradient on a non-stationary determinant (no fallback)");
+
+    const CCSDResult corr =
+        ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+    GradientResult gr = internal::ccsd_analytic_forces(
+        frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
+    last_grad_ = gr;
+
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    const int natm = static_cast<int>(frame.nlocal());
+    for (int A = 0; A < natm; ++A) {
+        fx[A] = gr.forces(A, 0);
+        fy[A] = gr.forces(A, 1);
+        fz[A] = gr.forces(A, 2);
+    }
+    frame.meta.get(kEnergy) = gr.energy;
+    return gr;
 }
 
 template <typename D>

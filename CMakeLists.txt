@@ -496,6 +496,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/alda_kernel.cpp
             src/cpu/scf/internal/tda_gradient.cpp
             src/cpu/scf/internal/mp2_gradient.cpp
+            src/cpu/scf/internal/ccsd_gradient.cpp
             src/cpu/scf/internal/external_field.cpp
             src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/internal/point_charges.cpp

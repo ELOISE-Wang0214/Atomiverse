@@ -490,6 +490,19 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @return CCSD correlation + total energy [Hartree], iteration count.
     CCSDResult ccsd(Frame& frame);
 
+    /// @brief Nuclear forces on the total closed-shell CCSD energy
+    ///        E_HF + E_CCSD [eV/Å]. Drives a fresh RHF (materializes ERI) then
+    ///        forms forces by central finite difference of the analytic CCSD
+    ///        energy (h = 1e-4 Bohr). Matches PySCF
+    ///        `cc.CCSD.nuc_grad_method().kernel()` force values on the same
+    ///        geometry (Cartesian AO, no frozen core) to the regression gate.
+    ///        Open-shell / RI / frozen-core throw — no silent fallback.
+    /// @param frame Geometry; forces written to fx/fy/fz; energy to meta.
+    /// @param guess Optional density-matrix guess for the reference SCF.
+    /// @return Forces [eV/Å] and total CCSD energy [eV].
+    GradientResult ccsd_forces(Frame& frame,
+                               const SCFInitialGuess* guess = nullptr);
+
     /// @brief Closed-shell CC2 on top of a fresh RHF run (materializes ERI).
     ///
     /// Approximate CC doubles (Christiansen, Koch, Jørgensen, Chem. Phys.
