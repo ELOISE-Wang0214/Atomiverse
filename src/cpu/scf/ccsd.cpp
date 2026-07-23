@@ -20,7 +20,9 @@
 #include <string>
 #include <vector>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/scf/mp2.h"
 
@@ -73,116 +75,17 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
 
 } // namespace
 
-CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, double tol, int max_iter) {
-    using Spin = SlaterDeterminant::Spin;
-    if (ints.ERI.size() == 0) {
-        throw std::invalid_argument(
-            "ccsd_energy: ERI is not materialized; need compute_eri=true.");
-    }
-    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
-        throw std::invalid_argument(
-            "ccsd_energy: closed-shell reference only (n_alpha must equal "
-            "n_beta).");
-    }
-    if (det.generalized()) {
-        throw std::invalid_argument(
-            "ccsd_energy: GHF (spinor) reference is not supported.");
-    }
-    if (max_iter < 1) {
-        throw std::invalid_argument("ccsd_energy: max_iter must be ≥ 1.");
-    }
-    if (!(tol > 0.0)) {
-        throw std::invalid_argument("ccsd_energy: tol must be > 0.");
-    }
 
-    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
-    const int n_occ_sp = det.n_electrons(Spin::alpha);
-    const int n_mo = static_cast<int>(C.shape(1));
-    const int n_vir_sp = n_mo - n_occ_sp;
-    if (n_vir_sp <= 0) {
-        CCSDSolution sol;
-        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
-        sol.n_occ_sp = n_occ_sp;
-        sol.n_vir_sp = 0;
-        return sol;
-    }
-
-    const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
-    const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
-
-    const int no = 2 * n_occ_sp;
-    const int nv = 2 * n_vir_sp;
-    std::vector<SO> so(static_cast<std::size_t>(no + nv));
-    for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(i)] = SO{i, 0};
-    for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(n_occ_sp + i)] = SO{i, 1};
-    for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + a)] = SO{n_occ_sp + a, 0};
-    for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + n_vir_sp + a)] = SO{n_occ_sp + a, 1};
-
-    auto g = [&](int p, int q, int r, int s) -> double {
-        return so_eri(eri_mo, so[static_cast<std::size_t>(p)],
-                      so[static_cast<std::size_t>(q)],
-                      so[static_cast<std::size_t>(r)],
-                      so[static_cast<std::size_t>(s)]);
-    };
-
+/// Shared spin-orbital Jacobi CCSD once SO integrals / ε are assembled.
+static CCSDSolution so_ccsd_kernel(
+    int no, int nv, xt::xtensor<double, 4> oooo, xt::xtensor<double, 4> ooov,
+    xt::xtensor<double, 4> oovv, xt::xtensor<double, 4> ovov,
+    xt::xtensor<double, 4> ovvv, xt::xtensor<double, 4> vvvv,
+    std::vector<double> eps_so, double e_scf_ha, double tol, int max_iter,
+    int n_occ_sp, int n_vir_sp, int n_alpha, int n_beta, int n_vir_a,
+    int n_vir_b) {
     const std::size_t No = static_cast<std::size_t>(no);
     const std::size_t Nv = static_cast<std::size_t>(nv);
-    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
-    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
-    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
-    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
-    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
-    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
-
-#pragma omp parallel for collapse(2) schedule(static) if (no * no > 4)
-    for (int p = 0; p < no; ++p) {
-        for (int q = 0; q < no; ++q) {
-            for (int r = 0; r < no; ++r) {
-                for (int s = 0; s < no; ++s)
-                    oooo(p, q, r, s) = g(p, q, r, s);
-                for (int s = 0; s < nv; ++s)
-                    ooov(p, q, r, s) = g(p, q, r, no + s);
-            }
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
-        }
-    }
-#pragma omp parallel for collapse(2) schedule(static) if (no * nv > 4)
-    for (int p = 0; p < no; ++p) {
-        for (int q = 0; q < nv; ++q) {
-            for (int r = 0; r < no; ++r)
-                for (int s = 0; s < nv; ++s)
-                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
-        }
-    }
-#pragma omp parallel for collapse(2) schedule(static) if (nv > 2)
-    for (int p = 0; p < nv; ++p)
-        for (int q = 0; q < nv; ++q)
-            for (int r = 0; r < nv; ++r)
-                for (int s = 0; s < nv; ++s)
-                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
-
-    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
-    for (int i = 0; i < n_occ_sp; ++i) {
-        const double e = eps(static_cast<std::size_t>(i));
-        eps_so[static_cast<std::size_t>(i)] = e;
-        eps_so[static_cast<std::size_t>(n_occ_sp + i)] = e;
-    }
-    for (int a = 0; a < n_vir_sp; ++a) {
-        const double e = eps(static_cast<std::size_t>(n_occ_sp + a));
-        eps_so[static_cast<std::size_t>(no + a)] = e;
-        eps_so[static_cast<std::size_t>(no + n_vir_sp + a)] = e;
-    }
-
     xt::xtensor<double, 2> fov = xt::zeros<double>({No, Nv});
     xt::xtensor<double, 2> foo = xt::zeros<double>({No, No});
     xt::xtensor<double, 2> fvv = xt::zeros<double>({Nv, Nv});
@@ -511,13 +414,322 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
     sol.nv = nv;
     sol.n_occ_sp = n_occ_sp;
     sol.n_vir_sp = n_vir_sp;
+    sol.n_alpha = n_alpha;
+    sol.n_beta = n_beta;
+    sol.n_vir_a = n_vir_a;
+    sol.n_vir_b = n_vir_b;
     return sol;
 }
 
+CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, double tol, int max_iter) {
+    using Spin = SlaterDeterminant::Spin;
+    if (ints.ERI.size() == 0) {
+        throw std::invalid_argument(
+            "ccsd_energy: ERI is not materialized; need compute_eri=true.");
+    }
+    if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
+        throw std::invalid_argument(
+            "ccsd_energy: closed-shell reference only (n_alpha must equal "
+            "n_beta).");
+    }
+    if (det.generalized()) {
+        throw std::invalid_argument(
+            "ccsd_energy: GHF (spinor) reference is not supported.");
+    }
+    if (max_iter < 1) {
+        throw std::invalid_argument("ccsd_energy: max_iter must be ≥ 1.");
+    }
+    if (!(tol > 0.0)) {
+        throw std::invalid_argument("ccsd_energy: tol must be > 0.");
+    }
+
+    const xt::xtensor<double, 2> C = det.coefficients(Spin::alpha);
+    const int n_occ_sp = det.n_electrons(Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape(1));
+    const int n_vir_sp = n_mo - n_occ_sp;
+    if (n_vir_sp <= 0) {
+        CCSDSolution sol;
+        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
+        sol.n_occ_sp = n_occ_sp;
+        sol.n_vir_sp = 0;
+        return sol;
+    }
+
+    const xt::xtensor<double, 4> eri_mo = ao2mo_full(ints.ERI, C, n_mo);
+    const xt::xtensor<double, 1>& eps = det.orbital_energies(Spin::alpha);
+
+    const int no = 2 * n_occ_sp;
+    const int nv = 2 * n_vir_sp;
+    std::vector<SO> so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < n_occ_sp; ++i)
+        so[static_cast<std::size_t>(i)] = SO{i, 0};
+    for (int i = 0; i < n_occ_sp; ++i)
+        so[static_cast<std::size_t>(n_occ_sp + i)] = SO{i, 1};
+    for (int a = 0; a < n_vir_sp; ++a)
+        so[static_cast<std::size_t>(no + a)] = SO{n_occ_sp + a, 0};
+    for (int a = 0; a < n_vir_sp; ++a)
+        so[static_cast<std::size_t>(no + n_vir_sp + a)] = SO{n_occ_sp + a, 1};
+
+    auto g = [&](int p, int q, int r, int s) -> double {
+        return so_eri(eri_mo, so[static_cast<std::size_t>(p)],
+                      so[static_cast<std::size_t>(q)],
+                      so[static_cast<std::size_t>(r)],
+                      so[static_cast<std::size_t>(s)]);
+    };
+
+    const std::size_t No = static_cast<std::size_t>(no);
+    const std::size_t Nv = static_cast<std::size_t>(nv);
+    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
+    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
+    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
+    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
+    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
+    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
+
+#pragma omp parallel for collapse(2) schedule(static) if (no * no > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < no; ++q) {
+            for (int r = 0; r < no; ++r) {
+                for (int s = 0; s < no; ++s)
+                    oooo(p, q, r, s) = g(p, q, r, s);
+                for (int s = 0; s < nv; ++s)
+                    ooov(p, q, r, s) = g(p, q, r, no + s);
+            }
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (no * nv > 4)
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < nv; ++q) {
+            for (int r = 0; r < no; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
+        }
+    }
+#pragma omp parallel for collapse(2) schedule(static) if (nv > 2)
+    for (int p = 0; p < nv; ++p)
+        for (int q = 0; q < nv; ++q)
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
+
+    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < n_occ_sp; ++i) {
+        const double e = eps(static_cast<std::size_t>(i));
+        eps_so[static_cast<std::size_t>(i)] = e;
+        eps_so[static_cast<std::size_t>(n_occ_sp + i)] = e;
+    }
+    for (int a = 0; a < n_vir_sp; ++a) {
+        const double e = eps(static_cast<std::size_t>(n_occ_sp + a));
+        eps_so[static_cast<std::size_t>(no + a)] = e;
+        eps_so[static_cast<std::size_t>(no + n_vir_sp + a)] = e;
+    }
+
+    return so_ccsd_kernel(no, nv, std::move(oooo), std::move(ooov),
+                           std::move(oovv), std::move(ovov), std::move(ovvv),
+                           std::move(vvvv), std::move(eps_so), e_scf_ha, tol,
+                           max_iter, n_occ_sp, n_vir_sp, n_occ_sp, n_occ_sp,
+                           n_vir_sp, n_vir_sp);
+}
 
 CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                        double e_scf_ha, double tol, int max_iter) {
     return ccsd_solve(ints, det, e_scf_ha, tol, max_iter).result;
+}
+
+namespace {
+
+/// Chemist (C0 C1 | C2 C3) AO→MO transform (local; matches mp2 ao2mo_mixed_).
+xt::xtensor<double, 4> ao2mo_uhf_block(const xt::xtensor<double, 4>& eri_ao,
+                                       const xt::xtensor<double, 2>& C0,
+                                       const xt::xtensor<double, 2>& C1,
+                                       const xt::xtensor<double, 2>& C2,
+                                       const xt::xtensor<double, 2>& C3) {
+    xt::xtensor<double, 4> cur = eri_ao;
+    const xt::xtensor<double, 2>* Cs[4] = {&C3, &C2, &C1, &C0};
+    for (int round = 0; round < 4; ++round) {
+        const auto sh = cur.shape();
+        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
+        xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        cur = xt::transpose(next, {3, 0, 1, 2});
+    }
+    return cur; // (C0,C1,C2,C3) → chemist (p q | r s)
+}
+
+} // namespace
+
+CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                         double e_scf_ha, double tol, int max_iter) {
+    using Spin = SlaterDeterminant::Spin;
+    if (ints.ERI.size() == 0) {
+        throw std::invalid_argument(
+            "uccsd_solve: ERI is not materialized; need compute_eri=true.");
+    }
+    if (det.restricted()) {
+        throw std::invalid_argument(
+            "uccsd_solve: requires an unrestricted (UHF) determinant — use "
+            "ccsd_solve for closed-shell RHF.");
+    }
+    if (det.generalized()) {
+        throw std::invalid_argument(
+            "uccsd_solve: GHF (spinor) reference is not supported.");
+    }
+    if (max_iter < 1) {
+        throw std::invalid_argument("uccsd_solve: max_iter must be ≥ 1.");
+    }
+    if (!(tol > 0.0)) {
+        throw std::invalid_argument("uccsd_solve: tol must be > 0.");
+    }
+
+    const xt::xtensor<double, 2> Ca = det.coefficients(Spin::alpha);
+    const xt::xtensor<double, 2> Cb = det.coefficients(Spin::beta);
+    const xt::xtensor<double, 1>& eps_a = det.orbital_energies(Spin::alpha);
+    const xt::xtensor<double, 1>& eps_b = det.orbital_energies(Spin::beta);
+    const int n_mo = static_cast<int>(Ca.shape(1));
+    if (static_cast<int>(Cb.shape(1)) != n_mo) {
+        throw std::invalid_argument(
+            "uccsd_solve: α and β MO counts differ — unsupported.");
+    }
+    const int na = det.n_electrons(Spin::alpha);
+    const int nb = det.n_electrons(Spin::beta);
+    const int nva = n_mo - na;
+    const int nvb = n_mo - nb;
+    if (nva < 0 || nvb < 0) {
+        throw std::invalid_argument(
+            "uccsd_solve: occupation exceeds MO count.");
+    }
+    if (nva + nvb == 0) {
+        CCSDSolution sol;
+        sol.result = CCSDResult{0.0, e_scf_ha, 0, true};
+        sol.n_alpha = na;
+        sol.n_beta = nb;
+        sol.n_vir_a = 0;
+        sol.n_vir_b = 0;
+        sol.no = na + nb;
+        sol.nv = 0;
+        return sol;
+    }
+
+    // Chemist MO ERIs for spin pairs: eri_στ(p,q,r,s) = (p_σ q_σ | r_τ s_τ).
+    // so_eri needs (pr|qs) = eri_στ(p,r,q,s) when p,r ∈ σ and q,s ∈ τ.
+    const xt::xtensor<double, 4> eri_aa =
+        ao2mo_uhf_block(ints.ERI, Ca, Ca, Ca, Ca);
+    const xt::xtensor<double, 4> eri_bb =
+        ao2mo_uhf_block(ints.ERI, Cb, Cb, Cb, Cb);
+    const xt::xtensor<double, 4> eri_ab =
+        ao2mo_uhf_block(ints.ERI, Ca, Ca, Cb, Cb); // (p_a q_a | r_b s_b)
+    const xt::xtensor<double, 4> eri_ba =
+        ao2mo_uhf_block(ints.ERI, Cb, Cb, Ca, Ca); // (p_b q_b | r_a s_a)
+
+    // Spin-orbital list: occ [α|β], vir [α|β].
+    struct SO {
+        int p; // spatial MO index
+        int s; // 0=α, 1=β
+    };
+    const int no = na + nb;
+    const int nv = nva + nvb;
+    std::vector<SO> so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < na; ++i)
+        so[static_cast<std::size_t>(i)] = SO{i, 0};
+    for (int i = 0; i < nb; ++i)
+        so[static_cast<std::size_t>(na + i)] = SO{i, 1};
+    for (int a = 0; a < nva; ++a)
+        so[static_cast<std::size_t>(no + a)] = SO{na + a, 0};
+    for (int a = 0; a < nvb; ++a)
+        so[static_cast<std::size_t>(no + nva + a)] = SO{nb + a, 1};
+
+    auto chemist = [&](const SO& p, const SO& q, const SO& r,
+                       const SO& s) -> double {
+        // (pq|rs) with p,q same spin and r,s same spin.
+        if (p.s != q.s || r.s != s.s)
+            return 0.0;
+        if (p.s == 0 && r.s == 0)
+            return eri_aa(p.p, q.p, r.p, s.p);
+        if (p.s == 0 && r.s == 1)
+            return eri_ab(p.p, q.p, r.p, s.p);
+        if (p.s == 1 && r.s == 0)
+            return eri_ba(p.p, q.p, r.p, s.p);
+        return eri_bb(p.p, q.p, r.p, s.p);
+    };
+
+    auto g = [&](int p, int q, int r, int s) -> double {
+        // ⟨pq||rs⟩ = (pr|qs) − (ps|qr)
+        const SO& P = so[static_cast<std::size_t>(p)];
+        const SO& Q = so[static_cast<std::size_t>(q)];
+        const SO& R = so[static_cast<std::size_t>(r)];
+        const SO& S = so[static_cast<std::size_t>(s)];
+        double v = 0.0;
+        if (P.s == R.s && Q.s == S.s)
+            v += chemist(P, R, Q, S); // (pr|qs)
+        if (P.s == S.s && Q.s == R.s)
+            v -= chemist(P, S, Q, R); // (ps|qr)
+        return v;
+    };
+
+    const std::size_t No = static_cast<std::size_t>(no);
+    const std::size_t Nv = static_cast<std::size_t>(nv);
+    xt::xtensor<double, 4> oooo = xt::zeros<double>({No, No, No, No});
+    xt::xtensor<double, 4> ooov = xt::zeros<double>({No, No, No, Nv});
+    xt::xtensor<double, 4> oovv = xt::zeros<double>({No, No, Nv, Nv});
+    xt::xtensor<double, 4> ovov = xt::zeros<double>({No, Nv, No, Nv});
+    xt::xtensor<double, 4> ovvv = xt::zeros<double>({No, Nv, Nv, Nv});
+    xt::xtensor<double, 4> vvvv = xt::zeros<double>({Nv, Nv, Nv, Nv});
+
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < no; ++q) {
+            for (int r = 0; r < no; ++r) {
+                for (int s = 0; s < no; ++s)
+                    oooo(p, q, r, s) = g(p, q, r, s);
+                for (int s = 0; s < nv; ++s)
+                    ooov(p, q, r, s) = g(p, q, r, no + s);
+            }
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    oovv(p, q, r, s) = g(p, q, no + r, no + s);
+        }
+    }
+    for (int p = 0; p < no; ++p) {
+        for (int q = 0; q < nv; ++q) {
+            for (int r = 0; r < no; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovov(p, q, r, s) = g(p, no + q, r, no + s);
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    ovvv(p, q, r, s) = g(p, no + q, no + r, no + s);
+        }
+    }
+    for (int p = 0; p < nv; ++p)
+        for (int q = 0; q < nv; ++q)
+            for (int r = 0; r < nv; ++r)
+                for (int s = 0; s < nv; ++s)
+                    vvvv(p, q, r, s) = g(no + p, no + q, no + r, no + s);
+
+    std::vector<double> eps_so(static_cast<std::size_t>(no + nv));
+    for (int i = 0; i < na; ++i)
+        eps_so[static_cast<std::size_t>(i)] = eps_a(static_cast<std::size_t>(i));
+    for (int i = 0; i < nb; ++i)
+        eps_so[static_cast<std::size_t>(na + i)] =
+            eps_b(static_cast<std::size_t>(i));
+    for (int a = 0; a < nva; ++a)
+        eps_so[static_cast<std::size_t>(no + a)] =
+            eps_a(static_cast<std::size_t>(na + a));
+    for (int a = 0; a < nvb; ++a)
+        eps_so[static_cast<std::size_t>(no + nva + a)] =
+            eps_b(static_cast<std::size_t>(nb + a));
+
+    return so_ccsd_kernel(no, nv, std::move(oooo), std::move(ooov),
+                          std::move(oovv), std::move(ovov), std::move(ovvv),
+                          std::move(vvvv), std::move(eps_so), e_scf_ha, tol,
+                          max_iter, /*n_occ_sp=*/na, /*n_vir_sp=*/nva, na, nb,
+                          nva, nvb);
 }
 
 namespace {

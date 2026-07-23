@@ -36,8 +36,16 @@ struct CCSDSolution {
     std::vector<double> eps_so;
     int no = 0; ///< Occupied spin-orbitals.
     int nv = 0; ///< Virtual spin-orbitals.
-    int n_occ_sp = 0; ///< Occupied spatial MOs.
-    int n_vir_sp = 0; ///< Virtual spatial MOs.
+    int n_occ_sp = 0; ///< Occupied spatial MOs (closed-shell: n_α = n_β).
+    int n_vir_sp = 0; ///< Virtual spatial MOs (closed-shell).
+    /// Open-shell (UHF) channel sizes for EOM-SF root selection. Layout of
+    /// spin-orbitals: occ = [α₀…α_{nα−1} | β₀…β_{nβ−1}],
+    /// vir = [α₀…α_{nva−1} | β₀…β_{nvb−1}]. For closed-shell RHF these match
+    /// `n_occ_sp` / `n_vir_sp` on both spins.
+    int n_alpha = 0;
+    int n_beta = 0;
+    int n_vir_a = 0;
+    int n_vir_b = 0;
 };
 
 /// @brief Closed-shell CCSD correlation energy from a converged RHF reference.
@@ -75,10 +83,26 @@ CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det
                           int max_iter = 100);
 
 /// @brief Same as `ccsd_energy` but also returns amplitudes and SO integral
-///        blocks for EOM-EE-CCSD (private).
+///        blocks for EOM-EE-CCSD (private). Closed-shell RHF only.
 CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                         double e_scf_ha, double tol = 1e-10,
                         int max_iter = 100);
+
+/// @brief Unrestricted (UHF) spin-orbital CCSD — same Gauss–Stanton
+///        equations as `ccsd_solve`, with independent α/β MO coefficients
+///        and occupations. Matches PySCF `cc.UCCSD` / `cc.GCCSD` on UHF.
+///
+/// @param ints     Integral pack with dense ERI materialized.
+/// @param det      Converged unrestricted determinant (n_α, n_β may differ).
+/// @param e_scf_ha Converged UHF total energy [Hartree].
+/// @param tol      Amplitude residual tolerance (dimensionless max-norm).
+/// @param max_iter Jacobi iteration budget (dimensionless).
+/// @return Spin-orbital amplitudes + SO integral blocks for EOM-SF.
+/// @throws std::invalid_argument on restricted det / missing ERI / GHF /
+///         non-aufbau denominators / non-convergence (no silent fallback).
+CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
+                         double e_scf_ha, double tol = 1e-10,
+                         int max_iter = 100);
 
 } // namespace scf
 } // namespace cpu
