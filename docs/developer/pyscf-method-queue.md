@@ -20,13 +20,13 @@ of 7 retained mid-flight. **pending** still gated: nevpt2 (needs CASSCF).
 
 ## in_progress
 
-- [~] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
-- [~] `eom-ip-ccsd` | EOM-IP-CCSD | excited-states | h2o | sto-3g | IP eV | EOM-EE ✓; ionization channel; PySCF cc.eom_rccsd IP
-- [~] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | excited-states | o2 | sto-3g | roots eV | UKS-TDA ✓; RKS full-LR ✓; open-shell Casida A/B; PySCF tdscf.TDDFT(UKS)
-- [~] `casscf-h2-sto3g` | CASSCF | post-hf | h2 | sto-3g | e_tot | CASCI ✓; orbital optimization; PySCF mcscf.CASSCF
-- [~] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
-- [~] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
-- [~] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
+- [x] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
+- [x] `eom-ip-ccsd` | EOM-IP-CCSD | excited-states | h2o | sto-3g | IP eV | EOM-EE ✓; ionization channel; PySCF cc.eom_rccsd IP
+- [x] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | excited-states | o2 | sto-3g | roots eV | UKS-TDA ✓; RKS full-LR ✓; open-shell Casida A/B; PySCF tdscf.TDDFT(UKS)
+- [x] `casscf-h2-sto3g` | CASSCF | post-hf | h2 | sto-3g | e_tot | CASCI ✓; orbital optimization; PySCF mcscf.CASSCF
+- [x] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
+- [x] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
+- [x] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
 - [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
 
 ## blocked
