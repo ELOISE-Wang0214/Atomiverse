@@ -753,10 +753,15 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0,
                  periodic);
 
-    // Grimme DFT-D3 (zero damping, PBE) dispersion — a geometry-only additive
-    // correction (independent of the SCF), folded into the final total energy.
+    // Grimme DFT-D3 dispersion — geometry-only additive correction (independent
+    // of the SCF), folded into the final total energy. Zero damping (`d3`) and
+    // Becke–Johnson (`d3bj`) are mutually exclusive.
     double e_d3 = 0.0;
-    if (cfg.d3) {
+    if (cfg.d3 && cfg.d3bj)
+        throw std::runtime_error(
+            "GPW: d3 (zero damping) and d3bj (BJ damping) are mutually "
+            "exclusive — set only one");
+    if (cfg.d3 || cfg.d3bj) {
         std::vector<int> Z(atoms.size());
         std::vector<std::array<double, 3>> pos(Z.size());
         for (std::size_t i = 0; i < Z.size(); ++i) {
@@ -770,7 +775,19 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 throw std::runtime_error(
                     "GPW D3: element Z=" + std::to_string(z)
                     + " is not in the in-tree D3 table (no fallback)");
-        e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
+        if (cfg.d3)
+            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
+        else {
+            // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
+            // CP2K R_CUTOFF 20 is Å → 37.79 Bohr printed; energy sum uses
+            // 2× that (~75.59 Bohr), matching offline pins to ~1e-11 Ha.
+            constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+            constexpr double kRcutBohr = 2.0 * 20.0 * kAng2Bohr;
+            e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                kRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                /*cp2k_cn=*/true)
+                       .energy;
+        }
     }
 
     // Geometry-fixed matrices.
@@ -1237,6 +1254,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 for (int i = 0; i < cfg.n_occ; ++i)
                     res.C(u, i) = Cocc(u, i);
         }
+        res.e_disp = e_d3;
         res.e_total += e_d3;
         return res;
     }
@@ -1294,6 +1312,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             P = (1.0 - cfg.mix) * P + cfg.mix * P_new;
         }
     }
+    res.e_disp = e_d3;
     res.e_total += e_d3;
     return res;
 }

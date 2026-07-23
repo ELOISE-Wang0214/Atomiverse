@@ -56,7 +56,7 @@ GpwDft copy_gpw_test(const GpwDft& m) {
     p.eps_default = m.eps_default; p.mix = m.mix; p.diis_depth = m.diis_depth;
     p.lindep_threshold = m.lindep_threshold; p.level_shift = m.level_shift;
     p.xc = m.xc; p.nonperiodic = m.nonperiodic; p.local_pp_on_grid = m.local_pp_on_grid;
-    p.d3 = m.d3; p.use_ot = m.use_ot;
+    p.d3 = m.d3; p.d3bj = m.d3bj; p.use_ot = m.use_ot;
     return p;
 }
 
