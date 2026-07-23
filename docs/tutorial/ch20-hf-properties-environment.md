@@ -185,8 +185,9 @@ Environments modify the **one-electron** Hamiltonian only:
 
 Identity \(E(\mathbf F)=E(0)-\boldsymbol\mu\cdot\mathbf F\) checks the field
 implementation. Strong fields / diffuse bases can “ionise” the SCF; keep
-\(|\mathbf F|\sim 10^{-4}\) a.u. Analytic forces with environment on are not
-implemented.
+\(|\mathbf F|\sim 10^{-4}\) a.u. Analytic forces are available for fixed
+point charges (`embed_h2o_grad`), uniform field (`field_h2o_grad`), and
+C-PCM free energy (`pcm-grad-h2o`).
 
 ### Practice
 
@@ -218,7 +219,10 @@ Dielectric continuum \(\varepsilon\); cavity of scaled Bondi spheres; apparent
 surface charges from \(S\mathbf q=-f(\varepsilon)\mathbf V\) with
 \(f=(\varepsilon-1)/(\varepsilon+x)\). \(x=0\): C-PCM; \(x=1/2\): COSMO.
 Only electrostatic \(\Delta G_{\mathrm{el}}=\frac12\mathbf q\cdot\mathbf V\).
-No cavitation/dispersion; no analytic solvent forces; surface not smoothed.
+No cavitation/dispersion; cavity uses hard bury-delete (not SWIG-smoothed).
+Free-energy forces: vacuum HF gradient on the solvent density plus
+\(\partial\Delta G_{\mathrm{el}}/\partial R|_P\) (fixed-density rebuild of
+the cavity).
 
 ### Practice
 
@@ -230,6 +234,8 @@ sol.solvent_radii_scale = 1.2;
 sol.solvent_x = 0.0;
 sol.run(frame);
 double dg_kcal = sol.e_solvent() * 627.509474;
+// forces of G = E_HF + ΔG_el:
+auto g = sol.forces(frame); // eV/Å on frame fx/fy/fz
 ```
 
 `solvent_eps = 0` is the gas-phase path.
@@ -239,8 +245,9 @@ double dg_kcal = sol.e_solvent() * 627.509474;
 | System | Quantity | Engine | PySCF C-PCM | Tol. |
 |---|---|---:|---:|---|
 | H₂O RHF/6-31G* \(\varepsilon=78.4\) | \(\Delta G_{\mathrm{el}}\) / kcal mol⁻¹ | −8.02 | −7.96 | 0.1 |
+| H₂O RHF/6-31G* C-PCM | forces vs FD of \(G\) | — | — | \(10^{-5}\) Ha/Bohr |
 
-Regression: `h2o_rhf_631gs_cpcm`.
+Regressions: `h2o_rhf_631gs_cpcm`, `pcm-grad-h2o`.
 
 ---
 

@@ -8,7 +8,8 @@ from a converged wavefunction. Charge schemes still anchor the product surface
 that, several *environment* hooks now exist on the SCF mean-field methods:
 
 - **C-PCM / COSMO** electrostatic free energy in the Fock build
-  (`reg_h2o_rhf_631gs_cpcm`) — non-electrostatic terms absent.
+  (`reg_h2o_rhf_631gs_cpcm`) and free-energy forces (`reg_pcm-grad-h2o`) —
+  non-electrostatic terms absent.
 - **Fixed point-charge embedding** + **uniform external electric field**, with
   analytic forces (`reg_embed_h2o_grad`, `reg_field_h2o_grad`).
 - **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces
@@ -65,12 +66,14 @@ Observer / method outputs written to Frame, never Drivers — there is no
 | PBSA                               |  ○  |   ○  |   ○  |
 | Nonequilibrium PCM                 |  ○  |   ○  |   ○  |
 | State-specific excited-state PCM   |  ○  |   ○  |   ○  |
-| Implicit-solvent analytic gradient |  ○  |   ○  |   ○  |
+| Implicit-solvent analytic gradient |  ✓  |   ○  |   ○  |
 | Implicit-solvent analytic Hessian  |  ○  |   ○  |   ○  |
 
 C-PCM / COSMO share one conductor-like cavity implementation (`internal::Pcm`,
-x=0 vs x=0.5). Energy contribution is validated; surface-switching / SWIG and
-analytic PCM gradients are out of scope for the current path.
+x=0 vs x=0.5). Energy (`reg_h2o_rhf_631gs_cpcm`) and free-energy forces
+(`reg_pcm-grad-h2o`: vacuum HF terms on the solvent density + fixed-P FD of
+ΔG_el) are validated. Surface-switching / SWIG smoothing remains out of scope
+(hard bury-delete cavity).
 
 ## 3. QM/MM Methods
 

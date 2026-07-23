@@ -13,6 +13,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/internal/pcm.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -160,14 +161,31 @@ TEST(PcmScf, SolventEpsZeroMatchesVacuum) {
     EXPECT_DOUBLE_EQ(b.e_solvent(), 0.0);
 }
 
-TEST(PcmScf, ForcesThrowWhenSolventOn) {
+TEST(PcmScf, ForcesDoNotThrowAndAreFinite) {
+    // Solvent forces used to throw; now return a finite free-energy
+    // gradient. Tight FD vs energy is the 6-31G* regression gate, not here.
     auto frame = make_h2o();
     RHF rhf;
     rhf.basis = BasisSet::STO3G;
-    rhf.tol = 1e-8;
-    rhf.max_iter = 50;
+    rhf.tol = 1e-10;
+    rhf.max_iter = 80;
     rhf.solvent_eps = 78.4;
-    EXPECT_THROW(rhf.forces(frame), std::runtime_error);
+    rhf.solvent_radii_scale = 1.2;
+    rhf.solvent_x = 0.0;
+    GradientResult res;
+    EXPECT_NO_THROW(res = rhf.forces(frame));
+    ASSERT_TRUE(rhf.converged());
+    EXPECT_EQ(res.forces.shape(0), 3u);
+    EXPECT_EQ(res.forces.shape(1), 3u);
+    double max_abs = 0.0;
+    for (int A = 0; A < 3; ++A)
+        for (int d = 0; d < 3; ++d) {
+            const double f = res.forces(A, d);
+            EXPECT_TRUE(std::isfinite(f));
+            max_abs = std::max(max_abs, std::abs(f));
+        }
+    // Solvent polarisation must leave a nonzero force scale on this geometry.
+    EXPECT_GT(max_abs, 1e-6);
 }
 
 #else // !ATV_HAS_HF

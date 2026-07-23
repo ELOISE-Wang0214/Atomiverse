@@ -35,8 +35,8 @@ reproduces the QM gradient to **5.4e-11 Ha/Bohr**.
 - 电子–MM:Tr[P·dV_embed/dR_A](对 `PointChargeEmbedding::core_matrix` 中心差分,
   半数值,同 ECP 模式,h=1e-4 Bohr);
 - 核–MM:−Σ_C Z_A q_C (R_A−R_C)/|R_A−R_C|³(解析)。
-MM–MM 对 QM 核导数为 0。外场/C-PCM 力仍是后续链节(外场 oracle 只有 FD;
-C-PCM 是密度相关自洽面电荷,非固定 1e 项)。
+MM–MM 对 QM 核导数为 0。外场力见 `field_h2o_grad`；C-PCM 自由能力见
+`pcm-grad-h2o`（真空 HF 项 + 固定密度下 ΔG_el 的半数值导数）。
 
 文献:Warshel & Levitt, *J. Mol. Biol.* **103**, 227 (1976),
 DOI 10.1016/0022-2836(76)90311-9(QM/MM 静电嵌入);PySCF `pyscf/qmmm`

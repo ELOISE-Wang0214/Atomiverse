@@ -96,6 +96,17 @@ struct IntegralPack {
     ///        All-zero ⇒ no field.
     std::array<double, 3> external_field{{0.0, 0.0, 0.0}};
 
+    /// @brief C-PCM / COSMO dielectric ε retained when `solvent_eps > 0` so the
+    ///        free-energy gradient can rebuild the cavity at displaced
+    ///        geometries. Zero ⇒ vacuum (no PCM force term).
+    double solvent_eps = 0.0;
+
+    /// @brief Bondi radii scale for the solvent cavity (dimensionless).
+    double solvent_radii_scale = 1.2;
+
+    /// @brief Dielectric scaling x in f(ε)=(ε−1)/(ε+x): 0 = C-PCM, 0.5 = COSMO.
+    double solvent_x = 0.0;
+
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.
     std::vector<native::Atom> atoms;
