@@ -24,10 +24,27 @@
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
+#include "atomiverse/molrs.hpp"
 
 namespace ATV {
 namespace cpu {
 namespace gpw {
+
+/// @brief Dudarev DFT+U (CP2K PLUS_U) on one element / angular-momentum shell.
+///
+/// Parameters are constructor args / members — no `PlusUConfig` bag.
+/// @param element Correlated element (e.g. Ni).
+/// @param l       Angular momentum of the correlated shell (d → 2).
+/// @param u_minus_j_ev Effective U−J [eV] (public surface; converted to Ha inside).
+struct PlusU {
+    molrs::Element element = molrs::Element::H;
+    int l = 2;
+    double u_minus_j_ev = 0.0;
+
+    PlusU() = default;
+    PlusU(molrs::Element element, int l, double u_minus_j_ev)
+        : element(element), l(l), u_minus_j_ev(u_minus_j_ev) {}
+};
 
 /// @brief One atom's GPW data: valence charge, basis, and GTH pseudopotential.
 struct GpwAtom {
@@ -36,6 +53,8 @@ struct GpwAtom {
     double pos[3] = {0, 0, 0}; ///< position [Bohr].
     std::vector<GridBasisFunction>
         basis;                ///< contracted GTOs, already centered at pos.
+    /// @brief Angular momentum ℓ of each entry in `basis` (same length; for DFT+U).
+    std::vector<int> basis_l;
     double rloc = 0.0;        ///< GTH local radius.
     std::vector<double> cloc; ///< GTH local short-range C coefficients.
     std::vector<GthNonlocalChannel>
@@ -72,7 +91,10 @@ struct GpwResult {
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3 dispersion [Hartree] (0 when d3/d3bj off).
+    double e_dftu = 0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
+    /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
+    std::vector<double> mulliken_spin;
     bool converged = false;
     int iters = 0;
 
@@ -127,6 +149,12 @@ class GpwDft {
     /// Mutually exclusive with `d3` — both true throws at run.
     bool d3bj = false; ///< Grimme DFT-D3 dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
+    /// @brief Dudarev PLUS_U entries (empty = off). U−J in eV on each entry.
+    std::vector<PlusU> plus_u;
+    /// @brief Optional per-atom AFM/FM spin seed for the initial UKS density
+    ///        (units-free sign/magnitude; size 0 or n_atoms). Applied only to
+    ///        the cold-start densities, not as an external potential.
+    std::vector<double> atom_spin_guess;
 
     GpwDft() = default;
     GpwDft(const GpwDft&) = delete;

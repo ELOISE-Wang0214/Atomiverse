@@ -83,6 +83,8 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.d3 = d3;
     cfg.d3bj = d3bj;
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
+    cfg.plus_u = plus_u;
+    cfg.atom_spin_guess = atom_spin_guess;
     built_cell_ = {cfg.cell[0], cfg.cell[1], cfg.cell[2]};
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));

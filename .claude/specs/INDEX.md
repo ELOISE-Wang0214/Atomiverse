@@ -44,3 +44,4 @@ Do not re-create closed slugs without superseding intent.
 | [pw-analytic-stress-si](pw-analytic-stress-si/) | `wf/pw-analytic-stress-si` | open — PW Nielsen–Martin analytic stress (Si NC-UPF) |
 | [fd-phonon-supercell](fd-phonon-supercell/) | `wf/fd-phonon-supercell` | open — FD supercell phonons (Γ) |
 | [bands-dos-si](bands-dos-si/) | `wf/bands-dos-si` | open — Band structure / DOS PW Si |
+| [gpw-dftu-nio](gpw-dftu-nio/) | `wf/gpw-dftu-nio` | open — Periodic DFT+U (NiO mol PLUS_U pin) |

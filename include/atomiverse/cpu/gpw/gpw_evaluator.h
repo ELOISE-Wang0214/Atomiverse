@@ -67,6 +67,10 @@ class GPWEvaluator : public cpu::GPW {
     /// O₂ GTH-q6 triplet: n_alpha=7, n_beta=5.
     int n_alpha = 0;
     int n_beta = 0;
+    /// @brief Dudarev DFT+U (PLUS_U); empty disables. U−J in eV per entry.
+    std::vector<PlusU> plus_u;
+    /// @brief Per-atom initial spin seed for UKS AFM/FM (0 or n_atoms).
+    std::vector<double> atom_spin_guess;
     /// @brief One Kind per distinct element in the system.
     std::vector<Kind> kinds;
 
