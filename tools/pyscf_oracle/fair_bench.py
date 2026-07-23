@@ -201,6 +201,21 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
             "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()"
         ),
+        # One-shot GF2 / G0F2 — twin of RHF::gf2().
+        "gf2": (
+            "from pyscf import scf, agf2\n"
+            "import numpy as np\n"
+            "from pyscf.agf2.chempot import binsearch_chempot\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
+            "g1=agf2.RAGF2(mf); g1.verbose=0\n"
+            "eri=g1.ao2mo(); g0=g1.init_gf(); se0=g1.build_se(eri,g0)\n"
+            "fock=np.diag(np.asarray(mf.mo_energy,dtype=float))\n"
+            "w,v=se0.eig(fock)\n"
+            "mu,_=binsearch_chempot((w,v),g1.nmo,g1.nocc*2)\n"
+            "g_one=agf2.GreensFunction(w,v[:g1.nmo],chempot=mu)\n"
+            "g1.get_ip(g_one,nroots=1); g1.get_ea(g_one,nroots=1)\n"
+            "g1.energy_mp2(mf.mo_energy,se0)"
+        ),
         # UHF ΔSCF IMOM (PySCF mom_occ_) — twin of UHF::delta_scf HOMO→LUMO.
         "delta_scf": (
             "from pyscf import scf\n"
@@ -235,7 +250,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "gf2", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

@@ -114,7 +114,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "gf2", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -352,6 +352,48 @@ def main() -> int:
             out["gap_ac_ev"] = float((qac[lumo] - qac[homo]) * _HA_TO_EV)
         except Exception as ac_err:  # pragma: no cover — optional twin
             out["ac_error"] = str(ac_err)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if out.get("converged", True) else 1
+
+    if m == "gf2":
+        # One-shot GF2 / G0F2 (AGF2 SE from HF GF + single Dyson solve) —
+        # twin of Atomiverse RHF::gf2(). Not self-consistent RAGF2.kernel().
+        import numpy as np
+        from pyscf import agf2
+        from pyscf.agf2.chempot import binsearch_chempot
+
+        mf = scf.RHF(mol)
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        g1 = agf2.RAGF2(mf)
+        g1.verbose = 0
+        eri = g1.ao2mo()
+        g0 = g1.init_gf()
+        se0 = g1.build_se(eri, g0)
+        fock = np.diag(np.asarray(mf.mo_energy, dtype=float))
+        w, v = se0.eig(fock)
+        mu, nerr = binsearch_chempot((w, v), g1.nmo, g1.nocc * 2)
+        g_one = agf2.GreensFunction(w, v[: g1.nmo], chempot=mu)
+        ip = float(g1.get_ip(g_one, nroots=1)[0][0])
+        ea = float(g1.get_ea(g_one, nroots=1)[0][0])
+        e_init = float(g1.energy_mp2(mf.mo_energy, se0))
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["eps_hf_ha"] = np.asarray(mf.mo_energy, dtype=float).tolist()
+        out["qp_homo_ha"] = float(-ip)
+        out["qp_lumo_ha"] = float(ea)
+        out["gap_ha"] = float(ip + ea)
+        out["gap_ev"] = float((ip + ea) * _HA_TO_EV)
+        out["ip_ev"] = float(ip * _HA_TO_EV)
+        out["ea_ev"] = float(ea * _HA_TO_EV)
+        out["ip_ha"] = ip
+        out["ea_ha"] = ea
+        out["e_corr_ha"] = e_init
+        out["e_tot_gf2_ha"] = float(e + e_init)
+        out["chempot_ha"] = float(mu)
+        out["nerr"] = float(nerr)
+        out["pole_energy_ha"] = np.asarray(w, dtype=float).tolist()
+        out["oracle"] = "pyscf_agf2_ragf2_oneshot"
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0 if out.get("converged", True) else 1
 

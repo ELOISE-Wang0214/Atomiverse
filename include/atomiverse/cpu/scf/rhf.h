@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
+#include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
@@ -215,6 +216,20 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         non-restricted reference, or when dRPA is ill-conditioned.
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     G0W0Result g0w0() const;
+
+    /// @brief One-shot second-order Green's function (G0F2 / GF2)
+    ///        quasiparticle energies of the most recent `run()` (closed-shell
+    ///        RHF). Builds the 2h1p+2p1h auxiliary self-energy from the HF
+    ///        Green's function and solves the Dyson equation once with
+    ///        F = diag(ε_HF). Matches PySCF `agf2.RAGF2` one-shot poles
+    ///        (SE from `init_gf` → `se.get_greens_function(F_HF)`). Not
+    ///        self-consistent AGF2 (separate roadmap item).
+    /// @return QP energies [Hartree], HOMO–LUMO gap / IP / EA [eV],
+    ///         Galitskii–Migdal e_corr [Hartree].
+    /// @throws std::runtime_error when called before `run()` or on a
+    ///         non-restricted reference.
+    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
+    GF2Result gf2() const;
 
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib
