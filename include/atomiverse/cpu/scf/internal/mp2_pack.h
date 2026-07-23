@@ -2,6 +2,7 @@
 /// @brief Private pack-based MP2 entry (unit tests / method implementation).
 #pragma once
 
+#include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/slater_determinant.h" // SlaterDeterminant
@@ -19,6 +20,17 @@ namespace scf {
 /// @return MP2 correlation and total energies [Hartree].
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                      double e_scf_ha);
+
+/// @brief Closed-shell RI-MP2 correlation energy via Coulomb-metric density
+///        fitting (same `DensityFitting` workspace as SCF RI-J/JK). Does not
+///        require a materialized 4-center ERI tensor.
+/// @param ints     Integral pack (shells + atoms in Bohr).
+/// @param det      Converged closed-shell RHF determinant.
+/// @param e_scf_ha SCF energy [Hartree].
+/// @param aux      Auxiliary basis (def2 universal JKFIT).
+/// @return MP2Result with RI (ia|jb)≈Σ_P B_ia^P B_jb^P [Hartree].
+MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                        double e_scf_ha, AuxBasis aux);
 
 } // namespace scf
 } // namespace cpu

@@ -93,26 +93,39 @@ class RHF : public MeanFieldMethod<RHF> {
         ExcitationChannel channel = ExcitationChannel::singlet) const;
 
     /// @brief Nuclear forces on TDA excited-state energy of root `state`
-    ///        via central finite difference of \(E_n^{\mathrm{TDA}}\) [eV/Å].
-    ///        Requires a prior successful `run()` geometry on `frame`; re-runs
-    ///        SCF + TDA at ±h displacements (textbook skeleton).
-    /// @param frame Geometry (mutated temporarily; restored).
+    ///        [eV/Å]. Default path is **analytic** CIS/TDA (integral
+    ///        derivatives + relaxed difference density / Z-vector). Set
+    ///        `analytic=false` to use central finite difference of
+    ///        \(E_n^{\mathrm{TDA}}\) with step `h` [Å] (oracle / debug).
+    /// @param frame Geometry (mutated temporarily on FD path; restored).
     /// @param state Excited root index (0-based).
-    /// @param h Finite-difference step [Å] (default 1e-3).
+    /// @param h Finite-difference step [Å] (FD path only; default 1e-3).
+    /// @param analytic true (default) analytic CIS gradient; false = FD.
     /// @return Per-atom force array size 3N (fx,fy,fz interleaved) [eV/Å].
     std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
-                                   double h = 1e-3) const;
+                                   double h = 1e-3,
+                                   bool analytic = true) const;
 
-    /// @brief FD nonadiabatic coupling *strength* skeleton between TDA roots
-    ///        `i` and `j`: returns ‖F_i − F_j‖ / |E_i − E_j| [1/Å] as a
-    ///        phase-less scale (surface-hopping prep, not full derivative
-    ///        coupling vectors).
+    /// @brief Nonadiabatic coupling *strength* between TDA roots `i` and `j`:
+    ///        ‖d_ij‖ [1/Å] where d_ij = tda_nac_vectors(...) (true NAC).
     /// @param frame Geometry [Å].
     /// @param state_i Lower root index (0-based).
     /// @param state_j Upper root index (0-based).
-    /// @param h FD step for forces [Å].
+    /// @param h FD step if analytic forces fall back is not used [Å].
     double tda_nac_strength(cpu::Frame& frame, int state_i = 0,
                             int state_j = 1, double h = 2e-3) const;
+
+    /// @brief True first-order NAC vectors d_ij = ⟨Ψ_i|∇_R|Ψ_j⟩ [1/Å],
+    ///        length 3N (fx,fy,fz interleaved per atom). Built from analytic
+    ///        TDA force difference / energy gap (Chernyak–Mukamel form) with
+    ///        phase fixed so the first large component is positive.
+    /// @param frame Geometry [Å].
+    /// @param state_i Root i (0-based).
+    /// @param state_j Root j (0-based); must differ from i.
+    /// @return d_ij [1/Å]; d_ji = −d_ij.
+    /// @throws on i==j, unconverged SCF, or degenerate gap.
+    std::vector<double> tda_nac_vectors(cpu::Frame& frame, int state_i = 0,
+                                        int state_j = 1) const;
 
     /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
     ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian

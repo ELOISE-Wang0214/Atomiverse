@@ -990,7 +990,9 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
             "— the closed-shell MP2 pack has no spinor transformation. Use "
             "RHF.");
     const bool prev = compute_eri;
-    compute_eri = true;
+    // Canonical MP2 needs a dense ERI; RI-MP2 builds 3-center integrals only.
+    if (ri == RI::None)
+        compute_eri = true;
     run(frame);
     compute_eri = prev;
     if (!this->converged())
@@ -998,6 +1000,8 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame) {
             "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
+    if (ri != RI::None)
+        return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis);
     return mp2_energy(*integrals_sp_, *det_sp_, e_total_);
 }
 

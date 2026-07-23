@@ -3,26 +3,20 @@
 Live specs under `.claude/specs/`. Completed work is **deleted**; history is
 the git log. Method census: `docs/roadmap/`.
 
-## Live — CPU next campaign (2026-07-23)
+## Live
 
-### A/B — Response (merging next: `feat/cpu-next-response`)
+*(none — CPU next A/B/C campaign closed 2026-07-23 via parallel worktrees)*
 
-| Spec | Summary |
-| ---- | ------- |
-| [full-grid-alda](full-grid-alda.md) | Full grid MO-product ALDA for RKS TDA [approved] |
-| [analytic-tda-forces](analytic-tda-forces.md) | Analytic CIS/TDA nuclear forces on RHF [approved] |
-| [true-nac-vectors](true-nac-vectors.md) | True TDA NAC vectors (not strength-only) [approved] |
-| [ri-mp2](ri-mp2.md) | Density-fitted RI-MP2 energy on RHF [approved] |
-
-### Closed this campaign (worktrees)
+## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
 | Branch | Specs | Highlights |
 | ------ | ----- | ---------- |
 | `feat/cpu-next-md` | parrinello-rahman-npt, nph-ensemble | PR full-cell NPT, isotropic NPH |
-| `feat/cpu-next-tb-arch` | tb-sk-product, concrete-pw/gpw/nddo | Multi-element DFTB2; concrete methods |
-| `feat/cpu-next-msamp` | qmmm-link-atoms, polarizable-qmmm, multi-cv-metad, multi-window-wham | Link atoms, pol QM/MM, ND metaD, WHAM |
+| `feat/cpu-next-tb-arch` | tb-sk-product, concrete-pw-method, concrete-gpw-method, concrete-nddo-method | Multi-element DFTB2; concrete PW/GPW/AM1-RM1 |
+| `feat/cpu-next-msamp` | qmmm-link-atoms, polarizable-qmmm, multi-cv-metad, multi-window-wham | Link atoms, pol QM/MM, ND metaD, WHAM (molrs) |
+| `feat/cpu-next-response` | full-grid-alda, analytic-tda-forces, true-nac-vectors, ri-mp2 | Full MO-product ALDA, CIS TDA forces, NAC vectors, RI-MP2 |
 
-## Closed on `dev` (earlier 2026-07-23)
+## Closed earlier on `dev` (2026-07-23)
 
 | Queue | Specs (deleted; see git) | Shipped highlights |
 | ----- | ------------------------ | ------------------ |

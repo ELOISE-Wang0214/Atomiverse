@@ -1,3 +1,4 @@
+#include <cmath>
 #include <gtest/gtest.h>
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
@@ -16,6 +17,6 @@ TEST(AldaDiff, LsdaDiffersFromPbePathFlag) {
     pbe.basis=cpu::scf::BasisSet::STO3G; pbe.tol=1e-8; pbe.run(f);
     auto e_pbe = pbe.tda(1);
     EXPECT_FALSE(e_pbe.alda);
-    // ALDA diagonal shifts LSDA spectrum vs pure CIS@PBE path
-    EXPECT_NE(e_lsda.energy_ev[0], e_pbe.energy_ev[0]);
+    // Full-grid ALDA moves the LSDA S1 relative to pure CIS@PBE.
+    EXPECT_GT(std::fabs(e_lsda.energy_ev[0] - e_pbe.energy_ev[0]), 1e-3);
 }

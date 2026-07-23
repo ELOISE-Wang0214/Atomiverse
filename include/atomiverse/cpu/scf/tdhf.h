@@ -52,8 +52,8 @@ struct ExcitedStatesResult {
     ///        reference), false = full TDHF/RPA (dimensionless flag).
     bool tda = false;
 
-    /// @brief true when ALDA \(f^{\mathrm{xc}}\) contribution was requested
-    ///        (RKS LSDA TDA path). Full grid kernel may still be skeletal.
+    /// @brief true when full MO-product ALDA \(f^{\mathrm{xc}}\) was applied
+    ///        to the Casida A matrix (RKS LSDA TDA path).
     bool alda = false;
 };
 
