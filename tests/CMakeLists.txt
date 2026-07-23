@@ -592,6 +592,8 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_cphf            cpu/scf/test_cphf.cpp)
     atv_add_cpp_test(test_cpu_scf_analytic_hessian
                      cpu/scf/test_analytic_hessian.cpp)
+    atv_add_cpp_test(test_cpu_scf_uhf_hessian
+                     cpu/scf/test_uhf_hessian.cpp)
     # hf-capability-gaps-09-soscf: CIAH stepper units — exp(κ) unitarity,
     # gradient vs FD, matrix-free CIAH vs dense augmented eigensolve, trust
     # region, MixStage latch; plus the allowed micro H2/STO-3G default-off

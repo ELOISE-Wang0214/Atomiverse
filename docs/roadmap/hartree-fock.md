@@ -27,7 +27,7 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | ROHF analytic gradient                     |  ✓  |   ○  |   ○  |
 | GHF analytic gradient                      |  ✓  |   ○  |   ○  |
 | RHF analytic Hessian                       |  ○  |   ○  |   ○  |
-| UHF analytic Hessian                       |  ○  |   ○  |   ○  |
+| UHF analytic Hessian                       |  ✓  |   ○  |   ○  |
 | ROHF analytic Hessian                      |  ○  |   ○  |   ○  |
 | Hartree–Fock stability analysis            |  ✓  |   ○  |   ○  |
 

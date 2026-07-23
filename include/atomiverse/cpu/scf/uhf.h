@@ -5,6 +5,8 @@
 #include <string>
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/scf_guess.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -29,6 +31,32 @@ class UHF : public MeanFieldMethod<UHF> {
     /// @param n_beta  Spin-down electrons.
     explicit UHF(int n_alpha, int n_beta);
     std::string name() const { return "uhf"; }
+
+    /// @brief Analytic nuclear Hessian d²E/dR² via unrestricted CPHF
+    ///        linear response — a method output beside `forces()`, feeding
+    ///        the vib pipeline (`vib::MassWeighting` →
+    ///        `vib::HessianDiagonalizer`).
+    ///
+    /// Runs a fresh UHF SCF on `frame` (writes the eV energy to
+    /// `frame.meta[kEnergy]`), assembles the skeleton second-derivative
+    /// integrals with per-spin densities, solves the coupled α/β CPHF
+    /// equations (A+B)·U^x = −B^x for all 3N nuclear perturbations, and
+    /// assembles E^{xy} (Pople / Yamaguchi unrestricted second derivatives).
+    ///
+    /// @param frame Geometry (Å) + Z in the type column; atoms not moved.
+    /// @param guess Optional density-matrix guess for the reference SCF
+    ///              (needed for multi-minima cases such as triplet O₂ —
+    ///              ROHF warm-start).
+    /// @return `vib::HessianResult` with the dense symmetric `[3N, 3N]`
+    ///         Hessian in eV/Å² and `n_atoms` set; frequency /
+    ///         thermochemistry fields stay empty for the vib components.
+    /// @throws std::runtime_error when the SCF does not converge, on a
+    ///         spherical-convention basis or ECP pack, with RI enabled, or
+    ///         on CPHF non-convergence.
+    /// @throws std::invalid_argument when either spin channel has no
+    ///         virtual orbitals.
+    vib::HessianResult hessian(Frame& frame,
+                               const SCFInitialGuess* guess = nullptr);
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`
