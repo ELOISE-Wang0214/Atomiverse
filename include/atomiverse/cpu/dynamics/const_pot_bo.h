@@ -29,6 +29,8 @@ struct ElectrodeGroup {
 /// @brief Constant-potential BO charge solver (dense matrix inverse).
 ///
 /// Parameters are constructor arguments and public members — no Config bag.
+/// Optional Thomas–Fermi metallicity (map E7 / Scalfi et al. 2020): set
+/// `l_tf` [Å] and `site_density` [1/Å³] to harden the elastance diagonal.
 ///
 /// @code
 /// cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
@@ -36,6 +38,8 @@ struct ElectrodeGroup {
 /// conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
 /// conp.electroneutrality = true;
 /// conp.xy_image_range = 200;
+/// conp.l_tf = 2.0;            // [Å]; 0 = perfect metal
+/// conp.site_density = 0.0593; // [1/Å³] Au FCC
 /// sim.on(md::Phase::pre_force).add(std::move(conp));
 /// @endcode
 class ConstPotBO : public cpu::Component {
@@ -68,6 +72,10 @@ class ConstPotBO : public cpu::Component {
     /// @brief \(\Psi_{\mathrm{last}}-\Psi_{\mathrm{first}}\) [V] (two-electrode convenience).
     double delta_psi() const;
 
+    /// @brief Integral capacitance \(|Q_{\mathrm{last}}| / |\Delta\Psi|\) [e/V]
+    ///        for a two-electrode capacitor (uses first/last electrode groups).
+    double capacitance() const;
+
     /// @brief \(\lvert\sum_i Q_i\rvert\) [e] over all electrode sites.
     double neutrality_residual() const;
 
@@ -88,6 +96,14 @@ class ConstPotBO : public cpu::Component {
     /// Rebuild \(A\) every launch (movable electrodes). v1 walls are frozen;
     /// leave false for geometry-static electrodes.
     bool rebuild_matrix_every_step = false;
+    /// Thomas–Fermi screening length \(l_{\mathrm{TF}}\) [Å]. Zero recovers
+    /// perfect-metal BO (MetalWalls / Scalfi). Requires `site_density` > 0
+    /// when positive.
+    double l_tf = 0.0;
+    /// Electrode site number density \(d\) [1/Å³] for the TF hardness
+    /// \(A_{ii}\mathrel{+}= 4\pi k_e l_{\mathrm{TF}}^{2} d\). Au FCC with
+    /// \(a_0=4.07\) Å gives \(d = 4/a_0^3 \approx 0.0593\).
+    double site_density = 0.0;
 
   private:
     std::vector<ElectrodeGroup> groups_;

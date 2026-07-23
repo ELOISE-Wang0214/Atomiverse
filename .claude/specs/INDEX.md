@@ -5,7 +5,11 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
+| Spec | Branch | Chapter |
+| ---- | ------ | ------- |
+| [thomas-fermi-electrode](thomas-fermi-electrode/SPEC.md) | `wf/thomas-fermi-electrode` | E7 Thomas–Fermi metallicity |
+
+*(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
 `wf/<slug>` before code)*
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)

@@ -90,6 +90,13 @@ ConstPotBO::ConstPotBO(double eta_in) : eta(eta_in) {
         throw std::invalid_argument("ConstPotBO: eta must be > 0 [1/Å]");
 }
 
+double ConstPotBO::capacitance() const {
+    const double dpsi = std::abs(delta_psi());
+    if (dpsi < 1e-30 || groups_.size() < 2) return 0.0;
+    // |Q| on the last electrode group (opposite of first under neutrality).
+    return std::abs(total_charge(groups_.size() - 1)) / dpsi;
+}
+
 ConstPotBO& ConstPotBO::add_electrode(int type, double psi) & {
     groups_.push_back(ElectrodeGroup{type, psi});
     return *this;
@@ -104,6 +111,11 @@ void ConstPotBO::build(const BuildContext& ctx) {
     if (groups_.empty())
         throw std::runtime_error(
             "ConstPotBO: add at least one electrode via add_electrode(type, Psi)");
+    if (l_tf < 0.0)
+        throw std::invalid_argument("ConstPotBO: l_tf must be >= 0 [Å]");
+    if (l_tf > 0.0 && !(site_density > 0.0))
+        throw std::invalid_argument(
+            "ConstPotBO: site_density [1/Å³] must be > 0 when l_tf > 0");
     collect_electrodes_(ctx.frame);
     if (elec_atoms_.empty())
         throw std::runtime_error(
@@ -245,6 +257,17 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
             }
             A_[static_cast<std::size_t>(a) * m + a] += self_img;
         }
+    }
+
+    // Thomas–Fermi metallicity (Scalfi et al. JCP 153, 174704 (2020)):
+    // U_TF^(2) = (l_TF² d / (2 ε0)) Σ Q_i²  ⇒  A_ii += l_TF² d / ε0
+    // with 1/ε0 = 4π k_e and k_e = units::coulomb [eV·Å/e²].
+    if (l_tf > 0.0) {
+        constexpr double kPi = 3.14159265358979323846;
+        const double hardness =
+            4.0 * kPi * units::coulomb * l_tf * l_tf * site_density;
+        for (int a = 0; a < m; ++a)
+            A_[static_cast<std::size_t>(a) * m + a] += hardness;
     }
 }
 
