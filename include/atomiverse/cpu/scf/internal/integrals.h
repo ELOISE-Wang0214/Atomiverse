@@ -22,6 +22,7 @@
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/point_charges.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/scf_enums.h"
 
 namespace ATV {
 namespace cpu {
@@ -96,7 +97,7 @@ struct IntegralPack {
     ///        All-zero ⇒ no field.
     std::array<double, 3> external_field{{0.0, 0.0, 0.0}};
 
-    /// @brief C-PCM / COSMO dielectric ε retained when `solvent_eps > 0` so the
+    /// @brief Continuum dielectric ε retained when `solvent_eps > 0` so the
     ///        free-energy gradient can rebuild the cavity at displaced
     ///        geometries. Zero ⇒ vacuum (no PCM force term).
     double solvent_eps = 0.0;
@@ -105,7 +106,11 @@ struct IntegralPack {
     double solvent_radii_scale = 1.2;
 
     /// @brief Dielectric scaling x in f(ε)=(ε−1)/(ε+x): 0 = C-PCM, 0.5 = COSMO.
+    ///        Ignored for IEF-PCM.
     double solvent_x = 0.0;
+
+    /// @brief Continuum model retained for free-energy gradient rebuilds.
+    SolventModel solvent_model = SolventModel::CPCM;
 
     /// @brief Atom descriptors (Z, position in Bohr). Filled by the
     ///        Frame-based constructor.

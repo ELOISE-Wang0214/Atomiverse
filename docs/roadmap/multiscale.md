@@ -53,8 +53,8 @@ Observer / method outputs written to Frame, never Drivers — there is no
 
 | Method                             | CPU | CUDA | Kokkos |
 | ---------------------------------- | :-: | :--: | :---: |
-| Polarizable continuum model, PCM   |  ○  |   ○  |   ○  |
-| Integral-equation-formalism PCM    |  ○  |   ○  |   ○  |
+| Polarizable continuum model, PCM   |  ✓  |   ○  |   ○  |
+| Integral-equation-formalism PCM    |  ✓  |   ○  |   ○  |
 | Conductor-like PCM                 |  ✓  |   ○  |   ○  |
 | COSMO                              |  ✓  |   ○  |   ○  |
 | SMD                                |  ○  |   ○  |   ○  |
@@ -69,11 +69,14 @@ Observer / method outputs written to Frame, never Drivers — there is no
 | Implicit-solvent analytic gradient |  ✓  |   ○  |   ○  |
 | Implicit-solvent analytic Hessian  |  ○  |   ○  |   ○  |
 
-C-PCM / COSMO share one conductor-like cavity implementation (`internal::Pcm`,
-x=0 vs x=0.5). Energy (`reg_h2o_rhf_631gs_cpcm`) and free-energy forces
-(`reg_pcm-grad-h2o`: vacuum HF terms on the solvent density + fixed-P FD of
-ΔG_el) are validated. Surface-switching / SWIG smoothing remains out of scope
-(hard bury-delete cavity).
+C-PCM / COSMO / IEF-PCM share one cavity implementation (`internal::Pcm`;
+`SolventModel::{CPCM,COSMO,IEFPCM}`). Conductor models use \(S q=-f V\)
+(x=0 vs x=0.5); IEF-PCM builds the \(K q=R V\) system with the double-layer
+operator \(D\) (Cancès–Mennucci–Tomasi; PySCF `method='IEF-PCM'`). Energy
+regressions: `reg_h2o_rhf_631gs_cpcm`, `reg_ief-pcm-h2o`. Free-energy forces:
+`reg_pcm-grad-h2o` (vacuum HF terms on the solvent density + fixed-P FD of
+ΔG_el). Surface-switching / SWIG smoothing remains out of scope (hard
+bury-delete cavity).
 
 ## 3. QM/MM Methods
 

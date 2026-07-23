@@ -1,5 +1,5 @@
 /// @file cpu/scf/internal/pcm.cpp
-/// @brief C-PCM / COSMO cavity + conductor solve + AO reaction field.
+/// @brief C-PCM / COSMO / IEF-PCM cavity + continuum solve + AO reaction field.
 
 #include "atomiverse/cpu/scf/internal/pcm.h"
 
@@ -123,8 +123,8 @@ double bondi_radius_ang(int Z) {
 }
 
 Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
-         double x, int lebedev_n)
-    : atoms_(std::move(atoms)), eps_(eps), x_(x) {
+         double x, int lebedev_n, SolventModel model)
+    : atoms_(std::move(atoms)), eps_(eps), x_(x), model_(model) {
     if (atoms_.empty())
         throw std::invalid_argument("Pcm: empty atom list");
     if (!(eps_ > 0.0) || !std::isfinite(eps_))
@@ -138,7 +138,12 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
         throw std::invalid_argument(
             "Pcm: solvent_x must be finite and >= 0 (0=C-PCM, 0.5=COSMO)");
 
-    f_eps_ = (eps_ - 1.0) / (eps_ + x_);
+    // IEF-PCM uses f = (ε−1)/(ε+1) (Cancès–Mennucci–Tomasi / PySCF);
+    // conductor models keep f = (ε−1)/(ε+x).
+    if (model_ == SolventModel::IEFPCM)
+        f_eps_ = (eps_ - 1.0) / (eps_ + 1.0);
+    else
+        f_eps_ = (eps_ - 1.0) / (eps_ + x_);
 
     const int nat = static_cast<int>(atoms_.size());
     std::vector<double> R(static_cast<std::size_t>(nat));
@@ -155,7 +160,6 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
     // Tesserae: sphere points, hard bury-delete when inside another sphere.
     // Also retain per-tessera Gaussian width ξ (Lange–Herbert) for the S
     // matrix; ξ = XI / (R √w) with w = 4π · leb_weight (unit-sphere sum=1).
-    std::vector<double> charge_exp; // ξ per kept tessera
     const double xi_tab = lebedev_xi_factor(n_leb);
     for (int a = 0; a < nat; ++a) {
         const double Ra = R[static_cast<std::size_t>(a)];
@@ -187,11 +191,14 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
             const double w4pi = leb[g].w * (4.0 * kPi);
             const double ak = w4pi * Ra * Ra;
             pos_.push_back({px, py, pz});
+            // Outward unit normal = Lebedev direction on the parent sphere.
+            nrm_.push_back({leb[g].x, leb[g].y, leb[g].z});
             area_.push_back(ak);
+            R_sphere_.push_back(Ra);
             if (xi_tab > 0.0)
-                charge_exp.push_back(xi_tab / (Ra * std::sqrt(w4pi)));
+                xi_.push_back(xi_tab / (Ra * std::sqrt(w4pi)));
             else
-                charge_exp.push_back(0.0);
+                xi_.push_back(0.0);
         }
     }
     if (pos_.empty())
@@ -216,20 +223,35 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
         v_nuc_[static_cast<std::size_t>(k)] = vn;
     }
 
-    // S matrix. Prefer Lange–Herbert Gaussian-smeared Coulomb (erf(ξr)/r)
-    // matching PySCF PCM when XI is tabulated; else classical point-charge
-    // S with Klamt–Schüürmann diagonal.
+    // S (and optionally D) matrices. Prefer Lange–Herbert Gaussian-smeared
+    // Coulomb (erf(ξr)/r) matching PySCF PCM when XI is tabulated; else
+    // classical point-charge S with Klamt–Schüürmann diagonal.
     S_ = xt::zeros<double>({static_cast<std::size_t>(nt),
                             static_cast<std::size_t>(nt)});
+    xt::xtensor<double, 2> D;
+    const bool need_D = (model_ == SolventModel::IEFPCM);
+    if (need_D)
+        D = xt::zeros<double>({static_cast<std::size_t>(nt),
+                               static_cast<std::size_t>(nt)});
     const bool use_gauss = (xi_tab > 0.0);
     for (int k = 0; k < nt; ++k) {
         if (use_gauss) {
-            const double xik = charge_exp[static_cast<std::size_t>(k)];
-            S_(k, k) = xik * std::sqrt(2.0 / kPi); // switch_fun = 1 (hard)
+            const double xik = xi_[static_cast<std::size_t>(k)];
+            // switch_fun = 1 (hard bury-delete).
+            S_(k, k) = xik * std::sqrt(2.0 / kPi);
+            if (need_D) {
+                const double Rk = R_sphere_[static_cast<std::size_t>(k)];
+                D(k, k) = -xik * std::sqrt(2.0 / kPi) / (2.0 * Rk);
+            }
         } else {
             S_(k, k) =
                 kKlamtDiag
                 * std::sqrt(4.0 * kPi / area_[static_cast<std::size_t>(k)]);
+            if (need_D) {
+                // Classical double-layer diagonal (same scaling as S diag).
+                const double Rk = R_sphere_[static_cast<std::size_t>(k)];
+                D(k, k) = -S_(k, k) / (2.0 * Rk);
+            }
         }
         for (int l = 0; l < k; ++l) {
             const double dx = pos_[static_cast<std::size_t>(k)][0]
@@ -243,21 +265,72 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
                 throw std::runtime_error(
                     "Pcm: two tesserae coincide (singular S)");
             double s_kl;
+            double xij = 0.0;
             if (use_gauss) {
-                const double xik = charge_exp[static_cast<std::size_t>(k)];
-                const double xil = charge_exp[static_cast<std::size_t>(l)];
-                const double xij = xik * xil / std::sqrt(xik * xik + xil * xil);
+                const double xik = xi_[static_cast<std::size_t>(k)];
+                const double xil = xi_[static_cast<std::size_t>(l)];
+                xij = xik * xil / std::sqrt(xik * xik + xil * xil);
                 s_kl = std::erf(xij * r) / r;
             } else {
                 s_kl = 1.0 / r;
             }
             S_(k, l) = s_kl;
             S_(l, k) = s_kl;
+
+            if (need_D) {
+                // drij[i,j] = r_i − r_j; nrij[i,j] = (r_i − r_j)·n_j
+                // (PySCF get_D_S convention).
+                const double r2 = r * r;
+                const double r3 = r2 * r;
+                // (r_k − r_l) · n_l
+                const double n_kl = dx * nrm_[static_cast<std::size_t>(l)][0]
+                                    + dy * nrm_[static_cast<std::size_t>(l)][1]
+                                    + dz * nrm_[static_cast<std::size_t>(l)][2];
+                // (r_l − r_k) · n_k = −(r_k − r_l) · n_k
+                const double n_lk =
+                    (-dx) * nrm_[static_cast<std::size_t>(k)][0]
+                    + (-dy) * nrm_[static_cast<std::size_t>(k)][1]
+                    + (-dz) * nrm_[static_cast<std::size_t>(k)][2];
+                if (use_gauss) {
+                    const double xi_r = xij * r;
+                    const double gauss =
+                        2.0 * xi_r / std::sqrt(kPi) * std::exp(-xi_r * xi_r);
+                    D(k, l) = s_kl * n_kl / r2 - gauss * n_kl / r3;
+                    D(l, k) = s_kl * n_lk / r2 - gauss * n_lk / r3;
+                } else {
+                    D(k, l) = s_kl * n_kl / r2;
+                    D(l, k) = s_kl * n_lk / r2;
+                }
+            }
         }
     }
 
-    // Cache S^{-1} once (nt ≲ 10³ for typical small molecules).
-    S_inv_ = xt::linalg::inv(S_);
+    if (model_ == SolventModel::IEFPCM) {
+        // DA[i,j] = D[i,j] * A[j]  (column-scale by tessera areas).
+        // K = S − f/(2π) DA S
+        // R = −f (I − DA/(2π))
+        // Matches PySCF solvent.pcm.PCM.build for method='IEF-PCM'.
+        xt::xtensor<double, 2> DA =
+            xt::zeros<double>({static_cast<std::size_t>(nt),
+                               static_cast<std::size_t>(nt)});
+        for (int i = 0; i < nt; ++i)
+            for (int j = 0; j < nt; ++j)
+                DA(i, j) = D(i, j) * area_[static_cast<std::size_t>(j)];
+        const auto DAS = xt::linalg::dot(DA, S_);
+        const double fac = f_eps_ / (2.0 * kPi);
+        K_ = S_ - fac * DAS;
+        R_ = xt::zeros<double>({static_cast<std::size_t>(nt),
+                                static_cast<std::size_t>(nt)});
+        for (int i = 0; i < nt; ++i) {
+            for (int j = 0; j < nt; ++j) {
+                const double eye = (i == j) ? 1.0 : 0.0;
+                R_(i, j) = -f_eps_ * (eye - DA(i, j) / (2.0 * kPi));
+            }
+        }
+    } else {
+        // Conductor (C-PCM / COSMO): cache S^{-1} once.
+        S_inv_ = xt::linalg::inv(S_);
+    }
 }
 
 double Pcm::f_epsilon() const { return f_eps_; }
@@ -318,17 +391,35 @@ void Pcm::prepare(const std::vector<native::Shell>& shells,
 
 Pcm::Result Pcm::solve_and_contract_(const std::vector<double>& V) const {
     const int nt = static_cast<int>(pos_.size());
-    xt::xtensor<double, 1> rhs = xt::zeros<double>({static_cast<std::size_t>(nt)});
+    xt::xtensor<double, 1> v =
+        xt::zeros<double>({static_cast<std::size_t>(nt)});
     for (int k = 0; k < nt; ++k)
-        rhs(k) = -f_eps_ * V[static_cast<std::size_t>(k)];
+        v(k) = V[static_cast<std::size_t>(k)];
 
-    // q = S^{-1} (−f V)
-    const xt::xtensor<double, 1> q = xt::linalg::dot(S_inv_, rhs);
+    xt::xtensor<double, 1> q_sym;
+    if (model_ == SolventModel::IEFPCM) {
+        // K q = R V; symmetrise for real free energy (PySCF _get_vind).
+        const auto b = xt::linalg::dot(R_, v);
+        auto K_work = K_; // dgesv overwrites A
+        const auto q = xt::linalg::solve(K_work, b);
+        auto KT = xt::transpose(K_);
+        const auto vK = xt::linalg::solve(KT, v);
+        const auto qt = xt::linalg::dot(xt::transpose(R_), vK);
+        q_sym = 0.5 * (q + qt);
+    } else {
+        // Conductor: q = S^{-1} (−f V)
+        xt::xtensor<double, 1> rhs =
+            xt::zeros<double>({static_cast<std::size_t>(nt)});
+        for (int k = 0; k < nt; ++k)
+            rhs(k) = -f_eps_ * v(k);
+        q_sym = xt::linalg::dot(S_inv_, rhs);
+    }
+
     last_q_.resize(static_cast<std::size_t>(nt));
     double dg = 0.0;
     for (int k = 0; k < nt; ++k) {
-        last_q_[static_cast<std::size_t>(k)] = q(k);
-        dg += q(k) * V[static_cast<std::size_t>(k)];
+        last_q_[static_cast<std::size_t>(k)] = q_sym(k);
+        dg += q_sym(k) * v(k);
     }
     dg *= 0.5;
 
@@ -338,7 +429,7 @@ Pcm::Result Pcm::solve_and_contract_(const std::vector<double>& V) const {
         out.V_pcm = xt::zeros<double>({static_cast<std::size_t>(n_ao_),
                                        static_cast<std::size_t>(n_ao_)});
         for (int k = 0; k < nt; ++k)
-            out.V_pcm += q(k) * V_unit_[static_cast<std::size_t>(k)];
+            out.V_pcm += q_sym(k) * V_unit_[static_cast<std::size_t>(k)];
     } else {
         out.V_pcm = xt::zeros<double>({0, 0});
     }

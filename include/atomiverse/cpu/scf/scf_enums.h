@@ -82,6 +82,20 @@ enum class Coulomb { Direct, RI, CFMM };
 /// above tight convergence, hence the escalation-to-CDIIS design.
 enum class MixerKind { CDIIS, EDIIS_CDIIS, ADIIS_CDIIS };
 
+/// @brief Implicit-solvent continuum model attached to a mean-field method.
+///
+/// Active when `solvent_eps > 0`. Conductor-like models share the S-matrix
+/// equation \(S q = -f(\varepsilon) V\) with \(f=(\varepsilon-1)/(\varepsilon+x)\):
+/// - `CPCM`: \(x=0\) (Barone–Cossi; use with `solvent_x = 0`).
+/// - `COSMO`: \(x=\tfrac12\) (Klamt; use with `solvent_x = 0.5`).
+/// - `IEFPCM`: integral-equation formalism (Cancès–Mennucci–Tomasi) with
+///   \(f=(\varepsilon-1)/(\varepsilon+1)\) and the \(K q = R V\) system
+///   involving the double-layer operator \(D\) (PySCF `method='IEF-PCM'`).
+///
+/// Non-electrostatic terms (cavitation, dispersion, repulsion) are never
+/// included. Default `CPCM` keeps the historical vacuum/C-PCM path.
+enum class SolventModel { CPCM, COSMO, IEFPCM };
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV
