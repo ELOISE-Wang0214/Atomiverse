@@ -1,13 +1,33 @@
 # CP2K capability loop — handoff
 
-Last harness pass: **2026-07-24 wave 2** on `dev`
-(`chore(harness): cp2k wf wave 2`).
-Prior: **2026-07-23 wave 1** + assign wave 2 (staff 10).
+Last assign pass: **2026-07-24 wave 3** on `dev`
+(`chore(queue): cp2k assign wave 3`).
+Prior harness: **2026-07-24 wave 2** (`chore(harness): cp2k wf wave 2`).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/cp2k-method-loop.md` and
 `.grok/workflows/cp2k-method-loop.rhai`.
+
+## Assign wave 3 (2026-07-24) — staff 10
+
+| Priority | Slug | Chapter | is_resume | Notes |
+| -------- | ---- | ------- | --------- | ----- |
+| 1 | `gpw-kpoints-si` | gpw | **true** | only incomplete; no open spec — write-first |
+| 2 | `gpw-variable-cell-ice` | gpw | false | dep stress ✓ |
+| 3 | `dfpt-phonon-si` | response | false | dep FD phonons ✓ |
+| 4 | `xl-bomd-water` | dynamics | false | dep GPW BOMD ✓ |
+| 5 | `berry-polarization` | response | false | dep bands ✓ |
+| 6 | `wannier-centers` | response | false | dep bands ✓ |
+| 7 | `cpmd-water` | dynamics | false | after solid BOMD ✓ |
+| 8 | `periodic-mp2-si` | gpw | false | solid Γ GPW energy ✓ |
+| 9 | `mpi-gpw-scaling-4rank` | infra | false | industrial; `perf_exempt` OK |
+| 10 | `mpi-pw-scaling-4rank` | infra | false | k-point RR; industrial |
+
+- **Held pending (2):** `periodic-rpa-si` (after MP2), `periodic-gw-si` (staff full)
+- **Queue after assign:** pending = 2; in_progress = 10; done = 19; blocked = 5
+- **Workers:** each NEW slug writes `.claude/specs/<slug>/` first; resume
+  `gpw-kpoints-si` also needs a live spec (INDEX: no open CP2K spec dir)
 
 ## Wave 2 summary (harness 2026-07-24)
 
@@ -22,22 +42,12 @@ Tutorial. See `docs/developer/cp2k-method-loop.md` and
 | `pw-uks-kmesh-fe` | pw | **merged → done** | `regressions/pw/pw-uks-kmesh-fe` | **perf_exempt** |
 | `gpw-pbesol-si` | gpw | **merged → done** | `regressions/gpw/gpw-pbesol-si` | **perf_exempt** |
 | `gpw-d4-water` | gpw | **merged → done** | `regressions/gpw/gpw-d4-water` | **perf_exempt** |
-| `gpw-kpoints-si` | gpw | **incomplete** | — | — (assign leftover; no merge) |
+| `gpw-kpoints-si` | gpw | **→ wave 3 resume** | — | incomplete leftover from assign wave 2 |
 
 - **Blocked this wave:** none new (hybrid/GAPW/PAW/CUDA-GPW/meta-GGA stand)
 - **Merge-failed this wave:** none
-- **Incomplete remaining (1):** `gpw-kpoints-si` — resume first next assign
-- **Queue after harness:** pending = 11; in_progress = 1; done = 19
-  (wave 1 + wave 2); blocked = 5
-- **Roadmap:** CPU ✓ for **GPW stress (strain-FD)**, **GPW BOMD**, **PW
-  Nielsen–Martin analytic stress**, **FD supercell phonons**, **periodic
-  DFT+U**, **bands/DOS**, **k-point UKS PW**, **PBEsol**, **periodic D4**.
-  No ⚡ (ratios / `perf_exempt` only).
 - **Specs closed:** all 9 wave-2 merged slugs (acceptance met on `dev`);
   do not re-open without superseding intent.
-
-**Resume first:** `gpw-kpoints-si` (only open incomplete). Then pending head
-after deps cleared by wave 2.
 
 ## Wave 1 summary (historical)
 
@@ -54,13 +64,10 @@ after deps cleared by wave 2.
 | `pw-bomd-h` | dynamics | **merged → done** | `regressions/pw/pw-bomd-h` | **perf_exempt** |
 | `ot-minimizer-water` | gpw | **merged → done** | `regressions/gpw/ot-minimizer-water` | **~9.0** |
 
-## Next assign candidates (pending head, after incomplete clear)
+## Next after wave 3 (held pending)
 
-1. `gpw-kpoints-si` (**incomplete** — must clear first)
-2. `gpw-variable-cell-ice` (**dep:** `gpw-stress-water` ✓)
-3. `dfpt-phonon-si` (**dep:** `fd-phonon-supercell` ✓) / `xl-bomd-water` (**dep:** BOMD ✓)
-4. `berry-polarization` / `wannier-centers` (**dep:** `bands-dos-si` ✓)
-5. `periodic-mp2-si` / MPI scaling industrial
+1. `periodic-rpa-si` (**after** `periodic-mp2-si` foothold)
+2. `periodic-gw-si` (deps clear; staff-held)
 
 ## Oracle
 
