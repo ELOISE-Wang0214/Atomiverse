@@ -26,7 +26,7 @@ class RKS : public MeanFieldMethod<RKS> {
     ///        tolerance 1e-9 Ha).
     RKS();
     /// @brief Construct RKS with an explicit exchange–correlation functional.
-    /// @param xc Functional to use (e.g. LSDA, PBE, B3LYP, PBE0).
+    /// @param xc Functional to use (e.g. LSDA, PBE, BLYP, B3LYP, PBE0).
     explicit RKS(XCType xc);
     std::string name() const { return "rks"; }
 
@@ -44,7 +44,7 @@ class RKS : public MeanFieldMethod<RKS> {
     ///   difference of \(V_{\mathrm{xc}}\) on the KS grid (Dreuw &
     ///   Head-Gordon, Chem. Rev. 105, 4009 (2005)) —
     ///   `alda = false`.
-    /// - **Pure GGA (PBE):** HF-like CIS@RKS fallback (`alda = false`).
+    /// - **Pure GGA (PBE / BLYP):** HF-like CIS@RKS fallback (`alda = false`).
     /// @param n_states Number of lowest excited states.
     /// @param channel  Singlet or triplet channel.
     /// @return Excitation energies [eV], transition properties;

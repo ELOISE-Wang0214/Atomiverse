@@ -651,6 +651,8 @@ double hybrid_exchange_fraction(XCType type) {
         return 0.0;
     case XCType::PBE:
         return 0.0;
+    case XCType::BLYP:
+        return 0.0; // pure GGA (B88 + LYP); no exact exchange
     case XCType::B3LYP:
         return 0.20; // libxc XC_HYB_GGA_XC_B3LYP
     case XCType::PBE0:
@@ -664,6 +666,8 @@ bool is_gga(XCType type) {
     case XCType::LSDA:
         return false;
     case XCType::PBE:
+        return true;
+    case XCType::BLYP:
         return true;
     case XCType::B3LYP:
         return true;
@@ -692,6 +696,37 @@ constexpr double kB3LYP_cB88 = 0.72;    ///< absolute B88-X coefficient.
 constexpr double kB3LYP_cVWN = 0.19;    ///< absolute VWN_RPA-C coefficient.
 constexpr double kB3LYP_cLYP = 0.81;    ///< absolute LYP-C coefficient.
 constexpr double kPBE0_cX = 0.75;       ///< PBE0 semi-local PBE exchange scale.
+
+// Pure BLYP GGA (libxc XC_GGA_XC_BLYP composite = B88-X + LYP-C at unit
+// weights). No HF-exchange admixture, no extra Slater / VWN-RPA mix —
+// those enter only the B3LYP hybrid recipe below.
+void blyp_pure(double ra, double rb, double sigma_aa, double sigma_ab,
+               double sigma_bb, XCOutput& out) {
+    const double rho = ra + rb;
+    double sa = std::max(sigma_aa, 0.0);
+    double sb = std::max(sigma_bb, 0.0);
+    double s_ave = 0.5 * (sa + sb);
+    double sab = std::min(std::max(sigma_ab, -s_ave), +s_ave);
+
+    // Full B88 exchange (per-spin, per-volume energy + potentials).
+    double exb_a, vrho_b_a, vsig_b_aa;
+    double exb_b, vrho_b_b, vsig_b_bb;
+    b88_exchange_spin(ra, sa, exb_a, vrho_b_a, vsig_b_aa);
+    b88_exchange_spin(rb, sb, exb_b, vrho_b_b, vsig_b_bb);
+    const double ex_b88 = (exb_a + exb_b) / rho; // per-electron
+
+    // Full LYP GGA correlation (per-electron exc + pot).
+    double ec_lyp, vc_lyp_a, vc_lyp_b, vsig_l_aa, vsig_l_ab, vsig_l_bb;
+    lyp_correlation(ra, rb, sa, sab, sb, ec_lyp, vc_lyp_a, vc_lyp_b, vsig_l_aa,
+                    vsig_l_ab, vsig_l_bb);
+
+    out.exc = ex_b88 + ec_lyp;
+    out.vrho_alpha = vrho_b_a + vc_lyp_a;
+    out.vrho_beta = vrho_b_b + vc_lyp_b;
+    out.vsigma_aa = vsig_b_aa + vsig_l_aa;
+    out.vsigma_ab = vsig_l_ab;
+    out.vsigma_bb = vsig_b_bb + vsig_l_bb;
+}
 
 // Evaluate the B3LYP semi-local energy density / potential at one grid point.
 // Outputs follow the XCOutput convention: exc is the semi-local energy
@@ -857,6 +892,9 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b, double sigma_aa,
         out.vsigma_aa = static_cast<double>(vsig_x_aa + vsig_c_aa);
         out.vsigma_ab = static_cast<double>(vsig_c_ab);
         out.vsigma_bb = static_cast<double>(vsig_x_bb + vsig_c_bb);
+    } else if (type == XCType::BLYP) {
+        // Pure BLYP GGA: full B88 exchange + full LYP correlation.
+        blyp_pure(ra, rb, sigma_aa, sigma_ab, sigma_bb, out);
     } else if (type == XCType::B3LYP) {
         // B3LYP semi-local part only; HF-exchange admixture (alpha=0.20)
         // is added by the Fock builder.
@@ -940,14 +978,18 @@ void evaluate_xc_batch(XCType type, int n, const double* rho_a_arr,
             vsigma_aa_arr[g] = vsig_x_aa + vsig_c_aa;
             vsigma_ab_arr[g] = vsig_c_ab;
             vsigma_bb_arr[g] = vsig_x_bb + vsig_c_bb;
-        } else if (type == XCType::B3LYP || type == XCType::PBE0) {
-            // Global hybrids: GGA semi-local part. The HF-exchange
-            // admixture is applied by the Fock builder, not here.
+        } else if (type == XCType::BLYP || type == XCType::B3LYP
+                   || type == XCType::PBE0) {
+            // Pure BLYP and global hybrids share the GGA semi-local path.
+            // HF-exchange admixture (hybrids only) is applied by the Fock
+            // builder, not here.
             double sa = sigma_aa_arr ? sigma_aa_arr[g] : 0.0;
             double sab = sigma_ab_arr ? sigma_ab_arr[g] : 0.0;
             double sb = sigma_bb_arr ? sigma_bb_arr[g] : 0.0;
             XCOutput out{};
-            if (type == XCType::B3LYP)
+            if (type == XCType::BLYP)
+                blyp_pure(ra, rb, sa, sab, sb, out);
+            else if (type == XCType::B3LYP)
                 b3lyp_semilocal(ra, rb, sa, sab, sb, out);
             else
                 pbe0_semilocal(ra, rb, sa, sab, sb, out);
