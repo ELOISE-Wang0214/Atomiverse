@@ -263,7 +263,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **Open-boundary FMM tree math** is validated (`reg_fmm_point_charges`) —
   not yet a MD `KSpace` / pair-style drop-in under PBC.
 - **Constraints:** RATTLE + **SETTLE** (CPU; `reg_settle_tip3p`). No LINCS /
-  rigid bodies / virtual sites.
+  general rigid bodies. **TIP4P M-site** virtual charges ship
+  (`reg_four-site-tip4p-foothold`); general multi-topology virtual sites ○.
 - **No machine-learning potentials** in-tree (see force-fields ML table).
 
 ### Molecular dynamics

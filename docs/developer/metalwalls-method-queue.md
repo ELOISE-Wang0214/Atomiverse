@@ -7,7 +7,7 @@ Durable worklist for workflow `metalwalls-method-loop`. Do not delete done rows.
 new pending. Census only rewrites **pending**. Assign: **incomplete ≫ pending**.
 
 **Oracle rule:** if LAMMPS implements the same algorithm/feature, pin and fair
-bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
+10→bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
 `oracle=metalwalls` in the row rationale).
 
 **Build rule:** workers use **MD-only** cmake (HF/PW/GPW/CUDA/Torch **OFF**,
@@ -16,9 +16,10 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
-Census: **2026-07-23** (parent `dev`). **Assign wave 1:** 10 new `[~]` (no resumes).
-- Prior recover/census incomplete_count was **0**; open MD/electrochem specs: **none**
-- unmerged in-scope `wf/<slug>`: **none** (local `wf/*` are PySCF/post-HF ancestors)
+Census: **2026-07-23** (parent `dev`). **Harness wave 1 2026-07-23:** all **10**
+staff-batch `[~]` merged → `## done` (regressions + pins on `dev`). Open
+MD/electrochem specs: **none** (closed). Unmerged in-scope `wf/<slug>`: local
+tips remain for bookkeeping; HEADs already merged into `dev`.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
   integrators), SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked),
@@ -31,41 +32,41 @@ Census: **2026-07-23** (parent `dev`). **Assign wave 1:** 10 new `[~]` (no resum
 
 ### E1 — constant-potential v1 (map §1 P0)
 
-*(wave-1 core moved to in_progress 2026-07-23)*
+*(wave-1 E1 core → done 2026-07-23)*
 
 ### E2 — electrostatic rigor (after E1 foothold)
 
-- [ ] `const-pot-cg-large-electrode` | CG electrode charge solve | electrochem | larger wall / many electrode sites | — | \(Q\) match dense path | **oracle=metalwalls**; dep: BO dense inverse path
+- [ ] `const-pot-cg-large-electrode` | CG electrode charge solve | electrochem | larger wall / many electrode sites | — | \(Q\) match dense path | **oracle=metalwalls**; dep: BO dense inverse path ✓
 - [ ] `electrode-charge-predictor` | Electrode charge predictor (ASPC-like) | electrochem | short MD | — | fewer CG/BO iters | **oracle=metalwalls**; map E2
 
-### E3 — external field (map §1 P1; MD roadmap ○ constant E-field)
+### E3 — external field (map §1 P1; MD roadmap ✓ constant E-field foothold)
 
-- [ ] `finite-field-single-electrode` | Finite-field + single electrode (3D) | electrochem | single wall + electrolyte | — | \(Q\), polarization | **oracle=metalwalls** Dufils-style; **dep:** E1 + efield
+- [ ] `finite-field-single-electrode` | Finite-field + single electrode (3D) | electrochem | single wall + electrolyte | — | \(Q\), polarization | **oracle=metalwalls** Dufils-style; **dep:** E1 ✓ + efield ✓
 
 ### E4 / E5 — polarization (map §2; FF roadmap ○ induced dipoles / Thole)
 
 - [ ] `pim-induced-dipole-bulk` | PIM self-consistent induced dipoles (bulk) | polarizable | molten salt / IL toy | — | \(E_{\mathrm{pol}}\), forces | **oracle=metalwalls**; map E4; Thole/TT damping in-scope
-- [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 + PIM
+- [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 ✓ + PIM
 
 ### E6 / E7 — electrode mechanics & metallicity
 
-- [ ] `piston-electrode-pz` | Piston electrode constant \(P_z\) | electrochem | IL + graphene / parallel plate | — | \(\langle P_z\rangle\) | **oracle=metalwalls**; map E6; **dep:** E1 + electrode forces
+- [ ] `piston-electrode-pz` | Piston electrode constant \(P_z\) | electrochem | IL + graphene / parallel plate | — | \(\langle P_z\rangle\) | **oracle=metalwalls**; map E6; **dep:** E1 ✓ + electrode forces
 - [ ] `thomas-fermi-electrode` | Thomas–Fermi finite metallicity | electrochem | gold capacitor toy | — | \(C\), \(Q\) response | **oracle=metalwalls**; map E7
 
-### E8 — salt / wall potentials (map §3; FF ○ Buckingham-class)
+### E8 — salt / wall potentials (map §3; FF ✓ Buckingham foothold)
 
-- [ ] `fumi-tosi-nacl` | Fumi–Tosi molten salt | forcefield | NaCl melt | — | \(E\) | **oracle=metalwalls** / literature; map E8
+- [ ] `fumi-tosi-nacl` | Fumi–Tosi molten salt | forcefield | NaCl melt | — | \(E\) | **oracle=metalwalls** / literature; map E8; **dep:** Buckingham pair ✓
 - [ ] `steele-wall-argon` | Steele wall potential | forcefield | Ar / graphite wall | — | \(E\), \(F\) | **oracle=metalwalls** (Steele) or literature; map E8
 - [ ] `born-repulsion-foothold` | Born repulsion wall/ion term | forcefield | ion near wall | — | \(E\), \(F\) | **oracle=metalwalls**; map E8 companion
 
-### E9 — molecular water at electrodes (MD roadmap ○ virtual sites)
+### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P M-site foothold)
 
-*(four-site-tip4p-foothold → in_progress wave 1)*
+*(four-site-tip4p-foothold → done wave 1; general multi-topology virtual sites still open)*
 
 ### E10 — ecosystem (after E1 observers)
 
-- [ ] `capacitance-charge-fluctuation` | Capacitance / charge-fluctuation analysis | electrochem | parallel-plate EDL | — | \(C\) estimate | **oracle=metalwalls** tools; map E10; **dep:** E1 + charge observer
-- [ ] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; **dep:** charges + long-range
+- [ ] `capacitance-charge-fluctuation` | Capacitance / charge-fluctuation analysis | electrochem | parallel-plate EDL | — | \(C\) estimate | **oracle=metalwalls** tools; map E10; **dep:** E1 ✓ + charge observer ✓
+- [ ] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; **dep:** charges + long-range ✓
 
 ### Shared classical MD ○ still open (LAMMPS primary; electrochem-adjacent)
 
@@ -74,26 +75,7 @@ Census: **2026-07-23** (parent `dev`). **Assign wave 1:** 10 new `[~]` (no resum
 
 ## in_progress
 
-**Assign wave 1 — 2026-07-23** (staff=10; incomplete was 0; no open MD/electrochem specs; no in-scope unmerged `wf/*`).
-
-### E1 core + deps
-
-- [~] `const-pot-bo-parallel-plate` | Constant-potential BO solve (parallel plate) | electrochem | NaCl slab + two planar walls | — | electrode \(Q\), \(\Delta\Psi\), neutrality | **oracle=metalwalls** (LAMMPS ELECTRODE only if package available offline); map E1; Component on `md::MD`; private \(A,Q\); write `kAtom_charge`; freeze walls
-- [~] `freeze-electrode-atoms` | Freeze / immobile electrode atoms | md | any textbook | — | \(x\) fixed, \(v=0\) | **oracle=lammps** `fix setforce 0` / `fix freeze`; Component on integrate path; E1 dep for wall atoms
-- [~] `const-pot-charge-observer` | Electrode total charge observer | electrochem | same foothold | — | \(Q_{\mathrm{tot}}(t)\) per electrode | **oracle=lammps** electrode charge dump if available; else **oracle=metalwalls**; dep: charge solve
-- [~] `charging-work-energy` | Charging work \(-\sum\Psi_i Q_i\) in energy | electrochem | parallel plate | — | energy channel / meta | **oracle=metalwalls** / Scalfi literature; dep: const-pot
-- [~] `const-pot-md-nvt-short` | Const-pot + MD NVT short traj | electrochem | NaCl + parallel walls | — | stable \(E\), \(Q\) sign, no NaN | **oracle=metalwalls** (or lammps electrode MD); dep: BO + freeze + CoulLong/PME
-
-### E2 / E3 footholds (parallel staff)
-
-- [~] `gaussian-electrode-charge` | Gaussian charge kernels on electrode atoms | electrochem | parallel plate | — | \(E\), \(Q\) vs point-charge \(A\) | **oracle=metalwalls**; map E2; document point-charge approx if deferred
-- [~] `slab-2d-ewald-foothold` | 2D / slab Ewald (or `kspace_modify slab`) | electrochem | slab NaCl / parallel plate | — | \(E\) vs 3D+slab correction | **oracle=lammps** `kspace_modify slab` when available; else **oracle=metalwalls** 2D; map E2
-- [~] `external-efield-md` | Applied uniform E-field on MD charges | electrochem | ions / LJ+Coul fluid | — | \(F=qE\), \(\Delta E\) | **oracle=lammps** `fix efield` (LAMMPS primary); map E3
-
-### Classical FF / MD (LAMMPS-primary; fill staff)
-
-- [~] `buckingham-pair-lammps` | Buckingham pair (Born–Mayer foothold) | forcefield | ion dimer / bulk toy | — | \(E\), \(F\) | **oracle=lammps** `pair_style buck`; textbook precursor to Fumi–Tosi
-- [~] `four-site-tip4p-foothold` | Four-site / virtual-site water (TIP4P-class) | md | TIP4P dimer or box | — | \(E\), geometry | **oracle=lammps** `tip4p` / virtual sites; map E9; aqueous electrode dep
+*(empty after harness wave 1 — 2026-07-23)*
 
 ## blocked
 
@@ -104,4 +86,17 @@ Census: **2026-07-23** (parent `dev`). **Assign wave 1:** 10 new `[~]` (no resum
 
 ## done
 
-(seed later from harness)
+### Wave 1 — 2026-07-23 (merged → `dev`)
+
+| Slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ---- | ---------- | ------ | ---------------------------------------------- |
+| [x] `const-pot-bo-parallel-plate` | `regressions/md/const-pot-bo-parallel-plate` | lammps (ELECTRODE madelung) | **perf_exempt** (no ELECTRODE binary) |
+| [x] `freeze-electrode-atoms` | `regressions/md/freeze-electrode-atoms` | lammps | **3.98** |
+| [x] `const-pot-charge-observer` | `regressions/md/const-pot-charge-observer` | lammps | **perf_exempt** (micro-sum vs startup) |
+| [x] `charging-work-energy` | `regressions/md/charging-work-energy` | literature (MW JOSS / Scalfi) | **perf_exempt** |
+| [x] `const-pot-md-nvt-short` | `regressions/md/const-pot-md-nvt-short` | metalwalls | **perf_exempt** (no MW/ELECTRODE twin) |
+| [x] `gaussian-electrode-charge` | `regressions/md/gaussian-electrode-charge` | literature (Reed / MW Gaussian) | **perf_exempt** |
+| [x] `slab-2d-ewald-foothold` | `regressions/md/slab-2d-ewald-foothold` | lammps | **6.49** |
+| [x] `external-efield-md` | `regressions/md/external-efield-md` | lammps | **0.60** |
+| [x] `buckingham-pair-lammps` | `regressions/forcefield/buckingham-pair-lammps` | lammps | **perf_exempt** (dimer startup) |
+| [x] `four-site-tip4p-foothold` | `regressions/md/four-site-tip4p-foothold` | lammps | **0.338** |

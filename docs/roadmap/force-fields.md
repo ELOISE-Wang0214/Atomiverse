@@ -70,7 +70,7 @@ Bonded forces are cross-validated against LAMMPS in
 | ----------------------------------- | :-: | :--: | :---: |
 | Lennard–Jones 12-6 potential        |  ⚡  |   ⚡  |   ○  |
 | Mie n-m potential                   |  ○  |   ○  |   ○  |
-| Buckingham potential                |  ○  |   ○  |   ○  |
+| Buckingham potential                |  ✓  |   ○  |   ○  |
 | Morse nonbonded potential           |  ✓  |   ○  |   ○  |
 | Tabulated pair potential            |  ○  |   ○  |   ○  |
 | Coulomb potential                   |  ✓  |   ○  |   ○  |
@@ -112,9 +112,15 @@ Notes:
   form with public `lambda` (default 1 = hard shifted LJ parity). Not LAMMPS
   `lj/cut/soft`. Soft-core Coulomb ships as `cpu::PairCoulSoft` (same Beutler
   family). Regressions: `lj_soft_dimer`, `coul_soft_dimer`.
+- **Buckingham** (`cpu::PairBuck`) is LAMMPS `pair_style buck`
+  \(A e^{-r/\rho}-C/r^{6}\) with optional energy shift; CPU dimer pin
+  `reg_buckingham-pair-lammps`. Multi-type Fumi–Tosi product path still ○.
 - **FENE** (`BondFene`) + **WCA** (`PairWCA`) and **Yukawa** (`PairYukawa`) and
   **DPD** (`PairDpd`) are CPU textbook styles from the method ladder
   (`reg_fene_wca_chain`, `reg_yukawa_dimer`, `reg_dpd_groot_warren`).
+- **Direct Ewald** supports Yeh–Berkowitz slab correction via public
+  `KSpaceEwald::slab_factor` (LAMMPS `kspace_modify slab`); pin
+  `reg_slab-2d-ewald-foothold`. True 2D-only Ewald (no 3D+slab) remains future.
 
 ## 3. Polarizable Force Fields
 

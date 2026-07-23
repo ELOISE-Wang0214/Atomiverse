@@ -116,7 +116,7 @@ driving the ramp yourself, but the engine ships no annealing schedule.
 | Angle constraints            |  ✓  |   ○  |   ○  |
 | Rigid-water dynamics         |  ✓  |   ○  |   ○  |
 | General rigid-body dynamics  |  ○  |   ○  |   ○  |
-| Virtual-site dynamics        |  ○  |   ○  |   ○  |
+| Virtual-site dynamics        |  ✓  |   ○  |   ○  |
 | Hydrogen-mass repartitioning |  ○  |   ○  |   ○  |
 
 `cpu::md::FixRattle` (Andersen 1983) holds distance and 1–3 (angle) constraints, runs
@@ -128,16 +128,23 @@ RATTLE, not a water-only closed form).
 **SETTLE** ships as `cpu::md::FixSettle` (`reg_settle_tip3p`) — closed-form
 three-site rigid water; general molecules still use RATTLE.
 
+**Virtual sites (TIP4P foothold):** `cpu::PairLJCutTip4pCut` reconstructs the
+massless M charge site each force evaluation (Feenstra force partition) and is
+pinned vs LAMMPS `lj/cut/tip4p/cut` (`reg_four-site-tip4p-foothold`). This is
+**not** a general multi-topology virtual-site engine (Gromacs-style `virtual_sites*`);
+arbitrary vsite constructions remain open.
+
 Before RATTLE, every molecule was fully flexible: water models had to be flexible
 variants and the timestep was bounded by the fastest X–H stretch (~9 fs period for O–H,
 so ~0.5 fs steps). Constrained water runs at `dt = 2 fs`. What is still missing for
-biomolecular work is **rigid bodies** and **virtual sites**.
+biomolecular work is **general rigid bodies** and **general virtual-site topologies**
+beyond TIP4P M-sites.
 
 ## 6. Nonequilibrium Molecular Dynamics
 
 | Method                              | CPU | CUDA | Kokkos |
 | ----------------------------------- | :-: | :--: | :---: |
-| Constant electric-field MD          |  ○  |   ○  |   ○  |
+| Constant electric-field MD          |  ✓  |   ○  |   ○  |
 | Oscillating electric-field MD       |  ○  |   ○  |   ○  |
 | Constant-force pulling              |  ○  |   ○  |   ○  |
 | Constant-velocity pulling           |  ○  |   ○  |   ○  |
@@ -161,6 +168,15 @@ engineering strain (`erate`, `L = L₀(1 + Rt)`) or true strain (`trate`,
 `L = L₀·exp(Rt)`). The CUDA port supports `erate` only. This is enough for a
 uniaxial tension/compression run (see `/* benchmarks removed; re-add later */ pe/`, polyethylene under
 tension) and nothing more — no shear, no flow, no heat flux.
+
+**Constant electric field** ships as `cpu::md::FixEfield` (LAMMPS `fix efield`
+constant path): \(\mathbf{F}_i = q_i\mathbf{E}\), energy
+\(U=-\sum_i q_i\mathbf{E}\cdot\mathbf{r}_i^{\mathrm{u}}\) (`reg_external-efield-md`).
+Oscillating / AC fields remain ○. Electrode constant-potential BO
+(`cpu::md::ConstPotBO`), wall freeze (`FixFreeze`), charging work, and short
+const-pot NVT are classical electrochemistry Components on `cpu::md::MD`
+(MetalWalls map E1; see `docs/developer/metalwalls-method-queue.md`) — not
+nonequilibrium pull/flow methods.
 
 ## 7. Ab Initio Molecular Dynamics
 

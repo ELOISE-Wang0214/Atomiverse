@@ -5,18 +5,16 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-| Spec | Branch | Status |
-| ---- | ------ | ------ |
-| [buckingham-pair-lammps](buckingham-pair-lammps/) | `wf/buckingham-pair-lammps` | open — buckingham-pair-lammps |
-| [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
-| [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
-| [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — Spec: `const-pot-charge-observer` |
-| [const-pot-md-nvt-short](const-pot-md-nvt-short/) | `wf/const-pot-md-nvt-short` | open — Spec: `const-pot-md-nvt-short` |
-| [external-efield-md](external-efield-md/) | `wf/external-efield-md` | open — Spec: `external-efield-md` |
-| [four-site-tip4p-foothold](four-site-tip4p-foothold/) | `wf/four-site-tip4p-foothold` | open — four-site-tip4p-foothold |
-| [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — Spec: `freeze-electrode-atoms` |
-| [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
-| [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
+*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
+`wf/<slug>` before code)*
+
+## Closed — MetalWalls capability wave 1 (2026-07-23)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| metalwalls-method-loop wave 1 | const-pot-bo-parallel-plate, freeze-electrode-atoms, const-pot-charge-observer, charging-work-energy, const-pot-md-nvt-short, gaussian-electrode-charge, slab-2d-ewald-foothold, external-efield-md, buckingham-pair-lammps, four-site-tip4p-foothold | ConstPotBO + FixFreeze + electrode charge observer + charging work + short const-pot NVT; Gaussian electrode Coulomb; slab Ewald (`slab_factor`); FixEfield; PairBuck; TIP4P `lj/cut/tip4p/cut` |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 
