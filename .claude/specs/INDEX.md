@@ -47,8 +47,6 @@ impl independently (no single ordered chain unless noted).
 
 **Suggested parallel impl batches** (no hard deps inside a batch):
 
-1. Response trio · PR-NPT · RI-MP2 · concrete-pw  
-2. NPH · link-atoms · tb-sk · multi-cv-metad · concrete-gpw  
 3. polarizable-qmmm · multi-window-wham · concrete-nddo · true-nac (after analytic forces if sharing Z-vector)
 
 Soft deps: `true-nac-vectors` benefits from `analytic-tda-forces`; `nph-ensemble` may reuse PR cell math from `parrinello-rahman-npt` but isotropic v1 is standalone.
