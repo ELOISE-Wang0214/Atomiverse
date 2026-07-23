@@ -22,7 +22,6 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
 namespace cpu {
@@ -43,6 +42,10 @@ struct PWResult {
     double energy_ha = 0;   ///< Total energy [Hartree].
     bool converged = false; ///< Whether SCF converged within max_iter.
     int iterations = 0;     ///< Actual SCF iterations taken.
+    /// @brief Collinear magnetization N↑ − N↓ [electrons] after SCF.
+    ///        Zero when `spin_polarized == false`. Fixed occupations set this
+    ///        exactly to `multiplicity - 1` for non-metallic fillings.
+    double magnetization = 0;
 };
 
 /// @brief Concrete plane-wave DFT method — members + `run(frame)`.
@@ -66,11 +69,11 @@ class PW {
     double mix_beta = 0.7;
     /// @brief Pulay mixing history window (dimensionless).
     int pulay_depth = 5;
-    /// @brief Exchange–correlation functional (default true GGA PBE).
-    ///
-    /// `XCType::PBE` uses spectral density gradients (true GGA). Pure LDA is
-    /// `XCType::LSDA`. Parameters are members — no public `*Config` bag.
-    cpu::scf::XCType xc = cpu::scf::XCType::PBE;
+    /// @brief Collinear spin-polarized KS (nspin=2). Default false = restricted.
+    bool spin_polarized = false;
+    /// @brief Spin multiplicity 2S+1 (used only when `spin_polarized`).
+    ///        O₂ triplet ground state uses 3 → N↑−N↓ = 2.
+    int multiplicity = 1;
 
     /// @brief Default construct (helpers allocated on first build/run).
     PW();
