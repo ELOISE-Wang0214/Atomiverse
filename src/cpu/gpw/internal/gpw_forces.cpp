@@ -404,7 +404,10 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg) {
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
     // Grimme DFT-D3 dispersion forces (additive, geometry-only).
-    if (cfg.d3) {
+    if (cfg.d3 && cfg.d3bj)
+        throw std::runtime_error(
+            "GPW forces: d3 and d3bj are mutually exclusive");
+    if (cfg.d3 || cfg.d3bj) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
         for (int i = 0; i < na; ++i) {
@@ -415,7 +418,13 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg) {
                 atoms[static_cast<std::size_t>(i)].pos[1],
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
-        const D3Result d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{});
+        constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+        constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
+        const D3Result d3 =
+            cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
+                   : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                  kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                  /*cp2k_cn=*/true);
         for (int i = 0; i < na; ++i)
             for (int k = 0; k < 3; ++k)
                 forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];

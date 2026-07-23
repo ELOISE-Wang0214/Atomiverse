@@ -49,8 +49,10 @@ class GPWEvaluator : public cpu::GPW {
     bool compute_forces = false;
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
-    /// @brief Grimme DFT-D3 (zero damping, PBE params).
+    /// @brief Grimme DFT-D3 (zero damping, PBE params). Mutually exclusive with d3bj.
     bool d3 = false;
+    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Mutually exclusive with d3.
+    bool d3bj = false;
     /// @brief One Kind per distinct element in the system.
     std::vector<Kind> kinds;
 
@@ -63,7 +65,7 @@ class GPWEvaluator : public cpu::GPW {
     /// @param nonperiodic Cluster BC when true.
     /// @param compute_forces Enable analytic forces.
     /// @param fd_step FD step [Bohr].
-    /// @param d3 Enable DFT-D3.
+    /// @param d3 Enable DFT-D3 zero damping.
     explicit GPWEvaluator(std::vector<Kind> kinds, double cutoff_ry = 300.0,
                           int max_iter = 200, double tol = 1e-7, double mix = 0.3,
                           XcKind xc = XcKind::PADE, bool nonperiodic = false,

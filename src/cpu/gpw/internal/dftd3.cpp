@@ -167,6 +167,7 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
     const double rcut2 = rcut * rcut;
 
     // Lattice-image half-counts covering rcut (orthorhombic Γ-point).
+    // Zero-damping CP2K pin uses image_counts (not pair_image_counts).
     int m[3] = {0, 0, 0};
     image_counts(cell_bohr, periodic, rcut, m);
 
@@ -329,7 +330,7 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                       const std::vector<std::array<double, 3>>& pos_bohr,
                       const double cell_bohr[3], bool periodic,
                       const D3Params& params, double rcut_bohr, double s6,
-                      double s8, double a1, double a2) {
+                      double s8, double a1, double a2, bool cp2k_cn) {
     const int n = static_cast<int>(Z.size());
     D3Result res;
     res.forces.assign(n, {0.0, 0.0, 0.0});
@@ -339,10 +340,11 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
     const double rcut = rcut_bohr;
     const double rcut2 = rcut * rcut;
 
+    // Pair lattice sum: extra image shell so |R_i−R_j−T| ≤ rcut is complete.
     int m[3] = {0, 0, 0};
-    image_counts(cell_bohr, periodic, rcut, m);
+    pair_image_counts(cell_bohr, periodic, rcut, m);
 
-    // Coordination numbers (Grimme form — matches simple-dftd3 / PySCF).
+    // Coordination numbers: Grimme (molecular/PySCF) or CP2K tanh (GPW).
     std::vector<double> cn(n, 0.0);
     std::vector<std::vector<DCN>> dcn(n);
     for (int i = 0; i < n; ++i) {
@@ -366,7 +368,10 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                             continue;
                         const double rab = std::sqrt(r2);
                         double cnab, dcnab;
-                        cnparam_grimme(rab, rcovab, cnab, dcnab);
+                        if (cp2k_cn)
+                            cnparam_d3(rab, rcovab, cnab, dcnab);
+                        else
+                            cnparam_grimme(rab, rcovab, cnab, dcnab);
                         if (cnab <= kEpsCn)
                             continue;
                         cn[i] += cnab;
@@ -425,22 +430,15 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                         const double e8 = s8 * fac * c8 / den8;
                         energy -= e6 + e8;
 
-                        // F = -dE/dR; E = -s C / (R^n + f^n)
-                        // dE/dR_explicit = s C · n R^{n-1} / (R^n + f^n)²
-                        // force on i along unit r_ij: −(dE/dR) * r̂
-                        // pref such that F_i -= pref * r_vec, F_j += pref * r_vec
-                        // with pref = (dE_pair/dR)/R and E_pair = −(e6+e8)/fac*fac…
-                        const double de_dr =
+                        // E = −s6 fac C6/den6 − s8 fac C8/den8
+                        // ∂E/∂R = s6 fac C6 · 6 R^5 / den6² + s8 fac C8 · 8 R^7 / den8²
+                        //       = s6 fac C6 · (6 r6/R) / den6² + …
+                        // F_i = −∇_i E = −(∂E/∂R) r̂ with r̂ = (R_i−R_j)/R
+                        // Store as F_i -= pref * r_vec with pref = (∂E/∂R)/R.
+                        const double dE_dR =
                             s6 * fac * c6 * (6.0 * r6 / dr) / (den6 * den6)
                             + s8 * fac * c8 * (8.0 * r8 / dr) / (den8 * den8);
-                        // E contributes −e so F = −∇E = −(−de_dr * r̂) wait:
-                        // energy = −e6−e8; d(energy)/dR = −d(e6+e8)/dR;
-                        // d(e)/dR = s C · n R^{n-1}/den²;
-                        // F_i = −dE/dR_i = −(dE/dR)·(∂R/∂R_i) = −(dE/dR)·r̂
-                        // = +(de/dR)·r̂  with de = e6+e8
-                        // stored as F_i -= pref * r  with pref = −(de/dR)/R
-                        // so pref = −de_dr/R  → F_i gets + (de_dr/R) r = +de_dr r̂
-                        const double pref = -de_dr / dr;
+                        const double pref = dE_dR / dr;
                         const double fx = pref * rx;
                         const double fy = pref * ry;
                         const double fz = pref * rz;

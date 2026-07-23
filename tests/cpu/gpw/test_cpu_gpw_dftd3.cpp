@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@
 using ATV::cpu::gpw::D3Params;
 using ATV::cpu::gpw::D3Result;
 using ATV::cpu::gpw::dftd3_pbe;
+using ATV::cpu::gpw::dftd3_pbe_bj;
 
 namespace {
 
@@ -123,4 +125,150 @@ TEST(GpwDftD3, PeriodicEnergyAndForces) {
     std::printf("[D3] periodic max |F_analytic - F_fd| = %.2e Ha/Bohr\n",
                 max_err);
     EXPECT_LT(max_err, 1e-7);
+}
+
+// ---------------------------------------------------------------------------
+// PBE-D3(BJ) with CP2K coordination numbers — periodic water dimer pin
+// ---------------------------------------------------------------------------
+//
+// Offline CP2K 2026.1 (git:5e54ba2), TYPE DFTD3(BJ) / REFERENCE_FUNCTIONAL PBE
+// / R_CUTOFF 20 (Å → 37.79 Bohr printed; pair sum uses 2× → ~75.59 Bohr)
+// / no C9 / no LRC, water dimer in 12 Å PERIODIC XYZ cell
+// (tools/cp2k_oracle/inputs/gpw-pbe-d3bj-ice/water_dimer_d3bj.inp):
+//     Dispersion energy:   -0.00137627769481  [Hartree]
+
+namespace {
+// 2 × CP2K R_CUTOFF 20 Å [Bohr] — GPW BJ / offline pin convention.
+constexpr double kD3BjRcutBohr = 2.0 * 20.0 * kAngToBohr;
+} // namespace
+
+TEST(GpwDftD3BJ, PeriodicWaterDimerEnergyMatchesCP2K) {
+    const D3Params params{};
+    const auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+
+    const D3Result r =
+        dftd3_pbe_bj(kZ, pos, cell, /*periodic=*/true, params, kD3BjRcutBohr,
+                     1.0, 0.7875, 0.4289, 4.4407, /*cp2k_cn=*/true);
+
+    const double cp2k = -0.00137627769481;
+    std::printf("[D3BJ] E=%.14f  CP2K=%.14f  diff=%.2e Ha\n", r.energy, cp2k,
+                r.energy - cp2k);
+    EXPECT_NEAR(r.energy, cp2k, 1e-8);
+}
+
+TEST(GpwDftD3BJ, AnalyticForcesMatchFiniteDifference) {
+    const D3Params params{};
+    auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    const auto eval = [&](const std::vector<std::array<double, 3>>& p) {
+        return dftd3_pbe_bj(kZ, p, cell, true, params, kD3BjRcutBohr, 1.0,
+                            0.7875, 0.4289, 4.4407, true);
+    };
+
+    const D3Result r = eval(pos);
+    const double h = 1e-5;
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + h;
+            const double ep = eval(pos).energy;
+            pos[i][d] = save - h;
+            const double em = eval(pos).energy;
+            pos[i][d] = save;
+            const double fd = -(ep - em) / (2.0 * h);
+            max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
+        }
+    }
+    std::printf("[D3BJ] max |F_analytic - F_fd| = %.2e Ha/Bohr\n", max_err);
+    EXPECT_LT(max_err, 1e-7);
+}
+
+TEST(GpwDftD3BJ, PeriodicMoreNegativeThanIsolated) {
+    const D3Params params{};
+    const auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    const D3Result iso =
+        dftd3_pbe_bj(kZ, pos, cell, false, params, kD3BjRcutBohr, 1.0, 0.7875,
+                     0.4289, 4.4407, true);
+    const D3Result per =
+        dftd3_pbe_bj(kZ, pos, cell, true, params, kD3BjRcutBohr, 1.0, 0.7875,
+                     0.4289, 4.4407, true);
+    std::printf("[D3BJ] E_iso=%.10f  E_per=%.10f Ha\n", iso.energy, per.energy);
+    EXPECT_LT(per.energy, iso.energy);
+}
+
+// Integration: GpwDft.d3bj folds standalone BJ energy into e_total / e_disp.
+// Fast H2 (DZVP-MOLOPT-SR / GTH-PBE) — SCF cheap; ΔE must equal e_disp.
+TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
+    using namespace ATV::cpu::gpw;
+    using molrs::Element;
+
+    const GaussianBasis bH(Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pH(Element::H, "GTH-PBE-q1");
+    const double rA[3] = {4.0, 4.0, 4.0};
+    const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAngToBohr};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, bH, pH, 1),
+                                  GpwAtom(rB, bH, pH, 1)};
+    const double L = 8.0 * kAngToBohr;
+
+    auto make_solver = [&](bool d3bj_flag) {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = L;
+        m.cutoff_ry = 200.0;
+        m.n_occ = 1;
+        m.tol = 1e-8;
+        m.max_iter = 40;
+        m.xc = XcKind::PBE;
+        m.nonperiodic = true;
+        m.d3bj = d3bj_flag;
+        m.build(atoms);
+        return m;
+    };
+
+    GpwDft solver_off = make_solver(false);
+    GpwDft solver_on = make_solver(true);
+    const auto& r_off = solver_off.run(atoms);
+    const auto& r_on = solver_on.run(atoms);
+
+    const std::vector<int> Z = {1, 1};
+    const std::vector<std::array<double, 3>> pos = {
+        {rA[0], rA[1], rA[2]}, {rB[0], rB[1], rB[2]}};
+    const double cell[3] = {L, L, L};
+    const double ed3 =
+        dftd3_pbe_bj(Z, pos, cell, /*periodic=*/false, D3Params{},
+                     kD3BjRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                     /*cp2k_cn=*/true)
+            .energy;
+
+    std::printf("[D3BJ integ] e_on-e_off=%.12f  e_disp=%.12f  standalone=%.12f\n",
+                r_on.e_total - r_off.e_total, r_on.e_disp, ed3);
+    EXPECT_NEAR(r_on.e_disp, ed3, 1e-9);
+    EXPECT_NEAR(r_on.e_total - r_off.e_total, ed3, 1e-9);
+    EXPECT_LT(ed3, 0.0);
+    EXPECT_NEAR(r_off.e_disp, 0.0, 1e-15);
+}
+
+TEST(GpwDftD3BJ, MutualExclusionWithZeroDamping) {
+    using namespace ATV::cpu::gpw;
+    using molrs::Element;
+    const GaussianBasis bH(Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pH(Element::H, "GTH-PBE-q1");
+    const double rA[3] = {4.0, 4.0, 4.0};
+    const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAngToBohr};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, bH, pH, 1),
+                                  GpwAtom(rB, bH, pH, 1)};
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = 8.0 * kAngToBohr;
+    m.cutoff_ry = 120.0;
+    m.n_occ = 1;
+    m.max_iter = 5;
+    m.d3 = true;
+    m.d3bj = true;
+    m.build(atoms);
+    EXPECT_THROW(m.run(atoms), std::runtime_error);
 }
