@@ -19,8 +19,10 @@ CUDA-Kokkos product tracks.
 
 Census: 2026-07-23 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12,
 `docs/roadmap/index.md` GPW/PW notes, `docs/roadmap/molecular-dynamics.md` §AIMD.
-**16 `[~]` incomplete still own assign priority** — do not promote pending until
-they clear. Pending below = open roadmap ○ with offline CP2K twins, **excluding**
+**Recover reconfirm 2026-07-23:** **16 `[~]` incomplete** under `## in_progress`
+still own assign priority (no open specs, no CP2K `wf/*`, no queue-slug
+regressions yet). Do not promote pending until they clear; do not demote
+incomplete. Pending below = open roadmap ○ with offline CP2K twins, **excluding**
 slugs already in in_progress / done / blocked. Later wave order (after incomplete):
 k-point GPW → k-point UKS PW → GPW cell_opt → extra GGA/D4 → DFPT → Berry/Wannier
 → XL-BOMD/CPMD → periodic MP2/RPA → MPI industrial.
