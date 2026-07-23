@@ -1,7 +1,7 @@
 # MetalWalls method loop — handoff
 
-Last harness pass: **wave 1 — 2026-07-23** on `dev`
-(`chore(harness): metalwalls wf wave 1`).
+Last assign pass: **wave 2 — 2026-07-24** on `dev`
+(`chore(queue): metalwalls assign wave 2`). Last harness: **wave 1 — 2026-07-23**.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
@@ -24,17 +24,27 @@ Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
-- **Incomplete remaining:** **0** (no open `[~]`, no open MD/electrochem specs)
-- **Queue after harness:** pending = **14**; in_progress = **0**; done = **10** (wave 1); blocked = **4**
-- **Roadmap (CPU ○→✓ on `dev`):** Buckingham pair; constant electric-field MD
-  (`FixEfield`); TIP4P-class virtual M-site (pair style foothold — not general
-  multi-topology virtual-site dynamics product). E1 const-pot stack ships as
-  Components on `cpu::md::MD` (`ConstPotBO`, `FixFreeze`, observers, charging
-  work); slab Ewald via `KSpaceEwald::slab_factor`.
+- **Incomplete remaining (pre–wave-2 assign):** **0** (no open `[~]`, no open MD/electrochem specs)
+- **Queue after wave-2 assign:** pending = **4**; in_progress = **10**; done = **10** (wave 1); blocked = **4**
+- **Wave 2 in_progress `[~]` (is_resume=false):** `const-pot-cg-large-electrode`,
+  `electrode-charge-predictor`, `finite-field-single-electrode`,
+  `pim-induced-dipole-bulk`, `piston-electrode-pz`, `thomas-fermi-electrode`,
+  `fumi-tosi-nacl`, `steele-wall-argon`, `born-repulsion-foothold`,
+  `capacitance-charge-fluctuation`
+- **Held for deps (still pending):** `dipole-electrode-joint` (needs PIM)
+- **Still pending (slots after staff=10):** `potential-profile-observer`,
+  `constant-force-pull-ion`, `surface-tension-coupling`
+- **Roadmap (CPU ○→✓ on `dev` after wave 1):** Buckingham pair; constant
+  electric-field MD (`FixEfield`); TIP4P-class virtual M-site (pair style
+  foothold — not general multi-topology virtual-site dynamics product). E1
+  const-pot stack ships as Components on `cpu::md::MD` (`ConstPotBO`,
+  `FixFreeze`, observers, charging work); slab Ewald via
+  `KSpaceEwald::slab_factor`.
 - **Specs closed:** all 10 wave-1 slugs (acceptance met on `dev`; deleted under
-  `.claude/specs/`).
+  `.claude/specs/`). Wave-2 workers **create** `.claude/specs/<slug>/` on
+  `wf/<slug>` before code.
 - **Capability map:** `.claude/notes/metalwalls-capability-map.md` (E1–E12) —
-  no lasting rule rewrite this harness.
+  path referenced by loop; recreate if missing on worker trees.
 - **Orphans (not incomplete for this loop):**
   - `regressions/md/{dpd_ab_mix,dpd_groot_warren,fene_wca_chain}/`,
     `regressions/forcefield/yukawa_dimer/` — method-ladder shipped reg bodies,
@@ -46,25 +56,23 @@ Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 - Overlap with LAMMPS → **LAMMPS** offline pin (`tools/metalwalls_oracle/` + LAMMPS inputs)
 - MW-only → **MetalWalls** offline pin (or literature when no binary)
 - `ctest` never launches LAMMPS or MetalWalls
+- Wave-2 oracle tags: CG/predictor/finite-field/PIM/piston/TF/capacitance →
+  **metalwalls**; Fumi–Tosi / Steele / Born → **lammps** (`born/coul/*`,
+  `wall/lj93`, `pair born`)
 
 ## Build (workers)
 
 MD-only flags: `ATV_BUILD_MD=ON`, `ATV_BUILD_KSPACE=ON`, `ATV_BUILD_TESTS=ON`,
 `ATV_BUILD_REGRESSIONS=ON`, **HF/PW/GPW/CUDA/Torch OFF**.
 
-## Next assign candidates (pending head after wave 1)
+## Next after wave 2 (pending only)
 
-1. `const-pot-cg-large-electrode` (E2, oracle=metalwalls; dep BO dense ✓)
-2. `electrode-charge-predictor` (E2, oracle=metalwalls)
-3. `finite-field-single-electrode` (E3, oracle=metalwalls; dep E1+efield ✓)
-4. `pim-induced-dipole-bulk` (E4, oracle=metalwalls)
-5. `dipole-electrode-joint` (E5; dep E1+PIM)
-6. `piston-electrode-pz` / `thomas-fermi-electrode` (E6/E7)
-7. `fumi-tosi-nacl` / `steele-wall-argon` / `born-repulsion-foothold` (E8; Buck ✓)
-8. `capacitance-charge-fluctuation` / `potential-profile-observer` (E10; dep E1 ✓)
-9. `surface-tension-coupling` (shared classical; oracle=lammps)
-10. `constant-force-pull-ion` (shared classical; oracle=lammps)
+1. `dipole-electrode-joint` (E5, oracle=metalwalls; **dep:** PIM)
+2. `potential-profile-observer` (E10, oracle=metalwalls / literature Poisson)
+3. `constant-force-pull-ion` (shared classical; oracle=lammps)
+4. `surface-tension-coupling` (shared classical; oracle=lammps)
 
-Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
-Default **staff_count=10**. Spec-first: write `.claude/specs/<slug>/` **before**
-code on each worker branch.
+Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only
+under `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`
+(never bulk under `/home/jicli594`). Default **staff_count=10**. Spec-first:
+write `.claude/specs/<slug>/` **before** code on each worker branch.
