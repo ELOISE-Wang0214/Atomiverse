@@ -18,6 +18,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
+  python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
 from __future__ import annotations
@@ -100,6 +101,7 @@ def main() -> int:
             "cisd",
             "rks-tda",
             "rks-tddft",
+            "uks-tda",
         ],
     )
     p.add_argument("--geom", default="water")
@@ -175,7 +177,7 @@ def main() -> int:
         mf = dft.RKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
-    elif m == "uks":
+    elif m in ("uks", "uks-tda"):
         mf = dft.UKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
@@ -218,7 +220,9 @@ def main() -> int:
     if args.pcm and hasattr(mf, "with_solvent"):
         out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
-    if m in ("rohf", "roks") and hasattr(mf, "spin_square"):
+    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2") and hasattr(
+        mf, "spin_square"
+    ):
         ss, mult = mf.spin_square()
         out["s2"] = float(ss)
         out["multiplicity"] = float(mult)
@@ -281,10 +285,12 @@ def main() -> int:
             ss, mult = mf.spin_square()
             out["s2"] = float(ss)
             out["multiplicity"] = float(mult)
-    elif m in ("tda", "tdhf", "rks-tda", "rks-tddft"):
+    elif m in ("tda", "tdhf", "rks-tda", "rks-tddft", "uks-tda"):
         # rks-tda: hybrid/pure TDDFT-TDA on the KS reference (exact-exchange
         # kernel for hybrids via PySCF's Casida A matrix).
         # rks-tddft: full RPA TDDFT (Casida A,B) — tdscf.TDDFT, not TDA.
+        # uks-tda: open-shell spin-conserving TDA on a UKS reference
+        # (PySCF tdscf.TDA on dft.UKS; no closed-shell singlet/triplet split).
         if m == "tdhf":
             td = tdscf.TDHF(mf)
         elif m == "rks-tddft":

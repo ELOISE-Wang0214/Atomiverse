@@ -24,9 +24,11 @@
 #include "atomiverse/cpu/scf/internal/tda_gradient.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
+#include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/tdhf.h"
+#include "atomiverse/cpu/scf/uks.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
 
@@ -1091,6 +1093,469 @@ ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
     const internal::TDHFPack tdhf_pack{hessian, ch};
     return excited_states_result(det, pack, tdhf_pack.rpa(n_states), channel,
                                  /*tda_flag=*/false);
+}
+
+// ── UKS open-shell spin-conserving TDA ───────────────────────────────────
+
+namespace {
+
+/// @brief Four-index MO transform: out[p,q,r,s] = Σ C0(μ,p) C1(ν,q) C2(λ,r)
+///        C3(σ,s) T[μνλσ] (chemist order). Same reshape/dot pattern as
+///        OrbitalHessian::transform_block_.
+xt::xtensor<double, 4> mo_transform_eri(const xt::xtensor<double, 4>& eri_ao,
+                                        const RealMatrix& C0,
+                                        const RealMatrix& C1,
+                                        const RealMatrix& C2,
+                                        const RealMatrix& C3) {
+    xt::xtensor<double, 4> cur = eri_ao;
+    const RealMatrix* Cs[4] = {&C3, &C2, &C1, &C0};
+    for (int round = 0; round < 4; ++round) {
+        const auto sh = cur.shape();
+        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
+        xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        cur = xt::transpose(next, {3, 0, 1, 2});
+    }
+    return cur;
+}
+
+/// @brief Occupied / virtual column indices for integer occupations on one
+///        spin channel (f = 1 ⇔ occupied, f = 0 ⇔ virtual).
+void split_occ_virt(const RealVector& f, std::vector<int>& occ,
+                    std::vector<int>& virt) {
+    occ.clear();
+    virt.clear();
+    const int n_mo = static_cast<int>(f.size());
+    for (int p = 0; p < n_mo; ++p) {
+        const double fp = f(static_cast<std::size_t>(p));
+        if (fp == 1.0)
+            occ.push_back(p);
+        else if (fp == 0.0)
+            virt.push_back(p);
+        else
+            throw std::invalid_argument(
+                "UKS::tda: fractional occupation f[" + std::to_string(p)
+                + "] = " + std::to_string(fp)
+                + " — open-shell TDA requires integer occupations");
+    }
+}
+
+/// @brief Extract occupied / virtual coefficient blocks from C.
+void coeff_blocks(const RealMatrix& C, const std::vector<int>& occ,
+                  const std::vector<int>& virt, RealMatrix& Co,
+                  RealMatrix& Cv) {
+    const std::size_t n_ao = C.shape()[0];
+    const int no = static_cast<int>(occ.size());
+    const int nv = static_cast<int>(virt.size());
+    Co = xt::zeros<double>({n_ao, static_cast<std::size_t>(no)});
+    Cv = xt::zeros<double>({n_ao, static_cast<std::size_t>(nv)});
+    for (int i = 0; i < no; ++i)
+        for (std::size_t mu = 0; mu < n_ao; ++mu)
+            Co(mu, static_cast<std::size_t>(i)) =
+                C(mu, static_cast<std::size_t>(occ[static_cast<std::size_t>(i)]));
+    for (int a = 0; a < nv; ++a)
+        for (std::size_t mu = 0; mu < n_ao; ++mu)
+            Cv(mu, static_cast<std::size_t>(a)) =
+                C(mu, static_cast<std::size_t>(
+                          virt[static_cast<std::size_t>(a)]));
+}
+
+/// @brief Spin-resolved ALDA \(f^{\mathrm{xc}}\) second derivatives of LSDA
+///        (Slater + VWN5) at one density via central FD of \(v_{\mathrm{xc}}\).
+/// @param ra Alpha density [a.u.⁻³].
+/// @param rb Beta density [a.u.⁻³].
+/// @param[out] faa ∂v_α/∂ρ_α [Hartree·Bohr³].
+/// @param[out] fab ∂v_α/∂ρ_β [Hartree·Bohr³].
+/// @param[out] fbb ∂v_β/∂ρ_β [Hartree·Bohr³].
+void lsda_fxc_fd(double ra, double rb, double& faa, double& fab, double& fbb) {
+    // Density floor and FD step chosen so ra±h and rb±h stay positive
+    // (pow(ρ,…) in Slater/VWN5 NaNs on negative samples).
+    constexpr double kFloor = 1e-12;
+    constexpr double kH = 1e-6;
+    if (!(ra > kFloor) && !(rb > kFloor)) {
+        faa = fab = fbb = 0.0;
+        return;
+    }
+    ra = std::max(ra, kFloor);
+    rb = std::max(rb, kFloor);
+    const double h_a = std::min(kH, 0.1 * ra);
+    const double h_b = std::min(kH, 0.1 * rb);
+    const XCOutput xp = evaluate_xc(XCType::LSDA, ra + h_a, rb);
+    const XCOutput xm = evaluate_xc(XCType::LSDA, ra - h_a, rb);
+    const XCOutput yp = evaluate_xc(XCType::LSDA, ra, rb + h_b);
+    const XCOutput ym = evaluate_xc(XCType::LSDA, ra, rb - h_b);
+    faa = (xp.vrho_alpha - xm.vrho_alpha) / (2.0 * h_a);
+    fab = (yp.vrho_alpha - ym.vrho_alpha) / (2.0 * h_b);
+    fbb = (yp.vrho_beta - ym.vrho_beta) / (2.0 * h_b);
+    if (!std::isfinite(faa))
+        faa = 0.0;
+    if (!std::isfinite(fab))
+        fab = 0.0;
+    if (!std::isfinite(fbb))
+        fbb = 0.0;
+}
+
+} // namespace
+
+ExcitedStatesResult UKS::tda(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "UKS::tda: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    if (det.restricted() || det.generalized())
+        throw std::runtime_error(
+            "UKS::tda: requires an unrestricted (UKS) determinant");
+    if (xc != XCType::LSDA)
+        throw std::runtime_error(
+            "UKS::tda: only LSDA is implemented (pure open-shell ALDA); "
+            "requested functional is not LSDA (no fallback)");
+
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix& Ca = det.coefficients(Spin::alpha);
+    const RealMatrix& Cb = det.coefficients(Spin::beta);
+    const RealVector& ea = det.orbital_energies(Spin::alpha);
+    const RealVector& eb = det.orbital_energies(Spin::beta);
+    const RealVector& fa = det.occupations(Spin::alpha);
+    const RealVector& fb = det.occupations(Spin::beta);
+
+    std::vector<int> occ_a, virt_a, occ_b, virt_b;
+    split_occ_virt(fa, occ_a, virt_a);
+    split_occ_virt(fb, occ_b, virt_b);
+    const int noa = static_cast<int>(occ_a.size());
+    const int nva = static_cast<int>(virt_a.size());
+    const int nob = static_cast<int>(occ_b.size());
+    const int nvb = static_cast<int>(virt_b.size());
+    if (noa == 0 || nob == 0)
+        throw std::runtime_error(
+            "UKS::tda: empty occupied manifold on one spin (no fallback)");
+    if (nva == 0 && nvb == 0)
+        throw std::runtime_error(
+            "UKS::tda: no virtual orbitals (no occ→virt singles)");
+    const int na = noa * nva;
+    const int nb = nob * nvb;
+    const int nov = na + nb;
+    if (n_states < 1 || n_states > nov)
+        throw std::invalid_argument(
+            "UKS::tda: n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(nov) + "]");
+    if (nov > 512)
+        throw std::runtime_error(
+            "UKS::tda: n_ov = " + std::to_string(nov)
+            + " exceeds dense threshold 512 (no fallback)");
+
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    RealMatrix Coa, Cva, Cob, Cvb;
+    coeff_blocks(Ca, occ_a, virt_a, Coa, Cva);
+    coeff_blocks(Cb, occ_b, virt_b, Cob, Cvb);
+
+    // (i a | j b) blocks — pure DFT keeps full Coulomb, α_hf = 0 so no
+    // same-spin exchange subtraction (matches PySCF get_ab hyb=0).
+    // Layout after transform: [i,a,j,b] with C0=Co, C1=Cv, C2=Co, C3=Cv.
+    const xt::xtensor<double, 4> iajb_aa =
+        (na > 0) ? mo_transform_eri(eri, Coa, Cva, Coa, Cva)
+                 : xt::zeros<double>({0, 0, 0, 0});
+    const xt::xtensor<double, 4> iajb_bb =
+        (nb > 0) ? mo_transform_eri(eri, Cob, Cvb, Cob, Cvb)
+                 : xt::zeros<double>({0, 0, 0, 0});
+    const xt::xtensor<double, 4> iajb_ab =
+        (na > 0 && nb > 0) ? mo_transform_eri(eri, Coa, Cva, Cob, Cvb)
+                           : xt::zeros<double>({0, 0, 0, 0});
+
+    // Composite index: α-block first (p = i*nva + a), then β (q = j*nvb + b).
+    RealMatrix A =
+        xt::zeros<double>({static_cast<std::size_t>(nov),
+                           static_cast<std::size_t>(nov)});
+
+    // Diagonal orbital-energy differences.
+    for (int i = 0; i < noa; ++i)
+        for (int a = 0; a < nva; ++a) {
+            const int p = i * nva + a;
+            const int ii = occ_a[static_cast<std::size_t>(i)];
+            const int aa = virt_a[static_cast<std::size_t>(a)];
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
+                ea(static_cast<std::size_t>(aa))
+                - ea(static_cast<std::size_t>(ii));
+        }
+    for (int j = 0; j < nob; ++j)
+        for (int b = 0; b < nvb; ++b) {
+            const int q = na + j * nvb + b;
+            const int jj = occ_b[static_cast<std::size_t>(j)];
+            const int bb = virt_b[static_cast<std::size_t>(b)];
+            A(static_cast<std::size_t>(q), static_cast<std::size_t>(q)) =
+                eb(static_cast<std::size_t>(bb))
+                - eb(static_cast<std::size_t>(jj));
+        }
+
+    // Coulomb (ia|jb).
+    for (int i = 0; i < noa; ++i)
+        for (int a = 0; a < nva; ++a) {
+            const int p = i * nva + a;
+            for (int j = 0; j < noa; ++j)
+                for (int b = 0; b < nva; ++b) {
+                    const int q = j * nva + b;
+                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+                        iajb_aa(static_cast<std::size_t>(i),
+                                static_cast<std::size_t>(a),
+                                static_cast<std::size_t>(j),
+                                static_cast<std::size_t>(b));
+                }
+            for (int j = 0; j < nob; ++j)
+                for (int b = 0; b < nvb; ++b) {
+                    const int q = na + j * nvb + b;
+                    const double v =
+                        iajb_ab(static_cast<std::size_t>(i),
+                                static_cast<std::size_t>(a),
+                                static_cast<std::size_t>(j),
+                                static_cast<std::size_t>(b));
+                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+                        v;
+                    A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) +=
+                        v;
+                }
+        }
+    for (int i = 0; i < nob; ++i)
+        for (int a = 0; a < nvb; ++a) {
+            const int p = na + i * nvb + a;
+            for (int j = 0; j < nob; ++j)
+                for (int b = 0; b < nvb; ++b) {
+                    const int q = na + j * nvb + b;
+                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+                        iajb_bb(static_cast<std::size_t>(i),
+                                static_cast<std::size_t>(a),
+                                static_cast<std::size_t>(j),
+                                static_cast<std::size_t>(b));
+                }
+        }
+
+    // Spin-resolved ALDA f^xc on the KS grid (LSDA second derivatives).
+    if (pack.shells.empty())
+        throw std::runtime_error(
+            "UKS::tda: IntegralPack has no shells (no fallback)");
+    const MolecularGrid grid = build_molecular_grid(
+        pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
+        n_radial, n_angular);
+
+    RealMatrix Pa = det.density(Spin::alpha);
+    RealMatrix Pb = det.density(Spin::beta);
+    RealMatrix Ca_work = Ca;
+    RealMatrix Cb_work = Cb;
+    if (pack.spherical()) {
+        const auto& c2s = pack.c2s;
+        Pa = xt::linalg::dot(
+            c2s, RealMatrix(xt::linalg::dot(Pa, xt::transpose(c2s))));
+        Pb = xt::linalg::dot(
+            c2s, RealMatrix(xt::linalg::dot(Pb, xt::transpose(c2s))));
+        Ca_work = xt::linalg::dot(c2s, Ca);
+        Cb_work = xt::linalg::dot(c2s, Cb);
+        // Rebuild occ/virt blocks in Cartesian AO for grid products.
+        coeff_blocks(Ca_work, occ_a, virt_a, Coa, Cva);
+        coeff_blocks(Cb_work, occ_b, virt_b, Cob, Cvb);
+    }
+    const int n_cart = static_cast<int>(pack.shells.size()
+                                            ? /* AO count from shells */
+                                            static_cast<int>(Pa.shape()[0])
+                                            : 0);
+    (void)n_cart;
+    const int n_basis = static_cast<int>(Pa.shape()[0]);
+    const int G = static_cast<int>(grid.points.size());
+
+    std::vector<double> chi(static_cast<std::size_t>(n_basis));
+    std::vector<double> xi_a(static_cast<std::size_t>(std::max(na, 1)));
+    std::vector<double> xi_b(static_cast<std::size_t>(std::max(nb, 1)));
+    std::vector<double> phi_oa(static_cast<std::size_t>(std::max(noa, 1)));
+    std::vector<double> phi_va(static_cast<std::size_t>(std::max(nva, 1)));
+    std::vector<double> phi_ob(static_cast<std::size_t>(std::max(nob, 1)));
+    std::vector<double> phi_vb(static_cast<std::size_t>(std::max(nvb, 1)));
+
+    for (int g = 0; g < G; ++g) {
+        const auto& pt = grid.points[static_cast<std::size_t>(g)];
+        const double w = pt.weight;
+        if (!(std::fabs(w) > 0.0))
+            continue;
+        for (int mu = 0; mu < n_basis; ++mu)
+            chi[static_cast<std::size_t>(mu)] = eval_basis(
+                pack.shells[static_cast<std::size_t>(mu)], pt.x, pt.y, pt.z);
+
+        auto dens = [&](const RealMatrix& P) {
+            double rho = 0.0;
+            for (int mu = 0; mu < n_basis; ++mu) {
+                const double cmu = chi[static_cast<std::size_t>(mu)];
+                if (!(std::fabs(cmu) > 1e-20))
+                    continue;
+                double row = 0.0;
+                for (int nu = 0; nu < n_basis; ++nu)
+                    row += P(mu, nu) * chi[static_cast<std::size_t>(nu)];
+                rho += cmu * row;
+            }
+            return rho < 0.0 ? 0.0 : rho;
+        };
+        const double ra = dens(Pa);
+        const double rb = dens(Pb);
+        double faa = 0.0, fab = 0.0, fbb = 0.0;
+        lsda_fxc_fd(ra, rb, faa, fab, fbb);
+        if (!(std::fabs(faa) > 0.0 || std::fabs(fab) > 0.0
+              || std::fabs(fbb) > 0.0))
+            continue;
+
+        for (int i = 0; i < noa; ++i) {
+            double v = 0.0;
+            for (int mu = 0; mu < n_basis; ++mu)
+                v += chi[static_cast<std::size_t>(mu)]
+                     * Coa(mu, static_cast<std::size_t>(i));
+            phi_oa[static_cast<std::size_t>(i)] = v;
+        }
+        for (int a = 0; a < nva; ++a) {
+            double v = 0.0;
+            for (int mu = 0; mu < n_basis; ++mu)
+                v += chi[static_cast<std::size_t>(mu)]
+                     * Cva(mu, static_cast<std::size_t>(a));
+            phi_va[static_cast<std::size_t>(a)] = v;
+        }
+        for (int i = 0; i < nob; ++i) {
+            double v = 0.0;
+            for (int mu = 0; mu < n_basis; ++mu)
+                v += chi[static_cast<std::size_t>(mu)]
+                     * Cob(mu, static_cast<std::size_t>(i));
+            phi_ob[static_cast<std::size_t>(i)] = v;
+        }
+        for (int a = 0; a < nvb; ++a) {
+            double v = 0.0;
+            for (int mu = 0; mu < n_basis; ++mu)
+                v += chi[static_cast<std::size_t>(mu)]
+                     * Cvb(mu, static_cast<std::size_t>(a));
+            phi_vb[static_cast<std::size_t>(a)] = v;
+        }
+        for (int i = 0; i < noa; ++i)
+            for (int a = 0; a < nva; ++a)
+                xi_a[static_cast<std::size_t>(i * nva + a)] =
+                    phi_oa[static_cast<std::size_t>(i)]
+                    * phi_va[static_cast<std::size_t>(a)];
+        for (int i = 0; i < nob; ++i)
+            for (int a = 0; a < nvb; ++a)
+                xi_b[static_cast<std::size_t>(i * nvb + a)] =
+                    phi_ob[static_cast<std::size_t>(i)]
+                    * phi_vb[static_cast<std::size_t>(a)];
+
+        const double wfaa = w * faa;
+        const double wfab = w * fab;
+        const double wfbb = w * fbb;
+        for (int p = 0; p < na; ++p) {
+            const double xp = xi_a[static_cast<std::size_t>(p)];
+            if (!(std::fabs(xp) > 0.0))
+                continue;
+            for (int q = p; q < na; ++q) {
+                const double v = wfaa * xp * xi_a[static_cast<std::size_t>(q)];
+                A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+                    v;
+                if (q != p)
+                    A(static_cast<std::size_t>(q),
+                      static_cast<std::size_t>(p)) += v;
+            }
+            for (int q = 0; q < nb; ++q) {
+                const double v = wfab * xp * xi_b[static_cast<std::size_t>(q)];
+                A(static_cast<std::size_t>(p),
+                  static_cast<std::size_t>(na + q)) += v;
+                A(static_cast<std::size_t>(na + q),
+                  static_cast<std::size_t>(p)) += v;
+            }
+        }
+        for (int p = 0; p < nb; ++p) {
+            const double xp = xi_b[static_cast<std::size_t>(p)];
+            if (!(std::fabs(xp) > 0.0))
+                continue;
+            for (int q = p; q < nb; ++q) {
+                const double v = wfbb * xp * xi_b[static_cast<std::size_t>(q)];
+                A(static_cast<std::size_t>(na + p),
+                  static_cast<std::size_t>(na + q)) += v;
+                if (q != p)
+                    A(static_cast<std::size_t>(na + q),
+                      static_cast<std::size_t>(na + p)) += v;
+            }
+        }
+    }
+
+    // Symmetrize numerical noise, then dense eigh.
+    for (int p = 0; p < nov; ++p)
+        for (int q = p + 1; q < nov; ++q) {
+            const double s =
+                0.5
+                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + A(static_cast<std::size_t>(q),
+                       static_cast<std::size_t>(p)));
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = s;
+            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = s;
+        }
+
+    auto [w, U] = xt::linalg::eigh(A);
+    const std::size_t k = static_cast<std::size_t>(n_states);
+    ExcitedStatesResult out;
+    out.channel = ExcitationChannel::singlet; // no closed-shell S/T split
+    out.tda = true;
+    out.alda = true;
+    out.energy_ev.resize(k);
+    out.oscillator_strength.assign(k, 0.0);
+    out.transition_dipole_au = xt::zeros<double>({k, std::size_t(3)});
+    for (std::size_t s = 0; s < k; ++s)
+        out.energy_ev[s] = w(s) * units::kHartreeInEv;
+
+    // Length-gauge transition dipoles (open-shell: no √2 closed-shell factor).
+    // μ_s = Σ_{iaσ} X_{iaσ} ⟨φ_iσ|r|φ_aσ⟩.
+    const double origin[3] = {0.0, 0.0, 0.0};
+    const MultipoleIntegrals mi{pack.shells.data(),
+                                static_cast<int>(pack.shells.size()), origin};
+    // Restore working-dimension coeff blocks (spherical sandwich on dipole).
+    coeff_blocks(Ca, occ_a, virt_a, Coa, Cva);
+    coeff_blocks(Cb, occ_b, virt_b, Cob, Cvb);
+
+    for (int axis = 0; axis < 3; ++axis) {
+        xt::xtensor<double, 2> D = mi.dipole(axis);
+        if (pack.spherical()) {
+            const auto& c2s = pack.c2s;
+            D = xt::linalg::dot(
+                xt::transpose(c2s),
+                xt::xtensor<double, 2>(xt::linalg::dot(D, c2s)));
+        }
+        RealMatrix d_mo_a = xt::zeros<double>(
+            {static_cast<std::size_t>(noa), static_cast<std::size_t>(nva)});
+        RealMatrix d_mo_b = xt::zeros<double>(
+            {static_cast<std::size_t>(nob), static_cast<std::size_t>(nvb)});
+        if (na > 0)
+            d_mo_a = xt::linalg::dot(
+                xt::transpose(Coa), RealMatrix(xt::linalg::dot(D, Cva)));
+        if (nb > 0)
+            d_mo_b = xt::linalg::dot(
+                xt::transpose(Cob), RealMatrix(xt::linalg::dot(D, Cvb)));
+        for (std::size_t s = 0; s < k; ++s) {
+            double mu_s = 0.0;
+            for (int i = 0; i < noa; ++i)
+                for (int a = 0; a < nva; ++a) {
+                    const int p = i * nva + a;
+                    mu_s += U(static_cast<std::size_t>(p), s)
+                            * d_mo_a(static_cast<std::size_t>(i),
+                                     static_cast<std::size_t>(a));
+                }
+            for (int i = 0; i < nob; ++i)
+                for (int a = 0; a < nvb; ++a) {
+                    const int p = na + i * nvb + a;
+                    mu_s += U(static_cast<std::size_t>(p), s)
+                            * d_mo_b(static_cast<std::size_t>(i),
+                                     static_cast<std::size_t>(a));
+                }
+            out.transition_dipole_au(s, axis) = mu_s;
+        }
+    }
+    for (std::size_t s = 0; s < k; ++s) {
+        const double mu2 =
+            out.transition_dipole_au(s, 0) * out.transition_dipole_au(s, 0)
+            + out.transition_dipole_au(s, 1) * out.transition_dipole_au(s, 1)
+            + out.transition_dipole_au(s, 2) * out.transition_dipole_au(s, 2);
+        out.oscillator_strength[s] = (2.0 / 3.0) * w(s) * mu2;
+    }
+    return out;
 }
 
 } // namespace scf
