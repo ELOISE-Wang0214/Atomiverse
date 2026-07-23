@@ -182,10 +182,12 @@ DFT-D3 zero damping (PBE: s6 = 1.0, s8 = 0.722, sr6 = 1.217) is wired into
 **GPW**, from in-tree reference tables. DFT-D3 **Becke–Johnson** damping
 (PBE: s6 = 1, s8 = 0.7875, a1 = 0.4289, a2 = 4.4407 Bohr) is on the
 **molecular Gaussian** path via `cpu::scf::D3BJ` / `MeanFieldMethod::d3bj`
-(PySCF `disp='d3bj'` twin; regression `d3bj-molecular-pbe`). **DFT-D4**
+(PySCF `disp='d3bj'` twin; regression `d3bj-molecular-pbe`) **and on GPW**
+via `GpwDft::d3bj` / `GPWEvaluator::d3bj` (CP2K CN + BJ pin;
+`reg_gpw-pbe-d3bj-ice`). **DFT-D4**
 (Caldeweyher et al.; two-body BJ + EEQ/CN-dependent C6) is on the molecular
 path via `cpu::scf::D4` / `MeanFieldMethod::d4` (PySCF `disp='d4'` twin;
-regression `dft-d4-h2o-pbe`; three-body ATM not included).
+regression `dft-d4-h2o-pbe`; three-body ATM not included). Periodic D4 remains ○.
 
 ## 9. Composite DFT Methods
 
@@ -206,17 +208,22 @@ Two periodic DFT engines exist, with disjoint strengths:
   UPF pseudopotentials, block Davidson. **Ionic forces via analytic local HF +
   Ewald + Kleinman–Bylander nonlocal** (`pw_forces_analytic`, default for
   `PWEvaluator::with_gradient(true)`); FD (`pw_forces_fd`) is the oracle.
-  **Cell stress via strain-FD** (`pw_stress` → `kStress`). XC is the Slater +
-  PW92 LDA limit (PBE called with `sigma = 0`), spin-unpolarized.
-- **GPW**, Gaussian and plane waves (`cpu::gpw::GPW`) — Gaussian basis
-  collocated on a uniform grid, GTH pseudopotentials, LDA (Padé) or PBE, DFT-D3,
-  **analytic forces**, OT minimizer. **Γ-point and closed-shell only.** CPU only.
+  **Cell stress via strain-FD** (`pw_stress` → `kStress`). XC is **true GGA
+  PBE** on the FFT grid (density gradients enter Vxc; default `xc = PBE`) or
+  LSDA; **collinear spin** (`spin_polarized`) and **metallic smearing**
+  (Fermi–Dirac / Methfessel–Paxton) ship on CPU. CUDA path remains LDA /
+  spin-unpolarized.
+- **GPW**, Gaussian and plane waves (`cpu::gpw::GpwDft` / `GPWEvaluator`) —
+  Gaussian basis collocated on a uniform grid, GTH pseudopotentials, LDA
+  (Padé) or PBE, DFT-D3 zero + **BJ**, **analytic forces**, product **OT**
+  minimizer (`use_ot`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
+  `n_alpha`/`n_beta`). No k-points. CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
 | Γ-point periodic RKS             |  ✓  |   ○  |   ○  |
 | k-point periodic RKS             |  ✓  |   ✓  |   ○  |
-| Γ-point periodic UKS             |  ○  |   ○  |   ○  |
+| Γ-point periodic UKS             |  ✓  |   ○  |   ○  |
 | k-point periodic UKS             |  ○  |   ○  |   ○  |
 | Plane-wave DFT                   |  ✓  |   ✓  |   ○  |
 | Gaussian and plane-wave DFT, GPW |  ✓  |   ○  |   ○  |
@@ -235,12 +242,15 @@ Two periodic DFT engines exist, with disjoint strengths:
 
 Which engine backs which ✓:
 
-- **Γ-point periodic RKS** is GPW. **k-point periodic RKS** is the plane-wave
-  solver (restricted, spin-unpolarized, Monkhorst–Pack mesh) — on both CPU and
-  CUDA. There is no periodic *Gaussian-basis* k-point path.
+- **Γ-point periodic RKS** is GPW (`reg_gpw-water-pbe-mt`). **Γ-point periodic
+  UKS** is GPW PADE LSD (`reg_gpw-uks-o2-gamma`). **k-point periodic RKS** is
+  the plane-wave solver (Monkhorst–Pack mesh) — on both CPU and CUDA. There is
+  no periodic *Gaussian-basis* k-point path. **k-point periodic UKS** remains ○.
 - **Periodic LDA** is provided twice: Padé-LDA in GPW, and Slater + PW92 on the
-  plane-wave grid (the latter is the CUDA ✓). **Periodic GGA** is GPW/PBE only.
-- **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping (§8).
+  plane-wave grid (the latter is the CUDA ✓; CPU PW also has LDA). **Periodic
+  GGA** is GPW/PBE **and** CPU PW true PBE (`reg_pw-pbe-gga-si`).
+- **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping and
+  **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
@@ -282,8 +292,13 @@ Which engine backs which ✓:
 | Orbital-transformation (OT) minimizer | ✓ | ○ |   ○  |
 | Real-space multigrid collocation | ✓ | ○ |   ○  |
 | Ultrasoft / PAW | ○ | ○ |   ○  |
-| Smearing for metals | ○ | ○ |   ○  |
+| Smearing for metals | ✓ | ○ |   ○  |
 | Band structure / DOS post-processing | ○ | ○ |   ○  |
+
+**Smearing for metals** on CPU PW: `PW::smearing` (Fermi–Dirac / Methfessel–Paxton)
++ `degauss` [Ry] + `extra_bands` (`reg_pw-smearing-al`). OT on GPW is a product
+member (`use_ot`; `reg_ot-minimizer-water`). Band structure / DOS post-processing
+remains ○ (`bands-dos-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

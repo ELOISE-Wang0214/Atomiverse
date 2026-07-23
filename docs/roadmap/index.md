@@ -211,8 +211,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### Exchange-correlation
 
 - Molecular selectors: `{LSDA, PBE, BLYP, B3LYP, PBE0}`. BP86 still ○.
-- Molecular dispersion: **D3 zero** (GPW), **D3-BJ** + **D4** (Gaussian path;
-  `reg_d3bj-molecular-pbe`, `reg_dft-d4-h2o-pbe`).
+- Molecular dispersion: **D3 zero** (GPW), **D3-BJ** (Gaussian + GPW) +
+  **D4** (Gaussian path; `reg_d3bj-molecular-pbe`, `reg_gpw-pbe-d3bj-ice`,
+  `reg_dft-d4-h2o-pbe`).
 - libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
 - GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 
@@ -221,20 +222,24 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - Analytic local + Ewald + KB forces; FD oracle remains.
   **Cell stress via strain-FD** of SCF energy (`pw_stress`); Nielsen–Martin
   analytic stress is a follow-on.
-- Effectively LDA on the PW path (`sigma = 0` into the PBE routine). No
-  spin polarization.
+- CPU: **true GGA PBE** on the FFT grid (`reg_pw-pbe-gga-si`), **collinear
+  spin** (`reg_pw-spin-polarized-o2`), **metallic smearing**
+  (`reg_pw-smearing-al`), **BOMD foothold** (`reg_pw-bomd-h`). CUDA PW remains
+  LDA / spin-unpolarized.
 - Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
 - CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
 ### GPW
 
-- Γ-point, closed-shell only. No k-points, spin, stress, or hybrids.
+- Γ-point RKS + **Γ-point UKS** (PADE LSD; `reg_gpw-uks-o2-gamma`). No
+  k-points, stress, or hybrids.
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic forces available → can drive AIMD; keep member
-  `local_pp_on_grid` consistent between energy and gradient.
-- DFT-D3 zero-damping + PBE params only (GPW). Molecular Gaussian path also has
-  **DFT-D3(BJ)** (`cpu::scf::D3BJ` / `MeanFieldMethod::d3bj`;
-  `reg_d3bj-molecular-pbe`).
+  `local_pp_on_grid` consistent between energy and gradient
+  (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
+  `use_ot` (`reg_ot-minimizer-water`).
+- DFT-D3 zero-damping and **D3(BJ)** on GPW (PBE params; `reg_gpw-pbe-d3bj-ice`).
+  Molecular Gaussian path also has **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

@@ -7,16 +7,15 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
-| [gpw-forces-water](gpw-forces-water/) | `wf/gpw-forces-water` | open — CP2K-loop wave 1 merge |
-| [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — CP2K-loop wave 1 merge |
-| [gpw-uks-o2-gamma](gpw-uks-o2-gamma/) | `wf/gpw-uks-o2-gamma` | open — CP2K-loop wave 1 merge |
-| [gpw-water-pbe-mt](gpw-water-pbe-mt/) | `wf/gpw-water-pbe-mt` | open — CP2K-loop wave 1 merge |
-| [ot-minimizer-water](ot-minimizer-water/) | `wf/ot-minimizer-water` | open — CP2K-loop wave 1 merge |
-| [pw-bomd-h](pw-bomd-h/) | `wf/pw-bomd-h` | open — CP2K-loop wave 1 merge |
-| [pw-lda-si](pw-lda-si/) | `wf/pw-lda-si` | open — CP2K-loop wave 1 merge |
-| [pw-pbe-gga-si](pw-pbe-gga-si/) | `wf/pw-pbe-gga-si` | open — CP2K-loop wave 1 merge |
-| [pw-smearing-al](pw-smearing-al/) | `wf/pw-smearing-al` | open — CP2K-loop wave 1 merge |
-| [pw-spin-polarized-o2](pw-spin-polarized-o2/) | `wf/pw-spin-polarized-o2` | open — CP2K-loop wave 1 merge |
+| *(empty)* | — | CP2K wave-1 specs closed 2026-07-23; no open Live specs |
+
+## Closed — CP2K capability wave 1 (2026-07-23)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop wave 1 | gpw-water-pbe-mt, gpw-forces-water, gpw-uks-o2-gamma, gpw-pbe-d3bj-ice, pw-lda-si, pw-pbe-gga-si, pw-smearing-al, pw-spin-polarized-o2, pw-bomd-h, ot-minimizer-water | MT water PBE pin; GPW forces; Γ-UKS O₂; GPW D3(BJ); PW LDA Si; true PBE GGA PW; Fermi/MP Al; PW spin O₂; PW BOMD H; OT water pin |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 

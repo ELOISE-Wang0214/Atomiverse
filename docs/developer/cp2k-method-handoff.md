@@ -1,64 +1,56 @@
 # CP2K capability loop — handoff
 
-Last recover pass: 2026-07-23 (reconfirm) — inventory of incomplete CP2K/GPW/PW
-work on parent `dev`.
+Last harness pass: **2026-07-23 wave 1** on `dev`
+(`chore(harness): cp2k wf wave 1`).
 
-**Workflow order (binding, 2026-07-23):** Recover incomplete first → Census →
+**Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/cp2k-method-loop.md` and
 `.grok/workflows/cp2k-method-loop.rhai`.
 
-**Recover inventory (this shift):** **16** unfinished wave-1 `[~]` rows in
-`docs/developer/cp2k-method-queue.md` `## in_progress` (table below). No open
-`.claude/specs/<slug>/` for GPW/PW/periodic (INDEX Live empty). No unmerged
-`wf/<slug>` for this loop (local `wf/*` are PySCF molecular only). No
-half-written `regressions/{gpw,pw}/<queue-slug>/` (product PW footholds live as
-`regressions/pw/h_*` only; **no** `regressions/gpw/`). Queue already normalized —
-do **not** demote incomplete to pending. **Resume priority:** open spec >
-unmerged `wf/` > queue `[~]` > handoff → all 16 are queue `[~]` only; staff up
-to **10** dep-safe first (skip stress/BOMD until energy/forces, analytic PW
-stress until `pw-lda-si`). Spec is source of truth: workers write
-`.claude/specs/<slug>/` **first** on `wf/<slug>`, then implement + offline CP2K
-pin (`tools/cp2k_oracle/`).
-
-## Wave summary
+## Wave 1 summary
 
 | Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ---- | ------ | ------ | ---------- | --------------------------------------------- |
-| gpw-water-pbe-mt | gpw | [~] wave 1 | — | — |
-| gpw-forces-water | gpw | [~] wave 1 | — | — |
-| gpw-uks-o2-gamma | gpw | [~] wave 1 | — | — |
-| gpw-stress-water | gpw | [~] wave 1 (after energy/forces) | — | — |
-| gpw-pbe-d3bj-ice | gpw | [~] wave 1 | — | — |
-| pw-lda-si | pw | [~] wave 1 | — | — |
-| pw-pbe-gga-si | pw | [~] wave 1 | — | — |
-| pw-smearing-al | pw | [~] wave 1 | — | — |
-| pw-spin-polarized-o2 | pw | [~] wave 1 | — | — |
-| pw-analytic-stress-si | pw | [~] wave 1 (after pw-lda-si) | — | — |
-| gpw-bomd-water | dynamics | [~] wave 1 (after forces) | — | — |
-| pw-bomd-h | dynamics | [~] wave 1 | — | — |
-| fd-phonon-supercell | response | [~] wave 1 | — | — |
-| ot-minimizer-water | gpw | [~] wave 1 | — | — |
-| gpw-dftu-nio | gpw | [~] wave 1 | — | — |
-| bands-dos-si | pw | [~] wave 1 | — | — |
+| `gpw-water-pbe-mt` | gpw | **merged → done** | `regressions/gpw/gpw-water-pbe-mt` | **perf_exempt** |
+| `gpw-forces-water` | gpw | **merged → done** | `regressions/gpw/gpw-forces-water` | **3.56** |
+| `gpw-uks-o2-gamma` | gpw | **merged → done** | `regressions/gpw/gpw-uks-o2-gamma` | **0.98** |
+| `gpw-pbe-d3bj-ice` | gpw | **merged → done** | `regressions/gpw/gpw-pbe-d3bj-ice` | **perf_exempt** |
+| `pw-lda-si` | pw | **merged → done** | `regressions/pw/pw-lda-si` | **perf_exempt** |
+| `pw-pbe-gga-si` | pw | **merged → done** | `regressions/pw/pw-pbe-gga-si` | **perf_exempt** |
+| `pw-smearing-al` | pw | **merged → done** | `regressions/pw/pw-smearing-al` | **0.008** |
+| `pw-spin-polarized-o2` | pw | **merged → done** | `regressions/pw/pw-spin-polarized-o2` | **perf_exempt** |
+| `pw-bomd-h` | dynamics | **merged → done** | `regressions/pw/pw-bomd-h` | **perf_exempt** |
+| `ot-minimizer-water` | gpw | **merged → done** | `regressions/gpw/ot-minimizer-water` | **~9.0** |
 
-**Resume batch (≤10, dep-safe, staff first):** `gpw-water-pbe-mt`,
-`gpw-forces-water`, `gpw-uks-o2-gamma`, `gpw-pbe-d3bj-ice`, `pw-lda-si`,
-`pw-pbe-gga-si`, `pw-smearing-al`, `pw-spin-polarized-o2`, `pw-bomd-h`,
-`ot-minimizer-water`. **Held (still incomplete, honor deps):**
-`gpw-stress-water` (after energy+forces), `pw-analytic-stress-si` (after
-`pw-lda-si`), `gpw-bomd-water` (after forces), plus `fd-phonon-supercell`,
-`gpw-dftu-nio`, `bands-dos-si` for next staff slots.
+- **Blocked this wave:** none
+- **Merge-failed this wave:** none
+- **Incomplete remaining (queue `[~]`, 6):** `gpw-stress-water` (deps ✓ — energy+forces),
+  `pw-analytic-stress-si` (deps ✓ — `pw-lda-si`), `gpw-bomd-water` (deps ✓ — forces),
+  `fd-phonon-supercell`, `gpw-dftu-nio`, `bands-dos-si`
+- **Queue:** pending = 15; in_progress = 6; done = 10 (wave 1); blocked = 5
+  (hybrid/GAPW/PAW/CUDA-GPW/meta-GGA)
+- **Roadmap:** CPU ✓ for **Γ-UKS GPW**, **PW true GGA PBE**, **PW collinear
+  spin**, **metallic smearing**, **GPW D3(BJ)**; OT product switch + water pin;
+  PW BOMD foothold already ✓ on MD roadmap. No ⚡ (no standing CP2K perf suite
+  in ctest — ratios / `perf_exempt` only).
+- **Specs closed:** all 10 wave-1 slugs (acceptance met on `dev`); INDEX Live
+  empty for this loop.
+
+**Resume batch (≤6 remaining incomplete, dep-safe first):** `gpw-stress-water`,
+`gpw-bomd-water`, `pw-analytic-stress-si`, then `fd-phonon-supercell`,
+`gpw-dftu-nio`, `bands-dos-si`. Do **not** demote incomplete to pending.
+
+## Next assign candidates (pending head, after incomplete clear)
+
+1. `gpw-kpoints-si` (deps energy/forces ✓)
+2. `pw-uks-kmesh-fe` (deps spin + smearing ✓)
+3. `gpw-d4-water` / `gpw-pbesol-si` (GGA/dispersion ladder)
+4. `mpi-gpw-scaling-4rank` / `mpi-pw-scaling-4rank` (industrial / `perf_exempt` OK)
 
 ## Oracle
 
 Offline CP2K pins live in each regression `REFERENCE.md`.
 Pin path: `tools/cp2k_oracle/` (see README). **Never** call live CP2K from ctest.
-
-## Next assign candidates (pending head)
-
-1. `mpi-gpw-scaling-4rank` (industrial / `perf_exempt` OK)
-2. `berry-polarization` (after k-path / bands)
-3. `wannier-centers` (after `bands-dos-si`)
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
