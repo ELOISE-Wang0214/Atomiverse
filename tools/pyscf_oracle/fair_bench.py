@@ -94,9 +94,32 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
             f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
         ),
-        "rks_tddft": (
-            f"from pyscf import dft, tdscf\nmf=dft.RKS(mol); mf.xc={xc!r}; mf.conv_tol=1e-10; mf.kernel(); "
-            f"td=tdscf.TDDFT(mf); td.nstates={nstates}; td.kernel()"
+        # Collinear SF-CIS twin (PySCF has no product SF-TDA): ROHF warm-start
+        # → UHF (matches reg_spin-flip-tda-o2) + dense exchange-only SF A.
+        "sf_tda": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
+            "dm=np.asarray(ro.make_rdm1())\n"
+            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
+            "mf.kernel(dmin)\n"
+            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
+            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
+            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
+            "ab=len(oa)>=len(ob)\n"
+            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
+            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
+            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
+            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
+            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
+            "A=np.zeros((nov,nov))\n"
+            "for i in range(no):\n"
+            "  for a in range(nv):\n"
+            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
+            "    for j in range(no):\n"
+            "      for b in range(nv):\n"
+            "        A[p,j*nv+b]-=ijab[i,j,a,b]\n"
+            f"np.linalg.eigvalsh(A)[:{nstates}]"
         ),
     }.get(method)
     if body is None:
@@ -116,8 +139,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "mp2", "ump2",
-                            "tda", "tdhf", "rks_tda", "rks_tddft"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "mp2", "ump2", "tda", "tdhf", "rks_tda", "sf_tda"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

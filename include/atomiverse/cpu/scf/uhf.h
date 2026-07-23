@@ -6,6 +6,7 @@
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/scf_guess.h"
+#include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
@@ -57,6 +58,30 @@ class UHF : public MeanFieldMethod<UHF> {
     ///         virtual orbitals.
     vib::HessianResult hessian(Frame& frame,
                                const SCFInitialGuess* guess = nullptr);
+
+    /// @brief Collinear spin-flip Tamm–Dancoff (SF-CIS) on the most recent
+    ///        `run()`. High-spin UHF reference with Ms-decreasing singles
+    ///        \(i_\alpha \to a_\beta\) (when \(n_\alpha \ge n_\beta\); else
+    ///        \(i_\beta \to a_\alpha\)).
+    ///
+    /// Dense SF-CIS / SF-TDA Hamiltonian (Shao, Head-Gordon & Krylov,
+    /// J. Chem. Phys. 118, 4807 (2003); collinear HF kernel — Coulomb vanishes
+    /// for pure spin-flip, exchange only):
+    ///
+    ///   \(A_{ia,jb}=\delta_{ij}\delta_{ab}(\varepsilon_a^\beta-\varepsilon_i^\alpha)
+    ///   -(ij|ab)\)
+    ///
+    /// with \(i,j\) occupied of the majority spin and \(a,b\) virtual of the
+    /// minority spin. Dense `eigh` of **A** (`n_ov ≤ 512`). Oscillator
+    /// strengths are zero (spin-forbidden from the high-spin reference in the
+    /// collinear picture).
+    ///
+    /// @param n_states Number of lowest SF roots (1 ≤ n_states ≤ n_ov).
+    /// @return Excitation energies [eV]; `tda = true`; `alda = false`.
+    /// @throws std::runtime_error when called before `run()`, on a restricted
+    ///         determinant, empty SF manifold, or n_ov > 512 (no fallback).
+    /// @throws std::invalid_argument when n_states is outside [1, n_ov].
+    ExcitedStatesResult sf_tda(int n_states) const;
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`
