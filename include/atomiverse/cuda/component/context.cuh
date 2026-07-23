@@ -31,6 +31,9 @@ struct PairList;
 ///        `cpu::DynamicsServices`; the exclusion CSR and the force-row
 ///        split live here because they belong to the same
 ///        publish-consume chain as `pair_list`.
+///
+/// CUDA MD nonbonded path is the **OpenMM cluster/tile engine** only
+/// (see CLAUDE.md + `cuda-openmm-md` specs). There is no style enum.
 struct DynamicsServices {
     /// @brief Non-owning handle to the active neighbor pair list.
     ///
@@ -45,26 +48,21 @@ struct DynamicsServices {
 
     /// @brief Opt-in request for the flat (i,j,dx,dy,dz,r²) atom pair list.
     ///
-    /// The atom-centric LJ force kernel reads the cluster CSR directly and
-    /// does NOT need the flat list, so NeighborList skips the per-step
-    /// prune+export (~60% of step time) by default. Consumers that
+    /// Cluster force kernels read the cluster CSR and do not need the flat
+    /// list; NeighborList skips prune+export by default. Consumers that
     /// genuinely need the flat list set this true in their build();
     /// NeighborList::launch() then emits it every step. Set before the
     /// first launch (all build()s precede any launch()).
     bool flat_pairs_requested = false;
 
     /// @brief Special-bonds exclusion CSR (per-atom, LOCAL indices),
-    ///        published by `PairLJCut::build` and consumed by
-    ///        `NeighborList::launch` to bake exclusions directly into the
-    ///        per-atom Verlet list (LAMMPS style — find_special at build
-    ///        time, not per pair at force time).
+    ///        published by `PairLJCut::build` for force-time exclusion scans
+    ///        (and, while multi-GPU still derives a transitional `vl_*` view,
+    ///        optional bake into that view — removed in cuda-openmm-md-04).
     ///
     /// `excl_offsets[i]..excl_offsets[i+1]` index `excl_partners` for atom
     /// i. `s_excl` is the single special-bonds scale (set_special_bonds
-    /// requires all tiers equal). When `s_excl == 0` and the neighbor list
-    /// bakes the exclusions (sets `exclusions_baked`), the force kernel
-    /// skips the per-pair exclusion scan entirely. Null/false on configs
-    /// without special bonds.
+    /// requires all tiers equal). Null/false on configs without special bonds.
     const int* excl_offsets = nullptr;
     const int* excl_partners = nullptr;
     double s_excl = 1.0;

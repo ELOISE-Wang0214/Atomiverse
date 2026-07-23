@@ -31,19 +31,51 @@ if(NOT ATV_DOCS_ONLY)
         # nvcc cannot parse at -std=c++17. The CPU side stays at C++17.
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        # Prefer an explicit arch when building for GH200 (sm_90). `native`
+        # only works when configure+compile run on the target GPU node; a
+        # login-node or cross configure silently omits ISA 90 and produces
+        # runtime "No device code available for GPU ISA 90" warnings.
         if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-            set(CMAKE_CUDA_ARCHITECTURES native)
+            if(DEFINED ENV{ATV_CUDA_ARCHITECTURES} AND NOT "$ENV{ATV_CUDA_ARCHITECTURES}" STREQUAL "")
+                set(CMAKE_CUDA_ARCHITECTURES "$ENV{ATV_CUDA_ARCHITECTURES}")
+            else()
+                set(CMAKE_CUDA_ARCHITECTURES "90")
+            endif()
         endif()
     endif()
 
-    set(ATV_CUDA_REAL "float" CACHE STRING "CUDA per-atom storage precision (float or double)")
-    set_property(CACHE ATV_CUDA_REAL PROPERTY STRINGS float double)
-
-    set(ATV_CUDA_WORK "double" CACHE STRING "CUDA kernel computation precision (float or double)")
-    set_property(CACHE ATV_CUDA_WORK PROPERTY STRINGS float double)
-
-    set(ATV_CUDA_PREC "double" CACHE STRING "CUDA accumulator/SCF precision (float or double)")
-    set_property(CACHE ATV_CUDA_PREC PROPERTY STRINGS float double)
+    # CUDA precision — aligned with LAMMPS Kokkos `KOKKOS_PREC` (one knob, three
+    # modes). LAMMPS uses two types only: KK_FLOAT (storage + force math) and
+    # KK_ACC_FLOAT (force/energy/virial accumulation). We mirror that as
+    # real_t/work_t (= KK_FLOAT) and prec_t (= KK_ACC_FLOAT). There is no free
+    # independent "work" axis — WORK always tracks REAL.
+    #   double (default, KK default): real=work=prec=double
+    #   mixed:                        real=work=float, prec=double
+    #   single:                       real=work=prec=float
+    set(ATV_CUDA_PREC_MODE "double" CACHE STRING
+        "CUDA precision mode (LAMMPS KOKKOS_PREC): double | mixed | single")
+    set_property(CACHE ATV_CUDA_PREC_MODE PROPERTY STRINGS double mixed single)
+    string(TOLOWER "${ATV_CUDA_PREC_MODE}" _atv_cuda_prec_mode)
+    if(_atv_cuda_prec_mode STREQUAL "double")
+        set(ATV_CUDA_REAL "double")
+        set(ATV_CUDA_WORK "double")
+        set(ATV_CUDA_PREC "double")
+    elseif(_atv_cuda_prec_mode STREQUAL "mixed")
+        set(ATV_CUDA_REAL "float")
+        set(ATV_CUDA_WORK "float")
+        set(ATV_CUDA_PREC "double")
+    elseif(_atv_cuda_prec_mode STREQUAL "single")
+        set(ATV_CUDA_REAL "float")
+        set(ATV_CUDA_WORK "float")
+        set(ATV_CUDA_PREC "float")
+    else()
+        message(FATAL_ERROR
+            "ATV_CUDA_PREC_MODE must be double|mixed|single (got '${ATV_CUDA_PREC_MODE}')")
+    endif()
+    message(STATUS
+        "CUDA precision mode=${_atv_cuda_prec_mode} "
+        "(real_t=${ATV_CUDA_REAL} work_t=${ATV_CUDA_WORK} prec_t=${ATV_CUDA_PREC}; "
+        "mirrors LMP KK_FLOAT/KK_ACC_FLOAT)")
 
     # CPU/shared numerical precision — LAMMPS-style tiered control (see
     # include/atomiverse/core/precision.h). Storage and kernel-work reals may be
@@ -367,7 +399,6 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/neighbor/grid.cu
                 src/cuda/neighbor/pair_search.cu
                 src/cuda/neighbor/fused_search.cu
-                src/cuda/neighbor/nlist_direct.cu
                 src/cuda/neighbor/atom_cell_sort.cu
                 src/cuda/neighbor/setup.cu
                 src/cuda/neighbor/export_pairs.cu

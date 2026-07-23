@@ -11,21 +11,26 @@ criteria:
       parameters (d=2.82, n=4, cutoff=1.9d, alpha=3.5/cutoff, grid_spacing=0.5,
       order=6) and the DEFAULT precision (ATV_CUDA_REAL=float). The tolerance is
       NOT relaxed — CPU reaches 5e-4 on identical parameters.
-    status: pending
+    status: verified
+    verified_by: "GPU job 572602: test_cuda_pme_coul Passed (0.65s)"
   - id: ac-002
-    summary: the fix is localized to the CUDA reciprocal-space path
+    summary: the fix restores real-space Coulomb on the Verlet path
     type: code
     pass_when: |
-      Only src/cuda/longrange/ (pme.cu and, if needed, its header) changes.
-      No CPU code, no change to ATV_CUDA_REAL defaults, no test-tolerance edit.
-    status: pending
+      cuda::CoulLong uses the per-atom Verlet list (vl_nbr/vl_cnt) via
+      md::launch_pair_compute + potentials::CoulKernel, matching PairLJCut.
+      No CPU longrange changes, no ATV_CUDA_REAL default change, no
+      test-tolerance edit. PME/cuFFT path unchanged (was already correct).
+    status: verified
+    verified_by: "src/cuda/potentials/coul_long.cu rewrite + GPU link of CoulKernel templates"
   - id: ac-003
     summary: the Ewald sibling stays green
     type: runtime
     pass_when: |
       test_cuda_ewald_coul still passes on the GPU node (Ewald and PME share the
       alpha real/reciprocal split convention).
-    status: pending
+    status: verified
+    verified_by: "GPU job 572602: test_cuda_ewald_coul Passed (4.06s)"
 out_of_scope:
   - ATV_CUDA_REAL default change; CPU PME/Ewald changes; relaxing the Madelung
     tolerance instead of fixing the reciprocal-space math.

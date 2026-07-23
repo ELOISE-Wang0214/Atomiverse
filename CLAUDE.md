@@ -139,6 +139,28 @@ For non-trivial work, prefer:
 <!-- Free-form additions below this line are preserved across re-runs.
      If a section grows past a screen, promote to .claude/notes/<topic>.md. -->
 
+<!-- mol:note:topic:cuda-openmm-neighbor-force -->
+## CUDA classical MD — OpenMM **engine** architecture
+
+**Rule (operator, 2026-07-23, revised):** CUDA classical MD neighbor rebuild and
+nonbonded force are an **OpenMM cluster/tile engine**, not a style flag and not
+“LAMMPS algorithm on CUDA”.
+
+- **Engine path:** spatial reorder → clusters (target **32**) → AABB → cluster
+  CSR + **real** interaction masks → **tile / shared-memory** force for LJ and
+  real-space Coulomb. PME stays `longrange/` (cuFFT).
+- **Public facade** may stay LAMMPS-named (`set_neighbor`, MD phases); **CPU**
+  may stay LAMMPS-like. That does not license `vl_*` / `launch_build_verlet_direct`
+  as the CUDA MD force architecture.
+- **Forbidden:** `NonbondedStyle` / `ATV_CUDA_NONBONDED` dual architecture;
+  force default on per-atom Verlet; production `memset` all-ones masks; claiming
+  “OpenMM is slower” from a half-finished shell A/B.
+- **Transitional:** multi-GPU interior via `vl_*` until `cuda-openmm-md-04-multigpu`.
+
+Live chain: `.claude/specs/cuda-openmm-md-01-contract.md` … `05-delete.md`  
+Note: `.claude/notes/cuda-openmm-neighbor-force.md`
+<!-- mol:note:topic:cuda-openmm-neighbor-force -->
+
 # AGENTS.md
 
 Atomiverse is a dual-backend (CPU + CUDA) molecular-simulation engine with one

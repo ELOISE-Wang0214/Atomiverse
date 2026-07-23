@@ -2,8 +2,9 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-Atomiverse ships one semiempirical method: **AM1**, on the NDDO framework
-(`cpu::semiempirical::NDDOSolver` + `AM1Evaluator` of kind `cpu::Semiempirical`).
+Atomiverse ships two NDDO parameterizations: **AM1** and **RM1**, on the shared
+NDDO framework (`cpu::semiempirical::NDDOSolver` + `AM1Evaluator` /
+RM1 evaluator of kind `cpu::Semiempirical`).
 It computes energies, Mulliken charges, the density matrix, and **analytic
 nuclear forces** (SCF Hellmann–Feynman / fixed-density integral derivatives).
 `AM1Evaluator::with_gradient(true)` (default) writes forces for Evaluate / MD /

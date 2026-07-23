@@ -3,15 +3,20 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Everything that couples two levels of theory, or extracts a chemical property
-from a converged wavefunction. Almost all of it is unimplemented; the exceptions
-are the two charge schemes Atomiverse actually needs today — Mulliken (as an
-Observer over the SCF density) and AM1-BCC (built on the
-[AM1](semiempirical.md) solver plus molrs bond-charge-correction typing).
+from a converged wavefunction. Charge schemes still anchor the product surface
+(Mulliken observer; AM1-BCC via [AM1](semiempirical.md) + molrs typing). Beyond
+that, several *environment* hooks now exist on the SCF mean-field methods:
 
-There is **no QM/MM coupling of any kind**, no implicit solvent, no embedding,
-and no relativistic treatment. The only "pseudopotentials" in the engine are the
-plane-wave norm-conserving UPF and the GPW GTH sets — those are frozen-core
-approximations, not scalar-relativistic ECPs in the quantum-chemistry sense.
+- **C-PCM / COSMO** electrostatic free energy in the Fock build
+  (`reg_h2o_rhf_631gs_cpcm`) — non-electrostatic terms absent.
+- **Fixed point-charge embedding** + **uniform external electric field**, with
+  analytic forces (`reg_embed_h2o_grad`, `reg_field_h2o_grad`).
+- **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces
+  throw).
+
+There is still **no full QM/MM** (region partitioning, link atoms, polarizable
+MM), no SMD/GB, and no picture-change / DKH / SOC stack. Plane-wave UPF and
+GPW GTH remain frozen-core pseudopotentials, separate from Gaussian ECPs.
 
 ## 1. Atomic-Charge Methods
 
@@ -37,7 +42,7 @@ approximations, not scalar-relativistic ECPs in the quantum-chemistry sense.
 
 Löwdin is ○ deliberately: the Löwdin **orthogonalization** (S^(−1/2)) is used
 inside the SCF, but no Löwdin *population analysis* is exposed. Charges are
-component Capabilities (`Capability::Charge`), never Drivers — there is no
+Observer / method outputs written to Frame, never Drivers — there is no
 "charge driver".
 
 ## 2. Implicit-Solvent Methods
@@ -46,8 +51,8 @@ component Capabilities (`Capability::Charge`), never Drivers — there is no
 | ---------------------------------- | :-: | :--: |
 | Polarizable continuum model, PCM   |  ○  |   ○  |
 | Integral-equation-formalism PCM    |  ○  |   ○  |
-| Conductor-like PCM                 |  ○  |   ○  |
-| COSMO                              |  ○  |   ○  |
+| Conductor-like PCM                 |  ✓  |   ○  |
+| COSMO                              |  ✓  |   ○  |
 | SMD                                |  ○  |   ○  |
 | SM12                               |  ○  |   ○  |
 | Generalized Born                   |  ○  |   ○  |
@@ -59,6 +64,10 @@ component Capabilities (`Capability::Charge`), never Drivers — there is no
 | State-specific excited-state PCM   |  ○  |   ○  |
 | Implicit-solvent analytic gradient |  ○  |   ○  |
 | Implicit-solvent analytic Hessian  |  ○  |   ○  |
+
+C-PCM / COSMO share one conductor-like cavity implementation (`internal::Pcm`,
+x=0 vs x=0.5). Energy contribution is validated; surface-switching / SWIG and
+analytic PCM gradients are out of scope for the current path.
 
 ## 3. QM/MM Methods
 
@@ -82,17 +91,18 @@ component Capabilities (`Capability::Charge`), never Drivers — there is no
 | QM/MM molecular dynamics         |  ○  |   ○  |
 | Excited-state QM/MM              |  ○  |   ○  |
 
-The Component model makes QM/MM *expressible* in principle — a Plan can bind a
-QM evaluator and an MM pair style to the same force phase — but nothing performs
-the region partitioning, boundary treatment, or embedding-charge coupling that
-makes it QM/MM rather than a naive superposition. Treat every row here as
-not-started.
+Fixed point-charge embedding on the SCF method (external MM charges in the
+one-electron Hamiltonian, with analytic forces) is **not** full QM/MM: there
+is no region partitioner, no link atom / boundary treatment, and no
+self-consistent MM back-reaction. A Plan can still bind a QM evaluator and an
+MM pair style to the same force phase as a naive superposition — that is not
+a QM/MM product path.
 
 ## 4. Quantum Embedding Methods
 
 | Method                            | CPU | CUDA |
 | --------------------------------- | :-: | :--: |
-| Fixed point-charge embedding      |  ○  |   ○  |
+| Fixed point-charge embedding      |  ✓  |   ○  |
 | Distributed-multipole embedding   |  ○  |   ○  |
 | Polarizable embedding             |  ○  |   ○  |
 | Effective fragment potential      |  ○  |   ○  |
@@ -106,12 +116,12 @@ not-started.
 
 | Method                                        | CPU | CUDA |
 | --------------------------------------------- | :-: | :--: |
-| Scalar-relativistic effective core potentials |  ○  |   ○  |
+| Scalar-relativistic effective core potentials |  ✓  |   ○  |
 | Spin-orbit effective core potentials          |  ○  |   ○  |
 | Douglas–Kroll–Hess second order               |  ○  |   ○  |
 | Scalar ZORA                                   |  ○  |   ○  |
 | Spin-orbit ZORA                               |  ○  |   ○  |
-| Scalar X2C                                    |  ○  |   ○  |
+| Scalar X2C                                    |  ✓  |   ○  |
 | Spin-orbit X2C                                |  ○  |   ○  |
 | Exact two-component molecular mean field      |  ○  |   ○  |
 | Four-component Dirac–Hartree–Fock             |  ○  |   ○  |
@@ -120,9 +130,11 @@ not-started.
 | Spin-orbit mean-field approximation           |  ○  |   ○  |
 | Relativistic analytic gradient                |  ○  |   ○  |
 
-No ECP support means heavy elements are out of reach in the Gaussian path — an
-all-electron Cartesian basis is the only option there. Periodic calculations
-sidestep this through the UPF/GTH pseudopotentials.
+Gaussian ECPs are available with semi-numerical forces (`reg_ecp_i2_grad`,
+`reg_ecp_heavy_atom`). x2c-1e replaces the one-electron Hamiltonian (energy
+path validated on Ar); analytic forces with `x2c=true` throw. Stacking x2c
+on an ECP atom is refused. Periodic calculations still use UPF/GTH
+pseudopotentials, separate from the Gaussian ECP tables.
 
 ## 6. Intermolecular Interaction Methods
 
@@ -150,7 +162,7 @@ sidestep this through the UPF/GTH pseudopotentials.
 | Natural energy-decomposition analysis    |  ○  |   ○  |
 | Fragment molecular orbital decomposition |  ○  |   ○  |
 | Many-body expansion                      |  ○  |   ○  |
-| Counterpoise correction                  |  ○  |   ○  |
+| Counterpoise correction                  |  ✓  |   ○  |
 
 ## 7. Composite and Multiscale Methods
 

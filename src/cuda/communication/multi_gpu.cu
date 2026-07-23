@@ -244,28 +244,38 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
     atomicAdd(&fz[i], in3[2 * cnt + k]);
 }
 
-// Flag each OWNED atom interior (1) when its per-atom Verlet row holds no
-// ghost index (>= n_local): its pair force depends only on local positions,
-// so it can be computed BEFORE the forward halo lands — the comm/compute
-// overlap split. Valid for the whole reneighbor interval (the row is a fixed
-// cutoff+skin superset). O(neighbors) once per reneighbor.
-__global__ void flag_interior_rows(const int* __restrict__ vl_nbr,
-                                   const int* __restrict__ vl_cnt,
-                                   int vl_stride, int vl_max, int n_local,
-                                   unsigned char* __restrict__ flags) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_local)
+// Flag each OWNED atom interior (1) when none of its cluster-CSR neighbor
+// cluster slots maps to a ghost (orig_index >= n_local). OpenMM contract —
+// no vl_* Verlet list. Conservative vs exact cutoff (cluster padding may mark
+// a few extra boundary atoms); safe for comm/compute overlap.
+// One thread per cluster slot; only owned ai write flags[ai].
+__global__ void flag_interior_from_cluster(
+    const int* __restrict__ row_ptr, const int* __restrict__ col_idx,
+    const int* __restrict__ orig_index, int num_clusters, int n_local,
+    unsigned char* __restrict__ flags) {
+    constexpr int CS = 32; // kOpenmmClusterSize
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int ci = tid / CS;
+    int slot = tid % CS;
+    if (ci >= num_clusters)
         return;
-    // Clamp: on a truncated (overflowed) build vl_cnt may exceed the stored
-    // column capacity. The driver discards the classification for that slot.
-    const int cnt = min(vl_cnt[i], vl_max);
+    int ai = orig_index[ci * CS + slot];
+    if (ai < 0 || ai >= n_local)
+        return;
     unsigned char interior = 1;
-    for (int k = 0; k < cnt; ++k)
-        if (vl_nbr[static_cast<std::size_t>(k) * vl_stride + i] >= n_local) {
-            interior = 0;
-            break;
+    int rstart = row_ptr[ci], rend = row_ptr[ci + 1];
+    for (int p = rstart; p < rend && interior; ++p) {
+        int cj = col_idx[p];
+#pragma unroll 4
+        for (int sj = 0; sj < CS; ++sj) {
+            int aj = orig_index[cj * CS + sj];
+            if (aj >= n_local) {
+                interior = 0;
+                break;
+            }
         }
-    flags[i] = interior;
+    }
+    flags[ai] = interior;
 }
 
 // Fill idx[k] = k for k in [0, n) — the values-in array for the CUB tag sort.
@@ -1591,7 +1601,8 @@ void MultiGpu::classify_force_rows() {
         n_interior_[s] = -1;
         const int nl = frames_[s].n_local_;
         const cuda::PairList* pl = ctx_[s].md.pair_list;
-        if (nl <= 0 || !pl || !pl->vl_nbr || !pl->vl_cnt || pl->vl_stride <= 0)
+        if (nl <= 0 || !pl || !pl->cl_row_ptr || !pl->cl_col_idx
+            || !pl->cl_orig_index || pl->num_clusters <= 0)
             continue;
         dm_.set_device(s);
         if (!rows_[s]) {
@@ -1608,10 +1619,15 @@ void MultiGpu::classify_force_rows() {
             row_tmp_sz_[s] = need;
         }
         auto st = static_cast<cudaStream_t>(ctx_[s].stream);
-        const int block = 256, grid = (nl + block - 1) / block;
-        flag_interior_rows<<<grid, block, 0, st>>>(pl->vl_nbr, pl->vl_cnt,
-                                                   pl->vl_stride, pl->vl_max,
-                                                   nl, row_flags_[s]);
+        // Default boundary until cluster walk sets interior=1 for owned atoms.
+        CKM(cudaMemsetAsync(row_flags_[s], 0, nl * sizeof(unsigned char), st));
+        const int nc = pl->num_clusters;
+        const int threads = nc * 32;
+        const int block = 256;
+        const int grid = (threads + block - 1) / block;
+        flag_interior_from_cluster<<<grid, block, 0, st>>>(
+            pl->cl_row_ptr, pl->cl_col_idx, pl->cl_orig_index, nc, nl,
+            row_flags_[s]);
         CKM(cudaGetLastError());
         std::size_t avail = row_tmp_sz_[s];
         thrust::counting_iterator<int> cit(0);
