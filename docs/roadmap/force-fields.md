@@ -21,7 +21,7 @@ and both are benchmarked against LAMMPS/Kokkos in
 | Harmonic bond potential            |  ✓  |   ✓  |
 | Quartic bond potential             |  ○  |   ○  |
 | Morse bond potential               |  ○  |   ○  |
-| FENE bond potential                |  ○  |   ○  |
+| FENE bond potential                |  ✓  |   ○  |
 | Tabulated bond potential           |  ○  |   ○  |
 | Harmonic angle potential           |  ✓  |   ✓  |
 | Cosine angle potential             |  ○  |   ○  |
@@ -84,7 +84,7 @@ Bonded forces are cross-validated against LAMMPS in
 | Fast multipole electrostatics       |  ○  |   ○  |
 | Multilevel summation method         |  ○  |   ○  |
 | Soft-core Lennard–Jones potential   |  ✓  |   ○  |
-| Soft-core Coulomb potential         |  ○  |   ○  |
+| Soft-core Coulomb potential         |  ✓  |   ○  |
 
 Notes:
 
@@ -110,8 +110,11 @@ Notes:
   it is **not** a periodic MD `KSpace` style, so the FMM row above stays ○.
 - **Soft-core LJ** (`cpu::PairLJSoft`) is Beutler/GROMACS **one-leg appearance**
   form with public `lambda` (default 1 = hard shifted LJ parity). Not LAMMPS
-  `lj/cut/soft`. Soft-core Coulomb remains ○. Regression:
-  `regressions/forcefield/lj_soft_dimer`.
+  `lj/cut/soft`. Soft-core Coulomb ships as `cpu::PairCoulSoft` (same Beutler
+  family). Regressions: `lj_soft_dimer`, `coul_soft_dimer`.
+- **FENE** (`BondFene`) + **WCA** (`PairWCA`) and **Yukawa** (`PairYukawa`) and
+  **DPD** (`PairDpd`) are CPU textbook styles from the method ladder
+  (`reg_fene_wca_chain`, `reg_yukawa_dimer`, `reg_dpd_groot_warren`).
 
 ## 3. Polarizable Force Fields
 
@@ -168,7 +171,7 @@ the quantum-mechanical route (GPW, plane waves) is still the only option.
 | ------------------------------------------ | :-: | :--: |
 | MARTINI force field                        |  ○  |   ○  |
 | SDK coarse-grained force field             |  ○  |   ○  |
-| Dissipative particle dynamics              |  ○  |   ○  |
+| Dissipative particle dynamics              |  ✓  |   ○  |
 | Multiparticle collision dynamics           |  ○  |   ○  |
 | Brownian dynamics                          |  ○  |   ○  |
 | Generic tabulated coarse-grained potential |  ○  |   ○  |

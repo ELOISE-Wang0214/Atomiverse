@@ -20,6 +20,7 @@
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
 #include "atomiverse/cpu/scf/rhf.h"
+#include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 
 namespace ATV {
@@ -587,6 +588,21 @@ ExcitedStatesResult RHF::tda(int n_states, ExcitationChannel channel) const {
     if (!has_result())
         throw std::runtime_error(
             "RHF::tda: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+    const internal::OrbitalHessian hessian{det, eri};
+    const internal::TDHFPack tdhf_pack{hessian, internal_channel(channel)};
+    return excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
+                                 /*tda_flag=*/true);
+}
+
+ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RKS::tda: no SCF result — call run(frame) first");
+    // CIS@RKS skeleton: HF-like A on KS orbitals (ALDA fxc deferred).
     const SlaterDeterminant& det = determinant();
     const IntegralPack& pack = integral_workspace_();
     const xt::xtensor<double, 4> eri =

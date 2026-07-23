@@ -161,6 +161,12 @@ atv_add_cpp_test(test_cpu_lammps_data_full        cpu/io/test_lammps_data_full.c
 atv_add_cpp_test(test_cpu_lammps_real             cpu/io/test_lammps_real.cpp)
 atv_add_cpp_test(test_cpu_bias_distance_cv        cpu/bias/test_distance_cv.cpp)
 atv_add_cpp_test(test_cpu_bias_angle_cv           cpu/bias/test_angle_cv.cpp)
+atv_add_cpp_test(test_cpu_bias_dihedral_cv        cpu/bias/test_dihedral_cv.cpp)
+atv_add_cpp_test(test_cpu_pair_yukawa             cpu/potentials/test_pair_yukawa.cpp)
+atv_add_cpp_test(test_cpu_bond_fene               cpu/potentials/test_bond_fene.cpp)
+atv_add_cpp_test(test_cpu_pair_wca                cpu/potentials/test_pair_wca.cpp)
+atv_add_cpp_test(test_cpu_pair_dpd                cpu/potentials/test_pair_dpd.cpp)
+atv_add_cpp_test(test_cpu_path_hremd              cpu/path/test_hremd.cpp)
 atv_add_cpp_test(test_cpu_ewald_sum               cpu/longrange/test_ewald_sum.cpp)
 atv_add_cpp_test(test_cpu_pme_math                cpu/longrange/test_pme_math.cpp)
 atv_add_cpp_test(test_cpu_ewald_coul              cpu/longrange/test_ewald_coul.cpp)
@@ -176,6 +182,7 @@ if(ATV_BUILD_KSPACE)
 endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
+atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at
@@ -542,6 +549,7 @@ if(ATV_BUILD_HF)
     # Formaldehyde oracle e2e lives in regressions/scf/ch2o_tdhf.
     atv_add_cpp_test(test_cpu_scf_tdhf_pack       cpu/scf/test_tdhf_pack.cpp)
     atv_add_cpp_test(test_cpu_scf_tdhf_method     cpu/scf/test_tdhf_method.cpp)
+    atv_add_cpp_test(test_cpu_scf_rks_tda         cpu/scf/test_rks_tda.cpp)
     atv_add_cpp_test(test_cpu_scf_embedding       cpu/scf/test_embedding.cpp)
     # hf-capability-gaps-16-solvent: C-PCM cavity/Born oracle, f(ε), H2O
     # solvent vs gas, solvent_eps=0 vacuum identity, forces throw.

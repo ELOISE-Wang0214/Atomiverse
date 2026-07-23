@@ -81,76 +81,68 @@ recently closed: **backend-mirror** (layout rewrite) + **cuda-resurrect**
 Frame spine across Evaluate, MD, Minimize, Hessian, MC, Path/NEB, REMD, and
 umbrella bias.
 
-**Principle going forward: breadth before depth.** Prefer simple, diverse
-methods that exercise a *new* combination of (workflow × backend × physics
-axis) over productizing one method family. Depth (GAFF polymers, full
-Jensen/PySCF HF parity, multi-window WHAM campaigns, CUDA SCF gradients) is
-parked until the framework has been poked from more angles.
+**Principle: CPU-only method breadth for framework generality.**
 
-What already counts as **framework-proven** (do not re-prove with another
-variant of the same shape):
+The goal is **not** product depth in one family and **not** CUDA ports.
+It is to show that one Driver / Component / Frame spine can host
+**methods from electronic structure through mesoscale**, each as a small
+textbook case (`regressions/`, literature/analytic oracle, ≤ 60 s).
 
-| Axis | Proven on |
-| ---- | --------- |
-| Loop shapes | Evaluate, MD, Minimize, Hessian, MC (NVT/NPT/μVT), Path/NEB, REMD, single-window umbrella |
-| Serial + MPI DD | classical MD / NPT-PME / RATTLE |
-| Energy families | LJ+bonded, CoulCut/Long+PME, EAM/SW, RHF/UHF/ROHF/GHF, RKS/UKS, AM1/RM1, PW, GPW |
-| Dual backend (MD/Minimize/Evaluate classical) | CUDA resurrected; **cuda-pme-accuracy closed** (2026-07-23) |
-| Replicas | `ReplicaSet` + expansions; NEB coupled band; REMD N owned MD programs; IdentityReplication seed |
+Prefer a **new method family or scale** over another variant of an already-proven
+shape (second soft-core style, second isotropic cell tweak, …). Depth
+(Jensen/PySCF parity, multi-window WHAM product, ReaxFF, GAFF polymers,
+metadynamics suites) waits until the scale ladder has more rungs.
 
-What is **not** yet framework-proven (good breadth targets — see next section):
+| Scale | Already framework-proven (do not re-prove) |
+| ----- | ------------------------------------------ |
+| Electronic (mean-field) | RHF/UHF/ROHF/GHF, RKS/UKS, AM1/RM1, PW, GPW; FD Hessian; RHF TDA/TDHF |
+| Electronic (new families) | `RKS::tda` CIS@RKS skeleton; H-only SCC-DFTB2; PW stress → isotropic cell |
+| Classical atomistic | LJ+bonded, FENE, Coul/PME, EAM/SW; MD NVE/NVT/NPT; FIRE/LBFGS/CG; RATTLE/SETTLE |
+| Soft / alchemical / meso | soft LJ/Coul, WCA, Yukawa, DPD; λ TI, Widom; H-REMD λ |
+| Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg², IdentityReplication |
+| Sampling | MC NVT/NPT/μVT; Distance/Angle/**Dihedral** CV + umbrella; Brownian |
+| Cell | isotropic + joint atom+cell (classical virial **and** PW electronic stress) |
 
-- Joint atom+cell / anisotropic cell optimization
-- RPMD estimators / ring-polymer contraction (PIMD skeleton exists)
-- Free-energy beyond Widom snapshot + single biased window (FEP/TI, multi-window WHAM)
-- String / IRC path methods (dimer skeleton exists)
-- Soft-core Coulomb; multi-type soft LJ
-- Sampling / path / bias / constraints on CUDA
+| Scale | **Not** yet framework-proven (good next methods) |
+| ----- | ------------------------------------------------ |
+| Electronic | real ALDA/hybrid **TDDFT**; xTB/GFN; **GPW** cell/forces product; ROHF/UKS TDA |
+| Response / vib | excited-state gradients; nonadiabatic coupling; analytic Hessian / CPHF polarizability |
+| Classical | anisotropic/triclinic cell DOFs; Morse production pair; multi-type FENE melt |
+| Mesoscale | multi-component DPD phase; full DLVO surface; CG polymer melt entanglement |
+| Cross-scale | QM/MM embedding loop; AIMD with DFTB or RKS force family; metadynamics CV bias |
 
-### Recommended next queue (CPU breadth-first)
+### Closed CPU breadth queues (2026-07-23)
 
-**This track is CPU-only.** Dual-backend / CUDA follow-ons (CUDA PairCoulCut,
-CUDA SCF gradients, CUDA MC/path/bias mirrors) are a **separate ownership
-lane** — they do not appear in the numbered queue below. `cuda-pme-accuracy`
-is closed (2026-07-23).
+| Queue | Items |
+| ----- | ----- |
+| breadth-first 1–6 | FIRE, soft LJ, Widom, PIMD, isotropic cell, dimer |
+| breadth-next 1–9 | soft Coulomb, AngleCV, FEP/TI, joint cell, string, IRC, RPMD Rg², SETTLE, Brownian |
+| **method ladder 1–8** | RKS-TDA, SCC-DFTB2, PW-cell, DihedralCV, FENE+WCA, DPD, Yukawa, H-REMD λ |
 
-Ordered for **cheap diversity** that stress-tests the API, not for production
-completeness. Each item should ship one textbook regression under
-`regressions/` with a literature/analytic oracle. **CPU only.**
+### Recommended next queue — **CPU open scales** (still method-first)
 
-| # | Task | Why it is breadth | Stay out of scope |
-| - | ---- | ----------------- | ----------------- |
-| 1 | ~~**FIRE minimizer**~~ | **SHIPPED 2026-07-23** (`cpu::minimizer::FIRE`, `reg_fire_lj_dimer`) | — |
-| 2 | ~~**Soft-core LJ (λ)**~~ | **SHIPPED 2026-07-23** (`cpu::PairLJSoft`, `reg_lj_soft_dimer`) | — |
-| 3 | ~~**Widom insertion**~~ | **SHIPPED 2026-07-23** (`cpu::Widom`, `reg_widom_hs`) | — |
-| 4 | ~~**PIMD skeleton**~~ | **SHIPPED 2026-07-23** (`cpu::path::Pimd`, `reg_pimd_free_particle`) | — |
-| 5 | ~~**Variable-cell Minimize**~~ | **SHIPPED 2026-07-23** (`IsotropicCellRelax`, `reg_cell_lj_pressure`) | — |
-| 6 | ~~**Dimer TS**~~ | **SHIPPED 2026-07-23** (`cpu::path::Dimer`, `reg_dimer_saddle`) | — |
+**CPU only. No CUDA. Prefer a scale not already proven.** Each row opens a
+**new framework question**, not product depth.
 
-### Recommended next queue (CPU breadth-next) — **SHIPPED 2026-07-23**
+| # | Method | Scale | Framework question | Textbook gate (sketch) | Out of scope |
+| - | ------ | ----- | ------------------ | ---------------------- | ------------ |
+| 1 | **ALDA RKS-TDDFT TDA** | electronic / response | Can \(f^{\mathrm{xc}}\) sit in the same A-matrix path as CIS@RKS? | H₂ / H₂O first singlet vs PySCF TDDFT-TDA | Forces, hybrids |
+| 2 | **xTB / GFN0-1 skeleton** | semi-empirical TB | Second TB family beyond DFTB2 toy tables | Minimal organics energy vs offline | Full GFN2 product |
+| 3 | **Anisotropic / triclinic cell DOFs** | cell | Cell matrix beyond isotropic scale | Sheared LJ box pressure residual | Full PR barostat |
+| 4 | **QM/MM mechanical embedding** | multiscale | ES force + classical region on one MD/Minimize | Small solute + LJ shell energy | Polarizable embedding |
+| 5 | **Metadynamics (1D well-tempered)** | enhanced sampling | History-dependent Bias on existing CV protocol | 1D double-well reweight sketch | Multi-CV OPES product |
+| 6 | **DPD multi-component / soft polymer** | mesoscale product | Composition or chain on DPD spine | A/B mix density or R_g of FENE-DPD chain | Phase diagram campaign |
+| 7 | **Excited-state forces (TDA)** | response | Post-SCF gradient on Frame for surface hopping prep | Analytic or FD force on S1 for H₂ | Full NAC / TSH suite |
+| 8 | **RI-MP2 energy skeleton** | post-HF | Correlated method as Evaluate force/energy kind | H₂O correlation energy pin | Gradients, triples |
 
-| # | Spec | Shipped |
-| - | ---- | ------- |
-| 1 | ~~soft-core-coulomb~~ | `PairCoulSoft`, `reg_coul_soft_dimer` |
-| 2 | ~~angle-cv~~ | `AngleCV`, `reg_umbrella_angle` |
-| 3 | ~~fep-soft-dimer~~ | `dU_dlambda` + `reg_fep_soft_dimer` |
-| 4 | ~~joint-atom-cell~~ | `JointIsotropicRelax`, `reg_joint_lj_zero_p` |
-| 5 | ~~string-method~~ | `StringMethod`, `reg_string_muller_brown` |
-| 6 | ~~irc-path~~ | `Irc`, `reg_irc_muller_brown` |
-| 7 | ~~rpmd-estimator~~ | PIMD \(R_g^2\) API, `reg_pimd_free_particle_estimators` |
-| 8 | ~~settle-water~~ | `FixSettle`, `reg_settle_tip3p` |
-| 9 | ~~brownian-dynamics~~ | `Brownian`, `reg_brownian_einstein` |
+Order is suggested. Skip rows that need large data tables; prefer any open
+**scale** over deepening an already-proven one.
 
-**Explicitly deprioritized right now** (depth / productization):
+**Never on this track (until a consumer asks)**
 
-- CUDA ports (PairCoulCut, SCF gradients, MC/path/bias) — not this track
-- HF depth (CFMM-J/C-PCM hard-gates, polarizability, TDDFT, RI-MP2, …) —
-  roadmap-only; `/mol:spec` when a consumer needs it
-- Multi-window WHAM product / metadynamics / OPES / ABF (after ≥2 CVs)
-- ReaxFF / AIREBO / ML potentials / full GAFF polymer protocols
-
-HF residual depth is **roadmap-only** (no live `hf-parity-*` /
-`hf-deferred-backlog` specs).
+- Any CUDA / dual-backend port
+- HF/KS product depth (full PCM family, production analytic Hessians…)
+- Multi-window WHAM service; ReaxFF / ML potentials / full GAFF polymer protocols
 
 ## Work in progress — known gaps and caveats
 
@@ -191,8 +183,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### Excited states
 
 - **RHF TDA (CIS) and TDHF/RPA** ship as post-SCF members (`RHF::tda` /
-  `RHF::tdhf`) with CH₂O regression. No TDDFT, no excited-state gradients,
-  no nonadiabatic couplings — so surface hopping stays blocked.
+  `RHF::tdhf`) with CH₂O regression. **`RKS::tda`** is CIS@RKS (H₂ gate);
+  true ALDA/hybrid TDDFT, excited-state gradients, and nonadiabatic
+  couplings are still absent — surface hopping stays blocked.
 
 ### Exchange-correlation
 
@@ -222,7 +215,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 - **AM1 and RM1** on the shared NDDO path with analytic forces → Evaluate /
   MD / Minimize. Hessian remains FD. AM1-BCC charges via molrs typing.
-- No DFTB / xTB (separate method families when they land — not `NDDOSolver`).
+- SCC-DFTB2 H-only skeleton ships (`DFTB2`); xTB / full SK tables / DFTB3
+  remain ○ (still not under `NDDOSolver`).
 
 ### Classical force fields
 

@@ -20,12 +20,14 @@ activity expansion / finite-N ⟨V⟩ relation for the exact cut-shifted
 potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 
 **Enhanced sampling has a foothold, not a product suite.** A CV protocol
-(`cpu::bias::CollectiveVariable`) plus `DistanceCV` and `HarmonicBias` support
-single-window umbrella sampling on MD (`reg_umbrella_harmonic`). REMD is a
-method preset over N owned `MD` programs (`cpu::path::Remd`,
-`reg_remd_harmonic`). **Widom** ships as a snapshot Observer (`cpu::Widom`).
-Still absent: multi-window WHAM production, FEP/TI/BAR, and history-dependent
-biases (metadynamics / OPES / ABF). No PLUMED interface.
+(`cpu::bias::CollectiveVariable`) plus `DistanceCV`, `AngleCV`, `DihedralCV`
+and `HarmonicBias` support single-window umbrella sampling
+(`reg_umbrella_harmonic`, `reg_umbrella_angle`, `reg_umbrella_dihedral`).
+Temperature REMD (`cpu::path::Remd`) and Hamiltonian REMD on a λ ladder
+(`cpu::path::HRemd`, `reg_hremd_soft_lambda`) ship as method presets over N
+owned `MD` programs. Soft-core λ TI and **Widom** also exist. Still absent:
+multi-window WHAM production, history-dependent biases (metadynamics / OPES /
+ABF). No PLUMED interface.
 
 ## 1. Monte Carlo Methods
 
@@ -87,7 +89,7 @@ insertion needs the topology loaders re-run per trial).
 | Solute tempering                        |  ○  |   ○  |
 | REST2                                   |  ○  |   ○  |
 | Replica-exchange molecular dynamics     |  ✓  |   ○  |
-| Hamiltonian replica exchange            |  ○  |   ○  |
+| Hamiltonian replica exchange            |  ✓  |   ○  |
 | Multidimensional replica exchange       |  ○  |   ○  |
 | Expanded-ensemble sampling              |  ○  |   ○  |
 | Weighted-ensemble sampling              |  ○  |   ○  |
@@ -100,8 +102,8 @@ insertion needs the topology loaders re-run per trial).
 
 | Method                                  | CPU | CUDA |
 | --------------------------------------- | :-: | :--: |
-| Free-energy perturbation                |  ○  |   ○  |
-| Thermodynamic integration               |  ○  |   ○  |
+| Free-energy perturbation                |  ✓  |   ○  |
+| Thermodynamic integration               |  ✓  |   ○  |
 | Multistate Bennett acceptance ratio     |  ○  |   ○  |
 | Umbrella integration                    |  ○  |   ○  |
 | Potential-of-mean-force calculation     |  ○  |   ○  |
@@ -123,6 +125,8 @@ a production PMF curve is still ○ (analysis ownership: molrs; synthetic
 in-process WHAM unit path only). **Widom insertion** ships as
 `cpu::Widom` (Observer / snapshot estimator): μ_ex = −kT ln⟨e^{−βΔU}⟩ via
 ghost insertions (LJ cut-and-shift or hard sphere). Not GCMC; not absolute
-solvation protocols. Soft-core LJ for alchemical work is
-`cpu::PairLJSoft` (see
+solvation protocols. Soft-core LJ/Coulomb for alchemical work is
+`cpu::PairLJSoft` / `cpu::PairCoulSoft`. **Kirkwood TI** on fixed soft LJ
+(`dU_dlambda`, `reg_fep_soft_dimer`) is the free-energy *primitive* — not a
+multi-window BAR/MBAR campaign (see
 [Force Fields](force-fields.md#2-classical-nonbonded-potentials)).

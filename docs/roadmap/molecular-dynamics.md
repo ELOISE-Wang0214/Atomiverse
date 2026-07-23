@@ -19,7 +19,7 @@ only uniaxial deformation, and no rigid bodies.
 | BAOAB Langevin integrator         |  ○  |   ○  |
 | GJF Langevin integrator           |  ○  |   ○  |
 | Langevin-middle integrator        |  ○  |   ○  |
-| Brownian dynamics                 |  ○  |   ○  |
+| Brownian dynamics                 |  ✓  |   ○  |
 | Generalized Langevin equation     |  ○  |   ○  |
 | Rigid-body quaternion integration |  ○  |   ○  |
 
@@ -38,7 +38,7 @@ overlapping start configurations.
 | Bussi stochastic velocity rescaling      |  ✓  |   ○  |
 | Gaussian isokinetic thermostat           |  ○  |   ○  |
 | Massive Nosé–Hoover chains               |  ○  |   ○  |
-| Dissipative particle dynamics thermostat |  ○  |   ○  |
+| Dissipative particle dynamics thermostat |  ✓  |   ○  |
 | Dual thermostat for Drude particles      |  ○  |   ○  |
 | PILE thermostat                          |  ○  |   ○  |
 | PIGLET thermostat                        |  ○  |   ○  |

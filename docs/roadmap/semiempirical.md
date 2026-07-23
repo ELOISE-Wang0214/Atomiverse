@@ -19,9 +19,9 @@ derivatives remain a performance follow-up.
 AM1-BCC charge assignment still uses the energy/charge path (see
 [Multiscale and Properties](multiscale.md)).
 
-There is no DFTB and no extended tight binding (xTB/GFN-n) anywhere in the tree.
-Those are **separate method families** (own Solver + Evaluator + kind later) —
-never a new Driver, and not under `NDDOSolver`.
+**SCC-DFTB2** ships as an H-only textbook skeleton (`cpu::semiempirical::DFTB2`,
+`reg_h2_dftb2`) — a new TB family beside NDDO, not under `NDDOSolver`. Full
+mio/3ob tables, DFTB3, and xTB remain ○.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -46,7 +46,7 @@ finite-difference via `cpu::vib::Hessian` over SE forces.
 
 | Method                    | CPU | CUDA |
 | ------------------------- | :-: | :--: |
-| SCC-DFTB / DFTB2          |  ○  |   ○  |
+| SCC-DFTB / DFTB2          |  ✓  |   ○  |
 | DFTB3                     |  ○  |   ○  |
 | Spin-polarized DFTB       |  ○  |   ○  |
 | Noncollinear-spin DFTB    |  ○  |   ○  |

@@ -5,7 +5,20 @@ git log. Method census lives in `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU breadth-next queue closed 2026-07-23)*
+*(none — CPU method ladder closed 2026-07-23)*
+
+## Closed (2026-07-23) — CPU method ladder (electronic → mesoscale)
+
+| # | Spec | Shipped as |
+| - | ---- | ---------- |
+| 1 | ~~rks-tda~~ | `RKS::tda` (CIS@RKS skeleton), `reg_h2co_rks_tda` |
+| 2 | ~~scc-dftb2~~ | `cpu::semiempirical::DFTB2` (H-only), `reg_h2_dftb2` |
+| 3 | ~~pw-cell-minimize~~ | PW stress → `IsotropicCellRelax`, `reg_h_cell_isotropic` |
+| 4 | ~~dihedral-cv~~ | `cpu::bias::DihedralCV`, `reg_umbrella_dihedral` |
+| 5 | ~~fene-wca~~ | `BondFene` + `PairWCA`, `reg_fene_wca_chain` |
+| 6 | ~~dpd~~ | `PairDpd`, `reg_dpd_groot_warren` |
+| 7 | ~~soft-yukawa~~ | `PairYukawa`, `reg_yukawa_dimer` |
+| 8 | ~~hamiltonian-remd-lambda~~ | `cpu::path::HRemd`, `reg_hremd_soft_lambda` |
 
 ## Closed (2026-07-23) — CPU breadth-next textbook queue
 

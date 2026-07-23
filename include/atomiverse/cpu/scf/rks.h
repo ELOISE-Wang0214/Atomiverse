@@ -5,6 +5,7 @@
 #include <string>
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/tdhf.h"
 
 namespace ATV {
 namespace cpu {
@@ -28,6 +29,18 @@ class RKS : public MeanFieldMethod<RKS> {
     /// @param xc Functional to use (e.g. LSDA, PBE, B3LYP, PBE0).
     explicit RKS(XCType xc);
     std::string name() const { return "rks"; }
+
+    /// @brief Vertical TDA excitation energies of the most recent `run()`.
+    ///
+    /// Skeleton: Casida TDA with the **HF-like** A matrix built on the
+    /// converged KS orbitals (CIS@RKS). ALDA \(f^{\mathrm{xc}}\) is deferred;
+    /// this proves the post-SCF member path on RKS / Frame.
+    /// @param n_states Number of lowest excited states.
+    /// @param channel  Singlet or triplet channel.
+    /// @return Excitation energies [eV] and transition properties.
+    ExcitedStatesResult
+    tda(int n_states,
+        ExcitationChannel channel = ExcitationChannel::singlet) const;
 
   protected:
     /// @brief Closed-shell occupation (n_alpha = n_beta = n_electrons / 2);

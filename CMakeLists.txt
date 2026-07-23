@@ -248,6 +248,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/am1_evaluator.cpp
             src/cpu/semiempirical/rm1_evaluator.cpp
             src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
+            src/cpu/semiempirical/dftb2.cpp
         )
     endif()
 
@@ -312,6 +313,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/replica/replica_expansion.cpp
             src/cpu/path/neb.cpp
             src/cpu/path/remd.cpp
+            src/cpu/path/hremd.cpp
             src/cpu/path/pimd.cpp
             src/cpu/path/ring_polymer_spring.cpp
             src/cpu/path/dimer.cpp
@@ -319,6 +321,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/path/irc.cpp
             src/cpu/bias/distance_cv.cpp
             src/cpu/bias/angle_cv.cpp
+            src/cpu/bias/dihedral_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
         )
     endif()
