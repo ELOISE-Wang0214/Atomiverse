@@ -109,7 +109,13 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     const auto atoms = assemble_atoms(frame, *this);
-    last_ = solver_->run(atoms);
+    // BOMD warm-start: reuse previous MO coefficients when shape matches.
+    // GpwDft::run accepts optional guess_C; empty last_.C → core guess.
+    const ATV::cpu::linalg::RealMatrix* guess = nullptr;
+    if (last_.C.size() > 0) {
+        guess = &last_.C;
+    }
+    last_ = solver_->run(atoms, guess);
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (compute_forces) {
