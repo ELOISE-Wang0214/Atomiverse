@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Spec | Branch | Domain | Notes |
+| ---- | ------ | ------ | ----- |
+| [`pw-pbe-gga-si`](pw-pbe-gga-si/spec.md) | `wf/pw-pbe-gga-si` | pw | True GGA PBE on plane-wave FFT (not \(\sigma=0\) LDA-limit) |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
