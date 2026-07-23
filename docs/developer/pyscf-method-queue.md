@@ -7,32 +7,20 @@ can oracle offline; **done** / **blocked** history is preserved across runs.
 Census date: 2026-07-23 (re-census; wave-1 workers mid-flight). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
-without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
+10→without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
 CASPT2 (no stock PySCF). Prefer new family or scale over XC variants
 (BP86/B3PW91/B2GP-PLYP/…). Next axis after closed EOM-EE / CASCI / CCSD(T) /
 G0W0 / B2PLYP: EOM-IP/EA, UKS full-LR, ADC(2)-x/IP-ADC, CASSCF/NEVPT2, CC
 gradients, KS Hessians, open-shell MP2 forces, SF-TDDFT, MP4, CC2/EOM-CC2,
 dRPA/BSE, D4, EOM-SF, GF2. **in_progress retained** (live `wf/*` worktrees with
 feat commits or dirty trees): eom-ip-ccsd, uks-full-lr-o2-lsda, casscf-h2-sto3g,
-ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
+ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g. **assign wave 1
+(this shift):** 13 ready pending → in_progress; skip nevpt2 (CASSCF), eom-cc2 (CC2).
 
 ## pending
 
-- [ ] `eom-ea-ccsd` | EOM-EA-CCSD | excited-states | h2 | sto-3g | EA eV | EOM-EE ✓; attachment channel; PySCF cc.eom_rccsd EA
-- [ ] `adc2x-h2co-sto3g` | ADC(2)-x | excited-states | h2co | sto-3g | S1 eV | strict ADC(2) ✓; extended ADC(2)-x; PySCF adc method=adc(2)-x
-- [ ] `ip-adc2-h2o-sto3g` | IP-ADC(2) | excited-states | h2o | sto-3g | IP eV | ADC(2) EE ✓; ionization ADC; PySCF adc IP
-- [ ] `ea-adc2-h2-sto3g` | EA-ADC(2) | excited-states | h2 | sto-3g | EA eV | ADC(2) EE ✓; attachment ADC; PySCF adc EA
 - [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | needs CASSCF; partially/strongly contracted; PySCF mrpt.NEVPT
-- [ ] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
-- [ ] `sf-tddft-o2` | Spin-flip TDDFT | excited-states | o2 | sto-3g | excitation eV | SF-TDA ✓; full SF-RPA; PySCF TDDFT spin-flip
-- [ ] `mp4-h2-sto3g` | MP4(SDTQ) | post-hf | h2 | sto-3g | e_corr | MP3 ✓; fourth-order PT; PySCF mp.MP4
-- [ ] `cc2-h2-sto3g` | CC2 | post-hf | h2 | sto-3g | e_corr | approximate CC doubles foothold; unlocks EOM-CC2; PySCF cc.CC2
 - [ ] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | needs CC2 energy path; PySCF EOM-CC2
-- [ ] `direct-rpa-h2-sto3g` | Direct RPA | excited-states | h2 | sto-3g | e_corr | G0W0 screening twin as standalone corr; PySCF rpa.RPA
-- [ ] `bse-h2-sto3g` | Bethe–Salpeter BSE | excited-states | h2 | sto-3g | S1 eV | after G0W0 ✓; PySCF tdscf.BSE
-- [ ] `dft-d4-h2o-pbe` | DFT-D4 | dft | water | sto-3g | E_disp | D3 zero + BJ ✓; D4 open; PySCF/dftd4 offline pin
-- [ ] `eom-sf-ccsd-o2` | EOM-SF-CCSD | excited-states | o2 | sto-3g | ω eV | EOM-EE ✓; spin-flip EOM channel; PySCF eom_uccsd SF
-- [ ] `gf2-h2-sto3g` | GF2 | excited-states | h2 | sto-3g | QP | second-order Green's function; PySCF gf2
 
 ## in_progress
 
@@ -42,6 +30,19 @@ ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
 - [~] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
 - [~] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
 - [~] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
+- [~] `eom-ea-ccsd` | EOM-EA-CCSD | excited-states | h2 | sto-3g | EA eV | EOM-EE ✓; attachment channel; PySCF cc.eom_rccsd EA
+- [~] `adc2x-h2co-sto3g` | ADC(2)-x | excited-states | h2co | sto-3g | S1 eV | strict ADC(2) ✓; extended ADC(2)-x; PySCF adc method=adc(2)-x
+- [~] `ip-adc2-h2o-sto3g` | IP-ADC(2) | excited-states | h2o | sto-3g | IP eV | ADC(2) EE ✓; ionization ADC; PySCF adc IP
+- [~] `ea-adc2-h2-sto3g` | EA-ADC(2) | excited-states | h2 | sto-3g | EA eV | ADC(2) EE ✓; attachment ADC; PySCF adc EA
+- [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
+- [~] `sf-tddft-o2` | Spin-flip TDDFT | excited-states | o2 | sto-3g | excitation eV | SF-TDA ✓; full SF-RPA; PySCF TDDFT spin-flip
+- [~] `mp4-h2-sto3g` | MP4(SDTQ) | post-hf | h2 | sto-3g | e_corr | MP3 ✓; fourth-order PT; PySCF mp.MP4
+- [~] `cc2-h2-sto3g` | CC2 | post-hf | h2 | sto-3g | e_corr | approximate CC doubles foothold; unlocks EOM-CC2; PySCF cc.CC2
+- [~] `direct-rpa-h2-sto3g` | Direct RPA | excited-states | h2 | sto-3g | e_corr | G0W0 screening twin as standalone corr; PySCF rpa.RPA
+- [~] `bse-h2-sto3g` | Bethe–Salpeter BSE | excited-states | h2 | sto-3g | S1 eV | after G0W0 ✓; PySCF tdscf.BSE
+- [~] `dft-d4-h2o-pbe` | DFT-D4 | dft | water | sto-3g | E_disp | D3 zero + BJ ✓; D4 open; PySCF/dftd4 offline pin
+- [~] `eom-sf-ccsd-o2` | EOM-SF-CCSD | excited-states | o2 | sto-3g | ω eV | EOM-EE ✓; spin-flip EOM channel; PySCF eom_uccsd SF
+- [~] `gf2-h2-sto3g` | GF2 | excited-states | h2 | sto-3g | QP | second-order Green's function; PySCF gf2
 
 ## blocked
 

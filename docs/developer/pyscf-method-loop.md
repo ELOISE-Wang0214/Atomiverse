@@ -87,3 +87,4 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 tutorial: methods/delta-scf-n2.md
 - 2026-07-23 tutorial: methods/eom-ee-ccsd.md
 - 2026-07-23 assign wave 1 (post re-census): eom-ip-ccsd (excited-states), uks-full-lr-o2-lsda (excited-states), casscf-h2-sto3g (post-hf), ccsd-grad-h2o-sto3g (post-hf), rks-hessian-h2o-sto3g (dft), ump2-grad-o2-sto3g (post-hf) → in_progress; skip=[nevpt2 needs CASSCF, eom-cc2 needs CC2]; pending_left=15
+- 2026-07-23 assign wave 1 (shift): eom-ea-ccsd, adc2x-h2co-sto3g, ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, uks-hessian-o2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g, direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g → in_progress (13); retain prior wave-1 mid-flight (6); skip=[nevpt2 needs CASSCF, eom-cc2 needs CC2]; pending_left=2
