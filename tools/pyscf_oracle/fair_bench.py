@@ -133,6 +133,11 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "        A[p,j*nv+b]-=ijab[i,j,a,b]\n"
             f"np.linalg.eigvalsh(A)[:{nstates}]"
         ),
+        "adc2": (
+            "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ee'; "
+            f"my.conv_tol=1e-8; my.kernel(nroots={nstates})"
+        ),
         # Spectral G0W0 (dRPA + GWExact) — twin of RHF::g0w0().
         "g0w0": (
             "from pyscf import dft, tdscf\n"
@@ -160,7 +165,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "rks_tda", "rks_tddft", "sf_tda", "g0w0"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)
