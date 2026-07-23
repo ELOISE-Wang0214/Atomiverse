@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Spec | Branch | Domain | Status |
+| ---- | ------ | ------ | ------ |
+| [`gpw-water-pbe-mt/`](gpw-water-pbe-mt/) | `wf/gpw-water-pbe-mt` | GPW Γ-RKS energy (MT water) | open — CP2K capability loop wave 1 |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
