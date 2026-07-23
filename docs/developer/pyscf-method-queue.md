@@ -35,8 +35,8 @@ _(empty)_
 
 ## done
 
-- [x] `nevpt2-h2-sto3g` | SC-NEVPT2 | regressions/scf/nevpt2-h2-sto3g | H2 CASSCF(2,2)/STO-3G cart SC-NEVPT2; PySCF 2.14.0 mrpt.NEVPT e_corr=0 (ncore=nvirt=0); `RHF::nevpt2`; tol 1e-6 Ha; ratio 0.072
-- [x] `uks-hessian-o2-sto3g` | UKS nuclear Hessian | regressions/scf/uks-hessian-o2-sto3g | O2 UKS-LSDA/STO-3G FD-of-forces Hessian; PySCF 2.14.0 FD twin H_zz~128.46 eV/Å²; `UKS::hessian`; tol 2e-2 eV/Å²; ratio 2.13 (vs FD twin)
+- [x] `nevpt2-h2-sto3g` | SC-NEVPT2 | regressions/scf/nevpt2-h2-sto3g | H2 CASSCF(2,2)/STO-3G cart SC-NEVPT2; PySCF 2.14.0 mrpt.NEVPT e_corr=0 (ncore=nvirt=0); `RHF::nevpt2`; tol 1e-6 Ha; ratio 0.072; tutorial: methods/nevpt2-h2-sto3g.md
+- [x] `uks-hessian-o2-sto3g` | UKS nuclear Hessian | regressions/scf/uks-hessian-o2-sto3g | O2 UKS-LSDA/STO-3G FD-of-forces Hessian; PySCF 2.14.0 FD twin H_zz~128.46 eV/Å²; `UKS::hessian`; tol 2e-2 eV/Å²; ratio 2.13 (vs FD twin); tutorial: methods/uks-hessian-o2-sto3g.md
 - [x] `eom-cc2-h2` | EOM-CC2 | regressions/scf/eom-cc2-h2 | H2/STO-3G cart EOM-CC2; PySCF 2.14.0 S1=26.164970973312 eV; `RHF::eom_cc2`; tol 1e-4 eV; ratio 0.300
 - [x] `eom-ip-ccsd` | EOM-IP-CCSD | regressions/scf/eom-ip-ccsd | H2O/STO-3G cart EOM-IP; PySCF 2.14.0 IP0=8.415727034062 eV; `RHF::eom_ip_ccsd`; tol 1e-4 eV; ratio 0.754
 - [x] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | regressions/scf/uks-full-lr-o2-lsda | O2 UKS-LSDA/STO-3G full RPA; PySCF 2.14.0 roots 7.6209/7.6424/7.6424/8.3863/8.3863 eV; `UKS::tddft`; tol 1e-4 eV; ratio 2.937

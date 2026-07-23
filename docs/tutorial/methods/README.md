@@ -132,6 +132,7 @@ overlaps; MetalWalls / literature for MW-only physics.
 | B2PLYP double hybrid | [b2plyp-h2o](b2plyp-h2o.md) | `…/b2plyp-h2o` |
 | CASCI | [casci-h2-sto3g](casci-h2-sto3g.md) | `…/casci-h2-sto3g` |
 | CASSCF | [casscf-h2-sto3g](casscf-h2-sto3g.md) | `…/casscf-h2-sto3g` |
+| SC-NEVPT2 | [nevpt2-h2-sto3g](nevpt2-h2-sto3g.md) | `…/nevpt2-h2-sto3g` |
 | ΔSCF (IMOM) | [delta-scf-n2](delta-scf-n2.md) | `…/delta-scf-n2` |
 | EOM-EE-CCSD | [eom-ee-ccsd](eom-ee-ccsd.md) | `…/eom-ee-ccsd` |
 | EOM-SF-CCSD | [eom-sf-ccsd-o2](eom-sf-ccsd-o2.md) | `…/eom-sf-ccsd-o2` |
@@ -142,6 +143,7 @@ overlaps; MetalWalls / literature for MW-only physics.
 | One-shot GF2 (G0F2) | [gf2-h2-sto3g](gf2-h2-sto3g.md) | `…/gf2-h2-sto3g` |
 | Direct RPA | [direct-rpa-h2-sto3g](direct-rpa-h2-sto3g.md) | `…/direct-rpa-h2-sto3g` |
 | RKS nuclear Hessian (FD of forces) | [rks-hessian-h2o-sto3g](rks-hessian-h2o-sto3g.md) | `…/rks-hessian-h2o-sto3g` |
+| UKS nuclear Hessian (FD of forces) | [uks-hessian-o2-sto3g](uks-hessian-o2-sto3g.md) | `…/uks-hessian-o2-sto3g` |
 | UKS full-LR TDDFT (LSDA O₂) | [uks-full-lr-o2-lsda](uks-full-lr-o2-lsda.md) | `…/uks-full-lr-o2-lsda` |
 | UMP2 analytic gradient | [ump2-grad-o2-sto3g](ump2-grad-o2-sto3g.md) | `…/ump2-grad-o2-sto3g` |
 

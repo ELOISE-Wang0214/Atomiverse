@@ -5,10 +5,10 @@ Last harness pass: **2026-07-24 wave 3 (post re-census)** on `dev`
 
 ## Wave 3 (post re-census) summary
 
-| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
-| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
-| `nevpt2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/nevpt2-h2-sto3g` | **0.072** |
-| `uks-hessian-o2-sto3g` | dft | **merged → done** | `regressions/scf/uks-hessian-o2-sto3g` | **2.13** (vs FD twin) |
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) | Tutorial |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- | -------- |
+| `nevpt2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/nevpt2-h2-sto3g` | **0.072** | [methods/nevpt2-h2-sto3g](../tutorial/methods/nevpt2-h2-sto3g.md) |
+| `uks-hessian-o2-sto3g` | dft | **merged → done** | `regressions/scf/uks-hessian-o2-sto3g` | **2.13** (vs FD twin) | [methods/uks-hessian-o2-sto3g](../tutorial/methods/uks-hessian-o2-sto3g.md) |
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none

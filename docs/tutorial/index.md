@@ -176,6 +176,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | DFT-D4 (PBE params) | [dft-d4-h2o-pbe](methods/dft-d4-h2o-pbe.md) | `…/dft-d4-h2o-pbe` |
 | CASCI | [casci-h2-sto3g](methods/casci-h2-sto3g.md) | `…/casci-h2-sto3g` |
 | CASSCF | [casscf-h2-sto3g](methods/casscf-h2-sto3g.md) | `…/casscf-h2-sto3g` |
+| SC-NEVPT2 | [nevpt2-h2-sto3g](methods/nevpt2-h2-sto3g.md) | `…/nevpt2-h2-sto3g` |
 | ΔSCF (IMOM) | [delta-scf-n2](methods/delta-scf-n2.md) | `…/delta-scf-n2` |
 | EOM-EE-CCSD | [eom-ee-ccsd](methods/eom-ee-ccsd.md) | `…/eom-ee-ccsd` |
 | EOM-EA-CCSD | [eom-ea-ccsd](methods/eom-ea-ccsd.md) | `…/eom-ea-ccsd` |
@@ -183,6 +184,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | EOM-SF-CCSD | [eom-sf-ccsd-o2](methods/eom-sf-ccsd-o2.md) | `…/eom-sf-ccsd-o2` |
 | EOM-CC2 | [eom-cc2-h2](methods/eom-cc2-h2.md) | `…/eom-cc2-h2` |
 | RKS nuclear Hessian (FD of forces) | [rks-hessian-h2o-sto3g](methods/rks-hessian-h2o-sto3g.md) | `…/rks-hessian-h2o-sto3g` |
+| UKS nuclear Hessian (FD of forces) | [uks-hessian-o2-sto3g](methods/uks-hessian-o2-sto3g.md) | `…/uks-hessian-o2-sto3g` |
 | UKS full-LR TDDFT (LSDA O₂) | [uks-full-lr-o2-lsda](methods/uks-full-lr-o2-lsda.md) | `…/uks-full-lr-o2-lsda` |
 | UMP2 analytic gradient | [ump2-grad-o2-sto3g](methods/ump2-grad-o2-sto3g.md) | `…/ump2-grad-o2-sto3g` |
 
