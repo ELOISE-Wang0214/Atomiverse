@@ -8,6 +8,7 @@ the git log. Method census: `docs/roadmap/`.
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
 | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — CP2K-loop wave 1 merge |
+| [gpw-water-pbe-mt](gpw-water-pbe-mt/) | `wf/gpw-water-pbe-mt` | open — CP2K-loop wave 1 merge |
 | [ot-minimizer-water](ot-minimizer-water/) | `wf/ot-minimizer-water` | open — CP2K-loop wave 1 merge |
 | [pw-bomd-h](pw-bomd-h/) | `wf/pw-bomd-h` | open — CP2K-loop wave 1 merge |
 | [pw-lda-si](pw-lda-si/) | `wf/pw-lda-si` | open — CP2K-loop wave 1 merge |
