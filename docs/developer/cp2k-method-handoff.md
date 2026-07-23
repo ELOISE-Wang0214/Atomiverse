@@ -2,6 +2,8 @@
 
 Last harness pass: **2026-07-23 wave 1** on `dev`
 (`chore(harness): cp2k wf wave 1`).
+Last assign: **2026-07-23 wave 2** — 6 resumes + 4 new pending → `## in_progress`
+(staff 10; see queue).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
@@ -25,28 +27,31 @@ Tutorial. See `docs/developer/cp2k-method-loop.md` and
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
-- **Incomplete remaining (queue `[~]`, 6):** `gpw-stress-water` (deps ✓ — energy+forces),
-  `pw-analytic-stress-si` (deps ✓ — `pw-lda-si`), `gpw-bomd-water` (deps ✓ — forces),
-  `fd-phonon-supercell`, `gpw-dftu-nio`, `bands-dos-si`
-- **Queue:** pending = 15; in_progress = 6; done = 10 (wave 1); blocked = 5
-  (hybrid/GAPW/PAW/CUDA-GPW/meta-GGA)
+- **Assign wave 2 (2026-07-23):** staff 10 = **6 incomplete resumes** + **4 new**
+  pending promoted. No open CP2K/GPW/PW specs in `.claude/specs/` (Live is
+  electrochem-only). No unmerged `wf/<slug>` for these 10 slugs.
+- **In progress (10):** resumes — `gpw-stress-water`, `gpw-bomd-water`,
+  `pw-analytic-stress-si`, `fd-phonon-supercell`, `gpw-dftu-nio`, `bands-dos-si`;
+  new — `gpw-kpoints-si`, `pw-uks-kmesh-fe`, `gpw-pbesol-si`, `gpw-d4-water`.
+- **Queue after assign:** pending = 11; in_progress = 10; done = 10 (wave 1);
+  blocked = 5 (hybrid/GAPW/PAW/CUDA-GPW/meta-GGA)
 - **Roadmap:** CPU ✓ for **Γ-UKS GPW**, **PW true GGA PBE**, **PW collinear
   spin**, **metallic smearing**, **GPW D3(BJ)**; OT product switch + water pin;
   PW BOMD foothold already ✓ on MD roadmap. No ⚡ (no standing CP2K perf suite
   in ctest — ratios / `perf_exempt` only).
-- **Specs closed:** all 10 wave-1 slugs (acceptance met on `dev`); INDEX Live
-  empty for this loop.
+- **Specs closed:** all 10 wave-1 slugs (acceptance met on `dev`); wave-2 workers
+  write `.claude/specs/<slug>/` on `wf/<slug>` **before** code (spec-first).
 
-**Resume batch (≤6 remaining incomplete, dep-safe first):** `gpw-stress-water`,
-`gpw-bomd-water`, `pw-analytic-stress-si`, then `fd-phonon-supercell`,
-`gpw-dftu-nio`, `bands-dos-si`. Do **not** demote incomplete to pending.
+**Resume first (deps ✓):** `gpw-stress-water`, `gpw-bomd-water`,
+`pw-analytic-stress-si`, then `fd-phonon-supercell`, `gpw-dftu-nio`,
+`bands-dos-si`. Do **not** demote incomplete to pending.
 
-## Next assign candidates (pending head, after incomplete clear)
+## Next assign candidates (pending head, after wave-2 clear)
 
-1. `gpw-kpoints-si` (deps energy/forces ✓)
-2. `pw-uks-kmesh-fe` (deps spin + smearing ✓)
-3. `gpw-d4-water` / `gpw-pbesol-si` (GGA/dispersion ladder)
-4. `mpi-gpw-scaling-4rank` / `mpi-pw-scaling-4rank` (industrial / `perf_exempt` OK)
+1. `gpw-variable-cell-ice` (**dep:** `gpw-stress-water`)
+2. `periodic-mp2-si` (Γ GPW energy ✓) / MPI scaling industrial
+3. `dfpt-phonon-si` (**dep:** `fd-phonon-supercell`) / `xl-bomd-water` (**dep:** BOMD)
+4. `berry-polarization` / `wannier-centers` (**dep:** `bands-dos-si`)
 
 ## Oracle
 

@@ -10,12 +10,13 @@ the git log. Method census: `docs/roadmap/`.
 | [buckingham-pair-lammps](buckingham-pair-lammps/) | `wf/buckingham-pair-lammps` | open — buckingham-pair-lammps |
 | [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
 | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
-| [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — const-pot-charge-observer |
-| [external-efield-md](external-efield-md/) | `wf/external-efield-md` | open — external-efield-md |
+| [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — Spec: `const-pot-charge-observer` |
+| [const-pot-md-nvt-short](const-pot-md-nvt-short/) | `wf/const-pot-md-nvt-short` | open — Spec: `const-pot-md-nvt-short` |
+| [external-efield-md](external-efield-md/) | `wf/external-efield-md` | open — Spec: `external-efield-md` |
 | [four-site-tip4p-foothold](four-site-tip4p-foothold/) | `wf/four-site-tip4p-foothold` | open — four-site-tip4p-foothold |
-| [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — freeze-electrode-atoms |
+| [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — Spec: `freeze-electrode-atoms` |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
-| [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — slab-2d-ewald-foothold |
+| [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 

@@ -21,20 +21,16 @@ Census: 2026-07-23 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12 +
 §3/§8 GGA/dispersion ○, `docs/roadmap/index.md` GPW/PW caveats,
 `docs/roadmap/molecular-dynamics.md` §AIMD ○ (XL-BOMD / CPMD).
 **Harness wave 1 2026-07-23:** 10 staff-batch slugs merged → `## done` (see
-below). **6 `[~]` incomplete** remain under `## in_progress` (deps / later
-slots). Pending below = open roadmap ○ with offline CP2K twins, **excluding**
-slugs already in in_progress / done / blocked and excluding
-GAPW/PAW/periodic hybrid/meta-GGA/CUDA (see `## blocked`). Later wave order
-(after incomplete): k-point GPW → k-point UKS PW → GPW cell_opt → extra GGA/D4
-→ DFPT → Berry/Wannier → XL-BOMD/CPMD → periodic MP2/RPA/GW → MPI industrial.
+below). **Assign wave 2 2026-07-23:** all 6 incomplete resumes kept `[~]` +
+4 dep-safe pending promoted → `## in_progress` (`gpw-kpoints-si`,
+`pw-uks-kmesh-fe`, `gpw-pbesol-si`, `gpw-d4-water`). Staff = 10. Pending
+below = remaining open roadmap ○ (cell_opt waits on GPW stress; DFPT on FD
+phonons; XL/CPMD on BOMD; response/wannier on bands; MP2/RPA/GW; MPI
+industrial).
 
 ## pending
 
-- [ ] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓ (`gpw-water-pbe-mt`, `gpw-forces-water`)
-- [ ] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | Fe (or O₂ cell) | NC-UPF | e_tot / mag | roadmap ○ k-point periodic UKS; **dep:** `pw-spin-polarized-o2` ✓ + `pw-smearing-al` ✓
 - [ ] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water`
-- [ ] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 GGA ○ PBEsol; CP2K XC_FUNCTIONAL PBEsol textbook bulk
-- [ ] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | water | DZVP-MOLOPT-GTH | e_tot / E_disp | roadmap §8 D4 ○; CP2K DFTD4; **dep:** GPW D3 pin pattern ✓ (`gpw-pbe-d3bj-ice`)
 - [ ] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap §11 DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell`
 - [ ] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO₃ toy | — | P | roadmap §11 ○; CP2K Berry phase; after k-path / `bands-dos-si`
 - [ ] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si`
@@ -48,12 +44,17 @@ GAPW/PAW/periodic hybrid/meta-GGA/CUDA (see `## blocked`). Later wave order
 
 ## in_progress
 
+<!-- assign wave 2 2026-07-23: 6 resumes + 4 new pending (staff ≤10); incomplete first -->
 - [~] `gpw-stress-water` | GPW cell stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | PW strain-FD stress ✓; **GPW stress open**; CP2K cell stress twin; **dep:** energy+forces pins ✓
 - [~] `pw-analytic-stress-si` | PW Nielsen–Martin analytic stress | pw | Si | NC-UPF | stress eV/Å³ | strain-FD stress ships; analytic form is follow-on; CP2K STRESS_TENSOR; **dep:** `pw-lda-si` ✓
 - [~] `gpw-bomd-water` | GPW BOMD short traj | dynamics | water | DZVP | energy drift | GPWEvaluator forces + MD marked ✓; need CP2K MD reference trajectory pin; **dep:** `gpw-forces-water` ✓
 - [~] `fd-phonon-supercell` | FD phonons (supercell) | response | Si or H2O ice | — | ω cm⁻¹ | molecular `vib::Hessian` ≠ phonons; CP2K VIBRATIONAL_ANALYSIS / supercell
 - [~] `gpw-dftu-nio` | Periodic DFT+U | gpw | NiO | MOLOPT+GTH | e_tot / mag | roadmap ○ DFT+U; CP2K PLUS_U textbook antiferromagnet
 - [~] `bands-dos-si` | Band structure / DOS | pw | Si | NC-UPF | ε(k) / DOS | roadmap ○ post-processing; CP2K BAND_STRUCTURE / DOS; **enables** wannier later
+- [~] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | wave 2 new; roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓
+- [~] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | Fe (or O₂ cell) | NC-UPF | e_tot / mag | wave 2 new; roadmap ○ k-point periodic UKS; **dep:** `pw-spin-polarized-o2` ✓ + `pw-smearing-al` ✓
+- [~] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | wave 2 new; roadmap §3 GGA ○ PBEsol; CP2K XC_FUNCTIONAL PBEsol textbook bulk
+- [~] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | water | DZVP-MOLOPT-GTH | e_tot / E_disp | wave 2 new; roadmap §8 D4 ○; CP2K DFTD4; **dep:** GPW D3 pin pattern ✓ (`gpw-pbe-d3bj-ice`)
 
 ## blocked
 
