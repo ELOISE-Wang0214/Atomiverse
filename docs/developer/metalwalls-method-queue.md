@@ -16,40 +16,30 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
-Census: **2026-07-23** (parent `dev`). **incomplete_count=0** for this loop.
-- `## in_progress` `[~]`: empty
-- live `.claude/specs/` (MD/electrochem/const-pot/forcefield): **none**
-  (`INDEX.md` Live empty)
-- unmerged `wf/<slug>` in this loop’s scope: **none** (local `wf/*` tips are
-  PySCF/post-HF ancestors of `dev`, out of scope; no metalwalls/const-pot/
-  electrode/efield branches local or on `origin`)
-- handoff incomplete rows: **0**
-- half-written `regressions/{md,forcefield,longrange}/` for *this* queue: **none**
+Census: **2026-07-23** (parent `dev`). **Assign wave 1:** 10 new `[~]` (no resumes).
+- Prior recover/census incomplete_count was **0**; open MD/electrochem specs: **none**
+- unmerged in-scope `wf/<slug>`: **none** (local `wf/*` are PySCF/post-HF ancestors)
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
   integrators), SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked),
   ML electrodes (E12 blocked), hybrid DFT electrodes
+- Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
+  `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not assigned** (already
+  covered by excluded twins)
 
 ## pending
 
-### E1 — constant-potential v1 (map §1 P0) — assign first
+### E1 — constant-potential v1 (map §1 P0)
 
-- [ ] `const-pot-bo-parallel-plate` | Constant-potential BO solve (parallel plate) | electrochem | NaCl slab + two planar walls | — | electrode \(Q\), \(\Delta\Psi\), neutrality | **oracle=metalwalls** (LAMMPS ELECTRODE only if package available offline); map E1; Component on `md::MD`; private \(A,Q\); write `kAtom_charge`; freeze walls
-- [ ] `freeze-electrode-atoms` | Freeze / immobile electrode atoms | md | any textbook | — | \(x\) fixed, \(v=0\) | **oracle=lammps** `fix setforce 0` / `fix freeze`; Component on integrate path; E1 dep for wall atoms
-- [ ] `const-pot-charge-observer` | Electrode total charge observer | electrochem | same foothold | — | \(Q_{\mathrm{tot}}(t)\) per electrode | **oracle=lammps** electrode charge dump if available; else **oracle=metalwalls**; dep: charge solve
-- [ ] `charging-work-energy` | Charging work \(-\sum\Psi_i Q_i\) in energy | electrochem | parallel plate | — | energy channel / meta | **oracle=metalwalls** / Scalfi literature; dep: const-pot
-- [ ] `const-pot-md-nvt-short` | Const-pot + MD NVT short traj | electrochem | NaCl + parallel walls | — | stable \(E\), \(Q\) sign, no NaN | **oracle=metalwalls** (or lammps electrode MD); dep: BO + freeze + CoulLong/PME
+*(wave-1 core moved to in_progress 2026-07-23)*
 
 ### E2 — electrostatic rigor (after E1 foothold)
 
-- [ ] `gaussian-electrode-charge` | Gaussian charge kernels on electrode atoms | electrochem | parallel plate | — | \(E\), \(Q\) vs point-charge \(A\) | **oracle=metalwalls**; map E2; document point-charge approx if deferred
 - [ ] `const-pot-cg-large-electrode` | CG electrode charge solve | electrochem | larger wall / many electrode sites | — | \(Q\) match dense path | **oracle=metalwalls**; dep: BO dense inverse path
 - [ ] `electrode-charge-predictor` | Electrode charge predictor (ASPC-like) | electrochem | short MD | — | fewer CG/BO iters | **oracle=metalwalls**; map E2
-- [ ] `slab-2d-ewald-foothold` | 2D / slab Ewald (or `kspace_modify slab`) | electrochem | slab NaCl / parallel plate | — | \(E\) vs 3D+slab correction | **oracle=lammps** `kspace_modify slab` when available; else **oracle=metalwalls** 2D; map E2
 
 ### E3 — external field (map §1 P1; MD roadmap ○ constant E-field)
 
-- [ ] `external-efield-md` | Applied uniform E-field on MD charges | electrochem | ions / LJ+Coul fluid | — | \(F=qE\), \(\Delta E\) | **oracle=lammps** `fix efield` (LAMMPS primary); map E3
 - [ ] `finite-field-single-electrode` | Finite-field + single electrode (3D) | electrochem | single wall + electrolyte | — | \(Q\), polarization | **oracle=metalwalls** Dufils-style; **dep:** E1 + efield
 
 ### E4 / E5 — polarization (map §2; FF roadmap ○ induced dipoles / Thole)
@@ -64,14 +54,13 @@ Census: **2026-07-23** (parent `dev`). **incomplete_count=0** for this loop.
 
 ### E8 — salt / wall potentials (map §3; FF ○ Buckingham-class)
 
-- [ ] `buckingham-pair-lammps` | Buckingham pair (Born–Mayer foothold) | forcefield | ion dimer / bulk toy | — | \(E\), \(F\) | **oracle=lammps** `pair_style buck`; textbook precursor to Fumi–Tosi
 - [ ] `fumi-tosi-nacl` | Fumi–Tosi molten salt | forcefield | NaCl melt | — | \(E\) | **oracle=metalwalls** / literature; map E8
 - [ ] `steele-wall-argon` | Steele wall potential | forcefield | Ar / graphite wall | — | \(E\), \(F\) | **oracle=metalwalls** (Steele) or literature; map E8
 - [ ] `born-repulsion-foothold` | Born repulsion wall/ion term | forcefield | ion near wall | — | \(E\), \(F\) | **oracle=metalwalls**; map E8 companion
 
 ### E9 — molecular water at electrodes (MD roadmap ○ virtual sites)
 
-- [ ] `four-site-tip4p-foothold` | Four-site / virtual-site water (TIP4P-class) | md | TIP4P dimer or box | — | \(E\), geometry | **oracle=lammps** `tip4p` / virtual sites; map E9; aqueous electrode dep
+*(four-site-tip4p-foothold → in_progress wave 1)*
 
 ### E10 — ecosystem (after E1 observers)
 
@@ -85,7 +74,26 @@ Census: **2026-07-23** (parent `dev`). **incomplete_count=0** for this loop.
 
 ## in_progress
 
-(empty)
+**Assign wave 1 — 2026-07-23** (staff=10; incomplete was 0; no open MD/electrochem specs; no in-scope unmerged `wf/*`).
+
+### E1 core + deps
+
+- [~] `const-pot-bo-parallel-plate` | Constant-potential BO solve (parallel plate) | electrochem | NaCl slab + two planar walls | — | electrode \(Q\), \(\Delta\Psi\), neutrality | **oracle=metalwalls** (LAMMPS ELECTRODE only if package available offline); map E1; Component on `md::MD`; private \(A,Q\); write `kAtom_charge`; freeze walls
+- [~] `freeze-electrode-atoms` | Freeze / immobile electrode atoms | md | any textbook | — | \(x\) fixed, \(v=0\) | **oracle=lammps** `fix setforce 0` / `fix freeze`; Component on integrate path; E1 dep for wall atoms
+- [~] `const-pot-charge-observer` | Electrode total charge observer | electrochem | same foothold | — | \(Q_{\mathrm{tot}}(t)\) per electrode | **oracle=lammps** electrode charge dump if available; else **oracle=metalwalls**; dep: charge solve
+- [~] `charging-work-energy` | Charging work \(-\sum\Psi_i Q_i\) in energy | electrochem | parallel plate | — | energy channel / meta | **oracle=metalwalls** / Scalfi literature; dep: const-pot
+- [~] `const-pot-md-nvt-short` | Const-pot + MD NVT short traj | electrochem | NaCl + parallel walls | — | stable \(E\), \(Q\) sign, no NaN | **oracle=metalwalls** (or lammps electrode MD); dep: BO + freeze + CoulLong/PME
+
+### E2 / E3 footholds (parallel staff)
+
+- [~] `gaussian-electrode-charge` | Gaussian charge kernels on electrode atoms | electrochem | parallel plate | — | \(E\), \(Q\) vs point-charge \(A\) | **oracle=metalwalls**; map E2; document point-charge approx if deferred
+- [~] `slab-2d-ewald-foothold` | 2D / slab Ewald (or `kspace_modify slab`) | electrochem | slab NaCl / parallel plate | — | \(E\) vs 3D+slab correction | **oracle=lammps** `kspace_modify slab` when available; else **oracle=metalwalls** 2D; map E2
+- [~] `external-efield-md` | Applied uniform E-field on MD charges | electrochem | ions / LJ+Coul fluid | — | \(F=qE\), \(\Delta E\) | **oracle=lammps** `fix efield` (LAMMPS primary); map E3
+
+### Classical FF / MD (LAMMPS-primary; fill staff)
+
+- [~] `buckingham-pair-lammps` | Buckingham pair (Born–Mayer foothold) | forcefield | ion dimer / bulk toy | — | \(E\), \(F\) | **oracle=lammps** `pair_style buck`; textbook precursor to Fumi–Tosi
+- [~] `four-site-tip4p-foothold` | Four-site / virtual-site water (TIP4P-class) | md | TIP4P dimer or box | — | \(E\), geometry | **oracle=lammps** `tip4p` / virtual sites; map E9; aqueous electrode dep
 
 ## blocked
 

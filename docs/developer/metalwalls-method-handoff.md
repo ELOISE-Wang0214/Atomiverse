@@ -1,17 +1,26 @@
 # MetalWalls method loop — handoff
 
-Last harness pass: **recover 2026-07-23** (workflow seeded same day; no prior wave).
+Last harness pass: **assign wave 1 — 2026-07-23** (after recover + census same day).
 
 ## Wave summary
 
 | Slug | Domain | Status | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
 | ---- | ------ | ------ | ---------- | ------ | ---------------------------------------------- |
-| — | — | — | — | — | — |
+| `const-pot-bo-parallel-plate` | electrochem E1 | [~] assigned | — | metalwalls | — |
+| `freeze-electrode-atoms` | md E1 | [~] assigned | — | lammps | — |
+| `const-pot-charge-observer` | electrochem E1 | [~] assigned | — | lammps | — |
+| `charging-work-energy` | electrochem E1 | [~] assigned | — | metalwalls | — |
+| `const-pot-md-nvt-short` | electrochem E1 | [~] assigned | — | metalwalls | — |
+| `gaussian-electrode-charge` | electrochem E2 | [~] assigned | — | metalwalls | — |
+| `slab-2d-ewald-foothold` | electrochem E2 | [~] assigned | — | lammps | — |
+| `external-efield-md` | electrochem E3 | [~] assigned | — | lammps | — |
+| `buckingham-pair-lammps` | forcefield E8 | [~] assigned | — | lammps | — |
+| `four-site-tip4p-foothold` | md E9 | [~] assigned | — | lammps | — |
 
 - **Blocked this wave:** —
 - **Merge-failed this wave:** —
-- **Queue:** see `docs/developer/metalwalls-method-queue.md` (seed pending; in_progress empty)
-- **Incomplete remaining:** **0** (recover reconfirm 2026-07-23)
+- **Queue:** `docs/developer/metalwalls-method-queue.md` — **10** `[~]` in_progress; pending tail remains
+- **Incomplete remaining at assign:** **0** resumes; **10** newly assigned (all `is_resume=false`)
 - **Capability map:** `.claude/notes/metalwalls-capability-map.md` (E1–E12)
 - **Orphans (not incomplete for this loop):**
   - `regressions/md/{dpd_ab_mix,dpd_groot_warren,fene_wca_chain}/`,
@@ -30,18 +39,18 @@ Last harness pass: **recover 2026-07-23** (workflow seeded same day; no prior wa
 MD-only flags: `ATV_BUILD_MD=ON`, `ATV_BUILD_KSPACE=ON`, `ATV_BUILD_TESTS=ON`,
 `ATV_BUILD_REGRESSIONS=ON`, **HF/PW/GPW/CUDA/Torch OFF**.
 
-## Next assign candidates (pending head)
+## Next assign candidates (pending head after wave 1)
 
-1. `const-pot-bo-parallel-plate` (E1, oracle=metalwalls / ELECTRODE)
-2. `freeze-electrode-atoms` (oracle=lammps)
-3. `coul-long-pme-nacl-lammps` (oracle=lammps)
-4. `nose-hoover-nvt-lammps` (oracle=lammps)
-5. `special-bonds-amber-lammps` (oracle=lammps)
-6. `lj-cut-lammps-dimer` (oracle=lammps; skip if already golden under another reg)
-7. `const-pot-charge-observer`
-8. `charging-work-energy`
-9. `const-pot-md-nvt-short`
-10. `external-efield-md`
+1. `const-pot-cg-large-electrode` (E2, oracle=metalwalls; dep BO dense)
+2. `electrode-charge-predictor` (E2, oracle=metalwalls)
+3. `finite-field-single-electrode` (E3, oracle=metalwalls; dep E1+efield)
+4. `pim-induced-dipole-bulk` (E4, oracle=metalwalls)
+5. `dipole-electrode-joint` (E5; dep E1+PIM)
+6. `piston-electrode-pz` / `thomas-fermi-electrode` (E6/E7)
+7. `fumi-tosi-nacl` / `steele-wall-argon` / `born-repulsion-foothold` (E8)
+8. `capacitance-charge-fluctuation` / `potential-profile-observer` (E10; dep E1)
+9. `surface-tension-coupling` (shared classical; oracle=lammps)
+10. `constant-force-pull-ion` (still pending if not taken; oracle=lammps)
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
 Default **staff_count=10**.
