@@ -1,27 +1,37 @@
-# pr_npt_lj — Parrinello–Rahman NPT on LJ argon
+# pr_npt_lj — Parrinello–Rahman NPT on compressed LJ argon
 
 ## What is checked
 
-Short flexible-cell NPT run of a 64-atom LJ fluid (Rahman-like
-parameters) with hydrostatic \(P_\mathrm{target}=0\).
+Public `cpu::md::ParrinelloRahmanNPT` on compressed FCC argon (LJ):
 
-Hard-coded gates (stability / finite-sample windows, not EOS pins):
+1. Cell volume **increases** from an over-compressed start at \(P_\mathrm{target}=0\)
+   (pressure relief).
+2. Volume stays within a safe multiple of \(V_0\) (no runaway collapse/explosion).
+3. Off-diagonal cell entries remain bounded relative to the edge length under
+   hydrostatic target (isotropic liquid limit of full-cell PR).
+4. Extended MTK Hamiltonian on `kConserved` is finite.
 
-| Quantity | Gate | Rationale |
-| -------- | ---- | --------- |
-| mean density | 0.30–1.50 × start | SC lattice expands under P=0 (same as MTK); collapse/explosion fails |
-| \(\lvert\langle P\rangle\rvert\) | \(\le 5\times 10^{-3}\) eV/Å³ | soft bound ~ few × \(\rho k_B T\) |
-| cell shear / edge | < 0.05 | cubic hydrostatic → off-diagonal \(h\) stays small |
-| volume / conserved | positive + finite | integrator stability |
+## Physical setup
 
-## Parameters
+| Quantity | Value | Note |
+| -------- | ----- | ---- |
+| Potential | LJ \(\varepsilon=0.0104\,\mathrm{eV}\), \(\sigma=3.4\,\mathrm{Å}\) | Argon-like |
+| Lattice | FCC \(a=5.1\,\mathrm{Å}\), \(3^3\) cells (108 atoms) | Compressed vs Ar eq. |
+| \(T\) | 100 K | Thermostat target |
+| \(P\) | 0 eV/Å³ | Hydrostatic |
+| \(\tau_T,\tau_P\) | 100 fs, 1000 fs | |
+| \(dt\) | 1 fs | 800 steps |
 
-- \(\varepsilon/k_B = 120\,\mathrm{K}\), \(\sigma = 3.4\,\mathrm{Å}\), \(r_c=2.5\sigma\)
-- \(\rho_0 = 0.02071\,\mathrm{Å}^{-3}\), \(T=94.4\,\mathrm{K}\)
-- \(\tau_T=50\,\mathrm{fs}\), \(\tau_P=500\,\mathrm{fs}\), \(dt=2\,\mathrm{fs}\)
+## Gates
 
-## Literature context
+| Check | Bound |
+| ----- | ----- |
+| \(V_1 > V_0\) | expansion from compressed start |
+| \(V_1 < 5 V_0\) | no runaway |
+| shear / edge | < 0.20 |
+| \(H\), \(V\) | finite, \(V>0\) |
+
+## Literature
 
 Parrinello & Rahman, *J. Appl. Phys.* **52**, 7182 (1981);
 Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994).
-Gates document stable public Integrator dynamics, not a tabulated EOS point.

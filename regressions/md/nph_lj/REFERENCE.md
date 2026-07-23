@@ -2,29 +2,32 @@
 
 ## What is checked
 
-Thermostat-free isotropic NPH integrator on 64 LJ atoms. After warm-up,
-the extended enthalpy
+Public thermostat-free `cpu::md::NphIntegrator` (isotropic NPH):
 
-\[
-H = E_\mathrm{kin} + E_\mathrm{pot} + P V + \tfrac12 W\dot{\varepsilon}^2
-\]
+1. Extended enthalpy
+   \(H = E_\mathrm{kin}+E_\mathrm{pot}+P V+\tfrac12 W\dot\varepsilon^2\)
+   written to `kConserved` stays within a relative drift gate over production.
+2. Volume remains positive and non-runaway.
 
-(published on `frame.meta[kConserved]`) must keep relative drift
-\(|\Delta H|/|H_0|\) below a hard-coded gate.
+## Physical setup
 
-| Quantity | Gate | Rationale |
-| -------- | ---- | --------- |
-| \(\max\|\Delta H\|/\|H_0\|\) | \(\le 0.25\) | small-N Trotter oscillation after SC warm-up; fails on secular leak |
-| volume | positive finite | barostat stability |
+| Quantity | Value | Note |
+| -------- | ----- | ---- |
+| Potential | LJ argon-like | \(\varepsilon=0.0104\,\mathrm{eV}\), \(\sigma=3.4\,\mathrm{Å}\) |
+| Lattice | Compressed FCC \(a=5.2\,\mathrm{Å}\), 108 atoms | Dense start |
+| Ensemble | NPH (no atom thermostat) | |
+| \(P\) | 0 eV/Å³ | Hydrostatic |
+| \(\tau_P\) | 1000 fs | Barostat mass only |
+| \(dt\) | 1 fs | warm 100 + prod 600 |
 
-## Parameters
+## Gates
 
-- Same LJ argon set as `lj_argon` / `pr_npt_lj`
-- \(P_\mathrm{target}=0\), \(\tau_P=500\,\mathrm{fs}\), \(dt=2\,\mathrm{fs}\)
-- Warm-up 200 steps before measuring \(H_0\)
-- No temperature target (NPH)
+| Check | Bound |
+| ----- | ----- |
+| \(\max\|\Delta H\|/\max(1,\|H_0\|)\) | \(\le 0.15\) |
+| volume | \(0 < V < 10 V_0\) |
 
 ## Literature
 
-Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994) — MTK
-barostat without atom thermostat yields conserved enthalpy.
+Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994) — MTK barostat;
+NPH is the thermostat-free subset (conserved extended enthalpy).
