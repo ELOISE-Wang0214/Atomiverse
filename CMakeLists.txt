@@ -330,6 +330,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/virtual_sites.cpp
             src/cpu/dynamics/const_pot_bo.cpp
             src/cpu/dynamics/const_pot_cg.cpp
+            src/cpu/dynamics/dipole_electrode_joint.cpp
             src/cpu/dynamics/fix_freeze.cpp
             src/cpu/dynamics/piston_electrode.cpp
             src/cpu/dynamics/const_potential.cpp
