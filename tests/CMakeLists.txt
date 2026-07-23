@@ -252,6 +252,7 @@ if(ATV_BUILD_GPW)
     # Grimme DFT-D3 (D3): energy + analytic force incl. the CN-derivative
     # term, against a finite-difference check. Reference-free.
     atv_add_cpp_test(test_cpu_gpw_dftd3         cpu/gpw/test_cpu_gpw_dftd3.cpp)
+    atv_add_cpp_test(test_cpu_gpw_dftd4         cpu/gpw/test_cpu_gpw_dftd4.cpp)
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/dynamics/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/dynamics/test_pe_ff_constants.cpp)

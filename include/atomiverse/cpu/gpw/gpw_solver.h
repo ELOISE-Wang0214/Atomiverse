@@ -93,7 +93,7 @@ struct GpwResult {
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
-    double e_disp = 0.0; ///< DFT-D3 dispersion [Hartree] (0 when d3/d3bj off).
+    double e_disp = 0.0; ///< DFT-D3/D4 dispersion [Hartree] (0 when off).
     double e_dftu = 0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
@@ -147,10 +147,13 @@ class GpwDft {
     XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol).
     bool nonperiodic = false; ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true; ///< collocate GTH local SR PP on grid.
-    bool d3 = false; ///< Grimme DFT-D3 zero damping (PBE). Mutually exclusive with d3bj.
+    bool d3 = false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4.
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
-    /// Mutually exclusive with `d3` — both true throws at run.
-    bool d3bj = false; ///< Grimme DFT-D3 dispersion.
+    /// Mutually exclusive with `d3` / `d4` — any two true throws at run.
+    bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
+    /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
+    /// Mutually exclusive with `d3` / `d3bj`.
+    bool d4 = false; ///< Grimme DFT-D4 dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Dudarev PLUS_U entries (empty = off). U−J in eV on each entry.
     std::vector<PlusU> plus_u;

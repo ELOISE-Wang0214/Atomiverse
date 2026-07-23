@@ -1,29 +1,48 @@
 /// @file cpu/scf/dftd4.h
-/// @brief Public molecular DFT-D4 with Becke–Johnson damping (PBE defaults).
+/// @brief DFT-D4 with Becke–Johnson damping (PBE defaults) — molecular Frame
+///        API plus a Bohr-coordinate free function used by periodic GPW.
 ///
-/// Geometry-only additive dispersion correction for the Gaussian-basis path
-/// (Caldeweyher et al., J. Chem. Phys. 150, 154122 (2019)). Independent of the
-/// electronic wavefunction: evaluate on a Frame of atomic numbers + positions
-/// [Å]. PySCF twin: `disp='d4'` (default rational damping, two-body term;
-/// three-body ATM is not included — for H₂O it is ≪ 1e-10 Ha).
+/// Geometry-only additive London dispersion (Caldeweyher et al., J. Chem.
+/// Phys. 150, 154122 (2019); periodic extension). Two-body term only (ATM
+/// off). Tables are in-tree (Z ≤ 94).
 ///
 /// @code
-///   cpu::scf::D4 d4;                   // PBE-D4 defaults
+///   cpu::scf::D4 d4;                   // PBE-D4 defaults (isolated)
 ///   double e_disp = d4.energy(frame);  // [Hartree]
 ///
-///   // Or fold into RKS total energy:
-///   cpu::scf::RKS rks(cpu::scf::XCType::PBE);
-///   rks.d4 = true;
-///   rks.run(frame);
-///   double ed = rks.energy_disp();     // [Hartree]
+///   // Periodic (orthorhombic) from Bohr positions — GPW path:
+///   double ed = cpu::scf::dftd4_energy(Z, pos_bohr, cell, /*periodic=*/true);
 /// @endcode
 #pragma once
+
+#include <array>
+#include <vector>
 
 #include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Two-body PBE-D4 energy from Bohr coordinates.
+///
+/// @param Z         Atomic numbers (length N).
+/// @param pos_bohr  Positions [Bohr].
+/// @param cell_bohr Orthorhombic a,b,c [Bohr] (used iff `periodic`).
+/// @param periodic  Lattice-sum CN, Ewald EEQ, and lattice-sum dispersion.
+/// @param s6,s8,a1,a2 BJ scales (PBE defaults).
+/// @param ga,gc,wf  Charge / CN model parameters.
+/// @param charge    Net charge for EEQ [e].
+/// @param cn_cut    CN real-space cutoff [Bohr] (dftd4 default 30).
+/// @param disp2_cut Two-body dispersion cutoff [Bohr] (dftd4 default 60).
+/// @return E_disp [Hartree].
+double dftd4_energy(const std::vector<int>& Z,
+                    const std::vector<std::array<double, 3>>& pos_bohr,
+                    const double cell_bohr[3], bool periodic, double s6 = 1.0,
+                    double s8 = 0.95948085, double a1 = 0.38574991,
+                    double a2 = 4.80688534, double ga = 3.0, double gc = 2.0,
+                    double wf = 6.0, double charge = 0.0,
+                    double cn_cut = 30.0, double disp2_cut = 60.0);
 
 /// @brief Molecular Grimme DFT-D4 with Becke–Johnson (rational) damping.
 ///
