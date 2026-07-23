@@ -372,6 +372,20 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///         the result fields.
     MP2Result mp2(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
+    /// @brief Analytic nuclear forces on the total RMP2 energy E_HF + E_corr
+    ///        [eV/Å]. Closed-shell canonical RMP2 only (no frozen core, no
+    ///        RI, Cartesian AO). Drives a fresh SCF (materializes ERI),
+    ///        builds the MP2 Lagrangian densities + Z-vector response, and
+    ///        contracts with skeleton integral derivatives. Matches PySCF
+    ///        `mp.MP2.nuc_grad_method().kernel()` on the same geometry.
+    /// @param frame  Geometry; forces written to fx/fy/fz; energy to meta.
+    /// @param guess  Optional density-matrix guess for the reference SCF.
+    /// @return Forces [eV/Å] and total MP2 energy [eV].
+    /// @throws std::invalid_argument on open-shell / RI / frozen>0 /
+    ///         non-converged SCF / spherical basis (no fallback).
+    GradientResult mp2_forces(Frame& frame,
+                              const SCFInitialGuess* guess = nullptr);
+
     /// @brief Tiny full-CI on top of a fresh RHF-style run (materializes ERI).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
     /// @return Full-CI correlation + total energy.

@@ -28,6 +28,8 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 ## in_progress
 
 - [~] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | RMP2 nuclear gradient; PySCF mp.MP2.nuc_grad_method
+- [~] `sos-mp2-h2o-sto3g` | SOS-MP2 | post-hf | water | sto-3g | e_corr | opposite-spin only scaling of RMP2
+- [x] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | regressions/scf/mp2-grad-h2o-sto3g | H2O/STO-3G cart RMP2; PySCF 2.14.0 g_O,z=-9.528798e-02 Ha/Bohr; `RHF::mp2_forces`; tol 1e-5 Ha/Bohr
 - [~] `uks-tda-o2-lsda` | UKS TDA | excited-states | o2 | sto-3g | S/T roots | open-shell TDDFT-TDA; RKS::tda ✓ only
 - [~] `d3bj-molecular-pbe` | DFT-D3 BJ damping | dft | water | sto-3g | E_disp | molecular Gaussian D3 ○ (GPW zero-damping only); PySCF dftd3
 - [~] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | RHF CPHF Hessian ✓ (reg_h2o_rhf_freq); UHF Hessian ○

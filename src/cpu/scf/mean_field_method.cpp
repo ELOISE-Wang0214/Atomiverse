@@ -37,6 +37,7 @@
 #include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
+#include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
 #include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
@@ -1015,6 +1016,57 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
                            mp2_ss_scale);
     return mp2_energy(*integrals_sp_, *det_sp_, e_total_, frozen, mp2_os_scale,
                       mp2_ss_scale);
+}
+
+template <typename D>
+GradientResult
+MeanFieldMethod<D>::mp2_forces(Frame& frame, const SCFInitialGuess* guess) {
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2_forces: closed-shell RMP2 analytic gradient "
+            "only — use RHF (UMP2/ROHF gradients are follow-up links)");
+    if (ri != RI::None)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2_forces: RI-MP2 gradients are not "
+            "implemented — set ri=RI::None");
+    if (frozen != 0)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2_forces: frozen-core MP2 gradients are not "
+            "implemented — set frozen=0");
+    if (std::fabs(mp2_os_scale - 1.0) > 0.0
+        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2_forces: spin-component-scaled MP2 gradients "
+            "are not implemented — keep mp2_os_scale=mp2_ss_scale=1");
+
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame, guess);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2_forces: SCF reference did not converge — "
+            "refusing gradient on a non-stationary determinant (no fallback)");
+
+    const MP2Result corr =
+        mp2_energy(*integrals_sp_, *det_sp_, e_total_, /*n_frozen=*/0,
+                   /*os_scale=*/1.0, /*ss_scale=*/1.0);
+    GradientResult gr = internal::mp2_analytic_forces(
+        frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
+    last_grad_ = gr;
+
+    // Publish force / energy on Frame (same contract as forces()).
+    AccReal* __restrict fx = frame.span(kAtom_fx);
+    AccReal* __restrict fy = frame.span(kAtom_fy);
+    AccReal* __restrict fz = frame.span(kAtom_fz);
+    const int natm = static_cast<int>(frame.nlocal());
+    for (int A = 0; A < natm; ++A) {
+        fx[A] = gr.forces(A, 0);
+        fy[A] = gr.forces(A, 1);
+        fz[A] = gr.forces(A, 2);
+    }
+    frame.meta.get(kEnergy) = gr.energy;
+    return gr;
 }
 
 template <typename D>
