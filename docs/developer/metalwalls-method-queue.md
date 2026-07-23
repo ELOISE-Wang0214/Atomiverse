@@ -19,21 +19,25 @@ plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 prior census rows, handoff, `tools/metalwalls_oracle/README.md`, and
 `docs/roadmap/{molecular-dynamics,force-fields}.md` ○.)
 
-Census: **2026-07-24** (parent `dev`, post–harness wave 2). **incomplete_count=0**
-(no `[~]`, no unmerged in-scope `wf/<slug>` with `ahead_of_dev>0`, no half-written
-wave-2 regressions). Open MD/electrochem specs: **none** (wave-2 specs closed).
-Unmerged in-scope `wf/<slug>`: **none** (wave-2 tips `ahead_of_dev=0`). **Next
-assign may promote pending** (incomplete ≫ pending is vacuous).
+Census: **2026-07-24** (parent `dev`, post–harness wave 2). Assign **wave 3**
+promoted the last **6** pending rows → `## in_progress` `[~]` (staff default 10;
+only 6 remained). **incomplete_count=6**. Open MD/electrochem specs: **none**
+yet (workers write `.claude/specs/<slug>/` on `wf/<slug>` before code). Unmerged
+in-scope `wf/<slug>` with `ahead_of_dev>0` for wave-3 slugs: **none** at assign
+time. Blocked (4) skipped. No brand-new census rows invented.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), wave-1 done (10), wave-2 done (10), SCF/post-HF,
-  GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes (E12 blocked),
-  hybrid DFT electrodes, non-electrochem MD ○ (RESPA, FSSH, PIMD variants, …)
+  integrators), wave-1 done (10), wave-2 done (10), wave-3 in_progress (6),
+  SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes
+  (E12 blocked), hybrid DFT electrodes, non-electrochem MD ○ (RESPA, FSSH,
+  PIMD variants, …)
 - Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
   `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not pending** (already
   covered by excluded twins)
 
 ## pending
+
+*(empty after assign wave 3 — 2026-07-24; all remaining open rows staffed)*
 
 ### E1 — constant-potential v1 (map §1 P0)
 
@@ -45,15 +49,11 @@ assign may promote pending** (incomplete ≫ pending is vacuous).
 
 ### E3 — external field (map §1 P1; MD roadmap ✓ constant E-field foothold)
 
-*(wave-2 finite-field single electrode → done 2026-07-24)*
-
-- [ ] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; MD roadmap ○ oscillating E-field; map E3 residual after constant efield ✓ + single-electrode finite-field ✓
+*(wave-2 finite-field single electrode → done 2026-07-24; wave-3 oscillating residual → in_progress)*
 
 ### E4 / E5 — polarization (map §2; FF roadmap ✓ bulk PIM + Thole foothold)
 
-*(wave-2 PIM bulk → done 2026-07-24)*
-
-- [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 ✓ + PIM ✓ (**unblocked** after `pim-induced-dipole-bulk`)
+*(wave-2 PIM bulk → done 2026-07-24; wave-3 dipole⊕electrode joint → in_progress)*
 
 ### E6 / E7 — electrode mechanics & metallicity
 
@@ -65,24 +65,26 @@ assign may promote pending** (incomplete ≫ pending is vacuous).
 
 ### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P M-site foothold)
 
-*(four-site-tip4p-foothold → done wave 1)*
-
-- [ ] `virtual-site-multi-topology` | General multi-topology virtual sites (beyond TIP4P M-site pair) | md | TIP4P/TIP5P textbook box | — | \(E\), geometry / force partition | **oracle=lammps** tip4p / virtual-site path; map E9 residual; aqueous electrode dep for multi-site water models
+*(four-site-tip4p-foothold → done wave 1; wave-3 multi-topology virtual sites → in_progress)*
 
 ### E10 — ecosystem (after E1 observers)
 
-*(wave-2 capacitance / charge-fluctuation → done 2026-07-24)*
-
-- [ ] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; **dep:** charges + long-range ✓
+*(wave-2 capacitance / charge-fluctuation → done 2026-07-24; wave-3 potential profile → in_progress)*
 
 ### Shared classical MD ○ still open (LAMMPS primary; electrochem-adjacent)
 
-- [ ] `constant-force-pull-ion` | Constant-force / steered ion pull (noneq MD ○) | md | ion between walls | — | \(\langle z\rangle\), work proxy | **oracle=lammps** `fix smd` / `fix addforce`; useful EDL transport twin — **not** MW-only
-- [ ] `surface-tension-coupling` | Constant surface-tension ensemble ○ | md | LJ slab | — | \(\gamma\) / \(L_z\) | **oracle=lammps** `fix npt` surface tension path; optional for planar interfaces
+*(wave-3 constant-force pull + surface-tension coupling → in_progress)*
 
 ## in_progress
 
-*(empty after harness wave 2 — 2026-07-24)*
+### Wave 3 — assign 2026-07-24 (staff=6; all prior pending; is_resume=false)
+
+- [~] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep met:** E1 ✓ + PIM ✓ (`pim-induced-dipole-bulk`)
+- [~] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; charges + long-range ✓
+- [~] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; map E3 residual
+- [~] `virtual-site-multi-topology` | General multi-topology virtual sites (beyond TIP4P M-site pair) | md | TIP4P/TIP5P textbook box | — | \(E\), geometry / force partition | **oracle=lammps** tip4p / virtual-site path; map E9 residual
+- [~] `constant-force-pull-ion` | Constant-force / steered ion pull (noneq MD ○) | md | ion between walls | — | \(\langle z\rangle\), work proxy | **oracle=lammps** `fix smd` / `fix addforce`; EDL transport twin
+- [~] `surface-tension-coupling` | Constant surface-tension ensemble ○ | md | LJ slab | — | \(\gamma\) / \(L_z\) | **oracle=lammps** `fix npt` surface tension path
 
 ## blocked
 
