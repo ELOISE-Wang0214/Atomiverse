@@ -10,6 +10,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py scs-mp2 --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py sos-mp2 --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
@@ -91,6 +92,7 @@ def main() -> int:
             "mp2",
             "mp2-fc",
             "scs-mp2",
+            "sos-mp2",
             "ump2",
             "tda",
             "tdhf",
@@ -250,6 +252,21 @@ def main() -> int:
         out["e_tot_mp2_ha"] = float(m2.e_tot_scs)
         out["c_os"] = 1.2
         out["c_ss"] = 1.0 / 3.0
+    elif m == "sos-mp2":
+        # Scaled-opposite-spin MP2 (Jung et al., JCP 121, 9793 (2004)):
+        # E_corr^SOS = 1.3 E_OS + 0 * E_SS (opposite-spin only).
+        # PySCF has no emp2_sos property; scale the RMP2 OS channel offline.
+        m2 = mp.MP2(mf).run()
+        c_os, c_ss = 1.3, 0.0
+        e_corr_sos = c_os * float(m2.e_corr_os) + c_ss * float(m2.e_corr_ss)
+        out["e_hf_ha"] = float(e)
+        out["e_corr_mp2_ha"] = float(m2.e_corr)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
+        out["e_corr_ha"] = e_corr_sos
+        out["e_tot_mp2_ha"] = float(e) + e_corr_sos
+        out["c_os"] = c_os
+        out["c_ss"] = c_ss
     elif m == "ump2":
         # Explicit UMP2 on the UHF reference (triplet O2, etc.).
         m2 = mp.UMP2(mf).run()

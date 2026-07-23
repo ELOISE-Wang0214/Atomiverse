@@ -37,9 +37,9 @@ after serial merges in `fix(merge): restore multi-feature queue…`).
 
 ## Next assign candidates (pending head)
 
-1. `sos-mp2-h2o-sto3g` — opposite-spin only scale of RMP2
-2. `mp2-grad-h2o-sto3g` — RMP2 analytic gradient
-3. `romp2-o2-sto3g` — MP2 on ROHF reference
+1. `mp2-grad-h2o-sto3g` — RMP2 analytic gradient
+2. `romp2-o2-sto3g` — MP2 on ROHF reference
+3. (SOS-MP2 shipped: `reg_sos-mp2-h2o-sto3g`)
 4. `adc2-h2co-sto3g` — algebraic-diagrammatic foothold
 5. `spin-flip-tda-o2` / `uks-tda-o2-lsda` — open-shell response
 
