@@ -153,7 +153,7 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   central FD of analytic forces (`cpu::vib::Hessian`). CPHF is not
   implemented; static polarizability is absent.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
-  gradient** (O₂ vs PySCF). **GHF** is energy-only (real two-component;
+  gradient** (O₂ vs PySCF). **GHF** energy + analytic gradient (real two-component;
   `regressions/scf/h3_ghf_sto3g`). ROKS does not exist. No ROHF-MP2.
 - **Shipped infra (CPU):** DIIS, level shift, SOSCF (hard cases), stability
   analysis, RI-J/RI-JK, CFMM-J, C-PCM, point-charge embedding + external
@@ -188,8 +188,7 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Exchange-correlation
 
-- Molecular selectors: `{LSDA, PBE, B3LYP, PBE0}`. B88/LYP exist only as
-  B3LYP pieces — no standalone BLYP/BP86.
+- Molecular selectors: `{LSDA, PBE, BLYP, B3LYP, PBE0}`. BP86 still ○.
 - libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
 - GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 

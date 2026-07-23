@@ -67,7 +67,7 @@ XC on the device in the Gaussian path.
 | PBEsol     |  ○  |   ○  |   ○  |
 | revPBE     |  ○  |   ○  |   ○  |
 | RPBE       |  ○  |   ○  |   ○  |
-| BLYP       |  ○  |   ○  |   ○  |
+| BLYP       |  ✓  |   ○  |   ○  |
 | BP86       |  ○  |   ○  |   ○  |
 | B97        |  ○  |   ○  |   ○  |
 | OLYP       |  ○  |   ○  |   ○  |
@@ -75,8 +75,8 @@ XC on the device in the Gaussian path.
 | HCTH/407   |  ○  |   ○  |   ○  |
 | SOGGA      |  ○  |   ○  |   ○  |
 
-B88 exchange and LYP correlation exist in the code, but only as B3LYP
-components — BLYP is not exposed as a selector.
+`XCType::BLYP` is pure B88+LYP (unit weights, no HF admixture); regression
+`reg_blyp-water-sto3g` pins H2O/STO-3G vs PySCF xc=blyp.
 
 ## 4. Meta-GGA Functionals
 

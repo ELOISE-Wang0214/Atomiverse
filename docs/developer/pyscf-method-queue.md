@@ -37,11 +37,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## in_progress
 
-- [~] `frozen-core-mp2-h2o` | Frozen-core MP2 | post-hf | water | 6-31g* | e_corr | freeze O 1s; canonical RMP2 already ✓; PySCF frozen_core
-- [~] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
-- [~] `blyp-water-sto3g` | BLYP GGA | dft | water | sto-3g | e_tot | B88+LYP already in B3LYP pieces; expose XCType::BLYP; PySCF xc=blyp
-- [~] `ghf-grad-h3-sto3g` | GHF analytic gradient | hartree-fock | h3 | sto-3g | forces | GHF energy ✓ (reg_h3_ghf); forces throw; PySCF GHF grad
-- [x] `pcm-grad-h2o` | Implicit-solvent analytic gradient | regressions/scf/pcm-grad-h2o | FD of free energy ≤1e-5 Ha/Bohr; PySCF pin in REFERENCE
+_(none)_
 
 ## blocked
 
@@ -53,6 +49,11 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [!] `pm6-pm7` | blocked — NDDO tables / MOPAC twin, not PySCF
 
 ## done
+- [x] `pcm-grad-h2o` | Implicit-solvent analytic gradient | regressions/scf/pcm-grad-h2o | FD of free energy ≤1e-5 Ha/Bohr; PySCF pin in REFERENCE
+- [x] `ghf-grad-h3-sto3g` | GHF analytic gradient | regressions/scf/ghf-grad-h3-sto3g | noncollinear H3 forces 1e-5 Ha/Bohr
+- [x] `blyp-water-sto3g` | BLYP GGA | regressions/scf/blyp-water-sto3g | H2O/STO-3G cart e_tot=-75.277447482665 Ha (PySCF 2.14.0 xc=blyp); tol 1e-6 Ha
+- [x] `cisd-h2co-sto3g` | CIS(D) | regressions/scf/cisd-h2co-sto3g | H2CO/STO-3G S1 CIS(D)=4.54457685 eV (PySCF+Head-Gordon U+V); tol 1e-4 eV
+- [x] `frozen-core-mp2-h2o` | Frozen-core RMP2 | regressions/scf/frozen-core-mp2-h2o | H2O/6-31G* cart frozen=1 (O 1s); PySCF 2.14.0 e_corr=-0.186119540118 Ha, e_tot=-76.196624528375 Ha; `rhf.frozen=1`; tol 1e-6 Ha
 
 - [x] `rhf-analytic-hessian-h2o` | RHF analytic Hessian (CPHF) | regressions/scf/h2o_rhf_freq | PySCF analytic Hessian freq ≤1 cm⁻¹
 - [x] `lowdin-mk-chelpg-h2o` | Löwdin + MK + CHELPG charges | regressions/scf/h2o_charges_pyscf | PySCF 2.14.0 pins in REFERENCE.md

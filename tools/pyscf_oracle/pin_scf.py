@@ -11,6 +11,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
+  python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
@@ -89,6 +90,7 @@ def main() -> int:
             "ump2",
             "tda",
             "tdhf",
+            "cisd",
             "rks-tda",
             "rks-tddft",
         ],
@@ -124,7 +126,7 @@ def main() -> int:
         "--pcm-lebedev-order",
         type=int,
         default=29,
-        help="PySCF Lebedev algebraic order (29 → 302 points)",
+        help="Lebedev angular order for PCM cavity",
     )
     p.add_argument(
         "--pcm-method",
@@ -174,14 +176,15 @@ def main() -> int:
         # tda / tdhf / mp2 ground state: RHF
         mf = scf.RHF(mol)
 
+
     if args.pcm:
         if m not in ("rhf", "uhf", "rohf", "rks", "uks"):
             print(
                 json.dumps(
                     {
-                        "ok": False,
                         "error": f"--pcm not supported for method {m!r}",
-                    }
+                    },
+                    indent=2,
                 )
             )
             return 2
@@ -248,6 +251,123 @@ def main() -> int:
             out["td_converged"] = [bool(c) for c in td.converged]
         if hasattr(td, "oscillator_strength"):
             out["oscillator_strength"] = [float(x) for x in td.oscillator_strength()]
+    elif m == "cisd":
+        # CIS(D): Head-Gordon et al., Chem. Phys. Lett. 219, 21 (1994).
+        # PySCF has no product CIS(D); evaluate spin-orbital eqs. (8)/(13)/(14)
+        # on pyscf.tdscf.TDA amplitudes + MO ERIs (offline pin only).
+        from pyscf import ao2mo
+        import numpy as np
+
+        td = tdscf.TDA(mf)
+        td.nstates = args.nstates
+        td.conv_tol = min(args.conv_tol, 1e-10)
+        td.kernel()
+        eps = mf.mo_energy
+        C = mf.mo_coeff
+        nmo = C.shape[1]
+        nocc = mol.nelectron // 2
+        nvir = nmo - nocc
+        eri_mo = ao2mo.restore(1, ao2mo.full(mf._eri, C), nmo)
+        occ_so = [(i, 0) for i in range(nocc)] + [(i, 1) for i in range(nocc)]
+        vir_so = [(a, 0) for a in range(nocc, nmo)] + [
+            (a, 1) for a in range(nocc, nmo)
+        ]
+        nso_o, nso_v = len(occ_so), len(vir_so)
+
+        def so_eri(p, q, r, s):
+            (P, sp), (Q, sq), (R, sr), (S, ss) = p, q, r, s
+            val = 0.0
+            if sp == sr and sq == ss:
+                val += eri_mo[P, R, Q, S]
+            if sp == ss and sq == sr:
+                val -= eri_mo[P, S, Q, R]
+            return val
+
+        a_amp = np.zeros((nso_o, nso_o, nso_v, nso_v))
+        for ii, i in enumerate(occ_so):
+            for jj, j in enumerate(occ_so):
+                for aa, a in enumerate(vir_so):
+                    for bb, b in enumerate(vir_so):
+                        denom = (
+                            eps[a[0]] + eps[b[0]] - eps[i[0]] - eps[j[0]]
+                        )
+                        a_amp[ii, jj, aa, bb] = -so_eri(a, b, i, j) / denom
+
+        roots = []
+        for s in range(args.nstates):
+            X = td.xy[s][0]
+            bvec = np.zeros((nso_o, nso_v))
+            for i in range(nocc):
+                for a in range(nvir):
+                    bvec[i, a] = X[i, a]
+                    bvec[nocc + i, nvir + a] = X[i, a]
+            omega = float(td.e[s])
+            u = np.zeros((nso_o, nso_o, nso_v, nso_v))
+            for ii, i in enumerate(occ_so):
+                for jj, j in enumerate(occ_so):
+                    for aa, a in enumerate(vir_so):
+                        for bb, bv in enumerate(vir_so):
+                            ssum = 0.0
+                            for cc, c in enumerate(vir_so):
+                                ssum += so_eri(a, bv, c, j) * bvec[ii, cc]
+                                ssum -= so_eri(a, bv, c, i) * bvec[jj, cc]
+                            for kk, k in enumerate(occ_so):
+                                ssum += so_eri(k, a, i, j) * bvec[kk, bb]
+                                ssum -= so_eri(k, bv, i, j) * bvec[kk, aa]
+                            u[ii, jj, aa, bb] = ssum
+            V = 0.0
+            for ii, i in enumerate(occ_so):
+                for jj, j in enumerate(occ_so):
+                    for aa, a in enumerate(vir_so):
+                        for bb, bv in enumerate(vir_so):
+                            denom = (
+                                eps[a[0]]
+                                + eps[bv[0]]
+                                - eps[i[0]]
+                                - eps[j[0]]
+                                - omega
+                            )
+                            V += u[ii, jj, aa, bb] ** 2 / denom
+            V *= -0.25
+            v = np.zeros((nso_o, nso_v))
+            for ii in range(nso_o):
+                for aa in range(nso_v):
+                    ssum = 0.0
+                    for jj in range(nso_o):
+                        for kk in range(nso_o):
+                            for bb in range(nso_v):
+                                for cc in range(nso_v):
+                                    jklbc = so_eri(
+                                        occ_so[jj],
+                                        occ_so[kk],
+                                        vir_so[bb],
+                                        vir_so[cc],
+                                    )
+                                    ssum += jklbc * (
+                                        bvec[ii, bb] * a_amp[jj, kk, cc, aa]
+                                        + bvec[jj, aa] * a_amp[ii, kk, cc, bb]
+                                        + 2.0
+                                        * bvec[jj, bb]
+                                        * a_amp[ii, kk, aa, cc]
+                                    )
+                    v[ii, aa] = 0.5 * ssum
+            U = float(np.sum(bvec * v))
+            roots.append(
+                {
+                    "cis_ha": omega,
+                    "cis_ev": omega * _HA_TO_EV,
+                    "U_ha": U,
+                    "V_ha": V,
+                    "corr_ha": U + V,
+                    "cisd_ha": omega + U + V,
+                    "cisd_ev": (omega + U + V) * _HA_TO_EV,
+                }
+            )
+        out["roots"] = roots
+        out["excitation_cis_ev"] = [r["cis_ev"] for r in roots]
+        out["excitation_cisd_ev"] = [r["cisd_ev"] for r in roots]
+        if hasattr(td, "converged"):
+            out["td_converged"] = [bool(c) for c in td.converged]
 
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0 if out.get("converged", True) else 1
