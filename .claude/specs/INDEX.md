@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
-`wf/<slug>` before code)*
+| Spec | Branch | Domain |
+| ---- | ------ | ------ |
+| `capacitance-charge-fluctuation/` | `wf/capacitance-charge-fluctuation` | electrochem E10 — \(C\) from charge fluctuations |
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)
 
