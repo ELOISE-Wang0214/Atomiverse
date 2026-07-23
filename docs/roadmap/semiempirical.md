@@ -19,9 +19,9 @@ derivatives remain a performance follow-up.
 AM1-BCC charge assignment still uses the energy/charge path (see
 [Multiscale and Properties](multiscale.md)).
 
-**SCC-DFTB2** ships as an H-only textbook skeleton (`cpu::semiempirical::DFTB2`,
-`reg_h2_dftb2`) — a new TB family beside NDDO, not under `NDDOSolver`. Full
-mio/3ob tables, DFTB3, and xTB remain ○.
+**SCC-DFTB2** (H-only, `DFTB2`, `reg_h2_dftb2`) and **GFN0-xTB toy**
+(`XtbGfn0`, `reg_h2o_gfn0`) ship as TB families beside NDDO — not under
+`NDDOSolver`. Full mio/3ob / production GFN tables and DFTB3 remain ○.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -62,7 +62,7 @@ finite-difference via `cpu::vib::Hessian` over SE forces.
 
 | Method                    | CPU | CUDA |
 | ------------------------- | :-: | :--: |
-| GFN0-xTB                  |  ○  |   ○  |
+| GFN0-xTB                  |  ✓  |   ○  |
 | GFN2-xTB                  |  ○  |   ○  |
 | Spin-polarized GFN-xTB    |  ○  |   ○  |
 | IPEA-xTB                  |  ○  |   ○  |

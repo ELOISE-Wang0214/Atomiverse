@@ -1,18 +1,21 @@
 # Specs index
 
+Live specs under `.claude/specs/`. Completed work is **deleted**; history is
+the git log. Method census: `docs/roadmap/`.
+
 ## Live
 
 *(none)*
 
-## Closed (2026-07-23) — depth-next
+## Closed on `dev` (2026-07-23)
 
-| # | Spec | Shipped |
-| - | ---- | ------- |
-| 1 | ~~grid-alda-tda~~ | Dense A + Dirac ALDA diagonal, `reg_h2_alda_vs_cis` |
-| 2 | ~~qmmm-electrostatic~~ | `QmmmElectrostatic`, `reg_qmmm_es_h2` |
-| 3 | ~~tda-nac-skeleton~~ | `RHF::tda_nac_strength`, `reg_h2_tda_nac` |
-| 4 | ~~triclinic-cell-relax~~ | `TriclinicCellRelax`, `reg_triclinic_lj_shear` |
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| depth-next | grid-alda-tda, qmmm-electrostatic, tda-nac-skeleton, triclinic-cell-relax | ALDA diagonal, ES QM/MM, NAC strength, triclinic cell |
+| open scales | alda-tddft-tda … ri-mp2-skeleton (8) | GFN0, aniso cell, mech QM/MM, metaD, multi-DPD, TDA forces, MP2 |
+| method ladder | rks-tda … hamiltonian-remd-lambda (8) | RKS-TDA, DFTB2, PW-cell, DihedralCV, FENE+WCA, DPD, Yukawa, H-REMD |
+| breadth-next | soft-core-coulomb … brownian-dynamics (9) | soft Coul, AngleCV, TI, joint cell, string, IRC, Rg², SETTLE, BD |
+| breadth-first | FIRE … dimer (6) | soft LJ, Widom, PIMD, isotropic cell, dimer |
+| architecture | backend-mirror, cuda-resurrect, cuda-pme-accuracy | layout rewrite, CUDA live, PME Madelung |
 
-## Closed earlier
-
-open-scales · method ladder · breadth-next · breadth-first
+Do not re-create closed slugs without superseding intent.

@@ -8,7 +8,8 @@ _Generated 2026-07-23 by /mol:map (post backend-mirror + cuda-resurrect)._
 
 ## Inventory (backend-pillars)
 
-Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23**, after the **backend-mirror** chain (01–06) and **cuda-resurrect**. Top level is `core/` + `cpu/` + `cuda/` + `torch/` (experimental) + `molrs.hpp`. **No `facade/`**, **no top-level `longrange/` or `potentials/`** — reciprocal-space and pair math are backend-owned. Backend roots hold **directories only** (full English words, mirrored across `cpu/`/`cuda/`; a CPU-only domain is simply absent on CUDA). Namespaces are **not yet** directory-aligned (`ATV::cpu::md::MD` still lives under `cpu/dynamics/`, phase enums under `ATV::md` etc.). CUDA **configures, builds, and links on GH200** (cuda-resurrect complete; residual **cuda-pme-accuracy** debt only).
+Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23**, after the **backend-mirror** chain (01–06) and **cuda-resurrect**. Top level is `core/` + `cpu/` + `cuda/` + `torch/` (experimental) + `molrs.hpp`. **No `facade/`**, **no top-level `longrange/` or `potentials/`** — reciprocal-space and pair math are backend-owned. Backend roots hold **directories only** (full English words, mirrored across `cpu/`/`cuda/`; a CPU-only domain is simply absent on CUDA). Namespaces are **not yet** directory-aligned (`ATV::cpu::md::MD` still lives under `cpu/dynamics/`, phase enums under `ATV::md` etc.). CUDA **configures, builds, and links on GH200** (cuda-resurrect +
+**cuda-pme-accuracy** closed 2026-07-23).
 
 ### Module list
 
@@ -141,7 +142,7 @@ Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23
 | CUDA `SCFSolver` + IntegralPack ctor path | Still bag-shaped; not aligned to CPU MeanFieldMethod |
 | `RemdConfig` | Config bag on path REMD skeleton |
 | Torch Frame layout | Pre-blocks+meta hard-cut; experimental only |
-| CUDA PME Madelung ~3% | Numerical debt (`cuda-pme-accuracy`), not layout |
+| CUDA PME Madelung | Closed 2026-07-23 (`cuda-pme-accuracy`) |
 
 ### Style summary
 

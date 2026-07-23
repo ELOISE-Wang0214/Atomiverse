@@ -26,8 +26,9 @@ and `HarmonicBias` support single-window umbrella sampling
 Temperature REMD (`cpu::path::Remd`) and Hamiltonian REMD on a λ ladder
 (`cpu::path::HRemd`, `reg_hremd_soft_lambda`) ship as method presets over N
 owned `MD` programs. Soft-core λ TI and **Widom** also exist. Still absent:
-multi-window WHAM production, history-dependent biases (metadynamics / OPES /
-ABF). No PLUMED interface.
+multi-window WHAM production and multi-CV history-dependent biases
+(multi-walker metaD / OPES / ABF). **1D well-tempered metadynamics** ships
+(`Metadynamics1D`, `reg_metad_double_well`). No PLUMED interface.
 
 ## 1. Monte Carlo Methods
 
@@ -69,7 +70,7 @@ insertion needs the topology loaders re-run per trial).
 | Umbrella sampling                       |  ✓  |   ○  |
 | Adaptive umbrella sampling              |  ○  |   ○  |
 | Multidimensional umbrella sampling      |  ○  |   ○  |
-| Well-tempered metadynamics              |  ○  |   ○  |
+| Well-tempered metadynamics              |  ✓  |   ○  |
 | Multiple-walker metadynamics            |  ○  |   ○  |
 | Bias-exchange metadynamics              |  ○  |   ○  |
 | Parallel-bias metadynamics              |  ○  |   ○  |

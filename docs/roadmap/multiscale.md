@@ -14,9 +14,11 @@ that, several *environment* hooks now exist on the SCF mean-field methods:
 - **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces
   throw).
 
-There is still **no full QM/MM** (region partitioning, link atoms, polarizable
-MM), no SMD/GB, and no picture-change / DKH / SOC stack. Plane-wave UPF and
-GPW GTH remain frozen-core pseudopotentials, separate from Gaussian ECPs.
+**Textbook QM/MM** ships as `QmmmMechanical` (DFTB2 QM + LJ) and
+`QmmmElectrostatic` (RHF + MM `point_charges` + LJ). Still **no full product
+QM/MM** (link atoms, polarizable MM), no SMD/GB, and no picture-change / DKH /
+SOC stack. Plane-wave UPF and GPW GTH remain frozen-core pseudopotentials,
+separate from Gaussian ECPs.
 
 ## 1. Atomic-Charge Methods
 
@@ -73,8 +75,8 @@ analytic PCM gradients are out of scope for the current path.
 
 | Method                           | CPU | CUDA |
 | -------------------------------- | :-: | :--: |
-| Mechanical embedding QM/MM       |  ○  |   ○  |
-| Electrostatic embedding QM/MM    |  ○  |   ○  |
+| Mechanical embedding QM/MM       |  ✓  |   ○  |
+| Electrostatic embedding QM/MM    |  ✓  |   ○  |
 | Polarizable embedding QM/MM      |  ○  |   ○  |
 | Additive QM/MM                   |  ○  |   ○  |
 | Subtractive QM/MM                |  ○  |   ○  |

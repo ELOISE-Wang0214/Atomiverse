@@ -103,7 +103,7 @@ driving the ramp yourself, but the engine ships no annealing schedule.
 | ---------------------------- | :-: | :--: |
 | RATTLE                       |  ✓  |   ○  |
 | P-LINCS                      |  ○  |   ○  |
-| SETTLE                       |  ○  |   ○  |
+| SETTLE                       |  ✓  |   ○  |
 | CCMA                         |  ○  |   ○  |
 | Distance constraints         |  ✓  |   ○  |
 | Angle constraints            |  ✓  |   ○  |
@@ -118,10 +118,8 @@ holds TIP3P geometry to 5 × 10⁻¹¹ relative over 5 ps at `dt = 2 fs`
 (`regressions/md/rigid_water`) — that is the **rigid-water** path today (general
 RATTLE, not a water-only closed form).
 
-**SETTLE** is listed and unwritten. It is a closed-form solution for exactly one cluster
-shape — a three-site rigid water — so it is an *optimization* of the general solver rather
-than a replacement for it: worth a few percent of step time on water, worth nothing to any
-molecule that is not water. It gets written when a profile asks for it.
+**SETTLE** ships as `cpu::md::FixSettle` (`reg_settle_tip3p`) — closed-form
+three-site rigid water; general molecules still use RATTLE.
 
 Before RATTLE, every molecule was fully flexible: water models had to be flexible
 variants and the timestep was bounded by the fastest X–H stretch (~9 fs period for O–H,

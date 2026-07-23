@@ -6,10 +6,10 @@ Legend and caveats: [Roadmap index](index.md).
 TDA) and `RHF::tdhf` (full RPA) return excitation energies and length-gauge
 transition dipoles on a converged RHF reference
 (`regressions/scf/ch2o_tdhf`). **`RKS::tda`** is the CIS@RKS skeleton on a
-converged KS reference (`reg_h2co_rks_tda` / H₂ gate) — ALDA \(f^{\mathrm{xc}}\)
-and full TDDFT remain ○. No excited-state gradient, no nonadiabatic coupling,
-and no self-energy method — so nonadiabatic dynamics in
-[Molecular Dynamics](molecular-dynamics.md) remains blocked.
+converged KS reference; LSDA adds a **Dirac ALDA diagonal** on dense A
+(`reg_h2_alda_vs_cis`). Full grid MO-product ALDA and hybrid TDDFT remain ○.
+**FD TDA forces** and **NAC strength** ship (`RHF::tda_forces` /
+`tda_nac_strength`); analytic ES gradients and true NAC vectors are still ○.
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).

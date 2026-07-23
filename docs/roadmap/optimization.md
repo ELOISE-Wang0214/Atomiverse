@@ -5,18 +5,15 @@ Legend and caveats: [Roadmap index](index.md).
 The minimizer preset (`cpu::minimizer::Minimize`, `cuda::minimizer::Minimize`)
 hosts the optimizer as a hot-swappable Component, so any force-providing
 evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. FIRE 1.0
-ships as `cpu::minimizer::FIRE`. **Isotropic variable-cell** ships
-(`IsotropicCellRelax` + `PressureConverged`); anisotropic / joint atom+cell
-are still open. The convergence rule is a `cpu::ForceConverged` criterion
-(or `PressureConverged` for cell work) — a different stopping rule costs a
-criterion component, not an optimizer.
+ships as `cpu::minimizer::FIRE`. **Variable-cell** ships isotropic, joint
+isotropic atom+cell, **anisotropic**, and **triclinic** stress relax
+(`IsotropicCellRelax`, `JointIsotropicRelax`, `AnisotropicCellRelax`,
+`TriclinicCellRelax` + `PressureConverged`). The convergence rule is a
+`ForceConverged` or `PressureConverged` criterion — a different stopping
+rule costs a criterion, not an optimizer.
 
-**Climbing-image NEB runs** (`cpu::PathDriver` + `cpu::path::NebCoupling` +
-`cpu::path::BandLBFGS`) — a coupled chain of images terminating when *every*
-image has converged (the `AllReplicasConverged` criterion). Replicas come
-from a `ReplicaExpansion`, so `run()` still takes one Frame and returns one
-(for CI-NEB, the saddle configuration). **Dimer TS** also ships
-(`cpu::path::Dimer`). Still absent: eigenvector-following, string, IRC.
+**Paths:** CI-NEB, dimer, **string**, **IRC** ship. Still absent:
+eigenvector-following TS.
 
 ## 1. Geometry Optimization
 
@@ -36,7 +33,7 @@ from a `ReplicaExpansion`, so `run()` still takes one Frame and returns one
 | Redundant-internal-coordinate optimization |  ○  |   ○  |
 | Constrained geometry optimization          |  ○  |   ○  |
 | Variable-cell optimization                 |  ✓  |   ○  |
-| Joint atomic and cell optimization         |  ○  |   ○  |
+| Joint atomic and cell optimization         |  ✓  |   ○  |
 
 Notes:
 
@@ -49,10 +46,9 @@ Notes:
   (Nocedal & Wright bracket + zoom). The CUDA L-BFGS uses Armijo backtracking.
 - Convergence on CUDA checks five criteria (max/RMS force, max/RMS displacement,
   ΔE); the CUDA SD component deliberately runs its full budget without one.
-- **Isotropic variable-cell** ships as `cpu::minimizer::IsotropicCellRelax` +
-  `cpu::PressureConverged` (classical virial / `kStress`; affine atom scale).
-  No anisotropic cell DOFs, no joint atom+cell L-BFGS, no internal coordinates.
-  PW strain stress for cell opt is a follow-on.
+- **Variable-cell:** isotropic / anisotropic / triclinic optimizers + joint
+  atom+cell isotropic. Classical virial and PW electronic stress both drive
+  cell steps. No internal coordinates; no PR NPT dynamics.
 
 ## 2. Transition-State and Reaction-Path Methods
 
@@ -63,9 +59,9 @@ Notes:
 | Dimer method                                  |  ✓  |   ○  |
 | Climbing-image nudged elastic band            |  ✓  |   ○  |
 | Adaptive nudged elastic band                  |  ○  |   ○  |
-| Growing string method                         |  ○  |   ○  |
+| Growing string method                         |  ✓  |   ○  |
 | Freezing string method                        |  ○  |   ○  |
-| Intrinsic reaction coordinate                 |  ○  |   ○  |
+| Intrinsic reaction coordinate                 |  ✓  |   ○  |
 | Minimum-energy path optimization              |  ✓  |   ○  |
 | Minimum-energy crossing point search          |  ○  |   ○  |
 | Conical-intersection optimization             |  ○  |   ○  |

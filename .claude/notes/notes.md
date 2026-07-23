@@ -1,29 +1,24 @@
 # Architecture notes
 
-## [2026-07-23] Roadmap sync + breadth-first next queue
+## [2026-07-23] CPU method-first campaign closed through depth-next
 
-Roadmap under `docs/roadmap/` brought current against `dev` after
-backend-mirror + cuda-resurrect + HF/REMD/umbrella/… shipping. Status marks
-fixed for: ROHF forces, GHF energy, spherical AO, RI/CFMM, C-PCM, embed/field,
-ECP, x2c energy, TDA/TDHF, stability, REMD, umbrella, RATTLE rigid-water,
-counterpoise, SOSCF, etc.
+**Binding principle:** CPU-only method breadth for framework generality
+(electronic → mesoscale textbook cases on Driver/Component/Frame). Not CUDA
+ports; not product depth in one family.
 
-**Campaign principle (operator):** CPU breadth-first — simple diverse methods
-that test framework generality, not deep productization of one family.
-**CUDA is out of this track** (separate ownership; do not assign
-cuda-pme-accuracy / CUDA CoulCut / device ports here). Recommended CPU queue
-in `docs/roadmap/index.md` § Campaign principle: FIRE → soft-core LJ → Widom →
-PIMD skeleton → variable-cell min → dimer. Depth (hf-parity-10+, GAFF polymers,
-multi-window WHAM, metadynamics) stays parked.
+**Closed queues (specs deleted; history = git log):** breadth-first 1–6 →
+breadth-next 1–9 → method ladder 1–8 → open scales 1–8 → depth-next 1–4.
+Census and next candidates live in `docs/roadmap/index.md` only — do not
+duplicate queues here.
+
+**CUDA compile / PME:** `cuda-resurrect` + `cuda-pme-accuracy` closed
+2026-07-23. Do not re-open "CUDA does not compile" or PME Madelung ~3% as
+active debt on this track.
 
 ## [2026-07-22] DEBT: CUDA backend does not compile on `dev`
 
-**SUPERSEDED 2026-07-23 by cuda-resurrect** — CUDA configures, builds, and
-links on GH200; 276/278 ctest after kind-base port. Residual only:
-`cuda-pme-accuracy` (PME reciprocal energy ~3% off Madelung; CPU ~5e-4) and
-the aarch64-only `test_cpu_scf_ghf` FP basin (CPU SCF, not CUDA). Historical
-detail of the ~180 stale-API errors retained in git log / cuda-resurrect spec
-history; do not re-open "CUDA does not compile" as active debt.
+**SUPERSEDED 2026-07-23** — see campaign note above. Residual historical
+detail in git log only.
 
 ## [2026-07-17] SCF is a Driver; methods are concrete — kill the bag
 
