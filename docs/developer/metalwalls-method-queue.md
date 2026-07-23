@@ -7,7 +7,7 @@ Durable worklist for workflow `metalwalls-method-loop`. Do not delete done rows.
 new pending. Census only rewrites **pending**. Assign: **incomplete ≫ pending**.
 
 **Oracle rule:** if LAMMPS implements the same algorithm/feature, pin and fair
-10→bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
+bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
 `oracle=metalwalls` in the row rationale).
 
 **Build rule:** workers use **MD-only** cmake (HF/PW/GPW/CUDA/Torch **OFF**,
@@ -15,21 +15,22 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
+(Map path referenced by loop; **missing on this tree** — pending rebuilt from
+prior census rows, handoff, `tools/metalwalls_oracle/README.md`, and
+`docs/roadmap/{molecular-dynamics,force-fields}.md` ○.)
 
-Census: **2026-07-23** (parent `dev`). **Harness wave 1 2026-07-23:** all **10**
-staff-batch `[~]` merged → `## done` (regressions + pins on `dev`). **Assign
-wave 2 2026-07-24:** **10** unblocked pending → `## in_progress` `[~]` (staff=10).
-Skipped `dipole-electrode-joint` (dep **PIM** still open). **Recover
-2026-07-24:** inventory confirmed **10** incomplete = wave-2 `[~]` only; open
-MD/electrochem specs **none**; unmerged wave-2 `wf/<slug>` **none** (no
-branches started); wave-1 `wf/*` tips still `ahead_of_dev=0` (stale names, not
-incomplete). Queue already normalized — no demotion.
+Census: **2026-07-24** (parent `dev`). **incomplete_count=10** (wave-2
+`[~]` only — assigned, no worker progress yet). Open MD/electrochem specs:
+**none**. Unmerged in-scope `wf/<slug>`: **none** (no wave-2 branches; wave-1
+tips `ahead_of_dev=0`). Half-written wave-2 regressions: **none**. **Assign
+must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked),
-  ML electrodes (E12 blocked), hybrid DFT electrodes
+  integrators), wave-1 done (10), wave-2 in_progress (10), SCF/post-HF,
+  GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes (E12 blocked),
+  hybrid DFT electrodes, non-electrochem MD ○ (RESPA, FSSH, PIMD variants, …)
 - Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
-  `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not assigned** (already
+  `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not pending** (already
   covered by excluded twins)
 
 ## pending
@@ -46,7 +47,11 @@ incomplete). Queue already normalized — no demotion.
 
 *(wave-2 finite-field single electrode → in_progress)*
 
+- [ ] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; MD roadmap ○ oscillating E-field; map E3 residual after constant efield ✓
+
 ### E4 / E5 — polarization (map §2; FF roadmap ○ induced dipoles / Thole)
+
+*(wave-2 PIM bulk → in_progress; Thole/TT damping in that slug)*
 
 - [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 ✓ + PIM (**hold** until `pim-induced-dipole-bulk` lands)
 
@@ -60,9 +65,13 @@ incomplete). Queue already normalized — no demotion.
 
 ### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P M-site foothold)
 
-*(four-site-tip4p-foothold → done wave 1; general multi-topology virtual sites still open)*
+*(four-site-tip4p-foothold → done wave 1)*
+
+- [ ] `virtual-site-multi-topology` | General multi-topology virtual sites (beyond TIP4P M-site pair) | md | TIP4P/TIP5P textbook box | — | \(E\), geometry / force partition | **oracle=lammps** tip4p / virtual-site path; map E9 residual; aqueous electrode dep for multi-site water models
 
 ### E10 — ecosystem (after E1 observers)
+
+*(wave-2 capacitance / charge-fluctuation → in_progress)*
 
 - [ ] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; **dep:** charges + long-range ✓
 
