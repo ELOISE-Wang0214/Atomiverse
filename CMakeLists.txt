@@ -322,6 +322,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/fix_rattle.cpp
             src/cpu/dynamics/fix_settle.cpp
             src/cpu/dynamics/const_pot_bo.cpp
+            src/cpu/dynamics/const_pot_cg.cpp
             src/cpu/dynamics/fix_freeze.cpp
             src/cpu/dynamics/const_potential.cpp
             src/cpu/dynamics/brownian.cpp

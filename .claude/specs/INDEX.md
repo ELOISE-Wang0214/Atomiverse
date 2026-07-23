@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
-`wf/<slug>` before code)*
+| Spec | Branch | Notes |
+| ---- | ------ | ----- |
+| `const-pot-cg-large-electrode/` | `wf/const-pot-cg-large-electrode` | E2 CG electrode solve vs dense BO; wave 2 |
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)
 
