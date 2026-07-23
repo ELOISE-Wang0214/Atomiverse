@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
-`wf/<slug>` before code)*
+| Spec | Branch | Notes |
+| ---- | ------ | ----- |
+| `electrode-charge-predictor/` | `wf/electrode-charge-predictor` | E2 ASPC charge warm-start + CG iters gate |
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)
 

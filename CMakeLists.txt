@@ -327,8 +327,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/brownian.cpp
             src/cpu/dynamics/barostat.cpp
             src/cpu/dynamics/deform.cpp
-            # Electrochemical electrode bookkeeping (MetalWalls E1 map)
+            # Electrochemical electrode bookkeeping (MetalWalls E1/E2 map)
             src/cpu/electrodes/charging_work.cpp
+            src/cpu/electrodes/charge_aspc.cpp
         )
     endif()
 

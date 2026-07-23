@@ -1,13 +1,15 @@
 /// @file cpu/dynamics/const_pot_bo.h
-/// @brief Constant-potential Born–Oppenheimer electrode charge solve (E1).
+/// @brief Constant-potential Born–Oppenheimer electrode charge solve (E1/E2).
 ///
-/// Gaussian elastance matrix \(A\), dense inverse, optional electroneutrality
-/// (LAMMPS ELECTRODE `symm on` / MetalWalls BO). Component on `cpu::md::MD`
-/// at `pre_force`; writes electrode charges to `kAtom_charge`. Not a Driver
-/// category and not part of `KSpace*`.
+/// Gaussian elastance matrix \(A\), dense inverse **or** CG, optional
+/// electroneutrality (LAMMPS ELECTRODE `symm on` / MetalWalls BO), and
+/// optional Kolafa ASPC charge predictor for CG warm-start (MetalWalls E2).
+/// Component on `cpu::md::MD` at `pre_force`; writes electrode charges to
+/// `kAtom_charge`. Not a Driver category and not part of `KSpace*`.
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +17,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/electrodes/charge_aspc.h"
 
 namespace ATV {
 namespace cpu {
@@ -26,7 +29,7 @@ struct ElectrodeGroup {
     double psi = 0.0; ///< Applied electrostatic potential [V].
 };
 
-/// @brief Constant-potential BO charge solver (dense matrix inverse).
+/// @brief Constant-potential BO charge solver (dense inverse or CG + ASPC).
 ///
 /// Parameters are constructor arguments and public members — no Config bag.
 ///
@@ -35,6 +38,8 @@ struct ElectrodeGroup {
 /// conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
 /// conp.add_electrode(/*type=*/2, /*Psi [V]=*/1.0);
 /// conp.electroneutrality = true;
+/// conp.use_cg = true;            // iterative path
+/// conp.predictor_order = 2;      // ASPC warm-start (0 = cold)
 /// conp.xy_image_range = 200;
 /// sim.on(md::Phase::pre_force).add(std::move(conp));
 /// @endcode
@@ -78,6 +83,14 @@ class ConstPotBO : public cpu::Component {
     /// @brief Number of electrode atoms in the last solve.
     int n_electrode() const { return static_cast<int>(elec_atoms_.size()); }
 
+    /// @brief CG iterations used on the last launch (0 if dense Cholesky).
+    /// @return Iteration count of the primary \(A Q = \mathrm{rhs}\) CG.
+    int last_iters() const { return last_iters_; }
+
+    /// @brief Whether the last CG launch used an ASPC warm-start guess.
+    /// @return True if `predict()` succeeded before the last solve.
+    bool last_used_predictor() const { return last_used_predictor_; }
+
     // ── Public parameters (mutable after construction) ───────────────
     double eta = 1.979;           ///< Gaussian width [1/Å].
     bool electroneutrality = true; ///< Project \(\sum Q_i = 0\).
@@ -88,6 +101,18 @@ class ConstPotBO : public cpu::Component {
     /// Rebuild \(A\) every launch (movable electrodes). v1 walls are frozen;
     /// leave false for geometry-static electrodes.
     bool rebuild_matrix_every_step = false;
+
+    /// @brief Use conjugate-gradient on \(A Q = \Psi-b\) instead of dense
+    ///        Cholesky (MetalWalls iterative path). Required for ASPC gain.
+    bool use_cg = false;
+    /// @brief CG residual tolerance on \(\lVert A Q - \mathrm{rhs}\rVert_2
+    ///        / \lVert\mathrm{rhs}\rVert_2\).
+    double cg_tol = 1e-10;
+    /// @brief Hard cap on CG iterations; throws if exceeded.
+    int max_cg_iters = 500;
+    /// @brief Kolafa ASPC order \(K\) for charge warm-start. `0` disables
+    ///        prediction (cold start every step). Typical product value: 2.
+    int predictor_order = 0;
 
   private:
     std::vector<ElectrodeGroup> groups_;
@@ -103,14 +128,29 @@ class ConstPotBO : public cpu::Component {
     std::vector<double> total_Q_;   ///< Per-group totals [e].
     bool matrix_ready_ = false;
     double residual_ = 0.0;
+    int last_iters_ = 0;
+    bool last_used_predictor_ = false;
+
+    std::unique_ptr<electrodes::ChargeASPC> aspc_;
+    /// Unconstrained \(A Q = \Psi-b\) solution recorded for ASPC (before
+    /// electroneutrality projection). Empty when ASPC is off.
+    std::vector<double> aspc_record_;
 
     void collect_electrodes_(const cpu::Frame& frame);
     void build_matrix_(const cpu::Frame& frame);
     void build_rhs_(const cpu::Frame& frame);
     void solve_();
+    void solve_dense_();
+    void solve_cg_();
+    /// @brief CG solve \(A x = b\) (row-major SPD \(A\)), starting from \(x\).
+    /// @return Iteration count.
+    int cg_solve_(const std::vector<double>& A, int n,
+                  const std::vector<double>& b, std::vector<double>& x) const;
     void write_charges_(cpu::Frame& frame) const;
     double pair_A_(double r, double eta_i, double eta_j) const;
     double pair_b_(double r, double q, double eta_i) const;
+    void ensure_aspc_();
+    void record_aspc_();
 };
 
 } // namespace md

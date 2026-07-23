@@ -1,10 +1,11 @@
 /// @file cpu/dynamics/const_pot_bo.cpp
-/// @brief Dense BO constant-potential electrode charge solve.
+/// @brief Dense / CG BO constant-potential electrode charge solve + ASPC.
 
 #include "atomiverse/cpu/dynamics/const_pot_bo.h"
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/electrodes/charge_aspc.h"
 #include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/cpu/frame/frame.h"
 
@@ -83,6 +84,25 @@ double min_image_r(const cpu::Box& box, double dx, double dy, double dz) {
     return std::sqrt(rx * rx + ry * ry + rz * rz);
 }
 
+void matvec(const std::vector<double>& A, int n, const std::vector<double>& x,
+            std::vector<double>& y) {
+    y.assign(static_cast<std::size_t>(n), 0.0);
+    for (int i = 0; i < n; ++i) {
+        double s = 0.0;
+        for (int j = 0; j < n; ++j)
+            s += A[static_cast<std::size_t>(i) * n + j]
+                 * x[static_cast<std::size_t>(j)];
+        y[static_cast<std::size_t>(i)] = s;
+    }
+}
+
+double dot(const std::vector<double>& a, const std::vector<double>& b) {
+    double s = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        s += a[i] * b[i];
+    return s;
+}
+
 } // namespace
 
 ConstPotBO::ConstPotBO(double eta_in) : eta(eta_in) {
@@ -100,6 +120,23 @@ ConstPotBO ConstPotBO::add_electrode(int type, double psi) && {
     return std::move(*this);
 }
 
+void ConstPotBO::ensure_aspc_() {
+    if (predictor_order <= 0) {
+        aspc_.reset();
+        return;
+    }
+    if (!aspc_ || aspc_->order() != predictor_order)
+        aspc_ = std::make_unique<electrodes::ChargeASPC>(predictor_order);
+}
+
+void ConstPotBO::record_aspc_() {
+    if (!aspc_ || aspc_record_.empty())
+        return;
+    // Record the unconstrained CG/dense solution of A Q = (Ψ − b), which is
+    // what the next warm-start targets — not the neutrality-projected Q.
+    aspc_->record(aspc_record_);
+}
+
 void ConstPotBO::build(const BuildContext& ctx) {
     if (groups_.empty())
         throw std::runtime_error(
@@ -111,6 +148,9 @@ void ConstPotBO::build(const BuildContext& ctx) {
     build_matrix_(ctx.frame);
     matrix_ready_ = true;
     total_Q_.assign(groups_.size(), 0.0);
+    ensure_aspc_();
+    last_iters_ = 0;
+    last_used_predictor_ = false;
 }
 
 void ConstPotBO::launch(const LaunchContext& ctx) {
@@ -119,9 +159,11 @@ void ConstPotBO::launch(const LaunchContext& ctx) {
         build_matrix_(ctx.frame);
         matrix_ready_ = true;
     }
+    ensure_aspc_();
     build_rhs_(ctx.frame);
     solve_();
     write_charges_(ctx.frame);
+    record_aspc_();
 }
 
 void ConstPotBO::destroy(const DestroyContext&) {
@@ -129,6 +171,10 @@ void ConstPotBO::destroy(const DestroyContext&) {
     elec_atoms_.clear();
     A_.clear();
     Q_.clear();
+    if (aspc_)
+        aspc_->reset();
+    last_iters_ = 0;
+    last_used_predictor_ = false;
 }
 
 double ConstPotBO::total_charge(std::size_t ie) const {
@@ -296,21 +342,71 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     }
 }
 
-void ConstPotBO::solve_() {
-    const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return;
+int ConstPotBO::cg_solve_(const std::vector<double>& A, int n,
+                          const std::vector<double>& b,
+                          std::vector<double>& x) const {
+    // Classical CG for SPD A. x is the initial guess (in/out).
+    std::vector<double> Ax(static_cast<std::size_t>(n));
+    std::vector<double> r(static_cast<std::size_t>(n));
+    std::vector<double> p(static_cast<std::size_t>(n));
+    std::vector<double> Ap(static_cast<std::size_t>(n));
 
-    // RHS: Ψ - b
+    matvec(A, n, x, Ax);
+    for (int i = 0; i < n; ++i)
+        r[static_cast<std::size_t>(i)] =
+            b[static_cast<std::size_t>(i)] - Ax[static_cast<std::size_t>(i)];
+    p = r;
+    double rsold = dot(r, r);
+    const double bnorm = std::sqrt(std::max(dot(b, b), 1e-300));
+    const double tol2 = (cg_tol * bnorm) * (cg_tol * bnorm);
+
+    if (rsold <= tol2)
+        return 0;
+
+    const int cap = max_cg_iters > 0 ? max_cg_iters : n * 4;
+    for (int it = 0; it < cap; ++it) {
+        matvec(A, n, p, Ap);
+        const double pAp = dot(p, Ap);
+        if (!(std::abs(pAp) > 1e-300))
+            throw std::runtime_error("ConstPotBO: CG breakdown (p·Ap ≈ 0)");
+        const double alpha = rsold / pAp;
+        for (int i = 0; i < n; ++i) {
+            x[static_cast<std::size_t>(i)] +=
+                alpha * p[static_cast<std::size_t>(i)];
+            r[static_cast<std::size_t>(i)] -=
+                alpha * Ap[static_cast<std::size_t>(i)];
+        }
+        const double rsnew = dot(r, r);
+        if (rsnew <= tol2)
+            return it + 1;
+        const double beta = rsnew / rsold;
+        for (int i = 0; i < n; ++i)
+            p[static_cast<std::size_t>(i)] =
+                r[static_cast<std::size_t>(i)]
+                + beta * p[static_cast<std::size_t>(i)];
+        rsold = rsnew;
+    }
+    throw std::runtime_error(
+        "ConstPotBO: CG failed to converge within max_cg_iters");
+}
+
+void ConstPotBO::solve_dense_() {
+    const int m = static_cast<int>(elec_atoms_.size());
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
         rhs[static_cast<std::size_t>(i)] =
             psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
 
+    // Unconstrained A Q = rhs (also the ASPC record target).
+    A_work_ = A_;
+    std::vector<double> Q_unconst = rhs;
+    cholesky_solve(m, A_work_, Q_unconst);
+    aspc_record_ = Q_unconst;
+
     if (electroneutrality && m >= 1) {
-        // Q = (A^{-1} - A^{-1} e e^T A^{-1} / (e^T A^{-1} e)) (Ψ - b)
+        // Q = Q_unconst − λ A^{-1} e,  λ = (e·Q_unconst) / (e·A^{-1}e)
         std::vector<double> inv;
         invert_spd(m, A_, inv);
-        // u = A^{-1} e
         std::vector<double> u(static_cast<std::size_t>(m), 0.0);
         for (int i = 0; i < m; ++i) {
             double s = 0.0;
@@ -318,33 +414,86 @@ void ConstPotBO::solve_() {
                 s += inv[static_cast<std::size_t>(i) * m + j];
             u[static_cast<std::size_t>(i)] = s;
         }
-        double eT_u = 0.0;
-        for (double v : u) eT_u += v;
+        double eT_u = 0.0, eT_Q = 0.0;
+        for (int i = 0; i < m; ++i) {
+            eT_u += u[static_cast<std::size_t>(i)];
+            eT_Q += Q_unconst[static_cast<std::size_t>(i)];
+        }
         if (std::abs(eT_u) < 1e-30)
             throw std::runtime_error(
                 "ConstPotBO: singular neutrality projector");
-        // v = A^{-1} rhs
-        std::vector<double> v(static_cast<std::size_t>(m), 0.0);
-        for (int i = 0; i < m; ++i) {
-            double s = 0.0;
-            for (int j = 0; j < m; ++j)
-                s += inv[static_cast<std::size_t>(i) * m + j]
-                     * rhs[static_cast<std::size_t>(j)];
-            v[static_cast<std::size_t>(i)] = s;
-        }
-        double eT_v = 0.0;
-        for (double t : v) eT_v += t;
-        const double scale = eT_v / eT_u;
+        const double scale = eT_Q / eT_u;
         for (int i = 0; i < m; ++i)
             Q_[static_cast<std::size_t>(i)] =
-                v[static_cast<std::size_t>(i)] - scale * u[static_cast<std::size_t>(i)];
+                Q_unconst[static_cast<std::size_t>(i)]
+                - scale * u[static_cast<std::size_t>(i)];
     } else {
-        A_work_ = A_;
-        Q_ = rhs;
-        cholesky_solve(m, A_work_, Q_);
+        Q_ = Q_unconst;
+    }
+    last_iters_ = 0;
+    last_used_predictor_ = false;
+}
+
+void ConstPotBO::solve_cg_() {
+    const int m = static_cast<int>(elec_atoms_.size());
+    std::vector<double> rhs(static_cast<std::size_t>(m));
+    for (int i = 0; i < m; ++i)
+        rhs[static_cast<std::size_t>(i)] =
+            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
+
+    // Warm-start unconstrained CG from ASPC (or zero).
+    std::vector<double> Q0(static_cast<std::size_t>(m), 0.0);
+    last_used_predictor_ = false;
+    if (aspc_) {
+        std::vector<double> Qpred;
+        if (aspc_->predict(Qpred) && static_cast<int>(Qpred.size()) == m) {
+            Q0 = Qpred;
+            last_used_predictor_ = true;
+        }
     }
 
-    // Residual of unconstrained equation AQ -(Ψ-b) (will be ||λ|| for symm)
+    const int iters_main = cg_solve_(A_, m, rhs, Q0);
+    aspc_record_ = Q0; // unconstrained solution for next ASPC record
+
+    if (electroneutrality && m >= 1) {
+        // A u = 1,  λ = (1·Q0)/(1·u),  Q = Q0 − λ u
+        std::vector<double> ones(static_cast<std::size_t>(m), 1.0);
+        std::vector<double> u(static_cast<std::size_t>(m), 0.0);
+        (void)cg_solve_(A_, m, ones, u);
+        double one_dot_Q0 = 0.0, one_dot_u = 0.0;
+        for (int i = 0; i < m; ++i) {
+            one_dot_Q0 += Q0[static_cast<std::size_t>(i)];
+            one_dot_u += u[static_cast<std::size_t>(i)];
+        }
+        if (!(std::abs(one_dot_u) > 1e-30))
+            throw std::runtime_error(
+                "ConstPotBO: singular neutrality row (CG)");
+        const double lambda = one_dot_Q0 / one_dot_u;
+        for (int i = 0; i < m; ++i)
+            Q_[static_cast<std::size_t>(i)] =
+                Q0[static_cast<std::size_t>(i)]
+                - lambda * u[static_cast<std::size_t>(i)];
+    } else {
+        Q_ = Q0;
+    }
+    last_iters_ = iters_main;
+}
+
+void ConstPotBO::solve_() {
+    const int m = static_cast<int>(elec_atoms_.size());
+    if (m == 0)
+        return;
+
+    if (use_cg)
+        solve_cg_();
+    else
+        solve_dense_();
+
+    // Residual of unconstrained equation AQ − (Ψ − b)
+    std::vector<double> rhs(static_cast<std::size_t>(m));
+    for (int i = 0; i < m; ++i)
+        rhs[static_cast<std::size_t>(i)] =
+            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
     residual_ = 0.0;
     for (int i = 0; i < m; ++i) {
         double Ax = 0.0;
@@ -355,7 +504,6 @@ void ConstPotBO::solve_() {
                              std::abs(Ax - rhs[static_cast<std::size_t>(i)]));
     }
 
-    // Per-group totals
     total_Q_.assign(groups_.size(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int g = elec_group_[static_cast<std::size_t>(a)];
