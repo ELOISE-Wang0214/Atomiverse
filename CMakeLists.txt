@@ -330,6 +330,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/bias/dihedral_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
             src/cpu/bias/metadynamics_1d.cpp
+            src/cpu/bias/metadynamics.cpp
         )
     endif()
 
