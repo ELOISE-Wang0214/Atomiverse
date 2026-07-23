@@ -25,6 +25,7 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | [born-repulsion-foothold](born-repulsion-foothold/) | metalwalls / E8 Born BMH | open |
 | `fumi-tosi-nacl` | metalwalls-method-loop E8 | `wf/fumi-tosi-nacl` |
 | `steele-wall-argon` | `wf/steele-wall-argon` | open (wave-2 E8 Steele 10-4-3) |
+| `const-pot-cg-large-electrode/` | `wf/const-pot-cg-large-electrode` | E2 CG electrode solve vs dense BO; wave 2 |
 
 *(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
 `wf/<slug>` before code)*
