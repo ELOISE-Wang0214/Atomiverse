@@ -13,21 +13,34 @@ offline** (Quickstep GPW, plane-wave DFT, forces/stress, OT, D3, BOMD, phonons).
 **done** / **blocked** / **in_progress** history is preserved (Census must not
 erase incomplete).
 
-Out of scope for this queue (use `pyscf-method-queue.md`): molecular Gaussian
-10→post-HF, pure PySCF continuum/charge methods without CP2K twin, classical MD/FF,
+Out of scope for this loop (use `pyscf-method-queue.md`): molecular Gaussian
+post-HF, pure PySCF continuum/charge methods without CP2K twin, classical MD/FF,
 CUDA-Kokkos product tracks.
 
 Census: 2026-07-23 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12,
 `docs/roadmap/index.md` GPW/PW notes, `docs/roadmap/molecular-dynamics.md` §AIMD.
-Priority: official e2e re-pins of shipping Γ-RKS GPW / PW H·Si footholds →
-open-shell GPW → GPW stress → PW true GGA → metallic smearing → BOMD / phonons
-→ OT product depth → DFT+U / bands → MPI industrial later.
+**16 `[~]` incomplete still own assign priority** — do not promote pending until
+they clear. Pending below = open roadmap ○ with offline CP2K twins, **excluding**
+slugs already in in_progress / done / blocked. Later wave order (after incomplete):
+k-point GPW → k-point UKS PW → GPW cell_opt → extra GGA/D4 → DFPT → Berry/Wannier
+→ XL-BOMD/CPMD → periodic MP2/RPA → MPI industrial.
 
 ## pending
 
+- [ ] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | roadmap: GPW Γ-only today; CP2K Quickstep k-points; **dep:** solid Γ energy/forces pins
+- [ ] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | Fe (or O₂ cell) | NC-UPF | e_tot / mag | roadmap ○ k-point periodic UKS; **dep:** `pw-spin-polarized-o2` + `pw-smearing-al`
+- [ ] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water`
+- [ ] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap GGA ○ PBEsol; CP2K XC_FUNCTIONAL PBEsol textbook bulk
+- [ ] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | water | DZVP-MOLOPT-GTH | e_tot / E_disp | roadmap D4 ○; CP2K DFTD4; **dep:** `gpw-pbe-d3bj-ice` pattern
+- [ ] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell`
+- [ ] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO₃ toy | — | P | roadmap ○; CP2K Berry phase; after robust k-path / `bands-dos-si`
+- [ ] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap ○; CP2K Wannier; **dep:** `bands-dos-si`
+- [ ] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD; CP2K; **dep:** `gpw-bomd-water`
+- [ ] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins
+- [ ] `periodic-mp2-si` | Periodic RI-MP2 (GPW) | gpw | Si (tiny cell) | MOLOPT+GTH | e_tot Ha | roadmap ○ Periodic MP2; CP2K MP2; **dep:** solid GPW energy
+- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap ○ Periodic RPA; CP2K RPA; after MP2 foothold
 - [ ] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands
-- [ ] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO3 toy | — | P | roadmap ○; CP2K Berry phase; after robust k-path infra
-- [ ] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap ○; CP2K Wannier; after bands foothold
+- [ ] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK
 
 ## in_progress
 
