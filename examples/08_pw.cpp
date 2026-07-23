@@ -9,7 +9,7 @@
 ///
 /// One concept: how a plane-wave single-point energy is assembled from the
 /// same Driver/Component vocabulary as every other method. The plane-wave
-/// SCF loop lives inside the inner solver `cpu::pw::PWSolver`; the
+/// SCF loop lives inside the inner solver `cpu::pw::PW`; the
 /// user-facing component is `cpu::pw::PWEvaluator` (role Evaluator,
 /// capability Energy), run through the one-pass `cpu::Evaluate` driver via
 /// the `cpu::single_point` helper — exactly like `cpu::scf::SCF`.
@@ -33,6 +33,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <utility>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
@@ -99,7 +100,7 @@ int main(int argc, char** argv) {
     //            a denser k-mesh — see benchmarks/pw/si for converged runs.
     // k_mesh   : Monkhorst-Pack Brillouin-zone sampling (k_mesh^3 points).
     // tol      : SCF convergence tolerance on the density change.
-    cpu::pw::PWConfig cfg;
+    cpu::pw::PW cfg;
     cfg.upf_path = upf_path;
     cfg.ecut_ry = 15.0;
     cfg.k_mesh = 2;
@@ -108,11 +109,11 @@ int main(int argc, char** argv) {
 
     // ── Run it as an Evaluator component ──────────────────────────────
     //
-    // PWEvaluator wraps the inner PWSolver. cpu::single_point binds it at
+    // PWEvaluator wraps the inner PW. cpu::single_point binds it at
     // the evaluate phase, builds the one-pass Evaluate driver, and runs it.
     // The component writes frame.meta.get(ATV::kEnergy) in eV; the Ry / Hartree
     // breakdown stays on last_result().
-    cpu::pw::PWEvaluator pwe{cfg};
+    cpu::pw::PWEvaluator pwe{std::move(cfg)};
     cpu::single_point(frame, pwe);
 
     const auto& result = pwe.last_result();

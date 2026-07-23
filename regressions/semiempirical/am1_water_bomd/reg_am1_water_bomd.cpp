@@ -1,4 +1,5 @@
 /// @file regressions/semiempirical/am1_water_bomd/reg_am1_water_bomd.cpp
+#include <utility>
 /// @brief Short AM1 BOMD smoke: MD + VelocityVerlet + AM1 forces.
 ///
 /// Method: AM1 (Dewar et al., J. Am. Chem. Soc. 107, 3902 (1985)).
@@ -57,7 +58,7 @@ int main() {
     constexpr int n_steps = 20;
     constexpr double T0 = 10.0; // K — gentle KE for SCF-stable BOMD smoke
 
-    cpu::semiempirical::AM1Config cfg;
+    cpu::semiempirical::AM1 cfg;
     cfg.max_iter = 300;
     cfg.density_tol = 1.0e-7;
     cfg.energy_tol = 1.0e-9;
@@ -66,7 +67,8 @@ int main() {
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T0, /*seed=*/7u});
     sim.on(md::Phase::force)
-        .add(cpu::semiempirical::AM1Evaluator{cfg}.with_gradient(true));
+        .add(cpu::semiempirical::AM1Evaluator{std::move(cfg)}.with_gradient(
+            true));
     sim.build();
     sim.run(frame, n_steps);
 

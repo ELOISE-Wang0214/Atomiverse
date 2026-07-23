@@ -31,7 +31,7 @@ int main() {
     const double L0 = 8.0; // expanded cubic H cell (toy)
     frame.simbox = cpu::Box::cubic(L0);
 
-    cpu::pw::PWConfig cfg;
+    cpu::pw::PW cfg;
     cfg.ecut_ry = 5.0;
     cfg.k_mesh = 1;
     cfg.tol = 1e-4;
@@ -50,7 +50,7 @@ int main() {
     opt.set_optimizer_ref(cell);
     opt.add_criterion(cpu::PressureConverged{0.0, 1e-2});
     opt.on(minimizer::Phase::force)
-        .add(cpu::pw::PWEvaluator{cfg}.with_stress(true));
+        .add(cpu::pw::PWEvaluator{std::move(cfg)}.with_stress(true));
     opt.enable_timing(false);
     opt.build();
     opt.run(frame, 15);

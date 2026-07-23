@@ -3,7 +3,7 @@
 ///
 /// Launched under `mpirun -n N` (N = 1, 2, 4 per CTest config). The
 /// k-point distribution is round-robin over MPI_COMM_WORLD inside
-/// `cpu::pw::PWSolver::run()`; the density accumulation and band-energy
+/// `cpu::pw::PW::run()`; the density accumulation and band-energy
 /// sums are Allreduced, so every rank must converge to the identical
 /// energy — and that energy must be independent of the rank count
 /// (the Davidson initial-guess perturbation is seeded per subspace
@@ -54,13 +54,13 @@ cpu::Frame make_si_fcc(double a) {
 TEST(PWMpiKpoint, AllRanksAgreeOnEnergy) {
     auto frame = make_si_fcc(5.43);
 
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 10.0;
     cfg.k_mesh = 2; // 8 k-points → exercises distribution at n=2,4
     cfg.tol = 1e-6;
     cfg.max_iter = 20;
 
-    PWSolver solver{cfg};
+    PW solver = std::move(cfg);
     solver.build(frame);
     const auto& r = solver.run(frame);
 
@@ -96,13 +96,13 @@ TEST(PWMpiKpoint, RankCountInvariantEnergy) {
     // is finite and converged as a smoke check of the distributed path.)
     auto frame = make_si_fcc(5.43);
 
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 10.0;
     cfg.k_mesh = 2;
     cfg.tol = 1e-6;
     cfg.max_iter = 30;
 
-    PWSolver solver{cfg};
+    PW solver = std::move(cfg);
     solver.build(frame);
     const auto& r = solver.run(frame);
 

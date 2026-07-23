@@ -17,7 +17,7 @@ namespace semiempirical {
 /// `am1` controls the Atomiverse AM1 single-point calculation. BCC atom typing,
 /// correction lookup, and charge-column writes are delegated to molrs.
 struct AM1BCCChargeConfig {
-    AM1Config am1{};
+    AM1 am1{};
     std::string parameter_set = "bcc";
 };
 
@@ -44,7 +44,7 @@ class AM1BCCChargeAssigner {
 
   private:
     AM1BCCChargeConfig config_;
-    AM1Solver solver_;
+    AM1 solver_;
     std::vector<double> last_charges_;
 };
 

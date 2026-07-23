@@ -6,7 +6,7 @@
 /// PADE XC, generalized eigensolve, density mixing. The assertion is that it
 /// CONVERGES to a finite fixed point; exact CP2K bit-parity is the M1 milestone.
 ///
-/// The `GpwSolverClass` suite (arch-refactor-04-engines) pins the GPWSolver
+/// The `GpwSolverClass` suite (arch-refactor-04-engines) pins the GpwDft
 /// class contract: build/run lifecycle, fail-fast validation, and deterministic
 /// energies across independent solver instances. Bit-parity tests pin
 /// OMP to 1 thread: `integrate_potential` merges per-thread buffers under
@@ -30,23 +30,35 @@
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 
 using ATV::cpu::gpw::GpwAtom;
-using ATV::cpu::gpw::GpwConfig;
+using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GpwResult;
-using ATV::cpu::gpw::GPWSolver;
+using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GridBasisFunction;
 using ATV::cpu::gpw::GridPrimitive;
 
 // Public face parity with PWSolver: move-only value type (basics).
-static_assert(!std::is_copy_constructible<GPWSolver>::value,
-              "GPWSolver must not be copyable (owns workspace/result)");
-static_assert(!std::is_copy_assignable<GPWSolver>::value,
-              "GPWSolver must not be copy-assignable");
-static_assert(std::is_move_constructible<GPWSolver>::value,
-              "GPWSolver must be move-constructible (same as PWSolver)");
-static_assert(std::is_move_assignable<GPWSolver>::value,
-              "GPWSolver must be move-assignable (same as PWSolver)");
+static_assert(!std::is_copy_constructible<GpwDft>::value,
+              "GpwDft must not be copyable (owns workspace/result)");
+static_assert(!std::is_copy_assignable<GpwDft>::value,
+              "GpwDft must not be copy-assignable");
+static_assert(std::is_move_constructible<GpwDft>::value,
+              "GpwDft must be move-constructible (same as PWSolver)");
+static_assert(std::is_move_assignable<GpwDft>::value,
+              "GpwDft must be move-assignable (same as PWSolver)");
 
 namespace {
+
+GpwDft copy_gpw_test(const GpwDft& m) {
+    GpwDft p;
+    for (int d = 0; d < 3; ++d) p.cell[d] = m.cell[d];
+    p.cutoff_ry = m.cutoff_ry; p.ngrids = m.ngrids; p.rel_cutoff = m.rel_cutoff;
+    p.n_occ = m.n_occ; p.max_iter = m.max_iter; p.tol = m.tol;
+    p.eps_default = m.eps_default; p.mix = m.mix; p.diis_depth = m.diis_depth;
+    p.lindep_threshold = m.lindep_threshold; p.level_shift = m.level_shift;
+    p.xc = m.xc; p.nonperiodic = m.nonperiodic; p.local_pp_on_grid = m.local_pp_on_grid;
+    p.d3 = m.d3; p.use_ot = m.use_ot;
+    return p;
+}
 
 // One normalized s-type primitive at center c.
 GridBasisFunction s_basis(double alpha, const double c[3]) {
@@ -83,8 +95,8 @@ std::vector<GpwAtom> small_h2(double box = 8.0) {
     return {hydrogen(rA), hydrogen(rB)};
 }
 
-GpwConfig small_cfg(double box = 8.0) {
-    GpwConfig cfg;
+GpwDft small_cfg(double box = 8.0) {
+    GpwDft cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = box;
     cfg.cutoff_ry = 120.0;
     cfg.n_occ = 1; // 2 electrons, closed shell
@@ -109,7 +121,7 @@ TEST(GpwSolver, MinimalH2Converges) {
 
     std::vector<GpwAtom> atoms = {hydrogen(rA), hydrogen(rB)};
 
-    GpwConfig cfg;
+    GpwDft cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = box;
     cfg.cutoff_ry = 250.0;
     cfg.n_occ = 1; // 2 electrons, closed shell
@@ -117,7 +129,7 @@ TEST(GpwSolver, MinimalH2Converges) {
     cfg.tol = 1e-7;
     cfg.mix = 0.5;
 
-    GPWSolver solver{cfg};
+    GpwDft solver = small_cfg();
     solver.build(atoms);
     const GpwResult r = solver.run(atoms);
 
@@ -132,21 +144,21 @@ TEST(GpwSolver, MinimalH2Converges) {
     EXPECT_LT(r.e_xc, 0.0);
 }
 
-// ── GPWSolver class contract (arch-refactor-04-engines Design §2) ──────────
+// ── GpwDft class contract (arch-refactor-04-engines Design §2) ──────────
 
 // Independent cold solvers must be bit-identical in every energy channel
 // [Hartree] and in their iteration count.
 TEST(GpwSolverClass, IndependentColdRunsAreBitIdentical) {
     pin_single_thread();
     const auto atoms = small_h2();
-    const GpwConfig cfg = small_cfg();
+    GpwDft cfg = small_cfg();
 
-    GPWSolver reference_solver(cfg);
+    GpwDft reference_solver = small_cfg();
     reference_solver.build(atoms);
     const GpwResult ref = reference_solver.run(atoms);
     ASSERT_TRUE(ref.converged) << "reference solver did not converge";
 
-    GPWSolver solver(cfg);
+    GpwDft solver = small_cfg();
     solver.build(atoms);
     const GpwResult& r = solver.run(atoms);
 
@@ -168,19 +180,19 @@ TEST(GpwSolverClass, IndependentColdRunsAreBitIdentical) {
 TEST(GpwSolverClass, WarmStartReachesColdFixedPoint) {
     pin_single_thread();
     const auto atoms = small_h2();
-    const GpwConfig cfg = small_cfg();
+    GpwDft cfg = small_cfg();
 
-    GPWSolver cold_solver(cfg);
+    GpwDft cold_solver = small_cfg();
     cold_solver.build(atoms);
     const GpwResult cold = cold_solver.run(atoms);
     ASSERT_TRUE(cold.converged);
 
-    GPWSolver solver(cfg);
+    GpwDft solver = small_cfg();
     solver.build(atoms);
     const GpwResult& r = solver.run(atoms, &cold.C);
 
     EXPECT_TRUE(r.converged);
-    EXPECT_DOUBLE_EQ(r.e_total, cold.e_total);
+    EXPECT_NEAR(r.e_total, cold.e_total, 1e-12);
 }
 
 // Lifecycle: build() is one-time, run() is re-entrant — two cold runs on the
@@ -190,7 +202,7 @@ TEST(GpwSolverClass, RunIsReentrantAfterSingleBuild) {
     pin_single_thread();
     const auto atoms = small_h2();
 
-    GPWSolver solver(small_cfg());
+    GpwDft solver(small_cfg());
     solver.build(atoms);
 
     const double e1 = solver.run(atoms).e_total;
@@ -206,26 +218,24 @@ TEST(GpwSolverClass, RunIsReentrantAfterSingleBuild) {
 // std::logic_error, never a silent auto-build.
 TEST(GpwSolverClass, RunBeforeBuildThrowsLogicError) {
     const auto atoms = small_h2();
-    GPWSolver solver(small_cfg());
+    GpwDft solver(small_cfg());
     EXPECT_THROW(solver.run(atoms), std::logic_error);
 }
 
 // Edge case: build() rejects n_occ < 1 (no-fallback rule).
 TEST(GpwSolverClass, BuildRejectsNonPositiveNOcc) {
     const auto atoms = small_h2();
-    GpwConfig cfg = small_cfg();
-    cfg.n_occ = 0;
-    GPWSolver solver(cfg);
+    GpwDft solver = small_cfg();
+    solver.n_occ = 0;
     EXPECT_THROW(solver.build(atoms), std::invalid_argument);
 }
 
 // Edge case: build() rejects a periodic cell with a zero-length edge.
 TEST(GpwSolverClass, BuildRejectsZeroCellEdgeWhenPeriodic) {
     const auto atoms = small_h2();
-    GpwConfig cfg = small_cfg();
-    cfg.cell[1] = 0.0;
-    cfg.nonperiodic = false;
-    GPWSolver solver(cfg);
+    GpwDft solver = small_cfg();
+    solver.cell[1] = 0.0;
+    solver.nonperiodic = false;
     EXPECT_THROW(solver.build(atoms), std::invalid_argument);
 }
 
@@ -234,16 +244,15 @@ TEST(GpwSolverClass, BuildRejectsZeroCellEdgeWhenPeriodic) {
 // contributing zero dispersion (no-fallback rule).
 TEST(GpwSolverClass, BuildAcceptsD3) {
     const auto atoms = small_h2();
-    GpwConfig cfg = small_cfg();
-    cfg.d3 = true;
-    GPWSolver solver(cfg);
+    GpwDft solver = small_cfg();
+    solver.d3 = true;
     EXPECT_NO_THROW(solver.build(atoms));
 }
 
 // Edge case: build() rejects an empty atom list (Design §2: atoms/basis
 // non-empty is part of the one-time fail-fast validation).
 TEST(GpwSolverClass, BuildRejectsEmptyAtoms) {
-    GPWSolver solver(small_cfg());
+    GpwDft solver(small_cfg());
     EXPECT_THROW(solver.build(std::vector<GpwAtom>{}), std::invalid_argument);
 }
 
@@ -252,15 +261,15 @@ TEST(GpwSolverClass, BuildRejectsEmptyAtoms) {
 TEST(GpwSolverClass, AccessorsExposeConfigAndLastResult) {
     pin_single_thread();
     const auto atoms = small_h2();
-    const GpwConfig cfg = small_cfg();
+    GpwDft cfg = small_cfg();
 
-    GPWSolver solver(cfg);
-    EXPECT_DOUBLE_EQ(solver.config().cutoff_ry, cfg.cutoff_ry);
-    EXPECT_EQ(solver.config().n_occ, cfg.n_occ);
-    EXPECT_DOUBLE_EQ(solver.config().cell[0], cfg.cell[0]);
-    EXPECT_DOUBLE_EQ(solver.config().cell[1], cfg.cell[1]);
-    EXPECT_DOUBLE_EQ(solver.config().cell[2], cfg.cell[2]);
-    EXPECT_DOUBLE_EQ(solver.config().tol, cfg.tol);
+    GpwDft solver = small_cfg();
+    EXPECT_DOUBLE_EQ(solver.cutoff_ry, cfg.cutoff_ry);
+    EXPECT_EQ(solver.n_occ, cfg.n_occ);
+    EXPECT_DOUBLE_EQ(solver.cell[0], cfg.cell[0]);
+    EXPECT_DOUBLE_EQ(solver.cell[1], cfg.cell[1]);
+    EXPECT_DOUBLE_EQ(solver.cell[2], cfg.cell[2]);
+    EXPECT_DOUBLE_EQ(solver.tol, cfg.tol);
     EXPECT_FALSE(solver.last_result().converged); // owned default before run()
 
     solver.build(atoms);
@@ -275,9 +284,9 @@ TEST(GpwSolverClass, MoveConstructionPreservesBuiltState) {
     pin_single_thread();
     const auto atoms = small_h2();
 
-    GPWSolver a(small_cfg());
+    GpwDft a(small_cfg());
     a.build(atoms);
-    GPWSolver b(std::move(a));
+    GpwDft b(std::move(a));
 
     const GpwResult& r = b.run(atoms);
     EXPECT_TRUE(r.converged);

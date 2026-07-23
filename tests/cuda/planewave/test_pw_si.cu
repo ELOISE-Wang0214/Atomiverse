@@ -57,16 +57,16 @@ TEST(CudaPWScf, RunsAndFinite) {
 TEST(CudaPWScf, MatchesCpu) {
     auto frame = make_si_fcc(5.43);
     const std::string upf = ATV_PW_UPF_PATH;
-    // CPU reference via the concrete PWSolver (the free cpu::pw::pw_scf wrapper
-    // was deleted — callers construct/build/run PWSolver). Same knobs the old
+    // CPU reference via the concrete PW (the free cpu::pw::pw_scf wrapper
+    // was deleted — callers construct/build/run PW). Same knobs the old
     // wrapper took: ecut 12 Ry, 2^3 k-mesh, tol 1e-6, 30 iters.
-    cpu::pw::PWConfig cfg;
+    cpu::pw::PW cfg;
     cfg.upf_path = upf;
     cfg.ecut_ry = 12.0;
     cfg.k_mesh = 2;
     cfg.tol = 1e-6;
     cfg.max_iter = 30;
-    cpu::pw::PWSolver solver{cfg};
+    cpu::pw::PW solver = std::move(cfg);
     solver.build(frame);
     auto r_cpu = solver.run(frame);
     auto r_cuda = cuda::pw::pw_scf(frame, upf, 12.0, 2, 1e-6, 30);

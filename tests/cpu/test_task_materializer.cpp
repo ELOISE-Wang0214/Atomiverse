@@ -244,7 +244,7 @@ TEST(TaskMaterializer, SinglePointAm1H2MatchesHandBuiltEvaluateBitwise) {
     // Directly-built single point: Evaluate + AM1Evaluator bound at
     // evaluate::Phase::evaluate (AM1Evaluator deliberately has no
     // default_bindings()), same config field for field.
-    cpu::semiempirical::AM1Config cfg{};
+    cpu::semiempirical::AM1 cfg{};
     cfg.charge = 0;
     cfg.multiplicity = 1;
     cfg.max_iter = 200;

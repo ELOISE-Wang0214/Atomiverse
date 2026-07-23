@@ -1,8 +1,8 @@
 /// @file cpu/pw/pw_solver.cpp
-/// @brief PWSolver implementation — orchestrates the internal step helpers
+/// @brief PW implementation — orchestrates the internal step helpers
 ///        through the plane-wave SCF self-consistency cycle.
 ///
-/// Low-level callers construct `PWSolver` explicitly and execute its
+/// Low-level callers construct `PW` explicitly and execute its
 /// build/run lifecycle; workflow callers use `PWEvaluator`.
 ///
 /// Problem assembly (Ewald, G-vectors, FFT grids, V_loc, per-k KB
@@ -83,27 +83,47 @@ MPI_Datatype mpi_real_type() {
 
 } // namespace
 
-// ── PWSolver ────────────────────────────────────────────────────────────
+// ── PW ────────────────────────────────────────────────────────────
 
-PWSolver::PWSolver(PWConfig config)
-    : config_(std::move(config)),
-      poisson_(std::make_unique<internal::PoissonSolver>()),
-      xc_(std::make_unique<internal::XCBuilder>()),
-      veff_(std::make_unique<internal::VeffBuilder>()),
-      density_(std::make_unique<internal::DensityBuilder>(
-          AccReal(config_.mix_beta), config_.pulay_depth)) {}
+namespace {
+void ensure_helpers(PW& self,
+                    std::unique_ptr<internal::PoissonSolver>& poisson,
+                    std::unique_ptr<internal::XCBuilder>& xc,
+                    std::unique_ptr<internal::VeffBuilder>& veff,
+                    std::unique_ptr<internal::DensityBuilder>& density) {
+    if (!poisson)
+        poisson = std::make_unique<internal::PoissonSolver>();
+    if (!xc)
+        xc = std::make_unique<internal::XCBuilder>();
+    if (!veff)
+        veff = std::make_unique<internal::VeffBuilder>();
+    if (!density)
+        density = std::make_unique<internal::DensityBuilder>(
+            AccReal(self.mix_beta), self.pulay_depth);
+}
+} // namespace
+
+// Helpers are allocated on first build()/run() from current member parameters.
 
 // Out-of-line where internal::* are complete types (required for the
 // unique_ptr members over forward-declared helpers).
-PWSolver::~PWSolver() = default;
-PWSolver::PWSolver(PWSolver&&) noexcept = default;
-PWSolver& PWSolver::operator=(PWSolver&&) noexcept = default;
+PW::PW() = default;
+PW::~PW() = default;
+PW::PW(PW&&) noexcept = default;
+PW& PW::operator=(PW&&) noexcept = default;
 
-void PWSolver::build(const cpu::Frame& reference) {
-    if (!config_.upf_path.empty()) {
+void PW::build(const cpu::Frame& reference) {
+    if (!poisson_) {
+        poisson_ = std::make_unique<internal::PoissonSolver>();
+        xc_ = std::make_unique<internal::XCBuilder>();
+        veff_ = std::make_unique<internal::VeffBuilder>();
+        density_ = std::make_unique<internal::DensityBuilder>(
+            AccReal(mix_beta), pulay_depth);
+    }
+    if (!upf_path.empty()) {
         // Validate the pseudopotential up front (throws on parse error);
         // setup_pw_problem() re-reads it at each run().
-        (void)internal::read_upf_v1(config_.upf_path);
+        (void)internal::read_upf_v1(upf_path);
     } else {
         // Validate the toy valence table covers every atom type up front
         // (throws on unsupported Z — no silent 0-electron fallback).
@@ -114,7 +134,7 @@ void PWSolver::build(const cpu::Frame& reference) {
     built_ = true;
 }
 
-PWResult& PWSolver::run(const cpu::Frame& frame) {
+PWResult& PW::run(const cpu::Frame& frame) {
     // Lazy build — convenience for callers that skip explicit build().
     if (!built_)
         build(frame);
@@ -126,21 +146,21 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
 
     // ── Shared problem assembly (identical to the CUDA backend) ──
     internal::PWProblem prob;
-    internal::setup_pw_problem(frame, config_.upf_path, config_.ecut_ry,
-                               config_.k_mesh, prob);
+    internal::setup_pw_problem(frame, upf_path, ecut_ry,
+                               k_mesh, prob);
     internal::PWWorkspace& ws = prob.ws;
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const int n_bands = prob.n_bands;
     const AccReal vol_bohr = prob.vol_bohr;
-    ws.mix_beta = AccReal(config_.mix_beta);
-    ws.pulay_depth = config_.pulay_depth;
+    ws.mix_beta = AccReal(mix_beta);
+    ws.pulay_depth = pulay_depth;
 
     if (log_rank0)
         ATV_INFO("[pw] start atoms={} elec={} bands={} ecut_ry={} {} "
                  "k_mesh={} ranks={}",
-                 frame.nlocal(), prob.n_elec, n_bands, config_.ecut_ry,
-                 config_.upf_path.empty() ? "toy" : "upf", config_.k_mesh,
+                 frame.nlocal(), prob.n_elec, n_bands, ecut_ry,
+                 upf_path.empty() ? "toy" : "upf", k_mesh,
                  layout.nprocs);
 
     // ── Step-helper preparation (grid-sized scratch) ──
@@ -150,15 +170,15 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
     density_->reset(ws);
     if (!davidson_ || davidson_bands_ != n_bands) {
         davidson_ = std::make_unique<internal::DavidsonSolver>(
-            n_bands, AccReal(config_.tol) * AccReal(0.1), 40);
+            n_bands, AccReal(tol) * AccReal(0.1), 40);
         davidson_bands_ = n_bands;
     }
     davidson_->prepare(ws);
-    internal::ConvergenceCheck convergence{AccReal(config_.tol), 2};
+    internal::ConvergenceCheck convergence{AccReal(tol), 2};
 
     // ── SCF loop ──
     bool converged = false;
-    for (int iter = 0; iter < config_.max_iter; ++iter) {
+    for (int iter = 0; iter < max_iter; ++iter) {
         poisson_->step(ws);
         xc_->step(ws);
         veff_->step(ws);
@@ -232,22 +252,36 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
 
     if (!result_.converged && log_rank0)
         ATV_WARN("[pw] not converged after {} iters energy_ry={:.8f}",
-                 config_.max_iter, result_.energy);
+                 max_iter, result_.energy);
 
     return result_;
 }
 
+namespace {
+PW copy_params(const PW& m) {
+    PW p;
+    p.upf_path = m.upf_path;
+    p.ecut_ry = m.ecut_ry;
+    p.k_mesh = m.k_mesh;
+    p.tol = m.tol;
+    p.max_iter = m.max_iter;
+    p.mix_beta = m.mix_beta;
+    p.pulay_depth = m.pulay_depth;
+    return p;
+}
+} // namespace
+
 std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
-                                                      const PWConfig& cfg) {
-    return internal::pw_forces_analytic_impl(frame, cfg);
+                                                      const PW& method) {
+    return internal::pw_forces_analytic_impl(frame, method);
 }
 
-std::array<double, 6> pw_stress(const cpu::Frame& frame, const PWConfig& cfg) {
-    return internal::pw_stress_analytic_impl(frame, cfg);
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method) {
+    return internal::pw_stress_analytic_impl(frame, method);
 }
 
 std::vector<std::array<double, 3>>
-pw_forces_fd(const cpu::Frame& frame, const PWConfig& cfg, double h_ang) {
+pw_forces_fd(const cpu::Frame& frame, const PW& method, double h_ang) {
     if (h_ang <= 0.0)
         throw std::invalid_argument("pw_forces_fd: h_ang must be > 0");
     const int n = frame.nlocal();
@@ -272,12 +306,12 @@ pw_forces_fd(const cpu::Frame& frame, const PWConfig& cfg, double h_ang) {
             const StorageReal r0 = axes[k][a];
 
             axes[k][a] = r0 + static_cast<StorageReal>(h_ang);
-            PWSolver plus{cfg};
+            PW plus = copy_params(method);
             plus.build(work);
             const double e_plus = plus.run(work).energy; // Ry
 
             axes[k][a] = r0 - static_cast<StorageReal>(h_ang);
-            PWSolver minus{cfg};
+            PW minus = copy_params(method);
             minus.build(work);
             const double e_minus = minus.run(work).energy;
 

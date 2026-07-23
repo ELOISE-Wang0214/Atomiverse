@@ -17,7 +17,7 @@ int main() {
         0;
     frame.simbox = cpu::Box::cubic(6.0);
 
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 5.0;
     cfg.k_mesh = 1;
     cfg.tol = 1e-4;

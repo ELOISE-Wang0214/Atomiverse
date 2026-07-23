@@ -14,7 +14,7 @@ namespace cpu {
 namespace pw {
 
 void PWEvaluator::build(const cpu::BuildContext& ctx) {
-    solver_.build(ctx.frame);
+    method_.build(ctx.frame);
 }
 
 void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
@@ -23,12 +23,12 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // duplicate energy-only SCF by letting forces supply energy later if needed.
     // For simplicity keep energy SCF then analytic forces (2 SCF) until
     // workspace reuse lands — still O(1) vs FD's 6N.
-    const auto& result = solver_.run(ctx.frame);
+    const auto& result = method_.run(ctx.frame);
     ctx.frame.meta.get(kEnergy) = result.energy * qe_units::rydberg_to_ev;
 
     if (compute_forces_ && ctx.forces_requested) {
         const auto forces =
-            pw_forces_analytic(ctx.frame, solver_.config()); // eV/Å
+            pw_forces_analytic(ctx.frame, method_); // eV/Å
         const int n = ctx.frame.nlocal();
         if (static_cast<int>(forces.size()) != n)
             throw std::runtime_error("PWEvaluator: force count mismatch");
@@ -47,7 +47,7 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     if (compute_stress_) {
-        const auto s = pw_stress(ctx.frame, solver_.config()); // eV/Å³ Voigt
+        const auto s = pw_stress(ctx.frame, method_); // eV/Å³ Voigt
         auto& st = ctx.frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
             st[static_cast<std::size_t>(k)] = s[static_cast<std::size_t>(k)];

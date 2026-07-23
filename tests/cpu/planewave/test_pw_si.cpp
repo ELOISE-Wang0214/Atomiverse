@@ -1,5 +1,5 @@
 /// @file test_pw_si.cpp
-/// @brief Integration tests for the explicit PWSolver lifecycle.
+/// @brief Integration tests for the explicit PW lifecycle.
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
@@ -38,28 +38,28 @@ cpu::Frame make_si_fcc(double a) {
 }
 } // namespace
 
-TEST(PWSolver, CompilesAndRuns) {
+TEST(PW, CompilesAndRuns) {
     auto frame = make_si_fcc(5.43);
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 10.0;
     cfg.k_mesh = 2;
     cfg.tol = 1e-6;
     cfg.max_iter = 30;
-    PWSolver solver{cfg};
+    PW solver = std::move(cfg);
     solver.build(frame);
     const auto& r = solver.run(frame);
     EXPECT_TRUE(std::isfinite(r.energy))
         << "Energy should be finite, got: " << r.energy;
 }
 
-TEST(PWSolver, RunsWithoutCrash) {
+TEST(PW, RunsWithoutCrash) {
     auto frame = make_si_fcc(5.43);
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 10.0;
     cfg.k_mesh = 2;
     cfg.tol = 1e-6;
     cfg.max_iter = 20;
-    PWSolver solver{cfg};
+    PW solver = std::move(cfg);
     solver.build(frame);
     const auto& r = solver.run(frame);
     EXPECT_TRUE(std::isfinite(r.energy))

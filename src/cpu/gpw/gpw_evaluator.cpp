@@ -62,7 +62,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Assemble the solver configuration from the build-time frame. The
     // ATV_GPW_OT diagnostic switch is read once here — re-reading an
     // environment variable per launch had no meaning.
-    GpwConfig cfg;
+    GpwDft cfg;
     cfg.cell[0] = ctx.frame.simbox.length(0) * kAng2Bohr;
     cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
     cfg.cell[2] = ctx.frame.simbox.length(2) * kAng2Bohr;
@@ -78,7 +78,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         cfg.use_ot = true; // diagnostic: force OT path
     built_cell_ = {cfg.cell[0], cfg.cell[1], cfg.cell[2]};
 
-    solver_ = std::make_unique<GPWSolver>(std::move(cfg));
+    solver_ = std::make_unique<GpwDft>(std::move(cfg));
     solver_->build(assemble_atoms(ctx.frame, config_));
 }
 
@@ -107,7 +107,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (config_.compute_forces) {
-        const auto F = gpw_forces_analytic(atoms, solver_->config());
+        const auto F = gpw_forces_analytic(atoms, *solver_);
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         AccReal* __restrict sp_fx = frame.span(kAtom_fx);
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);

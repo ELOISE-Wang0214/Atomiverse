@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -26,7 +27,7 @@ int main() {
     frame.span(kAtom_z)[0] = 0.0;
     frame.simbox = cpu::Box::cubic(6.0);
 
-    PWConfig cfg;
+    PW cfg;
     cfg.ecut_ry = 5.0;
     cfg.k_mesh = 1;
     cfg.tol = 1e-4;
@@ -49,7 +50,7 @@ int main() {
     for (int i = 0; i < 3; ++i)
         frame.span(kAtom_fx)[0] = frame.span(kAtom_fy)[0] =
             frame.span(kAtom_fz)[0] = 0;
-    PWEvaluator pwe{cfg};
+    PWEvaluator pwe{std::move(cfg)};
     pwe.with_gradient(true).set_fd_step(5e-3);
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::evaluate).add_ref(pwe);

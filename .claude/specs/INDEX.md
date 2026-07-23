@@ -35,7 +35,6 @@ impl independently (no single ordered chain unless noted).
 | Spec | Summary |
 | ---- | ------- |
 | [ri-mp2](ri-mp2.md) | Density-fitted RI-MP2 energy on RHF [approved] |
-| [tb-sk-product](tb-sk-product.md) | Multi-element static SK tables + DFTB2 forces [approved] |
 | [multi-cv-metad](multi-cv-metad.md) | Multi-CV well-tempered metadynamics [approved] |
 | [multi-window-wham](multi-window-wham.md) | Multi-window WHAM (math in molrs) [approved] |
 
@@ -43,15 +42,9 @@ impl independently (no single ordered chain unless noted).
 
 | Spec | Summary |
 | ---- | ------- |
-| [concrete-pw-method](concrete-pw-method.md) | Kill public PWConfig/PWSolver bag [approved] |
-| [concrete-gpw-method](concrete-gpw-method.md) | Kill public GpwConfig/GPWSolver bag [approved] |
-| [concrete-nddo-method](concrete-nddo-method.md) | NDDOSolver internal; AM1/RM1 public [approved] |
 
 **Suggested parallel impl batches** (no hard deps inside a batch):
 
-1. Response trio · PR-NPT · RI-MP2 · concrete-pw  
-2. NPH · link-atoms · tb-sk · multi-cv-metad · concrete-gpw  
-3. polarizable-qmmm · multi-window-wham · concrete-nddo · true-nac (after analytic forces if sharing Z-vector)
 
 
 ## Closed on `feat/cpu-next-md` (2026-07-23)

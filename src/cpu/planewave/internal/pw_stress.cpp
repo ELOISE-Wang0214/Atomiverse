@@ -20,11 +20,32 @@
 namespace ATV {
 namespace cpu {
 namespace pw {
+
+namespace {
+PW copy_pw(const PW& m) {
+    PW p;
+    p.upf_path = m.upf_path;
+    p.ecut_ry = m.ecut_ry;
+    p.k_mesh = m.k_mesh;
+    p.tol = m.tol;
+    p.max_iter = m.max_iter;
+    p.mix_beta = m.mix_beta;
+    p.pulay_depth = m.pulay_depth;
+    return p;
+}
+} // namespace
 namespace internal {
 namespace {
 
-double scf_energy_ry(const cpu::Frame& frame, const PWConfig& cfg) {
-    PWSolver solver{cfg};
+double scf_energy_ry(const cpu::Frame& frame, const PW& method) {
+    PW solver;
+    solver.upf_path = method.upf_path;
+    solver.ecut_ry = method.ecut_ry;
+    solver.k_mesh = method.k_mesh;
+    solver.tol = method.tol;
+    solver.max_iter = method.max_iter;
+    solver.mix_beta = method.mix_beta;
+    solver.pulay_depth = method.pulay_depth;
     solver.build(frame);
     return solver.run(frame).energy; // Ry
 }
@@ -72,7 +93,7 @@ void voigt_pair(int v, int& a, int& b) {
 } // namespace
 
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
-                                              const PWConfig& cfg) {
+                                              const PW& method) {
     if (frame.nlocal() <= 0)
         throw std::invalid_argument("pw_stress: frame has no atoms");
     if (frame.simbox.volume() <= 0)
@@ -115,8 +136,8 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
         cpu::Frame fm = frame;
         apply_strain(fp, ep);
         apply_strain(fm, em);
-        const double ep_ry = scf_energy_ry(fp, cfg);
-        const double em_ry = scf_energy_ry(fm, cfg);
+        const double ep_ry = scf_energy_ry(fp, method);
+        const double em_ry = scf_energy_ry(fm, method);
         // dE/dε with E in eV; for off-diagonal, the free parameter is ε_ab=ε_ba=ε,
         // and ∂/∂ε of the energy uses 2h step in that parameter.
         const double dE_dev = (ep_ry - em_ry) * ry_to_ev / (2.0 * h);

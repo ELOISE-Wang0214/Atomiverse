@@ -188,9 +188,11 @@ if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/longrange/test_pme_coul.cpp)
     atv_add_cpp_test(test_cpu_pppm_coul           cpu/longrange/test_pppm_coul.cpp)
 endif()
+atv_add_cpp_test(test_cpu_nddo_api_surface       cpu/semiempirical/test_nddo_api_surface.cpp)
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
 atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.cpp)
+atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at
@@ -218,7 +220,8 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_grid_fft     cpu/gpw/test_cpu_gpw_grid_fft.cpp)
         atv_add_cpp_test(test_cpu_gpw_xc_grid_gga  cpu/gpw/test_cpu_gpw_xc_grid_gga.cpp)
         atv_add_cpp_test(test_cpu_gpw_mt_poisson   cpu/gpw/test_cpu_gpw_mt_poisson.cpp)
-        atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
+        atv_add_cpp_test(test_cpu_gpw_method       cpu/gpw/test_gpw_method.cpp)
+    atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
     endif()
 
     # Data-table unit tests: grammar/ingest of the in-tree GTH + MOLOPT tables and
@@ -479,6 +482,7 @@ if(ATV_BUILD_PW)
     atv_add_cpp_test(test_cpu_pw_components cpu/planewave/test_pw_components.cpp)
     atv_add_cpp_test(test_cpu_pw_si         cpu/planewave/test_pw_si.cpp)
     atv_add_cpp_test(test_cpu_pw_evaluator  cpu/planewave/test_pw_evaluator.cpp)
+    atv_add_cpp_test(test_cpu_pw_method     cpu/planewave/test_pw_method.cpp)
     atv_add_cpp_test(test_cpu_pw_forces     cpu/planewave/test_pw_forces.cpp)
     atv_add_cpp_test(test_cpu_pw_stress     cpu/planewave/test_pw_stress.cpp)
 

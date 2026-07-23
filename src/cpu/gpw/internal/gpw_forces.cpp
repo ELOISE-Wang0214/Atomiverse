@@ -31,6 +31,31 @@ namespace cpu {
 namespace gpw {
 
 namespace {
+GpwDft copy_gpw(const GpwDft& m) {
+    GpwDft p;
+    for (int d = 0; d < 3; ++d)
+        p.cell[d] = m.cell[d];
+    p.cutoff_ry = m.cutoff_ry;
+    p.ngrids = m.ngrids;
+    p.rel_cutoff = m.rel_cutoff;
+    p.n_occ = m.n_occ;
+    p.max_iter = m.max_iter;
+    p.tol = m.tol;
+    p.eps_default = m.eps_default;
+    p.mix = m.mix;
+    p.diis_depth = m.diis_depth;
+    p.lindep_threshold = m.lindep_threshold;
+    p.level_shift = m.level_shift;
+    p.xc = m.xc;
+    p.nonperiodic = m.nonperiodic;
+    p.local_pp_on_grid = m.local_pp_on_grid;
+    p.d3 = m.d3;
+    p.use_ot = m.use_ot;
+    return p;
+}
+} // namespace
+
+namespace {
 
 using linalg::RealMatrix;
 
@@ -142,8 +167,8 @@ double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
 } // namespace
 
 std::vector<std::array<double, 3>>
-gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
-    GPWSolver solver{cfg};
+gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg) {
+    GpwDft solver = copy_gpw(cfg);
     solver.build(atoms);
     const GpwResult scf = solver.run(atoms);
     if (!scf.converged)
