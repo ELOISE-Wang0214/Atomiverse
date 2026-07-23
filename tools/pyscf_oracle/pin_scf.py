@@ -19,6 +19,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
+  python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
@@ -117,6 +118,7 @@ def main() -> int:
             "rks-tda",
             "rks-tddft",
             "uks-tda",
+            "sf-tda",
             "d3bj",
         ],
     )
@@ -222,7 +224,7 @@ def main() -> int:
 
     if m == "rhf":
         mf = scf.RHF(mol)
-    elif m in ("uhf", "ump2"):
+    elif m in ("uhf", "ump2", "sf-tda"):
         mf = scf.UHF(mol)
     elif m == "rohf":
         mf = scf.ROHF(mol)
@@ -273,7 +275,7 @@ def main() -> int:
     if args.pcm and hasattr(mf, "with_solvent"):
         out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
-    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2") and hasattr(
+    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2", "sf-tda") and hasattr(
         mf, "spin_square"
     ):
         ss, mult = mf.spin_square()
@@ -358,6 +360,51 @@ def main() -> int:
             out["td_converged"] = [bool(c) for c in td.converged]
         if hasattr(td, "oscillator_strength"):
             out["oscillator_strength"] = [float(x) for x in td.oscillator_strength()]
+    elif m == "sf-tda":
+        # Collinear SF-CIS / SF-TDA (Shao, Head-Gordon, Krylov JCP 118, 4807
+        # (2003)). PySCF mainline has no product SF-TDA; build the Ms-decreasing
+        # singles block with PySCF UHF MOs + ao2mo (offline pin / fair twin).
+        # A_ia,jb = δ_ij δ_ab (ε_a^min - ε_i^maj) - (ij|ab).
+        from pyscf import ao2mo
+        import numpy as np
+
+        mo_a, mo_b = mf.mo_coeff
+        ea, eb = mf.mo_energy
+        occa, occb = mf.mo_occ
+        oa = np.where(occa > 0)[0]
+        va = np.where(occa == 0)[0]
+        ob = np.where(occb > 0)[0]
+        vb = np.where(occb == 0)[0]
+        alpha_to_beta = len(oa) >= len(ob)
+        if alpha_to_beta:
+            o_idx, v_idx = oa, vb
+            e_o, e_v = ea, eb
+            Co, Cv = mo_a[:, oa], mo_b[:, vb]
+            out["sf_channel"] = "alpha_to_beta"
+        else:
+            o_idx, v_idx = ob, va
+            e_o, e_v = eb, ea
+            Co, Cv = mo_b[:, ob], mo_a[:, va]
+            out["sf_channel"] = "beta_to_alpha"
+        no, nv = len(o_idx), len(v_idx)
+        nov = no * nv
+        nstates = min(args.nstates, nov)
+        ijab = ao2mo.general(mol, (Co, Co, Cv, Cv), compact=False).reshape(
+            no, no, nv, nv
+        )
+        A = np.zeros((nov, nov))
+        for i in range(no):
+            for a in range(nv):
+                p = i * nv + a
+                A[p, p] = e_v[v_idx[a]] - e_o[o_idx[i]]
+                for j in range(no):
+                    for b in range(nv):
+                        q = j * nv + b
+                        A[p, q] -= ijab[i, j, a, b]
+        w = np.linalg.eigvalsh(A)
+        out["n_ov"] = int(nov)
+        out["excitation_ha"] = [float(x) for x in w[:nstates]]
+        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in w[:nstates]]
     elif m == "cisd":
         # CIS(D): Head-Gordon et al., Chem. Phys. Lett. 219, 21 (1994).
         # PySCF has no product CIS(D); evaluate spin-orbital eqs. (8)/(13)/(14)

@@ -28,6 +28,7 @@
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/tdhf.h"
+#include "atomiverse/cpu/scf/uhf.h"
 #include "atomiverse/cpu/scf/uks.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
@@ -1555,6 +1556,130 @@ ExcitedStatesResult UKS::tda(int n_states) const {
             + out.transition_dipole_au(s, 2) * out.transition_dipole_au(s, 2);
         out.oscillator_strength[s] = (2.0 / 3.0) * w(s) * mu2;
     }
+    return out;
+}
+
+ExcitedStatesResult UHF::sf_tda(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "UHF::sf_tda: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    if (det.restricted() || det.generalized())
+        throw std::runtime_error(
+            "UHF::sf_tda: requires an unrestricted (UHF) determinant");
+
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix& Ca = det.coefficients(Spin::alpha);
+    const RealMatrix& Cb = det.coefficients(Spin::beta);
+    const RealVector& ea = det.orbital_energies(Spin::alpha);
+    const RealVector& eb = det.orbital_energies(Spin::beta);
+    const RealVector& fa = det.occupations(Spin::alpha);
+    const RealVector& fb = det.occupations(Spin::beta);
+
+    std::vector<int> occ_a, virt_a, occ_b, virt_b;
+    split_occ_virt(fa, occ_a, virt_a);
+    split_occ_virt(fb, occ_b, virt_b);
+    const int noa = static_cast<int>(occ_a.size());
+    const int nva = static_cast<int>(virt_a.size());
+    const int nob = static_cast<int>(occ_b.size());
+    const int nvb = static_cast<int>(virt_b.size());
+
+    // High-spin convention: flip majority → minority (Ms decreases for
+    // n_alpha ≥ n_beta). Collinear SF-CIS space is one spin-flip block only.
+    const bool alpha_to_beta = (noa >= nob);
+    const int no = alpha_to_beta ? noa : nob;
+    const int nv = alpha_to_beta ? nvb : nva;
+    if (no == 0 || nv == 0)
+        throw std::runtime_error(
+            "UHF::sf_tda: empty SF manifold (need majority occupied and "
+            "minority virtual orbitals — no fallback)");
+    const int nov = no * nv;
+    if (n_states < 1 || n_states > nov)
+        throw std::invalid_argument(
+            "UHF::sf_tda: n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(nov) + "]");
+    if (nov > 512)
+        throw std::runtime_error(
+            "UHF::sf_tda: n_ov = " + std::to_string(nov)
+            + " exceeds dense threshold 512 (no fallback)");
+
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    RealMatrix Co, Cv;
+    if (alpha_to_beta) {
+        RealMatrix dummy_v, dummy_o;
+        coeff_blocks(Ca, occ_a, virt_a, Co, dummy_v);
+        coeff_blocks(Cb, occ_b, virt_b, dummy_o, Cv);
+    } else {
+        RealMatrix dummy_v, dummy_o;
+        coeff_blocks(Cb, occ_b, virt_b, Co, dummy_v);
+        coeff_blocks(Ca, occ_a, virt_a, dummy_o, Cv);
+    }
+
+    // (ij|ab) with i,j majority-occ, a,b minority-virt — exchange block only.
+    const xt::xtensor<double, 4> ijab = mo_transform_eri(eri, Co, Co, Cv, Cv);
+
+    RealMatrix A = xt::zeros<double>({static_cast<std::size_t>(nov),
+                                      static_cast<std::size_t>(nov)});
+    for (int i = 0; i < no; ++i) {
+        for (int a = 0; a < nv; ++a) {
+            const int p = i * nv + a;
+            const int ii = alpha_to_beta
+                               ? occ_a[static_cast<std::size_t>(i)]
+                               : occ_b[static_cast<std::size_t>(i)];
+            const int aa = alpha_to_beta
+                               ? virt_b[static_cast<std::size_t>(a)]
+                               : virt_a[static_cast<std::size_t>(a)];
+            const double e_virt = alpha_to_beta
+                                      ? eb(static_cast<std::size_t>(aa))
+                                      : ea(static_cast<std::size_t>(aa));
+            const double e_occ = alpha_to_beta
+                                     ? ea(static_cast<std::size_t>(ii))
+                                     : eb(static_cast<std::size_t>(ii));
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
+                e_virt - e_occ;
+            for (int j = 0; j < no; ++j) {
+                for (int b = 0; b < nv; ++b) {
+                    const int q = j * nv + b;
+                    A(static_cast<std::size_t>(p),
+                      static_cast<std::size_t>(q)) -=
+                        ijab(static_cast<std::size_t>(i),
+                             static_cast<std::size_t>(j),
+                             static_cast<std::size_t>(a),
+                             static_cast<std::size_t>(b));
+                }
+            }
+        }
+    }
+
+    // Numerical symmetrize then dense Hermitian eigensolve.
+    for (int p = 0; p < nov; ++p)
+        for (int q = p + 1; q < nov; ++q) {
+            const double s =
+                0.5
+                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + A(static_cast<std::size_t>(q),
+                       static_cast<std::size_t>(p)));
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = s;
+            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = s;
+        }
+
+    auto [w, U] = xt::linalg::eigh(A);
+    (void)U;
+    const std::size_t k = static_cast<std::size_t>(n_states);
+    ExcitedStatesResult out;
+    // No closed-shell S/T split; SF roots are Ms-changing. Reuse `triplet` as
+    // the spin-forbidden channel tag (μ = 0).
+    out.channel = ExcitationChannel::triplet;
+    out.tda = true;
+    out.alda = false;
+    out.energy_ev.resize(k);
+    out.oscillator_strength.assign(k, 0.0);
+    out.transition_dipole_au = xt::zeros<double>({k, std::size_t(3)});
+    for (std::size_t s = 0; s < k; ++s)
+        out.energy_ev[s] = w(s) * units::kHartreeInEv;
     return out;
 }
 

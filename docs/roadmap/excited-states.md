@@ -35,7 +35,7 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | Time-dependent Hartree–Fock, TDHF  |  ✓  |   ○  |   ○  |
 | Tamm–Dancoff TDDFT                 |  ✓  |   ○  |   ○  |
 | Full linear-response TDDFT         |  ✓  |   ○  |   ○  |
-| Spin-flip TDA                      |  ○  |   ○  |   ○  |
+| Spin-flip TDA                      |  ✓  |   ○  |   ○  |
 | Spin-flip TDDFT                    |  ○  |   ○  |   ○  |
 | Restricted excitation-window TDDFT |  ○  |   ○  |   ○  |
 | Core–valence-separation TDDFT      |  ○  |   ○  |   ○  |
@@ -45,11 +45,13 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 
 TDA-TDDFT is the LSDA ALDA path and the global-hybrid exact-exchange path on
 `RKS::tda` (B3LYP/PBE0 singlet), plus **open-shell UKS-TDA** spin-conserving
-response on pure LSDA (`UKS::tda`; `reg_uks-tda-o2-lsda` O₂ triplet). Full
-RPA-style Casida A/B on pure KS is `RKS::tddft` (`reg_full-lr-tddft-h2-pbe`);
-hybrid full-LR, spin-flip TDA, and UKS full-LR remain follow-ons. Analytic
-gradient and NAC rows are the CIS/TDA members on `RHF` (analytic default);
-full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
+response on pure LSDA (`UKS::tda`; `reg_uks-tda-o2-lsda` O₂ triplet) and
+**collinear spin-flip TDA** on UHF (`UHF::sf_tda`; `reg_spin-flip-tda-o2`
+O₂ triplet, exchange-only SF-CIS). Full RPA-style Casida A/B on pure KS is
+`RKS::tddft` (`reg_full-lr-tddft-h2-pbe`); hybrid full-LR and UKS full-LR
+remain follow-ons. Analytic gradient and NAC rows are the CIS/TDA members on
+`RHF` (analytic default); full KS TDDFT gradients beyond CIS@RKS are not a
+separate product path yet.
 
 ## 2. Algebraic-Diagrammatic Construction
 
