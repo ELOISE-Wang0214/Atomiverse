@@ -235,5 +235,8 @@ inline constexpr MetaKey<double> kKinetic{"kinetic", true};
 inline constexpr MetaKey<double> kConserved{"conserved", true};
 inline constexpr MetaKey<MetaF64x6> kStress{"stress", true};
 inline constexpr MetaKey<MetaF64x6> kStressKinetic{"stress_kinetic", true};
+/// Per-electrode total charge [e], first ≤3 electrodes (ElectrodeChargeObserver).
+inline constexpr MetaKey<MetaF64x3> kElectrodeCharge{"electrode_charge", true};
 
 } // namespace ATV
+
