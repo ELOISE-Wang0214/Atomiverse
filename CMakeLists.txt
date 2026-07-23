@@ -340,6 +340,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/vibration/thermochem.cpp
             src/cpu/vibration/frequency_report.cpp
             src/cpu/vibration/normal_mode_writer.cpp
+            src/cpu/vibration/supercell.cpp
+            src/cpu/vibration/phonon.cpp
+            src/cpu/vibration/phonon_diagonalizer.cpp
         )
     endif()
 

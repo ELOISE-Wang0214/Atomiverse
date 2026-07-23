@@ -7,6 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [fd-phonon-supercell](fd-phonon-supercell/) | `wf/fd-phonon-supercell` | open — FD supercell phonons (Γ) |
 | [buckingham-pair-lammps](buckingham-pair-lammps/) | `wf/buckingham-pair-lammps` | open — buckingham-pair-lammps |
 | [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
 | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
