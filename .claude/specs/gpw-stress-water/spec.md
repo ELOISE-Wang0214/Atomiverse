@@ -85,8 +85,8 @@ Same water twin as `gpw-forces-water` / `gpw-water-pbe-mt`:
 | Observable | cell stress Voigt [Ha/Bohr³]; optional \(E_\mathrm{tot}\) [Ha] |
 | `local_pp_on_grid` | default **true** |
 
-Twin input: `tools/cp2k_oracle/inputs/h2o_stress_mt.inp` (`STRESS_TENSOR ANALYTICAL`
-or NUMERICAL; print stress).
+Twin input: `tools/cp2k_oracle/inputs/h2o_stress_mt.inp` (`STRESS_TENSOR
+NUMERICAL` — same-method FD twin; ANALYTICAL on nonperiodic MT is **not** the pin).
 
 ## Tasks
 
