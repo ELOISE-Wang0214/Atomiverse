@@ -241,20 +241,12 @@ TEST(TaskMaterializer, SinglePointAm1H2MatchesHandBuiltEvaluateBitwise) {
     EXPECT_EQ(mat.kind(), TaskKind::SinglePoint);
     mat.run(materialized_frame);
 
-    // Directly-built single point: Evaluate + AM1Evaluator bound at
-    // evaluate::Phase::evaluate (AM1Evaluator deliberately has no
-    // default_bindings()), same config field for field.
-    cpu::semiempirical::AM1 cfg{};
-    cfg.charge = 0;
-    cfg.multiplicity = 1;
-    cfg.max_iter = 200;
-    cfg.density_tol = 1.0e-8;
-    cfg.energy_tol = 1.0e-10;
-
+    // Directly-built single point: Evaluate + AM1Evaluator (same args as
+    // AM1EvaluatorParams / constructor — no intermediate Config bag).
     cpu::Frame direct_frame = make_h2_frame();
     cpu::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cpu::semiempirical::AM1Evaluator{cfg});
+        .add(cpu::semiempirical::AM1Evaluator{0, 1, 200, 1.0e-8, 1.0e-10});
     eval.build();
     eval.run(direct_frame);
 

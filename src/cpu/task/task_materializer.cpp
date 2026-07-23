@@ -93,16 +93,12 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
 
     if (kind_ == TaskKind::SinglePoint) {
         const auto& p = spec.single_point().evaluator;
-        semiempirical::AM1Config cfg;
-        cfg.charge = p.charge;
-        cfg.multiplicity = p.multiplicity;
-        cfg.max_iter = p.max_iter;
-        cfg.density_tol = p.density_tol;
-        cfg.energy_tol = p.energy_tol;
         eval_.emplace();
         eval_->set_serial_on_replica();
         eval_->on(ATV::evaluate::Phase::evaluate)
-            .add(semiempirical::AM1Evaluator{cfg});
+            .add(semiempirical::AM1Evaluator{
+                p.charge, p.multiplicity, p.max_iter, p.density_tol,
+                p.energy_tol});
         eval_->build();
         return;
     }

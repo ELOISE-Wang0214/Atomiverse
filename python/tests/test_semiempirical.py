@@ -68,56 +68,57 @@ def am1_ch4() -> tuple["molrs.Frame", "av.AM1Evaluator"]:
     return frame, evaluator
 
 
-# ── AM1Config construction and field roundtrip ──────────────────────
+# ── AM1 construction (parameters assigned in the constructor) ───────
 
 
-class TestAM1Config:
+class TestAM1:
     def test_default_construction(self) -> None:
-        """AM1Config() carries the documented defaults."""
-        cfg = av.AM1Config()
-        assert cfg.charge == 0
-        assert cfg.multiplicity == 1
-        assert cfg.max_iter == 200
-        assert cfg.density_tol == pytest.approx(1e-8)
-        assert cfg.energy_tol == pytest.approx(1e-10)
+        """AM1() carries the documented defaults."""
+        m = av.AM1()
+        assert m.charge == 0
+        assert m.multiplicity == 1
+        assert m.max_iter == 200
+        assert m.density_tol == pytest.approx(1e-8)
+        assert m.energy_tol == pytest.approx(1e-10)
 
     def test_kwargs_roundtrip(self) -> None:
-        """Every kwarg lands on the matching field."""
-        cfg = av.AM1Config(
+        """Constructor kwargs land on the matching members."""
+        m = av.AM1(
             charge=-1,
             multiplicity=2,
             max_iter=50,
             density_tol=1e-6,
             energy_tol=1e-8,
         )
-        assert cfg.charge == -1
-        assert cfg.multiplicity == 2
-        assert cfg.max_iter == 50
-        assert cfg.density_tol == pytest.approx(1e-6)
-        assert cfg.energy_tol == pytest.approx(1e-8)
+        assert m.charge == -1
+        assert m.multiplicity == 2
+        assert m.max_iter == 50
+        assert m.density_tol == pytest.approx(1e-6)
+        assert m.energy_tol == pytest.approx(1e-8)
 
     def test_fields_writable(self) -> None:
-        """Config fields are read-write (def_rw contract)."""
-        cfg = av.AM1Config()
-        cfg.charge = 1
-        cfg.max_iter = 300
-        assert cfg.charge == 1
-        assert cfg.max_iter == 300
+        """Members remain read-write after construction."""
+        m = av.AM1()
+        m.charge = 1
+        m.max_iter = 300
+        assert m.charge == 1
+        assert m.max_iter == 300
 
 
 class TestAM1EvaluatorConstruction:
     def test_default_constructible(self) -> None:
         assert av.AM1Evaluator() is not None
 
-    def test_constructible_from_config(self) -> None:
-        cfg = av.AM1Config(charge=0, multiplicity=1)
-        assert av.AM1Evaluator(cfg) is not None
+    def test_constructible_from_kwargs(self) -> None:
+        assert av.AM1Evaluator(charge=0, multiplicity=1) is not None
 
-    def test_config_accessor_roundtrip(self) -> None:
-        """config() exposes the construction config read-only."""
-        cfg = av.AM1Config(max_iter=77)
-        evaluator = av.AM1Evaluator(cfg)
-        assert evaluator.config().max_iter == 77
+    def test_constructible_from_method(self) -> None:
+        assert av.AM1Evaluator(av.AM1(max_iter=77)) is not None
+
+    def test_method_accessor_roundtrip(self) -> None:
+        """method() exposes the owned AM1 with construction parameters."""
+        evaluator = av.AM1Evaluator(max_iter=77)
+        assert evaluator.method().max_iter == 77
 
 
 # ── CH4 single point: energy channel + charge write-back ────────────

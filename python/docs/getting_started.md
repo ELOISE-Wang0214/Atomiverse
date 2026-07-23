@@ -186,7 +186,7 @@ never a namespace: `av.md.MD(dt=0.001, device="cpu")` is the default;
 `single_point` pass (`type` column = atomic number Z; no AM1 forces yet):
 
 ```python
-ev = av.AM1Evaluator(av.AM1Config(charge=0))
+ev = av.AM1Evaluator(charge=0)
 av.single_point(frame, ev)                     # energy + charges onto frame
 q = np.asarray(frame["atoms"]["charge"])       # Mulliken charges [e]
 res = ev.last_result()                         # Hartree / kcal-mol detail

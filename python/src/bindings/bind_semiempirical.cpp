@@ -34,33 +34,22 @@ void bind_semiempirical(nb::module_& m) {
     using cpu::semiempirical::AM1Evaluator;
     using cpu::semiempirical::AM1Result;
 
-    // ── AM1 (= NDDOConfig; `method` is pinned to AM1, not exposed) ──
-    nb::class_<AM1>(m, "AM1",
-                          "AM1 SCF configuration (method pinned to AM1).")
-        .def(
-            "__init__",
-            [](AM1* cfg, int charge, int multiplicity, int max_iter,
-               double density_tol, double energy_tol) {
-                new (cfg) AM1{};
-                cfg->charge = charge;
-                cfg->multiplicity = multiplicity;
-                cfg->max_iter = max_iter;
-                cfg->density_tol = density_tol;
-                cfg->energy_tol = energy_tol;
-            },
-            nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
-            nb::arg("max_iter") = 200, nb::arg("density_tol") = 1.0e-8,
-            nb::arg("energy_tol") = 1.0e-10,
-            "Construct with total charge [e], spin multiplicity, SCF "
-            "iteration cap, density-norm tolerance (dimensionless), and "
-            "energy tolerance [Hartree].")
+    // ── AM1 concrete method (parameters assigned in the constructor) ──
+    nb::class_<AM1>(m, "AM1", "AM1 semiempirical method (members + run).")
+        .def(nb::init<int, int, int, double, double>(),
+             nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
+             nb::arg("max_iter") = 200, nb::arg("density_tol") = 1.0e-8,
+             nb::arg("energy_tol") = 1.0e-10,
+             "Construct with total charge [e], spin multiplicity, SCF "
+             "iteration cap, density residual (dimensionless), energy "
+             "tolerance [eV].")
         .def_rw("charge", &AM1::charge, "Total molecular charge [e].")
         .def_rw("multiplicity", &AM1::multiplicity, "Spin multiplicity.")
         .def_rw("max_iter", &AM1::max_iter, "SCF iteration cap.")
         .def_rw("density_tol", &AM1::density_tol,
-                "Density-norm convergence threshold (dimensionless).")
+                "Density residual threshold (dimensionless).")
         .def_rw("energy_tol", &AM1::energy_tol,
-                "Energy convergence threshold [Hartree].");
+                "Energy convergence threshold [eV].");
 
     // ── AM1Result (= NDDOResult) ──
     nb::class_<AM1Result>(m, "AM1Result",
@@ -85,7 +74,14 @@ void bind_semiempirical(nb::module_& m) {
         m, "AM1Evaluator",
         "AM1 single-point Evaluator (Energy | Charge | DensityMatrix; no "
         "forces — plugs into single_point, never into MD).")
-        .def(nb::init<>(), "Default construct; set members on method().")
+        .def(nb::init<>(), "Default construct.")
+        .def(nb::init<int, int, int, double, double>(),
+             nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
+             nb::arg("max_iter") = 200, nb::arg("density_tol") = 1.0e-8,
+             nb::arg("energy_tol") = 1.0e-10,
+             "Construct owned AM1 with SCF parameters.")
+        .def(nb::init<AM1>(), nb::arg("method"),
+             "Own a concrete AM1 method.")
         .def("last_result", &AM1Evaluator::last_result,
              nb::rv_policy::reference_internal,
              "Results of the most recent solve (AM1Result).")

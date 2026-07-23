@@ -31,7 +31,16 @@ class AM1 {
     /// @brief Energy residual tolerance [eV].
     double energy_tol = 1.0e-10;
 
+    /// @brief Default parameters (charge 0, singlet, max_iter 200, …).
     AM1();
+    /// @brief Construct with SCF parameters assigned immediately.
+    /// @param charge Total molecular charge [e].
+    /// @param multiplicity Spin multiplicity 2S+1 (dimensionless).
+    /// @param max_iter SCF iteration cap (dimensionless).
+    /// @param density_tol Density residual tolerance (dimensionless).
+    /// @param energy_tol Energy residual tolerance [eV].
+    AM1(int charge, int multiplicity, int max_iter = 200,
+        double density_tol = 1.0e-8, double energy_tol = 1.0e-10);
     ~AM1();
     AM1(AM1&&) noexcept;
     AM1& operator=(AM1&&) noexcept;
@@ -56,15 +65,6 @@ class AM1 {
 
 /// @brief Historical alias of the concrete AM1 method.
 using AM1Solver = AM1;
-
-/// @brief Transitional parameter bag (evaluator / task / python).
-struct AM1Config {
-    int charge = 0;
-    int multiplicity = 1;
-    int max_iter = 200;
-    double density_tol = 1.0e-8;
-    double energy_tol = 1.0e-10;
-};
 
 } // namespace semiempirical
 } // namespace cpu

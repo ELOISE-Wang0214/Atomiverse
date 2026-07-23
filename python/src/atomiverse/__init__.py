@@ -30,7 +30,7 @@ Canonical deep path                   Top-level re-export         C++ symbol (di
 ``recorder.Thermo``                   ``Thermo``                  ``cpu::Thermo`` (recorder/)
 ``pw.PWSolver`` / ``pw.PWConfig``     ``PWSolver`` / ``PWConfig`` ``cpu::pw`` (pw/)
 ``pw.PWResult``                       ``PWResult``                 ``cpu::pw`` (pw/)
-``semiempirical.AM1Config``           ``AM1Config``               ``cpu::semiempirical`` (semiempirical/)
+``semiempirical.AM1``                 ``AM1``                     ``cpu::semiempirical`` (semiempirical/)
 ``semiempirical.AM1Evaluator``        ``AM1Evaluator``            ``cpu::semiempirical`` (semiempirical/)
 ``semiempirical.AM1Result``           ``AM1Result``               ``cpu::semiempirical`` (semiempirical/)
 ``driver.single_point``               ``single_point``            ``cpu::single_point`` (driver/)
@@ -81,7 +81,7 @@ _COMPUTE_EXPORTS: dict[str, tuple[str, str]] = {
     "AngleHarmonic": ("atomiverse.potentials.angle", "Harmonic"),
     "DihedralMultiHarmonic": ("atomiverse.potentials.dihedral", "MultiHarmonic"),
     "Thermo": ("atomiverse.recorder", "Thermo"),
-    "AM1Config": ("atomiverse.semiempirical", "AM1Config"),
+    "AM1": ("atomiverse.semiempirical", "AM1"),
     "AM1Evaluator": ("atomiverse.semiempirical", "AM1Evaluator"),
     "AM1Result": ("atomiverse.semiempirical", "AM1Result"),
     "single_point": ("atomiverse.driver", "single_point"),
@@ -105,7 +105,7 @@ __all__ = [
     "AngleHarmonic",
     "DihedralMultiHarmonic",
     "Thermo",
-    "AM1Config",
+    "AM1",
     "AM1Evaluator",
     "AM1Result",
     "single_point",

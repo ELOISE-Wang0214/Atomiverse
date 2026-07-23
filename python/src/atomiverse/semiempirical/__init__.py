@@ -3,7 +3,7 @@
 Single-point only: ``AM1Evaluator`` carries ``Energy | Charge |
 DensityMatrix`` capabilities — no forces, so it plugs into
 ``atomiverse.driver.single_point``, never into MD (AM1 gradients are a
-future spec). Canonical deep paths: ``atomiverse.semiempirical.AM1Config``
+future spec). Canonical deep paths: ``atomiverse.semiempirical.AM1``
 / ``AM1Evaluator`` / ``AM1Result``; the top-level names are the same
 classes.
 
@@ -11,16 +11,16 @@ Example::
 
     import atomiverse as atv
 
-    ev = atv.AM1Evaluator(atv.AM1Config(charge=0))
+    ev = atv.AM1Evaluator(charge=0)   # or AM1Evaluator(atv.AM1(charge=0))
     atv.single_point(frame, ev)      # energy [eV] + charges [e] on frame
     res = ev.last_result()           # Hartree/kcal-mol detail + Mulliken
 """
 
 from atomiverse._binding import _cpp
 
-#: SCF configuration — ``cpu::semiempirical::AM1Config`` (charge [e],
-#: multiplicity, max_iter, density_tol, energy_tol [Hartree]).
-AM1Config = _cpp.AM1Config
+#: Concrete AM1 method — parameters assigned in the constructor
+#: (``charge``, ``multiplicity``, ``max_iter``, ``density_tol``, ``energy_tol``).
+AM1 = _cpp.AM1
 
 #: The AM1 single-point Evaluator component.
 AM1Evaluator = _cpp.AM1Evaluator
@@ -28,4 +28,4 @@ AM1Evaluator = _cpp.AM1Evaluator
 #: Converged-solve results: energies, Mulliken charges, iteration count.
 AM1Result = _cpp.AM1Result
 
-__all__ = ["AM1Config", "AM1Evaluator", "AM1Result"]
+__all__ = ["AM1", "AM1Evaluator", "AM1Result"]

@@ -47,7 +47,7 @@ _BASE_MAPPING: tuple[tuple[str, str, str], ...] = (
     ("AngleHarmonic", "atomiverse.potentials.angle", "Harmonic"),
     ("DihedralMultiHarmonic", "atomiverse.potentials.dihedral", "MultiHarmonic"),
     ("Thermo", "atomiverse.recorder", "Thermo"),
-    ("AM1Config", "atomiverse.semiempirical", "AM1Config"),
+    ("AM1", "atomiverse.semiempirical", "AM1"),
     ("AM1Evaluator", "atomiverse.semiempirical", "AM1Evaluator"),
     ("AM1Result", "atomiverse.semiempirical", "AM1Result"),
     ("single_point", "atomiverse.driver", "single_point"),

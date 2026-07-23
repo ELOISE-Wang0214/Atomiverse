@@ -16,23 +16,12 @@ namespace semiempirical {
 class AM1Evaluator : public cpu::Semiempirical {
   public:
     AM1Evaluator() = default;
+    /// @brief Own a concrete AM1 method (parameters already on the method).
     explicit AM1Evaluator(AM1 method) : solver_(std::move(method)) {}
-    explicit AM1Evaluator(AM1Config config) {
-        solver_.charge = config.charge;
-        solver_.multiplicity = config.multiplicity;
-        solver_.max_iter = config.max_iter;
-        solver_.density_tol = config.density_tol;
-        solver_.energy_tol = config.energy_tol;
-    }
-    AM1Config config() const {
-        AM1Config c;
-        c.charge = solver_.charge;
-        c.multiplicity = solver_.multiplicity;
-        c.max_iter = solver_.max_iter;
-        c.density_tol = solver_.density_tol;
-        c.energy_tol = solver_.energy_tol;
-        return c;
-    }
+    /// @brief Construct method with SCF parameters (same args as `AM1`).
+    AM1Evaluator(int charge, int multiplicity, int max_iter = 200,
+                 double density_tol = 1.0e-8, double energy_tol = 1.0e-10)
+        : solver_(charge, multiplicity, max_iter, density_tol, energy_tol) {}
 
     std::string name() const override { return "am1_evaluator"; }
 

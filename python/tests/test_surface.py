@@ -9,7 +9,7 @@ namespace (pinned per row in test_namespaces.py):
   ``AngleHarmonic``, ``DihedralMultiHarmonic``) with no legacy aliases
   (``LJ``, ``HarmonicBond``, ``HarmonicAngle``, ``MultiHarmonicDihedral``)
   and no deprecation shims.
-* The AM1 semiempirical single-point trio (``AM1Config``, ``AM1Evaluator``,
+* The AM1 semiempirical single-point trio (``AM1``, ``AM1Evaluator``,
   ``AM1Result``) plus the ``single_point`` entry point.
 * The dead SCF / old ``optimizer`` facade is gone and FAILS LOUD:
   ``atomiverse.scf`` / ``atomiverse.optimizer`` no longer import, dead
@@ -71,7 +71,7 @@ _CANONICAL_ALL: frozenset[str] = frozenset(
         "AngleHarmonic",
         "DihedralMultiHarmonic",
         "Thermo",
-        "AM1Config",
+        "AM1",
         "AM1Evaluator",
         "AM1Result",
         "single_point",

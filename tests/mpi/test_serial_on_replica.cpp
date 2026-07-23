@@ -73,23 +73,13 @@ cpu::Frame make_h2_frame() {
     return frame;
 }
 
-/// @brief The one AM1 configuration shared by driver and reference paths.
-cpu::semiempirical::AM1Config h2_config() {
-    cpu::semiempirical::AM1Config cfg{};
-    cfg.charge = 0;
-    cfg.multiplicity = 1;
-    cfg.max_iter = 200;
-    cfg.density_tol = 1.0e-8;
-    cfg.energy_tol = 1.0e-10;
-    return cfg;
-}
-
 /// @brief Run the serial-on-replica Evaluate + AM1 single point in place.
 void run_serial_on_replica_am1(cpu::Frame& frame) {
     cpu::Evaluate eval;
     eval.set_serial_on_replica();
+    // charge=0, singlet, max_iter=200, dens/energy tols default.
     eval.on(ATV::evaluate::Phase::evaluate)
-        .add(cpu::semiempirical::AM1Evaluator{h2_config()});
+        .add(cpu::semiempirical::AM1Evaluator{0, 1, 200, 1.0e-8, 1.0e-10});
     eval.build();
     eval.run(frame);
 }
@@ -142,15 +132,7 @@ TEST(SerialOnReplica, EvaluateAm1MatchesSerialInnerSolverReference) {
     // pinned frame contract: scalars.energy = electronic energy [eV],
     // atoms.charge = Mulliken charges [e].
     auto ref_frame = make_h2_frame();
-    cpu::semiempirical::AM1Solver solver;
-    {
-        const auto cfg = h2_config();
-        solver.charge = cfg.charge;
-        solver.multiplicity = cfg.multiplicity;
-        solver.max_iter = cfg.max_iter;
-        solver.density_tol = cfg.density_tol;
-        solver.energy_tol = cfg.energy_tol;
-    }
+    cpu::semiempirical::AM1Solver solver{0, 1, 200, 1.0e-8, 1.0e-10};
     solver.build(ref_frame);
     const auto& ref = solver.run(ref_frame);
     ASSERT_TRUE(ref.converged);

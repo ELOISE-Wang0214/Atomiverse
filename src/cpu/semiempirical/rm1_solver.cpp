@@ -5,6 +5,12 @@ namespace ATV {
 namespace cpu {
 namespace semiempirical {
 RM1::RM1() = default;
+
+RM1::RM1(int charge_, int multiplicity_, int max_iter_, double density_tol_,
+         double energy_tol_)
+    : charge(charge_), multiplicity(multiplicity_), max_iter(max_iter_),
+      density_tol(density_tol_), energy_tol(energy_tol_) {}
+
 RM1::~RM1() = default;
 RM1::RM1(RM1&&) noexcept = default;
 RM1& RM1::operator=(RM1&&) noexcept = default;
