@@ -523,6 +523,7 @@ if(NOT ATV_DOCS_ONLY)
 
             src/cpu/scf/mp2.cpp
             src/cpu/scf/mp3.cpp
+            src/cpu/scf/ccsd.cpp
             src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
@@ -655,7 +656,6 @@ if(NOT ATV_DOCS_ONLY)
             target_sources(atomiverse PRIVATE
                 src/cpu/scf/xc_functional.cpp
                 src/cpu/scf/xc_gga.cpp
-            src/cpu/scf/ccsd.cpp
             )
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)

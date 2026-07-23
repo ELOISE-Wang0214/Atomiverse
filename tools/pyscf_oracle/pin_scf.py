@@ -14,6 +14,8 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py sos-mp2 --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py mp3 --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
@@ -148,7 +150,7 @@ def main() -> int:
 
     try:
         import pyscf
-        from pyscf import scf, dft, mp, tdscf
+        from pyscf import scf, dft, mp, tdscf, cc as pyscf_cc
     except ImportError as e:
         print(json.dumps({"ok": False, "error": f"pyscf missing: {e}"}))
         return 2
@@ -272,6 +274,16 @@ def main() -> int:
         mf = dft.RKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
+    elif m == "b2plyp":
+        # Grimme B2PLYP double hybrid (JCP 124, 034108 (2006)):
+        #   a_x = 0.53 HF, (1-a_x) B88, (1-a_c) LYP, a_c = 0.27 PT2/MP2.
+        # Hosted libxc often lacks the named B2PLYP composite; compose the
+        # hybrid-KS part explicitly and scale MP2 by a_c offline.
+        mf = dft.RKS(mol)
+        mf.xc = "0.53*HF + 0.47*GGA_X_B88 + 0.73*GGA_C_LYP"
+        out["xc"] = mf.xc
+        out["a_x"] = 0.53
+        out["a_c"] = 0.27
     elif m in ("uks", "uks-tda"):
         mf = dft.UKS(mol)
         mf.xc = args.xc
@@ -281,7 +293,7 @@ def main() -> int:
         mf.xc = args.xc
         out["xc"] = args.xc
     else:
-        # tda / tdhf / mp2 ground state: RHF
+        # tda / tdhf / mp2 / mp3 / ccsd ground state: RHF
         mf = scf.RHF(mol)
 
 
@@ -737,6 +749,37 @@ def main() -> int:
         out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
         out["s1_ha"] = float(e_adc[0])
         out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ccsd":
+        # Closed-shell CCSD on the RHF reference (PySCF cc.CCSD).
+        # Local import: other branches also re-bind `np`, so use a fresh name.
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, t1, t2 = mycc.kernel()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        t1a = _np.asarray(t1).ravel()
+        t2a = _np.asarray(t2).ravel()
+        out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
+        out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+    elif m == "b2plyp":
+        # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.
+        m2 = mp.MP2(mf).run()
+        a_c = 0.27
+        e_corr_pt2 = a_c * float(m2.e_corr)
+        out["e_ks_ha"] = float(e)
+        out["e_corr_mp2_ha"] = float(m2.e_corr)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
+        out["e_corr_pt2_ha"] = e_corr_pt2
+        out["e_corr_ha"] = e_corr_pt2
+        out["e_tot_ha"] = float(e) + e_corr_pt2
+        out["a_c"] = a_c
+        out["a_x"] = 0.53
 
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0 if out.get("converged", True) else 1

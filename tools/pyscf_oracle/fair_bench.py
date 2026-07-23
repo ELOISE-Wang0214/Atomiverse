@@ -90,6 +90,40 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
         "mp2": "from pyscf import scf, mp\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()",
         "ump2": "from pyscf import scf, mp\nmf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
 "romp2": "from pyscf import scf, mp\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
+        # Closed-shell RMP3 oracle (PySCF has no mp.MP3): RHF + Szabo/Psi4NumPy diagrams.
+        "mp3": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel()\n"
+            "C=np.asarray(mf.mo_coeff); eps=np.asarray(mf.mo_energy)\n"
+            "nmo=C.shape[1]; ndocc=mol.nelectron//2\n"
+            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
+            "MO=np.einsum('prqs->pqrs', eri)\n"
+            "o=slice(0,ndocc); v=slice(ndocc,nmo)\n"
+            "eocc,evirt=eps[:ndocc],eps[ndocc:]\n"
+            "D=1.0/(eocc.reshape(-1,1,1,1)+eocc.reshape(-1,1,1)-evirt.reshape(-1,1)-evirt)\n"
+            "e2=2*np.einsum('abrs,rsab,abrs',MO[o,o,v,v],MO[v,v,o,o],D)"
+            "-np.einsum('abrs,rsba,abrs',MO[o,o,v,v],MO[v,v,o,o],D)\n"
+            "e3=2*np.einsum('abru,ruts,tsab,abru,abts',MO[o,o,v,v],MO[v,v,v,v],MO[v,v,o,o],D,D)\n"
+            "e3+=2*np.einsum('adrs,cbad,rscb,adrs,cbrs',MO[o,o,v,v],MO[o,o,o,o],MO[v,v,o,o],D,D)\n"
+            "e3+=-4*np.einsum('acrt,rbsc,stab,acrt,abst',MO[o,o,v,v],MO[v,o,v,o],MO[v,v,o,o],D,D)\n"
+            "e3+=-4*np.einsum('bcrt,rasb,stac,bcrt,acst',MO[o,o,v,v],MO[v,o,v,o],MO[v,v,o,o],D,D)\n"
+            "e3+=8*np.einsum('acrt,btsc,rsab,acrt,abrs',MO[o,o,v,v],MO[o,v,v,o],MO[v,v,o,o],D,D)\n"
+            "e3+=2*np.einsum('cbrt,atsc,rsab,cbrt,abrs',MO[o,o,v,v],MO[o,v,v,o],MO[v,v,o,o],D,D)\n"
+            "e3+=-1*np.einsum('acrs,dbac,srdb,acrs,dbrs',MO[o,o,v,v],MO[o,o,o,o],MO[v,v,o,o],D,D)\n"
+            "e3+=-1*np.einsum('abrt,trus,usab,abtr,abus',MO[o,o,v,v],MO[v,v,v,v],MO[v,v,o,o],D,D)\n"
+            "e3+=2*np.einsum('bcrt,arbs,tsac,cbrt,acst',MO[o,o,v,v],MO[o,v,o,v],MO[v,v,o,o],D,D)\n"
+            "e3+=2*np.einsum('cbrt,rasb,stac,cbrt,acst',MO[o,o,v,v],MO[v,o,v,o],MO[v,v,o,o],D,D)\n"
+            "e3+=-4*np.einsum('abrs,scat,rtbc,abrs,cbrt',MO[o,o,v,v],MO[v,o,o,v],MO[v,v,o,o],D,D)\n"
+            "e3+=-4*np.einsum('bcrt,atsc,rsab,bctr,abrs',MO[o,o,v,v],MO[o,v,v,o],MO[v,v,o,o],D,D)\n"
+            "float(e2+e3)"
+        ),
+        "ccsd": "from pyscf import scf, cc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); cc.CCSD(mf).run()",
+        # B2PLYP double hybrid: hybrid KS (a_x=0.53 B88+LYP) + scaled MP2 (a_c=0.27).
+        "b2plyp": (
+            "from pyscf import dft, mp\n"
+            "mf=dft.RKS(mol); mf.xc='0.53*HF + 0.47*GGA_X_B88 + 0.73*GGA_C_LYP'; "
+            "mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()"
+        ),
         "tda": (
             "from pyscf import scf, tdscf\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
             f"td=tdscf.TDA(mf); td.nstates={nstates}; td.kernel()"
