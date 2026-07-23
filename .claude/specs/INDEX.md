@@ -35,3 +35,11 @@ removed. Unique Kokkos WIP preserved only as local branch
 | architecture | backend-mirror, cuda-resurrect, cuda-pme-accuracy | layout rewrite, CUDA live, PME Madelung |
 
 Do not re-create closed slugs without superseding intent.
+
+## Closed — CUDA OpenMM MD engine (2026-07-23, from origin/dev)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cuda-openmm-md 01–05 | contract, rebuild, tile-force, multigpu, delete | CS=32 clusters, real masks, tile LJ/Coul, multi-GPU classify; Verlet default removed on CUDA |
+
+Do not re-create closed slugs without superseding intent.

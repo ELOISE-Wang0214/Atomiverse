@@ -33,6 +33,15 @@ active debt on this track.
 **SUPERSEDED 2026-07-23** — see campaign note above. Residual historical
 detail in git log only.
 
+## [2026-07-23] CUDA classical MD = OpenMM cluster/tile engine
+
+**Shipped on origin and merged:** `cuda-openmm-md-01`…`05` rewrite neighbor +
+nonbonded force (CS=32, real masks, tile LJ/Coul, multi-GPU cluster classify).
+Public MD facade stays LAMMPS-named; CUDA implementation is OpenMM. Notes:
+`.claude/notes/cuda-openmm-neighbor-force.md`, `cuda-openmm-md-perf.md`.
+PME Madelung residual closed via `cuda-pme-accuracy`; force engine destination
+is the OpenMM tile path (not style A/B).
+
 ## [2026-07-17] SCF is a Driver; methods are concrete — kill the bag
 
 **Binding rule (AGENTS.md / CLAUDE.md).** Three mistakes, one correction:
@@ -457,12 +466,15 @@ exactly as `tests/cpu/driver_test_helpers.h` does.
 
 ### Residual debt (both PRE-EXISTING, orthogonal to the mirror)
 
-- **CUDA PME 3% Madelung** → split out as spec `cuda-pme-accuracy`. Ruled out:
-  unit renames (cancel in the ratio), float precision (**fails identically under
-  `-DATV_CUDA_REAL=double`**), missing terms (reciprocal + self present;
-  net-charge correction is zero for neutral NaCl), and the Frame/scalars bridge
-  (all other CUDA energy tests green). Needs an on-device numerical bisect of the
-  reciprocal path (B-spline normalization / grid dims / influence function).
+- **CUDA PME 3% Madelung** → **ROOT-CAUSED** (`cuda-pme-accuracy`, 2026-07-23):
+  recip+self of `KSpacePME` was fine; real-space `CoulLong` was a **dead path**
+  (empty cluster CSR after Verlet drift). **Architecture:** not “patch Verlet” —
+  full **OpenMM engine** rewrite of CUDA MD neighbor+force
+  (`.claude/notes/cuda-openmm-neighbor-force.md`, chain `cuda-openmm-md-01`…`05`).
+  Supersedes style-level `cuda-openmm-neighbor-force` spec.
+
+- **CUDA classical MD = OpenMM engine (2026-07-23, operator).** Not a
+  `NonbondedStyle` switch. LAMMPS names allowed on facade + CPU only.
 
 - **DEBT: `test_cpu_scf_ghf` fails on aarch64 only.** `GHF.NoncollinearBelowUhfOnTriangularH3`
   (`tests/cpu/scf/test_ghf.cpp:241`) — a **CPU** UHF energy pin inside the GHF

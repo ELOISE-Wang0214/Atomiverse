@@ -187,8 +187,29 @@ Do **not** invent a new exception without `/mol:note`.
 **Supersedes:** transitional public `RemdConfig` / `PimdConfig` /
 `DimerConfig` / `IrcConfig` / `StringConfig` / `HRemdConfig` /
 `NoseHooverNPT::Config` / `GpwEvaluatorConfig` / `AM1Config` /
-`AM1BCCChargeConfig` / `PW` as user path — deleted or privatized
+`AM1BCCChargeConfig` / `PWConfig` as user path — deleted or privatized
 2026-07-23. Do not reintroduce.
+
+<!-- mol:note:topic:cuda-openmm-neighbor-force -->
+## CUDA classical MD — OpenMM **engine** architecture
+
+**Rule (operator, 2026-07-23):** CUDA classical MD neighbor rebuild and
+nonbonded force are an **OpenMM cluster/tile engine**, not a style flag and not
+“LAMMPS algorithm on CUDA”.
+
+- **Engine path:** spatial reorder → clusters (target **32**) → AABB → cluster
+  CSR + **real** interaction masks → **tile / shared-memory** force for LJ and
+  real-space Coulomb. PME stays `longrange/` (cuFFT).
+- **Public facade** may stay LAMMPS-named (`set_neighbor`, MD phases); **CPU**
+  may stay LAMMPS-like. That does not license `vl_*` / `launch_build_verlet_direct`
+  as the CUDA MD force architecture.
+- **Forbidden:** `NonbondedStyle` / `ATV_CUDA_NONBONDED` dual architecture;
+  force default on per-atom Verlet; production `memset` all-ones masks; claiming
+  “OpenMM is slower” from a half-finished shell A/B.
+- **Shipped:** `cuda-openmm-md-01`…`05` closed 2026-07-23 (specs deleted; history in git).
+
+Note: `.claude/notes/cuda-openmm-neighbor-force.md`
+
 
 # AGENTS.md
 

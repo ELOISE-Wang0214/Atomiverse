@@ -146,6 +146,8 @@ Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23
 | ~~`RemdConfig`~~ | **deleted 2026-07-23** — `Remd(temperatures, dt, …)` ctor args / members |
 | Torch Frame layout | Pre-blocks+meta hard-cut; experimental only |
 | CUDA PME Madelung | Closed 2026-07-23 (`cuda-pme-accuracy`) |
+| CUDA PME Madelung ~3% | Was dead real-space CoulLong after Verlet drift; fixed on path — **engine destination** = OpenMM tile force (`cuda-openmm-md` chain) |
+| CUDA classical MD neighbor/force | **OpenMM engine rewrite** (`cuda-openmm-md-01`…`05`); not style A/B; see notes `cuda-openmm-neighbor-force` |
 
 ### Style summary
 
