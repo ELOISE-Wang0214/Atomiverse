@@ -40,19 +40,19 @@ Every item must be verified before `acceptance_met=true` / `status=green`.
      `xc=LSDA`, `tol`, `max_iter`) — no Config bag.
    - `Bands` with `n_bands=8`, `set_diamond_path(4)`; assert
      `scf_converged`, sorted \(\varepsilon_n(\mathbf{k})\),
-     \(n_\mathrm{bands}=8\) columns.
-   - **Indirect-gap character**: VBM at a Γ-path sample; CBM **not** at the
-     same k as VBM (Si indirect), **or** documented path index of CBM nearer
-     X than Γ when both are sampled.
-   - **Gap window** (incomplete ecut/k):
+     \(n_\mathrm{bands}=8\) columns; every **local** same-\(k\) gap \(> 0\).
+   - Path samples \(\Gamma\) and \(X\); **indirect character**
+     \(\varepsilon_c(X) < \varepsilon_c(\Gamma)\).
+   - **Γ→X gap window** (incomplete ecut/k) — textbook Si transition
+     \(E_{\Gamma\to X}=\varepsilon_c(X)-\varepsilon_v(\Gamma)\), not sparse-path
+     \(\max\varepsilon_v-\min\varepsilon_c\):
      \[
-     0.05~\mathrm{eV} \le E_g^\mathrm{ATV} \le 2.50~\mathrm{eV}
+     0.05~\mathrm{eV}
+       \le E_{\Gamma\to X}^\mathrm{ATV}\times 13.605693~\mathrm{(if\ Ry)}
+       \le 2.50~\mathrm{eV}.
      \]
-     with \(E_g = \mathrm{gap\_ry}\times 13.605693\). Catches metallic
-     collapse and absurd multi-eV disasters while allowing LDA + incomplete
-     basis elevation/depression vs Yin–Cohen ~0.45 eV.
-   - Direct \(\Gamma\) gap (when Γ is sampled) \(\ge\) indirect gap − 0.05 eV
-     (Si: direct larger than indirect).
+     Literature: Yin & Cohen LDA ~0.45 eV. Measured twin ~0.48 eV.
+   - Direct \(\Gamma\) gap \(\ge\) Γ→X − 0.05 eV.
    - `Dos` with `k_mesh=4`, `n_bands=8`, `sigma_ry=0.05`:
      occupied integral \(n_\mathrm{elec\_to\_vbm}\) within **1.0** of
      \(n_e=8\) (tutorial mesh/broadening; rejects unit disasters).

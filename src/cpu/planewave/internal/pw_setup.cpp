@@ -695,6 +695,50 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     }
 }
 
+void rebuild_k_tables(PWProblem& out, const cpu::Frame& frame,
+                      const std::string& upf_path, double ecut_ry,
+                      const std::vector<Vec3>& kfrac) {
+    if (kfrac.empty())
+        throw std::invalid_argument("rebuild_k_tables: empty k-list");
+
+    const cpu::Box& box_ang = frame.simbox;
+    cpu::Box box_bohr;
+    box_bohr.set_cell(box_ang.cell() * AccReal(1.8897259886));
+    AccReal ecut_ht = static_cast<AccReal>(ecut_ry) * AccReal(0.5);
+    AccReal vol_bohr = box_bohr.volume();
+    auto pos_bohr = pos_to_bohr(frame);
+    int n_atoms = static_cast<int>(pos_bohr.size());
+
+    out.kg.kpoints = kfrac;
+    const AccReal w = AccReal(1) / AccReal(static_cast<int>(kfrac.size()));
+    out.kg.weights.assign(kfrac.size(), w);
+
+    auto recip = box_bohr.recip_cell();
+    out.gv_k.clear();
+    out.gv_k.reserve(kfrac.size());
+    for (const auto& kf : kfrac) {
+        Vec3 kc{recip(0, 0) * kf[0] + recip(1, 0) * kf[1] + recip(2, 0) * kf[2],
+                recip(0, 1) * kf[0] + recip(1, 1) * kf[1] + recip(2, 1) * kf[2],
+                recip(0, 2) * kf[0] + recip(1, 2) * kf[1] + recip(2, 2) * kf[2]};
+        out.gv_k.push_back(internal::enumerate_g_vectors(box_bohr, ecut_ht, kc));
+    }
+
+    out.kb_proj_k.clear();
+    out.atom_wfc_k.clear();
+    if (!upf_path.empty()) {
+        auto upf = internal::read_upf_v1(upf_path);
+        const auto n_k = out.gv_k.size();
+        out.kb_proj_k.resize(n_k);
+        out.atom_wfc_k.resize(n_k);
+        for (size_t ik = 0; ik < n_k; ++ik) {
+            setup_kb_projectors(out.kb_proj_k[ik], out.gv_k[ik], upf, pos_bohr);
+            if (upf.nwfc > 0)
+                setup_atomic_wfc(out.atom_wfc_k[ik], out.gv_k[ik], upf, n_atoms,
+                                 vol_bohr);
+        }
+    }
+}
+
 void pulay_mix(PWWorkspace& ws) {
     // Pulay/DIIS mixing (QE's Anderson/Broyden simplified)
     // Store residual F = ρ_out - ρ_in
