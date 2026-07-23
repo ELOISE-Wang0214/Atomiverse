@@ -96,6 +96,20 @@ enum class MixerKind { CDIIS, EDIIS_CDIIS, ADIIS_CDIIS };
 /// included. Default `CPCM` keeps the historical vacuum/C-PCM path.
 enum class SolventModel { CPCM, COSMO, IEFPCM };
 
+/// @brief Maximum-overlap occupation selection for ΔSCF excited states.
+///
+/// - `Off`:  energy-ordered Aufbau (shipping default; bit-identical).
+/// - `MOM`:  Gilbert–Besley–Gill maximum-overlap method — each SCF
+///           iteration occupies the n_occ new MOs with largest projection
+///           onto the **previous** iteration's occupied subspace
+///           (J. Phys. Chem. A **112**, 13164 (2008),
+///           DOI 10.1021/jp801738f).
+/// - `IMOM`: initial maximum-overlap method — same projection scores, but
+///           the reference occupied subspace is **frozen** at the seed
+///           (Barca, Gilbert & Gill, JCTC **14**, 1501 (2018),
+///           DOI 10.1021/acs.jctc.7b00994). Matches PySCF `scf.addons.mom_occ_`.
+enum class MomStyle { Off, MOM, IMOM };
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

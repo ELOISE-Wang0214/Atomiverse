@@ -270,6 +270,22 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @brief When true (default), nested force-slot runs write forces.
     bool compute_force = true;
 
+    /// @brief Maximum-overlap occupation selection for ΔSCF (default Off =
+    ///        energy Aufbau; bit-identical to the pre-MOM path). Set to
+    ///        `MomStyle::IMOM` (PySCF `mom_occ_`) or `MomStyle::MOM` and
+    ///        seed the reference occupied subspace via `set_mom_reference`
+    ///        (or `UHF::delta_scf`, which does both) before `run`.
+    MomStyle mom = MomStyle::Off;
+
+    /// @brief Install the MOM/IMOM reference occupied MO columns from a
+    ///        (possibly non-Aufbau) determinant. Copies occupied columns of
+    ///        each spin channel into the private reference buffers used by
+    ///        the density stage. No-op side effect on the determinant.
+    /// @param det Seed wavefunction; occupations select the columns.
+    /// @throws std::invalid_argument on empty occupation or dimension
+    ///         mismatch with a subsequent `run` basis.
+    void set_mom_reference(const SlaterDeterminant& det);
+
     // ── Environment (hf-capability-gaps-15-embed) ─────────────────────
     /// @brief External point charge (QM/MM electrostatic embedding, QM side).
     ///
@@ -587,6 +603,11 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     bool diis_active_ = false;    ///< DIIS extrapolating (≥ 2 vectors).
     bool restricted_ = false;     ///< spin_ == Restricted (per-run cache).
     bool is_hf_ = false;          ///< method_ == HF (per-run cache).
+
+    /// MOM/IMOM reference occupied MO columns (n × n_σ). Empty when
+    /// `mom == Off`. Updated in-place by DensityStage under MomStyle::MOM.
+    RealMatrix mom_ref_C_alpha_;
+    RealMatrix mom_ref_C_beta_;
 
     /// @brief Options selecting which of the shared entry behaviors apply.
     ///        Private, per-call — routing flags, not a config bag.

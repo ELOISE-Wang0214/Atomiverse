@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "atomiverse/cpu/scf/delta_scf.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/scf_guess.h"
 #include "atomiverse/cpu/scf/tdhf.h"
@@ -82,6 +83,28 @@ class UHF : public MeanFieldMethod<UHF> {
     ///         determinant, empty SF manifold, or n_ov > 512 (no fallback).
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult sf_tda(int n_states) const;
+
+    /// @brief ΔSCF vertical excitation with MOM/IMOM occupation locking.
+    ///
+    /// Runs a ground-state UHF on `frame`, promotes one α electron from MO
+    /// index `from` to virtual `to` via
+    /// `SlaterDeterminant::with_occupation`, seeds the non-Aufbau density,
+    /// and re-SCFs with `mom = style` (default `IMOM` = PySCF
+    /// `scf.addons.mom_occ_`). Frame energy meta is left at the **excited**
+    /// state; ground/excited Hartree energies and ΔE [eV] are on the return.
+    ///
+    /// @param frame Geometry [Å]; mutated only for energy meta on the
+    ///              excited-state run.
+    /// @param from  Occupied α MO index to depopulate (0-based; f=1).
+    /// @param to    Virtual α MO index to populate (0-based; f=0).
+    /// @param style `MomStyle::IMOM` (default) or `MomStyle::MOM`.
+    /// @param guess Optional density guess for the ground-state UHF only.
+    /// @return `DeltaScfResult` with e_ground / e_excited [Ha], delta_e_ev.
+    /// @throws std::invalid_argument on bad indices or style==Off.
+    /// @throws std::runtime_error when either SCF does not converge.
+    DeltaScfResult delta_scf(Frame& frame, int from, int to,
+                             MomStyle style = MomStyle::IMOM,
+                             const SCFInitialGuess* guess = nullptr);
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`

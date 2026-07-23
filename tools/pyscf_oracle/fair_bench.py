@@ -58,6 +58,10 @@ H  0.000000  0.000000  0.000000
 H  0.000000  0.000000  0.900000
 H  0.000000  0.850000  0.450000
 """,
+        "n2": """
+N  0.000000  0.000000  0.000000
+N  0.000000  0.000000  1.097700
+""",
     }
     atom = presets.get(geom)
     if atom is None:
@@ -192,6 +196,22 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
             "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()"
         ),
+        # UHF ΔSCF IMOM (PySCF mom_occ_) — twin of UHF::delta_scf HOMO→LUMO.
+        "delta_scf": (
+            "from pyscf import scf\n"
+            "from pyscf.scf import addons\n"
+            "import numpy as np\n"
+            "mf0=scf.RHF(mol); mf0.conv_tol=1e-12; mf0.kernel()\n"
+            "nmo=mf0.mo_coeff.shape[1]; nocc=mol.nelectron//2\n"
+            "mo0=np.asarray(mf0.mo_coeff)\n"
+            "occ_a=np.zeros(nmo); occ_b=np.zeros(nmo)\n"
+            "occ_a[:nocc]=1.0; occ_b[:nocc]=1.0\n"
+            "occ_a[nocc-1]=0.0; occ_a[nocc]=1.0\n"
+            "dm=(np.einsum('pi,i,qi->pq',mo0,occ_a,mo0),"
+            "np.einsum('pi,i,qi->pq',mo0,occ_b,mo0))\n"
+            "mfu=addons.mom_occ_(scf.UHF(mol),(mo0,mo0),(occ_a.copy(),occ_b.copy()))\n"
+            "mfu.conv_tol=1e-12; mfu.max_cycle=200; mfu.kernel(dm)"
+        ),
     }.get(method)
     if body is None:
         raise SystemExit(f"unsupported --method {method!r}")
@@ -210,7 +230,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

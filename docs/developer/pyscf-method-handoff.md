@@ -14,8 +14,9 @@ Last harness pass: **2026-07-23 wave 5** on `dev` (harness commit series `wf wav
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
-- **Queue:** 4 pending (`ccsd-t-h2o-sto3g`, `casci-h2-sto3g`, `delta-scf-n2`,
-  `eom-ee-ccsd` — unblocked now that CCSD energy ships); in_progress empty;
+- **Queue:** 3 pending (`ccsd-t-h2o-sto3g`, `casci-h2-sto3g`,
+  `eom-ee-ccsd` — unblocked now that CCSD energy ships); `delta-scf-n2` done
+  (IMOM foothold, ratio 7.83); in_progress may still list parallel wave slots;
   historical blocked list (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb,
   pm6-pm7) unchanged
 - **Roadmap:** CPU ✓ for **MP3** (`RHF::mp3`), **CCSD** (`RHF::ccsd`),
@@ -78,7 +79,6 @@ after serial merges in `fix(oracle): re-union pin_scf/fair_bench…` and
 
 1. `ccsd-t-h2o-sto3g` — (T) triples on closed-shell CCSD
 2. `casci-h2-sto3g` — active-space on FCI kernel
-3. `delta-scf-n2` — MOM/IMOM foothold
-4. `eom-ee-ccsd` — EOM-EE on the new CCSD energy path
+3. `eom-ee-ccsd` — EOM-EE on the new CCSD energy path
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.

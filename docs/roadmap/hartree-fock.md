@@ -20,8 +20,8 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | Finite-temperature Hartree–Fock            |  ○  |   ○  |   ○  |
 | Constrained Hartree–Fock                   |  ○  |   ○  |   ○  |
 | Broken-symmetry Hartree–Fock               |  ○  |   ○  |   ○  |
-| Delta-SCF Hartree–Fock                     |  ○  |   ○  |   ○  |
-| Maximum-overlap excited-state Hartree–Fock |  ○  |   ○  |   ○  |
+| Delta-SCF Hartree–Fock                     |  ✓  |   ○  |   ○  |
+| Maximum-overlap excited-state Hartree–Fock |  ✓  |   ○  |   ○  |
 | RHF analytic gradient                      |  ✓  |   ○  |   ○  |
 | UHF analytic gradient                      |  ✓  |   ○  |   ○  |
 | ROHF analytic gradient                     |  ✓  |   ○  |   ○  |

@@ -23,6 +23,9 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 **Spectral G0W0** quasiparticle energies on RHF ship
 (`RHF::g0w0`; `reg_g0w0-h2-sto3g` H2/STO-3G QP gap vs PySCF
 `gw.gw_exact.GWExact` + dRPA).
+**ΔSCF / MOM / IMOM** non-Aufbau re-SCF ships on UHF
+(`UHF::delta_scf`; `MomStyle::{MOM,IMOM}`; `reg_delta-scf-n2` N₂/STO-3G
+α HOMO→LUMO vs PySCF `scf.addons.mom_occ_`).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -31,9 +34,9 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 
 | Method                             | CPU | CUDA | Kokkos |
 | ---------------------------------- | :-: | :--: | :---: |
-| Delta-SCF excited states           |  ○  |   ○  |   ○  |
-| MOM excited states                 |  ○  |   ○  |   ○  |
-| IMOM excited states                |  ○  |   ○  |   ○  |
+| Delta-SCF excited states           |  ✓  |   ○  |   ○  |
+| MOM excited states                 |  ✓  |   ○  |   ○  |
+| IMOM excited states                |  ✓  |   ○  |   ○  |
 | ROKS excited states                |  ○  |   ○  |   ○  |
 | CIS excitation energies            |  ✓  |   ○  |   ○  |
 | CIS(D)                             |  ✓  |   ○  |   ○  |
