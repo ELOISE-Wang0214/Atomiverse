@@ -66,3 +66,8 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 assign wave 4: romp2-o2-sto3g (post-hf), roks-grad-o2-sto3g (dft), h2-b3lyp-rpa-tddft (excited-states), spin-flip-tda-o2 (excited-states), rohf-hessian-o2 (hartree-fock) → in_progress; skip=[]
 - 2026-07-23 wave 4 merge: all five green HEADs → dev (romp2-o2-sto3g, roks-grad-o2-sto3g, h2-b3lyp-rpa-tddft, spin-flip-tda-o2, rohf-hessian-o2); blocked=[]; merge-failed=[]
 - 2026-07-23 harness wave 4: queue merged→done (5); in_progress cleared; roadmaps ○→✓ for ROMP2, ROKS grad, hybrid full-LR B3LYP, ROHF Hessian; SF-TDA already ✓; ratios romp2=1.37 roks-grad=1.117 rpa=0.430 sf-tda=9.56 rohf-hess=perf_exempt; no ⚡ (no standing perf suite); handoff written; queue_remaining=8
+- 2026-07-23 tutorial: methods/romp2-o2-sto3g.md
+- 2026-07-23 tutorial: methods/roks-grad-o2-sto3g.md
+- 2026-07-23 tutorial: methods/h2-b3lyp-rpa-tddft.md
+- 2026-07-23 tutorial: methods/spin-flip-tda-o2.md
+- 2026-07-23 tutorial: methods/rohf-hessian-o2.md

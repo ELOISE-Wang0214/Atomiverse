@@ -92,4 +92,29 @@ Suggested paths:
 
 ---
 
+## Method tutorials
+
+Campaign handbook pages (technical-report style, one per regression slug).
+Index and template: [methods/README](methods/README.md).
+
+| Method | Page | Regression |
+|--------|------|------------|
+| UMP2 | [ump2-o2-sto3g](methods/ump2-o2-sto3g.md) | `regressions/scf/ump2-o2-sto3g` |
+| Hybrid TDDFT-TDA (B3LYP) | [h2-b3lyp-hybrid-tda](methods/h2-b3lyp-hybrid-tda.md) | `…/h2-b3lyp-hybrid-tda` |
+| Frozen-core RMP2 | [frozen-core-mp2-h2o](methods/frozen-core-mp2-h2o.md) | `…/frozen-core-mp2-h2o` |
+| CIS(D) | [cisd-h2co-sto3g](methods/cisd-h2co-sto3g.md) | `…/cisd-h2co-sto3g` |
+| BLYP GGA | [blyp-water-sto3g](methods/blyp-water-sto3g.md) | `…/blyp-water-sto3g` |
+| GHF analytic gradient | [ghf-grad-h3-sto3g](methods/ghf-grad-h3-sto3g.md) | `…/ghf-grad-h3-sto3g` |
+| C-PCM free-energy forces | [pcm-grad-h2o](methods/pcm-grad-h2o.md) | `…/pcm-grad-h2o` |
+| SCS-MP2 | [scs-mp2-h2o-sto3g](methods/scs-mp2-h2o-sto3g.md) | `…/scs-mp2-h2o-sto3g` |
+| Full LR-TDDFT (RKS) | [full-lr-tddft-h2-pbe](methods/full-lr-tddft-h2-pbe.md) | `…/full-lr-tddft-h2-pbe` |
+| ROKS | [roks-o2-sto3g](methods/roks-o2-sto3g.md) | `…/roks-o2-sto3g` |
+| RHF static polarizability | [static-polariz-h2o](methods/static-polariz-h2o.md) | `…/static-polariz-h2o` |
+| IEF-PCM | [ief-pcm-h2o](methods/ief-pcm-h2o.md) | `…/ief-pcm-h2o` |
+| ROMP2 | [romp2-o2-sto3g](methods/romp2-o2-sto3g.md) | `…/romp2-o2-sto3g` |
+| ROKS analytic gradient | [roks-grad-o2-sto3g](methods/roks-grad-o2-sto3g.md) | `…/roks-grad-o2-sto3g` |
+| Hybrid full-LR TDDFT (B3LYP RPA) | [h2-b3lyp-rpa-tddft](methods/h2-b3lyp-rpa-tddft.md) | `…/h2-b3lyp-rpa-tddft` |
+| Spin-flip TDA (SF-CIS) | [spin-flip-tda-o2](methods/spin-flip-tda-o2.md) | `…/spin-flip-tda-o2` |
+| ROHF nuclear Hessian | [rohf-hessian-o2](methods/rohf-hessian-o2.md) | `…/rohf-hessian-o2` |
+
 SCF reading map: [User Guide → SCF Learning Path](../user-guide/scf-roadmap.md).
