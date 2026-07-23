@@ -32,6 +32,41 @@ void DensityBuilder::begin(const PWWorkspace& ws) {
 
 void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
                                        int n_bands, AccReal spin_degen) {
+    if (ws.nr <= 0 || !ws.fft)
+        return;
+
+    int nb = std::min(n_bands, static_cast<int>(ws.eigenvalues.size()));
+    int ng_k = ws.n_g;
+    int nx = ws.fft_nx, ny = ws.fft_ny, nz = ws.fft_nz;
+    auto& gvk = *ws.gvec;
+    auto* psi_cc = psi_cc_.data();
+    auto* acc = rho_r_accum_.data();
+
+    for (int b = 0; b < nb; ++b) {
+        for (int i = 0; i < ws.nr; ++i)
+            psi_cc[i][0] = psi_cc[i][1] = 0;
+        for (int ig = 0; ig < ng_k; ++ig) {
+            int ix = ((gvk.h[ig] % nx) + nx) % nx;
+            int iy = ((gvk.k[ig] % ny) + ny) % ny;
+            int iz = ((gvk.l[ig] % nz) + nz) % nz;
+            int idx = ix + nx * (iy + ny * iz);
+            if (idx >= 0 && idx < ws.nr) {
+                auto val = ws.wfc(b, ig);
+                psi_cc[idx][0] = static_cast<double>(val.real());
+                psi_cc[idx][1] = static_cast<double>(val.imag());
+            }
+        }
+        ws.fft->c2c_bwd(psi_cc);
+        for (int i = 0; i < ws.nr; ++i) {
+            AccReal psi_sq = static_cast<AccReal>(
+                psi_cc[i][0] * psi_cc[i][0] + psi_cc[i][1] * psi_cc[i][1]);
+            // ψ_phys(r) = ψ_fft(r)/√Ω, so |ψ|²_phys = |ψ_fft|²/Ω
+            acc[i] += weight * spin_degen * psi_sq / ws.omega;
+        }
+    }
+}
+
+void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
                                        int n_bands, const AccReal* occ) {
     if (ws.nr <= 0 || !ws.fft)
         return;
@@ -67,7 +102,6 @@ void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
             AccReal psi_sq = static_cast<AccReal>(
                 psi_cc[i][0] * psi_cc[i][0] + psi_cc[i][1] * psi_cc[i][1]);
             // ψ_phys(r) = ψ_fft(r)/√Ω, so |ψ|²_phys = |ψ_fft|²/Ω
-            acc[i] += weight * spin_degen * psi_sq / ws.omega;
             acc[i] += weight * fb * psi_sq / ws.omega;
         }
     }

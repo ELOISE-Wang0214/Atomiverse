@@ -1582,6 +1582,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.nonperiodic = m.nonperiodic;
     p.local_pp_on_grid = m.local_pp_on_grid;
     p.d3 = m.d3;
+    p.d3bj = m.d3bj;
     p.use_ot = m.use_ot;
     return p;
 }

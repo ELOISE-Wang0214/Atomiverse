@@ -65,8 +65,6 @@ enum class XcKind { PADE, PBE };
 
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
-    double e_total = 0.0;    ///< total energy [Hartree] (includes e_disp).
-    double e_kinetic = 0.0;  ///< Tr(P T).
     double e_total = 0.0;    ///< total energy [Hartree].
     double e_kinetic = 0.0;  ///< Tr(P T)  (RKS: closed P; UKS: Tr((Pα+Pβ)T)).
     double e_loc_sr = 0.0;   ///< Tr(P V_loc^sr).
@@ -127,7 +125,7 @@ class GpwDft {
     bool d3 = false; ///< Grimme DFT-D3 zero damping (PBE). Mutually exclusive with d3bj.
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
     /// Mutually exclusive with `d3` — both true throws at run.
-    bool d3bj = false;
+    bool d3bj = false; ///< Grimme DFT-D3 dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
 
     GpwDft() = default;

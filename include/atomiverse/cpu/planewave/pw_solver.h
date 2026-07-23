@@ -37,22 +37,10 @@ class DensityBuilder;
 class ConvergenceCheck;
 } // namespace internal
 
-/// @brief Metallic occupation smearing kind for plane-wave SCF.
-///
-/// Default `none` keeps fixed integer occupations (insulators / prior
-/// regressions). When non-`none`, set `degauss > 0` [Ry] and enough
-/// `extra_bands` for states above the Fermi level.
-enum class Smearing : int {
-    none = 0,              ///< Fixed closed-shell occupations.
-    fermi_dirac = 1,       ///< Fermi–Dirac.
-    methfessel_paxton = 2, ///< Methfessel–Paxton of order `mp_order`.
-    gaussian = 3,          ///< Gaussian (cold/Marzari–Vanderbilt not here).
-};
-
 /// @brief Result of a plane-wave DFT total energy calculation.
 struct PWResult {
-    double energy = 0;      ///< Total free energy [Ry] (QE-comparable; \(E-TS\)).
-    double energy_ha = 0;   ///< Total free energy [Hartree].
+    double energy = 0;      ///< Total energy [Ry] (QE-comparable).
+    double energy_ha = 0;   ///< Total energy [Hartree].
     bool converged = false; ///< Whether SCF converged within max_iter.
     int iterations = 0;     ///< Actual SCF iterations taken.
     /// @brief Collinear magnetization N↑ − N↓ [electrons] after SCF.
@@ -69,6 +57,13 @@ struct PWResult {
 /// Construction → set members → `build(reference)` → `run(frame)`.
 /// `last_result()` is valid after each `run()`. Geometry-dependent
 /// structures rebuild inside each `run()` (AIMD / optimize safe).
+enum class Smearing : int {
+    none = 0,              ///< Fixed closed-shell occupations.
+    fermi_dirac = 1,       ///< Fermi–Dirac.
+    methfessel_paxton = 2, ///< Methfessel–Paxton of order `mp_order`.
+    gaussian = 3,          ///< Gaussian (cold/Marzari–Vanderbilt not here).
+};
+
 class PW {
   public:
     /// @brief UPF v1 pseudopotential path (empty = toy V_loc).
@@ -101,7 +96,7 @@ class PW {
     double degauss = 0.02;
     /// @brief Methfessel–Paxton order \(N\) (used when `smearing == methfessel_paxton`).
     int mp_order = 1;
-    /// @brief Extra bands beyond \(\lceil n_e/2\rceil\) when smearing is on.
+    /// @brief Extra bands beyond ceil(n_e/2) when smearing is on.
     int extra_bands = 4;
 
     /// @brief Default construct (helpers allocated on first build/run).
