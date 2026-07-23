@@ -4,7 +4,7 @@ Durable worklist for workflow `pyscf-method-loop`. Do not delete done rows.
 The census phase rewrites **pending** from `docs/roadmap/` ○ rows that PySCF
 can oracle offline; **done** / **blocked** history is preserved across runs.
 
-Census date: 2026-07-23 (re-census after wave-6 exhaustion). Roadmap CPU ○ ∩
+Census date: 2026-07-23 (re-census; wave-1 workers mid-flight). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
 without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
@@ -12,7 +12,9 @@ CASPT2 (no stock PySCF). Prefer new family or scale over XC variants
 (BP86/B3PW91/B2GP-PLYP/…). Next axis after closed EOM-EE / CASCI / CCSD(T) /
 G0W0 / B2PLYP: EOM-IP/EA, UKS full-LR, ADC(2)-x/IP-ADC, CASSCF/NEVPT2, CC
 gradients, KS Hessians, open-shell MP2 forces, SF-TDDFT, MP4, CC2/EOM-CC2,
-dRPA/BSE, D4, EOM-SF, GF2.
+dRPA/BSE, D4, EOM-SF, GF2. **in_progress retained** (live `wf/*` worktrees with
+feat commits or dirty trees): eom-ip-ccsd, uks-full-lr-o2-lsda, casscf-h2-sto3g,
+ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
 
 ## pending
 
