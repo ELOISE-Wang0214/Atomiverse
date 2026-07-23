@@ -176,6 +176,19 @@ std::vector<std::array<double, 3>>
 gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
               double h = 1e-3);
 
+/// @brief Cell stress σ [Hartree/Bohr³], Voigt order xx,yy,zz,xy,xz,yz.
+///
+/// v1: orthorhombic strain-FD of the SCF energy at fixed fractional
+/// coordinates (diagonal only; off-diagonal components are 0). Same strategy
+/// as `cpu::pw::pw_stress` strain-FD foothold. Analytic stress is a follow-on.
+///
+/// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
+/// @param method SCF configuration; `cell` must match the atom box [Bohr].
+/// @param h Dimensionless strain step (default 2e-3).
+/// @return Voigt stress [Hartree/Bohr³].
+std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
+                                 const GpwDft& method, double h = 2e-3);
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

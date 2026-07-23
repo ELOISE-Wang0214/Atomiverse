@@ -1,10 +1,13 @@
 ! Offline CP2K twin for regressions/gpw/gpw-stress-water/
-! Never launched by ctest. Same geometry as h2o_forces_mt.inp + STRESS_TENSOR.
+! Never launched by ctest. Same geometry as h2o_forces_mt.inp.
+! STRESS_TENSOR NUMERICAL — same-method twin as Atomiverse strain-FD.
+! (ANALYTICAL stress on nonperiodic MT is not the pin; see REFERENCE.md.)
 !
 ! Example:
 !   module load buildtool-easybuild/... GCC/... MPICH/... CP2K/2026.1
+!   export CP2K_DATA_DIR=.../share/cp2k/data
 !   mpirun -n 1 cp2k.psmp -i h2o_stress_mt.inp -o h2o_stress_mt.out
-! Then record STRESS| / Analytic stress tensor into REFERENCE.md.
+! Then record STRESS| Numerical stress tensor into REFERENCE.md.
 
 &GLOBAL
   PROJECT h2o_stress_mt
@@ -13,7 +16,7 @@
 &END GLOBAL
 &FORCE_EVAL
   METHOD Quickstep
-  STRESS_TENSOR ANALYTICAL
+  STRESS_TENSOR NUMERICAL
   &DFT
     BASIS_SET_FILE_NAME BASIS_MOLOPT
     POTENTIAL_FILE_NAME GTH_POTENTIALS

@@ -33,10 +33,9 @@ Every item must be verified before `acceptance_met=true` / `status=green`.
      (document if strain-FD needs longer; still ≤ 180 s hard cap)
 
 5. **Default tol** (product twin, may tighten if pin allows):
-   - Diagonal: **1×10⁻⁴ Ha/Bohr³** max abs component error vs CP2K
-     (grid/SCF residual; not chemical accuracy). If CP2K analytic stress uses a
-     different convention than strain-FD, document and use tol that still
-     validates order/sign and is ≤ **5×10⁻⁴ Ha/Bohr³**.
+   - Diagonal: **5×10⁻⁶ Ha/Bohr³** max abs component error vs CP2K
+     **NUMERICAL** stress (same-method FD twin). Do **not** pin against
+     ANALYTICAL on nonperiodic MT (gross mismatch documented in REFERENCE).
    - Energy soft: |ΔE| ≤ **1×10⁻³ Ha** vs pin (same as forces twin)
 
 6. **CMake**: `atv_add_regression(gpw gpw-stress-water)` under `ATV_BUILD_GPW`;

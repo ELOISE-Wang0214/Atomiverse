@@ -10,6 +10,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
+#include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 
 namespace ATV {
 namespace cpu {
@@ -126,6 +127,20 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             sp_fz[i] = F[static_cast<std::size_t>(i)][2]
                        * ATV::units::kHartreePerBohrInEvPerAngstrom;
         }
+    }
+
+    if (compute_stress) {
+        // Strain-FD rebuilds SCF per strain sample (independent of solver_).
+        last_stress_ha_ = gpw_stress(atoms, *solver_, stress_strain_h);
+        // 1 Ha/Bohr³ = kHartreeInEv / (kBohrInAngstrom)³ eV/Å³
+        const double ha_bohr3_to_ev_a3 =
+            ATV::units::kHartreeInEv
+            / (ATV::units::kBohrInAngstrom * ATV::units::kBohrInAngstrom
+               * ATV::units::kBohrInAngstrom);
+        auto& st = frame.meta.get(kStress);
+        for (int k = 0; k < 6; ++k)
+            st[static_cast<std::size_t>(k)] =
+                last_stress_ha_[static_cast<std::size_t>(k)] * ha_bohr3_to_ev_a3;
     }
 }
 
