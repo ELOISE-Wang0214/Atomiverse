@@ -115,6 +115,24 @@ class UHF : public MeanFieldMethod<UHF> {
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult sf_tddft(int n_states) const;
 
+    /// @brief EOM-SF-CCSD spin-flip excitation energies on a UHF → UCCSD
+    ///        reference (drives SCF + UCCSD + SF-EOM).
+    ///
+    /// High-spin UHF (set `n_alpha` / `n_beta`), unrestricted spin-orbital
+    /// CCSD, then equation-of-motion spin-flip singles+doubles. Matches
+    /// PySCF `cc.UCCSD(mf).eomsf_ccsd(nroots=n_states)` on the same
+    /// geometry / basis (cart). Product surface: ω in eV.
+    ///
+    /// @param frame    Geometry [Å] + Z; energy meta written from UHF.
+    /// @param n_states Number of lowest SF roots (dimensionless, ≥ 1).
+    /// @param guess    Optional density guess for the reference UHF (ROHF
+    ///                 warm-start for multi-minima cases such as triplet O₂).
+    /// @return SF excitation energies [eV] plus UCCSD energetics [Ha].
+    /// @throws std::invalid_argument when SCF does not converge, n_states
+    ///         is invalid, or the SF manifold is empty (no fallback).
+    EOMSFCCSDResult eom_sf_ccsd(Frame& frame, int n_states = 1,
+                                const SCFInitialGuess* guess = nullptr);
+
     /// @brief ΔSCF vertical excitation with MOM/IMOM occupation locking.
     ///
     /// Runs a ground-state UHF on `frame`, promotes one α electron from MO

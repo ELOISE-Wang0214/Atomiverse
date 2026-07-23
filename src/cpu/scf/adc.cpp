@@ -871,6 +871,57 @@ double mp2_corr_ha_(const xt::xtensor<double, 4>& t2,
     return e;
 }
 
+inline int idx_iab(int i, int a, int b, int nvir) {
+    return (i * nvir + a) * nvir + b;
+}
+
+/// EA-ADC(2) singles intermediate M_ab [nvir × nvir] (PySCF radc_ea get_imds,
+/// method == "adc(2)" only — no ADC(3) terms).
+xt::xtensor<double, 2> build_mab_ea_(const xt::xtensor<double, 4>& t2,
+                                     const xt::xtensor<double, 4>& ovvo,
+                                     const RealVector& eps, int nocc,
+                                     int nvir) {
+    xt::xtensor<double, 2> Mab =
+        xt::zeros<double>({static_cast<std::size_t>(nvir),
+                           static_cast<std::size_t>(nvir)});
+    // Zeroth order: δ_ab ε_a
+    for (int a = 0; a < nvir; ++a)
+        Mab(a, a) = eps(static_cast<std::size_t>(nocc + a));
+
+    // Second-order t2 × ovvo contractions (strict ADC(2)).
+    // Coefficients: 1.5*0.5 = 0.75, 0.5*0.5 = 0.25.
+    for (int a = 0; a < nvir; ++a) {
+        for (int b = 0; b < nvir; ++b) {
+            double s = 0.0;
+            for (int l = 0; l < nocc; ++l) {
+                for (int m = 0; m < nocc; ++m) {
+                    for (int d = 0; d < nvir; ++d) {
+                        const double t_lmad = t2(l, m, a, d);
+                        const double t_mlad = t2(m, l, a, d);
+                        const double t_lmbd = t2(l, m, b, d);
+                        const double t_mlbd = t2(m, l, b, d);
+                        const double ov_lbdm = ovvo(l, b, d, m); // lbdm
+                        const double ov_ldbm = ovvo(l, d, b, m); // ldbm
+                        const double ov_ladm = ovvo(l, a, d, m); // ladm
+                        const double ov_ldam = ovvo(l, d, a, m); // ldam
+
+                        s -= 0.75 * t_lmad * ov_lbdm;
+                        s += 0.25 * t_mlad * ov_lbdm;
+                        s += 0.25 * t_lmad * ov_ldbm;
+                        s -= 0.25 * t_mlad * ov_ldbm;
+
+                        s -= 0.75 * t_lmbd * ov_ladm;
+                        s += 0.25 * t_mlbd * ov_ladm;
+                        s += 0.25 * t_lmbd * ov_ldam;
+                        s -= 0.25 * t_mlbd * ov_ldam;
+                    }
+                }
+            }
+            Mab(a, b) += s;
+        }
+    }
+    return Mab;
+}
 
 /// EA-ADC(2) matvec on 1p + 2p–1h (PySCF radc_ea matvec, adc(2) only).
 void matvec_ea_(const xt::xtensor<double, 2>& Mab, const MoBlocks& bl,
@@ -1250,6 +1301,64 @@ ADC2Result RHF::adc2x(int n_states) const {
             "RHF::adc2x: no SCF result — call run(frame) first");
     return run_adc_ee_member_(*this, n_states, /*extended=*/true,
                               integral_workspace_(), determinant());
+}
+
+inline int idx_ajk_(int a, int j, int k, int nocc) {
+    return (a * nocc + j) * nocc + k;
+}
+
+/// Second-order occupied–occupied intermediate M_ij [nocc × nocc].
+/// Twin of PySCF `radc_ip.get_imds` for `method == "adc(2)"` (no ADC(3)).
+xt::xtensor<double, 2> build_mij_ip_(const xt::xtensor<double, 4>& t2,
+                                     const xt::xtensor<double, 4>& ovvo,
+                                     const RealVector& eps, int nocc,
+                                     int nvir) {
+    xt::xtensor<double, 2> M =
+        xt::zeros<double>({static_cast<std::size_t>(nocc),
+                           static_cast<std::size_t>(nocc)});
+    // Zeroth order: M_ij = δ_ij ε_j
+    for (int i = 0; i < nocc; ++i)
+        M(i, i) = eps(static_cast<std::size_t>(i));
+
+    // Second-order t2 × ovvo (PySCF radc_ip get_imds, adc(2) branch only).
+    for (int i = 0; i < nocc; ++i) {
+        for (int j = 0; j < nocc; ++j) {
+            double s = 0.0;
+            for (int l = 0; l < nocc; ++l) {
+                for (int d = 0; d < nvir; ++d) {
+                    for (int e = 0; e < nvir; ++e) {
+                        const double t_ilde = t2(i, l, d, e);
+                        const double t_lide = t2(l, i, d, e);
+                        const double v_jdel = ovvo(j, d, e, l); // (jd|el)
+                        const double v_jedl = ovvo(j, e, d, l); // (je|dl)
+                        // 0.25*(ilde,jdel) − 0.25*(lide,jdel)
+                        // −0.25*(ilde,jedl) + 0.25*(lide,jedl)
+                        // +0.5*(ilde,jdel)
+                        s += 0.25 * t_ilde * v_jdel;
+                        s -= 0.25 * t_lide * v_jdel;
+                        s -= 0.25 * t_ilde * v_jedl;
+                        s += 0.25 * t_lide * v_jedl;
+                        s += 0.5 * t_ilde * v_jdel;
+
+                        const double t_jlde = t2(j, l, d, e);
+                        const double t_ljde = t2(l, j, d, e);
+                        const double v_idel = ovvo(i, d, e, l); // (id|el)
+                        const double v_ldei = ovvo(l, d, e, i); // (ld|ei)
+                        // 0.25*(jlde,idel) − 0.25*(ljde,idel)
+                        // −0.25*(jlde,ldei) + 0.25*(ljde,ldei)
+                        // +0.5*(jlde,idel)
+                        s += 0.25 * t_jlde * v_idel;
+                        s -= 0.25 * t_ljde * v_idel;
+                        s -= 0.25 * t_jlde * v_ldei;
+                        s += 0.25 * t_ljde * v_ldei;
+                        s += 0.5 * t_jlde * v_idel;
+                    }
+                }
+            }
+            M(i, j) += s;
+        }
+    }
+    return M;
 }
 
 /// IP-ADC(2) matvec in the PySCF pre-flip convention (caller applies s*=−1).
