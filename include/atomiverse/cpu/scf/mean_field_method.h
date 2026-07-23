@@ -59,7 +59,7 @@ namespace cpu {
 namespace scf {
 
 namespace internal {
-class Pcm; // C-PCM private workspace (pcm.h)
+class Pcm; // continuum solvent private workspace (pcm.h)
 }
 
 /// @brief Shared view for observers/recorders after a method run.
@@ -277,18 +277,25 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
 
     // ── Implicit solvent (hf-capability-gaps-16-solvent) ───────────────
     /// @brief Solvent dielectric constant ε (dimensionless). Default 0
-    ///        disables C-PCM entirely (bit-identical vacuum path).
-    ///        Typical water: 78.4.
+    ///        disables continuum solvent entirely (bit-identical vacuum
+    ///        path). Typical water: 78.4.
     double solvent_eps = 0.0;
 
     /// @brief Multiplier on Bondi vdW radii for the cavity spheres
     ///        (dimensionless; default 1.2, Q-Chem / PySCF convention).
     double solvent_radii_scale = 1.2;
 
-    /// @brief Dielectric scaling convention in f(ε)=(ε−1)/(ε+x):
-    ///        0 → C-PCM (Barone–Cossi / PySCF default); 0.5 → original
-    ///        COSMO (Klamt). Dimensionless.
+    /// @brief Dielectric scaling convention in f(ε)=(ε−1)/(ε+x) for
+    ///        conductor-like models: 0 → C-PCM (Barone–Cossi / PySCF
+    ///        default); 0.5 → original COSMO (Klamt). Ignored when
+    ///        `solvent_model == SolventModel::IEFPCM` (which uses
+    ///        f=(ε−1)/(ε+1)). Dimensionless.
     double solvent_x = 0.0;
+
+    /// @brief Continuum model. Default `CPCM` (conductor-like). Set
+    ///        `IEFPCM` for integral-equation-formalism PCM (Cancès–
+    ///        Mennucci–Tomasi; PySCF `method='IEF-PCM'`).
+    SolventModel solvent_model = SolventModel::CPCM;
 
     MeanFieldMethod();
     ~MeanFieldMethod() override;
@@ -358,9 +365,10 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @brief Total SCF energy of the most recent run.
     /// @return E_total [Hartree].
     double energy() const { return e_total_; }
-    /// @brief Electrostatic C-PCM free-energy contribution of the most
+    /// @brief Electrostatic continuum free-energy contribution of the most
     ///        recent run (ΔG_el = ½ Σ_k q_k V_k). Zero when
     ///        `solvent_eps == 0`. Non-electrostatic terms are not included.
+    ///        Valid for C-PCM, COSMO, and IEF-PCM.
     /// @return ΔG_el [Hartree].
     double e_solvent() const { return e_solvent_; }
     /// @brief SCF iterations executed by the most recent run.
@@ -469,7 +477,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     double e_coulomb_ = 0;        ///< Coulomb (J) energy [Hartree].
     double e_xc_grid_ = 0;        ///< Grid XC energy [Hartree].
     double e_exact_exchange_ = 0; ///< Hybrid exact-exchange energy [Hartree].
-    double e_solvent_ = 0;        ///< C-PCM ΔG_el [Hartree] (0 when off).
+    double e_solvent_ = 0;        ///< Continuum ΔG_el [Hartree] (0 when off).
     double e_pcm_fock_half_ = 0;  ///< ½ Tr[V_pcm P] [Hartree] for energy peel.
     double int_n_alpha_ = 0;      ///< Grid-integrated α electron count.
     double int_n_beta_ = 0;       ///< Grid-integrated β electron count.
@@ -551,8 +559,9 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     std::shared_ptr<bool> has_result_sp_{std::make_shared<bool>(false)};
     int iterations_ = 0; ///< SCF iterations executed by the most recent run.
 
-    /// C-PCM private workspace (null when solvent_eps == 0). Built in
-    /// drive_scf_core_ before the loop; FockStage borrows the raw pointer.
+    /// Continuum (C-PCM / COSMO / IEF-PCM) private workspace (null when
+    /// solvent_eps == 0). Built in drive_scf_core_ before the loop;
+    /// FockStage borrows the raw pointer.
     std::unique_ptr<internal::Pcm> pcm_;
 
     // Stage components (heap-owned; borrowed into the Plan by add_ref). Null

@@ -57,13 +57,27 @@ TEST(PcmFEpsilon, CpcmAndCosmoConventions) {
     Pcm cpcm(atoms, /*eps=*/78.4, /*scale=*/1.2, /*x=*/0.0, /*leb=*/50);
     EXPECT_NEAR(cpcm.f_epsilon(), (78.4 - 1.0) / 78.4, 1e-14);
 
-    Pcm cosmo(atoms, /*eps=*/2.0, /*scale=*/1.2, /*x=*/0.5, /*leb=*/50);
+    Pcm cosmo(atoms, /*eps=*/2.0, /*scale=*/1.2, /*x=*/0.5, /*leb=*/50,
+              SolventModel::COSMO);
     EXPECT_NEAR(cosmo.f_epsilon(), (2.0 - 1.0) / (2.0 + 0.5), 1e-14);
 
     // Low-ε: the two conventions must be resolvably different.
     EXPECT_GT(std::abs(cpcm.f_epsilon()
                        - Pcm(atoms, 2.0, 1.2, 0.0, 50).f_epsilon()),
               0.1);
+}
+
+TEST(PcmFEpsilon, IefPcmUsesEpsPlusOne) {
+    std::vector<native::Atom> atoms = {{1, {0.0, 0.0, 0.0}}};
+    // solvent_x is ignored for IEF-PCM; f = (ε−1)/(ε+1).
+    Pcm ief(atoms, /*eps=*/78.4, /*scale=*/1.2, /*x=*/0.0, /*leb=*/50,
+            SolventModel::IEFPCM);
+    EXPECT_NEAR(ief.f_epsilon(), (78.4 - 1.0) / (78.4 + 1.0), 1e-14);
+    EXPECT_EQ(ief.model(), SolventModel::IEFPCM);
+    // Distinct from C-PCM at the same ε.
+    EXPECT_GT(std::abs(ief.f_epsilon()
+                       - Pcm(atoms, 78.4, 1.2, 0.0, 50).f_epsilon()),
+              1e-4);
 }
 
 TEST(PcmBornIon, AnalyticOracle) {

@@ -218,6 +218,9 @@ this engine includes it in nuclear repulsion.
 Dielectric continuum \(\varepsilon\); cavity of scaled Bondi spheres; apparent
 surface charges from \(S\mathbf q=-f(\varepsilon)\mathbf V\) with
 \(f=(\varepsilon-1)/(\varepsilon+x)\). \(x=0\): C-PCM; \(x=1/2\): COSMO.
+IEF-PCM (`solvent_model = SolventModel::IEFPCM`) uses
+\(f=(\varepsilon-1)/(\varepsilon+1)\) and the \(K q = R V\) system with the
+double-layer operator \(D\).
 Only electrostatic \(\Delta G_{\mathrm{el}}=\frac12\mathbf q\cdot\mathbf V\).
 No cavitation/dispersion; cavity uses hard bury-delete (not SWIG-smoothed).
 Free-energy forces: vacuum HF gradient on the solvent density plus
@@ -242,12 +245,13 @@ auto g = sol.forces(frame); // eV/Å on frame fx/fy/fz
 
 ### Results
 
-| System | Quantity | Engine | PySCF C-PCM | Tol. |
+| System | Quantity | Engine | PySCF | Tol. |
 |---|---|---:|---:|---|
-| H₂O RHF/6-31G* \(\varepsilon=78.4\) | \(\Delta G_{\mathrm{el}}\) / kcal mol⁻¹ | −8.02 | −7.96 | 0.1 |
+| H₂O RHF/6-31G* C-PCM \(\varepsilon=78.4\) | \(\Delta G_{\mathrm{el}}\) / kcal mol⁻¹ | −8.02 | −7.96 | 0.1 |
+| H₂O RHF/6-31G* IEF-PCM \(\varepsilon=78.4\) | \(\Delta G_{\mathrm{el}}\) / Ha | −0.012691 | −0.012658 | \(10^{-4}\) Ha |
 | H₂O RHF/6-31G* C-PCM | forces vs FD of \(G\) | — | — | \(10^{-5}\) Ha/Bohr |
 
-Regressions: `h2o_rhf_631gs_cpcm`, `pcm-grad-h2o`.
+Regressions: `h2o_rhf_631gs_cpcm`, `ief-pcm-h2o`, `pcm-grad-h2o`.
 
 ---
 

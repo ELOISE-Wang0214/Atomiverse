@@ -803,10 +803,11 @@ GradientResult ScfGradient::compute(const Frame& frame,
         const double eps = integrals.solvent_eps;
         const double scale = integrals.solvent_radii_scale;
         const double x = integrals.solvent_x;
+        const SolventModel model = integrals.solvent_model;
         constexpr int kLeb = 302;
         const auto delta_g_at = [&](std::vector<native::Atom> atoms,
                                    std::vector<native::Shell> shells) {
-            internal::Pcm pcm(std::move(atoms), eps, scale, x, kLeb);
+            internal::Pcm pcm(std::move(atoms), eps, scale, x, kLeb, model);
             if (sph)
                 pcm.prepare(shells, c2s);
             else

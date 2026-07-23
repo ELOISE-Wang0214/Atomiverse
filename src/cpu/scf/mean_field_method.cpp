@@ -584,7 +584,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                 "GHF in this link — clear solvent_eps or use RHF/UHF/RKS/UKS.");
         pcm_ = std::make_unique<internal::Pcm>(
             ints.atoms, solvent_eps, solvent_radii_scale, solvent_x,
-            /*lebedev_n=*/302);
+            /*lebedev_n=*/302, solvent_model);
         if (ints.spherical())
             pcm_->prepare(ints.shells, ints.c2s);
         else
@@ -594,11 +594,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         integrals_sp_->solvent_eps = solvent_eps;
         integrals_sp_->solvent_radii_scale = solvent_radii_scale;
         integrals_sp_->solvent_x = solvent_x;
+        integrals_sp_->solvent_model = solvent_model;
     } else {
         pcm_.reset();
         integrals_sp_->solvent_eps = 0.0;
         integrals_sp_->solvent_radii_scale = solvent_radii_scale;
         integrals_sp_->solvent_x = solvent_x;
+        integrals_sp_->solvent_model = solvent_model;
     }
     // Rebind whenever the solvent workspace is present (pointer always new)
     // or when it was dropped after a previous solvent run.
