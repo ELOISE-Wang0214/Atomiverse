@@ -138,6 +138,21 @@ namespace md {
 /// to the isotropic `G_ε = 3·G_{ε,iso}` so the all-axes path is
 /// bit-compatible with the pre-change isotropic integrator.
 ///
+/// ── Couple xy + constant surface tension (surface-tension-coupling) ─
+///
+/// `set_couple_xy(true)` mirrors LAMMPS `fix npt … couple xy`: average
+/// the lateral stresses \((P_{xx}+P_{yy})/2\), keep
+/// \(\dot\varepsilon_x=\dot\varepsilon_y\), and leave \(z\) independent
+/// (no full-ISO three-axis pressure average).
+///
+/// `set_surface_tension(γ, n_surf)` enables couple-xy and the constant
+/// surface-tension (NPγT) lateral target
+///
+///     P_⊥(t) = P_target − n_surf · γ / L_z(t),   P_z = P_target
+///
+/// with \(γ\) in eV/Å² and \(P\) in eV/Å³. Instantaneous planar
+/// \(\gamma_\mathrm{inst} = L_z/2 · (P_{zz} - (P_{xx}+P_{yy})/2)\).
+///
 /// ── Continuous temperature ramp (msu-pe-align-01) ────────────────────
 ///
 /// `T_stop` (default folds to `T_target` when < 0) enables a linear thermostat
@@ -193,6 +208,33 @@ class NoseHooverNPT : public cpu::Integrator {
         return *this;
     }
 
+    /// @brief Enable LAMMPS-style `couple xy` (lockstep \(L_x,L_y\)).
+    /// @param on When true, average lateral pressures and force
+    ///           \(\dot\varepsilon_x=\dot\varepsilon_y\).
+    /// @return `*this` for chaining.
+    NoseHooverNPT& set_couple_xy(bool on = true) {
+        couple_xy_ = on;
+        return *this;
+    }
+
+    /// @brief Constant surface-tension target (implies couple xy).
+    /// @param gamma Surface tension \(\gamma\) [eV/Å²].
+    /// @param n_surfaces Number of interfaces (default 2 for a PBC slab).
+    /// @return `*this` for chaining.
+    NoseHooverNPT& set_surface_tension(double gamma, int n_surfaces = 2) {
+        gamma_ = gamma;
+        n_surfaces_ = n_surfaces > 0 ? n_surfaces : 2;
+        couple_xy_ = true;
+        return *this;
+    }
+
+    /// @brief Whether couple-xy lockstep is active.
+    bool couple_xy() const { return couple_xy_; }
+    /// @brief Target surface tension [eV/Å²] (0 ⇒ no \(P_\perp\) offset).
+    double surface_tension() const { return gamma_; }
+    /// @brief Number of planar interfaces in the surface-tension formula.
+    int n_surfaces() const { return n_surfaces_; }
+
     bool requires_system_stress() const override { return true; }
     std::string name() const override { return "nose_hoover_npt"; }
     /// @brief Role tag — Integrator. Although this component subsumes
@@ -228,6 +270,12 @@ class NoseHooverNPT : public cpu::Integrator {
     std::array<bool, 3> couple_axis_;
     /// @brief Count of `true` entries in `couple_axis_` — LAMMPS `pdim`.
     int pdim_ = 3;
+    /// @brief LAMMPS `couple xy`: lockstep lateral edges + average \(P_{xx},P_{yy}\).
+    bool couple_xy_ = false;
+    /// @brief Target surface tension [eV/Å²]; 0 disables the \(P_\perp\) offset.
+    double gamma_ = 0.0;
+    /// @brief Surfaces in \(\gamma\) formula (default 2 for one slab + PBC).
+    int n_surfaces_ = 2;
 
     // Temperature-ramp run span (LAMMPS `update->beginstep` / `endstep`).
     std::int64_t nfirst_ = 0; ///< First MD step of the run.

@@ -500,16 +500,34 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     }
 #endif
 
-    // Per-axis virial + kinetic diagonal, with LAMMPS `couple()`
-    // averaging applied when all three axes are coupled (the isotropic /
-    // `pcouple==XYZ` case): every `p_current[i]` is set to the averaged
-    // pressure, collapsing the three forces to one shared value so the
-    // all-coupled path is bit-identical to the legacy scalar `G_ε`.
+    // Per-axis virial + kinetic diagonal, with LAMMPS `couple()` averaging:
+    //   * couple_xy  → average (xx,yy) only; z independent (semi-isotropic)
+    //   * pdim==3 and not couple_xy → full ISO average of all three
+    //     (bit-identical to the legacy scalar G_ε)
     double diag[3] = {vir[0] + 2.0 * ke_axis[0], vir[1] + 2.0 * ke_axis[1],
                       vir[2] + 2.0 * ke_axis[2]};
-    if (pdim_ == 3) {
+    if (couple_xy_ && couple_axis_[0] && couple_axis_[1]) {
+        const double ave_xy = 0.5 * (diag[0] + diag[1]);
+        diag[0] = diag[1] = ave_xy;
+    } else if (pdim_ == 3) {
         const double ave = (1.0 / 3.0) * (diag[0] + diag[1] + diag[2]);
         diag[0] = diag[1] = diag[2] = ave;
+    }
+
+    // Per-axis pressure targets. Default: hydrostatic P_target_ on every
+    // active axis. With surface tension γ, the lateral target is
+    //   P_⊥ = P_n − n_surf · γ / L_z
+    // (P_n ≡ P_target_; z keeps P_n). When γ==0 this collapses to
+    // semi-isotropic isobaric NPT under couple_xy.
+    double P_tgt[3] = {P_target_, P_target_, P_target_};
+    if (couple_xy_ && gamma_ != 0.0) {
+        const double Lz = f.simbox.length(2);
+        if (Lz > 0.0) {
+            const double Plat =
+                P_target_
+                - static_cast<double>(n_surfaces_) * gamma_ / Lz;
+            P_tgt[0] = P_tgt[1] = Plat;
+        }
     }
 
     // MTK kinetic coupling — LAMMPS-exact (`fix_nh.cpp:2541-2551`):
@@ -532,12 +550,28 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
             ? 6.0 * mtk_active_ke / (static_cast<double>(pdim_) * N_atoms)
             : 0.0;
 
-    for (int a = 0; a < 3; ++a) {
-        if (!couple_axis_[a])
-            continue;                      // rigid axis: ε̇_α stays 0.
-        const double P_axis = diag[a] / V; // = (virial_α + 2·KE_α)/V
-        const double G_eps_a = (3.0 * V * (P_axis - P_target_) + mtk_term) / W_;
-        eps_dot_[a] += G_eps_a * half_dt;
+    if (couple_xy_ && couple_axis_[0] && couple_axis_[1]) {
+        // Lateral DOF: one shared strain rate from averaged P_⊥.
+        const double P_xy = diag[0] / V;
+        const double G_xy =
+            (3.0 * V * (P_xy - P_tgt[0]) + mtk_term) / W_;
+        eps_dot_[0] += G_xy * half_dt;
+        eps_dot_[1] = eps_dot_[0];
+        if (couple_axis_[2]) {
+            const double P_z = diag[2] / V;
+            const double G_z =
+                (3.0 * V * (P_z - P_tgt[2]) + mtk_term) / W_;
+            eps_dot_[2] += G_z * half_dt;
+        }
+    } else {
+        for (int a = 0; a < 3; ++a) {
+            if (!couple_axis_[a])
+                continue; // rigid axis: ε̇_α stays 0.
+            const double P_axis = diag[a] / V;
+            const double G_eps_a =
+                (3.0 * V * (P_axis - P_tgt[a]) + mtk_term) / W_;
+            eps_dot_[a] += G_eps_a * half_dt;
+        }
     }
 }
 
