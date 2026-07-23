@@ -107,4 +107,37 @@ TEST(UMP2, H2ClosedShellMatchesRMP2) {
     EXPECT_NEAR(ump2.e_tot, rmp2.e_tot, 1e-9);
 }
 
+TEST(MP2, FrozenCoreRaisesEcorrVsFull) {
+    // H2/STO-3G has 1 occupied spatial MO. Freezing it must zero E_corr;
+    // unfrozen E_corr is strictly negative. Unit-only (no e2e pin).
+    auto frame_full = make_h2();
+    auto frame_fc = make_h2();
+    cpu::scf::RHF full;
+    full.basis = cpu::scf::BasisSet::STO3G;
+    full.tol = 1e-12;
+    const auto r_full = full.mp2(frame_full);
+    EXPECT_TRUE(full.converged());
+    EXPECT_LT(r_full.e_corr, 0.0);
+    EXPECT_EQ(r_full.frozen, 0);
+
+    cpu::scf::RHF fc;
+    fc.basis = cpu::scf::BasisSet::STO3G;
+    fc.tol = 1e-12;
+    fc.frozen = 1;
+    const auto r_fc = fc.mp2(frame_fc);
+    EXPECT_TRUE(fc.converged());
+    EXPECT_NEAR(r_fc.e_corr, 0.0, 1e-14);
+    EXPECT_EQ(r_fc.frozen, 1);
+    EXPECT_NEAR(r_fc.e_tot, fc.energy(), 1e-14);
+}
+
+TEST(MP2, FrozenCoreRejectsNegative) {
+    auto frame = make_h2();
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-12;
+    rhf.frozen = -1;
+    EXPECT_THROW(rhf.mp2(frame), std::invalid_argument);
+}
+
 #endif

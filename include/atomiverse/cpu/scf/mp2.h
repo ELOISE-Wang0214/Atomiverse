@@ -19,6 +19,9 @@ struct MP2Result {
     double e_tot;  ///< Total MP2 energy = scf.energy + e_corr [Hartree].
     /// @brief true when the correlation energy used density-fitted (ia|jb).
     bool ri = false;
+    /// @brief Number of lowest occupied spatial MOs frozen in the sum
+    ///        (0 = full valence+core correlation).
+    int frozen = 0;
 };
 
 /// @brief Transform AO two-electron integrals to the MO (ia|jb) ovov block.

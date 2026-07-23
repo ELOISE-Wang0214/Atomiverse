@@ -181,6 +181,12 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        throws at Fock-build setup — no fallback.
     AuxBasis aux_basis = AuxBasis::Def2JKFIT;
 
+    /// @brief Number of lowest occupied spatial MOs excluded from the MP2
+    ///        correlation sum (frozen core). Default 0 = correlate all
+    ///        occupied orbitals. Matches PySCF `mp.MP2(mf, frozen=N)`.
+    ///        Closed-shell RMP2 / RI-MP2 only; UMP2 throws if `frozen > 0`.
+    int frozen = 0;
+
     // ── Coulomb algorithm (CFMM) — hf-capability-gaps-21-cfmm ─────────
     /// @brief J-matrix algorithm. `Coulomb::Direct` (default) keeps the
     ///        exact-ERI path bit-identical. `Coulomb::CFMM` selects the
@@ -332,7 +338,9 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// Closed-shell `RHF` → RMP2 (or RI-MP2 when `ri != RI::None`);
     /// unrestricted `UHF` → UMP2 (spin-orbital, unprojected). ROHF and GHF
     /// throw. Optional density guess is forwarded to the reference SCF (needed
-    /// for multi-minima cases such as triplet O₂ UHF).
+    /// for multi-minima cases such as triplet O₂ UHF). Member `frozen` excludes
+    /// the lowest N occupied spatial MOs from the correlation sum (RMP2 /
+    /// RI-MP2); UMP2 rejects `frozen > 0`.
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
     /// @param guess  Optional density-matrix guess for the reference SCF.
     /// @return MP2 correlation + total energy [Hartree].

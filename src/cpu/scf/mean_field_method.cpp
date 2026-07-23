@@ -999,16 +999,22 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
+    if (spin_ == SpinType::Unrestricted && frozen != 0) {
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp2: frozen-core UMP2 is not supported — set "
+            "frozen=0 for unrestricted MP2, or use closed-shell RHF.");
+    }
     if (ri != RI::None) {
         if (spin_ != SpinType::Restricted)
             throw std::invalid_argument(
                 "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
                 "ri=RI::None for UMP2, or use RHF.");
-        return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis);
+        return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis,
+                            frozen);
     }
     if (spin_ == SpinType::Unrestricted)
         return ump2_energy(*integrals_sp_, *det_sp_, e_total_);
-    return mp2_energy(*integrals_sp_, *det_sp_, e_total_);
+    return mp2_energy(*integrals_sp_, *det_sp_, e_total_, frozen);
 }
 
 template <typename D>
