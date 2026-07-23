@@ -38,9 +38,8 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 ## in_progress
 
 - [~] `frozen-core-mp2-h2o` | Frozen-core MP2 | post-hf | water | 6-31g* | e_corr | freeze O 1s; canonical RMP2 already ✓; PySCF frozen_core
-- [x] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
+- [~] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
 - [~] `blyp-water-sto3g` | BLYP GGA | dft | water | sto-3g | e_tot | B88+LYP already in B3LYP pieces; expose XCType::BLYP; PySCF xc=blyp
-- [~] `ghf-grad-h3-sto3g` | GHF analytic gradient | hartree-fock | h3 | sto-3g | forces | GHF energy ✓ (reg_h3_ghf); forces throw; PySCF GHF grad
 - [~] `pcm-grad-h2o` | Implicit-solvent analytic gradient | multiscale | water | 6-31g* | forces | C-PCM energy ✓; PCM forces ○; PySCF with_solvent grad
 
 ## blocked
@@ -67,4 +66,5 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [x] `tda-nac-h2` | TDA NAC vectors | regressions/scf/h2_nac_vectors | true NAC
 - [x] `rohf-o2-energy-grad` | ROHF energy + gradient | regressions/scf/o2_rohf_sto3g, o2_rohf_grad | PySCF ROHF
 - [x] `ghf-h3-energy` | GHF energy | regressions/scf/h3_ghf_sto3g | energy-only
+- [x] `ghf-grad-h3-sto3g` | GHF analytic gradient | regressions/scf/ghf-grad-h3-sto3g | noncollinear H3 forces 1e-5 Ha/Bohr
 - [x] `cpcm-h2o` | C-PCM/COSMO energy | regressions/scf/h2o_rhf_631gs_cpcm | conductor-like solvent

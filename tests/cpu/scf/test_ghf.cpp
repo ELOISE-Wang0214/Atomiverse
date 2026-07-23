@@ -292,12 +292,32 @@ TEST(GHF, UnsetElectronCountThrows) {
     EXPECT_THROW(ghf.run(frame), std::invalid_argument);
 }
 
+TEST(GHF, ForcesMatchUhfOnH2Collapse) {
+    // Collapse theorem for gradients: on unfrustrated H2 the GHF minimum is
+    // collinear, so analytic GHF forces must match UHF (element-wise).
+    auto frame = make_h2();
+    cpu::scf::UHF uhf(1, 1);
+    uhf.basis = cpu::scf::BasisSet::STO3G;
+    uhf.tol = 1e-12;
+    const auto g_u = uhf.forces(frame);
+
+    cpu::scf::GHF ghf(2);
+    ghf.basis = cpu::scf::BasisSet::STO3G;
+    ghf.tol = 1e-12;
+    const auto g_g = ghf.forces(frame);
+    ASSERT_EQ(g_u.forces.shape()[0], g_g.forces.shape()[0]);
+    double max_err = 0.0;
+    for (std::size_t A = 0; A < g_u.forces.shape()[0]; ++A)
+        for (std::size_t d = 0; d < 3; ++d)
+            max_err = std::max(
+                max_err, std::fabs(g_u.forces(A, d) - g_g.forces(A, d)));
+    EXPECT_LT(max_err, 1e-6) << "GHF/UHF force mismatch on H2 collapse";
+}
+
 TEST(GHF, UnsupportedPathsThrow) {
     auto frame = make_h2();
     cpu::scf::GHF ghf(2);
     ghf.basis = cpu::scf::BasisSet::STO3G;
-    // No GHF analytic gradient in this link.
-    EXPECT_THROW(ghf.forces(frame), std::invalid_argument);
     // Post-SCF correlation on a spinor reference is refused, not mistreated.
     EXPECT_THROW(ghf.mp2(frame), std::invalid_argument);
     EXPECT_THROW(ghf.fci(frame), std::invalid_argument);

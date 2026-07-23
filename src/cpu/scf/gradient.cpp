@@ -20,6 +20,8 @@
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/io/xio.hpp>
@@ -500,19 +502,24 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // densities come from shared spatial orbitals; the ROHF energy equals the
     // constrained-UHF energy at the same density). The only ROHF-specific piece
     // is the energy-weighted density W, built below from the spin Fock matrices.
-    if (spin_ == SpinType::Generalized)
-        throw std::runtime_error(
-            "ScfGradient::compute: the GHF analytic gradient is not "
-            "implemented — the spinor density has no per-spin channel this "
-            "assembly understands; refusing to take the unrestricted branch "
-            "silently. Use finite differences.");
+    //
+    // GHF: charge density P^αα+P^ββ for the 1e/J/nuclear terms; spinor
+    // energy-weighted density W_spinor = Σ_i ε_i c_i c_iᵀ contracted as
+    // Waa+Wbb against dS (because S_spinor = S⊗1₂). Exchange uses all four
+    // spin blocks via accumulate_two_electron_gradient.
     const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.nlocal());
     int n = integrals.n_basis;
     bool is_ks = (method_ == MeanFieldType::KS);
     bool restricted = (spin_ == SpinType::Restricted);
+    const bool generalized = (spin_ == SpinType::Generalized);
+    if (generalized && is_ks)
+        throw std::runtime_error(
+            "ScfGradient::compute: GKS (generalized KS) is not implemented.");
     const char* method_label = is_ks ? "KS" : "HF";
-    const char* spin_label = restricted ? "restricted" : "unrestricted";
+    const char* spin_label = generalized
+                                 ? "generalized"
+                                 : (restricted ? "restricted" : "unrestricted");
 
     ATV_INFO("[gradient] start method={} spin={} natm={} basis={}",
              method_label, spin_label, natm, n);
@@ -523,18 +530,38 @@ GradientResult ScfGradient::compute(const Frame& frame,
 
     // P_total = P^alpha + P^beta in both spin treatments (restricted:
     // density_total() is the factor-2 closed-shell density). Hoisted ONCE —
-    // density_total() returns by value.
+    // density_total() returns by value. Generalized: n×n charge density
+    // P^αα + P^ββ (spin-off-diagonal blocks carry no charge).
     const xt::xtensor<double, 2> P = det.density_total();
 
     // Row-major copies of the MO coefficients for accumulate_W (restricted
     // determinants answer the beta query with the alpha channel, matching
-    // the old C_beta == C_alpha convention).
+    // the old C_beta == C_alpha convention). Generalized: C_a is the 2n×N_mo
+    // spinor coefficient matrix.
     using Spin = SlaterDeterminant::Spin;
     const xt::xtensor<double, 2> C_a = det.coefficients(Spin::alpha);
     const xt::xtensor<double, 2> C_b = det.coefficients(Spin::beta);
 
     xt::xtensor<double, 2> W = xt::zeros<double>({n, n});
-    if (spin_ == SpinType::RestrictedOpen) {
+    if (generalized) {
+        // Spinor W (2n×2n), then charge-block sum Waa + Wbb for Pulay with
+        // S⊗1₂: Tr[W_spinor · (dS⊗I)] = Tr[(Waa+Wbb) · dS].
+        if (!det.generalized())
+            throw std::invalid_argument(
+                "ScfGradient::compute: SpinType::Generalized requires a "
+                "generalized (spinor) SlaterDeterminant.");
+        const int two_n = static_cast<int>(C_a.shape()[0]);
+        if (two_n != 2 * n)
+            throw std::invalid_argument(
+                "ScfGradient::compute: GHF spinor C rows ("
+                + std::to_string(two_n) + ") != 2 * n_basis ("
+                + std::to_string(2 * n) + ").");
+        xt::xtensor<double, 2> W_spinor = xt::zeros<double>({two_n, two_n});
+        accumulate_W(W_spinor, C_a, det.orbital_energies(Spin::alpha),
+                     det.n_electrons_total(), two_n);
+        W = xt::view(W_spinor, xt::range(0, n), xt::range(0, n))
+            + xt::view(W_spinor, xt::range(n, two_n), xt::range(n, two_n));
+    } else if (spin_ == SpinType::RestrictedOpen) {
         // ROHF energy-weighted density (PySCF grad/rohf.py `make_rdm1e`):
         //   W = O_a·F_a·O_a + O_b·F_b·O_b
         // where F_a/F_b are the SPIN Fock matrices at the converged density

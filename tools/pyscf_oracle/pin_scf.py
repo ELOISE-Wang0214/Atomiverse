@@ -11,9 +11,9 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
-  python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
+  python tools/pyscf_oracle/pin_scf.py ghf --geom h3 --basis sto-3g --spin 1 --grad
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ _HA_TO_EV = 27.211386245988
 
 def _mol(geom: str, basis: str, charge: int, spin: int, cart: bool | None):
     from pyscf import gto
+    import numpy as np
 
     presets = {
         "water": """
@@ -55,6 +56,12 @@ H -0.629118 -0.629118  0.629118
 H  0.629118 -0.629118 -0.629118
 H -0.629118  0.629118 -0.629118
 """,
+        # Equilateral H3, side 1.0 Å (GHF spin-frustration geometry).
+        "h3": f"""
+H  0.000000  0.000000  0.000000
+H  1.000000  0.000000  0.000000
+H  0.500000  {0.5 * np.sqrt(3):.12f}  0.000000
+""",
     }
     if geom not in presets:
         raise SystemExit(f"unknown geom preset {geom!r}; choose {sorted(presets)}")
@@ -82,6 +89,7 @@ def main() -> int:
             "rhf",
             "uhf",
             "rohf",
+            "ghf",
             "rks",
             "uks",
             "mp2",
@@ -89,7 +97,6 @@ def main() -> int:
             "ump2",
             "tda",
             "tdhf",
-            "cisd",
             "rks-tda",
             "rks-tddft",
         ],
@@ -140,6 +147,8 @@ def main() -> int:
         mf = scf.UHF(mol)
     elif m == "rohf":
         mf = scf.ROHF(mol)
+    elif m == "ghf":
+        mf = scf.GHF(mol)
     elif m in ("rks", "rks-tda", "rks-tddft"):
         mf = dft.RKS(mol)
         mf.xc = args.xc
@@ -153,13 +162,83 @@ def main() -> int:
         mf = scf.RHF(mol)
 
     mf.conv_tol = args.conv_tol
-    e = mf.kernel()
+    # GHF on frustrated H3 needs a noncollinear Néel guess (collinear traps).
+    if m == "ghf" and args.geom == "h3":
+        import numpy as np
+
+        n = mol.nao
+        dm0 = np.zeros((2 * n, 2 * n))
+        dm0[:n, :n] = np.eye(n)
+
+        def _rot(dm, theta):
+            G = np.zeros((2 * n, 2 * n))
+            for mu in range(n):
+                th = theta * mu
+                c, s = np.cos(th / 2), np.sin(th / 2)
+                G[mu, mu] = c
+                G[mu, n + mu] = -s
+                G[n + mu, mu] = s
+                G[n + mu, n + mu] = c
+            return G @ dm @ G.T
+
+        e = mf.kernel(dm0=_rot(dm0, 2.0 * np.pi / 3.0))
+    else:
+        e = mf.kernel()
     out["e_tot_ha"] = float(e)
     out["converged"] = bool(mf.converged)
 
     if args.grad and m in ("rhf", "uhf", "rohf", "rks", "uks"):
         g = mf.nuc_grad_method().kernel()
         out["grad_ha_bohr"] = g.tolist()
+    elif args.grad and m == "ghf":
+        # PySCF has no scf.GHF.nuc_grad_method; pin analytic dE/dR at the
+        # converged spinor density with central-FD dAO integrals (Ha/Bohr).
+        import numpy as np
+
+        n = mol.nao
+        dm = mf.make_rdm1()
+        Paa, Pab = dm[:n, :n], dm[:n, n:]
+        Pba, Pbb = dm[n:, :n], dm[n:, n:]
+        Pc = Paa + Pbb
+        mo, e_mo, occ = mf.mo_coeff, mf.mo_energy, mf.mo_occ
+        W = np.zeros_like(dm)
+        for i in range(mo.shape[1]):
+            if occ[i] < 0.5:
+                continue
+            W += e_mo[i] * np.outer(mo[:, i], mo[:, i]) * occ[i]
+        Wc = W[:n, :n] + W[n:, n:]
+        h = 1e-5
+        coords0 = mol.atom_coords(unit="Bohr").copy()
+        grad = np.zeros((mol.natm, 3))
+        for A in range(mol.natm):
+            for d in range(3):
+
+                def _mats(sign, _A=A, _d=d):
+                    coords = coords0.copy()
+                    coords[_A, _d] += sign * h
+                    m2 = mol.copy()
+                    m2.set_geom_(coords, unit="Bohr")
+                    m2.build(0, 0)
+                    S = m2.intor("int1e_ovlp")
+                    H = m2.intor("int1e_kin") + m2.intor("int1e_nuc")
+                    eri = m2.intor("int2e", aosym="s1").reshape(n, n, n, n)
+                    return S, H, eri, m2.energy_nuc()
+
+                Sp, Hp, ep, Vp = _mats(+1)
+                Sm, Hm, em, Vm = _mats(-1)
+                dS = (Sp - Sm) / (2 * h)
+                dH = (Hp - Hm) / (2 * h)
+                deri = (ep - em) / (2 * h)
+                dVn = (Vp - Vm) / (2 * h)
+                gA = float(np.sum(Pc * dH) - np.sum(Wc * dS) + dVn)
+                gA += 0.5 * float(np.einsum("ij,kl,ijkl->", Pc, Pc, deri))
+                for D, E in ((Paa, Paa), (Pbb, Pbb), (Pab, Pba), (Pba, Pab)):
+                    gA += -0.5 * float(np.einsum("jk,li,ijkl->", D, E, deri))
+                grad[A, d] = gA
+        out["grad_ha_bohr"] = grad.tolist()
+        out["grad_note"] = (
+            "analytic GHF at fixed dm with FD dAO (PySCF has no GHF nuc_grad)"
+        )
 
     if m == "mp2":
         m2 = mp.MP2(mf).run()
@@ -201,123 +280,6 @@ def main() -> int:
             out["td_converged"] = [bool(c) for c in td.converged]
         if hasattr(td, "oscillator_strength"):
             out["oscillator_strength"] = [float(x) for x in td.oscillator_strength()]
-    elif m == "cisd":
-        # CIS(D): Head-Gordon et al., Chem. Phys. Lett. 219, 21 (1994).
-        # PySCF has no product CIS(D); evaluate spin-orbital eqs. (8)/(13)/(14)
-        # on pyscf.tdscf.TDA amplitudes + MO ERIs (offline pin only).
-        from pyscf import ao2mo
-        import numpy as np
-
-        td = tdscf.TDA(mf)
-        td.nstates = args.nstates
-        td.conv_tol = min(args.conv_tol, 1e-10)
-        td.kernel()
-        eps = mf.mo_energy
-        C = mf.mo_coeff
-        nmo = C.shape[1]
-        nocc = mol.nelectron // 2
-        nvir = nmo - nocc
-        eri_mo = ao2mo.restore(1, ao2mo.full(mf._eri, C), nmo)
-        occ_so = [(i, 0) for i in range(nocc)] + [(i, 1) for i in range(nocc)]
-        vir_so = [(a, 0) for a in range(nocc, nmo)] + [
-            (a, 1) for a in range(nocc, nmo)
-        ]
-        nso_o, nso_v = len(occ_so), len(vir_so)
-
-        def so_eri(p, q, r, s):
-            (P, sp), (Q, sq), (R, sr), (S, ss) = p, q, r, s
-            val = 0.0
-            if sp == sr and sq == ss:
-                val += eri_mo[P, R, Q, S]
-            if sp == ss and sq == sr:
-                val -= eri_mo[P, S, Q, R]
-            return val
-
-        a_amp = np.zeros((nso_o, nso_o, nso_v, nso_v))
-        for ii, i in enumerate(occ_so):
-            for jj, j in enumerate(occ_so):
-                for aa, a in enumerate(vir_so):
-                    for bb, b in enumerate(vir_so):
-                        denom = (
-                            eps[a[0]] + eps[b[0]] - eps[i[0]] - eps[j[0]]
-                        )
-                        a_amp[ii, jj, aa, bb] = -so_eri(a, b, i, j) / denom
-
-        roots = []
-        for s in range(args.nstates):
-            X = td.xy[s][0]
-            bvec = np.zeros((nso_o, nso_v))
-            for i in range(nocc):
-                for a in range(nvir):
-                    bvec[i, a] = X[i, a]
-                    bvec[nocc + i, nvir + a] = X[i, a]
-            omega = float(td.e[s])
-            u = np.zeros((nso_o, nso_o, nso_v, nso_v))
-            for ii, i in enumerate(occ_so):
-                for jj, j in enumerate(occ_so):
-                    for aa, a in enumerate(vir_so):
-                        for bb, bv in enumerate(vir_so):
-                            ssum = 0.0
-                            for cc, c in enumerate(vir_so):
-                                ssum += so_eri(a, bv, c, j) * bvec[ii, cc]
-                                ssum -= so_eri(a, bv, c, i) * bvec[jj, cc]
-                            for kk, k in enumerate(occ_so):
-                                ssum += so_eri(k, a, i, j) * bvec[kk, bb]
-                                ssum -= so_eri(k, bv, i, j) * bvec[kk, aa]
-                            u[ii, jj, aa, bb] = ssum
-            V = 0.0
-            for ii, i in enumerate(occ_so):
-                for jj, j in enumerate(occ_so):
-                    for aa, a in enumerate(vir_so):
-                        for bb, bv in enumerate(vir_so):
-                            denom = (
-                                eps[a[0]]
-                                + eps[bv[0]]
-                                - eps[i[0]]
-                                - eps[j[0]]
-                                - omega
-                            )
-                            V += u[ii, jj, aa, bb] ** 2 / denom
-            V *= -0.25
-            v = np.zeros((nso_o, nso_v))
-            for ii in range(nso_o):
-                for aa in range(nso_v):
-                    ssum = 0.0
-                    for jj in range(nso_o):
-                        for kk in range(nso_o):
-                            for bb in range(nso_v):
-                                for cc in range(nso_v):
-                                    jklbc = so_eri(
-                                        occ_so[jj],
-                                        occ_so[kk],
-                                        vir_so[bb],
-                                        vir_so[cc],
-                                    )
-                                    ssum += jklbc * (
-                                        bvec[ii, bb] * a_amp[jj, kk, cc, aa]
-                                        + bvec[jj, aa] * a_amp[ii, kk, cc, bb]
-                                        + 2.0
-                                        * bvec[jj, bb]
-                                        * a_amp[ii, kk, aa, cc]
-                                    )
-                    v[ii, aa] = 0.5 * ssum
-            U = float(np.sum(bvec * v))
-            roots.append(
-                {
-                    "cis_ha": omega,
-                    "cis_ev": omega * _HA_TO_EV,
-                    "U_ha": U,
-                    "V_ha": V,
-                    "corr_ha": U + V,
-                    "cisd_ha": omega + U + V,
-                    "cisd_ev": (omega + U + V) * _HA_TO_EV,
-                }
-            )
-        out["roots"] = roots
-        out["excitation_cis_ev"] = [r["cis_ev"] for r in roots]
-        out["excitation_cisd_ev"] = [r["cisd_ev"] for r in roots]
-        if hasattr(td, "converged"):
-            out["td_converged"] = [bool(c) for c in td.converged]
 
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0 if out.get("converged", True) else 1

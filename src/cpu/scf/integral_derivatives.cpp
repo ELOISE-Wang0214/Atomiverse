@@ -719,11 +719,159 @@ void accumulate_two_electron_gradient(
     // ROHF feeds the unrestricted (per-spin density) branch unchanged: its
     // α/β densities from shared spatial orbitals give the correct open-shell
     // J−K exchange contraction.
-    if (spin == SpinType::Generalized)
-        throw std::runtime_error(
-            "accumulate_two_electron_gradient: SpinType::Generalized (GHF) "
-            "has no analytic two-electron gradient — refusing to take the "
-            "unrestricted branch silently.");
+    //
+    // GHF (generalized): the spin-off-diagonal blocks P^{αβ}, P^{βα} are
+    // generally non-symmetric, so the UHF 8-fold density symmetrization
+    // ½[P_ik P_jl + P_jk P_il] does NOT recover Tr[K[D]E] = Σ (ij|kl) D_jk
+    // E_li. Contract the unsymmetrized form over the full ordered AO
+    // quartet sum (no mult). GHF already requires the stored dense ERI for
+    // the energy, so the N⁴ native derivative path is the matching force
+    // engine (H3/STO-3G is O(1); larger GHF jobs are rare).
+    if (spin == SpinType::Generalized) {
+        if (method != MeanFieldType::HF)
+            throw std::runtime_error(
+                "accumulate_two_electron_gradient: GHF is HF-only — no KS "
+                "spinor gradient in this link.");
+        if (!det.generalized())
+            throw std::invalid_argument(
+                "accumulate_two_electron_gradient: SpinType::Generalized "
+                "requires a generalized (spinor) SlaterDeterminant.");
+        using Spin = SlaterDeterminant::Spin;
+        xt::xtensor<double, 2> Paa = det.spin_block(Spin::alpha, Spin::alpha);
+        xt::xtensor<double, 2> Pab = det.spin_block(Spin::alpha, Spin::beta);
+        xt::xtensor<double, 2> Pba = det.spin_block(Spin::beta, Spin::alpha);
+        xt::xtensor<double, 2> Pbb = det.spin_block(Spin::beta, Spin::beta);
+        xt::xtensor<double, 2> Pc = P_total_sph;
+        if (integrals.spherical()) {
+            const auto& c2s = integrals.c2s;
+            const auto ct = xt::transpose(c2s);
+            auto to_cart = [&](xt::xtensor<double, 2> M) {
+                return xt::linalg::dot(c2s, xt::linalg::dot(std::move(M), ct));
+            };
+            Paa = to_cart(std::move(Paa));
+            Pab = to_cart(std::move(Pab));
+            Pba = to_cart(std::move(Pba));
+            Pbb = to_cart(std::move(Pbb));
+            Pc = to_cart(std::move(Pc));
+        }
+
+        const ShellBlockPairList bpl{integrals, /*thr=*/1e-10};
+        const int n_blocks = static_cast<int>(bpl.blocks.size());
+        std::vector<int> block_to_atom(bpl.blocks.size(), -1);
+        for (std::size_t b = 0; b < bpl.blocks.size(); ++b) {
+            const auto& Bl = bpl.blocks[b];
+            for (int a = 0; a < natm; ++a) {
+                const double dx = Bl.center[0] - integrals.atoms[a].pos[0];
+                const double dy = Bl.center[1] - integrals.atoms[a].pos[1];
+                const double dz = Bl.center[2] - integrals.atoms[a].pos[2];
+                if (dx * dx + dy * dy + dz * dz < 1e-20) {
+                    block_to_atom[b] = a;
+                    break;
+                }
+            }
+        }
+
+        const int nT =
+#ifdef _OPENMP
+            omp_get_max_threads();
+#else
+            1;
+#endif
+        std::vector<xt::xtensor<double, 2>> grad_local(
+            nT, xt::zeros<double>({static_cast<std::size_t>(natm),
+                                   static_cast<std::size_t>(3)}));
+
+        // Full ordered block quartets — no 8-fold mult. Factor for d(ij|kl):
+        //   ½ Pc_ij Pc_kl − ½ Σ_{σσ'} P^{σσ'}_jk P^{σ'σ}_li
+        const long long n_quartets =
+            1LL * n_blocks * n_blocks * n_blocks * n_blocks;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic)
+#endif
+        for (long long q = 0; q < n_quartets; ++q) {
+            const int tid =
+#ifdef _OPENMP
+                omp_get_thread_num();
+#else
+                0;
+#endif
+            auto& Gl = grad_local[tid];
+            long long t = q;
+            const int id = static_cast<int>(t % n_blocks);
+            t /= n_blocks;
+            const int ic = static_cast<int>(t % n_blocks);
+            t /= n_blocks;
+            const int ib = static_cast<int>(t % n_blocks);
+            const int ia = static_cast<int>(t / n_blocks);
+
+            const auto& Bsi = bpl.blocks[ia];
+            const auto& Bsj = bpl.blocks[ib];
+            const auto& Bsk = bpl.blocks[ic];
+            const auto& Bsl = bpl.blocks[id];
+            const int na = Bsi.n_cart, nb = Bsj.n_cart;
+            const int nc = Bsk.n_cart, nd = Bsl.n_cart;
+            const int i0 = Bsi.ao_start, j0 = Bsj.ao_start;
+            const int k0 = Bsk.ao_start, l0 = Bsl.ao_start;
+            const int atom_i = block_to_atom[ia];
+            const int atom_j = block_to_atom[ib];
+            const int atom_k = block_to_atom[ic];
+            const int atom_l = block_to_atom[id];
+            const int block_n = na * nb * nc * nd;
+
+            std::vector<double> deriv_A(3 * block_n, 0.0);
+            std::vector<double> deriv_B(3 * block_n, 0.0);
+            std::vector<double> deriv_C(3 * block_n, 0.0);
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 0, deriv_A.data());
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 1, deriv_B.data());
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 2, deriv_C.data());
+
+            for (int ia_ao = 0; ia_ao < na; ++ia_ao) {
+                const int i = i0 + ia_ao;
+                for (int ib_ao = 0; ib_ao < nb; ++ib_ao) {
+                    const int j = j0 + ib_ao;
+                    for (int ic_ao = 0; ic_ao < nc; ++ic_ao) {
+                        const int k = k0 + ic_ao;
+                        for (int id_ao = 0; id_ao < nd; ++id_ao) {
+                            const int l = l0 + id_ao;
+                            const double factor_J =
+                                0.5 * Pc(i, j) * Pc(k, l);
+                            // Unsymmetrized GHF exchange: −½ Σ D_jk E_li
+                            const double factor_K =
+                                -0.5
+                                * (Paa(j, k) * Paa(l, i)
+                                   + Pbb(j, k) * Pbb(l, i)
+                                   + Pab(j, k) * Pba(l, i)
+                                   + Pba(j, k) * Pab(l, i));
+                            const double factor = factor_J + factor_K;
+                            if (std::abs(factor) < 1e-18)
+                                continue;
+                            const int ao_idx =
+                                ((ia_ao * nb + ib_ao) * nc + ic_ao) * nd
+                                + id_ao;
+                            for (int axis = 0; axis < 3; ++axis) {
+                                const double dA =
+                                    deriv_A[axis * block_n + ao_idx];
+                                const double dB =
+                                    deriv_B[axis * block_n + ao_idx];
+                                const double dC =
+                                    deriv_C[axis * block_n + ao_idx];
+                                const double dD = -(dA + dB + dC);
+                                Gl(atom_i, axis) += factor * dA;
+                                Gl(atom_j, axis) += factor * dB;
+                                Gl(atom_k, axis) += factor * dC;
+                                Gl(atom_l, axis) += factor * dD;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (const auto& Gl : grad_local)
+            grad += Gl;
+        ATV_DEBUG("[gradient] two_e GHF full-sum done ms={:.1f}",
+                  elapsed_ms(t_total));
+        return;
+    }
     const bool restricted = (spin == SpinType::Restricted);
 
     // Per-spin factor-1 densities for the unrestricted exchange contraction
