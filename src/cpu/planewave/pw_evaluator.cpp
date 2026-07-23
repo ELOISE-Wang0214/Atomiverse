@@ -18,17 +18,18 @@ void PWEvaluator::build(const cpu::BuildContext& ctx) {
 }
 
 void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
-    // Energy path (always). When forces are requested, analytic forces run
-    // their own SCF + gradient (one SCF total in the force path); skip the
-    // duplicate energy-only SCF by letting forces supply energy later if needed.
-    // For simplicity keep energy SCF then analytic forces (2 SCF) until
-    // workspace reuse lands — still O(1) vs FD's 6N.
+    // Energy path (always). Nested force/stress SCFs re-resolve Frame keys
+    // many times; park the per-launch resolution window around them (same
+    // pattern as mean_field_method) so the outer Evaluate budget stays
+    // component-sized.
     const auto& result = method_.run(ctx.frame);
     ctx.frame.meta.get(kEnergy) = result.energy * qe_units::rydberg_to_ev;
 
     if (compute_forces_ && ctx.forces_requested) {
+        const auto saved = ctx.frame.resolution_window();
         const auto forces =
             pw_forces_analytic(ctx.frame, method_); // eV/Å
+        ctx.frame.restore_resolution_window(saved);
         const int n = ctx.frame.nlocal();
         if (static_cast<int>(forces.size()) != n)
             throw std::runtime_error("PWEvaluator: force count mismatch");
@@ -47,7 +48,9 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     if (compute_stress_) {
+        const auto saved = ctx.frame.resolution_window();
         const auto s = pw_stress(ctx.frame, method_); // eV/Å³ Voigt
+        ctx.frame.restore_resolution_window(saved);
         auto& st = ctx.frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
             st[static_cast<std::size_t>(k)] = s[static_cast<std::size_t>(k)];

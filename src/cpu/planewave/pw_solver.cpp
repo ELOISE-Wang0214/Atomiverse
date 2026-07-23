@@ -663,6 +663,11 @@ std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method) {
     return internal::pw_stress_analytic_impl(frame, method);
 }
 
+std::array<double, 6> pw_stress_fd(const cpu::Frame& frame, const PW& method,
+                                   double h) {
+    return internal::pw_stress_fd_impl(frame, method, h);
+}
+
 std::vector<std::array<double, 3>>
 pw_forces_fd(const cpu::Frame& frame, const PW& method, double h_ang) {
     if (h_ang <= 0.0)

@@ -1,5 +1,5 @@
 /// @file cpu/pw/internal/pw_stress.h
-/// @brief Analytic plane-wave cell stress (Voigt 6-vector).
+/// @brief Plane-wave cell stress (Nielsen–Martin analytic + strain-FD oracle).
 #pragma once
 
 #include <array>
@@ -12,14 +12,29 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
-/// @brief Analytic stress σ [eV/Å³], Voigt order xx,yy,zz,xy,xz,yz.
+/// @brief Nielsen–Martin analytic stress σ [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
 ///
-/// Includes kinetic (bands), Hartree, local PP Hellmann–Feynman cell
-/// derivative, and Ewald ion–ion. XC contribution uses the LDA Parseval
-/// form from ρ and V_xc. KB nonlocal stress is included when UPF projectors
-/// are present (final diagonalization per k, same as forces).
+/// One SCF then Hellmann–Feynman cell derivatives: kinetic (bands), Hartree,
+/// local PP (radial form-factor \(G\)-derivative), Ewald ion–ion, LDA XC
+/// volume term, and Kleinman–Bylander nonlocal (UPF projectors). Sign and
+/// scale match strain-FD of the total energy, \(\sigma=(1/\Omega)\partial E/\partial\varepsilon\).
+///
+/// @param frame Geometry [Å]; not mutated.
+/// @param method Plane-wave method members (ecut, k-mesh, UPF path, …).
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
                                               const PW& method);
+
+/// @brief Strain finite-difference stress oracle [eV/Å³] (12 SCF solves).
+///
+/// Central differences of SCF energy under symmetric strain at fixed
+/// fractional coordinates. Used only for dual-gate tests against the
+/// analytic path.
+///
+/// @param frame Geometry [Å]; not mutated.
+/// @param method Plane-wave method members.
+/// @param h Dimensionless strain step (default 2e-3).
+std::array<double, 6> pw_stress_fd_impl(const cpu::Frame& frame,
+                                        const PW& method, double h = 2e-3);
 
 } // namespace internal
 } // namespace pw

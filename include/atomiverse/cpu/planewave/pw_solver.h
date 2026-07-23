@@ -140,9 +140,24 @@ pw_forces_fd(const cpu::Frame& frame, const PW& method,
 std::vector<std::array<double, 3>>
 pw_forces_analytic(const cpu::Frame& frame, const PW& method);
 
-/// @brief Cell stress σ [eV/Å³], Voigt order xx,yy,zz,xy,xz,yz.
+/// @brief Nielsen–Martin analytic cell stress σ [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
+///
+/// One SCF + Hellmann–Feynman cell derivatives (kinetic, Hartree, local PP,
+/// Ewald, LDA XC, KB nonlocal). Matches strain-FD of the total energy.
 std::array<double, 6> pw_stress(const cpu::Frame& frame,
                                 const PW& method);
+
+/// @brief Strain finite-difference cell stress oracle [eV/Å³] (Voigt).
+///
+/// Central differences of SCF energy under symmetric strain at fixed
+/// fractional coordinates (12 SCF solves). Dual-gate oracle for
+/// `pw_stress`; not the production path.
+///
+/// @param frame Geometry [Å]; not mutated.
+/// @param method Plane-wave method members.
+/// @param h Dimensionless strain step (must be > 0).
+std::array<double, 6> pw_stress_fd(const cpu::Frame& frame, const PW& method,
+                                   double h = 2e-3);
 
 } // namespace pw
 } // namespace cpu

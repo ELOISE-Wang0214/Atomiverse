@@ -7,6 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [pw-analytic-stress-si](pw-analytic-stress-si/) | `wf/pw-analytic-stress-si` | open — PW Nielsen–Martin analytic stress (Si NC-UPF) |
 | [buckingham-pair-lammps](buckingham-pair-lammps/) | `wf/buckingham-pair-lammps` | open — buckingham-pair-lammps |
 | [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
 | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
