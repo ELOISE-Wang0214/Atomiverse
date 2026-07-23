@@ -5,55 +5,24 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live — CPU next campaign (2026-07-23)
 
-Parallel tracks **A** (roadmap recommended next) + **B** (high-leverage gaps,
-folded into the same slugs) + **C** (architecture debt). All `approved`;
-impl independently (no single ordered chain unless noted).
-
-### A/B — Response
+### A/B — Response (merging next: `feat/cpu-next-response`)
 
 | Spec | Summary |
 | ---- | ------- |
 | [full-grid-alda](full-grid-alda.md) | Full grid MO-product ALDA for RKS TDA [approved] |
 | [analytic-tda-forces](analytic-tda-forces.md) | Analytic CIS/TDA nuclear forces on RHF [approved] |
 | [true-nac-vectors](true-nac-vectors.md) | True TDA NAC vectors (not strength-only) [approved] |
-
-### A/B — Cell / MD
-
-| Spec | Summary |
-| ---- | ------- |
-| *(closed this campaign)* | `parrinello-rahman-npt`, `nph-ensemble` — see git log |
-
-### A/B — Multiscale
-
-| Spec | Summary |
-| ---- | ------- |
-| [qmmm-link-atoms](qmmm-link-atoms.md) | H link-atom QM/MM boundary [approved] |
-| [polarizable-qmmm](polarizable-qmmm.md) | Induced-dipole polarizable QM/MM [approved] |
-
-### A/B — Post-HF / TB / Sampling
-
-| Spec | Summary |
-| ---- | ------- |
 | [ri-mp2](ri-mp2.md) | Density-fitted RI-MP2 energy on RHF [approved] |
-| [multi-cv-metad](multi-cv-metad.md) | Multi-CV well-tempered metadynamics [approved] |
-| [multi-window-wham](multi-window-wham.md) | Multi-window WHAM (math in molrs) [approved] |
 
-### C — Architecture (concrete methods)
+### Closed this campaign (worktrees)
 
-| Spec | Summary |
-| ---- | ------- |
+| Branch | Specs | Highlights |
+| ------ | ----- | ---------- |
+| `feat/cpu-next-md` | parrinello-rahman-npt, nph-ensemble | PR full-cell NPT, isotropic NPH |
+| `feat/cpu-next-tb-arch` | tb-sk-product, concrete-pw/gpw/nddo | Multi-element DFTB2; concrete methods |
+| `feat/cpu-next-msamp` | qmmm-link-atoms, polarizable-qmmm, multi-cv-metad, multi-window-wham | Link atoms, pol QM/MM, ND metaD, WHAM |
 
-**Suggested parallel impl batches** (no hard deps inside a batch):
-
-
-
-## Closed on `feat/cpu-next-md` (2026-07-23)
-
-| Queue | Specs (deleted; see git) | Shipped highlights |
-| ----- | ------------------------ | ------------------ |
-| A-cell-md | parrinello-rahman-npt, nph-ensemble | PR full-cell NPT, isotropic NPH |
-
-## Closed on `dev` (2026-07-23)
+## Closed on `dev` (earlier 2026-07-23)
 
 | Queue | Specs (deleted; see git) | Shipped highlights |
 | ----- | ------------------------ | ------------------ |

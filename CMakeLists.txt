@@ -194,6 +194,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/msd.cpp
         src/cpu/observe/vacf.cpp
         src/cpu/observe/trajectory_metrics.cpp
+        src/cpu/observe/wham.cpp
         src/cpu/record/thermo.cpp
         src/cpu/record/xyz.cpp
         src/cpu/record/timing_report.cpp
@@ -254,6 +255,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/xtb_gfn0.cpp
             src/cpu/multiscale/qmmm_mechanical.cpp
             src/cpu/multiscale/qmmm_electrostatic.cpp
+            src/cpu/multiscale/qmmm_polarizable.cpp
         )
     endif()
 
@@ -333,6 +335,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/bias/dihedral_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
             src/cpu/bias/metadynamics_1d.cpp
+            src/cpu/bias/metadynamics.cpp
         )
     endif()
 
