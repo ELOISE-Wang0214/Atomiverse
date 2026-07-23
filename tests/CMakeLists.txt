@@ -315,6 +315,8 @@ atv_add_cpp_test(test_cpu_observer_widom          cpu/observe/test_widom.cpp)
 atv_add_cpp_test(test_cpu_observer_electrode_charge cpu/observe/test_electrode_charge_observer.cpp)
 atv_add_cpp_test(test_cpu_observer_capacitance_charge_fluctuation
                  cpu/observe/test_capacitance_charge_fluctuation.cpp)
+atv_add_cpp_test(test_cpu_observer_potential_profile
+                 cpu/observe/test_potential_profile.cpp)
 
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)

@@ -244,6 +244,9 @@ inline constexpr MetaKey<double> kCapacitanceDiff{"capacitance_diff", true};
 /// when \(\Delta\Psi\) is supplied (CapacitanceChargeFluctuation).
 inline constexpr MetaKey<double> kCapacitanceIntegral{"capacitance_integral",
                                                      true};
+/// Planar slab potential drop \(\Psi(z_{\max})-\Psi(z_{\min})\) [V]
+/// (PotentialProfile observer; left-edge gauge \(\Psi(z_{\min})=0\)).
+inline constexpr MetaKey<double> kPotentialDrop{"potential_drop", true};
 
 } // namespace ATV
 
