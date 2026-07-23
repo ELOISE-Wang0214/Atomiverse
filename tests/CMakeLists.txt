@@ -189,6 +189,7 @@ endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 atv_add_cpp_test(test_cpu_rm1                     cpu/semiempirical/test_rm1.cpp)
 atv_add_cpp_test(test_cpu_dftb2                   cpu/semiempirical/test_dftb2.cpp)
+atv_add_cpp_test(test_cpu_dftb2_sk                cpu/semiempirical/test_dftb2_sk.cpp)
 
 # GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
 # D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at

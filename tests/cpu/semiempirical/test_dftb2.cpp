@@ -31,13 +31,13 @@ TEST(DFTB2, H2EnergyFinite) {
     dftb.launch({ctx, f, 0, 0});
     EXPECT_TRUE(std::isfinite(dftb.last_energy()));
     EXPECT_NEAR(f.meta.get(kEnergy), dftb.last_energy(), 1e-12);
-    // Repulsive force should pull/push along x
+    // Force along the bond should be non-zero at this separation
     EXPECT_NE(f.span(kAtom_fx)[0], 0.0);
 }
 
-TEST(DFTB2, RejectsNonHydrogen) {
+TEST(DFTB2, RejectsUnsupportedElement) {
     cpu::Frame f(1);
-    f.span(kAtom_type)[0] = 6;
+    f.span(kAtom_type)[0] = 26; // Fe — not in static H/C/N/O tables
     f.simbox = cpu::Box::cubic(10.0);
     f.meta.get(kEnergy) = 0;
     cpu::Context ctx;

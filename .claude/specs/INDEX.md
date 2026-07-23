@@ -36,7 +36,6 @@ impl independently (no single ordered chain unless noted).
 | Spec | Summary |
 | ---- | ------- |
 | [ri-mp2](ri-mp2.md) | Density-fitted RI-MP2 energy on RHF [approved] |
-| [tb-sk-product](tb-sk-product.md) | Multi-element static SK tables + DFTB2 forces [approved] |
 | [multi-cv-metad](multi-cv-metad.md) | Multi-CV well-tempered metadynamics [approved] |
 | [multi-window-wham](multi-window-wham.md) | Multi-window WHAM (math in molrs) [approved] |
 

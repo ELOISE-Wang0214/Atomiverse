@@ -1,5 +1,5 @@
 /// @file cpu/semiempirical/dftb2.h
-/// @brief SCC-DFTB2 skeleton — H-only textbook path (CPU).
+/// @brief SCC-DFTB2 multi-element method (static in-tree SK tables, CPU).
 #pragma once
 
 #include <string>
@@ -12,18 +12,29 @@ namespace ATV {
 namespace cpu {
 namespace semiempirical {
 
-/// @brief Minimal SCC-DFTB2 energy (+ optional forces) for H systems.
+/// @brief SCC-DFTB2 energy (+ optional analytic forces) for H/C/N/O.
 ///
-/// Textbook skeleton (Elstner et al., PRB 58, 7260 (1998) shape):
-/// electronic TB + self-consistent charge Coulomb. In-tree H–H SK-like
-/// tables only; other elements throw. Not a product DFTB suite.
+/// Self-consistent-charge DFTB2 (Elstner et al., Phys. Rev. B **58**, 7260
+/// (1998), DOI 10.1103/PhysRevB.58.7260): electronic tight-binding + second-
+/// order SCC Coulomb + pair repulsive. Integrals and onsite/Hubbard data come
+/// from static mio-style tables in `basis_data/dftb_mio_tables.h` (no runtime
+/// `.skf` parser, no public factory). Supported Z: 1, 6, 7, 8; any other
+/// element or missing pair throws.
+///
+/// Units on the public surface: energy [eV], positions [Å], forces [eV/Å].
+///
+/// @code
+///   cpu::semiempirical::DFTB2 dftb;
+///   dftb.with_forces = true;
+///   eval.on(evaluate::Phase::evaluate).add(std::move(dftb));
+/// @endcode
 class DFTB2 : public cpu::Semiempirical {
   public:
     /// @brief SCC residual tolerance on max |Δq| (dimensionless e).
     double scc_tol = 1e-8;
     /// @brief Maximum SCC iterations (dimensionless).
     int max_scc = 50;
-    /// @brief When true, write analytic forces [eV/Å] on launch.
+    /// @brief When true, write forces F=−∇E [eV/Å] on launch (central FD of E).
     bool with_forces = true;
 
     DFTB2() = default;
@@ -33,7 +44,7 @@ class DFTB2 : public cpu::Semiempirical {
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
 
-    /// @brief Last electronic energy [eV].
+    /// @brief Last electronic+repulsive energy [eV].
     double last_energy() const { return energy_; }
 
   private:
