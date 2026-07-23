@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
-`wf/<slug>` before code)*
+| Spec | Branch | Notes |
+| ---- | ------ | ----- |
+| `finite-field-single-electrode/` | `wf/finite-field-single-electrode` | E3 Dufils single electrode; acceptance met on worker branch |
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)
 

@@ -265,6 +265,12 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
     for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
 
+    // b stores Φ_electrolyte − E·r so that RHS = Ψ − b = Ψ − Φ_elyt + E·r.
+    // Φ_ext = −E·r (U = q Φ_ext = −q E·r). Ex=Ey=Ez=0 → E1 path unchanged.
+    const double ex = Ex;
+    const double ey = Ey;
+    const double ez = Ez;
+
     std::fill(b_.begin(), b_.end(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
@@ -292,6 +298,9 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
                 if (R == 0) break;
             }
         }
+        // Finite-field term: b ← Φ_elyt − E·r  (primary-cell r)
+        bi -= ex * static_cast<double>(x[ia]) + ey * static_cast<double>(y[ia])
+              + ez * static_cast<double>(z[ia]);
         b_[static_cast<std::size_t>(a)] = bi;
     }
 }
@@ -300,7 +309,7 @@ void ConstPotBO::solve_() {
     const int m = static_cast<int>(elec_atoms_.size());
     if (m == 0) return;
 
-    // RHS: Ψ - b
+    // RHS: Ψ - b  with b = Φ_elyt − E·r  (field folded in build_rhs_)
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
         rhs[static_cast<std::size_t>(i)] =
