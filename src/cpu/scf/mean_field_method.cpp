@@ -438,14 +438,11 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "or run RHF/UHF.");
 
     // GHF-unsupported knobs — explicit refusal instead of a silently wrong
-    // Restricted/Unrestricted branch (no fallback).
+    // Restricted/Unrestricted branch (no fallback). Analytic forces are
+    // supported (spinor W + unsymmetrized four-block exchange); see
+    // ScfGradient and accumulate_two_electron_gradient.
     const bool generalized = (spin_ == SpinType::Generalized);
     if (generalized) {
-        if (opts.forces)
-            throw std::invalid_argument(
-                "MeanFieldMethod::forces: GHF analytic forces are not "
-                "implemented — the spinor gradient assembly is a follow-up "
-                "chain link. Use finite differences or UHF.");
         if (soscf)
             throw std::invalid_argument(
                 "MeanFieldMethod::run: soscf=true is not supported for GHF "

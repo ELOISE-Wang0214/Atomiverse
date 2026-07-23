@@ -69,10 +69,11 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
     const double fmax = xt::amax(xt::abs(res.forces))();
     EXPECT_LT(fmax, 1e-8) << "single-atom ECP translational invariance";
 
-    // GHF remains refused on ECP packs (ROHF forces are now supported).
+    // GHF forces need a generalized (spinor) determinant; a collinear
+    // restricted det with SpinType::Generalized is a type error.
     EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
                      .compute(f, p, det, 0.0),
-                 std::runtime_error);
+                 std::invalid_argument);
 }
 
 /// The pack retains the ECP centers so the gradient can rebuild dU/dR.

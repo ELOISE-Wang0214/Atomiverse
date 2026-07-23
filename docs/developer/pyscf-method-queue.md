@@ -6,19 +6,17 @@ can oracle offline; **done** / **blocked** history is preserved across runs.
 
 Census date: 2026-07-23. Roadmap CPU ○ ∩ PySCF oracle; excludes classical MD /
 FF / sampling / CUDA-Kokkos / ML / PW-GPW-without-Gaussian-twin / parked
-hf-parity product-depth / SE tables without PySCF twin. Axis extensions first
-(UMP2, frozen-core MP2, hybrid TDA, CIS(D)); CPHF polarizability late.
+hf-parity product-depth / SE tables without PySCF twin / meta-GGA (no τ) /
+range-separated (no erf ERI). Axis extensions first after closed UMP2 + hybrid
+TDA: frozen-core MP2, CIS(D), SCS/SOS-MP2, MP2 grad, full LR-TDDFT, BLYP,
+GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `frozen-core-mp2-h2o` | Frozen-core MP2 | post-hf | water | 6-31g* | e_corr | freeze O 1s; canonical RMP2 already ✓; PySCF frozen_core
-- [ ] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
 - [ ] `scs-mp2-h2o-sto3g` | SCS-MP2 | post-hf | water | sto-3g | e_corr | Grimme OS/SS scale of existing RMP2 spin components
 - [ ] `sos-mp2-h2o-sto3g` | SOS-MP2 | post-hf | water | sto-3g | e_corr | opposite-spin only scaling of RMP2
 - [ ] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | RMP2 nuclear gradient; PySCF mp.MP2.nuc_grad_method
 - [ ] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | excited-states | h2 | sto-3g | S1 eV | RKS beyond TDA (Casida A/B); RHF::tdhf ✓, pure/hybrid KS full TDDFT ○
-- [ ] `blyp-water-sto3g` | BLYP GGA | dft | water | sto-3g | e_tot | B88+LYP already in B3LYP pieces; expose XCType::BLYP; PySCF xc=blyp
-- [ ] `ghf-grad-h3-sto3g` | GHF analytic gradient | hartree-fock | h3 | sto-3g | forces | GHF energy ✓ (reg_h3_ghf); forces throw; PySCF GHF grad
 - [ ] `romp2-o2-sto3g` | ROMP2 | post-hf | o2 | sto-3g | e_corr | ROHF ref ✓ + analytic ROHF grad ✓; MP2 on ROHF ○
 - [ ] `roks-o2-sto3g` | ROKS | dft | o2 | sto-3g | e_tot | restricted open-shell KS; PySCF dft.ROKS
 - [ ] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
@@ -26,18 +24,23 @@ hf-parity product-depth / SE tables without PySCF twin. Axis extensions first
 - [ ] `uks-tda-o2-lsda` | UKS TDA | excited-states | o2 | sto-3g | S/T roots | open-shell TDDFT-TDA; RKS::tda ✓ only
 - [ ] `static-polariz-h2o` | RHF static polarizability | hartree-fock | water | sto-3g | α_ii a.u. | CPHF electric-field response; RHF::hessian CPHF path exists; α absent; PySCF mf.Polarizability
 - [ ] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | RHF CPHF Hessian ✓ (reg_h2o_rhf_freq); UHF Hessian ○
+- [ ] `rohf-hessian-o2` | ROHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | ROHF energy+grad ✓; analytic Hessian ○; PySCF hessian.ROHF
 - [ ] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
 - [ ] `ccsd-h2-sto3g` | CCSD | post-hf | h2 | sto-3g | e_corr+e_tot | coupled-cluster doubles foothold; PySCF cc.CCSD
 - [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | needs CCSD; PySCF cc.CCSD.ccsd_t
 - [ ] `casci-h2-sto3g` | CASCI | post-hf | h2 | sto-3g | e_tot | active-space on existing FCI kernel; PySCF mcscf.CASCI
 - [ ] `g0w0-h2-sto3g` | G0W0 | excited-states | h2 | sto-3g | QP gaps | Green's-function foothold; PySCF gw.G0W0
 - [ ] `d3bj-molecular-pbe` | DFT-D3 BJ damping | dft | water | sto-3g | E_disp | molecular Gaussian D3 ○ (GPW zero-damping only); PySCF dftd3
-- [ ] `pcm-grad-h2o` | Implicit-solvent analytic gradient | multiscale | water | 6-31g* | forces | C-PCM energy ✓; PCM forces ○; PySCF with_solvent grad
 - [ ] `ief-pcm-h2o` | IEF-PCM | multiscale | water | 6-31g* | e_solv | conductor-like only today; PySCF solvent IEF-PCM
 - [ ] `b2plyp-h2o` | B2PLYP double hybrid | dft | water | sto-3g | e_tot | hybrid KS + MP2 composition; ingredients exist separately
 - [ ] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
 
 ## in_progress
+
+- [~] `frozen-core-mp2-h2o` | Frozen-core MP2 | post-hf | water | 6-31g* | e_corr | freeze O 1s; canonical RMP2 already ✓; PySCF frozen_core
+- [~] `cisd-h2co-sto3g` | CIS(D) | excited-states | h2co | sto-3g | S1 eV | doubles correction on RHF TDA/CIS; roadmap CIS(D) ○
+- [~] `blyp-water-sto3g` | BLYP GGA | dft | water | sto-3g | e_tot | B88+LYP already in B3LYP pieces; expose XCType::BLYP; PySCF xc=blyp
+- [~] `pcm-grad-h2o` | Implicit-solvent analytic gradient | multiscale | water | 6-31g* | forces | C-PCM energy ✓; PCM forces ○; PySCF with_solvent grad
 
 ## blocked
 
@@ -63,4 +66,5 @@ hf-parity product-depth / SE tables without PySCF twin. Axis extensions first
 - [x] `tda-nac-h2` | TDA NAC vectors | regressions/scf/h2_nac_vectors | true NAC
 - [x] `rohf-o2-energy-grad` | ROHF energy + gradient | regressions/scf/o2_rohf_sto3g, o2_rohf_grad | PySCF ROHF
 - [x] `ghf-h3-energy` | GHF energy | regressions/scf/h3_ghf_sto3g | energy-only
+- [x] `ghf-grad-h3-sto3g` | GHF analytic gradient | regressions/scf/ghf-grad-h3-sto3g | noncollinear H3 forces 1e-5 Ha/Bohr
 - [x] `cpcm-h2o` | C-PCM/COSMO energy | regressions/scf/h2o_rhf_631gs_cpcm | conductor-like solvent

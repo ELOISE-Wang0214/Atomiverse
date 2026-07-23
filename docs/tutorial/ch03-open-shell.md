@@ -600,9 +600,10 @@ lands on the former; PySCF’s MINAO often lands on the latter. The non-collinea
 GHF minimum lies below both; full verification is in
 `regressions/scf/h3_ghf_sto3g/REFERENCE.md`.
 
-Unsupported for GHF (explicit errors): analytic `forces()`, `mp2()`/`fci()`,
-`soscf`, `level_shift`, EDIIS/ADIIS, non-Hcore guesses. Spinor exchange
-requires a stored dense ERI (`compute_eri`, on by default in the constructor).
+Analytic nuclear forces are supported (`ghf.forces(frame)`; pin in
+`regressions/scf/ghf-grad-h3-sto3g/`). Unsupported (explicit errors):
+`mp2()`/`fci()`, `soscf`, `level_shift`, EDIIS/ADIIS, non-Hcore guesses.
+Spinor exchange requires a stored dense ERI (`compute_eri`, on by default).
 
 | System | Quantity | Engine | PySCF 2.14.0 |
 |---|---|---:|---:|
@@ -610,6 +611,7 @@ requires a stored dense ERI (`compute_eri`, on by default in the constructor).
 | equilateral H₃ | \(E\) UHF (broken collinear) / Ha | −1.335980054018 | −1.335980054018 |
 | equilateral H₃ | \(E\) UHF (symmetric doublet) / Ha | −1.328175755381 | −1.328175755381 |
 | equilateral H₃ | \(\|P^{\alpha\beta}\|_F\) GHF | 0.978059 | 0.978059 |
+| equilateral H₃ | max \|g\| GHF / Ha·Bohr⁻¹ | 0.109386 | 0.109386 |
 | H₂ (\(R=0.74\)) | \(E_{\mathrm{GHF}}-E_{\mathrm{UHF}}\) / Ha | \(<10^{-15}\) | 0 (theorem) |
 
 The next chapter keeps the spin-resolved structure of UHF but changes the mean

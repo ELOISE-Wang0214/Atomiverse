@@ -1,15 +1,18 @@
 /// @file cpu/scf/internal/gradient.h
-/// @brief Analytic nuclear gradients for mean-field methods (RHF, UHF, RKS, UKS).
+/// @brief Analytic nuclear gradients for mean-field methods (RHF, UHF, ROHF,
+///        GHF, RKS, UKS).
 ///
 /// Entry point: `internal::ScfGradient` — constructed from the discrete method
 /// parameters (method / spin / xc_type / grid) the gradient assembly reads, its
 /// `compute(...)` member dispatches to HF (Coulomb + exchange) or KS (Coulomb +
-/// XC grid).
+/// XC grid). GHF uses the spinor energy-weighted density and the unsymmetrized
+/// four-block exchange contraction (P^{αβ} is not 8-fold symmetric).
 ///
 /// References:
 ///   Pulay, Mol. Phys. 17, 197 (1969) -- Pulay forces
 ///   Szabo & Ostlund, Appendix C -- RHF gradient derivation
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
+///   Fukutome, Int. J. Quantum Chem. 20, 955 (1981) -- GHF / spinor HF
 #pragma once
 
 #include <xtensor/containers/xtensor.hpp>
