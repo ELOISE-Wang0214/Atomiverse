@@ -1,5 +1,18 @@
 # Architecture notes
 
+## [2026-07-23] Iron law: no public Config bags
+
+**Binding (CLAUDE.md free-form iron law + AGENTS.md Conventions).** Public
+Drivers / presets / Components / concrete methods take parameters as
+**constructor args** (and public members), never a parallel `*Config` /
+`Foo::Config` bag. Private `internal/` engine config remains OK.
+
+**Landed 2026-07-23:** deleted public bags including path
+`RemdConfig`/`HRemdConfig`/`PimdConfig`/`DimerConfig`/`IrcConfig`/`StringConfig`,
+`NoseHooverNPT::Config` (CPU+CUDA), `GpwEvaluatorConfig`, `AM1Config`,
+`AM1BCCChargeConfig`. Do not reintroduce. Full wording: CLAUDE.md
+`## Iron law — no public Config bags`.
+
 ## [2026-07-23] CPU method-first campaign closed through depth-next
 
 **Binding principle:** CPU-only method breadth for framework generality

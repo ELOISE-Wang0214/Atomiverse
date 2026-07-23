@@ -654,6 +654,13 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
     `resolve_X()` / `parse_X()` / `build_X()` / `*_config()` free functions that
     return a constructed object. Grep-gated by
     `tests/architecture/no_factory_scrub.sh`.
+  - **No public `*Config` bags — iron law (CLAUDE.md).** Never a user-facing
+    `FooConfig` / nested `Foo::Config` / helper bag that only exists to feed
+    `Foo(cfg)`. Parameters are **constructor arguments** (assigned at
+    construction) and/or **public members** on the owning type. Private
+    internal engine config is fine under `internal/`. Do not reintroduce
+    deleted bags (`RemdConfig`, `PimdConfig`, `NoseHooverNPT::Config`,
+    `GpwEvaluatorConfig`, `AM1Config`, …).
   - **No public intermediate types for "building" a calculation.** Do **not**
     invent `AtomList` / `IntegralPack` / `*Config` / `*System` as user-facing
     steps. Frame is the molecule. Parameters are **members of the concrete

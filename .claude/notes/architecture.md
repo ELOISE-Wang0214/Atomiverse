@@ -140,7 +140,7 @@ Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23
 | `PWSolver` + `PWConfig` / `GPWSolver` + `GpwConfig` | Still bag-shaped public solvers (not Driver-hosted methods yet) |
 | `NDDOSolver` / `NDDOConfig` / internal `NDDOSystem` | Bag + private system still present; public evaluators are the Frame API |
 | CUDA `SCFSolver` + IntegralPack ctor path | Still bag-shaped; not aligned to CPU MeanFieldMethod |
-| `RemdConfig` | Config bag on path REMD skeleton |
+| ~~`RemdConfig`~~ | **deleted 2026-07-23** — `Remd(temperatures, dt, …)` ctor args / members |
 | Torch Frame layout | Pre-blocks+meta hard-cut; experimental only |
 | CUDA PME Madelung | Closed 2026-07-23 (`cuda-pme-accuracy`) |
 

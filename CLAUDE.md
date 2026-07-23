@@ -92,6 +92,10 @@ leaving rot you already saw.
   Prefer `Foo(...)`. Explicit alternate constructors only when they
   have distinct semantics (`Foo.from_file`, `Foo.empty`) — not
   `make_foo` aliases of `__init__`.
+- **Public `*Config` bags.** No user-facing `FooConfig` / nested
+  `Foo::Config` / helper that only exists to be stuffed into `Foo(cfg)`.
+  Parameters are **constructor arguments** (and public members when
+  mutable). See iron law below (free-form section).
 - **God data structures.** No mega-dict / mega-struct / ambient
   "context" blob every layer reaches into. Pass the few fields a call
   needs, or a narrow typed view. Split types that accumulate more
@@ -128,7 +132,8 @@ For non-trivial work, prefer:
 
 - Frame as sole I/O currency (`blocks` + `meta` + `simbox`); no parallel `*System`
 - Driver = staged loop + Criterion/Handler termination; no category driver bases
-- No public factories (`make_*` / `build_*` / `*_config`); no public `*Config` bags
+- No public factories (`make_*` / `build_*` / `*_config`); **no public `*Config` bags**
+  (parameters = ctor args / members — iron law free-form section)
 - Units: eV, Å, fs, amu, eV/Å, K on the public surface
 - Precision tiers and ID sizes (`StorageReal` / `WorkReal` / `AccReal`; `TagInt` roles)
 - molrs exchange schema + materialize/write_back contracts
@@ -138,6 +143,52 @@ For non-trivial work, prefer:
 
 <!-- Free-form additions below this line are preserved across re-runs.
      If a section grows past a screen, promote to .claude/notes/<topic>.md. -->
+
+<!-- mol:note:topic:no-public-config-bags -->
+## Iron law — no public Config bags (2026-07-23)
+
+**Rule (binding):** public Drivers, presets, Components, and concrete methods
+**must not** expose a user-facing `*Config` / nested `::Config` / temporary
+parameter bag whose only job is to be stuffed into a constructor.
+
+**How parameters land:**
+
+1. **Constructor arguments** assign fields immediately
+   (`NoseHooverNPT(T, tau_T, P, tau_P, dt, …)`, `AM1(charge, multiplicity, …)`,
+   `Remd(temperatures, dt, steps, seed)`, `GPWEvaluator(kinds, cutoff_ry, …)`).
+2. **Public members** on the owning type when the caller mutates after
+   construction (`rhf.tol = 1e-10`) — still **no** parallel bag type.
+3. **Private** workspace / internal engine config (`semiempirical/internal/`,
+   solver private members) is fine — **never** on the public include path.
+
+**Wrong:**
+
+```cpp
+struct FooConfig { double a; int b; };
+Foo f{FooConfig{.a = 1.0, .b = 2}};
+// or: auto cfg = h2_config(); f.a = cfg.a; f.b = cfg.b;
+```
+
+**Right:**
+
+```cpp
+Foo f(/*a=*/1.0, /*b=*/2);
+// or: Foo f; f.a = 1.0; f.b = 2;  // members, not a bag type
+```
+
+**Also forbidden as public API:** `make_*` / `build_*` / `*_config()` free
+functions that return constructed objects (already factory iron law).
+
+**Allowed exceptions (narrow):** true free math with no owner; lookup-table
+constructors (`GthPotential(Element, name)`); logging / async infra that is
+not a scientific method (`LogConfig` if kept private to that subsystem).
+Do **not** invent a new exception without `/mol:note`.
+
+**Supersedes:** transitional public `RemdConfig` / `PimdConfig` /
+`DimerConfig` / `IrcConfig` / `StringConfig` / `HRemdConfig` /
+`NoseHooverNPT::Config` / `GpwEvaluatorConfig` / `AM1Config` /
+`AM1BCCChargeConfig` / `PWConfig` as user path — deleted or privatized
+2026-07-23. Do not reintroduce.
 
 # AGENTS.md
 
