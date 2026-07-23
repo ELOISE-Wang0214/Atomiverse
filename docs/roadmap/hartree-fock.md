@@ -9,27 +9,27 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 
 ## 1. Molecular Hartree–Fock
 
-| Method                                     | CPU | CUDA |
-| ------------------------------------------ | :-: | :--: |
-| Restricted Hartree–Fock, RHF               |  ✓  |   ✓  |
-| Unrestricted Hartree–Fock, UHF             |  ✓  |   ○  |
-| Restricted open-shell Hartree–Fock, ROHF   |  ✓  |   ○  |
-| Generalized Hartree–Fock, GHF              |  ✓  |   ○  |
-| Complex generalized Hartree–Fock           |  ○  |   ○  |
-| Spinor Hartree–Fock                        |  ○  |   ○  |
-| Finite-temperature Hartree–Fock            |  ○  |   ○  |
-| Constrained Hartree–Fock                   |  ○  |   ○  |
-| Broken-symmetry Hartree–Fock               |  ○  |   ○  |
-| Delta-SCF Hartree–Fock                     |  ○  |   ○  |
-| Maximum-overlap excited-state Hartree–Fock |  ○  |   ○  |
-| RHF analytic gradient                      |  ✓  |   ○  |
-| UHF analytic gradient                      |  ✓  |   ○  |
-| ROHF analytic gradient                     |  ✓  |   ○  |
-| GHF analytic gradient                      |  ○  |   ○  |
-| RHF analytic Hessian                       |  ○  |   ○  |
-| UHF analytic Hessian                       |  ○  |   ○  |
-| ROHF analytic Hessian                      |  ○  |   ○  |
-| Hartree–Fock stability analysis            |  ✓  |   ○  |
+| Method                                     | CPU | CUDA | Kokkos |
+| ------------------------------------------ | :-: | :--: | :---: |
+| Restricted Hartree–Fock, RHF               |  ✓  |   ✓  |   ○  |
+| Unrestricted Hartree–Fock, UHF             |  ✓  |   ○  |   ○  |
+| Restricted open-shell Hartree–Fock, ROHF   |  ✓  |   ○  |   ○  |
+| Generalized Hartree–Fock, GHF              |  ✓  |   ○  |   ○  |
+| Complex generalized Hartree–Fock           |  ○  |   ○  |   ○  |
+| Spinor Hartree–Fock                        |  ○  |   ○  |   ○  |
+| Finite-temperature Hartree–Fock            |  ○  |   ○  |   ○  |
+| Constrained Hartree–Fock                   |  ○  |   ○  |   ○  |
+| Broken-symmetry Hartree–Fock               |  ○  |   ○  |   ○  |
+| Delta-SCF Hartree–Fock                     |  ○  |   ○  |   ○  |
+| Maximum-overlap excited-state Hartree–Fock |  ○  |   ○  |   ○  |
+| RHF analytic gradient                      |  ✓  |   ○  |   ○  |
+| UHF analytic gradient                      |  ✓  |   ○  |   ○  |
+| ROHF analytic gradient                     |  ✓  |   ○  |   ○  |
+| GHF analytic gradient                      |  ○  |   ○  |   ○  |
+| RHF analytic Hessian                       |  ○  |   ○  |   ○  |
+| UHF analytic Hessian                       |  ○  |   ○  |   ○  |
+| ROHF analytic Hessian                      |  ○  |   ○  |   ○  |
+| Hartree–Fock stability analysis            |  ✓  |   ○  |   ○  |
 
 ROHF is the Roothaan single-effective-Fock method in the PySCF canonical
 (Guest–Saunders) convention (`cpu::scf::ROHF`): energy + **analytic nuclear
@@ -46,12 +46,12 @@ orbital Hessian is implemented (internal channel + triplet RHF→UHF).
 
 ## 2. Periodic Hartree–Fock
 
-| Method                | CPU | CUDA |
-| --------------------- | :-: | :--: |
-| Γ-point periodic RHF  |  ○  |   ○  |
-| k-point periodic RHF  |  ○  |   ○  |
-| Γ-point periodic UHF  |  ○  |   ○  |
-| k-point periodic UHF  |  ○  |   ○  |
+| Method                | CPU | CUDA | Kokkos |
+| --------------------- | :-: | :--: | :---: |
+| Γ-point periodic RHF  |  ○  |   ○  |   ○  |
+| k-point periodic RHF  |  ○  |   ○  |   ○  |
+| Γ-point periodic UHF  |  ○  |   ○  |   ○  |
+| k-point periodic UHF  |  ○  |   ○  |   ○  |
 
 Exact exchange under periodic boundary conditions is not implemented in any
 engine. The periodic solvers (plane-wave, GPW) are pure/semi-local DFT only —
@@ -62,24 +62,24 @@ would need is partly in place; the four-index periodic exchange is not.
 
 ## 3. SCF infrastructure
 
-| Capability | CPU | CUDA |
-| ---------- | :-: | :--: |
-| DIIS | ✓ | ○ |
-| Linear damping | ✓ | ○ |
-| Virtual-orbital level shift (Saunders–Hillier) | ✓ | ✓ |
-| SOSCF (second-order SCF) | ✓ | ○ |
-| Canonical orthogonalization + linear-dependence filtering | ✓ | ○ |
-| Dual energy + DIIS-error convergence test | ✓ | ○ |
-| Hcore initial guess | ✓ | ✓ |
-| MINAO initial guess | ✓ | ○ |
-| ASPC density predictor (AIMD warm start) | ✓ | ○ |
-| ⟨S²⟩ spin-contamination analysis | ✓ | ○ |
-| Spherical (pure) AO transform | ✓ | ○ |
-| RI-J / RI-JK density fitting | ✓ | ○ |
-| CFMM-J (continuous FMM for Coulomb) | ✓ | ○ |
-| Native Rys ERI engine (l ≤ 3, s/p/d/f) | ✓ | ○ |
-| Effective core potentials (ECP) | ✓ | ○ |
-| x2c-1e scalar relativity (energy) | ✓ | ○ |
+| Capability | CPU | CUDA | Kokkos |
+| ---------- | :-: | :--: | :---: |
+| DIIS | ✓ | ○ |   ○  |
+| Linear damping | ✓ | ○ |   ○  |
+| Virtual-orbital level shift (Saunders–Hillier) | ✓ | ✓ |   ○  |
+| SOSCF (second-order SCF) | ✓ | ○ |   ○  |
+| Canonical orthogonalization + linear-dependence filtering | ✓ | ○ |   ○  |
+| Dual energy + DIIS-error convergence test | ✓ | ○ |   ○  |
+| Hcore initial guess | ✓ | ✓ |   ○  |
+| MINAO initial guess | ✓ | ○ |   ○  |
+| ASPC density predictor (AIMD warm start) | ✓ | ○ |   ○  |
+| ⟨S²⟩ spin-contamination analysis | ✓ | ○ |   ○  |
+| Spherical (pure) AO transform | ✓ | ○ |   ○  |
+| RI-J / RI-JK density fitting | ✓ | ○ |   ○  |
+| CFMM-J (continuous FMM for Coulomb) | ✓ | ○ |   ○  |
+| Native Rys ERI engine (l ≤ 3, s/p/d/f) | ✓ | ○ |   ○  |
+| Effective core potentials (ECP) | ✓ | ○ |   ○  |
+| x2c-1e scalar relativity (energy) | ✓ | ○ |   ○  |
 | Device ERI kernels | — | ○ (s-type only) |
 | Diagonalization | ✓ (LAPACK) | ✓ (cuSOLVER) |
 

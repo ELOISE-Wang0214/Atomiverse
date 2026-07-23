@@ -9,39 +9,39 @@ and LAMMPS-shaped. The *catalogue of styles* is now GAFF-capable on CPU
 dihedrals, harmonic improper) plus EAM/SW many-body — still thin relative to
 LAMMPS, but no longer "one pair style and nothing else".
 
-The Lennard–Jones 12-6 pair style is the only ⚡ in the roadmap: it is
-SIMD-vectorized (xsimd, `-march=native`) on CPU, has a device kernel on CUDA,
-and both are benchmarked against LAMMPS/Kokkos in
-`/* benchmarks removed; re-add later */ lj/performance/`.
+The Lennard–Jones 12-6 pair style is the only ⚡ in the roadmap: SIMD on CPU
+(xsimd, `-march=native`) and a CUDA device kernel (historical LAMMPS/Kokkos
+comparison suite under `/* benchmarks removed; re-add later */ lj/performance/`).
+**Kokkos backend: ○** (planned portable path; no in-tree Kokkos port yet).
 
 ## 1. Classical Bonded Potentials
 
-| Method                             | CPU | CUDA |
-| ---------------------------------- | :-: | :--: |
-| Harmonic bond potential            |  ✓  |   ✓  |
-| Quartic bond potential             |  ○  |   ○  |
-| Morse bond potential               |  ○  |   ○  |
-| FENE bond potential                |  ✓  |   ○  |
-| Tabulated bond potential           |  ○  |   ○  |
-| Harmonic angle potential           |  ✓  |   ✓  |
-| Cosine angle potential             |  ○  |   ○  |
-| Restricted-bending angle potential |  ○  |   ○  |
-| Urey–Bradley potential             |  ○  |   ○  |
-| Tabulated angle potential          |  ○  |   ○  |
-| Periodic Fourier torsion           |  ✓  |   ○  |
-| OPLS torsion                       |  ○  |   ○  |
-| Ryckaert–Bellemans torsion         |  ✓  |   ✓  |
-| CHARMM torsion                     |  ✓  |   ○  |
-| Harmonic improper torsion          |  ✓  |   ○  |
-| Periodic improper torsion          |  ○  |   ○  |
-| CVFF improper torsion              |  ○  |   ○  |
-| CMAP correction                    |  ○  |   ○  |
-| Bond–bond cross term               |  ○  |   ○  |
-| Bond–angle cross term              |  ○  |   ○  |
-| Angle–angle cross term             |  ○  |   ○  |
-| Bond–torsion cross term            |  ○  |   ○  |
-| Class-II bonded potential          |  ○  |   ○  |
-| Tabulated bonded potential         |  ○  |   ○  |
+| Method                             | CPU | CUDA | Kokkos |
+| ---------------------------------- | :-: | :--: | :---: |
+| Harmonic bond potential            |  ✓  |   ✓  |   ○  |
+| Quartic bond potential             |  ○  |   ○  |   ○  |
+| Morse bond potential               |  ○  |   ○  |   ○  |
+| FENE bond potential                |  ✓  |   ○  |   ○  |
+| Tabulated bond potential           |  ○  |   ○  |   ○  |
+| Harmonic angle potential           |  ✓  |   ✓  |   ○  |
+| Cosine angle potential             |  ○  |   ○  |   ○  |
+| Restricted-bending angle potential |  ○  |   ○  |   ○  |
+| Urey–Bradley potential             |  ○  |   ○  |   ○  |
+| Tabulated angle potential          |  ○  |   ○  |   ○  |
+| Periodic Fourier torsion           |  ✓  |   ○  |   ○  |
+| OPLS torsion                       |  ○  |   ○  |   ○  |
+| Ryckaert–Bellemans torsion         |  ✓  |   ✓  |   ○  |
+| CHARMM torsion                     |  ✓  |   ○  |   ○  |
+| Harmonic improper torsion          |  ✓  |   ○  |   ○  |
+| Periodic improper torsion          |  ○  |   ○  |   ○  |
+| CVFF improper torsion              |  ○  |   ○  |   ○  |
+| CMAP correction                    |  ○  |   ○  |   ○  |
+| Bond–bond cross term               |  ○  |   ○  |   ○  |
+| Bond–angle cross term              |  ○  |   ○  |   ○  |
+| Angle–angle cross term             |  ○  |   ○  |   ○  |
+| Bond–torsion cross term            |  ○  |   ○  |   ○  |
+| Class-II bonded potential          |  ○  |   ○  |   ○  |
+| Tabulated bonded potential         |  ○  |   ○  |   ○  |
 
 Two torsion styles share the same topology and geometry helpers
 (`dihedral_geom`):
@@ -66,25 +66,25 @@ Bonded forces are cross-validated against LAMMPS in
 
 ## 2. Classical Nonbonded Potentials
 
-| Method                              | CPU | CUDA |
-| ----------------------------------- | :-: | :--: |
-| Lennard–Jones 12-6 potential        |  ⚡  |   ⚡  |
-| Mie n-m potential                   |  ○  |   ○  |
-| Buckingham potential                |  ○  |   ○  |
-| Morse nonbonded potential           |  ✓  |   ○  |
-| Tabulated pair potential            |  ○  |   ○  |
-| Coulomb potential                   |  ✓  |   ○  |
-| Reaction-field electrostatics       |  ○  |   ○  |
-| Damped-shifted-force electrostatics |  ○  |   ○  |
-| Wolf summation                      |  ○  |   ○  |
-| Direct Ewald summation              |  ✓  |   ✓  |
-| Particle Mesh Ewald                 |  ✓  |   ✓  |
-| Smooth Particle Mesh Ewald          |  ✓  |   ✓  |
-| Lennard–Jones PME                   |  ○  |   ○  |
-| Fast multipole electrostatics       |  ○  |   ○  |
-| Multilevel summation method         |  ○  |   ○  |
-| Soft-core Lennard–Jones potential   |  ✓  |   ○  |
-| Soft-core Coulomb potential         |  ✓  |   ○  |
+| Method                              | CPU | CUDA | Kokkos |
+| ----------------------------------- | :-: | :--: | :---: |
+| Lennard–Jones 12-6 potential        |  ⚡  |   ⚡  |   ○  |
+| Mie n-m potential                   |  ○  |   ○  |   ○  |
+| Buckingham potential                |  ○  |   ○  |   ○  |
+| Morse nonbonded potential           |  ✓  |   ○  |   ○  |
+| Tabulated pair potential            |  ○  |   ○  |   ○  |
+| Coulomb potential                   |  ✓  |   ○  |   ○  |
+| Reaction-field electrostatics       |  ○  |   ○  |   ○  |
+| Damped-shifted-force electrostatics |  ○  |   ○  |   ○  |
+| Wolf summation                      |  ○  |   ○  |   ○  |
+| Direct Ewald summation              |  ✓  |   ✓  |   ○  |
+| Particle Mesh Ewald                 |  ✓  |   ✓  |   ○  |
+| Smooth Particle Mesh Ewald          |  ✓  |   ✓  |   ○  |
+| Lennard–Jones PME                   |  ○  |   ○  |   ○  |
+| Fast multipole electrostatics       |  ○  |   ○  |   ○  |
+| Multilevel summation method         |  ○  |   ○  |   ○  |
+| Soft-core Lennard–Jones potential   |  ✓  |   ○  |   ○  |
+| Soft-core Coulomb potential         |  ✓  |   ○  |   ○  |
 
 Notes:
 
@@ -118,37 +118,37 @@ Notes:
 
 ## 3. Polarizable Force Fields
 
-| Method                              | CPU | CUDA |
-| ----------------------------------- | :-: | :--: |
-| Drude oscillator model              |  ○  |   ○  |
-| Self-consistent induced dipoles     |  ○  |   ○  |
-| Extended-Lagrangian induced dipoles |  ○  |   ○  |
-| Thole-damped polarization           |  ○  |   ○  |
-| Atomic-multipole electrostatics     |  ○  |   ○  |
-| AMOEBA electrostatics               |  ○  |   ○  |
-| AMOEBA polarization                 |  ○  |   ○  |
-| Fluctuating-charge model            |  ○  |   ○  |
-| QEq polarization                    |  ○  |   ○  |
-| Charge-equilibration dynamics       |  ○  |   ○  |
+| Method                              | CPU | CUDA | Kokkos |
+| ----------------------------------- | :-: | :--: | :---: |
+| Drude oscillator model              |  ○  |   ○  |   ○  |
+| Self-consistent induced dipoles     |  ○  |   ○  |   ○  |
+| Extended-Lagrangian induced dipoles |  ○  |   ○  |   ○  |
+| Thole-damped polarization           |  ○  |   ○  |   ○  |
+| Atomic-multipole electrostatics     |  ○  |   ○  |   ○  |
+| AMOEBA electrostatics               |  ○  |   ○  |   ○  |
+| AMOEBA polarization                 |  ○  |   ○  |   ○  |
+| Fluctuating-charge model            |  ○  |   ○  |   ○  |
+| QEq polarization                    |  ○  |   ○  |   ○  |
+| Charge-equilibration dynamics       |  ○  |   ○  |   ○  |
 
 ## 4. Many-Body and Reactive Potentials
 
-| Method                         | CPU | CUDA |
-| ------------------------------ | :-: | :--: |
-| Embedded-atom method           |  ✓  |   ○  |
-| Modified embedded-atom method  |  ○  |   ○  |
-| Finnis–Sinclair potential      |  ○  |   ○  |
-| Stillinger–Weber potential     |  ✓  |   ○  |
-| Tersoff potential              |  ○  |   ○  |
-| AIREBO                         |  ○  |   ○  |
-| AIREBO-M                       |  ○  |   ○  |
-| EDIP                           |  ○  |   ○  |
-| COMB                           |  ○  |   ○  |
-| ReaxFF                         |  ○  |   ○  |
-| Reactive charge equilibration  |  ○  |   ○  |
-| Generic bond-order potential   |  ○  |   ○  |
-| Three-body tabulated potential |  ○  |   ○  |
-| Many-body tabulated potential  |  ○  |   ○  |
+| Method                         | CPU | CUDA | Kokkos |
+| ------------------------------ | :-: | :--: | :---: |
+| Embedded-atom method           |  ✓  |   ○  |   ○  |
+| Modified embedded-atom method  |  ○  |   ○  |   ○  |
+| Finnis–Sinclair potential      |  ○  |   ○  |   ○  |
+| Stillinger–Weber potential     |  ✓  |   ○  |   ○  |
+| Tersoff potential              |  ○  |   ○  |   ○  |
+| AIREBO                         |  ○  |   ○  |   ○  |
+| AIREBO-M                       |  ○  |   ○  |   ○  |
+| EDIP                           |  ○  |   ○  |   ○  |
+| COMB                           |  ○  |   ○  |   ○  |
+| ReaxFF                         |  ○  |   ○  |   ○  |
+| Reactive charge equilibration  |  ○  |   ○  |   ○  |
+| Generic bond-order potential   |  ○  |   ○  |   ○  |
+| Three-body tabulated potential |  ○  |   ○  |   ○  |
+| Many-body tabulated potential  |  ○  |   ○  |   ○  |
 
 **EAM** (analytic Sutton-Chen, `cpu::EAM`) and **Stillinger-Weber** (`cpu::StillingerWeber`)
 are implemented on CPU, single-element, and run **under MPI**; both are FD-force-gated
@@ -167,45 +167,40 @@ the quantum-mechanical route (GPW, plane waves) is still the only option.
 
 ## 5. Coarse-Grained Methods
 
-| Method                                     | CPU | CUDA |
-| ------------------------------------------ | :-: | :--: |
-| MARTINI force field                        |  ○  |   ○  |
-| SDK coarse-grained force field             |  ○  |   ○  |
-| Dissipative particle dynamics              |  ✓  |   ○  |
-| Multiparticle collision dynamics           |  ○  |   ○  |
-| Brownian dynamics                          |  ○  |   ○  |
-| Generic tabulated coarse-grained potential |  ○  |   ○  |
-| Iterative Boltzmann inversion potential    |  ○  |   ○  |
-| Force-matching coarse-grained potential    |  ○  |   ○  |
-| Relative-entropy coarse graining           |  ○  |   ○  |
+| Method                                     | CPU | CUDA | Kokkos |
+| ------------------------------------------ | :-: | :--: | :---: |
+| MARTINI force field                        |  ○  |   ○  |   ○  |
+| SDK coarse-grained force field             |  ○  |   ○  |   ○  |
+| Dissipative particle dynamics              |  ✓  |   ○  |   ○  |
+| Multiparticle collision dynamics           |  ○  |   ○  |   ○  |
+| Brownian dynamics                          |  ○  |   ○  |   ○  |
+| Generic tabulated coarse-grained potential |  ○  |   ○  |   ○  |
+| Iterative Boltzmann inversion potential    |  ○  |   ○  |   ○  |
+| Force-matching coarse-grained potential    |  ○  |   ○  |   ○  |
+| Relative-entropy coarse graining           |  ○  |   ○  |   ○  |
 
 ## 6. Machine-Learning Potentials
 
-| Method                                     | CPU | CUDA |
-| ------------------------------------------ | :-: | :--: |
-| Behler–Parrinello neural-network potential |  ○  |   ○  |
-| ANI potential                              |  ○  |   ○  |
-| DimeNet++                                  |  ○  |   ○  |
-| PaiNN                                      |  ○  |   ○  |
-| GemNet                                     |  ○  |   ○  |
-| NequIP                                     |  ○  |   ○  |
-| Allegro                                    |  ○  |   ○  |
-| MACE                                       |  ○  |   ○  |
-| Deep Potential / DeepMD                    |  ○  |   ○  |
-| SOAP-GAP                                   |  ○  |   ○  |
-| Atomic cluster expansion                   |  ○  |   ○  |
-| Moment tensor potential                    |  ○  |   ○  |
-| SNAP                                       |  ○  |   ○  |
-| Long-range electrostatic ML potential      |  ○  |   ○  |
-| Charge-aware ML potential                  |  ○  |   ○  |
-| Spin-dependent ML potential                |  ○  |   ○  |
-| Delta-learning potential                   |  ○  |   ○  |
-| Ensemble ML potential                      |  ○  |   ○  |
+| Method                                     | CPU | CUDA | Kokkos |
+| ------------------------------------------ | :-: | :--: | :---: |
+| Behler–Parrinello neural-network potential |  ○  |   ○  |   ○  |
+| ANI potential                              |  ○  |   ○  |   ○  |
+| DimeNet++                                  |  ○  |   ○  |   ○  |
+| PaiNN                                      |  ○  |   ○  |   ○  |
+| GemNet                                     |  ○  |   ○  |   ○  |
+| NequIP                                     |  ○  |   ○  |   ○  |
+| Allegro                                    |  ○  |   ○  |   ○  |
+| MACE                                       |  ○  |   ○  |   ○  |
+| Deep Potential / DeepMD                    |  ○  |   ○  |   ○  |
+| SOAP-GAP                                   |  ○  |   ○  |   ○  |
+| Atomic cluster expansion                   |  ○  |   ○  |   ○  |
+| Moment tensor potential                    |  ○  |   ○  |   ○  |
+| SNAP                                       |  ○  |   ○  |   ○  |
+| Long-range electrostatic ML potential      |  ○  |   ○  |   ○  |
+| Charge-aware ML potential                  |  ○  |   ○  |   ○  |
+| Spin-dependent ML potential                |  ○  |   ○  |   ○  |
+| Delta-learning potential                   |  ○  |   ○  |   ○  |
+| Ensemble ML potential                      |  ○  |   ○  |   ○  |
 
-**The LibTorch backend is not a machine-learning potential**, and this table
-should not be read as "the torch backend is unfinished ML". `ATV_BUILD_TORCH`
-builds a *differentiable classical* force field: LJ and harmonic bond as
-`autograd::Function` operators with analytic backward passes w.r.t. positions
-**and** the force-field parameters (ε, σ, K, r₀). It is a parameter-fitting
-surface — there is no network architecture, no descriptor, no integrator, and
-no driver on that backend.
+This table is **true ML / reactive many-body potentials** only. Classical pair
+and bonded styles live in sections 1–2; they are not “unfinished ML.”

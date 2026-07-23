@@ -17,23 +17,23 @@ eigenvector-following TS.
 
 ## 1. Geometry Optimization
 
-| Method                                     | CPU | CUDA |
-| ------------------------------------------ | :-: | :--: |
-| Steepest descent                           |  ○  |   ✓  |
-| Polak–Ribière conjugate gradient           |  ✓  |   ✓  |
-| Nonlinear conjugate gradient               |  ✓  |   ✓  |
-| L-BFGS                                     |  ✓  |   ✓  |
-| Trust-region optimization                  |  ○  |   ○  |
-| Rational-function optimization             |  ○  |   ○  |
-| Partitioned rational-function optimization |  ○  |   ○  |
-| Augmented-Hessian optimization             |  ○  |   ○  |
-| FIRE minimization                          |  ✓  |   ○  |
-| Cartesian-coordinate optimization          |  ✓  |   ✓  |
-| Internal-coordinate optimization           |  ○  |   ○  |
-| Redundant-internal-coordinate optimization |  ○  |   ○  |
-| Constrained geometry optimization          |  ○  |   ○  |
-| Variable-cell optimization                 |  ✓  |   ○  |
-| Joint atomic and cell optimization         |  ✓  |   ○  |
+| Method                                     | CPU | CUDA | Kokkos |
+| ------------------------------------------ | :-: | :--: | :---: |
+| Steepest descent                           |  ○  |   ✓  |   ○  |
+| Polak–Ribière conjugate gradient           |  ✓  |   ✓  |   ○  |
+| Nonlinear conjugate gradient               |  ✓  |   ✓  |   ○  |
+| L-BFGS                                     |  ✓  |   ✓  |   ○  |
+| Trust-region optimization                  |  ○  |   ○  |   ○  |
+| Rational-function optimization             |  ○  |   ○  |   ○  |
+| Partitioned rational-function optimization |  ○  |   ○  |   ○  |
+| Augmented-Hessian optimization             |  ○  |   ○  |   ○  |
+| FIRE minimization                          |  ✓  |   ○  |   ○  |
+| Cartesian-coordinate optimization          |  ✓  |   ✓  |   ○  |
+| Internal-coordinate optimization           |  ○  |   ○  |   ○  |
+| Redundant-internal-coordinate optimization |  ○  |   ○  |   ○  |
+| Constrained geometry optimization          |  ○  |   ○  |   ○  |
+| Variable-cell optimization                 |  ✓  |   ○  |   ○  |
+| Joint atomic and cell optimization         |  ✓  |   ○  |   ○  |
 
 Notes:
 
@@ -52,18 +52,18 @@ Notes:
 
 ## 2. Transition-State and Reaction-Path Methods
 
-| Method                                        | CPU | CUDA |
-| --------------------------------------------- | :-: | :--: |
-| Eigenvector-following transition-state search |  ○  |   ○  |
-| Partitioned-RFO transition-state search       |  ○  |   ○  |
-| Dimer method                                  |  ✓  |   ○  |
-| Climbing-image nudged elastic band            |  ✓  |   ○  |
-| Adaptive nudged elastic band                  |  ○  |   ○  |
-| Growing string method                         |  ✓  |   ○  |
-| Freezing string method                        |  ○  |   ○  |
-| Intrinsic reaction coordinate                 |  ✓  |   ○  |
-| Minimum-energy path optimization              |  ✓  |   ○  |
-| Minimum-energy crossing point search          |  ○  |   ○  |
-| Conical-intersection optimization             |  ○  |   ○  |
-| Basin hopping                                 |  ○  |   ○  |
-| Minima hopping                                |  ○  |   ○  |
+| Method                                        | CPU | CUDA | Kokkos |
+| --------------------------------------------- | :-: | :--: | :---: |
+| Eigenvector-following transition-state search |  ○  |   ○  |   ○  |
+| Partitioned-RFO transition-state search       |  ○  |   ○  |   ○  |
+| Dimer method                                  |  ✓  |   ○  |   ○  |
+| Climbing-image nudged elastic band            |  ✓  |   ○  |   ○  |
+| Adaptive nudged elastic band                  |  ○  |   ○  |   ○  |
+| Growing string method                         |  ✓  |   ○  |   ○  |
+| Freezing string method                        |  ○  |   ○  |   ○  |
+| Intrinsic reaction coordinate                 |  ✓  |   ○  |   ○  |
+| Minimum-energy path optimization              |  ✓  |   ○  |   ○  |
+| Minimum-energy crossing point search          |  ○  |   ○  |   ○  |
+| Conical-intersection optimization             |  ○  |   ○  |   ○  |
+| Basin hopping                                 |  ○  |   ○  |   ○  |
+| Minima hopping                                |  ○  |   ○  |   ○  |

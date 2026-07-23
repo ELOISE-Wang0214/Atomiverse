@@ -25,16 +25,16 @@ AM1-BCC charge assignment still uses the energy/charge path (see
 
 ## 1. Semiempirical Quantum Methods
 
-| Method                          | CPU | CUDA |
-| ------------------------------- | :-: | :--: |
-| AM1                             |  ✓  |   ○  |
-| RM1                             |  ✓  |   ○  |
-| PM6                             |  ○  |   ○  |
-| PM7                             |  ○  |   ○  |
-| OM3                             |  ○  |   ○  |
-| Semiempirical analytic gradient |  ✓  |   ○  |
-| Semiempirical analytic Hessian  |  ○  |   ○  |
-| AM1 heat of formation (MOPAC-style ΔHf) |  ✓  |   ○  |
+| Method                          | CPU | CUDA | Kokkos |
+| ------------------------------- | :-: | :--: | :---: |
+| AM1                             |  ✓  |   ○  |   ○  |
+| RM1                             |  ✓  |   ○  |   ○  |
+| PM6                             |  ○  |   ○  |   ○  |
+| PM7                             |  ○  |   ○  |   ○  |
+| OM3                             |  ○  |   ○  |   ○  |
+| Semiempirical analytic gradient |  ✓  |   ○  |   ○  |
+| Semiempirical analytic Hessian  |  ○  |   ○  |   ○  |
+| AM1 heat of formation (MOPAC-style ΔHf) |  ✓  |   ○  |   ○  |
 
 The NDDO core (overlap, one-electron core Hamiltonian, two-electron integrals,
 Fock build, density, SCF, forces) is parameterization-agnostic in structure.
@@ -44,30 +44,30 @@ finite-difference via `cpu::vib::Hessian` over SE forces.
 
 ## 2. Density-Functional Tight Binding
 
-| Method                    | CPU | CUDA |
-| ------------------------- | :-: | :--: |
-| SCC-DFTB / DFTB2          |  ✓  |   ○  |
-| DFTB3                     |  ○  |   ○  |
-| Spin-polarized DFTB       |  ○  |   ○  |
-| Noncollinear-spin DFTB    |  ○  |   ○  |
-| DFTB+U                    |  ○  |   ○  |
-| Dispersion-corrected DFTB |  ○  |   ○  |
-| Spin-orbit DFTB           |  ○  |   ○  |
-| Periodic DFTB             |  ○  |   ○  |
-| DFTB analytic gradient    |  ○  |   ○  |
-| DFTB analytic stress      |  ○  |   ○  |
-| TD-DFTB                   |  ○  |   ○  |
+| Method                    | CPU | CUDA | Kokkos |
+| ------------------------- | :-: | :--: | :---: |
+| SCC-DFTB / DFTB2          |  ✓  |   ○  |   ○  |
+| DFTB3                     |  ○  |   ○  |   ○  |
+| Spin-polarized DFTB       |  ○  |   ○  |   ○  |
+| Noncollinear-spin DFTB    |  ○  |   ○  |   ○  |
+| DFTB+U                    |  ○  |   ○  |   ○  |
+| Dispersion-corrected DFTB |  ○  |   ○  |   ○  |
+| Spin-orbit DFTB           |  ○  |   ○  |   ○  |
+| Periodic DFTB             |  ○  |   ○  |   ○  |
+| DFTB analytic gradient    |  ○  |   ○  |   ○  |
+| DFTB analytic stress      |  ○  |   ○  |   ○  |
+| TD-DFTB                   |  ○  |   ○  |   ○  |
 
 ## 3. Extended Tight-Binding Methods
 
-| Method                    | CPU | CUDA |
-| ------------------------- | :-: | :--: |
-| GFN0-xTB                  |  ✓  |   ○  |
-| GFN2-xTB                  |  ○  |   ○  |
-| Spin-polarized GFN-xTB    |  ○  |   ○  |
-| IPEA-xTB                  |  ○  |   ○  |
-| Periodic GFN-xTB          |  ○  |   ○  |
-| GFN-xTB analytic gradient |  ○  |   ○  |
-| GFN-xTB analytic Hessian  |  ○  |   ○  |
-| GFN-FF                    |  ○  |   ○  |
-| sTDA-xTB                  |  ○  |   ○  |
+| Method                    | CPU | CUDA | Kokkos |
+| ------------------------- | :-: | :--: | :---: |
+| GFN0-xTB                  |  ✓  |   ○  |   ○  |
+| GFN2-xTB                  |  ○  |   ○  |   ○  |
+| Spin-polarized GFN-xTB    |  ○  |   ○  |   ○  |
+| IPEA-xTB                  |  ○  |   ○  |   ○  |
+| Periodic GFN-xTB          |  ○  |   ○  |   ○  |
+| GFN-xTB analytic gradient |  ○  |   ○  |   ○  |
+| GFN-xTB analytic Hessian  |  ○  |   ○  |   ○  |
+| GFN-FF                    |  ○  |   ○  |   ○  |
+| sTDA-xTB                  |  ○  |   ○  |   ○  |

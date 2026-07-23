@@ -5,6 +5,18 @@ today, method by method, on each execution backend. It is written against the
 code on `dev`, not against intent: a row is only marked implemented if the
 method is reachable from the public API and validated.
 
+## Backends
+
+| Backend | Role |
+| ------- | ---- |
+| **CPU** | Primary portable path (OpenMP / MPI; xsimd where used). |
+| **CUDA** | Device path for selected classical MD and SCF/PW kernels (GH200). |
+| **Kokkos** | Planned portable performance backend (host + device via Kokkos); **○ everywhere today**. |
+
+Status tables use three columns: `CPU | CUDA | Kokkos`. A CUDA or Kokkos mark
+requires the **principal** work of that method to run on that backend — a CPU
+fallback is not counted as CUDA/Kokkos support.
+
 ## Status
 
 | Symbol | Meaning                                 |
@@ -12,9 +24,6 @@ method is reachable from the public API and validated.
 | ○      | Not implemented                         |
 | ✓      | Implemented and numerically correct     |
 | ⚡      | Numerically correct and fully optimized |
-
-A CUDA implementation must execute its principal computation on CUDA. A CPU
-fallback is not considered CUDA support.
 
 ### What this roadmap does not list
 
@@ -44,10 +53,11 @@ checks the physics rather than the plumbing.
 
 **⚡** is deliberately scarce. It is reserved for kernels that are both correct
 *and* carry a committed performance suite measured against a production engine.
-Today that is exactly one method family: the Lennard–Jones 12-6 pair style,
-benchmarked against LAMMPS/Kokkos on CPU (xsimd, `-march=native`) and on GPU
-(`/* benchmarks removed; re-add later */ lj/performance/`). Everything else that is correct but has no
-standing performance gate is a ✓, including code that is fast in practice.
+Today that is exactly one method family: the Lennard–Jones 12-6 pair style on
+CPU (xsimd, `-march=native`) and CUDA, historically benchmarked against
+LAMMPS/Kokkos (`/* benchmarks removed; re-add later */ lj/performance/`).
+Everything else that is correct but has no standing performance gate is a ✓,
+including code that is fast in practice. No Kokkos ⚡ yet (backend ○).
 
 **○** means not implemented. It does not distinguish "planned" from "not
 planned"; the sections below are a method census, not a commitment schedule.
@@ -209,8 +219,7 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   not yet a MD `KSpace` / pair-style drop-in under PBC.
 - **Constraints:** RATTLE + **SETTLE** (CPU; `reg_settle_tip3p`). No LINCS /
   rigid bodies / virtual sites.
-- **Torch backend** is a differentiable classical FF (LJ + harmonic bond),
-  not an ML potential and not a dynamics engine.
+- **No machine-learning potentials** in-tree (see force-fields ML table).
 
 ### Molecular dynamics
 
