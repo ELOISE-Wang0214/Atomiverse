@@ -93,3 +93,22 @@ Priority = numeric order (P0 forces first; P5 debt last). Speculative links
 - [hf-parity-19-ri-mp2](hf-parity-19-ri-mp2.md) — RI-MP2 product path / DF-ao2mo completeness [draft]
 - [hf-parity-20-cuda-scf-gradients](hf-parity-20-cuda-scf-gradients.md) — CUDA SCF gradients (energy/density-only today; GPU node) [draft]
 - [hf-parity-21-retire-scf-debt](hf-parity-21-retire-scf-debt.md) — retire SCFSolver/SCFConfig/IntegralPack/AtomList debt (do last; refactor) [draft]
+- ~~cuda-openmm-neighbor-force~~ — **SUPERSEDED 2026-07-23** by `cuda-openmm-md` chain (style-flip was insufficient; full OpenMM engine rewrite)
+
+## `cuda-openmm-md` chain — CUDA MD = OpenMM engine architecture (2026-07-23)
+
+**COMPLETE 2026-07-23** — OpenMM CS=32 + real masks + tile force + multi-GPU
+cluster classify + delete Verlet default; specs deleted (history in git log).
+GH200 `ctest` for cluster_mask / tile_step0 / pme still owed on GPU node.
+
+Operator mandate: **rewrite CUDA classical MD neighbor + nonbonded force to OpenMM
+cluster/tile engine end-to-end** — not a `NonbondedStyle` A/B switch. Public MD
+facade may stay LAMMPS-named; CUDA implementation is OpenMM. Ordered, shippable:
+
+- ~~cuda-openmm-md-01-contract~~ — **SHIPPED 2026-07-23**; spec deleted, history in git log
+- ~~cuda-openmm-md-02-rebuild~~ — **SHIPPED 2026-07-23**; spec deleted, history in git log
+- ~~cuda-openmm-md-03-tile-force~~ — **SHIPPED 2026-07-23**; spec deleted, history in git log
+- ~~cuda-openmm-md-04-multigpu~~ — **SHIPPED 2026-07-23**; spec deleted, history in git log
+- ~~cuda-openmm-md-05-delete~~ — **SHIPPED 2026-07-23**; spec deleted, history in git log
+
+Start: `/mol:impl cuda-openmm-md-01-contract` (or implement in chain order).

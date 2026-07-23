@@ -367,7 +367,6 @@ if(NOT ATV_DOCS_ONLY)
                 src/cuda/neighbor/grid.cu
                 src/cuda/neighbor/pair_search.cu
                 src/cuda/neighbor/fused_search.cu
-                src/cuda/neighbor/nlist_direct.cu
                 src/cuda/neighbor/atom_cell_sort.cu
                 src/cuda/neighbor/setup.cu
                 src/cuda/neighbor/export_pairs.cu

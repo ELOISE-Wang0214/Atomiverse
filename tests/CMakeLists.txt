@@ -654,6 +654,9 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_md_zero_momentum cuda/dynamics/test_zero_momentum.cu)
     atv_add_test(test_cuda_md_components cuda/dynamics/test_cuda_md_components.cu)
     atv_add_test(test_cuda_neighborlist_skin_gating cuda/dynamics/test_neighborlist_skin_gating.cu)
+    atv_add_test(test_cuda_cluster_contract cuda/dynamics/test_cuda_cluster_contract.cu)
+    atv_add_test(test_cuda_cluster_mask cuda/dynamics/test_cuda_cluster_mask.cu)
+    atv_add_test(test_pair_lj_tile_step0 cuda/potentials/test_pair_lj_tile_step0.cu)
     atv_add_test(test_cuda_atom_cell_sort cuda/dynamics/test_atom_cell_sort.cu)
     # Pulls in the private primitive header src/cuda/neighbor/atom_cell_sort.cuh
     target_include_directories(test_cuda_atom_cell_sort PRIVATE
@@ -680,6 +683,13 @@ if(ATV_BUILD_CUDA)
     if(ATV_BUILD_KSPACE)
         atv_add_test(test_cuda_pme_coul cuda/longrange/test_pme_coul.cu)
     endif()
+    # Manual A/B (not ctest): OpenMM cluster vs LAMMPS Verlet nonbonded path.
+    # Run: ATV_CUDA_NONBONDED=openmm|lammps ./cuda_nonbonded_style_bench [n_side] [steps]
+    add_executable(cuda_nonbonded_style_bench
+                   ${CMAKE_SOURCE_DIR}/tools/cuda_nonbonded_style_bench.cu)
+    target_link_libraries(cuda_nonbonded_style_bench PRIVATE atomiverse)
+    set_target_properties(cuda_nonbonded_style_bench PROPERTIES
+                          RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     if(ATV_BUILD_PW)
         atv_add_test(test_cuda_pw_fft cuda/planewave/test_fft.cu)
         target_link_libraries(test_cuda_pw_fft PRIVATE CUDA::cufft)
@@ -805,6 +815,10 @@ add_test(
 add_test(
     NAME test_cuda_no_stale_api_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/cuda_no_stale_api_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+add_test(
+    NAME test_cuda_openmm_md_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/cuda_openmm_md_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: domain objects are constructed via class constructors — never

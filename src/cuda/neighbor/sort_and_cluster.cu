@@ -316,7 +316,9 @@ __global__ void scatter_and_aabb(
         cluster_count[ci] = (last > first) ? (last - first) : 0;
     }
 
-    // Phase 2: AABB via warp-shuffle reduction
+    // Phase 2: AABB via warp-shuffle reduction.
+    // CS=32 ⇒ one cluster per full warp (mask 0xffffffff). Sub-warp grouping
+    // is only needed if kClusterSize < 32 (historical CS=8).
     work_t lo_x = valid ? vx : huge;
     work_t lo_y = valid ? vy : huge;
     work_t lo_z = valid ? vz : huge;
@@ -324,8 +326,13 @@ __global__ void scatter_and_aabb(
     work_t hi_y = valid ? vy : -huge;
     work_t hi_z = valid ? vz : -huge;
 
-    unsigned mask =
-        0xFFu << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
+    static_assert(kClusterSize == 32 || (32 % kClusterSize) == 0,
+                  "kClusterSize must divide 32 for sub-warp AABB");
+    unsigned mask = 0xffffffffu;
+    if constexpr (kClusterSize < 32) {
+        unsigned bits = (1u << kClusterSize) - 1u;
+        mask = bits << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
+    }
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
         work_t tmp;
         tmp = __shfl_down_sync(mask, lo_x, offset);
