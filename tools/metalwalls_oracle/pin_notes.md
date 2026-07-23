@@ -8,3 +8,12 @@
 - **Command:** `lmp -in in.tip4p_dimer_metal -log log.metal`
 - **Pin:** PE = 0.52924228894955327451 eV; forces in REFERENCE.md
 - **Conversion:** metal units match ATV eV; ε_OO = 0.1550 kcal/mol × `kKcalPerMolInEv`
+
+## fumi-tosi-nacl (2026-07-24)
+
+- **Oracle:** LAMMPS `hybrid/overlay born + coul/cut` (units metal; `pair_modify pair born shift yes`)
+- **Binary:** `/home/jicli594/.local/x86_64/bin/lmp` — 30 Mar 2026 Development
+- **Inputs:** `tools/metalwalls_oracle/inputs/lammps/in.fumi_tosi_nacl4`
+- **Command:** `lmp -in in.fumi_tosi_nacl4`
+- **Pin:** PE = 54.7707332302457 eV; forces in REFERENCE.md
+- **ATV:** multi-type `cpu::PairBorn` + `cpu::PairCoulCut` on 4-ion NaCl square
