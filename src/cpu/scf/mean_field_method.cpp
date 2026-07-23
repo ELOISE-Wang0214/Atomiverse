@@ -1006,11 +1006,13 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
                 "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
                 "ri=RI::None for UMP2, or use RHF.");
         return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis,
-                            frozen);
+                            frozen, mp2_os_scale, mp2_ss_scale);
     }
     if (spin_ == SpinType::Unrestricted)
-        return ump2_energy(*integrals_sp_, *det_sp_, e_total_);
-    return mp2_energy(*integrals_sp_, *det_sp_, e_total_, frozen);
+        return ump2_energy(*integrals_sp_, *det_sp_, e_total_, mp2_os_scale,
+                           mp2_ss_scale);
+    return mp2_energy(*integrals_sp_, *det_sp_, e_total_, frozen, mp2_os_scale,
+                      mp2_ss_scale);
 }
 
 template <typename D>

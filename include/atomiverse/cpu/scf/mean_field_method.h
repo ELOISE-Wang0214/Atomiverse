@@ -187,6 +187,22 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        Closed-shell RMP2 / RI-MP2 only; UMP2 throws if `frozen > 0`.
     int frozen = 0;
 
+    /// @brief Opposite-spin scale for MP2 correlation (dimensionless).
+    ///
+    /// Default 1.0 recovers plain RMP2/UMP2/RI-MP2. Grimme SCS-MP2 uses
+    /// 1.2 (with `mp2_ss_scale = 1/3`); SOS-MP2 uses 1.3 (with
+    /// `mp2_ss_scale = 0`). Applied as
+    /// \(E_{\mathrm{corr}}=c_{\mathrm{OS}}E_{\mathrm{OS}}+c_{\mathrm{SS}}E_{\mathrm{SS}}\);
+    /// unscaled channels remain on `MP2Result::e_corr_os` /
+    /// `e_corr_ss`.
+    double mp2_os_scale = 1.0;
+
+    /// @brief Same-spin scale for MP2 correlation (dimensionless).
+    ///
+    /// Default 1.0 = plain MP2; SCS-MP2 = 1/3; SOS-MP2 = 0.
+    /// See `mp2_os_scale`.
+    double mp2_ss_scale = 1.0;
+
     // ── Coulomb algorithm (CFMM) — hf-capability-gaps-21-cfmm ─────────
     /// @brief J-matrix algorithm. `Coulomb::Direct` (default) keeps the
     ///        exact-ERI path bit-identical. `Coulomb::CFMM` selects the
@@ -340,10 +356,13 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// throw. Optional density guess is forwarded to the reference SCF (needed
     /// for multi-minima cases such as triplet O₂ UHF). Member `frozen` excludes
     /// the lowest N occupied spatial MOs from the correlation sum (RMP2 /
-    /// RI-MP2); UMP2 rejects `frozen > 0`.
+    /// RI-MP2); UMP2 rejects `frozen > 0`. Members `mp2_os_scale` /
+    /// `mp2_ss_scale` apply Grimme spin-component scaling (defaults 1 / 1 =
+    /// plain MP2; SCS-MP2 = 1.2 / ⅓).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
     /// @param guess  Optional density-matrix guess for the reference SCF.
-    /// @return MP2 correlation + total energy [Hartree].
+    /// @return MP2 correlation + total energy [Hartree]; unscaled OS/SS on
+    ///         the result fields.
     MP2Result mp2(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Tiny full-CI on top of a fresh RHF-style run (materializes ERI).

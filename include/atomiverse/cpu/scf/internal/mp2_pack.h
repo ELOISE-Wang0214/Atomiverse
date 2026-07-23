@@ -20,9 +20,15 @@ namespace scf {
 /// @param n_frozen Number of lowest occupied spatial MOs excluded from the
 ///                 correlation sum (frozen core). 0 = all occupied correlated.
 ///                 Matches PySCF `mp.MP2(mf, frozen=n_frozen)`.
-/// @return MP2 correlation and total energies [Hartree].
+/// @param os_scale Opposite-spin scale \(c_{\mathrm{OS}}\) (1 = plain MP2;
+///                 1.2 = SCS-MP2). Dimensionless.
+/// @param ss_scale Same-spin scale \(c_{\mathrm{SS}}\) (1 = plain MP2;
+///                 1/3 = SCS-MP2). Dimensionless.
+/// @return MP2 correlation and total energies [Hartree]; unscaled OS/SS on
+///         `e_corr_os` / `e_corr_ss`.
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                     double e_scf_ha, int n_frozen = 0);
+                     double e_scf_ha, int n_frozen = 0, double os_scale = 1.0,
+                     double ss_scale = 1.0);
 
 /// @brief Unrestricted canonical MP2 (UMP2) on a UHF/UKS-style reference.
 ///
@@ -42,12 +48,17 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// \f]
 ///
 /// Matches raw (unprojected) PySCF `mp.UMP2`. No frozen core.
+/// Optional `os_scale` / `ss_scale` apply Grimme SCS/SOS scaling to the
+/// unscaled channels (defaults 1 / 1 = plain UMP2).
 /// @param ints     Integral pack with the ERI tensor materialized.
 /// @param det      Converged unrestricted determinant (independent α/β MOs).
 /// @param e_scf_ha Converged UHF total energy [Hartree].
+/// @param os_scale Opposite-spin scale (dimensionless).
+/// @param ss_scale Same-spin scale (dimensionless).
 /// @return UMP2 correlation and total energies [Hartree].
 MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                      double e_scf_ha);
+                      double e_scf_ha, double os_scale = 1.0,
+                      double ss_scale = 1.0);
 
 /// @brief Closed-shell RI-MP2 correlation energy via Coulomb-metric density
 ///        fitting (same `DensityFitting` workspace as SCF RI-J/JK). Does not
@@ -58,9 +69,12 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @param aux      Auxiliary basis (def2 universal JKFIT).
 /// @param n_frozen Lowest occupied spatial MOs frozen (same convention as
 ///                 `mp2_energy`).
+/// @param os_scale Opposite-spin scale (dimensionless; default 1).
+/// @param ss_scale Same-spin scale (dimensionless; default 1).
 /// @return MP2Result with RI (ia|jb)≈Σ_P B_ia^P B_jb^P [Hartree].
 MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, AuxBasis aux, int n_frozen = 0);
+                        double e_scf_ha, AuxBasis aux, int n_frozen = 0,
+                        double os_scale = 1.0, double ss_scale = 1.0);
 
 } // namespace scf
 } // namespace cpu
