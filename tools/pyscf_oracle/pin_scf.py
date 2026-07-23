@@ -17,6 +17,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd-t --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
+  python tools/pyscf_oracle/pin_scf.py casscf --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
@@ -114,7 +115,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "casscf", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -126,13 +127,13 @@ def main() -> int:
         "--ncas",
         type=int,
         default=2,
-        help="Active spatial orbitals for casci (default 2)",
+        help="Active spatial orbitals for casci/casscf (default 2)",
     )
     p.add_argument(
         "--nelecas",
         type=int,
         default=2,
-        help="Active electrons for casci (default 2; closed-shell even)",
+        help="Active electrons for casci/casscf (default 2; closed-shell even)",
     )
     p.add_argument(
         "--from-mo",
@@ -1411,6 +1412,24 @@ def main() -> int:
         out["e_casci_ha"] = float(mc.e_tot)
         out["e_tot_ha"] = float(mc.e_tot)
         out["e_corr_ha"] = float(mc.e_tot) - float(e)
+        out["e_cas_ha"] = float(mc.e_cas)
+    elif m == "casscf":
+        # Closed-shell CASSCF on the RHF reference (PySCF mcscf.CASSCF).
+        from pyscf import mcscf
+
+        ncas = int(args.ncas)
+        nelecas = int(args.nelecas)
+        mc = mcscf.CASSCF(mf, ncas, nelecas)
+        mc.conv_tol = float(args.conv_tol)
+        e_mc = mc.kernel()[0]
+        out["e_hf_ha"] = float(e)
+        out["ncas"] = ncas
+        out["nelecas"] = nelecas
+        out["ncore"] = int(mc.ncore)
+        out["e_casscf_ha"] = float(e_mc)
+        out["e_tot_ha"] = float(e_mc)
+        out["e_corr_ha"] = float(e_mc) - float(e)
+        out["casscf_converged"] = bool(mc.converged)
         out["e_cas_ha"] = float(mc.e_cas)
     elif m == "b2plyp":
         # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.

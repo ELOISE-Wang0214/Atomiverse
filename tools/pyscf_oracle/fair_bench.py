@@ -131,6 +131,11 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
             "mcscf.CASCI(mf, 2, 2).kernel()"
         ),
+        "casscf": (
+            "from pyscf import scf, mcscf\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            "mc=mcscf.CASSCF(mf, 2, 2); mc.conv_tol=1e-10; mc.kernel()"
+        ),
         "eom-ee-ccsd": (
             "from pyscf import scf, cc\n"
             "mf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
@@ -418,7 +423,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf_tddft", "mp4", "cc2", "direct_rpa", "bse", "d4", "eom-sf-ccsd", "gf2"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "casscf", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf_tddft", "mp4", "cc2", "direct_rpa", "bse", "d4", "eom-sf-ccsd", "gf2"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

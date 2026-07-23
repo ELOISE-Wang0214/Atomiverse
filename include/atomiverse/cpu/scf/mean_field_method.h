@@ -39,6 +39,7 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/casci.h"
+#include "atomiverse/cpu/scf/casscf.h"
 #include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/fci.h"
@@ -465,6 +466,20 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @param nelecas Number of active electrons (even; closed-shell).
     /// @return CASCI total + correlation energy [Hartree].
     CASCIResult casci(Frame& frame, int ncas, int nelecas);
+
+    /// @brief Closed-shell CASSCF on top of a fresh RHF run (materializes ERI).
+    ///
+    /// Dense complete-active-space CI with orbital optimization: frozen
+    /// doubly-occupied core + full CI in `ncas` spatial orbitals; non-redundant
+    /// orbital rotations (core–active, active–virtual, core–virtual) by
+    /// diagonal Newton on the generalized Fock gradient. Matches PySCF
+    /// `mcscf.CASSCF(mf, ncas, nelecas)` on the same closed-shell foothold.
+    /// Open-shell (UHF/ROHF/GHF) throws — no silent fallback.
+    /// @param frame   Geometry; drives a fresh SCF then the CASSCF macro loop.
+    /// @param ncas    Number of active spatial orbitals (dimensionless).
+    /// @param nelecas Number of active electrons (even; closed-shell).
+    /// @return CASSCF total + correlation energy [Hartree].
+    CASSCFResult casscf(Frame& frame, int ncas, int nelecas);
 
     /// @brief Closed-shell CCSD on top of a fresh RHF run (materializes ERI).
     ///
