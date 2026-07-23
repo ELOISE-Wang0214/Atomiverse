@@ -7,22 +7,24 @@ can oracle offline; **done** / **blocked** history is preserved across runs.
 Census date: 2026-07-24 (harness wave 2 post re-census merge). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
-10→without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
+without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
 CASPT2 (no stock PySCF). **Wave 1 merged (12):** eom-ea-ccsd, adc2x-h2co-sto3g,
 ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g,
 direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g.
 **Wave 2 merged (7):** eom-cc2-h2, eom-ip-ccsd, uks-full-lr-o2-lsda,
 casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
-**pending:** nevpt2 unblocked by CASSCF ✓. **in_progress retain:**
-`uks-hessian-o2-sto3g` (not in wave-2 merge set).
+**Wave 3 assign (2026-07-24):** `nevpt2-h2-sto3g` (new; CASSCF dep ✓) +
+re-dispatch `uks-hessian-o2-sto3g` (never merged; no worker branch).
+**pending:** empty after assign. Historical blocked list unchanged.
 
 ## pending
 
-- [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | CASSCF ✓; partially/strongly contracted; PySCF mrpt.NEVPT
+_(empty — wave 3 assigned all ready rows)_
 
 ## in_progress
 
-- [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
+- [~] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | CASSCF ✓; partially/strongly contracted; PySCF mrpt.NEVPT
+- [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS | re-dispatch wave 3
 
 ## blocked
 

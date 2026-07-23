@@ -114,3 +114,4 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-24 tutorial: methods/rks-hessian-h2o-sto3g.md
 - 2026-07-24 tutorial: methods/ump2-grad-o2-sto3g.md
 - 2026-07-24 tutorial index: methods/README.md + tutorial/index.md Method tutorials (wave 2)
+- 2026-07-24 assign wave 3 (post re-census): nevpt2-h2-sto3g (post-hf, new; CASSCF dep ✓) + re-dispatch uks-hessian-o2-sto3g (dft; never merged, no worker branch) → in_progress (2); skip=[]; pending_left=0

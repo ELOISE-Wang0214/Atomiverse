@@ -115,12 +115,15 @@ after serial merges in prior `fix(oracle)` / `fix(wf): re-union…` /
 `fix(merge): complete CC2+UCCSD…` commits). Wave-2 workers each carried their
 pin path; merge commits landed on `dev` before this harness pass.
 
-## Next assign candidates (pending head)
+## Wave 3 assign (2026-07-24)
 
-1. `nevpt2-h2-sto3g` — unblocked (CASSCF energy ships)
-2. Re-dispatch `uks-hessian-o2-sto3g` if still mid-flight / not merged
+| Slug | Domain | Status | Note |
+| ---- | ------ | ------ | ---- |
+| `nevpt2-h2-sto3g` | post-hf | **in_progress** | CASSCF dep ✓; PySCF `mrpt.NEVPT`; e_corr pin |
+| `uks-hessian-o2-sto3g` | dft | **in_progress** (re-dispatch) | never merged; no `wf/uks-hessian-o2-sto3g` branch; PySCF `hessian.UKS` |
 
-Historical **blocked** rows stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2,
-PM6/7, CASPT2).
+- **pending after assign:** empty
+- **skip:** none (deps satisfied; blocked list untouched)
+- **Historical blocked** stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2, PM6/7, CASPT2)
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
