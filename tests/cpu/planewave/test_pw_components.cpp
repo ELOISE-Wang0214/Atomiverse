@@ -18,8 +18,13 @@
 #include "atomiverse/cpu/planewave/internal/pw_workspace.h"
 #include "atomiverse/cpu/planewave/internal/veff_builder.h"
 #include "atomiverse/cpu/planewave/internal/xc_builder.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
+#include <cmath>
+#include <complex>
+#include <fftw3.h>
 #include <gtest/gtest.h>
 #include <type_traits>
+#include <vector>
 
 using namespace ATV;
 using namespace ATV::cpu::pw::internal;
@@ -176,6 +181,99 @@ TEST(PWInternal, WarmupSuppression) {
     }
     for (int step = 0; step < 3; ++step)
         EXPECT_FALSE(c.step(f.ws)) << "warmup step " << step;
+}
+
+// A3: uniform density → GGA PBE E_xc equals PBE@σ=0 (LDA limit of PBE).
+TEST(PWInternal, XcGgaUniformMatchesSigmaZero) {
+    PWFixture f;
+    // Uniform ρ: only G=0 component. |∇ρ|=0 ⇒ true GGA collapses to σ=0.
+    const AccReal rho0 = AccReal(4) / f.ws.omega;
+    for (int i = 0; i < f.ws.n_g; ++i)
+        f.ws.rho_G[i] = (i == 0) ? std::complex<AccReal>(rho0, 0)
+                                 : std::complex<AccReal>(0, 0);
+
+    XCBuilder xc;
+    xc.prepare(f.ws);
+    xc.step(f.ws, cpu::scf::XCType::PBE);
+    const AccReal e_gga = f.ws.E_xc;
+
+    // Pointwise PBE@σ=0 on the same uniform density (analytic check).
+    const auto out = cpu::scf::evaluate_xc(cpu::scf::XCType::PBE,
+                                           static_cast<double>(rho0) / 2.0,
+                                           static_cast<double>(rho0) / 2.0);
+    const AccReal e_ref =
+        rho0 * static_cast<AccReal>(out.exc) * f.ws.omega; // ∫ ρ ε dV
+    EXPECT_NEAR(static_cast<double>(e_gga), static_cast<double>(e_ref), 1e-10)
+        << "uniform GGA must match PBE@σ=0";
+}
+
+// A2: nonuniform density → true GGA E_xc differs from PBE@σ=0 on the same ρ.
+TEST(PWInternal, XcGgaNonuniformDiffersFromSigmaZero) {
+    PWFixture f;
+    // ρ(G=0) + small G≠0 modulation so |∇ρ| ≠ 0 on the grid.
+    const AccReal rho0 = AccReal(4) / f.ws.omega;
+    for (int i = 0; i < f.ws.n_g; ++i)
+        f.ws.rho_G[i] = std::complex<AccReal>(0, 0);
+    f.ws.rho_G[0] = std::complex<AccReal>(rho0, 0);
+    if (f.ws.n_g > 1) {
+        // First nonzero G mode (sorted by |G|).
+        f.ws.rho_G[1] = std::complex<AccReal>(rho0 * AccReal(0.15), 0);
+    }
+
+    XCBuilder xc;
+    xc.prepare(f.ws);
+
+    // True GGA path.
+    xc.step(f.ws, cpu::scf::XCType::PBE);
+    const AccReal e_gga = f.ws.E_xc;
+
+    // PBE@σ=0 on the same ρ(r) reconstructed from ρ(G).
+    const int nr = f.ws.nr;
+    const int ng = f.ws.n_g;
+    const int nx = f.ws.fft_nx, ny = f.ws.fft_ny, nz = f.ws.fft_nz;
+    const int nxc = nx / 2 + 1;
+    const int nc = f.ws.nc;
+    std::vector<fftw_complex> half(static_cast<std::size_t>(nc));
+    std::vector<AccReal> rho_r(static_cast<std::size_t>(nr));
+    for (int i = 0; i < nc; ++i)
+        half[i][0] = half[i][1] = 0;
+    auto& gv = *f.ws.gvec;
+    for (int ig = 0; ig < ng; ++ig) {
+        int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
+        int kx = ((h % nx) + nx) % nx;
+        int ky = ((k % ny) + ny) % ny;
+        int kz = ((l % nz) + nz) % nz;
+        bool conj = false;
+        if (kx > nx / 2) {
+            kx = nx - kx;
+            ky = (ny - ky) % ny;
+            kz = (nz - kz) % nz;
+            conj = true;
+        }
+        const int idx = kx + nxc * (ky + ny * kz);
+        if (idx >= 0 && idx < nc) {
+            half[idx][0] = static_cast<double>(f.ws.rho_G[ig].real());
+            half[idx][1] = static_cast<double>(
+                conj ? -f.ws.rho_G[ig].imag() : f.ws.rho_G[ig].imag());
+        }
+    }
+    f.ws.fft->c2r(half.data(), rho_r.data());
+    AccReal e_sigma0 = 0;
+    const AccReal dV = f.ws.omega / static_cast<AccReal>(nr);
+    for (int i = 0; i < nr; ++i) {
+        const AccReal rho = rho_r[i];
+        if (rho < AccReal(1e-12))
+            continue;
+        const auto out = cpu::scf::evaluate_xc(
+            cpu::scf::XCType::PBE, static_cast<double>(rho) / 2.0,
+            static_cast<double>(rho) / 2.0); // σ defaults to 0
+        e_sigma0 += rho * static_cast<AccReal>(out.exc) * dV;
+    }
+
+    const double de = std::abs(static_cast<double>(e_gga - e_sigma0));
+    EXPECT_GT(de, 1e-8)
+        << "nonuniform GGA must differ from PBE@σ=0; |ΔE_xc|=" << de
+        << " E_gga=" << e_gga << " E_σ0=" << e_sigma0;
 }
 
 TEST(PWInternal, DensityBuilderConservesElectrons) {

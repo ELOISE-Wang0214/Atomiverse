@@ -121,8 +121,8 @@ TEST(PWForces, AnalyticUpfSiDimerFiniteForces) {
     // atoms are slightly off the ideal high-symmetry relative placement.
     namespace fs = std::filesystem;
     const char* candidates[] = {
+        "tests/data/pw/Si_lda_nc.upf",
         "benchmarks/pw/si/validation/reference/Si_lda_nc.upf",
-        "python/examples/pseudopotentials/Si_nc.upf",
     };
     std::string upf;
     for (const char* c : candidates) {
