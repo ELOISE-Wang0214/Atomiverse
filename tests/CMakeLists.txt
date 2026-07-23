@@ -133,6 +133,7 @@ atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/montecarlo/test_gcmc_npt_movers
 # benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.
 atv_add_cpp_test(test_cpu_md cpu/dynamics/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_parrinello_rahman_npt cpu/dynamics/test_parrinello_rahman_npt.cpp)
+atv_add_cpp_test(test_cpu_md_nph_integrator        cpu/dynamics/test_nph_integrator.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/dynamics/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/dynamics/test_pe_single_chain.cpp)
 # Multi-step PE bonded NVE conservation is a regression
