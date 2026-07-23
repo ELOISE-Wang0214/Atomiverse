@@ -414,16 +414,18 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///         the result fields.
     MP2Result mp2(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
-    /// @brief Analytic nuclear forces on the total RMP2 energy E_HF + E_corr
-    ///        [eV/Å]. Closed-shell canonical RMP2 only (no frozen core, no
-    ///        RI, Cartesian AO). Drives a fresh SCF (materializes ERI),
-    ///        builds the MP2 Lagrangian densities + Z-vector response, and
-    ///        contracts with skeleton integral derivatives. Matches PySCF
-    ///        `mp.MP2.nuc_grad_method().kernel()` on the same geometry.
+    /// @brief Analytic nuclear forces on the total MP2 energy E_HF + E_corr
+    ///        [eV/Å]. Canonical RMP2 (RHF) or UMP2 (UHF); no frozen core, no
+    ///        RI, Cartesian AO. Drives a fresh SCF (materializes ERI), builds
+    ///        the MP2 Lagrangian densities + Z-vector response, and contracts
+    ///        with skeleton integral derivatives. Matches PySCF
+    ///        `mp.MP2` / `mp.UMP2` `.nuc_grad_method().kernel()` on the same
+    ///        geometry.
     /// @param frame  Geometry; forces written to fx/fy/fz; energy to meta.
-    /// @param guess  Optional density-matrix guess for the reference SCF.
+    /// @param guess  Optional density-matrix guess for the reference SCF
+    ///               (needed for multi-minima UHF cases such as triplet O₂).
     /// @return Forces [eV/Å] and total MP2 energy [eV].
-    /// @throws std::invalid_argument on open-shell / RI / frozen>0 /
+    /// @throws std::invalid_argument on ROHF / RI / frozen>0 / SCS scales /
     ///         non-converged SCF / spherical basis (no fallback).
     GradientResult mp2_forces(Frame& frame,
                               const SCFInitialGuess* guess = nullptr);

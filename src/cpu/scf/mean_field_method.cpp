@@ -1066,10 +1066,10 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
 template <typename D>
 GradientResult
 MeanFieldMethod<D>::mp2_forces(Frame& frame, const SCFInitialGuess* guess) {
-    if (spin_ != SpinType::Restricted)
+    if (spin_ != SpinType::Restricted && spin_ != SpinType::Unrestricted)
         throw std::invalid_argument(
-            "MeanFieldMethod::mp2_forces: closed-shell RMP2 analytic gradient "
-            "only — use RHF (UMP2/ROHF gradients are follow-up links)");
+            "MeanFieldMethod::mp2_forces: RMP2 (RHF) or UMP2 (UHF) analytic "
+            "gradient only — ROHF/ROMP2 gradients are a follow-up");
     if (ri != RI::None)
         throw std::invalid_argument(
             "MeanFieldMethod::mp2_forces: RI-MP2 gradients are not "
@@ -1093,11 +1093,20 @@ MeanFieldMethod<D>::mp2_forces(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp2_forces: SCF reference did not converge — "
             "refusing gradient on a non-stationary determinant (no fallback)");
 
-    const MP2Result corr =
-        mp2_energy(*integrals_sp_, *det_sp_, e_total_, /*n_frozen=*/0,
-                   /*os_scale=*/1.0, /*ss_scale=*/1.0);
-    GradientResult gr = internal::mp2_analytic_forces(
-        frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
+    GradientResult gr;
+    if (spin_ == SpinType::Unrestricted) {
+        const MP2Result corr =
+            ump2_energy(*integrals_sp_, *det_sp_, e_total_, /*os_scale=*/1.0,
+                        /*ss_scale=*/1.0);
+        gr = internal::ump2_analytic_forces(frame, *integrals_sp_, *det_sp_,
+                                            e_total_, corr.e_corr);
+    } else {
+        const MP2Result corr =
+            mp2_energy(*integrals_sp_, *det_sp_, e_total_, /*n_frozen=*/0,
+                       /*os_scale=*/1.0, /*ss_scale=*/1.0);
+        gr = internal::mp2_analytic_forces(frame, *integrals_sp_, *det_sp_,
+                                           e_total_, corr.e_corr);
+    }
     last_grad_ = gr;
 
     // Publish force / energy on Frame (same contract as forces()).
