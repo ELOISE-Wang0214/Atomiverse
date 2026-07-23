@@ -26,6 +26,9 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 **ΔSCF / MOM / IMOM** non-Aufbau re-SCF ships on UHF
 (`UHF::delta_scf`; `MomStyle::{MOM,IMOM}`; `reg_delta-scf-n2` N₂/STO-3G
 α HOMO→LUMO vs PySCF `scf.addons.mom_occ_`).
+**EOM-EE-CCSD** singlet excitation energies ship on closed-shell RHF+CCSD
+(`RHF::eom_ee_ccsd`; `reg_eom-ee-ccsd` H₂/STO-3G S1 vs PySCF
+`cc.CCSD(...).eomee_ccsd_singlet`).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -81,7 +84,7 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 
 | Method                     | CPU | CUDA | Kokkos |
 | -------------------------- | :-: | :--: | :---: |
-| EOM-EE-CCSD                |  ○  |   ○  |   ○  |
+| EOM-EE-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-IP-CCSD                |  ○  |   ○  |   ○  |
 | EOM-EA-CCSD                |  ○  |   ○  |   ○  |
 | EOM-SF-CCSD                |  ○  |   ○  |   ○  |
@@ -93,8 +96,11 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | STEOM-CCSD                 |  ○  |   ○  |   ○  |
 | EOM-CCSD analytic gradient |  ○  |   ○  |   ○  |
 
-CCSD energy ships (`RHF::ccsd`; see [Post-Hartree–Fock](post-hf.md#3-coupled-cluster));
-the EOM layer (Jacobian / σ-vector) is still absent.
+**EOM-EE-CCSD** (`RHF::eom_ee_ccsd`) builds the spin-orbital EE Jacobian on a
+converged closed-shell CCSD reference and returns singlet roots
+(`reg_eom-ee-ccsd` vs PySCF). IP/EA/SF/DIP/DEA channels, CVS, STEOM, and
+EOM gradients remain open. See also [Post-Hartree–Fock](post-hf.md#3-coupled-cluster)
+for ground-state CCSD / CCSD(T).
 
 ## 4. Simplified Excited-State Methods
 

@@ -1,8 +1,31 @@
 # PySCF method loop — handoff
 
-Last harness pass: **2026-07-23 wave 5** on `dev` (harness commit series `wf wave 2`).
+Last harness pass: **2026-07-23 wave 6** on `dev` (harness commit series `wf wave 3`).
 
-## Wave 5 summary
+## Wave 6 summary
+
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
+| `ccsd-t-h2o-sto3g` | post-hf | **merged → done** | `regressions/scf/ccsd-t-h2o-sto3g` | **0.333** |
+| `casci-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/casci-h2-sto3g` | **0.076** |
+| `delta-scf-n2` | excited-states / hf | **merged → done** | `regressions/scf/delta-scf-n2` | **7.83** |
+| `eom-ee-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ee-ccsd` | **0.193** |
+
+- **Blocked this wave:** none
+- **Merge-failed this wave:** none
+- **Queue:** **pending empty** (PySCF-oracle census queue exhausted for this
+  shift); in_progress empty; historical blocked list (cam-b3lyp,
+  periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7) unchanged — not re-opened.
+- **Roadmap:** CPU ✓ for **CCSD(T)** (`RHF::ccsd_t`), **CASCI**
+  (`RHF::casci`), **EOM-EE-CCSD** (`RHF::eom_ee_ccsd`). **ΔSCF / MOM / IMOM**
+  table rows were already ✓ (`UHF::delta_scf`). **No ⚡** — ratios noted only;
+  no standing perf suite in ctest.
+- **Speed notes:** all four fair-benched and within 10×. casci / eom-ee /
+  ccsd-t faster than PySCF on these footholds (0.08–0.33×); delta-scf 7.83×
+  (IMOM re-SCF heavier but under the 10× gate — **not** blocked-for-speed).
+  No blocked-for-speed slugs.
+
+## Wave 5 (prior)
 
 | Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
 | ---- | ------ | ------ | ---------- | ----------------------------------------------- |
@@ -11,22 +34,6 @@ Last harness pass: **2026-07-23 wave 5** on `dev` (harness commit series `wf wav
 | `ccsd-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/ccsd-h2-sto3g` | **0.317** |
 | `g0w0-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/g0w0-h2-sto3g` | **0.109** |
 | `b2plyp-h2o` | dft | **merged → done** | `regressions/scf/b2plyp-h2o` | **1.75** |
-
-- **Blocked this wave:** none
-- **Merge-failed this wave:** none
-- **Queue:** 3 pending (`ccsd-t-h2o-sto3g`, `casci-h2-sto3g`,
-  `eom-ee-ccsd` — unblocked now that CCSD energy ships); `delta-scf-n2` done
-  (IMOM foothold, ratio 7.83); in_progress may still list parallel wave slots;
-  historical blocked list (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb,
-  pm6-pm7) unchanged
-- **Roadmap:** CPU ✓ for **MP3** (`RHF::mp3`), **CCSD** (`RHF::ccsd`),
-  **G0W0** (`RHF::g0w0`). **ADC(2)** and **B2PLYP** table rows were already ✓;
-  B2PLYP prose updated (composed hybrid KS + scaled MP2). EOM-CC blocked note
-  refreshed (CCSD energy yes; EOM layer still ○). **No ⚡** — ratios noted only;
-  no standing perf suite in ctest.
-- **Speed notes:** all five fair-benched and within 10×; g0w0 / adc2 / ccsd
-  faster than PySCF on these footholds (0.11–0.32×); mp3 0.77×; b2plyp 1.75×.
-  No blocked-for-speed slugs.
 
 ## Wave 4 (prior)
 
@@ -72,13 +79,14 @@ Last harness pass: **2026-07-23 wave 5** on `dev` (harness commit series `wf wav
 
 Pins live in each regression `REFERENCE.md`. Offline pin path:
 `tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py` (union restored
-after serial merges in `fix(oracle): re-union pin_scf/fair_bench…` and
-`fix(wf): re-union ccsd/mp3/b2plyp…` / `re-union adc2 after g0w0…`).
+after serial merges in prior `fix(oracle)` / `fix(wf): re-union…` commits;
+wave-6 workers each carried their pin path).
 
 ## Next assign candidates (pending head)
 
-1. `ccsd-t-h2o-sto3g` — (T) triples on closed-shell CCSD
-2. `casci-h2-sto3g` — active-space on FCI kernel
-3. `eom-ee-ccsd` — EOM-EE on the new CCSD energy path
+**None** — `docs/developer/pyscf-method-queue.md` **pending** is empty.
+Historical **blocked** rows stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2,
+PM6/7). Further census would need new roadmap ○ rows with a PySCF offline
+oracle twin (e.g. CASSCF, EOM-IP/EA, CC gradients) before a new assign wave.
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.

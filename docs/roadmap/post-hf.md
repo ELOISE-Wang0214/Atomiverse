@@ -3,12 +3,12 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Correlated methods built on a converged [Hartree–Fock](hartree-fock.md)
-reference. MP2 / MP3 / CCSD / FCI ship as post-SCF members on the concrete
-method (`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::mp3` / `RHF::ccsd` /
-`RHF::fci`) consuming the converged `SlaterDeterminant` plus the method's
-privately materialized ERI tensor (they are not Drivers or Components, and
-register in no Plan; they throw `std::invalid_argument` on a non-converged
-reference):
+reference. MP2 / MP3 / CCSD / CCSD(T) / CASCI / FCI ship as post-SCF members
+on the concrete method (`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::mp3` /
+`RHF::ccsd` / `RHF::ccsd_t` / `RHF::casci` / `RHF::fci`) consuming the
+converged `SlaterDeterminant` plus the method's privately materialized ERI
+tensor (they are not Drivers or Components, and register in no Plan; they
+throw `std::invalid_argument` on a non-converged reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
 - **UMP2** — unrestricted spin-orbital MP2 on a UHF reference (`UHF::mp2`).
@@ -16,10 +16,14 @@ reference):
 - **RMP3** — closed-shell third-order MP (`RHF::mp3`; `reg_mp3-h2-sto3g`).
 - **CCSD** — closed-shell coupled-cluster singles and doubles (`RHF::ccsd`;
   `reg_ccsd-h2-sto3g`).
+- **CCSD(T)** — non-iterative triples on closed-shell CCSD (`RHF::ccsd_t`;
+  `reg_ccsd-t-h2o-sto3g`).
+- **CASCI** — complete-active-space CI on the FCI kernel (`RHF::casci`;
+  `reg_casci-h2-sto3g`).
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
-Multireference theory and CC triples (T) / gradients remain absent.
+CASSCF / multireference PT and CC gradients remain absent.
 
 ## 1. Møller–Plesset Perturbation Theory
 
@@ -104,7 +108,7 @@ correlate real ones.
 | Brueckner doubles, BD        |  ○  |   ○  |   ○  |
 | CC2                          |  ○  |   ○  |   ○  |
 | CCSD                         |  ✓  |   ○  |   ○  |
-| CCSD(T)                      |  ○  |   ○  |   ○  |
+| CCSD(T)                      |  ✓  |   ○  |   ○  |
 | CCSDT-1a                     |  ○  |   ○  |   ○  |
 | CCSDT-1b                     |  ○  |   ○  |   ○  |
 | CCSDT-2                      |  ○  |   ○  |   ○  |
@@ -126,8 +130,10 @@ correlate real ones.
 | CCSD(T) analytic gradient    |  ○  |   ○  |   ○  |
 
 **CCSD** (`RHF::ccsd`) is closed-shell spin-orbital Gauss–Stanton on a
-converged RHF reference (`reg_ccsd-h2-sto3g` vs PySCF `cc.CCSD`). Energy only —
-no (T), no gradients, no open-shell, no density fitting.
+converged RHF reference (`reg_ccsd-h2-sto3g` vs PySCF `cc.CCSD`).
+**CCSD(T)** (`RHF::ccsd_t`) adds the non-iterative (T) triples correction on
+the same path (`reg_ccsd-t-h2o-sto3g` vs PySCF `cc.CCSD(...).ccsd_t()`).
+Energy only — no gradients, no open-shell, no density fitting.
 
 ### Local-correlation coupled cluster
 
@@ -149,7 +155,7 @@ no (T), no gradients, no open-shell, no density fitting.
 
 | Method                               | CPU | CUDA | Kokkos |
 | ------------------------------------ | :-: | :--: | :---: |
-| Complete-active-space CI, CASCI      |  ○  |   ○  |   ○  |
+| Complete-active-space CI, CASCI      |  ✓  |   ○  |   ○  |
 | Complete-active-space SCF, CASSCF    |  ○  |   ○  |   ○  |
 | State-specific CASSCF                |  ○  |   ○  |   ○  |
 | State-averaged CASSCF                |  ○  |   ○  |   ○  |
@@ -165,8 +171,9 @@ no (T), no gradients, no open-shell, no density fitting.
 | CASSCF analytic gradient             |  ○  |   ○  |   ○  |
 | CASSCF analytic Hessian              |  ○  |   ○  |   ○  |
 
-The FCI kernel is the natural seed for a CASCI active-space solver, but no
-active-space selection or orbital optimization exists on top of it.
+**CASCI** (`RHF::casci(frame, ncas, nelecas)`) freezes the inactive core and
+runs the dense FCI kernel in the active space (`reg_casci-h2-sto3g` vs PySCF
+`mcscf.CASCI`). No orbital optimization (CASSCF), no RAS/GAS, no MRPT.
 
 ### 4.2 Multireference correlation
 
