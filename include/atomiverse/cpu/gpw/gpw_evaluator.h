@@ -47,6 +47,11 @@ class GPWEvaluator : public cpu::GPW {
     bool nonperiodic = false;
     /// @brief Compute analytic forces (one SCF + one gradient pass).
     bool compute_forces = false;
+    /// @brief Compute cell stress via orthorhombic strain-FD of SCF energy.
+    ///        Writes Frame `kStress` [eV/Å³] Voigt; also `last_stress_ha_bohr3()`.
+    bool compute_stress = false;
+    /// @brief Dimensionless strain step for `compute_stress` (default 2e-3).
+    double stress_strain_h = 2e-3;
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
     /// @brief Grimme DFT-D3 (zero damping, PBE params). Mutually exclusive with d3bj.
@@ -94,11 +99,16 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief ⟨S²⟩ from the last UKS run (0 for closed-shell).
     double last_s2() const { return last_.s2; }
     const GpwResult& last_result() const { return last_; }
+    /// @brief Last stress Voigt [Hartree/Bohr³] when `compute_stress` ran.
+    const std::array<double, 6>& last_stress_ha_bohr3() const {
+        return last_stress_ha_;
+    }
 
   private:
     GpwResult last_{};
     std::unique_ptr<GpwDft> solver_;
     std::array<double, 3> built_cell_{};
+    std::array<double, 6> last_stress_ha_{};
 };
 
 } // namespace gpw
