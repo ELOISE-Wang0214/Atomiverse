@@ -59,6 +59,38 @@ class UKS : public MeanFieldMethod<UKS> {
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult tda(int n_states) const;
 
+    /// @brief Spin-conserving full linear-response TDDFT (Casida A/B RPA) on
+    ///        the most recent `run()`.
+    ///
+    /// Open-shell Casida **A** and **B** on the unrestricted KS reference
+    /// (Casida 1995; Dreuw & Head-Gordon, Chem. Rev. 105, 4009 (2005)):
+    ///
+    ///   \(A_{ia\sigma,jb\sigma'}=\delta_{\sigma\sigma'}\delta_{ij}\delta_{ab}
+    ///   (\varepsilon_a^\sigma-\varepsilon_i^\sigma)
+    ///   +(ia\sigma|jb\sigma')
+    ///   -\alpha_{\mathrm{hf}}\delta_{\sigma\sigma'}(ij\sigma|ab\sigma')
+    ///   +(ia\sigma|f^{\mathrm{xc}}_{\sigma\sigma'}|jb\sigma')\)
+    ///
+    ///   \(B_{ia\sigma,jb\sigma'}=(ia\sigma|bj\sigma')
+    ///   -\alpha_{\mathrm{hf}}\delta_{\sigma\sigma'}(ib\sigma|aj\sigma')
+    ///   +(ia\sigma|f^{\mathrm{xc}}_{\sigma\sigma'}|jb\sigma')\)
+    ///
+    /// For pure LSDA (`α_hf = 0`) and real MOs, \((ia|bj)=(ia|jb)\) so the
+    /// Coulomb/fxc blocks of **A** and **B** coincide and
+    /// \(A-B=\mathrm{diag}(\varepsilon_a-\varepsilon_i)\). Hermitian RPA
+    /// reduction via \((A-B)^{\pm1/2}\) (same path as `RKS::tddft`).
+    /// Matches PySCF `tdscf.TDDFT` on `dft.UKS` — **not** TDA.
+    ///
+    /// Dense path only (`n_ov_α + n_ov_β ≤ 512`). No closed-shell S/T split.
+    /// @param n_states Number of lowest roots (1 ≤ n_states ≤ n_ov).
+    /// @return Excitation energies [eV], length-gauge transition dipoles and
+    ///         oscillator strengths; `tda = false`; `alda = true` for LSDA.
+    /// @throws std::runtime_error when called before `run()`, on a restricted
+    ///         determinant, non-LSDA XC, n_ov > 512, non-PD (A−B), or
+    ///         imaginary/zero reduced ω² — no fallback.
+    /// @throws std::invalid_argument when n_states is outside [1, n_ov].
+    ExcitedStatesResult tddft(int n_states) const;
+
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`
     ///        members; also latches the selected `xc` functional. The
