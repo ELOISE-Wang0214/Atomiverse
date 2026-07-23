@@ -63,6 +63,22 @@ int valence_from_z(int z);
 void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
                       double ecut_ry, int k_mesh, PWProblem& out);
 
+/// @brief Replace only the k-mesh tables on an assembled problem.
+///
+/// Keeps density-side fields on `out.ws` (ρ, \(V_\mathrm{eff}\), \(V_\mathrm{loc}\),
+/// FFT) frozen for NSCF band / DOS diagonalization. Rebuilds
+/// `out.kg`, `out.gv_k`, `out.kb_proj_k`, `out.atom_wfc_k` for the given
+/// fractional k-list.
+///
+/// @param out      Problem from a prior `setup_pw_problem` (density frozen).
+/// @param frame    Geometry (positions [Å], types); used for KB structure factors.
+/// @param upf_path UPF path ("" = toy — no KB tables).
+/// @param ecut_ry  Wavefunction cutoff [Ry] (same as SCF).
+/// @param kfrac    Fractional (crystal) k-coordinates.
+void rebuild_k_tables(PWProblem& out, const cpu::Frame& frame,
+                      const std::string& upf_path, double ecut_ry,
+                      const std::vector<Vec3>& kfrac);
+
 /// @brief Pulay/DIIS density mixing on the G-sphere.
 ///
 /// Expects `ws.rho_G` = output density of the current iteration and

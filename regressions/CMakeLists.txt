@@ -81,6 +81,7 @@ if(ATV_BUILD_PW)
     endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
+    atv_add_regression(pw bands-dos-si)
     # pw-smearing-al merged when branch lands
     if(ATV_BUILD_MD)
         atv_add_regression(pw pw-bomd-h)

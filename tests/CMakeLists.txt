@@ -513,6 +513,7 @@ if(ATV_BUILD_PW)
     atv_add_cpp_test(test_cpu_gpw_stress       cpu/gpw/test_cpu_gpw_stress.cpp)
     atv_add_cpp_test(test_cpu_gpw_uks          cpu/gpw/test_cpu_gpw_uks.cpp)
     atv_add_cpp_test(test_cpu_pw_smearing   cpu/planewave/test_pw_smearing.cpp)
+    atv_add_cpp_test(test_cpu_pw_bands_dos  cpu/planewave/test_pw_bands_dos.cpp)
 
     # FFT test needs FFTW3 linkage
     add_executable(test_cpu_pw_fft cpu/planewave/test_fft.cpp)

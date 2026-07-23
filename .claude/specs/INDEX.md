@@ -43,3 +43,4 @@ Do not re-create closed slugs without superseding intent.
 | [gpw-bomd-water](gpw-bomd-water/) | `wf/gpw-bomd-water` | open — GPW BOMD water NVE energy-drift pin |
 | [pw-analytic-stress-si](pw-analytic-stress-si/) | `wf/pw-analytic-stress-si` | open — PW Nielsen–Martin analytic stress (Si NC-UPF) |
 | [fd-phonon-supercell](fd-phonon-supercell/) | `wf/fd-phonon-supercell` | open — FD supercell phonons (Γ) |
+| [bands-dos-si](bands-dos-si/) | `wf/bands-dos-si` | open — Band structure / DOS PW Si |
