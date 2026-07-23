@@ -162,7 +162,7 @@ The ingredients exist separately (hybrid KS + MP2), but nothing composes them.
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
 | DFT-D3 zero damping              |  ✓  |   ○  |   ○  |
-| DFT-D3 Becke–Johnson damping     |  ○  |   ○  |   ○  |
+| DFT-D3 Becke–Johnson damping     |  ✓  |   ○  |   ○  |
 | DFT-D4                           |  ○  |   ○  |   ○  |
 | Tkatchenko–Scheffler dispersion  |  ○  |   ○  |   ○  |
 | Many-body dispersion, MBD        |  ○  |   ○  |   ○  |
@@ -173,9 +173,11 @@ The ingredients exist separately (hybrid KS + MP2), but nothing composes them.
 | vdW-DF2                          |  ○  |   ○  |   ○  |
 | optB88-vdW                       |  ○  |   ○  |   ○  |
 
-DFT-D3 (zero damping, PBE parameters: s6 = 1.0, s8 = 0.722, sr6 = 1.217) is
-wired into **GPW only**, from in-tree reference tables. The molecular Gaussian
-path has no dispersion correction.
+DFT-D3 zero damping (PBE: s6 = 1.0, s8 = 0.722, sr6 = 1.217) is wired into
+**GPW**, from in-tree reference tables. DFT-D3 **Becke–Johnson** damping
+(PBE: s6 = 1, s8 = 0.7875, a1 = 0.4289, a2 = 4.4407 Bohr) is on the
+**molecular Gaussian** path via `cpu::scf::D3BJ` / `MeanFieldMethod::d3bj`
+(PySCF `disp='d3bj'` twin; regression `d3bj-molecular-pbe`).
 
 ## 9. Composite DFT Methods
 

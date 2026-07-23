@@ -302,6 +302,195 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
     return res;
 }
 
+// ---------------------------------------------------------------------------
+// Becke–Johnson (rational) damping — molecular / PySCF path
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// @brief Original Grimme D3 coordination-number increment (no CP2K tanh).
+///
+/// cn = 1/(1+exp(-k1*((rcovA+rcovB)/r - 1))), k1 = 16.
+/// @param rab Pair distance [Bohr].
+/// @param rcovab Combined covalent radius (k2-folded) [Bohr].
+/// @param cnab Out: CN contribution.
+/// @param dcnab Out: d(cnab)/d(rab).
+void cnparam_grimme(double rab, double rcovab, double& cnab, double& dcnab) {
+    const double rr = rcovab / rab;
+    const double ee = std::exp(-kK1 * (rr - 1.0));
+    const double ff = 1.0 / (1.0 + ee);
+    cnab = ff;
+    dcnab = -ff * ff * kK1 * rr / rab * ee;
+}
+
+} // namespace
+
+D3Result dftd3_pbe_bj(const std::vector<int>& Z,
+                      const std::vector<std::array<double, 3>>& pos_bohr,
+                      const double cell_bohr[3], bool periodic,
+                      const D3Params& params, double rcut_bohr, double s6,
+                      double s8, double a1, double a2) {
+    const int n = static_cast<int>(Z.size());
+    D3Result res;
+    res.forces.assign(n, {0.0, 0.0, 0.0});
+    if (n == 0)
+        return res;
+
+    const double rcut = rcut_bohr;
+    const double rcut2 = rcut * rcut;
+
+    int m[3] = {0, 0, 0};
+    image_counts(cell_bohr, periodic, rcut, m);
+
+    // Coordination numbers (Grimme form — matches simple-dftd3 / PySCF).
+    std::vector<double> cn(n, 0.0);
+    std::vector<std::vector<DCN>> dcn(n);
+    for (int i = 0; i < n; ++i) {
+        const int zi = Z[i];
+        for (int j = 0; j < n; ++j) {
+            const int zj = Z[j];
+            const double rcovab = params.rcov[zi] + params.rcov[zj];
+            for (int tx = -m[0]; tx <= m[0]; ++tx)
+                for (int ty = -m[1]; ty <= m[1]; ++ty)
+                    for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                        if (j == i && tx == 0 && ty == 0 && tz == 0)
+                            continue;
+                        const double dx =
+                            pos_bohr[i][0] - pos_bohr[j][0] - tx * cell_bohr[0];
+                        const double dy =
+                            pos_bohr[i][1] - pos_bohr[j][1] - ty * cell_bohr[1];
+                        const double dz =
+                            pos_bohr[i][2] - pos_bohr[j][2] - tz * cell_bohr[2];
+                        const double r2 = dx * dx + dy * dy + dz * dz;
+                        if (r2 > rcut2 || r2 < 1.0e-12)
+                            continue;
+                        const double rab = std::sqrt(r2);
+                        double cnab, dcnab;
+                        cnparam_grimme(rab, rcovab, cnab, dcnab);
+                        if (cnab <= kEpsCn)
+                            continue;
+                        cn[i] += cnab;
+                        dcn[i].push_back({j, dcnab, {dx, dy, dz}});
+                    }
+        }
+    }
+
+    std::vector<double> dEdCN(n, 0.0);
+    double energy = 0.0;
+
+    for (int i = 0; i < n; ++i) {
+        const int za = Z[i];
+        for (int j = i; j < n; ++j) {
+            const int zb = Z[j];
+            const auto& refs = params.c6ab[za][zb];
+            if (refs.empty())
+                continue;
+            double c6, dc6a, dc6b;
+            getc6(refs, cn[i], cn[j], c6, dc6a, dc6b);
+            if (c6 <= 0.0)
+                continue;
+            const double r2r4ab = params.r2r4[za] * params.r2r4[zb];
+            const double c8 = 3.0 * c6 * r2r4ab;
+            const double dc8a = 3.0 * dc6a * r2r4ab;
+            const double dc8b = 3.0 * dc6b * r2r4ab;
+            // BJ damping radius f = a1 √(C8/C6) + a2  (geometry-independent
+            // for fixed CN; CN-derivatives of f enter via dC6/dCN, dC8/dCN).
+            const double r0 = a1 * std::sqrt(c8 / c6) + a2;
+            const double r0_2 = r0 * r0;
+            const double r0_6 = r0_2 * r0_2 * r0_2;
+            const double r0_8 = r0_6 * r0_2;
+
+            for (int tx = -m[0]; tx <= m[0]; ++tx)
+                for (int ty = -m[1]; ty <= m[1]; ++ty)
+                    for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                        if (j == i && tx == 0 && ty == 0 && tz == 0)
+                            continue;
+                        const double fac = (i == j) ? 0.5 : 1.0;
+                        const double rx =
+                            pos_bohr[i][0] - pos_bohr[j][0] - tx * cell_bohr[0];
+                        const double ry =
+                            pos_bohr[i][1] - pos_bohr[j][1] - ty * cell_bohr[1];
+                        const double rz =
+                            pos_bohr[i][2] - pos_bohr[j][2] - tz * cell_bohr[2];
+                        const double r2 = rx * rx + ry * ry + rz * rz;
+                        if (r2 > rcut2 || r2 <= 1.0e-6)
+                            continue;
+                        const double dr = std::sqrt(r2);
+                        const double r6 = r2 * r2 * r2;
+                        const double r8 = r6 * r2;
+
+                        const double den6 = r6 + r0_6;
+                        const double den8 = r8 + r0_8;
+                        const double e6 = s6 * fac * c6 / den6;
+                        const double e8 = s8 * fac * c8 / den8;
+                        energy -= e6 + e8;
+
+                        // F = -dE/dR; E = -s C / (R^n + f^n)
+                        // dE/dR_explicit = s C · n R^{n-1} / (R^n + f^n)²
+                        // force on i along unit r_ij: −(dE/dR) * r̂
+                        // pref such that F_i -= pref * r_vec, F_j += pref * r_vec
+                        // with pref = (dE_pair/dR)/R and E_pair = −(e6+e8)/fac*fac…
+                        const double de_dr =
+                            s6 * fac * c6 * (6.0 * r6 / dr) / (den6 * den6)
+                            + s8 * fac * c8 * (8.0 * r8 / dr) / (den8 * den8);
+                        // E contributes −e so F = −∇E = −(−de_dr * r̂) wait:
+                        // energy = −e6−e8; d(energy)/dR = −d(e6+e8)/dR;
+                        // d(e)/dR = s C · n R^{n-1}/den²;
+                        // F_i = −dE/dR_i = −(dE/dR)·(∂R/∂R_i) = −(dE/dR)·r̂
+                        // = +(de/dR)·r̂  with de = e6+e8
+                        // stored as F_i -= pref * r  with pref = −(de/dR)/R
+                        // so pref = −de_dr/R  → F_i gets + (de_dr/R) r = +de_dr r̂
+                        const double pref = -de_dr / dr;
+                        const double fx = pref * rx;
+                        const double fy = pref * ry;
+                        const double fz = pref * rz;
+                        res.forces[i][0] -= fx;
+                        res.forces[i][1] -= fy;
+                        res.forces[i][2] -= fz;
+                        res.forces[j][0] += fx;
+                        res.forces[j][1] += fy;
+                        res.forces[j][2] += fz;
+
+                        // CN-chain: ∂E/∂CN through C6/C8 (f also depends on
+                        // √(C8/C6); include d f / d C for forces accuracy).
+                        // E_pair = −s6 C6/den6 − s8 C8/den8
+                        // ∂E/∂C6 = −s6/den6 + s6 C6/den6² · ∂(r0^6)/∂C6
+                        //        − s8 C8/den8² · ∂(r0^8)/∂C6  (and C8=3 C6 r2r4)
+                        // With r0 = a1 √(C8/C6)+a2 = a1√(3 r2r4)+a2 independent
+                        // of C6 scale (C8/C6 = 3 r2r4 constant w.r.t C6), so
+                        // r0 is CN-dependent only through the interpolated ratio
+                        // when dc6/dcn differ — use finite product rule on e.
+                        // For energy-only consumers this is unused; for forces:
+                        dEdCN[i] += -s6 * fac * dc6a / den6
+                                    - s8 * fac * dc8a / den8;
+                        dEdCN[j] += -s6 * fac * dc6b / den6
+                                    - s8 * fac * dc8b / den8;
+                    }
+        }
+    }
+
+    for (int i = 0; i < n; ++i) {
+        for (const auto& d : dcn[i]) {
+            const double drk =
+                std::sqrt(d.rik[0] * d.rik[0] + d.rik[1] * d.rik[1]
+                          + d.rik[2] * d.rik[2]);
+            const double s = dEdCN[i] * d.dval / drk;
+            const double fx = s * d.rik[0];
+            const double fy = s * d.rik[1];
+            const double fz = s * d.rik[2];
+            res.forces[i][0] -= fx;
+            res.forces[i][1] -= fy;
+            res.forces[i][2] -= fz;
+            res.forces[d.k][0] += fx;
+            res.forces[d.k][1] += fy;
+            res.forces[d.k][2] += fz;
+        }
+    }
+
+    res.energy = energy;
+    return res;
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV
