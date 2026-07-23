@@ -67,7 +67,7 @@ Bussi/CSVR (`FixCSVR`) is CPU-only.
 | Isotropic pressure coupling         |  ✓  |   ✓  |   ○  |
 | Semi-isotropic pressure coupling    |  ✓  |   ✓  |   ○  |
 | Fully anisotropic pressure coupling |  ✓  |   ○  |   ○  |
-| Constant-surface-tension coupling   |  ○  |   ○  |   ○  |
+| Constant-surface-tension coupling   |  ✓  |   ○  |   ○  |
 | Constant-stress dynamics            |  ✓  |   ○  |   ○  |
 
 Two NPT integrators on CPU:
@@ -79,7 +79,10 @@ Two NPT integrators on CPU:
   constraints for volume/shape as configured) — the PR constant-stress path
   (`reg_pr_npt_lj`). CPU-only.
 
-Berendsen remains isotropic only. Constant surface tension is still ○.
+Berendsen remains isotropic only. **Constant surface tension** ships as
+`cpu::md::SurfaceTensionNPT` (MTK semi-isotropic, LAMMPS `fix npt … couple xy`
+lockstep + NPγT \(P_\perp = P_n - n_{\mathrm{surf}}\gamma/L_z\`); pin
+`reg_surface-tension-coupling`.
 
 ## 4. Molecular-Dynamics Ensembles
 
@@ -89,7 +92,7 @@ Berendsen remains isotropic only. Constant surface tension is still ○.
 | Canonical dynamics, NVT             |  ✓  |   ✓  |   ○  |
 | Isothermal–isobaric dynamics, NPT   |  ✓  |   ✓  |   ○  |
 | Isoenthalpic–isobaric dynamics, NPH |  ✓  |   ○  |   ○  |
-| Constant surface-tension dynamics   |  ○  |   ○  |   ○  |
+| Constant surface-tension dynamics   |  ✓  |   ○  |   ○  |
 | Constant stress dynamics            |  ✓  |   ○  |   ○  |
 | Simulated annealing                 |  ○  |   ○  |   ○  |
 | Temperature-ramp dynamics           |  ✓  |   ✓  |   ○  |
@@ -128,25 +131,25 @@ RATTLE, not a water-only closed form).
 **SETTLE** ships as `cpu::md::FixSettle` (`reg_settle_tip3p`) — closed-form
 three-site rigid water; general molecules still use RATTLE.
 
-**Virtual sites (TIP4P foothold):** `cpu::PairLJCutTip4pCut` reconstructs the
-massless M charge site each force evaluation (Feenstra force partition) and is
-pinned vs LAMMPS `lj/cut/tip4p/cut` (`reg_four-site-tip4p-foothold`). This is
-**not** a general multi-topology virtual-site engine (Gromacs-style `virtual_sites*`);
-arbitrary vsite constructions remain open.
+**Virtual sites:** (1) TIP4P foothold via `cpu::PairLJCutTip4pCut` (in-pair M-site
+reconstruct + Feenstra partition; `reg_four-site-tip4p-foothold`); (2) multi-topology
+engine `cpu::md::VirtualSites` with **Weighted3** (TIP4P M-site as Frame atoms) and
+**OutOfPlane3** (TIP5P lone-pair geometry) + force redistribute
+(`reg_virtual-site-multi-topology` vs LAMMPS tip4p path). Further Gromacs-style
+`virtual_sitesn` / tabulated constructions remain open.
 
 Before RATTLE, every molecule was fully flexible: water models had to be flexible
 variants and the timestep was bounded by the fastest X–H stretch (~9 fs period for O–H,
 so ~0.5 fs steps). Constrained water runs at `dt = 2 fs`. What is still missing for
-biomolecular work is **general rigid bodies** and **general virtual-site topologies**
-beyond TIP4P M-sites.
+biomolecular work is **general rigid bodies** (and remaining vsite constructors).
 
 ## 6. Nonequilibrium Molecular Dynamics
 
 | Method                              | CPU | CUDA | Kokkos |
 | ----------------------------------- | :-: | :--: | :---: |
 | Constant electric-field MD          |  ✓  |   ○  |   ○  |
-| Oscillating electric-field MD       |  ○  |   ○  |   ○  |
-| Constant-force pulling              |  ○  |   ○  |   ○  |
+| Oscillating electric-field MD       |  ✓  |   ○  |   ○  |
+| Constant-force pulling              |  ✓  |   ○  |   ○  |
 | Constant-velocity pulling           |  ○  |   ○  |   ○  |
 | Steered molecular dynamics          |  ○  |   ○  |   ○  |
 | SLLOD shear dynamics                |  ○  |   ○  |   ○  |
@@ -172,20 +175,27 @@ tension) and nothing more — no shear, no flow, no heat flux.
 **Constant electric field** ships as `cpu::md::FixEfield` (LAMMPS `fix efield`
 constant path): \(\mathbf{F}_i = q_i\mathbf{E}\), energy
 \(U=-\sum_i q_i\mathbf{E}\cdot\mathbf{r}_i^{\mathrm{u}}\) (`reg_external-efield-md`).
-Oscillating / AC fields remain ○. Classical electrochemistry Components on
+**Oscillating / AC field** is `cpu::md::FixOscillatingEfield` (cosine
+\(E(t)\); `reg_oscillating-efield-md`). **Constant-force pull** is
+`cpu::md::FixAddForce` (LAMMPS `fix addforce`; `reg_constant-force-pull-ion`).
+Constant-velocity / full SMD remain ○. Classical electrochemistry Components on
 `cpu::md::MD` (MetalWalls map E1–E10 footholds; see
-`docs/developer/metalwalls-method-queue.md`) — not nonequilibrium pull/flow
-methods:
+`docs/developer/metalwalls-method-queue.md`):
 
 - **E1:** `ConstPotBO`, `FixFreeze`, charge observer, charging work, short
   const-pot NVT
 - **E2:** `ConstPotCG` (large multi-site walls); Kolafa ASPC charge predictor
   on `ConstPotBO` (`predictor_order`, `ChargeASPC`)
 - **E3:** single-electrode finite-field (Dufils) via `ConstPotBO` + external
-  \(\mathbf{E}\) + `ClassicalPolarization` (`reg_finite-field-single-electrode`)
+  \(\mathbf{E}\) + `ClassicalPolarization` (`reg_finite-field-single-electrode`);
+  AC residual `FixOscillatingEfield`
+- **E5:** `DipoleElectrodeJoint` — coupled PIM \(\boldsymbol{\mu}\) ⊕ electrode
+  \(Q\) SCF (`reg_dipole-electrode-joint`)
 - **E6:** `PistonElectrode` constant \(P_z\) rigid wall (not Langevin piston)
 - **E7:** Thomas–Fermi finite metallicity (`ConstPotBO::l_tf`, `site_density`)
-- **E10:** `CapacitanceChargeFluctuation` observer (\(C\) from \(\mathrm{Var}(Q)\))
+- **E9:** multi-topology virtual sites (TIP4P/TIP5P; see constraints section)
+- **E10:** `CapacitanceChargeFluctuation` observer (\(C\) from \(\mathrm{Var}(Q)\));
+  slab \(\Psi(z)\) `PotentialProfile` observer (`reg_potential-profile-observer`)
 - **E8 walls:** `FixWallLJ1043` Steele 10-4-3 (force-fields roadmap note)
 
 

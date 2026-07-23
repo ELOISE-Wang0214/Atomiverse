@@ -23,12 +23,19 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-MetalWalls wave 2 closed 2026-07-24 (specs deleted). No open MD/electrochem
-specs on `dev`. Next workers **create** `.claude/specs/<slug>/` on `wf/<slug>`
-before code.
+MetalWalls wave 3 closed 2026-07-24 (specs deleted). No open MD/electrochem
+specs on `dev`. Classical MW staff queue exhausted (pending empty).
 
 CP2K wave 2 closed 2026-07-24 (specs deleted). Incomplete leftover
 `gpw-kpoints-si` has **no** open spec dir — write-first on resume.
+
+## Closed — MetalWalls capability wave 3 (2026-07-24)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| metalwalls-method-loop wave 3 | constant-force-pull-ion, oscillating-efield-md, potential-profile-observer, surface-tension-coupling, virtual-site-multi-topology, dipole-electrode-joint | FixAddForce; FixOscillatingEfield; Ψ(z) PotentialProfile; SurfaceTensionNPT; VirtualSites Weighted3+OutOfPlane3; DipoleElectrodeJoint |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — MetalWalls capability wave 2 (2026-07-24)
 

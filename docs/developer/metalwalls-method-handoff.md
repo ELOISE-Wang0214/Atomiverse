@@ -1,27 +1,26 @@
 # MetalWalls method loop — handoff
 
-Last harness: **wave 2 — 2026-07-24** on `dev`
-(`chore(harness): metalwalls wf wave 2`). Last assign: **wave 3 — 2026-07-24**
-(`chore(queue): metalwalls assign wave 3`). Last recover: **2026-07-24** on `dev`
-(`chore(queue): metalwalls recover incomplete`).
+Last harness: **wave 3 — 2026-07-24** on `dev`
+(`chore(harness): metalwalls wf wave 3`). Prior: harness wave 2
+(`chore(harness): metalwalls wf wave 2`); assign wave 3
+(`chore(queue): metalwalls assign wave 3`).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
-## Recover inventory (pre assign wave 3, 2026-07-24)
+## Recover inventory (post harness wave 3, 2026-07-24)
 
 | Source | Result |
 | ------ | ------ |
-| A queue `## in_progress` `[~]` | **0** (before assign) |
-| B open `.claude/specs/` MD/electrochem | **0** (wave-2 specs deleted; PySCF deferred specs ignored) |
-| C unmerged `wf/<slug>` (this loop) | **0** (wave-1/2 tips `ahead_of_dev=0`) |
+| A queue `## in_progress` `[~]` | **0** |
+| B open `.claude/specs/` MD/electrochem | **0** (wave-3 specs deleted; PySCF deferred specs ignored) |
+| C unmerged `wf/<slug>` (this loop) | **0** (wave-1/2/3 tips ancestor of `dev`) |
 | D handoff incomplete rows | **none** |
-| E half-written `regressions/{md,forcefield}/` wave-3 | **0** |
+| E half-written `regressions/{md,forcefield}/` | **0** |
 
-**Resume set:** empty. **Assign wave 3** promoted all **6** remaining pending
-rows → `## in_progress` `[~]` (`is_resume=false`). Staff default 10; only 6
-open rows existed. **incomplete_remaining=6** after assign.
+**Resume set:** empty. **incomplete_remaining=0**. Classical MW staff queue
+exhausted (pending empty; blocked 4 remain out of scope).
 
 ## Wave 1 summary (historical — harnessed 2026-07-23)
 
@@ -53,76 +52,70 @@ open rows existed. **incomplete_remaining=6** after assign.
 | `born-repulsion-foothold` | forcefield E8 | **merged → done** | `regressions/forcefield/born-repulsion-foothold` | lammps | **perf_exempt** |
 | `capacitance-charge-fluctuation` | electrochem E10 | **merged → done** | `regressions/md/capacitance-charge-fluctuation` | literature | **perf_exempt** |
 
-- **Blocked this wave:** none
+## Wave 3 summary (harnessed 2026-07-24)
+
+| Slug | Domain | Status | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ---- | ------ | ------ | ---------- | ------ | ---------------------------------------------- |
+| `constant-force-pull-ion` | md (shared) | **merged → done** | `regressions/md/constant-force-pull-ion` | lammps | **0.12** |
+| `oscillating-efield-md` | electrochem E3 | **merged → done** | `regressions/md/oscillating-efield-md` | lammps | **2.12** |
+| `potential-profile-observer` | electrochem E10 | **merged → done** | `regressions/md/potential-profile-observer` | literature | **perf_exempt** |
+| `surface-tension-coupling` | md (shared) | **merged → done** | `regressions/md/surface-tension-coupling` | lammps | **2.88** |
+| `virtual-site-multi-topology` | md E9 | **merged → done** | `regressions/md/virtual-site-multi-topology` | lammps | **0.084** |
+| `dipole-electrode-joint` | electrochem E5 | **merged → done** | `regressions/md/dipole-electrode-joint` | metalwalls | **perf_exempt** |
+
+### Incomplete remaining (wave 3)
+
+*(none — all six acceptance-met and merged)*
+
+- **Blocked this wave:** none of the staffed six; global blocked set still
+  `cuda-const-pot`, `aim-daim-product`, `ml-pinnwall-electrode`,
+  `periodic-hybrid-electrode-dft` (out of CPU MD loop)
 - **Merge-failed this wave:** none
-- **Incomplete remaining after harness wave 2:** **0**
-- **Queue after harness wave 2:** pending = **6**; in_progress = **0**; done = **20** (wave 1 + wave 2); blocked = **4**
-- **Unblocked by wave 2:** `dipole-electrode-joint` (PIM dep satisfied)
-- **Roadmap (CPU ○→✓ on `dev` after wave 2):** Born–Mayer–Huggins pair
-  (`PairBorn`); multi-type Fumi–Tosi Born+Coul path; Steele 10-4-3 wall
-  (`FixWallLJ1043`); bulk PIM self-consistent induced dipoles + Thole (TT
-  optional). Electrode stack additions: `ConstPotCG`, ASPC charge predictor,
-  single-electrode finite-field + `ClassicalPolarization`, `PistonElectrode`,
-  Thomas–Fermi hardness on `ConstPotBO`, `CapacitanceChargeFluctuation`
-  observer — all Components on `cpu::md::MD` / Evaluate (not new Driver
-  categories; charge solve not inside `KSpace*`).
-- **Specs closed:** all 10 wave-2 slugs (acceptance met on `dev`; deleted under
+- **Incomplete remaining after harness wave 3:** **0**
+- **Queue after harness wave 3:** pending = **0**; in_progress = **0**;
+  done = **26** (wave 1 + 2 + 3); blocked = **4**
+- **Roadmap (CPU ○→✓ on `dev` after wave 3):** constant-surface-tension
+  coupling / NPγT (`SurfaceTensionNPT`, couple xy); oscillating E-field
+  (`FixOscillatingEfield`); constant-force pull (`FixAddForce`); multi-topology
+  virtual sites (`VirtualSites` Weighted3 + OutOfPlane3 TIP4P/TIP5P);
+  dipole⊕electrode joint (`DipoleElectrodeJoint`); slab \(\Psi(z)\) observer
+  (`PotentialProfile` / planar Poisson). All Components on `cpu::md::MD` /
+  Evaluate — not new Driver categories; charge solve not inside `KSpace*`.
+- **Specs closed:** all 6 wave-3 slugs (acceptance met on `dev`; deleted under
   `.claude/specs/`).
-- **Capability map:** `.claude/notes/metalwalls-capability-map.md` (E1–E12) —
-  path referenced by loop; recreate if missing on worker trees. No lasting
-  rule change this harness (Steele oracle note remains: LAMMPS `wall/lj1043`
-  not `wall/lj93`).
+- **Capability map:** no lasting rule change this harness (oracle priority and
+  Component-on-MD architecture unchanged).
 - **Orphans (not incomplete for this loop):**
   - `regressions/md/{dpd_ab_mix,dpd_groot_warren,fene_wca_chain}/`,
     `regressions/forcefield/yukawa_dimer/` — method-ladder shipped reg bodies,
     no `REFERENCE.md` (hygiene; not on MW queue; do not invent `[~]` rows)
-  - local `wf/*` tips for wave-1/2 slugs fully merged into `dev` (stale branch
+  - local `wf/*` tips for wave-1/2/3 slugs fully merged into `dev` (stale branch
     names OK)
-
-## Assign wave 3 (2026-07-24) — staffed in_progress
-
-| Slug | Domain | oracle | is_resume | Priority note |
-| ---- | ------ | ------ | --------- | ------------- |
-| `dipole-electrode-joint` | electrochem E5 | metalwalls | false | **dep met** (PIM ✓); JCP 2022 main hardness |
-| `potential-profile-observer` | electrochem E10 | metalwalls | false | Poisson \(\Psi(z)\); literature dual OK |
-| `oscillating-efield-md` | electrochem E3 | lammps | false | AC residual after constant efield ✓ |
-| `virtual-site-multi-topology` | md E9 | lammps | false | beyond TIP4P M-site foothold |
-| `constant-force-pull-ion` | md (shared) | lammps | false | EDL transport twin; not MW-only |
-| `surface-tension-coupling` | md (shared) | lammps | false | planar interface ensemble |
-
-- **Assigned:** **6** (all remaining pending; staff default 10)
-- **Resumed:** **0**
-- **Blocked skipped:** `cuda-const-pot`, `aim-daim-product`, `ml-pinnwall-electrode`, `periodic-hybrid-electrode-dft`
-- **Queue after assign wave 3:** pending = **0**; in_progress = **6**; done = **20**; blocked = **4**
-- **incomplete_remaining:** **6**
-- **Workers:** create `wf/<slug>` under
-  `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`;
-  **spec-first** (`.claude/specs/<slug>/` + acceptance) before code; MD-only build
 
 ## Oracle
 
 - Overlap with LAMMPS → **LAMMPS** offline pin (`tools/metalwalls_oracle/` + LAMMPS inputs)
 - MW-only → **MetalWalls** offline pin (or literature when no binary)
 - `ctest` never launches LAMMPS or MetalWalls
-- Wave-2 oracle tags: CG/predictor/finite-field/PIM/piston/TF → **metalwalls**;
-  capacitance → **literature**; Fumi–Tosi / Steele / Born → **lammps**
-  (`born/coul/*`, `wall/lj1043`, `pair born`)
-- Wave-3 oracle tags: dipole⊕electrode joint + \(\Psi(z)\) → **metalwalls**;
-  oscillating efield / virtual sites / force-pull / surface tension → **lammps**
+- Wave-3 oracle tags: force-pull / oscillating efield / surface tension /
+  virtual sites → **lammps**; \(\Psi(z)\) → **literature**; dipole⊕electrode
+  joint → **metalwalls**
 
 ## Build (workers)
 
 MD-only flags: `ATV_BUILD_MD=ON`, `ATV_BUILD_KSPACE=ON`, `ATV_BUILD_TESTS=ON`,
 `ATV_BUILD_REGRESSIONS=ON`, **HF/PW/GPW/CUDA/Torch OFF**.
 
-## Next (wave 3 workers — no further pending)
+## Next (after wave 3 — queue empty)
 
-1. `dipole-electrode-joint` (E5, oracle=metalwalls; **dep met:** PIM ✓)
-2. `potential-profile-observer` (E10, oracle=metalwalls / literature Poisson)
-3. `oscillating-efield-md` (E3 residual, oracle=lammps)
-4. `virtual-site-multi-topology` (E9 residual, oracle=lammps)
-5. `constant-force-pull-ion` (shared classical; oracle=lammps)
-6. `surface-tension-coupling` (shared classical; oracle=lammps)
+Classical MetalWalls staff queue is **exhausted** on `dev` (26 done, 0 pending,
+0 in_progress). Next shift options:
+
+1. **Census** from map E11/E12 or residual MD ○ (constant-velocity SMD, RESPA,
+   …) only if product-scheduled — do not invent rows casually.
+2. **Tutorial** wave for wave-3 methods if docs lag code.
+3. Unblock tracks remain out of loop: CUDA const-pot, AIM/DAIM, ML PINN wall,
+   periodic hybrid DFT electrodes.
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only
 under `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`

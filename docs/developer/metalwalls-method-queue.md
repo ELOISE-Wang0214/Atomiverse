@@ -7,7 +7,7 @@ Durable worklist for workflow `metalwalls-method-loop`. Do not delete done rows.
 new pending. Census only rewrites **pending**. Assign: **incomplete ≫ pending**.
 
 **Oracle rule:** if LAMMPS implements the same algorithm/feature, pin and fair
-bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
+10→bench against **LAMMPS**. MetalWalls only for MW-only rows (mark
 `oracle=metalwalls` in the row rationale).
 
 **Build rule:** workers use **MD-only** cmake (HF/PW/GPW/CUDA/Torch **OFF**,
@@ -15,29 +15,26 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
-(Map path referenced by loop; **missing on this tree** — pending rebuilt from
-prior census rows, handoff, `tools/metalwalls_oracle/README.md`, and
-`docs/roadmap/{molecular-dynamics,force-fields}.md` ○.)
 
-Census: **2026-07-24** (parent `dev`, post–harness wave 2). Assign **wave 3**
-promoted the last **6** pending rows → `## in_progress` `[~]` (staff default 10;
-only 6 remained). **incomplete_count=6**. Open MD/electrochem specs: **none**
-yet (workers write `.claude/specs/<slug>/` on `wf/<slug>` before code). Unmerged
-in-scope `wf/<slug>` with `ahead_of_dev>0` for wave-3 slugs: **none** at assign
-time. Blocked (4) skipped. No brand-new census rows invented.
+Census: **2026-07-24** (parent `dev`, post–harness wave 3). All open staff
+rows from assign wave 3 are **merged → done**. **incomplete_count=0**.
+Open MD/electrochem specs: **none** (wave-3 specs deleted). Unmerged
+in-scope `wf/<slug>` with `ahead_of_dev>0`: **none** (tips ancestor of `dev`).
+Blocked (4) skipped. **pending empty** — no further classical MW queue rows
+without a new census inventing work.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), wave-1 done (10), wave-2 done (10), wave-3 in_progress (6),
+  integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6),
   SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes
   (E12 blocked), hybrid DFT electrodes, non-electrochem MD ○ (RESPA, FSSH,
-  PIMD variants, …)
+  PIMD variants, constant-velocity SMD residual, …)
 - Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
   `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not pending** (already
   covered by excluded twins)
 
 ## pending
 
-*(empty after assign wave 3 — 2026-07-24; all remaining open rows staffed)*
+*(empty after harness wave 3 — 2026-07-24; staffed MW classical queue exhausted)*
 
 ### E1 — constant-potential v1 (map §1 P0)
 
@@ -47,13 +44,13 @@ time. Blocked (4) skipped. No brand-new census rows invented.
 
 *(wave-2 CG + predictor → done 2026-07-24)*
 
-### E3 — external field (map §1 P1; MD roadmap ✓ constant E-field foothold)
+### E3 — external field (map §1 P1; MD roadmap ✓ constant + oscillating E-field)
 
-*(wave-2 finite-field single electrode → done 2026-07-24; wave-3 oscillating residual → in_progress)*
+*(wave-2 finite-field single electrode → done 2026-07-24; wave-3 oscillating → done 2026-07-24)*
 
-### E4 / E5 — polarization (map §2; FF roadmap ✓ bulk PIM + Thole foothold)
+### E4 / E5 — polarization (map §2; FF roadmap ✓ bulk PIM + Thole + dipole⊕electrode)
 
-*(wave-2 PIM bulk → done 2026-07-24; wave-3 dipole⊕electrode joint → in_progress)*
+*(wave-2 PIM bulk → done 2026-07-24; wave-3 dipole⊕electrode joint → done 2026-07-24)*
 
 ### E6 / E7 — electrode mechanics & metallicity
 
@@ -63,28 +60,21 @@ time. Blocked (4) skipped. No brand-new census rows invented.
 
 *(wave-2 Fumi–Tosi + Steele + Born → done 2026-07-24)*
 
-### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P M-site foothold)
+### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P + multi-topology virtual sites)
 
-*(four-site-tip4p-foothold → done wave 1; wave-3 multi-topology virtual sites → in_progress)*
+*(four-site-tip4p-foothold → done wave 1; virtual-site-multi-topology → done wave 3)*
 
 ### E10 — ecosystem (after E1 observers)
 
-*(wave-2 capacitance / charge-fluctuation → done 2026-07-24; wave-3 potential profile → in_progress)*
+*(wave-2 capacitance / charge-fluctuation → done 2026-07-24; wave-3 potential profile → done 2026-07-24)*
 
 ### Shared classical MD ○ still open (LAMMPS primary; electrochem-adjacent)
 
-*(wave-3 constant-force pull + surface-tension coupling → in_progress)*
+*(wave-3 constant-force pull + surface-tension coupling → done 2026-07-24; residual ○ outside this loop: constant-velocity SMD, RESPA, …)*
 
 ## in_progress
 
-### Wave 3 — assign 2026-07-24 (staff=6; all prior pending; is_resume=false)
-
-- [~] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep met:** E1 ✓ + PIM ✓ (`pim-induced-dipole-bulk`)
-- [~] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; charges + long-range ✓
-- [~] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; map E3 residual
-- [~] `virtual-site-multi-topology` | General multi-topology virtual sites (beyond TIP4P M-site pair) | md | TIP4P/TIP5P textbook box | — | \(E\), geometry / force partition | **oracle=lammps** tip4p / virtual-site path; map E9 residual
-- [~] `constant-force-pull-ion` | Constant-force / steered ion pull (noneq MD ○) | md | ion between walls | — | \(\langle z\rangle\), work proxy | **oracle=lammps** `fix smd` / `fix addforce`; EDL transport twin
-- [~] `surface-tension-coupling` | Constant surface-tension ensemble ○ | md | LJ slab | — | \(\gamma\) / \(L_z\) | **oracle=lammps** `fix npt` surface tension path
+*(empty after harness wave 3 — 2026-07-24)*
 
 ## blocked
 
@@ -97,7 +87,7 @@ time. Blocked (4) skipped. No brand-new census rows invented.
 
 ### Wave 1 — 2026-07-23 (merged → `dev`)
 
-| Slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
 | ---- | ---------- | ------ | ---------------------------------------------- |
 | [x] `const-pot-bo-parallel-plate` | `regressions/md/const-pot-bo-parallel-plate` | lammps (ELECTRODE madelung) | **perf_exempt** (no ELECTRODE binary) |
 | [x] `freeze-electrode-atoms` | `regressions/md/freeze-electrode-atoms` | lammps | **3.98** |
@@ -112,7 +102,7 @@ time. Blocked (4) skipped. No brand-new census rows invented.
 
 ### Wave 2 — 2026-07-24 (merged → `dev`)
 
-| Slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
 | ---- | ---------- | ------ | ---------------------------------------------- |
 | [x] `const-pot-cg-large-electrode` | `regressions/md/const-pot-cg-large-electrode` | metalwalls (dual: dense BO) | **perf_exempt** (no MW binary) |
 | [x] `electrode-charge-predictor` | `regressions/md/electrode-charge-predictor` | metalwalls (ASPC) | **perf_exempt** |
@@ -124,3 +114,14 @@ time. Blocked (4) skipped. No brand-new census rows invented.
 | [x] `steele-wall-argon` | `regressions/forcefield/steele-wall-argon` | lammps (`wall/lj1043`) | **perf_exempt** |
 | [x] `born-repulsion-foothold` | `regressions/forcefield/born-repulsion-foothold` | lammps | **perf_exempt** |
 | [x] `capacitance-charge-fluctuation` | `regressions/md/capacitance-charge-fluctuation` | literature | **perf_exempt** |
+
+### Wave 3 — 2026-07-24 (merged → `dev`)
+
+| slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ---- | ---------- | ------ | ---------------------------------------------- |
+| [x] `constant-force-pull-ion` | `regressions/md/constant-force-pull-ion` | lammps (`fix addforce`) | **0.12** |
+| [x] `oscillating-efield-md` | `regressions/md/oscillating-efield-md` | lammps (`fix efield` variable) | **2.12** |
+| [x] `potential-profile-observer` | `regressions/md/potential-profile-observer` | literature (planar Poisson) | **perf_exempt** |
+| [x] `surface-tension-coupling` | `regressions/md/surface-tension-coupling` | lammps (`fix npt` couple xy) | **2.88** |
+| [x] `virtual-site-multi-topology` | `regressions/md/virtual-site-multi-topology` | lammps (tip4p path) | **0.084** |
+| [x] `dipole-electrode-joint` | `regressions/md/dipole-electrode-joint` | metalwalls | **perf_exempt** (no MW binary) |

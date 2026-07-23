@@ -148,8 +148,10 @@ Notes:
 **Bulk PIM** (`cpu::PimInducedDipole`) is MetalWalls-style self-consistent
 induced dipoles with Thole exponential damping and optional Tang–Toennies
 (`tt_b`); permanent charge–charge is separate (`PairCoulCut` / PME). Pin
-`reg_pim-induced-dipole-bulk`. Drude / AMOEBA / QEq and electrode-coupled
-dipole ⊕ \(Q\) joint solve remain ○.
+`reg_pim-induced-dipole-bulk`. **Electrode-coupled dipole ⊕ \(Q\) joint** ships
+as `cpu::md::DipoleElectrodeJoint` (alternating ConstPotBO \(Q\) + PIM \(\mu\)
+until joint tol; `reg_dipole-electrode-joint`, oracle=metalwalls). Drude /
+AMOEBA / QEq remain ○.
 
 ## 4. Many-Body and Reactive Potentials
 
