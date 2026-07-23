@@ -3,6 +3,9 @@
 Last assign pass: **2026-07-24 wave 3** on `dev`
 (`chore(queue): cp2k assign wave 3`).
 Prior harness: **2026-07-24 wave 2** (`chore(harness): cp2k wf wave 2`).
+**Recover pass: 2026-07-24** (`chore(queue): cp2k recover incomplete`) —
+reconfirmed wave-3 staff of 10 still incomplete; no open CP2K specs; no
+unmerged CP2K `wf/*` ahead of `dev`.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
@@ -28,6 +31,10 @@ Tutorial. See `docs/developer/cp2k-method-loop.md` and
 - **Queue after assign:** pending = 2; in_progress = 10; done = 19; blocked = 5
 - **Workers:** each NEW slug writes `.claude/specs/<slug>/` first; resume
   `gpw-kpoints-si` also needs a live spec (INDEX: no open CP2K spec dir)
+- **Recover 2026-07-24:** all 10 still `[~]` with no branch/spec/regression
+  progress; `resume_from=write-spec-first` for the full staff set. Do not
+  start brand-new pending (`periodic-rpa-si` / `periodic-gw-si`) until these
+  finish or staff slots free.
 
 ## Wave 2 summary (harness 2026-07-24)
 

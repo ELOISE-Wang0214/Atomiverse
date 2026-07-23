@@ -30,6 +30,10 @@ merge/reg).
 **Assign wave 3 2026-07-24:** 1 incomplete resume (`gpw-kpoints-si`) + 9
 dep-safe pending → `## in_progress` (staff 10). Held for later: `periodic-rpa-si`
 (after MP2 foothold), `periodic-gw-si` (staff full; deps otherwise clear).
+**Recover 2026-07-24:** inventory confirmed — incomplete_count=**10** (all wave-3
+`## in_progress` `[~]`); open CP2K/GPW/PW specs=**0**; unmerged CP2K `wf/*`
+ahead of `dev`=**0**; half-written wave-3 regressions=**0**. Queue rows already
+normalized (no demote, no invent). Resume staff batch = full 10 (write-spec-first).
 
 ## pending
 

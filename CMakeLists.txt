@@ -254,6 +254,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/widom.cpp
         src/cpu/observe/electrode_charge.cpp
         src/cpu/observe/classical_polarization.cpp
+        src/cpu/observe/capacitance_charge_fluctuation.cpp
 
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/communication/atom_pack.cpp

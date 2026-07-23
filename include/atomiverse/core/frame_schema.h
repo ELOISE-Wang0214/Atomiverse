@@ -237,6 +237,13 @@ inline constexpr MetaKey<MetaF64x6> kStress{"stress", true};
 inline constexpr MetaKey<MetaF64x6> kStressKinetic{"stress_kinetic", true};
 /// Per-electrode total charge [e], first ≤3 electrodes (ElectrodeChargeObserver).
 inline constexpr MetaKey<MetaF64x3> kElectrodeCharge{"electrode_charge", true};
+/// Differential capacitance \(C_{\mathrm{diff}}=\mathrm{Var}(Q)/(k_B T)\) [e/V]
+/// from electrode charge fluctuations (CapacitanceChargeFluctuation).
+inline constexpr MetaKey<double> kCapacitanceDiff{"capacitance_diff", true};
+/// Integral capacitance \(C_{\mathrm{int}}=\langle Q\rangle/\Delta\Psi\) [e/V]
+/// when \(\Delta\Psi\) is supplied (CapacitanceChargeFluctuation).
+inline constexpr MetaKey<double> kCapacitanceIntegral{"capacitance_integral",
+                                                     true};
 
 } // namespace ATV
 
