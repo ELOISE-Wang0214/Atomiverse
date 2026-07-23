@@ -194,6 +194,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/msd.cpp
         src/cpu/observe/vacf.cpp
         src/cpu/observe/trajectory_metrics.cpp
+        src/cpu/observe/wham.cpp
         src/cpu/record/thermo.cpp
         src/cpu/record/xyz.cpp
         src/cpu/record/timing_report.cpp
