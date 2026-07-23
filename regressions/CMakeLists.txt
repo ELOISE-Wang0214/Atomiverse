@@ -68,6 +68,17 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw h_force_analytic)
     atv_add_regression(pw h_stress_cubic)
     atv_add_regression(pw pw-lda-si)
+    atv_add_regression(pw pw-analytic-stress-si)
+    # In-tree ONCV Si UPF for NC-PW regressions (compile-time path pin).
+    set(_atv_si_upf "${CMAKE_SOURCE_DIR}/tests/data/pw/Si_lda_nc.upf")
+    if(TARGET reg_pw-lda-si)
+        target_compile_definitions(reg_pw-lda-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
+    if(TARGET reg_pw-analytic-stress-si)
+        target_compile_definitions(reg_pw-analytic-stress-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     # pw-smearing-al merged when branch lands
