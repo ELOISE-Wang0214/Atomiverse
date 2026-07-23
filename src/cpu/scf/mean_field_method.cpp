@@ -974,12 +974,13 @@ void MeanFieldMethod<D>::run(const Frame& frame,
 }
 
 template <typename D>
-GradientResult MeanFieldMethod<D>::forces(Frame& frame) {
+GradientResult MeanFieldMethod<D>::forces(Frame& frame,
+                                           const SCFInitialGuess* guess) {
     DriveOpts opts;
     opts.unwrap = false;
     opts.write_energy = false;
     opts.forces = true;
-    drive_scf_(frame, nullptr, opts);
+    drive_scf_(frame, guess, opts);
     return last_grad_;
 }
 
