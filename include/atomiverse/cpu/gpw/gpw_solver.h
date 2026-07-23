@@ -60,8 +60,11 @@ struct GpwAtom {
             const GthPotential& pot, int z = 0);
 };
 
-/// @brief Exchange-correlation functional choice.
-enum class XcKind { PADE, PBE };
+/// @brief Exchange-correlation functional choice (RKS).
+///
+/// `PADE` — LDA Padé; `PBE` / `PBEsol` — pure GGA (shared `evaluate_xc`).
+/// UKS currently supports `PADE` only.
+enum class XcKind { PADE, PBE, PBEsol };
 
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
@@ -119,7 +122,7 @@ class GpwDft {
     int diis_depth = 6; ///< Pulay DIIS history depth.
     double lindep_threshold = 1e-8; ///< S-eigenvalue keep threshold.
     double level_shift = 0.0; ///< virtual level shift [Hartree].
-    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
+    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol).
     bool nonperiodic = false; ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true; ///< collocate GTH local SR PP on grid.
     bool d3 = false; ///< Grimme DFT-D3 zero damping (PBE). Mutually exclusive with d3bj.
