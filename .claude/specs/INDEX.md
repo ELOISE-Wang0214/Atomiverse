@@ -22,6 +22,10 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | ---- | -------------- | ------ |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open |
+| [born-repulsion-foothold](born-repulsion-foothold/) | metalwalls / E8 Born BMH | open |
+
+*(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
+`wf/<slug>` before code)*
 
 CP2K wave 2 closed 2026-07-24 (specs deleted). Incomplete leftover
 `gpw-kpoints-si` has **no** open spec dir — write-first on resume.
