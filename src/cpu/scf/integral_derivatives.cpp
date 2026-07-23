@@ -1724,10 +1724,14 @@ IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
 
 void accumulate_two_electron_fock_derivative(
     xt::xtensor<double, 4>& dF, const IntegralPack& integrals,
-    const xt::xtensor<double, 2>& P_total) {
+    const xt::xtensor<double, 2>& P_total, double alpha_hf) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
+    if (alpha_hf < 0.0 || alpha_hf > 1.0 + 1e-14)
+        throw std::invalid_argument(
+            "accumulate_two_electron_fock_derivative: alpha_hf = "
+            + std::to_string(alpha_hf) + " outside [0, 1]");
 
     const ShellBlockPairList bpl{integrals, /*thr=*/1e-12};
     const int n_blocks = static_cast<int>(bpl.blocks.size());
@@ -1831,7 +1835,9 @@ void accumulate_two_electron_fock_derivative(
                                             if (dg == 0.0)
                                                 continue;
                                             dFl(X, ax, i, j) += pj * dg;
-                                            dFl(X, ax, i, k) -= 0.5 * pk * dg;
+                                            if (alpha_hf != 0.0)
+                                                dFl(X, ax, i, k) -=
+                                                    0.5 * alpha_hf * pk * dg;
                                         }
                                     }
                                 }
@@ -2631,11 +2637,16 @@ void quartet_second_derivatives(const native::ShellBlock& A,
 
 void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
                                      const IntegralPack& integrals,
-                                     const xt::xtensor<double, 2>& P_total) {
+                                     const xt::xtensor<double, 2>& P_total,
+                                     double alpha_hf) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
     (void)n;
+    if (alpha_hf < 0.0 || alpha_hf > 1.0 + 1e-14)
+        throw std::invalid_argument(
+            "accumulate_two_electron_hessian: alpha_hf = "
+            + std::to_string(alpha_hf) + " outside [0, 1]");
 
     const ShellBlockPairList bpl{integrals, /*thr=*/1e-12};
     const int n_bpairs = static_cast<int>(bpl.pairs.size());
@@ -2725,9 +2736,11 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
                             const double factor_J =
                                 0.5 * mult * P_total(i, j) * P_total(k, l);
                             const double factor_K =
-                                -0.25 * mult * 0.5
-                                * (P_total(i, k) * P_total(j, l)
-                                   + P_total(j, k) * P_total(i, l));
+                                alpha_hf == 0.0
+                                    ? 0.0
+                                    : -0.25 * mult * 0.5 * alpha_hf
+                                          * (P_total(i, k) * P_total(j, l)
+                                             + P_total(j, k) * P_total(i, l));
                             const double factor = factor_J + factor_K;
                             if (std::abs(factor) < 1e-18)
                                 continue;

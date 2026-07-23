@@ -6,6 +6,7 @@
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -85,6 +86,23 @@ class RKS : public MeanFieldMethod<RKS> {
     ExcitedStatesResult
     tddft(int n_states,
           ExcitationChannel channel = ExcitationChannel::singlet) const;
+
+    /// @brief Nuclear Hessian d²E/dR² of the RKS energy [eV/Å²].
+    ///
+    /// Central finite difference of the **analytic** RKS nuclear forces
+    /// (`forces()` / KS gradient with grid-response XC). This is the
+    /// correct second derivative of the RKS energy under the converged
+    /// KS density; a fully analytic CPKS Hessian (PySCF `hessian.RKS`
+    /// closed form) is a follow-up. Step \(h = 10^{-4}\) Bohr; the
+    /// assembled matrix is symmetrized. Same algorithm class as
+    /// `ROHF::hessian`.
+    ///
+    /// @param frame Geometry (Å) + Z in the type column; restored on return.
+    /// @return `vib::HessianResult` with the dense symmetric `[3N, 3N]`
+    ///         Hessian in eV/Å² and `n_atoms` set.
+    /// @throws std::runtime_error when the reference or displaced SCF
+    ///         does not converge, or with RI enabled.
+    vib::HessianResult hessian(Frame& frame);
 
   protected:
     /// @brief Closed-shell occupation (n_alpha = n_beta = n_electrons / 2);
