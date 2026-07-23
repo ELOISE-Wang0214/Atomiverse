@@ -168,6 +168,7 @@ atv_add_cpp_test(test_cpu_minimize_aniso_cell     cpu/minimize/test_anisotropic_
 atv_add_cpp_test(test_cpu_xtb_gfn0                cpu/semiempirical/test_xtb_gfn0.cpp)
 atv_add_cpp_test(test_cpu_qmmm_mechanical         cpu/multiscale/test_qmmm_mechanical.cpp)
 atv_add_cpp_test(test_cpu_qmmm_electrostatic      cpu/multiscale/test_qmmm_electrostatic.cpp)
+atv_add_cpp_test(test_cpu_link_atom               cpu/multiscale/test_link_atom.cpp)
 atv_add_cpp_test(test_cpu_minimize_triclinic      cpu/minimize/test_triclinic_cell.cpp)
 atv_add_cpp_test(test_cpu_bond_fene               cpu/potentials/test_bond_fene.cpp)
 atv_add_cpp_test(test_cpu_pair_wca                cpu/potentials/test_pair_wca.cpp)

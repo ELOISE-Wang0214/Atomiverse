@@ -28,7 +28,6 @@ impl independently (no single ordered chain unless noted).
 
 | Spec | Summary |
 | ---- | ------- |
-| [qmmm-link-atoms](qmmm-link-atoms.md) | H link-atom QM/MM boundary [approved] |
 | [polarizable-qmmm](polarizable-qmmm.md) | Induced-dipole polarizable QM/MM [approved] |
 
 ### A/B — Post-HF / TB / Sampling
