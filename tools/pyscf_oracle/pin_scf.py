@@ -8,6 +8,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py uhf --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
+  python tools/pyscf_oracle/pin_scf.py romp2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py scs-mp2 --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py sos-mp2 --geom water --basis sto-3g
@@ -111,6 +112,7 @@ def main() -> int:
             "scs-mp2",
             "sos-mp2",
             "ump2",
+            "romp2",
             "tda",
             "tdhf",
             "cisd",
@@ -224,7 +226,7 @@ def main() -> int:
         mf = scf.RHF(mol)
     elif m in ("uhf", "ump2"):
         mf = scf.UHF(mol)
-    elif m == "rohf":
+    elif m in ("rohf", "romp2"):
         mf = scf.ROHF(mol)
     elif m in ("rks", "rks-tda", "rks-tddft"):
         mf = dft.RKS(mol)
@@ -273,7 +275,7 @@ def main() -> int:
     if args.pcm and hasattr(mf, "with_solvent"):
         out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
-    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2") and hasattr(
+    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2", "romp2") and hasattr(
         mf, "spin_square"
     ):
         ss, mult = mf.spin_square()
@@ -334,6 +336,19 @@ def main() -> int:
         out["e_hf_ha"] = float(e)
         out["e_corr_ha"] = float(m2.e_corr)
         out["e_tot_mp2_ha"] = float(m2.e_tot)
+        if hasattr(mf, "spin_square"):
+            ss, mult = mf.spin_square()
+            out["s2"] = float(ss)
+            out["multiplicity"] = float(mult)
+    elif m == "romp2":
+        # ROHF reference → PySCF converts to UHF view + UMP2 (semi-canonical
+        # spin-Fock diagonal denominators). No separate mp.ROMP2 class.
+        m2 = mp.UMP2(mf).run()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(m2.e_corr)
+        out["e_tot_mp2_ha"] = float(m2.e_tot)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
         if hasattr(mf, "spin_square"):
             ss, mult = mf.spin_square()
             out["s2"] = float(ss)

@@ -985,12 +985,6 @@ GradientResult MeanFieldMethod<D>::forces(Frame& frame) {
 
 template <typename D>
 MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
-    if (spin_ == SpinType::RestrictedOpen)
-        throw std::invalid_argument(
-            "MeanFieldMethod::mp2: an ROHF reference is not supported — the "
-            "closed-shell MP2 pack would silently treat the single MO set as "
-            "a doubly-occupied one. Use RHF (closed shell) — ROHF-MP2 is a "
-            "follow-up chain link.");
     if (spin_ == SpinType::Generalized)
         throw std::invalid_argument(
             "MeanFieldMethod::mp2: a GHF (spinor) reference is not supported "
@@ -1006,18 +1000,27 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    if (spin_ == SpinType::Unrestricted && frozen != 0) {
+    if ((spin_ == SpinType::Unrestricted ||
+         spin_ == SpinType::RestrictedOpen) &&
+        frozen != 0) {
         throw std::invalid_argument(
-            "MeanFieldMethod::mp2: frozen-core UMP2 is not supported — set "
-            "frozen=0 for unrestricted MP2, or use closed-shell RHF.");
+            "MeanFieldMethod::mp2: frozen-core UMP2/ROMP2 is not supported — "
+            "set frozen=0, or use closed-shell RHF.");
     }
     if (ri != RI::None) {
         if (spin_ != SpinType::Restricted)
             throw std::invalid_argument(
                 "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
-                "ri=RI::None for UMP2, or use RHF.");
+                "ri=RI::None for UMP2/ROMP2, or use RHF.");
         return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis,
                             frozen, mp2_os_scale, mp2_ss_scale);
+    }
+    if (spin_ == SpinType::RestrictedOpen) {
+        // PySCF ROMP2: UMP2 on ROHF orbitals with semi-canonical spin-Fock
+        // diagonal denominators (F_alpha_uncoupled_ / F_beta_uncoupled_).
+        return romp2_energy(*integrals_sp_, *det_sp_, F_alpha_uncoupled_,
+                            F_beta_uncoupled_, e_total_, mp2_os_scale,
+                            mp2_ss_scale);
     }
     if (spin_ == SpinType::Unrestricted)
         return ump2_energy(*integrals_sp_, *det_sp_, e_total_, mp2_os_scale,
