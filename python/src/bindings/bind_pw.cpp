@@ -1,5 +1,5 @@
 /// @file python/bind_pw.cpp
-/// @brief Plane-wave DFT bindings backed directly by cpu::pw::PWSolver.
+/// @brief Plane-wave DFT bindings backed directly by cpu::pw::PW.
 
 #include "molrs_frame_bridge.h"
 
@@ -15,17 +15,6 @@ void bind_pw(nb::module_& m) {
 #ifdef ATV_HAS_PW
     using namespace ATV;
     using namespace ATV::cpu::pw;
-
-    nb::class_<PWConfig>(m, "PWConfig",
-                         "Configuration for the explicit plane-wave solver.")
-        .def(nb::init<>())
-        .def_rw("upf_path", &PWConfig::upf_path)
-        .def_rw("ecut_ry", &PWConfig::ecut_ry)
-        .def_rw("k_mesh", &PWConfig::k_mesh)
-        .def_rw("tol", &PWConfig::tol)
-        .def_rw("max_iter", &PWConfig::max_iter)
-        .def_rw("mix_beta", &PWConfig::mix_beta)
-        .def_rw("pulay_depth", &PWConfig::pulay_depth);
 
     nb::class_<PWResult>(m, "PWResult",
                          "Result of a plane-wave DFT calculation.")
@@ -47,12 +36,19 @@ void bind_pw(nb::module_& m) {
                    + " Ry, iters=" + std::to_string(r.iterations) + ")";
         });
 
-    nb::class_<PWSolver>(m, "PWSolver",
-                         "Explicit plane-wave SCF solver (build then run).")
-        .def(nb::init<PWConfig>(), nb::arg("config"))
+    nb::class_<PW>(m, "PW",
+                         "Concrete plane-wave DFT method (members + run).")
+        .def(nb::init<>())
+        .def_rw("upf_path", &PW::upf_path)
+        .def_rw("ecut_ry", &PW::ecut_ry)
+        .def_rw("k_mesh", &PW::k_mesh)
+        .def_rw("tol", &PW::tol)
+        .def_rw("max_iter", &PW::max_iter)
+        .def_rw("mix_beta", &PW::mix_beta)
+        .def_rw("pulay_depth", &PW::pulay_depth)
         .def(
             "build",
-            [](PWSolver& solver, nb::object frame_obj) {
+            [](PW& solver, nb::object frame_obj) {
                 auto fref = borrow_molrs_frame(frame_obj);
                 nb::gil_scoped_release release;
                 cpu::Frame work = cpu::materialize(*fref);
@@ -62,7 +58,7 @@ void bind_pw(nb::module_& m) {
             "Validate the reference frame and perform one-time setup.")
         .def(
             "run",
-            [](PWSolver& solver, nb::object frame_obj) {
+            [](PW& solver, nb::object frame_obj) {
                 auto fref = borrow_molrs_frame(frame_obj);
                 PWResult result;
                 {
@@ -73,10 +69,13 @@ void bind_pw(nb::module_& m) {
                 return result;
             },
             nb::arg("frame"),
-            "Run SCF at the frame's current geometry. build() is required.")
+            "Run SCF at the frame's current geometry.")
         .def_prop_ro(
             "last_result",
-            [](const PWSolver& solver) { return solver.last_result(); },
+            [](const PW& solver) { return solver.last_result(); },
             "Copy of the most recent result.");
+    // Compatibility aliases for the deleted bag names (methods are members).
+    m.attr("PWConfig") = m.attr("PW");
+    m.attr("PWSolver") = m.attr("PW");
 #endif
 }

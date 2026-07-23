@@ -32,6 +32,20 @@
 namespace ATV {
 namespace cpu {
 namespace pw {
+
+namespace {
+PW copy_pw(const PW& m) {
+    PW p;
+    p.upf_path = m.upf_path;
+    p.ecut_ry = m.ecut_ry;
+    p.k_mesh = m.k_mesh;
+    p.tol = m.tol;
+    p.max_iter = m.max_iter;
+    p.mix_beta = m.mix_beta;
+    p.pulay_depth = m.pulay_depth;
+    return p;
+}
+} // namespace
 namespace internal {
 namespace {
 
@@ -202,31 +216,31 @@ void accumulate_nl_forces_k(const PWWorkspace& ws, AccReal weight, int n_bands,
 }
 
 /// Run SCF; on exit `prob` holds final density on the Γ sphere.
-PWResult run_scf(const cpu::Frame& frame, const PWConfig& cfg, PWProblem& prob,
+PWResult run_scf(const cpu::Frame& frame, const PW& method, PWProblem& prob,
                  PoissonSolver& poisson, XCBuilder& xc, VeffBuilder& veff,
                  DensityBuilder& density, DavidsonSolver& davidson) {
     PWResult result{};
     const auto layout = mpi_layout();
     const bool log_rank0 = (layout.rank == 0);
 
-    setup_pw_problem(frame, cfg.upf_path, cfg.ecut_ry, cfg.k_mesh, prob);
+    setup_pw_problem(frame, method.upf_path, method.ecut_ry, method.k_mesh, prob);
     PWWorkspace& ws = prob.ws;
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const int n_bands = prob.n_bands;
     const AccReal vol_bohr = prob.vol_bohr;
-    ws.mix_beta = AccReal(cfg.mix_beta);
-    ws.pulay_depth = cfg.pulay_depth;
+    ws.mix_beta = AccReal(method.mix_beta);
+    ws.pulay_depth = method.pulay_depth;
 
     xc.prepare(ws);
     veff.prepare(ws);
     density.prepare(ws);
     density.reset(ws);
     davidson.prepare(ws);
-    ConvergenceCheck convergence{AccReal(cfg.tol), 2};
+    ConvergenceCheck convergence{AccReal(method.tol), 2};
 
     bool converged = false;
-    for (int iter = 0; iter < cfg.max_iter; ++iter) {
+    for (int iter = 0; iter < method.max_iter; ++iter) {
         poisson.step(ws);
         xc.step(ws);
         veff.step(ws);
@@ -289,14 +303,14 @@ PWResult run_scf(const cpu::Frame& frame, const PWConfig& cfg, PWProblem& prob,
     }
 
     if (!result.converged && log_rank0)
-        ATV_WARN("[pw] forces-scf not converged after {} iters", cfg.max_iter);
+        ATV_WARN("[pw] forces-scf not converged after {} iters", method.max_iter);
     return result;
 }
 
 } // namespace
 
 std::vector<std::array<double, 3>>
-pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg) {
+pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method) {
     const int n = frame.nlocal();
     if (n <= 0)
         throw std::invalid_argument("pw_forces_analytic: frame has no atoms");
@@ -312,12 +326,12 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg) {
     PoissonSolver poisson;
     XCBuilder xc;
     VeffBuilder veff;
-    DensityBuilder density{AccReal(cfg.mix_beta), cfg.pulay_depth};
-    DavidsonSolver davidson{n_bands, AccReal(cfg.tol) * AccReal(0.1), 40};
+    DensityBuilder density{AccReal(method.mix_beta), method.pulay_depth};
+    DavidsonSolver davidson{n_bands, AccReal(method.tol) * AccReal(0.1), 40};
 
     PWProblem scf_prob;
     const PWResult res =
-        run_scf(frame, cfg, scf_prob, poisson, xc, veff, density, davidson);
+        run_scf(frame, method, scf_prob, poisson, xc, veff, density, davidson);
     if (!res.converged) {
         ATV_WARN("[pw] pw_forces_analytic: SCF not converged after {} iters; "
                  "forces use last density",
@@ -339,7 +353,7 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg) {
         nuclear_Z.push_back(static_cast<AccReal>(z));
         valence_charges.push_back(static_cast<AccReal>(valence_from_z(z)));
     }
-    const bool has_upf = !cfg.upf_path.empty();
+    const bool has_upf = !method.upf_path.empty();
     const auto& ewald_charges = has_upf ? valence_charges : nuclear_Z;
     const auto& loc_charges = valence_charges;
 
@@ -354,7 +368,7 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg) {
                                                 static_cast<AccReal>(sz[i])};
 
     const cpu::Box& box_ang = frame.simbox;
-    AccReal ecut_ht = static_cast<AccReal>(cfg.ecut_ry) * AccReal(0.5);
+    AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     EwaldSummation ewald(pos_ang, ewald_charges, box_ang, ecut_ht);
     const auto& few = ewald.forces_bohr();
     for (int i = 0; i < n; ++i)

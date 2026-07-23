@@ -1,5 +1,5 @@
 /// @file test_pw_evaluator.cpp
-/// @brief PWEvaluator — Evaluate-driver integration + PWSolver parity.
+/// @brief PWEvaluator — Evaluate-driver integration + PW parity.
 ///
 /// Verifies the plane-wave SCF is reachable through the canonical
 /// `cpu::Evaluate + Evaluator-component` shape (taxonomy rule: SCF is an
@@ -21,10 +21,10 @@
 using namespace ATV;
 using namespace ATV::cpu::pw;
 
-// Taxonomy guards: PWSolver is an inner solver (plain class), PWEvaluator
+// Taxonomy guards: PW is an inner solver (plain class), PWEvaluator
 // is the Plan-facing component.
-static_assert(!std::is_base_of_v<cpu::Component, PWSolver>,
-              "PWSolver must not be a Plan component");
+static_assert(!std::is_base_of_v<cpu::Component, PW>,
+              "PW must not be a Plan component");
 static_assert(std::is_base_of_v<cpu::Component, PWEvaluator>,
               "PWEvaluator must be a cpu::Component");
 
@@ -56,8 +56,8 @@ cpu::Frame make_si_fcc(double a) {
     return f;
 }
 
-PWConfig small_config() {
-    PWConfig cfg;
+PW small_config() {
+    PW cfg;
     cfg.ecut_ry = 10.0;
     cfg.k_mesh = 2;
     cfg.tol = 1e-6;
@@ -66,7 +66,7 @@ PWConfig small_config() {
 }
 } // namespace
 
-TEST(PWEvaluator, IsPlaneWaveKind) {
+TEST(PWEvaluator, IsPWKind) {
     PWEvaluator pwe{small_config()};
     EXPECT_NE(dynamic_cast<const cpu::PlaneWave*>(&pwe), nullptr);
     EXPECT_EQ(pwe.role(), 0); // main-loop required
@@ -90,15 +90,13 @@ TEST(PWEvaluator, EvaluateDriverWritesFrameEnergyInEv) {
 }
 
 TEST(PWEvaluator, MatchesDirectSolver) {
-    auto cfg = small_config();
-
     auto frame_solver = make_si_fcc(5.43);
-    PWSolver solver{cfg};
+    PW solver = small_config();
     solver.build(frame_solver);
     const PWResult r_solver = solver.run(frame_solver);
 
     auto frame_eval = make_si_fcc(5.43);
-    PWEvaluator pwe{cfg};
+    PWEvaluator pwe{small_config()};
     cpu::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add_ref(pwe);
     eval.build();
@@ -106,6 +104,6 @@ TEST(PWEvaluator, MatchesDirectSolver) {
 
     EXPECT_TRUE(std::isfinite(r_solver.energy));
     EXPECT_NEAR(pwe.last_result().energy, r_solver.energy, 1e-10)
-        << "Evaluate + PWEvaluator must reproduce the direct PWSolver";
+        << "Evaluate + PWEvaluator must reproduce the direct PW";
     EXPECT_EQ(pwe.last_result().iterations, r_solver.iterations);
 }

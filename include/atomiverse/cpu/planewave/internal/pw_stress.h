@@ -19,7 +19,7 @@ namespace internal {
 /// form from ρ and V_xc. KB nonlocal stress is included when UPF projectors
 /// are present (final diagonalization per k, same as forces).
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
-                                              const PWConfig& cfg);
+                                              const PW& method);
 
 } // namespace internal
 } // namespace pw

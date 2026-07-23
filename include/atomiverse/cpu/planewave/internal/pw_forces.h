@@ -26,7 +26,7 @@ namespace internal {
 /// @param cfg   Plane-wave configuration.
 /// @return Forces [eV/Å], one xyz triple per atom.
 std::vector<std::array<double, 3>>
-pw_forces_analytic_impl(const cpu::Frame& frame, const PWConfig& cfg);
+pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method);
 
 } // namespace internal
 } // namespace pw

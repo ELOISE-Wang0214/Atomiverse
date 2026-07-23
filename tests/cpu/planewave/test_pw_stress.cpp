@@ -27,8 +27,8 @@ cpu::Frame make_h_cubic(double L) {
     return f;
 }
 
-PWConfig cheap_cfg() {
-    PWConfig cfg;
+PW cheap_cfg() {
+    PW cfg;
     cfg.ecut_ry = 5.0;
     cfg.k_mesh = 1;
     cfg.tol = 1e-4;

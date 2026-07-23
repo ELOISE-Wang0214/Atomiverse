@@ -2,7 +2,7 @@
 /// @brief Unit tests for the plane-wave internal step helpers.
 ///
 /// The helpers live in `cpu::pw::internal::` and are owned by
-/// `cpu::pw::PWSolver` — tests may include the internal headers directly
+/// `cpu::pw::PW` — tests may include the internal headers directly
 /// (same policy as `cpu/scf/internal/`). They must NOT be
 /// `cpu::Component` subclasses (static-asserted below).
 #include "atomiverse/cpu/frame/box.h"

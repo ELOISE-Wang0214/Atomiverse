@@ -33,8 +33,8 @@ cpu::Frame make_h_cubic(double L) {
     return f;
 }
 
-PWConfig cheap_cfg() {
-    PWConfig cfg;
+PW cheap_cfg() {
+    PW cfg;
     cfg.ecut_ry = 5.0;
     cfg.k_mesh = 1;
     cfg.tol = 1e-4;
@@ -161,7 +161,7 @@ TEST(PWForces, AnalyticUpfSiDimerFiniteForces) {
     cell(2, 2) = 0;
     f.simbox.set_cell(cell);
 
-    PWConfig cfg;
+    PW cfg;
     cfg.upf_path = upf;
     cfg.ecut_ry = 8.0;
     cfg.k_mesh = 1;
@@ -204,7 +204,7 @@ TEST(PWForces, AnalyticMatchesFdToyDimer) {
     f.span(kAtom_z)[1] = -0.05;
     f.simbox = cpu::Box::cubic(8.0);
 
-    PWConfig cfg = cheap_cfg();
+    PW cfg = cheap_cfg();
     cfg.max_iter = 12;
     cfg.tol = 1e-5;
 
