@@ -29,6 +29,7 @@
 #include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/casci_pack.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
@@ -1131,6 +1132,32 @@ FCIResult MeanFieldMethod<D>::fci(Frame& frame) {
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
     return fci_energy(*integrals_sp_, *det_sp_, e_total_);
+}
+
+template <typename D>
+CASCIResult MeanFieldMethod<D>::casci(Frame& frame, int ncas, int nelecas) {
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "MeanFieldMethod::casci: an ROHF reference is not supported — "
+            "closed-shell CASCI requires RHF.");
+    if (spin_ == SpinType::Generalized)
+        throw std::invalid_argument(
+            "MeanFieldMethod::casci: a GHF (spinor) reference is not "
+            "supported — closed-shell CASCI requires RHF.");
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::casci: closed-shell RHF reference only — UHF "
+            "CASCI is not implemented (no fallback). Use RHF.");
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::casci: SCF reference did not converge — refusing "
+            "to compute a correlation correction on a non-stationary "
+            "determinant (no fallback)");
+    return casci_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas);
 }
 
 template <typename D>
