@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — MetalWalls wave 1 closed 2026-07-23; next workers re-create specs on
-`wf/<slug>` before code)*
+| Spec | Branch | Status |
+| ---- | ------ | ------ |
+| `steele-wall-argon` | `wf/steele-wall-argon` | open (wave-2 E8 Steele 10-4-3) |
 
 ## Closed — MetalWalls capability wave 1 (2026-07-23)
 
