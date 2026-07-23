@@ -180,7 +180,7 @@ PWResult& PW::run(const cpu::Frame& frame) {
     bool converged = false;
     for (int iter = 0; iter < max_iter; ++iter) {
         poisson_->step(ws);
-        xc_->step(ws);
+        xc_->step(ws, xc);
         veff_->step(ws);
 
         // Accumulate density and band energy over this rank's k-points.

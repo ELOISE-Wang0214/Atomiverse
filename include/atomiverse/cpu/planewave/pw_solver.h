@@ -22,6 +22,7 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
 namespace cpu {
@@ -65,6 +66,11 @@ class PW {
     double mix_beta = 0.7;
     /// @brief Pulay mixing history window (dimensionless).
     int pulay_depth = 5;
+    /// @brief Exchange–correlation functional (default true GGA PBE).
+    ///
+    /// `XCType::PBE` uses spectral density gradients (true GGA). Pure LDA is
+    /// `XCType::LSDA`. Parameters are members — no public `*Config` bag.
+    cpu::scf::XCType xc = cpu::scf::XCType::PBE;
 
     /// @brief Default construct (helpers allocated on first build/run).
     PW();
