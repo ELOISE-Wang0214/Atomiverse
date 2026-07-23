@@ -32,10 +32,13 @@ void DensityBuilder::begin(const PWWorkspace& ws) {
 
 void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
                                        int n_bands, AccReal spin_degen) {
+                                       int n_bands, const AccReal* occ) {
     if (ws.nr <= 0 || !ws.fft)
         return;
 
     int nb = std::min(n_bands, static_cast<int>(ws.eigenvalues.size()));
+    if (ws.wfc.shape().size() >= 1)
+        nb = std::min(nb, static_cast<int>(ws.wfc.shape(0)));
     int ng_k = ws.n_g;
     int nx = ws.fft_nx, ny = ws.fft_ny, nz = ws.fft_nz;
     auto& gvk = *ws.gvec;
@@ -43,6 +46,9 @@ void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
     auto* acc = rho_r_accum_.data();
 
     for (int b = 0; b < nb; ++b) {
+        const AccReal fb = occ ? occ[b] : AccReal(2);
+        if (fb == AccReal(0))
+            continue;
         for (int i = 0; i < ws.nr; ++i)
             psi_cc[i][0] = psi_cc[i][1] = 0;
         for (int ig = 0; ig < ng_k; ++ig) {
@@ -62,6 +68,7 @@ void DensityBuilder::accumulate_kpoint(const PWWorkspace& ws, AccReal weight,
                 psi_cc[i][0] * psi_cc[i][0] + psi_cc[i][1] * psi_cc[i][1]);
             // ψ_phys(r) = ψ_fft(r)/√Ω, so |ψ|²_phys = |ψ_fft|²/Ω
             acc[i] += weight * spin_degen * psi_sq / ws.omega;
+            acc[i] += weight * fb * psi_sq / ws.omega;
         }
     }
 }

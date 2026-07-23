@@ -656,6 +656,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/planewave/internal/davidson.cpp
             src/cpu/planewave/internal/density_builder.cpp
             src/cpu/planewave/internal/convergence.cpp
+            src/cpu/planewave/internal/smearing.cpp
             src/cpu/planewave/pw_solver.cpp
             src/cpu/planewave/pw_evaluator.cpp
         )

@@ -49,6 +49,14 @@ class DensityBuilder {
     /// @param spin_degen Occupation weight per band (2 restricted, 1 collinear).
     void accumulate_kpoint(const PWWorkspace& ws, AccReal weight, int n_bands,
                            AccReal spin_degen = AccReal(2));
+    /// @brief Add this k-point's band densities: ρ(r) += w·f_b·|ψ_b(r)|²/Ω.
+    /// @param ws      Workspace with `gvec`/`n_g`/`wfc` at the current k.
+    /// @param weight  k-point weight (Monkhorst-Pack).
+    /// @param n_bands Band count (length of `occ` when non-null).
+    /// @param occ     Optional per-band occupations in \([0,2]\). When null,
+    ///                uses fixed closed-shell \(f_b=2\) for all `n_bands` bands.
+    void accumulate_kpoint(const PWWorkspace& ws, AccReal weight, int n_bands,
+                           const AccReal* occ = nullptr);
 
     /// @brief Real-space accumulation buffer (length `ws.nr`) — exposed
     ///        for the MPI k-point Allreduce between accumulation and

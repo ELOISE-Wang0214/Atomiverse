@@ -15,6 +15,7 @@ the git log. Method census: `docs/roadmap/`.
 | [pw-bomd-h](pw-bomd-h/) | `wf/pw-bomd-h` | open — CP2K-loop wave 1 merge |
 | [pw-lda-si](pw-lda-si/) | `wf/pw-lda-si` | open — CP2K-loop wave 1 merge |
 | [pw-pbe-gga-si](pw-pbe-gga-si/) | `wf/pw-pbe-gga-si` | open — CP2K-loop wave 1 merge |
+| [pw-smearing-al](pw-smearing-al/) | `wf/pw-smearing-al` | open — CP2K-loop wave 1 merge |
 | [pw-spin-polarized-o2](pw-spin-polarized-o2/) | `wf/pw-spin-polarized-o2` | open — CP2K-loop wave 1 merge |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)

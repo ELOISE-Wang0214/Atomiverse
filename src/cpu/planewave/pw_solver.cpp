@@ -31,6 +31,7 @@
 #include "atomiverse/cpu/planewave/internal/pw_setup.h"
 #include "atomiverse/cpu/planewave/internal/pw_stress.h"
 #include "atomiverse/cpu/planewave/internal/pw_workspace.h"
+#include "atomiverse/cpu/planewave/internal/smearing.h"
 #include "atomiverse/cpu/planewave/internal/upf_reader.h"
 #include "atomiverse/cpu/planewave/internal/veff_builder.h"
 #include "atomiverse/cpu/planewave/internal/xc_builder.h"
@@ -158,6 +159,17 @@ PWResult& PW::run(const cpu::Frame& frame) {
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const int n_elec = prob.n_elec;
+    const bool use_smear = (smearing != Smearing::none);
+    if (use_smear && !(degauss > 0.0))
+        throw std::invalid_argument(
+            "PW::run: degauss must be > 0 [Ry] when smearing is enabled");
+    // Fixed occupations: n_bands = floor(n_e/2). Smearing: ceil(n_e/2)+extra.
+    int n_bands = prob.n_bands;
+    if (use_smear) {
+        const int n_occ_ceil =
+            std::max((prob.n_elec + 1) / 2, 1);
+        n_bands = n_occ_ceil + std::max(extra_bands, 0);
+    }
     const AccReal vol_bohr = prob.vol_bohr;
     ws.mix_beta = AccReal(mix_beta);
     ws.pulay_depth = pulay_depth;
@@ -213,6 +225,24 @@ PWResult& PW::run(const cpu::Frame& frame) {
                  frame.nlocal(), n_elec, n_bands_r, ecut_ry,
                  upf_path.empty() ? "toy" : "upf", k_mesh, layout.nprocs,
                  spin_polarized ? 2 : 1, multiplicity, n_alpha, n_beta);
+    // degauss is public [Ry]; internal eigenvalues are [Hartree] (QE ekin).
+    const AccReal degauss_ha =
+        AccReal(degauss) * AccReal(qe_units::rydberg_to_hartree);
+    internal::SmearKind smear_kind = internal::SmearKind::fermi_dirac;
+    if (smearing == Smearing::fermi_dirac)
+        smear_kind = internal::SmearKind::fermi_dirac;
+    else if (smearing == Smearing::methfessel_paxton)
+        smear_kind = internal::SmearKind::methfessel_paxton;
+    else if (smearing == Smearing::gaussian)
+        smear_kind = internal::SmearKind::gaussian;
+
+    if (log_rank0)
+        ATV_INFO("[pw] start atoms={} elec={} bands={} ecut_ry={} {} "
+                 "k_mesh={} ranks={} smear={}",
+                 frame.nlocal(), prob.n_elec, n_bands, ecut_ry,
+                 upf_path.empty() ? "toy" : "upf", k_mesh,
+                 layout.nprocs,
+                 use_smear ? static_cast<int>(smearing) : 0);
 
     // ── Step-helper preparation (grid-sized scratch) ──
     xc_->prepare(ws);
@@ -227,10 +257,21 @@ PWResult& PW::run(const cpu::Frame& frame) {
     davidson_->prepare(ws);
     internal::ConvergenceCheck convergence{AccReal(tol), 2};
 
+    // Per-k wavefunction cache (needed when occupations depend on all k).
+    std::vector<xt::xarray<std::complex<AccReal>>> wfc_k(
+        static_cast<std::size_t>(n_kpts));
+    std::vector<std::vector<AccReal>> evals_k(
+        static_cast<std::size_t>(n_kpts));
+
     // ── SCF loop ──
     bool converged = false;
     for (int iter = 0; iter < max_iter; ++iter) {
         AccReal e_band = 0;
+        poisson_->step(ws);
+        xc_->step(ws);
+        veff_->step(ws);
+
+        // Pass 1: diagonalize every owned k-point; stash evals + wfc.
         auto* saved_gvec = ws.gvec;
 
         if (spin_polarized) {
@@ -366,6 +407,118 @@ PWResult& PW::run(const cpu::Frame& frame) {
                 ws.gvec = saved_gvec;
                 ws.n_g = gv0.count();
             }
+            // Stash eigenpairs for the occupation / density pass.
+            evals_k[static_cast<std::size_t>(ik)].assign(
+                ws.eigenvalues.begin(), ws.eigenvalues.end());
+            if (static_cast<int>(evals_k[static_cast<std::size_t>(ik)].size())
+                > n_bands)
+                evals_k[static_cast<std::size_t>(ik)].resize(
+                    static_cast<std::size_t>(n_bands));
+            wfc_k[static_cast<std::size_t>(ik)] = ws.wfc;
+        }
+
+        // Collect the full spectrum for the Fermi search (MPI: Allgather
+        // eigenvalues). Fixed occupations skip the search.
+        std::vector<AccReal> all_evals;
+        std::vector<AccReal> all_weights;
+        all_evals.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        all_weights.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            // Pack local evals as a flat n_kpts * n_bands buffer (zeros for
+            // non-owned k); SUM across ranks.
+            std::vector<AccReal> pack(
+                static_cast<std::size_t>(n_kpts * n_bands), AccReal(0));
+            for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
+                const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                for (int b = 0; b < n_bands && b < static_cast<int>(ev.size());
+                     ++b)
+                    pack[static_cast<std::size_t>(ik * n_bands + b)] = ev[b];
+            }
+            MPI_Allreduce(MPI_IN_PLACE, pack.data(), n_kpts * n_bands,
+                          mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
+            for (int ik = 0; ik < n_kpts; ++ik) {
+                evals_k[static_cast<std::size_t>(ik)].resize(
+                    static_cast<std::size_t>(n_bands));
+                for (int b = 0; b < n_bands; ++b)
+                    evals_k[static_cast<std::size_t>(ik)][b] =
+                        pack[static_cast<std::size_t>(ik * n_bands + b)];
+            }
+        }
+#endif
+
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
+            const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands && b < static_cast<int>(ev.size());
+                 ++b) {
+                all_evals.push_back(ev[static_cast<std::size_t>(b)]);
+                all_weights.push_back(w);
+            }
+        }
+
+        AccReal mu_ha = AccReal(0);
+        AccReal n_occ = AccReal(0);
+        AccReal entropy_sum = AccReal(0);
+        std::vector<std::vector<AccReal>> occ_k(
+            static_cast<std::size_t>(n_kpts));
+
+        if (use_smear) {
+            mu_ha = internal::find_fermi_level(
+                all_evals, all_weights, AccReal(prob.n_elec), degauss_ha,
+                smear_kind, mp_order);
+            for (int ik = 0; ik < n_kpts; ++ik) {
+                const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
+                const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                std::vector<AccReal> w_one(ev.size(), w);
+                auto fill = internal::fill_occupations(
+                    ev, w_one, mu_ha, degauss_ha, smear_kind, mp_order);
+                // fill_occupations multiplies by weights already for n_occ;
+                // store bare occupations per band.
+                occ_k[static_cast<std::size_t>(ik)].resize(ev.size());
+                for (std::size_t b = 0; b < ev.size(); ++b)
+                    occ_k[static_cast<std::size_t>(ik)][b] =
+                        internal::smear_f_band(ev[b], mu_ha, degauss_ha,
+                                               smear_kind, mp_order);
+                n_occ += fill.n_occ;
+                entropy_sum += fill.entropy;
+            }
+        } else {
+            // Fixed closed-shell: first n_bands bands fully occupied (f=2).
+            for (int ik = 0; ik < n_kpts; ++ik) {
+                occ_k[static_cast<std::size_t>(ik)].assign(
+                    static_cast<std::size_t>(n_bands), AccReal(2));
+                n_occ += prob.kg.weights[static_cast<std::size_t>(ik)]
+                         * AccReal(2) * AccReal(n_bands);
+            }
+        }
+
+        // Pass 2: density + band energy with occupations (owned k only).
+        density_->begin(ws);
+        AccReal e_band = 0;
+        for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
+            auto& gvk = prob.gv_k[ik];
+            ws.gvec = &gvk;
+            ws.n_g = gvk.count();
+            ws.wfc = wfc_k[static_cast<std::size_t>(ik)];
+            ws.eigenvalues.resize(
+                {evals_k[static_cast<std::size_t>(ik)].size()});
+            for (std::size_t b = 0;
+                 b < evals_k[static_cast<std::size_t>(ik)].size(); ++b)
+                ws.eigenvalues[b] = evals_k[static_cast<std::size_t>(ik)][b];
+
+            const AccReal weight = prob.kg.weights[static_cast<std::size_t>(ik)];
+            const auto& occ = occ_k[static_cast<std::size_t>(ik)];
+            const int nb = static_cast<int>(occ.size());
+            for (int b = 0; b < nb; ++b)
+                e_band += weight * ws.eigenvalues[b] * occ[static_cast<std::size_t>(b)];
+
+            density_->accumulate_kpoint(ws, weight, nb, occ.data());
+        }
+        // Restore the density G-sphere.
+        ws.gvec = saved_gvec;
+        ws.n_g = gv0.count();
 
 #ifdef ATV_HAS_MPI
             if (layout.active) {
@@ -388,12 +541,37 @@ PWResult& PW::run(const cpu::Frame& frame) {
                 result_.energy_ha / qe_units::rydberg_to_hartree;
             internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
         }
+        const auto terms =
+            internal::iteration_energy(ws, e_band, prob.ew_total, vol_bohr);
+        // Mermin free energy: F = E_KS − σ · S  (σ = degauss in Ha).
+        AccReal e_ha = terms.total;
+        AccReal e_ent_ha = AccReal(0);
+        if (use_smear) {
+            e_ent_ha = -degauss_ha * entropy_sum;
+            e_ha += e_ent_ha;
+        }
+        result_.energy_ha = static_cast<double>(e_ha);
+        result_.energy = result_.energy_ha / qe_units::rydberg_to_hartree;
+        result_.e_fermi =
+            use_smear
+                ? static_cast<double>(mu_ha) / qe_units::rydberg_to_hartree
+                : 0.0;
+        result_.n_elec_occ = static_cast<double>(n_occ);
+        result_.e_entropy =
+            static_cast<double>(e_ent_ha) / qe_units::rydberg_to_hartree;
+
+        // Shared rank-0-gated formatter (same line as the CUDA loop).
+        internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
 
         if (converged) {
             result_.converged = true;
             if (log_rank0)
                 ATV_INFO("[pw] converged iter={} energy_ry={:.8f} mag={}",
                          iter + 1, result_.energy, result_.magnetization);
+                ATV_INFO("[pw] converged iter={} energy_ry={:.8f} "
+                         "e_fermi_ry={:.6f} n_occ={:.6f}",
+                         iter + 1, result_.energy, result_.e_fermi,
+                         result_.n_elec_occ);
             break;
         }
     }
@@ -417,6 +595,10 @@ PW copy_params(const PW& m) {
     p.pulay_depth = m.pulay_depth;
     p.spin_polarized = m.spin_polarized;
     p.multiplicity = m.multiplicity;
+    p.smearing = m.smearing;
+    p.degauss = m.degauss;
+    p.mp_order = m.mp_order;
+    p.extra_bands = m.extra_bands;
     return p;
 }
 } // namespace
