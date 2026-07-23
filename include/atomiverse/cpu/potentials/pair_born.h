@@ -3,16 +3,33 @@
 ///
 /// Matches LAMMPS `pair_style born` with energy shift at cutoff
 /// (`pair_modify shift yes`): \(U(r_c)=0\). Units: energy [eV], length [Å].
+/// Multi-type tables enable Fumi–Tosi molten-salt short-range (compose with
+/// `PairCoulCut` / `coul/long` for the Coulomb term).
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "atomiverse/cpu/potentials/pair.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief Born–Mayer–Huggins pair potential (single-type, shifted at cutoff).
+/// @brief One Born–Mayer–Huggins type-pair coefficient entry.
+///
+/// Frame `kAtom_type` values are used as-is (0-based). Symmetric table: (i,j)
+/// and (j,i) share the same parameters.
+struct BornTypeCoeff {
+    int type_i;    ///< first atom type (frame `kAtom_type`)
+    int type_j;    ///< second atom type
+    double A;      ///< Born–Mayer prefactor [eV]
+    double rho;    ///< Softness length [Å] (> 0)
+    double sigma;  ///< Ionic-pair radius parameter [Å]
+    double C;      ///< Dispersion coefficient [eV·Å⁶]
+    double D;      ///< \(r^{-8}\) coefficient [eV·Å⁸]
+};
+
+/// @brief Born–Mayer–Huggins pair potential (shifted at cutoff).
 ///
 /// \[
 /// U(r)=A\,e^{(\sigma-r)/\rho}-\frac{C}{r^{6}}+\frac{D}{r^{8}}-U_{\mathrm{shift}},
@@ -26,8 +43,7 @@ namespace cpu {
 /// (unshifted; shift is constant).
 ///
 /// O(N²) all-pairs walk (NeighborConsumer withdrawn) — same foothold shape as
-/// `PairBuck` / `PairYukawa`. Production multi-type + NL is deferred to
-/// Fumi–Tosi / salt productization.
+/// `PairBuck` / `PairYukawa`. Coulomb is a separate component (`PairCoulCut`).
 class PairBorn : public Pair {
   public:
     /// @param A      Born–Mayer prefactor [eV] (must be ≥ 0).
@@ -39,7 +55,21 @@ class PairBorn : public Pair {
     PairBorn(double A, double rho, double sigma, double C, double D,
              double cutoff);
 
+    /// @brief Multi-type Fumi–Tosi table constructor.
+    ///
+    /// Every interacting type pair must be listed. Unlisted pairs do not
+    /// interact (no silent mixing — Fumi–Tosi parameters are not Lorentz–
+    /// Berthelot).
+    ///
+    /// @param coeffs Type-pair coefficients; must not be empty.
+    /// @param cutoff Interaction cutoff [Å] (> 0).
+    /// @throws std::invalid_argument if `coeffs` is empty or a parameter is invalid.
+    PairBorn(std::vector<BornTypeCoeff> coeffs, double cutoff);
+
     std::string name() const override { return "born"; }
+
+    /// @brief True when a per-type coefficient table is active.
+    bool is_multi_type() const { return multi_; }
 
     /// @brief O(N²) path: withdraw neighbor-list gate.
     const NeighborConsumer* as_neighbor_consumer() const final {
@@ -50,13 +80,33 @@ class PairBorn : public Pair {
     void compute(const LaunchContext& ctx) override;
 
   private:
+    struct Entry {
+        double A = 0;
+        double inv_rho = 0;
+        double sigma = 0;
+        double C = 0;
+        double D = 0;
+        double v_shift = 0;
+        bool set = false;
+    };
+
+    const Entry& entry_for_(int ti, int tj) const;
+
+    // Single-type path
     double A_ = 0;
     double rho_ = 0;
     double sigma_ = 0;
     double C_ = 0;
     double D_ = 0;
+    double inv_rho_ = 0;
+    double v_shift_ = 0;
+
+    // Multi-type path
+    bool multi_ = false;
+    int n_types_ = 0;
+    std::vector<Entry> table_; ///< dense n_types_ × n_types_
+
     double cutoff_sq_ = 0;
-    double v_shift_ = 0; ///< U(r_c) so shifted potential is zero at cutoff
 };
 
 } // namespace cpu

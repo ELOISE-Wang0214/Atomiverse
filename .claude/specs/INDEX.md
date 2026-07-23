@@ -23,6 +23,7 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open |
 | [born-repulsion-foothold](born-repulsion-foothold/) | metalwalls / E8 Born BMH | open |
+| `fumi-tosi-nacl` | metalwalls-method-loop E8 | `wf/fumi-tosi-nacl` |
 
 *(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
 `wf/<slug>` before code)*

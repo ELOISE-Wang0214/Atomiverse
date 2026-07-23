@@ -17,3 +17,10 @@
 - **Command:** `lmp -in in.born_dimer`
 - **Pin:** PE = 509.3671885909988 eV; F1x = -201.72730961087780 eV/Å
 - **Formula:** A exp((σ−r)/ρ) − C/r⁶ + D/r⁸ (ρ softness length)
+## fumi-tosi-nacl (2026-07-24)
+
+- **Oracle:** LAMMPS `hybrid/overlay born + coul/cut` (units metal; `pair_modify pair born shift yes`)
+- **Inputs:** `tools/metalwalls_oracle/inputs/lammps/in.fumi_tosi_nacl4`
+- **Command:** `lmp -in in.fumi_tosi_nacl4`
+- **Pin:** PE = 54.7707332302457 eV; forces in REFERENCE.md
+- **ATV:** multi-type `cpu::PairBorn` + `cpu::PairCoulCut` on 4-ion NaCl square
