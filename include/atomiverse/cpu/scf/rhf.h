@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <xtensor/containers/xtensor.hpp>
+
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
@@ -191,6 +193,28 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when the system has no virtual
     ///         orbitals (e.g. He/STO-3G — no occ→virt response exists).
     vib::HessianResult hessian(Frame& frame);
+
+    /// @brief Static dipole polarizability α_ab = ∂μ_a/∂F_b [a.u.] of the
+    ///        most recent `run()` via CPHF electric-field response.
+    ///
+    /// Solves ¹(A+B)·U^{F_b} = −r_b^{vo} for the three Cartesian field
+    /// directions (the LHS is the link-08 `OrbitalHessian` singlet σ₊ —
+    /// the same kernel used by nuclear CPHF in `hessian()`), then assembles
+    ///
+    ///   α_ab = −4 Σ_ai U^{F_b}_ai ⟨a|r_a|i⟩
+    ///
+    /// with length-gauge dipole integrals about the center of nuclear charge
+    /// (same origin as `MultipoleObserver` / `ExternalField`). Closed-shell
+    /// RHF only; S^{(F)} = 0 so the nuclear multipole does not enter the
+    /// second derivative. Matches PySCF finite-field / CPHF polarizability
+    /// on the same geometry and basis (see regressions/scf/static-polariz-h2o).
+    ///
+    /// @return Dense symmetric 3×3 tensor [a.u. = e²·Bohr²/Ha], row a =
+    ///         Cartesian dipole axis, column b = field axis.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when the system has no virtual
+    ///         orbitals (e.g. He/STO-3G — no occ→virt response exists).
+    xt::xtensor<double, 2> polarizability() const;
 
   protected:
     /// @brief Closed-shell occupation: n_alpha = n_beta = n_electrons / 2
