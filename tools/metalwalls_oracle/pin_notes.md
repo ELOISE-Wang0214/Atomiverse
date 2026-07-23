@@ -24,3 +24,14 @@
 - **Command:** `lmp -in in.fumi_tosi_nacl4`
 - **Pin:** PE = 54.7707332302457 eV; forces in REFERENCE.md
 - **ATV:** multi-type `cpu::PairBorn` + `cpu::PairCoulCut` on 4-ion NaCl square
+## thomas-fermi-electrode (2026-07-24)
+
+- **Oracle:** MetalWalls Thomas–Fermi model (Scalfi et al. JCP 153, 174704 (2020))
+- **Why not LAMMPS:** ELECTRODE package is perfect conductor only (no \(l_{\mathrm{TF}}\))
+- **Binary:** no `mw` on agent host → offline discrete pin (same algebra as ConstPotBO + TF diagonal)
+- **Script:** `tools/metalwalls_oracle/inputs/metalwalls/thomas-fermi-electrode/pin_gold_cap.py`
+- **Command:** `python3 .../pin_gold_cap.py`
+- **Pin:** empty Au capacitor toy, \(\Delta\Psi=1\) V, \(\eta=1/0.56\) Å⁻¹, \(d=4/a_0^3\),
+  \(R=40\): \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=0)=4.620945546104\times 10^{-3}\,e\),
+  \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=2\,\mathrm{Å})=3.934601758679\times 10^{-3}\,e\)
+- **perf_exempt:** no MetalWalls twin binary

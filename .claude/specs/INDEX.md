@@ -29,6 +29,7 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | `electrode-charge-predictor/` | `wf/electrode-charge-predictor` | E2 ASPC charge warm-start + CG iters gate |
 | `finite-field-single-electrode/` | `wf/finite-field-single-electrode` | E3 Dufils single electrode; acceptance met on worker branch |
 | `pim-induced-dipole-bulk` | `wf/pim-induced-dipole-bulk` | MetalWalls E4 bulk PIM |
+| [thomas-fermi-electrode](thomas-fermi-electrode/SPEC.md) | `wf/thomas-fermi-electrode` | E7 Thomas–Fermi metallicity |
 
 *(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
 `wf/<slug>` before code)*
