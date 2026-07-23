@@ -51,6 +51,11 @@ class GPWEvaluator : public cpu::GPW {
     double fd_step = 1e-3;
     /// @brief Grimme DFT-D3 (zero damping, PBE params).
     bool d3 = false;
+    /// @brief Orbital Transformation (OT) SCF minimizer instead of
+    ///        diagonalization + DIIS. Same gapped ground state; preferred for
+    ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).
+    ///        Units-free switch; energy still [Hartree] on `last_result()`.
+    bool use_ot = false;
     /// @brief One Kind per distinct element in the system.
     std::vector<Kind> kinds;
 
@@ -58,20 +63,21 @@ class GPWEvaluator : public cpu::GPW {
     /// @param cutoff_ry Plane-wave cutoff [Ry].
     /// @param max_iter Max SCF iterations.
     /// @param tol SCF residual tolerance.
-    /// @param mix Density mixing.
+    /// @param mix Density mixing (DIIS path; ignored when `use_ot`).
     /// @param xc XC functional.
     /// @param nonperiodic Cluster BC when true.
     /// @param compute_forces Enable analytic forces.
     /// @param fd_step FD step [Bohr].
     /// @param d3 Enable DFT-D3.
+    /// @param use_ot Enable OT minimizer (product path; no env required).
     explicit GPWEvaluator(std::vector<Kind> kinds, double cutoff_ry = 300.0,
                           int max_iter = 200, double tol = 1e-7, double mix = 0.3,
                           XcKind xc = XcKind::PADE, bool nonperiodic = false,
                           bool compute_forces = false, double fd_step = 1e-3,
-                          bool d3 = false)
+                          bool d3 = false, bool use_ot = false)
         : cutoff_ry(cutoff_ry), max_iter(max_iter), tol(tol), mix(mix), xc(xc),
           nonperiodic(nonperiodic), compute_forces(compute_forces),
-          fd_step(fd_step), d3(d3), kinds(std::move(kinds)) {}
+          fd_step(fd_step), d3(d3), use_ot(use_ot), kinds(std::move(kinds)) {}
 
     std::string name() const override { return "gpw_evaluator"; }
 

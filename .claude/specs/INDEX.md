@@ -5,8 +5,12 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Slug | Branch | Domain | Notes |
+| ---- | ------ | ------ | ----- |
+| `ot-minimizer-water` | `wf/ot-minimizer-water` | gpw | OT product switch + CP2K OT water pin |
+
+*(CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees merged
+into `dev` and removed.)*
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
