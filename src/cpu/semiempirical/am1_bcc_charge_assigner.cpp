@@ -101,7 +101,7 @@ std::vector<double> to_std_vector(const ::rust::Vec<double>& values) {
 } // namespace
 
 AM1BCCChargeAssigner::AM1BCCChargeAssigner(AM1BCCChargeConfig config)
-    : config_(std::move(config)), solver_(config_.am1) {}
+    : config_(std::move(config)), solver_(std::move(config_.am1)) {}
 
 std::vector<double> AM1BCCChargeAssigner::assign(molrs::FrameRef& frame) {
     cpu::Frame work = build_am1_frame(frame);

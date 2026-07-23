@@ -1,5 +1,5 @@
 /// @file python/src/bindings/bind_semiempirical.cpp
-/// @brief AM1 semiempirical single-point bindings: AM1Config, AM1Evaluator,
+/// @brief AM1 semiempirical single-point bindings: AM1, AM1Evaluator,
 ///        AM1Result, and the `single_point` entry.
 ///
 /// Single-point only — `AM1Evaluator` carries `Energy | Charge |
@@ -30,18 +30,18 @@
 using namespace ATV;
 
 void bind_semiempirical(nb::module_& m) {
-    using cpu::semiempirical::AM1Config;
+    using cpu::semiempirical::AM1;
     using cpu::semiempirical::AM1Evaluator;
     using cpu::semiempirical::AM1Result;
 
-    // ── AM1Config (= NDDOConfig; `method` is pinned to AM1, not exposed) ──
-    nb::class_<AM1Config>(m, "AM1Config",
+    // ── AM1 (= NDDOConfig; `method` is pinned to AM1, not exposed) ──
+    nb::class_<AM1>(m, "AM1",
                           "AM1 SCF configuration (method pinned to AM1).")
         .def(
             "__init__",
-            [](AM1Config* cfg, int charge, int multiplicity, int max_iter,
+            [](AM1* cfg, int charge, int multiplicity, int max_iter,
                double density_tol, double energy_tol) {
-                new (cfg) AM1Config{};
+                new (cfg) AM1{};
                 cfg->charge = charge;
                 cfg->multiplicity = multiplicity;
                 cfg->max_iter = max_iter;
@@ -54,12 +54,12 @@ void bind_semiempirical(nb::module_& m) {
             "Construct with total charge [e], spin multiplicity, SCF "
             "iteration cap, density-norm tolerance (dimensionless), and "
             "energy tolerance [Hartree].")
-        .def_rw("charge", &AM1Config::charge, "Total molecular charge [e].")
-        .def_rw("multiplicity", &AM1Config::multiplicity, "Spin multiplicity.")
-        .def_rw("max_iter", &AM1Config::max_iter, "SCF iteration cap.")
-        .def_rw("density_tol", &AM1Config::density_tol,
+        .def_rw("charge", &AM1::charge, "Total molecular charge [e].")
+        .def_rw("multiplicity", &AM1::multiplicity, "Spin multiplicity.")
+        .def_rw("max_iter", &AM1::max_iter, "SCF iteration cap.")
+        .def_rw("density_tol", &AM1::density_tol,
                 "Density-norm convergence threshold (dimensionless).")
-        .def_rw("energy_tol", &AM1Config::energy_tol,
+        .def_rw("energy_tol", &AM1::energy_tol,
                 "Energy convergence threshold [Hartree].");
 
     // ── AM1Result (= NDDOResult) ──
@@ -85,13 +85,14 @@ void bind_semiempirical(nb::module_& m) {
         m, "AM1Evaluator",
         "AM1 single-point Evaluator (Energy | Charge | DensityMatrix; no "
         "forces — plugs into single_point, never into MD).")
-        .def(nb::init<AM1Config>(), nb::arg("config") = AM1Config{},
-             "Construct with an AM1 configuration.")
+        .def(nb::init<>(), "Default construct; set members on method().")
         .def("last_result", &AM1Evaluator::last_result,
              nb::rv_policy::reference_internal,
              "Results of the most recent solve (AM1Result).")
-        .def("config", &AM1Evaluator::config, nb::rv_policy::reference_internal,
-             "The configuration this evaluator was constructed with.");
+        .def("method",
+             nb::overload_cast<>(&AM1Evaluator::method),
+             nb::rv_policy::reference_internal,
+             "Owned concrete AM1 method (parameters as members).");
 
     // ── single_point: one Evaluate pass over a borrowed molrs.Frame ──
     m.def(
@@ -118,7 +119,7 @@ void bind_semiempirical(nb::module_& m) {
             // on this path — the solve ran inside the per-rank
             // materializers.
             cpu::task::AM1EvaluatorParams p{};
-            const AM1Config& cfg = evaluator.config();
+            const AM1& cfg = evaluator /*members*/ ;
             p.charge = cfg.charge;
             p.multiplicity = cfg.multiplicity;
             p.max_iter = cfg.max_iter;
