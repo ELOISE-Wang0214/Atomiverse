@@ -7,6 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — E1 ConstPotBO parallel-plate |
 | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — GPW PBE-D3(BJ) periodic water dimer |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
