@@ -235,6 +235,7 @@ atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/dynamics/test_fix_rattle.cpp)
 atv_add_cpp_test(test_cpu_md_write_sets  cpu/dynamics/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
 atv_add_cpp_test(test_cpu_path_remd       cpu/path/test_remd.cpp)
+atv_add_cpp_test(test_cpu_path_pimd       cpu/path/test_pimd.cpp)
 atv_add_cpp_test(test_cpu_criterion       cpu/driver/test_criterion.cpp)
 atv_add_cpp_test(test_cpu_driver_nesting  cpu/driver/test_driver_nesting.cpp)
 # scf-driver-refactor-01-plumb: scf::Phase / PhaseKind::SCF / PhaseTraits<scf::Phase>

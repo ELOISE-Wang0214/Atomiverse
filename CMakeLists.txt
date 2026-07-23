@@ -308,6 +308,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/replica/replica_expansion.cpp
             src/cpu/path/neb.cpp
             src/cpu/path/remd.cpp
+            src/cpu/path/pimd.cpp
+            src/cpu/path/ring_polymer_spring.cpp
             src/cpu/bias/distance_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
         )

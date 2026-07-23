@@ -192,7 +192,7 @@ propagator, so the XL-BOMD row stays ○.
 
 | Method                                 | CPU | CUDA |
 | -------------------------------------- | :-: | :--: |
-| Path-integral molecular dynamics       |  ○  |   ○  |
+| Path-integral molecular dynamics       |  ✓  |   ○  |
 | Ring-polymer molecular dynamics        |  ○  |   ○  |
 | Centroid molecular dynamics            |  ○  |   ○  |
 | Thermostatted ring-polymer MD          |  ○  |   ○  |

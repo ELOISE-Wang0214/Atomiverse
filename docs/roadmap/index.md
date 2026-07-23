@@ -124,7 +124,7 @@ completeness. Each item should ship one textbook regression under
 | 1 | ~~**FIRE minimizer**~~ | **SHIPPED 2026-07-23** (`cpu::minimizer::FIRE`, `reg_fire_lj_dimer`) | — |
 | 2 | ~~**Soft-core LJ (λ)**~~ | **SHIPPED 2026-07-23** (`cpu::PairLJSoft`, `reg_lj_soft_dimer`) | — |
 | 3 | ~~**Widom insertion**~~ | **SHIPPED 2026-07-23** (`cpu::Widom`, `reg_widom_hs`) | — |
-| 4 | **PIMD skeleton** (harmonic or free particle first) | Second real consumer of `IdentityReplication` + bead coupling; nuclear-quantum axis | RPMD estimators, ring-polymer contraction, multi-GPU |
+| 4 | ~~**PIMD skeleton**~~ | **SHIPPED 2026-07-23** (`cpu::path::Pimd`, `reg_pimd_free_particle`) | — |
 | 5 | **Variable-cell Minimize** (classical virial or PW strain-FD stress) | Cell DOFs in the optimizer — never exercised | Fully anisotropic PR cell dynamics, joint cell+atom fancy coords |
 | 6 | **Dimer TS** (or growing string) | Second path method; proves PathDriver is not NEB-only | IRC, conical intersections, CUDA path |
 
