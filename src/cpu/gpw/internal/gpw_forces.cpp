@@ -50,6 +50,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.nonperiodic = m.nonperiodic;
     p.local_pp_on_grid = m.local_pp_on_grid;
     p.d3 = m.d3;
+    p.d3bj = m.d3bj;
+    p.d4 = m.d4;
     p.use_ot = m.use_ot;
     return p;
 }
@@ -404,9 +406,13 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg) {
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
     // Grimme DFT-D3 dispersion forces (additive, geometry-only).
-    if (cfg.d3 && cfg.d3bj)
+    // D4 energy is supported; analytic D4 forces are out of scope for this
+    // foothold (energy pin only).
+    const int n_disp =
+        (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    if (n_disp > 1)
         throw std::runtime_error(
-            "GPW forces: d3 and d3bj are mutually exclusive");
+            "GPW forces: d3, d3bj, and d4 are mutually exclusive");
     if (cfg.d3 || cfg.d3bj) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));

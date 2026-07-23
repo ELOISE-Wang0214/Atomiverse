@@ -49,10 +49,12 @@ class GPWEvaluator : public cpu::GPW {
     bool compute_forces = false;
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
-    /// @brief Grimme DFT-D3 (zero damping, PBE params). Mutually exclusive with d3bj.
+    /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs d3bj/d4.
     bool d3 = false;
-    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Mutually exclusive with d3.
+    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs d3/d4.
     bool d3bj = false;
+    /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs d3/d3bj.
+    bool d4 = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of
     ///        diagonalization + DIIS. Same gapped ground state; preferred for
     ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).

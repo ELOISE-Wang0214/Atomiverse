@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
@@ -788,40 +789,43 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0,
                  periodic);
 
-    // Grimme DFT-D3 dispersion — geometry-only additive correction (independent
-    // of the SCF), folded into the final total energy. Zero damping (`d3`) and
-    // Becke–Johnson (`d3bj`) are mutually exclusive.
+    // Grimme DFT-D3 / DFT-D4 — geometry-only additive corrections (independent
+    // of the SCF), folded into the final total energy. `d3`, `d3bj`, and `d4`
+    // are pairwise mutually exclusive.
     double e_d3 = 0.0;
-    if (cfg.d3 && cfg.d3bj)
+    const int n_disp_flags =
+        (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    if (n_disp_flags > 1)
         throw std::runtime_error(
-            "GPW: d3 (zero damping) and d3bj (BJ damping) are mutually "
-            "exclusive — set only one");
-    if (cfg.d3 || cfg.d3bj) {
+            "GPW: d3, d3bj, and d4 are mutually exclusive — set only one");
+    if (cfg.d3 || cfg.d3bj || cfg.d4) {
         std::vector<int> Z(atoms.size());
         std::vector<std::array<double, 3>> pos(Z.size());
         for (std::size_t i = 0; i < Z.size(); ++i) {
             Z[i] = atoms[i].z;
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
-        // In-tree D3 tables only (basis_data/dftd3_tables.h) — coverage is the
-        // supported element set; anything outside it throws (no fallback).
-        for (int z : Z)
-            if (!D3Params::supports_element(z))
-                throw std::runtime_error(
-                    "GPW D3: element Z=" + std::to_string(z)
-                    + " is not in the in-tree D3 table (no fallback)");
-        if (cfg.d3)
-            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
-        else {
-            // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
-            // CP2K R_CUTOFF 20 is Å → 37.79 Bohr printed; energy sum uses
-            // 2× that (~75.59 Bohr), matching offline pins to ~1e-11 Ha.
-            constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-            constexpr double kRcutBohr = 2.0 * 20.0 * kAng2Bohr;
-            e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                kRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
-                                /*cp2k_cn=*/true)
-                       .energy;
+        if (cfg.d4) {
+            e_d3 = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic);
+        } else {
+            // In-tree D3 tables only (basis_data/dftd3_tables.h).
+            for (int z : Z)
+                if (!D3Params::supports_element(z))
+                    throw std::runtime_error(
+                        "GPW D3: element Z=" + std::to_string(z) +
+                        " is not in the in-tree D3 table (no fallback)");
+            if (cfg.d3)
+                e_d3 =
+                    dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
+            else {
+                // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
+                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+                constexpr double kRcutBohr = 2.0 * 20.0 * kAng2Bohr;
+                e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                    kRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                    /*cp2k_cn=*/true)
+                           .energy;
+            }
         }
     }
 
@@ -1583,6 +1587,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.local_pp_on_grid = m.local_pp_on_grid;
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
+    p.d4 = m.d4;
     p.use_ot = m.use_ot;
     return p;
 }

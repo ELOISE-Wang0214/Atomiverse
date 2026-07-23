@@ -17,6 +17,7 @@ the git log. Method census: `docs/roadmap/`.
 | [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — Spec: `freeze-electrode-atoms` |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
 | [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
+| [gpw-d4-water](gpw-d4-water/) | `wf/gpw-d4-water` | open — CP2K wave 2 GPW DFT-D4 |
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 
