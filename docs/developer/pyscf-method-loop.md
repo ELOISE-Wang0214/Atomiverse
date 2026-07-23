@@ -71,3 +71,4 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 tutorial: methods/h2-b3lyp-rpa-tddft.md
 - 2026-07-23 tutorial: methods/spin-flip-tda-o2.md
 - 2026-07-23 tutorial: methods/rohf-hessian-o2.md
+- 2026-07-23 assign wave 5: adc2-h2co-sto3g (excited-states), mp3-h2-sto3g (post-hf), ccsd-h2-sto3g (post-hf), g0w0-h2-sto3g (excited-states), b2plyp-h2o (dft) → in_progress; skip ccsd-t (needs CCSD), casci, delta-scf; pending_left=3

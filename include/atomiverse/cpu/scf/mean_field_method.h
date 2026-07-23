@@ -41,6 +41,7 @@
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/mp3.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
@@ -396,6 +397,16 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///         non-converged SCF / spherical basis (no fallback).
     GradientResult mp2_forces(Frame& frame,
                               const SCFInitialGuess* guess = nullptr);
+
+    /// @brief Canonical closed-shell MP3 on top of a fresh RHF run
+    ///        (materializes ERI). \(E_{\mathrm{corr}}=E^{(2)}+E^{(3)}\)
+    ///        in the spin-orbital Szabo–Ostlund / Psi4 diagram sum. Open-shell,
+    ///        RI, and SCS scales are rejected (no fallback). Member `frozen`
+    ///        freezes the lowest N occupied spatial MOs.
+    /// @param frame  Geometry; drives a fresh SCF then adds the correction.
+    /// @param guess  Optional density-matrix guess for the reference SCF.
+    /// @return MP3 correlation pieces + total energy [Hartree].
+    MP3Result mp3(Frame& frame, const SCFInitialGuess* guess = nullptr);
 
     /// @brief Tiny full-CI on top of a fresh RHF-style run (materializes ERI).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.

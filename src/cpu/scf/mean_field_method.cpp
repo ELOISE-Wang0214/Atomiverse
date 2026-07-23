@@ -40,6 +40,7 @@
 #include "atomiverse/cpu/scf/internal/minao.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
+#include "atomiverse/cpu/scf/internal/mp3_pack.h"
 #include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
 #include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
@@ -1079,6 +1080,34 @@ MeanFieldMethod<D>::mp2_forces(Frame& frame, const SCFInitialGuess* guess) {
     }
     frame.meta.get(kEnergy) = gr.energy;
     return gr;
+}
+
+template <typename D>
+MP3Result MeanFieldMethod<D>::mp3(Frame& frame, const SCFInitialGuess* guess) {
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp3: closed-shell RMP3 only — use RHF "
+            "(open-shell MP3 is a follow-up).");
+    if (ri != RI::None)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp3: RI-MP3 is not implemented — set "
+            "ri=RI::None");
+    if (std::fabs(mp2_os_scale - 1.0) > 0.0 ||
+        std::fabs(mp2_ss_scale - 1.0) > 0.0)
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp3: spin-component-scaled MP3 is not "
+            "implemented — keep mp2_os_scale=mp2_ss_scale=1");
+
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame, guess);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::mp3: SCF reference did not converge — refusing "
+            "to compute a correlation correction on a non-stationary "
+            "determinant (no fallback)");
+    return mp3_energy(*integrals_sp_, *det_sp_, e_total_, frozen);
 }
 
 template <typename D>

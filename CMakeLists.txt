@@ -520,6 +520,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/gradient.cpp
 
             src/cpu/scf/mp2.cpp
+            src/cpu/scf/mp3.cpp
             src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
