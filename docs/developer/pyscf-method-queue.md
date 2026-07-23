@@ -4,16 +4,39 @@ Durable worklist for workflow `pyscf-method-loop`. Do not delete done rows.
 The census phase rewrites **pending** from `docs/roadmap/` ○ rows that PySCF
 can oracle offline; **done** / **blocked** history is preserved across runs.
 
-Census date: 2026-07-23. Roadmap CPU ○ ∩ PySCF oracle; excludes classical MD /
-FF / sampling / CUDA-Kokkos / ML / PW-GPW-without-Gaussian-twin / parked
-hf-parity product-depth / SE tables without PySCF twin / meta-GGA (no τ) /
-range-separated (no erf ERI). Axis extensions first after closed UMP2 + hybrid
-TDA: frozen-core MP2, CIS(D), SCS/SOS-MP2, MP2 grad, full LR-TDDFT, BLYP,
-GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
+Census date: 2026-07-23 (re-census after wave-6 exhaustion). Roadmap CPU ○ ∩
+PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
+PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
+without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
+CASPT2 (no stock PySCF). Prefer new family or scale over XC variants
+(BP86/B3PW91/B2GP-PLYP/…). Next axis after closed EOM-EE / CASCI / CCSD(T) /
+G0W0 / B2PLYP: EOM-IP/EA, UKS full-LR, ADC(2)-x/IP-ADC, CASSCF/NEVPT2, CC
+gradients, KS Hessians, open-shell MP2 forces, SF-TDDFT, MP4, CC2/EOM-CC2,
+dRPA/BSE, D4, EOM-SF, GF2.
 
 ## pending
 
-(empty)
+- [ ] `eom-ip-ccsd` | EOM-IP-CCSD | excited-states | h2o | sto-3g | IP eV | EOM-EE ✓; ionization channel; PySCF cc.eom_rccsd IP
+- [ ] `eom-ea-ccsd` | EOM-EA-CCSD | excited-states | h2 | sto-3g | EA eV | EOM-EE ✓; attachment channel; PySCF cc.eom_rccsd EA
+- [ ] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | excited-states | o2 | sto-3g | roots eV | UKS-TDA ✓; RKS full-LR ✓; open-shell Casida A/B; PySCF tdscf.TDDFT(UKS)
+- [ ] `adc2x-h2co-sto3g` | ADC(2)-x | excited-states | h2co | sto-3g | S1 eV | strict ADC(2) ✓; extended ADC(2)-x; PySCF adc method=adc(2)-x
+- [ ] `ip-adc2-h2o-sto3g` | IP-ADC(2) | excited-states | h2o | sto-3g | IP eV | ADC(2) EE ✓; ionization ADC; PySCF adc IP
+- [ ] `ea-adc2-h2-sto3g` | EA-ADC(2) | excited-states | h2 | sto-3g | EA eV | ADC(2) EE ✓; attachment ADC; PySCF adc EA
+- [ ] `casscf-h2-sto3g` | CASSCF | post-hf | h2 | sto-3g | e_tot | CASCI ✓; orbital optimization; PySCF mcscf.CASSCF
+- [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | needs CASSCF; partially/strongly contracted; PySCF mrpt.NEVPT
+- [ ] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
+- [ ] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
+- [ ] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
+- [ ] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
+- [ ] `sf-tddft-o2` | Spin-flip TDDFT | excited-states | o2 | sto-3g | excitation eV | SF-TDA ✓; full SF-RPA; PySCF TDDFT spin-flip
+- [ ] `mp4-h2-sto3g` | MP4(SDTQ) | post-hf | h2 | sto-3g | e_corr | MP3 ✓; fourth-order PT; PySCF mp.MP4
+- [ ] `cc2-h2-sto3g` | CC2 | post-hf | h2 | sto-3g | e_corr | approximate CC doubles foothold; unlocks EOM-CC2; PySCF cc.CC2
+- [ ] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | needs CC2 energy path; PySCF EOM-CC2
+- [ ] `direct-rpa-h2-sto3g` | Direct RPA | excited-states | h2 | sto-3g | e_corr | G0W0 screening twin as standalone corr; PySCF rpa.RPA
+- [ ] `bse-h2-sto3g` | Bethe–Salpeter BSE | excited-states | h2 | sto-3g | S1 eV | after G0W0 ✓; PySCF tdscf.BSE
+- [ ] `dft-d4-h2o-pbe` | DFT-D4 | dft | water | sto-3g | E_disp | D3 zero + BJ ✓; D4 open; PySCF/dftd4 offline pin
+- [ ] `eom-sf-ccsd-o2` | EOM-SF-CCSD | excited-states | o2 | sto-3g | ω eV | EOM-EE ✓; spin-flip EOM channel; PySCF eom_uccsd SF
+- [ ] `gf2-h2-sto3g` | GF2 | excited-states | h2 | sto-3g | QP | second-order Green's function; PySCF gf2
 
 ## in_progress
 
@@ -26,6 +49,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [!] `td-dftb` | blocked upstream — DFTB2 has no response path; not a PySCF twin
 - [!] `gfn2-xtb` | blocked — no PySCF oracle; xTB is external (GFN0 toy already ✓)
 - [!] `pm6-pm7` | blocked — NDDO tables / MOPAC twin, not PySCF
+- [!] `caspt2` | blocked — no stock PySCF oracle (OpenMolcas / external); NEVPT2 is the in-tree PySCF MRPT path
 
 ## done
 
