@@ -36,15 +36,15 @@ using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GridBasisFunction;
 using ATV::cpu::gpw::GridPrimitive;
 
-// Public face parity with PWSolver: move-only value type (basics).
+// Public face parity with PW: move-only value type (basics).
 static_assert(!std::is_copy_constructible<GpwDft>::value,
               "GpwDft must not be copyable (owns workspace/result)");
 static_assert(!std::is_copy_assignable<GpwDft>::value,
               "GpwDft must not be copy-assignable");
 static_assert(std::is_move_constructible<GpwDft>::value,
-              "GpwDft must be move-constructible (same as PWSolver)");
+              "GpwDft must be move-constructible (same as PW)");
 static_assert(std::is_move_assignable<GpwDft>::value,
-              "GpwDft must be move-assignable (same as PWSolver)");
+              "GpwDft must be move-assignable (same as PW)");
 
 namespace {
 
@@ -197,7 +197,7 @@ TEST(GpwSolverClass, WarmStartReachesColdFixedPoint) {
 
 // Lifecycle: build() is one-time, run() is re-entrant — two cold runs on the
 // same built solver give the identical result (geometry-dependent structures
-// are rebuilt per run, same as PWSolver).
+// are rebuilt per run, same as PW).
 TEST(GpwSolverClass, RunIsReentrantAfterSingleBuild) {
     pin_single_thread();
     const auto atoms = small_h2();
@@ -279,7 +279,7 @@ TEST(GpwSolverClass, AccessorsExposeConfigAndLastResult) {
 }
 
 // Lifecycle: move construction transfers the built state — the moved-to
-// solver runs without a second build() (move-only face, same as PWSolver).
+// solver runs without a second build() (move-only face, same as PW).
 TEST(GpwSolverClass, MoveConstructionPreservesBuiltState) {
     pin_single_thread();
     const auto atoms = small_h2();
