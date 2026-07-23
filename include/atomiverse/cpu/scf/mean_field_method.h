@@ -39,6 +39,7 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/casci.h"
+#include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
 #include "atomiverse/cpu/scf/fci.h"
 #include "atomiverse/cpu/scf/grid.h"
@@ -456,6 +457,16 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @param frame Geometry; drives a fresh SCF then the amplitude solve.
     /// @return CCSD correlation + total energy [Hartree], iteration count.
     CCSDResult ccsd(Frame& frame);
+
+    /// @brief Closed-shell CC2 on top of a fresh RHF run (materializes ERI).
+    ///
+    /// Approximate CC doubles (Christiansen, Koch, Jørgensen, Chem. Phys.
+    /// Lett. **243**, 409 (1995)): full singles residual, doubles residual
+    /// truncated to ≤ linear in T₂ with the T₁-dressed Fock. Matches PySCF
+    /// `cc.RCCSD` with `cc2=True`. Open-shell throws — no silent fallback.
+    /// @param frame Geometry; drives a fresh SCF then the amplitude solve.
+    /// @return CC2 correlation + total energy [Hartree], iteration count.
+    CC2Result cc2(Frame& frame);
 
     /// @brief Closed-shell CCSD(T) on top of a fresh RHF run (materializes ERI).
     ///

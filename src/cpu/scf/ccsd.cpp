@@ -74,7 +74,7 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
 } // namespace
 
 CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, double tol, int max_iter) {
+                        double e_scf_ha, double tol, int max_iter, bool cc2) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
@@ -395,44 +395,129 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
             return r;
         };
 
+        // CC2: T₁-only Fock dressing (no T₂ in F; PySCF rccsd Loo2/Lvv2).
+        // For canonical HF (f_ia=0, diagonal f) these strip to zero.
+        xt::xtensor<double, 2> Lvv2 = xt::zeros<double>({Nv, Nv});
+        xt::xtensor<double, 2> Loo2 = xt::zeros<double>({No, No});
+        if (cc2) {
+            for (int a = 0; a < nv; ++a)
+                for (int e = 0; e < nv; ++e) {
+                    double s = fvv(a, e);
+                    for (int m = 0; m < no; ++m)
+                        s -= fov(m, e) * t1(m, a);
+                    if (a == e)
+                        s -= eps_so[static_cast<std::size_t>(no + a)];
+                    Lvv2(a, e) = s;
+                }
+            for (int m = 0; m < no; ++m)
+                for (int i = 0; i < no; ++i) {
+                    double s = foo(m, i);
+                    for (int e = 0; e < nv; ++e)
+                        s += fov(m, e) * t1(i, e);
+                    if (m == i)
+                        s -= eps_so[static_cast<std::size_t>(m)];
+                    Loo2(m, i) = s;
+                }
+        }
+        // CC2: pure T₁·T₁ part of τ (no T₂) and T₁-only W intermediates
+        // (drop ¼ τ(T₂)·⟨mn||ef⟩ quadratic pieces of full CCSD W).
+        xt::xtensor<double, 4> tau_t1 = tau;
+        xt::xtensor<double, 4> Wmnij_cc2 = oooo;
+        xt::xtensor<double, 4> Wabef_cc2 = vvvv;
+        if (cc2) {
+            tau_t1 = make_tau(xt::zeros<double>({No, No, Nv, Nv}), t1, 1.0);
+            for (int m = 0; m < no; ++m)
+                for (int n = 0; n < no; ++n)
+                    for (int i = 0; i < no; ++i)
+                        for (int j = 0; j < no; ++j) {
+                            double s = oooo(m, n, i, j);
+                            for (int e = 0; e < nv; ++e) {
+                                s += t1(j, e) * ooov(m, n, i, e);
+                                s -= t1(i, e) * ooov(m, n, j, e);
+                            }
+                            for (int e = 0; e < nv; ++e)
+                                for (int f = 0; f < nv; ++f)
+                                    s += 0.25 * tau_t1(i, j, e, f) *
+                                         oovv(m, n, e, f);
+                            Wmnij_cc2(m, n, i, j) = s;
+                        }
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    for (int e = 0; e < nv; ++e)
+                        for (int f = 0; f < nv; ++f) {
+                            double s = vvvv(a, b, e, f);
+                            double tmp_baef = 0.0, tmp_abef = 0.0;
+                            for (int m = 0; m < no; ++m) {
+                                tmp_baef += t1(m, b) * ovvv(m, a, f, e);
+                                tmp_abef += t1(m, a) * ovvv(m, b, f, e);
+                            }
+                            s += -tmp_baef + tmp_abef;
+                            Wabef_cc2(a, b, e, f) = s;
+                        }
+        }
+
         for (int i = 0; i < no; ++i) {
             for (int j = 0; j < no; ++j) {
                 for (int a = 0; a < nv; ++a) {
                     for (int b = 0; b < nv; ++b) {
                         double s = oovv(i, j, a, b);
 
-                        // P(ab) Σ_e t2_ijae Ftmp_be
-                        for (int e = 0; e < nv; ++e) {
-                            double Fbe = Fvv(b, e);
-                            double Fae_ = Fvv(a, e);
-                            for (int m = 0; m < no; ++m) {
-                                Fbe -= 0.5 * t1(m, b) * Fme(m, e);
-                                Fae_ -= 0.5 * t1(m, a) * Fme(m, e);
-                            }
-                            s += t2(i, j, a, e) * Fbe - t2(i, j, b, e) * Fae_;
-                        }
-                        // − P(ij) Σ_m t2_imab Ftmp_mj
-                        for (int m = 0; m < no; ++m) {
-                            double Fmj = Foo(m, j);
-                            double Fmi_ = Foo(m, i);
+                        if (cc2) {
+                            // P(ab) Σ_e t2_ijae Lvv2_be  − P(ij) Σ_m t2_imab Loo2_mj
+                            for (int e = 0; e < nv; ++e)
+                                s += t2(i, j, a, e) * Lvv2(b, e) -
+                                     t2(i, j, b, e) * Lvv2(a, e);
+                            for (int m = 0; m < no; ++m)
+                                s -= t2(i, m, a, b) * Loo2(m, j) -
+                                     t2(j, m, a, b) * Loo2(m, i);
+                            // W(T1)·τ(T1 only) — no T₂·W / ring
+                            for (int m = 0; m < no; ++m)
+                                for (int n = 0; n < no; ++n)
+                                    s += 0.5 * tau_t1(m, n, a, b) *
+                                         Wmnij_cc2(m, n, i, j);
+                            for (int e = 0; e < nv; ++e)
+                                for (int f = 0; f < nv; ++f)
+                                    s += 0.5 * tau_t1(i, j, e, f) *
+                                         Wabef_cc2(a, b, e, f);
+                        } else {
+                            // P(ab) Σ_e t2_ijae Ftmp_be
                             for (int e = 0; e < nv; ++e) {
-                                Fmj += 0.5 * t1(j, e) * Fme(m, e);
-                                Fmi_ += 0.5 * t1(i, e) * Fme(m, e);
+                                double Fbe = Fvv(b, e);
+                                double Fae_ = Fvv(a, e);
+                                for (int m = 0; m < no; ++m) {
+                                    Fbe -= 0.5 * t1(m, b) * Fme(m, e);
+                                    Fae_ -= 0.5 * t1(m, a) * Fme(m, e);
+                                }
+                                s += t2(i, j, a, e) * Fbe -
+                                     t2(i, j, b, e) * Fae_;
                             }
-                            s -= t2(i, m, a, b) * Fmj - t2(j, m, a, b) * Fmi_;
-                        }
-                        for (int m = 0; m < no; ++m)
-                            for (int n = 0; n < no; ++n)
-                                s += 0.5 * tau(m, n, a, b) * Wmnij(m, n, i, j);
-                        for (int e = 0; e < nv; ++e)
-                            for (int f = 0; f < nv; ++f)
-                                s += 0.5 * tau(i, j, e, f) * Wabef(a, b, e, f);
+                            // − P(ij) Σ_m t2_imab Ftmp_mj
+                            for (int m = 0; m < no; ++m) {
+                                double Fmj = Foo(m, j);
+                                double Fmi_ = Foo(m, i);
+                                for (int e = 0; e < nv; ++e) {
+                                    Fmj += 0.5 * t1(j, e) * Fme(m, e);
+                                    Fmi_ += 0.5 * t1(i, e) * Fme(m, e);
+                                }
+                                s -= t2(i, m, a, b) * Fmj -
+                                     t2(j, m, a, b) * Fmi_;
+                            }
+                            for (int m = 0; m < no; ++m)
+                                for (int n = 0; n < no; ++n)
+                                    s += 0.5 * tau(m, n, a, b) *
+                                         Wmnij(m, n, i, j);
+                            for (int e = 0; e < nv; ++e)
+                                for (int f = 0; f < nv; ++f)
+                                    s += 0.5 * tau(i, j, e, f) *
+                                         Wabef(a, b, e, f);
 
-                        // P(ij)P(ab) ring
-                        s += ring_at(i, j, a, b) - ring_at(j, i, a, b) -
-                             ring_at(i, j, b, a) + ring_at(j, i, b, a);
+                            // P(ij)P(ab) ring
+                            s += ring_at(i, j, a, b) - ring_at(j, i, a, b) -
+                                 ring_at(i, j, b, a) + ring_at(j, i, b, a);
+                        }
 
                         // + P(ij) einsum('ie,jeba->ijab', t1, ovvv)
+                        // (both CCSD and CC2)
                         double v1 = 0.0, v2 = 0.0;
                         for (int e = 0; e < nv; ++e) {
                             v1 += t1(i, e) * ovvv(j, e, b, a);
@@ -517,7 +602,14 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
 
 CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                        double e_scf_ha, double tol, int max_iter) {
-    return ccsd_solve(ints, det, e_scf_ha, tol, max_iter).result;
+    return ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false).result;
+}
+
+CC2Result cc2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                     double e_scf_ha, double tol, int max_iter) {
+    const CCSDResult r =
+        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/true).result;
+    return CC2Result{r.e_corr, r.e_tot, r.iterations, r.converged};
 }
 
 namespace {
@@ -637,7 +729,8 @@ double triples_energy(const CCSDSolution& amps) {
 
 CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                           double e_scf_ha, double tol, int max_iter) {
-    CCSDSolution sol = ccsd_solve(ints, det, e_scf_ha, tol, max_iter);
+    CCSDSolution sol =
+        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false);
     const double e_t = triples_energy(sol);
     const double e_corr = sol.result.e_corr + e_t;
     return CCSDTResult{e_corr, e_scf_ha + e_corr, sol.result.e_corr, e_t,

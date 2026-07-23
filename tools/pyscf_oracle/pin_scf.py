@@ -15,6 +15,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py mp3 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py cc2 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py ccsd-t --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
@@ -114,7 +115,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "cc2", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -857,6 +858,27 @@ def main() -> int:
         t2a = _np.asarray(t2).ravel()
         out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
         out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+    elif m == "cc2":
+        # Closed-shell CC2 (Christiansen 1995). Stock PySCF has no cc.CC2;
+        # oracle is rccsd.RCCSD with cc2=True (same as rccsd_slow).
+        import numpy as _np
+        from pyscf.cc import rccsd as _rccsd
+
+        mycc = _rccsd.RCCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        mycc.conv_tol_normt = min(args.conv_tol, 1e-10)
+        mycc.cc2 = True
+        e_corr, t1, t2 = mycc.kernel()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_cc2_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["cc2_converged"] = bool(mycc.converged)
+        t1a = _np.asarray(t1).ravel()
+        t2a = _np.asarray(t2).ravel()
+        out["t1_norm"] = float(_np.sqrt(t1a.dot(t1a)))
+        out["t2_norm"] = float(_np.sqrt(t2a.dot(t2a)))
+        out["oracle"] = "pyscf_cc_rccsd_cc2"
     elif m == "ccsd-t":
         # Closed-shell CCSD(T): CCSD + non-iterative (T) (PySCF cc.CCSD.ccsd_t).
         import numpy as _np
