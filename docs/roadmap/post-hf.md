@@ -29,9 +29,9 @@ post-SCF members on the concrete method (`RHF::mp2` / `UHF::mp2` /
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
-Multireference PT (NEVPT2 / CASPT2) and full density-based CC analytic
-gradients remain open; CCSD nuclear forces ship as FD of the CCSD energy
-(`RHF::ccsd_forces`).
+**SC-NEVPT2** ships (`RHF::nevpt2`); PC/QD-NEVPT2, CASPT2, and full
+density-based CC analytic gradients remain open. CCSD nuclear forces ship
+as FD of the CCSD energy (`RHF::ccsd_forces`).
 
 ## 1. Møller–Plesset Perturbation Theory
 
@@ -196,9 +196,11 @@ open-shell CC, no density-fitted CC, no CCSD Hessian / CCSD(T) forces yet.
 runs the dense FCI kernel in the active space (`reg_casci-h2-sto3g` vs PySCF
 `mcscf.CASCI`). **CASSCF** (`RHF::casscf(frame, ncas, nelecas)`) adds
 two-step orbital optimization on the same active-space FCI kernel
-(`reg_casscf-h2-sto3g` vs PySCF `mcscf.CASSCF`). No RAS/GAS, no state-averaged
-CASSCF product path, no CASSCF gradient, no MRPT yet (NEVPT2 is the next
-PySCF-oracle candidate).
+(`reg_casscf-h2-sto3g` vs PySCF `mcscf.CASSCF`). **SC-NEVPT2**
+(`RHF::nevpt2(frame, ncas, nelecas)`; `reg_nevpt2-h2-sto3g` vs PySCF
+`mrpt.NEVPT`) is the in-tree multireference PT foothold on a closed-shell
+CASSCF reference. No RAS/GAS, no state-averaged CASSCF product path, no
+CASSCF gradient, no PC-NEVPT2 / QD-NEVPT2 / CASPT2.
 
 ### 4.2 Multireference correlation
 
@@ -211,7 +213,7 @@ PySCF-oracle candidate).
 | CASPT2                                            |  ○  |   ○  |   ○  |
 | Multistate CASPT2                                 |  ○  |   ○  |   ○  |
 | Extended multistate CASPT2                        |  ○  |   ○  |   ○  |
-| Strongly contracted NEVPT2                        |  ○  |   ○  |   ○  |
+| Strongly contracted NEVPT2                        |  ✓  |   ○  |   ○  |
 | Partially contracted NEVPT2                       |  ○  |   ○  |   ○  |
 | Quasidegenerate NEVPT2                            |  ○  |   ○  |   ○  |
 | MRMP2                                             |  ○  |   ○  |   ○  |

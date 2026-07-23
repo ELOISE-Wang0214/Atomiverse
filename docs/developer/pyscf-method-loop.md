@@ -115,3 +115,5 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-24 tutorial: methods/ump2-grad-o2-sto3g.md
 - 2026-07-24 tutorial index: methods/README.md + tutorial/index.md Method tutorials (wave 2)
 - 2026-07-24 assign wave 3 (post re-census): nevpt2-h2-sto3g (post-hf, new; CASSCF dep ✓) + re-dispatch uks-hessian-o2-sto3g (dft; never merged, no worker branch) → in_progress (2); skip=[]; pending_left=0
+- 2026-07-24 wave 3 merge (post re-census): 2 green HEADs → dev (nevpt2-h2-sto3g, uks-hessian-o2-sto3g); blocked=[]; merge-failed=[]
+- 2026-07-24 harness wave 3 (post re-census): queue 2 merged→done with regression paths + ratios; in_progress cleared; pending empty; roadmaps ○→✓ for SC-NEVPT2 + UKS Hessian (FD of forces); ratios nevpt2=0.072 uks-hess=2.13 (vs FD twin); no ⚡; handoff written; queue_remaining=0

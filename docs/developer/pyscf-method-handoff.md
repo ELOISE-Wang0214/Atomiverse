@@ -1,9 +1,30 @@
 # PySCF method loop — handoff
 
-Last harness pass: **2026-07-24 wave 2 (post re-census)** on `dev`
-(`chore(harness): wf wave 2`).
+Last harness pass: **2026-07-24 wave 3 (post re-census)** on `dev`
+(`chore(harness): wf wave 3`).
 
-## Wave 2 (post re-census) summary
+## Wave 3 (post re-census) summary
+
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
+| `nevpt2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/nevpt2-h2-sto3g` | **0.072** |
+| `uks-hessian-o2-sto3g` | dft | **merged → done** | `regressions/scf/uks-hessian-o2-sto3g` | **2.13** (vs FD twin) |
+
+- **Blocked this wave:** none
+- **Merge-failed this wave:** none
+- **Queue:** pending = 0; in_progress = 0; historical blocked list unchanged
+  (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7, caspt2).
+- **Roadmap:** CPU ✓ for **strongly contracted NEVPT2** (`RHF::nevpt2` on
+  CASSCF; H2/STO-3G full-valence e_corr≡0 pin) and **UKS nuclear Hessian**
+  (`UKS::hessian`; FD of analytic UKS forces, same product class as RKS/ROHF).
+  Partially contracted / QD NEVPT2 and full UCPKS closed-form remain ○.
+  **No ⚡** — ratios noted only; no standing perf suite in ctest.
+- **Speed notes:** both fair-benched and within 10×. nevpt2 0.072× (trivial
+  zero-perturber foothold); uks-hessian 2.13× vs FD twin (unfair vs PySCF
+  analytic `hessian.UKS` ~10.8× — not the product gate). No blocked-for-speed
+  slugs.
+
+## Wave 2 (post re-census)
 
 | Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) | Tutorial |
 | ---- | ------ | ------ | ---------- | ----------------------------------------------- | -------- |
@@ -14,22 +35,6 @@ Last harness pass: **2026-07-24 wave 2 (post re-census)** on `dev`
 | `ccsd-grad-h2o-sto3g` | post-hf | **merged → done** | `regressions/scf/ccsd-grad-h2o-sto3g` | **1.665** | [methods/ccsd-grad-h2o-sto3g](../tutorial/methods/ccsd-grad-h2o-sto3g.md) |
 | `rks-hessian-h2o-sto3g` | dft | **merged → done** | `regressions/scf/rks-hessian-h2o-sto3g` | **3.08** (vs FD twin) | [methods/rks-hessian-h2o-sto3g](../tutorial/methods/rks-hessian-h2o-sto3g.md) |
 | `ump2-grad-o2-sto3g` | post-hf | **merged → done** | `regressions/scf/ump2-grad-o2-sto3g` | **1.37** | [methods/ump2-grad-o2-sto3g](../tutorial/methods/ump2-grad-o2-sto3g.md) |
-
-- **Blocked this wave:** none
-- **Merge-failed this wave:** none
-- **Not in this merge set (still in_progress):** `uks-hessian-o2-sto3g`
-- **Queue:** pending = 1 (`nevpt2-h2-sto3g` unblocked by CASSCF ✓); in_progress =
-  1 retained (`uks-hessian-o2-sto3g`); historical blocked list unchanged
-  (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7, caspt2).
-- **Roadmap:** CPU ✓ for **EOM-IP-CCSD**, **UKS full-LR TDDFT**, **CASSCF**,
-  **CCSD nuclear gradient** (`RHF::ccsd_forces`; FD of CCSD energy foothold),
-  **RKS nuclear Hessian** (`RKS::hessian`; FD of forces), **UMP2 analytic
-  gradient**. **EOM-CC2** was already ✓ from the merge commit prose before
-  harness. **No ⚡** — ratios noted only; no standing perf suite in ctest.
-- **Speed notes:** all seven fair-benched and within 10×. Fastest foothold
-  casscf 0.0435×; eom-cc2 0.300×; eom-ip 0.754×; ump2-grad 1.37×; ccsd-grad
-  1.665×; uks-full-lr 2.937×; rks-hessian 3.08× vs FD twin (unfair vs PySCF
-  analytic CPKS ~33× — not the product gate). No blocked-for-speed slugs.
 
 ## Wave 1 (post re-census)
 
@@ -77,7 +82,7 @@ Last harness pass: **2026-07-24 wave 2 (post re-census)** on `dev`
 | `spin-flip-tda-o2` | excited-states | **merged → done** | `regressions/scf/spin-flip-tda-o2` | **9.56** |
 | `rohf-hessian-o2` | hartree-fock | **merged → done** | `regressions/scf/rohf-hessian-o2` | **perf_exempt** (no PySCF `hessian.ROHF`) |
 
-## Wave 3 (prior)
+## Wave 3 (prior, first exhaust)
 
 | Slug | Domain | Status | Regression |
 | ---- | ------ | ------ | ---------- |
@@ -112,18 +117,9 @@ Last harness pass: **2026-07-24 wave 2 (post re-census)** on `dev`
 Pins live in each regression `REFERENCE.md`. Offline pin path:
 `tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py` (union restored
 after serial merges in prior `fix(oracle)` / `fix(wf): re-union…` /
-`fix(merge): complete CC2+UCCSD…` commits). Wave-2 workers each carried their
-pin path; merge commits landed on `dev` before this harness pass.
-
-## Wave 3 assign (2026-07-24)
-
-| Slug | Domain | Status | Note |
-| ---- | ------ | ------ | ---- |
-| `nevpt2-h2-sto3g` | post-hf | **in_progress** | CASSCF dep ✓; PySCF `mrpt.NEVPT`; e_corr pin |
-| `uks-hessian-o2-sto3g` | dft | **in_progress** (re-dispatch) | never merged; no `wf/uks-hessian-o2-sto3g` branch; PySCF `hessian.UKS` |
-
-- **pending after assign:** empty
-- **skip:** none (deps satisfied; blocked list untouched)
-- **Historical blocked** stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2, PM6/7, CASPT2)
+`fix(merge): complete CC2+UCCSD…` commits). Wave-3 workers each carried their
+pin path; merge commits landed on `dev` before this harness pass
+(`88253c56` nevpt2, `ebfacfe7` uks-hessian).
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
+Assignable queue is empty; only historical **blocked** rows remain.

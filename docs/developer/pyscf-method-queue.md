@@ -4,7 +4,7 @@ Durable worklist for workflow `pyscf-method-loop`. Do not delete done rows.
 The census phase rewrites **pending** from `docs/roadmap/` ○ rows that PySCF
 can oracle offline; **done** / **blocked** history is preserved across runs.
 
-Census date: 2026-07-24 (harness wave 2 post re-census merge). Roadmap CPU ○ ∩
+Census date: 2026-07-24 (harness wave 3 post re-census merge). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
 without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
@@ -13,18 +13,16 @@ ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g,
 direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g.
 **Wave 2 merged (7):** eom-cc2-h2, eom-ip-ccsd, uks-full-lr-o2-lsda,
 casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
-**Wave 3 assign (2026-07-24):** `nevpt2-h2-sto3g` (new; CASSCF dep ✓) +
-re-dispatch `uks-hessian-o2-sto3g` (never merged; no worker branch).
-**pending:** empty after assign. Historical blocked list unchanged.
+**Wave 3 merged (2):** nevpt2-h2-sto3g, uks-hessian-o2-sto3g.
+**pending:** empty after wave 3. Historical blocked list unchanged.
 
 ## pending
 
-_(empty — wave 3 assigned all ready rows)_
+_(empty — wave 3 closed all assignable rows)_
 
 ## in_progress
 
-- [~] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | CASSCF ✓; partially/strongly contracted; PySCF mrpt.NEVPT
-- [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS | re-dispatch wave 3
+_(empty)_
 
 ## blocked
 
@@ -37,6 +35,8 @@ _(empty — wave 3 assigned all ready rows)_
 
 ## done
 
+- [x] `nevpt2-h2-sto3g` | SC-NEVPT2 | regressions/scf/nevpt2-h2-sto3g | H2 CASSCF(2,2)/STO-3G cart SC-NEVPT2; PySCF 2.14.0 mrpt.NEVPT e_corr=0 (ncore=nvirt=0); `RHF::nevpt2`; tol 1e-6 Ha; ratio 0.072
+- [x] `uks-hessian-o2-sto3g` | UKS nuclear Hessian | regressions/scf/uks-hessian-o2-sto3g | O2 UKS-LSDA/STO-3G FD-of-forces Hessian; PySCF 2.14.0 FD twin H_zz~128.46 eV/Å²; `UKS::hessian`; tol 2e-2 eV/Å²; ratio 2.13 (vs FD twin)
 - [x] `eom-cc2-h2` | EOM-CC2 | regressions/scf/eom-cc2-h2 | H2/STO-3G cart EOM-CC2; PySCF 2.14.0 S1=26.164970973312 eV; `RHF::eom_cc2`; tol 1e-4 eV; ratio 0.300
 - [x] `eom-ip-ccsd` | EOM-IP-CCSD | regressions/scf/eom-ip-ccsd | H2O/STO-3G cart EOM-IP; PySCF 2.14.0 IP0=8.415727034062 eV; `RHF::eom_ip_ccsd`; tol 1e-4 eV; ratio 0.754
 - [x] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | regressions/scf/uks-full-lr-o2-lsda | O2 UKS-LSDA/STO-3G full RPA; PySCF 2.14.0 roots 7.6209/7.6424/7.6424/8.3863/8.3863 eV; `UKS::tddft`; tol 1e-4 eV; ratio 2.937
