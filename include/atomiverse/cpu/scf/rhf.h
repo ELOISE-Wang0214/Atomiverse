@@ -191,6 +191,20 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
     ADC2Result adc2(int n_states = 1) const;
 
+    /// @brief Extended ADC(2)-x electronic excitation energies of the most
+    ///        recent `run()` (closed-shell RHF). Same singles intermediate and
+    ///        singles–doubles coupling as strict ADC(2), but the doubles block
+    ///        includes first-order two-electron terms (vvvv, oovv, ovvo, oooo)
+    ///        — PySCF `adc.ADC` / `method='adc(2)-x'` / `method_type='ee'`.
+    /// @param n_states Number of lowest ADC(2)-x roots (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @return Excitation energies [eV] and the MP2 correlation energy
+    ///         [Hartree] of the RHF reference.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when n_states is outside
+    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
+    ADC2Result adc2x(int n_states = 1) const;
+
     /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
     ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
     ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,

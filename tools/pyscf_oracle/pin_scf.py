@@ -114,7 +114,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "adc2x", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -832,6 +832,20 @@ def main() -> int:
 
         myadc = pyscf_adc.ADC(mf)
         myadc.method = "adc(2)"
+        myadc.method_type = "ee"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["excitation_ha"] = [float(x) for x in e_adc]
+        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["s1_ha"] = float(e_adc[0])
+        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "adc2x":
+        # Extended ADC(2)-x EE (first-order doubles–doubles).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)-x"
         myadc.method_type = "ee"
         myadc.conv_tol = min(args.conv_tol, 1e-10)
         e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)

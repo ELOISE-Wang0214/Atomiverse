@@ -1,11 +1,13 @@
 /// @file cpu/scf/adc.cpp
-/// @brief Strict ADC(2) excitation energies on closed-shell RHF (PySCF twin).
+/// @brief ADC(2) / ADC(2)-x excitation energies on closed-shell RHF (PySCF twin).
 ///
 /// Formulas follow PySCF `pyscf.adc.radc_ee` (get_imds / matvec for
-/// `method='adc(2)'`) and `radc_amplitudes` first-order doubles t2:
-/// t_ij^ab = (ia|bj) / (ε_i + ε_j − ε_a − ε_b). Non-symmetric Davidson on
-/// the singles+doubles ISR matrix; zeroth-order doubles diagonal only
-/// (strict ADC(2), not ADC(2)-x).
+/// `method='adc(2)'` and `method='adc(2)-x'`) and `radc_amplitudes`
+/// first-order doubles t2: t_ij^ab = (ia|bj) / (ε_i + ε_j − ε_a − ε_b).
+/// Non-symmetric Davidson on the singles+doubles ISR matrix.
+///
+/// Strict ADC(2): zeroth-order doubles diagonal only.
+/// ADC(2)-x: adds first-order doubles–doubles (vvvv + ovvo/oovv + oooo).
 ///
 /// References: Schirmer, Phys. Rev. A 26, 2395 (1982); Trofimov & Schirmer,
 /// J. Phys. B 28, 2299 (1995); PySCF ADC module (doi:10.1063/5.0135290).
@@ -83,6 +85,8 @@ struct MoBlocks {
     xt::xtensor<double, 4> ovvo; // (ia|bj)
     xt::xtensor<double, 4> ovoo; // (ia|jk)
     xt::xtensor<double, 4> ovvv; // (ia|bc)
+    xt::xtensor<double, 4> oooo; // (ij|kl) — ADC(2)-x doubles
+    xt::xtensor<double, 4> vvvv; // (ab|cd) chemist — ADC(2)-x doubles
 };
 
 MoBlocks mo_blocks_(const xt::xtensor<double, 4>& eri_mo, int nocc, int nvir) {
@@ -103,8 +107,23 @@ MoBlocks mo_blocks_(const xt::xtensor<double, 4>& eri_mo, int nocc, int nvir) {
                                   static_cast<std::size_t>(nvir),
                                   static_cast<std::size_t>(nvir),
                                   static_cast<std::size_t>(nvir)});
+    blk.oooo = xt::zeros<double>({static_cast<std::size_t>(nocc),
+                                  static_cast<std::size_t>(nocc),
+                                  static_cast<std::size_t>(nocc),
+                                  static_cast<std::size_t>(nocc)});
+    blk.vvvv = xt::zeros<double>({static_cast<std::size_t>(nvir),
+                                  static_cast<std::size_t>(nvir),
+                                  static_cast<std::size_t>(nvir),
+                                  static_cast<std::size_t>(nvir)});
     for (int i = 0; i < nocc; ++i) {
         for (int j = 0; j < nocc; ++j) {
+            for (int k = 0; k < nocc; ++k)
+                for (int l = 0; l < nocc; ++l)
+                    blk.oooo(i, j, k, l) =
+                        eri_mo(static_cast<std::size_t>(i),
+                               static_cast<std::size_t>(j),
+                               static_cast<std::size_t>(k),
+                               static_cast<std::size_t>(l));
             for (int a = 0; a < nvir; ++a) {
                 for (int bb = 0; bb < nvir; ++bb) {
                     blk.oovv(i, j, a, bb) =
@@ -141,6 +160,15 @@ MoBlocks mo_blocks_(const xt::xtensor<double, 4>& eri_mo, int nocc, int nvir) {
             }
         }
     }
+    for (int a = 0; a < nvir; ++a)
+        for (int b = 0; b < nvir; ++b)
+            for (int c = 0; c < nvir; ++c)
+                for (int d = 0; d < nvir; ++d)
+                    blk.vvvv(a, b, c, d) =
+                        eri_mo(static_cast<std::size_t>(nocc + a),
+                               static_cast<std::size_t>(nocc + b),
+                               static_cast<std::size_t>(nocc + c),
+                               static_cast<std::size_t>(nocc + d));
     return blk;
 }
 
@@ -326,9 +354,11 @@ xt::xtensor<double, 2> build_mss_(const MoBlocks& bl,
     return Mss;
 }
 
-/// ADC(2) matvec: s = M r on singles+doubles.
+/// ADC matvec: s = M r on singles+doubles.
+/// @param extended true → ADC(2)-x first-order doubles–doubles (PySCF
+///        `method='adc(2)-x'`); false → strict ADC(2) doubles diagonal only.
 void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
-             const RealVector& eps, int nocc, int nvir,
+             const RealVector& eps, int nocc, int nvir, bool extended,
              const std::vector<double>& r, std::vector<double>& s) {
     const int ns = nocc * nvir;
     const int nd = nocc * nocc * nvir * nvir;
@@ -451,6 +481,86 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
             s[static_cast<std::size_t>(idx_ia(I, D, nvir))] += acc;
         }
     }
+
+    if (!extended)
+        return;
+
+    // ── ADC(2)-x first-order doubles–doubles (PySCF radc_ee matvec) ──────
+    // Chemist blocks: vvvv=(ab|cd), ovvo=v_ceec, oovv=v_ccee, oooo=v_cccc.
+    // Y ≡ r2.  vvvv term matches PySCF's transposed packing:
+    //   s[I,J,C,D] += Σ_{a,b} r2[I,J,a,b] · (a C | b D)
+    const auto& ovvo = bl.ovvo;
+    const auto& oovv = bl.oovv;
+    const auto& oooo = bl.oooo;
+    const auto& vvvv = bl.vvvv;
+
+    for (int I = 0; I < nocc; ++I) {
+        for (int J = 0; J < nocc; ++J) {
+            for (int C = 0; C < nvir; ++C) {
+                for (int D = 0; D < nvir; ++D) {
+                    double acc = 0.0;
+                    // vvvv ladder
+                    for (int a = 0; a < nvir; ++a)
+                        for (int b = 0; b < nvir; ++b) {
+                            const double Y =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(I, J, a, b, nocc, nvir))];
+                            acc += Y * vvvv(a, C, b, D); // (a C | b D)
+                        }
+                    // 2*einsum('IiCa,JDai->IJCD', Y, ovvo)
+                    // -einsum('IiCa,iJDa->IJCD', Y, oovv)
+                    // -einsum('IiaC,JDai->IJCD', Y, ovvo)
+                    // -einsum('IiaD,iJCa->IJCD', Y, oovv)
+                    for (int i = 0; i < nocc; ++i)
+                        for (int a = 0; a < nvir; ++a) {
+                            const double YiCa =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(I, i, C, a, nocc, nvir))];
+                            const double YiaC =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(I, i, a, C, nocc, nvir))];
+                            const double YiaD =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(I, i, a, D, nocc, nvir))];
+                            acc += 2.0 * YiCa * ovvo(J, D, a, i);
+                            acc -= YiCa * oovv(i, J, D, a);
+                            acc -= YiaC * ovvo(J, D, a, i);
+                            acc -= YiaD * oovv(i, J, C, a);
+                        }
+                    // 2*einsum('JiDa,ICai->IJCD', Y, ovvo)
+                    // -einsum('JiDa,iICa->IJCD', Y, oovv)
+                    // -einsum('JiaC,iIDa->IJCD', Y, oovv)
+                    // -einsum('JiaD,ICai->IJCD', Y, ovvo)
+                    for (int i = 0; i < nocc; ++i)
+                        for (int a = 0; a < nvir; ++a) {
+                            const double YjDa =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(J, i, D, a, nocc, nvir))];
+                            const double YjaC =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(J, i, a, C, nocc, nvir))];
+                            const double YjaD =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(J, i, a, D, nocc, nvir))];
+                            acc += 2.0 * YjDa * ovvo(I, C, a, i);
+                            acc -= YjDa * oovv(i, I, C, a);
+                            acc -= YjaC * oovv(i, I, D, a);
+                            acc -= YjaD * ovvo(I, C, a, i);
+                        }
+                    // einsum('ijCD,IiJj->IJCD', Y, oooo)
+                    for (int i = 0; i < nocc; ++i)
+                        for (int j = 0; j < nocc; ++j) {
+                            const double Yij =
+                                r[static_cast<std::size_t>(
+                                    ns + idx_ijab(i, j, C, D, nocc, nvir))];
+                            acc += Yij * oooo(I, i, J, j);
+                        }
+                    s[static_cast<std::size_t>(
+                        ns + idx_ijab(I, J, C, D, nocc, nvir))] += acc;
+                }
+            }
+        }
+    }
 }
 
 /// Dense non-symmetric eigenproblem via LAPACK dgeev (column-major).
@@ -499,11 +609,13 @@ std::vector<double> dgeev_real_sorted_(const xt::xtensor<double, 2>& Hrow,
 /// Falls back to dense dgeev when dim is small (≤ kDenseCap).
 std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                                   const MoBlocks& bl, const RealVector& eps,
-                                  int nocc, int nvir, int nroots) {
+                                  int nocc, int nvir, int nroots,
+                                  bool extended) {
     const int ns = nocc * nvir;
     const int nd = nocc * nocc * nvir * nvir;
     const int dim = ns + nd;
     constexpr int kDenseCap = 400; // full dgeev only for tiny spaces
+    const char* api = extended ? "RHF::adc2x" : "RHF::adc2";
 
     if (dim <= kDenseCap) {
         xt::xtensor<double, 2> H =
@@ -513,7 +625,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         std::vector<double> s;
         for (int k = 0; k < dim; ++k) {
             e[static_cast<std::size_t>(k)] = 1.0;
-            matvec_(Mss, bl, eps, nocc, nvir, e, s);
+            matvec_(Mss, bl, eps, nocc, nvir, extended, e, s);
             for (int i = 0; i < dim; ++i)
                 H(i, k) = s[static_cast<std::size_t>(i)];
             e[static_cast<std::size_t>(k)] = 0.0;
@@ -521,7 +633,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         auto w = dgeev_real_sorted_(H);
         if (static_cast<int>(w.size()) < nroots)
             throw std::runtime_error(
-                "RHF::adc2: fewer real eigenvalues than n_states");
+                std::string(api) + ": fewer real eigenvalues than n_states");
         w.resize(static_cast<std::size_t>(nroots));
         return w;
     }
@@ -592,7 +704,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         // Compute missing W = M V
         while (W.size() < V.size()) {
             std::vector<double> s;
-            matvec_(Mss, bl, eps, nocc, nvir, V[W.size()], s);
+            matvec_(Mss, bl, eps, nocc, nvir, extended, V[W.size()], s);
             W.push_back(std::move(s));
         }
         const int m = static_cast<int>(V.size());
@@ -634,7 +746,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                vl.data(), &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
         if (info != 0)
             throw std::runtime_error(
-                "RHF::adc2: Davidson projected dgeev failed");
+                std::string(api) + ": Davidson projected dgeev failed");
 
         // Sort real Ritz pairs
         std::vector<int> idx;
@@ -647,7 +759,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         });
         if (static_cast<int>(idx.size()) < nroots)
             throw std::runtime_error(
-                "RHF::adc2: Davidson found too few real Ritz values");
+                std::string(api) + ": Davidson found too few real Ritz values");
 
         bool all_conv = true;
         std::vector<std::vector<double>> residuals;
@@ -741,7 +853,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         }
     }
     throw std::runtime_error(
-        "RHF::adc2: Davidson did not converge within max_cycle");
+        std::string(api) + ": Davidson did not converge within max_cycle");
 }
 
 double mp2_corr_ha_(const xt::xtensor<double, 4>& t2,
@@ -761,13 +873,12 @@ double mp2_corr_ha_(const xt::xtensor<double, 4>& t2,
 
 } // namespace
 
-ADC2Result RHF::adc2(int n_states) const {
-    if (!has_result())
-        throw std::runtime_error(
-            "RHF::adc2: no SCF result — call run(frame) first");
+namespace {
 
-    const SlaterDeterminant& det = determinant();
-    const IntegralPack& pack = integral_workspace_();
+ADC2Result run_adc_ee_member_(const RHF& self, int n_states, bool extended,
+                              const IntegralPack& pack,
+                              const SlaterDeterminant& det) {
+    const char* api = extended ? "RHF::adc2x" : "RHF::adc2";
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
@@ -784,12 +895,14 @@ ADC2Result RHF::adc2(int n_states) const {
     const int n_vir = n_mo - n_occ;
     if (n_occ == 0 || n_vir == 0)
         throw std::invalid_argument(
-            "RHF::adc2: no virtual orbitals (e.g. He/STO-3G — no fallback)");
+            std::string(api)
+            + ": no virtual orbitals (e.g. He/STO-3G — no fallback)");
     const int n_ov = n_occ * n_vir;
     if (n_states < 1 || n_states > n_ov)
         throw std::invalid_argument(
-            "RHF::adc2: n_states must be in [1, n_occ*n_virt="
+            std::string(api) + ": n_states must be in [1, n_occ*n_virt="
             + std::to_string(n_ov) + "]");
+    (void)self;
 
     const xt::xtensor<double, 4> eri_mo = ao2mo_full(eri_ao, C, n_mo);
     const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
@@ -798,7 +911,7 @@ ADC2Result RHF::adc2(int n_states) const {
         build_mss_(bl, t2, eps, n_occ, n_vir);
 
     const std::vector<double> omega_ha =
-        davidson_adc_(Mss, bl, eps, n_occ, n_vir, n_states);
+        davidson_adc_(Mss, bl, eps, n_occ, n_vir, n_states, extended);
 
     ADC2Result out;
     out.e_corr_mp2_ha = mp2_corr_ha_(t2, bl.ovvo, n_occ, n_vir);
@@ -807,6 +920,24 @@ ADC2Result RHF::adc2(int n_states) const {
         out.energy_ev[static_cast<std::size_t>(s)] =
             omega_ha[static_cast<std::size_t>(s)] * units::kHartreeInEv;
     return out;
+}
+
+} // namespace
+
+ADC2Result RHF::adc2(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RHF::adc2: no SCF result — call run(frame) first");
+    return run_adc_ee_member_(*this, n_states, /*extended=*/false,
+                              integral_workspace_(), determinant());
+}
+
+ADC2Result RHF::adc2x(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RHF::adc2x: no SCF result — call run(frame) first");
+    return run_adc_ee_member_(*this, n_states, /*extended=*/true,
+                              integral_workspace_(), determinant());
 }
 
 } // namespace scf
