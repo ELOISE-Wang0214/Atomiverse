@@ -168,7 +168,7 @@ hybrids and SCS-DH remain ○.
 | -------------------------------- | :-: | :--: | :---: |
 | DFT-D3 zero damping              |  ✓  |   ○  |   ○  |
 | DFT-D3 Becke–Johnson damping     |  ✓  |   ○  |   ○  |
-| DFT-D4                           |  ○  |   ○  |   ○  |
+| DFT-D4                           |  ✓  |   ○  |   ○  |
 | Tkatchenko–Scheffler dispersion  |  ○  |   ○  |   ○  |
 | Many-body dispersion, MBD        |  ○  |   ○  |   ○  |
 | Exchange-hole dipole moment, XDM |  ○  |   ○  |   ○  |
@@ -182,7 +182,10 @@ DFT-D3 zero damping (PBE: s6 = 1.0, s8 = 0.722, sr6 = 1.217) is wired into
 **GPW**, from in-tree reference tables. DFT-D3 **Becke–Johnson** damping
 (PBE: s6 = 1, s8 = 0.7875, a1 = 0.4289, a2 = 4.4407 Bohr) is on the
 **molecular Gaussian** path via `cpu::scf::D3BJ` / `MeanFieldMethod::d3bj`
-(PySCF `disp='d3bj'` twin; regression `d3bj-molecular-pbe`).
+(PySCF `disp='d3bj'` twin; regression `d3bj-molecular-pbe`). **DFT-D4**
+(Caldeweyher et al.; two-body BJ + EEQ/CN-dependent C6) is on the molecular
+path via `cpu::scf::D4` / `MeanFieldMethod::d4` (PySCF `disp='d4'` twin;
+regression `dft-d4-h2o-pbe`; three-body ATM not included).
 
 ## 9. Composite DFT Methods
 

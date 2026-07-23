@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; EOM-IP/EA-CCSD; UKS full-LR TDDFT; ADC(2)-x / IP-ADC |
+| Response | Surface-hopping consumer of NAC; EOM-IP-CCSD; UKS full-LR TDDFT; EOM-CC2 (EOM-EA/SF + ADC(2)-x/IP/EA + SF-TDDFT + dRPA/BSE/GF2 ✓) |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | CASSCF / CASPT2 / NEVPT2; CC gradients (CCSD(T) + CASCI + MP3 + CCSD + ROMP2 + RMP2 grad + SCS/SOS + frozen-core ✓) |
+| Post-HF | CASSCF / CASPT2 / NEVPT2; CC gradients; UMP2/RKS Hessians (MP4 + CC2 + CCSD(T)/CASCI/MP3/CCSD/ROMP2/RMP2 grad/SCS/SOS/frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -183,7 +183,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (`reg_frozen-core-mp2-h2o`). **SCS/SOS-MP2** via `mp2_os_scale` /
   `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, `reg_sos-mp2-h2o-sto3g`).
   **RMP2 analytic gradient** (`RHF::mp2_forces`; `reg_mp2-grad-h2o-sto3g`).
-  No UMP2/ROMP2 gradients.
+  **RMP3 / RMP4(SDTQ)** (`RHF::mp3` / `mp4`; `reg_mp3-h2-sto3g`,
+  `reg_mp4-h2-sto3g`). **CC2 / CCSD / CCSD(T)** (`RHF::cc2` / `ccsd` /
+  `ccsd_t`). No UMP2/ROMP2 gradients.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
@@ -193,9 +195,14 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **`RKS::tda`** with **full MO-product LSDA ALDA** (`reg_h2_full_grid_alda`) and
   **hybrid TDDFT-TDA** (B3LYP exact-exchange kernel; `reg_h2-b3lyp-hybrid-tda`).
   **`UKS::tda`** spin-conserving LSDA (`reg_uks-tda-o2-lsda`). **`UHF::sf_tda`**
-  collinear spin-flip TDA (`reg_spin-flip-tda-o2`). **Full LR-TDDFT** Casida
-  A/B pure KS + hybrid B3LYP (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`,
-  `reg_h2-b3lyp-rpa-tddft`). UKS full-LR still ○.
+  collinear spin-flip TDA (`reg_spin-flip-tda-o2`); **`UHF::sf_tddft`** SF-RPA
+  (`reg_sf-tddft-o2`). **Full LR-TDDFT** Casida A/B pure KS + hybrid B3LYP
+  (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`, `reg_h2-b3lyp-rpa-tddft`). UKS
+  full-LR still ○.
+- **ADC(2)/ADC(2)-x / IP-ADC / EA-ADC** (`RHF::adc2` / `adc2x` / `ip_adc2` /
+  `ea_adc2`). **EOM-EE/EA-CCSD** on RHF; **EOM-SF-CCSD** on UHF.
+  **G0W0 / dRPA / BSE / GF2** on RHF (`reg_g0w0-h2-sto3g`,
+  `reg_direct-rpa-h2-sto3g`, `reg_bse-h2-sto3g`, `reg_gf2-h2-sto3g`).
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
   `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
@@ -204,6 +211,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### Exchange-correlation
 
 - Molecular selectors: `{LSDA, PBE, BLYP, B3LYP, PBE0}`. BP86 still ○.
+- Molecular dispersion: **D3 zero** (GPW), **D3-BJ** + **D4** (Gaussian path;
+  `reg_d3bj-molecular-pbe`, `reg_dft-d4-h2o-pbe`).
 - libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
 - GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 

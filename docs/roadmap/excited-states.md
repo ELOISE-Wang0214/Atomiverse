@@ -29,6 +29,16 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 **EOM-EE-CCSD** singlet excitation energies ship on closed-shell RHF+CCSD
 (`RHF::eom_ee_ccsd`; `reg_eom-ee-ccsd` H₂/STO-3G S1 vs PySCF
 `cc.CCSD(...).eomee_ccsd_singlet`).
+**EOM-EA-CCSD** attachment roots ship (`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`).
+**EOM-SF-CCSD** spin-flip roots ship on UHF+UCCSD (`UHF::eom_sf_ccsd`;
+`reg_eom-sf-ccsd-o2`).
+**ADC(2)-x** EE and **IP/EA-ADC(2)** ship (`RHF::adc2x` / `ip_adc2` / `ea_adc2`;
+`reg_adc2x-h2co-sto3g`, `reg_ip-adc2-h2o-sto3g`, `reg_ea-adc2-h2-sto3g`).
+**Collinear spin-flip full TDDFT** (SF-RPA) ships on UHF (`UHF::sf_tddft`;
+`reg_sf-tddft-o2`).
+**Direct RPA** correlation, **BSE@G0W0**, and **one-shot GF2** ship on RHF
+(`RHF::direct_rpa` / `bse` / `gf2`; `reg_direct-rpa-h2-sto3g`,
+`reg_bse-h2-sto3g`, `reg_gf2-h2-sto3g`).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -49,7 +59,7 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | Tamm–Dancoff TDDFT                 |  ✓  |   ○  |   ○  |
 | Full linear-response TDDFT         |  ✓  |   ○  |   ○  |
 | Spin-flip TDA                      |  ✓  |   ○  |   ○  |
-| Spin-flip TDDFT                    |  ○  |   ○  |   ○  |
+| Spin-flip TDDFT                    |  ✓  |   ○  |   ○  |
 | Restricted excitation-window TDDFT |  ○  |   ○  |   ○  |
 | Core–valence-separation TDDFT      |  ○  |   ○  |   ○  |
 | Real-time TDDFT                    |  ○  |   ○  |   ○  |
@@ -60,9 +70,10 @@ TDA-TDDFT is the LSDA ALDA path and the global-hybrid exact-exchange path on
 `RKS::tda` (B3LYP/PBE0 singlet), plus **open-shell UKS-TDA** spin-conserving
 response on pure LSDA (`UKS::tda`; `reg_uks-tda-o2-lsda` O₂ triplet) and
 **collinear spin-flip TDA** on UHF (`UHF::sf_tda`; `reg_spin-flip-tda-o2`
-O₂ triplet, exchange-only SF-CIS). Full RPA-style Casida A/B is `RKS::tddft`
-for pure KS (`reg_full-lr-tddft-h2-pbe`) and **global hybrid** B3LYP
-(`reg_h2-b3lyp-rpa-tddft`); UKS full-LR remains a follow-on. Analytic
+O₂ triplet, exchange-only SF-CIS) and **collinear spin-flip full TDDFT**
+(SF-RPA; `UHF::sf_tddft`; `reg_sf-tddft-o2`). Full RPA-style Casida A/B is
+`RKS::tddft` for pure KS (`reg_full-lr-tddft-h2-pbe`) and **global hybrid**
+B3LYP (`reg_h2-b3lyp-rpa-tddft`); UKS full-LR remains a follow-on. Analytic
 gradient and NAC rows are the CIS/TDA members on `RHF` (analytic default);
 full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 
@@ -72,12 +83,12 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | --------------------- | :-: | :--: | :---: |
 | ADC(1)                |  ○  |   ○  |   ○  |
 | ADC(2)                |  ✓  |   ○  |   ○  |
-| ADC(2)-x              |  ○  |   ○  |   ○  |
+| ADC(2)-x              |  ✓  |   ○  |   ○  |
 | ADC(3)                |  ○  |   ○  |   ○  |
 | CVS-ADC(2)            |  ○  |   ○  |   ○  |
 | CVS-ADC(2)-x          |  ○  |   ○  |   ○  |
-| IP-ADC(2)             |  ○  |   ○  |   ○  |
-| EA-ADC(2)             |  ○  |   ○  |   ○  |
+| IP-ADC(2)             |  ✓  |   ○  |   ○  |
+| EA-ADC(2)             |  ✓  |   ○  |   ○  |
 | ADC analytic gradient |  ○  |   ○  |   ○  |
 
 ## 3. Equation-of-Motion Coupled Cluster
@@ -86,8 +97,8 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | -------------------------- | :-: | :--: | :---: |
 | EOM-EE-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-IP-CCSD                |  ○  |   ○  |   ○  |
-| EOM-EA-CCSD                |  ○  |   ○  |   ○  |
-| EOM-SF-CCSD                |  ○  |   ○  |   ○  |
+| EOM-EA-CCSD                |  ✓  |   ○  |   ○  |
+| EOM-SF-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-DIP-CCSD               |  ○  |   ○  |   ○  |
 | EOM-DEA-CCSD               |  ○  |   ○  |   ○  |
 | CVS-EOM-CCSD               |  ○  |   ○  |   ○  |
@@ -98,9 +109,11 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 
 **EOM-EE-CCSD** (`RHF::eom_ee_ccsd`) builds the spin-orbital EE Jacobian on a
 converged closed-shell CCSD reference and returns singlet roots
-(`reg_eom-ee-ccsd` vs PySCF). IP/EA/SF/DIP/DEA channels, CVS, STEOM, and
-EOM gradients remain open. See also [Post-Hartree–Fock](post-hf.md#3-coupled-cluster)
-for ground-state CCSD / CCSD(T).
+(`reg_eom-ee-ccsd` vs PySCF). **EOM-EA-CCSD** (`RHF::eom_ea_ccsd`;
+`reg_eom-ea-ccsd`) and **EOM-SF-CCSD** (`UHF::eom_sf_ccsd`;
+`reg_eom-sf-ccsd-o2`) ship. EOM-IP, DIP/DEA, CVS, STEOM, and EOM gradients
+remain open. See also [Post-Hartree–Fock](post-hf.md#3-coupled-cluster)
+for ground-state CCSD / CCSD(T) / CC2.
 
 ## 4. Simplified Excited-State Methods
 
@@ -119,14 +132,14 @@ Blocked upstream: no DFTB, no xTB
 
 | Method                                        | CPU | CUDA | Kokkos |
 | --------------------------------------------- | :-: | :--: | :---: |
-| Second-order Green's function, GF2            |  ○  |   ○  |   ○  |
+| Second-order Green's function, GF2            |  ✓  |   ○  |   ○  |
 | Self-consistent GF2                           |  ○  |   ○  |   ○  |
 | G0W0                                          |  ✓  |   ○  |   ○  |
 | Eigenvalue-self-consistent GW                 |  ○  |   ○  |   ○  |
 | Quasiparticle self-consistent GW              |  ○  |   ○  |   ○  |
 | Fully self-consistent GW                      |  ○  |   ○  |   ○  |
-| Bethe–Salpeter equation, BSE                  |  ○  |   ○  |   ○  |
-| Direct random-phase approximation             |  ○  |   ○  |   ○  |
+| Bethe–Salpeter equation, BSE                  |  ✓  |   ○  |   ○  |
+| Direct random-phase approximation             |  ✓  |   ○  |   ○  |
 | RPA with exchange                             |  ○  |   ○  |   ○  |
 | SOSEX                                         |  ○  |   ○  |   ○  |
 | Renormalized second-order perturbation theory |  ○  |   ○  |   ○  |
@@ -134,5 +147,8 @@ Blocked upstream: no DFTB, no xTB
 
 **G0W0** (`RHF::g0w0`) is spectral (frequency-exact) quasiparticle energies with
 direct-RPA screening of \(W\) on a closed-shell RHF reference
-(`reg_g0w0-h2-sto3g` vs PySCF `gw.gw_exact.GWExact` + dRPA). No self-consistent
-GW, no BSE, no analytic continuation product path.
+(`reg_g0w0-h2-sto3g` vs PySCF `gw.gw_exact.GWExact` + dRPA). **Direct RPA**
+correlation energy ships standalone (`RHF::direct_rpa`;
+`reg_direct-rpa-h2-sto3g`). **BSE@G0W0** singlet roots ship (`RHF::bse`;
+`reg_bse-h2-sto3g`). **One-shot GF2** (G0F2) QP gaps ship (`RHF::gf2`;
+`reg_gf2-h2-sto3g`). No self-consistent GW/AGF2, no RPAX/SOSEX product path.

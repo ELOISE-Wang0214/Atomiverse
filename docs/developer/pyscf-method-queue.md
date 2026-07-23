@@ -4,23 +4,22 @@ Durable worklist for workflow `pyscf-method-loop`. Do not delete done rows.
 The census phase rewrites **pending** from `docs/roadmap/` ○ rows that PySCF
 can oracle offline; **done** / **blocked** history is preserved across runs.
 
-Census date: 2026-07-23 (re-census; wave-1 workers mid-flight). Roadmap CPU ○ ∩
+Census date: 2026-07-23 (harness wave 1 post re-census merge). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
-10→without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
-CASPT2 (no stock PySCF). Prefer new family or scale over XC variants
-(BP86/B3PW91/B2GP-PLYP/…). Next axis after closed EOM-EE / CASCI / CCSD(T) /
-G0W0 / B2PLYP: EOM-IP/EA, UKS full-LR, ADC(2)-x/IP-ADC, CASSCF/NEVPT2, CC
-gradients, KS Hessians, open-shell MP2 forces, SF-TDDFT, MP4, CC2/EOM-CC2,
-dRPA/BSE, D4, EOM-SF, GF2. **in_progress retained** (live `wf/*` worktrees with
-feat commits or dirty trees): eom-ip-ccsd, uks-full-lr-o2-lsda, casscf-h2-sto3g,
-ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g. **assign wave 1
-(this shift):** 13 ready pending → in_progress; skip nevpt2 (CASSCF), eom-cc2 (CC2).
+without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
+CASPT2 (no stock PySCF). **Wave 1 merged (12):** eom-ea-ccsd, adc2x-h2co-sto3g,
+ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g,
+direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g.
+**in_progress retained** (mid-flight / not in this merge set): eom-ip-ccsd,
+uks-full-lr-o2-lsda, casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g,
+ump2-grad-o2-sto3g, uks-hessian-o2-sto3g. **pending** still gated: nevpt2
+(needs CASSCF), eom-cc2 (CC2 energy now ✓ — eligible next assign).
 
 ## pending
 
 - [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | needs CASSCF; partially/strongly contracted; PySCF mrpt.NEVPT
-- [ ] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | needs CC2 energy path; PySCF EOM-CC2
+- [ ] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
 
 ## in_progress
 
@@ -30,19 +29,7 @@ ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g. **assign wave 1
 - [~] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
 - [~] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
 - [~] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
-- [x] `eom-ea-ccsd` | EOM-EA-CCSD | excited-states | h2 | sto-3g | EA eV | EOM-EE ✓; attachment channel; PySCF cc.eom_rccsd EA
-- [x] `adc2x-h2co-sto3g` | ADC(2)-x | excited-states | h2co | sto-3g | S1 eV | strict ADC(2) ✓; extended ADC(2)-x; PySCF adc method=adc(2)-x
-- [x] `ip-adc2-h2o-sto3g` | IP-ADC(2) | excited-states | h2o | sto-3g | IP eV | ADC(2) EE ✓; ionization ADC; PySCF adc IP
-- [x] `ea-adc2-h2-sto3g` | EA-ADC(2) | excited-states | h2 | sto-3g | EA eV | ADC(2) EE ✓; attachment ADC; PySCF adc EA
 - [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
-- [x] `sf-tddft-o2` | Spin-flip TDDFT | excited-states | o2 | sto-3g | excitation eV | SF-TDA ✓; full SF-RPA; PySCF TDDFT spin-flip
-- [x] `mp4-h2-sto3g` | MP4(SDTQ) | post-hf | h2 | sto-3g | e_corr | MP3 ✓; fourth-order PT; PySCF mp.MP4
-- [x] `cc2-h2-sto3g` | CC2 | post-hf | h2 | sto-3g | e_corr | approximate CC doubles foothold; unlocks EOM-CC2; PySCF cc.CC2
-- [x] `direct-rpa-h2-sto3g` | Direct RPA | excited-states | h2 | sto-3g | e_corr | G0W0 screening twin as standalone corr; PySCF rpa.RPA
-- [x] `bse-h2-sto3g` | Bethe–Salpeter BSE | excited-states | h2 | sto-3g | S1 eV | after G0W0 ✓; PySCF tdscf.BSE
-- [x] `dft-d4-h2o-pbe` | DFT-D4 | dft | water | sto-3g | E_disp | D3 zero + BJ ✓; D4 open; PySCF/dftd4 offline pin
-- [x] `eom-sf-ccsd-o2` | EOM-SF-CCSD | excited-states | o2 | sto-3g | ω eV | EOM-EE ✓; spin-flip EOM channel; PySCF eom_uccsd SF
-- [x] `gf2-h2-sto3g` | GF2 | excited-states | h2 | sto-3g | QP | second-order Green's function; PySCF gf2
 
 ## blocked
 
@@ -55,6 +42,18 @@ ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g. **assign wave 1
 
 ## done
 
+- [x] `eom-ea-ccsd` | EOM-EA-CCSD | regressions/scf/eom-ea-ccsd | H2/STO-3G cart EOM-EA; PySCF 2.14.0 EA0=18.821245619413 eV; `RHF::eom_ea_ccsd`; tol 1e-4 eV; ratio 0.068
+- [x] `adc2x-h2co-sto3g` | ADC(2)-x | regressions/scf/adc2x-h2co-sto3g | H2CO/STO-3G cart ADC(2)-x EE; PySCF 2.14.0 S1=3.318442496747 eV; `RHF::adc2x`; tol 1e-4 eV; ratio 0.240
+- [x] `ip-adc2-h2o-sto3g` | IP-ADC(2) | regressions/scf/ip-adc2-h2o-sto3g | H2O/STO-3G cart IP-ADC(2); PySCF 2.14.0 IP1=8.277183500364 eV; `RHF::ip_adc2`; tol 1e-4 eV; ratio 0.191
+- [x] `ea-adc2-h2-sto3g` | EA-ADC(2) | regressions/scf/ea-adc2-h2-sto3g | H2/STO-3G cart EA-ADC(2); PySCF 2.14.0 EA0=18.620249979933 eV; `RHF::ea_adc2`; tol 1e-4 eV; ratio 0.213
+- [x] `sf-tddft-o2` | Spin-flip TDDFT | regressions/scf/sf-tddft-o2 | O2 UHF/STO-3G collinear SF-RPA; offline twin roots 4.3347/7.1554/7.1554/8.1814/8.1814 eV; `UHF::sf_tddft`; tol 1e-4 eV; ratio 9.51
+- [x] `mp4-h2-sto3g` | MP4(SDTQ) | regressions/scf/mp4-h2-sto3g | H2/STO-3G cart RMP4; offline det-space RSPT-4 pin e_corr=-0.019685225019 Ha; `RHF::mp4`; tol 1e-6 Ha; ratio 0.031
+- [x] `cc2-h2-sto3g` | CC2 | regressions/scf/cc2-h2-sto3g | H2/STO-3G cart CC2; PySCF RCCSD(cc2=True) e_corr=-0.013138073590 Ha; `RHF::cc2`; tol 1e-6 Ha; ratio 0.392
+- [x] `direct-rpa-h2-sto3g` | Direct RPA | regressions/scf/direct-rpa-h2-sto3g | H2 RHF/STO-3G plasmon dRPA; e_corr=-0.020633073749 Ha (exact-ERI twin); `RHF::direct_rpa`; tol 1e-6 Ha; ratio 0.760
+- [x] `bse-h2-sto3g` | Bethe–Salpeter BSE | regressions/scf/bse-h2-sto3g | H2 BSE@G0W0/STO-3G S1=25.956271542931 eV; `RHF::bse`; tol 1e-4 eV; ratio 0.060
+- [x] `dft-d4-h2o-pbe` | DFT-D4 | regressions/scf/dft-d4-h2o-pbe | H2O molecular PBE-D4 E_disp=-0.000195303719 Ha (PySCF 2.14.0+pyscf-dispersion); `cpu::scf::D4` + `MeanFieldMethod::d4`; tol 1e-6 Ha; ratio 2.17
+- [x] `eom-sf-ccsd-o2` | EOM-SF-CCSD | regressions/scf/eom-sf-ccsd-o2 | O2 UHF/UCCSD/STO-3G SF; PySCF 2.14.0 ω0..4=0.00415/1.0240/1.0240/1.5864/6.1844 eV; `UHF::eom_sf_ccsd`; tol 1e-4 eV; ratio 3.12
+- [x] `gf2-h2-sto3g` | GF2 | regressions/scf/gf2-h2-sto3g | H2 RHF/STO-3G one-shot G0F2; QP gap=34.717288266166 eV (PySCF 2.14.0 AGF2 twin); `RHF::gf2`; tol 1e-4 eV; ratio 0.071
 - [x] `eom-ee-ccsd` | EOM-EE-CCSD | regressions/scf/eom-ee-ccsd | H2/STO-3G cart singlet EOM-EE; PySCF 2.14.0 S1=26.365966612792 eV; `RHF::eom_ee_ccsd`; tol 1e-4 eV; ratio 0.193
 - [x] `delta-scf-n2` | Delta-SCF | regressions/scf/delta-scf-n2 | N2/STO-3G α HOMO→LUMO UHF-IMOM; PySCF 2.14.0 mom_occ_ ΔE=8.24694070 eV; `UHF::delta_scf` + `MomStyle::IMOM`; tol 1e-4 eV; ratio 7.83
 - [x] `casci-h2-sto3g` | CASCI | regressions/scf/casci-h2-sto3g | H2 CASCI(2,2)/STO-3G cart; PySCF 2.14.0 e_tot=-1.137283834489 Ha; `RHF::casci(frame,2,2)`; tol 1e-6 Ha; ratio 0.076

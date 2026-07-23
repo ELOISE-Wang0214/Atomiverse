@@ -3,17 +3,21 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Correlated methods built on a converged [Hartree–Fock](hartree-fock.md)
-reference. MP2 / MP3 / CCSD / CCSD(T) / CASCI / FCI ship as post-SCF members
-on the concrete method (`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::mp3` /
-`RHF::ccsd` / `RHF::ccsd_t` / `RHF::casci` / `RHF::fci`) consuming the
-converged `SlaterDeterminant` plus the method's privately materialized ERI
-tensor (they are not Drivers or Components, and register in no Plan; they
-throw `std::invalid_argument` on a non-converged reference):
+reference. MP2 / MP3 / MP4 / CC2 / CCSD / CCSD(T) / CASCI / FCI ship as
+post-SCF members on the concrete method (`RHF::mp2` / `UHF::mp2` /
+`ROHF::mp2` / `RHF::mp3` / `RHF::mp4` / `RHF::cc2` / `RHF::ccsd` /
+`RHF::ccsd_t` / `RHF::casci` / `RHF::fci`) consuming the converged
+`SlaterDeterminant` plus the method's privately materialized ERI tensor
+(they are not Drivers or Components, and register in no Plan; they throw
+`std::invalid_argument` on a non-converged reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
 - **UMP2** — unrestricted spin-orbital MP2 on a UHF reference (`UHF::mp2`).
 - **ROMP2** — UMP2 on a spin-pure ROHF reference (`ROHF::mp2`).
 - **RMP3** — closed-shell third-order MP (`RHF::mp3`; `reg_mp3-h2-sto3g`).
+- **RMP4(SDTQ)** — closed-shell fourth-order MP (`RHF::mp4`;
+  `reg_mp4-h2-sto3g`).
+- **CC2** — approximate CC doubles foothold (`RHF::cc2`; `reg_cc2-h2-sto3g`).
 - **CCSD** — closed-shell coupled-cluster singles and doubles (`RHF::ccsd`;
   `reg_ccsd-h2-sto3g`).
 - **CCSD(T)** — non-iterative triples on closed-shell CCSD (`RHF::ccsd_t`;
@@ -52,7 +56,7 @@ CASSCF / multireference PT and CC gradients remain absent.
 | MP3                                |  ✓  |   ○  |   ○  |
 | SCS-MP3                            |  ○  |   ○  |   ○  |
 | Orbital-optimized MP3              |  ○  |   ○  |   ○  |
-| MP4(SDTQ)                          |  ○  |   ○  |   ○  |
+| MP4(SDTQ)                          |  ✓  |   ○  |   ○  |
 | Full MP4                           |  ○  |   ○  |   ○  |
 
 RMP2 runs four sequential O(N⁵) quarter transforms to the `(ia|jb)` ovov block,
@@ -74,9 +78,12 @@ RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 spin-Fock denominators (PySCF `mp.UMP2(ROHF)` convention;
 `reg_romp2-o2-sto3g`). **RMP3** (`RHF::mp3`) adds the third-order doubles
 diagrams on the same closed-shell MO ERIs (`reg_mp3-h2-sto3g`; offline pin on
-PySCF RHF orbitals — PySCF 2.x has no `mp.MP3`). No UMP2/ROMP2 gradients, no
-frozen-core UMP2, no RI-UMP2. Canonical mode still materializes the full
-in-memory ERI tensor in the method's private workspace.
+PySCF RHF orbitals — PySCF 2.x has no `mp.MP3`). **RMP4(SDTQ)** (`RHF::mp4`)
+adds fourth-order RSPT through singles/doubles/triples/quadruples on the same
+closed-shell path (`reg_mp4-h2-sto3g`; offline det-space RSPT-4 twin — PySCF
+2.x has no `mp.MP4`). No UMP2/ROMP2 gradients, no frozen-core UMP2, no
+RI-UMP2. Canonical mode still materializes the full in-memory ERI tensor in
+the method's private workspace.
 
 ## 2. Configuration Interaction
 
@@ -106,7 +113,7 @@ correlate real ones.
 | ---------------------------- | :-: | :--: | :---: |
 | Coupled-cluster doubles, CCD |  ○  |   ○  |   ○  |
 | Brueckner doubles, BD        |  ○  |   ○  |   ○  |
-| CC2                          |  ○  |   ○  |   ○  |
+| CC2                          |  ✓  |   ○  |   ○  |
 | CCSD                         |  ✓  |   ○  |   ○  |
 | CCSD(T)                      |  ✓  |   ○  |   ○  |
 | CCSDT-1a                     |  ○  |   ○  |   ○  |
@@ -129,6 +136,9 @@ correlate real ones.
 | CCSD analytic Hessian        |  ○  |   ○  |   ○  |
 | CCSD(T) analytic gradient    |  ○  |   ○  |   ○  |
 
+**CC2** (`RHF::cc2`) is the approximate CC doubles model (full singles residual;
+doubles residual linear in \(T_2\)) on a closed-shell RHF reference
+(`reg_cc2-h2-sto3g` vs PySCF `cc.RCCSD` with `cc2=True`).
 **CCSD** (`RHF::ccsd`) is closed-shell spin-orbital Gauss–Stanton on a
 converged RHF reference (`reg_ccsd-h2-sto3g` vs PySCF `cc.CCSD`).
 **CCSD(T)** (`RHF::ccsd_t`) adds the non-iterative (T) triples correction on

@@ -1,8 +1,43 @@
 # PySCF method loop — handoff
 
-Last harness pass: **2026-07-23 wave 6** on `dev` (harness commit series `wf wave 3`).
+Last harness pass: **2026-07-23 wave 1 (post re-census)** on `dev`
+(`chore(harness): wf wave 1`).
 
-## Wave 6 summary
+## Wave 1 (post re-census) summary
+
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
+| ---- | ------ | ------ | ---------- | ----------------------------------------------- |
+| `eom-ea-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ea-ccsd` | **0.068** |
+| `adc2x-h2co-sto3g` | excited-states | **merged → done** | `regressions/scf/adc2x-h2co-sto3g` | **0.240** |
+| `ip-adc2-h2o-sto3g` | excited-states | **merged → done** | `regressions/scf/ip-adc2-h2o-sto3g` | **0.191** |
+| `ea-adc2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/ea-adc2-h2-sto3g` | **0.213** |
+| `sf-tddft-o2` | excited-states | **merged → done** | `regressions/scf/sf-tddft-o2` | **9.51** |
+| `mp4-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/mp4-h2-sto3g` | **0.031** |
+| `cc2-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/cc2-h2-sto3g` | **0.392** |
+| `direct-rpa-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/direct-rpa-h2-sto3g` | **0.760** |
+| `bse-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/bse-h2-sto3g` | **0.060** |
+| `dft-d4-h2o-pbe` | dft | **merged → done** | `regressions/scf/dft-d4-h2o-pbe` | **2.17** |
+| `eom-sf-ccsd-o2` | excited-states | **merged → done** | `regressions/scf/eom-sf-ccsd-o2` | **3.12** |
+| `gf2-h2-sto3g` | excited-states | **merged → done** | `regressions/scf/gf2-h2-sto3g` | **0.071** |
+
+- **Blocked this wave:** none
+- **Merge-failed this wave:** none
+- **Not in this merge set (still in_progress):** eom-ip-ccsd, uks-full-lr-o2-lsda,
+  casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g,
+  ump2-grad-o2-sto3g, uks-hessian-o2-sto3g
+- **Queue:** pending = 2 (`nevpt2-h2-sto3g` needs CASSCF; `eom-cc2-h2` unblocked
+  by CC2 energy ✓); in_progress = 7 retained; historical blocked list unchanged
+  (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7, caspt2).
+- **Roadmap:** CPU ✓ for **EOM-EA-CCSD**, **EOM-SF-CCSD**, **ADC(2)-x**,
+  **IP-ADC(2)**, **EA-ADC(2)**, **Spin-flip TDDFT**, **MP4(SDTQ)**, **CC2**,
+  **Direct RPA**, **BSE**, **GF2**, **DFT-D4**. **No ⚡** — ratios noted only;
+  no standing perf suite in ctest.
+- **Speed notes:** all twelve fair-benched and within 10×. Fastest footholds
+  mp4/bse/eom-ea/gf2 (0.03–0.07×); sf-tddft 9.51× (dense SF-RPA vs tiny twin —
+  under the 10× gate, **not** blocked-for-speed); eom-sf 3.12×; dft-d4 2.17×
+  (2000-eval loop). No blocked-for-speed slugs.
+
+## Wave 6 (prior, pre re-census)
 
 | Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{pyscf}}\) |
 | ---- | ------ | ------ | ---------- | ----------------------------------------------- |
@@ -10,20 +45,6 @@ Last harness pass: **2026-07-23 wave 6** on `dev` (harness commit series `wf wav
 | `casci-h2-sto3g` | post-hf | **merged → done** | `regressions/scf/casci-h2-sto3g` | **0.076** |
 | `delta-scf-n2` | excited-states / hf | **merged → done** | `regressions/scf/delta-scf-n2` | **7.83** |
 | `eom-ee-ccsd` | excited-states | **merged → done** | `regressions/scf/eom-ee-ccsd` | **0.193** |
-
-- **Blocked this wave:** none
-- **Merge-failed this wave:** none
-- **Queue:** **pending empty** (PySCF-oracle census queue exhausted for this
-  shift); in_progress empty; historical blocked list (cam-b3lyp,
-  periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7) unchanged — not re-opened.
-- **Roadmap:** CPU ✓ for **CCSD(T)** (`RHF::ccsd_t`), **CASCI**
-  (`RHF::casci`), **EOM-EE-CCSD** (`RHF::eom_ee_ccsd`). **ΔSCF / MOM / IMOM**
-  table rows were already ✓ (`UHF::delta_scf`). **No ⚡** — ratios noted only;
-  no standing perf suite in ctest.
-- **Speed notes:** all four fair-benched and within 10×. casci / eom-ee /
-  ccsd-t faster than PySCF on these footholds (0.08–0.33×); delta-scf 7.83×
-  (IMOM re-SCF heavier but under the 10× gate — **not** blocked-for-speed).
-  No blocked-for-speed slugs.
 
 ## Wave 5 (prior)
 
@@ -65,7 +86,7 @@ Last harness pass: **2026-07-23 wave 6** on `dev` (harness commit series `wf wav
 | `static-polariz-h2o` | hartree-fock | **merged → done** | `regressions/scf/static-polariz-h2o` |
 | `ief-pcm-h2o` | multiscale | **merged → done** | `regressions/scf/ief-pcm-h2o` |
 
-## Wave 1 (prior)
+## Wave 1 (prior, first exhaust)
 
 | Slug | Domain | Status | Regression |
 | ---- | ------ | ------ | ---------- |
@@ -79,14 +100,20 @@ Last harness pass: **2026-07-23 wave 6** on `dev` (harness commit series `wf wav
 
 Pins live in each regression `REFERENCE.md`. Offline pin path:
 `tools/setup_pyscf_env.sh` + `tools/pyscf_oracle/pin_scf.py` (union restored
-after serial merges in prior `fix(oracle)` / `fix(wf): re-union…` commits;
-wave-6 workers each carried their pin path).
+after serial merges in prior `fix(oracle)` / `fix(wf): re-union…` /
+`fix(merge): complete CC2+UCCSD…` commits). Wave-1 workers each carried their
+pin path; merge-fix commits re-unioned multi-channel ADC / CC2+UCCSD.
 
 ## Next assign candidates (pending head)
 
-**None** — `docs/developer/pyscf-method-queue.md` **pending** is empty.
+1. `eom-cc2-h2` — CC2 energy ✓; EOM-CC2 roots now eligible
+2. `nevpt2-h2-sto3g` — still gated on CASSCF (`casscf-h2-sto3g` in_progress)
+
+**in_progress retained** (finish or re-merge before re-assign): eom-ip-ccsd,
+uks-full-lr-o2-lsda, casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g,
+ump2-grad-o2-sto3g, uks-hessian-o2-sto3g.
+
 Historical **blocked** rows stay blocked (erf ERI, periodic HF, TD-DFTB, GFN2,
-PM6/7). Further census would need new roadmap ○ rows with a PySCF offline
-oracle twin (e.g. CASSCF, EOM-IP/EA, CC gradients) before a new assign wave.
+PM6/7, CASPT2).
 
 Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only.
