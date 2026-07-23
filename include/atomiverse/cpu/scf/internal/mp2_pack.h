@@ -60,6 +60,28 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                       double e_scf_ha, double os_scale = 1.0,
                       double ss_scale = 1.0);
 
+/// @brief ROHF-MP2 (PySCF convention): UMP2 on ROHF spatial MOs with
+///        semi-canonical spin-Fock diagonal orbital energies
+///        \(\varepsilon_i^\sigma = (C^\dagger F_\sigma C)_{ii}\).
+///
+/// Matches `mp.UMP2(scf.ROHF(...))` / `mp.MP2` on an ROHF reference, which
+/// converts to UHF (shared \(C\), spin-resolved \(\varepsilon\)) then runs
+/// raw unprojected UMP2. No frozen core.
+/// @param ints     Integral pack with ERI materialized.
+/// @param det      Converged ROHF determinant (shared spatial \(C\); Roothaan
+///                 \(\varepsilon\) on the det are ignored).
+/// @param F_alpha  True α Fock matrix in the AO basis [Hartree] (ROHF
+///                 uncoupled spin Fock, not \(F_{\mathrm{eff}}\)).
+/// @param F_beta   True β Fock matrix in the AO basis [Hartree].
+/// @param e_scf_ha Converged ROHF total energy [Hartree].
+/// @param os_scale Opposite-spin scale (dimensionless).
+/// @param ss_scale Same-spin scale (dimensionless).
+/// @return ROMP2 correlation and total energies [Hartree].
+MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                       const RealMatrix& F_alpha, const RealMatrix& F_beta,
+                       double e_scf_ha, double os_scale = 1.0,
+                       double ss_scale = 1.0);
+
 /// @brief Closed-shell RI-MP2 correlation energy via Coulomb-metric density
 ///        fitting (same `DensityFitting` workspace as SCF RI-J/JK). Does not
 ///        require a materialized 4-center ERI tensor.

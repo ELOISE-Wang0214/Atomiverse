@@ -159,4 +159,25 @@ TEST(MP2, FrozenCoreRejectsNegative) {
     EXPECT_THROW(rhf.mp2(frame), std::invalid_argument);
 }
 
+TEST(ROMP2, LiSto3gNegativeCorrelation) {
+    // Li atom doublet: ROHF(2,1)/STO-3G has virtuals → ROMP2 e_corr < 0.
+    // Unit-only qualitative check (no literature pin; e2e is romp2-o2-sto3g).
+    cpu::Frame frame(1);
+    frame.span(kAtom_x)[0] = 0.0;
+    frame.span(kAtom_y)[0] = 0.0;
+    frame.span(kAtom_z)[0] = 0.0;
+    frame.span(kAtom_type)[0] = 3; // Li
+    frame.span(kAtom_mass)[0] = 6.94;
+    frame.simbox = cpu::Box::cubic(20.0);
+
+    cpu::scf::ROHF rohf(2, 1);
+    rohf.basis = cpu::scf::BasisSet::STO3G;
+    rohf.tol = 1e-12;
+    const auto r = rohf.mp2(frame);
+    EXPECT_TRUE(rohf.converged());
+    EXPECT_LT(r.e_corr, 0.0);
+    EXPECT_NEAR(r.e_tot, rohf.energy() + r.e_corr, 1e-12);
+    EXPECT_FALSE(r.ri);
+}
+
 #endif

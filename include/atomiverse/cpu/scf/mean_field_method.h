@@ -366,13 +366,15 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @brief Canonical MP2 on top of a fresh SCF run (materializes ERI).
     ///
     /// Closed-shell `RHF` → RMP2 (or RI-MP2 when `ri != RI::None`);
-    /// unrestricted `UHF` → UMP2 (spin-orbital, unprojected). ROHF and GHF
-    /// throw. Optional density guess is forwarded to the reference SCF (needed
-    /// for multi-minima cases such as triplet O₂ UHF). Member `frozen` excludes
-    /// the lowest N occupied spatial MOs from the correlation sum (RMP2 /
-    /// RI-MP2); UMP2 rejects `frozen > 0`. Members `mp2_os_scale` /
-    /// `mp2_ss_scale` apply Grimme spin-component scaling (defaults 1 / 1 =
-    /// plain MP2; SCS-MP2 = 1.2 / ⅓).
+    /// unrestricted `UHF` → UMP2 (spin-orbital, unprojected);
+    /// restricted-open `ROHF` → ROMP2 (PySCF: shared spatial MOs +
+    /// semi-canonical \(\varepsilon_i^\sigma = (C^\dagger F_\sigma C)_{ii}\),
+    /// then the UMP2 doubles sum). GHF throws. Optional density guess is
+    /// forwarded to the reference SCF (needed for multi-minima cases such as
+    /// triplet O₂ UHF). Member `frozen` excludes the lowest N occupied spatial
+    /// MOs from the correlation sum (RMP2 / RI-MP2); UMP2/ROMP2 reject
+    /// `frozen > 0`. Members `mp2_os_scale` / `mp2_ss_scale` apply Grimme
+    /// spin-component scaling (defaults 1 / 1 = plain MP2; SCS-MP2 = 1.2 / ⅓).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
     /// @param guess  Optional density-matrix guess for the reference SCF.
     /// @return MP2 correlation + total energy [Hartree]; unscaled OS/SS on

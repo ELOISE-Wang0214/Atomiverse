@@ -1,10 +1,11 @@
 /// @file cpu/scf/mp2.h
 /// @brief Canonical MP2 correlation energy (public API).
 ///
-/// User path: `RHF::mp2(frame)` (closed-shell RMP2 / RI-MP2) or
-/// `UHF::mp2(frame)` (UMP2). Free functions below are BLAS kernels — they do
-/// **not** introduce IntegralPack as a user type (that type is private under
-/// `scf/internal/`).
+/// User path: `RHF::mp2(frame)` (closed-shell RMP2 / RI-MP2),
+/// `UHF::mp2(frame)` (UMP2), or `ROHF::mp2(frame)` (ROMP2 = UMP2 on ROHF
+/// orbitals with semi-canonical spin-Fock denominators; PySCF convention).
+/// Free functions below are BLAS kernels — they do **not** introduce
+/// IntegralPack as a user type (that type is private under `scf/internal/`).
 #pragma once
 
 #include <xtensor/containers/xtensor.hpp>
@@ -13,7 +14,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Canonical or density-fitted MP2 energy (RMP2 / UMP2 / RI-MP2 / SCS).
+/// @brief Canonical or density-fitted MP2 energy (RMP2 / UMP2 / ROMP2 / RI-MP2 / SCS).
 ///
 /// Spin-component channels `e_corr_os` / `e_corr_ss` are the **unscaled**
 /// opposite-spin and same-spin pieces of the doubles sum (PySCF
@@ -57,7 +58,7 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
 
 // Pack-based entry is private implementation — declared in
 // internal/mp2_pack.h if needed by unit tests.
-// Public: RHF::mp2(frame) / UHF::mp2(frame).
+// Public: RHF::mp2(frame) / UHF::mp2(frame) / ROHF::mp2(frame).
 
 } // namespace scf
 } // namespace cpu

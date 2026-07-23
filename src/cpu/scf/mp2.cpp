@@ -342,6 +342,69 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     return {e_corr, e_scf_ha + e_corr, /*ri=*/false, /*frozen=*/0, e_os, e_ss};
 }
 
+MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
+                       const RealMatrix& F_alpha, const RealMatrix& F_beta,
+                       double e_scf_ha, double os_scale, double ss_scale) {
+    using Spin = SlaterDeterminant::Spin;
+    if (ints.ERI.size() == 0) {
+        throw std::invalid_argument(
+            "romp2_energy: ERI is not materialized; call IntegralPack{..., "
+            "compute_eri=true}.");
+    }
+    if (det.generalized()) {
+        throw std::invalid_argument(
+            "romp2_energy: GHF (spinor) reference is not supported.");
+    }
+
+    // Shared spatial MOs (ROHF). Either restricted or unrestricted-form det
+    // is accepted; occupations come from the per-spin electron counts.
+    const RealMatrix& Cref = det.coefficients(Spin::alpha);
+    const int n_ao = static_cast<int>(Cref.shape(0));
+    const int n_mo = static_cast<int>(Cref.shape(1));
+    const int n_occ_a = det.n_electrons(Spin::alpha);
+    const int n_occ_b = det.n_electrons(Spin::beta);
+
+    if (static_cast<int>(F_alpha.shape(0)) != n_ao ||
+        static_cast<int>(F_alpha.shape(1)) != n_ao ||
+        static_cast<int>(F_beta.shape(0)) != n_ao ||
+        static_cast<int>(F_beta.shape(1)) != n_ao) {
+        throw std::invalid_argument(
+            "romp2_energy: spin Fock matrices must be n_ao × n_ao matching the "
+            "MO coefficient row dimension.");
+    }
+    if (n_occ_a < 0 || n_occ_b < 0 || n_occ_a > n_mo || n_occ_b > n_mo) {
+        throw std::invalid_argument(
+            "romp2_energy: electron counts out of range for the MO space.");
+    }
+
+    // Semi-canonical denominators (PySCF ROHF.canonicalize / to_uhf):
+    //   ε_i^σ = (C† F_σ C)_ii
+    // Roothaan F_eff eigenvalues on the det are intentionally NOT used.
+    const RealMatrix Fmo_a =
+        xt::linalg::dot(xt::transpose(Cref), xt::linalg::dot(F_alpha, Cref));
+    const RealMatrix Fmo_b =
+        xt::linalg::dot(xt::transpose(Cref), xt::linalg::dot(F_beta, Cref));
+    RealVector eps_a = xt::zeros<double>({static_cast<std::size_t>(n_mo)});
+    RealVector eps_b = xt::zeros<double>({static_cast<std::size_t>(n_mo)});
+    for (int i = 0; i < n_mo; ++i) {
+        eps_a(i) = Fmo_a(i, i);
+        eps_b(i) = Fmo_b(i, i);
+    }
+
+    RealVector occ_a = xt::zeros<double>({static_cast<std::size_t>(n_mo)});
+    RealVector occ_b = xt::zeros<double>({static_cast<std::size_t>(n_mo)});
+    for (int i = 0; i < n_occ_a; ++i)
+        occ_a(i) = 1.0;
+    for (int i = 0; i < n_occ_b; ++i)
+        occ_b(i) = 1.0;
+
+    // Independent α/β channels with identical spatial C (UHF-shaped view of
+    // the ROHF solution) for the shared ump2_energy kernel.
+    SlaterDeterminant udet(Cref, std::move(eps_a), std::move(occ_a), n_occ_a,
+                           Cref, std::move(eps_b), std::move(occ_b), n_occ_b);
+    return ump2_energy(ints, udet, e_scf_ha, os_scale, ss_scale);
+}
+
 MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         double e_scf_ha, AuxBasis aux, int n_frozen,
                         double os_scale, double ss_scale) {
