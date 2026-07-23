@@ -225,7 +225,9 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_xc_grid_gga  cpu/gpw/test_cpu_gpw_xc_grid_gga.cpp)
         atv_add_cpp_test(test_cpu_gpw_mt_poisson   cpu/gpw/test_cpu_gpw_mt_poisson.cpp)
         atv_add_cpp_test(test_cpu_gpw_method       cpu/gpw/test_gpw_method.cpp)
-    atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
+        atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
+        # Analytic forces vs FD (unit only; CP2K pin is regressions/gpw/).
+        atv_add_cpp_test(test_cpu_gpw_forces       cpu/gpw/test_cpu_gpw_forces.cpp)
     endif()
 
     # Data-table unit tests: grammar/ingest of the in-tree GTH + MOLOPT tables and

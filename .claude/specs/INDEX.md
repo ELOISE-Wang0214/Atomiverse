@@ -5,7 +5,11 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
+| Spec | Branch | Status |
+| ---- | ------ | ------ |
+| [`gpw-forces-water`](gpw-forces-water/spec.md) | `wf/gpw-forces-water` | open — GPW analytic forces vs offline CP2K FORCE_EVAL (water) |
+
+*(CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
 merged into `dev` and removed)*
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
