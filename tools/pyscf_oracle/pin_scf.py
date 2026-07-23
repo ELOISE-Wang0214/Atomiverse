@@ -24,6 +24,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py adc2 --geom h2co --basis sto-3g --nstates 3
+  python tools/pyscf_oracle/pin_scf.py ea-adc2 --geom h2 --basis sto-3g --nstates 2
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
@@ -114,7 +115,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "ea-adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -840,6 +841,22 @@ def main() -> int:
         out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
         out["s1_ha"] = float(e_adc[0])
         out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ea-adc2":
+        # Strict EA-ADC(2) electron-attachment energies (1p / 2p–1h).
+        # Schirmer PRA 26, 2395 (1982); PySCF adc.ADC method_type='ea'.
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ea"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, p_spec, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["ea_ha"] = [float(x) for x in e_adc]
+        out["ea_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["ea0_ha"] = float(e_adc[0])
+        out["ea0_ev"] = float(e_adc[0]) * _HA_TO_EV
+        out["spec_factor"] = [float(x) for x in p_spec]
     elif m == "ccsd":
         # Closed-shell CCSD on the RHF reference (PySCF cc.CCSD).
         # Local import: other branches also re-bind `np`, so use a fresh name.
