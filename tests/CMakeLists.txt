@@ -234,6 +234,9 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_method       cpu/gpw/test_gpw_method.cpp)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
         atv_add_cpp_test(test_cpu_gpw_ot           cpu/gpw/test_cpu_gpw_ot.cpp)
+        if(ATV_BUILD_MD)
+            atv_add_cpp_test(test_cpu_gpw_bomd    cpu/gpw/test_gpw_bomd.cpp)
+        endif()
     endif()
 
     # Data-table unit tests: grammar/ingest of the in-tree GTH + MOLOPT tables and

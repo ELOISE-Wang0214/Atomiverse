@@ -40,3 +40,4 @@ Do not re-create closed slugs without superseding intent.
 | [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — Spec: `freeze-electrode-atoms` |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
 | [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
+| [gpw-bomd-water](gpw-bomd-water/) | `wf/gpw-bomd-water` | open — GPW BOMD water NVE energy-drift pin |
