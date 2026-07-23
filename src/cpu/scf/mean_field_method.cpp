@@ -32,6 +32,7 @@
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/casci_pack.h"
 #include "atomiverse/cpu/scf/internal/casscf_pack.h"
+#include "atomiverse/cpu/scf/internal/nevpt2_pack.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
@@ -1253,6 +1254,32 @@ CASSCFResult MeanFieldMethod<D>::casscf(Frame& frame, int ncas, int nelecas) {
             "to optimize orbitals on a non-stationary determinant (no fallback)");
     // Orbital gradient tol tracks the SCF energy tolerance (Ha).
     return casscf_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
+                         /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
+}
+
+template <typename D>
+NEVPT2Result MeanFieldMethod<D>::nevpt2(Frame& frame, int ncas, int nelecas) {
+    if (spin_ == SpinType::RestrictedOpen)
+        throw std::invalid_argument(
+            "MeanFieldMethod::nevpt2: an ROHF reference is not supported — "
+            "closed-shell SC-NEVPT2 requires RHF.");
+    if (spin_ == SpinType::Generalized)
+        throw std::invalid_argument(
+            "MeanFieldMethod::nevpt2: a GHF (spinor) reference is not "
+            "supported — closed-shell SC-NEVPT2 requires RHF.");
+    if (spin_ != SpinType::Restricted)
+        throw std::invalid_argument(
+            "MeanFieldMethod::nevpt2: closed-shell RHF reference only — UHF "
+            "NEVPT2 is not implemented (no fallback). Use RHF.");
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "MeanFieldMethod::nevpt2: SCF reference did not converge — refusing "
+            "to run CASSCF/NEVPT2 on a non-stationary determinant (no fallback)");
+    return nevpt2_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
                          /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
 }
 
