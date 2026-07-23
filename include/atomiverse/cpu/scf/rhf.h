@@ -10,6 +10,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
 #include "atomiverse/cpu/scf/cisd.h"
+#include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
@@ -202,6 +203,18 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument on open-shell / missing virtuals /
     ///         non-converged SCF or CCSD / n_states out of range.
     EOMEECCSDResult eom_ee_ccsd(Frame& frame, int n_states = 1);
+
+    /// @brief EOM-EA-CCSD electron-attachment energies — drives a fresh RHF
+    ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
+    ///        non-symmetric EOM-EA Jacobian (Nooijen & Bartlett, J. Chem.
+    ///        Phys. **102**, 3629 (1995)). Matches PySCF
+    ///        `cc.CCSD(...).eaccsd()` / `eom_gccsd.EOMEA`.
+    /// @param frame Geometry; drives SCF + CCSD + EOM.
+    /// @param n_states Number of lowest unique attachment roots (≥ 1).
+    /// @return Attachment ω [eV] plus CCSD energetics [Hartree].
+    /// @throws std::invalid_argument on open-shell / missing virtuals /
+    ///         non-converged SCF or CCSD / n_states out of range.
+    EOMEACCSDResult eom_ea_ccsd(Frame& frame, int n_states = 1);
 
     /// @brief Spectral G0W0 quasiparticle energies of the most recent `run()`
     ///        (closed-shell RHF reference). Direct-RPA (dRPA, α_hf = 0)
