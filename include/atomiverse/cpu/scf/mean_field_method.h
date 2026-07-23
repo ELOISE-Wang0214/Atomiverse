@@ -371,12 +371,17 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// unrestricted `UHF` → UMP2 (spin-orbital, unprojected);
     /// restricted-open `ROHF` → ROMP2 (PySCF: shared spatial MOs +
     /// semi-canonical \(\varepsilon_i^\sigma = (C^\dagger F_\sigma C)_{ii}\),
-    /// then the UMP2 doubles sum). GHF throws. Optional density guess is
+    /// then the UMP2 doubles sum). Closed-shell `RKS` with a double-hybrid
+    /// XC (e.g. `XCType::B2PLYP`) is the same RMP2 kernel on the KS
+    /// orbitals — set `mp2_os_scale = mp2_ss_scale = hybrid_pt2_fraction(xc)`
+    /// so \(E_{\mathrm{tot}}=E_{\mathrm{KS}}+a_c E_{\mathrm{MP2}}\)
+    /// (Grimme B2PLYP: a_c = 0.27). GHF throws. Optional density guess is
     /// forwarded to the reference SCF (needed for multi-minima cases such as
     /// triplet O₂ UHF). Member `frozen` excludes the lowest N occupied spatial
     /// MOs from the correlation sum (RMP2 / RI-MP2); UMP2/ROMP2 reject
     /// `frozen > 0`. Members `mp2_os_scale` / `mp2_ss_scale` apply Grimme
-    /// spin-component scaling (defaults 1 / 1 = plain MP2; SCS-MP2 = 1.2 / ⅓).
+    /// spin-component scaling (defaults 1 / 1 = plain MP2; SCS-MP2 = 1.2 / ⅓;
+    /// B2PLYP = 0.27 / 0.27).
     /// @param frame  Geometry; drives a fresh SCF then adds the correction.
     /// @param guess  Optional density-matrix guess for the reference SCF.
     /// @return MP2 correlation + total energy [Hartree]; unscaled OS/SS on

@@ -12,6 +12,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py scs-mp2 --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py sos-mp2 --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py mp2 --geom water --basis sto-3g --grad
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
@@ -112,6 +113,7 @@ def main() -> int:
             "mp2-fc",
             "scs-mp2",
             "sos-mp2",
+            "b2plyp",
             "ump2",
             "romp2",
             "tda",
@@ -234,6 +236,16 @@ def main() -> int:
         mf = dft.RKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
+    elif m == "b2plyp":
+        # Grimme B2PLYP double hybrid (JCP 124, 034108 (2006)):
+        #   a_x = 0.53 HF, (1-a_x) B88, (1-a_c) LYP, a_c = 0.27 PT2/MP2.
+        # Hosted libxc often lacks the named B2PLYP composite; compose the
+        # hybrid-KS part explicitly and scale MP2 by a_c offline.
+        mf = dft.RKS(mol)
+        mf.xc = "0.53*HF + 0.47*GGA_X_B88 + 0.73*GGA_C_LYP"
+        out["xc"] = mf.xc
+        out["a_x"] = 0.53
+        out["a_c"] = 0.27
     elif m in ("uks", "uks-tda"):
         mf = dft.UKS(mol)
         mf.xc = args.xc
@@ -332,6 +344,20 @@ def main() -> int:
         out["e_tot_mp2_ha"] = float(e) + e_corr_sos
         out["c_os"] = c_os
         out["c_ss"] = c_ss
+    elif m == "b2plyp":
+        # Double-hybrid total energy: E_KS + a_c * E_MP2 on the KS orbitals.
+        m2 = mp.MP2(mf).run()
+        a_c = 0.27
+        e_corr_pt2 = a_c * float(m2.e_corr)
+        out["e_ks_ha"] = float(e)
+        out["e_corr_mp2_ha"] = float(m2.e_corr)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
+        out["e_corr_pt2_ha"] = e_corr_pt2
+        out["e_corr_ha"] = e_corr_pt2
+        out["e_tot_ha"] = float(e) + e_corr_pt2
+        out["a_c"] = a_c
+        out["a_x"] = 0.53
     elif m == "ump2":
         # Explicit UMP2 on the UHF reference (triplet O2, etc.).
         m2 = mp.UMP2(mf).run()
