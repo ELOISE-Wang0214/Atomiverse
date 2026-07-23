@@ -93,6 +93,11 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
         ),
         "mp2": "from pyscf import scf, mp\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.MP2(mf).run()",
         "ump2": "from pyscf import scf, mp\nmf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
+        "ump2_grad": (
+            "from pyscf import scf, mp\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
+            "m2=mp.UMP2(mf).run(); m2.nuc_grad_method().kernel()"
+        ),
         "romp2": "from pyscf import scf, mp\nmf=scf.ROHF(mol); mf.conv_tol=1e-10; mf.kernel(); mp.UMP2(mf).run()",
         "mp3": (
             "from pyscf import scf, ao2mo\nimport numpy as np\n"
@@ -443,7 +448,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf_tddft", "mp4", "cc2", "direct_rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks_tddft", "casscf", "ccsd_grad"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf_tddft", "mp4", "cc2", "direct_rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd", "uks_tddft", "casscf", "ccsd_grad", "ump2_grad"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

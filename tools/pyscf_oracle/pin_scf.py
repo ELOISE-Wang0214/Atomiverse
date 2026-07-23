@@ -1030,6 +1030,9 @@ def main() -> int:
             ss, mult = mf.spin_square()
             out["s2"] = float(ss)
             out["multiplicity"] = float(mult)
+        if args.grad:
+            g = m2.nuc_grad_method().kernel()
+            out["grad_ha_bohr"] = g.tolist()
     elif m == "romp2":
         # ROHF reference → PySCF converts to UHF view + UMP2 (semi-canonical
         # spin-Fock diagonal denominators). No separate mp.ROMP2 class.
