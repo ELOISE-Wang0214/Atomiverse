@@ -119,12 +119,12 @@ void bind_semiempirical(nb::module_& m) {
             // on this path — the solve ran inside the per-rank
             // materializers.
             cpu::task::AM1EvaluatorParams p{};
-            const AM1& cfg = evaluator /*members*/ ;
-            p.charge = cfg.charge;
-            p.multiplicity = cfg.multiplicity;
-            p.max_iter = cfg.max_iter;
-            p.density_tol = cfg.density_tol;
-            p.energy_tol = cfg.energy_tol;
+            const AM1& method = evaluator.method();
+            p.charge = method.charge;
+            p.multiplicity = method.multiplicity;
+            p.max_iter = method.max_iter;
+            p.density_tol = method.density_tol;
+            p.energy_tol = method.energy_tol;
             cpu::task::TaskSpec spec{cpu::task::SinglePointTask{p}};
             cpu::Frame result(0);
             {

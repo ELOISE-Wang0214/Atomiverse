@@ -142,7 +142,15 @@ TEST(SerialOnReplica, EvaluateAm1MatchesSerialInnerSolverReference) {
     // pinned frame contract: scalars.energy = electronic energy [eV],
     // atoms.charge = Mulliken charges [e].
     auto ref_frame = make_h2_frame();
-    cpu::semiempirical::AM1Solver solver(h2_config());
+    cpu::semiempirical::AM1Solver solver;
+    {
+        const auto cfg = h2_config();
+        solver.charge = cfg.charge;
+        solver.multiplicity = cfg.multiplicity;
+        solver.max_iter = cfg.max_iter;
+        solver.density_tol = cfg.density_tol;
+        solver.energy_tol = cfg.energy_tol;
+    }
     solver.build(ref_frame);
     const auto& ref = solver.run(ref_frame);
     ASSERT_TRUE(ref.converged);
