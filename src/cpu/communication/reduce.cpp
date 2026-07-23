@@ -45,28 +45,29 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
 
     auto& f = ctx.frame;
     // Pack {energy, energy_pair, energy_bond, energy_angle, energy_dihedral,
-    // energy_improper, kinetic, stress[6], stress_kinetic[6]} into one
-    // 19-double allreduce. Per-term energy fields reduce identically to
-    // `energy` (each is a per-rank partial sum of one evaluator family).
-    // `n_local` is omitted -- it is authoritative on each rank from
-    // `dd->n_local` and does not need to be summed. Both stress fields
-    // reduce identically (each is a per-rank partial sum of Voigt
+    // energy_improper, energy_charging_work, kinetic, stress[6],
+    // stress_kinetic[6]} into one 20-double allreduce. Per-term energy fields
+    // reduce identically to `energy` (each is a per-rank partial sum of one
+    // evaluator family). `n_local` is omitted -- it is authoritative on each
+    // rank from `dd->n_local` and does not need to be summed. Both stress
+    // fields reduce identically (each is a per-rank partial sum of Voigt
     // components).
-    double sendbuf[19];
+    double sendbuf[20];
     sendbuf[0] = f.meta.get(kEnergy);
     sendbuf[1] = f.meta.get(kEnergyPair);
     sendbuf[2] = f.meta.get(kEnergyBond);
     sendbuf[3] = f.meta.get(kEnergyAngle);
     sendbuf[4] = f.meta.get(kEnergyDihedral);
     sendbuf[5] = f.meta.get(kEnergyImproper);
-    sendbuf[6] = f.meta.get(kKinetic);
+    sendbuf[6] = f.meta.get(kEnergyChargingWork);
+    sendbuf[7] = f.meta.get(kKinetic);
     for (int k = 0; k < 6; ++k)
-        sendbuf[7 + k] = f.meta.get(kStress)[k];
+        sendbuf[8 + k] = f.meta.get(kStress)[k];
     for (int k = 0; k < 6; ++k)
-        sendbuf[13 + k] = f.meta.get(kStressKinetic)[k];
+        sendbuf[14 + k] = f.meta.get(kStressKinetic)[k];
 
-    double recvbuf[19];
-    MPI_Allreduce(sendbuf, recvbuf, 19, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
+    double recvbuf[20];
+    MPI_Allreduce(sendbuf, recvbuf, 20, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
 
     f.meta.get(kEnergy) = recvbuf[0];
     f.meta.get(kEnergyPair) = recvbuf[1];
@@ -74,11 +75,12 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
     f.meta.get(kEnergyAngle) = recvbuf[3];
     f.meta.get(kEnergyDihedral) = recvbuf[4];
     f.meta.get(kEnergyImproper) = recvbuf[5];
-    f.meta.get(kKinetic) = recvbuf[6];
+    f.meta.get(kEnergyChargingWork) = recvbuf[6];
+    f.meta.get(kKinetic) = recvbuf[7];
     for (int k = 0; k < 6; ++k)
-        f.meta.get(kStress)[k] = recvbuf[7 + k];
+        f.meta.get(kStress)[k] = recvbuf[8 + k];
     for (int k = 0; k < 6; ++k)
-        f.meta.get(kStressKinetic)[k] = recvbuf[13 + k];
+        f.meta.get(kStressKinetic)[k] = recvbuf[14 + k];
 }
 
 #else // !ATV_HAS_MPI

@@ -229,6 +229,8 @@ inline constexpr MetaKey<double> kEnergyBond{"energy_bond", true};
 inline constexpr MetaKey<double> kEnergyAngle{"energy_angle", true};
 inline constexpr MetaKey<double> kEnergyDihedral{"energy_dihedral", true};
 inline constexpr MetaKey<double> kEnergyImproper{"energy_improper", true};
+/// Charging-work bookkeeping \(-\sum_i \Psi_i Q_i\) [eV] (MetalWalls JOSS eq. 6).
+inline constexpr MetaKey<double> kEnergyChargingWork{"energy_charging_work", true};
 inline constexpr MetaKey<double> kKinetic{"kinetic", true};
 inline constexpr MetaKey<double> kConserved{"conserved", true};
 inline constexpr MetaKey<MetaF64x6> kStress{"stress", true};

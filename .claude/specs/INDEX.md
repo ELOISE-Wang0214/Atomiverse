@@ -7,7 +7,8 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
-| [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — E1 ConstPotBO parallel-plate |
+| [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
+| [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 

@@ -487,6 +487,7 @@ Frame::Frame(int n_atoms) {
     meta.insert(kEnergyAngle, 0.0);
     meta.insert(kEnergyDihedral, 0.0);
     meta.insert(kEnergyImproper, 0.0);
+    meta.insert(kEnergyChargingWork, 0.0);
     meta.insert(kKinetic, 0.0);
     meta.insert(kConserved, 0.0);
     meta.insert(kStress, MetaF64x6{});
