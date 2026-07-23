@@ -116,8 +116,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")
-    p.add_argument("--charge", type=int, default=0)
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)
     p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")
     p.add_argument("--xc", default="b3lyp")
     p.add_argument("--nstates", type=int, default=3)
@@ -383,7 +382,7 @@ def main() -> int:
         mf.xc = args.xc
         out["xc"] = args.xc
     else:
-        # tda / tdhf / mp2 / mp3 / ccsd ground state: RHF
+        # tda / tdhf / mp2 / mp3 / mp4 / ccsd ground state: RHF
         mf = scf.RHF(mol)
 
 
@@ -619,6 +618,126 @@ def main() -> int:
         out["e_tot_mp3_ha"] = float(e) + e_corr
         out["e_corr_mp2_pyscf_ha"] = float(m2.e_corr)
         out["oracle"] = "szabo_psi4numpy_on_pyscf_rhf_ao2mo"
+    elif m == "mp4":
+        # Closed-shell RMP4(SDTQ). PySCF 2.x has no mp.MP4 — exact intermediate-
+        # normalization RSPT through order 4 on the full determinant basis built
+        # from PySCF RHF MOs + ao2mo ERIs (H₂/STO-3G product gate; C(2 nmo, ne)
+        # must stay tiny). Algebraic spin-orbital SDTQ residual form matches.
+        from pyscf import ao2mo
+        from itertools import combinations
+        import numpy as np
+
+        m2 = mp.MP2(mf).run()
+        C = np.asarray(mf.mo_coeff)
+        eps = np.asarray(mf.mo_energy)
+        nmo = C.shape[1]
+        ndocc = mol.nelectron // 2
+        nocc_so = 2 * ndocc
+        nso = 2 * nmo
+        if nso > 12 or nocc_so > 6:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": "mp4 pin: determinant RSPT limited to tiny "
+                        "spaces (nso<=12, nocc_so<=6); use algebraic path",
+                    }
+                )
+            )
+            return 2
+        eri_chem = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
+        h_ao = mf.get_hcore()
+        h_mo = C.T @ h_ao @ C
+        h_so = np.zeros((nso, nso))
+        for p in range(nmo):
+            for q in range(nmo):
+                h_so[2 * p, 2 * q] = h_mo[p, q]
+                h_so[2 * p + 1, 2 * q + 1] = h_mo[p, q]
+        # Antisym <pq||rs>
+        Vaa = np.zeros((nso, nso, nso, nso))
+        for p in range(nso):
+            for q in range(nso):
+                for r in range(nso):
+                    for s in range(nso):
+                        val = 0.0
+                        if (p % 2) == (r % 2) and (q % 2) == (s % 2):
+                            val += eri_chem[p // 2, r // 2, q // 2, s // 2]
+                        if (p % 2) == (s % 2) and (q % 2) == (r % 2):
+                            val -= eri_chem[p // 2, s // 2, q // 2, r // 2]
+                        Vaa[p, q, r, s] = val
+        eso = np.repeat(eps, 2)
+        dets = list(combinations(range(nso), nocc_so))
+        nd = len(dets)
+        iref = dets.index(tuple(range(nocc_so)))
+
+        def phase_exc(di, holes, particles):
+            orb = list(di)
+            phase = 1
+            for h in holes:
+                pos = orb.index(h)
+                phase *= (-1) ** pos
+                orb.pop(pos)
+            for p_ in particles:
+                n_before = sum(1 for o in orb if o < p_)
+                phase *= (-1) ** n_before
+                orb.append(p_)
+                orb.sort()
+            return phase
+
+        def H_me(d1, d2):
+            s1, s2 = set(d1), set(d2)
+            only1 = sorted(s1 - s2)
+            only2 = sorted(s2 - s1)
+            n = len(only1)
+            if n > 2:
+                return 0.0
+            if n == 0:
+                e_ = sum(h_so[i, i] for i in d1)
+                for i in d1:
+                    for j in d1:
+                        e_ += 0.5 * Vaa[i, j, i, j]
+                return e_
+            if n == 1:
+                h, p_ = only1[0], only2[0]
+                ph = phase_exc(d1, [h], [p_])
+                common = sorted(s1 & s2)
+                val = h_so[h, p_] + sum(Vaa[h, k, p_, k] for k in common)
+                return ph * val
+            i, j = only1
+            a, b = only2
+            ph = phase_exc(d1, [i, j], [a, b])
+            return ph * Vaa[i, j, a, b]
+
+        H = np.array([[H_me(d1, d2) for d2 in dets] for d1 in dets])
+        H0 = np.diag([sum(eso[p_] for p_ in d) for d in dets])
+        Vmat = H - H0
+        E0 = H0[iref, iref]
+        E1 = Vmat[iref, iref]
+        Psi0 = np.zeros(nd)
+        Psi0[iref] = 1.0
+
+        def R0(vec):
+            out = np.zeros_like(vec)
+            for i in range(nd):
+                if i != iref:
+                    out[i] = vec[i] / (E0 - H0[i, i])
+            return out
+
+        Psi1 = R0(Vmat @ Psi0)
+        e2 = float(Psi0 @ Vmat @ Psi1)
+        Psi2 = R0(Vmat @ Psi1 - E1 * Psi1 - e2 * Psi0)
+        e3 = float(Psi0 @ Vmat @ Psi2)
+        Psi3 = R0(Vmat @ Psi2 - E1 * Psi2 - e2 * Psi1 - e3 * Psi0)
+        e4 = float(Psi0 @ Vmat @ Psi3)
+        e_corr = e2 + e3 + e4
+        out["e_hf_ha"] = float(e)
+        out["e_corr_mp2_ha"] = e2
+        out["e_corr_mp3_ha"] = e3
+        out["e_corr_mp4_ha"] = e4
+        out["e_corr_ha"] = e_corr
+        out["e_tot_mp4_ha"] = float(e) + e_corr
+        out["e_corr_mp2_pyscf_ha"] = float(m2.e_corr)
+        out["oracle"] = "rspt4_det_on_pyscf_rhf_ao2mo"
     elif m == "ump2":
         # Explicit UMP2 on the UHF reference (triplet O2, etc.).
         m2 = mp.UMP2(mf).run()

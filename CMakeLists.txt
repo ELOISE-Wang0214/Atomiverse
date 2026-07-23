@@ -523,6 +523,7 @@ if(NOT ATV_DOCS_ONLY)
 
             src/cpu/scf/mp2.cpp
             src/cpu/scf/mp3.cpp
+            src/cpu/scf/mp4.cpp
             src/cpu/scf/ccsd.cpp
             src/cpu/scf/eom_ee_ccsd.cpp
             src/cpu/scf/eom_ea_ccsd.cpp
