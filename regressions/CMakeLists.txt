@@ -197,6 +197,7 @@ if(ATV_BUILD_SEMIEMPIRICAL)
 endif()
 if(ATV_BUILD_KSPACE AND ATV_BUILD_MD)
     atv_add_regression(md npt_pme_nacl)
+    atv_add_regression(md slab-2d-ewald-foothold)
 endif()
 # FMM operator math is always-on (facade longrange/); no product-module gate.
 atv_add_regression(longrange fmm_point_charges)

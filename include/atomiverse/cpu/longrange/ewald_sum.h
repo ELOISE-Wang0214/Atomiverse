@@ -5,11 +5,14 @@
 /// Pure operator math for the Ewald reciprocal sum (P. P. Ewald, *Ann. Phys.*
 /// **369**, 253 (1921). DOI: 10.1002/andp.19213690304):
 ///
-///   E_recip = units::coulomb · (2π/V) Σ_{k≠0} exp(−k²/4α²)/k² · |S(k)|²
+///   E_recip = units::coulomb · (4π/V) Σ_{k∈½} exp(−k²/4α²)/k² · |S(k)|²
 ///   E_self  = −units::coulomb · (α/√π) Σ_i q_i²
 ///   E_corr  = −units::coulomb · π/(2 V α²) · (Σ_i q_i)²
 ///
-/// with S(k) = Σ_j q_j exp(i k·r_j). The MPI seam is intentionally between
+/// with S(k) = Σ_j q_j exp(i k·r_j). The k-sum is over the **positive
+/// hemisphere** only (kz>0, or kz=0∧ky>0, or kz=ky=0∧kx>0), matching the
+/// LAMMPS Ewald half-sphere convention with prefactor 4π/V (equivalent to a
+/// full-sphere sum at 2π/V). The MPI seam is intentionally between
 /// #structure_factor (partial S(k) over owned atoms) and #add_forces /
 /// #reciprocal_energy_virial (consume global S(k)) — Allreduce stays in the
 /// backend wrapper.
@@ -102,10 +105,18 @@ class EwaldSum {
         kz_.clear();
         kw_.clear();
         kvterm_.clear();
+        // Positive hemisphere only (LAMMPS Ewald convention). Paired with
+        // prefactor 4π/V in energy/forces (not 2π/V over the full sphere).
         for (int mx = -kmax[0]; mx <= kmax[0]; ++mx)
             for (int my = -kmax[1]; my <= kmax[1]; ++my)
                 for (int mz = -kmax[2]; mz <= kmax[2]; ++mz) {
                     if (mx == 0 && my == 0 && mz == 0)
+                        continue;
+                    if (mz < 0)
+                        continue;
+                    if (mz == 0 && my < 0)
+                        continue;
+                    if (mz == 0 && my == 0 && mx < 0)
                         continue;
                     const double gx =
                         mx * b[0][0] + my * b[1][0] + mz * b[2][0];
@@ -178,7 +189,8 @@ class EwaldSum {
                     double volume, const double* sr, const double* si,
                     AccReal* fx, AccReal* fy, AccReal* fz) const {
         const int ng = static_cast<int>(kx_.size());
-        const double K = ATV::units::coulomb * 2.0 * ATV::units::pi / volume;
+        // Half-sphere: energy prefactor is 4π k_e / V; force factor uses 2·ug.
+        const double K = ATV::units::coulomb * 4.0 * ATV::units::pi / volume;
         const double* __restrict kx = kx_.data();
         const double* __restrict ky = ky_.data();
         const double* __restrict kz = kz_.data();
@@ -230,7 +242,8 @@ class EwaldSum {
                                   double volume, double& e_recip,
                                   double stress[6]) const {
         const int ng = static_cast<int>(kx_.size());
-        const double K = ATV::units::coulomb * 2.0 * ATV::units::pi / volume;
+        // Half-sphere prefactor 4π k_e / V (see rebuild() hemisphere filter).
+        const double K = ATV::units::coulomb * 4.0 * ATV::units::pi / volume;
         const double* __restrict kx = kx_.data();
         const double* __restrict ky = ky_.data();
         const double* __restrict kz = kz_.data();
