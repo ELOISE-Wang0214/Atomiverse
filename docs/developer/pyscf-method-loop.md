@@ -82,3 +82,7 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 assign wave 6: ccsd-t-h2o-sto3g (post-hf), casci-h2-sto3g (post-hf), delta-scf-n2 (excited-states/hf), eom-ee-ccsd (excited-states) → in_progress; skip=[]; pending_left=0 after this wave
 - 2026-07-23 wave 6 merge: all four green HEADs → dev (ccsd-t-h2o-sto3g, casci-h2-sto3g, delta-scf-n2, eom-ee-ccsd); blocked=[]; merge-failed=[]
 - 2026-07-23 harness wave 6: queue merged→done (4); in_progress cleared; pending empty; roadmaps ○→✓ for CCSD(T), CASCI, EOM-EE-CCSD (ΔSCF already ✓); ratios ccsd-t=0.333 casci=0.076 delta-scf=7.83 eom-ee=0.193; no ⚡ (no standing perf suite); handoff written; queue_remaining=0
+- 2026-07-23 tutorial: methods/ccsd-t-h2o-sto3g.md
+- 2026-07-23 tutorial: methods/casci-h2-sto3g.md
+- 2026-07-23 tutorial: methods/delta-scf-n2.md
+- 2026-07-23 tutorial: methods/eom-ee-ccsd.md
