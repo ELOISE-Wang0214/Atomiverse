@@ -1,6 +1,6 @@
 ---
 slug: full-grid-alda
-status: approved
+status: done
 created: 2026-07-23
 track: A-response
 grilled: false

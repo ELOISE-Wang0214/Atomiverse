@@ -560,6 +560,7 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_tda_nac         cpu/scf/test_tda_nac.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2_public      cpu/scf/test_mp2_public.cpp)
     atv_add_cpp_test(test_cpu_scf_alda_diff       cpu/scf/test_alda_diff.cpp)
+    atv_add_cpp_test(test_cpu_scf_full_grid_alda  cpu/scf/test_full_grid_alda.cpp)
     atv_add_cpp_test(test_cpu_scf_embedding       cpu/scf/test_embedding.cpp)
     # hf-capability-gaps-16-solvent: C-PCM cavity/Born oracle, f(ε), H2O
     # solvent vs gas, solvent_eps=0 vacuum identity, forces throw.

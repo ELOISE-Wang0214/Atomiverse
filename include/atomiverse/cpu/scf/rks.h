@@ -32,12 +32,16 @@ class RKS : public MeanFieldMethod<RKS> {
 
     /// @brief Vertical TDA excitation energies of the most recent `run()`.
     ///
-    /// Skeleton: Casida TDA with the **HF-like** A matrix built on the
-    /// converged KS orbitals (CIS@RKS). ALDA \(f^{\mathrm{xc}}\) is deferred;
-    /// this proves the post-SCF member path on RKS / Frame.
+    /// Casida TDA on the converged KS orbitals. For pure LSDA the A matrix
+    /// includes the full MO-product ALDA kernel
+    /// \((ia|f^{\mathrm{xc}}|jb)=\int\phi_i\phi_a\,f_{\mathrm{ALDA}}(n)\,
+    /// \phi_j\phi_b\,d\mathbf{r}\) on the KS quadrature grid (Dirac-exchange
+    /// second derivative; Casida 1995). Hybrid / GGA functionals keep the
+    /// HF-like CIS@RKS path (`ExcitedStatesResult::alda = false`).
     /// @param n_states Number of lowest excited states.
     /// @param channel  Singlet or triplet channel.
-    /// @return Excitation energies [eV] and transition properties.
+    /// @return Excitation energies [eV], transition properties;
+    ///         `alda == true` for the LSDA full-grid path.
     ExcitedStatesResult
     tda(int n_states,
         ExcitationChannel channel = ExcitationChannel::singlet) const;

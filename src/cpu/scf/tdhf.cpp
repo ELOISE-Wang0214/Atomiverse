@@ -18,6 +18,8 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/internal/alda_kernel.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
@@ -611,27 +613,31 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     const internal::OrbitalHessian hessian{det, eri};
     const internal::Channel ch = internal_channel(channel);
 
-    // LSDA: dense TDA A + Dirac-exchange ALDA diagonal kernel (textbook).
-    // f_x = d v_x / dρ with v_x = −(4/3) C_x ρ^{1/3} ⇒ f_x = −(4/9) C_x ρ^{-2/3}.
-    // Full MO-product grid ALDA is deferred; diagonal shift is enough to
-    // separate the ALDA path from pure CIS@RKS and keep H₂/STO-3G real.
+    // LSDA: Casida TDA A + full MO-product ALDA f^xc on the KS grid
+    // (Casida 1995; Dreuw & Head-Gordon 2005 DOI 10.1021/cr0505627).
+    // A_ia,jb += 2 (ia|f_xc|jb) (singlet) or (ia|f_xc|jb) (triplet), with
+    // (ia|f_xc|jb) = ∫ φ_i φ_a f_ALDA(n) φ_j φ_b dτ from Dirac-exchange
+    // second derivative on the molecular quadrature. Hybrid / GGA TDDFT
+    // kernels are out of scope — those paths stay pure CIS@RKS (alda=false).
     if (xc == XCType::LSDA && hessian.n_ov() <= 512) {
         RealMatrix A =
             0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
-        // Dirac-exchange f_x at a molecular density scale; scaled down so
-        // the diagonal ALDA shift perturbs CIS without flipping the
-        // spectrum (full grid MO-product ALDA is the production follow-up).
-        constexpr double rho_bar = 0.2; // a.u.⁻³
-        constexpr double Cx = 0.7385587663820223; // (3/4)(3/π)^{1/3}
-        const double f_x = -(4.0 / 9.0) * Cx * std::pow(rho_bar, -2.0 / 3.0);
-        const double wgt =
+        const MolecularGrid grid = build_molecular_grid(
+            pack.atoms.data(), static_cast<int>(pack.atoms.size()),
+            grid_level, n_radial, n_angular);
+        const RealMatrix K =
+            internal::alda_kernel_matrix(det, pack, grid, channel);
+        const double coulomb_spin =
             (channel == ExcitationChannel::singlet) ? 2.0 : 1.0;
-        const double f_add = 0.05 * wgt * f_x; // skeletal strength [Hartree]
         const std::size_t n = A.shape()[0];
         for (std::size_t p = 0; p < n; ++p)
-            A(p, p) += f_add;
+            for (std::size_t q = 0; q < n; ++q)
+                A(p, q) += coulomb_spin * K(p, q);
         auto [w, U] = xt::linalg::eigh(A);
         const std::size_t k = static_cast<std::size_t>(n_states);
+        if (n_states < 1 || static_cast<std::size_t>(n_states) > n)
+            throw std::invalid_argument(
+                "RKS::tda: n_states outside [1, n_ov]");
         internal::TDHFPack::Roots roots;
         roots.omega = xt::zeros<double>({k});
         roots.X = xt::zeros<double>({k, n});
