@@ -114,7 +114,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -1397,6 +1397,29 @@ def main() -> int:
         out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
         out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
         out["nstates"] = int(args.nstates)
+    elif m == "eom-cc2":
+        # Singlet EOM-CC2: RCCSD(cc2=True) + eomee_ccsd_singlet (full EE
+        # Jacobian at CC2 amplitudes — stock PySCF has no top-level EOMCC2).
+        import numpy as _np
+        from pyscf.cc import rccsd as _rccsd
+
+        mycc = _rccsd.RCCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        mycc.conv_tol_normt = min(args.conv_tol, 1e-10)
+        mycc.cc2 = True
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.eomee_ccsd_singlet(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_cc2_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["cc2_converged"] = bool(mycc.converged)
+        out["omega_ha"] = e_eom.tolist()
+        out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
+        out["oracle"] = "pyscf_rccsd_cc2_eomee_singlet"
     elif m == "casci":
         # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
         from pyscf import mcscf

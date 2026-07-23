@@ -7,8 +7,10 @@
 /// Packed s4 vector basis: r1 + tril(i>j)×tril(a>b) r2. Singlet roots are
 /// selected by α↔β symmetry of the R1 block (closed-shell reference).
 
+#include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/eom_sf_ccsd.h"
+#include "atomiverse/cpu/scf/internal/eom_cc2_pack.h"
 #include "atomiverse/cpu/scf/internal/eom_ee_ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/eom_sf_ccsd_pack.h"
 
@@ -791,32 +793,22 @@ double singlet_score(const std::vector<double>& vec, int no, int nv,
     return same / (same + diff + mixed + 1e-30);
 }
 
-} // namespace
-
-EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
-                                     const SlaterDeterminant& det,
-                                     double e_scf_ha, int n_states, double tol,
-                                     int max_iter) {
-    if (n_states < 1)
-        throw std::invalid_argument(
-            "eom_ee_ccsd: n_states must be ≥ 1 (dimensionless).");
-
-    CCSDSolution sol = ccsd_solve(ints, det, e_scf_ha, tol, max_iter);
-    EOMEECCSDResult out;
-    out.e_corr_ha = sol.result.e_corr;
-    out.e_ccsd_ha = sol.result.e_tot;
-    out.ccsd_iterations = sol.result.iterations;
-    out.converged = sol.result.converged;
-
+/// Dense EOM-EE Jacobian on a converged (CCSD or CC2) amplitude set; return
+/// the lowest `n_states` singlet roots [Hartree]. Shared by EOM-EE-CCSD and
+/// EOM-CC2 (PySCF evaluates the same σ at CC2 T₁/T₂ when `cc2=True`).
+std::vector<double> eom_ee_singlet_roots_ha(const CCSDSolution& sol,
+                                            int n_states,
+                                            const char* method_tag) {
     if (sol.nv <= 0 || sol.no <= 0) {
-        throw std::invalid_argument(
-            "eom_ee_ccsd: no virtual spin-orbitals — empty EE space.");
+        throw std::invalid_argument(std::string(method_tag) +
+                                    ": no virtual spin-orbitals — empty EE "
+                                    "space.");
     }
 
     const int dim = vector_size(sol.no, sol.nv);
     if (n_states > dim)
         throw std::invalid_argument(
-            "eom_ee_ccsd: n_states=" + std::to_string(n_states) +
+            std::string(method_tag) + ": n_states=" + std::to_string(n_states) +
             " exceeds EOM dimension " + std::to_string(dim) + ".");
 
     const EomImds im = build_imds(sol);
@@ -911,7 +903,9 @@ EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
                     s_only.push_back(r);
             if (static_cast<int>(s_only.size()) >= n_states) {
                 std::sort(s_only.begin(), s_only.end(),
-                          [](const Root& a, const Root& b) { return a.w < b.w; });
+                          [](const Root& a, const Root& b) {
+                              return a.w < b.w;
+                          });
                 singlets = s_only;
             } else {
                 // For H2, unique energies are T, S, S' — take those with the
@@ -934,7 +928,8 @@ EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
 
     if (static_cast<int>(singlets.size()) < n_states)
         throw std::runtime_error(
-            "eom_ee_ccsd: found only " + std::to_string(singlets.size()) +
+            std::string(method_tag) + ": found only " +
+            std::to_string(singlets.size()) +
             " usable EE roots; requested n_states=" +
             std::to_string(n_states));
 
@@ -963,10 +958,60 @@ EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
             singlets = dedup;
     }
 
-    out.energy_ev.reserve(static_cast<std::size_t>(n_states));
+    std::vector<double> roots_ha;
+    roots_ha.reserve(static_cast<std::size_t>(n_states));
     for (int k = 0; k < n_states; ++k)
-        out.energy_ev.push_back(singlets[static_cast<std::size_t>(k)].w *
-                                units::kHartreeInEv);
+        roots_ha.push_back(singlets[static_cast<std::size_t>(k)].w);
+    return roots_ha;
+}
+
+} // namespace
+
+EOMEECCSDResult eom_ee_ccsd_energies(const IntegralPack& ints,
+                                     const SlaterDeterminant& det,
+                                     double e_scf_ha, int n_states, double tol,
+                                     int max_iter) {
+    if (n_states < 1)
+        throw std::invalid_argument(
+            "eom_ee_ccsd: n_states must be ≥ 1 (dimensionless).");
+
+    CCSDSolution sol =
+        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false);
+    EOMEECCSDResult out;
+    out.e_corr_ha = sol.result.e_corr;
+    out.e_ccsd_ha = sol.result.e_tot;
+    out.ccsd_iterations = sol.result.iterations;
+    out.converged = sol.result.converged;
+
+    const std::vector<double> roots_ha =
+        eom_ee_singlet_roots_ha(sol, n_states, "eom_ee_ccsd");
+    out.energy_ev.reserve(roots_ha.size());
+    for (double w : roots_ha)
+        out.energy_ev.push_back(w * units::kHartreeInEv);
+    out.converged = true;
+    return out;
+}
+
+EOMCC2Result eom_cc2_energies(const IntegralPack& ints,
+                              const SlaterDeterminant& det, double e_scf_ha,
+                              int n_states, double tol, int max_iter) {
+    if (n_states < 1)
+        throw std::invalid_argument(
+            "eom_cc2: n_states must be ≥ 1 (dimensionless).");
+
+    CCSDSolution sol =
+        ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/true);
+    EOMCC2Result out;
+    out.e_corr_ha = sol.result.e_corr;
+    out.e_cc2_ha = sol.result.e_tot;
+    out.cc2_iterations = sol.result.iterations;
+    out.converged = sol.result.converged;
+
+    const std::vector<double> roots_ha =
+        eom_ee_singlet_roots_ha(sol, n_states, "eom_cc2");
+    out.energy_ev.reserve(roots_ha.size());
+    for (double w : roots_ha)
+        out.energy_ev.push_back(w * units::kHartreeInEv);
     out.converged = true;
     return out;
 }
@@ -983,6 +1028,19 @@ EOMEECCSDResult RHF::eom_ee_ccsd(Frame& frame, int n_states) {
             "fallback).");
     return eom_ee_ccsd_energies(integral_workspace_(), determinant(), energy(),
                                 n_states);
+}
+
+EOMCC2Result RHF::eom_cc2(Frame& frame, int n_states) {
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "RHF::eom_cc2: SCF reference did not converge — refusing to "
+            "compute EOM-CC2 on a non-stationary determinant (no fallback).");
+    return eom_cc2_energies(integral_workspace_(), determinant(), energy(),
+                            n_states);
 }
 
 EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
