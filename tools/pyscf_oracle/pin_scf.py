@@ -23,6 +23,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
   python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
+  python tools/pyscf_oracle/pin_scf.py g0w0 --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
 from __future__ import annotations
@@ -124,6 +125,7 @@ def main() -> int:
             "uks-tda",
             "sf-tda",
             "d3bj",
+            "g0w0",
         ],
     )
     p.add_argument("--geom", default="water")
@@ -225,6 +227,62 @@ def main() -> int:
         out["converged"] = bool(mf1.converged)
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
+
+    if m == "g0w0":
+        # Spectral (frequency-exact) G0W0 with dRPA screening — PySCF
+        # gw.gw_exact.GWExact twin of Atomiverse RHF::g0w0(). HF density via
+        # RKS(xc='hf') (gw_exact asserts a DFT mean-field object).
+        # Local import keeps `np` bound even though later branches also
+        # `import numpy as np` (which makes np function-local in Python).
+        import numpy as np
+        from pyscf.gw import gw_exact
+        from pyscf import tdscf as tdscf_mod
+
+        mf = dft.RKS(mol)
+        mf.xc = "hf"
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        nocc = int(mol.nelectron // 2)
+        nvir = int(mf.mo_coeff.shape[1] - nocc)
+        td = tdscf_mod.dRPA(mf)
+        td.nstates = max(1, nocc * nvir)
+        td.verbose = 0
+        td.kernel()
+        ge = gw_exact.GWExact(mf, tdmf=td)
+        ge.verbose = 0
+        ge.kernel()
+        qp = np.asarray(ge.mo_energy, dtype=float)
+        homo = nocc - 1
+        lumo = nocc
+        gap_ha = float(qp[lumo] - qp[homo])
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["eps_hf_ha"] = np.asarray(mf.mo_energy, dtype=float).tolist()
+        out["qp_energy_ha"] = qp.tolist()
+        out["qp_homo_ha"] = float(qp[homo])
+        out["qp_lumo_ha"] = float(qp[lumo])
+        out["gap_ha"] = gap_ha
+        out["gap_ev"] = gap_ha * _HA_TO_EV
+        out["ip_ev"] = float(-qp[homo] * _HA_TO_EV)
+        out["ea_ev"] = float(qp[lumo] * _HA_TO_EV)
+        out["drpa_omega_ha"] = np.asarray(td.e, dtype=float).tolist()
+        # AC companion (default gw.GW on RHF) for near-twin comparison only.
+        try:
+            from pyscf import gw as gw_mod
+
+            mf_rhf = scf.RHF(mol)
+            mf_rhf.conv_tol = args.conv_tol
+            mf_rhf.kernel()
+            gac = gw_mod.GW(mf_rhf)
+            gac.verbose = 0
+            gac.kernel()
+            qac = np.asarray(gac.mo_energy, dtype=float)
+            out["qp_ac_ha"] = qac.tolist()
+            out["gap_ac_ev"] = float((qac[lumo] - qac[homo]) * _HA_TO_EV)
+        except Exception as ac_err:  # pragma: no cover — optional twin
+            out["ac_error"] = str(ac_err)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if out.get("converged", True) else 1
 
     if m == "rhf":
         mf = scf.RHF(mol)
