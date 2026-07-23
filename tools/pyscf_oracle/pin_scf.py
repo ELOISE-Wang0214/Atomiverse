@@ -19,6 +19,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tddft --geom h2 --basis sto-3g --xc b3lyp --nstates 3
   python tools/pyscf_oracle/pin_scf.py uks-tda --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN --nstates 5
+  python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
 from __future__ import annotations
@@ -27,8 +28,22 @@ import argparse
 import json
 import sys
 
+import numpy as np
+
 # CODATA Ha→eV (same constant Atomiverse units::kHartreeInEv uses for gates).
 _HA_TO_EV = 27.211386245988
+
+
+def _as_float(x) -> float:
+    """Coerce scalar / 0-d / length-1 array to float (PySCF dispersion returns)."""
+    if isinstance(x, dict):
+        if "energy" in x:
+            return _as_float(x["energy"])
+        raise TypeError(f"dict without 'energy': {x!r}")
+    arr = np.asarray(x)
+    if arr.ndim == 0:
+        return float(arr)
+    return float(arr.ravel()[0])
 
 
 def _mol(geom: str, basis: str, charge: int, spin: int, cart: bool | None):
@@ -102,6 +117,7 @@ def main() -> int:
             "rks-tda",
             "rks-tddft",
             "uks-tda",
+            "d3bj",
         ],
     )
     p.add_argument("--geom", default="water")
@@ -167,6 +183,43 @@ def main() -> int:
     }
 
     m = args.method
+    if m == "d3bj":
+        # Geometry-only DFT-D3(BJ). Requires pyscf-dispersion (simple-dftd3).
+        # E_disp is independent of SCF; still report optional e_tot with/without.
+        try:
+            from pyscf.dispersion import dftd3 as dftd3_mod
+        except ImportError as e:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"pyscf-dispersion missing (need dftd3): {e}",
+                    }
+                )
+            )
+            return 2
+        xc = args.xc if args.xc else "pbe"
+        out["xc"] = xc
+        model = dftd3_mod.DFTD3Dispersion(mol, xc=xc, version="d3bj")
+        ed = _as_float(model.get_dispersion())
+        out["e_disp_ha"] = ed
+        # Optional KS totals for cross-check (same geometry / basis / xc).
+        mf0 = dft.RKS(mol)
+        mf0.xc = xc
+        mf0.conv_tol = args.conv_tol
+        e0 = float(mf0.kernel())
+        mf1 = dft.RKS(mol)
+        mf1.xc = xc
+        mf1.conv_tol = args.conv_tol
+        mf1.disp = "d3bj"
+        e1 = float(mf1.kernel())
+        out["e_tot_no_disp_ha"] = e0
+        out["e_tot_with_disp_ha"] = e1
+        out["e_tot_ha"] = e1
+        out["converged"] = bool(mf1.converged)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0
+
     if m == "rhf":
         mf = scf.RHF(mol)
     elif m in ("uhf", "ump2"):

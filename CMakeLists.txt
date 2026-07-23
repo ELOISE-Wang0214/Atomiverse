@@ -522,6 +522,12 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/orbital_info_observer.cpp
+            # Molecular DFT-D3 (BJ) + shared Grimme tables (also used by GPW
+            # zero-damping when ATV_BUILD_GPW=ON — sources live once under HF
+            # because GPW requires HF).
+            src/cpu/gpw/internal/dftd3_params.cpp
+            src/cpu/gpw/internal/dftd3.cpp
+            src/cpu/scf/dftd3.cpp
             src/cpu/record/cube.cpp
             src/cpu/record/density_cube_writer.cpp
             src/cpu/record/orbital_cube_writer.cpp
@@ -571,10 +577,8 @@ if(NOT ATV_DOCS_ONLY)
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
             src/cpu/gpw/internal/one_electron.cpp
-            # Grimme DFT-D3 dispersion (zero damping, PBE) — additive,
-            # FFT-free; a standalone correction over the GPW DFT.
-            src/cpu/gpw/internal/dftd3_params.cpp
-            src/cpu/gpw/internal/dftd3.cpp
+            # DFT-D3 engine sources are compiled under ATV_BUILD_HF (shared
+            # with molecular D3BJ); GPW zero-damping calls the same symbols.
         )
         # FFT Poisson needs FFTW, supplied by the ATV_BUILD_PW block (fftw3_stub
         # is linked into atomiverse there, so the fftw3.h include propagates).

@@ -25,6 +25,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
 #include "atomiverse/cpu/scf/aspc_predictor.h"
+#include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
@@ -907,6 +908,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     }
 
     *has_result_sp_ = true;
+
+    // Geometry-only DFT-D3(BJ) additive correction (after SCF; not in Fock).
+    e_disp_ = 0.0;
+    if (d3bj) {
+        e_disp_ = D3BJ{}.energy(frame);
+        e_total_ += e_disp_;
+    }
 
     if (opts.forces) {
         if (ri != RI::None)

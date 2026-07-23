@@ -52,6 +52,34 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
                    const double cell_bohr[3], bool periodic,
                    const D3Params& params, double rcut_bohr = 40.0);
 
+/// @brief PBE-D3 with Becke–Johnson (rational) damping — molecular/PySCF path.
+///
+///   E = −Σ_{A<B} [ s6 C6/(R⁶ + f⁶) + s8 C8/(R⁸ + f⁸) ]
+///   f  = a1 √(C8/C6) + a2
+///
+/// PBE-D3(BJ) defaults (Grimme et al., J. Comput. Chem. 32, 1456 (2011)):
+/// s6 = 1.0, s8 = 0.7875, a1 = 0.4289, a2 = 4.4407 Bohr. Coordination numbers
+/// use the original Grimme form (no CP2K long-range tanh factor), matching
+/// simple-dftd3 / PySCF `disp='d3bj'`. Three-body ATM is off.
+///
+/// @param Z         Atomic numbers, length N.
+/// @param pos_bohr  Atom positions [Bohr], length N.
+/// @param cell_bohr Orthorhombic box lengths a,b,c [Bohr] (used iff periodic).
+/// @param periodic  Lattice images within `rcut_bohr` when true; isolated else.
+/// @param params    D3 reference parameters (`D3Params{}`).
+/// @param rcut_bohr Pair cutoff [Bohr] (default 94.2 ≈ 50 Å).
+/// @param s6        C6 scale (default 1.0 for PBE).
+/// @param s8        C8 scale (default 0.7875 for PBE-BJ).
+/// @param a1        BJ steepness (default 0.4289 for PBE).
+/// @param a2        BJ offset [Bohr] (default 4.4407 for PBE).
+/// @return Energy [Hartree] and forces [Hartree/Bohr].
+D3Result dftd3_pbe_bj(const std::vector<int>& Z,
+                      const std::vector<std::array<double, 3>>& pos_bohr,
+                      const double cell_bohr[3], bool periodic,
+                      const D3Params& params, double rcut_bohr = 94.2,
+                      double s6 = 1.0, double s8 = 0.7875, double a1 = 0.4289,
+                      double a2 = 4.4407);
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV
