@@ -26,7 +26,7 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | UHF analytic gradient                      |  ✓  |   ○  |   ○  |
 | ROHF analytic gradient                     |  ✓  |   ○  |   ○  |
 | GHF analytic gradient                      |  ✓  |   ○  |   ○  |
-| RHF analytic Hessian                       |  ○  |   ○  |   ○  |
+| RHF analytic Hessian                       |  ✓  |   ○  |   ○  |
 | UHF analytic Hessian                       |  ✓  |   ○  |   ○  |
 | ROHF analytic Hessian                      |  ○  |   ○  |   ○  |
 | Hartree–Fock stability analysis            |  ✓  |   ○  |   ○  |
@@ -41,11 +41,12 @@ density + four-block exchange; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`);
 mp2 / fci / soscf / level_shift still throw.
 
 **Static polarizability** on RHF ships via CPHF (`RHF::polarizability`,
-`reg_static-polariz-h2o` vs PySCF CPHF/FD). Nuclear analytic Hessians remain
-finite-difference (see the vibrational driver in
-[Molecular Dynamics](molecular-dynamics.md)); every analytic-Hessian row stays
-○ until a full CPHF nuclear Hessian lands. Seeger–Pople stability analysis over
-the orbital Hessian is implemented (internal channel + triplet RHF→UHF).
+`reg_static-polariz-h2o` vs PySCF CPHF/FD). **RHF / UHF analytic nuclear
+Hessians** ship via CPHF (`RHF::hessian` / `UHF::hessian`;
+`reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). ROHF/KS analytic Hessians and the
+generic FD vib path (`cpu::vib::Hessian`) remain the open rows — see
+[Molecular Dynamics](molecular-dynamics.md). Seeger–Pople stability analysis
+over the orbital Hessian is implemented (internal channel + triplet RHF→UHF).
 
 ## 2. Periodic Hartree–Fock
 

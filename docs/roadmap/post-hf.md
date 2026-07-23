@@ -37,7 +37,7 @@ Coupled cluster and multireference theory are entirely absent.
 | Pair-natural-orbital MP2           |  ○  |   ○  |   ○  |
 | DLPNO-MP2                          |  ○  |   ○  |   ○  |
 | MP2-F12                            |  ○  |   ○  |   ○  |
-| MP2 analytic gradient              |  ○  |   ○  |   ○  |
+| MP2 analytic gradient              |  ✓  |   ○  |   ○  |
 | MP2 analytic Hessian               |  ○  |   ○  |   ○  |
 | MP2.5                              |  ○  |   ○  |   ○  |
 | MP3                                |  ○  |   ○  |   ○  |
@@ -58,9 +58,11 @@ RI-MP2 (`reg_frozen-core-mp2-h2o`, `MP2Result::frozen`). **SCS-MP2** is the same
 RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 `mp2_os_scale` / `mp2_ss_scale` (defaults 1.0; SCS: 1.2 / ⅓;
 `reg_scs-mp2-h2o-sto3g`; SOS: 1.3 / 0, Jung et al. JCP 121, 9793 (2004),
-`reg_sos-mp2-h2o-sto3g`). Energy only: no gradients, no frozen-core UMP2, no RI-UMP2.
-Canonical mode still materializes the full in-memory ERI tensor in the method's
-private workspace.
+`reg_sos-mp2-h2o-sto3g`). **RMP2 analytic nuclear gradient** ships
+(`RHF::mp2_forces`; Lagrangian 1-RDM + non-separable 2-RDM + Z-vector;
+`reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). No UMP2/ROMP2
+gradients, no frozen-core UMP2, no RI-UMP2. Canonical mode still materializes
+the full in-memory ERI tensor in the method's private workspace.
 
 ## 2. Configuration Interaction
 

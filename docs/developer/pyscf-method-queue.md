@@ -27,15 +27,6 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## in_progress
 
-- [~] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | RMP2 nuclear gradient; PySCF mp.MP2.nuc_grad_method
-- [~] `sos-mp2-h2o-sto3g` | SOS-MP2 | post-hf | water | sto-3g | e_corr | opposite-spin only scaling of RMP2
-- [x] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | regressions/scf/mp2-grad-h2o-sto3g | H2O/STO-3G cart RMP2; PySCF 2.14.0 g_O,z=-9.528798e-02 Ha/Bohr; `RHF::mp2_forces`; tol 1e-5 Ha/Bohr
-- [~] `uks-tda-o2-lsda` | UKS TDA | excited-states | o2 | sto-3g | S/T roots | open-shell TDDFT-TDA; RKS::tda ✓ only
-
-- [~] `d3bj-molecular-pbe` | DFT-D3 BJ damping | dft | water | sto-3g | E_disp | molecular Gaussian D3 ○ (GPW zero-damping only); PySCF dftd3
-- [~] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | RHF CPHF Hessian ✓ (reg_h2o_rhf_freq); UHF Hessian ○
-- [x] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | UHF::hessian CPHF; reg_uhf-hessian-o2
-
 ## blocked
 
 - [!] `eom-ee-ccsd` | blocked upstream — no CCSD product path yet (queue `ccsd-h2-sto3g` first)
@@ -46,9 +37,12 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [!] `pm6-pm7` | blocked — NDDO tables / MOPAC twin, not PySCF
 
 ## done
+
+- [x] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | regressions/scf/mp2-grad-h2o-sto3g | H2O/STO-3G cart RMP2; PySCF 2.14.0 g_O,z=-9.528798e-02 Ha/Bohr; `RHF::mp2_forces`; tol 1e-5 Ha/Bohr
 - [x] `sos-mp2-h2o-sto3g` | SOS-MP2 | regressions/scf/sos-mp2-h2o-sto3g | H2O/STO-3G cart Jung c_OS=1.3 c_SS=0; PySCF 2.14.0 e_corr=-0.043570566111 Ha, e_tot=-75.006593704574 Ha; `mp2_os_scale`/`mp2_ss_scale` members; tol 1e-6 Ha
 - [x] `uks-tda-o2-lsda` | UKS TDA | regressions/scf/uks-tda-o2-lsda | O2 UKS-LSDA/STO-3G cart spin-conserving TDA; PySCF 2.14.0 roots 7.6209/7.6424/7.6425/8.4033/8.4033 eV; `UKS::tda`; tol 1e-4 eV
 - [x] `d3bj-molecular-pbe` | DFT-D3 BJ damping | regressions/scf/d3bj-molecular-pbe | H2O molecular PBE-D3(BJ) E_disp=-0.000359468656 Ha (PySCF 2.14.0+pyscf-dispersion); `cpu::scf::D3BJ` + `MeanFieldMethod::d3bj`; tol 1e-6 Ha
+- [x] `uhf-hessian-o2` | UHF analytic Hessian | regressions/scf/uhf-hessian-o2 | O2 UHF/STO-3G cart CPHF Hessian; PySCF 2.14.0 `hessian.UHF`; `UHF::hessian`; tol 1e-5 eV/Å²
 - [x] `scs-mp2-h2o-sto3g` | SCS-MP2 | regressions/scf/scs-mp2-h2o-sto3g | H2O/STO-3G cart Grimme c_OS=1.2 c_SS=1/3; PySCF 2.14.0 e_corr=-0.040895594623 Ha, e_tot=-75.003918733086 Ha; `mp2_os_scale`/`mp2_ss_scale` members; tol 1e-6 Ha
 - [x] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | regressions/scf/full-lr-tddft-h2-pbe | RKS::tddft Casida A/B PBE; S1=25.519450223124 eV (PySCF 2.14.0)
 - [x] `roks-o2-sto3g` | ROKS | regressions/scf/roks-o2-sto3g | O2 triplet ROKS/LSDA/STO-3G cart e_tot=-147.193715448518 Ha (PySCF 2.14.0 dft.ROKS xc=LDA,VWN); tol 1e-6 Ha; spin purity ⟨S²⟩=2
@@ -59,7 +53,6 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [x] `blyp-water-sto3g` | BLYP GGA | regressions/scf/blyp-water-sto3g | H2O/STO-3G cart e_tot=-75.277447482665 Ha (PySCF 2.14.0 xc=blyp); tol 1e-6 Ha
 - [x] `cisd-h2co-sto3g` | CIS(D) | regressions/scf/cisd-h2co-sto3g | H2CO/STO-3G S1 CIS(D)=4.54457685 eV (PySCF+Head-Gordon U+V); tol 1e-4 eV
 - [x] `frozen-core-mp2-h2o` | Frozen-core RMP2 | regressions/scf/frozen-core-mp2-h2o | H2O/6-31G* cart frozen=1 (O 1s); PySCF 2.14.0 e_corr=-0.186119540118 Ha, e_tot=-76.196624528375 Ha; `rhf.frozen=1`; tol 1e-6 Ha
-
 - [x] `rhf-analytic-hessian-h2o` | RHF analytic Hessian (CPHF) | regressions/scf/h2o_rhf_freq | PySCF analytic Hessian freq ≤1 cm⁻¹
 - [x] `lowdin-mk-chelpg-h2o` | Löwdin + MK + CHELPG charges | regressions/scf/h2o_charges_pyscf | PySCF 2.14.0 pins in REFERENCE.md
 - [x] `rhf-dipole-h2o` | RHF dipole | regressions/scf/h2o_rhf_dipole | PySCF dipole pin

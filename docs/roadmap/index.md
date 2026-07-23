@@ -100,8 +100,8 @@ a proven shape.
 
 | Scale | Methods (do not re-prove) |
 | ----- | ------------------------- |
-| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS**, concrete AM1/RM1 / PW / GPW; FD Hessian; RHF CPHF polarizability |
-| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`RKS::tddft` full Casida A/B** (pure KS); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + **SCS** `RHF::mp2` |
+| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS**, concrete AM1/RM1 / PW / GPW; **RHF/UHF CPHF Hessian**; RHF CPHF polarizability; FD Hessian fallback |
+| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`UKS::tda`** (LSDA); **`RKS::tddft` full Casida A/B** (pure KS); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + SCS/SOS + **RMP2 grad** `RHF::mp2` / `mp2_forces` |
 | Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT (MTK diag + **PR full-cell**); **NPH**; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; ADC foothold; hybrid full-LR TDDFT; UKS-TDA |
+| Response | Surface-hopping consumer of NAC; ADC foothold; hybrid full-LR TDDFT; spin-flip TDA |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | MP2 gradients; ROMP2 (SCS-MP2 + SOS-MP2 + frozen-core ✓) |
+| Post-HF | ROMP2; MP3/CCSD foothold (RMP2 grad + SCS/SOS + frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -149,11 +149,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   for sets defined that way (def2-SVP spherical regression
   `regressions/scf/h2o_rhf_def2svp_sph`). Native Rys ERI covers `l ≤ 3`
   (s/p/d/f).
-- **No nuclear analytic Hessian anywhere.** Frequencies / thermochemistry are
-  central FD of analytic forces (`cpu::vib::Hessian`). **RHF static
-  polarizability** via CPHF ships (`RHF::polarizability`;
-  `reg_static-polariz-h2o`); open-shell / KS polarizabilities and CPHF nuclear
-  Hessians remain ○.
+- **RHF / UHF analytic nuclear Hessians** via CPHF (`RHF::hessian`,
+  `UHF::hessian`; `reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). Generic vib /
+  thermochemistry still defaults to central FD of forces (`cpu::vib::Hessian`).
+  **RHF static polarizability** via CPHF ships (`RHF::polarizability`;
+  `reg_static-polariz-h2o`); open-shell / KS polarizabilities and ROHF/KS
+  analytic Hessians remain ○.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
   gradient** (O₂ vs PySCF). **GHF** energy + analytic gradient (real two-component;
   `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`). **ROKS** energy-only
@@ -176,9 +177,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_ump2-o2-sto3g`). Canonical path: full O(N⁵) AO→MO transform.
   **RI-MP2** when `ri = RI::{J,JK}` + aux basis on RHF only
   (`reg_h2o_ri_mp2`, `MP2Result::ri`). Frozen-core via `rhf.frozen=N`
-  (`reg_frozen-core-mp2-h2o`). **SCS-MP2** via `mp2_os_scale` /
-  `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, SOS `reg_sos-mp2-h2o-sto3g`). No gradients, no
-  flag, no ROMP2.
+  (`reg_frozen-core-mp2-h2o`). **SCS/SOS-MP2** via `mp2_os_scale` /
+  `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, `reg_sos-mp2-h2o-sto3g`).
+  **RMP2 analytic gradient** (`RHF::mp2_forces`; `reg_mp2-grad-h2o-sto3g`).
+  No UMP2/ROMP2 gradients, no ROMP2 energy.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
@@ -187,8 +189,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **CIS(D)** on RHF TDA (`reg_cisd-h2co-sto3g`);
   **`RKS::tda`** with **full MO-product LSDA ALDA** (`reg_h2_full_grid_alda`) and
   **hybrid TDDFT-TDA** (B3LYP exact-exchange kernel; `reg_h2-b3lyp-hybrid-tda`).
-  **Full LR-TDDFT** Casida A/B pure KS (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`).
-  Hybrid full-LR / UKS-TDA still ○.
+  **`UKS::tda`** spin-conserving LSDA (`reg_uks-tda-o2-lsda`). **Full LR-TDDFT**
+  Casida A/B pure KS (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`). Hybrid full-LR
+  / spin-flip TDA still ○.
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
   `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
@@ -216,7 +219,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic forces available → can drive AIMD; keep member
   `local_pp_on_grid` consistent between energy and gradient.
-- DFT-D3 zero-damping + PBE params only.
+- DFT-D3 zero-damping + PBE params only (GPW). Molecular Gaussian path also has
+  **DFT-D3(BJ)** (`cpu::scf::D3BJ` / `MeanFieldMethod::d3bj`;
+  `reg_d3bj-molecular-pbe`).
 
 ### Semiempirical
 

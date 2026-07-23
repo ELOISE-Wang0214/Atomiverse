@@ -60,3 +60,6 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-23 assign wave 2: scs-mp2-h2o-sto3g (post-hf), full-lr-tddft-h2-pbe (excited-states), roks-o2-sto3g (dft), static-polariz-h2o (hartree-fock), ief-pcm-h2o (multiscale) → in_progress; skip=[]
 - 2026-07-23 wave 2 merge: all five green HEADs → dev (scs-mp2-h2o-sto3g, full-lr-tddft-h2-pbe, roks-o2-sto3g, static-polariz-h2o, ief-pcm-h2o); blocked=[]; merge-failed=[]
 - 2026-07-23 harness wave 2: queue merged→done (5); in_progress cleared; roadmaps ○→✓ for SCS-MP2, full LR-TDDFT, ROKS energy, RHF polarizability prose, IEF-PCM already ✓; handoff written; queue_remaining=16
+- 2026-07-23 assign wave 3: sos-mp2-h2o-sto3g (post-hf), mp2-grad-h2o-sto3g (post-hf), uks-tda-o2-lsda (excited-states), d3bj-molecular-pbe (dft), uhf-hessian-o2 (hartree-fock) → in_progress; skip=[]
+- 2026-07-23 wave 3 merge: all five green HEADs → dev (sos-mp2-h2o-sto3g, mp2-grad-h2o-sto3g, uks-tda-o2-lsda, d3bj-molecular-pbe, uhf-hessian-o2); blocked=[]; merge-failed=[]
+- 2026-07-23 harness wave 3: queue merged→done (5); in_progress cleared; roadmaps ○→✓ for RMP2 analytic gradient + RHF analytic Hessian inventory fix; prose for UKS-TDA, UHF Hessian, D3BJ/SOS already ✓; handoff written; queue_remaining=11
