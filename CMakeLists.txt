@@ -318,6 +318,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/fix_csvr.cpp
             src/cpu/dynamics/fix_rattle.cpp
             src/cpu/dynamics/fix_settle.cpp
+            src/cpu/dynamics/fix_freeze.cpp
             src/cpu/dynamics/brownian.cpp
             src/cpu/dynamics/barostat.cpp
             src/cpu/dynamics/deform.cpp
