@@ -166,7 +166,8 @@ xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
 }
 
 MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                     double e_scf_ha, int n_frozen) {
+                     double e_scf_ha, int n_frozen, double os_scale,
+                     double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
     // No-fallback guards -- throw, never return a sentinel. (Convergence of
     // the reference is guarded by the caller, not here.)
@@ -195,7 +196,7 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     // No virtuals (e.g. He/STO-3G) or all occupied frozen: correlation is
     // exactly zero. Return a finite 0.0 rather than empty-denominator loops.
     if (n_vir == 0 || n_frozen == n_occ) {
-        return {0.0, e_scf_ha, /*ri=*/false, n_frozen};
+        return {0.0, e_scf_ha, /*ri=*/false, n_frozen, 0.0, 0.0};
     }
 
     const xt::xtensor<double, 4> ovov = ao2mo_ovov(ints.ERI, C, n_occ, n_mo);
@@ -204,7 +205,14 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     // Frozen-core: skip the lowest n_frozen occupied spatial MOs in the
     // doubles sum (PySCF mp.MP2(mf, frozen=n_frozen) convention). Virtuals
     // remain fully correlated.
-    double e_corr = 0.0;
+    //
+    // Spin-component split (matches PySCF mp2.kernel):
+    //   E_OS = Σ (ia|jb)² / Δ
+    //   E_SS = Σ (ia|jb)[(ia|jb) − (ib|ja)] / Δ
+    //   E_MP2 = E_OS + E_SS = Σ (ia|jb)[2(ia|jb) − (ib|ja)] / Δ
+    // SCS-MP2: c_OS * E_OS + c_SS * E_SS (Grimme JCP 118, 9095 (2003)).
+    double e_os = 0.0;
+    double e_ss = 0.0;
     for (int i = n_frozen; i < n_occ; ++i) {
         for (int j = n_frozen; j < n_occ; ++j) {
             for (int a = 0; a < n_vir; ++a) {
@@ -223,17 +231,20 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             "denominator; reference is degenerate or "
                             "non-aufbau.");
                     }
-                    e_corr += iajb * (2.0 * iajb - ibja) / denom;
+                    const double coul = iajb * iajb / denom;
+                    e_os += coul;
+                    e_ss += coul - iajb * ibja / denom;
                 }
             }
         }
     }
 
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, n_frozen};
+    const double e_corr = os_scale * e_os + ss_scale * e_ss;
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, n_frozen, e_os, e_ss};
 }
 
 MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                      double e_scf_ha) {
+                      double e_scf_ha, double os_scale, double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
         throw std::invalid_argument(
@@ -268,10 +279,11 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     // the opposite-spin product of virtuals/occs vanishes — still return finite 0.
     if ((n_occ_a < 2 || n_vir_a < 2) && (n_occ_b < 2 || n_vir_b < 2) &&
         (n_occ_a == 0 || n_occ_b == 0 || n_vir_a == 0 || n_vir_b == 0)) {
-        return {0.0, e_scf_ha, /*ri=*/false};
+        return {0.0, e_scf_ha, /*ri=*/false, /*frozen=*/0, 0.0, 0.0};
     }
 
-    double e_corr = 0.0;
+    double e_ss = 0.0;
+    double e_os = 0.0;
 
     // Same-spin αα / ββ.
     if (n_occ_a >= 2 && n_vir_a >= 2) {
@@ -281,7 +293,7 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             xt::view(Ca, xt::all(), xt::range(n_occ_a, n_mo_a));
         const xt::xtensor<double, 4> ovov =
             ao2mo_mixed_(ints.ERI, Co, Cv, Co, Cv);
-        e_corr += same_spin_corr_(ovov, eps_a, n_occ_a, n_vir_a);
+        e_ss += same_spin_corr_(ovov, eps_a, n_occ_a, n_vir_a);
     }
     if (n_occ_b >= 2 && n_vir_b >= 2) {
         xt::xtensor<double, 2> Co =
@@ -290,7 +302,7 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             xt::view(Cb, xt::all(), xt::range(n_occ_b, n_mo_b));
         const xt::xtensor<double, 4> ovov =
             ao2mo_mixed_(ints.ERI, Co, Cv, Co, Cv);
-        e_corr += same_spin_corr_(ovov, eps_b, n_occ_b, n_vir_b);
+        e_ss += same_spin_corr_(ovov, eps_b, n_occ_b, n_vir_b);
     }
 
     // Opposite-spin αβ: Σ (i_a a_a | j_b b_b)² / Δ  (no exchange).
@@ -319,18 +331,20 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                                 "orbital-energy denominator; reference is "
                                 "degenerate or non-aufbau.");
                         }
-                        e_corr += v * v / denom;
+                        e_os += v * v / denom;
                     }
                 }
             }
         }
     }
 
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, /*frozen=*/0};
+    const double e_corr = os_scale * e_os + ss_scale * e_ss;
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/false, /*frozen=*/0, e_os, e_ss};
 }
 
 MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, AuxBasis aux, int n_frozen) {
+                        double e_scf_ha, AuxBasis aux, int n_frozen,
+                        double os_scale, double ss_scale) {
     using Spin = SlaterDeterminant::Spin;
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta))
         throw std::invalid_argument(
@@ -350,7 +364,7 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
         throw std::invalid_argument(
             "ri_mp2_energy: n_frozen must satisfy 0 <= n_frozen <= n_occ.");
     if (n_vir == 0 || n_frozen == n_occ)
-        return {0.0, e_scf_ha, /*ri=*/true, n_frozen};
+        return {0.0, e_scf_ha, /*ri=*/true, n_frozen, 0.0, 0.0};
 
     internal::DensityFitting df(ints.shells, ints.atoms, aux);
     const int n_cart = df.n_ao();
@@ -395,9 +409,10 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                      static_cast<std::size_t>(P)) = ia(i, a);
     }
 
-    // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P)
+    // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P) — same OS/SS split as mp2_energy.
     const RealVector& eps = det.orbital_energies(Spin::alpha);
-    double e_corr = 0.0;
+    double e_os = 0.0;
+    double e_ss = 0.0;
     for (int i = n_frozen; i < n_occ; ++i) {
         for (int j = n_frozen; j < n_occ; ++j) {
             for (int a = 0; a < n_vir; ++a) {
@@ -418,12 +433,15 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             "ri_mp2_energy: non-negative orbital-energy "
                             "denominator; reference is degenerate or "
                             "non-aufbau.");
-                    e_corr += iajb * (2.0 * iajb - ibja) / denom;
+                    const double coul = iajb * iajb / denom;
+                    e_os += coul;
+                    e_ss += coul - iajb * ibja / denom;
                 }
             }
         }
     }
-    return {e_corr, e_scf_ha + e_corr, /*ri=*/true, n_frozen};
+    const double e_corr = os_scale * e_os + ss_scale * e_ss;
+    return {e_corr, e_scf_ha + e_corr, /*ri=*/true, n_frozen, e_os, e_ss};
 }
 
 } // namespace scf

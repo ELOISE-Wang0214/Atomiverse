@@ -9,6 +9,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py uhf --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
+  python tools/pyscf_oracle/pin_scf.py scs-mp2 --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
@@ -87,6 +88,7 @@ def main() -> int:
             "uks",
             "mp2",
             "mp2-fc",
+            "scs-mp2",
             "ump2",
             "tda",
             "tdhf",
@@ -215,6 +217,8 @@ def main() -> int:
         m2 = mp.MP2(mf).run()
         out["e_corr_ha"] = float(m2.e_corr)
         out["e_tot_mp2_ha"] = float(m2.e_tot)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
     elif m == "mp2-fc":
         # Frozen-core RMP2: freeze lowest N occupied MOs (default 1 = O 1s on H2O).
         n_frozen = 1 if args.frozen is None else int(args.frozen)
@@ -223,6 +227,18 @@ def main() -> int:
         out["e_hf_ha"] = float(e)
         out["e_corr_ha"] = float(m2.e_corr)
         out["e_tot_mp2_ha"] = float(m2.e_tot)
+    elif m == "scs-mp2":
+        # Spin-component-scaled MP2 (Grimme, JCP 118, 9095 (2003)):
+        # E_corr^SCS = (1/3) E_SS + 1.2 E_OS on the RHF-MP2 spin channels.
+        m2 = mp.MP2(mf).run()
+        out["e_hf_ha"] = float(e)
+        out["e_corr_mp2_ha"] = float(m2.e_corr)
+        out["e_corr_ss_ha"] = float(m2.e_corr_ss)
+        out["e_corr_os_ha"] = float(m2.e_corr_os)
+        out["e_corr_ha"] = float(m2.emp2_scs)
+        out["e_tot_mp2_ha"] = float(m2.e_tot_scs)
+        out["c_os"] = 1.2
+        out["c_ss"] = 1.0 / 3.0
     elif m == "ump2":
         # Explicit UMP2 on the UHF reference (triplet O2, etc.).
         m2 = mp.UMP2(mf).run()

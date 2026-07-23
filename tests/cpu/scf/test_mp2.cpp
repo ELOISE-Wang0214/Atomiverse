@@ -73,6 +73,25 @@ TEST(MP2, H2Sto3gNegativeCorrelation) {
     EXPECT_TRUE(rhf.converged());
     EXPECT_LT(r.e_corr, 0.0);
     EXPECT_NEAR(r.e_tot, rhf.energy() + r.e_corr, 1e-12);
+    // Unscaled channels sum to plain MP2 (default scales 1/1).
+    EXPECT_NEAR(r.e_corr, r.e_corr_os + r.e_corr_ss, 1e-12);
+}
+
+TEST(MP2, H2ScsScalesOsSs) {
+    // Unit-only: SCS scales reweight OS/SS; e_corr = 1.2*OS + (1/3)*SS.
+    auto frame = make_h2();
+    cpu::scf::RHF rhf;
+    rhf.basis = cpu::scf::BasisSet::STO3G;
+    rhf.tol = 1e-12;
+    rhf.mp2_os_scale = 1.2;
+    rhf.mp2_ss_scale = 1.0 / 3.0;
+    auto r = rhf.mp2(frame);
+    EXPECT_TRUE(rhf.converged());
+    EXPECT_LT(r.e_corr, 0.0);
+    EXPECT_NEAR(r.e_corr, 1.2 * r.e_corr_os + (1.0 / 3.0) * r.e_corr_ss,
+                1e-12);
+    // Two-electron H2: same-spin channel vanishes (only one occupied MO).
+    EXPECT_NEAR(r.e_corr_ss, 0.0, 1e-14);
 }
 
 TEST(UMP2, HAtomSto3gZeroCorrelation) {
