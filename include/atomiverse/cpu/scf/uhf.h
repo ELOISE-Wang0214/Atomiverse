@@ -84,6 +84,36 @@ class UHF : public MeanFieldMethod<UHF> {
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult sf_tda(int n_states) const;
 
+    /// @brief Collinear spin-flip full linear response (SF-TDHF / SF-RPA) on
+    ///        the most recent `run()`. Same Ms-decreasing singles space as
+    ///        `sf_tda` (majority occupied → minority virtual).
+    ///
+    /// Collinear HF kernel (Shao, Head-Gordon & Krylov, J. Chem. Phys. 118,
+    /// 4807 (2003); Coulomb vanishes for pure spin-flip):
+    ///
+    ///   \(A_{ia,jb}=\delta_{ij}\delta_{ab}(\varepsilon_a^{\mathrm{min}}
+    ///   -\varepsilon_i^{\mathrm{maj}})-(ij|ab)\)
+    ///
+    ///   \(B_{ia,jb}=-(ib|aj)\)
+    ///
+    /// Solves the non-Hermitian RPA eigenproblem
+    /// \(\begin{bmatrix}A&B\\-B&-A\end{bmatrix}\begin{bmatrix}X\\Y\end{bmatrix}
+    /// =\omega\begin{bmatrix}X\\Y\end{bmatrix}\) via dense LAPACK `dgeev`
+    /// (`n_ov ≤ 256` so the doubled space is ≤ 512). Returns the lowest
+    /// **positive real** eigenvalues as excitation energies [eV]. Oscillator
+    /// strengths are zero (spin-forbidden in the collinear picture). When
+    /// \((A-B)\) is indefinite the Hermitian Casida reduction is undefined;
+    /// the non-Hermitian form remains well-posed and is the product path.
+    ///
+    /// @param n_states Number of lowest positive SF-RPA roots
+    ///                 (1 ≤ n_states ≤ n_ov).
+    /// @return Excitation energies [eV]; `tda = false`; `alda = false`.
+    /// @throws std::runtime_error when called before `run()`, on a restricted
+    ///         determinant, empty SF manifold, n_ov > 256, `dgeev` failure, or
+    ///         fewer than `n_states` positive real roots (no fallback).
+    /// @throws std::invalid_argument when n_states is outside [1, n_ov].
+    ExcitedStatesResult sf_tddft(int n_states) const;
+
     /// @brief ΔSCF vertical excitation with MOM/IMOM occupation locking.
     ///
     /// Runs a ground-state UHF on `frame`, promotes one α electron from MO

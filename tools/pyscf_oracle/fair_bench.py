@@ -187,6 +187,36 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "        A[p,j*nv+b]-=ijab[i,j,a,b]\n"
             f"np.linalg.eigvalsh(A)[:{nstates}]"
         ),
+        # Collinear full SF-RPA twin (matches reg_sf-tddft-o2): ROHF→UHF + A/B
+        # non-Hermitian RPA; B_ia,jb = -(ib|aj).
+        "sf_tddft": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "ro=scf.ROHF(mol); ro.conv_tol=1e-12; ro.kernel()\n"
+            "mf=scf.UHF(mol); mf.conv_tol=1e-12\n"
+            "dm=np.asarray(ro.make_rdm1())\n"
+            "dmin=(dm[0],dm[1]) if dm.ndim==3 else (dm,dm)\n"
+            "mf.kernel(dmin)\n"
+            "mo_a,mo_b=mf.mo_coeff; ea,eb=mf.mo_energy; occa,occb=mf.mo_occ\n"
+            "oa=np.where(occa>0)[0]; va=np.where(occa==0)[0]\n"
+            "ob=np.where(occb>0)[0]; vb=np.where(occb==0)[0]\n"
+            "ab=len(oa)>=len(ob)\n"
+            "o_idx,v_idx=(oa,vb) if ab else (ob,va)\n"
+            "e_o,e_v=(ea,eb) if ab else (eb,ea)\n"
+            "Co,Cv=(mo_a[:,oa],mo_b[:,vb]) if ab else (mo_b[:,ob],mo_a[:,va])\n"
+            "no,nv=len(o_idx),len(v_idx); nov=no*nv\n"
+            "ijab=ao2mo.general(mol,(Co,Co,Cv,Cv),compact=False).reshape(no,no,nv,nv)\n"
+            "ibaj=ao2mo.general(mol,(Co,Cv,Cv,Co),compact=False).reshape(no,nv,nv,no)\n"
+            "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
+            "for i in range(no):\n"
+            "  for a in range(nv):\n"
+            "    p=i*nv+a; A[p,p]=e_v[v_idx[a]]-e_o[o_idx[i]]\n"
+            "    for j in range(no):\n"
+            "      for b in range(nv):\n"
+            "        q=j*nv+b; A[p,q]-=ijab[i,j,a,b]; B[p,q]-=ibaj[i,b,a,j]\n"
+            "A=0.5*(A+A.T); B=0.5*(B+B.T)\n"
+            "M=np.block([[A,B],[-B,-A]]); w=np.linalg.eigvals(M)\n"
+            f"sorted([float(z.real) for z in w if z.real>1e-8 and abs(z.imag)<=1e-8])[:{nstates}]"
+        ),
         "adc2": (
             "from pyscf import scf, adc\nmf=scf.RHF(mol); mf.conv_tol=1e-10; mf.kernel(); "
             f"my=adc.ADC(mf); my.method='adc(2)'; my.method_type='ee'; "
@@ -235,7 +265,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "sf_tddft", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

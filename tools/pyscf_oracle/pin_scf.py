@@ -114,7 +114,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "sf-tddft", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -357,7 +357,7 @@ def main() -> int:
 
     if m == "rhf":
         mf = scf.RHF(mol)
-    elif m in ("uhf", "ump2", "sf-tda"):
+    elif m in ("uhf", "ump2", "sf-tda", "sf-tddft"):
         mf = scf.UHF(mol)
     elif m in ("rohf", "romp2"):
         mf = scf.ROHF(mol)
@@ -418,7 +418,7 @@ def main() -> int:
     if args.pcm and hasattr(mf, "with_solvent"):
         out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
-    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2", "romp2", "sf-tda") and hasattr(
+    if m in ("rohf", "roks", "uks", "uks-tda", "uhf", "ump2", "romp2", "sf-tda", "sf-tddft") and hasattr(
         mf, "spin_square"
     ):
         ss, mult = mf.spin_square()
@@ -663,11 +663,12 @@ def main() -> int:
             out["td_converged"] = [bool(c) for c in td.converged]
         if hasattr(td, "oscillator_strength"):
             out["oscillator_strength"] = [float(x) for x in td.oscillator_strength()]
-    elif m == "sf-tda":
-        # Collinear SF-CIS / SF-TDA (Shao, Head-Gordon, Krylov JCP 118, 4807
-        # (2003)). PySCF mainline has no product SF-TDA; build the Ms-decreasing
-        # singles block with PySCF UHF MOs + ao2mo (offline pin / fair twin).
-        # A_ia,jb = δ_ij δ_ab (ε_a^min - ε_i^maj) - (ij|ab).
+    elif m in ("sf-tda", "sf-tddft"):
+        # Collinear spin-flip response (Shao, Head-Gordon, Krylov JCP 118, 4807
+        # (2003)). PySCF mainline has no product SF-TDA/SF-RPA; build the
+        # Ms-decreasing singles block with PySCF UHF MOs + ao2mo.
+        # A_ia,jb = δ_ij δ_ab (ε_a^min - ε_i^maj) - (ij|ab)
+        # B_ia,jb = -(ib|aj)   (full SF-RPA only; TDA drops B)
         from pyscf import ao2mo
         import numpy as np
 
@@ -704,10 +705,39 @@ def main() -> int:
                     for b in range(nv):
                         q = j * nv + b
                         A[p, q] -= ijab[i, j, a, b]
-        w = np.linalg.eigvalsh(A)
-        out["n_ov"] = int(nov)
-        out["excitation_ha"] = [float(x) for x in w[:nstates]]
-        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in w[:nstates]]
+        A = 0.5 * (A + A.T)
+        if m == "sf-tda":
+            w = np.linalg.eigvalsh(A)
+            out["n_ov"] = int(nov)
+            out["excitation_ha"] = [float(x) for x in w[:nstates]]
+            out["excitation_ev"] = [float(x) * _HA_TO_EV for x in w[:nstates]]
+        else:
+            # Full SF-RPA: non-Hermitian [[A,B],[-B,-A]] (positive real ω).
+            ibaj = ao2mo.general(mol, (Co, Cv, Cv, Co), compact=False).reshape(
+                no, nv, nv, no
+            )
+            B = np.zeros((nov, nov))
+            for i in range(no):
+                for a in range(nv):
+                    p = i * nv + a
+                    for j in range(no):
+                        for b in range(nv):
+                            q = j * nv + b
+                            B[p, q] -= ibaj[i, b, a, j]
+            B = 0.5 * (B + B.T)
+            M = np.block([[A, B], [-B, -A]])
+            w = np.linalg.eigvals(M)
+            pos = sorted(
+                [
+                    float(wi.real)
+                    for wi in w
+                    if wi.real > 1e-8 and abs(wi.imag) <= 1e-8
+                ]
+            )
+            out["n_ov"] = int(nov)
+            out["a_minus_b_min"] = float(np.linalg.eigvalsh(A - B)[0])
+            out["excitation_ha"] = pos[:nstates]
+            out["excitation_ev"] = [x * _HA_TO_EV for x in pos[:nstates]]
     elif m == "cisd":
         # CIS(D): Head-Gordon et al., Chem. Phys. Lett. 219, 21 (1994).
         # PySCF has no product CIS(D); evaluate spin-orbital eqs. (8)/(13)/(14)
