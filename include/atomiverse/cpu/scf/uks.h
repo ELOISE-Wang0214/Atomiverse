@@ -5,7 +5,9 @@
 #include <string>
 
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/scf_guess.h"
 #include "atomiverse/cpu/scf/tdhf.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -90,6 +92,28 @@ class UKS : public MeanFieldMethod<UKS> {
     ///         imaginary/zero reduced ω² — no fallback.
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult tddft(int n_states) const;
+
+    /// @brief Nuclear Hessian d²E/dR² of the UKS energy [eV/Å²].
+    ///
+    /// Central finite difference of the **analytic** UKS nuclear forces
+    /// (`forces()` / unrestricted KS gradient with grid-response XC). This is
+    /// the correct second derivative of the UKS energy under the converged
+    /// spin-polarized KS density; a fully analytic UCPKS Hessian (PySCF
+    /// `hessian.UKS` closed form) is a follow-up. Step \(h = 10^{-4}\) Bohr;
+    /// the assembled matrix is symmetrized. Same algorithm class as
+    /// `RKS::hessian` / `ROHF::hessian`.
+    ///
+    /// @param frame Geometry (Å) + Z in the type column; restored on return.
+    /// @param guess Optional density-matrix guess for the reference SCF
+    ///              (needed for multi-minima cases such as triplet O₂ —
+    ///              ROKS warm-start). Displaced SCFs warm-start from the
+    ///              converged reference densities.
+    /// @return `vib::HessianResult` with the dense symmetric `[3N, 3N]`
+    ///         Hessian in eV/Å² and `n_atoms` set.
+    /// @throws std::runtime_error when the reference or displaced SCF
+    ///         does not converge, or with RI enabled.
+    vib::HessianResult hessian(Frame& frame,
+                               const SCFInitialGuess* guess = nullptr);
 
   protected:
     /// @brief Occupation is taken directly from the `n_alpha` / `n_beta`
