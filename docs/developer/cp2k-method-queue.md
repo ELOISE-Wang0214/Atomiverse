@@ -17,9 +17,10 @@ Out of scope for this loop (use `pyscf-method-queue.md`): molecular Gaussian
 post-HF, pure PySCF continuum/charge methods without CP2K twin, classical MD/FF,
 CUDA-Kokkos product tracks.
 
-Census: 2026-07-23 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12 +
+Census: 2026-07-24 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12 +
 §3/§8 GGA/dispersion ○, `docs/roadmap/index.md` GPW/PW caveats,
-`docs/roadmap/molecular-dynamics.md` §AIMD ○ (XL-BOMD / CPMD).
+`docs/roadmap/molecular-dynamics.md` §AIMD ○, `docs/roadmap/optimization.md`
+variable-cell productization.
 **Harness wave 1 2026-07-23:** 10 staff-batch slugs merged → `## done`.
 **Assign wave 2 2026-07-23:** 6 incomplete resumes + 4 dep-safe pending →
 `## in_progress` (staff 10; includes `gpw-kpoints-si`).
@@ -28,15 +29,26 @@ analytic stress, FD phonons, DFT+U, bands/DOS, k-UKS, PBEsol, D4). Incomplete
 remaining: **`gpw-kpoints-si`** only (not in harness wave-2 staff list; no
 merge/reg).
 **Assign wave 3 2026-07-24:** 1 incomplete resume (`gpw-kpoints-si`) + 9
-dep-safe pending → `## in_progress` (staff 10). Held for later: `periodic-rpa-si`
-(after MP2 foothold), `periodic-gw-si` (staff full; deps otherwise clear).
-**Recover 2026-07-24:** inventory confirmed — incomplete_count=**10** (all wave-3
-`## in_progress` `[~]`); open CP2K/GPW/PW specs=**0**; unmerged CP2K `wf/*`
-ahead of `dev`=**0**; half-written wave-3 regressions=**0**. Queue rows already
-normalized (no demote, no invent). Resume staff batch = full 10 (write-spec-first).
+dep-safe pending → `## in_progress` (staff 10).
+**Recover 2026-07-24:** incomplete_count=**10** (all wave-3 `[~]`); open
+CP2K/GPW/PW specs=**0**; unmerged CP2K `wf/*` ahead of `dev`=**0**.
+**Census 2026-07-24:** rewrote **pending only** from remaining roadmap ○ with
+offline CP2K twins; **excluded** every slug already in `## in_progress` /
+`## done` / `## blocked` (no demote of incomplete; no promote into staff).
+Excluded also molecular post-HF, pure PySCF, classical MD/FF, CUDA-Kokkos,
+GAPW/PAW/periodic hybrid/meta-GGA. Assign must finish incomplete first.
 
 ## pending
 
+- [ ] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓
+- [ ] `gpw-blyp-water` | GPW BLYP GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 BLYP molecular ✓ / GPW `XcKind` still PADE|PBE|PBEsol only; CP2K XC_FUNCTIONAL BLYP
+- [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
+- [ ] `pw-uks-fe-smearing` | bulk Fe UKS + metallic smearing | pw | Fe bcc | NC-UPF | e_tot / mag | roadmap §10 follow-on after O₂ k-mesh UKS ✓ (`pw-uks-kmesh-fe`); CP2K/QE-class Fe spin+smearing
+- [ ] `pw-variable-cell-si` | PW variable-cell relax | pw | Si | NC-UPF | cell / stress | optimization.md PW stress productization; Nielsen–Martin ✓; CP2K CELL_OPT twin; **dep:** `pw-analytic-stress-si` ✓
+- [ ] `gpw-ts-ice` | Tkatchenko–Scheffler dispersion | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 TS ○; CP2K VDW_POTENTIAL / PAIR_POTENTIAL; **dep:** D3/D4 pin patterns ✓
+- [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; CP2K MBD; prefer after TS foothold
+- [ ] `phonon-dispersion-si` | Phonon dispersion (q-path) | response | Si | NC-UPF / GTH | ω(q) cm⁻¹ | roadmap §11 full dispersions ○ (Γ FD ✓); CP2K VIBRATIONAL_ANALYSIS / DFPT path; **dep:** `fd-phonon-supercell` ✓; prefer after `dfpt-phonon-si`
+- [ ] `second-gen-cpmd-water` | Second-generation Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ 2nd-gen CP; CP2K; **after** `cpmd-water`
 - [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after MP2 foothold** (`periodic-mp2-si`)
 - [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
 
