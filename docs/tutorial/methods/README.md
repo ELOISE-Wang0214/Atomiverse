@@ -102,6 +102,24 @@ REFERENCE / handoff (`ratio` or `perf_exempt`).
 | Steele 10-4-3 wall (Ar single-point, E8) | [steele-wall-argon](steele-wall-argon.md) | `regressions/forcefield/steele-wall-argon` | lammps `wall/lj1043` (`perf_exempt`) |
 | Capacitance from electrode charge fluctuations (E10) | [capacitance-charge-fluctuation](capacitance-charge-fluctuation.md) | `regressions/md/capacitance-charge-fluctuation` | literature (`perf_exempt`) |
 
+## Index — MetalWalls capability wave 3 (2026-07-24)
+
+Classical electrochemical MD + LAMMPS-overlap MD (map E3, E5, E9–E10 + shared
+MD). Offline pins only — see
+[metalwalls-method-handoff](../../developer/metalwalls-method-handoff.md) and
+`tools/metalwalls_oracle/`. **Oracle priority:** LAMMPS when the feature
+overlaps; MetalWalls / literature for MW-only physics. Fair walls from
+REFERENCE / handoff (`ratio` or `perf_exempt`).
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Constant-force ion pull (`fix addforce`) | [constant-force-pull-ion](constant-force-pull-ion.md) | `regressions/md/constant-force-pull-ion` | lammps (ratio **0.12**) |
+| Oscillating external E-field MD (E3) | [oscillating-efield-md](oscillating-efield-md.md) | `regressions/md/oscillating-efield-md` | lammps (ratio **2.12**) |
+| Slab \(\Psi(z)\) planar Poisson observer (E10) | [potential-profile-observer](potential-profile-observer.md) | `regressions/md/potential-profile-observer` | literature (`perf_exempt`) |
+| Surface-tension / NPγT coupling | [surface-tension-coupling](surface-tension-coupling.md) | `regressions/md/surface-tension-coupling` | lammps (ratio **2.88**) |
+| Multi-topology virtual sites TIP4P+TIP5P (E9) | [virtual-site-multi-topology](virtual-site-multi-topology.md) | `regressions/md/virtual-site-multi-topology` | lammps (ratio **0.084**) |
+| Coupled PIM dipoles ⊕ electrode \(Q\) (E5) | [dipole-electrode-joint](dipole-electrode-joint.md) | `regressions/md/dipole-electrode-joint` | metalwalls (`perf_exempt`) |
+
 ## Index — CP2K capability wave 1 (2026-07-23)
 
 | Method | Page | Regression |

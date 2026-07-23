@@ -138,6 +138,23 @@ Full index: [methods/README](methods/README.md).
 | Steele 10-4-3 wall (Ar single-point, E8) | [steele-wall-argon](methods/steele-wall-argon.md) | `regressions/forcefield/steele-wall-argon` | lammps (`perf_exempt`) |
 | Capacitance from electrode charge fluctuations (E10) | [capacitance-charge-fluctuation](methods/capacitance-charge-fluctuation.md) | `regressions/md/capacitance-charge-fluctuation` | literature (`perf_exempt`) |
 
+### MetalWalls capability wave 3 (classical electrochem + LAMMPS-overlap MD)
+
+Offline LAMMPS / MetalWalls / literature pins only — see
+[metalwalls-method-handoff](../developer/metalwalls-method-handoff.md) and
+`tools/metalwalls_oracle/`. Narrative: [Ch. 10 Classical MD](ch10-classical-md.md).
+Oracle priority: **LAMMPS** when the feature overlaps; MetalWalls for MW-only.
+Full index: [methods/README](methods/README.md).
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| Constant-force ion pull (`fix addforce`) | [constant-force-pull-ion](methods/constant-force-pull-ion.md) | `regressions/md/constant-force-pull-ion` | lammps (ratio **0.12**) |
+| Oscillating external E-field MD (E3) | [oscillating-efield-md](methods/oscillating-efield-md.md) | `regressions/md/oscillating-efield-md` | lammps (ratio **2.12**) |
+| Slab \(\Psi(z)\) planar Poisson observer (E10) | [potential-profile-observer](methods/potential-profile-observer.md) | `regressions/md/potential-profile-observer` | literature (`perf_exempt`) |
+| Surface-tension / NPγT coupling | [surface-tension-coupling](methods/surface-tension-coupling.md) | `regressions/md/surface-tension-coupling` | lammps (ratio **2.88**) |
+| Multi-topology virtual sites TIP4P+TIP5P (E9) | [virtual-site-multi-topology](methods/virtual-site-multi-topology.md) | `regressions/md/virtual-site-multi-topology` | lammps (ratio **0.084**) |
+| Coupled PIM dipoles ⊕ electrode \(Q\) (E5) | [dipole-electrode-joint](methods/dipole-electrode-joint.md) | `regressions/md/dipole-electrode-joint` | metalwalls (`perf_exempt`) |
+
 ### CP2K capability wave 1 (GPW / PW / periodic)
 
 Offline CP2K pins only — see [cp2k-method-handoff](../developer/cp2k-method-handoff.md)
