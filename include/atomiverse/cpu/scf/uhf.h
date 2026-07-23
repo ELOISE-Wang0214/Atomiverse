@@ -5,6 +5,7 @@
 #include <string>
 
 #include "atomiverse/cpu/scf/delta_scf.h"
+#include "atomiverse/cpu/scf/eom_sf_ccsd.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/scf_guess.h"
 #include "atomiverse/cpu/scf/tdhf.h"
@@ -90,12 +91,9 @@ class UHF : public MeanFieldMethod<UHF> {
     ///
     /// Collinear HF kernel (Shao, Head-Gordon & Krylov, J. Chem. Phys. 118,
     /// 4807 (2003); Coulomb vanishes for pure spin-flip):
-    ///
     ///   \(A_{ia,jb}=\delta_{ij}\delta_{ab}(\varepsilon_a^{\mathrm{min}}
     ///   -\varepsilon_i^{\mathrm{maj}})-(ij|ab)\)
-    ///
     ///   \(B_{ia,jb}=-(ib|aj)\)
-    ///
     /// Solves the non-Hermitian RPA eigenproblem
     /// \(\begin{bmatrix}A&B\\-B&-A\end{bmatrix}\begin{bmatrix}X\\Y\end{bmatrix}
     /// =\omega\begin{bmatrix}X\\Y\end{bmatrix}\) via dense LAPACK `dgeev`
@@ -104,7 +102,6 @@ class UHF : public MeanFieldMethod<UHF> {
     /// strengths are zero (spin-forbidden in the collinear picture). When
     /// \((A-B)\) is indefinite the Hermitian Casida reduction is undefined;
     /// the non-Hermitian form remains well-posed and is the product path.
-    ///
     /// @param n_states Number of lowest positive SF-RPA roots
     ///                 (1 ≤ n_states ≤ n_ov).
     /// @return Excitation energies [eV]; `tda = false`; `alda = false`.
@@ -113,7 +110,21 @@ class UHF : public MeanFieldMethod<UHF> {
     ///         fewer than `n_states` positive real roots (no fallback).
     /// @throws std::invalid_argument when n_states is outside [1, n_ov].
     ExcitedStatesResult sf_tddft(int n_states) const;
-
+    /// @brief EOM-SF-CCSD spin-flip excitation energies on a UHF → UCCSD
+    ///        reference (drives SCF + UCCSD + SF-EOM).
+    /// High-spin UHF (set `n_alpha` / `n_beta`), unrestricted spin-orbital
+    /// CCSD, then equation-of-motion spin-flip singles+doubles. Matches
+    /// PySCF `cc.UCCSD(mf).eomsf_ccsd(nroots=n_states)` on the same
+    /// geometry / basis (cart). Product surface: ω in eV.
+    /// @param frame    Geometry [Å] + Z; energy meta written from UHF.
+    /// @param n_states Number of lowest SF roots (dimensionless, ≥ 1).
+    /// @param guess    Optional density guess for the reference UHF (ROHF
+    ///                 warm-start for multi-minima cases such as triplet O₂).
+    /// @return SF excitation energies [eV] plus UCCSD energetics [Ha].
+    /// @throws std::invalid_argument when SCF does not converge, n_states
+    ///         is invalid, or the SF manifold is empty (no fallback).
+    EOMSFCCSDResult eom_sf_ccsd(Frame& frame, int n_states = 1,
+                                const SCFInitialGuess* guess = nullptr);
     /// @brief ΔSCF vertical excitation with MOM/IMOM occupation locking.
     ///
     /// Runs a ground-state UHF on `frame`, promotes one α electron from MO

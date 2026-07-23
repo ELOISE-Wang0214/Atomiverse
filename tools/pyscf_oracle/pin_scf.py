@@ -20,7 +20,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py eom-ea-ccsd --geom h2 --basis sto-3g --nstates 1
-  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py eom-sf-ccsd --geom o2 --basis sto-3g --spin 2 --nstates 5  python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
@@ -119,8 +119,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse", "--nstates", "d4"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument(
-        "--ncas",
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse", "--nstates", "d4", "eom-sf-ccsd"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)    p.add_argument(        "--ncas",
         type=int,
         default=2,
         help="Active spatial orbitals for casci (default 2)",
@@ -502,7 +501,7 @@ def main() -> int:
     if m == "rhf":
         mf = scf.RHF(mol)
     elif m in ("uhf", "ump2", "sf-tda", "sf-tddft"):
-        mf = scf.UHF(mol)
+    elif m in ("uhf", "ump2", "sf-tda", "eom-sf-ccsd"):        mf = scf.UHF(mol)
     elif m in ("rohf", "romp2"):
         mf = scf.ROHF(mol)
     elif m in ("rks", "rks-tda", "rks-tddft"):
@@ -1256,7 +1255,10 @@ def main() -> int:
             if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
                 uniq.append(float(w))
         e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
-        out["e_hf_ha"] = float(e)
+    elif m == "eom-sf-ccsd":
+        # Spin-flip EOM-CCSD on UHF → UCCSD (PySCF eomsf_ccsd).
+        mycc = pyscf_cc.UCCSD(mf)
+        e_eom, _v = mycc.eomsf_ccsd(nroots=args.nstates)        out["e_hf_ha"] = float(e)
         out["e_corr_ha"] = float(e_corr)
         out["e_tot_ccsd_ha"] = float(mycc.e_tot)
         out["e_tot_ha"] = float(mycc.e_tot)
@@ -1315,7 +1317,11 @@ def main() -> int:
         out["tr_A_ha"] = tr_A
         out["e_corr_df_rpa_ha"] = float(rdf.e_corr)
         out["method"] = "direct-rpa"    elif m == "casci":
-        # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
+        out["omega_ha"] = e_eom.tolist()
+        out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
+        out["sf_channel"] = "eomsf_ccsd"
+    elif m == "casci":        # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
         from pyscf import mcscf
 
         ncas = int(args.ncas)

@@ -8,7 +8,9 @@
 /// selected by α↔β symmetry of the R1 block (closed-shell reference).
 
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
+#include "atomiverse/cpu/scf/eom_sf_ccsd.h"
 #include "atomiverse/cpu/scf/internal/eom_ee_ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/eom_sf_ccsd_pack.h"
 
 #include <algorithm>
 #include <cmath>
@@ -23,6 +25,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/rhf.h"
+#include "atomiverse/cpu/scf/uhf.h"
 
 namespace ATV {
 namespace cpu {
@@ -442,13 +445,45 @@ void antisym_t2(T2& t2, int no, int nv) {
 std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
     const int no = im.no;
     const int nv = im.nv;
-    T1 r1;
-    T2 r2;
-    unpack_s4(vec, no, nv, r1, r2);
+    // Reuse dense tensors across matvecs (Jacobian build calls this dim times).
+    // Shape-stable thread_local avoids O(dim) heap churn on tiny O₂ cases.
+    thread_local T1 r1, Hr1;
+    thread_local T2 r2, Hr2, tmp2, pp;
+    const std::size_t No = static_cast<std::size_t>(no);
+    const std::size_t Nv = static_cast<std::size_t>(nv);
+    if (r1.shape().size() != 2 || r1.shape(0) != No || r1.shape(1) != Nv) {
+        r1 = xt::zeros<double>({No, Nv});
+        Hr1 = xt::zeros<double>({No, Nv});
+        r2 = xt::zeros<double>({No, No, Nv, Nv});
+        Hr2 = xt::zeros<double>({No, No, Nv, Nv});
+        tmp2 = xt::zeros<double>({No, No, Nv, Nv});
+        pp = xt::zeros<double>({No, No, Nv, Nv});
+    } else {
+        std::fill(r1.begin(), r1.end(), 0.0);
+        std::fill(r2.begin(), r2.end(), 0.0);
+        std::fill(Hr1.begin(), Hr1.end(), 0.0);
+        std::fill(Hr2.begin(), Hr2.end(), 0.0);
+    }
+    // unpack into r1/r2
+    {
+        const int nov = no * nv;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a)
+                r1(i, a) = vec[static_cast<std::size_t>(i * nv + a)];
+        int k = nov;
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < i; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < a; ++b) {
+                        const double x = vec[static_cast<std::size_t>(k++)];
+                        r2(i, j, a, b) = x;
+                        r2(j, i, a, b) = -x;
+                        r2(i, j, b, a) = -x;
+                        r2(j, i, b, a) = x;
+                    }
+    }
 
     // Eq. (9) Hr1
-    T1 Hr1 = xt::zeros<double>({static_cast<std::size_t>(no),
-                                static_cast<std::size_t>(nv)});
     for (int i = 0; i < no; ++i)
         for (int a = 0; a < nv; ++a) {
             double s = 0.0;
@@ -459,16 +494,13 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
             for (int m = 0; m < no; ++m)
                 for (int e = 0; e < nv; ++e)
                     s += im.Fov(m, e) * r2(i, m, a, e);
-            // Wovvo maei · me → Wovvo(m,a,e,i) * r1(m,e)
             for (int m = 0; m < no; ++m)
                 for (int e = 0; e < nv; ++e)
                     s += im.Wovvo(m, a, e, i) * r1(m, e);
-            // -0.5 Wooov mnie · mnae
             for (int m = 0; m < no; ++m)
                 for (int n = 0; n < no; ++n)
                     for (int e = 0; e < nv; ++e)
                         s -= 0.5 * im.Wooov(m, n, i, e) * r2(m, n, a, e);
-            // +0.5 Wvovv amef · imef
             for (int m = 0; m < no; ++m)
                 for (int e = 0; e < nv; ++e)
                     for (int f = 0; f < nv; ++f)
@@ -476,14 +508,41 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
             Hr1(i, a) = s;
         }
 
-    // Eq. (10) Hr2
-    T2 Hr2 = xt::zeros<double>({static_cast<std::size_t>(no),
-                                static_cast<std::size_t>(no),
-                                static_cast<std::size_t>(nv),
-                                static_cast<std::size_t>(nv)});
+    // Eq. (10) Hr2 — tmpab contribution then P(ab)
+    // Precompute Z_eb = Σ_{mnf} Woovv_mnef · r2_mnbf  (O(no² nv³))
+    // so  Σ_{mnef} Woovv · t2_ijae · r2_mnbf = Σ_e t2_ijae · Z_eb
+    thread_local T1 Z_eb; // [nv, nv]
+    if (Z_eb.shape().size() != 2 || Z_eb.shape(0) != Nv || Z_eb.shape(1) != Nv)
+        Z_eb = xt::zeros<double>({Nv, Nv});
+    else
+        std::fill(Z_eb.begin(), Z_eb.end(), 0.0);
+    for (int e = 0; e < nv; ++e)
+        for (int b = 0; b < nv; ++b) {
+            double s = 0.0;
+            for (int m = 0; m < no; ++m)
+                for (int n = 0; n < no; ++n)
+                    for (int f = 0; f < nv; ++f)
+                        s += im.Woovv(m, n, e, f) * r2(m, n, b, f);
+            Z_eb(e, b) = s;
+        }
+    // W_am = Σ_{ef} Wvovv_amef · r1_me  → used as Σ_f t2_ijfb · W_am with e-loop
+    // Actually: Σ_{mef} Wvovv(a,m,e,f) * t2(i,j,f,b) * r1(m,e)
+    //         = Σ_f t2(i,j,f,b) * Σ_{me} Wvovv(a,m,e,f) * r1(m,e)
+    thread_local T1 Wavf; // [nv, nv] for fixed a? reuse: Wavf(a,f)=Σ_me Wvovv(a,m,e,f)r1(m,e)
+    if (Wavf.shape().size() != 2 || Wavf.shape(0) != Nv || Wavf.shape(1) != Nv)
+        Wavf = xt::zeros<double>({Nv, Nv});
+    else
+        std::fill(Wavf.begin(), Wavf.end(), 0.0);
+    for (int a = 0; a < nv; ++a)
+        for (int f = 0; f < nv; ++f) {
+            double s = 0.0;
+            for (int m = 0; m < no; ++m)
+                for (int e = 0; e < nv; ++e)
+                    s += im.Wvovv(a, m, e, f) * r1(m, e);
+            Wavf(a, f) = s;
+        }
 
-    // tmpab = Fvv·r2 - 0.5 Woovv t2 r2 - Wovoo r1 - Wvovv t2 r1
-    // then P(ab)
+    std::fill(tmp2.begin(), tmp2.end(), 0.0);
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             for (int a = 0; a < nv; ++a)
@@ -491,37 +550,55 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
                     double tab = 0.0;
                     for (int e = 0; e < nv; ++e)
                         tab += im.Fvv(b, e) * r2(i, j, a, e);
-                    for (int m = 0; m < no; ++m)
-                        for (int n = 0; n < no; ++n)
-                            for (int e = 0; e < nv; ++e)
-                                for (int f = 0; f < nv; ++f)
-                                    tab -= 0.5 * im.Woovv(m, n, e, f) *
-                                           im.t2(i, j, a, e) * r2(m, n, b, f);
+                    for (int e = 0; e < nv; ++e)
+                        tab -= 0.5 * im.t2(i, j, a, e) * Z_eb(e, b);
                     for (int m = 0; m < no; ++m)
                         tab -= im.Wovoo(m, b, i, j) * r1(m, a);
-                    for (int m = 0; m < no; ++m)
-                        for (int e = 0; e < nv; ++e)
-                            for (int f = 0; f < nv; ++f)
-                                tab -= im.Wvovv(a, m, e, f) * im.t2(i, j, f, b) *
-                                       r1(m, e);
-                    // apply later with P(ab): tab_ijab - tab_ijba
-                    Hr2(i, j, a, b) += tab;
+                    for (int f = 0; f < nv; ++f)
+                        tab -= im.t2(i, j, f, b) * Wavf(a, f);
+                    tmp2(i, j, a, b) = tab;
                 }
-    // Finish P(ab) on the tmpab contribution stored partially:
-    {
-        T2 tmp = Hr2;
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b)
-                        Hr2(i, j, a, b) = tmp(i, j, a, b) - tmp(i, j, b, a);
-    }
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    Hr2(i, j, a, b) = tmp2(i, j, a, b) - tmp2(i, j, b, a);
 
-    // tmpij = -Foo·r2 - 0.5 Woovv t2 r2 + Wvvvo r1 + Wooov t2 r1, then P(ij)
-    T2 tmpij = xt::zeros<double>({static_cast<std::size_t>(no),
-                                  static_cast<std::size_t>(no),
-                                  static_cast<std::size_t>(nv),
-                                  static_cast<std::size_t>(nv)});
+    // tmpij: Σ_{mnef} Woovv_mnef · t2_imab · r2_jnef
+    //       = Σ_m t2(i,m,a,b) * Σ_{nef} Woovv(m,n,e,f) * r2(j,n,e,f)
+    // Let Y(m,j) = Σ_{nef} Woovv(m,n,e,f) * r2(j,n,e,f)
+    thread_local T1 Y_mj;
+    if (Y_mj.shape().size() != 2 || Y_mj.shape(0) != No || Y_mj.shape(1) != No)
+        Y_mj = xt::zeros<double>({No, No});
+    else
+        std::fill(Y_mj.begin(), Y_mj.end(), 0.0);
+    for (int m = 0; m < no; ++m)
+        for (int j = 0; j < no; ++j) {
+            double s = 0.0;
+            for (int n = 0; n < no; ++n)
+                for (int e = 0; e < nv; ++e)
+                    for (int f = 0; f < nv; ++f)
+                        s += im.Woovv(m, n, e, f) * r2(j, n, e, f);
+            Y_mj(m, j) = s;
+        }
+    // Σ_{mne} Wooov(m,n,i,e) * t2(n,j,a,b) * r1(m,e)
+    // = Σ_n t2(n,j,a,b) * Σ_{me} Wooov(m,n,i,e) * r1(m,e)
+    // Let U(n,i) = Σ_{me} Wooov(m,n,i,e) * r1(m,e)
+    thread_local T1 U_ni;
+    if (U_ni.shape().size() != 2 || U_ni.shape(0) != No || U_ni.shape(1) != No)
+        U_ni = xt::zeros<double>({No, No});
+    else
+        std::fill(U_ni.begin(), U_ni.end(), 0.0);
+    for (int n = 0; n < no; ++n)
+        for (int i = 0; i < no; ++i) {
+            double s = 0.0;
+            for (int m = 0; m < no; ++m)
+                for (int e = 0; e < nv; ++e)
+                    s += im.Wooov(m, n, i, e) * r1(m, e);
+            U_ni(n, i) = s;
+        }
+
+    std::fill(tmp2.begin(), tmp2.end(), 0.0);
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             for (int a = 0; a < nv; ++a)
@@ -530,82 +607,41 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
                     for (int m = 0; m < no; ++m)
                         s -= im.Foo(m, j) * r2(i, m, a, b);
                     for (int m = 0; m < no; ++m)
-                        for (int n = 0; n < no; ++n)
-                            for (int e = 0; e < nv; ++e)
-                                for (int f = 0; f < nv; ++f)
-                                    s -= 0.5 * im.Woovv(m, n, e, f) *
-                                        im.t2(i, m, a, b) * r2(j, n, e, f);
+                        s -= 0.5 * im.t2(i, m, a, b) * Y_mj(m, j);
                     for (int e = 0; e < nv; ++e)
                         s += im.Wvvvo(a, b, e, j) * r1(i, e);
-                    for (int m = 0; m < no; ++m)
-                        for (int n = 0; n < no; ++n)
-                            for (int e = 0; e < nv; ++e)
-                                s += im.Wooov(m, n, i, e) * im.t2(n, j, a, b) *
-                                     r1(m, e);
-                    tmpij(i, j, a, b) = s;
+                    for (int n = 0; n < no; ++n)
+                        s += im.t2(n, j, a, b) * U_ni(n, i);
+                    tmp2(i, j, a, b) = s;
                 }
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             for (int a = 0; a < nv; ++a)
                 for (int b = 0; b < nv; ++b)
-                    Hr2(i, j, a, b) += tmpij(i, j, a, b) - tmpij(j, i, a, b);
+                    Hr2(i, j, a, b) += tmp2(i, j, a, b) - tmp2(j, i, a, b);
 
     // P(ij)P(ab) Wovvo · r2
+    std::fill(tmp2.begin(), tmp2.end(), 0.0);
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             for (int a = 0; a < nv; ++a)
                 for (int b = 0; b < nv; ++b) {
-                    double ring = 0.0;
+                    double s = 0.0;
                     for (int m = 0; m < no; ++m)
                         for (int e = 0; e < nv; ++e)
-                            ring += im.Wovvo(m, b, e, j) * r2(i, m, a, e);
-                    // accumulate base; apply P later
-                    Hr2(i, j, a, b) += ring;
+                            s += im.Wovvo(m, b, e, j) * r2(i, m, a, e);
+                    tmp2(i, j, a, b) = s;
                 }
-    // The PySCF code does:
-    //   tmpabij = einsum('mbej,imae->ijab', Wovvo, r2)
-    //   tmpabij = tmpabij - transpose(1,0,2,3)
-    //   tmpabij = tmpabij - transpose(0,1,3,2)
-    // so we need to recompute cleanly:
-    {
-        T2 ring = xt::zeros<double>({static_cast<std::size_t>(no),
-                                     static_cast<std::size_t>(no),
-                                     static_cast<std::size_t>(nv),
-                                     static_cast<std::size_t>(nv)});
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b) {
-                        double s = 0.0;
-                        for (int m = 0; m < no; ++m)
-                            for (int e = 0; e < nv; ++e)
-                                s += im.Wovvo(m, b, e, j) * r2(i, m, a, e);
-                        ring(i, j, a, b) = s;
-                    }
-        // subtract the ring we already added, replace with P(ij)P(ab)
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b)
-                        Hr2(i, j, a, b) -= ring(i, j, a, b);
-        T2 p = ring;
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b)
-                        p(i, j, a, b) = ring(i, j, a, b) - ring(j, i, a, b);
-        T2 pp = p;
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b)
-                        pp(i, j, a, b) = p(i, j, a, b) - p(i, j, b, a);
-        for (int i = 0; i < no; ++i)
-            for (int j = 0; j < no; ++j)
-                for (int a = 0; a < nv; ++a)
-                    for (int b = 0; b < nv; ++b)
-                        Hr2(i, j, a, b) += pp(i, j, a, b);
-    }
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    pp(i, j, a, b) = tmp2(i, j, a, b) - tmp2(j, i, a, b);
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b)
+                    Hr2(i, j, a, b) += pp(i, j, a, b) - pp(i, j, b, a);
 
     // 0.5 Woooo · r2 + 0.5 Wvvvv · r2
     for (int i = 0; i < no; ++i)
@@ -682,6 +718,47 @@ std::vector<EigPair> dgeev_all(const std::vector<std::vector<double>>& H) {
                 vr[static_cast<std::size_t>(i + j * n)];
     }
     return out;
+}
+
+/// Majority spin-flip R1 weight (matches PySCF eomsf on high-spin refs).
+/// Layout: occ=[α|β], vir=[α|β]. When n_α ≥ n_β, score the Ms−1 (α→β)
+/// channel; otherwise Ms+1 (β→α). Pure-doubles / opposite-flip / conserving
+/// roots score low.
+double sf_score(const std::vector<double>& vec, int no, int nv, int na, int nb,
+                int nva, int nvb) {
+    T1 r1;
+    T2 r2;
+    unpack_s4(vec, no, nv, r1, r2);
+    double flip_maj = 0.0, flip_min = 0.0, cons = 0.0;
+    // α→α
+    for (int i = 0; i < na; ++i)
+        for (int a = 0; a < nva; ++a)
+            cons += r1(i, a) * r1(i, a);
+    // β→β
+    for (int i = 0; i < nb; ++i)
+        for (int a = 0; a < nvb; ++a)
+            cons += r1(na + i, nva + a) * r1(na + i, nva + a);
+    // α→β (Ms −1)
+    double ab = 0.0;
+    for (int i = 0; i < na; ++i)
+        for (int a = 0; a < nvb; ++a)
+            ab += r1(i, nva + a) * r1(i, nva + a);
+    // β→α (Ms +1)
+    double ba = 0.0;
+    for (int i = 0; i < nb; ++i)
+        for (int a = 0; a < nva; ++a)
+            ba += r1(na + i, a) * r1(na + i, a);
+    if (na >= nb) {
+        flip_maj = ab;
+        flip_min = ba;
+    } else {
+        flip_maj = ba;
+        flip_min = ab;
+    }
+    const double tot = flip_maj + flip_min + cons;
+    if (tot < 1e-14)
+        return -1.0; // pure doubles / null
+    return flip_maj / tot;
 }
 
 /// Closed-shell singlet score: R1 α-block ≈ β-block (Ms=0 singlet).
@@ -905,6 +982,146 @@ EOMEECCSDResult RHF::eom_ee_ccsd(Frame& frame, int n_states) {
             "compute EOM-EE-CCSD on a non-stationary determinant (no "
             "fallback).");
     return eom_ee_ccsd_energies(integral_workspace_(), determinant(), energy(),
+                                n_states);
+}
+
+EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
+                                     const SlaterDeterminant& det,
+                                     double e_scf_ha, int n_states, double tol,
+                                     int max_iter) {
+    if (n_states < 1)
+        throw std::invalid_argument(
+            "eom_sf_ccsd: n_states must be ≥ 1 (dimensionless).");
+    if (det.restricted())
+        throw std::invalid_argument(
+            "eom_sf_ccsd: unrestricted UHF reference required (use "
+            "eom_ee_ccsd for closed-shell EE).");
+    if (det.generalized())
+        throw std::invalid_argument(
+            "eom_sf_ccsd: GHF reference is not supported.");
+
+    CCSDSolution sol = uccsd_solve(ints, det, e_scf_ha, tol, max_iter);
+    EOMSFCCSDResult out;
+    out.e_corr_ha = sol.result.e_corr;
+    out.e_ccsd_ha = sol.result.e_tot;
+    out.ccsd_iterations = sol.result.iterations;
+    out.converged = sol.result.converged;
+
+    if (sol.nv <= 0 || sol.no <= 0)
+        throw std::invalid_argument(
+            "eom_sf_ccsd: no virtual spin-orbitals — empty SF space.");
+
+    const int dim = vector_size(sol.no, sol.nv);
+    if (n_states > dim)
+        throw std::invalid_argument(
+            "eom_sf_ccsd: n_states=" + std::to_string(n_states) +
+            " exceeds EOM dimension " + std::to_string(dim) + ".");
+
+    const EomImds im = build_imds(sol);
+
+    // Majority SF subspace (ΔMs = −1 when n_α ≥ n_β): packed basis vectors
+    // whose unit excitation changes 2Ms by −2. Cuts the dense Jacobian from
+    // full EE (~784 on O₂/STO-3G) to the SF block (~PySCF eomsf size class).
+    const int na = sol.n_alpha;
+    const int nb = sol.n_beta;
+    const int nva = sol.n_vir_a;
+    const int nvb = sol.n_vir_b;
+    auto occ_spin = [&](int i) -> int { return (i < na) ? 0 : 1; };
+    auto vir_spin = [&](int a) -> int { return (a < nva) ? 0 : 1; };
+    // 2Ms: α=+1, β=−1. Target Δ(2Ms)=−2 for majority flip when na≥nb.
+    const int dms_target = (na >= nb) ? -2 : +2;
+
+    std::vector<int> sf_idx;
+    sf_idx.reserve(static_cast<std::size_t>(dim / 2 + 8));
+    // Singles
+    for (int i = 0; i < sol.no; ++i)
+        for (int a = 0; a < sol.nv; ++a) {
+            const int dms = (vir_spin(a) == 0 ? 1 : -1) -
+                            (occ_spin(i) == 0 ? 1 : -1);
+            if (dms == dms_target)
+                sf_idx.push_back(i * sol.nv + a);
+        }
+    // Doubles (packed i>j, a>b)
+    int kpack = sol.no * sol.nv;
+    for (int i = 0; i < sol.no; ++i)
+        for (int j = 0; j < i; ++j)
+            for (int a = 0; a < sol.nv; ++a)
+                for (int b = 0; b < a; ++b) {
+                    const int dms =
+                        (vir_spin(a) == 0 ? 1 : -1) +
+                        (vir_spin(b) == 0 ? 1 : -1) -
+                        (occ_spin(i) == 0 ? 1 : -1) -
+                        (occ_spin(j) == 0 ? 1 : -1);
+                    if (dms == dms_target)
+                        sf_idx.push_back(kpack);
+                    ++kpack;
+                }
+
+    const int nsf = static_cast<int>(sf_idx.size());
+    if (nsf < 1)
+        throw std::invalid_argument(
+            "eom_sf_ccsd: empty majority SF subspace.");
+    if (n_states > nsf)
+        throw std::invalid_argument(
+            "eom_sf_ccsd: n_states=" + std::to_string(n_states) +
+            " exceeds SF dimension " + std::to_string(nsf) + ".");
+
+    std::vector<std::vector<double>> H(
+        static_cast<std::size_t>(nsf),
+        std::vector<double>(static_cast<std::size_t>(nsf), 0.0));
+    std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
+    for (int j = 0; j < nsf; ++j) {
+        std::fill(e.begin(), e.end(), 0.0);
+        e[static_cast<std::size_t>(sf_idx[static_cast<std::size_t>(j)])] = 1.0;
+        const std::vector<double> sig = matvec(im, e);
+        for (int i = 0; i < nsf; ++i)
+            H[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] =
+                sig[static_cast<std::size_t>(
+                    sf_idx[static_cast<std::size_t>(i)])];
+    }
+
+    auto eigs = dgeev_all(H);
+
+    struct Root {
+        double w;
+    };
+    std::vector<Root> sfs;
+    for (const auto& ep : eigs) {
+        if (std::abs(ep.wi) > 1e-8)
+            continue;
+        if (ep.wr < -1e-6)
+            continue;
+        sfs.push_back(Root{ep.wr});
+    }
+    std::sort(sfs.begin(), sfs.end(),
+              [](const Root& a, const Root& b) { return a.w < b.w; });
+
+    if (static_cast<int>(sfs.size()) < n_states)
+        throw std::runtime_error(
+            "eom_sf_ccsd: found only " + std::to_string(sfs.size()) +
+            " usable SF roots; requested n_states=" +
+            std::to_string(n_states));
+
+    out.energy_ev.reserve(static_cast<std::size_t>(n_states));
+    for (int k = 0; k < n_states; ++k)
+        out.energy_ev.push_back(sfs[static_cast<std::size_t>(k)].w *
+                                units::kHartreeInEv);
+    out.converged = true;
+    return out;
+}
+
+EOMSFCCSDResult UHF::eom_sf_ccsd(Frame& frame, int n_states,
+                                 const SCFInitialGuess* guess) {
+    const bool prev = compute_eri;
+    compute_eri = true;
+    run(frame, guess);
+    compute_eri = prev;
+    if (!this->converged())
+        throw std::invalid_argument(
+            "UHF::eom_sf_ccsd: SCF reference did not converge — refusing to "
+            "compute EOM-SF-CCSD on a non-stationary determinant (no "
+            "fallback).");
+    return eom_sf_ccsd_energies(integral_workspace_(), determinant(), energy(),
                                 n_states);
 }
 
