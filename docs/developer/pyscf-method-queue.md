@@ -32,11 +32,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## in_progress
 
-- [~] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | excited-states | h2 | sto-3g | S1 eV | RKS beyond TDA (Casida A/B); RHF::tdhf ✓, pure/hybrid KS full TDDFT ○
-- [~] `roks-o2-sto3g` | ROKS | dft | o2 | sto-3g | e_tot | restricted open-shell KS; PySCF dft.ROKS
-- [~] `static-polariz-h2o` | RHF static polarizability | hartree-fock | water | sto-3g | α_ii a.u. | CPHF electric-field response; RHF::hessian CPHF path exists; α absent; PySCF mf.Polarizability
-- [~] `ief-pcm-h2o` | IEF-PCM | multiscale | water | 6-31g* | e_solv | conductor-like only today; PySCF solvent IEF-PCM
-
+_(none)_
 
 ## blocked
 
@@ -49,6 +45,10 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## done
 - [x] `scs-mp2-h2o-sto3g` | SCS-MP2 | regressions/scf/scs-mp2-h2o-sto3g | H2O/STO-3G cart Grimme c_OS=1.2 c_SS=1/3; PySCF 2.14.0 e_corr=-0.040895594623 Ha, e_tot=-75.003918733086 Ha; `mp2_os_scale`/`mp2_ss_scale` members; tol 1e-6 Ha
+- [x] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | regressions/scf/full-lr-tddft-h2-pbe | RKS::tddft Casida A/B PBE; S1=25.519450223124 eV (PySCF 2.14.0)
+- [x] `roks-o2-sto3g` | ROKS | regressions/scf/roks-o2-sto3g | O2 triplet ROKS/LSDA/STO-3G cart e_tot=-147.193715448518 Ha (PySCF 2.14.0 dft.ROKS xc=LDA,VWN); tol 1e-6 Ha; spin purity ⟨S²⟩=2
+- [x] `static-polariz-h2o` | RHF static polarizability (CPHF) | regressions/scf/static-polariz-h2o | H2O/STO-3G α_ii=(0.04190863, 5.20973255, 2.12715820) a.u. (PySCF 2.14.0 CPHF/FD); `RHF::polarizability`; tol 1e-5 a.u.
+- [x] `ief-pcm-h2o` | IEF-PCM | regressions/scf/ief-pcm-h2o | H2O RHF/6-31G* cart ε=78.4 Bondi×1.2 Lebedev 302; PySCF 2.14.0 e_solv=-0.01265803490853 Ha; `solvent_model=IEFPCM`; tol 1e-4 Ha (hard bury-delete vs SWIG)
 - [x] `pcm-grad-h2o` | Implicit-solvent analytic gradient | regressions/scf/pcm-grad-h2o | FD of free energy ≤1e-5 Ha/Bohr; PySCF pin in REFERENCE
 - [x] `ghf-grad-h3-sto3g` | GHF analytic gradient | regressions/scf/ghf-grad-h3-sto3g | noncollinear H3 forces 1e-5 Ha/Bohr
 - [x] `blyp-water-sto3g` | BLYP GGA | regressions/scf/blyp-water-sto3g | H2O/STO-3G cart e_tot=-75.277447482665 Ha (PySCF 2.14.0 xc=blyp); tol 1e-6 Ha
