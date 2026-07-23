@@ -1,7 +1,7 @@
 /// @file cpu/gpw/gpw_solver.h
 /// @brief Self-contained GPW (Gaussian and Plane Waves) closed-shell SCF solver.
 ///
-/// Structurally parallel to `cpu::scf::SCFSolver` and `cpu::pw::PWSolver`: a
+/// Structurally parallel to `cpu::scf::SCFSolver` and `cpu::pw::PW`: a
 /// self-contained inner solver for one electronic-structure method. The Kohn-Sham
 /// problem is solved in the contracted Gaussian AO basis (small dense generalized
 /// eigenproblem H C = S C ε), while the Hartree + XC + long-range local
@@ -54,69 +54,13 @@ struct GpwAtom {
     /// @param pos   Atom position [Bohr]; z_val is taken from `pot.zion`.
     /// @param basis Contracted Gaussian basis to center at `pos`.
     /// @param pot   GTH pseudopotential (local + nonlocal channels).
-    /// @param z     Atomic number Z (needed only for DFT-D3, GpwConfig.d3).
+    /// @param z     Atomic number Z (needed only for DFT-D3, GpwDft.d3).
     GpwAtom(const double pos[3], const GaussianBasis& basis,
             const GthPotential& pot, int z = 0);
 };
 
 /// @brief Exchange-correlation functional choice.
 enum class XcKind { PADE, PBE };
-
-/// @brief GPW SCF configuration.
-struct GpwConfig {
-    double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
-    double cutoff_ry =
-        300.0; ///< density grid cutoff [Ry] (finest multigrid level).
-    int ngrids =
-        1; ///< CP2K multigrid levels; 1 = single grid (default, bit-identical).
-    double rel_cutoff =
-        0.0;       ///< CP2K REL_CUTOFF [Ry]; exponent->level map when ngrids>1.
-    int n_occ = 0; ///< number of doubly-occupied orbitals (N_elec / 2).
-    int max_iter = 100; ///< max SCF iterations.
-    double tol = 1e-8;  ///< SCF energy convergence [Hartree].
-    double eps_default =
-        1e-8; ///< CP2K EPS_DEFAULT: Gaussian-tail cutoff driving the
-              ///< collocation window and the Γ-point lattice-image count.
-    double mix =
-        0.5; ///< linear density-mixing factor (used only when diis_depth == 0).
-    int diis_depth =
-        6; ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
-
-    /// @brief Keep-threshold on the overlap eigenvalues for canonical
-    /// orthogonalization (dimensionless). Directions with s_i < this are DROPPED
-    /// rather than amplified by 1/sqrt(s_i). Diffuse MOLOPT functions in a dense
-    /// periodic cell drive S toward linear dependence — without this the raw
-    /// generalized solver fails outright (a 13726-AO slab aborted with
-    /// `dsygvd failed, info=20590`) and the SCF oscillates. Matches
-    /// cpu::scf::SCFConfig::lindep_threshold. 0 disables filtering.
-    double lindep_threshold = 1e-8;
-
-    /// @brief Virtual-orbital level shift [Hartree] applied inside the SCF's
-    /// diagonalization (0 = off). Widens the effective HOMO-LUMO gap so a
-    /// small-gap system stops swapping occupied/virtual states between iterations.
-    /// It biases only the SCF PATH, not the fixed point: at convergence the
-    /// occupied space stops changing and the converged density is the unshifted
-    /// one. Needed for ZnO, which otherwise oscillates for 400 iterations.
-    double level_shift = 0.0;
-    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
-    bool nonperiodic = false; ///< use the isolated (MT) Poisson solver.
-    /// @brief Collocate the GTH local short-range PP on the grid (CP2K's route,
-    /// O(grid)) rather than building it analytically per basis pair
-    /// (O(nb²·natoms)). Energy and analytic force BOTH read this flag: the
-    /// gradient must be taken of the functional the SCF converged, or the two
-    /// disagree by the grid discretization error of V_loc^SR (see
-    /// internal/local_pp.h). Flip to false only to cross-check the two routes.
-    bool local_pp_on_grid = true;
-    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
-                     ///< to the energy and forces (requires GpwAtom.z set);
-                     ///< parameters come from the in-tree tables
-                     ///< (basis_data/dftd3_tables.h).
-    /// @brief Use the OT (orbital transformation) minimizer instead of dense
-    /// diagonalization. Diagonalization-free SCF (gradient O(nb²·n_occ)); the
-    /// path to large systems where the O(nb³) eigensolve is prohibitive.
-    /// Converges to the same gapped ground state as the diagonalization path.
-    bool use_ot = false;
-};
 
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
@@ -140,26 +84,42 @@ struct GpwResult {
     /// @}
 };
 
-/// @brief Inner GPW solver — the `*Solver` face of the GPW method
-///        (mirrors `cpu::pw::PWSolver` / `cpu::scf::SCFSolver`).
+/// @brief Concrete GPW DFT method — members + build/run
+///        (mirrors `cpu::pw::PW` / `cpu::scf::SCFSolver`).
 ///
 /// **NOT a `Driver<...>` subclass** — this is the inner solver behind
 /// `GPWEvaluator`. Construction fixes the configuration; `build()` runs
 /// the one-time fail-fast validation against a reference atom set (the
 /// no-fallback rule: invalid configuration throws instead of degrading);
 /// `run()` is re-entrant and rebuilds every geometry-dependent structure
-/// per call (grids, lattice images, S/T/Vpp — same policy as `PWSolver`).
+/// per call (grids, lattice images, S/T/Vpp — same policy as `PW`).
 /// Move-only, like the sibling solvers.
-class GPWSolver {
+class GpwDft {
   public:
-    /// @brief Fix the GPW configuration for this solver.
-    /// @param config Grid/XC/electrostatics configuration (cell in [Bohr]).
-    explicit GPWSolver(GpwConfig config);
+    // ── Method parameters (were GpwConfig fields) ─────────────────────
+    double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
+    double cutoff_ry = 300.0; ///< density grid cutoff [Ry].
+    int ngrids = 1; ///< CP2K multigrid levels.
+    double rel_cutoff = 0.0; ///< CP2K REL_CUTOFF [Ry].
+    int n_occ = 0; ///< doubly-occupied orbitals (N_elec / 2).
+    int max_iter = 100; ///< max SCF iterations.
+    double tol = 1e-8; ///< SCF energy convergence [Hartree].
+    double eps_default = 1e-8; ///< Gaussian-tail cutoff.
+    double mix = 0.5; ///< linear density-mixing (diis_depth == 0).
+    int diis_depth = 6; ///< Pulay DIIS history depth.
+    double lindep_threshold = 1e-8; ///< S-eigenvalue keep threshold.
+    double level_shift = 0.0; ///< virtual level shift [Hartree].
+    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
+    bool nonperiodic = false; ///< isolated (MT) Poisson solver.
+    bool local_pp_on_grid = true; ///< collocate GTH local SR PP on grid.
+    bool d3 = false; ///< Grimme DFT-D3 dispersion.
+    bool use_ot = false; ///< OT minimizer instead of diagonalization.
 
-    GPWSolver(const GPWSolver&) = delete;
-    GPWSolver& operator=(const GPWSolver&) = delete;
-    GPWSolver(GPWSolver&&) = default;
-    GPWSolver& operator=(GPWSolver&&) = default;
+    GpwDft() = default;
+    GpwDft(const GpwDft&) = delete;
+    GpwDft& operator=(const GpwDft&) = delete;
+    GpwDft(GpwDft&&) = default;
+    GpwDft& operator=(GpwDft&&) = default;
 
     /// @brief One-time fail-fast validation against a reference system.
     ///
@@ -184,23 +144,19 @@ class GPWSolver {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
-    /// @brief Configuration this solver was constructed with.
-    const GpwConfig& config() const { return config_; }
-
   private:
-    GpwConfig config_;   ///< Fixed at construction.
     GpwResult result_;   ///< Owned result buffer (last run).
     bool built_ = false; ///< Whether build() validated the configuration.
 };
 
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
 ///
-/// Runs a `GPWSolver` at +/- h displacements of each atom along each axis
+/// Runs a `GpwDft` at +/- h displacements of each atom along each axis
 /// (6*N_atoms SCF solves). Correct but expensive; analytic GPW forces are a
 /// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
 /// @param h Displacement step [Bohr].
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
               double h = 1e-3);
 
 } // namespace gpw

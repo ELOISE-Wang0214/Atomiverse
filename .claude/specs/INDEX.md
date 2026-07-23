@@ -43,7 +43,6 @@ impl independently (no single ordered chain unless noted).
 
 | Spec | Summary |
 | ---- | ------- |
-| [concrete-gpw-method](concrete-gpw-method.md) | Kill public GpwConfig/GPWSolver bag [approved] |
 | [concrete-nddo-method](concrete-nddo-method.md) | NDDOSolver internal; AM1/RM1 public [approved] |
 
 **Suggested parallel impl batches** (no hard deps inside a batch):

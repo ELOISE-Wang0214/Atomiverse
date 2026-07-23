@@ -706,9 +706,9 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
 }
 
 /// The full GPW SCF implementation, owned and reached through
-/// `GPWSolver::run`.
+/// `GpwDft::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
-                                  const GpwConfig& cfg,
+                                  const GpwDft& cfg,
                                   const RealMatrix* guess_C) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
@@ -1298,35 +1298,33 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     return res;
 }
 
-// ── GPWSolver — the public solver face over run_gpw_scf_impl ────────
+// ── GpwDft — the public solver face over run_gpw_scf_impl ────────
 
-GPWSolver::GPWSolver(GpwConfig config) : config_(std::move(config)) {}
-
-void GPWSolver::build(const std::vector<GpwAtom>& reference) {
+void GpwDft::build(const std::vector<GpwAtom>& reference) {
     if (reference.empty())
         throw std::invalid_argument(
-            "GPWSolver::build: empty atom set (nothing to solve)");
-    if (config_.n_occ < 1)
-        throw std::invalid_argument("GPWSolver::build: n_occ must be >= 1 (got "
-                                    + std::to_string(config_.n_occ) + ")");
-    if (!config_.nonperiodic) {
+            "GpwDft::build: empty atom set (nothing to solve)");
+    if (n_occ < 1)
+        throw std::invalid_argument("GpwDft::build: n_occ must be >= 1 (got "
+                                    + std::to_string(n_occ) + ")");
+    if (!nonperiodic) {
         for (int d = 0; d < 3; ++d)
-            if (!(config_.cell[d] > 0.0))
+            if (!(cell[d] > 0.0))
                 throw std::invalid_argument(
-                    "GPWSolver::build: periodic cell edge " + std::to_string(d)
+                    "GpwDft::build: periodic cell edge " + std::to_string(d)
                     + " must be > 0 Bohr (got "
-                    + std::to_string(config_.cell[d]) + ")");
+                    + std::to_string(cell[d]) + ")");
     }
     built_ = true;
 }
 
-GpwResult& GPWSolver::run(const std::vector<GpwAtom>& atoms,
+GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
                           const RealMatrix* guess_C) {
     if (!built_)
         throw std::logic_error(
-            "GPWSolver::run called before build() — validate the "
+            "GpwDft::run called before build() — validate the "
             "configuration first (no silent auto-build)");
-    result_ = run_gpw_scf_impl(atoms, config_, guess_C);
+    result_ = run_gpw_scf_impl(atoms, *this, guess_C);
     return result_;
 }
 
@@ -1341,8 +1339,33 @@ GpwAtom displaced(GpwAtom a, int axis, double d) {
 }
 } // namespace
 
+
+namespace {
+GpwDft copy_gpw(const GpwDft& m) {
+    GpwDft p;
+    for (int d = 0; d < 3; ++d)
+        p.cell[d] = m.cell[d];
+    p.cutoff_ry = m.cutoff_ry;
+    p.ngrids = m.ngrids;
+    p.rel_cutoff = m.rel_cutoff;
+    p.n_occ = m.n_occ;
+    p.max_iter = m.max_iter;
+    p.tol = m.tol;
+    p.eps_default = m.eps_default;
+    p.mix = m.mix;
+    p.diis_depth = m.diis_depth;
+    p.lindep_threshold = m.lindep_threshold;
+    p.level_shift = m.level_shift;
+    p.xc = m.xc;
+    p.nonperiodic = m.nonperiodic;
+    p.local_pp_on_grid = m.local_pp_on_grid;
+    p.d3 = m.d3;
+    p.use_ot = m.use_ot;
+    return p;
+}
+} // namespace
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
               double h) {
     const int na = static_cast<int>(atoms.size());
     std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
@@ -1351,10 +1374,10 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             std::vector<GpwAtom> plus = atoms, minus = atoms;
             plus[a] = displaced(atoms[a], k, +h);
             minus[a] = displaced(atoms[a], k, -h);
-            GPWSolver plus_solver{cfg};
+            GpwDft plus_solver = copy_gpw(cfg);
             plus_solver.build(plus);
             const double e_plus = plus_solver.run(plus).e_total;
-            GPWSolver minus_solver{cfg};
+            GpwDft minus_solver = copy_gpw(cfg);
             minus_solver.build(minus);
             const double e_minus = minus_solver.run(minus).e_total;
             forces[a][k] = -(e_plus - e_minus) / (2.0 * h); // F = -dE/dR

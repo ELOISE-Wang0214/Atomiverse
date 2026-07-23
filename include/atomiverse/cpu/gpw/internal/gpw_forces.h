@@ -25,7 +25,7 @@
 #include <array>
 #include <vector>
 
-#include "atomiverse/cpu/gpw/gpw_solver.h" // GpwAtom, GpwConfig
+#include "atomiverse/cpu/gpw/gpw_solver.h" // GpwAtom, GpwDft
 
 namespace ATV {
 namespace cpu {
@@ -33,16 +33,16 @@ namespace gpw {
 
 /// @brief Analytic GPW forces F_a = -dE/dR_a (one SCF + one gradient pass).
 ///
-/// Runs `GPWSolver`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
+/// Runs `GpwDft`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
 /// P·dV_pp), grid (P·dV_grid against the converged V_eff) and ionic-core
 /// Hellmann–Feynman (∫V_es ∂n_c) terms analytically.
 ///
-/// @param atoms GPW atoms (basis + GTH PP), as for `GPWSolver::run`.
+/// @param atoms GPW atoms (basis + GTH PP), as for `GpwDft::run`.
 /// @param cfg   SCF configuration (grid, XC, electrostatics).
 /// @return Forces [Hartree/Bohr], one xyz triple per atom, in input order.
 /// @throws std::runtime_error if the SCF does not converge.
 std::vector<std::array<double, 3>>
-gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);
+gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg);
 
 } // namespace gpw
 } // namespace cpu

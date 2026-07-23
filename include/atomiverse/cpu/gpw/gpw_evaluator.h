@@ -2,8 +2,8 @@
 /// @brief GPWEvaluator — GPW DFT energy component for CPU drivers.
 ///
 /// Mirrors `cpu::pw::PWEvaluator` / `cpu::scf::SCF`: a self-contained
-/// Evaluator that wraps an owned inner `GPWSolver`. `build()` validates the
-/// per-element basis/pseudopotential templates, assembles the `GpwConfig`
+/// Evaluator that wraps an owned inner `GpwDft`. `build()` validates the
+/// per-element basis/pseudopotential templates, assembles the `GpwDft`
 /// from the build-time frame (cell [Bohr], n_occ, the ATV_GPW_OT diagnostic
 /// switch) and builds the solver; each `launch()` assembles the atoms at the
 /// frame's current geometry (Angstrom -> Bohr), runs the solver, and writes
@@ -84,7 +84,7 @@ class GPWEvaluator : public cpu::GPW {
   private:
     GpwEvaluatorConfig config_;
     GpwResult last_{};
-    std::unique_ptr<GPWSolver> solver_;  ///< Owned inner solver (built once).
+    std::unique_ptr<GpwDft> solver_;  ///< Owned inner solver (built once).
     std::array<double, 3> built_cell_{}; ///< Build-time cell [Bohr] (guard).
 };
 
