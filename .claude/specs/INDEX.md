@@ -7,7 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Slug | Branch | Domain | Notes |
 | ---- | ------ | ------ | ----- |
-| `pw-bomd-h` | `wf/pw-bomd-h` | pw / dynamics | PW BOMD H₂ NVE foothold; offline CP2K energy-drift pin |
+| `pw-bomd-h` | `wf/pw-bomd-h` | pw / dynamics | PW BOMD H-atom NVE foothold; offline energy-drift pin |
 
 *(CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
 merged into `dev` and removed)*

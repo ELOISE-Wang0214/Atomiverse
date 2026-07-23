@@ -1,4 +1,4 @@
-# Spec: `pw-bomd-h` — plane-wave BOMD foothold (H₂ NVE)
+# Spec: `pw-bomd-h` — plane-wave BOMD foothold (H atom NVE)
 
 **Slug:** `pw-bomd-h`  
 **Domain:** `pw` / dynamics (plane-wave Born–Oppenheimer MD)  
@@ -24,11 +24,12 @@ Ship a **dep-safe PW BOMD foothold**:
 
 1. Public API only: `cpu::md::MD` + `VelocityVerlet` +
    `cpu::pw::PWEvaluator{PW}.with_gradient(true)` on `md::Phase::force`.
-2. Minimal geometry: **two hydrogen atoms** (toy empty `upf_path`, matching
-   existing PW force unit/regression footholds) in a cubic cell — fast, no
-   external UPF file at ctest.
-3. Short **NVE** trajectory; assert finite PE/KE and **bounded total-energy
-   drift** (literature symplectic / BOMD conservation envelope).
+2. Minimal geometry: **single H** at the origin of a cubic cell (toy empty
+   `upf_path`, matching `h_force_*` footholds) — fast, no external UPF at
+   ctest. Symmetry keeps \(F\approx 0\); NVE is free-particle motion at
+   constant PE while still exercising SCF+forces every step.
+3. Short **NVE** trajectory; assert finite PE/KE, residual \(|F|\) bound, and
+   **bounded total-energy drift** (literature symplectic / BOMD envelope).
 4. Offline pin recorded in `regressions/pw/pw-bomd-h/REFERENCE.md` (CP2K twin
    when binary available; else literature + product twin with
    `perf_exempt`).
@@ -47,8 +48,8 @@ Ship a **dep-safe PW BOMD foothold**:
 ## Public API (minimal — already shipped; pin only)
 
 ```cpp
-cpu::Frame frame(/* 2 H */);
-// masses, types Z=1, positions [Å], cubic simbox
+cpu::Frame frame(1); // H at origin of cubic L=6 Å box
+// mass 1.008 amu, type Z=1
 
 cpu::pw::PW pw;
 pw.ecut_ry = 5.0;
@@ -57,9 +58,11 @@ pw.tol = 1e-4;
 pw.max_iter = 12;
 // upf_path empty → toy V_loc (same foothold as h_force_*)
 
+// hand-set vx (InitVelocity COM-zeros N=1)
+frame.span(kAtom_vx)[0] = 0.002; // Å/fs
+
 cpu::md::MD sim;
 sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.5});
-sim.add(cpu::md::InitVelocity{/*T [K]=*/50.0, /*seed=*/7u});
 sim.on(md::Phase::force)
     .add(cpu::pw::PWEvaluator{std::move(pw)}.with_gradient(true));
 sim.build();
@@ -79,7 +82,8 @@ Rules:
 1. **Spec** (this file) + INDEX Live row — **before** production code.
 2. **Unit test** `tests/cpu/planewave/test_pw_bomd.cpp` (or equivalent under
    `tests/cpu/planewave/`): MD + `PWEvaluator.with_gradient(true)` runs ≥2
-   steps on H₂ toy; PE/KE finite. **No e2e under tests/**.
+   steps on single-H toy; PE/KE finite; residual \(|F|<0.5\) eV/Å.
+   **No e2e under tests/**.
 3. **Offline pin + regression** `regressions/pw/pw-bomd-h/`:
    - `REFERENCE.md` — method, geometry, settings, observable, tol, oracle
      citation / unavailability, perf gate.
@@ -96,11 +100,11 @@ Rules:
 | # | Criterion | How verified |
 | - | --------- | ------------ |
 | A1 | Public path is `MD` + `VelocityVerlet` + `PWEvaluator.with_gradient(true)` at `md::Phase::force`; no public `*Config` / `make_*` | Code review + compile |
-| A2 | Unit test: ≥2 MD steps on H₂ toy PW; PE and KE finite | `test_pw_bomd` (or named equivalent) exit 0 |
+| A2 | Unit test: ≥2 MD steps on single-H toy PW; PE and KE finite; \(|F|<0.5\) eV/Å | `test_pw_bomd` exit 0 |
 | A3 | Regression `reg_pw-bomd-h` builds with `ATV_BUILD_PW` + `ATV_BUILD_REGRESSIONS` (+ MD on) | CMake + link |
 | A4 | After short NVE: PE finite, KE finite and ≥ 0 | Regression exit 0 |
-| A5 | Total energy drift bounded: \(\max_t |E(t)-E_0| / \max(1, |E_0|) \le\) stated tol in REFERENCE (default **0.25** for toy SCF BOMD foothold) | Regression |
-| A6 | No trajectory explosion: positions remain finite; optional soft bond-length ceiling if H₂ | Regression |
+| A5 | Total energy drift bounded: \(\max_t |E(t)-E_0| / \max(1, |E_0|) \le\) stated tol in REFERENCE (default **0.05** for single-H F≈0 foothold) | Regression |
+| A6 | Positions remain finite; warm-up \(|F| < 0.5\) eV/Å (symmetry residual) | Regression |
 | A7 | `REFERENCE.md` cites offline CP2K (version + input summary) **or** explicit binary unavailability + literature basis for NVE/BOMD energy conservation pin | File present |
 | A8 | Dual gate: correctness (A4–A6) **and** (`within_10x` **or** `perf_exempt=true` with reason) | REFERENCE + report |
 | A9 | No live third-party process from ctest / regression binary | Grep / design |
