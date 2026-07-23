@@ -27,6 +27,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py g0w0 --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py delta-scf --geom n2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
 from __future__ import annotations
@@ -83,6 +84,10 @@ H -0.629118 -0.629118  0.629118
 H  0.629118 -0.629118 -0.629118
 H -0.629118  0.629118 -0.629118
 """,
+        "n2": """
+N  0.000000  0.000000  0.000000
+N  0.000000  0.000000  1.097700
+""",
     }
     if geom not in presets:
         raise SystemExit(f"unknown geom preset {geom!r}; choose {sorted(presets)}")
@@ -106,7 +111,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "b2plyp"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "b2plyp", "delta-scf"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -114,6 +119,18 @@ def main() -> int:
     p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")
     p.add_argument("--xc", default="b3lyp")
     p.add_argument("--nstates", type=int, default=3)
+    p.add_argument(
+        "--from-mo",
+        type=int,
+        default=None,
+        help="Occupied MO index to depopulate for delta-scf (default: HOMO)",
+    )
+    p.add_argument(
+        "--to-mo",
+        type=int,
+        default=None,
+        help="Virtual MO index to populate for delta-scf (default: LUMO)",
+    )
     p.add_argument("--conv-tol", type=float, default=1e-12)
     p.add_argument(
         "--frozen",
@@ -205,6 +222,65 @@ def main() -> int:
         out["e_tot_with_disp_ha"] = e1
         out["e_tot_ha"] = e1
         out["converged"] = bool(mf1.converged)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0
+
+    if m == "delta-scf":
+        # UHF ΔSCF with IMOM occupation locking (PySCF scf.addons.mom_occ_).
+        # Default promotion: α HOMO → LUMO on a closed-shell RHF reference.
+        import numpy as np
+        from pyscf.scf import addons
+
+        mf0 = scf.RHF(mol)
+        mf0.conv_tol = args.conv_tol
+        e0 = float(mf0.kernel())
+        nmo = int(mf0.mo_coeff.shape[1])
+        nocc = int(mol.nelectron // 2)
+        from_mo = int(args.from_mo) if args.from_mo is not None else nocc - 1
+        to_mo = int(args.to_mo) if args.to_mo is not None else nocc
+        if from_mo < 0 or from_mo >= nocc or to_mo < nocc or to_mo >= nmo:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"bad promotion from={from_mo} to={to_mo} "
+                        f"(nocc={nocc}, nmo={nmo})",
+                    }
+                )
+            )
+            return 2
+        mo0 = np.asarray(mf0.mo_coeff)
+        occ_a = np.zeros(nmo)
+        occ_b = np.zeros(nmo)
+        occ_a[:nocc] = 1.0
+        occ_b[:nocc] = 1.0
+        occ_a[from_mo] = 0.0
+        occ_a[to_mo] = 1.0
+
+        def _rdm1(C, occ):
+            return np.einsum("pi,i,qi->pq", C, occ, C)
+
+        dm = (_rdm1(mo0, occ_a), _rdm1(mo0, occ_b))
+        mfu = scf.UHF(mol)
+        mfu.conv_tol = args.conv_tol
+        mfu.max_cycle = 200
+        mfu = addons.mom_occ_(mfu, (mo0, mo0), (occ_a.copy(), occ_b.copy()))
+        e1 = float(mfu.kernel(dm))
+        de_ha = e1 - e0
+        out["e_ground_ha"] = e0
+        out["e_excited_ha"] = e1
+        out["delta_e_ha"] = de_ha
+        out["delta_e_ev"] = de_ha * _HA_TO_EV
+        out["from_mo"] = from_mo
+        out["to_mo"] = to_mo
+        out["nocc"] = nocc
+        out["nmo"] = nmo
+        out["converged"] = bool(mfu.converged)
+        if hasattr(mfu, "spin_square"):
+            ss, mult = mfu.spin_square()
+            out["s2"] = float(ss)
+            out["multiplicity"] = float(mult)
+        out["oracle"] = "pyscf_scf_addons_mom_occ_imom"
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
 

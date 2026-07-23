@@ -236,7 +236,8 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         rohf ? F_beta_uncoupled_ : F_beta_, Hcore_, J_, n_alpha_, n_beta_,
         n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_,
         P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_, generalized,
-        e_solvent_, e_pcm_fock_half_);
+        e_solvent_, e_pcm_fock_half_, S_, mom, mom_ref_C_alpha_,
+        mom_ref_C_beta_);
     converged_stage_ = std::make_unique<ScfConverged>(
         tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol),
         restricted_ || rohf || generalized, e_total_, err_alpha_, err_beta_);
@@ -503,6 +504,30 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                 "MeanFieldMethod::run: level_shift is not supported for ROHF "
                 "— the restricted shift projector 0.5*P_tot is not the "
                 "open-shell occupied projector. Set level_shift = 0.");
+    }
+    if (mom != MomStyle::Off) {
+        if (spin_ == SpinType::Generalized || rohf)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: mom != Off is not supported for ROHF/"
+                "GHF in this link — use RHF/UHF/RKS/UKS with set_mom_reference "
+                "or UHF::delta_scf");
+        if (mom_ref_C_alpha_.size() == 0)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: mom != Off requires set_mom_reference "
+                "(or UHF::delta_scf) before run — empty MOM reference");
+        if (static_cast<int>(mom_ref_C_alpha_.shape()[1]) != n_alpha_
+            || (!restricted_
+                && static_cast<int>(mom_ref_C_beta_.shape()[1]) != n_beta_))
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: MOM reference occupation count does "
+                "not match n_alpha/n_beta (got C_ref_a cols="
+                + std::to_string(mom_ref_C_alpha_.shape()[1]) + ", n_alpha="
+                + std::to_string(n_alpha_) + ")");
+        if (static_cast<int>(mom_ref_C_alpha_.shape()[0]) != ints.n_basis)
+            throw std::invalid_argument(
+                "MeanFieldMethod::run: MOM reference AO dimension "
+                + std::to_string(mom_ref_C_alpha_.shape()[0])
+                + " != n_basis " + std::to_string(ints.n_basis));
     }
     const int n = ints.n_basis;
     const int n_alpha = n_alpha_;
@@ -1149,6 +1174,51 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
     return ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+}
+
+// ── MOM/IMOM reference install ────────────────────────────────────────────────
+
+namespace {
+
+RealMatrix gather_occupied_columns(const SlaterDeterminant& det,
+                                   SlaterDeterminant::Spin spin) {
+    const RealMatrix& C = det.coefficients(spin);
+    const RealVector& f = det.occupations(spin);
+    const int n = static_cast<int>(C.shape()[0]);
+    const int n_mo = static_cast<int>(C.shape()[1]);
+    int n_occ = 0;
+    for (int i = 0; i < n_mo; ++i)
+        if (f(i) > 0.5)
+            ++n_occ;
+    if (n_occ == 0)
+        throw std::invalid_argument(
+            "MeanFieldMethod::set_mom_reference: spin channel has no occupied "
+            "orbitals (f_i > 0.5)");
+    RealMatrix C_occ = xt::zeros<double>({n, n_occ});
+    int col = 0;
+    for (int i = 0; i < n_mo; ++i) {
+        if (f(i) <= 0.5)
+            continue;
+        xt::view(C_occ, xt::all(), col) = xt::view(C, xt::all(), i);
+        ++col;
+    }
+    return C_occ;
+}
+
+} // namespace
+
+template <typename D>
+void MeanFieldMethod<D>::set_mom_reference(const SlaterDeterminant& det) {
+    using Spin = SlaterDeterminant::Spin;
+    if (det.generalized())
+        throw std::invalid_argument(
+            "MeanFieldMethod::set_mom_reference: generalized (GHF) determinants "
+            "are not supported for MOM/IMOM in this link — use RHF/UHF/RKS/UKS");
+    mom_ref_C_alpha_ = gather_occupied_columns(det, Spin::alpha);
+    if (det.restricted())
+        mom_ref_C_beta_ = mom_ref_C_alpha_;
+    else
+        mom_ref_C_beta_ = gather_occupied_columns(det, Spin::beta);
 }
 
 // explicit instantiations
