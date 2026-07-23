@@ -1850,6 +1850,139 @@ void accumulate_two_electron_fock_derivative(
               elapsed_ms(t_total));
 }
 
+void accumulate_two_electron_fock_derivative_uhf(
+    xt::xtensor<double, 4>& dFa, xt::xtensor<double, 4>& dFb,
+    const IntegralPack& integrals, const xt::xtensor<double, 2>& Pa,
+    const xt::xtensor<double, 2>& Pb) {
+    const auto t_total = LogClock::now();
+    const int natm = static_cast<int>(integrals.atoms.size());
+    const int n = integrals.n_basis;
+    const xt::xtensor<double, 2> P = Pa + Pb;
+
+    const ShellBlockPairList bpl{integrals, /*thr=*/1e-12};
+    const int n_blocks = static_cast<int>(bpl.blocks.size());
+
+    std::vector<int> block_to_atom(bpl.blocks.size(), -1);
+    for (std::size_t b = 0; b < bpl.blocks.size(); ++b) {
+        const auto& Bl = bpl.blocks[b];
+        for (int a = 0; a < natm; ++a) {
+            const double dx = Bl.center[0] - integrals.atoms[a].pos[0];
+            const double dy = Bl.center[1] - integrals.atoms[a].pos[1];
+            const double dz = Bl.center[2] - integrals.atoms[a].pos[2];
+            if (dx * dx + dy * dy + dz * dz < 1e-20) {
+                block_to_atom[b] = a;
+                break;
+            }
+        }
+    }
+
+    const int nT =
+#ifdef _OPENMP
+        omp_get_max_threads();
+#else
+        1;
+#endif
+    std::vector<xt::xtensor<double, 4>> dFa_local(
+        nT, xt::zeros<double>({natm, 3, n, n}));
+    std::vector<xt::xtensor<double, 4>> dFb_local(
+        nT, xt::zeros<double>({natm, 3, n, n}));
+
+    ATV_DEBUG("[hessian] two_e fock-derivative UHF start blocks={} basis={}",
+              n_blocks, n);
+
+    // Full ordered block-quartet enumeration. Coulomb with total density;
+    // exchange with factor-1 spin densities (F^σ = h + J[P] − K[P^σ]).
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for (int bi = 0; bi < n_blocks; ++bi) {
+        const int tid =
+#ifdef _OPENMP
+            omp_get_thread_num();
+#else
+            0;
+#endif
+        auto& dFal = dFa_local[tid];
+        auto& dFbl = dFb_local[tid];
+        const auto& BA = bpl.blocks[bi];
+        std::vector<double> deriv(0);
+        for (int bj = 0; bj < n_blocks; ++bj) {
+            const auto& BB = bpl.blocks[bj];
+            for (int bk = 0; bk < n_blocks; ++bk) {
+                const auto& BC = bpl.blocks[bk];
+                for (int bl = 0; bl < n_blocks; ++bl) {
+                    const auto& BD = bpl.blocks[bl];
+                    const int na = BA.n_cart, nb = BB.n_cart, nc = BC.n_cart,
+                              nd = BD.n_cart;
+                    const int block_n = na * nb * nc * nd;
+                    const int atom_of[4] = {block_to_atom[bi],
+                                            block_to_atom[bj],
+                                            block_to_atom[bk],
+                                            block_to_atom[bl]};
+
+                    deriv.assign(static_cast<std::size_t>(4) * 3 * block_n,
+                                 0.0);
+                    for (int ctr = 0; ctr < 3; ++ctr)
+                        native::rys_eri_block_deriv(
+                            BA, BB, BC, BD, ctr,
+                            deriv.data()
+                                + static_cast<std::size_t>(ctr) * 3 * block_n);
+                    for (int k = 0; k < 3 * block_n; ++k)
+                        deriv[static_cast<std::size_t>(3) * 3 * block_n + k] =
+                            -(deriv[k]
+                              + deriv[static_cast<std::size_t>(1) * 3 * block_n
+                                      + k]
+                              + deriv[static_cast<std::size_t>(2) * 3 * block_n
+                                      + k]);
+
+                    for (int ia = 0; ia < na; ++ia) {
+                        const int i = BA.ao_start + ia;
+                        for (int ib = 0; ib < nb; ++ib) {
+                            const int j = BB.ao_start + ib;
+                            for (int ic = 0; ic < nc; ++ic) {
+                                const int k = BC.ao_start + ic;
+                                for (int id = 0; id < nd; ++id) {
+                                    const int l = BD.ao_start + id;
+                                    const int ao =
+                                        ((ia * nb + ib) * nc + ic) * nd + id;
+                                    const double pj = P(k, l);
+                                    const double pka = Pa(j, l);
+                                    const double pkb = Pb(j, l);
+                                    for (int ctr = 0; ctr < 4; ++ctr) {
+                                        const int X = atom_of[ctr];
+                                        for (int ax = 0; ax < 3; ++ax) {
+                                            const double dg = deriv
+                                                [(static_cast<std::size_t>(ctr)
+                                                      * 3
+                                                  + ax)
+                                                     * block_n
+                                                 + ao];
+                                            if (dg == 0.0)
+                                                continue;
+                                            dFal(X, ax, i, j) += pj * dg;
+                                            dFbl(X, ax, i, j) += pj * dg;
+                                            dFal(X, ax, i, k) -= pka * dg;
+                                            dFbl(X, ax, i, k) -= pkb * dg;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (const auto& dFl : dFa_local)
+        dFa += dFl;
+    for (const auto& dFl : dFb_local)
+        dFb += dFl;
+
+    ATV_DEBUG("[hessian] two_e fock-derivative UHF done ms={:.1f}",
+              elapsed_ms(t_total));
+}
+
 // ── Two-electron second-derivative direct contraction ────────────────
 
 namespace {
@@ -2624,6 +2757,145 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
         hess += Hl;
 
     ATV_DEBUG("[hessian] two_e second-derivative done ms={:.1f}",
+              elapsed_ms(t_total));
+}
+
+void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
+                                         const IntegralPack& integrals,
+                                         const xt::xtensor<double, 2>& Pa,
+                                         const xt::xtensor<double, 2>& Pb) {
+    const auto t_total = LogClock::now();
+    const int natm = static_cast<int>(integrals.atoms.size());
+    const int n = integrals.n_basis;
+    (void)n;
+    const xt::xtensor<double, 2> P_total = Pa + Pb;
+
+    const ShellBlockPairList bpl{integrals, /*thr=*/1e-12};
+    const int n_bpairs = static_cast<int>(bpl.pairs.size());
+
+    std::vector<int> block_to_atom(bpl.blocks.size(), -1);
+    for (std::size_t b = 0; b < bpl.blocks.size(); ++b) {
+        const auto& Bl = bpl.blocks[b];
+        for (int a = 0; a < natm; ++a) {
+            const double dx = Bl.center[0] - integrals.atoms[a].pos[0];
+            const double dy = Bl.center[1] - integrals.atoms[a].pos[1];
+            const double dz = Bl.center[2] - integrals.atoms[a].pos[2];
+            if (dx * dx + dy * dy + dz * dz < 1e-20) {
+                block_to_atom[b] = a;
+                break;
+            }
+        }
+    }
+
+    double D_max = 0.0;
+    for (std::size_t i = 0; i < P_total.size(); ++i)
+        D_max = std::max(D_max, std::abs(P_total.data()[i]));
+    for (std::size_t i = 0; i < Pa.size(); ++i)
+        D_max = std::max(D_max, std::abs(Pa.data()[i]));
+    for (std::size_t i = 0; i < Pb.size(); ++i)
+        D_max = std::max(D_max, std::abs(Pb.data()[i]));
+    if (D_max < 1.0)
+        D_max = 1.0;
+    const double schwarz_tol = 1e-14;
+
+    const int nT =
+#ifdef _OPENMP
+        omp_get_max_threads();
+#else
+        1;
+#endif
+    std::vector<xt::xtensor<double, 2>> hess_local(
+        nT, xt::zeros<double>({3 * natm, 3 * natm}));
+
+    ATV_DEBUG("[hessian] two_e second-derivative UHF start blocks={} "
+              "block_pairs={}",
+              bpl.blocks.size(), n_bpairs);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for (int left = 0; left < n_bpairs; ++left) {
+        const int tid =
+#ifdef _OPENMP
+            omp_get_thread_num();
+#else
+            0;
+#endif
+        auto& Hl = hess_local[tid];
+        std::vector<double> d2buf;
+        std::vector<double> R_scratch;
+        const auto& bp_l = bpl.pairs[left];
+        const auto& BA = bpl.blocks[bp_l.si];
+        const auto& BB = bpl.blocks[bp_l.sj];
+        const int na = BA.n_cart, nb = BB.n_cart;
+        const int i0 = BA.ao_start, j0 = BB.ao_start;
+        const bool diag_bra = (bp_l.si == bp_l.sj);
+
+        for (int right = 0; right <= left; ++right) {
+            const auto& bp_r = bpl.pairs[right];
+            if (bp_l.schwarz * bp_r.schwarz * D_max < schwarz_tol)
+                continue;
+
+            const auto& BC = bpl.blocks[bp_r.si];
+            const auto& BD = bpl.blocks[bp_r.sj];
+            const int nc = BC.n_cart, nd = BD.n_cart;
+            const int k0 = BC.ao_start, l0 = BD.ao_start;
+            const bool diag_ket = (bp_r.si == bp_r.sj);
+            const bool same_pair = (left == right);
+            const int mult = (diag_bra ? 1 : 2) * (diag_ket ? 1 : 2)
+                             * (same_pair ? 1 : 2);
+
+            const int atom_of[4] = {
+                block_to_atom[bp_l.si], block_to_atom[bp_l.sj],
+                block_to_atom[bp_r.si], block_to_atom[bp_r.sj]};
+
+            quartet_second_derivatives(BA, BB, BC, BD, d2buf, R_scratch);
+
+            for (int ia = 0; ia < na; ++ia) {
+                const int i = i0 + ia;
+                for (int ib = 0; ib < nb; ++ib) {
+                    const int j = j0 + ib;
+                    for (int ic = 0; ic < nc; ++ic) {
+                        const int k = k0 + ic;
+                        for (int id = 0; id < nd; ++id) {
+                            const int l = l0 + id;
+                            // ½ Σ P P ĵ − ½ Σ_σ P^σ P^σ k̂ (factor-1 spins).
+                            const double factor_J =
+                                0.5 * mult * P_total(i, j) * P_total(k, l);
+                            const double factor_K =
+                                -0.5 * mult * 0.5
+                                * (Pa(i, k) * Pa(j, l) + Pa(j, k) * Pa(i, l)
+                                   + Pb(i, k) * Pb(j, l)
+                                   + Pb(j, k) * Pb(i, l));
+                            const double factor = factor_J + factor_K;
+                            if (std::abs(factor) < 1e-18)
+                                continue;
+                            const int combo =
+                                ((ia * nb + ib) * nc + ic) * nd + id;
+                            const double* M =
+                                &d2buf[static_cast<std::size_t>(combo)
+                                       * kSuper * kSuper];
+                            for (int su = 0; su < kSuper; ++su) {
+                                const int row =
+                                    3 * atom_of[su / 3] + su % 3;
+                                for (int sv = 0; sv < kSuper; ++sv) {
+                                    const int col =
+                                        3 * atom_of[sv / 3] + sv % 3;
+                                    Hl(row, col) +=
+                                        factor * M[su * kSuper + sv];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (const auto& Hl : hess_local)
+        hess += Hl;
+
+    ATV_DEBUG("[hessian] two_e second-derivative UHF done ms={:.1f}",
               elapsed_ms(t_total));
 }
 

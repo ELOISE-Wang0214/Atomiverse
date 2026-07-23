@@ -516,7 +516,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/grid.cpp
             src/cpu/scf/integral_derivatives.cpp
             src/cpu/scf/cphf_pack.cpp
+            src/cpu/scf/ucphf_pack.cpp
             src/cpu/scf/gradient.cpp
+
             src/cpu/scf/mp2.cpp
             src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp

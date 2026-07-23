@@ -160,6 +160,24 @@ void accumulate_two_electron_fock_derivative(
     xt::xtensor<double, 4>& dF, const IntegralPack& integrals,
     const xt::xtensor<double, 2>& P_total);
 
+/// @brief Unrestricted skeleton Fock derivatives into separate α/β
+///        accumulators: F^{α(x)} += J^{(x)}[P] − K^{(x)}[P^α] and
+///        F^{β(x)} += J^{(x)}[P] − K^{(x)}[P^β] with P = P^α + P^β.
+///
+/// Same on-the-fly derivative-ERI engine as the closed-shell overload;
+/// exchange uses the factor-1 spin densities (no closed-shell ½).
+///
+/// @param[out] dFa    α Fock accumulator [n_atoms, 3, n, n] [Hartree/Bohr]
+///                    (caller pre-fills with dT + dV).
+/// @param[out] dFb    β Fock accumulator (same layout; also pre-filled).
+/// @param integrals   Integral pack for the current geometry.
+/// @param Pa          α density (factor-1, dimensionless).
+/// @param Pb          β density (factor-1, dimensionless).
+void accumulate_two_electron_fock_derivative_uhf(
+    xt::xtensor<double, 4>& dFa, xt::xtensor<double, 4>& dFb,
+    const IntegralPack& integrals, const xt::xtensor<double, 2>& Pa,
+    const xt::xtensor<double, 2>& Pb);
+
 /// @brief Accumulate the skeleton two-electron second-derivative energy
 ///        contraction  ½ Σ_{μνλσ} P_{μν} P_{λσ} [(μν|λσ)^{xy}
 ///        − ½(μλ|νσ)^{xy}]  (closed-shell RHF) into `hess`.
@@ -178,6 +196,22 @@ void accumulate_two_electron_fock_derivative(
 void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
                                      const IntegralPack& integrals,
                                      const xt::xtensor<double, 2>& P_total);
+
+/// @brief Unrestricted skeleton two-electron second-derivative energy
+///        contraction into `hess`:
+///        ½ Σ P P ĵ^{xy} − ½ Σ_σ P^σ P^σ k̂^{xy}  (P = P^α + P^β).
+///
+/// Same quartet engine as the closed-shell overload; only the density
+/// prefactors change (per-spin exchange with factor-1 densities).
+///
+/// @param[out] hess   Accumulator [3·n_atoms, 3·n_atoms] [Hartree/Bohr²].
+/// @param integrals   Integral pack for the current geometry.
+/// @param Pa          α density (factor-1, dimensionless).
+/// @param Pb          β density (factor-1, dimensionless).
+void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
+                                         const IntegralPack& integrals,
+                                         const xt::xtensor<double, 2>& Pa,
+                                         const xt::xtensor<double, 2>& Pb);
 
 } // namespace scf
 } // namespace cpu

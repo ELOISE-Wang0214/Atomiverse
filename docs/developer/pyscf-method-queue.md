@@ -34,6 +34,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 - [~] `d3bj-molecular-pbe` | DFT-D3 BJ damping | dft | water | sto-3g | E_disp | molecular Gaussian D3 ○ (GPW zero-damping only); PySCF dftd3
 - [~] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | RHF CPHF Hessian ✓ (reg_h2o_rhf_freq); UHF Hessian ○
+- [x] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | UHF::hessian CPHF; reg_uhf-hessian-o2
 
 ## blocked
 
