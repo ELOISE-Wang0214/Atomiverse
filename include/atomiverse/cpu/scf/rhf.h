@@ -9,6 +9,7 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
+#include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
@@ -280,7 +281,21 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         non-restricted reference, or when dRPA is ill-conditioned.
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     DirectRPAResult direct_rpa() const;
-
+    /// @brief Singlet BSE@G0W0 excitation energies of the most recent
+    ///        `run()` (closed-shell RHF). Spectral G0W0 poles
+    ///        (`g0w0()`) enter the ph energy differences and the static
+    ///        direct-RPA screened interaction \(W\) (exact 4-centre form).
+    ///        Full BSE (default) solves the Casida A/B RPA problem; with
+    ///        `tda = true` only A is diagonalized (BSE-TDA).
+    ///        Working equations match PySCF `pyscf.gw.bse.BSE` (non-DF ERIs
+    ///        + frequency-exact G0W0 poles — see `reg_bse-h2-sto3g`).
+    /// @param n_states Number of lowest singlet roots in `[1, n_occ·n_virt]`.
+    /// @param tda If true, Tamm–Dancoff (B = 0); else full BSE.
+    /// @return Excitation energies [eV] plus the underlying G0W0 result.
+    ///         non-restricted reference, or when G0W0 / BSE is ill-conditioned.
+    /// @throws std::invalid_argument when `n_states` is out of range or the
+    ///         system has no virtual orbitals.
+    BSEResult bse(int n_states = 1, bool tda = false) const;
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib
     ///        pipeline (`vib::MassWeighting` → `vib::HessianDiagonalizer`).

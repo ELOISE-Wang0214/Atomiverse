@@ -505,7 +505,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/adc.cpp
             src/cpu/scf/g0w0.cpp
             src/cpu/scf/rpa.cpp
-            src/cpu/scf/rhf.cpp
+            src/cpu/scf/bse.cpp            src/cpu/scf/rhf.cpp
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
             src/cpu/scf/ghf.cpp

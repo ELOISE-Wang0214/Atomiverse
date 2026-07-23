@@ -33,6 +33,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py sf-tda --geom o2 --basis sto-3g --spin 2 --nstates 5
   python tools/pyscf_oracle/pin_scf.py d3bj --geom water --basis sto-3g --xc pbe
   python tools/pyscf_oracle/pin_scf.py g0w0 --geom h2 --basis sto-3g
+  python tools/pyscf_oracle/pin_scf.py bse --geom h2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py delta-scf --geom n2 --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rhf --geom water --basis 6-31g* --grad --pcm
 """
@@ -117,8 +118,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")
-    p.add_argument("--nstates", type=int, default=3)
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "--geom", "water", "sf-tddft", "--basis", "sto-3g", "mp4", "--charge", "cc2", "--spin", "2S (PySCF spin)", "direct-rpa", "--xc", "b3lyp", "bse"],    )    p.add_argument("--geom", default="water")    p.add_argument("--basis", default="sto-3g")    p.add_argument("--charge", type=int, default=0)    p.add_argument("--spin", type=int, default=0, help="2S (PySCF spin)")    p.add_argument("--xc", default="b3lyp")    p.add_argument("--nstates", type=int, default=3)
     p.add_argument(
         "--ncas",
         type=int,
@@ -349,6 +349,118 @@ def main() -> int:
             out["gap_ac_ev"] = float((qac[lumo] - qac[homo]) * _HA_TO_EV)
         except Exception as ac_err:  # pragma: no cover — optional twin
             out["ac_error"] = str(ac_err)
+        print(json.dumps(out, indent=2, sort_keys=True))
+        return 0 if out.get("converged", True) else 1
+
+    if m == "bse":
+        # Exact-ERI static-RPA BSE on spectral G0W0 poles — twin of
+        # Atomiverse RHF::bse(). Stock DF pyscf.gw.bse is reported as
+        # s1_df_ev for comparison only (~meV DF discrepancy on H2/STO-3G).
+        import numpy as np
+        from pyscf import ao2mo as ao2mo_mod
+        from pyscf.gw import gw_exact
+        from pyscf import tdscf as tdscf_mod
+
+        mf = dft.RKS(mol)
+        mf.xc = "hf"
+        mf.conv_tol = args.conv_tol
+        e = float(mf.kernel())
+        C = np.asarray(mf.mo_coeff, dtype=float)
+        nmo = int(C.shape[1])
+        nocc = int(mol.nelectron // 2)
+        nvir = nmo - nocc
+        eri = ao2mo_mod.restore(1, ao2mo_mod.full(mol, C), nmo)
+        td = tdscf_mod.dRPA(mf)
+        td.nstates = max(1, nocc * nvir)
+        td.verbose = 0
+        td.kernel()
+        ge = gw_exact.GWExact(mf, tdmf=td)
+        ge.verbose = 0
+        ge.kernel()
+        eps = np.asarray(ge.mo_energy, dtype=float)
+        nov = nocc * nvir
+        S = np.zeros((nov, nov), dtype=float)
+        for a in range(nvir):
+            for i in range(nocc):
+                p = a * nocc + i
+                S[p, p] = eps[i] - eps[nocc + a]
+                for b in range(nvir):
+                    for j in range(nocc):
+                        q = b * nocc + j
+                        v = float(eri[i, nocc + a, j, nocc + b])
+                        S[p, q] -= 4.0 * v
+        Pi = 4.0 * np.linalg.inv(S)
+
+        def W(p: int, q: int, r: int, s: int) -> float:
+            acc = float(eri[p, q, r, s])
+            for a in range(nvir):
+                for i in range(nocc):
+                    ia = a * nocc + i
+                    for b in range(nvir):
+                        for j in range(nocc):
+                            jb = b * nocc + j
+                            acc += (
+                                float(eri[p, q, i, nocc + a])
+                                * Pi[ia, jb]
+                                * float(eri[j, nocc + b, r, s])
+                            )
+            return acc
+
+        A = np.zeros((nov, nov), dtype=float)
+        B = np.zeros((nov, nov), dtype=float)
+        for a in range(nvir):
+            for i in range(nocc):
+                ia = a * nocc + i
+                aa = nocc + a
+                for b in range(nvir):
+                    for j in range(nocc):
+                        jb = b * nocc + j
+                        bb = nocc + b
+                        vc = float(eri[i, aa, j, bb])
+                        A[ia, jb] = 2.0 * vc - W(i, j, aa, bb)
+                        B[ia, jb] = 2.0 * vc - W(i, bb, aa, j)
+                        if ia == jb:
+                            A[ia, jb] += float(eps[aa] - eps[i])
+        ApB = 0.5 * ((A + B) + (A + B).T)
+        AmB = 0.5 * ((A - B) + (A - B).T)
+        # Casida: M = (A-B)^{1/2} (A+B) (A-B)^{1/2}
+        s_m, U_m = np.linalg.eigh(AmB)
+        if s_m[0] <= 0.0:
+            raise RuntimeError(f"BSE (A-B) not PD: min eig = {s_m[0]}")
+        T = (U_m * np.sqrt(s_m)) @ U_m.T
+        M = T @ ApB @ T
+        M = 0.5 * (M + M.T)
+        w2 = np.linalg.eigvalsh(M)
+        w = np.sqrt(np.maximum(w2, 0.0))
+        tda = np.linalg.eigvalsh(A)
+        nstates = max(1, min(int(args.nstates), nov))
+        out["e_tot_ha"] = e
+        out["converged"] = bool(mf.converged)
+        out["qp_energy_ha"] = eps.tolist()
+        out["gap_ev"] = float((eps[nocc] - eps[nocc - 1]) * _HA_TO_EV)
+        out["s1_ev"] = float(w[0] * _HA_TO_EV)
+        out["energy_ev"] = (w[:nstates] * _HA_TO_EV).tolist()
+        out["tda_s1_ev"] = float(tda[0] * _HA_TO_EV)
+        out["tda_energy_ev"] = (tda[:nstates] * _HA_TO_EV).tolist()
+        out["oracle"] = "exact_eri_bse_on_gw_exact_poles"
+        # Optional DF stock twin (info only).
+        try:
+            from pyscf import gw as gw_mod
+            from pyscf.gw import bse as bse_mod
+
+            mf_rhf = scf.RHF(mol)
+            mf_rhf.conv_tol = args.conv_tol
+            mf_rhf.kernel()
+            gdf = gw_mod.GW(mf_rhf)
+            gdf.verbose = 0
+            gdf.kernel()
+            bb = bse_mod.BSE(gdf)
+            bb.verbose = 0
+            bb.TDA = False
+            exci, _, _ = bb.full_diagonalization(multi="s")
+            out["s1_df_ev"] = float(exci[0] * _HA_TO_EV)
+        except Exception as df_err:  # pragma: no cover — optional twin
+            out["df_bse_error"] = str(df_err)
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0 if out.get("converged", True) else 1
 
