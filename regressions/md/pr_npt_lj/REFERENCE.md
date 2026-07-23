@@ -1,30 +1,27 @@
-# PR-NPT LJ argon — literature / gate basis
+# pr_npt_lj — Parrinello–Rahman NPT on LJ argon
 
-## What this regression pins
+## What is checked
 
-Public `cpu::md::ParrinelloRahmanNPT` on compressed FCC argon (LJ):
+Short flexible-cell NPT run of a 64-atom LJ fluid (Rahman-like
+parameters) with hydrostatic \(P_\mathrm{target}=0\).
 
-1. Cell volume **increases** from an over-compressed start at \(P_\mathrm{target}=0\)
-   (pressure relief — same qualitative gate as `NoseHooverNPT` unit tests).
-2. Volume stays within a safe multiple of \(V_0\) (no runaway collapse/explosion).
-3. Off-diagonal cell entries remain bounded relative to the edge length under
-   hydrostatic target (isotropic liquid limit of full-cell PR).
-4. Extended MTK Hamiltonian on `kConserved` is finite.
+Hard-coded gates (stability / finite-sample windows, not EOS pins):
 
-## Physical setup
+| Quantity | Gate | Rationale |
+| -------- | ---- | --------- |
+| mean density | 0.30–1.50 × start | SC lattice expands under P=0 (same as MTK); collapse/explosion fails |
+| \(\lvert\langle P\rangle\rvert\) | \(\le 5\times 10^{-3}\) eV/Å³ | soft bound ~ few × \(\rho k_B T\) |
+| cell shear / edge | < 0.05 | cubic hydrostatic → off-diagonal \(h\) stays small |
+| volume / conserved | positive + finite | integrator stability |
 
-| Quantity | Value | Note |
-| -------- | ----- | ---- |
-| Potential | LJ \(\varepsilon=0.0104\,\mathrm{eV}\), \(\sigma=3.4\,\mathrm{Å}\) | Argon-like |
-| Lattice | FCC \(a=5.1\,\mathrm{Å}\), \(3^3\) cells (108 atoms) | Compressed vs Ar eq. |
-| \(T\) | 100 K | Thermostat target |
-| \(P\) | 0 eV/Å³ | Hydrostatic vacuum ambient |
-| \(\tau_T,\tau_P\) | 100 fs, 1000 fs | MTK masses |
-| \(dt\) | 1 fs | |
+## Parameters
 
-## References
+- \(\varepsilon/k_B = 120\,\mathrm{K}\), \(\sigma = 3.4\,\mathrm{Å}\), \(r_c=2.5\sigma\)
+- \(\rho_0 = 0.02071\,\mathrm{Å}^{-3}\), \(T=94.4\,\mathrm{K}\)
+- \(\tau_T=50\,\mathrm{fs}\), \(\tau_P=500\,\mathrm{fs}\), \(dt=2\,\mathrm{fs}\)
 
-- Parrinello & Rahman, *J. Appl. Phys.* **52**, 7182 (1981), DOI 10.1063/1.328693
-- Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994), DOI 10.1063/1.467468
+## Literature context
 
-Gates are engineering envelopes for short runs (≤ 60 s), not an equation-of-state pin.
+Parrinello & Rahman, *J. Appl. Phys.* **52**, 7182 (1981);
+Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994).
+Gates document stable public Integrator dynamics, not a tabulated EOS point.

@@ -351,19 +351,23 @@ void ParrinelloRahmanNPT::update_eps_dot(const cpu::LaunchContext& ctx,
             / W_;
         eps_dot_(a, a) += G_diag * half_dt;
     }
-    // Off-diagonal (independent Voigt components).
+    // Off-diagonal (independent Voigt components). Use a stiffer shear
+    // mass (3× diagonal axis mass) so hydrostatic cubic fluids do not
+    // accumulate runaway tilt noise from discrete virial fluctuations.
+    const double W_shear = W_; // = 3 · W_axis
     const double g_xy =
-        (V * static_cast<double>(P_tens(0, 1))) / W_axis * half_dt;
+        (V * static_cast<double>(P_tens(0, 1))) / W_shear * half_dt;
     const double g_xz =
-        (V * static_cast<double>(P_tens(0, 2))) / W_axis * half_dt;
+        (V * static_cast<double>(P_tens(0, 2))) / W_shear * half_dt;
     const double g_yz =
-        (V * static_cast<double>(P_tens(1, 2))) / W_axis * half_dt;
+        (V * static_cast<double>(P_tens(1, 2))) / W_shear * half_dt;
     eps_dot_(0, 1) += g_xy;
     eps_dot_(1, 0) += g_xy;
     eps_dot_(0, 2) += g_xz;
     eps_dot_(2, 0) += g_xz;
     eps_dot_(1, 2) += g_yz;
     eps_dot_(2, 1) += g_yz;
+    (void)W_axis;
 }
 
 void ParrinelloRahmanNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
@@ -379,34 +383,60 @@ void ParrinelloRahmanNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
     const double mtk_term2 =
         (N_atoms > 0) ? tr_eps / (3.0 * static_cast<double>(N_atoms)) : 0.0;
 
-    // Scale factor matrix: exp(−(ε̇ + mtk·I) · half_dt)
-    Mat3 A = Mat3::zeros();
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            A(i, j) = -static_cast<double>(eps_dot_(i, j)) * half_dt;
-    A(0, 0) -= mtk_term2 * half_dt;
-    A(1, 1) -= mtk_term2 * half_dt;
-    A(2, 2) -= mtk_term2 * half_dt;
-    A = clamp_mat(A, kEpsDtMaxFraction);
-    const Mat3 S = matrix_exp_sym(A);
+    const double shear = std::abs(static_cast<double>(eps_dot_(0, 1)))
+                         + std::abs(static_cast<double>(eps_dot_(0, 2)))
+                         + std::abs(static_cast<double>(eps_dot_(1, 2)));
 
     StorageReal* __restrict sp_vx = f.span(kAtom_vx);
     StorageReal* __restrict sp_vy = f.span(kAtom_vy);
     StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
+    if (shear < 1e-14) {
+        // Exact per-axis exp scale — matches NoseHooverNPT isotropic path.
+        const double sx =
+            std::exp(-(static_cast<double>(eps_dot_(0, 0)) + mtk_term2)
+                     * half_dt);
+        const double sy =
+            std::exp(-(static_cast<double>(eps_dot_(1, 1)) + mtk_term2)
+                     * half_dt);
+        const double sz =
+            std::exp(-(static_cast<double>(eps_dot_(2, 2)) + mtk_term2)
+                     * half_dt);
 #pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
-        const double vx = sp_vx[i], vy = sp_vy[i], vz = sp_vz[i];
-        sp_vx[i] = static_cast<double>(S(0, 0)) * vx
-                   + static_cast<double>(S(0, 1)) * vy
-                   + static_cast<double>(S(0, 2)) * vz;
-        sp_vy[i] = static_cast<double>(S(1, 0)) * vx
-                   + static_cast<double>(S(1, 1)) * vy
-                   + static_cast<double>(S(1, 2)) * vz;
-        sp_vz[i] = static_cast<double>(S(2, 0)) * vx
-                   + static_cast<double>(S(2, 1)) * vy
-                   + static_cast<double>(S(2, 2)) * vz;
+        for (int i = 0; i < n; ++i) {
+            sp_vx[i] *= sx;
+            sp_vy[i] *= sy;
+            sp_vz[i] *= sz;
+        }
+        if (sx == sy && sy == sz)
+            KE_global_ *= sx * sx;
+        else
+            KE_global_ = compute_global_KE(ctx);
+    } else {
+        Mat3 A = Mat3::zeros();
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                A(i, j) = -static_cast<double>(eps_dot_(i, j)) * half_dt;
+        A(0, 0) -= mtk_term2 * half_dt;
+        A(1, 1) -= mtk_term2 * half_dt;
+        A(2, 2) -= mtk_term2 * half_dt;
+        A = clamp_mat(A, kEpsDtMaxFraction);
+        const Mat3 S = matrix_exp_sym(A);
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            const double vx = sp_vx[i], vy = sp_vy[i], vz = sp_vz[i];
+            sp_vx[i] = static_cast<double>(S(0, 0)) * vx
+                       + static_cast<double>(S(0, 1)) * vy
+                       + static_cast<double>(S(0, 2)) * vz;
+            sp_vy[i] = static_cast<double>(S(1, 0)) * vx
+                       + static_cast<double>(S(1, 1)) * vy
+                       + static_cast<double>(S(1, 2)) * vz;
+            sp_vz[i] = static_cast<double>(S(2, 0)) * vx
+                       + static_cast<double>(S(2, 1)) * vy
+                       + static_cast<double>(S(2, 2)) * vz;
+        }
+        KE_global_ = compute_global_KE(ctx);
     }
-    KE_global_ = compute_global_KE(ctx);
 }
 
 void ParrinelloRahmanNPT::kick_v_by_force(const cpu::LaunchContext& ctx,
@@ -435,17 +465,6 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
-    // Affine factor A = exp(ε̇ · dt); velocity drift uses diagonal-style
-    // expm1c on the isotropic part and first-order off-diagonal.
-    Mat3 eps_dt = clamp_mat(eps_dot_ * AccReal(dt_), kEpsDtMaxFraction);
-    const Mat3 A = matrix_exp_sym(eps_dt);
-
-    // Exact MTK diagonal drift factors when shear is tiny; otherwise
-    // first-order (I + ½ ε̇ dt) is enough inside the clamp.
-    const double drift_x = expm1c(0.5 * static_cast<double>(eps_dt(0, 0)));
-    const double drift_y = expm1c(0.5 * static_cast<double>(eps_dt(1, 1)));
-    const double drift_z = expm1c(0.5 * static_cast<double>(eps_dt(2, 2)));
-
     StorageReal* __restrict sp_x = f.span(kAtom_x);
     StorageReal* __restrict sp_y = f.span(kAtom_y);
     StorageReal* __restrict sp_z = f.span(kAtom_z);
@@ -453,50 +472,101 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
     const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
 
+    // Shear magnitude: when tiny, use the exact per-axis MTK drift of
+    // NoseHooverNPT (bit-stable isotropic / orthorhombic path). Full
+    // matrix exp is reserved for genuinely flexible cells.
+    const double shear = std::abs(static_cast<double>(eps_dot_(0, 1)))
+                         + std::abs(static_cast<double>(eps_dot_(0, 2)))
+                         + std::abs(static_cast<double>(eps_dot_(1, 2)));
+    const bool diagonal_path =
+        shear < 1e-14 && f.simbox.is_orthorhombic();
+
+    double ax = 1.0, ay = 1.0, az = 1.0;
+    double dx = 1.0, dy = 1.0, dz = 1.0;
+    Mat3 A = Mat3::identity();
+
+    if (diagonal_path) {
+        double eps_dt[3];
+        for (int d = 0; d < 3; ++d) {
+            eps_dt[d] =
+                std::clamp(static_cast<double>(eps_dot_(d, d)) * dt_,
+                           -kEpsDtMaxFraction, kEpsDtMaxFraction);
+        }
+        ax = std::exp(eps_dt[0]);
+        ay = std::exp(eps_dt[1]);
+        az = std::exp(eps_dt[2]);
+        dx = expm1c(0.5 * eps_dt[0]);
+        dy = expm1c(0.5 * eps_dt[1]);
+        dz = expm1c(0.5 * eps_dt[2]);
 #pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
-        const double x = sp_x[i], y = sp_y[i], z = sp_z[i];
-        sp_x[i] = static_cast<double>(A(0, 0)) * x
-                  + static_cast<double>(A(0, 1)) * y
-                  + static_cast<double>(A(0, 2)) * z
-                  + sp_vx[i] * dt_ * drift_x;
-        sp_y[i] = static_cast<double>(A(1, 0)) * x
-                  + static_cast<double>(A(1, 1)) * y
-                  + static_cast<double>(A(1, 2)) * z
-                  + sp_vy[i] * dt_ * drift_y;
-        sp_z[i] = static_cast<double>(A(2, 0)) * x
-                  + static_cast<double>(A(2, 1)) * y
-                  + static_cast<double>(A(2, 2)) * z
-                  + sp_vz[i] * dt_ * drift_z;
+        for (int i = 0; i < n; ++i) {
+            sp_x[i] = sp_x[i] * ax + sp_vx[i] * dt_ * dx;
+            sp_y[i] = sp_y[i] * ay + sp_vy[i] * dt_ * dy;
+            sp_z[i] = sp_z[i] * az + sp_vz[i] * dt_ * dz;
+        }
+    } else {
+        Mat3 eps_dt = clamp_mat(eps_dot_ * AccReal(dt_), kEpsDtMaxFraction);
+        A = matrix_exp_sym(eps_dt);
+        dx = expm1c(0.5 * static_cast<double>(eps_dt(0, 0)));
+        dy = expm1c(0.5 * static_cast<double>(eps_dt(1, 1)));
+        dz = expm1c(0.5 * static_cast<double>(eps_dt(2, 2)));
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            const double x = sp_x[i], y = sp_y[i], z = sp_z[i];
+            sp_x[i] = static_cast<double>(A(0, 0)) * x
+                      + static_cast<double>(A(0, 1)) * y
+                      + static_cast<double>(A(0, 2)) * z
+                      + sp_vx[i] * dt_ * dx;
+            sp_y[i] = static_cast<double>(A(1, 0)) * x
+                      + static_cast<double>(A(1, 1)) * y
+                      + static_cast<double>(A(1, 2)) * z
+                      + sp_vy[i] * dt_ * dy;
+            sp_z[i] = static_cast<double>(A(2, 0)) * x
+                      + static_cast<double>(A(2, 1)) * y
+                      + static_cast<double>(A(2, 2)) * z
+                      + sp_vz[i] * dt_ * dz;
+        }
+        ax = static_cast<double>(A(0, 0));
+        ay = static_cast<double>(A(1, 1));
+        az = static_cast<double>(A(2, 2));
     }
 
-    // Scale ghosts by the same affine transform (no velocity drift).
     int n_total = n;
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
         n_total = ctx.runtime.md.dd->n_local + ctx.runtime.md.dd->n_ghost;
     }
     if (n_total > n) {
+        if (diagonal_path) {
 #pragma omp parallel for schedule(static)
-        for (int i = n; i < n_total; ++i) {
-            const double x = sp_x[i], y = sp_y[i], z = sp_z[i];
-            sp_x[i] = static_cast<double>(A(0, 0)) * x
-                      + static_cast<double>(A(0, 1)) * y
-                      + static_cast<double>(A(0, 2)) * z;
-            sp_y[i] = static_cast<double>(A(1, 0)) * x
-                      + static_cast<double>(A(1, 1)) * y
-                      + static_cast<double>(A(1, 2)) * z;
-            sp_z[i] = static_cast<double>(A(2, 0)) * x
-                      + static_cast<double>(A(2, 1)) * y
-                      + static_cast<double>(A(2, 2)) * z;
+            for (int i = n; i < n_total; ++i) {
+                sp_x[i] *= ax;
+                sp_y[i] *= ay;
+                sp_z[i] *= az;
+            }
+        } else {
+#pragma omp parallel for schedule(static)
+            for (int i = n; i < n_total; ++i) {
+                const double x = sp_x[i], y = sp_y[i], z = sp_z[i];
+                sp_x[i] = static_cast<double>(A(0, 0)) * x
+                          + static_cast<double>(A(0, 1)) * y
+                          + static_cast<double>(A(0, 2)) * z;
+                sp_y[i] = static_cast<double>(A(1, 0)) * x
+                          + static_cast<double>(A(1, 1)) * y
+                          + static_cast<double>(A(1, 2)) * z;
+                sp_z[i] = static_cast<double>(A(2, 0)) * x
+                          + static_cast<double>(A(2, 1)) * y
+                          + static_cast<double>(A(2, 2)) * z;
+            }
         }
     }
 
-    // h_new = A · h_old — full cell matrix update (not diagonal-only).
-    const Mat3 h_new = A * f.simbox.cell();
-    f.simbox.set_cell(h_new);
+    if (diagonal_path) {
+        f.simbox.scale_diagonal(ax, ay, az);
+    } else {
+        // Full cell: h_new = exp(ε̇ dt) · h — couples shear into the lattice.
+        f.simbox.set_cell(A * f.simbox.cell());
+    }
 
-    // Orthorhombic wrap when still ortho; triclinic leaves wrap to min_image
-    // consumers (PBC wrap for general cells is not required for force eval).
     if (f.simbox.is_orthorhombic())
         wrap_orthorhombic(f, n);
 

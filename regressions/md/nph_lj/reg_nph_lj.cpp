@@ -87,11 +87,6 @@ int main() {
             worst_rel = rel;
     }
 
-    // Extended-enthalpy relative drift. MTK NPH without thermostat is
-    // symplectic in the extended space; the gate is an O(dt²) envelope
-    // for short production, not a literature EOS pin.
-    // Short aggressive NPH (volume still relaxing) — O(dt²) envelope with
-    // room for finite-N barostat ringing; fails on secular blow-up only.
     const double rel_bound = 1.5e-1;
     const double V1 = frame.simbox.volume();
 
