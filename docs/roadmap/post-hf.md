@@ -24,10 +24,14 @@ post-SCF members on the concrete method (`RHF::mp2` / `UHF::mp2` /
   `reg_ccsd-t-h2o-sto3g`).
 - **CASCI** — complete-active-space CI on the FCI kernel (`RHF::casci`;
   `reg_casci-h2-sto3g`).
+- **CASSCF** — orbital-optimized CAS on the same FCI active-space kernel
+  (`RHF::casscf`; `reg_casscf-h2-sto3g`).
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
-CASSCF / multireference PT and CC gradients remain absent.
+Multireference PT (NEVPT2 / CASPT2) and full density-based CC analytic
+gradients remain open; CCSD nuclear forces ship as FD of the CCSD energy
+(`RHF::ccsd_forces`).
 
 ## 1. Møller–Plesset Perturbation Theory
 
@@ -73,7 +77,10 @@ RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 `reg_scs-mp2-h2o-sto3g`; SOS: 1.3 / 0, Jung et al. JCP 121, 9793 (2004),
 `reg_sos-mp2-h2o-sto3g`). **RMP2 analytic nuclear gradient** ships
 (`RHF::mp2_forces`; Lagrangian 1-RDM + non-separable 2-RDM + Z-vector;
-`reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). **ROMP2**
+`reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). **UMP2 analytic
+nuclear gradient** ships on UHF (`UHF::mp2_forces`; spin-resolved Lagrangian
+1-RDM + non-separable 2-RDM + unrestricted Z-vector;
+`reg_ump2-grad-o2-sto3g` vs PySCF `mp.UMP2.nuc_grad_method`). **ROMP2**
 (`ROHF::mp2`) is UMP2 on the spin-pure ROHF reference with semi-canonical
 spin-Fock denominators (PySCF `mp.UMP2(ROHF)` convention;
 `reg_romp2-o2-sto3g`). **RMP3** (`RHF::mp3`) adds the third-order doubles
@@ -81,9 +88,9 @@ diagrams on the same closed-shell MO ERIs (`reg_mp3-h2-sto3g`; offline pin on
 PySCF RHF orbitals — PySCF 2.x has no `mp.MP3`). **RMP4(SDTQ)** (`RHF::mp4`)
 adds fourth-order RSPT through singles/doubles/triples/quadruples on the same
 closed-shell path (`reg_mp4-h2-sto3g`; offline det-space RSPT-4 twin — PySCF
-2.x has no `mp.MP4`). No UMP2/ROMP2 gradients, no frozen-core UMP2, no
-RI-UMP2. Canonical mode still materializes the full in-memory ERI tensor in
-the method's private workspace.
+2.x has no `mp.MP4`). No ROMP2 gradients, no frozen-core UMP2, no RI-UMP2.
+Canonical mode still materializes the full in-memory ERI tensor in the
+method's private workspace.
 
 ## 2. Configuration Interaction
 
@@ -132,7 +139,7 @@ correlate real ones.
 | CCSD-F12a                    |  ○  |   ○  |   ○  |
 | CCSD-F12b                    |  ○  |   ○  |   ○  |
 | CCSD(T)-F12                  |  ○  |   ○  |   ○  |
-| CCSD analytic gradient       |  ○  |   ○  |   ○  |
+| CCSD analytic gradient       |  ✓  |   ○  |   ○  |
 | CCSD analytic Hessian        |  ○  |   ○  |   ○  |
 | CCSD(T) analytic gradient    |  ○  |   ○  |   ○  |
 
@@ -143,7 +150,11 @@ doubles residual linear in \(T_2\)) on a closed-shell RHF reference
 converged RHF reference (`reg_ccsd-h2-sto3g` vs PySCF `cc.CCSD`).
 **CCSD(T)** (`RHF::ccsd_t`) adds the non-iterative (T) triples correction on
 the same path (`reg_ccsd-t-h2o-sto3g` vs PySCF `cc.CCSD(...).ccsd_t()`).
-Energy only — no gradients, no open-shell, no density fitting.
+**CCSD nuclear gradient** (`RHF::ccsd_forces`; `reg_ccsd-grad-h2o-sto3g`) is a
+product foothold: central FD of the analytic CCSD total energy, gated against
+PySCF analytic `cc.CCSD.nuc_grad_method` pins. A density-based Lagrangian /
+Z-vector analytic path (matching `pyscf.grad.ccsd`) is a follow-up. No
+open-shell CC, no density-fitted CC, no CCSD Hessian / CCSD(T) forces yet.
 
 ### Local-correlation coupled cluster
 
@@ -166,7 +177,7 @@ Energy only — no gradients, no open-shell, no density fitting.
 | Method                               | CPU | CUDA | Kokkos |
 | ------------------------------------ | :-: | :--: | :---: |
 | Complete-active-space CI, CASCI      |  ✓  |   ○  |   ○  |
-| Complete-active-space SCF, CASSCF    |  ○  |   ○  |   ○  |
+| Complete-active-space SCF, CASSCF    |  ✓  |   ○  |   ○  |
 | State-specific CASSCF                |  ○  |   ○  |   ○  |
 | State-averaged CASSCF                |  ○  |   ○  |   ○  |
 | Restricted-active-space CI, RASCI    |  ○  |   ○  |   ○  |
@@ -183,7 +194,11 @@ Energy only — no gradients, no open-shell, no density fitting.
 
 **CASCI** (`RHF::casci(frame, ncas, nelecas)`) freezes the inactive core and
 runs the dense FCI kernel in the active space (`reg_casci-h2-sto3g` vs PySCF
-`mcscf.CASCI`). No orbital optimization (CASSCF), no RAS/GAS, no MRPT.
+`mcscf.CASCI`). **CASSCF** (`RHF::casscf(frame, ncas, nelecas)`) adds
+two-step orbital optimization on the same active-space FCI kernel
+(`reg_casscf-h2-sto3g` vs PySCF `mcscf.CASSCF`). No RAS/GAS, no state-averaged
+CASSCF product path, no CASSCF gradient, no MRPT yet (NEVPT2 is the next
+PySCF-oracle candidate).
 
 ### 4.2 Multireference correlation
 

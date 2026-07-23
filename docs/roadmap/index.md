@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; EOM-IP-CCSD; UKS full-LR TDDFT; EOM-CC2 (EOM-EA/SF + ADC(2)-x/IP/EA + SF-TDDFT + dRPA/BSE/GF2 ✓) |
+| Response | Surface-hopping consumer of NAC; DIP/DEA/CVS-EOM; UKS Hessian (EOM-IP/EE/EA/SF + EOM-CC2 + UKS full-LR + ADC(2)-x/IP/EA + SF-TDDFT + dRPA/BSE/GF2 ✓) |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | CASSCF / CASPT2 / NEVPT2; CC gradients; UMP2/RKS Hessians (MP4 + CC2 + CCSD(T)/CASCI/MP3/CCSD/ROMP2/RMP2 grad/SCS/SOS/frozen-core ✓) |
+| Post-HF | NEVPT2 / CASPT2; density-based CC analytic grad; SA-CASSCF (CASSCF + CCSD forces + UMP2 grad + RKS Hessian + MP4/CC2/CCSD(T)/CASCI/MP3/CCSD/ROMP2/RMP2 grad/SCS/SOS/frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -152,10 +152,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **RHF / UHF analytic nuclear Hessians** via CPHF (`RHF::hessian`,
   `UHF::hessian`; `reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). **ROHF nuclear
   Hessian** via FD of analytic forces (`ROHF::hessian`; `reg_rohf-hessian-o2`;
-  not full CPHF). Generic vib / thermochemistry still defaults to central FD
-  of forces (`cpu::vib::Hessian`). **RHF static polarizability** via CPHF ships
-  (`RHF::polarizability`; `reg_static-polariz-h2o`); open-shell / KS
-  polarizabilities and KS analytic Hessians remain ○.
+  not full CPHF). **RKS nuclear Hessian** via FD of analytic forces
+  (`RKS::hessian`; `reg_rks-hessian-h2o-sto3g`; not full CPKS). Generic vib /
+  thermochemistry still defaults to central FD of forces (`cpu::vib::Hessian`).
+  **RHF static polarizability** via CPHF ships (`RHF::polarizability`;
+  `reg_static-polariz-h2o`); open-shell / UKS polarizabilities and UKS
+  analytic Hessian remain ○.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
   gradient** + ROMP2 + FD Hessian (O₂ vs PySCF). **GHF** energy + analytic
   gradient (real two-component; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`).
@@ -183,9 +185,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (`reg_frozen-core-mp2-h2o`). **SCS/SOS-MP2** via `mp2_os_scale` /
   `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, `reg_sos-mp2-h2o-sto3g`).
   **RMP2 analytic gradient** (`RHF::mp2_forces`; `reg_mp2-grad-h2o-sto3g`).
+  **UMP2 analytic gradient** (`UHF::mp2_forces`; `reg_ump2-grad-o2-sto3g`).
   **RMP3 / RMP4(SDTQ)** (`RHF::mp3` / `mp4`; `reg_mp3-h2-sto3g`,
   `reg_mp4-h2-sto3g`). **CC2 / CCSD / CCSD(T)** (`RHF::cc2` / `ccsd` /
-  `ccsd_t`). No UMP2/ROMP2 gradients.
+  `ccsd_t`). **CCSD nuclear forces** (`RHF::ccsd_forces`;
+  `reg_ccsd-grad-h2o-sto3g` — FD of CCSD energy). **CASSCF**
+  (`RHF::casscf`; `reg_casscf-h2-sto3g`). No ROMP2 gradients.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
@@ -197,11 +202,11 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **`UKS::tda`** spin-conserving LSDA (`reg_uks-tda-o2-lsda`). **`UHF::sf_tda`**
   collinear spin-flip TDA (`reg_spin-flip-tda-o2`); **`UHF::sf_tddft`** SF-RPA
   (`reg_sf-tddft-o2`). **Full LR-TDDFT** Casida A/B pure KS + hybrid B3LYP
-  (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`, `reg_h2-b3lyp-rpa-tddft`). UKS
-  full-LR still ○.
+  (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`, `reg_h2-b3lyp-rpa-tddft`) and
+  **UKS full-LR** pure LSDA (`UKS::tddft`; `reg_uks-full-lr-o2-lsda`).
 - **ADC(2)/ADC(2)-x / IP-ADC / EA-ADC** (`RHF::adc2` / `adc2x` / `ip_adc2` /
-  `ea_adc2`). **EOM-EE/EA-CCSD** on RHF; **EOM-SF-CCSD** on UHF.
-  **G0W0 / dRPA / BSE / GF2** on RHF (`reg_g0w0-h2-sto3g`,
+  `ea_adc2`). **EOM-EE/IP/EA-CCSD** + **EOM-CC2** on RHF; **EOM-SF-CCSD** on
+  UHF. **G0W0 / dRPA / BSE / GF2** on RHF (`reg_g0w0-h2-sto3g`,
   `reg_direct-rpa-h2-sto3g`, `reg_bse-h2-sto3g`, `reg_gf2-h2-sto3g`).
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;

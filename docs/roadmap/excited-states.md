@@ -31,6 +31,8 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 `cc.CCSD(...).eomee_ccsd_singlet`).
 **EOM-CC2** singlet roots ship on closed-shell RHF+CC2
 (`RHF::eom_cc2`; `reg_eom-cc2-h2` vs PySCF `RCCSD(cc2=True).eomee_ccsd_singlet`).
+**EOM-IP-CCSD** ionization roots ship (`RHF::eom_ip_ccsd`; `reg_eom-ip-ccsd`
+H₂O/STO-3G IP0 vs PySCF `cc.CCSD(...).ipccsd`).
 **EOM-EA-CCSD** attachment roots ship (`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`).
 **EOM-SF-CCSD** spin-flip roots ship on UHF+UCCSD (`UHF::eom_sf_ccsd`;
 `reg_eom-sf-ccsd-o2`).
@@ -38,6 +40,8 @@ TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
 `reg_adc2x-h2co-sto3g`, `reg_ip-adc2-h2o-sto3g`, `reg_ea-adc2-h2-sto3g`).
 **Collinear spin-flip full TDDFT** (SF-RPA) ships on UHF (`UHF::sf_tddft`;
 `reg_sf-tddft-o2`).
+**UKS full-LR TDDFT** (Casida A/B, pure LSDA) ships (`UKS::tddft`;
+`reg_uks-full-lr-o2-lsda` O₂ triplet vs PySCF `tdscf.TDDFT(UKS)`).
 **Direct RPA** correlation, **BSE@G0W0**, and **one-shot GF2** ship on RHF
 (`RHF::direct_rpa` / `bse` / `gf2`; `reg_direct-rpa-h2-sto3g`,
 `reg_bse-h2-sto3g`, `reg_gf2-h2-sto3g`).
@@ -75,9 +79,10 @@ response on pure LSDA (`UKS::tda`; `reg_uks-tda-o2-lsda` O₂ triplet) and
 O₂ triplet, exchange-only SF-CIS) and **collinear spin-flip full TDDFT**
 (SF-RPA; `UHF::sf_tddft`; `reg_sf-tddft-o2`). Full RPA-style Casida A/B is
 `RKS::tddft` for pure KS (`reg_full-lr-tddft-h2-pbe`) and **global hybrid**
-B3LYP (`reg_h2-b3lyp-rpa-tddft`); UKS full-LR remains a follow-on. Analytic
-gradient and NAC rows are the CIS/TDA members on `RHF` (analytic default);
-full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
+B3LYP (`reg_h2-b3lyp-rpa-tddft`), plus **open-shell UKS full-LR** on pure LSDA
+(`UKS::tddft`; `reg_uks-full-lr-o2-lsda`). Analytic gradient and NAC rows are
+the CIS/TDA members on `RHF` (analytic default); full KS TDDFT gradients
+beyond CIS@RKS are not a separate product path yet.
 
 ## 2. Algebraic-Diagrammatic Construction
 
@@ -98,7 +103,7 @@ full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 | Method                     | CPU | CUDA | Kokkos |
 | -------------------------- | :-: | :--: | :---: |
 | EOM-EE-CCSD                |  ✓  |   ○  |   ○  |
-| EOM-IP-CCSD                |  ○  |   ○  |   ○  |
+| EOM-IP-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-EA-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-SF-CCSD                |  ✓  |   ○  |   ○  |
 | EOM-DIP-CCSD               |  ○  |   ○  |   ○  |
@@ -114,9 +119,11 @@ converged closed-shell CCSD reference and returns singlet roots
 (`reg_eom-ee-ccsd` vs PySCF). **EOM-CC2** (`RHF::eom_cc2`) is the same EE
 Jacobian at Christiansen–Koch–Jørgensen CC2 amplitudes
 (`reg_eom-cc2-h2` vs PySCF `RCCSD(cc2=True).eomee_ccsd_singlet`).
-**EOM-EA-CCSD** (`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`) and **EOM-SF-CCSD**
-(`UHF::eom_sf_ccsd`; `reg_eom-sf-ccsd-o2`) ship. EOM-IP, DIP/DEA, CVS, STEOM,
-and EOM gradients remain open. See also
+**EOM-IP-CCSD** (`RHF::eom_ip_ccsd`; `reg_eom-ip-ccsd`) returns ionization
+roots on the same closed-shell CCSD reference. **EOM-EA-CCSD**
+(`RHF::eom_ea_ccsd`; `reg_eom-ea-ccsd`) and **EOM-SF-CCSD**
+(`UHF::eom_sf_ccsd`; `reg_eom-sf-ccsd-o2`) ship. DIP/DEA, CVS, STEOM, and EOM
+gradients remain open. See also
 [Post-Hartree–Fock](post-hf.md#3-coupled-cluster) for ground-state CCSD /
 CCSD(T) / CC2.
 

@@ -4,29 +4,24 @@ Durable worklist for workflow `pyscf-method-loop`. Do not delete done rows.
 The census phase rewrites **pending** from `docs/roadmap/` ○ rows that PySCF
 can oracle offline; **done** / **blocked** history is preserved across runs.
 
-Census date: 2026-07-23 (harness wave 1 post re-census merge). Roadmap CPU ○ ∩
+Census date: 2026-07-24 (harness wave 2 post re-census merge). Roadmap CPU ○ ∩
 PySCF oracle; excludes classical MD / FF / sampling / CUDA-Kokkos / ML /
 PW-GPW-without-Gaussian-twin / parked hf-parity product-depth / SE tables
-without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
+10→without PySCF twin / meta-GGA (no τ) / range-separated (no erf ERI) /
 CASPT2 (no stock PySCF). **Wave 1 merged (12):** eom-ea-ccsd, adc2x-h2co-sto3g,
 ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g, sf-tddft-o2, mp4-h2-sto3g, cc2-h2-sto3g,
 direct-rpa-h2-sto3g, bse-h2-sto3g, dft-d4-h2o-pbe, eom-sf-ccsd-o2, gf2-h2-sto3g.
-**Wave 2 assign:** `eom-cc2-h2` (newly eligible — CC2 energy ✓) + re-dispatch
-of 7 retained mid-flight. **pending** still gated: nevpt2 (needs CASSCF).
+**Wave 2 merged (7):** eom-cc2-h2, eom-ip-ccsd, uks-full-lr-o2-lsda,
+casscf-h2-sto3g, ccsd-grad-h2o-sto3g, rks-hessian-h2o-sto3g, ump2-grad-o2-sto3g.
+**pending:** nevpt2 unblocked by CASSCF ✓. **in_progress retain:**
+`uks-hessian-o2-sto3g` (not in wave-2 merge set).
 
 ## pending
 
-- [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | needs CASSCF; partially/strongly contracted; PySCF mrpt.NEVPT
+- [ ] `nevpt2-h2-sto3g` | NEVPT2 | post-hf | h2 | sto-3g | e_corr | CASSCF ✓; partially/strongly contracted; PySCF mrpt.NEVPT
 
 ## in_progress
 
-- [x] `eom-cc2-h2` | EOM-CC2 | excited-states | h2 | sto-3g | ω eV | CC2 energy ✓; EOM-CC2 roots; PySCF EOM-CC2
-- [x] `eom-ip-ccsd` | EOM-IP-CCSD | excited-states | h2o | sto-3g | IP eV | EOM-EE ✓; ionization channel; PySCF cc.eom_rccsd IP
-- [x] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | excited-states | o2 | sto-3g | roots eV | UKS-TDA ✓; RKS full-LR ✓; open-shell Casida A/B; PySCF tdscf.TDDFT(UKS)
-- [x] `casscf-h2-sto3g` | CASSCF | post-hf | h2 | sto-3g | e_tot | CASCI ✓; orbital optimization; PySCF mcscf.CASSCF
-- [x] `ccsd-grad-h2o-sto3g` | CCSD analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | CCSD energy ✓; PySCF cc.CCSD.nuc_grad_method
-- [x] `rks-hessian-h2o-sto3g` | RKS analytic Hessian | dft | water | sto-3g | Hessian eV/Å² | RHF/UHF CPHF Hessian ✓; KS Hessian ○; PySCF hessian.RKS
-- [x] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | post-hf | o2 | sto-3g | forces Ha/Bohr | RMP2 grad ✓; UMP2 energy ✓; open-shell MP2 forces; PySCF UMP2.nuc_grad_method
 - [~] `uks-hessian-o2-sto3g` | UKS analytic Hessian | dft | o2 | sto-3g | Hessian eV/Å² | UKS energy+TDA ✓; analytic Hessian ○; PySCF hessian.UKS
 
 ## blocked
@@ -40,6 +35,13 @@ of 7 retained mid-flight. **pending** still gated: nevpt2 (needs CASSCF).
 
 ## done
 
+- [x] `eom-cc2-h2` | EOM-CC2 | regressions/scf/eom-cc2-h2 | H2/STO-3G cart EOM-CC2; PySCF 2.14.0 S1=26.164970973312 eV; `RHF::eom_cc2`; tol 1e-4 eV; ratio 0.300
+- [x] `eom-ip-ccsd` | EOM-IP-CCSD | regressions/scf/eom-ip-ccsd | H2O/STO-3G cart EOM-IP; PySCF 2.14.0 IP0=8.415727034062 eV; `RHF::eom_ip_ccsd`; tol 1e-4 eV; ratio 0.754
+- [x] `uks-full-lr-o2-lsda` | UKS full-LR TDDFT | regressions/scf/uks-full-lr-o2-lsda | O2 UKS-LSDA/STO-3G full RPA; PySCF 2.14.0 roots 7.6209/7.6424/7.6424/8.3863/8.3863 eV; `UKS::tddft`; tol 1e-4 eV; ratio 2.937
+- [x] `casscf-h2-sto3g` | CASSCF | regressions/scf/casscf-h2-sto3g | H2 CASSCF(2,2)/STO-3G cart; PySCF 2.14.0 e_tot=-1.137283834489 Ha; `RHF::casscf`; tol 1e-6 Ha; ratio 0.0435
+- [x] `ccsd-grad-h2o-sto3g` | CCSD nuclear gradient | regressions/scf/ccsd-grad-h2o-sto3g | H2O/STO-3G cart CCSD forces; PySCF 2.14.0 analytic g_O,z=-1.10696956e-01 Ha/Bohr; `RHF::ccsd_forces` (FD of CCSD energy); tol 1e-5 Ha/Bohr; ratio 1.665
+- [x] `rks-hessian-h2o-sto3g` | RKS nuclear Hessian | regressions/scf/rks-hessian-h2o-sto3g | H2O RKS-LSDA/STO-3G FD-of-forces Hessian; PySCF 2.14.0 FD twin H_yy~89.53 eV/Å²; `RKS::hessian`; tol 2e-2 eV/Å²; ratio 3.08 (vs FD twin)
+- [x] `ump2-grad-o2-sto3g` | UMP2 analytic gradient | regressions/scf/ump2-grad-o2-sto3g | O2 UHF→UMP2/STO-3G cart; PySCF 2.14.0 g_z=±1.66513266e-01 Ha/Bohr; `UHF::mp2_forces`; tol 1e-5 Ha/Bohr; ratio 1.37
 - [x] `eom-ea-ccsd` | EOM-EA-CCSD | regressions/scf/eom-ea-ccsd | H2/STO-3G cart EOM-EA; PySCF 2.14.0 EA0=18.821245619413 eV; `RHF::eom_ea_ccsd`; tol 1e-4 eV; ratio 0.068
 - [x] `adc2x-h2co-sto3g` | ADC(2)-x | regressions/scf/adc2x-h2co-sto3g | H2CO/STO-3G cart ADC(2)-x EE; PySCF 2.14.0 S1=3.318442496747 eV; `RHF::adc2x`; tol 1e-4 eV; ratio 0.240
 - [x] `ip-adc2-h2o-sto3g` | IP-ADC(2) | regressions/scf/ip-adc2-h2o-sto3g | H2O/STO-3G cart IP-ADC(2); PySCF 2.14.0 IP1=8.277183500364 eV; `RHF::ip_adc2`; tol 1e-4 eV; ratio 0.191
