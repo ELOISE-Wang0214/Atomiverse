@@ -53,6 +53,36 @@ class RKS : public MeanFieldMethod<RKS> {
     tda(int n_states,
         ExcitationChannel channel = ExcitationChannel::singlet) const;
 
+    /// @brief Full linear-response TDDFT (Casida A,B / RPA) of the most
+    ///        recent `run()` — **not** Tamm–Dancoff.
+    ///
+    /// Builds the closed-shell Casida matrices with the functional's exact-
+    /// exchange fraction \(\alpha_{\mathrm{hf}}\) and the adiabatic
+    /// semi-local \(f^{\mathrm{xc}}\) kernel (same kernel on A and B), then
+    /// solves the Hermitian reduced RPA eigenproblem
+    /// \((A-B)^{1/2}(A+B)(A-B)^{1/2} Z = \omega^2 Z\) (Casida 1995; Dreuw &
+    /// Head-Gordon, Chem. Rev. 105, 4009 (2005)).
+    ///
+    /// - **LSDA:** full MO-product ALDA \(f^{\mathrm{xc}}\) (`alda = true`).
+    /// - **Pure GGA (PBE / BLYP) and global hybrids (B3LYP / PBE0):**
+    ///   FD of \(V_{\mathrm{xc}}\) on the KS grid for \(f^{\mathrm{xc}}\)
+    ///   (`alda = false`); hybrids also scale the HF exchange blocks by
+    ///   \(\alpha_{\mathrm{hf}}\).
+    ///
+    /// Dense path only (`n_ov ≤ 512`). Singlet channel is the calibrated
+    /// production path (triplet non-LSDA omits the FD kernel).
+    /// @param n_states Number of lowest excited states (1 ≤ n_states ≤ n_ov).
+    /// @param channel  Singlet or triplet channel.
+    /// @return Excitation energies [eV], transition properties;
+    ///         `tda = false`; `alda` true only on the LSDA path.
+    /// @throws std::runtime_error when called before `run()`, when
+    ///         `n_ov > 512`, when (A−B) is not positive definite, or when a
+    ///         reduced ω² is negative (imaginary root) — no fallback.
+    /// @throws std::invalid_argument when n_states is outside [1, n_ov].
+    ExcitedStatesResult
+    tddft(int n_states,
+          ExcitationChannel channel = ExcitationChannel::singlet) const;
+
   protected:
     /// @brief Closed-shell occupation (n_alpha = n_beta = n_electrons / 2);
     ///        also latches the selected `xc` functional into the method state.
