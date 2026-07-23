@@ -506,6 +506,191 @@ internal::Channel internal_channel(ExcitationChannel ch) {
                                               : internal::Channel::singlet;
 }
 
+/// Semi-local \(f^{\mathrm{xc}}\) kernel via central FD of \(V_{\mathrm{xc}}\)
+/// on the KS grid (closed-shell singlet). Same convention as hybrid TDA /
+/// full LR-TDDFT (PySCF get_ab hybrid path). Returns K such that A and B
+/// both receive K under the adiabatic approximation.
+RealMatrix fxc_kernel_fd(const SlaterDeterminant& det, const IntegralPack& pack,
+                         XCType xc, GridLevel grid_level, int n_radial,
+                         int n_angular) {
+    if (!det.restricted())
+        throw std::runtime_error(
+            "fxc_kernel_fd: restricted closed-shell determinant required");
+    if (pack.shells.empty())
+        throw std::runtime_error("fxc_kernel_fd: IntegralPack has no shells");
+
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix& C = det.coefficients(Spin::alpha);
+    const RealVector& f = det.occupations(Spin::alpha);
+    const int n_mo = static_cast<int>(C.shape()[1]);
+    std::vector<int> occ, virt;
+    for (int p = 0; p < n_mo; ++p)
+        (f(p) > 0.0 ? occ : virt).push_back(p);
+    const int no = static_cast<int>(occ.size());
+    const int nv = static_cast<int>(virt.size());
+    const std::size_t nov =
+        static_cast<std::size_t>(no) * static_cast<std::size_t>(nv);
+
+    RealMatrix C_work = C;
+    RealMatrix Pa0 = det.density(Spin::alpha);
+    if (pack.spherical()) {
+        const auto& c2s = pack.c2s;
+        C_work = xt::linalg::dot(c2s, C);
+        Pa0 = xt::linalg::dot(
+            c2s, RealMatrix(xt::linalg::dot(Pa0, xt::transpose(c2s))));
+    }
+    const int n_basis = static_cast<int>(C_work.shape()[0]);
+
+    const MolecularGrid grid = build_molecular_grid(
+        pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
+        n_radial, n_angular);
+
+    // Central FD step on the density matrix [a.u.]; 1e-4 matches PySCF
+    // kernel elements to ~1e-9 Ha on H2/STO-3G.
+    constexpr double kEps = 1e-4;
+
+    auto orbital_product = [&](int i_mo, int a_mo) {
+        RealMatrix dm = xt::zeros<double>(
+            {static_cast<std::size_t>(n_basis),
+             static_cast<std::size_t>(n_basis)});
+        for (int mu = 0; mu < n_basis; ++mu)
+            for (int nu = 0; nu < n_basis; ++nu)
+                dm(mu, nu) = C_work(mu, static_cast<std::size_t>(i_mo))
+                             * C_work(nu, static_cast<std::size_t>(a_mo));
+        return dm;
+    };
+
+    RealMatrix K = xt::zeros<double>({nov, nov});
+    for (int a = 0; a < nv; ++a) {
+        for (int i = 0; i < no; ++i) {
+            const int p = a * no + i;
+            const int i_mo = occ[static_cast<std::size_t>(i)];
+            const int a_mo = virt[static_cast<std::size_t>(a)];
+            const RealMatrix dm = orbital_product(i_mo, a_mo);
+            // Hermitized product P^{ia} = ½(C_i C_aᵀ + C_a C_iᵀ).
+            // Closed-shell singlet: δP_α = δP_β = P^{ia}.
+            RealMatrix dm_sym = 0.5 * (dm + xt::transpose(dm));
+
+            RealMatrix Pa_p = Pa0 + kEps * dm_sym;
+            RealMatrix Pa_m = Pa0 - kEps * dm_sym;
+            const XCGridResult xp =
+                evaluate_xc_batched(grid, pack.shells, n_basis, Pa_p, Pa_p, xc);
+            const XCGridResult xm =
+                evaluate_xc_batched(grid, pack.shells, n_basis, Pa_m, Pa_m, xc);
+
+            RealMatrix dVa = (xp.Vxc_alpha - xm.Vxc_alpha) / (2.0 * kEps);
+
+            for (int b = 0; b < nv; ++b) {
+                for (int j = 0; j < no; ++j) {
+                    const int q = b * no + j;
+                    const int j_mo = occ[static_cast<std::size_t>(j)];
+                    const int b_mo = virt[static_cast<std::size_t>(b)];
+                    const RealMatrix dm_q = orbital_product(j_mo, b_mo);
+                    double axc = 0.0;
+                    for (int mu = 0; mu < n_basis; ++mu)
+                        for (int nu = 0; nu < n_basis; ++nu)
+                            axc += dVa(mu, nu) * dm_q(mu, nu);
+                    K(static_cast<std::size_t>(p),
+                      static_cast<std::size_t>(q)) = axc;
+                }
+            }
+        }
+    }
+    return K;
+}
+
+/// Dense Hermitian RPA from explicit A, B (Casida full LR-TDDFT). Same
+/// reduction as TDHFPack::rpa_dense_: (A−B)^{±1/2} factors + ω² gate.
+internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
+                                      int n_states) {
+    constexpr double kFloor = 1e-10;
+    constexpr double kW2Tol = 1e-10;
+    const std::size_t n = A.shape()[0];
+    if (A.shape()[1] != n || B.shape()[0] != n || B.shape()[1] != n)
+        throw std::invalid_argument("rpa_from_ab: A/B must be square and equal");
+    if (n_states < 1 || static_cast<std::size_t>(n_states) > n)
+        throw std::invalid_argument("rpa_from_ab: n_states outside [1, n]");
+
+    RealMatrix Mp = A + B;
+    RealMatrix Mm = A - B;
+    for (std::size_t r = 0; r < n; ++r)
+        for (std::size_t c = r + 1; c < n; ++c) {
+            const double vp = 0.5 * (Mp(r, c) + Mp(c, r));
+            Mp(r, c) = vp;
+            Mp(c, r) = vp;
+            const double vm = 0.5 * (Mm(r, c) + Mm(c, r));
+            Mm(r, c) = vm;
+            Mm(c, r) = vm;
+        }
+
+    auto make_power = [&](const RealMatrix& M, double p) {
+        auto [s, U] = xt::linalg::eigh(M);
+        if (s(0) <= kFloor)
+            throw std::runtime_error(
+                "RKS::tddft: (A - B) is not positive definite "
+                "(lowest eigenvalue = "
+                + std::to_string(s(0))
+                + " Ha) — Hermitian RPA reduction undefined (no fallback)");
+        RealMatrix Us = U;
+        for (std::size_t c = 0; c < n; ++c) {
+            const double w = std::pow(s(c), p);
+            for (std::size_t r = 0; r < n; ++r)
+                Us(r, c) *= w;
+        }
+        RealMatrix out = xt::linalg::dot(Us, xt::transpose(U));
+        for (std::size_t r = 0; r < n; ++r)
+            for (std::size_t c = r + 1; c < n; ++c) {
+                const double v = 0.5 * (out(r, c) + out(c, r));
+                out(r, c) = v;
+                out(c, r) = v;
+            }
+        return out;
+    };
+
+    const RealMatrix T = make_power(Mm, 0.5);
+    const RealMatrix Ti = make_power(Mm, -0.5);
+    RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
+    for (std::size_t r = 0; r < n; ++r)
+        for (std::size_t c = r + 1; c < n; ++c) {
+            const double v = 0.5 * (M(r, c) + M(c, r));
+            M(r, c) = v;
+            M(c, r) = v;
+        }
+    auto [w2, Z] = xt::linalg::eigh(M);
+
+    const std::size_t k = static_cast<std::size_t>(n_states);
+    internal::TDHFPack::Roots out;
+    out.omega = xt::zeros<double>({k});
+    out.X = xt::zeros<double>({k, n});
+    out.Y = xt::zeros<double>({k, n});
+    for (std::size_t s = 0; s < k; ++s) {
+        if (w2(s) < -kW2Tol)
+            throw std::runtime_error(
+                "RKS::tddft: reduced RPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
+                + ") is negative — imaginary excitation energy (no fallback)");
+        if (w2(s) <= kW2Tol)
+            throw std::runtime_error(
+                "RKS::tddft: reduced RPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
+                + ") is numerically zero (no fallback)");
+        const double omega = std::sqrt(w2(s));
+        out.omega(s) = omega;
+        for (std::size_t r = 0; r < n; ++r) {
+            double xpy = 0.0, xmy = 0.0;
+            for (std::size_t c = 0; c < n; ++c) {
+                xpy += T(r, c) * Z(c, s);
+                xmy += Ti(r, c) * Z(c, s);
+            }
+            xpy /= std::sqrt(omega);
+            xmy *= std::sqrt(omega);
+            out.X(s, r) = 0.5 * (xpy + xmy);
+            out.Y(s, r) = 0.5 * (xpy - xmy);
+        }
+    }
+    return out;
+}
+
 /// Package pack roots into the public result: eV energies for both
 /// channels; singlet channel adds length-gauge transition dipoles through
 /// the link-03 MultipoleIntegrals kernel (μ_0n = √2 Σ_ia (X+Y)_ia ⟨i|r|a⟩)
@@ -667,109 +852,89 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     // matches PySCF tdscf.TDA / get_ab hybrid path).
     //
     //   ¹A = δε + 2(ia|jb) − α_hf (ij|ab) + A_xc
-    //
-    // A_xc is built by FD of evaluate_xc_batched: for each occ→virt product
-    // P^{ia} = ½(C_i C_aᵀ + C_a C_iᵀ) the spin-restricted density response
-    // is δP_α = δP_β = P^{ia}, and A_xc_{ia,jb} = Tr(δV_α[P^{ia}] · C_j C_bᵀ)
-    // (calibrated to PySCF's closed-shell singlet kernel, including GGA
-    // gradient terms carried by the ground-state V_xc builder).
     const double alpha_hf = hybrid_exchange_fraction(xc);
     if (alpha_hf > 0.0 && hessian.n_ov() <= 512
         && channel == ExcitationChannel::singlet) {
         RealMatrix A = hessian.dense_A(ch, alpha_hf);
-
-        if (!det.restricted())
-            throw std::runtime_error(
-                "RKS::tda hybrid: restricted closed-shell determinant required");
-        if (pack.shells.empty())
-            throw std::runtime_error(
-                "RKS::tda hybrid: IntegralPack has no shells");
-
-        using Spin = SlaterDeterminant::Spin;
-        const RealMatrix& C = det.coefficients(Spin::alpha);
-        const RealVector& f = det.occupations(Spin::alpha);
-        const int n_mo = static_cast<int>(C.shape()[1]);
-        std::vector<int> occ, virt;
-        for (int p = 0; p < n_mo; ++p)
-            (f(p) > 0.0 ? occ : virt).push_back(p);
-        const int no = static_cast<int>(occ.size());
-        const int nv = static_cast<int>(virt.size());
-
-        // Working (Cartesian) AO basis for the XC grid engine.
-        RealMatrix C_work = C;
-        RealMatrix Pa0 = det.density(Spin::alpha);
-        if (pack.spherical()) {
-            const auto& c2s = pack.c2s;
-            C_work = xt::linalg::dot(c2s, C);
-            Pa0 = xt::linalg::dot(
-                c2s, RealMatrix(xt::linalg::dot(Pa0, xt::transpose(c2s))));
-        }
-        const int n_basis = static_cast<int>(C_work.shape()[0]);
-
-        const MolecularGrid grid = build_molecular_grid(
-            pack.atoms.data(), static_cast<int>(pack.atoms.size()),
-            grid_level, n_radial, n_angular);
-
-        // Central FD step on the density matrix [a.u.]; 1e-4 matches PySCF
-        // kernel elements to ~1e-9 Ha on H2/STO-3G B3LYP.
-        constexpr double kEps = 1e-4;
-
-        auto orbital_product = [&](int i_mo, int a_mo) {
-            RealMatrix dm = xt::zeros<double>(
-                {static_cast<std::size_t>(n_basis),
-                 static_cast<std::size_t>(n_basis)});
-            for (int mu = 0; mu < n_basis; ++mu)
-                for (int nu = 0; nu < n_basis; ++nu)
-                    dm(mu, nu) = C_work(mu, static_cast<std::size_t>(i_mo))
-                                 * C_work(nu, static_cast<std::size_t>(a_mo));
-            return dm;
-        };
-
-        for (int a = 0; a < nv; ++a) {
-            for (int i = 0; i < no; ++i) {
-                const int p = a * no + i;
-                const int i_mo = occ[static_cast<std::size_t>(i)];
-                const int a_mo = virt[static_cast<std::size_t>(a)];
-                const RealMatrix dm = orbital_product(i_mo, a_mo);
-                // Hermitized product P^{ia} = ½(C_i C_aᵀ + C_a C_iᵀ).
-                // Closed-shell singlet: δP_α = δP_β = P^{ia}; A_xc_ia,jb =
-                // Tr(δV_α · C_j C_bᵀ) (PySCF get_ab hybrid convention).
-                RealMatrix dm_sym = 0.5 * (dm + xt::transpose(dm));
-
-                RealMatrix Pa_p = Pa0 + kEps * dm_sym;
-                RealMatrix Pa_m = Pa0 - kEps * dm_sym;
-                const XCGridResult xp = evaluate_xc_batched(
-                    grid, pack.shells, n_basis, Pa_p, Pa_p, xc);
-                const XCGridResult xm = evaluate_xc_batched(
-                    grid, pack.shells, n_basis, Pa_m, Pa_m, xc);
-
-                RealMatrix dVa = (xp.Vxc_alpha - xm.Vxc_alpha) / (2.0 * kEps);
-
-                for (int b = 0; b < nv; ++b) {
-                    for (int j = 0; j < no; ++j) {
-                        const int q = b * no + j;
-                        const int j_mo = occ[static_cast<std::size_t>(j)];
-                        const int b_mo = virt[static_cast<std::size_t>(b)];
-                        const RealMatrix dm_q = orbital_product(j_mo, b_mo);
-                        double axc = 0.0;
-                        for (int mu = 0; mu < n_basis; ++mu)
-                            for (int nu = 0; nu < n_basis; ++nu)
-                                axc += dVa(mu, nu) * dm_q(mu, nu);
-                        A(static_cast<std::size_t>(p),
-                          static_cast<std::size_t>(q)) += axc;
-                    }
-                }
-            }
-        }
+        const RealMatrix K =
+            fxc_kernel_fd(det, pack, xc, grid_level, n_radial, n_angular);
+        const std::size_t n = A.shape()[0];
+        for (std::size_t p = 0; p < n; ++p)
+            for (std::size_t q = 0; q < n; ++q)
+                A(p, q) += K(p, q);
         return package_dense_tda(A, /*alda_flag=*/false);
     }
 
     // Pure GGA (PBE) and other residual paths: CIS@RKS (HF-like A on KS
     // orbitals; no semi-local f^xc) — hybrid/ALDA axes are above.
+    // Full LR-TDDFT for pure GGA is RKS::tddft().
     const internal::TDHFPack tdhf_pack{hessian, ch};
     auto out = excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
                                      /*tda_flag=*/true);
     out.alda = false;
+    return out;
+}
+
+ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "RKS::tddft: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+    const internal::OrbitalHessian hessian{det, eri};
+    const internal::Channel ch = internal_channel(channel);
+
+    if (n_states < 1 || n_states > hessian.n_ov())
+        throw std::invalid_argument(
+            "RKS::tddft: n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(hessian.n_ov()) + "]");
+    if (hessian.n_ov() > 512)
+        throw std::runtime_error(
+            "RKS::tddft: n_ov = " + std::to_string(hessian.n_ov())
+            + " exceeds dense threshold 512 (no fallback)");
+
+    // Casida A,B with exact-exchange fraction α_hf; pure functionals use α=0.
+    const double alpha_hf = hybrid_exchange_fraction(xc);
+    RealMatrix A = hessian.dense_A(ch, alpha_hf);
+    RealMatrix B = hessian.dense_B(ch, alpha_hf);
+    bool alda_flag = false;
+
+    // Adiabatic f^xc on both A and B (Casida 1995; Dreuw & Head-Gordon 2005).
+    if (xc == XCType::LSDA) {
+        const MolecularGrid grid = build_molecular_grid(
+            pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
+            n_radial, n_angular);
+        const RealMatrix K =
+            internal::alda_kernel_matrix(det, pack, grid, channel);
+        const double coulomb_spin =
+            (channel == ExcitationChannel::singlet) ? 2.0 : 1.0;
+        const std::size_t n = A.shape()[0];
+        for (std::size_t p = 0; p < n; ++p)
+            for (std::size_t q = 0; q < n; ++q) {
+                const double v = coulomb_spin * K(p, q);
+                A(p, q) += v;
+                B(p, q) += v;
+            }
+        alda_flag = true;
+    } else if (channel == ExcitationChannel::singlet) {
+        // Pure GGA (PBE/BLYP) and global hybrids: FD of V_xc on the KS grid.
+        const RealMatrix K =
+            fxc_kernel_fd(det, pack, xc, grid_level, n_radial, n_angular);
+        const std::size_t n = A.shape()[0];
+        for (std::size_t p = 0; p < n; ++p)
+            for (std::size_t q = 0; q < n; ++q) {
+                A(p, q) += K(p, q);
+                B(p, q) += K(p, q);
+            }
+    }
+    // Triplet non-LSDA: Coulomb/exchange blocks only (no FD kernel yet).
+
+    const internal::TDHFPack::Roots roots = rpa_from_ab(A, B, n_states);
+    auto out =
+        excited_states_result(det, pack, roots, channel, /*tda_flag=*/false);
+    out.alda = alda_flag;
     return out;
 }
 

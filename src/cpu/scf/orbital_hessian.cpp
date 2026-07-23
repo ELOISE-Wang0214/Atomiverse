@@ -234,6 +234,25 @@ RealMatrix OrbitalHessian::dense_A(Channel ch, double alpha_hf) const {
     return A;
 }
 
+RealMatrix OrbitalHessian::dense_B(Channel ch, double alpha_hf) const {
+    // Singlet B carries Coulomb 2(ai|bj); triplet does not. Exact exchange
+    // −α (aj|bi) on both channels. No orbital-energy diagonal on B.
+    const double coul = (ch == Channel::singlet) ? 2.0 : 0.0;
+    const std::size_t nov = static_cast<std::size_t>(n_ov());
+    RealMatrix B = xt::zeros<double>({nov, nov});
+    for (int a = 0; a < nv_; ++a)
+        for (int i = 0; i < no_; ++i)
+            for (int b = 0; b < nv_; ++b)
+                for (int j = 0; j < no_; ++j) {
+                    const int p = a * no_ + i;
+                    const int q = b * no_ + j;
+                    // ovov_(a,i,b,j)=(ai|bj); ovov_(a,j,b,i)=(aj|bi).
+                    B(p, q) = coul * ovov_(a, i, b, j)
+                              - alpha_hf * ovov_(a, j, b, i);
+                }
+    return B;
+}
+
 RealVector OrbitalHessian::diagonal_plus(Channel ch) const {
     const double cw = coulomb_weight(ch);
     RealVector d = xt::zeros<double>({static_cast<std::size_t>(n_ov())});
