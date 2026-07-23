@@ -1044,6 +1044,7 @@ template class MeanFieldMethod<UHF>;
 template class MeanFieldMethod<GHF>;
 template class MeanFieldMethod<RKS>;
 template class MeanFieldMethod<UKS>;
+template class MeanFieldMethod<ROKS>;
 
 } // namespace scf
 } // namespace cpu

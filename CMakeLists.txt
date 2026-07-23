@@ -507,6 +507,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/ghf.cpp
             src/cpu/scf/rks.cpp
             src/cpu/scf/uks.cpp
+            src/cpu/scf/roks.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp
             src/cpu/scf/xc_functional.cpp
