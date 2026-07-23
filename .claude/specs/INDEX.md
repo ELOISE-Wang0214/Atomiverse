@@ -7,6 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [four-site-tip4p-foothold](four-site-tip4p-foothold/) | `wf/four-site-tip4p-foothold` | open — TIP4P M-site pair vs LAMMPS pin |
 | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — GPW PBE-D3(BJ) periodic water dimer |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)

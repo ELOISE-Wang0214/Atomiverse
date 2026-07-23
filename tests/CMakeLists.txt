@@ -150,6 +150,7 @@ atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/dynamics/test_pe_multi_cha
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/dynamics/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/dynamics/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_coul_cut           cpu/potentials/test_pair_coul_cut.cpp)
+atv_add_cpp_test(test_cpu_pair_lj_cut_tip4p_cut   cpu/potentials/test_pair_lj_cut_tip4p_cut.cpp)
 atv_add_cpp_test(test_cpu_pair_lj_soft            cpu/potentials/test_pair_lj_soft.cpp)
 atv_add_cpp_test(test_cpu_pair_coul_soft          cpu/potentials/test_pair_coul_soft.cpp)
 atv_add_cpp_test(test_cpu_lambda_ti               cpu/potentials/test_lambda_ti.cpp)
