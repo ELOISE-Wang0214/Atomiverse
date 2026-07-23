@@ -27,6 +27,7 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | `steele-wall-argon` | `wf/steele-wall-argon` | open (wave-2 E8 Steele 10-4-3) |
 | `const-pot-cg-large-electrode/` | `wf/const-pot-cg-large-electrode` | E2 CG electrode solve vs dense BO; wave 2 |
 | `electrode-charge-predictor/` | `wf/electrode-charge-predictor` | E2 ASPC charge warm-start + CG iters gate |
+| `finite-field-single-electrode/` | `wf/finite-field-single-electrode` | E3 Dufils single electrode; acceptance met on worker branch |
 
 *(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
 `wf/<slug>` before code)*

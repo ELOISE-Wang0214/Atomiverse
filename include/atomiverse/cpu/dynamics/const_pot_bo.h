@@ -33,6 +33,7 @@ struct ElectrodeGroup {
 ///
 /// Parameters are constructor arguments and public members — no Config bag.
 ///
+/// Parallel-plate (E1):
 /// @code
 /// cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 /// conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);
@@ -42,6 +43,18 @@ struct ElectrodeGroup {
 /// conp.predictor_order = 2;      // ASPC warm-start (0 = cold)
 /// conp.xy_image_range = 200;
 /// sim.on(md::Phase::pre_force).add(std::move(conp));
+/// @endcode
+///
+/// Finite-field + single electrode (E3, Dufils-style): one wall, free total
+/// charge, external field on the BO RHS \((AQ)_i=\Psi_i-b_i+\mathbf{E}\cdot\mathbf{r}_i\).
+/// Compose with `FixEfield` for forces:
+/// @code
+/// cpu::md::ConstPotBO conp(2.0);
+/// conp.add_electrode(1, 0.0);
+/// conp.Ez = 0.1;                 // [V/Å]
+/// conp.electroneutrality = false;
+/// sim.add(std::move(conp));
+/// sim.add(cpu::md::FixEfield{0.0, 0.0, 0.1});
 /// @endcode
 class ConstPotBO : public cpu::Component {
   public:
@@ -76,8 +89,8 @@ class ConstPotBO : public cpu::Component {
     /// @brief \(\lvert\sum_i Q_i\rvert\) [e] over all electrode sites.
     double neutrality_residual() const;
 
-    /// @brief \(\lVert AQ-(\Psi-b)\rVert_\infty\) after last solve (includes
-    ///        Lagrange shift when electroneutrality is on).
+    /// @brief \(\lVert AQ-(\Psi-b+\mathbf{E}\cdot\mathbf{r})\rVert_\infty\) after last
+    ///        solve (includes Lagrange shift when electroneutrality is on).
     double solve_residual() const { return residual_; }
 
     /// @brief Number of electrode atoms in the last solve.
@@ -101,6 +114,12 @@ class ConstPotBO : public cpu::Component {
     /// Rebuild \(A\) every launch (movable electrodes). v1 walls are frozen;
     /// leave false for geometry-static electrodes.
     bool rebuild_matrix_every_step = false;
+    /// Finite-field components [V/Å] on the BO RHS (Dufils single-electrode /
+    /// 3D PBC). Zero leaves the E1 parallel-plate path unchanged. Compose
+    /// with `FixEfield` for electrolyte forces — this member only updates \(Q\).
+    double Ex = 0.0;
+    double Ey = 0.0;
+    double Ez = 0.0;
 
     /// @brief Use conjugate-gradient on \(A Q = \Psi-b\) instead of dense
     ///        Cholesky (MetalWalls iterative path). Required for ASPC gain.
