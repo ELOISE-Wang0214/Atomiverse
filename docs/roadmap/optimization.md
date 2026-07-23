@@ -38,7 +38,7 @@ eigenvector-following, no string method, and no IRC.
 | Internal-coordinate optimization           |  ○  |   ○  |
 | Redundant-internal-coordinate optimization |  ○  |   ○  |
 | Constrained geometry optimization          |  ○  |   ○  |
-| Variable-cell optimization                 |  ○  |   ○  |
+| Variable-cell optimization                 |  ✓  |   ○  |
 | Joint atomic and cell optimization         |  ○  |   ○  |
 
 Notes:
@@ -52,11 +52,10 @@ Notes:
   (Nocedal & Wright bracket + zoom). The CUDA L-BFGS uses Armijo backtracking.
 - Convergence on CUDA checks five criteria (max/RMS force, max/RMS displacement,
   ΔE); the CUDA SD component deliberately runs its full budget without one.
-- **Every minimizer moves atoms only.** No cell degrees of freedom, no
-  constraints, no internal coordinates. Combined with the missing periodic stress
-  tensor (see [Periodic DFT](dft.md#11-periodic-response-and-analysis)),
-  variable-cell relaxation is doubly
-  blocked: no stress to relax against, and no optimizer that would accept it.
+- **Isotropic variable-cell** ships as `cpu::minimizer::IsotropicCellRelax` +
+  `cpu::PressureConverged` (classical virial / `kStress`; affine atom scale).
+  No anisotropic cell DOFs, no joint atom+cell L-BFGS, no internal coordinates.
+  PW strain stress for cell opt is a follow-on.
 
 ## 2. Transition-State and Reaction-Path Methods
 
@@ -64,7 +63,7 @@ Notes:
 | --------------------------------------------- | :-: | :--: |
 | Eigenvector-following transition-state search |  ○  |   ○  |
 | Partitioned-RFO transition-state search       |  ○  |   ○  |
-| Dimer method                                  |  ○  |   ○  |
+| Dimer method                                  |  ✓  |   ○  |
 | Climbing-image nudged elastic band            |  ✓  |   ○  |
 | Adaptive nudged elastic band                  |  ○  |   ○  |
 | Growing string method                         |  ○  |   ○  |

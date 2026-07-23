@@ -100,13 +100,12 @@ variant of the same shape):
 
 What is **not** yet framework-proven (good breadth targets — see next section):
 
-- Cell DOFs in Minimize (variable-cell / joint atom+cell)
-- Nuclear quantum beads (PIMD / RPMD)
-- Free-energy *estimation* beyond Widom snapshot + single biased window (FEP/TI one-leg, multi-window WHAM)
-- A second transition-state algorithm (dimer / string) — NEB alone is not enough
-- Soft-core / λ-dependent potentials (alchemical parameterization)
+- Joint atom+cell / anisotropic cell optimization
+- RPMD estimators / ring-polymer contraction (PIMD skeleton exists)
+- Free-energy beyond Widom snapshot + single biased window (FEP/TI, multi-window WHAM)
+- String / IRC path methods (dimer skeleton exists)
+- Soft-core Coulomb; multi-type soft LJ
 - Sampling / path / bias / constraints on CUDA
-- A non-MD Minimizer algorithm beyond L-BFGS/CG (FIRE)
 
 ### Recommended next queue (CPU breadth-first)
 
@@ -125,8 +124,8 @@ completeness. Each item should ship one textbook regression under
 | 2 | ~~**Soft-core LJ (λ)**~~ | **SHIPPED 2026-07-23** (`cpu::PairLJSoft`, `reg_lj_soft_dimer`) | — |
 | 3 | ~~**Widom insertion**~~ | **SHIPPED 2026-07-23** (`cpu::Widom`, `reg_widom_hs`) | — |
 | 4 | ~~**PIMD skeleton**~~ | **SHIPPED 2026-07-23** (`cpu::path::Pimd`, `reg_pimd_free_particle`) | — |
-| 5 | **Variable-cell Minimize** (classical virial or PW strain-FD stress) | Cell DOFs in the optimizer — never exercised | Fully anisotropic PR cell dynamics, joint cell+atom fancy coords |
-| 6 | **Dimer TS** (or growing string) | Second path method; proves PathDriver is not NEB-only | IRC, conical intersections, CUDA path |
+| 5 | ~~**Variable-cell Minimize**~~ | **SHIPPED 2026-07-23** (`IsotropicCellRelax`, `reg_cell_lj_pressure`) | — |
+| 6 | ~~**Dimer TS**~~ | **SHIPPED 2026-07-23** (`cpu::path::Dimer`, `reg_dimer_saddle`) | — |
 
 **Explicitly deprioritized right now** (depth / productization / gated backlog):
 

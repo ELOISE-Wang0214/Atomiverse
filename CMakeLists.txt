@@ -297,6 +297,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/minimize/lbfgs_history.cpp
             src/cpu/minimize/cg.cpp
             src/cpu/minimize/fire.cpp
+            src/cpu/minimize/cell_relax.cpp
             src/cpu/minimize/trajectory_writer.cpp
             src/cpu/minimize/opt_log.cpp
             src/cpu/minimize/final_geometry.cpp
@@ -310,6 +311,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/path/remd.cpp
             src/cpu/path/pimd.cpp
             src/cpu/path/ring_polymer_spring.cpp
+            src/cpu/path/dimer.cpp
             src/cpu/bias/distance_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
         )

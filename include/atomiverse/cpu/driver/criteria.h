@@ -41,8 +41,10 @@
 #pragma once
 
 #include <cmath>
+#include <stdexcept>
 #include <string>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/core/verdict.h"
 
@@ -100,6 +102,44 @@ class ForceConverged : public Criterion {
 
   private:
     double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
+};
+
+/// @brief A coupled chain is converged when EVERY replica is — never when the first is.
+///
+/// The AND that `PathDriver` used to spell out inline. Reads
+/// `ConvergenceMetrics::replicas_converged`, which the band optimizer publishes
+/// as a fraction.
+/// @brief Stop when isotropic pressure is within a tolerance of a target.
+///
+/// Reads Voigt stress from `frame.meta` (`kStress`) and the box volume.
+/// Intended for `IsotropicCellRelax` variable-cell runs (0 K: kinetic stress
+/// omitted). Units: eV/Å³.
+class PressureConverged : public Criterion {
+  public:
+    /// @param P_target Target pressure [eV/Å³].
+    /// @param ptol Absolute pressure tolerance [eV/Å³].
+    explicit PressureConverged(double P_target = 0.0, double ptol = 1e-5)
+        : P_target_(P_target), ptol_(ptol) {
+        if (!(ptol > 0.0))
+            throw std::invalid_argument("PressureConverged: ptol must be > 0");
+    }
+
+    std::string name() const override { return "pressure_converged"; }
+    void launch(const LaunchContext&) override {}
+
+    Verdict verdict(const LoopState& s) override {
+        const double V = s.frame.simbox.volume();
+        if (!(V > 0.0))
+            return Verdict::Stop;
+        const auto& st = s.frame.meta.get(kStress);
+        const double P = (st[0] + st[1] + st[2]) / (3.0 * V);
+        return (std::fabs(P - P_target_) < ptol_) ? Verdict::Converged
+                                                  : Verdict::Continue;
+    }
+
+  private:
+    double P_target_;
+    double ptol_;
 };
 
 /// @brief A coupled chain is converged when EVERY replica is — never when the first is.
