@@ -47,8 +47,10 @@ Notes:
 - Convergence on CUDA checks five criteria (max/RMS force, max/RMS displacement,
   ΔE); the CUDA SD component deliberately runs its full budget without one.
 - **Variable-cell:** isotropic / anisotropic / triclinic optimizers + joint
-  atom+cell isotropic. Classical virial and PW electronic stress both drive
-  cell steps. No internal coordinates. **PR NPT dynamics** lives under
+  atom+cell isotropic. Classical virial and **PW electronic stress**
+  (Nielsen–Martin analytic `pw_stress`) drive cell steps; **GPW stress** is
+  strain-FD (`gpw_stress`; `reg_gpw-stress-water`) for productization of
+  GPW CELL_OPT. No internal coordinates. **PR NPT dynamics** lives under
   [Molecular Dynamics](molecular-dynamics.md) (`ParrinelloRahmanNPT`), not here.
 
 ## 2. Transition-State and Reaction-Path Methods

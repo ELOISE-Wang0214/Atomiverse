@@ -106,7 +106,7 @@ a proven shape.
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
 | Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
-| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW electronic stress |
+| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW strain-FD stress |
 | Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms**; C-PCM/COSMO/**IEF-PCM** |
 
 ### Closed queues (2026-07-23)
@@ -215,36 +215,40 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Exchange-correlation
 
-- Molecular selectors: `{LSDA, PBE, BLYP, B3LYP, PBE0}`. BP86 still ○.
+- Molecular selectors: `{LSDA, PBE, PBEsol, BLYP, B3LYP, PBE0, B2PLYP}`. BP86 still ○.
 - Molecular dispersion: **D3 zero** (GPW), **D3-BJ** (Gaussian + GPW) +
-  **D4** (Gaussian path; `reg_d3bj-molecular-pbe`, `reg_gpw-pbe-d3bj-ice`,
-  `reg_dft-d4-h2o-pbe`).
+  **D4** (Gaussian + **GPW**; `reg_d3bj-molecular-pbe`, `reg_gpw-pbe-d3bj-ice`,
+  `reg_dft-d4-h2o-pbe`, `reg_gpw-d4-water`).
 - libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
 - GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 
 ### Plane-wave DFT
 
 - Analytic local + Ewald + KB forces; FD oracle remains.
-  **Cell stress via strain-FD** of SCF energy (`pw_stress`); Nielsen–Martin
-  analytic stress is a follow-on.
+  **Cell stress is Nielsen–Martin analytic** (`pw_stress`; FD oracle
+  `pw_stress_fd`; `reg_pw-analytic-stress-si`).
 - CPU: **true GGA PBE** on the FFT grid (`reg_pw-pbe-gga-si`), **collinear
-  spin** (`reg_pw-spin-polarized-o2`), **metallic smearing**
-  (`reg_pw-smearing-al`), **BOMD foothold** (`reg_pw-bomd-h`). CUDA PW remains
-  LDA / spin-unpolarized.
+  spin** incl. **k-mesh UKS** (`reg_pw-spin-polarized-o2`,
+  `reg_pw-uks-kmesh-fe`), **metallic smearing** (`reg_pw-smearing-al`),
+  **bands/DOS** (`reg_bands-dos-si`), **BOMD foothold** (`reg_pw-bomd-h`).
+  CUDA PW remains LDA / spin-unpolarized.
 - Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
 - CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
 ### GPW
 
 - Γ-point RKS + **Γ-point UKS** (PADE LSD; `reg_gpw-uks-o2-gamma`). No
-  k-points, stress, or hybrids.
+  Gaussian k-points or hybrids; **strain-FD stress** ships
+  (`reg_gpw-stress-water`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
-  Analytic forces available → can drive AIMD; keep member
+  Analytic forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
   (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
-  `use_ot` (`reg_ot-minimizer-water`).
-- DFT-D3 zero-damping and **D3(BJ)** on GPW (PBE params; `reg_gpw-pbe-d3bj-ice`).
-  Molecular Gaussian path also has **DFT-D3(BJ)** / **D4**.
+  `use_ot` (`reg_ot-minimizer-water`). **PBEsol** (`reg_gpw-pbesol-si`);
+  **Dudarev DFT+U** (`reg_gpw-dftu-nio`).
+- DFT-D3 zero-damping, **D3(BJ)**, and **D4** on GPW (PBE params;
+  `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`). Molecular Gaussian path also has
+  **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

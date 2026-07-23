@@ -7,14 +7,15 @@ The molecular Kohn–Sham path shares the Gaussian SCF solver with
 {restricted, unrestricted} × {HF, KS}, the same DIIS/level-shift machinery, the
 same analytic-gradient assembly.
 
-The molecular functional set is exactly four selectors — `LSDA`, `PBE`, `B3LYP`,
-`PBE0` — evaluated on Becke-partitioned atomic grids with Lebedev angular
+The molecular functional set includes pure LDA/GGA selectors (`LSDA`, `PBE`,
+`PBEsol`, `BLYP`), global hybrids (`B3LYP`, `PBE0`), and double hybrid
+`B2PLYP` — evaluated on Becke-partitioned atomic grids with Lebedev angular
 quadrature. All functionals are hand-coded and gated against libxc to 1e-12 in
 tests; libxc is never a runtime dependency.
 
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
-plane-wave and GPW engines, their functionals, forces, and the periodic-only
-gaps (stress, phonons, hybrids).
+plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
+remaining periodic-only gaps (hybrids, DFPT, Gaussian k-points).
 
 ## 1. Kohn–Sham Methods
 
@@ -75,7 +76,7 @@ XC on the device in the Gaussian path.
 | Functional | CPU | CUDA | Kokkos |
 | ---------- | :-: | :--: | :---: |
 | PBE        |  ✓  |   ○  |   ○  |
-| PBEsol     |  ○  |   ○  |   ○  |
+| PBEsol     |  ✓  |   ○  |   ○  |
 | revPBE     |  ○  |   ○  |   ○  |
 | RPBE       |  ○  |   ○  |   ○  |
 | BLYP       |  ✓  |   ○  |   ○  |
@@ -87,7 +88,9 @@ XC on the device in the Gaussian path.
 | SOGGA      |  ○  |   ○  |   ○  |
 
 `XCType::BLYP` is pure B88+LYP (unit weights, no HF admixture); regression
-`reg_blyp-water-sto3g` pins H2O/STO-3G vs PySCF xc=blyp.
+`reg_blyp-water-sto3g` pins H2O/STO-3G vs PySCF xc=blyp. **PBEsol**
+(Perdew et al. 2008; solid-state μ/β) shares `evaluate_xc` and ships on the
+molecular Gaussian path and **GPW** (`XcKind::PBEsol`; `reg_gpw-pbesol-si`).
 
 ## 4. Meta-GGA Functionals
 
@@ -192,7 +195,9 @@ via `GpwDft::d3bj` / `GPWEvaluator::d3bj` (CP2K CN + BJ pin;
 `reg_gpw-pbe-d3bj-ice`). **DFT-D4**
 (Caldeweyher et al.; two-body BJ + EEQ/CN-dependent C6) is on the molecular
 path via `cpu::scf::D4` / `MeanFieldMethod::d4` (PySCF `disp='d4'` twin;
-regression `dft-d4-h2o-pbe`; three-body ATM not included). Periodic D4 remains ○.
+regression `dft-d4-h2o-pbe`; three-body ATM not included) **and on GPW** via
+`GpwDft::d4` / `GPWEvaluator::d4` (dftd4 3.7.0 offline pin;
+`reg_gpw-d4-water`; three-body ATM off).
 
 ## 9. Composite DFT Methods
 
@@ -213,23 +218,28 @@ Two periodic DFT engines exist, with disjoint strengths:
   UPF pseudopotentials, block Davidson. **Ionic forces via analytic local HF +
   Ewald + Kleinman–Bylander nonlocal** (`pw_forces_analytic`, default for
   `PWEvaluator::with_gradient(true)`); FD (`pw_forces_fd`) is the oracle.
-  **Cell stress via strain-FD** (`pw_stress` → `kStress`). XC is **true GGA
-  PBE** on the FFT grid (density gradients enter Vxc; default `xc = PBE`) or
-  LSDA; **collinear spin** (`spin_polarized`) and **metallic smearing**
-  (Fermi–Dirac / Methfessel–Paxton) ship on CPU. CUDA path remains LDA /
+  **Cell stress** is **Nielsen–Martin analytic** (`pw_stress` → `kStress`;
+  multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
+  XC is **true GGA PBE** on the FFT grid (density gradients enter Vxc; default
+  `xc = PBE`) or LSDA; **collinear spin** (`spin_polarized`) including
+  **k-mesh UKS** (`reg_pw-uks-kmesh-fe`) and **metallic smearing**
+  (Fermi–Dirac / Methfessel–Paxton) ship on CPU. **Bands / DOS** post-process
+  (`cpu::pw::Bands` / `Dos`; `reg_bands-dos-si`). CUDA path remains LDA /
   spin-unpolarized.
 - **GPW**, Gaussian and plane waves (`cpu::gpw::GpwDft` / `GPWEvaluator`) —
   Gaussian basis collocated on a uniform grid, GTH pseudopotentials, LDA
-  (Padé) or PBE, DFT-D3 zero + **BJ**, **analytic forces**, product **OT**
-  minimizer (`use_ot`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
-  `n_alpha`/`n_beta`). No k-points. CPU only.
+  (Padé) or **PBE / PBEsol**, DFT-D3 zero + **BJ** + **D4**, **analytic
+  forces**, **strain-FD cell stress** (`gpw_stress`; `reg_gpw-stress-water`),
+  product **OT** minimizer (`use_ot`), **Dudarev DFT+U** (`plus_u`;
+  `reg_gpw-dftu-nio`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
+  `n_alpha`/`n_beta`). No k-points (Gaussian). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
 | Γ-point periodic RKS             |  ✓  |   ○  |   ○  |
 | k-point periodic RKS             |  ✓  |   ✓  |   ○  |
 | Γ-point periodic UKS             |  ✓  |   ○  |   ○  |
-| k-point periodic UKS             |  ○  |   ○  |   ○  |
+| k-point periodic UKS             |  ✓  |   ○  |   ○  |
 | Plane-wave DFT                   |  ✓  |   ✓  |   ○  |
 | Gaussian and plane-wave DFT, GPW |  ✓  |   ○  |   ○  |
 | GAPW DFT                         |  ○  |   ○  |   ○  |
@@ -239,7 +249,7 @@ Two periodic DFT engines exist, with disjoint strengths:
 | Periodic meta-GGA                |  ○  |   ○  |   ○  |
 | Periodic hybrid DFT              |  ○  |   ○  |   ○  |
 | Periodic range-separated hybrid  |  ○  |   ○  |   ○  |
-| Periodic DFT+U                   |  ○  |   ○  |   ○  |
+| Periodic DFT+U                   |  ✓  |   ○  |   ○  |
 | Periodic dispersion-corrected DFT |  ✓  |  ○  |   ○  |
 | Periodic MP2                     |  ○  |   ○  |   ○  |
 | Periodic RPA                     |  ○  |   ○  |   ○  |
@@ -250,12 +260,17 @@ Which engine backs which ✓:
 - **Γ-point periodic RKS** is GPW (`reg_gpw-water-pbe-mt`). **Γ-point periodic
   UKS** is GPW PADE LSD (`reg_gpw-uks-o2-gamma`). **k-point periodic RKS** is
   the plane-wave solver (Monkhorst–Pack mesh) — on both CPU and CUDA. There is
-  no periodic *Gaussian-basis* k-point path. **k-point periodic UKS** remains ○.
+  no periodic *Gaussian-basis* k-point path (`gpw-kpoints-si` still open).
+  **k-point periodic UKS** is CPU PW collinear spin on a multi-k mesh
+  (`reg_pw-uks-kmesh-fe`; O₂ twin; bulk Fe + spin+smearing follow-on).
 - **Periodic LDA** is provided twice: Padé-LDA in GPW, and Slater + PW92 on the
   plane-wave grid (the latter is the CUDA ✓; CPU PW also has LDA). **Periodic
-  GGA** is GPW/PBE **and** CPU PW true PBE (`reg_pw-pbe-gga-si`).
-- **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping and
-  **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`).
+  GGA** is GPW PBE / **PBEsol** (`reg_gpw-pbesol-si`) **and** CPU PW true PBE
+  (`reg_pw-pbe-gga-si`).
+- **Periodic DFT+U** is GPW Dudarev PLUS_U (`reg_gpw-dftu-nio`; NiO mol pin).
+  Molecular Gaussian DFT+U remains ○.
+- **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
+  **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), and **D4** (`reg_gpw-d4-water`).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
@@ -267,20 +282,24 @@ Which engine backs which ✓:
 | Periodic analytic forces               |  ✓  |   ○  |   ○  |
 | Periodic analytic stress               |  ✓  |   ○  |   ○  |
 | Density-functional perturbation theory |  ○  |   ○  |   ○  |
-| Finite-displacement phonons            |  ○  |   ○  |   ○  |
+| Finite-displacement phonons            |  ✓  |   ○  |   ○  |
 | Berry-phase polarization               |  ○  |   ○  |   ○  |
 | Maximally localized Wannier functions  |  ○  |   ○  |   ○  |
 
 - **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay) and
   plane-wave **local HF + Ewald + KB nonlocal** (`pw_forces_analytic`). PW FD
-  remains as oracle. **PW stress** ships as strain-FD of energy (`pw_stress`);
-  GPW stress remains open.
-- **PW stress** is available via strain-FD (`pw_stress` → Frame `kStress`).
-  GPW still has no stress tensor; full variable-cell drivers remain productization
-  work (see [Optimization](optimization.md)).
-- **Finite-displacement phonons** is ○ even though a finite-difference Hessian
-  exists: `cpu::vib::Hessian` is molecular (3N Cartesian displacements, no
-  supercell or q-point machinery), so it yields no phonon band structure.
+  remains as oracle.
+- **PW stress** is **Nielsen–Martin analytic** (`pw_stress` → Frame `kStress`;
+  multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
+  **GPW stress** ships as orthorhombic **strain-FD** (`gpw_stress` /
+  `GPWEvaluator::compute_stress`; `reg_gpw-stress-water` vs CP2K NUMERICAL).
+  Analytic GPW Pulay stress and variable-cell product drivers remain
+  productization (see [Optimization](optimization.md)).
+- **Finite-displacement phonons** at Γ: `cpu::vib::Phonon` expands a supercell,
+  runs 6N force evaluations, and diagonalizes the mass-weighted Hessian
+  (`reg_fd-phonon-supercell`; SW 64-atom Si twin). Molecular
+  `cpu::vib::Hessian` remains the non-periodic path. DFPT / full phonon
+  dispersions remain ○.
 
 ## 12. Periodic infrastructure
 
@@ -298,12 +317,13 @@ Which engine backs which ✓:
 | Real-space multigrid collocation | ✓ | ○ |   ○  |
 | Ultrasoft / PAW | ○ | ○ |   ○  |
 | Smearing for metals | ✓ | ○ |   ○  |
-| Band structure / DOS post-processing | ○ | ○ |   ○  |
+| Band structure / DOS post-processing | ✓ | ○ |   ○  |
 
 **Smearing for metals** on CPU PW: `PW::smearing` (Fermi–Dirac / Methfessel–Paxton)
 + `degauss` [Ry] + `extra_bands` (`reg_pw-smearing-al`). OT on GPW is a product
-member (`use_ot`; `reg_ot-minimizer-water`). Band structure / DOS post-processing
-remains ○ (`bands-dos-si`).
+member (`use_ot`; `reg_ot-minimizer-water`). **Band structure / DOS** on CPU PW:
+`cpu::pw::Bands` (high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian
+smearing; `reg_bands-dos-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

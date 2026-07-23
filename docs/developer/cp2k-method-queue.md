@@ -20,41 +20,34 @@ CUDA-Kokkos product tracks.
 Census: 2026-07-23 (parent `dev`). Source: `docs/roadmap/dft.md` §10–12 +
 §3/§8 GGA/dispersion ○, `docs/roadmap/index.md` GPW/PW caveats,
 `docs/roadmap/molecular-dynamics.md` §AIMD ○ (XL-BOMD / CPMD).
-**Harness wave 1 2026-07-23:** 10 staff-batch slugs merged → `## done` (see
-below). **Assign wave 2 2026-07-23:** all 6 incomplete resumes kept `[~]` +
-4 dep-safe pending promoted → `## in_progress` (`gpw-kpoints-si`,
-`pw-uks-kmesh-fe`, `gpw-pbesol-si`, `gpw-d4-water`). Staff = 10. Pending
-below = remaining open roadmap ○ (cell_opt waits on GPW stress; DFPT on FD
-phonons; XL/CPMD on BOMD; response/wannier on bands; MP2/RPA/GW; MPI
-industrial).
+**Harness wave 1 2026-07-23:** 10 staff-batch slugs merged → `## done`.
+**Assign wave 2 2026-07-23:** 6 incomplete resumes + 4 dep-safe pending →
+`## in_progress` (staff 10; includes `gpw-kpoints-si`).
+**Harness wave 2 2026-07-24:** 9 merged slugs → `## done` (stress, BOMD, PW
+analytic stress, FD phonons, DFT+U, bands/DOS, k-UKS, PBEsol, D4). Incomplete
+remaining: **`gpw-kpoints-si`** only (not in harness wave-2 staff list; no
+merge/reg). Pending below = remaining open roadmap ○ (cell_opt waits on
+productization after stress ✓; DFPT on FD phonons ✓; XL/CPMD on BOMD ✓;
+response/wannier on bands ✓; MP2/RPA/GW; MPI industrial).
 
 ## pending
 
-- [ ] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water`
-- [ ] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap §11 DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell`
-- [ ] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO₃ toy | — | P | roadmap §11 ○; CP2K Berry phase; after k-path / `bands-dos-si`
-- [ ] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si`
-- [ ] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water`
-- [ ] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins
+- [ ] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water` ✓
+- [ ] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap §11 DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell` ✓
+- [ ] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO₃ toy | — | P | roadmap §11 ○; CP2K Berry phase; after k-path / `bands-dos-si` ✓
+- [ ] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si` ✓
+- [ ] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water` ✓
+- [ ] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓
 - [ ] `periodic-mp2-si` | Periodic RI-MP2 (GPW) | gpw | Si (tiny cell) | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic MP2; CP2K MP2; **dep:** solid Γ GPW energy ✓
 - [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; after MP2 foothold
-- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold; not molecular G0W0 (PySCF loop)
+- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
 - [ ] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands
 - [ ] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK
 
 ## in_progress
 
-<!-- assign wave 2 2026-07-23: 6 resumes + 4 new pending (staff ≤10); incomplete first -->
-- [~] `gpw-stress-water` | GPW cell stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | PW strain-FD stress ✓; **GPW stress open**; CP2K cell stress twin; **dep:** energy+forces pins ✓
-- [~] `pw-analytic-stress-si` | PW Nielsen–Martin analytic stress | pw | Si | NC-UPF | stress eV/Å³ | strain-FD stress ships; analytic form is follow-on; CP2K STRESS_TENSOR; **dep:** `pw-lda-si` ✓
-- [~] `gpw-bomd-water` | GPW BOMD short traj | dynamics | water | DZVP | energy drift | GPWEvaluator forces + MD marked ✓; need CP2K MD reference trajectory pin; **dep:** `gpw-forces-water` ✓
-- [~] `fd-phonon-supercell` | FD phonons (supercell) | response | Si or H2O ice | — | ω cm⁻¹ | molecular `vib::Hessian` ≠ phonons; CP2K VIBRATIONAL_ANALYSIS / supercell
-- [~] `gpw-dftu-nio` | Periodic DFT+U | gpw | NiO | MOLOPT+GTH | e_tot / mag | roadmap ○ DFT+U; CP2K PLUS_U textbook antiferromagnet
-- [~] `bands-dos-si` | Band structure / DOS | pw | Si | NC-UPF | ε(k) / DOS | roadmap ○ post-processing; CP2K BAND_STRUCTURE / DOS; **enables** wannier later
-- [~] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | wave 2 new; roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓
-- [~] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | Fe (or O₂ cell) | NC-UPF | e_tot / mag | wave 2 new; roadmap ○ k-point periodic UKS; **dep:** `pw-spin-polarized-o2` ✓ + `pw-smearing-al` ✓
-- [~] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | wave 2 new; roadmap §3 GGA ○ PBEsol; CP2K XC_FUNCTIONAL PBEsol textbook bulk
-- [~] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | water | DZVP-MOLOPT-GTH | e_tot / E_disp | wave 2 new; roadmap §8 D4 ○; CP2K DFTD4; **dep:** GPW D3 pin pattern ✓ (`gpw-pbe-d3bj-ice`)
+<!-- harness wave 2 2026-07-24: 9 of 10 assign-wave-2 slugs merged → done; k-points incomplete -->
+- [~] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | wave 2 assign leftover; roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓; **no wf merge / no regression yet**
 
 ## blocked
 
@@ -76,3 +69,12 @@ industrial).
 - [x] `pw-spin-polarized-o2` | PW spin-polarized KS | pw | `regressions/pw/pw-spin-polarized-o2` | ratio **perf_exempt** (mag=2 + frozen e_tot pin) | 2026-07-23 wave 1
 - [x] `pw-bomd-h` | PW BOMD foothold | dynamics | `regressions/pw/pw-bomd-h` | ratio **perf_exempt** (NVE drift envelope; no CP2K twin wall) | 2026-07-23 wave 1
 - [x] `ot-minimizer-water` | OT vs DIIS large cell | gpw | `regressions/gpw/ot-minimizer-water` | ratio **~9.0** (fair OT-only, OMP=4) | 2026-07-23 wave 1
+- [x] `gpw-stress-water` | GPW cell stress (strain-FD) | gpw | `regressions/gpw/gpw-stress-water` | ratio **4.75** | 2026-07-24 wave 2
+- [x] `gpw-bomd-water` | GPW BOMD short traj | dynamics | `regressions/gpw/gpw-bomd-water` | ratio **perf_exempt** (NVE drift envelope; no CP2K AIMD twin wall) | 2026-07-24 wave 2
+- [x] `pw-analytic-stress-si` | PW Nielsen–Martin analytic stress | pw | `regressions/pw/pw-analytic-stress-si` | ratio **perf_exempt** (no fair NC-UPF PW twin wall) | 2026-07-24 wave 2
+- [x] `fd-phonon-supercell` | FD phonons (supercell Γ) | response | `regressions/pw/fd-phonon-supercell` | ratio **perf_exempt** (SW 64-atom Γ; no CP2K VIBRATIONAL_ANALYSIS wall) | 2026-07-24 wave 2
+- [x] `gpw-dftu-nio` | Periodic DFT+U (Dudarev) | gpw | `regressions/gpw/gpw-dftu-nio` | ratio **0.21** | 2026-07-24 wave 2
+- [x] `bands-dos-si` | Band structure / DOS | pw | `regressions/pw/bands-dos-si` | ratio **perf_exempt** (literature Γ→X window; no fair GTH twin wall) | 2026-07-24 wave 2
+- [x] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | `regressions/pw/pw-uks-kmesh-fe` | ratio **perf_exempt** (O₂ multi-k mag=2; no fair NC-UPF twin) | 2026-07-24 wave 2
+- [x] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | `regressions/gpw/gpw-pbesol-si` | ratio **perf_exempt** (dual-gate PBE vs PBEsol; no CP2K binary) | 2026-07-24 wave 2
+- [x] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | `regressions/gpw/gpw-d4-water` | ratio **perf_exempt** (dftd4 3.7.0 E_disp pin; CP2K Arrhenius build lacks DFTD4) | 2026-07-24 wave 2
