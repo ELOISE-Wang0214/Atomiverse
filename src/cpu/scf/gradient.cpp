@@ -517,15 +517,17 @@ GradientResult ScfGradient::compute(const Frame& frame,
     if (generalized && is_ks)
         throw std::runtime_error(
             "ScfGradient::compute: GKS (generalized KS) is not implemented.");
-    if (spin_ == SpinType::RestrictedOpen && is_ks)
-        throw std::runtime_error(
-            "ScfGradient::compute: ROKS analytic forces are not implemented "
-            "in this link — the energy-weighted density path is ROHF-only "
-            "(HF spin Focks). Use finite differences or ROHF/UKS forces.");
+    // ROKS (RestrictedOpen + KS) is supported: same ROHF W construction with
+    // KS spin Focks (F_σ = H + J + Vxc_σ ± hybrid K), plus the KS XC grid
+    // gradient below. PySCF: dft.roks.Gradients → uks_grad.grad_elec +
+    // rohf.make_rdm1e on the KS spin Fock pair.
     const char* method_label = is_ks ? "KS" : "HF";
-    const char* spin_label = generalized
-                                 ? "generalized"
-                                 : (restricted ? "restricted" : "unrestricted");
+    const char* spin_label =
+        generalized
+            ? "generalized"
+            : (spin_ == SpinType::RestrictedOpen
+                   ? "restricted_open"
+                   : (restricted ? "restricted" : "unrestricted"));
 
     ATV_INFO("[gradient] start method={} spin={} natm={} basis={}",
              method_label, spin_label, natm, n);
@@ -568,24 +570,25 @@ GradientResult ScfGradient::compute(const Frame& frame,
         W = xt::view(W_spinor, xt::range(0, n), xt::range(0, n))
             + xt::view(W_spinor, xt::range(n, two_n), xt::range(n, two_n));
     } else if (spin_ == SpinType::RestrictedOpen) {
-        // ROHF energy-weighted density (PySCF grad/rohf.py `make_rdm1e`):
+        // ROHF / ROKS energy-weighted density (PySCF grad/rohf.py
+        // `make_rdm1e`, shared by dft/rks_grad for ROKS):
         //   W = O_a·F_a·O_a + O_b·F_b·O_b
         // where F_a/F_b are the SPIN Fock matrices at the converged density
-        // (NOT the effective ROHF Fock, NOT Σ ε_i C C^T — that is ~7× wrong for
-        // ROHF), and O_a/O_b are the occupied-α / doubly-occupied MO
-        // projectors. The spin Focks are rebuilt from the density here (ROHF is
-        // always HF; grid/RI unused). hybrid_alpha_override = -1 → method
-        // default = full HF exchange.
+        // (NOT the effective Roothaan Fock, NOT Σ ε_i C C^T — that is ~7×
+        // wrong for ROHF and likewise wrong for ROKS), and O_a/O_b are the
+        // occupied-α / doubly-occupied MO projectors. Rebuild spin Focks
+        // here: HF for ROHF, KS (J + Vxc_σ ± hybrid K) for ROKS.
+        // hybrid_alpha_override = -1 → method default exchange fraction.
         const xt::xtensor<double, 2> Pa = det.density(Spin::alpha);
         const xt::xtensor<double, 2> Pb = det.density(Spin::beta);
         HamiltonianBuilder hb;
-        hb.prepare(integrals, /*is_hf=*/true, grid_level_, n_radial_,
+        hb.prepare(integrals, /*is_hf=*/!is_ks, grid_level_, n_radial_,
                    n_angular_, /*fixed_grid=*/nullptr);
         const FockResult fock =
-            hb.step(integrals, /*restricted=*/false, /*is_hf=*/true, xc_type_,
-                    /*hybrid_alpha_override=*/-1.0, Pa, Pb);
+            hb.step(integrals, /*restricted=*/false, /*is_hf=*/!is_ks,
+                    xc_type_, /*hybrid_alpha_override=*/-1.0, Pa, Pb);
         // Occupied-MO projector O = Σ_{i<nocc} c_i c_iᵀ (C_a is the shared
-        // ROHF MO set; the first n_alpha columns are occupied-α, the first
+        // RO MO set; the first n_alpha columns are occupied-α, the first
         // n_beta are doubly-occupied).
         const auto projector = [&](int nocc) {
             xt::xtensor<double, 2> O = xt::zeros<double>({n, n});

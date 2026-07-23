@@ -29,10 +29,11 @@ namespace scf {
 /// `get_roothaan_fock` projector assembly as ROHF (Guest–Saunders). Total
 /// energy is portable; orbital energies are convention-bound.
 ///
-/// Not yet supported for ROKS (throws, no fallback): analytic forces
-/// (energy-weighted density needs the KS spin Focks + XC response path
-/// validated as a follow-up), `mp2()`, `fci()`, `soscf`, `level_shift`,
-/// density fitting.
+/// Analytic nuclear forces are supported (`forces()`): ROHF-style
+/// energy-weighted density W = O_a F_a O_a + O_b F_b O_b on the KS spin
+/// Focks, plus the unrestricted KS J/K and XC grid gradient path (PySCF
+/// `dft.ROKS.nuc_grad_method`). Not yet supported (throws, no fallback):
+/// `mp2()`, `fci()`, `soscf`, `level_shift`, density fitting.
 ///
 /// References: Roothaan, Rev. Mod. Phys. 32, 179 (1960); Guest & Saunders,
 /// Mol. Phys. 28, 819 (1974); Tsuchimochi & Scuseria, J. Chem. Phys. 133,
