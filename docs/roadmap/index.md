@@ -132,7 +132,7 @@ a proven shape.
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | MP2 gradients; SOS-MP2; ROMP2 (SCS-MP2 + frozen-core ✓) |
+| Post-HF | MP2 gradients; ROMP2 (SCS-MP2 + SOS-MP2 + frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -177,7 +177,7 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **RI-MP2** when `ri = RI::{J,JK}` + aux basis on RHF only
   (`reg_h2o_ri_mp2`, `MP2Result::ri`). Frozen-core via `rhf.frozen=N`
   (`reg_frozen-core-mp2-h2o`). **SCS-MP2** via `mp2_os_scale` /
-  `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`). No gradients, no SOS-MP2 product
+  `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, SOS `reg_sos-mp2-h2o-sto3g`). No gradients, no
   flag, no ROMP2.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).

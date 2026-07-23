@@ -28,7 +28,7 @@ Coupled cluster and multireference theory are entirely absent.
 | RI-MP2                             |  ✓  |   ○  |   ○  |
 | Laplace-transformed MP2            |  ○  |   ○  |   ○  |
 | Spin-component-scaled MP2, SCS-MP2 |  ✓  |   ○  |   ○  |
-| Scaled-opposite-spin MP2, SOS-MP2  |  ○  |   ○  |   ○  |
+| Scaled-opposite-spin MP2, SOS-MP2  |  ✓  |   ○  |   ○  |
 | SCS-MI-MP2                         |  ○  |   ○  |   ○  |
 | Orbital-optimized MP2, OOMP2       |  ○  |   ○  |   ○  |
 | κ-OOMP2                            |  ○  |   ○  |   ○  |
@@ -57,8 +57,8 @@ doubles sum; PySCF `mp.MP2(mf, frozen=N)` convention) on closed-shell RMP2 and
 RI-MP2 (`reg_frozen-core-mp2-h2o`, `MP2Result::frozen`). **SCS-MP2** is the same
 RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 `mp2_os_scale` / `mp2_ss_scale` (defaults 1.0; SCS: 1.2 / ⅓;
-`reg_scs-mp2-h2o-sto3g`). SOS-MP2 (opposite-spin only) remains ○ as a dedicated
-product flag. Energy only: no gradients, no frozen-core UMP2, no RI-UMP2.
+`reg_scs-mp2-h2o-sto3g`; SOS: 1.3 / 0, Jung et al. JCP 121, 9793 (2004),
+`reg_sos-mp2-h2o-sto3g`). Energy only: no gradients, no frozen-core UMP2, no RI-UMP2.
 Canonical mode still materializes the full in-memory ERI tensor in the method's
 private workspace.
 
