@@ -122,7 +122,7 @@ completeness. Each item should ship one textbook regression under
 | # | Task | Why it is breadth | Stay out of scope |
 | - | ---- | ----------------- | ----------------- |
 | 1 | ~~**FIRE minimizer**~~ | **SHIPPED 2026-07-23** (`cpu::minimizer::FIRE`, `reg_fire_lj_dimer`) | — |
-| 2 | **Soft-core LJ (λ)** | New potential shape; unblocks one-leg FEP later without inventing free-energy infra now | Full alchemical suite, soft-core Coulomb, CUDA pair styles |
+| 2 | ~~**Soft-core LJ (λ)**~~ | **SHIPPED 2026-07-23** (`cpu::PairLJSoft`, `reg_lj_soft_dimer`) | — |
 | 3 | **Widom insertion** (NVT, hard-sphere or cut LJ) | Free-energy *estimator* on MC/MD energy eval; different from μVT GCMC | CBMC, absolute solvation protocols |
 | 4 | **PIMD skeleton** (harmonic or free particle first) | Second real consumer of `IdentityReplication` + bead coupling; nuclear-quantum axis | RPMD estimators, ring-polymer contraction, multi-GPU |
 | 5 | **Variable-cell Minimize** (classical virial or PW strain-FD stress) | Cell DOFs in the optimizer — never exercised | Fully anisotropic PR cell dynamics, joint cell+atom fancy coords |

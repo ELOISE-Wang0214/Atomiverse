@@ -83,7 +83,7 @@ Bonded forces are cross-validated against LAMMPS in
 | Lennard–Jones PME                   |  ○  |   ○  |
 | Fast multipole electrostatics       |  ○  |   ○  |
 | Multilevel summation method         |  ○  |   ○  |
-| Soft-core Lennard–Jones potential   |  ○  |   ○  |
+| Soft-core Lennard–Jones potential   |  ✓  |   ○  |
 | Soft-core Coulomb potential         |  ○  |   ○  |
 
 Notes:
@@ -109,6 +109,10 @@ Notes:
 - Open-boundary **FMM tree math** (`FmmTree`) is validated against direct
   Coulomb sums (`reg_fmm_point_charges`) and powers CFMM-J on the SCF path;
   it is **not** a periodic MD `KSpace` style, so the FMM row above stays ○.
+- **Soft-core LJ** (`cpu::PairLJSoft`) is Beutler/GROMACS **one-leg appearance**
+  form with public `lambda` (default 1 = hard shifted LJ parity). Not LAMMPS
+  `lj/cut/soft`. Soft-core Coulomb remains ○. Regression:
+  `regressions/forcefield/lj_soft_dimer`.
 
 ## 3. Polarizable Force Fields
 

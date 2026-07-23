@@ -6,6 +6,7 @@ CPU-only breadth-first queue from `docs/roadmap/index.md`. CUDA is a separate
 ownership lane and is not part of this campaign.
 
 - ~~fire-minimizer~~ — **SHIPPED 2026-07-23** Bitzek FIRE 1.0 as `cpu::minimizer::FIRE`; spec deleted, history in git log
+- ~~soft-core-lj~~ — **SHIPPED 2026-07-23** `cpu::PairLJSoft` Beutler soft-core LJ; spec deleted, history in git log
 
 ## `backend-mirror` chain — CPU/CUDA layout rewrite (2026-07-22)
 
