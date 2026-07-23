@@ -218,7 +218,19 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @throws std::invalid_argument when n_states is outside [1, n_occ]
     ///         or the system has no virtual orbitals.
     IPADC2Result ip_adc2(int n_states = 1) const;
-    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
+    /// @brief Strict EA-ADC(2) electron-attachment energies of the most recent
+    ///        `run()` — Schirmer, Phys. Rev. A **26**, 2395 (1982); matches
+    ///        PySCF `adc.ADC` with `method='adc(2)'` and `method_type='ea'`.
+    ///        Singles = virtual (1p) space with second-order \(M_{ab}\);
+    ///        doubles = 2p–1h with zeroth-order diagonal; first-order
+    ///        singles–doubles coupling via \((ia|bc)\). No ADC(2)-x / ADC(3).
+    /// @param n_states Number of lowest EA roots (1 ≤ n_states ≤
+    ///                 n_virt + n_occ·n_virt²; dimensionless count).
+    /// @return Attachment energies ω [eV] and the MP2 correlation energy
+    ///         [Hartree] of the N-electron RHF reference.
+    /// @throws std::invalid_argument when n_states is out of range or the
+    ///         system has no virtual orbitals.
+    EAADC2Result ea_adc2(int n_states = 1) const;    /// @brief Singlet EOM-EE-CCSD excitation energies — drives a fresh RHF
     ///        (materializes ERI), spin-orbital Gauss–Stanton CCSD, then the
     ///        non-symmetric EOM-EE Jacobian (Wang, Tu & Wang, JCTC **10**,
     ///        5567 (2014); Stanton & Bartlett, J. Chem. Phys. **98**, 7029

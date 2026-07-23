@@ -17,7 +17,12 @@
 /// `method='adc(2)'`, `method_type='ip'`). Second-order M_ij, first-order
 /// 1h–2h1p coupling, zeroth-order 2h1p diagonal; sigma is sign-flipped so
 /// eigenvalues are positive ionization potentials.
-///
+/// @brief Strict ADC(2) EE / EA energies on closed-shell RHF (PySCF twin).
+/// EE formulas follow PySCF `pyscf.adc.radc_ee` (get_imds / matvec for
+/// t_ij^ab = (ia|bj) / (ε_i + ε_j − ε_a − ε_b). EA formulas follow
+/// `pyscf.adc.radc_ea` (M_ab singles intermediate + 1p / 2p–1h matvec).
+/// Non-symmetric Davidson on the singles+doubles ISR matrix; zeroth-order
+/// doubles diagonal only (strict ADC(2), not ADC(2)-x).///
 /// References: Schirmer, Phys. Rev. A 26, 2395 (1982); Trofimov & Schirmer,
 /// J. Phys. B 28, 2299 (1995); PySCF ADC module (doi:10.1063/5.0135290).
 
@@ -880,6 +885,369 @@ double mp2_corr_ha_(const xt::xtensor<double, 4>& t2,
     return e;
 }
 
+inline int idx_iab(int i, int a, int b, int nvir) {
+    return (i * nvir + a) * nvir + b;
+}
+
+/// EA-ADC(2) singles intermediate M_ab [nvir × nvir] (PySCF radc_ea get_imds,
+/// method == "adc(2)" only — no ADC(3) terms).
+xt::xtensor<double, 2> build_mab_ea_(const xt::xtensor<double, 4>& t2,
+                                     const xt::xtensor<double, 4>& ovvo,
+                                     const RealVector& eps, int nocc,
+                                     int nvir) {
+    xt::xtensor<double, 2> Mab =
+        xt::zeros<double>({static_cast<std::size_t>(nvir),
+                           static_cast<std::size_t>(nvir)});
+    // Zeroth order: δ_ab ε_a
+    for (int a = 0; a < nvir; ++a)
+        Mab(a, a) = eps(static_cast<std::size_t>(nocc + a));
+
+    // Second-order t2 × ovvo contractions (strict ADC(2)).
+    // Coefficients: 1.5*0.5 = 0.75, 0.5*0.5 = 0.25.
+    for (int a = 0; a < nvir; ++a) {
+        for (int b = 0; b < nvir; ++b) {
+            double s = 0.0;
+            for (int l = 0; l < nocc; ++l) {
+                for (int m = 0; m < nocc; ++m) {
+                    for (int d = 0; d < nvir; ++d) {
+                        const double t_lmad = t2(l, m, a, d);
+                        const double t_mlad = t2(m, l, a, d);
+                        const double t_lmbd = t2(l, m, b, d);
+                        const double t_mlbd = t2(m, l, b, d);
+                        const double ov_lbdm = ovvo(l, b, d, m); // lbdm
+                        const double ov_ldbm = ovvo(l, d, b, m); // ldbm
+                        const double ov_ladm = ovvo(l, a, d, m); // ladm
+                        const double ov_ldam = ovvo(l, d, a, m); // ldam
+
+                        s -= 0.75 * t_lmad * ov_lbdm;
+                        s += 0.25 * t_mlad * ov_lbdm;
+                        s += 0.25 * t_lmad * ov_ldbm;
+                        s -= 0.25 * t_mlad * ov_ldbm;
+
+                        s -= 0.75 * t_lmbd * ov_ladm;
+                        s += 0.25 * t_mlbd * ov_ladm;
+                        s += 0.25 * t_lmbd * ov_ldam;
+                        s -= 0.25 * t_mlbd * ov_ldam;
+                    }
+                }
+            }
+            Mab(a, b) += s;
+        }
+    }
+    return Mab;
+}
+
+/// EA-ADC(2) matvec on 1p + 2p–1h (PySCF radc_ea matvec, adc(2) only).
+void matvec_ea_(const xt::xtensor<double, 2>& Mab, const MoBlocks& bl,
+                const RealVector& eps, int nocc, int nvir,
+                const std::vector<double>& r, std::vector<double>& s) {
+    const int ns = nvir;
+    const int nd = nocc * nvir * nvir;
+    const int dim = ns + nd;
+    s.assign(static_cast<std::size_t>(dim), 0.0);
+
+    // s1 = Mab @ r1
+    for (int a = 0; a < nvir; ++a) {
+        double v = 0.0;
+        for (int b = 0; b < nvir; ++b)
+            v += Mab(a, b) * r[static_cast<std::size_t>(b)];
+        s[static_cast<std::size_t>(a)] = v;
+    }
+
+    // s2 = D_iab * r2  (D = −ε_i + ε_a + ε_b)
+    for (int i = 0; i < nocc; ++i)
+        for (int a = 0; a < nvir; ++a)
+            for (int b = 0; b < nvir; ++b) {
+                const int p = idx_iab(i, a, b, nvir);
+                const double D =
+                    -eps(static_cast<std::size_t>(i))
+                    + eps(static_cast<std::size_t>(nocc + a))
+                    + eps(static_cast<std::size_t>(nocc + b));
+                s[static_cast<std::size_t>(ns + p)] =
+                    D * r[static_cast<std::size_t>(ns + p)];
+            }
+
+    const auto& ovvv = bl.ovvv; // (ia|bc) = [i,a,b,c]
+
+    // s1 += 2 * einsum('icab,ibc->a', ovvv, r2)
+    //     −     einsum('ibac,ibc->a', ovvv, r2)
+    for (int a = 0; a < nvir; ++a) {
+        double acc = 0.0;
+        for (int i = 0; i < nocc; ++i)
+            for (int bb = 0; bb < nvir; ++bb)
+                for (int c = 0; c < nvir; ++c) {
+                    const double r2 =
+                        r[static_cast<std::size_t>(
+                            ns + idx_iab(i, bb, c, nvir))];
+                    // ovvv[i,c,a,b] = (ic|ab); ovvv[i,b,a,c] = (ib|ac)
+                    acc += 2.0 * ovvv(i, c, a, bb) * r2;
+                    acc -= ovvv(i, bb, a, c) * r2;
+                }
+        s[static_cast<std::size_t>(a)] += acc;
+    }
+
+    // s2 += einsum('icab,a->ibc', ovvv, r1)
+    //       → s2[i,b,c] += Σ_a ovvv[i,c,a,b] * r1[a]
+    for (int i = 0; i < nocc; ++i)
+        for (int bb = 0; bb < nvir; ++bb)
+            for (int c = 0; c < nvir; ++c) {
+                double acc = 0.0;
+                for (int a = 0; a < nvir; ++a)
+                    acc += ovvv(i, c, a, bb)
+                           * r[static_cast<std::size_t>(a)];
+                s[static_cast<std::size_t>(ns + idx_iab(i, bb, c, nvir))] +=
+                    acc;
+            }
+}
+
+/// Dense / Davidson eigensolver for EA-ADC(2).
+std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
+                                     const MoBlocks& bl, const RealVector& eps,
+                                     int nocc, int nvir, int nroots) {
+    const int ns = nvir;
+    const int nd = nocc * nvir * nvir;
+    const int dim = ns + nd;
+    constexpr int kDenseCap = 400;
+
+    if (dim <= kDenseCap) {
+        xt::xtensor<double, 2> H =
+            xt::zeros<double>({static_cast<std::size_t>(dim),
+                               static_cast<std::size_t>(dim)});
+        std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
+        std::vector<double> s;
+        for (int k = 0; k < dim; ++k) {
+            e[static_cast<std::size_t>(k)] = 1.0;
+            matvec_ea_(Mab, bl, eps, nocc, nvir, e, s);
+            for (int i = 0; i < dim; ++i)
+                H(i, k) = s[static_cast<std::size_t>(i)];
+            e[static_cast<std::size_t>(k)] = 0.0;
+        }
+        auto w = dgeev_real_sorted_(H);
+        if (static_cast<int>(w.size()) < nroots)
+            throw std::runtime_error(
+                "RHF::ea_adc2: fewer real eigenvalues than n_states");
+        w.resize(static_cast<std::size_t>(nroots));
+        return w;
+    }
+
+    // Preconditioner diagonal
+    std::vector<double> diag(static_cast<std::size_t>(dim));
+    for (int a = 0; a < nvir; ++a)
+        diag[static_cast<std::size_t>(a)] = Mab(a, a);
+    for (int i = 0; i < nocc; ++i)
+        for (int a = 0; a < nvir; ++a)
+            for (int b = 0; b < nvir; ++b) {
+                const int p = ns + idx_iab(i, a, b, nvir);
+                diag[static_cast<std::size_t>(p)] =
+                    -eps(static_cast<std::size_t>(i))
+                    + eps(static_cast<std::size_t>(nocc + a))
+                    + eps(static_cast<std::size_t>(nocc + b));
+            }
+
+    std::vector<int> order(static_cast<std::size_t>(ns));
+    for (int i = 0; i < ns; ++i)
+        order[static_cast<std::size_t>(i)] = i;
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return diag[static_cast<std::size_t>(a)]
+               < diag[static_cast<std::size_t>(b)];
+    });
+
+    const int max_space = std::min(dim, std::max(4 * nroots, 20));
+    const int max_cycle = 80;
+    const double tol = 1e-8;
+
+    std::vector<std::vector<double>> V;
+    V.reserve(static_cast<std::size_t>(max_space));
+    for (int k = 0; k < nroots; ++k) {
+        std::vector<double> v(static_cast<std::size_t>(dim), 0.0);
+        v[static_cast<std::size_t>(order[static_cast<std::size_t>(k)])] = 1.0;
+        V.push_back(std::move(v));
+    }
+
+    auto orthonormalize_last = [&]() {
+        auto& v = V.back();
+        for (std::size_t j = 0; j + 1 < V.size(); ++j) {
+            double dot = 0.0;
+            for (int i = 0; i < dim; ++i)
+                dot += V[j][static_cast<std::size_t>(i)]
+                       * v[static_cast<std::size_t>(i)];
+            for (int i = 0; i < dim; ++i)
+                v[static_cast<std::size_t>(i)] -=
+                    dot * V[j][static_cast<std::size_t>(i)];
+        }
+        double nrm = 0.0;
+        for (double x : v)
+            nrm += x * x;
+        nrm = std::sqrt(nrm);
+        if (nrm < 1e-14)
+            return false;
+        for (double& x : v)
+            x /= nrm;
+        return true;
+    };
+
+    std::vector<std::vector<double>> W;
+    std::vector<double> roots(static_cast<std::size_t>(nroots), 0.0);
+
+    for (int cycle = 0; cycle < max_cycle; ++cycle) {
+        while (W.size() < V.size()) {
+            std::vector<double> s;
+            matvec_ea_(Mab, bl, eps, nocc, nvir, V[W.size()], s);
+            W.push_back(std::move(s));
+        }
+        const int m = static_cast<int>(V.size());
+        xt::xtensor<double, 2> Hm =
+            xt::zeros<double>({static_cast<std::size_t>(m),
+                               static_cast<std::size_t>(m)});
+        for (int i = 0; i < m; ++i)
+            for (int j = 0; j < m; ++j) {
+                double dot = 0.0;
+                for (int k = 0; k < dim; ++k)
+                    dot += V[static_cast<std::size_t>(i)]
+                              [static_cast<std::size_t>(k)]
+                           * W[static_cast<std::size_t>(j)]
+                                [static_cast<std::size_t>(k)];
+                Hm(i, j) = dot;
+            }
+
+        // Dense dgeev on the projected matrix; need right eigenvectors for
+        // residual construction (reuse column-major path with jobvr='V').
+        std::vector<double> A(static_cast<std::size_t>(m * m));
+        for (int i = 0; i < m; ++i)
+            for (int j = 0; j < m; ++j)
+                A[static_cast<std::size_t>(i + j * m)] = Hm(i, j);
+        std::vector<double> wr(static_cast<std::size_t>(m));
+        std::vector<double> wi(static_cast<std::size_t>(m));
+        std::vector<double> vr(static_cast<std::size_t>(m * m));
+        char jobvl = 'N', jobvr = 'V';
+        int ldvl = 1, ldvr = m, info = 0;
+        int lwork = -1;
+        double wkopt = 0.0;
+        std::vector<double> vl(1);
+        dgeev_(&jobvl, &jobvr, &m, A.data(), &m, wr.data(), wi.data(),
+               vl.data(), &ldvl, vr.data(), &ldvr, &wkopt, &lwork, &info);
+        lwork = static_cast<int>(wkopt);
+        std::vector<double> work(static_cast<std::size_t>(lwork));
+        dgeev_(&jobvl, &jobvr, &m, A.data(), &m, wr.data(), wi.data(),
+               vl.data(), &ldvl, vr.data(), &ldvr, work.data(), &lwork,
+               &info);
+        if (info != 0)
+            throw std::runtime_error(
+                "RHF::ea_adc2: Davidson projected dgeev failed");
+
+        // Collect real Ritz values with indices
+        std::vector<std::pair<double, int>> real_ritz;
+        for (int i = 0; i < m; ++i) {
+            if (std::abs(wi[static_cast<std::size_t>(i)]) <= 1e-8
+                && wr[static_cast<std::size_t>(i)] > -1e-6)
+                real_ritz.emplace_back(wr[static_cast<std::size_t>(i)], i);
+        }
+        std::sort(real_ritz.begin(), real_ritz.end(),
+                  [](const auto& x, const auto& y) {
+                      return x.first < y.first;
+                  });
+        if (static_cast<int>(real_ritz.size()) < nroots)
+            throw std::runtime_error(
+                "RHF::ea_adc2: Davidson found too few real Ritz values");
+
+        bool all_conv = true;
+        std::vector<std::vector<double>> residuals;
+        for (int r = 0; r < nroots; ++r) {
+            roots[static_cast<std::size_t>(r)] =
+                real_ritz[static_cast<std::size_t>(r)].first;
+            const int idx = real_ritz[static_cast<std::size_t>(r)].second;
+            // Ritz vector in full space: x = V * y (y = right eigenvector)
+            std::vector<double> x(static_cast<std::size_t>(dim), 0.0);
+            for (int j = 0; j < m; ++j) {
+                const double yj =
+                    vr[static_cast<std::size_t>(j + idx * m)];
+                for (int i = 0; i < dim; ++i)
+                    x[static_cast<std::size_t>(i)] +=
+                        yj * V[static_cast<std::size_t>(j)]
+                              [static_cast<std::size_t>(i)];
+            }
+            std::vector<double> Ax;
+            matvec_ea_(Mab, bl, eps, nocc, nvir, x, Ax);
+            std::vector<double> res(static_cast<std::size_t>(dim));
+            double rn = 0.0;
+            for (int i = 0; i < dim; ++i) {
+                res[static_cast<std::size_t>(i)] =
+                    Ax[static_cast<std::size_t>(i)]
+                    - roots[static_cast<std::size_t>(r)]
+                          * x[static_cast<std::size_t>(i)];
+                rn += res[static_cast<std::size_t>(i)]
+                      * res[static_cast<std::size_t>(i)];
+            }
+            rn = std::sqrt(rn);
+            if (rn > tol)
+                all_conv = false;
+            residuals.push_back(std::move(res));
+        }
+        if (all_conv)
+            return roots;
+
+        // Expand subspace with preconditioned residuals
+        if (static_cast<int>(V.size()) + nroots > max_space) {
+            // Collapse onto current nroots Ritz vectors
+            std::vector<std::vector<double>> Vnew;
+            std::vector<std::vector<double>> Wnew;
+            for (int r = 0; r < nroots; ++r) {
+                const int idx =
+                    real_ritz[static_cast<std::size_t>(r)].second;
+                std::vector<double> x(static_cast<std::size_t>(dim), 0.0);
+                for (int j = 0; j < m; ++j) {
+                    const double yj =
+                        vr[static_cast<std::size_t>(j + idx * m)];
+                    for (int i = 0; i < dim; ++i)
+                        x[static_cast<std::size_t>(i)] +=
+                            yj * V[static_cast<std::size_t>(j)]
+                                  [static_cast<std::size_t>(i)];
+                }
+                Vnew.push_back(std::move(x));
+            }
+            V.swap(Vnew);
+            W.clear();
+            // Re-orthonormalize collapsed basis
+            for (std::size_t k = 0; k < V.size(); ++k) {
+                for (std::size_t j = 0; j < k; ++j) {
+                    double dot = 0.0;
+                    for (int i = 0; i < dim; ++i)
+                        dot += V[j][static_cast<std::size_t>(i)]
+                               * V[k][static_cast<std::size_t>(i)];
+                    for (int i = 0; i < dim; ++i)
+                        V[k][static_cast<std::size_t>(i)] -=
+                            dot * V[j][static_cast<std::size_t>(i)];
+                }
+                double nrm = 0.0;
+                for (double x : V[k])
+                    nrm += x * x;
+                nrm = std::sqrt(nrm);
+                if (nrm < 1e-14)
+                    continue;
+                for (double& x : V[k])
+                    x /= nrm;
+            }
+            continue;
+        }
+
+        for (int r = 0; r < nroots; ++r) {
+            std::vector<double> t = residuals[static_cast<std::size_t>(r)];
+            const double lam = roots[static_cast<std::size_t>(r)];
+            for (int i = 0; i < dim; ++i) {
+                const double den =
+                    diag[static_cast<std::size_t>(i)] - lam;
+                if (std::abs(den) > 1e-12)
+                    t[static_cast<std::size_t>(i)] /= den;
+            }
+            V.push_back(std::move(t));
+            if (!orthonormalize_last())
+                V.pop_back();
+        }
+    }
+    throw std::runtime_error(
+        "RHF::ea_adc2: Davidson did not converge within max_cycle");
+}
+
 } // namespace
 
 namespace {
@@ -1063,7 +1431,8 @@ std::vector<double> solve_ip_adc_(const xt::xtensor<double, 2>& Mij,
     return w;
 IPADC2Result RHF::ip_adc2(int n_states) const {
             "RHF::ip_adc2: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
+EAADC2Result RHF::ea_adc2(int n_states) const {
+            "RHF::ea_adc2: no SCF result — call run(frame) first");    const SlaterDeterminant& det = determinant();
     const IntegralPack& pack = integral_workspace_();
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
@@ -1093,13 +1462,26 @@ IPADC2Result RHF::ip_adc2(int n_states) const {
     const std::vector<double> ip_ha =
         solve_ip_adc_(Mij, bl.ovoo, eps, n_occ, n_vir, n_states);
     IPADC2Result out;
-    out.e_corr_mp2_ha = mp2_corr_ha_(t2, bl.ovvo, n_occ, n_vir);
+            "RHF::ea_adc2: no virtual orbitals (e.g. He/STO-3G — no fallback)");
+    // Full EA space: 1p singles + 2p–1h doubles
+    const int dim = n_vir + n_occ * n_vir * n_vir;
+    if (n_states < 1 || n_states > dim)
+        throw std::invalid_argument(
+            "RHF::ea_adc2: n_states must be in [1, n_vir+n_occ*n_vir^2="
+            + std::to_string(dim) + "]");
+    const xt::xtensor<double, 2> Mab =
+        build_mab_ea_(t2, bl.ovvo, eps, n_occ, n_vir);
+    const std::vector<double> omega_ha =
+        davidson_ea_adc_(Mab, bl, eps, n_occ, n_vir, n_states);
+    EAADC2Result out;    out.e_corr_mp2_ha = mp2_corr_ha_(t2, bl.ovvo, n_occ, n_vir);
     out.energy_ev.resize(static_cast<std::size_t>(n_states));
     for (int s = 0; s < n_states; ++s)
         out.energy_ev[static_cast<std::size_t>(s)] =
             ip_ha[static_cast<std::size_t>(s)] * units::kHartreeInEv;
     return out;}
-
+            omega_ha[static_cast<std::size_t>(s)] * units::kHartreeInEv;
+    return out;
+}
 } // namespace scf
 } // namespace cpu
 } // namespace ATV
