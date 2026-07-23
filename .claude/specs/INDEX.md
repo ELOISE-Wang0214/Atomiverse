@@ -9,6 +9,7 @@ the git log. Method census: `docs/roadmap/`.
 | ---- | ------ | ------ |
 | [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
 | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
+| [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — freeze-electrode-atoms |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
@@ -27,12 +28,6 @@ Do not re-create closed slugs without superseding intent.
 | `feat/cpu-next-tb-arch` | tb-sk-product, concrete-pw-method, concrete-gpw-method, concrete-nddo-method | Multi-element DFTB2; concrete PW/GPW/AM1-RM1 |
 | `feat/cpu-next-msamp` | qmmm-link-atoms, polarizable-qmmm, multi-cv-metad, multi-window-wham | Link atoms, pol QM/MM, ND metaD, WHAM (molrs) |
 | `feat/cpu-next-response` | full-grid-alda, analytic-tda-forces, true-nac-vectors, ri-mp2 | Full MO-product ALDA, CIS TDA forces, NAC vectors, RI-MP2 |
-
-**Hygiene (2026-07-23):** stale Grok clones under
-`~/.grok/worktrees/molcrafts-atomiverse/{cpu-deps,fix-cuda-pme,impl-kokkos}`
-removed. Unique Kokkos WIP preserved only as local branch
-`archive/impl-kokkos-wip` (not merged to `dev`). Roadmap resynced in
-`docs/roadmap/`.
 
 ## Closed earlier on `dev` (2026-07-23)
 
