@@ -41,6 +41,34 @@ TEST(GpwDataTable, EdlElementsHaveCorrectZion) {
     EXPECT_EQ(GthPotential(molrs::Element::Zn, "GTH-PBE-q12").zion, 12);
 }
 
+// Si GTH-PBE-q4 + DZVP-MOLOPT-GTH (gpw-pbesol-si table rows).
+TEST(GpwDataTable, SiliconPbeQ4AndMoloptDzvp) {
+    const GthPotential si = GthPotential(molrs::Element::Si, "GTH-PBE-q4");
+    EXPECT_EQ(si.zion, 4);
+    EXPECT_NEAR(si.rloc, 0.44000000, kTol);
+    ASSERT_EQ(si.cloc.size(), 1u);
+    EXPECT_NEAR(si.cloc[0], -6.26928833, kTol);
+    ASSERT_EQ(si.channels.size(), 2u);
+    EXPECT_EQ(si.channels[0].l, 0);
+    EXPECT_EQ(si.channels[0].nproj, 2);
+    EXPECT_NEAR(si.channels[0].r, 0.43563383, kTol);
+    EXPECT_NEAR(si.channels[0].hij(0, 0), 8.95174150, kTol);
+    EXPECT_EQ(si.channels[1].l, 1);
+    EXPECT_EQ(si.channels[1].nproj, 1);
+    EXPECT_NEAR(si.channels[1].hij(0, 0), 2.43127673, kTol);
+
+    const GaussianBasis b =
+        GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH");
+    EXPECT_EQ(b.element, molrs::Element::Si);
+    ASSERT_EQ(b.sets.size(), 1u);
+    EXPECT_EQ(b.sets[0].nexp(), 6);
+    EXPECT_EQ(b.sets[0].lmin, 0);
+    EXPECT_EQ(b.sets[0].lmax, 2);
+    EXPECT_EQ(b.sets[0].ncoef, 5);
+    EXPECT_NEAR(b.sets[0].exps[0], 2.693604434572, kTol);
+    EXPECT_NEAR(b.sets[0].coef_at(0, 0), 0.015333179500, kTol);
+}
+
 // ac-003: Zn-q12 is the element that forces arbitrary-l support — it carries a
 // d (l=2) nonlocal projector channel. A table that silently dropped it would
 // still "work" and be physically wrong, so assert the channel structure.

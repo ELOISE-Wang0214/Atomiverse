@@ -1,5 +1,5 @@
 /// @file src/cpu/gpw/internal/xc_grid_gga.cpp
-/// @brief Implementation of the PBE GGA XC path on the grid (see header).
+/// @brief Implementation of pure GGA XC paths on the grid (see header).
 ///
 /// GGA potential derivation (closed shell). The XC energy is
 ///   E_xc = integral e(rho_a,rho_b,sigma_aa,sigma_ab,sigma_bb) dr,  e = rho*exc,
@@ -13,15 +13,22 @@
 
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 
+#include <array>
+#include <stdexcept>
+
 #include "atomiverse/cpu/gpw/internal/grid_fft.h"
-#include "atomiverse/cpu/scf/xc_functional.h" // shared libxc-parity PBE
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 namespace ATV {
 namespace cpu {
 namespace gpw {
 
-XcOnGrid xc_grid_pbe(const UniformGrid& grid,
-                     const std::vector<double>& rho_r) {
+XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
+                     cpu::scf::XCType xc) {
+    if (!cpu::scf::is_gga(xc) || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
+        throw std::invalid_argument(
+            "xc_grid_gga: only pure GGA XCType (PBE, PBEsol, …) supported");
+    }
     const long ng = grid.npts();
     const double w = grid.weight();
 
@@ -44,11 +51,11 @@ XcOnGrid xc_grid_pbe(const UniformGrid& grid,
         // sigma_aa = sigma_ab = sigma_bb = sigma/4.
         const double ra = 0.5 * rho, rb = 0.5 * rho;
         const double s = 0.25 * sigma;
-        const ATV::cpu::scf::XCOutput xc = ATV::cpu::scf::evaluate_xc(
-            ATV::cpu::scf::XCType::PBE, ra, rb, s, s, s);
-        e += w * rho * xc.exc;
-        out.vxc_r[g] = xc.vrho_alpha; // local part; divergence term added below
-        const double vsig_eff = xc.vsigma_aa + 0.5 * xc.vsigma_ab;
+        const ATV::cpu::scf::XCOutput xco =
+            ATV::cpu::scf::evaluate_xc(xc, ra, rb, s, s, s);
+        e += w * rho * xco.exc;
+        out.vxc_r[g] = xco.vrho_alpha; // local part; divergence term added below
+        const double vsig_eff = xco.vsigma_aa + 0.5 * xco.vsigma_ab;
         flux[0][g] = vsig_eff * gx;
         flux[1][g] = vsig_eff * gy;
         flux[2][g] = vsig_eff * gz;
@@ -60,6 +67,16 @@ XcOnGrid xc_grid_pbe(const UniformGrid& grid,
         out.vxc_r[g] -= divflux[g];
 
     return out;
+}
+
+XcOnGrid xc_grid_pbe(const UniformGrid& grid,
+                     const std::vector<double>& rho_r) {
+    return xc_grid_gga(grid, rho_r, cpu::scf::XCType::PBE);
+}
+
+XcOnGrid xc_grid_pbesol(const UniformGrid& grid,
+                        const std::vector<double>& rho_r) {
+    return xc_grid_gga(grid, rho_r, cpu::scf::XCType::PBEsol);
 }
 
 } // namespace gpw

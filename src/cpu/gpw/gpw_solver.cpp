@@ -1189,8 +1189,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                                  : solve_poisson(grid, n_tot);
         auto t2p = ProfClk::now();
-        const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
-                                                  : xc_grid_pade(grid, rho);
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe(grid, rho)
+                : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
+                                            : xc_grid_pade(grid, rho));
         auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)

@@ -52,6 +52,25 @@ TEST(GpwXcGGA, ConstantDensityLdaLimit) {
     EXPECT_NEAR(xc.vxc_r[grid.npts() / 2], ref.vrho_alpha, 1e-9);
 }
 
+TEST(GpwXcGGA, PBEsolConstantDensityMatchesPBE) {
+    using ATV::cpu::gpw::xc_grid_pbesol;
+    const double cell[3] = {8.0, 8.0, 8.0};
+    UniformGrid grid = make_uniform_grid(cell, 150.0);
+    const double rho0 = 0.2;
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), rho0);
+
+    XcOnGrid pbe = xc_grid_pbe(grid, rho);
+    XcOnGrid sol = xc_grid_pbesol(grid, rho);
+    EXPECT_NEAR(sol.e_xc, pbe.e_xc, 1e-12 * std::max(1.0, std::abs(pbe.e_xc)));
+    EXPECT_NEAR(sol.vxc_r[0], pbe.vxc_r[0], 1e-12);
+
+    const ATV::cpu::scf::XCOutput ref = ATV::cpu::scf::evaluate_xc(
+        ATV::cpu::scf::XCType::PBEsol, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
+    const double volume = cell[0] * cell[1] * cell[2];
+    EXPECT_NEAR(sol.e_xc, volume * rho0 * ref.exc,
+                1e-9 * std::abs(volume * rho0 * ref.exc));
+}
+
 TEST(GpwXcGGA, GaussianEnergyNegative) {
     const double cell[3] = {10.0, 10.0, 10.0};
     UniformGrid grid = make_uniform_grid(cell, 200.0);
