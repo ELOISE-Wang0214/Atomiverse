@@ -80,6 +80,28 @@ overlaps; MetalWalls / literature for MW-only physics.
 | Buckingham pair (LAMMPS `buck`) | [buckingham-pair-lammps](buckingham-pair-lammps.md) | `regressions/forcefield/buckingham-pair-lammps` | lammps (`perf_exempt`) |
 | Four-site TIP4P foothold | [four-site-tip4p-foothold](four-site-tip4p-foothold.md) | `regressions/md/four-site-tip4p-foothold` | lammps (ratio **0.338**) |
 
+## Index — MetalWalls capability wave 2 (2026-07-24)
+
+Classical electrochemical MD + LAMMPS-overlap force fields (map E2–E4, E6–E8,
+E10). Offline pins only — see
+[metalwalls-method-handoff](../../developer/metalwalls-method-handoff.md) and
+`tools/metalwalls_oracle/`. **Oracle priority:** LAMMPS when the feature
+overlaps; MetalWalls / literature for MW-only physics. Fair walls from
+REFERENCE / handoff (`ratio` or `perf_exempt`).
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Const-pot CG large multi-site electrode (E2) | [const-pot-cg-large-electrode](const-pot-cg-large-electrode.md) | `regressions/md/const-pot-cg-large-electrode` | metalwalls / dense BO dual (`perf_exempt`) |
+| Electrode charge predictor (Kolafa ASPC, E2) | [electrode-charge-predictor](electrode-charge-predictor.md) | `regressions/md/electrode-charge-predictor` | metalwalls (`perf_exempt`) |
+| Finite-field + single electrode (Dufils 3D, E3) | [finite-field-single-electrode](finite-field-single-electrode.md) | `regressions/md/finite-field-single-electrode` | metalwalls / literature (`perf_exempt`) |
+| Bulk PIM self-consistent induced dipoles (E4) | [pim-induced-dipole-bulk](pim-induced-dipole-bulk.md) | `regressions/md/pim-induced-dipole-bulk` | metalwalls (`perf_exempt`) |
+| Rigid piston electrode constant \(P_z\) (E6) | [piston-electrode-pz](piston-electrode-pz.md) | `regressions/md/piston-electrode-pz` | metalwalls (`perf_exempt`) |
+| Thomas–Fermi finite metallicity electrode (E7) | [thomas-fermi-electrode](thomas-fermi-electrode.md) | `regressions/md/thomas-fermi-electrode` | metalwalls (`perf_exempt`) |
+| Born–Mayer–Huggins pair foothold (E8) | [born-repulsion-foothold](born-repulsion-foothold.md) | `regressions/forcefield/born-repulsion-foothold` | lammps `pair_style born` (`perf_exempt`) |
+| Fumi–Tosi multi-type Born + Coulomb NaCl (E8) | [fumi-tosi-nacl](fumi-tosi-nacl.md) | `regressions/forcefield/fumi-tosi-nacl` | lammps `hybrid/overlay born coul/cut` (`perf_exempt`) |
+| Steele 10-4-3 wall (Ar single-point, E8) | [steele-wall-argon](steele-wall-argon.md) | `regressions/forcefield/steele-wall-argon` | lammps `wall/lj1043` (`perf_exempt`) |
+| Capacitance from electrode charge fluctuations (E10) | [capacitance-charge-fluctuation](capacitance-charge-fluctuation.md) | `regressions/md/capacitance-charge-fluctuation` | literature (`perf_exempt`) |
+
 ## Index — CP2K capability wave 1 (2026-07-23)
 
 | Method | Page | Regression |
