@@ -1,10 +1,10 @@
 /// @file cpu/comm/reduce.h
 /// @brief End-of-step MPI reductions for MD: energy, kinetic, stress.
 ///
-/// `Reduce` does one batched `MPI_Allreduce(SUM)` of the 18 per-rank
+/// `Reduce` does one batched `MPI_Allreduce(SUM)` of the 20 per-rank
 /// scalar partials `{energy, energy_pair, energy_bond, energy_angle,
-/// energy_dihedral, energy_improper, kinetic, stress[6], stress_kinetic[6]}`
-/// into a single
+/// energy_dihedral, energy_improper, energy_charging_work, kinetic,
+/// stress[6], stress_kinetic[6]}` into a single
 /// collective, so per-rank bookkeeping is globally consistent before
 /// observers or the snapshot publisher read the frame's scalar state.
 /// `n_local` is NOT reduced — it is authoritative per rank from
@@ -29,7 +29,7 @@ namespace cpu {
 namespace md {
 namespace mpi {
 
-/// @brief Batched 18-double `MPI_Allreduce(SUM)` of the per-rank energy,
+/// @brief Batched 20-double `MPI_Allreduce(SUM)` of the per-rank energy,
 /// kinetic, and stress partials. Single-rank: no-op (state already global).
 ///
 /// `every` sets the reduction cadence: with `every == 1` (default) the

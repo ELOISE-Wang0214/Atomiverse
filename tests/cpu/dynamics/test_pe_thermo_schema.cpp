@@ -37,6 +37,7 @@ TEST(PeThermoSchema, TypedMetaDefaultsToZero) {
     EXPECT_EQ(frame.meta.get(kEnergyAngle), 0.0);
     EXPECT_EQ(frame.meta.get(kEnergyDihedral), 0.0);
     EXPECT_EQ(frame.meta.get(kEnergyImproper), 0.0);
+    EXPECT_EQ(frame.meta.get(kEnergyChargingWork), 0.0);
     EXPECT_EQ(frame.meta.get(kKinetic), 0.0);
     EXPECT_EQ(frame.meta.get(kConserved), 0.0);
     const auto& stress = frame.meta.get(kStress);
@@ -55,6 +56,7 @@ TEST(PeThermoSchema, ZeroEnergyClearsAllEnergyAccumulators) {
     frame.meta.set(kEnergyAngle, 0.5);
     frame.meta.set(kEnergyDihedral, 0.25);
     frame.meta.set(kEnergyImproper, 0.1);
+    frame.meta.set(kEnergyChargingWork, 0.4);
     frame.meta.set(kKinetic, 99.0); // should NOT be touched by ZeroEnergy
     auto stress = frame.meta.get(kStress);
     stress[0] = 1.0; // should NOT be touched by ZeroEnergy
@@ -70,6 +72,7 @@ TEST(PeThermoSchema, ZeroEnergyClearsAllEnergyAccumulators) {
     EXPECT_EQ(frame.meta.get(kEnergyAngle), 0.0);
     EXPECT_EQ(frame.meta.get(kEnergyDihedral), 0.0);
     EXPECT_EQ(frame.meta.get(kEnergyImproper), 0.0);
+    EXPECT_EQ(frame.meta.get(kEnergyChargingWork), 0.0);
     // ZeroEnergy must NOT touch kinetic or stress.
     EXPECT_EQ(frame.meta.get(kKinetic), 99.0);
     EXPECT_EQ(frame.meta.get(kStress)[0], 1.0);

@@ -7,6 +7,7 @@ the git log. Method census: `docs/roadmap/`.
 
 | Spec | Branch | Status |
 | ---- | ------ | ------ |
+| [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — E1 charging work \(-\sum\Psi_i Q_i\) |
 | [gpw-pbe-d3bj-ice](gpw-pbe-d3bj-ice/) | `wf/gpw-pbe-d3bj-ice` | open — GPW PBE-D3(BJ) periodic water dimer |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)

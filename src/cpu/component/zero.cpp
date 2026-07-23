@@ -50,6 +50,7 @@ void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
     meta.get(kEnergyAngle) = 0;
     meta.get(kEnergyDihedral) = 0;
     meta.get(kEnergyImproper) = 0;
+    meta.get(kEnergyChargingWork) = 0;
 }
 
 // ── ZeroStress ───────────────────────────────────────────────────
