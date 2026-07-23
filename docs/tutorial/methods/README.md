@@ -10,6 +10,8 @@ wave:
 
 - `pyscf-method-loop` — molecular post-HF / response (arg `write_tutorials`)
 - `cp2k-method-loop` — GPW / PW / periodic DFT vs offline CP2K pins
+- `metalwalls-method-loop` — classical electrochemical MD + LAMMPS-overlap MD
+  (arg `write_tutorials`; LAMMPS oracle when feature overlaps; MW for MW-only)
 
 ## Required sections
 
@@ -18,7 +20,7 @@ wave:
 | Summary | What / when / API / regression path |
 | Method | Equations, assumptions, exclusions |
 | Implementation | Minimal public C++; how to run `reg_<slug>` |
-| Validation | Hard-coded pins from `REFERENCE.md` (PySCF or CP2K) |
+| Validation | Hard-coded pins from `REFERENCE.md` (PySCF, CP2K, or LAMMPS/MetalWalls) |
 | Performance | Fair wall \(T_{\mathrm{ATV}}/T_{\mathrm{oracle}}\) (or `perf_exempt`) |
 | Limitations | Scope + known debt |
 | References | Paths + literature |
@@ -47,6 +49,36 @@ docs/tutorial/methods/<slug>.md
 - Speed / ratios: `docs/developer/cp2k-method-handoff.md` (fair wall or `perf_exempt`)
 - Oracle: `tools/cp2k_oracle/README.md` (offline pins only; CP2K never in ctest)
 - Queue / design: `docs/developer/cp2k-method-queue.md`, `cp2k-method-loop.md`
+
+**MetalWalls / classical electrochem + LAMMPS-overlap MD:**
+
+- Accuracy: `regressions/md/<slug>/REFERENCE.md` or
+  `regressions/forcefield/<slug>/REFERENCE.md` (`oracle: lammps|metalwalls|literature`)
+- Speed / ratios: `docs/developer/metalwalls-method-handoff.md` (fair wall or `perf_exempt`)
+- Oracle: `tools/metalwalls_oracle/README.md` (offline pins only; never live in ctest)
+- Queue / design: `docs/developer/metalwalls-method-queue.md`, `metalwalls-method-loop.md`
+- **Oracle priority:** if the feature also exists in LAMMPS, pin and fair-bench
+  vs **LAMMPS**. MetalWalls only for MW-only physics.
+
+## Index — MetalWalls capability wave 1 (2026-07-23)
+
+Classical electrochemical MD + LAMMPS-overlap MD (map E1–E3, E8–E9). Offline
+pins only — see [metalwalls-method-handoff](../../developer/metalwalls-method-handoff.md)
+and `tools/metalwalls_oracle/`. **Oracle priority:** LAMMPS when the feature
+overlaps; MetalWalls / literature for MW-only physics.
+
+| Method | Page | Regression | Oracle |
+| ------ | ---- | ---------- | ------ |
+| Const-pot BO parallel plate (madelung, E1) | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate.md) | `regressions/md/const-pot-bo-parallel-plate` | lammps ELECTRODE (`perf_exempt`) |
+| Freeze electrode atoms (`setforce 0`) | [freeze-electrode-atoms](freeze-electrode-atoms.md) | `regressions/md/freeze-electrode-atoms` | lammps (ratio **3.98**) |
+| Electrode total-charge observer | [const-pot-charge-observer](const-pot-charge-observer.md) | `regressions/md/const-pot-charge-observer` | lammps (`perf_exempt`) |
+| Charging work \(-\sum_i \Psi_i Q_i\) | [charging-work-energy](charging-work-energy.md) | `regressions/md/charging-work-energy` | literature MW/Scalfi (`perf_exempt`) |
+| Const-pot MD NVT short trajectory | [const-pot-md-nvt-short](const-pot-md-nvt-short.md) | `regressions/md/const-pot-md-nvt-short` | metalwalls (`perf_exempt`) |
+| Gaussian electrode charge kernels (E2) | [gaussian-electrode-charge](gaussian-electrode-charge.md) | `regressions/md/gaussian-electrode-charge` | literature Reed/MW (`perf_exempt`) |
+| Slab 2D Ewald foothold (Yeh–Berkowitz) | [slab-2d-ewald-foothold](slab-2d-ewald-foothold.md) | `regressions/md/slab-2d-ewald-foothold` | lammps (ratio **6.49**) |
+| External uniform E-field MD | [external-efield-md](external-efield-md.md) | `regressions/md/external-efield-md` | lammps (ratio **0.60**) |
+| Buckingham pair (LAMMPS `buck`) | [buckingham-pair-lammps](buckingham-pair-lammps.md) | `regressions/forcefield/buckingham-pair-lammps` | lammps (`perf_exempt`) |
+| Four-site TIP4P foothold | [four-site-tip4p-foothold](four-site-tip4p-foothold.md) | `regressions/md/four-site-tip4p-foothold` | lammps (ratio **0.338**) |
 
 ## Index — CP2K capability wave 1 (2026-07-23)
 

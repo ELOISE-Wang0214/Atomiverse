@@ -97,6 +97,26 @@ Suggested paths:
 Campaign handbook pages (technical-report style, one per regression slug).
 Full index and template: [methods/README](methods/README.md).
 
+### MetalWalls capability wave 1 (classical electrochem + LAMMPS-overlap MD)
+
+Offline LAMMPS / MetalWalls / literature pins only — see
+[metalwalls-method-handoff](../developer/metalwalls-method-handoff.md) and
+`tools/metalwalls_oracle/`. Narrative: [Ch. 10 Classical MD](ch10-classical-md.md).
+Oracle priority: **LAMMPS** when the feature overlaps; MetalWalls for MW-only.
+
+| Method | Page | Regression | Oracle |
+|--------|------|------------|--------|
+| Const-pot BO parallel plate (madelung, E1) | [const-pot-bo-parallel-plate](methods/const-pot-bo-parallel-plate.md) | `regressions/md/const-pot-bo-parallel-plate` | lammps (`perf_exempt`) |
+| Freeze electrode atoms (`setforce 0`) | [freeze-electrode-atoms](methods/freeze-electrode-atoms.md) | `regressions/md/freeze-electrode-atoms` | lammps (ratio **3.98**) |
+| Electrode total-charge observer | [const-pot-charge-observer](methods/const-pot-charge-observer.md) | `regressions/md/const-pot-charge-observer` | lammps (`perf_exempt`) |
+| Charging work \(-\sum_i \Psi_i Q_i\) | [charging-work-energy](methods/charging-work-energy.md) | `regressions/md/charging-work-energy` | literature (`perf_exempt`) |
+| Const-pot MD NVT short trajectory | [const-pot-md-nvt-short](methods/const-pot-md-nvt-short.md) | `regressions/md/const-pot-md-nvt-short` | metalwalls (`perf_exempt`) |
+| Gaussian electrode charge kernels (E2) | [gaussian-electrode-charge](methods/gaussian-electrode-charge.md) | `regressions/md/gaussian-electrode-charge` | literature (`perf_exempt`) |
+| Slab 2D Ewald foothold (Yeh–Berkowitz) | [slab-2d-ewald-foothold](methods/slab-2d-ewald-foothold.md) | `regressions/md/slab-2d-ewald-foothold` | lammps (ratio **6.49**) |
+| External uniform E-field MD | [external-efield-md](methods/external-efield-md.md) | `regressions/md/external-efield-md` | lammps (ratio **0.60**) |
+| Buckingham pair (LAMMPS `buck`) | [buckingham-pair-lammps](methods/buckingham-pair-lammps.md) | `regressions/forcefield/buckingham-pair-lammps` | lammps (`perf_exempt`) |
+| Four-site TIP4P foothold | [four-site-tip4p-foothold](methods/four-site-tip4p-foothold.md) | `regressions/md/four-site-tip4p-foothold` | lammps (ratio **0.338**) |
+
 ### CP2K capability wave 1 (GPW / PW / periodic)
 
 Offline CP2K pins only — see [cp2k-method-handoff](../developer/cp2k-method-handoff.md)
