@@ -32,16 +32,23 @@ class RKS : public MeanFieldMethod<RKS> {
 
     /// @brief Vertical TDA excitation energies of the most recent `run()`.
     ///
-    /// Casida TDA on the converged KS orbitals. For pure LSDA the A matrix
-    /// includes the full MO-product ALDA kernel
-    /// \((ia|f^{\mathrm{xc}}|jb)=\int\phi_i\phi_a\,f_{\mathrm{ALDA}}(n)\,
-    /// \phi_j\phi_b\,d\mathbf{r}\) on the KS quadrature grid (Dirac-exchange
-    /// second derivative; Casida 1995). Hybrid / GGA functionals keep the
-    /// HF-like CIS@RKS path (`ExcitedStatesResult::alda = false`).
+    /// Casida TDA on the converged KS orbitals:
+    /// - **LSDA:** full MO-product ALDA kernel
+    ///   \((ia|f^{\mathrm{xc}}|jb)=\int\phi_i\phi_a\,f_{\mathrm{ALDA}}(n)\,
+    ///   \phi_j\phi_b\,d\mathbf{r}\) (Dirac-exchange second derivative;
+    ///   Casida 1995) — `ExcitedStatesResult::alda = true`.
+    /// - **Global hybrid (B3LYP / PBE0):** exact-exchange fraction
+    ///   \(\alpha_{\mathrm{hf}}\) on the Casida **A** matrix
+    ///   (\(^{1}A=\delta\delta\Delta\varepsilon+2(ia|jb)-\alpha_{\mathrm{hf}}(ij|ab)\))
+    ///   plus the semi-local \(f^{\mathrm{xc}}\) kernel from a finite
+    ///   difference of \(V_{\mathrm{xc}}\) on the KS grid (Dreuw &
+    ///   Head-Gordon, Chem. Rev. 105, 4009 (2005)) —
+    ///   `alda = false`.
+    /// - **Pure GGA (PBE):** HF-like CIS@RKS fallback (`alda = false`).
     /// @param n_states Number of lowest excited states.
     /// @param channel  Singlet or triplet channel.
     /// @return Excitation energies [eV], transition properties;
-    ///         `alda == true` for the LSDA full-grid path.
+    ///         `alda == true` for the LSDA full-grid path only.
     ExcitedStatesResult
     tda(int n_states,
         ExcitationChannel channel = ExcitationChannel::singlet) const;

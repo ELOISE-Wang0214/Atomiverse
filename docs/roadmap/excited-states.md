@@ -7,7 +7,8 @@ TDA) and `RHF::tdhf` (full RPA) return excitation energies and length-gauge
 transition dipoles on a converged RHF reference
 (`regressions/scf/ch2o_tdhf`). **`RKS::tda`** on a converged KS reference uses
 the **full MO-product LSDA ALDA** kernel (`reg_h2_full_grid_alda`;
-`ExcitedStatesResult::alda`). Hybrid TDDFT (exact-exchange kernel) remains ○.
+`ExcitedStatesResult::alda`) and **hybrid TDDFT-TDA** with the exact-exchange
+kernel on B3LYP/PBE0 (`reg_h2-b3lyp-hybrid-tda`).
 **Analytic CIS/TDA forces** (default) and **true NAC vectors** ship
 (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
 `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
@@ -39,7 +40,8 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | TDDFT analytic gradient            |  ✓  |   ○  |   ○  |
 | TDDFT nonadiabatic coupling        |  ✓  |   ○  |   ○  |
 
-TDA-TDDFT is the LSDA ALDA path on `RKS::tda` (not hybrid). Analytic gradient
+TDA-TDDFT is the LSDA ALDA path and the global-hybrid exact-exchange path on
+`RKS::tda` (B3LYP/PBE0 singlet; full RPA-TDDFT still ○). Analytic gradient
 and NAC rows are the CIS/TDA members on `RHF` (analytic default); full KS
 TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 

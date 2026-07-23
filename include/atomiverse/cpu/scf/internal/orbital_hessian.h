@@ -98,6 +98,22 @@ class OrbitalHessian {
     /// @return Symmetric n_ov × n_ov matrix [Hartree].
     RealMatrix dense_minus(Channel ch) const;
 
+    /// @brief Explicit dense Casida **A** matrix with global-hybrid exact-
+    ///        exchange fraction `alpha_hf` (dimensionless in [0, 1]).
+    ///
+    /// Closed-shell spatial blocks (Hartree; real orbitals):
+    ///   ¹A_ai,bj = δ_ab δ_ij (ε_a − ε_i) + 2(ai|jb) − α_hf (ij|ab)
+    ///   ³A_ai,bj = δ_ab δ_ij (ε_a − ε_i)           − α_hf (ij|ab)
+    ///
+    /// `alpha_hf = 1` recovers the pure-HF A used by CIS / RHF-TDA;
+    /// hybrid TDDFT-TDA uses the functional's `hybrid_exchange_fraction`
+    /// (0.20 B3LYP, 0.25 PBE0) and adds the semi-local \(f^{\mathrm{xc}}\)
+    /// kernel separately (Dreuw & Head-Gordon, Chem. Rev. 105, 4009 (2005)).
+    /// @param ch        Excitation channel.
+    /// @param alpha_hf  Exact-exchange admixture in [0, 1].
+    /// @return Symmetric n_ov × n_ov matrix [Hartree].
+    RealMatrix dense_A(Channel ch, double alpha_hf) const;
+
     /// @brief Diagonal of (A + B)_ch — the standard Davidson preconditioner
     ///        for the matrix-free lowest-root solve (also reusable by the
     ///        CPHF/TDHF iterative solvers).
