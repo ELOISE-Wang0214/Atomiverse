@@ -11,8 +11,10 @@ the **full MO-product LSDA ALDA** kernel (`reg_h2_full_grid_alda`;
 kernel on B3LYP/PBE0 (`reg_h2-b3lyp-hybrid-tda`). **`UKS::tda`** is spin-conserving
 open-shell TDA on pure LSDA (`reg_uks-tda-o2-lsda`). **Full linear-response
 TDDFT** (`RKS::tddft`, Casida A/B) ships for pure KS (PBE;
-`reg_full-lr-tddft-h2-pbe`). **Analytic CIS/TDA forces** (default) and **true
-NAC vectors** ship (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
+`reg_full-lr-tddft-h2-pbe`) and **hybrid B3LYP** (`reg_h2-b3lyp-rpa-tddft`).
+**Collinear spin-flip TDA** on UHF ships (`UHF::sf_tda`; `reg_spin-flip-tda-o2`).
+**Analytic CIS/TDA forces** (default) and **true NAC vectors** ship
+(`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
 `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
 `analytic=false`. **CIS(D)** second-order doubles correction on RHF TDA ships
 (`RHF::cisd`; `reg_cisd-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
@@ -47,11 +49,11 @@ TDA-TDDFT is the LSDA ALDA path and the global-hybrid exact-exchange path on
 `RKS::tda` (B3LYP/PBE0 singlet), plus **open-shell UKS-TDA** spin-conserving
 response on pure LSDA (`UKS::tda`; `reg_uks-tda-o2-lsda` O₂ triplet) and
 **collinear spin-flip TDA** on UHF (`UHF::sf_tda`; `reg_spin-flip-tda-o2`
-O₂ triplet, exchange-only SF-CIS). Full RPA-style Casida A/B on pure KS is
-`RKS::tddft` (`reg_full-lr-tddft-h2-pbe`); hybrid full-LR and UKS full-LR
-remain follow-ons. Analytic gradient and NAC rows are the CIS/TDA members on
-`RHF` (analytic default); full KS TDDFT gradients beyond CIS@RKS are not a
-separate product path yet.
+O₂ triplet, exchange-only SF-CIS). Full RPA-style Casida A/B is `RKS::tddft`
+for pure KS (`reg_full-lr-tddft-h2-pbe`) and **global hybrid** B3LYP
+(`reg_h2-b3lyp-rpa-tddft`); UKS full-LR remains a follow-on. Analytic
+gradient and NAC rows are the CIS/TDA members on `RHF` (analytic default);
+full KS TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 
 ## 2. Algebraic-Diagrammatic Construction
 

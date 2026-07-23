@@ -34,17 +34,19 @@ gaps (stress, phonons, hybrids).
 | DFT+U                                     |  ○  |   ○  |   ○  |
 | RKS analytic gradient                     |  ✓  |   ○  |   ○  |
 | UKS analytic gradient                     |  ✓  |   ○  |   ○  |
-| ROKS analytic gradient                    |  ○  |   ○  |   ○  |
+| ROKS analytic gradient                    |  ✓  |   ○  |   ○  |
 | RKS analytic Hessian                      |  ○  |   ○  |   ○  |
 | UKS analytic Hessian                      |  ○  |   ○  |   ○  |
 
-**ROKS** (`cpu::scf::ROKS`) is energy-only on the Roothaan effective-Fock path
-(Guest–Saunders / PySCF canonical; `reg_roks-o2-sto3g` O₂ triplet LSDA/STO-3G).
-Analytic ROKS forces throw until the KS spin-Fock + XC response EWD path
-lands — ROKS gradient row stays ○. KS gradients (RKS/UKS) include the
-semi-local XC contribution (LDA, GGA, and the hybrid exact-exchange admixture)
-and the Becke grid-response terms. There is no Kohn–Sham path on CUDA at all —
-the device SCF solver is restricted HF only.
+**ROKS** (`cpu::scf::ROKS`) is energy + **analytic nuclear gradient** on the
+Roothaan effective-Fock path (Guest–Saunders / PySCF canonical;
+`reg_roks-o2-sto3g` energy, `reg_roks-grad-o2-sto3g` forces — O₂ triplet
+LSDA/STO-3G). Forces reuse the UKS electronic gradient on split-occupation
+α/β densities with the ROHF-style energy-weighted density from **KS spin
+Focks** (not effective-Fock eigenvalues). KS gradients (RKS/UKS/ROKS) include
+the semi-local XC contribution (LDA, GGA, and the hybrid exact-exchange
+admixture) and the Becke grid-response terms. There is no Kohn–Sham path on
+CUDA at all — the device SCF solver is restricted HF only.
 
 ## 2. LDA Functionals
 

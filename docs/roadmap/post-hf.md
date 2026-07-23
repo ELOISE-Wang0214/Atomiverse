@@ -3,14 +3,15 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Correlated methods built on a converged [Hartree–Fock](hartree-fock.md)
-reference. Two exist, both as post-SCF members on the concrete method
-(`RHF::mp2(frame)` / `RHF::fci(frame)`) consuming the converged
+reference. MP2 and FCI ship as post-SCF members on the concrete method
+(`RHF::mp2` / `UHF::mp2` / `ROHF::mp2` / `RHF::fci`) consuming the converged
 `SlaterDeterminant` plus the method's privately materialized ERI tensor (they
-are not Drivers or Components, and register in no Plan; both throw
+are not Drivers or Components, and register in no Plan; they throw
 `std::invalid_argument` on a non-converged reference):
 
 - **RMP2** — closed-shell canonical MP2, the production correlation method.
 - **UMP2** — unrestricted spin-orbital MP2 on a UHF reference (`UHF::mp2`).
+- **ROMP2** — UMP2 on a spin-pure ROHF reference (`ROHF::mp2`).
 - **FCI** — a determinant-basis exactness oracle for tiny systems, not a
   production method.
 
@@ -22,7 +23,7 @@ Coupled cluster and multireference theory are entirely absent.
 | ---------------------------------- | :-: | :--: | :---: |
 | Restricted MP2, RMP2               |  ✓  |   ○  |   ○  |
 | Unrestricted MP2, UMP2             |  ✓  |   ○  |   ○  |
-| Restricted open-shell MP2, ROMP2   |  ○  |   ○  |   ○  |
+| Restricted open-shell MP2, ROMP2   |  ✓  |   ○  |   ○  |
 | Frozen-core MP2                    |  ✓  |   ○  |   ○  |
 | Density-fitted MP2                 |  ✓  |   ○  |   ○  |
 | RI-MP2                             |  ✓  |   ○  |   ○  |
@@ -60,9 +61,12 @@ RMP2 path with Grimme scales on the opposite-/same-spin channels via members
 `reg_scs-mp2-h2o-sto3g`; SOS: 1.3 / 0, Jung et al. JCP 121, 9793 (2004),
 `reg_sos-mp2-h2o-sto3g`). **RMP2 analytic nuclear gradient** ships
 (`RHF::mp2_forces`; Lagrangian 1-RDM + non-separable 2-RDM + Z-vector;
-`reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). No UMP2/ROMP2
-gradients, no frozen-core UMP2, no RI-UMP2. Canonical mode still materializes
-the full in-memory ERI tensor in the method's private workspace.
+`reg_mp2-grad-h2o-sto3g` vs PySCF `mp.MP2.nuc_grad_method`). **ROMP2**
+(`ROHF::mp2`) is UMP2 on the spin-pure ROHF reference with semi-canonical
+spin-Fock denominators (PySCF `mp.UMP2(ROHF)` convention;
+`reg_romp2-o2-sto3g`). No UMP2/ROMP2 gradients, no frozen-core UMP2, no
+RI-UMP2. Canonical mode still materializes the full in-memory ERI tensor in
+the method's private workspace.
 
 ## 2. Configuration Interaction
 

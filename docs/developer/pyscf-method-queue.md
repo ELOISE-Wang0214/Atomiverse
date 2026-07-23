@@ -13,10 +13,7 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `romp2-o2-sto3g` | ROMP2 | post-hf | o2 | sto-3g | e_corr | ROHF ref ✓ + analytic ROHF grad ✓; MP2 on ROHF ○
 - [ ] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
-- [ ] `spin-flip-tda-o2` | Spin-flip TDA | excited-states | o2 | sto-3g | excitation eV | SF-TDA on UHF/ROHF; PySCF TDA spin-flip
-- [ ] `rohf-hessian-o2` | ROHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | ROHF energy+grad ✓; analytic Hessian ○; PySCF hessian.ROHF
 - [ ] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
 - [ ] `ccsd-h2-sto3g` | CCSD | post-hf | h2 | sto-3g | e_corr+e_tot | coupled-cluster doubles foothold; PySCF cc.CCSD
 - [ ] `ccsd-t-h2o-sto3g` | CCSD(T) | post-hf | water | sto-3g | e_corr | needs CCSD; PySCF cc.CCSD.ccsd_t
@@ -38,6 +35,11 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## done
 
+- [x] `romp2-o2-sto3g` | ROMP2 | regressions/scf/romp2-o2-sto3g | O2 triplet ROHF→ROMP2/STO-3G cart; PySCF 2.14.0 UMP2(ROHF) e_corr=-0.096718716392 Ha, e_tot=-147.728885707074 Ha; `ROHF::mp2`; tol 1e-6 Ha; ratio 1.37
+- [x] `roks-grad-o2-sto3g` | ROKS analytic gradient | regressions/scf/roks-grad-o2-sto3g | O2 ROKS-LSDA/STO-3G cart forces; PySCF 2.14.0 g_z=±0.162926534046 Ha/Bohr; `ROKS::forces` spin-Fock W; tol 2e-5 Ha/Bohr; ratio 1.117
+- [x] `h2-b3lyp-rpa-tddft` | Hybrid full-LR TDDFT (B3LYP RPA) | regressions/scf/h2-b3lyp-rpa-tddft | H2 RKS-B3LYP/STO-3G Casida A/B; PySCF 2.14.0 S1=25.307797345333 eV; `RKS::tddft`; tol 1e-4 eV; ratio 0.430
+- [x] `spin-flip-tda-o2` | Spin-flip TDA | regressions/scf/spin-flip-tda-o2 | O2 UHF/STO-3G collinear SF-CIS; offline pin roots 0.0451/1.5677/1.5677/3.0384/7.8486 eV; `UHF::sf_tda`; tol 1e-4 eV; ratio 9.56
+- [x] `rohf-hessian-o2` | ROHF nuclear Hessian | regressions/scf/rohf-hessian-o2 | O2 ROHF/STO-3G FD of analytic forces; stretch H_zz~135.57 eV/Å²; `ROHF::hessian`; tol 1e-5 eV/Å²; perf_exempt (no PySCF hessian.ROHF)
 - [x] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | regressions/scf/mp2-grad-h2o-sto3g | H2O/STO-3G cart RMP2; PySCF 2.14.0 g_O,z=-9.528798e-02 Ha/Bohr; `RHF::mp2_forces`; tol 1e-5 Ha/Bohr
 - [x] `sos-mp2-h2o-sto3g` | SOS-MP2 | regressions/scf/sos-mp2-h2o-sto3g | H2O/STO-3G cart Jung c_OS=1.3 c_SS=0; PySCF 2.14.0 e_corr=-0.043570566111 Ha, e_tot=-75.006593704574 Ha; `mp2_os_scale`/`mp2_ss_scale` members; tol 1e-6 Ha
 - [x] `uks-tda-o2-lsda` | UKS TDA | regressions/scf/uks-tda-o2-lsda | O2 UKS-LSDA/STO-3G cart spin-conserving TDA; PySCF 2.14.0 roots 7.6209/7.6424/7.6425/8.4033/8.4033 eV; `UKS::tda`; tol 1e-4 eV

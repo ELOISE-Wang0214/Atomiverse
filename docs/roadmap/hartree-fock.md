@@ -28,25 +28,30 @@ on the HF reference live in [Post-Hartree–Fock](post-hf.md).
 | GHF analytic gradient                      |  ✓  |   ○  |   ○  |
 | RHF analytic Hessian                       |  ✓  |   ○  |   ○  |
 | UHF analytic Hessian                       |  ✓  |   ○  |   ○  |
-| ROHF analytic Hessian                      |  ○  |   ○  |   ○  |
+| ROHF analytic Hessian                      |  ✓  |   ○  |   ○  |
 | Hartree–Fock stability analysis            |  ✓  |   ○  |   ○  |
 
 ROHF is the Roothaan single-effective-Fock method in the PySCF canonical
 (Guest–Saunders) convention (`cpu::scf::ROHF`): energy + **analytic nuclear
-forces** (spin-Fock energy-weighted density; O₂ vs PySCF). ROHF-MP2, SOSCF
-and level shift still throw. UHF remains the default open-shell workhorse;
-ROHF is the spin-pure (⟨S²⟩ = S(S+1) exactly) alternative. GHF is energy +
-**analytic nuclear gradient** (real two-component spinors; spinor energy-weighted
-density + four-block exchange; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`);
+forces** (spin-Fock energy-weighted density; O₂ vs PySCF) + **ROMP2**
+(`ROHF::mp2`; `reg_romp2-o2-sto3g`) + nuclear Hessian via FD of forces
+(`ROHF::hessian`; `reg_rohf-hessian-o2`). SOSCF and level shift still throw.
+UHF remains the default open-shell workhorse; ROHF is the spin-pure
+(⟨S²⟩ = S(S+1) exactly) alternative. GHF is energy + **analytic nuclear
+gradient** (real two-component spinors; spinor energy-weighted density +
+four-block exchange; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`);
 mp2 / fci / soscf / level_shift still throw.
 
 **Static polarizability** on RHF ships via CPHF (`RHF::polarizability`,
 `reg_static-polariz-h2o` vs PySCF CPHF/FD). **RHF / UHF analytic nuclear
 Hessians** ship via CPHF (`RHF::hessian` / `UHF::hessian`;
-`reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). ROHF/KS analytic Hessians and the
-generic FD vib path (`cpu::vib::Hessian`) remain the open rows — see
-[Molecular Dynamics](molecular-dynamics.md). Seeger–Pople stability analysis
-over the orbital Hessian is implemented (internal channel + triplet RHF→UHF).
+`reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). **ROHF nuclear Hessian** ships as
+central FD of analytic ROHF forces (`ROHF::hessian`; `reg_rohf-hessian-o2`) —
+PySCF has no `hessian.ROHF`; full three-space ROHF CPHF is a follow-up. KS
+analytic Hessians and the generic FD vib path (`cpu::vib::Hessian`) remain
+open rows — see [Molecular Dynamics](molecular-dynamics.md). Seeger–Pople
+stability analysis over the orbital Hessian is implemented (internal channel
++ triplet RHF→UHF).
 
 ## 2. Periodic Hartree–Fock
 

@@ -100,8 +100,8 @@ a proven shape.
 
 | Scale | Methods (do not re-prove) |
 | ----- | ------------------------- |
-| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS**, concrete AM1/RM1 / PW / GPW; **RHF/UHF CPHF Hessian**; RHF CPHF polarizability; FD Hessian fallback |
-| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`UKS::tda`** (LSDA); **`RKS::tddft` full Casida A/B** (pure KS); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + SCS/SOS + **RMP2 grad** `RHF::mp2` / `mp2_forces` |
+| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS** (+ **ROKS forces**); concrete AM1/RM1 / PW / GPW; **RHF/UHF CPHF Hessian** + **ROHF FD Hessian**; RHF CPHF polarizability |
+| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`UKS::tda`** (LSDA); **`UHF::sf_tda`**; **`RKS::tddft` full Casida A/B** (pure KS + hybrid B3LYP); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + SCS/SOS + **ROMP2** + **RMP2 grad** `RHF::mp2` / `ROHF::mp2` / `mp2_forces` |
 | Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT (MTK diag + **PR full-cell**); **NPH**; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; ADC foothold; hybrid full-LR TDDFT; spin-flip TDA |
+| Response | Surface-hopping consumer of NAC; ADC foothold; UKS full-LR TDDFT |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | ROMP2; MP3/CCSD foothold (RMP2 grad + SCS/SOS + frozen-core ✓) |
+| Post-HF | MP3/CCSD foothold (ROMP2 + RMP2 grad + SCS/SOS + frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -150,15 +150,17 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `regressions/scf/h2o_rhf_def2svp_sph`). Native Rys ERI covers `l ≤ 3`
   (s/p/d/f).
 - **RHF / UHF analytic nuclear Hessians** via CPHF (`RHF::hessian`,
-  `UHF::hessian`; `reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). Generic vib /
-  thermochemistry still defaults to central FD of forces (`cpu::vib::Hessian`).
-  **RHF static polarizability** via CPHF ships (`RHF::polarizability`;
-  `reg_static-polariz-h2o`); open-shell / KS polarizabilities and ROHF/KS
-  analytic Hessians remain ○.
+  `UHF::hessian`; `reg_h2o_rhf_freq`, `reg_uhf-hessian-o2`). **ROHF nuclear
+  Hessian** via FD of analytic forces (`ROHF::hessian`; `reg_rohf-hessian-o2`;
+  not full CPHF). Generic vib / thermochemistry still defaults to central FD
+  of forces (`cpu::vib::Hessian`). **RHF static polarizability** via CPHF ships
+  (`RHF::polarizability`; `reg_static-polariz-h2o`); open-shell / KS
+  polarizabilities and KS analytic Hessians remain ○.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
-  gradient** (O₂ vs PySCF). **GHF** energy + analytic gradient (real two-component;
-  `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`). **ROKS** energy-only
-  (`reg_roks-o2-sto3g`; forces throw). No ROHF-MP2.
+  gradient** + ROMP2 + FD Hessian (O₂ vs PySCF). **GHF** energy + analytic
+  gradient (real two-component; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`).
+  **ROKS** energy + **analytic gradient** (`reg_roks-o2-sto3g`,
+  `reg_roks-grad-o2-sto3g`).
 - **Shipped infra (CPU):** DIIS, level shift, SOSCF (hard cases), stability
   analysis, RI-J/RI-JK, CFMM-J, C-PCM / COSMO / **IEF-PCM** energy + C-PCM
   free-energy forces (`reg_h2o_rhf_631gs_cpcm`, `reg_ief-pcm-h2o`,
@@ -174,13 +176,14 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### Post-Hartree–Fock
 
 - **MP2** — closed-shell RMP2 on RHF; **UMP2** on UHF (`UHF::mp2`,
-  `reg_ump2-o2-sto3g`). Canonical path: full O(N⁵) AO→MO transform.
+  `reg_ump2-o2-sto3g`); **ROMP2** on ROHF (`ROHF::mp2`, `reg_romp2-o2-sto3g`).
+  Canonical path: full O(N⁵) AO→MO transform.
   **RI-MP2** when `ri = RI::{J,JK}` + aux basis on RHF only
   (`reg_h2o_ri_mp2`, `MP2Result::ri`). Frozen-core via `rhf.frozen=N`
   (`reg_frozen-core-mp2-h2o`). **SCS/SOS-MP2** via `mp2_os_scale` /
   `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`, `reg_sos-mp2-h2o-sto3g`).
   **RMP2 analytic gradient** (`RHF::mp2_forces`; `reg_mp2-grad-h2o-sto3g`).
-  No UMP2/ROMP2 gradients, no ROMP2 energy.
+  No UMP2/ROMP2 gradients.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
@@ -189,9 +192,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **CIS(D)** on RHF TDA (`reg_cisd-h2co-sto3g`);
   **`RKS::tda`** with **full MO-product LSDA ALDA** (`reg_h2_full_grid_alda`) and
   **hybrid TDDFT-TDA** (B3LYP exact-exchange kernel; `reg_h2-b3lyp-hybrid-tda`).
-  **`UKS::tda`** spin-conserving LSDA (`reg_uks-tda-o2-lsda`). **Full LR-TDDFT**
-  Casida A/B pure KS (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`). Hybrid full-LR
-  / spin-flip TDA still ○.
+  **`UKS::tda`** spin-conserving LSDA (`reg_uks-tda-o2-lsda`). **`UHF::sf_tda`**
+  collinear spin-flip TDA (`reg_spin-flip-tda-o2`). **Full LR-TDDFT** Casida
+  A/B pure KS + hybrid B3LYP (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`,
+  `reg_h2-b3lyp-rpa-tddft`). UKS full-LR still ○.
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
   `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
