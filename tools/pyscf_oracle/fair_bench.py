@@ -217,6 +217,26 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "mfu=addons.mom_occ_(scf.UHF(mol),(mo0,mo0),(occ_a.copy(),occ_b.copy()))\n"
             "mfu.conv_tol=1e-12; mfu.max_cycle=200; mfu.kernel(dm)"
         ),
+        # Exact dRPA plasmon (non-DF) — twin of RHF::direct_rpa().
+        "direct_rpa": (
+            "from pyscf import scf, ao2mo\nimport numpy as np\n"
+            "from numpy.linalg import eigh\nfrom scipy.linalg import sqrtm\n"
+            "mf=scf.RHF(mol); mf.conv_tol=1e-12; mf.kernel()\n"
+            "C=np.asarray(mf.mo_coeff); eps=np.asarray(mf.mo_energy)\n"
+            "nmo=C.shape[1]; nocc=mol.nelectron//2; nvir=nmo-nocc\n"
+            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
+            "nov=nocc*nvir\n"
+            "A=np.zeros((nov,nov)); B=np.zeros_like(A)\n"
+            "for i in range(nocc):\n"
+            "  for a in range(nvir):\n"
+            "    ia=i*nvir+a; aa=nocc+a; A[ia,ia]=eps[aa]-eps[i]\n"
+            "    for j in range(nocc):\n"
+            "      for b in range(nvir):\n"
+            "        jb=j*nvir+b; bb=nocc+b; v=2*eri[i,aa,j,bb]\n"
+            "        A[ia,jb]+=v; B[ia,jb]+=v\n"
+            "T=np.real(sqrtm(A-B)); M=0.5*((T@(A+B)@T)+(T@(A+B)@T).T)\n"
+            "w2,_=eigh(M); Om=np.sqrt(np.maximum(w2,0)); 0.5*(Om.sum()-np.trace(A))"
+        ),
     }.get(method)
     if body is None:
         raise SystemExit(f"unsupported --method {method!r}")
@@ -235,7 +255,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd", "direct_rpa"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)

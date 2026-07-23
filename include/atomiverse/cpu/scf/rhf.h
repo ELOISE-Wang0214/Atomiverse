@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/g0w0.h"
+#include "atomiverse/cpu/scf/rpa.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
@@ -215,6 +216,19 @@ class RHF : public MeanFieldMethod<RHF> {
     ///         non-restricted reference, or when dRPA is ill-conditioned.
     /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
     G0W0Result g0w0() const;
+
+    /// @brief Direct RPA (dRPA) correlation energy of the most recent `run()`
+    ///        (closed-shell RHF reference). Coulomb-only Casida A/B
+    ///        (α_hf = 0); correlation via the Furche plasmon formula
+    ///        \(E_c = \frac12(\sum_s\Omega_s - \mathrm{Tr} A)\). Exact
+    ///        (non-DF) twin of PySCF `gw.rpa.RPA` / `DirectRPA` in the
+    ///        complete-auxiliary limit; stock PySCF uses density fitting.
+    /// @return Correlation and total energy [Hartree], plus the dRPA
+    ///         poles \(\Omega_s\) [Hartree].
+    /// @throws std::runtime_error when called before `run()`, on a
+    ///         non-restricted reference, or when dRPA is ill-conditioned.
+    /// @throws std::invalid_argument when n_occ = 0 or n_virt = 0.
+    DirectRPAResult direct_rpa() const;
 
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib

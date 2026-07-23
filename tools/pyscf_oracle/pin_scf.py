@@ -114,7 +114,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "direct-rpa"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -895,6 +895,55 @@ def main() -> int:
         out["omega_ev"] = (e_eom * _HA_TO_EV).tolist()
         out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
         out["nstates"] = int(args.nstates)
+
+    elif m == "direct-rpa":
+        # Exact dRPA correlation (Furche plasmon) on RHF orbitals + MO ERIs.
+        # Stock pyscf.gw.rpa.RPA uses DF + Legendre quadrature (near twin).
+        import numpy as np
+        from numpy.linalg import eigh
+        from scipy.linalg import sqrtm
+        from pyscf import ao2mo
+        from pyscf.gw import rpa as rpa_mod
+
+        C = np.asarray(mf.mo_coeff)
+        eps = np.asarray(mf.mo_energy)
+        nmo = C.shape[1]
+        nocc = mol.nelectron // 2
+        nvir = nmo - nocc
+        eri = ao2mo.restore(1, ao2mo.full(mol, C), nmo)
+        n_ov = nocc * nvir
+        A = np.zeros((n_ov, n_ov))
+        B = np.zeros_like(A)
+        for i in range(nocc):
+            for a in range(nvir):
+                ia = i * nvir + a
+                aa = nocc + a
+                A[ia, ia] = eps[aa] - eps[i]
+                for j in range(nocc):
+                    for b in range(nvir):
+                        jb = j * nvir + b
+                        bb = nocc + b
+                        v = 2.0 * eri[i, aa, j, bb]
+                        A[ia, jb] += v
+                        B[ia, jb] += v
+        Mm = A - B
+        Mp = A + B
+        T = np.real(sqrtm(Mm))
+        M = T @ Mp @ T
+        M = 0.5 * (M + M.T)
+        w2, _Z = eigh(M)
+        omega = np.sqrt(np.maximum(w2, 0.0))
+        tr_A = float(np.trace(A))
+        e_corr = 0.5 * (float(omega.sum()) - tr_A)
+        rdf = rpa_mod.RPA(mf)
+        rdf.kernel(nw=100)
+        out["e_rhf_ha"] = float(e)
+        out["e_corr_ha"] = e_corr
+        out["e_tot_ha"] = float(e) + e_corr
+        out["omega_ha"] = omega.tolist()
+        out["tr_A_ha"] = tr_A
+        out["e_corr_df_rpa_ha"] = float(rdf.e_corr)
+        out["method"] = "direct-rpa"
     elif m == "casci":
         # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
         from pyscf import mcscf
