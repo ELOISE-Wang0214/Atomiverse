@@ -27,10 +27,18 @@ class XCBuilder {
     /// @param ws Plane-wave workspace [ρ in Bohr⁻³, V/E in Hartree].
     void step(PWWorkspace& ws);
 
+    /// @brief Collinear spin XC from `ws.rho_spin_G[0/1]`.
+    ///        Writes `V_xc_spin_G`, `E_xc`, and `e_xc_int_spin`.
+    void step_spin(PWWorkspace& ws);
+
   private:
     FFTWBuffer<fftw_complex> rho_g_half_;
     FFTWBuffer<AccReal> rho_r_;
     FFTWBuffer<fftw_complex> vxc_g_half_;
+    FFTWBuffer<AccReal> rho_up_r_;
+    FFTWBuffer<AccReal> rho_dn_r_;
+    FFTWBuffer<AccReal> vxc_up_r_;
+    FFTWBuffer<AccReal> vxc_dn_r_;
 };
 
 } // namespace internal

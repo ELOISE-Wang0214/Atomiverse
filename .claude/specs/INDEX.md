@@ -5,8 +5,11 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Spec | Domain | Branch | Notes |
+| ---- | ------ | ------ | ----- |
+| `pw-spin-polarized-o2` | pw | `wf/pw-spin-polarized-o2` | Collinear spin PW; O2 triplet e_tot/mag |
+
+
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 

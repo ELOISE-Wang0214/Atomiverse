@@ -42,11 +42,13 @@ class DensityBuilder {
     /// @brief Zero the real-space density accumulation buffer.
     void begin(const PWWorkspace& ws);
 
-    /// @brief Add this k-point's band densities: ρ(r) += w·2·|ψ_b(r)|²/Ω.
-    /// @param ws      Workspace with `gvec`/`n_g`/`wfc` at the current k.
-    /// @param weight  k-point weight (Monkhorst-Pack).
-    /// @param n_bands Occupied band count.
-    void accumulate_kpoint(const PWWorkspace& ws, AccReal weight, int n_bands);
+    /// @brief Add this k-point's band densities: ρ(r) += w·spin_degen·|ψ_b|²/Ω.
+    /// @param ws         Workspace with `gvec`/`n_g`/`wfc` at the current k.
+    /// @param weight     k-point weight (Monkhorst-Pack).
+    /// @param n_bands    Occupied band count.
+    /// @param spin_degen Occupation weight per band (2 restricted, 1 collinear).
+    void accumulate_kpoint(const PWWorkspace& ws, AccReal weight, int n_bands,
+                           AccReal spin_degen = AccReal(2));
 
     /// @brief Real-space accumulation buffer (length `ws.nr`) — exposed
     ///        for the MPI k-point Allreduce between accumulation and
@@ -56,6 +58,11 @@ class DensityBuilder {
     /// @brief Save ρ_old, extract the new ρ(G) on the density G-sphere,
     ///        and Pulay-mix toward self-consistency.
     void finish(PWWorkspace& ws);
+
+    /// @brief FFT the real-space accumulation onto `rho_out` (density G-sphere).
+    ///        No mixing — used by the collinear spin channel before a total mix.
+    void extract(const PWWorkspace& ws,
+                 xt::xarray<std::complex<AccReal>>& rho_out);
 
   private:
     AccReal mix_beta_ = AccReal(0.7);
