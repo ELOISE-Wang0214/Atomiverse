@@ -18,6 +18,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ccsd-t --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py casci --geom h2 --basis sto-3g --ncas 2 --nelecas 2
   python tools/pyscf_oracle/pin_scf.py eom-ee-ccsd --geom h2 --basis sto-3g --nstates 1
+  python tools/pyscf_oracle/pin_scf.py eom-ip-ccsd --geom water --basis sto-3g --nstates 1
   python tools/pyscf_oracle/pin_scf.py b2plyp --geom water --basis sto-3g
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
   python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
@@ -114,7 +115,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "ccsd-t", "casci", "b2plyp", "delta-scf", "eom-ee-ccsd", "eom-cc2", "eom-ea-ccsd", "adc2x", "ip-adc2", "ea-adc2", "sf-tddft", "mp4", "cc2", "direct-rpa", "bse", "d4", "eom-sf-ccsd", "gf2", "eom-ip-ccsd"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
@@ -572,79 +573,6 @@ def main() -> int:
         mf = dft.ROKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
-    elif m == "eom-ea-ccsd":
-        # EOM-EA-CCSD attachment energies on closed-shell CCSD (PySCF eaccsd).
-        import numpy as _np
-
-        mycc = pyscf_cc.CCSD(mf)
-        mycc.conv_tol = min(args.conv_tol, 1e-10)
-        e_corr, _t1, _t2 = mycc.kernel()
-        e_eom, _v = mycc.eaccsd(nroots=args.nstates)
-        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
-        # De-duplicate spin degeneracy (α/β attachment) like ATV product path.
-        e_sorted = _np.sort(e_eom)
-        uniq = []
-        for w in e_sorted:
-            if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
-                uniq.append(float(w))
-        e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
-        out["e_hf_ha"] = float(e)
-        out["e_corr_ha"] = float(e_corr)
-        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
-        out["e_tot_ha"] = float(mycc.e_tot)
-        out["ccsd_converged"] = bool(mycc.converged)
-        out["ea_ha"] = e_uniq.tolist()
-        out["ea_ev"] = (e_uniq * _HA_TO_EV).tolist()
-        out["ea0_ev"] = float(e_uniq[0] * _HA_TO_EV)
-        out["omega_ha"] = e_uniq.tolist()
-        out["omega_ev"] = (e_uniq * _HA_TO_EV).tolist()
-        out["omega0_ev"] = float(e_uniq[0] * _HA_TO_EV)
-        out["nstates"] = int(args.nstates)
-    elif m == "adc2x":
-        # Extended ADC(2)-x EE (first-order doubles–doubles).
-        from pyscf import adc as pyscf_adc
-
-        myadc = pyscf_adc.ADC(mf)
-        myadc.method = "adc(2)-x"
-        myadc.method_type = "ee"
-        myadc.conv_tol = min(args.conv_tol, 1e-10)
-        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
-        out["e_corr_mp2_ha"] = float(myadc.e_corr)
-        out["excitation_ha"] = [float(x) for x in e_adc]
-        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["s1_ha"] = float(e_adc[0])
-        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
-    elif m == "ip-adc2":
-        # Strict ADC(2) ionization potentials (1h / 2h1p ISR).
-        # Schirmer PRA 26, 2395 (1982); Schirmer et al. PRA 28, 1237 (1983).
-        from pyscf import adc as pyscf_adc
-
-        myadc = pyscf_adc.ADC(mf)
-        myadc.method = "adc(2)"
-        myadc.method_type = "ip"
-        myadc.conv_tol = min(args.conv_tol, 1e-10)
-        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
-        out["e_corr_mp2_ha"] = float(myadc.e_corr)
-        out["ip_ha"] = [float(x) for x in e_adc]
-        out["ip_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["ip1_ha"] = float(e_adc[0])
-        out["ip1_ev"] = float(e_adc[0]) * _HA_TO_EV
-    elif m == "ea-adc2":
-        # Strict EA-ADC(2) electron-attachment energies (1p / 2p–1h).
-        # Schirmer PRA 26, 2395 (1982); PySCF adc.ADC method_type='ea'.
-        from pyscf import adc as pyscf_adc
-
-        myadc = pyscf_adc.ADC(mf)
-        myadc.method = "adc(2)"
-        myadc.method_type = "ea"
-        myadc.conv_tol = min(args.conv_tol, 1e-10)
-        e_adc, _v, p_spec, _x = myadc.kernel(nroots=args.nstates)
-        out["e_corr_mp2_ha"] = float(myadc.e_corr)
-        out["ea_ha"] = [float(x) for x in e_adc]
-        out["ea_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
-        out["ea0_ha"] = float(e_adc[0])
-        out["ea0_ev"] = float(e_adc[0]) * _HA_TO_EV
-        out["spec_factor"] = [float(x) for x in p_spec]
     elif m == "mp4":
         # Closed-shell RMP4(SDTQ). PySCF 2.x has no mp.MP4 — exact intermediate-
         # normalization RSPT through order 4 on the full determinant basis built
@@ -1420,6 +1348,103 @@ def main() -> int:
         out["omega0_ev"] = float(e_eom[0] * _HA_TO_EV)
         out["nstates"] = int(args.nstates)
         out["oracle"] = "pyscf_rccsd_cc2_eomee_singlet"
+    elif m == "eom-ea-ccsd":
+        # EOM-EA-CCSD attachment energies on closed-shell CCSD (PySCF eaccsd).
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.eaccsd(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        e_sorted = _np.sort(e_eom)
+        uniq = []
+        for w in e_sorted:
+            if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
+                uniq.append(float(w))
+        e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        out["ea_ha"] = e_uniq.tolist()
+        out["ea_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["ea0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["omega_ha"] = e_uniq.tolist()
+        out["omega_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
+    elif m == "eom-ip-ccsd":
+        # EOM-IP-CCSD ionization potentials on closed-shell CCSD (PySCF ipccsd).
+        import numpy as _np
+
+        mycc = pyscf_cc.CCSD(mf)
+        mycc.conv_tol = min(args.conv_tol, 1e-10)
+        e_corr, _t1, _t2 = mycc.kernel()
+        e_eom, _v = mycc.ipccsd(nroots=args.nstates)
+        e_eom = _np.atleast_1d(_np.asarray(e_eom, dtype=float))
+        e_sorted = _np.sort(e_eom)
+        uniq = []
+        for w in e_sorted:
+            if not uniq or abs(uniq[-1] - float(w)) > 1e-8:
+                uniq.append(float(w))
+        e_uniq = _np.asarray(uniq[: int(args.nstates)], dtype=float)
+        out["e_hf_ha"] = float(e)
+        out["e_corr_ha"] = float(e_corr)
+        out["e_tot_ccsd_ha"] = float(mycc.e_tot)
+        out["e_tot_ha"] = float(mycc.e_tot)
+        out["ccsd_converged"] = bool(mycc.converged)
+        out["ip_ha"] = e_uniq.tolist()
+        out["ip_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["ip0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["omega_ha"] = e_uniq.tolist()
+        out["omega_ev"] = (e_uniq * _HA_TO_EV).tolist()
+        out["omega0_ev"] = float(e_uniq[0] * _HA_TO_EV)
+        out["nstates"] = int(args.nstates)
+    elif m == "adc2x":
+        # Extended ADC(2)-x EE (first-order doubles–doubles).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)-x"
+        myadc.method_type = "ee"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["excitation_ha"] = [float(x) for x in e_adc]
+        out["excitation_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["s1_ha"] = float(e_adc[0])
+        out["s1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ip-adc2":
+        # Strict ADC(2) ionization potentials (1h / 2h1p ISR).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ip"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, _p, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["ip_ha"] = [float(x) for x in e_adc]
+        out["ip_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["ip1_ha"] = float(e_adc[0])
+        out["ip1_ev"] = float(e_adc[0]) * _HA_TO_EV
+    elif m == "ea-adc2":
+        # Strict EA-ADC(2) electron-attachment energies (1p / 2p–1h).
+        from pyscf import adc as pyscf_adc
+
+        myadc = pyscf_adc.ADC(mf)
+        myadc.method = "adc(2)"
+        myadc.method_type = "ea"
+        myadc.conv_tol = min(args.conv_tol, 1e-10)
+        e_adc, _v, p_spec, _x = myadc.kernel(nroots=args.nstates)
+        out["e_corr_mp2_ha"] = float(myadc.e_corr)
+        out["ea_ha"] = [float(x) for x in e_adc]
+        out["ea_ev"] = [float(x) * _HA_TO_EV for x in e_adc]
+        out["ea0_ha"] = float(e_adc[0])
+        out["ea0_ev"] = float(e_adc[0]) * _HA_TO_EV
+        out["spec_factor"] = [float(x) for x in p_spec]
     elif m == "casci":
         # Closed-shell CASCI on the RHF reference (PySCF mcscf.CASCI).
         from pyscf import mcscf
