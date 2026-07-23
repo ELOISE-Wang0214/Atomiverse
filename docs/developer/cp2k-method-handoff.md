@@ -1,6 +1,17 @@
 # CP2K capability loop — handoff
 
-Last harness pass: assign wave 1 (2026-07-23) — 16 items → `in_progress`.
+Last recover pass: 2026-07-23 — inventory of incomplete CP2K/GPW/PW work.
+
+**Workflow order (binding, 2026-07-23):** Recover incomplete first → Census →
+Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
+Tutorial. See `docs/developer/cp2k-method-loop.md` and
+`.grok/workflows/cp2k-method-loop.rhai`.
+
+**Recover inventory (this shift):** 16 unfinished wave-1 `[~]` rows (below). No
+open `.claude/specs/<slug>/` for GPW/PW/periodic. No unmerged `wf/<slug>` for
+this loop. No half-written `regressions/{gpw,pw}/<queue-slug>/`. Resume all 16
+before new `## pending`. Spec is source of truth: workers write
+`.claude/specs/<slug>/` first on `wf/<slug>`, then implement + offline CP2K pin.
 
 ## Wave summary
 

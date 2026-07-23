@@ -1,10 +1,17 @@
 # CP2K capability queue
 
 Durable worklist for workflow `cp2k-method-loop`. Do not delete done rows.
+
+**Recover first:** every shift starts by finishing `## in_progress` `[~]`, open
+`.claude/specs/` (GPW/PW/periodic), and unmerged `wf/<slug>` branches. Census
+only rewrites **pending**. Assign priority: **incomplete ≫ pending**. Spec is
+source of truth for workers.
+
 Census rewrites **pending** from `docs/roadmap/dft.md` §10–12 (periodic / GPW /
 PW / response / infra) and related MD ○ footholds that **CP2K can oracle
 offline** (Quickstep GPW, plane-wave DFT, forces/stress, OT, D3, BOMD, phonons).
-**done** / **blocked** history is preserved.
+**done** / **blocked** / **in_progress** history is preserved (Census must not
+erase incomplete).
 
 Out of scope for this queue (use `pyscf-method-queue.md`): molecular Gaussian
 10→post-HF, pure PySCF continuum/charge methods without CP2K twin, classical MD/FF,
