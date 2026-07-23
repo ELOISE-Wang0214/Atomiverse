@@ -104,7 +104,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "method",
-        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd"],
+        choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "mp2", "mp2-fc", "mp3", "scs-mp2", "sos-mp2", "ump2", "romp2", "tda", "tdhf", "cisd", "adc2", "rks-tda", "rks-tddft", "uks-tda", "sf-tda", "d3bj", "g0w0", "ccsd", "b2plyp"],
     )
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")

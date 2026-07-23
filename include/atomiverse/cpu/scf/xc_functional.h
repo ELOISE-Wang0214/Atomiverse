@@ -2,11 +2,14 @@
 /// @brief Exchange-correlation functional evaluator for KS / UKS.
 ///
 /// Supports LSDA (Slater exchange + VWN5 correlation), pure GGAs (PBE,
-/// BLYP), and the B3LYP / PBE0 global hybrids. A global hybrid mixes a
-/// functional-specific fraction of exact Hartree-Fock exchange (see
-/// `hybrid_exchange_fraction`) on top of a semi-local exchange-correlation
-/// part; `evaluate_xc` returns only the semi-local part, the HF-exchange
-/// admixture is applied by the Fock builder.
+/// BLYP), the B3LYP / PBE0 global hybrids, and the B2PLYP double hybrid.
+/// A global hybrid mixes a functional-specific fraction of exact
+/// Hartree-Fock exchange (see `hybrid_exchange_fraction`) on top of a
+/// semi-local exchange-correlation part; `evaluate_xc` returns only the
+/// semi-local part, the HF-exchange admixture is applied by the Fock
+/// builder. Double hybrids add a PT2/MP2 correlation scale
+/// (`hybrid_pt2_fraction`) applied after the KS SCF via `RKS::mp2`
+/// (`mp2_os_scale` / `mp2_ss_scale` = a_c).
 ///
 /// Evaluates XC energy density and potential derivatives at a single grid point.
 ///
@@ -19,6 +22,9 @@
 ///     200 (1989))
 ///   - B3LYP: Stephens, Devlin, Chabalowski, Frisch, J. Phys. Chem. 98, 11623 (1994)
 ///   - PBE0: Adamo, Barone, J. Chem. Phys. 110, 6158 (1999)
+///   - B2PLYP: Grimme, J. Chem. Phys. 124, 034108 (2006) — a_x=0.53 HF,
+///     (1−a_x) B88, (1−a_c) LYP with a_c=0.27, plus a_c · E_MP2 on the KS
+///     orbitals (double hybrid; PT2 is not inside `evaluate_xc`).
 #pragma once
 
 namespace ATV {
@@ -30,25 +36,40 @@ namespace scf {
 /// `LSDA`, `PBE` and `BLYP` are pure (semi-local) functionals. `B3LYP` and
 /// `PBE0` are global hybrids: their semi-local part is evaluated by
 /// `evaluate_xc` while a fixed fraction of exact HF exchange
-/// (`hybrid_exchange_fraction`) is added by the Fock builder.
-enum class XCType { LSDA, PBE, BLYP, B3LYP, PBE0 };
+/// (`hybrid_exchange_fraction`) is added by the Fock builder. `B2PLYP` is
+/// a **double hybrid**: same hybrid-KS build with a_x=0.53 plus a PT2
+/// correlation scale a_c=0.27 applied by the MP2 path (see
+/// `hybrid_pt2_fraction`).
+enum class XCType { LSDA, PBE, BLYP, B3LYP, PBE0, B2PLYP };
 
 /// @brief Fraction of exact Hartree-Fock exchange (`alpha_hf`) for a functional.
 ///
 /// Returns the global-hybrid exact-exchange admixture: `0.20` for B3LYP,
-/// `0.25` for PBE0, and `0.0` for every pure functional (`LSDA`, `PBE`,
-/// `BLYP`). A `0.0` return is the signal "pure functional, no
-/// exchange-matrix build".
+/// `0.25` for PBE0, `0.53` for B2PLYP, and `0.0` for every pure functional
+/// (`LSDA`, `PBE`, `BLYP`). A `0.0` return is the signal "pure functional,
+/// no exchange-matrix build".
 ///
 /// @param type XC functional type.
 /// @return alpha_hf, the dimensionless exact-exchange fraction in [0, 1].
 double hybrid_exchange_fraction(XCType type);
 
+/// @brief PT2 / MP2 correlation scale (`a_c`) for double-hybrid functionals.
+///
+/// Returns `0.27` for B2PLYP (Grimme 2006) and `0.0` for every pure or
+/// single-hybrid functional. When non-zero, the total double-hybrid energy
+/// is \(E_{\mathrm{KS}} + a_c\,E_{\mathrm{MP2}}\) on the converged KS
+/// orbitals; callers set `mp2_os_scale = mp2_ss_scale = a_c` before
+/// `RKS::mp2(frame)`.
+///
+/// @param type XC functional type.
+/// @return a_c, the dimensionless PT2 coefficient in [0, 1].
+double hybrid_pt2_fraction(XCType type);
+
 /// @brief Whether a functional has a gradient (GGA) dependence.
 ///
-/// True for `PBE`, `BLYP`, `B3LYP` and `PBE0` (all carry a semi-local GGA
-/// term); false for the pure-LDA `LSDA`. Used to decide whether the XC
-/// grid engine must build basis-function gradients.
+/// True for `PBE`, `BLYP`, `B3LYP`, `PBE0` and `B2PLYP` (all carry a
+/// semi-local GGA term); false for the pure-LDA `LSDA`. Used to decide
+/// whether the XC grid engine must build basis-function gradients.
 ///
 /// @param type XC functional type.
 /// @return `true` if the semi-local part needs density gradients.
@@ -73,7 +94,7 @@ struct XCOutput {
 ///
 /// Applies density cutoff: if rho_total < 1e-12, returns zero for all outputs.
 ///
-/// @param type  Functional type (LSDA, PBE, BLYP, B3LYP or PBE0).
+/// @param type  Functional type (LSDA, PBE, BLYP, B3LYP, PBE0 or B2PLYP).
 /// @param rho_a Alpha density at grid point [electrons/Bohr^3].
 /// @param rho_b Beta density at grid point [electrons/Bohr^3].
 /// @param sigma_aa |grad rho_alpha|^2 (GGA only, ignored for LSDA).
@@ -89,7 +110,7 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
 /// Processes `n` grid points at once, enabling SIMD auto-vectorization of
 /// transcendental functions (pow, log, exp).
 ///
-/// @param type     Functional type (LSDA, PBE, BLYP, B3LYP or PBE0).
+/// @param type     Functional type (LSDA, PBE, BLYP, B3LYP, PBE0 or B2PLYP).
 /// @param n        Number of grid points.
 /// @param rho_a    Alpha densities [n].
 /// @param rho_b    Beta densities [n].

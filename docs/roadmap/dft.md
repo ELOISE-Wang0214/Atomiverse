@@ -146,7 +146,7 @@ integral engine); the Rys kernel has no attenuation parameter.
 
 | Functional                              | CPU | CUDA | Kokkos |
 | --------------------------------------- | :-: | :--: | :---: |
-| B2PLYP                                  |  ○  |   ○  |   ○  |
+| B2PLYP                                  |  ✓  |   ○  |   ○  |
 | B2GP-PLYP                               |  ○  |   ○  |   ○  |
 | PWPB95                                  |  ○  |   ○  |   ○  |
 | DSD-BLYP                                |  ○  |   ○  |   ○  |
