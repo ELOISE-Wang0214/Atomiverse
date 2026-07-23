@@ -10,6 +10,7 @@ the git log. Method census: `docs/roadmap/`.
 | [charging-work-energy](charging-work-energy/) | `wf/charging-work-energy` | open — charging-work-energy |
 | [const-pot-bo-parallel-plate](const-pot-bo-parallel-plate/) | `wf/const-pot-bo-parallel-plate` | open — Spec: const-pot-bo-parallel-plate |
 | [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — const-pot-charge-observer |
+| [external-efield-md](external-efield-md/) | `wf/external-efield-md` | open — external-efield-md |
 | [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — freeze-electrode-atoms |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
 | [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — slab-2d-ewald-foothold |

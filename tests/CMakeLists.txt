@@ -163,6 +163,7 @@ atv_add_cpp_test(test_cpu_improper_harmonic       cpu/potentials/test_improper_h
 atv_add_cpp_test(test_cpu_compiled_forcefield     cpu/io/test_compiled_forcefield.cpp)
 atv_add_cpp_test(test_cpu_lammps_data_full        cpu/io/test_lammps_data_full.cpp)
 atv_add_cpp_test(test_cpu_lammps_real             cpu/io/test_lammps_real.cpp)
+atv_add_cpp_test(test_cpu_fix_efield              cpu/dynamics/test_fix_efield.cpp)
 atv_add_cpp_test(test_cpu_bias_distance_cv        cpu/bias/test_distance_cv.cpp)
 atv_add_cpp_test(test_cpu_bias_angle_cv           cpu/bias/test_angle_cv.cpp)
 atv_add_cpp_test(test_cpu_bias_dihedral_cv        cpu/bias/test_dihedral_cv.cpp)
