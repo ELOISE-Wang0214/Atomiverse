@@ -1197,21 +1197,23 @@ void lsda_fxc_fd(double ra, double rb, double& faa, double& fab, double& fbb) {
         fbb = 0.0;
 }
 
-} // namespace
 
-ExcitedStatesResult UKS::tda(int n_states) const {
-    if (!has_result())
-        throw std::runtime_error(
-            "UKS::tda: no SCF result — call run(frame) first");
-    const SlaterDeterminant& det = determinant();
-    if (det.restricted() || det.generalized())
-        throw std::runtime_error(
-            "UKS::tda: requires an unrestricted (UKS) determinant");
-    if (xc != XCType::LSDA)
-        throw std::runtime_error(
-            "UKS::tda: only LSDA is implemented (pure open-shell ALDA); "
-            "requested functional is not LSDA (no fallback)");
+/// Workspace for open-shell LSDA Casida A (δε + Coulomb + spin-resolved fxc).
+struct UksLsdaCasidaWork {
+    RealMatrix A;
+    int noa = 0, nva = 0, nob = 0, nvb = 0, na = 0, nb = 0, nov = 0;
+    std::vector<int> occ_a, virt_a, occ_b, virt_b;
+    /// Orbital-energy gap on each singles diagonal [Ha]; A − B = diag(de)
+    /// for pure DFT / real MOs.
+    std::vector<double> de;
+};
 
+/// @brief Build spin-conserving Casida A for UKS/LSDA (pure, α_hf = 0).
+UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
+                                         const IntegralPack& pack,
+                                         GridLevel grid_level, int n_radial,
+                                         int n_angular, int n_states,
+                                         const char* tag) {
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& Ca = det.coefficients(Spin::alpha);
     const RealMatrix& Cb = det.coefficients(Spin::beta);
@@ -1220,111 +1222,110 @@ ExcitedStatesResult UKS::tda(int n_states) const {
     const RealVector& fa = det.occupations(Spin::alpha);
     const RealVector& fb = det.occupations(Spin::beta);
 
-    std::vector<int> occ_a, virt_a, occ_b, virt_b;
-    split_occ_virt(fa, occ_a, virt_a);
-    split_occ_virt(fb, occ_b, virt_b);
-    const int noa = static_cast<int>(occ_a.size());
-    const int nva = static_cast<int>(virt_a.size());
-    const int nob = static_cast<int>(occ_b.size());
-    const int nvb = static_cast<int>(virt_b.size());
-    if (noa == 0 || nob == 0)
-        throw std::runtime_error(
-            "UKS::tda: empty occupied manifold on one spin (no fallback)");
-    if (nva == 0 && nvb == 0)
-        throw std::runtime_error(
-            "UKS::tda: no virtual orbitals (no occ→virt singles)");
-    const int na = noa * nva;
-    const int nb = nob * nvb;
-    const int nov = na + nb;
-    if (n_states < 1 || n_states > nov)
+    UksLsdaCasidaWork w;
+    split_occ_virt(fa, w.occ_a, w.virt_a);
+    split_occ_virt(fb, w.occ_b, w.virt_b);
+    w.noa = static_cast<int>(w.occ_a.size());
+    w.nva = static_cast<int>(w.virt_a.size());
+    w.nob = static_cast<int>(w.occ_b.size());
+    w.nvb = static_cast<int>(w.virt_b.size());
+    if (w.noa == 0 || w.nob == 0)
+        throw std::runtime_error(std::string(tag)
+                                 + ": empty occupied manifold on one spin "
+                                   "(no fallback)");
+    if (w.nva == 0 && w.nvb == 0)
+        throw std::runtime_error(std::string(tag)
+                                 + ": no virtual orbitals (no occ→virt "
+                                   "singles)");
+    w.na = w.noa * w.nva;
+    w.nb = w.nob * w.nvb;
+    w.nov = w.na + w.nb;
+    if (n_states < 1 || n_states > w.nov)
         throw std::invalid_argument(
-            "UKS::tda: n_states = " + std::to_string(n_states)
-            + " outside [1, n_ov = " + std::to_string(nov) + "]");
-    if (nov > 512)
-        throw std::runtime_error(
-            "UKS::tda: n_ov = " + std::to_string(nov)
-            + " exceeds dense threshold 512 (no fallback)");
+            std::string(tag) + ": n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(w.nov) + "]");
+    if (w.nov > 512)
+        throw std::runtime_error(std::string(tag) + ": n_ov = "
+                                 + std::to_string(w.nov)
+                                 + " exceeds dense threshold 512 (no fallback)");
 
-    const IntegralPack& pack = integral_workspace_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
     RealMatrix Coa, Cva, Cob, Cvb;
-    coeff_blocks(Ca, occ_a, virt_a, Coa, Cva);
-    coeff_blocks(Cb, occ_b, virt_b, Cob, Cvb);
+    coeff_blocks(Ca, w.occ_a, w.virt_a, Coa, Cva);
+    coeff_blocks(Cb, w.occ_b, w.virt_b, Cob, Cvb);
 
-    // (i a | j b) blocks — pure DFT keeps full Coulomb, α_hf = 0 so no
-    // same-spin exchange subtraction (matches PySCF get_ab hyb=0).
-    // Layout after transform: [i,a,j,b] with C0=Co, C1=Cv, C2=Co, C3=Cv.
     const xt::xtensor<double, 4> iajb_aa =
-        (na > 0) ? mo_transform_eri(eri, Coa, Cva, Coa, Cva)
-                 : xt::zeros<double>({0, 0, 0, 0});
+        (w.na > 0) ? mo_transform_eri(eri, Coa, Cva, Coa, Cva)
+                   : xt::zeros<double>({0, 0, 0, 0});
     const xt::xtensor<double, 4> iajb_bb =
-        (nb > 0) ? mo_transform_eri(eri, Cob, Cvb, Cob, Cvb)
-                 : xt::zeros<double>({0, 0, 0, 0});
+        (w.nb > 0) ? mo_transform_eri(eri, Cob, Cvb, Cob, Cvb)
+                   : xt::zeros<double>({0, 0, 0, 0});
     const xt::xtensor<double, 4> iajb_ab =
-        (na > 0 && nb > 0) ? mo_transform_eri(eri, Coa, Cva, Cob, Cvb)
-                           : xt::zeros<double>({0, 0, 0, 0});
+        (w.na > 0 && w.nb > 0) ? mo_transform_eri(eri, Coa, Cva, Cob, Cvb)
+                               : xt::zeros<double>({0, 0, 0, 0});
 
-    // Composite index: α-block first (p = i*nva + a), then β (q = j*nvb + b).
-    RealMatrix A =
-        xt::zeros<double>({static_cast<std::size_t>(nov),
-                           static_cast<std::size_t>(nov)});
+    w.A = xt::zeros<double>({static_cast<std::size_t>(w.nov),
+                             static_cast<std::size_t>(w.nov)});
+    w.de.assign(static_cast<std::size_t>(w.nov), 0.0);
 
-    // Diagonal orbital-energy differences.
-    for (int i = 0; i < noa; ++i)
-        for (int a = 0; a < nva; ++a) {
-            const int p = i * nva + a;
-            const int ii = occ_a[static_cast<std::size_t>(i)];
-            const int aa = virt_a[static_cast<std::size_t>(a)];
-            A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
-                ea(static_cast<std::size_t>(aa))
-                - ea(static_cast<std::size_t>(ii));
+    for (int i = 0; i < w.noa; ++i)
+        for (int a = 0; a < w.nva; ++a) {
+            const int p = i * w.nva + a;
+            const int ii = w.occ_a[static_cast<std::size_t>(i)];
+            const int aa = w.virt_a[static_cast<std::size_t>(a)];
+            const double gap = ea(static_cast<std::size_t>(aa))
+                               - ea(static_cast<std::size_t>(ii));
+            w.de[static_cast<std::size_t>(p)] = gap;
+            w.A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) = gap;
         }
-    for (int j = 0; j < nob; ++j)
-        for (int b = 0; b < nvb; ++b) {
-            const int q = na + j * nvb + b;
-            const int jj = occ_b[static_cast<std::size_t>(j)];
-            const int bb = virt_b[static_cast<std::size_t>(b)];
-            A(static_cast<std::size_t>(q), static_cast<std::size_t>(q)) =
-                eb(static_cast<std::size_t>(bb))
-                - eb(static_cast<std::size_t>(jj));
+    for (int j = 0; j < w.nob; ++j)
+        for (int b = 0; b < w.nvb; ++b) {
+            const int q = w.na + j * w.nvb + b;
+            const int jj = w.occ_b[static_cast<std::size_t>(j)];
+            const int bb = w.virt_b[static_cast<std::size_t>(b)];
+            const double gap = eb(static_cast<std::size_t>(bb))
+                               - eb(static_cast<std::size_t>(jj));
+            w.de[static_cast<std::size_t>(q)] = gap;
+            w.A(static_cast<std::size_t>(q), static_cast<std::size_t>(q)) = gap;
         }
 
-    // Coulomb (ia|jb).
-    for (int i = 0; i < noa; ++i)
-        for (int a = 0; a < nva; ++a) {
-            const int p = i * nva + a;
-            for (int j = 0; j < noa; ++j)
-                for (int b = 0; b < nva; ++b) {
-                    const int q = j * nva + b;
-                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+    for (int i = 0; i < w.noa; ++i)
+        for (int a = 0; a < w.nva; ++a) {
+            const int p = i * w.nva + a;
+            for (int j = 0; j < w.noa; ++j)
+                for (int b = 0; b < w.nva; ++b) {
+                    const int q = j * w.nva + b;
+                    w.A(static_cast<std::size_t>(p),
+                        static_cast<std::size_t>(q)) +=
                         iajb_aa(static_cast<std::size_t>(i),
                                 static_cast<std::size_t>(a),
                                 static_cast<std::size_t>(j),
                                 static_cast<std::size_t>(b));
                 }
-            for (int j = 0; j < nob; ++j)
-                for (int b = 0; b < nvb; ++b) {
-                    const int q = na + j * nvb + b;
+            for (int j = 0; j < w.nob; ++j)
+                for (int b = 0; b < w.nvb; ++b) {
+                    const int q = w.na + j * w.nvb + b;
                     const double v =
                         iajb_ab(static_cast<std::size_t>(i),
                                 static_cast<std::size_t>(a),
                                 static_cast<std::size_t>(j),
                                 static_cast<std::size_t>(b));
-                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
-                        v;
-                    A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) +=
-                        v;
+                    w.A(static_cast<std::size_t>(p),
+                        static_cast<std::size_t>(q)) += v;
+                    w.A(static_cast<std::size_t>(q),
+                        static_cast<std::size_t>(p)) += v;
                 }
         }
-    for (int i = 0; i < nob; ++i)
-        for (int a = 0; a < nvb; ++a) {
-            const int p = na + i * nvb + a;
-            for (int j = 0; j < nob; ++j)
-                for (int b = 0; b < nvb; ++b) {
-                    const int q = na + j * nvb + b;
-                    A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+    for (int i = 0; i < w.nob; ++i)
+        for (int a = 0; a < w.nvb; ++a) {
+            const int p = w.na + i * w.nvb + a;
+            for (int j = 0; j < w.nob; ++j)
+                for (int b = 0; b < w.nvb; ++b) {
+                    const int q = w.na + j * w.nvb + b;
+                    w.A(static_cast<std::size_t>(p),
+                        static_cast<std::size_t>(q)) +=
                         iajb_bb(static_cast<std::size_t>(i),
                                 static_cast<std::size_t>(a),
                                 static_cast<std::size_t>(j),
@@ -1332,10 +1333,9 @@ ExcitedStatesResult UKS::tda(int n_states) const {
                 }
         }
 
-    // Spin-resolved ALDA f^xc on the KS grid (LSDA second derivatives).
     if (pack.shells.empty())
-        throw std::runtime_error(
-            "UKS::tda: IntegralPack has no shells (no fallback)");
+        throw std::runtime_error(std::string(tag)
+                                 + ": IntegralPack has no shells (no fallback)");
     const MolecularGrid grid = build_molecular_grid(
         pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
         n_radial, n_angular);
@@ -1352,30 +1352,24 @@ ExcitedStatesResult UKS::tda(int n_states) const {
             c2s, RealMatrix(xt::linalg::dot(Pb, xt::transpose(c2s))));
         Ca_work = xt::linalg::dot(c2s, Ca);
         Cb_work = xt::linalg::dot(c2s, Cb);
-        // Rebuild occ/virt blocks in Cartesian AO for grid products.
-        coeff_blocks(Ca_work, occ_a, virt_a, Coa, Cva);
-        coeff_blocks(Cb_work, occ_b, virt_b, Cob, Cvb);
+        coeff_blocks(Ca_work, w.occ_a, w.virt_a, Coa, Cva);
+        coeff_blocks(Cb_work, w.occ_b, w.virt_b, Cob, Cvb);
     }
-    const int n_cart = static_cast<int>(pack.shells.size()
-                                            ? /* AO count from shells */
-                                            static_cast<int>(Pa.shape()[0])
-                                            : 0);
-    (void)n_cart;
     const int n_basis = static_cast<int>(Pa.shape()[0]);
     const int G = static_cast<int>(grid.points.size());
 
     std::vector<double> chi(static_cast<std::size_t>(n_basis));
-    std::vector<double> xi_a(static_cast<std::size_t>(std::max(na, 1)));
-    std::vector<double> xi_b(static_cast<std::size_t>(std::max(nb, 1)));
-    std::vector<double> phi_oa(static_cast<std::size_t>(std::max(noa, 1)));
-    std::vector<double> phi_va(static_cast<std::size_t>(std::max(nva, 1)));
-    std::vector<double> phi_ob(static_cast<std::size_t>(std::max(nob, 1)));
-    std::vector<double> phi_vb(static_cast<std::size_t>(std::max(nvb, 1)));
+    std::vector<double> xi_a(static_cast<std::size_t>(std::max(w.na, 1)));
+    std::vector<double> xi_b(static_cast<std::size_t>(std::max(w.nb, 1)));
+    std::vector<double> phi_oa(static_cast<std::size_t>(std::max(w.noa, 1)));
+    std::vector<double> phi_va(static_cast<std::size_t>(std::max(w.nva, 1)));
+    std::vector<double> phi_ob(static_cast<std::size_t>(std::max(w.nob, 1)));
+    std::vector<double> phi_vb(static_cast<std::size_t>(std::max(w.nvb, 1)));
 
     for (int g = 0; g < G; ++g) {
         const auto& pt = grid.points[static_cast<std::size_t>(g)];
-        const double w = pt.weight;
-        if (!(std::fabs(w) > 0.0))
+        const double weight = pt.weight;
+        if (!(std::fabs(weight) > 0.0))
             continue;
         for (int mu = 0; mu < n_basis; ++mu)
             chi[static_cast<std::size_t>(mu)] = eval_basis(
@@ -1402,116 +1396,123 @@ ExcitedStatesResult UKS::tda(int n_states) const {
               || std::fabs(fbb) > 0.0))
             continue;
 
-        for (int i = 0; i < noa; ++i) {
+        for (int i = 0; i < w.noa; ++i) {
             double v = 0.0;
             for (int mu = 0; mu < n_basis; ++mu)
                 v += chi[static_cast<std::size_t>(mu)]
                      * Coa(mu, static_cast<std::size_t>(i));
             phi_oa[static_cast<std::size_t>(i)] = v;
         }
-        for (int a = 0; a < nva; ++a) {
+        for (int a = 0; a < w.nva; ++a) {
             double v = 0.0;
             for (int mu = 0; mu < n_basis; ++mu)
                 v += chi[static_cast<std::size_t>(mu)]
                      * Cva(mu, static_cast<std::size_t>(a));
             phi_va[static_cast<std::size_t>(a)] = v;
         }
-        for (int i = 0; i < nob; ++i) {
+        for (int i = 0; i < w.nob; ++i) {
             double v = 0.0;
             for (int mu = 0; mu < n_basis; ++mu)
                 v += chi[static_cast<std::size_t>(mu)]
                      * Cob(mu, static_cast<std::size_t>(i));
             phi_ob[static_cast<std::size_t>(i)] = v;
         }
-        for (int a = 0; a < nvb; ++a) {
+        for (int a = 0; a < w.nvb; ++a) {
             double v = 0.0;
             for (int mu = 0; mu < n_basis; ++mu)
                 v += chi[static_cast<std::size_t>(mu)]
                      * Cvb(mu, static_cast<std::size_t>(a));
             phi_vb[static_cast<std::size_t>(a)] = v;
         }
-        for (int i = 0; i < noa; ++i)
-            for (int a = 0; a < nva; ++a)
-                xi_a[static_cast<std::size_t>(i * nva + a)] =
+        for (int i = 0; i < w.noa; ++i)
+            for (int a = 0; a < w.nva; ++a)
+                xi_a[static_cast<std::size_t>(i * w.nva + a)] =
                     phi_oa[static_cast<std::size_t>(i)]
                     * phi_va[static_cast<std::size_t>(a)];
-        for (int i = 0; i < nob; ++i)
-            for (int a = 0; a < nvb; ++a)
-                xi_b[static_cast<std::size_t>(i * nvb + a)] =
+        for (int i = 0; i < w.nob; ++i)
+            for (int a = 0; a < w.nvb; ++a)
+                xi_b[static_cast<std::size_t>(i * w.nvb + a)] =
                     phi_ob[static_cast<std::size_t>(i)]
                     * phi_vb[static_cast<std::size_t>(a)];
 
-        const double wfaa = w * faa;
-        const double wfab = w * fab;
-        const double wfbb = w * fbb;
-        for (int p = 0; p < na; ++p) {
+        const double wfaa = weight * faa;
+        const double wfab = weight * fab;
+        const double wfbb = weight * fbb;
+        for (int p = 0; p < w.na; ++p) {
             const double xp = xi_a[static_cast<std::size_t>(p)];
             if (!(std::fabs(xp) > 0.0))
                 continue;
-            for (int q = p; q < na; ++q) {
+            for (int q = p; q < w.na; ++q) {
                 const double v = wfaa * xp * xi_a[static_cast<std::size_t>(q)];
-                A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
+                w.A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) +=
                     v;
                 if (q != p)
-                    A(static_cast<std::size_t>(q),
-                      static_cast<std::size_t>(p)) += v;
+                    w.A(static_cast<std::size_t>(q),
+                        static_cast<std::size_t>(p)) += v;
             }
-            for (int q = 0; q < nb; ++q) {
+            for (int q = 0; q < w.nb; ++q) {
                 const double v = wfab * xp * xi_b[static_cast<std::size_t>(q)];
-                A(static_cast<std::size_t>(p),
-                  static_cast<std::size_t>(na + q)) += v;
-                A(static_cast<std::size_t>(na + q),
-                  static_cast<std::size_t>(p)) += v;
+                w.A(static_cast<std::size_t>(p),
+                    static_cast<std::size_t>(w.na + q)) += v;
+                w.A(static_cast<std::size_t>(w.na + q),
+                    static_cast<std::size_t>(p)) += v;
             }
         }
-        for (int p = 0; p < nb; ++p) {
+        for (int p = 0; p < w.nb; ++p) {
             const double xp = xi_b[static_cast<std::size_t>(p)];
             if (!(std::fabs(xp) > 0.0))
                 continue;
-            for (int q = p; q < nb; ++q) {
+            for (int q = p; q < w.nb; ++q) {
                 const double v = wfbb * xp * xi_b[static_cast<std::size_t>(q)];
-                A(static_cast<std::size_t>(na + p),
-                  static_cast<std::size_t>(na + q)) += v;
+                w.A(static_cast<std::size_t>(w.na + p),
+                    static_cast<std::size_t>(w.na + q)) += v;
                 if (q != p)
-                    A(static_cast<std::size_t>(na + q),
-                      static_cast<std::size_t>(na + p)) += v;
+                    w.A(static_cast<std::size_t>(w.na + q),
+                        static_cast<std::size_t>(w.na + p)) += v;
             }
         }
     }
 
-    // Symmetrize numerical noise, then dense eigh.
-    for (int p = 0; p < nov; ++p)
-        for (int q = p + 1; q < nov; ++q) {
+    for (int p = 0; p < w.nov; ++p)
+        for (int q = p + 1; q < w.nov; ++q) {
             const double s =
                 0.5
-                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
-                   + A(static_cast<std::size_t>(q),
-                       static_cast<std::size_t>(p)));
-            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = s;
-            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = s;
+                * (w.A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + w.A(static_cast<std::size_t>(q),
+                         static_cast<std::size_t>(p)));
+            w.A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = s;
+            w.A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = s;
         }
+    return w;
+}
 
-    auto [w, U] = xt::linalg::eigh(A);
-    const std::size_t k = static_cast<std::size_t>(n_states);
+/// Package open-shell (X,Y) into ExcitedStatesResult with length-gauge μ, f.
+/// Full RPA uses X+Y; TDA uses X only (Y = 0). No √2 closed-shell factor.
+ExcitedStatesResult package_uks_excited(
+    const SlaterDeterminant& det, const IntegralPack& pack,
+    const UksLsdaCasidaWork& w, const internal::TDHFPack::Roots& roots,
+    bool tda_flag) {
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix& Ca = det.coefficients(Spin::alpha);
+    const RealMatrix& Cb = det.coefficients(Spin::beta);
+    RealMatrix Coa, Cva, Cob, Cvb;
+    coeff_blocks(Ca, w.occ_a, w.virt_a, Coa, Cva);
+    coeff_blocks(Cb, w.occ_b, w.virt_b, Cob, Cvb);
+
+    const std::size_t k = roots.omega.size();
     ExcitedStatesResult out;
     out.channel = ExcitationChannel::singlet; // no closed-shell S/T split
-    out.tda = true;
+    out.tda = tda_flag;
     out.alda = true;
     out.energy_ev.resize(k);
     out.oscillator_strength.assign(k, 0.0);
     out.transition_dipole_au = xt::zeros<double>({k, std::size_t(3)});
     for (std::size_t s = 0; s < k; ++s)
-        out.energy_ev[s] = w(s) * units::kHartreeInEv;
+        out.energy_ev[s] = roots.omega(s) * units::kHartreeInEv;
 
-    // Length-gauge transition dipoles (open-shell: no √2 closed-shell factor).
-    // μ_s = Σ_{iaσ} X_{iaσ} ⟨φ_iσ|r|φ_aσ⟩.
     const double origin[3] = {0.0, 0.0, 0.0};
     const MultipoleIntegrals mi{pack.shells.data(),
                                 static_cast<int>(pack.shells.size()), origin};
-    // Restore working-dimension coeff blocks (spherical sandwich on dipole).
-    coeff_blocks(Ca, occ_a, virt_a, Coa, Cva);
-    coeff_blocks(Cb, occ_b, virt_b, Cob, Cvb);
-
     for (int axis = 0; axis < 3; ++axis) {
         xt::xtensor<double, 2> D = mi.dipole(axis);
         if (pack.spherical()) {
@@ -1521,28 +1522,34 @@ ExcitedStatesResult UKS::tda(int n_states) const {
                 xt::xtensor<double, 2>(xt::linalg::dot(D, c2s)));
         }
         RealMatrix d_mo_a = xt::zeros<double>(
-            {static_cast<std::size_t>(noa), static_cast<std::size_t>(nva)});
+            {static_cast<std::size_t>(w.noa), static_cast<std::size_t>(w.nva)});
         RealMatrix d_mo_b = xt::zeros<double>(
-            {static_cast<std::size_t>(nob), static_cast<std::size_t>(nvb)});
-        if (na > 0)
+            {static_cast<std::size_t>(w.nob), static_cast<std::size_t>(w.nvb)});
+        if (w.na > 0)
             d_mo_a = xt::linalg::dot(
                 xt::transpose(Coa), RealMatrix(xt::linalg::dot(D, Cva)));
-        if (nb > 0)
+        if (w.nb > 0)
             d_mo_b = xt::linalg::dot(
                 xt::transpose(Cob), RealMatrix(xt::linalg::dot(D, Cvb)));
         for (std::size_t s = 0; s < k; ++s) {
             double mu_s = 0.0;
-            for (int i = 0; i < noa; ++i)
-                for (int a = 0; a < nva; ++a) {
-                    const int p = i * nva + a;
-                    mu_s += U(static_cast<std::size_t>(p), s)
+            for (int i = 0; i < w.noa; ++i)
+                for (int a = 0; a < w.nva; ++a) {
+                    const int p = i * w.nva + a;
+                    const double xy =
+                        roots.X(s, static_cast<std::size_t>(p))
+                        + roots.Y(s, static_cast<std::size_t>(p));
+                    mu_s += xy
                             * d_mo_a(static_cast<std::size_t>(i),
                                      static_cast<std::size_t>(a));
                 }
-            for (int i = 0; i < nob; ++i)
-                for (int a = 0; a < nvb; ++a) {
-                    const int p = na + i * nvb + a;
-                    mu_s += U(static_cast<std::size_t>(p), s)
+            for (int i = 0; i < w.nob; ++i)
+                for (int a = 0; a < w.nvb; ++a) {
+                    const int p = w.na + i * w.nvb + a;
+                    const double xy =
+                        roots.X(s, static_cast<std::size_t>(p))
+                        + roots.Y(s, static_cast<std::size_t>(p));
+                    mu_s += xy
                             * d_mo_b(static_cast<std::size_t>(i),
                                      static_cast<std::size_t>(a));
                 }
@@ -1554,10 +1561,72 @@ ExcitedStatesResult UKS::tda(int n_states) const {
             out.transition_dipole_au(s, 0) * out.transition_dipole_au(s, 0)
             + out.transition_dipole_au(s, 1) * out.transition_dipole_au(s, 1)
             + out.transition_dipole_au(s, 2) * out.transition_dipole_au(s, 2);
-        out.oscillator_strength[s] = (2.0 / 3.0) * w(s) * mu2;
+        out.oscillator_strength[s] = (2.0 / 3.0) * roots.omega(s) * mu2;
     }
     return out;
 }
+
+} // namespace
+
+ExcitedStatesResult UKS::tda(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "UKS::tda: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    if (det.restricted() || det.generalized())
+        throw std::runtime_error(
+            "UKS::tda: requires an unrestricted (UKS) determinant");
+    if (xc != XCType::LSDA)
+        throw std::runtime_error(
+            "UKS::tda: only LSDA is implemented (pure open-shell ALDA); "
+            "requested functional is not LSDA (no fallback)");
+
+    const IntegralPack& pack = integral_workspace_();
+    const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
+        det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tda");
+
+    auto [evals, U] = xt::linalg::eigh(w.A);
+    const std::size_t k = static_cast<std::size_t>(n_states);
+    const std::size_t n = static_cast<std::size_t>(w.nov);
+    internal::TDHFPack::Roots roots;
+    roots.omega = xt::zeros<double>({k});
+    roots.X = xt::zeros<double>({k, n});
+    roots.Y = xt::zeros<double>({k, n});
+    for (std::size_t s = 0; s < k; ++s) {
+        roots.omega(s) = evals(s);
+        for (std::size_t r = 0; r < n; ++r)
+            roots.X(s, r) = U(r, s);
+    }
+    return package_uks_excited(det, pack, w, roots, /*tda_flag=*/true);
+}
+
+ExcitedStatesResult UKS::tddft(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "UKS::tddft: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    if (det.restricted() || det.generalized())
+        throw std::runtime_error(
+            "UKS::tddft: requires an unrestricted (UKS) determinant");
+    if (xc != XCType::LSDA)
+        throw std::runtime_error(
+            "UKS::tddft: only LSDA is implemented (pure open-shell ALDA); "
+            "requested functional is not LSDA (no fallback)");
+
+    const IntegralPack& pack = integral_workspace_();
+    const UksLsdaCasidaWork w = build_uks_lsda_casida_A(
+        det, pack, grid_level, n_radial, n_angular, n_states, "UKS::tddft");
+
+    // Pure LSDA, real MOs: B = Coulomb + fxc = A − diag(ε_a − ε_i).
+    RealMatrix B = w.A;
+    for (int p = 0; p < w.nov; ++p)
+        B(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) -=
+            w.de[static_cast<std::size_t>(p)];
+
+    const internal::TDHFPack::Roots roots = rpa_from_ab(w.A, B, n_states);
+    return package_uks_excited(det, pack, w, roots, /*tda_flag=*/false);
+}
+
 
 ExcitedStatesResult UHF::sf_tda(int n_states) const {
     if (!has_result())
