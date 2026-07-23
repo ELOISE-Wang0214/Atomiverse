@@ -254,7 +254,7 @@ in the namespace `cpu::scf::internal`.
 The reason for this asymmetry — why optimizers are Components but
 DIIS variants are not — is in [CPU Internals](cpu-internals.md): the
 SCF cycle does not present a user-pluggable phase order. The user
-chooses an SCF method through `SCFConfig` (HF vs KS, restricted vs
+chooses an SCF method as a **concrete type** (HF vs KS, restricted vs
 unrestricted, MINAO vs Hcore initial guess), not by inserting a
 component into a Plan. The five inner steps are an implementation, not
 an extension surface.

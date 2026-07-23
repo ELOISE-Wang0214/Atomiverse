@@ -15,8 +15,8 @@ namespace (pinned per row in test_namespaces.py):
   ``atomiverse.scf`` / ``atomiverse.optimizer`` no longer import, dead
   package attributes raise ``AttributeError``, and the ``_cpp`` extension
   carries none of the never-bound SCF / legacy optimizer symbols.
-* Plane-wave DFT uses the explicit ``PWConfig`` → ``PWSolver.build`` →
-  ``PWSolver.run`` lifecycle. PW types are present only when the extension was
+* Plane-wave DFT uses the concrete ``PW`` method (members → build → run).
+  PW types are present only when the extension was
   built with ``ATV_BUILD_PW=ON``; the deleted functional entry is absent on
   every build.
 * A tree grep gate keeps dead references from creeping back anywhere
@@ -42,7 +42,7 @@ import molrs
 import atomiverse as av
 from atomiverse._binding import _cpp
 
-_HAS_PW: bool = hasattr(_cpp, "PWSolver")
+_HAS_PW: bool = hasattr(_cpp, "PW")
 
 # ── Shared surface definitions ──────────────────────────────────────
 
@@ -76,7 +76,7 @@ _CANONICAL_ALL: frozenset[str] = frozenset(
         "AM1Result",
         "single_point",
     }
-    | ({"PWConfig", "PWSolver", "PWResult"} if _HAS_PW else set())
+    | ({"PW", "PWResult"} if _HAS_PW else set())
 )
 
 _DEAD_PACKAGE_ATTRS: tuple[str, ...] = (
@@ -150,7 +150,7 @@ class TestCanonicalSurface:
 
     def test_all_is_exactly_the_honest_surface(self) -> None:
         """__all__ equals the MD + AM1 base plus optional PW object types."""
-        assert len(_CANONICAL_ALL) == (21 if _HAS_PW else 18)
+        assert len(_CANONICAL_ALL) == (20 if _HAS_PW else 18)
         assert set(av.__all__) == set(_CANONICAL_ALL)
 
 
@@ -227,19 +227,18 @@ class TestPWSurface:
         """Toy local potential (empty upf_path) runs and returns a
         finite energy [Ry] — 'runs, unphysical' contract, no new
         reference values."""
-        config = av.PWConfig()
-        config.ecut_ry = 8.0
-        config.k_mesh = 1
-        config.max_iter = 5
-        solver = av.PWSolver(config)
-        solver.build(silicon_frame)
-        result = solver.run(silicon_frame)
+        pw = av.PW()
+        pw.ecut_ry = 8.0
+        pw.k_mesh = 1
+        pw.max_iter = 5
+        pw.build(silicon_frame)
+        result = pw.run(silicon_frame)
         assert result.iterations >= 1
         assert isinstance(result.energy, float)
         assert np.isfinite(result.energy)
 
     @pytest.mark.skipif(_HAS_PW, reason="extension built with ATV_BUILD_PW")
-    @pytest.mark.parametrize("name", ("PWConfig", "PWSolver", "PWResult"))
+    @pytest.mark.parametrize("name", ("PW", "PWResult"))
     def test_pw_types_absent_without_backend(self, name: str) -> None:
         """A PW-disabled wheel exports no pretend plane-wave object types."""
         assert not hasattr(av, name)

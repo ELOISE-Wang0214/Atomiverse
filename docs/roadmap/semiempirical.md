@@ -2,26 +2,23 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-Atomiverse ships two NDDO parameterizations: **AM1** and **RM1**, on the shared
-NDDO framework (`cpu::semiempirical::NDDOSolver` + `AM1Evaluator` /
-RM1 evaluator of kind `cpu::Semiempirical`).
-It computes energies, Mulliken charges, the density matrix, and **analytic
-nuclear forces** (SCF Hellmann–Feynman / fixed-density integral derivatives).
-`AM1Evaluator::with_gradient(true)` (default) writes forces for Evaluate / MD /
-Minimize; `with_gradient(false)` is energy-only. Launch unwraps an isolated
+Atomiverse ships two **concrete NDDO methods**: **AM1** and **RM1**
+(`cpu::semiempirical::AM1` / `RM1`; evaluators `AM1Evaluator` / `RM1Evaluator`
+of kind `cpu::Semiempirical`). The shared NDDO engine is **internal**
+(`NDDOSolver` is not a public bag). Methods compute energies, Mulliken
+charges, the density matrix, and **analytic nuclear forces**. Evaluators write
+forces for Evaluate / MD / Minimize by default. Launch unwraps an isolated
 fragment for molecular AM1 under PBC wrap (same pattern as Gaussian SCF).
-Regressions: `am1_water_force`, `am1_water_minimize`, `am1_water_bomd`.
-Tutorial: [Chapter 17](../tutorial/ch17-semiempirical-am1.md) +
-`examples/15_am1.cpp`. Heat of formation is MOPAC-style on `AM1Result`.
-Force gradients use fixed-density central differences with translational
-invariance (last atom \(F_N=-\sum_{i<N} F_i\)); closed-form multipole
-derivatives remain a performance follow-up.
-AM1-BCC charge assignment still uses the energy/charge path (see
-[Multiscale and Properties](multiscale.md)).
+Regressions: `am1_water_force`, `am1_water_minimize`, `am1_water_bomd`,
+`rm1_water_energy`. Tutorial: [Chapter 17](../tutorial/ch17-semiempirical-am1.md)
++ `examples/15_am1.cpp`. Heat of formation is MOPAC-style. Closed-form multipole
+derivatives remain a performance follow-up. AM1-BCC charge assignment still uses
+the energy/charge path (see [Multiscale and Properties](multiscale.md)).
 
-**SCC-DFTB2** (H-only, `DFTB2`, `reg_h2_dftb2`) and **GFN0-xTB toy**
-(`XtbGfn0`, `reg_h2o_gfn0`) ship as TB families beside NDDO — not under
-`NDDOSolver`. Full mio/3ob / production GFN tables and DFTB3 remain ○.
+**SCC-DFTB2** multi-element H/C/N/O (`DFTB2`, static in-tree SK tables,
+`reg_h2_dftb2`, `reg_h2o_dftb2_mio`) and **GFN0-xTB toy** (`XtbGfn0`,
+`reg_h2o_gfn0`) ship as TB families beside NDDO. DFTB2 forces are central FD of
+E (`with_forces`), not analytic. Production GFN2 / 3ob and DFTB3 remain ○.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -57,6 +54,10 @@ finite-difference via `cpu::vib::Hessian` over SE forces.
 | DFTB analytic gradient    |  ○  |   ○  |   ○  |
 | DFTB analytic stress      |  ○  |   ○  |   ○  |
 | TD-DFTB                   |  ○  |   ○  |   ○  |
+
+DFTB2 is multi-element H/C/N/O with static SK tables (`basis_data/dftb_mio_tables.h`).
+Forces exist via central FD of energy (`with_forces`) — the analytic-gradient
+row stays ○ until Hellmann–Feynman / SK derivatives ship.
 
 ## 3. Extended Tight-Binding Methods
 

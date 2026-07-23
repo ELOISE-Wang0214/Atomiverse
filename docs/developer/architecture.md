@@ -244,7 +244,7 @@ home of single-point energy and force calculations.
 *inner solvers* — plain low-level classes, not `Driver` subclasses. Gaussian SCF
 is a concrete method (`cpu::scf::RHF` / `UHF` / `RKS` / `UKS`; private loop engine under `scf/internal/`), used by the
 `cpu::scf::SCF` (`cpu::HF`) / the CUDA SCF evaluator; plane-wave DFT is
-`cpu::pw::PWSolver` behind `cpu::pw::PWEvaluator` (`PlaneWave`). There is no
+`cpu::pw::PW` behind `cpu::pw::PWEvaluator` (`PlaneWave`). There is no
 `Capability` write-set — components write Frame keys and plug into the *same*
 Evaluate, MD, and Minimize drivers ("swap the energy source, keep the driver").
 

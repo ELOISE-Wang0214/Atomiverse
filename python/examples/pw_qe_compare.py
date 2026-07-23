@@ -177,19 +177,18 @@ def run_atomiverse(
     max_iter: int = 80,
     upf_path: str = "",
 ) -> dict:
-    """Run Atomiverse PWSolver and return results."""
+    """Run Atomiverse PW and return results."""
     import atomiverse as av
 
     frame = build_si_diamond(a_lat)
-    cfg = av.PWConfig()
-    cfg.upf_path = upf_path
-    cfg.ecut_ry = ecut_ry
-    cfg.k_mesh = kmesh
-    cfg.tol = tol
-    cfg.max_iter = max_iter
-    solver = av.PWSolver(cfg)
-    solver.build(frame)
-    r = solver.run(frame)
+    pw = av.PW()
+    pw.upf_path = upf_path
+    pw.ecut_ry = ecut_ry
+    pw.k_mesh = kmesh
+    pw.tol = tol
+    pw.max_iter = max_iter
+    pw.build(frame)
+    r = pw.run(frame)
     return {
         "energy": r.energy,
         "converged": r.converged,

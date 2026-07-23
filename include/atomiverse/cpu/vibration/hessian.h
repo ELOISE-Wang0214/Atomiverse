@@ -72,16 +72,6 @@ class Hessian : public Driver<ATV::vib::Phase> {
     /// constructor.
     struct WithoutAccumulator {};
 
-    /// @brief Output paths for the two auto-injected Recorder components.
-    ///
-    /// `frequency_tsv` is the `FrequencyReport` TSV path;
-    /// `mode_xyz_prefix` is the `NormalModeWriter` file-name prefix
-    /// (mode `k` is written to `"<prefix>_mode<k>.xyz"`).
-    struct OutputConfig {
-        std::string frequency_tsv = "frequencies.tsv"; ///< TSV path.
-        std::string mode_xyz_prefix = "mode";          ///< XYZ prefix.
-    };
-
     /// @brief Construct a fully-wired numerical-Hessian driver.
     ///
     /// Auto-registers `ReferenceGeometry`, `DisplaceStep`,
@@ -92,28 +82,31 @@ class Hessian : public Driver<ATV::vib::Phase> {
     /// register a force/energy kind on `vib::Phase::force`.
     ///
     /// Thermochemistry uses standard conditions (298.15 K, 1 atm,
-    /// closed-shell singlet, symmetry number 1). Use the
-    /// `Thermochem::Config` overload to override.
+    /// closed-shell singlet, symmetry number 1). Override via the
+    /// multi-argument constructor (no nested Config bag).
     Hessian();
 
-    /// @brief Construct a numerical-Hessian driver with custom
-    ///        thermochemistry inputs.
+    /// @brief Construct with custom thermochemistry inputs.
     ///
-    /// Identical wiring to the default constructor, but the auto-injected
-    /// `Thermochem` component uses `tc` (temperature / pressure /
-    /// multiplicity / symmetry number) instead of standard conditions.
-    /// @param tc Thermochemistry inputs forwarded to `cpu::vib::Thermochem`.
-    explicit Hessian(const Thermochem::Config& tc);
+    /// @param temperature Temperature [K].
+    /// @param pressure Pressure [Pa].
+    /// @param multiplicity Spin multiplicity `2S+1`.
+    /// @param symmetry_number Rotational sigma.
+    Hessian(double temperature, double pressure, int multiplicity,
+            int symmetry_number);
 
-    /// @brief Construct with custom thermochemistry inputs and custom
-    ///        Recorder output paths.
+    /// @brief Construct with thermochemistry inputs and Recorder paths.
     ///
-    /// Identical wiring to the default constructor; the auto-injected
-    /// `Thermochem` uses `tc` and the `FrequencyReport` /
-    /// `NormalModeWriter` Recorders use the paths in `out`.
-    /// @param tc  Thermochemistry inputs forwarded to `cpu::vib::Thermochem`.
-    /// @param out Output paths for the FrequencyReport / NormalModeWriter.
-    Hessian(const Thermochem::Config& tc, const OutputConfig& out);
+    /// @param temperature Temperature [K].
+    /// @param pressure Pressure [Pa].
+    /// @param multiplicity Spin multiplicity `2S+1`.
+    /// @param symmetry_number Rotational sigma.
+    /// @param frequency_tsv Path for the `FrequencyReport` TSV.
+    /// @param mode_xyz_prefix Prefix for `NormalModeWriter` XYZ files
+    ///        (mode `k` → `"<prefix>_mode<k>.xyz"`).
+    Hessian(double temperature, double pressure, int multiplicity,
+            int symmetry_number, std::string frequency_tsv,
+            std::string mode_xyz_prefix);
 
     /// @brief Construct a driver WITHOUT the HessianAccumulator (test-only).
     ///

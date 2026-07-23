@@ -188,13 +188,13 @@ path has no dispersion correction.
 
 Two periodic DFT engines exist, with disjoint strengths:
 
-- **Plane-wave DFT** (`cpu::pw::PWSolver`, `cuda::pw`) — k-points, norm-conserving
+- **Plane-wave DFT** (`cpu::pw::PW`, `cuda::pw`) — k-points, norm-conserving
   UPF pseudopotentials, block Davidson. **Ionic forces via analytic local HF +
   Ewald + Kleinman–Bylander nonlocal** (`pw_forces_analytic`, default for
   `PWEvaluator::with_gradient(true)`); FD (`pw_forces_fd`) is the oracle.
   **Cell stress via strain-FD** (`pw_stress` → `kStress`). XC is the Slater +
   PW92 LDA limit (PBE called with `sigma = 0`), spin-unpolarized.
-- **GPW**, Gaussian and plane waves (`cpu::gpw::GPWSolver`) — Gaussian basis
+- **GPW**, Gaussian and plane waves (`cpu::gpw::GPW`) — Gaussian basis
   collocated on a uniform grid, GTH pseudopotentials, LDA (Padé) or PBE, DFT-D3,
   **analytic forces**, OT minimizer. **Γ-point and closed-shell only.** CPU only.
 

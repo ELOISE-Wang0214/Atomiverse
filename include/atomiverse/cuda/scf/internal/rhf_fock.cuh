@@ -40,7 +40,7 @@ class RHFFock {
     /// @param integrals Molecular integral pack (Hcore, ERI, S, V_nuc).
     /// @param level_shift Virtual-orbital level shift λ [Hartree] applied in
     ///        the orthonormal basis (F' += λ(I − P'_occ)); default 0.0 is a
-    ///        strict no-op. Mirrors the CPU SCFConfig::level_shift
+    ///        strict no-op. Mirrors the CPU level_shift member
     ///        (hf-robust-03) for the CUDA RHF path.
     explicit RHFFock(const cpu::scf::IntegralPack& integrals,
                      double level_shift = 0.0)

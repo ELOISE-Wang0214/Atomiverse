@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/pw_workspace.h
 /// @brief PWWorkspace — facade-private scratch for the plane-wave SCF.
 ///
-/// Owned by `cpu::pw::PWSolver` (the inner solver), never by `cpu::Frame`
+/// Owned by `cpu::pw::PW` (the inner solver), never by `cpu::Frame`
 /// and never threaded through Build/Launch contexts. Mirrors the gaussian
 /// SCF precedent: the workspace is the solver's private state, and the
 /// step helpers (`internal::PoissonSolver`, `XCBuilder`, `VeffBuilder`,

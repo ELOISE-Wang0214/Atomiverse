@@ -27,37 +27,43 @@ namespace {
 ///
 /// @param driver Driver to register the components into.
 /// @param ws     Driver-owned shared workspace.
-/// @param tc     Thermochemistry inputs for the Thermochem component.
-/// @param out    Output paths for the FrequencyReport / NormalModeWriter.
 template <class Driver>
-void wire_full_chain(Driver& driver, HessianWorkspace* ws,
-                     const Thermochem::Config& tc,
-                     const Hessian::OutputConfig& out) {
+void wire_full_chain(Driver& driver, HessianWorkspace* ws, double temperature,
+                     double pressure, int multiplicity, int symmetry_number,
+                     const std::string& frequency_tsv,
+                     const std::string& mode_xyz_prefix) {
     driver.add(ReferenceGeometry{ws});
     driver.add(DisplaceStep{ws});
     driver.add(HessianAccumulator{ws});
     driver.add(Symmetrize{ws});
     driver.add(MassWeighting{ws});
     driver.add(HessianDiagonalizer{ws});
-    driver.add(Thermochem{ws, tc});
-    driver.add(FrequencyReport{ws, out.frequency_tsv});
-    driver.add(NormalModeWriter{ws, out.mode_xyz_prefix});
+    driver.add(
+        Thermochem{ws, temperature, pressure, multiplicity, symmetry_number});
+    driver.add(FrequencyReport{ws, frequency_tsv});
+    driver.add(NormalModeWriter{ws, mode_xyz_prefix});
 }
 
 } // namespace
 
 Hessian::Hessian() {
     // Default thermochemistry: standard conditions, closed-shell singlet.
-    wire_full_chain(*this, workspace_.get(), Thermochem::Config{},
-                    OutputConfig{});
+    wire_full_chain(*this, workspace_.get(), 298.15, 101325.0, 1, 1,
+                    "frequencies.tsv", "mode");
 }
 
-Hessian::Hessian(const Thermochem::Config& tc) {
-    wire_full_chain(*this, workspace_.get(), tc, OutputConfig{});
+Hessian::Hessian(double temperature, double pressure, int multiplicity,
+                 int symmetry_number) {
+    wire_full_chain(*this, workspace_.get(), temperature, pressure,
+                    multiplicity, symmetry_number, "frequencies.tsv", "mode");
 }
 
-Hessian::Hessian(const Thermochem::Config& tc, const OutputConfig& out) {
-    wire_full_chain(*this, workspace_.get(), tc, out);
+Hessian::Hessian(double temperature, double pressure, int multiplicity,
+                 int symmetry_number, std::string frequency_tsv,
+                 std::string mode_xyz_prefix) {
+    wire_full_chain(*this, workspace_.get(), temperature, pressure,
+                    multiplicity, symmetry_number, frequency_tsv,
+                    mode_xyz_prefix);
 }
 
 Hessian::Hessian(WithoutAccumulator /*tag*/) {

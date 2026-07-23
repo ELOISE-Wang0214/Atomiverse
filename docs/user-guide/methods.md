@@ -53,10 +53,10 @@ Two policy slots let you change *when* a run ends without writing a driver:
 | Gaussian-and-plane-waves DFT | `cpu::gpw::GPWEvaluator` (`GPW`) | `ATV_BUILD_GPW` |
 | NDDO / AM1 semiempirics | `cpu::semiempirical::AM1Evaluator` (`Semiempirical`) | `ATV_BUILD_HF` |
 
-Each method's iteration loop lives in an inner **solver**
-(`cpu::scf::SCFSolver`, `cpu::pw::PWSolver`, `cpu::gpw::GPWSolver`,
-`cpu::semiempirical::NDDOSolver`) that you can also drive directly when you
-want the raw result struct rather than a frame.
+Each method is a **concrete type** with members + `run(frame)`:
+`cpu::scf::RHF`/`UHF`/`RKS`/`UKS`, `cpu::pw::PW`, `cpu::gpw::GpwDft`,
+`cpu::semiempirical::AM1`/`RM1`. Bind the matching evaluator component when a
+Driver needs energy/forces on a Plan slot.
 
 ## Classical molecular dynamics
 
@@ -136,7 +136,10 @@ with a plane-wave density — carrying in-tree GTH pseudopotentials, MOLOPT basi
 sets, and DFT-D3 dispersion, so it needs no external data files.
 
 ```cpp
-cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
+cpu::pw::PW pw;
+pw.ecut_ry = 30.0;
+pw.k_mesh = 4;
+cpu::pw::PWEvaluator pwe{std::move(pw)};
 cpu::single_point(frame, pwe);            // frame.meta.get(kEnergy) (eV)
 ```
 

@@ -1,6 +1,6 @@
 /// @file cpu/pw/internal/pw_setup.h
 /// @brief Host-side plane-wave SCF problem assembly and density mixing,
-///        shared by the CPU (`cpu::pw::PWSolver`) and CUDA
+///        shared by the CPU (`cpu::pw::PW`) and CUDA
 ///        (`cuda::pw::pw_scf`) drivers.
 #pragma once
 
@@ -89,7 +89,7 @@ PWEnergyTerms iteration_energy(const PWWorkspace& ws, AccReal e_band,
 
 /// @brief Emit the per-iteration SCF energy summary as a rank-0-only
 ///        ATV_DEBUG line — the single formatter path shared by the CPU
-///        (`PWSolver::run`) and CUDA (`cuda::pw::pw_scf`) SCF loops.
+///        (`PW::run`) and CUDA (`cuda::pw::pw_scf`) SCF loops.
 ///
 /// Host-compiled on purpose: `core/log.h` is CUDA-free, so `.cu` callers
 /// delegate their logging here instead of including spdlog directly.

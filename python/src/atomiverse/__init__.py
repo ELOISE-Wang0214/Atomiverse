@@ -28,7 +28,7 @@ Canonical deep path                   Top-level re-export         C++ symbol (di
 ``potentials.angle.Harmonic``         ``AngleHarmonic``           ``cpu::AngleHarmonic`` (potentials/)
 ``potentials.dihedral.MultiHarmonic`` ``DihedralMultiHarmonic``   ``cpu::DihedralMultiHarmonic`` (potentials/)
 ``recorder.Thermo``                   ``Thermo``                  ``cpu::Thermo`` (recorder/)
-``pw.PWSolver`` / ``pw.PWConfig``     ``PWSolver`` / ``PWConfig`` ``cpu::pw`` (pw/)
+``pw.PW``                             ``PW``                   ``cpu::pw`` (pw/)
 ``pw.PWResult``                       ``PWResult``                 ``cpu::pw`` (pw/)
 ``semiempirical.AM1``                 ``AM1``                     ``cpu::semiempirical`` (semiempirical/)
 ``semiempirical.AM1Evaluator``        ``AM1Evaluator``            ``cpu::semiempirical`` (semiempirical/)
@@ -85,8 +85,7 @@ _COMPUTE_EXPORTS: dict[str, tuple[str, str]] = {
     "AM1Evaluator": ("atomiverse.semiempirical", "AM1Evaluator"),
     "AM1Result": ("atomiverse.semiempirical", "AM1Result"),
     "single_point": ("atomiverse.driver", "single_point"),
-    "PWConfig": ("atomiverse.pw", "PWConfig"),
-    "PWSolver": ("atomiverse.pw", "PWSolver"),
+    "PW": ("atomiverse.pw", "PW"),
     "PWResult": ("atomiverse.pw", "PWResult"),
 }
 
@@ -119,7 +118,7 @@ def __getattr__(name: str) -> Any:
     require_cpp()
     mod_name, attr = _COMPUTE_EXPORTS[name]
     # PW types are compile-optional.
-    if name in ("PWConfig", "PWSolver", "PWResult") and not hasattr(_cpp, "PWSolver"):
+    if name in ("PW", "PWResult") and not hasattr(_cpp, "PW"):
         raise AttributeError(
             f"module {__name__!r} has no attribute {name!r} "
             "(plane-wave backend not built into this extension)"
@@ -134,6 +133,6 @@ def __getattr__(name: str) -> Any:
 
 def __dir__() -> list[str]:
     names = list(globals().keys()) + list(_COMPUTE_EXPORTS.keys())
-    if extension_available() and hasattr(_cpp, "PWSolver"):
+    if extension_available() and hasattr(_cpp, "PW"):
         pass  # PW names already in _COMPUTE_EXPORTS
     return sorted(set(names))

@@ -96,17 +96,19 @@ Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23
 - Dynamics: `VelocityVerlet`, `NVELimit`, `NoseHoover`, `NoseHooverNPT`, `FixLangevin`, `FixCSVR`, `FixRattle`, `Barostat`, `Deform`, `InitVelocity`, `KineticEnergy`, …
 - MC: `TranslateMove`, `VolumeMove`, `InsertDeleteMove`, `MoveSelector`, `Transaction`
 - Minimize: `LBFGS`, `CG`, `LbfgsHistory`, `OptLog`, `TrajectoryWriter`, `FinalGeometry`
-- Path: `NebCoupling`, `BandLBFGS`, `LinearInterpolation` / `IdentityReplication` (via replica/), `Remd` (+ `RemdConfig`)
-- Potentials: `PairLJCut`, `PairLJCutCoulLong`, `PairMorse`, `PairCoulCut`, `CoulLong`, `BondHarmonic`, `AngleHarmonic`, `DihedralMultiHarmonic`, `DihedralCharmm`, `ImproperHarmonic`, `EAM`, `StillingerWeber` (+ table-lookup `EAMPotential` / SW tables)
+- Path: `NebCoupling`, `BandLBFGS`, `LinearInterpolation` / `IdentityReplication` (via replica/), `Remd`, `HRemd`, `Pimd`, `Dimer`, string/IRC
+- Dynamics (extra): `ParrinelloRahmanNPT`, `NphIntegrator`, `FixSettle`, FIRE (minimize)
+- Potentials: `PairLJCut`, `PairLJCutCoulLong`, `PairMorse`, `PairCoulCut`, `CoulLong`, `BondHarmonic`, `AngleHarmonic`, `DihedralMultiHarmonic`, `DihedralCharmm`, `ImproperHarmonic`, `EAM`, `StillingerWeber` (+ table-lookup `EAMPotential` / SW tables); soft-core / DPD / Yukawa / FENE / WCA as shipped
 - Longrange: `KSpace` base, `KSpaceEwald`, `KSpacePME`, `KSpacePPPM`, absorbed math (`EwaldSum`, PME spline/influence, FMM tree/ops, `GaussianExtent`)
 - Neighbor: `NeighborList<>`, `CellList`, published `PairList`
-- Plane-wave: `PWConfig` / `PWResult` / `PWSolver` / `PWEvaluator` (**bag-shaped solver still public**)
-- GPW: `GpwConfig` / `GpwResult` / `GPWSolver` / `GPWEvaluator` / `Kind` / `GthPotential` / `GaussianBasis` (**bag-shaped solver still public**)
-- Semiempirical: `AM1Evaluator` / `RM1Evaluator` / `AM1BCCChargeAssigner`; bag solvers `NDDOSolver` / `AM1Solver` / `RM1Solver` / `NDDOConfig`
-- Observe: `RDF`, `MSD`, `VACF`, `Virial`, Mulliken/Löwdin helpers, ESP charges, multipole, density grid, molrs trajectory accumulators
+- Plane-wave: concrete `PW` (members; no public `PWConfig` bag) / `PWResult` / `PWEvaluator`
+- GPW: concrete `GpwDft` (members; no public `GpwConfig` bag) / `GpwResult` / `GPWEvaluator` / `Kind` / `GthPotential` / `GaussianBasis`
+- Semiempirical: concrete `AM1` / `RM1` + `AM1Evaluator` / `RM1Evaluator` / `AM1BCCChargeAssigner`; `DFTB2` (H/C/N/O SK); `XtbGfn0` toy; `NDDOSolver` **internal**
+- Multiscale: `QmmmMechanical`, `QmmmElectrostatic` (+ H link atoms), `QmmmPolarizable`
+- Observe: `RDF`, `MSD`, `VACF`, `Virial`, Mulliken/Löwdin helpers, ESP charges, multipole, density grid, molrs trajectory accumulators, `Widom`, `Wham`
 - Record: `Thermo`, `XYZ`, cube writers, timing report
 - I/O: extxyz read, `frame_writer`, LAMMPS data, `ForceField`
-- Bias: `HarmonicBias`, `DistanceCV`
+- Bias: `HarmonicBias`, `DistanceCV` / `AngleCV` / `DihedralCV`, `Metadynamics1D`, multi-CV `Metadynamics`
 - Replica: `ReplicaSet`, `ReplicaExpansion`
 - Task: `TaskSpec` / `TaskMaterializer` / `TaskDispatcher` / `WorkerLoop` / `LauncherGate`
 - XC: Padé LDA (`xc/pade.h`)
@@ -137,8 +139,9 @@ Catalog of `include/atomiverse/` (mirrored impl under `src/`) as of **2026-07-23
 | CPU `IntegralPack` | **Private** under `cpu/scf/internal/integrals.h` (tests + CUDA still reference) |
 | CPU concrete methods `RHF`/`UHF`/`RKS`/`UKS`/`ROHF`/`GHF` | **Target shape live** (`MeanFieldMethod` = Driver loop) |
 | Compat `cpu::scf::SCF = RKS` | Migration alias in `methods.h` |
-| `PWSolver` + `PWConfig` / `GPWSolver` + `GpwConfig` | Still bag-shaped public solvers (not Driver-hosted methods yet) |
-| `NDDOSolver` / `NDDOConfig` / internal `NDDOSystem` | Bag + private system still present; public evaluators are the Frame API |
+| ~~`PWConfig` / `GpwConfig` / `AM1Config` / public `*Config` bags~~ | **deleted 2026-07-23** — concrete `PW` / `GpwDft` / `AM1`/`RM1` with members |
+| `NDDOSolver` / internal `NDDOSystem` | **Internal** engine; public path is concrete AM1/RM1 methods + evaluators |
+| Kokkos backend | **Not on `dev`** — WIP archived on local branch `archive/impl-kokkos-wip` only |
 | CUDA `SCFSolver` + IntegralPack ctor path | Still bag-shaped; not aligned to CPU MeanFieldMethod |
 | ~~`RemdConfig`~~ | **deleted 2026-07-23** — `Remd(temperatures, dt, …)` ctor args / members |
 | Torch Frame layout | Pre-blocks+meta hard-cut; experimental only |

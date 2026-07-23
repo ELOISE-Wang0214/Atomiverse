@@ -23,8 +23,8 @@ Coupled cluster and multireference theory are entirely absent.
 | Unrestricted MP2, UMP2             |  ○  |   ○  |   ○  |
 | Restricted open-shell MP2, ROMP2   |  ○  |   ○  |   ○  |
 | Frozen-core MP2                    |  ○  |   ○  |   ○  |
-| Density-fitted MP2                 |  ○  |   ○  |   ○  |
-| RI-MP2                             |  ○  |   ○  |   ○  |
+| Density-fitted MP2                 |  ✓  |   ○  |   ○  |
+| RI-MP2                             |  ✓  |   ○  |   ○  |
 | Laplace-transformed MP2            |  ○  |   ○  |   ○  |
 | Spin-component-scaled MP2, SCS-MP2 |  ○  |   ○  |   ○  |
 | Scaled-opposite-spin MP2, SOS-MP2  |  ○  |   ○  |   ○  |
@@ -46,10 +46,11 @@ Coupled cluster and multireference theory are entirely absent.
 | Full MP4                           |  ○  |   ○  |   ○  |
 
 RMP2 runs four sequential O(N⁵) quarter transforms to the `(ia|jb)` ovov block,
-then the canonical energy expression. Energy only: no frozen core, no density
-fitting/RI, no gradients. It requires the full in-memory ERI tensor (which
-`mp2()` materializes in the method's private workspace), and that is what
-bounds its system size.
+then the canonical energy expression. **RI-MP2** is the same entry point with
+`rhf.ri = RI::{J,JK}` and an aux basis (`MP2Result::ri = true`,
+`reg_h2o_ri_mp2`) — Coulomb-metric density fitting for `(ia|jb)`. Energy only:
+no frozen core, no gradients. Canonical mode still materializes the full
+in-memory ERI tensor in the method's private workspace.
 
 ## 2. Configuration Interaction
 

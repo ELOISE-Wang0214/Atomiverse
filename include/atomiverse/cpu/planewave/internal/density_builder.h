@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/density_builder.h
 /// @brief internal::DensityBuilder — ρ from wavefunctions + Pulay mixing.
 ///
-/// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
+/// Facade-private step helper owned by `cpu::pw::PW`. NOT a
 /// `cpu::Component` subclass and never registered into a Plan.
 ///
 /// Single canonical implementation of the density build (the previous

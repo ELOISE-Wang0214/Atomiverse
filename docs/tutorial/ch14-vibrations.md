@@ -34,7 +34,7 @@ The six questions:
 2. **The Atomiverse representation.** The `cpu::vib::Hessian` driver and its
    finite-difference machinery.
 3. **The C++ API.** `cpu::vib::Hessian`, `HessianResult`, and
-   `Thermochem::Config`.
+   `Thermochem` public members / constructor args.
 4. **The expected result.** `3N−6` real frequencies at a minimum, and a
    Gibbs free-energy correction.
 5. **The validation.** Frequencies and thermochemistry against PySCF.
@@ -126,7 +126,9 @@ cpu::Frame frame = /* an OPTIMIZED geometry, positions in Å, type = Z */;
 
 // Tight SCF so each displaced force is gradient-stationary (see below).
 /* integrals private inside RHF/UHF/RKS/UKS */
-auto cfg  = SCFConfig{SCFConfig::RHF{}, ints, /*tol=*/1e-12};
+cpu::scf::RHF rhf;
+rhf.basis = cpu::scf::BasisSet::STO3G;
+rhf.tol = 1e-12;
 cfg.conv_tol_grad = 1e-9;
 
 cpu::vib::Hessian driver;
@@ -159,7 +161,7 @@ Two API details that decide whether your result is meaningful:
   residual gradient.
 - **Converge each displaced SCF tightly.** Finite differences amplify noise:
   a loosely converged SCF injects convergence error into every $\pm h$ force,
-  and the second difference magnifies it. The `SCFConfig{SCFConfig::RHF{}, ints, 1e-12}` with
+  and the second difference magnifies it. An `RHF` with `tol = 1e-12` with
   `conv_tol_grad = 1e-9` above is exactly what the parity tests use so each
   displaced force is gradient-stationary. This is the
   [Chapter 1](ch01-foundations.md) finite-difference discipline applied one
@@ -168,11 +170,11 @@ Two API details that decide whether your result is meaningful:
 ### Thermochemistry
 
 Thermochemistry runs automatically as part of the Response loop; you supply
-the conditions through a `Thermochem::Config` passed to the driver
+the conditions through the multi-argument `Hessian` constructor
 constructor:
 
 ```cpp
-cpu::vib::Thermochem::Config tc;
+cpu::vib::Thermochem members tc;
 tc.temperature     = 298.15;   // K
 tc.pressure        = 101325.0; // Pa
 tc.multiplicity    = 1;        // 2S+1; 1 for a closed-shell singlet
@@ -198,7 +200,7 @@ overload lets you set temperature, pressure, spin multiplicity, and the
 rotational symmetry number. Note that σ is **supplied**, not auto-detected —
 you provide the molecule's point-group rotational symmetry number (2 for
 water, 3 for ammonia, 12 for methane). A third constructor,
-`Hessian(tc, OutputConfig{...})`, additionally routes a frequency TSV report
+`Hessian(T, P, mult, sigma, frequency_tsv, mode_xyz_prefix)`, additionally routes a frequency TSV report
 and per-mode XYZ animations to disk.
 
 The single most-compared quantity is `g_thermal` — the thermal correction to

@@ -5,8 +5,9 @@ Legend and caveats: [Roadmap index](index.md).
 The Dynamics driver (`cpu::md::MD`, `cuda::md::MD`) is the most complete part of
 the engine: NVE/NVT/NPT all run on both backends, with MPI domain decomposition,
 halo exchange, and migration on CPU, and multi-GPU support on CUDA. Constraints
-(RATTLE) run on CPU under MPI. The gaps are specific rather than structural — no NPH,
-only uniaxial deformation, and no rigid bodies.
+(RATTLE) run on CPU under MPI. On **CPU**, full-cell **Parrinello–Rahman NPT**
+and isotropic **NPH** also ship. Remaining gaps are specific rather than
+structural — uniaxial-only `Deform`, no general rigid bodies, no CUDA PR/NPH.
 
 ## 1. Molecular-Dynamics Integrators
 
@@ -58,22 +59,27 @@ Bussi/CSVR (`FixCSVR`) is CPU-only.
 | Method                              | CPU | CUDA | Kokkos |
 | ----------------------------------- | :-: | :--: | :---: |
 | Berendsen barostat                  |  ✓  |   ✓  |   ○  |
-| Parrinello–Rahman barostat          |  ○  |   ○  |   ○  |
+| Parrinello–Rahman barostat          |  ✓  |   ○  |   ○  |
 | Martyna–Tobias–Klein barostat       |  ✓  |   ✓  |   ○  |
 | Langevin piston                     |  ○  |   ○  |   ○  |
 | Monte Carlo isotropic barostat      |  ○  |   ○  |   ○  |
 | Monte Carlo anisotropic barostat    |  ○  |   ○  |   ○  |
 | Isotropic pressure coupling         |  ✓  |   ✓  |   ○  |
 | Semi-isotropic pressure coupling    |  ✓  |   ✓  |   ○  |
-| Fully anisotropic pressure coupling |  ○  |   ○  |   ○  |
+| Fully anisotropic pressure coupling |  ✓  |   ○  |   ○  |
 | Constant-surface-tension coupling   |  ○  |   ○  |   ○  |
-| Constant-stress dynamics            |  ○  |   ○  |   ○  |
+| Constant-stress dynamics            |  ✓  |   ○  |   ○  |
 
-The MTK integrator couples the **cell diagonal** only: isotropic, or per-axis
-via `couple_axis[3]` (an axis left off is held rigid). There is no off-diagonal
-or shear coupling, so the cell cannot tilt — which is exactly why
-Parrinello–Rahman, constant surface tension, and constant-stress dynamics are
-all ○. Berendsen is isotropic only.
+Two NPT integrators on CPU:
+
+- **`NoseHooverNPT`** (MTK) couples the **cell diagonal** only: isotropic, or
+  per-axis via `couple_axis[3]` (an axis left off is held rigid). No
+  off-diagonal / shear DOFs. Also on CUDA.
+- **`ParrinelloRahmanNPT`** is MTK with the **full cell matrix** (9 DOFs with
+  constraints for volume/shape as configured) — the PR constant-stress path
+  (`reg_pr_npt_lj`). CPU-only.
+
+Berendsen remains isotropic only. Constant surface tension is still ○.
 
 ## 4. Molecular-Dynamics Ensembles
 
@@ -82,15 +88,16 @@ all ○. Berendsen is isotropic only.
 | Microcanonical dynamics, NVE        |  ✓  |   ✓  |   ○  |
 | Canonical dynamics, NVT             |  ✓  |   ✓  |   ○  |
 | Isothermal–isobaric dynamics, NPT   |  ✓  |   ✓  |   ○  |
-| Isoenthalpic–isobaric dynamics, NPH |  ○  |   ○  |   ○  |
+| Isoenthalpic–isobaric dynamics, NPH |  ✓  |   ○  |   ○  |
 | Constant surface-tension dynamics   |  ○  |   ○  |   ○  |
-| Constant stress dynamics            |  ○  |   ○  |   ○  |
+| Constant stress dynamics            |  ✓  |   ○  |   ○  |
 | Simulated annealing                 |  ○  |   ○  |   ○  |
 | Temperature-ramp dynamics           |  ✓  |   ✓  |   ○  |
 | Pressure-ramp dynamics              |  ○  |   ○  |   ○  |
 
-**NPH is unreachable by construction**: the MTK integrator fuses the thermostat
-chain with the barostat, and there is no thermostat-free barostat integrator.
+**Isotropic NPH** ships as `NphIntegrator` — a thermostat-free barostat
+integrator (`reg_nph_lj`). Anisotropic NPH and CUDA NPH remain ○. Constant-stress
+dynamics is the PR-NPT path above.
 
 Temperature ramps are supported by both the Langevin thermostat and the MTK NPT
 integrator (`T_target` → `T_stop`). Simulated annealing is marked ○ because it
@@ -213,8 +220,10 @@ propagator, so the XL-BOMD row stays ○.
 | Ab initio multiple spawning           |  ○  |   ○  |   ○  |
 | Diabatic-state dynamics               |  ○  |   ○  |   ○  |
 
-Nonadiabatic dynamics requires excited states, and there are none — see
-[Excited States and Many-Body](excited-states.md).
+Nonadiabatic dynamics needs a dynamics consumer of NAC / excited forces.
+CIS/TDA forces and true NAC vectors now ship (see
+[Excited States and Many-Body](excited-states.md)); FSSH / Ehrenfest loops
+themselves remain ○.
 
 ## 10. Vibrational Analysis
 

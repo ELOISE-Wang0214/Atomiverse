@@ -17,9 +17,10 @@
 /// so the component reports U/H/G with the electronic energy set to
 /// zero — `g_thermal` is exactly that correction.
 ///
-/// The rotational symmetry number sigma is **supplied** per molecule
-/// through `Thermochem::Config` — point-group / sigma auto-detection is
-/// out of scope for this link.
+/// The rotational symmetry number sigma is **supplied** per molecule as a
+/// member (`symmetry_number`) — point-group / sigma auto-detection is
+/// out of scope for this link. Parameters are constructor arguments /
+/// public members — no nested Config bag.
 #pragma once
 
 #include <string>
@@ -42,59 +43,44 @@ namespace vib {
 /// `cpu::Frame` field, so `capabilities()` is empty.
 class Thermochem : public cpu::Observer {
   public:
-    /// @brief Per-molecule thermochemistry inputs.
-    ///
-    /// `temperature` and `pressure` default to standard conditions
-    /// (298.15 K, 1 atm). `multiplicity` is the electronic spin
-    /// multiplicity `2S+1` (1 for a closed-shell singlet).
-    /// `symmetry_number` is the rotational symmetry number sigma,
-    /// supplied verbatim — it is NOT auto-detected.
-    struct Config {
-        double temperature = 298.15; ///< Temperature [K].
-        double pressure = 101325.0;  ///< Pressure [Pa].
-        int multiplicity = 1;        ///< Spin multiplicity `2S+1`.
-        int symmetry_number = 1;     ///< Rotational sigma.
-    };
+    /// @brief Temperature [K]. Default: standard ambient 298.15 K.
+    double temperature = 298.15;
+    /// @brief Pressure [Pa]. Default: 1 atm.
+    double pressure = 101325.0;
+    /// @brief Electronic spin multiplicity `2S+1` (1 = closed-shell singlet).
+    int multiplicity = 1;
+    /// @brief Rotational symmetry number sigma (not auto-detected).
+    int symmetry_number = 1;
 
-    /// @brief Construct bound to a driver-owned workspace.
-    /// @param ws  Non-owning pointer to the shared Hessian workspace.
-    /// @param cfg Thermochemistry inputs (temperature / pressure /
-    ///            multiplicity / symmetry number).
-    Thermochem(HessianWorkspace* ws, const Config& cfg) : ws_(ws), cfg_(cfg) {}
+    /// @brief Construct bound to a driver-owned workspace (default thermo).
+    /// @param ws Non-owning pointer to the shared Hessian workspace (may be
+    ///        null for test-only role checks).
+    explicit Thermochem(HessianWorkspace* ws = nullptr) : ws_(ws) {}
 
-    /// @brief Construct without a workspace (test-only role check).
-    ///
-    /// Used by tests that only assert `role()`; `launch()` is a no-op
-    /// when `ws_` is null.
-    /// @param cfg Thermochemistry inputs.
-    explicit Thermochem(const Config& cfg) : ws_(nullptr), cfg_(cfg) {}
+    /// @brief Construct with thermochemistry inputs as constructor args.
+    /// @param ws Non-owning workspace pointer (may be null).
+    /// @param temperature Temperature [K].
+    /// @param pressure Pressure [Pa].
+    /// @param multiplicity Spin multiplicity `2S+1`.
+    /// @param symmetry_number Rotational sigma.
+    Thermochem(HessianWorkspace* ws, double temperature, double pressure,
+               int multiplicity, int symmetry_number)
+        : temperature(temperature), pressure(pressure),
+          multiplicity(multiplicity), symmetry_number(symmetry_number),
+          ws_(ws) {}
 
     std::string name() const override { return "vib_thermochem"; }
 
-    /// @brief Structural role — Observer (computes derived quantities).
-    /// @return `ComponentRole::Observer`.
-    /* role via Observer base */
-
     /// @brief Default binding: `vib::Phase::thermochem` @ 0.
-    /// @return Single binding placing this at the thermochem phase.
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::vib::Phase::thermochem, 0)};
     }
 
-    /// @brief Compute the harmonic thermochemistry.
-    ///
-    /// Active only on the finalize pass (`ctx.step >= 6N`), after
-    /// `HessianDiagonalizer` has produced the normal-mode frequencies. Writes
-    /// `zpe`, `u_tot`, `h_tot`, `s_tot` and its components, `g_tot`,
-    /// `g_thermal` into the shared workspace; `cpu::vib::Hessian::run()`
-    /// copies them into `HessianResult`.
-    ///
-    /// @param ctx Launch context; `ctx.step` is the displacement index.
+    /// @brief Compute the harmonic thermochemistry on the finalize pass.
     void launch(const cpu::LaunchContext& ctx) override;
 
   private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned (may be null).
-    Config cfg_;           ///< Per-molecule thermochemistry inputs.
 };
 
 } // namespace vib

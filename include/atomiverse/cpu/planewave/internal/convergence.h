@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/convergence.h
 /// @brief internal::ConvergenceCheck — density-change SCF convergence test.
 ///
-/// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
+/// Facade-private step helper owned by `cpu::pw::PW`. NOT a
 /// `cpu::Component` subclass; it never touches the driver loop's
 /// `IterationStatus` (borrowed by the Context as `ctx.loop`) — the plane-wave
 /// SCF manages its own internal convergence, exactly like `cpu::scf::SCFSolver`.

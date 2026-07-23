@@ -356,12 +356,12 @@ You can now read the rest of the manual without losing your bearings.
   shows the SCF feedback loop on a 2×2 toy system. Best read first if
   the very idea of "self-consistent" is new to you.
 - **Chapter 2 — Restricted Hartree-Fock (RHF).** Same loop, real
-  molecule. Introduces `IntegralPack`, `SCFConfig`, and the
+  molecule. Introduces the concrete `RHF` method and the
   `SCF`-with-`cpu::Evaluate` recipe.
 - **Chapter 3 — Unrestricted Hartree-Fock (UHF).** Adds spin
-  polarization. Same driver, different `SCFConfig`.
+  polarization. Same Driver shape, different concrete method (`UHF` / `RKS` / …).
 - **Chapter 4 — Unrestricted Kohn-Sham DFT (UKS).** Adds the XC grid.
-  Same driver, same evaluator class, different `SCFConfig`.
+  Same Driver shape, same evaluator kind, different method members.
 - **Chapter 6 — *Ab Initio* Molecular Dynamics.** Switches the driver to
   `cpu::md::MD`, adds an integrator and a thermostat, keeps the
   `SCF` at the force phase.

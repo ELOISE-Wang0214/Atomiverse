@@ -19,16 +19,18 @@ performance lever). NVT is validated against NIST LJ reference data
 activity expansion / finite-N ⟨V⟩ relation for the exact cut-shifted
 potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 
-**Enhanced sampling has a foothold, not a product suite.** A CV protocol
-(`cpu::bias::CollectiveVariable`) plus `DistanceCV`, `AngleCV`, `DihedralCV`
-and `HarmonicBias` support single-window umbrella sampling
+**Enhanced sampling is a working textbook suite, not a PLUMED replacement.** A
+CV protocol (`cpu::bias::CollectiveVariable`) plus `DistanceCV`, `AngleCV`,
+`DihedralCV` and `HarmonicBias` support single-window umbrella sampling
 (`reg_umbrella_harmonic`, `reg_umbrella_angle`, `reg_umbrella_dihedral`).
 Temperature REMD (`cpu::path::Remd`) and Hamiltonian REMD on a λ ladder
 (`cpu::path::HRemd`, `reg_hremd_soft_lambda`) ship as method presets over N
-owned `MD` programs. Soft-core λ TI and **Widom** also exist. Still absent:
-multi-window WHAM production and multi-CV history-dependent biases
-(multi-walker metaD / OPES / ABF). **1D well-tempered metadynamics** ships
-(`Metadynamics1D`, `reg_metad_double_well`). No PLUMED interface.
+owned `MD` programs. Soft-core λ TI and **Widom** also exist.
+**Well-tempered metadynamics:** 1D (`Metadynamics1D`, `reg_metad_double_well`)
+and multi-CV (`Metadynamics`, `reg_metad_2d`). **Multi-window WHAM** is a thin
+C++ façade over molrs (`cpu::Wham`, `reg_wham_double_well`). Still absent:
+multi-walker metaD, OPES, ABF, MBAR production PMF protocols. No PLUMED
+interface.
 
 ## 1. Monte Carlo Methods
 
@@ -71,6 +73,7 @@ insertion needs the topology loaders re-run per trial).
 | Adaptive umbrella sampling              |  ○  |   ○  |   ○  |
 | Multidimensional umbrella sampling      |  ○  |   ○  |   ○  |
 | Well-tempered metadynamics              |  ✓  |   ○  |   ○  |
+| Multi-CV well-tempered metadynamics     |  ✓  |   ○  |   ○  |
 | Multiple-walker metadynamics            |  ○  |   ○  |   ○  |
 | Bias-exchange metadynamics              |  ○  |   ○  |   ○  |
 | Parallel-bias metadynamics              |  ○  |   ○  |   ○  |
@@ -107,6 +110,7 @@ insertion needs the topology loaders re-run per trial).
 | Thermodynamic integration               |  ✓  |   ○  |   ○  |
 | Multistate Bennett acceptance ratio     |  ○  |   ○  |   ○  |
 | Umbrella integration                    |  ○  |   ○  |   ○  |
+| Weighted histogram analysis method      |  ✓  |   ○  |   ○  |
 | Potential-of-mean-force calculation     |  ○  |   ○  |   ○  |
 | Adaptive integration of mean force      |  ○  |   ○  |   ○  |
 | Jarzynski equality                      |  ○  |   ○  |   ○  |
@@ -121,10 +125,11 @@ insertion needs the topology loaders re-run per trial).
 | Alchemical lambda dynamics              |  ○  |   ○  |   ○  |
 | Constant-pH free-energy calculation     |  ○  |   ○  |   ○  |
 
-Umbrella *samples* are collected by `HarmonicBias` on MD; multi-window WHAM /
-a production PMF curve is still ○ (analysis ownership: molrs; synthetic
-in-process WHAM unit path only). **Widom insertion** ships as
-`cpu::Widom` (Observer / snapshot estimator): μ_ex = −kT ln⟨e^{−βΔU}⟩ via
+Umbrella *samples* are collected by `HarmonicBias` on MD. **Multi-window WHAM**
+ships as `cpu::Wham` (thin C++ over molrs histogram math;
+`reg_wham_double_well`) — free-energy / PMF reconstruction from pre-binned
+windows, not a turnkey multi-window campaign driver. **Widom insertion** ships
+as `cpu::Widom` (Observer / snapshot estimator): μ_ex = −kT ln⟨e^{−βΔU}⟩ via
 ghost insertions (LJ cut-and-shift or hard sphere). Not GCMC; not absolute
 solvation protocols. Soft-core LJ/Coulomb for alchemical work is
 `cpu::PairLJSoft` / `cpu::PairCoulSoft`. **Kirkwood TI** on fixed soft LJ

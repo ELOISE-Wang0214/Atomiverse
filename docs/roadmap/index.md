@@ -85,10 +85,12 @@ is a section of the DFT chapter, periodic HF a section of the Hartree–Fock one
 ## Campaign principle (CPU method-first)
 
 As of **2026-07-23** on **`dev`**. Closed architecture: **backend-mirror**,
-**cuda-resurrect**, **cuda-pme-accuracy**. Active track is **CPU-only method
-breadth** — textbook cases that prove Driver / Component / Frame can host
-**electronic structure through mesoscale**, not product depth in one family
-and not CUDA ports.
+**cuda-resurrect**, **cuda-pme-accuracy**. Closed method campaign: **CPU next
+A/B/C** (parallel worktrees `feat/cpu-next-{md,tb-arch,msamp,response}`,
+merged and deleted). Active track remains **CPU-only method breadth** —
+textbook cases that prove Driver / Component / Frame can host **electronic
+structure through mesoscale**, not product depth in one family and not CUDA
+ports.
 
 Each shipped method is a public API + `regressions/` gate (≤ 60 s, literature
 or analytic oracle). Prefer a **new family or scale** over another variant of
@@ -98,14 +100,14 @@ a proven shape.
 
 | Scale | Methods (do not re-prove) |
 | ----- | ------------------------- |
-| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS, AM1/RM1, PW, GPW; FD Hessian |
-| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ LSDA ALDA diagonal); FD TDA forces; NAC strength; H-only DFTB2; GFN0 toy; public `RHF::mp2` |
-| Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
+| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS, concrete AM1/RM1 / PW / GPW; FD Hessian |
+| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI `RHF::mp2` |
+| Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT (MTK diag + **PR full-cell**); **NPH**; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
-| Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D well-tempered metaD |
+| Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
 | Cell | isotropic + joint + anisotropic + triclinic stress relax; PW electronic stress |
-| Multiscale | mechanical + electrostatic QM/MM (`QmmmMechanical`, `QmmmElectrostatic`) |
+| Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms** |
 
 ### Closed queues (2026-07-23)
 
@@ -116,20 +118,25 @@ a proven shape.
 | method ladder 1–8 | RKS-TDA, SCC-DFTB2, PW-cell, DihedralCV, FENE+WCA, DPD, Yukawa, H-REMD λ |
 | open scales 1–8 | ALDA flag, GFN0, aniso cell, mech. QM/MM, metaD, multi-DPD, TDA forces, MP2 |
 | depth-next 1–4 | ALDA diagonal, ES QM/MM, TDA NAC strength, triclinic cell |
+| **cpu-next A (md)** | PR full-cell NPT, isotropic NPH |
+| **cpu-next B (tb-arch)** | multi-element DFTB2 SK; concrete PW/GPW/AM1–RM1 (no public Config bags) |
+| **cpu-next C (msamp)** | H link atoms, polarizable QM/MM, multi-CV metaD, multi-window WHAM |
+| **cpu-next D (response)** | full MO-product ALDA, analytic TDA forces, true NAC vectors, RI-MP2 |
 
 ### Recommended next (still method-first, CPU)
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Full grid MO-product ALDA; hybrid TDDFT; analytic TDA forces; true NAC vectors |
-| TB product | Real GFN / mio SK tables (not toys); DFTB3 |
-| Cell / MD | Parrinello–Rahman NPT; NPH |
-| Multiscale | Polarizable QM/MM; link atoms |
-| Sampling | Multi-CV metaD / OPES; multi-window WHAM |
-| Post-HF | RI-MP2 production path; gradients |
+| Response | Hybrid TDDFT (exact-exchange kernel); surface-hopping consumer of NAC; CIS(D) / ADC foothold |
+| TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
+| Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
+| Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
+| Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
+| Post-HF | MP2 gradients; frozen-core; UMP2 |
 
-**Parked until a consumer asks:** CUDA ports, HF/KS product depth, ReaxFF/ML
-potentials, full GAFF polymer protocols.
+**Parked until a consumer asks:** CUDA method ports, HF/KS product depth
+(hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
+Kokkos backend (WIP archived on `archive/impl-kokkos-wip`, not on `dev`).
 
 ## Work in progress — known gaps and caveats
 
@@ -161,19 +168,20 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Post-Hartree–Fock
 
-- **MP2 is closed-shell canonical only** — RHF reference, full O(N⁵) AO→MO
-  transform, no frozen core, no RI-MP2 product path yet, no gradients.
-  Density fitting exists for SCF J/K (`RI::{J,JK}`), not for MP2.
+- **MP2 is closed-shell only** — RHF reference. Canonical path: full O(N⁵)
+  AO→MO transform. **RI-MP2** when `ri = RI::{J,JK}` + aux basis
+  (`reg_h2o_ri_mp2`, `MP2Result::ri`). No frozen core, no gradients, no UMP2.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
 ### Excited states
 
-- **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **`RKS::tda`** with LSDA dense-A +
-  Dirac ALDA *diagonal* shift (`reg_h2_alda_vs_cis`); **FD TDA forces** and
-  **NAC strength** (`RHF::tda_forces` / `tda_nac_strength`). Still absent:
-  full grid MO-product ALDA, hybrid TDDFT, analytic ES forces, true NAC
-  vectors — surface hopping stays blocked.
+- **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **`RKS::tda`** with **full MO-product
+  LSDA ALDA** (`reg_h2_full_grid_alda`) — hybrid TDDFT still ○.
+- **Analytic CIS/TDA forces** (default) and **true NAC vectors**
+  (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
+  `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
+  Surface hopping still ○ (no dynamics consumer of NAC).
 
 ### Exchange-correlation
 
@@ -195,16 +203,20 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### GPW
 
 - Γ-point, closed-shell only. No k-points, spin, stress, or hybrids.
-- Analytic forces available → can drive AIMD; keep
-  `GpwConfig.local_pp_on_grid` consistent between energy and gradient.
+- Concrete method `GpwDft` (parameters as members; no public Config bag).
+  Analytic forces available → can drive AIMD; keep member
+  `local_pp_on_grid` consistent between energy and gradient.
 - DFT-D3 zero-damping + PBE params only.
 
 ### Semiempirical
 
-- **AM1 and RM1** on the shared NDDO path with analytic forces → Evaluate /
-  MD / Minimize. Hessian remains FD. AM1-BCC charges via molrs typing.
-- SCC-DFTB2 H-only (`DFTB2`) and GFN0-xTB toy (`XtbGfn0`) ship as separate
-  TB families (not under `NDDOSolver`). Full mio/GFN tables / DFTB3 remain ○.
+- **Concrete AM1 / RM1** (`cpu::semiempirical::AM1` / `RM1`) on the shared
+  NDDO path with analytic forces → Evaluate / MD / Minimize. Hessian remains
+  FD. AM1-BCC charges via molrs typing. `NDDOSolver` is internal.
+- **SCC-DFTB2** multi-element H/C/N/O static SK (`DFTB2`,
+  `reg_h2o_dftb2_mio`); forces are **central FD of E**, not analytic.
+  **GFN0-xTB toy** (`XtbGfn0`) remains a separate TB family. Production
+  GFN2 / 3ob / DFTB3 remain ○.
 
 ### Classical force fields
 
@@ -225,11 +237,13 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 - NVE / NVT / NPT on CPU and CUDA. Standalone `NoseHoover` is a **single**
   chain; M-chain NHC lives inside MTK NPT only. Bussi/CSVR is CPU-only.
-- MTK couples the **cell diagonal** only → no PR NPT / constant-stress MD.
-  **0 K cell optimizers:** isotropic, anisotropic, **triclinic**
-  (`TriclinicCellRelax`). **NPH unreachable** (thermostat fused into MTK).
+- **Two NPT integrators on CPU:** diagonal MTK (`NoseHooverNPT`) and
+  **full-cell Parrinello–Rahman** (`ParrinelloRahmanNPT`, `reg_pr_npt_lj`).
+  **Isotropic NPH** ships as thermostat-free `NphIntegrator` (`reg_nph_lj`).
+  **0 K cell optimizers:** isotropic, joint, anisotropic, **triclinic**.
 - `Deform` uniaxial only. CUDA reciprocal space is single-GPU; CPU PME
-  replicates the grid rather than distributing the FFT.
+  replicates the grid rather than distributing the FFT. CUDA PR/NPH not
+  ported.
 - **CUDA PME Madelung residual** closed 2026-07-23 (`cuda-pme-accuracy`).
 
 ### Sampling and paths
@@ -237,22 +251,21 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - MC: NVT / NPT / μVT GCMC on CPU (single rank; O(N) trial energy by design).
   No CBMC, Gibbs. **Widom** (`cpu::Widom`). Soft-core **λ TI** (`dU/dλ`).
 - **Umbrella:** Distance / Angle / Dihedral CV + `HarmonicBias`. **1D
-  well-tempered metadynamics** (`Metadynamics1D`). Multi-window WHAM /
-  multi-CV metaD / OPES still ○.
-- **REMD** (T ladder) + **H-REMD** (λ ladder). NEB / dimer / string / IRC /
-  PIMD skeletons ship.
-- **REMD exists** (`cpu::path::Remd`, per-replica owned MD programs,
-  `reg_remd_harmonic`). Hamiltonian RE / REST2 / multidimensional RE absent.
-- **CI-NEB** (`PathDriver` + `NebCoupling` + `BandLBFGS`) and **dimer TS**
-  (`cpu::path::Dimer`, `reg_dimer_saddle`) ship. No string / IRC.
+  well-tempered metadynamics** (`Metadynamics1D`) and **multi-CV**
+  (`Metadynamics`, `reg_metad_2d`). **Multi-window WHAM** via molrs
+  (`cpu::Wham`, `reg_wham_double_well`). OPES / multi-walker still ○.
+- **REMD** (T ladder) + **H-REMD** (λ ladder). REST2 / multidimensional RE
+  absent.
+- **CI-NEB**, **dimer**, **string**, **IRC** ship
+  (`reg_{neb,dimer,string,irc}_*`).
 - **PIMD skeleton** ships (`cpu::path::Pimd` + ring springs +
-  `IdentityReplication`, `reg_pimd_free_particle`). No RPMD estimators /
-  ring-polymer contraction / PILE.
+  `IdentityReplication`, `reg_pimd_free_particle`). No RPMD / PILE /
+  ring-polymer contraction product path.
 
 ### Optimization
 
 - CPU: L-BFGS + Polak–Ribière⁺ CG + **FIRE** (`cpu::minimizer::FIRE`).
   CUDA: L-BFGS / CG / steepest descent (no FIRE).
-- **Isotropic variable-cell** ships (`IsotropicCellRelax` +
-  `PressureConverged`). No anisotropic cell DOFs, no joint atom+cell.
+- **Variable-cell:** isotropic, joint atom+cell, anisotropic, and
+  triclinic (`*CellRelax` + `PressureConverged`).
 - Cartesian only; no internal coordinates.

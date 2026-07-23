@@ -2,14 +2,16 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-**Ground-state engine with a closed-shell TDHF foothold.** `RHF::tda` (CIS /
+**Ground-state engine with a closed-shell response foothold.** `RHF::tda` (CIS /
 TDA) and `RHF::tdhf` (full RPA) return excitation energies and length-gauge
 transition dipoles on a converged RHF reference
-(`regressions/scf/ch2o_tdhf`). **`RKS::tda`** is the CIS@RKS skeleton on a
-converged KS reference; LSDA adds a **Dirac ALDA diagonal** on dense A
-(`reg_h2_alda_vs_cis`). Full grid MO-product ALDA and hybrid TDDFT remain ○.
-**FD TDA forces** and **NAC strength** ship (`RHF::tda_forces` /
-`tda_nac_strength`); analytic ES gradients and true NAC vectors are still ○.
+(`regressions/scf/ch2o_tdhf`). **`RKS::tda`** on a converged KS reference uses
+the **full MO-product LSDA ALDA** kernel (`reg_h2_full_grid_alda`;
+`ExcitedStatesResult::alda`). Hybrid TDDFT (exact-exchange kernel) remains ○.
+**Analytic CIS/TDA forces** (default) and **true NAC vectors** ship
+(`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
+`reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
+`analytic=false`.
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
@@ -27,15 +29,19 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | SCS-CIS(D)                         |  ○  |   ○  |   ○  |
 | SOS-CIS(D)                         |  ○  |   ○  |   ○  |
 | Time-dependent Hartree–Fock, TDHF  |  ✓  |   ○  |   ○  |
-| Tamm–Dancoff TDDFT                 |  ○  |   ○  |   ○  |
+| Tamm–Dancoff TDDFT                 |  ✓  |   ○  |   ○  |
 | Full linear-response TDDFT         |  ○  |   ○  |   ○  |
 | Spin-flip TDA                      |  ○  |   ○  |   ○  |
 | Spin-flip TDDFT                    |  ○  |   ○  |   ○  |
 | Restricted excitation-window TDDFT |  ○  |   ○  |   ○  |
 | Core–valence-separation TDDFT      |  ○  |   ○  |   ○  |
 | Real-time TDDFT                    |  ○  |   ○  |   ○  |
-| TDDFT analytic gradient            |  ○  |   ○  |   ○  |
-| TDDFT nonadiabatic coupling        |  ○  |   ○  |   ○  |
+| TDDFT analytic gradient            |  ✓  |   ○  |   ○  |
+| TDDFT nonadiabatic coupling        |  ✓  |   ○  |   ○  |
+
+TDA-TDDFT is the LSDA ALDA path on `RKS::tda` (not hybrid). Analytic gradient
+and NAC rows are the CIS/TDA members on `RHF` (analytic default); full KS
+TDDFT gradients beyond CIS@RKS are not a separate product path yet.
 
 ## 2. Algebraic-Diagrammatic Construction
 

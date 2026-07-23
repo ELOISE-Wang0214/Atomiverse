@@ -109,7 +109,7 @@ physical is lost — the dropped directions carried no independent basis
 content in the first place.
 
 **Algorithm.** Atomiverse exposes the threshold as
-`SCFConfig::lindep_threshold` (default $\tau = 10^{-8}$ on the raw $S$
+`RHF::lindep_threshold` (or the mean-field member) (default $\tau = 10^{-8}$ on the raw $S$
 eigenvalues; PySCF ≥ 2.13 applies $10^{-6}$ by default). Each `run()` builds
 the orthogonalizer once: if nothing falls below $\tau$ the solver keeps its
 LAPACK `dsygvd` fast path — pre-existing results are bit-identical by
@@ -305,7 +305,7 @@ most of practice: damping, DIIS, and the level shift.
 **Damping** mixes the new density with the old one,
 $P \leftarrow (1-\alpha) P_\mathrm{new} + \alpha P_\mathrm{old}$, trading
 speed for stability. One engine-specific convention to note: Atomiverse damps
-the **density after diagonalization** (`SCFConfig::damping_factor` = fraction
+the **density after diagonalization** (`RHF::damping_factor` = fraction
 of *old* density retained), whereas PySCF damps the **Fock matrix before
 DIIS**. Both act only while DIIS is inactive; the difference is deliberate
 and documented in the solver.
@@ -313,7 +313,7 @@ and documented in the solver.
 **DIIS** (Pulay's Direct Inversion in the Iterative Subspace) extrapolates
 the Fock matrix from its recent history, choosing the combination that
 minimizes the commutator error $e = X^\mathrm{T}(FPS - SPF)X$ — zero exactly
-at self-consistency. It is the default accelerator (`SCFConfig::use_diis`)
+at self-consistency. It is the default accelerator (`RHF::use_diis`)
 and usually converges equilibrium molecules in 10–20 iterations.
 
 **Level shift** (Saunders & Hillier, *Int. J. Quantum Chem.* **7**, 699
@@ -418,7 +418,7 @@ the sorted orbital energies; the HOMO is the last occupied one:
 
 ```cpp
 auto ints   = /* IntegralPack is private — use RHF */;
-auto config = /* SCFConfig is private — set RHF members */;
+cpu::scf::RHF rhf;  // set members (tol, max_iter, …)
 config.max_iter = 100;
 cpu::scf::RHF rhf;
 solver.build(ints);

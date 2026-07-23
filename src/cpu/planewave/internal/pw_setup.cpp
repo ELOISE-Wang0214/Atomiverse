@@ -31,7 +31,7 @@ namespace {
 
 /// True when this process should emit console logs — MPI rank 0, or any
 /// run where MPI is not built/initialized. Mirrors the explicit rank
-/// gate `PWSolver::run()` applies around its ATV_INFO/ATV_DEBUG calls.
+/// gate `PW::run()` applies around its ATV_INFO/ATV_DEBUG calls.
 bool log_rank0() {
 #ifdef ATV_HAS_MPI
     int initialized = 0;

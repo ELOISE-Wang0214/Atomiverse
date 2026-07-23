@@ -54,14 +54,9 @@ _BASE_MAPPING: tuple[tuple[str, str, str], ...] = (
 )
 
 _PW_MAPPING: tuple[tuple[str, str, str], ...] = (
-    (
-        ("PWConfig", "atomiverse.pw", "PWConfig"),
-        ("PWSolver", "atomiverse.pw", "PWSolver"),
-        ("PWResult", "atomiverse.pw", "PWResult"),
-    )
-    if hasattr(_cpp, "PWSolver")
-    else ()
-)
+    ("PW", "atomiverse.pw", "PW"),
+    ("PWResult", "atomiverse.pw", "PWResult"),
+) if hasattr(_cpp, "PW") else ()
 
 _MAPPING = _BASE_MAPPING + _PW_MAPPING
 
@@ -98,8 +93,8 @@ class TestDeepModulesImportable:
 
 class TestTopLevelIdentity:
     def test_mapping_table_matches_compiled_surface(self) -> None:
-        """The base has 18 entries and a PW build contributes three types."""
-        assert len(_MAPPING) == (21 if hasattr(_cpp, "PWSolver") else 18)
+        """The base has 18 entries and a PW build contributes two types (PW, PWResult)."""
+        assert len(_MAPPING) == (20 if hasattr(_cpp, "PW") else 18)
 
     @pytest.mark.parametrize(
         "top_name,deep_module,deep_name",

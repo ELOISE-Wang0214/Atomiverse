@@ -59,7 +59,7 @@ struct CanonicalOrth {
     /// @param tau Keep-threshold on the raw S eigenvalues (dimensionless);
     ///            s_i >= tau is kept. tau <= 0 disables filtering (all n
     ///            columns kept). PySCF >= 2.13 uses 1e-6 on S eigenvalues;
-    ///            Atomiverse's SCF default is 1e-8 (cpu::scf::SCFConfig::lindep_threshold).
+    ///            Atomiverse's SCF default is 1e-8 (mean-field lindep_threshold).
     /// @throws std::runtime_error when every column would be dropped
     ///         (no fallback values).
     CanonicalOrth(const RealMatrix& S, double tau) {

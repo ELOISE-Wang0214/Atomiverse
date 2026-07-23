@@ -5,16 +5,23 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C campaign closed 2026-07-23 via parallel worktrees)*
+*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
+merged into `dev` and removed)*
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
-| Branch | Specs | Highlights |
+| Branch (deleted) | Specs | Highlights |
 | ------ | ----- | ---------- |
 | `feat/cpu-next-md` | parrinello-rahman-npt, nph-ensemble | PR full-cell NPT, isotropic NPH |
 | `feat/cpu-next-tb-arch` | tb-sk-product, concrete-pw-method, concrete-gpw-method, concrete-nddo-method | Multi-element DFTB2; concrete PW/GPW/AM1-RM1 |
 | `feat/cpu-next-msamp` | qmmm-link-atoms, polarizable-qmmm, multi-cv-metad, multi-window-wham | Link atoms, pol QM/MM, ND metaD, WHAM (molrs) |
 | `feat/cpu-next-response` | full-grid-alda, analytic-tda-forces, true-nac-vectors, ri-mp2 | Full MO-product ALDA, CIS TDA forces, NAC vectors, RI-MP2 |
+
+**Hygiene (2026-07-23):** stale Grok clones under
+`~/.grok/worktrees/molcrafts-atomiverse/{cpu-deps,fix-cuda-pme,impl-kokkos}`
+removed. Unique Kokkos WIP preserved only as local branch
+`archive/impl-kokkos-wip` (not merged to `dev`). Roadmap resynced in
+`docs/roadmap/`.
 
 ## Closed earlier on `dev` (2026-07-23)
 

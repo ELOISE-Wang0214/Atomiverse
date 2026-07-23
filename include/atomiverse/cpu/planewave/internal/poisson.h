@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/poisson.h
 /// @brief internal::PoissonSolver — Hartree potential in reciprocal space.
 ///
-/// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
+/// Facade-private step helper owned by `cpu::pw::PW`. NOT a
 /// `cpu::Component` subclass and never registered into a Plan
 /// (gaussian-SCF parity: see `cpu/scf/internal/`).
 #pragma once

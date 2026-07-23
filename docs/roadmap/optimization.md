@@ -48,7 +48,8 @@ Notes:
   ΔE); the CUDA SD component deliberately runs its full budget without one.
 - **Variable-cell:** isotropic / anisotropic / triclinic optimizers + joint
   atom+cell isotropic. Classical virial and PW electronic stress both drive
-  cell steps. No internal coordinates; no PR NPT dynamics.
+  cell steps. No internal coordinates. **PR NPT dynamics** lives under
+  [Molecular Dynamics](molecular-dynamics.md) (`ParrinelloRahmanNPT`), not here.
 
 ## 2. Transition-State and Reaction-Path Methods
 

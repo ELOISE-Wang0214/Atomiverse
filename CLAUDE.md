@@ -187,7 +187,7 @@ Do **not** invent a new exception without `/mol:note`.
 **Supersedes:** transitional public `RemdConfig` / `PimdConfig` /
 `DimerConfig` / `IrcConfig` / `StringConfig` / `HRemdConfig` /
 `NoseHooverNPT::Config` / `GpwEvaluatorConfig` / `AM1Config` /
-`AM1BCCChargeConfig` / `PWConfig` as user path — deleted or privatized
+`AM1BCCChargeConfig` / `PW` as user path — deleted or privatized
 2026-07-23. Do not reintroduce.
 
 # AGENTS.md
@@ -382,7 +382,7 @@ follow-up, not part of this layout.
   path/          domain: coupled-replica methods — CI-NEB + the PathDriver preset
   scf/           domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
   semiempirical/ domain: NDDO/AM1 semiempirical SCF (CPU only)
-  planewave/     domain: plane-wave DFT (PWSolver, PWEvaluator)
+  planewave/     domain: plane-wave DFT (PW, PWEvaluator)
   gpw/           domain: Gaussian-and-plane-waves DFT (CPU only)
   xc/            domain: shared exchange-correlation pieces (Padé LDA parameterization)
   vibration/     domain: finite-difference Hessian, thermochemistry (CPU only)
@@ -813,7 +813,7 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   `ATV::minimizer`, `ATV::sampling`, `ATV::path`, `ATV::scf`, `ATV::pw`,
   `ATV::evaluate`.
   Concrete methods (target): `RHF` / `UHF` / `RKS` / `UKS`, PW/GPW/AM1.
-  Debt names still in tree: `SCFSolver`, `PWSolver`, `GPWSolver`, `NDDOSolver`.
+  Debt names still in tree: `SCFSolver`, `PW`, `GPW`, `NDDOSolver`.
   Internals: `ATV::cpu::scf::internal` etc. — not public.
 - **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, core `.h`.
   Documented exceptions: deliberately CUDA-free bridge headers under `cuda/`
@@ -923,8 +923,8 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   `eval.on(evaluate::Phase::evaluate).add(cpu::pw::PWEvaluator{…})`;
   `aimd.on(md::Phase::force).add(/* concrete RHF/… force component */)`.
   Or `cpu::single_point(frame, method)`.
-- **Plane wave:** `cpu::pw::PWConfig{upf_path, ecut_ry, k_mesh, tol, max_iter,
-  mix_beta, pulay_depth}` → `PWSolver{cfg}.build(frame); run(frame)` →
+- **Plane wave:** `cpu::pw::PW` with members (`upf_path`, `ecut_ry`, `k_mesh`, `tol`,
+  `max_iter`, `mix_beta`, `pulay_depth`) → `pw.build(frame); pw.run(frame)` →
   `PWResult{energy [Ry], energy_ha, converged, iterations}`. Empty `upf_path` = toy `V_loc`
   (runs, unphysical). A real Si UPF for PW unit tests ships at
   `tests/data/pw/Si_lda_nc.upf`.
@@ -976,7 +976,10 @@ mc.build();  mc.run(frame, 100000);   // 100k trial moves
 double e = mc.current_energy();       // [eV]; mc.acceptance_ratio() in [0,1]
 
 // Plane-wave DFT single point
-cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
+cpu::pw::PW pw;
+pw.ecut_ry = 30.0;
+pw.k_mesh = 4;
+cpu::pw::PWEvaluator pwe{std::move(pw)};
 cpu::single_point(frame, pwe);   // frame.meta.get(kEnergy) [eV]
                                  // pwe.last_result() [Ry/Ha]
 
@@ -1030,7 +1033,7 @@ node in another driver's Plan (nesting, on one shared Runtime).
 
 **Target:** SCF / PW / GPW / NDDO self-consistency loops are **Drivers** (or
 Driver-shaped presets on concrete methods `RHF`, `UHF`, …). **Debt:** the tree
-still has bag-shaped `SCFSolver` / `PWSolver` / `GPWSolver` / `NDDOSolver` —
+still has bag-shaped `SCFSolver` / `PW` / `GPW` / `NDDOSolver` —
 do not grow that pattern.
 
 ### MD components
@@ -1077,7 +1080,7 @@ are DD-aware; recorders gather owners to rank 0.
 ### Gaussian SCF (`-DATV_BUILD_HF=ON`)
 **Target:** concrete methods `RHF` / `UHF` / `RKS` / `UKS`; SCF iteration is a
 Driver loop; parameters are members; Frame in/out. **Debt (shipping):** still
-`cpu::scf::SCFSolver` + `SCFConfig` + public `IntegralPack`, plus component
+CUDA `SCFSolver` debt + private integrals; public Gaussian path is concrete `RHF`/`UHF`/…, plus component
 `cpu::scf::SCF` (`HF` kind; forces with `with_gradient(true)`). CUDA path is
 energy/density only (no CUDA SCF gradient). Gradients and utilities exist under
 `gradient.h`, `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`.
@@ -1098,18 +1101,18 @@ element-identity type everywhere; a GPW `Kind{element, basis, pot}`
 `builtin_*`/`make_*` factory functions, and nothing reads any data file at
 build, test or run time.** Unsupported element/name throws (no fallback).
 
-`GpwConfig.local_pp_on_grid` (default true) selects CP2K's route of collocating
+`GpwDft::local_pp_on_grid` / `GPWEvaluator::local_pp_on_grid` (default true) selects CP2K's route of collocating
 the GTH local short-range PP on the grid. **Energy and analytic force both read
 it** — the gradient must be taken of the functional the SCF converged, or the two
 disagree by the grid discretization error of V_loc^SR (this was a real bug: ZnO
 analytic-vs-FD 0.53 Ha/Bohr). See `cpu/gpw/internal/local_pp.h`.
 
 ### Plane-wave DFT (`-DATV_BUILD_PW=ON`, FFTW3)
-Inner solver `cpu::pw::PWSolver` (Poisson → XC → Veff → per-k Davidson →
-density + Pulay mix → convergence; `build()` parses UPF, geometry setup rebuilt
-per `run()`). Evaluator `cpu::pw::PWEvaluator` (Energy; writes
-`frame.meta.get(kEnergy)` [eV], Ry/Ha on `last_result()`). There is no CPU
-solve-function wrapper: callers construct, build, and run `PWSolver`. MPI:
+Concrete method `cpu::pw::PW` (Poisson → XC → Veff → per-k Davidson →
+density + Pulay mix → convergence; parameters are members; `build()` parses UPF,
+geometry setup rebuilt per `run()`). Evaluator `cpu::pw::PWEvaluator` owns a `PW`
+(Energy; writes `frame.meta.get(kEnergy)` [eV], Ry/Ha on `last_result()`).
+MPI:
 k-point round-robin over `MPI_COMM_WORLD`. CUDA migration is deferred; its
 current `cuda::pw::pw_scf` surface is not a CPU compatibility API.
 

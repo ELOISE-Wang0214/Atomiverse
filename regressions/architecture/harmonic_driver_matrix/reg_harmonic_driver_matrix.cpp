@@ -138,10 +138,11 @@ int main() {
     // interpretation of frequencies). Check the dense Cartesian matrix.
     {
         auto frame = make_atom(0.0, mass);
-        cpu::vib::Hessian::OutputConfig out;
-        out.frequency_tsv = "/tmp/atv_reg_harmonic_freq.tsv";
-        out.mode_xyz_prefix = "/tmp/atv_reg_harmonic_mode";
-        cpu::vib::Hessian hess(cpu::vib::Thermochem::Config{}, out);
+        cpu::vib::Hessian hess(
+            /*temperature=*/298.15, /*pressure=*/101325.0,
+            /*multiplicity=*/1, /*symmetry_number=*/1,
+            /*frequency_tsv=*/"/tmp/atv_reg_harmonic_freq.tsv",
+            /*mode_xyz_prefix=*/"/tmp/atv_reg_harmonic_mode");
         hess.on(vib::Phase::force).add(HarmonicOscillator{k, r0x, r0y, r0z});
         hess.build();
         auto res = hess.run(frame);

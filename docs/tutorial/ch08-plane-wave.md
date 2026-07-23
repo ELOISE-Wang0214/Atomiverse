@@ -1,6 +1,6 @@
 # Chapter 8. Plane-Wave DFT
 
-API: `cpu::pw::PWConfig` → `PWEvaluator` / `PWSolver`. Empty UPF path is a toy
+API: concrete `cpu::pw::PW` (members) + `PWEvaluator` for Driver binding. Empty UPF path is a toy
 \(V_\mathrm{loc}\); real Si UPF lives in the regression data tree.
 
 ## Live Result: Silicon Diamond
@@ -22,11 +22,11 @@ completeness; production acceptance in the regressions suite compares **EOS**
 the regression reference notes.
 
 ```cpp
-cpu::pw::PWConfig cfg;
-cfg.upf_path = "…/Si_lda_nc.upf";
-cfg.ecut_ry = 15.0;   // tutorial; ~30 Ry for production Si
-cfg.k_mesh = 2;
-cpu::pw::PWEvaluator pwe{cfg};
+cpu::pw::PW pw;
+pw.upf_path = "…/Si_lda_nc.upf";
+pw.ecut_ry = 15.0;   // tutorial; ~30 Ry for production Si
+pw.k_mesh = 2;
+cpu::pw::PWEvaluator pwe{std::move(pw)};
 cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) (eV)
 auto res = pwe.last_result();           // Ry / Ha on the result object
 ```
@@ -116,14 +116,14 @@ weighted sum over a discrete **Monkhorst-Pack mesh**:
 \]
 
 A converged silicon calculation uses a \f$4\times4\times4\f$ mesh or finer; the
-example uses \f$2\times2\times2\f$ for speed (`PWConfig::k_mesh = 2`).
+example uses \f$2\times2\times2\f$ for speed (`PW::k_mesh = 2`).
 
 ## The plane-wave SCF cycle
 
 The self-consistent loop has the same *shape* as every other SCF in Atomiverse —
 build an effective Hamiltonian, diagonalize, rebuild the density, check
 convergence — but the ingredients are different. In the plane-wave code the loop
-lives inside the inner solver `cpu::pw::PWSolver`, which drives its step helpers
+lives inside the concrete method `cpu::pw::PW`, which drives its step helpers
 (`cpu::pw::internal::PoissonSolver`, `XCBuilder`, `VeffBuilder`,
 `DavidsonSolver`, `DensityBuilder`, `ConvergenceCheck`) in a fixed order. These
 helpers are owned by the solver; they are **not** Plan components and carry no
@@ -154,7 +154,7 @@ between the diagonal-kinetic (reciprocal) and local-potential (real) spaces.
 
 **5. Density + mixing.** Build \f$\rho_{\mathrm{out}}\f$ from the occupied
 states. Feeding it straight back diverges, so **Pulay mixing** (DIIS in density
-space) extrapolates from the history of input/output densities; `PWConfig`
+space) extrapolates from the history of input/output densities; `PW`
 exposes `mix_beta` and `pulay_depth`.
 
 **6. Convergence.** Measured by the RMS change in density; a short warmup
@@ -182,7 +182,7 @@ energy.
 ## Running it from C++
 
 The user-facing entry point is the `cpu::pw::PWEvaluator` component — the
-plane-wave analogue of `cpu::scf::SCF`. It wraps a `PWSolver`, has
+plane-wave energy component. It owns a `PW`, has
 `role() == Evaluator` and `capabilities() == Energy`, and writes the total
 energy to `frame.meta.get(kEnergy)` in eV (the Rydberg / Hartree breakdown stays on
 `last_result()`). Run it through the one-pass `cpu::Evaluate` driver, most
@@ -192,13 +192,13 @@ concisely via the `cpu::single_point` helper:
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/planewave/pw_evaluator.h"
 
-cpu::pw::PWConfig cfg;
-cfg.upf_path = "tests/data/pw/Si_lda_nc.upf";
-cfg.ecut_ry  = 30.0;   // wavefunction cutoff [Ry]
-cfg.k_mesh   = 4;      // 4x4x4 Monkhorst-Pack mesh
-cfg.tol      = 1e-6;   // SCF tolerance on the density change
+cpu::pw::PW pw;
+pw.upf_path = "tests/data/pw/Si_lda_nc.upf";
+pw.ecut_ry  = 30.0;   // wavefunction cutoff [Ry]
+pw.k_mesh   = 4;      // 4x4x4 Monkhorst-Pack mesh
+pw.tol      = 1e-6;   // SCF tolerance on the density change
 
-cpu::pw::PWEvaluator pwe{cfg};
+cpu::pw::PWEvaluator pwe{std::move(pw)};
 cpu::single_point(frame, pwe);          // frame.meta.get(kEnergy) (eV)
 
 const auto& r = pwe.last_result();
@@ -209,7 +209,7 @@ Low-level code uses the same explicit solver lifecycle:
 
 ```cpp
 #include "atomiverse/cpu/planewave/pw_solver.h"
-cpu::pw::PWSolver solver{cfg};
+cpu::pw::PW& solver = pw;  // concrete method
 solver.build(frame);
 const cpu::pw::PWResult& r = solver.run(frame);
 ```
@@ -223,16 +223,16 @@ physically meaningful. Use a real UPF for real numbers.
 
 The plane-wave path needs FFTW3 at build time.
 
-The example builds the 2-atom silicon diamond cell, configures `PWConfig`
+The example builds the 2-atom silicon diamond cell, configures `PW`
 (15 Ry, \f$2\times2\times2\f$ mesh), runs it as a `PWEvaluator`, and prints the
 total energy in Ry, Hartree, and eV.
 
 ## What the solver does internally
 
 ```
-cpu::Frame (Si diamond, 2 atoms)  +  PWConfig
-  → PWSolver::build(frame)         // parse the UPF
-  → PWSolver::run(frame):          // geometry-dependent setup rebuilt each run:
+cpu::Frame (Si diamond, 2 atoms)  +  PW
+  → PW::build(frame)         // parse the UPF
+  → PW::run(frame):          // geometry-dependent setup rebuilt each run:
       Ewald sum, G-vectors, FFT plans, V_loc, KB projectors
       SCF loop (internal step helpers, fixed order):
         PoissonSolver   → V_H(G)
@@ -257,7 +257,7 @@ A GPU path exists: `cuda::pw::pw_scf` runs the Davidson hot path on the device
 ## Where to read the code
 
 1. [`include/atomiverse/cpu/planewave/pw_evaluator.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_evaluator.h) — the user-facing component
-2. [`include/atomiverse/cpu/planewave/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
+2. [`include/atomiverse/cpu/planewave/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/planewave/pw_solver.h) — `PW`, `PWResult`
 3. `include/atomiverse/cpu/planewave/internal/` — the step helpers and numerics
    (`g_vector.h`, `fft.h`, `ewald.h`, `kpoint.h`, `upf_reader.h`, …)
 

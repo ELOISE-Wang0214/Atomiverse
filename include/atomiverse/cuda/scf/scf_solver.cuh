@@ -94,7 +94,7 @@ class SCFSolver {
     ///        (Saunders–Hillier), default 0.0 = no shift. Stabilizes SCF
     ///        by widening the HOMO–LUMO gap; reported orbital energies are
     ///        de-shifted after convergence. Mirrors CPU
-    ///        SCFConfig::level_shift (hf-robust-03).
+    ///        level_shift member (hf-robust-03).
     /// @throws std::invalid_argument when `integrals.n_electrons` is odd or
     ///         negative: closed-shell RHF requires an even electron count,
     ///         and an odd count would silently truncate

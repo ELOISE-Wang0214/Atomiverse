@@ -2,7 +2,7 @@
 /// @brief Orbital Transformation (OT) inner minimizer for the GPW SCF.
 ///
 /// **Internal GPW helper.** Does NOT inherit `cpu::Component`; owned by
-/// `cpu::gpw::GPWSolver` (and by tests via direct include). Replaces the dense
+/// `cpu::gpw::GPW` (and by tests via direct include). Replaces the dense
 /// `O(nb^3)` generalized diagonalization with a direct minimization of the
 /// closed-shell energy over the occupied coefficients `C` under the
 /// orthonormality constraint `C^T S C = I`, following CP2K's OT method.

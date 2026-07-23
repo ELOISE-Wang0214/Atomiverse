@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/davidson.h
 /// @brief internal::DavidsonSolver — matrix-free iterative diagonalization.
 ///
-/// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
+/// Facade-private step helper owned by `cpu::pw::PW`. NOT a
 /// `cpu::Component` subclass and never registered into a Plan.
 #pragma once
 

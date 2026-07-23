@@ -1,7 +1,7 @@
 /// @file cpu/pw/internal/veff_builder.h
 /// @brief internal::VeffBuilder — assemble V_eff = V_loc + V_H + V_xc.
 ///
-/// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
+/// Facade-private step helper owned by `cpu::pw::PW`. NOT a
 /// `cpu::Component` subclass and never registered into a Plan.
 #pragma once
 

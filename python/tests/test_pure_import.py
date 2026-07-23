@@ -140,7 +140,7 @@ def test_extension_present_path_still_loads() -> None:
     assert mod is not None
     assert hasattr(av, "MD")
     assert av.MD is not None
-    if hasattr(binding._cpp, "PWSolver"):
-        assert hasattr(av, "PWSolver")
+    if hasattr(binding._cpp, "PW"):
+        assert hasattr(av, "PW")
     else:
-        assert "PWSolver" not in getattr(av, "__all__", [])
+        assert "PW" not in getattr(av, "__all__", [])

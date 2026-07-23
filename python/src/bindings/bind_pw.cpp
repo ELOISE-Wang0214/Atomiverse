@@ -74,8 +74,5 @@ void bind_pw(nb::module_& m) {
             "last_result",
             [](const PW& solver) { return solver.last_result(); },
             "Copy of the most recent result.");
-    // Compatibility aliases for the deleted bag names (methods are members).
-    m.attr("PWConfig") = m.attr("PW");
-    m.attr("PWSolver") = m.attr("PW");
 #endif
 }

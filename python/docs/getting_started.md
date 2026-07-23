@@ -103,7 +103,7 @@ Current surface:
   `DihedralMultiHarmonic`, `Thermo`.
 - **Geometry optimization** — CPU `minimizer.Minimize` with the `LBFGS`
   optimizer component and independent `ForceConverged` loop policy.
-- **Plane-wave DFT** — `PWConfig` / `PWSolver` / `PWResult` (PW-enabled
+- **Plane-wave DFT** — `PW` / `PW` / `PWResult` (PW-enabled
   wheels only; PW types are absent from wheels built without the backend).
 
 GPU minimization fails loud and remains deferred. Gaussian-SCF Python
@@ -263,13 +263,13 @@ Components register through two paths, mirroring the C++ API:
 ## Plane-wave DFT (PW-enabled wheels)
 
 ```python
-cfg = av.PWConfig()
-cfg.upf_path = "Si.upf"
-cfg.ecut_ry = 30.0
-cfg.k_mesh = 4
-solver = av.PWSolver(cfg)
+pw = av.PW()
+pw.upf_path = "Si.upf"
+pw.ecut_ry = 30.0
+pw.k_mesh = 4
+pw = av.PW()  # members below
 solver.build(frame)
-result = solver.run(frame)
+result = pw.run(frame)
 print(result.energy)      # [Ry]
 print(result.converged, result.iterations)
 ```

@@ -14,11 +14,12 @@ that, several *environment* hooks now exist on the SCF mean-field methods:
 - **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces
   throw).
 
-**Textbook QM/MM** ships as `QmmmMechanical` (DFTB2 QM + LJ) and
-`QmmmElectrostatic` (RHF + MM `point_charges` + LJ). Still **no full product
-QM/MM** (link atoms, polarizable MM), no SMD/GB, and no picture-change / DKH /
-SOC stack. Plane-wave UPF and GPW GTH remain frozen-core pseudopotentials,
-separate from Gaussian ECPs.
+**Textbook QM/MM** ships as `QmmmMechanical` (DFTB2 QM + LJ),
+`QmmmElectrostatic` (RHF + MM point charges + LJ, optional **H link atoms**),
+and `QmmmPolarizable` (RHF + induced MM dipoles, SCC). Still no ONIOM /
+subtractive product path, no SMD/GB, and no picture-change / DKH / SOC stack.
+Plane-wave UPF and GPW GTH remain frozen-core pseudopotentials, separate from
+Gaussian ECPs.
 
 ## 1. Atomic-Charge Methods
 
@@ -77,12 +78,12 @@ analytic PCM gradients are out of scope for the current path.
 | -------------------------------- | :-: | :--: | :---: |
 | Mechanical embedding QM/MM       |  ✓  |   ○  |   ○  |
 | Electrostatic embedding QM/MM    |  ✓  |   ○  |   ○  |
-| Polarizable embedding QM/MM      |  ○  |   ○  |   ○  |
+| Polarizable embedding QM/MM      |  ✓  |   ○  |   ○  |
 | Additive QM/MM                   |  ○  |   ○  |   ○  |
 | Subtractive QM/MM                |  ○  |   ○  |   ○  |
 | ONIOM two-layer method           |  ○  |   ○  |   ○  |
 | ONIOM multilayer method          |  ○  |   ○  |   ○  |
-| Link-atom QM/MM                  |  ○  |   ○  |   ○  |
+| Link-atom QM/MM                  |  ✓  |   ○  |   ○  |
 | Localized-orbital boundary QM/MM |  ○  |   ○  |   ○  |
 | Pseudobond QM/MM                 |  ○  |   ○  |   ○  |
 | Periodic QM/MM                   |  ○  |   ○  |   ○  |
@@ -94,11 +95,15 @@ analytic PCM gradients are out of scope for the current path.
 | Excited-state QM/MM              |  ○  |   ○  |   ○  |
 
 Fixed point-charge embedding on the SCF method (external MM charges in the
-one-electron Hamiltonian, with analytic forces) is **not** full QM/MM: there
-is no region partitioner, no link atom / boundary treatment, and no
-self-consistent MM back-reaction. A Plan can still bind a QM evaluator and an
-MM pair style to the same force phase as a naive superposition — that is not
-a QM/MM product path.
+one-electron Hamiltonian, with analytic forces) remains a lower-level hook.
+The product QM/MM components are:
+
+- `QmmmMechanical` — DFTB2 on QM tags + LJ environment (`reg_qmmm_h2_ar`)
+- `QmmmElectrostatic` — RHF QM + MM charges + LJ, with optional H link atoms
+  (`reg_qmmm_es_h2`, `reg_qmmm_link_ch3oh`)
+- `QmmmPolarizable` — RHF + isotropic induced MM dipoles (`reg_qmmm_pol_h2o`)
+
+No automatic region partitioner, no ONIOM, no PME long-range QM/MM.
 
 ## 4. Quantum Embedding Methods
 
