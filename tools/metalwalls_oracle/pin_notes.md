@@ -35,3 +35,10 @@
   \(R=40\): \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=0)=4.620945546104\times 10^{-3}\,e\),
   \(Q_{\mathrm{top}}(l_{\mathrm{TF}}=2\,\mathrm{Å})=3.934601758679\times 10^{-3}\,e\)
 - **perf_exempt:** no MetalWalls twin binary
+
+## surface-tension-coupling (2026-07-24)
+
+- oracle: lammps (`lmp` develop 30 Mar 2026)
+- input: `inputs/lammps/in.surface_tension_coupling`
+- pin: after 200 steps, Lx=Ly=16.527384, Lz=16.249165 (L0=15.3)
+- Plat fixed = Pn - 2*gamma/Lz0 with gamma=0.001 eV/Å²
