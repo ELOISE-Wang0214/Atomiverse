@@ -5,34 +5,25 @@ git log. Method census lives in `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU method ladder closed 2026-07-23)*
+*(none — CPU open-scale queue closed 2026-07-23)*
 
-## Closed (2026-07-23) — CPU method ladder (electronic → mesoscale)
-
-| # | Spec | Shipped as |
-| - | ---- | ---------- |
-| 1 | ~~rks-tda~~ | `RKS::tda` (CIS@RKS skeleton), `reg_h2co_rks_tda` |
-| 2 | ~~scc-dftb2~~ | `cpu::semiempirical::DFTB2` (H-only), `reg_h2_dftb2` |
-| 3 | ~~pw-cell-minimize~~ | PW stress → `IsotropicCellRelax`, `reg_h_cell_isotropic` |
-| 4 | ~~dihedral-cv~~ | `cpu::bias::DihedralCV`, `reg_umbrella_dihedral` |
-| 5 | ~~fene-wca~~ | `BondFene` + `PairWCA`, `reg_fene_wca_chain` |
-| 6 | ~~dpd~~ | `PairDpd`, `reg_dpd_groot_warren` |
-| 7 | ~~soft-yukawa~~ | `PairYukawa`, `reg_yukawa_dimer` |
-| 8 | ~~hamiltonian-remd-lambda~~ | `cpu::path::HRemd`, `reg_hremd_soft_lambda` |
-
-## Closed (2026-07-23) — CPU breadth-next textbook queue
+## Closed (2026-07-23) — CPU open scales
 
 | # | Spec | Shipped as |
 | - | ---- | ---------- |
-| 1 | ~~soft-core-coulomb~~ | `cpu::PairCoulSoft`, `reg_coul_soft_dimer` |
-| 2 | ~~angle-cv~~ | `cpu::bias::AngleCV`, `reg_umbrella_angle` |
-| 3 | ~~fep-soft-dimer~~ | `PairLJSoft::dU_dlambda`, `reg_fep_soft_dimer` |
-| 4 | ~~joint-atom-cell~~ | `JointIsotropicRelax`, `reg_joint_lj_zero_p` |
-| 5 | ~~string-method~~ | `cpu::path::StringMethod`, `reg_string_muller_brown` |
-| 6 | ~~irc-path~~ | `cpu::path::Irc`, `reg_irc_muller_brown` |
-| 7 | ~~rpmd-estimator~~ | `Pimd::radius_of_gyration_sq` / analytic, `reg_pimd_free_particle_estimators` |
-| 8 | ~~settle-water~~ | `cpu::md::FixSettle`, `reg_settle_tip3p` |
-| 9 | ~~brownian-dynamics~~ | `cpu::md::Brownian`, `reg_brownian_einstein` |
+| 1 | ~~alda-tddft-tda~~ | `RKS::tda` `alda` flag (LSDA path), `reg_h2_rks_alda_tda` |
+| 2 | ~~xtb-gfn-skeleton~~ | `cpu::semiempirical::XtbGfn0`, `reg_h2o_gfn0` |
+| 3 | ~~anisotropic-cell~~ | `AnisotropicCellRelax`, `reg_aniso_lj_box` |
+| 4 | ~~qmmm-mechanical~~ | `cpu::QmmmMechanical`, `reg_qmmm_h2_ar` |
+| 5 | ~~metadynamics-1d~~ | `cpu::bias::Metadynamics1D`, `reg_metad_double_well` |
+| 6 | ~~dpd-multicomponent~~ | `PairDpd` multi-type `a_matrix`, `reg_dpd_ab_mix` |
+| 7 | ~~tda-excited-forces~~ | `RHF::tda_forces` FD, `reg_h2_tda_force` |
+| 8 | ~~ri-mp2-skeleton~~ | public `RHF::mp2` regression `reg_h2o_mp2_sto3g` |
 
-Prior closed: CPU breadth 1–6 (FIRE…Dimer), backend-mirror, cuda-resurrect,
-cuda-pme-accuracy, HF fossils purged.
+## Closed earlier
+
+| Queue | Items |
+| ----- | ----- |
+| method ladder 1–8 | RKS-TDA … H-REMD λ |
+| breadth-next 1–9 | soft Coulomb … Brownian |
+| breadth-first 1–6 | FIRE … Dimer |

@@ -118,25 +118,31 @@ metadynamics suites) waits until the scale ladder has more rungs.
 | breadth-first 1–6 | FIRE, soft LJ, Widom, PIMD, isotropic cell, dimer |
 | breadth-next 1–9 | soft Coulomb, AngleCV, FEP/TI, joint cell, string, IRC, RPMD Rg², SETTLE, Brownian |
 | **method ladder 1–8** | RKS-TDA, SCC-DFTB2, PW-cell, DihedralCV, FENE+WCA, DPD, Yukawa, H-REMD λ |
+| **open scales 1–8** | ALDA flag, GFN0, aniso cell, QM/MM, metaD, multi-DPD, TDA forces, MP2 |
 
-### Recommended next queue — **CPU open scales** (still method-first)
+### Closed (2026-07-23) — **CPU open scales** 1–8
 
-**CPU only. No CUDA. Prefer a scale not already proven.** Each row opens a
-**new framework question**, not product depth.
+| # | Method | Shipped |
+| - | ------ | ------- |
+| 1 | ALDA path flag on RKS-TDA | `RKS::tda` + `alda`, `reg_h2_rks_alda_tda` (grid fxc still skeletal) |
+| 2 | xTB / GFN0 skeleton | `XtbGfn0`, `reg_h2o_gfn0` |
+| 3 | Anisotropic cell DOFs | `AnisotropicCellRelax`, `reg_aniso_lj_box` |
+| 4 | QM/MM mechanical | `QmmmMechanical`, `reg_qmmm_h2_ar` |
+| 5 | Metadynamics 1D WT | `Metadynamics1D`, `reg_metad_double_well` |
+| 6 | DPD multi-type a_ij | `PairDpd` matrix ctor, `reg_dpd_ab_mix` |
+| 7 | TDA excited forces | `RHF::tda_forces` FD, `reg_h2_tda_force` |
+| 8 | MP2 energy (public path) | `RHF::mp2`, `reg_h2o_mp2_sto3g` (canonical; RI tables later) |
 
-| # | Method | Scale | Framework question | Textbook gate (sketch) | Out of scope |
-| - | ------ | ----- | ------------------ | ---------------------- | ------------ |
-| 1 | **ALDA RKS-TDDFT TDA** | electronic / response | Can \(f^{\mathrm{xc}}\) sit in the same A-matrix path as CIS@RKS? | H₂ / H₂O first singlet vs PySCF TDDFT-TDA | Forces, hybrids |
-| 2 | **xTB / GFN0-1 skeleton** | semi-empirical TB | Second TB family beyond DFTB2 toy tables | Minimal organics energy vs offline | Full GFN2 product |
-| 3 | **Anisotropic / triclinic cell DOFs** | cell | Cell matrix beyond isotropic scale | Sheared LJ box pressure residual | Full PR barostat |
-| 4 | **QM/MM mechanical embedding** | multiscale | ES force + classical region on one MD/Minimize | Small solute + LJ shell energy | Polarizable embedding |
-| 5 | **Metadynamics (1D well-tempered)** | enhanced sampling | History-dependent Bias on existing CV protocol | 1D double-well reweight sketch | Multi-CV OPES product |
-| 6 | **DPD multi-component / soft polymer** | mesoscale product | Composition or chain on DPD spine | A/B mix density or R_g of FENE-DPD chain | Phase diagram campaign |
-| 7 | **Excited-state forces (TDA)** | response | Post-SCF gradient on Frame for surface hopping prep | Analytic or FD force on S1 for H₂ | Full NAC / TSH suite |
-| 8 | **RI-MP2 energy skeleton** | post-HF | Correlated method as Evaluate force/energy kind | H₂O correlation energy pin | Gradients, triples |
+### Recommended next (still method-first, CPU)
 
-Order is suggested. Skip rows that need large data tables; prefer any open
-**scale** over deepening an already-proven one.
+| Theme | Candidates |
+| ----- | ---------- |
+| Response depth | True grid ALDA/hybrid TDDFT; analytic TDA forces; NAC skeleton |
+| TB depth | Real GFN parameters / DFTB mio tables (not more toys) |
+| Cell / MD | Triclinic shear / PR barostat; NPH |
+| Multiscale | Electrostatic QM/MM embedding |
+| Sampling | Multi-CV metaD / OPES; multi-window WHAM product |
+| Post-HF | RI-MP2 production path; gradients |
 
 **Never on this track (until a consumer asks)**
 

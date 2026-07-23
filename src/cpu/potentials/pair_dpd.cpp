@@ -12,13 +12,38 @@ namespace cpu {
 
 PairDpd::PairDpd(double a, double gamma, double temperature, double cutoff,
                  double dt, std::uint64_t seed)
-    : Pair(cutoff), a_(a), gamma_(gamma), temperature_(temperature), dt_(dt),
-      seed_(seed) {
+    : Pair(cutoff), a_default_(a), multi_(false), gamma_(gamma),
+      temperature_(temperature), dt_(dt), seed_(seed) {
     if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0) || !(gamma >= 0.0))
         throw std::invalid_argument("PairDpd: invalid parameters");
     cutoff_sq_ = cutoff * cutoff;
-    // σ² = 2 γ k_B T  (Groot–Warren)
     sigma_ = std::sqrt(2.0 * gamma_ * units::kB_ev_per_k * temperature_);
+}
+
+PairDpd::PairDpd(std::vector<std::vector<double>> a_matrix, double gamma,
+                 double temperature, double cutoff, double dt,
+                 std::uint64_t seed)
+    : Pair(cutoff), a_mat_(std::move(a_matrix)), multi_(true), gamma_(gamma),
+      temperature_(temperature), dt_(dt), seed_(seed) {
+    if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0) || !(gamma >= 0.0))
+        throw std::invalid_argument("PairDpd: invalid parameters");
+    if (a_mat_.empty())
+        throw std::invalid_argument("PairDpd: empty a_matrix");
+    const std::size_t n = a_mat_.size();
+    for (const auto& row : a_mat_)
+        if (row.size() != n)
+            throw std::invalid_argument("PairDpd: a_matrix must be square");
+    cutoff_sq_ = cutoff * cutoff;
+    sigma_ = std::sqrt(2.0 * gamma_ * units::kB_ev_per_k * temperature_);
+}
+
+double PairDpd::a_of_(int ti, int tj) const {
+    if (!multi_)
+        return a_default_;
+    if (ti < 0 || tj < 0 || static_cast<std::size_t>(ti) >= a_mat_.size() ||
+        static_cast<std::size_t>(tj) >= a_mat_.size())
+        throw std::runtime_error("PairDpd: atom type out of a_matrix range");
+    return a_mat_[static_cast<std::size_t>(ti)][static_cast<std::size_t>(tj)];
 }
 
 void PairDpd::compute(const LaunchContext& ctx) {
@@ -26,6 +51,7 @@ void PairDpd::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.nlocal());
     const double rc = pair_cutoff();
     const double inv_sqrt_dt = 1.0 / std::sqrt(dt_);
+    const auto type = f.span(kAtom_type);
 
     double energy = 0.0;
     const StorageReal* __restrict x = f.span(kAtom_x);
@@ -38,7 +64,6 @@ void PairDpd::compute(const LaunchContext& ctx) {
     AccReal* __restrict fy = f.span(kAtom_fy);
     AccReal* __restrict fz = f.span(kAtom_fz);
 
-    // Deterministic pair RNG: seed from (global seed, step, i, j).
     auto theta = [&](int i, int j) {
         std::uint64_t s = seed_;
         s ^= static_cast<std::uint64_t>(step_) * 0x9e3779b97f4a7c15ULL;
@@ -47,7 +72,6 @@ void PairDpd::compute(const LaunchContext& ctx) {
         s = (s ^ (s >> 30)) * 0xbf58476d1ce4e5b9ULL;
         s = (s ^ (s >> 27)) * 0x94d049bb133111ebULL;
         s = s ^ (s >> 31);
-        // Map to N(0,1) via Box–Muller on two uniform bits.
         const double u1 =
             (static_cast<double>((s & 0xffffffffULL) + 1) / 4294967297.0);
         const double u2 =
@@ -71,13 +95,10 @@ void PairDpd::compute(const LaunchContext& ctx) {
             if (w <= 0.0)
                 continue;
 
-            // Conservative: F_i ← −a w r̂  (r̂ from i to j = r_ij/r)
-            // Force on i from pair: −F^C along r̂_ij if F^C is the mutual repulsion.
-            // Mutual: F_i = −a w r̂, F_j = +a w r̂ with r̂ = (r_j−r_i)/r.
-            const double fc = a_ * w;
-            double fpair = -fc * inv_r; // F_i += fpair * r_ij
+            const double aij = a_of_(type[i], type[j]);
+            const double fc = aij * w;
+            double fpair = -fc * inv_r;
 
-            // Dissipative: −γ w² (r̂·v_ij) r̂ ; v_ij = v_j − v_i
             const double dvx = vx[j] - vx[i];
             const double dvy = vy[j] - vy[i];
             const double dvz = vz[j] - vz[i];
@@ -86,7 +107,6 @@ void PairDpd::compute(const LaunchContext& ctx) {
             const double fd = -gamma_ * w2 * rdotv;
             fpair += fd * inv_r;
 
-            // Random: σ w θ / √dt  along r̂
             const double fr = sigma_ * w * theta(i, j) * inv_sqrt_dt;
             fpair += fr * inv_r;
 
@@ -97,8 +117,7 @@ void PairDpd::compute(const LaunchContext& ctx) {
             fy[j] -= fpair * dy;
             fz[j] -= fpair * dz;
 
-            // U = (a/2) w² per pair (Groot–Warren soft potential)
-            energy += 0.5 * a_ * w2;
+            energy += 0.5 * aij * w2;
         }
     }
     f.meta.get(kEnergy) += energy;

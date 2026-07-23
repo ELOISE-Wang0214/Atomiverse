@@ -51,6 +51,10 @@ struct ExcitedStatesResult {
     /// @brief true = Tamm-Dancoff approximation (B = 0; CIS on an HF
     ///        reference), false = full TDHF/RPA (dimensionless flag).
     bool tda = false;
+
+    /// @brief true when ALDA \(f^{\mathrm{xc}}\) contribution was requested
+    ///        (RKS LSDA TDA path). Full grid kernel may still be skeletal.
+    bool alda = false;
 };
 
 } // namespace scf

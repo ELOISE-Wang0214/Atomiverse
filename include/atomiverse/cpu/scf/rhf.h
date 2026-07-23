@@ -3,7 +3,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
@@ -89,6 +91,17 @@ class RHF : public MeanFieldMethod<RHF> {
     ExcitedStatesResult
     tda(int n_states,
         ExcitationChannel channel = ExcitationChannel::singlet) const;
+
+    /// @brief Nuclear forces on TDA excited-state energy of root `state`
+    ///        via central finite difference of \(E_n^{\mathrm{TDA}}\) [eV/Å].
+    ///        Requires a prior successful `run()` geometry on `frame`; re-runs
+    ///        SCF + TDA at ±h displacements (textbook skeleton).
+    /// @param frame Geometry (mutated temporarily; restored).
+    /// @param state Excited root index (0-based).
+    /// @param h Finite-difference step [Å] (default 1e-3).
+    /// @return Per-atom force array size 3N (fx,fy,fz interleaved) [eV/Å].
+    std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
+                                   double h = 1e-3) const;
 
     /// @brief Full TDHF/RPA excitation energies of the most recent `run()`:
     ///        [[A,B],[−B,−A]](X;Y) = ω(X;Y), solved via the Hermitian

@@ -15,7 +15,9 @@
 
 #include <xtensor-blas/xlinalg.hpp>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
@@ -602,15 +604,67 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     if (!has_result())
         throw std::runtime_error(
             "RKS::tda: no SCF result — call run(frame) first");
-    // CIS@RKS skeleton: HF-like A on KS orbitals (ALDA fxc deferred).
+    // CIS@RKS + ALDA flag for LSDA: full grid fxc is skeletal (zero exact
+    // exchange limit documented; ALDA diagonal deferred to dense A path).
     const SlaterDeterminant& det = determinant();
     const IntegralPack& pack = integral_workspace_();
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
     const internal::OrbitalHessian hessian{det, eri};
     const internal::TDHFPack tdhf_pack{hessian, internal_channel(channel)};
-    return excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
-                                 /*tda_flag=*/true);
+    auto out = excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
+                                     /*tda_flag=*/true);
+    out.alda = (xc == XCType::LSDA);
+    return out;
+}
+
+std::vector<double> RHF::tda_forces(cpu::Frame& frame, int state,
+                                    double h) const {
+    if (!(h > 0.0))
+        throw std::invalid_argument("RHF::tda_forces: h must be > 0");
+    const int n = frame.nlocal();
+    // Fresh RHF at each geometry (MeanFieldMethod is non-copyable).
+    auto make_rhf = [this]() {
+        RHF r;
+        r.basis = this->basis;
+        r.tol = this->tol;
+        r.max_iter = this->max_iter;
+        r.charge = this->charge;
+        return r;
+    };
+    {
+        RHF probe = make_rhf();
+        probe.run(frame);
+        if (!probe.converged())
+            throw std::runtime_error("RHF::tda_forces: SCF did not converge");
+        auto es0 = probe.tda(state + 1);
+        if (state < 0 || state >= static_cast<int>(es0.energy_ev.size()))
+            throw std::invalid_argument("RHF::tda_forces: state out of range");
+    }
+
+    std::vector<double> F(static_cast<std::size_t>(3 * n), 0.0);
+    StorageReal* coords[3] = {frame.span(kAtom_x), frame.span(kAtom_y),
+                              frame.span(kAtom_z)};
+    for (int a = 0; a < n; ++a) {
+        for (int d = 0; d < 3; ++d) {
+            const double x0 = coords[d][a];
+            coords[d][a] = x0 + h;
+            RHF rp = make_rhf();
+            rp.run(frame);
+            const double Ep =
+                rp.tda(state + 1).energy_ev[static_cast<std::size_t>(state)];
+            coords[d][a] = x0 - h;
+            RHF rm = make_rhf();
+            rm.run(frame);
+            const double Em =
+                rm.tda(state + 1).energy_ev[static_cast<std::size_t>(state)];
+            coords[d][a] = x0;
+            F[static_cast<std::size_t>(3 * a + d)] = -(Ep - Em) / (2.0 * h);
+        }
+    }
+    RHF r0 = make_rhf();
+    r0.run(frame);
+    return F;
 }
 
 ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {

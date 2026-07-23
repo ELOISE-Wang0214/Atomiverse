@@ -249,6 +249,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/semiempirical/rm1_evaluator.cpp
             src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
             src/cpu/semiempirical/dftb2.cpp
+            src/cpu/semiempirical/xtb_gfn0.cpp
+            src/cpu/multiscale/qmmm_mechanical.cpp
         )
     endif()
 
@@ -301,6 +303,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/minimize/cg.cpp
             src/cpu/minimize/fire.cpp
             src/cpu/minimize/cell_relax.cpp
+            src/cpu/minimize/anisotropic_cell_relax.cpp
             src/cpu/minimize/joint_cell_relax.cpp
             src/cpu/minimize/trajectory_writer.cpp
             src/cpu/minimize/opt_log.cpp
@@ -323,6 +326,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/bias/angle_cv.cpp
             src/cpu/bias/dihedral_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
+            src/cpu/bias/metadynamics_1d.cpp
         )
     endif()
 
