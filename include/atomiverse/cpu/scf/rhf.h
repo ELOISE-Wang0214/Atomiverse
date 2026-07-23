@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
@@ -150,6 +151,22 @@ class RHF : public MeanFieldMethod<RHF> {
     ExcitedStatesResult
     tdhf(int n_states,
          ExcitationChannel channel = ExcitationChannel::singlet) const;
+
+    /// @brief CIS(D) doubles correction on the lowest `n_states` singlet CIS
+    ///        (TDA) roots of the most recent `run()` — Head-Gordon, Rico,
+    ///        Oumi & Lee, Chem. Phys. Lett. **219**, 21 (1994),
+    ///        DOI 10.1016/0009-2614(94)00070-0. Size-consistent O(N⁵)
+    ///        second-order correction; spin-orbital evaluation over the
+    ///        closed-shell reference. Reuses the same TDA roots as
+    ///        `tda(n_states, singlet)`.
+    /// @param n_states Number of lowest CIS roots to correct (1 ≤ n_states ≤
+    ///                 n_occ·n_virt; dimensionless count).
+    /// @return CIS(D) and parent CIS excitation energies [eV] plus the
+    ///         doubles correction U+V [eV] per root.
+    /// @throws std::runtime_error when called before `run()`.
+    /// @throws std::invalid_argument when n_states is outside
+    ///         [1, n_occ·n_virt] or the system has no virtual orbitals.
+    CISDResult cisd(int n_states = 1) const;
 
     /// @brief Analytic nuclear Hessian d²E/dR² via CPHF linear response —
     ///        a method output beside `forces()`, feeding the existing vib

@@ -26,7 +26,7 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | IMOM excited states                |  ○  |   ○  |   ○  |
 | ROKS excited states                |  ○  |   ○  |   ○  |
 | CIS excitation energies            |  ✓  |   ○  |   ○  |
-| CIS(D)                             |  ○  |   ○  |   ○  |
+| CIS(D)                             |  ✓  |   ○  |   ○  |
 | SCS-CIS(D)                         |  ○  |   ○  |   ○  |
 | SOS-CIS(D)                         |  ○  |   ○  |   ○  |
 | Time-dependent Hartree–Fock, TDHF  |  ✓  |   ○  |   ○  |

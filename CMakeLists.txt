@@ -500,6 +500,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/orbital_hessian.cpp
             src/cpu/scf/stability.cpp
             src/cpu/scf/tdhf.cpp
+            src/cpu/scf/cisd.cpp
             src/cpu/scf/rhf.cpp
             src/cpu/scf/rohf.cpp
             src/cpu/scf/uhf.cpp
