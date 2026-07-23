@@ -1683,6 +1683,229 @@ ExcitedStatesResult UHF::sf_tda(int n_states) const {
     return out;
 }
 
+namespace {
+
+/// Dense non-symmetric eigenproblem (LAPACK dgeev, column-major). Returns
+/// real eigenvalues with wr > 0 and |wi| ≤ imag_tol, sorted ascending.
+/// Same pattern as RHF::adc2 / EOM-EE (third dense SF-RPA caller).
+extern "C" void dgeev_(const char* jobvl, const char* jobvr, const int* n,
+                       double* a, const int* lda, double* wr, double* wi,
+                       double* vl, const int* ldvl, double* vr, const int* ldvr,
+                       double* work, const int* lwork, int* info);
+
+std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
+                                           const RealMatrix& B,
+                                           double imag_tol = 1e-8) {
+    const int nov = static_cast<int>(A.shape()[0]);
+    if (static_cast<int>(A.shape()[1]) != nov
+        || static_cast<int>(B.shape()[0]) != nov
+        || static_cast<int>(B.shape()[1]) != nov)
+        throw std::invalid_argument(
+            "UHF::sf_tddft: A/B must be square and equal size");
+    // Non-Hermitian RPA: [[A, B], [-B, -A]] (X;Y) = ω (X;Y). Spectrum is
+    // ± pairs when stable; collinear SF may leave (A−B) indefinite so the
+    // Hermitian Casida reduction is not used.
+    const int n = 2 * nov;
+    std::vector<double> M(static_cast<std::size_t>(n * n), 0.0);
+    for (int i = 0; i < nov; ++i) {
+        for (int j = 0; j < nov; ++j) {
+            const double aij = A(static_cast<std::size_t>(i),
+                                 static_cast<std::size_t>(j));
+            const double bij = B(static_cast<std::size_t>(i),
+                                 static_cast<std::size_t>(j));
+            // Column-major: M[row + col*n]
+            M[static_cast<std::size_t>(i + j * n)] = aij;
+            M[static_cast<std::size_t>(i + (j + nov) * n)] = bij;
+            M[static_cast<std::size_t>((i + nov) + j * n)] = -bij;
+            M[static_cast<std::size_t>((i + nov) + (j + nov) * n)] = -aij;
+        }
+    }
+    std::vector<double> wr(static_cast<std::size_t>(n));
+    std::vector<double> wi(static_cast<std::size_t>(n));
+    std::vector<double> vr(1);
+    char jobvl = 'N', jobvr = 'N';
+    int ldvl = 1, ldvr = 1, info = 0;
+    int lwork = -1;
+    double wkopt = 0.0;
+    dgeev_(&jobvl, &jobvr, &n, M.data(), &n, wr.data(), wi.data(), vr.data(),
+           &ldvl, vr.data(), &ldvr, &wkopt, &lwork, &info);
+    lwork = static_cast<int>(wkopt);
+    std::vector<double> work(static_cast<std::size_t>(std::max(lwork, 1)));
+    // dgeev destroys M; rebuild
+    for (int i = 0; i < nov; ++i) {
+        for (int j = 0; j < nov; ++j) {
+            const double aij = A(static_cast<std::size_t>(i),
+                                 static_cast<std::size_t>(j));
+            const double bij = B(static_cast<std::size_t>(i),
+                                 static_cast<std::size_t>(j));
+            M[static_cast<std::size_t>(i + j * n)] = aij;
+            M[static_cast<std::size_t>(i + (j + nov) * n)] = bij;
+            M[static_cast<std::size_t>((i + nov) + j * n)] = -bij;
+            M[static_cast<std::size_t>((i + nov) + (j + nov) * n)] = -aij;
+        }
+    }
+    dgeev_(&jobvl, &jobvr, &n, M.data(), &n, wr.data(), wi.data(), vr.data(),
+           &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
+    if (info != 0)
+        throw std::runtime_error("UHF::sf_tddft: dgeev failed, info="
+                                 + std::to_string(info));
+    std::vector<double> pos;
+    pos.reserve(static_cast<std::size_t>(nov));
+    for (int i = 0; i < n; ++i) {
+        if (std::abs(wi[static_cast<std::size_t>(i)]) <= imag_tol
+            && wr[static_cast<std::size_t>(i)] > 1e-8)
+            pos.push_back(wr[static_cast<std::size_t>(i)]);
+    }
+    std::sort(pos.begin(), pos.end());
+    return pos;
+}
+
+} // namespace
+
+ExcitedStatesResult UHF::sf_tddft(int n_states) const {
+    if (!has_result())
+        throw std::runtime_error(
+            "UHF::sf_tddft: no SCF result — call run(frame) first");
+    const SlaterDeterminant& det = determinant();
+    if (det.restricted() || det.generalized())
+        throw std::runtime_error(
+            "UHF::sf_tddft: requires an unrestricted (UHF) determinant");
+
+    using Spin = SlaterDeterminant::Spin;
+    const RealMatrix& Ca = det.coefficients(Spin::alpha);
+    const RealMatrix& Cb = det.coefficients(Spin::beta);
+    const RealVector& ea = det.orbital_energies(Spin::alpha);
+    const RealVector& eb = det.orbital_energies(Spin::beta);
+    const RealVector& fa = det.occupations(Spin::alpha);
+    const RealVector& fb = det.occupations(Spin::beta);
+
+    std::vector<int> occ_a, virt_a, occ_b, virt_b;
+    split_occ_virt(fa, occ_a, virt_a);
+    split_occ_virt(fb, occ_b, virt_b);
+    const int noa = static_cast<int>(occ_a.size());
+    const int nva = static_cast<int>(virt_a.size());
+    const int nob = static_cast<int>(occ_b.size());
+    const int nvb = static_cast<int>(virt_b.size());
+
+    const bool alpha_to_beta = (noa >= nob);
+    const int no = alpha_to_beta ? noa : nob;
+    const int nv = alpha_to_beta ? nvb : nva;
+    if (no == 0 || nv == 0)
+        throw std::runtime_error(
+            "UHF::sf_tddft: empty SF manifold (need majority occupied and "
+            "minority virtual orbitals — no fallback)");
+    const int nov = no * nv;
+    if (n_states < 1 || n_states > nov)
+        throw std::invalid_argument(
+            "UHF::sf_tddft: n_states = " + std::to_string(n_states)
+            + " outside [1, n_ov = " + std::to_string(nov) + "]");
+    // Doubled non-Hermitian space is 2*n_ov; cap so dgeev stays tiny.
+    if (nov > 256)
+        throw std::runtime_error(
+            "UHF::sf_tddft: n_ov = " + std::to_string(nov)
+            + " exceeds dense SF-RPA threshold 256 (no fallback)");
+
+    const IntegralPack& pack = integral_workspace_();
+    const xt::xtensor<double, 4> eri =
+        (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
+
+    RealMatrix Co, Cv;
+    if (alpha_to_beta) {
+        RealMatrix dummy_v, dummy_o;
+        coeff_blocks(Ca, occ_a, virt_a, Co, dummy_v);
+        coeff_blocks(Cb, occ_b, virt_b, dummy_o, Cv);
+    } else {
+        RealMatrix dummy_v, dummy_o;
+        coeff_blocks(Cb, occ_b, virt_b, Co, dummy_v);
+        coeff_blocks(Ca, occ_a, virt_a, dummy_o, Cv);
+    }
+
+    // A: exchange-only SF-CIS block (same as sf_tda).
+    const xt::xtensor<double, 4> ijab = mo_transform_eri(eri, Co, Co, Cv, Cv);
+    // B: exchange de-excitation (ib|aj) — Co,Cv,Cv,Co → [i,b,a,j].
+    const xt::xtensor<double, 4> ibaj = mo_transform_eri(eri, Co, Cv, Cv, Co);
+
+    RealMatrix A = xt::zeros<double>({static_cast<std::size_t>(nov),
+                                      static_cast<std::size_t>(nov)});
+    RealMatrix B = xt::zeros<double>({static_cast<std::size_t>(nov),
+                                      static_cast<std::size_t>(nov)});
+    for (int i = 0; i < no; ++i) {
+        for (int a = 0; a < nv; ++a) {
+            const int p = i * nv + a;
+            const int ii = alpha_to_beta
+                               ? occ_a[static_cast<std::size_t>(i)]
+                               : occ_b[static_cast<std::size_t>(i)];
+            const int aa = alpha_to_beta
+                               ? virt_b[static_cast<std::size_t>(a)]
+                               : virt_a[static_cast<std::size_t>(a)];
+            const double e_virt = alpha_to_beta
+                                      ? eb(static_cast<std::size_t>(aa))
+                                      : ea(static_cast<std::size_t>(aa));
+            const double e_occ = alpha_to_beta
+                                     ? ea(static_cast<std::size_t>(ii))
+                                     : eb(static_cast<std::size_t>(ii));
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(p)) =
+                e_virt - e_occ;
+            for (int j = 0; j < no; ++j) {
+                for (int b = 0; b < nv; ++b) {
+                    const int q = j * nv + b;
+                    A(static_cast<std::size_t>(p),
+                      static_cast<std::size_t>(q)) -=
+                        ijab(static_cast<std::size_t>(i),
+                             static_cast<std::size_t>(j),
+                             static_cast<std::size_t>(a),
+                             static_cast<std::size_t>(b));
+                    // B_ia,jb = -(ib|aj)
+                    B(static_cast<std::size_t>(p),
+                      static_cast<std::size_t>(q)) -=
+                        ibaj(static_cast<std::size_t>(i),
+                             static_cast<std::size_t>(b),
+                             static_cast<std::size_t>(a),
+                             static_cast<std::size_t>(j));
+                }
+            }
+        }
+    }
+
+    for (int p = 0; p < nov; ++p)
+        for (int q = p + 1; q < nov; ++q) {
+            const double sa =
+                0.5
+                * (A(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + A(static_cast<std::size_t>(q),
+                       static_cast<std::size_t>(p)));
+            A(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = sa;
+            A(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = sa;
+            const double sb =
+                0.5
+                * (B(static_cast<std::size_t>(p), static_cast<std::size_t>(q))
+                   + B(static_cast<std::size_t>(q),
+                       static_cast<std::size_t>(p)));
+            B(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) = sb;
+            B(static_cast<std::size_t>(q), static_cast<std::size_t>(p)) = sb;
+        }
+
+    const std::vector<double> pos = sf_rpa_positive_roots_(A, B);
+    if (static_cast<int>(pos.size()) < n_states)
+        throw std::runtime_error(
+            "UHF::sf_tddft: only " + std::to_string(pos.size())
+            + " positive real RPA roots (need " + std::to_string(n_states)
+            + ") — possible SF-RPA instability or complex spectrum "
+              "(no fallback)");
+
+    const std::size_t k = static_cast<std::size_t>(n_states);
+    ExcitedStatesResult out;
+    out.channel = ExcitationChannel::triplet;
+    out.tda = false;
+    out.alda = false;
+    out.energy_ev.resize(k);
+    out.oscillator_strength.assign(k, 0.0);
+    out.transition_dipole_au = xt::zeros<double>({k, std::size_t(3)});
+    for (std::size_t s = 0; s < k; ++s)
+        out.energy_ev[s] = pos[s] * units::kHartreeInEv;
+    return out;
+}
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV
