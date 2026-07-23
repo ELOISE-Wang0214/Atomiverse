@@ -517,6 +517,11 @@ GradientResult ScfGradient::compute(const Frame& frame,
     if (generalized && is_ks)
         throw std::runtime_error(
             "ScfGradient::compute: GKS (generalized KS) is not implemented.");
+    if (spin_ == SpinType::RestrictedOpen && is_ks)
+        throw std::runtime_error(
+            "ScfGradient::compute: ROKS analytic forces are not implemented "
+            "in this link — the energy-weighted density path is ROHF-only "
+            "(HF spin Focks). Use finite differences or ROHF/UKS forces.");
     const char* method_label = is_ks ? "KS" : "HF";
     const char* spin_label = generalized
                                  ? "generalized"

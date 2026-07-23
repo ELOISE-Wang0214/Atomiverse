@@ -13,16 +13,12 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 
 ## pending
 
-- [ ] `scs-mp2-h2o-sto3g` | SCS-MP2 | post-hf | water | sto-3g | e_corr | Grimme OS/SS scale of existing RMP2 spin components
 - [ ] `sos-mp2-h2o-sto3g` | SOS-MP2 | post-hf | water | sto-3g | e_corr | opposite-spin only scaling of RMP2
 - [ ] `mp2-grad-h2o-sto3g` | MP2 analytic gradient | post-hf | water | sto-3g | forces Ha/Bohr | RMP2 nuclear gradient; PySCF mp.MP2.nuc_grad_method
-- [ ] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | excited-states | h2 | sto-3g | S1 eV | RKS beyond TDA (Casida A/B); RHF::tdhf ✓, pure/hybrid KS full TDDFT ○
 - [ ] `romp2-o2-sto3g` | ROMP2 | post-hf | o2 | sto-3g | e_corr | ROHF ref ✓ + analytic ROHF grad ✓; MP2 on ROHF ○
-- [ ] `roks-o2-sto3g` | ROKS | dft | o2 | sto-3g | e_tot | restricted open-shell KS; PySCF dft.ROKS
 - [ ] `adc2-h2co-sto3g` | ADC(2) | excited-states | h2co | sto-3g | S1 eV | algebraic-diagrammatic foothold; PySCF adc.ADC
 - [ ] `spin-flip-tda-o2` | Spin-flip TDA | excited-states | o2 | sto-3g | excitation eV | SF-TDA on UHF/ROHF; PySCF TDA spin-flip
 - [ ] `uks-tda-o2-lsda` | UKS TDA | excited-states | o2 | sto-3g | S/T roots | open-shell TDDFT-TDA; RKS::tda ✓ only
-- [ ] `static-polariz-h2o` | RHF static polarizability | hartree-fock | water | sto-3g | α_ii a.u. | CPHF electric-field response; RHF::hessian CPHF path exists; α absent; PySCF mf.Polarizability
 - [ ] `uhf-hessian-o2` | UHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | RHF CPHF Hessian ✓ (reg_h2o_rhf_freq); UHF Hessian ○
 - [ ] `rohf-hessian-o2` | ROHF analytic Hessian | hartree-fock | o2 | sto-3g | Hessian eV/Å² | ROHF energy+grad ✓; analytic Hessian ○; PySCF hessian.ROHF
 - [ ] `mp3-h2-sto3g` | MP3 | post-hf | h2 | sto-3g | e_corr | third-order PT; PySCF mp.MP3
@@ -31,13 +27,17 @@ GHF grad, ROMP2, ROKS; CPHF polarizability / open-shell Hessians late.
 - [ ] `casci-h2-sto3g` | CASCI | post-hf | h2 | sto-3g | e_tot | active-space on existing FCI kernel; PySCF mcscf.CASCI
 - [ ] `g0w0-h2-sto3g` | G0W0 | excited-states | h2 | sto-3g | QP gaps | Green's-function foothold; PySCF gw.G0W0
 - [ ] `d3bj-molecular-pbe` | DFT-D3 BJ damping | dft | water | sto-3g | E_disp | molecular Gaussian D3 ○ (GPW zero-damping only); PySCF dftd3
-- [ ] `ief-pcm-h2o` | IEF-PCM | multiscale | water | 6-31g* | e_solv | conductor-like only today; PySCF solvent IEF-PCM
 - [ ] `b2plyp-h2o` | B2PLYP double hybrid | dft | water | sto-3g | e_tot | hybrid KS + MP2 composition; ingredients exist separately
 - [ ] `delta-scf-n2` | Delta-SCF | excited-states | n2 | sto-3g | ΔE | MOM/IMOM foothold; PySCF mom_occ_; not hf-parity parking product depth if single textbook case
 
 ## in_progress
 
-_(none)_
+- [~] `scs-mp2-h2o-sto3g` | SCS-MP2 | post-hf | water | sto-3g | e_corr | Grimme OS/SS scale of existing RMP2 spin components
+- [~] `full-lr-tddft-h2-pbe` | Full linear-response TDDFT | excited-states | h2 | sto-3g | S1 eV | RKS beyond TDA (Casida A/B); RHF::tdhf ✓, pure/hybrid KS full TDDFT ○
+
+- [~] `static-polariz-h2o` | RHF static polarizability | hartree-fock | water | sto-3g | α_ii a.u. | CPHF electric-field response; RHF::hessian CPHF path exists; α absent; PySCF mf.Polarizability
+- [~] `ief-pcm-h2o` | IEF-PCM | multiscale | water | 6-31g* | e_solv | conductor-like only today; PySCF solvent IEF-PCM
+
 
 ## blocked
 
@@ -49,6 +49,7 @@ _(none)_
 - [!] `pm6-pm7` | blocked — NDDO tables / MOPAC twin, not PySCF
 
 ## done
+- [x] `roks-o2-sto3g` | ROKS | regressions/scf/roks-o2-sto3g | O2 triplet ROKS/LSDA/STO-3G cart e_tot=-147.193715448518 Ha (PySCF 2.14.0 dft.ROKS xc=LDA,VWN); tol 1e-6 Ha; spin purity ⟨S²⟩=2
 - [x] `pcm-grad-h2o` | Implicit-solvent analytic gradient | regressions/scf/pcm-grad-h2o | FD of free energy ≤1e-5 Ha/Bohr; PySCF pin in REFERENCE
 - [x] `ghf-grad-h3-sto3g` | GHF analytic gradient | regressions/scf/ghf-grad-h3-sto3g | noncollinear H3 forces 1e-5 Ha/Bohr
 - [x] `blyp-water-sto3g` | BLYP GGA | regressions/scf/blyp-water-sto3g | H2O/STO-3G cart e_tot=-75.277447482665 Ha (PySCF 2.14.0 xc=blyp); tol 1e-6 Ha

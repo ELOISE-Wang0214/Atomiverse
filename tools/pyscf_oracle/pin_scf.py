@@ -10,6 +10,7 @@ Examples:
   python tools/pyscf_oracle/pin_scf.py ump2 --geom o2 --basis sto-3g --spin 2
   python tools/pyscf_oracle/pin_scf.py mp2-fc --geom water --basis 6-31g* --frozen 1
   python tools/pyscf_oracle/pin_scf.py rks --geom water --basis 6-31g* --xc b3lyp
+  python tools/pyscf_oracle/pin_scf.py roks --geom o2 --basis sto-3g --spin 2 --xc LDA,VWN
   python tools/pyscf_oracle/pin_scf.py tda --geom h2co --basis 6-31g* --nstates 3
   python tools/pyscf_oracle/pin_scf.py cisd --geom h2co --basis sto-3g --nstates 3
   python tools/pyscf_oracle/pin_scf.py rks-tda --geom h2 --basis sto-3g --xc b3lyp --nstates 3
@@ -85,6 +86,7 @@ def main() -> int:
             "rohf",
             "rks",
             "uks",
+            "roks",
             "mp2",
             "mp2-fc",
             "ump2",
@@ -172,13 +174,17 @@ def main() -> int:
         mf = dft.UKS(mol)
         mf.xc = args.xc
         out["xc"] = args.xc
+    elif m == "roks":
+        mf = dft.ROKS(mol)
+        mf.xc = args.xc
+        out["xc"] = args.xc
     else:
         # tda / tdhf / mp2 ground state: RHF
         mf = scf.RHF(mol)
 
 
     if args.pcm:
-        if m not in ("rhf", "uhf", "rohf", "rks", "uks"):
+        if m not in ("rhf", "uhf", "rohf", "rks", "uks", "roks"):
             print(
                 json.dumps(
                     {
@@ -207,7 +213,12 @@ def main() -> int:
     if args.pcm and hasattr(mf, "with_solvent"):
         out["e_solvent_ha"] = float(getattr(mf.with_solvent, "e", 0.0) or 0.0)
 
-    if args.grad and m in ("rhf", "uhf", "rohf", "rks", "uks"):
+    if m in ("rohf", "roks") and hasattr(mf, "spin_square"):
+        ss, mult = mf.spin_square()
+        out["s2"] = float(ss)
+        out["multiplicity"] = float(mult)
+
+    if args.grad and m in ("rhf", "uhf", "rohf", "rks", "uks", "roks"):
         g = mf.nuc_grad_method().kernel()
         out["grad_ha_bohr"] = g.tolist()
 
