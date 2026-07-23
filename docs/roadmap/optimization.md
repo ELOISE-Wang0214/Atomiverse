@@ -4,22 +4,19 @@ Legend and caveats: [Roadmap index](index.md).
 
 The minimizer preset (`cpu::minimizer::Minimize`, `cuda::minimizer::Minimize`)
 hosts the optimizer as a hot-swappable Component, so any force-providing
-evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. What is
-missing is further breadth of algorithm (no quasi-Newton beyond L-BFGS; FIRE
-1.0 now ships as `cpu::minimizer::FIRE`) and, more consequentially, **any
-notion of relaxing the cell**. The convergence rule itself is no longer part
-of any of this: it is a `cpu::ForceConverged` criterion, and a different
-stopping criterion costs a criterion component, not an optimizer.
+evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. FIRE 1.0
+ships as `cpu::minimizer::FIRE`. **Isotropic variable-cell** ships
+(`IsotropicCellRelax` + `PressureConverged`); anisotropic / joint atom+cell
+are still open. The convergence rule is a `cpu::ForceConverged` criterion
+(or `PressureConverged` for cell work) — a different stopping rule costs a
+criterion component, not an optimizer.
 
 **Climbing-image NEB runs** (`cpu::PathDriver` + `cpu::path::NebCoupling` +
 `cpu::path::BandLBFGS`) — a coupled chain of images terminating when *every*
-image has converged (the `AllReplicasConverged` criterion), and the engine's only
-multi-replica driver. The replicas are generated from one Frame by a
-`ReplicaExpansion` strategy, so `run()` still takes one Frame and returns one
-(for CI-NEB, the saddle configuration).
-
-What is still absent is every *other* transition-state method: no dimer, no
-eigenvector-following, no string method, and no IRC.
+image has converged (the `AllReplicasConverged` criterion). Replicas come
+from a `ReplicaExpansion`, so `run()` still takes one Frame and returns one
+(for CI-NEB, the saddle configuration). **Dimer TS** also ships
+(`cpu::path::Dimer`). Still absent: eigenvector-following, string, IRC.
 
 ## 1. Geometry Optimization
 

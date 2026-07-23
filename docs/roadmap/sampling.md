@@ -23,9 +23,9 @@ potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 (`cpu::bias::CollectiveVariable`) plus `DistanceCV` and `HarmonicBias` support
 single-window umbrella sampling on MD (`reg_umbrella_harmonic`). REMD is a
 method preset over N owned `MD` programs (`cpu::path::Remd`,
-`reg_remd_harmonic`). Free-energy *estimators* (WHAM multi-window production,
-FEP/TI/BAR, Widom) and history-dependent biases (metadynamics / OPES / ABF)
-are still absent. No PLUMED interface.
+`reg_remd_harmonic`). **Widom** ships as a snapshot Observer (`cpu::Widom`).
+Still absent: multi-window WHAM production, FEP/TI/BAR, and history-dependent
+biases (metadynamics / OPES / ABF). No PLUMED interface.
 
 ## 1. Monte Carlo Methods
 

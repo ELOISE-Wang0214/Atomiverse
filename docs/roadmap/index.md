@@ -95,7 +95,7 @@ variant of the same shape):
 | Loop shapes | Evaluate, MD, Minimize, Hessian, MC (NVT/NPT/μVT), Path/NEB, REMD, single-window umbrella |
 | Serial + MPI DD | classical MD / NPT-PME / RATTLE |
 | Energy families | LJ+bonded, CoulCut/Long+PME, EAM/SW, RHF/UHF/ROHF/GHF, RKS/UKS, AM1/RM1, PW, GPW |
-| Dual backend (MD/Minimize/Evaluate classical) | CUDA resurrected; residual **cuda-pme-accuracy** debt |
+| Dual backend (MD/Minimize/Evaluate classical) | CUDA resurrected; **cuda-pme-accuracy closed** (2026-07-23) |
 | Replicas | `ReplicaSet` + expansions; NEB coupled band; REMD N owned MD programs; IdentityReplication seed |
 
 What is **not** yet framework-proven (good breadth targets — see next section):
@@ -109,10 +109,10 @@ What is **not** yet framework-proven (good breadth targets — see next section)
 
 ### Recommended next queue (CPU breadth-first)
 
-**This track is CPU-only.** Dual-backend / CUDA residuals
-(`cuda-pme-accuracy`, CUDA PairCoulCut, CUDA SCF gradients, CUDA MC/path/bias
-mirrors) are a **separate ownership lane** — they do not appear in the
-numbered queue below and are not assigned to the CPU breadth campaign.
+**This track is CPU-only.** Dual-backend / CUDA follow-ons (CUDA PairCoulCut,
+CUDA SCF gradients, CUDA MC/path/bias mirrors) are a **separate ownership
+lane** — they do not appear in the numbered queue below. `cuda-pme-accuracy`
+is closed (2026-07-23).
 
 Ordered for **cheap diversity** that stress-tests the API, not for production
 completeness. Each item should ship one textbook regression under
@@ -127,21 +127,30 @@ completeness. Each item should ship one textbook regression under
 | 5 | ~~**Variable-cell Minimize**~~ | **SHIPPED 2026-07-23** (`IsotropicCellRelax`, `reg_cell_lj_pressure`) | — |
 | 6 | ~~**Dimer TS**~~ | **SHIPPED 2026-07-23** (`cpu::path::Dimer`, `reg_dimer_saddle`) | — |
 
-**Explicitly deprioritized right now** (depth / productization / gated backlog):
+### Recommended next queue (CPU breadth-next) — **SHIPPED 2026-07-23**
 
-- Entire **CUDA ownership lane** (PME accuracy residual, device coulomb cut,
-  CUDA SCF gradients, sampling/path/bias ports) — not this track
-- `hf-parity` chain past hard-gates of *already-shipped* code (CFMM-J / C-PCM /
-  x2c / embed docs honesty) — only promote when a concrete consumer needs it
-- Polarizability, full UHF/KS analytic Hessian, TDDFT gradients, RI-MP2
-  (`hf-parity-10+`)
-- Multi-window umbrella + production molrs WHAM campaign
+| # | Spec | Shipped |
+| - | ---- | ------- |
+| 1 | ~~soft-core-coulomb~~ | `PairCoulSoft`, `reg_coul_soft_dimer` |
+| 2 | ~~angle-cv~~ | `AngleCV`, `reg_umbrella_angle` |
+| 3 | ~~fep-soft-dimer~~ | `dU_dlambda` + `reg_fep_soft_dimer` |
+| 4 | ~~joint-atom-cell~~ | `JointIsotropicRelax`, `reg_joint_lj_zero_p` |
+| 5 | ~~string-method~~ | `StringMethod`, `reg_string_muller_brown` |
+| 6 | ~~irc-path~~ | `Irc`, `reg_irc_muller_brown` |
+| 7 | ~~rpmd-estimator~~ | PIMD \(R_g^2\) API, `reg_pimd_free_particle_estimators` |
+| 8 | ~~settle-water~~ | `FixSettle`, `reg_settle_tip3p` |
+| 9 | ~~brownian-dynamics~~ | `Brownian`, `reg_brownian_einstein` |
+
+**Explicitly deprioritized right now** (depth / productization):
+
+- CUDA ports (PairCoulCut, SCF gradients, MC/path/bias) — not this track
+- HF depth (CFMM-J/C-PCM hard-gates, polarizability, TDDFT, RI-MP2, …) —
+  roadmap-only; `/mol:spec` when a consumer needs it
+- Multi-window WHAM product / metadynamics / OPES / ABF (after ≥2 CVs)
 - ReaxFF / AIREBO / ML potentials / full GAFF polymer protocols
-- Metadynamics / OPES / ABF (wait until CV layer has ≥2 CVs + free-energy path)
 
-Active parking lots (do not `/mol:impl` the umbrella): `hf-deferred-backlog`,
-`hf-parity-*` drafts. CUDA residuals live under their own specs
-(`cuda-pme-accuracy`, …) and are out of this queue.
+HF residual depth is **roadmap-only** (no live `hf-parity-*` /
+`hf-deferred-backlog` specs).
 
 ## Work in progress — known gaps and caveats
 
@@ -239,26 +248,28 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **NPH unreachable** (thermostat fused into MTK barostat).
 - `Deform` uniaxial only. CUDA reciprocal space is single-GPU; CPU PME
   replicates the grid rather than distributing the FFT.
-- **CUDA residual:** PME reciprocal energy accuracy debt
-  (`cuda-pme-accuracy` spec) — classical MD path otherwise green after
-  cuda-resurrect.
+- **CUDA PME Madelung residual** closed 2026-07-23 (`cuda-pme-accuracy`).
 
 ### Sampling and paths
 
 - MC: NVT / NPT / μVT GCMC on CPU (single rank; O(N) trial energy by design).
-  No CBMC, Widom, Gibbs.
+  No CBMC, Gibbs. **Widom** ships as snapshot Observer (`cpu::Widom`,
+  `reg_widom_hs`).
 - **Umbrella sampling exists** (`bias::DistanceCV` + `HarmonicBias`,
   `reg_umbrella_harmonic`). Multi-window WHAM production path still thin
-  (molrs-owned analysis incomplete).
+  (molrs-owned analysis incomplete). FEP/TI/BAR absent.
 - **REMD exists** (`cpu::path::Remd`, per-replica owned MD programs,
   `reg_remd_harmonic`). Hamiltonian RE / REST2 / multidimensional RE absent.
-- **CI-NEB runs** (`PathDriver` + `NebCoupling` + `BandLBFGS`). No dimer,
-  string, IRC. PIMD not yet a second IdentityReplication consumer.
+- **CI-NEB** (`PathDriver` + `NebCoupling` + `BandLBFGS`) and **dimer TS**
+  (`cpu::path::Dimer`, `reg_dimer_saddle`) ship. No string / IRC.
+- **PIMD skeleton** ships (`cpu::path::Pimd` + ring springs +
+  `IdentityReplication`, `reg_pimd_free_particle`). No RPMD estimators /
+  ring-polymer contraction / PILE.
 
 ### Optimization
 
-- CPU: L-BFGS + Polak–Ribière⁺ CG. CUDA: those + steepest descent. **FIRE
-  is ○** (good breadth candidate).
-- **Atoms only** — no cell / variable-cell / joint optimization (good
-  breadth candidate once stress/virial is wired into Minimize).
+- CPU: L-BFGS + Polak–Ribière⁺ CG + **FIRE** (`cpu::minimizer::FIRE`).
+  CUDA: L-BFGS / CG / steepest descent (no FIRE).
+- **Isotropic variable-cell** ships (`IsotropicCellRelax` +
+  `PressureConverged`). No anisotropic cell DOFs, no joint atom+cell.
 - Cartesian only; no internal coordinates.

@@ -104,8 +104,7 @@ Notes:
   `kspace_style pppm`, this is SPME, not PPPM.
 - Reciprocal space is **single-GPU only** on CUDA; the CPU PME replicates the
   grid across MPI ranks rather than distributing the FFT. CUDA PME energy
-  accuracy vs the NaCl Madelung reference is an open residual
-  (`cuda-pme-accuracy` — CPU hits ~5e-4, CUDA ~3% off).
+  Madelung residual (`cuda-pme-accuracy`) closed 2026-07-23.
 - Open-boundary **FMM tree math** (`FmmTree`) is validated against direct
   Coulomb sums (`reg_fmm_point_charges`) and powers CFMM-J on the SCF path;
   it is **not** a periodic MD `KSpace` style, so the FMM row above stays ○.

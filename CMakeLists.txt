@@ -275,6 +275,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/fix_langevin.cpp
             src/cpu/dynamics/fix_csvr.cpp
             src/cpu/dynamics/fix_rattle.cpp
+            src/cpu/dynamics/fix_settle.cpp
+            src/cpu/dynamics/brownian.cpp
             src/cpu/dynamics/barostat.cpp
             src/cpu/dynamics/deform.cpp
         )
@@ -298,6 +300,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/minimize/cg.cpp
             src/cpu/minimize/fire.cpp
             src/cpu/minimize/cell_relax.cpp
+            src/cpu/minimize/joint_cell_relax.cpp
             src/cpu/minimize/trajectory_writer.cpp
             src/cpu/minimize/opt_log.cpp
             src/cpu/minimize/final_geometry.cpp
@@ -312,7 +315,10 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/path/pimd.cpp
             src/cpu/path/ring_polymer_spring.cpp
             src/cpu/path/dimer.cpp
+            src/cpu/path/string_method.cpp
+            src/cpu/path/irc.cpp
             src/cpu/bias/distance_cv.cpp
+            src/cpu/bias/angle_cv.cpp
             src/cpu/bias/harmonic_bias.cpp
         )
     endif()

@@ -47,6 +47,9 @@ class PairLJSoft : public Pair {
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
+    /// @brief Analytic ∂U/∂λ [eV] from the last compute() (fixed geometry).
+    double dU_dlambda() const { return dU_dlambda_; }
+
   protected:
     void compute(const LaunchContext& ctx) override;
 
@@ -58,6 +61,7 @@ class PairLJSoft : public Pair {
     double sigma6_ = 0;
     double cutoff_sq_ = 0;
     double v_shift_ = 0; ///< Hard LJ at raw rc [eV].
+    double dU_dlambda_ = 0;
 
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;

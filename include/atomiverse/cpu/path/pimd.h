@@ -70,6 +70,15 @@ class Pimd {
     ///        (diagnostic; free particle should grow then stabilize vs springs).
     double mean_bead_spread() const { return mean_spread_; }
 
+    /// @brief Instantaneous ring-polymer radius of gyration squared [Å²]
+    ///        after last run: R_g² = (1/P) Σ_b |r_b − r_c|² (3D).
+    double radius_of_gyration_sq() const { return rg2_; }
+
+    /// @brief Analytic free-particle ⟨R_g²⟩ [Å²] for the current (T, P, m):
+    ///        ⟨R_g²⟩ = (ℏ² β² /(4 m_eff)) (1 − 1/P²) with m_eff from
+    ///        mass_v2_to_energy (3D free polymer; Tuckerman / Chandler–Wolynes).
+    double free_particle_rg2_analytic() const;
+
   private:
     void ensure_built_(cpu::Frame& frame);
     void propagate_();
@@ -88,6 +97,8 @@ class Pimd {
     std::vector<std::unique_ptr<cpu::md::MD>> programs_;
     double k_spring_ = 0;
     double mean_spread_ = 0;
+    double rg2_ = 0;
+    double mass_amu_ = 1.0;
     bool built_ = false;
 };
 

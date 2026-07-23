@@ -138,6 +138,7 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
         mass = static_cast<double>(frame.span(kAtom_mass)[0]);
     if (!(mass > 0.0))
         throw std::invalid_argument("Pimd: atom mass must be > 0 amu");
+    mass_amu_ = mass;
     k_spring_ = compute_k_spring_(cfg_.temperature, cfg_.n_beads, mass);
 
     band_ = std::make_unique<ReplicaSet>(frame, *expansion_);
@@ -227,6 +228,23 @@ void Pimd::collapse_centroid_(cpu::Frame& out) {
     }
     mean_spread_ =
         (count > 0) ? acc / static_cast<double>(count) : 0.0;
+    // R_g² = (1/P) Σ_b |r_b − r_c|² for the (single) free particle case n=1;
+    // for multi-atom hosts average over atoms as well.
+    rg2_ = mean_spread_;
+}
+
+double Pimd::free_particle_rg2_analytic() const {
+    // 3D free ring polymer (single particle):
+    // ⟨R_g²⟩ = (ℏ² β² / (4 m_eff)) (1 − 1/P²)
+    // with m_eff = mass_v2_to_energy * m [eV fs² / Å²], ℏ in eV·fs.
+    // Ref: Tuckerman, Statistical Mechanics; Chandler & Wolynes (1981).
+    const double hbar = units::h_planck_ev_fs / (2.0 * units::pi);
+    const double kT = units::kB_ev_per_k * cfg_.temperature;
+    const double beta = 1.0 / kT;
+    const double m_eff = units::mass_v2_to_energy * mass_amu_;
+    const double P = static_cast<double>(cfg_.n_beads);
+    const double hb = hbar * beta;
+    return (hb * hb / (4.0 * m_eff)) * (1.0 - 1.0 / (P * P));
 }
 
 void Pimd::run(cpu::Frame& frame, int n_blocks) {

@@ -49,6 +49,7 @@ void PairLJSoft::build(const BuildContext& ctx) {
     fx_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fy_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fz_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
+    dU_dlambda_ = 0;
 }
 
 void PairLJSoft::destroy(const DestroyContext&) {
@@ -115,19 +116,22 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
     const double lam = std::min(1.0, std::max(0.0, lambda));
     const double one_m_lam = 1.0 - lam;
     const double soft0 = alpha * sig6 * std::pow(one_m_lam, p);
+    const double dsoft0_dlam =
+        (p == 1.0) ? (-alpha * sig6)
+                   : (-alpha * sig6 * p * std::pow(one_m_lam, p - 1.0));
 
     double energy_total = 0;
+    double dU_total = 0;
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    if (!(lam > 0.0)) {
-        // λ=0: identically zero interaction (still walk for stress/energy
-        // addends of zero — skip the heavy math).
+    if (!(lam > 0.0) && soft0 == 0.0) {
+        dU_dlambda_ = 0;
         return;
     }
 
-#pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
-    reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
-    reduction(+ : v_xz) reduction(+ : v_yz)
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : dU_total)      \
+    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)               \
+    reduction(+ : v_xy) reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -193,31 +197,42 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
                 // Energy: λ (V_LJ(r_λ) − V_shift)
                 const double vlj =
                     eps4 * (r6inv_l * r6inv_l - r6inv_l);
-                energy_total += lam * (vlj - vshift);
+                const double vpair = vlj - vshift;
+                energy_total += lam * vpair;
 
-                // Hard fpair at r_λ, then soft map: fpair_s = λ fpair_h (r/r_λ)^4
+                // ∂U/∂λ = vpair + λ (dV_LJ/dr_λ)(dr_λ/dλ)
+                // dV/dr = −fpair_h · r_λ  (fpair definition F = fpair·dx)
                 const double fpair_h =
                     eps24 * r2inv_l * (2.0 * r6inv_l * r6inv_l - r6inv_l);
-                const double ratio = r / r_lam;
-                const double ratio2 = ratio * ratio;
-                const double fpair = lam * fpair_h * ratio2 * ratio2;
+                const double dVdr = -fpair_h * r_lam;
+                const double r_lam5 =
+                    r_lam2 * r_lam2 * r_lam; // r_λ^4 * r_λ
+                const double drlam_dlam = dsoft0_dlam / (6.0 * r_lam5);
+                dU_total += vpair + lam * dVdr * drlam_dlam;
 
-                const double fxp = fpair * dx;
-                const double fyp = fpair * dy;
-                const double fzp = fpair * dz;
-                fi_x += fxp;
-                fi_y += fyp;
-                fi_z += fzp;
-                fxt_ptr[j] -= fxp;
-                fyt_ptr[j] -= fyp;
-                fzt_ptr[j] -= fzp;
+                // Hard fpair at r_λ, then soft map: fpair_s = λ fpair_h (r/r_λ)^4
+                if (lam > 0.0) {
+                    const double ratio = r / r_lam;
+                    const double ratio2 = ratio * ratio;
+                    const double fpair = lam * fpair_h * ratio2 * ratio2;
 
-                v_xx += dx * fxp;
-                v_yy += dy * fyp;
-                v_zz += dz * fzp;
-                v_xy += dx * fyp;
-                v_xz += dx * fzp;
-                v_yz += dy * fzp;
+                    const double fxp = fpair * dx;
+                    const double fyp = fpair * dy;
+                    const double fzp = fpair * dz;
+                    fi_x += fxp;
+                    fi_y += fyp;
+                    fi_z += fzp;
+                    fxt_ptr[j] -= fxp;
+                    fyt_ptr[j] -= fyp;
+                    fzt_ptr[j] -= fzp;
+
+                    v_xx += dx * fxp;
+                    v_yy += dy * fyp;
+                    v_zz += dz * fzp;
+                    v_xy += dx * fyp;
+                    v_xz += dx * fzp;
+                    v_yz += dy * fzp;
+                }
             }
             fxt_ptr[i] += fi_x;
             fyt_ptr[i] += fi_y;
@@ -244,6 +259,7 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
     f.meta.get(kStress)[3] += v_xy;
     f.meta.get(kStress)[4] += v_xz;
     f.meta.get(kStress)[5] += v_yz;
+    dU_dlambda_ = dU_total;
 }
 
 } // namespace cpu
