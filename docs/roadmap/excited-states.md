@@ -12,7 +12,8 @@ kernel on B3LYP/PBE0 (`reg_h2-b3lyp-hybrid-tda`).
 **Analytic CIS/TDA forces** (default) and **true NAC vectors** ship
 (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
 `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
-`analytic=false`.
+`analytic=false`. **CIS(D)** second-order doubles correction on RHF TDA ships
+(`RHF::cisd`; `reg_cisd-h2co-sto3g` H2CO/STO-3G S1 vs PySCF).
 
 The same orbital-Hessian / A,B machinery also feeds Seeger–Pople stability
 analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).

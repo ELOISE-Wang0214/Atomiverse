@@ -55,3 +55,5 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 (autonomous harness appends lines here)
 
 - 2026-07-23 assign wave: frozen-core-mp2-h2o (post-hf), cisd-h2co-sto3g (excited-states), blyp-water-sto3g (dft), ghf-grad-h3-sto3g (hartree-fock), pcm-grad-h2o (multiscale) → in_progress; skip=[]
+- 2026-07-23 wave 1 merge: all five green HEADs → dev (blyp-water-sto3g, frozen-core-mp2-h2o, cisd-h2co-sto3g, ghf-grad-h3-sto3g, pcm-grad-h2o); blocked=[]; merge-failed=[]
+- 2026-07-23 harness wave 1: queue merged→done (5); in_progress cleared; roadmaps ○→✓ for landed methods; handoff written; queue_remaining=21

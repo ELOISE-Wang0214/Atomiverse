@@ -35,9 +35,10 @@ ROHF is the Roothaan single-effective-Fock method in the PySCF canonical
 (Guest–Saunders) convention (`cpu::scf::ROHF`): energy + **analytic nuclear
 forces** (spin-Fock energy-weighted density; O₂ vs PySCF). ROHF-MP2, SOSCF
 and level shift still throw. UHF remains the default open-shell workhorse;
-ROHF is the spin-pure (⟨S²⟩ = S(S+1) exactly) alternative. GHF is **energy
-only** (real two-component spinors; forces / mp2 / fci throw) — validated on
-equilateral H₃.
+ROHF is the spin-pure (⟨S²⟩ = S(S+1) exactly) alternative. GHF is energy +
+**analytic nuclear gradient** (real two-component spinors; spinor energy-weighted
+density + four-block exchange; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`);
+mp2 / fci / soscf / level_shift still throw.
 
 Second derivatives are finite-difference everywhere (see the vibrational
 driver in [Molecular Dynamics](molecular-dynamics.md)); no CPHF, so every

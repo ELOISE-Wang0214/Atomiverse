@@ -127,7 +127,7 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; CIS(D) / ADC foothold; full RPA-TDDFT |
+| Response | Surface-hopping consumer of NAC; ADC foothold; full RPA-TDDFT; UKS-TDA |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
@@ -154,11 +154,12 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   implemented; static polarizability is absent.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
   gradient** (O₂ vs PySCF). **GHF** energy + analytic gradient (real two-component;
-  `regressions/scf/h3_ghf_sto3g`). ROKS does not exist. No ROHF-MP2.
+  `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`). ROKS does not exist. No ROHF-MP2.
 - **Shipped infra (CPU):** DIIS, level shift, SOSCF (hard cases), stability
-  analysis, RI-J/RI-JK, CFMM-J, C-PCM, point-charge embedding + external
-  field forces, ECP (semi-numerical forces), x2c-1e energy (forces throw),
-  counterpoise, RHF TDA/TDHF (`RHF::tda` / `RHF::tdhf`), APT/IR dipole
+  analysis, RI-J/RI-JK, CFMM-J, C-PCM energy + free-energy forces
+  (`reg_h2o_rhf_631gs_cpcm`, `reg_pcm-grad-h2o`), point-charge embedding +
+  external field forces, ECP (semi-numerical forces), x2c-1e energy (forces
+  throw), counterpoise, RHF TDA/TDHF (`RHF::tda` / `RHF::tdhf`), APT/IR dipole
   derivatives. Hard gates / docs honesty for some of these are still in the
   `hf-parity` parking lot.
 - **CUDA SCF is still a restricted-HF energy engine.** Device Fock/density/
@@ -178,9 +179,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### Excited states
 
-- **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **`RKS::tda`** with **full MO-product
-  LSDA ALDA** (`reg_h2_full_grid_alda`) and **hybrid TDDFT-TDA** (B3LYP exact-
-  exchange kernel; `reg_h2-b3lyp-hybrid-tda`). Full RPA-TDDFT still ○.
+- **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **CIS(D)** on RHF TDA (`reg_cisd-h2co-sto3g`);
+  **`RKS::tda`** with **full MO-product LSDA ALDA** (`reg_h2_full_grid_alda`) and
+  **hybrid TDDFT-TDA** (B3LYP exact-exchange kernel; `reg_h2-b3lyp-hybrid-tda`).
+  Full RPA-TDDFT still ○.
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
   `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
