@@ -17,6 +17,8 @@ the git log. Method census: `docs/roadmap/`.
 | [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — Spec: `freeze-electrode-atoms` |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
 | [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — Spec: slab-2d-ewald-foothold |
+| [bands-dos-si](bands-dos-si/) | `wf/bands-dos-si` | open — Band structure / DOS PW Si |
+
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 
