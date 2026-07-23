@@ -201,6 +201,48 @@ def pyscf_kernel_seconds(method: str, geom: str, basis: str, charge: int, spin: 
             "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
             "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()"
         ),
+        # Exact-ERI BSE@spectral-G0W0 — twin of RHF::bse().
+        "bse": (
+            "from pyscf import dft, tdscf, ao2mo\n"
+            "from pyscf.gw import gw_exact\n"
+            "import numpy as np\n"
+            "mf=dft.RKS(mol); mf.xc='hf'; mf.conv_tol=1e-12; mf.kernel()\n"
+            "C=mf.mo_coeff; nmo=C.shape[1]; nocc=mol.nelectron//2; nvir=nmo-nocc\n"
+            "eri=ao2mo.restore(1, ao2mo.full(mol, C), nmo)\n"
+            "td=tdscf.dRPA(mf); td.nstates=max(1,nocc*nvir); td.verbose=0; td.kernel()\n"
+            "ge=gw_exact.GWExact(mf, tdmf=td); ge.verbose=0; ge.kernel()\n"
+            "eps=np.asarray(ge.mo_energy); nov=nocc*nvir\n"
+            "S=np.zeros((nov,nov))\n"
+            "for a in range(nvir):\n"
+            "  for i in range(nocc):\n"
+            "    p=a*nocc+i; S[p,p]=eps[i]-eps[nocc+a]\n"
+            "    for b in range(nvir):\n"
+            "      for j in range(nocc):\n"
+            "        q=b*nocc+j; S[p,q]-=4.0*eri[i,nocc+a,j,nocc+b]\n"
+            "Pi=4.0*np.linalg.inv(S)\n"
+            "def W(p,q,r,s):\n"
+            "  acc=eri[p,q,r,s]\n"
+            "  for a in range(nvir):\n"
+            "    for i in range(nocc):\n"
+            "      ia=a*nocc+i\n"
+            "      for b in range(nvir):\n"
+            "        for j in range(nocc):\n"
+            "          jb=b*nocc+j\n"
+            "          acc+=eri[p,q,i,nocc+a]*Pi[ia,jb]*eri[j,nocc+b,r,s]\n"
+            "  return acc\n"
+            "A=np.zeros((nov,nov)); B=np.zeros((nov,nov))\n"
+            "for a in range(nvir):\n"
+            "  for i in range(nocc):\n"
+            "    ia=a*nocc+i; aa=nocc+a\n"
+            "    for b in range(nvir):\n"
+            "      for j in range(nocc):\n"
+            "        jb=b*nocc+j; bb=nocc+b; vc=eri[i,aa,j,bb]\n"
+            "        A[ia,jb]=2*vc-W(i,j,aa,bb); B[ia,jb]=2*vc-W(i,bb,aa,j)\n"
+            "        if ia==jb: A[ia,jb]+=eps[aa]-eps[i]\n"
+            "ApB=0.5*((A+B)+(A+B).T); AmB=0.5*((A-B)+(A-B).T)\n"
+            "sm,Um=np.linalg.eigh(AmB); T=(Um*np.sqrt(sm))@Um.T\n"
+            "M=0.5*(T@ApB@T+(T@ApB@T).T); np.sqrt(np.linalg.eigvalsh(M))"
+        ),
         # UHF ΔSCF IMOM (PySCF mom_occ_) — twin of UHF::delta_scf HOMO→LUMO.
         "delta_scf": (
             "from pyscf import scf\n"
@@ -235,7 +277,7 @@ def bench_cmd(cmd: list[str]) -> float:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--method", default="rhf",
-                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
+                   choices=["rhf", "uhf", "rohf", "rks", "uks", "roks", "roks_grad", "mp2", "ump2", "romp2", "tda", "tdhf", "adc2", "rks_tda", "rks_tddft", "sf_tda", "g0w0", "bse", "mp3", "ccsd", "ccsd_t", "casci", "b2plyp", "delta_scf", "eom-ee-ccsd"])
     p.add_argument("--geom", default="water")
     p.add_argument("--basis", default="sto-3g")
     p.add_argument("--charge", type=int, default=0)
