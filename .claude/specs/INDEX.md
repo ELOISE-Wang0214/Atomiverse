@@ -5,8 +5,9 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
-merged into `dev` and removed)*
+| Spec | Branch | Domain |
+| ---- | ------ | ------ |
+| `pw-smearing-al/` | `wf/pw-smearing-al` | PW metallic Fermi/MP smearing (FCC Al) |
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
 
