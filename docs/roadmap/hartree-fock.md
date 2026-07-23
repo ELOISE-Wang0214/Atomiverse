@@ -40,10 +40,12 @@ ROHF is the spin-pure (⟨S²⟩ = S(S+1) exactly) alternative. GHF is energy +
 density + four-block exchange; `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`);
 mp2 / fci / soscf / level_shift still throw.
 
-Second derivatives are finite-difference everywhere (see the vibrational
-driver in [Molecular Dynamics](molecular-dynamics.md)); no CPHF, so every
-analytic-Hessian row stays ○. Seeger–Pople stability analysis over the
-orbital Hessian is implemented (internal channel + triplet RHF→UHF).
+**Static polarizability** on RHF ships via CPHF (`RHF::polarizability`,
+`reg_static-polariz-h2o` vs PySCF CPHF/FD). Nuclear analytic Hessians remain
+finite-difference (see the vibrational driver in
+[Molecular Dynamics](molecular-dynamics.md)); every analytic-Hessian row stays
+○ until a full CPHF nuclear Hessian lands. Seeger–Pople stability analysis over
+the orbital Hessian is implemented (internal channel + triplet RHF→UHF).
 
 ## 2. Periodic Hartree–Fock
 

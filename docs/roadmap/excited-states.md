@@ -8,7 +8,8 @@ transition dipoles on a converged RHF reference
 (`regressions/scf/ch2o_tdhf`). **`RKS::tda`** on a converged KS reference uses
 the **full MO-product LSDA ALDA** kernel (`reg_h2_full_grid_alda`;
 `ExcitedStatesResult::alda`) and **hybrid TDDFT-TDA** with the exact-exchange
-kernel on B3LYP/PBE0 (`reg_h2-b3lyp-hybrid-tda`).
+kernel on B3LYP/PBE0 (`reg_h2-b3lyp-hybrid-tda`). **Full linear-response TDDFT**
+(`RKS::tddft`, Casida A/B) ships for pure KS (PBE; `reg_full-lr-tddft-h2-pbe`).
 **Analytic CIS/TDA forces** (default) and **true NAC vectors** ship
 (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
 `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`); FD forces remain as
@@ -32,7 +33,7 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | SOS-CIS(D)                         |  ○  |   ○  |   ○  |
 | Time-dependent Hartree–Fock, TDHF  |  ✓  |   ○  |   ○  |
 | Tamm–Dancoff TDDFT                 |  ✓  |   ○  |   ○  |
-| Full linear-response TDDFT         |  ○  |   ○  |   ○  |
+| Full linear-response TDDFT         |  ✓  |   ○  |   ○  |
 | Spin-flip TDA                      |  ○  |   ○  |   ○  |
 | Spin-flip TDDFT                    |  ○  |   ○  |   ○  |
 | Restricted excitation-window TDDFT |  ○  |   ○  |   ○  |
@@ -42,9 +43,11 @@ analysis on the ground-state HF path (see [Hartree–Fock](hartree-fock.md)).
 | TDDFT nonadiabatic coupling        |  ✓  |   ○  |   ○  |
 
 TDA-TDDFT is the LSDA ALDA path and the global-hybrid exact-exchange path on
-`RKS::tda` (B3LYP/PBE0 singlet; full RPA-TDDFT still ○). Analytic gradient
-and NAC rows are the CIS/TDA members on `RHF` (analytic default); full KS
-TDDFT gradients beyond CIS@RKS are not a separate product path yet.
+`RKS::tda` (B3LYP/PBE0 singlet). Full RPA-style Casida A/B on pure KS is
+`RKS::tddft` (`reg_full-lr-tddft-h2-pbe`); hybrid full-LR and open-shell TDDFT
+remain follow-ons. Analytic gradient and NAC rows are the CIS/TDA members on
+`RHF` (analytic default); full KS TDDFT gradients beyond CIS@RKS are not a
+separate product path yet.
 
 ## 2. Algebraic-Diagrammatic Construction
 

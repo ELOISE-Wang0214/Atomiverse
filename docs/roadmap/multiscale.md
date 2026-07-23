@@ -7,9 +7,9 @@ from a converged wavefunction. Charge schemes still anchor the product surface
 (Mulliken observer; AM1-BCC via [AM1](semiempirical.md) + molrs typing). Beyond
 that, several *environment* hooks now exist on the SCF mean-field methods:
 
-- **C-PCM / COSMO** electrostatic free energy in the Fock build
-  (`reg_h2o_rhf_631gs_cpcm`) and free-energy forces (`reg_pcm-grad-h2o`) —
-  non-electrostatic terms absent.
+- **C-PCM / COSMO / IEF-PCM** electrostatic free energy in the Fock build
+  (`reg_h2o_rhf_631gs_cpcm`, `reg_ief-pcm-h2o`) and C-PCM free-energy forces
+  (`reg_pcm-grad-h2o`) — non-electrostatic terms absent.
 - **Fixed point-charge embedding** + **uniform external electric field**, with
   analytic forces (`reg_embed_h2o_grad`, `reg_field_h2o_grad`).
 - **ECP** (semi-numerical nuclear forces) and **x2c-1e** (energy only; forces

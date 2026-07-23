@@ -22,7 +22,7 @@ gaps (stress, phonons, hybrids).
 | ----------------------------------------- | :-: | :--: | :---: |
 | Restricted Kohn–Sham DFT, RKS             |  ✓  |   ○  |   ○  |
 | Unrestricted Kohn–Sham DFT, UKS           |  ✓  |   ○  |   ○  |
-| Restricted open-shell Kohn–Sham DFT, ROKS |  ○  |   ○  |   ○  |
+| Restricted open-shell Kohn–Sham DFT, ROKS |  ✓  |   ○  |   ○  |
 | Generalized Kohn–Sham DFT                 |  ○  |   ○  |   ○  |
 | Noncollinear spin DFT                     |  ○  |   ○  |   ○  |
 | Spinor Kohn–Sham DFT                      |  ○  |   ○  |   ○  |
@@ -38,9 +38,13 @@ gaps (stress, phonons, hybrids).
 | RKS analytic Hessian                      |  ○  |   ○  |   ○  |
 | UKS analytic Hessian                      |  ○  |   ○  |   ○  |
 
-KS gradients include the semi-local XC contribution (LDA, GGA, and the hybrid
-exact-exchange admixture) and the Becke grid-response terms. There is no
-Kohn–Sham path on CUDA at all — the device SCF solver is restricted HF only.
+**ROKS** (`cpu::scf::ROKS`) is energy-only on the Roothaan effective-Fock path
+(Guest–Saunders / PySCF canonical; `reg_roks-o2-sto3g` O₂ triplet LSDA/STO-3G).
+Analytic ROKS forces throw until the KS spin-Fock + XC response EWD path
+lands — ROKS gradient row stays ○. KS gradients (RKS/UKS) include the
+semi-local XC contribution (LDA, GGA, and the hybrid exact-exchange admixture)
+and the Becke grid-response terms. There is no Kohn–Sham path on CUDA at all —
+the device SCF solver is restricted HF only.
 
 ## 2. LDA Functionals
 

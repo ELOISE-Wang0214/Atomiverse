@@ -100,14 +100,14 @@ a proven shape.
 
 | Scale | Methods (do not re-prove) |
 | ----- | ------------------------- |
-| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS, concrete AM1/RM1 / PW / GPW; FD Hessian |
-| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI `RHF::mp2` |
+| Electronic mean-field | RHF/UHF/ROHF/GHF, RKS/UKS/**ROKS**, concrete AM1/RM1 / PW / GPW; FD Hessian; RHF CPHF polarizability |
+| Electronic TB / response | RHF TDA/TDHF; `RKS::tda` (+ full MO-product LSDA ALDA + hybrid B3LYP/PBE0 exact-exchange kernel); **`RKS::tddft` full Casida A/B** (pure KS); analytic CIS/TDA forces; true NAC vectors; DFTB2 H/C/N/O SK; GFN0 toy; canonical + RI + **SCS** `RHF::mp2` |
 | Classical FF / MD | LJ+bonded, FENE, WCA, Coul/PME, EAM/SW; NVE/NVT/NPT (MTK diag + **PR full-cell**); **NPH**; FIRE/LBFGS/CG; RATTLE/SETTLE; Brownian |
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
 | Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
 | Cell | isotropic + joint + anisotropic + triclinic stress relax; PW electronic stress |
-| Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms** |
+| Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms**; C-PCM/COSMO/**IEF-PCM** |
 
 ### Closed queues (2026-07-23)
 
@@ -127,12 +127,12 @@ a proven shape.
 
 | Theme | Candidates |
 | ----- | ---------- |
-| Response | Surface-hopping consumer of NAC; ADC foothold; full RPA-TDDFT; UKS-TDA |
+| Response | Surface-hopping consumer of NAC; ADC foothold; hybrid full-LR TDDFT; UKS-TDA |
 | TB product | Production GFN2 / 3ob tables (not toys); DFTB3; analytic DFTB forces |
 | Cell / MD | Semi-isotropic / surface-tension PR; NPH anisotropic; CUDA PR/NPH parity |
 | Multiscale | ONIOM / subtractive; adaptive QM/MM; long-range PME QM/MM |
 | Sampling | OPES / multi-walker metaD; MBAR/PMF production curve; REST2 |
-| Post-HF | MP2 gradients; ROMP2 (frozen-core ✓) |
+| Post-HF | MP2 gradients; SOS-MP2; ROMP2 (SCS-MP2 + frozen-core ✓) |
 
 **Parked until a consumer asks:** CUDA method ports, HF/KS product depth
 (hf-parity parking lot), ReaxFF/ML potentials, full GAFF polymer protocols,
@@ -149,19 +149,22 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   for sets defined that way (def2-SVP spherical regression
   `regressions/scf/h2o_rhf_def2svp_sph`). Native Rys ERI covers `l ≤ 3`
   (s/p/d/f).
-- **No analytic Hessian anywhere.** Frequencies / thermochemistry are
-  central FD of analytic forces (`cpu::vib::Hessian`). CPHF is not
-  implemented; static polarizability is absent.
+- **No nuclear analytic Hessian anywhere.** Frequencies / thermochemistry are
+  central FD of analytic forces (`cpu::vib::Hessian`). **RHF static
+  polarizability** via CPHF ships (`RHF::polarizability`;
+  `reg_static-polariz-h2o`); open-shell / KS polarizabilities and CPHF nuclear
+  Hessians remain ○.
 - **Open shell:** UHF is the default workhorse. **ROHF** is energy + **analytic
   gradient** (O₂ vs PySCF). **GHF** energy + analytic gradient (real two-component;
-  `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`). ROKS does not exist. No ROHF-MP2.
+  `reg_h3_ghf_sto3g`, `reg_ghf-grad-h3-sto3g`). **ROKS** energy-only
+  (`reg_roks-o2-sto3g`; forces throw). No ROHF-MP2.
 - **Shipped infra (CPU):** DIIS, level shift, SOSCF (hard cases), stability
-  analysis, RI-J/RI-JK, CFMM-J, C-PCM energy + free-energy forces
-  (`reg_h2o_rhf_631gs_cpcm`, `reg_pcm-grad-h2o`), point-charge embedding +
-  external field forces, ECP (semi-numerical forces), x2c-1e energy (forces
-  throw), counterpoise, RHF TDA/TDHF (`RHF::tda` / `RHF::tdhf`), APT/IR dipole
-  derivatives. Hard gates / docs honesty for some of these are still in the
-  `hf-parity` parking lot.
+  analysis, RI-J/RI-JK, CFMM-J, C-PCM / COSMO / **IEF-PCM** energy + C-PCM
+  free-energy forces (`reg_h2o_rhf_631gs_cpcm`, `reg_ief-pcm-h2o`,
+  `reg_pcm-grad-h2o`), point-charge embedding + external field forces, ECP
+  (semi-numerical forces), x2c-1e energy (forces throw), counterpoise, RHF
+  TDA/TDHF (`RHF::tda` / `RHF::tdhf`), APT/IR dipole derivatives. Hard gates /
+  docs honesty for some of these are still in the `hf-parity` parking lot.
 - **CUDA SCF is still a restricted-HF energy engine.** Device Fock/density/
   diagonalization; no DIIS, no UHF/KS, **no gradients** → no GPU AIMD.
   Device-native integrals are s-type only.
@@ -173,7 +176,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_ump2-o2-sto3g`). Canonical path: full O(N⁵) AO→MO transform.
   **RI-MP2** when `ri = RI::{J,JK}` + aux basis on RHF only
   (`reg_h2o_ri_mp2`, `MP2Result::ri`). Frozen-core via `rhf.frozen=N`
-  (`reg_frozen-core-mp2-h2o`). No gradients, no ROMP2.
+  (`reg_frozen-core-mp2-h2o`). **SCS-MP2** via `mp2_os_scale` /
+  `mp2_ss_scale` (`reg_scs-mp2-h2o-sto3g`). No gradients, no SOS-MP2 product
+  flag, no ROMP2.
 - **FCI is a reference tool**, not production: dense CI matrix, hard cap
   (`n_mo > 14` or `N_det > 2000`).
 
@@ -182,7 +187,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - **RHF TDA/TDHF** (`reg_ch2o_tdhf`); **CIS(D)** on RHF TDA (`reg_cisd-h2co-sto3g`);
   **`RKS::tda`** with **full MO-product LSDA ALDA** (`reg_h2_full_grid_alda`) and
   **hybrid TDDFT-TDA** (B3LYP exact-exchange kernel; `reg_h2-b3lyp-hybrid-tda`).
-  Full RPA-TDDFT still ○.
+  **Full LR-TDDFT** Casida A/B pure KS (`RKS::tddft`; `reg_full-lr-tddft-h2-pbe`).
+  Hybrid full-LR / UKS-TDA still ○.
 - **Analytic CIS/TDA forces** (default) and **true NAC vectors**
   (`RHF::tda_forces` / `tda_nac_vectors` / `tda_nac_strength`;
   `reg_h2_analytic_tda_force`, `reg_h2_nac_vectors`). FD fallback remains.
