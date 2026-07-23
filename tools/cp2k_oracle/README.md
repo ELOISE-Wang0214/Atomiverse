@@ -5,28 +5,15 @@ Mirrors `tools/pyscf_oracle/`: produce **hard-coded pins** for regressions.
 
 ## Contract
 
-1. Human or agent runs CP2K **offline** (login/interactive/batch) with a fixed input.
-2. Record energy / forces / stress / frequencies into `REFERENCE.md` under the
-   regression (cite CP2K version, functional, cutoff, basis/PP, cell, k-mesh).
+1. Human or agent runs CP2K **offline** with a fixed input under `inputs/`.
+2. Record energy / forces / stress into `REFERENCE.md` under the regression
+   (cite CP2K version, functional, cutoff, basis/PP, cell).
 3. Regression binary asserts Atomiverse vs those numbers within stated tol.
-4. Optional fair wall: same geometry, comparable settings; write
-   \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) into REFERENCE (not ctest).
+4. Optional fair wall: same geometry; write \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\)
+   into REFERENCE (not ctest).
 
-## Layout
+## Twin used by `gpw-forces-water`
 
-```text
-tools/cp2k_oracle/
-  README.md          ← this file
-  inputs/            ← minimal CP2K .inp twins (optional, not required at ctest)
-    gpw-water-pbe-mt.inp
-```
-
-## Version pin
-
-Prefer a single CP2K release string in REFERENCE (e.g. `CP2K 2024.1` or module
-version on Arrhenius). Do not mix versions across a regression without noting it.
-
-## Relation to tutorials
-
-- GPW narrative: `docs/tutorial/ch09-gpw.md` (Quickstep parity story).
-- Loop product pages: `docs/tutorial/methods/<slug>.md` from `cp2k-method-loop`.
+- Input: `inputs/h2o_forces_mt.inp` (isolated H2O, PBE, DZVP-MOLOPT-GTH, MT, 400 Ry)
+- Pin destination: `regressions/gpw/gpw-forces-water/REFERENCE.md`
+- CP2K data: `$CP2K_DATA_DIR` or EasyBuild share path `…/share/cp2k/data`
