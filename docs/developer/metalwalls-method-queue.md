@@ -19,14 +19,14 @@ plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 prior census rows, handoff, `tools/metalwalls_oracle/README.md`, and
 `docs/roadmap/{molecular-dynamics,force-fields}.md` ○.)
 
-Census: **2026-07-24** (parent `dev`). **incomplete_count=10** (wave-2
-`[~]` only — assigned, no worker progress yet). Open MD/electrochem specs:
-**none**. Unmerged in-scope `wf/<slug>`: **none** (no wave-2 branches; wave-1
-tips `ahead_of_dev=0`). Half-written wave-2 regressions: **none**. **Assign
-must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
+Census: **2026-07-24** (parent `dev`, post–harness wave 2). **incomplete_count=0**
+(no `[~]`, no unmerged in-scope `wf/<slug>` with `ahead_of_dev>0`, no half-written
+wave-2 regressions). Open MD/electrochem specs: **none** (wave-2 specs closed).
+Unmerged in-scope `wf/<slug>`: **none** (wave-2 tips `ahead_of_dev=0`). **Next
+assign may promote pending** (incomplete ≫ pending is vacuous).
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), wave-1 done (10), wave-2 in_progress (10), SCF/post-HF,
+  integrators), wave-1 done (10), wave-2 done (10), SCF/post-HF,
   GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes (E12 blocked),
   hybrid DFT electrodes, non-electrochem MD ○ (RESPA, FSSH, PIMD variants, …)
 - Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
@@ -41,27 +41,27 @@ must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
 
 ### E2 — electrostatic rigor (after E1 foothold)
 
-*(wave-2 E2 CG + predictor → in_progress)*
+*(wave-2 CG + predictor → done 2026-07-24)*
 
 ### E3 — external field (map §1 P1; MD roadmap ✓ constant E-field foothold)
 
-*(wave-2 finite-field single electrode → in_progress)*
+*(wave-2 finite-field single electrode → done 2026-07-24)*
 
-- [ ] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; MD roadmap ○ oscillating E-field; map E3 residual after constant efield ✓
+- [ ] `oscillating-efield-md` | Oscillating / AC electric field MD | electrochem | ions / LJ+Coul fluid | — | \(F(t)=qE(t)\), \(\Delta E\) | **oracle=lammps** `fix efield` variable / equal-style; MD roadmap ○ oscillating E-field; map E3 residual after constant efield ✓ + single-electrode finite-field ✓
 
-### E4 / E5 — polarization (map §2; FF roadmap ○ induced dipoles / Thole)
+### E4 / E5 — polarization (map §2; FF roadmap ✓ bulk PIM + Thole foothold)
 
-*(wave-2 PIM bulk → in_progress; Thole/TT damping in that slug)*
+*(wave-2 PIM bulk → done 2026-07-24)*
 
-- [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 ✓ + PIM (**hold** until `pim-induced-dipole-bulk` lands)
+- [ ] `dipole-electrode-joint` | Coupled dipole ⊕ electrode \(Q\) solve | electrochem | IL + graphene walls | — | \(Q\), \(\mu\) | **oracle=metalwalls**; map E5; **dep:** E1 ✓ + PIM ✓ (**unblocked** after `pim-induced-dipole-bulk`)
 
 ### E6 / E7 — electrode mechanics & metallicity
 
-*(wave-2 piston + Thomas–Fermi → in_progress)*
+*(wave-2 piston + Thomas–Fermi → done 2026-07-24)*
 
-### E8 — salt / wall potentials (map §3; FF ✓ Buckingham foothold)
+### E8 — salt / wall potentials (map §3; FF ✓ Buckingham + Born BMH + Fumi–Tosi + Steele footholds)
 
-*(wave-2 Fumi–Tosi + Steele + Born → in_progress)*
+*(wave-2 Fumi–Tosi + Steele + Born → done 2026-07-24)*
 
 ### E9 — molecular water at electrodes (MD roadmap ✓ TIP4P M-site foothold)
 
@@ -71,7 +71,7 @@ must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
 
 ### E10 — ecosystem (after E1 observers)
 
-*(wave-2 capacitance / charge-fluctuation → in_progress)*
+*(wave-2 capacitance / charge-fluctuation → done 2026-07-24)*
 
 - [ ] `potential-profile-observer` | Electrostatic potential profile (slab) | electrochem | parallel plate | — | \(\Psi(z)\) curve | **oracle=metalwalls** / literature Poisson; map E10; **dep:** charges + long-range ✓
 
@@ -82,18 +82,7 @@ must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
 
 ## in_progress
 
-### Wave 2 staff batch — assigned 2026-07-24 (parent `dev`)
-
-- [~] `const-pot-cg-large-electrode` | CG electrode charge solve | electrochem | larger wall / many electrode sites | — | \(Q\) match dense path | **oracle=metalwalls**; dep: BO dense inverse path ✓
-- [~] `electrode-charge-predictor` | Electrode charge predictor (ASPC-like) | electrochem | short MD | — | fewer CG/BO iters | **oracle=metalwalls**; map E2
-- [~] `finite-field-single-electrode` | Finite-field + single electrode (3D) | electrochem | single wall + electrolyte | — | \(Q\), polarization | **oracle=metalwalls** Dufils-style; **dep:** E1 ✓ + efield ✓
-- [~] `pim-induced-dipole-bulk` | PIM self-consistent induced dipoles (bulk) | polarizable | molten salt / IL toy | — | \(E_{\mathrm{pol}}\), forces | **oracle=metalwalls**; map E4; Thole/TT damping in-scope
-- [~] `piston-electrode-pz` | Piston electrode constant \(P_z\) | electrochem | IL + graphene / parallel plate | — | \(\langle P_z\rangle\) | **oracle=metalwalls**; map E6; **dep:** E1 ✓ + electrode forces
-- [~] `thomas-fermi-electrode` | Thomas–Fermi finite metallicity | electrochem | gold capacitor toy | — | \(C\), \(Q\) response | **oracle=metalwalls**; map E7
-- [~] `fumi-tosi-nacl` | Fumi–Tosi molten salt | forcefield | NaCl melt | — | \(E\) | **oracle=lammps** (`pair born/coul/*`); map E8; **dep:** Buckingham pair ✓
-- [~] `steele-wall-argon` | Steele wall potential | forcefield | Ar / graphite wall | — | \(E\), \(F\) | **oracle=lammps** (`wall/lj93` Steele 10-4-3); map E8
-- [~] `born-repulsion-foothold` | Born repulsion wall/ion term | forcefield | ion near wall | — | \(E\), \(F\) | **oracle=lammps** (`pair born`); map E8 companion
-- [~] `capacitance-charge-fluctuation` | Capacitance / charge-fluctuation analysis | electrochem | parallel-plate EDL | — | \(C\) estimate | **oracle=metalwalls** tools; map E10; **dep:** E1 ✓ + charge observer ✓
+*(empty after harness wave 2 — 2026-07-24)*
 
 ## blocked
 
@@ -118,3 +107,18 @@ must resume wave-2 `[~]` before any new pending** (incomplete ≫ pending).
 | [x] `external-efield-md` | `regressions/md/external-efield-md` | lammps | **0.60** |
 | [x] `buckingham-pair-lammps` | `regressions/forcefield/buckingham-pair-lammps` | lammps | **perf_exempt** (dimer startup) |
 | [x] `four-site-tip4p-foothold` | `regressions/md/four-site-tip4p-foothold` | lammps | **0.338** |
+
+### Wave 2 — 2026-07-24 (merged → `dev`)
+
+| Slug | Regression | oracle | ratio \(T_{\mathrm{atv}}/T_{\mathrm{oracle}}\) |
+| ---- | ---------- | ------ | ---------------------------------------------- |
+| [x] `const-pot-cg-large-electrode` | `regressions/md/const-pot-cg-large-electrode` | metalwalls (dual: dense BO) | **perf_exempt** (no MW binary) |
+| [x] `electrode-charge-predictor` | `regressions/md/electrode-charge-predictor` | metalwalls (ASPC) | **perf_exempt** |
+| [x] `finite-field-single-electrode` | `regressions/md/finite-field-single-electrode` | metalwalls / literature | **perf_exempt** |
+| [x] `pim-induced-dipole-bulk` | `regressions/md/pim-induced-dipole-bulk` | metalwalls | **perf_exempt** |
+| [x] `piston-electrode-pz` | `regressions/md/piston-electrode-pz` | metalwalls | **perf_exempt** |
+| [x] `thomas-fermi-electrode` | `regressions/md/thomas-fermi-electrode` | metalwalls | **perf_exempt** |
+| [x] `fumi-tosi-nacl` | `regressions/forcefield/fumi-tosi-nacl` | lammps | **perf_exempt** (4-ion startup) |
+| [x] `steele-wall-argon` | `regressions/forcefield/steele-wall-argon` | lammps (`wall/lj1043`) | **perf_exempt** |
+| [x] `born-repulsion-foothold` | `regressions/forcefield/born-repulsion-foothold` | lammps | **perf_exempt** |
+| [x] `capacitance-charge-fluctuation` | `regressions/md/capacitance-charge-fluctuation` | literature | **perf_exempt** |

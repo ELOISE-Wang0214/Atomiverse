@@ -114,7 +114,15 @@ Notes:
   family). Regressions: `lj_soft_dimer`, `coul_soft_dimer`.
 - **Buckingham** (`cpu::PairBuck`) is LAMMPS `pair_style buck`
   \(A e^{-r/\rho}-C/r^{6}\) with optional energy shift; CPU dimer pin
-  `reg_buckingham-pair-lammps`. Multi-type Fumi–Tosi product path still ○.
+  `reg_buckingham-pair-lammps`.
+- **Born–Mayer–Huggins** (`cpu::PairBorn`) is LAMMPS `pair_style born`
+  \(A e^{(\sigma-r)/\rho}-C/r^{6}+D/r^{8}\) with energy shift; single-type dimer
+  pin `reg_born-repulsion-foothold`. **Multi-type Fumi–Tosi** uses the same
+  `PairBorn` type table + `PairCoulCut` (LAMMPS `hybrid/overlay born coul/cut`);
+  pin `reg_fumi-tosi-nacl`. Production NeighborList-backed bulk molten-salt
+  twin remains a future perf pin (current pins are O(N²) textbook cells).
+- **Steele 10-4-3 wall** ships as `cpu::md::FixWallLJ1043` (LAMMPS
+  `fix wall/lj1043`, not `wall/lj93`); pin `reg_steele-wall-argon`.
 - **FENE** (`BondFene`) + **WCA** (`PairWCA`) and **Yukawa** (`PairYukawa`) and
   **DPD** (`PairDpd`) are CPU textbook styles from the method ladder
   (`reg_fene_wca_chain`, `reg_yukawa_dimer`, `reg_dpd_groot_warren`).
@@ -127,15 +135,21 @@ Notes:
 | Method                              | CPU | CUDA | Kokkos |
 | ----------------------------------- | :-: | :--: | :---: |
 | Drude oscillator model              |  ○  |   ○  |   ○  |
-| Self-consistent induced dipoles     |  ○  |   ○  |   ○  |
+| Self-consistent induced dipoles     |  ✓  |   ○  |   ○  |
 | Extended-Lagrangian induced dipoles |  ○  |   ○  |   ○  |
-| Thole-damped polarization           |  ○  |   ○  |   ○  |
+| Thole-damped polarization           |  ✓  |   ○  |   ○  |
 | Atomic-multipole electrostatics     |  ○  |   ○  |   ○  |
 | AMOEBA electrostatics               |  ○  |   ○  |   ○  |
 | AMOEBA polarization                 |  ○  |   ○  |   ○  |
 | Fluctuating-charge model            |  ○  |   ○  |   ○  |
 | QEq polarization                    |  ○  |   ○  |   ○  |
 | Charge-equilibration dynamics       |  ○  |   ○  |   ○  |
+
+**Bulk PIM** (`cpu::PimInducedDipole`) is MetalWalls-style self-consistent
+induced dipoles with Thole exponential damping and optional Tang–Toennies
+(`tt_b`); permanent charge–charge is separate (`PairCoulCut` / PME). Pin
+`reg_pim-induced-dipole-bulk`. Drude / AMOEBA / QEq and electrode-coupled
+dipole ⊕ \(Q\) joint solve remain ○.
 
 ## 4. Many-Body and Reactive Potentials
 

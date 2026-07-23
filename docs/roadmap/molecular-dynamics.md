@@ -172,11 +172,22 @@ tension) and nothing more — no shear, no flow, no heat flux.
 **Constant electric field** ships as `cpu::md::FixEfield` (LAMMPS `fix efield`
 constant path): \(\mathbf{F}_i = q_i\mathbf{E}\), energy
 \(U=-\sum_i q_i\mathbf{E}\cdot\mathbf{r}_i^{\mathrm{u}}\) (`reg_external-efield-md`).
-Oscillating / AC fields remain ○. Electrode constant-potential BO
-(`cpu::md::ConstPotBO`), wall freeze (`FixFreeze`), charging work, and short
-const-pot NVT are classical electrochemistry Components on `cpu::md::MD`
-(MetalWalls map E1; see `docs/developer/metalwalls-method-queue.md`) — not
-nonequilibrium pull/flow methods.
+Oscillating / AC fields remain ○. Classical electrochemistry Components on
+`cpu::md::MD` (MetalWalls map E1–E10 footholds; see
+`docs/developer/metalwalls-method-queue.md`) — not nonequilibrium pull/flow
+methods:
+
+- **E1:** `ConstPotBO`, `FixFreeze`, charge observer, charging work, short
+  const-pot NVT
+- **E2:** `ConstPotCG` (large multi-site walls); Kolafa ASPC charge predictor
+  on `ConstPotBO` (`predictor_order`, `ChargeASPC`)
+- **E3:** single-electrode finite-field (Dufils) via `ConstPotBO` + external
+  \(\mathbf{E}\) + `ClassicalPolarization` (`reg_finite-field-single-electrode`)
+- **E6:** `PistonElectrode` constant \(P_z\) rigid wall (not Langevin piston)
+- **E7:** Thomas–Fermi finite metallicity (`ConstPotBO::l_tf`, `site_density`)
+- **E10:** `CapacitanceChargeFluctuation` observer (\(C\) from \(\mathrm{Var}(Q)\))
+- **E8 walls:** `FixWallLJ1043` Steele 10-4-3 (force-fields roadmap note)
+
 
 ## 7. Ab Initio Molecular Dynamics
 

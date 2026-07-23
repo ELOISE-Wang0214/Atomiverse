@@ -20,23 +20,23 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
-| [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open |
-| [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open |
-| [born-repulsion-foothold](born-repulsion-foothold/) | metalwalls / E8 Born BMH | open |
-| `fumi-tosi-nacl` | metalwalls-method-loop E8 | `wf/fumi-tosi-nacl` |
-| `steele-wall-argon` | `wf/steele-wall-argon` | open (wave-2 E8 Steele 10-4-3) |
-| `const-pot-cg-large-electrode/` | `wf/const-pot-cg-large-electrode` | E2 CG electrode solve vs dense BO; wave 2 |
-| `electrode-charge-predictor/` | `wf/electrode-charge-predictor` | E2 ASPC charge warm-start + CG iters gate |
-| `finite-field-single-electrode/` | `wf/finite-field-single-electrode` | E3 Dufils single electrode; acceptance met on worker branch |
-| `pim-induced-dipole-bulk` | `wf/pim-induced-dipole-bulk` | MetalWalls E4 bulk PIM |
-| [thomas-fermi-electrode](thomas-fermi-electrode/SPEC.md) | `wf/thomas-fermi-electrode` | E7 Thomas–Fermi metallicity |
-| `capacitance-charge-fluctuation/` | `wf/capacitance-charge-fluctuation` | electrochem E10 — \(C\) from charge fluctuations |
+| [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
+| [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-*(MetalWalls wave 1 closed 2026-07-23; wave-2 workers re-create specs on
-`wf/<slug>` before code)*
+MetalWalls wave 2 closed 2026-07-24 (specs deleted). No open MD/electrochem
+specs on `dev`. Next workers **create** `.claude/specs/<slug>/` on `wf/<slug>`
+before code.
 
 CP2K wave 2 closed 2026-07-24 (specs deleted). Incomplete leftover
 `gpw-kpoints-si` has **no** open spec dir — write-first on resume.
+
+## Closed — MetalWalls capability wave 2 (2026-07-24)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| metalwalls-method-loop wave 2 | const-pot-cg-large-electrode, electrode-charge-predictor, finite-field-single-electrode, pim-induced-dipole-bulk, piston-electrode-pz, thomas-fermi-electrode, fumi-tosi-nacl, steele-wall-argon, born-repulsion-foothold, capacitance-charge-fluctuation | ConstPotCG; ChargeASPC predictor; Dufils single-electrode finite-field; bulk PIM+Thole; PistonElectrode; TF metallicity; PairBorn/Fumi–Tosi; FixWallLJ1043 Steele; CapacitanceChargeFluctuation |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K capability wave 2 (2026-07-24)
 
