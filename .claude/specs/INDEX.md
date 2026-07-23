@@ -5,7 +5,11 @@ the git log. Method census: `docs/roadmap/`.
 
 ## Live
 
-*(none — CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
+| Slug | Branch | Domain | Notes |
+| ---- | ------ | ------ | ----- |
+| `pw-bomd-h` | `wf/pw-bomd-h` | pw / dynamics | PW BOMD H₂ NVE foothold; offline CP2K energy-drift pin |
+
+*(CPU next A/B/C/D campaign closed 2026-07-23; parallel worktrees
 merged into `dev` and removed)*
 
 ## Closed — CPU next campaign (2026-07-23, parallel worktrees)
