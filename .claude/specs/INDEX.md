@@ -21,8 +21,7 @@ impl independently (no single ordered chain unless noted).
 
 | Spec | Summary |
 | ---- | ------- |
-| [parrinello-rahman-npt](parrinello-rahman-npt.md) | Full-cell PR NPT integrator [approved] |
-| [nph-ensemble](nph-ensemble.md) | Thermostat-free NPH path [approved] |
+| *(closed this campaign)* | `parrinello-rahman-npt`, `nph-ensemble` — see git log |
 
 ### A/B — Multiscale
 
@@ -54,7 +53,12 @@ impl independently (no single ordered chain unless noted).
 2. NPH · link-atoms · tb-sk · multi-cv-metad · concrete-gpw  
 3. polarizable-qmmm · multi-window-wham · concrete-nddo · true-nac (after analytic forces if sharing Z-vector)
 
-Soft deps: `true-nac-vectors` benefits from `analytic-tda-forces`; `nph-ensemble` may reuse PR cell math from `parrinello-rahman-npt` but isotropic v1 is standalone.
+
+## Closed on `feat/cpu-next-md` (2026-07-23)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| A-cell-md | parrinello-rahman-npt, nph-ensemble | PR full-cell NPT, isotropic NPH |
 
 ## Closed on `dev` (2026-07-23)
 
