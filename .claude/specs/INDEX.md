@@ -12,6 +12,7 @@ the git log. Method census: `docs/roadmap/`.
 | [const-pot-charge-observer](const-pot-charge-observer/) | `wf/const-pot-charge-observer` | open — const-pot-charge-observer |
 | [freeze-electrode-atoms](freeze-electrode-atoms/) | `wf/freeze-electrode-atoms` | open — freeze-electrode-atoms |
 | [gaussian-electrode-charge](gaussian-electrode-charge/) | `wf/gaussian-electrode-charge` | open — gaussian-electrode-charge |
+| [slab-2d-ewald-foothold](slab-2d-ewald-foothold/) | `wf/slab-2d-ewald-foothold` | open — slab-2d-ewald-foothold |
 
 ## Closed — CP2K capability wave 1 (2026-07-23)
 
