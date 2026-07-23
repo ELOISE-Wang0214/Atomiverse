@@ -332,12 +332,17 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        Mennucci–Tomasi; PySCF `method='IEF-PCM'`).
     SolventModel solvent_model = SolventModel::CPCM;
 
-    // ── Dispersion (molecular DFT-D3 BJ) ──────────────────────────────
+    // ── Dispersion (molecular DFT-D3 BJ / DFT-D4) ─────────────────────
     /// @brief When true, add PBE-D3(BJ) dispersion (Grimme et al. 2011) to
     ///        the total energy after SCF. Geometry-only additive term —
     ///        does not enter the Fock build. Default false (bit-identical
     ///        vacuum path). Public standalone evaluator: `scf::D3BJ`.
     bool d3bj = false;
+    /// @brief When true, add PBE-D4 dispersion (Caldeweyher et al. 2019) to
+    ///        the total energy after SCF. Geometry-only; not in Fock.
+    ///        Mutually exclusive with `d3bj` in practice (last writer wins
+    ///        if both set — prefer one). Public evaluator: `scf::D4`.
+    bool d4 = false;
 
     MeanFieldMethod();
     ~MeanFieldMethod() override;
@@ -472,7 +477,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @return The owned Slater determinant (Hartree internals).
     const SlaterDeterminant& determinant() const { return *det_sp_; }
     /// @brief Total SCF energy of the most recent run.
-    /// @return E_total [Hartree] (includes E_disp when `d3bj` is set).
+    /// @return E_total [Hartree] (includes E_disp when `d3bj`/`d4` is set).
     double energy() const { return e_total_; }
     /// @brief Electrostatic continuum free-energy contribution of the most
     ///        recent run (ΔG_el = ½ Σ_k q_k V_k). Zero when
@@ -480,8 +485,8 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        Valid for C-PCM, COSMO, and IEF-PCM.
     /// @return ΔG_el [Hartree].
     double e_solvent() const { return e_solvent_; }
-    /// @brief DFT-D3(BJ) dispersion contribution of the most recent run.
-    ///        Zero when `d3bj` is false.
+    /// @brief DFT-D3(BJ)/DFT-D4 dispersion contribution of the most recent run.
+    ///        Zero when both `d3bj` and `d4` are false.
     /// @return E_disp [Hartree].
     double energy_disp() const { return e_disp_; }
     /// @brief SCF iterations executed by the most recent run.
@@ -591,7 +596,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     double e_xc_grid_ = 0;        ///< Grid XC energy [Hartree].
     double e_exact_exchange_ = 0; ///< Hybrid exact-exchange energy [Hartree].
     double e_solvent_ = 0;        ///< Continuum ΔG_el [Hartree] (0 when off).
-    double e_disp_ = 0;           ///< DFT-D3(BJ) E_disp [Hartree] (0 when off).
+    double e_disp_ = 0;           ///< DFT-D3(BJ)/D4 E_disp [Hartree] (0 when off).
     double e_pcm_fock_half_ = 0;  ///< ½ Tr[V_pcm P] [Hartree] for energy peel.
     double int_n_alpha_ = 0;      ///< Grid-integrated α electron count.
     double int_n_beta_ = 0;       ///< Grid-integrated β electron count.
