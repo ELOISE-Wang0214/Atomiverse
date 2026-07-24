@@ -1,7 +1,7 @@
 ---
 slug: scf-review-04-meanfield-dedup
 title: "均场方法 FD Hessian 与梯度结果转换去重（scf-review-04）"
-status: approved
+status: done
 created: 2026-07-24
 domain: scf / mean-field
 queue: scf-review
@@ -68,16 +68,16 @@ grilled: true
 
 ## Tasks
 
-- [ ] Write failing unit tests for the central-difference nuclear-Hessian template in tests/cpu/scf/test_fd_hessian_template.cpp (analytic quadratic mock Derived, no SCF; register via atv_add_cpp_test in tests/CMakeLists.txt)
-- [ ] Implement central_difference_nuclear_hessian as a protected member template on MeanFieldMethod<Derived> (include/atomiverse/cpu/scf/mean_field_method.h, src/cpu/scf/mean_field_method.cpp), freezing h=1e-4 Bohr, fresh-scratch-per-displacement, atom-major/axis-minor ordering, serial loop
-- [ ] Refactor RKS/UKS/ROHF hessian() to delegate to the template (src/cpu/scf/rks.cpp, uks.cpp, rohf.cpp), keeping the UKS spin-density SCFInitialGuess capture in its caller functor
-- [ ] Implement check_hessian_preconditions on MeanFieldMethod<Derived> and call it from RHF/UHF hessian() (include/atomiverse/cpu/scf/mean_field_method.h, src/cpu/scf/mean_field_method.cpp, rhf.cpp, uhf.cpp); keep the RI guard inline pre-run
-- [ ] Write failing unit test for the GradientResult(FromHartreeBohr{}, …) converting ctor in tests/cpu/scf/test_gradient_result.cpp (register via atv_add_cpp_test in tests/CMakeLists.txt)
-- [ ] Generalize the Ha/Bohr→eV/Å gradient glue into GradientResult: add FromHartreeBohr tag + converting/default/member-wise ctors (include/atomiverse/cpu/scf/gradient_result.h) and delete make_result/make_force_result, rewiring gradient.cpp, internal/mp2_gradient.cpp, internal/ccsd_gradient.cpp
-- [ ] Add grep-gate scrub tests/architecture/scf_dedup_scrub.sh (no FD displacement loop in rks/uks/rohf.cpp; no make_result/make_force_result anywhere under src/cpu/scf) and register it in tests/CMakeLists.txt
-- [ ] Add docstrings per doxygen with units for central_difference_nuclear_hessian, check_hessian_preconditions, and the new GradientResult ctors
-- [ ] Verify the existing FD-Hessian and MP2/CCSD-gradient regressions reproduce byte-identical values (regressions/scf/rks-hessian-h2o-sto3g, uks-hessian-o2-sto3g, rohf-hessian-o2, uhf-hessian-o2, mp2-grad-h2o-sto3g, ump2-grad-o2-sto3g, ccsd-grad-h2o-sto3g)
-- [ ] Run full check + test suite
+- [x] Write failing unit tests for the central-difference nuclear-Hessian template in tests/cpu/scf/test_fd_hessian_template.cpp (analytic quadratic mock Derived, no SCF; register via atv_add_cpp_test in tests/CMakeLists.txt)
+- [x] Implement central_difference_nuclear_hessian as a protected member template on MeanFieldMethod<Derived> (include/atomiverse/cpu/scf/mean_field_method.h, src/cpu/scf/mean_field_method.cpp), freezing h=1e-4 Bohr, fresh-scratch-per-displacement, atom-major/axis-minor ordering, serial loop
+- [x] Refactor RKS/UKS/ROHF hessian() to delegate to the template (src/cpu/scf/rks.cpp, uks.cpp, rohf.cpp), keeping the UKS spin-density SCFInitialGuess capture in its caller functor
+- [x] Implement check_hessian_preconditions on MeanFieldMethod<Derived> and call it from RHF/UHF hessian() (include/atomiverse/cpu/scf/mean_field_method.h, src/cpu/scf/mean_field_method.cpp, rhf.cpp, uhf.cpp); keep the RI guard inline pre-run
+- [x] Write failing unit test for the GradientResult(FromHartreeBohr{}, …) converting ctor in tests/cpu/scf/test_gradient_result.cpp (register via atv_add_cpp_test in tests/CMakeLists.txt)
+- [x] Generalize the Ha/Bohr→eV/Å gradient glue into GradientResult: add FromHartreeBohr tag + converting/default/member-wise ctors (include/atomiverse/cpu/scf/gradient_result.h) and delete make_result/make_force_result, rewiring gradient.cpp, internal/mp2_gradient.cpp, internal/ccsd_gradient.cpp
+- [x] Add grep-gate scrub tests/architecture/scf_dedup_scrub.sh (no FD displacement loop in rks/uks/rohf.cpp; no make_result/make_force_result anywhere under src/cpu/scf) and register it in tests/CMakeLists.txt
+- [x] Add docstrings per doxygen with units for central_difference_nuclear_hessian, check_hessian_preconditions, and the new GradientResult ctors
+- [x] Verify the existing FD-Hessian and MP2/CCSD-gradient regressions reproduce byte-identical values (regressions/scf/rks-hessian-h2o-sto3g, uks-hessian-o2-sto3g, rohf-hessian-o2, uhf-hessian-o2, mp2-grad-h2o-sto3g, ump2-grad-o2-sto3g, ccsd-grad-h2o-sto3g)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

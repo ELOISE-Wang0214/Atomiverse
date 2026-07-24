@@ -50,26 +50,11 @@ vib::HessianResult UHF::hessian(Frame& frame, const SCFInitialGuess* guess) {
 
     // Fresh SCF at this geometry (writes the eV energy to frame.meta).
     run(frame, guess);
-    if (!converged())
-        throw std::runtime_error(
-            "UHF::hessian: SCF did not converge — no reference "
-            "wavefunction to differentiate (" + stop_reason() + ")");
 
     const SlaterDeterminant& det = determinant();
     const IntegralPack& pack = integral_workspace_();
-    if (pack.spherical())
-        throw std::runtime_error(
-            "UHF::hessian: analytic second derivatives are not implemented "
-            "for spherical-harmonic basis sets (def2 family) yet — the "
-            "derivative c2s transform is a follow-up chain link. Use a "
-            "Cartesian-convention basis or the finite-difference "
-            "vib::Hessian driver.");
-    if (pack.has_ecp)
-        throw std::runtime_error(
-            "UHF::hessian: analytic second derivatives are not implemented "
-            "for ECP packs — d²U/dR² of the semi-local potential is a "
-            "follow-up chain link. Use the finite-difference vib::Hessian "
-            "driver.");
+    // Shared guard: non-convergence, spherical-harmonic pack, ECP pack.
+    check_hessian_preconditions("UHF::hessian", pack);
 
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();

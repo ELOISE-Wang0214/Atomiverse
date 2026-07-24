@@ -81,22 +81,6 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
     }
 }
 
-static GradientResult make_result(const xt::xtensor<double, 2>& grad,
-                                  double energy_hartree, int natm) {
-    // SCF gradient lives in Hartree/Bohr; Frame / MD drivers expect eV/Å.
-    using units::convert;
-    GradientResult out;
-    out.forces = xt::zeros<double>({(int)natm, (int)3});
-    for (int A = 0; A < natm; ++A)
-        for (int d = 0; d < 3; ++d)
-            out.forces(A, d) =
-                -convert(grad(A, d), units::Force::HartreePerBohr,
-                         units::Force::eVPerAngstrom);
-    out.energy =
-        convert(energy_hartree, units::Energy::Hartree, units::Energy::eV);
-    return out;
-}
-
 /// @brief Accumulate the exchange-correlation contribution dE_xc/dR_A.
 ///
 /// For the LDA-style (vrho) part:
@@ -919,7 +903,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
             xc_max_abs, xc_max_atom_norm);
     }
 
-    auto out = make_result(grad, e_scf_ha, natm);
+    GradientResult out{FromHartreeBohr{}, grad, e_scf_ha};
     double max_force = 0.0;
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)

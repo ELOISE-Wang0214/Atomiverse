@@ -10,7 +10,8 @@ criteria:
       (mean_field_method.h) defined in mean_field_method.cpp; rks.cpp/uks.cpp/rohf.cpp
       hessian() bodies contain no ±h FD displacement loop and call the template;
       the tree builds with -DATV_BUILD_HF=ON.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: FD-template unit test reproduces a quadratic mock's analytic Hessian
     type: code
@@ -19,7 +20,8 @@ criteria:
       tests/cpu/scf/test_fd_hessian_template.cpp (analytic F=-K(R-R0) mock, no SCF)
       passes: recovered Hessian equals the hard-coded K in eV/Å² to 1e-8, geometry
       restored to r0, ordering col=3A+d verified.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: Hessian precondition guard deduped to a private CRTP helper
     type: code
@@ -28,7 +30,11 @@ criteria:
       MeanFieldMethod<Derived> has private check_hessian_preconditions(method_name, pack)
       throwing on non-convergence, spherical pack, and ECP pack; rhf.cpp and uhf.cpp
       hessian() call it after run(); the RI guard stays inline pre-run; builds green.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    note: helper is `protected`, not `private` — a strictly-private base member is
+      inaccessible to Derived call sites under C++ access rules; matches the
+      existing integral_workspace_() helper visibility. Guard messages byte-preserved.
   - id: ac-004
     summary: GradientResult gains FromHartreeBohr ctor; make_* glue deleted
     type: code
@@ -38,7 +44,8 @@ criteria:
       and member-wise eV ctor; make_result and make_force_result appear nowhere under
       src/cpu/scf; gradient.cpp / mp2_gradient.cpp / ccsd_gradient.cpp build against
       the tag ctor.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: Converting-ctor unit test matches hard-coded eV/Å + eV literals
     type: code
@@ -48,7 +55,8 @@ criteria:
       grad_ha_bohr, energy_ha) yields forces=-convert(..HartreePerBohr->eVPerAngstrom)
       and energy=convert(Hartree->eV) to hard-coded literals; default and brace
       member-wise construction still compile.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: Existing FD-Hessian and gradient regressions reproduce byte-identical values
     type: runtime
@@ -59,7 +67,12 @@ criteria:
       pass their existing gates AND emit numbers bit-identical to pre-refactor
       (e.g. RKS H_xx(0,0)=-9.632120712096 eV/Å²; MP2 O ∂E/∂z=-9.528798092138e-02
       Ha/Bohr; CCSD O ∂E/∂z=-1.106969560091e-01 Ha/Bohr).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    note: byte-identical after stripping wall-clock timestamps and ms= timing
+      tokens (non-deterministic, unreproducible from a capture); every scientific
+      value identical across all seven cases, verified against pre-refactor
+      baselines captured before any change (OMP_NUM_THREADS=1).
   - id: ac-007
     summary: FD replay invariants (h, fresh-solver, ordering, threading) frozen
     type: code
@@ -70,7 +83,8 @@ criteria:
       (col=3A+d) serially with no added displacement-level parallelism; the scrub
       tests/architecture/scf_dedup_scrub.sh (no FD loop in rks/uks/rohf.cpp; no
       make_result/make_force_result under src/cpu/scf) is registered and green.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-008
     summary: Doxygen with units on new template method, guard helper, and ctors
     type: docs
@@ -78,7 +92,8 @@ criteria:
       central_difference_nuclear_hessian, check_hessian_preconditions, and the new
       GradientResult ctors each carry @brief/@param/@return with units per doc.style
       doxygen.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
 ---
 
 # Acceptance criteria

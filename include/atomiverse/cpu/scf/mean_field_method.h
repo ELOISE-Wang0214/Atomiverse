@@ -27,8 +27,10 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
@@ -60,6 +62,7 @@
 #include "atomiverse/cpu/scf/stages/rohf_couple_stage.h"
 #include "atomiverse/cpu/scf/stages/scf_converged.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
+#include "atomiverse/cpu/vibration/hessian_result.h"
 
 namespace ATV {
 namespace cpu {
@@ -625,6 +628,42 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///        Never exposed publicly — Frame stays the sole I/O currency.
     /// @return The method-owned IntegralPack (borrowed const view).
     const IntegralPack& integral_workspace_() const { return *integrals_sp_; }
+
+    /// @brief Central finite-difference nuclear Hessian [eV/Å²] from analytic
+    ///        forces — the shared skeleton of the RKS/UKS/ROHF FD Hessian.
+    ///
+    /// Snapshots the reference geometry r0, then loops atoms (outer) × axes
+    /// (inner) with the atom-major/axis-minor column index `col = 3A+d`.
+    /// For each column it evaluates the caller's forces functor at +h then
+    /// −h (step **h = 1e-4 Bohr**, frozen to the offline PySCF pin), central-
+    /// differences `H_{row,col} = −(F(+h)−F(−h))/(2h)` with the eV/Å↔Ha/Bohr
+    /// unit constants, restores the geometry to r0, and symmetrizes
+    /// `½(H+Hᵀ)` to absorb FD noise. The displacement loop is serial (no
+    /// added parallelism — the float reduction order is a frozen replay
+    /// invariant). Constructing a fresh solver per ±h displacement (no
+    /// DIIS/MO warm-start bleed) and throwing on non-convergence are the
+    /// **functor's** responsibility; this skeleton only differences forces.
+    /// @param frame     Geometry (Å, atom-major); mutated during the sweep and
+    ///                  restored to r0 on return. The reference wavefunction /
+    ///                  meta energy is the caller's to rebuild after return.
+    /// @param forces_at Analytic forces at the frame's current geometry
+    ///                  [eV/Å]; called 2·3N times (fresh solver each call).
+    /// @return Symmetric nuclear Hessian [eV/Å²], shape [3N, 3N], `col = 3A+d`.
+    vib::HessianResult central_difference_nuclear_hessian(
+        Frame& frame,
+        const std::function<GradientResult(Frame&)>& forces_at);
+
+    /// @brief Throw if the converged reference cannot support an analytic
+    ///        second derivative: SCF non-convergence, a spherical-harmonic
+    ///        integral pack, or an ECP pack. Centralizes the guard block
+    ///        shared by `RHF::hessian` / `UHF::hessian`; `method_name` is
+    ///        interpolated so each message reads identically across methods.
+    /// @param method_name Fully-qualified method label, e.g. "RHF::hessian".
+    /// @param pack        The method's private integral workspace of the most
+    ///                    recent run.
+    /// @throws std::runtime_error on non-convergence / spherical / ECP pack.
+    void check_hessian_preconditions(std::string_view method_name,
+                                     const IntegralPack& pack) const;
 
   private:
     // ── Per-run SCF iteration state — plainly-named private members ────────────

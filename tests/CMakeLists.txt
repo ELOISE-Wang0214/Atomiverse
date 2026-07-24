@@ -648,6 +648,17 @@ if(ATV_BUILD_HF)
                      cpu/scf/test_analytic_hessian.cpp)
     atv_add_cpp_test(test_cpu_scf_uhf_hessian
                      cpu/scf/test_uhf_hessian.cpp)
+    # scf-review-04-meanfield-dedup: the FD nuclear-Hessian skeleton hoisted to
+    # the protected CRTP template
+    # MeanFieldMethod<Derived>::central_difference_nuclear_hessian, pinned in
+    # isolation against an analytic quadratic mock force field (no SCF); and the
+    # Ha/Bohr->eV/Angstrom gradient glue hoisted onto the tag ctor
+    # GradientResult(FromHartreeBohr, ...), pinned against hand-computed
+    # eV/Angstrom + eV literals (1e-12).
+    atv_add_cpp_test(test_cpu_scf_fd_hessian_template
+                     cpu/scf/test_fd_hessian_template.cpp)
+    atv_add_cpp_test(test_cpu_scf_gradient_result
+                     cpu/scf/test_gradient_result.cpp)
     # hf-capability-gaps-09-soscf: CIAH stepper units — exp(κ) unitarity,
     # gradient vs FD, matrix-free CIAH vs dense augmented eigensolve, trust
     # region, MixStage latch; plus the allowed micro H2/STO-3G default-off
@@ -978,6 +989,18 @@ add_test(
 add_test(
     NAME test_posthf_dedup_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/posthf_dedup_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate (scf-review-04-meanfield-dedup): the FD nuclear-Hessian skeleton
+# lives only in the protected CRTP template
+# MeanFieldMethod<Derived>::central_difference_nuclear_hessian (no FD
+# displacement-loop sentinels hess_to_ev_ang2 / f_to_ha_bohr / (2.0 * h_bohr)
+# in rks/uks/rohf.cpp), and the factory-named gradient glue make_result /
+# make_force_result appears nowhere under src/cpu/scf (it is the tag ctor
+# GradientResult(FromHartreeBohr, ...)). Pure grep — every build config.
+add_test(
+    NAME test_scf_dedup_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/scf_dedup_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: compatibility-only CPU aliases/overloads stay deleted and the

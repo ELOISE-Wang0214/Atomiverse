@@ -32,21 +32,6 @@ namespace {
 
 constexpr double kFdStepBohr = 1e-4;
 
-GradientResult make_force_result(const xt::xtensor<double, 2>& grad_ha_bohr,
-                                 double energy_ha, int natm) {
-    GradientResult out;
-    out.forces = xt::zeros<double>({static_cast<std::size_t>(natm),
-                                    static_cast<std::size_t>(3)});
-    for (int A = 0; A < natm; ++A)
-        for (int d = 0; d < 3; ++d)
-            out.forces(A, d) = -units::convert(
-                grad_ha_bohr(A, d), units::Force::HartreePerBohr,
-                units::Force::eVPerAngstrom);
-    out.energy =
-        units::convert(energy_ha, units::Energy::Hartree, units::Energy::eV);
-    return out;
-}
-
 Frame displace(const Frame& frame, int A, int d, double delta_A) {
     Frame f = frame;
     if (d == 0)
@@ -115,7 +100,7 @@ GradientResult ccsd_analytic_forces(const Frame& frame, const IntegralPack& pack
         }
     }
 
-    return make_force_result(de, e_scf_ha + e_corr_ha, natm);
+    return GradientResult{FromHartreeBohr{}, de, e_scf_ha + e_corr_ha};
 }
 
 } // namespace internal
