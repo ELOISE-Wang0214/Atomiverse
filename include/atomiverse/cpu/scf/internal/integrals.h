@@ -227,15 +227,24 @@ struct IntegralPack {
     [[nodiscard]] static xt::xtensor<double, 2>
     pvp(const ShellList& shells, const AtomList& atoms);
 
-    /// @brief Dense two-electron repulsion tensor ERI(i,j,k,l) = (ij|kl).
+    /// @brief Dense two-electron repulsion tensor ERI(i,j,k,l) = (ij|kl)
+    ///        [Hartree], chemist notation.
+    ///
+    /// Assembled by grouping the per-AO shell list into libcint-style l-blocks
+    /// (`blocks_from_shells`) and calling the amortized Rys/xsimd shell-block
+    /// kernel `native::eri_block` once per canonical block quartet (Bohr-space
+    /// Gaussian centers), then scattering each block with full 8-fold
+    /// permutation symmetry. The block-pair loop is OpenMP-parallel over the
+    /// canonical outer pair; each iteration writes a disjoint set of tensor
+    /// cells, so the scatter is a plain race-free assignment (no reduction).
     ///
     /// Dense ERI storage is O(N⁴) in memory and only appropriate for small
     /// systems, validation, or code paths that must hand the full tensor to
     /// another backend (e.g. CUDA RHFFock). The production CPU direct-SCF
     /// path uses `ShellBlockPairList` in internal/shell_pair.h instead.
     ///
-    /// @param shells Resolved shell list.
-    /// @return (n × n × n × n) dense tensor in Hartree.
+    /// @param shells Resolved Cartesian shell list (centers in Bohr).
+    /// @return (n × n × n × n) dense tensor (ij|kl) [Hartree].
     [[nodiscard]] static xt::xtensor<double, 4>
     eri_dense(const ShellList& shells);
 

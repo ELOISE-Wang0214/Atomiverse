@@ -7,11 +7,13 @@
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
 #include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
+#include <array>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
 
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xadapt.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
 
@@ -28,11 +30,15 @@ xt::xtensor<double, 4> ao2mo_mixed_(const xt::xtensor<double, 4>& eri_ao,
                                     const xt::xtensor<double, 2>& C1,
                                     const xt::xtensor<double, 2>& C2,
                                     const xt::xtensor<double, 2>& C3) {
-    xt::xtensor<double, 4> cur = eri_ao;
     const xt::xtensor<double, 2>* Cs[4] = {&C3, &C2, &C1, &C0};
+    // Round 0 reads eri_ao directly and writes a fresh work tensor; later
+    // rounds iterate on `cur`. Dropping the old `cur = eri_ao` entry copy
+    // saves one full N⁴ materialization per call (contraction order unchanged).
+    xt::xtensor<double, 4> cur;
     for (int round = 0; round < 4; ++round) {
-        const auto sh = cur.shape();
-        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
+        const xt::xtensor<double, 4>& src = (round == 0) ? eri_ao : cur;
+        const auto sh = src.shape();
+        auto flat = xt::reshape_view(src, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
         xt::xtensor<double, 4> next = xt::reshape_view(
             h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
@@ -434,35 +440,42 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
         C_cart = C_rm;
     }
 
-    // B_ia^P = Σ_μν C_μi C_νa B_μν^P
-    // Layout: for each P, M_P[μ,ν] = B(μ*n_cart+ν, P) is column-major flat.
+    // B_ov(ia, P) = Σ_μν C_μi C_νa B_μν^P, assembled BLAS-shaped from the
+    // frozen df.b_tensor() output. B is column-major (n_cart² × n_aux) with the
+    // (μ·n_cart + ν) pair index on the rows, so each auxiliary column is one
+    // contiguous n_cart² slice: the M_P matrix in row-major (μ,ν). Adapt that
+    // slice as a view (no per-P element-wise M reconstruction) and half-
+    // transform it with Co^T M_P Cv. The fitting metric (Coulomb V=(P|Q),
+    // Cholesky-whitened W=L⁻¹ ⇒ V⁻¹) is frozen — B is consumed unchanged.
     const int nov = n_occ * n_vir;
-    // Store B_ov[ia, P]
+    const RealMatrix Co =
+        xt::view(C_cart, xt::all(), xt::range(0, n_occ)); // [n_cart × n_occ]
+    const RealMatrix Cv =
+        xt::view(C_cart, xt::all(), xt::range(n_occ, n_mo)); // [n_cart × n_vir]
+    const std::size_t n_cart2 =
+        static_cast<std::size_t>(n_cart) * static_cast<std::size_t>(n_cart);
     xt::xtensor<double, 2> B_ov = xt::zeros<double>(
         {static_cast<std::size_t>(nov), static_cast<std::size_t>(n_aux)});
-
     for (int P = 0; P < n_aux; ++P) {
-        // M[μ,ν] = B(μ*n + ν, P)
-        RealMatrix M = xt::zeros<double>(
-            {static_cast<std::size_t>(n_cart), static_cast<std::size_t>(n_cart)});
-        for (int mu = 0; mu < n_cart; ++mu)
-            for (int nu = 0; nu < n_cart; ++nu)
-                M(mu, nu) =
-                    B(static_cast<std::size_t>(mu * n_cart + nu),
-                      static_cast<std::size_t>(P));
-        // (i a) block: Co^T M Cv
-        RealMatrix Co = xt::view(C_cart, xt::all(), xt::range(0, n_occ));
-        RealMatrix Cv =
-            xt::view(C_cart, xt::all(), xt::range(n_occ, n_mo));
-        RealMatrix tmp = xt::linalg::dot(xt::transpose(Co), M);
-        RealMatrix ia = xt::linalg::dot(tmp, Cv); // [n_occ × n_vir]
+        // Row-major (μ,ν) view of column P's contiguous n_cart² slice.
+        auto M_P = xt::adapt(
+            B.data() + static_cast<std::size_t>(P) * n_cart2, n_cart2,
+            xt::no_ownership(),
+            std::array<std::size_t, 2>{static_cast<std::size_t>(n_cart),
+                                       static_cast<std::size_t>(n_cart)});
+        const RealMatrix ia = xt::linalg::dot(
+            xt::transpose(Co), xt::linalg::dot(M_P, Cv)); // [n_occ × n_vir]
         for (int i = 0; i < n_occ; ++i)
             for (int a = 0; a < n_vir; ++a)
                 B_ov(static_cast<std::size_t>(i * n_vir + a),
                      static_cast<std::size_t>(P)) = ia(i, a);
     }
 
-    // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P) — same OS/SS split as mp2_energy.
+    // (ia|jb) ≈ Σ_P B_ov(ia,P) B_ov(jb,P) — one dgemm over B_ov replaces the
+    // scalar inner-P accumulation; OS/SS split + frozen-core logic unchanged.
+    const xt::xtensor<double, 2> iajb_table =
+        xt::linalg::dot(B_ov, xt::transpose(B_ov)); // [nov × nov]
+
     const RealVector& eps = det.orbital_energies(Spin::alpha);
     double e_os = 0.0;
     double e_ss = 0.0;
@@ -474,11 +487,8 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const int jb = j * n_vir + b;
                     const int ib = i * n_vir + b;
                     const int ja = j * n_vir + a;
-                    double iajb = 0.0, ibja = 0.0;
-                    for (int P = 0; P < n_aux; ++P) {
-                        iajb += B_ov(ia, P) * B_ov(jb, P);
-                        ibja += B_ov(ib, P) * B_ov(ja, P);
-                    }
+                    const double iajb = iajb_table(ia, jb);
+                    const double ibja = iajb_table(ib, ja);
                     const double denom = mp_denominator(
                         eps(i), eps(j), eps(n_occ + a), eps(n_occ + b));
                     const double coul = iajb * iajb / denom;

@@ -9,7 +9,8 @@ criteria:
       blocks_from_shells and native::eri_block, contains an
       `#pragma omp parallel for` over the block-pair loop, and no longer
       calls native::eri; the target builds with -DATV_BUILD_HF=ON.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: block-assembled dense ERI matches scalar reference ≤1e-12 per element
     type: code
@@ -18,7 +19,8 @@ criteria:
       Unit test test_cpu_scf_two_electron passes: on the STO-3G p-shell
       fixture max element-wise |eri_dense(block) − native::eri(reference)|
       ≤ 1e-12, including the pure-s and (pp|pp) cases.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: ri_mp2_energy contracts via a single GEMM, no scalar P-loop
     type: code
@@ -27,7 +29,8 @@ criteria:
       over the (n_occ·n_vir)×n_aux B_ov tensor and no `for (int P = 0; P <
       n_aux` accumulation inside the O(no²nv²) amplitude loop, and no
       per-P element-wise M[μν] reconstruction; the target builds.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: RI-MP2 correlation energy unchanged ≤1e-10 Ha vs golden
     type: code
@@ -35,7 +38,8 @@ criteria:
     pass_when: |
       Unit test test_cpu_scf_ri_mp2 passes: ri_mp2_energy e_corr matches
       the embedded hard-coded golden within 1e-10 Ha.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: ao2mo entry N⁴ copy eliminated in mp2 + ccsd shared entry copies
     type: code
@@ -44,7 +48,8 @@ criteria:
       (src/cpu/scf/ccsd.cpp) contains the initializer
       `xt::xtensor<double, 4> cur = eri_ao;`; test_cpu_scf_mp2 passes and
       reg_ccsd-h2-sto3g exits 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: block-ERI MP2 regression reproduces PySCF-pinned H2O/STO-3G e_corr
     type: runtime
@@ -54,7 +59,8 @@ criteria:
       runs reg_posthf-eri-block-mp2, which reproduces the REFERENCE.md
       PySCF-pinned H2O/STO-3G MP2 correlation energy (literal in the source,
       no live PySCF) within 1e-6 Ha and exits 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: all post-HF scf regressions reproduce cited values unchanged
     type: runtime
@@ -71,7 +77,8 @@ criteria:
       reg_casci-h2-sto3g, reg_nevpt2-h2-sto3g, reg_eom-ee-ccsd,
       reg_eom-ea-ccsd, reg_eom-ip-ccsd, reg_eom-sf-ccsd-o2, reg_eom-cc2-h2,
       reg_direct-rpa-h2-sto3g, reg_b2plyp-h2o, reg_delta-scf-n2.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-008
     summary: Doxygen with units on eri_dense and ri_mp2_energy
     type: docs
@@ -79,7 +86,8 @@ criteria:
       IntegralPack::eri_dense (internal/integrals.h) and ri_mp2_energy
       (mp2.h) each carry @brief, @param with units (Hartree/Bohr), and
       @return in their declaring headers.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
 ---
 
 # Acceptance criteria

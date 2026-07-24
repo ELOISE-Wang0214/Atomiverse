@@ -1,7 +1,7 @@
 ---
 slug: scf-review-07-posthf-perf
 title: "post-HF 积分/变换层性能重构（eri_dense 块装配 + RI-MP2 GEMM + ao2mo 入口拷贝消除）"
-status: approved
+status: done
 created: 2026-07-24
 domain: scf / post-hf performance
 queue: scf-review
@@ -55,14 +55,14 @@ grilled: true
 
 ## Tasks
 
-- [ ] Write failing unit test `TestEriDenseBlockEquivalence` in tests/cpu/scf/test_two_electron.cpp (register test_cpu_scf_two_electron in tests/CMakeLists.txt) asserting IntegralPack::eri_dense matches a per-AO native::eri reference tensor ≤1e-12 element-wise on an STO-3G fixture containing p shells
-- [ ] Reimplement IntegralPack::eri_dense in src/cpu/scf/two_electron.cpp over blocks_from_shells + native::eri_block, OpenMP over the canonical outer block-pair index, 8-fold-symmetry scatter into disjoint tensor cells (no thread-local reduction)
-- [ ] Write failing unit test for the GEMM RI-MP2 path in tests/cpu/scf/test_ri_mp2.cpp asserting ri_mp2_energy reproduces the embedded golden e_corr ≤1e-10 Ha
-- [ ] Rewrite ri_mp2_energy in src/cpu/scf/mp2.cpp to assemble B_ov BLAS-shaped and contract (ia|jb)=B_ov·B_ovᵀ with a single xt::linalg::dot, removing the scalar inner-P loop and per-P dense M reconstruction (df.b_tensor()/metric unchanged)
-- [ ] Eliminate the entry N⁴ copy `cur = eri_ao` in ao2mo_mixed_ (src/cpu/scf/mp2.cpp) and ao2mo_uhf_block (src/cpu/scf/ccsd.cpp) by reading eri_ao directly in the first quarter-transform
-- [ ] Add Doxygen for IntegralPack::eri_dense (include/atomiverse/cpu/scf/internal/integrals.h) and ri_mp2_energy (include/atomiverse/cpu/scf/mp2.h) with @brief/@param(units, Hartree/Bohr)/@return
-- [ ] Add regression example regressions/scf/posthf-eri-block-mp2/reg_posthf-eri-block-mp2.cpp (+ REFERENCE.md; register in regressions/CMakeLists.txt) reproducing a PySCF-pinned H2O/STO-3G MP2 correlation energy through the block-assembled dense ERI (hard-coded golden literals, no live PySCF at runtime)
-- [ ] Run full check + test suite and the post-HF `regressions` target
+- [x] Write failing unit test `TestEriDenseBlockEquivalence` in tests/cpu/scf/test_two_electron.cpp (register test_cpu_scf_two_electron in tests/CMakeLists.txt) asserting IntegralPack::eri_dense matches a per-AO native::eri reference tensor ≤1e-12 element-wise on an STO-3G fixture containing p shells
+- [x] Reimplement IntegralPack::eri_dense in src/cpu/scf/two_electron.cpp over blocks_from_shells + native::eri_block, OpenMP over the canonical outer block-pair index, 8-fold-symmetry scatter into disjoint tensor cells (no thread-local reduction)
+- [x] Write failing unit test for the GEMM RI-MP2 path in tests/cpu/scf/test_ri_mp2.cpp asserting ri_mp2_energy reproduces the embedded golden e_corr ≤1e-10 Ha
+- [x] Rewrite ri_mp2_energy in src/cpu/scf/mp2.cpp to assemble B_ov BLAS-shaped and contract (ia|jb)=B_ov·B_ovᵀ with a single xt::linalg::dot, removing the scalar inner-P loop and per-P dense M reconstruction (df.b_tensor()/metric unchanged)
+- [x] Eliminate the entry N⁴ copy `cur = eri_ao` in ao2mo_mixed_ (src/cpu/scf/mp2.cpp) and ao2mo_uhf_block (src/cpu/scf/ccsd.cpp) by reading eri_ao directly in the first quarter-transform
+- [x] Add Doxygen for IntegralPack::eri_dense (include/atomiverse/cpu/scf/internal/integrals.h) and ri_mp2_energy (include/atomiverse/cpu/scf/mp2.h) with @brief/@param(units, Hartree/Bohr)/@return
+- [x] Add regression example regressions/scf/posthf-eri-block-mp2/reg_posthf-eri-block-mp2.cpp (+ REFERENCE.md; register in regressions/CMakeLists.txt) reproducing a PySCF-pinned H2O/STO-3G MP2 correlation energy through the block-assembled dense ERI (hard-coded golden literals, no live PySCF at runtime)
+- [x] Run full check + test suite and the post-HF `regressions` target
 
 ## Testing strategy
 单测只在 `tests/`，路径镜像源码（`src/cpu/scf/two_electron.cpp` → `tests/cpu/scf/test_two_electron.cpp`；`FooClass`→`TestFooClass`），每个单测只针对单一函数/方法，禁止 e2e。

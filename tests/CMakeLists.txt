@@ -680,6 +680,10 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)
     atv_add_cpp_test(test_cpu_scf_delta_scf     cpu/scf/test_delta_scf.cpp)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
+    # scf-review-07-posthf-perf: block-assembled dense ERI (item 17) equivalence
+    # guard — IntegralPack::eri_dense vs per-AO native::eri reference (≤1e-12) +
+    # hard-coded anchors. Mirrors src/cpu/scf/two_electron.cpp.
+    atv_add_cpp_test(test_cpu_scf_two_electron  cpu/scf/test_two_electron.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_roots     cpu/scf/test_rys_roots.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
     # scf-review-06-scf-perf: fused one-sweep jk_rhf vs two-pass g_rhf+k

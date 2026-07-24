@@ -195,6 +195,10 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf h2_nac_vectors)
     atv_add_regression(scf h2_alda_vs_cis)
     atv_add_regression(scf h2o_mp2_sto3g)
+    # scf-review-07-posthf-perf: H2O/STO-3G plain RMP2 end-to-end through the
+    # block-assembled dense ERI tensor (IntegralPack::eri_dense); pinned PySCF
+    # 2.14.0 e_hf/e_corr, no live oracle at ctest time.
+    atv_add_regression(scf posthf-eri-block-mp2)
     atv_add_regression(scf ccsd-h2-sto3g)
     atv_add_regression(scf ccsd-t-h2o-sto3g)
     atv_add_regression(scf mp4-h2-sto3g)

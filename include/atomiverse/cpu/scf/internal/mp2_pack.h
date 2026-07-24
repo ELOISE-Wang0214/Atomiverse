@@ -85,7 +85,13 @@ MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @brief Closed-shell RI-MP2 correlation energy via Coulomb-metric density
 ///        fitting (same `DensityFitting` workspace as SCF RI-J/JK). Does not
 ///        require a materialized 4-center ERI tensor.
-/// @param ints     Integral pack (shells + atoms in Bohr).
+///
+/// The fitted amplitudes B_ov(ia,P) = Σ_μν C_μi C_νa B_μν^P are assembled
+/// BLAS-shaped from the frozen `DensityFitting::b_tensor()` output (Coulomb
+/// metric V=(P|Q), Cholesky-whitened W=L⁻¹ ⇒ V⁻¹), then the (ia|jb) table is
+/// formed with a single dgemm (ia|jb) = Σ_P B_ov(ia,P) B_ov(jb,P). Gaussian
+/// centers are in Bohr; all energies in Hartree.
+/// @param ints     Integral pack (shells + atoms, centers in Bohr).
 /// @param det      Converged closed-shell RHF determinant.
 /// @param e_scf_ha SCF energy [Hartree].
 /// @param aux      Auxiliary basis (def2 universal JKFIT).

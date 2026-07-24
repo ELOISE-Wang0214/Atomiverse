@@ -926,11 +926,15 @@ xt::xtensor<double, 4> ao2mo_uhf_block(const xt::xtensor<double, 4>& eri_ao,
                                        const xt::xtensor<double, 2>& C1,
                                        const xt::xtensor<double, 2>& C2,
                                        const xt::xtensor<double, 2>& C3) {
-    xt::xtensor<double, 4> cur = eri_ao;
     const xt::xtensor<double, 2>* Cs[4] = {&C3, &C2, &C1, &C0};
+    // Round 0 reads eri_ao directly and writes a fresh work tensor; later
+    // rounds iterate on `cur`. Dropping the old `cur = eri_ao` entry copy
+    // saves one full N⁴ materialization per call (contraction order unchanged).
+    xt::xtensor<double, 4> cur;
     for (int round = 0; round < 4; ++round) {
-        const auto sh = cur.shape();
-        auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
+        const xt::xtensor<double, 4>& src = (round == 0) ? eri_ao : cur;
+        const auto sh = src.shape();
+        auto flat = xt::reshape_view(src, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
         xt::xtensor<double, 4> next =
             xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
