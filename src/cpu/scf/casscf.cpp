@@ -10,8 +10,8 @@
 /// orbital gradient g_pq = 2 (F_pq − F_qp) for non-redundant pairs.
 
 #include "atomiverse/cpu/scf/casscf.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/casscf_pack.h"
-#include "atomiverse/cpu/scf/mp2.h"
 
 #include <algorithm>
 #include <cmath>

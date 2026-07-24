@@ -4,11 +4,9 @@
 /// User path: `RHF::mp2(frame)` (closed-shell RMP2 / RI-MP2),
 /// `UHF::mp2(frame)` (UMP2), or `ROHF::mp2(frame)` (ROMP2 = UMP2 on ROHF
 /// orbitals with semi-canonical spin-Fock denominators; PySCF convention).
-/// Free functions below are BLAS kernels — they do **not** introduce
-/// IntegralPack as a user type (that type is private under `scf/internal/`).
+/// This header exposes only the `MP2Result` value type; the AO→MO transform
+/// kernels are private workspace declared in `internal/ao2mo.h`.
 #pragma once
-
-#include <xtensor/containers/xtensor.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -43,19 +41,9 @@ struct MP2Result {
     double e_corr_ss = 0.0;
 };
 
-/// @brief Transform AO two-electron integrals to the MO (ia|jb) ovov block.
-xt::xtensor<double, 4> ao2mo_ovov(const xt::xtensor<double, 4>& ERI,
-                                  const xt::xtensor<double, 2>& C, int n_occ,
-                                  int n_mo);
-
-/// @brief Transform AO two-electron integrals to the full (pq|rs) MO tensor.
-xt::xtensor<double, 4> ao2mo_full(const xt::xtensor<double, 4>& ERI,
-                                  const xt::xtensor<double, 2>& C, int n_mo);
-
-/// @brief Transform the AO core Hamiltonian to the MO basis.
-xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
-                                const xt::xtensor<double, 2>& C, int n_mo);
-
+// The AO→MO integral transforms are private post-HF workspace — declared in
+// internal/ao2mo.h, not on this public path.
+//
 // Pack-based entry is private implementation — declared in
 // internal/mp2_pack.h if needed by unit tests.
 // Public: RHF::mp2(frame) / UHF::mp2(frame) / ROHF::mp2(frame).

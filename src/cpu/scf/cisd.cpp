@@ -18,10 +18,11 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
+#include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 #include "atomiverse/cpu/scf/internal/tdhf_pack.h"
-#include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 
@@ -30,23 +31,6 @@ namespace cpu {
 namespace scf {
 namespace {
 
-/// Spin-orbital label: spatial MO index + spin (0 = α, 1 = β).
-struct SO {
-    int p; ///< Spatial MO index.
-    int s; ///< Spin (0/1).
-};
-
-/// Antisymmetrized spin-orbital integral ⟨pq||rs⟩ from chemist MO ERI (pq|rs).
-double so_eri(const xt::xtensor<double, 4>& eri, const SO& p, const SO& q,
-              const SO& r, const SO& s) {
-    double v = 0.0;
-    if (p.s == r.s && q.s == s.s)
-        v += eri(p.p, r.p, q.p, s.p); // (pr|qs)
-    if (p.s == s.s && q.s == r.s)
-        v -= eri(p.p, s.p, q.p, r.p); // (ps|qr)
-    return v;
-}
-
 /// CIS(D) correction U + V [Hartree] for one CIS root (spin-orbital).
 double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                           const RealVector& eps, int n_occ_sp, int n_mo,
@@ -54,17 +38,17 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                           double omega_ha) {
     const int n_vir_sp = n_mo - n_occ_sp;
     // Spin-orbitals: α-occ, β-occ, α-vir, β-vir
-    std::vector<SO> occ, vir;
+    std::vector<SpinOrbital> occ, vir;
     occ.reserve(static_cast<std::size_t>(2 * n_occ_sp));
     vir.reserve(static_cast<std::size_t>(2 * n_vir_sp));
     for (int i = 0; i < n_occ_sp; ++i)
-        occ.push_back(SO{i, 0});
+        occ.push_back(SpinOrbital{i, 0});
     for (int i = 0; i < n_occ_sp; ++i)
-        occ.push_back(SO{i, 1});
+        occ.push_back(SpinOrbital{i, 1});
     for (int a = 0; a < n_vir_sp; ++a)
-        vir.push_back(SO{n_occ_sp + a, 0});
+        vir.push_back(SpinOrbital{n_occ_sp + a, 0});
     for (int a = 0; a < n_vir_sp; ++a)
-        vir.push_back(SO{n_occ_sp + a, 1});
+        vir.push_back(SpinOrbital{n_occ_sp + a, 1});
     const int no = static_cast<int>(occ.size());
     const int nv = static_cast<int>(vir.size());
 
@@ -87,8 +71,8 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
     auto b_at = [&](int ii, int aa) -> double {
         return b[static_cast<std::size_t>(ii * nv + aa)];
     };
-    auto eps_so = [&](const SO& o) -> double {
-        return eps(static_cast<std::size_t>(o.p));
+    auto eps_so = [&](const SpinOrbital& o) -> double {
+        return eps(static_cast<std::size_t>(o.spat));
     };
 
     // MP2 doubles a_ij^ab = −⟨ab||ij⟩ / (ε_a + ε_b − ε_i − ε_j)
@@ -111,7 +95,7 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                             "RHF::cisd: near-zero MP2 doubles denominator "
                             "(degenerate or non-aufbau reference)");
                     const double abij =
-                        so_eri(eri_mo, vir[static_cast<std::size_t>(aa)],
+                        antisym_eri(eri_mo, vir[static_cast<std::size_t>(aa)],
                                vir[static_cast<std::size_t>(bb)],
                                occ[static_cast<std::size_t>(ii)],
                                occ[static_cast<std::size_t>(jj)]);
@@ -135,12 +119,14 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                     double s = 0.0;
                     for (int cc = 0; cc < nv; ++cc) {
                         // (ab||cj) b_i^c − (ab||ci) b_j^c
-                        s += so_eri(eri_mo, vir[static_cast<std::size_t>(aa)],
+                        s += antisym_eri(eri_mo,
+                                    vir[static_cast<std::size_t>(aa)],
                                     vir[static_cast<std::size_t>(bb)],
                                     vir[static_cast<std::size_t>(cc)],
                                     occ[static_cast<std::size_t>(jj)])
                              * b_at(ii, cc);
-                        s -= so_eri(eri_mo, vir[static_cast<std::size_t>(aa)],
+                        s -= antisym_eri(eri_mo,
+                                    vir[static_cast<std::size_t>(aa)],
                                     vir[static_cast<std::size_t>(bb)],
                                     vir[static_cast<std::size_t>(cc)],
                                     occ[static_cast<std::size_t>(ii)])
@@ -148,12 +134,14 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                     }
                     for (int kk = 0; kk < no; ++kk) {
                         // (ka||ij) b_k^b − (kb||ij) b_k^a
-                        s += so_eri(eri_mo, occ[static_cast<std::size_t>(kk)],
+                        s += antisym_eri(eri_mo,
+                                    occ[static_cast<std::size_t>(kk)],
                                     vir[static_cast<std::size_t>(aa)],
                                     occ[static_cast<std::size_t>(ii)],
                                     occ[static_cast<std::size_t>(jj)])
                              * b_at(kk, bb);
-                        s -= so_eri(eri_mo, occ[static_cast<std::size_t>(kk)],
+                        s -= antisym_eri(eri_mo,
+                                    occ[static_cast<std::size_t>(kk)],
                                     vir[static_cast<std::size_t>(bb)],
                                     occ[static_cast<std::size_t>(ii)],
                                     occ[static_cast<std::size_t>(jj)])
@@ -186,7 +174,7 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                 for (int kk = 0; kk < no; ++kk) {
                     for (int bb = 0; bb < nv; ++bb) {
                         for (int cc = 0; cc < nv; ++cc) {
-                            const double jklbc = so_eri(
+                            const double jklbc = antisym_eri(
                                 eri_mo, occ[static_cast<std::size_t>(jj)],
                                 occ[static_cast<std::size_t>(kk)],
                                 vir[static_cast<std::size_t>(bb)],

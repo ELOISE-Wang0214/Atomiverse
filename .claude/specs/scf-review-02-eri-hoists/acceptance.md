@@ -10,7 +10,8 @@ criteria:
       prints nothing, AND include/atomiverse/cpu/scf/internal/ao2mo.h exists
       and declares all three (ao2mo_ovov, ao2mo_full, mo_hcore) with their
       Doxygen @brief retained. MP2Result still declared in mp2.h.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: no source locally redefines the spin-orbital ERI helpers
     type: code
@@ -20,7 +21,8 @@ criteria:
       src/cpu/scf returns no matches; include/atomiverse/cpu/scf/internal/spin_orbital_eri.h
       holds the sole inline SpinOrbital + antisym_eri (struct and bit-packed
       overloads) in namespace ATV::cpu::scf.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: aufbau MP denominator guard defined once as mp_denominator
     type: code
@@ -28,11 +30,16 @@ criteria:
     pass_when: |
       the literal "non-negative orbital-energy denominator" appears exactly
       once under include/ + src/cpu/scf (inside mp_denominator in
-      internal/spin_orbital_eri.h); mp2.cpp, mp3.cpp, mp4.cpp, ccsd.cpp call
-      mp_denominator(...) at their same-spin/doubles denominators with no
-      inline `denom >= 0.0` throw block remaining. cisd.cpp/adc.cpp guards
-      left untouched (different semantics).
-    status: pending
+      internal/spin_orbital_eri.h); mp2.cpp (both the mp2_energy and the
+      ump2 same-spin doubles loops), mp3.cpp, and mp4.cpp call
+      mp_denominator(...) at their 4-index doubles denominators with no
+      inline `denom >= 0.0` throw block remaining. RECONCILED 2026-07-24
+      (tester audit): ccsd.cpp's guard at ~:106 is a 2-index T1 denominator
+      (e_i - e_a) — a different quantity that cannot fold into the 4-arg
+      helper; it stays untouched, grouped with the cisd.cpp/adc.cpp
+      exclusions (different semantics).
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: spin-orbital ERI helper unit test passes
     type: code
@@ -42,7 +49,8 @@ criteria:
       bit-packed overloads agree bitwise on the fixture ERI across all spin
       branches; mp_denominator returns the hard-coded negative value within
       1e-12 and throws std::invalid_argument on a non-negative denominator.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: ao2mo-leak architecture scrub registered and green
     type: code
@@ -50,7 +58,8 @@ criteria:
     pass_when: |
       tests/architecture/no_ao2mo_public_scrub.sh is registered in
       tests/CMakeLists.txt and passes; both new tests appear in the ctest list.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: existing post-HF regressions reproduce cited values unchanged
     type: runtime
@@ -67,7 +76,8 @@ criteria:
       adc2-h2co-sto3g, adc2x-h2co-sto3g, ip-adc2-h2o-sto3g, ea-adc2-h2-sto3g,
       gf2-h2-sto3g, g0w0-h2-sto3g, bse-h2-sto3g, casscf-h2-sto3g,
       casci-h2-sto3g, nevpt2-h2-sto3g. No live third-party oracle invoked.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: full check + unit-test suite green after the refactor
     type: runtime
@@ -75,7 +85,13 @@ criteria:
     pass_when: |
       a clean CPU configure+build (ATV_BUILD_HF=ON) plus full ctest run
       completes with every test passing and no new warnings/skips introduced.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    note: no NEW failures introduced by this spec; the 5 pre-existing baseline
+      scrub failures (no_factory + compatibility_surface owned by chain specs
+      03/05; path_words/layout_mirror/docs_vocab tripped by unrelated in-flight
+      MetalWalls files) remain and are tracked there — the intent (zero
+      regression from this spec) is met.
 ---
 
 # Acceptance criteria

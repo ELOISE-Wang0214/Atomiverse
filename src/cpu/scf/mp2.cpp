@@ -2,8 +2,10 @@
 /// @brief Implementation of ao2mo_ovov + closed-shell / UMP2 / RI MP2.
 
 #include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/density_fitting.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
+#include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
 #include <cstddef>
 #include <stdexcept>
@@ -53,13 +55,8 @@ double same_spin_corr_(const xt::xtensor<double, 4>& ovov,
                     const double iajb = ovov(i, a, j, b);
                     const double ibja = ovov(i, b, j, a);
                     const double t = iajb - ibja;
-                    const double denom =
-                        eps(i) + eps(j) - eps(n_occ + a) - eps(n_occ + b);
-                    if (denom >= 0.0) {
-                        throw std::invalid_argument(
-                            "ump2_energy: non-negative same-spin orbital-energy "
-                            "denominator; reference is degenerate or non-aufbau.");
-                    }
+                    const double denom = mp_denominator(
+                        eps(i), eps(j), eps(n_occ + a), eps(n_occ + b));
                     e += t * t / denom;
                 }
             }
@@ -219,18 +216,11 @@ MP2Result mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 for (int b = 0; b < n_vir; ++b) {
                     const double iajb = ovov(i, a, j, b);
                     const double ibja = ovov(i, b, j, a);
-                    const double denom =
-                        eps(i) + eps(j) - eps(n_occ + a) - eps(n_occ + b);
                     // Closed-shell aufbau reference: every virtual lies above
                     // every occupied orbital, so the denominator is strictly
-                    // negative. A non-negative value signals a degenerate or
-                    // non-aufbau reference -- reject rather than emit garbage.
-                    if (denom >= 0.0) {
-                        throw std::invalid_argument(
-                            "mp2_energy: non-negative orbital-energy "
-                            "denominator; reference is degenerate or "
-                            "non-aufbau.");
-                    }
+                    // negative (mp_denominator throws otherwise).
+                    const double denom = mp_denominator(
+                        eps(i), eps(j), eps(n_occ + a), eps(n_occ + b));
                     const double coul = iajb * iajb / denom;
                     e_os += coul;
                     e_ss += coul - iajb * ibja / denom;
@@ -489,13 +479,8 @@ MP2Result ri_mp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         iajb += B_ov(ia, P) * B_ov(jb, P);
                         ibja += B_ov(ib, P) * B_ov(ja, P);
                     }
-                    const double denom =
-                        eps(i) + eps(j) - eps(n_occ + a) - eps(n_occ + b);
-                    if (denom >= 0.0)
-                        throw std::invalid_argument(
-                            "ri_mp2_energy: non-negative orbital-energy "
-                            "denominator; reference is degenerate or "
-                            "non-aufbau.");
+                    const double denom = mp_denominator(
+                        eps(i), eps(j), eps(n_occ + a), eps(n_occ + b));
                     const double coul = iajb * iajb / denom;
                     e_os += coul;
                     e_ss += coul - iajb * ibja / denom;

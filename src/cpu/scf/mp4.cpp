@@ -2,8 +2,9 @@
 /// @brief Closed-shell canonical MP4(SDTQ) (spin-orbital residual form).
 
 #include "atomiverse/cpu/scf/mp4.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/mp4_pack.h"
-#include "atomiverse/cpu/scf/mp2.h" // ao2mo_full
+#include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
 #include <cmath>
 #include <stdexcept>
@@ -14,27 +15,6 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-namespace {
-
-/// @brief Spin-orbital label: spatial index + spin (0 = α, 1 = β).
-inline int spat_(int so) { return so >> 1; }
-inline int spin_(int so) { return so & 1; }
-
-/// @brief Chemist (μ ν | λ σ) → physicist ⟨pq|rs⟩ with spin integration.
-inline double phys_(const xt::xtensor<double, 4>& g, int p, int q, int r,
-                    int s) {
-    if (spin_(p) != spin_(r) || spin_(q) != spin_(s))
-        return 0.0;
-    return g(spat_(p), spat_(r), spat_(q), spat_(s));
-}
-
-inline double antisym_(const xt::xtensor<double, 4>& g, int p, int q, int r,
-                       int s) {
-    return phys_(g, p, q, r, s) - phys_(g, p, q, s, r);
-}
-
-} // namespace
 
 MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                      double e_scf_ha, int n_frozen) {
@@ -94,7 +74,9 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     for (int a = 0; a < n_vir_so; ++a)
         v_so[static_cast<std::size_t>(a)] = n_occ_so_full + a;
 
-    auto eps_so = [&](int so) -> double { return eps(spat_(so)); };
+    auto eps_so = [&](int so) -> double {
+        return eps(SpinOrbital::from_packed(so).spat);
+    };
 
     const int no = n_occ_so;
     const int nv = n_vir_so;
@@ -123,16 +105,10 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 for (int b = 0; b < nv; ++b) {
                     const int B = v_so[static_cast<std::size_t>(b)];
                     const double denom =
-                        eps_so(I) + eps_so(J) - eps_so(A) - eps_so(B);
-                    if (denom >= 0.0) {
-                        throw std::invalid_argument(
-                            "mp4_energy: non-negative orbital-energy "
-                            "denominator; reference is degenerate or "
-                            "non-aufbau.");
-                    }
+                        mp_denominator(eps_so(I), eps_so(J), eps_so(A), eps_so(B));
                     const std::size_t k = idx(i, j, a, b);
                     D2[k] = denom;
-                    t2[k] = antisym_(g, I, J, A, B) / denom;
+                    t2[k] = antisym_eri(g, I, J, A, B) / denom;
                 }
             }
         }
@@ -153,7 +129,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         const int K = o_so[static_cast<std::size_t>(k)];
                         for (int l = 0; l < no; ++l) {
                             const int L = o_so[static_cast<std::size_t>(l)];
-                            val += 0.5 * antisym_(g, I, J, K, L) *
+                            val += 0.5 * antisym_eri(g, I, J, K, L) *
                                    t2[idx(k, l, a, b)];
                         }
                     }
@@ -161,7 +137,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         const int Cc = v_so[static_cast<std::size_t>(c)];
                         for (int d = 0; d < nv; ++d) {
                             const int Dd = v_so[static_cast<std::size_t>(d)];
-                            val += 0.5 * antisym_(g, A, B, Cc, Dd) *
+                            val += 0.5 * antisym_eri(g, A, B, Cc, Dd) *
                                    t2[idx(i, j, c, d)];
                         }
                     }
@@ -175,7 +151,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             for (int c = 0; c < nv; ++c) {
                                 const int Cc =
                                     v_so[static_cast<std::size_t>(c)];
-                                s += antisym_(g, AA, K, II, Cc) *
+                                s += antisym_eri(g, AA, K, II, Cc) *
                                      t2[idx(jj, k, bb, c)];
                             }
                         }
@@ -206,7 +182,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const double t = t2[k];
                     const double u = u2[k];
                     const double d = D2[k];
-                    e2 += 0.25 * t * antisym_(g, I, J, A, B);
+                    e2 += 0.25 * t * antisym_eri(g, I, J, A, B);
                     e3 += 0.25 * t * u;
                     t2_norm += 0.25 * t * t;
                     // Second-order doubles t2^(2) = u/D; connected DD piece
@@ -237,7 +213,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const int Bb = v_so[static_cast<std::size_t>(b)];
                     for (int c = 0; c < nv; ++c) {
                         const int Cc = v_so[static_cast<std::size_t>(c)];
-                        X += 0.5 * antisym_(g, J, A, Bb, Cc) *
+                        X += 0.5 * antisym_eri(g, J, A, Bb, Cc) *
                              t2[idx(i, j, b, c)];
                     }
                 }
@@ -248,7 +224,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const int K = o_so[static_cast<std::size_t>(k)];
                     for (int b = 0; b < nv; ++b) {
                         const int Bb = v_so[static_cast<std::size_t>(b)];
-                        X -= 0.5 * antisym_(g, J, K, I, Bb) *
+                        X -= 0.5 * antisym_eri(g, J, K, I, Bb) *
                              t2[idx(j, k, a, b)];
                     }
                 }
@@ -307,13 +283,13 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                                     for (int e = 0; e < nv; ++e) {
                                         const int Ee =
                                             v_so[static_cast<std::size_t>(e)];
-                                        s += antisym_(g, BB, CC, Ee, KK) *
+                                        s += antisym_eri(g, BB, CC, Ee, KK) *
                                              t2[idx(ii, jj, aa, e)];
                                     }
                                     for (int m = 0; m < no; ++m) {
                                         const int Mm =
                                             o_so[static_cast<std::size_t>(m)];
-                                        s -= antisym_(g, Mm, CC, JJ, KK) *
+                                        s -= antisym_eri(g, Mm, CC, JJ, KK) *
                                              t2[idx(ii, m, aa, bb)];
                                     }
                                     (void)II;

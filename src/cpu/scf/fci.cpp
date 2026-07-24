@@ -12,6 +12,7 @@
 
 #include "atomiverse/cpu/scf/casci.h"
 #include "atomiverse/cpu/scf/fci.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/casci_pack.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 
@@ -25,8 +26,6 @@
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
-
-#include "atomiverse/cpu/scf/mp2.h"
 
 namespace ATV {
 namespace cpu {

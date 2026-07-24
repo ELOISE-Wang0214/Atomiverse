@@ -655,6 +655,9 @@ if(ATV_BUILD_HF)
     # regressions/scf/soscf_hard_case.
     atv_add_cpp_test(test_soscf                   cpu/scf/test_soscf.cpp)
     atv_add_cpp_test(test_cpu_scf_mp2           cpu/scf/test_mp2.cpp)
+    # scf-review-02-eri-hoists: hosted spin-orbital ERI helpers
+    # (SpinOrbital / antisym_eri / mp_denominator) in internal/spin_orbital_eri.h.
+    atv_add_cpp_test(test_cpu_scf_spin_orbital_eri cpu/scf/test_spin_orbital_eri.cpp)
     atv_add_cpp_test(test_cpu_scf_fci           cpu/scf/test_fci.cpp)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)
     atv_add_cpp_test(test_cpu_scf_delta_scf     cpu/scf/test_delta_scf.cpp)
@@ -949,6 +952,15 @@ set_tests_properties(test_module_off_excludes_sources PROPERTIES
 add_test(
     NAME test_no_factory_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_factory_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate (scf-review-02-eri-hoists): the AO→MO transforms live in the
+# private internal/ao2mo.h, not public mp2.h, and the spin-orbital
+# antisymmetrization helpers (struct SO / so_eri / spat_ / spin_ / phys_ /
+# antisym_) exist in exactly one hosted place. Pure grep — every build config.
+add_test(
+    NAME test_no_ao2mo_public_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_ao2mo_public_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: compatibility-only CPU aliases/overloads stay deleted and the

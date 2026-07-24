@@ -1,7 +1,7 @@
 ---
 slug: scf-review-02-eri-hoists
 title: "scf-review-02: hoist ao2mo to internal header + unify spin-orbital ERI helpers"
-status: approved
+status: done
 created: 2026-07-24
 domain: scf / post-hf
 queue: scf-review
@@ -69,16 +69,16 @@ grilled: true
 
 ## Tasks
 
-- [ ] Write failing unit tests for spin-orbital ERI helpers (tests/cpu/scf/test_spin_orbital_eri.cpp → TestSpinOrbitalEri): struct-vs-packed antisym_eri equivalence on a fixture ERI + mp_denominator aufbau throw
-- [ ] Create include/atomiverse/cpu/scf/internal/spin_orbital_eri.h with SpinOrbital, antisym_eri (struct + bit-packed overloads), mp_denominator
-- [ ] Create include/atomiverse/cpu/scf/internal/ao2mo.h with the ao2mo_ovov/ao2mo_full/mo_hcore declarations, and remove those three declarations from include/atomiverse/cpu/scf/mp2.h (keep MP2Result)
-- [ ] Repoint src/cpu/scf/mp2.cpp to include internal/ao2mo.h and adopt mp_denominator at its aufbau guards
-- [ ] Port src/cpu/scf/ccsd.cpp and src/cpu/scf/cisd.cpp to hosted SpinOrbital/antisym_eri and internal/ao2mo.h (delete local SO/so_eri)
-- [ ] Port src/cpu/scf/mp3.cpp and src/cpu/scf/mp4.cpp to hosted bit-packed antisym_eri + mp_denominator and internal/ao2mo.h (delete local spat_/spin_/phys_/antisym_)
-- [ ] Repoint the remaining post-HF consumers (casscf.cpp, fci.cpp, g0w0.cpp, bse.cpp, adc.cpp, gf2.cpp, internal/mp2_gradient.cpp) to internal/ao2mo.h and drop mp2.h where MP2Result/mp2_energy is unused
-- [ ] Add grep-gate scrub tests/architecture/no_ao2mo_public_scrub.sh and register both new tests in tests/CMakeLists.txt
-- [ ] Verify the existing post-HF regression families under regressions/scf/ reproduce their cited values unchanged (mp2/mp3/mp4/ccsd/cisd/adc/gf2/g0w0/bse/casscf/fci)
-- [ ] Run full check + test suite
+- [x] Write failing unit tests for spin-orbital ERI helpers (tests/cpu/scf/test_spin_orbital_eri.cpp → TestSpinOrbitalEri): struct-vs-packed antisym_eri equivalence on a fixture ERI + mp_denominator aufbau throw
+- [x] Create include/atomiverse/cpu/scf/internal/spin_orbital_eri.h with SpinOrbital, antisym_eri (struct + bit-packed overloads), mp_denominator
+- [x] Create include/atomiverse/cpu/scf/internal/ao2mo.h with the ao2mo_ovov/ao2mo_full/mo_hcore declarations, and remove those three declarations from include/atomiverse/cpu/scf/mp2.h (keep MP2Result)
+- [x] Repoint src/cpu/scf/mp2.cpp to include internal/ao2mo.h and adopt mp_denominator at its aufbau guards
+- [x] Port src/cpu/scf/ccsd.cpp and src/cpu/scf/cisd.cpp to hosted SpinOrbital/antisym_eri and internal/ao2mo.h (delete local SO/so_eri)
+- [x] Port src/cpu/scf/mp3.cpp and src/cpu/scf/mp4.cpp to hosted bit-packed antisym_eri + mp_denominator and internal/ao2mo.h (delete local spat_/spin_/phys_/antisym_)
+- [x] Repoint the remaining post-HF consumers (casscf.cpp, fci.cpp, g0w0.cpp, bse.cpp, adc.cpp, gf2.cpp, internal/mp2_gradient.cpp) to internal/ao2mo.h and drop mp2.h where MP2Result/mp2_energy is unused
+- [x] Add grep-gate scrub tests/architecture/no_ao2mo_public_scrub.sh and register both new tests in tests/CMakeLists.txt
+- [x] Verify the existing post-HF regression families under regressions/scf/ reproduce their cited values unchanged (mp2/mp3/mp4/ccsd/cisd/adc/gf2/g0w0/bse/casscf/fci)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

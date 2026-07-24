@@ -18,10 +18,11 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 
 namespace ATV {
@@ -104,13 +105,8 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
         for (int j = 0; j < nocc; ++j)
             for (int a = 0; a < nvir; ++a)
                 for (int b = 0; b < nvir; ++b) {
-                    const double denom =
-                        eps(i) + eps(j) - eps(nocc + a) - eps(nocc + b);
-                    if (denom >= 0.0)
-                        throw std::invalid_argument(
-                            "mp2_analytic_forces: non-negative orbital-energy "
-                            "denominator; reference is degenerate or "
-                            "non-aufbau");
+                    const double denom = mp_denominator(
+                        eps(i), eps(j), eps(nocc + a), eps(nocc + b));
                     t2(i, j, a, b) = ovov(i, a, j, b) / denom;
                 }
 

@@ -20,8 +20,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 

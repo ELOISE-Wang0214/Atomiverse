@@ -25,27 +25,13 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
 
-#include "atomiverse/cpu/scf/mp2.h"
+#include "atomiverse/cpu/scf/internal/ao2mo.h"
+#include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
 namespace {
-
-struct SO {
-    int p; ///< Spatial MO index.
-    int s; ///< Spin (0 = α, 1 = β).
-};
-
-inline double so_eri(const xt::xtensor<double, 4>& eri, const SO& p, const SO& q,
-                     const SO& r, const SO& s) {
-    double v = 0.0;
-    if (p.s == r.s && q.s == s.s)
-        v += eri(p.p, r.p, q.p, s.p); // (pr|qs)
-    if (p.s == s.s && q.s == r.s)
-        v -= eri(p.p, s.p, q.p, r.p); // (ps|qr)
-    return v;
-}
 
 /// τ_ij^ab = t_ij^ab + ½ fac · P(ij)P(ab) t_i^a t_j^b  (PySCF gintermediates).
 xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
@@ -462,21 +448,22 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
 
     const int no = 2 * n_occ_sp;
     const int nv = 2 * n_vir_sp;
-    std::vector<SO> so(static_cast<std::size_t>(no + nv));
+    std::vector<SpinOrbital> so(static_cast<std::size_t>(no + nv));
     for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(i)] = SO{i, 0};
+        so[static_cast<std::size_t>(i)] = SpinOrbital{i, 0};
     for (int i = 0; i < n_occ_sp; ++i)
-        so[static_cast<std::size_t>(n_occ_sp + i)] = SO{i, 1};
+        so[static_cast<std::size_t>(n_occ_sp + i)] = SpinOrbital{i, 1};
     for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + a)] = SO{n_occ_sp + a, 0};
+        so[static_cast<std::size_t>(no + a)] = SpinOrbital{n_occ_sp + a, 0};
     for (int a = 0; a < n_vir_sp; ++a)
-        so[static_cast<std::size_t>(no + n_vir_sp + a)] = SO{n_occ_sp + a, 1};
+        so[static_cast<std::size_t>(no + n_vir_sp + a)] =
+            SpinOrbital{n_occ_sp + a, 1};
 
     auto g = [&](int p, int q, int r, int s) -> double {
-        return so_eri(eri_mo, so[static_cast<std::size_t>(p)],
-                      so[static_cast<std::size_t>(q)],
-                      so[static_cast<std::size_t>(r)],
-                      so[static_cast<std::size_t>(s)]);
+        return antisym_eri(eri_mo, so[static_cast<std::size_t>(p)],
+                           so[static_cast<std::size_t>(q)],
+                           so[static_cast<std::size_t>(r)],
+                           so[static_cast<std::size_t>(s)]);
     };
 
     const std::size_t No = static_cast<std::size_t>(no);
@@ -1037,7 +1024,7 @@ CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
     }
 
     // Chemist MO ERIs for spin pairs: eri_στ(p,q,r,s) = (p_σ q_σ | r_τ s_τ).
-    // so_eri needs (pr|qs) = eri_στ(p,r,q,s) when p,r ∈ σ and q,s ∈ τ.
+    // ⟨pq‖rs⟩ needs (pr|qs) = eri_στ(p,r,q,s) when p,r ∈ σ and q,s ∈ τ.
     const xt::xtensor<double, 4> eri_aa =
         ao2mo_uhf_block(ints.ERI, Ca, Ca, Ca, Ca);
     const xt::xtensor<double, 4> eri_bb =
@@ -1047,47 +1034,45 @@ CCSDSolution uccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
     const xt::xtensor<double, 4> eri_ba =
         ao2mo_uhf_block(ints.ERI, Cb, Cb, Ca, Ca); // (p_b q_b | r_a s_a)
 
-    // Spin-orbital list: occ [α|β], vir [α|β].
-    struct SO {
-        int p; // spatial MO index
-        int s; // 0=α, 1=β
-    };
+    // Spin-orbital list: occ [α|β], vir [α|β]. The block-spin gather below
+    // reads spin-pair ERIs directly, so it keeps its own inline
+    // antisymmetrization rather than the single-tensor antisym_eri.
     const int no = na + nb;
     const int nv = nva + nvb;
-    std::vector<SO> so(static_cast<std::size_t>(no + nv));
+    std::vector<SpinOrbital> so(static_cast<std::size_t>(no + nv));
     for (int i = 0; i < na; ++i)
-        so[static_cast<std::size_t>(i)] = SO{i, 0};
+        so[static_cast<std::size_t>(i)] = SpinOrbital{i, 0};
     for (int i = 0; i < nb; ++i)
-        so[static_cast<std::size_t>(na + i)] = SO{i, 1};
+        so[static_cast<std::size_t>(na + i)] = SpinOrbital{i, 1};
     for (int a = 0; a < nva; ++a)
-        so[static_cast<std::size_t>(no + a)] = SO{na + a, 0};
+        so[static_cast<std::size_t>(no + a)] = SpinOrbital{na + a, 0};
     for (int a = 0; a < nvb; ++a)
-        so[static_cast<std::size_t>(no + nva + a)] = SO{nb + a, 1};
+        so[static_cast<std::size_t>(no + nva + a)] = SpinOrbital{nb + a, 1};
 
-    auto chemist = [&](const SO& p, const SO& q, const SO& r,
-                       const SO& s) -> double {
+    auto chemist = [&](const SpinOrbital& p, const SpinOrbital& q,
+                       const SpinOrbital& r, const SpinOrbital& s) -> double {
         // (pq|rs) with p,q same spin and r,s same spin.
-        if (p.s != q.s || r.s != s.s)
+        if (p.spin != q.spin || r.spin != s.spin)
             return 0.0;
-        if (p.s == 0 && r.s == 0)
-            return eri_aa(p.p, q.p, r.p, s.p);
-        if (p.s == 0 && r.s == 1)
-            return eri_ab(p.p, q.p, r.p, s.p);
-        if (p.s == 1 && r.s == 0)
-            return eri_ba(p.p, q.p, r.p, s.p);
-        return eri_bb(p.p, q.p, r.p, s.p);
+        if (p.spin == 0 && r.spin == 0)
+            return eri_aa(p.spat, q.spat, r.spat, s.spat);
+        if (p.spin == 0 && r.spin == 1)
+            return eri_ab(p.spat, q.spat, r.spat, s.spat);
+        if (p.spin == 1 && r.spin == 0)
+            return eri_ba(p.spat, q.spat, r.spat, s.spat);
+        return eri_bb(p.spat, q.spat, r.spat, s.spat);
     };
 
     auto g = [&](int p, int q, int r, int s) -> double {
         // ⟨pq||rs⟩ = (pr|qs) − (ps|qr)
-        const SO& P = so[static_cast<std::size_t>(p)];
-        const SO& Q = so[static_cast<std::size_t>(q)];
-        const SO& R = so[static_cast<std::size_t>(r)];
-        const SO& S = so[static_cast<std::size_t>(s)];
+        const SpinOrbital& P = so[static_cast<std::size_t>(p)];
+        const SpinOrbital& Q = so[static_cast<std::size_t>(q)];
+        const SpinOrbital& R = so[static_cast<std::size_t>(r)];
+        const SpinOrbital& S = so[static_cast<std::size_t>(s)];
         double v = 0.0;
-        if (P.s == R.s && Q.s == S.s)
+        if (P.spin == R.spin && Q.spin == S.spin)
             v += chemist(P, R, Q, S); // (pr|qs)
-        if (P.s == S.s && Q.s == R.s)
+        if (P.spin == S.spin && Q.spin == R.spin)
             v -= chemist(P, S, Q, R); // (ps|qr)
         return v;
     };
