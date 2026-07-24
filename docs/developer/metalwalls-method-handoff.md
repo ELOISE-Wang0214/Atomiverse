@@ -9,20 +9,35 @@ Last assign: **wave 4 — 2026-07-24** on `dev`
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
-## Recover inventory (2026-07-24, pre assign wave 4)
+## Recover inventory (2026-07-24, post-assign wave 4)
+
+| Source | Result |
+| ------ | ------ |
+| A queue `## in_progress` `[~]` | **10** (wave-4 staffed, work not started) |
+| B open `.claude/specs/` MD/electrochem | **0** (only PySCF deferred live — out of loop) |
+| C unmerged `wf/<slug>` (this loop) | **0** (wave-1/2/3 tips ancestors of `dev`; no wave-4 branches yet) |
+| D handoff incomplete rows | **none** beyond queue `[~]` |
+| E half-written `regressions/{md,forcefield}/` | **0** MW/wave-4 slugs; orphans only method-ladder (see below) |
+
+**Resume set (10):** `maze-charge-dynamics`, `electrode-atom-forces`,
+`global-electroneutrality-bo`, `gaussian-coul-neighborlist`,
+`displacement-dfield-md`, `born-buck-neighborlist-bulk`, `const-pot-tip4p-edl`,
+`charge-charge-autocorr`, `elastance-condition-observer`,
+`constant-velocity-smd`. Keep as `[~]`; do **not** demote to pending.
+**incomplete_remaining=10**. Pending=3 (XL dipoles, QEq, TI capacitance);
+blocked=4. Next: worktrees + **spec-first** on each `wf/<slug>`.
+
+### Recover inventory (2026-07-24, pre assign wave 4) — historical
 
 | Source | Result |
 | ------ | ------ |
 | A queue `## in_progress` `[~]` | **0** before assign; **10** after |
-| B open `.claude/specs/` MD/electrochem | **0** (wave-3 specs deleted; only PySCF deferred live — out of loop) |
-| C unmerged `wf/<slug>` (this loop) | **0** (all 26 wave-1/2/3 tips are ancestors of `dev`; ahead=0) |
+| B open `.claude/specs/` MD/electrochem | **0** |
+| C unmerged `wf/<slug>` (this loop) | **0** |
 | D handoff incomplete rows | **none** |
-| E half-written `regressions/{md,forcefield}/` | **0** MW slugs (all 26 have `REFERENCE.md` + reg sources) |
+| E half-written `regressions/{md,forcefield}/` | **0** MW slugs |
 
-**Resume set:** empty. **incomplete_remaining=0** at assign start.
-Wave-4 gap-census had refilled **pending=13**; assign staffed **10** →
-`## in_progress` `[~]`; **pending=3** remain (XL dipoles, QEq, TI capacitance).
-Blocked 4 remain out of scope.
+**Resume set then:** empty at assign start. Gap-census pending=13 → staffed 10.
 
 ## Wave 1 summary (historical — harnessed 2026-07-23)
 

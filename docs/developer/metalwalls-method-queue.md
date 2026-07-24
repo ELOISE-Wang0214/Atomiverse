@@ -17,12 +17,15 @@ Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
 Census: **2026-07-24 wave 4 gap-census** (parent `dev` @ post–harness wave 3).
-Recover re-check: **incomplete_count=0** (A–E empty). Open MD/electrochem
-specs: **none**. Unmerged in-scope `wf/<slug>` with `ahead_of_dev>0`: **none**.
-Blocked (4) preserved. **Foothold ≠ closed:** waves 1–3 shipped 26 textbook /
-observer / Component footholds; production-depth and residual map ○ rows reopened
-below (NeighborList salt/Gaussian pairs, MaZe, D-field, electrode BO forces,
-charge tools, CV-SMD, aqueous const-pot product, QEq / XL-PIM / TI).
+**Recover (post-assign, 2026-07-24):** incomplete_count=**10** — all wave-4
+`## in_progress` `[~]` (not started: no open MD specs, no `wf/<slug>` ahead of
+`dev`, no half-written regressions). Do **not** demote to pending. Open
+MD/electrochem specs: **none** (PySCF deferred live specs are out of loop).
+Unmerged in-scope `wf/<slug>` ahead_of_dev: **none**. Blocked (4) preserved.
+**Foothold ≠ closed:** waves 1–3 shipped 26 textbook / observer / Component
+footholds; production-depth and residual map ○ rows remain staffed below
+(NeighborList salt/Gaussian pairs, MaZe, D-field, electrode BO forces, charge
+tools, CV-SMD, aqueous const-pot product); pending XL-PIM / QEq / TI (3).
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
   integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6),
