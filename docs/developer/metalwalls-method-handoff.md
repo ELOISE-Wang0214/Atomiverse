@@ -1,27 +1,28 @@
 # MetalWalls method loop — handoff
 
-Last harness: **wave 3 — 2026-07-24** on `dev`
-(`chore(harness): metalwalls wf wave 3`). Prior: harness wave 2
-(`chore(harness): metalwalls wf wave 2`); assign wave 3
-(`chore(queue): metalwalls assign wave 3`).
+Last assign: **wave 4 — 2026-07-24** on `dev`
+(`chore(queue): metalwalls assign wave 4`). Prior harness wave 3
+(`chore(harness): metalwalls wf wave 3`); recover
+(`chore(queue): metalwalls recover incomplete`).
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
-## Recover inventory (2026-07-24, post harness wave 3 — re-checked)
+## Recover inventory (2026-07-24, pre assign wave 4)
 
 | Source | Result |
 | ------ | ------ |
-| A queue `## in_progress` `[~]` | **0** |
+| A queue `## in_progress` `[~]` | **0** before assign; **10** after |
 | B open `.claude/specs/` MD/electrochem | **0** (wave-3 specs deleted; only PySCF deferred live — out of loop) |
 | C unmerged `wf/<slug>` (this loop) | **0** (all 26 wave-1/2/3 tips are ancestors of `dev`; ahead=0) |
 | D handoff incomplete rows | **none** |
 | E half-written `regressions/{md,forcefield}/` | **0** MW slugs (all 26 have `REFERENCE.md` + reg sources) |
 
-**Resume set:** empty. **incomplete_remaining=0**. Classical MW staff queue
-exhausted (pending empty; blocked 4 remain out of scope). No queue normalize
-needed (nothing incomplete to promote to `[~]`).
+**Resume set:** empty. **incomplete_remaining=0** at assign start.
+Wave-4 gap-census had refilled **pending=13**; assign staffed **10** →
+`## in_progress` `[~]`; **pending=3** remain (XL dipoles, QEq, TI capacitance).
+Blocked 4 remain out of scope.
 
 ## Wave 1 summary (historical — harnessed 2026-07-23)
 
@@ -107,18 +108,19 @@ needed (nothing incomplete to promote to `[~]`).
 MD-only flags: `ATV_BUILD_MD=ON`, `ATV_BUILD_KSPACE=ON`, `ATV_BUILD_TESTS=ON`,
 `ATV_BUILD_REGRESSIONS=ON`, **HF/PW/GPW/CUDA/Torch OFF**.
 
-## Next (after wave 3 — queue empty)
+## Next (after assign wave 4 — 2026-07-24)
 
-Classical MetalWalls staff queue is **exhausted** on `dev` (26 done, 0 pending,
-0 in_progress). Next shift options:
+Classical MW **foothold** staff queue (waves 1–3, 26 done) is closed; **production
+depth + residual map ○** staffed as wave-4 **in_progress=10**, **pending=3**,
+`blocked=4`. Map ATV marks in `.claude/notes/metalwalls-capability-map.md`
+(foothold ≠ ✓).
 
-1. **Census** from map E11/E12 or residual MD ○ (constant-velocity SMD, RESPA,
-   …) only if product-scheduled — do not invent rows casually.
-2. **Tutorial** wave for wave-3 methods if docs lag code.
-3. Unblock tracks remain out of loop: CUDA const-pot, AIM/DAIM, ML PINN wall,
-   periodic hybrid DFT electrodes.
+1. **Worktrees** for each `[~]` slug: `wf/<slug>` under
+   `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`.
+2. **Spec-first** on each worker: write `.claude/specs/<slug>/` before code.
+3. Implement + MD-only build + unit/regression; then merge → harness → tutorial.
+4. Remaining pending (XL dipoles, QEq, TI capacitance) wait for next assign.
+5. Unblock tracks remain out of loop: CUDA const-pot, AIM/DAIM, ML PINN wall,
+   periodic hybrid DFT electrodes, full 2D-PBC product, PLUMED.
 
-Parent stays on **`dev`**. Workers use isolation worktrees `wf/<slug>` only
-under `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/grok-worktrees/`
-(never bulk under `/home/jicli594`). Default **staff_count=10**. Spec-first:
-write `.claude/specs/<slug>/` **before** code on each worker branch.
+Parent stays on **`dev`**. Default **staff_count=10**.

@@ -23,8 +23,12 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-MetalWalls wave 3 closed 2026-07-24 (specs deleted). No open MD/electrochem
-specs on `dev`. Classical MW staff queue exhausted (pending empty).
+MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
+(2026-07-24) staffed 10 production-depth / residual map rows to
+`## in_progress` in `docs/developer/metalwalls-method-queue.md` (MaZe,
+NeighborList salt/Gaussian, electrode forces, CV-SMD, aqueous EDL, D-field,
+charge tools, …); pending=3 remain. No open MD/electrochem specs on `dev`
+yet — workers write `.claude/specs/<slug>/` on `wf/<slug>` before impl.
 
 CP2K wave 2 closed 2026-07-24 (specs deleted). Incomplete leftover
 `gpw-kpoints-si` has **no** open spec dir — write-first on resume.
