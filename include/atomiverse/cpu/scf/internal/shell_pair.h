@@ -168,6 +168,29 @@ struct ShellBlockPairList {
     /// @param P Total RHF density matrix P = 2*P_occ [n x n, unitless].
     /// @param[out] K Exchange matrix [n x n, Hartree], symmetric, no 0.5 factor.
     void k(const RealMatrix& P, RealMatrix& K) const;
+
+    /// @brief Fused one-sweep restricted J and K from a single shell-block
+    ///        ERI quartet scan.
+    ///
+    /// Produces the bare Coulomb matrix `J_ij = sum_kl P_kl (ij|kl)` and the
+    /// bare exchange matrix `K_ij = sum_kl P_kl (ik|jl)` (NO 0.5 factor, no
+    /// `alpha_hf`) in ONE `eri_block` pass — the Coulomb accumulation of
+    /// `g_rhf` and the 8-term exchange accumulation of `k` share the same
+    /// evaluated integrals, so this is algebraically exact vs the two-pass
+    /// `g_rhf` (J = G + 0.5*K) + `k`, differing only in floating-point add
+    /// order. The restricted global hybrid then assembles
+    /// `F = Hcore + J - 0.5*alpha_hf*K + Vxc`.
+    ///
+    /// K is emitted with the SAME (unscaled) normalization as
+    /// `ShellBlockPairList::k`, kept separable from J so a later
+    /// range-separated (erf-attenuated) exchange operator can add a second K
+    /// without J+K being fused into an opaque single matrix.
+    ///
+    /// @param P_total Total RHF density matrix P = 2*P_occ [n x n, unitless].
+    /// @param[out] J  Bare Coulomb matrix [n x n, Hartree].
+    /// @param[out] K  Bare exchange matrix [n x n, Hartree], symmetric, no
+    ///                0.5 factor (RSH-separable).
+    void jk_rhf(const RealMatrix& P_total, RealMatrix& J, RealMatrix& K) const;
 };
 
 /// @brief Group a flat vector of AO-level `native::Shell` entries into

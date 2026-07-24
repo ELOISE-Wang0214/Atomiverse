@@ -26,6 +26,7 @@
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/rys_roots.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -378,6 +379,21 @@ static void g_shift_ij(double* gaxis, const RysEnv& env, double rirj_d) {
 // its own buffer.
 static thread_local std::vector<double> tls_g_buf;
 
+// Precomputed angular index offsets for one canonical quartet. Each worker
+// thread reuses one buffer across calls (resize-if-smaller), so the millions
+// of shell-block quartets in a direct-SCF Fock build stop heap-allocating a
+// fresh vector per quartet. Fully overwritten each call (no zeroing needed);
+// per-thread storage keeps the Fock builder's `#pragma omp parallel` race-free.
+struct AngIdx {
+    int ox, oy, oz, out_idx;
+};
+static thread_local std::vector<AngIdx> tls_ang_idx;
+
+// Scratch for the non-canonical wrapper's canonical-kernel output. Reused
+// per thread (resize-if-smaller); the used prefix is zeroed before each
+// canonical accumulation.
+static thread_local std::vector<double> tls_swap_scratch;
+
 // ── Canonical-order ERI kernel ───────────────────────────────────────
 // Runs the 2D-VRR + HRR assuming `li >= lj` and `lk >= ll`. The public
 // `rys_eri_block` wrapper swaps shells and transposes the output buffer
@@ -407,12 +423,13 @@ static void rys_eri_block_canonical(const ShellBlock& A, const ShellBlock& B,
     const int n_out = env.nfi * nbcd;
 
     // ── Precompute angular index offsets (invariant across primitives) ──
-    // Heap-allocated because d-shell quartets need up to 6^4 = 1296 entries.
-    // The derivative kernel already uses std::vector; we match it here.
-    struct AngIdx {
-        int ox, oy, oz, out_idx;
-    };
-    std::vector<AngIdx> ang_idx(static_cast<size_t>(n_out));
+    // d-shell quartets need up to 6^4 = 1296 entries. The buffer is a
+    // per-thread thread_local reused across quartets (resize-if-smaller),
+    // fully overwritten below (indices 0..n_out-1), so no zeroing is required
+    // and no heap allocation happens on the hot path.
+    if (tls_ang_idx.size() < static_cast<size_t>(n_out))
+        tls_ang_idx.resize(static_cast<size_t>(n_out));
+    AngIdx* ang_idx = tls_ang_idx.data();
     {
         int c = 0;
         for (int ia = 0; ia < env.nfi; ++ia)
@@ -1070,9 +1087,14 @@ void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
     const int nbe = Be.n_cart;
     const int nce = Ce.n_cart;
     const int nde = De.n_cart;
-    std::vector<double> scratch(static_cast<size_t>(nae) * nbe * nce * nde,
-                                0.0);
-    rys_eri_block_canonical(Ae, Be, Ce, De, scratch.data());
+    // Per-thread reused scratch (resize-if-smaller); the canonical kernel
+    // accumulates (+=), so zero the used prefix before the call.
+    const size_t sc_need = static_cast<size_t>(nae) * nbe * nce * nde;
+    if (tls_swap_scratch.size() < sc_need)
+        tls_swap_scratch.resize(sc_need);
+    double* scratch = tls_swap_scratch.data();
+    std::fill(scratch, scratch + sc_need, 0.0);
+    rys_eri_block_canonical(Ae, Be, Ce, De, scratch);
 
     const int na = A.n_cart;
     const int nb = B.n_cart;

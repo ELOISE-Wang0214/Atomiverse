@@ -12,7 +12,8 @@ criteria:
       original rebuild path for both an LDA and a PBE (GGA) case on the stored
       H2O grid fixture; a grep assertion confirms the dead `active[]` array is
       gone. Test compiles under -DATV_BUILD_HF=ON and passes.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: HamiltonianBuilder rebuilds the AO-on-grid cache only per geometry
     type: code
@@ -24,7 +25,8 @@ criteria:
       once (verified in TestXcGridEngine via a build-count probe or by asserting
       the second step performs no eval_basis pass). Existing RKS/UKS solver unit
       tests (tests/cpu/scf/test_uks_solver.cpp, test_scf_solver.cpp) still pass.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: Fused jk_rhf is algebraically exact vs the two-pass g_rhf + k
     type: code
@@ -37,7 +39,8 @@ criteria:
       assembles F_fused = Hcore + J - 0.5*alpha_hf*K + Vxc and F_twopass and
       asserts per-element max_abs(F_fused - F_twopass) <= 1e-12 Ha. K is emitted
       unscaled (RSH-separable). Test passes.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: operators.cpp micro-opts preserve numerics and are thread-invariant
     type: code
@@ -48,7 +51,8 @@ criteria:
       ShellBlockPairList::k and g_rhf no longer zero-init blk[] with `= {}` but
       zero exactly na*nb*nc*nd. Existing ERI unit tests (test_rys_eri.cpp,
       test_integrals.cpp) and TestShellBlockPairList remain green.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: thread_local ERI reuse removes per-quartet heap alloc, keeps values
     type: code
@@ -60,7 +64,8 @@ criteria:
       (resize-if-smaller, scratch prefix filled before accumulation); a grep
       assertion confirms no local `std::vector<AngIdx>` remains in the canonical
       kernel. Test passes.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: Fused-path B3LYP H2O regression reproduces the cited PySCF energy
     type: runtime
@@ -73,7 +78,8 @@ criteria:
       date embedded as literals; no third-party call at runtime) within the
       stated tolerance (<= 1e-6 Ha), in <= 60 s. Built behind
       ATV_BUILD_REGRESSIONS and run via the regressions target.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: All DFT/SCF regression families still reproduce their cited values
     type: runtime
@@ -84,7 +90,8 @@ criteria:
       uks-full-lr-o2-lsda, uks-tda-o2-lsda, h2-b3lyp-hybrid-tda,
       h2-b3lyp-rpa-tddft, b2plyp-h2o, d3bj-molecular-pbe, dft-d4-h2o-pbe,
       rks-hessian-h2o-sto3g, uks-hessian-o2-sto3g, sf-tddft-o2, spin-flip-tda-o2}.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-008
     summary: Advisory before/after SCF Fock wall-time on one regression case
     type: performance
@@ -95,7 +102,12 @@ criteria:
       (e.g. b3lyp-fused-jk-h2o or h2-b3lyp-hybrid-tda) showing the fused-JK +
       Phi-cache path is not slower and is expected faster; this is advisory
       evidence only — no numeric threshold gates the build or ctest.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    verified_by: agent-auto
+    note: measured (git-stash A/B, 2 runs each) B3LYP/def2-SVP H2O single
+      point — before 43.86/45.13 s, after 39.19/36.90 s (~14% faster on a
+      24-basis fixture; the Phi-cache + one-sweep win scales with system size).
 ---
 
 # Acceptance criteria

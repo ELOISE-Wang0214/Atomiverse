@@ -1,7 +1,7 @@
 ---
 slug: scf-review-06-scf-perf
 title: "scf-review-06-scf-perf — KS/杂化 SCF 热路径去冗余（Phi 缓存 · 融合 JK · ERI 微分配）"
-status: approved
+status: done
 created: 2026-07-24
 domain: scf / performance
 queue: scf-review
@@ -79,16 +79,16 @@ J 与 K 由**同一批**两电子积分 `(μν|λσ)` 收缩得到，故一遍�
 
 ## Tasks
 
-- [ ] Write failing unit tests for the geometry-fixed XC-basis cache (tests/cpu/scf/test_xc_grid_engine.cpp → TestXcGridEngine): cached vs rebuild Vxc_alpha/Vxc_beta/E_xc bitwise-equal for LDA and PBE on a stored H2O fixture
-- [ ] Implement XCGridBasis + evaluate_xc_batched precomputed-basis overload in include/atomiverse/cpu/scf/xc_grid_engine.h; delete dead active[]; if constexpr-guard the P/Vxc double copies
-- [ ] Implement the per-geometry mutable xc_basis_ cache in HamiltonianBuilder (include/atomiverse/cpu/scf/internal/hamiltonian_builder.h + src/cpu/scf/internal/hamiltonian_builder.cpp): invalidate in prepare(), lazy build on first KS step, reuse across iterations
-- [ ] Write failing unit tests for fused jk_rhf and thread-invariant stored-ERI K (tests/cpu/scf/test_operators.cpp → TestShellBlockPairList / TestIntegralPack): jk_rhf J,K == g_rhf/k, per-element ‖F_fused − F_twopass‖∞ ≤ 1e-12; coulomb_exchange_fused output identical for 1 vs N threads; and thread_local ERI-reuse determinism (tests/cpu/scf/test_rys_eri.cpp)
-- [ ] Implement ShellBlockPairList::jk_rhf one-sweep J+K in include/atomiverse/cpu/scf/internal/shell_pair.h + src/cpu/scf/operators.cpp, keeping K separable (unscaled) for RSH extensibility
-- [ ] Wire fused jk_rhf into the restricted-hybrid Direct branch of HamiltonianBuilder::step in src/cpu/scf/internal/hamiltonian_builder.cpp (F = Hcore + J − 0.5·alpha_hf·K + Vxc), leaving the CFMM branch single-sweep
-- [ ] Optimize ERI inner-loop allocations in src/cpu/scf/operators.cpp: zero only na·nb·nc·nd of blk[] in ShellBlockPairList::k and g_rhf; add OpenMP reduction to coulomb_exchange_fused K contraction
-- [ ] Convert per-quartet ang_idx and the non-canonical scratch to thread_local reuse in src/cpu/scf/rys_eri.cpp (tls_g_buf resize-if-smaller pattern; fill scratch prefix before accumulation)
-- [ ] Add regression example regressions/scf/b3lyp-fused-jk-h2o/ (restricted B3LYP/def2-SVP H2O single point via the fused path; hard-coded PySCF golden energy, no third-party runtime) and register it in regressions/CMakeLists.txt
-- [ ] Run full check + test suite (ATV_BUILD_HF=ON): full unit ctest + the DFT/SCF regression families reproduce cited values
+- [x] Write failing unit tests for the geometry-fixed XC-basis cache (tests/cpu/scf/test_xc_grid_engine.cpp → TestXcGridEngine): cached vs rebuild Vxc_alpha/Vxc_beta/E_xc bitwise-equal for LDA and PBE on a stored H2O fixture
+- [x] Implement XCGridBasis + evaluate_xc_batched precomputed-basis overload in include/atomiverse/cpu/scf/xc_grid_engine.h; delete dead active[]; if constexpr-guard the P/Vxc double copies
+- [x] Implement the per-geometry mutable xc_basis_ cache in HamiltonianBuilder (include/atomiverse/cpu/scf/internal/hamiltonian_builder.h + src/cpu/scf/internal/hamiltonian_builder.cpp): invalidate in prepare(), lazy build on first KS step, reuse across iterations
+- [x] Write failing unit tests for fused jk_rhf and thread-invariant stored-ERI K (tests/cpu/scf/test_operators.cpp → TestShellBlockPairList / TestIntegralPack): jk_rhf J,K == g_rhf/k, per-element ‖F_fused − F_twopass‖∞ ≤ 1e-12; coulomb_exchange_fused output identical for 1 vs N threads; and thread_local ERI-reuse determinism (tests/cpu/scf/test_rys_eri.cpp)
+- [x] Implement ShellBlockPairList::jk_rhf one-sweep J+K in include/atomiverse/cpu/scf/internal/shell_pair.h + src/cpu/scf/operators.cpp, keeping K separable (unscaled) for RSH extensibility
+- [x] Wire fused jk_rhf into the restricted-hybrid Direct branch of HamiltonianBuilder::step in src/cpu/scf/internal/hamiltonian_builder.cpp (F = Hcore + J − 0.5·alpha_hf·K + Vxc), leaving the CFMM branch single-sweep
+- [x] Optimize ERI inner-loop allocations in src/cpu/scf/operators.cpp: zero only na·nb·nc·nd of blk[] in ShellBlockPairList::k and g_rhf; add OpenMP reduction to coulomb_exchange_fused K contraction
+- [x] Convert per-quartet ang_idx and the non-canonical scratch to thread_local reuse in src/cpu/scf/rys_eri.cpp (tls_g_buf resize-if-smaller pattern; fill scratch prefix before accumulation)
+- [x] Add regression example regressions/scf/b3lyp-fused-jk-h2o/ (restricted B3LYP/def2-SVP H2O single point via the fused path; hard-coded PySCF golden energy, no third-party runtime) and register it in regressions/CMakeLists.txt
+- [x] Run full check + test suite (ATV_BUILD_HF=ON): full unit ctest + the DFT/SCF regression families reproduce cited values
 
 ## Testing strategy
 

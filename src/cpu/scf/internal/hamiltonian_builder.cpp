@@ -23,6 +23,10 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                                  int n_angular, const MolecularGrid* fixed_grid,
                                  RI ri, AuxBasis aux_basis, Coulomb coulomb,
                                  int cfmm_order, double cfmm_threshold) {
+    // New geometry: invalidate the AO-on-grid cache so the first KS step()
+    // rebuilds Phi/dPhi against the grid built below.
+    xc_basis_.built = false;
+
     if (!integrals.shells.empty()) {
         sp_block_ = ShellBlockPairList{integrals};
         sp_ = ShellPairList{integrals};
@@ -264,9 +268,16 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
         const bool is_hybrid =
             (alpha_hf > double(0)) || (hybrid_alpha_override >= double(0));
 
-        auto xc = evaluate_xc_batched(grid_, integrals.shells,
-                                      integrals.n_ao_cart(), P_alpha_xc,
-                                      P_beta_xc, xc_type);
+        // Geometry-fixed AO-on-grid cache: build Phi/dPhi once per geometry
+        // (first KS iteration, or when the LDA/GGA flavor changes) and reuse
+        // it across all SCF iterations; the density-dependent steps run on the
+        // cached basis. Bit-identical to the rebuild-every-call path.
+        const bool gga = ATV::cpu::scf::is_gga(xc_type);
+        if (!xc_basis_.built || xc_basis_.gga != gga)
+            xc_basis_.build(grid_, integrals.shells, integrals.n_ao_cart(),
+                            gga);
+        auto xc = evaluate_xc_batched(xc_basis_, grid_, P_alpha_xc, P_beta_xc,
+                                      xc_type);
         to_ao(xc.Vxc_alpha);
         to_ao(xc.Vxc_beta);
 
@@ -326,25 +337,25 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
                 out.F_beta = out.F_alpha;
                 out.E_exact_exchange = double(0);
             } else {
-                // Production B3LYP / PBE0. Both J and K come from the fast
-                // shell-block builders: ShellBlockPairList::g_rhf gives
-                // G = J - 0.5*K, ShellBlockPairList::k gives K, hence
-                // J = G + 0.5*K. The Fock matrix is then
-                //   F = Hcore + J - 0.5*alpha_hf*K + Vxc
-                //     = Hcore + G + 0.5*(1 - alpha_hf)*K + Vxc.
-                RealMatrix G, K;
-                sp_block_.g_rhf(P_total_J, G);
-                sp_block_.k(P_total_J, K);
+                // Production B3LYP / PBE0. A single fused shell-block sweep
+                // (ShellBlockPairList::jk_rhf) produces bare J and bare
+                // (unscaled, RSH-separable) K in one eri_block scan, replacing
+                // the former two-pass g_rhf + k. The Fock matrix is
+                //   F = Hcore + J - 0.5*alpha_hf*K + Vxc,
+                // algebraically equal to the old G + 0.5*(1 - alpha_hf)*K form
+                // (G = J - 0.5*K). K stays unscaled so a later RSH
+                // erf-attenuated K can be added.
+                RealMatrix J_eng, K;
+                sp_block_.jk_rhf(P_total_J, J_eng, K);
                 // E_K = -0.5*Tr[P*K_bare] = -0.25*Tr[P*K]; traces are
                 // basis-invariant, so compute in engine space BEFORE the
                 // spherical bridge. The hybrid contribution is alpha_hf*E_K.
                 const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
                 out.E_exact_exchange = alpha_hf * E_K;
-                to_ao(G);
+                to_ao(J_eng);
                 to_ao(K);
-                out.J = G + double(0.5) * K; // Coulomb-only, for E_J
-                out.F_alpha = Hcore + G
-                              + double(0.5) * (double(1) - alpha_hf) * K
+                out.J = J_eng; // Coulomb-only, for E_J
+                out.F_alpha = Hcore + J_eng - double(0.5) * alpha_hf * K
                               + xc.Vxc_alpha;
                 out.F_beta = out.F_alpha;
             }

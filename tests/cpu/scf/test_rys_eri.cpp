@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -26,6 +27,10 @@
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #ifdef ATV_HAS_LIBCINT
 #include "libcint_reference.cuh"
@@ -266,5 +271,82 @@ TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
 }
 
 #endif // ATV_HAS_LIBCINT
+
+// ── thread_local ERI-reuse determinism guard (spec scf-review-06, ac-005) ─
+//
+// The planned optimization converts the per-quartet `ang_idx`
+// (rys_eri_block_canonical) and the non-canonical `scratch` (rys_eri_block)
+// from heap-allocated locals to `static thread_local` buffers. This test pins
+// that the SAME (la,lb,lc,ld) block quartet evaluated serially and inside a
+// `#pragma omp parallel` region — every thread recomputing the identical
+// quartet into its own buffer — yields bit-for-bit identical results, so no
+// thread_local scratch bleeds across workers. Passes today (each call has its
+// own local buffers); it stays the guard after the thread_local conversion
+// lands. A d-shell quartet is chosen so the angular-index precompute
+// (`ang_idx`) is non-trivial.
+TEST(RysEri, ThreadLocalReuseDeterminism_DShell) {
+    auto frame = make_water();
+    // 6-31G* places a Cartesian d-shell on oxygen.
+    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
+                                       /*need_eri=*/false};
+    auto sp = ShellBlockPairList{pack, 1e-14};
+
+    const int nb = static_cast<int>(sp.blocks.size());
+    ASSERT_GT(nb, 1) << "need at least two distinct blocks";
+
+    // Highest-l block (the d-shell) and lowest-l block, so the canonical
+    // kernel constraints li>=lj and lk>=ll hold for (A B | A B).
+    int hi = 0, lo = 0;
+    for (int b = 1; b < nb; ++b) {
+        if (sp.blocks[b].l > sp.blocks[hi].l)
+            hi = b;
+        if (sp.blocks[b].l < sp.blocks[lo].l)
+            lo = b;
+    }
+    ASSERT_GT(sp.blocks[hi].l, sp.blocks[lo].l)
+        << "6-31G* H2O must expose distinct angular momenta (d present)";
+
+    const native::ShellBlock& A = sp.blocks[hi];
+    const native::ShellBlock& B = sp.blocks[lo];
+    const native::ShellBlock& C = sp.blocks[hi];
+    const native::ShellBlock& D = sp.blocks[lo];
+    const int sz = A.n_cart * B.n_cart * C.n_cart * D.n_cart;
+    ASSERT_GT(sz, 1);
+
+    // Serial reference.
+    std::vector<double> serial(static_cast<std::size_t>(sz), 0.0);
+    native::rys_eri_block(A, B, C, D, serial.data());
+
+    int nT = 1;
+#ifdef _OPENMP
+    nT = std::max(2, omp_get_max_threads());
+#endif
+    std::vector<std::vector<double>> par(
+        static_cast<std::size_t>(nT),
+        std::vector<double>(static_cast<std::size_t>(sz), 0.0));
+
+    // Each thread recomputes the same quartet repeatedly into its own buffer;
+    // repetition raises the chance of exposing any cross-thread scratch bleed.
+#ifdef _OPENMP
+#pragma omp parallel num_threads(nT)
+#endif
+    {
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        for (int rep = 0; rep < 8; ++rep) {
+            std::fill(par[tid].begin(), par[tid].end(), 0.0);
+            native::rys_eri_block(A, B, C, D, par[tid].data());
+        }
+    }
+
+    for (int t = 0; t < nT; ++t)
+        for (int e = 0; e < sz; ++e)
+            EXPECT_EQ(par[t][e], serial[e])
+                << "thread " << t << " element " << e
+                << " differs from the serial rys_eri_block value "
+                   "(thread_local scratch bleed)";
+}
 
 #endif // ATV_HAS_HF

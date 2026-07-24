@@ -682,6 +682,10 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_roots     cpu/scf/test_rys_roots.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
+    # scf-review-06-scf-perf: fused one-sweep jk_rhf vs two-pass g_rhf+k
+    # (≤1e-12 Ha F gate, d-shell fixture) + coulomb_exchange_fused thread
+    # invariance. Mirrors cpu/scf/operators.cpp.
+    atv_add_cpp_test(test_cpu_scf_operators     cpu/scf/test_operators.cpp)
     # hf-capability-gaps-12-df: def2-JKFIT table, g-shell 2c/3c integrals,
     # metric whitening, fitted J/K vs dense (single calls, no SCF).
     atv_add_cpp_test(test_density_fitting       cpu/scf/test_density_fitting.cpp)
@@ -748,6 +752,10 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_recorder_density_cube cpu/record/test_density_cube.cpp)
     # Mirrors cpu/scf/xc_functional.h — analytical hard-coded goldens (no live libxc).
     atv_add_cpp_test(test_xc_reference         cpu/scf/test_xc_reference.cpp)
+    # scf-review-06-scf-perf: geometry-fixed XCGridBasis cache equivalence —
+    # cached-basis vs rebuild-every-call evaluate_xc_batched are bitwise-equal
+    # for LDA and PBE. Mirrors cpu/scf/xc_grid_engine.h.
+    atv_add_cpp_test(test_xc_grid_engine       cpu/scf/test_xc_grid_engine.cpp)
     # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/
     # subdirectory; this block lands ahead of it so the option flips on
     # cleanly the moment the directory exists).

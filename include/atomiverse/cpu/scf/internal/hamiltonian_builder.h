@@ -19,7 +19,8 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/scf_enums.h" // MeanFieldType / SpinType / RI / Coulomb
-#include "atomiverse/cpu/scf/xc_functional.h" // XCType
+#include "atomiverse/cpu/scf/xc_functional.h"  // XCType
+#include "atomiverse/cpu/scf/xc_grid_engine.h" // XCGridBasis (per-geometry cache)
 
 namespace ATV {
 namespace cpu {
@@ -95,6 +96,12 @@ class HamiltonianBuilder {
     ShellBlockPairList sp_block_; ///< RHF/RKS shell-block list (libcint-style).
     ShellPairList sp_;            ///< AO-level list for UHF/UKS J/K paths.
     MolecularGrid grid_;          ///< KS XC grid (empty for HF).
+    /// Geometry-fixed AO-on-grid basis (Phi, and dPhi_x/y/z for GGA), rebuilt
+    /// only per geometry: `prepare()` invalidates it (built=false) and the
+    /// first KS `step()` lazily builds it, so the ~G·N transcendental basis
+    /// evaluations are hoisted out of the SCF iteration loop. `mutable` because
+    /// `step()` is const. GGA cost is 4×G·N doubles (see xc_grid_engine.h).
+    mutable XCGridBasis xc_basis_;
     RI ri_ = RI::None;            ///< Density-fitting mode set by prepare().
     Coulomb coulomb_ = Coulomb::Direct; ///< J-matrix algorithm.
     /// RI workspace ((μν|P), metric Cholesky, B tensor); null when

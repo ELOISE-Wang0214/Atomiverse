@@ -175,6 +175,10 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf h2_full_grid_alda)
     atv_add_regression(scf h2-b3lyp-hybrid-tda)
     atv_add_regression(scf h2-b3lyp-rpa-tddft)
+    # scf-review-06-scf-perf: restricted B3LYP/def2-SVP H2O single point through
+    # the restricted-hybrid Fock build (the fused one-sweep jk_rhf path); pinned
+    # PySCF 2.14.0 total energy, no live oracle at ctest time.
+    atv_add_regression(scf b3lyp-fused-jk-h2o)
     atv_add_regression(scf uks-tda-o2-lsda)
     atv_add_regression(scf uks-full-lr-o2-lsda)
     atv_add_regression(scf spin-flip-tda-o2)
