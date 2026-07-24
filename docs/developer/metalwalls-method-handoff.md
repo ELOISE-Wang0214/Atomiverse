@@ -9,18 +9,19 @@ Last harness: **wave 3 — 2026-07-24** on `dev`
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 
-## Recover inventory (post harness wave 3, 2026-07-24)
+## Recover inventory (2026-07-24, post harness wave 3 — re-checked)
 
 | Source | Result |
 | ------ | ------ |
 | A queue `## in_progress` `[~]` | **0** |
-| B open `.claude/specs/` MD/electrochem | **0** (wave-3 specs deleted; PySCF deferred specs ignored) |
-| C unmerged `wf/<slug>` (this loop) | **0** (wave-1/2/3 tips ancestor of `dev`) |
+| B open `.claude/specs/` MD/electrochem | **0** (wave-3 specs deleted; only PySCF deferred live — out of loop) |
+| C unmerged `wf/<slug>` (this loop) | **0** (all 26 wave-1/2/3 tips are ancestors of `dev`; ahead=0) |
 | D handoff incomplete rows | **none** |
-| E half-written `regressions/{md,forcefield}/` | **0** |
+| E half-written `regressions/{md,forcefield}/` | **0** MW slugs (all 26 have `REFERENCE.md` + reg sources) |
 
 **Resume set:** empty. **incomplete_remaining=0**. Classical MW staff queue
-exhausted (pending empty; blocked 4 remain out of scope).
+exhausted (pending empty; blocked 4 remain out of scope). No queue normalize
+needed (nothing incomplete to promote to `[~]`).
 
 ## Wave 1 summary (historical — harnessed 2026-07-23)
 

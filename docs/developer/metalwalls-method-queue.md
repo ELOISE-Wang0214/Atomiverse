@@ -16,12 +16,12 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
-Census: **2026-07-24** (parent `dev`, post–harness wave 3). All open staff
-rows from assign wave 3 are **merged → done**. **incomplete_count=0**.
-Open MD/electrochem specs: **none** (wave-3 specs deleted). Unmerged
-in-scope `wf/<slug>` with `ahead_of_dev>0`: **none** (tips ancestor of `dev`).
-Blocked (4) skipped. **pending empty** — no further classical MW queue rows
-without a new census inventing work.
+Census: **2026-07-24** (parent `dev`, post–harness wave 3). Recover re-check
+same day: **incomplete_count=0** (A–E empty). All open staff rows from assign
+wave 3 are **merged → done**. Open MD/electrochem specs: **none** (wave-3
+specs deleted). Unmerged in-scope `wf/<slug>` with `ahead_of_dev>0`: **none**
+(tips ancestor of `dev`). Blocked (4) skipped. **pending empty** — no further
+classical MW queue rows without a new census inventing work.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
   integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6),
