@@ -26,7 +26,7 @@ backward only.
 | - | ---- | ---- | -------- |
 | 01 | scf-review-01-linalg | — | DONE 2026-07-24 (closed; see git) — sym_power/eig_nonsymmetric/solve_pcg in cpu/linalg + OrbitalHessian::direct_rpa |
 | 02 | scf-review-02-eri-hoists | 01 | DONE 2026-07-24 (closed; see git) — internal/ao2mo.h + internal/spin_orbital_eri.h + mp_denominator |
-| 03 | [scf-review-03-posthf-dedup](scf-review-03-posthf-dedup/spec.md) | 01, 02 | internal/eom_ccsd_common.h (make_tau/EomImds/build_imds) + internal/ci_engine.h (fci/casscf) [approved] |
+| 03 | scf-review-03-posthf-dedup | 01, 02 | DONE 2026-07-24 (closed; see git) — eom_ccsd_common (EomImds ctor) + ci_engine; build_imds scrub debt cleared |
 | 04 | [scf-review-04-meanfield-dedup](scf-review-04-meanfield-dedup/spec.md) | — | FD-Hessian CRTP hoist (rks/uks/rohf) + GradientResult FromHartreeBohr ctor [approved] |
 | 05 | [scf-review-05-api-hygiene](scf-review-05-api-hygiene/spec.md) | 01 | MolecularGrid ctor (factory removal + scrub lockstep); rys_roots abort→throw; units::pi; 11 .cpp moves [approved] |
 | 06 | [scf-review-06-scf-perf](scf-review-06-scf-perf/spec.md) | 05 | Phi/dPhi grid cache; fused one-sweep JK (RSH-separable K); ERI micro-alloc fixes [approved] |
