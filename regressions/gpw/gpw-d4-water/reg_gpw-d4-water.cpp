@@ -20,7 +20,6 @@ int main() {
     using cpu::gpw::GpwDft;
     using cpu::gpw::GthPotential;
     using cpu::gpw::XcKind;
-    using molrs::Element;
 
     // Geometry [Å] → Bohr (REFERENCE.md water dimer).
     constexpr double kA2B = 1.0 / 0.52917720859;
@@ -33,10 +32,10 @@ int main() {
         {3.758602, 0.000000, -0.504284}, // H
     };
     const int Z[6] = {8, 1, 1, 8, 1, 1};
-    const GaussianBasis bO(Element::O, "DZVP-MOLOPT-SR-GTH");
-    const GaussianBasis bH(Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pO(Element::O, "GTH-PBE-q6");
-    const GthPotential pH(Element::H, "GTH-PBE-q1");
+    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
 
     std::vector<GpwAtom> atoms;
     atoms.reserve(6);

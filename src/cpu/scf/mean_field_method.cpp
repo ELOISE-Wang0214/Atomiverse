@@ -789,7 +789,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         internal::HueckelGuess hueckel(ints.shells, ints.S, ints.atoms);
         std::tie(eig0, C0) = diagonalize(hueckel.F);
     } else if (want_sap) {
-        const MolecularGrid sap_grid = build_molecular_grid(
+        const MolecularGrid sap_grid(
             ints.atoms.data(), static_cast<int>(ints.atoms.size()), grid_level,
             n_radial, n_angular);
         internal::SapGuess sap(ints.shells, ints.T, ints.atoms, sap_grid,

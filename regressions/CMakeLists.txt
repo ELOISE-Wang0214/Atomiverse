@@ -125,6 +125,9 @@ if(ATV_BUILD_GPW)
     # remaining green GPW e2e land with their branches
 endif()
 if(ATV_BUILD_HF)
+    # Layout: SCF API hygiene — MolecularGrid ctor links + rys_roots throws
+    # catchably (scf-review-05-api-hygiene). Needs the SCF headers, hence HF.
+    atv_add_regression(layout scf_api_hygiene)
     atv_add_regression(scf h2o_rhf_sto3g)
     atv_add_regression(scf h2o_rhf_def2svp_sph)
     atv_add_regression(scf h2o_rhf_def2svp_grad)

@@ -156,8 +156,8 @@ static void accumulate_xc_gradient(
     const int N = static_cast<int>(n);
     const size_t Ns = static_cast<size_t>(N);
 
-    auto grid = build_molecular_grid(integrals.atoms.data(), natm, grid_level,
-                                     n_radial, n_angular);
+    const MolecularGrid grid(integrals.atoms.data(), natm, grid_level, n_radial,
+                             n_angular);
     const int G = static_cast<int>(grid.points.size());
     const size_t Gs = static_cast<size_t>(G);
 

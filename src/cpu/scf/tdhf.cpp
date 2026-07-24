@@ -536,7 +536,7 @@ RealMatrix fxc_kernel_fd(const SlaterDeterminant& det, const IntegralPack& pack,
     }
     const int n_basis = static_cast<int>(C_work.shape()[0]);
 
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
         n_radial, n_angular);
 
@@ -818,7 +818,7 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     if (xc == XCType::LSDA && hessian.n_ov() <= 512) {
         RealMatrix A =
             0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
-        const MolecularGrid grid = build_molecular_grid(
+        const MolecularGrid grid(
             pack.atoms.data(), static_cast<int>(pack.atoms.size()),
             grid_level, n_radial, n_angular);
         const RealMatrix K =
@@ -889,7 +889,7 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
 
     // Adiabatic f^xc on both A and B (Casida 1995; Dreuw & Head-Gordon 2005).
     if (xc == XCType::LSDA) {
-        const MolecularGrid grid = build_molecular_grid(
+        const MolecularGrid grid(
             pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
             n_radial, n_angular);
         const RealMatrix K =
@@ -1319,7 +1319,7 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
     if (pack.shells.empty())
         throw std::runtime_error(std::string(tag)
                                  + ": IntegralPack has no shells (no fallback)");
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
         n_radial, n_angular);
 

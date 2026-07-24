@@ -40,7 +40,6 @@ namespace native {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
 constexpr double kTwoPi25 = 2.0 * 17.493418327624863; // 2 * π^(5/2)
 
 // Struct wrapper around the generic int[3] layout from cart.h — gives

@@ -23,6 +23,7 @@
 /// derivatives of the readable Becke enhancement factor.
 
 #include "atomiverse/cpu/scf/xc_internal.h"
+#include "atomiverse/core/units.h"
 
 #include <cmath>
 
@@ -32,7 +33,6 @@ namespace scf {
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-static constexpr double kPi = 3.14159265358979323846;
 static constexpr double kRhoMin = 1e-12; // total density cutoff
 
 // Dirac exchange constant in libxc's convention:
@@ -40,7 +40,7 @@ static constexpr double kRhoMin = 1e-12; // total density cutoff
 // This equals 2^{1/3} * (3/4)(3/pi)^{1/3}, i.e. the spin-scaled Slater
 // constant used by slater_exchange / pbe_exchange_spin.
 static const double kXFactorC =
-    (3.0 / 8.0) * std::cbrt(3.0 / kPi) * std::cbrt(16.0);
+    (3.0 / 8.0) * std::cbrt(3.0 / units::pi) * std::cbrt(16.0);
 
 // libxc threshold below which a spin channel is treated as empty.
 static constexpr double kZetaThreshold = 2.2204460492503131e-16; // DBL_EPSILON
@@ -207,7 +207,7 @@ void lyp_correlation(double rho_a, double rho_b, double sigma_aa,
     const double t30 = t7 * t27 / 72.0 - 2.0 / 3.0;
     const double t32 = M_CBRT3;
     const double t33 = t32 * t32;
-    const double t34 = kPi * kPi;
+    const double t34 = units::pi * units::pi;
     const double t35 = POW_1_3(t34);
     const double t36 = t35 * t35;
     const double t37 = t33 * t36;

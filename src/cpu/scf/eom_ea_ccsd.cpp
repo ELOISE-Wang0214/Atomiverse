@@ -222,7 +222,7 @@ EOMEACCSDResult eom_ea_ccsd_energies(const IntegralPack& ints,
 
     auto eigs = eig_dense(H, "eom_ea_ccsd");
 
-    // Real eigenvalues, ascending; de-duplicate spin degeneracy (α/β attach).
+    // Real-valued eigenvalues, ascending; de-duplicate spin degeneracy (α/β attach).
     std::vector<double> roots;
     for (const auto& ep : eigs) {
         if (std::abs(ep.wi) > 1e-8)

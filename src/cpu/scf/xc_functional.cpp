@@ -9,6 +9,7 @@
 /// sibling translation unit xc_gga.cpp.
 
 #include "atomiverse/cpu/scf/xc_functional.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/xc_internal.h"
 
 #include <algorithm>
@@ -20,7 +21,6 @@ namespace scf {
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-static constexpr double kPi = 3.14159265358979323846;
 static constexpr double kRhoMin = 1e-12; // total density cutoff
 static constexpr double kSpinDensMin =
     1e-15; // per-spin density floor (matches libxc dens_threshold)
@@ -28,7 +28,7 @@ static constexpr double kSigmaMin = 1e-20; // gradient cutoff for GGA
 
 // Slater exchange constant: C_x = (3/4)(3/π)^{1/3}
 static constexpr double kCx =
-    0.7385587663820224; // (3.0/4.0) * std::cbrt(3.0/kPi)
+    0.7385587663820224; // (3.0/4.0) * std::cbrt(3.0/units::pi)
 
 // ── VWN5 parameters (Hartree convention, matching libxc) ─────────────────
 // A stored as A_Ha = A_Ry/2 (libxc maple/vwn.mpl). VWN5Params is declared
@@ -39,7 +39,7 @@ static constexpr VWN5Params kVWN5_P = {0.0310907, -0.10498, 3.72744, 12.9352};
 // Ferromagnetic: A_Ry = 0.0310907 -> A_Ha = 0.01554535
 static constexpr VWN5Params kVWN5_F = {0.01554535, -0.32500, 7.06042, 18.0578};
 // Spin stiffness alpha_c: A_Ry = -1/(3*pi^2) -> A_Ha = -1/(6*pi^2)
-static constexpr VWN5Params kVWN5_A = {-1.0 / (6.0 * kPi * kPi), -0.0047584,
+static constexpr VWN5Params kVWN5_A = {-1.0 / (6.0 * units::pi * units::pi), -0.0047584,
                                        1.13107, 13.0045};
 
 // ── VWN-RPA parameters (libxc maple/vwn.mpl, RPA columns) ────────────────
@@ -214,7 +214,7 @@ static void pw92_correlation(double rho_a, double rho_b, double& ec,
     rho_a = std::max(rho_a, kSpinDensMin);
     rho_b = std::max(rho_b, kSpinDensMin);
     double rho = rho_a + rho_b;
-    double rs = std::pow(3.0 / (4.0 * kPi * rho), 1.0 / 3.0);
+    double rs = std::pow(3.0 / (4.0 * units::pi * rho), 1.0 / 3.0);
     double zeta = (rho_a - rho_b) / rho;
 
     double ecP, ecF, ac, decP_drs, decF_drs, dac_drs;
@@ -263,7 +263,7 @@ static void vwn5_correlation(double rho_a, double rho_b, double& ec,
     rho_b = std::max(rho_b, kSpinDensMin);
 
     double rho = rho_a + rho_b;
-    double rs = std::pow(3.0 / (4.0 * kPi * rho), 1.0 / 3.0);
+    double rs = std::pow(3.0 / (4.0 * units::pi * rho), 1.0 / 3.0);
     double x = std::sqrt(rs);
     double zeta = (rho_a - rho_b) / rho;
 
@@ -329,7 +329,7 @@ void vwn_rpa_correlation(double rho_a, double rho_b, double& ec, double& vc_a,
     rho_b = std::max(rho_b, kSpinDensMin);
 
     double rho = rho_a + rho_b;
-    double x = std::sqrt(std::pow(3.0 / (4.0 * kPi * rho), 1.0 / 3.0));
+    double x = std::sqrt(std::pow(3.0 / (4.0 * units::pi * rho), 1.0 / 3.0));
     double zeta = (rho_a - rho_b) / rho;
 
     // RPA paramagnetic / ferromagnetic Pade channels.
@@ -388,7 +388,7 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
 
     // Reduced gradient s
     double kf =
-        std::pow(6.0 * kPi * kPi, 1.0 / 3.0) * std::pow(rho_s, 1.0 / 3.0);
+        std::pow(6.0 * units::pi * units::pi, 1.0 / 3.0) * std::pow(rho_s, 1.0 / 3.0);
     double grad = std::sqrt(std::max(sigma_ss, 0.0));
     double s = grad / (2.0 * kf * rho_s);
     double s2 = s * s;
@@ -410,7 +410,7 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
 
     // ds²/dσ = 1 / (4 (6π²)^{2/3} ρ^{8/3})
     double kf2_fac =
-        4.0 * std::pow(6.0 * kPi * kPi, 2.0 / 3.0) * std::pow(rho_s, 8.0 / 3.0);
+        4.0 * std::pow(6.0 * units::pi * units::pi, 2.0 / 3.0) * std::pow(rho_s, 8.0 / 3.0);
     double ds2_dsigma = 1.0 / kf2_fac;
 
     // v_rho = d(ex_lda * Fx)/dρ = (d ex_lda/dρ) Fx + ex_lda * dFx/dρ
@@ -456,8 +456,8 @@ static void pbe_correlation(double rho_a, double rho_b, double ec_lda,
     double phi3 = phi * phi * phi;
 
     // k_F and k_s
-    double kF = std::pow(3.0 * kPi * kPi * rho, 1.0 / 3.0);
-    double ks = std::sqrt(4.0 * kF / kPi);
+    double kF = std::pow(3.0 * units::pi * units::pi * rho, 1.0 / 3.0);
+    double ks = std::sqrt(4.0 * kF / units::pi);
 
     // t = |∇ρ| / (2 φ k_s ρ)
     double sigma_total = sigma_aa + 2.0 * sigma_ab + sigma_bb;

@@ -176,9 +176,9 @@ MoBlocks mo_blocks_(const xt::xtensor<double, 4>& eri_mo, int nocc, int nvir) {
 /// Second-order singles–singles intermediate M_ss [n_s × n_s], PySCF radc_ee
 /// get_imds for method == "adc(2)" (before the adc(3) branch). Layout
 /// index = i*nvir + a.
-xt::xtensor<double, 2> build_mss_(const MoBlocks& bl,
-                                  const xt::xtensor<double, 4>& t2,
-                                  const RealVector& eps, int nocc, int nvir) {
+xt::xtensor<double, 2> compute_mss_(const MoBlocks& bl,
+                                    const xt::xtensor<double, 4>& t2,
+                                    const RealVector& eps, int nocc, int nvir) {
     const int ns = nocc * nvir;
     // Work in M[I,D,L,A] then flatten.
     xt::xtensor<double, 4> M =
@@ -872,10 +872,10 @@ inline int idx_iab(int i, int a, int b, int nvir) {
 
 /// EA-ADC(2) singles intermediate M_ab [nvir × nvir] (PySCF radc_ea get_imds,
 /// method == "adc(2)" only — no ADC(3) terms).
-xt::xtensor<double, 2> build_mab_ea_(const xt::xtensor<double, 4>& t2,
-                                     const xt::xtensor<double, 4>& ovvo,
-                                     const RealVector& eps, int nocc,
-                                     int nvir) {
+xt::xtensor<double, 2> compute_mab_ea_(const xt::xtensor<double, 4>& t2,
+                                       const xt::xtensor<double, 4>& ovvo,
+                                       const RealVector& eps, int nocc,
+                                       int nvir) {
     xt::xtensor<double, 2> Mab =
         xt::zeros<double>({static_cast<std::size_t>(nvir),
                            static_cast<std::size_t>(nvir)});
@@ -1266,7 +1266,7 @@ ADC2Result run_adc_ee_member_(const RHF& self, int n_states, bool extended,
     const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
     const xt::xtensor<double, 4> t2 = mp2_t2_(eri_mo, eps, n_occ, n_vir);
     const xt::xtensor<double, 2> Mss =
-        build_mss_(bl, t2, eps, n_occ, n_vir);
+        compute_mss_(bl, t2, eps, n_occ, n_vir);
 
     const std::vector<double> omega_ha =
         davidson_adc_(Mss, bl, eps, n_occ, n_vir, n_states, extended);
@@ -1304,10 +1304,10 @@ inline int idx_ajk_(int a, int j, int k, int nocc) {
 
 /// Second-order occupied–occupied intermediate M_ij [nocc × nocc].
 /// Twin of PySCF `radc_ip.get_imds` for `method == "adc(2)"` (no ADC(3)).
-xt::xtensor<double, 2> build_mij_ip_(const xt::xtensor<double, 4>& t2,
-                                     const xt::xtensor<double, 4>& ovvo,
-                                     const RealVector& eps, int nocc,
-                                     int nvir) {
+xt::xtensor<double, 2> compute_mij_ip_(const xt::xtensor<double, 4>& t2,
+                                       const xt::xtensor<double, 4>& ovvo,
+                                       const RealVector& eps, int nocc,
+                                       int nvir) {
     xt::xtensor<double, 2> M =
         xt::zeros<double>({static_cast<std::size_t>(nocc),
                            static_cast<std::size_t>(nocc)});
@@ -1481,7 +1481,7 @@ IPADC2Result RHF::ip_adc2(int n_states) const {
     const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
     const xt::xtensor<double, 4> t2 = mp2_t2_(eri_mo, eps, n_occ, n_vir);
     const xt::xtensor<double, 2> Mij =
-        build_mij_ip_(t2, bl.ovvo, eps, n_occ, n_vir);
+        compute_mij_ip_(t2, bl.ovvo, eps, n_occ, n_vir);
 
     const std::vector<double> ip_ha =
         solve_ip_adc_(Mij, bl.ovoo, eps, n_occ, n_vir, n_states);
@@ -1531,7 +1531,7 @@ EAADC2Result RHF::ea_adc2(int n_states) const {
     const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
     const xt::xtensor<double, 4> t2 = mp2_t2_(eri_mo, eps, n_occ, n_vir);
     const xt::xtensor<double, 2> Mab =
-        build_mab_ea_(t2, bl.ovvo, eps, n_occ, n_vir);
+        compute_mab_ea_(t2, bl.ovvo, eps, n_occ, n_vir);
 
     const std::vector<double> omega_ha =
         davidson_ea_adc_(Mab, bl, eps, n_occ, n_vir, n_states);

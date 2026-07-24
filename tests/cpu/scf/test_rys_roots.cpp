@@ -19,6 +19,8 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "atomiverse/cpu/scf/rys_roots.h"
@@ -200,6 +202,50 @@ TEST(RysRoots, IterativeSatisfiesMomentIdentity) {
             }
         }
     }
+}
+
+// ── Unsupported nroots -> catchable exception, not abort (item 14) ─────
+//
+// nroots > 7 (reachable through g/h shells) and nroots < 1 are outside
+// the supported 1..7 domain. The production contract *after*
+// scf-review-05-api-hygiene is a catchable std::invalid_argument whose
+// message names `nroots` — NOT the pre-fix std::fprintf + std::abort(),
+// which terminates the process uncatchably and is unit-untestable.
+//
+// x = 1.0 is benign: it sits in the intermediate regime
+// (SMALLX_LIMIT < x < 35 + 5*nroots), so the call reaches the domain
+// switch/default branch instead of the small-x or large-x fast paths —
+// which is exactly the branch that must now throw.
+//
+// These tests are placed LAST in the file deliberately: while the pre-fix
+// abort() is still in place they terminate the whole test binary (RED),
+// and every test above has already run by then.
+TEST(RysRoots, UnsupportedNrootsThrowsInvalidArgument) {
+    double u[8] = {};
+    double w[8] = {};
+    EXPECT_THROW(ATV::cpu::scf::native::rys_roots(8, 1.0, u, w),
+                 std::invalid_argument);
+}
+
+TEST(RysRoots, UnsupportedNrootsMessageNamesNroots) {
+    double u[8] = {};
+    double w[8] = {};
+    try {
+        ATV::cpu::scf::native::rys_roots(8, 1.0, u, w);
+        ADD_FAILURE() << "expected rys_roots(8, 1.0, ...) to throw";
+    } catch (const std::invalid_argument& e) {
+        EXPECT_NE(std::string(e.what()).find("nroots"), std::string::npos)
+            << "exception message must name nroots, got: " << e.what();
+    }
+}
+
+TEST(RysRoots, NonPositiveNrootsThrowsInvalidArgument) {
+    double u[8] = {};
+    double w[8] = {};
+    EXPECT_THROW(ATV::cpu::scf::native::rys_roots(0, 1.0, u, w),
+                 std::invalid_argument);
+    EXPECT_THROW(ATV::cpu::scf::native::rys_roots(-1, 1.0, u, w),
+                 std::invalid_argument);
 }
 
 #endif // ATV_HAS_HF

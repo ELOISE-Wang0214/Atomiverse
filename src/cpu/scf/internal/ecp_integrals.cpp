@@ -26,6 +26,7 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/core/units.h"
 
 namespace ATV {
 namespace cpu {
@@ -37,7 +38,7 @@ namespace {
 constexpr int kNRad = 128;            ///< Radial Gauss–Legendre points.
 constexpr double kWidthSigmas = 9.0;  ///< Half-width of the radial window.
 constexpr double kScreenLnEps = -60.0; ///< ln cutoff for a primitive term.
-constexpr double kFourPi = 4.0 * M_PI;
+constexpr double kFourPi = 4.0 * units::pi;
 
 /// Gauss–Legendre nodes/weights on [-1, 1], computed once by Newton
 /// iteration on P_n (standard textbook scheme, ~1e-15 node accuracy).
@@ -47,7 +48,7 @@ struct GaussLegendre {
     GaussLegendre() {
         const int n = kNRad;
         for (int i = 0; i < (n + 1) / 2; ++i) {
-            double z = std::cos(M_PI * (i + 0.75) / (n + 0.5));
+            double z = std::cos(units::pi * (i + 0.75) / (n + 0.5));
             double pp = 0.0;
             for (int it = 0; it < 100; ++it) {
                 double p0 = 1.0, p1 = 0.0;

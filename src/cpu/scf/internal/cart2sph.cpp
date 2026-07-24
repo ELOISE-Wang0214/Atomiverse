@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "atomiverse/cpu/scf/cart.h"
+#include "atomiverse/core/units.h"
 
 namespace ATV {
 namespace cpu {
@@ -112,7 +113,7 @@ CartToSph::CartToSph() {
     // Engine convention: block(l) = D(l) · matrix(l), with
     // D_i = sqrt(4π (2lx−1)!!(2ly−1)!!(2lz−1)!! / (2l+1)!!) for l ≥ 2
     // (s/p are unit-normalized in both conventions ⇒ D = 1).
-    const double kFourPi = 4.0 * M_PI;
+    const double kFourPi = 4.0 * units::pi;
     for (int l = 0; l <= kMaxL; ++l) {
         block_[l] = matrix_[l];
         if (l < 2)

@@ -23,7 +23,6 @@ namespace internal {
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
 /// Klamt–Schüürmann diagonal prefactor (dimensionless) for the classical
 /// point-charge S matrix. Prefer the Gaussian-smeared form below (Lange–
 /// Herbert / PySCF) when a Lebedev order is tabulated.
@@ -188,7 +187,7 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
             if (buried)
                 continue;
             // Weights sum to 1 over the unit sphere → area = w * 4π R².
-            const double w4pi = leb[g].w * (4.0 * kPi);
+            const double w4pi = leb[g].w * (4.0 * units::pi);
             const double ak = w4pi * Ra * Ra;
             pos_.push_back({px, py, pz});
             // Outward unit normal = Lebedev direction on the parent sphere.
@@ -238,15 +237,15 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
         if (use_gauss) {
             const double xik = xi_[static_cast<std::size_t>(k)];
             // switch_fun = 1 (hard bury-delete).
-            S_(k, k) = xik * std::sqrt(2.0 / kPi);
+            S_(k, k) = xik * std::sqrt(2.0 / units::pi);
             if (need_D) {
                 const double Rk = R_sphere_[static_cast<std::size_t>(k)];
-                D(k, k) = -xik * std::sqrt(2.0 / kPi) / (2.0 * Rk);
+                D(k, k) = -xik * std::sqrt(2.0 / units::pi) / (2.0 * Rk);
             }
         } else {
             S_(k, k) =
                 kKlamtDiag
-                * std::sqrt(4.0 * kPi / area_[static_cast<std::size_t>(k)]);
+                * std::sqrt(4.0 * units::pi / area_[static_cast<std::size_t>(k)]);
             if (need_D) {
                 // Classical double-layer diagonal (same scaling as S diag).
                 const double Rk = R_sphere_[static_cast<std::size_t>(k)];
@@ -294,7 +293,7 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
                 if (use_gauss) {
                     const double xi_r = xij * r;
                     const double gauss =
-                        2.0 * xi_r / std::sqrt(kPi) * std::exp(-xi_r * xi_r);
+                        2.0 * xi_r / std::sqrt(units::pi) * std::exp(-xi_r * xi_r);
                     D(k, l) = s_kl * n_kl / r2 - gauss * n_kl / r3;
                     D(l, k) = s_kl * n_lk / r2 - gauss * n_lk / r3;
                 } else {
@@ -317,14 +316,14 @@ Pcm::Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale,
             for (int j = 0; j < nt; ++j)
                 DA(i, j) = D(i, j) * area_[static_cast<std::size_t>(j)];
         const auto DAS = xt::linalg::dot(DA, S_);
-        const double fac = f_eps_ / (2.0 * kPi);
+        const double fac = f_eps_ / (2.0 * units::pi);
         K_ = S_ - fac * DAS;
         R_ = xt::zeros<double>({static_cast<std::size_t>(nt),
                                 static_cast<std::size_t>(nt)});
         for (int i = 0; i < nt; ++i) {
             for (int j = 0; j < nt; ++j) {
                 const double eye = (i == j) ? 1.0 : 0.0;
-                R_(i, j) = -f_eps_ * (eye - DA(i, j) / (2.0 * kPi));
+                R_(i, j) = -f_eps_ * (eye - DA(i, j) / (2.0 * units::pi));
             }
         }
     } else {

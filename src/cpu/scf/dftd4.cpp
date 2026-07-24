@@ -51,10 +51,9 @@ using internal::kD4SecAiw;
 using internal::kD4Sscale;
 using internal::kD4Zeff;
 
-constexpr double kPi = 3.14159265358979323846;
 constexpr double kSqrtPi = 1.7724538509055160273;
 constexpr double kSqrt2Pi = 0.79788456080286535588; // sqrt(2/pi)
-constexpr double kThoPi = 3.0 / kPi;
+constexpr double kThoPi = 3.0 / units::pi;
 constexpr double kKcn = 7.5;
 constexpr double kCnMaxEeq = 8.0;
 constexpr double kK4 = 4.10451;
@@ -204,9 +203,9 @@ void ewald_dir_trans(const double cell[3],
 void ewald_rec_trans(const double cell[3],
                      std::vector<std::array<double, 3>>& gtrans) {
     gtrans.clear();
-    const double g0 = 2.0 * kPi / cell[0];
-    const double g1 = 2.0 * kPi / cell[1];
-    const double g2 = 2.0 * kPi / cell[2];
+    const double g0 = 2.0 * units::pi / cell[0];
+    const double g1 = 2.0 * units::pi / cell[1];
+    const double g2 = 2.0 * units::pi / cell[2];
     for (int ix = -2; ix <= 2; ++ix)
         for (int iy = -2; iy <= 2; ++iy)
             for (int iz = -2; iz <= 2; ++iz) {
@@ -218,7 +217,7 @@ void ewald_rec_trans(const double cell[3],
 
 // Multicharge ewald.f90 helpers for optimal α.
 double get_rec_term_3d(double gg, double alpha, double vol) {
-    return 4.0 * kPi *
+    return 4.0 * units::pi *
            (std::exp(-0.25 * gg * gg / (alpha * alpha)) / (vol * gg * gg));
 }
 double get_dir_term(double rr, double alpha) {
@@ -235,7 +234,7 @@ double ewald_alpha(const double cell[3]) {
     const double vol = cell[0] * cell[1] * cell[2];
     const double dlen = std::min({cell[0], cell[1], cell[2]});
     // Shortest reciprocal vector length: 2π / longest real edge.
-    const double rlen = 2.0 * kPi / std::max({cell[0], cell[1], cell[2]});
+    const double rlen = 2.0 * units::pi / std::max({cell[0], cell[1], cell[2]});
     const double tol = std::sqrt(std::numeric_limits<double>::epsilon());
     double alpha = 1.0e-8;
     double diff = rec_dir_diff(alpha, rlen, dlen, vol);
@@ -362,7 +361,7 @@ double amat_dir(const double rij[3], double gam, double alp,
 double amat_rec(const double rij[3], double vol, double alp,
                 const std::vector<std::array<double, 3>>& gtrans) {
     double s = 0.0;
-    const double fac = 4.0 * kPi / vol;
+    const double fac = 4.0 * units::pi / vol;
     constexpr double eps = 1.0e-12;
     for (const auto& g : gtrans) {
         const double g2 = g[0] * g[0] + g[1] * g[1] + g[2] * g[2];

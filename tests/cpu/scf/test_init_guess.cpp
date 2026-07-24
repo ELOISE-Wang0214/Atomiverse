@@ -149,7 +149,7 @@ TEST(HueckelGuess, UnsupportedElementOrShellThrows) {
 TEST(SapGuess, PotentialMatrixSymmetricAndNegativeDiagonal) {
     cpu::Frame frame = make_h2o();
     IntegralPack ints{frame, BasisSet::STO3G};
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         ints.atoms.data(), static_cast<int>(ints.atoms.size()), GridLevel::SG0,
         50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
@@ -177,7 +177,7 @@ TEST(SapGuess, HydrogenAtomHandComputedReferenceElement) {
     IntegralPack ints{frame, BasisSet::STO3G};
     ASSERT_EQ(ints.n_basis, 1);
 
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
 
@@ -210,7 +210,7 @@ TEST(SapGuess, InitialDensityTracePSEqualsElectronCountSpherical) {
     cpu::Frame frame = make_h2o();
     IntegralPack ints{frame, BasisSet::Def2SVP};
     ASSERT_TRUE(ints.spherical());
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         ints.atoms.data(), static_cast<int>(ints.atoms.size()), GridLevel::SG0,
         50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
@@ -230,7 +230,7 @@ TEST(SapGuess, UnsupportedElementThrows) {
 
     cpu::Frame frame = make_h_atom();
     IntegralPack ints{frame, BasisSet::STO3G};
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
     ints.atoms[0].Z = 200;
     EXPECT_THROW(SapGuess(ints.shells, ints.T, ints.atoms, grid, ints.c2s),

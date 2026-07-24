@@ -101,7 +101,6 @@ done
 #
 # Exemption whitelist (each with its owning round; delete the line when the
 # owning round memberizes it):
-#   build_molecular_grid          — grid.h public grid builder; IntegralPack-deletion round
 #   build_minao_density           — MINAO initial-guess machinery; IntegralPack-deletion round
 #   build_minao_ao_list           — MINAO initial-guess machinery; IntegralPack-deletion round
 #   build_shell_list_from_table   — basis_set.cpp file-local helper; IntegralPack-deletion round
@@ -113,7 +112,7 @@ for dir in "include/atomiverse/cpu/scf" "src/cpu/scf"; do
         | grep -vE '(\.|->|::)build_' \
         | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(///|//|\*|/\*|#)' \
         | grep -vE 'build_on[[:space:]]*\(|build_components|build_plan' \
-        | grep -vE 'build_molecular_grid|build_minao_density|build_minao_ao_list|build_shell_list_from_table|build_shell_to_atom_from_integrals' \
+        | grep -vE 'build_minao_density|build_minao_ao_list|build_shell_list_from_table|build_shell_to_atom_from_integrals' \
         || true)"
     if [ -n "${matches}" ]; then
         echo "FAIL: new build_* free function in ${dir} (cpu/scf admits none):"

@@ -85,9 +85,9 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                 integrals.atoms.size(), static_cast<int>(grid_level), n_radial,
                 n_angular);
             grid_ =
-                build_molecular_grid(integrals.atoms.data(),
-                                     static_cast<int>(integrals.atoms.size()),
-                                     grid_level, n_radial, n_angular);
+                MolecularGrid(integrals.atoms.data(),
+                              static_cast<int>(integrals.atoms.size()),
+                              grid_level, n_radial, n_angular);
             ATV_INFO("[scf] grid build done points={} ms={:.1f}",
                      grid_.points.size(), elapsed_ms(t_grid));
         }

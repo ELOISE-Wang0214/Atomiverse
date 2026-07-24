@@ -206,10 +206,9 @@ TEST(GpwDftD3BJ, PeriodicMoreNegativeThanIsolated) {
 // Fast H2 (DZVP-MOLOPT-SR / GTH-PBE) — SCF cheap; ΔE must equal e_disp.
 TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
     using namespace ATV::cpu::gpw;
-    using molrs::Element;
 
-    const GaussianBasis bH(Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pH(Element::H, "GTH-PBE-q1");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
     const double rA[3] = {4.0, 4.0, 4.0};
     const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAngToBohr};
     std::vector<GpwAtom> atoms = {GpwAtom(rA, bH, pH, 1),
@@ -255,9 +254,8 @@ TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
 
 TEST(GpwDftD3BJ, MutualExclusionWithZeroDamping) {
     using namespace ATV::cpu::gpw;
-    using molrs::Element;
-    const GaussianBasis bH(Element::H, "DZVP-MOLOPT-SR-GTH");
-    const GthPotential pH(Element::H, "GTH-PBE-q1");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
     const double rA[3] = {4.0, 4.0, 4.0};
     const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAngToBohr};
     std::vector<GpwAtom> atoms = {GpwAtom(rA, bH, pH, 1),

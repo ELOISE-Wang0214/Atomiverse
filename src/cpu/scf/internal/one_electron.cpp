@@ -10,6 +10,7 @@
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/core/units.h"
 
 namespace ATV {
 namespace cpu {
@@ -258,7 +259,7 @@ double moment_1d(int la, int lb, int e, double pa, double pb, double pc,
             r = r * (n - k + i) / i;
         return r;
     };
-    const double spi = std::sqrt(M_PI / p);
+    const double spi = std::sqrt(units::pi / p);
     double acc = 0.0;
     for (int i = 0; i <= la; ++i) {
         for (int j = 0; j <= lb; ++j) {

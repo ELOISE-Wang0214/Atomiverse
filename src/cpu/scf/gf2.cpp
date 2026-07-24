@@ -91,9 +91,9 @@ void remove_uncoupled(RealVector& e, RealMatrix& c, double tol) {
 /// gf_occ: energies [n_occ_aux], coupling [n_mo × n_occ_aux]
 /// gf_vir: energies [n_vir_aux], coupling [n_mo × n_vir_aux]
 /// eri: full MO (pq|rs) chemist notation [n_mo^4]
-AuxSlice build_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
-                       const RealVector& gf_vir_e, const RealMatrix& gf_vir_c,
-                       const xt::xtensor<double, 4>& eri) {
+AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
+                         const RealVector& gf_vir_e, const RealMatrix& gf_vir_c,
+                         const xt::xtensor<double, 4>& eri) {
     const int nmo = static_cast<int>(gf_occ_c.shape()[0]);
     const int nocc_a = static_cast<int>(gf_occ_e.size());
     const int nvir_a = static_cast<int>(gf_vir_e.size());
@@ -415,8 +415,8 @@ GF2Result RHF::gf2() const {
     }
 
     // SE = se_part(occ,vir) ⊕ se_part(vir,occ)
-    const AuxSlice se_occ = build_se_part(e_occ, c_occ, e_vir, c_vir, eri);
-    const AuxSlice se_vir = build_se_part(e_vir, c_vir, e_occ, c_occ, eri);
+    const AuxSlice se_occ = compute_se_part(e_occ, c_occ, e_vir, c_vir, eri);
+    const AuxSlice se_vir = compute_se_part(e_vir, c_vir, e_occ, c_occ, eri);
     AuxSlice se = combine(se_occ, se_vir);
 
     // Dyson: extended Fock [F, V; V†, ε_aux] with F = diag(ε_HF)

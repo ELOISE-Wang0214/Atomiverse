@@ -106,7 +106,6 @@ using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
 using ATV::cpu::gpw::GthPotential;
 using ATV::cpu::gpw::XcKind;
-using molrs::Element;
 
 // Geometry [Å] → Bohr — water dimer (REFERENCE.md / same as D3(BJ) pin).
 constexpr double kA2B = 1.0 / 0.52917720859;

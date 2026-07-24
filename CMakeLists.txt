@@ -490,16 +490,16 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_HF)
         target_sources(atomiverse PRIVATE
             src/cpu/scf/basis_set.cpp
-            src/cpu/scf/one_electron.cpp
+            src/cpu/scf/internal/one_electron.cpp
             src/cpu/scf/two_electron.cpp
-            src/cpu/scf/integrals.cpp
+            src/cpu/scf/internal/integrals.cpp
             src/cpu/scf/ecp_potential.cpp
-            src/cpu/scf/ecp_integrals.cpp
+            src/cpu/scf/internal/ecp_integrals.cpp
             src/cpu/scf/native_integrals.cpp
             src/cpu/scf/rys_roots.cpp
             src/cpu/scf/rys_roots_iterative.cpp
             src/cpu/scf/rys_eri.cpp
-            src/cpu/scf/shell_pair.cpp
+            src/cpu/scf/internal/shell_pair.cpp
             src/cpu/scf/operators.cpp
             src/cpu/observe/multipole.cpp
             src/cpu/observe/lowdin.cpp
@@ -528,8 +528,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/stages/mix_stage.cpp
             src/cpu/scf/stages/density_stage.cpp
             src/cpu/scf/mean_field_method.cpp
-            src/cpu/scf/orbital_hessian.cpp
-            src/cpu/scf/stability.cpp
+            src/cpu/scf/internal/orbital_hessian.cpp
+            src/cpu/scf/internal/stability.cpp
             src/cpu/scf/tdhf.cpp
             src/cpu/scf/cisd.cpp
             src/cpu/scf/adc.cpp
@@ -545,14 +545,14 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/uks.cpp
             src/cpu/scf/roks.cpp
             src/cpu/scf/minao_data.cpp
-            src/cpu/scf/minao.cpp
+            src/cpu/scf/internal/minao.cpp
             src/cpu/scf/xc_functional.cpp
             src/cpu/scf/xc_gga.cpp
             src/cpu/scf/grid.cpp
-            src/cpu/scf/integral_derivatives.cpp
-            src/cpu/scf/cphf_pack.cpp
-            src/cpu/scf/ucphf_pack.cpp
-            src/cpu/scf/gradient.cpp
+            src/cpu/scf/internal/integral_derivatives.cpp
+            src/cpu/scf/internal/cphf_pack.cpp
+            src/cpu/scf/internal/ucphf_pack.cpp
+            src/cpu/scf/internal/gradient.cpp
 
             src/cpu/scf/mp2.cpp
             src/cpu/scf/mp3.cpp

@@ -164,17 +164,25 @@ fail_matches 'GPW Element-bearing value types must not have a Z=0 default state'
 matches="$(common_grep 'cpu::md::Zero(Forces|Energy|Stress|Kinetic)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])ZeroLinearMomentum([^[:alnum:]_]|$)')"
 fail_matches 'legacy MD Zero alias/name remains' "${matches}"
 
-# The deleted overload had `int n_radial` immediately after `int natm`;
-# the sole canonical declaration requires an explicit GridLevel there.
+# The MolecularGrid constructor must require an explicit GridLevel: `int natm`
+# is followed by `GridLevel level`, never directly by `int n_radial` (which
+# would be the deleted implicit-SG0 overload). The guard scans each
+# `MolecularGrid(...)` declaration and fails if `natm` is immediately followed
+# by `int n_radial`.
 GRID_H="${ROOT}/include/atomiverse/cpu/scf/grid.h"
 matches="$(awk '
-    /MolecularGrid build_molecular_grid\(/ {
-        first = NR ":" $0
-        if (getline > 0 && $0 ~ /^[[:space:]]*int n_radial/) \
-            print first "\n" NR ":" $0
+    /MolecularGrid\(/ { collecting = 1 }
+    collecting {
+        sig = sig " " $0
+        if ($0 ~ /;/) {
+            if (sig ~ /int[[:space:]]+natm[[:space:]]*,[[:space:]]*int[[:space:]]+n_radial/)
+                print NR ": " sig
+            collecting = 0
+            sig = ""
+        }
     }
 ' "${GRID_H}")"
-fail_matches 'implicit-SG0 build_molecular_grid overload remains' "${matches}"
+fail_matches 'implicit-SG0 MolecularGrid constructor (natm not followed by GridLevel) remains' "${matches}"
 
 UPF_H="${ROOT}/include/atomiverse/cpu/planewave/internal/upf_reader.h"
 UPF_CPP="${ROOT}/src/cpu/pw/internal/upf_reader.cpp"

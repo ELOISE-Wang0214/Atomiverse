@@ -10,7 +10,8 @@ criteria:
       constructor; `grep -rn 'build_molecular_grid' include/ src/ tests/`
       returns no declaration/definition/call (only historical prose comments,
       if any).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: no_factory_scrub whitelist removed and gate RESTORED TO GREEN
     type: code
@@ -21,7 +22,8 @@ criteria:
       dev pre-chain (build_se_part, adc build_m*_ x3, build_imds x3); this spec
       clears the gf2/adc renames and the grid factory, spec 03 clears build_imds
       — with 03 landed before or alongside, exit must be 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: compatibility_surface_scrub refreshed and RESTORED TO GREEN
     type: code
@@ -33,7 +35,8 @@ criteria:
       preserved), no longer references build_molecular_grid, and the 6
       pre-existing `using molrs::Element` violations (gpw tests/regressions/docs)
       are fixed to qualified molrs::Element usage.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: build_se_part and adc build_m*_ renamed to non-factory verbs
     type: code
@@ -42,7 +45,8 @@ criteria:
       returns nothing; src/cpu/scf/gf2.cpp defines `compute_se_part(...)` (2 call
       sites) and src/cpu/scf/adc.cpp defines compute_mss_/compute_mab_ea_/
       compute_mij_ip_ with all call sites updated.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: rys_roots throws instead of aborting
     type: code
@@ -51,7 +55,8 @@ criteria:
       and no std::fprintf; the unsupported-nroots and nonzero-err branches
       `throw std::invalid_argument`/`std::runtime_error` carrying the original
       messages.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: unit test pins the rys_roots throw for nroots>7
     type: code
@@ -60,7 +65,8 @@ criteria:
       tests/cpu/scf/test_rys_roots.cpp asserts EXPECT_THROW/ASSERT_THROW that
       native::rys_roots(8, x, u, w) throws std::invalid_argument; the
       test_cpu_scf_rys_roots binary passes.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: local pi/M_PI constants swept to units::pi
     type: code
@@ -69,7 +75,12 @@ criteria:
       and `grep -n 'M_PI'` return nothing; each edited file includes
       atomiverse/core/units.h and uses units::pi. Numerics bitwise-unchanged
       (units::pi == 3.14159265358979323846 == prior literals).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    note: rys_eri.cpp's local kPi was DEAD (declared, never used) — deleted
+      without adding a units.h include since the file has no live pi use; the
+      machine-checkable greps pass. Verified literal bitwise-identical before
+      the sweep.
   - id: ac-008
     summary: 11 internal .cpp relocated under scf/internal and CMake repathed
     type: code
@@ -78,7 +89,8 @@ criteria:
       one_electron, shell_pair, integrals, integral_derivatives, gradient exist
       only under src/cpu/scf/internal/ (none at src/cpu/scf/ root); CMakeLists.txt
       lists all 11 with the internal/ prefix; the target configures and compiles.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-009
     summary: architecture-witness regression builds, links, runs, exits 0
     type: runtime
@@ -89,7 +101,8 @@ criteria:
       consumer, constructs a MolecularGrid via the new constructor, catches the
       std::invalid_argument thrown by native::rys_roots(8, 1.0, u, w), and
       returns 0. No third-party runtime, no numeric golden.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-010
     summary: full unit suite and existing SCF/DFT regressions unchanged
     type: runtime
@@ -97,7 +110,8 @@ criteria:
       ctest full unit suite passes; the regressions target passes including
       existing regressions/scf/* cases reproducing their cited literature values
       unchanged (behavior-preserving refactor confirmed).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
 ---
 
 # Acceptance criteria

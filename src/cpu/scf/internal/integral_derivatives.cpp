@@ -2135,7 +2135,7 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                     const double K_AB = std::exp(-aa * ab / g1 * R2_AB);
                     const double K_CD = std::exp(-ac * ad / g2 * R2_CD);
                     const double T = rho * PQ2;
-                    const double pref = 2.0 * std::pow(M_PI, 2.5)
+                    const double pref = 2.0 * std::pow(units::pi, 2.5)
                                         / (g1 * g2 * std::sqrt(delta)) * K_AB
                                         * K_CD * coeff;
 

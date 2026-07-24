@@ -1,7 +1,7 @@
 ---
 slug: scf-review-05-api-hygiene
 title: "SCF API 卫生整顿 — 网格构造器、rys_roots 抛异常、π 常量归一、内部 .cpp 归位"
-status: approved
+status: done
 created: 2026-07-24
 revised: 2026-07-24
 domain: scf / api-hygiene
@@ -112,16 +112,16 @@ item 13(归位 11 个 .cpp,`src/cpu/scf/X.cpp → src/cpu/scf/internal/X.cpp`):
 
 ## Tasks
 
-- [ ] Write failing unit test asserting rys_roots throws for unsupported nroots (tests/cpu/scf/test_rys_roots.cpp → RysRoots)
-- [ ] Replace both abort sites with throws carrying the same message in src/cpu/scf/rys_roots.cpp
-- [ ] Convert build_molecular_grid factory to a MolecularGrid constructor (include/atomiverse/cpu/scf/grid.h + src/cpu/scf/grid.cpp), preserving SG0-only n_radial/n_angular semantics
-- [ ] Port the 13 build_molecular_grid call sites to the MolecularGrid constructor (tdhf.cpp, mean_field_method.cpp, internal/hamiltonian_builder.cpp, test_xc_reference.cpp, test_init_guess.cpp, test_full_grid_alda.cpp, gradient.cpp)
-- [ ] Update architecture scrubs in lockstep: remove build_molecular_grid whitelist in tests/architecture/no_factory_scrub.sh, refresh the implicit-SG0 guard for the constructor shape in tests/cpu/compatibility_surface_scrub.sh, and fix the 6 pre-existing `using molrs::Element` compat-scrub violations (tests/cpu/gpw/test_cpu_gpw_dftd3.cpp, regressions/gpw/gpw-pbe-d3bj-ice, regressions/gpw/gpw-d4-water, + 2 tutorial docs) so both scrubs restore to green
-- [ ] Rename build_se_part to compute_se_part in src/cpu/scf/gf2.cpp and build_mss_/build_mab_ea_/build_mij_ip_ to compute_mss_/compute_mab_ea_/compute_mij_ip_ in src/cpu/scf/adc.cpp (definitions + all call sites)
-- [ ] Sweep the 7 local kPi/PI constants and 5 M_PI uses to units::pi across the enumerated cpu/scf files, deleting the local constants
-- [ ] Relocate the 11 misplaced internal .cpp files under src/cpu/scf/internal/ (git mv) and repath their 11 explicit entries in CMakeLists.txt
-- [ ] Add regression example regressions/layout/scf_api_hygiene/reg_scf_api_hygiene.cpp (out-of-library witness: MolecularGrid ctor resolves/links, rys_roots(8,…) throws catchably; register via atv_add_regression(layout scf_api_hygiene))
-- [ ] Run full check + test suite (unit suite, no_factory_scrub with whitelist removed, compatibility_surface_scrub, regressions incl. existing SCF/DFT cases)
+- [x] Write failing unit test asserting rys_roots throws for unsupported nroots (tests/cpu/scf/test_rys_roots.cpp → RysRoots)
+- [x] Replace both abort sites with throws carrying the same message in src/cpu/scf/rys_roots.cpp
+- [x] Convert build_molecular_grid factory to a MolecularGrid constructor (include/atomiverse/cpu/scf/grid.h + src/cpu/scf/grid.cpp), preserving SG0-only n_radial/n_angular semantics
+- [x] Port the 13 build_molecular_grid call sites to the MolecularGrid constructor (tdhf.cpp, mean_field_method.cpp, internal/hamiltonian_builder.cpp, test_xc_reference.cpp, test_init_guess.cpp, test_full_grid_alda.cpp, gradient.cpp)
+- [x] Update architecture scrubs in lockstep: remove build_molecular_grid whitelist in tests/architecture/no_factory_scrub.sh, refresh the implicit-SG0 guard for the constructor shape in tests/cpu/compatibility_surface_scrub.sh, and fix the 6 pre-existing `using molrs::Element` compat-scrub violations (tests/cpu/gpw/test_cpu_gpw_dftd3.cpp, regressions/gpw/gpw-pbe-d3bj-ice, regressions/gpw/gpw-d4-water, + 2 tutorial docs) so both scrubs restore to green
+- [x] Rename build_se_part to compute_se_part in src/cpu/scf/gf2.cpp and build_mss_/build_mab_ea_/build_mij_ip_ to compute_mss_/compute_mab_ea_/compute_mij_ip_ in src/cpu/scf/adc.cpp (definitions + all call sites)
+- [x] Sweep the 7 local kPi/PI constants and 5 M_PI uses to units::pi across the enumerated cpu/scf files, deleting the local constants
+- [x] Relocate the 11 misplaced internal .cpp files under src/cpu/scf/internal/ (git mv) and repath their 11 explicit entries in CMakeLists.txt
+- [x] Add regression example regressions/layout/scf_api_hygiene/reg_scf_api_hygiene.cpp (out-of-library witness: MolecularGrid ctor resolves/links, rys_roots(8,…) throws catchably; register via atv_add_regression(layout scf_api_hygiene))
+- [x] Run full check + test suite (unit suite, no_factory_scrub with whitelist removed, compatibility_surface_scrub, regressions incl. existing SCF/DFT cases)
 
 ## Testing strategy
 

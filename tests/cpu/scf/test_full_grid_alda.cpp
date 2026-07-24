@@ -38,7 +38,7 @@ TEST(FullGridAlda, KernelSymmetric) {
     ASSERT_TRUE(rks.converged());
 
     IntegralPack pack{f, BasisSet::STO3G};
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         pack.atoms.data(), static_cast<int>(pack.atoms.size()),
         rks.grid_level, rks.n_radial, rks.n_angular);
     const RealMatrix K = internal::alda_kernel_matrix(
@@ -83,7 +83,7 @@ TEST(FullGridAlda, FullGridDiffersFromDiagonalOnly) {
 
     // H2/STO-3G: n_ov = 1; K(0,0) finite and nonzero.
     IntegralPack pack{f, BasisSet::STO3G};
-    const MolecularGrid grid = build_molecular_grid(
+    const MolecularGrid grid(
         pack.atoms.data(), static_cast<int>(pack.atoms.size()),
         lsda.grid_level, lsda.n_radial, lsda.n_angular);
     const RealMatrix K = internal::alda_kernel_matrix(
