@@ -16,11 +16,11 @@ scheduled). Unblock `docs/developer/pyscf-method-queue.md` blocked rows.
 Acceptance: `rsh-eri-cam-b3lyp/acceptance.md`, `periodic-rhf-gamma/acceptance.md`.
 Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock.md` §2.
 
-## Live — SCF review remediation chain (2026-07-24)
+## Closed — SCF review remediation chain (2026-07-24, all 8 done)
 
-Fixes the 27 findings of the 2026-07-24 /mol:review of `cpu/scf` (verdict
-REQUEST CHANGES: 11 🔴 / 9 🟡 / 7 🟢). Implement in chain order; deps point
-backward only.
+Fixed all 27 findings of the 2026-07-24 /mol:review of `cpu/scf` (verdict
+was REQUEST CHANGES: 11 🔴 / 9 🟡 / 7 🟢). Both architecture scrubs restored
+to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 
 | # | Spec | Deps | One-line |
 | - | ---- | ---- | -------- |
@@ -31,7 +31,7 @@ backward only.
 | 05 | scf-review-05-api-hygiene | 01 | DONE 2026-07-24 (closed; see git) — grid ctor + throws + units::pi + .cpp moves; BOTH scrubs restored green |
 | 06 | scf-review-06-scf-perf | 05 | DONE 2026-07-24 (closed; see git) — XCGridBasis cache + jk_rhf one-sweep + ERI micro-opts (~14% on fixture) |
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
-| 08 | [scf-review-08-ccsd-spatial-diis](scf-review-08-ccsd-spatial-diis/spec.md) | 02, 03, 07 | CC amplitude DIIS + closed-shell spatial CCSD (spin-orbital kept as oracle) [approved] |
+| 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
 ## Live
 
