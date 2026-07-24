@@ -484,3 +484,27 @@ exactly as `tests/cpu/driver_test_helpers.h` does.
   was authored (commit `8d4cc048`, hf-capability-gaps-11-ghf). Nothing to do with
   CUDA. **Owner: SCF.** Fix = stabilize the UHF initial guess or re-derive the
   pin against the PySCF oracle; do not paper over it by loosening the tolerance.
+
+## [2026-07-24] scf-review chain closed — post-HF dedup/perf conventions
+
+The 2026-07-24 /mol:review of cpu/scf (27 findings) was fully remediated by
+the 8-spec scf-review chain (see git f9a6443a..8db7eab9). Durable knowledge:
+
+- **Dedup is now grep-gated, not prose**: `no_ao2mo_public_scrub.sh`,
+  `posthf_dedup_scrub.sh`, `scf_dedup_scrub.sh` (+ the tightened
+  `no_factory_scrub` / `compatibility_surface_scrub`, both green again).
+  New EOM sectors use `internal/eom_ccsd_common.h` (EomImds computing ctor,
+  make_tau, eig_dense); new determinant-CI methods use `internal/ci_engine.h`
+  (fci index convention: h(p,q), chemist g=(pq|rs)); mean-field FD Hessians
+  use `MeanFieldMethod::central_difference_nuclear_hessian`.
+- **`uccsd_solve` keeps a 5th inline antisymmetrization** (ccsd.cpp) — it
+  gathers from 4 separate spin-block chemist tensors, a different data rep
+  than `internal/spin_orbital_eri.h`'s single-tensor `antisym_eri`; folding
+  it requires a representation change, deliberately not done (scf-review-02).
+- **Closed-shell CCSD default is the spatial kernel** (`ccsd_energy_spatial`,
+  ~87x the spin-orbital path); the spin-orbital path is the PERMANENT oracle
+  (`reg_ccsd-spatial-so-parity`, ≤1e-9 Ha) and stays load-bearing for
+  EOM/(T)/gradients/CC2/UCCSD — do not delete it as "dead".
+- **Fused JK (`ShellBlockPairList::jk_rhf`) emits bare, unscaled K** —
+  binding shape for the deferred rsh-eri-cam-b3lyp spec (a second
+  erf-attenuated K must be addable without unfusing J).
