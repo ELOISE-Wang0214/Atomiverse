@@ -1,7 +1,7 @@
 ---
 slug: scf-review-03-posthf-dedup
 title: "Post-HF dedup: hoist EOM-CCSD intermediates + determinant-CI engine"
-status: approved
+status: done
 created: 2026-07-24
 revised: 2026-07-24
 domain: scf / post-hf
@@ -79,13 +79,13 @@ IP 子集决策：IP 只读取 `Foo/Fvv/Fov/Woooo/Wooov/Wovoo/Wovvo/Woovv`，不
 
 ## Tasks
 
-- [ ] Write failing unit tests for CiEngine Slater-Condon elements in tests/cpu/scf/test_ci_engine.cpp (hand-built 2-orbital/2-electron h,g → diagonal/single/double ci_element pinned to 1e-12), register in tests/CMakeLists.txt
-- [ ] Write failing unit test for make_tau in tests/cpu/scf/test_eom_ccsd_common.cpp (hand-computed τ = t2 + ½P(ij)P(ab)t1t1 to 1e-12), register in tests/CMakeLists.txt
-- [ ] Hoist make_tau + EomImds into include/atomiverse/cpu/scf/internal/eom_ccsd_common.h + src/cpu/scf/internal/eom_ccsd_common.cpp — build_imds becomes the computing constructor EomImds(const CCSDSolution&) (clears 3 pre-existing no_factory_scrub violations) — and rewire ccsd.cpp, eom_ee_ccsd.cpp, eom_ea_ccsd.cpp, eom_ip_ccsd.cpp (IP uses the full EomImds, ignores Wvvvv/Wvvvo; diff its shared sectors and surface any mismatch)
-- [ ] Hoist the CI engine (canonical fci Slater-Condon evaluators + casscf CiSolution/dense_ci_solve/make_rdm12) into include/atomiverse/cpu/scf/internal/ci_engine.h + src/cpu/scf/internal/ci_engine.cpp and rewire fci.cpp + casscf.cpp
-- [ ] Register src/cpu/scf/internal/eom_ccsd_common.cpp + src/cpu/scf/internal/ci_engine.cpp in CMakeLists.txt, and add grep-gate tests/architecture/posthf_dedup_scrub.sh registered in tests/CMakeLists.txt
-- [ ] Add regression example regressions/scf/ci-engine-equiv-h2-sto3g/reg_ci-engine-equiv-h2-sto3g.cpp + REFERENCE.md (public API RHF::fci / RHF::casci; hard-coded PySCF literal; no live oracle), register in regressions/CMakeLists.txt
-- [ ] Run full check + test suite
+- [x] Write failing unit tests for CiEngine Slater-Condon elements in tests/cpu/scf/test_ci_engine.cpp (hand-built 2-orbital/2-electron h,g → diagonal/single/double ci_element pinned to 1e-12), register in tests/CMakeLists.txt
+- [x] Write failing unit test for make_tau in tests/cpu/scf/test_eom_ccsd_common.cpp (hand-computed τ = t2 + ½P(ij)P(ab)t1t1 to 1e-12), register in tests/CMakeLists.txt
+- [x] Hoist make_tau + EomImds into include/atomiverse/cpu/scf/internal/eom_ccsd_common.h + src/cpu/scf/internal/eom_ccsd_common.cpp — build_imds becomes the computing constructor EomImds(const CCSDSolution&) (clears 3 pre-existing no_factory_scrub violations) — and rewire ccsd.cpp, eom_ee_ccsd.cpp, eom_ea_ccsd.cpp, eom_ip_ccsd.cpp (IP uses the full EomImds, ignores Wvvvv/Wvvvo; diff its shared sectors and surface any mismatch)
+- [x] Hoist the CI engine (canonical fci Slater-Condon evaluators + casscf CiSolution/dense_ci_solve/make_rdm12) into include/atomiverse/cpu/scf/internal/ci_engine.h + src/cpu/scf/internal/ci_engine.cpp and rewire fci.cpp + casscf.cpp
+- [x] Register src/cpu/scf/internal/eom_ccsd_common.cpp + src/cpu/scf/internal/ci_engine.cpp in CMakeLists.txt, and add grep-gate tests/architecture/posthf_dedup_scrub.sh registered in tests/CMakeLists.txt
+- [x] Add regression example regressions/scf/ci-engine-equiv-h2-sto3g/reg_ci-engine-equiv-h2-sto3g.cpp + REFERENCE.md (public API RHF::fci / RHF::casci; hard-coded PySCF literal; no live oracle), register in regressions/CMakeLists.txt
+- [x] Run full check + test suite
 
 ## Testing strategy
 

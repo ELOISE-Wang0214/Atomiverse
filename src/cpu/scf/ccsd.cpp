@@ -26,42 +26,12 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/scf/internal/ao2mo.h"
+#include "atomiverse/cpu/scf/internal/eom_ccsd_common.h"
 #include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
-namespace {
-
-/// τ_ij^ab = t_ij^ab + ½ fac · P(ij)P(ab) t_i^a t_j^b  (PySCF gintermediates).
-xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
-                                const xt::xtensor<double, 2>& t1, double fac) {
-    const std::size_t no = t1.shape(0);
-    const std::size_t nv = t1.shape(1);
-    xt::xtensor<double, 4> tau = t2;
-    const double c = 0.5 * fac;
-    for (std::size_t i = 0; i < no; ++i) {
-        for (std::size_t j = 0; j < no; ++j) {
-            for (std::size_t a = 0; a < nv; ++a) {
-                for (std::size_t b = 0; b < nv; ++b) {
-                    // t1t1 = c * t_ia * t_jb
-                    // antisym i↔j, then a↔b of that result
-                    const double t1t1_ijab = c * t1(i, a) * t1(j, b);
-                    const double t1t1_jiab = c * t1(j, a) * t1(i, b);
-                    const double a_ij = t1t1_ijab - t1t1_jiab;
-                    const double t1t1_ijba = c * t1(i, b) * t1(j, a);
-                    const double t1t1_jiba = c * t1(j, b) * t1(i, a);
-                    const double a_ij_ba = t1t1_ijba - t1t1_jiba;
-                    tau(i, j, a, b) += a_ij - a_ij_ba;
-                }
-            }
-        }
-    }
-    return tau;
-}
-
-} // namespace
-
 
 /// Shared spin-orbital Jacobi CCSD once SO integrals / ε are assembled.
 static CCSDSolution so_ccsd_kernel(

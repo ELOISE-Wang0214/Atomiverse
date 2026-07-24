@@ -13,7 +13,8 @@ criteria:
       include/ (this clears its 3 pre-existing no_factory_scrub hits). ccsd.cpp,
       eom_ee_ccsd.cpp, eom_ea_ccsd.cpp, eom_ip_ccsd.cpp contain no local
       definition of these symbols and each #include the new header.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: CI engine defined only in ci_engine; slater_determinant untouched
     type: code
@@ -25,7 +26,8 @@ criteria:
       include/atomiverse/cpu/scf/internal/ci_engine.h). fci.cpp and casscf.cpp
       contain none and #include ci_engine.h. include/atomiverse/cpu/scf/
       slater_determinant.h is unchanged (git diff empty).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: dedup grep-gate scrub registered and green
     type: test
@@ -34,7 +36,8 @@ criteria:
       posthf_dedup_scrub.sh <repo-root>) exits 0, and fails non-zero if any
       hoisted symbol is defined in any src/cpu/scf/*.cpp outside the two
       internal engine files.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: canonical Slater-Condon element pinned to hand value
     type: test
@@ -44,7 +47,8 @@ criteria:
       diagonal, single-excitation (with Jordan-Wigner sign), and
       opposite-spin double-excitation matrix elements within 1e-12 of the
       hard-coded expected literals.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: make_tau pinned to hand value
     type: test
@@ -52,7 +56,8 @@ criteria:
       tests/cpu/scf/test_eom_ccsd_common.cpp: make_tau on a hand case
       reproduces tau = t2 + 0.5*fac*P(ij)P(ab) t1 t1 element-wise within
       1e-12 of hard-coded expected literals (fac=1.0 and fac=0.5).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: regression proves FCI == CASCI == literature via unified engine
     type: runtime
@@ -62,7 +67,8 @@ criteria:
       embedded PySCF 2.14.0 full-CI literal -1.137283834488502 Ha (recorded
       in REFERENCE.md with tool/version/command/date) to 1e-6 Ha, AND
       |E_fci - E_casci| < 1e-12; runs in < 60 s; no live third-party call.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: existing EOM/CCSD/CI regressions unchanged
     type: runtime
@@ -73,7 +79,8 @@ criteria:
       reg_casscf-h2-sto3g, reg_nevpt2-h2-sto3g all exit 0 with their
       pre-existing pinned literals and tolerances (embedded goldens
       unchanged; git diff of each reg_*.cpp shows no numeric edit).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-008
     summary: full check + test suite green
     type: runtime
@@ -82,7 +89,8 @@ criteria:
       ctest --output-on-failure is all green, and
       cmake --build build --target regressions completes with every case
       exiting 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
 ---
 
 # Acceptance criteria

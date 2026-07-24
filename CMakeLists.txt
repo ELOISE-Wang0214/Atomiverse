@@ -256,6 +256,8 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/observe/classical_polarization.cpp
         src/cpu/observe/capacitance_charge_fluctuation.cpp
         src/cpu/observe/potential_profile.cpp
+        src/cpu/observe/charge_autocorr.cpp
+        src/cpu/observe/elastance_observer.cpp
 
         # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/communication/atom_pack.cpp
@@ -322,6 +324,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/fix_langevin.cpp
             src/cpu/dynamics/fix_efield.cpp
             src/cpu/dynamics/fix_addforce.cpp
+            src/cpu/dynamics/fix_move.cpp
+            src/cpu/dynamics/fix_dfield.cpp
             src/cpu/dynamics/fix_oscillating_efield.cpp
             src/cpu/dynamics/fix_wall_lj1043.cpp
             src/cpu/dynamics/fix_csvr.cpp
@@ -330,6 +334,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/dynamics/virtual_sites.cpp
             src/cpu/dynamics/const_pot_bo.cpp
             src/cpu/dynamics/const_pot_cg.cpp
+            src/cpu/dynamics/const_pot_maze.cpp
             src/cpu/dynamics/dipole_electrode_joint.cpp
             src/cpu/dynamics/fix_freeze.cpp
             src/cpu/dynamics/piston_electrode.cpp
@@ -511,6 +516,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/tda_gradient.cpp
             src/cpu/scf/internal/mp2_gradient.cpp
             src/cpu/scf/internal/ccsd_gradient.cpp
+            src/cpu/scf/internal/eom_ccsd_common.cpp
+            src/cpu/scf/internal/ci_engine.cpp
             src/cpu/scf/internal/external_field.cpp
             src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/internal/point_charges.cpp

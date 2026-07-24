@@ -659,6 +659,13 @@ if(ATV_BUILD_HF)
     # (SpinOrbital / antisym_eri / mp_denominator) in internal/spin_orbital_eri.h.
     atv_add_cpp_test(test_cpu_scf_spin_orbital_eri cpu/scf/test_spin_orbital_eri.cpp)
     atv_add_cpp_test(test_cpu_scf_fci           cpu/scf/test_fci.cpp)
+    # scf-review-03-posthf-dedup: canonical determinant-CI evaluators
+    # (choose/enumerate_strings/jw_single_sign/Slater-Condon elements/ci_element)
+    # hoisted to internal/ci_engine.h; hand-computed 2-orbital pins (1e-12).
+    atv_add_cpp_test(test_cpu_scf_ci_engine     cpu/scf/test_ci_engine.cpp)
+    # scf-review-03-posthf-dedup: the single hoisted make_tau in
+    # internal/eom_ccsd_common.h; hand-computed tau pins (1e-12, fac=1 and 0.5).
+    atv_add_cpp_test(test_cpu_scf_eom_ccsd_common cpu/scf/test_eom_ccsd_common.cpp)
     atv_add_cpp_test(test_cpu_scf_koopmans      cpu/scf/test_koopmans.cpp)
     atv_add_cpp_test(test_cpu_scf_delta_scf     cpu/scf/test_delta_scf.cpp)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
@@ -961,6 +968,16 @@ add_test(
 add_test(
     NAME test_no_ao2mo_public_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/no_ao2mo_public_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate (scf-review-03-posthf-dedup): the EOM-CCSD intermediates
+# (make_tau / struct EomImds; no free build_imds) and the determinant-CI engine
+# (choose / enumerate_strings / occ_list / jw_single_sign / Slater-Condon
+# elements / ci_element / dense_ci_solve / make_rdm12 / struct CiSolution) are
+# each DEFINED in exactly one internal engine file. Pure grep — every config.
+add_test(
+    NAME test_posthf_dedup_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/architecture/posthf_dedup_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
 # Grep gate: compatibility-only CPU aliases/overloads stay deleted and the
