@@ -25,7 +25,7 @@ backward only.
 | # | Spec | Deps | One-line |
 | - | ---- | ---- | -------- |
 | 01 | scf-review-01-linalg | — | DONE 2026-07-24 (closed; see git) — sym_power/eig_nonsymmetric/solve_pcg in cpu/linalg + OrbitalHessian::direct_rpa |
-| 02 | [scf-review-02-eri-hoists](scf-review-02-eri-hoists/spec.md) | 01 | ao2mo off public mp2.h → internal/ao2mo.h; one spin-orbital ERI helper; mp_denominator [approved] |
+| 02 | scf-review-02-eri-hoists | 01 | DONE 2026-07-24 (closed; see git) — internal/ao2mo.h + internal/spin_orbital_eri.h + mp_denominator |
 | 03 | [scf-review-03-posthf-dedup](scf-review-03-posthf-dedup/spec.md) | 01, 02 | internal/eom_ccsd_common.h (make_tau/EomImds/build_imds) + internal/ci_engine.h (fci/casscf) [approved] |
 | 04 | [scf-review-04-meanfield-dedup](scf-review-04-meanfield-dedup/spec.md) | — | FD-Hessian CRTP hoist (rks/uks/rohf) + GradientResult FromHartreeBohr ctor [approved] |
 | 05 | [scf-review-05-api-hygiene](scf-review-05-api-hygiene/spec.md) | 01 | MolecularGrid ctor (factory removal + scrub lockstep); rys_roots abort→throw; units::pi; 11 .cpp moves [approved] |
