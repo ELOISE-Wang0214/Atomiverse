@@ -91,7 +91,10 @@ class UCphfPack {
     /// @pre `solve()` has run.
     const xt::xtensor<double, 2>& response() const { return U_; }
 
-    /// @brief Total CG iterations (0 for the dense path).
+    /// @brief Number of right-hand sides solved by the iterative (PCG) path
+    ///        (0 for the dense path). The shared `linalg::solve_pcg` returns
+    ///        only the solution, so this counts iteratively-solved
+    ///        perturbations rather than summed CG iterations.
     int iterations() const { return iterations_; }
 
     /// @brief Spin-α AO density response ∂P^α/∂x (dimensionless).
@@ -149,7 +152,7 @@ class UCphfPack {
     xt::xtensor<double, 2> B_;
     xt::xtensor<double, 2> U_;
     bool solved_ = false;
-    int iterations_ = 0;
+    int iterations_ = 0; ///< RHS solved by the iterative PCG path.
 };
 
 } // namespace internal

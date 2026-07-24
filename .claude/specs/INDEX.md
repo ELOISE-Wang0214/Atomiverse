@@ -16,6 +16,23 @@ scheduled). Unblock `docs/developer/pyscf-method-queue.md` blocked rows.
 Acceptance: `rsh-eri-cam-b3lyp/acceptance.md`, `periodic-rhf-gamma/acceptance.md`.
 Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock.md` §2.
 
+## Live — SCF review remediation chain (2026-07-24)
+
+Fixes the 27 findings of the 2026-07-24 /mol:review of `cpu/scf` (verdict
+REQUEST CHANGES: 11 🔴 / 9 🟡 / 7 🟢). Implement in chain order; deps point
+backward only.
+
+| # | Spec | Deps | One-line |
+| - | ---- | ---- | -------- |
+| 01 | [scf-review-01-linalg](scf-review-01-linalg/spec.md) | — | hoist sym_power / eig_nonsymmetric (dgeev) / solve_pcg to cpu/linalg + OrbitalHessian::direct_rpa [approved] |
+| 02 | [scf-review-02-eri-hoists](scf-review-02-eri-hoists/spec.md) | 01 | ao2mo off public mp2.h → internal/ao2mo.h; one spin-orbital ERI helper; mp_denominator [approved] |
+| 03 | [scf-review-03-posthf-dedup](scf-review-03-posthf-dedup/spec.md) | 01, 02 | internal/eom_ccsd_common.h (make_tau/EomImds/build_imds) + internal/ci_engine.h (fci/casscf) [approved] |
+| 04 | [scf-review-04-meanfield-dedup](scf-review-04-meanfield-dedup/spec.md) | — | FD-Hessian CRTP hoist (rks/uks/rohf) + GradientResult FromHartreeBohr ctor [approved] |
+| 05 | [scf-review-05-api-hygiene](scf-review-05-api-hygiene/spec.md) | 01 | MolecularGrid ctor (factory removal + scrub lockstep); rys_roots abort→throw; units::pi; 11 .cpp moves [approved] |
+| 06 | [scf-review-06-scf-perf](scf-review-06-scf-perf/spec.md) | 05 | Phi/dPhi grid cache; fused one-sweep JK (RSH-separable K); ERI micro-alloc fixes [approved] |
+| 07 | [scf-review-07-posthf-perf](scf-review-07-posthf-perf/spec.md) | 02 | dense N⁴ ERI via shell-block engine + OpenMP; RI-MP2 GEMM; ao2mo copy elision [approved] |
+| 08 | [scf-review-08-ccsd-spatial-diis](scf-review-08-ccsd-spatial-diis/spec.md) | 02, 03, 07 | CC amplitude DIIS + closed-shell spatial CCSD (spin-orbital kept as oracle) [approved] |
+
 ## Live
 
 | Spec | Branch / track | Status |
@@ -25,10 +42,13 @@ Independent — no cross-deps. Roadmap: `docs/roadmap/dft.md` §6, `hartree-fock
 
 MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
 (2026-07-24) staffed 10 production-depth / residual map rows to
-`## in_progress` in `docs/developer/metalwalls-method-queue.md` (MaZe,
-NeighborList salt/Gaussian, electrode forces, CV-SMD, aqueous EDL, D-field,
-charge tools, …); pending=3 remain. No open MD/electrochem specs on `dev`
-yet — workers write `.claude/specs/<slug>/` on `wf/<slug>` before impl.
+`## in_progress` (still unstarted as of **wave-5 gap-census** 2026-07-24:
+MaZe, NeighborList salt/Gaussian, electrode forces, CV-SMD, aqueous EDL,
+D-field, charge tools, …). Wave-5 census refilled **pending=10** (per-electrode
+\(\eta\), const-charge control, MPI charge-halo, XL dipoles, QEq, PIM-NPT IL,
+Voronoi TF, IL EDL box, nanoporous product, TI capacitance). No open
+MD/electrochem specs on `dev` — workers write `.claude/specs/<slug>/` on
+`wf/<slug>` before impl.
 
 CP2K wave 2 closed 2026-07-24 (specs deleted). Incomplete leftover
 `gpw-kpoints-si` has **no** open spec dir — write-first on resume.

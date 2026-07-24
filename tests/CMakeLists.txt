@@ -559,6 +559,16 @@ endif()
 atv_add_cpp_test(test_cpu_linalg_canonical_orth
                  cpu/linalg/test_canonical_orthogonalization.cpp)
 
+# Symmetric matrix power + nonsymmetric (dgeev) eigensolver
+# (scf-review-01-linalg). Header-only cpu/linalg/eigensolve.h — no RHF gate.
+atv_add_cpp_test(test_cpu_linalg_eigensolve
+                 cpu/linalg/test_eigensolve.cpp)
+
+# Preconditioned conjugate gradient (scf-review-01-linalg). Header-only
+# cpu/linalg/linear_solve.h — no RHF gate.
+atv_add_cpp_test(test_cpu_linalg_linear_solve
+                 cpu/linalg/test_linear_solve.cpp)
+
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
 
 if(ATV_BUILD_HF)

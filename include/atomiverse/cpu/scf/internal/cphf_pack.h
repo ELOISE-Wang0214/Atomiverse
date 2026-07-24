@@ -91,11 +91,11 @@ class CphfPack {
     /// @brief Solve ¹(A+B) U^x = −B^x for every nuclear coordinate x
     ///        (3·n_atoms right-hand sides).
     /// @throws std::runtime_error when CG fails to reach `cg_tol` within
-    ///         `cg_max_iter` iterations (message carries the iteration
-    ///         count; no fallback).
+    ///         `cg_max_iter` iterations (message reports the `cg_max_iter`
+    ///         budget; no fallback).
     void solve();
 
-    /// @brief CPHF right-hand sides B^x [3·n_atoms, n_ov] [Hartree],
+    /// @brief CPHF right-hand sides B^x [3·n_atoms, n_ov] [Hartree/Bohr],
     ///        composite column index a·n_occ + i.
     const xt::xtensor<double, 2>& rhs() const { return B_; }
 
@@ -103,8 +103,10 @@ class CphfPack {
     /// @pre `solve()` has run.
     const xt::xtensor<double, 2>& response() const { return U_; }
 
-    /// @brief Total CG iterations summed over all right-hand sides
-    ///        (0 for the dense path).
+    /// @brief Number of right-hand sides solved by the iterative (PCG) path
+    ///        (0 for the dense path). The per-solve CG iteration total is no
+    ///        longer tracked: the shared `linalg::solve_pcg` returns only the
+    ///        solution, so this counts the iteratively-solved perturbations.
     int iterations() const { return iterations_; }
 
     /// @brief AO density-matrix response ∂P/∂x for one nuclear coordinate
@@ -150,7 +152,7 @@ class CphfPack {
     xt::xtensor<double, 2> B_;    ///< RHS B^x [3N, n_ov] [Hartree/Bohr].
     xt::xtensor<double, 2> U_;    ///< Response U^x [3N, n_ov].
     bool solved_ = false;         ///< `solve()` completed.
-    int iterations_ = 0;          ///< Total CG iterations.
+    int iterations_ = 0;          ///< RHS solved by the iterative PCG path.
 };
 
 } // namespace internal

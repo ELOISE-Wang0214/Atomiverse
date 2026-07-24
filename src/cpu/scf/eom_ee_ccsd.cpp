@@ -25,6 +25,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/uhf.h"
@@ -664,12 +665,8 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
     return pack_s4(Hr1, Hr2, no, nv);
 }
 
-/// Dense non-symmetric eigenproblem (column-major LAPACK dgeev).
-extern "C" void dgeev_(const char* jobvl, const char* jobvr, const int* n,
-                       double* a, const int* lda, double* wr, double* wi,
-                       double* vl, const int* ldvl, double* vr, const int* ldvr,
-                       double* work, const int* lwork, int* info);
-
+/// Dense non-symmetric eigenproblem via the shared `linalg::eig_nonsymmetric`
+/// (right eigenvectors requested).
 struct EigPair {
     double wr;
     double wi;
@@ -680,44 +677,27 @@ std::vector<EigPair> dgeev_all(const std::vector<std::vector<double>>& H) {
     const int n = static_cast<int>(H.size());
     if (n == 0)
         return {};
-    // Column-major copy
-    std::vector<double> A(static_cast<std::size_t>(n * n));
+    // RealMatrix is column-major, so A(i,j) = H[i][j] reproduces the old
+    // hand-rolled column-major buffer bit-for-bit under dgeev. eig_nonsymmetric
+    // returns vr with column j = right eigenvector j (contract pinned by the
+    // landed test_eigensolve unit test), matching the old vr[i + j*n] read.
+    linalg::RealMatrix A = xt::zeros<double>(
+        {static_cast<std::size_t>(n), static_cast<std::size_t>(n)});
     for (int j = 0; j < n; ++j)
         for (int i = 0; i < n; ++i)
-            A[static_cast<std::size_t>(i + j * n)] = H[static_cast<std::size_t>(i)]
-                [static_cast<std::size_t>(j)];
-    std::vector<double> wr(static_cast<std::size_t>(n));
-    std::vector<double> wi(static_cast<std::size_t>(n));
-    std::vector<double> vr(static_cast<std::size_t>(n * n));
-    std::vector<double> vl(1);
-    char jobvl = 'N';
-    char jobvr = 'V';
-    int ldvl = 1;
-    int info = 0;
-    int lwork = -1;
-    double wkopt = 0.0;
-    dgeev_(&jobvl, &jobvr, &n, A.data(), &n, wr.data(), wi.data(), vl.data(),
-           &ldvl, vr.data(), &n, &wkopt, &lwork, &info);
-    lwork = static_cast<int>(wkopt);
-    std::vector<double> work(static_cast<std::size_t>(lwork));
-    // dgeev destroys A; rebuild
-    for (int j = 0; j < n; ++j)
-        for (int i = 0; i < n; ++i)
-            A[static_cast<std::size_t>(i + j * n)] = H[static_cast<std::size_t>(i)]
-                [static_cast<std::size_t>(j)];
-    dgeev_(&jobvl, &jobvr, &n, A.data(), &n, wr.data(), wi.data(), vl.data(),
-           &ldvl, vr.data(), &n, work.data(), &lwork, &info);
-    if (info != 0)
-        throw std::runtime_error("eom_ee_ccsd: dgeev failed, info=" +
-                                 std::to_string(info));
+            A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                H[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)];
+    linalg::RealVector wr, wi;
+    linalg::RealMatrix vr;
+    linalg::eig_nonsymmetric(A, wr, wi, &vr, "eom_ee_ccsd");
     std::vector<EigPair> out(static_cast<std::size_t>(n));
     for (int j = 0; j < n; ++j) {
-        out[static_cast<std::size_t>(j)].wr = wr[static_cast<std::size_t>(j)];
-        out[static_cast<std::size_t>(j)].wi = wi[static_cast<std::size_t>(j)];
+        out[static_cast<std::size_t>(j)].wr = wr(static_cast<std::size_t>(j));
+        out[static_cast<std::size_t>(j)].wi = wi(static_cast<std::size_t>(j));
         out[static_cast<std::size_t>(j)].vr.resize(static_cast<std::size_t>(n));
         for (int i = 0; i < n; ++i)
             out[static_cast<std::size_t>(j)].vr[static_cast<std::size_t>(i)] =
-                vr[static_cast<std::size_t>(i + j * n)];
+                vr(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
     }
     return out;
 }

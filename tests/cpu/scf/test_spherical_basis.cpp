@@ -194,9 +194,15 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     double fmax = xt::amax(xt::abs(res.forces))();
     EXPECT_LT(fmax, 1e-8) << "single-atom translational invariance";
 
-    // GHF remains refused on spherical packs (ROHF forces are now supported;
-    // GHF spinor forces are a separate follow-up with no PySCF oracle).
+    // The Generalized (GHF spinor) gradient path input-validates its
+    // determinant: a non-spinor SlaterDeterminant (this restricted `det`) is
+    // rejected with std::invalid_argument ("... requires a generalized
+    // (spinor) SlaterDeterminant.", gradient.cpp). GHF spinor forces on
+    // spherical packs remain a follow-up (no PySCF oracle); ROHF forces are
+    // now supported. Fossil note: this once threw std::runtime_error from a
+    // blanket spherical guard that has since been replaced by typed input
+    // validation.
     EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
                      .compute(f, p, det, 0.0),
-                 std::runtime_error);
+                 std::invalid_argument);
 }

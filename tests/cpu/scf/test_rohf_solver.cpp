@@ -211,12 +211,24 @@ TEST(ROHF, AlphaBelowBetaThrows) {
     EXPECT_THROW(rohf.run(frame), std::invalid_argument);
 }
 
-TEST(ROHF, UnsupportedPathsThrow) {
+TEST(ROHF, Mp2RunsFciStillThrows) {
     auto frame = make_h2();
     cpu::scf::ROHF rohf(1, 1);
     rohf.basis = cpu::scf::BasisSet::STO3G;
-    // Post-SCF correlation on an ROHF reference is refused, not mistreated.
-    EXPECT_THROW(rohf.mp2(frame), std::invalid_argument);
+    // ROMP2 on an ROHF reference is now a delivered feature (UMP2 on ROHF
+    // orbitals with semi-canonical spin-Fock denominators; value bar in
+    // regressions/scf/romp2-o2-sto3g). It runs and returns a finite,
+    // stationary-reference (≤ 0) correlation energy. Fossil note: this once
+    // asserted rohf.mp2 threw std::invalid_argument as an unsupported path.
+    cpu::scf::MP2Result mp2;
+    ASSERT_NO_THROW(mp2 = rohf.mp2(frame));
+    EXPECT_TRUE(std::isfinite(mp2.e_corr));
+    EXPECT_TRUE(std::isfinite(mp2.e_tot));
+    EXPECT_LT(mp2.e_corr, 0.0);
+    EXPECT_NEAR(mp2.e_tot, rohf.energy() + mp2.e_corr, 1e-10);
+    // FCI on an ROHF reference is still genuinely unsupported (the FCI pack
+    // requires a closed-shell reference — mean_field_method.cpp) and remains
+    // refused with std::invalid_argument, not mistreated.
     EXPECT_THROW(rohf.fci(frame), std::invalid_argument);
 }
 

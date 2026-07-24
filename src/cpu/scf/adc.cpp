@@ -27,6 +27,7 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/rhf.h"
@@ -563,43 +564,37 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
     }
 }
 
-/// Dense non-symmetric eigenproblem via LAPACK dgeev (column-major).
-/// Returns real eigenvalues sorted ascending (complex discarded if |Im|>tol).
+/// Dense non-symmetric eigenproblem for the Davidson-projected subspace.
+/// NOTE: kept as a local extern "C" binding because the ADC Davidson path
+/// (davidson_adc_ / ea_adc2 projected solves) still calls dgeev with right
+/// eigenvectors inline — those uses are out of scope for scf-review-01, which
+/// only hoists the eigenvalue-only `dgeev_real_sorted_` below onto the shared
+/// `linalg::eig_nonsymmetric`.
 extern "C" void dgeev_(const char* jobvl, const char* jobvr, const int* n,
                        double* a, const int* lda, double* wr, double* wi,
                        double* vl, const int* ldvl, double* vr, const int* ldvr,
                        double* work, const int* lwork, int* info);
 
+/// Dense non-symmetric eigenproblem via the shared `linalg::eig_nonsymmetric`.
+/// Returns real eigenvalues sorted ascending (complex discarded if |Im|>tol).
 std::vector<double> dgeev_real_sorted_(const xt::xtensor<double, 2>& Hrow,
                                        double imag_tol = 1e-8) {
     const int n = static_cast<int>(Hrow.shape(0));
-    // Column-major copy
-    std::vector<double> A(static_cast<std::size_t>(n * n));
+    // RealMatrix is column-major, so A(i,j) = Hrow(i,j) reproduces the old
+    // hand-rolled column-major buffer bit-for-bit under dgeev.
+    linalg::RealMatrix A = xt::zeros<double>(
+        {static_cast<std::size_t>(n), static_cast<std::size_t>(n)});
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            A[static_cast<std::size_t>(i + j * n)] = Hrow(i, j);
-    std::vector<double> wr(static_cast<std::size_t>(n));
-    std::vector<double> wi(static_cast<std::size_t>(n));
-    std::vector<double> vr(1); // not computed
-    char jobvl = 'N', jobvr = 'N';
-    int ldvl = 1, ldvr = 1, info = 0;
-    int lwork = -1;
-    double wkopt = 0.0;
-    dgeev_(&jobvl, &jobvr, &n, A.data(), &n, wr.data(), wi.data(), vr.data(),
-           &ldvl, vr.data(), &ldvr, &wkopt, &lwork, &info);
-    lwork = static_cast<int>(wkopt);
-    std::vector<double> work(static_cast<std::size_t>(lwork));
-    dgeev_(&jobvl, &jobvr, &n, A.data(), &n, wr.data(), wi.data(), vr.data(),
-           &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
-    if (info != 0)
-        throw std::runtime_error("RHF::adc2: dgeev failed, info="
-                                 + std::to_string(info));
+            A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                Hrow(i, j);
+    linalg::RealVector wr, wi;
+    linalg::eig_nonsymmetric(A, wr, wi, nullptr, "RHF::adc2");
     std::vector<double> real_eigs;
     real_eigs.reserve(static_cast<std::size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        if (std::abs(wi[static_cast<std::size_t>(i)]) <= imag_tol
-            && wr[static_cast<std::size_t>(i)] > -1e-6)
-            real_eigs.push_back(wr[static_cast<std::size_t>(i)]);
+    for (std::size_t i = 0; i < wr.size(); ++i) {
+        if (std::abs(wi(i)) <= imag_tol && wr(i) > -1e-6)
+            real_eigs.push_back(wr(i));
     }
     std::sort(real_eigs.begin(), real_eigs.end());
     return real_eigs;

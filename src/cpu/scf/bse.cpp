@@ -19,6 +19,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/mp2.h"
@@ -36,28 +37,19 @@ constexpr double kOmega2Tol = 1e-10;
 /// Composite OV index matching OrbitalHessian / g0w0: `a * n_occ + i`.
 inline int ov(int a, int i, int n_occ) { return a * n_occ + i; }
 
-RealMatrix sym_power(const RealMatrix& M, double p, const char* what) {
+/// (A−B)^{p} via the shared `linalg::sym_power`, guarding positive-
+/// definiteness first: the pre-refactor local sym_power THREW when
+/// λ_min(A−B) ≤ kAmBFloor, whereas linalg::sym_power CLAMPS — keep the throw
+/// so behavior is unchanged (the power math is bit-identical on a PD basis).
+RealMatrix checked_sym_power(const RealMatrix& M, double p, const char* what) {
     auto [s, U] = xt::linalg::eigh(M);
-    const std::size_t m = M.shape()[0];
+    (void)U;
     if (s(0) <= kAmBFloor)
         throw std::runtime_error(
             std::string(what) + ": (A - B) is not positive definite "
             "(lowest eigenvalue = " + std::to_string(s(0))
             + " Ha) — BSE RPA reduction undefined (no fallback)");
-    RealMatrix Us = U;
-    for (std::size_t c = 0; c < m; ++c) {
-        const double w = std::pow(s(c), p);
-        for (std::size_t r = 0; r < m; ++r)
-            Us(r, c) *= w;
-    }
-    RealMatrix out = xt::linalg::dot(Us, xt::transpose(U));
-    for (std::size_t r = 0; r < m; ++r)
-        for (std::size_t c = r + 1; c < m; ++c) {
-            const double v = 0.5 * (out(r, c) + out(c, r));
-            out(r, c) = v;
-            out(c, r) = v;
-        }
-    return out;
+    return linalg::sym_power(M, p, kAmBFloor, what);
 }
 
 /// Symmetrize in place (numerical noise from W assembly).
@@ -242,7 +234,7 @@ BSEResult RHF::bse(int n_states, bool tda) const {
     RealMatrix Mm = A - B;
     symmetrize(Mp);
     symmetrize(Mm);
-    const RealMatrix T = sym_power(Mm, 0.5, "RHF::bse");
+    const RealMatrix T = checked_sym_power(Mm, 0.5, "RHF::bse");
     RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
     symmetrize(M);
     auto [w2, Z] = xt::linalg::eigh(M);

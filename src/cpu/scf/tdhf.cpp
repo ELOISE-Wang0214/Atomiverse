@@ -18,6 +18,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/alda_kernel.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
@@ -94,33 +95,23 @@ std::vector<int> seed_indices(const RealVector& diag, int k) {
     return order;
 }
 
-/// Symmetric eigendecomposition M = U diag(s) Uᵀ raised to the given power
-/// of s (p = ±1/2 for the (A−B)^{±1/2} factors), with a positivity floor.
-RealMatrix sym_power(const RealMatrix& M, double p, double floor,
-                     const char* what) {
+/// (A−B)^{p} for the Hermitian RPA reduction (p = ±1/2). The shared
+/// `linalg::sym_power` CLAMPS eigenvalues at the floor, but the reduction
+/// needs (A−B) genuinely positive definite — preserve the pre-refactor
+/// throw-on-λ_min≤floor guard here, then defer the power to the shared
+/// primitive (bit-identical on a PD reference; the extra symmetrization the
+/// old copy did is absorbed downstream when M = TᵀMpT is symmetrized).
+RealMatrix checked_sym_power(const RealMatrix& M, double p, double floor,
+                             const char* what) {
     auto [s, U] = xt::linalg::eigh(M);
-    const std::size_t m = M.shape()[0];
+    (void)U;
     if (s(0) <= floor)
         throw std::runtime_error(
             std::string(what) + ": (A - B) is not positive definite "
             "(lowest eigenvalue = " + std::to_string(s(0))
             + " Ha) — the Hermitian RPA reduction is undefined for this "
             "reference (no fallback)");
-    RealMatrix Us = U;
-    for (std::size_t c = 0; c < m; ++c) {
-        const double w = std::pow(s(c), p);
-        for (std::size_t r = 0; r < m; ++r)
-            Us(r, c) *= w;
-    }
-    RealMatrix out = xt::linalg::dot(Us, xt::transpose(U));
-    // Symmetrize against round-off (U diag Uᵀ is symmetric analytically).
-    for (std::size_t r = 0; r < m; ++r)
-        for (std::size_t c = r + 1; c < m; ++c) {
-            const double v = 0.5 * (out(r, c) + out(c, r));
-            out(r, c) = v;
-            out(c, r) = v;
-        }
-    return out;
+    return linalg::sym_power(M, p, floor, what);
 }
 
 /// The reduced-RPA ω² gate: negative beyond tolerance ⇒ channel instability
@@ -185,8 +176,9 @@ TDHFPack::Roots TDHFPack::tda_dense_(int n_states) const {
 TDHFPack::Roots TDHFPack::rpa_dense_(int n_states) const {
     const RealMatrix Mp = hessian_.dense_plus(ch_);
     const RealMatrix Mm = hessian_.dense_minus(ch_);
-    const RealMatrix T = sym_power(Mm, 0.5, kAmBFloor, "TDHFPack::rpa");
-    const RealMatrix Ti = sym_power(Mm, -0.5, kAmBFloor, "TDHFPack::rpa");
+    const RealMatrix T = checked_sym_power(Mm, 0.5, kAmBFloor, "TDHFPack::rpa");
+    const RealMatrix Ti =
+        checked_sym_power(Mm, -0.5, kAmBFloor, "TDHFPack::rpa");
 
     RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
     const std::size_t n = M.shape()[0];
@@ -376,9 +368,9 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
                 Q(q, p) = sm;
             }
         const RealMatrix Qh =
-            sym_power(Q, 0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
+            checked_sym_power(Q, 0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
         const RealMatrix Qih =
-            sym_power(Q, -0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
+            checked_sym_power(Q, -0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
         RealMatrix M =
             xt::linalg::dot(Qh, RealMatrix(xt::linalg::dot(P, Qh)));
         for (int r = 0; r < m; ++r)
@@ -626,28 +618,19 @@ internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
             Mm(c, r) = vm;
         }
 
+    // (A−B)^{p} via the shared linalg::sym_power, guarding positive-
+    // definiteness first (the primitive CLAMPS; keep the throw so behavior is
+    // unchanged — see the file-scope sym_power note above).
     auto make_power = [&](const RealMatrix& M, double p) {
         auto [s, U] = xt::linalg::eigh(M);
+        (void)U;
         if (s(0) <= kFloor)
             throw std::runtime_error(
                 "RKS::tddft: (A - B) is not positive definite "
                 "(lowest eigenvalue = "
                 + std::to_string(s(0))
                 + " Ha) — Hermitian RPA reduction undefined (no fallback)");
-        RealMatrix Us = U;
-        for (std::size_t c = 0; c < n; ++c) {
-            const double w = std::pow(s(c), p);
-            for (std::size_t r = 0; r < n; ++r)
-                Us(r, c) *= w;
-        }
-        RealMatrix out = xt::linalg::dot(Us, xt::transpose(U));
-        for (std::size_t r = 0; r < n; ++r)
-            for (std::size_t c = r + 1; c < n; ++c) {
-                const double v = 0.5 * (out(r, c) + out(c, r));
-                out(r, c) = v;
-                out(c, r) = v;
-            }
-        return out;
+        return linalg::sym_power(M, p, kFloor, "RKS::tddft");
     };
 
     const RealMatrix T = make_power(Mm, 0.5);
@@ -1754,14 +1737,8 @@ ExcitedStatesResult UHF::sf_tda(int n_states) const {
 
 namespace {
 
-/// Dense non-symmetric eigenproblem (LAPACK dgeev, column-major). Returns
-/// real eigenvalues with wr > 0 and |wi| ≤ imag_tol, sorted ascending.
-/// Same pattern as RHF::adc2 / EOM-EE (third dense SF-RPA caller).
-extern "C" void dgeev_(const char* jobvl, const char* jobvr, const int* n,
-                       double* a, const int* lda, double* wr, double* wi,
-                       double* vl, const int* ldvl, double* vr, const int* ldvr,
-                       double* work, const int* lwork, int* info);
-
+/// Dense non-symmetric eigenproblem via the shared `linalg::eig_nonsymmetric`.
+/// Returns real eigenvalues with wr > 0 and |wi| ≤ imag_tol, sorted ascending.
 std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
                                            const RealMatrix& B,
                                            double imag_tol = 1e-8) {
@@ -1773,57 +1750,33 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
             "UHF::sf_tddft: A/B must be square and equal size");
     // Non-Hermitian RPA: [[A, B], [-B, -A]] (X;Y) = ω (X;Y). Spectrum is
     // ± pairs when stable; collinear SF may leave (A−B) indefinite so the
-    // Hermitian Casida reduction is not used.
-    const int n = 2 * nov;
-    std::vector<double> M(static_cast<std::size_t>(n * n), 0.0);
+    // Hermitian Casida reduction is not used. RealMatrix is column-major, so
+    // the logical block layout below matches the old hand-rolled column-major
+    // buffer bit-for-bit under dgeev.
+    const std::size_t n = static_cast<std::size_t>(2 * nov);
+    RealMatrix M = xt::zeros<double>({n, n});
     for (int i = 0; i < nov; ++i) {
         for (int j = 0; j < nov; ++j) {
             const double aij = A(static_cast<std::size_t>(i),
                                  static_cast<std::size_t>(j));
             const double bij = B(static_cast<std::size_t>(i),
                                  static_cast<std::size_t>(j));
-            // Column-major: M[row + col*n]
-            M[static_cast<std::size_t>(i + j * n)] = aij;
-            M[static_cast<std::size_t>(i + (j + nov) * n)] = bij;
-            M[static_cast<std::size_t>((i + nov) + j * n)] = -bij;
-            M[static_cast<std::size_t>((i + nov) + (j + nov) * n)] = -aij;
+            M(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = aij;
+            M(static_cast<std::size_t>(i),
+              static_cast<std::size_t>(j + nov)) = bij;
+            M(static_cast<std::size_t>(i + nov),
+              static_cast<std::size_t>(j)) = -bij;
+            M(static_cast<std::size_t>(i + nov),
+              static_cast<std::size_t>(j + nov)) = -aij;
         }
     }
-    std::vector<double> wr(static_cast<std::size_t>(n));
-    std::vector<double> wi(static_cast<std::size_t>(n));
-    std::vector<double> vr(1);
-    char jobvl = 'N', jobvr = 'N';
-    int ldvl = 1, ldvr = 1, info = 0;
-    int lwork = -1;
-    double wkopt = 0.0;
-    dgeev_(&jobvl, &jobvr, &n, M.data(), &n, wr.data(), wi.data(), vr.data(),
-           &ldvl, vr.data(), &ldvr, &wkopt, &lwork, &info);
-    lwork = static_cast<int>(wkopt);
-    std::vector<double> work(static_cast<std::size_t>(std::max(lwork, 1)));
-    // dgeev destroys M; rebuild
-    for (int i = 0; i < nov; ++i) {
-        for (int j = 0; j < nov; ++j) {
-            const double aij = A(static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j));
-            const double bij = B(static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j));
-            M[static_cast<std::size_t>(i + j * n)] = aij;
-            M[static_cast<std::size_t>(i + (j + nov) * n)] = bij;
-            M[static_cast<std::size_t>((i + nov) + j * n)] = -bij;
-            M[static_cast<std::size_t>((i + nov) + (j + nov) * n)] = -aij;
-        }
-    }
-    dgeev_(&jobvl, &jobvr, &n, M.data(), &n, wr.data(), wi.data(), vr.data(),
-           &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
-    if (info != 0)
-        throw std::runtime_error("UHF::sf_tddft: dgeev failed, info="
-                                 + std::to_string(info));
+    RealVector wr, wi;
+    linalg::eig_nonsymmetric(M, wr, wi, nullptr, "UHF::sf_tddft");
     std::vector<double> pos;
     pos.reserve(static_cast<std::size_t>(nov));
-    for (int i = 0; i < n; ++i) {
-        if (std::abs(wi[static_cast<std::size_t>(i)]) <= imag_tol
-            && wr[static_cast<std::size_t>(i)] > 1e-8)
-            pos.push_back(wr[static_cast<std::size_t>(i)]);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (std::abs(wi(i)) <= imag_tol && wr(i) > 1e-8)
+            pos.push_back(wr(i));
     }
     std::sort(pos.begin(), pos.end());
     return pos;

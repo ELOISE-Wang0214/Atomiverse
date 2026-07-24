@@ -14,10 +14,8 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
-#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
@@ -33,87 +31,9 @@ namespace cpu {
 namespace scf {
 namespace {
 
-constexpr double kAmBFloor = 1e-10;   ///< (A−B) positivity floor [Hartree].
-constexpr double kOmega2Tol = 1e-10;  ///< |ω²| zero / instability guard.
 constexpr double kEta = 1e-8;        ///< Spectral broadening [Hartree].
 constexpr double kQpeTol = 1e-8;     ///< Newton residual on ω [Hartree].
 constexpr int kQpeMaxIter = 100;
-
-/// Symmetric M^{p} via eigh (p = ±½ for the RPA reduction).
-RealMatrix sym_power(const RealMatrix& M, double p, const char* what) {
-    auto [s, U] = xt::linalg::eigh(M);
-    const std::size_t m = M.shape()[0];
-    if (s(0) <= kAmBFloor)
-        throw std::runtime_error(
-            std::string(what) + ": (A - B) is not positive definite "
-            "(lowest eigenvalue = " + std::to_string(s(0))
-            + " Ha) — dRPA reduction undefined (no fallback)");
-    RealMatrix Us = U;
-    for (std::size_t c = 0; c < m; ++c) {
-        const double w = std::pow(s(c), p);
-        for (std::size_t r = 0; r < m; ++r)
-            Us(r, c) *= w;
-    }
-    RealMatrix out = xt::linalg::dot(Us, xt::transpose(U));
-    for (std::size_t r = 0; r < m; ++r)
-        for (std::size_t c = r + 1; c < m; ++c) {
-            const double v = 0.5 * (out(r, c) + out(c, r));
-            out(r, c) = v;
-            out(c, r) = v;
-        }
-    return out;
-}
-
-/// Dense dRPA: A = dense_A(singlet, α=0), B = dense_B(singlet, α=0), then
-/// the Hermitian reduction of TDHFPack::rpa_dense_ (XᵀX − YᵀY = 1).
-void solve_drpa(const internal::OrbitalHessian& hess, RealVector& omega,
-                RealMatrix& X, RealMatrix& Y) {
-    const RealMatrix A = hess.dense_A(internal::Channel::singlet, /*alpha_hf=*/0.0);
-    const RealMatrix B = hess.dense_B(internal::Channel::singlet, /*alpha_hf=*/0.0);
-    const RealMatrix Mp = A + B;
-    const RealMatrix Mm = A - B;
-    const RealMatrix T = sym_power(Mm, 0.5, "RHF::g0w0/dRPA");
-    const RealMatrix Ti = sym_power(Mm, -0.5, "RHF::g0w0/dRPA");
-
-    RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
-    const std::size_t n = M.shape()[0];
-    for (std::size_t r = 0; r < n; ++r)
-        for (std::size_t c = r + 1; c < n; ++c) {
-            const double v = 0.5 * (M(r, c) + M(c, r));
-            M(r, c) = v;
-            M(c, r) = v;
-        }
-    auto [w2, Z] = xt::linalg::eigh(M);
-
-    omega = xt::zeros<double>({n});
-    X = xt::zeros<double>({n, n});
-    Y = xt::zeros<double>({n, n});
-    for (std::size_t s = 0; s < n; ++s) {
-        if (w2(s) < -kOmega2Tol)
-            throw std::runtime_error(
-                "RHF::g0w0: dRPA omega^2 = " + std::to_string(w2(s))
-                + " Ha^2 (root " + std::to_string(s)
-                + ") is negative — imaginary excitation (no fallback)");
-        if (w2(s) <= kOmega2Tol)
-            throw std::runtime_error(
-                "RHF::g0w0: dRPA omega^2 = " + std::to_string(w2(s))
-                + " Ha^2 (root " + std::to_string(s)
-                + ") is numerically zero (no fallback)");
-        const double w = std::sqrt(w2(s));
-        omega(s) = w;
-        for (std::size_t r = 0; r < n; ++r) {
-            double xpy = 0.0, xmy = 0.0;
-            for (std::size_t c = 0; c < n; ++c) {
-                xpy += T(r, c) * Z(c, s);
-                xmy += Ti(r, c) * Z(c, s);
-            }
-            xpy /= std::sqrt(w);
-            xmy *= std::sqrt(w);
-            X(s, r) = 0.5 * (xpy + xmy);
-            Y(s, r) = 0.5 * (xpy - xmy);
-        }
-    }
-}
 
 /// Diagonal correlation self-energy Re Σ_c,p(ω) [Hartree] at real ω.
 double sigma_c_diag(double omega, int p, int n_occ, int n_mo,
@@ -217,9 +137,12 @@ G0W0Result RHF::g0w0() const {
     if (hess.n_occ() != n_occ || hess.n_virt() != n_vir)
         throw std::runtime_error("RHF::g0w0: Hessian occupation mismatch");
 
-    RealVector Om;
-    RealMatrix X, Y;
-    solve_drpa(hess, Om, X, Y);
+    // Shared dRPA Hermitian reduction (α_hf = 0); G0W0 consumes Ω_s + X/Y.
+    const internal::DirectRpaResult rpa =
+        hess.direct_rpa(internal::Channel::singlet, /*alpha_hf=*/0.0);
+    const RealVector& Om = rpa.omega;
+    const RealMatrix& X = rpa.X;
+    const RealMatrix& Y = rpa.Y;
     const int n_exc = static_cast<int>(Om.size());
 
     // Full MO ERI (pq|rs) for transition densities and exchange.

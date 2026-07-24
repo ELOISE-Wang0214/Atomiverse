@@ -4,6 +4,8 @@
 
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 
+#include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,6 +13,8 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
+
+#include "atomiverse/cpu/linalg/eigensolve.h"
 
 namespace ATV {
 namespace cpu {
@@ -23,6 +27,12 @@ namespace {
 double coulomb_weight(Channel ch) {
     return (ch == Channel::singlet) ? 4.0 : 0.0;
 }
+
+/// (A−B) positivity floor [Hartree] — shared by the pre-refactor rpa.cpp /
+/// g0w0.cpp file-local sym_power copies (both 1e-10, verified identical).
+constexpr double kAmBFloor = 1e-10;
+/// |ω²| zero / instability guard [Hartree²] — identical in rpa.cpp/g0w0.cpp.
+constexpr double kOmega2Tol = 1e-10;
 } // namespace
 
 OrbitalHessian::OrbitalHessian(const SlaterDeterminant& det,
@@ -262,6 +272,84 @@ RealVector OrbitalHessian::diagonal_plus(Channel ch) const {
                              + (cw - 1.0) * ovov_(a, i, a, i)
                              - oovv_(i, i, a, a);
     return d;
+}
+
+DirectRpaResult OrbitalHessian::direct_rpa(Channel ch, double alpha_hf) const {
+    const RealMatrix A = dense_A(ch, alpha_hf);
+    const RealMatrix B = dense_B(ch, alpha_hf);
+    const std::size_t n = A.shape()[0];
+
+    double tr_A = 0.0;
+    for (std::size_t i = 0; i < n; ++i)
+        tr_A += A(i, i);
+
+    const RealMatrix Mp = A + B;
+    const RealMatrix Mm = A - B;
+
+    // Positive-definiteness guard preserved from the rpa.cpp / g0w0.cpp
+    // file-local sym_power copies: they THREW when λ_min(A−B) ≤ kAmBFloor,
+    // whereas linalg::sym_power CLAMPS at the floor. Keep the throw here so
+    // behavior is unchanged; the (A−B)^{±1/2} math then defers to sym_power
+    // (bit-identical on a healthy, PD reference).
+    {
+        auto [s, U] = xt::linalg::eigh(Mm);
+        (void)U;
+        if (s(0) <= kAmBFloor)
+            throw std::runtime_error(
+                "OrbitalHessian::direct_rpa: (A - B) is not positive definite "
+                "(lowest eigenvalue = " + std::to_string(s(0))
+                + " Ha) — dRPA reduction undefined (no fallback)");
+    }
+    const RealMatrix T =
+        linalg::sym_power(Mm, 0.5, kAmBFloor, "OrbitalHessian::direct_rpa");
+    const RealMatrix Ti =
+        linalg::sym_power(Mm, -0.5, kAmBFloor, "OrbitalHessian::direct_rpa");
+
+    RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
+    for (std::size_t r = 0; r < n; ++r)
+        for (std::size_t c = r + 1; c < n; ++c) {
+            const double v = 0.5 * (M(r, c) + M(c, r));
+            M(r, c) = v;
+            M(c, r) = v;
+        }
+    auto [w2, Z] = xt::linalg::eigh(M);
+
+    DirectRpaResult out;
+    out.tr_A = tr_A;
+    out.omega = xt::zeros<double>({n});
+    out.X = xt::zeros<double>({n, n});
+    out.Y = xt::zeros<double>({n, n});
+    double sum_om = 0.0;
+    for (std::size_t s = 0; s < n; ++s) {
+        if (w2(s) < -kOmega2Tol)
+            throw std::runtime_error(
+                "OrbitalHessian::direct_rpa: dRPA omega^2 = "
+                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                + ") is negative — imaginary excitation (no fallback)");
+        if (w2(s) <= kOmega2Tol)
+            throw std::runtime_error(
+                "OrbitalHessian::direct_rpa: dRPA omega^2 = "
+                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                + ") is numerically zero (no fallback)");
+        const double w = std::sqrt(w2(s));
+        out.omega(s) = w;
+        sum_om += w;
+        // (X+Y) = ω^{-1/2} T z, (X−Y) = ω^{1/2} T^{-1} z (g0w0.cpp math).
+        for (std::size_t r = 0; r < n; ++r) {
+            double xpy = 0.0, xmy = 0.0;
+            for (std::size_t c = 0; c < n; ++c) {
+                xpy += T(r, c) * Z(c, s);
+                xmy += Ti(r, c) * Z(c, s);
+            }
+            xpy /= std::sqrt(w);
+            xmy *= std::sqrt(w);
+            out.X(s, r) = 0.5 * (xpy + xmy);
+            out.Y(s, r) = 0.5 * (xpy - xmy);
+        }
+    }
+    // Furche plasmon formula (closed-shell spin-adapted singlet dRPA).
+    out.e_c = 0.5 * (sum_om - tr_A);
+    return out;
 }
 
 } // namespace internal

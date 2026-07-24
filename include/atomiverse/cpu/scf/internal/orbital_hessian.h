@@ -42,6 +42,28 @@ namespace internal {
 ///        (RHF→UHF, external / spin-symmetry-breaking stability).
 enum class Channel { singlet, triplet };
 
+/// @brief Result of the shared direct random-phase-approximation (dRPA) /
+///        Casida (linear-response) Hermitian reduction
+///        \((A-B)^{1/2}(A+B)(A-B)^{1/2}\) — the single solve behind both
+///        `RHF::direct_rpa` (reads `omega` + `e_c`) and `RHF::g0w0` (reads
+///        `omega` + the `X`/`Y` amplitude matrices its screened Coulomb
+///        consumes). Lightweight value object; \(T,T^{-1}\) stay method-private.
+struct DirectRpaResult {
+    /// @brief Positive dRPA excitation energies \(\Omega_s\) [Hartree],
+    ///        ascending, length n_ov (= √eigenvalues of the reduced matrix).
+    RealVector omega;
+    /// @brief dRPA correlation energy \(E_c = \tfrac12(\sum_s\Omega_s -
+    ///        \mathrm{Tr}\,A)\) [Hartree].
+    double e_c = 0.0;
+    /// @brief \(\mathrm{Tr}\,A\) of the supplied \(A\) matrix [Hartree]
+    ///        (diagnostic; enters the plasmon formula).
+    double tr_A = 0.0;
+    /// @brief RPA X amplitudes, row s = state s [n_ov × n_ov] (dimensionless).
+    RealMatrix X;
+    /// @brief RPA Y amplitudes, row s = state s [n_ov × n_ov] (dimensionless).
+    RealMatrix Y;
+};
+
 /// @brief The closed-shell MO orbital Hessian A/B kernel: constructor does
 ///        the occ-virt MO-ERI transform once; members provide matrix-free
 ///        σ± products and explicit dense (A ± B) builds per channel.
@@ -136,6 +158,26 @@ class OrbitalHessian {
     /// @param ch Excitation channel.
     /// @return Length-n_ov diagonal [Hartree].
     RealVector diagonal_plus(Channel ch) const;
+
+    /// @brief Dense direct-RPA / Casida Hermitian reduction on this reference:
+    ///        \(A=\)`dense_A(ch,alpha_hf)`, \(B=\)`dense_B(ch,alpha_hf)`,
+    ///        \(M=(A-B)^{1/2}(A+B)(A-B)^{1/2}\), then a symmetric
+    ///        eigendecomposition \(M=Z\,\omega^2\,Z^\top\). Returns the positive
+    ///        excitation energies \(\Omega_s=\sqrt{\omega_s^2}\), the plasmon
+    ///        correlation energy \(E_c=\tfrac12(\sum_s\Omega_s-\mathrm{Tr}\,A)\),
+    ///        and the RPA \(X,Y\) amplitudes. The one solve shared by
+    ///        `RHF::direct_rpa` (dRPA correlation) and `RHF::g0w0` (screened W).
+    ///
+    /// The \((A-B)^{\pm1/2}\) factors use `linalg::sym_power`; a positive-
+    /// definiteness guard on \(\lambda_{\min}(A-B)\le\)`kAmBFloor` and the
+    /// \(\omega^2\) guard at `kOmega2Tol` are preserved from the pre-refactor
+    /// per-method solves (no fallback — both throw).
+    /// @param ch       Excitation channel (dRPA uses `singlet`).
+    /// @param alpha_hf Exact-exchange admixture in [0, 1] (dRPA uses 0).
+    /// @return Excitation energies, \(E_c\), \(\mathrm{Tr}\,A\), and \(X,Y\).
+    /// @throws std::runtime_error when \(A-B\) is not positive definite or an
+    ///         \(\omega^2\) root is negative / numerically zero (no fallback).
+    DirectRpaResult direct_rpa(Channel ch, double alpha_hf) const;
 
   private:
     /// @brief Full four-index MO transform of a dense chemist-order tensor:

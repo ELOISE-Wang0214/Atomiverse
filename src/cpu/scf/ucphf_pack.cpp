@@ -4,6 +4,7 @@
 
 #include "atomiverse/cpu/scf/internal/ucphf_pack.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,7 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/views/xview.hpp>
 
+#include "atomiverse/cpu/linalg/linear_solve.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 
 namespace ATV {
@@ -334,6 +336,11 @@ void UCphfPack::solve() {
         return;
     }
 
+    // Preconditioned conjugate gradient per right-hand side (shared
+    // linalg::solve_pcg). solve_pcg stops at tol·‖b‖, whereas the pre-refactor
+    // loop stopped at cg_tol·max(1,‖b‖); scaling tol per RHS reproduces that
+    // exact absolute threshold (behavior-preserving). The null-RHS skip is
+    // kept — solve_pcg would divide 0/0 on b = 0.
     const RealVector diag = diagonal_lhs_();
     for (int x = 0; x < n3; ++x) {
         RealVector b = xt::zeros<double>({static_cast<std::size_t>(n_rot_)});
@@ -346,49 +353,11 @@ void UCphfPack::solve() {
         if (b_norm == 0.0)
             continue;
 
-        RealVector u = xt::zeros<double>({static_cast<std::size_t>(n_rot_)});
-        RealVector r = b;
-        RealVector z = r / diag;
-        RealVector pvec = z;
-        double rz = 0.0;
-        for (int p = 0; p < n_rot_; ++p)
-            rz += r(p) * z(p);
-
-        const double stop = cg_tol * std::max(1.0, b_norm);
-        bool converged = false;
-        int it = 0;
-        for (; it < cg_max_iter; ++it) {
-            const RealVector Ap = apply_lhs(pvec);
-            double pAp = 0.0;
-            for (int p = 0; p < n_rot_; ++p)
-                pAp += pvec(p) * Ap(p);
-            const double alpha = rz / pAp;
-            u = u + alpha * pvec;
-            r = r - alpha * Ap;
-            double r_norm = 0.0;
-            for (int p = 0; p < n_rot_; ++p)
-                r_norm += r(p) * r(p);
-            r_norm = std::sqrt(r_norm);
-            if (r_norm <= stop) {
-                converged = true;
-                ++it;
-                break;
-            }
-            z = r / diag;
-            double rz_new = 0.0;
-            for (int p = 0; p < n_rot_; ++p)
-                rz_new += r(p) * z(p);
-            pvec = z + (rz_new / rz) * pvec;
-            rz = rz_new;
-        }
-        iterations_ += it;
-        if (!converged)
-            throw std::runtime_error(
-                "UCphfPack::solve: CPHF conjugate gradient did not reach "
-                "tol "
-                + std::to_string(cg_tol) + " for perturbation "
-                + std::to_string(x) + " within " + std::to_string(it)
-                + " iterations (no fallback)");
+        const double tol_eff = cg_tol * std::max(1.0, b_norm) / b_norm;
+        const RealVector u = linalg::solve_pcg(
+            [&](const RealVector& v) { return apply_lhs(v); }, diag, b, tol_eff,
+            cg_max_iter);
+        ++iterations_;
         for (int p = 0; p < n_rot_; ++p)
             U_(x, p) = u(p);
     }

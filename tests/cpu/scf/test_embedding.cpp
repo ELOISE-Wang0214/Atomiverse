@@ -215,7 +215,7 @@ TEST(ExternalField, SmallFieldEnergyShiftMatchesDipole) {
     EXPECT_LT(rel, 1e-2) << "dE=" << dE << " want=" << want;
 }
 
-TEST(MeanFieldEnvironment, PointChargeAndFieldForcesRunSolventStillThrows) {
+TEST(MeanFieldEnvironment, PointChargeFieldAndSolventForcesRun) {
     auto frame = make_h2o();
     // Point-charge embedding forces are supported (hf-parity-03): value bar
     // vs pinned PySCF qmmm lives in regressions/scf/embed_h2o_grad.
@@ -237,13 +237,21 @@ TEST(MeanFieldEnvironment, PointChargeAndFieldForcesRunSolventStillThrows) {
     rhf2.external_field = {0.0, 0.0, 1e-4};
     EXPECT_NO_THROW(rhf2.forces(frame));
 
-    // C-PCM (self-consistent solvent) forces remain a follow-up link.
+    // C-PCM (implicit solvent) free-energy forces are now a delivered feature
+    // (default SolventModel::CPCM; fixed-P semi-numerical ∂ΔG_el/∂R, gradient.cpp;
+    // value bar vs FD of the solvent SCF energy in regressions/scf/pcm-grad-h2o).
+    // Fossil note: this once asserted rhf3.forces threw std::runtime_error as an
+    // unimplemented follow-up. GHF-in-solvent remains the only refused link.
     RHF rhf3;
     rhf3.basis = BasisSet::STO3G;
     rhf3.tol = 1e-8;
     rhf3.max_iter = 50;
     rhf3.solvent_eps = 78.4;
-    EXPECT_THROW(rhf3.forces(frame), std::runtime_error);
+    cpu::scf::GradientResult g3;
+    ASSERT_NO_THROW(g3 = rhf3.forces(frame));
+    EXPECT_EQ(g3.forces.shape(0), 3u);
+    EXPECT_TRUE(std::isfinite(g3.energy));
+    EXPECT_TRUE(std::isfinite(g3.forces(0, 0)));
 }
 
 TEST(MeanFieldEnvironment, EmptyEnvironmentIsNoOp) {
