@@ -698,6 +698,14 @@ if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cfmm_j                cpu/scf/test_cfmm_j.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
+    # scf-review-08-ccsd-spatial-diis: CC amplitude DIIS accelerator
+    # (internal/cc_diis.h) over flattened [t1;t2] vectors — Pulay B-matrix on a
+    # contractive linear toy + single/near-singular/state edges (pure algebra).
+    atv_add_cpp_test(test_cpu_scf_cc_diis       cpu/scf/test_cc_diis.cpp)
+    # scf-review-08-ccsd-spatial-diis: closed-shell spatial-orbital CCSD kernel
+    # (internal/ccsd_spatial.h) — H2/STO-3G E_corr pin (same PySCF pin as
+    # regressions/scf/ccsd-h2-sto3g) + He/STO-3G zero-virtual edge.
+    atv_add_cpp_test(test_cpu_scf_ccsd_spatial  cpu/scf/test_ccsd_spatial.cpp)
     # hf-capability-gaps-07-guess: Hückel/SAP guess matrices + EDIIS/ADIIS
     # far-field mixers (single-call math only; iteration-count contrast is
     # regressions/scf/h2o_scf_convergence).

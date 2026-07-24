@@ -55,16 +55,22 @@ struct CCSDSolution {
 /// intermediates, and iterates T₁/T₂ by plain Jacobi updates until
 /// max|Δt| < `tol` or `max_iter` is exhausted.
 ///
+/// Closed-shell RHF routes to the spatial-orbital fast path
+/// (`ccsd_energy_spatial`); the spin-orbital kernel stays the oracle and the
+/// backbone for EOM/(T)/CC2/gradient/UCCSD.
 /// @param ints     Integral pack with the dense ERI tensor materialized.
 /// @param det      Converged closed-shell determinant (MO coeffs, ε, n_e).
 /// @param e_scf_ha Converged SCF total energy [Hartree].
 /// @param tol      Amplitude residual tolerance (dimensionless max-norm).
-/// @param max_iter Jacobi iteration budget (dimensionless).
+/// @param max_iter Jacobi/DIIS iteration budget (dimensionless).
+/// @param use_diis When true, accelerate with `CcAmplitudeDiis`; false → plain
+///                 Jacobi (same fixed point).
 /// @return CCSD correlation and total energies [Hartree].
 /// @throws std::invalid_argument on open-shell / missing ERI / non-aufbau
 ///         denominators / non-convergence (no silent fallback).
 CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                       double e_scf_ha, double tol = 1e-10, int max_iter = 100);
+                       double e_scf_ha, double tol = 1e-10, int max_iter = 100,
+                       bool use_diis = true);
 
 /// @brief Closed-shell CCSD(T): CCSD amplitudes + non-iterative (T).
 ///

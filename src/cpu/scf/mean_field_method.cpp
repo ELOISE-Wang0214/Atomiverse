@@ -1298,7 +1298,8 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
             "MeanFieldMethod::ccsd: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    return ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+    return ccsd_energy(*integrals_sp_, *det_sp_, e_total_, /*tol=*/1e-10,
+                       /*max_iter=*/100, /*use_diis=*/cc_diis);
 }
 
 template <typename D>

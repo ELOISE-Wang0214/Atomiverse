@@ -1,7 +1,7 @@
 ---
 slug: scf-review-08-ccsd-spatial-diis
 title: "Closed-shell spatial CCSD + CC amplitude DIIS"
-status: approved
+status: done
 created: 2026-07-24
 domain: scf / coupled-cluster
 queue: scf-review
@@ -64,16 +64,16 @@ grilled: true
 
 ## Tasks
 
-- [ ] Write failing unit tests for CcAmplitudeDiis in tests/cpu/scf/test_cc_diis.cpp and register test_cpu_scf_cc_diis in tests/CMakeLists.txt
-- [ ] Implement CcAmplitudeDiis in include/atomiverse/cpu/scf/internal/cc_diis.h + src/cpu/scf/internal/cc_diis.cpp and register the source in CMakeLists.txt (ATV_BUILD_HF)
-- [ ] Wire CcAmplitudeDiis into the spin-orbital CCSD amplitude loop in src/cpu/scf/ccsd.cpp (so_ccsd_kernel; error e = Δt = R/D)
-- [ ] Write failing unit tests for ccsd_energy_spatial in tests/cpu/scf/test_ccsd_spatial.cpp and register test_cpu_scf_ccsd_spatial in tests/CMakeLists.txt
-- [ ] Implement closed-shell spatial CCSD in include/atomiverse/cpu/scf/internal/ccsd_spatial.h + src/cpu/scf/ccsd_spatial.cpp (reuse ao2mo_full + CcAmplitudeDiis) and register the source in CMakeLists.txt (ATV_BUILD_HF)
-- [ ] Route closed-shell ccsd_energy to ccsd_energy_spatial in src/cpu/scf/ccsd.cpp, keeping ccsd_solve/uccsd_solve spin-orbital and unchanged for EOM/(T)/gradient/CC2/UCCSD
-- [ ] Add Doxygen @brief/@param(units)/@return to CcAmplitudeDiis and ccsd_energy_spatial
-- [ ] Add regression example regressions/scf/ccsd-spatial-so-parity (spatial-vs-spin-orbital E_corr and DIIS-vs-Jacobi fixed point on H2O/STO-3G; hard-coded PySCF goldens, no third-party runtime) and register it in regressions/CMakeLists.txt
-- [ ] Verify existing CCSD/EOM/CCSD-gradient/CC2 regressions and SCF unit tests are unchanged and green
-- [ ] Run full check + test suite
+- [x] Write failing unit tests for CcAmplitudeDiis in tests/cpu/scf/test_cc_diis.cpp and register test_cpu_scf_cc_diis in tests/CMakeLists.txt
+- [x] Implement CcAmplitudeDiis in include/atomiverse/cpu/scf/internal/cc_diis.h + src/cpu/scf/internal/cc_diis.cpp and register the source in CMakeLists.txt (ATV_BUILD_HF)
+- [x] Wire CcAmplitudeDiis into the spin-orbital CCSD amplitude loop in src/cpu/scf/ccsd.cpp (so_ccsd_kernel; error e = Δt = R/D)
+- [x] Write failing unit tests for ccsd_energy_spatial in tests/cpu/scf/test_ccsd_spatial.cpp and register test_cpu_scf_ccsd_spatial in tests/CMakeLists.txt
+- [x] Implement closed-shell spatial CCSD in include/atomiverse/cpu/scf/internal/ccsd_spatial.h + src/cpu/scf/ccsd_spatial.cpp (reuse ao2mo_full + CcAmplitudeDiis) and register the source in CMakeLists.txt (ATV_BUILD_HF)
+- [x] Route closed-shell ccsd_energy to ccsd_energy_spatial in src/cpu/scf/ccsd.cpp, keeping ccsd_solve/uccsd_solve spin-orbital and unchanged for EOM/(T)/gradient/CC2/UCCSD
+- [x] Add Doxygen @brief/@param(units)/@return to CcAmplitudeDiis and ccsd_energy_spatial
+- [x] Add regression example regressions/scf/ccsd-spatial-so-parity (spatial-vs-spin-orbital E_corr and DIIS-vs-Jacobi fixed point on H2O/STO-3G; hard-coded PySCF goldens, no third-party runtime) and register it in regressions/CMakeLists.txt
+- [x] Verify existing CCSD/EOM/CCSD-gradient/CC2 regressions and SCF unit tests are unchanged and green
+- [x] Run full check + test suite
 
 ## Testing strategy
 

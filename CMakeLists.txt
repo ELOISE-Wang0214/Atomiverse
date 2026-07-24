@@ -517,6 +517,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/mp2_gradient.cpp
             src/cpu/scf/internal/ccsd_gradient.cpp
             src/cpu/scf/internal/eom_ccsd_common.cpp
+            src/cpu/scf/internal/cc_diis.cpp
             src/cpu/scf/internal/ci_engine.cpp
             src/cpu/scf/internal/external_field.cpp
             src/cpu/scf/internal/level_shift.cpp
@@ -558,6 +559,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/mp3.cpp
             src/cpu/scf/mp4.cpp
             src/cpu/scf/ccsd.cpp
+            src/cpu/scf/ccsd_spatial.cpp
             src/cpu/scf/eom_ee_ccsd.cpp
             src/cpu/scf/eom_ea_ccsd.cpp
             src/cpu/scf/eom_ip_ccsd.cpp

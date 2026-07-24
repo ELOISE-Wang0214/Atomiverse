@@ -205,6 +205,9 @@ if(ATV_BUILD_HF)
     atv_add_regression(scf cc2-h2-sto3g)
     atv_add_regression(scf casci-h2-sto3g)
     atv_add_regression(scf ci-engine-equiv-h2-sto3g)
+    # scf-review-08-ccsd-spatial-diis: closed-shell CCSD spatial-vs-spin-orbital
+    # E_corr parity + DIIS-vs-Jacobi fixed point on H2O/STO-3G, vs PySCF golden.
+    atv_add_regression(scf ccsd-spatial-so-parity)
     atv_add_regression(scf casscf-h2-sto3g)
     atv_add_regression(scf nevpt2-h2-sto3g)
     atv_add_regression(scf eom-ee-ccsd)

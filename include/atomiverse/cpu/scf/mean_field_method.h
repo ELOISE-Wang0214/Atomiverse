@@ -277,6 +277,13 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     /// @brief When true (default), nested force-slot runs write forces.
     bool compute_force = true;
 
+    /// @brief Accelerate the closed-shell CCSD amplitude iteration with Pulay
+    ///        amplitude DIIS (`internal::CcAmplitudeDiis`). Default true.
+    ///        When false the closed-shell energy path (`RHF::ccsd`) uses plain
+    ///        Jacobi updates — the same fixed point, only slower — which is the
+    ///        DIIS-vs-Jacobi parity leg of the CCSD regression. Dimensionless.
+    bool cc_diis = true;
+
     /// @brief Maximum-overlap occupation selection for ΔSCF (default Off =
     ///        energy Aufbau; bit-identical to the pre-MOM path). Set to
     ///        `MomStyle::IMOM` (PySCF `mom_occ_`) or `MomStyle::MOM` and

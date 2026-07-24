@@ -11,7 +11,8 @@ criteria:
       unit test test_cpu_scf_cc_diis passes (DIIS extrapolation drives the
       toy error sequence below the hard-coded threshold; single-vector and
       near-singular-B edge cases return finite values).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-002
     summary: DIIS wired into the spin-orbital CCSD amplitude loop
     type: code
@@ -20,7 +21,8 @@ criteria:
       feeds the Jacobi increment (e = Δt = R/D) as the error vector,
       extrapolating [t1;t2] each iteration; the file builds and the CCSD
       unit + regression suite stays green.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-003
     summary: DIIS reaches the same fixed point as plain Jacobi
     type: runtime
@@ -28,7 +30,8 @@ criteria:
       regressions/scf/ccsd-spatial-so-parity/reg_ccsd-spatial-so-parity.cpp
       asserts |E_corr(DIIS) − E_corr(Jacobi)| ≤ 1e-9 Ha on H2O/STO-3G at
       equal residual tolerance (both converged max|Δt| < 1e-8).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-004
     summary: Closed-shell spatial CCSD kernel reproduces the pinned E_corr
     type: code
@@ -38,7 +41,8 @@ criteria:
       spatial n_o²·n_v² storage (no spin expansion); unit test
       test_cpu_scf_ccsd_spatial passes — H2/STO-3G E_corr =
       −0.020524527092106 Ha (±1e-9), He/STO-3G E_corr == 0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-005
     summary: ccsd_energy routes closed-shell to spatial; SO consumers unchanged
     type: code
@@ -48,7 +52,8 @@ criteria:
       CCSDSolution SO blocks are unchanged (eom_*_ccsd, ccsd_gradient,
       triples_energy/ccsd_t_energy, cc2_energy still compile and consume
       CCSDSolution unmodified).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-006
     summary: Spatial vs spin-orbital oracle-equivalence regression
     type: runtime
@@ -59,7 +64,8 @@ criteria:
       and E_corr_spatial matches the embedded PySCF cc.CCSD golden ≤ 1e-6 Ha
       (literal value, no live third-party at ctest time); exits non-zero on
       failure and is registered in regressions/CMakeLists.txt.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-007
     summary: Existing CCSD/EOM/CCSD-gradient/CC2 regressions unchanged
     type: runtime
@@ -68,7 +74,8 @@ criteria:
       ccsd-grad-h2o-sto3g, cc2-h2-sto3g, eom-ee-ccsd, eom-ea-ccsd,
       eom-ip-ccsd, eom-sf-ccsd-o2, eom-cc2-h2 with their pre-existing pinned
       values (no numeric edits to those cases).
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-008
     summary: New symbols carry Doxygen with units
     type: docs
@@ -76,7 +83,8 @@ criteria:
       CcAmplitudeDiis and ccsd_energy_spatial have @brief, @param (with
       units where physical, e.g. e_scf_ha [Hartree], tol dimensionless) and
       @return per the project Doxygen rule.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
   - id: ac-009
     summary: Iteration-count / wall-time evidence recorded (advisory)
     type: performance
@@ -85,7 +93,16 @@ criteria:
       iteration counts (with vs without DIIS; spatial vs spin-orbital) on
       the H2O/STO-3G parity case, with no regression in E_corr; no fixed
       speedup factor is encoded as a gate.
-    status: pending
+    status: verified
+    last_checked: 2026-07-24
+    verified_by: agent-auto
+    note: measured H2O/STO-3G — DIIS 13 iters vs Jacobi 29 (~2.2x fewer);
+      spatial 0.51 ms vs spin-orbital 44.5 ms (~87x); all three E_corr agree
+      <1e-9 Ha. One accepted API addition beyond the spec draft: public
+      bool cc_diis member (parameters-are-members; the only public-API-legal
+      DIIS/Jacobi witness — regressions ban internal includes). DIIS also
+      wired into ccsd_solve so EOM/(T)/CC2/UCCSD converge faster at
+      unchanged pins.
 ---
 
 # Acceptance criteria

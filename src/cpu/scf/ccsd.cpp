@@ -26,6 +26,8 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/cpu/scf/internal/ao2mo.h"
+#include "atomiverse/cpu/scf/internal/cc_diis.h"
+#include "atomiverse/cpu/scf/internal/ccsd_spatial.h"
 #include "atomiverse/cpu/scf/internal/eom_ccsd_common.h"
 #include "atomiverse/cpu/scf/internal/spin_orbital_eri.h"
 
@@ -94,6 +96,15 @@ static CCSDSolution so_ccsd_kernel(
                     }
         return e;
     };
+
+    // Pulay amplitude DIIS over flattened [t1; t2] with the Jacobi increment
+    // Δt = R/D as the error vector (same fixed point as plain Jacobi; only the
+    // convergence rate changes). Benefits every spin-orbital consumer (CCSD,
+    // CCSD(T), CC2, EOM, UCCSD) via `so_ccsd_kernel` / `ccsd_solve`.
+    internal::CcAmplitudeDiis diis(8);
+    const std::vector<double>::size_type ndiis =
+        No * Nv + No * No * Nv * Nv;
+    std::vector<double> diis_amp(ndiis), diis_err(ndiis);
 
     int iters = 0;
     bool ok = false;
@@ -326,18 +337,37 @@ static CCSDSolution so_ccsd_kernel(
         t2new = t2sym;
 
         double dt1 = 0.0, dt2 = 0.0;
+        std::vector<double>::size_type di = 0;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a) {
+                const double d = t1new(i, a) - t1(i, a);
+                dt1 = std::max(dt1, std::abs(d));
+                diis_amp[di] = t1new(i, a);
+                diis_err[di] = d;
+                ++di;
+            }
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b) {
+                        const double d = t2new(i, j, a, b) - t2(i, j, a, b);
+                        dt2 = std::max(dt2, std::abs(d));
+                        diis_amp[di] = t2new(i, j, a, b);
+                        diis_err[di] = d;
+                        ++di;
+                    }
+
+        const std::vector<double> ext = diis.step(diis_amp, diis_err);
+        di = 0;
         for (int i = 0; i < no; ++i)
             for (int a = 0; a < nv; ++a)
-                dt1 = std::max(dt1, std::abs(t1new(i, a) - t1(i, a)));
+                t1(i, a) = ext[di++];
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
                 for (int a = 0; a < nv; ++a)
                     for (int b = 0; b < nv; ++b)
-                        dt2 = std::max(
-                            dt2, std::abs(t2new(i, j, a, b) - t2(i, j, a, b)));
+                        t2(i, j, a, b) = ext[di++];
 
-        t1 = t1new;
-        t2 = t2new;
         iters = it + 1;
         if (std::max(dt1, dt2) < tol) {
             ok = true;
@@ -540,6 +570,15 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
                     }
         return e;
     };
+
+    // Pulay amplitude DIIS over flattened [t1; t2] with the Jacobi increment
+    // Δt = R/D as the error vector (same fixed point as plain Jacobi; only the
+    // convergence rate changes). Benefits every spin-orbital consumer (CCSD,
+    // CCSD(T), CC2, EOM, UCCSD) via `so_ccsd_kernel` / `ccsd_solve`.
+    internal::CcAmplitudeDiis diis(8);
+    const std::vector<double>::size_type ndiis =
+        No * Nv + No * No * Nv * Nv;
+    std::vector<double> diis_amp(ndiis), diis_err(ndiis);
 
     int iters = 0;
     bool ok = false;
@@ -857,18 +896,37 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
         t2new = t2sym;
 
         double dt1 = 0.0, dt2 = 0.0;
+        std::vector<double>::size_type di = 0;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a) {
+                const double d = t1new(i, a) - t1(i, a);
+                dt1 = std::max(dt1, std::abs(d));
+                diis_amp[di] = t1new(i, a);
+                diis_err[di] = d;
+                ++di;
+            }
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b) {
+                        const double d = t2new(i, j, a, b) - t2(i, j, a, b);
+                        dt2 = std::max(dt2, std::abs(d));
+                        diis_amp[di] = t2new(i, j, a, b);
+                        diis_err[di] = d;
+                        ++di;
+                    }
+
+        const std::vector<double> ext = diis.step(diis_amp, diis_err);
+        di = 0;
         for (int i = 0; i < no; ++i)
             for (int a = 0; a < nv; ++a)
-                dt1 = std::max(dt1, std::abs(t1new(i, a) - t1(i, a)));
+                t1(i, a) = ext[di++];
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
                 for (int a = 0; a < nv; ++a)
                     for (int b = 0; b < nv; ++b)
-                        dt2 = std::max(
-                            dt2, std::abs(t2new(i, j, a, b) - t2(i, j, a, b)));
+                        t2(i, j, a, b) = ext[di++];
 
-        t1 = t1new;
-        t2 = t2new;
         iters = it + 1;
         if (std::max(dt1, dt2) < tol) {
             ok = true;
@@ -906,8 +964,12 @@ CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
 }
 
 CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                       double e_scf_ha, double tol, int max_iter) {
-    return ccsd_solve(ints, det, e_scf_ha, tol, max_iter, /*cc2=*/false).result;
+                       double e_scf_ha, double tol, int max_iter,
+                       bool use_diis) {
+    // Closed-shell RHF energy entry: route to the spatial-orbital fast path
+    // (n_o²·n_v² storage, no spin expansion). The spin-orbital `ccsd_solve`
+    // stays the oracle + the backbone for EOM/(T)/CC2/gradient/UCCSD.
+    return ccsd_energy_spatial(ints, det, e_scf_ha, tol, max_iter, use_diis);
 }
 
 
