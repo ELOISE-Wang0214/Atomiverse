@@ -30,7 +30,7 @@ backward only.
 | 04 | scf-review-04-meanfield-dedup | — | DONE 2026-07-24 (closed; see git) — FD-Hessian CRTP template + check_hessian_preconditions + GradientResult tag ctor |
 | 05 | scf-review-05-api-hygiene | 01 | DONE 2026-07-24 (closed; see git) — grid ctor + throws + units::pi + .cpp moves; BOTH scrubs restored green |
 | 06 | scf-review-06-scf-perf | 05 | DONE 2026-07-24 (closed; see git) — XCGridBasis cache + jk_rhf one-sweep + ERI micro-opts (~14% on fixture) |
-| 07 | [scf-review-07-posthf-perf](scf-review-07-posthf-perf/spec.md) | 02 | dense N⁴ ERI via shell-block engine + OpenMP; RI-MP2 GEMM; ao2mo copy elision [approved] |
+| 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | [scf-review-08-ccsd-spatial-diis](scf-review-08-ccsd-spatial-diis/spec.md) | 02, 03, 07 | CC amplitude DIIS + closed-shell spatial CCSD (spin-orbital kept as oracle) [approved] |
 
 ## Live
