@@ -25,9 +25,10 @@ degrees of freedom with mass \(\mu\). The extended Lagrangian is
 \]
 
 Nuclei integrate with the ordinary MD `VelocityVerlet`. Electrons integrate
-with a position-Verlet step on the occupied MO matrix \(C\)
-(\(\mu\,\ddot C = -4 H C\) for closed-shell \(P = 2 C C^\top\)), followed by
-Löwdin re-orthonormalization (SHAKE-free foothold). After one cold SCF seed,
+with velocity-Verlet + electronic RATTLE on the occupied MO matrix \(C\)
+(\(\mu\,\ddot C = -4 H C\) for closed-shell \(P = 2 C C^\top\); product path
+is RATTLE — this document retains the historical Löwdin foothold narrative).
+After one cold SCF seed,
 **production steps do not re-converge SCF** — they evaluate the KS energy and
 matrix once at the current density and take analytic nuclear forces at that
 fixed electronic state.

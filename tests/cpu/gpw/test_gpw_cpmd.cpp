@@ -1,13 +1,15 @@
 /// @file tests/cpu/gpw/test_gpw_cpmd.cpp
-/// @brief Unit tests: Cpmd electronic propagator + GPWEvaluator CPMD guards.
+/// @brief Unit tests: Cpmd electronic propagator (RATTLE) + GPWEvaluator guards.
 ///
 /// No multi-step MD / full water SCF trajectory here (that is the e2e
-/// regressions/dynamics/cpmd-water pin). Matrix-level and build() validation only.
+/// regressions/dynamics/cpmd-water and cpmd-rattle-water pins). Matrix-level
+/// and build() validation only.
 
 #include <cmath>
 #include <stdexcept>
 
 #include <gtest/gtest.h>
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/generators/xbuilder.hpp>
 
 #include "atomiverse/cpu/component/context.h"
@@ -20,6 +22,28 @@
 
 using ATV::cpu::gpw::Cpmd;
 using ATV::cpu::linalg::RealMatrix;
+
+namespace {
+
+double max_abs_mat(const RealMatrix& a) {
+    double m = 0.0;
+    for (double v : a) {
+        const double av = std::fabs(v);
+        if (av > m)
+            m = av;
+    }
+    return m;
+}
+
+RealMatrix eye_n(int n) {
+    RealMatrix I = xt::zeros<double>(
+        {static_cast<std::size_t>(n), static_cast<std::size_t>(n)});
+    for (int i = 0; i < n; ++i)
+        I(i, i) = 1.0;
+    return I;
+}
+
+} // namespace
 
 // ── Cpmd propagator ─────────────────────────────────────────────────────
 
@@ -84,6 +108,57 @@ TEST(Cpmd, ResetDropsReady) {
     cp.reset();
     EXPECT_FALSE(cp.ready());
     EXPECT_THROW(cp.C(), std::logic_error);
+}
+
+// ── Electronic RATTLE residual gates ────────────────────────────────────
+
+TEST(Cpmd, RattlePreservesOrthonormalityAndVelocityConstraint) {
+    // Two occupied columns in a 3-AO space; S = I; nontrivial diagonal H so
+    // the force is nonzero off the BO surface for a non-eigen C.
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({3, 2});
+    C(0, 0) = 1.0;
+    C(1, 1) = 1.0;
+    cp.seed(C);
+
+    RealMatrix S = eye_n(3);
+    RealMatrix H = xt::zeros<double>({3, 3});
+    H(0, 0) = -1.0;
+    H(1, 1) = -0.5;
+    H(2, 2) = 0.2;
+    H(0, 2) = H(2, 0) = 0.15; // couple virtual direction into force
+
+    cp.advance(H, S, 0.05);
+    ASSERT_TRUE(cp.ready());
+    EXPECT_GE(cp.last_position_iters(), 0);
+    EXPECT_LE(cp.last_constraint_residual(), 1e-9);
+
+    using xt::linalg::dot;
+    const RealMatrix G = dot(xt::transpose(cp.C()), dot(S, cp.C()));
+    EXPECT_LE(max_abs_mat(G - eye_n(2)), 1e-9);
+
+    // Velocity constraint: sym(Cᵀ S Ċ) ≈ 0.
+    const RealMatrix W = dot(xt::transpose(cp.C()), dot(S, cp.Cdot()));
+    const RealMatrix Wsym = 0.5 * (W + xt::transpose(W));
+    EXPECT_LE(max_abs_mat(Wsym), 1e-9);
+
+    // Residual accessor matches the recomputed ‖σ‖_∞.
+    EXPECT_NEAR(cp.last_constraint_residual(), max_abs_mat(G - eye_n(2)),
+                1e-15);
+}
+
+TEST(Cpmd, RattleAtRestZeroHKeepsZeroVelocity) {
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    cp.seed(C);
+    RealMatrix H = xt::zeros<double>({2, 2});
+    RealMatrix S = eye_n(2);
+    cp.advance(H, S, 0.1);
+    EXPECT_NEAR(cp.kinetic_ha(), 0.0, 1e-12);
+    EXPECT_NEAR(cp.Cdot()(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(cp.Cdot()(1, 0), 0.0, 1e-12);
+    EXPECT_LE(cp.last_constraint_residual(), 1e-12);
 }
 
 // ── GPWEvaluator cpmd guards ────────────────────────────────────────────
