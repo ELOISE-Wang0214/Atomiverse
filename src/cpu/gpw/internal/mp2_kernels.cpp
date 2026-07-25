@@ -209,6 +209,237 @@ void mp2_rhf_energy(const std::vector<double>& v_ovov,
                 }
 }
 
+std::vector<double> mo_eri_ovov_ab(const UniformGrid& grid,
+                                   const std::vector<double>& psi_occ_a,
+                                   int n_occ_a,
+                                   const std::vector<double>& psi_virt_a,
+                                   int n_virt_a,
+                                   const std::vector<double>& psi_occ_b,
+                                   int n_occ_b,
+                                   const std::vector<double>& psi_virt_b,
+                                   int n_virt_b, bool nonperiodic) {
+    const long npts = grid.npts();
+    const double w = grid.weight();
+    if (n_occ_a < 0 || n_virt_a < 0 || n_occ_b < 0 || n_virt_b < 0)
+        throw std::invalid_argument(
+            "gpw mo_eri_ovov_ab: negative orbital count");
+    if (psi_occ_a.size()
+            != static_cast<std::size_t>(n_occ_a)
+                   * static_cast<std::size_t>(npts)
+        || psi_virt_a.size()
+               != static_cast<std::size_t>(n_virt_a)
+                      * static_cast<std::size_t>(npts)
+        || psi_occ_b.size()
+               != static_cast<std::size_t>(n_occ_b)
+                      * static_cast<std::size_t>(npts)
+        || psi_virt_b.size()
+               != static_cast<std::size_t>(n_virt_b)
+                      * static_cast<std::size_t>(npts))
+        throw std::invalid_argument(
+            "gpw mo_eri_ovov_ab: MO grid arrays do not match counts/npts");
+    const int nov_a = n_occ_a * n_virt_a;
+    const int nov_b = n_occ_b * n_virt_b;
+    if (nov_a == 0 || nov_b == 0)
+        return {};
+    std::vector<double> v(static_cast<std::size_t>(nov_a)
+                          * static_cast<std::size_t>(nov_b));
+    std::vector<double> rho(static_cast<std::size_t>(npts));
+    for (int ia = 0; ia < nov_a; ++ia) {
+        const double* pi = psi_occ_a.data()
+                           + static_cast<std::size_t>(ia / n_virt_a)
+                                 * static_cast<std::size_t>(npts);
+        const double* pa = psi_virt_a.data()
+                           + static_cast<std::size_t>(ia % n_virt_a)
+                                 * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            rho[static_cast<std::size_t>(g)] = pi[g] * pa[g];
+        const PoissonResult pr = nonperiodic ? solve_poisson_mt(grid, rho)
+                                             : solve_poisson(grid, rho);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (int jb = 0; jb < nov_b; ++jb) {
+            const double* pj = psi_occ_b.data()
+                               + static_cast<std::size_t>(jb / n_virt_b)
+                                     * static_cast<std::size_t>(npts);
+            const double* pb = psi_virt_b.data()
+                               + static_cast<std::size_t>(jb % n_virt_b)
+                                     * static_cast<std::size_t>(npts);
+            double s = 0.0;
+            for (long g = 0; g < npts; ++g)
+                s += pr.v_r[static_cast<std::size_t>(g)] * pj[g] * pb[g];
+            v[static_cast<std::size_t>(ia) * static_cast<std::size_t>(nov_b)
+              + static_cast<std::size_t>(jb)] = w * s;
+        }
+    }
+    return v;
+}
+
+std::vector<double> mo_eri_ovov_ab_ri(const UniformGrid& grid,
+                                      const std::vector<double>& psi_occ_a,
+                                      int n_occ_a,
+                                      const std::vector<double>& psi_virt_a,
+                                      int n_virt_a,
+                                      const std::vector<double>& psi_occ_b,
+                                      int n_occ_b,
+                                      const std::vector<double>& psi_virt_b,
+                                      int n_virt_b) {
+    const long npts = grid.npts();
+    const double w = grid.weight();
+    if (n_occ_a < 0 || n_virt_a < 0 || n_occ_b < 0 || n_virt_b < 0)
+        throw std::invalid_argument(
+            "gpw mo_eri_ovov_ab_ri: negative orbital count");
+    if (psi_occ_a.size()
+            != static_cast<std::size_t>(n_occ_a)
+                   * static_cast<std::size_t>(npts)
+        || psi_virt_a.size()
+               != static_cast<std::size_t>(n_virt_a)
+                      * static_cast<std::size_t>(npts)
+        || psi_occ_b.size()
+               != static_cast<std::size_t>(n_occ_b)
+                      * static_cast<std::size_t>(npts)
+        || psi_virt_b.size()
+               != static_cast<std::size_t>(n_virt_b)
+                      * static_cast<std::size_t>(npts))
+        throw std::invalid_argument(
+            "gpw mo_eri_ovov_ab_ri: MO grid arrays do not match counts/npts");
+    const int nov_a = n_occ_a * n_virt_a;
+    const int nov_b = n_occ_b * n_virt_b;
+    if (nov_a == 0 || nov_b == 0)
+        return {};
+
+    std::vector<double> V(static_cast<std::size_t>(nov_a)
+                          * static_cast<std::size_t>(npts));
+    std::vector<double> rho(static_cast<std::size_t>(npts));
+    for (int ia = 0; ia < nov_a; ++ia) {
+        const double* pi = psi_occ_a.data()
+                           + static_cast<std::size_t>(ia / n_virt_a)
+                                 * static_cast<std::size_t>(npts);
+        const double* pa = psi_virt_a.data()
+                           + static_cast<std::size_t>(ia % n_virt_a)
+                                 * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            rho[static_cast<std::size_t>(g)] = pi[g] * pa[g];
+        const PoissonResult pr = solve_poisson(grid, rho);
+        double* Via = V.data() + static_cast<std::size_t>(ia)
+                                      * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            Via[g] = pr.v_r[static_cast<std::size_t>(g)];
+    }
+
+    std::vector<double> v(static_cast<std::size_t>(nov_a)
+                          * static_cast<std::size_t>(nov_b));
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (int ia = 0; ia < nov_a; ++ia) {
+        const double* Via = V.data() + static_cast<std::size_t>(ia)
+                                           * static_cast<std::size_t>(npts);
+        for (int jb = 0; jb < nov_b; ++jb) {
+            const double* pj = psi_occ_b.data()
+                               + static_cast<std::size_t>(jb / n_virt_b)
+                                     * static_cast<std::size_t>(npts);
+            const double* pb = psi_virt_b.data()
+                               + static_cast<std::size_t>(jb % n_virt_b)
+                                     * static_cast<std::size_t>(npts);
+            double s = 0.0;
+            for (long g = 0; g < npts; ++g)
+                s += Via[g] * pj[g] * pb[g];
+            v[static_cast<std::size_t>(ia) * static_cast<std::size_t>(nov_b)
+              + static_cast<std::size_t>(jb)] = w * s;
+        }
+    }
+    return v;
+}
+
+namespace {
+
+// Same-spin UMP2 channel: (1/4) Σ [(ia|jb)−(ib|ja)]² / Δ  (PySCF convention).
+double same_spin_ump2_(const std::vector<double>& v_ovov,
+                       const std::vector<double>& eps_occ,
+                       const std::vector<double>& eps_virt) {
+    const int no = static_cast<int>(eps_occ.size());
+    const int nv = static_cast<int>(eps_virt.size());
+    if (no < 2 || nv < 2)
+        return 0.0;
+    const std::size_t nov =
+        static_cast<std::size_t>(no) * static_cast<std::size_t>(nv);
+    if (v_ovov.size() != nov * nov)
+        throw std::invalid_argument(
+            "gpw mp2_uhf_energy: same-spin tensor size mismatch");
+    double e = 0.0;
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b) {
+                    const double v_iajb =
+                        v_ovov[(static_cast<std::size_t>(i) * nv + a) * nov
+                               + static_cast<std::size_t>(j) * nv + b];
+                    const double v_ibja =
+                        v_ovov[(static_cast<std::size_t>(i) * nv + b) * nov
+                               + static_cast<std::size_t>(j) * nv + a];
+                    const double t = v_iajb - v_ibja;
+                    const double denom =
+                        eps_occ[static_cast<std::size_t>(i)]
+                        + eps_occ[static_cast<std::size_t>(j)]
+                        - eps_virt[static_cast<std::size_t>(a)]
+                        - eps_virt[static_cast<std::size_t>(b)];
+                    e += 0.25 * t * t / denom;
+                }
+    return e;
+}
+
+} // namespace
+
+void mp2_uhf_energy(const std::vector<double>& v_aa,
+                    const std::vector<double>& v_bb,
+                    const std::vector<double>& v_ab,
+                    const std::vector<double>& eps_occ_a,
+                    const std::vector<double>& eps_virt_a,
+                    const std::vector<double>& eps_occ_b,
+                    const std::vector<double>& eps_virt_b, double& e_os,
+                    double& e_ss) {
+    const int no_a = static_cast<int>(eps_occ_a.size());
+    const int nv_a = static_cast<int>(eps_virt_a.size());
+    const int no_b = static_cast<int>(eps_occ_b.size());
+    const int nv_b = static_cast<int>(eps_virt_b.size());
+    const std::size_t nov_a =
+        static_cast<std::size_t>(no_a) * static_cast<std::size_t>(nv_a);
+    const std::size_t nov_b =
+        static_cast<std::size_t>(no_b) * static_cast<std::size_t>(nv_b);
+
+    e_ss = same_spin_ump2_(v_aa, eps_occ_a, eps_virt_a)
+           + same_spin_ump2_(v_bb, eps_occ_b, eps_virt_b);
+
+    e_os = 0.0;
+    if (no_a > 0 && nv_a > 0 && no_b > 0 && nv_b > 0) {
+        if (v_ab.size() != nov_a * nov_b)
+            throw std::invalid_argument(
+                "gpw mp2_uhf_energy: cross-spin tensor size mismatch");
+        for (int i = 0; i < no_a; ++i)
+            for (int j = 0; j < no_b; ++j)
+                for (int a = 0; a < nv_a; ++a)
+                    for (int b = 0; b < nv_b; ++b) {
+                        const std::size_t ia =
+                            static_cast<std::size_t>(i) * nv_a
+                            + static_cast<std::size_t>(a);
+                        const std::size_t jb =
+                            static_cast<std::size_t>(j) * nv_b
+                            + static_cast<std::size_t>(b);
+                        const double v = v_ab[ia * nov_b + jb];
+                        const double denom =
+                            eps_occ_a[static_cast<std::size_t>(i)]
+                            + eps_occ_b[static_cast<std::size_t>(j)]
+                            - eps_virt_a[static_cast<std::size_t>(a)]
+                            - eps_virt_b[static_cast<std::size_t>(b)];
+                        e_os += v * v / denom;
+                    }
+    } else if (!v_ab.empty()) {
+        throw std::invalid_argument(
+            "gpw mp2_uhf_energy: cross-spin tensor present with empty channel");
+    }
+}
+
 std::vector<Cplx> mo_on_grid_k(const KpointBasisGrid& kbg, int ik,
                                const linalg::CplxMatrix& C, int p0, int np) {
     const int n_mo = static_cast<int>(C.shape(1));

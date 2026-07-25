@@ -1,8 +1,9 @@
 /// @file tests/cpu/gpw/test_cpu_gpw_mp2.cpp
 /// @brief GPW MP2 kernel units: closed-shell doubles sum vs an explicit
-///        spin-orbital MP2 sum, MO-on-grid CSR expansion vs the dense AO
-///        evaluation, (ia|jb) vs the Poisson Hartree energy, and the
-///        GpwDft::mp2 guard throws. No SCF is run here (unit tier).
+///        spin-orbital MP2 sum, unrestricted UMP2 vs spin-orbital, RMP2≡UMP2
+///        on identical α=β orbitals, MO-on-grid CSR expansion, (ia|jb) vs
+///        Poisson Hartree energy, and GpwDft::mp2 guard throws. No SCF is
+///        run here (unit tier).
 
 #include <cmath>
 #include <complex>
@@ -28,9 +29,12 @@ using ATV::cpu::gpw::make_uniform_grid;
 using ATV::cpu::gpw::solve_poisson;
 using ATV::cpu::gpw::UniformGrid;
 using ATV::cpu::gpw::internal::mo_eri_ovov;
+using ATV::cpu::gpw::internal::mo_eri_ovov_ab;
+using ATV::cpu::gpw::internal::mo_eri_ovov_ab_ri;
 using ATV::cpu::gpw::internal::mo_eri_ovov_ri;
 using ATV::cpu::gpw::internal::mo_on_grid;
 using ATV::cpu::gpw::internal::mp2_rhf_energy;
+using ATV::cpu::gpw::internal::mp2_uhf_energy;
 using ATV::cpu::linalg::RealMatrix;
 
 namespace {
@@ -225,8 +229,8 @@ TEST(GpwMp2, ThrowsBeforeBuild) {
     EXPECT_THROW(m.mp2({}), std::logic_error);
 }
 
-// Guard: UKS configuration is rejected (closed-shell foothold).
-TEST(GpwMp2, ThrowsForUks) {
+// Guard: UKS without a converged run() still requires SCF first.
+TEST(GpwMp2, UksThrowsWithoutConvergedRun) {
     GpwDft m;
     m.cell[0] = m.cell[1] = m.cell[2] = 6.0;
     m.n_alpha = 1;
@@ -235,7 +239,7 @@ TEST(GpwMp2, ThrowsForUks) {
     a.z_val = 2.0;
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
-    EXPECT_THROW(m.mp2({a}), std::invalid_argument);
+    EXPECT_THROW(m.mp2({a}), std::logic_error);
 }
 
 // Guard: converged run() required before correlation.
@@ -248,6 +252,210 @@ TEST(GpwMp2, ThrowsWithoutConvergedRun) {
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
     EXPECT_THROW(m.mp2({a}), std::logic_error);
+}
+
+// UMP2 doubles sum == explicit spin-orbital MP2 on synthetic α≠β channels.
+TEST(GpwMp2, Ump2SumMatchesSpinOrbitalSum) {
+    const int no_a = 2, nv_a = 2, no_b = 1, nv_b = 2;
+    const int nov_a = no_a * nv_a, nov_b = no_b * nv_b;
+    std::vector<double> eps_oa = {-1.1, -0.6};
+    std::vector<double> eps_va = {0.15, 0.55};
+    std::vector<double> eps_ob = {-0.95};
+    std::vector<double> eps_vb = {0.25, 0.65};
+
+    auto fill_sym = [](std::vector<double>& v, int no, int nv, unsigned seed) {
+        const int nov = no * nv;
+        v.assign(static_cast<std::size_t>(nov) * nov, 0.0);
+        auto idx = [&](int i, int a, int j, int b) {
+            return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+        };
+        unsigned s = seed;
+        for (int i = 0; i < no; ++i)
+            for (int a = 0; a < nv; ++a)
+                for (int j = 0; j < no; ++j)
+                    for (int b = 0; b < nv; ++b) {
+                        s = s * 1664525u + 1013904223u;
+                        const double x =
+                            0.04
+                            * (static_cast<double>(s >> 8)
+                                   / static_cast<double>(1u << 24)
+                               - 0.5);
+                        v[idx(i, a, j, b)] = x;
+                        v[idx(j, b, i, a)] = x;
+                    }
+    };
+    std::vector<double> v_aa, v_bb, v_ab;
+    fill_sym(v_aa, no_a, nv_a, 11u);
+    fill_sym(v_bb, no_b, nv_b, 29u);
+    // β same-spin needs ≥2 occ — with no_b=1, v_bb SS contribution is 0;
+    // still fill a consistent 1×2 tensor for the shape check.
+    {
+        const int nov = no_b * nv_b;
+        v_bb.assign(static_cast<std::size_t>(nov) * nov, 0.0);
+        unsigned s = 29u;
+        for (int i = 0; i < no_b; ++i)
+            for (int a = 0; a < nv_b; ++a)
+                for (int j = 0; j < no_b; ++j)
+                    for (int b = 0; b < nv_b; ++b) {
+                        s = s * 1664525u + 1013904223u;
+                        const double x =
+                            0.03
+                            * (static_cast<double>(s >> 8)
+                                   / static_cast<double>(1u << 24)
+                               - 0.5);
+                        const std::size_t p =
+                            static_cast<std::size_t>((i * nv_b + a) * nov
+                                                    + j * nv_b + b);
+                        const std::size_t q =
+                            static_cast<std::size_t>((j * nv_b + b) * nov
+                                                    + i * nv_b + a);
+                        v_bb[p] = x;
+                        v_bb[q] = x;
+                    }
+    }
+    v_ab.assign(static_cast<std::size_t>(nov_a) * nov_b, 0.0);
+    {
+        unsigned s = 47u;
+        for (int i = 0; i < no_a; ++i)
+            for (int a = 0; a < nv_a; ++a)
+                for (int j = 0; j < no_b; ++j)
+                    for (int b = 0; b < nv_b; ++b) {
+                        s = s * 1664525u + 1013904223u;
+                        const double x =
+                            0.05
+                            * (static_cast<double>(s >> 8)
+                                   / static_cast<double>(1u << 24)
+                               - 0.5);
+                        v_ab[static_cast<std::size_t>(i * nv_a + a) * nov_b
+                             + static_cast<std::size_t>(j * nv_b + b)] = x;
+                    }
+    }
+
+    double e_os = 0.0, e_ss = 0.0;
+    mp2_uhf_energy(v_aa, v_bb, v_ab, eps_oa, eps_va, eps_ob, eps_vb, e_os,
+                   e_ss);
+    const double e_u = e_os + e_ss;
+
+    // Spin-orbital sum: α occ 0..no_a-1, β occ offset no_a; virtuals similar.
+    // <IJ|AB> = (ia|jb) when σ_I=σ_A and σ_J=σ_B (chemist's notation).
+    double e_so = 0.0;
+    auto same_spin_so = [&](const std::vector<double>& v, int no, int nv,
+                            const std::vector<double>& eo,
+                            const std::vector<double>& ev) {
+        const int nov = no * nv;
+        auto idx = [&](int i, int a, int j, int b) {
+            return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+        };
+        for (int i = 0; i < no; ++i)
+            for (int j = 0; j < no; ++j)
+                for (int a = 0; a < nv; ++a)
+                    for (int b = 0; b < nv; ++b) {
+                        const double dir = v[idx(i, a, j, b)];
+                        const double exc = v[idx(i, b, j, a)];
+                        const double anti = dir - exc;
+                        const double denom =
+                            eo[static_cast<std::size_t>(i)]
+                            + eo[static_cast<std::size_t>(j)]
+                            - ev[static_cast<std::size_t>(a)]
+                            - ev[static_cast<std::size_t>(b)];
+                        e_so += 0.25 * anti * anti / denom;
+                    }
+    };
+    same_spin_so(v_aa, no_a, nv_a, eps_oa, eps_va);
+    same_spin_so(v_bb, no_b, nv_b, eps_ob, eps_vb);
+    for (int i = 0; i < no_a; ++i)
+        for (int j = 0; j < no_b; ++j)
+            for (int a = 0; a < nv_a; ++a)
+                for (int b = 0; b < nv_b; ++b) {
+                    const double dir =
+                        v_ab[static_cast<std::size_t>(i * nv_a + a) * nov_b
+                             + static_cast<std::size_t>(j * nv_b + b)];
+                    // Opposite-spin: exchange vanishes (different spin).
+                    const double denom =
+                        eps_oa[static_cast<std::size_t>(i)]
+                        + eps_ob[static_cast<std::size_t>(j)]
+                        - eps_va[static_cast<std::size_t>(a)]
+                        - eps_vb[static_cast<std::size_t>(b)];
+                    // Full SO formula for OS is 1/4 * 4 * v²/d = v²/d when
+                    // both orderings IαJβ and JβIα are counted separately —
+                    // molecular UMP2 counts each αβ once as v²/d.
+                    e_so += dir * dir / denom;
+                }
+    EXPECT_NEAR(e_u, e_so, 1e-12);
+    EXPECT_LT(e_u, 0.0);
+}
+
+// When α ≡ β spatial orbitals, UMP2(e_os+e_ss) == RMP2(e_os+e_ss).
+TEST(GpwMp2, Ump2ReducesToRmp2OnIdenticalSpins) {
+    const int no = 2, nv = 2, nov = no * nv;
+    std::vector<double> eps_o = {-0.9, -0.5};
+    std::vector<double> eps_v = {0.2, 0.7};
+    std::vector<double> v(static_cast<std::size_t>(nov) * nov, 0.0);
+    auto idx = [&](int i, int a, int j, int b) {
+        return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+    };
+    unsigned s = 99u;
+    for (int i = 0; i < no; ++i)
+        for (int a = 0; a < nv; ++a)
+            for (int j = 0; j < no; ++j)
+                for (int b = 0; b < nv; ++b) {
+                    s = s * 1664525u + 1013904223u;
+                    const double x =
+                        0.05
+                        * (static_cast<double>(s >> 8)
+                               / static_cast<double>(1u << 24)
+                           - 0.5);
+                    v[idx(i, a, j, b)] = x;
+                    v[idx(j, b, i, a)] = x;
+                }
+
+    double e_os_r = 0, e_ss_r = 0;
+    mp2_rhf_energy(v, eps_o, eps_v, e_os_r, e_ss_r);
+
+    double e_os_u = 0, e_ss_u = 0;
+    mp2_uhf_energy(v, v, v, eps_o, eps_v, eps_o, eps_v, e_os_u, e_ss_u);
+
+    EXPECT_NEAR(e_os_u, e_os_r, 1e-12);
+    EXPECT_NEAR(e_ss_u, e_ss_r, 1e-12);
+    EXPECT_NEAR(e_os_u + e_ss_u, e_os_r + e_ss_r, 1e-12);
+}
+
+// Cross-spin RI-GPW ≡ Poisson on the same grid.
+TEST(GpwMp2, MoEriAbRiMatchesPoisson) {
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 30.0);
+    const long npts = grid.npts();
+    const int no_a = 2, nv_a = 1, no_b = 1, nv_b = 2;
+    std::vector<double> psi_oa(static_cast<std::size_t>(no_a) * npts);
+    std::vector<double> psi_va(static_cast<std::size_t>(nv_a) * npts);
+    std::vector<double> psi_ob(static_cast<std::size_t>(no_b) * npts);
+    std::vector<double> psi_vb(static_cast<std::size_t>(nv_b) * npts);
+    for (long g = 0; g < npts; ++g) {
+        double r[3];
+        grid.point(g, r);
+        const double dx = r[0] - 3.0, dy = r[1] - 3.0, dz = r[2] - 3.0;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        psi_oa[static_cast<std::size_t>(0) * npts + g] = std::exp(-0.7 * r2);
+        psi_oa[static_cast<std::size_t>(1) * npts + g] =
+            dy * std::exp(-0.55 * r2);
+        psi_va[static_cast<std::size_t>(0) * npts + g] =
+            dx * std::exp(-0.5 * r2);
+        psi_ob[static_cast<std::size_t>(0) * npts + g] = std::exp(-0.65 * r2);
+        psi_vb[static_cast<std::size_t>(0) * npts + g] =
+            dz * std::exp(-0.48 * r2);
+        psi_vb[static_cast<std::size_t>(1) * npts + g] =
+            dx * dy * std::exp(-0.42 * r2);
+    }
+    const std::vector<double> v_pois =
+        mo_eri_ovov_ab(grid, psi_oa, no_a, psi_va, nv_a, psi_ob, no_b, psi_vb,
+                       nv_b, /*nonperiodic=*/false);
+    const std::vector<double> v_ri = mo_eri_ovov_ab_ri(
+        grid, psi_oa, no_a, psi_va, nv_a, psi_ob, no_b, psi_vb, nv_b);
+    ASSERT_EQ(v_pois.size(), v_ri.size());
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < v_pois.size(); ++i)
+        max_err = std::max(max_err, std::abs(v_pois[i] - v_ri[i]));
+    EXPECT_LT(max_err, 1e-10) << "max |RI_ab − Poisson_ab| = " << max_err;
 }
 
 // Complex OS/SS reduction: real integrals → same e_os/e_ss as mp2_rhf_energy.

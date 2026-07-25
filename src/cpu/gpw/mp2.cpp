@@ -1,6 +1,6 @@
 /// @file src/cpu/gpw/mp2.cpp
 /// @brief GpwDft::mp2 — Γ-point (real) and multi-k (complex Bloch) GPW MP2
-///        on the converged RKS orbitals. Product: RI-GPW; Γ foothold:
+///        on the converged RKS or UKS orbitals. Product: RI-GPW; Γ foothold:
 ///        Poisson real-space tensor. Kernels in internal/mp2_kernels.h.
 
 #include <algorithm>
@@ -17,14 +17,46 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+namespace {
+
+// Cap virtual count and check HOMO–LUMO gap for one spin channel.
+int cap_virt_(int n_mo, int n_occ, int mp2_n_virt, const std::vector<double>& eps,
+              const char* channel) {
+    if (n_mo <= n_occ)
+        throw std::invalid_argument(
+            std::string("GpwDft::mp2: no virtual orbitals in the ") + channel
+            + " channel (n_mo = " + std::to_string(n_mo) + ", n_occ = "
+            + std::to_string(n_occ) + ")");
+    int n_virt = n_mo - n_occ;
+    if (mp2_n_virt > 0)
+        n_virt = std::min(n_virt, mp2_n_virt);
+    if (n_occ < 1 || n_virt < 1)
+        return n_virt;
+    constexpr double kMinGapHa = 1e-6;
+    const double gap = eps[static_cast<std::size_t>(n_occ)]
+                       - eps[static_cast<std::size_t>(n_occ - 1)];
+    if (gap < kMinGapHa)
+        throw std::invalid_argument(
+            std::string("GpwDft::mp2: vanishing ") + channel
+            + " HOMO-LUMO gap (" + std::to_string(gap)
+            + " Ha < 1e-6) — canonical MP2 denominators are singular");
+    return n_virt;
+}
+
+int count_basis_(const std::vector<GpwAtom>& atoms) {
+    int nb = 0;
+    for (const auto& a : atoms)
+        nb += static_cast<int>(a.basis.size());
+    return nb;
+}
+
+} // namespace
+
 const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::mp2 called before build() — validate the configuration "
             "first (no silent auto-build)");
-    if (is_uks())
-        throw std::invalid_argument(
-            "GpwDft::mp2: closed-shell RKS only (UMP2 is a follow-on)");
     if (use_ot)
         throw std::invalid_argument(
             "GpwDft::mp2: OT stores occupied orbitals only — canonical "
@@ -44,7 +76,110 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
             "GpwDft::mp2: multi-k SCF result is missing Bloch C_k (re-run "
             "with a current multi-k path that stores orbitals)");
 
-    // ── Multi-k (complex Bloch, momentum-conserving RI-GPW) ───────────
+    // ── Unrestricted (UKS) Γ path ─────────────────────────────────────
+    if (is_uks()) {
+        if (multi_k || result_.n_kpts > 0)
+            throw std::invalid_argument(
+                "GpwDft::mp2: multi-k UMP2 is a follow-on (Γ UKS only)");
+        if (result_.C_beta.size() == 0 || result_.eps_beta.empty())
+            throw std::logic_error(
+                "GpwDft::mp2: UKS result is missing β orbitals/eigenvalues");
+
+        const int nb_atoms = count_basis_(atoms);
+        const int nb = static_cast<int>(result_.C.shape(0));
+        const int n_mo_a = static_cast<int>(result_.C.shape(1));
+        const int n_mo_b = static_cast<int>(result_.C_beta.shape(1));
+        if (nb_atoms != nb)
+            throw std::invalid_argument(
+                "GpwDft::mp2: atom basis count (" + std::to_string(nb_atoms)
+                + ") does not match the converged orbitals ("
+                + std::to_string(nb)
+                + ") — same geometry/basis as the last run() required");
+        if (static_cast<int>(result_.eps.size()) != n_mo_a
+            || static_cast<int>(result_.eps_beta.size()) != n_mo_b)
+            throw std::logic_error(
+                "GpwDft::mp2: UKS eps/C shape mismatch in the converged result");
+        if (static_cast<int>(result_.C_beta.shape(0)) != nb)
+            throw std::logic_error(
+                "GpwDft::mp2: UKS α/β basis dimension mismatch");
+
+        const int n_oa = n_alpha;
+        const int n_ob = n_beta;
+        const int n_va =
+            cap_virt_(n_mo_a, n_oa, mp2_n_virt, result_.eps, "α");
+        const int n_vb =
+            cap_virt_(n_mo_b, n_ob, mp2_n_virt, result_.eps_beta, "β");
+
+        const bool periodic = !nonperiodic;
+        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        std::vector<GridBasisFunction> basis;
+        basis.reserve(static_cast<std::size_t>(nb));
+        for (const auto& a : atoms)
+            for (const auto& bf : a.basis)
+                basis.push_back(bf);
+        const CompactBasisGrid cbg =
+            build_compact_basis_grid(grid, basis, periodic, eps_default);
+
+        const std::vector<double> psi_oa =
+            internal::mo_on_grid(cbg, result_.C, 0, n_oa);
+        const std::vector<double> psi_va =
+            internal::mo_on_grid(cbg, result_.C, n_oa, n_va);
+        const std::vector<double> psi_ob =
+            internal::mo_on_grid(cbg, result_.C_beta, 0, n_ob);
+        const std::vector<double> psi_vb =
+            internal::mo_on_grid(cbg, result_.C_beta, n_ob, n_vb);
+
+        const bool use_ri = mp2_ri && periodic;
+        std::vector<double> v_aa, v_bb, v_ab;
+        if (n_oa > 0 && n_va > 0)
+            v_aa = use_ri ? internal::mo_eri_ovov_ri(grid, psi_oa, n_oa,
+                                                      psi_va, n_va)
+                          : internal::mo_eri_ovov(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, nonperiodic);
+        if (n_ob > 0 && n_vb > 0)
+            v_bb = use_ri ? internal::mo_eri_ovov_ri(grid, psi_ob, n_ob,
+                                                      psi_vb, n_vb)
+                          : internal::mo_eri_ovov(grid, psi_ob, n_ob, psi_vb,
+                                                   n_vb, nonperiodic);
+        if (n_oa > 0 && n_va > 0 && n_ob > 0 && n_vb > 0)
+            v_ab =
+                use_ri
+                    ? internal::mo_eri_ovov_ab_ri(grid, psi_oa, n_oa, psi_va,
+                                                   n_va, psi_ob, n_ob, psi_vb,
+                                                   n_vb)
+                    : internal::mo_eri_ovov_ab(grid, psi_oa, n_oa, psi_va,
+                                                n_va, psi_ob, n_ob, psi_vb,
+                                                n_vb, nonperiodic);
+
+        const std::vector<double> eps_oa(result_.eps.begin(),
+                                         result_.eps.begin() + n_oa);
+        const std::vector<double> eps_va(result_.eps.begin() + n_oa,
+                                         result_.eps.begin() + n_oa + n_va);
+        const std::vector<double> eps_ob(result_.eps_beta.begin(),
+                                         result_.eps_beta.begin() + n_ob);
+        const std::vector<double> eps_vb(
+            result_.eps_beta.begin() + n_ob,
+            result_.eps_beta.begin() + n_ob + n_vb);
+
+        double e_os = 0.0, e_ss = 0.0;
+        internal::mp2_uhf_energy(v_aa, v_bb, v_ab, eps_oa, eps_va, eps_ob,
+                                 eps_vb, e_os, e_ss);
+
+        mp2_result_ = Mp2Result{};
+        mp2_result_.e_corr_os = e_os;
+        mp2_result_.e_corr_ss = e_ss;
+        mp2_result_.e_corr = mp2_os_scale * e_os + mp2_ss_scale * e_ss;
+        mp2_result_.e_scf = result_.e_total;
+        mp2_result_.e_total = mp2_result_.e_scf + mp2_result_.e_corr;
+        // Report spin-orbital occupied / virtual counts for UMP2.
+        mp2_result_.n_occ = n_oa + n_ob;
+        mp2_result_.n_virt = n_va + n_vb;
+        mp2_result_.ri = use_ri;
+        mp2_result_.n_kpts = 0;
+        return mp2_result_;
+    }
+
+    // ── Multi-k closed-shell (complex Bloch, momentum-conserving RI-GPW) ─
     if (multi_k) {
         if (nonperiodic)
             throw std::invalid_argument(
@@ -55,12 +190,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
                 "multi-k foothold is not offered)");
 
         const int nk = result_.n_kpts;
-        const int nb_atoms = [&] {
-            int nb = 0;
-            for (const auto& a : atoms)
-                nb += static_cast<int>(a.basis.size());
-            return nb;
-        }();
+        const int nb_atoms = count_basis_(atoms);
         const int nb = static_cast<int>(result_.C_k[0].shape(0));
         if (nb_atoms != nb)
             throw std::invalid_argument(
@@ -170,13 +300,8 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
         return mp2_result_;
     }
 
-    // ── Γ-point real path (product RI-GPW or Poisson foothold) ────────
-    const int nb_atoms = [&] {
-        int nb = 0;
-        for (const auto& a : atoms)
-            nb += static_cast<int>(a.basis.size());
-        return nb;
-    }();
+    // ── Γ-point closed-shell real path (product RI-GPW or Poisson foothold)
+    const int nb_atoms = count_basis_(atoms);
     const int nb = static_cast<int>(result_.C.shape(0));
     const int n_mo = static_cast<int>(result_.C.shape(1));
     if (nb_atoms != nb)
