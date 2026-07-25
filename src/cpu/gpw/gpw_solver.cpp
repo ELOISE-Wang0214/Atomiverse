@@ -1072,6 +1072,340 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     return res;
 }
 
+/// k-point collinear UKS SCF (Monkhorst-Pack / explicit list). Same Bloch
+/// machinery as `run_gpw_scf_kpoints`, with dual spin densities Pa_k/Pb_k,
+/// spin-resolved XC, and separate H_α^k / H_β^k + DIIS. Fixed integer
+/// fillings n_alpha / n_beta at every k (no metallic smearing).
+static GpwResult
+run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                        const std::vector<GridBasisFunction>& basis,
+                        const std::vector<double>& radii, const int mimg[3],
+                        const UniformGrid& grid, const std::vector<double>& n_ion,
+                        const std::vector<double>& v_locsr, double e_self,
+                        double e_d3, const std::vector<internal::KPoint>& kpts) {
+    using internal::CplxMatrix;
+    using Cplx = std::complex<double>;
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+    const int n_a = cfg.n_alpha;
+    const int n_b = cfg.n_beta;
+    if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
+        && cfg.xc != XcKind::PBEsol)
+        throw std::runtime_error(
+            "GPW k-UKS: XcKind must be PADE, PBE, or PBEsol");
+
+    const GpwMpiLayout layout = gpw_mpi_layout();
+    int n_kpts_local = 0;
+    for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
+        ++n_kpts_local;
+
+    std::vector<CplxMatrix> S_k, T_k;
+    internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
+                                      kBuildScreen, kpts, S_k, T_k);
+    std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
+                                  CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg,
+                                kBuildScreen, kpts);
+
+    std::vector<internal::KOrth> orth;
+    orth.reserve(static_cast<std::size_t>(nk));
+    const int n_need = std::max(n_a, n_b);
+    for (int ik = 0; ik < nk; ++ik) {
+        orth.emplace_back(S_k[static_cast<std::size_t>(ik)],
+                          cfg.lindep_threshold);
+        const int m = static_cast<int>(orth.back().X.shape(1));
+        if (n_need > m)
+            throw std::runtime_error(
+                "GPW k-UKS: max(n_alpha,n_beta)=" + std::to_string(n_need)
+                + " exceeds the " + std::to_string(m)
+                + " independent basis directions at k #" + std::to_string(ik)
+                + " (no-fallback rule)");
+    }
+
+    const internal::KpointBasisGrid kbg =
+        internal::build_kpoint_basis_grid(grid, basis, kpts, cfg.eps_default);
+
+    // Spin density: P_μν = Σ_o C_μo conj(C_νo)  (factor 1, not 2).
+    auto density_spin = [&](const CplxMatrix& C, int n_occ) {
+        CplxMatrix P = xt::zeros<Cplx>({nb, nb});
+        for (int i = 0; i < nb; ++i)
+            for (int o = 0; o < n_occ; ++o) {
+                const Cplx ci = C(i, o);
+                for (int j = 0; j < nb; ++j)
+                    P(i, j) += ci * std::conj(C(j, o));
+            }
+        return P;
+    };
+
+    std::vector<CplxMatrix> Pa_k(static_cast<std::size_t>(nk));
+    std::vector<CplxMatrix> Pb_k(static_cast<std::size_t>(nk));
+    for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+        const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
+                               + Vnl_k[static_cast<std::size_t>(ik)];
+        auto [eps0, C0k] =
+            internal::diagonalize_k(H0k, orth[static_cast<std::size_t>(ik)]);
+        (void)eps0;
+        // Cold start: same core H for both spins (no spin bias).
+        Pa_k[static_cast<std::size_t>(ik)] = density_spin(C0k, n_a);
+        Pb_k[static_cast<std::size_t>(ik)] = density_spin(C0k, n_b);
+    }
+
+    auto ctrace = [&](const CplxMatrix& P, const CplxMatrix& M) {
+        double s = 0.0;
+        for (int i = 0; i < nb; ++i)
+            for (int j = 0; j < nb; ++j)
+                s += (P(i, j) * M(j, i)).real();
+        return s;
+    };
+
+    auto xc_spin = [&](const std::vector<double>& ra,
+                       const std::vector<double>& rb) -> XcOnGridSpin {
+        if (cfg.xc == XcKind::PBE)
+            return xc_grid_pbe_spin(grid, ra, rb);
+        if (cfg.xc == XcKind::PBEsol)
+            return xc_grid_pbesol_spin(grid, ra, rb);
+        return xc_grid_pade_lsd(grid, ra, rb);
+    };
+
+    GpwResult res;
+    res.n_kpts = nk;
+    res.n_kpts_local = n_kpts_local;
+    std::vector<double> weights(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik)
+        weights[static_cast<std::size_t>(ik)] =
+            kpts[static_cast<std::size_t>(ik)].weight;
+    const bool use_diis = cfg.diis_depth > 0;
+    internal::KDiis diis_a(use_diis ? cfg.diis_depth : 1, weights);
+    internal::KDiis diis_b(use_diis ? cfg.diis_depth : 1, weights);
+    constexpr double kDiisErrTolK = 1e-5;
+    double e_prev = 0.0;
+    const double gw = grid.weight();
+
+    auto rebuild_all_H = [&](const std::vector<double>& veff_spin) {
+        // veff_spin layout: first npts α, next npts β.
+        const long ng = grid.npts();
+        std::vector<double> va(static_cast<std::size_t>(ng));
+        std::vector<double> vb(static_cast<std::size_t>(ng));
+        for (long g = 0; g < ng; ++g) {
+            va[static_cast<std::size_t>(g)] =
+                veff_spin[static_cast<std::size_t>(g)];
+            vb[static_cast<std::size_t>(g)] =
+                veff_spin[static_cast<std::size_t>(g + ng)];
+        }
+        std::vector<CplxMatrix> Ha(static_cast<std::size_t>(nk));
+        std::vector<CplxMatrix> Hb(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const CplxMatrix Va =
+                internal::integrate_potential_k(kbg, ik, va);
+            const CplxMatrix Vb =
+                internal::integrate_potential_k(kbg, ik, vb);
+            const CplxMatrix H0 = T_k[static_cast<std::size_t>(ik)]
+                                  + Vnl_k[static_cast<std::size_t>(ik)];
+            Ha[static_cast<std::size_t>(ik)] = H0 + Va;
+            Hb[static_cast<std::size_t>(ik)] = H0 + Vb;
+        }
+        return std::make_pair(std::move(Ha), std::move(Hb));
+    };
+
+    auto store_k_payload = [&](const std::vector<CplxMatrix>& Ha_full) {
+        res.k_frac.clear();
+        res.k_weights.clear();
+        res.eps_k.clear();
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& kp = kpts[static_cast<std::size_t>(ik)];
+            res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
+            res.k_weights.push_back(kp.weight);
+            auto [eps, C] =
+                internal::diagonalize_k(Ha_full[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
+            (void)C;
+            res.eps_k.push_back(std::move(eps));
+        }
+    };
+
+    std::vector<CplxMatrix> Ha_k(static_cast<std::size_t>(nk));
+    std::vector<CplxMatrix> Hb_k(static_cast<std::size_t>(nk));
+    std::vector<double> last_veff_ab; // α then β, length 2*npts
+    for (int iter = 0; iter < cfg.max_iter; ++iter) {
+        std::vector<double> rho_a(static_cast<std::size_t>(grid.npts()), 0.0);
+        std::vector<double> rho_b(static_cast<std::size_t>(grid.npts()), 0.0);
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            internal::collocate_density_k(
+                kbg, ik, Pa_k[static_cast<std::size_t>(ik)], wk, rho_a);
+            internal::collocate_density_k(
+                kbg, ik, Pb_k[static_cast<std::size_t>(ik)], wk, rho_b);
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, rho_a.data(),
+                          static_cast<int>(rho_a.size()), MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, rho_b.data(),
+                          static_cast<int>(rho_b.size()), MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
+        std::vector<double> rho(rho_a.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            rho[g] = rho_a[g] + rho_b[g];
+
+        std::vector<double> n_tot(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            n_tot[g] = rho[g] - n_ion[g];
+        const PoissonResult es = solve_poisson(grid, n_tot);
+        const XcOnGridSpin xc = xc_spin(rho_a, rho_b);
+
+        std::vector<double> veff_a(rho.size()), veff_b(rho.size());
+        double e_locgrid = 0.0;
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            double vloc = v_locsr.empty() ? 0.0 : v_locsr[g];
+            if (!v_locsr.empty())
+                e_locgrid += rho[g] * vloc;
+            veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
+            veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
+        }
+        e_locgrid *= gw;
+        last_veff_ab.resize(2 * rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            last_veff_ab[g] = veff_a[g];
+            last_veff_ab[g + rho.size()] = veff_b[g];
+        }
+
+        double e_kin = 0.0, e_nl = 0.0;
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            const CplxMatrix Va =
+                internal::integrate_potential_k(kbg, ik, veff_a);
+            const CplxMatrix Vb =
+                internal::integrate_potential_k(kbg, ik, veff_b);
+            const CplxMatrix H0 = T_k[static_cast<std::size_t>(ik)]
+                                  + Vnl_k[static_cast<std::size_t>(ik)];
+            Ha_k[static_cast<std::size_t>(ik)] = H0 + Va;
+            Hb_k[static_cast<std::size_t>(ik)] = H0 + Vb;
+            const CplxMatrix Ptot = Pa_k[static_cast<std::size_t>(ik)]
+                                    + Pb_k[static_cast<std::size_t>(ik)];
+            e_kin += wk * ctrace(Ptot, T_k[static_cast<std::size_t>(ik)]);
+            e_nl += wk * ctrace(Ptot, Vnl_k[static_cast<std::size_t>(ik)]);
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &e_nl, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
+        res.e_kinetic = e_kin;
+        res.e_nonlocal = 0.0;
+        res.e_loc_sr = e_nl + e_locgrid;
+        res.e_es = es.e_hartree - e_self;
+        res.e_xc = xc.e_xc;
+        const double e_total =
+            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+        res.iters = iter + 1;
+        res.e_total = e_total;
+
+        std::vector<CplxMatrix> err_a(static_cast<std::size_t>(nk));
+        std::vector<CplxMatrix> err_b(static_cast<std::size_t>(nk));
+        double err_norm = 0.0;
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            const CplxMatrix ea =
+                internal::k_diis_error(Ha_k[static_cast<std::size_t>(ik)],
+                                       Pa_k[static_cast<std::size_t>(ik)],
+                                       S_k[static_cast<std::size_t>(ik)],
+                                       orth[static_cast<std::size_t>(ik)].X);
+            const CplxMatrix eb =
+                internal::k_diis_error(Hb_k[static_cast<std::size_t>(ik)],
+                                       Pb_k[static_cast<std::size_t>(ik)],
+                                       S_k[static_cast<std::size_t>(ik)],
+                                       orth[static_cast<std::size_t>(ik)].X);
+            for (const Cplx v : ea)
+                err_norm = std::max(err_norm, std::abs(v));
+            for (const Cplx v : eb)
+                err_norm = std::max(err_norm, std::abs(v));
+            err_a[static_cast<std::size_t>(ik)] = ea;
+            err_b[static_cast<std::size_t>(ik)] = eb;
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            double global_err = err_norm;
+            MPI_Allreduce(&err_norm, &global_err, 1, MPI_DOUBLE, MPI_MAX,
+                          MPI_COMM_WORLD);
+            err_norm = global_err;
+        }
+#endif
+
+        if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
+            std::fprintf(stderr,
+                         "[gpw k-UKS %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d Na=%d Nb=%d)\n",
+                         iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk, n_a,
+                         n_b);
+
+        if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
+            && err_norm < kDiisErrTolK) {
+            res.converged = true;
+            auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
+            (void)Hb_full;
+            store_k_payload(Ha_full);
+            // Fixed occupations ⇒ magnetization is exact integer Nα−Nβ.
+            res.s2 = 0.0; // multi-k Löwdin ⟨S²⟩ deferred (Γ formula needs one S)
+            {
+                const double sz = 0.5 * static_cast<double>(n_a - n_b);
+                // Ideal pure-spin contribution (no orbital-overlap correction
+                // across k without a single-S Löwdin construction).
+                res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
+            }
+            res.e_disp = e_d3;
+            res.e_total += e_d3;
+            return res;
+        }
+        e_prev = e_total;
+
+        if (use_diis) {
+            Ha_k = diis_a.step(Ha_k, err_a);
+            Hb_k = diis_b.step(Hb_k, err_b);
+        }
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+            auto [epsa, Ca] =
+                internal::diagonalize_k(Ha_k[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
+            auto [epsb, Cb] =
+                internal::diagonalize_k(Hb_k[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
+            (void)epsa;
+            (void)epsb;
+            CplxMatrix Pa_new = density_spin(Ca, n_a);
+            CplxMatrix Pb_new = density_spin(Cb, n_b);
+            if (use_diis) {
+                Pa_k[static_cast<std::size_t>(ik)] = std::move(Pa_new);
+                Pb_k[static_cast<std::size_t>(ik)] = std::move(Pb_new);
+            } else {
+                Pa_k[static_cast<std::size_t>(ik)] =
+                    (1.0 - cfg.mix) * Pa_k[static_cast<std::size_t>(ik)]
+                    + cfg.mix * Pa_new;
+                Pb_k[static_cast<std::size_t>(ik)] =
+                    (1.0 - cfg.mix) * Pb_k[static_cast<std::size_t>(ik)]
+                    + cfg.mix * Pb_new;
+            }
+        }
+    }
+    if (!last_veff_ab.empty()) {
+        auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
+        (void)Hb_full;
+        store_k_payload(Ha_full);
+    }
+    {
+        const double sz = 0.5 * static_cast<double>(n_a - n_b);
+        res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
+    }
+    res.e_disp = e_d3;
+    res.e_total += e_d3;
+    return res;
+}
+
 /// The full GPW SCF implementation, owned and reached through
 /// `GpwDft::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
@@ -1265,7 +1599,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                  : std::vector<double>{};
     smark("local_pp_grid");
 
-    // ── k-point RKS branch ─────────────────────────────────────────────────
+    // ── k-point RKS / collinear UKS branch ─────────────────────────────────
     if (use_kpath) {
         std::vector<internal::KPoint> kpts;
         if (!cfg.k_points.empty()) {
@@ -1280,10 +1614,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         } else {
             kpts = internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
         }
-        GpwResult kres =
-            run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg, grid, n_ion,
-                                v_locsr, e_self, e_d3, kpts);
-        return kres;
+        if (cfg.is_uks())
+            return run_gpw_scf_kpoints_uks(atoms, cfg, basis, radii, mimg, grid,
+                                           n_ion, v_locsr, e_self, e_d3, kpts);
+        return run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg, grid, n_ion,
+                                   v_locsr, e_self, e_d3, kpts);
     }
 
     // Core (H0) initial guess.
@@ -2072,16 +2407,14 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     const bool kpath =
         !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1;
     if (kpath) {
-        // The k-point branch is the closed-shell RKS + periodic + single-grid
-        // + local-PP-on-grid foothold; every other combination is rejected
+        // The k-point branch is periodic + single-grid + local-PP-on-grid
+        // (RKS or collinear UKS); every other combination is rejected
         // fail-fast (no silent Γ fallback).
         auto reject = [](const std::string& what) {
             throw std::invalid_argument(
                 "GpwDft::build: k-point sampling does not support " + what
-                + " (k-point RKS foothold; no fallback)");
+                + " (k-point RKS/UKS path; no fallback)");
         };
-        if (is_uks())
-            reject("UKS (n_alpha/n_beta)");
         if (use_ot)
             reject("the OT minimizer");
         if (!plus_u.empty())
@@ -2094,6 +2427,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             reject("the analytic per-pair local PP (local_pp_on_grid=false)");
         if (level_shift != 0.0)
             reject("level shifting");
+        if (is_uks() && xc != XcKind::PADE && xc != XcKind::PBE
+            && xc != XcKind::PBEsol)
+            reject("k-UKS with this XcKind (need PADE, PBE, or PBEsol)");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {

@@ -170,3 +170,112 @@ TEST(GpwUks, TripletLikeH2ConvergesPbe) {
     EXPECT_TRUE(std::isfinite(r.e_total));
     EXPECT_NEAR(r.s2, 2.0, 1e-8);
 }
+
+// ── Multi-k collinear UKS (gpw-kpoints-uks) ────────────────────────────────
+
+TEST(GpwUks, KpointsUksAcceptedAtBuild) {
+    auto atoms = small_h2();
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+    m.n_alpha = 2;
+    m.n_beta = 0;
+    m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;
+    m.xc = XcKind::PADE;
+    EXPECT_NO_THROW(m.build(atoms));
+}
+
+TEST(GpwUks, KpointsUksGammaLimitMatchesGammaPath) {
+    // Explicit k = Γ through the complex k-UKS machinery must recover the
+    // legacy real Γ-UKS energy on the same toy H₂ high-spin setup.
+    auto atoms = small_h2();
+    GpwDft gamma;
+    gamma.cell[0] = gamma.cell[1] = gamma.cell[2] = 8.0;
+    gamma.cutoff_ry = 100.0;
+    gamma.n_alpha = 2;
+    gamma.n_beta = 0;
+    gamma.max_iter = 80;
+    gamma.tol = 1e-7;
+    gamma.mix = 0.5;
+    gamma.xc = XcKind::PADE;
+    gamma.build(atoms);
+    const GpwResult r_g = gamma.run(atoms);
+    ASSERT_TRUE(r_g.converged) << r_g.e_total;
+
+    GpwDft kpath;
+    kpath.cell[0] = kpath.cell[1] = kpath.cell[2] = 8.0;
+    kpath.cutoff_ry = 100.0;
+    kpath.n_alpha = 2;
+    kpath.n_beta = 0;
+    kpath.max_iter = 80;
+    kpath.tol = 1e-7;
+    kpath.mix = 0.5;
+    kpath.xc = XcKind::PADE;
+    kpath.k_points = {{0.0, 0.0, 0.0}};
+    kpath.k_point_weights = {1.0};
+    kpath.build(atoms);
+    const GpwResult r_k = kpath.run(atoms);
+    ASSERT_TRUE(r_k.converged) << r_k.e_total;
+    EXPECT_NEAR(r_k.e_total, r_g.e_total, 1e-6);
+    EXPECT_EQ(r_k.n_kpts, 1);
+    ASSERT_EQ(r_k.eps_k.size(), 1u);
+}
+
+TEST(GpwUks, KpointsUksClosedShellMatchesRks) {
+    // n_alpha = n_beta = 1 and closed-shell n_occ = 1 on the same MP mesh
+    // must agree (spin-unpolarized density is the RKS solution).
+    auto atoms = small_h2();
+    GpwDft rks;
+    rks.cell[0] = rks.cell[1] = rks.cell[2] = 8.0;
+    rks.cutoff_ry = 100.0;
+    rks.n_occ = 1;
+    rks.max_iter = 80;
+    rks.tol = 1e-7;
+    rks.xc = XcKind::PADE;
+    rks.k_mesh[0] = rks.k_mesh[1] = 1;
+    rks.k_mesh[2] = 2;
+    rks.k_time_reversal = true;
+    rks.build(atoms);
+    const GpwResult rr = rks.run(atoms);
+    ASSERT_TRUE(rr.converged) << rr.e_total;
+
+    GpwDft uks;
+    uks.cell[0] = uks.cell[1] = uks.cell[2] = 8.0;
+    uks.cutoff_ry = 100.0;
+    uks.n_alpha = 1;
+    uks.n_beta = 1;
+    uks.max_iter = 80;
+    uks.tol = 1e-7;
+    uks.xc = XcKind::PADE;
+    uks.k_mesh[0] = uks.k_mesh[1] = 1;
+    uks.k_mesh[2] = 2;
+    uks.k_time_reversal = true;
+    uks.build(atoms);
+    const GpwResult ru = uks.run(atoms);
+    ASSERT_TRUE(ru.converged) << ru.e_total;
+    EXPECT_NEAR(ru.e_total, rr.e_total, 5e-6);
+}
+
+TEST(GpwUks, KpointsUksTimeReversalIdentity) {
+    auto atoms = small_h2();
+    auto run_mesh = [&](bool tr) {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+        m.cutoff_ry = 100.0;
+        m.n_alpha = 2;
+        m.n_beta = 0;
+        m.max_iter = 80;
+        m.tol = 1e-7;
+        m.xc = XcKind::PADE;
+        m.k_mesh[0] = m.k_mesh[1] = m.k_mesh[2] = 2;
+        m.k_time_reversal = tr;
+        m.build(atoms);
+        return m.run(atoms);
+    };
+    const GpwResult full = run_mesh(false);
+    const GpwResult fold = run_mesh(true);
+    ASSERT_TRUE(full.converged);
+    ASSERT_TRUE(fold.converged);
+    EXPECT_EQ(full.n_kpts, 8);
+    EXPECT_EQ(fold.n_kpts, 4);
+    EXPECT_NEAR(full.e_total, fold.e_total, 5e-6);
+}
