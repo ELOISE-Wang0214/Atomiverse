@@ -106,7 +106,7 @@ a proven shape.
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
 | Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
-| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW analytic fixed-\(P\)+Pulay stress (RKS Γ/k + Γ-UKS; multi-k UKS residual) |
+| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW analytic fixed-\(P\)+Pulay stress (RKS Γ/k + Γ-UKS + multi-k UKS + Γ DFT+U; multi-k DFT+U residual) |
 | Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms**; C-PCM/COSMO/**IEF-PCM** |
 
 ### Closed queues (2026-07-23)
@@ -253,9 +253,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 4 are
-  GapCensus-owned (hybrids / meta-GGA / GAPW / XDM / stock VV10; see
-  `cp2k-method-queue.md` — queue not exhausted).
+  `reg_gpw-variable-cell-molopt`). Open residuals after GapCensus wave 5
+  are queue-owned (multi-k DFT+U, finite-q G0W0, UKS revPBE, XDM / stock
+  VV10, CPMD RATTLE, GPW metallic smear, UMP2, OT-UKS; hybrids / meta-GGA /
+  GAPW blocked — see `cp2k-method-queue.md`; queue not exhausted).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
@@ -267,8 +268,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (`reg_periodic-ri-mp2-si` / `reg_periodic-mp2-kpoints`; Poisson foothold
   `reg_periodic-mp2-si`); Γ + multi-k + **finite-q** **dRPA**
   (`reg_periodic-rpa-si` / `reg_periodic-rpa-kpoints` /
-  `reg_periodic-rpa-finite-q`); Γ + multi-k **spectral G0W0**
-  (`reg_periodic-gw-si` / `reg_periodic-gw-kpoints`).
+  `reg_periodic-rpa-finite-q`); Γ + multi-k **k-diagonal spectral G0W0**
+  (`reg_periodic-gw-si` / `reg_periodic-gw-kpoints`; finite-q \(W\) residual).
 - DFT-D3 zero-damping, **D3(BJ)**, **D4**, **TS**, free-atom **MBD**,
   **Hirshfeld-scaled MBD**, **periodic Ewald MBD**, **vdW-DF DRSLL**,
   **vdW-DF2 LMKLL**, and **rVV10** on GPW (PBE params;

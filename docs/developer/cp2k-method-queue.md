@@ -238,13 +238,50 @@ rVV10 ✓; multi-k G0W0 residual closed; periodic Ewald MBD productized;
 PW true collinear spin-GGA productized; Γ-UKS BLYP; multi-k UKS stress;
 finite-q inter-k dRPA; DFT+U analytic stress. **Blocked = 5** unchanged.
 
+**GapCensus wave 5 2026-07-26 (parent `dev` @ `4437d80f`):** recover
+clean — incomplete_count=**0**; `## in_progress` empty; open CP2K/GPW/PW
+specs=**0** (PySCF deferred only: `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`);
+unmerged `wf/*`=**0**; isolation worktrees=**0**; leftover builds=**none**.
+Tree re-diff vs `docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD +
+`tools/cp2k_oracle` + `include/atomiverse/cpu/{gpw,planewave}`: prior
+pending residual **0** (harness emptied list — not capability-closed).
+**True residuals re-opened (9)** with offline CP2K / literature twins:
+`gpw-dftu-kpoints` (`build` rejects k-mesh + `plus_u`; Γ DFT+U energy +
+stress ✓ ≠ multi-k PLUS_U), `periodic-gw-finite-q` (multi-k G0W0 is
+**k-diagonal** only; full inter-\(k\) / finite-\(q\) \(W\) header
+follow-on after `periodic-gw-kpoints` ✓ / `periodic-rpa-finite-q` ✓),
+`gpw-uks-revpbe` (UKS XcKind still PADE|PBE|PBEsol|BLYP; RKS RevPBE ✓),
+`gpw-xdm-ice` (§8 XDM ○ — order hold behind rVV10/vdW-DF2 now cleared),
+`gpw-vv10-ice` (stock VV10 ○, distinct from product rVV10),
+`cpmd-rattle-water` (CPMD SHAKE-free foothold; RATTLE follow-on),
+`gpw-metallic-smearing` (GPW fixed occupations only; PW metallic smear ✓),
+`periodic-ump2-si` (`mp2` throws closed-shell; UMP2 follow-on),
+`ot-uks-o2` (OT + UKS throws). **Not added:** BP86/B97/OLYP/HCTH
+(molecular PySCF path); `gpw-uks-rpbe` (thin after revPBE UKS); shear /
+off-diagonal stress; optB88-vdW (needs exchange + nonlocal combo);
+UGW/URPA (hold behind UMP2); Hirshfeld×k-points; DFPT-GGA (DFPT LSDA
+only); XL-BOMD UKS/k; nonlocal vdW SCF potential / forces; GAPW/PAW/
+periodic hybrid/meta-GGA (blocked); molecular post-HF / classical MW /
+CUDA ports (other loops). Roadmap: **no ○/✓ table flips** (nothing new
+merged since harness wave 4); §10 open-residual prose + index Cell
+stale “multi-k UKS residual” refreshed. **Pending = 9**; **in_progress
+= 0**; **blocked = 5**.
+
 ## pending
 
-_(empty after harness wave 4 — GapCensus must refill from tree/roadmap ○)_
+- [ ] `gpw-dftu-kpoints` | Multi-k Dudarev DFT+U SCF energy (k-mesh + PLUS_U) | gpw | offline CP2K `PLUS_U` + `&KPOINTS` twin (Γ energy/stress footholds ≠ multi-k)
+- [ ] `periodic-gw-finite-q` | Finite-q inter-k \(W\) spectral G0W0 residual | gpw | offline CP2K / literature twin after k-diagonal multi-k G0W0 ✓
+- [ ] `gpw-uks-revpbe` | Γ-UKS revPBE spin-GGA (`XcKind::RevPBE`) | gpw | dual-gate vs PBE UKS / offline CP2K
+- [ ] `gpw-xdm-ice` | Exchange-hole dipole moment (XDM) dispersion | gpw | offline CP2K XDM / literature pin
+- [ ] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | CP2K `VDW_POTENTIAL NON_LOCAL TYPE VV10`
+- [ ] `cpmd-rattle-water` | CPMD electronic RATTLE (constraint-preserving) | dynamics | after SHAKE-free `cpmd-water` foothold
+- [ ] `gpw-metallic-smearing` | Metallic occupation smearing on GPW | gpw | CP2K `SMEAR` twin (PW FD/MP path exists; GPW fixed fillings only)
+- [ ] `periodic-ump2-si` | Unrestricted GPW MP2 (UKS reference) | gpw | offline CP2K / literature UMP2 pin (`mp2` RKS-only today)
+- [ ] `ot-uks-o2` | OT orbital minimizer for Γ-UKS | gpw | after RKS OT ✓; `use_ot` + UKS throws
 
 ## in_progress
 
-_(empty — harness wave 4 closed all staffed slugs; no residual `[~]`)_
+_(empty — GapCensus wave 5; no residual `[~]`)_
 
 ## done (harness wave 4 2026-07-26)
 

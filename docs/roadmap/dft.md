@@ -16,9 +16,11 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, XDM / stock VV10, optB88-vdW,
-GAPW/PAW; Gaussian k-point RKS/UKS, Γ + finite-q + incommensurate DFPT,
-multi-k MP2/RPA/G0W0, multi-k UKS stress, vdW-DF / vdW-DF2 / rVV10, periodic
-Ewald MBD, PW true spin-GGA, finite-q dRPA, DFT+U stress, RPBE already ship).
+GAPW/PAW; multi-k DFT+U, finite-q G0W0 \(W\), UKS revPBE/RPBE, GPW metallic
+smearing, UMP2/UGW/URPA, CPMD RATTLE, OT-UKS — k-point RKS/UKS, Γ + finite-q
++ incommensurate DFPT, multi-k MP2/RPA/k-diagonal G0W0, multi-k UKS stress,
+vdW-DF / vdW-DF2 / rVV10, periodic Ewald MBD, PW true spin-GGA, finite-q
+dRPA, Γ DFT+U stress, RPBE already ship).
 
 ## 1. Kohn–Sham Methods
 
@@ -267,9 +269,11 @@ Two periodic DFT engines exist, with disjoint strengths:
   **PBE-GGA** `reg_gpw-uks-pbe`; `n_alpha`/`n_beta`), plus **Monkhorst–Pack
   k-point RKS** and **k-point UKS** (`k_mesh` / explicit `k_points`; phased
   lattice sums, KB nonlocal, per-k DIIS; `reg_gpw-kpoints-si` /
-  `reg_gpw-kpoints-uks`). **Open residuals** after harness wave 4 are
-  owned by GapCensus (hybrids / meta-GGA / GAPW / XDM / stock VV10 remain
-  blocked or unqueued — not the emptied wave-4 staff list). CPU only.
+  `reg_gpw-kpoints-uks`). **Open residuals** after GapCensus wave 5 are
+  owned by the queue (multi-k DFT+U, finite-q G0W0 \(W\), UKS revPBE, XDM /
+  stock VV10, CPMD RATTLE, GPW metallic smearing, UMP2, OT-UKS; hybrids /
+  meta-GGA / GAPW / PAW remain blocked — not the emptied wave-4 staff
+  list). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -312,7 +316,9 @@ Which engine backs which ✓:
   (`reg_gpw-blyp-water`) **and** CPU PW true PBE (`reg_pw-pbe-gga-si`) +
   **true collinear spin-GGA** (`reg_pw-spin-gga`).
 - **Periodic DFT+U** is GPW Dudarev PLUS_U energy (`reg_gpw-dftu-nio`) **and
-  analytic stress** (`reg_gpw-dftu-stress`). Molecular Gaussian DFT+U remains ○.
+  analytic stress** (`reg_gpw-dftu-stress`) on the **Γ** path; multi-k
+  DFT+U is still rejected at `build()` (queue `gpw-dftu-kpoints`). Molecular
+  Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** (`reg_gpw-d4-water`),
   **TS** (`reg_gpw-ts-ice`), free-atom **MBD@rsSCS** (`reg_gpw-mbd-ice`),
@@ -329,7 +335,8 @@ Which engine backs which ✓:
   (`reg_periodic-rpa-kpoints`), **and finite-q inter-k dRPA**
   (`reg_periodic-rpa-finite-q`). **Periodic GW** is **Γ-point spectral
   G0W0@KS** product (`GpwDft::g0w0`; `reg_periodic-gw-si`) **and multi-k
-  k-diagonal spectral G0W0** (`reg_periodic-gw-kpoints`).
+  k-diagonal spectral G0W0** (`reg_periodic-gw-kpoints`); full inter-\(k\) /
+  finite-\(q\) \(W\) remains a residual (queue `periodic-gw-finite-q`).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
