@@ -29,6 +29,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
@@ -1484,23 +1485,28 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         acells.build(atoms, cfg.cell,
                      std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
-    // Grimme DFT-D3 / DFT-D4 — geometry-only additive corrections (independent
-    // of the SCF), folded into the final total energy. `d3`, `d3bj`, `d4`, and
-    // `ts` are pairwise mutually exclusive.
+    // Dispersion — geometry-only additive corrections (independent of the SCF),
+    // folded into the final total energy. `d3`, `d3bj`, `d4`, `ts`, and `mbd`
+    // are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
-                             + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0);
+                             + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
+                             + (cfg.mbd ? 1 : 0);
     if (n_disp_flags > 1)
         throw std::runtime_error(
-            "GPW: d3, d3bj, d4, and ts are mutually exclusive — set only one");
-    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts) {
+            "GPW: d3, d3bj, d4, ts, and mbd are mutually exclusive — set only one");
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.mbd) {
         std::vector<int> Z(atoms.size());
         std::vector<std::array<double, 3>> pos(Z.size());
         for (std::size_t i = 0; i < Z.size(); ++i) {
             Z[i] = atoms[i].z;
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
-        if (cfg.ts) {
+        if (cfg.mbd) {
+            // MBD@rsSCS free-atom (isolated product path). Geometry-only —
+            // ignores lattice even when the SCF is periodic.
+            e_d3 = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
+        } else if (cfg.ts) {
             // Tkatchenko–Scheffler free-atom (volume ratio = 1); rcut 50 Å.
             constexpr double kAng2Bohr = 1.0 / 0.52917720859;
             constexpr double kRcutBohr = 50.0 * kAng2Bohr;
@@ -2525,6 +2531,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.mbd = m.mbd;
     p.use_ot = m.use_ot;
     for (int d = 0; d < 3; ++d)
         p.k_mesh[d] = m.k_mesh[d];
