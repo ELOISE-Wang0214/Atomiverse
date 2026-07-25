@@ -242,9 +242,16 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].
 /// @param h Dimensionless strain step (default 2e-3).
+/// @param axes Per-axis mask (x,y,z); a masked axis skips its two FD SCF
+///        solves and reports exactly 0 — for variable-cell relaxation of a
+///        subset of the box edges (CP2K `CELL_OPT` `CONSTRAINT` twin).
+/// @param guess_C Optional converged unstrained MO coefficients used to warm
+///        start every strained SCF (pure cost cut; the strain is O(h)).
 /// @return Voigt stress [Hartree/Bohr³].
-std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
-                                 const GpwDft& method, double h = 2e-3);
+std::array<double, 6>
+gpw_stress(const std::vector<GpwAtom>& atoms, const GpwDft& method,
+           double h = 2e-3, const std::array<bool, 3>& axes = {true, true, true},
+           const linalg::RealMatrix* guess_C = nullptr);
 
 } // namespace gpw
 } // namespace cpu

@@ -35,6 +35,10 @@ void AnisotropicCellRelax::apply_scales_(Frame& f, double sx, double sy,
 }
 
 void AnisotropicCellRelax::build(const BuildContext&) {
+    if (!relax_x && !relax_y && !relax_z)
+        throw std::invalid_argument(
+            "AnisotropicCellRelax: every axis is masked (relax_x/y/z all "
+            "false)");
     pressure_ = p_residual_ = 0;
     sx_ = sy_ = sz_ = 1;
     energy_prev_ = 0;
@@ -49,22 +53,37 @@ void AnisotropicCellRelax::launch(const LaunchContext& ctx) {
         throw std::runtime_error("AnisotropicCellRelax: non-positive volume");
     const auto& s = f.meta.get(kStress);
 
+    // Per-axis pressure: extensive virial → σ_dd/V; intensive stress → σ_dd.
+    const double Px = stress_is_virial ? s[0] / V : s[0];
+    const double Py = stress_is_virial ? s[1] / V : s[1];
+    const double Pz = stress_is_virial ? s[2] / V : s[2];
+
+    // Residual over the RELAXED axes only (masked axes are not driven to
+    // P_target — their stress is a constraint reaction, not an objective).
+    auto residual = [&] {
+        double r = 0.0;
+        if (relax_x)
+            r = std::max(r, std::fabs(Px - P_target));
+        if (relax_y)
+            r = std::max(r, std::fabs(Py - P_target));
+        if (relax_z)
+            r = std::max(r, std::fabs(Pz - P_target));
+        return r;
+    };
+
     if (ctx.at(ATV::minimizer::Phase::search_direction)) {
-        // Per-axis pressure P_d = σ_dd / V (0 K).
-        const double Px = s[0] / V;
-        const double Py = s[1] / V;
-        const double Pz = s[2] / V;
         pressure_ = (Px + Py + Pz) / 3.0;
-        p_residual_ = std::max({std::fabs(Px - P_target), std::fabs(Py - P_target),
-                                std::fabs(Pz - P_target)});
-        auto one_s = [&](double P) {
+        p_residual_ = residual();
+        auto one_s = [&](double P, bool relax) {
+            if (!relax)
+                return 1.0;
             double ds = alpha0 * (P - P_target) / bulk_mod;
             ds = std::max(-max_scale, std::min(max_scale, ds));
             return 1.0 + ds;
         };
-        sx_ = one_s(Px);
-        sy_ = one_s(Py);
-        sz_ = one_s(Pz);
+        sx_ = one_s(Px, relax_x);
+        sy_ = one_s(Py, relax_y);
+        sz_ = one_s(Pz, relax_z);
         ++step_;
         return;
     }
@@ -74,10 +93,8 @@ void AnisotropicCellRelax::launch(const LaunchContext& ctx) {
         return;
     }
     if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
-        const double Px = s[0] / V, Py = s[1] / V, Pz = s[2] / V;
         pressure_ = (Px + Py + Pz) / 3.0;
-        p_residual_ = std::max({std::fabs(Px - P_target), std::fabs(Py - P_target),
-                                std::fabs(Pz - P_target)});
+        p_residual_ = residual();
         const double energy = f.meta.get(kEnergy);
         const double dE = has_prev_ ? std::fabs(energy - energy_prev_) : 1e30;
         if (ConvergenceMetrics* m = ctx.runtime.loop.metrics) {

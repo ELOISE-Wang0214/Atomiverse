@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -62,6 +63,74 @@ TEST(GpwStress, OffDiagonalZeroOrthorhombicV1) {
     std::printf("[GPW stress] Voigt Ha/Bohr3: %.6e %.6e %.6e | 0 0 0\n", s[0],
                 s[1], s[2]);
     EXPECT_GT(max_diag, 1e-8);
+}
+
+namespace {
+
+/// Toy single-s-primitive periodic H₂ — keeps the axes-mask gate at unit-tier
+/// cost (small grid, seconds) unlike the DZV MT fixture above.
+std::vector<GpwAtom> toy_h2_atoms() {
+    auto s_prim = [](double alpha, const double pos[3]) {
+        GridBasisFunction bf;
+        GridPrimitive p;
+        p.alpha = alpha;
+        p.center[0] = pos[0];
+        p.center[1] = pos[1];
+        p.center[2] = pos[2];
+        p.l[0] = p.l[1] = p.l[2] = 0;
+        p.coeff = 1.0;
+        bf.push_back(p);
+        return bf;
+    };
+    auto hydrogen = [&](const double pos[3]) {
+        GpwAtom a;
+        a.z_val = 1.0;
+        a.z = 1;
+        a.pos[0] = pos[0];
+        a.pos[1] = pos[1];
+        a.pos[2] = pos[2];
+        a.basis = {s_prim(0.5, pos)};
+        a.rloc = 0.2;
+        a.cloc = {-4.17890044, 0.72446331};
+        return a;
+    };
+    const double rA[3] = {3.3, 4.0, 4.0};
+    const double rB[3] = {4.7, 4.1, 3.9};
+    return {hydrogen(rA), hydrogen(rB)};
+}
+
+GpwDft toy_h2_cfg() {
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0; // Bohr, periodic
+    cfg.cutoff_ry = 80.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 80;
+    cfg.xc = XcKind::PADE;
+    return cfg;
+}
+
+} // namespace
+
+TEST(GpwStress, AxesMaskSkipsFrozenAxes) {
+    // Masked axes report exactly 0 (no FD solves); the unmasked axis is the
+    // same central FD as the full call — identical solver path, so equal to
+    // tight tolerance.
+    const auto atoms = toy_h2_atoms();
+    const auto full = gpw_stress(atoms, toy_h2_cfg(), 3e-3);
+    const auto x_only = gpw_stress(atoms, toy_h2_cfg(), 3e-3,
+                                   /*axes*/ {true, false, false});
+    EXPECT_NEAR(x_only[0], full[0], 1e-12);
+    EXPECT_GT(std::abs(full[1]) + std::abs(full[2]), 0.0); // full solves y,z
+    EXPECT_DOUBLE_EQ(x_only[1], 0.0);
+    EXPECT_DOUBLE_EQ(x_only[2], 0.0);
+    EXPECT_DOUBLE_EQ(x_only[3], 0.0);
+    EXPECT_DOUBLE_EQ(x_only[4], 0.0);
+    EXPECT_DOUBLE_EQ(x_only[5], 0.0);
+    // All-masked is a caller error.
+    EXPECT_THROW(gpw_stress(atoms, toy_h2_cfg(), 3e-3,
+                            {false, false, false}),
+                 std::invalid_argument);
 }
 
 TEST(GpwStress, EvaluatorWritesKStress) {

@@ -39,7 +39,10 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.local_pp_on_grid = m.local_pp_on_grid;
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
+    p.d4 = m.d4;
     p.use_ot = m.use_ot;
+    p.plus_u = m.plus_u;
+    p.atom_spin_guess = m.atom_spin_guess;
     return p;
 }
 
@@ -57,10 +60,11 @@ std::vector<GpwAtom> scale_axis(const std::vector<GpwAtom>& atoms, int ax,
     return out;
 }
 
-double scf_energy_ha(const std::vector<GpwAtom>& atoms, const GpwDft& method) {
+double scf_energy_ha(const std::vector<GpwAtom>& atoms, const GpwDft& method,
+                     const linalg::RealMatrix* guess_C) {
     GpwDft solver = copy_gpw(method);
     solver.build(atoms);
-    const GpwResult& r = solver.run(atoms);
+    const GpwResult& r = solver.run(atoms, guess_C);
     if (!r.converged)
         throw std::runtime_error("gpw_stress: SCF did not converge");
     return r.e_total;
@@ -69,19 +73,25 @@ double scf_energy_ha(const std::vector<GpwAtom>& atoms, const GpwDft& method) {
 } // namespace
 
 std::array<double, 6> gpw_stress_impl(const std::vector<GpwAtom>& atoms,
-                                      const GpwDft& method, double h) {
+                                      const GpwDft& method, double h,
+                                      const std::array<bool, 3>& axes,
+                                      const linalg::RealMatrix* guess_C) {
     if (atoms.empty())
         throw std::invalid_argument("gpw_stress: empty atom list");
     if (!(h > 0.0) || !(h < 0.1))
         throw std::invalid_argument("gpw_stress: strain step h out of range");
+    if (!axes[0] && !axes[1] && !axes[2])
+        throw std::invalid_argument("gpw_stress: all axes masked");
 
     const double vol = method.cell[0] * method.cell[1] * method.cell[2]; // Bohr³
     if (!(vol > 0.0))
         throw std::invalid_argument("gpw_stress: non-positive cell volume");
 
     std::array<double, 6> stress{};
-    // Diagonal Voigt: xx,yy,zz
+    // Diagonal Voigt: xx,yy,zz (masked axes: no FD solves, exactly 0)
     for (int a = 0; a < 3; ++a) {
+        if (!axes[static_cast<std::size_t>(a)])
+            continue;
         const double sp = 1.0 + h;
         const double sm = 1.0 - h;
 
@@ -93,8 +103,8 @@ std::array<double, 6> gpw_stress_impl(const std::vector<GpwAtom>& atoms,
         mp.cell[a] = method.cell[a] * sp;
         mm.cell[a] = method.cell[a] * sm;
 
-        const double ep = scf_energy_ha(plus, mp);
-        const double em = scf_energy_ha(minus, mm);
+        const double ep = scf_energy_ha(plus, mp, guess_C);
+        const double em = scf_energy_ha(minus, mm, guess_C);
         // CP2K STRESS_TENSOR convention (matches NUMERICAL twin): 
         // σ_aa = −(1/Ω) ∂E/∂ε_aa with E in Hartree, Ω in Bohr³.
         // (Positive σ when expanding lowers energy — same sign as CP2K bar print.)
@@ -108,8 +118,10 @@ std::array<double, 6> gpw_stress_impl(const std::vector<GpwAtom>& atoms,
 } // namespace internal
 
 std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
-                                 const GpwDft& method, double h) {
-    return internal::gpw_stress_impl(atoms, method, h);
+                                 const GpwDft& method, double h,
+                                 const std::array<bool, 3>& axes,
+                                 const linalg::RealMatrix* guess_C) {
+    return internal::gpw_stress_impl(atoms, method, h, axes, guess_C);
 }
 
 } // namespace gpw
