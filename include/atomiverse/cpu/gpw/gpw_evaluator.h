@@ -84,8 +84,10 @@ class GPWEvaluator : public cpu::GPW {
     bool ts = false;
     /// @brief MBD@rsSCS free-atom (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts/vdw_df.
     bool mbd = false;
-    /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd.
+    /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/rvv10.
     bool vdw_df = false;
+    /// @brief Nonlocal rVV10 post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df.
+    bool rvv10 = false;
     /// @brief Hirshfeld \(V/V_{\mathrm{free}}\) scaling for TS/MBD (requires ts or mbd).
     bool hirshfeld = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of

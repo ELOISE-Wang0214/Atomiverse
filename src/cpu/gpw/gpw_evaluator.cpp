@@ -89,6 +89,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.ts = ts;
     cfg.mbd = mbd;
     cfg.vdw_df = vdw_df;
+    cfg.rvv10 = rvv10;
     cfg.hirshfeld = hirshfeld;
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     cfg.plus_u = plus_u;
