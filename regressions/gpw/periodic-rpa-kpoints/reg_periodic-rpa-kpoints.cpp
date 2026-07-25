@@ -44,10 +44,11 @@ int main() {
     // Offline pin strategy (no CP2K binary on worker host):
     //  - multi-k 2×1×1 hard gates: C_k stored, e_corr < 0, Ω>0, e_total
     //  - unit tests pin N_k=1 multi-k ≡ real plasmon
-    //  - first-green absolute band (REFERENCE.md, 2026-07-25).
-    //    Multi-k SCF orbitals have OMP-thread scatter ~2e-3 Ha on E_corr;
-    //    setup tol 5e-3 covers that while still guarding gross regressions.
-    constexpr double kEcorr2kRef = -0.0163;
+    //  - first-green absolute band (REFERENCE.md). Product path is
+    //    finite-q inter-k dRPA (periodic-rpa-finite-q supersession).
+    //    Multi-k SCF orbitals have OMP-thread scatter; setup tol covers it.
+    // Finite-q product pin (shared multi-k path; 2026-07-26 supersession).
+    constexpr double kEcorr2kRef = -0.0736273682;
     constexpr double kEcorr2kTol = 5.0e-3;
     constexpr double kIdTol = 1.0e-12;
 
@@ -107,8 +108,8 @@ int main() {
                      r.n_virt);
         return 1;
     }
-    // k-diagonal: n_omega = N_k * n_occ * n_virt
-    const int n_omega_expect = 2 * 8 * 2; // nk * nov
+    // Finite-q product: n_omega = N_q * N_k * n_occ * n_virt with N_q = N_k
+    const int n_omega_expect = 2 * 2 * 8 * 2; // nk * nk * nov
     if (static_cast<int>(r.omega_ha.size()) != n_omega_expect) {
         std::fprintf(stderr, "FAIL: omega size %zu != %d\n", r.omega_ha.size(),
                      n_omega_expect);
@@ -133,7 +134,8 @@ int main() {
     }
 
     std::printf(
-        "PASS: multi-k RI-GPW dRPA Si4-bct (MP 2x1x1, n_virt=%d, %.0f Ry)\n"
+        "PASS: multi-k finite-q RI-GPW dRPA Si4-bct (MP 2x1x1, n_virt=%d, "
+        "%.0f Ry)\n"
         "  E_SCF   = %.10f Ha (iters=%d, n_kpts=%d)\n"
         "  E_corr  = %.10f Ha (Tr A=%.6f; n_occ=%d n_virt=%d)\n"
         "  E_total = %.10f Ha   wall=%.1f s\n"

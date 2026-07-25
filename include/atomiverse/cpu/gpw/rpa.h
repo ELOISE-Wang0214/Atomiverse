@@ -4,7 +4,8 @@
 /// User path: `GpwDft::direct_rpa(atoms)` after a converged closed-shell
 /// `run()` — the GPW analogue of molecular `RHF::direct_rpa()`
 /// (`cpu/scf/rpa.h`). Supports **Γ** (real MOs; RI-GPW or Poisson) and
-/// **multi-k** (complex Bloch + q-resolved Casida; RI-GPW product only).
+/// **multi-k** (complex Bloch + finite-\(q\) inter-\(k\) Casida; RI-GPW
+/// product only).
 ///
 /// Correlation energy via the Furche plasmon formula on the
 /// Coulomb-only (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum:
@@ -12,10 +13,11 @@
 ///   E_{\mathrm{c}}^{\mathrm{dRPA}}
 ///     = \tfrac12\Bigl(\sum_s \Omega_s - \mathrm{Tr}\,A\Bigr),
 /// \f]
-/// multi-k (k-diagonal product): \(E_c=\sum_k w_k\,\tfrac12\bigl(\sum_s
-/// \Omega_{k,s}-\mathrm{Tr}\,A_k\bigr)\). Total energy is the
-/// dRPA@KS sum \(E_{\mathrm{SCF}}+E_c\) (no EXX replacement — periodic
-/// exact exchange remains blocked).
+/// multi-k product: \(E_c=\sum_q w_q\,\tfrac12\bigl(\sum_s
+/// \Omega_{q,s}-\mathrm{Tr}\,A_q\bigr)\) with transitions \(i_k\to a_{k+q}\)
+/// and Coulomb at transfer \(q\). Total energy is the dRPA@KS sum
+/// \(E_{\mathrm{SCF}}+E_c\) (no EXX replacement — periodic exact exchange
+/// remains blocked).
 ///
 /// References: Furche, J. Chem. Phys. **114**, 5982 (2001); Ren et al.,
 /// New J. Phys. **14**, 053020 (2012); Del Ben et al., J. Chem. Theory
@@ -37,7 +39,7 @@ struct RpaResult {
     /// @brief e_scf + e_corr [Hartree].
     double e_total = 0.0;
     /// @brief \(\mathrm{Tr}\,A\) (Γ) or \(\sum_q w_q\,\mathrm{Tr}\,A_q\)
-    ///        (multi-k) [Hartree].
+    ///        (multi-k finite-\(q\)) [Hartree].
     double tr_A = 0.0;
     /// @brief Correlated occupied spatial orbitals.
     int n_occ = 0;
@@ -49,7 +51,9 @@ struct RpaResult {
     int n_kpts = 0;
     /// @brief Positive dRPA excitation energies \(\Omega_s\) [Hartree],
     ///        ascending. Γ: length \(n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\).
-    ///        Multi-k: all q-block roots concatenated then sorted.
+    ///        Multi-k: all finite-\(q\) block roots concatenated then sorted
+    ///        (length \(N_k^2\cdot n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\)
+    ///        with \(q\)-mesh = \(k\)-mesh).
     std::vector<double> omega_ha;
 };
 

@@ -1,7 +1,7 @@
 /// @file src/cpu/gpw/rpa.cpp
-/// @brief GpwDft::direct_rpa — Γ-point (real) and multi-k (complex Bloch)
-///        GPW dRPA on the converged RKS orbitals. Product: RI-GPW (ia|jb);
-///        Γ foothold: Poisson tensor. Plasmon formula in
+/// @brief GpwDft::direct_rpa — Γ-point (real) and multi-k finite-q (complex
+///        Bloch) GPW dRPA on the converged RKS orbitals. Product: RI-GPW
+///        (ia|jb); Γ foothold: Poisson tensor. Plasmon formula in
 ///        internal::direct_rpa_rhf_energy{,_kpoints}.
 
 #include <algorithm>
@@ -45,7 +45,7 @@ const RpaResult& GpwDft::direct_rpa(const std::vector<GpwAtom>& atoms) {
             "GpwDft::direct_rpa: multi-k SCF result is missing Bloch C_k "
             "(re-run with a current multi-k path that stores orbitals)");
 
-    // ── Multi-k (complex Bloch, q-resolved RI-GPW dRPA) ────────────────
+    // ── Multi-k (complex Bloch, finite-q inter-k RI-GPW dRPA) ──────────
     if (multi_k) {
         if (nonperiodic)
             throw std::invalid_argument(

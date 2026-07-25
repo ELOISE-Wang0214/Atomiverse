@@ -242,3 +242,55 @@ TEST(GpwRpa, KpointsNk1RecoversRealPlasmon) {
     for (std::size_t s = 0; s < om_k.size(); ++s)
         EXPECT_NEAR(om_k[s], om_real[s], 1e-10);
 }
+
+// Finite-q product: N_k=2 closed mesh → n_Ω = N_k² · n_ov; E_c finite & < 0.
+TEST(GpwRpa, FiniteQTwoKSpectrumShape) {
+    using ATV::cpu::gpw::make_uniform_grid;
+    using ATV::cpu::gpw::UniformGrid;
+    using ATV::cpu::gpw::internal::direct_rpa_rhf_energy_kpoints;
+    using ATV::cpu::gpw::internal::Cplx;
+
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 30.0);
+    const long npts = grid.npts();
+    const int no = 1, nv = 1, nov = no * nv, nk = 2;
+    std::vector<double> psi_o(static_cast<std::size_t>(no) * npts);
+    std::vector<double> psi_v(static_cast<std::size_t>(nv) * npts);
+    for (long g = 0; g < npts; ++g) {
+        double r[3];
+        grid.point(g, r);
+        const double dx = r[0] - 3.0, dy = r[1] - 3.0, dz = r[2] - 3.0;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        psi_o[static_cast<std::size_t>(g)] = std::exp(-0.7 * r2);
+        psi_v[static_cast<std::size_t>(g)] = dx * std::exp(-0.5 * r2);
+    }
+    std::vector<std::vector<Cplx>> psi_ok(static_cast<std::size_t>(nk));
+    std::vector<std::vector<Cplx>> psi_vk(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        psi_ok[static_cast<std::size_t>(ik)].resize(
+            static_cast<std::size_t>(no) * npts);
+        psi_vk[static_cast<std::size_t>(ik)].resize(
+            static_cast<std::size_t>(nv) * npts);
+        for (std::size_t i = 0; i < psi_o.size(); ++i)
+            psi_ok[static_cast<std::size_t>(ik)][i] = Cplx{psi_o[i], 0.0};
+        for (std::size_t i = 0; i < psi_v.size(); ++i)
+            psi_vk[static_cast<std::size_t>(ik)][i] = Cplx{psi_v[i], 0.0};
+    }
+    std::vector<std::vector<double>> eps_ok = {{-0.85}, {-0.84}};
+    std::vector<std::vector<double>> eps_vk = {{0.25}, {0.26}};
+    std::vector<std::array<double, 3>> k_frac = {
+        {{0.0, 0.0, 0.0}}, {{0.5, 0.0, 0.0}}};
+    std::vector<double> k_w = {0.5, 0.5};
+    double e_k = 0.0, tr_k = 0.0;
+    std::vector<double> om_k;
+    direct_rpa_rhf_energy_kpoints(grid, psi_ok, psi_vk, eps_ok, eps_vk, k_frac,
+                                  k_w, e_k, tr_k, om_k);
+    EXPECT_EQ(om_k.size(),
+              static_cast<std::size_t>(nk) * static_cast<std::size_t>(nk)
+                  * static_cast<std::size_t>(nov));
+    EXPECT_TRUE(std::isfinite(e_k));
+    EXPECT_LT(e_k, 0.0);
+    EXPECT_GT(tr_k, 0.0);
+    for (double om : om_k)
+        EXPECT_GT(om, 0.0);
+}

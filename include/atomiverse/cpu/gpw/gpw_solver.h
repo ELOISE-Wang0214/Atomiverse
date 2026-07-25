@@ -329,9 +329,11 @@ class GpwDft {
     /// foothold), then Furche
     /// \(E_c=\tfrac12(\sum\Omega_s-\mathrm{Tr}\,A)\).
     ///
-    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): **k-diagonal**
-    /// RI-GPW dRPA — per-k vertical (\(q=0\)) plasmon formula, BZ-averaged
-    /// \(E_c=\sum_k w_k\tfrac12(\sum_s\Omega_{k,s}-\mathrm{Tr}\,A_k)\).
+    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): **finite-\(q\)
+    /// inter-\(k\)** RI-GPW dRPA — for each transfer \(q\) on the closed MP
+    /// mesh, Casida from transitions \(i_k\to a_{k+q}\) with Coulomb at
+    /// \(q\), Furche-averaged
+    /// \(E_c=\sum_q w_q\tfrac12(\sum_s\Omega_{q,s}-\mathrm{Tr}\,A_q)\).
     /// Requires `mp2_ri` product and a periodic cell. Prefer
     /// `k_time_reversal = false` so weights stay equal.
     ///

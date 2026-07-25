@@ -2,18 +2,19 @@
 
 ## Method
 
-Closed-shell **k-diagonal direct RPA (dRPA)** correlation on top of a multi-k
-**GPW PBE** SCF. For each sampled \(k\), the Coulomb-only Casida spectrum is
-built from **same-\(k\)** (vertical, \(q=0\)) occupied–virtual pair densities
-via RI-GPW Poisson (complex Bloch products; linear real Poisson on Re/Im),
-reduced by the Furche plasmon formula, and Brillouin-zone averaged:
+Closed-shell **finite-\(q\) inter-\(k\) direct RPA (dRPA)** correlation on top
+of a multi-k **GPW PBE** SCF (product multi-k path after
+`periodic-rpa-finite-q`). For each transfer \(q\) on the closed MP mesh, the
+Coulomb-only Casida spectrum is built from transitions \(i_k\to a_{k+q}\) via
+RI-GPW Poisson at \(q\), reduced by the Furche plasmon formula, and
+Brillouin-zone averaged:
 
 \[
-E_c=\sum_k w_k\,\tfrac12\Bigl(\sum_s\Omega_{k,s}-\mathrm{Tr}\,A_k\Bigr).
+E_c=\sum_q w_q\,\tfrac12\Bigl(\sum_s\Omega_{q,s}-\mathrm{Tr}\,A_q\Bigr).
 \]
 
 Total energy is **dRPA@KS** \(E_{\mathrm{SCF}}+E_c\) (no EXX — periodic HF
-blocked). Full inter-\(k\) / finite-\(q\) dielectric coupling is a follow-on.
+blocked).
 
 Public path:
 
@@ -65,18 +66,18 @@ PW-RI \((ia|jb)\). Absolute CP2K \(E_c\) is therefore not a hard twin.
 3. **First-green absolute band** (setup integrity) — freeze ATV digits below;
    replace with fair CP2K when available.
 
-### Atomiverse numbers (first green, 2026-07-25)
+### Atomiverse numbers (finite-q product pin, 2026-07-26)
+
+Shared multi-k path with `periodic-rpa-finite-q` (k-diagonal foothold
+superseded).
 
 | Quantity | Value |
 |----------|--------|
 | E_SCF (2k, PBE, 80 Ry) | **−15.5751782413** Ha (7 iters; stable) |
-| **E_corr (2k, n_virt=2)** | **≈ −0.0163** Ha (OMP-dependent) |
-| E_corr (OMP=1, deterministic) | −0.0157519268 Ha |
-| E_corr (OMP=4, sample) | −0.0154 … −0.0173 Ha |
+| **E_corr (2k, finite-q, n_virt=2)** | **−0.0736273682** Ha |
 | Wall (SCF + RPA) | **~3 s** |
 
-Regression absolute tol on E_corr: **5e-3 Ha** about −0.0163 (setup band
-covering OMP orbital scatter on the multi-k SCF; not a CP2K digit twin).
+Regression absolute tol on E_corr: **5e-3 Ha** about −0.0736273682.
 
 ## Perf
 
