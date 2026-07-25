@@ -73,10 +73,20 @@ closed — §10 Periodic MP2 stays ○ until RI/k-point lands) and
 HCTH/SOGGA remain molecular-path (PySCF-loop oracle) — not added. Roadmap
 already matches `dev` (harness `859d6e28` synced Berry/DFPT/k-points/
 variable-cell; MP2 ○ kept) — no ○/✓ flips.
+**Assign wave (claude) 2026-07-25 (wave 2):** staffed 6 dep-safe picks — all
+5 wave-3 `[~]` resumes (`xl-bomd-water` = WIP `61d235f4` on
+`wf/xl-bomd-water`, resume build+test first; `wannier-centers` / `cpmd-water`
+now free of the prior surface holds — `berry-polarization` merged, xl-bomd
+impl checkpointed; `mpi-gpw-scaling-4rank` / `mpi-pw-scaling-4rank` — the
+contending `gpw-kpoints-si` / `periodic-mp2-si` solver trees merged) + 1
+pending promoted: `gpw-analytic-stress` (dep `gpw-stress-water` ✓).
+Skipped `second-gen-cpmd-water` (dep `cpmd-water` is itself a pick this
+wave). Open specs `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp` stay
+PySCF-loop deferred — not staffed. Note: `cpmd-water` and `xl-bomd-water`
+may both touch AIMD propagator files — harness resolves at merge.
 
 ## pending
 
-- [ ] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓
 - [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓
 - [ ] `gpw-blyp-water` | GPW BLYP GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 BLYP molecular ✓ / GPW `XcKind` still PADE|PBE|PBEsol only; CP2K XC_FUNCTIONAL BLYP
 - [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
@@ -100,11 +110,15 @@ variable-cell; MP2 ○ kept) — no ○/✓ flips.
      periodic-mp2-si; wannier-centers / cpmd-water / mpi-*-scaling held -->
 <!-- harness wave 1 (claude) 2026-07-25: 5 of the 6 staffed merged → done;
      xl-bomd-water WIP-checkpointed (below) -->
+<!-- assign wave (claude) 2026-07-25 (wave 2): staffed all 5 [~] resumes +
+     promoted gpw-analytic-stress from pending; second-gen-cpmd-water skipped
+     (dep cpmd-water is a pick this wave) -->
 - [~] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water` ✓; wave 3 new; **WIP checkpoint 2026-07-25:** commit `61d235f4` on `wf/xl-bomd-water` — impl + spec + regression skeleton written, **untested** (build never completed); resume write-first: build scoped, test, commit
 - [~] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si` ✓; wave 3 new
 - [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
 - [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
 - [~] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK; wave 3 new
+- [~] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓; promoted assign wave (claude) 2026-07-25 (wave 2)
 
 ## blocked
 
