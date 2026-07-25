@@ -1,0 +1,836 @@
+/// @file src/cpu/gpw/internal/kpoints.cpp
+/// @brief Monkhorst-Pack k-point machinery for the GPW RKS SCF (see header).
+
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
+
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <stdexcept>
+#include <string>
+
+#include <xtensor/containers/xtensor.hpp>
+#include <xtensor/generators/xbuilder.hpp>
+
+#include "atomiverse/cpu/gpw/internal/gth_integrals.h" // Prim, gth_projector_overlap
+#include "atomiverse/cpu/gpw/internal/one_electron.h"  // prim_overlap, prim_kinetic
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+extern "C" {
+// Direct LAPACK binding for the complex Hermitian eigensolver. The LWORK=-1
+// workspace query of the bundled LAPACK is broken (see dsygvd_ in
+// cpu/linalg/eigensolve.h), so the documented minimum workspace is passed
+// explicitly and no query is ever issued.
+void zheevd_(const char* jobz, const char* uplo, const int* n,
+             std::complex<double>* a, const int* lda, double* w,
+             std::complex<double>* work, const int* lwork, double* rwork,
+             const int* lrwork, int* iwork, const int* liwork, int* info);
+}
+
+namespace ATV {
+namespace cpu {
+namespace gpw {
+namespace internal {
+
+namespace {
+
+using Cplx = std::complex<double>;
+
+constexpr double kTwoPi = 6.283185307179586476925286766559;
+
+// Per-axis Bloch phase table e^{2 pi i kappa_d t} for t in [-m, m], indexed
+// t + m. One table per (k, axis); the image phase is the 3-axis product.
+struct PhaseTables {
+    std::vector<std::vector<Cplx>> ax[3]; // ax[d][ik][t + m[d]]
+
+    PhaseTables(const std::vector<KPoint>& kpts, const int m[3]) {
+        for (int d = 0; d < 3; ++d) {
+            ax[d].resize(kpts.size());
+            for (std::size_t ik = 0; ik < kpts.size(); ++ik) {
+                std::vector<Cplx>& tab = ax[d][ik];
+                tab.resize(static_cast<std::size_t>(2 * m[d] + 1));
+                for (int t = -m[d]; t <= m[d]; ++t) {
+                    const double arg = kTwoPi * kpts[ik].frac[d] * t;
+                    tab[static_cast<std::size_t>(t + m[d])] =
+                        Cplx(std::cos(arg), std::sin(arg));
+                }
+            }
+        }
+    }
+};
+
+// Max Gaussian-product prefactor over the primitive pairs of (mu, nu) with
+// min-image displacement — the same pair screen as the Γ build
+// (`pair_overlap_bound` in gpw_solver.cpp): below the screen the WHOLE
+// (i, j) element is negligible for every k (|phase| = 1).
+double pair_bound(const GridBasisFunction& mu, const GridBasisFunction& nu,
+                  const double L[3]) {
+    double best = 0.0;
+    for (const auto& p : mu)
+        for (const auto& q : nu) {
+            const double a = p.alpha, b = q.alpha;
+            double d2 = 0.0;
+            for (int d = 0; d < 3; ++d) {
+                double e = p.center[d] - q.center[d];
+                if (L[d] > 0.0)
+                    e -= L[d] * std::nearbyint(e / L[d]);
+                d2 += e * e;
+            }
+            best = std::max(best, std::abs(p.coeff * q.coeff)
+                                      * std::exp(-a * b / (a + b) * d2));
+        }
+    return best;
+}
+
+// Re Tr(A B) for row-major complex matrices (no conjugation — the physical
+// traces Tr(P T) pair a Hermitian density with a Hermitian operator).
+// (defined in the outer anonymous namespace for reuse by the SCF loop through
+// the header consumers; kept local here — the solver computes its own.)
+
+} // namespace
+
+std::vector<KPoint> monkhorst_pack(const int mesh[3], bool time_reversal) {
+    for (int d = 0; d < 3; ++d)
+        if (mesh[d] < 1)
+            throw std::invalid_argument(
+                "monkhorst_pack: mesh subdivision must be >= 1 (axis "
+                + std::to_string(d) + " got " + std::to_string(mesh[d]) + ")");
+
+    std::vector<KPoint> full;
+    const double w0 = 1.0 / (static_cast<double>(mesh[0]) * mesh[1] * mesh[2]);
+    for (int r0 = 1; r0 <= mesh[0]; ++r0)
+        for (int r1 = 1; r1 <= mesh[1]; ++r1)
+            for (int r2 = 1; r2 <= mesh[2]; ++r2) {
+                KPoint kp;
+                const int r[3] = {r0, r1, r2};
+                for (int d = 0; d < 3; ++d) {
+                    // CP2K MONKHORST-PACK: kappa = (2r - N - 1) / (2N).
+                    double f = (2.0 * r[d] - mesh[d] - 1.0)
+                               / (2.0 * static_cast<double>(mesh[d]));
+                    // Canonicalize to (-1/2, 1/2].
+                    f -= std::floor(f + 0.5);
+                    if (f <= -0.5)
+                        f += 1.0;
+                    kp.frac[d] = f;
+                }
+                kp.weight = w0;
+                full.push_back(kp);
+            }
+
+    if (!time_reversal)
+        return full;
+
+    // Fold kappa and -kappa (mod 1): keep the first of each pair, double its
+    // weight. Self-paired points (kappa == -kappa mod 1: components 0 or 1/2)
+    // keep weight w0.
+    std::vector<KPoint> folded;
+    std::vector<bool> used(full.size(), false);
+    const double tol = 1e-12;
+    auto same = [&](const double a[3], const double b[3]) {
+        for (int d = 0; d < 3; ++d) {
+            double diff = a[d] - b[d];
+            diff -= std::nearbyint(diff); // mod 1
+            if (std::abs(diff) > tol)
+                return false;
+        }
+        return true;
+    };
+    for (std::size_t i = 0; i < full.size(); ++i) {
+        if (used[i])
+            continue;
+        used[i] = true;
+        KPoint kp = full[i];
+        double neg[3] = {-kp.frac[0], -kp.frac[1], -kp.frac[2]};
+        for (std::size_t j = i + 1; j < full.size(); ++j) {
+            if (used[j])
+                continue;
+            if (same(full[j].frac, neg)) {
+                used[j] = true;
+                kp.weight += full[j].weight;
+                break; // MP meshes have no duplicate points
+            }
+        }
+        folded.push_back(kp);
+    }
+    return folded;
+}
+
+void build_overlap_kinetic_k(const std::vector<GridBasisFunction>& basis,
+                             const std::vector<double>& radii,
+                             const double L[3], const int m[3], double screen,
+                             const std::vector<KPoint>& kpts,
+                             std::vector<CplxMatrix>& S_k,
+                             std::vector<CplxMatrix>& T_k) {
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+    S_k.assign(static_cast<std::size_t>(nk),
+               CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    T_k.assign(static_cast<std::size_t>(nk),
+               CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    const PhaseTables ph(kpts, m);
+
+#pragma omp parallel for schedule(dynamic, 4)
+    for (int i = 0; i < nb; ++i) {
+        if (basis[static_cast<std::size_t>(i)].empty())
+            continue;
+        std::vector<Cplx> s_acc(static_cast<std::size_t>(nk));
+        std::vector<Cplx> t_acc(static_cast<std::size_t>(nk));
+        for (int j = i; j < nb; ++j) {
+            const GridBasisFunction& a = basis[static_cast<std::size_t>(i)];
+            const GridBasisFunction& b = basis[static_cast<std::size_t>(j)];
+            if (b.empty())
+                continue;
+            if (pair_bound(a, b, L) < screen)
+                continue;
+            const double reach = radii[static_cast<std::size_t>(i)]
+                                 + radii[static_cast<std::size_t>(j)];
+            const double reach2 = reach * reach;
+            const double* ac = a[0].center;
+            const double* bc = b[0].center;
+            std::fill(s_acc.begin(), s_acc.end(), Cplx(0, 0));
+            std::fill(t_acc.begin(), t_acc.end(), Cplx(0, 0));
+            for (int tx = -m[0]; tx <= m[0]; ++tx)
+                for (int ty = -m[1]; ty <= m[1]; ++ty)
+                    for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                        const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                        const double dx = ac[0] - bc[0] - T[0];
+                        const double dy = ac[1] - bc[1] - T[1];
+                        const double dz = ac[2] - bc[2] - T[2];
+                        if (dx * dx + dy * dy + dz * dz > reach2)
+                            continue;
+                        // Per-image REAL integrals, reused by every k.
+                        double s_im = 0.0, t_im = 0.0;
+                        for (const auto& pa : a)
+                            for (const auto& pb : b) {
+                                GridPrimitive q = pb; // ket image: center += T
+                                q.center[0] += T[0];
+                                q.center[1] += T[1];
+                                q.center[2] += T[2];
+                                s_im += prim_overlap(pa, q);
+                                t_im += prim_kinetic(pa, q);
+                            }
+                        for (int ik = 0; ik < nk; ++ik) {
+                            const Cplx phase =
+                                ph.ax[0][static_cast<std::size_t>(ik)]
+                                     [static_cast<std::size_t>(tx + m[0])]
+                                * ph.ax[1][static_cast<std::size_t>(ik)]
+                                       [static_cast<std::size_t>(ty + m[1])]
+                                * ph.ax[2][static_cast<std::size_t>(ik)]
+                                       [static_cast<std::size_t>(tz + m[2])];
+                            s_acc[static_cast<std::size_t>(ik)] += phase * s_im;
+                            t_acc[static_cast<std::size_t>(ik)] += phase * t_im;
+                        }
+                    }
+            for (int ik = 0; ik < nk; ++ik) {
+                S_k[static_cast<std::size_t>(ik)](i, j) =
+                    s_acc[static_cast<std::size_t>(ik)];
+                T_k[static_cast<std::size_t>(ik)](i, j) =
+                    t_acc[static_cast<std::size_t>(ik)];
+                if (j != i) { // Hermiticity by construction
+                    S_k[static_cast<std::size_t>(ik)](j, i) =
+                        std::conj(s_acc[static_cast<std::size_t>(ik)]);
+                    T_k[static_cast<std::size_t>(ik)](j, i) =
+                        std::conj(t_acc[static_cast<std::size_t>(ik)]);
+                }
+            }
+        }
+    }
+}
+
+void add_nonlocal_kb_k(std::vector<CplxMatrix>& V_k,
+                       const std::vector<GridBasisFunction>& basis,
+                       const std::vector<GpwAtom>& atoms,
+                       const std::vector<double>& radii, const double L[3],
+                       const int mimg[3], double screen,
+                       const std::vector<KPoint>& kpts) {
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+    const PhaseTables ph(kpts, mimg);
+    const double proj_eps = std::sqrt(2.0 * std::log(1.0 / screen));
+
+    for (const auto& at : atoms) {
+        if (at.nonlocal.empty())
+            continue;
+        double rmax_ch = 0.0;
+        for (const auto& ch : at.nonlocal)
+            rmax_ch = std::max(rmax_ch, ch.r);
+        const double proj_reach = rmax_ch * proj_eps;
+        // Flat slot layout over (channel, m, iproj).
+        int nslot = 0;
+        std::vector<int> choff(at.nonlocal.size());
+        for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+            choff[c] = nslot;
+            nslot += (2 * at.nonlocal[c].l + 1) * at.nonlocal[c].nproj;
+        }
+        const double* A = at.pos;
+        // O_mu^k[slot] = <chi_mu^k | p_A> = sum_T e^{-i k T} <phi_mu(.-T)|p_A>.
+        // per-k, per-basis slot vectors (complex); (nb x nslot) per k.
+        std::vector<std::vector<Cplx>> O(
+            static_cast<std::size_t>(nk),
+            std::vector<Cplx>(static_cast<std::size_t>(nb) * nslot,
+                              Cplx(0, 0)));
+        std::vector<char> any(static_cast<std::size_t>(nb), 0);
+
+#pragma omp parallel for schedule(dynamic, 4)
+        for (int mu = 0; mu < nb; ++mu) {
+            const GridBasisFunction& bf = basis[static_cast<std::size_t>(mu)];
+            if (bf.empty())
+                continue;
+            const double reach =
+                radii[static_cast<std::size_t>(mu)] + proj_reach;
+            const double reach2 = reach * reach;
+            std::vector<double> o_im(static_cast<std::size_t>(nslot));
+            bool got = false;
+            for (int tx = -mimg[0]; tx <= mimg[0]; ++tx)
+                for (int ty = -mimg[1]; ty <= mimg[1]; ++ty)
+                    for (int tz = -mimg[2]; tz <= mimg[2]; ++tz) {
+                        const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                        const double dx = bf[0].center[0] + T[0] - A[0];
+                        const double dy = bf[0].center[1] + T[1] - A[1];
+                        const double dz = bf[0].center[2] + T[2] - A[2];
+                        if (dx * dx + dy * dy + dz * dz > reach2)
+                            continue;
+                        std::fill(o_im.begin(), o_im.end(), 0.0);
+                        bool nz = false;
+                        for (const auto& p : bf) {
+                            if (p.coeff == 0.0)
+                                continue;
+                            Prim g;
+                            g.alpha = p.alpha;
+                            g.center[0] = p.center[0] + T[0];
+                            g.center[1] = p.center[1] + T[1];
+                            g.center[2] = p.center[2] + T[2];
+                            g.l[0] = p.l[0];
+                            g.l[1] = p.l[1];
+                            g.l[2] = p.l[2];
+                            for (std::size_t c = 0; c < at.nonlocal.size();
+                                 ++c) {
+                                const auto& ch = at.nonlocal[c];
+                                const int nm = 2 * ch.l + 1;
+                                for (int mm = 0; mm < nm; ++mm)
+                                    for (int ip = 0; ip < ch.nproj; ++ip) {
+                                        const double v =
+                                            p.coeff
+                                            * gth_projector_overlap(
+                                                g, A, ch.l, ip + 1, ch.r, mm);
+                                        if (v != 0.0) {
+                                            o_im[static_cast<std::size_t>(
+                                                choff[c] + mm * ch.nproj
+                                                + ip)] += v;
+                                            nz = true;
+                                        }
+                                    }
+                            }
+                        }
+                        if (!nz)
+                            continue;
+                        got = true;
+                        for (int ik = 0; ik < nk; ++ik) {
+                            // Slot gather with the PLAIN phase e^{+2πi κ·t}:
+                            // summing the projector images T″ collapses the
+                            // double Bloch sum to V_nl^k(μν) = Σ_A O_μ h
+                            // conj(O_ν) with O_μ = Σ_u e^{−iku}⟨φ_μ(·−u)|p⟩;
+                            // storing O′ = conj(O) here lets the assembly
+                            // below keep the ⟨bra|·|ket⟩ shape
+                            // conj(O′_μ)·h·O′_ν ≡ O_μ·h·conj(O_ν). Putting
+                            // the conjugate on the gather instead (the naive
+                            // ⟨χ_μ|p_A⟩ reading) evaluates V_nl at −k — it
+                            // stays Hermitian and Γ/zone-boundary exact, but
+                            // broke the supercell folding identity by 2 Ha at
+                            // κ = ±1/4 (caught by acceptance gate A2).
+                            const Cplx phase =
+                                ph.ax[0][static_cast<std::size_t>(ik)]
+                                     [static_cast<std::size_t>(tx + mimg[0])]
+                                * ph.ax[1][static_cast<std::size_t>(ik)]
+                                       [static_cast<std::size_t>(ty + mimg[1])]
+                                * ph.ax[2][static_cast<std::size_t>(ik)]
+                                       [static_cast<std::size_t>(tz
+                                                                 + mimg[2])];
+                            Cplx* dst = O[static_cast<std::size_t>(ik)].data()
+                                        + static_cast<std::size_t>(mu) * nslot;
+                            for (int t = 0; t < nslot; ++t)
+                                dst[t] += phase * o_im[static_cast<std::size_t>(t)];
+                        }
+                    }
+            if (got)
+                any[static_cast<std::size_t>(mu)] = 1;
+        }
+
+        // hO[slot] = sum_j h_ij O[j] within each (channel, m); then
+        // V_nl^k(mu, nu) += conj(O_mu) . hO_nu.
+        for (int ik = 0; ik < nk; ++ik) {
+            const std::vector<Cplx>& Ok = O[static_cast<std::size_t>(ik)];
+            std::vector<Cplx> hO(static_cast<std::size_t>(nb) * nslot,
+                                 Cplx(0, 0));
+            for (int mu = 0; mu < nb; ++mu) {
+                if (!any[static_cast<std::size_t>(mu)])
+                    continue;
+                const Cplx* src =
+                    Ok.data() + static_cast<std::size_t>(mu) * nslot;
+                Cplx* dst = hO.data() + static_cast<std::size_t>(mu) * nslot;
+                for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+                    const auto& ch = at.nonlocal[c];
+                    const int nm = 2 * ch.l + 1;
+                    for (int mm = 0; mm < nm; ++mm) {
+                        const int base = choff[c] + mm * ch.nproj;
+                        for (int p1 = 0; p1 < ch.nproj; ++p1) {
+                            Cplx s(0, 0);
+                            for (int p2 = 0; p2 < ch.nproj; ++p2)
+                                s += ch.hij(p1, p2)
+                                     * src[static_cast<std::size_t>(base + p2)];
+                            dst[static_cast<std::size_t>(base + p1)] = s;
+                        }
+                    }
+                }
+            }
+            CplxMatrix& V = V_k[static_cast<std::size_t>(ik)];
+#pragma omp parallel for schedule(static)
+            for (int mu = 0; mu < nb; ++mu) {
+                if (!any[static_cast<std::size_t>(mu)])
+                    continue;
+                const Cplx* o1 =
+                    Ok.data() + static_cast<std::size_t>(mu) * nslot;
+                for (int nu = 0; nu < nb; ++nu) {
+                    if (!any[static_cast<std::size_t>(nu)])
+                        continue;
+                    const Cplx* h2 =
+                        hO.data() + static_cast<std::size_t>(nu) * nslot;
+                    Cplx s(0, 0);
+                    for (int t = 0; t < nslot; ++t)
+                        s += std::conj(o1[t]) * h2[t];
+                    V(mu, nu) += s;
+                }
+            }
+        }
+    }
+}
+
+KpointBasisGrid
+build_kpoint_basis_grid(const UniformGrid& grid,
+                        const std::vector<GridBasisFunction>& basis,
+                        const std::vector<KPoint>& kpts, double eps) {
+    KpointBasisGrid kbg;
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+    const long npts = grid.npts();
+    kbg.nb = nb;
+    kbg.npts = npts;
+    kbg.weight = grid.weight();
+    // Diffuse bases in few-Bohr cells touch every point through some image, so
+    // every grid point is active (dense per-point storage; no CSR pruning).
+    kbg.gidx.resize(static_cast<std::size_t>(npts));
+    for (long g = 0; g < npts; ++g)
+        kbg.gidx[static_cast<std::size_t>(g)] = g;
+    kbg.chi.assign(static_cast<std::size_t>(nk),
+                   std::vector<Cplx>(static_cast<std::size_t>(npts) * nb,
+                                     Cplx(0, 0)));
+
+    const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
+    const double d0 = grid.L[0] / n0, d1 = grid.L[1] / n1,
+                 d2 = grid.L[2] / n2;
+
+#pragma omp parallel for schedule(dynamic, 1)
+    for (int u = 0; u < nb; ++u) {
+        const GridBasisFunction& bf = basis[static_cast<std::size_t>(u)];
+        if (bf.empty())
+            continue;
+        const double rc = basis_function_radius(bf, eps);
+        const double c[3] = {bf[0].center[0], bf[0].center[1],
+                             bf[0].center[2]};
+        const long n[3] = {n0, n1, n2};
+        const double dx[3] = {d0, d1, d2};
+        long lo[3], hi[3];
+        for (int d = 0; d < 3; ++d) {
+            const long ih = static_cast<long>(std::ceil(rc / dx[d]));
+            const long ic = static_cast<long>(std::floor(c[d] / dx[d]));
+            lo[d] = ic - ih;
+            hi[d] = ic + ih;
+        }
+        // Per-axis image index range of the unwrapped window and its phase
+        // table: cell index i lies in image t = (i - wrap(i)) / n.
+        auto img_of = [](long i, long nn) {
+            const long ii = ((i % nn) + nn) % nn;
+            return (i - ii) / nn;
+        };
+        std::vector<std::vector<Cplx>> px(3);
+        long tlo[3], thi[3];
+        for (int d = 0; d < 3; ++d) {
+            tlo[d] = img_of(lo[d], n[d]);
+            thi[d] = img_of(hi[d], n[d]);
+        }
+        std::vector<std::vector<std::vector<Cplx>>> ptab(
+            static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            ptab[static_cast<std::size_t>(ik)].resize(3);
+            for (int d = 0; d < 3; ++d) {
+                auto& tab = ptab[static_cast<std::size_t>(ik)]
+                               [static_cast<std::size_t>(d)];
+                tab.resize(static_cast<std::size_t>(thi[d] - tlo[d] + 1));
+                for (long t = tlo[d]; t <= thi[d]; ++t) {
+                    // chi accumulates with e^{-2 pi i kappa . t'} (the window
+                    // cell t' holds the image T = -T').
+                    const double arg =
+                        -kTwoPi * kpts[static_cast<std::size_t>(ik)].frac[d]
+                        * static_cast<double>(t);
+                    tab[static_cast<std::size_t>(t - tlo[d])] =
+                        Cplx(std::cos(arg), std::sin(arg));
+                }
+            }
+        }
+        for (long i = lo[0]; i <= hi[0]; ++i) {
+            const long ii = ((i % n0) + n0) % n0;
+            const long ti = img_of(i, n0) - tlo[0];
+            const double r0 =
+                grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
+            for (long j = lo[1]; j <= hi[1]; ++j) {
+                const long jj = ((j % n1) + n1) % n1;
+                const long tj = img_of(j, n1) - tlo[1];
+                const double r1 =
+                    grid.origin[1] + grid.L[1] * static_cast<double>(j) / n1;
+                const long base = (ii * n1 + jj) * n2;
+                for (long kk2 = lo[2]; kk2 <= hi[2]; ++kk2) {
+                    const long kkw = ((kk2 % n2) + n2) % n2;
+                    const long tk = img_of(kk2, n2) - tlo[2];
+                    const double r2 =
+                        grid.origin[2]
+                        + grid.L[2] * static_cast<double>(kk2) / n2;
+                    // Contracted Gaussian at the UNWRAPPED point (image offset
+                    // carried by the raw displacement).
+                    double val = 0.0;
+                    for (const auto& p : bf) {
+                        const double ddx = r0 - p.center[0];
+                        const double ddy = r1 - p.center[1];
+                        const double ddz = r2 - p.center[2];
+                        const double rr =
+                            ddx * ddx + ddy * ddy + ddz * ddz;
+                        double t = p.coeff * std::exp(-p.alpha * rr);
+                        for (int q = 0; q < p.l[0]; ++q)
+                            t *= ddx;
+                        for (int q = 0; q < p.l[1]; ++q)
+                            t *= ddy;
+                        for (int q = 0; q < p.l[2]; ++q)
+                            t *= ddz;
+                        val += t;
+                    }
+                    if (std::fabs(val) <= eps)
+                        continue;
+                    const long g = base + kkw;
+                    for (int ik = 0; ik < nk; ++ik) {
+                        const auto& pt = ptab[static_cast<std::size_t>(ik)];
+                        const Cplx phase =
+                            pt[0][static_cast<std::size_t>(ti)]
+                            * pt[1][static_cast<std::size_t>(tj)]
+                            * pt[2][static_cast<std::size_t>(tk)];
+                        kbg.chi[static_cast<std::size_t>(ik)]
+                               [static_cast<std::size_t>(g) * nb + u] +=
+                            phase * val;
+                    }
+                }
+            }
+        }
+    }
+    return kbg;
+}
+
+void collocate_density_k(const KpointBasisGrid& kbg, int ik,
+                         const CplxMatrix& P_k, double wk,
+                         std::vector<double>& rho) {
+    const int nb = kbg.nb;
+    const long npts = kbg.npts;
+    const std::vector<Cplx>& chi = kbg.chi[static_cast<std::size_t>(ik)];
+#pragma omp parallel
+    {
+        std::vector<Cplx> y(static_cast<std::size_t>(nb));
+#pragma omp for schedule(static)
+        for (long g = 0; g < npts; ++g) {
+            const Cplx* v = chi.data() + static_cast<std::size_t>(g) * nb;
+            // rho_k(g) = sum_uv P_uv v_u conj(v_v) = sum_u v_u (P conj(v))_u.
+            for (int u = 0; u < nb; ++u) {
+                Cplx s(0, 0);
+                const Cplx* Pu = &P_k(u, 0);
+                for (int w = 0; w < nb; ++w)
+                    s += Pu[w] * std::conj(v[w]);
+                y[static_cast<std::size_t>(u)] = s;
+            }
+            double acc = 0.0;
+            for (int u = 0; u < nb; ++u)
+                acc += (v[u] * y[static_cast<std::size_t>(u)]).real();
+            rho[static_cast<std::size_t>(g)] += wk * acc;
+        }
+    }
+}
+
+CplxMatrix integrate_potential_k(const KpointBasisGrid& kbg, int ik,
+                                 const std::vector<double>& V_r) {
+    const int nb = kbg.nb;
+    const long npts = kbg.npts;
+    const double w = kbg.weight;
+    const std::vector<Cplx>& chi = kbg.chi[static_cast<std::size_t>(ik)];
+    CplxMatrix V = xt::zeros<Cplx>({nb, nb});
+#pragma omp parallel
+    {
+        CplxMatrix Vloc = xt::zeros<Cplx>({nb, nb});
+#pragma omp for schedule(static) nowait
+        for (long g = 0; g < npts; ++g) {
+            const double vg = w * V_r[static_cast<std::size_t>(g)];
+            if (vg == 0.0)
+                continue;
+            const Cplx* v = chi.data() + static_cast<std::size_t>(g) * nb;
+            for (int u = 0; u < nb; ++u) {
+                const Cplx cu = vg * std::conj(v[u]);
+                Cplx* row = &Vloc(u, 0);
+                for (int t = 0; t < nb; ++t)
+                    row[t] += cu * v[t];
+            }
+        }
+#pragma omp critical
+        {
+            V += Vloc;
+        }
+    }
+    return V;
+}
+
+void eigh_hermitian(const CplxMatrix& A, std::vector<double>& w,
+                    CplxMatrix& V) {
+    const int n = static_cast<int>(A.shape(0));
+    // Stage the LOGICAL matrix column-major so LAPACK sees exactly A.
+    std::vector<Cplx> buf(static_cast<std::size_t>(n) * n);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            buf[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * n] =
+                A(i, j);
+    w.assign(static_cast<std::size_t>(n), 0.0);
+
+    // Documented zheevd minima for JOBZ='V': LWORK >= 2N + N^2,
+    // LRWORK >= 1 + 5N + 2N^2, LIWORK >= 3 + 5N (no LWORK=-1 query — broken
+    // in the bundled LAPACK, see the dsygvd_ note in linalg/eigensolve.h).
+    const char jobz = 'V';
+    const char uplo = 'L';
+    const int lwork = 2 * n + n * n + 16;
+    const int lrwork = 1 + 5 * n + 2 * n * n + 16;
+    const int liwork = 3 + 5 * n + 16;
+    std::vector<Cplx> work(static_cast<std::size_t>(lwork));
+    std::vector<double> rwork(static_cast<std::size_t>(lrwork));
+    std::vector<int> iwork(static_cast<std::size_t>(liwork));
+    int info = 0;
+    zheevd_(&jobz, &uplo, &n, buf.data(), &n, w.data(), work.data(), &lwork,
+            rwork.data(), &lrwork, iwork.data(), &liwork, &info);
+    if (info != 0)
+        throw std::runtime_error("gpw kpoints: zheevd failed, info="
+                                 + std::to_string(info));
+    // Columns of the column-major result are the eigenvectors.
+    V = xt::zeros<Cplx>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            V(i, j) = buf[static_cast<std::size_t>(i)
+                          + static_cast<std::size_t>(j) * n];
+}
+
+KOrth::KOrth(const CplxMatrix& S_k, double tau) {
+    const int n = static_cast<int>(S_k.shape(0));
+    std::vector<double> s;
+    CplxMatrix U;
+    eigh_hermitian(S_k, s, U); // ascending
+    s_min = s.empty() ? 0.0 : s[0];
+    // A Bloch overlap is a Gram matrix at every k — a negative eigenvalue
+    // means the phased lattice sum is WRONG, not ill-conditioned (same guard
+    // as the Γ path).
+    constexpr double kPsdTol = -1e-8;
+    if (s_min < kPsdTol)
+        throw std::runtime_error(
+            "GPW kpoints: S_k is not positive semidefinite (s_min="
+            + std::to_string(s_min)
+            + ") — the phased lattice sum is incomplete");
+    int first = 0;
+    if (tau > 0)
+        while (first < n && s[static_cast<std::size_t>(first)] < tau)
+            ++first;
+    n_dropped = first;
+    const int m = n - first;
+    if (m == 0)
+        throw std::runtime_error(
+            "GPW kpoints: every overlap eigenvalue below lindep threshold "
+            "at this k — no basis left");
+    X = xt::zeros<Cplx>({n, m});
+    for (int j = 0; j < m; ++j) {
+        const double inv_sqrt =
+            1.0 / std::sqrt(s[static_cast<std::size_t>(first + j)]);
+        for (int i = 0; i < n; ++i)
+            X(i, j) = U(i, first + j) * inv_sqrt;
+    }
+}
+
+namespace {
+// C = A^dagger B (nb x m)^dagger (nb x nb) ... small dense products, explicit
+// loops (row-major; no reliance on xtensor-blas complex dispatch).
+CplxMatrix dagger_mul(const CplxMatrix& A, const CplxMatrix& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    const int p = static_cast<int>(B.shape(1));
+    CplxMatrix C = xt::zeros<Cplx>({m, p});
+    for (int i = 0; i < m; ++i)
+        for (int k = 0; k < n; ++k) {
+            const Cplx a = std::conj(A(k, i));
+            if (a == Cplx(0, 0))
+                continue;
+            const Cplx* Bk = &B(k, 0);
+            Cplx* Ci = &C(i, 0);
+            for (int j = 0; j < p; ++j)
+                Ci[j] += a * Bk[j];
+        }
+    return C;
+}
+
+CplxMatrix mul(const CplxMatrix& A, const CplxMatrix& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    const int p = static_cast<int>(B.shape(1));
+    CplxMatrix C = xt::zeros<Cplx>({n, p});
+    for (int i = 0; i < n; ++i)
+        for (int k = 0; k < m; ++k) {
+            const Cplx a = A(i, k);
+            if (a == Cplx(0, 0))
+                continue;
+            const Cplx* Bk = &B(k, 0);
+            Cplx* Ci = &C(i, 0);
+            for (int j = 0; j < p; ++j)
+                Ci[j] += a * Bk[j];
+        }
+    return C;
+}
+} // namespace
+
+std::pair<std::vector<double>, CplxMatrix>
+diagonalize_k(const CplxMatrix& H_k, const KOrth& orth) {
+    const CplxMatrix Hp = dagger_mul(orth.X, mul(H_k, orth.X));
+    std::vector<double> eps;
+    CplxMatrix Cp;
+    eigh_hermitian(Hp, eps, Cp);
+    return {std::move(eps), mul(orth.X, Cp)};
+}
+
+CplxMatrix k_diis_error(const CplxMatrix& H, const CplxMatrix& P,
+                        const CplxMatrix& S, const CplxMatrix& X) {
+    const CplxMatrix comm = mul(H, mul(P, S)) - mul(S, mul(P, H));
+    return dagger_mul(X, mul(comm, X));
+}
+
+std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
+                                    const std::vector<CplxMatrix>& e) {
+    h_hist_.push_back(H);
+    e_hist_.push_back(e);
+    while (static_cast<int>(h_hist_.size()) > max_vectors_) {
+        h_hist_.erase(h_hist_.begin());
+        e_hist_.erase(e_hist_.begin());
+    }
+    const int m = static_cast<int>(h_hist_.size());
+    if (m < 2)
+        return h_hist_.back();
+
+    const int nk = static_cast<int>(H.size());
+    const int dim = m + 1;
+    xt::xtensor<double, 2> B = xt::zeros<double>({dim, dim});
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j <= i; ++j) {
+            double val = 0.0;
+            for (int ik = 0; ik < nk; ++ik) {
+                const CplxMatrix& ei =
+                    e_hist_[static_cast<std::size_t>(i)]
+                           [static_cast<std::size_t>(ik)];
+                const CplxMatrix& ej =
+                    e_hist_[static_cast<std::size_t>(j)]
+                           [static_cast<std::size_t>(ik)];
+                double s = 0.0;
+                const std::size_t nn = ei.size();
+                const Cplx* pi = ei.data();
+                const Cplx* pj = ej.data();
+                for (std::size_t t = 0; t < nn; ++t)
+                    s += (std::conj(pi[t]) * pj[t]).real();
+                val += weights_[static_cast<std::size_t>(ik)] * s;
+            }
+            B(i, j) = val;
+            B(j, i) = val;
+        }
+    for (int i = 0; i < m; ++i) {
+        B(m, i) = -1.0;
+        B(i, m) = -1.0;
+    }
+    B(m, m) = 0.0;
+
+    // Solve the bordered Pulay system by Gaussian elimination with partial
+    // pivoting (small dense real system; falls back to the latest H when the
+    // subspace is singular).
+    std::vector<double> rhs(static_cast<std::size_t>(dim), 0.0);
+    rhs[static_cast<std::size_t>(m)] = -1.0;
+    std::vector<double> M(static_cast<std::size_t>(dim) * dim);
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j)
+            M[static_cast<std::size_t>(i) * dim + j] = B(i, j);
+    bool singular = false;
+    for (int col = 0; col < dim && !singular; ++col) {
+        int piv = col;
+        double best = std::abs(M[static_cast<std::size_t>(col) * dim + col]);
+        for (int r = col + 1; r < dim; ++r) {
+            const double v =
+                std::abs(M[static_cast<std::size_t>(r) * dim + col]);
+            if (v > best) {
+                best = v;
+                piv = r;
+            }
+        }
+        if (best < 1e-14) {
+            singular = true;
+            break;
+        }
+        if (piv != col) {
+            for (int j = 0; j < dim; ++j)
+                std::swap(M[static_cast<std::size_t>(col) * dim + j],
+                          M[static_cast<std::size_t>(piv) * dim + j]);
+            std::swap(rhs[static_cast<std::size_t>(col)],
+                      rhs[static_cast<std::size_t>(piv)]);
+        }
+        const double d = M[static_cast<std::size_t>(col) * dim + col];
+        for (int r = 0; r < dim; ++r) {
+            if (r == col)
+                continue;
+            const double f =
+                M[static_cast<std::size_t>(r) * dim + col] / d;
+            if (f == 0.0)
+                continue;
+            for (int j = col; j < dim; ++j)
+                M[static_cast<std::size_t>(r) * dim + j] -=
+                    f * M[static_cast<std::size_t>(col) * dim + j];
+            rhs[static_cast<std::size_t>(r)] -=
+                f * rhs[static_cast<std::size_t>(col)];
+        }
+    }
+    if (singular)
+        return h_hist_.back();
+    std::vector<double> c(static_cast<std::size_t>(m));
+    for (int i = 0; i < m; ++i)
+        c[static_cast<std::size_t>(i)] =
+            rhs[static_cast<std::size_t>(i)]
+            / M[static_cast<std::size_t>(i) * dim + i];
+
+    std::vector<CplxMatrix> out;
+    out.reserve(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        CplxMatrix Hd = xt::zeros<Cplx>(
+            h_hist_.back()[static_cast<std::size_t>(ik)].shape());
+        for (int i = 0; i < m; ++i)
+            Hd += c[static_cast<std::size_t>(i)]
+                  * h_hist_[static_cast<std::size_t>(i)]
+                           [static_cast<std::size_t>(ik)];
+        out.push_back(std::move(Hd));
+    }
+    return out;
+}
+
+} // namespace internal
+} // namespace gpw
+} // namespace cpu
+} // namespace ATV

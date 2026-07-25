@@ -10,10 +10,11 @@
 /// headers — `cpu::linalg` (generalized eigensolve, density build) and
 /// `cpu::xc::pade` (functional) — never another domain's `internal`.
 ///
-/// Scope: Γ-point closed-shell (RKS, `n_occ`) **and** unrestricted (UKS,
-/// `n_alpha`/`n_beta` with PADE LSD). Periodic neutral electrostatics via the
-/// GTH Gaussian core charge. UKS PBE-GGA, k-points, and UKS analytic forces
-/// are follow-on.
+/// Scope: closed-shell (RKS, `n_occ`) at Γ **or** on a Monkhorst-Pack k mesh
+/// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
+/// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE
+/// LSD). Periodic neutral electrostatics via the GTH Gaussian core charge.
+/// UKS PBE-GGA, k-point UKS, and analytic k-point forces are follow-on.
 #pragma once
 
 #include <array>
@@ -95,6 +96,15 @@ struct GpwResult {
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3/D4 dispersion [Hartree] (0 when off).
     double e_dftu = 0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
+    /// @name k-point sampling payload (populated by the k-point RKS path only;
+    /// empty for Γ / UKS runs). One entry per sampled k.
+    /// @{
+    std::vector<std::array<double, 3>> k_frac; ///< fractional k coordinates.
+    std::vector<double> k_weights;             ///< quadrature weights (Σ = 1).
+    /// @brief Band energies per k [Hartree], ascending; one vector per k
+    ///        (length = linearly independent basis directions at that k).
+    std::vector<std::vector<double>> eps_k;
+    /// @}
     double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
     std::vector<double> mulliken_spin;
@@ -155,6 +165,19 @@ class GpwDft {
     /// Mutually exclusive with `d3` / `d3bj`.
     bool d4 = false; ///< Grimme DFT-D4 dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
+    /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
+    ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
+    ///        Γ-avoiding shifted mesh). `{1,1,1}` keeps the Γ-point path.
+    ///        The k-point path is closed-shell RKS, periodic, single-grid,
+    ///        `local_pp_on_grid` only — other combinations throw at `build()`.
+    int k_mesh[3] = {1, 1, 1};
+    /// @brief Fold ±k pairs by time reversal (exact for RKS; weights doubled).
+    bool k_time_reversal = true;
+    /// @brief Explicit fractional k list (CP2K `SCHEME GENERAL`); non-empty
+    ///        overrides `k_mesh`. Same length as `k_point_weights`
+    ///        (weights must sum to 1; no implicit normalization).
+    std::vector<std::array<double, 3>> k_points;
+    std::vector<double> k_point_weights; ///< weights for `k_points` [Σ = 1].
     /// @brief Dudarev PLUS_U entries (empty = off). U−J in eV on each entry.
     std::vector<PlusU> plus_u;
     /// @brief Optional per-atom AFM/FM spin seed for the initial UKS density

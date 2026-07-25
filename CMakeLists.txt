@@ -637,6 +637,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cpu/gpw/internal/grid_fft.cpp
                 src/cpu/gpw/internal/xc_grid_gga.cpp
                 src/cpu/gpw/internal/mt_poisson.cpp
+                src/cpu/gpw/internal/kpoints.cpp
                 src/cpu/gpw/gpw_solver.cpp
                 src/cpu/gpw/internal/gpw_forces.cpp
                 src/cpu/gpw/internal/gpw_stress.cpp
