@@ -16,8 +16,8 @@
 /// PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual H_k,
 /// spin-resolved density/XC). Periodic neutral electrostatics via the GTH
 /// Gaussian core charge. Analytic forces cover Γ RKS/UKS and multi-k RKS/UKS
-/// (`gpw_forces_analytic`); analytic k-point stress uses the RKS `C_occ_k`
-/// payload (UKS stress is a residual).
+/// (`gpw_forces_analytic`); analytic cell stress covers Γ RKS/UKS, multi-k
+/// RKS, and multi-k collinear UKS (`gpw_stress` via fixed-\(P_k^\sigma\)).
 #pragma once
 
 #include <array>
@@ -389,10 +389,10 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// Product path: one SCF, then Hellmann–Feynman fixed-\(P\) central FD of the
 /// non-self-consistent total energy under orthorhombic diagonal strain at fixed
 /// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Supports
-/// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), and closed-shell
-/// multi-k RKS (k-summed fixed-P_k Lagrangian). Multi-k UKS is not implemented.
-/// Off-diagonal shear is 0 (orthorhombic cell only). Multi-SCF oracle:
-/// `gpw_stress_fd`.
+/// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), closed-shell
+/// multi-k RKS (k-summed fixed-\(P_k\)), and multi-k collinear UKS (fixed
+/// \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC). Off-diagonal shear is 0
+/// (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].

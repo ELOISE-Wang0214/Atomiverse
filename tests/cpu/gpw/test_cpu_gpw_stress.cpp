@@ -304,13 +304,87 @@ TEST(GpwStress, UksGammaAnalyticMatchesFdDiagonal) {
     EXPECT_LT(max_err, 5e-5) << "UKS analytic vs multi-SCF FD diagonal";
 }
 
-TEST(GpwStress, UksKpointThrows) {
-    const auto atoms = cheap_h2_atoms();
-    GpwDft cfg = cheap_h2_cfg();
+TEST(GpwStress, UksKpointAnalyticMatchesFdDiagonal) {
+    // High-spin H₂ multi-k UKS: fixed-{P_k^σ} vs multi-SCF FD.
+    // Geometry: compressed bond + small 1×1×2 mesh (TR-folded → 1 k).
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 100.0;
     cfg.n_occ = 0;
     cfg.n_alpha = 2;
     cfg.n_beta = 0;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 60;
+    cfg.xc = XcKind::PADE;
+    cfg.local_pp_on_grid = true;
     cfg.nonperiodic = false;
-    cfg.k_mesh[0] = cfg.k_mesh[1] = cfg.k_mesh[2] = 2;
-    EXPECT_THROW(gpw_stress(atoms, cfg, 3e-3), std::invalid_argument);
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+    const double h = 3e-3;
+    const auto san = gpw_stress(atoms, cfg, h);
+    const auto sfd = gpw_stress_fd(atoms, cfg, h);
+    double max_err = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                    - sfd[static_cast<std::size_t>(a)]);
+        max_err = std::max(max_err, err);
+        std::printf("  k-UKS axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                    san[static_cast<std::size_t>(a)],
+                    sfd[static_cast<std::size_t>(a)], err);
+        EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+        EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+    }
+    EXPECT_DOUBLE_EQ(san[3], 0.0);
+    EXPECT_DOUBLE_EQ(san[4], 0.0);
+    EXPECT_DOUBLE_EQ(san[5], 0.0);
+    const double max_diag =
+        std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
+    EXPECT_GT(max_diag, 1e-8);
+    EXPECT_LT(max_err, 1e-4) << "k-UKS analytic vs multi-SCF FD diagonal";
+}
+
+TEST(GpwStress, ClosedShellKUksMatchesKRks) {
+    // Closed-shell multi-k UKS (nα=nβ=1) stress ≡ multi-k RKS (n_occ=1).
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.0, 6.0, 6.0};
+    const double rB[3] = {7.0, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+    auto base = []() {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        m.cutoff_ry = 80.0;
+        m.tol = 1e-7;
+        m.max_iter = 50;
+        m.xc = XcKind::PADE;
+        m.local_pp_on_grid = true;
+        m.k_mesh[0] = 1;
+        m.k_mesh[1] = 1;
+        m.k_mesh[2] = 2;
+        return m;
+    };
+    GpwDft rks = base();
+    rks.n_occ = 1;
+    GpwDft uks = base();
+    uks.n_alpha = 1;
+    uks.n_beta = 1;
+    const double h = 4e-3;
+    const auto sr = gpw_stress(atoms, rks, h);
+    const auto su = gpw_stress(atoms, uks, h);
+    double max_d = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double d = std::abs(sr[static_cast<std::size_t>(a)]
+                                  - su[static_cast<std::size_t>(a)]);
+        max_d = std::max(max_d, d);
+        std::printf("  closed k-UKS vs k-RKS axis %d |d|=%.3e\n", a, d);
+    }
+    EXPECT_LT(max_d, 5e-4) << "closed-shell k-UKS stress ≡ k-RKS";
 }
