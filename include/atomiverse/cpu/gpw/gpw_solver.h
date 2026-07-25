@@ -202,6 +202,11 @@ class GpwDft {
     std::vector<PlusU> plus_u;
     /// @brief MP2 virtual-space cap for `mp2()` (0 = all kept virtuals).
     int mp2_n_virt = 0;
+    /// @brief Product RI-GPW path for `mp2()` (plane-wave resolution of the
+    ///        pair-density identity; Del Ben 2012 / CP2K MP2_GPW). `false`
+    ///        keeps the Poisson real-space foothold tensor (DIRECT_CANONICAL
+    ///        class). Isolated (`nonperiodic`) cells always use Poisson.
+    bool mp2_ri = true;
     /// @brief Grimme opposite-spin scale for `mp2()` (1.0 = plain MP2;
     ///        SCS-MP2 1.2 — same member name as the molecular methods).
     double mp2_os_scale = 1.0;
@@ -251,23 +256,24 @@ class GpwDft {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
-    /// @brief Γ-point canonical GPW MP2 correlation on the converged
-    ///        closed-shell orbitals of the last `run()`.
+    /// @brief Γ-point GPW MP2 correlation on the converged closed-shell
+    ///        orbitals of the last `run()` (product: RI-GPW; optional
+    ///        Poisson foothold when `mp2_ri = false`).
     ///
-    /// The occupied–virtual (ia|jb) integrals are computed on the SCF's
-    /// density grid: collocate ψ_i ψ_a, one Poisson solve per pair
-    /// (periodic FFT, G=0 dropped — divergence-free since S_ia = 0 —
-    /// or the truncated-Coulomb isolated solver when `nonperiodic`),
-    /// grid quadrature against ψ_j ψ_b (CP2K `&WF_CORRELATION` MP2
-    /// `DIRECT_CANONICAL`; Del Ben, Hutter, VandeVondele, JCTC 8, 4177
-    /// (2012)). Virtual space capped by `mp2_n_virt`; `e_corr` applies
-    /// `mp2_os_scale` / `mp2_ss_scale`.
+    /// Product path (`mp2_ri`, default true, periodic only): three-index
+    /// \(B_{ia}(\mathbf G)\) intermediates via FFT of \(\psi_i\psi_a\),
+    /// \((ia|jb)=(w/N)\sum B_{ia}^* B_{jb}\) (Del Ben, Hutter,
+    /// VandeVondele, JCTC 8, 4177 (2012); CP2K `METHOD MP2_GPW`). Foothold
+    /// path: one Poisson solve per pair + real-space quadrature
+    /// (`DIRECT_CANONICAL` class). Virtual space capped by `mp2_n_virt`;
+    /// `e_corr` applies `mp2_os_scale` / `mp2_ss_scale`.
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned MP2 result (valid until the next `mp2()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
     /// @throws std::invalid_argument for UKS, for `use_ot` (no canonical
-    ///         virtuals), when no virtuals remain, or for a vanishing
-    ///         HOMO–LUMO gap (< 1e-6 Ha; degenerate denominators).
+    ///         virtuals), for multi-k SCF results (k-point MP2 residual),
+    ///         when no virtuals remain, or for a vanishing HOMO–LUMO gap
+    ///         (< 1e-6 Ha; degenerate denominators).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
   private:

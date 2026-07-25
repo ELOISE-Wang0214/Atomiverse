@@ -1,8 +1,7 @@
 /// @file src/cpu/gpw/mp2.cpp
-/// @brief GpwDft::mp2 — Γ-point canonical GPW MP2 on the converged RKS
-///        orbitals. Grid + compact lattice-summed AO representation are
-///        rebuilt with the same parameters as `run()`; the kernels live in
-///        internal/mp2_kernels.h.
+/// @brief GpwDft::mp2 — Γ-point GPW MP2 on the converged RKS orbitals.
+///        Product default: RI-GPW G-space B intermediates; foothold:
+///        Poisson real-space tensor. Kernels in internal/mp2_kernels.h.
 
 #include <algorithm>
 #include <stdexcept>
@@ -33,6 +32,12 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
         throw std::logic_error(
             "GpwDft::mp2 needs a converged run() first (no correlation on "
             "an unconverged reference)");
+    // Multi-k SCF discards complex Bloch C (k-path stores eps_k only).
+    // Full k-point MP2 (momentum-conserving sum) is a residual.
+    if (result_.n_kpts > 1)
+        throw std::invalid_argument(
+            "GpwDft::mp2: multi-k SCF reference not supported (k-point MP2 "
+            "is a residual; re-run with k_mesh = {1,1,1} for Γ RI-GPW MP2)");
 
     const int nb_atoms = [&] {
         int nb = 0;
@@ -84,8 +89,14 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
         internal::mo_on_grid(cbg, result_.C, 0, n_occ);
     const std::vector<double> psi_virt =
         internal::mo_on_grid(cbg, result_.C, n_occ, n_virt);
-    const std::vector<double> v_ovov = internal::mo_eri_ovov(
-        grid, psi_occ, n_occ, psi_virt, n_virt, nonperiodic);
+
+    // Product RI-GPW path for periodic cells; Poisson foothold otherwise
+    // (isolated MT, or explicit mp2_ri = false).
+    const bool use_ri = mp2_ri && periodic;
+    const std::vector<double> v_ovov =
+        use_ri ? internal::mo_eri_ovov_ri(grid, psi_occ, n_occ, psi_virt, n_virt)
+               : internal::mo_eri_ovov(grid, psi_occ, n_occ, psi_virt, n_virt,
+                                       nonperiodic);
 
     const std::vector<double> eps_occ(result_.eps.begin(),
                                       result_.eps.begin() + n_occ);
@@ -102,6 +113,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
     mp2_result_.e_total = mp2_result_.e_scf + mp2_result_.e_corr;
     mp2_result_.n_occ = n_occ;
     mp2_result_.n_virt = n_virt;
+    mp2_result_.ri = use_ri;
     return mp2_result_;
 }
 
