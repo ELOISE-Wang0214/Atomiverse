@@ -45,7 +45,6 @@ bool log_rank0() {
     return true;
 }
 
-
 void setup_upf_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
                     const internal::UPFData& upf, AccReal omega) {
     auto vg = upf_vloc_to_gspace(upf, gv, omega);
@@ -720,8 +719,10 @@ void rebuild_k_tables(PWProblem& out, const cpu::Frame& frame,
     for (const auto& kf : kfrac) {
         Vec3 kc{recip(0, 0) * kf[0] + recip(1, 0) * kf[1] + recip(2, 0) * kf[2],
                 recip(0, 1) * kf[0] + recip(1, 1) * kf[1] + recip(2, 1) * kf[2],
-                recip(0, 2) * kf[0] + recip(1, 2) * kf[1] + recip(2, 2) * kf[2]};
-        out.gv_k.push_back(internal::enumerate_g_vectors(box_bohr, ecut_ht, kc));
+                recip(0, 2) * kf[0] + recip(1, 2) * kf[1]
+                    + recip(2, 2) * kf[2]};
+        out.gv_k.push_back(
+            internal::enumerate_g_vectors(box_bohr, ecut_ht, kc));
     }
 
     out.kb_proj_k.clear();

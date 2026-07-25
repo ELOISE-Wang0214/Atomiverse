@@ -5,10 +5,10 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/transfer.h"
+#include "atomiverse/cuda/dynamics/nve_limit.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/cuda/dynamics/nve_limit.cuh"
 // Concrete force styles built by the default factories (the header now carries
 // only the abstract bases — Pair/Bond/Angle/Dihedral/KSpace).
 #include "atom_cell_sort.cuh"
@@ -249,10 +249,11 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
 // no vl_* Verlet list. Conservative vs exact cutoff (cluster padding may mark
 // a few extra boundary atoms); safe for comm/compute overlap.
 // One thread per cluster slot; only owned ai write flags[ai].
-__global__ void flag_interior_from_cluster(
-    const int* __restrict__ row_ptr, const int* __restrict__ col_idx,
-    const int* __restrict__ orig_index, int num_clusters, int n_local,
-    unsigned char* __restrict__ flags) {
+__global__ void flag_interior_from_cluster(const int* __restrict__ row_ptr,
+                                           const int* __restrict__ col_idx,
+                                           const int* __restrict__ orig_index,
+                                           int num_clusters, int n_local,
+                                           unsigned char* __restrict__ flags) {
     constexpr int CS = 32; // kOpenmmClusterSize
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int ci = tid / CS;
@@ -870,7 +871,8 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
                 }
                 snum_dih[k] = gnum_dih[g];
                 for (int m = 0; m < MD; ++m) {
-                    sdih_atom[k * 3 * MD + 3 * m] = gdih_atom[g * 3 * MD + 3 * m];
+                    sdih_atom[k * 3 * MD + 3 * m] =
+                        gdih_atom[g * 3 * MD + 3 * m];
                     sdih_atom[k * 3 * MD + 3 * m + 1] =
                         gdih_atom[g * 3 * MD + 3 * m + 1];
                     sdih_atom[k * 3 * MD + 3 * m + 2] =

@@ -123,7 +123,8 @@ TEST(TestCiEngine, CiElementOppositeSpinDouble) {
     const std::uint64_t ai = kOrb0, bi = kOrb0; // bra I
     const std::uint64_t aj = kOrb1, bj = kOrb1; // ket J
 
-    const double e = scf::ci_element(ai, bi, aj, bj, make_h2(), make_g2(), kVnuc);
+    const double e =
+        scf::ci_element(ai, bi, aj, bj, make_h2(), make_g2(), kVnuc);
     EXPECT_NEAR(e, 0.1, 1e-12);
 
     // Direct evaluator agrees and pins the canonical g(pa,ra,qb,sb) ordering.
@@ -139,7 +140,8 @@ TEST(TestCiEngine, CiElementSingleExcitation) {
     const std::uint64_t ai = kOrb0, bi = kOrb0;
     const std::uint64_t aj = kOrb1, bj = kOrb0;
 
-    const double e = scf::ci_element(ai, bi, aj, bj, make_h2(), make_g2(), kVnuc);
+    const double e =
+        scf::ci_element(ai, bi, aj, bj, make_h2(), make_g2(), kVnuc);
     EXPECT_NEAR(e, 0.25, 1e-12);
 }
 

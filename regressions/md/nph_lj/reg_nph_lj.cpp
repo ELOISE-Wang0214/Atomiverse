@@ -43,12 +43,9 @@ int main() {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.span(ATV::kAtom_x)[idx] =
-                        (ix + basis[b][0]) * a_lat;
-                    frame.span(ATV::kAtom_y)[idx] =
-                        (iy + basis[b][1]) * a_lat;
-                    frame.span(ATV::kAtom_z)[idx] =
-                        (iz + basis[b][2]) * a_lat;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a_lat;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a_lat;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a_lat;
                     frame.span(ATV::kAtom_mass)[idx] = 39.948;
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;

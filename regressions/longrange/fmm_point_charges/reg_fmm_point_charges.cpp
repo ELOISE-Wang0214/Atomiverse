@@ -37,8 +37,7 @@ AccReal direct_energy(const std::vector<Vec3>& pos,
 }
 
 bool check_order_table(const char* label, const std::vector<Vec3>& pos,
-                       const std::vector<AccReal>& q, int p_star,
-                       int leaf) {
+                       const std::vector<AccReal>& q, int p_star, int leaf) {
     const AccReal e_ref = direct_energy(pos, q);
     std::printf("\n=== %s (N=%zu, E_direct=%.12e) ===\n", label, pos.size(),
                 e_ref);
@@ -68,8 +67,7 @@ bool check_order_table(const char* label, const std::vector<Vec3>& pos,
             }
         }
         if (p == p_star && !(rel <= 1e-10)) {
-            std::printf("FAIL: %s p★=%d rel_err=%.3e > 1e-10\n", label, p,
-                        rel);
+            std::printf("FAIL: %s p★=%d rel_err=%.3e > 1e-10\n", label, p, rel);
             ok = false;
         }
         prev_err = rel;
@@ -122,9 +120,8 @@ int main() {
                     for (int iz = 0; iz < n_side; ++iz) {
                         pos.push_back(Vec3{x0 + ix * spacing, iy * spacing,
                                            iz * spacing});
-                        q.push_back(((ix + iy + iz + block) & 1)
-                                        ? AccReal(-1)
-                                        : AccReal(1));
+                        q.push_back(((ix + iy + iz + block) & 1) ? AccReal(-1)
+                                                                 : AccReal(1));
                     }
         }
         if (!check_order_table("lattice_clusters", pos, q, p_star, leaf))
@@ -144,8 +141,7 @@ int main() {
             std::vector<Vec3> pos(static_cast<std::size_t>(n));
             std::vector<AccReal> q(static_cast<std::size_t>(n));
             for (int i = 0; i < n; ++i) {
-                pos[static_cast<std::size_t>(i)] =
-                    Vec3{U(rng), U(rng), U(rng)};
+                pos[static_cast<std::size_t>(i)] = Vec3{U(rng), U(rng), U(rng)};
                 q[static_cast<std::size_t>(i)] = U(rng);
             }
             return std::make_pair(std::move(pos), std::move(q));

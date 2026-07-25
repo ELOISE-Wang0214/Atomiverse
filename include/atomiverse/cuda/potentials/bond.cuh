@@ -6,8 +6,8 @@
 /// until DD lands.
 #pragma once
 
-#include "atomiverse/cuda/component/potential.cuh"
 #include "atomiverse/core/role.h"
+#include "atomiverse/cuda/component/potential.cuh"
 
 #include <cstdint>
 #include <functional>

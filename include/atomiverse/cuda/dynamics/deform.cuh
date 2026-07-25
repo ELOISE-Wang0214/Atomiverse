@@ -7,8 +7,8 @@
 
 #include <string>
 
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/core/role.h"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

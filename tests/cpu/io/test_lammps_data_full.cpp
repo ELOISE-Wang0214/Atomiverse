@@ -13,8 +13,6 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/io/lammps_data.h"
 
-using ATV::cpu::Frame;
-using ATV::cpu::load_lammps_data;
 using ATV::kAtom_charge;
 using ATV::kAtom_nspecial;
 using ATV::kAtom_special;
@@ -22,6 +20,8 @@ using ATV::kAtom_type;
 using ATV::kAtom_x;
 using ATV::kAtom_y;
 using ATV::kAtom_z;
+using ATV::cpu::Frame;
+using ATV::cpu::load_lammps_data;
 
 namespace {
 

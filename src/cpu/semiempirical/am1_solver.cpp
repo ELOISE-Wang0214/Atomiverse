@@ -71,9 +71,7 @@ const AM1Result& AM1::last_result() const {
     return engine_->last_result();
 }
 
-bool AM1::built() const noexcept {
-    return engine_ && engine_->built();
-}
+bool AM1::built() const noexcept { return engine_ && engine_->built(); }
 
 bool AM1::has_density() const noexcept {
     return engine_ && engine_->has_density();

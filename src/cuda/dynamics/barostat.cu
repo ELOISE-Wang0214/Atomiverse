@@ -1,10 +1,10 @@
 /// @file md/barostat.cu
 /// @brief Barostat -- Berendsen isotropic pressure coupling.
 
-#include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/cuda/dynamics/barostat.cuh"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/dynamics/barostat.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

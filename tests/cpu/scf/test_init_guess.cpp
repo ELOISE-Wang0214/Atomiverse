@@ -110,11 +110,10 @@ TEST(HueckelGuess, SphericalBasisWorkingDimension) {
     // Every diagonal entry is one of the element's tabulated s/p/d VSIPs.
     for (int i = 0; i < ints.n_basis; ++i) {
         const double d = hg.F(i, i);
-        const bool known = d == HueckelGuess::vsip(8, 0)
-                           || d == HueckelGuess::vsip(8, 1)
-                           || d == HueckelGuess::vsip(8, 2)
-                           || d == HueckelGuess::vsip(1, 0)
-                           || d == HueckelGuess::vsip(1, 1);
+        const bool known =
+            d == HueckelGuess::vsip(8, 0) || d == HueckelGuess::vsip(8, 1)
+            || d == HueckelGuess::vsip(8, 2) || d == HueckelGuess::vsip(1, 0)
+            || d == HueckelGuess::vsip(1, 1);
         EXPECT_TRUE(known) << "AO " << i << " diag " << d;
     }
 }
@@ -149,9 +148,9 @@ TEST(HueckelGuess, UnsupportedElementOrShellThrows) {
 TEST(SapGuess, PotentialMatrixSymmetricAndNegativeDiagonal) {
     cpu::Frame frame = make_h2o();
     IntegralPack ints{frame, BasisSet::STO3G};
-    const MolecularGrid grid(
-        ints.atoms.data(), static_cast<int>(ints.atoms.size()), GridLevel::SG0,
-        50, 110);
+    const MolecularGrid grid(ints.atoms.data(),
+                             static_cast<int>(ints.atoms.size()),
+                             GridLevel::SG0, 50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
 
     for (int i = 0; i < ints.n_basis; ++i) {
@@ -177,8 +176,7 @@ TEST(SapGuess, HydrogenAtomHandComputedReferenceElement) {
     IntegralPack ints{frame, BasisSet::STO3G};
     ASSERT_EQ(ints.n_basis, 1);
 
-    const MolecularGrid grid(
-        ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
+    const MolecularGrid grid(ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
 
     const native::Shell& sh = ints.shells[0];
@@ -210,9 +208,9 @@ TEST(SapGuess, InitialDensityTracePSEqualsElectronCountSpherical) {
     cpu::Frame frame = make_h2o();
     IntegralPack ints{frame, BasisSet::Def2SVP};
     ASSERT_TRUE(ints.spherical());
-    const MolecularGrid grid(
-        ints.atoms.data(), static_cast<int>(ints.atoms.size()), GridLevel::SG0,
-        50, 110);
+    const MolecularGrid grid(ints.atoms.data(),
+                             static_cast<int>(ints.atoms.size()),
+                             GridLevel::SG0, 50, 110);
     SapGuess sg(ints.shells, ints.T, ints.atoms, grid, ints.c2s);
     ASSERT_EQ(static_cast<int>(sg.F.shape()[0]), ints.n_basis);
 
@@ -230,8 +228,7 @@ TEST(SapGuess, UnsupportedElementThrows) {
 
     cpu::Frame frame = make_h_atom();
     IntegralPack ints{frame, BasisSet::STO3G};
-    const MolecularGrid grid(
-        ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
+    const MolecularGrid grid(ints.atoms.data(), 1, GridLevel::SG0, 50, 110);
     ints.atoms[0].Z = 200;
     EXPECT_THROW(SapGuess(ints.shells, ints.T, ints.atoms, grid, ints.c2s),
                  std::invalid_argument);

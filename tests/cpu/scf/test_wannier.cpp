@@ -18,10 +18,10 @@
 #include "atomiverse/cpu/scf/wannier.h"
 
 using namespace ATV;
+using cpu::scf::boys_pair_angle;
 using cpu::scf::MeanFieldOutputs;
 using cpu::scf::SlaterDeterminant;
 using cpu::scf::WannierCenters;
-using cpu::scf::boys_pair_angle;
 using cpu::scf::native::Shell;
 
 namespace {
@@ -40,10 +40,13 @@ struct OneS {
         const double norm = std::pow(2.0 * alpha / kPi, 0.75);
         storage = {alpha, norm};
         shells = std::make_shared<std::vector<Shell>>();
-        shells->push_back(Shell{1, &storage[0], &storage[1],
-                                {center_bohr[0], center_bohr[1],
-                                 center_bohr[2]},
-                                0, 0});
+        shells->push_back(
+            Shell{1,
+                  &storage[0],
+                  &storage[1],
+                  {center_bohr[0], center_bohr[1], center_bohr[2]},
+                  0,
+                  0});
         cpu::linalg::RealMatrix C =
             xt::ones<double>({std::size_t(1), std::size_t(1)});
         cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});
@@ -180,21 +183,20 @@ TEST(WannierCenters, OpenShellThrows) {
     cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});
     cpu::linalg::RealVector fa = xt::ones<double>({std::size_t(1)});
     cpu::linalg::RealVector fb = xt::zeros<double>({std::size_t(1)});
-    auto det = std::make_shared<SlaterDeterminant>(Ca, eps, fa, 1, Cb, eps,
-                                                   fb, 0);
+    auto det =
+        std::make_shared<SlaterDeterminant>(Ca, eps, fa, 1, Cb, eps, fb, 0);
     const double alpha = 1.0;
     const double norm = std::pow(2.0 * alpha / kPi, 0.75);
-    auto storage = std::make_shared<std::vector<double>>(
-        std::vector<double>{alpha, norm});
+    auto storage =
+        std::make_shared<std::vector<double>>(std::vector<double>{alpha, norm});
     auto shells = std::make_shared<std::vector<Shell>>();
-    shells->push_back(Shell{1, &(*storage)[0], &(*storage)[1],
-                            {0.0, 0.0, 0.0}, 0, 0});
+    shells->push_back(
+        Shell{1, &(*storage)[0], &(*storage)[1], {0.0, 0.0, 0.0}, 0, 0});
     // Keep storage alive via shells? Shell holds raw pointers — hold storage
     // in a static... Use a longer-lived vector on the stack carefully:
     // actually storage is shared_ptr so it lives. But Shell points into it.
-    MeanFieldOutputs outs{
-        det, shells, std::make_shared<bool>(true),
-        std::make_shared<const xt::xtensor<double, 2>>()};
+    MeanFieldOutputs outs{det, shells, std::make_shared<bool>(true),
+                          std::make_shared<const xt::xtensor<double, 2>>()};
     // Keep storage alive for Shell pointers.
     auto keep = storage;
     WannierCenters wb;

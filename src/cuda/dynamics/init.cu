@@ -157,7 +157,8 @@ void InitVelocity::build(const BuildContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
 
     // sigma^2 = kB * T / (ATV::units::mass_v2_to_energy * m)  =>  pass kB*T/ATV::units::mass_v2_to_energy as common factor
-    work_t kbt_over_mvv2e = ATV::units::kB_ev_per_k * temperature_ / ATV::units::mass_v2_to_energy;
+    work_t kbt_over_mvv2e =
+        ATV::units::kB_ev_per_k * temperature_ / ATV::units::mass_v2_to_energy;
 
     // 1. Generate Gaussian velocities
     generate_velocities<<<grid, block, 0, stream>>>(

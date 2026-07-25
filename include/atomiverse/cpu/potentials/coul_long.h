@@ -16,11 +16,11 @@
 #include <vector>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/potentials/special_scale.h"
-#include "atomiverse/core/role.h"
 
 namespace ATV {
 namespace cpu {

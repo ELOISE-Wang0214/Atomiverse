@@ -46,17 +46,15 @@ TEST(LinkAtom, ForceProjectionPartition) {
 }
 
 TEST(LinkAtom, RejectsIllegalLinks) {
+    EXPECT_THROW((cpu::QmmmElectrostatic{
+                     {1, 2}, 0.0, 0.01, 3.4, 10.0, {{1, 1}} /* same tags */}),
+                 std::invalid_argument);
     EXPECT_THROW(
-        (cpu::QmmmElectrostatic{{1, 2}, 0.0, 0.01, 3.4, 10.0,
-                                {{1, 1}} /* same tags */}),
+        (cpu::QmmmElectrostatic{
+            {1, 2}, 0.0, 0.01, 3.4, 10.0, {{1, 2}} /* mm_tag is QM */}),
         std::invalid_argument);
-    EXPECT_THROW(
-        (cpu::QmmmElectrostatic{{1, 2}, 0.0, 0.01, 3.4, 10.0,
-                                {{1, 2}} /* mm_tag is QM */}),
-        std::invalid_argument);
-    EXPECT_THROW(
-        (cpu::QmmmElectrostatic{{1}, 0.0, 0.01, 3.4, 10.0, {{9, 3}}}),
-        std::invalid_argument);
+    EXPECT_THROW((cpu::QmmmElectrostatic{{1}, 0.0, 0.01, 3.4, 10.0, {{9, 3}}}),
+                 std::invalid_argument);
 }
 
 TEST(LinkAtom, QmmmPlacesLinkHydrogen) {
@@ -81,8 +79,8 @@ TEST(LinkAtom, QmmmPlacesLinkHydrogen) {
     f.simbox = cpu::Box::cubic(20);
     f.meta.get(kEnergy) = 0;
     cpu::Context ctx;
-    cpu::QmmmElectrostatic qm({1}, /*mm_q=*/0.0, 0.01, 3.4, 10.0,
-                              {{1, 2}}, 0.709);
+    cpu::QmmmElectrostatic qm({1}, /*mm_q=*/0.0, 0.01, 3.4, 10.0, {{1, 2}},
+                              0.709);
     qm.build({ctx, f});
     cpu::LaunchContext lc{ctx, f, 0, 0};
     lc.forces_requested = false;

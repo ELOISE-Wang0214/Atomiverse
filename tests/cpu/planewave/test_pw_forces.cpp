@@ -10,11 +10,11 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/pw_evaluator.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::pw;

@@ -59,8 +59,8 @@ PairLJCutCoulLong::PairLJCutCoulLong(std::vector<LJTypeCoeff> coeffs,
     set_tab_.assign(n2, 0);
     for (const auto& c : coeffs) {
         auto put = [&](int a, int b) {
-            const std::size_t ab =
-                static_cast<std::size_t>(a) * n_types_ + static_cast<std::size_t>(b);
+            const std::size_t ab = static_cast<std::size_t>(a) * n_types_
+                                   + static_cast<std::size_t>(b);
             eps_tab_[ab] = c.epsilon;
             sigma_tab_[ab] = c.sigma;
             set_tab_[ab] = 1;
@@ -95,9 +95,10 @@ PairLJCutCoulLong::set_special_bonds(double lj12, double lj13, double lj14,
     return *this;
 }
 
-PairLJCutCoulLong
-PairLJCutCoulLong::set_special_bonds(double lj12, double lj13, double lj14,
-                                     double c12, double c13, double c14) && {
+PairLJCutCoulLong PairLJCutCoulLong::set_special_bonds(double lj12, double lj13,
+                                                       double lj14, double c12,
+                                                       double c13,
+                                                       double c14) && {
     set_special_bonds(lj12, lj13, lj14, c12, c13, c14);
     return std::move(*this);
 }
@@ -125,17 +126,17 @@ void PairLJCutCoulLong::finalize_type_table_() {
     lj4_tab_.assign(n2, 0.0);
     for (int a = 0; a < n_types_; ++a) {
         for (int b = 0; b < n_types_; ++b) {
-            const std::size_t ab =
-                static_cast<std::size_t>(a) * n_types_ + static_cast<std::size_t>(b);
+            const std::size_t ab = static_cast<std::size_t>(a) * n_types_
+                                   + static_cast<std::size_t>(b);
             double e = eps_tab_[ab], s = sigma_tab_[ab];
             if (!set_tab_[ab]) {
-                const std::size_t aa =
-                    static_cast<std::size_t>(a) * n_types_ + static_cast<std::size_t>(a);
-                const std::size_t bb =
-                    static_cast<std::size_t>(b) * n_types_ + static_cast<std::size_t>(b);
+                const std::size_t aa = static_cast<std::size_t>(a) * n_types_
+                                       + static_cast<std::size_t>(a);
+                const std::size_t bb = static_cast<std::size_t>(b) * n_types_
+                                       + static_cast<std::size_t>(b);
                 if (set_tab_[aa] && set_tab_[bb]) {
-                    lorentz_berthelot(eps_tab_[aa], sigma_tab_[aa], eps_tab_[bb],
-                                      sigma_tab_[bb], e, s);
+                    lorentz_berthelot(eps_tab_[aa], sigma_tab_[aa],
+                                      eps_tab_[bb], sigma_tab_[bb], e, s);
                     eps_tab_[ab] = e;
                     sigma_tab_[ab] = s;
                 } else {
@@ -158,7 +159,8 @@ void PairLJCutCoulLong::finalize_type_table_() {
                 const double rc2 = rc * rc;
                 const double r6 = rc2 * rc2 * rc2;
                 const double r6inv = 1.0 / r6;
-                shift_tab_[ab] = lj3_tab_[ab] * r6inv * r6inv - lj4_tab_[ab] * r6inv;
+                shift_tab_[ab] =
+                    lj3_tab_[ab] * r6inv * r6inv - lj4_tab_[ab] * r6inv;
             } else {
                 shift_tab_[ab] = 0.0;
             }
@@ -273,7 +275,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
 #endif
 
     if (n_threads_ > 1
-        && static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
+        && static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size())
+               < n_force) {
         for (int t = 0; t < n_threads_; ++t) {
             fx_thr_[t].resize(n_force, 0.0);
             fy_thr_[t].resize(n_force, 0.0);
@@ -291,10 +294,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
     const int* __restrict k_numneigh = pairs.numneigh.data();
     const int* __restrict k_firstneigh = pairs.firstneigh.data();
     const int* __restrict k_neighbors = pairs.neighbors.data();
-    const float* __restrict k_sl =
-        any_special_ ? scale_lj_.data() : nullptr;
-    const float* __restrict k_sc =
-        any_special_ ? scale_coul_.data() : nullptr;
+    const float* __restrict k_sl = any_special_ ? scale_lj_.data() : nullptr;
+    const float* __restrict k_sc = any_special_ ? scale_coul_.data() : nullptr;
     const bool k_has_shifts = pairs.has_shifts;
     const double* __restrict k_sx =
         k_has_shifts ? pairs.shift_x.data() : nullptr;
@@ -330,8 +331,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
 // if(n_threads_>1): pure serial path skips OpenMP fork (OMP=1 fair vs LAMMPS).
-#pragma omp parallel if (n_threads_ > 1) reduction(+ : energy_total)          \
-    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)               \
+#pragma omp parallel if (n_threads_ > 1) reduction(+ : energy_total)           \
+    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)                \
     reduction(+ : v_xy) reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
@@ -347,9 +348,12 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
             fyt = fy_ptr;
             fzt = fz_ptr;
         } else {
-            std::fill(fx_thr_[tid].begin(), fx_thr_[tid].begin() + n_force, 0.0);
-            std::fill(fy_thr_[tid].begin(), fy_thr_[tid].begin() + n_force, 0.0);
-            std::fill(fz_thr_[tid].begin(), fz_thr_[tid].begin() + n_force, 0.0);
+            std::fill(fx_thr_[tid].begin(), fx_thr_[tid].begin() + n_force,
+                      0.0);
+            std::fill(fy_thr_[tid].begin(), fy_thr_[tid].begin() + n_force,
+                      0.0);
+            std::fill(fz_thr_[tid].begin(), fz_thr_[tid].begin() + n_force,
+                      0.0);
             fxt = fx_thr_[tid].data();
             fyt = fy_thr_[tid].data();
             fzt = fz_thr_[tid].data();
@@ -362,7 +366,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
         constexpr std::size_t W = batch_t::size;
         alignas(64) double dx_b[16], dy_b[16], dz_b[16], r2_b[16];
         alignas(64) double lj1_b[16], lj2_b[16], lj3_b[16], lj4_b[16], sh_b[16];
-        alignas(64) double sl_b[16], sc_b[16], qj_b[16], fpair_b[16], epair_b[16];
+        alignas(64) double sl_b[16], sc_b[16], qj_b[16], fpair_b[16],
+            epair_b[16];
         alignas(64) std::int32_t j_b[16];
 
 #pragma omp for schedule(static)
@@ -378,13 +383,15 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
                 static_cast<std::size_t>(ti) * static_cast<std::size_t>(ntypes);
 
             int jj = 0;
-            for (; jj + static_cast<int>(W) <= jnum; jj += static_cast<int>(W)) {
+            for (; jj + static_cast<int>(W) <= jnum;
+                 jj += static_cast<int>(W)) {
 #if defined(__GNUC__) || defined(__clang__)
                 __builtin_prefetch(k_neighbors + off + jj + static_cast<int>(W),
                                    0, 1);
 #endif
                 for (std::size_t lane = 0; lane < W; ++lane) {
-                    const int j = k_neighbors[off + jj + static_cast<int>(lane)];
+                    const int j =
+                        k_neighbors[off + jj + static_cast<int>(lane)];
                     j_b[lane] = j;
                     const double sl =
                         k_sl ? static_cast<double>(
@@ -401,8 +408,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
                         dx_b[lane] = dy_b[lane] = dz_b[lane] = 0.0;
                         r2_b[lane] = rc_sq; // force out-of-cutoff
                         qj_b[lane] = 0.0;
-                        lj1_b[lane] = lj2_b[lane] = lj3_b[lane] =
-                            lj4_b[lane] = sh_b[lane] = 0.0;
+                        lj1_b[lane] = lj2_b[lane] = lj3_b[lane] = lj4_b[lane] =
+                            sh_b[lane] = 0.0;
                         continue;
                     }
                     if (k_has_shifts) {
@@ -567,8 +574,8 @@ void PairLJCutCoulLong::compute(const LaunchContext& ctx) {
                     if (a1 != 0.0) {
                         const double r2inv = 1.0 / r2;
                         const double r6inv = r2inv * r2inv * r2inv;
-                        fpair += sl * r2inv
-                                 * (a1 * r6inv * r6inv - lj2[ab] * r6inv);
+                        fpair +=
+                            sl * r2inv * (a1 * r6inv * r6inv - lj2[ab] * r6inv);
                         epair += sl
                                  * (lj3[ab] * r6inv * r6inv - lj4[ab] * r6inv
                                     - shift[ab]);

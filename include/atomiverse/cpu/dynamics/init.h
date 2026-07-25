@@ -7,9 +7,9 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

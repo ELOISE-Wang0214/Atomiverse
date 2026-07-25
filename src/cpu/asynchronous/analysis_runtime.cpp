@@ -14,7 +14,8 @@ namespace asynchronous {
 AnalysisRuntime::AnalysisRuntime() = default;
 AnalysisRuntime::~AnalysisRuntime() = default;
 AnalysisRuntime::AnalysisRuntime(AnalysisRuntime&&) noexcept = default;
-AnalysisRuntime& AnalysisRuntime::operator=(AnalysisRuntime&&) noexcept = default;
+AnalysisRuntime&
+AnalysisRuntime::operator=(AnalysisRuntime&&) noexcept = default;
 
 void AnalysisRuntime::start(Context& ctx) {
     if (!executor_) {

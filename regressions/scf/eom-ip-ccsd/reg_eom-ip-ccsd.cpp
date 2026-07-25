@@ -56,7 +56,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::EOMIPCCSDResult eom = rhf.eom_ip_ccsd(frame, /*n_states=*/1);
+    const cpu::scf::EOMIPCCSDResult eom =
+        rhf.eom_ip_ccsd(frame, /*n_states=*/1);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2O) did not converge\n");
         return 1;

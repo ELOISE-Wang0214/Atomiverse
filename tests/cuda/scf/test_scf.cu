@@ -12,7 +12,9 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 
+#include "atomiverse/core/driver_template.h"
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/scf/solve.h"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
@@ -23,8 +25,6 @@
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/core/driver_template.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 
@@ -87,9 +87,9 @@ TEST(SCF, EvaluateIsALoopNodeOverTheEvaluatePhase) {
     // still has content, and is what the SCF single point actually depends on, is that
     // Evaluate is a loop node over the `evaluate::Phase` stage domain: that is what lets
     // an SCF bind `evaluate::Phase::evaluate` and be dispatched.
-    static_assert(std::is_base_of_v<cuda::Driver<ATV::evaluate::Phase>,
-                                    cuda::Evaluate>,
-                  "cuda::Evaluate must be a Driver over evaluate::Phase");
+    static_assert(
+        std::is_base_of_v<cuda::Driver<ATV::evaluate::Phase>, cuda::Evaluate>,
+        "cuda::Evaluate must be a Driver over evaluate::Phase");
     SUCCEED();
 }
 

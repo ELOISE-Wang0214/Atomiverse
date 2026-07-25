@@ -34,8 +34,8 @@ struct SyntheticSystem {
     std::shared_ptr<SlaterDeterminant> det;
     std::shared_ptr<bool> ready;
 
-    explicit SyntheticSystem(const std::vector<std::array<double, 3>>& centers)
-    {
+    explicit SyntheticSystem(
+        const std::vector<std::array<double, 3>>& centers) {
         const double alpha = 1.0;
         const double norm = std::pow(2.0 * alpha / kPi, 0.75);
         storage = {alpha, norm};
@@ -96,7 +96,8 @@ TEST(Lowdin, TwoAtomSymmetricDensity) {
     // only exact when c is S-normalized, so build it from the analytic S12.
     const double s12 = std::exp(-0.5 * d_bohr * d_bohr);
     const double n = 1.0 / std::sqrt(2.0 * (1.0 + s12));
-    cpu::linalg::RealMatrix C = xt::zeros<double>({std::size_t(2), std::size_t(1)});
+    cpu::linalg::RealMatrix C =
+        xt::zeros<double>({std::size_t(2), std::size_t(1)});
     C(0, 0) = n;
     C(1, 0) = n;
     cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});
@@ -107,8 +108,8 @@ TEST(Lowdin, TwoAtomSymmetricDensity) {
     auto frame = frame_at({{0.0, 0.0, 0.0}, {0.0, 0.0, d_ang}}, {1, 1});
     const auto q = cpu::lowdin_charge(sys.handle(), frame);
     ASSERT_EQ(q.size(), 2u);
-    EXPECT_NEAR(q[0], q[1], 1e-12);          // symmetric split
-    EXPECT_NEAR(q[0] + q[1], 0.0, 1e-10);    // ΣZ − N = 2 − 2 = 0
+    EXPECT_NEAR(q[0], q[1], 1e-12);       // symmetric split
+    EXPECT_NEAR(q[0] + q[1], 0.0, 1e-10); // ΣZ − N = 2 − 2 = 0
 }
 
 /// Unrestricted determinant: the α-only electron gives σ_A = 0.5 per atom
@@ -118,7 +119,8 @@ TEST(Lowdin, SpinDensity) {
     SyntheticSystem sys{{{0.0, 0.0, 0.0}, {0.0, 0.0, d_bohr}}};
     const double s12 = std::exp(-0.5 * d_bohr * d_bohr);
     const double n = 1.0 / std::sqrt(2.0 * (1.0 + s12));
-    cpu::linalg::RealMatrix C = xt::zeros<double>({std::size_t(2), std::size_t(1)});
+    cpu::linalg::RealMatrix C =
+        xt::zeros<double>({std::size_t(2), std::size_t(1)});
     C(0, 0) = n;
     C(1, 0) = n;
     cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});

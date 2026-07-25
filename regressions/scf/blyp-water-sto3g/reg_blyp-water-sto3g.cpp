@@ -36,7 +36,7 @@ int main() {
 
     // PySCF 2.14.0 pin (REFERENCE.md): rks --geom water --basis sto-3g --xc blyp
     constexpr double kEnergyRef = -75.277447482665; // Ha
-    constexpr double kTol = 1.0e-6;                  // Ha
+    constexpr double kTol = 1.0e-6;                 // Ha
 
     // Pure-GGA metadata: no exact exchange; GGA density-gradient path.
     if (cpu::scf::hybrid_exchange_fraction(cpu::scf::XCType::BLYP) != 0.0) {
@@ -63,9 +63,10 @@ int main() {
     const double from_frame = frame.meta.get(kEnergy) / units::kHartreeInEv;
 
     if (!std::isfinite(got_ha) || std::abs(got_ha - kEnergyRef) > kTol) {
-        std::fprintf(stderr,
-                     "FAIL: E_BLYP/STO-3G(H2O) got=%.12f want=%.12f tol=%.1e Ha\n",
-                     got_ha, kEnergyRef, kTol);
+        std::fprintf(
+            stderr,
+            "FAIL: E_BLYP/STO-3G(H2O) got=%.12f want=%.12f tol=%.1e Ha\n",
+            got_ha, kEnergyRef, kTol);
         return 1;
     }
     // Frame energy must track the method energy (eV ↔ Ha conversion).

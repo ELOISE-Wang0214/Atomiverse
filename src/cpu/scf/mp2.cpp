@@ -40,8 +40,8 @@ xt::xtensor<double, 4> ao2mo_mixed_(const xt::xtensor<double, 4>& eri_ao,
         const auto sh = src.shape();
         auto flat = xt::reshape_view(src, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
-        xt::xtensor<double, 4> next = xt::reshape_view(
-            h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
         cur = xt::transpose(next, {3, 0, 1, 2});
     }
     return cur; // (C0, C1, C2, C3) → (i, a, j, b) when C0=CoL, C1=CvL, …
@@ -273,8 +273,8 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     }
     // No doubles possible when either both same-spin channels lack space or
     // the opposite-spin product of virtuals/occs vanishes — still return finite 0.
-    if ((n_occ_a < 2 || n_vir_a < 2) && (n_occ_b < 2 || n_vir_b < 2) &&
-        (n_occ_a == 0 || n_occ_b == 0 || n_vir_a == 0 || n_vir_b == 0)) {
+    if ((n_occ_a < 2 || n_vir_a < 2) && (n_occ_b < 2 || n_vir_b < 2)
+        && (n_occ_a == 0 || n_occ_b == 0 || n_vir_a == 0 || n_vir_b == 0)) {
         return {0.0, e_scf_ha, /*ri=*/false, /*frozen=*/0, 0.0, 0.0};
     }
 
@@ -318,9 +318,9 @@ MP2Result ump2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 for (int a = 0; a < n_vir_a; ++a) {
                     for (int b = 0; b < n_vir_b; ++b) {
                         const double v = ovov_ab(i, a, j, b);
-                        const double denom = eps_a(i) + eps_b(j) -
-                                             eps_a(n_occ_a + a) -
-                                             eps_b(n_occ_b + b);
+                        const double denom = eps_a(i) + eps_b(j)
+                                             - eps_a(n_occ_a + a)
+                                             - eps_b(n_occ_b + b);
                         if (denom >= 0.0) {
                             throw std::invalid_argument(
                                 "ump2_energy: non-negative opposite-spin "
@@ -360,10 +360,10 @@ MP2Result romp2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int n_occ_a = det.n_electrons(Spin::alpha);
     const int n_occ_b = det.n_electrons(Spin::beta);
 
-    if (static_cast<int>(F_alpha.shape(0)) != n_ao ||
-        static_cast<int>(F_alpha.shape(1)) != n_ao ||
-        static_cast<int>(F_beta.shape(0)) != n_ao ||
-        static_cast<int>(F_beta.shape(1)) != n_ao) {
+    if (static_cast<int>(F_alpha.shape(0)) != n_ao
+        || static_cast<int>(F_alpha.shape(1)) != n_ao
+        || static_cast<int>(F_beta.shape(0)) != n_ao
+        || static_cast<int>(F_beta.shape(1)) != n_ao) {
         throw std::invalid_argument(
             "romp2_energy: spin Fock matrices must be n_ao × n_ao matching the "
             "MO coefficient row dimension.");

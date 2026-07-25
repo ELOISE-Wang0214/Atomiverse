@@ -38,8 +38,8 @@ constexpr double kPinFx[6] = {
     -0.094382238074752045076, -1.0593571566097745862, -0.057823257196248978307,
     0.094382238074751600987,  1.0593571566097748082,  0.057823257196249200351};
 constexpr double kPinFz[6] = {
-    0.33187666441899288383,  -0.31522207906906996033, -0.016654585349923187176,
-    0.33187666441899305037,  -0.31522207906906962727, -0.01665458534992322534};
+    0.33187666441899288383, -0.31522207906906996033, -0.016654585349923187176,
+    0.33187666441899305037, -0.31522207906906962727, -0.01665458534992322534};
 
 double theta_rad() { return kThetaDeg * units::kDegreeInRad; }
 
@@ -105,8 +105,8 @@ cpu::Frame tip4p_dimer() {
 
 void run_eval(cpu::Frame& f, cpu::PairLJCutTip4pCut pair) {
     cpu::Evaluate eval;
-    eval.set_neighbor(cpu::md::NeighborList<>{pair.neighbor_cutoff(), 0.3, 1, 0,
-                                              true});
+    eval.set_neighbor(
+        cpu::md::NeighborList<>{pair.neighbor_cutoff(), 0.3, 1, 0, true});
     eval.add_potential(std::move(pair));
     eval.enable_timing(false);
     eval.build();

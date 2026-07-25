@@ -43,7 +43,8 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
 /// @return Forces [eV/Å] and total UMP2 energy [eV].
 /// @throws std::invalid_argument on restricted / empty ERI / spherical /
 ///         missing virtual on either spin.
-GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack,
+GradientResult ump2_analytic_forces(const Frame& frame,
+                                    const IntegralPack& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha);
 

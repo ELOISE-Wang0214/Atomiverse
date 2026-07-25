@@ -65,7 +65,8 @@ int main() {
         ok = false;
     }
     if (std::fabs(fx) > 1e-12 || std::fabs(fy) > 1e-12) {
-        std::printf("FAIL: non-zero transverse force fx=%.3e fy=%.3e\n", fx, fy);
+        std::printf("FAIL: non-zero transverse force fx=%.3e fy=%.3e\n", fx,
+                    fy);
         ok = false;
     }
 

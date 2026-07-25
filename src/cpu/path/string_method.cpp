@@ -27,8 +27,8 @@ void muller_brown_force(cpu::Frame& f) {
         const double dx = x - kX0[k];
         const double dy = y - kY0[k];
         const double e =
-            kA[k] * std::exp(kAa[k] * dx * dx + kBb[k] * dx * dy +
-                             kCc[k] * dy * dy);
+            kA[k]
+            * std::exp(kAa[k] * dx * dx + kBb[k] * dx * dy + kCc[k] * dy * dy);
         v += e;
         dvdx += e * (2.0 * kAa[k] * dx + kBb[k] * dy);
         dvdy += e * (kBb[k] * dx + 2.0 * kCc[k] * dy);
@@ -55,7 +55,8 @@ cpu::Frame lerp_frame(const cpu::Frame& a, const cpu::Frame& b, double t) {
 
 } // namespace
 
-StringMethod::StringMethod(int n_images_, double step_, int max_iter_, double f_tol_)
+StringMethod::StringMethod(int n_images_, double step_, int max_iter_,
+                           double f_tol_)
     : n_images(n_images_), step(step_), max_iter(max_iter_), f_tol(f_tol_) {
     if (n_images < 3)
         throw std::invalid_argument("StringMethod: n_images >= 3");
@@ -100,10 +101,8 @@ void StringMethod::reparameterize_() {
             ++j;
         const double s0 = s[static_cast<size_t>(j)];
         const double s1 = s[static_cast<size_t>(j + 1)];
-        const double t =
-            (s1 > s0) ? (target - s0) / (s1 - s0) : 0.0;
-        neu[static_cast<size_t>(i)] =
-            lerp_frame(images_[j], images_[j + 1], t);
+        const double t = (s1 > s0) ? (target - s0) / (s1 - s0) : 0.0;
+        neu[static_cast<size_t>(i)] = lerp_frame(images_[j], images_[j + 1], t);
     }
     images_.swap(neu);
 }
@@ -118,8 +117,7 @@ void StringMethod::evolve_once_() {
         force_(images_[static_cast<size_t>(i)]);
         energies_[static_cast<size_t>(i)] =
             images_[static_cast<size_t>(i)].meta.get(kEnergy);
-        max_energy_ =
-            std::max(max_energy_, energies_[static_cast<size_t>(i)]);
+        max_energy_ = std::max(max_energy_, energies_[static_cast<size_t>(i)]);
     }
 
     // Endpoints fixed.
@@ -129,12 +127,12 @@ void StringMethod::evolve_once_() {
         std::vector<double> tau(static_cast<size_t>(3 * n), 0.0);
         double tnorm = 0;
         for (int a = 0; a < n; ++a) {
-            const double tx = images_[i + 1].span(kAtom_x)[a] -
-                              images_[i - 1].span(kAtom_x)[a];
-            const double ty = images_[i + 1].span(kAtom_y)[a] -
-                              images_[i - 1].span(kAtom_y)[a];
-            const double tz = images_[i + 1].span(kAtom_z)[a] -
-                              images_[i - 1].span(kAtom_z)[a];
+            const double tx = images_[i + 1].span(kAtom_x)[a]
+                              - images_[i - 1].span(kAtom_x)[a];
+            const double ty = images_[i + 1].span(kAtom_y)[a]
+                              - images_[i - 1].span(kAtom_y)[a];
+            const double tz = images_[i + 1].span(kAtom_z)[a]
+                              - images_[i - 1].span(kAtom_z)[a];
             tau[static_cast<size_t>(3 * a + 0)] = tx;
             tau[static_cast<size_t>(3 * a + 1)] = ty;
             tau[static_cast<size_t>(3 * a + 2)] = tz;
@@ -149,18 +147,19 @@ void StringMethod::evolve_once_() {
         auto& im = images_[static_cast<size_t>(i)];
         double fdot = 0;
         for (int a = 0; a < n; ++a) {
-            fdot += im.span(kAtom_fx)[a] * tau[static_cast<size_t>(3 * a)] +
-                    im.span(kAtom_fy)[a] * tau[static_cast<size_t>(3 * a + 1)] +
-                    im.span(kAtom_fz)[a] * tau[static_cast<size_t>(3 * a + 2)];
+            fdot +=
+                im.span(kAtom_fx)[a] * tau[static_cast<size_t>(3 * a)]
+                + im.span(kAtom_fy)[a] * tau[static_cast<size_t>(3 * a + 1)]
+                + im.span(kAtom_fz)[a] * tau[static_cast<size_t>(3 * a + 2)];
         }
         double fperp2 = 0;
         for (int a = 0; a < n; ++a) {
             const double fpx =
                 im.span(kAtom_fx)[a] - fdot * tau[static_cast<size_t>(3 * a)];
-            const double fpy = im.span(kAtom_fy)[a] -
-                               fdot * tau[static_cast<size_t>(3 * a + 1)];
-            const double fpz = im.span(kAtom_fz)[a] -
-                               fdot * tau[static_cast<size_t>(3 * a + 2)];
+            const double fpy = im.span(kAtom_fy)[a]
+                               - fdot * tau[static_cast<size_t>(3 * a + 1)];
+            const double fpz = im.span(kAtom_fz)[a]
+                               - fdot * tau[static_cast<size_t>(3 * a + 2)];
             fperp2 += fpx * fpx + fpy * fpy + fpz * fpz;
             im.span(kAtom_x)[a] += step * fpx;
             im.span(kAtom_y)[a] += step * fpy;
@@ -196,8 +195,7 @@ int StringMethod::run(const cpu::Frame& start, const cpu::Frame& end) {
         force_(images_[static_cast<size_t>(i)]);
         energies_[static_cast<size_t>(i)] =
             images_[static_cast<size_t>(i)].meta.get(kEnergy);
-        max_energy_ =
-            std::max(max_energy_, energies_[static_cast<size_t>(i)]);
+        max_energy_ = std::max(max_energy_, energies_[static_cast<size_t>(i)]);
     }
     return it + 1;
 }

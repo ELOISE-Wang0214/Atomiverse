@@ -31,8 +31,7 @@ namespace detail {
 /// on (1e-16, 1.9) — enough for extent thresholds used in CFMM (ε ≥ 1e-14).
 inline AccReal erfc_inv(AccReal y) {
     if (!(y > AccReal(0) && y < AccReal(2)))
-        throw std::invalid_argument(
-            "erfc_inv: argument must lie in (0, 2)");
+        throw std::invalid_argument("erfc_inv: argument must lie in (0, 2)");
     if (y == AccReal(1))
         return AccReal(0);
 
@@ -45,7 +44,8 @@ inline AccReal erfc_inv(AccReal y) {
         // erf⁻¹ rational approx (Winitzki-like).
         constexpr AccReal kPi = AccReal(3.14159265358979323846);
         const AccReal a = AccReal(0.147);
-        const AccReal t = AccReal(2) / (kPi * a) + std::log(AccReal(1) - z * z) / AccReal(2);
+        const AccReal t =
+            AccReal(2) / (kPi * a) + std::log(AccReal(1) - z * z) / AccReal(2);
         const AccReal u = std::log(AccReal(1) - z * z) / a;
         x = (z > 0 ? AccReal(1) : AccReal(-1))
             * std::sqrt(std::sqrt(t * t - u) - t);

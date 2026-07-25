@@ -6,6 +6,7 @@
 /// inner solver behind an Evaluator, never an outer driver), and that
 /// the component path reproduces the direct solver path bit-for-bit.
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
@@ -13,7 +14,6 @@
 #include "atomiverse/cpu/planewave/pw_evaluator.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
 #include "atomiverse/cpu/planewave/qe_units.h"
-#include "atomiverse/core/stage.h"
 #include <cmath>
 #include <gtest/gtest.h>
 #include <type_traits>

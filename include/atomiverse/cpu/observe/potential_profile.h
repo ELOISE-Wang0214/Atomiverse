@@ -52,8 +52,7 @@ class PotentialProfile : public Observer {
     PotentialProfile(int n_bins, double z_min, double z_max)
         : n_bins_(n_bins), z_min_(z_min), z_max_(z_max) {
         if (n_bins_ <= 0)
-            throw std::invalid_argument(
-                "PotentialProfile: n_bins must be > 0");
+            throw std::invalid_argument("PotentialProfile: n_bins must be > 0");
         if (!(z_max_ > z_min_))
             throw std::invalid_argument(
                 "PotentialProfile: z_max must be > z_min");

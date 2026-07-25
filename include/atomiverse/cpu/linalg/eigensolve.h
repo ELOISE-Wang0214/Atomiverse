@@ -226,8 +226,8 @@ diagonalize_fock_generalized(const RealMatrix& F, const RealMatrix& S) {
 ///              v(j+1) = vr[:,j] - i·vr[:,j+1]).
 /// @param label Diagnostic tag folded into the throw message on dgeev failure.
 /// @throws std::runtime_error when dgeev returns info != 0 — no fallback value.
-inline void eig_nonsymmetric(const RealMatrix& A, RealVector& wr, RealVector& wi,
-                             RealMatrix* vr = nullptr,
+inline void eig_nonsymmetric(const RealMatrix& A, RealVector& wr,
+                             RealVector& wi, RealMatrix* vr = nullptr,
                              std::string_view label = "eig_nonsymmetric") {
     const int n = static_cast<int>(A.shape(0));
     RealMatrix a_work = A; // dgeev overwrites its input; keep the caller's A

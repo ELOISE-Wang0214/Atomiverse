@@ -45,9 +45,8 @@ class SurfaceTensionNPT : public NoseHooverNPT {
     /// @param mtchain    Atom NHC length (default 3).
     /// @param mpchain    Barostat NHC length (default 3).
     SurfaceTensionNPT(double T_target, double tau_T, double P_normal,
-                      double gamma, double tau_P, double dt,
-                      int n_surfaces = 2, double drag = 0.0, int mtchain = 3,
-                      int mpchain = 3)
+                      double gamma, double tau_P, double dt, int n_surfaces = 2,
+                      double drag = 0.0, int mtchain = 3, int mpchain = 3)
         : NoseHooverNPT(T_target, tau_T, P_normal, tau_P, dt, drag, mtchain,
                         mpchain, /*couple_axis=*/{true, true, true},
                         /*T_stop=*/-1.0) {

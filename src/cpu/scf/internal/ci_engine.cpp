@@ -175,15 +175,15 @@ CiSolution dense_ci_solve(const xt::xtensor<double, 2>& h,
                           int n_alpha, int n_beta) {
     const int n_mo = static_cast<int>(h.shape(0));
     if (n_mo > 14) {
-        throw std::invalid_argument(
-            "dense_ci_solve: ncas=" + std::to_string(n_mo)
-            + " exceeds the TINY cap (ncas <= 14)");
+        throw std::invalid_argument("dense_ci_solve: ncas="
+                                    + std::to_string(n_mo)
+                                    + " exceeds the TINY cap (ncas <= 14)");
     }
     const long long n_det = choose(n_mo, n_alpha) * choose(n_mo, n_beta);
     if (n_det > 2000) {
-        throw std::invalid_argument(
-            "dense_ci_solve: N_det=" + std::to_string(n_det)
-            + " exceeds the TINY cap (N_det <= 2000)");
+        throw std::invalid_argument("dense_ci_solve: N_det="
+                                    + std::to_string(n_det)
+                                    + " exceeds the TINY cap (N_det <= 2000)");
     }
     CiSolution sol;
     sol.alphas = enumerate_strings(n_mo, n_alpha);
@@ -209,9 +209,9 @@ CiSolution dense_ci_solve(const xt::xtensor<double, 2>& h,
                     const std::size_t idx_j = ja * n_b + jb;
                     if (idx_j < idx_i)
                         continue;
-                    const double e =
-                        ci_element(sol.alphas[ia], sol.betas[ib], sol.alphas[ja],
-                                   sol.betas[jb], h, g, v_shift);
+                    const double e = ci_element(sol.alphas[ia], sol.betas[ib],
+                                                sol.alphas[ja], sol.betas[jb],
+                                                h, g, v_shift);
                     hci(idx_i, idx_j) = e;
                     hci(idx_j, idx_i) = e;
                 }
@@ -225,8 +225,8 @@ CiSolution dense_ci_solve(const xt::xtensor<double, 2>& h,
     return sol;
 }
 
-void make_rdm12(const CiSolution& sol, int ncas,
-                xt::xtensor<double, 2>& rdm1, xt::xtensor<double, 4>& rdm2) {
+void make_rdm12(const CiSolution& sol, int ncas, xt::xtensor<double, 2>& rdm1,
+                xt::xtensor<double, 4>& rdm2) {
     const std::size_t na = static_cast<std::size_t>(ncas);
     rdm1 = xt::zeros<double>({na, na});
     rdm2 = xt::zeros<double>({na, na, na, na});
@@ -264,13 +264,14 @@ void make_rdm12(const CiSolution& sol, int ncas,
                 for (int q = 0; q < ncas; ++q) {
                     if (Aa & (std::uint64_t(1) << q))
                         continue;
-                    const std::uint64_t Aj =
-                        (Aa ^ (std::uint64_t(1) << p)) | (std::uint64_t(1) << q);
+                    const std::uint64_t Aj = (Aa ^ (std::uint64_t(1) << p))
+                                             | (std::uint64_t(1) << q);
                     const int ja = find_str(sol.alphas, Aj);
                     if (ja < 0)
                         continue;
                     const int sgn = jw_single_sign(Aa, p, q);
-                    const double cj = sol.c(static_cast<std::size_t>(ja) * n_b + ib);
+                    const double cj =
+                        sol.c(static_cast<std::size_t>(ja) * n_b + ib);
                     const double val = sgn * ci * cj;
                     rdm1(q, p) += val;
                 }
@@ -280,13 +281,14 @@ void make_rdm12(const CiSolution& sol, int ncas,
                 for (int q = 0; q < ncas; ++q) {
                     if (Bb & (std::uint64_t(1) << q))
                         continue;
-                    const std::uint64_t Bj =
-                        (Bb ^ (std::uint64_t(1) << p)) | (std::uint64_t(1) << q);
+                    const std::uint64_t Bj = (Bb ^ (std::uint64_t(1) << p))
+                                             | (std::uint64_t(1) << q);
                     const int jb = find_str(sol.betas, Bj);
                     if (jb < 0)
                         continue;
                     const int sgn = jw_single_sign(Bb, p, q);
-                    const double cj = sol.c(ia * n_b + static_cast<std::size_t>(jb));
+                    const double cj =
+                        sol.c(ia * n_b + static_cast<std::size_t>(jb));
                     const double val = sgn * ci * cj;
                     rdm1(q, p) += val;
                 }
@@ -354,7 +356,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                     for (std::size_t ir = ip + 1; ir < oa.size(); ++ir) {
                         const int p = oa[ip], r = oa[ir];
                         for (std::size_t iq = 0; iq < va.size(); ++iq) {
-                            for (std::size_t is = iq + 1; is < va.size(); ++is) {
+                            for (std::size_t is = iq + 1; is < va.size();
+                                 ++is) {
                                 const int q = va[iq], s = va[is];
                                 // phase p→q then r→s
                                 const int s1 = jw_single_sign(Aa, p, q);
@@ -373,8 +376,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                                 const int ja = find_str(sol.alphas, Aj);
                                 if (ja < 0)
                                     continue;
-                                const double cj =
-                                    sol.c(static_cast<std::size_t>(ja) * n_b + ib);
+                                const double cj = sol.c(
+                                    static_cast<std::size_t>(ja) * n_b + ib);
                                 const double w = double(s1 * s2) * ci * cj;
                                 // a†_q a†_s a_r a_p |I⟩ ~ |J⟩  (order: annihilate
                                 // p,r create q,s). Operator a†_qα a†_sα a_rα a_pα
@@ -399,7 +402,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                     for (std::size_t ir = ip + 1; ir < ob.size(); ++ir) {
                         const int p = ob[ip], r = ob[ir];
                         for (std::size_t iq = 0; iq < vb.size(); ++iq) {
-                            for (std::size_t is = iq + 1; is < vb.size(); ++is) {
+                            for (std::size_t is = iq + 1; is < vb.size();
+                                 ++is) {
                                 const int q = vb[iq], s = vb[is];
                                 const int s1 = jw_single_sign(Bb, p, q);
                                 const std::uint64_t mid =
@@ -416,8 +420,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                                 const int jb = find_str(sol.betas, Bj);
                                 if (jb < 0)
                                     continue;
-                                const double cj =
-                                    sol.c(ia * n_b + static_cast<std::size_t>(jb));
+                                const double cj = sol.c(
+                                    ia * n_b + static_cast<std::size_t>(jb));
                                 const double w = double(s1 * s2) * ci * cj;
                                 rdm2(q, p, s, r) += w;
                                 rdm2(q, r, s, p) -= w;
@@ -437,8 +441,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                         if (Aa & (std::uint64_t(1) << q))
                             continue;
                         const int sa = jw_single_sign(Aa, p, q);
-                        const std::uint64_t Aj =
-                            (Aa ^ (std::uint64_t(1) << p)) | (std::uint64_t(1) << q);
+                        const std::uint64_t Aj = (Aa ^ (std::uint64_t(1) << p))
+                                                 | (std::uint64_t(1) << q);
                         const int ja = find_str(sol.alphas, Aj);
                         if (ja < 0)
                             continue;
@@ -453,9 +457,9 @@ void make_rdm12(const CiSolution& sol, int ncas,
                                 const int jb = find_str(sol.betas, Bj);
                                 if (jb < 0)
                                     continue;
-                                const double cj = sol.c(
-                                    static_cast<std::size_t>(ja) * n_b
-                                    + static_cast<std::size_t>(jb));
+                                const double cj =
+                                    sol.c(static_cast<std::size_t>(ja) * n_b
+                                          + static_cast<std::size_t>(jb));
                                 const double w = double(sa * sb) * ci * cj;
                                 // a†_qα a†_sβ a_rβ a_pα → Γ_q p s r
                                 rdm2(q, p, s, r) += w;
@@ -476,8 +480,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                     if (Aa & (std::uint64_t(1) << q))
                         continue;
                     const int sgn = jw_single_sign(Aa, p, q);
-                    const std::uint64_t Aj =
-                        (Aa ^ (std::uint64_t(1) << p)) | (std::uint64_t(1) << q);
+                    const std::uint64_t Aj = (Aa ^ (std::uint64_t(1) << p))
+                                             | (std::uint64_t(1) << q);
                     const int ja = find_str(sol.alphas, Aj);
                     if (ja < 0)
                         continue;
@@ -507,8 +511,8 @@ void make_rdm12(const CiSolution& sol, int ncas,
                     if (Bb & (std::uint64_t(1) << q))
                         continue;
                     const int sgn = jw_single_sign(Bb, p, q);
-                    const std::uint64_t Bj =
-                        (Bb ^ (std::uint64_t(1) << p)) | (std::uint64_t(1) << q);
+                    const std::uint64_t Bj = (Bb ^ (std::uint64_t(1) << p))
+                                             | (std::uint64_t(1) << q);
                     const int jb = find_str(sol.betas, Bj);
                     if (jb < 0)
                         continue;

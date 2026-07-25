@@ -8,9 +8,9 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/longrange/ewald.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
+#include "atomiverse/cuda/longrange/ewald.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/coul_long.cuh"
 
@@ -62,7 +62,8 @@ TEST(CudaEwaldCoul, MadelungNaCl) {
     sim.run(frame, 1);
 
     const int N = n * n * n;
-    const double e_expected = -0.5 * N * kMadelungNaCl * ATV::units::coulomb / d;
+    const double e_expected =
+        -0.5 * N * kMadelungNaCl * ATV::units::coulomb / d;
     const double e = static_cast<double>(frame.meta.get(kEnergy));
     // real_t positions are single precision on the CUDA path → looser tol.
     EXPECT_NEAR(e / e_expected, 1.0, 2e-3)

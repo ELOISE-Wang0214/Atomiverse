@@ -10,6 +10,8 @@
 #include <utility>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/component/hf.h"
@@ -22,8 +24,6 @@
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/montecarlo/transaction.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

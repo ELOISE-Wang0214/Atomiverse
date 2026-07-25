@@ -13,33 +13,31 @@ using namespace ATV::cpu::pw::internal;
 
 TEST(PWSmearing, FermiDiracClosedForm) {
     // f(0)=1/2, f(±∞) limits, f(x)+f(-x)=1
-    EXPECT_NEAR(static_cast<double>(smear_f_spinless(
-                    AccReal(0), SmearKind::fermi_dirac)),
+    EXPECT_NEAR(static_cast<double>(
+                    smear_f_spinless(AccReal(0), SmearKind::fermi_dirac)),
                 0.5, 1e-12);
-    EXPECT_NEAR(static_cast<double>(smear_f_spinless(
-                    AccReal(40), SmearKind::fermi_dirac)),
+    EXPECT_NEAR(static_cast<double>(
+                    smear_f_spinless(AccReal(40), SmearKind::fermi_dirac)),
                 0.0, 1e-12);
-    EXPECT_NEAR(static_cast<double>(smear_f_spinless(
-                    AccReal(-40), SmearKind::fermi_dirac)),
+    EXPECT_NEAR(static_cast<double>(
+                    smear_f_spinless(AccReal(-40), SmearKind::fermi_dirac)),
                 1.0, 1e-12);
     const AccReal x = AccReal(1.2);
-    const AccReal fp =
-        smear_f_spinless(x, SmearKind::fermi_dirac);
-    const AccReal fm =
-        smear_f_spinless(-x, SmearKind::fermi_dirac);
+    const AccReal fp = smear_f_spinless(x, SmearKind::fermi_dirac);
+    const AccReal fm = smear_f_spinless(-x, SmearKind::fermi_dirac);
     EXPECT_NEAR(static_cast<double>(fp + fm), 1.0, 1e-12);
     // Band occupation is 2× spinless
-    EXPECT_NEAR(static_cast<double>(smear_f_band(
-                    AccReal(0), AccReal(0), AccReal(0.02),
-                    SmearKind::fermi_dirac)),
-                1.0, 1e-12);
+    EXPECT_NEAR(
+        static_cast<double>(smear_f_band(AccReal(0), AccReal(0), AccReal(0.02),
+                                         SmearKind::fermi_dirac)),
+        1.0, 1e-12);
 }
 
 TEST(PWSmearing, GaussianClosedForm) {
     // f(0)=1/2, f(x)+f(-x)=1 for Gaussian/erfc
-    EXPECT_NEAR(static_cast<double>(smear_f_spinless(
-                    AccReal(0), SmearKind::gaussian)),
-                0.5, 1e-12);
+    EXPECT_NEAR(
+        static_cast<double>(smear_f_spinless(AccReal(0), SmearKind::gaussian)),
+        0.5, 1e-12);
     const AccReal x = AccReal(0.7);
     const AccReal fp = smear_f_spinless(x, SmearKind::gaussian);
     const AccReal fm = smear_f_spinless(-x, SmearKind::gaussian);
@@ -54,8 +52,8 @@ TEST(PWSmearing, MethfesselPaxtonOrder1) {
     // MP-1: f(x) = 1/2 erfc(x) - (x/(2√π)) e^{-x²}
     const double x = 0.5;
     const double sqrt_pi = std::sqrt(4.0 * std::atan(1.0));
-    const double ref = 0.5 * std::erfc(x)
-                       - (x / (2.0 * sqrt_pi)) * std::exp(-x * x);
+    const double ref =
+        0.5 * std::erfc(x) - (x / (2.0 * sqrt_pi)) * std::exp(-x * x);
     EXPECT_NEAR(static_cast<double>(smear_f_spinless(
                     AccReal(x), SmearKind::methfessel_paxton, 1)),
                 ref, 1e-12);
@@ -69,10 +67,9 @@ TEST(PWSmearing, FindFermiRecoversNelec) {
     std::vector<AccReal> w(evals.size(), AccReal(1)); // single k, weight 1
     const AccReal ne = AccReal(3);
     const AccReal deg = AccReal(0.1);
-    const AccReal mu = find_fermi_level(evals, w, ne, deg,
-                                       SmearKind::fermi_dirac, 1);
-    auto fill =
-        fill_occupations(evals, w, mu, deg, SmearKind::fermi_dirac, 1);
+    const AccReal mu =
+        find_fermi_level(evals, w, ne, deg, SmearKind::fermi_dirac, 1);
+    auto fill = fill_occupations(evals, w, mu, deg, SmearKind::fermi_dirac, 1);
     EXPECT_NEAR(static_cast<double>(fill.n_occ), 3.0, 1e-8);
     // Mid-spectrum levels should be fractional.
     EXPECT_GT(static_cast<double>(fill.occ[1]), 0.01);

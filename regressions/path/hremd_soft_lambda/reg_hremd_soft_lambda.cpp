@@ -55,8 +55,8 @@ int main() {
     h.run(f, n_ex);
     const int attempts = h.exchange_attempts();
     const int accepts = h.exchange_accepts();
-    std::printf("H-REMD attempts=%d accepts=%d ratio=%.3f nlocal=%d\n", attempts,
-                accepts, attempts ? double(accepts) / attempts : 0.0,
+    std::printf("H-REMD attempts=%d accepts=%d ratio=%.3f nlocal=%d\n",
+                attempts, accepts, attempts ? double(accepts) / attempts : 0.0,
                 f.nlocal());
     if (attempts < n_ex / 2 || f.nlocal() != 2) {
         std::printf("FAIL\n");

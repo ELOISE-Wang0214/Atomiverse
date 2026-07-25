@@ -4,8 +4,8 @@
 #include "atomiverse/cpu/dynamics/fix_freeze.h"
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/owned_range.h"
 
 #include <array>
 

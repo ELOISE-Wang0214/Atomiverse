@@ -35,8 +35,7 @@ cpu::Frame dimer_with_bond(double r) {
 
 TEST(BondFene, AnalyticEnergy) {
     const double K = 30.0, R0 = 1.5, r = 1.0;
-    const double U =
-        -0.5 * K * R0 * R0 * std::log(1.0 - (r / R0) * (r / R0));
+    const double U = -0.5 * K * R0 * R0 * std::log(1.0 - (r / R0) * (r / R0));
 
     auto f = dimer_with_bond(r);
     f.meta.get(kEnergy) = 0;

@@ -131,7 +131,8 @@ TEST(AnalyticHessian, H2SymmetricAndTranslationClean) {
             double sum = 0.0;
             for (int B = 0; B < 2; ++B)
                 sum += res.dipole_derivatives(3 * B + j, a);
-            EXPECT_NEAR(sum, 0.0, 1e-6) << "APT trans. inv. j=" << j << " a=" << a;
+            EXPECT_NEAR(sum, 0.0, 1e-6)
+                << "APT trans. inv. j=" << j << " a=" << a;
         }
 }
 

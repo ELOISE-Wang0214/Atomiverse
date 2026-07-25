@@ -34,11 +34,14 @@ IntegralPack iodine_pack() {
 }
 
 cpu::scf::internal::ScfGradient make_grad(cpu::scf::SpinType spin) {
-    return cpu::scf::internal::ScfGradient{
-        cpu::scf::MeanFieldType::HF, spin,
-        cpu::scf::XCType::LSDA,      cpu::scf::GridLevel::SG0,
-        0,                           0,
-        false,                       false};
+    return cpu::scf::internal::ScfGradient{cpu::scf::MeanFieldType::HF,
+                                           spin,
+                                           cpu::scf::XCType::LSDA,
+                                           cpu::scf::GridLevel::SG0,
+                                           0,
+                                           0,
+                                           false,
+                                           false};
 }
 
 } // namespace
@@ -62,8 +65,9 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
     const cpu::scf::SlaterDeterminant det{C, eps, occ, nocc};
 
     cpu::scf::GradientResult res;
-    ASSERT_NO_THROW(res = make_grad(cpu::scf::SpinType::Restricted)
-                              .compute(f, p, det, 0.0));
+    ASSERT_NO_THROW(
+        res =
+            make_grad(cpu::scf::SpinType::Restricted).compute(f, p, det, 0.0));
     // Single atom: total force zero by translational invariance (the FD dU/dR
     // displaces shells + ECP center together, so dU is exactly zero here).
     const double fmax = xt::amax(xt::abs(res.forces))();
@@ -71,9 +75,9 @@ TEST(EcpGradient, RhfEcpRunsSiblingsThrowSingleAtomZeroForce) {
 
     // GHF forces need a generalized (spinor) determinant; a collinear
     // restricted det with SpinType::Generalized is a type error.
-    EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
-                     .compute(f, p, det, 0.0),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        make_grad(cpu::scf::SpinType::Generalized).compute(f, p, det, 0.0),
+        std::invalid_argument);
 }
 
 /// The pack retains the ECP centers so the gradient can rebuild dU/dR.

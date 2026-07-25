@@ -87,12 +87,9 @@ void PairCoulSoft::compute(const LaunchContext& ctx) {
     const int* __restrict firstneigh = pairs.firstneigh.data();
     const int* __restrict neighbors = pairs.neighbors.data();
     const bool has_shifts = pairs.has_shifts;
-    const double* __restrict shx =
-        has_shifts ? pairs.shift_x.data() : nullptr;
-    const double* __restrict shy =
-        has_shifts ? pairs.shift_y.data() : nullptr;
-    const double* __restrict shz =
-        has_shifts ? pairs.shift_z.data() : nullptr;
+    const double* __restrict shx = has_shifts ? pairs.shift_x.data() : nullptr;
+    const double* __restrict shy = has_shifts ? pairs.shift_y.data() : nullptr;
+    const double* __restrict shz = has_shifts ? pairs.shift_z.data() : nullptr;
 
     const StorageReal* __restrict x_ptr = f.span(kAtom_x);
     const StorageReal* __restrict y_ptr = f.span(kAtom_y);
@@ -125,8 +122,8 @@ void PairCoulSoft::compute(const LaunchContext& ctx) {
         return;
     }
 
-#pragma omp parallel reduction(+ : energy_total) reduction(+ : dU_total)      \
-    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)               \
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : dU_total)       \
+    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)                \
     reduction(+ : v_xy) reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;

@@ -14,8 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/core/role.h"
+#include "atomiverse/cpu/component/potential.h"
 
 namespace ATV {
 namespace cpu {

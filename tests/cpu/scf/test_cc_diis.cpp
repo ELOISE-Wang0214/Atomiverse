@@ -33,7 +33,8 @@ using ATV::cpu::scf::internal::CcAmplitudeDiis;
 TEST(TestCcAmplitudeDiis, LinearFixedPointConvergesToExactSolution) {
     const double A[2][2] = {{0.5, 0.1}, {0.2, 0.4}};
     const double b[2] = {0.4, 0.4};
-    const std::vector<double> x_star = {1.0, 1.0}; // hard-coded exact fixed point
+    const std::vector<double> x_star = {1.0,
+                                        1.0}; // hard-coded exact fixed point
 
     CcAmplitudeDiis diis(8);
     std::vector<double> x = {0.0, 0.0}; // cold start
@@ -47,10 +48,11 @@ TEST(TestCcAmplitudeDiis, LinearFixedPointConvergesToExactSolution) {
     // Final Jacobi increment at the converged x.
     const std::vector<double> gx = {A[0][0] * x[0] + A[0][1] * x[1] + b[0],
                                     A[1][0] * x[0] + A[1][1] * x[1] + b[1]};
-    const double final_res =
-        std::sqrt((gx[0] - x[0]) * (gx[0] - x[0]) + (gx[1] - x[1]) * (gx[1] - x[1]));
+    const double final_res = std::sqrt((gx[0] - x[0]) * (gx[0] - x[0])
+                                       + (gx[1] - x[1]) * (gx[1] - x[1]));
 
-    EXPECT_LE(final_res, 1e-9) << "DIIS must drive the increment below threshold";
+    EXPECT_LE(final_res, 1e-9)
+        << "DIIS must drive the increment below threshold";
     EXPECT_NEAR(x[0], x_star[0], 1e-8);
     EXPECT_NEAR(x[1], x_star[1], 1e-8);
 }

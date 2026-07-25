@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/optimizer.h"
 
 namespace ATV {
 namespace cpu {
@@ -26,10 +26,11 @@ namespace minimizer {
 /// @brief Isotropic cell steepest-descent Optimizer.
 class IsotropicCellRelax : public Optimizer {
   public:
-    double P_target = 0.0; ///< Target pressure [eV/Å³] (0 = vacuum/zero stress).
-    double alpha0 = 0.05;  ///< Relative scale step gain (dimensionless).
+    double P_target =
+        0.0;              ///< Target pressure [eV/Å³] (0 = vacuum/zero stress).
+    double alpha0 = 0.05; ///< Relative scale step gain (dimensionless).
     double max_scale = 0.05; ///< Cap on |s−1| per step (dimensionless).
-    double bulk_mod = 1.0; ///< Soft bulk modulus scale [eV/Å³] for step size.
+    double bulk_mod = 1.0;   ///< Soft bulk modulus scale [eV/Å³] for step size.
 
     /// @brief Construct with zero target pressure and default step gains.
     IsotropicCellRelax() = default;

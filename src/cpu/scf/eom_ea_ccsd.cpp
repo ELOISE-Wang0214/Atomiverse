@@ -32,13 +32,11 @@ namespace {
 
 using T2 = xt::xtensor<double, 4>;
 using T1 = xt::xtensor<double, 2>;
-using R1 = xt::xtensor<double, 1>;  // virtual singles (nv)
-using R2 = xt::xtensor<double, 3>;  // 2p1h (no, nv, nv)
+using R1 = xt::xtensor<double, 1>; // virtual singles (nv)
+using R2 = xt::xtensor<double, 3>; // 2p1h (no, nv, nv)
 
 /// Packed EA vector size: nv + no * C(nv, 2).
-int vector_size_ea(int no, int nv) {
-    return nv + no * (nv * (nv - 1) / 2);
-}
+int vector_size_ea(int no, int nv) { return nv + no * (nv * (nv - 1) / 2); }
 
 void unpack_ea(const std::vector<double>& v, int no, int nv, R1& r1, R2& r2) {
     const std::size_t No = static_cast<std::size_t>(no);
@@ -59,7 +57,8 @@ void unpack_ea(const std::vector<double>& v, int no, int nv, R1& r1, R2& r2) {
 }
 
 std::vector<double> pack_ea(const R1& r1, const R2& r2, int no, int nv) {
-    std::vector<double> v(static_cast<std::size_t>(vector_size_ea(no, nv)), 0.0);
+    std::vector<double> v(static_cast<std::size_t>(vector_size_ea(no, nv)),
+                          0.0);
     for (int a = 0; a < nv; ++a)
         v[static_cast<std::size_t>(a)] = r1(a);
     int k = nv;
@@ -83,7 +82,8 @@ void antisym_r2(R2& r2, int no, int nv) {
 }
 
 /// Right-hand EOM-EA-CCSD σ = H̄ r (Nooijen/Bartlett + PySCF eom_gccsd).
-std::vector<double> matvec_ea(const EomImds& im, const std::vector<double>& vec) {
+std::vector<double> matvec_ea(const EomImds& im,
+                              const std::vector<double>& vec) {
     const int no = im.no;
     const int nv = im.nv;
     R1 r1;
@@ -126,8 +126,8 @@ std::vector<double> matvec_ea(const EomImds& im, const std::vector<double>& vec)
                     for (int l = 0; l < no; ++l)
                         for (int c = 0; c < nv; ++c)
                             for (int d = 0; d < nv; ++d)
-                                t += im.Woovv(k, l, c, d) * r2(l, c, d) *
-                                     im.t2(k, j, a, b);
+                                t += im.Woovv(k, l, c, d) * r2(l, c, d)
+                                     * im.t2(k, j, a, b);
                 s -= 0.5 * t;
                 Hr2(j, a, b) = s;
             }
@@ -203,8 +203,8 @@ EOMEACCSDResult eom_ea_ccsd_energies(const IntegralPack& ints,
             "eom_ea_ccsd: empty EA space (need at least one virtual).");
     if (n_states > dim)
         throw std::invalid_argument(
-            "eom_ea_ccsd: n_states=" + std::to_string(n_states) +
-            " exceeds EOM-EA dimension " + std::to_string(dim) + ".");
+            "eom_ea_ccsd: n_states=" + std::to_string(n_states)
+            + " exceeds EOM-EA dimension " + std::to_string(dim) + ".");
 
     const EomImds im(sol);
 
@@ -237,15 +237,15 @@ EOMEACCSDResult eom_ea_ccsd_energies(const IntegralPack& ints,
         uniq.push_back(w);
     }
     if (static_cast<int>(uniq.size()) < n_states)
-        throw std::runtime_error(
-            "eom_ea_ccsd: found only " + std::to_string(uniq.size()) +
-            " unique real EA roots; requested n_states=" +
-            std::to_string(n_states));
+        throw std::runtime_error("eom_ea_ccsd: found only "
+                                 + std::to_string(uniq.size())
+                                 + " unique real EA roots; requested n_states="
+                                 + std::to_string(n_states));
 
     out.energy_ev.reserve(static_cast<std::size_t>(n_states));
     for (int k = 0; k < n_states; ++k)
-        out.energy_ev.push_back(uniq[static_cast<std::size_t>(k)] *
-                                units::kHartreeInEv);
+        out.energy_ev.push_back(uniq[static_cast<std::size_t>(k)]
+                                * units::kHartreeInEv);
     out.converged = true;
     return out;
 }

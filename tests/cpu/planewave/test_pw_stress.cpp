@@ -61,16 +61,15 @@ TEST(PWStress, AnalyticMatchesFdCheapH) {
     const auto sfd = pw_stress_fd(f, cfg, 2e-3);
     double max_abs = 0.0;
     for (int v = 0; v < 6; ++v) {
-        const double d =
-            std::abs(san[static_cast<std::size_t>(v)]
-                     - sfd[static_cast<std::size_t>(v)]);
+        const double d = std::abs(san[static_cast<std::size_t>(v)]
+                                  - sfd[static_cast<std::size_t>(v)]);
         max_abs = std::max(max_abs, d);
         EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(v)]));
         EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(v)]));
     }
-    EXPECT_LE(max_abs, 0.15) << "an=" << san[0] << "," << san[1] << ","
-                             << san[2] << " fd=" << sfd[0] << "," << sfd[1]
-                             << "," << sfd[2] << " max|Δ|=" << max_abs;
+    EXPECT_LE(max_abs, 0.15)
+        << "an=" << san[0] << "," << san[1] << "," << san[2] << " fd=" << sfd[0]
+        << "," << sfd[1] << "," << sfd[2] << " max|Δ|=" << max_abs;
 }
 
 TEST(PWStress, FdRejectsBadStep) {

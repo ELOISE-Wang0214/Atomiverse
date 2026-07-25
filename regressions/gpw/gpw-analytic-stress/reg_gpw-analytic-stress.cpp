@@ -162,8 +162,9 @@ int main() {
     std::printf("max|σ_diag_an-σ_fd|=%.3e Ha/Bohr3\n", max_diag_err);
 
     if (max_diag_err > kAnFdTol) {
-        std::printf("FAIL: analytic vs FD max diag err %.6e > tol %g Ha/Bohr3\n",
-                    max_diag_err, kAnFdTol);
+        std::printf(
+            "FAIL: analytic vs FD max diag err %.6e > tol %g Ha/Bohr3\n",
+            max_diag_err, kAnFdTol);
         return 1;
     }
 

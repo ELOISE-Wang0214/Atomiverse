@@ -54,15 +54,13 @@ TEST(EwaldDynamicalMatrix, MatchesForceFd) {
                     // D = −∂F_jb/∂R_ia, displacement h Å = h·a2b Bohr.
                     const double fd =
                         -(static_cast<double>(
-                              ep.forces_bohr()[static_cast<std::size_t>(j)]
-                                              [b])
+                              ep.forces_bohr()[static_cast<std::size_t>(j)][b])
                           - static_cast<double>(
-                              em.forces_bohr()[static_cast<std::size_t>(j)]
-                                              [b]))
+                              em.forces_bohr()[static_cast<std::size_t>(j)][b]))
                         / (2.0 * h * kA2B);
-                    const double an = static_cast<double>(
-                        D[static_cast<std::size_t>((3 * i + a) * 6 + 3 * j
-                                                   + b)]);
+                    const double an =
+                        static_cast<double>(D[static_cast<std::size_t>(
+                            (3 * i + a) * 6 + 3 * j + b)]);
                     max_err = std::max(max_err, std::abs(fd - an));
                 }
             }
@@ -79,10 +77,10 @@ TEST(EwaldDynamicalMatrix, AcousticSumRule) {
     const auto D = ewald_dynamical_matrix(pos, charges, box, AccReal(8.0));
     for (int a = 0; a < 3; ++a)
         for (int b = 0; b < 3; ++b) {
-            double s01 = static_cast<double>(D[static_cast<std::size_t>(
-                             (0 + a) * 6 + 0 + b)])
-                         + static_cast<double>(D[static_cast<std::size_t>(
-                             (0 + a) * 6 + 3 + b)]);
+            double s01 = static_cast<double>(
+                             D[static_cast<std::size_t>((0 + a) * 6 + 0 + b)])
+                         + static_cast<double>(
+                             D[static_cast<std::size_t>((0 + a) * 6 + 3 + b)]);
             EXPECT_NEAR(s01, 0.0, 1e-12);
         }
 }
@@ -118,13 +116,12 @@ TEST(SternheimerCg, FreeElectronAnalytic) {
             ig0 = ig;
     ASSERT_NEAR(static_cast<double>(ws.T_G[ig0]), 0.0, 1e-14);
 
-    std::vector<std::complex<AccReal>> occ(
-        static_cast<std::size_t>(ws.n_g), {0, 0});
+    std::vector<std::complex<AccReal>> occ(static_cast<std::size_t>(ws.n_g),
+                                           {0, 0});
     occ[static_cast<std::size_t>(ig0)] = {1, 0};
     const AccReal eps = ws.T_G[ig0];
 
-    std::vector<std::complex<AccReal>> rhs(
-        static_cast<std::size_t>(ws.n_g));
+    std::vector<std::complex<AccReal>> rhs(static_cast<std::size_t>(ws.n_g));
     for (int ig = 0; ig < ws.n_g; ++ig)
         rhs[static_cast<std::size_t>(ig)] = {
             AccReal(1) / (AccReal(1) + ws.T_G[ig]),
@@ -133,21 +130,17 @@ TEST(SternheimerCg, FreeElectronAnalytic) {
     std::vector<std::complex<AccReal>> x(static_cast<std::size_t>(ws.n_g),
                                          {0, 0});
     FFTWBuffer<fftw_complex> work(static_cast<std::size_t>(ws.nr));
-    const int its = sternheimer_cg(ws, occ.data(), 1, eps, rhs.data(),
-                                   x.data(), AccReal(1e-12), 500,
-                                   work.data());
+    const int its = sternheimer_cg(ws, occ.data(), 1, eps, rhs.data(), x.data(),
+                                   AccReal(1e-12), 500, work.data());
     EXPECT_LE(its, 500);
 
     for (int ig = 0; ig < ws.n_g; ++ig) {
         std::complex<AccReal> want(0, 0);
         if (ig != ig0)
-            want = rhs[static_cast<std::size_t>(ig)]
-                   / (ws.T_G[ig] - eps);
-        EXPECT_NEAR(static_cast<double>(
-                        x[static_cast<std::size_t>(ig)].real()),
+            want = rhs[static_cast<std::size_t>(ig)] / (ws.T_G[ig] - eps);
+        EXPECT_NEAR(static_cast<double>(x[static_cast<std::size_t>(ig)].real()),
                     static_cast<double>(want.real()), 1e-8);
-        EXPECT_NEAR(static_cast<double>(
-                        x[static_cast<std::size_t>(ig)].imag()),
+        EXPECT_NEAR(static_cast<double>(x[static_cast<std::size_t>(ig)].imag()),
                     static_cast<double>(want.imag()), 1e-8);
     }
 }

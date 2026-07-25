@@ -21,16 +21,15 @@ TEST(Wham, SyntheticTwoWindowFlatPmf) {
         const double sigma = 1.0 / std::sqrt(k[static_cast<std::size_t>(w)]);
         for (int b = 0; b < n_bins; ++b) {
             const double s = s_min + (b + 0.5) * ds;
-            const double d =
-                (s - centers[static_cast<std::size_t>(w)]) / sigma;
+            const double d = (s - centers[static_cast<std::size_t>(w)]) / sigma;
             const double wgt = std::exp(-0.5 * d * d) * 1000.0;
             hist[static_cast<std::size_t>(w * n_bins + b)] = wgt;
             n_samples[static_cast<std::size_t>(w)] += wgt;
         }
     }
     cpu::compute::Wham wham(/*beta=*/1.0);
-    auto F = wham.free_energy(hist, n_samples, k, centers, s_min, s_max,
-                              n_bins, 2000, 1e-8);
+    auto F = wham.free_energy(hist, n_samples, k, centers, s_min, s_max, n_bins,
+                              2000, 1e-8);
     ASSERT_EQ(static_cast<int>(F.size()), n_bins);
     // Flat-PMF reconstruction is the acceptance gate; self-consistency may
     // sit at machine noise after the f[0] pin on poorly scaled synthetic hist.

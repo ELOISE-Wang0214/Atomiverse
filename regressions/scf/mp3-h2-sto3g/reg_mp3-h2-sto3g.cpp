@@ -70,8 +70,8 @@ int main() {
     ok = ok && std::fabs(mp3.e_corr - want_e_corr) < tol;
     ok = ok && std::fabs(mp3.e_tot - want_e_tot) < tol;
     ok = ok && std::fabs(mp3.e_tot - (e_hf + mp3.e_corr)) < 1e-12;
-    ok = ok &&
-         std::fabs(mp3.e_corr - (mp3.e_corr_mp2 + mp3.e_corr_mp3)) < 1e-12;
+    ok =
+        ok && std::fabs(mp3.e_corr - (mp3.e_corr_mp2 + mp3.e_corr_mp3)) < 1e-12;
     ok = ok && mp3.frozen == 0;
     ok = ok && mp3.e_corr < 0.0;
     // MP3 more negative than MP2 alone on this system.

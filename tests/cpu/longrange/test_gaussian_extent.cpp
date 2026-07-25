@@ -14,8 +14,8 @@ using ATV::longrange::GaussianExtent;
 using ATV::longrange::detail::erfc_inv;
 
 TEST(GaussianExtent, ErfcInvRoundTrip) {
-    for (AccReal y : {1e-12, 1e-9, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1.0,
-                      1.1, 1.5, 1.9}) {
+    for (AccReal y :
+         {1e-12, 1e-9, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1.0, 1.1, 1.5, 1.9}) {
         if (y >= AccReal(2) || y <= AccReal(0))
             continue;
         const AccReal x = erfc_inv(y);
@@ -27,8 +27,7 @@ TEST(GaussianExtent, RextMatchesHandFormula) {
     // Hand values: r_ext = √(2/ζ) · erfc⁻¹(ε).
     const AccReal zeta = AccReal(0.5);
     const AccReal eps = AccReal(1e-9);
-    const AccReal want =
-        std::sqrt(AccReal(2) / zeta) * erfc_inv(eps);
+    const AccReal want = std::sqrt(AccReal(2) / zeta) * erfc_inv(eps);
     GaussianExtent g(zeta, eps);
     EXPECT_NEAR(g.r_ext(), want, 1e-12);
     EXPECT_NEAR(g.zeta(), zeta, 0.0);
@@ -57,8 +56,8 @@ TEST(GaussianExtent, WellSeparatedTruthTable) {
     EXPECT_GT(re, AccReal(0));
 
     // Exactly at contact → NOT well-separated (strict inequality).
-    EXPECT_FALSE(GaussianExtent::well_separated(
-        a, Vec3{0, 0, 0}, b, Vec3{2 * re, 0, 0}));
+    EXPECT_FALSE(GaussianExtent::well_separated(a, Vec3{0, 0, 0}, b,
+                                                Vec3{2 * re, 0, 0}));
 
     // Just inside → near field.
     EXPECT_FALSE(GaussianExtent::well_separated(
@@ -69,6 +68,6 @@ TEST(GaussianExtent, WellSeparatedTruthTable) {
         a, Vec3{0, 0, 0}, b, Vec3{2 * re + AccReal(1e-6), 0, 0}));
 
     // Coincident centres → near.
-    EXPECT_FALSE(GaussianExtent::well_separated(
-        a, Vec3{1, 2, 3}, b, Vec3{1, 2, 3}));
+    EXPECT_FALSE(
+        GaussianExtent::well_separated(a, Vec3{1, 2, 3}, b, Vec3{1, 2, 3}));
 }

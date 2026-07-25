@@ -66,10 +66,11 @@ TEST(AngleCV, GradientFiniteDifference) {
                                          : fm.span(kAtom_z);
             xp[a] += h;
             xm[a] -= h;
-            const double gp = (cv.evaluate(fp, nullptr) - cv.evaluate(fm, nullptr)) /
-                              (2.0 * h);
-            EXPECT_NEAR(g[3 * a + d], gp, 1e-5) << "atom " << a << " dim " << d
-                                                << " th0=" << th0;
+            const double gp =
+                (cv.evaluate(fp, nullptr) - cv.evaluate(fm, nullptr))
+                / (2.0 * h);
+            EXPECT_NEAR(g[3 * a + d], gp, 1e-5)
+                << "atom " << a << " dim " << d << " th0=" << th0;
         }
     }
 }

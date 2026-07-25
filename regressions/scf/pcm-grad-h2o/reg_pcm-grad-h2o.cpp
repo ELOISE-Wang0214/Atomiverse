@@ -100,15 +100,14 @@ int main() {
     double max_err = 0.0;
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d) {
-            const double fd =
-                (solvent_energy(displaced(frame, A, d, +h_ang))
-                 - solvent_energy(displaced(frame, A, d, -h_ang)))
-                / (2.0 * h_bohr);
+            const double fd = (solvent_energy(displaced(frame, A, d, +h_ang))
+                               - solvent_energy(displaced(frame, A, d, -h_ang)))
+                              / (2.0 * h_bohr);
             const double an = grad_ha_bohr(A, d);
             const double err = std::fabs(an - fd);
             max_err = std::max(max_err, err);
-            std::printf("g[%d][%d] analytic=% .10e fd=% .10e |err|=%.2e\n", A, d,
-                        an, fd, err);
+            std::printf("g[%d][%d] analytic=% .10e fd=% .10e |err|=%.2e\n", A,
+                        d, an, fd, err);
         }
 
     // PySCF 2.14.0 pin (REFERENCE.md) — literature context only; not the gate.
@@ -120,8 +119,8 @@ int main() {
     double max_pyscf = 0.0;
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d)
-            max_pyscf =
-                std::max(max_pyscf, std::fabs(grad_ha_bohr(A, d) - pyscf[A][d]));
+            max_pyscf = std::max(max_pyscf,
+                                 std::fabs(grad_ha_bohr(A, d) - pyscf[A][d]));
     std::printf("max_vs_pyscf_pin=%.3e (informational; SWIG vs hard bury)\n",
                 max_pyscf);
     std::printf("max_elementwise_err=%.3e tol=%.0e\n", max_err, kTol);

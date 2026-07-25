@@ -48,7 +48,7 @@ int main() {
 
     // PySCF 2.14.0 qmmm.mm_charge analytic gradient on QM atoms [Ha/Bohr].
     const double want[3][3] = {
-        {0.0, 0.0, -6.3053441384e-02},           // O
+        {0.0, 0.0, -6.3053441384e-02},              // O
         {0.0, -1.7882928801e-02, 3.1195488026e-02}, // H
         {0.0, 1.7882928801e-02, 3.1195488026e-02},  // H
     };
@@ -60,8 +60,8 @@ int main() {
             const double g = grad_ha_bohr(A, d);
             const double err = std::fabs(g - want[A][d]);
             max_err = std::max(max_err, err);
-            std::printf("g[%d][%d] got=% .10e want=% .10e |err|=%.2e\n", A, d, g,
-                        want[A][d], err);
+            std::printf("g[%d][%d] got=% .10e want=% .10e |err|=%.2e\n", A, d,
+                        g, want[A][d], err);
         }
     std::printf("max_elementwise_err=%.3e tol=%.0e\n", max_err, tol);
 

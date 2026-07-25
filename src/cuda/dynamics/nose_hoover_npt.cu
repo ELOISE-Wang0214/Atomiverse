@@ -3,11 +3,11 @@
 ///        sibling cpu::md::NoseHooverNPT line for line — see that file
 ///        for the canonical algorithm documentation block.
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/dynamics/nose_hoover_npt.cuh"
-#include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
@@ -70,7 +70,8 @@ __global__ void kick_v_k(real_t* __restrict__ vx, real_t* __restrict__ vy,
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
-    work_t dtfm = half_dt * ATV::units::force_to_accel / static_cast<work_t>(mass[i]);
+    work_t dtfm =
+        half_dt * ATV::units::force_to_accel / static_cast<work_t>(mass[i]);
     vx[i] = static_cast<real_t>(static_cast<work_t>(vx[i])
                                 + dtfm * static_cast<work_t>(fx[i]));
     vy[i] = static_cast<real_t>(static_cast<work_t>(vy[i])
@@ -209,9 +210,8 @@ NoseHooverNPT::NoseHooverNPT(double T_target, double tau_T, double P_target,
                              double tau_P, double dt, double drag, int mtchain,
                              int mpchain, std::array<bool, 3> couple_axis,
                              double T_stop)
-    : T_target_(T_target),
-      T_stop_(T_stop < 0 ? T_target : T_stop), tau_T_(tau_T),
-      P_target_(P_target), tau_P_(tau_P), dt_(dt), drag_(drag),
+    : T_target_(T_target), T_stop_(T_stop < 0 ? T_target : T_stop),
+      tau_T_(tau_T), P_target_(P_target), tau_P_(tau_P), dt_(dt), drag_(drag),
       mtchain_(mtchain), mpchain_(mpchain), couple_axis_(couple_axis),
       T_live_(T_target) {
     pdim_ = 0;
@@ -526,9 +526,10 @@ void NoseHooverNPT::update_eps_dot_(const LaunchContext& ctx, double half_dt) {
     // ke_axes + ke_total + stress[0..2] + energy — via defer_stream +
     // event-sync (no main_stream drain).
     refresh_npt_scalars_(ctx);
-    std::array<double, 3> ke_axis = {0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[1],
-                                     0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[2],
-                                     0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[3]};
+    std::array<double, 3> ke_axis = {
+        0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[1],
+        0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[2],
+        0.5 * ATV::units::mass_v2_to_energy * h_npt_scratch_[3]};
     double stress_diag[3] = {h_npt_scratch_[4], h_npt_scratch_[5],
                              h_npt_scratch_[6]};
 

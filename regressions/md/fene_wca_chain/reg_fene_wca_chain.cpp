@@ -14,9 +14,9 @@ using namespace ATV;
 
 int main() {
     constexpr int N = 8;
-    const double K = 30.0;   // eV/Å² (order-of-magnitude textbook)
-    const double R0 = 1.5;   // Å
-    const double eps = 1.0;  // eV
+    const double K = 30.0;  // eV/Å² (order-of-magnitude textbook)
+    const double R0 = 1.5;  // Å
+    const double eps = 1.0; // eV
     const double sigma = 1.0;
     const double bond0 = 0.96; // < 2^{1/6}σ and < R0
 

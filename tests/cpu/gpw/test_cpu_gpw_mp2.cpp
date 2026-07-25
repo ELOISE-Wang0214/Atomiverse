@@ -64,10 +64,10 @@ TEST(GpwMp2, ClosedShellSumMatchesSpinOrbitalSum) {
             for (int j = 0; j < no; ++j)
                 for (int b = 0; b < nv; ++b) {
                     s = s * 1664525u + 1013904223u;
-                    const double x =
-                        0.05 * (static_cast<double>(s >> 8) /
-                                    static_cast<double>(1u << 24) -
-                                0.5);
+                    const double x = 0.05
+                                     * (static_cast<double>(s >> 8)
+                                            / static_cast<double>(1u << 24)
+                                        - 0.5);
                     v[idx(i, a, j, b)] = x;
                     v[idx(j, b, i, a)] = x; // enforce (ia|jb) = (jb|ia)
                 }
@@ -88,17 +88,16 @@ TEST(GpwMp2, ClosedShellSumMatchesSpinOrbitalSum) {
                     const int j = J / 2, sj = J % 2;
                     const int a = A / 2, sa = A % 2;
                     const int b = B / 2, sb = B % 2;
-                    const double dir = (si == sa && sj == sb)
-                                           ? v[idx(i, a, j, b)]
-                                           : 0.0;
-                    const double exc = (si == sb && sj == sa)
-                                           ? v[idx(i, b, j, a)]
-                                           : 0.0;
+                    const double dir =
+                        (si == sa && sj == sb) ? v[idx(i, a, j, b)] : 0.0;
+                    const double exc =
+                        (si == sb && sj == sa) ? v[idx(i, b, j, a)] : 0.0;
                     const double anti = dir - exc;
-                    const double denom = eps_occ[static_cast<std::size_t>(i)] +
-                                         eps_occ[static_cast<std::size_t>(j)] -
-                                         eps_virt[static_cast<std::size_t>(a)] -
-                                         eps_virt[static_cast<std::size_t>(b)];
+                    const double denom =
+                        eps_occ[static_cast<std::size_t>(i)]
+                        + eps_occ[static_cast<std::size_t>(j)]
+                        - eps_virt[static_cast<std::size_t>(a)]
+                        - eps_virt[static_cast<std::size_t>(b)];
                     e_so += 0.25 * anti * anti / denom;
                 }
     EXPECT_NEAR(e_closed, e_so, 1e-12);
@@ -135,8 +134,9 @@ TEST(GpwMp2, MoOnGridMatchesImageSummedContraction) {
                         const double dx = r[0] - p.center[0] - tx * cell[0];
                         const double dy = r[1] - p.center[1] - ty * cell[1];
                         const double dz = r[2] - p.center[2] - tz * cell[2];
-                        v += p.coeff * std::exp(-p.alpha * (dx * dx + dy * dy +
-                                                            dz * dz));
+                        v += p.coeff
+                             * std::exp(-p.alpha
+                                        * (dx * dx + dy * dy + dz * dz));
                     }
         return v;
     };
@@ -148,8 +148,8 @@ TEST(GpwMp2, MoOnGridMatchesImageSummedContraction) {
         const double c0 = chi(basis[0], r), c1 = chi(basis[1], r);
         for (int p = 0; p < 2; ++p) {
             const double ref = c0 * C(0, p) + c1 * C(1, p);
-            const double err = std::abs(
-                psi[static_cast<std::size_t>(p) * npts + g] - ref);
+            const double err =
+                std::abs(psi[static_cast<std::size_t>(p) * npts + g] - ref);
             max_err = std::max(max_err, err);
         }
     }
@@ -179,9 +179,8 @@ TEST(GpwMp2, MoEriMatchesPoissonHartreeEnergy) {
 
     std::vector<double> rho(static_cast<std::size_t>(npts));
     for (long g = 0; g < npts; ++g)
-        rho[static_cast<std::size_t>(g)] =
-            psi_o[static_cast<std::size_t>(g)] *
-            psi_v[static_cast<std::size_t>(g)];
+        rho[static_cast<std::size_t>(g)] = psi_o[static_cast<std::size_t>(g)]
+                                           * psi_v[static_cast<std::size_t>(g)];
     const auto pr = solve_poisson(grid, rho);
     EXPECT_NEAR(v[0], 2.0 * pr.e_hartree, 1e-10);
     EXPECT_GT(v[0], 0.0); // a self-repulsion integral is positive

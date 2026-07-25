@@ -1,14 +1,14 @@
 /// @file tests/cpu/minimize/test_fire.cpp
 /// @brief Unit tests for cpu::minimizer::FIRE (single-function / method cases).
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimize/fire.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/core/frame_schema.h"
-#include "atomiverse/core/stage.h"
 
 #include <cmath>
 #include <gtest/gtest.h>

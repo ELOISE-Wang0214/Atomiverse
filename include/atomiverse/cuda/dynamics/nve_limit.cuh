@@ -8,11 +8,11 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 #include <cuda_runtime.h>
 

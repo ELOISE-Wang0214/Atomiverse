@@ -54,7 +54,7 @@ TEST(ChargingWork, ParallelPlatePinMinusSumPsiQ) {
     f.meta.get(kEnergyChargingWork) = 0.0;
 
     cpu::electrodes::ChargingWork work(/*types=*/{1, 2},
-                                      /*psi_V=*/{0.5, -0.5});
+                                       /*psi_V=*/{0.5, -0.5});
     work.build({ctx, f});
     work.launch({ctx, f, 0, 0});
 

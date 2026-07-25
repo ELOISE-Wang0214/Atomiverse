@@ -13,7 +13,8 @@ namespace ATV {
 namespace cpu {
 namespace path {
 
-Remd::Remd(std::vector<double> temperatures_, double dt_, int steps_per_exchange_, std::uint64_t seed_)
+Remd::Remd(std::vector<double> temperatures_, double dt_,
+           int steps_per_exchange_, std::uint64_t seed_)
     : temperatures(std::move(temperatures_)), dt(dt_),
       steps_per_exchange(steps_per_exchange_), seed(seed_) {
     if (temperatures.size() < 2)
@@ -50,11 +51,9 @@ void Remd::ensure_built_(cpu::Frame& frame) {
         auto md = std::make_unique<cpu::md::MD>();
         md->set_integrator(cpu::md::VelocityVerlet{dt});
         // Independent InitVelocity stream per replica (seed ^ (i+1)).
-        md->add(cpu::md::InitVelocity{
-            temperatures[static_cast<std::size_t>(i)],
-            static_cast<unsigned>(seed ^ (i + 1u))});
-        builder_(*md, temperatures[static_cast<std::size_t>(i)],
-                 builder_user_);
+        md->add(cpu::md::InitVelocity{temperatures[static_cast<std::size_t>(i)],
+                                      static_cast<unsigned>(seed ^ (i + 1u))});
+        builder_(*md, temperatures[static_cast<std::size_t>(i)], builder_user_);
         md->enable_timing(false);
         md->build();
         programs_.push_back(std::move(md));

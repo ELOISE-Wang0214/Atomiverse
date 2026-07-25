@@ -121,10 +121,9 @@ void KSpacePME::ensure_grid(const cpu::Frame& frame, bool initial_build) {
 
     // Influence depends on inv_cell (and α, mesh). Rebuild whenever the cell
     // or mesh changes — not every MD step.
-    longrange::pme_build_influence_tables(K_, bsp_mod_[0].data(),
-                                          bsp_mod_[1].data(),
-                                          bsp_mod_[2].data(), box.inv_cell(),
-                                          alpha_, influence_);
+    longrange::pme_build_influence_tables(
+        K_, bsp_mod_[0].data(), bsp_mod_[1].data(), bsp_mod_[2].data(),
+        box.inv_cell(), alpha_, influence_);
 
     box_identity_ = &box;
     cell_revision_ = box.revision();
@@ -174,7 +173,8 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     const double vol = f.simbox.volume();
 
     // Zero charge grid (complex). memset is faster than per-element fill.
-    std::memset(grid_.data(), 0, static_cast<std::size_t>(ntot) * sizeof(grid_[0]));
+    std::memset(grid_.data(), 0,
+                static_cast<std::size_t>(ntot) * sizeof(grid_[0]));
 
     // ── Spread owned charges onto the grid ─────────────────────────────
     longrange::pme_fill_atom_splines(x, y, z, n_local, ic, K_, order_,
@@ -206,15 +206,14 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     }
 #ifdef ATV_HAS_MPI
     if (mpi)
-        MPI_Bcast(reinterpret_cast<double*>(grid_.data()), 2 * ntot,
-                  MPI_DOUBLE, 0, dd->cart_comm);
+        MPI_Bcast(reinterpret_cast<double*>(grid_.data()), 2 * ntot, MPI_DOUBLE,
+                  0, dd->cart_comm);
 #endif
 
     // ── Interpolate reciprocal forces onto owned atoms ─────────────────
-    longrange::pme_interpolate_forces(q, n_local, order_, K_, ic, vol,
-                                      base_.data(), theta_.data(),
-                                      dtheta_.data(), grid_.data(), sp_fx,
-                                      sp_fy, sp_fz);
+    longrange::pme_interpolate_forces(
+        q, n_local, order_, K_, ic, vol, base_.data(), theta_.data(),
+        dtheta_.data(), grid_.data(), sp_fx, sp_fy, sp_fz);
 
     // ── Self energy (per-rank owned) + net-charge (rank 0) ─────────────
     double qsq_local = 0, q_local = 0;

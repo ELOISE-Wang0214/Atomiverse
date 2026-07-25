@@ -70,7 +70,7 @@ struct XCGridBasis {
     xt::xtensor<double, 2> dPhi_x; ///< d/dx Phi[G × N] (GGA only).
     xt::xtensor<double, 2> dPhi_y; ///< d/dy Phi[G × N] (GGA only).
     xt::xtensor<double, 2> dPhi_z; ///< d/dz Phi[G × N] (GGA only).
-    bool gga = false;   ///< true → gradient blocks are populated.
+    bool gga = false;              ///< true → gradient blocks are populated.
     bool built = false; ///< true → build() has run for the current geometry.
 
     /// @brief Evaluate the AO value (and, for GGA, gradient) matrices on the
@@ -207,10 +207,11 @@ grid_contract_tn(const xt::xtensor<double, 2>& A,
 /// @param P_beta  Beta density matrix [n_basis × n_basis].
 /// @param xc_type XC functional type (LSDA or PBE).
 /// @return XCGridResult with Vxc matrices, E_xc, and integration diagnostics.
-inline XCGridResult
-evaluate_xc_batched(const XCGridBasis& aog, const MolecularGrid& grid,
-                    const xt::xtensor<double, 2>& P_alpha,
-                    const xt::xtensor<double, 2>& P_beta, XCType xc_type) {
+inline XCGridResult evaluate_xc_batched(const XCGridBasis& aog,
+                                        const MolecularGrid& grid,
+                                        const xt::xtensor<double, 2>& P_alpha,
+                                        const xt::xtensor<double, 2>& P_beta,
+                                        XCType xc_type) {
     const int G = static_cast<int>(grid.points.size());
     const int N = static_cast<int>(aog.Phi.shape()[1]);
     // GGA path is needed for PBE and for the B3LYP / PBE0 hybrids, whose

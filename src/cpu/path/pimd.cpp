@@ -101,8 +101,7 @@ double Pimd::compute_k_spring_(double temperature_K, int n_beads,
     // k = m_eff * P / (β² ℏ²) with m_eff = mass_v2_to_energy * m [eV·fs²/Å²]
     const double m_eff = units::mass_v2_to_energy * mass_amu;
     const double beta_hbar = beta * hbar;
-    return m_eff * static_cast<double>(n_beads)
-           / (beta_hbar * beta_hbar);
+    return m_eff * static_cast<double>(n_beads) / (beta_hbar * beta_hbar);
 }
 
 Pimd::Pimd(int n_beads_, double temperature_, double dt_, int steps_per_block_,
@@ -152,8 +151,8 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
     springs_.reserve(static_cast<std::size_t>(P));
 
     for (int s = 0; s < P; ++s) {
-        auto spring = std::make_unique<RingPolymerSpring>(band_.get(), s,
-                                                          k_spring_);
+        auto spring =
+            std::make_unique<RingPolymerSpring>(band_.get(), s, k_spring_);
         springs_.push_back(std::move(spring));
     }
     for (int s = 0; s < P; ++s) {
@@ -162,7 +161,8 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
         if (k_external > 0.0)
             md->on(ATV::md::Phase::force).add(HarmonicTrap{k_external});
         // Spring after optional trap / user forces (borrow springs_[s]).
-        md->on(ATV::md::Phase::force).add_ref(*springs_[static_cast<std::size_t>(s)]);
+        md->on(ATV::md::Phase::force)
+            .add_ref(*springs_[static_cast<std::size_t>(s)]);
         if (builder_)
             builder_(*md, s, builder_user_);
         md->enable_timing(false);
@@ -171,7 +171,7 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
         // InitVelocity always subtracts COM velocity; for nlocal==1 that
         // zeros v entirely — seed without COM removal in that case.
         seed_bead_velocity_(band_->frame(s), temperature,
-                           static_cast<unsigned>(seed ^ (s + 1u)));
+                            static_cast<unsigned>(seed ^ (s + 1u)));
         programs_.push_back(std::move(md));
     }
     built_ = true;
@@ -180,8 +180,8 @@ void Pimd::ensure_built_(cpu::Frame& frame) {
 void Pimd::propagate_() {
     const int P = band_->size();
     for (int s = 0; s < P; ++s)
-        programs_[static_cast<std::size_t>(s)]->run(
-            band_->frame(s), steps_per_block);
+        programs_[static_cast<std::size_t>(s)]->run(band_->frame(s),
+                                                    steps_per_block);
 }
 
 void Pimd::collapse_centroid_(cpu::Frame& out) {
@@ -229,8 +229,7 @@ void Pimd::collapse_centroid_(cpu::Frame& out) {
             ++count;
         }
     }
-    mean_spread_ =
-        (count > 0) ? acc / static_cast<double>(count) : 0.0;
+    mean_spread_ = (count > 0) ? acc / static_cast<double>(count) : 0.0;
     // R_g² = (1/P) Σ_b |r_b − r_c|² for the (single) free particle case n=1;
     // for multi-atom hosts average over atoms as well.
     rg2_ = mean_spread_;

@@ -14,13 +14,13 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 
+#include "atomiverse/core/role.h"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/minimize/minimize.cuh"
 #include "atomiverse/cuda/minimize/sd.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/record/thermo.cuh"
-#include "atomiverse/core/role.h"
 
 using namespace ATV;
 

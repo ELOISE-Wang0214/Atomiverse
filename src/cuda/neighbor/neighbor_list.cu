@@ -262,8 +262,8 @@ void NeighborList::build(const BuildContext& ctx) {
     if (cub_bytes.sort_bytes > 0)
         s.buf.sort_temp.resize(cub_bytes.sort_bytes);
     {
-        std::size_t scan_max = std::max(cub_bytes.scan_bytes_clusters,
-                                        cub_bytes.scan_bytes_atoms);
+        std::size_t scan_max =
+            std::max(cub_bytes.scan_bytes_clusters, cub_bytes.scan_bytes_atoms);
         if (scan_max > 0) {
             s.buf.scan_temp.resize(scan_max);
             s.buf.prefix_temp.resize(scan_max);
@@ -505,8 +505,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
                                       s.periodic, s.buf.morton_codes.data(),
                                       s.buf.atom_indices.data(), stream);
         launch_radix_sort(s.buf.morton_codes.data(), s.buf.morton_sorted.data(),
-                          s.buf.atom_indices.data(), s.buf.indices_sorted.data(),
-                          n, s.buf.sort_temp, stream);
+                          s.buf.atom_indices.data(),
+                          s.buf.indices_sorted.data(), n, s.buf.sort_temp,
+                          stream);
         launch_scatter_and_aabb<work_t>(
             s.buf.indices_sorted.data(), frame.atoms.x, frame.atoms.y,
             frame.atoms.z, n, nc, s.buf.cluster_x.data(),
@@ -523,8 +524,8 @@ void NeighborList::launch(const LaunchContext& ctx) {
             s.buf.cluster_cell_idx.data(), stream);
         launch_build_grid_csr(s.buf.cluster_cell_idx.data(), nc, ncells,
                               s.buf.cell_start.data(),
-                              s.buf.cell_clusters.data(), s.buf.histogram.data(),
-                              s.buf.scan_temp, stream);
+                              s.buf.cell_clusters.data(),
+                              s.buf.histogram.data(), s.buf.scan_temp, stream);
         launch_count_cluster_pairs<work_t>(
             s.buf.cell_start.data(), s.buf.cell_clusters.data(),
             s.buf.cluster_cell_idx.data(), s.dims_x, s.dims_y, s.dims_z,
@@ -534,8 +535,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
             s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
             s.buf.aabb_max_z.data(), nc, s.periodic, s.cut_skin_sq,
             ctx.runtime.host_box, s.buf.pair_counts.data(), stream);
-        launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr_upper.data(),
-                             nc, s.buf.prefix_temp, stream);
+        launch_exclusive_sum(s.buf.pair_counts.data(),
+                             s.buf.row_ptr_upper.data(), nc, s.buf.prefix_temp,
+                             stream);
         launch_write_row_ptr_sentinel(s.buf.row_ptr_upper.data(),
                                       s.buf.pair_counts.data(), nc, stream);
         int total_cluster_pairs = 0;
@@ -771,8 +773,8 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
         s.buf.col_idx.data(), s.buf.pair_counts.data(), stream);
     launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr.data(), nc,
                          s.buf.prefix_temp, stream);
-    launch_write_row_ptr_sentinel(s.buf.row_ptr.data(), s.buf.pair_counts.data(),
-                                  nc, stream);
+    launch_write_row_ptr_sentinel(s.buf.row_ptr.data(),
+                                  s.buf.pair_counts.data(), nc, stream);
     launch_compact_pairs(s.buf.col_idx.data(), s.buf.row_ptr_upper.data(),
                          s.buf.row_ptr.data(), s.buf.pair_counts.data(), nc,
                          stream);

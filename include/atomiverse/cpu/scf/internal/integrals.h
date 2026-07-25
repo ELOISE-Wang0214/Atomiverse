@@ -38,7 +38,7 @@ struct IntegralPack {
     xt::xtensor<double, 2>
         V; ///< Nuclear attraction matrix [n_basis x n_basis].
     xt::xtensor<double, 2>
-        Hcore;                  ///< Core Hamiltonian T + V [n_basis x n_basis].
+        Hcore; ///< Core Hamiltonian T + V [n_basis x n_basis].
     /// @brief Spin-free nuclear pVp matrix W_μν = ⟨∇μ|V|∇ν⟩ [Hartree/Bohr²]
     ///        (PySCF `int1e_pnucp` convention). Empty unless the pack was
     ///        constructed with `compute_pvp=true` (x2c path).
@@ -67,8 +67,8 @@ struct IntegralPack {
     [[nodiscard]] int n_ao_cart() const {
         return spherical() ? n_basis_cart : n_basis;
     }
-    int n_electrons = 0;        ///< Total number of electrons (valence only
-                                ///< for ECP atoms: core electrons removed).
+    int n_electrons = 0; ///< Total number of electrons (valence only
+                         ///< for ECP atoms: core electrons removed).
 
     /// @brief ECP family name in effect ("" = all-electron pack).
     std::string ecp;
@@ -224,8 +224,8 @@ struct IntegralPack {
     /// @param shells Resolved shell list (Cartesian AO order).
     /// @param atoms  Atoms supplying nuclear charges and positions [Bohr].
     /// @return (n_basis × n_basis) symmetric matrix [Hartree / Bohr²].
-    [[nodiscard]] static xt::xtensor<double, 2>
-    pvp(const ShellList& shells, const AtomList& atoms);
+    [[nodiscard]] static xt::xtensor<double, 2> pvp(const ShellList& shells,
+                                                    const AtomList& atoms);
 
     /// @brief Dense two-electron repulsion tensor ERI(i,j,k,l) = (ij|kl)
     ///        [Hartree], chemist notation.

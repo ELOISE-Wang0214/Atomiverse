@@ -20,13 +20,13 @@ namespace cpu {
 /// Frame `kAtom_type` values are used as-is (0-based). Symmetric table: (i,j)
 /// and (j,i) share the same parameters.
 struct BornTypeCoeff {
-    int type_i;    ///< first atom type (frame `kAtom_type`)
-    int type_j;    ///< second atom type
-    double A;      ///< Born–Mayer prefactor [eV]
-    double rho;    ///< Softness length [Å] (> 0)
-    double sigma;  ///< Ionic-pair radius parameter [Å]
-    double C;      ///< Dispersion coefficient [eV·Å⁶]
-    double D;      ///< \(r^{-8}\) coefficient [eV·Å⁸]
+    int type_i;   ///< first atom type (frame `kAtom_type`)
+    int type_j;   ///< second atom type
+    double A;     ///< Born–Mayer prefactor [eV]
+    double rho;   ///< Softness length [Å] (> 0)
+    double sigma; ///< Ionic-pair radius parameter [Å]
+    double C;     ///< Dispersion coefficient [eV·Å⁶]
+    double D;     ///< \(r^{-8}\) coefficient [eV·Å⁸]
 };
 
 /// @brief Born–Mayer–Huggins pair potential (shifted at cutoff).

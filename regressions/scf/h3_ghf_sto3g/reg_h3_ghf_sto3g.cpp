@@ -117,8 +117,7 @@ int main() {
         }();
         std::printf("H3: E_GHF = %.12f Ha (PySCF %.12f, dE = %.3e), "
                     "||P_ab|| = %.7f\n",
-                    ghf.energy(), pin_ghf_h3, ghf.energy() - pin_ghf_h3,
-                    pab);
+                    ghf.energy(), pin_ghf_h3, ghf.energy() - pin_ghf_h3, pab);
         ok = ok && ghf.converged();
         ok = ok && std::fabs(ghf.energy() - pin_ghf_h3) <= 1e-8;
         ok = ok && (ghf.energy() <= pin_uhf_bs_h3 - 1e-6);

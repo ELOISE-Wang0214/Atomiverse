@@ -58,11 +58,10 @@ int main() {
     }
     f.simbox = cpu::Box::cubic(40.0);
 
-    cpu::PairBorn born(
-        {{0, 0, A_NaNa, rho, sig_NaNa, C_NaNa, D_NaNa},
-         {1, 1, A_ClCl, rho, sig_ClCl, C_ClCl, D_ClCl},
-         {0, 1, A_NaCl, rho, sig_NaCl, C_NaCl, D_NaCl}},
-        rc);
+    cpu::PairBorn born({{0, 0, A_NaNa, rho, sig_NaNa, C_NaNa, D_NaNa},
+                        {1, 1, A_ClCl, rho, sig_ClCl, C_ClCl, D_ClCl},
+                        {0, 1, A_NaCl, rho, sig_NaCl, C_NaCl, D_NaCl}},
+                       rc);
 
     cpu::Evaluate eval;
     eval.add_potential(std::move(born));
@@ -100,14 +99,14 @@ int main() {
         ok = false;
     }
     // Transverse / z components zero by symmetry.
-    if (std::fabs(f.span(kAtom_fz)[0]) > tol_F ||
-        std::fabs(f.span(kAtom_fz)[1]) > tol_F) {
+    if (std::fabs(f.span(kAtom_fz)[0]) > tol_F
+        || std::fabs(f.span(kAtom_fz)[1]) > tol_F) {
         std::printf("FAIL: non-zero fz on atom 0 or 1\n");
         ok = false;
     }
     // Opposite corner Na (atom 2) should mirror atom 0.
-    if (std::fabs(f.span(kAtom_fx)[2] + fx0) > tol_F ||
-        std::fabs(f.span(kAtom_fy)[2] + fy0) > tol_F) {
+    if (std::fabs(f.span(kAtom_fx)[2] + fx0) > tol_F
+        || std::fabs(f.span(kAtom_fy)[2] + fy0) > tol_F) {
         std::printf("FAIL: atom 2 force not opposite atom 0\n");
         ok = false;
     }

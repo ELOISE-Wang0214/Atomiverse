@@ -142,9 +142,8 @@ static void accumulate_common_gradient(xt::xtensor<double, 2>& grad,
 
 static void accumulate_xc_gradient(
     xt::xtensor<double, 2>& grad_out, const IntegralPack& integrals,
-    const SlaterDeterminant& det, XCType xc_type,
-    GridLevel grid_level, int n_radial, int n_angular,
-    const std::vector<int>& shell_to_atom,
+    const SlaterDeterminant& det, XCType xc_type, GridLevel grid_level,
+    int n_radial, int n_angular, const std::vector<int>& shell_to_atom,
     const std::vector<std::vector<int>>& atom_shells, int natm, int n) {
     // GGA semi-local XC gradient route. True for PBE and the B3LYP / PBE0
     // global hybrids — all carry a gradient-dependent (vsigma) semi-local
@@ -507,11 +506,10 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // rohf.make_rdm1e on the KS spin Fock pair.
     const char* method_label = is_ks ? "KS" : "HF";
     const char* spin_label =
-        generalized
-            ? "generalized"
-            : (spin_ == SpinType::RestrictedOpen
-                   ? "restricted_open"
-                   : (restricted ? "restricted" : "unrestricted"));
+        generalized ? "generalized"
+                    : (spin_ == SpinType::RestrictedOpen
+                           ? "restricted_open"
+                           : (restricted ? "restricted" : "unrestricted"));
 
     ATV_INFO("[gradient] start method={} spin={} natm={} basis={}",
              method_label, spin_label, natm, n);
@@ -569,8 +567,8 @@ GradientResult ScfGradient::compute(const Frame& frame,
         hb.prepare(integrals, /*is_hf=*/!is_ks, grid_level_, n_radial_,
                    n_angular_, /*fixed_grid=*/nullptr);
         const FockResult fock =
-            hb.step(integrals, /*restricted=*/false, /*is_hf=*/!is_ks,
-                    xc_type_, /*hybrid_alpha_override=*/-1.0, Pa, Pb);
+            hb.step(integrals, /*restricted=*/false, /*is_hf=*/!is_ks, xc_type_,
+                    /*hybrid_alpha_override=*/-1.0, Pa, Pb);
         // Occupied-MO projector O = Σ_{i<nocc} c_i c_iᵀ (C_a is the shared
         // RO MO set; the first n_alpha columns are occupied-α, the first
         // n_beta are doubly-occupied).
@@ -661,7 +659,8 @@ GradientResult ScfGradient::compute(const Frame& frame,
                     / (2.0 * h);
                 grad(A, d) += xt::sum(P * dU)();
             }
-        ATV_INFO("[gradient] ecp semi-numerical dU/dR term added (h={:.0e})", h);
+        ATV_INFO("[gradient] ecp semi-numerical dU/dR term added (h={:.0e})",
+                 h);
     }
 
     // ── Point-charge embedding (QM/MM) gradient ──────────────────────────
@@ -768,9 +767,9 @@ GradientResult ScfGradient::compute(const Frame& frame,
                     Vp = xt::linalg::dot(ct, xt::linalg::dot(Vp, c2s));
                     Vm = xt::linalg::dot(ct, xt::linalg::dot(Vm, c2s));
                 }
-                const double d_enuc = (fp.nuclear_energy(atoms_p)
-                                       - fm.nuclear_energy(atoms_m))
-                                      / (2.0 * h);
+                const double d_enuc =
+                    (fp.nuclear_energy(atoms_p) - fm.nuclear_energy(atoms_m))
+                    / (2.0 * h);
                 grad(A, d) += xt::sum(P * (Vp - Vm))() / (2.0 * h) + d_enuc;
             }
         }
@@ -798,7 +797,7 @@ GradientResult ScfGradient::compute(const Frame& frame,
         const SolventModel model = integrals.solvent_model;
         constexpr int kLeb = 302;
         const auto delta_g_at = [&](std::vector<native::Atom> atoms,
-                                   std::vector<native::Shell> shells) {
+                                    std::vector<native::Shell> shells) {
             internal::Pcm pcm(std::move(atoms), eps, scale, x, kLeb, model);
             if (sph)
                 pcm.prepare(shells, c2s);
@@ -807,9 +806,12 @@ GradientResult ScfGradient::compute(const Frame& frame,
             return pcm.update(P).delta_g_el;
         };
         for (int A = 0; A < natm; ++A) {
-            const double ax = integrals.atoms[static_cast<std::size_t>(A)].pos[0];
-            const double ay = integrals.atoms[static_cast<std::size_t>(A)].pos[1];
-            const double az = integrals.atoms[static_cast<std::size_t>(A)].pos[2];
+            const double ax =
+                integrals.atoms[static_cast<std::size_t>(A)].pos[0];
+            const double ay =
+                integrals.atoms[static_cast<std::size_t>(A)].pos[1];
+            const double az =
+                integrals.atoms[static_cast<std::size_t>(A)].pos[2];
             const auto on_A = [&](const double* c) {
                 return c[0] == ax && c[1] == ay && c[2] == az;
             };
@@ -867,9 +869,9 @@ GradientResult ScfGradient::compute(const Frame& frame,
             }
         }
         xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
-        accumulate_xc_gradient(grad_xc, integrals, det, xc_type_,
-                               grid_level_, n_radial_, n_angular_,
-                               shell_to_atom, atom_shells, natm, n);
+        accumulate_xc_gradient(grad_xc, integrals, det, xc_type_, grid_level_,
+                               n_radial_, n_angular_, shell_to_atom,
+                               atom_shells, natm, n);
 
         // Optional debug: enforce translational invariance of the XC
         // gradient by projecting out the net (sum-over-atoms) component.

@@ -36,7 +36,7 @@ TEST(Pimd, RejectsSingleBead) {
 }
 
 TEST(Pimd, SpringConstantPositive) {
-        cpu::path::Pimd pimd(4, 300.0, 0.5, 10, 1, 0.0);
+    cpu::path::Pimd pimd(4, 300.0, 0.5, 10, 1, 0.0);
     auto f = one_particle(1.0);
     pimd.run(f, 1);
     EXPECT_GT(pimd.spring_constant(), 0.0);
@@ -68,7 +68,7 @@ TEST(Pimd, HarmonicTrapRunsFinite) {
 }
 
 TEST(Pimd, BeadSpreadGrowsFromIdenticalStart) {
-        cpu::path::Pimd pimd(8, 300.0, 0.2, 10, 99, 0.0);
+    cpu::path::Pimd pimd(8, 300.0, 0.2, 10, 99, 0.0);
     auto f = one_particle(1.0);
     pimd.run(f, 5);
     // Thermal velocities + springs → finite polymer size.

@@ -77,10 +77,9 @@ TEST(LambdaTI, DUdLambdaMatchesFD) {
     soft.destroy({ctx, f});
 
     const double h = 1e-6;
-    const double fd =
-        (energy_at(0.5 + h, dimer(3.0), pairs) -
-         energy_at(0.5 - h, dimer(3.0), pairs)) /
-        (2.0 * h);
+    const double fd = (energy_at(0.5 + h, dimer(3.0), pairs)
+                       - energy_at(0.5 - h, dimer(3.0), pairs))
+                      / (2.0 * h);
     EXPECT_NEAR(dU, fd, 1e-6 * std::max(1.0, std::fabs(fd)));
 }
 

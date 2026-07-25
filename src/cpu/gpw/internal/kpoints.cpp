@@ -13,7 +13,7 @@
 #include <xtensor/generators/xbuilder.hpp>
 
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h" // Prim, gth_projector_overlap
-#include "atomiverse/cpu/gpw/internal/one_electron.h"  // prim_overlap, prim_kinetic
+#include "atomiverse/cpu/gpw/internal/one_electron.h" // prim_overlap, prim_kinetic
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -351,12 +351,12 @@ void add_nonlocal_kb_k(std::vector<CplxMatrix>& V_k,
                                 * ph.ax[1][static_cast<std::size_t>(ik)]
                                        [static_cast<std::size_t>(ty + mimg[1])]
                                 * ph.ax[2][static_cast<std::size_t>(ik)]
-                                       [static_cast<std::size_t>(tz
-                                                                 + mimg[2])];
+                                       [static_cast<std::size_t>(tz + mimg[2])];
                             Cplx* dst = O[static_cast<std::size_t>(ik)].data()
                                         + static_cast<std::size_t>(mu) * nslot;
                             for (int t = 0; t < nslot; ++t)
-                                dst[t] += phase * o_im[static_cast<std::size_t>(t)];
+                                dst[t] +=
+                                    phase * o_im[static_cast<std::size_t>(t)];
                         }
                     }
             if (got)
@@ -428,13 +428,12 @@ build_kpoint_basis_grid(const UniformGrid& grid,
     kbg.gidx.resize(static_cast<std::size_t>(npts));
     for (long g = 0; g < npts; ++g)
         kbg.gidx[static_cast<std::size_t>(g)] = g;
-    kbg.chi.assign(static_cast<std::size_t>(nk),
-                   std::vector<Cplx>(static_cast<std::size_t>(npts) * nb,
-                                     Cplx(0, 0)));
+    kbg.chi.assign(
+        static_cast<std::size_t>(nk),
+        std::vector<Cplx>(static_cast<std::size_t>(npts) * nb, Cplx(0, 0)));
 
     const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
-    const double d0 = grid.L[0] / n0, d1 = grid.L[1] / n1,
-                 d2 = grid.L[2] / n2;
+    const double d0 = grid.L[0] / n0, d1 = grid.L[1] / n1, d2 = grid.L[2] / n2;
 
 #pragma omp parallel for schedule(dynamic, 1)
     for (int u = 0; u < nb; ++u) {
@@ -442,8 +441,7 @@ build_kpoint_basis_grid(const UniformGrid& grid,
         if (bf.empty())
             continue;
         const double rc = basis_function_radius(bf, eps);
-        const double c[3] = {bf[0].center[0], bf[0].center[1],
-                             bf[0].center[2]};
+        const double c[3] = {bf[0].center[0], bf[0].center[1], bf[0].center[2]};
         const long n[3] = {n0, n1, n2};
         const double dx[3] = {d0, d1, d2};
         long lo[3], hi[3];
@@ -471,7 +469,7 @@ build_kpoint_basis_grid(const UniformGrid& grid,
             ptab[static_cast<std::size_t>(ik)].resize(3);
             for (int d = 0; d < 3; ++d) {
                 auto& tab = ptab[static_cast<std::size_t>(ik)]
-                               [static_cast<std::size_t>(d)];
+                                [static_cast<std::size_t>(d)];
                 tab.resize(static_cast<std::size_t>(thi[d] - tlo[d] + 1));
                 for (long t = tlo[d]; t <= thi[d]; ++t) {
                     // chi accumulates with e^{-2 pi i kappa . t'} (the window
@@ -508,8 +506,7 @@ build_kpoint_basis_grid(const UniformGrid& grid,
                         const double ddx = r0 - p.center[0];
                         const double ddy = r1 - p.center[1];
                         const double ddz = r2 - p.center[2];
-                        const double rr =
-                            ddx * ddx + ddy * ddy + ddz * ddz;
+                        const double rr = ddx * ddx + ddy * ddy + ddz * ddz;
                         double t = p.coeff * std::exp(-p.alpha * rr);
                         for (int q = 0; q < p.l[0]; ++q)
                             t *= ddx;
@@ -708,8 +705,8 @@ CplxMatrix mul(const CplxMatrix& A, const CplxMatrix& B) {
 }
 } // namespace
 
-std::pair<std::vector<double>, CplxMatrix>
-diagonalize_k(const CplxMatrix& H_k, const KOrth& orth) {
+std::pair<std::vector<double>, CplxMatrix> diagonalize_k(const CplxMatrix& H_k,
+                                                         const KOrth& orth) {
     const CplxMatrix Hp = dagger_mul(orth.X, mul(H_k, orth.X));
     std::vector<double> eps;
     CplxMatrix Cp;
@@ -742,12 +739,10 @@ std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
         for (int j = 0; j <= i; ++j) {
             double val = 0.0;
             for (int ik = 0; ik < nk; ++ik) {
-                const CplxMatrix& ei =
-                    e_hist_[static_cast<std::size_t>(i)]
-                           [static_cast<std::size_t>(ik)];
-                const CplxMatrix& ej =
-                    e_hist_[static_cast<std::size_t>(j)]
-                           [static_cast<std::size_t>(ik)];
+                const CplxMatrix& ei = e_hist_[static_cast<std::size_t>(i)]
+                                              [static_cast<std::size_t>(ik)];
+                const CplxMatrix& ej = e_hist_[static_cast<std::size_t>(j)]
+                                              [static_cast<std::size_t>(ik)];
                 // Empty (zero-size) slots are non-owned k under MPI RR —
                 // their contribution is Allreduced in from the owner rank.
                 if (ei.size() == 0 || ej.size() == 0)
@@ -778,8 +773,8 @@ std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
             for (int i = 0; i < m; ++i)
                 for (int j = 0; j < m; ++j)
                     pack[static_cast<std::size_t>(i * m + j)] = B(i, j);
-            MPI_Allreduce(MPI_IN_PLACE, pack.data(), m * m, MPI_DOUBLE,
-                          MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, pack.data(), m * m, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
             for (int i = 0; i < m; ++i)
                 for (int j = 0; j < m; ++j)
                     B(i, j) = pack[static_cast<std::size_t>(i * m + j)];
@@ -828,8 +823,7 @@ std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
         for (int r = 0; r < dim; ++r) {
             if (r == col)
                 continue;
-            const double f =
-                M[static_cast<std::size_t>(r) * dim + col] / d;
+            const double f = M[static_cast<std::size_t>(r) * dim + col] / d;
             if (f == 0.0)
                 continue;
             for (int j = col; j < dim; ++j)

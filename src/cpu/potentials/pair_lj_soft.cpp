@@ -91,12 +91,9 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
     const int* __restrict firstneigh = pairs.firstneigh.data();
     const int* __restrict neighbors = pairs.neighbors.data();
     const bool has_shifts = pairs.has_shifts;
-    const double* __restrict shx =
-        has_shifts ? pairs.shift_x.data() : nullptr;
-    const double* __restrict shy =
-        has_shifts ? pairs.shift_y.data() : nullptr;
-    const double* __restrict shz =
-        has_shifts ? pairs.shift_z.data() : nullptr;
+    const double* __restrict shx = has_shifts ? pairs.shift_x.data() : nullptr;
+    const double* __restrict shy = has_shifts ? pairs.shift_y.data() : nullptr;
+    const double* __restrict shz = has_shifts ? pairs.shift_z.data() : nullptr;
 
     const StorageReal* __restrict x_ptr = f.span(kAtom_x);
     const StorageReal* __restrict y_ptr = f.span(kAtom_y);
@@ -129,8 +126,8 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
         return;
     }
 
-#pragma omp parallel reduction(+ : energy_total) reduction(+ : dU_total)      \
-    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)               \
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : dU_total)       \
+    reduction(+ : v_xx) reduction(+ : v_yy) reduction(+ : v_zz)                \
     reduction(+ : v_xy) reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
@@ -188,15 +185,13 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
 
                 const double r = std::sqrt(r2);
                 const double r6 = r2 * r2 * r2;
-                const double r_lam =
-                    std::pow(soft0 + r6, 1.0 / 6.0);
+                const double r_lam = std::pow(soft0 + r6, 1.0 / 6.0);
                 const double r_lam2 = r_lam * r_lam;
                 const double r2inv_l = 1.0 / r_lam2;
                 const double r6inv_l = r2inv_l * r2inv_l * r2inv_l * sig6;
 
                 // Energy: λ (V_LJ(r_λ) − V_shift)
-                const double vlj =
-                    eps4 * (r6inv_l * r6inv_l - r6inv_l);
+                const double vlj = eps4 * (r6inv_l * r6inv_l - r6inv_l);
                 const double vpair = vlj - vshift;
                 energy_total += lam * vpair;
 
@@ -205,8 +200,7 @@ void PairLJSoft::compute(const LaunchContext& ctx) {
                 const double fpair_h =
                     eps24 * r2inv_l * (2.0 * r6inv_l * r6inv_l - r6inv_l);
                 const double dVdr = -fpair_h * r_lam;
-                const double r_lam5 =
-                    r_lam2 * r_lam2 * r_lam; // r_λ^4 * r_λ
+                const double r_lam5 = r_lam2 * r_lam2 * r_lam; // r_λ^4 * r_λ
                 const double drlam_dlam = dsoft0_dlam / (6.0 * r_lam5);
                 dU_total += vpair + lam * dVdr * drlam_dlam;
 

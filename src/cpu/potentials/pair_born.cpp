@@ -62,8 +62,8 @@ PairBorn::PairBorn(std::vector<BornTypeCoeff> coeffs, double cutoff)
         tmax = std::max(tmax, std::max(c.type_i, c.type_j));
     }
     n_types_ = tmax + 1;
-    table_.assign(static_cast<std::size_t>(n_types_) *
-                      static_cast<std::size_t>(n_types_),
+    table_.assign(static_cast<std::size_t>(n_types_)
+                      * static_cast<std::size_t>(n_types_),
                   Entry{});
 
     for (const auto& c : coeffs) {
@@ -75,12 +75,12 @@ PairBorn::PairBorn(std::vector<BornTypeCoeff> coeffs, double cutoff)
         e.D = c.D;
         e.v_shift = shift_of(c.A, e.inv_rho, c.sigma, c.C, c.D, cutoff);
         e.set = true;
-        const std::size_t ij =
-            static_cast<std::size_t>(c.type_i) * static_cast<std::size_t>(n_types_) +
-            static_cast<std::size_t>(c.type_j);
-        const std::size_t ji =
-            static_cast<std::size_t>(c.type_j) * static_cast<std::size_t>(n_types_) +
-            static_cast<std::size_t>(c.type_i);
+        const std::size_t ij = static_cast<std::size_t>(c.type_i)
+                                   * static_cast<std::size_t>(n_types_)
+                               + static_cast<std::size_t>(c.type_j);
+        const std::size_t ji = static_cast<std::size_t>(c.type_j)
+                                   * static_cast<std::size_t>(n_types_)
+                               + static_cast<std::size_t>(c.type_i);
         table_[ij] = e;
         table_[ji] = e;
     }
@@ -90,9 +90,9 @@ const PairBorn::Entry& PairBorn::entry_for_(int ti, int tj) const {
     static const Entry kUnset{};
     if (ti < 0 || tj < 0 || ti >= n_types_ || tj >= n_types_)
         return kUnset;
-    return table_[static_cast<std::size_t>(ti) *
-                      static_cast<std::size_t>(n_types_) +
-                  static_cast<std::size_t>(tj)];
+    return table_[static_cast<std::size_t>(ti)
+                      * static_cast<std::size_t>(n_types_)
+                  + static_cast<std::size_t>(tj)];
 }
 
 void PairBorn::compute(const LaunchContext& ctx) {
@@ -111,7 +111,8 @@ void PairBorn::compute(const LaunchContext& ctx) {
                          double A, double inv_rho, double sigma, double C,
                          double D, double v_shift) {
         const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 >= cutoff_sq_ || r2 == 0.0) return;
+        if (r2 >= cutoff_sq_ || r2 == 0.0)
+            return;
         const double r = std::sqrt(r2);
         const double r6 = r2 * r2 * r2;
         const double r8 = r6 * r2;
@@ -139,7 +140,8 @@ void PairBorn::compute(const LaunchContext& ctx) {
             for (int jj = 0; jj < jnum; ++jj) {
                 const int j =
                     pairs.neighbors[static_cast<std::size_t>(off + jj)];
-                if (j <= i) continue;
+                if (j <= i)
+                    continue;
                 double dx = x[j] - x[i];
                 double dy = y[j] - y[i];
                 double dz = z[j] - z[i];
@@ -188,9 +190,9 @@ void PairBorn::compute(const LaunchContext& ctx) {
                 const double expterm = std::exp((e.sigma - r) * e.inv_rho);
                 const double v =
                     e.A * expterm - e.C / r6 + e.D / r8 - e.v_shift;
-                const double dUdr = -e.A * e.inv_rho * expterm +
-                                    6.0 * e.C / (r6 * r) -
-                                    8.0 * e.D / (r8 * r);
+                const double dUdr = -e.A * e.inv_rho * expterm
+                                    + 6.0 * e.C / (r6 * r)
+                                    - 8.0 * e.D / (r8 * r);
                 const double fpair = -dUdr / r;
 
                 fx[i] -= fpair * dx;

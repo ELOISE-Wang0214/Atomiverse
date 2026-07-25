@@ -85,12 +85,12 @@ class FmmTree {
 
   private:
     struct Node {
-        Vec3 center;                 ///< cell centre
-        AccReal half;                ///< half edge length of the cubic cell
+        Vec3 center;  ///< cell centre
+        AccReal half; ///< half edge length of the cubic cell
         int parent = -1;
         int child[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
         bool leaf = true;
-        std::vector<int> particles;  ///< indices into the particle arrays
+        std::vector<int> particles; ///< indices into the particle arrays
         MultipoleExpansion multipole;
         LocalExpansion local;
 

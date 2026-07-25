@@ -34,12 +34,12 @@
 #include <type_traits>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/stage.h"
+#include "atomiverse/core/verdict.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/verdict.h"
-#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

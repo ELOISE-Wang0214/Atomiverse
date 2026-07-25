@@ -40,7 +40,8 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
 
     auto accumulate = [&](int i, int j, double dx, double dy, double dz) {
         const double r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 >= cutoff_sq_ || r2 == 0.0) return;
+        if (r2 >= cutoff_sq_ || r2 == 0.0)
+            return;
         const double r = std::sqrt(r2);
         const double qi = static_cast<double>(q[i]);
         const double qj = static_cast<double>(q[j]);
@@ -77,7 +78,8 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
             for (int jj = 0; jj < jnum; ++jj) {
                 const int j =
                     pairs.neighbors[static_cast<std::size_t>(off + jj)];
-                if (j <= i) continue; // half-list safety for full lists
+                if (j <= i)
+                    continue; // half-list safety for full lists
                 double dx = static_cast<double>(x[j] - x[i]);
                 double dy = static_cast<double>(y[j] - y[i]);
                 double dz = static_cast<double>(z[j] - z[i]);

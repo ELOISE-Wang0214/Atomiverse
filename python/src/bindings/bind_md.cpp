@@ -20,11 +20,12 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
@@ -33,7 +34,6 @@
 #include "atomiverse/cpu/record/thermo.h"
 #include "atomiverse/cpu/task/launcher_gate.h"
 #include "atomiverse/cpu/task/task_spec.h"
-#include "atomiverse/core/stage.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>

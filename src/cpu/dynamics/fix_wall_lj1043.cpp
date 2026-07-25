@@ -32,7 +32,8 @@ FixWallLJ1043::FixWallLJ1043(int axis_, int side_, double wall_pos_,
     if (axis < 0 || axis > 2)
         throw std::invalid_argument("FixWallLJ1043: axis must be 0, 1, or 2");
     if (!(side == -1 || side == 1))
-        throw std::invalid_argument("FixWallLJ1043: side must be -1 (lo) or +1 (hi)");
+        throw std::invalid_argument(
+            "FixWallLJ1043: side must be -1 (lo) or +1 (hi)");
     if (!(epsilon > 0.0))
         throw std::invalid_argument("FixWallLJ1043: epsilon must be > 0");
     if (!(sigma > 0.0))
@@ -61,8 +62,8 @@ void FixWallLJ1043::precompute_() {
     const double r4inv = r2inv * r2inv;
     // offset = coeff1/rc^10 - coeff2/rc^4 - coeff3/(rc+coeff4)^3
     const double rpc = rc + coeff4_;
-    offset_ = coeff1_ * r4inv * r4inv * r2inv - coeff2_ * r4inv -
-              coeff3_ / (rpc * rpc * rpc);
+    offset_ = coeff1_ * r4inv * r4inv * r2inv - coeff2_ * r4inv
+              - coeff3_ / (rpc * rpc * rpc);
 }
 
 void FixWallLJ1043::launch(const cpu::LaunchContext& ctx) {
@@ -76,12 +77,12 @@ void FixWallLJ1043::launch(const cpu::LaunchContext& ctx) {
     const double coord = wall_pos;
     const double rc = cutoff;
 
-    const StorageReal* __restrict x =
-        (dim == 0) ? f.span(kAtom_x)
-                   : (dim == 1) ? f.span(kAtom_y) : f.span(kAtom_z);
-    AccReal* __restrict force =
-        (dim == 0) ? f.span(kAtom_fx)
-                   : (dim == 1) ? f.span(kAtom_fy) : f.span(kAtom_fz);
+    const StorageReal* __restrict x = (dim == 0)   ? f.span(kAtom_x)
+                                      : (dim == 1) ? f.span(kAtom_y)
+                                                   : f.span(kAtom_z);
+    AccReal* __restrict force = (dim == 0)   ? f.span(kAtom_fx)
+                                : (dim == 1) ? f.span(kAtom_fy)
+                                             : f.span(kAtom_fz);
 
     double u = 0.0;
     const bool want_force = ctx.forces_requested;
@@ -111,9 +112,9 @@ void FixWallLJ1043::launch(const cpu::LaunchContext& ctx) {
         const double rp4_inv = rp3_inv * rp_inv;
 
         // fwall = side * (coeff5/r^11 - coeff6/r^5 - coeff7/(r+c4)^4)
-        const double fwall =
-            static_cast<double>(sgn) *
-            (coeff5_ * r10inv * rinv - coeff6_ * r4inv * rinv - coeff7_ * rp4_inv);
+        const double fwall = static_cast<double>(sgn)
+                             * (coeff5_ * r10inv * rinv - coeff6_ * r4inv * rinv
+                                - coeff7_ * rp4_inv);
         if (want_force)
             force[i] -= fwall;
 

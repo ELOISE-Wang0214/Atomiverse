@@ -465,8 +465,8 @@ void DeviceBandSolver::apply_h(const cufftDoubleComplex* psi,
     }
 }
 
-void DeviceBandSolver::solve(cpu::pw::internal::PWWorkspace& ws, AccReal /*tol*/,
-                             int max_iter) {
+void DeviceBandSolver::solve(cpu::pw::internal::PWWorkspace& ws,
+                             AccReal /*tol*/, int max_iter) {
     int ng = ws.n_g;
     int nb = n_bands_;
     if (ng != ng_)

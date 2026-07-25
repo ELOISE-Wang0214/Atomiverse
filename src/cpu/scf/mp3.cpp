@@ -81,17 +81,17 @@ MP3Result mp3_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int no = n_occ_so;
     const int nv = n_vir_so;
     const std::size_t t_size =
-        static_cast<std::size_t>(no) * static_cast<std::size_t>(no) *
-        static_cast<std::size_t>(nv) * static_cast<std::size_t>(nv);
+        static_cast<std::size_t>(no) * static_cast<std::size_t>(no)
+        * static_cast<std::size_t>(nv) * static_cast<std::size_t>(nv);
     std::vector<double> t2(t_size, 0.0);
     std::vector<double> u2(t_size, 0.0);
     auto idx = [no, nv](int i, int j, int a, int b) -> std::size_t {
-        return ((static_cast<std::size_t>(i) * static_cast<std::size_t>(no) +
-                 static_cast<std::size_t>(j)) *
-                    static_cast<std::size_t>(nv) +
-                static_cast<std::size_t>(a)) *
-                   static_cast<std::size_t>(nv) +
-               static_cast<std::size_t>(b);
+        return ((static_cast<std::size_t>(i) * static_cast<std::size_t>(no)
+                 + static_cast<std::size_t>(j))
+                    * static_cast<std::size_t>(nv)
+                + static_cast<std::size_t>(a))
+                   * static_cast<std::size_t>(nv)
+               + static_cast<std::size_t>(b);
     };
 
     for (int i = 0; i < no; ++i) {
@@ -102,8 +102,8 @@ MP3Result mp3_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 const int A = v_so[static_cast<std::size_t>(a)];
                 for (int b = 0; b < nv; ++b) {
                     const int B = v_so[static_cast<std::size_t>(b)];
-                    const double denom =
-                        mp_denominator(eps_so(I), eps_so(J), eps_so(A), eps_so(B));
+                    const double denom = mp_denominator(eps_so(I), eps_so(J),
+                                                        eps_so(A), eps_so(B));
                     t2[idx(i, j, a, b)] = antisym_eri(g, I, J, A, B) / denom;
                 }
             }
@@ -127,16 +127,16 @@ MP3Result mp3_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         const int K = o_so[static_cast<std::size_t>(k)];
                         for (int l = 0; l < no; ++l) {
                             const int L = o_so[static_cast<std::size_t>(l)];
-                            val += 0.5 * antisym_eri(g, I, J, K, L) *
-                                   t2[idx(k, l, a, b)];
+                            val += 0.5 * antisym_eri(g, I, J, K, L)
+                                   * t2[idx(k, l, a, b)];
                         }
                     }
                     for (int c = 0; c < nv; ++c) {
                         const int Cc = v_so[static_cast<std::size_t>(c)];
                         for (int d = 0; d < nv; ++d) {
                             const int Dd = v_so[static_cast<std::size_t>(d)];
-                            val += 0.5 * antisym_eri(g, A, B, Cc, Dd) *
-                                   t2[idx(i, j, c, d)];
+                            val += 0.5 * antisym_eri(g, A, B, Cc, Dd)
+                                   * t2[idx(i, j, c, d)];
                         }
                     }
 
@@ -151,14 +151,14 @@ MP3Result mp3_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             for (int c = 0; c < nv; ++c) {
                                 const int Cc =
                                     v_so[static_cast<std::size_t>(c)];
-                                s += antisym_eri(g, AA, K, II, Cc) *
-                                     t2[idx(jj, k, bb, c)];
+                                s += antisym_eri(g, AA, K, II, Cc)
+                                     * t2[idx(jj, k, bb, c)];
                             }
                         }
                         return s;
                     };
-                    val += ring_s(i, j, a, b) - ring_s(j, i, a, b) -
-                           ring_s(i, j, b, a) + ring_s(j, i, b, a);
+                    val += ring_s(i, j, a, b) - ring_s(j, i, a, b)
+                           - ring_s(i, j, b, a) + ring_s(j, i, b, a);
 
                     u2[idx(i, j, a, b)] = val;
                 }

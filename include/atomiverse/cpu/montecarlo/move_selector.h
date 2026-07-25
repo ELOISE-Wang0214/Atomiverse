@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/mover.h"
 
 namespace ATV {
 namespace cpu {

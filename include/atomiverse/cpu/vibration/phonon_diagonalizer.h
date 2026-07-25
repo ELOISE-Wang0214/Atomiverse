@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/vibration/hessian_workspace.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

@@ -3,6 +3,8 @@
 
 #include <cmath>
 
+#include "atomiverse/core/driver_template_impl.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/device/error.cuh"
 #include "atomiverse/cuda/device/log_callback.h"
@@ -10,8 +12,6 @@
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/driver/backend_traits.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
-#include "atomiverse/core/driver_template_impl.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

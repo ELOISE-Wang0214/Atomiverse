@@ -19,15 +19,15 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
+#include "atomiverse/cpu/scf/internal/cart2sph.h"
 #include "atomiverse/cpu/scf/internal/ecp_integrals.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
-#include "atomiverse/cpu/scf/internal/cart2sph.h"
 
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include <cmath>
 #include <stdexcept>
 #include <utility>
 #include <vector>
-#include "atomiverse/cpu/scf/internal/shell_pair.h"
 
 #include <xtensor-blas/xlinalg.hpp>
 
@@ -59,8 +59,8 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
             const auto& row = table[static_cast<std::size_t>(at.Z)];
             if (row.channels.empty())
                 continue; // all-electron element in this family
-            ecp_centers.push_back(internal::EcpCenter{
-                {at.pos[0], at.pos[1], at.pos[2]}, &row});
+            ecp_centers.push_back(
+                internal::EcpCenter{{at.pos[0], at.pos[1], at.pos[2]}, &row});
             atom_list.n_electrons -= row.n_core;
             at.Z -= row.n_core;
         }
@@ -72,8 +72,7 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         " ecp={} ecp_atoms={}",
         static_cast<int>(atom_list.atoms.size()), basis_set_name(basis),
         shell_list.n_basis, atom_list.n_electrons, charge,
-        ecp.empty() ? "-" : ecp.c_str(),
-        static_cast<int>(ecp_centers.size()));
+        ecp.empty() ? "-" : ecp.c_str(), static_cast<int>(ecp_centers.size()));
 
     n_basis = shell_list.n_basis;
     n_electrons = atom_list.n_electrons;
@@ -119,8 +118,8 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
         for (const auto& b : blocks)
             n_sph += 2 * b.l + 1;
         n_basis_cart = n_basis;
-        c2s = xt::zeros<double>(
-            {std::size_t(n_basis_cart), std::size_t(n_sph)});
+        c2s =
+            xt::zeros<double>({std::size_t(n_basis_cart), std::size_t(n_sph)});
         // Per-block construction, self-normalized against the engine's own
         // Cartesian overlap: the engine primitive-normalizes but does NOT
         // unit-normalize contracted AOs, so the tabulated block(l) (which
@@ -138,13 +137,12 @@ IntegralPack::IntegralPack(const Frame& frame, BasisSet basis, int charge,
             for (int j = 0; j < ns; ++j) {
                 std::vector<double> v(nc);
                 for (int i = 0; i < nc; ++i)
-                    v[i] = m(i, j)
-                           / std::sqrt(S(b.ao_start + i, b.ao_start + i));
+                    v[i] =
+                        m(i, j) / std::sqrt(S(b.ao_start + i, b.ao_start + i));
                 double nrm2 = 0.0;
                 for (int i = 0; i < nc; ++i)
                     for (int k = 0; k < nc; ++k)
-                        nrm2 +=
-                            v[i] * S(b.ao_start + i, b.ao_start + k) * v[k];
+                        nrm2 += v[i] * S(b.ao_start + i, b.ao_start + k) * v[k];
                 const double inv = 1.0 / std::sqrt(nrm2);
                 for (int i = 0; i < nc; ++i)
                     c2s(b.ao_start + i, col + j) = v[i] * inv;
@@ -193,8 +191,7 @@ IntegralPack::eri_to_spherical(const xt::xtensor<double, 4>& eri_cart,
     auto e1 = xt::reshape_view(eri_cart, {nc * nc * nc, nc});
     xt::xtensor<double, 2> h1 = xt::linalg::dot(e1, c2s); // l index
     // rotate axes: (ijk,l)->(l,ijk) etc., four times
-    xt::xtensor<double, 4> cur =
-        xt::reshape_view(h1, {nc, nc, nc, n_sph});
+    xt::xtensor<double, 4> cur = xt::reshape_view(h1, {nc, nc, nc, n_sph});
     for (int rep = 0; rep < 3; ++rep) {
         xt::xtensor<double, 4> perm = xt::transpose(cur, {3, 0, 1, 2});
         const auto sh = perm.shape();

@@ -283,10 +283,10 @@ EomImds::EomImds(const CCSDSolution& sol) {
                     for (int n = 0; n < no; ++n)
                         for (int e = 0; e < nv; ++e)
                             for (int f = 0; f < nv; ++f) {
-                                u1 -= t1(i, e) * t2(n, j, b, f) *
-                                      oovv(m, n, e, f);
-                                u2 -= t1(j, e) * t2(n, i, b, f) *
-                                      oovv(m, n, e, f);
+                                u1 -= t1(i, e) * t2(n, j, b, f)
+                                      * oovv(m, n, e, f);
+                                u2 -= t1(j, e) * t2(n, i, b, f)
+                                      * oovv(m, n, e, f);
                             }
                     s += u1 - u2;
                     Wovoo(m, b, i, j) = s;
@@ -327,10 +327,10 @@ EomImds::EomImds(const CCSDSolution& sol) {
                     for (int m = 0; m < no; ++m)
                         for (int n = 0; n < no; ++n)
                             for (int f = 0; f < nv; ++f) {
-                                w1 -= t1(m, a) * t2(n, i, b, f) *
-                                      oovv(m, n, e, f);
-                                w2 -= t1(m, b) * t2(n, i, a, f) *
-                                      oovv(m, n, e, f);
+                                w1 -= t1(m, a) * t2(n, i, b, f)
+                                      * oovv(m, n, e, f);
+                                w2 -= t1(m, b) * t2(n, i, a, f)
+                                      * oovv(m, n, e, f);
                             }
                     s -= w1 - w2;
                     // + Wvvvv · t1
@@ -407,8 +407,8 @@ std::vector<EigPair> eig_dense(const std::vector<std::vector<double>>& H,
                 static_cast<std::size_t>(n));
             for (int i = 0; i < n; ++i)
                 out[static_cast<std::size_t>(j)]
-                    .vr[static_cast<std::size_t>(i)] =
-                    vr(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+                    .vr[static_cast<std::size_t>(i)] = vr(
+                    static_cast<std::size_t>(i), static_cast<std::size_t>(j));
         }
     }
     return out;

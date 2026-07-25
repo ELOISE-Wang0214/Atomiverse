@@ -25,7 +25,8 @@ namespace gpw {
 
 XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
                      cpu::scf::XCType xc) {
-    if (!cpu::scf::is_gga(xc) || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
+    if (!cpu::scf::is_gga(xc)
+        || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
         throw std::invalid_argument(
             "xc_grid_gga: only pure GGA XCType (PBE, PBEsol, …) supported");
     }
@@ -54,7 +55,8 @@ XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
         const ATV::cpu::scf::XCOutput xco =
             ATV::cpu::scf::evaluate_xc(xc, ra, rb, s, s, s);
         e += w * rho * xco.exc;
-        out.vxc_r[g] = xco.vrho_alpha; // local part; divergence term added below
+        out.vxc_r[g] =
+            xco.vrho_alpha; // local part; divergence term added below
         const double vsig_eff = xco.vsigma_aa + 0.5 * xco.vsigma_ab;
         flux[0][g] = vsig_eff * gx;
         flux[1][g] = vsig_eff * gy;

@@ -21,10 +21,10 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/halo_exchange.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/fix_rattle.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 

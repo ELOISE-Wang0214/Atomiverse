@@ -30,7 +30,8 @@ inline double norm3(double x, double y, double z) {
 void VirtualSites::add_weighted3(TagInt site_tag, TagInt p0, TagInt p1,
                                  TagInt p2, double alpha) {
     if (!(std::isfinite(alpha)))
-        throw std::invalid_argument("VirtualSites::add_weighted3: alpha must be finite");
+        throw std::invalid_argument(
+            "VirtualSites::add_weighted3: alpha must be finite");
     Site s;
     s.kind = Kind::Weighted3;
     s.site = site_tag;
@@ -80,8 +81,8 @@ void VirtualSites::tip5p_out_of_plane_coeffs(double r_ol, double theta_lol,
     if (!(r_ol > 0.0) || !(r_oh > 0.0))
         throw std::invalid_argument(
             "tip5p_out_of_plane_coeffs: distances must be > 0");
-    if (!(theta_lol > 0.0) || !(theta_lol < ATV::units::pi) ||
-        !(theta_hoh > 0.0) || !(theta_hoh < ATV::units::pi))
+    if (!(theta_lol > 0.0) || !(theta_lol < ATV::units::pi)
+        || !(theta_hoh > 0.0) || !(theta_hoh < ATV::units::pi))
         throw std::invalid_argument(
             "tip5p_out_of_plane_coeffs: angles must be in (0, π)");
     if (sign != 1 && sign != -1)
@@ -111,8 +112,7 @@ void VirtualSites::tip5p_out_of_plane_coeffs(double r_ol, double theta_lol,
     cross(d1x, d1y, d1z, d2x, d2y, d2z, nx, ny, nz);
     const double nn = norm3(nx, ny, nz);
     if (!(nn > 0.0))
-        throw std::invalid_argument(
-            "tip5p_out_of_plane_coeffs: collinear HOH");
+        throw std::invalid_argument("tip5p_out_of_plane_coeffs: collinear HOH");
     nx /= nn;
     ny /= nn;
     nz /= nn;
@@ -139,23 +139,22 @@ void VirtualSites::tip5p_out_of_plane_coeffs(double r_ol, double theta_lol,
     cross(d1x, d1y, d1z, d2x, d2y, d2z, cx, cy, cz);
 
     // 3×3 determinant
-    const double det =
-        d1x * (d2y * cz - d2z * cy) - d1y * (d2x * cz - d2z * cx) +
-        d1z * (d2x * cy - d2y * cx);
+    const double det = d1x * (d2y * cz - d2z * cy) - d1y * (d2x * cz - d2z * cx)
+                       + d1z * (d2x * cy - d2y * cx);
     if (!(std::fabs(det) > 1e-18))
         throw std::invalid_argument(
             "tip5p_out_of_plane_coeffs: singular parent basis");
 
     // Cramer's rule
-    a = (tx * (d2y * cz - d2z * cy) - ty * (d2x * cz - d2z * cx) +
-         tz * (d2x * cy - d2y * cx)) /
-        det;
-    b = (d1x * (ty * cz - tz * cy) - d1y * (tx * cz - tz * cx) +
-         d1z * (tx * cy - ty * cx)) /
-        det;
-    c = (d1x * (d2y * tz - d2z * ty) - d1y * (d2x * tz - d2z * tx) +
-         d1z * (d2x * ty - d2y * tx)) /
-        det;
+    a = (tx * (d2y * cz - d2z * cy) - ty * (d2x * cz - d2z * cx)
+         + tz * (d2x * cy - d2y * cx))
+        / det;
+    b = (d1x * (ty * cz - tz * cy) - d1y * (tx * cz - tz * cx)
+         + d1z * (tx * cy - ty * cx))
+        / det;
+    c = (d1x * (d2y * tz - d2z * ty) - d1y * (d2x * tz - d2z * tx)
+         + d1z * (d2x * ty - d2y * tx))
+        / det;
 }
 
 void VirtualSites::resolve_(Frame& f) {
@@ -262,13 +261,19 @@ void VirtualSites::redistribute(Frame& f) {
         } else {
             // Linear part + cross-term Jacobian (GROMACS vsite3OUT).
             const double a = s.param[0], b = s.param[1], cc = s.param[2];
-            double d1x = static_cast<double>(x[i1]) - static_cast<double>(x[i0]);
-            double d1y = static_cast<double>(y[i1]) - static_cast<double>(y[i0]);
-            double d1z = static_cast<double>(z[i1]) - static_cast<double>(z[i0]);
+            double d1x =
+                static_cast<double>(x[i1]) - static_cast<double>(x[i0]);
+            double d1y =
+                static_cast<double>(y[i1]) - static_cast<double>(y[i0]);
+            double d1z =
+                static_cast<double>(z[i1]) - static_cast<double>(z[i0]);
             box.min_image(d1x, d1y, d1z);
-            double d2x = static_cast<double>(x[i2]) - static_cast<double>(x[i0]);
-            double d2y = static_cast<double>(y[i2]) - static_cast<double>(y[i0]);
-            double d2z = static_cast<double>(z[i2]) - static_cast<double>(z[i0]);
+            double d2x =
+                static_cast<double>(x[i2]) - static_cast<double>(x[i0]);
+            double d2y =
+                static_cast<double>(y[i2]) - static_cast<double>(y[i0]);
+            double d2z =
+                static_cast<double>(z[i2]) - static_cast<double>(z[i0]);
             box.min_image(d2x, d2y, d2z);
 
             // F0 += (1-a-b) F; F1 += a F; F2 += b F

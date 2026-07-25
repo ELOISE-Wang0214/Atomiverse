@@ -48,7 +48,8 @@ void DomainRuntime::adopt(std::unique_ptr<md::mpi::DomainDecomposition> dd,
     ctx.md.dd = dd_.get();
 }
 
-std::unique_ptr<md::mpi::DomainDecomposition> DomainRuntime::release(Context& ctx) {
+std::unique_ptr<md::mpi::DomainDecomposition>
+DomainRuntime::release(Context& ctx) {
     ctx.md.dd = nullptr;
     return std::move(dd_);
 }

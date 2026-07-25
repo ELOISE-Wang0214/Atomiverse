@@ -78,10 +78,10 @@ int main() {
     const double lo = kEminAbinitRy;
     const double hi = kEminAbinitRy + kBandHeadroomRy;
     if (!(r.energy >= lo && r.energy <= hi)) {
-        std::printf(
-            "FAIL: E_tot got=%.8f Ry  want band [%.6f, %.6f] Ry "
-            "(ABINIT-class E_min + incomplete-basis headroom; see REFERENCE.md)\n",
-            r.energy, lo, hi);
+        std::printf("FAIL: E_tot got=%.8f Ry  want band [%.6f, %.6f] Ry "
+                    "(ABINIT-class E_min + incomplete-basis headroom; see "
+                    "REFERENCE.md)\n",
+                    r.energy, lo, hi);
         return 1;
     }
 

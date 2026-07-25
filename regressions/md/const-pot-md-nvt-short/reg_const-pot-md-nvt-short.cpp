@@ -58,10 +58,8 @@ int main() {
         const int typ = (wall == 0) ? 2 : 3;
         for (int ix = 0; ix < n_wall_side; ++ix)
             for (int iy = 0; iy < n_wall_side; ++iy) {
-                frame.span(kAtom_x)[idx] =
-                    (ix + 0.5) * (Lxy / n_wall_side);
-                frame.span(kAtom_y)[idx] =
-                    (iy + 0.5) * (Lxy / n_wall_side);
+                frame.span(kAtom_x)[idx] = (ix + 0.5) * (Lxy / n_wall_side);
+                frame.span(kAtom_y)[idx] = (iy + 0.5) * (Lxy / n_wall_side);
                 frame.span(kAtom_z)[idx] = z;
                 frame.span(kAtom_type)[idx] = typ;
                 frame.span(kAtom_charge)[idx] = 0.0;
@@ -185,9 +183,12 @@ int main() {
     double max_dx = 0.0, max_v = 0.0;
     for (std::size_t k = 0; k < wall_idx.size(); ++k) {
         const int i = wall_idx[k];
-        max_dx = std::fmax(max_dx, std::fabs(frame.span(kAtom_x)[i] - wall_x0[k]));
-        max_dx = std::fmax(max_dx, std::fabs(frame.span(kAtom_y)[i] - wall_y0[k]));
-        max_dx = std::fmax(max_dx, std::fabs(frame.span(kAtom_z)[i] - wall_z0[k]));
+        max_dx =
+            std::fmax(max_dx, std::fabs(frame.span(kAtom_x)[i] - wall_x0[k]));
+        max_dx =
+            std::fmax(max_dx, std::fabs(frame.span(kAtom_y)[i] - wall_y0[k]));
+        max_dx =
+            std::fmax(max_dx, std::fabs(frame.span(kAtom_z)[i] - wall_z0[k]));
         max_v = std::fmax(max_v, std::fabs(frame.span(kAtom_vx)[i]));
         max_v = std::fmax(max_v, std::fabs(frame.span(kAtom_vy)[i]));
         max_v = std::fmax(max_v, std::fabs(frame.span(kAtom_vz)[i]));
@@ -208,9 +209,10 @@ int main() {
         if (frame.span(kAtom_type)[i] == 0 || frame.span(kAtom_type)[i] == 1) {
             // Compare against a loose bound: kinetic present implies motion
             // over 200 fs; require any ion with |v| > 1e-6.
-            const double v2 = frame.span(kAtom_vx)[i] * frame.span(kAtom_vx)[i]
-                              + frame.span(kAtom_vy)[i] * frame.span(kAtom_vy)[i]
-                              + frame.span(kAtom_vz)[i] * frame.span(kAtom_vz)[i];
+            const double v2 =
+                frame.span(kAtom_vx)[i] * frame.span(kAtom_vx)[i]
+                + frame.span(kAtom_vy)[i] * frame.span(kAtom_vy)[i]
+                + frame.span(kAtom_vz)[i] * frame.span(kAtom_vz)[i];
             if (v2 > 1e-12)
                 fluid_moved = true;
         }

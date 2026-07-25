@@ -58,8 +58,8 @@ int main() {
     ri.basis = cpu::scf::BasisSet::Def2TZVP;
     ri.tol = 1e-12;
     ri.max_iter = 200;
-    ri.ri = cpu::scf::RI::JK;                       // fitted J and K
-    ri.aux_basis = cpu::scf::AuxBasis::Def2JKFIT;   // the default, explicit
+    ri.ri = cpu::scf::RI::JK;                     // fitted J and K
+    ri.aux_basis = cpu::scf::AuxBasis::Def2JKFIT; // the default, explicit
     ri.run(frame);
     const double e_ri = ri.energy();
 

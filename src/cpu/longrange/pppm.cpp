@@ -66,12 +66,11 @@ KSpacePPPM::KSpacePPPM(KSpacePPPM&& other) noexcept
       nzlo_in_(other.nzlo_in_), nzhi_in_(other.nzhi_in_),
       nxlo_out_(other.nxlo_out_), nxhi_out_(other.nxhi_out_),
       nylo_out_(other.nylo_out_), nyhi_out_(other.nyhi_out_),
-      nzlo_out_(other.nzlo_out_), nzhi_out_(other.nzhi_out_),
-      nxl_(other.nxl_), nyl_(other.nyl_), nzl_(other.nzl_),
-      nghost_(other.nghost_), brick_(std::move(other.brick_)),
-      work_(std::move(other.work_)), green_(std::move(other.green_)),
-      plan_fwd_(other.plan_fwd_), plan_bwd_(other.plan_bwd_),
-      mpi_fft_ready_(other.mpi_fft_ready_),
+      nzlo_out_(other.nzlo_out_), nzhi_out_(other.nzhi_out_), nxl_(other.nxl_),
+      nyl_(other.nyl_), nzl_(other.nzl_), nghost_(other.nghost_),
+      brick_(std::move(other.brick_)), work_(std::move(other.work_)),
+      green_(std::move(other.green_)), plan_fwd_(other.plan_fwd_),
+      plan_bwd_(other.plan_bwd_), mpi_fft_ready_(other.mpi_fft_ready_),
       mpi_local_n0_(other.mpi_local_n0_),
       mpi_local_0_start_(other.mpi_local_0_start_),
       mpi_alloc_(other.mpi_alloc_), mpi_data_(other.mpi_data_),
@@ -181,9 +180,8 @@ void KSpacePPPM::ensure_grid(const cpu::Frame& frame, bool initial_build) {
             K_[0], K_[1], K_[2], dens_full_.data(),
             reinterpret_cast<fftw_complex*>(work_.data()), FFTW_ESTIMATE);
         plan_bwd_ = fftw_plan_dft_c2r_3d(
-            K_[0], K_[1], K_[2],
-            reinterpret_cast<fftw_complex*>(work_.data()), dens_full_.data(),
-            FFTW_ESTIMATE);
+            K_[0], K_[1], K_[2], reinterpret_cast<fftw_complex*>(work_.data()),
+            dens_full_.data(), FFTW_ESTIMATE);
         if (!plan_fwd_ || !plan_bwd_) {
             release_storage();
             throw std::runtime_error("KSpacePPPM: serial r2c/c2r plan failed");
@@ -410,7 +408,7 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
         }
     } else
 #if defined(ATV_HAS_MPI) && defined(ATV_HAS_FFTW_MPI)
-    if (mpi && dd->cart_comm != MPI_COMM_NULL) {
+        if (mpi && dd->cart_comm != MPI_COMM_NULL) {
         std::fill(brick_.begin(), brick_.end(), 0.0);
         // Map wrapped g∈[0,K) to exactly one brick index (owned preferred,
         // else a single ±K ghost image). Depositing every ±K image *and*
@@ -444,15 +442,15 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
             const int b2 = base_[3 * i + 2] - nm1;
             for (int a = 0; a < n; ++a) {
                 const int g0 = wrap_k(b0 + a, K0);
-                const int ix = map1(g0, K0, nxlo_in_, nxhi_in_, nxlo_out_,
-                                    nxhi_out_);
+                const int ix =
+                    map1(g0, K0, nxlo_in_, nxhi_in_, nxlo_out_, nxhi_out_);
                 if (ix == 0x7fffffff)
                     continue;
                 const double wa = qi * thx[a];
                 for (int b = 0; b < n; ++b) {
                     const int g1 = wrap_k(b1 + b, K1);
-                    const int iy = map1(g1, K1, nylo_in_, nyhi_in_, nylo_out_,
-                                        nyhi_out_);
+                    const int iy =
+                        map1(g1, K1, nylo_in_, nyhi_in_, nylo_out_, nyhi_out_);
                     if (iy == 0x7fffffff)
                         continue;
                     const double wab = wa * thy[b];
@@ -627,8 +625,8 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
             // not the real n2. Plan creation still takes full n2. See FFTW
             // "Multi-dimensional MPI DFTs of Real Data".
             ptrdiff_t local_n0 = 0, local_0_start = 0;
-            ptrdiff_t alloc = fftw_mpi_local_size_3d(
-                K0, K1, n2c, comm, &local_n0, &local_0_start);
+            ptrdiff_t alloc = fftw_mpi_local_size_3d(K0, K1, n2c, comm,
+                                                     &local_n0, &local_0_start);
             mpi_local_n0_ = static_cast<long long>(local_n0);
             mpi_local_0_start_ = static_cast<long long>(local_0_start);
             mpi_alloc_ = static_cast<long long>(alloc);
@@ -715,8 +713,7 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
         remap_recv_.assign(static_cast<std::size_t>(rtot), 0.0);
         MPI_Alltoallv(remap_send_.data(), sendcounts_.data(),
                       senddispls_.data(), MPI_DOUBLE, remap_recv_.data(),
-                      recvcounts_.data(), recvdispls_.data(), MPI_DOUBLE,
-                      comm);
+                      recvcounts_.data(), recvdispls_.data(), MPI_DOUBLE, comm);
 
         // Unpack into FFTW-MPI padded buffer.
         std::memset(mpi_data_, 0,
@@ -724,7 +721,8 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
         const ptrdiff_t ln0 = static_cast<ptrdiff_t>(mpi_local_n0_);
         const ptrdiff_t l0s = static_cast<ptrdiff_t>(mpi_local_0_start_);
         for (int i = 0; i + 3 < rtot; i += 4) {
-            const int ix = static_cast<int>(remap_recv_[static_cast<std::size_t>(i)]);
+            const int ix =
+                static_cast<int>(remap_recv_[static_cast<std::size_t>(i)]);
             const int iy =
                 static_cast<int>(remap_recv_[static_cast<std::size_t>(i + 1)]);
             const int iz =
@@ -847,18 +845,18 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
         remap_recv_.assign(static_cast<std::size_t>(rtot), 0.0);
         MPI_Alltoallv(remap_send_.data(), sendcounts_.data(),
                       senddispls_.data(), MPI_DOUBLE, remap_recv_.data(),
-                      recvcounts_.data(), recvdispls_.data(), MPI_DOUBLE,
-                      comm);
+                      recvcounts_.data(), recvdispls_.data(), MPI_DOUBLE, comm);
 
         // Zero owned region; keep ghost for forward_comm fill later.
         for (int ix = nxlo_in_; ix <= nxhi_in_; ++ix)
             for (int iy = nylo_in_; iy <= nyhi_in_; ++iy)
                 for (int iz = nzlo_in_; iz <= nzhi_in_; ++iz)
-                    brick_[static_cast<std::size_t>(
-                        brick_index_(ix, iy, iz))] = 0.0;
+                    brick_[static_cast<std::size_t>(brick_index_(ix, iy, iz))] =
+                        0.0;
 
         for (int i = 0; i + 3 < rtot; i += 4) {
-            const int ix = static_cast<int>(remap_recv_[static_cast<std::size_t>(i)]);
+            const int ix =
+                static_cast<int>(remap_recv_[static_cast<std::size_t>(i)]);
             const int iy =
                 static_cast<int>(remap_recv_[static_cast<std::size_t>(i + 1)]);
             const int iz =

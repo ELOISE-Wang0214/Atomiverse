@@ -9,9 +9,9 @@
 
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
-#include "atomiverse/core/units.h"
 
 #include <cmath>
 #include <xsimd/xsimd.hpp>
@@ -20,7 +20,6 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 namespace native {
-
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -107,7 +106,8 @@ double nuclear_ss(const Shell& a, const Shell& b, const Atom* atoms, int natm) {
             for (int d = 0; d < 3; ++d)
                 P[d] = (alpha_a * a.center[d] + alpha_b * b.center[d]) / gamma;
 
-            double prefactor = a.coeff[p] * b.coeff[q] * (2.0 * units::pi / gamma)
+            double prefactor = a.coeff[p] * b.coeff[q]
+                               * (2.0 * units::pi / gamma)
                                * std::exp(-mu * R2_AB);
 
             // Sum over all nuclei
@@ -619,7 +619,8 @@ double overlap_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
         // max entry is (kMaxLOrbital+1)*(kMaxLOrbital+1) = 4*4 = 16 for kMaxLOrbital=2.
         const int imax = a_ang[d];
         const int jmax = b_ang[d];
-        constexpr int kMaxOverlapCells = (kMaxLOrbital + 2) * (kMaxLOrbital + 2);
+        constexpr int kMaxOverlapCells =
+            (kMaxLOrbital + 2) * (kMaxLOrbital + 2);
         double S[kMaxOverlapCells];
         os_overlap_1d(PA, PB, inv2g, S00, imax, jmax, S);
 
@@ -646,7 +647,7 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
         if (b_ang[d] > jmax_base)
             jmax_base = b_ang[d];
     }
-    const int im = imax_all;      // max kMaxLOrbital+2 = 5 (2nd-derivative bump)
+    const int im = imax_all; // max kMaxLOrbital+2 = 5 (2nd-derivative bump)
     const int jm = jmax_base + 2; // max kMaxLOrbital+2 = 5
     const int jstride = jm + 1;   // max 6
 

@@ -49,7 +49,7 @@ int main() {
     cpu::Frame f(5);
     // L0, L1, R0, R1, ion
     const double xyz[5][3] = {
-        {0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {0.0, 0.0, 10.0},
+        {0.0, 0.0, 0.0},  {2.0, 0.0, 0.0}, {0.0, 0.0, 10.0},
         {2.0, 0.0, 10.0}, {1.0, 0.0, 5.0},
     };
     const double qq[5] = {0.25, 0.25, -0.25, -0.25, 1.0};
@@ -108,8 +108,7 @@ int main() {
 
     // Sanity: kernel self vs pair limit consistency
     const double e_eff = cpu::GaussianChargeKernel::eta_eff(eta, eta);
-    const double g_near =
-        cpu::GaussianChargeKernel::greens(1e-8, eta, eta);
+    const double g_near = cpu::GaussianChargeKernel::greens(1e-8, eta, eta);
     const double g_self = cpu::GaussianChargeKernel::self_greens(eta);
     // lim r→0 erf(e r)/r = 2 e / √π = G_self
     (void)e_eff;

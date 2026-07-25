@@ -13,6 +13,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/semiempirical/am1_bcc_charge_assigner.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
@@ -25,7 +26,6 @@
 #include "atomiverse/cpu/semiempirical/nddo_matrix.h"
 #include "atomiverse/cpu/semiempirical/nddo_overlap.h"
 #include "atomiverse/cpu/semiempirical/nddo_two_electron.h"
-#include "atomiverse/core/role.h"
 #include "atomiverse/molrs.hpp"
 
 namespace {

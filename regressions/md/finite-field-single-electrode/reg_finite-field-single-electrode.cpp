@@ -26,19 +26,17 @@ namespace {
 
 constexpr double kSqrt2OverPi = 0.79788456080286535588;
 
-double A_self(double eta) {
-    return units::coulomb * eta * kSqrt2OverPi;
-}
+double A_self(double eta) { return units::coulomb * eta * kSqrt2OverPi; }
 
 } // namespace
 
 int main() {
     // ── Pin geometry (REFERENCE.md) ──────────────────────────────────
-    constexpr double kEta = 2.0;     // [1/Å]
-    constexpr double kEz = 0.1;      // [V/Å]
-    constexpr double kZ = 10.0;      // [Å]
-    constexpr double kL = 20.0;      // [Å]
-    constexpr double kPsi = 0.0;     // [V]
+    constexpr double kEta = 2.0; // [1/Å]
+    constexpr double kEz = 0.1;  // [V/Å]
+    constexpr double kZ = 10.0;  // [Å]
+    constexpr double kL = 20.0;  // [Å]
+    constexpr double kPsi = 0.0; // [V]
     const double Aii = A_self(kEta);
     const double Q_pin = (kPsi + kEz * kZ) / Aii;
     const double V = kL * kL * kL;

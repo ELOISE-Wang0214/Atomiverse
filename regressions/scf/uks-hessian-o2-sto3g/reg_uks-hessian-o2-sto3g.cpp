@@ -72,18 +72,17 @@ int main() {
     // ~1e-2 eV/Å² on Hessian elements. Product gate 2e-2 (2× that floor)
     // still catches sign/factor errors on stiff stretch blocks (~10² eV/Å²).
     // Full UCPKS twin of hessian.UKS at 1e-5 is follow-up.
-    constexpr double tol = 2e-2; // eV/Å² product gate
+    constexpr double tol = 2e-2;     // eV/Å² product gate
     constexpr double off_tol = 1e-2; // near-zero off-axis elements
 
     // Gated Cartesian-diagonal / stretch elements (row, col, want).
     const std::pair<int, int> idx[] = {
-        {0, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5},
-        {3, 3}, {4, 4}, {5, 5},
+        {0, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5}, {3, 3}, {4, 4}, {5, 5},
     };
     const double want[] = {
-        -6.951874310841, -6.951874310747, 128.455930123774, 6.951874311534,
-         6.951874311029, -128.455930112985, -6.951874311765, -6.951874311352,
-        128.455930103923,
+        -6.951874310841, -6.951874310747, 128.455930123774,
+        6.951874311534,  6.951874311029,  -128.455930112985,
+        -6.951874311765, -6.951874311352, 128.455930103923,
     };
     constexpr int n_gate = 9;
 
@@ -132,8 +131,7 @@ int main() {
             bool gated = false;
             for (int g = 0; g < n_gate; ++g)
                 if ((idx[g].first == r && idx[g].second == c)
-                    || (idx[g].first == c && idx[g].second == r
-                        && r != c)) {
+                    || (idx[g].first == c && idx[g].second == r && r != c)) {
                     gated = true;
                     break;
                 }
@@ -153,8 +151,7 @@ int main() {
     // Symmetry of the assembled Hessian.
     for (int r = 0; r < 6; ++r)
         for (int c = 0; c < r; ++c) {
-            const double d =
-                std::fabs(res.hessian(r, c) - res.hessian(c, r));
+            const double d = std::fabs(res.hessian(r, c) - res.hessian(c, r));
             if (!(d <= 1e-8)) {
                 std::printf("FAIL: Hessian not symmetric at (%d,%d) d=%.3e\n",
                             r, c, d);

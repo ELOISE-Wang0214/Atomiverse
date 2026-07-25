@@ -55,8 +55,7 @@ TEST(PWBomd, MdBindsEvaluatorForcesTwoSteps) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.on(md::Phase::force)
-        .add(PWEvaluator{cheap_cfg()}.with_gradient(true));
+    sim.on(md::Phase::force).add(PWEvaluator{cheap_cfg()}.with_gradient(true));
     sim.enable_timing(false);
     sim.build();
     ASSERT_EQ(sim.run(frame, 2), 2);

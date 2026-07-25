@@ -54,10 +54,8 @@ std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr) {
     const double at = a_bohr / std::sqrt(2.0);
     const cpu::gpw::GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
     const cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
-    const double frac[4][3] = {{0.0, 0.0, 0.0},
-                               {0.5, 0.5, 0.5},
-                               {0.5, 0.0, 0.25},
-                               {0.0, 0.5, 0.75}};
+    const double frac[4][3] = {
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
     std::vector<cpu::gpw::GpwAtom> atoms;
     for (int i = 0; i < 4; ++i) {
         const double pos[3] = {frac[i][0] * at, frac[i][1] * at,
@@ -196,8 +194,7 @@ int run_parent(const char* self_path) {
     std::printf("serial ENERGY=%.16e  WALL_S=%.3f  n_kpts=%d n_local=%d "
                 "iters=%d converged=%d\n",
                 serial.e_total, serial.wall_s, serial.n_kpts,
-                serial.n_kpts_local, serial.iters,
-                serial.converged ? 1 : 0);
+                serial.n_kpts_local, serial.iters, serial.converged ? 1 : 0);
 
     check(serial.converged, "A1 serial SCF converged");
     check(std::isfinite(serial.e_total), "A1 serial finite e_total");
@@ -206,7 +203,8 @@ int run_parent(const char* self_path) {
           "A4 serial n_kpts_local == n_kpts");
 
 #ifndef ATV_HAS_MPI
-    std::printf("ATV_HAS_MPI off — serial-only gate; skip mpiexec self-launch\n");
+    std::printf(
+        "ATV_HAS_MPI off — serial-only gate; skip mpiexec self-launch\n");
     return g_fail ? 1 : 0;
 #else
     // Self-launch mpiexec -n 4 worker mode.
@@ -224,8 +222,7 @@ int run_parent(const char* self_path) {
     const auto t0 = std::chrono::steady_clock::now();
     const int rc = std::system(cmd.c_str());
     const auto t1 = std::chrono::steady_clock::now();
-    const double parent_wall =
-        std::chrono::duration<double>(t1 - t0).count();
+    const double parent_wall = std::chrono::duration<double>(t1 - t0).count();
 
     double e4 = 0.0, wall4 = 0.0;
     int nk4 = 0;
@@ -246,18 +243,16 @@ int run_parent(const char* self_path) {
         }
     }
 
-    check(rc == 0 && parsed && status == "OK",
-          "A1 n=4 worker completed OK");
+    check(rc == 0 && parsed && status == "OK", "A1 n=4 worker completed OK");
     check(std::isfinite(e4), "A1 n=4 finite energy");
     check(nk4 == 4, "A4 n=4 n_kpts == 4");
 
     const double de = std::abs(serial.e_total - e4);
-    std::printf("rank-count: E1=%.16e  E4=%.16e  |Δ|=%.3e Ha\n",
-                serial.e_total, e4, de);
+    std::printf("rank-count: E1=%.16e  E4=%.16e  |Δ|=%.3e Ha\n", serial.e_total,
+                e4, de);
     check(de <= 1e-8, "A3 rank-count invariance |E1-E4| <= 1e-8 Ha");
 
-    const double ratio =
-        (wall4 > 0.0) ? serial.wall_s / wall4 : 0.0;
+    const double ratio = (wall4 > 0.0) ? serial.wall_s / wall4 : 0.0;
     std::printf("wall: T1=%.3f s  T4_worker=%.3f s  parent_launch=%.3f s  "
                 "ratio T1/T4=%.3f  (perf_exempt — k-RR foothold only)\n",
                 serial.wall_s, wall4, parent_wall, ratio);

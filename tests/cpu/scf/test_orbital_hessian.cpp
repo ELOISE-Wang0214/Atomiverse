@@ -138,9 +138,8 @@ Synthetic make_synthetic(int n, int no, std::uint64_t seed) {
                 for (int l = 0; l < n; ++l)
                     eri(i, j, k, l) =
                         (raw(i, j, k, l) + raw(j, i, k, l) + raw(i, j, l, k)
-                         + raw(j, i, l, k) + raw(k, l, i, j)
-                         + raw(l, k, i, j) + raw(k, l, j, i)
-                         + raw(l, k, j, i))
+                         + raw(j, i, l, k) + raw(k, l, i, j) + raw(l, k, i, j)
+                         + raw(k, l, j, i) + raw(l, k, j, i))
                         / 8.0;
     return {SlaterDeterminant{C, eps, occ, no}, eri};
 }
@@ -187,7 +186,8 @@ TEST(OrbitalHessian, SingletAFormulaElementwiseH2) {
     auto ref = make_h2_reference(0.735);
     OrbitalHessian h{ref.det, ref.eri};
     const RealMatrix A =
-        0.5 * (h.dense_plus(Channel::singlet) + h.dense_minus(Channel::singlet));
+        0.5
+        * (h.dense_plus(Channel::singlet) + h.dense_minus(Channel::singlet));
 
     const RealMatrix& C = ref.det.coefficients(SlaterDeterminant::Spin::alpha);
     // Independent AO→MO transform by explicit loops (n = 2, occ = {0},
@@ -204,8 +204,9 @@ TEST(OrbitalHessian, SingletAFormulaElementwiseH2) {
     };
     const double v_aijb = mo(1, 0, 0, 1); // (ai|jb), a=MO1, i=j=MO0, b=MO1
     const double v_ijab = mo(0, 0, 1, 1); // (ij|ab)
-    const double de = ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 1)
-                      - ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 0);
+    const double de =
+        ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 1)
+        - ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 0);
     EXPECT_NEAR(A(0, 0), de + 2.0 * v_aijb - v_ijab, 1e-12);
     // ac-002: the δδ(ε_a − ε_i) diagonal term, coupling terms subtracted.
     EXPECT_NEAR(A(0, 0) - (2.0 * v_aijb - v_ijab), de, 1e-12);
@@ -216,9 +217,11 @@ TEST(OrbitalHessian, TripletFormulaElementwiseH2) {
     auto ref = make_h2_reference(0.735);
     OrbitalHessian h{ref.det, ref.eri};
     const RealMatrix A3 =
-        0.5 * (h.dense_plus(Channel::triplet) + h.dense_minus(Channel::triplet));
+        0.5
+        * (h.dense_plus(Channel::triplet) + h.dense_minus(Channel::triplet));
     const RealMatrix B3 =
-        0.5 * (h.dense_plus(Channel::triplet) - h.dense_minus(Channel::triplet));
+        0.5
+        * (h.dense_plus(Channel::triplet) - h.dense_minus(Channel::triplet));
 
     const RealMatrix& C = ref.det.coefficients(SlaterDeterminant::Spin::alpha);
     auto mo = [&](int p, int q, int r, int s) {
@@ -233,8 +236,9 @@ TEST(OrbitalHessian, TripletFormulaElementwiseH2) {
     };
     const double v_ijab = mo(0, 0, 1, 1);
     const double v_ajbi = mo(1, 0, 1, 0); // (aj|bi)
-    const double de = ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 1)
-                      - ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 0);
+    const double de =
+        ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 1)
+        - ref.det.orbital_energy(SlaterDeterminant::Spin::alpha, 0);
     EXPECT_NEAR(A3(0, 0), de - v_ijab, 1e-12);
     EXPECT_NEAR(B3(0, 0), -v_ajbi, 1e-12);
 }
@@ -244,9 +248,9 @@ TEST(OrbitalHessian, DenseVsSigmaH2BothChannels) {
     OrbitalHessian h{ref.det, ref.eri};
     const RealVector v = random_vector(h.n_ov(), 42);
     for (Channel ch : {Channel::singlet, Channel::triplet}) {
-        EXPECT_LE(max_abs_diff(dense_times(h.dense_plus(ch), v),
-                               h.sigma_plus(v, ch)),
-                  1e-12);
+        EXPECT_LE(
+            max_abs_diff(dense_times(h.dense_plus(ch), v), h.sigma_plus(v, ch)),
+            1e-12);
         EXPECT_LE(max_abs_diff(dense_times(h.dense_minus(ch), v),
                                h.sigma_minus(v, ch)),
                   1e-12);

@@ -43,7 +43,7 @@ int main() {
 
     // Pins — REFERENCE.md (PySCF 2.14.0 eomee_ccsd_singlet / RHF STO-3G).
     constexpr double kOmega0Ev = 26.365966612792256; // eV
-    constexpr double kECcsd = -1.137283834497130;   // Ha
+    constexpr double kECcsd = -1.137283834497130;    // Ha
     constexpr double kTolEv = 1e-4;                  // eV
     constexpr double kTolHa = 1e-6;                  // Ha
 
@@ -52,7 +52,8 @@ int main() {
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::EOMEECCSDResult eom = rhf.eom_ee_ccsd(frame, /*n_states=*/1);
+    const cpu::scf::EOMEECCSDResult eom =
+        rhf.eom_ee_ccsd(frame, /*n_states=*/1);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;

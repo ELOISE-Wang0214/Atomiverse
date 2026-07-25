@@ -96,9 +96,9 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec) : kind_(spec.kind()) {
         eval_.emplace();
         eval_->set_serial_on_replica();
         eval_->on(ATV::evaluate::Phase::evaluate)
-            .add(semiempirical::AM1Evaluator{
-                p.charge, p.multiplicity, p.max_iter, p.density_tol,
-                p.energy_tol});
+            .add(semiempirical::AM1Evaluator{p.charge, p.multiplicity,
+                                             p.max_iter, p.density_tol,
+                                             p.energy_tol});
         eval_->build();
         return;
     }

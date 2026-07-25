@@ -31,11 +31,10 @@ inline double slab_corr_energy(double mz, double q_total, double mz_r2,
     const double ke = ATV::units::coulomb;
     const double two_pi = 2.0 * ATV::units::pi;
     // LAMMPS: e_slabcorr = 2π (Mz² − Q·Σ q z² − Q² Lz'²/12) / V'
-    const double raw =
-        two_pi
-        * (mz * mz - q_total * mz_r2
-           - q_total * q_total * zprd_slab * zprd_slab / 12.0)
-        / volume;
+    const double raw = two_pi
+                       * (mz * mz - q_total * mz_r2
+                          - q_total * q_total * zprd_slab * zprd_slab / 12.0)
+                       / volume;
     return ke * raw;
 }
 
@@ -51,8 +50,7 @@ inline void slab_corr_add_forces(const StorageReal* q, const StorageReal* z,
                                  int n, double mz, double q_total,
                                  double volume, AccReal* fz) {
     // ffact = ke * (−4π / V');  Fz_i += ffact * q_i * (Mz − Q z_i)
-    const double ffact =
-        ATV::units::coulomb * (-4.0 * ATV::units::pi / volume);
+    const double ffact = ATV::units::coulomb * (-4.0 * ATV::units::pi / volume);
     for (int i = 0; i < n; ++i) {
         const double qi = static_cast<double>(q[i]);
         if (qi == 0.0)

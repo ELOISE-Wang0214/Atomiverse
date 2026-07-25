@@ -45,8 +45,9 @@ __host__ __device__ inline std::uint32_t mask_jbits(const std::uint64_t* mask,
 }
 
 /// @brief Write the 32-bit j-interaction flags for i_slot of CSR pair p.
-__host__ __device__ inline void mask_set_jbits(std::uint64_t* mask, int pair_idx,
-                                              int i_slot, std::uint32_t bits) {
+__host__ __device__ inline void mask_set_jbits(std::uint64_t* mask,
+                                               int pair_idx, int i_slot,
+                                               std::uint32_t bits) {
     auto* rows = reinterpret_cast<std::uint32_t*>(
         mask + static_cast<std::size_t>(pair_idx) * kMaskWords);
     rows[i_slot] = bits;

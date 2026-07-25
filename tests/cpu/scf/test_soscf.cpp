@@ -24,6 +24,7 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
@@ -34,7 +35,6 @@
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/stages/mix_stage.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using cpu::scf::BasisSet;
@@ -120,8 +120,8 @@ RealMatrix density2(const RealMatrix& C, int n_occ) {
 /// @brief Rotation energy E(θ) of H2 with κ_{a=va, i=oi} = θ (all other
 ///        amplitudes zero): C' = C·exp(K), P' = 2 C'_occ C'_occᵀ, fresh
 ///        Fock, energy [Hartree].
-double rotation_energy(const IntegralPack& ints, const RealMatrix& C,
-                       int n_occ, int va, int oi, double theta) {
+double rotation_energy(const IntegralPack& ints, const RealMatrix& C, int n_occ,
+                       int va, int oi, double theta) {
     const int m = static_cast<int>(C.shape()[1]);
     RealMatrix K = xt::zeros<double>(
         {static_cast<std::size_t>(m), static_cast<std::size_t>(m)});
@@ -149,8 +149,7 @@ TEST(SoscfExp, AntisymmetricExponentialIsOrthogonal) {
             ++k;
         }
     const RealMatrix U = SOSCFStepper::exp_antisymmetric(K);
-    const RealMatrix UtU =
-        xt::linalg::dot(RealMatrix(xt::transpose(U)), U);
+    const RealMatrix UtU = xt::linalg::dot(RealMatrix(xt::transpose(U)), U);
     RealMatrix I = xt::eye<double>(4);
     EXPECT_LE(max_abs(UtU - I), 1e-13);
 }
@@ -171,9 +170,9 @@ TEST(SoscfExp, RotatedCoefficientsKeepOverlapMetric) {
     K(0, 2) = 0.15;
     const RealMatrix C_rot =
         xt::linalg::dot(C0, SOSCFStepper::exp_antisymmetric(K));
-    const RealMatrix CtSC = xt::linalg::dot(
-        RealMatrix(xt::transpose(C_rot)),
-        RealMatrix(xt::linalg::dot(pv.S, C_rot)));
+    const RealMatrix CtSC =
+        xt::linalg::dot(RealMatrix(xt::transpose(C_rot)),
+                        RealMatrix(xt::linalg::dot(pv.S, C_rot)));
     RealMatrix I = xt::eye<double>(static_cast<std::size_t>(m));
     EXPECT_LE(max_abs(CtSC - I), 1e-12);
 }
@@ -205,8 +204,8 @@ TEST(SoscfGradient, MatchesFiniteDifferenceOfRotationEnergy) {
     RealMatrix C = C0, C_b = C0;
     RealVector eig = eig0, eig_b = eig0;
     const double v_nuc = ints.V_nuc;
-    SOSCFStepper stepper(/*restricted=*/true, ints, n_alpha, n_beta,
-                         pv.Hcore, v_nuc, F, F, P, P, C, C_b, eig, eig_b,
+    SOSCFStepper stepper(/*restricted=*/true, ints, n_alpha, n_beta, pv.Hcore,
+                         v_nuc, F, F, P, P, C, C_b, eig, eig_b,
                          /*max_micro=*/12, /*trust_radius=*/0.4);
 
     const RealVector g = stepper.gradient(); // 4·F_ai, virtual-major
@@ -245,8 +244,8 @@ TEST(SoscfCiah, MatchesDenseAugmentedEigensolve) {
     RealMatrix F = fock_of(ints, P);
 
     // Gradient 4·F_ai and Hessian 4·¹(A+B) at this iterate.
-    const RealMatrix Fmo = xt::linalg::dot(
-        RealMatrix(xt::transpose(C0)), RealMatrix(xt::linalg::dot(F, C0)));
+    const RealMatrix Fmo = xt::linalg::dot(RealMatrix(xt::transpose(C0)),
+                                           RealMatrix(xt::linalg::dot(F, C0)));
     RealVector g = xt::zeros<double>({static_cast<std::size_t>(n_rot)});
     for (int a = 0; a < nv; ++a)
         g(a * n_occ) = 4.0 * Fmo(n_occ + a, 0);
@@ -258,9 +257,8 @@ TEST(SoscfCiah, MatchesDenseAugmentedEigensolve) {
 
     // Dense reference: H built explicitly IN THE TEST ONLY.
     const RealMatrix Hd = 4.0 * hess.dense_plus(Channel::singlet);
-    RealMatrix Aug = xt::zeros<double>(
-        {static_cast<std::size_t>(n_rot + 1),
-         static_cast<std::size_t>(n_rot + 1)});
+    RealMatrix Aug = xt::zeros<double>({static_cast<std::size_t>(n_rot + 1),
+                                        static_cast<std::size_t>(n_rot + 1)});
     for (int p = 0; p < n_rot; ++p) {
         Aug(0, p + 1) = g(p);
         Aug(p + 1, 0) = g(p);
@@ -305,8 +303,8 @@ TEST(SoscfTrust, ClipsStepNormToTrustRadius) {
     RealMatrix F = fock_of(ints, P);
     RealMatrix C = C0, C_b = C0;
     RealVector eig = eig0, eig_b = eig0;
-    SOSCFStepper stepper(true, ints, n_alpha, n_beta, pv.Hcore, ints.V_nuc,
-                         F, F, P, P, C, C_b, eig, eig_b, 12, trust);
+    SOSCFStepper stepper(true, ints, n_alpha, n_beta, pv.Hcore, ints.V_nuc, F,
+                         F, P, P, C, C_b, eig, eig_b, 12, trust);
     stepper.step();
 
     EXPECT_FALSE(stepper.last_step_rejected());
@@ -315,8 +313,7 @@ TEST(SoscfTrust, ClipsStepNormToTrustRadius) {
 
     // The rotated coefficients stay S-orthonormal to 1e-12.
     const RealMatrix CtSC = xt::linalg::dot(
-        RealMatrix(xt::transpose(C)),
-        RealMatrix(xt::linalg::dot(pv.S, C)));
+        RealMatrix(xt::transpose(C)), RealMatrix(xt::linalg::dot(pv.S, C)));
     RealMatrix I = xt::eye<double>(C.shape()[1]);
     EXPECT_LE(max_abs(CtSC - I), 1e-12);
     // And the coefficients actually moved.
@@ -340,16 +337,14 @@ TEST(SoscfStep, StationaryIterateIsNoOp) {
     RealMatrix F = fock_of(ints, P);
     RealMatrix C = C0, C_b = C0;
     RealVector eig = eig0, eig_b = eig0;
-    SOSCFStepper stepper(true, ints, n_alpha, n_beta, pv.Hcore, ints.V_nuc,
-                         F, F, P, P, C, C_b, eig, eig_b, 12, 0.4);
+    SOSCFStepper stepper(true, ints, n_alpha, n_beta, pv.Hcore, ints.V_nuc, F,
+                         F, P, P, C, C_b, eig, eig_b, 12, 0.4);
 
     const RealVector g = stepper.gradient();
     ASSERT_LT(std::abs(g(0)), 1e-14) << "symmetry must zero the gradient";
 
     stepper.step();
-    EXPECT_EQ(std::memcmp(C.data(), C0.data(),
-                          C0.size() * sizeof(double)),
-              0)
+    EXPECT_EQ(std::memcmp(C.data(), C0.data(), C0.size() * sizeof(double)), 0)
         << "stationary step must leave C bitwise untouched";
     EXPECT_DOUBLE_EQ(stepper.last_step_norm(), 0.0);
 }
@@ -368,8 +363,8 @@ TEST(SoscfValidate, UhfAlphaBetaMismatchThrows) {
     int n_alpha = 1, n_beta = 1;
     double v_nuc = 0.0;
     SOSCFStepper stepper(/*restricted=*/false, ints, n_alpha, n_beta, Hcore,
-                         v_nuc, F_a, F_b, P_a, P_b, C_a, C_b, eig_a, eig_b,
-                         12, 0.4);
+                         v_nuc, F_a, F_b, P_a, P_b, C_a, C_b, eig_a, eig_b, 12,
+                         0.4);
     EXPECT_THROW(stepper.step(), std::invalid_argument);
     EXPECT_THROW(stepper.gradient(), std::invalid_argument);
 }
@@ -430,9 +425,8 @@ TEST(SoscfMixStage, ActivatesAtFirstEligibleIterationWhenStartNonPositive) {
     EXPECT_TRUE(latch)
         << "soscf_start <= 0 must activate at the first eligible iteration";
     // Extrapolation AND level shift skipped: F bitwise unchanged.
-    EXPECT_EQ(std::memcmp(F_a.data(), F_in.data(),
-                          F_in.size() * sizeof(double)),
-              0);
+    EXPECT_EQ(
+        std::memcmp(F_a.data(), F_in.data(), F_in.size() * sizeof(double)), 0);
     // The DIIS error is still produced (the criterion reads it).
     EXPECT_EQ(err_a.shape()[0], 2u);
 }

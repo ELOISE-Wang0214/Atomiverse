@@ -325,11 +325,10 @@ void ParrinelloRahmanNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // three diagonal pressures so the cubic path collapses to one volume DOF
     // like NoseHooverNPT pdim==3 / LAMMPS couple().
     {
-        const double ave =
-            (1.0 / 3.0)
-            * (static_cast<double>(P_tens(0, 0))
-               + static_cast<double>(P_tens(1, 1))
-               + static_cast<double>(P_tens(2, 2)));
+        const double ave = (1.0 / 3.0)
+                           * (static_cast<double>(P_tens(0, 0))
+                              + static_cast<double>(P_tens(1, 1))
+                              + static_cast<double>(P_tens(2, 2)));
         P_tens(0, 0) = P_tens(1, 1) = P_tens(2, 2) = ave;
     }
 
@@ -393,15 +392,12 @@ void ParrinelloRahmanNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
 
     if (shear < 1e-14) {
         // Exact per-axis exp scale — matches NoseHooverNPT isotropic path.
-        const double sx =
-            std::exp(-(static_cast<double>(eps_dot_(0, 0)) + mtk_term2)
-                     * half_dt);
-        const double sy =
-            std::exp(-(static_cast<double>(eps_dot_(1, 1)) + mtk_term2)
-                     * half_dt);
-        const double sz =
-            std::exp(-(static_cast<double>(eps_dot_(2, 2)) + mtk_term2)
-                     * half_dt);
+        const double sx = std::exp(
+            -(static_cast<double>(eps_dot_(0, 0)) + mtk_term2) * half_dt);
+        const double sy = std::exp(
+            -(static_cast<double>(eps_dot_(1, 1)) + mtk_term2) * half_dt);
+        const double sz = std::exp(
+            -(static_cast<double>(eps_dot_(2, 2)) + mtk_term2) * half_dt);
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
             sp_vx[i] *= sx;
@@ -547,12 +543,18 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     h(2, 2) *= az;
     // Existing off-diagonals scale with the product of edge factors so
     // tilt angles are approximately preserved under pure dilation.
-    h(0, 1) = static_cast<double>(h(0, 1)) * ax + gxy * static_cast<double>(h(1, 1));
-    h(1, 0) = static_cast<double>(h(1, 0)) * ay + gxy * static_cast<double>(h(0, 0));
-    h(0, 2) = static_cast<double>(h(0, 2)) * ax + gxz * static_cast<double>(h(2, 2));
-    h(2, 0) = static_cast<double>(h(2, 0)) * az + gxz * static_cast<double>(h(0, 0));
-    h(1, 2) = static_cast<double>(h(1, 2)) * ay + gyz * static_cast<double>(h(2, 2));
-    h(2, 1) = static_cast<double>(h(2, 1)) * az + gyz * static_cast<double>(h(1, 1));
+    h(0, 1) =
+        static_cast<double>(h(0, 1)) * ax + gxy * static_cast<double>(h(1, 1));
+    h(1, 0) =
+        static_cast<double>(h(1, 0)) * ay + gxy * static_cast<double>(h(0, 0));
+    h(0, 2) =
+        static_cast<double>(h(0, 2)) * ax + gxz * static_cast<double>(h(2, 2));
+    h(2, 0) =
+        static_cast<double>(h(2, 0)) * az + gxz * static_cast<double>(h(0, 0));
+    h(1, 2) =
+        static_cast<double>(h(1, 2)) * ay + gyz * static_cast<double>(h(2, 2));
+    h(2, 1) =
+        static_cast<double>(h(2, 1)) * az + gyz * static_cast<double>(h(1, 1));
     // Keep the stored cell symmetric (strain-rate is symmetric).
     h(1, 0) = h(0, 1) = AccReal(0.5) * (h(0, 1) + h(1, 0));
     h(2, 0) = h(0, 2) = AccReal(0.5) * (h(0, 2) + h(2, 0));
@@ -567,8 +569,8 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 }
 
-double ParrinelloRahmanNPT::extended_hamiltonian(
-    const cpu::LaunchContext& ctx) const {
+double
+ParrinelloRahmanNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
     const auto& f = ctx.frame;
     double H = f.meta.get(kKinetic) + f.meta.get(kEnergy);
     const double W_axis = W_ / 3.0;

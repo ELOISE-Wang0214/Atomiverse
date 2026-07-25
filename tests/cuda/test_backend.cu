@@ -2,10 +2,10 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

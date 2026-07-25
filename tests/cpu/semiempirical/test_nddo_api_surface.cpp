@@ -36,8 +36,7 @@ TEST(NDDOApiSurface, AM1MembersAndRun) {
 
 TEST(NDDOApiSurface, PublicHeaderTombstonesNDDOSolver) {
     // Grep-style gate: public nddo_solver.h is an #error tombstone.
-    std::ifstream in(
-        "include/atomiverse/cpu/semiempirical/nddo_solver.h");
+    std::ifstream in("include/atomiverse/cpu/semiempirical/nddo_solver.h");
     if (!in) {
         // Running from build dir — try source relative path via macro.
         GTEST_SKIP() << "source tree path not available from test cwd";

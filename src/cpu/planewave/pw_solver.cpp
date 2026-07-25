@@ -87,8 +87,7 @@ MPI_Datatype mpi_real_type() {
 // ── PW ────────────────────────────────────────────────────────────
 
 namespace {
-void ensure_helpers(PW& self,
-                    std::unique_ptr<internal::PoissonSolver>& poisson,
+void ensure_helpers(PW& self, std::unique_ptr<internal::PoissonSolver>& poisson,
                     std::unique_ptr<internal::XCBuilder>& xc,
                     std::unique_ptr<internal::VeffBuilder>& veff,
                     std::unique_ptr<internal::DensityBuilder>& density) {
@@ -118,8 +117,8 @@ void PW::build(const cpu::Frame& reference) {
         poisson_ = std::make_unique<internal::PoissonSolver>();
         xc_ = std::make_unique<internal::XCBuilder>();
         veff_ = std::make_unique<internal::VeffBuilder>();
-        density_ = std::make_unique<internal::DensityBuilder>(
-            AccReal(mix_beta), pulay_depth);
+        density_ = std::make_unique<internal::DensityBuilder>(AccReal(mix_beta),
+                                                              pulay_depth);
     }
     if (!upf_path.empty()) {
         // Validate the pseudopotential up front (throws on parse error);
@@ -153,8 +152,7 @@ PWResult& PW::run(const cpu::Frame& frame) {
 
     // ── Shared problem assembly (identical to the CUDA backend) ──
     internal::PWProblem prob;
-    internal::setup_pw_problem(frame, upf_path, ecut_ry,
-                               k_mesh, prob);
+    internal::setup_pw_problem(frame, upf_path, ecut_ry, k_mesh, prob);
     internal::PWWorkspace& ws = prob.ws;
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
@@ -163,8 +161,8 @@ PWResult& PW::run(const cpu::Frame& frame) {
     // `for (ik = rank; ik < n_kpts; ik += nprocs)` loop below. Serial /
     // MPI-uninitialized layouts are rank 0 of 1, so all k are local.
     result_.n_kpts = n_kpts;
-    result_.n_kpts_local = n_kpts / layout.nprocs +
-                           (layout.rank < n_kpts % layout.nprocs ? 1 : 0);
+    result_.n_kpts_local =
+        n_kpts / layout.nprocs + (layout.rank < n_kpts % layout.nprocs ? 1 : 0);
     const int n_elec = prob.n_elec;
     const AccReal vol_bohr = prob.vol_bohr;
     ws.mix_beta = AccReal(mix_beta);
@@ -216,8 +214,8 @@ PWResult& PW::run(const cpu::Frame& frame) {
     const int n_bands_r = spin_polarized ? n_bands : prob.n_bands;
     const bool use_smear = (smearing != Smearing::none);
     if (use_smear && spin_polarized)
-        throw std::invalid_argument(
-            "PW::run: collinear spin + metallic smearing not supported together");
+        throw std::invalid_argument("PW::run: collinear spin + metallic "
+                                    "smearing not supported together");
     if (use_smear && !(degauss > 0.0))
         throw std::invalid_argument(
             "PW::run: degauss must be > 0 [Ry] when smearing is enabled");
@@ -235,7 +233,6 @@ PWResult& PW::run(const cpu::Frame& frame) {
         smear_kind = internal::SmearKind::methfessel_paxton;
     else if (smearing == Smearing::gaussian)
         smear_kind = internal::SmearKind::gaussian;
-
 
     if (log_rank0)
         ATV_INFO("[pw] start atoms={} elec={} bands={} ecut_ry={} {} "
@@ -261,236 +258,331 @@ PWResult& PW::run(const cpu::Frame& frame) {
     // ── SCF loop ──
     bool converged = false;
     if (use_smear) {
-// Per-k wavefunction cache (needed when occupations depend on all k).
-    std::vector<xt::xarray<std::complex<AccReal>>> wfc_k(
-        static_cast<std::size_t>(n_kpts));
-    std::vector<std::vector<AccReal>> evals_k(
-        static_cast<std::size_t>(n_kpts));
-
-    // ── SCF loop ──
-    bool converged = false;
-    for (int iter = 0; iter < max_iter; ++iter) {
-        poisson_->step(ws);
-        xc_->step(ws, xc);
-        veff_->step(ws);
-
-        // Pass 1: diagonalize every owned k-point; stash evals + wfc.
-        auto* saved_gvec = ws.gvec;
-        for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
-            auto& gvk = prob.gv_k[ik];
-
-            // Swap the workspace onto this k-point's G-sphere. T_G must
-            // be sized to the k-sphere (its G-count can exceed Γ's).
-            ws.gvec = &gvk;
-            ws.n_g = gvk.count();
-            ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.T_G[ig] = gvk.ekin[ig]; // 0.5*|k+G|², Cartesian k
-
-            // Nonlocal/wfc tables live on q = k+G: bind this k's tables.
-            if (!prob.kb_proj_k.empty())
-                ws.kb_proj = prob.kb_proj_k[ik];
-            if (!prob.atom_wfc_k.empty())
-                ws.atom_wfc = prob.atom_wfc_k[ik];
-
-            davidson_->step(ws);
-
-            // Stash eigenpairs for the occupation / density pass.
-            evals_k[static_cast<std::size_t>(ik)].assign(
-                ws.eigenvalues.begin(), ws.eigenvalues.end());
-            if (static_cast<int>(evals_k[static_cast<std::size_t>(ik)].size())
-                > n_bands_eff)
-                evals_k[static_cast<std::size_t>(ik)].resize(
-                    static_cast<std::size_t>(n_bands_eff));
-            wfc_k[static_cast<std::size_t>(ik)] = ws.wfc;
-        }
-
-        // Collect the full spectrum for the Fermi search (MPI: Allgather
-        // eigenvalues). Fixed occupations skip the search.
-        std::vector<AccReal> all_evals;
-        std::vector<AccReal> all_weights;
-        all_evals.reserve(static_cast<std::size_t>(n_kpts * n_bands_eff));
-        all_weights.reserve(static_cast<std::size_t>(n_kpts * n_bands_eff));
-
-#ifdef ATV_HAS_MPI
-        if (layout.active) {
-            // Pack local evals as a flat n_kpts * n_bands_eff buffer (zeros for
-            // non-owned k); SUM across ranks.
-            std::vector<AccReal> pack(
-                static_cast<std::size_t>(n_kpts * n_bands_eff), AccReal(0));
-            for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
-                const auto& ev = evals_k[static_cast<std::size_t>(ik)];
-                for (int b = 0; b < n_bands_eff && b < static_cast<int>(ev.size());
-                     ++b)
-                    pack[static_cast<std::size_t>(ik * n_bands_eff + b)] = ev[b];
-            }
-            MPI_Allreduce(MPI_IN_PLACE, pack.data(), n_kpts * n_bands_eff,
-                          mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
-            for (int ik = 0; ik < n_kpts; ++ik) {
-                evals_k[static_cast<std::size_t>(ik)].resize(
-                    static_cast<std::size_t>(n_bands_eff));
-                for (int b = 0; b < n_bands_eff; ++b)
-                    evals_k[static_cast<std::size_t>(ik)][b] =
-                        pack[static_cast<std::size_t>(ik * n_bands_eff + b)];
-            }
-        }
-#endif
-
-        for (int ik = 0; ik < n_kpts; ++ik) {
-            const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
-            const auto& ev = evals_k[static_cast<std::size_t>(ik)];
-            for (int b = 0; b < n_bands_eff && b < static_cast<int>(ev.size());
-                 ++b) {
-                all_evals.push_back(ev[static_cast<std::size_t>(b)]);
-                all_weights.push_back(w);
-            }
-        }
-
-        AccReal mu_ha = AccReal(0);
-        AccReal n_occ = AccReal(0);
-        AccReal entropy_sum = AccReal(0);
-        std::vector<std::vector<AccReal>> occ_k(
+        // Per-k wavefunction cache (needed when occupations depend on all k).
+        std::vector<xt::xarray<std::complex<AccReal>>> wfc_k(
+            static_cast<std::size_t>(n_kpts));
+        std::vector<std::vector<AccReal>> evals_k(
             static_cast<std::size_t>(n_kpts));
 
-        if (use_smear) {
-            mu_ha = internal::find_fermi_level(
-                all_evals, all_weights, AccReal(prob.n_elec), degauss_ha,
-                smear_kind, mp_order);
+        // ── SCF loop ──
+        bool converged = false;
+        for (int iter = 0; iter < max_iter; ++iter) {
+            poisson_->step(ws);
+            xc_->step(ws, xc);
+            veff_->step(ws);
+
+            // Pass 1: diagonalize every owned k-point; stash evals + wfc.
+            auto* saved_gvec = ws.gvec;
+            for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
+                auto& gvk = prob.gv_k[ik];
+
+                // Swap the workspace onto this k-point's G-sphere. T_G must
+                // be sized to the k-sphere (its G-count can exceed Γ's).
+                ws.gvec = &gvk;
+                ws.n_g = gvk.count();
+                ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
+                for (int ig = 0; ig < ws.n_g; ++ig)
+                    ws.T_G[ig] = gvk.ekin[ig]; // 0.5*|k+G|², Cartesian k
+
+                // Nonlocal/wfc tables live on q = k+G: bind this k's tables.
+                if (!prob.kb_proj_k.empty())
+                    ws.kb_proj = prob.kb_proj_k[ik];
+                if (!prob.atom_wfc_k.empty())
+                    ws.atom_wfc = prob.atom_wfc_k[ik];
+
+                davidson_->step(ws);
+
+                // Stash eigenpairs for the occupation / density pass.
+                evals_k[static_cast<std::size_t>(ik)].assign(
+                    ws.eigenvalues.begin(), ws.eigenvalues.end());
+                if (static_cast<int>(
+                        evals_k[static_cast<std::size_t>(ik)].size())
+                    > n_bands_eff)
+                    evals_k[static_cast<std::size_t>(ik)].resize(
+                        static_cast<std::size_t>(n_bands_eff));
+                wfc_k[static_cast<std::size_t>(ik)] = ws.wfc;
+            }
+
+            // Collect the full spectrum for the Fermi search (MPI: Allgather
+            // eigenvalues). Fixed occupations skip the search.
+            std::vector<AccReal> all_evals;
+            std::vector<AccReal> all_weights;
+            all_evals.reserve(static_cast<std::size_t>(n_kpts * n_bands_eff));
+            all_weights.reserve(static_cast<std::size_t>(n_kpts * n_bands_eff));
+
+#ifdef ATV_HAS_MPI
+            if (layout.active) {
+                // Pack local evals as a flat n_kpts * n_bands_eff buffer (zeros for
+                // non-owned k); SUM across ranks.
+                std::vector<AccReal> pack(
+                    static_cast<std::size_t>(n_kpts * n_bands_eff), AccReal(0));
+                for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
+                    const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                    for (int b = 0;
+                         b < n_bands_eff && b < static_cast<int>(ev.size());
+                         ++b)
+                        pack[static_cast<std::size_t>(ik * n_bands_eff + b)] =
+                            ev[b];
+                }
+                MPI_Allreduce(MPI_IN_PLACE, pack.data(), n_kpts * n_bands_eff,
+                              mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
+                for (int ik = 0; ik < n_kpts; ++ik) {
+                    evals_k[static_cast<std::size_t>(ik)].resize(
+                        static_cast<std::size_t>(n_bands_eff));
+                    for (int b = 0; b < n_bands_eff; ++b)
+                        evals_k[static_cast<std::size_t>(ik)][b] =
+                            pack[static_cast<std::size_t>(ik * n_bands_eff
+                                                          + b)];
+                }
+            }
+#endif
+
             for (int ik = 0; ik < n_kpts; ++ik) {
                 const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
                 const auto& ev = evals_k[static_cast<std::size_t>(ik)];
-                std::vector<AccReal> w_one(ev.size(), w);
-                auto fill = internal::fill_occupations(
-                    ev, w_one, mu_ha, degauss_ha, smear_kind, mp_order);
-                // fill_occupations multiplies by weights already for n_occ;
-                // store bare occupations per band.
-                occ_k[static_cast<std::size_t>(ik)].resize(ev.size());
-                for (std::size_t b = 0; b < ev.size(); ++b)
-                    occ_k[static_cast<std::size_t>(ik)][b] =
-                        internal::smear_f_band(ev[b], mu_ha, degauss_ha,
-                                               smear_kind, mp_order);
-                n_occ += fill.n_occ;
-                entropy_sum += fill.entropy;
+                for (int b = 0;
+                     b < n_bands_eff && b < static_cast<int>(ev.size()); ++b) {
+                    all_evals.push_back(ev[static_cast<std::size_t>(b)]);
+                    all_weights.push_back(w);
+                }
             }
-        } else {
-            // Fixed closed-shell: first n_bands_eff bands fully occupied (f=2).
-            for (int ik = 0; ik < n_kpts; ++ik) {
-                occ_k[static_cast<std::size_t>(ik)].assign(
-                    static_cast<std::size_t>(n_bands_eff), AccReal(2));
-                n_occ += prob.kg.weights[static_cast<std::size_t>(ik)]
-                         * AccReal(2) * AccReal(n_bands_eff);
+
+            AccReal mu_ha = AccReal(0);
+            AccReal n_occ = AccReal(0);
+            AccReal entropy_sum = AccReal(0);
+            std::vector<std::vector<AccReal>> occ_k(
+                static_cast<std::size_t>(n_kpts));
+
+            if (use_smear) {
+                mu_ha = internal::find_fermi_level(
+                    all_evals, all_weights, AccReal(prob.n_elec), degauss_ha,
+                    smear_kind, mp_order);
+                for (int ik = 0; ik < n_kpts; ++ik) {
+                    const AccReal w =
+                        prob.kg.weights[static_cast<std::size_t>(ik)];
+                    const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                    std::vector<AccReal> w_one(ev.size(), w);
+                    auto fill = internal::fill_occupations(
+                        ev, w_one, mu_ha, degauss_ha, smear_kind, mp_order);
+                    // fill_occupations multiplies by weights already for n_occ;
+                    // store bare occupations per band.
+                    occ_k[static_cast<std::size_t>(ik)].resize(ev.size());
+                    for (std::size_t b = 0; b < ev.size(); ++b)
+                        occ_k[static_cast<std::size_t>(ik)][b] =
+                            internal::smear_f_band(ev[b], mu_ha, degauss_ha,
+                                                   smear_kind, mp_order);
+                    n_occ += fill.n_occ;
+                    entropy_sum += fill.entropy;
+                }
+            } else {
+                // Fixed closed-shell: first n_bands_eff bands fully occupied (f=2).
+                for (int ik = 0; ik < n_kpts; ++ik) {
+                    occ_k[static_cast<std::size_t>(ik)].assign(
+                        static_cast<std::size_t>(n_bands_eff), AccReal(2));
+                    n_occ += prob.kg.weights[static_cast<std::size_t>(ik)]
+                             * AccReal(2) * AccReal(n_bands_eff);
+                }
             }
-        }
 
-        // Pass 2: density + band energy with occupations (owned k only).
-        density_->begin(ws);
-        AccReal e_band = 0;
-        for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
-            auto& gvk = prob.gv_k[ik];
-            ws.gvec = &gvk;
-            ws.n_g = gvk.count();
-            ws.wfc = wfc_k[static_cast<std::size_t>(ik)];
-            ws.eigenvalues.resize(
-                {evals_k[static_cast<std::size_t>(ik)].size()});
-            for (std::size_t b = 0;
-                 b < evals_k[static_cast<std::size_t>(ik)].size(); ++b)
-                ws.eigenvalues[b] = evals_k[static_cast<std::size_t>(ik)][b];
+            // Pass 2: density + band energy with occupations (owned k only).
+            density_->begin(ws);
+            AccReal e_band = 0;
+            for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
+                auto& gvk = prob.gv_k[ik];
+                ws.gvec = &gvk;
+                ws.n_g = gvk.count();
+                ws.wfc = wfc_k[static_cast<std::size_t>(ik)];
+                ws.eigenvalues.resize(
+                    {evals_k[static_cast<std::size_t>(ik)].size()});
+                for (std::size_t b = 0;
+                     b < evals_k[static_cast<std::size_t>(ik)].size(); ++b)
+                    ws.eigenvalues[b] =
+                        evals_k[static_cast<std::size_t>(ik)][b];
 
-            const AccReal weight = prob.kg.weights[static_cast<std::size_t>(ik)];
-            const auto& occ = occ_k[static_cast<std::size_t>(ik)];
-            const int nb = static_cast<int>(occ.size());
-            for (int b = 0; b < nb; ++b)
-                e_band += weight * ws.eigenvalues[b] * occ[static_cast<std::size_t>(b)];
+                const AccReal weight =
+                    prob.kg.weights[static_cast<std::size_t>(ik)];
+                const auto& occ = occ_k[static_cast<std::size_t>(ik)];
+                const int nb = static_cast<int>(occ.size());
+                for (int b = 0; b < nb; ++b)
+                    e_band += weight * ws.eigenvalues[b]
+                              * occ[static_cast<std::size_t>(b)];
 
-            density_->accumulate_kpoint(ws, weight, nb, occ.data());
-        }
-        // Restore the density G-sphere.
-        ws.gvec = saved_gvec;
-        ws.n_g = gv0.count();
+                density_->accumulate_kpoint(ws, weight, nb, occ.data());
+            }
+            // Restore the density G-sphere.
+            ws.gvec = saved_gvec;
+            ws.n_g = gv0.count();
 
 #ifdef ATV_HAS_MPI
-        if (layout.active) {
-            MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(), ws.nr,
-                          mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
-            MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(), MPI_SUM,
-                          MPI_COMM_WORLD);
-        }
+            if (layout.active) {
+                MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(), ws.nr,
+                              mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
+                MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(),
+                              MPI_SUM, MPI_COMM_WORLD);
+            }
 #endif
 
-        // FFT the (globally summed) density to G-space; Pulay mixing via
-        // the shared internal::pulay_mix.
-        density_->finish(ws);
+            // FFT the (globally summed) density to G-space; Pulay mixing via
+            // the shared internal::pulay_mix.
+            density_->finish(ws);
 
-        converged = convergence.step(ws);
-        result_.iterations = iter + 1;
+            converged = convergence.step(ws);
+            result_.iterations = iter + 1;
 
-        const auto terms =
-            internal::iteration_energy(ws, e_band, prob.ew_total, vol_bohr);
-        // Mermin free energy: F = E_KS − σ · S  (σ = degauss in Ha).
-        AccReal e_ha = terms.total;
-        AccReal e_ent_ha = AccReal(0);
-        if (use_smear) {
-            e_ent_ha = -degauss_ha * entropy_sum;
-            e_ha += e_ent_ha;
-        }
-        result_.energy_ha = static_cast<double>(e_ha);
-        result_.energy = result_.energy_ha / qe_units::rydberg_to_hartree;
-        result_.e_fermi =
-            use_smear
-                ? static_cast<double>(mu_ha) / qe_units::rydberg_to_hartree
-                : 0.0;
-        result_.n_elec_occ = static_cast<double>(n_occ);
-        result_.e_entropy =
-            static_cast<double>(e_ent_ha) / qe_units::rydberg_to_hartree;
-
-        // Shared rank-0-gated formatter (same line as the CUDA loop).
-        internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
-
-        if (converged) {
-            result_.converged = true;
-            if (log_rank0)
-                ATV_INFO("[pw] converged iter={} energy_ry={:.8f} "
-                         "e_fermi_ry={:.6f} n_occ={:.6f}",
-                         iter + 1, result_.energy, result_.e_fermi,
-                         result_.n_elec_occ);
-            break;
-        }
-    }
-
-    if (!result_.converged && log_rank0)
-        ATV_WARN("[pw] not converged after {} iters energy_ry={:.8f}",
-                 max_iter, result_.energy);
-
-    
-    } else
-for (int iter = 0; iter < max_iter; ++iter) {
-        AccReal e_band = 0;
-        auto* saved_gvec = ws.gvec;
-
-        if (spin_polarized) {
-            // Total density for Poisson / energy from spin channels.
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
-
-            poisson_->step(ws);
-            xc_->step_spin(ws);
-
-            const int n_occ[2] = {n_alpha, n_beta};
-            // Solve max(N↑,N↓) states per spin; occupy only n_occ[s].
-            if (davidson_bands_ != n_bands_r) {
-                davidson_ = std::make_unique<internal::DavidsonSolver>(
-                    n_bands_r, AccReal(tol) * AccReal(0.1), 40);
-                davidson_bands_ = n_bands_r;
-                davidson_->prepare(ws);
+            const auto terms =
+                internal::iteration_energy(ws, e_band, prob.ew_total, vol_bohr);
+            // Mermin free energy: F = E_KS − σ · S  (σ = degauss in Ha).
+            AccReal e_ha = terms.total;
+            AccReal e_ent_ha = AccReal(0);
+            if (use_smear) {
+                e_ent_ha = -degauss_ha * entropy_sum;
+                e_ha += e_ent_ha;
             }
-            xt::xarray<std::complex<AccReal>> rho_out[2];
-            for (int s = 0; s < 2; ++s) {
-                // Veff_σ = V_loc + V_H + Vxc_σ
+            result_.energy_ha = static_cast<double>(e_ha);
+            result_.energy = result_.energy_ha / qe_units::rydberg_to_hartree;
+            result_.e_fermi = use_smear ? static_cast<double>(mu_ha)
+                                              / qe_units::rydberg_to_hartree
+                                        : 0.0;
+            result_.n_elec_occ = static_cast<double>(n_occ);
+            result_.e_entropy =
+                static_cast<double>(e_ent_ha) / qe_units::rydberg_to_hartree;
+
+            // Shared rank-0-gated formatter (same line as the CUDA loop).
+            internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
+
+            if (converged) {
+                result_.converged = true;
+                if (log_rank0)
+                    ATV_INFO("[pw] converged iter={} energy_ry={:.8f} "
+                             "e_fermi_ry={:.6f} n_occ={:.6f}",
+                             iter + 1, result_.energy, result_.e_fermi,
+                             result_.n_elec_occ);
+                break;
+            }
+        }
+
+        if (!result_.converged && log_rank0)
+            ATV_WARN("[pw] not converged after {} iters energy_ry={:.8f}",
+                     max_iter, result_.energy);
+
+    } else
+        for (int iter = 0; iter < max_iter; ++iter) {
+            AccReal e_band = 0;
+            auto* saved_gvec = ws.gvec;
+
+            if (spin_polarized) {
+                // Total density for Poisson / energy from spin channels.
                 for (int ig = 0; ig < ws.n_g; ++ig)
-                    ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
+                    ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
+
+                poisson_->step(ws);
+                xc_->step_spin(ws);
+
+                const int n_occ[2] = {n_alpha, n_beta};
+                // Solve max(N↑,N↓) states per spin; occupy only n_occ[s].
+                if (davidson_bands_ != n_bands_r) {
+                    davidson_ = std::make_unique<internal::DavidsonSolver>(
+                        n_bands_r, AccReal(tol) * AccReal(0.1), 40);
+                    davidson_bands_ = n_bands_r;
+                    davidson_->prepare(ws);
+                }
+                xt::xarray<std::complex<AccReal>> rho_out[2];
+                for (int s = 0; s < 2; ++s) {
+                    // Veff_σ = V_loc + V_H + Vxc_σ
+                    for (int ig = 0; ig < ws.n_g; ++ig)
+                        ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
+                    veff_->step(ws);
+
+                    density_->begin(ws);
+                    for (int ik = layout.rank; ik < n_kpts;
+                         ik += layout.nprocs) {
+                        auto& gvk = prob.gv_k[ik];
+                        ws.gvec = &gvk;
+                        ws.n_g = gvk.count();
+                        ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
+                        for (int ig = 0; ig < ws.n_g; ++ig)
+                            ws.T_G[ig] = gvk.ekin[ig];
+                        if (!prob.kb_proj_k.empty())
+                            ws.kb_proj = prob.kb_proj_k[ik];
+                        if (!prob.atom_wfc_k.empty())
+                            ws.atom_wfc = prob.atom_wfc_k[ik];
+
+                        davidson_->step(ws);
+
+                        const AccReal weight = prob.kg.weights[ik];
+                        for (int b = 0; b < n_occ[s]; ++b)
+                            e_band +=
+                                weight * ws.eigenvalues[b]; // spin-orbital
+
+                        density_->accumulate_kpoint(ws, weight, n_occ[s],
+                                                    AccReal(1));
+
+                        ws.gvec = saved_gvec;
+                        ws.n_g = gv0.count();
+                    }
+
+#ifdef ATV_HAS_MPI
+                    if (layout.active) {
+                        MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(),
+                                      ws.nr, mpi_real_type(), MPI_SUM,
+                                      MPI_COMM_WORLD);
+                    }
+#endif
+                    density_->extract(ws, rho_out[s]);
+                }
+
+#ifdef ATV_HAS_MPI
+                if (layout.active) {
+                    MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(),
+                                  MPI_SUM, MPI_COMM_WORLD);
+                }
+#endif
+
+                // Linear mix each spin channel (simple, stable for molecules).
+                for (int s = 0; s < 2; ++s) {
+                    for (int ig = 0; ig < ws.n_g; ++ig) {
+                        ws.rho_spin_G_old[s][ig] = ws.rho_spin_G[s][ig];
+                        ws.rho_spin_G[s][ig] =
+                            ws.rho_spin_G_old[s][ig]
+                            + AccReal(mix_beta)
+                                  * (rho_out[s][ig] - ws.rho_spin_G_old[s][ig]);
+                    }
+                }
+                for (int ig = 0; ig < ws.n_g; ++ig) {
+                    ws.rho_G_old[ig] = ws.rho_G[ig];
+                    ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
+                }
+
+                // Convergence on total density change.
+                AccReal dr = 0;
+                for (int ig = 0; ig < ws.n_g; ++ig) {
+                    auto d = ws.rho_G[ig] - ws.rho_G_old[ig];
+                    dr += d.real() * d.real() + d.imag() * d.imag();
+                }
+                converged = (std::sqrt(dr) < AccReal(tol));
+                result_.iterations = iter + 1;
+
+                // Spin energy: e_one = e_band - 2 EH - ∫(ρ↑Vxc↑+ρ↓Vxc↓)
+                auto terms = internal::iteration_energy(
+                    ws, e_band, prob.ew_total, vol_bohr);
+                // Replace restricted e_xc_int (used ρ·Vxc_avg) with spin integral.
+                terms.e_one =
+                    e_band - AccReal(2.0) * terms.e_h - ws.e_xc_int_spin;
+                terms.total = terms.e_one + terms.e_h + ws.E_xc + prob.ew_total
+                              + ws.E_aug;
+                result_.energy_ha = static_cast<double>(terms.total);
+                result_.energy =
+                    result_.energy_ha / qe_units::rydberg_to_hartree;
+                internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
+
+            } else {
+                // ── Restricted (spin-unpolarized) path — unchanged ──
+                poisson_->step(ws);
+                xc_->step(ws, xc);
                 veff_->step(ws);
 
                 density_->begin(ws);
+                e_band = 0;
                 for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
                     auto& gvk = prob.gv_k[ik];
                     ws.gvec = &gvk;
@@ -506,11 +598,10 @@ for (int iter = 0; iter < max_iter; ++iter) {
                     davidson_->step(ws);
 
                     const AccReal weight = prob.kg.weights[ik];
-                    for (int b = 0; b < n_occ[s]; ++b)
-                        e_band += weight * ws.eigenvalues[b]; // spin-orbital
+                    for (int b = 0; b < n_bands_r; ++b)
+                        e_band += weight * ws.eigenvalues[b] * AccReal(2);
 
-                    density_->accumulate_kpoint(ws, weight, n_occ[s],
-                                                AccReal(1));
+                    density_->accumulate_kpoint(ws, weight, n_bands_r);
 
                     ws.gvec = saved_gvec;
                     ws.n_g = gv0.count();
@@ -518,123 +609,38 @@ for (int iter = 0; iter < max_iter; ++iter) {
 
 #ifdef ATV_HAS_MPI
                 if (layout.active) {
-                    MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(),
-                                  ws.nr, mpi_real_type(), MPI_SUM,
-                                  MPI_COMM_WORLD);
+                    MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(), ws.nr,
+                                  mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
+                    MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(),
+                                  MPI_SUM, MPI_COMM_WORLD);
                 }
 #endif
-                density_->extract(ws, rho_out[s]);
+
+                density_->finish(ws);
+
+                converged = convergence.step(ws);
+                result_.iterations = iter + 1;
+
+                const auto terms = internal::iteration_energy(
+                    ws, e_band, prob.ew_total, vol_bohr);
+                result_.energy_ha = static_cast<double>(terms.total);
+                result_.energy =
+                    result_.energy_ha / qe_units::rydberg_to_hartree;
+                internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
             }
 
-#ifdef ATV_HAS_MPI
-            if (layout.active) {
-                MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(),
-                              MPI_SUM, MPI_COMM_WORLD);
+            if (converged) {
+                result_.converged = true;
+                if (log_rank0)
+                    ATV_INFO("[pw] converged iter={} energy_ry={:.8f} mag={}",
+                             iter + 1, result_.energy, result_.magnetization);
+                break;
             }
-#endif
-
-            // Linear mix each spin channel (simple, stable for molecules).
-            for (int s = 0; s < 2; ++s) {
-                for (int ig = 0; ig < ws.n_g; ++ig) {
-                    ws.rho_spin_G_old[s][ig] = ws.rho_spin_G[s][ig];
-                    ws.rho_spin_G[s][ig] =
-                        ws.rho_spin_G_old[s][ig]
-                        + AccReal(mix_beta)
-                              * (rho_out[s][ig] - ws.rho_spin_G_old[s][ig]);
-                }
-            }
-            for (int ig = 0; ig < ws.n_g; ++ig) {
-                ws.rho_G_old[ig] = ws.rho_G[ig];
-                ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
-            }
-
-            // Convergence on total density change.
-            AccReal dr = 0;
-            for (int ig = 0; ig < ws.n_g; ++ig) {
-                auto d = ws.rho_G[ig] - ws.rho_G_old[ig];
-                dr += d.real() * d.real() + d.imag() * d.imag();
-            }
-            converged = (std::sqrt(dr) < AccReal(tol));
-            result_.iterations = iter + 1;
-
-            // Spin energy: e_one = e_band - 2 EH - ∫(ρ↑Vxc↑+ρ↓Vxc↓)
-            auto terms = internal::iteration_energy(ws, e_band, prob.ew_total,
-                                                    vol_bohr);
-            // Replace restricted e_xc_int (used ρ·Vxc_avg) with spin integral.
-            terms.e_one = e_band - AccReal(2.0) * terms.e_h - ws.e_xc_int_spin;
-            terms.total =
-                terms.e_one + terms.e_h + ws.E_xc + prob.ew_total + ws.E_aug;
-            result_.energy_ha = static_cast<double>(terms.total);
-            result_.energy =
-                result_.energy_ha / qe_units::rydberg_to_hartree;
-            internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
-
-        } else {
-            // ── Restricted (spin-unpolarized) path — unchanged ──
-            poisson_->step(ws);
-            xc_->step(ws, xc);
-            veff_->step(ws);
-
-            density_->begin(ws);
-            e_band = 0;
-            for (int ik = layout.rank; ik < n_kpts; ik += layout.nprocs) {
-                auto& gvk = prob.gv_k[ik];
-                ws.gvec = &gvk;
-                ws.n_g = gvk.count();
-                ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
-                for (int ig = 0; ig < ws.n_g; ++ig)
-                    ws.T_G[ig] = gvk.ekin[ig];
-                if (!prob.kb_proj_k.empty())
-                    ws.kb_proj = prob.kb_proj_k[ik];
-                if (!prob.atom_wfc_k.empty())
-                    ws.atom_wfc = prob.atom_wfc_k[ik];
-
-                davidson_->step(ws);
-
-                const AccReal weight = prob.kg.weights[ik];
-                for (int b = 0; b < n_bands_r; ++b)
-                    e_band += weight * ws.eigenvalues[b] * AccReal(2);
-
-                density_->accumulate_kpoint(ws, weight, n_bands_r);
-
-                ws.gvec = saved_gvec;
-                ws.n_g = gv0.count();
-            }
-
-#ifdef ATV_HAS_MPI
-            if (layout.active) {
-                MPI_Allreduce(MPI_IN_PLACE, density_->accumulation(), ws.nr,
-                              mpi_real_type(), MPI_SUM, MPI_COMM_WORLD);
-                MPI_Allreduce(MPI_IN_PLACE, &e_band, 1, mpi_real_type(),
-                              MPI_SUM, MPI_COMM_WORLD);
-            }
-#endif
-
-            density_->finish(ws);
-
-            converged = convergence.step(ws);
-            result_.iterations = iter + 1;
-
-            const auto terms =
-                internal::iteration_energy(ws, e_band, prob.ew_total, vol_bohr);
-            result_.energy_ha = static_cast<double>(terms.total);
-            result_.energy =
-                result_.energy_ha / qe_units::rydberg_to_hartree;
-            internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
         }
-
-        if (converged) {
-            result_.converged = true;
-            if (log_rank0)
-                ATV_INFO("[pw] converged iter={} energy_ry={:.8f} mag={}",
-                         iter + 1, result_.energy, result_.magnetization);
-            break;
-        }
-    }
 
     if (!result_.converged && log_rank0)
-        ATV_WARN("[pw] not converged after {} iters energy_ry={:.8f}",
-                 max_iter, result_.energy);
+        ATV_WARN("[pw] not converged after {} iters energy_ry={:.8f}", max_iter,
+                 result_.energy);
 
     return result_;
 }

@@ -178,7 +178,7 @@ TEST(CudaClusterMask, MasksHaveClearedBitsAndCoverCutoff) {
     }
     EXPECT_GT(checked, 0);
     EXPECT_EQ(missing, 0) << "missing " << missing << " of " << checked
-                           << " pairs under search radius";
+                          << " pairs under search radius";
 
     cuda::DestroyContext dctx{backend.context(), backend.frame()};
     nl.destroy(dctx);

@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/barostat.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/barostat.h"
 
 namespace ATV {
 namespace cpu {

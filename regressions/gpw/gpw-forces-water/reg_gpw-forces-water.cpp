@@ -28,12 +28,12 @@ constexpr double kF_cp2k[3][3] = {
     {-5.16349704e-02, -2.33864544e-10, 4.49073720e-02},
 };
 constexpr double kE_cp2k_ha = -17.21233715058673;
-constexpr double kForceTol = 1.0e-3;   // Ha/Bohr (spec A6)
+constexpr double kForceTol = 1.0e-3; // Ha/Bohr (spec A6)
 // Energy soft check: same-method twin; multigrid/REL_CUTOFF residual ~ few 1e-4 Ha
 // (example 09 reports the same CP2K E; ATV product path is within ~5e-4 Ha).
-constexpr double kEnergyTol = 1.0e-3;  // Ha
+constexpr double kEnergyTol = 1.0e-3; // Ha
 // Translational residual is numerical (CP2K print residual ~1.5e-4 on same twin).
-constexpr double kSumFTol = 5.0e-4;    // Ha/Bohr (spec A7)
+constexpr double kSumFTol = 5.0e-4; // Ha/Bohr (spec A7)
 
 } // namespace
 
@@ -103,9 +103,8 @@ int main() {
             sum[k] += F_ha[a][k];
             const double err = std::abs(F_ha[a][k] - kF_cp2k[a][k]);
             max_err = std::max(max_err, err);
-            std::printf(
-                "  atom %d k %d  F_atv=% .8e  F_cp2k=% .8e  |d|=%.3e\n", a, k,
-                F_ha[a][k], kF_cp2k[a][k], err);
+            std::printf("  atom %d k %d  F_atv=% .8e  F_cp2k=% .8e  |d|=%.3e\n",
+                        a, k, F_ha[a][k], kF_cp2k[a][k], err);
         }
     }
     const double sum_mag =
@@ -126,8 +125,8 @@ int main() {
         return 1;
     }
 
-    std::printf(
-        "PASS: gpw-forces-water  max|dF|=%.3e  |sumF|=%.3e  |dE|=%.3e  iters=%d\n",
-        max_err, sum_mag, de, eval.last_result().iters);
+    std::printf("PASS: gpw-forces-water  max|dF|=%.3e  |sumF|=%.3e  |dE|=%.3e  "
+                "iters=%d\n",
+                max_err, sum_mag, de, eval.last_result().iters);
     return 0;
 }

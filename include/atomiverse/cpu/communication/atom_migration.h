@@ -18,8 +18,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {

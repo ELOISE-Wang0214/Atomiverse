@@ -82,7 +82,8 @@ int main() {
         return 1;
     if (!check("E_corr = CCSD+(T)", ct.e_corr, ct.e_corr_ccsd + ct.e_t, 1e-12))
         return 1;
-    if (!check("E_tot = E_HF+E_corr", ct.e_tot, rhf.energy() + ct.e_corr, 1e-12))
+    if (!check("E_tot = E_HF+E_corr", ct.e_tot, rhf.energy() + ct.e_corr,
+               1e-12))
         return 1;
 
     std::printf("  iterations                 %d\n", ct.iterations);

@@ -25,9 +25,9 @@
 #include "atomiverse/cpu/scf/slater_determinant.h"
 
 using namespace ATV;
+using cpu::scf::angular_convention;
 using cpu::scf::BasisSet;
 using cpu::scf::IntegralPack;
-using cpu::scf::angular_convention;
 using cpu::scf::basis_data::AngularConvention;
 
 namespace {
@@ -120,7 +120,7 @@ TEST(SphericalGradient, DerivPackReportsSphericalDim) {
     const IntegralPack p{f, BasisSet::Def2SVP};
     ASSERT_TRUE(p.spherical());
     const cpu::scf::IntegralDerivPack dp{p};
-    EXPECT_EQ(dp.n_basis, p.n_basis); // 24, spherical
+    EXPECT_EQ(dp.n_basis, p.n_basis);               // 24, spherical
     EXPECT_EQ(static_cast<int>(dp.dS.shape(0)), 3); // n_atoms
     EXPECT_EQ(static_cast<int>(dp.dS.shape(1)), 3); // x,y,z
     EXPECT_EQ(static_cast<int>(dp.dS.shape(2)), p.n_basis);
@@ -180,11 +180,14 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     const cpu::scf::SlaterDeterminant det{C, eps, occ, nocc};
 
     auto make_grad = [](cpu::scf::SpinType spin) {
-        return cpu::scf::internal::ScfGradient{
-            cpu::scf::MeanFieldType::HF, spin,
-            cpu::scf::XCType::LSDA,      cpu::scf::GridLevel::SG0,
-            0,                           0,
-            false,                       false};
+        return cpu::scf::internal::ScfGradient{cpu::scf::MeanFieldType::HF,
+                                               spin,
+                                               cpu::scf::XCType::LSDA,
+                                               cpu::scf::GridLevel::SG0,
+                                               0,
+                                               0,
+                                               false,
+                                               false};
     };
 
     const auto rhf = make_grad(cpu::scf::SpinType::Restricted);
@@ -202,7 +205,7 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     // now supported. Fossil note: this once threw std::runtime_error from a
     // blanket spherical guard that has since been replaced by typed input
     // validation.
-    EXPECT_THROW(make_grad(cpu::scf::SpinType::Generalized)
-                     .compute(f, p, det, 0.0),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        make_grad(cpu::scf::SpinType::Generalized).compute(f, p, det, 0.0),
+        std::invalid_argument);
 }

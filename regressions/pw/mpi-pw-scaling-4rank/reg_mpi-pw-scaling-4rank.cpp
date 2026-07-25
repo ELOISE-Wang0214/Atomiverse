@@ -132,9 +132,9 @@ int run_child(const char* out_path) {
 
 bool launch_and_read(const std::string& self, int np, const std::string& out,
                      ChildReport& rep) {
-    const std::string cmd = std::string(ATV_MPIEXEC) + " -n " +
-                            std::to_string(np) + " \"" + self +
-                            "\" --child \"" + out + "\"";
+    const std::string cmd = std::string(ATV_MPIEXEC) + " -n "
+                            + std::to_string(np) + " \"" + self
+                            + "\" --child \"" + out + "\"";
     std::printf("[mpi-pw-scaling-4rank] launching: %s\n", cmd.c_str());
     std::fflush(stdout);
     const int rc = std::system(cmd.c_str());
@@ -169,8 +169,8 @@ int main(int argc, char** argv) {
 
     // Resolve our own binary for re-launch under mpiexec.
     char self_buf[4096];
-    const ssize_t n = ::readlink("/proc/self/exe", self_buf,
-                                 sizeof(self_buf) - 1);
+    const ssize_t n =
+        ::readlink("/proc/self/exe", self_buf, sizeof(self_buf) - 1);
     if (n <= 0) {
         std::printf("FAIL: cannot resolve /proc/self/exe\n");
         return 1;
@@ -201,12 +201,12 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 2; ++i) {
         const ChildReport& r = *reports[i];
         if (!r.converged) {
-            std::printf("FAIL: np=%d SCF did not converge (iters=%d)\n",
-                        nps[i], r.iterations);
+            std::printf("FAIL: np=%d SCF did not converge (iters=%d)\n", nps[i],
+                        r.iterations);
             ++failures;
         }
-        if (!std::isfinite(r.energy_ry) ||
-            !(r.energy_ry >= lo && r.energy_ry <= hi)) {
+        if (!std::isfinite(r.energy_ry)
+            || !(r.energy_ry >= lo && r.energy_ry <= hi)) {
             std::printf("FAIL: np=%d energy_ry=%.9f outside pin band "
                         "[%.6f, %.6f]\n",
                         nps[i], r.energy_ry, lo, hi);

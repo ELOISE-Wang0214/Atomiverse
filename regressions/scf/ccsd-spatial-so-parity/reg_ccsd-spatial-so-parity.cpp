@@ -84,7 +84,8 @@ int main() {
     auto frame_spatial = make_water();
     const cpu::scf::CCSDResult ccsd_spatial = rhf_spatial.ccsd(frame_spatial);
     if (!rhf_spatial.converged() || !ccsd_spatial.converged) {
-        std::fprintf(stderr, "FAIL: spatial RHF/CCSD (H2O/STO-3G) did not converge\n");
+        std::fprintf(stderr,
+                     "FAIL: spatial RHF/CCSD (H2O/STO-3G) did not converge\n");
         return 1;
     }
     const double e_corr_spatial = ccsd_spatial.e_corr;
@@ -98,7 +99,9 @@ int main() {
     auto frame_so = make_water();
     const cpu::scf::CCSDTResult ccsd_so = rhf_so.ccsd_t(frame_so);
     if (!rhf_so.converged() || !ccsd_so.converged) {
-        std::fprintf(stderr, "FAIL: spin-orbital RHF/CCSD (H2O/STO-3G) did not converge\n");
+        std::fprintf(
+            stderr,
+            "FAIL: spin-orbital RHF/CCSD (H2O/STO-3G) did not converge\n");
         return 1;
     }
     const double e_corr_so = ccsd_so.e_corr_ccsd;
@@ -112,18 +115,21 @@ int main() {
     auto frame_jacobi = make_water();
     const cpu::scf::CCSDResult ccsd_jacobi = rhf_jacobi.ccsd(frame_jacobi);
     if (!rhf_jacobi.converged() || !ccsd_jacobi.converged) {
-        std::fprintf(stderr, "FAIL: Jacobi RHF/CCSD (H2O/STO-3G) did not converge\n");
+        std::fprintf(stderr,
+                     "FAIL: Jacobi RHF/CCSD (H2O/STO-3G) did not converge\n");
         return 1;
     }
     const double e_corr_jacobi = ccsd_jacobi.e_corr;
 
-    std::printf("H2O / STO-3G closed-shell CCSD spatial-vs-spin-orbital parity:\n");
+    std::printf(
+        "H2O / STO-3G closed-shell CCSD spatial-vs-spin-orbital parity:\n");
     // ac-006: spatial vs spin-orbital oracle (catches spin-summation errors).
     if (!check("E_corr spatial [Ha]", e_corr_spatial, kECorrGolden, kGoldenTol))
         return 1;
     if (!check("E_corr spin-orbital [Ha]", e_corr_so, kECorrGolden, kGoldenTol))
         return 1;
-    if (!check("|E_corr spatial - SO| [Ha]", e_corr_spatial, e_corr_so, kParityTol))
+    if (!check("|E_corr spatial - SO| [Ha]", e_corr_spatial, e_corr_so,
+               kParityTol))
         return 1;
     // ac-003: DIIS and plain Jacobi reach the same fixed point.
     if (!check("|E_corr DIIS - Jacobi| [Ha]", e_corr_spatial, e_corr_jacobi,

@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/replica/replica_expansion.h"
 #include "atomiverse/cpu/replica/replica_set.h"
 

@@ -34,9 +34,9 @@ std::vector<ATV::cpu::gpw::GpwAtom> make_si2_atoms() {
     return atoms;
 }
 
-ATV::cpu::gpw::GpwResult run_xc(ATV::cpu::gpw::XcKind xc,
-                                const std::vector<ATV::cpu::gpw::GpwAtom>& atoms,
-                                double a_bohr) {
+ATV::cpu::gpw::GpwResult
+run_xc(ATV::cpu::gpw::XcKind xc,
+       const std::vector<ATV::cpu::gpw::GpwAtom>& atoms, double a_bohr) {
     ATV::cpu::gpw::GpwDft m;
     m.cell[0] = m.cell[1] = m.cell[2] = a_bohr;
     // 200 Ry: functional dual-gate + e2e budget; absolute pin is soft until
@@ -78,10 +78,8 @@ int main() {
     const auto t2 = std::chrono::steady_clock::now();
     const double e_sol = r_sol.e_total;
     const double e_pbe = r_pbe.e_total;
-    const double wall_sol =
-        std::chrono::duration<double>(t1 - t0).count();
-    const double wall_pbe =
-        std::chrono::duration<double>(t2 - t1).count();
+    const double wall_sol = std::chrono::duration<double>(t1 - t0).count();
+    const double wall_pbe = std::chrono::duration<double>(t2 - t1).count();
 
     if (!r_sol.converged) {
         std::fprintf(stderr,
@@ -117,11 +115,10 @@ int main() {
         return 1;
     }
 
-    std::printf(
-        "PASS: E_GPW(Si2,PBEsol,DZVP-MOLOPT-GTH,MT,200Ry) = %.10f Ha  "
-        "E_PBE = %.10f Ha  |dE|=%.3e Ha  iters_sol=%d  "
-        "wall_sol=%.1fs wall_pbe=%.1fs  "
-        "[dual-gate + offline pin band; see REFERENCE.md]\n",
-        e_sol, e_pbe, de, r_sol.iters, wall_sol, wall_pbe);
+    std::printf("PASS: E_GPW(Si2,PBEsol,DZVP-MOLOPT-GTH,MT,200Ry) = %.10f Ha  "
+                "E_PBE = %.10f Ha  |dE|=%.3e Ha  iters_sol=%d  "
+                "wall_sol=%.1fs wall_pbe=%.1fs  "
+                "[dual-gate + offline pin band; see REFERENCE.md]\n",
+                e_sol, e_pbe, de, r_sol.iters, wall_sol, wall_pbe);
     return 0;
 }

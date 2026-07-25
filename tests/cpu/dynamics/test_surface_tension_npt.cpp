@@ -56,8 +56,8 @@ double gamma_inst(const cpu::Frame& f) {
 } // namespace
 
 TEST(SurfaceTensionNPT, IsIntegratorApiNoConfig) {
-    cpu::md::SurfaceTensionNPT st{/*T=*/100.0, /*tau_T=*/50.0,
-                                  /*P_n=*/0.0, /*gamma=*/0.001,
+    cpu::md::SurfaceTensionNPT st{/*T=*/100.0,     /*tau_T=*/50.0,
+                                  /*P_n=*/0.0,     /*gamma=*/0.001,
                                   /*tau_P=*/500.0, /*dt=*/1.0};
     EXPECT_NE(dynamic_cast<const cpu::Integrator*>(&st), nullptr);
     EXPECT_TRUE(st.requires_system_stress());

@@ -16,10 +16,10 @@
 #include <vector>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/special_scale.h"
-#include "atomiverse/core/role.h"
 
 namespace ATV {
 namespace cpu {
@@ -66,10 +66,8 @@ class PairLJCutTip4pCut : public cpu::PairPotential {
     /// @param s12 Weight for 1-2 pairs (0 = exclude).
     /// @param s13 Weight for 1-3 pairs.
     /// @param s14 Weight for 1-4 pairs.
-    PairLJCutTip4pCut& set_special_bonds(double s12, double s13,
-                                         double s14) &;
-    PairLJCutTip4pCut set_special_bonds(double s12, double s13,
-                                        double s14) &&;
+    PairLJCutTip4pCut& set_special_bonds(double s12, double s13, double s14) &;
+    PairLJCutTip4pCut set_special_bonds(double s12, double s13, double s14) &&;
 
     /// @brief α = qdist / (cos(θ/2) * r_oh) — dimensionless M-site scale.
     double alpha() const { return alpha_; }
@@ -81,8 +79,7 @@ class PairLJCutTip4pCut : public cpu::PairPotential {
     ///        Displacement H−O is *not* min-imaged here (caller supplies images).
     void compute_newsite(double xO, double yO, double zO, double xH1,
                          double yH1, double zH1, double xH2, double yH2,
-                         double zH2, double& xM, double& yM,
-                         double& zM) const;
+                         double zH2, double& xM, double& yM, double& zM) const;
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

@@ -20,9 +20,7 @@ namespace {
 /// Atomic unit of time in fs (ħ / E_h), CODATA-consistent with common AIMD.
 constexpr double kAuTimeInFs = 0.024188843265857;
 
-double frobenius_sq(const linalg::RealMatrix& a) {
-    return xt::sum(a * a)();
-}
+double frobenius_sq(const linalg::RealMatrix& a) { return xt::sum(a * a)(); }
 } // namespace
 
 Cpmd::Cpmd(double mu_au) : mu_(mu_au) {
@@ -40,8 +38,7 @@ const linalg::RealMatrix& Cpmd::C() const {
 }
 
 void Cpmd::seed(const linalg::RealMatrix& C_occ) {
-    if (C_occ.size() == 0
-        || static_cast<int>(C_occ.shape(0)) < 1
+    if (C_occ.size() == 0 || static_cast<int>(C_occ.shape(0)) < 1
         || static_cast<int>(C_occ.shape(1)) < 1)
         throw std::invalid_argument(
             "Cpmd::seed: occupied coefficient matrix is empty");
@@ -53,8 +50,7 @@ void Cpmd::seed(const linalg::RealMatrix& C_occ) {
 
 void Cpmd::align_to_overlap(const linalg::RealMatrix& S) {
     if (!ready_)
-        throw std::logic_error(
-            "Cpmd::align_to_overlap: not seeded");
+        throw std::logic_error("Cpmd::align_to_overlap: not seeded");
     const int nb = static_cast<int>(C_.shape(0));
     if (static_cast<int>(S.shape(0)) != nb
         || static_cast<int>(S.shape(1)) != nb)

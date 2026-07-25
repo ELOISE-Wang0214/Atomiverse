@@ -141,11 +141,11 @@ TEST(TestSpinOrbitalEri, StructAndPackedOverloadsAreBitwiseEqual) {
             for (int r = 0; r < 4; ++r) {
                 for (int s = 0; s < 4; ++s) {
                     const double packed = scf::antisym_eri(g, p, q, r, s);
-                    const double via_struct = scf::antisym_eri(
-                        g, scf::SpinOrbital::from_packed(p),
-                        scf::SpinOrbital::from_packed(q),
-                        scf::SpinOrbital::from_packed(r),
-                        scf::SpinOrbital::from_packed(s));
+                    const double via_struct =
+                        scf::antisym_eri(g, scf::SpinOrbital::from_packed(p),
+                                         scf::SpinOrbital::from_packed(q),
+                                         scf::SpinOrbital::from_packed(r),
+                                         scf::SpinOrbital::from_packed(s));
                     ASSERT_TRUE(bit_equal(packed, via_struct))
                         << "packed vs struct mismatch at (" << p << ',' << q
                         << ',' << r << ',' << s << "): " << packed

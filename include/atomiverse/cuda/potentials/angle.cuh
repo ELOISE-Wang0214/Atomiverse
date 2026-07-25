@@ -2,8 +2,8 @@
 /// @brief LAMMPS-style abstract base for bonded 3-body styles (CUDA).
 #pragma once
 
-#include "atomiverse/cuda/component/potential.cuh"
 #include "atomiverse/core/role.h"
+#include "atomiverse/cuda/component/potential.cuh"
 
 #include <cstdint>
 #include <functional>

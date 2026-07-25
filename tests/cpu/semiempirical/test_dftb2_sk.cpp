@@ -162,8 +162,7 @@ TEST(DFTB2SK, ForceMatchesFiniteDifferenceOneComponent) {
         g.span(kAtom_x)[0] += static_cast<StorageReal>(dx);
         g.meta.get(kEnergy) = 0;
         for (int i = 0; i < 3; ++i)
-            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] =
-                0;
+            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
         DFTB2 d;
         d.with_forces = false;
         d.scc_tol = 1e-10;

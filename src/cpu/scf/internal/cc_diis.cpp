@@ -39,14 +39,15 @@ std::vector<double> CcAmplitudeDiis::step(const std::vector<double>& amp,
 
         // Augmented Pulay system  [[B, -1], [-1^T, 0]] [c; λ] = [0; -1],
         // with B_ij = e_i · e_j over the flattened error vectors.
-        xt::xtensor<double, 2> A =
-            xt::zeros<double>({dim, dim});
+        xt::xtensor<double, 2> A = xt::zeros<double>({dim, dim});
         xt::xtensor<double, 2> rhs = xt::zeros<double>({dim, std::size_t{1}});
         for (int i = 0; i < m; ++i) {
             for (int j = 0; j <= i; ++j) {
                 double b = 0.0;
-                const std::vector<double>& ei = err_hist_[static_cast<std::size_t>(i)];
-                const std::vector<double>& ej = err_hist_[static_cast<std::size_t>(j)];
+                const std::vector<double>& ei =
+                    err_hist_[static_cast<std::size_t>(i)];
+                const std::vector<double>& ej =
+                    err_hist_[static_cast<std::size_t>(j)];
                 for (std::size_t k = 0; k < ei.size(); ++k)
                     b += ei[k] * ej[k];
                 A(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = b;

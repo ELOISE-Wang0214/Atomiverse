@@ -6,13 +6,13 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/minimize/cg.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

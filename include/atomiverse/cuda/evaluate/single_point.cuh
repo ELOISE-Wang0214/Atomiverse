@@ -20,9 +20,9 @@
 /// components, construct a `cuda::Evaluate` directly and add them yourself.
 #pragma once
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

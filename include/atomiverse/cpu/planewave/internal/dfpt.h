@@ -90,12 +90,10 @@ struct DfptGammaOutput {
 /// @param cg_tol            Sternheimer CG residual tolerance.
 /// @param cg_max_iter       Sternheimer CG iteration cap.
 /// @param mix_beta          Linear mixing for the response density.
-DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
-                                           const PW& method,
-                                           AccReal response_tol,
-                                           int response_max_iter,
-                                           AccReal cg_tol, int cg_max_iter,
-                                           AccReal mix_beta);
+DfptGammaOutput
+dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
+                           AccReal response_tol, int response_max_iter,
+                           AccReal cg_tol, int cg_max_iter, AccReal mix_beta);
 
 } // namespace internal
 } // namespace pw

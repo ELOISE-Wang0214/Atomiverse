@@ -19,8 +19,7 @@ namespace ATV {
 namespace cpu {
 
 /// @brief Fused `lj/cut/coul/long` with multi-type LJ and Amber specials.
-class PairLJCutCoulLong : public Pair,
-                          public LongRangeParticipant {
+class PairLJCutCoulLong : public Pair, public LongRangeParticipant {
   public:
     /// @param coeffs  Diagonal (and optional off-diagonal) LJ type pairs.
     /// @param alpha   Ewald α [1/Å] — must match the KSpace component.

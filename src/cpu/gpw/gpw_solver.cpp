@@ -25,10 +25,10 @@
 #include <utility>
 #include <vector>
 
+#include "atomiverse/core/real_harmonics.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
-#include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
@@ -40,12 +40,12 @@
 #include "atomiverse/cpu/gpw/internal/ot.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
-#include "atomiverse/core/real_harmonics.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/linalg/density.h"    // build_density_matrix
 #include "atomiverse/cpu/linalg/eigensolve.h" // diagonalize_fock_generalized
 #include "atomiverse/cpu/linalg/matrix.h"     // RealMatrix
+#include "atomiverse/cpu/scf/dftd4.h"
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/views/xview.hpp>
@@ -117,8 +117,7 @@ global_ao_tags(const std::vector<GpwAtom>& atoms) {
 }
 
 // Convert public PlusU (eV) list into solver-side (Z, l, U_ha) tables.
-void pack_plus_u(const std::vector<PlusU>& plus_u,
-                 std::vector<int>& z_keys,
+void pack_plus_u(const std::vector<PlusU>& plus_u, std::vector<int>& z_keys,
                  std::vector<internal::PlusUHa>& slots) {
     z_keys.clear();
     slots.clear();
@@ -707,11 +706,10 @@ void store_converged_state_uks(GpwResult& res, const RealMatrix& Ha,
     if (n_alpha > 0 && n_beta > 0) {
         const RealMatrix Ca_occ =
             xt::view(Ca, xt::all(), xt::range(0, n_alpha));
-        const RealMatrix Cb_occ =
-            xt::view(Cb, xt::all(), xt::range(0, n_beta));
+        const RealMatrix Cb_occ = xt::view(Cb, xt::all(), xt::range(0, n_beta));
         // Sab = C_a† S C_b  (n_alpha × n_beta)
-        const RealMatrix Sab = xt::linalg::dot(
-            xt::transpose(Ca_occ), xt::linalg::dot(S, Cb_occ));
+        const RealMatrix Sab =
+            xt::linalg::dot(xt::transpose(Ca_occ), xt::linalg::dot(S, Cb_occ));
         for (int i = 0; i < n_alpha; ++i)
             for (int j = 0; j < n_beta; ++j) {
                 const double s = Sab(i, j);
@@ -818,13 +816,13 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
 /// kinetic/nonlocal traces, DIIS B-matrix, and residual norms are Allreduced
 /// so every rank holds identical `e_total`. Setup matrices stay replicated
 /// (foothold; not full domain decomp). nprocs==1 is bit-identical to serial.
-static GpwResult run_gpw_scf_kpoints(
-    const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
-    const std::vector<GridBasisFunction>& basis,
-    const std::vector<double>& radii, const int mimg[3],
-    const UniformGrid& grid, const std::vector<double>& n_ion,
-    const std::vector<double>& v_locsr, double e_self, double e_d3,
-    const std::vector<internal::KPoint>& kpts) {
+static GpwResult
+run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const std::vector<GridBasisFunction>& basis,
+                    const std::vector<double>& radii, const int mimg[3],
+                    const UniformGrid& grid, const std::vector<double>& n_ion,
+                    const std::vector<double>& v_locsr, double e_self,
+                    double e_d3, const std::vector<internal::KPoint>& kpts) {
     using internal::CplxMatrix;
     using Cplx = std::complex<double>;
     const int nb = static_cast<int>(basis.size());
@@ -839,9 +837,8 @@ static GpwResult run_gpw_scf_kpoints(
     std::vector<CplxMatrix> S_k, T_k;
     internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
                                       kBuildScreen, kpts, S_k, T_k);
-    std::vector<CplxMatrix> Vnl_k(
-        static_cast<std::size_t>(nk),
-        CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
+                                  CplxMatrix(xt::zeros<Cplx>({nb, nb})));
     internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg,
                                 kBuildScreen, kpts);
 
@@ -931,9 +928,9 @@ static GpwResult run_gpw_scf_kpoints(
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
             res.k_weights.push_back(kp.weight);
-            auto [eps, C] = internal::diagonalize_k(
-                H_full[static_cast<std::size_t>(ik)],
-                orth[static_cast<std::size_t>(ik)]);
+            auto [eps, C] =
+                internal::diagonalize_k(H_full[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
             (void)C;
             res.eps_k.push_back(std::move(eps));
         }
@@ -977,14 +974,17 @@ static GpwResult run_gpw_scf_kpoints(
         double e_kin = 0.0, e_nl = 0.0;
         for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
             const double wk = weights[static_cast<std::size_t>(ik)];
-            const CplxMatrix Vg = internal::integrate_potential_k(kbg, ik, veff);
+            const CplxMatrix Vg =
+                internal::integrate_potential_k(kbg, ik, veff);
             H_k[static_cast<std::size_t>(ik)] =
                 T_k[static_cast<std::size_t>(ik)]
                 + Vnl_k[static_cast<std::size_t>(ik)] + Vg;
-            e_kin += wk * ctrace(P_k[static_cast<std::size_t>(ik)],
-                                 T_k[static_cast<std::size_t>(ik)]);
-            e_nl += wk * ctrace(P_k[static_cast<std::size_t>(ik)],
-                                Vnl_k[static_cast<std::size_t>(ik)]);
+            e_kin += wk
+                     * ctrace(P_k[static_cast<std::size_t>(ik)],
+                              T_k[static_cast<std::size_t>(ik)]);
+            e_nl += wk
+                    * ctrace(P_k[static_cast<std::size_t>(ik)],
+                             Vnl_k[static_cast<std::size_t>(ik)]);
         }
 #ifdef ATV_HAS_MPI
         if (layout.active) {
@@ -1008,11 +1008,11 @@ static GpwResult run_gpw_scf_kpoints(
         std::vector<CplxMatrix> err(static_cast<std::size_t>(nk));
         double err_norm = 0.0;
         for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
-            const CplxMatrix e = internal::k_diis_error(
-                H_k[static_cast<std::size_t>(ik)],
-                P_k[static_cast<std::size_t>(ik)],
-                S_k[static_cast<std::size_t>(ik)],
-                orth[static_cast<std::size_t>(ik)].X);
+            const CplxMatrix e =
+                internal::k_diis_error(H_k[static_cast<std::size_t>(ik)],
+                                       P_k[static_cast<std::size_t>(ik)],
+                                       S_k[static_cast<std::size_t>(ik)],
+                                       orth[static_cast<std::size_t>(ik)].X);
             for (const Cplx v : e)
                 err_norm = std::max(err_norm, std::abs(v));
             err[static_cast<std::size_t>(ik)] = e;
@@ -1027,12 +1027,13 @@ static GpwResult run_gpw_scf_kpoints(
 #endif
 
         if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
-            std::fprintf(stderr,
-                         "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
-                         iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
-                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk,
-                         n_kpts_local, layout.nprocs);
+            std::fprintf(
+                stderr,
+                "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                "xc=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
+                iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es, res.e_xc,
+                std::abs(e_total - e_prev), err_norm, nk, n_kpts_local,
+                layout.nprocs);
 
         if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
             && err_norm < kDiisErrTolK) {
@@ -1047,9 +1048,9 @@ static GpwResult run_gpw_scf_kpoints(
         if (use_diis) // extrapolated KS matrices drive the next density
             H_k = diis.step(H_k, err);
         for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
-            auto [eps, C] = internal::diagonalize_k(
-                H_k[static_cast<std::size_t>(ik)],
-                orth[static_cast<std::size_t>(ik)]);
+            auto [eps, C] =
+                internal::diagonalize_k(H_k[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
             (void)eps;
             CplxMatrix P_new = density_from(C, cfg.n_occ);
             if (use_diis)
@@ -1071,8 +1072,7 @@ static GpwResult run_gpw_scf_kpoints(
 /// The full GPW SCF implementation, owned and reached through
 /// `GpwDft::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
-                                  const GpwDft& cfg,
-                                  const RealMatrix* guess_C,
+                                  const GpwDft& cfg, const RealMatrix* guess_C,
                                   const RealMatrix* guess_P) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
@@ -1158,11 +1158,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             for (int z : Z)
                 if (!D3Params::supports_element(z))
                     throw std::runtime_error(
-                        "GPW D3: element Z=" + std::to_string(z) +
-                        " is not in the in-tree D3 table (no fallback)");
+                        "GPW D3: element Z=" + std::to_string(z)
+                        + " is not in the in-tree D3 table (no fallback)");
             if (cfg.d3)
-                e_d3 =
-                    dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
+                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
             else {
                 // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
@@ -1273,9 +1272,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         } else {
             kpts = internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
         }
-        GpwResult kres = run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg,
-                                             grid, n_ion, v_locsr, e_self,
-                                             e_d3, kpts);
+        GpwResult kres =
+            run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg, grid, n_ion,
+                                v_locsr, e_self, e_d3, kpts);
         return kres;
     }
 
@@ -1363,12 +1362,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     RealMatrix C_prev = C0; // level-shift needs the previous occupied space
     RealMatrix Ca_prev = C0;
     RealMatrix Cb_prev = C0;
-    RealMatrix Pa =
-        uks ? linalg::build_density_matrix(C0, cfg.n_alpha, nb, 1.0)
-            : RealMatrix{};
-    RealMatrix Pb =
-        uks ? linalg::build_density_matrix(C0, cfg.n_beta, nb, 1.0)
-            : RealMatrix{};
+    RealMatrix Pa = uks ? linalg::build_density_matrix(C0, cfg.n_alpha, nb, 1.0)
+                        : RealMatrix{};
+    RealMatrix Pb = uks ? linalg::build_density_matrix(C0, cfg.n_beta, nb, 1.0)
+                        : RealMatrix{};
     // AFM/FM cold-start bias: scale per-atom spin density on the diagonal of
     // Pa/Pb using atom_spin_guess (units-free). Does not alter Tr(P) much when
     // guesses cancel; breaks spin symmetry for AFM NiO.
@@ -1380,8 +1377,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         constexpr double kBias = 0.15; // fraction of local diagonal shift
         for (int i = 0; i < nb; ++i) {
             const int ia = ao_tags[static_cast<std::size_t>(i)].atom;
-            const double g =
-                cfg.atom_spin_guess[static_cast<std::size_t>(ia)];
+            const double g = cfg.atom_spin_guess[static_cast<std::size_t>(ia)];
             if (g == 0.0)
                 continue;
             const double d = kBias * g * 0.5 * (Pa(i, i) + Pb(i, i));
@@ -1400,12 +1396,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     if (guess_P != nullptr) {
         if (static_cast<int>(guess_P->shape(0)) != nb
             || static_cast<int>(guess_P->shape(1)) != nb)
-            throw std::invalid_argument(
-                "GpwDft::run: guess_P shape ("
-                + std::to_string(guess_P->shape(0)) + "x"
-                + std::to_string(guess_P->shape(1))
-                + ") does not match the AO basis (nb="
-                + std::to_string(nb) + ")");
+            throw std::invalid_argument("GpwDft::run: guess_P shape ("
+                                        + std::to_string(guess_P->shape(0))
+                                        + "x"
+                                        + std::to_string(guess_P->shape(1))
+                                        + ") does not match the AO basis (nb="
+                                        + std::to_string(nb) + ")");
         P = *guess_P;
     }
     smark("init_eigensolve");
@@ -1737,7 +1733,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 && err_norm < err_gate) {
                 res.converged = true;
                 store_converged_state_uks(res, Ha, Hb, orth().X, S, cfg.n_alpha,
-                                         cfg.n_beta, nb);
+                                          cfg.n_beta, nb);
                 res.mulliken_spin = internal::mulliken_spin_populations(
                     Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
                 res.e_total += e_d3;
@@ -2008,8 +2004,8 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             throw std::invalid_argument(
                 "GpwDft::build: UKS needs n_alpha,n_beta >= 0 with "
                 "n_alpha+n_beta >= 1 (got n_alpha="
-                + std::to_string(n_alpha) + " n_beta="
-                + std::to_string(n_beta) + ")");
+                + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
+                + ")");
         if (xc != XcKind::PADE)
             throw std::invalid_argument(
                 "GpwDft::build: UKS supports XcKind::PADE only "
@@ -2017,16 +2013,15 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
-            + std::to_string(n_occ)
-            + "); or set n_alpha/n_beta for UKS");
+            + std::to_string(n_occ) + "); or set n_alpha/n_beta for UKS");
     }
     if (!nonperiodic) {
         for (int d = 0; d < 3; ++d)
             if (!(cell[d] > 0.0))
-                throw std::invalid_argument(
-                    "GpwDft::build: periodic cell edge " + std::to_string(d)
-                    + " must be > 0 Bohr (got "
-                    + std::to_string(cell[d]) + ")");
+                throw std::invalid_argument("GpwDft::build: periodic cell edge "
+                                            + std::to_string(d)
+                                            + " must be > 0 Bohr (got "
+                                            + std::to_string(cell[d]) + ")");
     }
     for (int d = 0; d < 3; ++d)
         if (k_mesh[d] < 1)
@@ -2037,10 +2032,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     if (k_points.size() != k_point_weights.size())
         throw std::invalid_argument(
             "GpwDft::build: k_points and k_point_weights must have the same "
-            "length (got " + std::to_string(k_points.size()) + " vs "
+            "length (got "
+            + std::to_string(k_points.size()) + " vs "
             + std::to_string(k_point_weights.size()) + ")");
-    const bool kpath = !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1
-                       || k_mesh[2] != 1;
+    const bool kpath =
+        !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1;
     if (kpath) {
         // The k-point branch is the closed-shell RKS + periodic + single-grid
         // + local-PP-on-grid foothold; every other combination is rejected
@@ -2076,16 +2072,15 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             if (std::abs(wsum - 1.0) > 1e-8)
                 throw std::invalid_argument(
                     "GpwDft::build: explicit k-point weights must sum to 1 "
-                    "(got " + std::to_string(wsum)
-                    + "); no implicit normalization");
+                    "(got "
+                    + std::to_string(wsum) + "); no implicit normalization");
         }
     }
     built_ = true;
 }
 
 GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
-                          const RealMatrix* guess_C,
-                          const RealMatrix* guess_P) {
+                       const RealMatrix* guess_C, const RealMatrix* guess_P) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::run called before build() — validate the "
@@ -2119,7 +2114,6 @@ GpwAtom displaced(GpwAtom a, int axis, double d) {
     return a;
 }
 } // namespace
-
 
 namespace {
 GpwDft copy_gpw(const GpwDft& m) {
@@ -2160,8 +2154,7 @@ GpwDft copy_gpw(const GpwDft& m) {
 }
 } // namespace
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
-              double h) {
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& cfg, double h) {
     const int na = static_cast<int>(atoms.size());
     std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
     for (int a = 0; a < na; ++a) {

@@ -111,8 +111,7 @@ TEST(BerryPhaseMath, ThrowsOnDeadLinkOrEmpty) {
     EXPECT_THROW(phase_from_link_dets({}), std::invalid_argument);
     EXPECT_THROW(phase_from_link_dets({{1.0, 0.0}, {0.0, 0.0}}),
                  std::invalid_argument);
-    EXPECT_THROW(phase_from_link_dets({{5e-13, 0.0}}),
-                 std::invalid_argument);
+    EXPECT_THROW(phase_from_link_dets({{5e-13, 0.0}}), std::invalid_argument);
 }
 
 TEST(BerryWrap, CenteredInterval) {

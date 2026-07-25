@@ -19,13 +19,13 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
+#include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/alda_kernel.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/tda_gradient.h"
 #include "atomiverse/cpu/scf/internal/one_electron.h"
 #include "atomiverse/cpu/scf/internal/stability.h"
-#include "atomiverse/cpu/scf/basis_eval.h"
+#include "atomiverse/cpu/scf/internal/tda_gradient.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cpu/scf/rks.h"
 #include "atomiverse/cpu/scf/tdhf.h"
@@ -88,9 +88,8 @@ std::vector<int> seed_indices(const RealVector& diag, int k) {
     std::vector<int> order(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i)
         order[static_cast<std::size_t>(i)] = i;
-    std::stable_sort(order.begin(), order.end(), [&](int p, int q) {
-        return diag(p) < diag(q);
-    });
+    std::stable_sort(order.begin(), order.end(),
+                     [&](int p, int q) { return diag(p) < diag(q); });
     order.resize(static_cast<std::size_t>(k));
     return order;
 }
@@ -107,10 +106,12 @@ RealMatrix checked_sym_power(const RealMatrix& M, double p, double floor,
     (void)U;
     if (s(0) <= floor)
         throw std::runtime_error(
-            std::string(what) + ": (A - B) is not positive definite "
-            "(lowest eigenvalue = " + std::to_string(s(0))
+            std::string(what)
+            + ": (A - B) is not positive definite "
+              "(lowest eigenvalue = "
+            + std::to_string(s(0))
             + " Ha) — the Hermitian RPA reduction is undefined for this "
-            "reference (no fallback)");
+              "reference (no fallback)");
     return linalg::sym_power(M, p, floor, what);
 }
 
@@ -122,15 +123,15 @@ void check_omega2(double w2, int root) {
             "TDHFPack::rpa: reduced RPA eigenvalue omega^2 = "
             + std::to_string(w2) + " Ha^2 (root " + std::to_string(root)
             + ") is negative — the channel's (A + B) block is unstable and "
-            "the full RPA excitation energy is imaginary; use tda() or "
-            "reconverge the reference along the instability mode "
-            "(no fallback)");
+              "the full RPA excitation energy is imaginary; use tda() or "
+              "reconverge the reference along the instability mode "
+              "(no fallback)");
     if (w2 <= kOmega2Tol)
         throw std::runtime_error(
             "TDHFPack::rpa: reduced RPA eigenvalue omega^2 = "
             + std::to_string(w2) + " Ha^2 (root " + std::to_string(root)
             + ") is numerically zero — the (X, Y) back-substitution is "
-            "ill-conditioned (no fallback)");
+              "ill-conditioned (no fallback)");
 }
 
 } // namespace
@@ -227,8 +228,8 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
         RealVector b = xt::zeros<double>({static_cast<std::size_t>(n)});
         b(idx) = 1.0;
         V.push_back(b);
-        W.push_back(0.5 * (hessian_.sigma_plus(b, ch_)
-                           + hessian_.sigma_minus(b, ch_)));
+        W.push_back(
+            0.5 * (hessian_.sigma_plus(b, ch_) + hessian_.sigma_minus(b, ch_)));
     }
 
     for (int iter = 0; iter < max_iter; ++iter) {
@@ -237,11 +238,11 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
             {static_cast<std::size_t>(m), static_cast<std::size_t>(m)});
         for (int p = 0; p < m; ++p)
             for (int q = p; q < m; ++q) {
-                const double s =
-                    0.5 * (vdot(V[static_cast<std::size_t>(p)],
-                                W[static_cast<std::size_t>(q)])
-                           + vdot(V[static_cast<std::size_t>(q)],
-                                  W[static_cast<std::size_t>(p)]));
+                const double s = 0.5
+                                 * (vdot(V[static_cast<std::size_t>(p)],
+                                         W[static_cast<std::size_t>(q)])
+                                    + vdot(V[static_cast<std::size_t>(q)],
+                                           W[static_cast<std::size_t>(p)]));
                 H(p, q) = s;
                 H(q, p) = s;
             }
@@ -280,8 +281,7 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
                     cap_blocked = true;
                     break;
                 }
-                RealVector t =
-                    xt::zeros<double>({static_cast<std::size_t>(n)});
+                RealVector t = xt::zeros<double>({static_cast<std::size_t>(n)});
                 for (int r = 0; r < n; ++r) {
                     double denom = w(s) - diag(r);
                     if (std::abs(denom) < 1e-8)
@@ -290,8 +290,9 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
                 }
                 if (orthonormalize_against(t, V) > 0.0) {
                     V.push_back(t);
-                    W.push_back(0.5 * (hessian_.sigma_plus(t, ch_)
-                                       + hessian_.sigma_minus(t, ch_)));
+                    W.push_back(0.5
+                                * (hessian_.sigma_plus(t, ch_)
+                                   + hessian_.sigma_minus(t, ch_)));
                     expanded = true;
                 }
             }
@@ -299,17 +300,17 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
         if (!all_conv && cap_blocked && !expanded)
             throw std::runtime_error(
                 "TDHFPack::tda: Davidson did not converge within the "
-                "subspace cap (" + std::to_string(max_subspace)
-                + " vectors, n_ov = " + std::to_string(n)
-                + ") — no fallback");
+                "subspace cap ("
+                + std::to_string(max_subspace)
+                + " vectors, n_ov = " + std::to_string(n) + ") — no fallback");
 
         if (all_conv || m == n || !expanded) {
             Roots out;
             out.omega = xt::zeros<double>({static_cast<std::size_t>(k)});
-            out.X = xt::zeros<double>({static_cast<std::size_t>(k),
-                                       static_cast<std::size_t>(n)});
-            out.Y = xt::zeros<double>({static_cast<std::size_t>(k),
-                                       static_cast<std::size_t>(n)});
+            out.X = xt::zeros<double>(
+                {static_cast<std::size_t>(k), static_cast<std::size_t>(n)});
+            out.Y = xt::zeros<double>(
+                {static_cast<std::size_t>(k), static_cast<std::size_t>(n)});
             for (int s = 0; s < k; ++s) {
                 out.omega(s) = w(s);
                 RealVector& xs = x[static_cast<std::size_t>(s)];
@@ -322,7 +323,8 @@ TDHFPack::Roots TDHFPack::tda_davidson_(int n_states) const {
     }
     throw std::runtime_error(
         "TDHFPack::tda: Davidson did not converge in 300 iterations "
-        "(n_ov = " + std::to_string(hessian_.n_ov()) + ") — no fallback");
+        "(n_ov = "
+        + std::to_string(hessian_.n_ov()) + ") — no fallback");
 }
 
 TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
@@ -352,16 +354,16 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
         RealMatrix Q = P;
         for (int p = 0; p < m; ++p)
             for (int q = p; q < m; ++q) {
-                const double sp =
-                    0.5 * (vdot(V[static_cast<std::size_t>(p)],
-                                Wp[static_cast<std::size_t>(q)])
-                           + vdot(V[static_cast<std::size_t>(q)],
-                                  Wp[static_cast<std::size_t>(p)]));
-                const double sm =
-                    0.5 * (vdot(V[static_cast<std::size_t>(p)],
-                                Wm[static_cast<std::size_t>(q)])
-                           + vdot(V[static_cast<std::size_t>(q)],
-                                  Wm[static_cast<std::size_t>(p)]));
+                const double sp = 0.5
+                                  * (vdot(V[static_cast<std::size_t>(p)],
+                                          Wp[static_cast<std::size_t>(q)])
+                                     + vdot(V[static_cast<std::size_t>(q)],
+                                            Wp[static_cast<std::size_t>(p)]));
+                const double sm = 0.5
+                                  * (vdot(V[static_cast<std::size_t>(p)],
+                                          Wm[static_cast<std::size_t>(q)])
+                                     + vdot(V[static_cast<std::size_t>(q)],
+                                            Wm[static_cast<std::size_t>(p)]));
                 P(p, q) = sp;
                 P(q, p) = sp;
                 Q(p, q) = sm;
@@ -371,8 +373,7 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
             checked_sym_power(Q, 0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
         const RealMatrix Qih =
             checked_sym_power(Q, -0.5, kAmBFloor, "TDHFPack::rpa(davidson)");
-        RealMatrix M =
-            xt::linalg::dot(Qh, RealMatrix(xt::linalg::dot(P, Qh)));
+        RealMatrix M = xt::linalg::dot(Qh, RealMatrix(xt::linalg::dot(P, Qh)));
         for (int r = 0; r < m; ++r)
             for (int c = r + 1; c < m; ++c) {
                 const double v = 0.5 * (M(r, c) + M(c, r));
@@ -460,26 +461,26 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
         if (!all_conv && cap_blocked && !expanded)
             throw std::runtime_error(
                 "TDHFPack::rpa: Davidson did not converge within the "
-                "subspace cap (" + std::to_string(max_subspace)
-                + " vectors, n_ov = " + std::to_string(n)
-                + ") — no fallback");
+                "subspace cap ("
+                + std::to_string(max_subspace)
+                + " vectors, n_ov = " + std::to_string(n) + ") — no fallback");
 
         if (all_conv || m == n || !expanded) {
             Roots out;
             out.omega = xt::zeros<double>({static_cast<std::size_t>(k)});
-            out.X = xt::zeros<double>({static_cast<std::size_t>(k),
-                                       static_cast<std::size_t>(n)});
-            out.Y = xt::zeros<double>({static_cast<std::size_t>(k),
-                                       static_cast<std::size_t>(n)});
+            out.X = xt::zeros<double>(
+                {static_cast<std::size_t>(k), static_cast<std::size_t>(n)});
+            out.Y = xt::zeros<double>(
+                {static_cast<std::size_t>(k), static_cast<std::size_t>(n)});
             for (int s = 0; s < k; ++s) {
                 out.omega(s) = omega[static_cast<std::size_t>(s)];
                 for (int r = 0; r < n; ++r) {
-                    out.X(s, r) =
-                        0.5 * (xpy[static_cast<std::size_t>(s)](r)
-                               + xmy[static_cast<std::size_t>(s)](r));
-                    out.Y(s, r) =
-                        0.5 * (xpy[static_cast<std::size_t>(s)](r)
-                               - xmy[static_cast<std::size_t>(s)](r));
+                    out.X(s, r) = 0.5
+                                  * (xpy[static_cast<std::size_t>(s)](r)
+                                     + xmy[static_cast<std::size_t>(s)](r));
+                    out.Y(s, r) = 0.5
+                                  * (xpy[static_cast<std::size_t>(s)](r)
+                                     - xmy[static_cast<std::size_t>(s)](r));
                 }
             }
             return out;
@@ -487,7 +488,8 @@ TDHFPack::Roots TDHFPack::rpa_davidson_(int n_states) const {
     }
     throw std::runtime_error(
         "TDHFPack::rpa: Davidson did not converge in 300 iterations "
-        "(n_ov = " + std::to_string(hessian_.n_ov()) + ") — no fallback");
+        "(n_ov = "
+        + std::to_string(hessian_.n_ov()) + ") — no fallback");
 }
 
 } // namespace internal
@@ -536,18 +538,17 @@ RealMatrix fxc_kernel_fd(const SlaterDeterminant& det, const IntegralPack& pack,
     }
     const int n_basis = static_cast<int>(C_work.shape()[0]);
 
-    const MolecularGrid grid(
-        pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
-        n_radial, n_angular);
+    const MolecularGrid grid(pack.atoms.data(),
+                             static_cast<int>(pack.atoms.size()), grid_level,
+                             n_radial, n_angular);
 
     // Central FD step on the density matrix [a.u.]; 1e-4 matches PySCF
     // kernel elements to ~1e-9 Ha on H2/STO-3G.
     constexpr double kEps = 1e-4;
 
     auto orbital_product = [&](int i_mo, int a_mo) {
-        RealMatrix dm = xt::zeros<double>(
-            {static_cast<std::size_t>(n_basis),
-             static_cast<std::size_t>(n_basis)});
+        RealMatrix dm = xt::zeros<double>({static_cast<std::size_t>(n_basis),
+                                           static_cast<std::size_t>(n_basis)});
         for (int mu = 0; mu < n_basis; ++mu)
             for (int nu = 0; nu < n_basis; ++nu)
                 dm(mu, nu) = C_work(mu, static_cast<std::size_t>(i_mo))
@@ -602,7 +603,8 @@ internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
     constexpr double kW2Tol = 1e-10;
     const std::size_t n = A.shape()[0];
     if (A.shape()[1] != n || B.shape()[0] != n || B.shape()[1] != n)
-        throw std::invalid_argument("rpa_from_ab: A/B must be square and equal");
+        throw std::invalid_argument(
+            "rpa_from_ab: A/B must be square and equal");
     if (n_states < 1 || static_cast<std::size_t>(n_states) > n)
         throw std::invalid_argument("rpa_from_ab: n_states outside [1, n]");
 
@@ -656,10 +658,10 @@ internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
                 + " Ha^2 (root " + std::to_string(s)
                 + ") is negative — imaginary excitation energy (no fallback)");
         if (w2(s) <= kW2Tol)
-            throw std::runtime_error(
-                "RKS::tddft: reduced RPA omega^2 = " + std::to_string(w2(s))
-                + " Ha^2 (root " + std::to_string(s)
-                + ") is numerically zero (no fallback)");
+            throw std::runtime_error("RKS::tddft: reduced RPA omega^2 = "
+                                     + std::to_string(w2(s)) + " Ha^2 (root "
+                                     + std::to_string(s)
+                                     + ") is numerically zero (no fallback)");
         const double omega = std::sqrt(w2(s));
         out.omega(s) = omega;
         for (std::size_t r = 0; r < n; ++r) {
@@ -682,10 +684,10 @@ internal::TDHFPack::Roots rpa_from_ab(const RealMatrix& A, const RealMatrix& B,
 /// the link-03 MultipoleIntegrals kernel (μ_0n = √2 Σ_ia (X+Y)_ia ⟨i|r|a⟩)
 /// and f = (2/3)·ω[Ha]·|μ|²; the triplet channel is spin-forbidden (μ = 0,
 /// f = 0). Two callers (tda / tdhf) — second-caller extraction rule.
-ExcitedStatesResult excited_states_result(
-    const SlaterDeterminant& det, const IntegralPack& pack,
-    const internal::TDHFPack::Roots& roots, ExcitationChannel channel,
-    bool tda_flag) {
+ExcitedStatesResult
+excited_states_result(const SlaterDeterminant& det, const IntegralPack& pack,
+                      const internal::TDHFPack::Roots& roots,
+                      ExcitationChannel channel, bool tda_flag) {
     const std::size_t k = roots.omega.size();
     ExcitedStatesResult out;
     out.channel = channel;
@@ -721,12 +723,13 @@ ExcitedStatesResult excited_states_result(
     RealMatrix Cv = xt::zeros<double>({n_ao, static_cast<std::size_t>(nv)});
     for (int i = 0; i < no; ++i)
         for (std::size_t mu = 0; mu < n_ao; ++mu)
-            Co(mu, static_cast<std::size_t>(i)) =
-                C(mu, static_cast<std::size_t>(occ[static_cast<std::size_t>(i)]));
+            Co(mu, static_cast<std::size_t>(i)) = C(
+                mu, static_cast<std::size_t>(occ[static_cast<std::size_t>(i)]));
     for (int a = 0; a < nv; ++a)
         for (std::size_t mu = 0; mu < n_ao; ++mu)
             Cv(mu, static_cast<std::size_t>(a)) =
-                C(mu, static_cast<std::size_t>(virt[static_cast<std::size_t>(a)]));
+                C(mu,
+                  static_cast<std::size_t>(virt[static_cast<std::size_t>(a)]));
 
     for (int axis = 0; axis < 3; ++axis) {
         xt::xtensor<double, 2> D = mi.dipole(axis);
@@ -743,8 +746,7 @@ ExcitedStatesResult excited_states_result(
             double mu_s = 0.0;
             for (int a = 0; a < nv; ++a)
                 for (int i = 0; i < no; ++i) {
-                    const std::size_t p =
-                        static_cast<std::size_t>(a * no + i);
+                    const std::size_t p = static_cast<std::size_t>(a * no + i);
                     mu_s += (roots.X(s, p) + roots.Y(s, p)) * d_mo(i, a);
                 }
             out.transition_dipole_au(s, axis) = std::sqrt(2.0) * mu_s;
@@ -794,8 +796,7 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
         const std::size_t n = A.shape()[0];
         const std::size_t k = static_cast<std::size_t>(n_states);
         if (n_states < 1 || static_cast<std::size_t>(n_states) > n)
-            throw std::invalid_argument(
-                "RKS::tda: n_states outside [1, n_ov]");
+            throw std::invalid_argument("RKS::tda: n_states outside [1, n_ov]");
         internal::TDHFPack::Roots roots;
         roots.omega = xt::zeros<double>({k});
         roots.X = xt::zeros<double>({k, n});
@@ -816,11 +817,10 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     // (ia|f_xc|jb) = ∫ φ_i φ_a f_ALDA(n) φ_j φ_b dτ from Dirac-exchange
     // second derivative on the molecular quadrature.
     if (xc == XCType::LSDA && hessian.n_ov() <= 512) {
-        RealMatrix A =
-            0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
-        const MolecularGrid grid(
-            pack.atoms.data(), static_cast<int>(pack.atoms.size()),
-            grid_level, n_radial, n_angular);
+        RealMatrix A = 0.5 * (hessian.dense_plus(ch) + hessian.dense_minus(ch));
+        const MolecularGrid grid(pack.atoms.data(),
+                                 static_cast<int>(pack.atoms.size()),
+                                 grid_level, n_radial, n_angular);
         const RealMatrix K =
             internal::alda_kernel_matrix(det, pack, grid, channel);
         const double coulomb_spin =
@@ -855,8 +855,9 @@ ExcitedStatesResult RKS::tda(int n_states, ExcitationChannel channel) const {
     // orbitals; no semi-local f^xc) — hybrid/ALDA axes are above.
     // Full LR-TDDFT for pure GGA is RKS::tddft().
     const internal::TDHFPack tdhf_pack{hessian, ch};
-    auto out = excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
-                                     /*tda_flag=*/true);
+    auto out =
+        excited_states_result(det, pack, tdhf_pack.tda(n_states), channel,
+                              /*tda_flag=*/true);
     out.alda = false;
     return out;
 }
@@ -889,9 +890,9 @@ ExcitedStatesResult RKS::tddft(int n_states, ExcitationChannel channel) const {
 
     // Adiabatic f^xc on both A and B (Casida 1995; Dreuw & Head-Gordon 2005).
     if (xc == XCType::LSDA) {
-        const MolecularGrid grid(
-            pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
-            n_radial, n_angular);
+        const MolecularGrid grid(pack.atoms.data(),
+                                 static_cast<int>(pack.atoms.size()),
+                                 grid_level, n_radial, n_angular);
         const RealMatrix K =
             internal::alda_kernel_matrix(det, pack, grid, channel);
         const double coulomb_spin =
@@ -1069,10 +1070,11 @@ ExcitedStatesResult RHF::tdhf(int n_states, ExcitationChannel channel) const {
             std::string("RHF::tdhf: the ")
             + (channel == ExcitationChannel::triplet ? "triplet" : "singlet")
             + " (A + B) block of the reference is unstable (lowest "
-            "eigenvalue = " + std::to_string(lowest)
+              "eigenvalue = "
+            + std::to_string(lowest)
             + " Ha) — full RPA would give imaginary excitation energies; "
-            "use tda() or reconverge the reference along the instability "
-            "mode (stability().rotated_C) first (no fallback)");
+              "use tda() or reconverge the reference along the instability "
+              "mode (stability().rotated_C) first (no fallback)");
 
     const internal::TDHFPack tdhf_pack{hessian, ch};
     return excited_states_result(det, pack, tdhf_pack.rpa(n_states), channel,
@@ -1136,13 +1138,13 @@ void coeff_blocks(const RealMatrix& C, const std::vector<int>& occ,
     Cv = xt::zeros<double>({n_ao, static_cast<std::size_t>(nv)});
     for (int i = 0; i < no; ++i)
         for (std::size_t mu = 0; mu < n_ao; ++mu)
-            Co(mu, static_cast<std::size_t>(i)) =
-                C(mu, static_cast<std::size_t>(occ[static_cast<std::size_t>(i)]));
+            Co(mu, static_cast<std::size_t>(i)) = C(
+                mu, static_cast<std::size_t>(occ[static_cast<std::size_t>(i)]));
     for (int a = 0; a < nv; ++a)
         for (std::size_t mu = 0; mu < n_ao; ++mu)
             Cv(mu, static_cast<std::size_t>(a)) =
-                C(mu, static_cast<std::size_t>(
-                          virt[static_cast<std::size_t>(a)]));
+                C(mu,
+                  static_cast<std::size_t>(virt[static_cast<std::size_t>(a)]));
 }
 
 /// @brief Spin-resolved ALDA \(f^{\mathrm{xc}}\) second derivatives of LSDA
@@ -1180,7 +1182,6 @@ void lsda_fxc_fd(double ra, double rb, double& faa, double& fab, double& fbb) {
         fbb = 0.0;
 }
 
-
 /// Workspace for open-shell LSDA Casida A (δε + Coulomb + spin-resolved fxc).
 struct UksLsdaCasidaWork {
     RealMatrix A;
@@ -1193,10 +1194,10 @@ struct UksLsdaCasidaWork {
 
 /// @brief Build spin-conserving Casida A for UKS/LSDA (pure, α_hf = 0).
 UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
-                                         const IntegralPack& pack,
-                                         GridLevel grid_level, int n_radial,
-                                         int n_angular, int n_states,
-                                         const char* tag) {
+                                          const IntegralPack& pack,
+                                          GridLevel grid_level, int n_radial,
+                                          int n_angular, int n_states,
+                                          const char* tag) {
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& Ca = det.coefficients(Spin::alpha);
     const RealMatrix& Cb = det.coefficients(Spin::beta);
@@ -1228,9 +1229,9 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
             std::string(tag) + ": n_states = " + std::to_string(n_states)
             + " outside [1, n_ov = " + std::to_string(w.nov) + "]");
     if (w.nov > 512)
-        throw std::runtime_error(std::string(tag) + ": n_ov = "
-                                 + std::to_string(w.nov)
-                                 + " exceeds dense threshold 512 (no fallback)");
+        throw std::runtime_error(
+            std::string(tag) + ": n_ov = " + std::to_string(w.nov)
+            + " exceeds dense threshold 512 (no fallback)");
 
     const xt::xtensor<double, 4> eri =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
@@ -1249,8 +1250,8 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
         (w.na > 0 && w.nb > 0) ? mo_transform_eri(eri, Coa, Cva, Cob, Cvb)
                                : xt::zeros<double>({0, 0, 0, 0});
 
-    w.A = xt::zeros<double>({static_cast<std::size_t>(w.nov),
-                             static_cast<std::size_t>(w.nov)});
+    w.A = xt::zeros<double>(
+        {static_cast<std::size_t>(w.nov), static_cast<std::size_t>(w.nov)});
     w.de.assign(static_cast<std::size_t>(w.nov), 0.0);
 
     for (int i = 0; i < w.noa; ++i)
@@ -1290,11 +1291,10 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
             for (int j = 0; j < w.nob; ++j)
                 for (int b = 0; b < w.nvb; ++b) {
                     const int q = w.na + j * w.nvb + b;
-                    const double v =
-                        iajb_ab(static_cast<std::size_t>(i),
-                                static_cast<std::size_t>(a),
-                                static_cast<std::size_t>(j),
-                                static_cast<std::size_t>(b));
+                    const double v = iajb_ab(static_cast<std::size_t>(i),
+                                             static_cast<std::size_t>(a),
+                                             static_cast<std::size_t>(j),
+                                             static_cast<std::size_t>(b));
                     w.A(static_cast<std::size_t>(p),
                         static_cast<std::size_t>(q)) += v;
                     w.A(static_cast<std::size_t>(q),
@@ -1317,11 +1317,11 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
         }
 
     if (pack.shells.empty())
-        throw std::runtime_error(std::string(tag)
-                                 + ": IntegralPack has no shells (no fallback)");
-    const MolecularGrid grid(
-        pack.atoms.data(), static_cast<int>(pack.atoms.size()), grid_level,
-        n_radial, n_angular);
+        throw std::runtime_error(
+            std::string(tag) + ": IntegralPack has no shells (no fallback)");
+    const MolecularGrid grid(pack.atoms.data(),
+                             static_cast<int>(pack.atoms.size()), grid_level,
+                             n_radial, n_angular);
 
     RealMatrix Pa = det.density(Spin::alpha);
     RealMatrix Pb = det.density(Spin::beta);
@@ -1471,10 +1471,11 @@ UksLsdaCasidaWork build_uks_lsda_casida_A(const SlaterDeterminant& det,
 
 /// Package open-shell (X,Y) into ExcitedStatesResult with length-gauge μ, f.
 /// Full RPA uses X+Y; TDA uses X only (Y = 0). No √2 closed-shell factor.
-ExcitedStatesResult package_uks_excited(
-    const SlaterDeterminant& det, const IntegralPack& pack,
-    const UksLsdaCasidaWork& w, const internal::TDHFPack::Roots& roots,
-    bool tda_flag) {
+ExcitedStatesResult package_uks_excited(const SlaterDeterminant& det,
+                                        const IntegralPack& pack,
+                                        const UksLsdaCasidaWork& w,
+                                        const internal::TDHFPack::Roots& roots,
+                                        bool tda_flag) {
     using Spin = SlaterDeterminant::Spin;
     const RealMatrix& Ca = det.coefficients(Spin::alpha);
     const RealMatrix& Cb = det.coefficients(Spin::beta);
@@ -1509,19 +1510,18 @@ ExcitedStatesResult package_uks_excited(
         RealMatrix d_mo_b = xt::zeros<double>(
             {static_cast<std::size_t>(w.nob), static_cast<std::size_t>(w.nvb)});
         if (w.na > 0)
-            d_mo_a = xt::linalg::dot(
-                xt::transpose(Coa), RealMatrix(xt::linalg::dot(D, Cva)));
+            d_mo_a = xt::linalg::dot(xt::transpose(Coa),
+                                     RealMatrix(xt::linalg::dot(D, Cva)));
         if (w.nb > 0)
-            d_mo_b = xt::linalg::dot(
-                xt::transpose(Cob), RealMatrix(xt::linalg::dot(D, Cvb)));
+            d_mo_b = xt::linalg::dot(xt::transpose(Cob),
+                                     RealMatrix(xt::linalg::dot(D, Cvb)));
         for (std::size_t s = 0; s < k; ++s) {
             double mu_s = 0.0;
             for (int i = 0; i < w.noa; ++i)
                 for (int a = 0; a < w.nva; ++a) {
                     const int p = i * w.nva + a;
-                    const double xy =
-                        roots.X(s, static_cast<std::size_t>(p))
-                        + roots.Y(s, static_cast<std::size_t>(p));
+                    const double xy = roots.X(s, static_cast<std::size_t>(p))
+                                      + roots.Y(s, static_cast<std::size_t>(p));
                     mu_s += xy
                             * d_mo_a(static_cast<std::size_t>(i),
                                      static_cast<std::size_t>(a));
@@ -1529,9 +1529,8 @@ ExcitedStatesResult package_uks_excited(
             for (int i = 0; i < w.nob; ++i)
                 for (int a = 0; a < w.nvb; ++a) {
                     const int p = w.na + i * w.nvb + a;
-                    const double xy =
-                        roots.X(s, static_cast<std::size_t>(p))
-                        + roots.Y(s, static_cast<std::size_t>(p));
+                    const double xy = roots.X(s, static_cast<std::size_t>(p))
+                                      + roots.Y(s, static_cast<std::size_t>(p));
                     mu_s += xy
                             * d_mo_b(static_cast<std::size_t>(i),
                                      static_cast<std::size_t>(a));
@@ -1610,7 +1609,6 @@ ExcitedStatesResult UKS::tddft(int n_states) const {
     return package_uks_excited(det, pack, w, roots, /*tda_flag=*/false);
 }
 
-
 ExcitedStatesResult UHF::sf_tda(int n_states) const {
     if (!has_result())
         throw std::runtime_error(
@@ -1673,17 +1671,15 @@ ExcitedStatesResult UHF::sf_tda(int n_states) const {
     // (ij|ab) with i,j majority-occ, a,b minority-virt — exchange block only.
     const xt::xtensor<double, 4> ijab = mo_transform_eri(eri, Co, Co, Cv, Cv);
 
-    RealMatrix A = xt::zeros<double>({static_cast<std::size_t>(nov),
-                                      static_cast<std::size_t>(nov)});
+    RealMatrix A = xt::zeros<double>(
+        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
     for (int i = 0; i < no; ++i) {
         for (int a = 0; a < nv; ++a) {
             const int p = i * nv + a;
-            const int ii = alpha_to_beta
-                               ? occ_a[static_cast<std::size_t>(i)]
-                               : occ_b[static_cast<std::size_t>(i)];
-            const int aa = alpha_to_beta
-                               ? virt_b[static_cast<std::size_t>(a)]
-                               : virt_a[static_cast<std::size_t>(a)];
+            const int ii = alpha_to_beta ? occ_a[static_cast<std::size_t>(i)]
+                                         : occ_b[static_cast<std::size_t>(i)];
+            const int aa = alpha_to_beta ? virt_b[static_cast<std::size_t>(a)]
+                                         : virt_a[static_cast<std::size_t>(a)];
             const double e_virt = alpha_to_beta
                                       ? eb(static_cast<std::size_t>(aa))
                                       : ea(static_cast<std::size_t>(aa));
@@ -1757,15 +1753,15 @@ std::vector<double> sf_rpa_positive_roots_(const RealMatrix& A,
     RealMatrix M = xt::zeros<double>({n, n});
     for (int i = 0; i < nov; ++i) {
         for (int j = 0; j < nov; ++j) {
-            const double aij = A(static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j));
-            const double bij = B(static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j));
+            const double aij =
+                A(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+            const double bij =
+                B(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
             M(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = aij;
-            M(static_cast<std::size_t>(i),
-              static_cast<std::size_t>(j + nov)) = bij;
-            M(static_cast<std::size_t>(i + nov),
-              static_cast<std::size_t>(j)) = -bij;
+            M(static_cast<std::size_t>(i), static_cast<std::size_t>(j + nov)) =
+                bij;
+            M(static_cast<std::size_t>(i + nov), static_cast<std::size_t>(j)) =
+                -bij;
             M(static_cast<std::size_t>(i + nov),
               static_cast<std::size_t>(j + nov)) = -aij;
         }
@@ -1847,19 +1843,17 @@ ExcitedStatesResult UHF::sf_tddft(int n_states) const {
     // B: exchange de-excitation (ib|aj) — Co,Cv,Cv,Co → [i,b,a,j].
     const xt::xtensor<double, 4> ibaj = mo_transform_eri(eri, Co, Cv, Cv, Co);
 
-    RealMatrix A = xt::zeros<double>({static_cast<std::size_t>(nov),
-                                      static_cast<std::size_t>(nov)});
-    RealMatrix B = xt::zeros<double>({static_cast<std::size_t>(nov),
-                                      static_cast<std::size_t>(nov)});
+    RealMatrix A = xt::zeros<double>(
+        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
+    RealMatrix B = xt::zeros<double>(
+        {static_cast<std::size_t>(nov), static_cast<std::size_t>(nov)});
     for (int i = 0; i < no; ++i) {
         for (int a = 0; a < nv; ++a) {
             const int p = i * nv + a;
-            const int ii = alpha_to_beta
-                               ? occ_a[static_cast<std::size_t>(i)]
-                               : occ_b[static_cast<std::size_t>(i)];
-            const int aa = alpha_to_beta
-                               ? virt_b[static_cast<std::size_t>(a)]
-                               : virt_a[static_cast<std::size_t>(a)];
+            const int ii = alpha_to_beta ? occ_a[static_cast<std::size_t>(i)]
+                                         : occ_b[static_cast<std::size_t>(i)];
+            const int aa = alpha_to_beta ? virt_b[static_cast<std::size_t>(a)]
+                                         : virt_a[static_cast<std::size_t>(a)];
             const double e_virt = alpha_to_beta
                                       ? eb(static_cast<std::size_t>(aa))
                                       : ea(static_cast<std::size_t>(aa));

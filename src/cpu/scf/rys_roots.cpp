@@ -94,14 +94,14 @@ void rys_roots(int nroots, double x, double* u, double* w) {
         err = rys_roots_iterative(nroots, x, u, w);
         break;
     default:
-        throw std::invalid_argument(
-            "ATV::rys_roots: nroots=" + std::to_string(nroots) +
-            " not supported (max 7)");
+        throw std::invalid_argument("ATV::rys_roots: nroots="
+                                    + std::to_string(nroots)
+                                    + " not supported (max 7)");
     }
     if (err) {
-        throw std::runtime_error("rys_roots fails: nroots=" +
-                                 std::to_string(nroots) +
-                                 " x=" + std::to_string(x));
+        throw std::runtime_error("rys_roots fails: nroots="
+                                 + std::to_string(nroots)
+                                 + " x=" + std::to_string(x));
     }
 }
 

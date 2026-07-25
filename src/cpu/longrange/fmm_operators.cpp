@@ -16,9 +16,7 @@ void require_same_order(int a, int b, const char* op) {
 }
 
 /// (−1)^n as AccReal.
-AccReal minus_one_pow(int n) {
-    return (n & 1) ? AccReal(-1) : AccReal(1);
-}
+AccReal minus_one_pow(int n) { return (n & 1) ? AccReal(-1) : AccReal(1); }
 
 } // namespace
 

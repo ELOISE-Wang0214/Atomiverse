@@ -18,8 +18,7 @@ struct Wham::Impl {
 };
 
 Wham::Wham(double beta)
-    : impl_(std::make_unique<Impl>(
-          Impl{molrs::wham_compute_new(beta), {}})) {
+    : impl_(std::make_unique<Impl>(Impl{molrs::wham_compute_new(beta), {}})) {
     if (!(beta > 0.0))
         throw std::invalid_argument("Wham: beta must be > 0");
 }
@@ -44,9 +43,7 @@ std::vector<double> Wham::free_energy(const std::vector<double>& hist,
     return std::vector<double>(out.begin(), out.end());
 }
 
-bool Wham::last_converged() const {
-    return impl_->obj->last_converged() != 0;
-}
+bool Wham::last_converged() const { return impl_->obj->last_converged() != 0; }
 
 int Wham::last_iterations() const {
     return static_cast<int>(impl_->obj->last_iterations());

@@ -49,7 +49,7 @@ cpu::Frame make_lj_block(int n_side, double density) {
 } // namespace
 
 TEST(CudaNoseHooverNPT, ContractRoleBindings) {
-    
+
     cuda::md::NoseHooverNPT npt{100.0, 100.0, 0.0, 1000.0, 0.001};
     EXPECT_EQ(npt.role(), 0);
     EXPECT_EQ(npt.name(), "nose_hoover_npt");
@@ -66,19 +66,21 @@ TEST(CudaNoseHooverNPT, ContractRoleBindings) {
 }
 
 TEST(CudaNoseHooverNPT, ConfigTStopSentinelFoldsToTTarget) {
-    
-    cuda::md::NoseHooverNPT npt{300.0, 100.0, 0.0, 1000.0, 0.001, 0.0, 3, 3, {true,true,true}, -1.0};
+
+    cuda::md::NoseHooverNPT npt{
+        300.0, 100.0, 0.0, 1000.0, 0.001, 0.0, 3, 3, {true, true, true}, -1.0};
     EXPECT_DOUBLE_EQ(npt.T_target(), 300.0);
 }
 
 TEST(CudaNoseHooverNPT, IsoNPTBuildsAndRunsFinite) {
     auto frame = make_lj_block(2, 0.8); // 8 atoms
     const double cutoff = 3.0;
-    
+
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
-    sim.set_integrator(cuda::md::NoseHooverNPT{100.0, 100.0, 0.0, 1000.0, 0.001});
+    sim.set_integrator(
+        cuda::md::NoseHooverNPT{100.0, 100.0, 0.0, 1000.0, 0.001});
     sim.build();
     sim.run(frame, 200);
 
@@ -96,7 +98,7 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     auto frame = make_lj_block(2, 0.8);
     const double box_x_initial = frame.simbox.cell()(0, 0);
     const double cutoff = 3.0;
-     // x rigid, y/z barostatted
+    // x rigid, y/z barostatted
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
@@ -120,8 +122,9 @@ TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
     // After 50 steps of a 100-step ramp 500→100 K, T_target() should be
     // near 300 K (midpoint).  Construct a fresh component lvalue, attach
     // by reference via add so we can read T_target() after run.
-    
-    cuda::md::NoseHooverNPT npt{500.0, 100.0, 0.0, 1000.0, 0.001, 0.0, 3, 3, {true,true,true}, 100.0};
+
+    cuda::md::NoseHooverNPT npt{
+        500.0, 100.0, 0.0, 1000.0, 0.001, 0.0, 3, 3, {true, true, true}, 100.0};
     npt.set_run_span(0, 99);
     auto frame = make_lj_block(2, 0.8);
     const double cutoff = 3.0;
@@ -145,11 +148,12 @@ TEST(CudaNoseHooverNPT, WritesConservedHamiltonian) {
     // finite). The integrator writes it every end_of_step.
     auto frame = make_lj_block(2, 0.8);
     const double cutoff = 3.0;
-    
+
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.add_potential(cuda::PairLJCut{1.0, 1.0, cutoff});
-    sim.set_integrator(cuda::md::NoseHooverNPT{100.0, 100.0, 0.0, 1000.0, 0.001});
+    sim.set_integrator(
+        cuda::md::NoseHooverNPT{100.0, 100.0, 0.0, 1000.0, 0.001});
     sim.build();
     sim.run(frame, 50);
     EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kConserved))));

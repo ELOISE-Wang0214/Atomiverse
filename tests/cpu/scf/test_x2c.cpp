@@ -35,11 +35,11 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/cpu/linalg/eigensolve.h"
 
 using namespace ATV;
 using cpu::scf::BasisSet;
@@ -114,9 +114,13 @@ TEST(X2cPvp, H2Sto3gMatchesPySCF) {
     constexpr double kW01 = -0.5567807782313442;
 
     auto frame = h2_frame();
-    IntegralPack pack{frame, BasisSet::STO3G, /*charge=*/0,
-                      /*compute_eri=*/false, /*ecp=*/{},
-                      /*ghost_atoms=*/{}, /*compute_pvp=*/true};
+    IntegralPack pack{frame,
+                      BasisSet::STO3G,
+                      /*charge=*/0,
+                      /*compute_eri=*/false,
+                      /*ecp=*/{},
+                      /*ghost_atoms=*/{},
+                      /*compute_pvp=*/true};
 
     ASSERT_EQ(pack.n_basis, 2);
     ASSERT_EQ(pack.W.size(), 4u);
@@ -137,9 +141,13 @@ TEST(X2cPvp, HeHSto3gMatchesPySCF) {
     constexpr double kW11 = -3.6296210235782542;
 
     auto frame = heh_frame();
-    IntegralPack pack{frame, BasisSet::STO3G, /*charge=*/1,
-                      /*compute_eri=*/false, /*ecp=*/{},
-                      /*ghost_atoms=*/{}, /*compute_pvp=*/true};
+    IntegralPack pack{frame,
+                      BasisSet::STO3G,
+                      /*charge=*/1,
+                      /*compute_eri=*/false,
+                      /*ecp=*/{},
+                      /*ghost_atoms=*/{},
+                      /*compute_pvp=*/true};
 
     ASSERT_EQ(pack.n_basis, 2);
     constexpr double kTol = 1e-7; // same Boys floor as H2 pin above
@@ -190,8 +198,7 @@ TEST(X2cWorkspace, ExactDecouplingHAtom) {
     const RealMatrix W = pack.W;
 
     X2cWorkspace ws(S, T, V, W, kLightSpeedAU);
-    auto [eig, C] =
-        cpu::linalg::diagonalize_fock_generalized(ws.hcore(), S);
+    auto [eig, C] = cpu::linalg::diagonalize_fock_generalized(ws.hcore(), S);
     EXPECT_NEAR(eig(0), ws.lowest_positive_dirac(), 1e-10)
         << "exact decoupling identity: min(h^X2C) vs min+(Dirac)";
 }
@@ -240,7 +247,12 @@ TEST(X2cGate, ForcesThrowWhenX2c) {
 
 TEST(X2cGate, X2cFalseLeavesHcoreAsTplusV) {
     auto frame = h2_frame();
-    IntegralPack pack{frame, BasisSet::STO3G, 0, false, {}, {},
+    IntegralPack pack{frame,
+                      BasisSet::STO3G,
+                      0,
+                      false,
+                      {},
+                      {},
                       /*compute_pvp=*/false};
     EXPECT_EQ(pack.W.size(), 0u);
     const int n = pack.n_basis;

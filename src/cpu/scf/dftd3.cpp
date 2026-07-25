@@ -28,8 +28,7 @@ double D3BJ::energy(const Frame& frame) const {
     const auto z = frame.span(kAtom_z);
 
     std::vector<int> Z(static_cast<std::size_t>(n));
-    std::vector<std::array<double, 3>> pos(
-        static_cast<std::size_t>(n));
+    std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(n));
     const double a2b = units::kAngstromInBohr;
     for (int i = 0; i < n; ++i) {
         const int zi = static_cast<int>(type[i]);
@@ -38,8 +37,7 @@ double D3BJ::energy(const Frame& frame) const {
                 "D3BJ: element Z=" + std::to_string(zi)
                 + " is not in the in-tree D3 table (no fallback)");
         Z[static_cast<std::size_t>(i)] = zi;
-        pos[static_cast<std::size_t>(i)] = {x[i] * a2b, y[i] * a2b,
-                                            z[i] * a2b};
+        pos[static_cast<std::size_t>(i)] = {x[i] * a2b, y[i] * a2b, z[i] * a2b};
     }
 
     const double cell[3] = {0.0, 0.0, 0.0};

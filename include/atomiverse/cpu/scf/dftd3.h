@@ -32,10 +32,10 @@ namespace scf {
 /// set (shared with GPW). Three-body ATM is not included.
 class D3BJ {
   public:
-    double s6 = 1.0;       ///< C6 scale (dimensionless; PBE = 1).
-    double s8 = 0.7875;    ///< C8 scale (dimensionless; PBE-BJ).
-    double a1 = 0.4289;    ///< BJ steepness (dimensionless; PBE).
-    double a2 = 4.4407;    ///< BJ offset [Bohr]; PBE.
+    double s6 = 1.0;         ///< C6 scale (dimensionless; PBE = 1).
+    double s8 = 0.7875;      ///< C8 scale (dimensionless; PBE-BJ).
+    double a1 = 0.4289;      ///< BJ steepness (dimensionless; PBE).
+    double a2 = 4.4407;      ///< BJ offset [Bohr]; PBE.
     double rcut_bohr = 94.2; ///< Pair cutoff [Bohr] (~50 Å).
 
     /// @brief Dispersion energy for the Frame geometry.

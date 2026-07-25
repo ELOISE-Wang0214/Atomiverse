@@ -42,8 +42,7 @@ RealMatrix g_contraction(const xt::xtensor<double, 4>& eri,
             double acc = 0.0;
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
-                    acc += X(k, l)
-                           * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
+                    acc += X(k, l) * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
             G(i, j) = acc;
         }
     return G;
@@ -138,8 +137,7 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
                     part(i, j, u, v) = s;
                 }
     // part_dm2[i,u,v,j] = 4 part[i,j,u,v] − 2 part[i,j,v,u]
-    xt::xtensor<double, 4> part_dm2 =
-        xt::zeros<double>({nocc, n, n, nocc});
+    xt::xtensor<double, 4> part_dm2 = xt::zeros<double>({nocc, n, n, nocc});
     for (int i = 0; i < nocc; ++i)
         for (int j = 0; j < nocc; ++j)
             for (int u = 0; u < n; ++u)
@@ -191,8 +189,7 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
     // First-index dERI loop (int2e_ip1 analogue): non-separable 2-RDM
     // contribution + PySCF-style vhf1 = G-like skeleton from P_HF.
     // vhf1[A,d] is n×n, built exactly as pyscf.grad.mp2 (both index blocks).
-    xt::xtensor<double, 4> vhf1 =
-        xt::zeros<double>({natm, 3, n, n});
+    xt::xtensor<double, 4> vhf1 = xt::zeros<double>({natm, 3, n, n});
     {
         const ShellBlockPairList bpl{pack, /*thr=*/1e-14};
         const int n_blocks = static_cast<int>(bpl.blocks.size());
@@ -361,8 +358,7 @@ GradientResult mp2_analytic_forces(const Frame& frame, const IntegralPack& pack,
             const RealMatrix dH =
                 xt::view(dpack.dT, A, d, xt::all(), xt::all())
                 + xt::view(dpack.dV, A, d, xt::all(), xt::all());
-            const RealMatrix v1 =
-                xt::view(vhf1, A, d, xt::all(), xt::all());
+            const RealMatrix v1 = xt::view(vhf1, A, d, xt::all(), xt::all());
 
             de(A, d) += xt::sum(dS * im1)();
             de(A, d) += xt::sum(dH * xt::transpose(dm1_tot))();
@@ -391,8 +387,8 @@ xt::xtensor<double, 4> ao2mo_mixed(const xt::xtensor<double, 4>& eri_ao,
         const auto sh = cur.shape();
         auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
-        xt::xtensor<double, 4> next = xt::reshape_view(
-            h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
         cur = xt::transpose(next, {3, 0, 1, 2});
     }
     return cur;
@@ -424,7 +420,8 @@ void g_uhf(const xt::xtensor<double, 4>& eri, const RealMatrix& Pa,
 
 } // namespace
 
-GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack,
+GradientResult ump2_analytic_forces(const Frame& frame,
+                                    const IntegralPack& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha) {
     if (det.restricted())
@@ -613,8 +610,7 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                                 s += t2(i, j, a, b) * Cv(u, a) * Cv(v, b);
                         part(i, j, u, v) = s;
                     }
-        xt::xtensor<double, 4> part_dm2 =
-            xt::zeros<double>({no, n, n, no});
+        xt::xtensor<double, 4> part_dm2 = xt::zeros<double>({no, n, n, no});
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
                 for (int u = 0; u < n; ++u)
@@ -628,8 +624,7 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
     const xt::xtensor<double, 4> part_dm2bb =
         make_part_ss(t2bb, Cvb, noccb, nvirb);
     // part_dm2ab[i,p,q,j] = Σ_ab t2ab[i,j,a,b] Cva[p,a] Cvb[q,b]
-    xt::xtensor<double, 4> part_dm2ab =
-        xt::zeros<double>({nocca, n, n, noccb});
+    xt::xtensor<double, 4> part_dm2ab = xt::zeros<double>({nocca, n, n, noccb});
     for (int i = 0; i < nocca; ++i)
         for (int j = 0; j < noccb; ++j)
             for (int p = 0; p < n; ++p)
@@ -654,13 +649,17 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                     double acc = 0.0;
                     for (int i = 0; i < nocca; ++i)
                         for (int j = 0; j < nocca; ++j) {
-                            acc += Coa(p, i) * part_dm2aa(i, q, r, j) * Coa(s, j);
-                            acc += Coa(q, i) * part_dm2aa(i, p, r, j) * Coa(s, j);
+                            acc +=
+                                Coa(p, i) * part_dm2aa(i, q, r, j) * Coa(s, j);
+                            acc +=
+                                Coa(q, i) * part_dm2aa(i, p, r, j) * Coa(s, j);
                         }
                     for (int i = 0; i < nocca; ++i)
                         for (int j = 0; j < noccb; ++j) {
-                            acc += Coa(p, i) * part_dm2ab(i, q, r, j) * Cob(s, j);
-                            acc += Coa(q, i) * part_dm2ab(i, p, r, j) * Cob(s, j);
+                            acc +=
+                                Coa(p, i) * part_dm2ab(i, q, r, j) * Cob(s, j);
+                            acc +=
+                                Coa(q, i) * part_dm2ab(i, p, r, j) * Cob(s, j);
                         }
                     Gamma_a(p, q, r, s) = acc;
                 }
@@ -687,8 +686,10 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                     double acc = 0.0;
                     for (int i = 0; i < noccb; ++i)
                         for (int j = 0; j < noccb; ++j) {
-                            acc += Cob(p, i) * part_dm2bb(i, q, r, j) * Cob(s, j);
-                            acc += Cob(q, i) * part_dm2bb(i, p, r, j) * Cob(s, j);
+                            acc +=
+                                Cob(p, i) * part_dm2bb(i, q, r, j) * Cob(s, j);
+                            acc +=
+                                Cob(q, i) * part_dm2bb(i, p, r, j) * Cob(s, j);
                         }
                     Gamma_b(p, q, r, s) = acc;
                 }
@@ -699,8 +700,10 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                     double acc = 0.0;
                     for (int i = 0; i < nocca; ++i)
                         for (int j = 0; j < noccb; ++j) {
-                            acc += Coa(p, i) * part_dm2ab(i, q, r, j) * Cob(s, j);
-                            acc += Coa(p, i) * part_dm2ab(i, q, s, j) * Cob(r, j);
+                            acc +=
+                                Coa(p, i) * part_dm2ab(i, q, r, j) * Cob(s, j);
+                            acc +=
+                                Coa(p, i) * part_dm2ab(i, q, s, j) * Cob(r, j);
                         }
                     Gamma_b(s, r, p, q) += acc;
                 }
@@ -737,8 +740,7 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
 
     // vhf1[A,spin,d,μ,ν] from skeleton int2e_ip1 (bra nabla, sign-flipped
     // to match PySCF) + non-separable 2-RDM · dERI.
-    xt::xtensor<double, 5> vhf1 =
-        xt::zeros<double>({natm, 2, 3, n, n});
+    xt::xtensor<double, 5> vhf1 = xt::zeros<double>({natm, 2, 3, n, n});
     {
         const ShellBlockPairList bpl{pack, /*thr=*/1e-14};
         const int n_blocks = static_cast<int>(bpl.blocks.size());
@@ -876,12 +878,9 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
         ao2mo_mixed(eri, Cva, Coa, Cva, Coa); // (ai|bj)
     const xt::xtensor<double, 4> oovv_aa =
         ao2mo_mixed(eri, Coa, Coa, Cva, Cva); // (ij|ab)
-    const xt::xtensor<double, 4> ovov_bb =
-        ao2mo_mixed(eri, Cvb, Cob, Cvb, Cob);
-    const xt::xtensor<double, 4> oovv_bb =
-        ao2mo_mixed(eri, Cob, Cob, Cvb, Cvb);
-    const xt::xtensor<double, 4> ovov_ab =
-        ao2mo_mixed(eri, Cva, Coa, Cvb, Cob);
+    const xt::xtensor<double, 4> ovov_bb = ao2mo_mixed(eri, Cvb, Cob, Cvb, Cob);
+    const xt::xtensor<double, 4> oovv_bb = ao2mo_mixed(eri, Cob, Cob, Cvb, Cvb);
+    const xt::xtensor<double, 4> ovov_ab = ao2mo_mixed(eri, Cva, Coa, Cvb, Cob);
 
     auto apply_aplus = [&](const RealVector& v) {
         RealVector y = xt::zeros<double>({static_cast<std::size_t>(nrot)});
@@ -891,14 +890,13 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                 double acc = (ea(nocca + a) - ea(i)) * v(p);
                 for (int b = 0; b < nvira; ++b)
                     for (int j = 0; j < nocca; ++j)
-                        acc += (2.0 * ovov_aa(a, i, b, j)
-                                - oovv_aa(i, j, a, b)
+                        acc += (2.0 * ovov_aa(a, i, b, j) - oovv_aa(i, j, a, b)
                                 - ovov_aa(a, j, b, i))
                                * v(b * nocca + j);
                 for (int b = 0; b < nvirb; ++b)
                     for (int j = 0; j < noccb; ++j)
-                        acc += 2.0 * ovov_ab(a, i, b, j)
-                               * v(rota + b * noccb + j);
+                        acc +=
+                            2.0 * ovov_ab(a, i, b, j) * v(rota + b * noccb + j);
                 y(p) = acc;
             }
         for (int a = 0; a < nvirb; ++a)
@@ -907,8 +905,7 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
                 double acc = (eb(noccb + a) - eb(i)) * v(p);
                 for (int b = 0; b < nvirb; ++b)
                     for (int j = 0; j < noccb; ++j)
-                        acc += (2.0 * ovov_bb(a, i, b, j)
-                                - oovv_bb(i, j, a, b)
+                        acc += (2.0 * ovov_bb(a, i, b, j) - oovv_bb(i, j, a, b)
                                 - ovov_bb(a, j, b, i))
                                * v(rota + b * noccb + j);
                 for (int b = 0; b < nvira; ++b)
@@ -976,10 +973,8 @@ GradientResult ump2_analytic_forces(const Frame& frame, const IntegralPack& pack
     RealMatrix zeta_a = make_zeta(Ca, ea, dm1a, nocca, nmoa);
     RealMatrix zeta_b = make_zeta(Cb, eb, dm1b, noccb, nmob);
 
-    dm1_ao_a =
-        xt::linalg::dot(Ca, xt::linalg::dot(dm1a, xt::transpose(Ca)));
-    dm1_ao_b =
-        xt::linalg::dot(Cb, xt::linalg::dot(dm1b, xt::transpose(Cb)));
+    dm1_ao_a = xt::linalg::dot(Ca, xt::linalg::dot(dm1a, xt::transpose(Ca)));
+    dm1_ao_b = xt::linalg::dot(Cb, xt::linalg::dot(dm1b, xt::transpose(Cb)));
     const RealMatrix dm1_sym_a = dm1_ao_a + xt::transpose(dm1_ao_a);
     const RealMatrix dm1_sym_b = dm1_ao_b + xt::transpose(dm1_ao_b);
     RealMatrix G_s1a, G_s1b;

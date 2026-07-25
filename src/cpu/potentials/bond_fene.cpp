@@ -16,7 +16,8 @@ namespace cpu {
 BondFene::BondFene(std::vector<double> K, std::vector<double> R0)
     : K_(std::move(K)), R0_(std::move(R0)) {
     if (K_.size() != R0_.size() || K_.empty())
-        throw std::invalid_argument("BondFene: K and R0 must match and be non-empty");
+        throw std::invalid_argument(
+            "BondFene: K and R0 must match and be non-empty");
     for (std::size_t t = 0; t < K_.size(); ++t) {
         if (!(K_[t] > 0.0) || !(R0_[t] > 0.0))
             throw std::invalid_argument("BondFene: K and R0 must be > 0");

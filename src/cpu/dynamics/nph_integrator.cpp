@@ -265,8 +265,7 @@ void NphIntegrator::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 }
 
-double
-NphIntegrator::extended_enthalpy(const cpu::LaunchContext& ctx) const {
+double NphIntegrator::extended_enthalpy(const cpu::LaunchContext& ctx) const {
     const auto& f = ctx.frame;
     // H = KE + PE + P·V + ½ W ε̇²  (no thermostat chain terms).
     double H = f.meta.get(kKinetic) + f.meta.get(kEnergy);

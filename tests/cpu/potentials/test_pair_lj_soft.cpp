@@ -56,9 +56,8 @@ void zero_ef(cpu::Frame& f) {
 double soft_energy_closed(double eps, double sigma, double rc, double r,
                           double lam, double alpha, double p) {
     const double sigma6 = std::pow(sigma, 6);
-    const double r_lam =
-        std::pow(alpha * sigma6 * std::pow(1.0 - lam, p) + std::pow(r, 6),
-                 1.0 / 6.0);
+    const double r_lam = std::pow(
+        alpha * sigma6 * std::pow(1.0 - lam, p) + std::pow(r, 6), 1.0 / 6.0);
     const double sr = sigma / r_lam;
     const double sr6 = std::pow(sr, 6);
     const double sr12 = sr6 * sr6;

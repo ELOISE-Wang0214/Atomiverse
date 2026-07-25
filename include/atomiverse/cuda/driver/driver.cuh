@@ -65,15 +65,15 @@
 #include <vector>
 
 #include "atomiverse/core/device.h"
+#include "atomiverse/core/driver_template.h"
+#include "atomiverse/core/iteration_status.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/verdict.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/driver/backend_traits.cuh"
 #include "atomiverse/cuda/driver/criterion.cuh"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/driver_template.h"
-#include "atomiverse/core/iteration_status.h"
-#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cuda {

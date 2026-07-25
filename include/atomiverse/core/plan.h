@@ -70,11 +70,12 @@ class PlanBuilder {
   public:
     /// @brief Binding entry: associates a node with a phase and order.
     struct Entry {
-        int phase;                    ///< Target phase index.
-        int order;                    ///< Ordering within phase (lower = earlier).
+        int phase; ///< Target phase index.
+        int order; ///< Ordering within phase (lower = earlier).
         Component* component = nullptr; ///< Component node (xor nested_driver).
-        void* nested_driver = nullptr;  ///< Nested-driver node (cpu::DriverNode*).
-        int nested_budget = 0;          ///< Budget for nested-driver nodes.
+        void* nested_driver =
+            nullptr;           ///< Nested-driver node (cpu::DriverNode*).
+        int nested_budget = 0; ///< Budget for nested-driver nodes.
     };
 
     /// @brief Register a binding entry.

@@ -47,9 +47,9 @@ struct PWResult {
     ///        Zero when `spin_polarized == false`. Fixed occupations set this
     ///        exactly to `multiplicity - 1` for non-metallic fillings.
     double magnetization = 0;
-    double e_fermi = 0;     ///< Fermi level [Ry] (0 if fixed occupations).
-    double n_elec_occ = 0;  ///< \(\sum w f\) after last iteration.
-    double e_entropy = 0;   ///< \(-TS\) contribution included in energy [Ry].
+    double e_fermi = 0;    ///< Fermi level [Ry] (0 if fixed occupations).
+    double n_elec_occ = 0; ///< \(\sum w f\) after last iteration.
+    double e_entropy = 0;  ///< \(-TS\) contribution included in energy [Ry].
     /// @brief Total Monkhorst–Pack k-points of this run (`k_mesh`³ set).
     int n_kpts = 0;
     /// @brief k-points owned by THIS rank under the round-robin MPI
@@ -138,19 +138,17 @@ class PW {
 
 /// @brief Finite-difference ionic forces [eV/Å] (oracle for analytic).
 std::vector<std::array<double, 3>>
-pw_forces_fd(const cpu::Frame& frame, const PW& method,
-             double h_ang = 1e-3);
+pw_forces_fd(const cpu::Frame& frame, const PW& method, double h_ang = 1e-3);
 
 /// @brief Analytic ionic forces [eV/Å] (local HF + Ewald + KB nonlocal).
-std::vector<std::array<double, 3>>
-pw_forces_analytic(const cpu::Frame& frame, const PW& method);
+std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
+                                                      const PW& method);
 
 /// @brief Nielsen–Martin analytic cell stress σ [eV/Å³], Voigt xx,yy,zz,xy,xz,yz.
 ///
 /// One SCF + Hellmann–Feynman cell derivatives (kinetic, Hartree, local PP,
 /// Ewald, LDA XC, KB nonlocal). Matches strain-FD of the total energy.
-std::array<double, 6> pw_stress(const cpu::Frame& frame,
-                                const PW& method);
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method);
 
 /// @brief Strain finite-difference cell stress oracle [eV/Å³] (Voigt).
 ///

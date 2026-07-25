@@ -51,7 +51,8 @@ vib::HessianResult RKS::hessian(Frame& frame) {
     if (!converged())
         throw std::runtime_error(
             "RKS::hessian: SCF did not converge — no reference "
-            "wavefunction to differentiate (" + stop_reason() + ")");
+            "wavefunction to differentiate ("
+            + stop_reason() + ")");
 
     // Central FD of analytic RKS forces (shared skeleton lives on the CRTP
     // base). A fresh RKS per ±h displacement avoids DIIS/MO state bleed. Full

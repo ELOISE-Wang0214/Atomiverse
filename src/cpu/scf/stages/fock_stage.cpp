@@ -8,8 +8,8 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/views/xview.hpp>
 
-#include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/scf/internal/density_builder.h"
 
 namespace ATV {
 namespace cpu {
@@ -32,9 +32,9 @@ FockStage::FockStage(bool restricted, bool is_hf, XCType xc_type,
       n_angular_(n_angular), hybrid_alpha_override_(hybrid_alpha_override),
       fixed_grid_(fixed_grid), ri_(ri), aux_basis_(aux_basis),
       coulomb_(coulomb), cfmm_order_(cfmm_order),
-      cfmm_threshold_(cfmm_threshold), integrals_(integrals),
-      P_alpha_(P_alpha), P_beta_(P_beta), F_alpha_(F_alpha), F_beta_(F_beta),
-      J_(J), e_xc_grid_(e_xc_grid), e_exact_exchange_(e_exact_exchange),
+      cfmm_threshold_(cfmm_threshold), integrals_(integrals), P_alpha_(P_alpha),
+      P_beta_(P_beta), F_alpha_(F_alpha), F_beta_(F_beta), J_(J),
+      e_xc_grid_(e_xc_grid), e_exact_exchange_(e_exact_exchange),
       int_n_alpha_(int_n_alpha), int_n_beta_(int_n_beta), pcm_(pcm),
       e_solvent_(e_solvent), e_pcm_fock_half_(e_pcm_fock_half) {
     if (generalized_ && ri_ != RI::None)

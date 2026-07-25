@@ -45,8 +45,8 @@ void MultipoleObserver::launch(const LaunchContext& ctx) {
 
     // Multipole integrals (Cartesian engine convention), sandwiched to the
     // determinant's AO dimension for spherical-convention bases.
-    const scf::MultipoleIntegrals ints{
-        shells.data(), static_cast<int>(shells.size()), origin};
+    const scf::MultipoleIntegrals ints{shells.data(),
+                                       static_cast<int>(shells.size()), origin};
     const bool sph = handle_.c2s && handle_.c2s->size() > 0;
     const auto to_ao = [&](const xt::xtensor<double, 2>& M) {
         if (!sph)

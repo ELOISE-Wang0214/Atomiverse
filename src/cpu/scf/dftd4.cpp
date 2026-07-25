@@ -70,10 +70,11 @@ std::array<double, kD4NFreq> trapzd_weights() {
     w[0] = 0.5 * (kFreq[1] - kFreq[0]);
     for (int i = 1; i < kD4NFreq - 1; ++i)
         w[static_cast<std::size_t>(i)] =
-            0.5 * ((kFreq[static_cast<std::size_t>(i)] -
-                    kFreq[static_cast<std::size_t>(i - 1)]) +
-                   (kFreq[static_cast<std::size_t>(i + 1)] -
-                    kFreq[static_cast<std::size_t>(i)]));
+            0.5
+            * ((kFreq[static_cast<std::size_t>(i)]
+                - kFreq[static_cast<std::size_t>(i - 1)])
+               + (kFreq[static_cast<std::size_t>(i + 1)]
+                  - kFreq[static_cast<std::size_t>(i)]));
     w[kD4NFreq - 1] = 0.5 * (kFreq[kD4NFreq - 1] - kFreq[kD4NFreq - 2]);
     return w;
 }
@@ -83,7 +84,8 @@ const std::array<double, kD4NFreq> kTrapW = trapzd_weights();
 double trapzd(const std::array<double, kD4NFreq>& pol) {
     double s = 0.0;
     for (int k = 0; k < kD4NFreq; ++k)
-        s += pol[static_cast<std::size_t>(k)] * kTrapW[static_cast<std::size_t>(k)];
+        s += pol[static_cast<std::size_t>(k)]
+             * kTrapW[static_cast<std::size_t>(k)];
     return s;
 }
 
@@ -108,15 +110,15 @@ double en_factor(double eni, double enj) {
 }
 
 double log_cn_cut(double cn, double cnmax) {
-    return std::log(1.0 + std::exp(cnmax)) -
-           std::log(1.0 + std::exp(cnmax - cn));
+    return std::log(1.0 + std::exp(cnmax))
+           - std::log(1.0 + std::exp(cnmax - cn));
 }
 
 void require_z(int z) {
     if (z < 1 || z > kD4MaxElem || kD4NRef[static_cast<std::size_t>(z)] <= 0)
         throw std::runtime_error(
-            "D4: element Z=" + std::to_string(z) +
-            " is not in the in-tree D4 table (no fallback)");
+            "D4: element Z=" + std::to_string(z)
+            + " is not in the in-tree D4 table (no fallback)");
 }
 
 int nref_of(int z) { return kD4NRef[static_cast<std::size_t>(z)]; }
@@ -126,10 +128,10 @@ void get_ngw(int z, std::vector<int>& ngw) {
     constexpr int max_cn = 19;
     int cnc[max_cn + 1] = {1};
     for (int ir = 1; ir <= nref; ++ir) {
-        const int icn = std::min(
-            static_cast<int>(std::lround(
-                kD4RefCn[static_cast<std::size_t>(d4_idx2(ir, z))])),
-            max_cn);
+        const int icn =
+            std::min(static_cast<int>(std::lround(
+                         kD4RefCn[static_cast<std::size_t>(d4_idx2(ir, z))])),
+                     max_cn);
         cnc[icn] += 1;
     }
     ngw.assign(static_cast<std::size_t>(nref + 1), 1);
@@ -147,26 +149,23 @@ void set_refalpha_eeq(int z, double ga, double gc,
     const int nref = nref_of(z);
     alpha.assign(static_cast<std::size_t>(nref + 1), {});
     for (int ir = 1; ir <= nref; ++ir) {
-        const int isys =
-            kD4RefSys[static_cast<std::size_t>(d4_idx2(ir, z))];
+        const int isys = kD4RefSys[static_cast<std::size_t>(d4_idx2(ir, z))];
         if (isys == 0)
             continue;
         const double iz = kD4Zeff[static_cast<std::size_t>(isys)];
         const double hard = kD4Hardness[static_cast<std::size_t>(isys)];
-        const double clh =
-            kD4Clsh[static_cast<std::size_t>(d4_idx2(ir, z))];
+        const double clh = kD4Clsh[static_cast<std::size_t>(d4_idx2(ir, z))];
         const double scale_h =
             kD4Hcount[static_cast<std::size_t>(d4_idx2(ir, z))];
-        const double asc =
-            kD4Ascale[static_cast<std::size_t>(d4_idx2(ir, z))];
+        const double asc = kD4Ascale[static_cast<std::size_t>(d4_idx2(ir, z))];
         const double zf = zeta(ga, hard * gc, iz, clh + iz);
         const double ss = kD4Sscale[static_cast<std::size_t>(isys)];
         for (int k = 0; k < kD4NFreq; ++k) {
             const double sec =
                 kD4SecAiw[static_cast<std::size_t>(d4_idx_sec(isys, k))];
             const double aiw = ss * sec * zf;
-            const double raw = kD4Alphaiw[static_cast<std::size_t>(
-                d4_idx_aiw(k, ir, z))];
+            const double raw =
+                kD4Alphaiw[static_cast<std::size_t>(d4_idx_aiw(k, ir, z))];
             alpha[static_cast<std::size_t>(ir)][static_cast<std::size_t>(k)] =
                 std::max(asc * (raw - scale_h * aiw), 0.0);
         }
@@ -217,16 +216,17 @@ void ewald_rec_trans(const double cell[3],
 
 // Multicharge ewald.f90 helpers for optimal α.
 double get_rec_term_3d(double gg, double alpha, double vol) {
-    return 4.0 * units::pi *
-           (std::exp(-0.25 * gg * gg / (alpha * alpha)) / (vol * gg * gg));
+    return 4.0 * units::pi
+           * (std::exp(-0.25 * gg * gg / (alpha * alpha)) / (vol * gg * gg));
 }
 double get_dir_term(double rr, double alpha) {
     return std::erfc(alpha * rr) / rr;
 }
 double rec_dir_diff(double alpha, double rlen, double dlen, double vol) {
-    return (get_rec_term_3d(4.0 * rlen, alpha, vol) -
-            get_rec_term_3d(5.0 * rlen, alpha, vol)) -
-           (get_dir_term(2.0 * dlen, alpha) - get_dir_term(3.0 * dlen, alpha));
+    return (get_rec_term_3d(4.0 * rlen, alpha, vol)
+            - get_rec_term_3d(5.0 * rlen, alpha, vol))
+           - (get_dir_term(2.0 * dlen, alpha)
+              - get_dir_term(3.0 * dlen, alpha));
 }
 
 // Multicharge search_alpha (orthorhombic).
@@ -267,9 +267,8 @@ double ewald_alpha(const double cell[3]) {
 }
 
 void cn_d4(const std::vector<int>& Z,
-           const std::vector<std::array<double, 3>>& pos,
-           const double cell[3], bool periodic, double cn_cut,
-           std::vector<double>& cn) {
+           const std::vector<std::array<double, 3>>& pos, const double cell[3],
+           bool periodic, double cn_cut, std::vector<double>& cn) {
     const int n = static_cast<int>(Z.size());
     cn.assign(static_cast<std::size_t>(n), 0.0);
     std::vector<std::array<double, 3>> trans;
@@ -279,18 +278,20 @@ void cn_d4(const std::vector<int>& Z,
         for (int j = 0; j <= i; ++j) {
             const int zi = Z[static_cast<std::size_t>(i)];
             const int zj = Z[static_cast<std::size_t>(j)];
-            const double rc = kD4Rcov[static_cast<std::size_t>(zi)] +
-                              kD4Rcov[static_cast<std::size_t>(zj)];
-            const double den =
-                en_factor(kD4En[static_cast<std::size_t>(zi)],
-                         kD4En[static_cast<std::size_t>(zj)]);
+            const double rc = kD4Rcov[static_cast<std::size_t>(zi)]
+                              + kD4Rcov[static_cast<std::size_t>(zj)];
+            const double den = en_factor(kD4En[static_cast<std::size_t>(zi)],
+                                         kD4En[static_cast<std::size_t>(zj)]);
             for (const auto& t : trans) {
-                const double dx = pos[static_cast<std::size_t>(i)][0] -
-                                  (pos[static_cast<std::size_t>(j)][0] + t[0]);
-                const double dy = pos[static_cast<std::size_t>(i)][1] -
-                                  (pos[static_cast<std::size_t>(j)][1] + t[1]);
-                const double dz = pos[static_cast<std::size_t>(i)][2] -
-                                  (pos[static_cast<std::size_t>(j)][2] + t[2]);
+                const double dx =
+                    pos[static_cast<std::size_t>(i)][0]
+                    - (pos[static_cast<std::size_t>(j)][0] + t[0]);
+                const double dy =
+                    pos[static_cast<std::size_t>(i)][1]
+                    - (pos[static_cast<std::size_t>(j)][1] + t[1]);
+                const double dz =
+                    pos[static_cast<std::size_t>(i)][2]
+                    - (pos[static_cast<std::size_t>(j)][2] + t[2]);
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 > cut2 || r2 < 1.0e-12)
                     continue;
@@ -305,9 +306,8 @@ void cn_d4(const std::vector<int>& Z,
 }
 
 void cn_eeq(const std::vector<int>& Z,
-            const std::vector<std::array<double, 3>>& pos,
-            const double cell[3], bool periodic, double cn_cut,
-            std::vector<double>& cn) {
+            const std::vector<std::array<double, 3>>& pos, const double cell[3],
+            bool periodic, double cn_cut, std::vector<double>& cn) {
     const int n = static_cast<int>(Z.size());
     cn.assign(static_cast<std::size_t>(n), 0.0);
     std::vector<std::array<double, 3>> trans;
@@ -317,15 +317,18 @@ void cn_eeq(const std::vector<int>& Z,
         for (int j = 0; j <= i; ++j) {
             const int zi = Z[static_cast<std::size_t>(i)];
             const int zj = Z[static_cast<std::size_t>(j)];
-            const double rc = kD4Rcov[static_cast<std::size_t>(zi)] +
-                              kD4Rcov[static_cast<std::size_t>(zj)];
+            const double rc = kD4Rcov[static_cast<std::size_t>(zi)]
+                              + kD4Rcov[static_cast<std::size_t>(zj)];
             for (const auto& t : trans) {
-                const double dx = pos[static_cast<std::size_t>(i)][0] -
-                                  (pos[static_cast<std::size_t>(j)][0] + t[0]);
-                const double dy = pos[static_cast<std::size_t>(i)][1] -
-                                  (pos[static_cast<std::size_t>(j)][1] + t[1]);
-                const double dz = pos[static_cast<std::size_t>(i)][2] -
-                                  (pos[static_cast<std::size_t>(j)][2] + t[2]);
+                const double dx =
+                    pos[static_cast<std::size_t>(i)][0]
+                    - (pos[static_cast<std::size_t>(j)][0] + t[0]);
+                const double dy =
+                    pos[static_cast<std::size_t>(i)][1]
+                    - (pos[static_cast<std::size_t>(j)][1] + t[1]);
+                const double dz =
+                    pos[static_cast<std::size_t>(i)][2]
+                    - (pos[static_cast<std::size_t>(j)][2] + t[2]);
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 > cut2 || r2 < 1.0e-12)
                     continue;
@@ -394,32 +397,33 @@ void eeq_charges(const std::vector<int>& Z,
         for (int i = 0; i < n; ++i) {
             const int zi = Z[static_cast<std::size_t>(i)];
             const double tmp =
-                kD4EeqKcn[static_cast<std::size_t>(zi)] /
-                std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
+                kD4EeqKcn[static_cast<std::size_t>(zi)]
+                / std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
             x[static_cast<std::size_t>(i)] =
-                -kD4EeqChi[static_cast<std::size_t>(zi)] +
-                tmp * cn[static_cast<std::size_t>(i)];
+                -kD4EeqChi[static_cast<std::size_t>(zi)]
+                + tmp * cn[static_cast<std::size_t>(i)];
             for (int j = 0; j < i; ++j) {
-                const double dx = pos[static_cast<std::size_t>(j)][0] -
-                                  pos[static_cast<std::size_t>(i)][0];
-                const double dy = pos[static_cast<std::size_t>(j)][1] -
-                                  pos[static_cast<std::size_t>(i)][1];
-                const double dz = pos[static_cast<std::size_t>(j)][2] -
-                                  pos[static_cast<std::size_t>(i)][2];
+                const double dx = pos[static_cast<std::size_t>(j)][0]
+                                  - pos[static_cast<std::size_t>(i)][0];
+                const double dy = pos[static_cast<std::size_t>(j)][1]
+                                  - pos[static_cast<std::size_t>(i)][1];
+                const double dz = pos[static_cast<std::size_t>(j)][2]
+                                  - pos[static_cast<std::size_t>(i)][2];
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 const int zj = Z[static_cast<std::size_t>(j)];
                 const double gam =
-                    1.0 / (kD4EeqRad[static_cast<std::size_t>(zi)] *
-                               kD4EeqRad[static_cast<std::size_t>(zi)] +
-                           kD4EeqRad[static_cast<std::size_t>(zj)] *
-                               kD4EeqRad[static_cast<std::size_t>(zj)]);
+                    1.0
+                    / (kD4EeqRad[static_cast<std::size_t>(zi)]
+                           * kD4EeqRad[static_cast<std::size_t>(zi)]
+                       + kD4EeqRad[static_cast<std::size_t>(zj)]
+                             * kD4EeqRad[static_cast<std::size_t>(zj)]);
                 const double r = std::sqrt(r2);
                 const double tmpv = std::erf(std::sqrt(r2 * gam)) / r;
                 at(i, j) = tmpv;
                 at(j, i) = tmpv;
             }
-            at(i, i) = kD4EeqEta[static_cast<std::size_t>(zi)] +
-                       kSqrt2Pi / kD4EeqRad[static_cast<std::size_t>(zi)];
+            at(i, i) = kD4EeqEta[static_cast<std::size_t>(zi)]
+                       + kSqrt2Pi / kD4EeqRad[static_cast<std::size_t>(zi)];
         }
     } else {
         std::vector<std::array<double, 3>> dtrans, gtrans;
@@ -431,46 +435,45 @@ void eeq_charges(const std::vector<int>& Z,
         for (int i = 0; i < n; ++i) {
             const int zi = Z[static_cast<std::size_t>(i)];
             const double tmp =
-                kD4EeqKcn[static_cast<std::size_t>(zi)] /
-                std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
+                kD4EeqKcn[static_cast<std::size_t>(zi)]
+                / std::sqrt(cn[static_cast<std::size_t>(i)] + 1.0e-14);
             x[static_cast<std::size_t>(i)] =
-                -kD4EeqChi[static_cast<std::size_t>(zi)] +
-                tmp * cn[static_cast<std::size_t>(i)];
+                -kD4EeqChi[static_cast<std::size_t>(zi)]
+                + tmp * cn[static_cast<std::size_t>(i)];
 
             for (int j = 0; j < i; ++j) {
                 const int zj = Z[static_cast<std::size_t>(j)];
                 // multicharge: gam = 1/sqrt(rad_i^2 + rad_j^2)
                 const double gam =
-                    1.0 /
-                    std::sqrt(kD4EeqRad[static_cast<std::size_t>(zi)] *
-                                  kD4EeqRad[static_cast<std::size_t>(zi)] +
-                              kD4EeqRad[static_cast<std::size_t>(zj)] *
-                                  kD4EeqRad[static_cast<std::size_t>(zj)]);
+                    1.0
+                    / std::sqrt(
+                        kD4EeqRad[static_cast<std::size_t>(zi)]
+                            * kD4EeqRad[static_cast<std::size_t>(zi)]
+                        + kD4EeqRad[static_cast<std::size_t>(zj)]
+                              * kD4EeqRad[static_cast<std::size_t>(zj)]);
                 const double rij[3] = {
-                    pos[static_cast<std::size_t>(i)][0] -
-                        pos[static_cast<std::size_t>(j)][0],
-                    pos[static_cast<std::size_t>(i)][1] -
-                        pos[static_cast<std::size_t>(j)][1],
-                    pos[static_cast<std::size_t>(i)][2] -
-                        pos[static_cast<std::size_t>(j)][2]};
-                const double aij =
-                    amat_dir(rij, gam, alp, dtrans) +
-                    amat_rec(rij, vol, alp, gtrans);
+                    pos[static_cast<std::size_t>(i)][0]
+                        - pos[static_cast<std::size_t>(j)][0],
+                    pos[static_cast<std::size_t>(i)][1]
+                        - pos[static_cast<std::size_t>(j)][1],
+                    pos[static_cast<std::size_t>(i)][2]
+                        - pos[static_cast<std::size_t>(j)][2]};
+                const double aij = amat_dir(rij, gam, alp, dtrans)
+                                   + amat_rec(rij, vol, alp, gtrans);
                 at(i, j) = aij;
                 at(j, i) = aij;
             }
             // Self term: gam = 1/sqrt(2 rad^2)
             const double gam_ii =
-                1.0 /
-                std::sqrt(2.0 * kD4EeqRad[static_cast<std::size_t>(zi)] *
-                          kD4EeqRad[static_cast<std::size_t>(zi)]);
+                1.0
+                / std::sqrt(2.0 * kD4EeqRad[static_cast<std::size_t>(zi)]
+                            * kD4EeqRad[static_cast<std::size_t>(zi)]);
             const double rij0[3] = {0.0, 0.0, 0.0};
-            const double a_self =
-                amat_dir(rij0, gam_ii, alp, dtrans) +
-                amat_rec(rij0, vol, alp, gtrans);
-            at(i, i) = a_self + kD4EeqEta[static_cast<std::size_t>(zi)] +
-                       kSqrt2Pi / kD4EeqRad[static_cast<std::size_t>(zi)] -
-                       2.0 * alp / kSqrtPi;
+            const double a_self = amat_dir(rij0, gam_ii, alp, dtrans)
+                                  + amat_rec(rij0, vol, alp, gtrans);
+            at(i, i) = a_self + kD4EeqEta[static_cast<std::size_t>(zi)]
+                       + kSqrt2Pi / kD4EeqRad[static_cast<std::size_t>(zi)]
+                       - 2.0 * alp / kSqrtPi;
         }
     }
 
@@ -491,11 +494,11 @@ void eeq_charges(const std::vector<int>& Z,
     }
     for (int col = 0; col < ndim; ++col) {
         int piv = col;
-        double best = std::abs(
-            aug[static_cast<std::size_t>(col * (ndim + 1) + col)]);
+        double best =
+            std::abs(aug[static_cast<std::size_t>(col * (ndim + 1) + col)]);
         for (int r = col + 1; r < ndim; ++r) {
-            const double v = std::abs(
-                aug[static_cast<std::size_t>(r * (ndim + 1) + col)]);
+            const double v =
+                std::abs(aug[static_cast<std::size_t>(r * (ndim + 1) + col)]);
             if (v > best) {
                 best = v;
                 piv = r;
@@ -505,9 +508,8 @@ void eeq_charges(const std::vector<int>& Z,
             throw std::runtime_error("D4: singular EEQ matrix");
         if (piv != col) {
             for (int c = col; c <= ndim; ++c)
-                std::swap(
-                    aug[static_cast<std::size_t>(col * (ndim + 1) + c)],
-                    aug[static_cast<std::size_t>(piv * (ndim + 1) + c)]);
+                std::swap(aug[static_cast<std::size_t>(col * (ndim + 1) + c)],
+                          aug[static_cast<std::size_t>(piv * (ndim + 1) + c)]);
         }
         const double diag =
             aug[static_cast<std::size_t>(col * (ndim + 1) + col)];
@@ -524,8 +526,8 @@ void eeq_charges(const std::vector<int>& Z,
     for (int i = ndim - 1; i >= 0; --i) {
         double s = aug[static_cast<std::size_t>(i * (ndim + 1) + ndim)];
         for (int j = i + 1; j < ndim; ++j)
-            s -= aug[static_cast<std::size_t>(i * (ndim + 1) + j)] *
-                 sol[static_cast<std::size_t>(j)];
+            s -= aug[static_cast<std::size_t>(i * (ndim + 1) + j)]
+                 * sol[static_cast<std::size_t>(j)];
         sol[static_cast<std::size_t>(i)] =
             s / aug[static_cast<std::size_t>(i * (ndim + 1) + i)];
     }
@@ -534,8 +536,8 @@ void eeq_charges(const std::vector<int>& Z,
 }
 
 void weight_refs(const std::vector<int>& Z, const std::vector<double>& cn,
-                 const std::vector<double>& q, double ga, double gc,
-                 double wf, std::vector<std::vector<double>>& gw) {
+                 const std::vector<double>& q, double ga, double gc, double wf,
+                 std::vector<std::vector<double>>& gw) {
     const int n = static_cast<int>(Z.size());
     int mref = 0;
     for (int zi : Z)
@@ -558,8 +560,7 @@ void weight_refs(const std::vector<int>& Z, const std::vector<double>& cn,
         for (int ir = 1; ir <= nref; ++ir) {
             const double cnr =
                 kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))];
-            for (int igw = 1; igw <= ngw[static_cast<std::size_t>(ir)];
-                 ++igw)
+            for (int igw = 1; igw <= ngw[static_cast<std::size_t>(ir)]; ++igw)
                 norm += weight_cn(static_cast<double>(igw) * wf, cni, cnr);
         }
         if (std::abs(norm) > eps_norm)
@@ -570,15 +571,13 @@ void weight_refs(const std::vector<int>& Z, const std::vector<double>& cn,
         double maxcn = 0.0;
         for (int ir = 1; ir <= nref; ++ir)
             maxcn = std::max(
-                maxcn,
-                kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))]);
+                maxcn, kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))]);
 
         for (int ir = 1; ir <= nref; ++ir) {
             const double cnr =
                 kD4RefCovCn[static_cast<std::size_t>(d4_idx2(ir, zi))];
             double expw = 0.0;
-            for (int igw = 1; igw <= ngw[static_cast<std::size_t>(ir)];
-                 ++igw)
+            for (int igw = 1; igw <= ngw[static_cast<std::size_t>(ir)]; ++igw)
                 expw += weight_cn(static_cast<double>(igw) * wf, cni, cnr);
             double gwk = expw * norm;
             if (!std::isfinite(gwk) || norm == 0.0) {
@@ -593,8 +592,8 @@ void weight_refs(const std::vector<int>& Z, const std::vector<double>& cn,
 }
 
 void atomic_c6(const std::vector<int>& Z,
-               const std::vector<std::vector<double>>& gw, double ga,
-               double gc, std::vector<std::vector<double>>& c6) {
+               const std::vector<std::vector<double>>& gw, double ga, double gc,
+               std::vector<std::vector<double>>& c6) {
     const int n = static_cast<int>(Z.size());
     std::vector<int> uniq = Z;
     std::sort(uniq.begin(), uniq.end());
@@ -606,8 +605,8 @@ void atomic_c6(const std::vector<int>& Z,
         set_refalpha_eeq(uniq[u], ga, gc, ref_alpha[u]);
 
     auto slot = [&](int z) -> std::size_t {
-        return static_cast<std::size_t>(
-            std::find(uniq.begin(), uniq.end(), z) - uniq.begin());
+        return static_cast<std::size_t>(std::find(uniq.begin(), uniq.end(), z)
+                                        - uniq.begin());
     };
 
     c6.assign(static_cast<std::size_t>(n),
@@ -627,15 +626,15 @@ void atomic_c6(const std::vector<int>& Z,
                     for (int k = 0; k < kD4NFreq; ++k)
                         pol[static_cast<std::size_t>(k)] =
                             ai[static_cast<std::size_t>(ir)]
-                              [static_cast<std::size_t>(k)] *
-                            aj[static_cast<std::size_t>(jr)]
-                              [static_cast<std::size_t>(k)];
+                              [static_cast<std::size_t>(k)]
+                            * aj[static_cast<std::size_t>(jr)]
+                                [static_cast<std::size_t>(k)];
                     const double rc6 = kThoPi * trapzd(pol);
                     s += gw[static_cast<std::size_t>(i)]
-                           [static_cast<std::size_t>(ir)] *
-                         gw[static_cast<std::size_t>(j)]
-                           [static_cast<std::size_t>(jr)] *
-                         rc6;
+                           [static_cast<std::size_t>(ir)]
+                         * gw[static_cast<std::size_t>(j)]
+                             [static_cast<std::size_t>(jr)]
+                         * rc6;
                 }
             }
             c6[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = s;
@@ -646,8 +645,8 @@ void atomic_c6(const std::vector<int>& Z,
 double disp2(const std::vector<int>& Z,
              const std::vector<std::array<double, 3>>& pos,
              const double cell[3], bool periodic,
-             const std::vector<std::vector<double>>& c6, double s6,
-             double s8, double a1, double a2, double disp2_cut) {
+             const std::vector<std::vector<double>>& c6, double s6, double s8,
+             double a1, double a2, double disp2_cut) {
     const int n = static_cast<int>(Z.size());
     std::vector<std::array<double, 3>> trans;
     lattice_points(cell, disp2_cut, periodic, trans);
@@ -659,24 +658,26 @@ double disp2(const std::vector<int>& Z,
         for (int j = 0; j <= i; ++j) {
             const int zi = Z[static_cast<std::size_t>(i)];
             const int zj = Z[static_cast<std::size_t>(j)];
-            const double rrij = 3.0 * kD4R4r2[static_cast<std::size_t>(zi)] *
-                                kD4R4r2[static_cast<std::size_t>(zj)];
+            const double rrij = 3.0 * kD4R4r2[static_cast<std::size_t>(zi)]
+                                * kD4R4r2[static_cast<std::size_t>(zj)];
             const double r0ij = a1 * std::sqrt(rrij) + a2;
             const double c6ij =
                 c6[static_cast<std::size_t>(j)][static_cast<std::size_t>(i)];
             for (const auto& t : trans) {
-                const double dx = pos[static_cast<std::size_t>(i)][0] -
-                                  (pos[static_cast<std::size_t>(j)][0] + t[0]);
-                const double dy = pos[static_cast<std::size_t>(i)][1] -
-                                  (pos[static_cast<std::size_t>(j)][1] + t[1]);
-                const double dz = pos[static_cast<std::size_t>(i)][2] -
-                                  (pos[static_cast<std::size_t>(j)][2] + t[2]);
+                const double dx =
+                    pos[static_cast<std::size_t>(i)][0]
+                    - (pos[static_cast<std::size_t>(j)][0] + t[0]);
+                const double dy =
+                    pos[static_cast<std::size_t>(i)][1]
+                    - (pos[static_cast<std::size_t>(j)][1] + t[1]);
+                const double dz =
+                    pos[static_cast<std::size_t>(i)][2]
+                    - (pos[static_cast<std::size_t>(j)][2] + t[2]);
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 > cut2 || r2 < 1.0e-24)
                     continue;
                 const double t6 = 1.0 / (r2 * r2 * r2 + std::pow(r0ij, 6));
-                const double t8 =
-                    1.0 / (r2 * r2 * r2 * r2 + std::pow(r0ij, 8));
+                const double t8 = 1.0 / (r2 * r2 * r2 * r2 + std::pow(r0ij, 8));
                 const double edisp = s6 * t6 + s8 * rrij * t8;
                 // Total energy contribution for this (pair, T):
                 // i!=j: full -c6*edisp; i==j: half (dftd4 0.5 partition).
@@ -696,8 +697,7 @@ double dftd4_energy(const std::vector<int>& Z,
                     const std::vector<std::array<double, 3>>& pos_bohr,
                     const double cell_bohr[3], bool periodic, double s6,
                     double s8, double a1, double a2, double ga, double gc,
-                    double wf, double charge, double cn_cut,
-                    double disp2_cut) {
+                    double wf, double charge, double cn_cut, double disp2_cut) {
     const int n = static_cast<int>(Z.size());
     if (n <= 0)
         return 0.0;
@@ -705,8 +705,8 @@ double dftd4_energy(const std::vector<int>& Z,
         throw std::runtime_error("D4: Z and pos size mismatch");
     for (int z : Z)
         require_z(z);
-    if (periodic &&
-        (cell_bohr[0] <= 0.0 || cell_bohr[1] <= 0.0 || cell_bohr[2] <= 0.0))
+    if (periodic
+        && (cell_bohr[0] <= 0.0 || cell_bohr[1] <= 0.0 || cell_bohr[2] <= 0.0))
         throw std::runtime_error("D4: periodic cell edges must be positive");
 
     const double cell[3] = {cell_bohr[0], cell_bohr[1], cell_bohr[2]};
@@ -741,8 +741,7 @@ double D4::energy(const Frame& frame) const {
         const int zi = static_cast<int>(type[i]);
         require_z(zi);
         Z[static_cast<std::size_t>(i)] = zi;
-        pos[static_cast<std::size_t>(i)] = {x[i] * a2b, y[i] * a2b,
-                                            z[i] * a2b};
+        pos[static_cast<std::size_t>(i)] = {x[i] * a2b, y[i] * a2b, z[i] * a2b};
     }
     const double cell[3] = {0.0, 0.0, 0.0};
     return dftd4_energy(Z, pos, cell, /*periodic=*/false, s6, s8, a1, a2, ga,

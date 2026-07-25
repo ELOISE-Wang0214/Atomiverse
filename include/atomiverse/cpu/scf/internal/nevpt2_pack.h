@@ -29,9 +29,10 @@ namespace scf {
 /// @throws std::invalid_argument on open-shell, missing ERI, invalid active
 ///         space, or non-empty external space that requires 3-RDM intermediates
 ///         not yet implemented on this foothold path (no silent fallback).
-NEVPT2Result nevpt2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                           double e_scf_ha, int ncas, int nelecas,
-                           double orb_tol = 1e-8, int max_macro = 50);
+NEVPT2Result nevpt2_energy(const IntegralPack& ints,
+                           const SlaterDeterminant& det, double e_scf_ha,
+                           int ncas, int nelecas, double orb_tol = 1e-8,
+                           int max_macro = 50);
 
 } // namespace scf
 } // namespace cpu

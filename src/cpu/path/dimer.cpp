@@ -123,10 +123,10 @@ int Dimer::run(cpu::Frame& frame, int max_iter) {
                 f2.span(kAtom_x)[i] = frame.span(kAtom_x)[i] - delta * nx_;
                 f2.span(kAtom_y)[i] = frame.span(kAtom_y)[i] - delta * ny_;
                 f2.span(kAtom_z)[i] = frame.span(kAtom_z)[i] - delta * nz_;
-                f1.span(kAtom_fx)[i] = f1.span(kAtom_fy)[i] = f1.span(kAtom_fz)[i] =
-                    0;
-                f2.span(kAtom_fx)[i] = f2.span(kAtom_fy)[i] = f2.span(kAtom_fz)[i] =
-                    0;
+                f1.span(kAtom_fx)[i] = f1.span(kAtom_fy)[i] =
+                    f1.span(kAtom_fz)[i] = 0;
+                f2.span(kAtom_fx)[i] = f2.span(kAtom_fy)[i] =
+                    f2.span(kAtom_fz)[i] = 0;
             }
             // Only rotate using the first atom's 3D mode for skeleton (single
             // particle / uniform N on all atoms). Multi-atom N is 3N-dim later.

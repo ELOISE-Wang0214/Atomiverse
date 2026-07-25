@@ -77,8 +77,8 @@ TEST(DihedralCV, GradientFiniteDifference) {
             xp[a] += h;
             xm[a] -= h;
             const double gp =
-                (cv.evaluate(fp, nullptr) - cv.evaluate(fm, nullptr)) /
-                (2.0 * h);
+                (cv.evaluate(fp, nullptr) - cv.evaluate(fm, nullptr))
+                / (2.0 * h);
             EXPECT_NEAR(g[3 * a + d], gp, 2e-5) << "atom " << a << " dim " << d;
         }
     }

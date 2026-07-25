@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <stdexcept>
 
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/core/plan.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/component/component.cuh"
 
 using namespace ATV;
 

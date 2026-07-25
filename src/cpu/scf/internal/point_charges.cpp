@@ -67,8 +67,8 @@ xt::xtensor<double, 2> PointChargeEmbedding::core_matrix(
                 for (int ia = 0; ia < A.n_cart; ++ia) {
                     for (int ib = 0; ib < B.n_cart; ++ib) {
                         const double v =
-                            q_[c] * buf[static_cast<std::size_t>(ia * B.n_cart
-                                                                  + ib)];
+                            q_[c]
+                            * buf[static_cast<std::size_t>(ia * B.n_cart + ib)];
                         const int row = A.ao_start + ia;
                         const int col = B.ao_start + ib;
                         V(row, col) += v;

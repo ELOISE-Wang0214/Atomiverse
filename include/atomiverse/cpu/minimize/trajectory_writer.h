@@ -20,9 +20,9 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/cpu/record/xyz.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

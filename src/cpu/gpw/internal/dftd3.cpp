@@ -459,10 +459,10 @@ D3Result dftd3_pbe_bj(const std::vector<int>& Z,
                         // r0 is CN-dependent only through the interpolated ratio
                         // when dc6/dcn differ — use finite product rule on e.
                         // For energy-only consumers this is unused; for forces:
-                        dEdCN[i] += -s6 * fac * dc6a / den6
-                                    - s8 * fac * dc8a / den8;
-                        dEdCN[j] += -s6 * fac * dc6b / den6
-                                    - s8 * fac * dc8b / den8;
+                        dEdCN[i] +=
+                            -s6 * fac * dc6a / den6 - s8 * fac * dc8a / den8;
+                        dEdCN[j] +=
+                            -s6 * fac * dc6b / den6 - s8 * fac * dc8b / den8;
                     }
         }
     }

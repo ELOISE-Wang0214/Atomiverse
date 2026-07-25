@@ -17,8 +17,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/recorder.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/recorder.h"
 
 namespace ATV {
 namespace cpu {

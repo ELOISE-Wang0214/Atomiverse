@@ -29,7 +29,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 /// One normalized single-primitive s AO at (x0,y0,z0) Å-independent (Bohr).
 struct OneAtomSystem {
-    std::vector<double> storage;                 // alpha, coeff
+    std::vector<double> storage; // alpha, coeff
     std::shared_ptr<std::vector<Shell>> shells;
     std::shared_ptr<SlaterDeterminant> det;
     std::shared_ptr<bool> ready;
@@ -39,10 +39,13 @@ struct OneAtomSystem {
         const double norm = std::pow(2.0 * alpha / kPi, 0.75);
         storage = {alpha, norm};
         shells = std::make_shared<std::vector<Shell>>();
-        shells->push_back(Shell{1, &storage[0], &storage[1],
-                                {center_bohr[0], center_bohr[1],
-                                 center_bohr[2]},
-                                0, 0});
+        shells->push_back(
+            Shell{1,
+                  &storage[0],
+                  &storage[1],
+                  {center_bohr[0], center_bohr[1], center_bohr[2]},
+                  0,
+                  0});
         cpu::linalg::RealMatrix C =
             xt::ones<double>({std::size_t(1), std::size_t(1)});
         cpu::linalg::RealVector eps = xt::zeros<double>({std::size_t(1)});
@@ -114,8 +117,8 @@ TEST(MultipoleObserver, GlobalTranslationInvariance) {
 
     for (int a = 0; a < 3; ++a)
         EXPECT_NEAR(o0.dipole_au()[a], o1.dipole_au()[a], 1e-12);
-    EXPECT_NEAR(o1.origin_angstrom()[0] - o0.origin_angstrom()[0],
-                shift_ang, 1e-10);
+    EXPECT_NEAR(o1.origin_angstrom()[0] - o0.origin_angstrom()[0], shift_ang,
+                1e-10);
 }
 
 /// Not ready ⇒ no-op (no meta writes, no throw).

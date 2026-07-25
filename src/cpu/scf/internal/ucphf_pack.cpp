@@ -26,8 +26,7 @@ namespace {
 /// @brief Four-index MO transform (same pattern as OrbitalHessian /
 ///        SOSCFStepper::mo_transform_).
 xt::xtensor<double, 4> mo_transform(const xt::xtensor<double, 4>& eri_ao,
-                                    const RealMatrix& C0,
-                                    const RealMatrix& C1,
+                                    const RealMatrix& C0, const RealMatrix& C1,
                                     const RealMatrix& C2,
                                     const RealMatrix& C3) {
     xt::xtensor<double, 4> cur = eri_ao;
@@ -36,8 +35,8 @@ xt::xtensor<double, 4> mo_transform(const xt::xtensor<double, 4>& eri_ao,
         const auto sh = cur.shape();
         auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
-        xt::xtensor<double, 4> next = xt::reshape_view(
-            h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
         cur = xt::transpose(next, {3, 0, 1, 2});
     }
     return cur;
@@ -189,24 +188,18 @@ UCphfPack::UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
             RealMatrix dFa = xt::view(dFa_ao_, A, d, xt::all(), xt::all());
             RealMatrix dFb = xt::view(dFb_ao_, A, d, xt::all(), xt::all());
 
-            const RealMatrix S_vo_a =
-                xt::linalg::dot(xt::transpose(Cv_a_),
-                                xt::linalg::dot(dS, Co_a_));
-            const RealMatrix S_oo_a =
-                xt::linalg::dot(xt::transpose(Co_a_),
-                                xt::linalg::dot(dS, Co_a_));
-            const RealMatrix F_vo_a =
-                xt::linalg::dot(xt::transpose(Cv_a_),
-                                xt::linalg::dot(dFa, Co_a_));
-            const RealMatrix S_vo_b =
-                xt::linalg::dot(xt::transpose(Cv_b_),
-                                xt::linalg::dot(dS, Co_b_));
-            const RealMatrix S_oo_b =
-                xt::linalg::dot(xt::transpose(Co_b_),
-                                xt::linalg::dot(dS, Co_b_));
-            const RealMatrix F_vo_b =
-                xt::linalg::dot(xt::transpose(Cv_b_),
-                                xt::linalg::dot(dFb, Co_b_));
+            const RealMatrix S_vo_a = xt::linalg::dot(
+                xt::transpose(Cv_a_), xt::linalg::dot(dS, Co_a_));
+            const RealMatrix S_oo_a = xt::linalg::dot(
+                xt::transpose(Co_a_), xt::linalg::dot(dS, Co_a_));
+            const RealMatrix F_vo_a = xt::linalg::dot(
+                xt::transpose(Cv_a_), xt::linalg::dot(dFa, Co_a_));
+            const RealMatrix S_vo_b = xt::linalg::dot(
+                xt::transpose(Cv_b_), xt::linalg::dot(dS, Co_b_));
+            const RealMatrix S_oo_b = xt::linalg::dot(
+                xt::transpose(Co_b_), xt::linalg::dot(dS, Co_b_));
+            const RealMatrix F_vo_b = xt::linalg::dot(
+                xt::transpose(Cv_b_), xt::linalg::dot(dFb, Co_b_));
 
             xt::view(S_vo_a_, x, xt::all(), xt::all()) = S_vo_a;
             xt::view(S_oo_a_, x, xt::all(), xt::all()) = S_oo_a;
@@ -219,9 +212,9 @@ UCphfPack::UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
                     double b = F_vo_a(a, i) - eps_oa_(i) * S_vo_a(a, i);
                     for (int k = 0; k < no_a_; ++k)
                         for (int l = 0; l < no_a_; ++l)
-                            b -= S_oo_a(k, l)
-                                 * (vooo_aa_(a, i, k, l)
-                                    - vooo_aa_(a, k, i, l));
+                            b -=
+                                S_oo_a(k, l)
+                                * (vooo_aa_(a, i, k, l) - vooo_aa_(a, k, i, l));
                     for (int k = 0; k < no_b_; ++k)
                         for (int l = 0; l < no_b_; ++l)
                             b -= S_oo_b(k, l) * vooo_ab_(a, i, k, l);
@@ -233,9 +226,9 @@ UCphfPack::UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
                     double b = F_vo_b(a, i) - eps_ob_(i) * S_vo_b(a, i);
                     for (int k = 0; k < no_b_; ++k)
                         for (int l = 0; l < no_b_; ++l)
-                            b -= S_oo_b(k, l)
-                                 * (vooo_bb_(a, i, k, l)
-                                    - vooo_bb_(a, k, i, l));
+                            b -=
+                                S_oo_b(k, l)
+                                * (vooo_bb_(a, i, k, l) - vooo_bb_(a, k, i, l));
                     for (int k = 0; k < no_a_; ++k)
                         for (int l = 0; l < no_a_; ++l)
                             b -= S_oo_a(k, l) * vooo_ba_(a, i, k, l);
@@ -247,9 +240,9 @@ UCphfPack::UCphfPack(const SlaterDeterminant& det, const IntegralPack& pack,
 
 RealVector UCphfPack::apply_lhs(const RealVector& v) const {
     if (static_cast<int>(v.size()) != n_rot_)
-        throw std::invalid_argument(
-            "UCphfPack::apply_lhs: v.size() = " + std::to_string(v.size())
-            + " != n_rot = " + std::to_string(n_rot_));
+        throw std::invalid_argument("UCphfPack::apply_lhs: v.size() = "
+                                    + std::to_string(v.size())
+                                    + " != n_rot = " + std::to_string(n_rot_));
 
     RealVector y = xt::zeros<double>({static_cast<std::size_t>(n_rot_)});
     // α rows
@@ -264,8 +257,8 @@ RealVector UCphfPack::apply_lhs(const RealVector& v) const {
                            * v(b * no_a_ + j);
             for (int b = 0; b < nv_b_; ++b)
                 for (int j = 0; j < no_b_; ++j)
-                    acc += 2.0 * ovov_ab_(a, i, b, j)
-                           * v(rot_a_ + b * no_b_ + j);
+                    acc +=
+                        2.0 * ovov_ab_(a, i, b, j) * v(rot_a_ + b * no_b_ + j);
             y(p) = acc;
         }
     // β rows
@@ -290,9 +283,8 @@ RealVector UCphfPack::diagonal_lhs_() const {
     RealVector d = xt::zeros<double>({static_cast<std::size_t>(n_rot_)});
     for (int a = 0; a < nv_a_; ++a)
         for (int i = 0; i < no_a_; ++i)
-            d(a * no_a_ + i) =
-                (eps_va_(a) - eps_oa_(i))
-                + (ovov_aa_(a, i, a, i) - oovv_aa_(i, i, a, a));
+            d(a * no_a_ + i) = (eps_va_(a) - eps_oa_(i))
+                               + (ovov_aa_(a, i, a, i) - oovv_aa_(i, i, a, a));
     for (int a = 0; a < nv_b_; ++a)
         for (int i = 0; i < no_b_; ++i)
             d(rot_a_ + a * no_b_ + i) =
@@ -354,9 +346,9 @@ void UCphfPack::solve() {
             continue;
 
         const double tol_eff = cg_tol * std::max(1.0, b_norm) / b_norm;
-        const RealVector u = linalg::solve_pcg(
-            [&](const RealVector& v) { return apply_lhs(v); }, diag, b, tol_eff,
-            cg_max_iter);
+        const RealVector u =
+            linalg::solve_pcg([&](const RealVector& v) { return apply_lhs(v); },
+                              diag, b, tol_eff, cg_max_iter);
         ++iterations_;
         for (int p = 0; p < n_rot_; ++p)
             U_(x, p) = u(p);
@@ -372,11 +364,11 @@ RealMatrix UCphfPack::density_response_alpha(int x) const {
     for (int a = 0; a < nv_a_; ++a)
         for (int i = 0; i < no_a_; ++i)
             Umat(a, i) = U_(x, a * no_a_ + i);
-    const RealMatrix Pvo = xt::linalg::dot(
-        xt::linalg::dot(Cv_a_, Umat), xt::transpose(Co_a_));
+    const RealMatrix Pvo =
+        xt::linalg::dot(xt::linalg::dot(Cv_a_, Umat), xt::transpose(Co_a_));
     RealMatrix Soo = xt::view(S_oo_a_, x, xt::all(), xt::all());
-    const RealMatrix Poo = xt::linalg::dot(
-        xt::linalg::dot(Co_a_, Soo), xt::transpose(Co_a_));
+    const RealMatrix Poo =
+        xt::linalg::dot(xt::linalg::dot(Co_a_, Soo), xt::transpose(Co_a_));
     // Factor-1 spin density: δP = C_v U C_oᵀ + h.c. − C_o S_oo C_oᵀ.
     return (Pvo + xt::transpose(Pvo)) - Poo;
 }
@@ -389,11 +381,11 @@ RealMatrix UCphfPack::density_response_beta(int x) const {
     for (int a = 0; a < nv_b_; ++a)
         for (int i = 0; i < no_b_; ++i)
             Umat(a, i) = U_(x, rot_a_ + a * no_b_ + i);
-    const RealMatrix Pvo = xt::linalg::dot(
-        xt::linalg::dot(Cv_b_, Umat), xt::transpose(Co_b_));
+    const RealMatrix Pvo =
+        xt::linalg::dot(xt::linalg::dot(Cv_b_, Umat), xt::transpose(Co_b_));
     RealMatrix Soo = xt::view(S_oo_b_, x, xt::all(), xt::all());
-    const RealMatrix Poo = xt::linalg::dot(
-        xt::linalg::dot(Co_b_, Soo), xt::transpose(Co_b_));
+    const RealMatrix Poo =
+        xt::linalg::dot(xt::linalg::dot(Co_b_, Soo), xt::transpose(Co_b_));
     return (Pvo + xt::transpose(Pvo)) - Poo;
 }
 
@@ -444,12 +436,10 @@ xt::xtensor<double, 2> UCphfPack::hessian() const {
                     double acc = d2.d2V_nuc(A, di, Bt, dj);
                     for (int mu = 0; mu < n_; ++mu)
                         for (int nu = 0; nu < n_; ++nu) {
-                            const double h2 =
-                                d2.d2T(A, di, Bt, dj, mu, nu)
-                                + d2.d2V(A, di, Bt, dj, mu, nu);
+                            const double h2 = d2.d2T(A, di, Bt, dj, mu, nu)
+                                              + d2.d2V(A, di, Bt, dj, mu, nu);
                             acc += P(mu, nu) * h2
-                                   - W(mu, nu)
-                                         * d2.d2S(A, di, Bt, dj, mu, nu);
+                                   - W(mu, nu) * d2.d2S(A, di, Bt, dj, mu, nu);
                         }
                     H(3 * A + di, 3 * Bt + dj) += acc;
                 }
@@ -463,14 +453,12 @@ xt::xtensor<double, 2> UCphfPack::hessian() const {
         fock_response_(y, dPa, dPb, dFa, dFb);
         // W^y = Σ_σ (δP^σ F^σ P^σ + P^σ δF^σ P^σ + P^σ F^σ δP^σ)
         // — derivative of W^σ = P^σ F^σ P^σ at an idempotent UHF density.
-        const RealMatrix Wya =
-            xt::linalg::dot(dPa, xt::linalg::dot(Fa, Pa))
-            + xt::linalg::dot(Pa, xt::linalg::dot(dFa, Pa))
-            + xt::linalg::dot(Pa, xt::linalg::dot(Fa, dPa));
-        const RealMatrix Wyb =
-            xt::linalg::dot(dPb, xt::linalg::dot(Fb, Pb))
-            + xt::linalg::dot(Pb, xt::linalg::dot(dFb, Pb))
-            + xt::linalg::dot(Pb, xt::linalg::dot(Fb, dPb));
+        const RealMatrix Wya = xt::linalg::dot(dPa, xt::linalg::dot(Fa, Pa))
+                               + xt::linalg::dot(Pa, xt::linalg::dot(dFa, Pa))
+                               + xt::linalg::dot(Pa, xt::linalg::dot(Fa, dPa));
+        const RealMatrix Wyb = xt::linalg::dot(dPb, xt::linalg::dot(Fb, Pb))
+                               + xt::linalg::dot(Pb, xt::linalg::dot(dFb, Pb))
+                               + xt::linalg::dot(Pb, xt::linalg::dot(Fb, dPb));
         const RealMatrix Wy = Wya + Wyb;
 
         for (int x = 0; x < n3; ++x) {

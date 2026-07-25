@@ -17,18 +17,18 @@ using namespace ATV;
 
 int main() {
     // Parameters (must match REFERENCE.md / offline twin).
-    const double A = 1000.0;    // eV
-    const double rho = 3.0;     // Å
-    const double sigma = 1.0;   // Å
-    const double C = 50.0;      // eV·Å⁶
-    const double D = 20.0;      // eV·Å⁸
-    const double rc = 8.0;      // Å
-    const double r = 2.5;       // Å
+    const double A = 1000.0;  // eV
+    const double rho = 3.0;   // Å
+    const double sigma = 1.0; // Å
+    const double C = 50.0;    // eV·Å⁶
+    const double D = 20.0;    // eV·Å⁸
+    const double rc = 8.0;    // Å
+    const double r = 2.5;     // Å
 
     // Offline LAMMPS pins (metal units, shift yes) — 2026-07-24.
-    const double E_ref = 509.3671885909988;           // eV
-    const double F0x_ref = -2.0172730961087780e+02;   // eV/Å
-    const double F1x_ref = 2.0172730961087780e+02;    // eV/Å
+    const double E_ref = 509.3671885909988;         // eV
+    const double F0x_ref = -2.0172730961087780e+02; // eV/Å
+    const double F1x_ref = 2.0172730961087780e+02;  // eV/Å
     const double tol_E = 1e-10;
     const double tol_F = 1e-10;
 
@@ -75,8 +75,8 @@ int main() {
                     tol_F);
         ok = false;
     }
-    if (std::fabs(f.span(kAtom_fy)[0]) > tol_F ||
-        std::fabs(f.span(kAtom_fz)[0]) > tol_F) {
+    if (std::fabs(f.span(kAtom_fy)[0]) > tol_F
+        || std::fabs(f.span(kAtom_fz)[0]) > tol_F) {
         std::printf("FAIL: non-zero transverse force on atom 0\n");
         ok = false;
     }

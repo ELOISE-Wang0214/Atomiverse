@@ -67,8 +67,8 @@ int main() {
     constexpr double kEGroundHa = -107.495893307834;
     constexpr double kEExcitedHa = -107.192823826964;
     constexpr double kDeltaEv = 8.246940703328;
-    constexpr double kTolEv = 1e-4;   // product gate
-    constexpr double kTolHa = 1e-6;   // energy sanity
+    constexpr double kTolEv = 1e-4; // product gate
+    constexpr double kTolHa = 1e-6; // energy sanity
 
     std::printf("N2 UHF/STO-3G ΔSCF IMOM (α HOMO→LUMO):\n");
     bool ok = true;

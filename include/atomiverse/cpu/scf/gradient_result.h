@@ -48,8 +48,8 @@ struct GradientResult {
                 forces(A, d) = -units::convert(grad_ha_bohr(A, d),
                                                units::Force::HartreePerBohr,
                                                units::Force::eVPerAngstrom);
-        energy =
-            units::convert(energy_ha, units::Energy::Hartree, units::Energy::eV);
+        energy = units::convert(energy_ha, units::Energy::Hartree,
+                                units::Energy::eV);
     }
 };
 

@@ -63,8 +63,8 @@ int main() {
             const double err = std::fabs(g - want[A][d]);
             if (err > max_err)
                 max_err = err;
-            std::printf("g[%d][%d] got=% .12e want=% .12e |err|=%.2e\n", A, d, g,
-                        want[A][d], err);
+            std::printf("g[%d][%d] got=% .12e want=% .12e |err|=%.2e\n", A, d,
+                        g, want[A][d], err);
         }
     }
     const double net_max =

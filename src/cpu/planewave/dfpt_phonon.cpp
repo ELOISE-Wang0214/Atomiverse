@@ -33,18 +33,15 @@ DfptPhononResult DfptPhonon::compute(const PW& method,
     result.response_converged = out.response_converged;
 
     // Force constants: Ha/Bohr² → eV/Å² for the public field (vib units).
-    const double to_ev_ang2 =
-        1.0 / vib::nist::EV_PER_ANG2_TO_HARTREE_PER_BOHR2;
-    result.max_asymmetry =
-        static_cast<double>(out.max_asymmetry) * to_ev_ang2;
+    const double to_ev_ang2 = 1.0 / vib::nist::EV_PER_ANG2_TO_HARTREE_PER_BOHR2;
+    result.max_asymmetry = static_cast<double>(out.max_asymmetry) * to_ev_ang2;
     result.force_constants = xt::zeros<double>(
         {static_cast<std::size_t>(dim), static_cast<std::size_t>(dim)});
     for (int i = 0; i < dim; ++i)
         for (int j = 0; j < dim; ++j)
             result.force_constants(i, j) =
                 static_cast<double>(
-                    out.force_constants[static_cast<std::size_t>(i) * dim
-                                        + j])
+                    out.force_constants[static_cast<std::size_t>(i) * dim + j])
                 * to_ev_ang2;
 
     // Mass-weighted dynamical matrix in atomic units [Ha/(Bohr² amu)],
@@ -60,10 +57,10 @@ DfptPhononResult DfptPhonon::compute(const PW& method,
         for (int j = 0; j < dim; ++j)
             dmat[static_cast<std::size_t>(i) * dim + j] =
                 out.force_constants[static_cast<std::size_t>(i) * dim + j]
-                * static_cast<AccReal>(inv_sqrt_m[static_cast<std::size_t>(
-                      i / 3)])
-                * static_cast<AccReal>(inv_sqrt_m[static_cast<std::size_t>(
-                      j / 3)]);
+                * static_cast<AccReal>(
+                    inv_sqrt_m[static_cast<std::size_t>(i / 3)])
+                * static_cast<AccReal>(
+                    inv_sqrt_m[static_cast<std::size_t>(j / 3)]);
 
     std::vector<AccReal> eig(static_cast<std::size_t>(dim));
     std::vector<AccReal> vecs(static_cast<std::size_t>(dim) * dim);
@@ -73,11 +70,10 @@ DfptPhononResult DfptPhonon::compute(const PW& method,
     const double au2cm = vib::nist::au2wavenumber();
     result.frequencies = xt::zeros<double>({static_cast<std::size_t>(dim)});
     for (int k = 0; k < dim; ++k) {
-        const double lambda = static_cast<double>(eig[static_cast<
-            std::size_t>(k)]);
-        result.frequencies(k) = (lambda < 0.0)
-                                    ? -std::sqrt(-lambda) * au2cm
-                                    : std::sqrt(lambda) * au2cm;
+        const double lambda =
+            static_cast<double>(eig[static_cast<std::size_t>(k)]);
+        result.frequencies(k) = (lambda < 0.0) ? -std::sqrt(-lambda) * au2cm
+                                               : std::sqrt(lambda) * au2cm;
     }
     return result;
 }

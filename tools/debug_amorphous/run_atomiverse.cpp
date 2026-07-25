@@ -35,7 +35,6 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/halo_exchange.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/barostat.h"
 #include "atomiverse/cpu/dynamics/fix_langevin.h"
 #include "atomiverse/cpu/dynamics/init.h"
@@ -44,6 +43,7 @@
 #include "atomiverse/cpu/dynamics/nose_hoover_npt.h"
 #include "atomiverse/cpu/dynamics/nve_limit.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observe/virial_stress.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
@@ -374,7 +374,8 @@ int main(int argc, char** argv) {
         const double tau_P = 1000.0; // LAMMPS Pdamp
 
         cpu::md::MD sim;
-        sim.add(cpu::md::NoseHooverNPT{*/T_tgt, */tau_T, */P_tgt, */tau_P, */dt, */2.0, */3, */3});
+        sim.add(cpu::md::NoseHooverNPT{*/ T_tgt, */ tau_T, */ P_tgt, */ tau_P,
+                                       */ dt, */ 2.0, */ 3, */ 3});
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
         sim.add(cpu::md::ZeroMomentum{1});
         sim.on(ATV::md::Phase::pre_force)

@@ -1,9 +1,9 @@
 /// @file cpu/driver/driver.cpp
 /// @brief CPU Driver explicit instantiations.
 
-#include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/core/driver_template_impl.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/driver/backend_traits.h"
 
 namespace ATV {
 

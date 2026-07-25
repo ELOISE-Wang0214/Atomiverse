@@ -45,7 +45,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
         throw std::invalid_argument(
             "ccsd_energy_spatial: GHF (spinor) reference is not supported.");
     if (max_iter < 1)
-        throw std::invalid_argument("ccsd_energy_spatial: max_iter must be ≥ 1.");
+        throw std::invalid_argument(
+            "ccsd_energy_spatial: max_iter must be ≥ 1.");
     if (!(tol > 0.0))
         throw std::invalid_argument("ccsd_energy_spatial: tol must be > 0.");
 
@@ -97,8 +98,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
     xt::xtensor<double, 2> eia = xt::zeros<double>({No, Nv});
     for (int i = 0; i < no; ++i)
         for (int a = 0; a < nv; ++a) {
-            const double d = eo[static_cast<std::size_t>(i)] -
-                             ev[static_cast<std::size_t>(a)];
+            const double d = eo[static_cast<std::size_t>(i)]
+                             - ev[static_cast<std::size_t>(a)];
             if (d >= 0.0)
                 throw std::invalid_argument(
                     "ccsd_energy_spatial: non-negative T1 denominator; "
@@ -130,7 +131,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                 for (int a = 0; a < nv; ++a)
                     for (int b = 0; b < nv; ++b) {
                         const double tau = T2(i, j, a, b) + T1(i, a) * T1(j, b);
-                        const double L = 2.0 * OVOV(i, a, j, b) - OVOV(i, b, j, a);
+                        const double L =
+                            2.0 * OVOV(i, a, j, b) - OVOV(i, b, j, a);
                         e += tau * L;
                     }
         return e;
@@ -166,10 +168,10 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                         for (int d = 0; d < nv; ++d) {
                             const double t2klad = t2(k, l, a, d);
                             const double tt = t1(k, a) * t1(l, d);
-                            s += -2.0 * OVOV(k, c, l, d) * t2klad +
-                                 OVOV(k, d, l, c) * t2klad +
-                                 -2.0 * OVOV(k, c, l, d) * tt +
-                                 OVOV(k, d, l, c) * tt;
+                            s += -2.0 * OVOV(k, c, l, d) * t2klad
+                                 + OVOV(k, d, l, c) * t2klad
+                                 + -2.0 * OVOV(k, c, l, d) * tt
+                                 + OVOV(k, d, l, c) * tt;
                         }
                 Fvv(a, c) = s;
             }
@@ -181,10 +183,10 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                         for (int d = 0; d < nv; ++d) {
                             const double t2ilcd = t2(i, l, c, d);
                             const double tt = t1(i, c) * t1(l, d);
-                            s += 2.0 * OVOV(k, c, l, d) * t2ilcd -
-                                 OVOV(k, d, l, c) * t2ilcd +
-                                 2.0 * OVOV(k, c, l, d) * tt -
-                                 OVOV(k, d, l, c) * tt;
+                            s += 2.0 * OVOV(k, c, l, d) * t2ilcd
+                                 - OVOV(k, d, l, c) * t2ilcd
+                                 + 2.0 * OVOV(k, c, l, d) * tt
+                                 - OVOV(k, d, l, c) * tt;
                         }
                 Foo(k, i) = s;
             }
@@ -193,8 +195,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                 double s = 0.0;
                 for (int l = 0; l < no; ++l)
                     for (int d = 0; d < nv; ++d)
-                        s += 2.0 * OVOV(k, c, l, d) * t1(l, d) -
-                             OVOV(k, d, l, c) * t1(l, d);
+                        s += 2.0 * OVOV(k, c, l, d) * t1(l, d)
+                             - OVOV(k, d, l, c) * t1(l, d);
                 Fov(k, c) = s;
             }
 
@@ -207,8 +209,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                 double s = 0.0;
                 for (int k = 0; k < no; ++k)
                     for (int d = 0; d < nv; ++d)
-                        s += 2.0 * OVVV(k, d, a, c) * t1(k, d) -
-                             OVVV(k, c, a, d) * t1(k, d);
+                        s += 2.0 * OVVV(k, d, a, c) * t1(k, d)
+                             - OVVV(k, c, a, d) * t1(k, d);
                 Lvv(a, c) += s;
             }
         for (int k = 0; k < no; ++k)
@@ -216,8 +218,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                 double s = 0.0;
                 for (int l = 0; l < no; ++l)
                     for (int c = 0; c < nv; ++c)
-                        s += 2.0 * OVOO(l, c, k, i) * t1(l, c) -
-                             OVOO(k, c, l, i) * t1(l, c);
+                        s += 2.0 * OVOO(l, c, k, i) * t1(l, c)
+                             - OVOO(k, c, l, i) * t1(l, c);
                 Loo(k, i) += s;
             }
 
@@ -235,8 +237,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                         }
                         for (int c = 0; c < nv; ++c)
                             for (int d = 0; d < nv; ++d)
-                                s += OVOV(k, c, l, d) *
-                                     (t2(i, j, c, d) + t1(i, c) * t1(j, d));
+                                s += OVOV(k, c, l, d)
+                                     * (t2(i, j, c, d) + t1(i, c) * t1(j, d));
                         Woooo(k, l, i, j) = s;
                     }
 
@@ -288,8 +290,8 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                     for (int d = 0; d < nv; ++d) {
                         double s = VVVV(a, c, b, d);
                         for (int k = 0; k < no; ++k)
-                            s += -OVVV(k, d, a, c) * t1(k, b) -
-                                 OVVV(k, c, b, d) * t1(k, a);
+                            s += -OVVV(k, d, a, c) * t1(k, b)
+                                 - OVVV(k, c, b, d) * t1(k, a);
                         Wvvvv(a, b, c, d) = s;
                     }
 
@@ -304,30 +306,30 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                     s -= Foo(k, i) * t1(k, a);
                 for (int k = 0; k < no; ++k)
                     for (int c = 0; c < nv; ++c)
-                        s += 2.0 * Fov(k, c) * t2(k, i, c, a) -
-                             Fov(k, c) * t2(i, k, c, a) +
-                             Fov(k, c) * t1(i, c) * t1(k, a);
+                        s += 2.0 * Fov(k, c) * t2(k, i, c, a)
+                             - Fov(k, c) * t2(i, k, c, a)
+                             + Fov(k, c) * t1(i, c) * t1(k, a);
                 for (int k = 0; k < no; ++k)
                     for (int c = 0; c < nv; ++c)
-                        s += 2.0 * OVVO(k, c, a, i) * t1(k, c) -
-                             OOVV(k, i, a, c) * t1(k, c);
+                        s += 2.0 * OVVO(k, c, a, i) * t1(k, c)
+                             - OOVV(k, i, a, c) * t1(k, c);
                 for (int k = 0; k < no; ++k)
                     for (int c = 0; c < nv; ++c)
                         for (int d = 0; d < nv; ++d) {
                             const double t2ikcd = t2(i, k, c, d);
-                            s += 2.0 * OVVV(k, d, a, c) * t2ikcd -
-                                 OVVV(k, c, a, d) * t2ikcd;
-                            s += 2.0 * OVVV(k, d, a, c) * t1(k, d) * t1(i, c) -
-                                 OVVV(k, c, a, d) * t1(k, d) * t1(i, c);
+                            s += 2.0 * OVVV(k, d, a, c) * t2ikcd
+                                 - OVVV(k, c, a, d) * t2ikcd;
+                            s += 2.0 * OVVV(k, d, a, c) * t1(k, d) * t1(i, c)
+                                 - OVVV(k, c, a, d) * t1(k, d) * t1(i, c);
                         }
                 for (int k = 0; k < no; ++k)
                     for (int l = 0; l < no; ++l)
                         for (int c = 0; c < nv; ++c) {
                             const double t2klac = t2(k, l, a, c);
-                            s += -2.0 * OVOO(l, c, k, i) * t2klac +
-                                 OVOO(k, c, l, i) * t2klac;
-                            s += -2.0 * OVOO(l, c, k, i) * t1(l, c) * t1(k, a) +
-                                 OVOO(k, c, l, i) * t1(l, c) * t1(k, a);
+                            s += -2.0 * OVOO(l, c, k, i) * t2klac
+                                 + OVOO(k, c, l, i) * t2klac;
+                            s += -2.0 * OVOO(l, c, k, i) * t1(l, c) * t1(k, a)
+                                 + OVOO(k, c, l, i) * t1(l, c) * t1(k, a);
                         }
                 t1new(i, a) = s / eia(i, a);
             }
@@ -399,10 +401,10 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
                         double j_ij = 0.0, j_ji = 0.0;
                         for (int k = 0; k < no; ++k)
                             for (int c = 0; c < nv; ++c) {
-                                h_ij += 2.0 * Wvoov(a, k, i, c) * t2(k, j, c, b) -
-                                        Wvovo(a, k, c, i) * t2(k, j, c, b);
-                                h_ji += 2.0 * Wvoov(b, k, j, c) * t2(k, i, c, a) -
-                                        Wvovo(b, k, c, j) * t2(k, i, c, a);
+                                h_ij += 2.0 * Wvoov(a, k, i, c) * t2(k, j, c, b)
+                                        - Wvovo(a, k, c, i) * t2(k, j, c, b);
+                                h_ji += 2.0 * Wvoov(b, k, j, c) * t2(k, i, c, a)
+                                        - Wvovo(b, k, c, j) * t2(k, i, c, a);
                                 i_ij += Wvoov(a, k, i, c) * t2(k, j, b, c);
                                 i_ji += Wvoov(b, k, j, c) * t2(k, i, a, c);
                                 j_ij += Wvovo(b, k, c, i) * t2(k, j, a, c);
@@ -462,9 +464,9 @@ CCSDResult ccsd_energy_spatial(const IntegralPack& ints,
 
     if (!ok)
         throw std::invalid_argument(
-            "ccsd_energy_spatial: amplitudes did not converge in " +
-            std::to_string(max_iter) + " iterations (tol=" +
-            std::to_string(tol) + ").");
+            "ccsd_energy_spatial: amplitudes did not converge in "
+            + std::to_string(max_iter)
+            + " iterations (tol=" + std::to_string(tol) + ").");
 
     const double e_corr = energy_of(t1, t2);
     return CCSDResult{e_corr, e_scf_ha + e_corr, iters, true};

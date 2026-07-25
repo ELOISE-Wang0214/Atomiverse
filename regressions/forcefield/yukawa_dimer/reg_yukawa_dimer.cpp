@@ -15,8 +15,7 @@ int main() {
     const double U_un = A * std::exp(-kappa * r) / r;
     const double U_rc = A * std::exp(-kappa * rc) / rc;
     const double U_ref = U_un - U_rc;
-    const double dUdr =
-        -A * std::exp(-kappa * r) * (kappa / r + 1.0 / (r * r));
+    const double dUdr = -A * std::exp(-kappa * r) * (kappa / r + 1.0 / (r * r));
 
     cpu::Frame f(2);
     f.span(kAtom_x)[0] = 0;

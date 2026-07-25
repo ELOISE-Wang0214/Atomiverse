@@ -48,11 +48,9 @@ inline int idx_ijab(int i, int j, int a, int b, int nocc, int nvir) {
 /// Chemist MO ERI (pq|rs); returns [nocc,nocc,nvir,nvir].
 xt::xtensor<double, 4> mp2_t2_(const xt::xtensor<double, 4>& eri_mo,
                                const RealVector& eps, int nocc, int nvir) {
-    xt::xtensor<double, 4> t2 =
-        xt::zeros<double>({static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nvir),
-                           static_cast<std::size_t>(nvir)});
+    xt::xtensor<double, 4> t2 = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc),
+         static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
     for (int i = 0; i < nocc; ++i) {
         for (int j = 0; j < nocc; ++j) {
             for (int a = 0; a < nvir; ++a) {
@@ -92,39 +90,32 @@ struct MoBlocks {
 
 MoBlocks mo_blocks_(const xt::xtensor<double, 4>& eri_mo, int nocc, int nvir) {
     MoBlocks blk;
-    blk.oovv = xt::zeros<double>({static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir)});
-    blk.ovvo = xt::zeros<double>({static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nocc)});
-    blk.ovoo = xt::zeros<double>({static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nocc)});
-    blk.ovvv = xt::zeros<double>({static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir)});
-    blk.oooo = xt::zeros<double>({static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nocc),
-                                  static_cast<std::size_t>(nocc)});
-    blk.vvvv = xt::zeros<double>({static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir),
-                                  static_cast<std::size_t>(nvir)});
+    blk.oovv = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc),
+         static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
+    blk.ovvo = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nvir),
+         static_cast<std::size_t>(nvir), static_cast<std::size_t>(nocc)});
+    blk.ovoo = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nvir),
+         static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc)});
+    blk.ovvv = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nvir),
+         static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
+    blk.oooo = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc),
+         static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc)});
+    blk.vvvv = xt::zeros<double>(
+        {static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir),
+         static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
     for (int i = 0; i < nocc; ++i) {
         for (int j = 0; j < nocc; ++j) {
             for (int k = 0; k < nocc; ++k)
                 for (int l = 0; l < nocc; ++l)
-                    blk.oooo(i, j, k, l) =
-                        eri_mo(static_cast<std::size_t>(i),
-                               static_cast<std::size_t>(j),
-                               static_cast<std::size_t>(k),
-                               static_cast<std::size_t>(l));
+                    blk.oooo(i, j, k, l) = eri_mo(static_cast<std::size_t>(i),
+                                                  static_cast<std::size_t>(j),
+                                                  static_cast<std::size_t>(k),
+                                                  static_cast<std::size_t>(l));
             for (int a = 0; a < nvir; ++a) {
                 for (int bb = 0; bb < nvir; ++bb) {
                     blk.oovv(i, j, a, bb) =
@@ -181,11 +172,9 @@ xt::xtensor<double, 2> compute_mss_(const MoBlocks& bl,
                                     const RealVector& eps, int nocc, int nvir) {
     const int ns = nocc * nvir;
     // Work in M[I,D,L,A] then flatten.
-    xt::xtensor<double, 4> M =
-        xt::zeros<double>({static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nvir),
-                           static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nvir)});
+    xt::xtensor<double, 4> M = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nvir),
+         static_cast<std::size_t>(nocc), static_cast<std::size_t>(nvir)});
     const auto& t = t2;
     const auto& oovv = bl.oovv; // v_ccee
     const auto& ovvo = bl.ovvo; // v_cece / v_ceec
@@ -203,7 +192,7 @@ xt::xtensor<double, 2> compute_mss_(const MoBlocks& bl,
         for (int D = 0; D < nvir; ++D)
             for (int L = 0; L < nocc; ++L)
                 for (int A = 0; A < nvir; ++A) {
-                    M(I, D, L, A) -= oovv(I, L, A, D); // ILAD → IDLA
+                    M(I, D, L, A) -= oovv(I, L, A, D);       // ILAD → IDLA
                     M(I, D, L, A) += 2.0 * ovvo(L, A, D, I); // LADI
                 }
 
@@ -275,12 +264,10 @@ xt::xtensor<double, 2> compute_mss_(const MoBlocks& bl,
 
     // Diagonal blocks: M[:,a,:,a] += tmp_IL ; M[i,:,i,:] += tmp_DA
     // tmp_IL from t2 × ovvo contractions over ab / i
-    xt::xtensor<double, 2> tmp_IL =
-        xt::zeros<double>({static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nocc)});
-    xt::xtensor<double, 2> tmp_DA =
-        xt::zeros<double>({static_cast<std::size_t>(nvir),
-                           static_cast<std::size_t>(nvir)});
+    xt::xtensor<double, 2> tmp_IL = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc)});
+    xt::xtensor<double, 2> tmp_DA = xt::zeros<double>(
+        {static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
     for (int I = 0; I < nocc; ++I) {
         for (int L = 0; L < nocc; ++L) {
             double s = 0.0;
@@ -343,15 +330,13 @@ xt::xtensor<double, 2> compute_mss_(const MoBlocks& bl,
                 M(i, D, i, A) += tmp_DA(D, A);
 
     // Flatten M[I,D,L,A] → row (I*nvir+D), col (L*nvir+A)
-    xt::xtensor<double, 2> Mss =
-        xt::zeros<double>({static_cast<std::size_t>(ns),
-                           static_cast<std::size_t>(ns)});
+    xt::xtensor<double, 2> Mss = xt::zeros<double>(
+        {static_cast<std::size_t>(ns), static_cast<std::size_t>(ns)});
     for (int I = 0; I < nocc; ++I)
         for (int D = 0; D < nvir; ++D)
             for (int L = 0; L < nocc; ++L)
                 for (int A = 0; A < nvir; ++A)
-                    Mss(idx_ia(I, D, nvir), idx_ia(L, A, nvir)) =
-                        M(I, D, L, A);
+                    Mss(idx_ia(I, D, nvir), idx_ia(L, A, nvir)) = M(I, D, L, A);
     return Mss;
 }
 
@@ -381,11 +366,10 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
             for (int a = 0; a < nvir; ++a) {
                 for (int b = 0; b < nvir; ++b) {
                     const int p = idx_ijab(i, j, a, b, nocc, nvir);
-                    const double D =
-                        eps(static_cast<std::size_t>(nocc + a))
-                        + eps(static_cast<std::size_t>(nocc + b))
-                        - eps(static_cast<std::size_t>(i))
-                        - eps(static_cast<std::size_t>(j));
+                    const double D = eps(static_cast<std::size_t>(nocc + a))
+                                     + eps(static_cast<std::size_t>(nocc + b))
+                                     - eps(static_cast<std::size_t>(i))
+                                     - eps(static_cast<std::size_t>(j));
                     s[static_cast<std::size_t>(ns + p)] =
                         D * r[static_cast<std::size_t>(ns + p)];
                 }
@@ -452,9 +436,8 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
             for (int i = 0; i < nocc; ++i)
                 for (int a = 0; a < nvir; ++a)
                     for (int b = 0; b < nvir; ++b) {
-                        const double r2 =
-                            r[static_cast<std::size_t>(
-                                ns + idx_ijab(I, i, a, b, nocc, nvir))];
+                        const double r2 = r[static_cast<std::size_t>(
+                            ns + idx_ijab(I, i, a, b, nocc, nvir))];
                         // - r2[I,i,a,b] * ovvv[i,a,b,D]
                         acc -= r2 * ovvv(i, a, b, D);
                         // +2 r2[I,i,a,b] * ovvv[i,b,D,a]
@@ -471,9 +454,8 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
             for (int i = 0; i < nocc; ++i)
                 for (int j = 0; j < nocc; ++j)
                     for (int a = 0; a < nvir; ++a) {
-                        const double r2 =
-                            r[static_cast<std::size_t>(
-                                ns + idx_ijab(i, j, D, a, nocc, nvir))];
+                        const double r2 = r[static_cast<std::size_t>(
+                            ns + idx_ijab(i, j, D, a, nocc, nvir))];
                         // -2 * r2[i,j,D,a] * ovoo[j,a,i,I]
                         acc -= 2.0 * r2 * ovoo(j, a, i, I);
                         // + r2[i,j,D,a] * ovoo[i,a,j,I]
@@ -503,9 +485,8 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
                     // vvvv ladder
                     for (int a = 0; a < nvir; ++a)
                         for (int b = 0; b < nvir; ++b) {
-                            const double Y =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(I, J, a, b, nocc, nvir))];
+                            const double Y = r[static_cast<std::size_t>(
+                                ns + idx_ijab(I, J, a, b, nocc, nvir))];
                             acc += Y * vvvv(a, C, b, D); // (a C | b D)
                         }
                     // 2*einsum('IiCa,JDai->IJCD', Y, ovvo)
@@ -514,15 +495,12 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
                     // -einsum('IiaD,iJCa->IJCD', Y, oovv)
                     for (int i = 0; i < nocc; ++i)
                         for (int a = 0; a < nvir; ++a) {
-                            const double YiCa =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(I, i, C, a, nocc, nvir))];
-                            const double YiaC =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(I, i, a, C, nocc, nvir))];
-                            const double YiaD =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(I, i, a, D, nocc, nvir))];
+                            const double YiCa = r[static_cast<std::size_t>(
+                                ns + idx_ijab(I, i, C, a, nocc, nvir))];
+                            const double YiaC = r[static_cast<std::size_t>(
+                                ns + idx_ijab(I, i, a, C, nocc, nvir))];
+                            const double YiaD = r[static_cast<std::size_t>(
+                                ns + idx_ijab(I, i, a, D, nocc, nvir))];
                             acc += 2.0 * YiCa * ovvo(J, D, a, i);
                             acc -= YiCa * oovv(i, J, D, a);
                             acc -= YiaC * ovvo(J, D, a, i);
@@ -534,15 +512,12 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
                     // -einsum('JiaD,ICai->IJCD', Y, ovvo)
                     for (int i = 0; i < nocc; ++i)
                         for (int a = 0; a < nvir; ++a) {
-                            const double YjDa =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(J, i, D, a, nocc, nvir))];
-                            const double YjaC =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(J, i, a, C, nocc, nvir))];
-                            const double YjaD =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(J, i, a, D, nocc, nvir))];
+                            const double YjDa = r[static_cast<std::size_t>(
+                                ns + idx_ijab(J, i, D, a, nocc, nvir))];
+                            const double YjaC = r[static_cast<std::size_t>(
+                                ns + idx_ijab(J, i, a, C, nocc, nvir))];
+                            const double YjaD = r[static_cast<std::size_t>(
+                                ns + idx_ijab(J, i, a, D, nocc, nvir))];
                             acc += 2.0 * YjDa * ovvo(I, C, a, i);
                             acc -= YjDa * oovv(i, I, C, a);
                             acc -= YjaC * oovv(i, I, D, a);
@@ -551,9 +526,8 @@ void matvec_(const xt::xtensor<double, 2>& Mss, const MoBlocks& bl,
                     // einsum('ijCD,IiJj->IJCD', Y, oooo)
                     for (int i = 0; i < nocc; ++i)
                         for (int j = 0; j < nocc; ++j) {
-                            const double Yij =
-                                r[static_cast<std::size_t>(
-                                    ns + idx_ijab(i, j, C, D, nocc, nvir))];
+                            const double Yij = r[static_cast<std::size_t>(
+                                ns + idx_ijab(i, j, C, D, nocc, nvir))];
                             acc += Yij * oooo(I, i, J, j);
                         }
                     s[static_cast<std::size_t>(
@@ -613,9 +587,8 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
     const char* api = extended ? "RHF::adc2x" : "RHF::adc2";
 
     if (dim <= kDenseCap) {
-        xt::xtensor<double, 2> H =
-            xt::zeros<double>({static_cast<std::size_t>(dim),
-                               static_cast<std::size_t>(dim)});
+        xt::xtensor<double, 2> H = xt::zeros<double>(
+            {static_cast<std::size_t>(dim), static_cast<std::size_t>(dim)});
         std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
         std::vector<double> s;
         for (int k = 0; k < dim; ++k) {
@@ -704,17 +677,16 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         }
         const int m = static_cast<int>(V.size());
         // Projected Hm[i,j] = V_i · W_j
-        xt::xtensor<double, 2> Hm =
-            xt::zeros<double>({static_cast<std::size_t>(m),
-                               static_cast<std::size_t>(m)});
+        xt::xtensor<double, 2> Hm = xt::zeros<double>(
+            {static_cast<std::size_t>(m), static_cast<std::size_t>(m)});
         for (int i = 0; i < m; ++i)
             for (int j = 0; j < m; ++j) {
                 double d = 0.0;
                 for (int p = 0; p < dim; ++p)
                     d += V[static_cast<std::size_t>(i)]
-                           [static_cast<std::size_t>(p)]
+                          [static_cast<std::size_t>(p)]
                          * W[static_cast<std::size_t>(j)]
-                             [static_cast<std::size_t>(p)];
+                            [static_cast<std::size_t>(p)];
                 Hm(i, j) = d;
             }
         // Dense eig of small Hm
@@ -740,8 +712,8 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
         dgeev_(&jobvl, &jobvr, &m, A.data(), &m, wr.data(), wi.data(),
                vl.data(), &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
         if (info != 0)
-            throw std::runtime_error(
-                std::string(api) + ": Davidson projected dgeev failed");
+            throw std::runtime_error(std::string(api)
+                                     + ": Davidson projected dgeev failed");
 
         // Sort real Ritz pairs
         std::vector<int> idx;
@@ -770,11 +742,13 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                     vr[static_cast<std::size_t>(j + k * m)]; // col k
                 for (int p = 0; p < dim; ++p) {
                     x[static_cast<std::size_t>(p)] +=
-                        c * V[static_cast<std::size_t>(j)]
-                             [static_cast<std::size_t>(p)];
+                        c
+                        * V[static_cast<std::size_t>(j)]
+                           [static_cast<std::size_t>(p)];
                     Mx[static_cast<std::size_t>(p)] +=
-                        c * W[static_cast<std::size_t>(j)]
-                             [static_cast<std::size_t>(p)];
+                        c
+                        * W[static_cast<std::size_t>(j)]
+                           [static_cast<std::size_t>(p)];
                 }
             }
             // residual r = Mx - θ x
@@ -793,8 +767,7 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                 all_conv = false;
             // preconditioned residual
             for (int p = 0; p < dim; ++p) {
-                double den =
-                    diag[static_cast<std::size_t>(p)] - theta;
+                double den = diag[static_cast<std::size_t>(p)] - theta;
                 if (std::abs(den) < 1e-8)
                     den = (den >= 0.0 ? 1e-8 : -1e-8);
                 res[static_cast<std::size_t>(p)] /= den;
@@ -813,15 +786,16 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                 std::vector<double> x(static_cast<std::size_t>(dim), 0.0);
                 std::vector<double> Mx(static_cast<std::size_t>(dim), 0.0);
                 for (int j = 0; j < m; ++j) {
-                    const double c =
-                        vr[static_cast<std::size_t>(j + k * m)];
+                    const double c = vr[static_cast<std::size_t>(j + k * m)];
                     for (int p = 0; p < dim; ++p) {
                         x[static_cast<std::size_t>(p)] +=
-                            c * V[static_cast<std::size_t>(j)]
-                                 [static_cast<std::size_t>(p)];
+                            c
+                            * V[static_cast<std::size_t>(j)]
+                               [static_cast<std::size_t>(p)];
                         Mx[static_cast<std::size_t>(p)] +=
-                            c * W[static_cast<std::size_t>(j)]
-                                 [static_cast<std::size_t>(p)];
+                            c
+                            * W[static_cast<std::size_t>(j)]
+                               [static_cast<std::size_t>(p)];
                     }
                 }
                 // normalize x
@@ -847,8 +821,8 @@ std::vector<double> davidson_adc_(const xt::xtensor<double, 2>& Mss,
                 V.pop_back();
         }
     }
-    throw std::runtime_error(
-        std::string(api) + ": Davidson did not converge within max_cycle");
+    throw std::runtime_error(std::string(api)
+                             + ": Davidson did not converge within max_cycle");
 }
 
 double mp2_corr_ha_(const xt::xtensor<double, 4>& t2,
@@ -876,9 +850,8 @@ xt::xtensor<double, 2> compute_mab_ea_(const xt::xtensor<double, 4>& t2,
                                        const xt::xtensor<double, 4>& ovvo,
                                        const RealVector& eps, int nocc,
                                        int nvir) {
-    xt::xtensor<double, 2> Mab =
-        xt::zeros<double>({static_cast<std::size_t>(nvir),
-                           static_cast<std::size_t>(nvir)});
+    xt::xtensor<double, 2> Mab = xt::zeros<double>(
+        {static_cast<std::size_t>(nvir), static_cast<std::size_t>(nvir)});
     // Zeroth order: δ_ab ε_a
     for (int a = 0; a < nvir; ++a)
         Mab(a, a) = eps(static_cast<std::size_t>(nocc + a));
@@ -940,10 +913,9 @@ void matvec_ea_(const xt::xtensor<double, 2>& Mab, const MoBlocks& bl,
         for (int a = 0; a < nvir; ++a)
             for (int b = 0; b < nvir; ++b) {
                 const int p = idx_iab(i, a, b, nvir);
-                const double D =
-                    -eps(static_cast<std::size_t>(i))
-                    + eps(static_cast<std::size_t>(nocc + a))
-                    + eps(static_cast<std::size_t>(nocc + b));
+                const double D = -eps(static_cast<std::size_t>(i))
+                                 + eps(static_cast<std::size_t>(nocc + a))
+                                 + eps(static_cast<std::size_t>(nocc + b));
                 s[static_cast<std::size_t>(ns + p)] =
                     D * r[static_cast<std::size_t>(ns + p)];
             }
@@ -957,9 +929,8 @@ void matvec_ea_(const xt::xtensor<double, 2>& Mab, const MoBlocks& bl,
         for (int i = 0; i < nocc; ++i)
             for (int bb = 0; bb < nvir; ++bb)
                 for (int c = 0; c < nvir; ++c) {
-                    const double r2 =
-                        r[static_cast<std::size_t>(
-                            ns + idx_iab(i, bb, c, nvir))];
+                    const double r2 = r[static_cast<std::size_t>(
+                        ns + idx_iab(i, bb, c, nvir))];
                     // ovvv[i,c,a,b] = (ic|ab); ovvv[i,b,a,c] = (ib|ac)
                     acc += 2.0 * ovvv(i, c, a, bb) * r2;
                     acc -= ovvv(i, bb, a, c) * r2;
@@ -974,8 +945,7 @@ void matvec_ea_(const xt::xtensor<double, 2>& Mab, const MoBlocks& bl,
             for (int c = 0; c < nvir; ++c) {
                 double acc = 0.0;
                 for (int a = 0; a < nvir; ++a)
-                    acc += ovvv(i, c, a, bb)
-                           * r[static_cast<std::size_t>(a)];
+                    acc += ovvv(i, c, a, bb) * r[static_cast<std::size_t>(a)];
                 s[static_cast<std::size_t>(ns + idx_iab(i, bb, c, nvir))] +=
                     acc;
             }
@@ -991,9 +961,8 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
     constexpr int kDenseCap = 400;
 
     if (dim <= kDenseCap) {
-        xt::xtensor<double, 2> H =
-            xt::zeros<double>({static_cast<std::size_t>(dim),
-                               static_cast<std::size_t>(dim)});
+        xt::xtensor<double, 2> H = xt::zeros<double>(
+            {static_cast<std::size_t>(dim), static_cast<std::size_t>(dim)});
         std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
         std::vector<double> s;
         for (int k = 0; k < dim; ++k) {
@@ -1077,17 +1046,16 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
             W.push_back(std::move(s));
         }
         const int m = static_cast<int>(V.size());
-        xt::xtensor<double, 2> Hm =
-            xt::zeros<double>({static_cast<std::size_t>(m),
-                               static_cast<std::size_t>(m)});
+        xt::xtensor<double, 2> Hm = xt::zeros<double>(
+            {static_cast<std::size_t>(m), static_cast<std::size_t>(m)});
         for (int i = 0; i < m; ++i)
             for (int j = 0; j < m; ++j) {
                 double dot = 0.0;
                 for (int k = 0; k < dim; ++k)
                     dot += V[static_cast<std::size_t>(i)]
-                              [static_cast<std::size_t>(k)]
+                            [static_cast<std::size_t>(k)]
                            * W[static_cast<std::size_t>(j)]
-                                [static_cast<std::size_t>(k)];
+                              [static_cast<std::size_t>(k)];
                 Hm(i, j) = dot;
             }
 
@@ -1110,8 +1078,7 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
         lwork = static_cast<int>(wkopt);
         std::vector<double> work(static_cast<std::size_t>(lwork));
         dgeev_(&jobvl, &jobvr, &m, A.data(), &m, wr.data(), wi.data(),
-               vl.data(), &ldvl, vr.data(), &ldvr, work.data(), &lwork,
-               &info);
+               vl.data(), &ldvl, vr.data(), &ldvr, work.data(), &lwork, &info);
         if (info != 0)
             throw std::runtime_error(
                 "RHF::ea_adc2: Davidson projected dgeev failed");
@@ -1123,10 +1090,9 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
                 && wr[static_cast<std::size_t>(i)] > -1e-6)
                 real_ritz.emplace_back(wr[static_cast<std::size_t>(i)], i);
         }
-        std::sort(real_ritz.begin(), real_ritz.end(),
-                  [](const auto& x, const auto& y) {
-                      return x.first < y.first;
-                  });
+        std::sort(
+            real_ritz.begin(), real_ritz.end(),
+            [](const auto& x, const auto& y) { return x.first < y.first; });
         if (static_cast<int>(real_ritz.size()) < nroots)
             throw std::runtime_error(
                 "RHF::ea_adc2: Davidson found too few real Ritz values");
@@ -1140,12 +1106,12 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
             // Ritz vector in full space: x = V * y (y = right eigenvector)
             std::vector<double> x(static_cast<std::size_t>(dim), 0.0);
             for (int j = 0; j < m; ++j) {
-                const double yj =
-                    vr[static_cast<std::size_t>(j + idx * m)];
+                const double yj = vr[static_cast<std::size_t>(j + idx * m)];
                 for (int i = 0; i < dim; ++i)
                     x[static_cast<std::size_t>(i)] +=
-                        yj * V[static_cast<std::size_t>(j)]
-                              [static_cast<std::size_t>(i)];
+                        yj
+                        * V[static_cast<std::size_t>(j)]
+                           [static_cast<std::size_t>(i)];
             }
             std::vector<double> Ax;
             matvec_ea_(Mab, bl, eps, nocc, nvir, x, Ax);
@@ -1173,16 +1139,15 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
             std::vector<std::vector<double>> Vnew;
             std::vector<std::vector<double>> Wnew;
             for (int r = 0; r < nroots; ++r) {
-                const int idx =
-                    real_ritz[static_cast<std::size_t>(r)].second;
+                const int idx = real_ritz[static_cast<std::size_t>(r)].second;
                 std::vector<double> x(static_cast<std::size_t>(dim), 0.0);
                 for (int j = 0; j < m; ++j) {
-                    const double yj =
-                        vr[static_cast<std::size_t>(j + idx * m)];
+                    const double yj = vr[static_cast<std::size_t>(j + idx * m)];
                     for (int i = 0; i < dim; ++i)
                         x[static_cast<std::size_t>(i)] +=
-                            yj * V[static_cast<std::size_t>(j)]
-                                  [static_cast<std::size_t>(i)];
+                            yj
+                            * V[static_cast<std::size_t>(j)]
+                               [static_cast<std::size_t>(i)];
                 }
                 Vnew.push_back(std::move(x));
             }
@@ -1215,8 +1180,7 @@ std::vector<double> davidson_ea_adc_(const xt::xtensor<double, 2>& Mab,
             std::vector<double> t = residuals[static_cast<std::size_t>(r)];
             const double lam = roots[static_cast<std::size_t>(r)];
             for (int i = 0; i < dim; ++i) {
-                const double den =
-                    diag[static_cast<std::size_t>(i)] - lam;
+                const double den = diag[static_cast<std::size_t>(i)] - lam;
                 if (std::abs(den) > 1e-12)
                     t[static_cast<std::size_t>(i)] /= den;
             }
@@ -1240,8 +1204,7 @@ ADC2Result run_adc_ee_member_(const RHF& self, int n_states, bool extended,
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
-    const RealMatrix& C =
-        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
     const RealVector& eps =
         det.orbital_energies(SlaterDeterminant::Spin::alpha);
@@ -1257,16 +1220,15 @@ ADC2Result run_adc_ee_member_(const RHF& self, int n_states, bool extended,
             + ": no virtual orbitals (e.g. He/STO-3G — no fallback)");
     const int n_ov = n_occ * n_vir;
     if (n_states < 1 || n_states > n_ov)
-        throw std::invalid_argument(
-            std::string(api) + ": n_states must be in [1, n_occ*n_virt="
-            + std::to_string(n_ov) + "]");
+        throw std::invalid_argument(std::string(api)
+                                    + ": n_states must be in [1, n_occ*n_virt="
+                                    + std::to_string(n_ov) + "]");
     (void)self;
 
     const xt::xtensor<double, 4> eri_mo = ao2mo_full(eri_ao, C, n_mo);
     const MoBlocks bl = mo_blocks_(eri_mo, n_occ, n_vir);
     const xt::xtensor<double, 4> t2 = mp2_t2_(eri_mo, eps, n_occ, n_vir);
-    const xt::xtensor<double, 2> Mss =
-        compute_mss_(bl, t2, eps, n_occ, n_vir);
+    const xt::xtensor<double, 2> Mss = compute_mss_(bl, t2, eps, n_occ, n_vir);
 
     const std::vector<double> omega_ha =
         davidson_adc_(Mss, bl, eps, n_occ, n_vir, n_states, extended);
@@ -1308,9 +1270,8 @@ xt::xtensor<double, 2> compute_mij_ip_(const xt::xtensor<double, 4>& t2,
                                        const xt::xtensor<double, 4>& ovvo,
                                        const RealVector& eps, int nocc,
                                        int nvir) {
-    xt::xtensor<double, 2> M =
-        xt::zeros<double>({static_cast<std::size_t>(nocc),
-                           static_cast<std::size_t>(nocc)});
+    xt::xtensor<double, 2> M = xt::zeros<double>(
+        {static_cast<std::size_t>(nocc), static_cast<std::size_t>(nocc)});
     // Zeroth order: M_ij = δ_ij ε_j
     for (int i = 0; i < nocc; ++i)
         M(i, i) = eps(static_cast<std::size_t>(i));
@@ -1382,9 +1343,8 @@ void matvec_ip_(const xt::xtensor<double, 2>& Mij,
         for (int a = 0; a < nvir; ++a) {
             for (int j = 0; j < nocc; ++j) {
                 for (int k = 0; k < nocc; ++k) {
-                    const double r2 =
-                        r[static_cast<std::size_t>(
-                            ns + idx_ajk_(a, j, k, nocc))];
+                    const double r2 = r[static_cast<std::size_t>(
+                        ns + idx_ajk_(a, j, k, nocc))];
                     // ovoo[j,a,k,i] = (ja|ki)
                     acc += 2.0 * ovoo(j, a, k, i) * r2;
                     // ovoo[k,a,j,i] = (ka|ji)
@@ -1401,10 +1361,9 @@ void matvec_ip_(const xt::xtensor<double, 2>& Mij,
         for (int j = 0; j < nocc; ++j) {
             for (int k = 0; k < nocc; ++k) {
                 const int p = ns + idx_ajk_(a, j, k, nocc);
-                const double D =
-                    eps(static_cast<std::size_t>(j))
-                    + eps(static_cast<std::size_t>(k))
-                    - eps(static_cast<std::size_t>(nocc + a));
+                const double D = eps(static_cast<std::size_t>(j))
+                                 + eps(static_cast<std::size_t>(k))
+                                 - eps(static_cast<std::size_t>(nocc + a));
                 double acc = D * r[static_cast<std::size_t>(p)];
                 for (int i = 0; i < nocc; ++i)
                     acc += ovoo(j, a, k, i) * r[static_cast<std::size_t>(i)];
@@ -1427,9 +1386,8 @@ std::vector<double> solve_ip_adc_(const xt::xtensor<double, 2>& Mij,
     const int nd = nvir * nocc * nocc;
     const int dim = ns + nd;
 
-    xt::xtensor<double, 2> H =
-        xt::zeros<double>({static_cast<std::size_t>(dim),
-                           static_cast<std::size_t>(dim)});
+    xt::xtensor<double, 2> H = xt::zeros<double>(
+        {static_cast<std::size_t>(dim), static_cast<std::size_t>(dim)});
     std::vector<double> e(static_cast<std::size_t>(dim), 0.0);
     std::vector<double> s;
     for (int k = 0; k < dim; ++k) {
@@ -1457,8 +1415,7 @@ IPADC2Result RHF::ip_adc2(int n_states) const {
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
-    const RealMatrix& C =
-        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
     const RealVector& eps =
         det.orbital_energies(SlaterDeterminant::Spin::alpha);
@@ -1495,7 +1452,6 @@ IPADC2Result RHF::ip_adc2(int n_states) const {
     return out;
 }
 
-
 EAADC2Result RHF::ea_adc2(int n_states) const {
     if (!has_result())
         throw std::runtime_error(
@@ -1506,8 +1462,7 @@ EAADC2Result RHF::ea_adc2(int n_states) const {
     const xt::xtensor<double, 4> eri_ao =
         (pack.ERI.size() > 0) ? pack.ERI : pack.eri_working();
 
-    const RealMatrix& C =
-        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
     const RealVector& eps =
         det.orbital_energies(SlaterDeterminant::Spin::alpha);

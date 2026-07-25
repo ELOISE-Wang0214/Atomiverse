@@ -18,9 +18,9 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/scf_enums.h"  // MeanFieldType / SpinType
+#include "atomiverse/cpu/scf/scf_enums.h"          // MeanFieldType / SpinType
 #include "atomiverse/cpu/scf/slater_determinant.h" // SlaterDeterminant
-#include "atomiverse/cpu/scf/xc_functional.h" // XCType
+#include "atomiverse/cpu/scf/xc_functional.h"      // XCType
 
 namespace ATV {
 namespace cpu {

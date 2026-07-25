@@ -43,8 +43,7 @@ inline void pme_apply_influence(std::complex<double>* grid, const int K[3],
                                 double alpha, double volume, double& e_recip,
                                 double stress[6]) {
     const int K0 = K[0], K1 = K[1], K2 = K[2];
-    const double inv_pi2_a2 =
-        ATV::units::pi * ATV::units::pi / (alpha * alpha);
+    const double inv_pi2_a2 = ATV::units::pi * ATV::units::pi / (alpha * alpha);
     const double vt_const = inv_pi2_a2; // π²/α² term inside vt
     e_recip = 0;
     double s_xx = 0, s_yy = 0, s_zz = 0, s_xy = 0, s_xz = 0, s_yz = 0;
@@ -103,7 +102,7 @@ inline void pme_apply_influence(std::complex<double>* grid, const int K[3],
 /// Layout matches grid: idx = m2 + K2·(m1 + K1·m0). Mode 0 stores H=0.
 /// `inv_msq` is 1/|m|² (0 at zero mode). Used with #pme_apply_influence_tables.
 struct PmeInfluenceTables {
-    std::vector<double> H;       ///< exp(−π²|m|²/α²)/|m|² · B(m)
+    std::vector<double> H; ///< exp(−π²|m|²/α²)/|m|² · B(m)
     std::vector<double> mx, my, mz;
     std::vector<double> inv_msq; ///< 1/|m|²
     double inv_pi2_a2 = 0.0;     ///< π²/α² for virial vt term
@@ -144,8 +143,7 @@ inline void pme_build_influence_tables(const int K[3], const double* bsp_mod0,
                 const double msq = mx * mx + my * my + mz * mz;
                 const double inv_msq = 1.0 / msq;
                 const double B = bm01 * bsp_mod2[m2];
-                const double H =
-                    std::exp(-tab.inv_pi2_a2 * msq) * inv_msq * B;
+                const double H = std::exp(-tab.inv_pi2_a2 * msq) * inv_msq * B;
                 tab.H[static_cast<std::size_t>(idx)] = H;
                 tab.mx[static_cast<std::size_t>(idx)] = mx;
                 tab.my[static_cast<std::size_t>(idx)] = my;
@@ -220,8 +218,8 @@ inline void pme_interpolate_forces(const StorageReal* q, int n_atoms, int order,
                                    const int K[3], const Mat3& inv_cell,
                                    double volume, const int* base,
                                    const double* theta, const double* dtheta,
-                                   const std::complex<double>* grid, AccReal* fx,
-                                   AccReal* fy, AccReal* fz) {
+                                   const std::complex<double>* grid,
+                                   AccReal* fx, AccReal* fy, AccReal* fz) {
     const int K0 = K[0], K1 = K[1], K2 = K[2];
     const int n = order;
     const int nm1 = n - 1;

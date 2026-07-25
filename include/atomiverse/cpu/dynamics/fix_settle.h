@@ -10,9 +10,9 @@
 #include <vector>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/constraint.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

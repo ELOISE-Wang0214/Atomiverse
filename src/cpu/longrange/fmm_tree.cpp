@@ -19,7 +19,9 @@ FmmTree::FmmTree(int order, int max_per_leaf)
         throw std::invalid_argument("FmmTree: max_per_leaf must be >= 1");
 }
 
-Vec3 FmmTree::node_center(int i) const { return nodes_.at(static_cast<std::size_t>(i)).center; }
+Vec3 FmmTree::node_center(int i) const {
+    return nodes_.at(static_cast<std::size_t>(i)).center;
+}
 
 AccReal FmmTree::node_half_width(int i) const {
     return nodes_.at(static_cast<std::size_t>(i)).half;
@@ -91,7 +93,8 @@ void FmmTree::subdivide(int node_id, const std::vector<Vec3>& positions) {
             oct |= 2;
         if (p.z() >= c.z())
             oct |= 4;
-        nodes_[static_cast<std::size_t>(child_ids[oct])].particles.push_back(pi);
+        nodes_[static_cast<std::size_t>(child_ids[oct])].particles.push_back(
+            pi);
     }
 
     for (int oct = 0; oct < 8; ++oct)

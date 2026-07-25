@@ -30,7 +30,8 @@ namespace cpu {
 namespace scf {
 namespace {
 
-constexpr double kWeightTol = 1e-11; ///< Drop uncoupled SE poles (PySCF default).
+constexpr double kWeightTol =
+    1e-11; ///< Drop uncoupled SE poles (PySCF default).
 
 /// Occupied / virtual slice of an auxiliary space (energy + physical coupling).
 struct AuxSlice {
@@ -114,9 +115,8 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
                 for (int x = 0; x < nmo; ++x) {
                     double s = 0.0;
                     for (int p = 0; p < nmo; ++p) {
-                        const double ci =
-                            gf_occ_c(static_cast<std::size_t>(p),
-                                     static_cast<std::size_t>(i));
+                        const double ci = gf_occ_c(static_cast<std::size_t>(p),
+                                                   static_cast<std::size_t>(i));
                         if (ci == 0.0)
                             continue;
                         for (int q = 0; q < nmo; ++q) {
@@ -144,12 +144,10 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
                 }
 
     // Max auxiliaries: nocc*(nocc-1)*nvir * 2 (ss/os) + nocc*nvir (diag)
-    const int naux_max =
-        nocc_a * (nocc_a - 1) * nvir_a * 2 + nocc_a * nvir_a;
+    const int naux_max = nocc_a * (nocc_a - 1) * nvir_a * 2 + nocc_a * nvir_a;
     RealVector e = xt::zeros<double>({static_cast<std::size_t>(naux_max)});
-    RealMatrix v =
-        xt::zeros<double>({static_cast<std::size_t>(nmo),
-                           static_cast<std::size_t>(naux_max)});
+    RealMatrix v = xt::zeros<double>(
+        {static_cast<std::size_t>(nmo), static_cast<std::size_t>(naux_max)});
     const double fpos = std::sqrt(0.5);
     const double fneg = std::sqrt(0.5);
     const double fdia = 1.0;
@@ -167,19 +165,16 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
                         + gf_occ_e(static_cast<std::size_t>(j))
                         - gf_vir_e(static_cast<std::size_t>(a));
                     for (int x = 0; x < nmo; ++x) {
-                        const double xija =
-                            qeri(static_cast<std::size_t>(x),
-                                 static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j),
-                                 static_cast<std::size_t>(a));
-                        const double xjia =
-                            qeri(static_cast<std::size_t>(x),
-                                 static_cast<std::size_t>(j),
-                                 static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(a));
+                        const double xija = qeri(static_cast<std::size_t>(x),
+                                                 static_cast<std::size_t>(i),
+                                                 static_cast<std::size_t>(j),
+                                                 static_cast<std::size_t>(a));
+                        const double xjia = qeri(static_cast<std::size_t>(x),
+                                                 static_cast<std::size_t>(j),
+                                                 static_cast<std::size_t>(i),
+                                                 static_cast<std::size_t>(a));
                         v(static_cast<std::size_t>(x),
-                          static_cast<std::size_t>(col)) =
-                            fneg * (xija - xjia);
+                          static_cast<std::size_t>(col)) = fneg * (xija - xjia);
                     }
                 }
             p1 += blk;
@@ -191,19 +186,16 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
                         + gf_occ_e(static_cast<std::size_t>(j))
                         - gf_vir_e(static_cast<std::size_t>(a));
                     for (int x = 0; x < nmo; ++x) {
-                        const double xija =
-                            qeri(static_cast<std::size_t>(x),
-                                 static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(j),
-                                 static_cast<std::size_t>(a));
-                        const double xjia =
-                            qeri(static_cast<std::size_t>(x),
-                                 static_cast<std::size_t>(j),
-                                 static_cast<std::size_t>(i),
-                                 static_cast<std::size_t>(a));
+                        const double xija = qeri(static_cast<std::size_t>(x),
+                                                 static_cast<std::size_t>(i),
+                                                 static_cast<std::size_t>(j),
+                                                 static_cast<std::size_t>(a));
+                        const double xjia = qeri(static_cast<std::size_t>(x),
+                                                 static_cast<std::size_t>(j),
+                                                 static_cast<std::size_t>(i),
+                                                 static_cast<std::size_t>(a));
                         v(static_cast<std::size_t>(x),
-                          static_cast<std::size_t>(col)) =
-                            fpos * (xija + xjia);
+                          static_cast<std::size_t>(col)) = fpos * (xija + xjia);
                     }
                 }
             p1 += blk;
@@ -216,8 +208,7 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
                 + gf_occ_e(static_cast<std::size_t>(i))
                 - gf_vir_e(static_cast<std::size_t>(a));
             for (int x = 0; x < nmo; ++x)
-                v(static_cast<std::size_t>(x),
-                  static_cast<std::size_t>(col)) =
+                v(static_cast<std::size_t>(x), static_cast<std::size_t>(col)) =
                     fdia
                     * qeri(static_cast<std::size_t>(x),
                            static_cast<std::size_t>(i),
@@ -228,14 +219,12 @@ AuxSlice compute_se_part(const RealVector& gf_occ_e, const RealMatrix& gf_occ_c,
     }
     // Shrink to used width
     RealVector e_use = xt::zeros<double>({static_cast<std::size_t>(p1)});
-    RealMatrix v_use =
-        xt::zeros<double>({static_cast<std::size_t>(nmo),
-                           static_cast<std::size_t>(p1)});
+    RealMatrix v_use = xt::zeros<double>(
+        {static_cast<std::size_t>(nmo), static_cast<std::size_t>(p1)});
     for (int k = 0; k < p1; ++k) {
         e_use(static_cast<std::size_t>(k)) = e(static_cast<std::size_t>(k));
         for (int x = 0; x < nmo; ++x)
-            v_use(static_cast<std::size_t>(x),
-                  static_cast<std::size_t>(k)) =
+            v_use(static_cast<std::size_t>(x), static_cast<std::size_t>(k)) =
                 v(static_cast<std::size_t>(x), static_cast<std::size_t>(k));
     }
     remove_uncoupled(e_use, v_use, kWeightTol);
@@ -267,8 +256,8 @@ AuxSlice combine(const AuxSlice& a, const AuxSlice& b) {
 /// Binary-search chemical potential for N physical electrons (RHF occupancy 2).
 /// Returns (chempot, electron-count error).
 std::pair<double, double> binsearch_chempot(const RealVector& w,
-                                            const RealMatrix& v_phys,
-                                            int nphys, int nelec) {
+                                            const RealMatrix& v_phys, int nphys,
+                                            int nelec) {
     // v_phys: [nphys × nqmo] physical block of eigenvectors
     const int nqmo = static_cast<int>(w.size());
     double sum0 = 0.0, sum1 = 0.0;
@@ -276,10 +265,10 @@ std::pair<double, double> binsearch_chempot(const RealVector& w,
     for (int i = 0; i < nqmo; ++i) {
         double n = 0.0;
         for (int p = 0; p < nphys; ++p)
-            n += v_phys(static_cast<std::size_t>(p),
-                        static_cast<std::size_t>(i))
-                 * v_phys(static_cast<std::size_t>(p),
-                          static_cast<std::size_t>(i));
+            n +=
+                v_phys(static_cast<std::size_t>(p), static_cast<std::size_t>(i))
+                * v_phys(static_cast<std::size_t>(p),
+                         static_cast<std::size_t>(i));
         n *= 2.0; // RHF occupancy
         sum0 = sum1;
         sum1 += n;
@@ -301,9 +290,9 @@ std::pair<double, double> binsearch_chempot(const RealVector& w,
     if (homo < 0)
         homo = 0;
     const int lumo = std::min(homo + 1, nqmo - 1);
-    const double chempot =
-        0.5 * (w(static_cast<std::size_t>(homo))
-               + w(static_cast<std::size_t>(lumo)));
+    const double chempot = 0.5
+                           * (w(static_cast<std::size_t>(homo))
+                              + w(static_cast<std::size_t>(lumo)));
     return {chempot, error};
 }
 
@@ -381,35 +370,28 @@ GF2Result RHF::gf2() const {
     RealVector gf_e = eps_raw;
     RealMatrix gf_c = xt::eye<double>(static_cast<std::size_t>(n_mo));
     // HF chemical potential mid-gap (PySCF binsearch on diag Fock)
-    const double mu_hf =
-        0.5
-        * (eps_raw(static_cast<std::size_t>(n_occ - 1))
-           + eps_raw(static_cast<std::size_t>(n_occ)));
+    const double mu_hf = 0.5
+                         * (eps_raw(static_cast<std::size_t>(n_occ - 1))
+                            + eps_raw(static_cast<std::size_t>(n_occ)));
 
     // Split occ / vir
     RealVector e_occ = xt::zeros<double>({static_cast<std::size_t>(n_occ)});
-    RealMatrix c_occ =
-        xt::zeros<double>({static_cast<std::size_t>(n_mo),
-                           static_cast<std::size_t>(n_occ)});
+    RealMatrix c_occ = xt::zeros<double>(
+        {static_cast<std::size_t>(n_mo), static_cast<std::size_t>(n_occ)});
     RealVector e_vir = xt::zeros<double>({static_cast<std::size_t>(n_vir)});
-    RealMatrix c_vir =
-        xt::zeros<double>({static_cast<std::size_t>(n_mo),
-                           static_cast<std::size_t>(n_vir)});
+    RealMatrix c_vir = xt::zeros<double>(
+        {static_cast<std::size_t>(n_mo), static_cast<std::size_t>(n_vir)});
     for (int i = 0; i < n_occ; ++i) {
-        e_occ(static_cast<std::size_t>(i)) =
-            gf_e(static_cast<std::size_t>(i));
+        e_occ(static_cast<std::size_t>(i)) = gf_e(static_cast<std::size_t>(i));
         for (int p = 0; p < n_mo; ++p)
-            c_occ(static_cast<std::size_t>(p),
-                  static_cast<std::size_t>(i)) =
-                gf_c(static_cast<std::size_t>(p),
-                     static_cast<std::size_t>(i));
+            c_occ(static_cast<std::size_t>(p), static_cast<std::size_t>(i)) =
+                gf_c(static_cast<std::size_t>(p), static_cast<std::size_t>(i));
     }
     for (int a = 0; a < n_vir; ++a) {
         e_vir(static_cast<std::size_t>(a)) =
             gf_e(static_cast<std::size_t>(n_occ + a));
         for (int p = 0; p < n_mo; ++p)
-            c_vir(static_cast<std::size_t>(p),
-                  static_cast<std::size_t>(a)) =
+            c_vir(static_cast<std::size_t>(p), static_cast<std::size_t>(a)) =
                 gf_c(static_cast<std::size_t>(p),
                      static_cast<std::size_t>(n_occ + a));
     }
@@ -429,13 +411,12 @@ GF2Result RHF::gf2() const {
             eps_raw(static_cast<std::size_t>(p));
     for (int p = 0; p < n_mo; ++p)
         for (int k = 0; k < naux; ++k) {
-            const double vij =
-                se.coupling(static_cast<std::size_t>(p),
-                            static_cast<std::size_t>(k));
-            H(static_cast<std::size_t>(p),
-              static_cast<std::size_t>(n_mo + k)) = vij;
-            H(static_cast<std::size_t>(n_mo + k),
-              static_cast<std::size_t>(p)) = vij;
+            const double vij = se.coupling(static_cast<std::size_t>(p),
+                                           static_cast<std::size_t>(k));
+            H(static_cast<std::size_t>(p), static_cast<std::size_t>(n_mo + k)) =
+                vij;
+            H(static_cast<std::size_t>(n_mo + k), static_cast<std::size_t>(p)) =
+                vij;
         }
     for (int k = 0; k < naux; ++k)
         H(static_cast<std::size_t>(n_mo + k),
@@ -448,14 +429,11 @@ GF2Result RHF::gf2() const {
         {static_cast<std::size_t>(n_mo), static_cast<std::size_t>(nq)});
     for (int p = 0; p < n_mo; ++p)
         for (int q = 0; q < nq; ++q)
-            v_phys(static_cast<std::size_t>(p),
-                   static_cast<std::size_t>(q)) =
-                V(static_cast<std::size_t>(p),
-                  static_cast<std::size_t>(q));
+            v_phys(static_cast<std::size_t>(p), static_cast<std::size_t>(q)) =
+                V(static_cast<std::size_t>(p), static_cast<std::size_t>(q));
 
     const int nelec = 2 * n_occ;
-    const auto [mu, nerr] =
-        binsearch_chempot(w, v_phys, n_mo, nelec);
+    const auto [mu, nerr] = binsearch_chempot(w, v_phys, n_mo, nelec);
 
     // Occupied / virtual poles by chemical potential
     std::vector<double> e_ip_poles;

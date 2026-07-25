@@ -24,15 +24,15 @@ int main() {
     constexpr double kA = 5.43; // Å
     constexpr double kEcutRy = 15.0;
     constexpr int kMesh = 2;
-    constexpr double kSymTol = 0.025;    // eV/Å³ (soft: incomplete ecut/k)
-    constexpr double kDualTol = 0.05;    // eV/Å³ max |an − FD pin|
+    constexpr double kSymTol = 0.025; // eV/Å³ (soft: incomplete ecut/k)
+    constexpr double kDualTol = 0.05; // eV/Å³ max |an − FD pin|
 
     // Offline multi-SCF strain-FD oracle (h=2e-3), same twin, measured
     // 2026-07-24 Release OMP=16 — see REFERENCE.md. Not a self-golden of
     // analytic output: re-measurable via pw_stress_fd when desired.
     constexpr double kFdPin[6] = {
         -0.05755, -0.05755, -0.05755, // xx yy zz (isotropic within noise)
-        0.0, 0.0, 0.0                 // off-diag vanish by crystal symmetry
+        0.0,      0.0,      0.0       // off-diag vanish by crystal symmetry
     };
     // Diagonal pin uses the mean of the three FD diagonals from the offline
     // run (~−0.0575); off-diag pin is exact symmetry zero with dual tol.
@@ -95,24 +95,21 @@ int main() {
     // Dual-gate vs offline FD pin (not live 12× SCF).
     double max_abs = 0.0;
     for (int v = 0; v < 6; ++v) {
-        const double d =
-            std::abs(san[static_cast<std::size_t>(v)] - kFdPin[v]);
+        const double d = std::abs(san[static_cast<std::size_t>(v)] - kFdPin[v]);
         max_abs = std::max(max_abs, d);
     }
     if (max_abs > kDualTol) {
-        std::printf(
-            "FAIL: dual-gate max|an-FDpin|=%.6g > tol=%.3g eV/A3\n"
-            "  an: %.6g %.6g %.6g | %.6g %.6g %.6g\n"
-            "  pin xx/yy/zz=%.5g off=0 (see REFERENCE.md)\n",
-            max_abs, kDualTol, san[0], san[1], san[2], san[3], san[4], san[5],
-            kFdPin[0]);
+        std::printf("FAIL: dual-gate max|an-FDpin|=%.6g > tol=%.3g eV/A3\n"
+                    "  an: %.6g %.6g %.6g | %.6g %.6g %.6g\n"
+                    "  pin xx/yy/zz=%.5g off=0 (see REFERENCE.md)\n",
+                    max_abs, kDualTol, san[0], san[1], san[2], san[3], san[4],
+                    san[5], kFdPin[0]);
         return 1;
     }
 
-    std::printf(
-        "PASS: PW analytic stress Si a=%.2f A ecut=%.0f k=%d  "
-        "σ=%.6g %.6g %.6g | %.3g %.3g %.3g eV/A3  max|an-FDpin|=%.4g\n",
-        kA, kEcutRy, kMesh, san[0], san[1], san[2], san[3], san[4], san[5],
-        max_abs);
+    std::printf("PASS: PW analytic stress Si a=%.2f A ecut=%.0f k=%d  "
+                "σ=%.6g %.6g %.6g | %.3g %.3g %.3g eV/A3  max|an-FDpin|=%.4g\n",
+                kA, kEcutRy, kMesh, san[0], san[1], san[2], san[3], san[4],
+                san[5], max_abs);
     return 0;
 }

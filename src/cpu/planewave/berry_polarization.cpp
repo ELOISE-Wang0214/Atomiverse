@@ -39,8 +39,7 @@ std::complex<double> det_lu(std::vector<std::complex<double>>& a, int n) {
         int piv = col;
         double best = std::abs(a[static_cast<std::size_t>(col * n + col)]);
         for (int r = col + 1; r < n; ++r) {
-            const double m =
-                std::abs(a[static_cast<std::size_t>(r * n + col)]);
+            const double m = std::abs(a[static_cast<std::size_t>(r * n + col)]);
             if (m > best) {
                 best = m;
                 piv = r;
@@ -71,12 +70,11 @@ std::complex<double> det_lu(std::vector<std::complex<double>>& a, int n) {
 /// along `shift_dir` (or none when `shift_dir < 0`). Coefficients are
 /// matched by integer (h,k,l) triple; G outside the partner sphere
 /// contributes zero.
-std::complex<double>
-overlap_det(const internal::GVectorList& bra,
-            const std::vector<std::complex<AccReal>>& cb,
-            const internal::GVectorList& ket,
-            const std::vector<std::complex<AccReal>>& ck, int n_occ,
-            int shift_dir) {
+std::complex<double> overlap_det(const internal::GVectorList& bra,
+                                 const std::vector<std::complex<AccReal>>& cb,
+                                 const internal::GVectorList& ket,
+                                 const std::vector<std::complex<AccReal>>& ck,
+                                 int n_occ, int shift_dir) {
     const int ng_bra = bra.count();
     const int ng_ket = ket.count();
 
@@ -92,8 +90,8 @@ overlap_det(const internal::GVectorList& bra,
     const int dk = (shift_dir == 1) ? 1 : 0;
     const int dl = (shift_dir == 2) ? 1 : 0;
 
-    std::vector<std::complex<double>> S(
-        static_cast<std::size_t>(n_occ * n_occ), {0.0, 0.0});
+    std::vector<std::complex<double>> S(static_cast<std::size_t>(n_occ * n_occ),
+                                        {0.0, 0.0});
     for (int ig = 0; ig < ng_bra; ++ig) {
         const auto it =
             ket_idx.find(pack_hkl(bra.h[static_cast<std::size_t>(ig)] + dh,
@@ -205,8 +203,7 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
     const int* __restrict st = frame.span(kAtom_type);
     const double two_pi = 2.0 * units::pi;
     for (int a = 0; a < frame.nlocal(); ++a) {
-        const double zv =
-            static_cast<double>(internal::valence_from_z(st[a]));
+        const double zv = static_cast<double>(internal::valence_from_z(st[a]));
         for (int d = 0; d < 3; ++d) {
             double f = (static_cast<double>(recip(d, 0)) * sx[a]
                         + static_cast<double>(recip(d, 1)) * sy[a]
@@ -230,15 +227,14 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
             kvec.push_back({static_cast<AccReal>(f[0]),
                             static_cast<AccReal>(f[1]),
                             static_cast<AccReal>(f[2])});
-        internal::rebuild_k_tables(prob, frame, method.upf_path,
-                                   method.ecut_ry, kvec);
+        internal::rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry,
+                                   kvec);
 
         // Occupied Bloch coefficients at every string k-point.
         const int n_k = static_cast<int>(kf.size());
         std::vector<std::vector<std::complex<AccReal>>> coef(
             static_cast<std::size_t>(n_k));
-        DavidsonSolver davidson(n_occ, AccReal(method.tol) * AccReal(0.1),
-                                50);
+        DavidsonSolver davidson(n_occ, AccReal(method.tol) * AccReal(0.1), 50);
         davidson.prepare(ws);
         auto* saved_gvec = ws.gvec;
         const int n_g0 = ws.n_g;
@@ -273,8 +269,7 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
         std::vector<double> phis;
         phis.reserve(static_cast<std::size_t>(n_strings));
         for (int s = 0; s < n_strings; ++s) {
-            std::vector<std::complex<double>> dets(
-                static_cast<std::size_t>(J));
+            std::vector<std::complex<double>> dets(static_cast<std::size_t>(J));
             for (int j = 0; j < J; ++j) {
                 const int ib = s * J + j;
                 const int ik = s * J + (j + 1) % J;
@@ -299,8 +294,7 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
 
         out.phase_el[static_cast<std::size_t>(dir)] = phase;
         // Closed shell: spin factor f = 2; electronic branch mod 2.
-        out.p_el_frac[static_cast<std::size_t>(dir)] =
-            2.0 * phase / two_pi;
+        out.p_el_frac[static_cast<std::size_t>(dir)] = 2.0 * phase / two_pi;
         out.computed[static_cast<std::size_t>(dir)] = true;
     }
 

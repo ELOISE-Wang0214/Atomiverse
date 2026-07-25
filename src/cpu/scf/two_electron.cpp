@@ -35,8 +35,8 @@ xt::xtensor<double, 4> IntegralPack::eri_dense(const ShellList& shells) {
 
     // Canonical shell-block pairs (bi >= bj), matching ShellBlockPairList.
     std::vector<std::array<int, 2>> block_pairs;
-    block_pairs.reserve(
-        static_cast<std::size_t>(n_blocks) * (n_blocks + 1) / 2);
+    block_pairs.reserve(static_cast<std::size_t>(n_blocks) * (n_blocks + 1)
+                        / 2);
     for (int bi = 0; bi < n_blocks; ++bi)
         for (int bj = 0; bj <= bi; ++bj)
             block_pairs.push_back({bi, bj});

@@ -21,8 +21,8 @@ bool cholesky_lower(std::vector<double>& a, int n) {
         for (int j = 0; j <= i; ++j) {
             double s = a[static_cast<std::size_t>(i * n + j)];
             for (int k = 0; k < j; ++k)
-                s -= a[static_cast<std::size_t>(i * n + k)] *
-                     a[static_cast<std::size_t>(j * n + k)];
+                s -= a[static_cast<std::size_t>(i * n + k)]
+                     * a[static_cast<std::size_t>(j * n + k)];
             if (i == j) {
                 if (s <= 0.0)
                     return false;
@@ -38,23 +38,27 @@ bool cholesky_lower(std::vector<double>& a, int n) {
     return true;
 }
 
-void chol_solve(const std::vector<double>& L, int n, const std::vector<double>& b,
-                std::vector<double>& x) {
+void chol_solve(const std::vector<double>& L, int n,
+                const std::vector<double>& b, std::vector<double>& x) {
     // Ly = b
     std::vector<double> y(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         double s = b[static_cast<std::size_t>(i)];
         for (int k = 0; k < i; ++k)
-            s -= L[static_cast<std::size_t>(i * n + k)] * y[static_cast<std::size_t>(k)];
-        y[static_cast<std::size_t>(i)] = s / L[static_cast<std::size_t>(i * n + i)];
+            s -= L[static_cast<std::size_t>(i * n + k)]
+                 * y[static_cast<std::size_t>(k)];
+        y[static_cast<std::size_t>(i)] =
+            s / L[static_cast<std::size_t>(i * n + i)];
     }
     // L^T x = y
     x.resize(static_cast<std::size_t>(n));
     for (int i = n - 1; i >= 0; --i) {
         double s = y[static_cast<std::size_t>(i)];
         for (int k = i + 1; k < n; ++k)
-            s -= L[static_cast<std::size_t>(k * n + i)] * x[static_cast<std::size_t>(k)];
-        x[static_cast<std::size_t>(i)] = s / L[static_cast<std::size_t>(i * n + i)];
+            s -= L[static_cast<std::size_t>(k * n + i)]
+                 * x[static_cast<std::size_t>(k)];
+        x[static_cast<std::size_t>(i)] =
+            s / L[static_cast<std::size_t>(i * n + i)];
     }
 }
 
@@ -79,7 +83,8 @@ ConstPotentialBO::ConstPotentialBO(std::vector<int> electrode_types,
         throw std::invalid_argument(
             "ConstPotentialBO: types and potentials size mismatch");
     if (!(w_ > 0.0))
-        throw std::invalid_argument("ConstPotentialBO: gaussian width must be > 0");
+        throw std::invalid_argument(
+            "ConstPotentialBO: gaussian width must be > 0");
     Q_per_electrode_.assign(electrode_types_.size(), 0.0);
 }
 
@@ -102,8 +107,8 @@ void ConstPotentialBO::build(const BuildContext& ctx) {
     if (n_elec_ == 0)
         throw std::runtime_error("ConstPotentialBO: no electrode atoms found");
 
-    const std::size_t nn = static_cast<std::size_t>(n_elec_) *
-                           static_cast<std::size_t>(n_elec_);
+    const std::size_t nn =
+        static_cast<std::size_t>(n_elec_) * static_cast<std::size_t>(n_elec_);
     A_.assign(nn, 0.0);
     L_.assign(nn, 0.0);
     b_.assign(static_cast<std::size_t>(n_elec_), 0.0);
@@ -166,8 +171,8 @@ void ConstPotentialBO::solve_(Frame& frame) {
     // Mark electrode rows for Φ skip.
     std::vector<char> is_elec(static_cast<std::size_t>(n_own), 0);
     for (int k = 0; k < n_elec_; ++k)
-        is_elec[static_cast<std::size_t>(elec_idx_[static_cast<std::size_t>(k)])] =
-            1;
+        is_elec[static_cast<std::size_t>(
+            elec_idx_[static_cast<std::size_t>(k)])] = 1;
 
     // Electrolyte net charge (for global neutrality constraint).
     double q_electrolyte = 0.0;
@@ -210,7 +215,8 @@ void ConstPotentialBO::solve_(Frame& frame) {
     std::vector<double> ones(static_cast<std::size_t>(n_elec_), 1.0);
     L_ = A_;
     if (!cholesky_lower(L_, n_elec_))
-        throw std::runtime_error("ConstPotentialBO: A not SPD (Cholesky failed)");
+        throw std::runtime_error(
+            "ConstPotentialBO: A not SPD (Cholesky failed)");
 
     std::vector<double> Q0, u;
     chol_solve(L_, n_elec_, b_, Q0);
@@ -228,7 +234,8 @@ void ConstPotentialBO::solve_(Frame& frame) {
     double sum_q = 0.0;
     for (int i = 0; i < n_elec_; ++i) {
         q_[static_cast<std::size_t>(i)] =
-            Q0[static_cast<std::size_t>(i)] - lambda * u[static_cast<std::size_t>(i)];
+            Q0[static_cast<std::size_t>(i)]
+            - lambda * u[static_cast<std::size_t>(i)];
         sum_q += q_[static_cast<std::size_t>(i)];
     }
     neutrality_residual_ = std::fabs(sum_q + q_electrolyte);
@@ -259,8 +266,7 @@ void ConstPotentialBO::destroy(const DestroyContext& /*ctx*/) {
 }
 
 double ConstPotentialBO::total_charge(int electrode) const {
-    if (electrode < 0 ||
-        electrode >= static_cast<int>(Q_per_electrode_.size()))
+    if (electrode < 0 || electrode >= static_cast<int>(Q_per_electrode_.size()))
         throw std::out_of_range("ConstPotentialBO::total_charge");
     return Q_per_electrode_[static_cast<std::size_t>(electrode)];
 }

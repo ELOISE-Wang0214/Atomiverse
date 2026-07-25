@@ -38,6 +38,8 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/halo_exchange.h"
 #include "atomiverse/cpu/component/component.h"
@@ -45,11 +47,9 @@
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/driver/runtime.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 

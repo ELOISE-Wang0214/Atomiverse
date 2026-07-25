@@ -1,12 +1,12 @@
 /// @file md/nve_limit.cu
 /// @brief CUDA NVE/limit integrator kernels.
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/dynamics/nve_limit.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/cuda/dynamics/nve_limit.cuh"
-#include "atomiverse/core/stage.h"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -45,12 +45,15 @@ __global__ void initial_integrate_limit(
         return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    work_t vxi = static_cast<work_t>(vx[i])
-                 + hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
-    work_t vyi = static_cast<work_t>(vy[i])
-                 + hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
-    work_t vzi = static_cast<work_t>(vz[i])
-                 + hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vxi =
+        static_cast<work_t>(vx[i])
+        + hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vyi =
+        static_cast<work_t>(vy[i])
+        + hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vzi =
+        static_cast<work_t>(vz[i])
+        + hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
     apply_cap(vxi, vyi, vzi, vmax, vmax_sq);
     vx[i] = static_cast<real_t>(vxi);
     vy[i] = static_cast<real_t>(vyi);
@@ -78,12 +81,15 @@ __global__ void final_integrate_limit(
         return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    work_t vxi = static_cast<work_t>(vx[i])
-                 + hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
-    work_t vyi = static_cast<work_t>(vy[i])
-                 + hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
-    work_t vzi = static_cast<work_t>(vz[i])
-                 + hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vxi =
+        static_cast<work_t>(vx[i])
+        + hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vyi =
+        static_cast<work_t>(vy[i])
+        + hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
+    work_t vzi =
+        static_cast<work_t>(vz[i])
+        + hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
     apply_cap(vxi, vyi, vzi, vmax, vmax_sq);
     vx[i] = static_cast<real_t>(vxi);
     vy[i] = static_cast<real_t>(vyi);

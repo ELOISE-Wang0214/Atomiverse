@@ -36,8 +36,8 @@
 #ifdef ATV_HAS_HF
 
 #include <cmath>
-#include <stdexcept>
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/generators/xbuilder.hpp>
@@ -174,26 +174,26 @@ TEST(GhfSpinorDeterminant, ConstructionGuards) {
 
     // Dimension mismatch: epsilon size != n_mo.
     RealVector eps3 = {-1.0, -0.5, 0.5};
-    EXPECT_THROW(SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps3,
-                                   f, 2),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps3, f, 2),
+        std::invalid_argument);
     // Odd spinor row count (not 2n).
     RealMatrix C5 = xt::eye<double>(5);
     RealVector eps5 = {-1.0, -0.5, 0.0, 0.5, 1.0};
     RealVector f5 = {1.0, 1.0, 0.0, 0.0, 0.0};
-    EXPECT_THROW(SlaterDeterminant(SlaterDeterminant::Generalized{}, C5, eps5,
-                                   f5, 2),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        SlaterDeterminant(SlaterDeterminant::Generalized{}, C5, eps5, f5, 2),
+        std::invalid_argument);
     // Occupation overflow: N = 5 > n_mo = 4 cannot be summed by f in [0,1].
     RealVector f_all = {1.0, 1.0, 1.0, 1.0};
-    EXPECT_THROW(SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps,
-                                   f_all, 5),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps, f_all, 5),
+        std::invalid_argument);
     // Occupation outside [0, 1].
     RealVector f_bad = {2.0, 0.0, 0.0, 0.0};
-    EXPECT_THROW(SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps,
-                                   f_bad, 2),
-                 std::invalid_argument);
+    EXPECT_THROW(
+        SlaterDeterminant(SlaterDeterminant::Generalized{}, C, eps, f_bad, 2),
+        std::invalid_argument);
     // Per-spin electron count is not sharp on a spinor determinant.
     const auto det = make_spinor_det(0.3, 1.1);
     EXPECT_THROW(det.n_electrons(Spin::alpha), std::invalid_argument);
@@ -309,8 +309,8 @@ TEST(GHF, ForcesMatchUhfOnH2Collapse) {
     double max_err = 0.0;
     for (std::size_t A = 0; A < g_u.forces.shape()[0]; ++A)
         for (std::size_t d = 0; d < 3; ++d)
-            max_err = std::max(
-                max_err, std::fabs(g_u.forces(A, d) - g_g.forces(A, d)));
+            max_err = std::max(max_err,
+                               std::fabs(g_u.forces(A, d) - g_g.forces(A, d)));
     EXPECT_LT(max_err, 1e-6) << "GHF/UHF force mismatch on H2 collapse";
 }
 

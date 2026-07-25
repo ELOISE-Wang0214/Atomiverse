@@ -102,8 +102,8 @@ TEST(FmmTree, RandomVsDirect) {
     FmmTree tree(p, leaf);
     const AccReal e_fmm = tree.energy(pos, q);
     const AccReal e_ref = direct_energy(pos, q);
-    const AccReal rel = std::abs(e_fmm - e_ref)
-                        / std::max(std::abs(e_ref), 1e-30);
+    const AccReal rel =
+        std::abs(e_fmm - e_ref) / std::max(std::abs(e_ref), 1e-30);
     EXPECT_LT(rel, 1e-6) << "e_fmm=" << e_fmm << " e_ref=" << e_ref;
 
     std::vector<AccReal> phi_fmm, phi_ref;

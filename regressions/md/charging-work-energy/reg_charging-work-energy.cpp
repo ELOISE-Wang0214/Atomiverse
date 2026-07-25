@@ -47,9 +47,8 @@ int main() {
     frame.simbox = cpu::Box::cubic(20.0);
 
     cpu::Evaluate eval;
-    eval.add_potential(
-        cpu::electrodes::ChargingWork(/*types=*/{1, 2},
-                                     /*psi_V=*/{0.5, -0.5}));
+    eval.add_potential(cpu::electrodes::ChargingWork(/*types=*/{1, 2},
+                                                     /*psi_V=*/{0.5, -0.5}));
     eval.build();
     eval.run(frame);
 

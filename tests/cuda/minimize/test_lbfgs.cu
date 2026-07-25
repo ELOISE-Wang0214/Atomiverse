@@ -14,12 +14,12 @@
 #include <gtest/gtest.h>
 #include <type_traits>
 
+#include "atomiverse/core/role.h"
 #include "atomiverse/cuda/driver/criterion.cuh"
 #include "atomiverse/cuda/minimize/lbfgs.cuh"
 #include "atomiverse/cuda/minimize/minimize.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/core/role.h"
 
 using namespace ATV;
 
@@ -105,8 +105,9 @@ TEST(MinimizerLBFGS, EnergyDecreases) {
     // budget (history fills past the default memory of 5 pairs).
     min.add(cuda::minimizer::LBFGS{5, double(0.01), 10});
     min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
-                                         /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
-                                         /*etol=*/1e-12});
+                                           /*max_dtol=*/1e-10,
+                                           /*rms_dtol=*/1e-10,
+                                           /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -129,8 +130,8 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     cuda::minimizer::LBFGS lbfgs{5, double(0.01), 10};
     min.add_ref(lbfgs);
     min.add_criterion(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
-                                         /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
-                                         /*etol=*/10.0});
+                                           /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
+                                           /*etol=*/10.0});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -155,8 +156,9 @@ TEST(MinimizerLBFGS, ArmijoLineSearchEnergyDecreases) {
     cuda::minimizer::Minimize min;
     min.add(std::move(step));
     min.add_criterion(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
-                                         /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
-                                         /*etol=*/1e-12});
+                                           /*max_dtol=*/1e-10,
+                                           /*rms_dtol=*/1e-10,
+                                           /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});

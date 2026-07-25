@@ -101,8 +101,7 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
 
     // Physical volume vs extended slab volume for k-space.
     const double vol_phys = f.simbox.volume();
-    const double vol =
-        slab_active() ? vol_phys * slab_factor : vol_phys;
+    const double vol = slab_active() ? vol_phys * slab_factor : vol_phys;
     const double zprd_slab =
         slab_active() ? f.simbox.length(2) * slab_factor : f.simbox.length(2);
 
@@ -168,8 +167,8 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
 
         double e_slab = 0.0;
         if (slab_active()) {
-            e_slab = longrange::slab_corr_energy(mz, q_total, mz_r2, vol,
-                                                 zprd_slab);
+            e_slab =
+                longrange::slab_corr_energy(mz, q_total, mz_r2, vol, zprd_slab);
             // Slab forces: every rank must apply using the *global* Mz.
             // Publish globals via a second pass on non-root below — here we
             // apply on rank 0's owned atoms; other ranks apply after the

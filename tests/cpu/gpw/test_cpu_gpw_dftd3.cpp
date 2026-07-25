@@ -235,8 +235,8 @@ TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
     const auto& r_on = solver_on.run(atoms);
 
     const std::vector<int> Z = {1, 1};
-    const std::vector<std::array<double, 3>> pos = {
-        {rA[0], rA[1], rA[2]}, {rB[0], rB[1], rB[2]}};
+    const std::vector<std::array<double, 3>> pos = {{rA[0], rA[1], rA[2]},
+                                                    {rB[0], rB[1], rB[2]}};
     const double cell[3] = {L, L, L};
     const double ed3 =
         dftd3_pbe_bj(Z, pos, cell, /*periodic=*/false, D3Params{},
@@ -244,8 +244,9 @@ TEST(GpwDftD3BJ, IntegratedIntoGpwScf) {
                      /*cp2k_cn=*/true)
             .energy;
 
-    std::printf("[D3BJ integ] e_on-e_off=%.12f  e_disp=%.12f  standalone=%.12f\n",
-                r_on.e_total - r_off.e_total, r_on.e_disp, ed3);
+    std::printf(
+        "[D3BJ integ] e_on-e_off=%.12f  e_disp=%.12f  standalone=%.12f\n",
+        r_on.e_total - r_off.e_total, r_on.e_disp, ed3);
     EXPECT_NEAR(r_on.e_disp, ed3, 1e-9);
     EXPECT_NEAR(r_on.e_total - r_off.e_total, ed3, 1e-9);
     EXPECT_LT(ed3, 0.0);

@@ -5,11 +5,11 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/dynamics/pbc.h"
-#include "atomiverse/core/stage.h"
 
 #include <cmath>
 

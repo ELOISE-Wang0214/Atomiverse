@@ -5,10 +5,10 @@
 /// `cpu::pw::PW` — tests may include the internal headers directly
 /// (same policy as `cpu/scf/internal/`). They must NOT be
 /// `cpu::Component` subclasses (static-asserted below).
-#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/vec3.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/internal/convergence.h"
 #include "atomiverse/cpu/planewave/internal/davidson.h"
@@ -253,8 +253,8 @@ TEST(PWInternal, XcGgaNonuniformDiffersFromSigmaZero) {
         const int idx = kx + nxc * (ky + ny * kz);
         if (idx >= 0 && idx < nc) {
             half[idx][0] = static_cast<double>(f.ws.rho_G[ig].real());
-            half[idx][1] = static_cast<double>(
-                conj ? -f.ws.rho_G[ig].imag() : f.ws.rho_G[ig].imag());
+            half[idx][1] = static_cast<double>(conj ? -f.ws.rho_G[ig].imag()
+                                                    : f.ws.rho_G[ig].imag());
         }
     }
     f.ws.fft->c2r(half.data(), rho_r.data());
@@ -271,9 +271,8 @@ TEST(PWInternal, XcGgaNonuniformDiffersFromSigmaZero) {
     }
 
     const double de = std::abs(static_cast<double>(e_gga - e_sigma0));
-    EXPECT_GT(de, 1e-8)
-        << "nonuniform GGA must differ from PBE@σ=0; |ΔE_xc|=" << de
-        << " E_gga=" << e_gga << " E_σ0=" << e_sigma0;
+    EXPECT_GT(de, 1e-8) << "nonuniform GGA must differ from PBE@σ=0; |ΔE_xc|="
+                        << de << " E_gga=" << e_gga << " E_σ0=" << e_sigma0;
 }
 
 TEST(PWInternal, DensityBuilderConservesElectrons) {

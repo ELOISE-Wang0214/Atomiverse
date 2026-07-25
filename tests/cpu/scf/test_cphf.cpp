@@ -25,13 +25,13 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/internal/cphf_pack.h"
 #include "atomiverse/cpu/scf/internal/integral_derivatives.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/orbital_hessian.h"
 #include "atomiverse/cpu/scf/rhf.h"
-#include "atomiverse/core/units.h"
 
 using namespace ATV;
 using cpu::scf::BasisSet;
@@ -125,11 +125,11 @@ TEST(Cphf, SecondDerivativeIntegralsMatchFdOfFirst) {
                         const auto& t2 = (tensor == 0)   ? d2.d2S
                                          : (tensor == 1) ? d2.d2T
                                                          : d2.d2V;
-                        const RealMatrix an = xt::view(
-                            t2, A, di, B, dj, xt::all(), xt::all());
+                        const RealMatrix an =
+                            xt::view(t2, A, di, B, dj, xt::all(), xt::all());
                         EXPECT_LT(max_abs(an - fd), 1e-7)
-                            << "tensor=" << tensor << " A=" << A
-                            << " di=" << di << " B=" << B << " dj=" << dj;
+                            << "tensor=" << tensor << " A=" << A << " di=" << di
+                            << " B=" << B << " dj=" << dj;
                     }
                 }
             }
@@ -195,8 +195,8 @@ TEST(Cphf, SkeletonMoDerivativesMatchFdOfSAndF) {
                                        xt::linalg::dot(p.S, C));
             };
             RealMatrix dS = xt::view(dpack.dS, A, d, xt::all(), xt::all());
-            const RealMatrix an_S = xt::linalg::dot(
-                xt::transpose(C), xt::linalg::dot(dS, C));
+            const RealMatrix an_S =
+                xt::linalg::dot(xt::transpose(C), xt::linalg::dot(dS, C));
             EXPECT_LT(max_abs(an_S - fd5(eval_S, frame, A, d, h)), 1e-6)
                 << "S^(x) A=" << A << " d=" << d;
 
@@ -208,12 +208,11 @@ TEST(Cphf, SkeletonMoDerivativesMatchFdOfSAndF) {
                 RealMatrix G = xt::zeros<double>({p.n_basis, p.n_basis});
                 p.coulomb_exchange_fused(P, G);
                 const RealMatrix F = p.Hcore + G;
-                return xt::linalg::dot(xt::transpose(C),
-                                       xt::linalg::dot(F, C));
+                return xt::linalg::dot(xt::transpose(C), xt::linalg::dot(F, C));
             };
             RealMatrix dFx = xt::view(dF, A, d, xt::all(), xt::all());
-            const RealMatrix an_F = xt::linalg::dot(
-                xt::transpose(C), xt::linalg::dot(dFx, C));
+            const RealMatrix an_F =
+                xt::linalg::dot(xt::transpose(C), xt::linalg::dot(dFx, C));
             EXPECT_LT(max_abs(an_F - fd5(eval_F, frame, A, d, h)), 1e-6)
                 << "F^(x) A=" << A << " d=" << d;
         }

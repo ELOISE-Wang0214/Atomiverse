@@ -56,8 +56,8 @@ struct Energies {
 
 Energies energy_link(double scale) {
     auto f = make_methanol_like();
-    cpu::QmmmElectrostatic qmmm{{1, 2}, /*mm_q=*/0.0, 0.01, 3.4, 8.0,
-                                {{/*qm=*/1, /*mm=*/3}}, scale};
+    cpu::QmmmElectrostatic qmmm{{1, 2}, /*mm_q=*/0.0,           0.01, 3.4,
+                                8.0,    {{/*qm=*/1, /*mm=*/3}}, scale};
     cpu::Context ctx;
     qmmm.build({ctx, f});
     cpu::LaunchContext lc{ctx, f, 0, 0};
@@ -78,8 +78,8 @@ int main() {
         std::printf("qmmm_link_ch3oh E_qm(g=0.709)=%.6f E_qm(g=0.55)=%.6f eV "
                     "dE_qm=%.6f  E_tot=%.6f\n",
                     a.qm, b.qm, a.qm - b.qm, a.total);
-        if (!std::isfinite(a.qm) || !std::isfinite(b.qm) ||
-            !std::isfinite(a.total)) {
+        if (!std::isfinite(a.qm) || !std::isfinite(b.qm)
+            || !std::isfinite(a.total)) {
             std::printf("FAIL: non-finite energy\n");
             return 1;
         }

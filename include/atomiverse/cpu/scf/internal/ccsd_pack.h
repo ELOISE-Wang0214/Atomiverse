@@ -35,8 +35,8 @@ struct CCSDSolution {
     xt::xtensor<double, 2> fov;
     /// Spin-orbital orbital energies [no+nv].
     std::vector<double> eps_so;
-    int no = 0; ///< Occupied spin-orbitals.
-    int nv = 0; ///< Virtual spin-orbitals.
+    int no = 0;       ///< Occupied spin-orbitals.
+    int nv = 0;       ///< Virtual spin-orbitals.
     int n_occ_sp = 0; ///< Occupied spatial MOs (closed-shell: n_α = n_β).
     int n_vir_sp = 0; ///< Virtual spatial MOs (closed-shell).
     /// Open-shell (UHF) channel sizes for EOM-SF root selection. Layout of
@@ -85,17 +85,17 @@ CCSDResult ccsd_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 /// @param max_iter Jacobi iteration budget (dimensionless).
 /// @return CCSD(T) correlation pieces and total energy [Hartree].
 /// @throws std::invalid_argument as for `ccsd_energy`.
-CCSDTResult ccsd_t_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                          double e_scf_ha, double tol = 1e-10,
-                          int max_iter = 100);
+CCSDTResult ccsd_t_energy(const IntegralPack& ints,
+                          const SlaterDeterminant& det, double e_scf_ha,
+                          double tol = 1e-10, int max_iter = 100);
 
 /// @brief Same as `ccsd_energy` but also returns amplitudes and SO integral
 ///        blocks for EOM-EE-CCSD (private). Closed-shell RHF only.
 /// @param cc2 When true, use the CC2 doubles residual (Christiansen 1995)
 ///            instead of full CCSD; singles residual stays full CCSD.
 CCSDSolution ccsd_solve(const IntegralPack& ints, const SlaterDeterminant& det,
-                        double e_scf_ha, double tol = 1e-10,
-                        int max_iter = 100, bool cc2 = false);
+                        double e_scf_ha, double tol = 1e-10, int max_iter = 100,
+                        bool cc2 = false);
 
 /// @brief Closed-shell CC2 correlation energy (Christiansen–Koch–Jørgensen).
 ///

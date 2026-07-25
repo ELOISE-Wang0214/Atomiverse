@@ -81,11 +81,10 @@ int main() {
     const double e_scale = std::max(1.0, std::fabs(e0));
 
     // Residual force after warm-up (symmetry pin, eV/Å).
-    const double fmag0 = std::sqrt(
-        static_cast<double>(frame.span(kAtom_fx)[0] * frame.span(kAtom_fx)[0]
-                            + frame.span(kAtom_fy)[0] * frame.span(kAtom_fy)[0]
-                            + frame.span(kAtom_fz)[0]
-                                  * frame.span(kAtom_fz)[0]));
+    const double fmag0 = std::sqrt(static_cast<double>(
+        frame.span(kAtom_fx)[0] * frame.span(kAtom_fx)[0]
+        + frame.span(kAtom_fy)[0] * frame.span(kAtom_fy)[0]
+        + frame.span(kAtom_fz)[0] * frame.span(kAtom_fz)[0]));
     constexpr double f_tol = 0.5; // matches h_force_analytic residual bound
     if (!(fmag0 < f_tol)) {
         std::printf("FAIL: |F| after warm-up = %.4g eV/Å (tol %g, symmetry)\n",
@@ -121,10 +120,9 @@ int main() {
 
     const double pe_f = frame.meta.get(kEnergy);
     const double ke_f = frame.meta.get(kKinetic);
-    std::printf(
-        "PW BOMD H NVE: steps=%d  E0=%.6g eV  Ef=%.6g eV  "
-        "worst |dE|/scale=%.3e  tol=%.2f  |F0|=%.3g eV/A\n",
-        n_prod, e0, pe_f + ke_f, worst_drift, drift_tol, fmag0);
+    std::printf("PW BOMD H NVE: steps=%d  E0=%.6g eV  Ef=%.6g eV  "
+                "worst |dE|/scale=%.3e  tol=%.2f  |F0|=%.3g eV/A\n",
+                n_prod, e0, pe_f + ke_f, worst_drift, drift_tol, fmag0);
     std::printf("  PE0=%.6g  KE0=%.6g  PEf=%.6g  KEf=%.6g eV\n", pe0, ke0, pe_f,
                 ke_f);
 

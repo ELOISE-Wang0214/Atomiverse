@@ -20,9 +20,9 @@
 #include "atomiverse/cpu/asynchronous/async_component_base.h"
 #include "atomiverse/cpu/asynchronous/async_observer.h"
 #include "atomiverse/cpu/asynchronous/frame_snapshot.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #include "cpu/driver_test_helpers.h"
 

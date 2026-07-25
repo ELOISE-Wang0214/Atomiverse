@@ -18,9 +18,9 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
@@ -66,8 +66,7 @@ class ScfGradient {
     ///                  returned GradientResult in eV).
     /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
     GradientResult compute(const Frame& frame, const IntegralPack& integrals,
-                           const SlaterDeterminant& det,
-                           double e_scf_ha) const;
+                           const SlaterDeterminant& det, double e_scf_ha) const;
 
   private:
     MeanFieldType method_;                 ///< HF or KS mean field.

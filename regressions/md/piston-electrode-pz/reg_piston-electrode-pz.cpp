@@ -164,7 +164,8 @@ int main() {
     const double F_atoms = piston.last_F_z_atoms();
     const double F_net = piston.last_F_net();
     const double res =
-        std::fabs(F_net) / (std::fabs(F_atoms) + std::fabs(P_pin * piston.last_area()) + 1e-30);
+        std::fabs(F_net)
+        / (std::fabs(F_atoms) + std::fabs(P_pin * piston.last_area()) + 1e-30);
     std::printf("Step1 force residual |F_net|/(|F_a|+|F_ext|)=%.3e  P_z=%.6e\n",
                 res, piston.last_P_z());
     // With damping and velocity after one step, residual may include F_damp;
@@ -207,12 +208,15 @@ int main() {
         const double z = frame.span(kAtom_z)[i];
         zmin = std::min(zmin, z);
         zmax = std::max(zmax, z);
-        max_vxy = std::max(max_vxy, std::fabs(static_cast<double>(frame.span(kAtom_vx)[i])));
-        max_vxy = std::max(max_vxy, std::fabs(static_cast<double>(frame.span(kAtom_vy)[i])));
+        max_vxy = std::max(
+            max_vxy, std::fabs(static_cast<double>(frame.span(kAtom_vx)[i])));
+        max_vxy = std::max(
+            max_vxy, std::fabs(static_cast<double>(frame.span(kAtom_vy)[i])));
         ++n_up;
     }
     if (n_up != n_wall) {
-        std::printf("FAIL: expected %d upper wall atoms, saw %d\n", n_wall, n_up);
+        std::printf("FAIL: expected %d upper wall atoms, saw %d\n", n_wall,
+                    n_up);
         return 1;
     }
     if (!(zmax - zmin <= 1e-9)) {
@@ -230,8 +234,9 @@ int main() {
     for (int i = 0; i < frame.nlocal(); ++i) {
         if (frame.span(kAtom_type)[i] != lower_type)
             continue;
-        max_lo_dz =
-            std::max(max_lo_dz, std::fabs(frame.span(kAtom_z)[i] - lo_z0[static_cast<std::size_t>(ilo)]));
+        max_lo_dz = std::max(max_lo_dz,
+                             std::fabs(frame.span(kAtom_z)[i]
+                                       - lo_z0[static_cast<std::size_t>(ilo)]));
         ++ilo;
     }
     if (!(max_lo_dz <= 1e-10)) {

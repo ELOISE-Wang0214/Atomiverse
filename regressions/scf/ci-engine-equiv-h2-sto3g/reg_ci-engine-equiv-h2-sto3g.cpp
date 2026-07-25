@@ -51,8 +51,8 @@ int main() {
 
     // Pin — REFERENCE.md (PySCF 2.14.0 full CI / CASCI(2,2), RHF STO-3G).
     constexpr double kEFullCI = -1.137283834488502; // Ha
-    constexpr double kTol = 1e-6;                    // Ha vs literature
-    constexpr double kEquivTol = 1e-12;              // FCI vs CASCI(full space)
+    constexpr double kTol = 1e-6;                   // Ha vs literature
+    constexpr double kEquivTol = 1e-12;             // FCI vs CASCI(full space)
 
     // FCI via the public entry (RHF::fci drives its own SCF).
     cpu::scf::RHF rhf_fci;
@@ -61,7 +61,8 @@ int main() {
     rhf_fci.max_iter = 100;
     const cpu::scf::FCIResult fci = rhf_fci.fci(frame);
     if (!rhf_fci.converged()) {
-        std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) FCI reference did not converge\n");
+        std::fprintf(stderr,
+                     "FAIL: RHF/STO-3G (H2) FCI reference did not converge\n");
         return 1;
     }
 
@@ -70,15 +71,18 @@ int main() {
     rhf_cas.basis = cpu::scf::BasisSet::STO3G;
     rhf_cas.tol = 1e-12;
     rhf_cas.max_iter = 100;
-    const cpu::scf::CASCIResult cas = rhf_cas.casci(frame, /*ncas=*/2, /*nelecas=*/2);
+    const cpu::scf::CASCIResult cas =
+        rhf_cas.casci(frame, /*ncas=*/2, /*nelecas=*/2);
     if (!rhf_cas.converged()) {
-        std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) CASCI reference did not converge\n");
+        std::fprintf(
+            stderr, "FAIL: RHF/STO-3G (H2) CASCI reference did not converge\n");
         return 1;
     }
     if (cas.ncas != 2 || cas.nelecas != 2 || cas.ncore != 0) {
-        std::fprintf(stderr,
-                     "FAIL: active-space bookkeeping ncas=%d nelecas=%d ncore=%d\n",
-                     cas.ncas, cas.nelecas, cas.ncore);
+        std::fprintf(
+            stderr,
+            "FAIL: active-space bookkeeping ncas=%d nelecas=%d ncore=%d\n",
+            cas.ncas, cas.nelecas, cas.ncore);
         return 1;
     }
 

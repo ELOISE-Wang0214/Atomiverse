@@ -42,13 +42,13 @@ struct BandsResult {
     std::vector<std::array<double, 3>> kfrac;
     /// Eigenvalues \(\varepsilon_n(\mathbf{k})\) [Ry], layout `[ik][ib]`.
     std::vector<std::vector<double>> eigenvalues_ry;
-    double e_vbm_ry = 0; ///< Valence-band maximum [Ry].
-    double e_cbm_ry = 0; ///< Conduction-band minimum [Ry].
-    double gap_ry = 0;   ///< \(E_\mathrm{cbm}-E_\mathrm{vbm}\) [Ry].
-    int vbm_k = 0;       ///< k-index of VBM.
-    int cbm_k = 0;       ///< k-index of CBM.
-    int vbm_band = 0;    ///< Band index of VBM (0-based).
-    int cbm_band = 0;    ///< Band index of CBM (0-based).
+    double e_vbm_ry = 0;        ///< Valence-band maximum [Ry].
+    double e_cbm_ry = 0;        ///< Conduction-band minimum [Ry].
+    double gap_ry = 0;          ///< \(E_\mathrm{cbm}-E_\mathrm{vbm}\) [Ry].
+    int vbm_k = 0;              ///< k-index of VBM.
+    int cbm_k = 0;              ///< k-index of CBM.
+    int vbm_band = 0;           ///< Band index of VBM (0-based).
+    int cbm_band = 0;           ///< Band index of CBM (0-based).
     bool scf_converged = false; ///< Whether the preceding SCF converged.
     double energy_ry = 0;       ///< SCF total energy [Ry].
 };

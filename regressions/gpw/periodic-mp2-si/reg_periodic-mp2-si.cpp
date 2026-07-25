@@ -96,7 +96,8 @@ int main() {
         return 1;
     }
     if (std::abs(r.e_total - (r.e_scf + r.e_corr)) > kIdTol) {
-        std::fprintf(stderr, "FAIL: e_total != e_scf + e_corr (%.12f vs %.12f)\n",
+        std::fprintf(stderr,
+                     "FAIL: e_total != e_scf + e_corr (%.12f vs %.12f)\n",
                      r.e_total, r.e_scf + r.e_corr);
         return 1;
     }

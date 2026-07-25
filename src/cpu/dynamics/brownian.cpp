@@ -38,7 +38,7 @@ void Brownian::launch(const cpu::LaunchContext& ctx) {
 
     // Mobility μ = D / kT. Force is eV/Å; displacement = μ F dt needs unit
     // conversion: energy·time / (mass length) style — use
-    // Δx = (D / kT) * F * force_to_accel * mass_ref... 
+    // Δx = (D / kT) * F * force_to_accel * mass_ref...
     // Simpler textbook form used in reduced units: treat F already in
     // consistent units with D/kT so Δx_force = (D/(k_B T)) * F * dt
     // with k_B T in eV and F in eV/Å ⇒ (D/kT)*F*dt has units Å²/fs / eV * eV/Å * fs = Å.

@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/context.h"
@@ -38,7 +39,6 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

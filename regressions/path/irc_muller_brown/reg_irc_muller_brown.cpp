@@ -18,7 +18,7 @@ int main() {
     saddle.span(kAtom_tag)[0] = 1;
     saddle.simbox = cpu::Box::cubic(100.0);
 
-        cpu::path::Irc irc(0.02, 300, 0.05, 0.15);
+    cpu::path::Irc irc(0.02, 300, 0.05, 0.15);
     irc.use_muller_brown();
     irc.run(saddle, 0.0, 1.0);
 

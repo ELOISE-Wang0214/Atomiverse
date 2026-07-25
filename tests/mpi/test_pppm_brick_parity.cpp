@@ -18,10 +18,10 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/gather.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/longrange/pppm.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/longrange/pppm.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
 
@@ -125,10 +125,10 @@ TEST(PppmBrickParity, StaticMadelungForceOn1And2Ranks) {
             fsum[0] += gathered.fx[i];
             fsum[1] += gathered.fy[i];
             fsum[2] += gathered.fz[i];
-            fmax = std::max(
-                fmax, std::max(std::fabs(gathered.fx[i]),
-                               std::max(std::fabs(gathered.fy[i]),
-                                        std::fabs(gathered.fz[i]))));
+            fmax =
+                std::max(fmax, std::max(std::fabs(gathered.fx[i]),
+                                        std::max(std::fabs(gathered.fy[i]),
+                                                 std::fabs(gathered.fz[i]))));
         }
         EXPECT_NEAR(fsum[0], 0.0, kForceAbs);
         EXPECT_NEAR(fsum[1], 0.0, kForceAbs);

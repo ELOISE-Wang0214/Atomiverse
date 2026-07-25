@@ -32,13 +32,13 @@ cpu::Frame dimer(double r, int t0 = 0, int t1 = 0) {
 }
 
 double U_un(double A, double rho, double sigma, double C, double D, double r) {
-    return A * std::exp((sigma - r) / rho) - C / std::pow(r, 6) +
-           D / std::pow(r, 8);
+    return A * std::exp((sigma - r) / rho) - C / std::pow(r, 6)
+           + D / std::pow(r, 8);
 }
 
 double dUdr(double A, double rho, double sigma, double C, double D, double r) {
-    return -A / rho * std::exp((sigma - r) / rho) + 6.0 * C / std::pow(r, 7) -
-           8.0 * D / std::pow(r, 9);
+    return -A / rho * std::exp((sigma - r) / rho) + 6.0 * C / std::pow(r, 7)
+           - 8.0 * D / std::pow(r, 9);
 }
 
 } // namespace
@@ -47,7 +47,8 @@ double dUdr(double A, double rho, double sigma, double C, double D, double r) {
 TEST(PairBorn, AnalyticEnergyAndForceLammpsDimer) {
     const double A = 1000.0, rho = 3.0, sigma = 1.0, C = 50.0, D = 20.0;
     const double rc = 8.0, r = 2.5;
-    const double U = U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
+    const double U =
+        U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
     const double du = dUdr(A, rho, sigma, C, D, r);
 
     auto f = dimer(r);
@@ -71,7 +72,8 @@ TEST(PairBorn, AnalyticEnergyAndForceLammpsDimer) {
 TEST(PairBorn, AnalyticEnergyAndForce) {
     const double A = 20.3548, rho = 0.317, sigma = 2.755;
     const double C = 48.1771, D = 48.1771, rc = 10.0, r = 2.8;
-    const double U = U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
+    const double U =
+        U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
     const double du = dUdr(A, rho, sigma, C, D, r);
 
     auto f = dimer(r);
@@ -96,7 +98,8 @@ TEST(PairBorn, ZeroAtCutoff) {
     const double A = 1000.0, rho = 3.0, sigma = 1.0, C = 50.0, D = 20.0;
     const double rc = 8.0;
     const double r = rc - 1e-6;
-    const double U = U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
+    const double U =
+        U_un(A, rho, sigma, C, D, r) - U_un(A, rho, sigma, C, D, rc);
 
     auto f = dimer(r);
     f.meta.get(kEnergy) = 0;

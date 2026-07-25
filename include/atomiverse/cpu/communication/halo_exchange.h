@@ -43,10 +43,10 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

@@ -194,8 +194,7 @@ TEST(ConstPotBO, ThomasFermiHardnessAnalyticTwoSite) {
     const double ke = units::coulomb;
     const double a0 = ke * kEta * std::sqrt(2.0 / 3.14159265358979323846);
     const double a01 = ke * std::erf(kEta / std::sqrt(2.0) * kSep) / kSep;
-    const double h =
-        4.0 * 3.14159265358979323846 * ke * kLtf * kLtf * kD;
+    const double h = 4.0 * 3.14159265358979323846 * ke * kLtf * kLtf * kD;
     // A Q = psi - lambda * e  with e^T Q = 0.
     // For 2 sites: Q = (q, -q). From (a0+h)q - a01 q = 0 - lambda
     // and -a01 q + (a0+h)(-q wait): second eq with psi=1:

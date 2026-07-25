@@ -17,7 +17,7 @@ int main() {
     // slot_of is the one sanctioned Phase->slot conversion (core/stage.h),
     // slot_count the matching sentinel count — both usable from outside the lib.
     const int slot = ATV::slot_of(ATV::evaluate::Phase::evaluate);
-    const int n    = ATV::slot_count<ATV::evaluate::Phase>();
+    const int n = ATV::slot_count<ATV::evaluate::Phase>();
 
     // plan.h being on the include root is proven by the #include above: the
     // template ATV::Plan<Component> is a backend-parameterized type, so there is

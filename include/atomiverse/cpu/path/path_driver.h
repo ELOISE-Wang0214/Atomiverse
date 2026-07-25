@@ -54,6 +54,7 @@
 
 #include <stdexcept>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/component/hf.h"
@@ -62,11 +63,10 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
-#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/replica/replica_set.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

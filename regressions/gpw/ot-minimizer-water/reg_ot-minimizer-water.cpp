@@ -107,8 +107,8 @@ int main() {
     std::printf("ok: E_OT=%.10f Ha (%d it)  E_DIIS=%.10f Ha (%d it)\n", e_ot,
                 eval_ot.last_result().iters, e_diis,
                 eval_diis.last_result().iters);
-    std::printf("     |dE|_CP2K=%.3e  |dE|_OT-DIIS=%.3e  pin=%.10f Ha\n", d_cp2k,
-                d_ot_diis, kCp2kOtHa);
+    std::printf("     |dE|_CP2K=%.3e  |dE|_OT-DIIS=%.3e  pin=%.10f Ha\n",
+                d_cp2k, d_ot_diis, kCp2kOtHa);
     std::printf("PASS: gpw ot-minimizer-water (OT vs CP2K + OT/DIIS parity)\n");
     return 0;
 }

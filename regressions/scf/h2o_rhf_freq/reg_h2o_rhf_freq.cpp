@@ -82,8 +82,7 @@ int main() {
     mw.launch(fin);
     diag.launch(fin);
     if (ws.frequencies.size() != 3) {
-        std::fprintf(stderr,
-                     "FAIL: expected 3 vibrational modes, got %zu\n",
+        std::fprintf(stderr, "FAIL: expected 3 vibrational modes, got %zu\n",
                      static_cast<std::size_t>(ws.frequencies.size()));
         return 1;
     }
@@ -100,8 +99,7 @@ int main() {
     fd_driver.build();
     const cpu::vib::HessianResult fd = fd_driver.run(frame_fd);
     if (fd.frequencies.size() != 3) {
-        std::fprintf(stderr,
-                     "FAIL: FD pipeline expected 3 modes, got %zu\n",
+        std::fprintf(stderr, "FAIL: FD pipeline expected 3 modes, got %zu\n",
                      static_cast<std::size_t>(fd.frequencies.size()));
         return 1;
     }

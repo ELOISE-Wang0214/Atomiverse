@@ -21,29 +21,28 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/io/lammps_data.h"
-#include "atomiverse/cpu/io/lammps_real.h"
-#include "atomiverse/cpu/longrange/pppm.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/lammps_data.h"
+#include "atomiverse/cpu/io/lammps_real.h"
+#include "atomiverse/cpu/longrange/pppm.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_charmm.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut_coul_long.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 
 namespace {
 
 struct Args {
-    std::string data =
-        "/home/jicli594/work/molpack-paper/figures/relaxation/"
-        "ref_lammps/runs/packmol_n100_r2/melt/melt.data";
+    std::string data = "/home/jicli594/work/molpack-paper/figures/relaxation/"
+                       "ref_lammps/runs/packmol_n100_r2/melt/melt.data";
     int warmup = 50;
     int steps = 500;
     double cutoff = 10.0;
@@ -77,9 +76,8 @@ Args parse(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--grid-spacing"))
             a.grid_spacing = std::atof(next("--grid-spacing"));
         else if (!std::strcmp(argv[i], "--help")) {
-            std::printf(
-                "run_atv_gaff --data PATH [--steps N] [--warmup N] "
-                "[--cutoff 10] [--accuracy 1e-4] [--grid-spacing Å]\n");
+            std::printf("run_atv_gaff --data PATH [--steps N] [--warmup N] "
+                        "[--cutoff 10] [--accuracy 1e-4] [--grid-spacing Å]\n");
             std::exit(0);
         }
     }
@@ -126,8 +124,8 @@ int main(int argc, char** argv) {
         std::printf("[atv] data=%s\n", args.data.c_str());
     }
 
-    using cpu::kcal_per_mol_to_ev;
     using cpu::degree_to_rad;
+    using cpu::kcal_per_mol_to_ev;
 
     // Bond types: c3-c3, c3-h1, c3-hc, c3-oh, ho-oh
     std::vector<double> Kbond = {
@@ -137,10 +135,10 @@ int main(int argc, char** argv) {
     std::vector<double> r0 = {1.5354, 1.0969, 1.0962, 1.4242, 0.9725};
     // Angle types 1..9 from data labels
     std::vector<double> Kang = {
-        kcal_per_mol_to_ev(43.28),  kcal_per_mol_to_ev(43.27),
-        kcal_per_mol_to_ev(76.79),  kcal_per_mol_to_ev(88.334),
-        kcal_per_mol_to_ev(65.13),  kcal_per_mol_to_ev(35.64),
-        kcal_per_mol_to_ev(56.29),  kcal_per_mol_to_ev(35.80),
+        kcal_per_mol_to_ev(43.28), kcal_per_mol_to_ev(43.27),
+        kcal_per_mol_to_ev(76.79), kcal_per_mol_to_ev(88.334),
+        kcal_per_mol_to_ev(65.13), kcal_per_mol_to_ev(35.64),
+        kcal_per_mol_to_ev(56.29), kcal_per_mol_to_ev(35.80),
         kcal_per_mol_to_ev(62.80)};
     std::vector<double> th0 = {
         degree_to_rad(109.590047), degree_to_rad(109.680047),
@@ -181,7 +179,8 @@ int main(int argc, char** argv) {
         cpu::PairLJCutCoulLong{peo_lj(args.cutoff), alpha, args.cutoff}
             .set_special_bonds_amber()
             .set_compute_stress(false));
-    sim.add(cpu::KSpacePPPM::from_accuracy(args.accuracy, args.cutoff, grid_sp));
+    sim.add(
+        cpu::KSpacePPPM::from_accuracy(args.accuracy, args.cutoff, grid_sp));
     sim.add_potential(cpu::BondHarmonic{Kbond, r0});
     sim.add_potential(cpu::AngleHarmonic{Kang, th0});
     sim.add_potential(
@@ -200,18 +199,16 @@ int main(int argc, char** argv) {
     sim.run(frame, args.steps);
     MPI_Barrier(MPI_COMM_WORLD);
     auto t1 = std::chrono::steady_clock::now();
-    const double wall =
-        std::chrono::duration<double>(t1 - t0).count();
+    const double wall = std::chrono::duration<double>(t1 - t0).count();
 
     if (rank == 0) {
         const double steps_s = args.steps / wall;
         const double matom = static_cast<double>(n_atoms) * steps_s / 1e6;
         // dt = 1 fs → ns/day
         const double ns_day = steps_s * 1e-6 * 86400.0;
-        std::printf(
-            "[atv] PERFORMANCE  wall=%.4f s  steps/s=%.3f  "
-            "Matom-step/s=%.3f  ns/day=%.3f  ranks=%d\n",
-            wall, steps_s, matom, ns_day, nrank);
+        std::printf("[atv] PERFORMANCE  wall=%.4f s  steps/s=%.3f  "
+                    "Matom-step/s=%.3f  ns/day=%.3f  ranks=%d\n",
+                    wall, steps_s, matom, ns_day, nrank);
         std::printf("[atv] E=%.6f pair=%.6f (eV)\n", frame.meta.get(kEnergy),
                     frame.meta.get(kEnergyPair));
         std::printf(

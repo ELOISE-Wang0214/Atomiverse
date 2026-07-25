@@ -8,11 +8,11 @@
 #include <cmath>
 #include <cstdio>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/multipole.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/core/units.h"
 
 namespace {
 
@@ -98,8 +98,7 @@ int main() {
     // Pin (PySCF 2.14.0, REFERENCE.md):
     constexpr double kEPyscfMm = -74.98418931920534; // no MM–MM
     constexpr double kMmMm =
-        (0.5 * -0.5)
-        / (6.0 * units::kAngstromInBohr); // classical MM–MM [Ha]
+        (0.5 * -0.5) / (6.0 * units::kAngstromInBohr); // classical MM–MM [Ha]
     constexpr double kEWant = kEPyscfMm + kMmMm;
 
     cpu::scf::RHF rhf_mm;

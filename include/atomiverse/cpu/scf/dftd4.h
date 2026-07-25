@@ -41,8 +41,8 @@ double dftd4_energy(const std::vector<int>& Z,
                     const double cell_bohr[3], bool periodic, double s6 = 1.0,
                     double s8 = 0.95948085, double a1 = 0.38574991,
                     double a2 = 4.80688534, double ga = 3.0, double gc = 2.0,
-                    double wf = 6.0, double charge = 0.0,
-                    double cn_cut = 30.0, double disp2_cut = 60.0);
+                    double wf = 6.0, double charge = 0.0, double cn_cut = 30.0,
+                    double disp2_cut = 60.0);
 
 /// @brief Molecular Grimme DFT-D4 with Becke–Johnson (rational) damping.
 ///
@@ -52,14 +52,14 @@ double dftd4_energy(const std::vector<int>& Z,
 /// Tables are in-tree (Z ≤ 94). Three-body ATM is not included.
 class D4 {
   public:
-    double s6 = 1.0;          ///< C6 scale (dimensionless; PBE = 1).
-    double s8 = 0.95948085;   ///< C8 scale (dimensionless; PBE-D4).
-    double a1 = 0.38574991;   ///< BJ steepness (dimensionless; PBE).
-    double a2 = 4.80688534;   ///< BJ offset [Bohr]; PBE.
-    double ga = 3.0;          ///< Charge-scaling height.
-    double gc = 2.0;          ///< Charge-scaling steepness.
-    double wf = 6.0;          ///< CN Gaussian weight factor.
-    double charge = 0.0;      ///< Molecular charge for EEQ (electrons).
+    double s6 = 1.0;        ///< C6 scale (dimensionless; PBE = 1).
+    double s8 = 0.95948085; ///< C8 scale (dimensionless; PBE-D4).
+    double a1 = 0.38574991; ///< BJ steepness (dimensionless; PBE).
+    double a2 = 4.80688534; ///< BJ offset [Bohr]; PBE.
+    double ga = 3.0;        ///< Charge-scaling height.
+    double gc = 2.0;        ///< Charge-scaling steepness.
+    double wf = 6.0;        ///< CN Gaussian weight factor.
+    double charge = 0.0;    ///< Molecular charge for EEQ (electrons).
 
     /// @brief Dispersion energy for the Frame geometry.
     ///

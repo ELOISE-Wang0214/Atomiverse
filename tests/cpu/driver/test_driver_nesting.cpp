@@ -12,11 +12,11 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/driver/criteria.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/driver/criteria.h"
+#include "atomiverse/cpu/driver/driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #include "cpu/driver_test_helpers.h"
 

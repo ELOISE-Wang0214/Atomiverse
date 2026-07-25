@@ -18,8 +18,8 @@ Metadynamics1D::Metadynamics1D(std::unique_ptr<CollectiveVariable> cv,
       gamma_(bias_factor), pace_(pace) {
     if (!cv_)
         throw std::invalid_argument("Metadynamics1D: null CV");
-    if (!(h0_ > 0.0) || !(sigma_ > 0.0) || !(temperature_ > 0.0) ||
-        !(gamma_ >= 1.0) || pace_ < 1)
+    if (!(h0_ > 0.0) || !(sigma_ > 0.0) || !(temperature_ > 0.0)
+        || !(gamma_ >= 1.0) || pace_ < 1)
         throw std::invalid_argument("Metadynamics1D: invalid parameters");
 }
 

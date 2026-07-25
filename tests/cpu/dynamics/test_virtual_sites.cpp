@@ -57,7 +57,8 @@ cpu::Frame water_parents(int n_extra = 0) {
 } // namespace
 
 TEST(VirtualSites, Tip4pAlpha) {
-    const double a = cpu::md::VirtualSites::tip4p_alpha(kQDist, kROH, theta_hoh());
+    const double a =
+        cpu::md::VirtualSites::tip4p_alpha(kQDist, kROH, theta_hoh());
     const double ref = kQDist / (std::cos(0.5 * theta_hoh()) * kROH);
     EXPECT_NEAR(a, ref, 1e-15);
 }

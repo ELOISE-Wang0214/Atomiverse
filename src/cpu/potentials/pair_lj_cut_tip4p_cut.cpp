@@ -23,8 +23,8 @@ PairLJCutTip4pCut::PairLJCutTip4pCut(int type_O, int type_H, double qdist,
                                      double r_oh, double theta_hoh,
                                      double epsilon_OO, double sigma_OO,
                                      double cut_lj, double cut_coul)
-    : PairPotential(static_cast<AccReal>(
-          std::max(cut_lj, (cut_coul > 0.0 ? cut_coul : cut_lj) + 2.0 * qdist))),
+    : PairPotential(static_cast<AccReal>(std::max(
+          cut_lj, (cut_coul > 0.0 ? cut_coul : cut_lj) + 2.0 * qdist))),
       type_O_(type_O), type_H_(type_H), qdist_(qdist), epsilon_(epsilon_OO),
       sigma_(sigma_OO), cut_lj_(cut_lj) {
     if (cut_lj <= 0.0)
@@ -36,7 +36,8 @@ PairLJCutTip4pCut::PairLJCutTip4pCut(int type_O, int type_H, double qdist,
     if (sigma_OO <= 0.0)
         throw std::invalid_argument("PairLJCutTip4pCut: sigma_OO must be > 0");
     if (epsilon_OO < 0.0)
-        throw std::invalid_argument("PairLJCutTip4pCut: epsilon_OO must be ≥ 0");
+        throw std::invalid_argument(
+            "PairLJCutTip4pCut: epsilon_OO must be ≥ 0");
     if (!(theta_hoh > 0.0) || !(theta_hoh < ATV::units::pi))
         throw std::invalid_argument(
             "PairLJCutTip4pCut: theta_hoh must be in (0, π)");
@@ -68,16 +69,16 @@ PairLJCutTip4pCut::PairLJCutTip4pCut(int type_O, int type_H, double qdist,
     }
 }
 
-PairLJCutTip4pCut&
-PairLJCutTip4pCut::set_special_bonds(double s12, double s13, double s14) & {
+PairLJCutTip4pCut& PairLJCutTip4pCut::set_special_bonds(double s12, double s13,
+                                                        double s14) & {
     s12_ = s12;
     s13_ = s13;
     s14_ = s14;
     return *this;
 }
 
-PairLJCutTip4pCut
-PairLJCutTip4pCut::set_special_bonds(double s12, double s13, double s14) && {
+PairLJCutTip4pCut PairLJCutTip4pCut::set_special_bonds(double s12, double s13,
+                                                       double s14) && {
     s12_ = s12;
     s13_ = s13;
     s14_ = s14;
@@ -156,8 +157,8 @@ void PairLJCutTip4pCut::ensure_sites_(const Frame& f) {
             const int iH1 = it1->second;
             const int iH2 = it2->second;
             if (type[iH1] != type_H_ || type[iH2] != type_H_)
-                throw std::runtime_error(
-                    "PairLJCutTip4pCut: TIP4P hydrogen has incorrect atom type");
+                throw std::runtime_error("PairLJCutTip4pCut: TIP4P hydrogen "
+                                         "has incorrect atom type");
             h1_[i] = iH1;
             h2_[i] = iH2;
         }
@@ -334,8 +335,8 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
             const double rsq = dx * dx + dy * dy + dz * dz;
 
             // LJ on true positions (O–O only for classic TIP4P).
-            if (rsq < cut_lj_sq && itype == type_O && jtype == type_O &&
-                epsilon_ > 0.0) {
+            if (rsq < cut_lj_sq && itype == type_O && jtype == type_O
+                && epsilon_ > 0.0) {
                 const double r2inv = 1.0 / rsq;
                 const double r6inv = r2inv * r2inv * r2inv * sig6;
                 const double fpair =

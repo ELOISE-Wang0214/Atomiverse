@@ -46,8 +46,8 @@ double run_rhf(ATV::cpu::Frame frame) {
 
 bool check(const char* label, double got, double want, double tol) {
     const double diff = std::fabs(got - want);
-    std::printf("%-24s got=%.12f want=%.12f |diff|=%.3e tol=%.0e\n", label,
-                got, want, diff, tol);
+    std::printf("%-24s got=%.12f want=%.12f |diff|=%.3e tol=%.0e\n", label, got,
+                want, diff, tol);
     return diff < tol;
 }
 
@@ -80,8 +80,8 @@ int main() {
     auh.span(ATV::kAtom_y)[1] = 0.0;
     auh.span(ATV::kAtom_z)[1] = 1.524;
     auh.simbox = ATV::cpu::Box::cubic(20.0);
-    ok &= check("E(AuH, def2-SVP+ECP)", run_rhf(auh), -135.34256700791678,
-                1e-6);
+    ok &=
+        check("E(AuH, def2-SVP+ECP)", run_rhf(auh), -135.34256700791678, 1e-6);
 
     if (!ok) {
         std::printf("FAIL: heavy-atom ECP regression off the PySCF oracle\n");

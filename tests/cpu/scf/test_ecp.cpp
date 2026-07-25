@@ -293,10 +293,9 @@ TEST(EcpIntegrals_, UMatrixPinnedVsPyscfSyntheticFChannel) {
     // Synthetic semi-local ECP: one f (l=3) projector + local U_L, exactly
     // the user-defined PySCF ECP quoted in the file header. The local
     // channel sits last (relabeled l = L = 4).
-    const AtomEcp ecp{
-        10,
-        {EcpChannel{3, {EcpGaussianTerm{2, 1.0, 5.0}}},
-         EcpChannel{4, {EcpGaussianTerm{2, 1.5, -3.0}}}}};
+    const AtomEcp ecp{10,
+                      {EcpChannel{3, {EcpGaussianTerm{2, 1.0, 5.0}}},
+                       EcpChannel{4, {EcpGaussianTerm{2, 1.5, -3.0}}}}};
     EcpIntegrals ints{shells, {EcpCenter{{0.0, 0.0, 0.0}, &ecp}}};
     const auto U = ints.matrix();
 

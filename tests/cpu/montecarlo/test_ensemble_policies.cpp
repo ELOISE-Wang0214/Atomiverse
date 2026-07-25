@@ -10,12 +10,12 @@
 #include <random>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/core/verdict.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/montecarlo/gcmc.h"
 #include "atomiverse/cpu/montecarlo/npt_mc.h"
 #include "atomiverse/cpu/montecarlo/transaction.h"
-#include "atomiverse/core/verdict.h"
 
 using namespace ATV;
 using Verb = cpu::mc::Transaction::Verb;

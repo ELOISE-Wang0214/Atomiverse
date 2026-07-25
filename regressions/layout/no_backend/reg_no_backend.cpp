@@ -28,8 +28,8 @@ int main() {
     // mass MUST be set (velocity init draws v ~ sqrt(kT/m), so m=0 gives NaN),
     // and cutoff <= box/2 keeps the minimum-image convention unambiguous.
     const int n = 8;
-    const double spacing = 4.0;      // [Å], just past the LJ well (2^(1/6)·σ)
-    const double box_len = 20.0;     // [Å], > 2·cutoff
+    const double spacing = 4.0;  // [Å], just past the LJ well (2^(1/6)·σ)
+    const double box_len = 20.0; // [Å], > 2·cutoff
     cpu::Frame frame(n);
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
@@ -43,8 +43,8 @@ int main() {
                 x[i] = ix * spacing;
                 y[i] = iy * spacing;
                 z[i] = iz * spacing;
-                mass[i] = 39.948;   // argon [amu]
-                type[i] = 0;        // LJ is type-agnostic here
+                mass[i] = 39.948; // argon [amu]
+                type[i] = 0;      // LJ is type-agnostic here
             }
     frame.simbox = cpu::Box::cubic(box_len);
 
@@ -61,7 +61,8 @@ int main() {
 
     const double e = frame.meta.get(kEnergy) + frame.meta.get(kKinetic); // [eV]
     if (!std::isfinite(e)) {
-        std::fprintf(stderr, "no_backend: total energy is not finite (%g)\n", e);
+        std::fprintf(stderr, "no_backend: total energy is not finite (%g)\n",
+                     e);
         return EXIT_FAILURE;
     }
     std::puts("no_backend: MD preset ran 20 NVE steps on the composed runtime");

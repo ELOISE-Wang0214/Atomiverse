@@ -70,7 +70,7 @@ struct EcpGaussianTerm {
 
 /// @brief One angular-momentum channel of a semi-local ECP.
 struct EcpChannel {
-    int l;                             ///< Angular momentum (0 = s, 1 = p, …).
+    int l;                              ///< Angular momentum (0 = s, 1 = p, …).
     std::vector<EcpGaussianTerm> terms; ///< Gaussian expansion of the channel.
 };
 
@@ -83,7 +83,7 @@ struct EcpChannel {
 /// store U_l − U_L directly (PySCF/def2 storage convention). An empty
 /// `AtomEcp` (no channels) marks an all-electron element.
 struct AtomEcp {
-    int n_core = 0;                  ///< Core electrons replaced by the ECP.
+    int n_core = 0;                   ///< Core electrons replaced by the ECP.
     std::vector<EcpChannel> channels; ///< Projector channels, then local U_L.
 };
 

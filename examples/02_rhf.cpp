@@ -60,8 +60,8 @@ int main() {
 
     std::cout << "\n--- Textbook comparison (Szabo & Ostlund) ---\n"
               << "  Reference: -1.1168 Hartree\n"
-              << std::setprecision(4)
-              << "  This:      " << rhf.energy() << " Hartree\n";
+              << std::setprecision(4) << "  This:      " << rhf.energy()
+              << " Hartree\n";
 
     std::cout << "\n=== Done ===\n";
     return 0;

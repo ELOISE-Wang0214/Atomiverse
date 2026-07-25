@@ -115,16 +115,16 @@ int main() {
         if (r.frequencies(k) < kOpticalLoCm
             || r.frequencies(k) > kOpticalHiCm) {
             std::printf(
-                "FAIL: optical omega[%d]=%.2f cm^-1 outside [%.0f, %.0f]\n",
-                k, r.frequencies(k), kOpticalLoCm, kOpticalHiCm);
+                "FAIL: optical omega[%d]=%.2f cm^-1 outside [%.0f, %.0f]\n", k,
+                r.frequencies(k), kOpticalLoCm, kOpticalHiCm);
             return 1;
         }
     }
     // 3a. Triplet degeneracy.
     const double spread = r.frequencies(5) - r.frequencies(3);
     if (spread > kOpticalSpreadCm) {
-        std::printf("FAIL: optical triplet spread %.2f cm^-1 > %.1f\n",
-                    spread, kOpticalSpreadCm);
+        std::printf("FAIL: optical triplet spread %.2f cm^-1 > %.1f\n", spread,
+                    kOpticalSpreadCm);
         return 1;
     }
     // 3b. Force-constant symmetry (pre-symmetrization diagnostic).
@@ -159,9 +159,8 @@ int main() {
         "PASS: DFPT Si Gamma  acoustic (%.2f, %.2f, %.2f) cm^-1  optical "
         "(%.2f, %.2f, %.2f) cm^-1 in [%.0f, %.0f]  spread %.2f  "
         "C00 %.4f vs FD pin %.4f (tol %.2f)  ASRmax %.4f  asym %.2e\n",
-        r.frequencies(0), r.frequencies(1), r.frequencies(2),
-        r.frequencies(3), r.frequencies(4), r.frequencies(5), kOpticalLoCm,
-        kOpticalHiCm, spread, c00, kC00FdPinEvA2, kC00TolEvA2, asr_max,
-        r.max_asymmetry);
+        r.frequencies(0), r.frequencies(1), r.frequencies(2), r.frequencies(3),
+        r.frequencies(4), r.frequencies(5), kOpticalLoCm, kOpticalHiCm, spread,
+        c00, kC00FdPinEvA2, kC00TolEvA2, asr_max, r.max_asymmetry);
     return 0;
 }

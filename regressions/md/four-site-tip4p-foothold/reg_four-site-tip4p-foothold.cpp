@@ -31,9 +31,9 @@ int main() {
         -0.057823257196248978307, 0.094382238074751600987,
         1.0593571566097748082,    0.057823257196249200351};
     const double fz_pin[6] = {
-        0.33187666441899288383,  -0.31522207906906996033,
+        0.33187666441899288383,   -0.31522207906906996033,
         -0.016654585349923187176, 0.33187666441899305037,
-        -0.31522207906906962727, -0.01665458534992322534};
+        -0.31522207906906962727,  -0.01665458534992322534};
 
     const double half = 0.5 * theta;
     const double s = std::sin(half), c = std::cos(half);
@@ -85,11 +85,10 @@ int main() {
 
     // Dual-gate geometry: OM = qdist for water 1
     double xM, yM, zM;
-    tip4p.compute_newsite(f.span(kAtom_x)[0], f.span(kAtom_y)[0],
-                          f.span(kAtom_z)[0], f.span(kAtom_x)[1],
-                          f.span(kAtom_y)[1], f.span(kAtom_z)[1],
-                          f.span(kAtom_x)[2], f.span(kAtom_y)[2],
-                          f.span(kAtom_z)[2], xM, yM, zM);
+    tip4p.compute_newsite(
+        f.span(kAtom_x)[0], f.span(kAtom_y)[0], f.span(kAtom_z)[0],
+        f.span(kAtom_x)[1], f.span(kAtom_y)[1], f.span(kAtom_z)[1],
+        f.span(kAtom_x)[2], f.span(kAtom_y)[2], f.span(kAtom_z)[2], xM, yM, zM);
     const double om = std::sqrt(xM * xM + yM * yM + zM * zM);
     std::printf("OM = %.16e Å (qdist=%.2f)\n", om, qdist);
     if (!(std::fabs(om - qdist) <= 1e-10)) {
@@ -118,9 +117,8 @@ int main() {
         const double fy = f.span(kAtom_fy)[i];
         const double fz = f.span(kAtom_fz)[i];
         std::printf("F%d  % .16e % .16e % .16e\n", i + 1, fx, fy, fz);
-        if (!(std::fabs(fx - fx_pin[i]) <= 1e-6) ||
-            !(std::fabs(fy) <= 1e-10) ||
-            !(std::fabs(fz - fz_pin[i]) <= 1e-6)) {
+        if (!(std::fabs(fx - fx_pin[i]) <= 1e-6) || !(std::fabs(fy) <= 1e-10)
+            || !(std::fabs(fz - fz_pin[i]) <= 1e-6)) {
             std::printf("FAIL: force atom %d\n", i + 1);
             ok = false;
         }

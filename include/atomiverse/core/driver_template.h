@@ -20,11 +20,11 @@
 #include "atomiverse/core/backend_traits.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/device.h"
+#include "atomiverse/core/plan.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/driver/driver_node.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
-#include "atomiverse/core/plan.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 
@@ -37,11 +37,11 @@ namespace detail {
 /// Exactly one of `component` / `nested_driver` is non-null.
 template <typename Component>
 struct PendingBinding {
-    int phase = 0;              ///< Target phase index.
-    int order = 0;              ///< Ordering within the phase (lower runs earlier).
+    int phase = 0; ///< Target phase index.
+    int order = 0; ///< Ordering within the phase (lower runs earlier).
     Component* component = nullptr; ///< Component node.
-    void* nested_driver = nullptr;  ///< Nested-driver node (`cpu::DriverNode*`).
-    int nested_budget = 0;          ///< Budget for nested-driver nodes.
+    void* nested_driver = nullptr; ///< Nested-driver node (`cpu::DriverNode*`).
+    int nested_budget = 0;         ///< Budget for nested-driver nodes.
 
     /// @brief True when this binding is a nested driver.
     bool is_driver() const { return nested_driver != nullptr; }
@@ -65,8 +65,7 @@ class PhaseBuilder {
         auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
         auto* raw = ptr.get();
         owned_->push_back(std::move(ptr));
-        bindings_->push_back(
-            {ATV::slot_of(phase_), order, raw, nullptr, 0});
+        bindings_->push_back({ATV::slot_of(phase_), order, raw, nullptr, 0});
         return *this;
     }
 
@@ -78,8 +77,7 @@ class PhaseBuilder {
             throw std::invalid_argument("PhaseBuilder::add: null component");
         Component* raw = comp.get();
         owned_->push_back(std::move(comp));
-        bindings_->push_back(
-            {ATV::slot_of(phase_), order, raw, nullptr, 0});
+        bindings_->push_back({ATV::slot_of(phase_), order, raw, nullptr, 0});
         return *this;
     }
 
@@ -90,8 +88,7 @@ class PhaseBuilder {
     template <typename Comp,
               std::enable_if_t<std::is_base_of_v<Component, Comp>, int> = 0>
     PhaseBuilder& add_ref(Comp& comp, int order = 0) {
-        bindings_->push_back(
-            {ATV::slot_of(phase_), order, &comp, nullptr, 0});
+        bindings_->push_back({ATV::slot_of(phase_), order, &comp, nullptr, 0});
         return *this;
     }
 
@@ -101,14 +98,15 @@ class PhaseBuilder {
     /// `child.default_budget()`. Disabled for types that are also Components
     /// (e.g. transitional MeanFieldMethod = HF + Driver) so they keep
     /// binding as force/energy components until 04b drops the dual identity.
-    template <
-        typename Nested,
-        std::enable_if_t<
-            std::is_same_v<DeviceTag, cpu::device_tag>
-                && std::is_base_of_v<cpu::DriverNode, std::remove_reference_t<Nested>>
-                && !std::is_base_of_v<Component, std::remove_reference_t<Nested>>
-                && !std::is_lvalue_reference_v<Nested>,
-            int> = 0>
+    template <typename Nested,
+              std::enable_if_t<
+                  std::is_same_v<DeviceTag, cpu::device_tag>
+                      && std::is_base_of_v<cpu::DriverNode,
+                                           std::remove_reference_t<Nested>>
+                      && !std::is_base_of_v<Component,
+                                            std::remove_reference_t<Nested>>
+                      && !std::is_lvalue_reference_v<Nested>,
+                  int> = 0>
     PhaseBuilder& add(Nested&& child, int order = 0, int budget = -1) {
         using N = std::remove_reference_t<Nested>;
         auto ptr = std::make_unique<N>(std::forward<Nested>(child));
@@ -125,12 +123,11 @@ class PhaseBuilder {
     /// Non-owning: the caller may inspect `child.converged()` after the parent
     /// run. `budget < 0` uses `child.default_budget()`. See rvalue `add` for
     /// the Component dual-identity exclusion.
-    template <
-        typename Nested,
-        std::enable_if_t<std::is_same_v<DeviceTag, cpu::device_tag>
-                             && std::is_base_of_v<cpu::DriverNode, Nested>
-                             && !std::is_base_of_v<Component, Nested>,
-                         int> = 0>
+    template <typename Nested,
+              std::enable_if_t<std::is_same_v<DeviceTag, cpu::device_tag>
+                                   && std::is_base_of_v<cpu::DriverNode, Nested>
+                                   && !std::is_base_of_v<Component, Nested>,
+                               int> = 0>
     PhaseBuilder& add_ref(Nested& child, int order = 0, int budget = -1) {
         cpu::DriverNode* raw = &child;
         const int b = (budget < 0) ? raw->default_budget() : budget;
@@ -241,15 +238,17 @@ class Driver {
     }
 
     /// Drivers have no default bindings — use `.on(phase).add(...)`.
-    template <typename Nested,
-              std::enable_if_t<std::is_base_of_v<cpu::DriverNode,
-                                                 std::remove_reference_t<Nested>>,
-                               int> = 0>
+    template <
+        typename Nested,
+        std::enable_if_t<
+            std::is_base_of_v<cpu::DriverNode, std::remove_reference_t<Nested>>,
+            int> = 0>
     void add(Nested&&) = delete;
 
     /// Drivers have no default bindings — use `.on(phase).add_ref(...)`.
-    template <typename Nested,
-              std::enable_if_t<std::is_base_of_v<cpu::DriverNode, Nested>, int> = 0>
+    template <
+        typename Nested,
+        std::enable_if_t<std::is_base_of_v<cpu::DriverNode, Nested>, int> = 0>
     void add_ref(Nested&) = delete;
 
     /// Implicit lvalue borrowing is forbidden. Use `add_ref(comp)`.
@@ -260,8 +259,8 @@ class Driver {
     /// @param phase Phase value returned by the driver's `Phase` enum.
     /// @return A `PhaseBuilder` bound to that phase.
     PhaseBuilder<PhaseEnum, DeviceTag> on(PhaseEnum phase) {
-        return PhaseBuilder<PhaseEnum, DeviceTag>(
-            &pending_, &owned_components_, &owned_drivers_, phase);
+        return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_,
+                                                  &owned_drivers_, phase);
     }
 
     /// @brief Read-only access to the compiled Plan (after `build()`).
@@ -275,8 +274,7 @@ class Driver {
                 builder.add({pb.phase, pb.order, nullptr, pb.nested_driver,
                              pb.nested_budget});
             else
-                builder.add(
-                    {pb.phase, pb.order, pb.component, nullptr, 0});
+                builder.add({pb.phase, pb.order, pb.component, nullptr, 0});
         }
         pending_.clear();
         plan_ = builder.build(ATV::slot_count<PhaseEnum>());

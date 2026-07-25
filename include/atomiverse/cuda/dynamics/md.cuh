@@ -97,18 +97,18 @@
 #include <type_traits>
 #include <utility>
 
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/component/integrator.cuh"
 #include "atomiverse/cuda/component/potential.cuh"
-#include "atomiverse/cuda/component/hf.cuh"
 #include "atomiverse/cuda/driver/driver.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/cuda/dynamics/kinetic_energy.cuh"
 #include "atomiverse/cuda/observe/stress.cuh"
 #include "atomiverse/cuda/record/thermo.cuh"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cuda {

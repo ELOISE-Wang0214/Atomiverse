@@ -37,7 +37,8 @@ xt::xtensor<double, 4> make_tau(const xt::xtensor<double, 4>& t2,
 ///        gintermediates). EE/EA consume every field; IP consumes all but
 ///        Wvovv/Wvvvv/Wvvvo.
 struct EomImds {
-    xt::xtensor<double, 2> Foo;   ///< F_mi one-body intermediate (occ-occ) [Hartree]
+    xt::xtensor<double, 2>
+        Foo; ///< F_mi one-body intermediate (occ-occ) [Hartree]
     xt::xtensor<double, 2> Fvv;   ///< F_ae (vir-vir) [Hartree]
     xt::xtensor<double, 2> Fov;   ///< F_me (occ-vir) [Hartree]
     xt::xtensor<double, 4> Wovvo; ///< W_mbej (ovvo sector)
@@ -48,10 +49,12 @@ struct EomImds {
     xt::xtensor<double, 4> Wvovv; ///< W_amef
     xt::xtensor<double, 4> Wvvvv; ///< W_abef
     xt::xtensor<double, 4> Wvvvo; ///< W_abei
-    xt::xtensor<double, 4> t2;    ///< converged CCSD amplitudes (dimensionless), copied through
-    xt::xtensor<double, 2> t1;    ///< converged CCSD amplitudes (dimensionless), copied through
-    int no = 0;                   ///< occupied spin-orbital count
-    int nv = 0;                   ///< virtual spin-orbital count
+    xt::xtensor<double, 4>
+        t2; ///< converged CCSD amplitudes (dimensionless), copied through
+    xt::xtensor<double, 2>
+        t1;     ///< converged CCSD amplitudes (dimensionless), copied through
+    int no = 0; ///< occupied spin-orbital count
+    int nv = 0; ///< virtual spin-orbital count
 
     /// @brief Compute the full Gauss–Stanton one-/two-body intermediates from a
     ///        converged CCSD solution.
@@ -65,7 +68,8 @@ struct EomImds {
 ///        requested.
 struct EigPair {
     double wr = 0.0; ///< Eigenvalue real part.
-    double wi = 0.0; ///< Eigenvalue imaginary part (≈0 for the real roots callers keep).
+    double wi =
+        0.0; ///< Eigenvalue imaginary part (≈0 for the real roots callers keep).
     std::vector<double> vr; ///< Right eigenvector (real part when wi≈0).
 };
 

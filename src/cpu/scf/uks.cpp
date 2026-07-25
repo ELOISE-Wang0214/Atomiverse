@@ -54,7 +54,8 @@ vib::HessianResult UKS::hessian(Frame& frame, const SCFInitialGuess* guess) {
     if (!converged())
         throw std::runtime_error(
             "UKS::hessian: SCF did not converge — no reference "
-            "wavefunction to differentiate (" + stop_reason() + ")");
+            "wavefunction to differentiate ("
+            + stop_reason() + ")");
 
     // Capture reference spin densities so displaced SCFs stay on the same
     // multi-minima solution (triplet O₂ needs this; cold Hcore can land high).

@@ -126,7 +126,8 @@ bool sort_owned_atoms(Frame& f, int n_local, double binsize) {
     else {
         // Grow by 1 for a scratch row (rare — usually capacity has headroom).
         f.grow(cap + 1);
-        scratch = f.n_total(); // old n_total is still owners+ghosts; new cap has room
+        scratch =
+            f.n_total(); // old n_total is still owners+ghosts; new cap has room
         // After grow, capacity increased; use last slot.
         scratch = f.capacity() - 1;
     }

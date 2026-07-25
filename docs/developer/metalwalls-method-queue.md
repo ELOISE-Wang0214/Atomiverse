@@ -135,4 +135,3 @@ still ○.
 | [x] `charge-charge-autocorr` | `regressions/md/charge-charge-autocorr` | literature | perf_exempt |
 | [x] `elastance-condition-observer` | `regressions/md/elastance-condition-observer` | literature | perf_exempt |
 | [x] `constant-velocity-smd` | `regressions/md/constant-velocity-smd` | lammps fix move | perf_exempt |
-

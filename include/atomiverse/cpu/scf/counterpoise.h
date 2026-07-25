@@ -45,13 +45,13 @@ namespace scf {
 ///   e_int_cp  = e_dimer − e_a_ghost − e_b_ghost
 ///   e_int_raw = e_dimer − e_a − e_b
 struct CounterpoiseResult {
-    double e_dimer = 0;    ///< E_AB^{AB} dimer energy [Hartree].
-    double e_a = 0;        ///< E_A^A monomer A in its own basis [Hartree].
-    double e_b = 0;        ///< E_B^B monomer B in its own basis [Hartree].
-    double e_a_ghost = 0;  ///< E_A^{AB} A in dimer basis (B ghost) [Hartree].
-    double e_b_ghost = 0;  ///< E_B^{AB} B in dimer basis (A ghost) [Hartree].
-    double e_int_cp = 0;   ///< CP-corrected interaction energy [Hartree].
-    double e_int_raw = 0;  ///< Uncorrected interaction energy [Hartree].
+    double e_dimer = 0;   ///< E_AB^{AB} dimer energy [Hartree].
+    double e_a = 0;       ///< E_A^A monomer A in its own basis [Hartree].
+    double e_b = 0;       ///< E_B^B monomer B in its own basis [Hartree].
+    double e_a_ghost = 0; ///< E_A^{AB} A in dimer basis (B ghost) [Hartree].
+    double e_b_ghost = 0; ///< E_B^{AB} B in dimer basis (A ghost) [Hartree].
+    double e_int_cp = 0;  ///< CP-corrected interaction energy [Hartree].
+    double e_int_raw = 0; ///< Uncorrected interaction energy [Hartree].
     /// @brief Basis-set superposition error [Hartree],
     ///        (e_a_ghost − e_a) + (e_b_ghost − e_b); ≤ 0 by construction.
     double bsse = 0;

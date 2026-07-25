@@ -369,9 +369,8 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
     DavidsonSolver davidson{n_bands, AccReal(method.tol) * AccReal(0.1), 40};
 
     PWProblem scf_prob;
-    const PWResult res =
-        run_scf_fixed_occ(frame, method, scf_prob, poisson, xc, veff,
-                          density, davidson, "stress");
+    const PWResult res = run_scf_fixed_occ(frame, method, scf_prob, poisson, xc,
+                                           veff, density, davidson, "stress");
     if (!res.converged) {
         ATV_WARN("[pw] pw_stress_analytic: SCF not converged after {} iters; "
                  "using last density for HF stress",

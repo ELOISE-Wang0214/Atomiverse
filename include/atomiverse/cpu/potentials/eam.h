@@ -5,10 +5,10 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/potentials/eam_potential.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

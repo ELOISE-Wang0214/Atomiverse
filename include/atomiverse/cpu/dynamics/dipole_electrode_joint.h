@@ -85,13 +85,14 @@ class DipoleElectrodeJoint : public cpu::Component {
     // ── Public parameters ────────────────────────────────────────────
     double eta = 1.979;            ///< Gaussian width [1/Å].
     bool electroneutrality = true; ///< Project \(\sum Q_i = 0\).
-    int xy_image_range = 0;        ///< 2D \(xy\) lattice half-range (0 = min-image).
+    int xy_image_range = 0; ///< 2D \(xy\) lattice half-range (0 = min-image).
     bool rebuild_matrix_every_step = false;
-    double thole_a = 0.39;         ///< Thole \(a\) (0 = undamped multipoles).
-    double pol_tol = 1e-10;        ///< Inner PIM SCC tol [e·Å].
-    int pol_max_iter = 100;        ///< Inner PIM SCC budget.
-    double joint_tol = 1e-10;      ///< Outer max |\(\Delta Q\)| [e] and |\(\Delta\mu\)| [e·Å].
-    int joint_max_iter = 50;       ///< Outer joint iteration budget.
+    double thole_a = 0.39;  ///< Thole \(a\) (0 = undamped multipoles).
+    double pol_tol = 1e-10; ///< Inner PIM SCC tol [e·Å].
+    int pol_max_iter = 100; ///< Inner PIM SCC budget.
+    double joint_tol =
+        1e-10; ///< Outer max |\(\Delta Q\)| [e] and |\(\Delta\mu\)| [e·Å].
+    int joint_max_iter = 50;           ///< Outer joint iteration budget.
     std::vector<double> alpha_by_type; ///< \(\alpha\) [Å³] by type index.
 
   private:

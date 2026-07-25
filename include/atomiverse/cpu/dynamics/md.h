@@ -8,6 +8,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/asynchronous/snapshot_publisher.h"
 #include "atomiverse/cpu/communication/atom_migration.h"
 #include "atomiverse/cpu/communication/domain.h"
@@ -22,17 +23,16 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
-#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/driver/driver.h"
-#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/dynamics/fix_csvr.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/nvt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/observe/virial_stress.h"
 #include "atomiverse/cpu/record/timing_report.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

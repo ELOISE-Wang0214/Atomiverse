@@ -32,11 +32,11 @@
 #include "atomiverse/cpu/scf/internal/basis_workspace.h"
 
 using namespace ATV;
+using cpu::scf::angular_convention;
 using cpu::scf::AtomList;
+using cpu::scf::basis_set_name;
 using cpu::scf::BasisSet;
 using cpu::scf::ShellList;
-using cpu::scf::angular_convention;
-using cpu::scf::basis_set_name;
 using cpu::scf::basis_data::AngularConvention;
 using cpu::scf::basis_data::AtomBasis;
 

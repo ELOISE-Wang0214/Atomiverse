@@ -88,10 +88,9 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals, bool is_hf,
                 "[scf] grid build start natm={} level={} radial={} angular={}",
                 integrals.atoms.size(), static_cast<int>(grid_level), n_radial,
                 n_angular);
-            grid_ =
-                MolecularGrid(integrals.atoms.data(),
-                              static_cast<int>(integrals.atoms.size()),
-                              grid_level, n_radial, n_angular);
+            grid_ = MolecularGrid(integrals.atoms.data(),
+                                  static_cast<int>(integrals.atoms.size()),
+                                  grid_level, n_radial, n_angular);
             ATV_INFO("[scf] grid build done points={} ms={:.1f}",
                      grid_.points.size(), elapsed_ms(t_grid));
         }
@@ -118,8 +117,8 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
     const auto& Csp = integrals.c2s;
     const auto to_eng = [&](const RealMatrix& M) {
         return sph ? RealMatrix(xt::linalg::dot(
-                         Csp, RealMatrix(xt::linalg::dot(
-                                  M, xt::transpose(Csp)))))
+                         Csp,
+                         RealMatrix(xt::linalg::dot(M, xt::transpose(Csp)))))
                    : M;
     };
     const auto to_ao = [&](auto& M) {
@@ -355,8 +354,8 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
                 to_ao(J_eng);
                 to_ao(K);
                 out.J = J_eng; // Coulomb-only, for E_J
-                out.F_alpha = Hcore + J_eng - double(0.5) * alpha_hf * K
-                              + xc.Vxc_alpha;
+                out.F_alpha =
+                    Hcore + J_eng - double(0.5) * alpha_hf * K + xc.Vxc_alpha;
                 out.F_beta = out.F_alpha;
             }
         } else if (is_hybrid) {

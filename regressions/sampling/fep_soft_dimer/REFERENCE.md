@@ -1,6 +1,6 @@
 # Reference — Kirkwood TI on soft LJ dimer
 
-Fixed-geometry soft-core LJ dimer: 
+Fixed-geometry soft-core LJ dimer:
 
 \[
 \Delta U = \int_0^1 \frac{\partial U}{\partial\lambda}\,d\lambda = U(1)-U(0).

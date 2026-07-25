@@ -35,8 +35,8 @@ ROHF::ROHF(int na, int nb) : ROHF() {
 void ROHF::resolve_occupation(int) {
     if (n_alpha < n_beta)
         throw std::invalid_argument(
-            "ROHF::run: n_alpha (" + std::to_string(n_alpha)
-            + ") < n_beta (" + std::to_string(n_beta)
+            "ROHF::run: n_alpha (" + std::to_string(n_alpha) + ") < n_beta ("
+            + std::to_string(n_beta)
             + ") — ROHF defines the open shell as excess alpha electrons; "
               "swap the counts (no fallback).");
     n_alpha_ = n_alpha;
@@ -54,7 +54,8 @@ vib::HessianResult ROHF::hessian(Frame& frame) {
     if (!converged())
         throw std::runtime_error(
             "ROHF::hessian: SCF did not converge — no reference "
-            "wavefunction to differentiate (" + stop_reason() + ")");
+            "wavefunction to differentiate ("
+            + stop_reason() + ")");
 
     // Central FD of analytic ROHF forces (shared skeleton lives on the CRTP
     // base). A fresh ROHF per ±h displacement avoids DIIS/MO state bleed.

@@ -125,10 +125,11 @@ int main() {
         return 1;
     }
 
-    std::printf("ok: E=%.8f Ry  e_fermi=%.6f Ry  n_occ=%.8f  e_entropy=%.6f Ry  "
-                "iters=%d  upf=%s\n",
-                r.energy, r.e_fermi, r.n_elec_occ, r.e_entropy, r.iterations,
-                pw.upf_path.empty() ? "toy" : pw.upf_path.c_str());
+    std::printf(
+        "ok: E=%.8f Ry  e_fermi=%.6f Ry  n_occ=%.8f  e_entropy=%.6f Ry  "
+        "iters=%d  upf=%s\n",
+        r.energy, r.e_fermi, r.n_elec_occ, r.e_entropy, r.iterations,
+        pw.upf_path.empty() ? "toy" : pw.upf_path.c_str());
     std::printf("PASS: pw-smearing-al (FCC Al Fermi–Dirac)\n");
     return 0;
 }

@@ -50,12 +50,12 @@ class FixWallLJ1043 : public cpu::Bias {
                   double sigma, double cutoff);
 
     /// Public parameters (no Config bag) — mutable after construction.
-    int axis = 2;           ///< 0=x, 1=y, 2=z
-    int side = -1;          ///< -1 = lo, +1 = hi
-    double wall_pos = 0.0;  ///< [Å]
-    double epsilon = 0.0;   ///< [eV]
-    double sigma = 0.0;     ///< [Å]
-    double cutoff = 0.0;    ///< [Å]
+    int axis = 2;          ///< 0=x, 1=y, 2=z
+    int side = -1;         ///< -1 = lo, +1 = hi
+    double wall_pos = 0.0; ///< [Å]
+    double epsilon = 0.0;  ///< [eV]
+    double sigma = 0.0;    ///< [Å]
+    double cutoff = 0.0;   ///< [Å]
 
     std::string name() const override { return "fix_wall_lj1043"; }
 

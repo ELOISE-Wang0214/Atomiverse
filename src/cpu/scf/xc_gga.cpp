@@ -22,8 +22,8 @@
 /// 1e-12 channel-wise parity; the B88 kernel uses the closed analytic
 /// derivatives of the readable Becke enhancement factor.
 
-#include "atomiverse/cpu/scf/xc_internal.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/xc_internal.h"
 
 #include <cmath>
 

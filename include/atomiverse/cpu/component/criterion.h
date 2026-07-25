@@ -43,8 +43,8 @@
 /// severity.
 #pragma once
 
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/core/verdict.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {

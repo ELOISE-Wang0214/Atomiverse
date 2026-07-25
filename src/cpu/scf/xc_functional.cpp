@@ -39,8 +39,8 @@ static constexpr VWN5Params kVWN5_P = {0.0310907, -0.10498, 3.72744, 12.9352};
 // Ferromagnetic: A_Ry = 0.0310907 -> A_Ha = 0.01554535
 static constexpr VWN5Params kVWN5_F = {0.01554535, -0.32500, 7.06042, 18.0578};
 // Spin stiffness alpha_c: A_Ry = -1/(3*pi^2) -> A_Ha = -1/(6*pi^2)
-static constexpr VWN5Params kVWN5_A = {-1.0 / (6.0 * units::pi * units::pi), -0.0047584,
-                                       1.13107, 13.0045};
+static constexpr VWN5Params kVWN5_A = {-1.0 / (6.0 * units::pi * units::pi),
+                                       -0.0047584, 1.13107, 13.0045};
 
 // ── VWN-RPA parameters (libxc maple/vwn.mpl, RPA columns) ────────────────
 // XC_LDA_C_VWN_RPA (id 8): same Pade form as VWN5, RPA (A, x0, b, c).
@@ -387,8 +387,8 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
     double ex_lda = -Cx_spin * rs43; // per volume
 
     // Reduced gradient s
-    double kf =
-        std::pow(6.0 * units::pi * units::pi, 1.0 / 3.0) * std::pow(rho_s, 1.0 / 3.0);
+    double kf = std::pow(6.0 * units::pi * units::pi, 1.0 / 3.0)
+                * std::pow(rho_s, 1.0 / 3.0);
     double grad = std::sqrt(std::max(sigma_ss, 0.0));
     double s = grad / (2.0 * kf * rho_s);
     double s2 = s * s;
@@ -409,8 +409,8 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
     double ds2_drho = -(8.0 / 3.0) * s2 / rho_s;
 
     // ds²/dσ = 1 / (4 (6π²)^{2/3} ρ^{8/3})
-    double kf2_fac =
-        4.0 * std::pow(6.0 * units::pi * units::pi, 2.0 / 3.0) * std::pow(rho_s, 8.0 / 3.0);
+    double kf2_fac = 4.0 * std::pow(6.0 * units::pi * units::pi, 2.0 / 3.0)
+                     * std::pow(rho_s, 8.0 / 3.0);
     double ds2_dsigma = 1.0 / kf2_fac;
 
     // v_rho = d(ex_lda * Fx)/dρ = (d ex_lda/dρ) Fx + ex_lda * dFx/dρ
@@ -898,10 +898,8 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b, double sigma_aa,
         // makes ds2_dsigma ~ 1/rho_s^{8/3} explode by O(1e30). Exchange has
         // its own rho_s < kRhoMin/2 early-return (libxc-matched empty spin).
         // PBEsol uses μ=10/81, β=0.046 (Perdew 2008 / libxc PBE_SOL).
-        const double mu =
-            (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
-        const double beta =
-            (type == XCType::PBEsol) ? kPBEsol_beta : kPBE_beta;
+        const double mu = (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
+        const double beta = (type == XCType::PBEsol) ? kPBEsol_beta : kPBE_beta;
 
         double ra_pbe = ra;
         double rb_pbe = rb;
@@ -995,8 +993,7 @@ void evaluate_xc_batch(XCType type, int n, const double* rho_a_arr,
             vrho_b_arr[g] = vx_b + vc_b;
         } else if (type == XCType::PBE || type == XCType::PBEsol) {
             // See scalar branch for rationale: no per-spin clamping here.
-            const double mu =
-                (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
+            const double mu = (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
             const double beta =
                 (type == XCType::PBEsol) ? kPBEsol_beta : kPBE_beta;
 

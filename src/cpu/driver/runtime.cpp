@@ -103,10 +103,9 @@ void Runtime::build_components() {
                 auto* nested = static_cast<cpu::DriverNode*>(op.nested_driver);
                 ATV_DEBUG("building nested driver");
                 nested->build_on(*this);
-                op_handle_[s].push_back(timing.register_op(
-                    TimerKey{"nested_driver", slot.phase,
-                             static_cast<int>(md::StepTiming::Category::Other),
-                             ""}));
+                op_handle_[s].push_back(timing.register_op(TimerKey{
+                    "nested_driver", slot.phase,
+                    static_cast<int>(md::StepTiming::Category::Other), ""}));
                 continue;
             }
             const std::string nm = op.component->name();
@@ -156,8 +155,9 @@ void Runtime::step(int step_idx) {
                 const auto t0 = std::chrono::steady_clock::now();
                 op.component->launch(ctx);
                 const auto t1 = std::chrono::steady_clock::now();
-                timing_reg.record(op_handle_[s][o],
-                                  std::chrono::duration<double>(t1 - t0).count());
+                timing_reg.record(
+                    op_handle_[s][o],
+                    std::chrono::duration<double>(t1 - t0).count());
             } else {
                 op.component->launch(ctx); // zero-overhead path when off
             }
@@ -185,7 +185,8 @@ void Runtime::build_plan(const Plan<cpu::Component>& plan) {
     for (const auto& slot : plan.slots) {
         for (const auto& op : slot.ops) {
             if (op.is_driver()) {
-                static_cast<cpu::DriverNode*>(op.nested_driver)->build_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)
+                    ->build_on(*this);
                 continue;
             }
             ATV_DEBUG("building nested component '{}'", op.component->name());
@@ -223,7 +224,8 @@ void Runtime::destroy_plan(const Plan<cpu::Component>& plan) {
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
             const auto& op = slot.ops[o];
             if (op.is_driver()) {
-                static_cast<cpu::DriverNode*>(op.nested_driver)->destroy_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)
+                    ->destroy_on(*this);
                 continue;
             }
             ATV_DEBUG("destroying nested component '{}'", op.component->name());
@@ -301,7 +303,8 @@ void Runtime::destroy_components() {
         for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
             auto& op = slot.ops[o];
             if (op.is_driver()) {
-                static_cast<cpu::DriverNode*>(op.nested_driver)->destroy_on(*this);
+                static_cast<cpu::DriverNode*>(op.nested_driver)
+                    ->destroy_on(*this);
                 continue;
             }
             ATV_DEBUG("destroying component '{}'", op.component->name());

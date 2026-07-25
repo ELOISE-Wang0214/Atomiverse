@@ -1,11 +1,11 @@
 /// @file md/velocity_verlet.cu
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
-#include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
-#include "atomiverse/core/stage.h"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -61,9 +61,12 @@ final_integrate(real_t* __restrict__ vx, real_t* __restrict__ vy,
         return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    vx[i] += hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
-    vy[i] += hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
-    vz[i] += hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
+    vx[i] +=
+        hdt * static_cast<work_t>(fx[i]) * inv_m * ATV::units::force_to_accel;
+    vy[i] +=
+        hdt * static_cast<work_t>(fy[i]) * inv_m * ATV::units::force_to_accel;
+    vz[i] +=
+        hdt * static_cast<work_t>(fz[i]) * inv_m * ATV::units::force_to_accel;
 }
 
 } // anonymous namespace

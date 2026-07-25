@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/optimizer.h"
 
 namespace ATV {
 namespace cpu {

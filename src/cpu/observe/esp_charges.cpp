@@ -31,17 +31,28 @@ constexpr double kPi = 3.14159265358979323846;
 ///         fallback values).
 double bondi_radius(int Z) {
     switch (Z) {
-    case 1: return 1.20;
-    case 2: return 1.40;
-    case 6: return 1.70;
-    case 7: return 1.55;
-    case 8: return 1.52;
-    case 9: return 1.47;
-    case 10: return 1.54;
-    case 15: return 1.80;
-    case 16: return 1.80;
-    case 17: return 1.75;
-    case 35: return 1.85;
+    case 1:
+        return 1.20;
+    case 2:
+        return 1.40;
+    case 6:
+        return 1.70;
+    case 7:
+        return 1.55;
+    case 8:
+        return 1.52;
+    case 9:
+        return 1.47;
+    case 10:
+        return 1.54;
+    case 15:
+        return 1.80;
+    case 16:
+        return 1.80;
+    case 17:
+        return 1.75;
+    case 35:
+        return 1.85;
     default:
         throw std::invalid_argument(
             "esp_charges: no Bondi vdW radius tabulated for Z="
@@ -158,10 +169,10 @@ constrained_fit(const std::vector<double>& V,
     RealMatrix rinv = xt::zeros<double>({static_cast<int>(npts), natm});
     for (std::size_t k = 0; k < npts; ++k)
         for (int A = 0; A < natm; ++A)
-            rinv(k, A) = 1.0
-                         / (dist(grid_ang[k],
-                                 sites.pos_ang[static_cast<std::size_t>(A)])
-                            * units::kAngstromInBohr);
+            rinv(k, A) =
+                1.0
+                / (dist(grid_ang[k], sites.pos_ang[static_cast<std::size_t>(A)])
+                   * units::kAngstromInBohr);
 
     // Normal equations + the multiplier row.
     const int n = natm + 1;
@@ -247,9 +258,9 @@ std::vector<std::array<double, 3>> MKCharges::grid(const Frame& frame) const {
                 const double phi = k * golden;
                 const double rho = std::sqrt(std::max(0.0, 1.0 - z * z));
                 const auto& c = sites.pos_ang[static_cast<std::size_t>(a)];
-                const std::array<double, 3> p = {
-                    c[0] + r * rho * std::cos(phi),
-                    c[1] + r * rho * std::sin(phi), c[2] + r * z};
+                const std::array<double, 3> p = {c[0] + r * rho * std::cos(phi),
+                                                 c[1] + r * rho * std::sin(phi),
+                                                 c[2] + r * z};
                 bool keep = true;
                 for (int b = 0; b < natm && keep; ++b) {
                     if (b == a)

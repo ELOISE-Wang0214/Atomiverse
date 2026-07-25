@@ -129,10 +129,10 @@ class CphfPack {
     ///        [Hartree/Bohr] (G = Coulomb − ½ exchange over `eri_`).
     RealMatrix fock_response_(int x, const RealMatrix& Py) const;
 
-    const SlaterDeterminant& det_; ///< Converged reference (borrowed).
-    const OrbitalHessian& oh_;     ///< Shared σ-vector kernel (borrowed).
-    const IntegralPack& pack_;     ///< Geometry + S/Hcore (borrowed).
-    const xt::xtensor<double, 4>& eri_;   ///< Dense AO ERI (borrowed).
+    const SlaterDeterminant& det_;      ///< Converged reference (borrowed).
+    const OrbitalHessian& oh_;          ///< Shared σ-vector kernel (borrowed).
+    const IntegralPack& pack_;          ///< Geometry + S/Hcore (borrowed).
+    const xt::xtensor<double, 4>& eri_; ///< Dense AO ERI (borrowed).
     const xt::xtensor<double, 4>& dS_ao_; ///< Skeleton dS (borrowed).
     const xt::xtensor<double, 4>& dF_ao_; ///< Skeleton dF (borrowed).
 
@@ -141,8 +141,8 @@ class CphfPack {
     int no_ = 0;   ///< Occupied MO count.
     int nv_ = 0;   ///< Virtual MO count.
 
-    RealMatrix Co_; ///< Occupied MO columns [n × n_occ].
-    RealMatrix Cv_; ///< Virtual MO columns [n × n_virt].
+    RealMatrix Co_;       ///< Occupied MO columns [n × n_occ].
+    RealMatrix Cv_;       ///< Virtual MO columns [n × n_virt].
     RealVector eps_occ_;  ///< ε_i [Hartree].
     RealVector eps_virt_; ///< ε_a [Hartree].
 

@@ -27,9 +27,8 @@ namespace {
 /// H2O geometry [Å]: O(0,0,0.1173), H(0,±0.7572,−0.4692).
 cpu::Frame h2o_frame() {
     cpu::Frame f(3);
-    const double pos[3][3] = {{0.0, 0.0, 0.1173},
-                              {0.0, 0.7572, -0.4692},
-                              {0.0, -0.7572, -0.4692}};
+    const double pos[3][3] = {
+        {0.0, 0.0, 0.1173}, {0.0, 0.7572, -0.4692}, {0.0, -0.7572, -0.4692}};
     const int z[3] = {8, 1, 1};
     for (int i = 0; i < 3; ++i) {
         f.span(kAtom_x)[i] = pos[i][0];
@@ -52,8 +51,8 @@ point_charge_potential(const cpu::Frame& f, const std::vector<double>& q,
             const double dx = grid[k][0] - f.span(kAtom_x)[static_cast<int>(a)];
             const double dy = grid[k][1] - f.span(kAtom_y)[static_cast<int>(a)];
             const double dz = grid[k][2] - f.span(kAtom_z)[static_cast<int>(a)];
-            const double r_bohr = std::sqrt(dx * dx + dy * dy + dz * dz)
-                                  * units::kAngstromInBohr;
+            const double r_bohr =
+                std::sqrt(dx * dx + dy * dy + dz * dz) * units::kAngstromInBohr;
             V[k] += q[a] / r_bohr;
         }
     }

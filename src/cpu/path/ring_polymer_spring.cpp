@@ -16,7 +16,8 @@ RingPolymerSpring::RingPolymerSpring(ReplicaSet* band, int bead_index,
     if (!band_)
         throw std::invalid_argument("RingPolymerSpring: band is null");
     if (bead_index < 0 || bead_index >= band_->size())
-        throw std::invalid_argument("RingPolymerSpring: bead_index out of range");
+        throw std::invalid_argument(
+            "RingPolymerSpring: bead_index out of range");
     if (!(k_spring >= 0.0))
         throw std::invalid_argument("RingPolymerSpring: k_spring must be ≥ 0");
 }

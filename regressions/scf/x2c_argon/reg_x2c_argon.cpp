@@ -34,7 +34,7 @@ int main() {
     constexpr double kE_nr_pyscf = -526.8027603325265;
     constexpr double kE_x2c_pyscf = -528.6442231685685;
     constexpr double kDelta_pyscf = kE_x2c_pyscf - kE_nr_pyscf; // ~−1.841 Ha
-    constexpr double kTolAbs = 1e-5; // Ha
+    constexpr double kTolAbs = 1e-5;                            // Ha
 
     cpu::Frame frame(1);
     frame.span(kAtom_type)[0] = 18; // Ar
@@ -78,8 +78,8 @@ int main() {
     std::printf("Ar/def2-TZVP RHF\n");
     std::printf("  E_nr   got=%.12f  pin=%.12f  |diff|=%.3e\n", e_nr,
                 kE_nr_pyscf, diff_nr);
-    std::printf("  E_x2c  got=%.12f  pin=%.12f  |diff|=%.3e  tol=%.0e\n",
-                e_x2c, kE_x2c_pyscf, diff_x2c, kTolAbs);
+    std::printf("  E_x2c  got=%.12f  pin=%.12f  |diff|=%.3e  tol=%.0e\n", e_x2c,
+                kE_x2c_pyscf, diff_x2c, kTolAbs);
     std::printf("  delta  got=%.12f  pin=%.12f  rel_err=%.3e\n", delta,
                 kDelta_pyscf, rel_delta);
 

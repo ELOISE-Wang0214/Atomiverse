@@ -12,12 +12,12 @@
 ///                N_det = C(1,1) * C(1,1) = 1 * 1 = 1 determinant
 ///                => single determinant => FCI == RHF => e_corr == 0 exactly.
 
-#include "atomiverse/cpu/scf/casci.h"
 #include "atomiverse/cpu/scf/fci.h"
+#include "atomiverse/cpu/scf/casci.h"
 #include "atomiverse/cpu/scf/internal/ao2mo.h"
 #include "atomiverse/cpu/scf/internal/casci_pack.h"
-#include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/ci_engine.h"
+#include "atomiverse/cpu/scf/internal/fci_pack.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -159,8 +159,8 @@ CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                          double e_scf_ha, int ncas, int nelecas) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
-        throw std::invalid_argument(
-            "casci_energy: ERI is not materialized; call with compute_eri=true.");
+        throw std::invalid_argument("casci_energy: ERI is not materialized; "
+                                    "call with compute_eri=true.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
         throw std::invalid_argument(
@@ -168,9 +168,8 @@ CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             "n_beta).");
     }
     if (ncas <= 0) {
-        throw std::invalid_argument(
-            "casci_energy: ncas must be positive (got " + std::to_string(ncas)
-            + ")");
+        throw std::invalid_argument("casci_energy: ncas must be positive (got "
+                                    + std::to_string(ncas) + ")");
     }
     if (nelecas < 0 || (nelecas % 2) != 0) {
         throw std::invalid_argument(
@@ -186,9 +185,9 @@ CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int ncore = n_alpha - n_act_a;
 
     if (n_act_a > ncas) {
-        throw std::invalid_argument(
-            "casci_energy: nelecas/2=" + std::to_string(n_act_a)
-            + " exceeds ncas=" + std::to_string(ncas));
+        throw std::invalid_argument("casci_energy: nelecas/2="
+                                    + std::to_string(n_act_a)
+                                    + " exceeds ncas=" + std::to_string(ncas));
     }
     if (ncore < 0) {
         throw std::invalid_argument(
@@ -196,9 +195,9 @@ CASCIResult casci_energy(const IntegralPack& ints, const SlaterDeterminant& det,
             + " is negative (nelecas too large for the reference occupation)");
     }
     if (ncore + ncas > n_mo) {
-        throw std::invalid_argument(
-            "casci_energy: ncore+ncas=" + std::to_string(ncore + ncas)
-            + " exceeds n_mo=" + std::to_string(n_mo));
+        throw std::invalid_argument("casci_energy: ncore+ncas="
+                                    + std::to_string(ncore + ncas)
+                                    + " exceeds n_mo=" + std::to_string(n_mo));
     }
 
     // Full MO integrals; active block is the contiguous window [ncore, ncore+ncas).

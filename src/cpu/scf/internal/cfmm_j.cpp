@@ -46,8 +46,7 @@ void product_geometry(const native::Shell& a, const native::Shell& b,
             const double dz = a.center[2] - b.center[2];
             const double r2 = dx * dx + dy * dy + dz * dz;
             // Primitive product weight ~ |c_p c_q| exp(-μ R²) (positive proxy).
-            const double w =
-                std::fabs(ca[p] * cb[q]) * std::exp(-mu * r2);
+            const double w = std::fabs(ca[p] * cb[q]) * std::exp(-mu * r2);
             const double px =
                 (aa[p] * a.center[0] + ab[q] * b.center[0]) / zeta;
             const double py =
@@ -80,8 +79,7 @@ CfmmJ::CfmmJ(const std::vector<native::Shell>& shells, int order,
     if (order_ < 0)
         throw std::invalid_argument("CfmmJ: order must be >= 0");
     if (!(threshold_ > 0.0 && threshold_ <= 1.0))
-        throw std::invalid_argument(
-            "CfmmJ: threshold must lie in (0, 1]");
+        throw std::invalid_argument("CfmmJ: threshold must lie in (0, 1]");
 
     // Own shell storage so pointers remain valid after the pack moves.
     shells_.resize(static_cast<std::size_t>(n_ao_));
@@ -116,8 +114,7 @@ void CfmmJ::form_distributions_() {
             if (si.l >= 2 || sj.l >= 2) {
                 schwarz = std::numeric_limits<double>::infinity();
             } else {
-                const double diag =
-                    native::eri(si, sj, si, sj);
+                const double diag = native::eri(si, sj, si, sj);
                 schwarz = std::sqrt(std::max(0.0, diag));
             }
             if (schwarz <= schwarz_thr_)
@@ -139,8 +136,8 @@ void CfmmJ::classify_pairs_() {
     near_pairs_.clear();
     far_pairs_.clear();
     const int nd = static_cast<int>(dists_.size());
-    near_pairs_.reserve(static_cast<std::size_t>(nd) * static_cast<std::size_t>(nd) / 2
-                        + 1);
+    near_pairs_.reserve(
+        static_cast<std::size_t>(nd) * static_cast<std::size_t>(nd) / 2 + 1);
     for (int left = 0; left < nd; ++left) {
         const Dist& A = dists_[static_cast<std::size_t>(left)];
         for (int right = 0; right <= left; ++right) {

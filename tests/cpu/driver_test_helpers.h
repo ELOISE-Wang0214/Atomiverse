@@ -7,13 +7,13 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace atv_test {
 

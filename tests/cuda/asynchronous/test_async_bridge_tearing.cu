@@ -31,10 +31,10 @@
 #include "atomiverse/cuda/asynchronous/async_bridge.cuh"
 #include "atomiverse/cuda/asynchronous/record_base.cuh"
 #include "atomiverse/cuda/asynchronous/sync_guard.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 

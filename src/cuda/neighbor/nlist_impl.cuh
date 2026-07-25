@@ -45,7 +45,7 @@ struct NListBuffers {
     DeviceVector<int> pair_counts;   // [num_clusters] per-cluster pair count
     DeviceVector<int> row_ptr;       // [num_clusters + 1]
     DeviceVector<int> row_ptr_upper; // [num_clusters + 1] coarse-count offsets
-    DeviceVector<int> col_idx; // [num_pairs]
+    DeviceVector<int> col_idx;       // [num_pairs]
     /// [num_pairs * kMaskWords] OpenMM multi-word interaction masks.
     DeviceVector<uint64_t> interaction_mask;
     DeviceVector<char> prefix_temp;
@@ -169,7 +169,8 @@ struct NListBuffers {
 
     void resize_pairs(int num_pairs) {
         col_idx.resize(num_pairs);
-        interaction_mask.resize(static_cast<std::size_t>(num_pairs) * kMaskWords);
+        interaction_mask.resize(static_cast<std::size_t>(num_pairs)
+                                * kMaskWords);
     }
 
     void resize_flat_pairs(int max_pairs) {

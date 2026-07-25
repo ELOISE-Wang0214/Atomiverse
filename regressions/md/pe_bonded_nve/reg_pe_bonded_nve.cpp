@@ -13,9 +13,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
@@ -30,8 +30,11 @@ int main() {
     const double angle_K = 60.0 * kcal_to_ev; // [eV/rad²]
     const double angle_theta0 = 109.5 * units::pi / 180.0;
     const std::vector<double> dihedral_Cn = {
-        1.73 * kcal_to_ev, -4.49 * kcal_to_ev, 0.776 * kcal_to_ev,
-        6.99 * kcal_to_ev, 0.0,
+        1.73 * kcal_to_ev,
+        -4.49 * kcal_to_ev,
+        0.776 * kcal_to_ev,
+        6.99 * kcal_to_ev,
+        0.0,
     };
 
     const int n_carbons = 20;
@@ -84,8 +87,8 @@ int main() {
     const double e0 =
         frame.meta.get(ATV::kEnergy) + frame.meta.get(ATV::kKinetic);
     if (!(std::isfinite(e0) && std::fabs(e0) > 0.0)) {
-        std::printf("FAIL: initial total energy is not finite/nonzero (E0=%g)\n",
-                    e0);
+        std::printf(
+            "FAIL: initial total energy is not finite/nonzero (E0=%g)\n", e0);
         return 1;
     }
 
@@ -108,9 +111,8 @@ int main() {
     const double bound = 1.0e-4;      // relative |dE|/|E0|
     const double secular_ratio = 4.0; // 2nd half may not exceed 1st by >4×
 
-    std::printf(
-        "PE bonded NVE, C%d UA, dt = %.1f fs, %d steps\n", n_carbons, dt,
-        n_steps);
+    std::printf("PE bonded NVE, C%d UA, dt = %.1f fs, %d steps\n", n_carbons,
+                dt, n_steps);
     std::printf("  E_total(0)       = %.6e eV\n", e0);
     std::printf("  worst |dE|/|E0|  = %.3e   want <= %.1e   [bounded]\n",
                 worst_drift, bound);

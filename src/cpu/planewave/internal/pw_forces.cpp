@@ -226,9 +226,8 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method) {
     DavidsonSolver davidson{n_bands, AccReal(method.tol) * AccReal(0.1), 40};
 
     PWProblem scf_prob;
-    const PWResult res = run_scf_fixed_occ(frame, method, scf_prob, poisson,
-                                           xc, veff, density, davidson,
-                                           "forces");
+    const PWResult res = run_scf_fixed_occ(frame, method, scf_prob, poisson, xc,
+                                           veff, density, davidson, "forces");
     if (!res.converged) {
         ATV_WARN("[pw] pw_forces_analytic: SCF not converged after {} iters; "
                  "forces use last density",

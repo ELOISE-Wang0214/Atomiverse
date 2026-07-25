@@ -32,8 +32,7 @@ double dist(const std::array<double, 3>& a, const std::array<double, 3>& b) {
     return std::sqrt(s);
 }
 
-std::array<double, 3> sum_centers(
-    const std::vector<std::array<double, 3>>& c) {
+std::array<double, 3> sum_centers(const std::vector<std::array<double, 3>>& c) {
     std::array<double, 3> s = {0.0, 0.0, 0.0};
     for (const auto& p : c)
         for (int k = 0; k < 3; ++k)
@@ -77,8 +76,8 @@ int check_h2() {
                 "spread=%.6f Å²\n",
                 r.centers[0][0], r.centers[0][1], r.centers[0][2], err,
                 r.spreads[0]);
-    if (err > 1e-4 || std::fabs(r.centers[0][0]) > 1e-6 ||
-        std::fabs(r.centers[0][1]) > 1e-6 || !(r.spreads[0] > 0.0)) {
+    if (err > 1e-4 || std::fabs(r.centers[0][0]) > 1e-6
+        || std::fabs(r.centers[0][1]) > 1e-6 || !(r.spreads[0] > 0.0)) {
         std::printf("FAIL H2: midpoint / spread pin\n");
         return 1;
     }
@@ -107,12 +106,10 @@ int check_h2o() {
     const std::array<double, 3> O = {0.0, 0.0, 0.1173};
     const std::array<double, 3> H1 = {0.0, 0.7572, -0.4692};
     const std::array<double, 3> H2 = {0.0, -0.7572, -0.4692};
-    const std::array<double, 3> mid1 = {0.5 * (O[0] + H1[0]),
-                                        0.5 * (O[1] + H1[1]),
-                                        0.5 * (O[2] + H1[2])};
-    const std::array<double, 3> mid2 = {0.5 * (O[0] + H2[0]),
-                                        0.5 * (O[1] + H2[1]),
-                                        0.5 * (O[2] + H2[2])};
+    const std::array<double, 3> mid1 = {
+        0.5 * (O[0] + H1[0]), 0.5 * (O[1] + H1[1]), 0.5 * (O[2] + H1[2])};
+    const std::array<double, 3> mid2 = {
+        0.5 * (O[0] + H2[0]), 0.5 * (O[1] + H2[1]), 0.5 * (O[2] + H2[2])};
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
@@ -220,8 +217,8 @@ int check_h2o() {
     const auto& lp1 = pool[0];
     const auto& lp2 = pool[1];
     std::printf("  LP1 x=%.4f  LP2 x=%.4f\n", lp1[0], lp2[0]);
-    if (!(std::fabs(lp1[0]) > 0.15) || !(std::fabs(lp2[0]) > 0.15) ||
-        !(lp1[0] * lp2[0] < 0.0)) {
+    if (!(std::fabs(lp1[0]) > 0.15) || !(std::fabs(lp2[0]) > 0.15)
+        || !(lp1[0] * lp2[0] < 0.0)) {
         std::printf("FAIL H2O: lone-pair rabbit-ear x pattern\n");
         return 1;
     }

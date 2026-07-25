@@ -32,9 +32,8 @@ const DftbElementRow& element_row(int z) {
     for (std::size_t i = 0; i < kDftbNElements; ++i)
         if (kDftbElements[i].z == z)
             return kDftbElements[i];
-    throw std::runtime_error(
-        "DFTB2: unsupported element Z=" + std::to_string(z)
-        + " (static mio-style tables cover H/C/N/O only)");
+    throw std::runtime_error("DFTB2: unsupported element Z=" + std::to_string(z)
+                             + " (static mio-style tables cover H/C/N/O only)");
 }
 
 const DftbPairSkRow& pair_sk(int za, int zb) {
@@ -118,10 +117,8 @@ void fill_sk_block(const DftbElementRow& ea, const DftbElementRow& eb,
         for (int a = 0; a < 3; ++a) {
             for (int b = 0; b < 3; ++b) {
                 const double d_ab = (a == b) ? 1.0 : 0.0;
-                const double hv =
-                    dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
-                const double sv =
-                    dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
+                const double hv = dir[a] * dir[b] * (Hpps - Hppp) + d_ab * Hppp;
+                const double sv = dir[a] * dir[b] * (Spps - Sppp) + d_ab * Sppp;
                 set_hs(1 + a, 1 + b, hv, sv);
             }
         }
@@ -194,8 +191,7 @@ void DFTB2::launch(const LaunchContext& ctx) {
             const auto& eb = *el[static_cast<std::size_t>(b)];
             double dx, dy, dz;
             const double r = dist_vec(a, b, dx, dy, dz);
-            const double rcut =
-                std::max(ea.r_cut, eb.r_cut);
+            const double rcut = std::max(ea.r_cut, eb.r_cut);
             if (r > rcut)
                 continue;
             const auto& sk = pair_sk(type[a], type[b]);
@@ -220,12 +216,11 @@ void DFTB2::launch(const LaunchContext& ctx) {
                 double dx, dy, dz;
                 const double r = (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
                 const double g =
-                    (a == b) ? el[static_cast<std::size_t>(a)]->hubbard_u
-                             : gamma_ab(r,
-                                        el[static_cast<std::size_t>(a)]
-                                            ->hubbard_u,
-                                        el[static_cast<std::size_t>(b)]
-                                            ->hubbard_u);
+                    (a == b)
+                        ? el[static_cast<std::size_t>(a)]->hubbard_u
+                        : gamma_ab(r,
+                                   el[static_cast<std::size_t>(a)]->hubbard_u,
+                                   el[static_cast<std::size_t>(b)]->hubbard_u);
                 shift += g * dq[static_cast<std::size_t>(b)];
             }
             dV[static_cast<std::size_t>(a)] = shift;
@@ -238,10 +233,9 @@ void DFTB2::launch(const LaunchContext& ctx) {
             for (int b = 0; b < n_at; ++b) {
                 const int ib = ao0[static_cast<std::size_t>(b)];
                 const int nb = el[static_cast<std::size_t>(b)]->n_ao;
-                const double half =
-                    0.5
-                    * (dV[static_cast<std::size_t>(a)]
-                       + dV[static_cast<std::size_t>(b)]);
+                const double half = 0.5
+                                    * (dV[static_cast<std::size_t>(a)]
+                                       + dV[static_cast<std::size_t>(b)]);
                 for (int i = 0; i < na; ++i)
                     for (int j = 0; j < nb; ++j)
                         H(ia + i, ib + j) += half * S(ia + i, ib + j);
@@ -267,9 +261,9 @@ void DFTB2::launch(const LaunchContext& ctx) {
             const int na = el[static_cast<std::size_t>(a)]->n_ao;
             for (int i = 0; i < na; ++i)
                 qa += PS(ia + i, ia + i);
-            const double dqi =
-                qa - el[static_cast<std::size_t>(a)]->n_val;
-            max_dq = std::max(max_dq, std::abs(dqi - dq[static_cast<std::size_t>(a)]));
+            const double dqi = qa - el[static_cast<std::size_t>(a)]->n_val;
+            max_dq = std::max(max_dq,
+                              std::abs(dqi - dq[static_cast<std::size_t>(a)]));
             dq[static_cast<std::size_t>(a)] = dqi;
         }
 
@@ -280,15 +274,13 @@ void DFTB2::launch(const LaunchContext& ctx) {
         for (int a = 0; a < n_at; ++a)
             for (int b = 0; b < n_at; ++b) {
                 double dx, dy, dz;
-                const double r =
-                    (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
+                const double r = (a == b) ? 0.0 : dist_vec(a, b, dx, dy, dz);
                 const double g =
-                    (a == b) ? el[static_cast<std::size_t>(a)]->hubbard_u
-                             : gamma_ab(r,
-                                        el[static_cast<std::size_t>(a)]
-                                            ->hubbard_u,
-                                        el[static_cast<std::size_t>(b)]
-                                            ->hubbard_u);
+                    (a == b)
+                        ? el[static_cast<std::size_t>(a)]->hubbard_u
+                        : gamma_ab(r,
+                                   el[static_cast<std::size_t>(a)]->hubbard_u,
+                                   el[static_cast<std::size_t>(b)]->hubbard_u);
                 e_scc += 0.5 * g * dq[static_cast<std::size_t>(a)]
                          * dq[static_cast<std::size_t>(b)];
             }
@@ -356,11 +348,11 @@ void DFTB2::launch(const LaunchContext& ctx) {
                         const double g =
                             (a == b)
                                 ? el[static_cast<std::size_t>(a)]->hubbard_u
-                                : gamma_ab(
-                                      r,
-                                      el[static_cast<std::size_t>(a)]->hubbard_u,
-                                      el[static_cast<std::size_t>(b)]
-                                          ->hubbard_u);
+                                : gamma_ab(r,
+                                           el[static_cast<std::size_t>(a)]
+                                               ->hubbard_u,
+                                           el[static_cast<std::size_t>(b)]
+                                               ->hubbard_u);
                         shift += g * dql[static_cast<std::size_t>(b)];
                     }
                     dV[static_cast<std::size_t>(a)] = shift;
@@ -416,11 +408,11 @@ void DFTB2::launch(const LaunchContext& ctx) {
                         const double g =
                             (a == b)
                                 ? el[static_cast<std::size_t>(a)]->hubbard_u
-                                : gamma_ab(
-                                      r,
-                                      el[static_cast<std::size_t>(a)]->hubbard_u,
-                                      el[static_cast<std::size_t>(b)]
-                                          ->hubbard_u);
+                                : gamma_ab(r,
+                                           el[static_cast<std::size_t>(a)]
+                                               ->hubbard_u,
+                                           el[static_cast<std::size_t>(b)]
+                                               ->hubbard_u);
                         e_scc_l += 0.5 * g * dql[static_cast<std::size_t>(a)]
                                    * dql[static_cast<std::size_t>(b)];
                     }
@@ -457,7 +449,6 @@ void DFTB2::launch(const LaunchContext& ctx) {
             }
         }
     }
-
 }
 
 } // namespace semiempirical

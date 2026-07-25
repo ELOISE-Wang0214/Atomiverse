@@ -64,8 +64,13 @@ int main() {
         cpu::QmmmPolarizable* p = nullptr;
         // hold via owned add
         eval.on(evaluate::Phase::evaluate)
-            .add(cpu::QmmmPolarizable{{1, 2, 3}, 0.0, /*alpha=*/2.0,
-                                      /*thole=*/2.6, 0.01, 3.4, 10.0});
+            .add(cpu::QmmmPolarizable{{1, 2, 3},
+                                      0.0,
+                                      /*alpha=*/2.0,
+                                      /*thole=*/2.6,
+                                      0.01,
+                                      3.4,
+                                      10.0});
         eval.build();
         eval.run(f);
         e_pol = f.meta.get(kEnergy);
@@ -85,8 +90,8 @@ int main() {
     }
     std::printf("qmmm_pol_h2o E_fix=%.6f E_pol=%.6f E_pol_term=%.6f eV\n",
                 e_fix, e_pol, e_pol_term);
-    if (!std::isfinite(e_fix) || !std::isfinite(e_pol) ||
-        !std::isfinite(e_pol_term)) {
+    if (!std::isfinite(e_fix) || !std::isfinite(e_pol)
+        || !std::isfinite(e_pol_term)) {
         std::printf("FAIL: non-finite\n");
         return 1;
     }

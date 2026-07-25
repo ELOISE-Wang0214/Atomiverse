@@ -120,10 +120,12 @@ double ci_element(std::uint64_t a_i, std::uint64_t b_i, std::uint64_t a_j,
 /// @brief Dense CI ground state: energy [Hartree], CI vector, and the enumerated
 ///        alpha/beta strings (block index I = ia*n_b + ib).
 struct CiSolution {
-    double energy = 0.0; ///< Ground-state energy [Hartree].
+    double energy = 0.0;      ///< Ground-state energy [Hartree].
     xt::xtensor<double, 1> c; ///< CI vector, length n_det.
-    std::vector<std::uint64_t> alphas; ///< Enumerated α (resp. β) occupation bitstrings; block index I = ia*n_b + ib.
-    std::vector<std::uint64_t> betas;  ///< Enumerated α (resp. β) occupation bitstrings; block index I = ia*n_b + ib.
+    std::vector<std::uint64_t>
+        alphas; ///< Enumerated α (resp. β) occupation bitstrings; block index I = ia*n_b + ib.
+    std::vector<std::uint64_t>
+        betas; ///< Enumerated α (resp. β) occupation bitstrings; block index I = ia*n_b + ib.
 };
 
 /// @brief Build the dense CI matrix from active-space h, g and a constant shift

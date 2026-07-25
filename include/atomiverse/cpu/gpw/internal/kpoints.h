@@ -166,8 +166,8 @@ struct KOrth {
 
 /// @brief Diagonalize H_k in the canonical-orthogonal basis:
 ///        (X† H X) C' = C' ε, C = X C'. Returns ascending ε and C (nb × m).
-std::pair<std::vector<double>, CplxMatrix>
-diagonalize_k(const CplxMatrix& H_k, const KOrth& orth);
+std::pair<std::vector<double>, CplxMatrix> diagonalize_k(const CplxMatrix& H_k,
+                                                         const KOrth& orth);
 
 /// @brief k-space DIIS error vector e = X†(H P S − S P H)X — the complex
 ///        sibling of `gpw_diis_error`; → 0 at self-consistency.

@@ -50,10 +50,11 @@ TEST(GpwForces, H2AnalyticVsFiniteDifference) {
     double max_err = 0.0;
     for (int a = 0; a < 2; ++a) {
         for (int k = 0; k < 3; ++k) {
-            max_abs = std::max(max_abs, std::abs(Ffd[static_cast<std::size_t>(a)][k]));
-            max_err = std::max(
-                max_err, std::abs(Fa[static_cast<std::size_t>(a)][k]
-                                  - Ffd[static_cast<std::size_t>(a)][k]));
+            max_abs = std::max(max_abs,
+                               std::abs(Ffd[static_cast<std::size_t>(a)][k]));
+            max_err = std::max(max_err,
+                               std::abs(Fa[static_cast<std::size_t>(a)][k]
+                                        - Ffd[static_cast<std::size_t>(a)][k]));
             std::printf(
                 "[GPW F] atom %d axis %d  analytic % .8f  fd % .8f  d % .2e\n",
                 a, k, Fa[static_cast<std::size_t>(a)][k],
@@ -62,7 +63,8 @@ TEST(GpwForces, H2AnalyticVsFiniteDifference) {
                     - Ffd[static_cast<std::size_t>(a)][k]);
         }
     }
-    std::printf("[GPW F] max|F|=%.6f  max|dF|=%.3e Ha/Bohr\n", max_abs, max_err);
+    std::printf("[GPW F] max|F|=%.6f  max|dF|=%.3e Ha/Bohr\n", max_abs,
+                max_err);
     EXPECT_LT(max_err, 5e-5) << "analytic vs FD mismatch (Ha/Bohr)";
 }
 

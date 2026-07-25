@@ -4,13 +4,14 @@
 #include <cstdio>
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/io/lammps_real.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/nose_hoover_npt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/lammps_real.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
@@ -18,7 +19,6 @@
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/pair_coul_cut.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 
@@ -53,14 +53,12 @@ void install_ff(Driver& d, Phase force_phase) {
     const double eps0 = kcal_per_mol_to_ev(0.1);
     const double eps1 = kcal_per_mol_to_ev(0.09);
     d.set_neighbor(cpu::md::NeighborList<>{8.0, 0.5});
-    d.add_potential(
-        cpu::PairLJCut{{{0, 0, eps0, 3.4}, {1, 1, eps1, 3.2}}, 8.0}
-            .set_special_bonds(0.0, 0.0, 0.5));
+    d.add_potential(cpu::PairLJCut{{{0, 0, eps0, 3.4}, {1, 1, eps1, 3.2}}, 8.0}
+                        .set_special_bonds(0.0, 0.0, 0.5));
     d.on(force_phase)
         .add(cpu::PairCoulCut{8.0}.set_special_bonds(0.0, 0.0, 0.5));
     d.add_potential(cpu::BondHarmonic{{kcal_per_mol_to_ev(200.0)}, {1.5}});
-    d.add_potential(
-        cpu::AngleHarmonic{{kcal_per_mol_to_ev(50.0)}, {1.9}});
+    d.add_potential(cpu::AngleHarmonic{{kcal_per_mol_to_ev(50.0)}, {1.9}});
 }
 
 } // namespace
@@ -96,7 +94,9 @@ int main() {
     {
         cpu::md::MD sim;
         install_ff(sim, md::Phase::force);
-        auto npt = cpu::md::NoseHooverNPT{400.0, 100.0, 0.0, 1000.0, 1.0, 0.0, 3, 3, {true, true, true}, 500.0};
+        auto npt = cpu::md::NoseHooverNPT{
+            400.0, 100.0, 0.0, 1000.0, 1.0, 0.0, 3, 3, {true, true, true},
+            500.0};
         npt.set_run_span(0, 50);
         sim.set_integrator(std::move(npt));
         sim.build();

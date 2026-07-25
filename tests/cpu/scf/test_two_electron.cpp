@@ -81,9 +81,9 @@ xt::xtensor<double, 4> reference_eri(const IntegralPack& pack) {
         for (int j = 0; j < n; ++j)
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
-                    ref(i, j, k, l) = cpu::scf::native::eri(
-                        pack.shells[i], pack.shells[j], pack.shells[k],
-                        pack.shells[l]);
+                    ref(i, j, k, l) =
+                        cpu::scf::native::eri(pack.shells[i], pack.shells[j],
+                                              pack.shells[k], pack.shells[l]);
     return ref;
 }
 
@@ -127,7 +127,8 @@ constexpr double kH2O_ERI_2323 = 4.7444446970738241e-02;
 // (a) Block-assembled dense ERI == per-AO scalar reference on a p-shell fixture.
 TEST(TestEriDense, EriDenseMatchesScalarReference) {
     const cpu::Frame frame = make_h2o();
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0, /*compute_eri=*/true};
+    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+                            /*compute_eri=*/true};
 
     ASSERT_EQ(pack.n_basis, 7);
     ASSERT_FALSE(pack.spherical())
@@ -144,7 +145,8 @@ TEST(TestEriDense, EriDenseMatchesScalarReference) {
 // (b) Pure-s fixture (H2/STO-3G) — exercises the eri_blk_ss_ss path.
 TEST(TestEriDense, EriDensePureSFixture) {
     const cpu::Frame frame = make_h2(0.74);
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0, /*compute_eri=*/true};
+    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+                            /*compute_eri=*/true};
 
     ASSERT_EQ(pack.n_basis, 2) << "H2/STO-3G is a pure-s 2-AO fixture";
     ASSERT_FALSE(pack.spherical());
@@ -160,7 +162,8 @@ TEST(TestEriDense, EriDensePureSFixture) {
 //     scatter must fill every mirror of a canonical block identically.
 TEST(TestEriDense, EriDenseSymmetrySpotChecks) {
     const cpu::Frame frame = make_h2o();
-    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0, /*compute_eri=*/true};
+    const IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
+                            /*compute_eri=*/true};
     const auto& E = pack.ERI;
 
     // A handful of (i,j,k,l) tuples spanning s and p AOs on water.

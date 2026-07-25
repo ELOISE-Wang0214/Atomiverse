@@ -64,9 +64,9 @@
 #include <memory>
 #include <string>
 
+#include "atomiverse/core/verdict.h"
 #include "atomiverse/cuda/component/context.cuh"
 #include "atomiverse/cuda/frame/frame.cuh"
-#include "atomiverse/core/verdict.h"
 
 namespace ATV {
 namespace cuda {

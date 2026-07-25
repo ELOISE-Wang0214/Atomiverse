@@ -20,9 +20,9 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/cpu/dynamics/md.h"
-#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

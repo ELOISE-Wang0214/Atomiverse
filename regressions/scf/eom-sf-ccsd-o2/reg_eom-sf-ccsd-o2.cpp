@@ -66,8 +66,8 @@ int main() {
     // Pins — REFERENCE.md (PySCF 2.14.0 UCCSD.eomsf_ccsd nroots=15, lowest 5).
     constexpr double kECcsd = -147.741936323434; // Ha
     constexpr double kOmegaEv[5] = {
-        0.004154770937, 1.024028019354, 1.024028354230, 1.586396740693,
-        6.184403293079,
+        0.004154770937, 1.024028019354, 1.024028354230,
+        1.586396740693, 6.184403293079,
     };
     constexpr double kTolEv = 1e-4; // eV
     constexpr double kTolHa = 1e-6; // Ha

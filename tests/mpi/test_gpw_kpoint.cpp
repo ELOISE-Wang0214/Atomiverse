@@ -29,10 +29,8 @@ std::vector<GpwAtom> si_bct(double a_bohr) {
     const double at = a_bohr / std::sqrt(2.0);
     const GaussianBasis bSi(molrs::Element::Si, "DZVP-MOLOPT-GTH");
     const GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
-    const double frac[4][3] = {{0.0, 0.0, 0.0},
-                               {0.5, 0.5, 0.5},
-                               {0.5, 0.0, 0.25},
-                               {0.0, 0.5, 0.75}};
+    const double frac[4][3] = {
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
     std::vector<GpwAtom> atoms;
     for (int i = 0; i < 4; ++i) {
         const double pos[3] = {frac[i][0] * at, frac[i][1] * at,

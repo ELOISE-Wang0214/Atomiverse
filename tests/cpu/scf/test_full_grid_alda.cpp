@@ -38,9 +38,9 @@ TEST(FullGridAlda, KernelSymmetric) {
     ASSERT_TRUE(rks.converged());
 
     IntegralPack pack{f, BasisSet::STO3G};
-    const MolecularGrid grid(
-        pack.atoms.data(), static_cast<int>(pack.atoms.size()),
-        rks.grid_level, rks.n_radial, rks.n_angular);
+    const MolecularGrid grid(pack.atoms.data(),
+                             static_cast<int>(pack.atoms.size()),
+                             rks.grid_level, rks.n_radial, rks.n_angular);
     const RealMatrix K = internal::alda_kernel_matrix(
         rks.determinant(), pack, grid, ExcitationChannel::singlet);
     ASSERT_EQ(K.shape()[0], K.shape()[1]);
@@ -56,8 +56,8 @@ TEST(FullGridAlda, DiracFxAnalytic) {
     // f_αα(ρ) = −(4/9) 2^{1/3} C_x ρ^{-2/3}
     constexpr double Cx = 0.7385587663820224;
     const double rho = 0.2;
-    const double expect =
-        -(4.0 / 9.0) * std::pow(2.0, 1.0 / 3.0) * Cx * std::pow(rho, -2.0 / 3.0);
+    const double expect = -(4.0 / 9.0) * std::pow(2.0, 1.0 / 3.0) * Cx
+                          * std::pow(rho, -2.0 / 3.0);
     EXPECT_NEAR(internal::alda_fx_dirac(rho), expect, 1e-14);
 }
 
@@ -83,9 +83,9 @@ TEST(FullGridAlda, FullGridDiffersFromDiagonalOnly) {
 
     // H2/STO-3G: n_ov = 1; K(0,0) finite and nonzero.
     IntegralPack pack{f, BasisSet::STO3G};
-    const MolecularGrid grid(
-        pack.atoms.data(), static_cast<int>(pack.atoms.size()),
-        lsda.grid_level, lsda.n_radial, lsda.n_angular);
+    const MolecularGrid grid(pack.atoms.data(),
+                             static_cast<int>(pack.atoms.size()),
+                             lsda.grid_level, lsda.n_radial, lsda.n_angular);
     const RealMatrix K = internal::alda_kernel_matrix(
         lsda.determinant(), pack, grid, ExcitationChannel::singlet);
     EXPECT_EQ(K.shape()[0], 1u);

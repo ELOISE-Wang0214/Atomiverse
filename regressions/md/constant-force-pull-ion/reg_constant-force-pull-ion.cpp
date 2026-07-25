@@ -64,20 +64,20 @@ int main() {
     const double Fz = 0.05; // [eV/Å]
     const int ion_type = 1;
     const int bg_type = 2;
-    const double z0 = 5.0; // [Å]
+    const double z0 = 5.0;       // [Å]
     const double U0_pin = -0.25; // [eV]  = -Fz * z0
     const double F_ion_pin[3] = {0.0, 0.0, Fz};
     const double F_bg_pin[3] = {0.0, 0.0, 0.0};
 
     // After 100 NVE steps (dt = 1 fs), from rest under constant Fz:
-    const double z_final_pin = 5.060381832778068; // [Å]
-    const double W_pin = 0.00301909163890342;     // [eV] = Fz * (z - z0)
+    const double z_final_pin = 5.060381832778068;   // [Å]
+    const double W_pin = 0.00301909163890342;       // [eV] = Fz * (z - z0)
     const double U_final_pin = -0.2530190916389034; // [eV]
 
-    const double tol_f = 1e-12;     // [eV/Å]
-    const double tol_u = 1e-12;     // [eV]
-    const double tol_z = 5e-6;      // [Å]  (force_to_accel rounding vs LAMMPS)
-    const double tol_w = 5e-7;      // [eV]
+    const double tol_f = 1e-12; // [eV/Å]
+    const double tol_u = 1e-12; // [eV]
+    const double tol_z = 5e-6;  // [Å]  (force_to_accel rounding vs LAMMPS)
+    const double tol_w = 5e-7;  // [eV]
 
     bool ok = true;
 

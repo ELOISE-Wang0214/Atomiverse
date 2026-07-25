@@ -76,16 +76,14 @@ int main() {
     const double neut = joint.neutrality_residual();
     const auto& mu = joint.last_mu();
 
-    const double rel_bot =
-        std::abs(q_bot - kQBotPin) / std::abs(kQBotPin);
-    const double rel_top =
-        std::abs(q_top - kQTopPin) / std::abs(kQTopPin);
+    const double rel_bot = std::abs(q_bot - kQBotPin) / std::abs(kQBotPin);
+    const double rel_top = std::abs(q_top - kQTopPin) / std::abs(kQTopPin);
 
     std::printf("dipole-electrode-joint\n");
-    std::printf("  Q_bot   = % .16e  (pin % .16e) rel=% .3e\n", q_bot,
-                kQBotPin, rel_bot);
-    std::printf("  Q_top   = % .16e  (pin % .16e) rel=% .3e\n", q_top,
-                kQTopPin, rel_top);
+    std::printf("  Q_bot   = % .16e  (pin % .16e) rel=% .3e\n", q_bot, kQBotPin,
+                rel_bot);
+    std::printf("  Q_top   = % .16e  (pin % .16e) rel=% .3e\n", q_top, kQTopPin,
+                rel_top);
     std::printf("  |sum Q| = % .3e\n", neut);
     std::printf("  mu_cat  = (% .6e, % .6e, % .16e)\n", mu[6], mu[7], mu[8]);
     std::printf("  mu_an   = (% .6e, % .6e, % .16e)\n", mu[9], mu[10], mu[11]);
@@ -119,8 +117,7 @@ int main() {
         ++nfail;
     }
     // Electrolyte permanent charges must remain.
-    if (std::abs(static_cast<double>(frame.span(kAtom_charge)[2]) - 1.0)
-            > 1e-14
+    if (std::abs(static_cast<double>(frame.span(kAtom_charge)[2]) - 1.0) > 1e-14
         || std::abs(static_cast<double>(frame.span(kAtom_charge)[3]) + 1.0)
                > 1e-14) {
         std::fprintf(stderr, "FAIL electrolyte charges mutated\n");
@@ -180,8 +177,7 @@ int main() {
     // MD binding path (one step).
     {
         cpu::Frame f2 = make_frame();
-        cpu::md::DipoleElectrodeJoint j2(
-            2.0, {0.0, 0.0, 0.0, 1.0, 1.5});
+        cpu::md::DipoleElectrodeJoint j2(2.0, {0.0, 0.0, 0.0, 1.0, 1.5});
         j2.add_electrode(1, 0.0);
         j2.add_electrode(2, 1.0);
         j2.thole_a = 0.39;
@@ -201,8 +197,8 @@ int main() {
 
         const double q_md = j2.total_charge(1);
         const double rel_md = std::abs(q_md - kQTopPin) / std::abs(kQTopPin);
-        std::printf("  MD path Q_top = % .16e  rel=% .3e  |sumQ|=% .3e\n",
-                    q_md, rel_md, j2.neutrality_residual());
+        std::printf("  MD path Q_top = % .16e  rel=% .3e  |sumQ|=% .3e\n", q_md,
+                    rel_md, j2.neutrality_residual());
         if (!(rel_md <= kRelTolQ) || !(j2.neutrality_residual() <= 1e-10)
             || !j2.last_joint_converged()) {
             std::fprintf(stderr, "FAIL MD-bound joint rel=%g neut=%g\n", rel_md,
@@ -215,6 +211,7 @@ int main() {
         std::fprintf(stderr, "%d check(s) failed\n", nfail);
         return 1;
     }
-    std::printf("PASS: dipole-electrode-joint vs offline MetalWalls-form pin\n");
+    std::printf(
+        "PASS: dipole-electrode-joint vs offline MetalWalls-form pin\n");
     return 0;
 }

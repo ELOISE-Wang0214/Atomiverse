@@ -48,9 +48,9 @@ TEST(TestGradientResult, FromHartreeBohrConvertsAndFlipsSign) {
 
     // force = -grad * (1 / kEvPerAngstromInHartreePerBohr) [eV/Angstrom];
     // sign flipped relative to grad.
-    EXPECT_NEAR(g.forces(0, 0), -5.142206747467393, 1e-12);   // -(+0.1)
-    EXPECT_NEAR(g.forces(0, 1), 10.284413494934785, 1e-12);   // -(-0.2)
-    EXPECT_NEAR(g.forces(0, 2), -2.5711033737336964, 1e-12);  // -(+0.05)
+    EXPECT_NEAR(g.forces(0, 0), -5.142206747467393, 1e-12);  // -(+0.1)
+    EXPECT_NEAR(g.forces(0, 1), 10.284413494934785, 1e-12);  // -(-0.2)
+    EXPECT_NEAR(g.forces(0, 2), -2.5711033737336964, 1e-12); // -(+0.05)
 
     // energy = energy_ha * kHartreeInEv [eV]; no sign flip.
     EXPECT_NEAR(g.energy, -40.817079368982, 1e-12);

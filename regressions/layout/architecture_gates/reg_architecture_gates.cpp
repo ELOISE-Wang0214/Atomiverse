@@ -10,13 +10,13 @@
 ///          - the dissolved runtime: a thin coordinator over the
 ///            communication / device / asynchronous sub-runtimes [no_backend]
 ///        The .sh scrubs are the enforcement; this is the consumer-side witness.
-#include "atomiverse/core/plan.h"                            // core/ contracts
-#include "atomiverse/cpu/dynamics/md.h"                      // full-word domain
-#include "atomiverse/cpu/longrange/ewald_sum.h"              // backend-owned math
-#include "atomiverse/cpu/communication/domain_runtime.h"     // DD lifecycle
-#include "atomiverse/cpu/device/device_runtime.h"            // threads + timing
-#include "atomiverse/cpu/asynchronous/analysis_runtime.h"    // async analysis
-#include "atomiverse/cpu/driver/runtime.h"                   // the coordinator
+#include "atomiverse/core/plan.h"                         // core/ contracts
+#include "atomiverse/cpu/asynchronous/analysis_runtime.h" // async analysis
+#include "atomiverse/cpu/communication/domain_runtime.h"  // DD lifecycle
+#include "atomiverse/cpu/device/device_runtime.h"         // threads + timing
+#include "atomiverse/cpu/driver/runtime.h"                // the coordinator
+#include "atomiverse/cpu/dynamics/md.h"                   // full-word domain
+#include "atomiverse/cpu/longrange/ewald_sum.h"           // backend-owned math
 
 #include <cstdio>
 

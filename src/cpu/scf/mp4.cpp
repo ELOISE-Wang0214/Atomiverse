@@ -52,8 +52,7 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 /*e_corr_s=*/0.0,
                 /*e_corr_d=*/0.0,
                 /*e_corr_t=*/0.0,
-                /*e_corr_q=*/0.0,
-                n_frozen};
+                /*e_corr_q=*/0.0,   n_frozen};
     }
 
     // Full MO ERI in chemist notation (pq|rs).
@@ -81,18 +80,18 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
     const int no = n_occ_so;
     const int nv = n_vir_so;
     const std::size_t t_size =
-        static_cast<std::size_t>(no) * static_cast<std::size_t>(no) *
-        static_cast<std::size_t>(nv) * static_cast<std::size_t>(nv);
+        static_cast<std::size_t>(no) * static_cast<std::size_t>(no)
+        * static_cast<std::size_t>(nv) * static_cast<std::size_t>(nv);
     std::vector<double> t2(t_size, 0.0);
     std::vector<double> u2(t_size, 0.0);
     std::vector<double> D2(t_size, 0.0);
     auto idx = [no, nv](int i, int j, int a, int b) -> std::size_t {
-        return ((static_cast<std::size_t>(i) * static_cast<std::size_t>(no) +
-                 static_cast<std::size_t>(j)) *
-                    static_cast<std::size_t>(nv) +
-                static_cast<std::size_t>(a)) *
-                   static_cast<std::size_t>(nv) +
-               static_cast<std::size_t>(b);
+        return ((static_cast<std::size_t>(i) * static_cast<std::size_t>(no)
+                 + static_cast<std::size_t>(j))
+                    * static_cast<std::size_t>(nv)
+                + static_cast<std::size_t>(a))
+                   * static_cast<std::size_t>(nv)
+               + static_cast<std::size_t>(b);
     };
 
     // First-order doubles t2 and denominators D2.
@@ -104,8 +103,8 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                 const int A = v_so[static_cast<std::size_t>(a)];
                 for (int b = 0; b < nv; ++b) {
                     const int B = v_so[static_cast<std::size_t>(b)];
-                    const double denom =
-                        mp_denominator(eps_so(I), eps_so(J), eps_so(A), eps_so(B));
+                    const double denom = mp_denominator(eps_so(I), eps_so(J),
+                                                        eps_so(A), eps_so(B));
                     const std::size_t k = idx(i, j, a, b);
                     D2[k] = denom;
                     t2[k] = antisym_eri(g, I, J, A, B) / denom;
@@ -129,16 +128,16 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                         const int K = o_so[static_cast<std::size_t>(k)];
                         for (int l = 0; l < no; ++l) {
                             const int L = o_so[static_cast<std::size_t>(l)];
-                            val += 0.5 * antisym_eri(g, I, J, K, L) *
-                                   t2[idx(k, l, a, b)];
+                            val += 0.5 * antisym_eri(g, I, J, K, L)
+                                   * t2[idx(k, l, a, b)];
                         }
                     }
                     for (int c = 0; c < nv; ++c) {
                         const int Cc = v_so[static_cast<std::size_t>(c)];
                         for (int d = 0; d < nv; ++d) {
                             const int Dd = v_so[static_cast<std::size_t>(d)];
-                            val += 0.5 * antisym_eri(g, A, B, Cc, Dd) *
-                                   t2[idx(i, j, c, d)];
+                            val += 0.5 * antisym_eri(g, A, B, Cc, Dd)
+                                   * t2[idx(i, j, c, d)];
                         }
                     }
 
@@ -151,14 +150,14 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                             for (int c = 0; c < nv; ++c) {
                                 const int Cc =
                                     v_so[static_cast<std::size_t>(c)];
-                                s += antisym_eri(g, AA, K, II, Cc) *
-                                     t2[idx(jj, k, bb, c)];
+                                s += antisym_eri(g, AA, K, II, Cc)
+                                     * t2[idx(jj, k, bb, c)];
                             }
                         }
                         return s;
                     };
-                    val += ring_s(i, j, a, b) - ring_s(j, i, a, b) -
-                           ring_s(i, j, b, a) + ring_s(j, i, b, a);
+                    val += ring_s(i, j, a, b) - ring_s(j, i, a, b)
+                           - ring_s(i, j, b, a) + ring_s(j, i, b, a);
 
                     u2[idx(i, j, a, b)] = val;
                 }
@@ -213,8 +212,8 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const int Bb = v_so[static_cast<std::size_t>(b)];
                     for (int c = 0; c < nv; ++c) {
                         const int Cc = v_so[static_cast<std::size_t>(c)];
-                        X += 0.5 * antisym_eri(g, J, A, Bb, Cc) *
-                             t2[idx(i, j, b, c)];
+                        X += 0.5 * antisym_eri(g, J, A, Bb, Cc)
+                             * t2[idx(i, j, b, c)];
                     }
                 }
             }
@@ -224,8 +223,8 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                     const int K = o_so[static_cast<std::size_t>(k)];
                     for (int b = 0; b < nv; ++b) {
                         const int Bb = v_so[static_cast<std::size_t>(b)];
-                        X -= 0.5 * antisym_eri(g, J, K, I, Bb) *
-                             t2[idx(j, k, a, b)];
+                        X -= 0.5 * antisym_eri(g, J, K, I, Bb)
+                             * t2[idx(j, k, a, b)];
                     }
                 }
             }
@@ -283,14 +282,14 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                                     for (int e = 0; e < nv; ++e) {
                                         const int Ee =
                                             v_so[static_cast<std::size_t>(e)];
-                                        s += antisym_eri(g, BB, CC, Ee, KK) *
-                                             t2[idx(ii, jj, aa, e)];
+                                        s += antisym_eri(g, BB, CC, Ee, KK)
+                                             * t2[idx(ii, jj, aa, e)];
                                     }
                                     for (int m = 0; m < no; ++m) {
                                         const int Mm =
                                             o_so[static_cast<std::size_t>(m)];
-                                        s -= antisym_eri(g, Mm, CC, JJ, KK) *
-                                             t2[idx(ii, m, aa, bb)];
+                                        s -= antisym_eri(g, Mm, CC, JJ, KK)
+                                             * t2[idx(ii, m, aa, bb)];
                                     }
                                     (void)II;
                                     (void)AA;
@@ -300,17 +299,16 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
                                 // P(p/qr) f = f(pqr) - f(qpr) - f(rqp)
                                 auto Pocc = [&](int ii, int jj, int kk, int aa,
                                                 int bb, int cc) {
-                                    return base(ii, jj, kk, aa, bb, cc) -
-                                           base(jj, ii, kk, aa, bb, cc) -
-                                           base(kk, jj, ii, aa, bb, cc);
+                                    return base(ii, jj, kk, aa, bb, cc)
+                                           - base(jj, ii, kk, aa, bb, cc)
+                                           - base(kk, jj, ii, aa, bb, cc);
                                 };
-                                const double W =
-                                    Pocc(i, j, k, a, b, c) -
-                                    Pocc(i, j, k, b, a, c) -
-                                    Pocc(i, j, k, c, b, a);
-                                const double denom = eps_so(I) + eps_so(J) +
-                                                     eps_so(K) - eps_so(A) -
-                                                     eps_so(B) - eps_so(C);
+                                const double W = Pocc(i, j, k, a, b, c)
+                                                 - Pocc(i, j, k, b, a, c)
+                                                 - Pocc(i, j, k, c, b, a);
+                                const double denom = eps_so(I) + eps_so(J)
+                                                     + eps_so(K) - eps_so(A)
+                                                     - eps_so(B) - eps_so(C);
                                 if (std::fabs(W) < 1e-18)
                                     continue;
                                 if (denom >= 0.0) {
@@ -330,8 +328,8 @@ MP4Result mp4_energy(const IntegralPack& ints, const SlaterDeterminant& det,
 
     const double e4 = e4_s + e4_d + e4_t + e4_q;
     const double e_corr = e2 + e3 + e4;
-    return {e_corr, e_scf_ha + e_corr, e2, e3, e4, e4_s, e4_d, e4_t, e4_q,
-            n_frozen};
+    return {e_corr, e_scf_ha + e_corr, e2, e3, e4, e4_s, e4_d, e4_t,
+            e4_q,   n_frozen};
 }
 
 } // namespace scf

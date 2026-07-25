@@ -61,16 +61,16 @@ int main() {
     const cpu::scf::MP2Result mp2 = rhf.mp2(frame);
 
     // PySCF 2.14.0 pins — see REFERENCE.md (never live-import PySCF here).
-    constexpr double want_e_hf = -74.963023138463;   // RHF total [Ha]
-    constexpr double want_e_corr = -0.035545651647;  // plain RMP2 corr [Ha]
-    constexpr double want_e_tot = -74.998568790110;  // = e_hf + e_corr [Ha]
-    constexpr double tol_hf = 1e-7;                   // Ha (reference gate)
-    constexpr double tol_corr = 1e-7;                 // Ha (tighter product gate)
-    constexpr double tol_tot = 1e-6;                  // Ha
+    constexpr double want_e_hf = -74.963023138463;  // RHF total [Ha]
+    constexpr double want_e_corr = -0.035545651647; // plain RMP2 corr [Ha]
+    constexpr double want_e_tot = -74.998568790110; // = e_hf + e_corr [Ha]
+    constexpr double tol_hf = 1e-7;                 // Ha (reference gate)
+    constexpr double tol_corr = 1e-7;               // Ha (tighter product gate)
+    constexpr double tol_tot = 1e-6;                // Ha
 
     const double e_hf = rhf.energy();
-    std::printf("RHF      E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_hf, want_e_hf,
-                e_hf - want_e_hf);
+    std::printf("RHF      E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_hf,
+                want_e_hf, e_hf - want_e_hf);
     std::printf("RMP2 e_corr = %.12f Ha (pin %.12f, dE = %.3e)\n", mp2.e_corr,
                 want_e_corr, mp2.e_corr - want_e_corr);
     std::printf("RMP2 e_tot  = %.12f Ha (pin %.12f, dE = %.3e)\n", mp2.e_tot,

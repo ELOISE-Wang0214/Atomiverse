@@ -114,9 +114,9 @@ TEST(PppmCoul, MadelungNaCl) {
     const double cutoff = 1.9 * d;
     // Moderate α + fine mesh so HE G(k) resolves the lattice well.
     const double alpha = 3.5 / cutoff;
-    const double e =
-        electrostatic_energy(frame, pairs, alpha, cutoff,
-                             cpu::KSpacePPPM(alpha, /*spacing=*/0.5, /*order=*/5));
+    const double e = electrostatic_energy(
+        frame, pairs, alpha, cutoff,
+        cpu::KSpacePPPM(alpha, /*spacing=*/0.5, /*order=*/5));
 
     const int N = n * n * n;
     const double e_expected =
@@ -136,9 +136,8 @@ TEST(PppmCoul, AgreesWithEwald) {
     const double alpha = 3.5 / cutoff;
     const double e_ewald = electrostatic_energy(frame, pairs, alpha, cutoff,
                                                 cpu::KSpaceEwald(alpha, 1e-8));
-    const double e_pppm =
-        electrostatic_energy(frame, pairs, alpha, cutoff,
-                             cpu::KSpacePPPM(alpha, 0.5, 5));
+    const double e_pppm = electrostatic_energy(frame, pairs, alpha, cutoff,
+                                               cpu::KSpacePPPM(alpha, 0.5, 5));
     EXPECT_NEAR(e_pppm / e_ewald, 1.0, 1e-3)
         << "ewald=" << e_ewald << " pppm=" << e_pppm;
 }
@@ -154,9 +153,8 @@ TEST(PppmCoul, AgreesWithPme) {
     const double alpha = 3.5 / cutoff;
     const double e_pme = electrostatic_energy(frame, pairs, alpha, cutoff,
                                               cpu::KSpacePME(alpha, 0.5, 6));
-    const double e_pppm =
-        electrostatic_energy(frame, pairs, alpha, cutoff,
-                             cpu::KSpacePPPM(alpha, 0.5, 5));
+    const double e_pppm = electrostatic_energy(frame, pairs, alpha, cutoff,
+                                               cpu::KSpacePPPM(alpha, 0.5, 5));
     EXPECT_NEAR(e_pppm / e_pme, 1.0, 2e-3)
         << "pme=" << e_pme << " pppm=" << e_pppm;
 }
@@ -170,10 +168,12 @@ TEST(PppmCoul, AlphaIndependence) {
 
     const double cutoff = 1.9 * d;
     // Fine mesh so both α values are well-resolved.
-    const double e1 = electrostatic_energy(
-        frame, pairs, 3.0 / cutoff, cutoff, cpu::KSpacePPPM(3.0 / cutoff, 0.4, 5));
-    const double e2 = electrostatic_energy(
-        frame, pairs, 5.0 / cutoff, cutoff, cpu::KSpacePPPM(5.0 / cutoff, 0.4, 5));
+    const double e1 =
+        electrostatic_energy(frame, pairs, 3.0 / cutoff, cutoff,
+                             cpu::KSpacePPPM(3.0 / cutoff, 0.4, 5));
+    const double e2 =
+        electrostatic_energy(frame, pairs, 5.0 / cutoff, cutoff,
+                             cpu::KSpacePPPM(5.0 / cutoff, 0.4, 5));
     EXPECT_NEAR(e1, e2, 5e-2 * std::max(1.0, std::fabs(e1)))
         << "e1=" << e1 << " e2=" << e2;
 }

@@ -125,8 +125,8 @@ int main() {
         ++failures;
     }
     if (!(r[3].iterations < r[0].iterations)) {
-        std::printf("FAIL: iters(SAP)=%d !< iters(Hcore)=%d\n",
-                    r[3].iterations, r[0].iterations);
+        std::printf("FAIL: iters(SAP)=%d !< iters(Hcore)=%d\n", r[3].iterations,
+                    r[0].iterations);
         ++failures;
     }
 

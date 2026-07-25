@@ -38,8 +38,7 @@ RealMatrix g_contraction(const xt::xtensor<double, 4>& eri,
             double acc = 0.0;
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
-                    acc += X(k, l)
-                           * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
+                    acc += X(k, l) * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
             G(i, j) = acc;
         }
     }
@@ -84,8 +83,8 @@ CphfPack::CphfPack(const SlaterDeterminant& det, const OrbitalHessian& oh,
     if (no_ != oh.n_occ() || nv_ != oh.n_virt())
         throw std::invalid_argument(
             "CphfPack: occ/virt split disagrees with the OrbitalHessian "
-            "kernel (n_occ " + std::to_string(no_) + " vs "
-            + std::to_string(oh.n_occ()) + ")");
+            "kernel (n_occ "
+            + std::to_string(no_) + " vs " + std::to_string(oh.n_occ()) + ")");
 
     Co_ = xt::zeros<double>({n_, no_});
     Cv_ = xt::zeros<double>({n_, nv_});
@@ -141,9 +140,9 @@ CphfPack::CphfPack(const SlaterDeterminant& det, const OrbitalHessian& oh,
                     double b = F_vo(a, i) - eps_occ_(i) * S_vo(a, i);
                     for (int k = 0; k < no_; ++k)
                         for (int l = 0; l < no_; ++l)
-                            b -= S_oo(k, l)
-                                 * (2.0 * vooo_(a, i, k, l)
-                                    - vooo_(a, k, i, l));
+                            b -=
+                                S_oo(k, l)
+                                * (2.0 * vooo_(a, i, k, l) - vooo_(a, k, i, l));
                     B_(x, a * no_ + i) = b;
                 }
             }
@@ -216,14 +215,14 @@ RealMatrix CphfPack::density_response(int x) const {
     for (int a = 0; a < nv_; ++a)
         for (int i = 0; i < no_; ++i)
             Umat(a, i) = U_(x, a * no_ + i);
-    const RealMatrix Pvo = xt::linalg::dot(
-        xt::linalg::dot(Cv_, Umat), xt::transpose(Co_));
+    const RealMatrix Pvo =
+        xt::linalg::dot(xt::linalg::dot(Cv_, Umat), xt::transpose(Co_));
     // Occ-occ orthonormality part: −2 Σ_ij S^{(x)}_ij C_i C_jᵀ (only the
     // symmetric combination U_ji + U_ij = −S^{(x)}_ij enters — convention
     // free).
     RealMatrix Soo = xt::view(S_oo_, x, xt::all(), xt::all());
-    const RealMatrix Poo = xt::linalg::dot(
-        xt::linalg::dot(Co_, Soo), xt::transpose(Co_));
+    const RealMatrix Poo =
+        xt::linalg::dot(xt::linalg::dot(Co_, Soo), xt::transpose(Co_));
     return 2.0 * (Pvo + xt::transpose(Pvo)) - 2.0 * Poo;
 }
 
@@ -256,12 +255,10 @@ xt::xtensor<double, 2> CphfPack::hessian() const {
                     double acc = d2.d2V_nuc(A, di, Bt, dj);
                     for (int mu = 0; mu < n_; ++mu)
                         for (int nu = 0; nu < n_; ++nu) {
-                            const double h2 =
-                                d2.d2T(A, di, Bt, dj, mu, nu)
-                                + d2.d2V(A, di, Bt, dj, mu, nu);
+                            const double h2 = d2.d2T(A, di, Bt, dj, mu, nu)
+                                              + d2.d2V(A, di, Bt, dj, mu, nu);
                             acc += P(mu, nu) * h2
-                                   - W(mu, nu)
-                                         * d2.d2S(A, di, Bt, dj, mu, nu);
+                                   - W(mu, nu) * d2.d2S(A, di, Bt, dj, mu, nu);
                         }
                     H(3 * A + di, 3 * Bt + dj) += acc;
                 }

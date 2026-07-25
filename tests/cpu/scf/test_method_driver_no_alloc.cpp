@@ -7,9 +7,9 @@
 /// Fixed-buffer reallocation is not instrumented here; the behavioral pin is
 /// multi-step AIMD-style nesting stays finite and physical.
 #ifdef ATV_HAS_HF
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/methods.h"
 #include <cmath>
 #include <gtest/gtest.h>

@@ -35,8 +35,8 @@
 #include "atomiverse/cpu/communication/atom_pack.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/communication/schema_mpi.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/atom_sort.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -1003,9 +1003,9 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
             && dd->atom_sort_step >= dd->atom_sort_next) {
             double bs = dd->atom_sort_binsize;
             if (!(bs > 0.0))
-                bs = 0.5 * (dd->atom_sort_neigh_cut > 0.0
-                                ? dd->atom_sort_neigh_cut
-                                : cutoff_);
+                bs = 0.5
+                     * (dd->atom_sort_neigh_cut > 0.0 ? dd->atom_sort_neigh_cut
+                                                      : cutoff_);
             if (md::sort_owned_atoms(frame, dd->n_local, bs))
                 md::notify_sorted(dd, frame, /*clear_ghosts=*/true);
             dd->atom_sort_next =

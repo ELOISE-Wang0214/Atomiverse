@@ -64,10 +64,9 @@ bool check(const char* name, double got, double want, double tol) {
 
 int main() {
     // Continuum identity cross-check vs units::coulomb.
-    const double E_cont =
-        4.0 * units::pi * units::coulomb * (1.0 / 100.0);
-    bool ok = check("continuum E_gap vs REFERENCE printed", E_cont, kPinEGap,
-                    1e-14);
+    const double E_cont = 4.0 * units::pi * units::coulomb * (1.0 / 100.0);
+    bool ok =
+        check("continuum E_gap vs REFERENCE printed", E_cont, kPinEGap, 1e-14);
 
     auto frame = make_two_sheet();
     cpu::PotentialProfile obs(/*n_bins=*/20, /*z_min=*/0.0, /*z_max=*/20.0);
@@ -80,8 +79,7 @@ int main() {
     ok = check("E vacuum right", obs.field()[19], 0.0, kTol) && ok;
     ok = check("psi bin0", obs.psi()[0], 0.0, kTol) && ok;
     ok = check("psi bin19", obs.psi()[19], kPinPsiDrop, kTol) && ok;
-    ok = check("potential_drop", obs.potential_drop(), kPinPsiDrop, kTol)
-         && ok;
+    ok = check("potential_drop", obs.potential_drop(), kPinPsiDrop, kTol) && ok;
     ok = check("meta potential_drop", frame.meta.get(kPotentialDrop),
                kPinPsiDrop, kTol)
          && ok;

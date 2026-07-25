@@ -7,12 +7,12 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/linalg/matrix.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/molrs.hpp"
 
 using ATV::cpu::gpw::GaussianBasis;

@@ -8,8 +8,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/dynamics/kinetic_energy.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -71,7 +71,8 @@ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void kinetic_energy_stress(
     if (threadIdx.x == 0) {
         atomicAdd(kinetic, static_cast<prec_t>(out[0]));
         if (stress_kinetic != nullptr) {
-            const work_t mvv2e = static_cast<work_t>(ATV::units::mass_v2_to_energy);
+            const work_t mvv2e =
+                static_cast<work_t>(ATV::units::mass_v2_to_energy);
 #pragma unroll
             for (int c = 0; c < 6; ++c)
                 atomicAdd(&stress_kinetic[c],

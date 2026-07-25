@@ -94,8 +94,9 @@ int main() {
             return 1;
         }
         if (!(ke_w > 1e-12)) {
-            std::printf("FAIL: expected non-trivial KE after warm-up, got %g eV\n",
-                        ke_w);
+            std::printf(
+                "FAIL: expected non-trivial KE after warm-up, got %g eV\n",
+                ke_w);
             return 1;
         }
         if (!(pe_w < -100.0)) {
@@ -144,8 +145,9 @@ int main() {
         const double te = eval.last_electronic_ke_ev();
         if (!std::isfinite(pe) || !std::isfinite(ke) || !std::isfinite(te)
             || !(ke >= 0.0) || !(te >= 0.0)) {
-            std::printf("FAIL: non-finite energy at chunk %d PE=%g KE=%g Te=%g\n",
-                        c, pe, ke, te);
+            std::printf(
+                "FAIL: non-finite energy at chunk %d PE=%g KE=%g Te=%g\n", c,
+                pe, ke, te);
             return 1;
         }
         // Production CP steps must be fixed-density evals (iters==0), not SCF.
@@ -165,7 +167,8 @@ int main() {
         for (int i = 0; i < 3; ++i) {
             if (!std::isfinite(static_cast<double>(frame.span(kAtom_x)[i]))
                 || !std::isfinite(static_cast<double>(frame.span(kAtom_y)[i]))
-                || !std::isfinite(static_cast<double>(frame.span(kAtom_z)[i]))) {
+                || !std::isfinite(
+                    static_cast<double>(frame.span(kAtom_z)[i]))) {
                 std::printf("FAIL: non-finite coordinate at chunk %d atom %d\n",
                             c, i);
                 return 1;
@@ -197,17 +200,18 @@ int main() {
         "CPMD H2O NVE (mu=2000 a.u.): steps=%d  E0=%.6g eV  Ef=%.6g eV  "
         "worst |dE_cons|/scale=%.3e  tol=%.2f  oh=%.3f/%.3f Å\n",
         n_prod, e0, pe_f + ke_f + te_f, worst_drift, drift_tol, oh1, oh2);
-    std::printf("  PE0=%.6g  KE0=%.6g  Te0=%.6g  PEf=%.6g  KEf=%.6g  Tef=%.6g eV  "
-                "prod SCF iters=%d (expect 0)\n",
-                pe0, ke0, te0, pe_f, ke_f, te_f, last_iters);
+    std::printf(
+        "  PE0=%.6g  KE0=%.6g  Te0=%.6g  PEf=%.6g  KEf=%.6g  Tef=%.6g eV  "
+        "prod SCF iters=%d (expect 0)\n",
+        pe0, ke0, te0, pe_f, ke_f, te_f, last_iters);
 
     if (!(worst_drift <= drift_tol)) {
-        std::printf("FAIL: CP energy drift %.3e exceeds tol %.2f\n", worst_drift,
-                    drift_tol);
+        std::printf("FAIL: CP energy drift %.3e exceeds tol %.2f\n",
+                    worst_drift, drift_tol);
         return 1;
     }
 
-    std::printf(
-        "PASS: cpmd-water (CPMD NVE conserved-energy envelope, fictitious e- DOF)\n");
+    std::printf("PASS: cpmd-water (CPMD NVE conserved-energy envelope, "
+                "fictitious e- DOF)\n");
     return 0;
 }

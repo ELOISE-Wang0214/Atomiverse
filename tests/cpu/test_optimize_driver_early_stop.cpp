@@ -8,9 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/driver/criteria.h"
 #include "atomiverse/cpu/minimize/minimize.h"
-#include "atomiverse/core/stage.h"
 
 #include "cpu/driver_test_helpers.h"
 

@@ -63,7 +63,7 @@ TEST(TestLinearSolve, SolvePcgMatchesExactSpdSolution) {
 TEST(TestLinearSolve, SolvePcgThrowsWhenMaxIterTooSmall) {
     RealVector diag = {4.0, 3.0};
     RealVector b = {1.0, 2.0};
-    EXPECT_THROW(
-        (void)linalg::solve_pcg(apply_a, diag, b, /*tol=*/1e-12, /*max_iter=*/1),
-        std::runtime_error);
+    EXPECT_THROW((void)linalg::solve_pcg(apply_a, diag, b, /*tol=*/1e-12,
+                                         /*max_iter=*/1),
+                 std::runtime_error);
 }

@@ -25,8 +25,8 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/cart.h"
 
 namespace ATV {
 namespace cpu {
@@ -35,8 +35,8 @@ namespace internal {
 
 namespace {
 
-constexpr int kNRad = 128;            ///< Radial Gauss–Legendre points.
-constexpr double kWidthSigmas = 9.0;  ///< Half-width of the radial window.
+constexpr int kNRad = 128;             ///< Radial Gauss–Legendre points.
+constexpr double kWidthSigmas = 9.0;   ///< Half-width of the radial window.
 constexpr double kScreenLnEps = -60.0; ///< ln cutoff for a primitive term.
 constexpr double kFourPi = 4.0 * units::pi;
 
@@ -140,8 +140,8 @@ double binom(int n, int k) {
 /// Expand (x−Ax)^ax (y−Ay)^ay (z−Az)^az into monomials about the origin.
 std::vector<Mono> expand_shifted(const int ang[3], const double A[3]) {
     std::vector<Mono> out;
-    out.reserve(static_cast<std::size_t>((ang[0] + 1) * (ang[1] + 1)
-                                         * (ang[2] + 1)));
+    out.reserve(
+        static_cast<std::size_t>((ang[0] + 1) * (ang[1] + 1) * (ang[2] + 1)));
     for (int i = 0; i <= ang[0]; ++i) {
         const double ci = binom(ang[0], i) * std::pow(-A[0], ang[0] - i);
         for (int j = 0; j <= ang[1]; ++j) {
@@ -222,10 +222,10 @@ const std::vector<double>& EcpIntegrals::omega1(int lam, int i, int j, int k) {
     std::vector<double> vals(static_cast<std::size_t>(2 * lam + 1), 0.0);
     for (int mu = 0; mu < 2 * lam + 1; ++mu) {
         double s = 0.0;
-        for (const auto& t : harm_[static_cast<std::size_t>(lam)]
-                                  [static_cast<std::size_t>(mu)])
-            s += t.coeff * sphere_monomial_integral(t.lx + i, t.ly + j,
-                                                    t.lz + k);
+        for (const auto& t :
+             harm_[static_cast<std::size_t>(lam)][static_cast<std::size_t>(mu)])
+            s += t.coeff
+                 * sphere_monomial_integral(t.lx + i, t.ly + j, t.lz + k);
         vals[static_cast<std::size_t>(mu)] = s;
     }
     return omega1_.emplace(key, std::move(vals)).first->second;
@@ -256,8 +256,7 @@ const std::vector<double>& EcpIntegrals::omega2(int l, int lam, int i, int j,
     return omega2_.emplace(key, std::move(vals)).first->second;
 }
 
-double EcpIntegrals::pair_center(const native::Shell& a,
-                                 const native::Shell& b,
+double EcpIntegrals::pair_center(const native::Shell& a, const native::Shell& b,
                                  const EcpCenter& center) {
     const auto& gl = gl_rule();
 
@@ -266,10 +265,8 @@ double EcpIntegrals::pair_center(const native::Shell& a,
         Ap[d] = a.center[d] - center.pos[d];
         Bp[d] = b.center[d] - center.pos[d];
     }
-    const double aA =
-        std::sqrt(Ap[0] * Ap[0] + Ap[1] * Ap[1] + Ap[2] * Ap[2]);
-    const double aB =
-        std::sqrt(Bp[0] * Bp[0] + Bp[1] * Bp[1] + Bp[2] * Bp[2]);
+    const double aA = std::sqrt(Ap[0] * Ap[0] + Ap[1] * Ap[1] + Ap[2] * Ap[2]);
+    const double aB = std::sqrt(Bp[0] * Bp[0] + Bp[1] * Bp[1] + Bp[2] * Bp[2]);
     double Ah[3] = {0.0, 0.0, 1.0}, Bh[3] = {0.0, 0.0, 1.0};
     if (aA > 1e-14)
         for (int d = 0; d < 3; ++d)
@@ -289,8 +286,8 @@ double EcpIntegrals::pair_center(const native::Shell& a,
 
     // Real harmonics evaluated at the two center-to-shell unit vectors,
     // shared across the projector channels of this pair.
-    std::vector<std::vector<double>> YA(
-        static_cast<std::size_t>(lmax_harm_) + 1),
+    std::vector<std::vector<double>> YA(static_cast<std::size_t>(lmax_harm_)
+                                        + 1),
         YB(static_cast<std::size_t>(lmax_harm_) + 1);
     for (int lam = 0; lam <= lmax_harm_; ++lam) {
         YA[static_cast<std::size_t>(lam)].resize(
@@ -320,11 +317,10 @@ double EcpIntegrals::pair_center(const native::Shell& a,
         const int lamA_max = l + a.l, lamB_max = l + b.l;
 
         auto angular_table = [&](const std::vector<Mono>& poly, int l_ao,
-                           int lam_max,
-                           const std::vector<std::vector<double>>& Yh) {
+                                 int lam_max,
+                                 const std::vector<std::vector<double>>& Yh) {
             std::vector<double> F(
-                static_cast<std::size_t>(nm * (lam_max + 1) * (l_ao + 1)),
-                0.0);
+                static_cast<std::size_t>(nm * (lam_max + 1) * (l_ao + 1)), 0.0);
             for (const auto& mo : poly) {
                 const int N = mo.i + mo.j + mo.k;
                 for (int lam = 0; lam <= l + N; ++lam) {
@@ -402,9 +398,8 @@ double EcpIntegrals::pair_center(const native::Shell& a,
                     for (int pt = 0; pt < kNRad; ++pt) {
                         const double r = mid + half * gl.x[pt];
                         const double wq = half * gl.w[pt];
-                        const double pref = wq
-                                            * std::exp(base + (kA + kB) * r
-                                                       - gt * r * r);
+                        const double pref =
+                            wq * std::exp(base + (kA + kB) * r - gt * r * r);
                         scaled_bessel_m(kA * r, lamA_max, MA);
                         scaled_bessel_m(kB * r, lamB_max, MB);
                         rpow[0] = std::pow(r, term.n);
@@ -481,10 +476,9 @@ double EcpIntegrals::pair_center(const native::Shell& a,
 
             for (int lam = 0; lam <= NABmax; ++lam)
                 for (int mu = 0; mu < 2 * lam + 1; ++mu)
-                    Yk[lam][mu] =
-                        eval_harm(harm_[static_cast<std::size_t>(lam)]
-                                       [static_cast<std::size_t>(mu)],
-                                  khat);
+                    Yk[lam][mu] = eval_harm(harm_[static_cast<std::size_t>(lam)]
+                                                 [static_cast<std::size_t>(mu)],
+                                            khat);
 
             double s = 0.0;
             for (const auto& mo : polyAB) {
@@ -510,9 +504,9 @@ xt::xtensor<double, 2> EcpIntegrals::matrix() {
     for (const auto& center : centers_) {
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j <= i; ++j) {
-                U(i, j) += pair_center(shells_[static_cast<std::size_t>(i)],
-                                       shells_[static_cast<std::size_t>(j)],
-                                       center);
+                U(i, j) +=
+                    pair_center(shells_[static_cast<std::size_t>(i)],
+                                shells_[static_cast<std::size_t>(j)], center);
             }
         }
     }

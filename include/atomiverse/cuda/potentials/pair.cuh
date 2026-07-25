@@ -5,8 +5,8 @@
 /// between CPU and CUDA potential layers; only the names match.
 #pragma once
 
-#include "atomiverse/cuda/component/potential.cuh"
 #include "atomiverse/core/role.h"
+#include "atomiverse/cuda/component/potential.cuh"
 
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/component/neighbor_protocol.cuh"

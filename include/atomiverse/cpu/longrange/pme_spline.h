@@ -137,8 +137,7 @@ inline void pme_fill_atom_splines(const StorageReal* x, const StorageReal* y,
             u -= std::floor(u / K[d]) * K[d]; // wrap into [0,K)
             const int u0 = static_cast<int>(std::floor(u));
             const double frac = u - u0;
-            bspline(frac, n, &theta[(3 * i + d) * n],
-                    &dtheta[(3 * i + d) * n]);
+            bspline(frac, n, &theta[(3 * i + d) * n], &dtheta[(3 * i + d) * n]);
             base[3 * i + d] = u0;
         }
     }
@@ -208,8 +207,8 @@ inline void pme_spread_charges(const StorageReal* q, int n_atoms, int order,
 }
 
 /// @brief Spread onto a real grid (for r2c paths / faster charge assignment).
-inline void pme_spread_charges_real(const StorageReal* q, int n_atoms, int order,
-                                    const int K[3], const int* base,
+inline void pme_spread_charges_real(const StorageReal* q, int n_atoms,
+                                    int order, const int K[3], const int* base,
                                     const double* theta, double* grid) {
     const int K0 = K[0], K1 = K[1], K2 = K[2];
     const int n = order;

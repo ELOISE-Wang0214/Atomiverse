@@ -57,13 +57,12 @@ class CapacitanceChargeFluctuation : public Observer {
     ///        [V]; 0 disables integral capacitance (returns NaN).
     /// @throws std::invalid_argument if types empty or \(T \le 0\).
     CapacitanceChargeFluctuation(std::vector<int> electrode_types,
-                                 double temperature_K,
-                                 double delta_psi_V = 0.0)
+                                 double temperature_K, double delta_psi_V = 0.0)
         : electrode_types_(std::move(electrode_types)),
           temperature_K_(temperature_K), delta_psi_V_(delta_psi_V) {
         if (electrode_types_.empty())
-            throw std::invalid_argument(
-                "CapacitanceChargeFluctuation: need at least one electrode type");
+            throw std::invalid_argument("CapacitanceChargeFluctuation: need at "
+                                        "least one electrode type");
         if (!(temperature_K_ > 0.0))
             throw std::invalid_argument(
                 "CapacitanceChargeFluctuation: temperature_K must be > 0");

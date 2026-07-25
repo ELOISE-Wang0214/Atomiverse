@@ -2,12 +2,12 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/driver/backend.cuh"
-#include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/cuda/dynamics/init.cuh"
-#include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/frame/transfer.cuh"
 
 using namespace ATV;
 

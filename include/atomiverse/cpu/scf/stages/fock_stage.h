@@ -136,10 +136,10 @@ class FockStage : public cpu::Component {
     int n_angular_;
     double hybrid_alpha_override_;
     const MolecularGrid* fixed_grid_;
-    RI ri_;              ///< Density-fitting mode (member-driven seam).
-    AuxBasis aux_basis_; ///< Auxiliary basis for the fit.
-    Coulomb coulomb_;    ///< J-matrix algorithm (Direct / RI / CFMM).
-    int cfmm_order_;     ///< Multipole order p for CFMM.
+    RI ri_;                 ///< Density-fitting mode (member-driven seam).
+    AuxBasis aux_basis_;    ///< Auxiliary basis for the fit.
+    Coulomb coulomb_;       ///< J-matrix algorithm (Direct / RI / CFMM).
+    int cfmm_order_;        ///< Multipole order p for CFMM.
     double cfmm_threshold_; ///< Extent threshold ε_thr for CFMM.
 
     const IntegralPack& integrals_;

@@ -29,15 +29,13 @@ namespace kernels {
 // 2/sqrt(pi) (LAMMPS EWALD_F / OpenMM erfc derivative).
 __device__ constexpr work_t kEwaldF = work_t(1.1283791670955126);
 
-__global__ void gather_cluster_pos_q(const int* __restrict__ orig_index,
-                                     const real_t* __restrict__ x,
-                                     const real_t* __restrict__ y,
-                                     const real_t* __restrict__ z,
-                                     const real_t* __restrict__ q, int n_slots,
-                                     real_t* __restrict__ spx,
-                                     real_t* __restrict__ spy,
-                                     real_t* __restrict__ spz,
-                                     real_t* __restrict__ spq) {
+__global__ void
+gather_cluster_pos_q(const int* __restrict__ orig_index,
+                     const real_t* __restrict__ x, const real_t* __restrict__ y,
+                     const real_t* __restrict__ z, const real_t* __restrict__ q,
+                     int n_slots, real_t* __restrict__ spx,
+                     real_t* __restrict__ spy, real_t* __restrict__ spz,
+                     real_t* __restrict__ spq) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= n_slots)
         return;
@@ -51,8 +49,7 @@ __global__ void gather_cluster_pos_q(const int* __restrict__ orig_index,
 }
 
 template <bool Ortho, bool Virial>
-__global__
-__launch_bounds__(ATV::cuda::kDefaultBlock, 4) void coul_long_tile(
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void coul_long_tile(
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
     prec_t* __restrict__ energy, prec_t* __restrict__ stress,
     const real_t* __restrict__ spx, const real_t* __restrict__ spy,

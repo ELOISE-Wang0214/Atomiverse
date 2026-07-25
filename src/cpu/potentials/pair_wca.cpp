@@ -10,8 +10,7 @@ namespace ATV {
 namespace cpu {
 
 PairWCA::PairWCA(double epsilon, double sigma)
-    : Pair(std::pow(2.0, 1.0 / 6.0) * sigma), epsilon_(epsilon),
-      sigma_(sigma) {
+    : Pair(std::pow(2.0, 1.0 / 6.0) * sigma), epsilon_(epsilon), sigma_(sigma) {
     if (!(epsilon > 0.0) || !(sigma > 0.0))
         throw std::invalid_argument("PairWCA: epsilon and sigma must be > 0");
     const double rc = pair_cutoff();

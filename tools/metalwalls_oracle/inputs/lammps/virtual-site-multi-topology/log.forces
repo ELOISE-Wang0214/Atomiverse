@@ -25,8 +25,8 @@ Reading data file ...
   reading angles ...
   2 angles
 Finding 1-2 1-3 1-4 neighbors ...
-  special bond factors lj:    0        0        0       
-  special bond factors coul:  0        0        0       
+  special bond factors lj:    0        0        0
+  special bond factors coul:  0        0        0
      2 = max # of 1-2 neighbors
      1 = max # of 1-3 neighbors
      1 = max # of 1-4 neighbors
@@ -62,8 +62,8 @@ Neighbor list info ...
       stencil: half/bin/3d
       bin: standard
 Per MPI rank memory allocation (min/avg/max) = 6.313 | 6.313 | 6.313 Mbytes
-   Step          Temp          E_pair         E_mol          TotEng         Press     
-         0   0              12.204617      0              12.204617      97.987953    
+   Step          Temp          E_pair         E_mol          TotEng         Press
+         0   0              12.204617      0              12.204617      97.987953
 Loop time of 4.91e-07 on 1 procs for 0 steps with 6 atoms
 
 0.0% CPU use with 1 MPI tasks x 1 OpenMP threads

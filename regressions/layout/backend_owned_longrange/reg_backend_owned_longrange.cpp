@@ -20,6 +20,7 @@ int main() {
         std::fprintf(stderr, "backend_owned_longrange: bad alpha %g\n", alpha);
         return EXIT_FAILURE;
     }
-    std::puts("backend_owned_longrange: cpu/longrange/ewald_sum.h resolves and links");
+    std::puts("backend_owned_longrange: cpu/longrange/ewald_sum.h resolves and "
+              "links");
     return EXIT_SUCCESS;
 }

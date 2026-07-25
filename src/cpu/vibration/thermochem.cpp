@@ -111,8 +111,8 @@ void Thermochem::launch(const cpu::LaunchContext& ctx) {
     // ── Constants (PySCF `thermo()` literal forms) ──────────────────────
     const double kB = nist::BOLTZMANN; // J/K
     const double h = nist::PLANCK;     // J*s
-    const double T = temperature; // K
-    const double P = pressure;    // Pa
+    const double T = temperature;      // K
+    const double P = pressure;         // Pa
     const int sigma = symmetry_number;
     // R_Eh = kB * N_A / (HARTREE2J * N_A) = kB / HARTREE2J  [Eh/K].
     const double R_Eh =
@@ -143,8 +143,7 @@ void Thermochem::launch(const cpu::LaunchContext& ctx) {
     // G_tot - E0, so it is carried as zero — `g_thermal` is exactly that
     // correction. S_elec = R_Eh * ln(multiplicity); 0 for a singlet.
     const double E0 = 0.0;
-    const double S_elec =
-        R_Eh * std::log(static_cast<double>(multiplicity));
+    const double S_elec = R_Eh * std::log(static_cast<double>(multiplicity));
     const double E_elec = E0;
     const double H_elec = E0;
 

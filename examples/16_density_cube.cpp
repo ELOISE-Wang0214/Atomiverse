@@ -3,12 +3,12 @@
 
 #include <iostream>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/record/density_cube_writer.h"
 #include "atomiverse/cpu/record/orbital_cube_writer.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

@@ -31,12 +31,12 @@ cpu::Frame diamond_conventional(double a, int n_cell) {
         for (int iy = 0; iy < n_cell; ++iy)
             for (int iz = 0; iz < n_cell; ++iz)
                 for (int k = 0; k < 8; ++k) {
-                    f.span(kAtom_x)[idx] = static_cast<StorageReal>(
-                        (double(ix) + frac[k][0]) * a);
-                    f.span(kAtom_y)[idx] = static_cast<StorageReal>(
-                        (double(iy) + frac[k][1]) * a);
-                    f.span(kAtom_z)[idx] = static_cast<StorageReal>(
-                        (double(iz) + frac[k][2]) * a);
+                    f.span(kAtom_x)[idx] =
+                        static_cast<StorageReal>((double(ix) + frac[k][0]) * a);
+                    f.span(kAtom_y)[idx] =
+                        static_cast<StorageReal>((double(iy) + frac[k][1]) * a);
+                    f.span(kAtom_z)[idx] =
+                        static_cast<StorageReal>((double(iz) + frac[k][2]) * a);
                     f.span(kAtom_type)[idx] = 14;
                     f.span(kAtom_mass)[idx] = 28.0855;
                     f.span(kAtom_tag)[idx] = static_cast<TagInt>(idx + 1);
@@ -89,7 +89,8 @@ TEST(PhononSupercell, ExpandCountsAndCell) {
         const double dx = static_cast<double>(sc.span(kAtom_x)[i]) - ax;
         const double dy = static_cast<double>(sc.span(kAtom_y)[i]) - ay;
         const double dz = static_cast<double>(sc.span(kAtom_z)[i]) - az;
-        if (std::abs(dx) < 1e-12 && std::abs(dy) < 1e-12 && std::abs(dz) < 1e-12)
+        if (std::abs(dx) < 1e-12 && std::abs(dy) < 1e-12
+            && std::abs(dz) < 1e-12)
             found = true;
     }
     EXPECT_TRUE(found);

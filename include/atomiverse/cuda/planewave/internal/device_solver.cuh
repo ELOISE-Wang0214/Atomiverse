@@ -77,7 +77,8 @@ class DeviceBandSolver {
     /// @brief Test hook: H·ψ for one host vector on the bound k-point
     /// (H2D → apply_h → D2H). Used by the band-parity diagnostics to
     /// compute residual norms of candidate eigenpairs.
-    void apply_h_host(const std::complex<AccReal>* psi, std::complex<AccReal>* hpsi);
+    void apply_h_host(const std::complex<AccReal>* psi,
+                      std::complex<AccReal>* hpsi);
 
   private:
     /// H·ψ for one device vector (cuFFT + V_eff + KB projectors).

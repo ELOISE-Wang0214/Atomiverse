@@ -21,12 +21,13 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/evaluate/evaluate.h"
-#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
@@ -35,7 +36,6 @@
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/task/task_materializer.h"
 #include "atomiverse/cpu/task/task_spec.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 using namespace ATV::cpu::task;

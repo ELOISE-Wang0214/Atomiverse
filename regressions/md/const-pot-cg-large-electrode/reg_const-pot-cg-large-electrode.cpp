@@ -100,7 +100,7 @@ int main() {
     constexpr double kEta = 2.0;
     constexpr double kPsiBot = 0.0;
     constexpr double kPsiTop = 1.0;
-    constexpr double kSiteTol = 1e-8; // [e]
+    constexpr double kSiteTol = 1e-8;           // [e]
     constexpr double kQTopPrimary = 0.27175356; // dense BO primary-cell pin
     constexpr int nx = 4, ny = 4;               // 32 electrode sites
     int nfail = 0;
@@ -121,8 +121,9 @@ int main() {
         cg.launch({ctx, f, 0, 0});
         const double q_top = cg.total_charge(1);
         const double neut = cg.neutrality_residual();
-        std::printf("  primary Q_top = % .12e  (pin %.8f)  |sumQ|=% .3e  cg_it=%d\n",
-                    q_top, kQTopPrimary, neut, cg.cg_iterations());
+        std::printf(
+            "  primary Q_top = % .12e  (pin %.8f)  |sumQ|=% .3e  cg_it=%d\n",
+            q_top, kQTopPrimary, neut, cg.cg_iterations());
         if (!(neut <= 1e-10)) {
             std::fprintf(stderr, "FAIL primary neutrality %g\n", neut);
             ++nfail;
@@ -182,10 +183,10 @@ int main() {
     }
 
     std::printf("  large plate %dx%d  N_elec=%d\n", nx, ny, n_elec);
-    std::printf("  Q_bot CG=% .12e  BO=% .12e  |d|=% .3e\n",
-                cg.total_charge(0), bo.total_charge(0), dq_bot);
-    std::printf("  Q_top CG=% .12e  BO=% .12e  |d|=% .3e\n",
-                cg.total_charge(1), bo.total_charge(1), dq_top);
+    std::printf("  Q_bot CG=% .12e  BO=% .12e  |d|=% .3e\n", cg.total_charge(0),
+                bo.total_charge(0), dq_bot);
+    std::printf("  Q_top CG=% .12e  BO=% .12e  |d|=% .3e\n", cg.total_charge(1),
+                bo.total_charge(1), dq_top);
     std::printf("  max|Qi_CG-Qi_BO|=% .3e e  |sumQ|=% .3e  cg_it=%d\n", max_dq,
                 neut, cg.cg_iterations());
     std::printf("  wall_ms CG=%.3f  BO=%.3f  (internal twin, not MW)\n", ms_cg,
@@ -230,7 +231,8 @@ int main() {
         conp2.rebuild_matrix_every_step = true;
 
         cpu::md::MD sim;
-        sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+        sim.set_neighbor(
+            cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
         sim.add_potential(cpu::PairCoulCut{/*cutoff=*/12.0});
         sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
         sim.add_ref(conp2);

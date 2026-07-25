@@ -4,8 +4,8 @@
 
 #ifdef ATV_HAS_HF
 
-#include "atomiverse/core/units.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"

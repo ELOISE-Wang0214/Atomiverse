@@ -9,7 +9,7 @@
 using namespace ATV;
 
 int main() {
-        cpu::path::Pimd pimd(4, 300.0, 0.25, 5, 3, 0.0);
+    cpu::path::Pimd pimd(4, 300.0, 0.25, 5, 3, 0.0);
 
     cpu::Frame f(1);
     f.span(kAtom_x)[0] = f.span(kAtom_y)[0] = f.span(kAtom_z)[0] = 0;

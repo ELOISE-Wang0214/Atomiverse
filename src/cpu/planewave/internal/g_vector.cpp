@@ -36,9 +36,8 @@ GVectorList enumerate_g_vectors(const cpu::Box& cell_bohr, AccReal ecut,
     const Mat3& A = cell_bohr.cell(); // rows a_i [Bohr]
     int lo[3], hi[3];
     for (int i = 0; i < 3; ++i) {
-        const AccReal an =
-            std::sqrt(A(i, 0) * A(i, 0) + A(i, 1) * A(i, 1)
-                      + A(i, 2) * A(i, 2));
+        const AccReal an = std::sqrt(A(i, 0) * A(i, 0) + A(i, 1) * A(i, 1)
+                                     + A(i, 2) * A(i, 2));
         const AccReal two_pi = AccReal(2) * units::pi;
         const AccReal fi =
             (A(i, 0) * k[0] + A(i, 1) * k[1] + A(i, 2) * k[2]) / two_pi;

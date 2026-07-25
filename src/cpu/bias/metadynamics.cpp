@@ -50,10 +50,9 @@ double Metadynamics::bias_at_(const std::vector<double>& s) const {
     for (std::size_t k = 0; k < heights_.size(); ++k) {
         double arg = 0;
         for (int a = 0; a < n; ++a) {
-            const double d =
-                s[static_cast<std::size_t>(a)] -
-                centers_[k * static_cast<std::size_t>(n) +
-                         static_cast<std::size_t>(a)];
+            const double d = s[static_cast<std::size_t>(a)]
+                             - centers_[k * static_cast<std::size_t>(n)
+                                        + static_cast<std::size_t>(a)];
             const double sig = sigma_[static_cast<std::size_t>(a)];
             arg += (d * d) / (2.0 * sig * sig);
         }
@@ -71,13 +70,13 @@ void Metadynamics::dV_ds_(const std::vector<double>& s,
         std::vector<double> d(static_cast<std::size_t>(n));
         for (int a = 0; a < n; ++a) {
             d[static_cast<std::size_t>(a)] =
-                s[static_cast<std::size_t>(a)] -
-                centers_[k * static_cast<std::size_t>(n) +
-                         static_cast<std::size_t>(a)];
+                s[static_cast<std::size_t>(a)]
+                - centers_[k * static_cast<std::size_t>(n)
+                           + static_cast<std::size_t>(a)];
             const double sig = sigma_[static_cast<std::size_t>(a)];
-            arg += (d[static_cast<std::size_t>(a)] *
-                    d[static_cast<std::size_t>(a)]) /
-                   (2.0 * sig * sig);
+            arg += (d[static_cast<std::size_t>(a)]
+                    * d[static_cast<std::size_t>(a)])
+                   / (2.0 * sig * sig);
         }
         const double w = heights_[k] * std::exp(-arg);
         for (int a = 0; a < n; ++a) {
@@ -95,8 +94,8 @@ void Metadynamics::launch(const LaunchContext& ctx) {
     const bool want_force = ctx.forces_requested;
 
     for (int a = 0; a < n; ++a) {
-        if (static_cast<int>(grads_[static_cast<std::size_t>(a)].size()) <
-            3 * nat)
+        if (static_cast<int>(grads_[static_cast<std::size_t>(a)].size())
+            < 3 * nat)
             grads_[static_cast<std::size_t>(a)].assign(
                 static_cast<std::size_t>(3 * f.capacity()), 0.0);
         last_s_[static_cast<std::size_t>(a)] =

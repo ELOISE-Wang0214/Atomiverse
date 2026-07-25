@@ -60,8 +60,8 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     const int* __restrict sp_type_build = ctx.frame.span(kAtom_type);
     double z_val_total = 0.0;
     for (int i = 0; i < n_build; ++i)
-        z_val_total += static_cast<double>(
-            find_kind(kinds, sp_type_build[i]).pot.zion);
+        z_val_total +=
+            static_cast<double>(find_kind(kinds, sp_type_build[i]).pot.zion);
 
     // Assemble the solver from the build-time frame. Product path is the
     // `use_ot` member; env `ATV_GPW_OT` remains a diagnostic force-on.
@@ -193,8 +193,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
         if (compute_forces) {
-            const auto F = gpw_forces_at_density(
-                atoms, *solver_, last_.P, cpmd_->C(), last_.H_ks);
+            const auto F = gpw_forces_at_density(atoms, *solver_, last_.P,
+                                                 cpmd_->C(), last_.H_ks);
             AccReal* __restrict sp_fx = frame.span(kAtom_fx);
             AccReal* __restrict sp_fy = frame.span(kAtom_fy);
             AccReal* __restrict sp_fz = frame.span(kAtom_fz);
@@ -238,8 +238,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // just converged at this exact geometry (same fixed point, fewer
         // iterations). Default mode keeps the cold solve unchanged.
         const auto F = gpw_forces_analytic(
-            atoms, *solver_,
-            (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
+            atoms, *solver_, (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         AccReal* __restrict sp_fx = frame.span(kAtom_fx);
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);
@@ -262,9 +261,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 "occupied MO coefficients");
         const int nb = static_cast<int>(last_.C.shape(0));
         const int n_occ = solver_->n_occ;
-        linalg::RealMatrix C_occ =
-            xt::zeros<double>({static_cast<std::size_t>(nb),
-                               static_cast<std::size_t>(n_occ)});
+        linalg::RealMatrix C_occ = xt::zeros<double>(
+            {static_cast<std::size_t>(nb), static_cast<std::size_t>(n_occ)});
         for (int mu = 0; mu < nb; ++mu)
             for (int i = 0; i < n_occ; ++i)
                 C_occ(mu, i) = last_.C(mu, i);
@@ -279,12 +277,11 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // masked axes (variable-cell relax of constrained boxes).
         const ATV::cpu::linalg::RealMatrix* stress_guess =
             last_.C.size() > 0 ? &last_.C : nullptr;
-        last_stress_ha_ =
-            stress_use_fd
-                ? gpw_stress_fd(atoms, *solver_, stress_strain_h, stress_axes,
-                                stress_guess)
-                : gpw_stress(atoms, *solver_, stress_strain_h, stress_axes,
-                             stress_guess);
+        last_stress_ha_ = stress_use_fd
+                              ? gpw_stress_fd(atoms, *solver_, stress_strain_h,
+                                              stress_axes, stress_guess)
+                              : gpw_stress(atoms, *solver_, stress_strain_h,
+                                           stress_axes, stress_guess);
         // 1 Ha/Bohr³ = kHartreeInEv / (kBohrInAngstrom)³ eV/Å³
         const double ha_bohr3_to_ev_a3 =
             ATV::units::kHartreeInEv
@@ -293,7 +290,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         auto& st = frame.meta.get(kStress);
         for (int k = 0; k < 6; ++k)
             st[static_cast<std::size_t>(k)] =
-                last_stress_ha_[static_cast<std::size_t>(k)] * ha_bohr3_to_ev_a3;
+                last_stress_ha_[static_cast<std::size_t>(k)]
+                * ha_bohr3_to_ev_a3;
     }
 }
 

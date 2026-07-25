@@ -95,9 +95,10 @@ TEST(RhfTdhfMethod, SingletDipoleNonzeroTripletZero) {
 
     // Singlet σg → σu is dipole-allowed along the bond axis (z).
     const ExcitedStatesResult s = rhf.tda(1, ExcitationChannel::singlet);
-    const double mu2 = s.transition_dipole_au(0, 0) * s.transition_dipole_au(0, 0)
-                       + s.transition_dipole_au(0, 1) * s.transition_dipole_au(0, 1)
-                       + s.transition_dipole_au(0, 2) * s.transition_dipole_au(0, 2);
+    const double mu2 =
+        s.transition_dipole_au(0, 0) * s.transition_dipole_au(0, 0)
+        + s.transition_dipole_au(0, 1) * s.transition_dipole_au(0, 1)
+        + s.transition_dipole_au(0, 2) * s.transition_dipole_au(0, 2);
     EXPECT_GT(std::sqrt(mu2), 0.1);
     EXPECT_GT(std::abs(s.transition_dipole_au(0, 2)), 0.1);
     EXPECT_GT(s.oscillator_strength[0], 0.0);
@@ -145,8 +146,8 @@ TEST(RhfTdhfMethod, EnergyEvConversionMatchesKernelRoot) {
     IntegralPack pack{frame, cpu::scf::BasisSet::STO3G, 0,
                       /*compute_eri=*/true};
     const cpu::scf::internal::OrbitalHessian h{rhf.determinant(), pack.ERI};
-    const cpu::scf::internal::TDHFPack tp{
-        h, cpu::scf::internal::Channel::singlet};
+    const cpu::scf::internal::TDHFPack tp{h,
+                                          cpu::scf::internal::Channel::singlet};
     const double omega_ha = tp.tda(1).omega(0);
     EXPECT_NEAR(r.energy_ev[0], omega_ha * units::kHartreeInEv, 1e-10);
     // Sanity on the conversion factor itself (Hartree ≈ 27.2114 eV).

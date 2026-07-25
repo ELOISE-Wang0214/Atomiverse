@@ -39,7 +39,7 @@ int main() {
     // LAMMPS 30 Mar 2026 develop, units metal:
     //   Ez = 0.2 * cos(2*pi*time/1.0), time = step*0.001 [ps]
     // ATV twin: period=1000 fs, dt=1 fs (same step schedule).
-    const double Ez0 = 0.2;      // [V/Å]
+    const double Ez0 = 0.2;       // [V/Å]
     const double period = 1000.0; // [fs]
     const double dt = 1.0;        // [fs]
     const double L = 20.0;        // [Å]

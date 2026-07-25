@@ -18,7 +18,8 @@ IsotropicCellRelax::IsotropicCellRelax(double P_target_ev_a3, double alpha)
     if (!(alpha > 0.0))
         throw std::invalid_argument("IsotropicCellRelax: alpha must be > 0");
     if (!(max_scale > 0.0))
-        throw std::invalid_argument("IsotropicCellRelax: max_scale must be > 0");
+        throw std::invalid_argument(
+            "IsotropicCellRelax: max_scale must be > 0");
     if (!(bulk_mod > 0.0))
         throw std::invalid_argument("IsotropicCellRelax: bulk_mod must be > 0");
 }
@@ -83,8 +84,7 @@ void IsotropicCellRelax::launch(const LaunchContext& ctx) {
         pressure_ = pressure_from_frame_(f);
         p_residual_ = std::fabs(pressure_ - P_target);
         const double energy = f.meta.get(kEnergy);
-        const double dE =
-            has_prev_ ? std::fabs(energy - energy_prev_) : 1e30;
+        const double dE = has_prev_ ? std::fabs(energy - energy_prev_) : 1e30;
         // Publish pressure residual as max_force so ForceConverged *can*
         // judge it if the user sets ftol in eV/Å³; prefer PressureConverged.
         if (ConvergenceMetrics* m = ctx.runtime.loop.metrics) {

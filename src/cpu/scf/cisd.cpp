@@ -58,7 +58,8 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
     const double inv_sqrt2 = 1.0 / std::sqrt(2.0);
     for (int i = 0; i < n_occ_sp; ++i) {
         for (int a = 0; a < n_vir_sp; ++a) {
-            const double x = X_spatial(static_cast<std::size_t>(a * n_occ_sp + i));
+            const double x =
+                X_spatial(static_cast<std::size_t>(a * n_occ_sp + i));
             const double bs = x * inv_sqrt2;
             // α block: occ index i, vir index a
             b[static_cast<std::size_t>(i * nv + a)] = bs;
@@ -77,28 +78,27 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
 
     // MP2 doubles a_ij^ab = −⟨ab||ij⟩ / (ε_a + ε_b − ε_i − ε_j)
     // Stored [no, no, nv, nv]
-    xt::xtensor<double, 4> a_amp =
-        xt::zeros<double>({static_cast<std::size_t>(no),
-                           static_cast<std::size_t>(no),
-                           static_cast<std::size_t>(nv),
-                           static_cast<std::size_t>(nv)});
+    xt::xtensor<double, 4> a_amp = xt::zeros<double>(
+        {static_cast<std::size_t>(no), static_cast<std::size_t>(no),
+         static_cast<std::size_t>(nv), static_cast<std::size_t>(nv)});
     for (int ii = 0; ii < no; ++ii) {
         for (int jj = 0; jj < no; ++jj) {
             for (int aa = 0; aa < nv; ++aa) {
                 for (int bb = 0; bb < nv; ++bb) {
-                    const double denom = eps_so(vir[static_cast<std::size_t>(aa)])
-                                         + eps_so(vir[static_cast<std::size_t>(bb)])
-                                         - eps_so(occ[static_cast<std::size_t>(ii)])
-                                         - eps_so(occ[static_cast<std::size_t>(jj)]);
+                    const double denom =
+                        eps_so(vir[static_cast<std::size_t>(aa)])
+                        + eps_so(vir[static_cast<std::size_t>(bb)])
+                        - eps_so(occ[static_cast<std::size_t>(ii)])
+                        - eps_so(occ[static_cast<std::size_t>(jj)]);
                     if (std::abs(denom) < 1e-12)
                         throw std::runtime_error(
                             "RHF::cisd: near-zero MP2 doubles denominator "
                             "(degenerate or non-aufbau reference)");
                     const double abij =
                         antisym_eri(eri_mo, vir[static_cast<std::size_t>(aa)],
-                               vir[static_cast<std::size_t>(bb)],
-                               occ[static_cast<std::size_t>(ii)],
-                               occ[static_cast<std::size_t>(jj)]);
+                                    vir[static_cast<std::size_t>(bb)],
+                                    occ[static_cast<std::size_t>(ii)],
+                                    occ[static_cast<std::size_t>(jj)]);
                     a_amp(ii, jj, aa, bb) = -abij / denom;
                 }
             }
@@ -107,11 +107,9 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
 
     // ũ_ij^ab (eq. 8) and V = −¼ Σ (ũ)² / (Δ − ω)
     double V = 0.0;
-    xt::xtensor<double, 4> u_tilde =
-        xt::zeros<double>({static_cast<std::size_t>(no),
-                           static_cast<std::size_t>(no),
-                           static_cast<std::size_t>(nv),
-                           static_cast<std::size_t>(nv)});
+    xt::xtensor<double, 4> u_tilde = xt::zeros<double>(
+        {static_cast<std::size_t>(no), static_cast<std::size_t>(no),
+         static_cast<std::size_t>(nv), static_cast<std::size_t>(nv)});
     for (int ii = 0; ii < no; ++ii) {
         for (int jj = 0; jj < no; ++jj) {
             for (int aa = 0; aa < nv; ++aa) {
@@ -120,31 +118,31 @@ double cisd_correction_ha(const xt::xtensor<double, 4>& eri_mo,
                     for (int cc = 0; cc < nv; ++cc) {
                         // (ab||cj) b_i^c − (ab||ci) b_j^c
                         s += antisym_eri(eri_mo,
-                                    vir[static_cast<std::size_t>(aa)],
-                                    vir[static_cast<std::size_t>(bb)],
-                                    vir[static_cast<std::size_t>(cc)],
-                                    occ[static_cast<std::size_t>(jj)])
+                                         vir[static_cast<std::size_t>(aa)],
+                                         vir[static_cast<std::size_t>(bb)],
+                                         vir[static_cast<std::size_t>(cc)],
+                                         occ[static_cast<std::size_t>(jj)])
                              * b_at(ii, cc);
                         s -= antisym_eri(eri_mo,
-                                    vir[static_cast<std::size_t>(aa)],
-                                    vir[static_cast<std::size_t>(bb)],
-                                    vir[static_cast<std::size_t>(cc)],
-                                    occ[static_cast<std::size_t>(ii)])
+                                         vir[static_cast<std::size_t>(aa)],
+                                         vir[static_cast<std::size_t>(bb)],
+                                         vir[static_cast<std::size_t>(cc)],
+                                         occ[static_cast<std::size_t>(ii)])
                              * b_at(jj, cc);
                     }
                     for (int kk = 0; kk < no; ++kk) {
                         // (ka||ij) b_k^b − (kb||ij) b_k^a
                         s += antisym_eri(eri_mo,
-                                    occ[static_cast<std::size_t>(kk)],
-                                    vir[static_cast<std::size_t>(aa)],
-                                    occ[static_cast<std::size_t>(ii)],
-                                    occ[static_cast<std::size_t>(jj)])
+                                         occ[static_cast<std::size_t>(kk)],
+                                         vir[static_cast<std::size_t>(aa)],
+                                         occ[static_cast<std::size_t>(ii)],
+                                         occ[static_cast<std::size_t>(jj)])
                              * b_at(kk, bb);
                         s -= antisym_eri(eri_mo,
-                                    occ[static_cast<std::size_t>(kk)],
-                                    vir[static_cast<std::size_t>(bb)],
-                                    occ[static_cast<std::size_t>(ii)],
-                                    occ[static_cast<std::size_t>(jj)])
+                                         occ[static_cast<std::size_t>(kk)],
+                                         vir[static_cast<std::size_t>(bb)],
+                                         occ[static_cast<std::size_t>(ii)],
+                                         occ[static_cast<std::size_t>(jj)])
                              * b_at(kk, aa);
                     }
                     u_tilde(ii, jj, aa, bb) = s;
@@ -212,8 +210,7 @@ CISDResult RHF::cisd(int n_states) const {
     const internal::TDHFPack tdhf_pack{hessian, internal::Channel::singlet};
     const internal::TDHFPack::Roots roots = tdhf_pack.tda(n_states);
 
-    const RealMatrix& C =
-        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const RealMatrix& C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
     const RealVector& eps =
         det.orbital_energies(SlaterDeterminant::Spin::alpha);

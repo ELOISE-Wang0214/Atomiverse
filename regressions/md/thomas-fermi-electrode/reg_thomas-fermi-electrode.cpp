@@ -22,7 +22,7 @@ constexpr double kQTopTf2 = 3.934601758679e-03;     // [e], l_tf = 2 Å
 constexpr double kRelTol = 0.01;                    // 1% dual-gate
 
 constexpr double kEta = 1.0 / 0.56; // [1/Å]
-constexpr double kA0 = 4.07;       // [Å]
+constexpr double kA0 = 4.07;        // [Å]
 constexpr double kD = 4.0 / (kA0 * kA0 * kA0);
 constexpr double kPlane = kA0 / 2.0;
 constexpr double kLGap = 20.0;

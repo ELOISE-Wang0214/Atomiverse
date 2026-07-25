@@ -31,9 +31,9 @@
 #include <memory>
 #include <string>
 
+#include "atomiverse/core/role.h"
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/core/role.h"
 
 #ifdef ATV_HAS_HF
 namespace ATV {

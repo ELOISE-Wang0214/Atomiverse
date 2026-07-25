@@ -21,9 +21,9 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/optimizer.h"
 #include "atomiverse/cpu/minimize/lbfgs.h" // OptRecord
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -35,12 +35,12 @@ namespace minimizer {
 /// Mutate them before `opt.build()`. No `*Config` bag and no factory.
 class FIRE : public cpu::Optimizer {
   public:
-    double dt0 = 0.1;      ///< Initial pseudo-timestep [fs].
-    double dt_max = 1.0;   ///< Maximum pseudo-timestep [fs].
-    int n_min = 5;         ///< Steps with P>0 before growing Δt (Bitzek N_min).
-    double f_inc = 1.1;    ///< Δt growth factor when accelerating.
-    double f_dec = 0.5;    ///< Δt shrink factor when P ≤ 0.
-    double alpha0 = 0.1;   ///< Initial mixing parameter α_start (dimensionless).
+    double dt0 = 0.1;    ///< Initial pseudo-timestep [fs].
+    double dt_max = 1.0; ///< Maximum pseudo-timestep [fs].
+    int n_min = 5;       ///< Steps with P>0 before growing Δt (Bitzek N_min).
+    double f_inc = 1.1;  ///< Δt growth factor when accelerating.
+    double f_dec = 0.5;  ///< Δt shrink factor when P ≤ 0.
+    double alpha0 = 0.1; ///< Initial mixing parameter α_start (dimensionless).
     double f_alpha = 0.99; ///< α decay factor when accelerating.
     double max_step = 0.2; ///< Max per-atom |Δx| per step [Å].
 

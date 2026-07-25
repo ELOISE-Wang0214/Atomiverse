@@ -150,10 +150,10 @@ TEST(CfmmJ, CfmmTimesRiThrows) {
     auto frame = make_h2o();
     IntegralPack pack(frame, BasisSet::STO3G, 0, /*compute_eri=*/false);
     internal::HamiltonianBuilder hb;
-    EXPECT_THROW(
-        hb.prepare(pack, /*is_hf=*/true, GridLevel::SG1, 0, 0, nullptr,
-                   RI::J, AuxBasis::Def2JKFIT, Coulomb::CFMM, 10, 1e-9),
-        std::runtime_error);
+    EXPECT_THROW(hb.prepare(pack, /*is_hf=*/true, GridLevel::SG1, 0, 0, nullptr,
+                            RI::J, AuxBasis::Def2JKFIT, Coulomb::CFMM, 10,
+                            1e-9),
+                 std::runtime_error);
 }
 
 TEST(CfmmJ, DefaultDirectUnaffected) {

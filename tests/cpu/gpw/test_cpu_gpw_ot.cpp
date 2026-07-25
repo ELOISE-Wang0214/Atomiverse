@@ -33,8 +33,8 @@ using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::GridBasisFunction;
 using ATV::cpu::gpw::GridPrimitive;
 using ATV::cpu::gpw::internal::ot_minimize_fixed;
-using ATV::cpu::linalg::RealMatrix;
 using ATV::cpu::linalg::diagonalize_fock_generalized;
+using ATV::cpu::linalg::RealMatrix;
 
 namespace {
 
@@ -120,8 +120,8 @@ TEST(GpwOt, FixedHMatchesDiagonalizationBandEnergy) {
 
     const auto ot = ot_minimize_fixed(H, S, T, Cguess, /*tol=*/1e-8,
                                       /*max_iter=*/200);
-    ASSERT_TRUE(ot.converged) << "OT fixed-H did not converge in " << ot.iters
-                              << " iters";
+    ASSERT_TRUE(ot.converged)
+        << "OT fixed-H did not converge in " << ot.iters << " iters";
 
     const double e_diag = 2.0 * eig(0); // closed-shell band energy
     EXPECT_NEAR(ot.band_energy, e_diag, 1e-6)
@@ -137,8 +137,8 @@ TEST(GpwOt, MiniH2OtMatchesDiisEnergy) {
     diis.use_ot = false;
     diis.build(atoms);
     const GpwResult r_diis = diis.run(atoms);
-    ASSERT_TRUE(r_diis.converged) << "DIIS failed in " << r_diis.iters
-                                  << " iters";
+    ASSERT_TRUE(r_diis.converged)
+        << "DIIS failed in " << r_diis.iters << " iters";
 
     GpwDft ot = small_cfg();
     ot.use_ot = true;

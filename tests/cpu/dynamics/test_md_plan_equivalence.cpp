@@ -22,13 +22,13 @@
 #include <utility>
 #include <vector>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/nose_hoover_npt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observe/virial_stress.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/core/stage.h"
 
 namespace {
 
@@ -103,7 +103,8 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     cpu::md::MD via_setters;
     via_setters.add_potential(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
-    via_setters.set_integrator(cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
+    via_setters.set_integrator(
+        cpu::md::NoseHooverNPT{300.0, 100.0, 0.0, 1000.0, kDt});
     via_setters.build();
 
     // The raw path adds Virial explicitly — what existing

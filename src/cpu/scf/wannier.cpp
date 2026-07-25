@@ -18,8 +18,7 @@ namespace scf {
 
 namespace {
 
-constexpr double kBohr2ToAng2 =
-    units::kBohrInAngstrom * units::kBohrInAngstrom;
+constexpr double kBohr2ToAng2 = units::kBohrInAngstrom * units::kBohrInAngstrom;
 
 /// Occupied spatial columns: integer occupations f_i == 1 (per spin).
 std::vector<int> occupied_columns(const SlaterDeterminant& det) {
@@ -27,8 +26,7 @@ std::vector<int> occupied_columns(const SlaterDeterminant& det) {
         throw std::invalid_argument(
             "WannierCenters: Foster–Boys foothold requires a restricted "
             "(closed-shell) non-generalized determinant");
-    const auto& f =
-        det.occupations(SlaterDeterminant::Spin::alpha);
+    const auto& f = det.occupations(SlaterDeterminant::Spin::alpha);
     std::vector<int> cols;
     cols.reserve(static_cast<std::size_t>(f.size()));
     for (std::size_t i = 0; i < f.size(); ++i) {
@@ -41,22 +39,19 @@ std::vector<int> occupied_columns(const SlaterDeterminant& det) {
     return cols;
 }
 
-xt::xtensor<double, 2>
-to_ao_basis(const xt::xtensor<double, 2>& M_cart,
-            const MeanFieldOutputs& outs) {
+xt::xtensor<double, 2> to_ao_basis(const xt::xtensor<double, 2>& M_cart,
+                                   const MeanFieldOutputs& outs) {
     if (!outs.c2s || outs.c2s->size() == 0)
         return M_cart;
     const auto& C = *outs.c2s;
     return xt::xtensor<double, 2>(xt::linalg::dot(
-        xt::transpose(C),
-        xt::xtensor<double, 2>(xt::linalg::dot(M_cart, C))));
+        xt::transpose(C), xt::xtensor<double, 2>(xt::linalg::dot(M_cart, C))));
 }
 
 /// Build occupied C [n_ao × n_occ] from determinant columns.
 RealMatrix occ_coeff(const SlaterDeterminant& det,
                      const std::vector<int>& cols) {
-    const auto& C =
-        det.coefficients(SlaterDeterminant::Spin::alpha);
+    const auto& C = det.coefficients(SlaterDeterminant::Spin::alpha);
     const auto n_ao = C.shape()[0];
     const auto n_occ = cols.size();
     RealMatrix Co = xt::zeros<double>({n_ao, n_occ});
@@ -69,8 +64,7 @@ RealMatrix occ_coeff(const SlaterDeterminant& det,
 }
 
 /// MO multipole block R^a = C^T r^a C  [n_occ × n_occ], Bohr.
-void mo_first(const RealMatrix& Co,
-              const xt::xtensor<double, 2> r_ao[3],
+void mo_first(const RealMatrix& Co, const xt::xtensor<double, 2> r_ao[3],
               xt::xtensor<double, 2> R[3]) {
     for (int a = 0; a < 3; ++a) {
         const xt::xtensor<double, 2> tmp = xt::linalg::dot(r_ao[a], Co);
@@ -79,8 +73,7 @@ void mo_first(const RealMatrix& Co,
 }
 
 /// Diagonal second-moment sum ⟨i|r²|i⟩ from packed xx,xy,xz,yy,yz,zz AO mats.
-void mo_r2_diag(const RealMatrix& Co,
-                const xt::xtensor<double, 2> m2_ao[6],
+void mo_r2_diag(const RealMatrix& Co, const xt::xtensor<double, 2> m2_ao[6],
                 std::vector<double>& r2) {
     const auto n = Co.shape()[1];
     r2.assign(n, 0.0);
@@ -109,9 +102,8 @@ void fill_result_moments(const RealMatrix& Co,
     for (std::size_t i = 0; i < n; ++i) {
         std::array<double, 3> c_bohr = {R[0](i, i), R[1](i, i), R[2](i, i)};
         const double r2i = r2[i];
-        const double mag2 =
-            c_bohr[0] * c_bohr[0] + c_bohr[1] * c_bohr[1] +
-            c_bohr[2] * c_bohr[2];
+        const double mag2 = c_bohr[0] * c_bohr[0] + c_bohr[1] * c_bohr[1]
+                            + c_bohr[2] * c_bohr[2];
         const double omega_bohr2 = r2i - mag2;
         centers[i] = {c_bohr[0] * units::kBohrInAngstrom,
                       c_bohr[1] * units::kBohrInAngstrom,
@@ -139,8 +131,7 @@ WannierResult WannierCenters::compute(const MeanFieldOutputs& outs,
                                       const cpu::Frame& frame) const {
     (void)frame;
     if (max_sweeps < 1)
-        throw std::invalid_argument(
-            "WannierCenters: max_sweeps must be >= 1");
+        throw std::invalid_argument("WannierCenters: max_sweeps must be >= 1");
     if (!(tol > 0.0))
         throw std::invalid_argument("WannierCenters: tol must be > 0");
     if (!outs.ready || !*outs.ready)
@@ -203,8 +194,7 @@ WannierResult WannierCenters::compute(const MeanFieldOutputs& outs,
                     B += 2.0 * Aa * Ba;
                 }
                 const double gamma = boys_pair_angle(A, B);
-                max_abs_gamma =
-                    std::max(max_abs_gamma, std::fabs(gamma));
+                max_abs_gamma = std::max(max_abs_gamma, std::fabs(gamma));
                 if (std::fabs(gamma) < 1e-16)
                     continue;
                 const double c = std::cos(gamma);

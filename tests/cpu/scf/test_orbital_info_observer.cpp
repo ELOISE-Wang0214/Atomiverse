@@ -101,8 +101,7 @@ TEST(OrbitalInfoObserverTest, IpKoopmansFromHandBuiltDeterminant) {
     cpu::linalg::RealVector eps = {-0.5, 0.2};
     cpu::linalg::RealVector occ = {1.0, 0.0};
     auto det = std::make_shared<SlaterDeterminant>(C, eps, occ, 1);
-    auto shells =
-        std::make_shared<std::vector<cpu::scf::native::Shell>>();
+    auto shells = std::make_shared<std::vector<cpu::scf::native::Shell>>();
     auto ready = std::make_shared<bool>(true);
     cpu::scf::MeanFieldOutputs handle{
         det, shells, ready, std::make_shared<const xt::xtensor<double, 2>>()};

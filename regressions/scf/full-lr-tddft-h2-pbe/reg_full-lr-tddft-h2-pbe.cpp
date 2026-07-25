@@ -43,13 +43,14 @@ int main() {
     f.simbox = cpu::Box::cubic(20.0);
 
     // PySCF 2.14.0 pins (REFERENCE.md; cart=True, conv_tol=1e-12, PBE TDDFT).
-    constexpr double kERksHa = -1.152072795159;   // Ha
-    constexpr double kS1Ev = 25.519450223124366;  // eV (primary gate)
-    constexpr double kS1Ha = 0.937822497995188;   // Ha (sanity)
-    constexpr double kF = 0.8583699347665188;     // length-gauge oscillator strength
-    constexpr double kTolS1Ev = 1e-4;              // eV — job gate
-    constexpr double kTolEHa = 1e-4;               // Ha — ground-state sanity
-    constexpr double kTolF = 0.15;                 // generous f band
+    constexpr double kERksHa = -1.152072795159;  // Ha
+    constexpr double kS1Ev = 25.519450223124366; // eV (primary gate)
+    constexpr double kS1Ha = 0.937822497995188;  // Ha (sanity)
+    constexpr double kF =
+        0.8583699347665188;           // length-gauge oscillator strength
+    constexpr double kTolS1Ev = 1e-4; // eV — job gate
+    constexpr double kTolEHa = 1e-4;  // Ha — ground-state sanity
+    constexpr double kTolF = 0.15;    // generous f band
 
     cpu::scf::RKS rks(cpu::scf::XCType::PBE);
     rks.basis = cpu::scf::BasisSet::STO3G;
@@ -78,11 +79,10 @@ int main() {
 
     const double s1_ev = es.energy_ev[0];
     const double s1_ha = s1_ev / units::kHartreeInEv;
-    std::printf("  S1 = %.8f eV (%.10f Ha)  f=%.6f  tda=%d alda=%d\n", s1_ev,
-                s1_ha,
-                es.oscillator_strength.empty() ? 0.0
-                                               : es.oscillator_strength[0],
-                static_cast<int>(es.tda), static_cast<int>(es.alda));
+    std::printf(
+        "  S1 = %.8f eV (%.10f Ha)  f=%.6f  tda=%d alda=%d\n", s1_ev, s1_ha,
+        es.oscillator_strength.empty() ? 0.0 : es.oscillator_strength[0],
+        static_cast<int>(es.tda), static_cast<int>(es.alda));
 
     if (!check("S1 [eV]", s1_ev, kS1Ev, kTolS1Ev))
         return 1;
@@ -96,10 +96,11 @@ int main() {
 
     // Guard: must not accidentally match pure TDA on this pin (26.211 eV).
     constexpr double kTdaS1Ev = 26.210883282417658;
-    if (std::abs(s1_ev - kTdaS1Ev) < 0.05 && std::abs(s1_ev - kS1Ev) > kTolS1Ev) {
-        std::fprintf(stderr,
-                     "FAIL: S1 matches PBE-TDA pin (%.6f eV) — used tda path?\n",
-                     kTdaS1Ev);
+    if (std::abs(s1_ev - kTdaS1Ev) < 0.05
+        && std::abs(s1_ev - kS1Ev) > kTolS1Ev) {
+        std::fprintf(
+            stderr, "FAIL: S1 matches PBE-TDA pin (%.6f eV) — used tda path?\n",
+            kTdaS1Ev);
         return 1;
     }
 

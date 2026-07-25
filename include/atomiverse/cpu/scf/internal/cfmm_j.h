@@ -18,12 +18,12 @@
 #include <vector>
 
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/cpu/scf/dense_matrix.h"
-#include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/longrange/fmm_operators.h"
 #include "atomiverse/cpu/longrange/gaussian_extent.h"
 #include "atomiverse/cpu/longrange/multipole_expansion.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
+#include "atomiverse/cpu/scf/internal/shell_pair.h"
+#include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
 namespace cpu {
@@ -50,8 +50,8 @@ class CfmmJ {
     ///                   default 1e-10 (matches ShellPairList).
     /// @throws std::invalid_argument on bad order/threshold; std::runtime_error
     ///         if shells is empty.
-    CfmmJ(const std::vector<native::Shell>& shells, int order,
-          double threshold, double schwarz_thr = 1e-10);
+    CfmmJ(const std::vector<native::Shell>& shells, int order, double threshold,
+          double schwarz_thr = 1e-10);
 
     /// @brief Multipole truncation order p.
     int order() const { return order_; }
@@ -60,9 +60,7 @@ class CfmmJ {
     double threshold() const { return threshold_; }
 
     /// @brief Number of retained shell-pair product distributions.
-    int n_distributions() const {
-        return static_cast<int>(dists_.size());
-    }
+    int n_distributions() const { return static_cast<int>(dists_.size()); }
 
     /// @brief One-time: build product distributions, extents, near/far tables.
     ///
@@ -120,13 +118,13 @@ class CfmmJ {
 
   private:
     struct Dist {
-        int i = 0;               ///< AO index i (i ≥ j)
-        int j = 0;               ///< AO index j
-        double schwarz = 0;      ///< √(ij|ij) [Hartree^{1/2}]
-        double charge0 = 0;      ///< ∫ χ_i χ_j = overlap [dimensionless]
-        Vec3 center;             ///< product centre [Bohr]
-        double r_ext = 0;        ///< WJGH extent [Bohr]
-        bool spherical = false;  ///< both shells l == 0
+        int i = 0;              ///< AO index i (i ≥ j)
+        int j = 0;              ///< AO index j
+        double schwarz = 0;     ///< √(ij|ij) [Hartree^{1/2}]
+        double charge0 = 0;     ///< ∫ χ_i χ_j = overlap [dimensionless]
+        Vec3 center;            ///< product centre [Bohr]
+        double r_ext = 0;       ///< WJGH extent [Bohr]
+        bool spherical = false; ///< both shells l == 0
     };
 
     void form_distributions_();

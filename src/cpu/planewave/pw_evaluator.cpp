@@ -27,8 +27,7 @@ void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     if (compute_forces_ && ctx.forces_requested) {
         const auto saved = ctx.frame.resolution_window();
-        const auto forces =
-            pw_forces_analytic(ctx.frame, method_); // eV/Å
+        const auto forces = pw_forces_analytic(ctx.frame, method_); // eV/Å
         ctx.frame.restore_resolution_window(saved);
         const int n = ctx.frame.nlocal();
         if (static_cast<int>(forces.size()) != n)

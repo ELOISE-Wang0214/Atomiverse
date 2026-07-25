@@ -134,9 +134,9 @@ TEST(StressConverged, VerdictMaskedIntensive) {
     cpu::Frame frame(1);
     frame.simbox = cpu::Box::cubic(10.0);
     auto& st = frame.meta.get(kStress);
-    st[0] = 5e-5;  // under tol
-    st[1] = 0.5;   // way out — but masked below
-    st[2] = -0.5;  // way out — masked
+    st[0] = 5e-5; // under tol
+    st[1] = 0.5;  // way out — but masked below
+    st[2] = -0.5; // way out — masked
     cpu::Context rt;
     ConvergenceMetrics metrics;
     cpu::LoopState s{/*iteration=*/0, frame, rt, metrics};

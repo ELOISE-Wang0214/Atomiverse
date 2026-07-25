@@ -97,9 +97,9 @@ int main() {
         cpu::electrodes::ChargeASPC aspc(2);
         if (!(aspc.coefficient(0) == 1.0 && aspc.coefficient(1) == -3.0
               && aspc.coefficient(2) == 3.0)) {
-            std::printf("FAIL: ASPC K=2 coeffs got {%g,%g,%g} expect {1,-3,3}\n",
-                        aspc.coefficient(0), aspc.coefficient(1),
-                        aspc.coefficient(2));
+            std::printf(
+                "FAIL: ASPC K=2 coeffs got {%g,%g,%g} expect {1,-3,3}\n",
+                aspc.coefficient(0), aspc.coefficient(1), aspc.coefficient(2));
             return 1;
         }
         for (int n = 0; n <= 2; ++n)

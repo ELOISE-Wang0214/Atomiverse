@@ -26,8 +26,8 @@ void muller_brown_force(cpu::Frame& f) {
         const double dx = x - kX0[k];
         const double dy = y - kY0[k];
         const double e =
-            kA[k] * std::exp(kAa[k] * dx * dx + kBb[k] * dx * dy +
-                             kCc[k] * dy * dy);
+            kA[k]
+            * std::exp(kAa[k] * dx * dx + kBb[k] * dx * dy + kCc[k] * dy * dy);
         v += e;
         dvdx += e * (2.0 * kAa[k] * dx + kBb[k] * dy);
         dvdy += e * (kBb[k] * dx + 2.0 * kCc[k] * dy);

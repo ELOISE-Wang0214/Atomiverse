@@ -80,9 +80,9 @@ class XlBomd {
     void reset();
 
   private:
-    int k_;                ///< dissipation order K.
-    double kappa_ = 0.0;   ///< Verlet coupling κ.
-    double alpha_ = 0.0;   ///< dissipation strength α.
+    int k_;                 ///< dissipation order K.
+    double kappa_ = 0.0;    ///< Verlet coupling κ.
+    double alpha_ = 0.0;    ///< dissipation strength α.
     std::vector<double> c_; ///< dissipation weights c_0..c_K.
     /// Auxiliary-density history, newest first: P_n, P_{n−1}, …, P_{n−K}.
     std::deque<linalg::RealMatrix> hist_;

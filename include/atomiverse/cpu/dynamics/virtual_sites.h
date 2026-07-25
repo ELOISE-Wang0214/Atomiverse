@@ -32,7 +32,7 @@ class VirtualSites {
   public:
     /// @brief Construction kind for one site.
     enum class Kind : std::uint8_t {
-        Weighted3,   ///< \(\mathbf{r}_s=(1-\alpha)\mathbf{r}_0+\frac\alpha2\mathbf{r}_1+\frac\alpha2\mathbf{r}_2\)
+        Weighted3, ///< \(\mathbf{r}_s=(1-\alpha)\mathbf{r}_0+\frac\alpha2\mathbf{r}_1+\frac\alpha2\mathbf{r}_2\)
         OutOfPlane3, ///< \(\mathbf{r}_s=\mathbf{r}_0+a\mathbf{d}_1+b\mathbf{d}_2+c(\mathbf{d}_1\times\mathbf{d}_2)\)
     };
 

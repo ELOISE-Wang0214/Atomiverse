@@ -6,11 +6,11 @@
 
 #include <cmath>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/core/units.h"
 
 namespace ATV {
 namespace cpu {
@@ -96,9 +96,8 @@ xt::xtensor<double, 2> IntegralPack::kinetic(const ShellList& shells) {
     return T;
 }
 
-xt::xtensor<double, 2>
-IntegralPack::nuclear_attraction(const ShellList& shells,
-                                 const AtomList& atoms) {
+xt::xtensor<double, 2> IntegralPack::nuclear_attraction(const ShellList& shells,
+                                                        const AtomList& atoms) {
     const int n = shells.n_basis;
     const int natm = static_cast<int>(atoms.atoms.size());
     xt::xtensor<double, 2> V = xt::zeros<double>({n, n});
@@ -129,8 +128,9 @@ inline double pvp_prim_dir(const int a_ang[3], const int b_ang[3], double aa,
     b_plus[d] += 1;
 
     // (2α_a)(2α_b) ⟨a+e|1/r|b+e⟩
-    double acc = 4.0 * aa * ab
-                 * native::nuclear_prim(a_plus, b_plus, gamma, PA, PB, PC, K_AB);
+    double acc =
+        4.0 * aa * ab
+        * native::nuclear_prim(a_plus, b_plus, gamma, PA, PB, PC, K_AB);
 
     if (b_ang[d] > 0) {
         int b_minus[3] = {b_ang[0], b_ang[1], b_ang[2]};
@@ -170,12 +170,10 @@ void pvp_block(const native::ShellBlock& A, const native::ShellBlock& B,
             const double ab = B.alpha[q];
             const double gamma = aa + ab;
             const double mu = aa * ab / gamma;
-            const double R2_AB = (A.center[0] - B.center[0])
-                                     * (A.center[0] - B.center[0])
-                                 + (A.center[1] - B.center[1])
-                                       * (A.center[1] - B.center[1])
-                                 + (A.center[2] - B.center[2])
-                                       * (A.center[2] - B.center[2]);
+            const double R2_AB =
+                (A.center[0] - B.center[0]) * (A.center[0] - B.center[0])
+                + (A.center[1] - B.center[1]) * (A.center[1] - B.center[1])
+                + (A.center[2] - B.center[2]) * (A.center[2] - B.center[2]);
             const double K_AB = std::exp(-mu * R2_AB);
             const double cpq = A.coeff[p] * B.coeff[q];
 
@@ -272,8 +270,8 @@ double moment_1d(int la, int lb, int e, double pa, double pb, double pc,
                     dfac *= m;
                 acc += binom(la, i) * binom(lb, j) * binom(e, k)
                        * std::pow(pa, la - i) * std::pow(pb, lb - j)
-                       * std::pow(pc, e - k) * dfac
-                       / std::pow(2.0 * p, n / 2.0) * spi;
+                       * std::pow(pc, e - k) * dfac / std::pow(2.0 * p, n / 2.0)
+                       * spi;
             }
         }
     }
@@ -336,8 +334,8 @@ MultipoleIntegrals::MultipoleIntegrals(const native::Shell* shells, int n_ao,
                     double I[3][3]; // [axis][e]
                     for (int c = 0; c < 3; ++c)
                         for (int e = 0; e < 3; ++e)
-                            I[c][e] = moment_1d(ca[c], cb[c], e, PA[c],
-                                                PB[c], PC[c], p);
+                            I[c][e] = moment_1d(ca[c], cb[c], e, PA[c], PB[c],
+                                                PC[c], p);
                     for (int op = 0; op < 9; ++op) {
                         double v = pre;
                         for (int c = 0; c < 3; ++c)

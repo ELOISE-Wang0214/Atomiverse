@@ -30,8 +30,8 @@ struct AoShellTag {
 };
 
 /// @brief Collect global AO indices belonging to atom `iat` with ℓ = `L`.
-inline std::vector<int> ao_indices_for_shell(const std::vector<AoShellTag>& tags,
-                                             int iat, int L) {
+inline std::vector<int>
+ao_indices_for_shell(const std::vector<AoShellTag>& tags, int iat, int L) {
     std::vector<int> idx;
     for (int i = 0; i < static_cast<int>(tags.size()); ++i)
         if (tags[static_cast<std::size_t>(i)].atom == iat
@@ -99,7 +99,8 @@ inline double dudarev_energy_potential(double U_ha,
 }
 
 /// @brief Scatter subspace potential into full Fock matrix.
-inline void scatter_potential(linalg::RealMatrix& H, const std::vector<int>& idx,
+inline void scatter_potential(linalg::RealMatrix& H,
+                              const std::vector<int>& idx,
                               const linalg::RealMatrix& V_sub) {
     const int n = static_cast<int>(idx.size());
     for (int a = 0; a < n; ++a)
@@ -137,7 +138,8 @@ struct PlusUHa {
     double U_ha = 0.0;
 };
 
-inline double apply_dft_plus_u(linalg::RealMatrix& H, const linalg::RealMatrix& P,
+inline double apply_dft_plus_u(linalg::RealMatrix& H,
+                               const linalg::RealMatrix& P,
                                const linalg::RealMatrix& S,
                                const std::vector<AoShellTag>& tags,
                                const std::vector<int>& z_of_atom,

@@ -90,8 +90,7 @@ int main() {
     auto energy_only = [](cpu::Frame g) {
         g.meta.get(kEnergy) = 0;
         for (int i = 0; i < 3; ++i)
-            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] =
-                0;
+            g.span(kAtom_fx)[i] = g.span(kAtom_fy)[i] = g.span(kAtom_fz)[i] = 0;
         cpu::Evaluate ev;
         cpu::semiempirical::DFTB2 d;
         d.with_forces = false;

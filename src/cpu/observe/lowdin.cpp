@@ -69,9 +69,9 @@ std::vector<double> lowdin_populations(const MeanFieldOutputs& outputs,
     }
     const int n_ao = static_cast<int>(S.shape()[0]);
     if (static_cast<int>(P_in.shape()[0]) != n_ao)
-        throw std::runtime_error(
-            "lowdin: density dimension " + std::to_string(P_in.shape()[0])
-            + " != AO dimension " + std::to_string(n_ao));
+        throw std::runtime_error("lowdin: density dimension "
+                                 + std::to_string(P_in.shape()[0])
+                                 + " != AO dimension " + std::to_string(n_ao));
 
     // ── Unit-normalize each AO (S_ii = 1) before orthogonalization ────
     // Löwdin populations are NOT invariant under per-AO rescaling (unlike
@@ -82,10 +82,10 @@ std::vector<double> lowdin_populations(const MeanFieldOutputs& outputs,
     RealMatrix P_bar = P_in;
     for (int i = 0; i < n_ao; ++i) {
         if (S(i, i) <= 0.0)
-            throw std::runtime_error(
-                "lowdin: AO self-overlap S(" + std::to_string(i) + ","
-                + std::to_string(i) + ") = " + std::to_string(S(i, i))
-                + " <= 0");
+            throw std::runtime_error("lowdin: AO self-overlap S("
+                                     + std::to_string(i) + ","
+                                     + std::to_string(i) + ") = "
+                                     + std::to_string(S(i, i)) + " <= 0");
         const double di = std::sqrt(S(i, i));
         for (int j = 0; j < n_ao; ++j) {
             const double dj = std::sqrt(S(j, j));
@@ -143,17 +143,17 @@ std::vector<double> lowdin_populations(const MeanFieldOutputs& outputs,
         ao += n_fn;
     }
     if (ao != n_ao)
-        throw std::runtime_error(
-            "lowdin: AO map covers " + std::to_string(ao) + " of "
-            + std::to_string(n_ao) + " functions");
+        throw std::runtime_error("lowdin: AO map covers " + std::to_string(ao)
+                                 + " of " + std::to_string(n_ao)
+                                 + " functions");
 
     // ── diag(S^{1/2} P S^{1/2}) scattered per atom ────────────────────
-    const RealMatrix M = xt::linalg::dot(
-        S_half, RealMatrix(xt::linalg::dot(P, S_half)));
+    const RealMatrix M =
+        xt::linalg::dot(S_half, RealMatrix(xt::linalg::dot(P, S_half)));
     std::vector<double> pop(static_cast<std::size_t>(natm), 0.0);
     for (int mu = 0; mu < n_ao; ++mu)
-        pop[static_cast<std::size_t>(ao_to_atom[static_cast<std::size_t>(mu)])]
-            += M(mu, mu);
+        pop[static_cast<std::size_t>(
+            ao_to_atom[static_cast<std::size_t>(mu)])] += M(mu, mu);
     return pop;
 }
 
@@ -187,7 +187,8 @@ std::vector<double> lowdin_spin(const scf::MeanFieldOutputs& outputs,
     check_handle(outputs);
     using Spin = scf::SlaterDeterminant::Spin;
     const auto& det = *outputs.result;
-    const RealMatrix P_diff = det.density(Spin::alpha) - det.density(Spin::beta);
+    const RealMatrix P_diff =
+        det.density(Spin::alpha) - det.density(Spin::beta);
     return lowdin_populations(outputs, frame, P_diff);
 }
 

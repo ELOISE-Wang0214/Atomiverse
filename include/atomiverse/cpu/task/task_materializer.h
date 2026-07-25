@@ -5,8 +5,8 @@
 #include <memory>
 #include <optional>
 
-#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/task/task_spec.h"
 

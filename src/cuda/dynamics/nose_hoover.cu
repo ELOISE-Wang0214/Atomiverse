@@ -1,11 +1,11 @@
 /// @file md/nose_hoover.cu
 /// @brief NoseHoover -- single-chain Nosé-Hoover thermostat.
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/dynamics/nose_hoover.cuh"
-#include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {
@@ -109,8 +109,8 @@ __global__ void scale_vel(real_t* __restrict__ vx, real_t* __restrict__ vy,
 void NoseHoover::build(const BuildContext& ctx) {
     int n = ctx.frame.n_atoms();
     state_->ndof = 3 * n - 3;
-    state_->Q = static_cast<work_t>(state_->ndof) * ATV::units::kB_ev_per_k * T_target_
-                * tau_ * tau_;
+    state_->Q = static_cast<work_t>(state_->ndof) * ATV::units::kB_ev_per_k
+                * T_target_ * tau_ * tau_;
 
     cudaMalloc(&state_->d_xi, sizeof(work_t));
     cudaMalloc(&state_->d_ke_temp, sizeof(work_t));
@@ -139,8 +139,8 @@ void NoseHoover::launch(const LaunchContext& ctx) {
     cudaMemsetAsync(state_->d_ke_temp, 0, sizeof(work_t), stream);
     reduce_ke_and_update<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, state_->d_ke_temp, n,
-        ATV::units::mass_v2_to_energy, state_->d_xi, state_->d_scale, state_->Q, ndof_kbT, half_dt,
-        state_->d_block_count);
+        ATV::units::mass_v2_to_energy, state_->d_xi, state_->d_scale, state_->Q,
+        ndof_kbT, half_dt, state_->d_block_count);
 
     // Scale velocities (reads scale written by the last block above)
     scale_vel<<<grid, block, 0, stream>>>(f.atoms.vx, f.atoms.vy, f.atoms.vz,

@@ -62,9 +62,9 @@ TEST(PcmFEpsilon, CpcmAndCosmoConventions) {
     EXPECT_NEAR(cosmo.f_epsilon(), (2.0 - 1.0) / (2.0 + 0.5), 1e-14);
 
     // Low-ε: the two conventions must be resolvably different.
-    EXPECT_GT(std::abs(cpcm.f_epsilon()
-                       - Pcm(atoms, 2.0, 1.2, 0.0, 50).f_epsilon()),
-              0.1);
+    EXPECT_GT(
+        std::abs(cpcm.f_epsilon() - Pcm(atoms, 2.0, 1.2, 0.0, 50).f_epsilon()),
+        0.1);
 }
 
 TEST(PcmFEpsilon, IefPcmUsesEpsPlusOne) {
@@ -75,9 +75,9 @@ TEST(PcmFEpsilon, IefPcmUsesEpsPlusOne) {
     EXPECT_NEAR(ief.f_epsilon(), (78.4 - 1.0) / (78.4 + 1.0), 1e-14);
     EXPECT_EQ(ief.model(), SolventModel::IEFPCM);
     // Distinct from C-PCM at the same ε.
-    EXPECT_GT(std::abs(ief.f_epsilon()
-                       - Pcm(atoms, 78.4, 1.2, 0.0, 50).f_epsilon()),
-              1e-4);
+    EXPECT_GT(
+        std::abs(ief.f_epsilon() - Pcm(atoms, 78.4, 1.2, 0.0, 50).f_epsilon()),
+        1e-4);
 }
 
 TEST(PcmBornIon, AnalyticOracle) {
@@ -91,8 +91,7 @@ TEST(PcmBornIon, AnalyticOracle) {
     constexpr double R_ang = 1.10; // modified Bondi H (PCM convention)
     constexpr double R = R_ang * units::kAngstromInBohr;
 
-    std::vector<native::Atom> atoms = {
-        {static_cast<int>(Q), {0.0, 0.0, 0.0}}};
+    std::vector<native::Atom> atoms = {{static_cast<int>(Q), {0.0, 0.0, 0.0}}};
     // radii_scale=1.0 → cavity radius = modified Bondi H = 1.10 Å.
     Pcm pcm(atoms, eps, /*radii_scale=*/1.0, x, /*lebedev_n=*/302);
     ASSERT_GT(pcm.n_tesserae(), 0);

@@ -42,11 +42,11 @@ int main() {
     frame.simbox = cpu::Box::cubic(20.0);
 
     // Pins — REFERENCE.md (PySCF 2.14.0 mcscf.CASSCF + mrpt.NEVPT / STO-3G).
-    constexpr double kEHf = -1.116759307396426;      // Ha
-    constexpr double kECas = -1.137283834488502;     // Ha
-    constexpr double kECorrPt2 = 0.0;                // Ha (ncore=nvirt=0)
-    constexpr double kETot = -1.137283834488502;     // Ha
-    constexpr double kTol = 1e-6;                    // Ha
+    constexpr double kEHf = -1.116759307396426;  // Ha
+    constexpr double kECas = -1.137283834488502; // Ha
+    constexpr double kECorrPt2 = 0.0;            // Ha (ncore=nvirt=0)
+    constexpr double kETot = -1.137283834488502; // Ha
+    constexpr double kTol = 1e-6;                // Ha
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;

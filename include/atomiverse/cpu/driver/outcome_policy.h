@@ -33,8 +33,8 @@
 
 #include "atomiverse/core/precision.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/core/verdict.h"
+#include "atomiverse/cpu/component/criterion.h"
 
 namespace ATV {
 namespace cpu {

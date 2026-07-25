@@ -27,6 +27,8 @@
 #include <string>
 
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/potential.h"
@@ -39,8 +41,6 @@
 #include "atomiverse/cpu/potentials/coul_long.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/potentials/pair_morse.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace {
 
@@ -311,9 +311,9 @@ TEST(MDSetApi, SetIntegratorTwiceWithSameNameIdempotent) {
 TEST(MDSetApi, SetIntegratorRejectsDifferentTypeAfterFirst) {
     ATV::cpu::md::MD sim;
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
-    EXPECT_THROW(
-        sim.set_integrator(ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt}),
-        std::invalid_argument);
+    EXPECT_THROW(sim.set_integrator(
+                     ATV::cpu::md::NoseHooverNPT{kT, 100.0, kP, 1000.0, kDt}),
+                 std::invalid_argument);
 }
 
 // ─── install_infra: Stress dependency → Virial ────────────────

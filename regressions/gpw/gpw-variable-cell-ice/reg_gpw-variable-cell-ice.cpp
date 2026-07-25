@@ -38,9 +38,9 @@ constexpr double kF1x = 0.319067;  // H1 (donor, on the chain axis)
 constexpr double kF2x = -0.079900; // H2 x
 constexpr double kF2z = 0.115830;  // H2 z
 
-constexpr double kATol = 0.02;      // Å on the relaxed chain axis
-constexpr double kETol = 1e-3;      // Ha on the final energy
-constexpr double kStol = 5e-4;      // eV/Å³ residual stress gate (criterion)
+constexpr double kATol = 0.02; // Å on the relaxed chain axis
+constexpr double kETol = 1e-3; // Ha on the final energy
+constexpr double kStol = 5e-4; // eV/Å³ residual stress gate (criterion)
 
 } // namespace
 
@@ -112,8 +112,9 @@ int main() {
     const double sxx_ev_a3 = frame.meta.get(kStress)[0];
     const double sxx_ha_bohr3 = eval.last_stress_ha_bohr3()[0];
 
-    std::printf("a: start=%.4f  relaxed=%.6f  cp2k CELL_OPT=%.6f  |da|=%.4f A\n",
-                kA0, a1, kA_cp2k, std::fabs(a1 - kA_cp2k));
+    std::printf(
+        "a: start=%.4f  relaxed=%.6f  cp2k CELL_OPT=%.6f  |da|=%.4f A\n", kA0,
+        a1, kA_cp2k, std::fabs(a1 - kA_cp2k));
     std::printf("E: atv=%.12f Ha  cp2k=%.12f Ha  |dE|=%.3e Ha\n", e_ha, kE_cp2k,
                 std::fabs(e_ha - kE_cp2k));
     std::printf("sigma_xx(relaxed) = %.3e eV/A3 = %.3e Ha/Bohr3  (%s)\n",
@@ -134,8 +135,7 @@ int main() {
         return 1;
     }
     if (std::fabs(sxx_ev_a3) > 1.2 * kStol) {
-        std::printf("FAIL: residual stress %.3e eV/A3 above gate\n",
-                    sxx_ev_a3);
+        std::printf("FAIL: residual stress %.3e eV/A3 above gate\n", sxx_ev_a3);
         return 1;
     }
     if (std::fabs(e_ha - kE_cp2k) > kETol) {

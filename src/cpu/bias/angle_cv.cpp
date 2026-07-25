@@ -53,8 +53,7 @@ double AngleCV::evaluate(const cpu::Frame& frame, double* grad) const {
     if (!(ri > 0.0) || !(rk > 0.0))
         throw std::runtime_error("AngleCV: zero bond length");
 
-    const double cos_th =
-        (xi * xk + yi * yk + zi * zk) / (ri * rk);
+    const double cos_th = (xi * xk + yi * yk + zi * zk) / (ri * rk);
     const double c = std::max(-1.0, std::min(1.0, cos_th));
     const double theta = std::acos(c);
 

@@ -86,8 +86,7 @@ int main() {
     const auto t0 = std::chrono::steady_clock::now();
     sim.run(frame, n_steps);
     const auto t1 = std::chrono::steady_clock::now();
-    const double wall_s =
-        std::chrono::duration<double>(t1 - t0).count();
+    const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 
     // ── Pin checks by tag (atom sort may reorder local rows) ──────────
     const double pos_tol = 1.0e-10; // [A]

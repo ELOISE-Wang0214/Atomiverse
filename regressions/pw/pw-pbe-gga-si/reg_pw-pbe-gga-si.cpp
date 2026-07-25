@@ -69,7 +69,7 @@ std::string find_upf() {
 } // namespace
 
 int main() {
-    const double force_tol = 0.5;      // eV/Å — symmetry residual
+    const double force_tol = 0.5;    // eV/Å — symmetry residual
     const double de_floor_ry = 1e-4; // |E_PBE − E_LSDA| floor [Ry]
 
     const std::string upf = find_upf();
@@ -138,12 +138,11 @@ int main() {
                 "iters_pbe=%d converged=%d\n",
                 r_pbe.energy, r_lda.energy, de, r_pbe.iterations,
                 int(r_pbe.converged));
-    std::printf("ok: |F0|=%.4g  |F1|=%.4g eV/Å  upf=%s\n",
-                std::sqrt(F[0][0] * F[0][0] + F[0][1] * F[0][1]
-                          + F[0][2] * F[0][2]),
-                std::sqrt(F[1][0] * F[1][0] + F[1][1] * F[1][1]
-                          + F[1][2] * F[1][2]),
-                upf.c_str());
+    std::printf(
+        "ok: |F0|=%.4g  |F1|=%.4g eV/Å  upf=%s\n",
+        std::sqrt(F[0][0] * F[0][0] + F[0][1] * F[0][1] + F[0][2] * F[0][2]),
+        std::sqrt(F[1][0] * F[1][0] + F[1][1] * F[1][1] + F[1][2] * F[1][2]),
+        upf.c_str());
     std::printf("PASS: pw-pbe-gga-si (true GGA PBE + symmetry forces)\n");
     return 0;
 }

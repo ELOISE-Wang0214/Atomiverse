@@ -46,8 +46,8 @@ int main() {
     for (int a = 0; a < 3; ++a) {
         const double got = alpha(a, a);
         const double diff = std::fabs(got - want[a]);
-        std::printf("alpha[%d%d] got=%.10f want=%.10f |diff|=%.3e\n", a, a,
-                    got, want[a], diff);
+        std::printf("alpha[%d%d] got=%.10f want=%.10f |diff|=%.3e\n", a, a, got,
+                    want[a], diff);
         ok = ok && diff < tol;
     }
     // Off-diagonal should be ~0 for C2v water in this frame.
@@ -58,8 +58,7 @@ int main() {
             ok = ok && off < 1e-4;
         }
     }
-    const double iso =
-        (alpha(0, 0) + alpha(1, 1) + alpha(2, 2)) / 3.0;
+    const double iso = (alpha(0, 0) + alpha(1, 1) + alpha(2, 2)) / 3.0;
     std::printf("alpha_iso = %.8f a.u. (STO-3G, unphysical vs exp ~9–10)\n",
                 iso);
     if (!ok) {

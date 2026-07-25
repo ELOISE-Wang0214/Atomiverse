@@ -104,8 +104,7 @@ TEST(SlabCorrMath, NeutralDipoleFormula) {
     const double zprd = 20.0 * 3.0;
     const double e =
         longrange::slab_corr_energy(mz, /*Q=*/0.0, /*mz_r2=*/0.0, vol, zprd);
-    const double expect =
-        units::coulomb * 2.0 * units::pi * mz * mz / vol;
+    const double expect = units::coulomb * 2.0 * units::pi * mz * mz / vol;
     EXPECT_NEAR(e, expect, 1e-12);
 }
 
@@ -178,8 +177,7 @@ TEST(SlabEwald, FiniteDifferenceForcesSlab) {
                                : frame.span(kAtom_z);
         const double orig = pos[a];
         pos[a] = orig + delta;
-        const double e =
-            eval_energy(frame, pairs, alpha, cutoff, acc, slab);
+        const double e = eval_energy(frame, pairs, alpha, cutoff, acc, slab);
         pos[a] = orig;
         return e;
     };
@@ -189,8 +187,7 @@ TEST(SlabEwald, FiniteDifferenceForcesSlab) {
             const double f_a = force_comp(a, axis);
             const double grad =
                 (energy_at(a, axis, h) - energy_at(a, axis, -h)) / (2 * h);
-            EXPECT_NEAR(f_a, -grad, 5.0e-4)
-                << "atom " << a << " axis " << axis;
+            EXPECT_NEAR(f_a, -grad, 5.0e-4) << "atom " << a << " axis " << axis;
         }
 }
 

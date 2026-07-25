@@ -145,10 +145,8 @@ void FixSettle::settle_positions_(Frame& f) const {
         const double body_Ox = 0, body_Oy = y_O;
         const double body_Ax = -half_hh, body_Ay = y_H;
         const double body_Bx = half_hh, body_By = y_H;
-        const double com_x =
-            (mo * body_Ox + ma * body_Ax + mb * body_Bx) / M;
-        const double com_y =
-            (mo * body_Oy + ma * body_Ay + mb * body_By) / M;
+        const double com_x = (mo * body_Ox + ma * body_Ax + mb * body_Bx) / M;
+        const double com_y = (mo * body_Oy + ma * body_Ay + mb * body_By) / M;
         auto place = [&](double bx_, double by_, int idx) {
             const double lx = (bx_ - com_x);
             const double ly = (by_ - com_y);
@@ -169,7 +167,8 @@ void FixSettle::settle_velocities_(Frame& f) const {
     for (int iter = 0; iter < 20; ++iter) {
         double max_rv = 0;
         for (const auto& w : waters_) {
-            const int idxs[3][2] = {{w.io, w.ih1}, {w.io, w.ih2}, {w.ih1, w.ih2}};
+            const int idxs[3][2] = {
+                {w.io, w.ih1}, {w.io, w.ih2}, {w.ih1, w.ih2}};
             for (int c = 0; c < 3; ++c) {
                 const int i = idxs[c][0], j = idxs[c][1];
                 double dx = f.span(kAtom_x)[i] - f.span(kAtom_x)[j];

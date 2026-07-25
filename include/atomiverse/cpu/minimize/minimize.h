@@ -48,6 +48,7 @@
 #include <string>
 #include <type_traits>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/asynchronous/snapshot_publisher.h"
 #include "atomiverse/cpu/communication/atom_migration.h"
 #include "atomiverse/cpu/communication/halo_exchange.h"
@@ -62,10 +63,9 @@
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/criteria.h"
+#include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/materialize.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

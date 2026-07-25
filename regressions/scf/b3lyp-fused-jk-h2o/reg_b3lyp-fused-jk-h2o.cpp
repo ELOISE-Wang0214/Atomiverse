@@ -47,7 +47,7 @@ int main() {
     // PySCF 2.14.0 pin (REFERENCE.md; def2-SVP spherical, conv_tol=1e-12,
     // default DFT grid; ATV default RKS grid is MatchPySCF).
     constexpr double kEB3lypHa = -76.35814183099154; // Ha
-    constexpr double kTolHa = 1e-6;                   // Ha
+    constexpr double kTolHa = 1e-6;                  // Ha
 
     cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);
     rks.basis = cpu::scf::BasisSet::Def2SVP;

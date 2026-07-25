@@ -86,10 +86,10 @@ class Cpmd {
     void reset();
 
   private:
-    double mu_ = 400.0;           ///< fictitious mass [a.u.].
-    linalg::RealMatrix C_;        ///< C_n
-    linalg::RealMatrix C_prev_;   ///< C_{n-1}
-    double ke_ha_ = 0.0;          ///< last T_e [Hartree]
+    double mu_ = 400.0;         ///< fictitious mass [a.u.].
+    linalg::RealMatrix C_;      ///< C_n
+    linalg::RealMatrix C_prev_; ///< C_{n-1}
+    double ke_ha_ = 0.0;        ///< last T_e [Hartree]
     bool ready_ = false;
 };
 

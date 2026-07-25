@@ -15,11 +15,13 @@ ChargeChargeAutocorr::ChargeChargeAutocorr(md::ConstPotBO* conp, int every,
     if (every_ < 1)
         throw std::invalid_argument("ChargeChargeAutocorr: every must be ≥ 1");
     if (max_lag_ < 1)
-        throw std::invalid_argument("ChargeChargeAutocorr: max_lag must be ≥ 1");
+        throw std::invalid_argument(
+            "ChargeChargeAutocorr: max_lag must be ≥ 1");
 }
 
 void ChargeChargeAutocorr::launch(const LaunchContext& ctx) {
-    if (every_ > 1 && (ctx.step % every_) != 0) return;
+    if (every_ > 1 && (ctx.step % every_) != 0)
+        return;
     double Q = 0.0;
     // Prefer first electrode group if multi; else all electrodes.
     if (conp_->n_electrode() > 0) {
@@ -35,7 +37,8 @@ void ChargeChargeAutocorr::launch(const LaunchContext& ctx) {
 }
 
 double ChargeChargeAutocorr::C0() const {
-    if (history_.empty()) return 0.0;
+    if (history_.empty())
+        return 0.0;
     double s = 0.0;
     for (double q : history_) {
         const double d = q - mean_;
@@ -45,9 +48,11 @@ double ChargeChargeAutocorr::C0() const {
 }
 
 double ChargeChargeAutocorr::C_lag(int lag) const {
-    if (lag < 0 || lag > max_lag_) return 0.0;
+    if (lag < 0 || lag > max_lag_)
+        return 0.0;
     const int n = static_cast<int>(history_.size());
-    if (n <= lag) return 0.0;
+    if (n <= lag)
+        return 0.0;
     double s = 0.0;
     int cnt = 0;
     for (int t = 0; t + lag < n; ++t) {

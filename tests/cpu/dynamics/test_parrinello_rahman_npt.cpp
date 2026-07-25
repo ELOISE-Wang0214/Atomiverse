@@ -68,9 +68,9 @@ TEST(ParrinelloRahmanNPT, ShortRunVolumePositiveFinite) {
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, 0.5});
-    sim.set_integrator(
-        cpu::md::ParrinelloRahmanNPT{T, /*P=*/0.0, /*tau_T=*/50.0,
-                                    /*tau_P=*/200.0, dt});
+    sim.set_integrator(cpu::md::ParrinelloRahmanNPT{T, /*P=*/0.0,
+                                                    /*tau_T=*/50.0,
+                                                    /*tau_P=*/200.0, dt});
     sim.add(cpu::md::InitVelocity{T, 7u});
     sim.enable_timing(false);
     sim.build();
@@ -112,10 +112,9 @@ TEST(ParrinelloRahmanNPT, CubicIsotropicOffDiagonalBounded) {
     sim.run(frame, 40);
 
     const Mat3& e = pr.cell_velocity();
-    const double off =
-        std::abs(static_cast<double>(e(0, 1)))
-        + std::abs(static_cast<double>(e(0, 2)))
-        + std::abs(static_cast<double>(e(1, 2)));
+    const double off = std::abs(static_cast<double>(e(0, 1)))
+                       + std::abs(static_cast<double>(e(0, 2)))
+                       + std::abs(static_cast<double>(e(1, 2)));
     // Natural barostat frequency ~ 2π/τ_P ~ 0.03 /fs; off-diagonal
     // rates on a cubic hydrostatic fluid should be ≪ that.
     EXPECT_LT(off, 0.05);
@@ -123,10 +122,9 @@ TEST(ParrinelloRahmanNPT, CubicIsotropicOffDiagonalBounded) {
     // small vs edge length).
     const Mat3& h = frame.simbox.cell();
     const double edge = std::abs(static_cast<double>(h(0, 0)));
-    const double shear_cell =
-        std::abs(static_cast<double>(h(0, 1)))
-        + std::abs(static_cast<double>(h(0, 2)))
-        + std::abs(static_cast<double>(h(1, 2)));
+    const double shear_cell = std::abs(static_cast<double>(h(0, 1)))
+                              + std::abs(static_cast<double>(h(0, 2)))
+                              + std::abs(static_cast<double>(h(1, 2)));
     EXPECT_LT(shear_cell, 0.05 * edge);
 }
 

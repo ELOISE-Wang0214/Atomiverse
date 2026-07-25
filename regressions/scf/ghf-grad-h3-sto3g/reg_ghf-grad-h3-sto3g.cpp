@@ -75,8 +75,8 @@ int main() {
             net[d] += g;
             const double err = std::fabs(g - want[A][d]);
             max_err = std::max(max_err, err);
-            std::printf("g[%d][%d] got=% .10e want=% .10e |err|=%.2e\n", A, d, g,
-                        want[A][d], err);
+            std::printf("g[%d][%d] got=% .10e want=% .10e |err|=%.2e\n", A, d,
+                        g, want[A][d], err);
         }
     const double net_max =
         std::max({std::fabs(net[0]), std::fabs(net[1]), std::fabs(net[2])});

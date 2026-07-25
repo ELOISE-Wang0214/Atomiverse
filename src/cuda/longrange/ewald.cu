@@ -153,7 +153,8 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
 
     const double vol = static_cast<double>(ctx.runtime.host_box.volume());
     const double K = ATV::units::coulomb * 2.0 * ATV::units::pi / vol;
-    const double self_pref = -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
+    const double self_pref =
+        -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
 
     const int blk = kDefaultBlock;
     kernels::ewald_structure_factor<<<grid_size(ng_), blk, 0, stream>>>(

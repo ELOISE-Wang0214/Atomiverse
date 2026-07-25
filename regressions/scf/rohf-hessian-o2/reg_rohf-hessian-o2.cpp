@@ -46,17 +46,16 @@ int main() {
     // Offline pin: FD of PySCF 2.14.0 analytic ROHF gradient — see REFERENCE.md
     // (PySCF has no hessian.ROHF; never live-import PySCF here).
     constexpr double want_e_hf = -147.632166990682;
-    constexpr double tol = 1e-5; // eV/Å² product gate
+    constexpr double tol = 1e-5;     // eV/Å² product gate
     constexpr double off_tol = 1e-3; // near-zero off-axis elements
 
     const std::pair<int, int> idx[] = {
-        {0, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5},
-        {3, 3}, {4, 4}, {5, 5},
+        {0, 0}, {1, 1}, {2, 2}, {0, 3}, {1, 4}, {2, 5}, {3, 3}, {4, 4}, {5, 5},
     };
     const double want[] = {
-        -1.1102153966, -1.1102153968, 135.5737365643, 1.1102153967,
-        1.1102153968,  -135.5737365648, -1.1102153969, -1.1102153968,
-        135.5737365643,
+        -1.1102153966, -1.1102153968, 135.5737365643,
+        1.1102153967,  1.1102153968,  -135.5737365648,
+        -1.1102153969, -1.1102153968, 135.5737365643,
     };
     constexpr int n_gate = 9;
 
@@ -101,8 +100,7 @@ int main() {
             bool gated = false;
             for (int g = 0; g < n_gate; ++g)
                 if ((idx[g].first == r && idx[g].second == c)
-                    || (idx[g].first == c && idx[g].second == r
-                        && r != c)) {
+                    || (idx[g].first == c && idx[g].second == r && r != c)) {
                     gated = true;
                     break;
                 }
@@ -121,8 +119,7 @@ int main() {
 
     for (int r = 0; r < 6; ++r)
         for (int c = 0; c < r; ++c) {
-            const double d =
-                std::fabs(res.hessian(r, c) - res.hessian(c, r));
+            const double d = std::fabs(res.hessian(r, c) - res.hessian(c, r));
             if (!(d <= 1e-8)) {
                 std::printf("FAIL: Hessian not symmetric at (%d,%d) d=%.3e\n",
                             r, c, d);

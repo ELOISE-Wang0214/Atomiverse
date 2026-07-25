@@ -43,6 +43,8 @@
 /// @endcode
 #pragma once
 
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/component/hf.h"
@@ -55,8 +57,6 @@
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/materialize.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

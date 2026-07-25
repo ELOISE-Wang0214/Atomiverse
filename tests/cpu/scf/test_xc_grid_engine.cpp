@@ -118,12 +118,14 @@ void check_cache_equivalence(XCType xc, bool is_gga, const char* label) {
 // ── ac-001: cached vs rebuild bitwise equality ─────────────────────────
 
 TEST(TestXcGridEngine, CachedBasisMatchesRebuild_LDA) {
-    check_cache_equivalence(XCType::LSDA, /*is_gga=*/false, "LDA cache vs rebuild");
+    check_cache_equivalence(XCType::LSDA, /*is_gga=*/false,
+                            "LDA cache vs rebuild");
 }
 
 TEST(TestXcGridEngine, CachedBasisMatchesRebuild_PBE) {
     // GGA path also exercises dPhi_x/y/z in the cached basis.
-    check_cache_equivalence(XCType::PBE, /*is_gga=*/true, "PBE cache vs rebuild");
+    check_cache_equivalence(XCType::PBE, /*is_gga=*/true,
+                            "PBE cache vs rebuild");
 }
 
 // ── build() latches the built + gga flags ──────────────────────────────

@@ -49,8 +49,8 @@ std::vector<double> mo_on_grid(const CompactBasisGrid& cbg,
 ///         `(ia|jb) = out[(i*n_virt+a)*n_occ*n_virt + j*n_virt+b]` [Hartree].
 std::vector<double> mo_eri_ovov(const UniformGrid& grid,
                                 const std::vector<double>& psi_occ, int n_occ,
-                                const std::vector<double>& psi_virt,
-                                int n_virt, bool nonperiodic);
+                                const std::vector<double>& psi_virt, int n_virt,
+                                bool nonperiodic);
 
 /// @brief Canonical closed-shell MP2 doubles sum (real orbitals).
 ///

@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/thermostat.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/thermostat.h"
 
 namespace ATV {
 namespace cpu {

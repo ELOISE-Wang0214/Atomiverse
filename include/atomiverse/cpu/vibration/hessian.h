@@ -31,6 +31,8 @@
 #include <memory>
 #include <string>
 
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/component/hf.h"
@@ -47,8 +49,6 @@
 #include "atomiverse/cpu/vibration/reference_geometry.h"
 #include "atomiverse/cpu/vibration/symmetrize.h"
 #include "atomiverse/cpu/vibration/thermochem.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

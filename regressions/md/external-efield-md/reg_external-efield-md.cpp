@@ -59,8 +59,7 @@ int main() {
     frame.simbox = cpu::Box::cubic(L);
 
     cpu::Evaluate eval;
-    eval.on(evaluate::Phase::evaluate)
-        .add(cpu::md::FixEfield{Ex, Ey, Ez});
+    eval.on(evaluate::Phase::evaluate).add(cpu::md::FixEfield{Ex, Ey, Ez});
     eval.build();
     eval.run(frame);
 
@@ -81,11 +80,10 @@ int main() {
         if (!(std::fabs(fx - f_pin[i][0]) <= tol_f
               && std::fabs(fy - f_pin[i][1]) <= tol_f
               && std::fabs(fz - f_pin[i][2]) <= tol_f)) {
-            std::printf(
-                "FAIL force atom %d got=(%.16e,%.16e,%.16e) "
-                "want=(%.16e,%.16e,%.16e) tol=%.1e\n",
-                i + 1, fx, fy, fz, f_pin[i][0], f_pin[i][1], f_pin[i][2],
-                tol_f);
+            std::printf("FAIL force atom %d got=(%.16e,%.16e,%.16e) "
+                        "want=(%.16e,%.16e,%.16e) tol=%.1e\n",
+                        i + 1, fx, fy, fz, f_pin[i][0], f_pin[i][1],
+                        f_pin[i][2], tol_f);
             ok = false;
         }
     }

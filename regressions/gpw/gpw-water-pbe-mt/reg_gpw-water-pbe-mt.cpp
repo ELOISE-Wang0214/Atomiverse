@@ -59,9 +59,10 @@ int main() {
         return 1;
     }
     if (!std::isfinite(got) || std::abs(got - kEnergyRef) > kTol) {
-        std::fprintf(stderr,
-                     "FAIL: E_GPW(H2O,PBE,MT) got=%.10f want=%.10f tol=%.1e Ha\n",
-                     got, kEnergyRef, kTol);
+        std::fprintf(
+            stderr,
+            "FAIL: E_GPW(H2O,PBE,MT) got=%.10f want=%.10f tol=%.1e Ha\n", got,
+            kEnergyRef, kTol);
         return 1;
     }
     if (!std::isfinite(frame.meta.get(kEnergy))) {
@@ -69,11 +70,10 @@ int main() {
         return 1;
     }
 
-    std::printf(
-        "PASS: E_GPW(H2O,PBE,DZVP-MOLOPT-GTH,MT) = %.10f Ha "
-        "(want %.10f +/- %.1e) |dE|=%.3e Ha  iters=%d  "
-        "[offline CP2K getting-started h2o.inp pin]\n",
-        got, kEnergyRef, kTol, std::abs(got - kEnergyRef),
-        eval.last_result().iters);
+    std::printf("PASS: E_GPW(H2O,PBE,DZVP-MOLOPT-GTH,MT) = %.10f Ha "
+                "(want %.10f +/- %.1e) |dE|=%.3e Ha  iters=%d  "
+                "[offline CP2K getting-started h2o.inp pin]\n",
+                got, kEnergyRef, kTol, std::abs(got - kEnergyRef),
+                eval.last_result().iters);
     return 0;
 }

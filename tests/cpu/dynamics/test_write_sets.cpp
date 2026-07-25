@@ -13,8 +13,8 @@
 #include "atomiverse/cpu/dynamics/init.h"
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/nose_hoover_npt.h"
-#include "atomiverse/cpu/dynamics/nve_limit.h"
 #include "atomiverse/cpu/dynamics/nph_integrator.h"
+#include "atomiverse/cpu/dynamics/nve_limit.h"
 #include "atomiverse/cpu/dynamics/parrinello_rahman_npt.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 

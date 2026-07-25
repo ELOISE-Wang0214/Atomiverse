@@ -13,9 +13,9 @@
 #include "atomiverse/core/timer.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/driver/step_timing.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
@@ -75,7 +75,8 @@ TEST(StepTiming, ClassifyKnownComponentNames) {
     EXPECT_EQ(StepTiming::classify("morse"), StepTiming::Pair);
     EXPECT_EQ(StepTiming::classify("harmonic_bond"), StepTiming::Bond);
     EXPECT_EQ(StepTiming::classify("harmonic_angle"), StepTiming::Bond);
-    EXPECT_EQ(StepTiming::classify("multi_harmonic_dihedral"), StepTiming::Bond);
+    EXPECT_EQ(StepTiming::classify("multi_harmonic_dihedral"),
+              StepTiming::Bond);
     EXPECT_EQ(StepTiming::classify("charmm_dihedral"), StepTiming::Bond);
     EXPECT_EQ(StepTiming::classify("pppm"), StepTiming::Kspace);
     EXPECT_EQ(StepTiming::classify("pme"), StepTiming::Kspace);

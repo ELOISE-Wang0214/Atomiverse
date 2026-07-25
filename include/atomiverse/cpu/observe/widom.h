@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component/observer.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/observer.h"
 
 namespace ATV {
 namespace cpu {
@@ -43,12 +43,12 @@ enum class WidomPotential {
 class Widom : public Observer {
   public:
     double temperature = 300.0; ///< Host temperature [K] (must be > 0).
-    int n_trials = 1000;        ///< Ghost insertions per sample call (must be > 0).
-    std::uint64_t seed = 1;     ///< RNG seed for insertion positions.
+    int n_trials = 1000;    ///< Ghost insertions per sample call (must be > 0).
+    std::uint64_t seed = 1; ///< RNG seed for insertion positions.
     WidomPotential potential = WidomPotential::lj_cut;
-    double epsilon = 0.0104;    ///< LJ well depth [eV] (lj_cut only).
-    double sigma = 3.4;         ///< LJ σ or HS diameter [Å] (must be > 0).
-    double cutoff = 8.5;        ///< LJ cutoff [Å]; ignored for hard_sphere.
+    double epsilon = 0.0104; ///< LJ well depth [eV] (lj_cut only).
+    double sigma = 3.4;      ///< LJ σ or HS diameter [Å] (must be > 0).
+    double cutoff = 8.5;     ///< LJ cutoff [Å]; ignored for hard_sphere.
 
     /// @brief Construct with ASE-ish LJ defaults; set members before use.
     Widom() = default;

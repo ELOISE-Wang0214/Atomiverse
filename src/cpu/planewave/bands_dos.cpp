@@ -32,16 +32,15 @@ std::array<double, 3> vec_to_arr(const Vec3& v) {
 }
 
 /// Diagonalize `n_bands` states at every k currently on `prob` (NSCF).
-std::vector<std::vector<double>>
-nscf_evals_ry(internal::PWProblem& prob, int n_bands, double dav_tol) {
+std::vector<std::vector<double>> nscf_evals_ry(internal::PWProblem& prob,
+                                               int n_bands, double dav_tol) {
     using namespace internal;
     PWWorkspace& ws = prob.ws;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     DavidsonSolver davidson(n_bands, AccReal(dav_tol), 50);
     davidson.prepare(ws);
 
-    std::vector<std::vector<double>> evals(
-        static_cast<std::size_t>(n_kpts));
+    std::vector<std::vector<double>> evals(static_cast<std::size_t>(n_kpts));
     auto* saved_gvec = ws.gvec;
     const int n_g0 = ws.n_g;
 
@@ -74,8 +73,8 @@ nscf_evals_ry(internal::PWProblem& prob, int n_bands, double dav_tol) {
     return evals;
 }
 
-std::vector<Vec3>
-lerp_segment(const Vec3& a, const Vec3& b, int n_seg, bool include_start) {
+std::vector<Vec3> lerp_segment(const Vec3& a, const Vec3& b, int n_seg,
+                               bool include_start) {
     // n_seg samples along the segment; include_start controls whether `a`
     // is emitted (false when chaining segments that share the join).
     std::vector<Vec3> pts;
@@ -101,8 +100,8 @@ double gap_from_spectrum(const std::vector<std::vector<double>>& evals,
         throw std::invalid_argument("gap_from_spectrum: n_occ < 1");
     const int n_bands = static_cast<int>(evals[0].size());
     if (n_bands < n_occ + 1)
-        throw std::invalid_argument(
-            "gap_from_spectrum: need at least one empty band (n_bands > n_occ)");
+        throw std::invalid_argument("gap_from_spectrum: need at least one "
+                                    "empty band (n_bands > n_occ)");
 
     e_vbm = -1e300;
     e_cbm = 1e300;
@@ -135,7 +134,8 @@ void gaussian_dos(const std::vector<double>& evals,
                   double e_max, int n_bins, double sigma,
                   std::vector<double>& energy, std::vector<double>& dos) {
     if (evals.size() != weights.size())
-        throw std::invalid_argument("gaussian_dos: evals/weights size mismatch");
+        throw std::invalid_argument(
+            "gaussian_dos: evals/weights size mismatch");
     if (n_bins < 2)
         throw std::invalid_argument("gaussian_dos: n_bins < 2");
     if (!(sigma > 0.0))
@@ -146,8 +146,7 @@ void gaussian_dos(const std::vector<double>& evals,
     energy.resize(static_cast<std::size_t>(n_bins));
     dos.assign(static_cast<std::size_t>(n_bins), 0.0);
     const double de = (e_max - e_min) / static_cast<double>(n_bins - 1);
-    const double pref =
-        2.0 / (std::sqrt(2.0 * 3.14159265358979323846) * sigma);
+    const double pref = 2.0 / (std::sqrt(2.0 * 3.14159265358979323846) * sigma);
     const double inv_2s2 = 1.0 / (2.0 * sigma * sigma);
 
     for (int i = 0; i < n_bins; ++i)
@@ -192,14 +191,13 @@ void Bands::set_diamond_path(int n_seg) {
         kfrac.push_back(vec_to_arr(p));
 }
 
-BandsResult Bands::compute(const PW& method,
-                           const cpu::Frame& frame) const {
+BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
     if (method.spin_polarized)
-        throw std::invalid_argument(
-            "Bands::compute: spin-polarized bands not supported in this foothold");
+        throw std::invalid_argument("Bands::compute: spin-polarized bands not "
+                                    "supported in this foothold");
     if (method.smearing != Smearing::none)
-        throw std::invalid_argument(
-            "Bands::compute: metallic smearing not supported for bands foothold");
+        throw std::invalid_argument("Bands::compute: metallic smearing not "
+                                    "supported for bands foothold");
     if (n_bands < 2)
         throw std::invalid_argument("Bands::compute: n_bands must be >= 2");
 
@@ -226,13 +224,12 @@ BandsResult Bands::compute(const PW& method,
     out.kfrac = path;
     out.scf_converged = scf.converged;
     out.energy_ry = scf.energy;
-    out.eigenvalues_ry =
-        nscf_evals_ry(prob, n_bands, method.tol * 0.1);
+    out.eigenvalues_ry = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
 
     const int n_occ = prob.n_bands; // n_e / 2
-    out.gap_ry = gap_from_spectrum(out.eigenvalues_ry, n_occ, out.e_vbm_ry,
-                                   out.e_cbm_ry, out.vbm_k, out.cbm_k,
-                                   out.vbm_band, out.cbm_band);
+    out.gap_ry =
+        gap_from_spectrum(out.eigenvalues_ry, n_occ, out.e_vbm_ry, out.e_cbm_ry,
+                          out.vbm_k, out.cbm_k, out.vbm_band, out.cbm_band);
 
     return out;
 }
@@ -281,8 +278,8 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
         const double w =
             static_cast<double>(kg.weights[static_cast<std::size_t>(ik)]);
         for (int b = 0; b < n_bands; ++b) {
-            flat_e.push_back(
-                evals[static_cast<std::size_t>(ik)][static_cast<std::size_t>(b)]);
+            flat_e.push_back(evals[static_cast<std::size_t>(ik)]
+                                  [static_cast<std::size_t>(b)]);
             flat_w.push_back(w);
         }
     }

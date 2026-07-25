@@ -2,9 +2,9 @@
 /// @brief CPU/CUDA parity test for the plane-wave SCF on toy Si.
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/planewave/pw_solver.h"
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
 #include "atomiverse/cpu/planewave/internal/pw_workspace.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
 #include "atomiverse/cuda/planewave/pw_scf.cuh"
 #include <cmath>
 #include <gtest/gtest.h>

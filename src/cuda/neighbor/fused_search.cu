@@ -41,7 +41,8 @@ __global__ void csr_to_flat(const int* __restrict__ row_ptr,
         flat_ci[p] = ci;
         flat_cj[p] = col_idx[p];
         // Multi-word mask: copy kMaskWords uint64s per pair.
-        const uint64_t* src = mask_in + static_cast<std::size_t>(p) * kMaskWords;
+        const uint64_t* src =
+            mask_in + static_cast<std::size_t>(p) * kMaskWords;
         uint64_t* dst = flat_mask + static_cast<std::size_t>(p) * kMaskWords;
 #pragma unroll
         for (int w = 0; w < kMaskWords; ++w)
@@ -300,9 +301,12 @@ __global__ __launch_bounds__(32) void compute_csr_masks_k(
             work_t dy = cluster_y[cj * kClusterSize + j] - yi;
             work_t dz = cluster_z[cj * kClusterSize + j] - zi;
             if constexpr (Ortho) {
-                dx -= work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
-                dy -= work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
-                dz -= work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
+                dx -=
+                    work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
+                dy -=
+                    work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
+                dz -=
+                    work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
             } else {
                 box.min_image(dx, dy, dz);
             }

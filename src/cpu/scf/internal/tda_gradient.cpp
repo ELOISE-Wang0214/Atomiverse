@@ -36,8 +36,9 @@ namespace internal {
 namespace {
 
 RealMatrix dense_A(const OrbitalHessian& oh) {
-    return 0.5 * (oh.dense_plus(Channel::singlet)
-                  + oh.dense_minus(Channel::singlet));
+    return 0.5
+           * (oh.dense_plus(Channel::singlet)
+              + oh.dense_minus(Channel::singlet));
 }
 
 /// Build singlet A for a trial coefficient matrix and a dense ERI pack.
@@ -48,16 +49,14 @@ RealMatrix A_from_C_eri(const RealMatrix& C, const RealVector& occ_f, int no,
     const int n_mo = static_cast<int>(C.shape()[1]);
     // P = 2 C_occ C_occᵀ
     RealMatrix Co = xt::view(C, xt::all(), xt::range(0, no));
-    const RealMatrix P =
-        2.0 * xt::linalg::dot(Co, xt::transpose(Co));
+    const RealMatrix P = 2.0 * xt::linalg::dot(Co, xt::transpose(Co));
     RealMatrix G = xt::zeros<double>({n, n});
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j) {
             double acc = 0.0;
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
-                    acc += P(k, l)
-                           * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
+                    acc += P(k, l) * (eri(i, j, k, l) - 0.5 * eri(i, k, j, l));
             G(i, j) = acc;
         }
     const RealMatrix F = Hcore + G;
@@ -130,7 +129,7 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
     // Safer: rebuild using IntegralPack from frame at displaced positions
     // with the same shell table by shifting centers of pack shells... use
     // Frame + BasisSet::STO3G for the H2 regression; general: Frame path
-    // with STO3G is wrong for 6-31G. 
+    // with STO3G is wrong for 6-31G.
     // Fix: the caller RHF has basis member — pass via pack is unavailable.
     // Use eri_working rebuild: construct IntegralPack from frame with
     // BasisSet matching n_basis of pack.
@@ -147,9 +146,8 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
     const double h = 1e-3; // Å — same order as FD oracle
     std::vector<double> Fout(static_cast<std::size_t>(3 * natm), 0.0);
 
-    StorageReal* coords[3] = {
-        // need mutable frame copy
-        nullptr, nullptr, nullptr};
+    StorageReal* coords[3] = {// need mutable frame copy
+                              nullptr, nullptr, nullptr};
     Frame fwork = frame; // copy
     coords[0] = fwork.span(kAtom_x);
     coords[1] = fwork.span(kAtom_y);
@@ -159,9 +157,9 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
         for (int d = 0; d < 3; ++d) {
             const int x = 3 * A + d;
             // Full MO U matrix: U_ai from CPHF, U_ia = −U_ai, U_ij from −½S^x
-            RealMatrix Umo = xt::zeros<double>(
-                {static_cast<std::size_t>(n_mo),
-                 static_cast<std::size_t>(n_mo)});
+            RealMatrix Umo =
+                xt::zeros<double>({static_cast<std::size_t>(n_mo),
+                                   static_cast<std::size_t>(n_mo)});
             for (int a = 0; a < nv; ++a)
                 for (int i = 0; i < no; ++i) {
                     const double u = Uov(x, a * no + i);
@@ -194,10 +192,8 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
             const RealMatrix Cp = C0 + dC * h_bohr;
             const RealMatrix Cm = C0 - dC * h_bohr;
 
-            const RealMatrix Ap =
-                A_from_C_eri(Cp, f, no, pp.ERI, pp.Hcore);
-            const RealMatrix Am =
-                A_from_C_eri(Cm, f, no, pm.ERI, pm.Hcore);
+            const RealMatrix Ap = A_from_C_eri(Cp, f, no, pp.ERI, pp.Hcore);
+            const RealMatrix Am = A_from_C_eri(Cm, f, no, pm.ERI, pm.Hcore);
 
             // dA/dR [Hartree/Å]
             RealMatrix dA = (Ap - Am) / (2.0 * h);
@@ -206,8 +202,7 @@ std::vector<double> tda_analytic_forces(const Frame& frame,
                 for (int q = 0; q < n_ov; ++q)
                     dw += X(p) * dA(p, q) * X(q);
             // F = −dω/dR [eV/Å]
-            Fout[static_cast<std::size_t>(x)] =
-                -dw * units::kHartreeInEv;
+            Fout[static_cast<std::size_t>(x)] = -dw * units::kHartreeInEv;
         }
     }
     return Fout;

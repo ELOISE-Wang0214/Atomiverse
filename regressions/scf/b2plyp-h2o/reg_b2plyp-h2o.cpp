@@ -70,11 +70,11 @@ int main() {
     const cpu::scf::MP2Result dh = rks.mp2(frame);
 
     // PySCF 2.14.0 offline pin — see REFERENCE.md (never live-import PySCF).
-    constexpr double want_e_ks = -75.198832360592;   // Ha (hybrid KS only)
-    constexpr double want_e_mp2 = -0.044726379786;   // Ha (unscaled full MP2)
-    constexpr double want_e_corr = -0.012076122542;  // Ha (a_c * E_MP2)
-    constexpr double want_e_tot = -75.210908483134;  // Ha (B2PLYP total)
-    constexpr double tol = 1.0e-6;                   // Ha
+    constexpr double want_e_ks = -75.198832360592;  // Ha (hybrid KS only)
+    constexpr double want_e_mp2 = -0.044726379786;  // Ha (unscaled full MP2)
+    constexpr double want_e_corr = -0.012076122542; // Ha (a_c * E_MP2)
+    constexpr double want_e_tot = -75.210908483134; // Ha (B2PLYP total)
+    constexpr double tol = 1.0e-6;                  // Ha
 
     const double e_ks = rks.energy();
     // Reconstruct unscaled full MP2 from OS/SS channels.
@@ -82,14 +82,14 @@ int main() {
 
     std::printf("B2PLYP a_x=%.2f a_c=%.2f\n",
                 cpu::scf::hybrid_exchange_fraction(xc), a_c);
-    std::printf("KS     E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_ks,
-                want_e_ks, e_ks - want_e_ks);
+    std::printf("KS     E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_ks, want_e_ks,
+                e_ks - want_e_ks);
     std::printf("MP2 OS = %.12f Ha\n", dh.e_corr_os);
     std::printf("MP2 SS = %.12f Ha\n", dh.e_corr_ss);
     std::printf("MP2 full (unscaled) = %.12f Ha (pin %.12f, dE = %.3e)\n",
                 e_mp2_full, want_e_mp2, e_mp2_full - want_e_mp2);
-    std::printf("PT2 a_c*E_MP2 = %.12f Ha (pin %.12f, dE = %.3e)\n",
-                dh.e_corr, want_e_corr, dh.e_corr - want_e_corr);
+    std::printf("PT2 a_c*E_MP2 = %.12f Ha (pin %.12f, dE = %.3e)\n", dh.e_corr,
+                want_e_corr, dh.e_corr - want_e_corr);
     std::printf("B2PLYP e_tot  = %.12f Ha (pin %.12f, dE = %.3e)\n", dh.e_tot,
                 want_e_tot, dh.e_tot - want_e_tot);
 

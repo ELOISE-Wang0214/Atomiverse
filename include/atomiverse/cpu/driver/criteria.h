@@ -47,8 +47,8 @@
 #include <string>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/component/criterion.h"
 #include "atomiverse/core/verdict.h"
+#include "atomiverse/cpu/component/criterion.h"
 
 namespace ATV {
 namespace cpu {

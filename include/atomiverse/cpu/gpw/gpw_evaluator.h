@@ -9,12 +9,12 @@
 #include <utility>
 #include <vector>
 
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/gpw/cpmd.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/xl_bomd.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {
@@ -127,10 +127,11 @@ class GPWEvaluator : public cpu::GPW {
     /// @param d3 Enable DFT-D3 zero damping.
     /// @param use_ot Enable OT minimizer (product path; no env required).
     explicit GPWEvaluator(std::vector<Kind> kinds, double cutoff_ry = 300.0,
-                          int max_iter = 200, double tol = 1e-7, double mix = 0.3,
-                          XcKind xc = XcKind::PADE, bool nonperiodic = false,
-                          bool compute_forces = false, double fd_step = 1e-3,
-                          bool d3 = false, bool use_ot = false)
+                          int max_iter = 200, double tol = 1e-7,
+                          double mix = 0.3, XcKind xc = XcKind::PADE,
+                          bool nonperiodic = false, bool compute_forces = false,
+                          double fd_step = 1e-3, bool d3 = false,
+                          bool use_ot = false)
         : cutoff_ry(cutoff_ry), max_iter(max_iter), tol(tol), mix(mix), xc(xc),
           nonperiodic(nonperiodic), compute_forces(compute_forces),
           fd_step(fd_step), d3(d3), use_ot(use_ot), kinds(std::move(kinds)) {}

@@ -113,9 +113,10 @@ double solve_induced_dipoles(int n, const double* pos, const double* alpha,
     // E_pol = −½ Σ μ · E_perm  (convert Gaussian → eV via coulomb)
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
-        e -= 0.5 * (mu[3 * i + 0] * e_perm[3 * i + 0] +
-                    mu[3 * i + 1] * e_perm[3 * i + 1] +
-                    mu[3 * i + 2] * e_perm[3 * i + 2]);
+        e -= 0.5
+             * (mu[3 * i + 0] * e_perm[3 * i + 0]
+                + mu[3 * i + 1] * e_perm[3 * i + 1]
+                + mu[3 * i + 2] * e_perm[3 * i + 2]);
     }
     return units::coulomb * e;
 }
@@ -125,7 +126,8 @@ QmmmPolarizable::QmmmPolarizable(std::vector<TagInt> qm_tags, double mm_charge,
                                  double sigma, double cutoff, double pol_tol,
                                  int pol_max_iter)
     : mm_q_(mm_charge), alpha_(alpha), thole_a_(thole_a), eps_(epsilon),
-      sig_(sigma), rcut_(cutoff), pol_tol_(pol_tol), pol_max_iter_(pol_max_iter) {
+      sig_(sigma), rcut_(cutoff), pol_tol_(pol_tol),
+      pol_max_iter_(pol_max_iter) {
     if (qm_tags.empty())
         throw std::invalid_argument("QmmmPolarizable: empty QM tags");
     if (!(alpha_ >= 0.0))
@@ -244,10 +246,9 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
     }
 
     if (alpha_ > 0.0 && n_mm > 0) {
-        e_pol_ = solve_induced_dipoles(n_mm, pos.data(), alpha.data(),
-                                       e_perm.data(), thole_a_, pol_tol_,
-                                       pol_max_iter_, last_mu_,
-                                       &last_pol_iters_);
+        e_pol_ = solve_induced_dipoles(
+            n_mm, pos.data(), alpha.data(), e_perm.data(), thole_a_, pol_tol_,
+            pol_max_iter_, last_mu_, &last_pol_iters_);
         last_pol_converged_ = true;
         E += e_pol_;
     } else {

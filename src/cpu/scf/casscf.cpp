@@ -154,13 +154,14 @@ double approx_hess(const xt::xtensor<double, 2>& F,
 
 } // namespace
 
-CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                           double e_scf_ha, int ncas, int nelecas,
-                           double orb_tol, int max_macro) {
+CASSCFResult casscf_energy(const IntegralPack& ints,
+                           const SlaterDeterminant& det, double e_scf_ha,
+                           int ncas, int nelecas, double orb_tol,
+                           int max_macro) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
-        throw std::invalid_argument(
-            "casscf_energy: ERI is not materialized; call with compute_eri=true.");
+        throw std::invalid_argument("casscf_energy: ERI is not materialized; "
+                                    "call with compute_eri=true.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
         throw std::invalid_argument(
@@ -168,9 +169,8 @@ CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& de
             "n_beta).");
     }
     if (ncas <= 0) {
-        throw std::invalid_argument(
-            "casscf_energy: ncas must be positive (got " + std::to_string(ncas)
-            + ")");
+        throw std::invalid_argument("casscf_energy: ncas must be positive (got "
+                                    + std::to_string(ncas) + ")");
     }
     if (nelecas < 0 || (nelecas % 2) != 0) {
         throw std::invalid_argument(
@@ -188,9 +188,9 @@ CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& de
     const int nvirt = n_mo - ncore - ncas;
 
     if (n_act_a > ncas) {
-        throw std::invalid_argument(
-            "casscf_energy: nelecas/2=" + std::to_string(n_act_a)
-            + " exceeds ncas=" + std::to_string(ncas));
+        throw std::invalid_argument("casscf_energy: nelecas/2="
+                                    + std::to_string(n_act_a)
+                                    + " exceeds ncas=" + std::to_string(ncas));
     }
     if (ncore < 0) {
         throw std::invalid_argument(
@@ -198,9 +198,9 @@ CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& de
             + " is negative (nelecas too large for the reference occupation)");
     }
     if (ncore + ncas > n_mo) {
-        throw std::invalid_argument(
-            "casscf_energy: ncore+ncas=" + std::to_string(ncore + ncas)
-            + " exceeds n_mo=" + std::to_string(n_mo));
+        throw std::invalid_argument("casscf_energy: ncore+ncas="
+                                    + std::to_string(ncore + ncas)
+                                    + " exceeds n_mo=" + std::to_string(n_mo));
     }
 
     // Non-redundant orbital pairs: core–active, active–virtual, core–virtual.
@@ -208,8 +208,8 @@ CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& de
         int p, q; // rotate p < q in the sense κ_qp = −κ_pq; store (lo, hi)
     };
     std::vector<Pair> pairs;
-    pairs.reserve(static_cast<std::size_t>(
-        ncore * ncas + ncas * nvirt + ncore * nvirt));
+    pairs.reserve(
+        static_cast<std::size_t>(ncore * ncas + ncas * nvirt + ncore * nvirt));
     for (int i = 0; i < ncore; ++i)
         for (int u = 0; u < ncas; ++u)
             pairs.push_back({i, ncore + u});
@@ -321,8 +321,8 @@ CASSCFResult casscf_energy(const IntegralPack& ints, const SlaterDeterminant& de
     if (!converged && pairs.empty())
         converged = true;
 
-    return CASSCFResult{e_cas, e_cas - e_scf_ha, ncas, nelecas, ncore, n_iter,
-                        converged};
+    return CASSCFResult{e_cas, e_cas - e_scf_ha, ncas,     nelecas,
+                        ncore, n_iter,           converged};
 }
 
 } // namespace scf

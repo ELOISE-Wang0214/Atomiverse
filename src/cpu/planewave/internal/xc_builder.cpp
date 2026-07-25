@@ -18,8 +18,8 @@ namespace {
 
 /// @brief Map a G-sphere mode into the r2c half-complex FFT layout.
 /// @return flat index in [0, nc); sets `conj` when the sphere G was folded.
-inline int pack_half_index(int h, int k, int l, int nx, int ny, int nz,
-                           int nxc, bool& conj) {
+inline int pack_half_index(int h, int k, int l, int nx, int ny, int nz, int nxc,
+                           bool& conj) {
     int kx = ((h % nx) + nx) % nx;
     int ky = ((k % ny) + ny) % ny;
     int kz = ((l % nz) + nz) % nz;
@@ -45,8 +45,8 @@ void pack_sphere_to_half(const GVectorList& gv, int ng, int nx, int ny, int nz,
     zero_half(half, nc);
     for (int ig = 0; ig < ng; ++ig) {
         bool conj = false;
-        const int idx =
-            pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig], nx, ny, nz, nxc, conj);
+        const int idx = pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig], nx, ny,
+                                        nz, nxc, conj);
         if (idx < 0 || idx >= nc)
             continue;
         const std::complex<double> v = value_at_ig(ig);
@@ -61,8 +61,8 @@ inline void unpack_half_to_sphere(const GVectorList& gv, int ng, int nx, int ny,
                                   xt::xarray<std::complex<AccReal>>& out) {
     for (int ig = 0; ig < ng; ++ig) {
         bool conj = false;
-        const int idx =
-            pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig], nx, ny, nz, nxc, conj);
+        const int idx = pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig], nx, ny,
+                                        nz, nxc, conj);
         if (idx >= 0 && idx < nc) {
             out[ig] = std::complex<AccReal>(
                 static_cast<AccReal>(half[idx][0]) * inv_nr,
@@ -138,14 +138,13 @@ void XCBuilder::step(PWWorkspace& ws, cpu::scf::XCType xc) {
         AccReal* grad_comp[3] = {grad_x_.data(), grad_y_.data(),
                                  grad_z_.data()};
         for (int d = 0; d < 3; ++d) {
-            pack_sphere_to_half(
-                gv, ng, nx, ny, nz, nxc, nc, work, [&](int ig) {
-                    const double gd = static_cast<double>(gv.g[ig][d]);
-                    const std::complex<double> rho(
-                        static_cast<double>(ws.rho_G[ig].real()),
-                        static_cast<double>(ws.rho_G[ig].imag()));
-                    return std::complex<double>(0.0, gd) * rho;
-                });
+            pack_sphere_to_half(gv, ng, nx, ny, nz, nxc, nc, work, [&](int ig) {
+                const double gd = static_cast<double>(gv.g[ig][d]);
+                const std::complex<double> rho(
+                    static_cast<double>(ws.rho_G[ig].real()),
+                    static_cast<double>(ws.rho_G[ig].imag()));
+                return std::complex<double>(0.0, gd) * rho;
+            });
             ws.fft->c2r(work, grad_comp[d]);
         }
     }
@@ -179,8 +178,8 @@ void XCBuilder::step(PWWorkspace& ws, cpu::scf::XCType xc) {
         }
 
         const auto out = cpu::scf::evaluate_xc(
-            xc, static_cast<double>(rho) / 2.0,
-            static_cast<double>(rho) / 2.0, sigma_aa, sigma_ab, sigma_bb);
+            xc, static_cast<double>(rho) / 2.0, static_cast<double>(rho) / 2.0,
+            sigma_aa, sigma_ab, sigma_bb);
         ws.V_xc_r[i] = static_cast<AccReal>(out.vrho_alpha);
         ws.exc_r[i] = static_cast<AccReal>(out.exc);
         E_xc += rho * static_cast<AccReal>(out.exc) * dV;
@@ -209,16 +208,15 @@ void XCBuilder::step(PWWorkspace& ws, cpu::scf::XCType xc) {
             ws.fft->r2c(flux_comp[d], work);
             for (int ig = 0; ig < ng; ++ig) {
                 bool conj = false;
-                const int idx = pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig], nx,
-                                                ny, nz, nxc, conj);
+                const int idx = pack_half_index(gv.h[ig], gv.k[ig], gv.l[ig],
+                                                nx, ny, nz, nxc, conj);
                 if (idx < 0 || idx >= nc)
                     continue;
                 const AccReal gd = gv.g[ig][d];
-                const AccReal re =
-                    static_cast<AccReal>(work[idx][0]) * inv_nr;
-                const AccReal im = static_cast<AccReal>(
-                                       conj ? -work[idx][1] : work[idx][1])
-                                   * inv_nr;
+                const AccReal re = static_cast<AccReal>(work[idx][0]) * inv_nr;
+                const AccReal im =
+                    static_cast<AccReal>(conj ? -work[idx][1] : work[idx][1])
+                    * inv_nr;
                 // i * G_d * flux_d(G) = (-G_d im, G_d re)
                 ws.V_xc_G[ig] += std::complex<AccReal>(-gd * im, gd * re);
             }
@@ -245,8 +243,8 @@ void XCBuilder::step(PWWorkspace& ws, cpu::scf::XCType xc) {
     ws.V_xc_G[0] = std::complex<AccReal>(ws.V_xc_G[0].real(), AccReal(0));
 }
 
-
-void fft_rho_g_to_r(const PWWorkspace& ws, const xt::xarray<std::complex<AccReal>>& rho_G,
+void fft_rho_g_to_r(const PWWorkspace& ws,
+                    const xt::xarray<std::complex<AccReal>>& rho_G,
                     fftw_complex* rho_g_half, AccReal* rho_r) {
     int ng = ws.n_g;
     int nc = ws.nc;
@@ -270,14 +268,15 @@ void fft_rho_g_to_r(const PWWorkspace& ws, const xt::xarray<std::complex<AccReal
         int idx = kx + nxc * (ky + ny * kz);
         if (idx >= 0 && idx < nc) {
             rho_g_half[idx][0] = static_cast<double>(rho_G[ig].real());
-            rho_g_half[idx][1] = static_cast<double>(
-                conj ? -rho_G[ig].imag() : rho_G[ig].imag());
+            rho_g_half[idx][1] = static_cast<double>(conj ? -rho_G[ig].imag()
+                                                          : rho_G[ig].imag());
         }
     }
     ws.fft->c2r(rho_g_half, rho_r);
 }
 
-void fft_vxc_r_to_g(const PWWorkspace& ws, AccReal* vxc_r, fftw_complex* vxc_g_half,
+void fft_vxc_r_to_g(const PWWorkspace& ws, AccReal* vxc_r,
+                    fftw_complex* vxc_g_half,
                     xt::xarray<std::complex<AccReal>>& V_xc_G) {
     int ng = ws.n_g;
     int nc = ws.nc;

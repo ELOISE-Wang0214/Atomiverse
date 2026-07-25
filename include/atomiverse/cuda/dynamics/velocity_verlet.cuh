@@ -24,9 +24,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

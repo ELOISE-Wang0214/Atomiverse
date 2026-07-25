@@ -59,8 +59,8 @@ int main() {
     constexpr double tol = 1e-6; // Ha
 
     const double e_hf = rhf.energy();
-    std::printf("RHF     E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_hf, want_e_hf,
-                e_hf - want_e_hf);
+    std::printf("RHF     E = %.12f Ha (pin %.12f, dE = %.3e)\n", e_hf,
+                want_e_hf, e_hf - want_e_hf);
     std::printf("MP2 OS  = %.12f Ha (pin %.12f, dE = %.3e)\n", mp2.e_corr_os,
                 want_e_os, mp2.e_corr_os - want_e_os);
     std::printf("MP2 SS  = %.12f Ha (pin %.12f, dE = %.3e)\n", mp2.e_corr_ss,
@@ -80,8 +80,9 @@ int main() {
     ok = ok && std::fabs(mp2.e_tot - want_e_tot) < tol;
     ok = ok && std::fabs(mp2.e_tot - (e_hf + mp2.e_corr)) < 1e-12;
     // Reconstruct SOS from unscaled channels.
-    ok = ok && std::fabs(mp2.e_corr - (1.3 * mp2.e_corr_os + 0.0 * mp2.e_corr_ss)) <
-                   1e-12;
+    ok = ok
+         && std::fabs(mp2.e_corr - (1.3 * mp2.e_corr_os + 0.0 * mp2.e_corr_ss))
+                < 1e-12;
     ok = ok && !mp2.ri;
     ok = ok && mp2.frozen == 0;
     ok = ok && mp2.e_corr < 0.0;

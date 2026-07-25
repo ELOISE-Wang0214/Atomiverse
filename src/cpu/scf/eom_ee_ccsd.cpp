@@ -7,8 +7,8 @@
 /// Packed s4 vector basis: r1 + tril(i>j)×tril(a>b) r2. Singlet roots are
 /// selected by α↔β symmetry of the R1 block (closed-shell reference).
 
-#include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
+#include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_sf_ccsd.h"
 #include "atomiverse/cpu/scf/internal/eom_cc2_pack.h"
 #include "atomiverse/cpu/scf/internal/eom_ee_ccsd_pack.h"
@@ -83,16 +83,16 @@ std::vector<double> pack_s4(const T1& r1, const T2& r2, int no, int nv) {
 
 /// Antisymmetrize T2 in place: ¼ P(ij)P(ab).
 void antisym_t2(T2& t2, int no, int nv) {
-    T2 s = xt::zeros<double>({static_cast<std::size_t>(no),
-                              static_cast<std::size_t>(no),
-                              static_cast<std::size_t>(nv),
-                              static_cast<std::size_t>(nv)});
+    T2 s = xt::zeros<double>(
+        {static_cast<std::size_t>(no), static_cast<std::size_t>(no),
+         static_cast<std::size_t>(nv), static_cast<std::size_t>(nv)});
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             for (int a = 0; a < nv; ++a)
                 for (int b = 0; b < nv; ++b)
-                    s(i, j, a, b) = 0.25 * (t2(i, j, a, b) - t2(i, j, b, a) -
-                                            t2(j, i, a, b) + t2(j, i, b, a));
+                    s(i, j, a, b) = 0.25
+                                    * (t2(i, j, a, b) - t2(i, j, b, a)
+                                       - t2(j, i, a, b) + t2(j, i, b, a));
     t2 = s;
 }
 
@@ -183,7 +183,8 @@ std::vector<double> matvec(const EomImds& im, const std::vector<double>& vec) {
     // W_am = Σ_{ef} Wvovv_amef · r1_me  → used as Σ_f t2_ijfb · W_am with e-loop
     // Actually: Σ_{mef} Wvovv(a,m,e,f) * t2(i,j,f,b) * r1(m,e)
     //         = Σ_f t2(i,j,f,b) * Σ_{me} Wvovv(a,m,e,f) * r1(m,e)
-    thread_local T1 Wavf; // [nv, nv] for fixed a? reuse: Wavf(a,f)=Σ_me Wvovv(a,m,e,f)r1(m,e)
+    thread_local T1
+        Wavf; // [nv, nv] for fixed a? reuse: Wavf(a,f)=Σ_me Wvovv(a,m,e,f)r1(m,e)
     if (Wavf.shape().size() != 2 || Wavf.shape(0) != Nv || Wavf.shape(1) != Nv)
         Wavf = xt::zeros<double>({Nv, Nv});
     else
@@ -395,16 +396,16 @@ std::vector<double> eom_ee_singlet_roots_ha(const CCSDSolution& sol,
                                             int n_states,
                                             const char* method_tag) {
     if (sol.nv <= 0 || sol.no <= 0) {
-        throw std::invalid_argument(std::string(method_tag) +
-                                    ": no virtual spin-orbitals — empty EE "
-                                    "space.");
+        throw std::invalid_argument(std::string(method_tag)
+                                    + ": no virtual spin-orbitals — empty EE "
+                                      "space.");
     }
 
     const int dim = vector_size(sol.no, sol.nv);
     if (n_states > dim)
         throw std::invalid_argument(
-            std::string(method_tag) + ": n_states=" + std::to_string(n_states) +
-            " exceeds EOM dimension " + std::to_string(dim) + ".");
+            std::string(method_tag) + ": n_states=" + std::to_string(n_states)
+            + " exceeds EOM dimension " + std::to_string(dim) + ".");
 
     const EomImds im(sol);
 
@@ -497,10 +498,9 @@ std::vector<double> eom_ee_singlet_roots_ha(const CCSDSolution& sol,
                 if (r.score >= 0.5)
                     s_only.push_back(r);
             if (static_cast<int>(s_only.size()) >= n_states) {
-                std::sort(s_only.begin(), s_only.end(),
-                          [](const Root& a, const Root& b) {
-                              return a.w < b.w;
-                          });
+                std::sort(
+                    s_only.begin(), s_only.end(),
+                    [](const Root& a, const Root& b) { return a.w < b.w; });
                 singlets = s_only;
             } else {
                 // For H2, unique energies are T, S, S' — take those with the
@@ -522,11 +522,10 @@ std::vector<double> eom_ee_singlet_roots_ha(const CCSDSolution& sol,
     }
 
     if (static_cast<int>(singlets.size()) < n_states)
-        throw std::runtime_error(
-            std::string(method_tag) + ": found only " +
-            std::to_string(singlets.size()) +
-            " usable EE roots; requested n_states=" +
-            std::to_string(n_states));
+        throw std::runtime_error(std::string(method_tag) + ": found only "
+                                 + std::to_string(singlets.size())
+                                 + " usable EE roots; requested n_states="
+                                 + std::to_string(n_states));
 
     // Final order: ascending ω among the selected singlets.
     // Re-pick: among roots with score ≥ 0.5, sort by energy; take n_states.
@@ -667,8 +666,8 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
     const int dim = vector_size(sol.no, sol.nv);
     if (n_states > dim)
         throw std::invalid_argument(
-            "eom_sf_ccsd: n_states=" + std::to_string(n_states) +
-            " exceeds EOM dimension " + std::to_string(dim) + ".");
+            "eom_sf_ccsd: n_states=" + std::to_string(n_states)
+            + " exceeds EOM dimension " + std::to_string(dim) + ".");
 
     const EomImds im(sol);
 
@@ -689,8 +688,8 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
     // Singles
     for (int i = 0; i < sol.no; ++i)
         for (int a = 0; a < sol.nv; ++a) {
-            const int dms = (vir_spin(a) == 0 ? 1 : -1) -
-                            (occ_spin(i) == 0 ? 1 : -1);
+            const int dms =
+                (vir_spin(a) == 0 ? 1 : -1) - (occ_spin(i) == 0 ? 1 : -1);
             if (dms == dms_target)
                 sf_idx.push_back(i * sol.nv + a);
         }
@@ -700,11 +699,10 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
         for (int j = 0; j < i; ++j)
             for (int a = 0; a < sol.nv; ++a)
                 for (int b = 0; b < a; ++b) {
-                    const int dms =
-                        (vir_spin(a) == 0 ? 1 : -1) +
-                        (vir_spin(b) == 0 ? 1 : -1) -
-                        (occ_spin(i) == 0 ? 1 : -1) -
-                        (occ_spin(j) == 0 ? 1 : -1);
+                    const int dms = (vir_spin(a) == 0 ? 1 : -1)
+                                    + (vir_spin(b) == 0 ? 1 : -1)
+                                    - (occ_spin(i) == 0 ? 1 : -1)
+                                    - (occ_spin(j) == 0 ? 1 : -1);
                     if (dms == dms_target)
                         sf_idx.push_back(kpack);
                     ++kpack;
@@ -712,12 +710,11 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
 
     const int nsf = static_cast<int>(sf_idx.size());
     if (nsf < 1)
-        throw std::invalid_argument(
-            "eom_sf_ccsd: empty majority SF subspace.");
+        throw std::invalid_argument("eom_sf_ccsd: empty majority SF subspace.");
     if (n_states > nsf)
         throw std::invalid_argument(
-            "eom_sf_ccsd: n_states=" + std::to_string(n_states) +
-            " exceeds SF dimension " + std::to_string(nsf) + ".");
+            "eom_sf_ccsd: n_states=" + std::to_string(n_states)
+            + " exceeds SF dimension " + std::to_string(nsf) + ".");
 
     std::vector<std::vector<double>> H(
         static_cast<std::size_t>(nsf),
@@ -750,15 +747,15 @@ EOMSFCCSDResult eom_sf_ccsd_energies(const IntegralPack& ints,
               [](const Root& a, const Root& b) { return a.w < b.w; });
 
     if (static_cast<int>(sfs.size()) < n_states)
-        throw std::runtime_error(
-            "eom_sf_ccsd: found only " + std::to_string(sfs.size()) +
-            " usable SF roots; requested n_states=" +
-            std::to_string(n_states));
+        throw std::runtime_error("eom_sf_ccsd: found only "
+                                 + std::to_string(sfs.size())
+                                 + " usable SF roots; requested n_states="
+                                 + std::to_string(n_states));
 
     out.energy_ev.reserve(static_cast<std::size_t>(n_states));
     for (int k = 0; k < n_states; ++k)
-        out.energy_ev.push_back(sfs[static_cast<std::size_t>(k)].w *
-                                units::kHartreeInEv);
+        out.energy_ev.push_back(sfs[static_cast<std::size_t>(k)].w
+                                * units::kHartreeInEv);
     out.converged = true;
     return out;
 }

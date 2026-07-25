@@ -179,8 +179,7 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
             const int nb = num_bond[i];
             for (int m = 0; m < nb; ++m) {
                 flat_bond_i.push_back(i);
-                flat_bond_j.push_back(
-                    static_cast<int>(bond_atom[i * MB + m]));
+                flat_bond_j.push_back(static_cast<int>(bond_atom[i * MB + m]));
                 flat_bond_t.push_back(bond_type[i * MB + m]);
             }
             const int na = num_angle[i];

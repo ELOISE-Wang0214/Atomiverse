@@ -38,13 +38,13 @@ int main() {
     frame.span(kAtom_z)[1] = 0.5 * L + 0.5 * R;
     frame.simbox = cpu::Box::cubic(L);
 
-    cpu::gpw::Kind Ni{molrs::Element::Ni,
-                     cpu::gpw::GaussianBasis(molrs::Element::Ni,
-                                             "SZV-GTH-PADE-q18"),
-                     cpu::gpw::GthPotential(molrs::Element::Ni, "GTH-PADE-q18")};
+    cpu::gpw::Kind Ni{
+        molrs::Element::Ni,
+        cpu::gpw::GaussianBasis(molrs::Element::Ni, "SZV-GTH-PADE-q18"),
+        cpu::gpw::GthPotential(molrs::Element::Ni, "GTH-PADE-q18")};
     cpu::gpw::Kind O{molrs::Element::O,
-                    cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
-                    cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
+                     cpu::gpw::GaussianBasis(molrs::Element::O, "SZV-GTH-PADE"),
+                     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PADE-q6")};
 
     cpu::gpw::GPWEvaluator eval({Ni, O});
     eval.cutoff_ry = 250.0;
@@ -71,7 +71,8 @@ int main() {
 
     // CP2K 2026.1 offline pin — REFERENCE.md (OT twin; SZV / PADE / U=6 eV)
     constexpr double kE_cp2k = -184.92466076474312;
-    constexpr double kTolE = 5.0e-2; // Ha — first green (single-grid vs multigrid+OT)
+    constexpr double kTolE =
+        5.0e-2; // Ha — first green (single-grid vs multigrid+OT)
     constexpr double kM_Ni_cp2k = 1.177632;
     constexpr double kTolM = 0.5;
     constexpr double kS2_cp2k = 2.019198;

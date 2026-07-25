@@ -9,16 +9,16 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/adc.h"
+#include "atomiverse/cpu/scf/bse.h"
 #include "atomiverse/cpu/scf/cisd.h"
 #include "atomiverse/cpu/scf/eom_cc2.h"
 #include "atomiverse/cpu/scf/eom_ea_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ee_ccsd.h"
 #include "atomiverse/cpu/scf/eom_ip_ccsd.h"
-#include "atomiverse/cpu/scf/bse.h"
-#include "atomiverse/cpu/scf/gf2.h"
-#include "atomiverse/cpu/scf/rpa.h"
 #include "atomiverse/cpu/scf/g0w0.h"
+#include "atomiverse/cpu/scf/gf2.h"
 #include "atomiverse/cpu/scf/mean_field_method.h"
+#include "atomiverse/cpu/scf/rpa.h"
 #include "atomiverse/cpu/scf/tdhf.h"
 #include "atomiverse/cpu/vibration/hessian_result.h"
 
@@ -115,8 +115,7 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @param analytic true (default) analytic CIS gradient; false = FD.
     /// @return Per-atom force array size 3N (fx,fy,fz interleaved) [eV/Å].
     std::vector<double> tda_forces(cpu::Frame& frame, int state = 0,
-                                   double h = 1e-3,
-                                   bool analytic = true) const;
+                                   double h = 1e-3, bool analytic = true) const;
 
     /// @brief Nonadiabatic coupling *strength* between TDA roots `i` and `j`:
     ///        ‖d_ij‖ [1/Å] where d_ij = tda_nac_vectors(...) (true NAC).
@@ -124,8 +123,8 @@ class RHF : public MeanFieldMethod<RHF> {
     /// @param state_i Lower root index (0-based).
     /// @param state_j Upper root index (0-based).
     /// @param h FD step if analytic forces fall back is not used [Å].
-    double tda_nac_strength(cpu::Frame& frame, int state_i = 0,
-                            int state_j = 1, double h = 2e-3) const;
+    double tda_nac_strength(cpu::Frame& frame, int state_i = 0, int state_j = 1,
+                            double h = 2e-3) const;
 
     /// @brief True first-order NAC vectors d_ij = ⟨Ψ_i|∇_R|Ψ_j⟩ [1/Å],
     ///        length 3N (fx,fy,fz interleaved per atom). Built from analytic

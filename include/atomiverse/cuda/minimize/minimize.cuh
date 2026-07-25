@@ -35,16 +35,16 @@
 /// @see minimizer::Phase for the minimizer phase sequence
 #pragma once
 
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/component/optimizer.cuh"
-#include "atomiverse/cuda/component/potential.cuh"
-#include "atomiverse/cuda/component/hf.cuh"
-#include "atomiverse/cuda/driver/driver.cuh"
-#include "atomiverse/cuda/driver/criterion.cuh"
-#include "atomiverse/cuda/dynamics/init.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/hf.cuh"
+#include "atomiverse/cuda/component/optimizer.cuh"
+#include "atomiverse/cuda/component/potential.cuh"
+#include "atomiverse/cuda/driver/criterion.cuh"
+#include "atomiverse/cuda/driver/driver.cuh"
+#include "atomiverse/cuda/dynamics/init.cuh"
 
 namespace ATV {
 namespace cuda {

@@ -118,7 +118,7 @@ DipoleElectrodeJoint::DipoleElectrodeJoint(double eta_in,
 }
 
 DipoleElectrodeJoint& DipoleElectrodeJoint::add_electrode(int type,
-                                                         double psi) & {
+                                                          double psi) & {
     groups_.push_back(ElectrodeGroup{type, psi});
     return *this;
 }
@@ -336,9 +336,8 @@ void DipoleElectrodeJoint::solve_Q_() {
     const int m = static_cast<int>(elec_atoms_.size());
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
-        rhs[static_cast<std::size_t>(i)] =
-            psi_vec_[static_cast<std::size_t>(i)]
-            - b_[static_cast<std::size_t>(i)];
+        rhs[static_cast<std::size_t>(i)] = psi_vec_[static_cast<std::size_t>(i)]
+                                           - b_[static_cast<std::size_t>(i)];
 
     A_work_ = A_;
     std::vector<double> Q_unconst = rhs;
@@ -380,8 +379,7 @@ void DipoleElectrodeJoint::solve_Q_() {
             Ax += A_[static_cast<std::size_t>(i) * m + j]
                   * Q_[static_cast<std::size_t>(j)];
         charge_residual_ = std::max(
-            charge_residual_,
-            std::abs(Ax - rhs[static_cast<std::size_t>(i)]));
+            charge_residual_, std::abs(Ax - rhs[static_cast<std::size_t>(i)]));
     }
 
     total_Q_.assign(groups_.size(), 0.0);
@@ -504,8 +502,7 @@ double DipoleElectrodeJoint::scc_mu_(const Spans& s) {
                 const double f3 = l3 / r3;
                 const double f5 = l5 / r5;
                 const double* muj = mu.data() + 3 * j;
-                const double mdotr =
-                    muj[0] * dx + muj[1] * dy + muj[2] * dz;
+                const double mdotr = muj[0] * dx + muj[1] * dy + muj[2] * dz;
                 e_tot[static_cast<std::size_t>(3 * i + 0)] +=
                     3.0 * f5 * mdotr * dx - f3 * muj[0];
                 e_tot[static_cast<std::size_t>(3 * i + 1)] +=
@@ -597,9 +594,8 @@ void DipoleElectrodeJoint::launch(const LaunchContext& ctx) {
 
         double dQ = 0.0;
         for (int a = 0; a < m; ++a)
-            dQ = std::max(
-                dQ, std::abs(Q_[static_cast<std::size_t>(a)]
-                             - Q_prev[static_cast<std::size_t>(a)]));
+            dQ = std::max(dQ, std::abs(Q_[static_cast<std::size_t>(a)]
+                                       - Q_prev[static_cast<std::size_t>(a)]));
 
         const double dmu = scc_mu_(s);
         last_joint_iters_ = outer + 1;

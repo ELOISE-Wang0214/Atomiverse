@@ -70,7 +70,8 @@ int main() {
 
     const cpu::scf::GF2Result gf = rhf.gf2();
     if (!gf.converged) {
-        std::fprintf(stderr, "FAIL: GF2 Dyson spectrum did not yield HOMO/LUMO\n");
+        std::fprintf(stderr,
+                     "FAIL: GF2 Dyson spectrum did not yield HOMO/LUMO\n");
         return 1;
     }
     if (gf.n_occ != 1 || gf.qp_energy_ha.size() != 2) {

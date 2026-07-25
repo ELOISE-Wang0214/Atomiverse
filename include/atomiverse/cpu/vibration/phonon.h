@@ -17,6 +17,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/bias.h"
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/component/hf.h"
@@ -36,7 +37,6 @@
 #include "atomiverse/cpu/vibration/reference_geometry.h"
 #include "atomiverse/cpu/vibration/supercell.h"
 #include "atomiverse/cpu/vibration/symmetrize.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -96,7 +96,8 @@ class Phonon : public Driver<ATV::vib::Phase> {
         const auto s = this->scan_pending_infra_();
         this->throw_if_missing_neighbor_list_(
             s, "Phonon",
-            "Add `phonon.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
+            "Add `phonon.set_neighbor(cpu::md::NeighborList<>{cutoff, "
+            "skin})`.");
     }
 
     void validate_components() const override {

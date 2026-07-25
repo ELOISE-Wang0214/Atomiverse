@@ -36,7 +36,7 @@ struct Mp2Result {
     double e_corr_ss = 0.0;
     double e_scf = 0.0;   ///< Converged GPW SCF total energy [Hartree].
     double e_total = 0.0; ///< e_scf + e_corr [Hartree].
-    int n_occ = 0;  ///< Correlated occupied spatial orbitals.
+    int n_occ = 0;        ///< Correlated occupied spatial orbitals.
     int n_virt = 0; ///< Virtual spatial orbitals in the sum (after any cap).
 };
 

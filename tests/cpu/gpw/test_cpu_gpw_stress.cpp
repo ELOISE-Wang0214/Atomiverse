@@ -59,8 +59,9 @@ TEST(GpwStress, AnalyticOffDiagonalZeroOrthorhombic) {
     EXPECT_DOUBLE_EQ(s[5], 0.0);
     const double max_diag =
         std::max({std::abs(s[0]), std::abs(s[1]), std::abs(s[2])});
-    std::printf("[GPW stress analytic] Voigt Ha/Bohr3: %.6e %.6e %.6e | 0 0 0\n",
-                s[0], s[1], s[2]);
+    std::printf(
+        "[GPW stress analytic] Voigt Ha/Bohr3: %.6e %.6e %.6e | 0 0 0\n", s[0],
+        s[1], s[2]);
     EXPECT_GT(max_diag, 1e-8);
 }
 
@@ -75,9 +76,8 @@ TEST(GpwStress, AnalyticMatchesFdDiagonal) {
     const auto sfd = gpw_stress_fd(atoms, cfg, h);
     double max_err = 0.0;
     for (int a = 0; a < 3; ++a) {
-        const double err =
-            std::abs(san[static_cast<std::size_t>(a)]
-                     - sfd[static_cast<std::size_t>(a)]);
+        const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                    - sfd[static_cast<std::size_t>(a)]);
         max_err = std::max(max_err, err);
         std::printf("  axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
                     san[static_cast<std::size_t>(a)],

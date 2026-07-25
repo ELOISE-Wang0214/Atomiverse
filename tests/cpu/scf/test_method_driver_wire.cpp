@@ -12,17 +12,17 @@
 #include <cmath>
 #include <type_traits>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/hf.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/dynamics/md.h"
-#include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/minimize/lbfgs.h"
 #include "atomiverse/cpu/minimize/minimize.h"
 #include "atomiverse/cpu/scf/methods.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 
@@ -135,6 +135,5 @@ TEST(MethodDriverWire, NestedMultiStepAimd) {
     sim.build();
     sim.run(frame, 3);
     EXPECT_LT(static_cast<double>(frame.meta.get(kEnergy)), 0.0);
-    EXPECT_TRUE(
-        std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kEnergy))));
 }

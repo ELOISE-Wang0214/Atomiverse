@@ -37,8 +37,8 @@ TEST(PairYukawa, AnalyticEnergyAndForce) {
     const double U = U_un - U_rc;
     const double dUdr = -A * std::exp(-kappa * r) * (kappa / r + 1.0 / (r * r));
     // Force on atom 0 along +x toward 1 when A>0 is repulsive → F0x < 0
-    const double F0x = -(-dUdr); // magnitude dU/dr < 0 so -dUdr > 0 ... 
-    // U decreases with r for A>0? dUdr = -A e (...)<0 so U decreases → attractive? 
+    const double F0x = -(-dUdr); // magnitude dU/dr < 0 so -dUdr > 0 ...
+    // U decreases with r for A>0? dUdr = -A e (...)<0 so U decreases → attractive?
     // Wait: A>0 Yukawa is typically repulsive: U = +A e/r > 0, dU/dr < 0 means
     // energy decreases as r increases → repulsive force pushing particles apart.
     // F on particle 0: points away from 1 → −x → F0x < 0.

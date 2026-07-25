@@ -39,8 +39,8 @@
 #ifdef ATV_HAS_HF
 
 #include <cmath>
-#include <stdexcept>
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/gradient_result.h"
@@ -249,7 +249,8 @@ TEST(ROHF, ForcesRunTranslationallyInvariant) {
         for (int d = 0; d < 3; ++d)
             net[d] += g.forces(A, d);
     for (int d = 0; d < 3; ++d)
-        EXPECT_NEAR(net[d], 0.0, 1e-6) << "ROHF force not translationally invariant";
+        EXPECT_NEAR(net[d], 0.0, 1e-6)
+            << "ROHF force not translationally invariant";
 }
 
 #endif

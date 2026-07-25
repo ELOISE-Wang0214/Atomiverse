@@ -172,9 +172,9 @@ void PairLJCut::build(const BuildContext& ctx) {
     special_.s13 = s13_;
     special_.s14 = s14_;
     any_special_ = special_.active();
-    has_partial_special_ =
-        (s12_ > 0.0 && s12_ < 1.0) || (s13_ > 0.0 && s13_ < 1.0)
-        || (s14_ > 0.0 && s14_ < 1.0);
+    has_partial_special_ = (s12_ > 0.0 && s12_ < 1.0)
+                           || (s13_ > 0.0 && s13_ < 1.0)
+                           || (s14_ > 0.0 && s14_ < 1.0);
     special_.clear();
     if (!any_special_)
         return;

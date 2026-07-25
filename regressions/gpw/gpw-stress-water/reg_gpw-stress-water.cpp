@@ -4,9 +4,9 @@
 /// See REFERENCE.md. Public API only. Requires ATV_BUILD_GPW (+ HF + PW).
 /// Frame stress eV/Å³; pin and prints in Ha/Bohr³.
 
+#include <array>
 #include <cmath>
 #include <cstdio>
-#include <array>
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"

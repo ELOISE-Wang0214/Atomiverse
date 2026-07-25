@@ -23,9 +23,9 @@
 #include "atomiverse/cpu/communication/halo_exchange.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/potential.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
 
@@ -116,7 +116,8 @@ class NullReciprocal : public cpu::Potential, public cpu::LongRangeParticipant {
   public:
     explicit NullReciprocal(double alpha) : alpha_(alpha) {}
     std::string name() const override { return "null/kspace"; }
-    const cpu::LongRangeParticipant* as_long_range_participant() const override {
+    const cpu::LongRangeParticipant*
+    as_long_range_participant() const override {
         return this;
     }
     cpu::LongRangeContract long_range_contract() const override {

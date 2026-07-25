@@ -25,8 +25,7 @@ ChargingWork::ChargingWork(std::vector<int> electrode_types,
         const int t = types_[k];
         if (psi_of_type_.count(t) != 0) {
             throw std::invalid_argument(
-                "ChargingWork: duplicate electrode type "
-                + std::to_string(t));
+                "ChargingWork: duplicate electrode type " + std::to_string(t));
         }
         psi_of_type_[t] = psi_V_[k];
     }

@@ -258,11 +258,10 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                              : solve_poisson(grid, n_tot);
-    const XcOnGrid xc =
-        cfg.xc == XcKind::PBE
-            ? xc_grid_pbe(grid, rho)
-            : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
-                                        : xc_grid_pade(grid, rho));
+    const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
+                                              : (cfg.xc == XcKind::PBEsol
+                                                     ? xc_grid_pbesol(grid, rho)
+                                                     : xc_grid_pade(grid, rho));
     const std::vector<double>& v_es = es.v_r;
     // V_eff must be the SAME one the SCF converged against. When the local
     // short-range PP was collocated on the grid (the default), it is part of
@@ -405,8 +404,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // Grimme DFT-D3 dispersion forces (additive, geometry-only).
     // D4 energy is supported; analytic D4 forces are out of scope for this
     // foothold (energy pin only).
-    const int n_disp =
-        (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
             "GPW forces: d3, d3bj, and d4 are mutually exclusive");
@@ -422,7 +420,8 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-        constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
+        constexpr double kRcutBjBohr =
+            2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
         const D3Result d3 =
             cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
                    : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
@@ -484,7 +483,8 @@ gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const RealMatrix HC = xt::linalg::dot(H, C_occ);
     const RealMatrix Lambda = xt::linalg::dot(xt::transpose(C_occ), HC);
     const RealMatrix W =
-        2.0 * xt::linalg::dot(C_occ, xt::linalg::dot(Lambda, xt::transpose(C_occ)));
+        2.0
+        * xt::linalg::dot(C_occ, xt::linalg::dot(Lambda, xt::transpose(C_occ)));
     return assemble_gpw_forces(atoms, cfg, P, W);
 }
 

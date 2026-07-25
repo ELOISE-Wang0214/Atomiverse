@@ -28,26 +28,26 @@
 #include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
-#include "atomiverse/cpu/scf/internal/external_field.h"
-#include "atomiverse/cpu/scf/internal/ccsd_pack.h"
 #include "atomiverse/cpu/scf/internal/casci_pack.h"
 #include "atomiverse/cpu/scf/internal/casscf_pack.h"
-#include "atomiverse/cpu/scf/internal/nevpt2_pack.h"
+#include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
+#include "atomiverse/cpu/scf/internal/ccsd_pack.h"
+#include "atomiverse/cpu/scf/internal/external_field.h"
 #include "atomiverse/cpu/scf/internal/fci_pack.h"
 #include "atomiverse/cpu/scf/internal/gradient.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/internal/hueckel_guess.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
-#include "atomiverse/cpu/scf/internal/pcm.h"
-#include "atomiverse/cpu/scf/internal/point_charges.h"
-#include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/level_shift.h" // kLevelShiftSkipThreshold
 #include "atomiverse/cpu/scf/internal/minao.h"
-#include "atomiverse/cpu/scf/internal/ccsd_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_gradient.h"
 #include "atomiverse/cpu/scf/internal/mp2_pack.h"
 #include "atomiverse/cpu/scf/internal/mp3_pack.h"
 #include "atomiverse/cpu/scf/internal/mp4_pack.h"
+#include "atomiverse/cpu/scf/internal/nevpt2_pack.h"
+#include "atomiverse/cpu/scf/internal/pcm.h"
+#include "atomiverse/cpu/scf/internal/point_charges.h"
+#include "atomiverse/cpu/scf/internal/sap_guess.h"
 #include "atomiverse/cpu/scf/internal/x2c.h"
 #include "atomiverse/cpu/scf/scf_guess.h"     // apply_homo_lumo_mixing
 #include "atomiverse/cpu/scf/spin_analysis.h" // compute_spin_contamination
@@ -224,8 +224,8 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
     if (soscf) {
         soscf_stepper_ = std::make_unique<internal::SOSCFStepper>(
             restricted_, *integrals_sp_, n_alpha_, n_beta_, Hcore_, v_nuc_,
-            F_alpha_, F_beta_, P_alpha_, P_beta_, C_alpha_, C_beta_,
-            eig_alpha_, eig_beta_, soscf_max_micro, soscf_trust);
+            F_alpha_, F_beta_, P_alpha_, P_beta_, C_alpha_, C_beta_, eig_alpha_,
+            eig_beta_, soscf_max_micro, soscf_trust);
     }
     mix_stage_ = std::make_unique<MixStage>(
         restricted_ || rohf || generalized, use_diis, diis_start_iter,
@@ -240,18 +240,18 @@ void MeanFieldMethod<D>::ensure_driver_built_() {
         restricted_, is_hf_, damping_factor, C_alpha_, C_beta_,
         rohf ? F_alpha_uncoupled_ : F_alpha_,
         rohf ? F_beta_uncoupled_ : F_beta_, Hcore_, J_, n_alpha_, n_beta_,
-        n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_,
-        P_alpha_, P_beta_, e_total_, e_one_, e_coulomb_, generalized,
-        e_solvent_, e_pcm_fock_half_, S_, mom, mom_ref_C_alpha_,
-        mom_ref_C_beta_);
+        n_basis_, diis_active_, e_xc_grid_, e_exact_exchange_, v_nuc_, P_alpha_,
+        P_beta_, e_total_, e_one_, e_coulomb_, generalized, e_solvent_,
+        e_pcm_fock_half_, S_, mom, mom_ref_C_alpha_, mom_ref_C_beta_);
     converged_stage_ = std::make_unique<ScfConverged>(
         tol, (conv_tol_grad > 0) ? conv_tol_grad : std::sqrt(tol),
         restricted_ || rohf || generalized, e_total_, err_alpha_, err_beta_);
 
     this->on(ATV::scf::Phase::fock).add_ref(*fock_stage_);
     if (rohf)
-        this->on(ATV::scf::Phase::mix).add_ref(*rohf_couple_stage_,
-                                               /*order=*/-1);
+        this->on(ATV::scf::Phase::mix)
+            .add_ref(*rohf_couple_stage_,
+                     /*order=*/-1);
     this->on(ATV::scf::Phase::mix).add_ref(*mix_stage_);
     this->on(ATV::scf::Phase::diagonalize).add_ref(*diag_stage_);
     this->on(ATV::scf::Phase::density).add_ref(*density_stage_);
@@ -296,8 +296,7 @@ int MeanFieldMethod<D>::run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
 // ── THE funnel ────────────────────────────────────────────────────────────────
 
 template <typename D>
-void MeanFieldMethod<D>::drive_scf_(Frame& frame,
-                                    const SCFInitialGuess* guess,
+void MeanFieldMethod<D>::drive_scf_(Frame& frame, const SCFInitialGuess* guess,
                                     const DriveOpts& opts) {
     // ECP ↔ x2c double-counting gate (per-element): relativistic ECPs bake
     // scalar relativity into their parameterization, so an atom that hits
@@ -312,11 +311,11 @@ void MeanFieldMethod<D>::drive_scf_(Frame& frame,
             if (Z >= 1 && Z < static_cast<int>(table.size())
                 && !table[static_cast<std::size_t>(Z)].channels.empty()) {
                 throw std::runtime_error(
-                    "MeanFieldMethod::run: x2c=true combined with ecp='"
-                    + ecp + "' would double-count scalar relativity for "
-                            "element "
-                    + EcpPotential::element_symbol(Z) + " (Z="
-                    + std::to_string(Z)
+                    "MeanFieldMethod::run: x2c=true combined with ecp='" + ecp
+                    + "' would double-count scalar relativity for "
+                      "element "
+                    + EcpPotential::element_symbol(Z)
+                    + " (Z=" + std::to_string(Z)
                     + "): the relativistic ECP already includes it. Disable "
                       "x2c or run this element all-electron.");
             }
@@ -418,8 +417,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             "Kohn-Sham (RKS/UKS) — ghost / counterpoise support is pure HF "
             "only in this link. Use RHF/UHF, or clear ghost_atoms.");
 
-    *integrals_sp_ = IntegralPack{frame, basis, charge, compute_eri, ecp,
-                                  ghost_atoms, /*compute_pvp=*/x2c};
+    *integrals_sp_ = IntegralPack{frame,
+                                  basis,
+                                  charge,
+                                  compute_eri,
+                                  ecp,
+                                  ghost_atoms,
+                                  /*compute_pvp=*/x2c};
     // x2c-1e: replace the non-relativistic core Hamiltonian with the
     // one-step exact-two-component h^X2C. S / ERI / Fock loop are untouched
     // (two-electron integrals stay non-relativistic by definition of
@@ -432,7 +436,7 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         const RealMatrix V = integrals_sp_->V;
         const RealMatrix W = integrals_sp_->W;
         const internal::X2cWorkspace x2c_ws(S, T, V, W,
-                                           internal::kLightSpeedAU);
+                                            internal::kLightSpeedAU);
         integrals_sp_->Hcore = x2c_ws.hcore();
     }
     const IntegralPack& ints = *integrals_sp_;
@@ -527,13 +531,13 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             throw std::invalid_argument(
                 "MeanFieldMethod::run: MOM reference occupation count does "
                 "not match n_alpha/n_beta (got C_ref_a cols="
-                + std::to_string(mom_ref_C_alpha_.shape()[1]) + ", n_alpha="
-                + std::to_string(n_alpha_) + ")");
+                + std::to_string(mom_ref_C_alpha_.shape()[1])
+                + ", n_alpha=" + std::to_string(n_alpha_) + ")");
         if (static_cast<int>(mom_ref_C_alpha_.shape()[0]) != ints.n_basis)
             throw std::invalid_argument(
                 "MeanFieldMethod::run: MOM reference AO dimension "
-                + std::to_string(mom_ref_C_alpha_.shape()[0])
-                + " != n_basis " + std::to_string(ints.n_basis));
+                + std::to_string(mom_ref_C_alpha_.shape()[0]) + " != n_basis "
+                + std::to_string(ints.n_basis));
     }
     const int n = ints.n_basis;
     const int n_alpha = n_alpha_;
@@ -556,9 +560,9 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     // paths in ScfGradient::compute (embed/field = semi-numerical 1e +
     // classical; C-PCM = vacuum HF terms on the solvent density + fixed-P
     // finite difference of ΔG_el over the rebuilt cavity).
-    const bool field_active =
-        std::abs(external_field[0]) > 0.0 || std::abs(external_field[1]) > 0.0
-        || std::abs(external_field[2]) > 0.0;
+    const bool field_active = std::abs(external_field[0]) > 0.0
+                              || std::abs(external_field[1]) > 0.0
+                              || std::abs(external_field[2]) > 0.0;
     const bool solvent_active = solvent_eps > 0.0;
 
     // Apply environment to the n-dimensional Hcore / classical energy
@@ -723,19 +727,18 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
             }
             auto [eig_n, C_n] = eigen.step_orthogonal(H_ao, Xn);
             (void)eig_n;
-            const RealMatrix P_c = density.step(C_n, n_a, n)
-                                   + density.step(C_n, n_b, n);
+            const RealMatrix P_c =
+                density.step(C_n, n_a, n) + density.step(C_n, n_b, n);
             P0 = xt::zeros<double>({2 * n, 2 * n});
             xt::view(P0, xt::range(0, n), xt::range(0, n)) = 0.5 * P_c;
-            xt::view(P0, xt::range(n, 2 * n), xt::range(n, 2 * n)) =
-                0.5 * P_c;
+            xt::view(P0, xt::range(n, 2 * n), xt::range(n, 2 * n)) = 0.5 * P_c;
 
             double theta = 0.0;
             if constexpr (std::is_same_v<D, GHF>)
                 theta = static_cast<D*>(this)->guess_spin_rotation;
             for (int mu = 0; mu < n; ++mu) {
-                const double d = std::min(
-                    std::max(P_c(mu, mu), 0.0), 2.0 - P_c(mu, mu));
+                const double d =
+                    std::min(std::max(P_c(mu, mu), 0.0), 2.0 - P_c(mu, mu));
                 const double th = theta * mu;
                 const double mz = 0.5 * d * std::cos(th);
                 const double mx = 0.5 * d * std::sin(th);
@@ -754,93 +757,94 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
         eig_alpha_ = xt::zeros<double>({2 * n});
         eig_beta_ = eig_alpha_;
     } else {
-    // Initial guess, reusing diagonalize + density once.
-    auto [eig0, C0] = diagonalize(Hcore_);
+        // Initial guess, reusing diagonalize + density once.
+        auto [eig0, C0] = diagonalize(Hcore_);
 
-    RealMatrix P_alpha, P_beta;
-    const bool valid_guess_alpha =
-        guess && guess->has_alpha && guess->P_alpha.dimension() == 2
-        && static_cast<int>(guess->P_alpha.shape()[0]) == n
-        && static_cast<int>(guess->P_alpha.shape()[1]) == n;
-    const bool valid_guess_beta =
-        guess && guess->has_beta && guess->P_beta.dimension() == 2
-        && static_cast<int>(guess->P_beta.shape()[0]) == n
-        && static_cast<int>(guess->P_beta.shape()[1]) == n;
-    const bool want_minao = (init_guess == InitGuess::MINAO)
-                            && !valid_guess_alpha && minao_supported(ints);
-    RealMatrix P_minao;
-    if (want_minao)
-        P_minao = build_minao_density(ints);
+        RealMatrix P_alpha, P_beta;
+        const bool valid_guess_alpha =
+            guess && guess->has_alpha && guess->P_alpha.dimension() == 2
+            && static_cast<int>(guess->P_alpha.shape()[0]) == n
+            && static_cast<int>(guess->P_alpha.shape()[1]) == n;
+        const bool valid_guess_beta =
+            guess && guess->has_beta && guess->P_beta.dimension() == 2
+            && static_cast<int>(guess->P_beta.shape()[0]) == n
+            && static_cast<int>(guess->P_beta.shape()[1]) == n;
+        const bool want_minao = (init_guess == InitGuess::MINAO)
+                                && !valid_guess_alpha && minao_supported(ints);
+        RealMatrix P_minao;
+        if (want_minao)
+            P_minao = build_minao_density(ints);
 
-    // Hückel / SAP: diagonalize a guess Fock instead of Hcore, then flow
-    // through the same orbital-based density branches below (open shell
-    // keeps the existing split + HOMO-LUMO mixing rule — both guesses are
-    // spin-symmetric; see the guess headers for the averaging limitation).
-    const bool want_hueckel =
-        (init_guess == InitGuess::Hueckel) && !valid_guess_alpha;
-    const bool want_sap = (init_guess == InitGuess::SAP) && !valid_guess_alpha;
-    if ((want_hueckel || want_sap) && ints.has_ecp)
-        throw std::runtime_error(
-            "MeanFieldMethod::run: the Hueckel/SAP initial guesses are not "
-            "available with an ECP (the pack stores valence-reduced Z, so "
-            "the atomic tables would resolve the wrong element). Use "
-            "InitGuess::MINAO or InitGuess::Hcore.");
-    if (want_hueckel) {
-        internal::HueckelGuess hueckel(ints.shells, ints.S, ints.atoms);
-        std::tie(eig0, C0) = diagonalize(hueckel.F);
-    } else if (want_sap) {
-        const MolecularGrid sap_grid(
-            ints.atoms.data(), static_cast<int>(ints.atoms.size()), grid_level,
-            n_radial, n_angular);
-        internal::SapGuess sap(ints.shells, ints.T, ints.atoms, sap_grid,
-                               ints.c2s);
-        std::tie(eig0, C0) = diagonalize(sap.F);
-    }
+        // Hückel / SAP: diagonalize a guess Fock instead of Hcore, then flow
+        // through the same orbital-based density branches below (open shell
+        // keeps the existing split + HOMO-LUMO mixing rule — both guesses are
+        // spin-symmetric; see the guess headers for the averaging limitation).
+        const bool want_hueckel =
+            (init_guess == InitGuess::Hueckel) && !valid_guess_alpha;
+        const bool want_sap =
+            (init_guess == InitGuess::SAP) && !valid_guess_alpha;
+        if ((want_hueckel || want_sap) && ints.has_ecp)
+            throw std::runtime_error(
+                "MeanFieldMethod::run: the Hueckel/SAP initial guesses are not "
+                "available with an ECP (the pack stores valence-reduced Z, so "
+                "the atomic tables would resolve the wrong element). Use "
+                "InitGuess::MINAO or InitGuess::Hcore.");
+        if (want_hueckel) {
+            internal::HueckelGuess hueckel(ints.shells, ints.S, ints.atoms);
+            std::tie(eig0, C0) = diagonalize(hueckel.F);
+        } else if (want_sap) {
+            const MolecularGrid sap_grid(ints.atoms.data(),
+                                         static_cast<int>(ints.atoms.size()),
+                                         grid_level, n_radial, n_angular);
+            internal::SapGuess sap(ints.shells, ints.T, ints.atoms, sap_grid,
+                                   ints.c2s);
+            std::tie(eig0, C0) = diagonalize(sap.F);
+        }
 
-    if (restricted && valid_guess_alpha) {
-        P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
-        P_beta = P_alpha;
-    } else if (!restricted && valid_guess_alpha && valid_guess_beta) {
-        P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
-        P_beta = 0.5 * (guess->P_beta + xt::transpose(guess->P_beta));
-    } else if (want_minao && restricted) {
-        P_alpha = P_minao;
-        P_beta = P_alpha;
-    } else if (want_minao) {
-        P_alpha = 0.5 * P_minao;
-        P_beta = 0.5 * P_minao;
-        const bool is_ks = (method_ == MeanFieldType::KS);
-        // ROHF never wants the UHF symmetry-breaking guess perturbation: the
-        // coupled F_eff restores one MO set anyway, so start from the plain
-        // Aufbau split (PySCF-matching).
-        const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
-        if (method_ == MeanFieldType::HF && n_alpha > 0 && n_beta > 0
-            && !skip_mixing && n_alpha != n_beta) {
+        if (restricted && valid_guess_alpha) {
+            P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
+            P_beta = P_alpha;
+        } else if (!restricted && valid_guess_alpha && valid_guess_beta) {
+            P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
+            P_beta = 0.5 * (guess->P_beta + xt::transpose(guess->P_beta));
+        } else if (want_minao && restricted) {
+            P_alpha = P_minao;
+            P_beta = P_alpha;
+        } else if (want_minao) {
+            P_alpha = 0.5 * P_minao;
+            P_beta = 0.5 * P_minao;
+            const bool is_ks = (method_ == MeanFieldType::KS);
+            // ROHF never wants the UHF symmetry-breaking guess perturbation: the
+            // coupled F_eff restores one MO set anyway, so start from the plain
+            // Aufbau split (PySCF-matching).
+            const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
+            if (method_ == MeanFieldType::HF && n_alpha > 0 && n_beta > 0
+                && !skip_mixing && n_alpha != n_beta) {
+                RealMatrix C_alpha_init = C0;
+                apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
+                P_alpha = density.step(C_alpha_init, n_alpha, n);
+                P_beta = density.step(C0, n_beta, n);
+            }
+        } else if (restricted) {
+            P_alpha = density.step(C0, n_alpha, n, double(2));
+            P_beta = P_alpha;
+        } else {
             RealMatrix C_alpha_init = C0;
-            apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
+            const bool is_ks = (method_ == MeanFieldType::KS);
+            // See the MINAO branch: ROHF skips the UHF symmetry-breaking guess.
+            const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
+            if (n_alpha > 0 && n_beta > 0 && !skip_mixing)
+                apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
             P_alpha = density.step(C_alpha_init, n_alpha, n);
             P_beta = density.step(C0, n_beta, n);
         }
-    } else if (restricted) {
-        P_alpha = density.step(C0, n_alpha, n, double(2));
-        P_beta = P_alpha;
-    } else {
-        RealMatrix C_alpha_init = C0;
-        const bool is_ks = (method_ == MeanFieldType::KS);
-        // See the MINAO branch: ROHF skips the UHF symmetry-breaking guess.
-        const bool skip_mixing = (is_ks && (n_alpha == n_beta)) || rohf;
-        if (n_alpha > 0 && n_beta > 0 && !skip_mixing)
-            apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
-        P_alpha = density.step(C_alpha_init, n_alpha, n);
-        P_beta = density.step(C0, n_beta, n);
-    }
 
-    P_alpha_ = std::move(P_alpha);
-    P_beta_ = std::move(P_beta);
-    C_alpha_ = C0;
-    C_beta_ = C0;
-    eig_alpha_ = eig0;
-    eig_beta_ = eig0;
+        P_alpha_ = std::move(P_alpha);
+        P_beta_ = std::move(P_beta);
+        C_alpha_ = C0;
+        C_beta_ = C0;
+        eig_alpha_ = eig0;
+        eig_beta_ = eig0;
     } // end !generalized guess flow
 
     mix_stage_->reset();
@@ -925,19 +929,18 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
     if (generalized) {
         // Spinor determinant: one channel, N electrons aufbau over the 2n
         // spinors (n_alpha carries the total N for the generalized form).
-        *det_sp_ = SlaterDeterminant(SlaterDeterminant::Generalized{},
-                                     C_alpha_, eig_alpha_, f_alpha, n_alpha);
+        *det_sp_ = SlaterDeterminant(SlaterDeterminant::Generalized{}, C_alpha_,
+                                     eig_alpha_, f_alpha, n_alpha);
     } else if (restricted) {
         *det_sp_ = SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha);
     } else {
         RealVector f_beta = xt::zeros<double>({n_mo});
         for (int i = 0; i < n_beta && i < n_mo; ++i)
             f_beta(i) = 1.0;
-        *det_sp_ =
-            SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha, C_beta_,
-                              eig_beta_, f_beta, n_beta);
-        det_sp_->set_spin_contamination(compute_spin_contamination(
-            C_alpha_, C_beta_, S_, n_alpha, n_beta));
+        *det_sp_ = SlaterDeterminant(C_alpha_, eig_alpha_, f_alpha, n_alpha,
+                                     C_beta_, eig_beta_, f_beta, n_beta);
+        det_sp_->set_spin_contamination(
+            compute_spin_contamination(C_alpha_, C_beta_, S_, n_alpha, n_beta));
     }
 
     *has_result_sp_ = true;
@@ -995,8 +998,7 @@ void MeanFieldMethod<D>::run(Frame& frame, const SCFInitialGuess* guess) {
 }
 
 template <typename D>
-void MeanFieldMethod<D>::run(const Frame& frame,
-                             const SCFInitialGuess* guess) {
+void MeanFieldMethod<D>::run(const Frame& frame, const SCFInitialGuess* guess) {
     // SCF is read-only w.r.t. the frame: the stages compute on private member
     // matrices, never frame fields; this entry unwraps nothing and writes
     // nothing back. The const_cast is therefore never a mutation of the
@@ -1011,7 +1013,7 @@ void MeanFieldMethod<D>::run(const Frame& frame,
 
 template <typename D>
 GradientResult MeanFieldMethod<D>::forces(Frame& frame,
-                                           const SCFInitialGuess* guess) {
+                                          const SCFInitialGuess* guess) {
     DriveOpts opts;
     opts.unwrap = false;
     opts.write_energy = false;
@@ -1037,9 +1039,8 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::mp2: SCF reference did not converge — refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
-    if ((spin_ == SpinType::Unrestricted ||
-         spin_ == SpinType::RestrictedOpen) &&
-        frozen != 0) {
+    if ((spin_ == SpinType::Unrestricted || spin_ == SpinType::RestrictedOpen)
+        && frozen != 0) {
         throw std::invalid_argument(
             "MeanFieldMethod::mp2: frozen-core UMP2/ROMP2 is not supported — "
             "set frozen=0, or use closed-shell RHF.");
@@ -1050,7 +1051,7 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
                 "MeanFieldMethod::mp2: RI-MP2 is closed-shell only — set "
                 "ri=RI::None for UMP2/ROMP2, or use RHF.");
         return ri_mp2_energy(*integrals_sp_, *det_sp_, e_total_, aux_basis,
-                            frozen, mp2_os_scale, mp2_ss_scale);
+                             frozen, mp2_os_scale, mp2_ss_scale);
     }
     if (spin_ == SpinType::RestrictedOpen) {
         // PySCF ROMP2: UMP2 on ROHF orbitals with semi-canonical spin-Fock
@@ -1067,8 +1068,8 @@ MP2Result MeanFieldMethod<D>::mp2(Frame& frame, const SCFInitialGuess* guess) {
 }
 
 template <typename D>
-GradientResult
-MeanFieldMethod<D>::mp2_forces(Frame& frame, const SCFInitialGuess* guess) {
+GradientResult MeanFieldMethod<D>::mp2_forces(Frame& frame,
+                                              const SCFInitialGuess* guess) {
     if (spin_ != SpinType::Restricted && spin_ != SpinType::Unrestricted)
         throw std::invalid_argument(
             "MeanFieldMethod::mp2_forces: RMP2 (RHF) or UMP2 (UHF) analytic "
@@ -1136,8 +1137,8 @@ MP3Result MeanFieldMethod<D>::mp3(Frame& frame, const SCFInitialGuess* guess) {
         throw std::invalid_argument(
             "MeanFieldMethod::mp3: RI-MP3 is not implemented — set "
             "ri=RI::None");
-    if (std::fabs(mp2_os_scale - 1.0) > 0.0 ||
-        std::fabs(mp2_ss_scale - 1.0) > 0.0)
+    if (std::fabs(mp2_os_scale - 1.0) > 0.0
+        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
         throw std::invalid_argument(
             "MeanFieldMethod::mp3: spin-component-scaled MP3 is not "
             "implemented — keep mp2_os_scale=mp2_ss_scale=1");
@@ -1164,8 +1165,8 @@ MP4Result MeanFieldMethod<D>::mp4(Frame& frame, const SCFInitialGuess* guess) {
         throw std::invalid_argument(
             "MeanFieldMethod::mp4: RI-MP4 is not implemented — set "
             "ri=RI::None");
-    if (std::fabs(mp2_os_scale - 1.0) > 0.0 ||
-        std::fabs(mp2_ss_scale - 1.0) > 0.0)
+    if (std::fabs(mp2_os_scale - 1.0) > 0.0
+        || std::fabs(mp2_ss_scale - 1.0) > 0.0)
         throw std::invalid_argument(
             "MeanFieldMethod::mp4: spin-component-scaled MP4 is not "
             "implemented — keep mp2_os_scale=mp2_ss_scale=1");
@@ -1249,9 +1250,10 @@ CASSCFResult MeanFieldMethod<D>::casscf(Frame& frame, int ncas, int nelecas) {
     run(frame);
     compute_eri = prev;
     if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::casscf: SCF reference did not converge — refusing "
-            "to optimize orbitals on a non-stationary determinant (no fallback)");
+        throw std::invalid_argument("MeanFieldMethod::casscf: SCF reference "
+                                    "did not converge — refusing "
+                                    "to optimize orbitals on a non-stationary "
+                                    "determinant (no fallback)");
     // Orbital gradient tol tracks the SCF energy tolerance (Ha).
     return casscf_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
                          /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
@@ -1276,9 +1278,10 @@ NEVPT2Result MeanFieldMethod<D>::nevpt2(Frame& frame, int ncas, int nelecas) {
     run(frame);
     compute_eri = prev;
     if (!this->converged())
-        throw std::invalid_argument(
-            "MeanFieldMethod::nevpt2: SCF reference did not converge — refusing "
-            "to run CASSCF/NEVPT2 on a non-stationary determinant (no fallback)");
+        throw std::invalid_argument("MeanFieldMethod::nevpt2: SCF reference "
+                                    "did not converge — refusing "
+                                    "to run CASSCF/NEVPT2 on a non-stationary "
+                                    "determinant (no fallback)");
     return nevpt2_energy(*integrals_sp_, *det_sp_, e_total_, ncas, nelecas,
                          /*orb_tol=*/std::max(tol, 1e-8), /*max_macro=*/50);
 }
@@ -1303,8 +1306,8 @@ CCSDResult MeanFieldMethod<D>::ccsd(Frame& frame) {
 }
 
 template <typename D>
-GradientResult
-MeanFieldMethod<D>::ccsd_forces(Frame& frame, const SCFInitialGuess* guess) {
+GradientResult MeanFieldMethod<D>::ccsd_forces(Frame& frame,
+                                               const SCFInitialGuess* guess) {
     if (spin_ != SpinType::Restricted)
         throw std::invalid_argument(
             "MeanFieldMethod::ccsd_forces: closed-shell RHF reference only — "
@@ -1327,8 +1330,7 @@ MeanFieldMethod<D>::ccsd_forces(Frame& frame, const SCFInitialGuess* guess) {
             "MeanFieldMethod::ccsd_forces: SCF reference did not converge — "
             "refusing gradient on a non-stationary determinant (no fallback)");
 
-    const CCSDResult corr =
-        ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
+    const CCSDResult corr = ccsd_energy(*integrals_sp_, *det_sp_, e_total_);
     GradientResult gr = internal::ccsd_analytic_forces(
         frame, *integrals_sp_, *det_sp_, e_total_, corr.e_corr);
     last_grad_ = gr;
@@ -1376,7 +1378,8 @@ CCSDTResult MeanFieldMethod<D>::ccsd_t(Frame& frame) {
     compute_eri = prev;
     if (!this->converged())
         throw std::invalid_argument(
-            "MeanFieldMethod::ccsd_t: SCF reference did not converge — refusing "
+            "MeanFieldMethod::ccsd_t: SCF reference did not converge — "
+            "refusing "
             "to compute a correlation correction on a non-stationary "
             "determinant (no fallback)");
     return ccsd_t_energy(*integrals_sp_, *det_sp_, e_total_);
@@ -1417,9 +1420,10 @@ template <typename D>
 void MeanFieldMethod<D>::set_mom_reference(const SlaterDeterminant& det) {
     using Spin = SlaterDeterminant::Spin;
     if (det.generalized())
-        throw std::invalid_argument(
-            "MeanFieldMethod::set_mom_reference: generalized (GHF) determinants "
-            "are not supported for MOM/IMOM in this link — use RHF/UHF/RKS/UKS");
+        throw std::invalid_argument("MeanFieldMethod::set_mom_reference: "
+                                    "generalized (GHF) determinants "
+                                    "are not supported for MOM/IMOM in this "
+                                    "link — use RHF/UHF/RKS/UKS");
     mom_ref_C_alpha_ = gather_occupied_columns(det, Spin::alpha);
     if (det.restricted())
         mom_ref_C_beta_ = mom_ref_C_alpha_;
@@ -1439,11 +1443,9 @@ vib::HessianResult MeanFieldMethod<D>::central_difference_nuclear_hessian(
     //   g = −F;  H_ha = ∂g/∂R [Ha/Bohr²];  H_ev = H_ha * scale.
     const double h_bohr = 1e-4;
     const double h_ang = h_bohr * units::kBohrInAngstrom;
-    const double f_to_ha_bohr =
-        units::kBohrInAngstrom / units::kHartreeInEv;
+    const double f_to_ha_bohr = units::kBohrInAngstrom / units::kHartreeInEv;
     const double hess_to_ev_ang2 =
-        units::kHartreeInEv
-        / (units::kBohrInAngstrom * units::kBohrInAngstrom);
+        units::kHartreeInEv / (units::kBohrInAngstrom * units::kBohrInAngstrom);
 
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
@@ -1517,10 +1519,10 @@ template <typename D>
 void MeanFieldMethod<D>::check_hessian_preconditions(
     std::string_view method_name, const IntegralPack& pack) const {
     if (!converged())
-        throw std::runtime_error(
-            std::string(method_name)
-            + ": SCF did not converge — no reference "
-              "wavefunction to differentiate (" + stop_reason() + ")");
+        throw std::runtime_error(std::string(method_name)
+                                 + ": SCF did not converge — no reference "
+                                   "wavefunction to differentiate ("
+                                 + stop_reason() + ")");
     if (pack.spherical())
         throw std::runtime_error(
             std::string(method_name)

@@ -42,25 +42,27 @@ int main() {
     frame.simbox = cpu::Box::cubic(20.0);
 
     // Pins — REFERENCE.md (PySCF 2.14.0 mcscf.CASCI(2,2) / RHF STO-3G).
-    constexpr double kEHf = -1.116759307396426;      // Ha
-    constexpr double kECorr = -0.020524527092077;    // Ha
-    constexpr double kETot = -1.137283834488502;     // Ha
-    constexpr double kTol = 1e-6;                    // Ha
+    constexpr double kEHf = -1.116759307396426;   // Ha
+    constexpr double kECorr = -0.020524527092077; // Ha
+    constexpr double kETot = -1.137283834488502;  // Ha
+    constexpr double kTol = 1e-6;                 // Ha
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-12;
     rhf.max_iter = 100;
 
-    const cpu::scf::CASCIResult cas = rhf.casci(frame, /*ncas=*/2, /*nelecas=*/2);
+    const cpu::scf::CASCIResult cas =
+        rhf.casci(frame, /*ncas=*/2, /*nelecas=*/2);
     if (!rhf.converged()) {
         std::fprintf(stderr, "FAIL: RHF/STO-3G (H2) did not converge\n");
         return 1;
     }
     if (cas.ncas != 2 || cas.nelecas != 2 || cas.ncore != 0) {
-        std::fprintf(stderr,
-                     "FAIL: active-space bookkeeping ncas=%d nelecas=%d ncore=%d\n",
-                     cas.ncas, cas.nelecas, cas.ncore);
+        std::fprintf(
+            stderr,
+            "FAIL: active-space bookkeeping ncas=%d nelecas=%d ncore=%d\n",
+            cas.ncas, cas.nelecas, cas.ncore);
         return 1;
     }
 

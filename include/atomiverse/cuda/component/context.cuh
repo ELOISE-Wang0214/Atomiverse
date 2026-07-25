@@ -17,9 +17,9 @@
 
 #include <type_traits>
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/core/iteration_status.h"
 #include "atomiverse/core/verdict.h"
+#include "atomiverse/cuda/frame/box.cuh"
 
 namespace ATV {
 namespace cuda {

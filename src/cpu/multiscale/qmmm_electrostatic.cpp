@@ -164,9 +164,9 @@ void QmmmElectrostatic::launch(const LaunchContext& ctx) {
         }
         for (const auto& rl : resolved) {
             const int h = rl.fqm_h_row;
-            project_link_force(link_scale_, qfx[h], qfy[h], qfz[h], fx[rl.qm_row],
-                               fy[rl.qm_row], fz[rl.qm_row], fx[rl.mm_row],
-                               fy[rl.mm_row], fz[rl.mm_row]);
+            project_link_force(link_scale_, qfx[h], qfy[h], qfz[h],
+                               fx[rl.qm_row], fy[rl.qm_row], fz[rl.qm_row],
+                               fx[rl.mm_row], fy[rl.mm_row], fz[rl.mm_row]);
         }
     }
 

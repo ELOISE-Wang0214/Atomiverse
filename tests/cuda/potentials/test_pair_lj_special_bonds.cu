@@ -18,9 +18,9 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 

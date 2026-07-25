@@ -77,8 +77,9 @@ inline double pppm_powsinxx(double arg, int twoorder) {
 /// @param alpha      Ewald α (g_ewald) [1/Å].
 /// @param order      Assignment order (stencil).
 /// @param[out] green Length K0·K1·K2; zero mode = 0.
-inline void pppm_build_green_c2c(const int K[3], const double L[3], double alpha,
-                                 int order, std::vector<double>& green) {
+inline void pppm_build_green_c2c(const int K[3], const double L[3],
+                                 double alpha, int order,
+                                 std::vector<double>& green) {
     const int K0 = K[0], K1 = K[1], K2 = K[2];
     const int ntot = K0 * K1 * K2;
     green.assign(static_cast<std::size_t>(ntot), 0.0);
@@ -99,13 +100,11 @@ inline void pppm_build_green_c2c(const int K[3], const double L[3], double alpha
 
     for (int m0 = 0; m0 < K0; ++m0) {
         const int h0 = (m0 <= K0 / 2) ? m0 : m0 - K0;
-        const double sn0 =
-            std::sin(0.5 * unitk[0] * h0 * L[0] / K0);
+        const double sn0 = std::sin(0.5 * unitk[0] * h0 * L[0] / K0);
         const double snx = sn0 * sn0;
         for (int m1 = 0; m1 < K1; ++m1) {
             const int h1 = (m1 <= K1 / 2) ? m1 : m1 - K1;
-            const double sn1 =
-                std::sin(0.5 * unitk[1] * h1 * L[1] / K1);
+            const double sn1 = std::sin(0.5 * unitk[1] * h1 * L[1] / K1);
             const double sny = sn1 * sn1;
             for (int m2 = 0; m2 < K2; ++m2) {
                 const int h2 = (m2 <= K2 / 2) ? m2 : m2 - K2;
@@ -114,8 +113,7 @@ inline void pppm_build_green_c2c(const int K[3], const double L[3], double alpha
                     green[static_cast<std::size_t>(idx)] = 0.0;
                     continue;
                 }
-                const double sn2 =
-                    std::sin(0.5 * unitk[2] * h2 * L[2] / K2);
+                const double sn2 = std::sin(0.5 * unitk[2] * h2 * L[2] / K2);
                 const double snz = sn2 * sn2;
                 const double kx = unitk[0] * h0;
                 const double ky = unitk[1] * h1;
@@ -127,7 +125,8 @@ inline void pppm_build_green_c2c(const int K[3], const double L[3], double alpha
                 double sum1 = 0.0;
                 for (int nx = -nb[0]; nx <= nb[0]; ++nx) {
                     const double qx = unitk[0] * (h0 + K0 * nx);
-                    const double sx = std::exp(-0.25 * (qx / alpha) * (qx / alpha));
+                    const double sx =
+                        std::exp(-0.25 * (qx / alpha) * (qx / alpha));
                     const double argx = 0.5 * qx * L[0] / K0;
                     const double wx = pppm_powsinxx(argx, twoorder);
                     for (int ny = -nb[1]; ny <= nb[1]; ++ny) {
@@ -151,7 +150,8 @@ inline void pppm_build_green_c2c(const int K[3], const double L[3], double alpha
                     }
                 }
                 green[static_cast<std::size_t>(idx)] =
-                    denominator > 1e-30 ? (numerator * sum1 / denominator) : 0.0;
+                    denominator > 1e-30 ? (numerator * sum1 / denominator)
+                                        : 0.0;
             }
         }
     }
@@ -178,16 +178,14 @@ inline void pppm_build_green_ad(const int K[3], const double L[3], double alpha,
     for (int m0 = 0; m0 < K0; ++m0) {
         const int h0 = (m0 <= K0 / 2) ? m0 : m0 - K0;
         const double kx = unitk[0] * h0;
-        const double snx =
-            std::sin(0.5 * unitk[0] * h0 * L[0] / K0);
+        const double snx = std::sin(0.5 * unitk[0] * h0 * L[0] / K0);
         const double snx2 = snx * snx;
         const double sx = std::exp(-0.25 * (kx / alpha) * (kx / alpha));
         const double wx = pppm_powsinxx(0.5 * kx * L[0] / K0, twoorder);
         for (int m1 = 0; m1 < K1; ++m1) {
             const int h1 = (m1 <= K1 / 2) ? m1 : m1 - K1;
             const double ky = unitk[1] * h1;
-            const double sny =
-                std::sin(0.5 * unitk[1] * h1 * L[1] / K1);
+            const double sny = std::sin(0.5 * unitk[1] * h1 * L[1] / K1);
             const double sny2 = sny * sny;
             const double sy = std::exp(-0.25 * (ky / alpha) * (ky / alpha));
             const double wy = pppm_powsinxx(0.5 * ky * L[1] / K1, twoorder);
@@ -199,22 +197,18 @@ inline void pppm_build_green_ad(const int K[3], const double L[3], double alpha,
                     continue;
                 }
                 const double kz = unitk[2] * h2;
-                const double snz =
-                    std::sin(0.5 * unitk[2] * h2 * L[2] / K2);
+                const double snz = std::sin(0.5 * unitk[2] * h2 * L[2] / K2);
                 const double snz2 = snz * snz;
-                const double sz =
-                    std::exp(-0.25 * (kz / alpha) * (kz / alpha));
-                const double wz =
-                    pppm_powsinxx(0.5 * kz * L[2] / K2, twoorder);
+                const double sz = std::exp(-0.25 * (kz / alpha) * (kz / alpha));
+                const double wz = pppm_powsinxx(0.5 * kz * L[2] / K2, twoorder);
                 const double sqk = kx * kx + ky * ky + kz * kz;
                 const double numerator = four_pi / sqk;
                 const double denominator =
                     pppm_gf_denom(gf_b, snx2, sny2, snz2);
                 const double window = sx * sy * sz * wx * wy * wz;
                 green[static_cast<std::size_t>(idx)] =
-                    denominator > 1e-30
-                        ? (numerator * window / denominator)
-                        : 0.0;
+                    denominator > 1e-30 ? (numerator * window / denominator)
+                                        : 0.0;
             }
         }
     }

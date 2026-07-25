@@ -18,7 +18,7 @@ TEST(Irc, EnergyNonIncreasingOnMB) {
     saddle.span(kAtom_tag)[0] = 1;
     saddle.simbox = cpu::Box::cubic(100.0);
 
-        cpu::path::Irc irc(0.02, 200, 1e-2, 0.1);
+    cpu::path::Irc irc(0.02, 200, 1e-2, 0.1);
     irc.use_muller_brown();
     irc.run(saddle, 0.0, 1.0);
 

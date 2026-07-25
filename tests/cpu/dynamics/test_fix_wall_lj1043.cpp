@@ -27,14 +27,14 @@ Coeffs make_coeffs(double eps, double sig, double rc) {
     c.c2 = kTwoPi * eps * std::pow(sig, 4);
     c.c3 = kTwoPi * sqrt2 / 3.0 * eps * std::pow(sig, 3);
     c.c4 = 0.61 / sqrt2 * sig;
-    c.offset = c.c1 / std::pow(rc, 10) - c.c2 / std::pow(rc, 4) -
-               c.c3 / std::pow(rc + c.c4, 3);
+    c.offset = c.c1 / std::pow(rc, 10) - c.c2 / std::pow(rc, 4)
+               - c.c3 / std::pow(rc + c.c4, 3);
     return c;
 }
 
 double U_shift(const Coeffs& c, double r) {
-    return c.c1 / std::pow(r, 10) - c.c2 / std::pow(r, 4) -
-           c.c3 / std::pow(r + c.c4, 3) - c.offset;
+    return c.c1 / std::pow(r, 10) - c.c2 / std::pow(r, 4)
+           - c.c3 / std::pow(r + c.c4, 3) - c.offset;
 }
 
 // Fz for zlo wall (side=-1): F = -fwall with fwall = side*(...)
@@ -47,8 +47,9 @@ double U_shift(const Coeffs& c, double r) {
 // = - (side) * (10 c1/r^11 - 4 c2/r^5 - 3 c3/...) with side=-1
 // = - fwall. Yes Fz = -fwall matches.
 double F_lo(const Coeffs& c, double r) {
-    const double dUdr = -10.0 * c.c1 / std::pow(r, 11) + 4.0 * c.c2 / std::pow(r, 5) +
-                        3.0 * c.c3 / std::pow(r + c.c4, 4);
+    const double dUdr = -10.0 * c.c1 / std::pow(r, 11)
+                        + 4.0 * c.c2 / std::pow(r, 5)
+                        + 3.0 * c.c3 / std::pow(r + c.c4, 4);
     return -dUdr; // Fz for lo wall
 }
 
@@ -115,7 +116,8 @@ TEST(FixWallLJ1043, HiWallMirror) {
     auto c = make_coeffs(eps, sig, rc);
     auto f = one_atom_z(26.0);
     cpu::Context ctx;
-    cpu::md::FixWallLJ1043 wall(2, /*side=*/+1, /*wall_pos=*/30.0, eps, sig, rc);
+    cpu::md::FixWallLJ1043 wall(2, /*side=*/+1, /*wall_pos=*/30.0, eps, sig,
+                                rc);
     wall.launch({ctx, f, 0, 0});
     EXPECT_NEAR(f.meta.get(kEnergy), U_shift(c, 4.0), 1e-12);
     // Hi wall: force pushes atom down when repulsive → Fz opposite of lo.

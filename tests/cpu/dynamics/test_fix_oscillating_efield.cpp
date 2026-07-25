@@ -41,10 +41,10 @@ TEST(FixOscillatingEfield, ScheduleCosine) {
     cpu::md::FixOscillatingEfield osc(/*Ex0=*/0.0, /*Ey0=*/0.0, /*Ez0=*/0.2,
                                       /*period=*/1000.0, /*dt=*/1.0);
     EXPECT_NEAR(osc.field_z(0), 0.2, 1e-15);
-    EXPECT_NEAR(osc.field_z(250), 0.0, 1e-12);   // T/4
-    EXPECT_NEAR(osc.field_z(500), -0.2, 1e-15);  // T/2
-    EXPECT_NEAR(osc.field_z(750), 0.0, 1e-12);   // 3T/4
-    EXPECT_NEAR(osc.field_z(1000), 0.2, 1e-15);  // T
+    EXPECT_NEAR(osc.field_z(250), 0.0, 1e-12);  // T/4
+    EXPECT_NEAR(osc.field_z(500), -0.2, 1e-15); // T/2
+    EXPECT_NEAR(osc.field_z(750), 0.0, 1e-12);  // 3T/4
+    EXPECT_NEAR(osc.field_z(1000), 0.2, 1e-15); // T
     EXPECT_NEAR(osc.field_z(125), 0.2 * std::cos(2.0 * M_PI * 125.0 / 1000.0),
                 1e-15);
 }
@@ -76,7 +76,7 @@ TEST(FixOscillatingEfield, ForceAndEnergyAtStep) {
 
 TEST(FixOscillatingEfield, PhaseShift) {
     cpu::md::FixOscillatingEfield osc(0.0, 0.0, 1.0, 1000.0, 1.0,
-                                     /*phase=*/M_PI / 2.0);
+                                      /*phase=*/M_PI / 2.0);
     // cos(0 + π/2) = 0 at step 0
     EXPECT_NEAR(osc.field_z(0), 0.0, 1e-15);
     // cos(2π*250/1000 + π/2) = cos(π/2 + π/2) = cos(π) = -1

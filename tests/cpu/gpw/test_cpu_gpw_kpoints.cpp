@@ -221,7 +221,7 @@ TEST(GpwKpoints, SupercellGridsCommensurateAtRegressionCutoffs) {
     // cell along z and demands IDENTICAL grid spacing: n_z(2c) == 2 n_z(c)
     // and unchanged n_x/n_y. Pin the cutoff (95 Ry) that guarantees it for
     // a = 5.43 Å (10.26120 Bohr), a_t = a/√2.
-    const double a = 10.26120;          // Bohr
+    const double a = 10.26120;            // Bohr
     const double at = a / std::sqrt(2.0); // 7.25577
     const double cell1[3] = {at, at, a};
     const double cell2[3] = {at, at, 2.0 * a};

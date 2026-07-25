@@ -23,7 +23,6 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-
 // ── Bragg-Slater atomic radii (Bohr) ────────────────────────────────────
 
 /// @brief Bragg-Slater atomic radius for element Z, returned in Bohr.
@@ -675,7 +674,6 @@ MolecularGrid::MolecularGrid(const native::Atom* atoms, int natm,
             }
         }
     }
-
 }
 
 void becke_partition_weights_for_test(const native::Atom* atoms, int natm,

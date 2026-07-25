@@ -26,10 +26,10 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/molrs.hpp"
@@ -139,8 +139,7 @@ namespace {
     // Cubic box, row-major 3x3 H.
     const std::vector<double> h = {20.0, 0.0, 0.0, 0.0, 20.0,
                                    0.0,  0.0, 0.0, 20.0};
-    molrs::frame_set_box(*fr,
-                            ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
 
     return fr;
 }
@@ -409,8 +408,7 @@ TEST(Materialize, MaterializedFrameIsRunnable) {
         ::rust::Slice<const std::int32_t>(type.data(), type.size()));
     const std::vector<double> h = {30.0, 0.0, 0.0, 0.0, 30.0,
                                    0.0,  0.0, 0.0, 30.0};
-    molrs::frame_set_box(*fr,
-                            ::rust::Slice<const double>(h.data(), h.size()));
+    molrs::frame_set_box(*fr, ::rust::Slice<const double>(h.data(), h.size()));
 
     Frame cf = materialize(*fr);
     ASSERT_EQ(cf.nlocal(), 2);

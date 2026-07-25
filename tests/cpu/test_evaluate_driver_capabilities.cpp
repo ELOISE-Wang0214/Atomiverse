@@ -4,10 +4,10 @@
 
 #include <string>
 
-#include "atomiverse/cpu/component/component.h"
-#include "atomiverse/cpu/evaluate/evaluate.h"
-#include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/dynamics/md.h"
+#include "atomiverse/cpu/evaluate/evaluate.h"
 
 #include "cpu/driver_test_helpers.h"
 

@@ -46,8 +46,10 @@ RealMatrix checked_sym_power(const RealMatrix& M, double p, const char* what) {
     (void)U;
     if (s(0) <= kAmBFloor)
         throw std::runtime_error(
-            std::string(what) + ": (A - B) is not positive definite "
-            "(lowest eigenvalue = " + std::to_string(s(0))
+            std::string(what)
+            + ": (A - B) is not positive definite "
+              "(lowest eigenvalue = "
+            + std::to_string(s(0))
             + " Ha) — BSE RPA reduction undefined (no fallback)");
     return linalg::sym_power(M, p, kAmBFloor, what);
 }
@@ -126,11 +128,10 @@ BSEResult RHF::bse(int n_states, bool tda) const {
                 for (int j = 0; j < n_occ; ++j) {
                     const int jb = ov(b, j, n_occ);
                     const int bb = n_occ + b;
-                    const double v =
-                        eri(static_cast<std::size_t>(i),
-                            static_cast<std::size_t>(aa),
-                            static_cast<std::size_t>(j),
-                            static_cast<std::size_t>(bb));
+                    const double v = eri(static_cast<std::size_t>(i),
+                                         static_cast<std::size_t>(aa),
+                                         static_cast<std::size_t>(j),
+                                         static_cast<std::size_t>(bb));
                     S(static_cast<std::size_t>(ia),
                       static_cast<std::size_t>(jb)) -= 4.0 * v;
                 }
@@ -142,24 +143,24 @@ BSEResult RHF::bse(int n_states, bool tda) const {
 
     // W_pqrs = (pq|rs) + Σ_ia,jb (pq|ia) Π_ia,jb (jb|rs)
     auto W_mo = [&](int p, int q, int r, int s) -> double {
-        double acc = eri(static_cast<std::size_t>(p), static_cast<std::size_t>(q),
-                         static_cast<std::size_t>(r), static_cast<std::size_t>(s));
+        double acc =
+            eri(static_cast<std::size_t>(p), static_cast<std::size_t>(q),
+                static_cast<std::size_t>(r), static_cast<std::size_t>(s));
         for (int a = 0; a < n_vir; ++a) {
             for (int i = 0; i < n_occ; ++i) {
                 const int ia = ov(a, i, n_occ);
                 const int aa = n_occ + a;
-                const double v_pq_ia =
-                    eri(static_cast<std::size_t>(p), static_cast<std::size_t>(q),
-                        static_cast<std::size_t>(i), static_cast<std::size_t>(aa));
+                const double v_pq_ia = eri(
+                    static_cast<std::size_t>(p), static_cast<std::size_t>(q),
+                    static_cast<std::size_t>(i), static_cast<std::size_t>(aa));
                 for (int b = 0; b < n_vir; ++b) {
                     for (int j = 0; j < n_occ; ++j) {
                         const int jb = ov(b, j, n_occ);
                         const int bb = n_occ + b;
-                        const double v_jb_rs =
-                            eri(static_cast<std::size_t>(j),
-                                static_cast<std::size_t>(bb),
-                                static_cast<std::size_t>(r),
-                                static_cast<std::size_t>(s));
+                        const double v_jb_rs = eri(static_cast<std::size_t>(j),
+                                                   static_cast<std::size_t>(bb),
+                                                   static_cast<std::size_t>(r),
+                                                   static_cast<std::size_t>(s));
                         acc += v_pq_ia
                                * Pi(static_cast<std::size_t>(ia),
                                     static_cast<std::size_t>(jb))
@@ -184,11 +185,10 @@ BSEResult RHF::bse(int n_states, bool tda) const {
                 for (int j = 0; j < n_occ; ++j) {
                     const int jb = ov(b, j, n_occ);
                     const int bb = n_occ + b;
-                    const double v_coul =
-                        eri(static_cast<std::size_t>(i),
-                            static_cast<std::size_t>(aa),
-                            static_cast<std::size_t>(j),
-                            static_cast<std::size_t>(bb));
+                    const double v_coul = eri(static_cast<std::size_t>(i),
+                                              static_cast<std::size_t>(aa),
+                                              static_cast<std::size_t>(j),
+                                              static_cast<std::size_t>(bb));
                     // W_ij,ab and W_ib,aj
                     const double W_ijab = W_mo(i, j, aa, bb);
                     const double W_ibaj = W_mo(i, bb, aa, j);
@@ -199,8 +199,7 @@ BSEResult RHF::bse(int n_states, bool tda) const {
                     A(static_cast<std::size_t>(ia),
                       static_cast<std::size_t>(jb)) = aij;
                     B(static_cast<std::size_t>(ia),
-                      static_cast<std::size_t>(jb)) =
-                        2.0 * v_coul - W_ibaj;
+                      static_cast<std::size_t>(jb)) = 2.0 * v_coul - W_ibaj;
                 }
             }
         }
@@ -243,14 +242,13 @@ BSEResult RHF::bse(int n_states, bool tda) const {
         const double w2s = w2(static_cast<std::size_t>(s));
         if (w2s < -kOmega2Tol)
             throw std::runtime_error(
-                "RHF::bse: omega^2 = " + std::to_string(w2s)
-                + " Ha^2 (root " + std::to_string(s)
+                "RHF::bse: omega^2 = " + std::to_string(w2s) + " Ha^2 (root "
+                + std::to_string(s)
                 + ") is negative — imaginary excitation (no fallback)");
         if (w2s <= kOmega2Tol)
             throw std::runtime_error(
-                "RHF::bse: omega^2 = " + std::to_string(w2s)
-                + " Ha^2 (root " + std::to_string(s)
-                + ") is numerically zero (no fallback)");
+                "RHF::bse: omega^2 = " + std::to_string(w2s) + " Ha^2 (root "
+                + std::to_string(s) + ") is numerically zero (no fallback)");
         out.energy_ev[static_cast<std::size_t>(s)] =
             std::sqrt(w2s) * units::kHartreeInEv;
     }

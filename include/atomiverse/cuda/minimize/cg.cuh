@@ -51,10 +51,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/minimize/conv_check.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/minimize/conv_check.cuh"
 
 namespace ATV {
 namespace cuda {

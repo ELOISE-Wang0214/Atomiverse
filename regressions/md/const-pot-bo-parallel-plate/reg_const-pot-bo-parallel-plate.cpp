@@ -63,8 +63,7 @@ int main() {
     const double q_bot = conp.total_charge(0);
     const double q_top = conp.total_charge(1);
     const double neut = conp.neutrality_residual();
-    const double rel =
-        std::abs(q_top - kQTopPin) / std::abs(kQTopPin);
+    const double rel = std::abs(q_top - kQTopPin) / std::abs(kQTopPin);
 
     std::printf("const-pot-bo-parallel-plate\n");
     std::printf("  Q_bot   = % .12e e\n", q_bot);
@@ -90,7 +89,8 @@ int main() {
     // Frame write-back
     if (std::abs(static_cast<double>(frame.span(kAtom_charge)[1]) - q_top)
         > 1e-14) {
-        std::fprintf(stderr, "FAIL kAtom_charge not written for top electrode\n");
+        std::fprintf(stderr,
+                     "FAIL kAtom_charge not written for top electrode\n");
         ++nfail;
     }
     // Electrolyte charges must remain
@@ -112,8 +112,8 @@ int main() {
             f2.span(kAtom_type)[i] = typ[i];
             f2.span(kAtom_mass)[i] = (typ[i] < 3) ? 196.966553 : 1.0;
             f2.span(kAtom_tag)[i] = i + 1;
-            f2.span(kAtom_vx)[i] = f2.span(kAtom_vy)[i] =
-                f2.span(kAtom_vz)[i] = 0.0;
+            f2.span(kAtom_vx)[i] = f2.span(kAtom_vy)[i] = f2.span(kAtom_vz)[i] =
+                0.0;
         }
         f2.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
 
@@ -125,7 +125,8 @@ int main() {
         conp2.rebuild_matrix_every_step = true;
 
         cpu::md::MD sim;
-        sim.set_neighbor(cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
+        sim.set_neighbor(
+            cpu::md::NeighborList<>{/*cutoff=*/12.0, /*skin=*/0.5});
         sim.add_potential(cpu::PairCoulCut{/*cutoff=*/12.0});
         sim.set_integrator(cpu::md::VelocityVerlet{/*dt [fs]=*/0.1});
         sim.add_ref(conp2); // default_bindings → pre_force @ -50
@@ -133,7 +134,8 @@ int main() {
         sim.run(f2, 1);
 
         const double q_top_md = conp2.total_charge(1);
-        const double rel_md = std::abs(q_top_md - kQTopPin) / std::abs(kQTopPin);
+        const double rel_md =
+            std::abs(q_top_md - kQTopPin) / std::abs(kQTopPin);
         std::printf("  MD path Q_top = % .12e  rel=% .4e  |sumQ|=% .3e\n",
                     q_top_md, rel_md, conp2.neutrality_residual());
         if (!(rel_md <= kRelTol) || !(conp2.neutrality_residual() <= 1e-10)) {

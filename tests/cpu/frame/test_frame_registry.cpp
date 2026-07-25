@@ -11,12 +11,12 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/role.h"
 #include "atomiverse/cpu/communication/atom_pack.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/evaluate/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/role.h"
 
 using namespace ATV;
 

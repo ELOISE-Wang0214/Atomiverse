@@ -43,7 +43,7 @@ int main() {
 
     // Pins — REFERENCE.md (PySCF 2.14.0 RCCSD(cc2=True)+eomee_ccsd_singlet).
     constexpr double kOmega0Ev = 26.164970973311735; // eV
-    constexpr double kECc2 = -1.129897380985958;    // Ha
+    constexpr double kECc2 = -1.129897380985958;     // Ha
     constexpr double kTolEv = 1e-4;                  // eV
     constexpr double kTolHa = 1e-6;                  // Ha
 

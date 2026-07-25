@@ -35,8 +35,7 @@ Frame make_c10h22() {
     for (int i = 0; i < 10; ++i) {
         cx[static_cast<std::size_t>(i)] = i * kCC;
         // slight tetrahedral zig-zag in z for non-collinear H placement
-        cz[static_cast<std::size_t>(i)] =
-            (i % 2 == 0) ? 0.0 : 0.5;
+        cz[static_cast<std::size_t>(i)] = (i % 2 == 0) ? 0.0 : 0.5;
     }
 
     // 10 C + 22 H = 32 atoms.

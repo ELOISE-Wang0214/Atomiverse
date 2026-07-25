@@ -35,8 +35,8 @@ ROKS::ROKS(int na, int nb, XCType xc_in) : ROKS() {
 void ROKS::resolve_occupation(int) {
     if (n_alpha < n_beta)
         throw std::invalid_argument(
-            "ROKS::run: n_alpha (" + std::to_string(n_alpha)
-            + ") < n_beta (" + std::to_string(n_beta)
+            "ROKS::run: n_alpha (" + std::to_string(n_alpha) + ") < n_beta ("
+            + std::to_string(n_beta)
             + ") — ROKS defines the open shell as excess alpha electrons; "
               "swap the counts (no fallback).");
     xc_type_ = xc;

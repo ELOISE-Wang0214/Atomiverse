@@ -18,9 +18,7 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-double StabilityAnalysis::lowest(Channel ch) const {
-    return solve_(ch).value;
-}
+double StabilityAnalysis::lowest(Channel ch) const { return solve_(ch).value; }
 
 RealVector StabilityAnalysis::lowest_vector(Channel ch) const {
     return solve_(ch).vector;
@@ -111,7 +109,8 @@ StabilityAnalysis::Root StabilityAnalysis::solve_davidson_(Channel ch) const {
             rnorm += rvec(r) * rvec(r);
         rnorm = std::sqrt(rnorm);
 
-        const bool stagnant = have_old && std::abs(theta - theta_old) < theta_tol;
+        const bool stagnant =
+            have_old && std::abs(theta - theta_old) < theta_tol;
         if (rnorm < res_tol || (stagnant && rnorm < 1e-7) || m == n) {
             // Normalize the Ritz vector (V is orthonormal, so ‖x‖ ≈ 1).
             double xn = 0.0;
@@ -182,8 +181,8 @@ StabilityAnalysis::Root StabilityAnalysis::solve_davidson_(Channel ch) const {
     }
     throw std::runtime_error(
         "StabilityAnalysis: Davidson lowest-root solve did not converge in "
-        + std::to_string(max_iter) + " iterations (n_ov="
-        + std::to_string(n) + ") — no fallback");
+        + std::to_string(max_iter) + " iterations (n_ov=" + std::to_string(n)
+        + ") — no fallback");
 }
 
 } // namespace internal

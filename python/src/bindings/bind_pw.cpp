@@ -36,8 +36,7 @@ void bind_pw(nb::module_& m) {
                    + " Ry, iters=" + std::to_string(r.iterations) + ")";
         });
 
-    nb::class_<PW>(m, "PW",
-                         "Concrete plane-wave DFT method (members + run).")
+    nb::class_<PW>(m, "PW", "Concrete plane-wave DFT method (members + run).")
         .def(nb::init<>())
         .def_rw("upf_path", &PW::upf_path)
         .def_rw("ecut_ry", &PW::ecut_ry)
@@ -68,8 +67,7 @@ void bind_pw(nb::module_& m) {
                 }
                 return result;
             },
-            nb::arg("frame"),
-            "Run SCF at the frame's current geometry.")
+            nb::arg("frame"), "Run SCF at the frame's current geometry.")
         .def_prop_ro(
             "last_result",
             [](const PW& solver) { return solver.last_result(); },

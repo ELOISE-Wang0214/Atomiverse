@@ -12,15 +12,15 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/device.h"
+#include "atomiverse/core/driver_template.h"
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/scf/internal/integrals.h"
 #include "atomiverse/cpu/scf/rhf.h"
 #include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/evaluate/single_point.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/core/driver_template.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 
@@ -495,7 +495,8 @@ TEST(RHF, LiH) {
     auto ref = cpu_rhf_reference(frame);
     EXPECT_TRUE(ref.converged);
     double lih_tol = (sizeof(double) == sizeof(float)) ? 0.1 : 0.01;
-    EXPECT_NEAR(ref.energy, kLiHEnergy, lih_tol) << "LiH energy: " << ref.energy;
+    EXPECT_NEAR(ref.energy, kLiHEnergy, lih_tol)
+        << "LiH energy: " << ref.energy;
 }
 
 TEST(RHF, H2PESScan) {
@@ -629,10 +630,9 @@ TEST(RHF, DeterminantDensityHasNoCUDA) {
     // RHF density (density_total()) is a column-major xtensor, not a device
     // pointer. (Replaces the deleted cpu::scf::RHFResult contract check.)
     static_assert(
-        std::is_same_v<
-            decltype(std::declval<cpu::scf::SlaterDeterminant>()
-                         .density_total()),
-            xt::xtensor<double, 2, xt::layout_type::column_major>>,
+        std::is_same_v<decltype(std::declval<cpu::scf::SlaterDeterminant>()
+                                    .density_total()),
+                       xt::xtensor<double, 2, xt::layout_type::column_major>>,
         "SlaterDeterminant::density_total() must be a host xtensor");
 }
 

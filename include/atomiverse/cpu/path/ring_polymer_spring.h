@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/replica/replica_set.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {

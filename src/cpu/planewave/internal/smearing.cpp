@@ -54,8 +54,8 @@ AccReal smear_f_spinless(AccReal x, SmearKind kind, int mp_order) {
     }
     case SmearKind::methfessel_paxton: {
         if (mp_order < 1)
-            throw std::invalid_argument(
-                "smear_f_spinless: mp_order must be >= 1 for Methfessel-Paxton");
+            throw std::invalid_argument("smear_f_spinless: mp_order must be >= "
+                                        "1 for Methfessel-Paxton");
         // f_N(x) = 1/2 erfc(x) + Σ_{n=1}^N A_n H_{2n-1}(x) exp(-x²)
         // A_n = (-1)^n / (n! 4^n √π)
         AccReal f = AccReal(0.5) * std::erfc(static_cast<double>(x));
@@ -99,8 +99,7 @@ AccReal smear_entropy_band(AccReal eig, AccReal mu, AccReal degauss,
         constexpr AccReal eps = AccReal(1e-30);
         f = std::min(std::max(f, eps), AccReal(1) - eps);
         const AccReal omf = AccReal(1) - f;
-        return AccReal(-2)
-               * (f * std::log(f) + omf * std::log(omf));
+        return AccReal(-2) * (f * std::log(f) + omf * std::log(omf));
     }
     case SmearKind::gaussian: {
         // QE w1gauss for n=0: (1/2 / √π) exp(-x²) ; band ×2 spins → exp/√π
@@ -135,8 +134,7 @@ AccReal nelec_of_mu(const std::vector<AccReal>& evals,
     AccReal n = 0;
     const std::size_t m = evals.size();
     for (std::size_t i = 0; i < m; ++i)
-        n += weights[i]
-             * smear_f_band(evals[i], mu, degauss, kind, mp_order);
+        n += weights[i] * smear_f_band(evals[i], mu, degauss, kind, mp_order);
     return n;
 }
 

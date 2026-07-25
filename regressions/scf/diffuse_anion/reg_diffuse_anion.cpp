@@ -57,15 +57,15 @@ RhfOut run_rhf(ATV::cpu::Frame frame, ATV::cpu::scf::BasisSet basis,
     rhf.tol = 1e-12;
     rhf.max_iter = 200;
     rhf.run(frame);
-    const double homo = rhf.determinant().homo(
-        ATV::cpu::scf::SlaterDeterminant::Spin::alpha);
+    const double homo =
+        rhf.determinant().homo(ATV::cpu::scf::SlaterDeterminant::Spin::alpha);
     return {rhf.energy(), homo};
 }
 
 bool check(const char* label, double got, double want, double tol) {
     const double diff = std::fabs(got - want);
-    std::printf("%-34s got=%.12f want=%.12f |diff|=%.3e tol=%.0e\n", label,
-                got, want, diff, tol);
+    std::printf("%-34s got=%.12f want=%.12f |diff|=%.3e tol=%.0e\n", label, got,
+                want, diff, tol);
     return diff < tol;
 }
 

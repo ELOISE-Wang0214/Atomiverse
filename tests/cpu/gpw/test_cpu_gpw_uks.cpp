@@ -19,9 +19,9 @@ using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::GridBasisFunction;
 using ATV::cpu::gpw::GridPrimitive;
 using ATV::cpu::gpw::UniformGrid;
-using ATV::cpu::gpw::XcKind;
 using ATV::cpu::gpw::xc_grid_pade;
 using ATV::cpu::gpw::xc_grid_pade_lsd;
+using ATV::cpu::gpw::XcKind;
 
 namespace {
 

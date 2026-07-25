@@ -17,7 +17,8 @@ JointIsotropicRelax::JointIsotropicRelax(double P_target_ev_a3,
                                          double atom_step_a)
     : P_target(P_target_ev_a3), atom_step(atom_step_a) {
     if (!(atom_step > 0.0))
-        throw std::invalid_argument("JointIsotropicRelax: atom_step must be > 0");
+        throw std::invalid_argument(
+            "JointIsotropicRelax: atom_step must be > 0");
 }
 
 double JointIsotropicRelax::pressure_from_frame_(const Frame& f) {
@@ -116,7 +117,8 @@ void JointIsotropicRelax::launch(const LaunchContext& ctx) {
             m->energy = energy;
             m->max_force = max_force_;
             m->rms_force = max_force_;
-            m->max_displacement = std::max(atom_step, std::fabs(scale_step_ - 1.0));
+            m->max_displacement =
+                std::max(atom_step, std::fabs(scale_step_ - 1.0));
             m->rms_displacement = m->max_displacement;
             m->energy_change = dE;
             m->has_displacement = has_prev_;

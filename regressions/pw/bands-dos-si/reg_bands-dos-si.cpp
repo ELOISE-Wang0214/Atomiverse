@@ -166,11 +166,10 @@ int main() {
     const double gap_gx_ev = (e_c_x - e_v_g) * qe_units::rydberg_to_ev;
 
     if (!(gap_gx_ev >= kGapLoEv && gap_gx_ev <= kGapHiEv)) {
-        std::printf(
-            "FAIL: Gamma->X gap_ev got=%.6f want [%.2f, %.2f] eV "
-            "(Yin–Cohen LDA ~0.45 eV; incomplete ecut/k window; see "
-            "REFERENCE.md)\n",
-            gap_gx_ev, kGapLoEv, kGapHiEv);
+        std::printf("FAIL: Gamma->X gap_ev got=%.6f want [%.2f, %.2f] eV "
+                    "(Yin–Cohen LDA ~0.45 eV; incomplete ecut/k window; see "
+                    "REFERENCE.md)\n",
+                    gap_gx_ev, kGapLoEv, kGapHiEv);
         return 1;
     }
 
@@ -183,9 +182,8 @@ int main() {
     }
     // Direct Γ gap larger than Γ→X (Si).
     if (direct_g_ev + 0.05 < gap_gx_ev) {
-        std::printf(
-            "FAIL: direct_Gamma=%.4f eV < Gamma->X=%.4f eV - 0.05\n",
-            direct_g_ev, gap_gx_ev);
+        std::printf("FAIL: direct_Gamma=%.4f eV < Gamma->X=%.4f eV - 0.05\n",
+                    direct_g_ev, gap_gx_ev);
         return 1;
     }
 
@@ -202,9 +200,8 @@ int main() {
     }
     if (!(std::isfinite(dr.n_elec_to_vbm)
           && std::abs(dr.n_elec_to_vbm - kNelec) <= kNelecTol)) {
-        std::printf(
-            "FAIL: n_elec_to_vbm got=%.4f want=%.1f ± %.1f\n",
-            dr.n_elec_to_vbm, kNelec, kNelecTol);
+        std::printf("FAIL: n_elec_to_vbm got=%.4f want=%.1f ± %.1f\n",
+                    dr.n_elec_to_vbm, kNelec, kNelecTol);
         return 1;
     }
 

@@ -89,8 +89,8 @@ void extract_sphere_from_grid(const PWWorkspace& ws, const GVectorList& gv,
 
 /// Real-space field V(r) = Σ_G V(G) e^{iGr} from Γ-sphere coefficients
 /// (Hermitian input ⇒ real output; the residual imaginary part is rounding).
-void sphere_to_real(const PWWorkspace& ws, const GVectorList& gv0,
-                    const Cx* vg, AccReal* vr, fftw_complex* work) {
+void sphere_to_real(const PWWorkspace& ws, const GVectorList& gv0, const Cx* vg,
+                    AccReal* vr, fftw_complex* work) {
     pad_sphere_to_grid(ws, gv0, gv0.count(), vg, work);
     ws.fft->c2c_bwd(work);
     for (int i = 0; i < ws.nr; ++i)
@@ -180,8 +180,8 @@ void kb_moments(const PWWorkspace& ws, std::size_t ia, std::size_t ip,
         const AccReal q[3] = {qx, qy, qz};
 
         for (int m = 0; m < nm; ++m) {
-            const Cx beta = pref * im_l * ylm[static_cast<std::size_t>(m)]
-                            * fl * Cx(cos_p, -sin_p);
+            const Cx beta = pref * im_l * ylm[static_cast<std::size_t>(m)] * fl
+                            * Cx(cos_p, -sin_p);
             const Cx bp = std::conj(beta) * psi[ig];
             auto& mo = out[static_cast<std::size_t>(m)];
             mo.c += bp;
@@ -240,8 +240,8 @@ void add_dnl_psi(const PWWorkspace& ws, std::size_t ia, int alpha,
                 const Cx beta = pref * im_l * ylm[static_cast<std::size_t>(m)]
                                 * fl * Cx(cos_p, -sin_p);
                 const auto& mm = mo[static_cast<std::size_t>(m)];
-                out[ig] += Cx(0, 1) * D * beta
-                           * (mm.s[alpha] - q[alpha] * mm.c);
+                out[ig] +=
+                    Cx(0, 1) * D * beta * (mm.s[alpha] - q[alpha] * mm.c);
             }
         }
     }
@@ -303,8 +303,7 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
 
     // α selection and cutoffs identical to EwaldSummation.
     const AccReal rcut_alpha = cell_bohr.lengths().norm() * AccReal(0.5);
-    const AccReal alpha =
-        std::sqrt(-std::log(AccReal(2e-17))) / rcut_alpha;
+    const AccReal alpha = std::sqrt(-std::log(AccReal(2e-17))) / rcut_alpha;
     const AccReal two_alpha_over_sqrt_pi =
         AccReal(2) * alpha / std::sqrt(AccReal(units::pi));
 
@@ -315,10 +314,9 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
     // ── Real space ──
     const AccReal r_cut = AccReal(5) / alpha;
     const auto lens = cell_bohr.lengths();
-    const int ncell_r =
-        static_cast<int>(
-            std::ceil(r_cut / std::min({lens[0], lens[1], lens[2]})))
-        + 1;
+    const int ncell_r = static_cast<int>(std::ceil(
+                            r_cut / std::min({lens[0], lens[1], lens[2]})))
+                        + 1;
 
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
@@ -349,8 +347,7 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
                         const AccReal inv_r = AccReal(1) / r;
                         const AccReal inv_r2 = inv_r * inv_r;
                         const AccReal erfc_ar = std::erfc(alpha * r);
-                        const AccReal gauss =
-                            std::exp(-alpha * alpha * r * r);
+                        const AccReal gauss = std::exp(-alpha * alpha * r * r);
                         // φ = erfc(αr)/r; φ′ and φ″ analytic.
                         const AccReal phi1 =
                             -erfc_ar * inv_r2
@@ -367,8 +364,7 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
                                 const AccReal hab =
                                     phi2 * ra * rb
                                     + phi1 * inv_r
-                                          * ((a == b ? AccReal(1)
-                                                     : AccReal(0))
+                                          * ((a == b ? AccReal(1) : AccReal(0))
                                              - ra * rb);
                                 const AccReal val = zz * hab;
                                 at(i, a, i, b) += val;
@@ -387,8 +383,7 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
     const Vec3 b1{recip(1, 0), recip(1, 1), recip(1, 2)};
     const Vec3 b2{recip(2, 0), recip(2, 1), recip(2, 2)};
     const int gmax =
-        static_cast<int>(g_cut
-                         / std::min({b0.norm(), b1.norm(), b2.norm()}))
+        static_cast<int>(g_cut / std::min({b0.norm(), b1.norm(), b2.norm()}))
         + 1;
     const AccReal alpha_sq_4 = AccReal(4) * alpha * alpha;
     const AccReal two_pi_over_vol = AccReal(2) * AccReal(units::pi) / vol;
@@ -403,8 +398,8 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
                 const AccReal g2 = g.norm_squared();
                 if (g2 > g_cut * g_cut)
                     continue;
-                const AccReal coeff = two_pi_over_vol
-                                      * std::exp(-g2 / alpha_sq_4) / g2;
+                const AccReal coeff =
+                    two_pi_over_vol * std::exp(-g2 / alpha_sq_4) / g2;
                 for (int i = 0; i < n; ++i)
                     for (int j = i + 1; j < n; ++j) {
                         const AccReal phase =
@@ -439,8 +434,8 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
 // ── Sternheimer conduction-space CG ─────────────────────────────────
 
 int sternheimer_cg(const PWWorkspace& ws, const Cx* occ_wfc, int n_occ,
-                   AccReal eps, const Cx* rhs, Cx* x, AccReal tol,
-                   int max_iter, fftw_complex* work_buf) {
+                   AccReal eps, const Cx* rhs, Cx* x, AccReal tol, int max_iter,
+                   fftw_complex* work_buf) {
     const int ng = ws.n_g;
 
     auto apply_A = [&](const Cx* in, Cx* out) {
@@ -470,8 +465,8 @@ int sternheimer_cg(const PWWorkspace& ws, const Cx* occ_wfc, int n_occ,
     project_conduction(occ_wfc, n_occ, ng, b.data());
     project_conduction(occ_wfc, n_occ, ng, x);
 
-    const AccReal b_norm = std::sqrt(std::max(dot_re(b.data(), b.data()),
-                                              AccReal(0)));
+    const AccReal b_norm =
+        std::sqrt(std::max(dot_re(b.data(), b.data()), AccReal(0)));
     if (b_norm < AccReal(1e-300)) {
         std::fill(x, x + ng, Cx(0, 0));
         return 0;
@@ -484,8 +479,8 @@ int sternheimer_cg(const PWWorkspace& ws, const Cx* occ_wfc, int n_occ,
 
     apply_A(x, Ap.data());
     for (int ig = 0; ig < ng; ++ig)
-        r[static_cast<std::size_t>(ig)] = b[static_cast<std::size_t>(ig)]
-                                          - Ap[static_cast<std::size_t>(ig)];
+        r[static_cast<std::size_t>(ig)] =
+            b[static_cast<std::size_t>(ig)] - Ap[static_cast<std::size_t>(ig)];
     precond(r.data(), z.data());
     p = z;
     AccReal rz = dot_re(r.data(), z.data());
@@ -526,12 +521,10 @@ int sternheimer_cg(const PWWorkspace& ws, const Cx* occ_wfc, int n_occ,
 
 // ── Γ-point DFPT assembly ───────────────────────────────────────────
 
-DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
-                                           const PW& method,
-                                           AccReal response_tol,
-                                           int response_max_iter,
-                                           AccReal cg_tol, int cg_max_iter,
-                                           AccReal mix_beta) {
+DfptGammaOutput
+dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
+                           AccReal response_tol, int response_max_iter,
+                           AccReal cg_tol, int cg_max_iter, AccReal mix_beta) {
     if (method.upf_path.empty())
         throw std::invalid_argument(
             "dfpt_gamma_force_constants: requires a UPF pseudopotential "
@@ -610,20 +603,18 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
         std::vector<Cx> rho_g(static_cast<std::size_t>(ng0));
         for (int ig = 0; ig < ng0; ++ig)
             rho_g[static_cast<std::size_t>(ig)] = ws.rho_G[ig];
-        sphere_to_real(ws, gv0, rho_g.data(), rho_real.data(),
-                       work_buf.data());
+        sphere_to_real(ws, gv0, rho_g.data(), rho_real.data(), work_buf.data());
     }
     std::vector<AccReal> fxc_r(static_cast<std::size_t>(nr));
     for (int i = 0; i < nr; ++i)
-        fxc_r[static_cast<std::size_t>(i)] =
-            lda_fxc_at(std::max(rho_real[static_cast<std::size_t>(i)],
-                                AccReal(0)),
-                       method.xc);
+        fxc_r[static_cast<std::size_t>(i)] = lda_fxc_at(
+            std::max(rho_real[static_cast<std::size_t>(i)], AccReal(0)),
+            method.xc);
 
     // ── Eigenstates of the frozen H at every k (all ranks, all k) ──
     struct KState {
-        std::vector<Cx> wfc;         // n_bands × ng_k (row-major)
-        std::vector<AccReal> eps;    // n_bands
+        std::vector<Cx> wfc;      // n_bands × ng_k (row-major)
+        std::vector<AccReal> eps; // n_bands
         int ng = 0;
     };
     std::vector<KState> kstates(static_cast<std::size_t>(n_kpts));
@@ -644,8 +635,7 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
         davidson.step(ws);
         auto& ks = kstates[static_cast<std::size_t>(ik)];
         ks.ng = ws.n_g;
-        ks.eps.assign(ws.eigenvalues.begin(),
-                      ws.eigenvalues.begin() + n_bands);
+        ks.eps.assign(ws.eigenvalues.begin(), ws.eigenvalues.begin() + n_bands);
         ks.wfc.resize(static_cast<std::size_t>(n_bands) * ws.n_g);
         for (int b = 0; b < n_bands; ++b)
             for (int ig = 0; ig < ws.n_g; ++ig)
@@ -677,25 +667,26 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
     {
         std::vector<Cx> dvg(static_cast<std::size_t>(ng0));
         for (int ia = 0; ia < n; ++ia) {
-            const AccReal ax = ws.atom_pos_bohr[static_cast<std::size_t>(ia)][0];
-            const AccReal ay = ws.atom_pos_bohr[static_cast<std::size_t>(ia)][1];
-            const AccReal az = ws.atom_pos_bohr[static_cast<std::size_t>(ia)][2];
+            const AccReal ax =
+                ws.atom_pos_bohr[static_cast<std::size_t>(ia)][0];
+            const AccReal ay =
+                ws.atom_pos_bohr[static_cast<std::size_t>(ia)][1];
+            const AccReal az =
+                ws.atom_pos_bohr[static_cast<std::size_t>(ia)][2];
             for (int a = 0; a < 3; ++a) {
                 for (int ig = 0; ig < ng0; ++ig) {
                     const AccReal ga = gv0.g[ig][a];
-                    const AccReal phase = gv0.g[ig][0] * ax
-                                          + gv0.g[ig][1] * ay
+                    const AccReal phase = gv0.g[ig][0] * ax + gv0.g[ig][1] * ay
                                           + gv0.g[ig][2] * az;
                     // −i G_α v(G) e^{−iG·R_I}
                     const Cx eir(std::cos(phase), -std::sin(phase));
                     dvg[static_cast<std::size_t>(ig)] =
-                        Cx(0, -1) * ga * vg[static_cast<std::size_t>(ig)]
-                        * eir;
+                        Cx(0, -1) * ga * vg[static_cast<std::size_t>(ig)] * eir;
                 }
-                sphere_to_real(ws, gv0, dvg.data(),
-                               dvloc_r[static_cast<std::size_t>(3 * ia + a)]
-                                   .data(),
-                               work_buf.data());
+                sphere_to_real(
+                    ws, gv0, dvg.data(),
+                    dvloc_r[static_cast<std::size_t>(3 * ia + a)].data(),
+                    work_buf.data());
             }
         }
     }
@@ -705,8 +696,7 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
     for (int i = 0; i < n; ++i)
         valence[static_cast<std::size_t>(i)] =
             static_cast<AccReal>(valence_from_z(types[i]));
-    const AccReal ecut_ht =
-        static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
+    const AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     std::vector<AccReal> C =
         ewald_dynamical_matrix(pos_ang_v, valence, frame.simbox, ecut_ht);
 
@@ -720,13 +710,12 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
         const AccReal ay = ws.atom_pos_bohr[static_cast<std::size_t>(ia)][1];
         const AccReal az = ws.atom_pos_bohr[static_cast<std::size_t>(ia)][2];
         for (int ig = 0; ig < ng0; ++ig) {
-            const AccReal phase = gv0.g[ig][0] * ax + gv0.g[ig][1] * ay
-                                  + gv0.g[ig][2] * az;
+            const AccReal phase =
+                gv0.g[ig][0] * ax + gv0.g[ig][1] * ay + gv0.g[ig][2] * az;
             const Cx eir(std::cos(phase), -std::sin(phase));
-            const AccReal re =
-                (std::conj(ws.rho_G[ig])
-                 * (vg[static_cast<std::size_t>(ig)] * eir))
-                    .real();
+            const AccReal re = (std::conj(ws.rho_G[ig])
+                                * (vg[static_cast<std::size_t>(ig)] * eir))
+                                   .real();
             for (int a = 0; a < 3; ++a)
                 for (int b = 0; b < 3; ++b)
                     Cat(3 * ia + a, 3 * ia + b) -=
@@ -739,14 +728,12 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
         for (int ik = 0; ik < n_kpts; ++ik) {
             bind_k(ik);
             const auto& ks = kstates[static_cast<std::size_t>(ik)];
-            const AccReal w =
-                prob.kg.weights[static_cast<std::size_t>(ik)];
+            const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
             for (int b = 0; b < n_bands; ++b) {
                 const Cx* psi =
                     ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ks.ng;
                 for (std::size_t ia = 0; ia < ws.kb_proj.size(); ++ia) {
-                    for (std::size_t ip = 0; ip < ws.kb_proj[ia].size();
-                         ++ip) {
+                    for (std::size_t ip = 0; ip < ws.kb_proj[ia].size(); ++ip) {
                         const AccReal Dc = ws.kb_proj[ia][ip].d;
                         if (std::abs(Dc) < AccReal(1e-16))
                             continue;
@@ -757,16 +744,14 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
                                     const AccReal term =
                                         w * occ_f * Dc
                                         * (AccReal(-2)
-                                               * (mm.t[a][bb]
-                                                  * std::conj(mm.c))
+                                               * (mm.t[a][bb] * std::conj(mm.c))
                                                      .real()
                                            + AccReal(2)
                                                  * (mm.s[a]
                                                     * std::conj(mm.s[bb]))
                                                        .real());
                                     Cat(3 * static_cast<int>(ia) + a,
-                                        3 * static_cast<int>(ia) + bb) +=
-                                        term;
+                                        3 * static_cast<int>(ia) + bb) += term;
                                 }
                         }
                     }
@@ -781,9 +766,8 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
     bool all_responses_converged = true;
 
     // Persistent Δψ storage: per (k, band) for the current μ.
-    std::vector<std::vector<Cx>> dpsi(
-        static_cast<std::size_t>(n_kpts)
-        * static_cast<std::size_t>(n_bands));
+    std::vector<std::vector<Cx>> dpsi(static_cast<std::size_t>(n_kpts)
+                                      * static_cast<std::size_t>(n_bands));
 
     std::vector<AccReal> dn_mixed(static_cast<std::size_t>(nr));
     std::vector<AccReal> dn_new(static_cast<std::size_t>(nr));
@@ -815,19 +799,18 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
                 bind_k(ik);
                 const auto& ks = kstates[static_cast<std::size_t>(ik)];
                 const int ngk = ks.ng;
-                const AccReal w =
-                    prob.kg.weights[static_cast<std::size_t>(ik)];
+                const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
                 rhs.resize(static_cast<std::size_t>(ngk));
                 hpsi_tmp.resize(static_cast<std::size_t>(ngk));
 
                 for (int b = 0; b < n_bands; ++b) {
-                    const Cx* psi = ks.wfc.data()
-                                    + static_cast<std::ptrdiff_t>(b) * ngk;
+                    const Cx* psi =
+                        ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ngk;
                     // rhs = −(ΔV_scr ψ + ΔV_nl^{μ} ψ)
-                    apply_mult_potential(ws, dv_scr_r.data(), psi,
-                                         rhs.data(), work_buf.data());
-                    add_dnl_psi(ws, static_cast<std::size_t>(atom_mu),
-                                axis_mu, psi, rhs.data());
+                    apply_mult_potential(ws, dv_scr_r.data(), psi, rhs.data(),
+                                         work_buf.data());
+                    add_dnl_psi(ws, static_cast<std::size_t>(atom_mu), axis_mu,
+                                psi, rhs.data());
                     for (int ig = 0; ig < ngk; ++ig)
                         rhs[static_cast<std::size_t>(ig)] =
                             -rhs[static_cast<std::size_t>(ig)];
@@ -845,8 +828,7 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
                                  mu, ik, b);
 
                     // Δn(r) += w f 2 Re[ψ*(r) Δψ(r)] / Ω  (FFT-grid ψ).
-                    pad_sphere_to_grid(ws, *ws.gvec, ngk, psi,
-                                       work_buf.data());
+                    pad_sphere_to_grid(ws, *ws.gvec, ngk, psi, work_buf.data());
                     ws.fft->c2c_bwd(work_buf.data());
                     pad_sphere_to_grid(ws, *ws.gvec, ngk, x.data(),
                                        work_buf2.data());
@@ -855,8 +837,7 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
                     for (int i = 0; i < nr; ++i) {
                         const AccReal re =
                             static_cast<AccReal>(work_buf.data()[i][0])
-                                * static_cast<AccReal>(
-                                    work_buf2.data()[i][0])
+                                * static_cast<AccReal>(work_buf2.data()[i][0])
                             + static_cast<AccReal>(work_buf.data()[i][1])
                                   * static_cast<AccReal>(
                                       work_buf2.data()[i][1]);
@@ -945,26 +926,21 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
             for (int ik = 0; ik < n_kpts; ++ik) {
                 bind_k(ik);
                 const auto& ks = kstates[static_cast<std::size_t>(ik)];
-                const AccReal w =
-                    prob.kg.weights[static_cast<std::size_t>(ik)];
+                const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
                 for (int b = 0; b < n_bands; ++b) {
-                    const Cx* psi = ks.wfc.data()
-                                    + static_cast<std::ptrdiff_t>(b)
-                                          * ks.ng;
-                    const auto& x =
-                        dpsi[static_cast<std::size_t>(ik) * n_bands
-                             + static_cast<std::size_t>(b)];
+                    const Cx* psi =
+                        ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ks.ng;
+                    const auto& x = dpsi[static_cast<std::size_t>(ik) * n_bands
+                                         + static_cast<std::size_t>(b)];
                     for (std::size_t ja = 0; ja < ws.kb_proj.size(); ++ja) {
-                        for (std::size_t ip = 0;
-                             ip < ws.kb_proj[ja].size(); ++ip) {
+                        for (std::size_t ip = 0; ip < ws.kb_proj[ja].size();
+                             ++ip) {
                             const AccReal Dc = ws.kb_proj[ja][ip].d;
                             if (std::abs(Dc) < AccReal(1e-16))
                                 continue;
                             kb_moments(ws, ja, ip, psi, false, mo_psi);
-                            kb_moments(ws, ja, ip, x.data(), false,
-                                       mo_dpsi);
-                            for (std::size_t m = 0; m < mo_psi.size();
-                                 ++m) {
+                            kb_moments(ws, ja, ip, x.data(), false, mo_dpsi);
+                            for (std::size_t m = 0; m < mo_psi.size(); ++m) {
                                 const Cx cP = mo_psi[m].c;
                                 const Cx cD = mo_dpsi[m].c;
                                 for (int bb = 0; bb < 3; ++bb) {
@@ -972,11 +948,9 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
                                     const Cx el =
                                         Cx(0, 1) * Dc
                                         * (std::conj(cD) * mo_psi[m].s[bb]
-                                           - std::conj(mo_dpsi[m].s[bb])
-                                                 * cP);
-                                    Cat(3 * static_cast<int>(ja) + bb,
-                                        mu) += w * occ_f * AccReal(2)
-                                               * el.real();
+                                           - std::conj(mo_dpsi[m].s[bb]) * cP);
+                                    Cat(3 * static_cast<int>(ja) + bb, mu) +=
+                                        w * occ_f * AccReal(2) * el.real();
                                 }
                             }
                         }
@@ -993,8 +967,7 @@ DfptGammaOutput dfpt_gamma_force_constants(const cpu::Frame& frame,
     AccReal max_asym = 0;
     for (int i = 0; i < dim; ++i)
         for (int j = i + 1; j < dim; ++j) {
-            const AccReal d =
-                std::abs(Cat(i, j) - Cat(j, i)) * AccReal(0.5);
+            const AccReal d = std::abs(Cat(i, j) - Cat(j, i)) * AccReal(0.5);
             if (d > max_asym)
                 max_asym = d;
             const AccReal avg = AccReal(0.5) * (Cat(i, j) + Cat(j, i));

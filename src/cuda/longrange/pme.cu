@@ -317,8 +317,10 @@ void KSpacePME::compute(const LaunchContext& ctx) {
 
     const double escale = ATV::units::coulomb / (2.0 * ATV::units::pi * vol_);
     const double fscale = ATV::units::coulomb / (ATV::units::pi * vol_);
-    const double inv_pi2_a2 = ATV::units::pi * ATV::units::pi / (alpha_ * alpha_);
-    const double self_pref = -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
+    const double inv_pi2_a2 =
+        ATV::units::pi * ATV::units::pi / (alpha_ * alpha_);
+    const double self_pref =
+        -ATV::units::coulomb * alpha_ / std::sqrt(ATV::units::pi);
     const int blk = kDefaultBlock;
 
     cudaMemsetAsync(grid, 0, ntot_ * sizeof(cufftDoubleComplex), stream);

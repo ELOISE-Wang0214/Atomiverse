@@ -59,7 +59,8 @@ class Pimd {
                   int steps_per_block = 10, std::uint64_t seed = 1,
                   double k_external = 0.0);
 
-    using ProgramBuilder = void (*)(cpu::md::MD& md, int bead_index, void* user);
+    using ProgramBuilder = void (*)(cpu::md::MD& md, int bead_index,
+                                    void* user);
     void set_program_builder(ProgramBuilder builder, void* user = nullptr);
 
     /// @brief Expand, build P MD programs, run `n_blocks` blocks, collapse centroid.

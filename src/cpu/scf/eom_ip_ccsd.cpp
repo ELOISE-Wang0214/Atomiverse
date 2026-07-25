@@ -36,9 +36,7 @@ using R1 = xt::xtensor<double, 1>; // occupied singles (no)
 using R2 = xt::xtensor<double, 3>; // 2h1p (no, no, nv)
 
 /// Packed IP vector size: no + C(no, 2) * nv.
-int vector_size_ip(int no, int nv) {
-    return no + (no * (no - 1) / 2) * nv;
-}
+int vector_size_ip(int no, int nv) { return no + (no * (no - 1) / 2) * nv; }
 
 void unpack_ip(const std::vector<double>& v, int no, int nv, R1& r1, R2& r2) {
     const std::size_t No = static_cast<std::size_t>(no);
@@ -63,7 +61,8 @@ void unpack_ip(const std::vector<double>& v, int no, int nv, R1& r1, R2& r2) {
 }
 
 std::vector<double> pack_ip(const R1& r1, const R2& r2, int no, int nv) {
-    std::vector<double> v(static_cast<std::size_t>(vector_size_ip(no, nv)), 0.0);
+    std::vector<double> v(static_cast<std::size_t>(vector_size_ip(no, nv)),
+                          0.0);
     for (int i = 0; i < no; ++i)
         v[static_cast<std::size_t>(i)] = r1(i);
     int k = no;
@@ -87,7 +86,8 @@ void antisym_r2(R2& r2, int no, int nv) {
 }
 
 /// Right-hand EOM-IP-CCSD σ = H̄ r (Tu/Wang/Li + PySCF eom_gccsd.ipccsd_matvec).
-std::vector<double> matvec_ip(const EomImds& im, const std::vector<double>& vec) {
+std::vector<double> matvec_ip(const EomImds& im,
+                              const std::vector<double>& vec) {
     const int no = im.no;
     const int nv = im.nv;
     R1 r1;
@@ -130,8 +130,8 @@ std::vector<double> matvec_ip(const EomImds& im, const std::vector<double>& vec)
                     for (int n = 0; n < no; ++n)
                         for (int e = 0; e < nv; ++e)
                             for (int f = 0; f < nv; ++f)
-                                t += im.Woovv(m, n, e, f) * r2(m, n, f) *
-                                     im.t2(i, j, a, e);
+                                t += im.Woovv(m, n, e, f) * r2(m, n, f)
+                                     * im.t2(i, j, a, e);
                 s += 0.5 * t;
                 Hr2(i, j, a) = s;
             }
@@ -207,8 +207,8 @@ EOMIPCCSDResult eom_ip_ccsd_energies(const IntegralPack& ints,
             "eom_ip_ccsd: empty IP space (need at least one occupied).");
     if (n_states > dim)
         throw std::invalid_argument(
-            "eom_ip_ccsd: n_states=" + std::to_string(n_states) +
-            " exceeds EOM-IP dimension " + std::to_string(dim) + ".");
+            "eom_ip_ccsd: n_states=" + std::to_string(n_states)
+            + " exceeds EOM-IP dimension " + std::to_string(dim) + ".");
 
     const EomImds im(sol);
 
@@ -241,15 +241,15 @@ EOMIPCCSDResult eom_ip_ccsd_energies(const IntegralPack& ints,
         uniq.push_back(w);
     }
     if (static_cast<int>(uniq.size()) < n_states)
-        throw std::runtime_error(
-            "eom_ip_ccsd: found only " + std::to_string(uniq.size()) +
-            " unique real IP roots; requested n_states=" +
-            std::to_string(n_states));
+        throw std::runtime_error("eom_ip_ccsd: found only "
+                                 + std::to_string(uniq.size())
+                                 + " unique real IP roots; requested n_states="
+                                 + std::to_string(n_states));
 
     out.energy_ev.reserve(static_cast<std::size_t>(n_states));
     for (int k = 0; k < n_states; ++k)
-        out.energy_ev.push_back(uniq[static_cast<std::size_t>(k)] *
-                                units::kHartreeInEv);
+        out.energy_ev.push_back(uniq[static_cast<std::size_t>(k)]
+                                * units::kHartreeInEv);
     out.converged = true;
     return out;
 }

@@ -127,7 +127,7 @@ TEST(PointChargeEmbedding, ClassicalSumsExact) {
     const double r_H_p =
         std::sqrt((0.0 - 1.0 * a2b) * (0.0 - 1.0 * a2b) + a2b * a2b);
     const double want_qm_mm = 8.0 * 0.5 / r_O_m + 8.0 * (-0.25) / r_O_p
-                             + 1.0 * 0.5 / r_H_m + 1.0 * (-0.25) / r_H_p;
+                              + 1.0 * 0.5 / r_H_m + 1.0 * (-0.25) / r_H_p;
     EXPECT_NEAR(emb.nuclear_energy(atoms), want_qm_mm, 1e-12);
 
     const double r_mm = 2.0 * a2b;

@@ -1,11 +1,11 @@
 /// @file md/fix_langevin.cu
 /// @brief CUDA Langevin thermostat kernel.
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/dynamics/fix_langevin.cuh"
-#include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -63,8 +63,8 @@ apply_langevin(const real_t* __restrict__ vx, const real_t* __restrict__ vy,
     // gfactor1 (drag): `-m / (damp · ftm2v)`. Force = gfactor1 · v.
     work_t gfactor1 = -m / (damp * ATV::units::force_to_accel);
     // gfactor2 (random): `sqrt(2 m kB T_live / (damp · dt · mvv2e)) / ftm2v`.
-    work_t gfactor2_inside =
-        work_t(2) * m * ATV::units::kB_ev_per_k * T_live / (damp * dt * ATV::units::mass_v2_to_energy);
+    work_t gfactor2_inside = work_t(2) * m * ATV::units::kB_ev_per_k * T_live
+                             / (damp * dt * ATV::units::mass_v2_to_energy);
     work_t gfactor2 = sqrt(gfactor2_inside) / ATV::units::force_to_accel;
 
     // Per-atom (seed, step, tag)-keyed RNG. Multiply the global tag by

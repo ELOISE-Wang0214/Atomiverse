@@ -34,7 +34,8 @@ void FixDfield::launch(const cpu::LaunchContext& ctx) {
     double Pz = 0.0;
     for (int i = 0; i < n; ++i) {
         const double qi = static_cast<double>(q[i]);
-        if (qi == 0.0) continue;
+        if (qi == 0.0)
+            continue;
         // Unwrapped r (orthorhombic)
         const double ix = static_cast<double>(img[3 * i + 0]);
         const double iy = static_cast<double>(img[3 * i + 1]);

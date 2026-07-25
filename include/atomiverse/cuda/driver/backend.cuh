@@ -10,11 +10,11 @@
 
 #include <cuda_runtime.h>
 
+#include "atomiverse/core/plan.h"
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/component/context.cuh"
 #include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/cuda/frame/frame.cuh"
-#include "atomiverse/core/plan.h"
 
 namespace ATV {
 

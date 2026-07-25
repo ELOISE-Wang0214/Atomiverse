@@ -49,7 +49,8 @@ void PairYukawa::compute(const LaunchContext& ctx) {
             // dU/dr (unshifted) = −A e (−κ/r + 1/r²) wait:
             // U = A e^{−κr}/r → dU/dr = A e (−κ/r − 1/r²) = −A e (κ/r + 1/r²)
             const double dUdr = -A_ * e * (kappa_ * inv_r + inv_r * inv_r);
-            const double fpair = -dUdr / r; // F on i from j: fpair * r_ij with r_ij = r_j-r_i
+            const double fpair =
+                -dUdr / r; // F on i from j: fpair * r_ij with r_ij = r_j-r_i
 
             fx[i] -= fpair * dx;
             fy[i] -= fpair * dy;

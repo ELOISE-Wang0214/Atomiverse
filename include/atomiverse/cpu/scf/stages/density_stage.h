@@ -79,22 +79,21 @@ class DensityStage : public cpu::Component {
     /// @param mom_ref_C_alpha   Reference occupied α MO columns [n × n_α]
     ///                          (read/write: updated each step under MOM).
     /// @param mom_ref_C_beta    Reference occupied β MO columns [n × n_β].
-    DensityStage(bool restricted, bool is_hf, double damping,
-                 const RealMatrix& C_alpha, const RealMatrix& C_beta,
-                 const RealMatrix& F_alpha, const RealMatrix& F_beta,
-                 const RealMatrix& Hcore, const RealMatrix& J,
-                 const int& n_alpha, const int& n_beta, const int& n_basis,
-                 const bool& diis_active, const double& e_xc_grid,
-                 const double& e_exact_exchange, const double& v_nuc,
-                 RealMatrix& P_alpha, RealMatrix& P_beta, double& e_total,
-                 double& e_one, double& e_coulomb, bool generalized = false,
-                 const double& e_solvent = DensityStage::discard_double_(),
-                 const double& e_pcm_fock_half =
-                     DensityStage::discard_double_(),
-                 const RealMatrix& S = DensityStage::discard_matrix_(),
-                 const MomStyle& mom_style = DensityStage::discard_mom_(),
-                 RealMatrix& mom_ref_C_alpha = DensityStage::discard_matrix_mut_(),
-                 RealMatrix& mom_ref_C_beta = DensityStage::discard_matrix_mut_());
+    DensityStage(
+        bool restricted, bool is_hf, double damping, const RealMatrix& C_alpha,
+        const RealMatrix& C_beta, const RealMatrix& F_alpha,
+        const RealMatrix& F_beta, const RealMatrix& Hcore, const RealMatrix& J,
+        const int& n_alpha, const int& n_beta, const int& n_basis,
+        const bool& diis_active, const double& e_xc_grid,
+        const double& e_exact_exchange, const double& v_nuc,
+        RealMatrix& P_alpha, RealMatrix& P_beta, double& e_total, double& e_one,
+        double& e_coulomb, bool generalized = false,
+        const double& e_solvent = DensityStage::discard_double_(),
+        const double& e_pcm_fock_half = DensityStage::discard_double_(),
+        const RealMatrix& S = DensityStage::discard_matrix_(),
+        const MomStyle& mom_style = DensityStage::discard_mom_(),
+        RealMatrix& mom_ref_C_alpha = DensityStage::discard_matrix_mut_(),
+        RealMatrix& mom_ref_C_beta = DensityStage::discard_matrix_mut_());
 
     /// @brief Component name.
     /// @return `"scf_density_stage"`.

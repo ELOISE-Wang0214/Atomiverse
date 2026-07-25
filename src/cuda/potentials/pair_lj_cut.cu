@@ -8,8 +8,8 @@
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
-#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/potentials/pair_kernel.h"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include <cstddef>
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -151,8 +151,7 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void lj_force_tile(
             __syncwarp();
 
             if (ai >= 0) {
-                unsigned mbits =
-                    ATV::cuda::openmm_mask_jbits(cl_mask, p, slot);
+                unsigned mbits = ATV::cuda::openmm_mask_jbits(cl_mask, p, slot);
                 while (mbits) {
                     int sj = __ffs(static_cast<int>(mbits)) - 1;
                     mbits &= mbits - 1;
@@ -492,8 +491,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         kernels::lj_force_tile<O, V><<<grid, block, shmem, stream>>>(
             frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
             &frame.scalars->energy, stress_ptr, spx_, spy_, spz_,
-            pairs->cl_row_ptr, pairs->cl_col_idx, mask, pairs->cl_orig_index, nc,
-            box, /*periodic=*/true, static_cast<work_t>(epsilon_), sigma_sq,
+            pairs->cl_row_ptr, pairs->cl_col_idx, mask, pairs->cl_orig_index,
+            nc, box, /*periodic=*/true, static_cast<work_t>(epsilon_), sigma_sq,
             cutoff_sq, min_pair_dist_sq, static_cast<work_t>(v_shift_),
             excl_off, excl_par, static_cast<work_t>(s_excl_));
     };

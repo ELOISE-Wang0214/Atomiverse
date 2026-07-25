@@ -128,8 +128,8 @@ TEST(FmmOperators, M2LGeometricDecay) {
         EXPECT_LT(err, prev_err) << "p=" << p;
         // Loose check: error is not worse than O((1/c)^{p/2}) (factor-of-safety
         // against angular prefactors); main pin is geometric decay.
-        const AccReal bound = 10.0 / (c_ratio - 1.0)
-                              * std::pow(1.0 / c_ratio, p * 0.5);
+        const AccReal bound =
+            10.0 / (c_ratio - 1.0) * std::pow(1.0 / c_ratio, p * 0.5);
         EXPECT_LT(err, bound) << "p=" << p;
         prev_err = err;
     }

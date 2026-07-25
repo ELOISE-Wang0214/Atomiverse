@@ -58,7 +58,7 @@ int main() {
     // PySCF 2.14.0 analytic gradient [Ha/Bohr] (REFERENCE.md). x components are
     // numerically zero (molecule in the yz-plane).
     const double want[3][3] = {
-        {0.0, 0.0, 1.804450607022e-02},           // O
+        {0.0, 0.0, 1.804450607022e-02},                 // O
         {0.0, 1.107031890619e-02, -9.022253035110e-03}, // H
         {0.0, -1.107031890619e-02, -9.022253035110e-03} // H
     };

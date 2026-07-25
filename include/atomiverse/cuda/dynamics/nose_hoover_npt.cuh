@@ -43,9 +43,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -57,10 +57,10 @@ class NoseHooverNPT : public cuda::Integrator {
   public:
     /// @brief Construct MTK NPT (mirror of cpu::md::NoseHooverNPT; no Config bag).
     NoseHooverNPT(double T_target, double tau_T, double P_target, double tau_P,
-                  double dt, double drag = 0.0, int mtchain = 3, int mpchain = 3,
+                  double dt, double drag = 0.0, int mtchain = 3,
+                  int mpchain = 3,
                   std::array<bool, 3> couple_axis = {true, true, true},
                   double T_stop = -1.0);
-
 
     /// @brief Set the temperature-ramp run span `[nfirst, nlast]`.
     /// @return `*this`, chainable.

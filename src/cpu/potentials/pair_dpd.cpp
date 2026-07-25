@@ -14,7 +14,8 @@ PairDpd::PairDpd(double a, double gamma, double temperature, double cutoff,
                  double dt, std::uint64_t seed)
     : Pair(cutoff), a_default_(a), multi_(false), gamma_(gamma),
       temperature_(temperature), dt_(dt), seed_(seed) {
-    if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0) || !(gamma >= 0.0))
+    if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0)
+        || !(gamma >= 0.0))
         throw std::invalid_argument("PairDpd: invalid parameters");
     cutoff_sq_ = cutoff * cutoff;
     sigma_ = std::sqrt(2.0 * gamma_ * units::kB_ev_per_k * temperature_);
@@ -25,7 +26,8 @@ PairDpd::PairDpd(std::vector<std::vector<double>> a_matrix, double gamma,
                  std::uint64_t seed)
     : Pair(cutoff), a_mat_(std::move(a_matrix)), multi_(true), gamma_(gamma),
       temperature_(temperature), dt_(dt), seed_(seed) {
-    if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0) || !(gamma >= 0.0))
+    if (!(cutoff > 0.0) || !(dt > 0.0) || !(temperature > 0.0)
+        || !(gamma >= 0.0))
         throw std::invalid_argument("PairDpd: invalid parameters");
     if (a_mat_.empty())
         throw std::invalid_argument("PairDpd: empty a_matrix");
@@ -40,8 +42,8 @@ PairDpd::PairDpd(std::vector<std::vector<double>> a_matrix, double gamma,
 double PairDpd::a_of_(int ti, int tj) const {
     if (!multi_)
         return a_default_;
-    if (ti < 0 || tj < 0 || static_cast<std::size_t>(ti) >= a_mat_.size() ||
-        static_cast<std::size_t>(tj) >= a_mat_.size())
+    if (ti < 0 || tj < 0 || static_cast<std::size_t>(ti) >= a_mat_.size()
+        || static_cast<std::size_t>(tj) >= a_mat_.size())
         throw std::runtime_error("PairDpd: atom type out of a_matrix range");
     return a_mat_[static_cast<std::size_t>(ti)][static_cast<std::size_t>(tj)];
 }
@@ -74,8 +76,8 @@ void PairDpd::compute(const LaunchContext& ctx) {
         s = s ^ (s >> 31);
         const double u1 =
             (static_cast<double>((s & 0xffffffffULL) + 1) / 4294967297.0);
-        const double u2 =
-            (static_cast<double>(((s >> 32) & 0xffffffffULL) + 1) / 4294967297.0);
+        const double u2 = (static_cast<double>(((s >> 32) & 0xffffffffULL) + 1)
+                           / 4294967297.0);
         return std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * units::pi * u2);
     };
 

@@ -29,25 +29,34 @@ void RM1::build(const cpu::Frame& reference) {
     engine_->build(reference);
 }
 RM1Result& RM1::run(const cpu::Frame& frame) {
-    if (!engine_) build(frame);
+    if (!engine_)
+        build(frame);
     return engine_->run(frame);
 }
 RM1Result& RM1::compute_forces(cpu::Frame& frame, double step_angstrom) {
-    if (!engine_) throw std::runtime_error("RM1::compute_forces before build/run");
+    if (!engine_)
+        throw std::runtime_error("RM1::compute_forces before build/run");
     return engine_->compute_forces(frame, step_angstrom);
 }
 const RM1Result& RM1::last_result() const {
-    if (!engine_) { static RM1Result empty; return empty; }
+    if (!engine_) {
+        static RM1Result empty;
+        return empty;
+    }
     return engine_->last_result();
 }
 bool RM1::built() const noexcept { return engine_ && engine_->built(); }
-bool RM1::has_density() const noexcept { return engine_ && engine_->has_density(); }
+bool RM1::has_density() const noexcept {
+    return engine_ && engine_->has_density();
+}
 const NDDOSystem& RM1::system() const {
-    if (!engine_) throw std::runtime_error("RM1::system before build");
+    if (!engine_)
+        throw std::runtime_error("RM1::system before build");
     return engine_->system();
 }
 const NDDOScfState& RM1::state() const {
-    if (!engine_) throw std::runtime_error("RM1::state before build");
+    if (!engine_)
+        throw std::runtime_error("RM1::state before build");
     return engine_->state();
 }
 } // namespace semiempirical

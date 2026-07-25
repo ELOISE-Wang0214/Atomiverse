@@ -74,9 +74,9 @@ TEST(MetadynamicsND, TwoDimHillsAndForces) {
     meta.launch(lc2);
     double f2 = 0;
     for (int a = 0; a < 3; ++a)
-        f2 += f.span(kAtom_fx)[a] * f.span(kAtom_fx)[a] +
-              f.span(kAtom_fy)[a] * f.span(kAtom_fy)[a] +
-              f.span(kAtom_fz)[a] * f.span(kAtom_fz)[a];
+        f2 += f.span(kAtom_fx)[a] * f.span(kAtom_fx)[a]
+              + f.span(kAtom_fy)[a] * f.span(kAtom_fy)[a]
+              + f.span(kAtom_fz)[a] * f.span(kAtom_fz)[a];
     EXPECT_TRUE(std::isfinite(f2));
     EXPECT_GT(f2, 0.0);
 }

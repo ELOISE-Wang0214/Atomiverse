@@ -21,10 +21,10 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

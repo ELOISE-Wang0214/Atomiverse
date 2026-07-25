@@ -39,19 +39,19 @@
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
-#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/casci.h"
 #include "atomiverse/cpu/scf/casscf.h"
-#include "atomiverse/cpu/scf/nevpt2.h"
 #include "atomiverse/cpu/scf/cc2.h"
 #include "atomiverse/cpu/scf/ccsd.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/fci.h"
+#include "atomiverse/cpu/scf/gradient_result.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/mp2.h"
 #include "atomiverse/cpu/scf/mp3.h"
 #include "atomiverse/cpu/scf/mp4.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/gradient_result.h"
+#include "atomiverse/cpu/scf/nevpt2.h"
 #include "atomiverse/cpu/scf/scf_enums.h"
 #include "atomiverse/cpu/scf/scf_guess.h"
 #include "atomiverse/cpu/scf/slater_determinant.h"
@@ -657,8 +657,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     ///                  [eV/Å]; called 2·3N times (fresh solver each call).
     /// @return Symmetric nuclear Hessian [eV/Å²], shape [3N, 3N], `col = 3A+d`.
     vib::HessianResult central_difference_nuclear_hessian(
-        Frame& frame,
-        const std::function<GradientResult(Frame&)>& forces_at);
+        Frame& frame, const std::function<GradientResult(Frame&)>& forces_at);
 
     /// @brief Throw if the converged reference cannot support an analytic
     ///        second derivative: SCF non-convergence, a spherical-harmonic
@@ -682,20 +681,20 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     // bound reference; a move of the method drops the wiring
     // (`reset_built_driver_`) so the next `drive_scf_` re-binds against the
     // moved-to object's members — no dangling reference.
-    RealMatrix S_;                ///< Overlap matrix (dimensionless).
-    RealMatrix Hcore_;            ///< Core Hamiltonian [Hartree].
-    RealMatrix X_;                ///< Orthogonalization transform.
-    RealMatrix F_alpha_;          ///< α Fock matrix [Hartree].
-    RealMatrix F_beta_;           ///< β Fock matrix [Hartree].
-    RealMatrix J_;                ///< Coulomb matrix [Hartree].
-    RealMatrix err_alpha_;        ///< α DIIS error channel.
-    RealMatrix err_beta_;         ///< β DIIS error channel.
-    RealMatrix C_alpha_;          ///< α MO coefficients.
-    RealMatrix C_beta_;           ///< β MO coefficients.
-    RealVector eig_alpha_;        ///< α orbital energies [Hartree].
-    RealVector eig_beta_;         ///< β orbital energies [Hartree].
-    RealMatrix P_alpha_;          ///< α density (old-in / new-out).
-    RealMatrix P_beta_;           ///< β density (old-in / new-out).
+    RealMatrix S_;         ///< Overlap matrix (dimensionless).
+    RealMatrix Hcore_;     ///< Core Hamiltonian [Hartree].
+    RealMatrix X_;         ///< Orthogonalization transform.
+    RealMatrix F_alpha_;   ///< α Fock matrix [Hartree].
+    RealMatrix F_beta_;    ///< β Fock matrix [Hartree].
+    RealMatrix J_;         ///< Coulomb matrix [Hartree].
+    RealMatrix err_alpha_; ///< α DIIS error channel.
+    RealMatrix err_beta_;  ///< β DIIS error channel.
+    RealMatrix C_alpha_;   ///< α MO coefficients.
+    RealMatrix C_beta_;    ///< β MO coefficients.
+    RealVector eig_alpha_; ///< α orbital energies [Hartree].
+    RealVector eig_beta_;  ///< β orbital energies [Hartree].
+    RealMatrix P_alpha_;   ///< α density (old-in / new-out).
+    RealMatrix P_beta_;    ///< β density (old-in / new-out).
     // ROHF-only channels (untouched in the other spin modes): the couple
     // stage preserves the physical spin Focks here (the density stage's
     // energy functional reads them, never F_eff) and publishes P_α+P_β for
@@ -703,24 +702,24 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     RealMatrix F_alpha_uncoupled_; ///< ROHF: true α Fock [Hartree].
     RealMatrix F_beta_uncoupled_;  ///< ROHF: true β Fock [Hartree].
     RealMatrix P_total_;           ///< ROHF: total density P_α + P_β.
-    double e_total_ = 0;          ///< Total SCF energy [Hartree].
-    double e_one_ = 0;            ///< One-electron energy [Hartree].
-    double e_coulomb_ = 0;        ///< Coulomb (J) energy [Hartree].
-    double e_xc_grid_ = 0;        ///< Grid XC energy [Hartree].
-    double e_exact_exchange_ = 0; ///< Hybrid exact-exchange energy [Hartree].
-    double e_solvent_ = 0;        ///< Continuum ΔG_el [Hartree] (0 when off).
-    double e_disp_ = 0;           ///< DFT-D3(BJ)/D4 E_disp [Hartree] (0 when off).
-    double e_pcm_fock_half_ = 0;  ///< ½ Tr[V_pcm P] [Hartree] for energy peel.
-    double int_n_alpha_ = 0;      ///< Grid-integrated α electron count.
-    double int_n_beta_ = 0;       ///< Grid-integrated β electron count.
-    double v_nuc_ = 0;            ///< Nuclear-repulsion energy [Hartree].
-    int n_basis_ = 0;             ///< Basis dimension.
-    int n_dropped_ = 0;           ///< Overlap eigen-directions dropped.
-    int iter_ = 0;                ///< Current SCF iteration index.
-    int diis_pairs_ = 0;          ///< DIIS history-size mirror.
-    bool diis_active_ = false;    ///< DIIS extrapolating (≥ 2 vectors).
-    bool restricted_ = false;     ///< spin_ == Restricted (per-run cache).
-    bool is_hf_ = false;          ///< method_ == HF (per-run cache).
+    double e_total_ = 0;           ///< Total SCF energy [Hartree].
+    double e_one_ = 0;             ///< One-electron energy [Hartree].
+    double e_coulomb_ = 0;         ///< Coulomb (J) energy [Hartree].
+    double e_xc_grid_ = 0;         ///< Grid XC energy [Hartree].
+    double e_exact_exchange_ = 0;  ///< Hybrid exact-exchange energy [Hartree].
+    double e_solvent_ = 0;         ///< Continuum ΔG_el [Hartree] (0 when off).
+    double e_disp_ = 0; ///< DFT-D3(BJ)/D4 E_disp [Hartree] (0 when off).
+    double e_pcm_fock_half_ = 0; ///< ½ Tr[V_pcm P] [Hartree] for energy peel.
+    double int_n_alpha_ = 0;     ///< Grid-integrated α electron count.
+    double int_n_beta_ = 0;      ///< Grid-integrated β electron count.
+    double v_nuc_ = 0;           ///< Nuclear-repulsion energy [Hartree].
+    int n_basis_ = 0;            ///< Basis dimension.
+    int n_dropped_ = 0;          ///< Overlap eigen-directions dropped.
+    int iter_ = 0;               ///< Current SCF iteration index.
+    int diis_pairs_ = 0;         ///< DIIS history-size mirror.
+    bool diis_active_ = false;   ///< DIIS extrapolating (≥ 2 vectors).
+    bool restricted_ = false;    ///< spin_ == Restricted (per-run cache).
+    bool is_hf_ = false;         ///< method_ == HF (per-run cache).
 
     /// MOM/IMOM reference occupied MO columns (n × n_σ). Empty when
     /// `mom == Off`. Updated in-place by DensityStage under MomStyle::MOM.
@@ -737,7 +736,7 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
         bool unwrap = true;        ///< Unwrap positions (mutating paths only).
         int max_iter = -1;         ///< Budget override; <0 ⇒ member `max_iter`.
         double tol_override = -1;  ///< |ΔE| tol override; <0 ⇒ member `tol`.
-        bool apply_aspc = true;    ///< ASPC front/back; false on recursive call.
+        bool apply_aspc = true; ///< ASPC front/back; false on recursive call.
     };
 
     /// @brief RAII guard: unwrap positions for the integral build on entry,

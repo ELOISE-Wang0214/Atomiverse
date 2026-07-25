@@ -36,10 +36,9 @@ void bind_semiempirical(nb::module_& m) {
 
     // ── AM1 concrete method (parameters assigned in the constructor) ──
     nb::class_<AM1>(m, "AM1", "AM1 semiempirical method (members + run).")
-        .def(nb::init<int, int, int, double, double>(),
-             nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
-             nb::arg("max_iter") = 200, nb::arg("density_tol") = 1.0e-8,
-             nb::arg("energy_tol") = 1.0e-10,
+        .def(nb::init<int, int, int, double, double>(), nb::arg("charge") = 0,
+             nb::arg("multiplicity") = 1, nb::arg("max_iter") = 200,
+             nb::arg("density_tol") = 1.0e-8, nb::arg("energy_tol") = 1.0e-10,
              "Construct with total charge [e], spin multiplicity, SCF "
              "iteration cap, density residual (dimensionless), energy "
              "tolerance [eV].")
@@ -75,18 +74,15 @@ void bind_semiempirical(nb::module_& m) {
         "AM1 single-point Evaluator (Energy | Charge | DensityMatrix; no "
         "forces — plugs into single_point, never into MD).")
         .def(nb::init<>(), "Default construct.")
-        .def(nb::init<int, int, int, double, double>(),
-             nb::arg("charge") = 0, nb::arg("multiplicity") = 1,
-             nb::arg("max_iter") = 200, nb::arg("density_tol") = 1.0e-8,
-             nb::arg("energy_tol") = 1.0e-10,
+        .def(nb::init<int, int, int, double, double>(), nb::arg("charge") = 0,
+             nb::arg("multiplicity") = 1, nb::arg("max_iter") = 200,
+             nb::arg("density_tol") = 1.0e-8, nb::arg("energy_tol") = 1.0e-10,
              "Construct owned AM1 with SCF parameters.")
-        .def(nb::init<AM1>(), nb::arg("method"),
-             "Own a concrete AM1 method.")
+        .def(nb::init<AM1>(), nb::arg("method"), "Own a concrete AM1 method.")
         .def("last_result", &AM1Evaluator::last_result,
              nb::rv_policy::reference_internal,
              "Results of the most recent solve (AM1Result).")
-        .def("method",
-             nb::overload_cast<>(&AM1Evaluator::method),
+        .def("method", nb::overload_cast<>(&AM1Evaluator::method),
              nb::rv_policy::reference_internal,
              "Owned concrete AM1 method (parameters as members).");
 

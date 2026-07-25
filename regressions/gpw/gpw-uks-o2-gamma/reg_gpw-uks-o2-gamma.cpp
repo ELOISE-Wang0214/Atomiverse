@@ -38,9 +38,10 @@ int main() {
     frame.span(kAtom_z)[1] = 0.5 * L + 0.5 * R;
     frame.simbox = cpu::Box::cubic(L);
 
-    cpu::gpw::Kind O{molrs::Element::O,
-                     cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
-                     cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
+    cpu::gpw::Kind O{
+        molrs::Element::O,
+        cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
 
     cpu::gpw::GPWEvaluator eval({O});
     eval.cutoff_ry = 400.0;
@@ -55,8 +56,7 @@ int main() {
     const auto t0 = clock::now();
     cpu::single_point(frame, eval);
     const auto t1 = clock::now();
-    const double wall_s =
-        std::chrono::duration<double>(t1 - t0).count();
+    const double wall_s = std::chrono::duration<double>(t1 - t0).count();
 
     const cpu::gpw::GpwResult& r = eval.last_result();
     const double e_ha = eval.last_energy_hartree();
@@ -66,7 +66,7 @@ int main() {
     // CP2K 2026.1 offline pin (centered O₂) — REFERENCE.md
     constexpr double kE_cp2k = -31.76980349931425;
     constexpr double kS2_cp2k = 2.004659;
-    constexpr double kTolE = 1.0e-3;  // Ha (first-green grid twin)
+    constexpr double kTolE = 1.0e-3; // Ha (first-green grid twin)
     constexpr double kTolS2 = 0.15;
 
     std::printf("E(O2, UKS-PADE/DZVP-MOLOPT-GTH, MT) = %.12f Ha\n", e_ha);

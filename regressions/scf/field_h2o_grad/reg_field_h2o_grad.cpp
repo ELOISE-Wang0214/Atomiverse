@@ -88,10 +88,9 @@ int main() {
     double max_err = 0.0;
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d) {
-            const double fd =
-                (field_energy(displaced(A, d, h_ang))
-                 - field_energy(displaced(A, d, -h_ang)))
-                / (2.0 * h_bohr);
+            const double fd = (field_energy(displaced(A, d, h_ang))
+                               - field_energy(displaced(A, d, -h_ang)))
+                              / (2.0 * h_bohr);
             const double an = grad_ha_bohr(A, d);
             const double err = std::fabs(an - fd);
             max_err = std::max(max_err, err);

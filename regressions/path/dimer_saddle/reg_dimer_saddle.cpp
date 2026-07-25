@@ -24,7 +24,6 @@ int main() {
     f.span(kAtom_tag)[0] = 1;
     f.simbox = cpu::Box::cubic(20.0);
 
-    
     cpu::path::Dimer dimer(0.01, 0.03, 12, 1e-3, 0.02, 42);
     dimer.use_inverted_harmonic(1.0, 1.0);
     const int steps = dimer.run(f, 300);

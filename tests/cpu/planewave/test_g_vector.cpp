@@ -1,7 +1,7 @@
 /// @file test_g_vector.cpp
-#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
 #include "atomiverse/cpu/planewave/qe_units.h"
 #include <gtest/gtest.h>

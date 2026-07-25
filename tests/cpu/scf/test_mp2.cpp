@@ -88,8 +88,7 @@ TEST(MP2, H2ScsScalesOsSs) {
     auto r = rhf.mp2(frame);
     EXPECT_TRUE(rhf.converged());
     EXPECT_LT(r.e_corr, 0.0);
-    EXPECT_NEAR(r.e_corr, 1.2 * r.e_corr_os + (1.0 / 3.0) * r.e_corr_ss,
-                1e-12);
+    EXPECT_NEAR(r.e_corr, 1.2 * r.e_corr_os + (1.0 / 3.0) * r.e_corr_ss, 1e-12);
     // Two-electron H2: same-spin channel vanishes (only one occupied MO).
     EXPECT_NEAR(r.e_corr_ss, 0.0, 1e-14);
 }

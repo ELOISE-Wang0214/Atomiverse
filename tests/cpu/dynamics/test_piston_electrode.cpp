@@ -75,7 +75,7 @@ TEST(PistonElectrode, PressureIdentityUpper) {
 TEST(PistonElectrode, ExternalForceBalance) {
     auto f = upper_wall_pair();
     f.span(kAtom_fz)[0] = 2.0;
-    f.span(kAtom_fz)[1] = 2.0; // F_atoms = 4, A=100 → P_atoms=0.04
+    f.span(kAtom_fz)[1] = 2.0;    // F_atoms = 4, A=100 → P_atoms=0.04
     const double P_target = 0.04; // eV/Å³
 
     cpu::md::PistonElectrode piston(3, P_target,

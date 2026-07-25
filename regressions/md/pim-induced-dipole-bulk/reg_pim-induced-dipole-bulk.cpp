@@ -43,10 +43,10 @@ int main() {
     frame.span(kAtom_mass)[0] = frame.span(kAtom_mass)[1] = 1.0;
     frame.span(kAtom_tag)[0] = 1;
     frame.span(kAtom_tag)[1] = 2;
-    frame.span(kAtom_fx)[0] = frame.span(kAtom_fy)[0] = frame.span(kAtom_fz)[0] =
-        0;
-    frame.span(kAtom_fx)[1] = frame.span(kAtom_fy)[1] = frame.span(kAtom_fz)[1] =
-        0;
+    frame.span(kAtom_fx)[0] = frame.span(kAtom_fy)[0] =
+        frame.span(kAtom_fz)[0] = 0;
+    frame.span(kAtom_fx)[1] = frame.span(kAtom_fy)[1] =
+        frame.span(kAtom_fz)[1] = 0;
     frame.simbox = cpu::Box::cubic(L);
     frame.meta.get(kEnergy) = 0;
 
@@ -83,15 +83,15 @@ int main() {
                     pim.last_pol_energy(), E_pin);
         ok = false;
     }
-    if (!(std::fabs(f0x - f0x_pin) <= tol_f &&
-          std::fabs(f1x - f1x_pin) <= tol_f)) {
+    if (!(std::fabs(f0x - f0x_pin) <= tol_f
+          && std::fabs(f1x - f1x_pin) <= tol_f)) {
         std::printf(
             "FAIL force got F0x=%.16e F1x=%.16e want %.16e / %.16e tol=%.1e\n",
             f0x, f1x, f0x_pin, f1x_pin, tol_f);
         ok = false;
     }
-    if (!(std::fabs(f0y) < 1e-12 && std::fabs(f0z) < 1e-12 &&
-          std::fabs(f1y) < 1e-12 && std::fabs(f1z) < 1e-12)) {
+    if (!(std::fabs(f0y) < 1e-12 && std::fabs(f0z) < 1e-12
+          && std::fabs(f1y) < 1e-12 && std::fabs(f1z) < 1e-12)) {
         std::printf("FAIL transverse forces non-zero\n");
         ok = false;
     }
@@ -110,6 +110,7 @@ int main() {
 
     if (!ok)
         return 1;
-    std::printf("PASS: pim-induced-dipole-bulk vs offline MetalWalls-form pin\n");
+    std::printf(
+        "PASS: pim-induced-dipole-bulk vs offline MetalWalls-form pin\n");
     return 0;
 }

@@ -45,11 +45,11 @@ int main() {
     frame.simbox = cpu::Box::cubic(20.0);
 
     // ── Pins (REFERENCE.md; Hartree stored, eV via engine kHartreeInEv) ─
-    constexpr double kERhf = -1.116759307396;     // Ha
-    constexpr double kEa0Ha = 0.684281565504;     // Ha
-    constexpr double kEmp2 = -0.013138073590;     // Ha (diagnostic)
-    constexpr double kTolE = 1e-6;                // Ha
-    constexpr double kTolEv = 1e-4;               // eV (product gate)
+    constexpr double kERhf = -1.116759307396; // Ha
+    constexpr double kEa0Ha = 0.684281565504; // Ha
+    constexpr double kEmp2 = -0.013138073590; // Ha (diagnostic)
+    constexpr double kTolE = 1e-6;            // Ha
+    constexpr double kTolEv = 1e-4;           // eV (product gate)
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;

@@ -44,29 +44,30 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
     const int n_mo = static_cast<int>(result_.C.shape(1));
     if (nb_atoms != nb)
         throw std::invalid_argument(
-            "GpwDft::mp2: atom basis count (" + std::to_string(nb_atoms) +
-            ") does not match the converged orbitals (" + std::to_string(nb) +
-            ") — same geometry/basis as the last run() required");
+            "GpwDft::mp2: atom basis count (" + std::to_string(nb_atoms)
+            + ") does not match the converged orbitals (" + std::to_string(nb)
+            + ") — same geometry/basis as the last run() required");
     if (static_cast<int>(result_.eps.size()) != n_mo)
         throw std::logic_error(
             "GpwDft::mp2: eps/C shape mismatch in the converged result");
     if (n_mo <= n_occ)
         throw std::invalid_argument(
             "GpwDft::mp2: no virtual orbitals in the converged result "
-            "(n_mo = " + std::to_string(n_mo) +
-            ", n_occ = " + std::to_string(n_occ) + ")");
+            "(n_mo = "
+            + std::to_string(n_mo) + ", n_occ = " + std::to_string(n_occ)
+            + ")");
 
     int n_virt = n_mo - n_occ;
     if (mp2_n_virt > 0)
         n_virt = std::min(n_virt, mp2_n_virt);
 
     constexpr double kMinGapHa = 1e-6;
-    const double gap = result_.eps[static_cast<std::size_t>(n_occ)] -
-                       result_.eps[static_cast<std::size_t>(n_occ - 1)];
+    const double gap = result_.eps[static_cast<std::size_t>(n_occ)]
+                       - result_.eps[static_cast<std::size_t>(n_occ - 1)];
     if (gap < kMinGapHa)
         throw std::invalid_argument(
-            "GpwDft::mp2: vanishing HOMO-LUMO gap (" + std::to_string(gap) +
-            " Ha < 1e-6) — canonical MP2 denominators are singular");
+            "GpwDft::mp2: vanishing HOMO-LUMO gap (" + std::to_string(gap)
+            + " Ha < 1e-6) — canonical MP2 denominators are singular");
 
     // Same grid + Γ-image-summed compact AO representation as run().
     const bool periodic = !nonperiodic;

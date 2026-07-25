@@ -31,8 +31,8 @@ namespace cpu {
 namespace scf {
 namespace {
 
-constexpr double kEta = 1e-8;        ///< Spectral broadening [Hartree].
-constexpr double kQpeTol = 1e-8;     ///< Newton residual on ω [Hartree].
+constexpr double kEta = 1e-8;    ///< Spectral broadening [Hartree].
+constexpr double kQpeTol = 1e-8; ///< Newton residual on ω [Hartree].
 constexpr int kQpeMaxIter = 100;
 
 /// Diagonal correlation self-energy Re Σ_c,p(ω) [Hartree] at real ω.
@@ -79,8 +79,7 @@ bool solve_qp(double eps_p, double vx_m_vmf, int p, int n_occ, int n_mo,
             omega_out = w;
             return true;
         }
-        const double sig_p =
-            sigma_c_diag(w + kH, p, n_occ, n_mo, eps, Om, tdm);
+        const double sig_p = sigma_c_diag(w + kH, p, n_occ, n_mo, eps, Om, tdm);
         const double dsig = (sig_p - sig) / kH;
         const double df = 1.0 - dsig;
         if (!(std::abs(df) > 1e-14))
@@ -88,8 +87,9 @@ bool solve_qp(double eps_p, double vx_m_vmf, int p, int n_occ, int n_mo,
         w -= f / df;
     }
     omega_out = w;
-    return std::abs(w - eps_p
-                    - (sigma_c_diag(w, p, n_occ, n_mo, eps, Om, tdm) + vx_m_vmf))
+    return std::abs(
+               w - eps_p
+               - (sigma_c_diag(w, p, n_occ, n_mo, eps, Om, tdm) + vx_m_vmf))
            < 10.0 * kQpeTol;
 }
 
@@ -119,7 +119,8 @@ G0W0Result RHF::g0w0() const {
     // Occupations: integer f=1 columns.
     int n_occ = 0;
     for (int p = 0; p < n_mo; ++p) {
-        const double f = det.occupations(Spin::alpha)(static_cast<std::size_t>(p));
+        const double f =
+            det.occupations(Spin::alpha)(static_cast<std::size_t>(p));
         if (f == 1.0)
             ++n_occ;
         else if (f != 0.0)
@@ -151,19 +152,18 @@ G0W0Result RHF::g0w0() const {
     // tdm[s,p,q] = Σ_ia √2 (X+Y)_ia^s (ia|pq)
     // Composite OV index matches OrbitalHessian: a·n_occ + i.
     const double sqrt2 = std::sqrt(2.0);
-    xt::xtensor<double, 3> tdm =
-        xt::zeros<double>({static_cast<std::size_t>(n_exc),
-                           static_cast<std::size_t>(n_mo),
-                           static_cast<std::size_t>(n_mo)});
+    xt::xtensor<double, 3> tdm = xt::zeros<double>(
+        {static_cast<std::size_t>(n_exc), static_cast<std::size_t>(n_mo),
+         static_cast<std::size_t>(n_mo)});
     for (int s = 0; s < n_exc; ++s) {
         for (int a = 0; a < n_vir; ++a) {
             for (int i = 0; i < n_occ; ++i) {
                 const int ia = a * n_occ + i;
-                const double z =
-                    sqrt2
-                    * (X(static_cast<std::size_t>(s), static_cast<std::size_t>(ia))
-                       + Y(static_cast<std::size_t>(s),
-                           static_cast<std::size_t>(ia)));
+                const double z = sqrt2
+                                 * (X(static_cast<std::size_t>(s),
+                                      static_cast<std::size_t>(ia))
+                                    + Y(static_cast<std::size_t>(s),
+                                        static_cast<std::size_t>(ia)));
                 const int aa = n_occ + a;
                 for (int p = 0; p < n_mo; ++p)
                     for (int q = 0; q < n_mo; ++q)
@@ -205,10 +205,9 @@ G0W0Result RHF::g0w0() const {
         out.mf_energy_ha[static_cast<std::size_t>(p)] =
             eps(static_cast<std::size_t>(p));
         double qp = eps(static_cast<std::size_t>(p));
-        const bool ok =
-            solve_qp(eps(static_cast<std::size_t>(p)),
-                     vx_m_vmf[static_cast<std::size_t>(p)], p, n_occ, n_mo, eps,
-                     Om, tdm, qp);
+        const bool ok = solve_qp(eps(static_cast<std::size_t>(p)),
+                                 vx_m_vmf[static_cast<std::size_t>(p)], p,
+                                 n_occ, n_mo, eps, Om, tdm, qp);
         if (!ok)
             out.converged = false;
         out.qp_energy_ha[static_cast<std::size_t>(p)] = qp;

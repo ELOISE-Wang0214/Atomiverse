@@ -31,7 +31,7 @@ void TriclinicCellRelax::launch(const LaunchContext& ctx) {
     const double V = f.simbox.volume();
     if (!(V > 0.0))
         throw std::runtime_error("TriclinicCellRelax: non-positive volume");
-    const auto& s = f.meta.get(kStress); // Voigt xx,yy,zz,xy,xz,yz [eV/Å³]? 
+    const auto& s = f.meta.get(kStress); // Voigt xx,yy,zz,xy,xz,yz [eV/Å³]?
     // Pair styles write stress as energy*length terms; pressure = tr/(3V).
     // Treat s as σ * V components so P_αβ = s_αβ / V if that's the convention.
     // IsotropicCell uses tr/(3V) so s is σ*V. Then σ = s/V.

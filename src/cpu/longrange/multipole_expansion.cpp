@@ -40,9 +40,8 @@ AccReal associated_legendre(int n, int m, AccReal x) {
     AccReal p_nm1 = pmm;
     AccReal p_n = pmmp1;
     for (int ell = m + 2; ell <= n; ++ell) {
-        AccReal p_np1 =
-            (x * (2 * ell - 1) * p_n - (ell + m - 1) * p_nm1)
-            / static_cast<AccReal>(ell - m);
+        AccReal p_np1 = (x * (2 * ell - 1) * p_n - (ell + m - 1) * p_nm1)
+                        / static_cast<AccReal>(ell - m);
         p_nm1 = p_n;
         p_n = p_np1;
     }

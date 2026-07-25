@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "atomiverse/core/frame_schema.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/atom_sort.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 

@@ -181,8 +181,8 @@ bool run_polarizability() {
         for (int b = 0; b < a; ++b) {
             const double off = std::fabs(alpha(a, b));
             if (off > 1e-4) {
-                std::fprintf(stderr,
-                             "FAIL: alpha[%d%d]=%.3e not ~0 (C2v)\n", a, b, off);
+                std::fprintf(stderr, "FAIL: alpha[%d%d]=%.3e not ~0 (C2v)\n", a,
+                             b, off);
                 return false;
             }
         }

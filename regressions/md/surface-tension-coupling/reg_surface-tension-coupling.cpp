@@ -45,12 +45,12 @@ int main() {
     const double a_lat = 5.1;
     const int n_cells = 3; // 108 atoms
     const double T = 100.0;
-    const double P_n = 0.0;      // eV/Å³
-    const double gamma = 0.001;  // eV/Å²
+    const double P_n = 0.0;     // eV/Å³
+    const double gamma = 0.001; // eV/Å²
     const int n_surf = 2;
-    const double dt = 1.0;       // fs
-    const double tau_T = 50.0;   // fs
-    const double tau_P = 500.0;  // fs
+    const double dt = 1.0;      // fs
+    const double tau_T = 50.0;  // fs
+    const double tau_P = 500.0; // fs
     const int n_steps = 200;
 
     const int n = n_cells * n_cells * n_cells * 4;
@@ -62,12 +62,9 @@ int main() {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.span(ATV::kAtom_x)[idx] =
-                        (ix + basis[b][0]) * a_lat;
-                    frame.span(ATV::kAtom_y)[idx] =
-                        (iy + basis[b][1]) * a_lat;
-                    frame.span(ATV::kAtom_z)[idx] =
-                        (iz + basis[b][2]) * a_lat;
+                    frame.span(ATV::kAtom_x)[idx] = (ix + basis[b][0]) * a_lat;
+                    frame.span(ATV::kAtom_y)[idx] = (iy + basis[b][1]) * a_lat;
+                    frame.span(ATV::kAtom_z)[idx] = (iz + basis[b][2]) * a_lat;
                     frame.span(ATV::kAtom_mass)[idx] = 39.948;
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
@@ -83,8 +80,8 @@ int main() {
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
-    sim.set_integrator(cpu::md::SurfaceTensionNPT{
-        T, tau_T, P_n, gamma, tau_P, dt, n_surf});
+    sim.set_integrator(
+        cpu::md::SurfaceTensionNPT{T, tau_T, P_n, gamma, tau_P, dt, n_surf});
     sim.add(cpu::md::InitVelocity{T, 777u});
     sim.add(cpu::md::Virial{});
     sim.enable_timing(false);
@@ -115,8 +112,7 @@ int main() {
 
     // Gate A4: finite positive volume, not runaway
     if (!(V1 > 0.0) || !(V1 < 10.0 * V0) || !std::isfinite(V1)) {
-        std::printf("FAIL: volume not in safe window V=%.3e V0=%.3e\n", V1,
-                    V0);
+        std::printf("FAIL: volume not in safe window V=%.3e V0=%.3e\n", V1, V0);
         ok = false;
     }
 

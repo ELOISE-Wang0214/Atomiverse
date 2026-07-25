@@ -17,9 +17,9 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/dynamics/md.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/observe/rdf.h"
 
 #include "cpu/driver_test_helpers.h"

@@ -76,8 +76,8 @@ TEST(DipoleElectrodeJoint, AlphaZeroMatchesConstPotBO) {
 
 TEST(DipoleElectrodeJoint, PolarizableCouplesAndConverges) {
     auto f = toy_cell();
-    cpu::md::DipoleElectrodeJoint joint(
-        2.0, /*alpha=*/{0.0, 0.0, 0.0, 1.0, 1.5});
+    cpu::md::DipoleElectrodeJoint joint(2.0,
+                                        /*alpha=*/{0.0, 0.0, 0.0, 1.0, 1.5});
     joint.add_electrode(1, 0.0);
     joint.add_electrode(2, 1.0);
     joint.thole_a = 0.39;

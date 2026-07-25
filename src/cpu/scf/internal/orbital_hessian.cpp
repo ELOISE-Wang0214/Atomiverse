@@ -74,8 +74,7 @@ OrbitalHessian::OrbitalHessian(const SlaterDeterminant& det,
             "OrbitalHessian: no occupied orbitals — empty determinant");
     if (nv_ == 0)
         throw std::invalid_argument(
-            "OrbitalHessian: no virtual orbitals (n_occ="
-            + std::to_string(no_)
+            "OrbitalHessian: no virtual orbitals (n_occ=" + std::to_string(no_)
             + ", n_virt=0) — there are no occ→virt rotations, the orbital "
               "Hessian is undefined (e.g. He/STO-3G: one basis function, "
               "one doubly occupied orbital)");
@@ -112,12 +111,10 @@ OrbitalHessian::OrbitalHessian(const SlaterDeterminant& det,
     oovv_ = transform_block_(eri_ao, Co, Co, Cv, Cv);
 }
 
-xt::xtensor<double, 4>
-OrbitalHessian::transform_block_(const xt::xtensor<double, 4>& eri_ao,
-                                 const xt::xtensor<double, 2>& C0,
-                                 const xt::xtensor<double, 2>& C1,
-                                 const xt::xtensor<double, 2>& C2,
-                                 const xt::xtensor<double, 2>& C3) {
+xt::xtensor<double, 4> OrbitalHessian::transform_block_(
+    const xt::xtensor<double, 4>& eri_ao, const xt::xtensor<double, 2>& C0,
+    const xt::xtensor<double, 2>& C1, const xt::xtensor<double, 2>& C2,
+    const xt::xtensor<double, 2>& C3) {
     // Four rounds, each transforming the (current) last axis and rotating it
     // to the front: after transforming with C3, C2, C1, C0 the axis order is
     // back to chemist [p, q, r, s]. Same reshape/dot pattern as the
@@ -128,8 +125,8 @@ OrbitalHessian::transform_block_(const xt::xtensor<double, 4>& eri_ao,
         const auto sh = cur.shape();
         auto flat = xt::reshape_view(cur, {sh[0] * sh[1] * sh[2], sh[3]});
         xt::xtensor<double, 2> h = xt::linalg::dot(flat, *Cs[round]);
-        xt::xtensor<double, 4> next = xt::reshape_view(
-            h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
+        xt::xtensor<double, 4> next =
+            xt::reshape_view(h, {sh[0], sh[1], sh[2], Cs[round]->shape()[1]});
         cur = xt::transpose(next, {3, 0, 1, 2});
     }
     return cur;
@@ -137,10 +134,9 @@ OrbitalHessian::transform_block_(const xt::xtensor<double, 4>& eri_ao,
 
 RealVector OrbitalHessian::sigma_plus(const RealVector& v, Channel ch) const {
     if (static_cast<int>(v.size()) != n_ov())
-        throw std::invalid_argument(
-            "OrbitalHessian::sigma_plus: v.size() = "
-            + std::to_string(v.size()) + " != n_ov = "
-            + std::to_string(n_ov()));
+        throw std::invalid_argument("OrbitalHessian::sigma_plus: v.size() = "
+                                    + std::to_string(v.size())
+                                    + " != n_ov = " + std::to_string(n_ov()));
     const double cw = coulomb_weight(ch);
     RealVector y = xt::zeros<double>({v.size()});
     for (int a = 0; a < nv_; ++a) {
@@ -164,10 +160,9 @@ RealVector OrbitalHessian::sigma_plus(const RealVector& v, Channel ch) const {
 RealVector OrbitalHessian::sigma_minus(const RealVector& v, Channel ch) const {
     (void)ch; // (A − B) is channel-independent for real closed-shell orbitals
     if (static_cast<int>(v.size()) != n_ov())
-        throw std::invalid_argument(
-            "OrbitalHessian::sigma_minus: v.size() = "
-            + std::to_string(v.size()) + " != n_ov = "
-            + std::to_string(n_ov()));
+        throw std::invalid_argument("OrbitalHessian::sigma_minus: v.size() = "
+                                    + std::to_string(v.size())
+                                    + " != n_ov = " + std::to_string(n_ov()));
     RealVector y = xt::zeros<double>({v.size()});
     for (int a = 0; a < nv_; ++a) {
         for (int i = 0; i < no_; ++i) {
@@ -257,8 +252,8 @@ RealMatrix OrbitalHessian::dense_B(Channel ch, double alpha_hf) const {
                     const int p = a * no_ + i;
                     const int q = b * no_ + j;
                     // ovov_(a,i,b,j)=(ai|bj); ovov_(a,j,b,i)=(aj|bi).
-                    B(p, q) = coul * ovov_(a, i, b, j)
-                              - alpha_hf * ovov_(a, j, b, i);
+                    B(p, q) =
+                        coul * ovov_(a, i, b, j) - alpha_hf * ovov_(a, j, b, i);
                 }
     return B;
 }
@@ -297,7 +292,8 @@ DirectRpaResult OrbitalHessian::direct_rpa(Channel ch, double alpha_hf) const {
         if (s(0) <= kAmBFloor)
             throw std::runtime_error(
                 "OrbitalHessian::direct_rpa: (A - B) is not positive definite "
-                "(lowest eigenvalue = " + std::to_string(s(0))
+                "(lowest eigenvalue = "
+                + std::to_string(s(0))
                 + " Ha) — dRPA reduction undefined (no fallback)");
     }
     const RealMatrix T =

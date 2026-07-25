@@ -78,13 +78,15 @@ int main() {
     ok = ok && std::fabs(mp4.e_corr - want_e_corr) < tol;
     ok = ok && std::fabs(mp4.e_tot - want_e_tot) < tol;
     ok = ok && std::fabs(mp4.e_tot - (e_hf + mp4.e_corr)) < 1e-12;
-    ok = ok &&
-         std::fabs(mp4.e_corr -
-                   (mp4.e_corr_mp2 + mp4.e_corr_mp3 + mp4.e_corr_mp4)) < 1e-12;
-    ok = ok &&
-         std::fabs(mp4.e_corr_mp4 -
-                   (mp4.e_corr_s + mp4.e_corr_d + mp4.e_corr_t + mp4.e_corr_q)) <
-             1e-12;
+    ok = ok
+         && std::fabs(mp4.e_corr
+                      - (mp4.e_corr_mp2 + mp4.e_corr_mp3 + mp4.e_corr_mp4))
+                < 1e-12;
+    ok = ok
+         && std::fabs(
+                mp4.e_corr_mp4
+                - (mp4.e_corr_s + mp4.e_corr_d + mp4.e_corr_t + mp4.e_corr_q))
+                < 1e-12;
     ok = ok && mp4.frozen == 0;
     ok = ok && mp4.e_corr < 0.0;
     // MP4 more negative than MP3 on this system.

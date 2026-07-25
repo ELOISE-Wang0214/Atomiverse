@@ -1,7 +1,7 @@
 /// @file test_ewald.cpp
-#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/frame/box.h"
 #include "atomiverse/cpu/planewave/internal/ewald.h"
 #include <cmath>
 #include <gtest/gtest.h>

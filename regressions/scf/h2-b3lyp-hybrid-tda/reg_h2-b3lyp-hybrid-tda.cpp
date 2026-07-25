@@ -47,10 +47,10 @@ int main() {
     constexpr double kERksHa = -1.165418410673; // Ha
     constexpr double kS1Ev = 25.928364822972;   // eV (primary gate)
     constexpr double kS1Ha = 0.952849832367;    // Ha (sanity)
-    constexpr double kF = 1.100141468478;       // length-gauge oscillator strength
-    constexpr double kTolS1Ev = 0.05;           // eV — hybrid kernel e2e band
-    constexpr double kTolEHa = 1e-4;            // Ha — ground-state sanity
-    constexpr double kTolF = 0.15;              // generous f band
+    constexpr double kF = 1.100141468478; // length-gauge oscillator strength
+    constexpr double kTolS1Ev = 0.05;     // eV — hybrid kernel e2e band
+    constexpr double kTolEHa = 1e-4;      // Ha — ground-state sanity
+    constexpr double kTolF = 0.15;        // generous f band
 
     cpu::scf::RKS rks(cpu::scf::XCType::B3LYP);
     rks.basis = cpu::scf::BasisSet::STO3G;
@@ -91,7 +91,8 @@ int main() {
 
     if (!check("S1 [eV]", s1_ev, kS1Ev, kTolS1Ev))
         return 1;
-    if (!check("S1 [Ha] (consistency)", s1_ha, kS1Ha, kTolS1Ev / units::kHartreeInEv))
+    if (!check("S1 [Ha] (consistency)", s1_ha, kS1Ha,
+               kTolS1Ev / units::kHartreeInEv))
         return 1;
     if (!es.oscillator_strength.empty()) {
         if (!check("f (length gauge)", es.oscillator_strength[0], kF, kTolF))

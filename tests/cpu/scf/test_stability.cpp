@@ -137,9 +137,8 @@ Synthetic make_synthetic(int n, int no, std::uint64_t seed) {
                 for (int l = 0; l < n; ++l)
                     eri(i, j, k, l) =
                         (raw(i, j, k, l) + raw(j, i, k, l) + raw(i, j, l, k)
-                         + raw(j, i, l, k) + raw(k, l, i, j)
-                         + raw(l, k, i, j) + raw(k, l, j, i)
-                         + raw(l, k, j, i))
+                         + raw(j, i, l, k) + raw(k, l, i, j) + raw(l, k, i, j)
+                         + raw(k, l, j, i) + raw(l, k, j, i))
                         / 8.0;
     return {SlaterDeterminant{C, eps, occ, no}, eri};
 }

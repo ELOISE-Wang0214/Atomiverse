@@ -39,7 +39,8 @@ cpu::Frame make_lj_system(int n_side, double density) {
                 frame.span(kAtom_y)[idx] = (double(iy) + double(0.5)) * spacing;
                 frame.span(kAtom_z)[idx] = (double(iz) + double(0.5)) * spacing;
                 frame.span(kAtom_mass)[idx] = double(1.0);
-                frame.span(kAtom_type)[idx] = 18; // Ar (valid Z; molrs XYZ writer rejects Z=0)
+                frame.span(kAtom_type)[idx] =
+                    18; // Ar (valid Z; molrs XYZ writer rejects Z=0)
                 idx++;
             }
     frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
@@ -89,9 +90,8 @@ cpu::Frame make_lj_system(int n_side, double density) {
 /// `Driver` over `md::Phase`, which is what makes an `md::Phase`-bound component
 /// dispatchable in it and what a cross-workflow misbind is checked against.
 TEST(MDTaxonomy, IsALoopNodeOverMDPhase) {
-    static_assert(
-        std::is_base_of_v<cuda::Driver<ATV::md::Phase>, cuda::md::MD>,
-        "cuda::md::MD must be a Driver over md::Phase");
+    static_assert(std::is_base_of_v<cuda::Driver<ATV::md::Phase>, cuda::md::MD>,
+                  "cuda::md::MD must be a Driver over md::Phase");
     EXPECT_TRUE(
         (std::is_base_of_v<cuda::Driver<ATV::md::Phase>, cuda::md::MD>));
 }

@@ -69,7 +69,12 @@
 #include <vector>
 
 #include "atomiverse/core/device.h"
+#include "atomiverse/core/driver_template.h"
+#include "atomiverse/core/iteration_status.h"
 #include "atomiverse/core/precision.h"
+#include "atomiverse/core/role.h"
+#include "atomiverse/core/stage.h"
+#include "atomiverse/core/verdict.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
@@ -82,11 +87,6 @@
 #include "atomiverse/cpu/driver/dof.h"
 #include "atomiverse/cpu/driver/outcome_policy.h"
 #include "atomiverse/cpu/record/thermo.h"
-#include "atomiverse/core/role.h"
-#include "atomiverse/core/driver_template.h"
-#include "atomiverse/core/iteration_status.h"
-#include "atomiverse/core/verdict.h"
-#include "atomiverse/core/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -173,7 +173,7 @@ struct PhaseTraits<ATV::scf::Phase> {
 /// @brief CPU-backend loop node — the one class every CPU preset derives from.
 template <typename PhaseEnum>
 class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
-                  public cpu::DriverNode {
+               public cpu::DriverNode {
   public:
     using Base = ATV::Driver<PhaseEnum, cpu::device_tag>;
     using Traits = PhaseTraits<PhaseEnum>;
@@ -675,12 +675,15 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
     }
 
     /// @brief `cpu::DriverNode` — run this loop nested on a borrowed Context/Frame.
-    int run_nested_erased(cpu::Context& ctx, cpu::Frame& f, int budget) override {
+    int run_nested_erased(cpu::Context& ctx, cpu::Frame& f,
+                          int budget) override {
         return run_nested(ctx, f, budget);
     }
 
     /// @brief `cpu::DriverNode` — destroy components on the parent Runtime.
-    void destroy_on(cpu::Runtime& rt) override { rt.destroy_plan(this->plan()); }
+    void destroy_on(cpu::Runtime& rt) override {
+        rt.destroy_plan(this->plan());
+    }
 
     /// @brief Default nested budget (presets may override; methods set max_iter in 04b).
     int default_budget() const override { return 0; }

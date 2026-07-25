@@ -24,9 +24,9 @@ struct XcOnGrid {
 
 /// @brief Spin-resolved XC result (UKS / LSD).
 struct XcOnGridSpin {
-    double e_xc = 0.0;           ///< total XC energy [Hartree].
-    std::vector<double> vxc_a;   ///< dE_xc/dρ_α on the grid.
-    std::vector<double> vxc_b;   ///< dE_xc/dρ_β on the grid.
+    double e_xc = 0.0;         ///< total XC energy [Hartree].
+    std::vector<double> vxc_a; ///< dE_xc/dρ_α on the grid.
+    std::vector<double> vxc_b; ///< dE_xc/dρ_β on the grid.
 };
 
 /// @brief Evaluate the PADE (GTH Padé) LDA XC energy and potential on the grid.

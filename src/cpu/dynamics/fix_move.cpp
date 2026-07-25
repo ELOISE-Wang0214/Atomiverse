@@ -22,7 +22,8 @@ void FixMove::build(const BuildContext& ctx) {
     auto z = ctx.frame.span(kAtom_z);
     const int n = ctx.frame.nlocal();
     for (int i = 0; i < n; ++i) {
-        if (static_cast<int>(type[i]) != type_id) continue;
+        if (static_cast<int>(type[i]) != type_id)
+            continue;
         atoms_.push_back(i);
         x0_.push_back(static_cast<double>(x[i]));
         y0_.push_back(static_cast<double>(y[i]));
@@ -35,7 +36,8 @@ void FixMove::build(const BuildContext& ctx) {
 }
 
 void FixMove::launch(const LaunchContext& ctx) {
-    if (!origin_set_) return;
+    if (!origin_set_)
+        return;
     auto x = ctx.frame.span(kAtom_x);
     auto y = ctx.frame.span(kAtom_y);
     auto z = ctx.frame.span(kAtom_z);
@@ -57,7 +59,8 @@ void FixMove::launch(const LaunchContext& ctx) {
     // initial_integrate: impose r = r0 + v * (step - step0) * dt
     // LaunchContext step is the MD step index.
     const int step = ctx.step;
-    if (step0_ == 0 && step > 0) step0_ = 0; // keep origin at build geometry
+    if (step0_ == 0 && step > 0)
+        step0_ = 0; // keep origin at build geometry
     const double t = static_cast<double>(step) * dt;
     for (std::size_t k = 0; k < atoms_.size(); ++k) {
         const int i = atoms_[k];

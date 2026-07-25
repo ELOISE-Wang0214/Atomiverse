@@ -89,8 +89,8 @@ class Pcm {
     /// @param model         Continuum model (default C-PCM).
     /// @throws std::invalid_argument on empty atoms, non-positive ε, unknown
     ///         Lebedev order, or unsupported element.
-    Pcm(std::vector<native::Atom> atoms, double eps,
-        double radii_scale = 1.2, double x = 0.0, int lebedev_n = 302,
+    Pcm(std::vector<native::Atom> atoms, double eps, double radii_scale = 1.2,
+        double x = 0.0, int lebedev_n = 302,
         SolventModel model = SolventModel::CPCM);
 
     /// @brief Generate tesserae, factor the PCM kernel, and cache unit-charge

@@ -68,9 +68,9 @@ int main() {
     constexpr double kZval = 4.0;    // Si valence charge (ONCV UPF)
 
     // Pins / tolerances (REFERENCE.md).
-    constexpr double kIonTol = 1e-9;     // ionic bookkeeping is exact
-    constexpr double kSymTol = 0.05;     // distance to {0, Q/2} lattice [e]
-    constexpr double kBornTol = 0.5;     // |Z*| upper bound [e]
+    constexpr double kIonTol = 1e-9; // ionic bookkeeping is exact
+    constexpr double kSymTol = 0.05; // distance to {0, Q/2} lattice [e]
+    constexpr double kBornTol = 0.5; // |Z*| upper bound [e]
 
     PW method;
     method.upf_path = ATV_PW_UPF_PATH;
@@ -94,9 +94,9 @@ int main() {
     }
     std::printf("ideal Si: E=%.6f Ry\n", r0.energy_ry);
     for (int d = 0; d < 3; ++d) {
-        std::printf(
-            "  dir %d: phase=%+.6f  p_el=%+.6f  p_ion=%+.6f  p=%+.6f\n", d,
-            r0.phase_el[d], r0.p_el_frac[d], r0.p_ion_frac[d], r0.p_frac[d]);
+        std::printf("  dir %d: phase=%+.6f  p_el=%+.6f  p_ion=%+.6f  p=%+.6f\n",
+                    d, r0.phase_el[d], r0.p_el_frac[d], r0.p_ion_frac[d],
+                    r0.p_frac[d]);
         // 4a. Ionic part: Z_val * (0 + 1/4) = 1 exactly, per direction.
         if (std::fabs(r0.p_ion_frac[d] - 1.0) > kIonTol) {
             std::printf("FAIL: p_ion[%d]=%.12f want 1.0 tol %g\n", d,
@@ -105,8 +105,7 @@ int main() {
         }
         // 4b. Centrosymmetric pin: p on the {0, Q/2} lattice (Spaldin 2012)
         //     — distance to the nearest multiple of 0.5 below kSymTol.
-        const double dist =
-            std::fabs(wrap_centered(r0.p_frac[d], 0.5));
+        const double dist = std::fabs(wrap_centered(r0.p_frac[d], 0.5));
         if (dist > kSymTol) {
             std::printf(
                 "FAIL: centrosymmetry: p[%d]=%.6f is %.4f from the {0,1/2} "
@@ -143,10 +142,9 @@ int main() {
     //     dead electronic term shows up as |Z*| ~ 4 or 8.
     const double dp = wrap_centered(r1.p_frac[2] - r0.p_frac[2], 2.0);
     const double z_born = dp / kDelta;
-    std::printf(
-        "displaced Si: E=%.6f Ry  p3 %.6f -> %.6f  Delta p3=%+.6f  "
-        "Z*=%+.4f\n",
-        r1.energy_ry, r0.p_frac[2], r1.p_frac[2], dp, z_born);
+    std::printf("displaced Si: E=%.6f Ry  p3 %.6f -> %.6f  Delta p3=%+.6f  "
+                "Z*=%+.4f\n",
+                r1.energy_ry, r0.p_frac[2], r1.p_frac[2], dp, z_born);
     if (std::fabs(z_born) > kBornTol) {
         std::printf("FAIL: |Z*|=%.4f exceeds %.2f (ASR: Z*(elemental)=0)\n",
                     std::fabs(z_born), kBornTol);

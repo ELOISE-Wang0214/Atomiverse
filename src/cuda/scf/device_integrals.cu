@@ -140,8 +140,8 @@ compute_1e_kernel(prec_t* S, prec_t* T, prec_t* V,
                 work_t Px = (alpha_p * Ax + alpha_q * Bx) * inv_gamma;
                 work_t Py = (alpha_p * Ay + alpha_q * By) * inv_gamma;
                 work_t Pz = (alpha_p * Az + alpha_q * Bz) * inv_gamma;
-                work_t v_prefactor =
-                    c_pq * work_t(2) * work_t(ATV::units::pi) * inv_gamma * K_AB;
+                work_t v_prefactor = c_pq * work_t(2) * work_t(ATV::units::pi)
+                                     * inv_gamma * K_AB;
 
                 for (int a = 0; a < natm; ++a) {
                     work_t Cx = static_cast<work_t>(atom_pos[a * 3 + 0]);

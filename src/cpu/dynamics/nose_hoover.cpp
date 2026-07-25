@@ -4,10 +4,10 @@
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/communication/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
-#include "atomiverse/core/stage.h"
 
 #include <algorithm>
 #include <cmath>

@@ -10,13 +10,13 @@
 #include <type_traits>
 #include <vector>
 
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/component/mover.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/montecarlo/mc.h"
 #include "atomiverse/cpu/montecarlo/transaction.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

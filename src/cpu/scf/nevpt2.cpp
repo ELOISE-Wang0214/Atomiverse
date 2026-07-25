@@ -23,13 +23,14 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-NEVPT2Result nevpt2_energy(const IntegralPack& ints, const SlaterDeterminant& det,
-                           double e_scf_ha, int ncas, int nelecas,
-                           double orb_tol, int max_macro) {
+NEVPT2Result nevpt2_energy(const IntegralPack& ints,
+                           const SlaterDeterminant& det, double e_scf_ha,
+                           int ncas, int nelecas, double orb_tol,
+                           int max_macro) {
     using Spin = SlaterDeterminant::Spin;
     if (ints.ERI.size() == 0) {
-        throw std::invalid_argument(
-            "nevpt2_energy: ERI is not materialized; call with compute_eri=true.");
+        throw std::invalid_argument("nevpt2_energy: ERI is not materialized; "
+                                    "call with compute_eri=true.");
     }
     if (det.n_electrons(Spin::alpha) != det.n_electrons(Spin::beta)) {
         throw std::invalid_argument(
@@ -37,9 +38,8 @@ NEVPT2Result nevpt2_energy(const IntegralPack& ints, const SlaterDeterminant& de
             "n_beta).");
     }
     if (ncas <= 0) {
-        throw std::invalid_argument(
-            "nevpt2_energy: ncas must be positive (got " + std::to_string(ncas)
-            + ")");
+        throw std::invalid_argument("nevpt2_energy: ncas must be positive (got "
+                                    + std::to_string(ncas) + ")");
     }
     if (nelecas < 0 || (nelecas % 2) != 0) {
         throw std::invalid_argument(
@@ -56,9 +56,9 @@ NEVPT2Result nevpt2_energy(const IntegralPack& ints, const SlaterDeterminant& de
     const int ncore = cas.ncore;
     const int nvirt = n_mo - ncore - cas.ncas;
     if (nvirt < 0) {
-        throw std::invalid_argument(
-            "nevpt2_energy: nvirt=" + std::to_string(nvirt)
-            + " is negative (ncore+ncas exceeds n_mo)");
+        throw std::invalid_argument("nevpt2_energy: nvirt="
+                                    + std::to_string(nvirt)
+                                    + " is negative (ncore+ncas exceeds n_mo)");
     }
 
     NEVPT2Result out;
@@ -104,7 +104,8 @@ NEVPT2Result nevpt2_energy(const IntegralPack& ints, const SlaterDeterminant& de
     // throw so the caller cannot confuse a stub zero with a real PT2 energy.
     throw std::invalid_argument(
         "nevpt2_energy: SC-NEVPT2 with non-empty core/virtual space "
-        "(ncore=" + std::to_string(ncore) + ", nvirt=" + std::to_string(nvirt)
+        "(ncore="
+        + std::to_string(ncore) + ", nvirt=" + std::to_string(nvirt)
         + ") requires 3-RDM Dyall intermediates not yet on the product path. "
           "Full-valence CAS (ncore=nvirt=0) is supported (e_corr ≡ 0).");
 }

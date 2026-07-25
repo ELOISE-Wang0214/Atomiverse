@@ -111,7 +111,8 @@ class ConstPotCG : public cpu::Component {
     double pair_b_(double r, double q, double eta_i) const;
 
     /// Jacobi-PCG for dense SPD \(A x = rhs\). Returns iteration count.
-    int pcg_solve_(const std::vector<double>& rhs, std::vector<double>& x) const;
+    int pcg_solve_(const std::vector<double>& rhs,
+                   std::vector<double>& x) const;
 };
 
 } // namespace md

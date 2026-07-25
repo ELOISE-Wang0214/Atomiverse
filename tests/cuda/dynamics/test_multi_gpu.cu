@@ -609,9 +609,12 @@ TEST(MultiGpu, LjForceParityVsSingleGpu) {
         maxabs = std::max(maxabs, std::abs(ref.span(kAtom_fx)[i]));
     EXPECT_GT(maxabs, 1e-3) << "reference forces should be nonzero";
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 1e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 1e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 1e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 1e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 1e-3)
+            << "atom " << i;
     }
 }
 
@@ -685,9 +688,12 @@ TEST(MultiGpu, LjForceParityDims2Overlap) {
         maxabs = std::max(maxabs, std::abs(ref.span(kAtom_fx)[i]));
     EXPECT_GT(maxabs, 1e-3) << "reference forces should be nonzero";
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 2e-3)
+            << "atom " << i;
     }
 }
 
@@ -732,8 +738,8 @@ TEST(MultiGpu, LjForceParityNlistVsSingleGpu) {
     double maxabs = 0, maxdiff_bf = 0;
     for (int i = 0; i < n; ++i) {
         maxabs = std::max(maxabs, std::abs(ref.span(kAtom_fx)[i]));
-        maxdiff_bf =
-            std::max(maxdiff_bf, std::abs(ref.span(kAtom_fx)[i] - bf.span(kAtom_fx)[i]));
+        maxdiff_bf = std::max(
+            maxdiff_bf, std::abs(ref.span(kAtom_fx)[i] - bf.span(kAtom_fx)[i]));
     }
     EXPECT_GT(maxabs, 1e-2) << "reference forces should be nonzero";
     EXPECT_LT(maxdiff_bf, 5e-2) << "cluster path should match brute force";
@@ -751,9 +757,12 @@ TEST(MultiGpu, LjForceParityNlistVsSingleGpu) {
     mg.gather_forces(mf);
 
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 2e-3)
+            << "atom " << i;
     }
 }
 
@@ -803,9 +812,12 @@ TEST(MultiGpu, LjForceParityVsSingleGpu4Way) {
     mg.gather_forces(mf);
 
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 1e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 1e-3) << "atom " << i;
-        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fx)[i], ref.span(kAtom_fx)[i], 1e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fy)[i], ref.span(kAtom_fy)[i], 1e-3)
+            << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_fz)[i], ref.span(kAtom_fz)[i], 1e-3)
+            << "atom " << i;
     }
 }
 
@@ -849,7 +861,8 @@ TEST(MultiGpu, NveTrajectoryParity) {
     mg.gather(mf);
 
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 5e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 5e-3)
+            << "atom " << i;
         EXPECT_NEAR(mf.span(kAtom_y)[i], ref.span(kAtom_y)[i], 5e-3);
         EXPECT_NEAR(mf.span(kAtom_z)[i], ref.span(kAtom_z)[i], 5e-3);
     }
@@ -894,7 +907,8 @@ TEST(MultiGpu, NveTrajectoryParityNlist) {
     mg.gather(mf);
 
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 5e-3) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 5e-3)
+            << "atom " << i;
         EXPECT_NEAR(mf.span(kAtom_y)[i], ref.span(kAtom_y)[i], 5e-3);
         EXPECT_NEAR(mf.span(kAtom_z)[i], ref.span(kAtom_z)[i], 5e-3);
     }
@@ -937,7 +951,8 @@ TEST(MultiGpu, MigrateReassignsOwners) {
     const auto& dd = mg.domain();
     std::vector<int> expect(2, 0);
     for (int i = 0; i < n; ++i)
-        expect[dd.owner_of(g.span(kAtom_x)[i] + 6.0, g.span(kAtom_y)[i], g.span(kAtom_z)[i])]++;
+        expect[dd.owner_of(g.span(kAtom_x)[i] + 6.0, g.span(kAtom_y)[i],
+                           g.span(kAtom_z)[i])]++;
     int total = 0;
     for (int s = 0; s < 2; ++s) {
         EXPECT_EQ(mg.n_local(s), expect[s]) << "slab " << s;
@@ -951,11 +966,16 @@ TEST(MultiGpu, MigrateReassignsOwners) {
         out.span(kAtom_tag)[i] = i;
     mg.gather(out);
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(out.span(kAtom_x)[i], g.span(kAtom_x)[i] + 6.0, 2e-3) << "atom " << i;
-        EXPECT_NEAR(out.span(kAtom_y)[i], g.span(kAtom_y)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(out.span(kAtom_z)[i], g.span(kAtom_z)[i], 2e-3) << "atom " << i;
-        EXPECT_NEAR(out.span(kAtom_vx)[i], g.span(kAtom_vx)[i], 1e-4) << "atom " << i;
-        EXPECT_NEAR(out.span(kAtom_vz)[i], g.span(kAtom_vz)[i], 1e-4) << "atom " << i;
+        EXPECT_NEAR(out.span(kAtom_x)[i], g.span(kAtom_x)[i] + 6.0, 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(out.span(kAtom_y)[i], g.span(kAtom_y)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(out.span(kAtom_z)[i], g.span(kAtom_z)[i], 2e-3)
+            << "atom " << i;
+        EXPECT_NEAR(out.span(kAtom_vx)[i], g.span(kAtom_vx)[i], 1e-4)
+            << "atom " << i;
+        EXPECT_NEAR(out.span(kAtom_vz)[i], g.span(kAtom_vz)[i], 1e-4)
+            << "atom " << i;
     }
 }
 
@@ -1000,7 +1020,8 @@ TEST(MultiGpu, NveMigrationParity) {
     mg.gather(mf);
 
     for (int i = 0; i < n; ++i) {
-        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 2e-2) << "atom " << i;
+        EXPECT_NEAR(mf.span(kAtom_x)[i], ref.span(kAtom_x)[i], 2e-2)
+            << "atom " << i;
         EXPECT_NEAR(mf.span(kAtom_y)[i], ref.span(kAtom_y)[i], 2e-2);
         EXPECT_NEAR(mf.span(kAtom_z)[i], ref.span(kAtom_z)[i], 2e-2);
     }
@@ -1016,7 +1037,8 @@ TEST(MultiGpu, EachAtomOnOwnerSlab) {
     const auto& dd = mg.domain();
     std::vector<int> expect(mg.count(), 0);
     for (int i = 0; i < g.nlocal(); ++i)
-        expect[dd.owner_of(g.span(kAtom_x)[i], g.span(kAtom_y)[i], g.span(kAtom_z)[i])]++;
+        expect[dd.owner_of(g.span(kAtom_x)[i], g.span(kAtom_y)[i],
+                           g.span(kAtom_z)[i])]++;
     for (int s = 0; s < mg.count(); ++s)
         EXPECT_EQ(mg.n_local(s), expect[s]) << "slab " << s;
 }

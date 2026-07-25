@@ -181,8 +181,7 @@ void DihedralCharmm::compute(const LaunchContext& ctx) {
 
             // dE/dφ = −K n sin(nφ − δ)
             const double dE_dphi = -K * static_cast<double>(n) * sarg;
-            const double d2E_dphi2 =
-                -K * static_cast<double>(n * n) * carg;
+            const double d2E_dphi2 = -K * static_cast<double>(n * n) * carg;
             const double dV_dcos = dihedral_geom::dV_dcos_from_dE_dphi(
                 dE_dphi, g.sin_phi, g.cos_phi, d2E_dphi2);
 

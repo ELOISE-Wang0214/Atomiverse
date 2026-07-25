@@ -29,12 +29,12 @@ cpu::Frame diamond_conventional(double a, int n_cell) {
         for (int iy = 0; iy < n_cell; ++iy)
             for (int iz = 0; iz < n_cell; ++iz)
                 for (int k = 0; k < 8; ++k) {
-                    f.span(kAtom_x)[idx] = static_cast<StorageReal>(
-                        (double(ix) + frac[k][0]) * a);
-                    f.span(kAtom_y)[idx] = static_cast<StorageReal>(
-                        (double(iy) + frac[k][1]) * a);
-                    f.span(kAtom_z)[idx] = static_cast<StorageReal>(
-                        (double(iz) + frac[k][2]) * a);
+                    f.span(kAtom_x)[idx] =
+                        static_cast<StorageReal>((double(ix) + frac[k][0]) * a);
+                    f.span(kAtom_y)[idx] =
+                        static_cast<StorageReal>((double(iy) + frac[k][1]) * a);
+                    f.span(kAtom_z)[idx] =
+                        static_cast<StorageReal>((double(iz) + frac[k][2]) * a);
                     f.span(kAtom_type)[idx] = 14;
                     f.span(kAtom_mass)[idx] = 28.0855;
                     f.span(kAtom_tag)[idx] = static_cast<TagInt>(idx + 1);
@@ -49,8 +49,8 @@ cpu::Frame diamond_conventional(double a, int n_cell) {
 int main() {
     // Offline pin — see REFERENCE.md.
     // 2×2×2 conventional (64 atoms): L = 10.862 Å > 2 × SW cutoff.
-    constexpr double kA0 = 5.431;         // Å
-    constexpr int kNCell = 2;             // conventional repeats
+    constexpr double kA0 = 5.431; // Å
+    constexpr int kNCell = 2;     // conventional repeats
     constexpr int kNAtoms = 8 * kNCell * kNCell * kNCell;
     constexpr int kNModes = 3 * kNAtoms;  // 192
     constexpr double kAcousticTol = 30.0; // cm^-1
@@ -91,10 +91,9 @@ int main() {
             max_ac = w;
     }
     if (!(max_ac < kAcousticTol)) {
-        std::printf(
-            "FAIL: acoustic |ω|_max got=%.4f cm^-1 want < %.1f cm^-1 "
-            "(Γ acoustic sum rule; see REFERENCE.md)\n",
-            max_ac, kAcousticTol);
+        std::printf("FAIL: acoustic |ω|_max got=%.4f cm^-1 want < %.1f cm^-1 "
+                    "(Γ acoustic sum rule; see REFERENCE.md)\n",
+                    max_ac, kAcousticTol);
         for (int k = 0; k < 6; ++k)
             std::printf("  ω[%d]=%.4f\n", k, r.frequencies(k));
         return 1;
@@ -109,9 +108,8 @@ int main() {
         return 1;
     }
 
-    std::printf(
-        "PASS: FD phonon supercell Si SW  a=%.3f A  n_cell=%d  N=%d  "
-        "acoustic|ω|_max=%.3f cm^-1  ω_max=%.3f cm^-1  modes=%d\n",
-        kA0, kNCell, kNAtoms, max_ac, w_max, kNModes);
+    std::printf("PASS: FD phonon supercell Si SW  a=%.3f A  n_cell=%d  N=%d  "
+                "acoustic|ω|_max=%.3f cm^-1  ω_max=%.3f cm^-1  modes=%d\n",
+                kA0, kNCell, kNAtoms, max_ac, w_max, kNModes);
     return 0;
 }

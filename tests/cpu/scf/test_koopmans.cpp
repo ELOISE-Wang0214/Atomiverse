@@ -31,7 +31,8 @@ TEST(Koopmans, HomoNegative) {
     ASSERT_TRUE(rhf.converged());
     using Spin = cpu::scf::SlaterDeterminant::Spin;
     const auto& det = rhf.determinant();
-    EXPECT_LT(det.orbital_energies(Spin::alpha)(det.n_electrons(Spin::alpha) - 1),
-              0.0);
+    EXPECT_LT(
+        det.orbital_energies(Spin::alpha)(det.n_electrons(Spin::alpha) - 1),
+        0.0);
 }
 #endif

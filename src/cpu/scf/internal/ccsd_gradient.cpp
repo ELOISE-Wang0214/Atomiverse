@@ -61,15 +61,15 @@ double ccsd_tot_ha(const Frame& frame, BasisSet basis, double scf_tol) {
 
 } // namespace
 
-GradientResult ccsd_analytic_forces(const Frame& frame, const IntegralPack& pack,
+GradientResult ccsd_analytic_forces(const Frame& frame,
+                                    const IntegralPack& pack,
                                     const SlaterDeterminant& det,
                                     double e_scf_ha, double e_corr_ha) {
     if (!det.restricted())
         throw std::invalid_argument(
             "ccsd_analytic_forces: closed-shell RHF required");
     if (pack.ERI.size() == 0)
-        throw std::invalid_argument(
-            "ccsd_analytic_forces: dense ERI required");
+        throw std::invalid_argument("ccsd_analytic_forces: dense ERI required");
     if (pack.spherical())
         throw std::invalid_argument(
             "ccsd_analytic_forces: Cartesian AO only in this link");

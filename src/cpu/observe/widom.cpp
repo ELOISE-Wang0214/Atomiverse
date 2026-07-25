@@ -18,7 +18,8 @@ namespace cpu {
 
 namespace {
 /// @brief Cut-and-shifted LJ pair energy (PairLJCut convention) [eV].
-double lj_pair(double r2, double eps, double sig6, double v_shift, double rc_sq) {
+double lj_pair(double r2, double eps, double sig6, double v_shift,
+               double rc_sq) {
     if (r2 >= rc_sq || r2 <= 0.0)
         return 0.0;
     const double r2inv = 1.0 / r2;
@@ -56,9 +57,11 @@ void Widom::validate_params_() const {
         throw std::invalid_argument("Widom: sigma must be > 0 Å");
     if (potential == WidomPotential::lj_cut) {
         if (!(epsilon > 0.0))
-            throw std::invalid_argument("Widom: epsilon must be > 0 eV for lj_cut");
+            throw std::invalid_argument(
+                "Widom: epsilon must be > 0 eV for lj_cut");
         if (!(cutoff > 0.0))
-            throw std::invalid_argument("Widom: cutoff must be > 0 Å for lj_cut");
+            throw std::invalid_argument(
+                "Widom: cutoff must be > 0 Å for lj_cut");
     }
 }
 
@@ -82,9 +85,7 @@ void Widom::build(const BuildContext&) {
     reset();
 }
 
-void Widom::launch(const LaunchContext& ctx) {
-    accumulate_frame_(ctx.frame);
-}
+void Widom::launch(const LaunchContext& ctx) { accumulate_frame_(ctx.frame); }
 
 void Widom::sample(const Frame& frame) {
     validate_params_();

@@ -33,9 +33,9 @@ int main() {
         -0.057823257196248978307, 0.094382238074751600987,
         1.0593571566097748082,    0.057823257196249200351};
     const double fz_pin[6] = {
-        0.33187666441899288383,  -0.31522207906906996033,
+        0.33187666441899288383,   -0.31522207906906996033,
         -0.016654585349923187176, 0.33187666441899305037,
-        -0.31522207906906962727, -0.01665458534992322534};
+        -0.31522207906906962727,  -0.01665458534992322534};
 
     const double half = 0.5 * theta;
     const double s = std::sin(half), c = std::cos(half);
@@ -104,10 +104,10 @@ int main() {
 
     // Dual-gate geometry before energy
     vs.place(f);
-    const double om = std::sqrt(static_cast<double>(f.span(kAtom_x)[3]) *
-                                    f.span(kAtom_x)[3] +
-                                f.span(kAtom_y)[3] * f.span(kAtom_y)[3] +
-                                f.span(kAtom_z)[3] * f.span(kAtom_z)[3]);
+    const double om =
+        std::sqrt(static_cast<double>(f.span(kAtom_x)[3]) * f.span(kAtom_x)[3]
+                  + f.span(kAtom_y)[3] * f.span(kAtom_y)[3]
+                  + f.span(kAtom_z)[3] * f.span(kAtom_z)[3]);
     std::printf("OM = %.16e Å (qdist=%.2f)\n", om, qdist);
     if (!(std::fabs(om - qdist) <= 1e-10)) {
         std::printf("FAIL: OM geometry\n");
@@ -133,7 +133,8 @@ int main() {
     eval.run(f);
 
     const double E = f.meta.get(kEnergy);
-    std::printf("TIP4P dimer (VirtualSites) E=%.16e eV (pin=%.16e)\n", E, E_pin);
+    std::printf("TIP4P dimer (VirtualSites) E=%.16e eV (pin=%.16e)\n", E,
+                E_pin);
     if (!(std::fabs(E - E_pin) <= 1e-8)) {
         std::printf("FAIL: energy\n");
         return 1;
@@ -148,17 +149,17 @@ int main() {
         const double fy = f.span(kAtom_fy)[i];
         const double fz = f.span(kAtom_fz)[i];
         std::printf("F_parent%d  % .16e % .16e % .16e\n", k + 1, fx, fy, fz);
-        if (!(std::fabs(fx - fx_pin[k]) <= 1e-6) || !(std::fabs(fy) <= 1e-10) ||
-            !(std::fabs(fz - fz_pin[k]) <= 1e-6)) {
+        if (!(std::fabs(fx - fx_pin[k]) <= 1e-6) || !(std::fabs(fy) <= 1e-10)
+            || !(std::fabs(fz - fz_pin[k]) <= 1e-6)) {
             std::printf("FAIL: force parent %d\n", k + 1);
             ok = false;
         }
     }
     // M forces must be zero after redistribute
     for (int i : {3, 7}) {
-        if (!(std::fabs(f.span(kAtom_fx)[i]) <= 1e-12) ||
-            !(std::fabs(f.span(kAtom_fy)[i]) <= 1e-12) ||
-            !(std::fabs(f.span(kAtom_fz)[i]) <= 1e-12)) {
+        if (!(std::fabs(f.span(kAtom_fx)[i]) <= 1e-12)
+            || !(std::fabs(f.span(kAtom_fy)[i]) <= 1e-12)
+            || !(std::fabs(f.span(kAtom_fz)[i]) <= 1e-12)) {
             std::printf("FAIL: residual force on site row %d\n", i);
             ok = false;
         }
@@ -204,7 +205,8 @@ int main() {
     };
     const double rol1 = rOL(3), rol2 = rOL(4);
     std::printf("TIP5P r_OL = %.16e, %.16e (expect %.2f)\n", rol1, rol2, r_ol);
-    if (!(std::fabs(rol1 - r_ol) <= 1e-8) || !(std::fabs(rol2 - r_ol) <= 1e-8)) {
+    if (!(std::fabs(rol1 - r_ol) <= 1e-8)
+        || !(std::fabs(rol2 - r_ol) <= 1e-8)) {
         std::printf("FAIL: TIP5P r_OL\n");
         return 1;
     }
@@ -212,8 +214,7 @@ int main() {
            v1z = w.span(kAtom_z)[3];
     double v2x = w.span(kAtom_x)[4], v2y = w.span(kAtom_y)[4],
            v2z = w.span(kAtom_z)[4];
-    const double cosang =
-        (v1x * v2x + v1y * v2y + v1z * v2z) / (rol1 * rol2);
+    const double cosang = (v1x * v2x + v1y * v2y + v1z * v2z) / (rol1 * rol2);
     const double ang = std::acos(std::max(-1.0, std::min(1.0, cosang)));
     std::printf("TIP5P theta_LOL = %.16e rad (expect %.16e)\n", ang, theta_lol);
     if (!(std::fabs(ang - theta_lol) <= 1e-8)) {

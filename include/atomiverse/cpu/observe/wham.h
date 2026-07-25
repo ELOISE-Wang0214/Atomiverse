@@ -45,8 +45,7 @@ class Wham {
                                     const std::vector<double>& k,
                                     const std::vector<double>& centers,
                                     double s_min, double s_max, int n_bins,
-                                    int max_iter = 500,
-                                    double tol = 1e-10);
+                                    int max_iter = 500, double tol = 1e-10);
 
     bool last_converged() const;
     int last_iterations() const;

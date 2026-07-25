@@ -21,7 +21,7 @@
 /// The tests/architecture + tests/cpu scrubs are the enforcement; this is the
 /// consumer-side witness that the shape actually links and the error path is
 /// catchable across the library boundary.
-#include "atomiverse/cpu/scf/grid.h"      // MolecularGrid ctor, GridLevel, native::Atom
+#include "atomiverse/cpu/scf/grid.h" // MolecularGrid ctor, GridLevel, native::Atom
 #include "atomiverse/cpu/scf/rys_roots.h" // native::rys_roots
 
 #include <cstdio>
@@ -57,9 +57,9 @@ int main() {
         caught = true;
     }
     if (!caught) {
-        std::fprintf(stderr,
-                     "reg_scf_api_hygiene: rys_roots(8, 1.0, ...) did not throw "
-                     "a catchable std::invalid_argument\n");
+        std::fprintf(
+            stderr, "reg_scf_api_hygiene: rys_roots(8, 1.0, ...) did not throw "
+                    "a catchable std::invalid_argument\n");
         return 2;
     }
 

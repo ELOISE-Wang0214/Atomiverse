@@ -12,8 +12,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/asynchronous/async_component_base.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/asynchronous/async_component_base.h"
 
 namespace ATV {
 namespace cpu {

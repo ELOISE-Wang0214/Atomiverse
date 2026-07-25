@@ -125,8 +125,9 @@ class ConstPotBO : public cpu::Component {
     const std::vector<double>& charges() const { return Q_; }
 
     // ── Public parameters (mutable after construction) ───────────────
-    double eta = 1.979;           ///< Gaussian width [1/Å].
-    bool electroneutrality = true; ///< Project electrode net charge (see global_*).
+    double eta = 1.979; ///< Gaussian width [1/Å].
+    bool electroneutrality =
+        true; ///< Project electrode net charge (see global_*).
     /// When true with `electroneutrality`, enforce global neutrality
     /// \(\sum_i Q_i = -\sum_j q_j^{\mathrm{electrolyte}}\) (MetalWalls /
     /// Scalfi). When false (default), enforce electrode-only \(\sum Q_i=0\).
@@ -175,12 +176,12 @@ class ConstPotBO : public cpu::Component {
     // Maps: electrode local index → frame atom row; group id per electrode atom.
     std::vector<int> elec_atoms_;
     std::vector<int> elec_group_;
-    std::vector<double> psi_vec_;   ///< \(\Psi_i\) per electrode atom [V].
-    std::vector<double> Q_;         ///< Solved charges [e].
-    std::vector<double> b_;         ///< Electrolyte potential [V].
-    std::vector<double> A_;         ///< Row-major elastance [V/e].
-    std::vector<double> A_work_;    ///< Factorization workspace.
-    std::vector<double> total_Q_;   ///< Per-group totals [e].
+    std::vector<double> psi_vec_; ///< \(\Psi_i\) per electrode atom [V].
+    std::vector<double> Q_;       ///< Solved charges [e].
+    std::vector<double> b_;       ///< Electrolyte potential [V].
+    std::vector<double> A_;       ///< Row-major elastance [V/e].
+    std::vector<double> A_work_;  ///< Factorization workspace.
+    std::vector<double> total_Q_; ///< Per-group totals [e].
     bool matrix_ready_ = false;
     double residual_ = 0.0;
     int last_iters_ = 0;

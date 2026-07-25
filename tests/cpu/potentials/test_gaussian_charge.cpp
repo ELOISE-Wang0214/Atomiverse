@@ -39,8 +39,8 @@ cpu::Frame dimer(double r, double q0, double q1, int t0, int t1) {
 
 TEST(GaussianChargeKernel, EtaEffEqualWidths) {
     const double eta = 1.0;
-    EXPECT_NEAR(cpu::GaussianChargeKernel::eta_eff(eta, eta), eta / std::sqrt(2.0),
-                1e-15);
+    EXPECT_NEAR(cpu::GaussianChargeKernel::eta_eff(eta, eta),
+                eta / std::sqrt(2.0), 1e-15);
 }
 
 TEST(GaussianChargeKernel, EtaEffPointPartner) {
@@ -58,16 +58,15 @@ TEST(GaussianChargeKernel, GreensPointLimit) {
     const double r = 3.5;
     EXPECT_NEAR(cpu::GaussianChargeKernel::greens(r, 0.0, 0.0), 1.0 / r, 1e-15);
     // Large η → erf→1 → 1/r
-    EXPECT_NEAR(cpu::GaussianChargeKernel::greens(r, 50.0, 50.0), 1.0 / r, 1e-12);
+    EXPECT_NEAR(cpu::GaussianChargeKernel::greens(r, 50.0, 50.0), 1.0 / r,
+                1e-12);
 }
 
 TEST(GaussianChargeKernel, DGreensMatchesFD) {
     const double r = 2.5, eta = 0.9;
     const double h = 1e-6;
-    const double g_p =
-        cpu::GaussianChargeKernel::greens(r + h, eta, eta);
-    const double g_m =
-        cpu::GaussianChargeKernel::greens(r - h, eta, eta);
+    const double g_p = cpu::GaussianChargeKernel::greens(r + h, eta, eta);
+    const double g_m = cpu::GaussianChargeKernel::greens(r - h, eta, eta);
     const double fd = (g_p - g_m) / (2.0 * h);
     EXPECT_NEAR(cpu::GaussianChargeKernel::dgreens_dr(r, eta, eta), fd, 1e-8);
 }
@@ -126,8 +125,8 @@ TEST(PairGaussianCoul, GaussianPointCross) {
     const double r = 5.0, eta = 1.0, qg = 0.3, qp = 1.0;
     const double K = ATV::units::coulomb;
     const double G = cpu::GaussianChargeKernel::greens(r, eta, 0.0);
-    const double U = K * qg * qp * G
-                     + cpu::GaussianChargeKernel::self_energy(K, qg, eta);
+    const double U =
+        K * qg * qp * G + cpu::GaussianChargeKernel::self_energy(K, qg, eta);
 
     auto f = dimer(r, qg, qp, /*gauss type*/ 1, /*point type*/ 0);
     f.meta.get(kEnergy) = 0;

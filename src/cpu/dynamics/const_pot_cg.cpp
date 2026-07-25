@@ -46,8 +46,8 @@ ConstPotCG ConstPotCG::add_electrode(int type, double psi) && {
 
 void ConstPotCG::build(const BuildContext& ctx) {
     if (groups_.empty())
-        throw std::runtime_error(
-            "ConstPotCG: add at least one electrode via add_electrode(type, Psi)");
+        throw std::runtime_error("ConstPotCG: add at least one electrode via "
+                                 "add_electrode(type, Psi)");
     collect_electrodes_(ctx.frame);
     if (elec_atoms_.empty())
         throw std::runtime_error(
@@ -82,13 +82,15 @@ double ConstPotCG::total_charge(std::size_t ie) const {
 }
 
 double ConstPotCG::delta_psi() const {
-    if (groups_.size() < 2) return 0.0;
+    if (groups_.size() < 2)
+        return 0.0;
     return groups_.back().psi - groups_.front().psi;
 }
 
 double ConstPotCG::neutrality_residual() const {
     double s = 0.0;
-    for (double q : Q_) s += q;
+    for (double q : Q_)
+        s += q;
     return std::abs(s);
 }
 
@@ -117,18 +119,21 @@ void ConstPotCG::collect_electrodes_(const cpu::Frame& frame) {
 double ConstPotCG::pair_A_(double r, double eta_i, double eta_j) const {
     if (r < 1e-14)
         return units::coulomb * eta_i * kSqrt2OverPi;
-    const double etaij = eta_i * eta_j / std::sqrt(eta_i * eta_i + eta_j * eta_j);
+    const double etaij =
+        eta_i * eta_j / std::sqrt(eta_i * eta_i + eta_j * eta_j);
     return units::coulomb * std::erf(etaij * r) / r;
 }
 
 double ConstPotCG::pair_b_(double r, double q, double eta_i) const {
-    if (r < 1e-14) return 0.0;
+    if (r < 1e-14)
+        return 0.0;
     return units::coulomb * q * std::erf(eta_i * r) / r;
 }
 
 void ConstPotCG::build_matrix_(const cpu::Frame& frame) {
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return;
+    if (m == 0)
+        return;
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
@@ -158,11 +163,14 @@ void ConstPotCG::build_matrix_(const cpu::Frame& frame) {
                         const double dz = z[ia] - z[ib];
                         r = std::sqrt(dx * dx + dy * dy + dz * dz);
                     }
-                    if (r < 1e-14) continue;
+                    if (r < 1e-14)
+                        continue;
                     aij += pair_A_(r, eta, eta);
-                    if (R == 0) break;
+                    if (R == 0)
+                        break;
                 }
-                if (R == 0) break;
+                if (R == 0)
+                    break;
             }
             A_[static_cast<std::size_t>(a) * m + b] = aij;
             A_[static_cast<std::size_t>(b) * m + a] = aij;
@@ -172,9 +180,10 @@ void ConstPotCG::build_matrix_(const cpu::Frame& frame) {
             double self_img = 0.0;
             for (int nx = -R; nx <= R; ++nx) {
                 for (int ny = -R; ny <= R; ++ny) {
-                    if (nx == 0 && ny == 0) continue;
-                    const double r =
-                        std::sqrt((nx * Lx) * (nx * Lx) + (ny * Ly) * (ny * Ly));
+                    if (nx == 0 && ny == 0)
+                        continue;
+                    const double r = std::sqrt((nx * Lx) * (nx * Lx)
+                                               + (ny * Ly) * (ny * Ly));
                     self_img +=
                         units::coulomb * std::erf((eta / kSqrt2) * r) / r;
                 }
@@ -197,16 +206,19 @@ void ConstPotCG::build_rhs_(const cpu::Frame& frame) {
     const int R = xy_image_range < 0 ? 0 : xy_image_range;
 
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
-    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+    for (int ia : elec_atoms_)
+        is_elec[static_cast<std::size_t>(ia)] = 1;
 
     std::fill(b_.begin(), b_.end(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
         double bi = 0.0;
         for (int j = 0; j < n; ++j) {
-            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            if (is_elec[static_cast<std::size_t>(j)])
+                continue;
             const double qj = static_cast<double>(q[j]);
-            if (qj == 0.0) continue;
+            if (qj == 0.0)
+                continue;
             for (int nx = -R; nx <= R; ++nx) {
                 for (int ny = -R; ny <= R; ++ny) {
                     double r;
@@ -220,9 +232,11 @@ void ConstPotCG::build_rhs_(const cpu::Frame& frame) {
                         r = std::sqrt(dx * dx + dy * dy + dz * dz);
                     }
                     bi += pair_b_(r, qj, eta);
-                    if (R == 0) break;
+                    if (R == 0)
+                        break;
                 }
-                if (R == 0) break;
+                if (R == 0)
+                    break;
             }
         }
         b_[static_cast<std::size_t>(a)] = bi;
@@ -232,7 +246,8 @@ void ConstPotCG::build_rhs_(const cpu::Frame& frame) {
 int ConstPotCG::pcg_solve_(const std::vector<double>& rhs,
                            std::vector<double>& x) const {
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return 0;
+    if (m == 0)
+        return 0;
 
     // Jacobi preconditioner: M = diag(A)
     std::vector<double> inv_diag(static_cast<std::size_t>(m));
@@ -270,7 +285,8 @@ int ConstPotCG::pcg_solve_(const std::vector<double>& rhs,
                    const std::vector<double>& bvec) {
         double s = 0.0;
         for (int i = 0; i < m; ++i)
-            s += a[static_cast<std::size_t>(i)] * bvec[static_cast<std::size_t>(i)];
+            s += a[static_cast<std::size_t>(i)]
+                 * bvec[static_cast<std::size_t>(i)];
         return s;
     };
 
@@ -317,12 +333,13 @@ int ConstPotCG::pcg_solve_(const std::vector<double>& rhs,
 
 void ConstPotCG::solve_() {
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return;
+    if (m == 0)
+        return;
 
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
-        rhs[static_cast<std::size_t>(i)] =
-            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
+        rhs[static_cast<std::size_t>(i)] = psi_vec_[static_cast<std::size_t>(i)]
+                                           - b_[static_cast<std::size_t>(i)];
 
     if (electroneutrality && m >= 1) {
         // Q = v - (e·v)/(e·u) u  with A v = rhs, A u = e  (same projector as BO).
@@ -362,7 +379,8 @@ void ConstPotCG::solve_() {
     total_Q_.assign(groups_.size(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int g = elec_group_[static_cast<std::size_t>(a)];
-        total_Q_[static_cast<std::size_t>(g)] += Q_[static_cast<std::size_t>(a)];
+        total_Q_[static_cast<std::size_t>(g)] +=
+            Q_[static_cast<std::size_t>(a)];
     }
 }
 

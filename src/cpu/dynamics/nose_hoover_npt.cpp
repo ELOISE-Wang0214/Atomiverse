@@ -524,8 +524,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
         const double Lz = f.simbox.length(2);
         if (Lz > 0.0) {
             const double Plat =
-                P_target_
-                - static_cast<double>(n_surfaces_) * gamma_ / Lz;
+                P_target_ - static_cast<double>(n_surfaces_) * gamma_ / Lz;
             P_tgt[0] = P_tgt[1] = Plat;
         }
     }
@@ -553,14 +552,12 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     if (couple_xy_ && couple_axis_[0] && couple_axis_[1]) {
         // Lateral DOF: one shared strain rate from averaged P_⊥.
         const double P_xy = diag[0] / V;
-        const double G_xy =
-            (3.0 * V * (P_xy - P_tgt[0]) + mtk_term) / W_;
+        const double G_xy = (3.0 * V * (P_xy - P_tgt[0]) + mtk_term) / W_;
         eps_dot_[0] += G_xy * half_dt;
         eps_dot_[1] = eps_dot_[0];
         if (couple_axis_[2]) {
             const double P_z = diag[2] / V;
-            const double G_z =
-                (3.0 * V * (P_z - P_tgt[2]) + mtk_term) / W_;
+            const double G_z = (3.0 * V * (P_z - P_tgt[2]) + mtk_term) / W_;
             eps_dot_[2] += G_z * half_dt;
         }
     } else {

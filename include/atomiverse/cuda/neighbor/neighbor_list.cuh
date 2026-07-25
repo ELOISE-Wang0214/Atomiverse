@@ -31,8 +31,8 @@ inline constexpr int kOpenmmClusterSize = 32;
 inline constexpr int kOpenmmMaskWords = 16;
 
 /// @brief Read the 32-bit j-interaction flags for i_slot of CSR pair p.
-__host__ __device__ inline std::uint32_t openmm_mask_jbits(
-    const std::uint64_t* mask, int pair_idx, int i_slot) {
+__host__ __device__ inline std::uint32_t
+openmm_mask_jbits(const std::uint64_t* mask, int pair_idx, int i_slot) {
     const auto* rows = reinterpret_cast<const std::uint32_t*>(
         mask + static_cast<std::size_t>(pair_idx) * kOpenmmMaskWords);
     return rows[i_slot];

@@ -206,16 +206,14 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (cfg.d4)
         throw std::invalid_argument(
             "gpw_stress analytic: D4 not supported in this foothold");
-    const int n_disp =
-        (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
             "gpw_stress analytic: d3, d3bj, and d4 are mutually exclusive");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
-    if (static_cast<int>(P.shape(0)) != nb
-        || static_cast<int>(P.shape(1)) != nb
+    if (static_cast<int>(P.shape(0)) != nb || static_cast<int>(P.shape(1)) != nb
         || static_cast<int>(W.shape(0)) != nb
         || static_cast<int>(W.shape(1)) != nb)
         throw std::invalid_argument(
@@ -305,11 +303,10 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                              : solve_poisson(grid, n_tot);
-    const XcOnGrid xc =
-        cfg.xc == XcKind::PBE
-            ? xc_grid_pbe(grid, rho)
-            : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
-                                        : xc_grid_pade(grid, rho));
+    const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
+                                              : (cfg.xc == XcKind::PBEsol
+                                                     ? xc_grid_pbesol(grid, rho)
+                                                     : xc_grid_pade(grid, rho));
 
     double e_locgrid = 0.0;
     if (!analytic_loc) {
@@ -364,10 +361,9 @@ void validate_stress_args(const std::vector<GpwAtom>& atoms, double h,
 
 } // namespace
 
-std::array<double, 6>
-gpw_stress_analytic_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-                         double h, const std::array<bool, 3>& axes,
-                         const linalg::RealMatrix* guess_C) {
+std::array<double, 6> gpw_stress_analytic_impl(
+    const std::vector<GpwAtom>& atoms, const GpwDft& method, double h,
+    const std::array<bool, 3>& axes, const linalg::RealMatrix* guess_C) {
     validate_stress_args(atoms, h, axes, "gpw_stress");
 
     const double vol = method.cell[0] * method.cell[1] * method.cell[2];
@@ -431,10 +427,10 @@ gpw_stress_analytic_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method
     return stress;
 }
 
-std::array<double, 6>
-gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-                   double h, const std::array<bool, 3>& axes,
-                   const linalg::RealMatrix* guess_C) {
+std::array<double, 6> gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms,
+                                         const GpwDft& method, double h,
+                                         const std::array<bool, 3>& axes,
+                                         const linalg::RealMatrix* guess_C) {
     validate_stress_args(atoms, h, axes, "gpw_stress_fd");
 
     const double vol = method.cell[0] * method.cell[1] * method.cell[2];

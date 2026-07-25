@@ -80,8 +80,7 @@ StabilityResult RHF::stability() const {
     // (scaled so the leading amplitude rotates by kRotationTheta), then
     // C_rot = C · exp(K). Same occupied/virtual split as OrbitalHessian
     // (integer occupations, f = 1 ⇔ occupied).
-    const RealVector mode =
-        analysis.lowest_vector(internal::Channel::triplet);
+    const RealVector mode = analysis.lowest_vector(internal::Channel::triplet);
     const RealVector& f = det.occupations(SlaterDeterminant::Spin::alpha);
     const int n_mo = static_cast<int>(C.shape()[1]);
     std::vector<int> occ, virt;
@@ -174,7 +173,8 @@ vib::HessianResult RHF::hessian(Frame& frame) {
     xt::xtensor<double, 2> apt = xt::zeros<double>({3 * natm, 3});
     {
         const int n = pack.n_basis;
-        const double origin[3] = {0.0, 0.0, 0.0}; // origin-free for neutral dμ/dR
+        const double origin[3] = {0.0, 0.0,
+                                  0.0}; // origin-free for neutral dμ/dR
         const MultipoleIntegrals mp0{pack.shells.data(), n, origin};
         const double h = 1e-4; // Bohr
         for (int A = 0; A < natm; ++A) {
@@ -238,8 +238,8 @@ xt::xtensor<double, 2> RHF::polarizability() const {
     const int no = static_cast<int>(occ.size());
     const int nv = static_cast<int>(virt.size());
     if (no != oh.n_occ() || nv != oh.n_virt())
-        throw std::runtime_error(
-            "RHF::polarizability: occ/virt split disagrees with OrbitalHessian");
+        throw std::runtime_error("RHF::polarizability: occ/virt split "
+                                 "disagrees with OrbitalHessian");
 
     RealMatrix Co = xt::zeros<double>({n, no});
     RealMatrix Cv = xt::zeros<double>({n, nv});

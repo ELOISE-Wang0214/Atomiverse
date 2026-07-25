@@ -74,7 +74,8 @@ void invert_spd(int n, const std::vector<double>& A_in,
         col[static_cast<std::size_t>(j)] = 1.0;
         cholesky_solve(n, Awork, col);
         for (int i = 0; i < n; ++i)
-            inv[static_cast<std::size_t>(i) * n + j] = col[static_cast<std::size_t>(i)];
+            inv[static_cast<std::size_t>(i) * n + j] =
+                col[static_cast<std::size_t>(i)];
     }
 }
 
@@ -112,7 +113,8 @@ ConstPotBO::ConstPotBO(double eta_in) : eta(eta_in) {
 
 double ConstPotBO::capacitance() const {
     const double dpsi = std::abs(delta_psi());
-    if (dpsi < 1e-30 || groups_.size() < 2) return 0.0;
+    if (dpsi < 1e-30 || groups_.size() < 2)
+        return 0.0;
     // |Q| on the last electrode group (opposite of first under neutrality).
     return std::abs(total_charge(groups_.size() - 1)) / dpsi;
 }
@@ -146,8 +148,8 @@ void ConstPotBO::record_aspc_() {
 
 void ConstPotBO::build(const BuildContext& ctx) {
     if (groups_.empty())
-        throw std::runtime_error(
-            "ConstPotBO: add at least one electrode via add_electrode(type, Psi)");
+        throw std::runtime_error("ConstPotBO: add at least one electrode via "
+                                 "add_electrode(type, Psi)");
     if (l_tf < 0.0)
         throw std::invalid_argument("ConstPotBO: l_tf must be >= 0 [Å]");
     if (l_tf > 0.0 && !(site_density > 0.0))
@@ -198,13 +200,15 @@ double ConstPotBO::total_charge(std::size_t ie) const {
 }
 
 double ConstPotBO::delta_psi() const {
-    if (groups_.size() < 2) return 0.0;
+    if (groups_.size() < 2)
+        return 0.0;
     return groups_.back().psi - groups_.front().psi;
 }
 
 double ConstPotBO::neutrality_residual() const {
     double s = 0.0;
-    for (double q : Q_) s += q;
+    for (double q : Q_)
+        s += q;
     return std::abs(s);
 }
 
@@ -235,18 +239,21 @@ double ConstPotBO::pair_A_(double r, double eta_i, double eta_j) const {
         // Should not be called for i==j self; self uses eta * sqrt(2/π).
         return units::coulomb * eta_i * kSqrt2OverPi;
     }
-    const double etaij = eta_i * eta_j / std::sqrt(eta_i * eta_i + eta_j * eta_j);
+    const double etaij =
+        eta_i * eta_j / std::sqrt(eta_i * eta_i + eta_j * eta_j);
     return units::coulomb * std::erf(etaij * r) / r;
 }
 
 double ConstPotBO::pair_b_(double r, double q, double eta_i) const {
-    if (r < 1e-14) return 0.0;
+    if (r < 1e-14)
+        return 0.0;
     return units::coulomb * q * std::erf(eta_i * r) / r;
 }
 
 void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return;
+    if (m == 0)
+        return;
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
@@ -280,11 +287,14 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
                     } else {
                         r = std::sqrt(dx * dx + dy * dy + dz * dz);
                     }
-                    if (r < 1e-14) continue;
+                    if (r < 1e-14)
+                        continue;
                     aij += pair_A_(r, eta, eta);
-                    if (R == 0) break; // single min-image contrib
+                    if (R == 0)
+                        break; // single min-image contrib
                 }
-                if (R == 0) break;
+                if (R == 0)
+                    break;
             }
             A_[static_cast<std::size_t>(a) * m + b] = aij;
             A_[static_cast<std::size_t>(b) * m + a] = aij;
@@ -295,9 +305,10 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
             double self_img = 0.0;
             for (int nx = -R; nx <= R; ++nx) {
                 for (int ny = -R; ny <= R; ++ny) {
-                    if (nx == 0 && ny == 0) continue;
-                    const double r =
-                        std::sqrt((nx * Lx) * (nx * Lx) + (ny * Ly) * (ny * Ly));
+                    if (nx == 0 && ny == 0)
+                        continue;
+                    const double r = std::sqrt((nx * Lx) * (nx * Lx)
+                                               + (ny * Ly) * (ny * Ly));
                     // Same-site images use η/√2 (plate_cap / Gaussian product)
                     self_img +=
                         units::coulomb * std::erf((eta / kSqrt2) * r) / r;
@@ -334,14 +345,16 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
 
     // Mark electrode rows for skip
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
-    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+    for (int ia : elec_atoms_)
+        is_elec[static_cast<std::size_t>(ia)] = 1;
 
     // Global neutrality target: sum_Q + sum_q_elyt = 0.
     neutrality_target_ = 0.0;
     if (electroneutrality && global_electroneutrality) {
         double q_elyt = 0.0;
         for (int j = 0; j < n; ++j) {
-            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            if (is_elec[static_cast<std::size_t>(j)])
+                continue;
             q_elyt += static_cast<double>(q[j]);
         }
         neutrality_target_ = -q_elyt;
@@ -358,10 +371,12 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
         double bi = 0.0;
         for (int j = 0; j < n; ++j) {
-            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            if (is_elec[static_cast<std::size_t>(j)])
+                continue;
             (void)type; // electrolyte = non-electrode
             const double qj = static_cast<double>(q[j]);
-            if (qj == 0.0) continue;
+            if (qj == 0.0)
+                continue;
             for (int nx = -R; nx <= R; ++nx) {
                 for (int ny = -R; ny <= R; ++ny) {
                     double r;
@@ -375,9 +390,11 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
                         r = std::sqrt(dx * dx + dy * dy + dz * dz);
                     }
                     bi += pair_b_(r, qj, eta);
-                    if (R == 0) break;
+                    if (R == 0)
+                        break;
                 }
-                if (R == 0) break;
+                if (R == 0)
+                    break;
             }
         }
         // Finite-field term: b ← Φ_elyt − E·r  (primary-cell r)
@@ -440,8 +457,8 @@ void ConstPotBO::solve_dense_() {
     // RHS: Ψ - b  with b = Φ_elyt − E·r  (field folded in build_rhs_)
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
-        rhs[static_cast<std::size_t>(i)] =
-            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
+        rhs[static_cast<std::size_t>(i)] = psi_vec_[static_cast<std::size_t>(i)]
+                                           - b_[static_cast<std::size_t>(i)];
 
     // Unconstrained A Q = rhs (also the ASPC record target).
     A_work_ = A_;
@@ -485,8 +502,8 @@ void ConstPotBO::solve_cg_() {
     const int m = static_cast<int>(elec_atoms_.size());
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
-        rhs[static_cast<std::size_t>(i)] =
-            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
+        rhs[static_cast<std::size_t>(i)] = psi_vec_[static_cast<std::size_t>(i)]
+                                           - b_[static_cast<std::size_t>(i)];
 
     // Warm-start unconstrained CG from ASPC (or zero).
     std::vector<double> Q0(static_cast<std::size_t>(m), 0.0);
@@ -541,8 +558,8 @@ void ConstPotBO::solve_() {
     // Residual of unconstrained equation AQ − (Ψ − b)
     std::vector<double> rhs(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i)
-        rhs[static_cast<std::size_t>(i)] =
-            psi_vec_[static_cast<std::size_t>(i)] - b_[static_cast<std::size_t>(i)];
+        rhs[static_cast<std::size_t>(i)] = psi_vec_[static_cast<std::size_t>(i)]
+                                           - b_[static_cast<std::size_t>(i)];
     residual_ = 0.0;
     for (int i = 0; i < m; ++i) {
         double Ax = 0.0;
@@ -556,7 +573,8 @@ void ConstPotBO::solve_() {
     total_Q_.assign(groups_.size(), 0.0);
     for (int a = 0; a < m; ++a) {
         const int g = elec_group_[static_cast<std::size_t>(a)];
-        total_Q_[static_cast<std::size_t>(g)] += Q_[static_cast<std::size_t>(a)];
+        total_Q_[static_cast<std::size_t>(g)] +=
+            Q_[static_cast<std::size_t>(a)];
     }
 }
 
@@ -571,10 +589,12 @@ double ConstPotBO::electrolyte_charge_(const cpu::Frame& frame) const {
     const int n = frame.nlocal();
     auto q = frame.span(kAtom_charge);
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
-    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+    for (int ia : elec_atoms_)
+        is_elec[static_cast<std::size_t>(ia)] = 1;
     double s = 0.0;
     for (int j = 0; j < n; ++j) {
-        if (is_elec[static_cast<std::size_t>(j)]) continue;
+        if (is_elec[static_cast<std::size_t>(j)])
+            continue;
         s += static_cast<double>(q[j]);
     }
     return s;
@@ -586,7 +606,8 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
     // interaction). Electrode–electrode A-geometry force deferred (frozen
     // walls / rebuild_matrix_every_step path).
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m == 0) return;
+    if (m == 0)
+        return;
     const int n = frame.nlocal();
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
@@ -598,7 +619,8 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
     const cpu::Box& box = frame.simbox;
 
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
-    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+    for (int ia : elec_atoms_)
+        is_elec[static_cast<std::size_t>(ia)] = 1;
 
     // d(pair_b)/dr for Φ = coulomb * q * erf(η r / √2) / r
     // pair_b_ = coulomb * q * erf(α r) / r with α = η/√2
@@ -609,18 +631,22 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
     for (int a = 0; a < m; ++a) {
         const int ia = elec_atoms_[static_cast<std::size_t>(a)];
         const double Qi = Q_[static_cast<std::size_t>(a)];
-        if (Qi == 0.0) continue;
+        if (Qi == 0.0)
+            continue;
         double Ex = 0.0, Ey = 0.0, Ez = 0.0; // E = −∇Φ so F = Q E
         for (int j = 0; j < n; ++j) {
-            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            if (is_elec[static_cast<std::size_t>(j)])
+                continue;
             const double qj = static_cast<double>(q[j]);
-            if (qj == 0.0) continue;
+            if (qj == 0.0)
+                continue;
             double dx = static_cast<double>(x[ia] - x[j]);
             double dy = static_cast<double>(y[ia] - y[j]);
             double dz = static_cast<double>(z[ia] - z[j]);
             box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 < 1e-30) continue;
+            if (r2 < 1e-30)
+                continue;
             const double r = std::sqrt(r2);
             const double ar = alpha * r;
             const double erf_ar = std::erf(ar);
@@ -644,7 +670,8 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
 
 double ConstPotBO::matrix_condition() const {
     const int m = static_cast<int>(elec_atoms_.size());
-    if (m <= 0 || A_.empty()) return 0.0;
+    if (m <= 0 || A_.empty())
+        return 0.0;
     // Power iteration for λ_max, inverse-free estimate of λ_min via
     // Rayleigh on residual of Cholesky — use Gershgorin fallback for
     // foothold: κ ≈ max_i A_ii / min_i A_ii for diagonally dominant A.
@@ -654,7 +681,8 @@ double ConstPotBO::matrix_condition() const {
         amin = std::min(amin, aii);
         amax = std::max(amax, aii);
     }
-    if (!(amin > 0.0)) return 1e300;
+    if (!(amin > 0.0))
+        return 1e300;
     return amax / amin;
 }
 

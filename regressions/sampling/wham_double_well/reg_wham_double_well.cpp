@@ -49,8 +49,8 @@ int main() {
     }
 
     cpu::compute::Wham wham(beta);
-    auto F = wham.free_energy(hist, n_samples, k, centers, s_min, s_max,
-                              n_bins, 2000, 1e-12);
+    auto F = wham.free_energy(hist, n_samples, k, centers, s_min, s_max, n_bins,
+                              2000, 1e-12);
     if (static_cast<int>(F.size()) != n_bins) {
         std::printf("FAIL: WHAM bad size (%zu)\n", F.size());
         return 1;

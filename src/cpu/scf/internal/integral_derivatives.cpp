@@ -40,11 +40,11 @@ extern "C" {
 }
 #endif
 
-#include <xtensor-blas/xlinalg.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <vector>
+#include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -833,13 +833,11 @@ void accumulate_two_electron_gradient(
                         const int k = k0 + ic_ao;
                         for (int id_ao = 0; id_ao < nd; ++id_ao) {
                             const int l = l0 + id_ao;
-                            const double factor_J =
-                                0.5 * Pc(i, j) * Pc(k, l);
+                            const double factor_J = 0.5 * Pc(i, j) * Pc(k, l);
                             // Unsymmetrized GHF exchange: −½ Σ D_jk E_li
                             const double factor_K =
                                 -0.5
-                                * (Paa(j, k) * Paa(l, i)
-                                   + Pbb(j, k) * Pbb(l, i)
+                                * (Paa(j, k) * Paa(l, i) + Pbb(j, k) * Pbb(l, i)
                                    + Pab(j, k) * Pba(l, i)
                                    + Pba(j, k) * Pab(l, i));
                             const double factor = factor_J + factor_K;
@@ -896,8 +894,7 @@ void accumulate_two_electron_gradient(
     if (integrals.spherical()) {
         const auto& c2s = integrals.c2s;
         const auto ct = xt::transpose(c2s);
-        P_total_cart =
-            xt::linalg::dot(c2s, xt::linalg::dot(P_total_sph, ct));
+        P_total_cart = xt::linalg::dot(c2s, xt::linalg::dot(P_total_sph, ct));
         if (!restricted) {
             Pa = xt::linalg::dot(c2s, xt::linalg::dot(Pa, ct));
             Pb = xt::linalg::dot(c2s, xt::linalg::dot(Pb, ct));
@@ -1436,8 +1433,8 @@ namespace {
 /// @param alpha Gaussian exponent on X.
 /// @return d²f/dX_i dX_j (units of `eval`, per Bohr²).
 template <typename Eval>
-static double d2_same_center(const Eval& eval, const int a_ang[3], int i,
-                             int j, double alpha) {
+static double d2_same_center(const Eval& eval, const int a_ang[3], int i, int j,
+                             double alpha) {
     double result = 0.0;
     // + branch of D_i: 2α f(a+e_i), then D_j of it.
     int ap[3] = {a_ang[0], a_ang[1], a_ang[2]};
@@ -1528,9 +1525,9 @@ IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
         build_shell_to_atom_from_integrals(ipack);
     for (int mu = 0; mu < n; ++mu)
         if (shell_to_atom[mu] < 0)
-            throw std::runtime_error(
-                "cpu::scf::IntegralSecondDerivPack: shell "
-                + std::to_string(mu) + " center has no matching atom");
+            throw std::runtime_error("cpu::scf::IntegralSecondDerivPack: shell "
+                                     + std::to_string(mu)
+                                     + " center has no matching atom");
 
     // Scatter helper: one (μν) value into the rank-6 tensor at
     // [(X,i),(Y,j)] and, when μ ≠ ν, into the mirrored (νμ) element.
@@ -1614,10 +1611,9 @@ IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
                         const double* B = shells[nu].center;
                         const double gamma = aa + ab;
                         const double m = aa * ab / gamma;
-                        const double r2 =
-                            (A[0] - B[0]) * (A[0] - B[0])
-                            + (A[1] - B[1]) * (A[1] - B[1])
-                            + (A[2] - B[2]) * (A[2] - B[2]);
+                        const double r2 = (A[0] - B[0]) * (A[0] - B[0])
+                                          + (A[1] - B[1]) * (A[1] - B[1])
+                                          + (A[2] - B[2]) * (A[2] - B[2]);
                         const double K_AB = std::exp(-m * r2);
                         double PA[3], PB[3], PC[3];
                         for (int d = 0; d < 3; ++d) {
@@ -1626,34 +1622,35 @@ IntegralSecondDerivPack::IntegralSecondDerivPack(const IntegralPack& ipack) {
                             PB[d] = Pd - B[d];
                             PC[d] = Pd - atoms[c].pos[d];
                         }
-                        const double w = cc * (-static_cast<double>(atoms[c].Z));
+                        const double w =
+                            cc * (-static_cast<double>(atoms[c].Z));
                         const auto eval_ab = [&](const int a[3],
                                                  const int b[3]) {
-                            return native::nuclear_prim(a, b, gamma, PA, PB,
-                                                        PC, K_AB);
+                            return native::nuclear_prim(a, b, gamma, PA, PB, PC,
+                                                        K_AB);
                         };
                         for (int di = 0; di < 3; ++di) {
                             for (int dj = 0; dj < 3; ++dj) {
                                 if (dj >= di) {
-                                    AA[di][dj] += w
-                                                  * d2_same_center(
-                                                      [&](const int a[3]) {
-                                                          return eval_ab(
-                                                              a, b_ang);
-                                                      },
-                                                      a_ang, di, dj, aa);
-                                    BB[di][dj] += w
-                                                  * d2_same_center(
-                                                      [&](const int b[3]) {
-                                                          return eval_ab(
-                                                              a_ang, b);
-                                                      },
-                                                      b_ang, di, dj, ab);
+                                    AA[di][dj] +=
+                                        w
+                                        * d2_same_center(
+                                            [&](const int a[3]) {
+                                                return eval_ab(a, b_ang);
+                                            },
+                                            a_ang, di, dj, aa);
+                                    BB[di][dj] +=
+                                        w
+                                        * d2_same_center(
+                                            [&](const int b[3]) {
+                                                return eval_ab(a_ang, b);
+                                            },
+                                            b_ang, di, dj, ab);
                                 }
-                                AB[di][dj] += w
-                                              * d2_cross_center(eval_ab, a_ang,
-                                                                b_ang, di, dj,
-                                                                aa, ab);
+                                AB[di][dj] +=
+                                    w
+                                    * d2_cross_center(eval_ab, a_ang, b_ang, di,
+                                                      dj, aa, ab);
                             }
                         }
                     }
@@ -1790,10 +1787,9 @@ void accumulate_two_electron_fock_derivative(
                     const int na = BA.n_cart, nb = BB.n_cart, nc = BC.n_cart,
                               nd = BD.n_cart;
                     const int block_n = na * nb * nc * nd;
-                    const int atom_of[4] = {block_to_atom[bi],
-                                            block_to_atom[bj],
-                                            block_to_atom[bk],
-                                            block_to_atom[bl]};
+                    const int atom_of[4] = {
+                        block_to_atom[bi], block_to_atom[bj], block_to_atom[bk],
+                        block_to_atom[bl]};
 
                     deriv.assign(static_cast<std::size_t>(4) * 3 * block_n,
                                  0.0);
@@ -1826,12 +1822,13 @@ void accumulate_two_electron_fock_derivative(
                                     for (int ctr = 0; ctr < 4; ++ctr) {
                                         const int X = atom_of[ctr];
                                         for (int ax = 0; ax < 3; ++ax) {
-                                            const double dg = deriv
-                                                [(static_cast<std::size_t>(ctr)
-                                                      * 3
-                                                  + ax)
-                                                     * block_n
-                                                 + ao];
+                                            const double dg =
+                                                deriv[(static_cast<std::size_t>(
+                                                           ctr)
+                                                           * 3
+                                                       + ax)
+                                                          * block_n
+                                                      + ao];
                                             if (dg == 0.0)
                                                 continue;
                                             dFl(X, ax, i, j) += pj * dg;
@@ -1921,10 +1918,9 @@ void accumulate_two_electron_fock_derivative_uhf(
                     const int na = BA.n_cart, nb = BB.n_cart, nc = BC.n_cart,
                               nd = BD.n_cart;
                     const int block_n = na * nb * nc * nd;
-                    const int atom_of[4] = {block_to_atom[bi],
-                                            block_to_atom[bj],
-                                            block_to_atom[bk],
-                                            block_to_atom[bl]};
+                    const int atom_of[4] = {
+                        block_to_atom[bi], block_to_atom[bj], block_to_atom[bk],
+                        block_to_atom[bl]};
 
                     deriv.assign(static_cast<std::size_t>(4) * 3 * block_n,
                                  0.0);
@@ -1957,12 +1953,13 @@ void accumulate_two_electron_fock_derivative_uhf(
                                     for (int ctr = 0; ctr < 4; ++ctr) {
                                         const int X = atom_of[ctr];
                                         for (int ax = 0; ax < 3; ++ax) {
-                                            const double dg = deriv
-                                                [(static_cast<std::size_t>(ctr)
-                                                      * 3
-                                                  + ax)
-                                                     * block_n
-                                                 + ao];
+                                            const double dg =
+                                                deriv[(static_cast<std::size_t>(
+                                                           ctr)
+                                                           * 3
+                                                       + ax)
+                                                          * block_n
+                                                      + ao];
                                             if (dg == 0.0)
                                                 continue;
                                             dFal(X, ax, i, j) += pj * dg;
@@ -2008,8 +2005,7 @@ constexpr int kSuper = 12;
 /// @param PA,PB  Gaussian-product offsets P−A, P−B on this axis [Bohr].
 /// @param inv2g  1/(2γ) [1/Bohr²-exponent units].
 /// @param E      Output, length kD2EDim.
-void md_e_table(int ai, int bj, double PA, double PB, double inv2g,
-                double* E) {
+void md_e_table(int ai, int bj, double PA, double PB, double inv2g, double* E) {
     for (int t = 0; t < kD2EDim; ++t)
         E[t] = 0.0;
 
@@ -2077,10 +2073,9 @@ void quartet_second_derivatives(const native::ShellBlock& A,
     fill_cart_comps(D.l, compsD);
 
     const int Ltot = A.l + B.l + C.l + D.l;
-    const int Lmax2 = Ltot + 2;   // deepest Boys order / R index sum
-    const int Ldim = Ltot + 3;    // per-axis + m dimension of the R table
-    const std::size_t Rsz = static_cast<std::size_t>(Ldim) * Ldim * Ldim
-                            * Ldim;
+    const int Lmax2 = Ltot + 2; // deepest Boys order / R index sum
+    const int Ldim = Ltot + 3;  // per-axis + m dimension of the R table
+    const std::size_t Rsz = static_cast<std::size_t>(Ldim) * Ldim * Ldim * Ldim;
     R_scratch.resize(Rsz);
     const auto Rat = [&](int m, int t, int u, int v) -> double& {
         return R_scratch[((static_cast<std::size_t>(m) * Ldim + t) * Ldim + u)
@@ -2109,8 +2104,8 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                 for (int s = 0; s < D.n_prim; ++s) {
                     const double aa = A.alpha[p], ab = B.alpha[q],
                                  ac = C.alpha[r], ad = D.alpha[s];
-                    const double coeff = A.coeff[p] * B.coeff[q] * C.coeff[r]
-                                         * D.coeff[s];
+                    const double coeff =
+                        A.coeff[p] * B.coeff[q] * C.coeff[r] * D.coeff[s];
                     const double g1 = aa + ab, g2 = ac + ad;
                     const double delta = g1 + g2;
                     const double rho = g1 * g2 / delta;
@@ -2158,20 +2153,17 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                             }
                             for (int t = 0; t <= max_tuv; ++t) {
                                 for (int u = 1; t + u <= max_tuv; ++u) {
-                                    double v0 =
-                                        PQ[1] * Rat(m + 1, t, u - 1, 0);
+                                    double v0 = PQ[1] * Rat(m + 1, t, u - 1, 0);
                                     if (u >= 2)
-                                        v0 += (u - 1)
-                                              * Rat(m + 1, t, u - 2, 0);
+                                        v0 += (u - 1) * Rat(m + 1, t, u - 2, 0);
                                     Rat(m, t, u, 0) = v0;
                                 }
                             }
                             for (int t = 0; t <= max_tuv; ++t) {
                                 for (int u = 0; t + u <= max_tuv; ++u) {
-                                    for (int v = 1; t + u + v <= max_tuv;
-                                         ++v) {
-                                        double v0 = PQ[2]
-                                                    * Rat(m + 1, t, u, v - 1);
+                                    for (int v = 1; t + u + v <= max_tuv; ++v) {
+                                        double v0 =
+                                            PQ[2] * Rat(m + 1, t, u, v - 1);
                                         if (v >= 2)
                                             v0 += (v - 1)
                                                   * Rat(m + 1, t, u, v - 2);
@@ -2278,12 +2270,12 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                                        : 0.0);
                                             vAB[d][t] =
                                                 4.0 * aa * ab * ApBp[t]
-                                                - (ApBm ? 2.0 * aa * bx
-                                                              * ApBm[t]
-                                                        : 0.0)
-                                                - (AmBp ? 2.0 * ab * ax
-                                                              * AmBp[t]
-                                                        : 0.0)
+                                                - (ApBm
+                                                       ? 2.0 * aa * bx * ApBm[t]
+                                                       : 0.0)
+                                                - (AmBp
+                                                       ? 2.0 * ab * ax * AmBp[t]
+                                                       : 0.0)
                                                 + (AmBm ? static_cast<double>(
                                                               ax * bx)
                                                               * AmBm[t]
@@ -2300,9 +2292,8 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                         }
                                     }
 
-                                    const int braP[3] = {a[0] + b[0],
-                                                         a[1] + b[1],
-                                                         a[2] + b[2]};
+                                    const int braP[3] = {
+                                        a[0] + b[0], a[1] + b[1], a[2] + b[2]};
                                     const int ketP[3] = {c[0] + dd[0],
                                                          c[1] + dd[1],
                                                          c[2] + dd[2]};
@@ -2329,8 +2320,7 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                                             if (e2 == 0.0)
                                                                 continue;
                                                             const int sg =
-                                                                ((tau + nu
-                                                                  + ph)
+                                                                ((tau + nu + ph)
                                                                  & 1)
                                                                     ? -1
                                                                     : 1;
@@ -2347,8 +2337,7 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                     // Bra-contracted partial (plain bra, no
                                     // sign): Hbra[tau][nu][phi].
                                     double Hbra[kSideDim][kSideDim][kSideDim];
-                                    for (int tau = 0; tau <= ketP[0] + 2;
-                                         ++tau)
+                                    for (int tau = 0; tau <= ketP[0] + 2; ++tau)
                                         for (int nu = 0; nu <= ketP[1] + 2;
                                              ++nu)
                                             for (int ph = 0; ph <= ketP[2] + 2;
@@ -2390,16 +2379,15 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                     const auto Kat = [&](int X, int i, int tau,
                                                          int nu,
                                                          int ph) -> double& {
-                                        return Kbuf
-                                            [((((static_cast<std::size_t>(X)
-                                                     * 3
-                                                 + i)
-                                                    * kSideDim
-                                                + tau)
-                                                   * kSideDim
-                                               + nu)
+                                        return Kbuf[(
+                                            (((static_cast<std::size_t>(X) * 3
+                                               + i)
                                                   * kSideDim
-                                              + ph)];
+                                              + tau)
+                                                 * kSideDim
+                                             + nu)
+                                                * kSideDim
+                                            + ph)];
                                     };
                                     for (int X = 0; X < 2; ++X) {
                                         for (int i = 0; i < 3; ++i) {
@@ -2429,82 +2417,79 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                                          ph <= ketP[2] + 1;
                                                          ++ph) {
                                                         double acc = 0.0;
-                                                        for (int t = 0;
-                                                             t <= bx; ++t)
+                                                        for (int t = 0; t <= bx;
+                                                             ++t)
                                                             for (int u = 0;
                                                                  u <= by; ++u)
                                                                 for (int v = 0;
                                                                      v <= bz;
                                                                      ++v) {
-                                                                    const double
-                                                                        e1 =
-                                                                            wx[t]
-                                                                            * wy[u]
-                                                                            * wz[v];
+                                                                    const double e1 =
+                                                                        wx[t]
+                                                                        * wy[u]
+                                                                        * wz[v];
                                                                     if (e1
                                                                         == 0.0)
                                                                         continue;
-                                                                    acc += e1
-                                                                           * Rat(
-                                                                               0,
-                                                                               t + tau,
-                                                                               u + nu,
-                                                                               v + ph);
+                                                                    acc +=
+                                                                        e1
+                                                                        * Rat(
+                                                                            0,
+                                                                            t + tau,
+                                                                            u + nu,
+                                                                            v + ph);
                                                                 }
-                                                        Kat(X, i, tau, nu,
-                                                            ph) = acc;
+                                                        Kat(X, i, tau, nu, ph) =
+                                                            acc;
                                                     }
                                         }
                                     }
 
                                     // ── Elements among {A, B} (bra side) ──
-                                    const auto bra_elem =
-                                        [&](const double* wx, int bx,
-                                            const double* wy, int by,
-                                            const double* wz, int bz) {
-                                            double acc = 0.0;
-                                            for (int t = 0; t <= bx; ++t)
-                                                for (int u = 0; u <= by; ++u)
-                                                    for (int v = 0; v <= bz;
-                                                         ++v) {
-                                                        const double e1 =
-                                                            wx[t] * wy[u]
-                                                            * wz[v];
-                                                        if (e1 != 0.0)
-                                                            acc += e1
-                                                                   * Gket[t][u]
-                                                                         [v];
-                                                    }
-                                            return acc;
-                                        };
+                                    const auto bra_elem = [&](const double* wx,
+                                                              int bx,
+                                                              const double* wy,
+                                                              int by,
+                                                              const double* wz,
+                                                              int bz) {
+                                        double acc = 0.0;
+                                        for (int t = 0; t <= bx; ++t)
+                                            for (int u = 0; u <= by; ++u)
+                                                for (int v = 0; v <= bz; ++v) {
+                                                    const double e1 =
+                                                        wx[t] * wy[u] * wz[v];
+                                                    if (e1 != 0.0)
+                                                        acc +=
+                                                            e1 * Gket[t][u][v];
+                                                }
+                                        return acc;
+                                    };
                                     // ── Elements among {C} (ket side) ──
-                                    const auto ket_elem =
-                                        [&](const double* wx, int kx,
-                                            const double* wy, int ky,
-                                            const double* wz, int kz) {
-                                            double acc = 0.0;
-                                            for (int tau = 0; tau <= kx;
-                                                 ++tau)
-                                                for (int nu = 0; nu <= ky;
-                                                     ++nu)
-                                                    for (int ph = 0; ph <= kz;
-                                                         ++ph) {
-                                                        const double e2 =
-                                                            wx[tau] * wy[nu]
-                                                            * wz[ph];
-                                                        if (e2 == 0.0)
-                                                            continue;
-                                                        const int sg =
-                                                            ((tau + nu + ph)
-                                                             & 1)
-                                                                ? -1
-                                                                : 1;
-                                                        acc += sg * e2
-                                                               * Hbra[tau][nu]
-                                                                     [ph];
-                                                    }
-                                            return acc;
-                                        };
+                                    const auto ket_elem = [&](const double* wx,
+                                                              int kx,
+                                                              const double* wy,
+                                                              int ky,
+                                                              const double* wz,
+                                                              int kz) {
+                                        double acc = 0.0;
+                                        for (int tau = 0; tau <= kx; ++tau)
+                                            for (int nu = 0; nu <= ky; ++nu)
+                                                for (int ph = 0; ph <= kz;
+                                                     ++ph) {
+                                                    const double e2 = wx[tau]
+                                                                      * wy[nu]
+                                                                      * wz[ph];
+                                                    if (e2 == 0.0)
+                                                        continue;
+                                                    const int sg =
+                                                        ((tau + nu + ph) & 1)
+                                                            ? -1
+                                                            : 1;
+                                                    acc += sg * e2
+                                                           * Hbra[tau][nu][ph];
+                                                }
+                                        return acc;
+                                    };
                                     // ── Mixed bra-ket elements ──
                                     const auto mixed_elem = [&](int X, int i,
                                                                 int j) {
@@ -2525,9 +2510,9 @@ void quartet_second_derivatives(const native::ShellBlock& A,
                                             for (int nu = 0; nu <= ky; ++nu)
                                                 for (int ph = 0; ph <= kz;
                                                      ++ph) {
-                                                    const double e2 =
-                                                        wx[tau] * wy[nu]
-                                                        * wz[ph];
+                                                    const double e2 = wx[tau]
+                                                                      * wy[nu]
+                                                                      * wz[ph];
                                                     if (e2 == 0.0)
                                                         continue;
                                                     const int sg =
@@ -2716,8 +2701,8 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
             const int k0 = BC.ao_start, l0 = BD.ao_start;
             const bool diag_ket = (bp_r.si == bp_r.sj);
             const bool same_pair = (left == right);
-            const int mult = (diag_bra ? 1 : 2) * (diag_ket ? 1 : 2)
-                             * (same_pair ? 1 : 2);
+            const int mult =
+                (diag_bra ? 1 : 2) * (diag_ket ? 1 : 2) * (same_pair ? 1 : 2);
 
             const int atom_of[4] = {
                 block_to_atom[bp_l.si], block_to_atom[bp_l.sj],
@@ -2747,11 +2732,10 @@ void accumulate_two_electron_hessian(xt::xtensor<double, 2>& hess,
                             const int combo =
                                 ((ia * nb + ib) * nc + ic) * nd + id;
                             const double* M =
-                                &d2buf[static_cast<std::size_t>(combo)
-                                       * kSuper * kSuper];
+                                &d2buf[static_cast<std::size_t>(combo) * kSuper
+                                       * kSuper];
                             for (int su = 0; su < kSuper; ++su) {
-                                const int row =
-                                    3 * atom_of[su / 3] + su % 3;
+                                const int row = 3 * atom_of[su / 3] + su % 3;
                                 for (int sv = 0; sv < kSuper; ++sv) {
                                     const int col =
                                         3 * atom_of[sv / 3] + sv % 3;
@@ -2855,8 +2839,8 @@ void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
             const int k0 = BC.ao_start, l0 = BD.ao_start;
             const bool diag_ket = (bp_r.si == bp_r.sj);
             const bool same_pair = (left == right);
-            const int mult = (diag_bra ? 1 : 2) * (diag_ket ? 1 : 2)
-                             * (same_pair ? 1 : 2);
+            const int mult =
+                (diag_bra ? 1 : 2) * (diag_ket ? 1 : 2) * (same_pair ? 1 : 2);
 
             const int atom_of[4] = {
                 block_to_atom[bp_l.si], block_to_atom[bp_l.sj],
@@ -2878,19 +2862,17 @@ void accumulate_two_electron_hessian_uhf(xt::xtensor<double, 2>& hess,
                             const double factor_K =
                                 -0.5 * mult * 0.5
                                 * (Pa(i, k) * Pa(j, l) + Pa(j, k) * Pa(i, l)
-                                   + Pb(i, k) * Pb(j, l)
-                                   + Pb(j, k) * Pb(i, l));
+                                   + Pb(i, k) * Pb(j, l) + Pb(j, k) * Pb(i, l));
                             const double factor = factor_J + factor_K;
                             if (std::abs(factor) < 1e-18)
                                 continue;
                             const int combo =
                                 ((ia * nb + ib) * nc + ic) * nd + id;
                             const double* M =
-                                &d2buf[static_cast<std::size_t>(combo)
-                                       * kSuper * kSuper];
+                                &d2buf[static_cast<std::size_t>(combo) * kSuper
+                                       * kSuper];
                             for (int su = 0; su < kSuper; ++su) {
-                                const int row =
-                                    3 * atom_of[su / 3] + su % 3;
+                                const int row = 3 * atom_of[su / 3] + su % 3;
                                 for (int sv = 0; sv < kSuper; ++sv) {
                                     const int col =
                                         3 * atom_of[sv / 3] + sv % 3;

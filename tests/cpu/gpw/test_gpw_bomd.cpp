@@ -85,8 +85,11 @@ TEST(GpwBomd, MdBindsEvaluatorForcesTwoSteps) {
         EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_x)[i])));
         EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_y)[i])));
         EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_z)[i])));
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_fx)[i])));
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_fy)[i])));
-        EXPECT_TRUE(std::isfinite(static_cast<double>(frame.span(kAtom_fz)[i])));
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_fx)[i])));
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_fy)[i])));
+        EXPECT_TRUE(
+            std::isfinite(static_cast<double>(frame.span(kAtom_fz)[i])));
     }
 }

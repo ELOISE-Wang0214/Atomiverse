@@ -132,7 +132,8 @@ int main() {
         for (int i = 0; i < 3; ++i) {
             if (!std::isfinite(static_cast<double>(frame.span(kAtom_x)[i]))
                 || !std::isfinite(static_cast<double>(frame.span(kAtom_y)[i]))
-                || !std::isfinite(static_cast<double>(frame.span(kAtom_z)[i]))) {
+                || !std::isfinite(
+                    static_cast<double>(frame.span(kAtom_z)[i]))) {
                 std::printf("FAIL: non-finite coordinate at chunk %d atom %d\n",
                             c, i);
                 return 1;
@@ -160,10 +161,9 @@ int main() {
 
     const double pe_f = frame.meta.get(kEnergy);
     const double ke_f = frame.meta.get(kKinetic);
-    std::printf(
-        "XL-BOMD H2O NVE (K=5): steps=%d  E0=%.6g eV  Ef=%.6g eV  "
-        "worst |dE|/scale=%.3e  tol=%.2f  oh=%.3f/%.3f Å\n",
-        n_prod, e0, pe_f + ke_f, worst_drift, drift_tol, oh1, oh2);
+    std::printf("XL-BOMD H2O NVE (K=5): steps=%d  E0=%.6g eV  Ef=%.6g eV  "
+                "worst |dE|/scale=%.3e  tol=%.2f  oh=%.3f/%.3f Å\n",
+                n_prod, e0, pe_f + ke_f, worst_drift, drift_tol, oh1, oh2);
     std::printf("  PE0=%.6g  KE0=%.6g  PEf=%.6g  KEf=%.6g eV  "
                 "final SCF iters=%d\n",
                 pe0, ke0, pe_f, ke_f, eval.last_result().iters);

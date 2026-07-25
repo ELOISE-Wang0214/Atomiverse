@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/cpu/component/integrator.h"
 
 namespace ATV {
 namespace cpu {
@@ -185,7 +185,8 @@ class NoseHooverNPT : public cpu::Integrator {
     /// @param couple_axis Per-axis barostat enable {x,y,z}.
     /// @param T_stop Ramp end T [K]; <0 folds to T_target (no ramp).
     NoseHooverNPT(double T_target, double tau_T, double P_target, double tau_P,
-                  double dt, double drag = 0.0, int mtchain = 3, int mpchain = 3,
+                  double dt, double drag = 0.0, int mtchain = 3,
+                  int mpchain = 3,
                   std::array<bool, 3> couple_axis = {true, true, true},
                   double T_stop = -1.0);
 

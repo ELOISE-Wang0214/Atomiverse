@@ -299,17 +299,14 @@ inline DeltaScfResult run_delta_scf(const cpu::Frame& frame,
     // that is `density_total()` on the determinant.
     const RealMatrix P_neutral = neutral.density_total();
     SCFInitialGuess guess;
-    guess.P_alpha =
-        (static_cast<double>(out.n_alpha) / neutral_ne) * P_neutral;
-    guess.P_beta =
-        (static_cast<double>(out.n_beta) / neutral_ne) * P_neutral;
+    guess.P_alpha = (static_cast<double>(out.n_alpha) / neutral_ne) * P_neutral;
+    guess.P_beta = (static_cast<double>(out.n_beta) / neutral_ne) * P_neutral;
     guess.has_alpha = true;
     guess.has_beta = true;
     cation_method.run(frame, &guess);
     out.cation_converged = cation_method.converged();
     out.e_cation = cation_method.energy();
-    out.spin_contamination =
-        cation_method.determinant().spin_contamination();
+    out.spin_contamination = cation_method.determinant().spin_contamination();
     out.i_delta = out.e_cation - out.e_neutral;
 
     // Cold start: identical method, UHF Hcore default guess, no seed.

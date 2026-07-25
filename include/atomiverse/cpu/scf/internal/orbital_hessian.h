@@ -182,17 +182,15 @@ class OrbitalHessian {
   private:
     /// @brief Full four-index MO transform of a dense chemist-order tensor:
     ///        out[p,q,r,s] = Σ_{μνλσ} C0(μ,p) C1(ν,q) C2(λ,r) C3(σ,s) T[μνλσ].
-    static xt::xtensor<double, 4>
-    transform_block_(const xt::xtensor<double, 4>& eri_ao,
-                     const xt::xtensor<double, 2>& C0,
-                     const xt::xtensor<double, 2>& C1,
-                     const xt::xtensor<double, 2>& C2,
-                     const xt::xtensor<double, 2>& C3);
+    static xt::xtensor<double, 4> transform_block_(
+        const xt::xtensor<double, 4>& eri_ao, const xt::xtensor<double, 2>& C0,
+        const xt::xtensor<double, 2>& C1, const xt::xtensor<double, 2>& C2,
+        const xt::xtensor<double, 2>& C3);
 
-    int no_ = 0; ///< Occupied spatial orbitals.
-    int nv_ = 0; ///< Virtual spatial orbitals.
-    RealVector eps_occ_;  ///< ε_i of the occupied columns [Hartree].
-    RealVector eps_virt_; ///< ε_a of the virtual columns [Hartree].
+    int no_ = 0;                  ///< Occupied spatial orbitals.
+    int nv_ = 0;                  ///< Virtual spatial orbitals.
+    RealVector eps_occ_;          ///< ε_i of the occupied columns [Hartree].
+    RealVector eps_virt_;         ///< ε_a of the virtual columns [Hartree].
     xt::xtensor<double, 4> ovov_; ///< (ai|bj), layout [a,i,b,j] [Hartree].
     xt::xtensor<double, 4> oovv_; ///< (ij|ab), layout [i,j,a,b] [Hartree].
 };

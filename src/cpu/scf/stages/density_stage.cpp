@@ -22,32 +22,26 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-DensityStage::DensityStage(bool restricted, bool is_hf, double damping,
-                           const RealMatrix& C_alpha, const RealMatrix& C_beta,
-                           const RealMatrix& F_alpha, const RealMatrix& F_beta,
-                           const RealMatrix& Hcore, const RealMatrix& J,
-                           const int& n_alpha, const int& n_beta,
-                           const int& n_basis, const bool& diis_active,
-                           const double& e_xc_grid,
-                           const double& e_exact_exchange, const double& v_nuc,
-                           RealMatrix& P_alpha, RealMatrix& P_beta,
-                           double& e_total, double& e_one, double& e_coulomb,
-                           bool generalized, const double& e_solvent,
-                           const double& e_pcm_fock_half, const RealMatrix& S,
-                           const MomStyle& mom_style,
-                           RealMatrix& mom_ref_C_alpha,
-                           RealMatrix& mom_ref_C_beta)
+DensityStage::DensityStage(
+    bool restricted, bool is_hf, double damping, const RealMatrix& C_alpha,
+    const RealMatrix& C_beta, const RealMatrix& F_alpha,
+    const RealMatrix& F_beta, const RealMatrix& Hcore, const RealMatrix& J,
+    const int& n_alpha, const int& n_beta, const int& n_basis,
+    const bool& diis_active, const double& e_xc_grid,
+    const double& e_exact_exchange, const double& v_nuc, RealMatrix& P_alpha,
+    RealMatrix& P_beta, double& e_total, double& e_one, double& e_coulomb,
+    bool generalized, const double& e_solvent, const double& e_pcm_fock_half,
+    const RealMatrix& S, const MomStyle& mom_style, RealMatrix& mom_ref_C_alpha,
+    RealMatrix& mom_ref_C_beta)
     : restricted_(restricted), is_hf_(is_hf), generalized_(generalized),
-      damping_(damping), C_alpha_(C_alpha), C_beta_(C_beta),
-      F_alpha_(F_alpha), F_beta_(F_beta), Hcore_(Hcore), J_(J), S_(S),
-      n_alpha_(n_alpha), n_beta_(n_beta), n_basis_(n_basis),
-      diis_active_(diis_active), e_xc_grid_(e_xc_grid),
-      e_exact_exchange_(e_exact_exchange), v_nuc_(v_nuc),
+      damping_(damping), C_alpha_(C_alpha), C_beta_(C_beta), F_alpha_(F_alpha),
+      F_beta_(F_beta), Hcore_(Hcore), J_(J), S_(S), n_alpha_(n_alpha),
+      n_beta_(n_beta), n_basis_(n_basis), diis_active_(diis_active),
+      e_xc_grid_(e_xc_grid), e_exact_exchange_(e_exact_exchange), v_nuc_(v_nuc),
       e_solvent_(e_solvent), e_pcm_fock_half_(e_pcm_fock_half),
       mom_style_(mom_style), P_alpha_(P_alpha), P_beta_(P_beta),
       mom_ref_C_alpha_(mom_ref_C_alpha), mom_ref_C_beta_(mom_ref_C_beta),
-      e_total_(e_total), e_one_(e_one), e_coulomb_(e_coulomb) {
-}
+      e_total_(e_total), e_one_(e_one), e_coulomb_(e_coulomb) {}
 
 std::vector<DefaultBinding> DensityStage::default_bindings() const {
     return {ATV::make_binding(ATV::scf::Phase::density, 0)};
@@ -66,16 +60,16 @@ RealMatrix DensityStage::mom_density_(const RealMatrix& C, RealMatrix& C_ref,
         return xt::zeros<double>({n_basis, n_basis});
     const int n_mo = static_cast<int>(C.shape()[1]);
     if (n_occ > n_mo)
-        throw std::invalid_argument(
-            "DensityStage MOM: n_occ=" + std::to_string(n_occ)
-            + " exceeds n_mo=" + std::to_string(n_mo));
+        throw std::invalid_argument("DensityStage MOM: n_occ="
+                                    + std::to_string(n_occ)
+                                    + " exceeds n_mo=" + std::to_string(n_mo));
     if (static_cast<int>(C_ref.shape()[0]) != n_basis
         || static_cast<int>(C_ref.shape()[1]) != n_occ)
-        throw std::invalid_argument(
-            "DensityStage MOM: reference C_ref is "
-            + std::to_string(C_ref.shape()[0]) + "x"
-            + std::to_string(C_ref.shape()[1]) + " but expected "
-            + std::to_string(n_basis) + "x" + std::to_string(n_occ));
+        throw std::invalid_argument("DensityStage MOM: reference C_ref is "
+                                    + std::to_string(C_ref.shape()[0]) + "x"
+                                    + std::to_string(C_ref.shape()[1])
+                                    + " but expected " + std::to_string(n_basis)
+                                    + "x" + std::to_string(n_occ));
     if (static_cast<int>(S.shape()[0]) != n_basis
         || static_cast<int>(S.shape()[1]) != n_basis)
         throw std::invalid_argument(
@@ -131,9 +125,8 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
         e_coulomb_ = 0; // folded into ½Tr[P(H+F)] for HF (never split out)
         // Free-energy convention: peel ½ Tr[V_pcm P] out of ½ Tr[(H+F)P]
         // and replace with ΔG_el (both zero when solvent is off).
-        e_total_ =
-            double(0.5) * xt::sum((Hcore_ + F_alpha_) * P_old)() + v_nuc_
-            - e_pcm_fock_half_ + e_solvent_;
+        e_total_ = double(0.5) * xt::sum((Hcore_ + F_alpha_) * P_old)() + v_nuc_
+                   - e_pcm_fock_half_ + e_solvent_;
         P_alpha_ = std::move(P_new);
         P_beta_ = P_alpha_;
         return;
@@ -159,14 +152,14 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
     RealMatrix P_alpha_new, P_beta_new;
     if (use_mom) {
         if (restricted) {
-            P_alpha_new = mom_density_(C_alpha_, mom_ref_C_alpha_, S_,
-                                       n_alpha_, n, double(2), mom);
+            P_alpha_new = mom_density_(C_alpha_, mom_ref_C_alpha_, S_, n_alpha_,
+                                       n, double(2), mom);
             P_beta_new = P_alpha_new;
         } else {
-            P_alpha_new = mom_density_(C_alpha_, mom_ref_C_alpha_, S_,
-                                       n_alpha_, n, double(1), mom);
-            P_beta_new = mom_density_(C_beta_, mom_ref_C_beta_, S_, n_beta_,
-                                     n, double(1), mom);
+            P_alpha_new = mom_density_(C_alpha_, mom_ref_C_alpha_, S_, n_alpha_,
+                                       n, double(1), mom);
+            P_beta_new = mom_density_(C_beta_, mom_ref_C_beta_, S_, n_beta_, n,
+                                      double(1), mom);
         }
     } else if (restricted) {
         P_alpha_new = density_.step(C_alpha_, n_alpha_, n, double(2));
@@ -194,9 +187,8 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
     double E_one = 0, E_J = 0;
 
     if (restricted && is_hf) {
-        E_total =
-            double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha)() + v_nuc_
-            - e_pcm_fock_half_ + e_solvent_;
+        E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha)()
+                  + v_nuc_ - e_pcm_fock_half_ + e_solvent_;
         E_one = xt::sum(Hcore_cm * P_alpha)();
     } else if (restricted) {
         E_one = xt::sum(Hcore_cm * P_alpha_new)();
@@ -204,8 +196,8 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
         // e_exact_exchange = alpha_hf * E_K, nonzero only for a KS global
         // hybrid (B3LYP / PBE0); zero for pure KS.
         // KS energy does not use F, so add ΔG_el directly (no half-trace peel).
-        E_total = E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_
-                  + e_solvent_;
+        E_total =
+            E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_ + e_solvent_;
     } else if (is_hf) {
         E_total = double(0.5)
                       * (xt::sum((Hcore_cm + F_alpha) * P_alpha)()
@@ -218,8 +210,8 @@ void DensityStage::launch(const cpu::LaunchContext& ctx) {
                 + xt::sum(Hcore_cm * P_beta_new)();
         E_J = double(0.5) * xt::sum(J_ * P_total_new)();
         // e_exact_exchange nonzero only for a UKS global hybrid.
-        E_total = E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_
-                  + e_solvent_;
+        E_total =
+            E_one + E_J + e_exact_exchange_ + e_xc_grid_ + v_nuc_ + e_solvent_;
     }
 
     // Publish: new density (old-in/new-out) and the branch energies.

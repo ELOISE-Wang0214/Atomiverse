@@ -138,10 +138,11 @@ void FIRE::launch(const cpu::LaunchContext& ctx) {
             m->has_displacement = disp_valid;
         }
 
-        ATV_INFO("[fire] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
-                 "rms_force_eVA={:.6f} max_disp_A={:.6e} dt_fs={:.4f} alpha={:.4f}",
-                 step_, f.meta.get(kEnergy), max_force_, rms_force, max_disp, dt_,
-                 alpha_);
+        ATV_INFO(
+            "[fire] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
+            "rms_force_eVA={:.6f} max_disp_A={:.6e} dt_fs={:.4f} alpha={:.4f}",
+            step_, f.meta.get(kEnergy), max_force_, rms_force, max_disp, dt_,
+            alpha_);
 
         energy_prev_ = f.meta.get(kEnergy);
         return;

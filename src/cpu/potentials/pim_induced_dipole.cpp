@@ -125,7 +125,8 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
     std::vector<double> alpha(static_cast<std::size_t>(n), 0.0);
     bool any_pol = false;
     for (int i = 0; i < n; ++i) {
-        alpha[static_cast<std::size_t>(i)] = alpha_of(static_cast<int>(type[i]));
+        alpha[static_cast<std::size_t>(i)] =
+            alpha_of(static_cast<int>(type[i]));
         if (alpha[static_cast<std::size_t>(i)] > 0.0)
             any_pol = true;
     }
@@ -219,7 +220,8 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
                 mu_new[static_cast<std::size_t>(3 * i + c)] = m;
                 dmax = std::max(
                     dmax,
-                    std::fabs(m - last_mu_[static_cast<std::size_t>(3 * i + c)]));
+                    std::fabs(m
+                              - last_mu_[static_cast<std::size_t>(3 * i + c)]));
             }
         }
         last_mu_.swap(mu_new);
@@ -238,12 +240,13 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
     // E_pol = −½ Σ μ · E^perm  [eV]
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
-        e -= 0.5 * (last_mu_[static_cast<std::size_t>(3 * i + 0)] *
-                        e_perm[static_cast<std::size_t>(3 * i + 0)] +
-                    last_mu_[static_cast<std::size_t>(3 * i + 1)] *
-                        e_perm[static_cast<std::size_t>(3 * i + 1)] +
-                    last_mu_[static_cast<std::size_t>(3 * i + 2)] *
-                        e_perm[static_cast<std::size_t>(3 * i + 2)]);
+        e -= 0.5
+             * (last_mu_[static_cast<std::size_t>(3 * i + 0)]
+                    * e_perm[static_cast<std::size_t>(3 * i + 0)]
+                + last_mu_[static_cast<std::size_t>(3 * i + 1)]
+                      * e_perm[static_cast<std::size_t>(3 * i + 1)]
+                + last_mu_[static_cast<std::size_t>(3 * i + 2)]
+                      * e_perm[static_cast<std::size_t>(3 * i + 2)]);
     }
     e_pol_ = k * e;
     f.meta.get(kEnergy) += e_pol_;
@@ -284,14 +287,10 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             const double L7 = s7(dmp);
 
             // Field at i from dipole μ_j: E^μ = L5*3(μ·r)r/r^5 − L3 μ/r^3
-            const double mjr =
-                muj[0] * dx + muj[1] * dy + muj[2] * dz;
-            const double Emx =
-                L5 * 3.0 * mjr * dx / r5 - L3 * muj[0] / r3;
-            const double Emy =
-                L5 * 3.0 * mjr * dy / r5 - L3 * muj[1] / r3;
-            const double Emz =
-                L5 * 3.0 * mjr * dz / r5 - L3 * muj[2] / r3;
+            const double mjr = muj[0] * dx + muj[1] * dy + muj[2] * dz;
+            const double Emx = L5 * 3.0 * mjr * dx / r5 - L3 * muj[0] / r3;
+            const double Emy = L5 * 3.0 * mjr * dy / r5 - L3 * muj[1] / r3;
+            const double Emz = L5 * 3.0 * mjr * dz / r5 - L3 * muj[2] / r3;
 
             // q_i × E_i^μ  (induced field force on permanent charge)
             fix += qi * Emx;
@@ -301,8 +300,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             // Field gradient of charge q_j at i (for μ_i · G^q):
             // G_ab = q_j [ L3 δ_ab/r^3 − L5 * 3 r_a r_b / r^5 ]
             // (μ · G)_a = q_j [ L3 μ_a/r^3 − L5 * 3 (μ·r) r_a / r^5 ]
-            const double mir =
-                mui[0] * dx + mui[1] * dy + mui[2] * dz;
+            const double mir = mui[0] * dx + mui[1] * dy + mui[2] * dz;
             fix += qj * (L3 * mui[0] / r3 - L5 * 3.0 * mir * dx / r5);
             fiy += qj * (L3 * mui[1] / r3 - L5 * 3.0 * mir * dy / r5);
             fiz += qj * (L3 * mui[2] / r3 - L5 * 3.0 * mir * dz / r5);
@@ -314,15 +312,12 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             // F_i = −∇_i U_pair = k ∇_i V (Thole: L5/L7 scale the kernels).
             const double mir_mj =
                 mui[0] * muj[0] + mui[1] * muj[1] + mui[2] * muj[2];
-            fix += L5 * 3.0 / r5 *
-                       (mir_mj * dx + mjr * mui[0] + mir * muj[0]) -
-                   L7 * 15.0 / r7 * mir * mjr * dx;
-            fiy += L5 * 3.0 / r5 *
-                       (mir_mj * dy + mjr * mui[1] + mir * muj[1]) -
-                   L7 * 15.0 / r7 * mir * mjr * dy;
-            fiz += L5 * 3.0 / r5 *
-                       (mir_mj * dz + mjr * mui[2] + mir * muj[2]) -
-                   L7 * 15.0 / r7 * mir * mjr * dz;
+            fix += L5 * 3.0 / r5 * (mir_mj * dx + mjr * mui[0] + mir * muj[0])
+                   - L7 * 15.0 / r7 * mir * mjr * dx;
+            fiy += L5 * 3.0 / r5 * (mir_mj * dy + mjr * mui[1] + mir * muj[1])
+                   - L7 * 15.0 / r7 * mir * mjr * dy;
+            fiz += L5 * 3.0 / r5 * (mir_mj * dz + mjr * mui[2] + mir * muj[2])
+                   - L7 * 15.0 / r7 * mir * mjr * dz;
         }
 
         // Convert Gaussian force (e²/Å²) → eV/Å

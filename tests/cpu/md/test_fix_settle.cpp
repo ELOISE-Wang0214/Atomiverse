@@ -4,10 +4,10 @@
 #include <cmath>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/dynamics/fix_settle.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/core/stage.h"
 
 using namespace ATV;
 

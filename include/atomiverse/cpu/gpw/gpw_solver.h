@@ -24,7 +24,7 @@
 #include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
-#include "atomiverse/cpu/gpw/mp2.h" // Mp2Result
+#include "atomiverse/cpu/gpw/mp2.h"       // Mp2Result
 #include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
 #include "atomiverse/molrs.hpp"
 
@@ -54,7 +54,7 @@ struct GpwAtom {
     int z = 0;                 ///< atomic number Z (for DFT-D3; 0 = unset).
     double pos[3] = {0, 0, 0}; ///< position [Bohr].
     std::vector<GridBasisFunction>
-        basis;                ///< contracted GTOs, already centered at pos.
+        basis; ///< contracted GTOs, already centered at pos.
     /// @brief Angular momentum ℓ of each entry in `basis` (same length; for DFT+U).
     std::vector<int> basis_l;
     double rloc = 0.0;        ///< GTH local radius.
@@ -96,7 +96,8 @@ struct GpwResult {
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3/D4 dispersion [Hartree] (0 when off).
-    double e_dftu = 0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
+    double e_dftu =
+        0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     /// @name k-point sampling payload (populated by the k-point RKS path only;
     /// empty for Γ / UKS runs). One entry per sampled k.
     /// @{
@@ -112,7 +113,7 @@ struct GpwResult {
     ///        MPI is inactive or `nprocs == 1`.
     int n_kpts_local = 0;
     /// @}
-    double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
+    double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
     std::vector<double> mulliken_spin;
     bool converged = false;
@@ -122,9 +123,9 @@ struct GpwResult {
     /// RKS: `P == build_density_matrix(C, n_occ, ·, 2)` from the closed H.
     /// UKS: `C`/`P`/`eps` are α; `C_beta`/`P_beta`/`eps_beta` are β.
     /// @{
-    linalg::RealMatrix C;    ///< MO coefficients α (or RKS), columns = orbitals.
-    linalg::RealMatrix P;    ///< Density matrix α (or RKS closed-shell P).
-    std::vector<double> eps; ///< Orbital energies α (or RKS) [Hartree].
+    linalg::RealMatrix C; ///< MO coefficients α (or RKS), columns = orbitals.
+    linalg::RealMatrix P; ///< Density matrix α (or RKS closed-shell P).
+    std::vector<double> eps;      ///< Orbital energies α (or RKS) [Hartree].
     linalg::RealMatrix C_beta;    ///< UKS β MO coefficients (empty for RKS).
     linalg::RealMatrix P_beta;    ///< UKS β density (empty for RKS).
     std::vector<double> eps_beta; ///< UKS β orbital energies (empty for RKS).
@@ -153,32 +154,33 @@ class GpwDft {
   public:
     // ── Method parameters (were GpwConfig fields) ─────────────────────
     double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
-    double cutoff_ry = 300.0; ///< density grid cutoff [Ry].
-    int ngrids = 1; ///< CP2K multigrid levels.
-    double rel_cutoff = 0.0; ///< CP2K REL_CUTOFF [Ry].
-    int n_occ = 0; ///< RKS: doubly-occupied orbitals (N_elec / 2).
+    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry].
+    int ngrids = 1;             ///< CP2K multigrid levels.
+    double rel_cutoff = 0.0;    ///< CP2K REL_CUTOFF [Ry].
+    int n_occ = 0;              ///< RKS: doubly-occupied orbitals (N_elec / 2).
     /// UKS occupations (valence electrons per spin). When
     /// `n_alpha + n_beta > 0`, the unrestricted path is used and `n_occ` is
     /// ignored. High-spin O₂ (GTH-q6, 12 valence e⁻, multiplicity 3) → (7, 5).
     int n_alpha = 0;
     int n_beta = 0;
-    int max_iter = 100; ///< max SCF iterations.
-    double tol = 1e-8; ///< SCF energy convergence [Hartree].
+    int max_iter = 100;        ///< max SCF iterations.
+    double tol = 1e-8;         ///< SCF energy convergence [Hartree].
     double eps_default = 1e-8; ///< Gaussian-tail cutoff.
-    double mix = 0.5; ///< linear density-mixing (diis_depth == 0).
-    int diis_depth = 6; ///< Pulay DIIS history depth.
+    double mix = 0.5;          ///< linear density-mixing (diis_depth == 0).
+    int diis_depth = 6;        ///< Pulay DIIS history depth.
     double lindep_threshold = 1e-8; ///< S-eigenvalue keep threshold.
-    double level_shift = 0.0; ///< virtual level shift [Hartree].
-    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol).
-    bool nonperiodic = false; ///< isolated (MT) Poisson solver.
-    bool local_pp_on_grid = true; ///< collocate GTH local SR PP on grid.
-    bool d3 = false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4.
+    double level_shift = 0.0;       ///< virtual level shift [Hartree].
+    XcKind xc = XcKind::PADE;       ///< LDA (PADE) or GGA (PBE / PBEsol).
+    bool nonperiodic = false;       ///< isolated (MT) Poisson solver.
+    bool local_pp_on_grid = true;   ///< collocate GTH local SR PP on grid.
+    bool d3 =
+        false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4.
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
     /// Mutually exclusive with `d3` / `d4` — any two true throws at run.
     bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
     /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
     /// Mutually exclusive with `d3` / `d3bj`.
-    bool d4 = false; ///< Grimme DFT-D4 dispersion.
+    bool d4 = false;     ///< Grimme DFT-D4 dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
@@ -266,9 +268,9 @@ class GpwDft {
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
   private:
-    GpwResult result_;    ///< Owned result buffer (last run).
+    GpwResult result_;     ///< Owned result buffer (last run).
     Mp2Result mp2_result_; ///< Owned MP2 result buffer (last mp2()).
-    bool built_ = false; ///< Whether build() validated the configuration.
+    bool built_ = false;   ///< Whether build() validated the configuration.
 };
 
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
@@ -295,10 +297,11 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 ///        exactly 0 — for variable-cell relaxation of constrained box edges.
 /// @param guess_C Optional warm-start MO coefficients for the reference SCF.
 /// @return Voigt stress [Hartree/Bohr³].
-std::array<double, 6>
-gpw_stress(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-           double h = 2e-3, const std::array<bool, 3>& axes = {true, true, true},
-           const linalg::RealMatrix* guess_C = nullptr);
+std::array<double, 6> gpw_stress(const std::vector<GpwAtom>& atoms,
+                                 const GpwDft& method, double h = 2e-3,
+                                 const std::array<bool, 3>& axes = {true, true,
+                                                                    true},
+                                 const linalg::RealMatrix* guess_C = nullptr);
 
 /// @brief Multi-SCF strain-FD cell stress σ [Hartree/Bohr³] (oracle / twin).
 ///

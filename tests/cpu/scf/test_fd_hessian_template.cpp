@@ -110,7 +110,7 @@ cpu::Frame make_frame(const std::vector<double>& r0) {
 // template returns 1/2 (K + K^T) with atom-major (col = 3A+d) index layout.
 TEST(TestFdHessianTemplate, RecoversSymmetrizedQuadraticStiffness) {
     // Exactly-representable reference geometry (Angstrom), atom-major.
-    const std::vector<double> r0 = {0.0, 0.5, 1.25,   // atom 0 (x,y,z)
+    const std::vector<double> r0 = {0.0, 0.5,   1.25,  // atom 0 (x,y,z)
                                     2.0, -0.75, 0.25}; // atom 1 (x,y,z)
 
     // Hard-coded stiffness K [eV/Angstrom^2]: distinct diagonal (pins the

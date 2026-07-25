@@ -25,8 +25,8 @@ namespace internal {
 /// @param guess_C Optional warm-start MO coefficients for the reference SCF.
 /// @return Voigt stress σ [Hartree/Bohr³], order xx,yy,zz,xy,xz,yz.
 std::array<double, 6>
-gpw_stress_analytic_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-                         double h = 2e-3,
+gpw_stress_analytic_impl(const std::vector<GpwAtom>& atoms,
+                         const GpwDft& method, double h = 2e-3,
                          const std::array<bool, 3>& axes = {true, true, true},
                          const linalg::RealMatrix* guess_C = nullptr);
 

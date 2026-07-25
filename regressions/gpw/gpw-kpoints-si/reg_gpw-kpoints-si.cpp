@@ -48,10 +48,8 @@ std::vector<ATV::cpu::gpw::GpwAtom> si_bct(double a_bohr, int nz) {
     const ATV::cpu::gpw::GaussianBasis bSi(molrs::Element::Si,
                                            "DZVP-MOLOPT-GTH");
     const ATV::cpu::gpw::GthPotential pSi(molrs::Element::Si, "GTH-PBE-q4");
-    const double frac[4][3] = {{0.0, 0.0, 0.0},
-                               {0.5, 0.5, 0.5},
-                               {0.5, 0.0, 0.25},
-                               {0.0, 0.5, 0.75}};
+    const double frac[4][3] = {
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}, {0.5, 0.0, 0.25}, {0.0, 0.5, 0.75}};
     std::vector<ATV::cpu::gpw::GpwAtom> atoms;
     for (int r = 0; r < nz; ++r)
         for (int i = 0; i < 4; ++i) {
@@ -203,8 +201,8 @@ int main() {
                 check(false, "A5 eps_k has occupied+virtual bands");
                 break;
             }
-            vbm = std::max(vbm, eps[7]);  // n_occ = 8 → highest occupied
-            cbm = std::min(cbm, eps[8]);  // lowest virtual
+            vbm = std::max(vbm, eps[7]); // n_occ = 8 → highest occupied
+            cbm = std::min(cbm, eps[8]); // lowest virtual
         }
         const double gap_ev = (cbm - vbm) * kHa2Ev;
         std::printf("A5: VBM = %.6f Ha, CBM = %.6f Ha, gap = %.3f eV\n", vbm,
@@ -219,8 +217,8 @@ int main() {
         const auto& rg = gm.run(cell1);
         check(rg.converged, "A4 Γ-point SCF converged");
         const double dk = std::abs(rm.e_total - rg.e_total);
-        std::printf("A4: E(Γ) = %.10f Ha, |E_MP − E_Γ| = %.4e Ha\n",
-                    rg.e_total, dk);
+        std::printf("A4: E(Γ) = %.10f Ha, |E_MP − E_Γ| = %.4e Ha\n", rg.e_total,
+                    dk);
         check(dk > 1e-3, "A4 k-sampling activation |Δ| > 1e-3 Ha");
 
         // A7: frozen first-green absolute pin (REFERENCE.md; ATV-frozen band

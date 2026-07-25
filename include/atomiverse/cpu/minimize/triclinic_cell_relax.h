@@ -19,9 +19,9 @@ namespace minimizer {
 /// affinely maps atom positions. Textbook skeleton — not a PR barostat.
 class TriclinicCellRelax : public Optimizer {
   public:
-    double alpha0 = 0.02;    ///< Strain gain (dimensionless).
+    double alpha0 = 0.02;     ///< Strain gain (dimensionless).
     double max_strain = 0.05; ///< Cap on |ε_αβ| per step.
-    double bulk_mod = 1.0;   ///< Soft modulus [eV/Å³].
+    double bulk_mod = 1.0;    ///< Soft modulus [eV/Å³].
 
     TriclinicCellRelax() = default;
     explicit TriclinicCellRelax(double alpha, double bulk = 1.0);

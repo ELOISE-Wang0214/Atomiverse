@@ -273,9 +273,8 @@ TEST(GShellIntegrals, FourCenterGQuartetThrows) {
     PrimBlock g(4, 0.9, c0);
     Dummy d;
     std::vector<double> buf(15 * 15 * 15 * 15, 0.0);
-    EXPECT_THROW(
-        native::rys_eri_block(g.blk, g.blk, g.blk, g.blk, buf.data()),
-        std::runtime_error);
+    EXPECT_THROW(native::rys_eri_block(g.blk, g.blk, g.blk, g.blk, buf.data()),
+                 std::runtime_error);
     // ... while the heaviest supported 3-center case (ff|g·1) runs.
     PrimBlock f1(3, 0.7, c0);
     std::vector<double> buf3(10 * 10 * 15, 0.0);
@@ -318,8 +317,8 @@ TEST(DensityFitting, MetricWhiteningIdentity) {
 
     const auto& V = df.metric();
     const auto& W = df.v_inv_sqrt();
-    const RealMatrix I_test = xt::linalg::dot(
-        W, RealMatrix(xt::linalg::dot(V, xt::transpose(W))));
+    const RealMatrix I_test =
+        xt::linalg::dot(W, RealMatrix(xt::linalg::dot(V, xt::transpose(W))));
     const int n = df.n_aux();
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j) {
@@ -354,10 +353,8 @@ TEST(DensityFitting, FittedJKCloseToDenseH2) {
     // Dense exact J/K from the stored ERI tensor (chemist notation):
     //   J_kl = Σ_ij (ij|kl) P_ji,  K_il = Σ_jk (ij|kl) P_jk.
     const std::vector<std::size_t> ax01{0, 1}, ax10{1, 0}, ax12{1, 2};
-    const RealMatrix J_exact =
-        xt::linalg::tensordot(pack.ERI, P, ax01, ax10);
-    const RealMatrix K_exact =
-        xt::linalg::tensordot(pack.ERI, P, ax12, ax01);
+    const RealMatrix J_exact = xt::linalg::tensordot(pack.ERI, P, ax01, ax10);
+    const RealMatrix K_exact = xt::linalg::tensordot(pack.ERI, P, ax12, ax01);
 
     const RealMatrix J_fit = df.j_fitted(P);
     const RealMatrix K_fit = df.k_fitted_from_density(P);
@@ -409,9 +406,9 @@ TEST(DensityFitting, FittedJKCloseToDenseH2) {
 TEST(DensityFitting, NearSingularMetricThrows) {
     cpu::Frame f = h2_frame(1e-7);
     IntegralPack pack{f, BasisSet::STO3G};
-    EXPECT_THROW(internal::DensityFitting(pack.shells, pack.atoms,
-                                          AuxBasis::Def2JKFIT),
-                 std::runtime_error);
+    EXPECT_THROW(
+        internal::DensityFitting(pack.shells, pack.atoms, AuxBasis::Def2JKFIT),
+        std::runtime_error);
 }
 
 #endif // ATV_HAS_HF

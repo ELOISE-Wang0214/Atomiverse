@@ -61,9 +61,7 @@ class PointChargeEmbedding {
     [[nodiscard]] double self_energy() const;
 
     /// @brief Number of embedded charges (dimensionless).
-    [[nodiscard]] int n_charges() const {
-        return static_cast<int>(q_.size());
-    }
+    [[nodiscard]] int n_charges() const { return static_cast<int>(q_.size()); }
 
   private:
     std::vector<std::array<double, 3>> pos_bohr_; ///< Charge positions [Bohr].

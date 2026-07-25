@@ -101,9 +101,8 @@ void AnisotropicCellRelax::launch(const LaunchContext& ctx) {
             m->energy = energy;
             m->max_force = p_residual_;
             m->rms_force = p_residual_;
-            m->max_displacement =
-                std::max({std::fabs(sx_ - 1), std::fabs(sy_ - 1),
-                          std::fabs(sz_ - 1)});
+            m->max_displacement = std::max(
+                {std::fabs(sx_ - 1), std::fabs(sy_ - 1), std::fabs(sz_ - 1)});
             m->rms_displacement = m->max_displacement;
             m->energy_change = dE;
             m->has_displacement = has_prev_;

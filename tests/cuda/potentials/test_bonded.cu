@@ -6,9 +6,9 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/dynamics/md.cuh"
 #include "atomiverse/cuda/dynamics/velocity_verlet.cuh"
+#include "atomiverse/cuda/evaluate/evaluate.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
@@ -27,11 +27,16 @@ TEST(BondHarmonic, DimerAtEquilibrium) {
         auto z = frame.span(kAtom_z);
         auto mass = frame.span(kAtom_mass);
         auto tag = frame.span(kAtom_tag);
-        x[0] = 0.0;  x[1] = 1.53;
-        y[0] = 0.0;  y[1] = 0.0;
-        z[0] = 0.0;  z[1] = 0.0;
-        mass[0] = 14.0;  mass[1] = 14.0;
-        tag[0] = 0;  tag[1] = 1;
+        x[0] = 0.0;
+        x[1] = 1.53;
+        y[0] = 0.0;
+        y[1] = 0.0;
+        z[0] = 0.0;
+        z[1] = 0.0;
+        mass[0] = 14.0;
+        mass[1] = 14.0;
+        tag[0] = 0;
+        tag[1] = 1;
     }
     frame.simbox = cpu::Box::cubic(20.0);
 
@@ -64,11 +69,16 @@ TEST(BondHarmonic, DimerDisplaced) {
         auto z = frame.span(kAtom_z);
         auto mass = frame.span(kAtom_mass);
         auto tag = frame.span(kAtom_tag);
-        x[0] = 0.0;  x[1] = r;
-        y[0] = 0.0;  y[1] = 0.0;
-        z[0] = 0.0;  z[1] = 0.0;
-        mass[0] = 14.0;  mass[1] = 14.0;
-        tag[0] = 0;  tag[1] = 1;
+        x[0] = 0.0;
+        x[1] = r;
+        y[0] = 0.0;
+        y[1] = 0.0;
+        z[0] = 0.0;
+        z[1] = 0.0;
+        mass[0] = 14.0;
+        mass[1] = 14.0;
+        tag[0] = 0;
+        tag[1] = 1;
     }
     frame.simbox = cpu::Box::cubic(20.0);
 
@@ -109,11 +119,21 @@ TEST(AngleHarmonic, AtEquilibrium) {
         auto z = frame.span(kAtom_z);
         auto mass = frame.span(kAtom_mass);
         auto tag = frame.span(kAtom_tag);
-        x[0] = 0.0;  x[1] = r;  x[2] = r + r * cos(M_PI - theta0);
-        y[0] = 0.0;  y[1] = 0.0;  y[2] = r * sin(M_PI - theta0);
-        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;
-        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;
-        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;
+        x[0] = 0.0;
+        x[1] = r;
+        x[2] = r + r * cos(M_PI - theta0);
+        y[0] = 0.0;
+        y[1] = 0.0;
+        y[2] = r * sin(M_PI - theta0);
+        z[0] = 0.0;
+        z[1] = 0.0;
+        z[2] = 0.0;
+        mass[0] = 14.0;
+        mass[1] = 14.0;
+        mass[2] = 14.0;
+        tag[0] = 0;
+        tag[1] = 1;
+        tag[2] = 2;
     }
     frame.simbox = cpu::Box::cubic(20.0);
 
@@ -152,11 +172,26 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
         auto z = frame.span(kAtom_z);
         auto mass = frame.span(kAtom_mass);
         auto tag = frame.span(kAtom_tag);
-        x[0] = 0.0;  x[1] = 0.0;  x[2] = 1.5;  x[3] = 1.5;
-        y[0] = 1.0;  y[1] = 0.0;  y[2] = 0.0;  y[3] = 0.0;
-        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;  z[3] = 1.0;
-        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;  mass[3] = 14.0;
-        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;  tag[3] = 3;
+        x[0] = 0.0;
+        x[1] = 0.0;
+        x[2] = 1.5;
+        x[3] = 1.5;
+        y[0] = 1.0;
+        y[1] = 0.0;
+        y[2] = 0.0;
+        y[3] = 0.0;
+        z[0] = 0.0;
+        z[1] = 0.0;
+        z[2] = 0.0;
+        z[3] = 1.0;
+        mass[0] = 14.0;
+        mass[1] = 14.0;
+        mass[2] = 14.0;
+        mass[3] = 14.0;
+        tag[0] = 0;
+        tag[1] = 1;
+        tag[2] = 2;
+        tag[3] = 3;
     }
     frame.simbox = cpu::Box::cubic(20.0);
 
@@ -187,9 +222,8 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
         fsum_x += fx[i];
         fsum_y += fy[i];
         fsum_z += fz[i];
-        fmax = std::max({fmax, std::abs(fx[i]),
-                         std::abs(fy[i]),
-                         std::abs(fz[i])});
+        fmax =
+            std::max({fmax, std::abs(fx[i]), std::abs(fy[i]), std::abs(fz[i])});
     }
     // A torsional force exists (not all zero) and obeys Newton's 3rd law.
     EXPECT_GT(fmax, 1e-2)
@@ -210,11 +244,26 @@ TEST(Bonded, ChainWithLJ) {
         auto z = frame.span(kAtom_z);
         auto mass = frame.span(kAtom_mass);
         auto tag = frame.span(kAtom_tag);
-        x[0] = 0.0;  x[1] = 1.53;  x[2] = 3.06;  x[3] = 4.59;
-        y[0] = 0.0;  y[1] = 0.3;  y[2] = -0.3;  y[3] = 0.3;
-        z[0] = 0.0;  z[1] = 0.0;  z[2] = 0.0;  z[3] = 0.0;
-        mass[0] = 14.0;  mass[1] = 14.0;  mass[2] = 14.0;  mass[3] = 14.0;
-        tag[0] = 0;  tag[1] = 1;  tag[2] = 2;  tag[3] = 3;
+        x[0] = 0.0;
+        x[1] = 1.53;
+        x[2] = 3.06;
+        x[3] = 4.59;
+        y[0] = 0.0;
+        y[1] = 0.3;
+        y[2] = -0.3;
+        y[3] = 0.3;
+        z[0] = 0.0;
+        z[1] = 0.0;
+        z[2] = 0.0;
+        z[3] = 0.0;
+        mass[0] = 14.0;
+        mass[1] = 14.0;
+        mass[2] = 14.0;
+        mass[3] = 14.0;
+        tag[0] = 0;
+        tag[1] = 1;
+        tag[2] = 2;
+        tag[3] = 3;
     }
     frame.simbox = cpu::Box::cubic(20.0);
 
