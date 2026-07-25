@@ -45,12 +45,21 @@ M = N_\uparrow - N_\downarrow = 2.
 ### Total energy (offline method pin)
 
 \[
-E_{\mathrm{tot}} = -24.2395602747~\mathrm{Ha}
+E_{\mathrm{tot}} = -25.1087178036~\mathrm{Ha}
 \quad (| \Delta E | \le 5\times 10^{-3}~\mathrm{Ha}).
 \]
 
-Recorded 2026-07-24 on Arrhenius (x86_64) with the settings above
+Recorded 2026-07-25 on Arrhenius (x86_64) with the settings above
 (converged in 5 SCF iters).
+
+**Re-pin 2026-07-25:** previous frozen value −24.2395602747 Ha (recorded
+2026-07-24) was produced by a Davidson subspace step that truncated the
+(complex Hermitian) subspace Hamiltonian to its real part — first-order
+wrong Ritz vectors at every non-TRIM k — and by G-sphere enumeration
+bounds that clipped sphere-edge plane waves. Both fixed with the
+`berry-polarization` case (see its REFERENCE.md, "Root-cause fixes"); the
+corrected solver lowers this fixed-settings pin. Magnetization (the
+literature hard gate) is unchanged.
 
 **Oracle note:** Host CP2K module not used as an absolute-energy twin
 (GTH-GPW ≠ NC-UPF PW; same class of limitation as `pw-spin-polarized-o2`).

@@ -2,6 +2,7 @@
 /// @brief G-vector enumeration implementation.
 
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
+#include "atomiverse/core/units.h"
 #include <algorithm>
 #include <cmath>
 
@@ -23,6 +24,29 @@ GVectorList enumerate_g_vectors(const cpu::Box& cell_bohr, AccReal ecut,
     int kmax = static_cast<int>(gmax / b1n) + 1;
     int lmax = static_cast<int>(gmax / b2n) + 1;
 
+    // Index window per axis. The integer index of G along axis i is
+    // exactly h_i = (a_i . G) / 2pi, so over the cutoff ball
+    // |k + G| <= gmax the index runs in -f_i +/- gmax |a_i| / 2pi, where
+    // f_i = (a_i . k) / 2pi is the fractional coordinate of k. The
+    // historical bound +/-(gmax/|b_i| + 1) ignored both the k offset and
+    // the obliquity of the reciprocal basis (gmax/|b_i| underestimates
+    // the projection extent for non-orthogonal cells), silently clipping
+    // sphere-edge G-vectors — harmless-looking for small |k| but fatal
+    // for Berry-phase strings sampled at fractional labels near 1.
+    const Mat3& A = cell_bohr.cell(); // rows a_i [Bohr]
+    int lo[3], hi[3];
+    for (int i = 0; i < 3; ++i) {
+        const AccReal an =
+            std::sqrt(A(i, 0) * A(i, 0) + A(i, 1) * A(i, 1)
+                      + A(i, 2) * A(i, 2));
+        const AccReal two_pi = AccReal(2) * units::pi;
+        const AccReal fi =
+            (A(i, 0) * k[0] + A(i, 1) * k[1] + A(i, 2) * k[2]) / two_pi;
+        const AccReal hw = gmax * an / two_pi;
+        lo[i] = static_cast<int>(std::floor(-fi - hw)) - 1;
+        hi[i] = static_cast<int>(std::ceil(-fi + hw)) + 1;
+    }
+
     struct GV {
         Vec3 v;
         AccReal e;
@@ -30,9 +54,9 @@ GVectorList enumerate_g_vectors(const cpu::Box& cell_bohr, AccReal ecut,
     };
     std::vector<GV> tmp;
 
-    for (int h = -hmax; h <= hmax; ++h) {
-        for (int kk = -kmax; kk <= kmax; ++kk) {
-            for (int l = -lmax; l <= lmax; ++l) {
+    for (int h = lo[0]; h <= hi[0]; ++h) {
+        for (int kk = lo[1]; kk <= hi[1]; ++kk) {
+            for (int l = lo[2]; l <= hi[2]; ++l) {
                 Vec3 g = b0 * AccReal(h) + b1 * AccReal(kk) + b2 * AccReal(l);
                 Vec3 kpg = {g[0] + k[0], g[1] + k[1], g[2] + k[2]};
                 AccReal e = AccReal(0.5) * kpg.norm_squared();

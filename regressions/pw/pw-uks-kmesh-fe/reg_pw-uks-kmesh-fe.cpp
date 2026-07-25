@@ -51,7 +51,11 @@ int main() {
     // Total energy [Ha] at the exact settings below (SG15 ONCV O, ecut=5 Ry,
     // k_mesh=2, L=5.5 Å, R=1.2075 Å, multiplicity 3). Frozen offline method pin.
     // Budget: multi-k × dual-spin Davidson; keep wall ≤ 60 s.
-    constexpr double want_e_ha = -24.2395602747;
+    // Re-pinned 2026-07-25: the Davidson subspace-Hermiticity +
+    // G-sphere-bounds fixes (see regressions/pw/berry-polarization/
+    // REFERENCE.md) legitimately lower this frozen method pin from
+    // -24.2395602747 (magnetization literature gate unchanged).
+    constexpr double want_e_ha = -25.1087178036;
     constexpr double tol_e_ha = 5.0e-3; // Ha — modest ecut / multi-k
 
     const std::string upf = o_upf();

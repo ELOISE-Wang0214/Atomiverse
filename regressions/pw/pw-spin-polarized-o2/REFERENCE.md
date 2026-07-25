@@ -40,9 +40,17 @@ M = N_\uparrow - N_\downarrow = 2.
 ### Total energy (offline method pin)
 
 \[
-E_{\mathrm{tot}} = -28.3392565801~\mathrm{Ha}
+E_{\mathrm{tot}} = -28.6267426458~\mathrm{Ha}
 \quad (| \Delta E | \le 1\times 10^{-3}~\mathrm{Ha}).
 \]
+
+**Re-pin 2026-07-25:** previous frozen value −28.3392565801 Ha was produced
+by a Davidson subspace step that truncated the (complex Hermitian) subspace
+Hamiltonian to its real part, corrupting the Ritz vectors, and by G-sphere
+enumeration bounds that clipped sphere-edge plane waves. Both fixed with the
+`berry-polarization` case (see its REFERENCE.md, "Root-cause fixes"); the
+corrected solver lowers this fixed-settings pin. Magnetization (the
+literature hard gate) is unchanged.
 
 **Oracle note:** Host CP2K 2026.1 module is listed but unloadable here
 (dependency chain / `hwloc`); no `pw.x` (Quantum ESPRESSO) on PATH. Absolute

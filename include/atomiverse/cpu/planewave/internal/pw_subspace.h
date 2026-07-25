@@ -29,6 +29,18 @@ void compute_ylm(AccReal x, AccReal y, AccReal z, AccReal r, int l,
 void jacobi_eigh(int n, AccReal* A, AccReal* eig, AccReal* vecs,
                  int max_sweep = 20);
 
+/// @brief Cyclic Jacobi eigensolver for small dense complex Hermitian
+///        matrices (phase-rotated 2x2 real rotations).
+///
+/// Same contract as `jacobi_eigh`: destroys `A` (row-major n x n),
+/// eigenvalues ascending in `eig`, eigenvector k in column k of `vecs`
+/// (`vecs[i * n + k]`). Needed by the Davidson subspace step: at any
+/// k-point that is not time-reversal invariant the subspace Hamiltonian
+/// \(\langle v_\mu|H|v_\nu\rangle\) is genuinely complex, and truncating
+/// it to its real part corrupts the Ritz vectors at first order.
+void jacobi_eigh_hermitian(int n, std::complex<AccReal>* A, AccReal* eig,
+                           std::complex<AccReal>* vecs, int max_sweep = 30);
+
 /// @brief Build the initial Davidson subspace for the current k-point.
 ///
 /// Uses atomic wavefunctions (QE startingwfc='atomic+random') when the

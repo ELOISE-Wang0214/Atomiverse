@@ -95,6 +95,9 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw bands-dos-si)
+    atv_add_regression(pw berry-polarization)
+    target_compile_definitions(reg_berry-polarization PRIVATE
+        ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw pw-uks-kmesh-fe)
     # pw-smearing-al merged when branch lands
     if(ATV_BUILD_MD)
