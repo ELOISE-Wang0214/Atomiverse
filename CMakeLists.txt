@@ -502,6 +502,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/internal/shell_pair.cpp
             src/cpu/scf/operators.cpp
             src/cpu/observe/multipole.cpp
+            src/cpu/scf/wannier.cpp
             src/cpu/observe/lowdin.cpp
             src/cpu/observe/esp_charges.cpp
             src/cpu/scf/internal/cart2sph.cpp

@@ -293,7 +293,7 @@ Which engine backs which ✓:
 | Density-functional perturbation theory |  ✓  |   ○  |   ○  |
 | Finite-displacement phonons            |  ✓  |   ○  |   ○  |
 | Berry-phase polarization               |  ✓  |   ○  |   ○  |
-| Maximally localized Wannier functions  |  ○  |   ○  |   ○  |
+| Maximally localized Wannier functions  |  ◐  |   ○  |   ○  |
 
 - **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay) and
   plane-wave **local HF + Ewald + KB nonlocal** (`pw_forces_analytic`). PW FD
@@ -320,8 +320,12 @@ Which engine backs which ✓:
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,
-  `regressions/pw/berry-polarization`). Maximally localized Wannier functions
-  remain ○ (`wannier-centers`).
+  `regressions/pw/berry-polarization`).
+- **Maximally localized Wannier functions**: molecular **Foster–Boys**
+  foothold on closed-shell Gaussian RHF/RKS (`cpu::scf::WannierCenters`;
+  Jacobi pair rotations; H₂ midpoint + H₂O rabbit-ear pins,
+  `regressions/scf/wannier-centers`). Periodic multi-k Marzari–Vanderbilt /
+  GPW-grid MLWF remain ○.
 
 ## 12. Periodic infrastructure
 

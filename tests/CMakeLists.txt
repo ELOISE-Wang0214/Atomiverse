@@ -583,6 +583,7 @@ atv_add_cpp_test(test_cpu_linalg_linear_solve
 if(ATV_BUILD_HF)
     atv_add_cpp_test(test_cpu_scf_cart2sph     cpu/scf/test_cart2sph.cpp)
     atv_add_cpp_test(test_cpu_scf_multipole_ints cpu/scf/test_multipole_integrals.cpp)
+    atv_add_cpp_test(test_cpu_scf_wannier        cpu/scf/test_wannier.cpp)
     atv_add_cpp_test(test_cpu_observer_multipole cpu/observe/test_multipole.cpp)
     # Löwdin populations + MK/CHELPG ESP fit — hand-built shells/determinant
     # and synthetic point-charge potentials only (hf-capability-gaps-04).
