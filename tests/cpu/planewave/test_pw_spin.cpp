@@ -8,6 +8,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
 using namespace ATV::cpu::pw;
@@ -53,7 +54,8 @@ TEST(PWSpin, MultiplicityParityThrows) {
 TEST(PWSpin, O2TripletMagnetizationIdentity) {
     // Fixed occupations: multiplicity 3 → M = 2 on PWResult (occupation
     // identity; does not require a tight SCF). Tiny ecut / short budget so
-    // the unit suite stays in the seconds regime.
+    // the unit suite stays in the seconds regime. Default xc=PBE uses true
+    // collinear spin-GGA (`XCBuilder::step_spin`).
     auto f = o2_frame(8.0);
     PW pw;
     pw.ecut_ry = 6.0;
@@ -63,6 +65,7 @@ TEST(PWSpin, O2TripletMagnetizationIdentity) {
     pw.mix_beta = 0.5;
     pw.spin_polarized = true;
     pw.multiplicity = 3;
+    pw.xc = cpu::scf::XCType::PBE;
 
     pw.build(f);
     const auto& r = pw.run(f);

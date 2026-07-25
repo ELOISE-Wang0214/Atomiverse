@@ -3,10 +3,11 @@
 ## Method
 
 Collinear spin-polarized plane-wave KS (`cpu::pw::PW` with
-`spin_polarized = true`, `multiplicity = 3`). Fixed occupations
-N↑ = 7, N↓ = 5 for 12 valence electrons (oxygen NC-PP Z_val = 6 × 2).
-XC: same PBE-σ=0 (LDA-limit) path as restricted PW via
-`cpu::scf::evaluate_xc`. Γ-only Monkhorst–Pack mesh.
+`spin_polarized = true`, `multiplicity = 3`, `xc = XCType::PBE`). Fixed
+occupations N↑ = 7, N↓ = 5 for 12 valence electrons (oxygen NC-PP Z_val = 6 × 2).
+XC: **true collinear spin-GGA PBE** via spectral \(\nabla\rho_\sigma\) in
+`XCBuilder::step_spin` (productized by `pw-spin-gga`; no longer the historical
+\(\sigma=0\) LSDA-limit path). Γ-only Monkhorst–Pack mesh.
 
 ## System
 
@@ -40,17 +41,19 @@ M = N_\uparrow - N_\downarrow = 2.
 ### Total energy (offline method pin)
 
 \[
-E_{\mathrm{tot}} = -28.6267426458~\mathrm{Ha}
+E_{\mathrm{tot}} = -28.7585210635~\mathrm{Ha}
 \quad (| \Delta E | \le 1\times 10^{-3}~\mathrm{Ha}).
 \]
+
+**Re-pin 2026-07-26 (`pw-spin-gga`):** true collinear spin-GGA replaces the
+prior PBE@\(\sigma=0\) pin (−28.6267426458 Ha). Magnetization (literature hard
+gate) is unchanged. Same settings as `reg_pw-spin-gga`.
 
 **Re-pin 2026-07-25:** previous frozen value −28.3392565801 Ha was produced
 by a Davidson subspace step that truncated the (complex Hermitian) subspace
 Hamiltonian to its real part, corrupting the Ritz vectors, and by G-sphere
 enumeration bounds that clipped sphere-edge plane waves. Both fixed with the
-`berry-polarization` case (see its REFERENCE.md, "Root-cause fixes"); the
-corrected solver lowers this fixed-settings pin. Magnetization (the
-literature hard gate) is unchanged.
+`berry-polarization` case.
 
 **Oracle note:** Host CP2K 2026.1 module is listed but unloadable here
 (dependency chain / `hwloc`); no `pw.x` (Quantum ESPRESSO) on PATH. Absolute
