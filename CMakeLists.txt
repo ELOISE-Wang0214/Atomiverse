@@ -684,8 +684,10 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/planewave/internal/kpoint.cpp
             src/cpu/planewave/internal/ewald.cpp
             src/cpu/planewave/internal/pw_setup.cpp
+            src/cpu/planewave/internal/scf_loop.cpp
             src/cpu/planewave/internal/pw_forces.cpp
             src/cpu/planewave/internal/pw_stress.cpp
+            src/cpu/planewave/internal/dfpt.cpp
             src/cpu/planewave/internal/pw_subspace.cpp
             src/cpu/planewave/internal/poisson.cpp
             src/cpu/planewave/internal/xc_builder.cpp
@@ -697,6 +699,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/planewave/pw_solver.cpp
             src/cpu/planewave/pw_evaluator.cpp
             src/cpu/planewave/bands_dos.cpp
+            src/cpu/planewave/dfpt_phonon.cpp
         )
         if(NOT ATV_BUILD_HF)
             target_sources(atomiverse PRIVATE

@@ -12,11 +12,16 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
-/// @brief Test hook: one H·ψ application on the bound k-sphere of `ws`
-/// (same code path DavidsonSolver uses). For validation oracles only.
-void pw_apply_h_for_tests(const PWWorkspace& ws,
-                          const std::complex<AccReal>* psi_g,
-                          std::complex<AccReal>* hpsi_g);
+/// @brief One H·ψ application on the bound k-sphere of `ws` — the exact
+/// code path DavidsonSolver uses (T_G diagonal + real-space V_eff + KB).
+/// Shared by the DFPT Sternheimer solver and validation tests.
+/// @param work_buf Caller-owned FFT scratch of size `ws.nr`.
+void pw_apply_h(const PWWorkspace& ws, const std::complex<AccReal>* psi_g,
+                std::complex<AccReal>* hpsi_g, fftw_complex* work_buf);
+
+/// @brief Convenience overload allocating its own FFT scratch per call.
+void pw_apply_h(const PWWorkspace& ws, const std::complex<AccReal>* psi_g,
+                std::complex<AccReal>* hpsi_g);
 
 /// @brief Block Davidson with FFT-based H·ψ and KB non-local potential.
 ///

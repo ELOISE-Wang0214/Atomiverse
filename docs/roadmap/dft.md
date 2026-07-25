@@ -281,7 +281,7 @@ Which engine backs which ✓:
 | -------------------------------------- | :-: | :--: | :---: |
 | Periodic analytic forces               |  ✓  |   ○  |   ○  |
 | Periodic analytic stress               |  ✓  |   ○  |   ○  |
-| Density-functional perturbation theory |  ○  |   ○  |   ○  |
+| Density-functional perturbation theory |  ✓  |   ○  |   ○  |
 | Finite-displacement phonons            |  ✓  |   ○  |   ○  |
 | Berry-phase polarization               |  ○  |   ○  |   ○  |
 | Maximally localized Wannier functions  |  ○  |   ○  |   ○  |
@@ -298,8 +298,13 @@ Which engine backs which ✓:
 - **Finite-displacement phonons** at Γ: `cpu::vib::Phonon` expands a supercell,
   runs 6N force evaluations, and diagonalizes the mass-weighted Hessian
   (`reg_fd-phonon-supercell`; SW 64-atom Si twin). Molecular
-  `cpu::vib::Hessian` remains the non-periodic path. DFPT / full phonon
-  dispersions remain ○.
+  `cpu::vib::Hessian` remains the non-periodic path.
+- **DFPT** ships the **Γ-point (q = 0) foothold** for the PW method:
+  `cpu::pw::DfptPhonon` — self-consistent Sternheimer response (conduction
+  CG, Hartree + LDA kernel), analytic Ewald/KB second derivatives
+  (`regressions/response/dfpt-phonon-si`; energy-second-difference twin to
+  0.07 %). Restricted LSDA / NC-UPF / fixed occupations only; **full phonon
+  dispersions (q ≠ 0) remain ○** (`phonon-dispersion-si`).
 
 ## 12. Periodic infrastructure
 
