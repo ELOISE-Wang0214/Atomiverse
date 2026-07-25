@@ -235,7 +235,8 @@ Two periodic DFT engines exist, with disjoint strengths:
   `reg_gpw-dftu-nio`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
   `n_alpha`/`n_beta`), plus **Monkhorst–Pack k-point RKS** (`k_mesh` /
   explicit `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
-  `reg_gpw-kpoints-si`). CPU only.
+  `reg_gpw-kpoints-si`). **Open GPW follow-ons** (queued): UKS PBE-GGA,
+  k-point UKS, analytic k-point forces. CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |

@@ -86,3 +86,8 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
   `pw-variable-cell-si`, `gpw-ts-ice`, `phonon-dispersion-si`,
   `periodic-ri-mp2-si`, `second-gen-cpmd-water`, `gpw-variable-cell-molopt`
   (hold revPBE/RPBE / MBD/vdW-DF / RPA/GW for surface order).
+- **2026-07-25 GapCensus wave 1 (parent `dev` @ `f6838676`):** recover clean.
+  Prior pending **14** re-verified; **+4** follow-on slugs (`gpw-uks-pbe`,
+  `gpw-kpoints-uks`, `gpw-kpoint-forces`, `periodic-wannier-si`) → pending
+  **18**; done **30**; blocked **5**. No table ○/✓ flips; fixed stale
+  `docs/roadmap/index.md` GPW blurb. Ready for Assign.

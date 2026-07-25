@@ -98,6 +98,29 @@ under `regressions/{gpw,pw,response,dynamics,scf}/`. Roadmap matches `dev`
 (no ○/✓ flips). **Pending unchanged (14).** Ready for Assign wave — prefer
 surface-disjoint staff (one XcKind GGA slug/wave; TS before MBD/vdW-DF;
 `second-gen-cpmd-water` free now that `cpmd-water` ✓).
+**Recover 2026-07-25 (parent `dev` @ `f6838676`):** reconfirmed clean —
+incomplete_count=**0**; `## in_progress` empty (no `[~]`); open CP2K/GPW/PW
+specs=**0** (PySCF deferred only); unmerged `wf/*`=**0**; isolation
+worktrees=**0**; leftover builds=**none**; all 30 done-slug regression dirs
+present; no half-regs for any of the 14 pending. Do **not** invent methods —
+next is GapCensus/Assign from **pending**.
+
+**GapCensus wave 1 2026-07-25 (parent `dev` @ `f6838676`):** recover clean
+(incomplete=`0`, CP2K specs=`0`, `wf/*`=`0`, builds=`none`). Tree re-diff vs
+`docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: all **14** prior pending still true
+gaps (no half-regs; `XcKind` still `{PADE,PBE,PBEsol}`; no TS/MBD/vdW-DF;
+DFPT Γ-only; Periodic MP2 capability still ○; no Fe-smearing / PW CELL_OPT
+regs). **Added 4** tree-declared follow-ons with offline CP2K twins:
+`gpw-uks-pbe`, `gpw-kpoints-uks`, `gpw-kpoint-forces` (from `gpw_solver.h`
+scope: "UKS PBE-GGA, k-point UKS, and analytic k-point forces are follow-on"),
+`periodic-wannier-si` (roadmap §11 MLWF residual after molecular Boys
+foothold). **Not added:** BP86/B97/OLYP/HCTH (molecular PySCF-oracle path);
+XDM/VV10 (hold behind TS/MBD/vdW-DF order); GAPW/PAW/periodic hybrid/meta-GGA
+(blocked); molecular post-HF / classical MW / CUDA ports (other loops).
+Roadmap: **no ○/✓ table flips** (rows already match tree); fixed stale
+`docs/roadmap/index.md` GPW blurb (still said "no Gaussian k-points /
+strain-FD stress" after k-points + analytic stress landed). **Pending = 18.**
 
 ## pending
 
@@ -105,12 +128,16 @@ surface-disjoint staff (one XcKind GGA slug/wave; TS before MBD/vdW-DF;
 - [ ] `gpw-blyp-water` | GPW BLYP GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 BLYP molecular ✓ / GPW `XcKind` still PADE|PBE|PBEsol only; CP2K XC_FUNCTIONAL BLYP
 - [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
 - [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` (merge-conflict avoidance)
+- [ ] `gpw-uks-pbe` | GPW Γ-UKS PBE-GGA | gpw | O₂ / open shell | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (Γ UKS ships PADE LSD only — `reg_gpw-uks-o2-gamma`); CP2K UKS + XC_FUNCTIONAL PBE; shares UKS density path
+- [ ] `gpw-kpoints-uks` | GPW k-point UKS | gpw | O₂ / Fe tiny | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (k-mesh RKS ✓ `reg_gpw-kpoints-si`; Γ UKS ✓); CP2K KPOINTS + UKS; **dep:** `gpw-kpoints-si` ✓ + `gpw-uks-o2-gamma` ✓; prefer after `gpw-uks-pbe` if PBE spin XC shared
+- [ ] `gpw-kpoint-forces` | GPW analytic forces at k-points | gpw | Si | DZVP-MOLOPT-GTH | F [Ha/Bohr] | `gpw_solver.h` follow-on (Γ analytic forces ✓; k-path energy-only today); CP2K FORCE_EVAL k-mesh twin; **dep:** `gpw-kpoints-si` ✓ + `gpw-forces-water` ✓
 - [ ] `pw-uks-fe-smearing` | bulk Fe UKS + metallic smearing | pw | Fe bcc | NC-UPF | e_tot / mag | roadmap §10 follow-on after O₂ k-mesh UKS ✓ (`pw-uks-kmesh-fe`); CP2K/QE-class Fe spin+smearing
 - [ ] `pw-variable-cell-si` | PW variable-cell relax | pw | Si | NC-UPF | cell / stress | optimization.md PW stress productization; Nielsen–Martin ✓; CP2K CELL_OPT twin; **dep:** `pw-analytic-stress-si` ✓
 - [ ] `gpw-ts-ice` | Tkatchenko–Scheffler dispersion | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 TS ○; CP2K VDW_POTENTIAL / PAIR_POTENTIAL; **dep:** D3/D4 pin patterns ✓
 - [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; CP2K MBD; prefer after TS foothold
 - [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** dispersion footholds (`gpw-ts-ice` / `gpw-mbd-ice`)
 - [ ] `phonon-dispersion-si` | Phonon dispersion (q-path) | response | Si | NC-UPF / GTH | ω(q) cm⁻¹ | roadmap §11 full dispersions ○ (Γ FD ✓, Γ DFPT ✓); CP2K VIBRATIONAL_ANALYSIS / DFPT path; **dep:** `fd-phonon-supercell` ✓ + `dfpt-phonon-si` ✓
+- [ ] `periodic-wannier-si` | Periodic multi-k MLWF | response / pw | Si | NC-UPF / GTH | centers Å | roadmap §11 MLWF ◐ residual (molecular Foster–Boys ✓ `reg_wannier-centers`); Marzari–Vanderbilt / GPW-grid MLWF ○; CP2K Wannier localization; **dep:** `wannier-centers` ✓ + bands/k footholds ✓
 - [ ] `second-gen-cpmd-water` | Second-generation Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ 2nd-gen CP; CP2K; **after** `cpmd-water`
 - [ ] `periodic-ri-mp2-si` | RI / k-point periodic MP2 productization | gpw | Si | MOLOPT+GTH | e_corr Ha | roadmap §10 Periodic MP2 stays ○ (Γ canonical foothold ✓ 2026-07-25 — foothold ≠ capability closed); CP2K &WF_CORRELATION RI-MP2 (Del Ben 2012); closes the capability row; **dep:** `periodic-mp2-si` ✓
 - [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after MP2 foothold** (`periodic-mp2-si` ✓)

@@ -237,15 +237,20 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 ### GPW
 
-- Γ-point RKS + **Γ-point UKS** (PADE LSD; `reg_gpw-uks-o2-gamma`). No
-  Gaussian k-points or hybrids; **strain-FD stress** ships
-  (`reg_gpw-stress-water`).
+- Γ-point RKS + **Γ-point UKS** (PADE LSD; `reg_gpw-uks-o2-gamma`) +
+  **Monkhorst–Pack k-point RKS** (phased lattice sums / KB / per-k DIIS;
+  `reg_gpw-kpoints-si`). No hybrids / meta-GGA / GAPW. **Analytic cell stress**
+  (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
+  `reg_gpw-stress-water`) and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice`).
+  Open follow-ons: UKS PBE-GGA, k-point UKS, analytic k-point forces (see
+  `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
-  Analytic forces → AIMD (`reg_gpw-bomd-water`); keep member
+  Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
   (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
   `use_ot` (`reg_ot-minimizer-water`). **PBEsol** (`reg_gpw-pbesol-si`);
-  **Dudarev DFT+U** (`reg_gpw-dftu-nio`).
+  **Dudarev DFT+U** (`reg_gpw-dftu-nio`). Γ MP2 **foothold**
+  (`reg_periodic-mp2-si`; capability row stays ○).
 - DFT-D3 zero-damping, **D3(BJ)**, and **D4** on GPW (PBE params;
   `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`). Molecular Gaussian path also has
   **DFT-D3(BJ)** / **D4**.
