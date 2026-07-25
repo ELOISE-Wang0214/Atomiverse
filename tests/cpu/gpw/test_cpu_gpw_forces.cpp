@@ -68,6 +68,49 @@ TEST(GpwForces, H2AnalyticVsFiniteDifference) {
     EXPECT_LT(max_err, 5e-5) << "analytic vs FD mismatch (Ha/Bohr)";
 }
 
+// k-mesh forces: finite, Newton-3 residual small, nonzero bond force.
+// Full analytic↔FD at k lives in regressions/gpw/gpw-kpoint-forces/ (FD is
+// 6N SCFs × k-path — not unit-suite budget).
+TEST(GpwForces, H2KmeshForcesBasic) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0}; // compressed 1.0 Bohr bond
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 100.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 60;
+    cfg.nonperiodic = false;
+    cfg.local_pp_on_grid = true;
+    cfg.xc = XcKind::PADE;
+    cfg.eps_default = 1e-8;
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+
+    const auto F = gpw_forces_analytic(atoms, cfg);
+    ASSERT_EQ(F.size(), 2u);
+    for (int a = 0; a < 2; ++a)
+        for (int k = 0; k < 3; ++k)
+            EXPECT_TRUE(std::isfinite(F[static_cast<std::size_t>(a)][k]));
+    // Restoring along x (equal-and-opposite within residual).
+    EXPECT_LT(F[0][0], 0.0);
+    EXPECT_GT(F[1][0], 0.0);
+    EXPECT_NEAR(F[0][0], -F[1][0], 2e-3);
+    EXPECT_GT(std::abs(F[0][0]), 5e-3);
+    const double sum_mag =
+        std::sqrt((F[0][0] + F[1][0]) * (F[0][0] + F[1][0])
+                  + (F[0][1] + F[1][1]) * (F[0][1] + F[1][1])
+                  + (F[0][2] + F[1][2]) * (F[0][2] + F[1][2]));
+    EXPECT_LT(sum_mag, 2e-3);
+}
+
 // Compressed H2: bond force is restoring and equal-and-opposite (Newton 3).
 TEST(GpwForces, H2RestoringBond) {
     const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
