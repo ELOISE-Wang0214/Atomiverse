@@ -282,15 +282,13 @@ ATV::cpu::Frame water_frame() {
 
 ATV::cpu::gpw::GPWEvaluator water_eval() {
     const ATV::cpu::gpw::Kind O{
-        ATV::molrs::Element::O,
-        ATV::cpu::gpw::GaussianBasis(ATV::molrs::Element::O,
-                                     "DZVP-MOLOPT-GTH"),
-        ATV::cpu::gpw::GthPotential(ATV::molrs::Element::O, "GTH-PBE-q6")};
+        molrs::Element::O,
+        ATV::cpu::gpw::GaussianBasis(molrs::Element::O, "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(molrs::Element::O, "GTH-PBE-q6")};
     const ATV::cpu::gpw::Kind H{
-        ATV::molrs::Element::H,
-        ATV::cpu::gpw::GaussianBasis(ATV::molrs::Element::H,
-                                     "DZVP-MOLOPT-GTH"),
-        ATV::cpu::gpw::GthPotential(ATV::molrs::Element::H, "GTH-PBE-q1")};
+        molrs::Element::H,
+        ATV::cpu::gpw::GaussianBasis(molrs::Element::H, "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(molrs::Element::H, "GTH-PBE-q1")};
     return ATV::cpu::gpw::GPWEvaluator({O, H});
 }
 
