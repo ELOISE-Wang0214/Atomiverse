@@ -8,7 +8,7 @@
 /// Quickstep wavefunction-correlation integral scheme: collocate
 /// \(\rho_{ia}=\psi_i\psi_a\), solve Poisson, contract with
 /// \(\rho_{jb}\) by grid quadrature. The same tensor + denominators feed
-/// the periodic RPA follow-on.
+/// the periodic RPA follow-on (`direct_rpa_rhf_energy`).
 #pragma once
 
 #include <vector>
@@ -89,6 +89,31 @@ void mp2_rhf_energy(const std::vector<double>& v_ovov,
                     const std::vector<double>& eps_occ,
                     const std::vector<double>& eps_virt, double& e_os,
                     double& e_ss);
+
+/// @brief Closed-shell direct RPA (dRPA) correlation via the Furche
+///        plasmon formula on the Coulomb-only (\(\alpha_{\mathrm{hf}}=0\))
+///        singlet Casida spectrum.
+///
+/// Builds
+/// \(A_{ia,jb}=\delta_{ij}\delta_{ab}(\varepsilon_a-\varepsilon_i)+2(ia|jb)\),
+/// \(B_{ia,jb}=2(ia|jb)\) (real orbitals; composite index
+/// \(p = i\cdot n_{\mathrm{virt}}+a\) matching `mo_eri_ovov` layout),
+/// reduces \((A-B)^{1/2}(A+B)(A-B)^{1/2}\), and returns
+/// \(E_c=\tfrac12(\sum_s\Omega_s-\mathrm{Tr}\,A)\). Same science as
+/// molecular `OrbitalHessian::direct_rpa(singlet, /*alpha_hf=*/0)`.
+///
+/// @param v_ovov   (ia|jb) tensor from `mo_eri_ovov` / `mo_eri_ovov_ri` [Ha].
+/// @param eps_occ  Occupied orbital energies (length n_occ) [Hartree].
+/// @param eps_virt Virtual orbital energies (length n_virt) [Hartree].
+/// @param e_corr   Out: dRPA correlation energy [Hartree].
+/// @param tr_A     Out: \(\mathrm{Tr}\,A\) [Hartree].
+/// @param omega    Out: positive \(\Omega_s\) ascending [Hartree], length
+///                 \(n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\).
+/// @throws std::runtime_error when (A−B) is not PD or any \(\Omega^2\le 0\).
+void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
+                           const std::vector<double>& eps_occ,
+                           const std::vector<double>& eps_virt, double& e_corr,
+                           double& tr_A, std::vector<double>& omega);
 
 } // namespace internal
 } // namespace gpw

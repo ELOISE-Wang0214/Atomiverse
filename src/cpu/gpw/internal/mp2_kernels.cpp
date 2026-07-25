@@ -5,13 +5,19 @@
 
 #include "atomiverse/cpu/gpw/internal/mp2_kernels.h"
 
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xtensor.hpp>
+
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
+#include "atomiverse/cpu/linalg/matrix.h"
 
 namespace ATV {
 namespace cpu {
@@ -198,6 +204,98 @@ void mp2_rhf_energy(const std::vector<double>& v_ovov,
                     e_os += v_iajb * v_iajb / denom;
                     e_ss += v_iajb * (v_iajb - v_ibja) / denom;
                 }
+}
+
+void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
+                           const std::vector<double>& eps_occ,
+                           const std::vector<double>& eps_virt, double& e_corr,
+                           double& tr_A, std::vector<double>& omega) {
+    using linalg::RealMatrix;
+    using linalg::sym_power;
+
+    const int no = static_cast<int>(eps_occ.size());
+    const int nv = static_cast<int>(eps_virt.size());
+    if (no < 1 || nv < 1)
+        throw std::invalid_argument(
+            "gpw direct_rpa_rhf_energy: need n_occ >= 1 and n_virt >= 1");
+    const std::size_t nov =
+        static_cast<std::size_t>(no) * static_cast<std::size_t>(nv);
+    if (v_ovov.size() != nov * nov)
+        throw std::invalid_argument(
+            "gpw direct_rpa_rhf_energy: tensor size does not match "
+            "eps_occ/eps_virt");
+
+    // Singlet dRPA (α_hf = 0): A = Δε δ + 2 V, B = 2 V, index p = i*nv + a.
+    RealMatrix A = xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
+    RealMatrix B = xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
+    tr_A = 0.0;
+    for (int i = 0; i < no; ++i)
+        for (int a = 0; a < nv; ++a) {
+            const int p = i * nv + a;
+            const double de =
+                eps_virt[static_cast<std::size_t>(a)]
+                - eps_occ[static_cast<std::size_t>(i)];
+            for (int j = 0; j < no; ++j)
+                for (int b = 0; b < nv; ++b) {
+                    const int q = j * nv + b;
+                    const double v =
+                        v_ovov[static_cast<std::size_t>(p) * nov
+                               + static_cast<std::size_t>(q)];
+                    const double two_v = 2.0 * v;
+                    double Aval = two_v;
+                    if (p == q)
+                        Aval += de;
+                    A(p, q) = Aval;
+                    B(p, q) = two_v;
+                }
+            tr_A += A(p, p);
+        }
+
+    constexpr double kAmBFloor = 1e-10;
+    constexpr double kOmega2Tol = 1e-10;
+    const RealMatrix Mp = A + B;
+    const RealMatrix Mm = A - B;
+    {
+        auto [s, U] = xt::linalg::eigh(Mm);
+        (void)U;
+        if (s(0) <= kAmBFloor)
+            throw std::runtime_error(
+                "gpw direct_rpa_rhf_energy: (A - B) is not positive definite "
+                "(lowest eigenvalue = "
+                + std::to_string(s(0))
+                + " Ha) — dRPA reduction undefined (no fallback)");
+    }
+    const RealMatrix T =
+        sym_power(Mm, 0.5, kAmBFloor, "gpw direct_rpa_rhf_energy");
+    RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
+    // Symmetrize residual floating noise before the Hermitian eigendecomp.
+    for (std::size_t r = 0; r < nov; ++r)
+        for (std::size_t c = r + 1; c < nov; ++c) {
+            const double v = 0.5 * (M(r, c) + M(c, r));
+            M(r, c) = v;
+            M(c, r) = v;
+        }
+    auto [w2, Z] = xt::linalg::eigh(M);
+    (void)Z;
+
+    omega.assign(nov, 0.0);
+    double sum_om = 0.0;
+    for (std::size_t s = 0; s < nov; ++s) {
+        if (w2(s) < -kOmega2Tol)
+            throw std::runtime_error(
+                "gpw direct_rpa_rhf_energy: dRPA omega^2 = "
+                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                + ") is negative — imaginary excitation (no fallback)");
+        if (w2(s) <= kOmega2Tol)
+            throw std::runtime_error(
+                "gpw direct_rpa_rhf_energy: dRPA omega^2 = "
+                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                + ") is numerically zero (no fallback)");
+        const double w = std::sqrt(w2(s));
+        omega[s] = w;
+        sum_om += w;
+    }
+    e_corr = 0.5 * (sum_om - tr_A);
 }
 
 } // namespace internal
