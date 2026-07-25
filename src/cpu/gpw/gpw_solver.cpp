@@ -1973,6 +1973,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 && err_norm < kDiisErrTol) {
                 res.converged = true;
                 store_converged_state(res, H, orth().X, cfg.n_occ, nb);
+                // H_ks/S for force-at-density consumers (second-gen CP).
+                res.H_ks = H;
+                res.S = S;
                 break;
             }
             e_prev = e_total;
@@ -1992,11 +1995,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_converged_state(res, H, orth().X, cfg.n_occ, nb);
+                res.H_ks = H;
+                res.S = S;
                 break;
             }
             e_prev = e_total;
             P = (1.0 - cfg.mix) * P + cfg.mix * P_new;
         }
+    }
+    // Partial-SCF consumers (second-generation CP corrector): export the last
+    // density / orbitals even when the residual budget was exhausted short of
+    // tol. Without this, res.P/C stay empty and forces cannot be assembled at
+    // the post-corrector density.
+    if (!res.converged && P.size() > 0) {
+        const auto [H_final, e_final] = build_H_and_energy(P);
+        res.e_total = e_final;
+        store_converged_state(res, H_final, orth().X, cfg.n_occ, nb);
+        res.H_ks = H_final;
+        res.S = S;
+        // res.converged remains false — honest partial SCF.
     }
     res.e_disp = e_d3;
     res.e_total += e_d3;

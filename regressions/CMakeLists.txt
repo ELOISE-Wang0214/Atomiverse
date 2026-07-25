@@ -162,6 +162,8 @@ if(ATV_BUILD_GPW)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
         atv_add_regression(dynamics cpmd-water)
+        # Second-generation CP (Kühne ASPC + partial SCF corrector).
+        atv_add_regression(dynamics second-gen-cpmd-water)
     endif()
     atv_add_regression(gpw gpw-pbesol-si)
     atv_add_regression(gpw gpw-dftu-nio)
