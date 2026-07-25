@@ -17,12 +17,14 @@ namespace internal {
 /// One SCF then Hellmann–Feynman cell derivatives: kinetic (bands), Hartree,
 /// local PP (radial form-factor \(G\)-derivative), Ewald ion–ion, LDA XC
 /// volume term, and Kleinman–Bylander nonlocal (UPF projectors). Sign and
-/// scale match strain-FD of the total energy, \(\sigma=(1/\Omega)\partial E/\partial\varepsilon\).
+/// scale match strain-FD: mechanical \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\).
 ///
 /// @param frame Geometry [Å]; not mutated.
 /// @param method Plane-wave method members (ecut, k-mesh, UPF path, …).
+/// @param energy_ry_out Optional: total energy [Ry] from the production SCF.
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
-                                              const PW& method);
+                                              const PW& method,
+                                              double* energy_ry_out = nullptr);
 
 /// @brief Strain finite-difference stress oracle [eV/Å³] (12 SCF solves).
 ///

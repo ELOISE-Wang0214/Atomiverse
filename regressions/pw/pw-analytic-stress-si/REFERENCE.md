@@ -35,15 +35,14 @@ via `pw_stress_fd` (\(h=2\times 10^{-3}\)) on this exact twin:
 
 | Component | Value [eV/Å³] |
 | --------- | ------------- |
-| \(\sigma_{xx},\sigma_{yy},\sigma_{zz}\) | ≈ **−0.05755** (mean; components equal within \(3\times 10^{-5}\)) |
+| \(\sigma_{xx},\sigma_{yy},\sigma_{zz}\) | ≈ **+0.05755** mechanical (mean; components equal within \(3\times 10^{-5}\)) |
 | \(\sigma_{xy},\sigma_{xz},\sigma_{yz}\) | ≈ **0** (crystal symmetry; measured \(\lesssim 0.02\) residual at incomplete ecut/k) |
-| Live dual-gate \(\max_v\lvert\sigma^\mathrm{an}-\sigma^\mathrm{FD}\rvert\) | **\(7.3\times 10^{-5}\)** eV/Å³ |
+| Live dual-gate \(\max_v\lvert\sigma^\mathrm{an}-\sigma^\mathrm{FD}\rvert\) | **\(7.3\times 10^{-5}\)** eV/Å³ (magnitude; sign unified 2026-07-25) |
 
-The regression hard-codes the diagonal pin −0.05755 and off-diagonal 0 with
-tol **0.05 eV/Å³** (and a soft symmetry tol **0.025 eV/Å³**). The pin is
-**not** a freeze of the analytic output: it is the multi-SCF strain-FD
-oracle measured offline; analytic agreed to \(7\times 10^{-5}\) when both
-were run live.
+**Sign (2026-07-25 productization):** mechanical / CP2K
+\(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\) (positive when
+compressed) — matches GPW and `IsotropicCellRelax`. The offline multi-SCF
+FD pin magnitude is unchanged; the hard-coded diagonal is **+0.05755**.
 
 ## CP2K note
 
@@ -60,8 +59,8 @@ fair PW wall twin. Optional skeleton: `tools/cp2k_oracle/inputs/si_lda_pw_note.i
 | \(B_0\) | 89.96 GPa | same |
 | Twin \(a\) | 5.43 Å (compressed vs \(a_0\)) | regression |
 
-Compressed cell → compressive hydrostatic \(\sigma_{xx}<0\) (our
-\(\sigma=(1/\Omega)\partial E/\partial\varepsilon\) convention), consistent
+Compressed cell → compressive hydrostatic \(\sigma_{xx}>0\) (mechanical /
+CP2K \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\)), consistent
 with the FD pin sign.
 
 ## Performance

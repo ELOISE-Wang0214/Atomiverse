@@ -1,16 +1,18 @@
 /// @file cpu/minimize/cell_relax.h
-/// @brief Isotropic variable-cell relaxation Optimizer (classical virial).
+/// @brief Isotropic variable-cell relaxation Optimizer.
 ///
-/// Uses PairLJCut-style Voigt stress on `kStress` (xx,yy,zz,…) to form the
-/// scalar pressure P = (σ_xx+σ_yy+σ_zz)/(3V) [eV/Å³] and isotropically scales
-/// the Box (+ affine atom coordinates) toward a target pressure.
+/// Reads Voigt stress on `kStress` and isotropically scales the Box
+/// (+ affine atom coordinates) toward a target pressure \(P_{\mathrm{target}}\).
+///
+/// Two `kStress` conventions coexist (same as `AnisotropicCellRelax`):
+/// classical pair/bond writers accumulate the **extensive virial [eV]**
+/// (`stress_is_virial = true`, default — \(P=\mathrm{tr}(\sigma)/(3V)\));
+/// PW/GPW evaluators write **intensive stress [eV/Å³]**
+/// (`stress_is_virial = false` — \(P=\mathrm{tr}(\sigma)/3\)).
 ///
 /// Termination is **not** ForceConverged by default — use
-/// `cpu::PressureConverged` (criteria.h). Atom positions only scale affinely
-/// with the cell; there is no independent atomic L-BFGS in this component.
-///
-/// Breadth-first: isotropic classical only. Anisotropic / joint atom+cell /
-/// PW stress later.
+/// `cpu::PressureConverged` (classical virial) or `cpu::StressConverged`
+/// (intensive PW/GPW). Atom positions only scale affinely with the cell.
 #pragma once
 
 #include <string>
@@ -31,6 +33,10 @@ class IsotropicCellRelax : public Optimizer {
     double alpha0 = 0.05; ///< Relative scale step gain (dimensionless).
     double max_scale = 0.05; ///< Cap on |s−1| per step (dimensionless).
     double bulk_mod = 1.0;   ///< Soft bulk modulus scale [eV/Å³] for step size.
+    /// `kStress` holds the extensive virial [eV] (classical; divide by V).
+    /// Set false when the bound evaluator writes intensive stress [eV/Å³]
+    /// (PW `with_stress`, GPW `compute_stress`).
+    bool stress_is_virial = true;
 
     /// @brief Construct with zero target pressure and default step gains.
     IsotropicCellRelax() = default;
@@ -57,7 +63,7 @@ class IsotropicCellRelax : public Optimizer {
     double pressure() const { return pressure_; }
 
   private:
-    static double pressure_from_frame_(const Frame& f);
+    double pressure_from_frame_(const Frame& f) const;
     void apply_scale_(Frame& f, double s) const;
 
     double pressure_ = 0;

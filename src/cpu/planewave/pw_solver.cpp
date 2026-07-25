@@ -927,8 +927,9 @@ std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
     return internal::pw_forces_analytic_impl(frame, method);
 }
 
-std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method) {
-    return internal::pw_stress_analytic_impl(frame, method);
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method,
+                                double* energy_ry_out) {
+    return internal::pw_stress_analytic_impl(frame, method, energy_ry_out);
 }
 
 std::array<double, 6> pw_stress_fd(const cpu::Frame& frame, const PW& method,

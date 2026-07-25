@@ -30,12 +30,15 @@ int main() {
     // Offline multi-SCF strain-FD oracle (h=2e-3), same twin, measured
     // 2026-07-24 Release OMP=16 — see REFERENCE.md. Not a self-golden of
     // analytic output: re-measurable via pw_stress_fd when desired.
+    // Mechanical / CP2K sign: σ = −(1/Ω)∂E/∂ε. Compressed a=5.43 vs a0≈5.47
+    // → positive (compressive) hydrostatic stress. Offline multi-SCF FD pin
+    // magnitude matches pre-product energy-derivative pin with a sign flip.
     constexpr double kFdPin[6] = {
-        -0.05755, -0.05755, -0.05755, // xx yy zz (isotropic within noise)
-        0.0,      0.0,      0.0       // off-diag vanish by crystal symmetry
+        0.05755, 0.05755, 0.05755, // xx yy zz (isotropic within noise)
+        0.0,     0.0,     0.0      // off-diag vanish by crystal symmetry
     };
     // Diagonal pin uses the mean of the three FD diagonals from the offline
-    // run (~−0.0575); off-diag pin is exact symmetry zero with dual tol.
+    // run (~+0.0575 mechanical); off-diag pin is exact symmetry zero.
 
     cpu::Frame frame(2);
     frame.span(kAtom_type)[0] = 14;
