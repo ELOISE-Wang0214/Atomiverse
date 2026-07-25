@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/kpoints.h
-/// @brief Monkhorst-Pack k-point sampling machinery for the GPW RKS SCF:
+/// @brief Monkhorst-Pack k-point sampling machinery for the GPW RKS / UKS SCF:
 ///        phased (complex) Bloch lattice sums of the analytic one-electron and
 ///        GTH nonlocal matrices, per-k pre-summed complex basis-on-grid values
 ///        for density collocation / potential integration, and the complex
