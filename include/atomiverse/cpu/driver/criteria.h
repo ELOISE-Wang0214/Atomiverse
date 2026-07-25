@@ -40,7 +40,9 @@
 /// This is LAMMPS's `fix halt`, written from OUTSIDE the library.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 
@@ -104,11 +106,6 @@ class ForceConverged : public Criterion {
     double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
 };
 
-/// @brief A coupled chain is converged when EVERY replica is — never when the first is.
-///
-/// The AND that `PathDriver` used to spell out inline. Reads
-/// `ConvergenceMetrics::replicas_converged`, which the band optimizer publishes
-/// as a fraction.
 /// @brief Stop when isotropic pressure is within a tolerance of a target.
 ///
 /// Reads Voigt stress from `frame.meta` (`kStress`) and the box volume.
@@ -140,6 +137,50 @@ class PressureConverged : public Criterion {
   private:
     double P_target_;
     double ptol_;
+};
+
+/// @brief Converged when every relaxed diagonal stress is at its target.
+///
+/// Reads Voigt `kStress` as **intensive stress [eV/Å³]** — the PW
+/// (`with_stress`) / GPW (`compute_stress`) convention — and never divides by
+/// volume. For classical extensive-virial writers use `PressureConverged`.
+/// Per-axis maskable: pair the mask with `AnisotropicCellRelax::relax_*` so a
+/// constrained axis's reaction stress cannot block convergence
+/// (CP2K `CELL_OPT` `CONSTRAINT` twin).
+class StressConverged : public Criterion {
+  public:
+    /// @param sigma_target Target diagonal stress [eV/Å³] (0 = relaxed cell).
+    /// @param stol Absolute stress tolerance [eV/Å³].
+    /// @param check_x Judge σ_xx.
+    /// @param check_y Judge σ_yy.
+    /// @param check_z Judge σ_zz.
+    explicit StressConverged(double sigma_target = 0.0, double stol = 1e-4,
+                             bool check_x = true, bool check_y = true,
+                             bool check_z = true)
+        : sigma_target_(sigma_target), stol_(stol),
+          check_{check_x, check_y, check_z} {
+        if (!(stol > 0.0))
+            throw std::invalid_argument("StressConverged: stol must be > 0");
+        if (!check_x && !check_y && !check_z)
+            throw std::invalid_argument("StressConverged: every axis masked");
+    }
+
+    std::string name() const override { return "stress_converged"; }
+    void launch(const LaunchContext&) override {}
+
+    Verdict verdict(const LoopState& s) override {
+        const auto& st = s.frame.meta.get(kStress);
+        double r = 0.0;
+        for (std::size_t d = 0; d < 3; ++d)
+            if (check_[d])
+                r = std::max(r, std::fabs(st[d] - sigma_target_));
+        return (r < stol_) ? Verdict::Converged : Verdict::Continue;
+    }
+
+  private:
+    double sigma_target_;
+    double stol_;
+    bool check_[3];
 };
 
 /// @brief A coupled chain is converged when EVERY replica is — never when the first is.

@@ -86,7 +86,6 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     cfg.plus_u = plus_u;
     cfg.atom_spin_guess = atom_spin_guess;
-    built_cell_ = {cfg.cell[0], cfg.cell[1], cfg.cell[2]};
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
     solver_->build(assemble_atoms(ctx.frame, *this));
@@ -96,20 +95,16 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     cpu::Frame& frame = ctx.frame;
     const int n = frame.nlocal();
 
-    // GPW does not support a variable cell: the grids, lattice images and
-    // Ewald-like electrostatics are sized from the build-time cell. The old
-    // implementation silently solved in the new box — undefined behavior.
+    // Variable cell: re-target the solver to the frame's current orthorhombic
+    // box. GpwDft::run rebuilds every geometry-dependent structure (grids,
+    // lattice images, S/T/Vpp) from `cell` per call, so a box change between
+    // launches is well-defined — cell-relax drivers rescale simbox freely.
     for (int d = 0; d < 3; ++d) {
         const double now = frame.simbox.length(d) * kAng2Bohr;
-        if (std::abs(now - built_cell_[static_cast<std::size_t>(d)])
-            > 1e-9
-                  * std::max(
-                      1.0,
-                      std::abs(built_cell_[static_cast<std::size_t>(d)]))) {
+        if (!(now > 0.0))
             throw std::runtime_error(
-                "GPWEvaluator::launch: frame box changed since build() "
-                "(GPW does not support a variable cell)");
-        }
+                "GPWEvaluator::launch: non-positive box edge");
+        solver_->cell[d] = now;
     }
 
     const auto atoms = assemble_atoms(frame, *this);
@@ -140,7 +135,11 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     if (compute_stress) {
         // Strain-FD rebuilds SCF per strain sample (independent of solver_).
-        last_stress_ha_ = gpw_stress(atoms, *solver_, stress_strain_h);
+        // Warm-start every strained SCF from the just-converged MOs; skip
+        // masked axes entirely (variable-cell relax of constrained boxes).
+        last_stress_ha_ =
+            gpw_stress(atoms, *solver_, stress_strain_h, stress_axes,
+                       last_.C.size() > 0 ? &last_.C : nullptr);
         // 1 Ha/Bohr³ = kHartreeInEv / (kBohrInAngstrom)³ eV/Å³
         const double ha_bohr3_to_ev_a3 =
             ATV::units::kHartreeInEv

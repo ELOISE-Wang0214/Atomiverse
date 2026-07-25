@@ -31,6 +31,13 @@ struct Kind {
 ///
 /// Parameters are public members / constructor args — no `GpwEvaluatorConfig`
 /// bag.
+///
+/// **Variable cell:** `launch()` re-targets the solver to the frame's current
+/// orthorhombic box on every call (`GpwDft::run` rebuilds all
+/// geometry-dependent structure — grids, lattice images, S/T/Vpp — per call),
+/// so cell-relaxation drivers may rescale `frame.simbox` between launches.
+/// The MO warm start survives a cell change (the AO basis is
+/// geometry-independent in size).
 class GPWEvaluator : public cpu::GPW {
   public:
     /// @brief Plane-wave cutoff [Ry].
@@ -52,6 +59,10 @@ class GPWEvaluator : public cpu::GPW {
     bool compute_stress = false;
     /// @brief Dimensionless strain step for `compute_stress` (default 2e-3).
     double stress_strain_h = 2e-3;
+    /// @brief Per-axis stress mask (x,y,z): a masked axis skips its strain-FD
+    ///        SCF solves and reports σ exactly 0 — pair with the matching
+    ///        `AnisotropicCellRelax` `relax_*` mask in variable-cell runs.
+    std::array<bool, 3> stress_axes = {true, true, true};
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
     /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs d3bj/d4.
@@ -113,7 +124,6 @@ class GPWEvaluator : public cpu::GPW {
   private:
     GpwResult last_{};
     std::unique_ptr<GpwDft> solver_;
-    std::array<double, 3> built_cell_{};
     std::array<double, 6> last_stress_ha_{};
 };
 

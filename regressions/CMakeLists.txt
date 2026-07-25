@@ -122,6 +122,7 @@ if(ATV_BUILD_GPW)
     endif()
     atv_add_regression(gpw gpw-pbesol-si)
     atv_add_regression(gpw gpw-dftu-nio)
+    atv_add_regression(gpw gpw-variable-cell-ice)
     # remaining green GPW e2e land with their branches
 endif()
 if(ATV_BUILD_HF)
