@@ -137,6 +137,8 @@ endif()
 # FD supercell phonons (response): SW Si twin needs MD potentials; API is vib::Phonon.
 if(ATV_BUILD_VIB AND ATV_BUILD_MD)
     atv_add_regression(pw fd-phonon-supercell)
+    # Fourier ω(q) path from supercell IFCs (phonopy-style); same SW twin.
+    atv_add_regression(response phonon-dispersion-si)
 endif()
 if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-pbe-d3bj-ice)

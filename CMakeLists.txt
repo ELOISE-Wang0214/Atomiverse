@@ -359,6 +359,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/vibration/supercell.cpp
             src/cpu/vibration/phonon.cpp
             src/cpu/vibration/phonon_diagonalizer.cpp
+            src/cpu/vibration/phonon_dispersion.cpp
         )
     endif()
 
