@@ -101,7 +101,7 @@ struct GpwResult {
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
-    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD dispersion [Hartree] (0 when off).
+    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/vdW-DF dispersion [Hartree] (0 when off).
     double e_dftu =
         0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     /// @name k-point sampling payload (populated by multi-k RKS or multi-k UKS;
@@ -208,8 +208,12 @@ class GpwDft {
     bool ts = false; ///< Tkatchenko–Scheffler (TS) dispersion.
     /// @brief Many-body dispersion MBD@rsSCS (PBE β=0.83, free-atom volumes).
     ///        Isolated geometry only in this product path. Mutually exclusive
-    ///        with `d3` / `d3bj` / `d4` / `ts`.
+    ///        with `d3` / `d3bj` / `d4` / `ts` / `vdw_df`.
     bool mbd = false; ///< MBD@rsSCS (free-atom) dispersion.
+    /// @brief Nonlocal vdW-DF correlation (DRSLL / DF1, post-SCF on final density).
+    ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE DRSLL`. Mutually exclusive with
+    ///        `d3` / `d3bj` / `d4` / `ts` / `mbd`. Periodic single-grid only.
+    bool vdw_df = false; ///< vdW-DF (DRSLL) nonlocal correlation.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a

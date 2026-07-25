@@ -82,8 +82,10 @@ class GPWEvaluator : public cpu::GPW {
     bool d4 = false;
     /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs d3/d3bj/d4/mbd.
     bool ts = false;
-    /// @brief MBD@rsSCS free-atom (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts.
+    /// @brief MBD@rsSCS free-atom (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts/vdw_df.
     bool mbd = false;
+    /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd.
+    bool vdw_df = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of
     ///        diagonalization + DIIS. Same gapped ground state; preferred for
     ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).
