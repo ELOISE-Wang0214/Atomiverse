@@ -27,6 +27,8 @@ using ATV::cpu::gpw::xc_grid_pbe;
 using ATV::cpu::gpw::xc_grid_pbe_spin;
 using ATV::cpu::gpw::xc_grid_blyp;
 using ATV::cpu::gpw::xc_grid_blyp_spin;
+using ATV::cpu::gpw::xc_grid_revpbe;
+using ATV::cpu::gpw::xc_grid_revpbe_spin;
 using ATV::cpu::gpw::XcKind;
 
 namespace {
@@ -217,6 +219,56 @@ TEST(GpwUks, TripletLikeH2ConvergesBlyp) {
     m.tol = 1e-6;
     m.mix = 0.4;
     m.xc = XcKind::BLYP;
+    m.build(atoms);
+    const GpwResult r = m.run(atoms);
+    EXPECT_TRUE(r.converged) << "iters=" << r.iters << " E=" << r.e_total;
+    EXPECT_TRUE(std::isfinite(r.e_total));
+    EXPECT_NEAR(r.s2, 2.0, 1e-8);
+}
+
+TEST(GpwUks, RevPbeSpinMatchesUnpolarizedCollapse) {
+    // ρ_α = ρ_β = ρ/2 must recover closed-shell revPBE energy/potential.
+    UniformGrid grid;
+    grid.n[0] = grid.n[1] = grid.n[2] = 6;
+    grid.L[0] = grid.L[1] = grid.L[2] = 4.0;
+    const long ng = grid.npts();
+    std::vector<double> rho(static_cast<std::size_t>(ng), 0.12);
+    std::vector<double> ra(static_cast<std::size_t>(ng), 0.06);
+    std::vector<double> rb(static_cast<std::size_t>(ng), 0.06);
+    const auto uni = xc_grid_revpbe(grid, rho);
+    const auto spin = xc_grid_revpbe_spin(grid, ra, rb);
+    EXPECT_NEAR(uni.e_xc, spin.e_xc, 1e-10 * std::max(1.0, std::abs(uni.e_xc)));
+    for (long g = 0; g < ng; ++g) {
+        EXPECT_NEAR(uni.vxc_r[static_cast<std::size_t>(g)],
+                    spin.vxc_a[static_cast<std::size_t>(g)], 1e-9);
+        EXPECT_NEAR(spin.vxc_a[static_cast<std::size_t>(g)],
+                    spin.vxc_b[static_cast<std::size_t>(g)], 1e-12);
+    }
+}
+
+TEST(GpwUks, RevPbeUksAcceptedAtBuild) {
+    auto atoms = small_h2();
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+    m.n_alpha = 1;
+    m.n_beta = 1;
+    m.xc = XcKind::RevPBE;
+    EXPECT_NO_THROW(m.build(atoms));
+    ASSERT_TRUE(m.is_uks());
+}
+
+TEST(GpwUks, TripletLikeH2ConvergesRevPbe) {
+    auto atoms = small_h2();
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+    m.cutoff_ry = 120.0;
+    m.n_alpha = 2;
+    m.n_beta = 0;
+    m.n_occ = 0;
+    m.max_iter = 100;
+    m.tol = 1e-6;
+    m.mix = 0.4;
+    m.xc = XcKind::RevPBE;
     m.build(atoms);
     const GpwResult r = m.run(atoms);
     EXPECT_TRUE(r.converged) << "iters=" << r.iters << " E=" << r.e_total;

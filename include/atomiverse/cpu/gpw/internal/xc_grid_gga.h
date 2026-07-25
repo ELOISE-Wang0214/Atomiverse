@@ -61,7 +61,7 @@ XcOnGrid xc_grid_blyp(const UniformGrid& grid, const std::vector<double>& rho_r)
 /// @param grid  Uniform grid.
 /// @param rho_a Alpha density on the grid.
 /// @param rho_b Beta density on the grid.
-/// @param xc    Pure GGA type (`PBE`, `PBEsol`, or `BLYP`).
+/// @param xc    Pure GGA type (`PBE`, `PBEsol`, `RevPBE`, `RPBE`, or `BLYP`).
 /// @return Spin-resolved XC energy and potentials.
 XcOnGridSpin xc_grid_gga_spin(const UniformGrid& grid,
                               const std::vector<double>& rho_a,
@@ -75,6 +75,11 @@ XcOnGridSpin xc_grid_pbe_spin(const UniformGrid& grid,
 
 /// @brief Spin-resolved PBEsol (`xc_grid_gga_spin` with `XCType::PBEsol`).
 XcOnGridSpin xc_grid_pbesol_spin(const UniformGrid& grid,
+                                 const std::vector<double>& rho_a,
+                                 const std::vector<double>& rho_b);
+
+/// @brief Spin-resolved revPBE (`xc_grid_gga_spin` with `XCType::RevPBE`).
+XcOnGridSpin xc_grid_revpbe_spin(const UniformGrid& grid,
                                  const std::vector<double>& rho_a,
                                  const std::vector<double>& rho_b);
 
