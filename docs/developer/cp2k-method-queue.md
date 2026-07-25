@@ -60,10 +60,24 @@ regression exists for any.
 **Harness wave 1 (claude) 2026-07-25:** 5 merged → done (k-points GPW,
 variable-cell, DFPT Γ, Berry polarization, periodic MP2 foothold);
 xl-bomd-water WIP-checkpointed; 71 merged wf/* pruned.
+**Census 2026-07-25 (post harness wave 1):** no CP2K/GPW/PW merges since
+`859d6e28` (HEAD); all 13 prior pending re-verified as true gaps on `dev`
+(GPW `XcKind` still PADE|PBE|PBEsol; `gpw_stress` still strain-FD; no
+TS/MBD/vdW-DF; DFPT q = 0 only; no Wannier/CPMD/RPA/GW; no PW variable-cell
+or Fe-smearing regressions). Wave-3 `[~]` ×5 preserved (xl-bomd-water WIP
+`61d235f4` untested; others no spec/`wf/*`/regression). Added 2 slugs for
+declared-but-unqueued follow-ups: `periodic-ri-mp2-si` (foothold ≠ capability
+closed — §10 Periodic MP2 stays ○ until RI/k-point lands) and
+`gpw-variable-cell-molopt` (the "MOLOPT re-twin queued" claim in the
+`gpw-variable-cell-ice` done row now has a real queue row). §3 BP86/B97/OLYP/
+HCTH/SOGGA remain molecular-path (PySCF-loop oracle) — not added. Roadmap
+already matches `dev` (harness `859d6e28` synced Berry/DFPT/k-points/
+variable-cell; MP2 ○ kept) — no ○/✓ flips.
 
 ## pending
 
 - [ ] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓
+- [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓
 - [ ] `gpw-blyp-water` | GPW BLYP GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 BLYP molecular ✓ / GPW `XcKind` still PADE|PBE|PBEsol only; CP2K XC_FUNCTIONAL BLYP
 - [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
 - [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` (merge-conflict avoidance)
@@ -72,9 +86,10 @@ xl-bomd-water WIP-checkpointed; 71 merged wf/* pruned.
 - [ ] `gpw-ts-ice` | Tkatchenko–Scheffler dispersion | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 TS ○; CP2K VDW_POTENTIAL / PAIR_POTENTIAL; **dep:** D3/D4 pin patterns ✓
 - [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; CP2K MBD; prefer after TS foothold
 - [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** dispersion footholds (`gpw-ts-ice` / `gpw-mbd-ice`)
-- [ ] `phonon-dispersion-si` | Phonon dispersion (q-path) | response | Si | NC-UPF / GTH | ω(q) cm⁻¹ | roadmap §11 full dispersions ○ (Γ FD ✓); CP2K VIBRATIONAL_ANALYSIS / DFPT path; **dep:** `fd-phonon-supercell` ✓; prefer after `dfpt-phonon-si`
+- [ ] `phonon-dispersion-si` | Phonon dispersion (q-path) | response | Si | NC-UPF / GTH | ω(q) cm⁻¹ | roadmap §11 full dispersions ○ (Γ FD ✓, Γ DFPT ✓); CP2K VIBRATIONAL_ANALYSIS / DFPT path; **dep:** `fd-phonon-supercell` ✓ + `dfpt-phonon-si` ✓
 - [ ] `second-gen-cpmd-water` | Second-generation Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ 2nd-gen CP; CP2K; **after** `cpmd-water`
-- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after MP2 foothold** (`periodic-mp2-si`)
+- [ ] `periodic-ri-mp2-si` | RI / k-point periodic MP2 productization | gpw | Si | MOLOPT+GTH | e_corr Ha | roadmap §10 Periodic MP2 stays ○ (Γ canonical foothold ✓ 2026-07-25 — foothold ≠ capability closed); CP2K &WF_CORRELATION RI-MP2 (Del Ben 2012); closes the capability row; **dep:** `periodic-mp2-si` ✓
+- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after MP2 foothold** (`periodic-mp2-si` ✓)
 - [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
 
 ## in_progress
