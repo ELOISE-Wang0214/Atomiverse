@@ -85,6 +85,20 @@ wave). Open specs `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp` stay
 PySCF-loop deferred — not staffed. Note: `cpmd-water` and `xl-bomd-water`
 may both touch AIMD propagator files — harness resolves at merge.
 
+**Bootstrap + GapCensus 2026-07-25 (parent `dev` @ `5bdae27d`):** recover
+clean — incomplete=`0`, open CP2K/GPW/PW specs=`0` (only PySCF deferred
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`), unmerged `wf/*`=`0`, isolation
+worktrees=`0`, leftover `build*`=`none`. All 14 prior pending re-verified as
+true gaps on tree: GPW `XcKind` still `{PADE,PBE,PBEsol}` (no BLYP/revPBE/RPBE);
+no TS/MBD/vdW-DF symbols; DFPT remains Γ-only (`phonon-dispersion-si` open);
+no bulk-Fe + spin+smearing reg; no PW CELL_OPT product reg; Periodic MP2
+capability still ○ (Γ foothold `periodic-mp2-si` ✓ — RI/k-point + RPA/GW
+pending); second-gen CP after CPMD ✓. All 30 done-slug regression dirs present
+under `regressions/{gpw,pw,response,dynamics,scf}/`. Roadmap matches `dev`
+(no ○/✓ flips). **Pending unchanged (14).** Ready for Assign wave — prefer
+surface-disjoint staff (one XcKind GGA slug/wave; TS before MBD/vdW-DF;
+`second-gen-cpmd-water` free now that `cpmd-water` ✓).
+
 ## pending
 
 - [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓

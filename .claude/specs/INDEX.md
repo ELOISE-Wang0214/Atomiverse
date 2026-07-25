@@ -33,26 +33,16 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live
-
-## Live — CP2K gpw-analytic-stress (2026-07-25)
-
-| Spec | Status | One-line |
-| ---- | ------ | -------- |
-| [gpw-analytic-stress](gpw-analytic-stress/spec.md) | in progress → commit | Analytic GPW fixed-P+Pulay stress product path |
-
+## Live — deferred PySCF only (CP2K clean after bootstrap 2026-07-25)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
-| [mpi-gpw-scaling-4rank](mpi-gpw-scaling-4rank/) | cp2k / infra | in progress (`wf/mpi-gpw-scaling-4rank`) |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-## Closed on branch (pending merge) — `wannier-centers` (2026-07-25)
-
-| Queue | Spec | Shipped |
-| ----- | ---- | ------- |
-| cp2k-method-loop | wannier-centers | `cpu::scf::WannierCenters` Foster–Boys Jacobi; `reg_wannier-centers` H₂/H₂O STO-3G |
+No open CP2K/GPW/PW specs on `dev` — workers write `.claude/specs/<slug>/` on
+`wf/<slug>` before impl. Parent bootstrap GapCensus 2026-07-25: pending=14,
+in_progress=0.
 
 MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
 (2026-07-24) staffed 10 production-depth / residual map rows to

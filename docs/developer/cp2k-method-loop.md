@@ -79,3 +79,10 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
   suite green (`ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'`). Clearup:
   71 merged `wf/*` pruned. Specs closed for all 5 merged slugs; roadmap
   synced (Berry ✓, GPW k-points prose, variable-cell productization; MP2 ○).
+- **2026-07-25 bootstrap (parent `dev` @ `5bdae27d`):** GapCensus recover
+  clean (incomplete=0, CP2K specs=0, wf/*=0, builds=none). Pending **14**
+  re-verified true gaps; done **30**; blocked **5**. No roadmap ○/✓ flips.
+  Ready for Assign. Suggested staff: `gpw-blyp-water`, `pw-uks-fe-smearing`,
+  `pw-variable-cell-si`, `gpw-ts-ice`, `phonon-dispersion-si`,
+  `periodic-ri-mp2-si`, `second-gen-cpmd-water`, `gpw-variable-cell-molopt`
+  (hold revPBE/RPBE / MBD/vdW-DF / RPA/GW for surface order).

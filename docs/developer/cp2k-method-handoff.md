@@ -1,5 +1,42 @@
 # CP2K capability loop — handoff
 
+## Bootstrap 2026-07-25 (parent `dev` @ `5bdae27d`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`) |
+| Incomplete / `in_progress` | **0** |
+| Open CP2K specs | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Unmerged `wf/*` | **0** |
+| Isolation worktrees | **0** (only main tree) |
+| Leftover builds | **none** |
+| Pending gaps | **14** (all re-verified true) |
+| Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done | **30** landings (waves 1–2 + claude wave 1 + parallel wave + xl-bomd) |
+| Oracle | `tools/cp2k_oracle/README.md` + 23 inputs/notes; offline pins only |
+| Loop docs | queue / loop / handoff / `oracle-capability-loop.md` **confirmed** |
+
+**Next:** Assign wave from pending (incomplete ≫ pending is vacuous). Suggested
+surface-disjoint staff (≤10):
+
+| Priority | Slug | Why now | Surface caution |
+| -------- | ---- | ------- | --------------- |
+| 1 | `gpw-blyp-water` | §3 BLYP molecular ✓ / GPW `XcKind` still 3-valued | only **one** XcKind GGA expand this wave |
+| 2 | `pw-uks-fe-smearing` | follow-on after O₂ k-mesh UKS ✓ | `cpu/planewave` UKS+smear |
+| 3 | `pw-variable-cell-si` | dep Nielsen–Martin stress ✓ | minimize + PW stress |
+| 4 | `gpw-ts-ice` | §8 TS ○; D3/D4 pin patterns ✓ | new dispersion path |
+| 5 | `phonon-dispersion-si` | dep FD + Γ DFPT ✓ | DFPT q≠0 |
+| 6 | `periodic-ri-mp2-si` | foothold ≠ closed (Periodic MP2 ○) | GPW MP2 productization |
+| 7 | `second-gen-cpmd-water` | dep `cpmd-water` ✓ | dynamics / Cpmd |
+| 8 | `gpw-variable-cell-molopt` | declared re-twin; low risk | mostly pin/reg |
+| hold | `gpw-revpbe-si` / `gpw-rpbe-water` | after BLYP XcKind lands | same `XcKind` files |
+| hold | `gpw-mbd-ice` / `gpw-vdw-df-ice` | after TS foothold | dispersion stack |
+| hold | `periodic-rpa-si` / `periodic-gw-si` | after RI-MP2 or staff-heavy | post-HF stack |
+
+Do **not** staff PySCF deferred specs. No push from parent.
+
+---
+
 Last land: **2026-07-25 parallel wave** — 5 staffed `[~]` merged to `dev`:
 `mpi-pw-scaling-4rank`, `gpw-analytic-stress`, `wannier-centers`,
 `mpi-gpw-scaling-4rank`, `cpmd-water` (+ earlier `xl-bomd-water`).
