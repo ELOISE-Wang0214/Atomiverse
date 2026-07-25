@@ -926,13 +926,10 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
-<<<<<<< HEAD
-        res.C_occ_k.clear();
-        res.C_occ_k.resize(static_cast<std::size_t>(nk));
-=======
         res.C_k.clear();
         res.C_k.reserve(static_cast<std::size_t>(nk));
->>>>>>> wf/periodic-mp2-kpoints
+        res.C_occ_k.clear();
+        res.C_occ_k.resize(static_cast<std::size_t>(nk));
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
@@ -941,8 +938,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 internal::diagonalize_k(H_full[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
             res.eps_k.push_back(std::move(eps));
-<<<<<<< HEAD
-            // Occupied block only (nb × n_occ), row-major for force/stress rebuild.
+            // Full Bloch C_k for multi-k mp2(); occupied block for force/stress.
+            res.C_k.push_back(linalg::CplxMatrix(C));
             std::vector<Cplx> occ(
                 static_cast<std::size_t>(nb) * static_cast<std::size_t>(cfg.n_occ));
             for (int mu = 0; mu < nb; ++mu)
@@ -950,11 +947,6 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     occ[static_cast<std::size_t>(mu) * cfg.n_occ
                         + static_cast<std::size_t>(o)] = C(mu, o);
             res.C_occ_k[static_cast<std::size_t>(ik)] = std::move(occ);
-=======
-            // CplxMatrix layouts match (row-major complex); copy into public
-            // linalg::CplxMatrix for multi-k mp2().
-            res.C_k.push_back(linalg::CplxMatrix(C));
->>>>>>> wf/periodic-mp2-kpoints
         }
     };
 
