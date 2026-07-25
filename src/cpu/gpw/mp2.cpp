@@ -1,14 +1,16 @@
 /// @file src/cpu/gpw/mp2.cpp
-/// @brief GpwDft::mp2 — Γ-point GPW MP2 on the converged RKS orbitals.
-///        Product default: RI-GPW G-space B intermediates; foothold:
+/// @brief GpwDft::mp2 — Γ-point (real) and multi-k (complex Bloch) GPW MP2
+///        on the converged RKS orbitals. Product: RI-GPW; Γ foothold:
 ///        Poisson real-space tensor. Kernels in internal/mp2_kernels.h.
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/mp2_kernels.h"
 
 namespace ATV {
@@ -32,13 +34,143 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
         throw std::logic_error(
             "GpwDft::mp2 needs a converged run() first (no correlation on "
             "an unconverged reference)");
-    // Multi-k SCF discards complex Bloch C (k-path stores eps_k only).
-    // Full k-point MP2 (momentum-conserving sum) is a residual.
-    if (result_.n_kpts > 1)
-        throw std::invalid_argument(
-            "GpwDft::mp2: multi-k SCF reference not supported (k-point MP2 "
-            "is a residual; re-run with k_mesh = {1,1,1} for Γ RI-GPW MP2)");
 
+    const bool multi_k =
+        result_.n_kpts >= 1 && !result_.C_k.empty()
+        && static_cast<int>(result_.C_k.size()) == result_.n_kpts;
+
+    if (result_.n_kpts > 0 && !multi_k)
+        throw std::invalid_argument(
+            "GpwDft::mp2: multi-k SCF result is missing Bloch C_k (re-run "
+            "with a current multi-k path that stores orbitals)");
+
+    // ── Multi-k (complex Bloch, momentum-conserving RI-GPW) ───────────
+    if (multi_k) {
+        if (nonperiodic)
+            throw std::invalid_argument(
+                "GpwDft::mp2: multi-k MP2 requires a periodic cell");
+        if (!mp2_ri)
+            throw std::invalid_argument(
+                "GpwDft::mp2: multi-k path requires mp2_ri = true (Poisson "
+                "multi-k foothold is not offered)");
+
+        const int nk = result_.n_kpts;
+        const int nb_atoms = [&] {
+            int nb = 0;
+            for (const auto& a : atoms)
+                nb += static_cast<int>(a.basis.size());
+            return nb;
+        }();
+        const int nb = static_cast<int>(result_.C_k[0].shape(0));
+        if (nb_atoms != nb)
+            throw std::invalid_argument(
+                "GpwDft::mp2: atom basis count (" + std::to_string(nb_atoms)
+                + ") does not match the converged orbitals ("
+                + std::to_string(nb)
+                + ") — same geometry/basis as the last run() required");
+
+        // Per-k virtual count after lindep; require a common n_virt for the
+        // doubles sum (drop extras at k with more kept directions).
+        int n_mo_min = static_cast<int>(result_.C_k[0].shape(1));
+        for (int ik = 0; ik < nk; ++ik) {
+            n_mo_min = std::min(
+                n_mo_min, static_cast<int>(result_.C_k[static_cast<std::size_t>(
+                                                     ik)]
+                                               .shape(1)));
+            if (static_cast<int>(
+                    result_.eps_k[static_cast<std::size_t>(ik)].size())
+                < n_mo_min)
+                throw std::logic_error(
+                    "GpwDft::mp2: eps_k/C_k shape mismatch at a k-point");
+        }
+        if (n_mo_min <= n_occ)
+            throw std::invalid_argument(
+                "GpwDft::mp2: no virtual orbitals in the multi-k result "
+                "(n_mo_min = "
+                + std::to_string(n_mo_min) + ", n_occ = "
+                + std::to_string(n_occ) + ")");
+
+        int n_virt = n_mo_min - n_occ;
+        if (mp2_n_virt > 0)
+            n_virt = std::min(n_virt, mp2_n_virt);
+
+        constexpr double kMinGapHa = 1e-6;
+        double min_gap = 1e300;
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& eps = result_.eps_k[static_cast<std::size_t>(ik)];
+            const double gap = eps[static_cast<std::size_t>(n_occ)]
+                               - eps[static_cast<std::size_t>(n_occ - 1)];
+            min_gap = std::min(min_gap, gap);
+        }
+        if (min_gap < kMinGapHa)
+            throw std::invalid_argument(
+                "GpwDft::mp2: vanishing HOMO-LUMO gap on the k-mesh ("
+                + std::to_string(min_gap)
+                + " Ha < 1e-6) — canonical MP2 denominators are singular");
+
+        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        std::vector<GridBasisFunction> basis;
+        basis.reserve(static_cast<std::size_t>(nb));
+        for (const auto& a : atoms)
+            for (const auto& bf : a.basis)
+                basis.push_back(bf);
+
+        std::vector<internal::KPoint> kpts(
+            static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            kpts[static_cast<std::size_t>(ik)].frac[0] =
+                result_.k_frac[static_cast<std::size_t>(ik)][0];
+            kpts[static_cast<std::size_t>(ik)].frac[1] =
+                result_.k_frac[static_cast<std::size_t>(ik)][1];
+            kpts[static_cast<std::size_t>(ik)].frac[2] =
+                result_.k_frac[static_cast<std::size_t>(ik)][2];
+            kpts[static_cast<std::size_t>(ik)].weight =
+                result_.k_weights[static_cast<std::size_t>(ik)];
+        }
+        const internal::KpointBasisGrid kbg =
+            internal::build_kpoint_basis_grid(grid, basis, kpts, eps_default);
+
+        std::vector<std::vector<internal::Cplx>> psi_occ_k(
+            static_cast<std::size_t>(nk));
+        std::vector<std::vector<internal::Cplx>> psi_virt_k(
+            static_cast<std::size_t>(nk));
+        std::vector<std::vector<double>> eps_occ_k(
+            static_cast<std::size_t>(nk));
+        std::vector<std::vector<double>> eps_virt_k(
+            static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            psi_occ_k[static_cast<std::size_t>(ik)] = internal::mo_on_grid_k(
+                kbg, ik, result_.C_k[static_cast<std::size_t>(ik)], 0, n_occ);
+            psi_virt_k[static_cast<std::size_t>(ik)] =
+                internal::mo_on_grid_k(
+                    kbg, ik, result_.C_k[static_cast<std::size_t>(ik)], n_occ,
+                    n_virt);
+            const auto& eps = result_.eps_k[static_cast<std::size_t>(ik)];
+            eps_occ_k[static_cast<std::size_t>(ik)].assign(
+                eps.begin(), eps.begin() + n_occ);
+            eps_virt_k[static_cast<std::size_t>(ik)].assign(
+                eps.begin() + n_occ, eps.begin() + n_occ + n_virt);
+        }
+
+        double e_os = 0.0, e_ss = 0.0;
+        internal::mp2_rhf_energy_kpoints(grid, psi_occ_k, psi_virt_k, eps_occ_k,
+                                         eps_virt_k, result_.k_frac,
+                                         result_.k_weights, e_os, e_ss);
+
+        mp2_result_ = Mp2Result{};
+        mp2_result_.e_corr_os = e_os;
+        mp2_result_.e_corr_ss = e_ss;
+        mp2_result_.e_corr = mp2_os_scale * e_os + mp2_ss_scale * e_ss;
+        mp2_result_.e_scf = result_.e_total;
+        mp2_result_.e_total = mp2_result_.e_scf + mp2_result_.e_corr;
+        mp2_result_.n_occ = n_occ;
+        mp2_result_.n_virt = n_virt;
+        mp2_result_.ri = true;
+        mp2_result_.n_kpts = nk;
+        return mp2_result_;
+    }
+
+    // ── Γ-point real path (product RI-GPW or Poisson foothold) ────────
     const int nb_atoms = [&] {
         int nb = 0;
         for (const auto& a : atoms)
@@ -114,6 +246,7 @@ const Mp2Result& GpwDft::mp2(const std::vector<GpwAtom>& atoms) {
     mp2_result_.n_occ = n_occ;
     mp2_result_.n_virt = n_virt;
     mp2_result_.ri = use_ri;
+    mp2_result_.n_kpts = 0;
     return mp2_result_;
 }
 

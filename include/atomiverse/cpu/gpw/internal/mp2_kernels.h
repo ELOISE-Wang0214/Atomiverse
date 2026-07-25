@@ -1,7 +1,8 @@
 /// @file cpu/gpw/internal/mp2_kernels.h
 /// @brief Private GPW MP2 kernels: MO values on the density grid, the
 ///        occupied–virtual MO repulsion tensor via per-pair Poisson solves,
-///        and the canonical closed-shell doubles sum.
+///        the canonical closed-shell doubles sum, and multi-k (complex Bloch)
+///        momentum-conserving RI-GPW MP2.
 ///
 /// Private workspace behind `GpwDft::mp2` — never on the public include
 /// path (unit tests may include it). The `(ia|jb)` route is CP2K's
@@ -11,15 +12,20 @@
 /// the periodic RPA follow-on.
 #pragma once
 
+#include <array>
+#include <complex>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h" // CompactBasisGrid, UniformGrid
-#include "atomiverse/cpu/linalg/matrix.h"          // RealMatrix
+#include "atomiverse/cpu/gpw/internal/kpoints.h"   // KpointBasisGrid, CplxMatrix
+#include "atomiverse/cpu/linalg/matrix.h"          // RealMatrix, CplxMatrix
 
 namespace ATV {
 namespace cpu {
 namespace gpw {
 namespace internal {
+
+using Cplx = std::complex<double>;
 
 /// @brief Evaluate MO values ψ_p(r_g) on the grid from the compact
 ///        (lattice-summed, CSR-by-point) AO representation.
@@ -89,6 +95,38 @@ void mp2_rhf_energy(const std::vector<double>& v_ovov,
                     const std::vector<double>& eps_occ,
                     const std::vector<double>& eps_virt, double& e_os,
                     double& e_ss);
+
+/// @brief Complex Bloch MO values on the density grid from pre-summed
+///        \(\chi_\mu^k(g)\).
+/// @param kbg K-point basis grid. @param ik k index.
+/// @param C   MO coefficients (nb × n_mo). @param p0 first column. @param np count.
+/// @return Row-major (np × npts) complex MO values.
+std::vector<Cplx> mo_on_grid_k(const KpointBasisGrid& kbg, int ik,
+                               const linalg::CplxMatrix& C, int p0, int np);
+
+/// @brief Multi-k closed-shell RI-GPW MP2 (momentum-conserving).
+///
+/// Equal-weight formula \(E = N_k^{-1}\sum_{k_i k_j k_a}\sum_{ijab}
+/// (\cdots)/\Delta\) with \(k_b \equiv k_i+k_j-k_a\) (fractional wrap into the
+/// sampled set). Complex pair densities use linear real Poisson on Re/Im.
+/// OS/SS reduce to the real Γ formulas when all orbitals are real.
+/// @param grid      Uniform density grid (as in the SCF).
+/// @param psi_occ_k Per-k occupied MO grids [nk][n_occ·npts].
+/// @param psi_virt_k Per-k virtual MO grids [nk][n_virt·npts].
+/// @param eps_occ_k Per-k occupied eigenvalues [nk][n_occ].
+/// @param eps_virt_k Per-k virtual eigenvalues [nk][n_virt].
+/// @param k_frac    Fractional k coordinates (length nk).
+/// @param k_weights Quadrature weights (Σ = 1; equal-weight foothold).
+/// @param e_os Out: unscaled opposite-spin [Hartree].
+/// @param e_ss Out: unscaled same-spin [Hartree].
+void mp2_rhf_energy_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_k,
+    const std::vector<std::vector<double>>& eps_occ_k,
+    const std::vector<std::vector<double>>& eps_virt_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, double& e_os, double& e_ss);
 
 } // namespace internal
 } // namespace gpw

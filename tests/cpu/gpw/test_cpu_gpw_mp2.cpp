@@ -5,6 +5,7 @@
 ///        GpwDft::mp2 guard throws. No SCF is run here (unit tier).
 
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -247,4 +248,97 @@ TEST(GpwMp2, ThrowsWithoutConvergedRun) {
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
     EXPECT_THROW(m.mp2({a}), std::logic_error);
+}
+
+// Complex OS/SS reduction: real integrals → same e_os/e_ss as mp2_rhf_energy.
+TEST(GpwMp2, ComplexOsSsReducesToReal) {
+    const int no = 2, nv = 2, nov = no * nv;
+    std::vector<double> eps_occ = {-1.0, -0.4};
+    std::vector<double> eps_virt = {0.3, 0.8};
+    std::vector<double> v(static_cast<std::size_t>(nov) * nov, 0.0);
+    auto idx = [&](int i, int a, int j, int b) {
+        return static_cast<std::size_t>((i * nv + a) * nov + j * nv + b);
+    };
+    v[idx(0, 0, 0, 0)] = 0.11;
+    v[idx(0, 0, 0, 1)] = 0.03;
+    v[idx(0, 0, 1, 0)] = 0.03;
+    v[idx(0, 0, 1, 1)] = 0.07;
+    v[idx(0, 1, 0, 0)] = 0.03;
+    v[idx(0, 1, 0, 1)] = 0.09;
+    v[idx(0, 1, 1, 0)] = 0.02;
+    v[idx(0, 1, 1, 1)] = 0.05;
+    v[idx(1, 0, 0, 0)] = 0.03;
+    v[idx(1, 0, 0, 1)] = 0.02;
+    v[idx(1, 0, 1, 0)] = 0.08;
+    v[idx(1, 0, 1, 1)] = 0.04;
+    v[idx(1, 1, 0, 0)] = 0.07;
+    v[idx(1, 1, 0, 1)] = 0.05;
+    v[idx(1, 1, 1, 0)] = 0.04;
+    v[idx(1, 1, 1, 1)] = 0.06;
+    // Symmetrize (ia|jb)=(jb|ia)
+    for (int i = 0; i < no; ++i)
+        for (int a = 0; a < nv; ++a)
+            for (int j = 0; j < no; ++j)
+                for (int b = 0; b < nv; ++b)
+                    v[idx(j, b, i, a)] = v[idx(i, a, j, b)];
+
+    double e_os = 0, e_ss = 0;
+    mp2_rhf_energy(v, eps_occ, eps_virt, e_os, e_ss);
+
+    double e_os_c = 0, e_ss_c = 0;
+    for (int i = 0; i < no; ++i)
+        for (int j = 0; j < no; ++j)
+            for (int a = 0; a < nv; ++a)
+                for (int b = 0; b < nv; ++b) {
+                    const std::complex<double> v_iajb = v[idx(i, a, j, b)];
+                    const std::complex<double> v_ibja = v[idx(i, b, j, a)];
+                    const double denom = eps_occ[i] + eps_occ[j] - eps_virt[a]
+                                         - eps_virt[b];
+                    e_os_c += std::norm(v_iajb) / denom;
+                    e_ss_c += (v_iajb * std::conj(v_iajb - v_ibja)).real() / denom;
+                }
+    EXPECT_NEAR(e_os_c, e_os, 1e-14);
+    EXPECT_NEAR(e_ss_c, e_ss, 1e-14);
+}
+
+// mo_on_grid_k at Γ (real phases) matches real mo_on_grid on the same AOs.
+TEST(GpwMp2, MoOnGridKAtGammaMatchesReal) {
+    using ATV::cpu::gpw::internal::build_kpoint_basis_grid;
+    using ATV::cpu::gpw::internal::KPoint;
+    using ATV::cpu::gpw::internal::mo_on_grid_k;
+    using ATV::cpu::linalg::CplxMatrix;
+
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 30.0);
+    std::vector<GridBasisFunction> basis;
+    basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
+    basis.push_back(s_gauss(0.5, 3.8, 3.0, 3.0));
+    const CompactBasisGrid cbg =
+        build_compact_basis_grid(grid, basis, /*periodic=*/true, 1e-14);
+
+    RealMatrix C = xt::zeros<double>({2, 2});
+    C(0, 0) = 0.7;
+    C(1, 0) = -0.3;
+    C(0, 1) = 0.2;
+    C(1, 1) = 0.9;
+    const std::vector<double> psi_r = mo_on_grid(cbg, C, 0, 2);
+
+    std::vector<KPoint> kpts(1);
+    kpts[0].frac[0] = kpts[0].frac[1] = kpts[0].frac[2] = 0.0;
+    kpts[0].weight = 1.0;
+    const auto kbg = build_kpoint_basis_grid(grid, basis, kpts, 1e-14);
+    CplxMatrix Ck = xt::zeros<std::complex<double>>({2, 2});
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            Ck(i, j) = C(i, j);
+    const std::vector<std::complex<double>> psi_k = mo_on_grid_k(kbg, 0, Ck, 0, 2);
+
+    const long npts = grid.npts();
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < psi_r.size(); ++i) {
+        max_err = std::max(max_err, std::abs(psi_k[i].real() - psi_r[i]));
+        max_err = std::max(max_err, std::abs(psi_k[i].imag()));
+    }
+    EXPECT_LT(max_err, 1e-10) << "max |complex Γ − real| = " << max_err;
+    (void)npts;
 }

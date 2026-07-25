@@ -925,6 +925,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
+        res.C_k.clear();
+        res.C_k.reserve(static_cast<std::size_t>(nk));
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
@@ -932,8 +934,10 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             auto [eps, C] =
                 internal::diagonalize_k(H_full[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
-            (void)C;
             res.eps_k.push_back(std::move(eps));
+            // CplxMatrix layouts match (row-major complex); copy into public
+            // linalg::CplxMatrix for multi-k mp2().
+            res.C_k.push_back(linalg::CplxMatrix(C));
         }
     };
 
