@@ -14,10 +14,11 @@
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
 /// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD
 /// or PBE/PBEsol GGA). Periodic neutral electrostatics via the GTH Gaussian
-/// core charge. k-point UKS and analytic k-point forces are follow-on.
+/// core charge. k-point UKS and analytic k-point forces are follow-on; analytic k-point stress uses the same `C_occ_k` payload.
 #pragma once
 
 #include <array>
+#include <complex>
 #include <string>
 #include <vector>
 
@@ -113,6 +114,11 @@ struct GpwResult {
     ///        (`ik = rank; ik < n_kpts; ik += nprocs`). Equals `n_kpts` when
     ///        MPI is inactive or `nprocs == 1`.
     int n_kpts_local = 0;
+    /// @brief Occupied MO coefficients per k (k-path only): each entry is a
+    ///        row-major complex matrix of shape nb x n_occ (columns =
+    ///        occupied orbitals). Empty for Gamma / UKS. Used by
+    ///        gpw_stress / analytic forces to rebuild P_k / W_k.
+    std::vector<std::vector<std::complex<double>>> C_occ_k;
     /// @}
     double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
@@ -296,8 +302,10 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 ///
 /// Product path: one SCF, then Hellmann–Feynman fixed-\(P\) central FD of the
 /// non-self-consistent total energy under orthorhombic diagonal strain at fixed
-/// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Off-diagonal
-/// shear is 0 (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
+/// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Supports
+/// Gamma and closed-shell multi-k RKS (k-summed fixed-P_k Lagrangian).
+/// Off-diagonal shear is 0 (orthorhombic cell only). Multi-SCF oracle:
+/// `gpw_stress_fd`.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].

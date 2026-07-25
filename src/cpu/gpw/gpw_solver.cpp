@@ -925,6 +925,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
+        res.C_occ_k.clear();
+        res.C_occ_k.resize(static_cast<std::size_t>(nk));
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
@@ -932,8 +934,15 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             auto [eps, C] =
                 internal::diagonalize_k(H_full[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
-            (void)C;
             res.eps_k.push_back(std::move(eps));
+            // Occupied block only (nb x n_occ), row-major for stress/force rebuild.
+            std::vector<Cplx> occ(
+                static_cast<std::size_t>(nb) * static_cast<std::size_t>(cfg.n_occ));
+            for (int mu = 0; mu < nb; ++mu)
+                for (int o = 0; o < cfg.n_occ; ++o)
+                    occ[static_cast<std::size_t>(mu) * cfg.n_occ
+                        + static_cast<std::size_t>(o)] = C(mu, o);
+            res.C_occ_k[static_cast<std::size_t>(ik)] = std::move(occ);
         }
     };
 

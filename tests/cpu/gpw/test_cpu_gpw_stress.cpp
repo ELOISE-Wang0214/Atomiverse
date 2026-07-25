@@ -198,3 +198,75 @@ TEST(GpwStress, EvaluatorWritesKStressAnalyticDefault) {
     EXPECT_GT(std::max({std::abs(sh[0]), std::abs(sh[1]), std::abs(sh[2])}),
               1e-8);
 }
+
+// ── Multi-k analytic stress ────────────────────────────────────────────────
+
+TEST(GpwStress, KpointAnalyticMatchesFdDiagonal) {
+    // Periodic H2, mesh 1x1x2 (TR → 1 k at κ_z = +1/4). Hellmann–Feynman
+    // fixed-P_k product vs multi-SCF strain-FD oracle.
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 100.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 60;
+    cfg.nonperiodic = false;
+    cfg.local_pp_on_grid = true;
+    cfg.xc = XcKind::PADE;
+    cfg.eps_default = 1e-8;
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+
+    const double h = 3e-3;
+    const auto san = gpw_stress(atoms, cfg, h);
+    const auto sfd = gpw_stress_fd(atoms, cfg, h);
+    double max_err = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                    - sfd[static_cast<std::size_t>(a)]);
+        max_err = std::max(max_err, err);
+        std::printf("  k-mesh axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                    san[static_cast<std::size_t>(a)],
+                    sfd[static_cast<std::size_t>(a)], err);
+        EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+        EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+    }
+    EXPECT_DOUBLE_EQ(san[3], 0.0);
+    EXPECT_DOUBLE_EQ(san[4], 0.0);
+    EXPECT_DOUBLE_EQ(san[5], 0.0);
+    EXPECT_LT(max_err, 5e-5) << "k-mesh analytic vs multi-SCF FD diagonal";
+}
+
+TEST(GpwStress, KpointNoThrowAndFinite) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.7, 6.1, 5.9};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 80.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-7;
+    cfg.max_iter = 50;
+    cfg.xc = XcKind::PADE;
+    cfg.local_pp_on_grid = true;
+    cfg.k_mesh[0] = cfg.k_mesh[1] = cfg.k_mesh[2] = 2; // MP 2x2x2 TR
+    EXPECT_NO_THROW({
+        const auto s = gpw_stress(atoms, cfg, 4e-3);
+        for (int k = 0; k < 6; ++k)
+            EXPECT_TRUE(std::isfinite(s[static_cast<std::size_t>(k)])) << k;
+        EXPECT_DOUBLE_EQ(s[3], 0.0);
+        EXPECT_DOUBLE_EQ(s[4], 0.0);
+        EXPECT_DOUBLE_EQ(s[5], 0.0);
+    });
+}
