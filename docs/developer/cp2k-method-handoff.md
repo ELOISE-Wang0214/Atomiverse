@@ -1,6 +1,59 @@
 # CP2K capability loop — handoff
 
-## Harness wave 3 2026-07-25 (parent `dev` @ `0a642122`)
+## Harness wave 4 2026-07-26 (parent `dev` @ `85eaa2d9`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **0** (no residual `[~]`) |
+| Open CP2K specs | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Specs closed this harness | **9** (deleted on close) |
+| Unmerged staff `wf/*` | **0** for the 9 wave slugs (clearup already ran) |
+| Isolation worktrees | **0** (main tree only) |
+| Leftover builds | **none** |
+| Pending gaps | **0** residual from prior census list (not exhausted — GapCensus owns refill) |
+| Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done this wave | **9** landings (see table) |
+| Oracle | `tools/cp2k_oracle/` offline pins only |
+| Loop docs | queue / loop / handoff / roadmap **synced** |
+
+### Wave staff → done
+
+| Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ---------- | --------------------------------------------- |
+| `gpw-kpoint-uks-stress` | gpw | `reg_gpw-kpoint-uks-stress` | **perf_exempt** |
+| `periodic-gw-kpoints` | gpw | `reg_periodic-gw-kpoints` | **perf_exempt** |
+| `gpw-vdw-df2-ice` | gpw | `reg_gpw-vdw-df2-ice` | **perf_exempt** (E_disp pin) |
+| `gpw-rvv10-ice` | gpw | `reg_gpw-rvv10-ice` | **perf_exempt** (E_disp pin) |
+| `gpw-mbd-periodic` | gpw | `reg_gpw-mbd-periodic` | **perf_exempt** (E_disp pin) |
+| `pw-spin-gga` | pw | `reg_pw-spin-gga` | **perf_exempt** |
+| `gpw-uks-blyp` | gpw | `reg_gpw-uks-blyp` | **~2.48** |
+| `periodic-rpa-finite-q` | gpw | `reg_periodic-rpa-finite-q` | **perf_exempt** |
+| `gpw-dftu-stress` | gpw | `reg_gpw-dftu-stress` | **perf_exempt** |
+
+### Roadmap ○→✓ this harness
+
+| Row | Doc | Note |
+| --- | --- | ---- |
+| vdW-DF2 | `dft.md` §8 | LMKLL nonlocal on GPW (`reg_gpw-vdw-df2-ice`) |
+| rVV10 | `dft.md` §8 | nonlocal rVV10 on GPW (`reg_gpw-rvv10-ice`); VV10 stock still ○ |
+| Multi-k G0W0 residual | `dft.md` §10 prose | closed (`reg_periodic-gw-kpoints`) |
+| Periodic Ewald MBD | `dft.md` §8/§10 prose | productized (`reg_gpw-mbd-periodic`) |
+| PW true collinear spin-GGA | `dft.md` §10 prose | productized (`reg_pw-spin-gga`) |
+| Γ-UKS BLYP / multi-k UKS stress / finite-q dRPA / DFT+U stress | prose + index | productized |
+
+### Pending residual
+
+**Pending = 0** residual from GapCensus wave 4 staff list (emptied — **not**
+queue exhausted). Next wave starts with **GapCensus** (tree/roadmap ○ vs
+`dev`). Blocked = 5 unchanged.
+
+Do **not** staff PySCF deferred specs. No push from parent.
+**Queue not exhausted** — GapCensus owns next discovery.
+
+---
+
+## Harness wave 3 2026-07-25 (parent `dev` @ `0a642122`) — historical
 
 | Field | Value |
 | ----- | ----- |
@@ -43,22 +96,7 @@
 
 ### Pending residual (GapCensus wave 4 — 2026-07-26 @ `decf917f`)
 
-**Pending = 9** (refilled; see `cp2k-method-queue.md` `## pending`):
-
-| Slug | Residual |
-| ---- | -------- |
-| `gpw-kpoint-uks-stress` | multi-k UKS analytic stress |
-| `periodic-gw-kpoints` | multi-k G0W0 after Γ product |
-| `gpw-vdw-df2-ice` | vdW-DF2 LMKLL |
-| `gpw-rvv10-ice` | rVV10 nonlocal |
-| `gpw-mbd-periodic` | periodic Ewald MBD |
-| `pw-spin-gga` | PW true collinear spin-GGA |
-| `gpw-uks-blyp` | Γ-UKS BLYP spin-GGA |
-| `periodic-rpa-finite-q` | finite-q inter-k dRPA |
-| `gpw-dftu-stress` | PLUS_U + analytic stress |
-
-**Not queued:** XDM (hold behind nonlocal order); BP86/… molecular GGA
-(PySCF); blocked hybrid/GAPW/PAW/meta-GGA/CUDA-GPW.
+**Pending = 9** were refilled then staffed and closed in harness wave 4 above.
 
 Do **not** staff PySCF deferred specs. No push from parent.
 **Queue not exhausted** — next is Assign from pending.

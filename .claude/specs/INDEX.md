@@ -33,7 +33,7 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (CP2K clean after harness wave 3 2026-07-25)
+## Live — deferred PySCF only (CP2K clean after harness wave 4 2026-07-26)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
@@ -41,8 +41,16 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
 No open CP2K/GPW/PW specs on `dev` — workers write `.claude/specs/<slug>/` on
-`wf/<slug>` before impl. Harness wave 3 2026-07-25 closed 8 CP2K specs
+`wf/<slug>` before impl. Harness wave 4 2026-07-26 closed 9 CP2K specs
 (deleted); pending residual=0 (GapCensus owns refill); in_progress=0.
+
+## Closed — CP2K harness wave 4 (2026-07-26)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 4 | gpw-kpoint-uks-stress, periodic-gw-kpoints, gpw-vdw-df2-ice, gpw-rvv10-ice, gpw-mbd-periodic, pw-spin-gga, gpw-uks-blyp, periodic-rpa-finite-q, gpw-dftu-stress | multi-k UKS stress; multi-k G0W0; vdW-DF2 LMKLL; rVV10; periodic Ewald MBD; PW collinear spin-GGA; Γ-UKS BLYP; finite-q dRPA; DFT+U analytic stress |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K harness wave 3 (2026-07-25)
 

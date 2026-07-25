@@ -227,21 +227,36 @@ molecular post-HF / classical MW / CUDA ports (other loops). Roadmap:
 open-residual prose + index Cell/GPW residual line refreshed to match
 queue. **Pending = 9**; **in_progress = 0**; **blocked = 5**.
 
+**Harness wave 4 2026-07-26 (parent `dev` @ `85eaa2d9`):** 9 staffed
+slugs merged → `## done` (`gpw-kpoint-uks-stress`, `periodic-gw-kpoints`,
+`gpw-vdw-df2-ice`, `gpw-rvv10-ice`, `gpw-mbd-periodic`, `pw-spin-gga`,
+`gpw-uks-blyp`, `periodic-rpa-finite-q`, `gpw-dftu-stress`). Specs
+deleted on close. **Pending residual = 0** (staff batch emptied the
+census pending list — **not** queue exhausted; GapCensus owns next
+discovery). `## in_progress` empty. Roadmap flips: vdW-DF2 ✓ (LMKLL),
+rVV10 ✓; multi-k G0W0 residual closed; periodic Ewald MBD productized;
+PW true collinear spin-GGA productized; Γ-UKS BLYP; multi-k UKS stress;
+finite-q inter-k dRPA; DFT+U analytic stress. **Blocked = 5** unchanged.
+
 ## pending
 
-- [ ] `gpw-kpoint-uks-stress` | Multi-k UKS analytic cell stress | gpw | O₂ (tiny MP mesh) | DZVP-MOLOPT-GTH | Voigt stress Ha/Bohr³ | roadmap residual after Γ-UKS stress ✓ (`reg_gpw-uks-stress`) + k-RKS stress ✓ + k-UKS forces ✓; `gpw_stress` throws multi-k UKS; CP2K NUMERICAL stress twin
-- [ ] `periodic-gw-kpoints` | Multi-k spectral G0W0 residual | gpw | Si (tiny k-mesh) | MOLOPT+GTH | QP gaps eV | Γ G0W0 product ✓ (`reg_periodic-gw-si`); `GpwDft::g0w0` throws multi-k SCF — foothold ≠ multi-k capability; CP2K GW + KPOINTS; **dep:** `periodic-gw-si` ✓ + `periodic-rpa-kpoints` ✓
-- [ ] `gpw-vdw-df2-ice` | Nonlocal vdW-DF2 (LMKLL) correlation | gpw | water dimer / ice | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 vdW-DF2 ○ after DRSLL ✓ (`reg_gpw-vdw-df-ice`); CP2K `VDW_POTENTIAL NON_LOCAL TYPE LMKLL`; shares nonlocal kernel surface with DRSLL
-- [ ] `gpw-rvv10-ice` | Nonlocal rVV10 correlation | gpw | water dimer | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 VV10/rVV10 ○ after vdW-DF ✓; CP2K `NON_LOCAL TYPE RVV10` (or VV10); prefer after / surface-disjoint from `gpw-vdw-df2-ice`
-- [ ] `gpw-mbd-periodic` | Periodic Ewald + k-mesh MBD@rsSCS | gpw | ice Ih (periodic) | DZVP-MOLOPT-GTH | E_disp Ha | free-atom MBD ✓ (`reg_gpw-mbd-ice` / Hirshfeld ✓); `mbd_dispersion` throws periodic Ewald — product path residual; libMBD / CP2K periodic twin
-- [ ] `pw-spin-gga` | True collinear spin-GGA on plane-wave grid | pw | O₂ / Fe tiny | NC-UPF | e_tot / mag | `XCBuilder::step_spin` is σ=0 LSDA-limit PBE per channel (true spin-GGA deferred); closed-shell PW GGA ✓ (`reg_pw-pbe-gga-si`); dual-gate vs GPW UKS PBE or offline pin
-- [ ] `gpw-uks-blyp` | Γ-UKS BLYP spin-GGA | gpw | O₂ | DZVP-MOLOPT-GTH | e_tot / mag | UKS spin-GGA wrappers only PBE/PBEsol (`xc_grid_gga_spin`); RKS BLYP ✓ (`reg_gpw-blyp-water`); extend spin path + solver; CP2K UKS BLYP twin
-- [ ] `periodic-rpa-finite-q` | Finite-q inter-k dRPA dielectric | gpw | Si (tiny mesh) | MOLOPT+GTH | E_c Ha | multi-k **k-diagonal** dRPA ✓ (`reg_periodic-rpa-kpoints`); full q-resolved inter-k coupling is follow-on in `mp2_kernels`; CP2K RPA twin; **dep:** `periodic-rpa-kpoints` ✓
-- [ ] `gpw-dftu-stress` | Analytic stress with Dudarev DFT+U | gpw | NiO tiny | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | PLUS_U energy ✓ (`reg_gpw-dftu-nio`); `gpw_stress` throws DFT+U foothold; CP2K PLUS_U + STRESS_TENSOR twin; **dep:** `gpw-dftu-nio` ✓ + `gpw-analytic-stress` ✓
+_(empty after harness wave 4 — GapCensus must refill from tree/roadmap ○)_
 
 ## in_progress
 
-_(empty — harness wave 3 closed all staffed slugs; no residual `[~]`)_
+_(empty — harness wave 4 closed all staffed slugs; no residual `[~]`)_
+
+## done (harness wave 4 2026-07-26)
+
+- [x] `gpw-kpoint-uks-stress` | Multi-k UKS analytic cell stress | gpw | `regressions/gpw/gpw-kpoint-uks-stress` | ratio **perf_exempt** | 2026-07-26
+- [x] `periodic-gw-kpoints` | Multi-k k-diagonal spectral G0W0 | gpw | `regressions/gpw/periodic-gw-kpoints` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-vdw-df2-ice` | Nonlocal vdW-DF2 (LMKLL) correlation | gpw | `regressions/gpw/gpw-vdw-df2-ice` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `gpw-rvv10-ice` | Nonlocal rVV10 correlation | gpw | `regressions/gpw/gpw-rvv10-ice` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `gpw-mbd-periodic` | Periodic Ewald + k-mesh MBD@rsSCS | gpw | `regressions/gpw/gpw-mbd-periodic` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `pw-spin-gga` | True collinear spin-GGA on plane-wave grid | pw | `regressions/pw/pw-spin-gga` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-uks-blyp` | Γ-UKS BLYP spin-GGA | gpw | `regressions/gpw/gpw-uks-blyp` | ratio **~2.48** | 2026-07-26
+- [x] `periodic-rpa-finite-q` | Finite-q inter-k RI-GPW dRPA | gpw | `regressions/gpw/periodic-rpa-finite-q` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-dftu-stress` | Analytic stress with Dudarev DFT+U | gpw | `regressions/gpw/gpw-dftu-stress` | ratio **perf_exempt** | 2026-07-26
 
 ## done (harness wave 3 2026-07-25)
 
