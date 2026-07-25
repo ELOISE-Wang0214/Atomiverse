@@ -232,7 +232,9 @@ Two periodic DFT engines exist, with disjoint strengths:
   forces**, **strain-FD cell stress** (`gpw_stress`; `reg_gpw-stress-water`),
   product **OT** minimizer (`use_ot`), **Dudarev DFT+U** (`plus_u`;
   `reg_gpw-dftu-nio`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
-  `n_alpha`/`n_beta`). No k-points (Gaussian). CPU only.
+  `n_alpha`/`n_beta`), plus **Monkhorst–Pack k-point RKS** (`k_mesh` /
+  explicit `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
+  `reg_gpw-kpoints-si`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -259,8 +261,10 @@ Which engine backs which ✓:
 
 - **Γ-point periodic RKS** is GPW (`reg_gpw-water-pbe-mt`). **Γ-point periodic
   UKS** is GPW PADE LSD (`reg_gpw-uks-o2-gamma`). **k-point periodic RKS** is
-  the plane-wave solver (Monkhorst–Pack mesh) — on both CPU and CUDA. There is
-  no periodic *Gaussian-basis* k-point path (`gpw-kpoints-si` still open).
+  the plane-wave solver (Monkhorst–Pack mesh) on both CPU and CUDA, **and**
+  GPW on CPU — the Gaussian-basis k-point path (phased lattice sums, KB
+  nonlocal, per-k DIIS; `reg_gpw-kpoints-si`, diamond Si vs CP2K Quickstep,
+  2026-07-25).
   **k-point periodic UKS** is CPU PW collinear spin on a multi-k mesh
   (`reg_pw-uks-kmesh-fe`; O₂ twin; bulk Fe + spin+smearing follow-on).
 - **Periodic LDA** is provided twice: Padé-LDA in GPW, and Slater + PW92 on the
@@ -271,6 +275,10 @@ Which engine backs which ✓:
   Molecular Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), and **D4** (`reg_gpw-d4-water`).
+- **Periodic MP2** stays ○ as a capability, but a **Γ-point canonical GPW MP2
+  foothold** shipped 2026-07-25 (`GpwDft::mp2`, Poisson-per-pair (ia|jb)
+  integrals; `regressions/gpw/periodic-mp2-si`, sc-Si2 twin). RI/k-point MP2,
+  periodic RPA, and periodic GW remain ○ — foothold ≠ capability closed.
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
@@ -283,7 +291,7 @@ Which engine backs which ✓:
 | Periodic analytic stress               |  ✓  |   ○  |   ○  |
 | Density-functional perturbation theory |  ✓  |   ○  |   ○  |
 | Finite-displacement phonons            |  ✓  |   ○  |   ○  |
-| Berry-phase polarization               |  ○  |   ○  |   ○  |
+| Berry-phase polarization               |  ✓  |   ○  |   ○  |
 | Maximally localized Wannier functions  |  ○  |   ○  |   ○  |
 
 - **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay) and
@@ -293,8 +301,10 @@ Which engine backs which ✓:
   multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
   **GPW stress** ships as orthorhombic **strain-FD** (`gpw_stress` /
   `GPWEvaluator::compute_stress`; `reg_gpw-stress-water` vs CP2K NUMERICAL).
-  Analytic GPW Pulay stress and variable-cell product drivers remain
-  productization (see [Optimization](optimization.md)).
+  **GPW variable-cell relax ships** (evaluator re-target, stress axes mask,
+  `StressConverged`; `reg_gpw-variable-cell-ice` vs CP2K CELL_OPT — see
+  [Optimization](optimization.md)). Analytic GPW Pulay stress remains
+  productization (`gpw-analytic-stress`).
 - **Finite-displacement phonons** at Γ: `cpu::vib::Phonon` expands a supercell,
   runs 6N force evaluations, and diagonalizes the mass-weighted Hessian
   (`reg_fd-phonon-supercell`; SW 64-atom Si twin). Molecular
@@ -305,6 +315,11 @@ Which engine backs which ✓:
   (`regressions/response/dfpt-phonon-si`; energy-second-difference twin to
   0.07 %). Restricted LSDA / NC-UPF / fixed occupations only; **full phonon
   dispersions (q ≠ 0) remain ○** (`phonon-dispersion-si`).
+- **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
+  polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
+  Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,
+  `regressions/pw/berry-polarization`). Maximally localized Wannier functions
+  remain ○ (`wannier-centers`).
 
 ## 12. Periodic infrastructure
 

@@ -1,23 +1,31 @@
 # CP2K method loop — worktree → merge → dev
 
+Abstract pattern: [`oracle-capability-loop.md`](oracle-capability-loop.md).  
+Scaffold skill: `.agents/skills/create-oracle-loop/`.
+
+## Continuous discovery (binding)
+
+**Every wave starts with GapCensus:** re-diff CP2K GPW/PW/periodic surface +
+`docs/roadmap/dft.md` vs ATV on `target_branch`, refill `## pending`, update
+roadmap. Foothold ≠ capability closed. Stop `queue_empty` only when
+`gaps_remaining=0` — **not** after one seed batch.
+
 ## Pipeline
 
 ```text
 parent (dev)
-  census + assign
+  recover incomplete
        │
-       ├─ worker₁ isolation_worktree  ──┐
-       ├─ worker₂ isolation_worktree  ──┼─ pin + impl + verify + commit on wf/<slug>
-       └─ workerₙ isolation_worktree  ──┘
-       │
-  merge agent (parent): git merge each green HEAD → dev
-       │
-  harness agent (parent): queue + roadmap + notes; commit chore(harness)
+  for each wave:
+    GapCensus → Assign → Worktrees → Merge? → Clearup → Harness? → Tutorial?
 ```
+
+Instance = template + CONFIG/`extra_law` only
+(`.grok/workflows/cp2k-method-loop.rhai`).
 
 | Role | `isolation_worktree` | Writes |
 | ---- | -------------------- | ------ |
-| Census / foreman / merge / harness | **false** (parent) | `dev` only |
+| Recover / GapCensus / assign / merge / harness | **false** (parent) | `dev` only |
 | Feature worker | **true** | private worktree only until merge |
 
 Workers must report `worktree_path`, `branch` (`wf/<slug>`), `head_sha`.
@@ -25,6 +33,9 @@ Workers must report `worktree_path`, `branch` (`wf/<slug>`), `head_sha`.
 **Recover incomplete first** (`## in_progress` `[~]`, open GPW/PW specs,
 unmerged `wf/<slug>`). Spec is source of truth. Offline CP2K pins only
 (`tools/cp2k_oracle/`); never live CP2K in ctest.
+
+**Scope:** GPW / PW / periodic DFT. **Not** molecular post-HF (PySCF loop) or
+classical MD electrochemistry (MetalWalls loop).
 
 ## Why not edit dev in parallel?
 
@@ -36,20 +47,18 @@ abortable per slug.
 
 | Arg | Default | Meaning |
 | --- | ------- | ------- |
-| `staff_count` / `parallelism` | 10 | Concurrent worktrees (wave 1 staff batch) |
+| `staff_count` / `parallelism` | 10 | Concurrent worktrees |
 | `max_waves` | 20 | Assignment rounds this shift |
 | `target_branch` | `dev` | Merge destination |
-| `do_perf` | false | Optional fair wall vs CP2K |
-| `mode` | `exhaust` | Until queue empty / budget |
+| `do_perf` | true | Fair wall vs CP2K when available |
+| `mode` | `exhaust` | Until gaps gone / budget |
 
 ## Launch
 
 ```text
-agent_budget: 256
-args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev", "do_perf":false }
+agent_budget: 1024
+args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev", "do_perf":true }
 ```
-
-`agent_budget` = LLM-turn payroll for the shift, **not** headcount.
 
 ## Queue
 
@@ -59,12 +68,14 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
-- 2026-07-23 recover: 16 incomplete `[~]` inventory on `dev`; no open specs; no unmerged CP2K `wf/*`; handoff resume batch of 10 dep-safe
-- 2026-07-23 assign wave 1: gpw-water-pbe-mt, gpw-forces-water, gpw-uks-o2-gamma, gpw-pbe-d3bj-ice, pw-lda-si, pw-pbe-gga-si, pw-smearing-al, pw-spin-polarized-o2, pw-bomd-h, ot-minimizer-water → in_progress staff; held: gpw-stress-water, pw-analytic-stress-si, gpw-bomd-water, fd-phonon-supercell, gpw-dftu-nio, bands-dos-si
-- 2026-07-23 wave 1 merge: all ten green HEADs → dev (gpw-water-pbe-mt, gpw-forces-water, gpw-uks-o2-gamma, gpw-pbe-d3bj-ice, pw-lda-si, pw-pbe-gga-si, pw-smearing-al, pw-spin-polarized-o2, pw-bomd-h, ot-minimizer-water); conflict repair commits on PW/GPW unions; blocked=[]; merge-failed=[]
-- 2026-07-23 harness wave 1: queue merged→done (10); incomplete remaining=6; roadmaps ○→✓ for Γ-UKS GPW, PW true GGA PBE, PW collinear spin, metallic smearing, GPW D3(BJ); specs closed (10); ratios forces=3.56 uks=0.98 smearing=0.008 ot≈9.0 others perf_exempt; queue_remaining=21 (pending 15 + incomplete 6); handoff rewritten
-- 2026-07-23 assign wave 2: 6 resumes + 4 new pending → in_progress (staff 10): gpw-stress-water, gpw-bomd-water, pw-analytic-stress-si, fd-phonon-supercell, gpw-dftu-nio, bands-dos-si, gpw-kpoints-si, pw-uks-kmesh-fe, gpw-pbesol-si, gpw-d4-water
-- 2026-07-24 wave 2 merge: nine green HEADs on dev (all harness list except gpw-kpoints-si); blocked=[]; merge-failed=[]
-- 2026-07-24 harness wave 2: queue 9→done; incomplete remaining=1 (`gpw-kpoints-si`); roadmaps ○→✓ for GPW stress, GPW BOMD, PW analytic stress, FD phonons, periodic DFT+U, bands/DOS, k-UKS PW, PBEsol, periodic D4; specs closed (9); ratios stress=4.75 dftu=0.21 others perf_exempt; queue_remaining=12 (pending 11 + incomplete 1); handoff rewritten
-- 2026-07-24 assign wave 3: 1 resume (`gpw-kpoints-si`) + 9 new pending → in_progress staff 10: gpw-kpoints-si, gpw-variable-cell-ice, dfpt-phonon-si, xl-bomd-water, berry-polarization, wannier-centers, cpmd-water, periodic-mp2-si, mpi-gpw-scaling-4rank, mpi-pw-scaling-4rank; held: periodic-rpa-si (after MP2), periodic-gw-si
-- 2026-07-24 recover: incomplete_count=10 (all wave-3 `[~]`); open GPW/PW/CP2K specs=0; no unmerged CP2K `wf/*` ahead of `dev` (wave-1/2 local branches fully merged leftovers); no half-written wave-3 regressions; pending remains 2 (RPA after MP2, GW staff-held); blocked 5 unchanged; resume batch = all 10 write-spec-first
+- **2026-07-25 harness wave 1 (claude):** 5 merged into `dev` (head
+  `bd39507a`) → done: `gpw-kpoints-si` (MP k-point GPW RKS),
+  `gpw-variable-cell-ice` (vs CP2K CELL_OPT), `dfpt-phonon-si` (Γ DFPT, PW),
+  `berry-polarization` (KSV, PW), `periodic-mp2-si` (Γ GPW MP2 **foothold** —
+  capability row stays ○). Incomplete: `xl-bomd-water` WIP checkpoint
+  `61d235f4` on `wf/xl-bomd-water` (untested — build never completed). Not
+  staffed, still `[~]`: `wannier-centers`, `cpmd-water`,
+  `mpi-gpw-scaling-4rank`, `mpi-pw-scaling-4rank`. Merge gate: cp2k domain
+  suite green (`ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'`). Clearup:
+  71 merged `wf/*` pruned. Specs closed for all 5 merged slugs; roadmap
+  synced (Berry ✓, GPW k-points prose, variable-cell productization; MP2 ○).

@@ -57,6 +57,9 @@ files), `mpi-gpw-scaling-4rank` / `mpi-pw-scaling-4rank` (infra; contend with
 `gpw-kpoints-si` / `periodic-mp2-si` solver trees). No pick depends on
 another pick. All picks are write-first: no open spec / no `wf/*` / no
 regression exists for any.
+**Harness wave 1 (claude) 2026-07-25:** 5 merged → done (k-points GPW,
+variable-cell, DFPT Γ, Berry polarization, periodic MP2 foothold);
+xl-bomd-water WIP-checkpointed; 71 merged wf/* pruned.
 
 ## pending
 
@@ -80,14 +83,11 @@ regression exists for any.
 <!-- assign wave (claude) 2026-07-25: staffed 6 of 10 [~] — gpw-kpoints-si,
      gpw-variable-cell-ice, dfpt-phonon-si, xl-bomd-water, berry-polarization,
      periodic-mp2-si; wannier-centers / cpmd-water / mpi-*-scaling held -->
-- [~] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | **resume** wave 2 leftover; roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓; **no open spec / no wf merge / no regression** — write-first on resume
-- [~] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water` ✓; wave 3 new
-- [~] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap §11 DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell` ✓; wave 3 new
-- [~] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water` ✓; wave 3 new
-- [~] `berry-polarization` | Berry-phase polarization | response | Si / BaTiO₃ toy | — | P | roadmap §11 ○; CP2K Berry phase; after k-path / `bands-dos-si` ✓; wave 3 new
+<!-- harness wave 1 (claude) 2026-07-25: 5 of the 6 staffed merged → done;
+     xl-bomd-water WIP-checkpointed (below) -->
+- [~] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water` ✓; wave 3 new; **WIP checkpoint 2026-07-25:** commit `61d235f4` on `wf/xl-bomd-water` — impl + spec + regression skeleton written, **untested** (build never completed); resume write-first: build scoped, test, commit
 - [~] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si` ✓; wave 3 new
 - [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
-- [~] `periodic-mp2-si` | Periodic RI-MP2 (GPW) | gpw | Si (tiny cell) | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic MP2; CP2K MP2; **dep:** solid Γ GPW energy ✓; wave 3 new
 - [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
 - [~] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK; wave 3 new
 
@@ -120,3 +120,8 @@ regression exists for any.
 - [x] `pw-uks-kmesh-fe` | k-point UKS plane-wave | pw | `regressions/pw/pw-uks-kmesh-fe` | ratio **perf_exempt** (O₂ multi-k mag=2; no fair NC-UPF twin) | 2026-07-24 wave 2
 - [x] `gpw-pbesol-si` | GPW PBEsol GGA | gpw | `regressions/gpw/gpw-pbesol-si` | ratio **perf_exempt** (dual-gate PBE vs PBEsol; no CP2K binary) | 2026-07-24 wave 2
 - [x] `gpw-d4-water` | GPW DFT-D4 periodic | gpw | `regressions/gpw/gpw-d4-water` | ratio **perf_exempt** (dftd4 3.7.0 E_disp pin; CP2K Arrhenius build lacks DFTD4) | 2026-07-24 wave 2
+- [x] `gpw-kpoints-si` | Monkhorst–Pack k-point GPW RKS (phased lattice sums, KB nonlocal, per-k DIIS; diamond-Si vs CP2K Quickstep) | gpw | `regressions/gpw/gpw-kpoints-si` | ratio **perf_exempt** (no CP2K binary at pin host) | 2026-07-25 claude wave 1
+- [x] `gpw-variable-cell-ice` | GPW variable-cell relax (evaluator re-target, stress axes mask, `StressConverged`; a\* = 3.2111 Å vs CP2K CELL_OPT 2026.1) | gpw | `regressions/gpw/gpw-variable-cell-ice` | walls ATV 1.9 s / CP2K 3.9 s (GTH chain; MOLOPT re-twin queued) | 2026-07-25 claude wave 1
+- [x] `dfpt-phonon-si` | Γ-point DFPT phonons for PW (Sternheimer PCG, Ewald Hessian, LDA kernel; energy-FD twin 0.07 %) | response | `regressions/response/dfpt-phonon-si` | ratio **perf_exempt** (≈24 s wall; no CP2K DFPT wall recorded) | 2026-07-25 claude wave 1
+- [x] `berry-polarization` | KSV Berry-phase polarization on PW (+ Hermitian Davidson/g-vector fixes; symmetry-exact Si pins) | response | `regressions/pw/berry-polarization` | ratio **perf_exempt** (no CP2K binary at pin host; ATV ~18 s) | 2026-07-25 claude wave 1
+- [x] `periodic-mp2-si` | Γ-point canonical GPW MP2 **foothold** (`GpwDft::mp2`, Poisson-per-pair (ia\|jb); sc-Si2) — capability row stays ○, RI/k-point + RPA/GW remain | gpw | `regressions/gpw/periodic-mp2-si` | ratio **perf_exempt** (no CP2K binary at pin host) | 2026-07-25 claude wave 1

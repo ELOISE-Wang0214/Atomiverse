@@ -1,7 +1,10 @@
 # CP2K capability loop — handoff
 
-Last assign pass: **2026-07-24 wave 3** on `dev`
-(`chore(queue): cp2k assign wave 3`).
+Last harness pass: **2026-07-25 claude wave 1** on `dev`
+(`chore(cp2k-harness): wave 1 (claude)`); dev head at harness time
+`bd39507a`.
+Last assign pass: **2026-07-25 wave (claude)** (`chore(queue): cp2k assign
+wave (claude) 2026-07-25` — staffed 6 of the 10 wave-3 `[~]` resumes).
 Prior harness: **2026-07-24 wave 2** (`chore(harness): cp2k wf wave 2`).
 **Recover pass: 2026-07-24** (`chore(queue): cp2k recover incomplete`) —
 reconfirmed wave-3 staff of 10 still incomplete; no open CP2K specs; no
@@ -11,6 +14,29 @@ unmerged CP2K `wf/*` ahead of `dev`.
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/cp2k-method-loop.md` and
 `.grok/workflows/cp2k-method-loop.rhai`.
+
+## Claude wave 1 summary (harness 2026-07-25)
+
+| Slug | Domain | Status | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ------ | ---------- | --------------------------------------------- |
+| `gpw-kpoints-si` | gpw | **merged → done** | `regressions/gpw/gpw-kpoints-si` | **perf_exempt** |
+| `gpw-variable-cell-ice` | gpw | **merged → done** | `regressions/gpw/gpw-variable-cell-ice` | walls ATV 1.9 s / CP2K 3.9 s (GTH chain) |
+| `dfpt-phonon-si` | response | **merged → done** | `regressions/response/dfpt-phonon-si` | **perf_exempt** |
+| `berry-polarization` | response | **merged → done** | `regressions/pw/berry-polarization` | **perf_exempt** |
+| `periodic-mp2-si` | gpw | **merged → done** (Γ **foothold**; capability row stays ○) | `regressions/gpw/periodic-mp2-si` | **perf_exempt** |
+| `xl-bomd-water` | dynamics | **incomplete — WIP checkpoint** | — | commit `61d235f4` on `wf/xl-bomd-water`; impl + spec + regression skeleton written, **untested** (build never completed); resume: build scoped, test, commit |
+
+- **Not staffed this wave, still `[~]`:** `wannier-centers`, `cpmd-water`,
+  `mpi-gpw-scaling-4rank`, `mpi-pw-scaling-4rank`.
+- **Merge gate:** cp2k domain suite green on `dev`
+  (`ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'`). Dev head `bd39507a`.
+- **Specs closed:** all 5 merged slugs `git rm`'d from `dev` (history in the
+  merge commits). `xl-bomd-water` spec lives on its `wf/` branch only.
+- **Clearup:** 71 fully-merged `wf/*` tips pruned; isolation worktrees removed.
+- **Roadmap sync:** dft.md — GPW k-point RKS prose ✓, Berry-phase
+  polarization ✓, GPW variable-cell productization noted; **Periodic MP2 row
+  kept ○** (foothold annotated); DFPT row was already Γ-scoped ✓ by the
+  worker merge. optimization.md — GPW CELL_OPT productization note updated.
 
 ## Assign wave 3 (2026-07-24) — staff 10
 
