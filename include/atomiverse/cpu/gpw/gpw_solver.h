@@ -15,9 +15,9 @@
 /// density), and unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or
 /// PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual H_k,
 /// spin-resolved density/XC). Periodic neutral electrostatics via the GTH
-/// Gaussian core charge. Analytic forces cover Γ RKS/UKS and the k-point RKS
-/// path (`gpw_forces_analytic`); analytic k-point stress uses the same
-/// `C_occ_k` payload. k-point UKS forces are follow-on.
+/// Gaussian core charge. Analytic forces cover Γ RKS/UKS and multi-k RKS/UKS
+/// (`gpw_forces_analytic`); analytic k-point stress uses the RKS `C_occ_k`
+/// payload (UKS stress is a residual).
 #pragma once
 
 #include <array>
@@ -111,11 +111,13 @@ struct GpwResult {
     std::vector<double> k_weights;             ///< quadrature weights (Σ = 1).
     /// @brief Band energies per k [Hartree], ascending; one vector per k
     ///        (length = linearly independent basis directions at that k).
-    ///        Multi-k UKS: α channel (β is internal; use `eps_beta` only for Γ).
+    ///        Multi-k UKS: α channel; β bands live in `eps_k_beta`.
     std::vector<std::vector<double>> eps_k;
+    /// @brief Multi-k UKS β band energies per k [Hartree] (empty for RKS / Γ).
+    std::vector<std::vector<double>> eps_k_beta;
     /// @brief Complex Bloch MO coefficients per k (nb × m_k, columns =
-    ///        orbitals, ascending energy). Empty for Γ / UKS runs. Required
-    ///        input to multi-k `GpwDft::mp2`.
+    ///        orbitals, ascending energy). Empty for Γ runs. Required
+    ///        input to multi-k `GpwDft::mp2` (closed-shell RKS).
     std::vector<linalg::CplxMatrix> C_k;
     /// @brief Total sampled k-points after mesh / TR fold / explicit list.
     int n_kpts = 0;
@@ -124,10 +126,13 @@ struct GpwResult {
     ///        MPI is inactive or `nprocs == 1`.
     int n_kpts_local = 0;
     /// @brief Occupied MO coefficients per k (k-path only): each entry is a
-    ///        row-major complex matrix of shape `nb × n_occ` (columns =
-    ///        occupied orbitals). Empty for Γ / UKS. Used by
+    ///        row-major complex matrix of shape `nb × n_occ` (RKS) or
+    ///        `nb × n_alpha` (UKS α). Empty for pure Γ. Used by
     ///        `gpw_forces_analytic` / `gpw_stress` to rebuild \(P_k\) / \(W_k\).
     std::vector<std::vector<std::complex<double>>> C_occ_k;
+    /// @brief Multi-k UKS β occupied MOs per k: row-major `nb × n_beta`
+    ///        (empty for RKS / Γ). Paired with `eps_k_beta`.
+    std::vector<std::vector<std::complex<double>>> C_occ_k_beta;
     /// @}
     double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).

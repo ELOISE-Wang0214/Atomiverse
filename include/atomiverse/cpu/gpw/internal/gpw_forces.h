@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/gpw_forces.h
-/// @brief Analytic ionic forces for the GPW SCF (Γ RKS/UKS; k-point RKS).
+/// @brief Analytic ionic forces for the GPW SCF (Γ RKS/UKS; k-point RKS/UKS).
 ///
 /// Replaces the 6N+1-SCF finite-difference oracle (`gpw_forces_fd`) with a
 /// single SCF solve followed by one gradient pass. At the SCF stationary point
@@ -21,9 +21,10 @@
 /// UKS uses spin-resolved \(V_\mathrm{eff}^{\alpha/\beta}\) matching the SCF.
 /// V_es held fixed likewise for the moving Gaussian ionic core n_c^A.
 ///
-/// On a Monkhorst–Pack / explicit k mesh the RKS assembly is k-summed with
+/// On a Monkhorst–Pack / explicit k mesh the assembly is k-summed with
 /// Bloch-phased complex matrices and complex χ^k (see `internal/kpoints.h`);
-/// `GpwResult::C_occ_k` supplies the occupied MOs used to rebuild P_k / W_k.
+/// `GpwResult::C_occ_k` (RKS / UKS α) and `C_occ_k_beta` (UKS β) supply the
+/// occupied MOs used to rebuild \(P_k^\sigma\) / \(W_k^\sigma\).
 ///
 /// Reference: VandeVondele, Krack, Mohamed, Parrinello, Chassaing, Hutter,
 /// Comput. Phys. Commun. 167, 103 (2005) (Quickstep GPW forces).
@@ -42,8 +43,8 @@ namespace gpw {
 ///
 /// Runs `GpwDft`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
 /// P·dV_pp), grid (P·dV_grid against the converged V_eff) and ionic-core
-/// Hellmann–Feynman (∫V_es ∂n_c) terms analytically. Supports closed-shell RKS
-/// and Γ-point UKS (`cfg.n_alpha`/`n_beta`). k-point RKS uses the Bloch path.
+/// Hellmann–Feynman (∫V_es ∂n_c) terms analytically. Supports closed-shell RKS,
+/// Γ-point UKS, and multi-k collinear UKS (`cfg.n_alpha`/`n_beta` + k mesh).
 ///
 /// @param atoms GPW atoms (basis + GTH PP), as for `GpwDft::run`.
 /// @param cfg   SCF configuration (grid, XC, electrostatics, UKS occupations).

@@ -156,8 +156,138 @@ TEST(GpwForces, UksH2AnalyticVsFiniteDifference) {
     EXPECT_LT(max_err, 5e-5) << "UKS analytic vs FD mismatch (Ha/Bohr)";
 }
 
-// Compressed H2: bond force is restoring and equal-and-opposite (Newton 3).
+// Multi-k UKS forces: high-spin H2 on a 1×1×2 mesh — finite, restoring,
+// Newton-3 residual small. Full analytic↔FD lives in the regression
+// REFERENCE (6N × k-UKS SCF is not unit-suite budget).
+TEST(GpwForces, H2KmeshUksForcesBasic) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
 
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0}; // compressed 1.0 Bohr bond
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 100.0;
+    cfg.n_alpha = 2;
+    cfg.n_beta = 0;
+    cfg.tol = 1e-8;
+    cfg.max_iter = 60;
+    cfg.nonperiodic = false;
+    cfg.local_pp_on_grid = true;
+    cfg.xc = XcKind::PADE;
+    cfg.eps_default = 1e-8;
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+
+    const auto F = gpw_forces_analytic(atoms, cfg);
+    ASSERT_EQ(F.size(), 2u);
+    for (int a = 0; a < 2; ++a)
+        for (int k = 0; k < 3; ++k)
+            EXPECT_TRUE(std::isfinite(F[static_cast<std::size_t>(a)][k]));
+    EXPECT_LT(F[0][0], 0.0);
+    EXPECT_GT(F[1][0], 0.0);
+    EXPECT_NEAR(F[0][0], -F[1][0], 2e-3);
+    EXPECT_GT(std::abs(F[0][0]), 5e-3);
+    const double sum_mag =
+        std::sqrt((F[0][0] + F[1][0]) * (F[0][0] + F[1][0])
+                  + (F[0][1] + F[1][1]) * (F[0][1] + F[1][1])
+                  + (F[0][2] + F[1][2]) * (F[0][2] + F[1][2]));
+    EXPECT_LT(sum_mag, 2e-3);
+}
+
+// Closed-shell multi-k UKS (nα=nβ=1) must match multi-k RKS forces.
+TEST(GpwForces, H2KmeshUksClosedShellMatchesRks) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    auto base = []() {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        m.cutoff_ry = 100.0;
+        m.tol = 1e-8;
+        m.max_iter = 60;
+        m.nonperiodic = false;
+        m.local_pp_on_grid = true;
+        m.xc = XcKind::PADE;
+        m.eps_default = 1e-8;
+        m.k_mesh[0] = 1;
+        m.k_mesh[1] = 1;
+        m.k_mesh[2] = 2;
+        return m;
+    };
+
+    GpwDft rks = base();
+    rks.n_occ = 1;
+    GpwDft uks = base();
+    uks.n_alpha = 1;
+    uks.n_beta = 1;
+
+    const auto Fr = gpw_forces_analytic(atoms, rks);
+    const auto Fu = gpw_forces_analytic(atoms, uks);
+    ASSERT_EQ(Fr.size(), 2u);
+    ASSERT_EQ(Fu.size(), 2u);
+    double max_d = 0.0;
+    for (int a = 0; a < 2; ++a)
+        for (int k = 0; k < 3; ++k)
+            max_d = std::max(
+                max_d, std::abs(Fr[static_cast<std::size_t>(a)][k]
+                                - Fu[static_cast<std::size_t>(a)][k]));
+    std::printf("[GPW k-UKS vs RKS] max|dF|=%.3e Ha/Bohr\n", max_d);
+    EXPECT_LT(max_d, 5e-4);
+}
+
+// Explicit-Γ through k-UKS machinery matches real Γ-UKS assemble.
+TEST(GpwForces, H2ExplicitGammaUksMatchesGamma) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    auto base = []() {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        m.cutoff_ry = 100.0;
+        m.n_alpha = 2;
+        m.n_beta = 0;
+        m.tol = 1e-8;
+        m.max_iter = 60;
+        m.nonperiodic = false;
+        m.local_pp_on_grid = true;
+        m.xc = XcKind::PADE;
+        m.eps_default = 1e-8;
+        return m;
+    };
+
+    GpwDft gamma = base();
+    GpwDft kG = base();
+    kG.k_points = {{0.0, 0.0, 0.0}};
+    kG.k_point_weights = {1.0};
+
+    const auto Fg = gpw_forces_analytic(atoms, gamma);
+    const auto Fk = gpw_forces_analytic(atoms, kG);
+    ASSERT_EQ(Fg.size(), 2u);
+    ASSERT_EQ(Fk.size(), 2u);
+    double max_d = 0.0;
+    for (int a = 0; a < 2; ++a)
+        for (int k = 0; k < 3; ++k)
+            max_d = std::max(
+                max_d, std::abs(Fg[static_cast<std::size_t>(a)][k]
+                                - Fk[static_cast<std::size_t>(a)][k]));
+    std::printf("[GPW kΓ-UKS vs Γ-UKS] max|dF|=%.3e Ha/Bohr\n", max_d);
+    EXPECT_LT(max_d, 1e-5);
+}
 
 // Compressed H2: bond force is restoring and equal-and-opposite (Newton 3).
 TEST(GpwForces, H2RestoringBond) {

@@ -1223,19 +1223,43 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         return std::make_pair(std::move(Ha), std::move(Hb));
     };
 
-    auto store_k_payload = [&](const std::vector<CplxMatrix>& Ha_full) {
+    auto store_k_payload = [&](const std::vector<CplxMatrix>& Ha_full,
+                               const std::vector<CplxMatrix>& Hb_full) {
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
+        res.eps_k_beta.clear();
+        res.C_occ_k.clear();
+        res.C_occ_k.resize(static_cast<std::size_t>(nk));
+        res.C_occ_k_beta.clear();
+        res.C_occ_k_beta.resize(static_cast<std::size_t>(nk));
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
             res.k_weights.push_back(kp.weight);
-            auto [eps, C] =
+            auto [epsa, Ca] =
                 internal::diagonalize_k(Ha_full[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
-            (void)C;
-            res.eps_k.push_back(std::move(eps));
+            auto [epsb, Cb] =
+                internal::diagonalize_k(Hb_full[static_cast<std::size_t>(ik)],
+                                        orth[static_cast<std::size_t>(ik)]);
+            res.eps_k.push_back(std::move(epsa));
+            res.eps_k_beta.push_back(std::move(epsb));
+            // Occupied Bloch MOs for force/stress rebuild of P_k^σ / W_k^σ.
+            std::vector<Cplx> occ_a(
+                static_cast<std::size_t>(nb) * static_cast<std::size_t>(n_a));
+            for (int mu = 0; mu < nb; ++mu)
+                for (int o = 0; o < n_a; ++o)
+                    occ_a[static_cast<std::size_t>(mu) * n_a
+                          + static_cast<std::size_t>(o)] = Ca(mu, o);
+            res.C_occ_k[static_cast<std::size_t>(ik)] = std::move(occ_a);
+            std::vector<Cplx> occ_b(
+                static_cast<std::size_t>(nb) * static_cast<std::size_t>(n_b));
+            for (int mu = 0; mu < nb; ++mu)
+                for (int o = 0; o < n_b; ++o)
+                    occ_b[static_cast<std::size_t>(mu) * n_b
+                          + static_cast<std::size_t>(o)] = Cb(mu, o);
+            res.C_occ_k_beta[static_cast<std::size_t>(ik)] = std::move(occ_b);
         }
     };
 
@@ -1364,8 +1388,7 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             && err_norm < kDiisErrTolK) {
             res.converged = true;
             auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
-            (void)Hb_full;
-            store_k_payload(Ha_full);
+            store_k_payload(Ha_full, Hb_full);
             // Fixed occupations ⇒ magnetization is exact integer Nα−Nβ.
             res.s2 = 0.0; // multi-k Löwdin ⟨S²⟩ deferred (Γ formula needs one S)
             {
@@ -1410,8 +1433,7 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
     if (!last_veff_ab.empty()) {
         auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
-        (void)Hb_full;
-        store_k_payload(Ha_full);
+        store_k_payload(Ha_full, Hb_full);
     }
     {
         const double sz = 0.5 * static_cast<double>(n_a - n_b);
