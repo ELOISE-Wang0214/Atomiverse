@@ -86,6 +86,8 @@ class GPWEvaluator : public cpu::GPW {
     bool mbd = false;
     /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd.
     bool vdw_df = false;
+    /// @brief Hirshfeld \(V/V_{\mathrm{free}}\) scaling for TS/MBD (requires ts or mbd).
+    bool hirshfeld = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of
     ///        diagonalization + DIIS. Same gapped ground state; preferred for
     ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).

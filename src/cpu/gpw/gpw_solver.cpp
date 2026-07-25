@@ -29,6 +29,7 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/hirshfeld_volumes.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/vdw_df.h"
 #include "atomiverse/cpu/gpw/internal/grid_fft.h"
@@ -1514,9 +1515,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         acells.build(atoms, cfg.cell,
                      std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
-    // Dispersion — geometry-only additive corrections (independent of the SCF),
-    // folded into the final total energy. `d3`, `d3bj`, `d4`, `ts`, `mbd`, and
-    // density-dependent `vdw_df` are pairwise mutually exclusive.
+    // Dispersion — free-atom TS/MBD/D3/D4 are geometry-only (pre-SCF).
+    // Hirshfeld-scaled TS/MBD and density-dependent vdw_df are deferred to
+    // post-SCF on the Γ RKS path (`fold_dispersion` / vdw_df density fold).
+    // `d3`, `d3bj`, `d4`, `ts`, `mbd`, and `vdw_df` are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
@@ -1525,6 +1527,20 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         throw std::runtime_error(
             "GPW: d3, d3bj, d4, ts, mbd, and vdw_df are mutually exclusive — "
             "set only one");
+    if (cfg.hirshfeld) {
+        if (!(cfg.ts || cfg.mbd))
+            throw std::runtime_error(
+                "GPW: hirshfeld requires ts or mbd (no standalone Hirshfeld)");
+        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.vdw_df)
+            throw std::runtime_error(
+                "GPW: hirshfeld applies only to ts/mbd, not d3/d3bj/d4/vdw_df");
+        if (use_kpath)
+            throw std::runtime_error(
+                "GPW: hirshfeld TS/MBD is Γ-point only (no k-point path)");
+        if (cfg.n_alpha + cfg.n_beta > 0)
+            throw std::runtime_error(
+                "GPW: hirshfeld TS/MBD supports closed-shell RKS only");
+    }
     if (cfg.vdw_df) {
         if (!periodic)
             throw std::runtime_error(
@@ -1541,14 +1557,17 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
         if (cfg.mbd) {
-            // MBD@rsSCS free-atom (isolated product path). Geometry-only —
-            // ignores lattice even when the SCF is periodic.
-            e_d3 = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
+            // Free-atom MBD@rsSCS (isolated). Deferred when hirshfeld=true.
+            if (!cfg.hirshfeld)
+                e_d3 =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
         } else if (cfg.ts) {
-            // Tkatchenko–Scheffler free-atom (volume ratio = 1); rcut 50 Å.
-            constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-            constexpr double kRcutBohr = 50.0 * kAng2Bohr;
-            e_d3 = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
+            // Free-atom TS (volume ratio = 1). Deferred when hirshfeld=true.
+            if (!cfg.hirshfeld) {
+                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+                constexpr double kRcutBohr = 50.0 * kAng2Bohr;
+                e_d3 = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
+            }
         } else if (cfg.d4) {
             e_d3 = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic);
         } else {
@@ -1855,6 +1874,55 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
     }
 
+    // Fold free-atom e_d3, or Hirshfeld-scaled TS/MBD from the final density.
+    auto fold_dispersion = [&](GpwResult& out, const RealMatrix& Pmat) {
+        if (cfg.hirshfeld && (cfg.ts || cfg.mbd)) {
+            const std::vector<double> Pvec = mat_to_vec(Pmat, nb);
+            std::vector<double> rho;
+            if (use_prod) {
+                rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
+                for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+                    std::vector<double> rho_l = collocate_products(
+                        mg.levels[l], products.by_level[l], products.prims,
+                        products.contribs, nb, Pvec, eps_default);
+                    if (l == 0) {
+                        rho = std::move(rho_l);
+                    } else {
+                        const std::vector<double> up = prolong_fft(
+                            mg.levels[l], mg.levels[0], rho_l, periodic);
+                        for (std::size_t g = 0; g < rho.size(); ++g)
+                            rho[g] += up[g];
+                    }
+                }
+            } else {
+                rho = collocate_density(cbg, nb, Pvec);
+            }
+            std::vector<int> Z(atoms.size());
+            std::vector<std::array<double, 3>> pos(Z.size());
+            for (std::size_t i = 0; i < Z.size(); ++i) {
+                Z[i] = atoms[i].z;
+                pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
+            }
+            out.volume_ratios = hirshfeld_volume_ratios(grid, rho, Z, pos,
+                                                       cfg.cell, periodic);
+            if (cfg.mbd) {
+                out.e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false,
+                                           0.83, 6.0, out.volume_ratios)
+                                 .energy;
+            } else {
+                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+                constexpr double kRcutBohr = 50.0 * kAng2Bohr;
+                out.e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr, 0.94,
+                                    20.0, out.volume_ratios)
+                                 .energy;
+            }
+            out.e_total += out.e_disp;
+            return;
+        }
+        out.e_disp = e_d3;
+        out.e_total += e_d3;
+    };
+
     GpwResult res;
     double e_prev = 0.0;
 
@@ -2022,13 +2090,13 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 "GpwDft: fixed-density eval supports Γ-point only");
         // P was already replaced by guess_P above when non-null.
         auto [H, e_total] = build_H_and_energy(P);
-        res.e_total = e_total + e_d3;
-        res.e_disp = e_d3;
+        res.e_total = e_total;
         res.P = P;
         res.H_ks = std::move(H);
         res.S = S;
         res.converged = true;
         res.iters = 0;
+        fold_dispersion(res, P);
         return res;
     }
 
@@ -2344,8 +2412,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 for (int i = 0; i < cfg.n_occ; ++i)
                     res.C(u, i) = Cocc(u, i);
         }
-        res.e_disp = e_d3;
-        res.e_total += e_d3;
+        // Final P from occupied orbitals for Hirshfeld / free-atom fold.
+        {
+            const RealMatrix P_final =
+                linalg::build_density_matrix(Cocc, cfg.n_occ, nb, 2.0);
+            fold_dispersion(res, P_final);
+        }
         return res;
     }
 
@@ -2419,7 +2491,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.S = S;
         // res.converged remains false — honest partial SCF.
     }
-    // Post-SCF nonlocal vdW-DF (DRSLL) on the final total density.
+    // Post-SCF nonlocal vdW-DF (DRSLL) on the final total density, then fold
+    // free-atom e_d3 or Hirshfeld-scaled TS/MBD via fold_dispersion.
     if (cfg.vdw_df) {
         if (use_prod)
             throw std::runtime_error(
@@ -2438,8 +2511,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         }
         e_d3 = vdw_df_drsll(grid, rho, sigma).energy;
     }
-    res.e_disp = e_d3;
-    res.e_total += e_d3;
+    fold_dispersion(res, (res.P.size() > 0) ? res.P : P);
     return res;
 }
 
@@ -2592,6 +2664,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.ts = m.ts;
     p.mbd = m.mbd;
     p.vdw_df = m.vdw_df;
+    p.hirshfeld = m.hirshfeld;
     p.use_ot = m.use_ot;
     for (int d = 0; d < 3; ++d)
         p.k_mesh[d] = m.k_mesh[d];
