@@ -30,6 +30,8 @@
 #include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
+#include "atomiverse/cpu/gpw/internal/vdw_df.h"
+#include "atomiverse/cpu/gpw/internal/grid_fft.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
@@ -1489,16 +1491,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                      std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
     // Dispersion — geometry-only additive corrections (independent of the SCF),
-    // folded into the final total energy. `d3`, `d3bj`, `d4`, `ts`, and `mbd`
-    // are pairwise mutually exclusive.
+    // folded into the final total energy. `d3`, `d3bj`, `d4`, `ts`, `mbd`, and
+    // density-dependent `vdw_df` are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
-                             + (cfg.mbd ? 1 : 0);
+                             + (cfg.mbd ? 1 : 0) + (cfg.vdw_df ? 1 : 0);
     if (n_disp_flags > 1)
         throw std::runtime_error(
-            "GPW: d3, d3bj, d4, ts, and mbd are mutually exclusive — set only one");
-    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.mbd) {
+            "GPW: d3, d3bj, d4, ts, mbd, and vdw_df are mutually exclusive — "
+            "set only one");
+    if (cfg.vdw_df) {
+        if (!periodic)
+            throw std::runtime_error(
+                "GPW vdw_df: periodic cell required (RPS nonlocal kernel)");
+        if (cfg.nonperiodic)
+            throw std::runtime_error(
+                "GPW vdw_df: incompatible with nonperiodic (MT) Poisson");
+        // Energy is evaluated post-SCF on the final density (below).
+    } else if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.mbd) {
         std::vector<int> Z(atoms.size());
         std::vector<std::array<double, 3>> pos(Z.size());
         for (std::size_t i = 0; i < Z.size(); ++i) {
@@ -2382,6 +2393,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.S = S;
         // res.converged remains false — honest partial SCF.
     }
+    // Post-SCF nonlocal vdW-DF (DRSLL) on the final total density.
+    if (cfg.vdw_df) {
+        if (use_prod)
+            throw std::runtime_error(
+                "GPW vdw_df: multigrid not supported (single-grid only)");
+        const RealMatrix& Pfinal =
+            (res.P.size() > 0) ? res.P : P;
+        const std::vector<double> Pvec = mat_to_vec(Pfinal, nb);
+        std::vector<double> rho = collocate_density(cbg, nb, Pvec);
+        const auto gxyz = gradient(grid, rho);
+        std::vector<double> sigma(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            const double gx = gxyz[0][g];
+            const double gy = gxyz[1][g];
+            const double gz = gxyz[2][g];
+            sigma[g] = gx * gx + gy * gy + gz * gz;
+        }
+        e_d3 = vdw_df_drsll(grid, rho, sigma).energy;
+    }
     res.e_disp = e_d3;
     res.e_total += e_d3;
     return res;
@@ -2535,6 +2565,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d4 = m.d4;
     p.ts = m.ts;
     p.mbd = m.mbd;
+    p.vdw_df = m.vdw_df;
     p.use_ot = m.use_ot;
     for (int d = 0; d < 3; ++d)
         p.k_mesh[d] = m.k_mesh[d];

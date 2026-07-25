@@ -578,6 +578,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/dftd3.cpp
             src/cpu/gpw/internal/ts_dispersion.cpp
             src/cpu/gpw/internal/mbd_dispersion.cpp
+            src/cpu/gpw/internal/vdw_df.cpp
+            src/cpu/gpw/internal/vdw_df_kernel_data.cpp
             src/cpu/scf/dftd3.cpp
             src/cpu/scf/dftd4.cpp
             src/cpu/record/cube.cpp
@@ -669,6 +671,9 @@ if(NOT ATV_DOCS_ONLY)
                 message(STATUS "GPW: FFTW3 OpenMP threading enabled (${FFTW3_OMP_LIB})")
             endif()
         endif()
+        # vdW-DF kernel tables ship zlib-compressed (float32); inflate at first use.
+        find_package(ZLIB REQUIRED)
+        target_link_libraries(atomiverse PUBLIC ZLIB::ZLIB)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_GPW)
     endif()
 
