@@ -368,11 +368,22 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (compute_forces) {
-        // XL mode warm-starts the force-pass SCF from the MO coefficients
-        // just converged at this exact geometry (same fixed point, fewer
-        // iterations). Default mode keeps the cold solve unchanged.
-        const auto F = gpw_forces_analytic(
-            atoms, *solver_, (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
+        // Prefer forces at the density just converged (no second SCF). UKS has
+        // no guess_C warm-start, so a re-SCF would double wall; RKS cold
+        // re-SCF is kept only when the energy result lacks orbitals (should
+        // not happen after a normal converged run).
+        std::vector<std::array<double, 3>> F;
+        if (last_.converged && last_.P.size() > 0 && last_.C.size() > 0
+            && !last_.eps.empty()) {
+            F = gpw_forces_from_scf(atoms, *solver_, last_);
+        } else {
+            // XL mode warm-starts the force-pass SCF from the MO coefficients
+            // just converged at this exact geometry. Default mode keeps the
+            // cold solve unchanged.
+            F = gpw_forces_analytic(
+                atoms, *solver_,
+                (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
+        }
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         AccReal* __restrict sp_fx = frame.span(kAtom_fx);
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);

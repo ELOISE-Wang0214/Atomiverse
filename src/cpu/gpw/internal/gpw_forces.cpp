@@ -195,10 +195,14 @@ double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
 
 namespace {
 
-/// Shared force assembly at a fixed (P, W) electronic state (no SCF).
+/// Shared force assembly at a fixed electronic state (no SCF).
+/// RKS: `P` is the total closed-shell density; `P_beta == nullptr`.
+/// UKS: `P` is \(P_\alpha\), `P_beta` is \(P_\beta\); one-electron Pulay uses
+/// \(P_\mathrm{tot}=P_\alpha+P_\beta\); grid term uses spin-resolved V_eff.
 std::vector<std::array<double, 3>>
 assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
-                    const RealMatrix& P, const RealMatrix& W) {
+                    const RealMatrix& P, const RealMatrix& W,
+                    const RealMatrix* P_beta = nullptr) {
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
     const int na = static_cast<int>(atoms.size());
@@ -207,8 +211,19 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         || static_cast<int>(W.shape(1)) != nb)
         throw std::invalid_argument(
             "gpw_forces: P/W shape does not match the AO basis");
+    const bool uks = P_beta != nullptr;
+    if (uks
+        && (static_cast<int>(P_beta->shape(0)) != nb
+            || static_cast<int>(P_beta->shape(1)) != nb))
+        throw std::invalid_argument(
+            "gpw_forces: P_beta shape does not match the AO basis");
     const bool periodic = !cfg.nonperiodic;
     const double eps = cfg.eps_default;
+
+    // Total density for spin-independent one-electron / ionic terms.
+    RealMatrix Ptot = P;
+    if (uks)
+        Ptot = P + *P_beta;
 
     // Map each atom to its contiguous block of global basis indices, and each
     // global basis index back to its owning atom.
@@ -269,26 +284,33 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         n_ion[static_cast<std::size_t>(g)] = s;
     }
 
-    std::vector<double> Pvec(static_cast<std::size_t>(nb) * nb);
-    for (int i = 0; i < nb; ++i)
-        for (int j = 0; j < nb; ++j)
-            Pvec[static_cast<std::size_t>(i) * nb + j] = P(i, j);
-    std::vector<double> rho = collocate_density(cbg, nb, Pvec); // multi-image χ
+    auto mat_to_vec = [&](const RealMatrix& M) {
+        std::vector<double> v(static_cast<std::size_t>(nb) * nb);
+        for (int i = 0; i < nb; ++i)
+            for (int j = 0; j < nb; ++j)
+                v[static_cast<std::size_t>(i) * nb + j] = M(i, j);
+        return v;
+    };
+    const std::vector<double> Ptot_vec = mat_to_vec(Ptot);
+    std::vector<double> Pa_vec, Pb_vec;
+    std::vector<double> rho, rho_a, rho_b;
+    if (uks) {
+        Pa_vec = mat_to_vec(P);
+        Pb_vec = mat_to_vec(*P_beta);
+        rho_a = collocate_density(cbg, nb, Pa_vec);
+        rho_b = collocate_density(cbg, nb, Pb_vec);
+        rho.resize(rho_a.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            rho[g] = rho_a[g] + rho_b[g];
+    } else {
+        rho = collocate_density(cbg, nb, Ptot_vec);
+    }
     std::vector<double> n_tot(rho.size());
     for (std::size_t g = 0; g < rho.size(); ++g)
         n_tot[g] = rho[g] - n_ion[g];
 
     const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                              : solve_poisson(grid, n_tot);
-    const XcOnGrid xc =
-        cfg.xc == XcKind::PBE
-            ? xc_grid_pbe(grid, rho)
-            : (cfg.xc == XcKind::PBEsol
-                   ? xc_grid_pbesol(grid, rho)
-                   : (cfg.xc == XcKind::RevPBE
-                          ? xc_grid_revpbe(grid, rho)
-                          : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
-                                                    : xc_grid_pade(grid, rho))));
     const std::vector<double>& v_es = es.v_r;
     // V_eff must be the SAME one the SCF converged against. When the local
     // short-range PP was collocated on the grid (the default), it is part of
@@ -300,11 +322,43 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         analytic_loc ? std::vector<double>()
                      : local_pp_grid(grid, atoms, periodic);
 
-    std::vector<double> veff(rho.size());
-    for (std::size_t g = 0; g < rho.size(); ++g) {
-        veff[g] = es.v_r[g] + xc.vxc_r[g];
-        if (!v_locsr.empty())
-            veff[g] += v_locsr[g];
+    // Spin-unpolarized V_eff (RKS) or dual V_eff^σ (UKS).
+    std::vector<double> veff, veff_a, veff_b;
+    if (uks) {
+        if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
+            && cfg.xc != XcKind::PBEsol)
+            throw std::runtime_error(
+                "GPW UKS forces: XcKind must be PADE, PBE, or PBEsol");
+        const XcOnGridSpin xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe_spin(grid, rho_a, rho_b)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
+                       : xc_grid_pade_lsd(grid, rho_a, rho_b));
+        veff_a.resize(rho.size());
+        veff_b.resize(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            double vloc = v_locsr.empty() ? 0.0 : v_locsr[g];
+            veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
+            veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
+        }
+    } else {
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe(grid, rho)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol(grid, rho)
+                       : (cfg.xc == XcKind::RevPBE
+                              ? xc_grid_revpbe(grid, rho)
+                              : (cfg.xc == XcKind::BLYP
+                                     ? xc_grid_blyp(grid, rho)
+                                     : xc_grid_pade(grid, rho))));
+        veff.resize(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            veff[g] = es.v_r[g] + xc.vxc_r[g];
+            if (!v_locsr.empty())
+                veff[g] += v_locsr[g];
+        }
     }
 
     // g -> active index into cbg (for the grid term's Pχ lookup).
@@ -324,6 +378,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
 
     // ── AO-basis Pulay terms (periodic image sums) ──────────────────────────
+    // Use P_tot for kinetic / V_pp (spin-independent operators).
     for (int A = 0; A < na; ++A) {
         for (int k = 0; k < 3; ++k) {
             double f = 0.0;
@@ -346,9 +401,9 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const double t =
                         kinetic(dmu, basis[nu], cfg.cell, mimg, reach);
                     f += 2.0 * W(mu, nu) * s; // + W dS
-                    f -= 2.0 * P(mu, nu) * t; // - P dT
+                    f -= 2.0 * Ptot(mu, nu) * t; // - P dT
                     f -=
-                        2.0 * P(mu, nu)
+                        2.0 * Ptot(mu, nu)
                         * vpp_images(dmu, basis[nu], all, cfg.cell, mimg, reach,
                                      analytic_loc); // - P dV_pp(basis)
                 }
@@ -360,7 +415,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 for (int nu = 0; nu < nb; ++nu) {
                     const double reach =
                         rdmu + radii[static_cast<std::size_t>(nu)];
-                    f += 2.0 * P(mu, nu)
+                    f += 2.0 * Ptot(mu, nu)
                          * vpp_images(dmu, basis[nu], onlyA, cfg.cell, mimg,
                                       reach, analytic_loc);
                 }
@@ -369,29 +424,45 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
     }
 
-    // ── Grid term: -2 Σ_{μ∈A} Σ_g w χ_{dμ}(g) V_eff(g) (Σ_ν P_μν χ_ν(g)) ──────
-    // Iterate the derivative collocation; for each (g, dφ_{u,k}) look up the
-    // active cbg point at g and contract Pχ_u(g) against V_eff.
+    // ── Grid term ──────────────────────────────────────────────────────────
+    // RKS: -2 Σ_μ∈A Σ_g w χ_dμ V_eff (Pχ)_μ
+    // UKS: -2 Σ_μ∈A Σ_g w χ_dμ [V_eff^α (Pα χ)_μ + V_eff^β (Pβ χ)_μ]
     for (std::size_t ad = 0; ad < cbgd.gidx.size(); ++ad) {
         const long g = cbgd.gidx[ad];
         const long a = g2a[static_cast<std::size_t>(g)];
         if (a < 0)
             continue; // χ_ν all zero here ⇒ Pχ = 0
-        const double vw = veff[static_cast<std::size_t>(g)] * wgt;
         const std::size_t cs = cbg.off[static_cast<std::size_t>(a)];
         const std::size_t ce = cbg.off[static_cast<std::size_t>(a) + 1];
         const std::size_t ds = cbgd.off[ad];
         const std::size_t de = cbgd.off[ad + 1];
+        const double w = wgt;
         for (std::size_t id = ds; id < de; ++id) {
             const int fdu = cbgd.fu[id]; // flat index u*3+k
             const int u = fdu / 3, k = fdu % 3;
             const double chi_dmu = cbgd.fv[id];
-            // Pχ_u(g) = Σ_ν P_uν χ_ν(g)
-            const double* Pu = &Pvec[static_cast<std::size_t>(u) * nb];
-            double pchi = 0.0;
-            for (std::size_t ib = cs; ib < ce; ++ib)
-                pchi += Pu[cbg.fu[ib]] * cbg.fv[ib];
-            forces[owner[u]][k] -= 2.0 * vw * chi_dmu * pchi;
+            if (uks) {
+                const double* Pau = &Pa_vec[static_cast<std::size_t>(u) * nb];
+                const double* Pbu = &Pb_vec[static_cast<std::size_t>(u) * nb];
+                double pchi_a = 0.0, pchi_b = 0.0;
+                for (std::size_t ib = cs; ib < ce; ++ib) {
+                    pchi_a += Pau[cbg.fu[ib]] * cbg.fv[ib];
+                    pchi_b += Pbu[cbg.fu[ib]] * cbg.fv[ib];
+                }
+                forces[owner[u]][k] -=
+                    2.0 * w * chi_dmu
+                    * (veff_a[static_cast<std::size_t>(g)] * pchi_a
+                       + veff_b[static_cast<std::size_t>(g)] * pchi_b);
+            } else {
+                const double* Pu =
+                    &Ptot_vec[static_cast<std::size_t>(u) * nb];
+                double pchi = 0.0;
+                for (std::size_t ib = cs; ib < ce; ++ib)
+                    pchi += Pu[cbg.fu[ib]] * cbg.fv[ib];
+                forces[owner[u]][k] -=
+                    2.0 * veff[static_cast<std::size_t>(g)] * w * chi_dmu
+                    * pchi;
+            }
         }
     }
 
@@ -467,6 +538,22 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
 
     return forces;
+}
+
+/// Energy-weighted density W = Σ_i n_i ε_i c_i c_iᵀ for one spin channel.
+RealMatrix energy_weighted(const RealMatrix& C, const std::vector<double>& eps,
+                           int n_occ, double occ) {
+    const int nb = static_cast<int>(C.shape(0));
+    RealMatrix W = xt::zeros<double>({nb, nb});
+    for (int i = 0; i < n_occ; ++i) {
+        const double w = occ * eps[static_cast<std::size_t>(i)];
+        for (int mu = 0; mu < nb; ++mu) {
+            const double cmu = w * C(mu, i);
+            for (int nu = 0; nu < nb; ++nu)
+                W(mu, nu) += cmu * C(nu, i);
+        }
+    }
+    return W;
 }
 
 // ── k-point RKS force assembly ─────────────────────────────────────────────
@@ -865,34 +952,63 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
 } // namespace
 
 std::vector<std::array<double, 3>>
+gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const GpwResult& scf) {
+    if (!scf.converged)
+        throw std::runtime_error("gpw_forces_from_scf: SCF did not converge");
+    if (scf.P.size() == 0 || scf.C.size() == 0 || scf.eps.empty())
+        throw std::runtime_error(
+            "gpw_forces_from_scf: converged result missing P/C/eps");
+
+    if (uses_kpath(cfg)) {
+        if (cfg.is_uks())
+            throw std::runtime_error(
+                "gpw_forces_from_scf: k-point UKS forces are not implemented");
+        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
+    }
+
+    if (cfg.is_uks()) {
+        // W = Wα + Wβ with occupancy 1 per spin orbital.
+        RealMatrix W = energy_weighted(scf.C, scf.eps, cfg.n_alpha, 1.0);
+        if (cfg.n_beta > 0) {
+            if (scf.C_beta.size() == 0 || scf.eps_beta.empty()
+                || scf.P_beta.size() == 0)
+                throw std::runtime_error(
+                    "gpw_forces_from_scf: UKS result missing β orbitals/density");
+            W += energy_weighted(scf.C_beta, scf.eps_beta, cfg.n_beta, 1.0);
+        }
+        return assemble_gpw_forces(atoms, cfg, scf.P, W, &scf.P_beta);
+    }
+
+    // Closed-shell RKS: W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).
+    const int n_occ = cfg.n_occ > 0 ? cfg.n_occ
+                                    : static_cast<int>(scf.eps.size());
+    RealMatrix W = energy_weighted(scf.C, scf.eps, n_occ, 2.0);
+    return assemble_gpw_forces(atoms, cfg, scf.P, W);
+}
+
+std::vector<std::array<double, 3>>
 gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const linalg::RealMatrix* guess_C) {
     GpwDft solver = copy_gpw(cfg);
     solver.build(atoms);
-    const GpwResult scf = solver.run(atoms, guess_C);
+    // UKS has no guess_C warm-start on the energy path; keep the cold solve.
+    const GpwResult scf =
+        cfg.is_uks() ? solver.run(atoms, nullptr) : solver.run(atoms, guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
 
     if (uses_kpath(cfg)) {
+        if (cfg.is_uks())
+            throw std::runtime_error(
+                "gpw_forces_analytic: k-point UKS forces are not implemented");
         if (guess_C != nullptr)
             throw std::invalid_argument(
                 "gpw_forces_analytic: k-path does not accept guess_C "
                 "(no-fallback)");
         return assemble_gpw_forces_kpoints(atoms, cfg, scf);
     }
-
-    const int nb = static_cast<int>(scf.P.shape(0));
-    // Energy-weighted density matrix W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).
-    RealMatrix W = xt::zeros<double>({nb, nb});
-    for (int i = 0; i < cfg.n_occ; ++i) {
-        const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
-        for (int mu = 0; mu < nb; ++mu) {
-            const double cmu = w * scf.C(mu, i);
-            for (int nu = 0; nu < nb; ++nu)
-                W(mu, nu) += cmu * scf.C(nu, i);
-        }
-    }
-    return assemble_gpw_forces(atoms, cfg, scf.P, W);
+    return gpw_forces_from_scf(atoms, cfg, scf);
 }
 
 std::vector<std::array<double, 3>>
@@ -900,6 +1016,10 @@ gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                       const linalg::RealMatrix& P,
                       const linalg::RealMatrix& C_occ,
                       const linalg::RealMatrix& H) {
+    if (cfg.is_uks())
+        throw std::invalid_argument(
+            "gpw_forces_at_density: UKS fixed-density forces are not "
+            "implemented (CPMD closed-shell only)");
     const int nb = static_cast<int>(P.shape(0));
     const int no = static_cast<int>(C_occ.shape(1));
     if (static_cast<int>(C_occ.shape(0)) != nb)

@@ -15,8 +15,8 @@
 /// density), and unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or
 /// PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual H_k,
 /// spin-resolved density/XC). Periodic neutral electrostatics via the GTH
-/// Gaussian core charge. Analytic forces cover Γ and the k-point RKS path
-/// (`gpw_forces_analytic`). k-point UKS forces are follow-on.
+/// Gaussian core charge. Analytic forces cover Γ RKS/UKS and the k-point RKS
+/// path (`gpw_forces_analytic`). k-point UKS forces are follow-on.
 #pragma once
 
 #include <array>
@@ -296,8 +296,8 @@ class GpwDft {
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
 ///
 /// Runs a `GpwDft` at +/- h displacements of each atom along each axis
-/// (6*N_atoms SCF solves). Correct but expensive; analytic GPW forces are a
-/// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
+/// (6*N_atoms SCF solves). Correct but expensive; product path is
+/// `gpw_forces_analytic`. Returns forces [Hartree/Bohr], one xyz triple per atom.
 /// @param h Displacement step [Bohr].
 std::vector<std::array<double, 3>>
 gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,

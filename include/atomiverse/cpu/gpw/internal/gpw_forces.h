@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/gpw_forces.h
-/// @brief Analytic ionic forces for the closed-shell GPW SCF (Γ and k-points).
+/// @brief Analytic ionic forces for the GPW SCF (Γ RKS/UKS; k-point RKS).
 ///
 /// Replaces the 6N+1-SCF finite-difference oracle (`gpw_forces_fd`) with a
 /// single SCF solve followed by one gradient pass. At the SCF stationary point
@@ -9,16 +9,19 @@
 ///         + Σ_μν W_μν dS_μν/dR_A
 ///         + ∫ V_es(r) ∂n_c^A(r)/∂R_A dr,
 ///
-/// with the energy-weighted density matrix W = Σ_i 2 ε_i c_{μi} c_{νi} (closed
-/// shell). All AO-derivative terms use the Gaussian center-derivative identity
+/// with the energy-weighted density matrix
+/// \(W = \sum_i 2 \varepsilon_i c_{\mu i} c_{\nu i}\) (closed shell) or
+/// \(W = W_\alpha + W_\beta\) with occupancy-1 spin channels for UKS. All
+/// AO-derivative terms use the Gaussian center-derivative identity
 /// ∂φ_a/∂A_x = 2α φ_{a+1_x} − a_x φ_{a−1_x}, so they reuse the existing overlap
 /// / kinetic / GTH / collocation kernels with raised/lowered Cartesian powers.
 /// The GTH operator-center derivative is obtained from the basis derivatives via
 /// translational invariance (∂_C = −(∂_μ + ∂_ν)). The grid term holds the
-/// converged effective potential V_eff fixed (Hellmann–Feynman for the density).
+/// converged effective potential V_eff fixed (Hellmann–Feynman for the density);
+/// UKS uses spin-resolved \(V_\mathrm{eff}^{\alpha/\beta}\) matching the SCF.
 /// V_es held fixed likewise for the moving Gaussian ionic core n_c^A.
 ///
-/// On a Monkhorst–Pack / explicit k mesh the same assembly is k-summed with
+/// On a Monkhorst–Pack / explicit k mesh the RKS assembly is k-summed with
 /// Bloch-phased complex matrices and complex χ^k (see `internal/kpoints.h`);
 /// `GpwResult::C_occ_k` supplies the occupied MOs used to rebuild P_k / W_k.
 ///
@@ -39,18 +42,35 @@ namespace gpw {
 ///
 /// Runs `GpwDft`, then assembles the Pulay (W·dS), core-Hamiltonian (P·dT,
 /// P·dV_pp), grid (P·dV_grid against the converged V_eff) and ionic-core
-/// Hellmann–Feynman (∫V_es ∂n_c) terms analytically.
+/// Hellmann–Feynman (∫V_es ∂n_c) terms analytically. Supports closed-shell RKS
+/// and Γ-point UKS (`cfg.n_alpha`/`n_beta`). k-point RKS uses the Bloch path.
 ///
 /// @param atoms GPW atoms (basis + GTH PP), as for `GpwDft::run`.
-/// @param cfg   SCF configuration (grid, XC, electrostatics).
+/// @param cfg   SCF configuration (grid, XC, electrostatics, UKS occupations).
 /// @param guess_C Optional warm-start MO coefficients for the internal SCF
 ///        (e.g. the energy pass just converged at this geometry — XL-BOMD
-///        path). Default nullptr keeps the cold solve bit-for-bit.
+///        path). Default nullptr keeps the cold solve bit-for-bit. UKS ignores
+///        this warm-start (same as energy path).
 /// @return Forces [Hartree/Bohr], one xyz triple per atom, in input order.
 /// @throws std::runtime_error if the SCF does not converge.
 std::vector<std::array<double, 3>>
 gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const linalg::RealMatrix* guess_C = nullptr);
+
+/// @brief Analytic forces from a **converged** `GpwResult` (no second SCF).
+///
+/// Product path for `GPWEvaluator` after its energy SCF: builds the
+/// energy-weighted density (RKS or UKS) and runs the same assembly as
+/// `gpw_forces_analytic`. Forces match the density that produced `scf.e_total`.
+///
+/// @param atoms Geometry + basis/PP [Bohr].
+/// @param cfg   Grid / XC / occupations (must match the SCF that produced `scf`).
+/// @param scf   Converged result (`converged` required; UKS needs β blocks).
+/// @return Forces [Hartree/Bohr], one xyz triple per atom.
+/// @throws std::runtime_error if `!scf.converged` or UKS β state is missing.
+std::vector<std::array<double, 3>>
+gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const GpwResult& scf);
 
 /// @brief Analytic ionic forces at a **fixed** electronic state (no SCF).
 ///
@@ -58,6 +78,7 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 /// density \(P = 2 C C^\top\) with energy-weighted
 /// \(W = 2\,C\,(C^\top H C)\,C^\top\) (constraint contribution off the BO
 /// surface). Same force assembly as `gpw_forces_analytic` after its SCF.
+/// Closed-shell RKS only (UKS at fixed density is out of scope for CPMD v1).
 ///
 /// @param atoms Geometry + basis/PP [Bohr].
 /// @param cfg   Grid / XC / electrostatics (same functional as the energy).
