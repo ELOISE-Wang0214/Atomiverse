@@ -1,6 +1,7 @@
 /// @file src/cpu/gpw/g0w0.cpp
-/// @brief GpwDft::g0w0 — Γ-point spectral G0W0@KS on the converged RKS
-///        orbitals. dRPA screening + MT exchange + local v_xc.
+/// @brief GpwDft::g0w0 — Γ-point and multi-k (k-diagonal) spectral
+///        G0W0@KS on the converged RKS orbitals. dRPA screening + MT
+///        exchange + local v_xc.
 
 #include <cmath>
 #include <cstddef>
@@ -10,6 +11,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/mp2_kernels.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
@@ -80,6 +82,25 @@ bool solve_qp(double eps_p, double vx_m_vxc, int p, int n_occ, int n_mo,
            < 10.0 * kQpeTol;
 }
 
+XcOnGrid eval_xc_grid(XcKind xc, const UniformGrid& grid,
+                      const std::vector<double>& rho) {
+    switch (xc) {
+    case XcKind::PBE:
+        return xc_grid_pbe(grid, rho);
+    case XcKind::PBEsol:
+        return xc_grid_pbesol(grid, rho);
+    case XcKind::RevPBE:
+        return xc_grid_revpbe(grid, rho);
+    case XcKind::RPBE:
+        return xc_grid_rpbe(grid, rho);
+    case XcKind::BLYP:
+        return xc_grid_blyp(grid, rho);
+    case XcKind::PADE:
+    default:
+        return xc_grid_pade(grid, rho);
+    }
+}
+
 } // namespace
 
 const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
@@ -99,12 +120,186 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
         throw std::logic_error(
             "GpwDft::g0w0 needs a converged run() first (no correlation "
             "on an unconverged reference)");
-    if (result_.n_kpts > 1)
-        throw std::invalid_argument(
-            "GpwDft::g0w0: multi-k SCF reference not supported "
-            "(k-point GW is a residual; re-run with k_mesh = {1,1,1} for "
-            "Γ G0W0)");
 
+    const bool multi_k =
+        result_.n_kpts >= 1 && !result_.C_k.empty()
+        && static_cast<int>(result_.C_k.size()) == result_.n_kpts;
+
+    if (result_.n_kpts > 0 && !multi_k)
+        throw std::invalid_argument(
+            "GpwDft::g0w0: multi-k SCF result is missing Bloch C_k "
+            "(re-run with a current multi-k path that stores orbitals)");
+
+    // ── Multi-k (complex Bloch, k-diagonal spectral G0W0) ─────────────
+    if (multi_k) {
+        if (nonperiodic)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: multi-k G0W0 requires a periodic cell");
+        if (!mp2_ri)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: multi-k path requires mp2_ri = true "
+                "(Poisson multi-k foothold is not offered)");
+
+        const int nk = result_.n_kpts;
+        const int nb_atoms = [&] {
+            int nb = 0;
+            for (const auto& a : atoms)
+                nb += static_cast<int>(a.basis.size());
+            return nb;
+        }();
+        const int nb = static_cast<int>(result_.C_k[0].shape(0));
+        if (nb_atoms != nb)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: atom basis count (" + std::to_string(nb_atoms)
+                + ") does not match the converged orbitals ("
+                + std::to_string(nb)
+                + ") — same geometry/basis as the last run() required");
+
+        int n_mo_min = static_cast<int>(result_.C_k[0].shape(1));
+        for (int ik = 0; ik < nk; ++ik) {
+            n_mo_min = std::min(
+                n_mo_min,
+                static_cast<int>(
+                    result_.C_k[static_cast<std::size_t>(ik)].shape(1)));
+            if (static_cast<int>(
+                    result_.eps_k[static_cast<std::size_t>(ik)].size())
+                < n_mo_min)
+                throw std::logic_error(
+                    "GpwDft::g0w0: eps_k/C_k shape mismatch at a k-point");
+        }
+        if (n_mo_min <= n_occ)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: no virtual orbitals in the multi-k "
+                "result (n_mo_min = "
+                + std::to_string(n_mo_min) + ", n_occ = "
+                + std::to_string(n_occ) + ")");
+
+        int n_virt = n_mo_min - n_occ;
+        if (mp2_n_virt > 0)
+            n_virt = std::min(n_virt, mp2_n_virt);
+
+        constexpr double kMinGapHa = 1e-6;
+        double min_gap = 1e300;
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& eps = result_.eps_k[static_cast<std::size_t>(ik)];
+            const double gap = eps[static_cast<std::size_t>(n_occ)]
+                               - eps[static_cast<std::size_t>(n_occ - 1)];
+            min_gap = std::min(min_gap, gap);
+        }
+        if (min_gap < kMinGapHa)
+            throw std::invalid_argument(
+                "GpwDft::g0w0: vanishing HOMO-LUMO gap on the k-mesh ("
+                + std::to_string(min_gap)
+                + " Ha < 1e-6) — dRPA (A−B) is singular");
+
+        const UniformGrid grid = make_uniform_grid(cell, cutoff_ry);
+        std::vector<GridBasisFunction> basis;
+        basis.reserve(static_cast<std::size_t>(nb));
+        for (const auto& a : atoms)
+            for (const auto& bf : a.basis)
+                basis.push_back(bf);
+
+        std::vector<internal::KPoint> kpts(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            kpts[static_cast<std::size_t>(ik)].frac[0] =
+                result_.k_frac[static_cast<std::size_t>(ik)][0];
+            kpts[static_cast<std::size_t>(ik)].frac[1] =
+                result_.k_frac[static_cast<std::size_t>(ik)][1];
+            kpts[static_cast<std::size_t>(ik)].frac[2] =
+                result_.k_frac[static_cast<std::size_t>(ik)][2];
+            kpts[static_cast<std::size_t>(ik)].weight =
+                result_.k_weights[static_cast<std::size_t>(ik)];
+        }
+        const internal::KpointBasisGrid kbg =
+            internal::build_kpoint_basis_grid(grid, basis, kpts, eps_default);
+
+        // Full MO grids per k (screening virtuals are a prefix of the
+        // virtual block; QP covers all n_mo_min columns).
+        std::vector<std::vector<internal::Cplx>> psi_mo_k(
+            static_cast<std::size_t>(nk));
+        std::vector<std::vector<double>> eps_k_full(
+            static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            psi_mo_k[static_cast<std::size_t>(ik)] = internal::mo_on_grid_k(
+                kbg, ik, result_.C_k[static_cast<std::size_t>(ik)], 0,
+                n_mo_min);
+            const auto& eps = result_.eps_k[static_cast<std::size_t>(ik)];
+            eps_k_full[static_cast<std::size_t>(ik)].assign(
+                eps.begin(), eps.begin() + n_mo_min);
+        }
+
+        // BZ-weighted closed-shell density for local v_xc.
+        const long npts = grid.npts();
+        std::vector<double> rho(static_cast<std::size_t>(npts), 0.0);
+        for (int ik = 0; ik < nk; ++ik) {
+            const double wk = result_.k_weights[static_cast<std::size_t>(ik)];
+            const auto& psi = psi_mo_k[static_cast<std::size_t>(ik)];
+            for (int i = 0; i < n_occ; ++i) {
+                const internal::Cplx* pi =
+                    psi.data()
+                    + static_cast<std::size_t>(i)
+                          * static_cast<std::size_t>(npts);
+                for (long g = 0; g < npts; ++g)
+                    rho[static_cast<std::size_t>(g)] +=
+                        wk * 2.0 * std::norm(pi[g]);
+            }
+        }
+        const XcOnGrid xc_grid = eval_xc_grid(this->xc, grid, rho);
+
+        std::vector<std::vector<double>> qp_k, sx_k, vxc_k;
+        bool ok = false;
+        internal::spectral_g0w0_rhf_kpoints(
+            grid, psi_mo_k, eps_k_full, result_.k_weights, n_occ, n_virt,
+            xc_grid.vxc_r, qp_k, sx_k, vxc_k, ok);
+
+        // Min direct gaps over k; report spectrum at the k of min QP gap.
+        const int homo = n_occ - 1;
+        const int lumo = n_occ;
+        double min_qp_gap = 1e300;
+        double min_mf_gap = 1e300;
+        int k_report = 0;
+        for (int ik = 0; ik < nk; ++ik) {
+            const double qp_g =
+                qp_k[static_cast<std::size_t>(ik)]
+                    [static_cast<std::size_t>(lumo)]
+                - qp_k[static_cast<std::size_t>(ik)]
+                      [static_cast<std::size_t>(homo)];
+            const double mf_g =
+                eps_k_full[static_cast<std::size_t>(ik)]
+                          [static_cast<std::size_t>(lumo)]
+                - eps_k_full[static_cast<std::size_t>(ik)]
+                            [static_cast<std::size_t>(homo)];
+            if (qp_g < min_qp_gap) {
+                min_qp_gap = qp_g;
+                k_report = ik;
+            }
+            min_mf_gap = std::min(min_mf_gap, mf_g);
+        }
+
+        g0w0_result_ = G0W0Result{};
+        g0w0_result_.n_occ = n_occ;
+        g0w0_result_.n_virt = n_virt;
+        g0w0_result_.ri = true;
+        g0w0_result_.n_kpts = nk;
+        g0w0_result_.converged = ok;
+        g0w0_result_.qp_energy_ha = qp_k[static_cast<std::size_t>(k_report)];
+        g0w0_result_.mf_energy_ha =
+            eps_k_full[static_cast<std::size_t>(k_report)];
+        g0w0_result_.sigma_x_ha = sx_k[static_cast<std::size_t>(k_report)];
+        g0w0_result_.vxc_ha = vxc_k[static_cast<std::size_t>(k_report)];
+
+        const double e_h =
+            g0w0_result_.qp_energy_ha[static_cast<std::size_t>(homo)];
+        const double e_l =
+            g0w0_result_.qp_energy_ha[static_cast<std::size_t>(lumo)];
+        g0w0_result_.ip_ev = -e_h * units::kHartreeInEv;
+        g0w0_result_.ea_ev = e_l * units::kHartreeInEv;
+        g0w0_result_.gap_ev = min_qp_gap * units::kHartreeInEv;
+        g0w0_result_.mf_gap_ev = min_mf_gap * units::kHartreeInEv;
+        return g0w0_result_;
+    }
+
+    // ── Γ-point real path ──────────────────────────────────────────────
     const int nb_atoms = [&] {
         int nb = 0;
         for (const auto& a : atoms)
@@ -262,16 +457,7 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
         for (long g = 0; g < npts; ++g)
             rho[static_cast<std::size_t>(g)] += 2.0 * pi[g] * pi[g];
     }
-    const XcOnGrid xc_grid =
-        (this->xc == XcKind::PBE)
-            ? xc_grid_pbe(grid, rho)
-            : (this->xc == XcKind::PBEsol
-                   ? xc_grid_pbesol(grid, rho)
-                   : (this->xc == XcKind::RevPBE
-                          ? xc_grid_revpbe(grid, rho)
-                          : (this->xc == XcKind::BLYP
-                                 ? xc_grid_blyp(grid, rho)
-                                 : xc_grid_pade(grid, rho))));
+    const XcOnGrid xc_grid = eval_xc_grid(this->xc, grid, rho);
 
     std::vector<double> vxc_diag(static_cast<std::size_t>(n_mo), 0.0);
     for (int p = 0; p < n_mo; ++p) {
@@ -291,6 +477,7 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
     g0w0_result_.n_occ = n_occ;
     g0w0_result_.n_virt = n_virt;
     g0w0_result_.ri = use_ri;
+    g0w0_result_.n_kpts = 0;
     g0w0_result_.mf_energy_ha = eps;
     g0w0_result_.qp_energy_ha.resize(static_cast<std::size_t>(n_mo));
     g0w0_result_.sigma_x_ha = sigma_x;
