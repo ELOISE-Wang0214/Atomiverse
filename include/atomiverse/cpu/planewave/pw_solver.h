@@ -88,11 +88,13 @@ class PW {
     int pulay_depth = 5;
     /// @brief Exchange–correlation functional (default true GGA PBE).
     ///
-    /// `XCType::PBE` uses spectral density gradients (true GGA). Pure LDA is
+    /// `XCType::PBE` uses spectral density gradients (true GGA) for both
+    /// restricted and collinear spin-polarized paths. Pure LDA is
     /// `XCType::LSDA`. Parameters are members — no public `*Config` bag.
     cpu::scf::XCType xc = cpu::scf::XCType::PBE;
     /// @brief Collinear spin-polarized KS (nspin=2). Default false = restricted.
     ///        Compatible with metallic `smearing` (shared μ, self-consistent mag).
+    ///        With `xc = PBE` uses true collinear spin-GGA (spectral ∇ρ_σ).
     bool spin_polarized = false;
     /// @brief Spin multiplicity 2S+1 (used only when `spin_polarized`).
     ///        Fixed occupations: N↑−N↓ = multiplicity−1. With metallic smearing

@@ -11,6 +11,7 @@
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/pw_solver.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
 using namespace ATV::cpu::pw;
@@ -49,12 +50,11 @@ int main() {
     constexpr double want_mag = 2.0;
     constexpr double tol_mag = 1e-9;
     // Total energy [Ha] at the exact settings below (SG15 ONCV O, ecut=12 Ry,
-    // Γ, L=8 Å, R=1.2075 Å, multiplicity 3). See REFERENCE.md for oracle note.
-    // Re-pinned 2026-07-25: the Davidson subspace-Hermiticity +
-    // G-sphere-bounds fixes (see regressions/pw/berry-polarization/
-    // REFERENCE.md) legitimately lower this frozen method pin from
-    // -28.3392565801 (magnetization literature gate unchanged).
-    constexpr double want_e_ha = -28.6267426458;
+    // Γ, L=8 Å, R=1.2075 Å, multiplicity 3, default xc=PBE = true collinear
+    // spin-GGA). See REFERENCE.md for oracle note.
+    // Re-pinned 2026-07-26 (`pw-spin-gga`): XCBuilder::step_spin uses spectral
+    // ∇ρ_σ (true spin-GGA); previous −28.6267 Ha was PBE@σ=0 LSDA-limit.
+    constexpr double want_e_ha = -28.7585210635;
     constexpr double tol_e_ha = 1.0e-3; // Ha — modest ecut / SCF tol
 
     const std::string upf = o_upf();
@@ -86,6 +86,8 @@ int main() {
     pw.pulay_depth = 5;
     pw.spin_polarized = true;
     pw.multiplicity = 3;
+    // Default xc=PBE → true collinear spin-GGA (pw-spin-gga product path).
+    pw.xc = cpu::scf::XCType::PBE;
 
     pw.build(frame);
     const auto& r = pw.run(frame);

@@ -278,7 +278,7 @@ PWResult& PW::run(const cpu::Frame& frame) {
                 ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
 
             poisson_->step(ws);
-            xc_->step_spin(ws);
+            xc_->step_spin(ws, xc);
 
             if (davidson_bands_ != n_bs) {
                 davidson_ = std::make_unique<internal::DavidsonSolver>(
@@ -731,7 +731,7 @@ PWResult& PW::run(const cpu::Frame& frame) {
                     ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
 
                 poisson_->step(ws);
-                xc_->step_spin(ws);
+                xc_->step_spin(ws, xc);
 
                 const int n_occ[2] = {n_alpha, n_beta};
                 // Solve max(N↑,N↓) states per spin; occupy only n_occ[s].
