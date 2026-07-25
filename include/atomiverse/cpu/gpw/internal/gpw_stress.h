@@ -17,9 +17,9 @@ namespace internal {
 /// One SCF → central FD of the non-self-consistent total energy \(E[P;\varepsilon]\)
 /// under orthorhombic diagonal strain at fixed fractional coordinates (GPW
 /// analogue of plane-wave Nielsen–Martin in this tree). Supports Gamma RKS,
-/// Gamma UKS (spin densities \(P_\alpha,P_\beta\) + \(W_\alpha,W_\beta\)), and
-/// multi-k closed-shell RKS (k-summed fixed-P_k Lagrangian). Multi-k UKS is
-/// not implemented. Off-diagonal = 0.
+/// Gamma UKS (spin densities \(P_\alpha,P_\beta\) + \(W_\alpha,W_\beta\)),
+/// multi-k closed-shell RKS (k-summed fixed-\(P_k\) Lagrangian), and multi-k
+/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\), spin XC). Off-diagonal = 0.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (same as `GpwDft::run`).
 /// @param method SCF configuration (`cell` must match atoms' box).

@@ -3,8 +3,9 @@
 ///
 /// Analytic product path (gpw_stress / gpw_stress_analytic_impl):
 ///   1. One full SCF at the reference geometry → density matrix P (Γ RKS),
-///      spin pair {Pα,Pβ,Wα,Wβ} (Γ UKS), or per-k {P_k, W_k} from C_occ_k /
-///      eps_k (multi-k RKS). Multi-k UKS is not implemented.
+///      spin pair {Pα,Pβ,Wα,Wβ} (Γ UKS), per-k {P_k, W_k} from C_occ_k /
+///      eps_k (multi-k RKS, occ=2), or per-k spin {P_k^σ, W_k^σ} from
+///      C_occ_k / C_occ_k_beta (multi-k UKS, occ=1).
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
 ///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
@@ -218,11 +219,16 @@ double ctrace_re(const CplxMatrix& P, const CplxMatrix& M, int nb) {
     return s;
 }
 
-CplxMatrix density_from_occ(const std::vector<Cplx>& C_occ, int nb, int n_occ) {
+/// Occupied Bloch density \(P = \mathrm{occ}\sum_o c_o c_o^\dagger\).
+/// RKS uses occ=2; UKS per-spin uses occ=1.
+CplxMatrix density_from_occ(const std::vector<Cplx>& C_occ, int nb, int n_occ,
+                            double occ = 2.0) {
     CplxMatrix P = xt::zeros<Cplx>({nb, nb});
+    if (n_occ <= 0)
+        return P;
     for (int i = 0; i < nb; ++i)
         for (int o = 0; o < n_occ; ++o) {
-            const Cplx ci = 2.0 * C_occ[static_cast<std::size_t>(i) * n_occ
+            const Cplx ci = occ * C_occ[static_cast<std::size_t>(i) * n_occ
                                        + static_cast<std::size_t>(o)];
             for (int j = 0; j < nb; ++j)
                 P(i, j) +=
@@ -233,12 +239,15 @@ CplxMatrix density_from_occ(const std::vector<Cplx>& C_occ, int nb, int n_occ) {
     return P;
 }
 
+/// Energy-weighted density \(W = \mathrm{occ}\sum_o \varepsilon_o c_o c_o^\dagger\).
 CplxMatrix energy_weighted_from_occ(const std::vector<Cplx>& C_occ,
                                     const std::vector<double>& eps, int nb,
-                                    int n_occ) {
+                                    int n_occ, double occ = 2.0) {
     CplxMatrix W = xt::zeros<Cplx>({nb, nb});
+    if (n_occ <= 0)
+        return W;
     for (int o = 0; o < n_occ; ++o) {
-        const double w = 2.0 * eps[static_cast<std::size_t>(o)];
+        const double w = occ * eps[static_cast<std::size_t>(o)];
         for (int i = 0; i < nb; ++i) {
             const Cplx ci =
                 w * C_occ[static_cast<std::size_t>(i) * n_occ
@@ -272,18 +281,27 @@ std::vector<KPoint> resolve_kpts(const GpwDft& cfg) {
 
 /// @brief Hellmann–Feynman fixed-{P_k,W_k} Lagrangian energy on a k mesh.
 ///
+/// RKS:
 ///   E_L = Σ_k w_k [ Re Tr(P_k T_k) + Re Tr(P_k V_nl^k) − Re Tr(W_k S_k) ]
 ///       + E_locgrid[ρ] + E_es[ρ−n_c] + E_xc[ρ] + E_disp
+/// UKS (optional Pa_k / Pb_k for spin densities; P_k/W_k are spin totals):
+///   E_L = Σ_k w_k [ Re Tr(P^tot T) + Re Tr(P^tot V_nl) − Re Tr(W^tot S) ]
+///       + E_locgrid[ρα+ρβ] + E_es + E_xc[ρα,ρβ] + E_disp
 ///
-/// Density ρ = Σ_k w_k ρ_k via collocate_density_k. Matches the k-path SCF
-/// energy assembly with local_pp_on_grid (required by the k foothold).
+/// Density via collocate_density_k. Requires local_pp_on_grid (k foothold).
 double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                         const std::vector<CplxMatrix>& P_k,
                         const std::vector<CplxMatrix>& W_k,
-                        const std::vector<KPoint>& kpts) {
-    if (cfg.is_uks())
+                        const std::vector<KPoint>& kpts,
+                        const std::vector<CplxMatrix>* Pa_k = nullptr,
+                        const std::vector<CplxMatrix>* Pb_k = nullptr) {
+    const bool uks = Pa_k != nullptr;
+    if (uks && Pb_k == nullptr)
         throw std::invalid_argument(
-            "gpw_stress analytic k: UKS not supported in this foothold");
+            "gpw_stress analytic k: UKS requires Pa_k and Pb_k");
+    if (!uks && cfg.is_uks())
+        throw std::invalid_argument(
+            "gpw_stress analytic k: UKS requires spin densities Pa_k/Pb_k");
     if (cfg.nonperiodic)
         throw std::invalid_argument(
             "gpw_stress analytic k: nonperiodic not supported");
@@ -296,6 +314,10 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (cfg.d4)
         throw std::invalid_argument(
             "gpw_stress analytic k: D4 not supported in this foothold");
+    if (uks && cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
+        && cfg.xc != XcKind::PBEsol)
+        throw std::invalid_argument(
+            "gpw_stress analytic k UKS: XcKind must be PADE, PBE, or PBEsol");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
                        + (cfg.ts ? 1 : 0);
     if (n_disp > 1)
@@ -308,6 +330,11 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (static_cast<int>(P_k.size()) != nk || static_cast<int>(W_k.size()) != nk)
         throw std::invalid_argument(
             "gpw_stress analytic k: P_k/W_k size mismatch vs kpts");
+    if (uks
+        && (static_cast<int>(Pa_k->size()) != nk
+            || static_cast<int>(Pb_k->size()) != nk))
+        throw std::invalid_argument(
+            "gpw_stress analytic k: Pa_k/Pb_k size mismatch vs kpts");
 
     const double eps = cfg.eps_default;
     std::vector<double> radii(static_cast<std::size_t>(nb));
@@ -348,9 +375,24 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         build_kpoint_basis_grid(grid, basis, kpts, eps);
 
     std::vector<double> rho(static_cast<std::size_t>(ng), 0.0);
-    for (int ik = 0; ik < nk; ++ik)
-        collocate_density_k(kbg, ik, P_k[static_cast<std::size_t>(ik)],
-                            kpts[static_cast<std::size_t>(ik)].weight, rho);
+    std::vector<double> rho_a, rho_b;
+    if (uks) {
+        rho_a.assign(static_cast<std::size_t>(ng), 0.0);
+        rho_b.assign(static_cast<std::size_t>(ng), 0.0);
+        for (int ik = 0; ik < nk; ++ik) {
+            const double wk = kpts[static_cast<std::size_t>(ik)].weight;
+            collocate_density_k(kbg, ik, (*Pa_k)[static_cast<std::size_t>(ik)],
+                                wk, rho_a);
+            collocate_density_k(kbg, ik, (*Pb_k)[static_cast<std::size_t>(ik)],
+                                wk, rho_b);
+        }
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            rho[g] = rho_a[g] + rho_b[g];
+    } else {
+        for (int ik = 0; ik < nk; ++ik)
+            collocate_density_k(kbg, ik, P_k[static_cast<std::size_t>(ik)],
+                                kpts[static_cast<std::size_t>(ik)].weight, rho);
+    }
 
     // Ionic core density n_c (min-image; matches SCF / forces).
     std::vector<double> n_ion(static_cast<std::size_t>(ng), 0.0);
@@ -379,18 +421,30 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         n_tot[g] = rho[g] - n_ion[g];
 
     const PoissonResult es = solve_poisson(grid, n_tot);
-    const XcOnGrid xc =
-        cfg.xc == XcKind::PBE
-            ? xc_grid_pbe(grid, rho)
-            : (cfg.xc == XcKind::PBEsol
-                   ? xc_grid_pbesol(grid, rho)
-                   : (cfg.xc == XcKind::RevPBE
-                          ? xc_grid_revpbe(grid, rho)
-                          : (cfg.xc == XcKind::RPBE
-                                 ? xc_grid_rpbe(grid, rho)
-                                 : (cfg.xc == XcKind::BLYP
-                                        ? xc_grid_blyp(grid, rho)
-                                        : xc_grid_pade(grid, rho)))));
+    double e_xc = 0.0;
+    if (uks) {
+        const XcOnGridSpin xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe_spin(grid, rho_a, rho_b)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
+                       : xc_grid_pade_lsd(grid, rho_a, rho_b));
+        e_xc = xc.e_xc;
+    } else {
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe(grid, rho)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol(grid, rho)
+                       : (cfg.xc == XcKind::RevPBE
+                              ? xc_grid_revpbe(grid, rho)
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe(grid, rho)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp(grid, rho)
+                                            : xc_grid_pade(grid, rho)))));
+        e_xc = xc.e_xc;
+    }
 
     const std::vector<double> v_locsr =
         local_pp_grid(grid, atoms, /*periodic=*/true);
@@ -400,7 +454,6 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     e_locgrid *= wgt;
 
     const double e_es = es.e_hartree - e_self;
-    const double e_xc = xc.e_xc;
 
     double e_disp = 0.0;
     if (cfg.d3 || cfg.d3bj || cfg.ts) {
@@ -715,9 +768,6 @@ std::array<double, 6> gpw_stress_analytic_impl(
     const bool kpath = uses_kpath(method);
     const bool uks = method.is_uks();
     const int n_occ = method.n_occ;
-    if (kpath && uks)
-        throw std::invalid_argument(
-            "gpw_stress analytic: k-point UKS stress not implemented");
     if (!uks && n_occ <= 0)
         throw std::invalid_argument(
             "gpw_stress analytic: n_occ must be positive for RKS");
@@ -730,6 +780,9 @@ std::array<double, 6> gpw_stress_analytic_impl(
     const RealMatrix* P_beta_ptr = nullptr;
     const RealMatrix* W_beta_ptr = nullptr;
     std::vector<CplxMatrix> P_k, W_k;
+    std::vector<CplxMatrix> Pa_k, Pb_k;
+    const std::vector<CplxMatrix>* Pa_k_ptr = nullptr;
+    const std::vector<CplxMatrix>* Pb_k_ptr = nullptr;
     std::vector<KPoint> kpts;
     if (kpath) {
         if (scf.C_occ_k.empty() || scf.eps_k.empty()
@@ -740,24 +793,93 @@ std::array<double, 6> gpw_stress_analytic_impl(
         if (static_cast<int>(kpts.size()) != static_cast<int>(scf.C_occ_k.size()))
             throw std::runtime_error(
                 "gpw_stress analytic k: k-point count mismatch vs C_occ_k");
-        // Rebuild nb from occupied payload (row-major nb * n_occ).
-        const int nb = static_cast<int>(scf.C_occ_k[0].size()) / n_occ;
-        if (nb * n_occ != static_cast<int>(scf.C_occ_k[0].size()) || nb < 1)
-            throw std::runtime_error(
-                "gpw_stress analytic k: C_occ_k shape is not nb * n_occ");
         const int nk = static_cast<int>(kpts.size());
+        const int n_occ_a = uks ? method.n_alpha : n_occ;
+        const int n_occ_b = uks ? method.n_beta : 0;
+        // Rebuild nb from occupied payload (row-major nb * n_occ_a).
+        // When n_alpha==0 (edge), fall back to β payload or total basis.
+        int nb = 0;
+        if (n_occ_a > 0) {
+            nb = static_cast<int>(scf.C_occ_k[0].size()) / n_occ_a;
+            if (nb * n_occ_a != static_cast<int>(scf.C_occ_k[0].size()) || nb < 1)
+                throw std::runtime_error(
+                    "gpw_stress analytic k: C_occ_k shape is not nb * n_occ");
+        } else if (uks && n_occ_b > 0 && !scf.C_occ_k_beta.empty()) {
+            nb = static_cast<int>(scf.C_occ_k_beta[0].size()) / n_occ_b;
+            if (nb * n_occ_b
+                    != static_cast<int>(scf.C_occ_k_beta[0].size())
+                || nb < 1)
+                throw std::runtime_error(
+                    "gpw_stress analytic k: C_occ_k_beta shape is not nb * n_beta");
+        } else {
+            throw std::runtime_error(
+                "gpw_stress analytic k: cannot recover AO dimension from C_occ");
+        }
+        if (uks
+            && (static_cast<int>(scf.C_occ_k_beta.size()) != nk
+                || static_cast<int>(scf.eps_k_beta.size()) != nk))
+            throw std::runtime_error(
+                "gpw_stress analytic k: missing C_occ_k_beta / eps_k_beta for UKS");
         P_k.resize(static_cast<std::size_t>(nk));
         W_k.resize(static_cast<std::size_t>(nk));
+        if (uks) {
+            Pa_k.resize(static_cast<std::size_t>(nk));
+            Pb_k.resize(static_cast<std::size_t>(nk));
+        }
         for (int ik = 0; ik < nk; ++ik) {
-            if (static_cast<int>(scf.eps_k[static_cast<std::size_t>(ik)].size())
-                < n_occ)
-                throw std::runtime_error(
-                    "gpw_stress analytic k: eps_k shorter than n_occ");
-            P_k[static_cast<std::size_t>(ik)] = density_from_occ(
-                scf.C_occ_k[static_cast<std::size_t>(ik)], nb, n_occ);
-            W_k[static_cast<std::size_t>(ik)] = energy_weighted_from_occ(
-                scf.C_occ_k[static_cast<std::size_t>(ik)],
-                scf.eps_k[static_cast<std::size_t>(ik)], nb, n_occ);
+            if (uks) {
+                if (static_cast<int>(
+                        scf.eps_k[static_cast<std::size_t>(ik)].size())
+                    < n_occ_a)
+                    throw std::runtime_error(
+                        "gpw_stress analytic k: eps_k shorter than n_alpha");
+                if (n_occ_b > 0
+                    && static_cast<int>(
+                           scf.eps_k_beta[static_cast<std::size_t>(ik)].size())
+                           < n_occ_b)
+                    throw std::runtime_error(
+                        "gpw_stress analytic k: eps_k_beta shorter than n_beta");
+                // Factor-1 per spin (matches gpw_forces multi-k UKS).
+                Pa_k[static_cast<std::size_t>(ik)] = density_from_occ(
+                    scf.C_occ_k[static_cast<std::size_t>(ik)], nb, n_occ_a,
+                    /*occ=*/1.0);
+                CplxMatrix Wa = energy_weighted_from_occ(
+                    scf.C_occ_k[static_cast<std::size_t>(ik)],
+                    scf.eps_k[static_cast<std::size_t>(ik)], nb, n_occ_a,
+                    /*occ=*/1.0);
+                Pb_k[static_cast<std::size_t>(ik)] =
+                    n_occ_b > 0
+                        ? density_from_occ(
+                              scf.C_occ_k_beta[static_cast<std::size_t>(ik)], nb,
+                              n_occ_b, /*occ=*/1.0)
+                        : CplxMatrix(xt::zeros<Cplx>({nb, nb}));
+                CplxMatrix Wb =
+                    n_occ_b > 0
+                        ? energy_weighted_from_occ(
+                              scf.C_occ_k_beta[static_cast<std::size_t>(ik)],
+                              scf.eps_k_beta[static_cast<std::size_t>(ik)], nb,
+                              n_occ_b, /*occ=*/1.0)
+                        : CplxMatrix(xt::zeros<Cplx>({nb, nb}));
+                P_k[static_cast<std::size_t>(ik)] =
+                    Pa_k[static_cast<std::size_t>(ik)]
+                    + Pb_k[static_cast<std::size_t>(ik)];
+                W_k[static_cast<std::size_t>(ik)] = Wa + Wb;
+            } else {
+                if (static_cast<int>(
+                        scf.eps_k[static_cast<std::size_t>(ik)].size())
+                    < n_occ)
+                    throw std::runtime_error(
+                        "gpw_stress analytic k: eps_k shorter than n_occ");
+                P_k[static_cast<std::size_t>(ik)] = density_from_occ(
+                    scf.C_occ_k[static_cast<std::size_t>(ik)], nb, n_occ);
+                W_k[static_cast<std::size_t>(ik)] = energy_weighted_from_occ(
+                    scf.C_occ_k[static_cast<std::size_t>(ik)],
+                    scf.eps_k[static_cast<std::size_t>(ik)], nb, n_occ);
+            }
+        }
+        if (uks) {
+            Pa_k_ptr = &Pa_k;
+            Pb_k_ptr = &Pb_k;
         }
     } else if (uks) {
         if (scf.P.size() == 0 || scf.P_beta.size() == 0)
@@ -819,8 +941,9 @@ std::array<double, 6> gpw_stress_analytic_impl(
 
         double ep = 0.0, em = 0.0;
         if (kpath) {
-            ep = energy_fixed_P_k(plus, mp, P_k, W_k, kpts);
-            em = energy_fixed_P_k(minus, mm, P_k, W_k, kpts);
+            ep = energy_fixed_P_k(plus, mp, P_k, W_k, kpts, Pa_k_ptr, Pb_k_ptr);
+            em =
+                energy_fixed_P_k(minus, mm, P_k, W_k, kpts, Pa_k_ptr, Pb_k_ptr);
         } else {
             ep = energy_fixed_P(plus, mp, P_gamma, W_gamma, P_beta_ptr,
                                 W_beta_ptr);
