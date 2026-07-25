@@ -246,6 +246,9 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
         atv_add_cpp_test(test_cpu_gpw_kpoints      cpu/gpw/test_cpu_gpw_kpoints.cpp)
         atv_add_cpp_test(test_cpu_gpw_ot           cpu/gpw/test_cpu_gpw_ot.cpp)
+        # Γ-point GPW MP2 kernels (spin-orbital cross-check, MO-on-grid,
+        # (ia|jb) vs Poisson Hartree identity, guard throws). No SCF here.
+        atv_add_cpp_test(test_cpu_gpw_mp2          cpu/gpw/test_cpu_gpw_mp2.cpp)
         if(ATV_BUILD_MD)
             atv_add_cpp_test(test_cpu_gpw_bomd    cpu/gpw/test_gpw_bomd.cpp)
         endif()
