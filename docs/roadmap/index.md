@@ -217,8 +217,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 
 - Molecular selectors: `{LSDA, PBE, PBEsol, BLYP, B3LYP, PBE0, B2PLYP}`. BP86 still ○.
 - Molecular dispersion: **D3 zero** (GPW), **D3-BJ** (Gaussian + GPW) +
-  **D4** (Gaussian + **GPW**; `reg_d3bj-molecular-pbe`, `reg_gpw-pbe-d3bj-ice`,
-  `reg_dft-d4-h2o-pbe`, `reg_gpw-d4-water`).
+  **D4** (Gaussian + **GPW**) + **TS** free-atom on GPW (`reg_d3bj-molecular-pbe`,
+  `reg_gpw-pbe-d3bj-ice`, `reg_dft-d4-h2o-pbe`, `reg_gpw-d4-water`,
+  `reg_gpw-ts-ice`).
 - libxc is an optional *test oracle* only (`ATV_BUILD_XC_ORACLE`).
 - GPU XC outside plane waves: none (PW: Slater + PW92 LDA on device).
 
@@ -229,31 +230,34 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `pw_stress_fd`; `reg_pw-analytic-stress-si`).
 - CPU: **true GGA PBE** on the FFT grid (`reg_pw-pbe-gga-si`), **collinear
   spin** incl. **k-mesh UKS** (`reg_pw-spin-polarized-o2`,
-  `reg_pw-uks-kmesh-fe`), **metallic smearing** (`reg_pw-smearing-al`),
-  **bands/DOS** (`reg_bands-dos-si`), **BOMD foothold** (`reg_pw-bomd-h`).
+  `reg_pw-uks-kmesh-fe`), **metallic smearing** (`reg_pw-smearing-al`,
+  bulk Fe UKS+smear `reg_pw-uks-fe-smearing`), **bands/DOS**
+  (`reg_bands-dos-si`), **BOMD foothold** (`reg_pw-bomd-h`), **PW CELL_OPT**
+  (`reg_pw-variable-cell-si`), **periodic MLWF** (`reg_periodic-wannier-si`).
   CUDA PW remains LDA / spin-unpolarized.
 - Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
 - CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
 ### GPW
 
-- Γ-point RKS + **Γ-point UKS** (PADE LSD; `reg_gpw-uks-o2-gamma`) +
-  **Monkhorst–Pack k-point RKS** (phased lattice sums / KB / per-k DIIS;
-  `reg_gpw-kpoints-si`). No hybrids / meta-GGA / GAPW. **Analytic cell stress**
-  (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
-  `reg_gpw-stress-water`) and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice`).
-  Open follow-ons: UKS PBE-GGA, k-point UKS, analytic k-point forces (see
-  `cp2k-method-queue.md`).
+- Γ-point RKS + **Γ-point UKS** (PADE LSD `reg_gpw-uks-o2-gamma` + **PBE-GGA**
+  `reg_gpw-uks-pbe`) + **Monkhorst–Pack k-point RKS** (phased lattice sums /
+  KB / per-k DIIS; `reg_gpw-kpoints-si`). No hybrids / meta-GGA / GAPW.
+  **Analytic cell stress** (fixed-\(P\)+Pulay product; multi-SCF FD oracle;
+  `reg_gpw-analytic-stress` / `reg_gpw-stress-water`) and **GPW CELL_OPT**
+  (`reg_gpw-variable-cell-ice`). Open follow-ons: k-point UKS, analytic
+  k-point forces (see `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
   (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
   `use_ot` (`reg_ot-minimizer-water`). **PBEsol** (`reg_gpw-pbesol-si`);
-  **Dudarev DFT+U** (`reg_gpw-dftu-nio`). Γ MP2 **foothold**
-  (`reg_periodic-mp2-si`; capability row stays ○).
-- DFT-D3 zero-damping, **D3(BJ)**, and **D4** on GPW (PBE params;
-  `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`). Molecular Gaussian path also has
-  **DFT-D3(BJ)** / **D4**.
+  **BLYP** (`reg_gpw-blyp-water`); **Dudarev DFT+U** (`reg_gpw-dftu-nio`).
+  Γ **RI-GPW MP2 product** (`reg_periodic-ri-mp2-si`; Poisson foothold
+  `reg_periodic-mp2-si`; multi-k residual).
+- DFT-D3 zero-damping, **D3(BJ)**, **D4**, and **TS** on GPW (PBE params;
+  `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`, `reg_gpw-ts-ice`). Molecular
+  Gaussian path also has **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

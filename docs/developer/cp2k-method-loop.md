@@ -68,17 +68,24 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
-- **2026-07-25 harness wave 1 (claude):** 5 merged into `dev` (head
-  `bd39507a`) → done: `gpw-kpoints-si` (MP k-point GPW RKS),
+- **2026-07-25 harness wave 1 (post GapCensus staff; parent `dev` @
+  `83a100df`):** 9 merged → done: `gpw-blyp-water`, `gpw-uks-pbe`,
+  `pw-uks-fe-smearing`, `pw-variable-cell-si`, `gpw-ts-ice`,
+  `phonon-dispersion-si`, `periodic-wannier-si`, `second-gen-cpmd-water`,
+  `periodic-ri-mp2-si`. Incomplete remaining **0**; pending residual **9**;
+  blocked **5**. Specs closed (deleted) for all 9. Roadmap: TS ✓, Periodic
+  MP2 ✓ (Γ RI product; multi-k residual), MLWF ✓, 2nd-gen CP ✓; phonon
+  IFC-Fourier productized; GPW BLYP / UKS-PBE / Fe smear / PW CELL_OPT prose.
+  Clearup already ran (no isolation worktrees; no builds). **Queue not
+  exhausted** — next wave GapCensus. No push.
+- **2026-07-25 harness wave 1 (claude, earlier staff batch):** 5 merged into
+  `dev` (head `bd39507a`) → done: `gpw-kpoints-si` (MP k-point GPW RKS),
   `gpw-variable-cell-ice` (vs CP2K CELL_OPT), `dfpt-phonon-si` (Γ DFPT, PW),
   `berry-polarization` (KSV, PW), `periodic-mp2-si` (Γ GPW MP2 **foothold** —
-  capability row stays ○). Incomplete: `xl-bomd-water` WIP checkpoint
-  `61d235f4` on `wf/xl-bomd-water` (untested — build never completed). Not
-  staffed, still `[~]`: `wannier-centers`, `cpmd-water`,
-  `mpi-gpw-scaling-4rank`, `mpi-pw-scaling-4rank`. Merge gate: cp2k domain
-  suite green (`ctest -R '^test_cpu_(gpw|pw|scf|xc)_|^test_xc_'`). Clearup:
-  71 merged `wf/*` pruned. Specs closed for all 5 merged slugs; roadmap
-  synced (Berry ✓, GPW k-points prose, variable-cell productization; MP2 ○).
+  later closed by `periodic-ri-mp2-si`). Incomplete then: `xl-bomd-water` WIP
+  (later merged). Merge gate: cp2k domain suite green. Clearup: 71 merged
+  `wf/*` pruned. Specs closed for all 5; roadmap Berry ✓, k-points prose;
+  MP2 ○ at that time.
 - **2026-07-25 bootstrap (parent `dev` @ `5bdae27d`):** GapCensus recover
   clean (incomplete=0, CP2K specs=0, wf/*=0, builds=none). Pending **14**
   re-verified true gaps; done **30**; blocked **5**. No roadmap ○/✓ flips.

@@ -33,7 +33,7 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (CP2K clean after bootstrap 2026-07-25)
+## Live — deferred PySCF only (CP2K clean after harness wave 1 2026-07-25)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
@@ -41,8 +41,8 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
 No open CP2K/GPW/PW specs on `dev` — workers write `.claude/specs/<slug>/` on
-`wf/<slug>` before impl. Parent bootstrap GapCensus 2026-07-25: pending=14,
-in_progress=0.
+`wf/<slug>` before impl. Harness wave 1 2026-07-25 closed 9 CP2K specs
+(deleted); pending residual=9; in_progress=0.
 
 MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
 (2026-07-24) staffed 10 production-depth / residual map rows to
@@ -57,6 +57,14 @@ MD/electrochem specs on `dev` — workers write `.claude/specs/<slug>/` on
 CP2K claude wave 1 closed 2026-07-25 (5 merged). **`xl-bomd-water` closed
 2026-07-25** (resume of WIP — verified green, merged, spec deleted).
 
+
+## Closed — CP2K harness wave 1 (2026-07-25)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 1 | gpw-blyp-water, gpw-uks-pbe, pw-uks-fe-smearing, pw-variable-cell-si, gpw-ts-ice, phonon-dispersion-si, periodic-wannier-si, second-gen-cpmd-water, periodic-ri-mp2-si | GPW BLYP; Γ-UKS PBE O₂; bulk Fe UKS+smear; PW CELL_OPT Si; free-atom TS; phonon ω(q) IFC Fourier; periodic MV MLWF; 2nd-gen CP water; Γ RI-GPW MP2 product |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K parallel wave (2026-07-25)
 

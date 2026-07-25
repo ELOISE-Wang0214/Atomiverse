@@ -122,30 +122,45 @@ Roadmap: **no ○/✓ table flips** (rows already match tree); fixed stale
 `docs/roadmap/index.md` GPW blurb (still said "no Gaussian k-points /
 strain-FD stress" after k-points + analytic stress landed). **Pending = 18.**
 
+**Harness wave 1 2026-07-25 (post GapCensus staff; parent `dev` @ `83a100df`):**
+9 staffed slugs merged → `## done` (`gpw-blyp-water`, `gpw-uks-pbe`,
+`pw-uks-fe-smearing`, `pw-variable-cell-si`, `gpw-ts-ice`,
+`phonon-dispersion-si`, `periodic-wannier-si`, `second-gen-cpmd-water`,
+`periodic-ri-mp2-si`). Specs deleted on close. **Pending residual = 9**
+(revPBE/RPBE, k-UKS/k-forces, MBD/vdW-DF, MOLOPT re-twin, RPA/GW).
+`## in_progress` empty. Roadmap flips: TS ✓, Periodic MP2 ✓ (Γ RI product;
+multi-k residual), MLWF ✓ (molecular Boys + periodic PW MV), 2nd-gen CP ✓,
+phonon dispersion productized (IFC Fourier; finite-q DFPT still ○), GPW BLYP
++ UKS-PBE + bulk Fe smear + PW CELL_OPT prose. **Queue not exhausted** —
+GapCensus owns next discovery.
+
 ## pending
 
 - [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓
-- [ ] `gpw-blyp-water` | GPW BLYP GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 BLYP molecular ✓ / GPW `XcKind` still PADE|PBE|PBEsol only; CP2K XC_FUNCTIONAL BLYP
 - [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
 - [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` (merge-conflict avoidance)
-- [ ] `gpw-uks-pbe` | GPW Γ-UKS PBE-GGA | gpw | O₂ / open shell | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (Γ UKS ships PADE LSD only — `reg_gpw-uks-o2-gamma`); CP2K UKS + XC_FUNCTIONAL PBE; shares UKS density path
-- [ ] `gpw-kpoints-uks` | GPW k-point UKS | gpw | O₂ / Fe tiny | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (k-mesh RKS ✓ `reg_gpw-kpoints-si`; Γ UKS ✓); CP2K KPOINTS + UKS; **dep:** `gpw-kpoints-si` ✓ + `gpw-uks-o2-gamma` ✓; prefer after `gpw-uks-pbe` if PBE spin XC shared
+- [ ] `gpw-kpoints-uks` | GPW k-point UKS | gpw | O₂ / Fe tiny | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (k-mesh RKS ✓ `reg_gpw-kpoints-si`; Γ UKS PBE ✓ `reg_gpw-uks-pbe`); CP2K KPOINTS + UKS; **dep:** `gpw-kpoints-si` ✓ + `gpw-uks-pbe` ✓
 - [ ] `gpw-kpoint-forces` | GPW analytic forces at k-points | gpw | Si | DZVP-MOLOPT-GTH | F [Ha/Bohr] | `gpw_solver.h` follow-on (Γ analytic forces ✓; k-path energy-only today); CP2K FORCE_EVAL k-mesh twin; **dep:** `gpw-kpoints-si` ✓ + `gpw-forces-water` ✓
-- [ ] `pw-uks-fe-smearing` | bulk Fe UKS + metallic smearing | pw | Fe bcc | NC-UPF | e_tot / mag | roadmap §10 follow-on after O₂ k-mesh UKS ✓ (`pw-uks-kmesh-fe`); CP2K/QE-class Fe spin+smearing
-- [ ] `pw-variable-cell-si` | PW variable-cell relax | pw | Si | NC-UPF | cell / stress | optimization.md PW stress productization; Nielsen–Martin ✓; CP2K CELL_OPT twin; **dep:** `pw-analytic-stress-si` ✓
-- [ ] `gpw-ts-ice` | Tkatchenko–Scheffler dispersion | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 TS ○; CP2K VDW_POTENTIAL / PAIR_POTENTIAL; **dep:** D3/D4 pin patterns ✓
-- [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; CP2K MBD; prefer after TS foothold
-- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** dispersion footholds (`gpw-ts-ice` / `gpw-mbd-ice`)
-- [ ] `phonon-dispersion-si` | Phonon dispersion (q-path) | response | Si | NC-UPF / GTH | ω(q) cm⁻¹ | roadmap §11 full dispersions ○ (Γ FD ✓, Γ DFPT ✓); CP2K VIBRATIONAL_ANALYSIS / DFPT path; **dep:** `fd-phonon-supercell` ✓ + `dfpt-phonon-si` ✓
-- [ ] `periodic-wannier-si` | Periodic multi-k MLWF | response / pw | Si | NC-UPF / GTH | centers Å | roadmap §11 MLWF ◐ residual (molecular Foster–Boys ✓ `reg_wannier-centers`); Marzari–Vanderbilt / GPW-grid MLWF ○; CP2K Wannier localization; **dep:** `wannier-centers` ✓ + bands/k footholds ✓
-- [ ] `second-gen-cpmd-water` | Second-generation Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ 2nd-gen CP; CP2K; **after** `cpmd-water`
-- [ ] `periodic-ri-mp2-si` | RI / k-point periodic MP2 productization | gpw | Si | MOLOPT+GTH | e_corr Ha | roadmap §10 Periodic MP2 stays ○ (Γ canonical foothold ✓ 2026-07-25 — foothold ≠ capability closed); CP2K &WF_CORRELATION RI-MP2 (Del Ben 2012); closes the capability row; **dep:** `periodic-mp2-si` ✓
-- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after MP2 foothold** (`periodic-mp2-si` ✓)
+- [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; prefer after TS ✓ (`gpw-ts-ice`)
+- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / MBD order
+- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after** Periodic MP2 ✓ (`periodic-ri-mp2-si`)
 - [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
 
 ## in_progress
 
-*(empty — wave-2 staff of 5 + residual wave-3 closes merged 2026-07-25)*
+*(empty — harness wave 1 closed 9 merges 2026-07-25; no residual `[~]`)*
+
+## done (harness wave 1 2026-07-25)
+
+- [x] `gpw-blyp-water` | GPW BLYP GGA (`XcKind::BLYP`) | gpw | `regressions/gpw/gpw-blyp-water` | ratio **perf_exempt** (no CP2K wall; dual-gate \|E_BLYP−E_PBE\|) | 2026-07-25
+- [x] `gpw-uks-pbe` | Γ-UKS PBE-GGA O₂ | gpw | `regressions/gpw/gpw-uks-pbe` | ratio **0.85** | 2026-07-25
+- [x] `pw-uks-fe-smearing` | bulk Fe UKS + metallic smearing | pw | `regressions/pw/pw-uks-fe-smearing` | ratio **perf_exempt** (no fair NC-UPF twin) | 2026-07-25
+- [x] `pw-variable-cell-si` | PW isotropic CELL_OPT (Nielsen–Martin stress) | pw | `regressions/pw/pw-variable-cell-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-ts-ice` | Tkatchenko–Scheffler free-atom TS dispersion | gpw | `regressions/gpw/gpw-ts-ice` | ratio **perf_exempt** (E_disp pin; libMBD) | 2026-07-25
+- [x] `phonon-dispersion-si` | Phonon dispersion ω(q) IFC Fourier (SW Si) | response | `regressions/response/phonon-dispersion-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `periodic-wannier-si` | Periodic multi-k MLWF (Marzari–Vanderbilt PW) | response | `regressions/pw/periodic-wannier-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `second-gen-cpmd-water` | Second-generation CP (ASPC + partial SCF) | dynamics | `regressions/dynamics/second-gen-cpmd-water` | ratio **perf_exempt** | 2026-07-25
+- [x] `periodic-ri-mp2-si` | Γ RI-GPW MP2 product (`mp2_ri`; multi-k residual) | gpw | `regressions/gpw/periodic-ri-mp2-si` | ratio **~0.09** | 2026-07-25
 
 ## done (wave parallel land 2026-07-25)
 
