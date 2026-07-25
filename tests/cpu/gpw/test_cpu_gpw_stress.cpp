@@ -270,3 +270,47 @@ TEST(GpwStress, KpointNoThrowAndFinite) {
         EXPECT_DOUBLE_EQ(s[5], 0.0);
     });
 }
+
+// ── Γ-UKS analytic stress ──────────────────────────────────────────────────
+
+TEST(GpwStress, UksGammaAnalyticMatchesFdDiagonal) {
+    // High-spin H₂ (Nα=2, Nβ=0) Γ-UKS: fixed-P spin Lagrangian vs multi-SCF FD.
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.n_occ = 0;
+    cfg.n_alpha = 2;
+    cfg.n_beta = 0;
+    cfg.xc = XcKind::PADE;
+    const double h = 3e-3;
+    const auto san = gpw_stress(atoms, cfg, h);
+    const auto sfd = gpw_stress_fd(atoms, cfg, h);
+    double max_err = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                    - sfd[static_cast<std::size_t>(a)]);
+        max_err = std::max(max_err, err);
+        std::printf("  UKS axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                    san[static_cast<std::size_t>(a)],
+                    sfd[static_cast<std::size_t>(a)], err);
+        EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+        EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+    }
+    EXPECT_DOUBLE_EQ(san[3], 0.0);
+    EXPECT_DOUBLE_EQ(san[4], 0.0);
+    EXPECT_DOUBLE_EQ(san[5], 0.0);
+    const double max_diag =
+        std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
+    EXPECT_GT(max_diag, 1e-8);
+    EXPECT_LT(max_err, 5e-5) << "UKS analytic vs multi-SCF FD diagonal";
+}
+
+TEST(GpwStress, UksKpointThrows) {
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.n_occ = 0;
+    cfg.n_alpha = 2;
+    cfg.n_beta = 0;
+    cfg.nonperiodic = false;
+    cfg.k_mesh[0] = cfg.k_mesh[1] = cfg.k_mesh[2] = 2;
+    EXPECT_THROW(gpw_stress(atoms, cfg, 3e-3), std::invalid_argument);
+}

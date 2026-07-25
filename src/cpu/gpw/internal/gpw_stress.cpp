@@ -2,8 +2,9 @@
 /// @brief GPW cell stress: Hellmann–Feynman fixed-P product path + multi-SCF FD.
 ///
 /// Analytic product path (gpw_stress / gpw_stress_analytic_impl):
-///   1. One full SCF at the reference geometry → density matrix P (Γ) or
-///      per-k {P_k, W_k} from C_occ_k / eps_k (multi-k RKS).
+///   1. One full SCF at the reference geometry → density matrix P (Γ RKS),
+///      spin pair {Pα,Pβ,Wα,Wβ} (Γ UKS), or per-k {P_k, W_k} from C_occ_k /
+///      eps_k (multi-k RKS). Multi-k UKS is not implemented.
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
 ///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
@@ -434,17 +435,20 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
 /// @brief Hellmann–Feynman Lagrangian energy at fixed (P, W) and geometry.
 ///
+/// RKS:
 ///   E_L = Tr(P T) + Tr(P V_pp) + E_es[ρ_P] + E_xc[ρ_P] + E_disp − Tr(W S)
+/// UKS (P = Pα, optional P_beta / W_beta):
+///   E_L = Tr((Pα+Pβ) T) + Tr((Pα+Pβ) V_pp) + E_es[ρα+ρβ−n_c]
+///         + E_xc[ρα,ρβ] + E_disp − Tr(Wα S) − Tr(Wβ S)
 ///
 /// At the SCF stationary point the total-energy derivative w.r.t. a geometry
 /// parameter equals ∂E_L/∂λ at fixed P and energy-weighted density W
 /// (Pulay −W·dS). Dropping −Tr(W S) leaves an incomplete fixed-P surface whose
 /// strain FD does not match multi-SCF FD.
 double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
-                      const RealMatrix& P, const RealMatrix& W) {
-    if (cfg.is_uks())
-        throw std::invalid_argument(
-            "gpw_stress analytic: UKS not supported in this foothold");
+                      const RealMatrix& P, const RealMatrix& W,
+                      const RealMatrix* P_beta = nullptr,
+                      const RealMatrix* W_beta = nullptr) {
     if (!cfg.plus_u.empty())
         throw std::invalid_argument(
             "gpw_stress analytic: DFT+U not supported in this foothold");
@@ -458,6 +462,14 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             "gpw_stress analytic: d3, d3bj, d4, ts, and mbd are mutually "
             "exclusive");
 
+    const bool uks = P_beta != nullptr;
+    if (uks && W_beta == nullptr)
+        throw std::invalid_argument(
+            "gpw_stress analytic: UKS requires W_beta with P_beta");
+    if (!uks && cfg.is_uks())
+        throw std::invalid_argument(
+            "gpw_stress analytic: UKS configuration requires spin densities");
+
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
     if (static_cast<int>(P.shape(0)) != nb || static_cast<int>(P.shape(1)) != nb
@@ -465,6 +477,13 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         || static_cast<int>(W.shape(1)) != nb)
         throw std::invalid_argument(
             "gpw_stress analytic: P/W shape does not match basis");
+    if (uks
+        && (static_cast<int>(P_beta->shape(0)) != nb
+            || static_cast<int>(P_beta->shape(1)) != nb
+            || static_cast<int>(W_beta->shape(0)) != nb
+            || static_cast<int>(W_beta->shape(1)) != nb))
+        throw std::invalid_argument(
+            "gpw_stress analytic: P_beta/W_beta shape does not match basis");
 
     const bool periodic = !cfg.nonperiodic;
     const double eps = cfg.eps_default;
@@ -484,7 +503,9 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     for (std::size_t a = 0; a < atoms.size(); ++a)
         all[a] = &atoms[a];
 
-    // Analytic one-electron: Tr(P T) + Tr(P V_pp) − Tr(W S) (Pulay).
+    // One-electron: Tr(Ptot T) + Tr(Ptot V_pp) − Tr(Wtot S) (Pulay).
+    // RKS: Ptot = P (closed-shell total), Wtot = W.
+    // UKS: Ptot = Pα+Pβ, Wtot = Wα+Wβ (factor-1 energy-weighted densities).
     double e_kin = 0.0;
     double e_pp = 0.0;
     double e_pulay = 0.0;
@@ -502,9 +523,13 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 kinetic(basis[mu], basis[nu], cfg.cell, mimg, reach);
             const double vpp = vpp_images(basis[mu], basis[nu], all, cfg.cell,
                                           mimg, reach, analytic_loc);
-            e_kin += P(mu, nu) * t;
-            e_pp += P(mu, nu) * vpp;
-            e_pulay += W(mu, nu) * s;
+            const double p_tot =
+                uks ? (P(mu, nu) + (*P_beta)(mu, nu)) : P(mu, nu);
+            const double w_tot =
+                uks ? (W(mu, nu) + (*W_beta)(mu, nu)) : W(mu, nu);
+            e_kin += p_tot * t;
+            e_pp += p_tot * vpp;
+            e_pulay += w_tot * s;
         }
     }
 
@@ -514,11 +539,25 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const CompactBasisGrid cbg =
         build_compact_basis_grid(grid, basis, periodic, eps);
 
-    std::vector<double> Pvec(static_cast<std::size_t>(nb) * nb);
-    for (int i = 0; i < nb; ++i)
-        for (int j = 0; j < nb; ++j)
-            Pvec[static_cast<std::size_t>(i) * nb + j] = P(i, j);
-    std::vector<double> rho = collocate_density(cbg, nb, Pvec);
+    auto mat_to_vec = [nb](const RealMatrix& M) {
+        std::vector<double> v(static_cast<std::size_t>(nb) * nb);
+        for (int i = 0; i < nb; ++i)
+            for (int j = 0; j < nb; ++j)
+                v[static_cast<std::size_t>(i) * nb + j] = M(i, j);
+        return v;
+    };
+
+    std::vector<double> rho;
+    std::vector<double> rho_a, rho_b;
+    if (uks) {
+        rho_a = collocate_density(cbg, nb, mat_to_vec(P));
+        rho_b = collocate_density(cbg, nb, mat_to_vec(*P_beta));
+        rho.resize(rho_a.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            rho[g] = rho_a[g] + rho_b[g];
+    } else {
+        rho = collocate_density(cbg, nb, mat_to_vec(P));
+    }
 
     // Ionic core density n_c (min-image; matches SCF / forces).
     std::vector<double> n_ion(static_cast<std::size_t>(ng), 0.0);
@@ -550,18 +589,36 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                              : solve_poisson(grid, n_tot);
-    const XcOnGrid xc =
-        cfg.xc == XcKind::PBE
-            ? xc_grid_pbe(grid, rho)
-            : (cfg.xc == XcKind::PBEsol
-                   ? xc_grid_pbesol(grid, rho)
-                   : (cfg.xc == XcKind::RevPBE
-                          ? xc_grid_revpbe(grid, rho)
-                          : (cfg.xc == XcKind::RPBE
-                                 ? xc_grid_rpbe(grid, rho)
-                                 : (cfg.xc == XcKind::BLYP
-                                        ? xc_grid_blyp(grid, rho)
-                                        : xc_grid_pade(grid, rho)))));
+
+    double e_xc = 0.0;
+    if (uks) {
+        // Spin XC path matches Γ-UKS SCF / forces (PADE LSD, PBE, PBEsol).
+        if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
+            && cfg.xc != XcKind::PBEsol)
+            throw std::invalid_argument(
+                "gpw_stress analytic UKS: XcKind must be PADE, PBE, or PBEsol");
+        const XcOnGridSpin xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe_spin(grid, rho_a, rho_b)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
+                       : xc_grid_pade_lsd(grid, rho_a, rho_b));
+        e_xc = xc.e_xc;
+    } else {
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe(grid, rho)
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol(grid, rho)
+                       : (cfg.xc == XcKind::RevPBE
+                              ? xc_grid_revpbe(grid, rho)
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe(grid, rho)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp(grid, rho)
+                                            : xc_grid_pade(grid, rho)))));
+        e_xc = xc.e_xc;
+    }
 
     double e_locgrid = 0.0;
     if (!analytic_loc) {
@@ -573,7 +630,6 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
 
     const double e_es = es.e_hartree - e_self;
-    const double e_xc = xc.e_xc;
 
     double e_disp = 0.0;
     if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.mbd) {
@@ -610,6 +666,23 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     return e_kin + e_pp + e_locgrid + e_es + e_xc + e_disp - e_pulay;
 }
 
+/// Energy-weighted density W = Σ_i n_i ε_i c_i c_iᵀ (one spin channel).
+RealMatrix energy_weighted_gamma(const RealMatrix& C,
+                                 const std::vector<double>& eps, int n_occ,
+                                 double occ) {
+    const int nb = static_cast<int>(C.shape(0));
+    RealMatrix W = xt::zeros<double>({nb, nb});
+    for (int i = 0; i < n_occ; ++i) {
+        const double w = occ * eps[static_cast<std::size_t>(i)];
+        for (int mu = 0; mu < nb; ++mu) {
+            const double cmu = w * C(mu, i);
+            for (int nu = 0; nu < nb; ++nu)
+                W(mu, nu) += cmu * C(nu, i);
+        }
+    }
+    return W;
+}
+
 void validate_stress_args(const std::vector<GpwAtom>& atoms, double h,
                           const std::array<bool, 3>& axes, const char* tag) {
     if (atoms.empty())
@@ -640,12 +713,22 @@ std::array<double, 6> gpw_stress_analytic_impl(
         throw std::runtime_error("gpw_stress: reference SCF did not converge");
 
     const bool kpath = uses_kpath(method);
+    const bool uks = method.is_uks();
     const int n_occ = method.n_occ;
-    if (n_occ <= 0)
+    if (kpath && uks)
+        throw std::invalid_argument(
+            "gpw_stress analytic: k-point UKS stress not implemented");
+    if (!uks && n_occ <= 0)
         throw std::invalid_argument(
             "gpw_stress analytic: n_occ must be positive for RKS");
+    if (uks && method.n_alpha + method.n_beta < 1)
+        throw std::invalid_argument(
+            "gpw_stress analytic: UKS requires n_alpha+n_beta >= 1");
 
     RealMatrix P_gamma, W_gamma;
+    RealMatrix P_beta, W_beta;
+    const RealMatrix* P_beta_ptr = nullptr;
+    const RealMatrix* W_beta_ptr = nullptr;
     std::vector<CplxMatrix> P_k, W_k;
     std::vector<KPoint> kpts;
     if (kpath) {
@@ -676,26 +759,47 @@ std::array<double, 6> gpw_stress_analytic_impl(
                 scf.C_occ_k[static_cast<std::size_t>(ik)],
                 scf.eps_k[static_cast<std::size_t>(ik)], nb, n_occ);
         }
+    } else if (uks) {
+        if (scf.P.size() == 0 || scf.P_beta.size() == 0)
+            throw std::runtime_error(
+                "gpw_stress analytic UKS: missing P_alpha / P_beta");
+        P_gamma = scf.P;
+        P_beta = scf.P_beta;
+        const int nb = static_cast<int>(P_gamma.shape(0));
+        if (static_cast<int>(scf.C.shape(0)) != nb
+            || static_cast<int>(scf.C.shape(1)) < method.n_alpha
+            || static_cast<int>(scf.eps.size()) < method.n_alpha)
+            throw std::runtime_error(
+                "gpw_stress analytic UKS: converged C/eps (α) missing for W");
+        if (method.n_beta > 0
+            && (static_cast<int>(scf.C_beta.shape(0)) != nb
+                || static_cast<int>(scf.C_beta.shape(1)) < method.n_beta
+                || static_cast<int>(scf.eps_beta.size()) < method.n_beta))
+            throw std::runtime_error(
+                "gpw_stress analytic UKS: converged C/eps (β) missing for W");
+        // Factor-1 energy-weighted densities (matches gpw_forces UKS).
+        W_gamma =
+            energy_weighted_gamma(scf.C, scf.eps, method.n_alpha, /*occ=*/1.0);
+        if (method.n_beta > 0)
+            W_beta = energy_weighted_gamma(scf.C_beta, scf.eps_beta,
+                                           method.n_beta, /*occ=*/1.0);
+        else
+            W_beta = xt::zeros<double>({nb, nb});
+        P_beta_ptr = &P_beta;
+        W_beta_ptr = &W_beta;
     } else {
         if (scf.P.size() == 0)
             throw std::runtime_error(
                 "gpw_stress: reference SCF produced empty density matrix");
         P_gamma = scf.P;
         const int nb = static_cast<int>(P_gamma.shape(0));
-        W_gamma = xt::zeros<double>({nb, nb});
         if (static_cast<int>(scf.eps.size()) < n_occ
             || static_cast<int>(scf.C.shape(0)) != nb
             || static_cast<int>(scf.C.shape(1)) < n_occ)
             throw std::runtime_error(
                 "gpw_stress analytic: converged C/eps missing for W build");
-        for (int i = 0; i < n_occ; ++i) {
-            const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
-            for (int mu = 0; mu < nb; ++mu) {
-                const double cmu = w * scf.C(mu, i);
-                for (int nu = 0; nu < nb; ++nu)
-                    W_gamma(mu, nu) += cmu * scf.C(nu, i);
-            }
-        }
+        W_gamma =
+            energy_weighted_gamma(scf.C, scf.eps, n_occ, /*occ=*/2.0);
     }
 
     std::array<double, 6> stress{};
@@ -718,8 +822,10 @@ std::array<double, 6> gpw_stress_analytic_impl(
             ep = energy_fixed_P_k(plus, mp, P_k, W_k, kpts);
             em = energy_fixed_P_k(minus, mm, P_k, W_k, kpts);
         } else {
-            ep = energy_fixed_P(plus, mp, P_gamma, W_gamma);
-            em = energy_fixed_P(minus, mm, P_gamma, W_gamma);
+            ep = energy_fixed_P(plus, mp, P_gamma, W_gamma, P_beta_ptr,
+                                W_beta_ptr);
+            em = energy_fixed_P(minus, mm, P_gamma, W_gamma, P_beta_ptr,
+                                W_beta_ptr);
         }
         // σ_aa = −(1/Ω) ∂E/∂ε_aa  (CP2K STRESS_TENSOR convention).
         stress[static_cast<std::size_t>(a)] = -(ep - em) / (2.0 * h) / vol;
