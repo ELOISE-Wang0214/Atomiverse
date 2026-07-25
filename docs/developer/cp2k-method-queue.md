@@ -104,21 +104,15 @@ may both touch AIMD propagator files — harness resolves at merge.
 
 ## in_progress
 
-<!-- assign wave 3 2026-07-24: 1 resume + 9 new; staff 10 -->
-<!-- assign wave (claude) 2026-07-25: staffed 6 of 10 [~] — gpw-kpoints-si,
-     gpw-variable-cell-ice, dfpt-phonon-si, xl-bomd-water, berry-polarization,
-     periodic-mp2-si; wannier-centers / cpmd-water / mpi-*-scaling held -->
-<!-- harness wave 1 (claude) 2026-07-25: 5 of the 6 staffed merged → done;
-     xl-bomd-water WIP-checkpointed -->
-<!-- assign wave (claude) 2026-07-25 (wave 2): staffed all 5 [~] resumes +
-     promoted gpw-analytic-stress from pending; second-gen-cpmd-water skipped
-     (dep cpmd-water is a pick this wave) -->
-<!-- 2026-07-25: xl-bomd-water verified green + merged → done -->
-<!-- 2026-07-25: wannier-centers Foster–Boys foothold on branch wf/wannier-centers -->
-- [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
-- [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
-- [~] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK; wave 3 new
-- [x] `gpw-analytic-stress` | Analytic GPW fixed-P+Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | product `gpw_stress`; oracle `gpw_stress_fd`; `reg_gpw-analytic-stress` dual-gate ~3e-10; **dep:** `gpw-stress-water` ✓; closed 2026-07-25
+*(empty — wave-2 staff of 5 + residual wave-3 closes merged 2026-07-25)*
+
+## done (wave parallel land 2026-07-25)
+
+- [x] `mpi-pw-scaling-4rank` | MPI PW k-mesh RR gate (4 ranks) | pw | `regressions/pw/mpi-pw-scaling-4rank` | ratio **perf_exempt** (speedup 2.54×; no CP2K) | 2026-07-25
+- [x] `gpw-analytic-stress` | Analytic GPW fixed-P+Pulay stress | gpw | `regressions/gpw/gpw-analytic-stress` | dual-gate vs FD ~3e-10 Ha/Bohr³ | 2026-07-25
+- [x] `wannier-centers` | Foster–Boys MLWF foothold (molecular RHF) | scf | `regressions/scf/wannier-centers` | ratio **perf_exempt** | 2026-07-25
+- [x] `mpi-gpw-scaling-4rank` | MPI GPW k-point RR industrial gate | gpw | `regressions/gpw/mpi-gpw-scaling-4rank` | ratio **perf_exempt** (energy rank-identical; wall≈1 until grid DD) | 2026-07-25
+- [x] `cpmd-water` | Car–Parrinello MD foothold (`Cpmd` + `GPWEvaluator::cpmd`) | dynamics | `regressions/dynamics/cpmd-water` | ratio **perf_exempt** (E_cons drift 2e-3) | 2026-07-25
 
 ## blocked
 
@@ -130,7 +124,6 @@ may both touch AIMD propagator files — harness resolves at merge.
 
 ## done
 
-- [x] `wannier-centers` | Maximally localized Wannier (Foster–Boys foothold) | scf | `regressions/scf/wannier-centers` | ratio **perf_exempt** (H₂ midpoint + H₂O rabbit-ear geometry; no CP2K LOCALIZE twin) | 2026-07-25 | molecular FB Jacobi on RHF; periodic MV remains ○
 - [x] `gpw-water-pbe-mt` | Γ-RKS GPW energy (MT water) | gpw | `regressions/gpw/gpw-water-pbe-mt` | ratio **perf_exempt** (no CP2K binary at pin host) | 2026-07-23 wave 1
 - [x] `gpw-forces-water` | GPW analytic forces | gpw | `regressions/gpw/gpw-forces-water` | ratio **3.56** | 2026-07-23 wave 1
 - [x] `gpw-uks-o2-gamma` | Γ-point UKS GPW | gpw | `regressions/gpw/gpw-uks-o2-gamma` | ratio **0.98** | 2026-07-23 wave 1

@@ -7,10 +7,13 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include <xtensor/views/xview.hpp>
+
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/gpw_stress.h"
+#include "atomiverse/cpu/linalg/density.h"
 
 namespace ATV {
 namespace cpu {
@@ -98,9 +101,42 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             throw std::invalid_argument(
                 "GPWEvaluator: xl_bomd requires the diagonalization SCF path "
                 "(use_ot parameterizes orbitals, not the density)");
+        if (cpmd)
+            throw std::invalid_argument(
+                "GPWEvaluator: xl_bomd and cpmd are mutually exclusive "
+                "(XL is SCF-converged auxiliary density; CP is fictitious "
+                "orbital dynamics)");
         xl_.emplace(xl_bomd_k); // validates xl_bomd_k in [3, 9]
     } else {
         xl_.reset();
+    }
+
+    // Car–Parrinello guards: closed-shell RKS Γ diagonalization path only.
+    if (cpmd) {
+        if (n_alpha + n_beta > 0)
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd supports closed-shell RKS only "
+                "(n_alpha/n_beta are set)");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd requires the diagonalization SCF path for "
+                "the cold seed (use_ot is refused — no silent OT-CP hybrid)");
+        if (!(cpmd_mu > 0.0) || !std::isfinite(cpmd_mu))
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd_mu must be finite and > 0 (a.u. mass)");
+        if (!(cpmd_dt > 0.0) || !std::isfinite(cpmd_dt))
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd_dt must be finite and > 0 (fs); must match "
+                "the nuclear VelocityVerlet timestep");
+        if (!compute_forces)
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd requires compute_forces=true (nuclear "
+                "forces from the fixed-density electronic state)");
+        cpmd_.emplace(cpmd_mu);
+        last_te_ev_ = 0.0;
+    } else {
+        cpmd_.reset();
+        last_te_ev_ = 0.0;
     }
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
@@ -124,6 +160,60 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     const auto atoms = assemble_atoms(frame, *this);
+
+    // ── Car–Parrinello path ──────────────────────────────────────────────
+    // Seed: one full SCF + BO analytic forces, then hand occupied C to Cpmd.
+    // Later steps: fixed-density KS eval (max_iter=0) + forces at that
+    // density + electronic Verlet. Nuclear PE is E_KS only; T_e is exposed
+    // via last_electronic_ke_ev() for the CP conserved energy.
+    if (cpmd_ && cpmd_->ready()) {
+        auto fixed_density_eval = [&](const linalg::RealMatrix& C_occ) {
+            const int nb = static_cast<int>(C_occ.shape(0));
+            const int n_occ = static_cast<int>(C_occ.shape(1));
+            const linalg::RealMatrix P =
+                linalg::build_density_matrix(C_occ, n_occ, nb, 2.0);
+            const int saved_max = solver_->max_iter;
+            solver_->max_iter = 0;
+            try {
+                last_ = solver_->run(atoms, /*guess_C=*/nullptr, &P);
+            } catch (...) {
+                solver_->max_iter = saved_max;
+                throw;
+            }
+            solver_->max_iter = saved_max;
+        };
+
+        // Pass 1: KS eval at transported C to obtain the new geometry's S.
+        fixed_density_eval(cpmd_->C());
+        // Nuclei moved ⇒ S changed; re-orthonormalize electronic history.
+        cpmd_->align_to_overlap(last_.S);
+        // Pass 2: energy / H / forces at the S-orthonormal density.
+        fixed_density_eval(cpmd_->C());
+
+        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
+            const auto F = gpw_forces_at_density(
+                atoms, *solver_, last_.P, cpmd_->C(), last_.H_ks);
+            AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+            AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+            AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+            for (int i = 0; i < n; ++i) {
+                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            }
+        }
+
+        // Electronic step for the *next* nuclear force evaluation.
+        cpmd_->advance(last_.H_ks, last_.S, cpmd_dt);
+        last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
+        return;
+    }
+
     // BOMD warm-start: reuse previous MO coefficients when shape matches.
     // GpwDft::run accepts optional guess_C; empty last_.C → core guess.
     const ATV::cpu::linalg::RealMatrix* guess = nullptr;
@@ -162,6 +252,24 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             sp_fz[i] = F[static_cast<std::size_t>(i)][2]
                        * ATV::units::kHartreePerBohrInEvPerAngstrom;
         }
+    }
+
+    // CPMD cold seed after the first full SCF + BO forces.
+    if (cpmd_ && !cpmd_->ready()) {
+        if (!last_.converged || last_.C.size() == 0 || solver_->n_occ < 1)
+            throw std::runtime_error(
+                "GPWEvaluator: cpmd seed requires a converged RKS SCF with "
+                "occupied MO coefficients");
+        const int nb = static_cast<int>(last_.C.shape(0));
+        const int n_occ = solver_->n_occ;
+        linalg::RealMatrix C_occ =
+            xt::zeros<double>({static_cast<std::size_t>(nb),
+                               static_cast<std::size_t>(n_occ)});
+        for (int mu = 0; mu < nb; ++mu)
+            for (int i = 0; i < n_occ; ++i)
+                C_occ(mu, i) = last_.C(mu, i);
+        cpmd_->seed(C_occ);
+        last_te_ev_ = 0.0;
     }
 
     if (compute_stress) {

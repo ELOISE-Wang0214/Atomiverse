@@ -1600,6 +1600,36 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         return {H, res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc};
     };
 
+    // ── Fixed-density KS evaluation (Car–Parrinello electronic step) ─────
+    // max_iter == 0: one collocate→Poisson→XC→integrate at the supplied
+    // density; no diagonalization, no mixing, no orbital update. Populates
+    // H_ks and S for the electronic EOM. RKS Γ only.
+    if (cfg.max_iter == 0) {
+        if (guess_P == nullptr)
+            throw std::invalid_argument(
+                "GpwDft: max_iter==0 (fixed-density eval) requires guess_P "
+                "(the Car–Parrinello density)");
+        if (uks)
+            throw std::invalid_argument(
+                "GpwDft: fixed-density eval supports closed-shell RKS only");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GpwDft: fixed-density eval is incompatible with use_ot");
+        if (use_kpath)
+            throw std::invalid_argument(
+                "GpwDft: fixed-density eval supports Γ-point only");
+        // P was already replaced by guess_P above when non-null.
+        auto [H, e_total] = build_H_and_energy(P);
+        res.e_total = e_total + e_d3;
+        res.e_disp = e_d3;
+        res.P = P;
+        res.H_ks = std::move(H);
+        res.S = S;
+        res.converged = true;
+        res.iters = 0;
+        return res;
+    }
+
     // ── UKS (spin-unrestricted, Γ-point, PADE LSD) ─────────────────────────
     // Separate Pa/Pb, spin-resolved XC, dual KS matrices. Multigrid products
     // and OT are not wired for UKS in this foothold — single-grid collocate.

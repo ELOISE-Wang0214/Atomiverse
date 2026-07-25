@@ -48,6 +48,25 @@ std::vector<std::array<double, 3>>
 gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const linalg::RealMatrix* guess_C = nullptr);
 
+/// @brief Analytic ionic forces at a **fixed** electronic state (no SCF).
+///
+/// Car–Parrinello path: nuclei feel \(-\partial E/\partial R\) at the current
+/// density \(P = 2 C C^\top\) with energy-weighted
+/// \(W = 2\,C\,(C^\top H C)\,C^\top\) (constraint contribution off the BO
+/// surface). Same force assembly as `gpw_forces_analytic` after its SCF.
+///
+/// @param atoms Geometry + basis/PP [Bohr].
+/// @param cfg   Grid / XC / electrostatics (same functional as the energy).
+/// @param P     Closed-shell AO density [e], nb × nb.
+/// @param C_occ Occupied MO coefficients, nb × n_occ (S-orthonormal).
+/// @param H     KS matrix at this density [Hartree], nb × nb.
+/// @return Forces [Hartree/Bohr], one xyz triple per atom.
+std::vector<std::array<double, 3>>
+gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                      const linalg::RealMatrix& P,
+                      const linalg::RealMatrix& C_occ,
+                      const linalg::RealMatrix& H);
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

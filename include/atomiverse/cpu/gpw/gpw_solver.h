@@ -129,6 +129,14 @@ struct GpwResult {
     linalg::RealMatrix P_beta;    ///< UKS β density (empty for RKS).
     std::vector<double> eps_beta; ///< UKS β orbital energies (empty for RKS).
     /// @}
+    /// @name Fixed-density KS evaluation payload (Car–Parrinello path)
+    /// Populated when `GpwDft::run` is called with `max_iter == 0` and a
+    /// density guess — one collocate→Poisson→XC→integrate, no SCF. Empty
+    /// after a normal multi-iteration SCF.
+    /// @{
+    linalg::RealMatrix H_ks; ///< KS matrix H[P] [Hartree] (nb × nb).
+    linalg::RealMatrix S;    ///< Overlap matrix at this geometry (nb × nb).
+    /// @}
 };
 
 /// @brief Concrete GPW DFT method — members + build/run

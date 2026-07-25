@@ -629,6 +629,9 @@ if(NOT ATV_DOCS_ONLY)
             # XL-BOMD auxiliary-density propagator (Niklasson dissipative
             # recursion) — dense algebra only, no FFT dependency.
             src/cpu/gpw/xl_bomd.cpp
+            # Car–Parrinello fictitious electronic DOF propagator (Verlet +
+            # Löwdin) — dense algebra only; KS eval reuses the GPW solver.
+            src/cpu/gpw/cpmd.cpp
             # DFT-D3 engine sources are compiled under ATV_BUILD_HF (shared
             # with molecular D3BJ); GPW zero-damping calls the same symbols.
         )

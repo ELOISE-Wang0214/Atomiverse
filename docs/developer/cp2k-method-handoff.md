@@ -1,13 +1,21 @@
 # CP2K capability loop — handoff
 
-Last land: **2026-07-25 xl-bomd-water** merged to `dev` (WIP `61d235f4`
-rebased, fixed, verified). Prior harness: **2026-07-25 claude wave 1**
-(`chore(cp2k-harness): wave 1 (claude)`).
+Last land: **2026-07-25 parallel wave** — 5 staffed `[~]` merged to `dev`:
+`mpi-pw-scaling-4rank`, `gpw-analytic-stress`, `wannier-centers`,
+`mpi-gpw-scaling-4rank`, `cpmd-water` (+ earlier `xl-bomd-water`).
+**in_progress empty.** Pending residual for next census/assign.
 
-**Workflow order (binding):** Recover incomplete first → Census →
-Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
-Tutorial. See `docs/developer/cp2k-method-loop.md` and
-`.grok/workflows/cp2k-method-loop.rhai`.
+## Parallel wave summary (2026-07-25)
+
+| Slug | Domain | Status | Regression | Note |
+| ---- | ------ | ------ | ---------- | ---- |
+| `mpi-pw-scaling-4rank` | pw | **merged → done** | `reg_mpi-pw-scaling-4rank` | k-RR 4 ranks; speedup 2.54× |
+| `gpw-analytic-stress` | gpw | **merged → done** | `reg_gpw-analytic-stress` | fixed-P+Pulay vs FD ~3e-10 |
+| `wannier-centers` | scf | **merged → done** | `reg_wannier-centers` | Foster–Boys molecular foothold |
+| `mpi-gpw-scaling-4rank` | gpw | **merged → done** | `reg_mpi-gpw-scaling-4rank` | k-RR; energy rank-identical |
+| `cpmd-water` | dynamics | **merged → done** | `reg_cpmd-water` | CP E_cons drift 2e-3 |
+
+Specs deleted on close. Incomplete remaining = **0**.
 
 ## xl-bomd-water land (2026-07-25)
 

@@ -67,6 +67,13 @@ MD/electrochem specs on `dev` — workers write `.claude/specs/<slug>/` on
 CP2K claude wave 1 closed 2026-07-25 (5 merged). **`xl-bomd-water` closed
 2026-07-25** (resume of WIP — verified green, merged, spec deleted).
 
+
+## Closed — CP2K parallel wave (2026-07-25)
+
+| Queue | Specs (deleted; see git) | Shipped |
+| ----- | ------------------------ | ------- |
+| cp2k-method-loop parallel | mpi-pw-scaling-4rank, gpw-analytic-stress, wannier-centers, mpi-gpw-scaling-4rank, cpmd-water | PW/GPW MPI k-RR gates; analytic GPW stress; Foster–Boys Wannier; CPMD H₂O |
+
 ## Closed — CP2K xl-bomd-water (2026-07-25)
 
 | Queue | Spec (deleted; see git) | Shipped |
