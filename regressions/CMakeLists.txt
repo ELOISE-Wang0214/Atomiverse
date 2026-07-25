@@ -105,6 +105,14 @@ if(ATV_BUILD_PW)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw pw-uks-kmesh-fe)
+    # MPI k-point round-robin scaling gate: the binary re-launches itself
+    # through the configured mpiexec at np=1 and np=4 (parity + wall ratio).
+    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+        atv_add_regression(pw mpi-pw-scaling-4rank)
+        target_compile_definitions(reg_mpi-pw-scaling-4rank PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}"
+            ATV_MPIEXEC="${MPIEXEC_EXECUTABLE}")
+    endif()
     # pw-smearing-al merged when branch lands
     if(ATV_BUILD_MD)
         atv_add_regression(pw pw-bomd-h)

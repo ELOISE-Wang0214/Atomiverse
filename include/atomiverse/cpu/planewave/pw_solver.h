@@ -50,6 +50,11 @@ struct PWResult {
     double e_fermi = 0;     ///< Fermi level [Ry] (0 if fixed occupations).
     double n_elec_occ = 0;  ///< \(\sum w f\) after last iteration.
     double e_entropy = 0;   ///< \(-TS\) contribution included in energy [Ry].
+    /// @brief Total Monkhorst–Pack k-points of this run (`k_mesh`³ set).
+    int n_kpts = 0;
+    /// @brief k-points owned by THIS rank under the round-robin MPI
+    ///        distribution. Serial (or MPI inactive): equals `n_kpts`.
+    int n_kpts_local = 0;
 };
 
 /// @brief Concrete plane-wave DFT method — members + `run(frame)`.
