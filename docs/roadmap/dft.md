@@ -207,8 +207,8 @@ regression `dft-d4-h2o-pbe`; three-body ATM not included) **and on GPW** via
 pairwise dispersion ships on GPW (`GpwDft::ts` / `GPWEvaluator::ts`; libMBD
 tables; `reg_gpw-ts-ice`). **MBD@rsSCS** free-atom (volume-ratio = 1) many-body
 dispersion ships on GPW (`GpwDft::mbd` / `GPWEvaluator::mbd`; libMBD Fortran
-pin; `reg_gpw-mbd-ice`). Hirshfeld density volumes, periodic Ewald MBD, and
-vdW-DF remain ○.
+pin; `reg_gpw-mbd-ice`). **Hirshfeld density volumes** (density-scaled
+TS/MBD), periodic Ewald MBD, and vdW-DF remain ○ (queued).
 
 ## 9. Composite DFT Methods
 
@@ -252,7 +252,8 @@ Two periodic DFT engines exist, with disjoint strengths:
   **Monkhorst–Pack k-point RKS** and **k-point UKS** (`k_mesh` / explicit
   `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
   `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`). **Open GPW follow-ons**
-  (queued): RPBE, vdW-DF, periodic GW. CPU only.
+  (queued): RPBE, k-point UKS forces, UKS stress, Hirshfeld MBD/TS,
+  vdW-DF, multi-k RPA, periodic GW. CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -303,7 +304,8 @@ Which engine backs which ✓:
   `reg_periodic-ri-mp2-si` vs CP2K 2026.1; Poisson foothold
   `reg_periodic-mp2-si`) **and multi-k RI-GPW** (`reg_periodic-mp2-kpoints`).
   **Periodic RPA** is **Γ-point dRPA@KS** product (`GpwDft::direct_rpa`;
-  plasmon formula; `reg_periodic-rpa-si`). Multi-k RPA / RI-RPA residual and
+  plasmon formula; `reg_periodic-rpa-si`). Multi-k RPA / RI-RPA residual
+  (queued as `periodic-rpa-kpoints`; `direct_rpa` throws nk>1) and
   **periodic GW** remain ○.
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
@@ -321,16 +323,18 @@ Which engine backs which ✓:
 | Maximally localized Wannier functions  |  ✓  |   ○  |   ○  |
 
 - **Periodic analytic forces** are GPW (Hellmann–Feynman + Pulay; Γ RKS,
-  Γ-UKS `reg_gpw-uks-forces`, multi-k `reg_gpw-kpoint-forces`) and
-  plane-wave **local HF + Ewald + KB nonlocal** (`pw_forces_analytic`). PW FD
+  Γ-UKS `reg_gpw-uks-forces`, multi-k **RKS** `reg_gpw-kpoint-forces`) and
+  plane-wave **local HF + Ewald + KB nonlocal** (`pw_forces_analytic`).
+  **Multi-k UKS forces** remain queued (`gpw_forces_*` throws). PW FD
   remains as oracle.
 - **PW stress** is **Nielsen–Martin analytic** (`pw_stress` → Frame `kStress`;
   multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
   **GPW stress** is **analytic fixed-\(P\)+Pulay** product at Γ **and
-  k-points** (`gpw_stress` / `GPWEvaluator::compute_stress`,
+  k-points for closed-shell RKS** (`gpw_stress` / `GPWEvaluator::compute_stress`,
   `stress_use_fd=false`; multi-SCF oracle `gpw_stress_fd`;
   `reg_gpw-analytic-stress` dual-gate + `reg_gpw-kpoint-stress` +
-  `reg_gpw-stress-water` vs CP2K NUMERICAL). **GPW variable-cell relax ships**
+  `reg_gpw-stress-water` vs CP2K NUMERICAL). **UKS stress** remains queued
+  (analytic path throws). **GPW variable-cell relax ships**
   (evaluator re-target, stress axes mask, `StressConverged`;
   `reg_gpw-variable-cell-ice` GTH-chain + `reg_gpw-variable-cell-molopt`
   MOLOPT re-twin vs CP2K CELL_OPT — see [Optimization](optimization.md)).
@@ -346,7 +350,8 @@ Which engine backs which ✓:
   CG, Hartree + LDA kernel), analytic Ewald/KB second derivatives
   (`regressions/response/dfpt-phonon-si`; energy-second-difference twin to
   0.07 %; **finite-q at X** commensurate supercell path
-  `reg_dfpt-finite-q-si`). Restricted LSDA / NC-UPF / fixed occupations only.
+  `reg_dfpt-finite-q-si`). **Incommensurate-q direct Sternheimer** remains
+  queued. Restricted LSDA / NC-UPF / fixed occupations only.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,

@@ -106,7 +106,7 @@ a proven shape.
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
 | Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
-| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW strain-FD stress |
+| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW analytic fixed-\(P\)+Pulay stress (RKS Γ/k; UKS residual) |
 | Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms**; C-PCM/COSMO/**IEF-PCM** |
 
 ### Closed queues (2026-07-23)
@@ -248,8 +248,9 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **Analytic cell stress** at Γ and k-points (fixed-\(P\)+Pulay product;
   multi-SCF FD oracle; `reg_gpw-analytic-stress` / `reg_gpw-kpoint-stress` /
   `reg_gpw-stress-water`) and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` +
-  MOLOPT `reg_gpw-variable-cell-molopt`). Open follow-ons: RPBE, vdW-DF,
-  periodic GW (see `cp2k-method-queue.md`).
+  MOLOPT `reg_gpw-variable-cell-molopt`). Open follow-ons: RPBE, k-UKS
+  forces, UKS stress, Hirshfeld MBD/TS, vdW-DF, multi-k RPA, periodic GW,
+  incommensurate DFPT (see `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient

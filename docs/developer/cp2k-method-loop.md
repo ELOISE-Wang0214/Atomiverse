@@ -68,6 +68,15 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-25 GapCensus wave 3 (parent `dev` @ `def040bd`):** recover
+  clean (incomplete=0, CP2K specs=0, `wf/*`=0, builds=none). Prior pending
+  **3** re-verified true gaps; **+5** residuals (`gpw-kpoint-uks-forces`,
+  `gpw-uks-stress`, `periodic-rpa-kpoints`, `gpw-mbd-hirshfeld`,
+  `dfpt-incommensurate-si`) → pending **8**; in_progress **0**; blocked
+  **5**. No ○/✓ table flips; open-follow-on / forces / stress / RPA / DFPT
+  prose + index Cell “strain-FD” stale line refreshed. Next: Assign
+  (prefer surface-disjoint staff: RPBE alone; k-UKS forces ∥ UKS stress
+  careful surface share; multi-k RPA after Γ RPA ✓ free).
 - **2026-07-25 harness wave 2 (parent `dev` @ `f5739506`):** 10 merged →
   done: `gpw-kpoint-forces`, `gpw-revpbe-si`, `gpw-kpoints-uks`,
   `gpw-uks-forces`, `gpw-kpoint-stress`, `gpw-mbd-ice`,

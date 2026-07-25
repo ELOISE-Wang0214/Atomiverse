@@ -166,15 +166,44 @@ RPA ✓ (Γ dRPA@KS product), finite-q DFPT productized; multi-k MP2 residual
 closed; GPW k-UKS / k-forces / k-stress / Γ-UKS forces / MOLOPT CELL_OPT
 prose. **Queue not exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 3 2026-07-25 (parent `dev` @ `def040bd`):** recover
+clean — incomplete_count=**0**; `## in_progress` empty; open CP2K/GPW/PW
+specs=**0** (PySCF deferred only: `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`);
+unmerged `wf/*`=**0**; isolation worktrees=**0**; leftover builds=**none**.
+Tree re-diff vs `docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD +
+`tools/cp2k_oracle` + `include/atomiverse/cpu/{gpw,planewave}`: prior
+pending **3** still true gaps — `XcKind` still
+`{PADE,PBE,PBEsol,RevPBE,BLYP}` (no RPBE); no vdW-DF / NON_LOCAL symbols;
+no periodic GW. **Added 5** tree-declared / roadmap residuals with offline
+CP2K twins: `gpw-kpoint-uks-forces` (forces throw “k-point UKS not
+implemented”; header follow-on after Γ-UKS + k-RKS forces ✓),
+`gpw-uks-stress` (analytic stress throws UKS at Γ and multi-k),
+`periodic-rpa-kpoints` (multi-k RPA residual — `direct_rpa` throws nk>1;
+Γ dRPA foothold ≠ multi-k capability), `gpw-mbd-hirshfeld` (roadmap §8
+Hirshfeld volumes / density-scaled MBD after free-atom MBD ✓),
+`dfpt-incommensurate-si` (finite-q product is commensurate supercell;
+incommensurate Sternheimer still header follow-on). **Not added:**
+BP86/B97/OLYP/HCTH (molecular PySCF path); XDM/VV10/vdW-DF2 (hold behind
+vdW-DF order); GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular
+post-HF / classical MW / CUDA ports (other loops). Roadmap: **no ○/✓
+table flips** (nothing new merged); open-follow-on + forces/stress/RPA
+prose refreshed; stale index Cell “GPW strain-FD” → analytic. **Pending
+= 8**; **in_progress = 0**.
+
 ## pending
 
-- [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` ✓ (merge-conflict avoidance)
-- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / MBD ✓ order
-- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓ + RPA ✓; not molecular G0W0 (PySCF loop)
+- [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; `XcKind` still lacks RPBE after revPBE ✓ — Hammer–Hansen–Nørskov exchange on shared GGA grid
+- [ ] `gpw-kpoint-uks-forces` | GPW analytic forces at multi-k UKS | gpw | O₂ (tiny cell) | DZVP-MOLOPT-GTH | forces Ha/Bohr | tree follow-on (`gpw_forces_*` throws k-point UKS); after Γ-UKS forces ✓ + k-RKS forces ✓ + k-UKS energy ✓; CP2K Quickstep UKS+k twin
+- [ ] `gpw-uks-stress` | GPW analytic cell stress for UKS | gpw | O₂ / open-shell | DZVP-MOLOPT-GTH | Voigt stress Ha/Bohr³ | `gpw_stress` throws UKS at Γ and multi-k; after closed-shell Γ/k stress ✓ + Γ-UKS forces ✓; CP2K NUMERICAL stress twin
+- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih / water dimer | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / free-atom MBD ✓ order
+- [ ] `gpw-mbd-hirshfeld` | Hirshfeld volume ratios for TS/MBD | gpw | water dimer / ice | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 Hirshfeld ○ after free-atom MBD ✓ / TS ✓ (volume_ratio=1); CP2K + libMBD Hirshfeld pin; deeper productization before XDM/VV10
+- [ ] `periodic-rpa-kpoints` | Multi-k RI-GPW dRPA residual | gpw | Si (tiny k-mesh) | MOLOPT+GTH | E_c Ha | roadmap §10 multi-k RPA residual after Γ dRPA ✓ (`reg_periodic-rpa-si`); `GpwDft::direct_rpa` throws nk>1; CP2K WF_CORRELATION RPA twin
+- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓ + Γ RPA ✓; not molecular G0W0 (PySCF loop); prefer after multi-k RPA residual if surface-shared
+- [ ] `dfpt-incommensurate-si` | Incommensurate-q DFPT phonons (PW) | response | Si | NC-UPF | ω(q) | after finite-q X commensurate product ✓ (`reg_dfpt-finite-q-si`); `dfpt_phonon.h` incommensurate Sternheimer follow-on; CP2K DFPT / PHONON twin
 
 ## in_progress
 
-_(empty — harness wave 2 closed all staffed `[~]`)_
+_(empty — harness wave 2 closed all staffed `[~]`; GapCensus wave 3 found no incomplete)_
 
 ## done (harness wave 2 2026-07-25)
 
