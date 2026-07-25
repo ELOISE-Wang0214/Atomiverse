@@ -5,7 +5,10 @@
 ///   1. One full SCF at the reference geometry → density matrix P (Γ RKS),
 ///      spin pair {Pα,Pβ,Wα,Wβ} (Γ UKS), per-k {P_k, W_k} from C_occ_k /
 ///      eps_k (multi-k RKS, occ=2), or per-k spin {P_k^σ, W_k^σ} from
-///      C_occ_k / C_occ_k_beta (multi-k UKS, occ=1).
+///      C_occ_k / C_occ_k_beta (multi-k UKS, occ=1). Dudarev DFT+U
+///      (`plus_u`) is supported on the Γ path: \(E_U[n(P,S)]\) enters the
+///      fixed-P Lagrangian (Mulliken \(n\) at strained \(S\)). Multi-k DFT+U
+///      is not implemented.
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
 ///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
@@ -28,7 +31,9 @@
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/internal/dft_plus_u.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
@@ -493,10 +498,16 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 /// @brief Hellmann–Feynman Lagrangian energy at fixed (P, W) and geometry.
 ///
 /// RKS:
-///   E_L = Tr(P T) + Tr(P V_pp) + E_es[ρ_P] + E_xc[ρ_P] + E_disp − Tr(W S)
+///   E_L = Tr(P T) + Tr(P V_pp) + E_es[ρ_P] + E_xc[ρ_P] + E_disp
+///         + E_U[n(P/2,S)] − Tr(W S)
 /// UKS (P = Pα, optional P_beta / W_beta):
 ///   E_L = Tr((Pα+Pβ) T) + Tr((Pα+Pβ) V_pp) + E_es[ρα+ρβ−n_c]
-///         + E_xc[ρα,ρβ] + E_disp − Tr(Wα S) − Tr(Wβ S)
+///         + E_xc[ρα,ρβ] + E_disp + E_U[n(Pα,S)] + E_U[n(Pβ,S)]
+///         − Tr(Wα S) − Tr(Wβ S)
+///
+/// Dudarev \(E_U\) is evaluated at fixed spin density and the strained
+/// overlap (Mulliken occupation depends on \(S\)). \(W\) is built from KS
+/// eigenvalues that already include \(V_U\).
 ///
 /// At the SCF stationary point the total-energy derivative w.r.t. a geometry
 /// parameter equals ∂E_L/∂λ at fixed P and energy-weighted density W
@@ -506,9 +517,6 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                       const RealMatrix& P, const RealMatrix& W,
                       const RealMatrix* P_beta = nullptr,
                       const RealMatrix* W_beta = nullptr) {
-    if (!cfg.plus_u.empty())
-        throw std::invalid_argument(
-            "gpw_stress analytic: DFT+U not supported in this foothold");
     if (cfg.d4)
         throw std::invalid_argument(
             "gpw_stress analytic: D4 not supported in this foothold");
@@ -563,6 +571,10 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // One-electron: Tr(Ptot T) + Tr(Ptot V_pp) − Tr(Wtot S) (Pulay).
     // RKS: Ptot = P (closed-shell total), Wtot = W.
     // UKS: Ptot = Pα+Pβ, Wtot = Wα+Wβ (factor-1 energy-weighted densities).
+    // Also assemble S for Dudarev Mulliken occupations when plus_u is on.
+    const bool do_dftu = !cfg.plus_u.empty();
+    RealMatrix Smat =
+        do_dftu ? RealMatrix(xt::zeros<double>({nb, nb})) : RealMatrix();
     double e_kin = 0.0;
     double e_pp = 0.0;
     double e_pulay = 0.0;
@@ -587,6 +599,8 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             e_kin += p_tot * t;
             e_pp += p_tot * vpp;
             e_pulay += w_tot * s;
+            if (do_dftu)
+                Smat(mu, nu) = s;
         }
     }
 
@@ -728,9 +742,60 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
     }
 
+    // Dudarev DFT+U at fixed spin density and strained S (Mulliken n(P,S)).
+    double e_dftu = 0.0;
+    if (do_dftu) {
+        std::vector<int> z_keys;
+        std::vector<PlusUHa> slots;
+        z_keys.reserve(cfg.plus_u.size());
+        slots.reserve(cfg.plus_u.size());
+        for (const auto& pu : cfg.plus_u) {
+            if (!(pu.u_minus_j_ev > 0.0) || pu.l < 0)
+                continue;
+            z_keys.push_back(static_cast<int>(pu.element));
+            PlusUHa s;
+            s.l = pu.l;
+            s.U_ha = pu.u_minus_j_ev / ATV::units::kHartreeInEv;
+            slots.push_back(s);
+        }
+        if (!slots.empty()) {
+            std::vector<AoShellTag> tags;
+            tags.reserve(static_cast<std::size_t>(nb));
+            std::vector<int> z_of_atom(atoms.size());
+            for (int ia = 0; ia < static_cast<int>(atoms.size()); ++ia) {
+                const auto& a = atoms[static_cast<std::size_t>(ia)];
+                z_of_atom[static_cast<std::size_t>(ia)] = a.z;
+                const int nbf = static_cast<int>(a.basis.size());
+                const int nl = static_cast<int>(a.basis_l.size());
+                for (int k = 0; k < nbf; ++k) {
+                    AoShellTag t;
+                    t.atom = ia;
+                    t.l = (k < nl) ? a.basis_l[static_cast<std::size_t>(k)]
+                                   : -1;
+                    tags.push_back(t);
+                }
+            }
+            if (uks) {
+                e_dftu += dft_plus_u_energy(P, Smat, tags, z_of_atom, slots,
+                                            z_keys);
+                e_dftu += dft_plus_u_energy(*P_beta, Smat, tags, z_of_atom,
+                                            slots, z_keys);
+            } else {
+                // Closed-shell: two equal spin channels from P/2.
+                RealMatrix Pspin = xt::zeros<double>({nb, nb});
+                for (int i = 0; i < nb; ++i)
+                    for (int j = 0; j < nb; ++j)
+                        Pspin(i, j) = 0.5 * P(i, j);
+                e_dftu = 2.0
+                         * dft_plus_u_energy(Pspin, Smat, tags, z_of_atom,
+                                             slots, z_keys);
+            }
+        }
+    }
+
     // −Tr(W S): Pulay contribution to the Lagrangian (constant −Tr(W S0) drops
     // out of the strain FD; only ∂S/∂ε matters).
-    return e_kin + e_pp + e_locgrid + e_es + e_xc + e_disp - e_pulay;
+    return e_kin + e_pp + e_locgrid + e_es + e_xc + e_disp + e_dftu - e_pulay;
 }
 
 /// Energy-weighted density W = Σ_i n_i ε_i c_i c_iᵀ (one spin channel).

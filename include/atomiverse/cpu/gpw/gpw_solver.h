@@ -412,10 +412,12 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// Product path: one SCF, then Hellmann–Feynman fixed-\(P\) central FD of the
 /// non-self-consistent total energy under orthorhombic diagonal strain at fixed
 /// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Supports
-/// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), closed-shell
+/// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), Dudarev DFT+U
+/// on the Γ path (`plus_u`, \(E_U\) on the fixed-\(P\) Lagrangian), closed-shell
 /// multi-k RKS (k-summed fixed-\(P_k\)), and multi-k collinear UKS (fixed
-/// \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC). Off-diagonal shear is 0
-/// (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
+/// \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC). Multi-k DFT+U is not implemented.
+/// Off-diagonal shear is 0 (orthorhombic cell only). Multi-SCF oracle:
+/// `gpw_stress_fd`.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].
