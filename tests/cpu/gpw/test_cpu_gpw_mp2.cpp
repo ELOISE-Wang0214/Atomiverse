@@ -27,6 +27,7 @@ using ATV::cpu::gpw::make_uniform_grid;
 using ATV::cpu::gpw::solve_poisson;
 using ATV::cpu::gpw::UniformGrid;
 using ATV::cpu::gpw::internal::mo_eri_ovov;
+using ATV::cpu::gpw::internal::mo_eri_ovov_ri;
 using ATV::cpu::gpw::internal::mo_on_grid;
 using ATV::cpu::gpw::internal::mp2_rhf_energy;
 using ATV::cpu::linalg::RealMatrix;
@@ -184,6 +185,37 @@ TEST(GpwMp2, MoEriMatchesPoissonHartreeEnergy) {
     const auto pr = solve_poisson(grid, rho);
     EXPECT_NEAR(v[0], 2.0 * pr.e_hartree, 1e-10);
     EXPECT_GT(v[0], 0.0); // a self-repulsion integral is positive
+}
+
+// RI-GPW G-space (ia|jb) ≡ Poisson real-space tensor on the same grid
+// (Parseval identity; product path must match the foothold to ~1e-10).
+TEST(GpwMp2, MoEriRiMatchesPoisson) {
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 30.0);
+    const long npts = grid.npts();
+    const int no = 2, nv = 2;
+    std::vector<double> psi_o(static_cast<std::size_t>(no) * npts);
+    std::vector<double> psi_v(static_cast<std::size_t>(nv) * npts);
+    for (long g = 0; g < npts; ++g) {
+        double r[3];
+        grid.point(g, r);
+        const double dx = r[0] - 3.0, dy = r[1] - 3.0, dz = r[2] - 3.0;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        psi_o[static_cast<std::size_t>(0) * npts + g] = std::exp(-0.7 * r2);
+        psi_o[static_cast<std::size_t>(1) * npts + g] =
+            dy * std::exp(-0.55 * r2);
+        psi_v[static_cast<std::size_t>(0) * npts + g] = dx * std::exp(-0.5 * r2);
+        psi_v[static_cast<std::size_t>(1) * npts + g] =
+            dz * std::exp(-0.45 * r2);
+    }
+    const std::vector<double> v_pois =
+        mo_eri_ovov(grid, psi_o, no, psi_v, nv, /*nonperiodic=*/false);
+    const std::vector<double> v_ri = mo_eri_ovov_ri(grid, psi_o, no, psi_v, nv);
+    ASSERT_EQ(v_pois.size(), v_ri.size());
+    double max_err = 0.0;
+    for (std::size_t i = 0; i < v_pois.size(); ++i)
+        max_err = std::max(max_err, std::abs(v_pois[i] - v_ri[i]));
+    EXPECT_LT(max_err, 1e-10) << "max |RI − Poisson| = " << max_err;
 }
 
 // Guard: mp2() before build() throws logic_error.

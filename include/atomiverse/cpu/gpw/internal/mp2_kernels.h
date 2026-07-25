@@ -38,7 +38,8 @@ std::vector<double> mo_on_grid(const CompactBasisGrid& cbg,
 /// For each pair density ρ_ia(r)=ψ_i(r)ψ_a(r) one Poisson solve gives
 /// V_ia(r); then (ia|jb) = Σ_g w V_ia(g) ρ_jb(g). Uses the (ia|jb)=(jb|ia)
 /// symmetry — n_occ·n_virt Poisson solves total. G=0 is dropped by the
-/// periodic solver (neutral pair densities, S_ia = 0).
+/// periodic solver (neutral pair densities, S_ia = 0). Canonical foothold
+/// path (`mp2_ri = false`); product path uses `mo_eri_ovov_ri`.
 /// @param grid     Uniform density grid (as in the SCF).
 /// @param psi_occ  Occupied MO values, row-major (n_occ × npts) [mo_on_grid].
 /// @param n_occ    Occupied count.
@@ -51,6 +52,28 @@ std::vector<double> mo_eri_ovov(const UniformGrid& grid,
                                 const std::vector<double>& psi_occ, int n_occ,
                                 const std::vector<double>& psi_virt, int n_virt,
                                 bool nonperiodic);
+
+/// @brief Periodic RI-GPW (ia|jb) via plane-wave Coulomb intermediates.
+///
+/// Del Ben / Quickstep product path: for each pair density ρ_ia form the
+/// G-space Coulomb potential (4π/|G|², G=0 dropped) via the shared FFT
+/// Poisson kernel, store the three-index real-space intermediate V_ia
+/// (memory \(\mathcal O(n_{\mathrm{ov}} N_g)\)), then contract
+/// \((ia|jb)=\sum_g w\, V_{ia}(g)\,\rho_{jb}(g)\). Numerically identical to
+/// `mo_eri_ovov(..., nonperiodic=false)` on the same grid — the PW
+/// resolution of the identity for the pair density. Periodic only (isolated
+/// cells keep the MT Poisson foothold via `mo_eri_ovov`).
+/// @param grid     Uniform density grid (as in the SCF).
+/// @param psi_occ  Occupied MO values, row-major (n_occ × npts).
+/// @param n_occ    Occupied count.
+/// @param psi_virt Virtual MO values, row-major (n_virt × npts).
+/// @param n_virt   Virtual count.
+/// @return Same layout as `mo_eri_ovov` [Hartree].
+std::vector<double> mo_eri_ovov_ri(const UniformGrid& grid,
+                                   const std::vector<double>& psi_occ,
+                                   int n_occ,
+                                   const std::vector<double>& psi_virt,
+                                   int n_virt);
 
 /// @brief Canonical closed-shell MP2 doubles sum (real orbitals).
 ///

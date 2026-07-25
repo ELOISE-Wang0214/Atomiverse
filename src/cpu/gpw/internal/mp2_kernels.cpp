@@ -1,12 +1,14 @@
 /// @file src/cpu/gpw/internal/mp2_kernels.cpp
-/// @brief GPW MP2 kernels — MO-on-grid, (ia|jb) via per-pair Poisson, and
-///        the canonical closed-shell doubles sum. See mp2_kernels.h.
+/// @brief GPW MP2 kernels — MO-on-grid, (ia|jb) via per-pair Poisson or
+///        RI-GPW G-space Coulomb intermediates, and the closed-shell
+///        doubles sum. See mp2_kernels.h.
 
 #include "atomiverse/cpu/gpw/internal/mp2_kernels.h"
 
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
@@ -82,6 +84,79 @@ std::vector<double> mo_eri_ovov(const UniformGrid& grid,
             double s = 0.0;
             for (long g = 0; g < npts; ++g)
                 s += pr.v_r[static_cast<std::size_t>(g)] * pj[g] * pb[g];
+            const double val = w * s;
+            v[static_cast<std::size_t>(ia) * static_cast<std::size_t>(nov)
+              + static_cast<std::size_t>(jb)] = val;
+            v[static_cast<std::size_t>(jb) * static_cast<std::size_t>(nov)
+              + static_cast<std::size_t>(ia)] = val;
+        }
+    }
+    return v;
+}
+
+std::vector<double> mo_eri_ovov_ri(const UniformGrid& grid,
+                                   const std::vector<double>& psi_occ,
+                                   int n_occ,
+                                   const std::vector<double>& psi_virt,
+                                   int n_virt) {
+    // Product RI-GPW path (Del Ben 2012 / CP2K MP2_GPW): form the Coulomb
+    // potential of every pair density once (G-space 4π/G² intermediate via
+    // the shared FFT Poisson), store the real-space V_ia intermediates
+    // (three-index product structure, memory O(n_ov · N_g)), then contract
+    // (ia|jb) = Σ_g w V_ia(g) ρ_jb(g). Numerically identical to
+    // mo_eri_ovov(..., nonperiodic=false) — the Poisson kernel is the PW
+    // resolution of the identity for the pair density on this grid.
+    const long npts = grid.npts();
+    const double w = grid.weight();
+    if (psi_occ.size()
+            != static_cast<std::size_t>(n_occ) * static_cast<std::size_t>(npts)
+        || psi_virt.size()
+               != static_cast<std::size_t>(n_virt)
+                      * static_cast<std::size_t>(npts))
+        throw std::invalid_argument(
+            "gpw mo_eri_ovov_ri: MO grid arrays do not match n_occ/n_virt/npts");
+    if (n_occ < 0 || n_virt < 0)
+        throw std::invalid_argument("gpw mo_eri_ovov_ri: negative orbital count");
+
+    const int nov = n_occ * n_virt;
+    std::vector<double> V(static_cast<std::size_t>(nov)
+                          * static_cast<std::size_t>(npts));
+    std::vector<double> rho(static_cast<std::size_t>(npts));
+    for (int ia = 0; ia < nov; ++ia) {
+        const double* pi = psi_occ.data()
+                           + static_cast<std::size_t>(ia / n_virt)
+                                 * static_cast<std::size_t>(npts);
+        const double* pa = psi_virt.data()
+                           + static_cast<std::size_t>(ia % n_virt)
+                                 * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            rho[static_cast<std::size_t>(g)] = pi[g] * pa[g];
+        // FFT → 4π/G² → IFFT (G=0 dropped); owns the RI-GPW intermediate.
+        const PoissonResult pr = solve_poisson(grid, rho);
+        double* Via = V.data() + static_cast<std::size_t>(ia)
+                                      * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            Via[g] = pr.v_r[static_cast<std::size_t>(g)];
+    }
+
+    std::vector<double> v(static_cast<std::size_t>(nov)
+                          * static_cast<std::size_t>(nov));
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (int ia = 0; ia < nov; ++ia) {
+        const double* Via = V.data() + static_cast<std::size_t>(ia)
+                                           * static_cast<std::size_t>(npts);
+        for (int jb = ia; jb < nov; ++jb) {
+            const double* pj = psi_occ.data()
+                               + static_cast<std::size_t>(jb / n_virt)
+                                     * static_cast<std::size_t>(npts);
+            const double* pb = psi_virt.data()
+                               + static_cast<std::size_t>(jb % n_virt)
+                                     * static_cast<std::size_t>(npts);
+            double s = 0.0;
+            for (long g = 0; g < npts; ++g)
+                s += Via[g] * pj[g] * pb[g];
             const double val = w * s;
             v[static_cast<std::size_t>(ia) * static_cast<std::size_t>(nov)
               + static_cast<std::size_t>(jb)] = val;
