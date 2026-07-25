@@ -109,11 +109,11 @@ may both touch AIMD propagator files — harness resolves at merge.
      gpw-variable-cell-ice, dfpt-phonon-si, xl-bomd-water, berry-polarization,
      periodic-mp2-si; wannier-centers / cpmd-water / mpi-*-scaling held -->
 <!-- harness wave 1 (claude) 2026-07-25: 5 of the 6 staffed merged → done;
-     xl-bomd-water WIP-checkpointed (below) -->
+     xl-bomd-water WIP-checkpointed -->
 <!-- assign wave (claude) 2026-07-25 (wave 2): staffed all 5 [~] resumes +
      promoted gpw-analytic-stress from pending; second-gen-cpmd-water skipped
      (dep cpmd-water is a pick this wave) -->
-- [~] `xl-bomd-water` | Extended-Lagrangian BOMD | dynamics | water | DZVP | energy drift | MD roadmap ○ XL-BOMD (ASPC ≠ XL); CP2K; **dep:** `gpw-bomd-water` ✓; wave 3 new; **WIP checkpoint 2026-07-25:** commit `61d235f4` on `wf/xl-bomd-water` — impl + spec + regression skeleton written, **untested** (build never completed); resume write-first: build scoped, test, commit
+<!-- 2026-07-25: xl-bomd-water verified green + merged → done -->
 - [~] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si` ✓; wave 3 new
 - [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
 - [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
@@ -154,3 +154,4 @@ may both touch AIMD propagator files — harness resolves at merge.
 - [x] `dfpt-phonon-si` | Γ-point DFPT phonons for PW (Sternheimer PCG, Ewald Hessian, LDA kernel; energy-FD twin 0.07 %) | response | `regressions/response/dfpt-phonon-si` | ratio **perf_exempt** (≈24 s wall; no CP2K DFPT wall recorded) | 2026-07-25 claude wave 1
 - [x] `berry-polarization` | KSV Berry-phase polarization on PW (+ Hermitian Davidson/g-vector fixes; symmetry-exact Si pins) | response | `regressions/pw/berry-polarization` | ratio **perf_exempt** (no CP2K binary at pin host; ATV ~18 s) | 2026-07-25 claude wave 1
 - [x] `periodic-mp2-si` | Γ-point canonical GPW MP2 **foothold** (`GpwDft::mp2`, Poisson-per-pair (ia\|jb); sc-Si2) — capability row stays ○, RI/k-point + RPA/GW remain | gpw | `regressions/gpw/periodic-mp2-si` | ratio **perf_exempt** (no CP2K binary at pin host) | 2026-07-25 claude wave 1
+- [x] `xl-bomd-water` | Niklasson dissipative XL-BOMD on GPW RKS (`XlBomd` K∈[3,9], `GpwDft::run(guess_P)`, `GPWEvaluator::xl_bomd`); H₂O NVE drift envelope | dynamics | `regressions/dynamics/xl-bomd-water` | ratio **perf_exempt** (no CP2K binary; drift 1.2e-5 / 33 s) | 2026-07-25

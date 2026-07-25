@@ -216,7 +216,7 @@ Components on `cpu::md::MD` (MetalWalls map E1–E10; waves 1–4 done — see
 | DFTB molecular dynamics                 |  ○  |   ○  |   ○  |
 | xTB molecular dynamics                  |  ○  |   ○  |   ○  |
 | Car–Parrinello molecular dynamics       |  ○  |   ○  |   ○  |
-| Extended-Lagrangian Born–Oppenheimer MD |  ○  |   ○  |   ○  |
+| Extended-Lagrangian Born–Oppenheimer MD |  ✓  |   ○  |   ○  |
 | Second-generation Car–Parrinello MD     |  ○  |   ○  |   ○  |
 
 AIMD works by binding a force-providing method/component to `md::Phase::force`
@@ -234,8 +234,11 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
   `regressions/semiempirical/am1_water_bomd`.
 - CUDA SCF has no gradient kernel — **there is no GPU AIMD**.
 
-ASPC is a density *predictor* (warm start), not an extended-Lagrangian
-propagator, so the XL-BOMD row stays ○.
+**XL-BOMD** (Niklasson dissipative auxiliary density) ships as
+`cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on the closed-shell
+GPW diagonalization path (`reg_xl-bomd-water`). ASPC remains a separate
+density *predictor* (warm start); UKS/OT/k-point XL and zero-SCF linearized
+forces stay ○.
 
 ## 8. Nuclear Quantum Dynamics
 

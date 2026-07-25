@@ -50,9 +50,14 @@ Voronoi TF, IL EDL box, nanoporous product, TI capacitance). No open
 MD/electrochem specs on `dev` — workers write `.claude/specs/<slug>/` on
 `wf/<slug>` before impl.
 
-CP2K claude wave 1 closed 2026-07-25 (specs deleted; 5 merged into `dev`,
-head bd39507a). Incomplete `xl-bomd-water` is WIP-checkpointed at `61d235f4`
-on `wf/xl-bomd-water` — its spec lives on that branch, not on `dev`.
+CP2K claude wave 1 closed 2026-07-25 (5 merged). **`xl-bomd-water` closed
+2026-07-25** (resume of WIP — verified green, merged, spec deleted).
+
+## Closed — CP2K xl-bomd-water (2026-07-25)
+
+| Queue | Spec (deleted; see git) | Shipped |
+| ----- | ----------------------- | ------- |
+| cp2k-method-loop | xl-bomd-water | `XlBomd` + `guess_P` + `GPWEvaluator::xl_bomd`; `reg_xl-bomd-water` NVE drift 1.2e-5 |
 
 ## Closed — CP2K capability claude wave 1 (2026-07-25)
 
@@ -60,9 +65,7 @@ on `wf/xl-bomd-water` — its spec lives on that branch, not on `dev`.
 | ----- | ------------------------ | ------------------ |
 | cp2k-method-loop claude wave 1 | gpw-kpoints-si, gpw-variable-cell-ice, dfpt-phonon-si, berry-polarization, periodic-mp2-si | MP k-point GPW RKS; GPW variable-cell relax vs CP2K CELL_OPT; Γ-point DFPT phonons (PW); KSV Berry-phase polarization (PW); Γ-point canonical GPW MP2 foothold |
 
-`xl-bomd-water` incomplete: WIP checkpoint `61d235f4` on `wf/xl-bomd-water`
-(impl + spec + regression skeleton, untested). Do not re-create closed slugs
-without superseding intent.
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — MetalWalls capability wave 3 (2026-07-24)
 
