@@ -112,6 +112,10 @@ struct GpwResult {
     ///        (length = linearly independent basis directions at that k).
     ///        Multi-k UKS: α channel (β is internal; use `eps_beta` only for Γ).
     std::vector<std::vector<double>> eps_k;
+    /// @brief Complex Bloch MO coefficients per k (nb × m_k, columns =
+    ///        orbitals, ascending energy). Empty for Γ / UKS runs. Required
+    ///        input to multi-k `GpwDft::mp2`.
+    std::vector<linalg::CplxMatrix> C_k;
     /// @brief Total sampled k-points after mesh / TR fold / explicit list.
     int n_kpts = 0;
     /// @brief k-points owned by this MPI rank under round-robin
@@ -272,24 +276,28 @@ class GpwDft {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
-    /// @brief Γ-point GPW MP2 correlation on the converged closed-shell
-    ///        orbitals of the last `run()` (product: RI-GPW; optional
-    ///        Poisson foothold when `mp2_ri = false`).
+    /// @brief GPW MP2 correlation on the converged closed-shell orbitals of
+    ///        the last `run()` — Γ (real) or multi-k (complex Bloch).
     ///
-    /// Product path (`mp2_ri`, default true, periodic only): three-index
-    /// \(B_{ia}(\mathbf G)\) intermediates via FFT of \(\psi_i\psi_a\),
-    /// \((ia|jb)=(w/N)\sum B_{ia}^* B_{jb}\) (Del Ben, Hutter,
-    /// VandeVondele, JCTC 8, 4177 (2012); CP2K `METHOD MP2_GPW`). Foothold
-    /// path: one Poisson solve per pair + real-space quadrature
-    /// (`DIRECT_CANONICAL` class). Virtual space capped by `mp2_n_virt`;
-    /// `e_corr` applies `mp2_os_scale` / `mp2_ss_scale`.
+    /// **Γ path** (`n_kpts == 0`): product RI-GPW (`mp2_ri`, default true,
+    /// periodic) or Poisson foothold (`mp2_ri = false` / isolated).
+    ///
+    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): momentum-
+    /// conserving RI-GPW sum over sampled k (Del Ben / CP2K `MP2_GPW` +
+    /// `&KPOINTS`). Equal-weight meshes
+    /// (\(E=\frac1{N_k}\sum_{k_i k_j k_a}\)); pair densities are complex,
+    /// Coulomb via linear real Poisson on Re/Im. Requires `mp2_ri` product
+    /// (Poisson multi-k foothold not offered). Prefer
+    /// `k_time_reversal = false` so weights stay equal.
+    ///
+    /// Virtual space capped by `mp2_n_virt`; `e_corr` applies
+    /// `mp2_os_scale` / `mp2_ss_scale`.
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned MP2 result (valid until the next `mp2()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
     /// @throws std::invalid_argument for UKS, for `use_ot` (no canonical
-    ///         virtuals), for multi-k SCF results (k-point MP2 residual),
-    ///         when no virtuals remain, or for a vanishing HOMO–LUMO gap
-    ///         (< 1e-6 Ha; degenerate denominators).
+    ///         virtuals), when multi-k `C_k` is missing, when no virtuals
+    ///         remain, or for a vanishing min HOMO–LUMO gap (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
   private:
