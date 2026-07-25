@@ -106,7 +106,7 @@ a proven shape.
 | Soft / meso | soft LJ/Coul, Yukawa, DPD (+ multi-type \(a_{ij}\)); λ TI; Widom; H-REMD λ |
 | Paths / replicas | NEB, dimer, string, IRC, T-REMD, H-REMD, PIMD+Rg² |
 | Sampling | MC NVT/NPT/μVT; Distance/Angle/Dihedral CV + umbrella; 1D + **multi-CV** well-tempered metaD; multi-window WHAM (molrs) |
-| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW analytic fixed-\(P\)+Pulay stress (RKS Γ/k; UKS residual) |
+| Cell | isotropic + joint + anisotropic + triclinic stress relax; PW Nielsen–Martin + GPW analytic fixed-\(P\)+Pulay stress (RKS Γ/k + Γ-UKS; multi-k UKS residual) |
 | Multiscale | mechanical + electrostatic + **polarizable** QM/MM; **H link atoms**; C-PCM/COSMO/**IEF-PCM** |
 
 ### Closed queues (2026-07-23)
@@ -233,8 +233,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_pw-uks-kmesh-fe`), **metallic smearing** (`reg_pw-smearing-al`,
   bulk Fe UKS+smear `reg_pw-uks-fe-smearing`), **bands/DOS**
   (`reg_bands-dos-si`), **BOMD foothold** (`reg_pw-bomd-h`), **PW CELL_OPT**
-  (`reg_pw-variable-cell-si`), **periodic MLWF** (`reg_periodic-wannier-si`).
-  CUDA PW remains LDA / spin-unpolarized.
+  (`reg_pw-variable-cell-si`), **periodic MLWF** (`reg_periodic-wannier-si`),
+  **DFPT** Γ / finite-q / incommensurate (`reg_dfpt-phonon-si` /
+  `reg_dfpt-finite-q-si` / `reg_dfpt-incommensurate-si`). CUDA PW remains LDA
+  / spin-unpolarized.
 - Norm-conserving UPF only (no USPP/PAW). Empty UPF = toy V_loc.
 - CUDA: H·ψ / FFT / Poisson / V_eff / LDA on device; Ritz + SCF control on host.
 
@@ -243,26 +245,30 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 - Γ-point RKS + **Γ-point UKS** (PADE LSD `reg_gpw-uks-o2-gamma` + **PBE-GGA**
   `reg_gpw-uks-pbe` + **forces** `reg_gpw-uks-forces`) + **Monkhorst–Pack
   k-point RKS** and **k-point UKS** (phased lattice sums / KB / per-k DIIS;
-  `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`; **k-forces**
-  `reg_gpw-kpoint-forces`). No hybrids / meta-GGA / GAPW.
-  **Analytic cell stress** at Γ and k-points (fixed-\(P\)+Pulay product;
-  multi-SCF FD oracle; `reg_gpw-analytic-stress` / `reg_gpw-kpoint-stress` /
-  `reg_gpw-stress-water`) and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` +
-  MOLOPT `reg_gpw-variable-cell-molopt`). Open follow-ons: RPBE, k-UKS
-  forces, UKS stress, Hirshfeld MBD/TS, vdW-DF, multi-k RPA, periodic GW,
-  incommensurate DFPT (see `cp2k-method-queue.md`).
+  `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`; **k-forces** RKS
+  `reg_gpw-kpoint-forces` + UKS `reg_gpw-kpoint-uks-forces`). No hybrids /
+  meta-GGA / GAPW. **Analytic cell stress** at Γ RKS/UKS and k-points RKS
+  (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
+  `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
+  and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
+  `reg_gpw-variable-cell-molopt`). Open residuals: multi-k UKS stress,
+  multi-k G0W0, vdW-DF2/XDM/VV10 (see `cp2k-method-queue.md` after GapCensus).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
   (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
   `use_ot` (`reg_ot-minimizer-water`). **PBEsol** (`reg_gpw-pbesol-si`);
-  **revPBE** (`reg_gpw-revpbe-si`); **BLYP** (`reg_gpw-blyp-water`);
-  **Dudarev DFT+U** (`reg_gpw-dftu-nio`). Γ + multi-k **RI-GPW MP2**
-  (`reg_periodic-ri-mp2-si` / `reg_periodic-mp2-kpoints`; Poisson foothold
-  `reg_periodic-mp2-si`); Γ **dRPA** (`reg_periodic-rpa-si`).
-- DFT-D3 zero-damping, **D3(BJ)**, **D4**, **TS**, and free-atom **MBD** on GPW (PBE params;
+  **revPBE** (`reg_gpw-revpbe-si`); **RPBE** (`reg_gpw-rpbe-water`);
+  **BLYP** (`reg_gpw-blyp-water`); **Dudarev DFT+U** (`reg_gpw-dftu-nio`).
+  Γ + multi-k **RI-GPW MP2** (`reg_periodic-ri-mp2-si` /
+  `reg_periodic-mp2-kpoints`; Poisson foothold `reg_periodic-mp2-si`); Γ +
+  multi-k **dRPA** (`reg_periodic-rpa-si` / `reg_periodic-rpa-kpoints`); Γ
+  **spectral G0W0** (`reg_periodic-gw-si`).
+- DFT-D3 zero-damping, **D3(BJ)**, **D4**, **TS**, free-atom **MBD**,
+  **Hirshfeld-scaled MBD**, and **vdW-DF DRSLL** on GPW (PBE params;
   `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`, `reg_gpw-ts-ice`,
-  `reg_gpw-mbd-ice`). Molecular Gaussian path also has **DFT-D3(BJ)** / **D4**.
+  `reg_gpw-mbd-ice`, `reg_gpw-mbd-hirshfeld`, `reg_gpw-vdw-df-ice`). Molecular
+  Gaussian path also has **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

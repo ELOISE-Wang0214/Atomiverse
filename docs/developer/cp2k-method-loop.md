@@ -68,6 +68,17 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-25 harness wave 3 (parent `dev` @ `0a642122`):** 8 merged →
+  done: `gpw-rpbe-water`, `gpw-kpoint-uks-forces`, `gpw-uks-stress`,
+  `gpw-vdw-df-ice`, `gpw-mbd-hirshfeld`, `periodic-rpa-kpoints`,
+  `periodic-gw-si`, `dfpt-incommensurate-si`. Incomplete remaining **0**;
+  pending residual **0** (census list emptied — **not** queue exhausted);
+  blocked **5**. Specs closed (deleted) for all 8. Roadmap: RPBE ✓,
+  vdW-DF ✓ (DRSLL), Periodic GW ✓ (Γ spectral G0W0; multi-k residual);
+  Hirshfeld-scaled MBD/TS; multi-k dRPA residual closed; Γ-UKS stress +
+  multi-k UKS forces + incommensurate DFPT productized (multi-k UKS stress
+  residual). Clearup already ran (no isolation worktrees; no builds).
+  **Queue not exhausted** — next wave GapCensus. No push.
 - **2026-07-25 GapCensus wave 3 (parent `dev` @ `def040bd`):** recover
   clean (incomplete=0, CP2K specs=0, `wf/*`=0, builds=none). Prior pending
   **3** re-verified true gaps; **+5** residuals (`gpw-kpoint-uks-forces`,

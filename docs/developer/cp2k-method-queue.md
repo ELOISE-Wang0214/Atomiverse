@@ -190,20 +190,36 @@ table flips** (nothing new merged); open-follow-on + forces/stress/RPA
 prose refreshed; stale index Cell “GPW strain-FD” → analytic. **Pending
 = 8**; **in_progress = 0**.
 
+**Harness wave 3 2026-07-25 (parent `dev` @ `0a642122`):** 8 staffed
+slugs merged → `## done` (`gpw-rpbe-water`, `gpw-kpoint-uks-forces`,
+`gpw-uks-stress`, `gpw-vdw-df-ice`, `gpw-mbd-hirshfeld`,
+`periodic-rpa-kpoints`, `periodic-gw-si`, `dfpt-incommensurate-si`).
+Specs deleted on close. **Pending residual = 0** (staff batch emptied
+the census pending list — **not** queue exhausted; GapCensus owns next
+discovery). `## in_progress` empty. Roadmap flips: RPBE ✓, vdW-DF ✓
+(DRSLL), Periodic GW ✓ (Γ spectral G0W0@PBE; multi-k residual),
+Hirshfeld-scaled MBD/TS prose; multi-k dRPA residual closed; Γ-UKS
+stress productized (multi-k UKS stress residual); multi-k UKS forces
+productized; incommensurate DFPT productized. **Blocked = 5** unchanged.
+
 ## pending
 
-- [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; `XcKind` still lacks RPBE after revPBE ✓ — Hammer–Hansen–Nørskov exchange on shared GGA grid
-- [ ] `gpw-kpoint-uks-forces` | GPW analytic forces at multi-k UKS | gpw | O₂ (tiny cell) | DZVP-MOLOPT-GTH | forces Ha/Bohr | tree follow-on (`gpw_forces_*` throws k-point UKS); after Γ-UKS forces ✓ + k-RKS forces ✓ + k-UKS energy ✓; CP2K Quickstep UKS+k twin
-- [ ] `gpw-uks-stress` | GPW analytic cell stress for UKS | gpw | O₂ / open-shell | DZVP-MOLOPT-GTH | Voigt stress Ha/Bohr³ | `gpw_stress` throws UKS at Γ and multi-k; after closed-shell Γ/k stress ✓ + Γ-UKS forces ✓; CP2K NUMERICAL stress twin
-- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih / water dimer | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / free-atom MBD ✓ order
-- [ ] `gpw-mbd-hirshfeld` | Hirshfeld volume ratios for TS/MBD | gpw | water dimer / ice | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 Hirshfeld ○ after free-atom MBD ✓ / TS ✓ (volume_ratio=1); CP2K + libMBD Hirshfeld pin; deeper productization before XDM/VV10
-- [ ] `periodic-rpa-kpoints` | Multi-k RI-GPW dRPA residual | gpw | Si (tiny k-mesh) | MOLOPT+GTH | E_c Ha | roadmap §10 multi-k RPA residual after Γ dRPA ✓ (`reg_periodic-rpa-si`); `GpwDft::direct_rpa` throws nk>1; CP2K WF_CORRELATION RPA twin
-- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓ + Γ RPA ✓; not molecular G0W0 (PySCF loop); prefer after multi-k RPA residual if surface-shared
-- [ ] `dfpt-incommensurate-si` | Incommensurate-q DFPT phonons (PW) | response | Si | NC-UPF | ω(q) | after finite-q X commensurate product ✓ (`reg_dfpt-finite-q-si`); `dfpt_phonon.h` incommensurate Sternheimer follow-on; CP2K DFPT / PHONON twin
+_(empty after harness wave 3 — GapCensus must refill from tree/roadmap ○)_
 
 ## in_progress
 
-_(empty — harness wave 2 closed all staffed `[~]`; GapCensus wave 3 found no incomplete)_
+_(empty — harness wave 3 closed all staffed slugs; no residual `[~]`)_
+
+## done (harness wave 3 2026-07-25)
+
+- [x] `gpw-rpbe-water` | GPW RPBE GGA (`XcKind::RPBE`) | gpw | `regressions/gpw/gpw-rpbe-water` | ratio **perf_exempt** (dual-gate \|E_RPBE−E_PBE\|) | 2026-07-25
+- [x] `gpw-kpoint-uks-forces` | Multi-k UKS analytic ionic forces | gpw | `regressions/gpw/gpw-kpoint-uks-forces` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-uks-stress` | Γ-UKS analytic fixed-P cell stress | gpw | `regressions/gpw/gpw-uks-stress` | ratio **perf_exempt** (multi-k UKS stress residual) | 2026-07-25
+- [x] `gpw-vdw-df-ice` | Nonlocal vdW-DF (DRSLL) correlation | gpw | `regressions/gpw/gpw-vdw-df-ice` | ratio **perf_exempt** (E_disp pin) | 2026-07-25
+- [x] `gpw-mbd-hirshfeld` | Hirshfeld volume ratios for TS/MBD | gpw | `regressions/gpw/gpw-mbd-hirshfeld` | ratio **perf_exempt** (E_disp + V/V_free) | 2026-07-25
+- [x] `periodic-rpa-kpoints` | Multi-k RI-GPW dRPA residual | gpw | `regressions/gpw/periodic-rpa-kpoints` | ratio **perf_exempt** | 2026-07-25
+- [x] `periodic-gw-si` | Γ-point spectral G0W0 (periodic Si) | gpw | `regressions/gpw/periodic-gw-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `dfpt-incommensurate-si` | Incommensurate-q DFPT phonons (PW) | response | `regressions/response/dfpt-incommensurate-si` | ratio **perf_exempt** | 2026-07-25
 
 ## done (harness wave 2 2026-07-25)
 

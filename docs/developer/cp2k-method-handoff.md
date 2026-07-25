@@ -1,6 +1,58 @@
 # CP2K capability loop — handoff
 
-## Harness wave 2 2026-07-25 (parent `dev` @ `f5739506`)
+## Harness wave 3 2026-07-25 (parent `dev` @ `0a642122`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **0** (no residual `[~]`) |
+| Open CP2K specs | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Specs closed this harness | **8** (deleted on close) |
+| Unmerged staff `wf/*` | **0** for the 8 wave slugs (clearup already ran) |
+| Isolation worktrees | **0** (main tree only) |
+| Leftover builds | **none** |
+| Pending gaps | **0** residual from prior census list (not exhausted — GapCensus owns refill) |
+| Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done this wave | **8** landings (see table) |
+| Oracle | `tools/cp2k_oracle/` offline pins only |
+| Loop docs | queue / loop / handoff / roadmap **synced** |
+
+### Wave staff → done
+
+| Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ---------- | --------------------------------------------- |
+| `gpw-rpbe-water` | gpw | `reg_gpw-rpbe-water` | **perf_exempt** (dual-gate vs PBE) |
+| `gpw-kpoint-uks-forces` | gpw | `reg_gpw-kpoint-uks-forces` | **perf_exempt** |
+| `gpw-uks-stress` | gpw | `reg_gpw-uks-stress` | **perf_exempt** (Γ-UKS; multi-k UKS stress residual) |
+| `gpw-vdw-df-ice` | gpw | `reg_gpw-vdw-df-ice` | **perf_exempt** (E_disp pin) |
+| `gpw-mbd-hirshfeld` | gpw | `reg_gpw-mbd-hirshfeld` | **perf_exempt** (E_disp + V/V_free) |
+| `periodic-rpa-kpoints` | gpw | `reg_periodic-rpa-kpoints` | **perf_exempt** |
+| `periodic-gw-si` | gpw | `reg_periodic-gw-si` | **perf_exempt** |
+| `dfpt-incommensurate-si` | response | `reg_dfpt-incommensurate-si` | **perf_exempt** |
+
+### Roadmap ○→✓ this harness
+
+| Row | Doc | Note |
+| --- | --- | ---- |
+| RPBE | `dft.md` §3 | `XCType`/`XcKind::RPBE`; GPW dual-gate |
+| vdW-DF | `dft.md` §8 | DRSLL nonlocal on GPW (`reg_gpw-vdw-df-ice`) |
+| Periodic GW | `dft.md` §10 | Γ spectral G0W0@PBE product; multi-k residual |
+| Hirshfeld volumes | `dft.md` §8 prose | density-scaled TS/MBD (`reg_gpw-mbd-hirshfeld`) |
+| Multi-k dRPA residual | `dft.md` §10 prose | closed (`reg_periodic-rpa-kpoints`) |
+| Multi-k UKS forces / Γ-UKS stress / incommensurate DFPT | prose + index | productized; multi-k UKS stress residual |
+
+### Pending residual (next Assign / GapCensus)
+
+_(none from prior census — GapCensus must re-diff tree vs roadmap ○ and refill
+`## pending`.)_ Known tree residuals (not yet queue rows): multi-k UKS stress,
+multi-k G0W0, vdW-DF2/XDM/VV10, BP86/B97/… molecular GGA, blocked hybrid/GAPW/PAW/meta-GGA/CUDA-GPW.
+
+Do **not** staff PySCF deferred specs. No push from parent.
+**Queue not exhausted** — next wave starts with GapCensus.
+
+---
+
+## Harness wave 2 2026-07-25 (parent `dev` @ `f5739506`) — historical
 
 | Field | Value |
 | ----- | ----- |
