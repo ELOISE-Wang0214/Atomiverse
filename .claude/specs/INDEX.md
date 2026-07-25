@@ -40,6 +40,12 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
+## Closed on branch (pending merge) — `wannier-centers` (2026-07-25)
+
+| Queue | Spec | Shipped |
+| ----- | ---- | ------- |
+| cp2k-method-loop | wannier-centers | `cpu::scf::WannierCenters` Foster–Boys Jacobi; `reg_wannier-centers` H₂/H₂O STO-3G |
+
 MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
 (2026-07-24) staffed 10 production-depth / residual map rows to
 `## in_progress` (still unstarted as of **wave-5 gap-census** 2026-07-24:
