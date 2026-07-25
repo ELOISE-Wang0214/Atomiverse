@@ -91,7 +91,7 @@ struct GpwAtom {
 ///
 /// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `RPBE` / `BLYP` — pure GGA
 /// (shared `evaluate_xc`). RKS supports all six; Γ-UKS supports `PADE` /
-/// `PBE` / `PBEsol` (spin-GGA path).
+/// `PBE` / `PBEsol` / `BLYP` (spin-GGA path).
 enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
 
 /// @brief GPW SCF result with an energy decomposition.

@@ -592,17 +592,20 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     double e_xc = 0.0;
     if (uks) {
-        // Spin XC path matches Γ-UKS SCF / forces (PADE LSD, PBE, PBEsol).
+        // Spin XC path matches Γ-UKS SCF / forces (PADE LSD, PBE, PBEsol, BLYP).
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
-            && cfg.xc != XcKind::PBEsol)
+            && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::BLYP)
             throw std::invalid_argument(
-                "gpw_stress analytic UKS: XcKind must be PADE, PBE, or PBEsol");
+                "gpw_stress analytic UKS: XcKind must be PADE, PBE, PBEsol, or "
+                "BLYP");
         const XcOnGridSpin xc =
             cfg.xc == XcKind::PBE
                 ? xc_grid_pbe_spin(grid, rho_a, rho_b)
                 : (cfg.xc == XcKind::PBEsol
                        ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
-                       : xc_grid_pade_lsd(grid, rho_a, rho_b));
+                       : (cfg.xc == XcKind::BLYP
+                              ? xc_grid_blyp_spin(grid, rho_a, rho_b)
+                              : xc_grid_pade_lsd(grid, rho_a, rho_b)));
         e_xc = xc.e_xc;
     } else {
         const XcOnGrid xc =
