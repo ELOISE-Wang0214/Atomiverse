@@ -47,6 +47,16 @@ remaining §3/§8 ○ with offline CP2K twins: `gpw-rpbe-water`, `gpw-vdw-df-ice
 Open specs `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp` are **PySCF-queue**
 deferred items (per `.claude/specs/INDEX.md`) — not this loop's. Roadmap
 already matches `dev` — no ○/✓ flips.
+**Assign wave (claude) 2026-07-25:** staffed 6 of the 10 wave-3 `[~]` resumes
+(no pending promoted; all picks already in_progress): `gpw-kpoints-si`
+(oldest resume, wave-2 leftover), `gpw-variable-cell-ice`, `dfpt-phonon-si`,
+`xl-bomd-water`, `berry-polarization`, `periodic-mp2-si`. Held `[~]` for next
+wave: `wannier-centers` / `cpmd-water` (surface overlap with
+`berry-polarization` / `xl-bomd-water` picks — k-path and AIMD propagator
+files), `mpi-gpw-scaling-4rank` / `mpi-pw-scaling-4rank` (infra; contend with
+`gpw-kpoints-si` / `periodic-mp2-si` solver trees). No pick depends on
+another pick. All picks are write-first: no open spec / no `wf/*` / no
+regression exists for any.
 
 ## pending
 
@@ -67,6 +77,9 @@ already matches `dev` — no ○/✓ flips.
 ## in_progress
 
 <!-- assign wave 3 2026-07-24: 1 resume + 9 new; staff 10 -->
+<!-- assign wave (claude) 2026-07-25: staffed 6 of 10 [~] — gpw-kpoints-si,
+     gpw-variable-cell-ice, dfpt-phonon-si, xl-bomd-water, berry-polarization,
+     periodic-mp2-si; wannier-centers / cpmd-water / mpi-*-scaling held -->
 - [~] `gpw-kpoints-si` | k-point GPW RKS | gpw | Si | DZVP-MOLOPT-GTH + GTH-PBE | e_tot Ha | **resume** wave 2 leftover; roadmap: GPW Γ-only / no Gaussian k-path; CP2K Quickstep k-points; **dep:** Γ energy/forces pins ✓; **no open spec / no wf merge / no regression** — write-first on resume
 - [~] `gpw-variable-cell-ice` | GPW variable-cell relax | gpw | ice Ih | DZVP-MOLOPT-GTH | cell / stress | productization after GPW stress; CP2K CELL_OPT; **dep:** `gpw-stress-water` ✓; wave 3 new
 - [~] `dfpt-phonon-si` | DFPT phonons | response | Si | NC-UPF / GTH | ω cm⁻¹ | roadmap §11 DFPT ○; CP2K DFPT; **dep:** `fd-phonon-supercell` ✓; wave 3 new
