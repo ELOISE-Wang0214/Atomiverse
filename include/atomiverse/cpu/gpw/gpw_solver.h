@@ -102,7 +102,7 @@ struct GpwResult {
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
-    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/vdW-DF/DF2 dispersion [Hartree] (0 when off).
+    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/vdW-DF/DF2/rVV10 dispersion [Hartree] (0 when off).
     /// @brief Hirshfeld volume ratios \(V/V_{\mathrm{free}}\) when
     ///        `GpwDft::hirshfeld` was set (empty for free-atom TS/MBD).
     std::vector<double> volume_ratios;
@@ -212,17 +212,23 @@ class GpwDft {
     bool ts = false; ///< Tkatchenko–Scheffler (TS) dispersion.
     /// @brief Many-body dispersion MBD@rsSCS (PBE β=0.83, free-atom volumes).
     ///        Isolated geometry only in this product path. Mutually exclusive
-    ///        with `d3` / `d3bj` / `d4` / `ts` / `vdw_df` / `vdw_df2`.
+    ///        with `d3` / `d3bj` / `d4` / `ts` / `vdw_df` / `vdw_df2` / `rvv10`.
     bool mbd = false; ///< MBD@rsSCS (free-atom) dispersion.
     /// @brief Nonlocal vdW-DF correlation (DRSLL / DF1, post-SCF on final density).
     ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE DRSLL`. Mutually exclusive with
-    ///        `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df2`. Periodic single-grid only.
+    ///        `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df2` / `rvv10`.
+    ///        Periodic single-grid only.
     bool vdw_df = false; ///< vdW-DF (DRSLL) nonlocal correlation.
     /// @brief Nonlocal vdW-DF2 correlation (LMKLL / DF2, post-SCF on final density).
     ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE LMKLL`. Same RPS kernel as
     ///        `vdw_df`; Z_ab = −1.887. Mutually exclusive with pairwise /
-    ///        MBD / DRSLL flags. Periodic single-grid only.
+    ///        MBD / DRSLL / rVV10 flags. Periodic single-grid only.
     bool vdw_df2 = false; ///< vdW-DF2 (LMKLL) nonlocal correlation.
+    /// @brief Nonlocal rVV10 correlation (Sabatini et al.; post-SCF on final density).
+    ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE RVV10` (b=6.3, C=0.0093).
+    ///        Mutually exclusive with `d3` / `d3bj` / `d4` / `ts` / `mbd` /
+    ///        `vdw_df` / `vdw_df2`. Periodic single-grid only.
+    bool rvv10 = false; ///< rVV10 nonlocal correlation.
     /// @brief Scale TS/MBD free-atom parameters by Hirshfeld \(V/V_{\mathrm{free}}\)
     ///        from the final SCF valence density (post-SCF, density-dependent).
     ///        Requires `ts` or `mbd`. Γ-point RKS only (k-points / UKS throw).

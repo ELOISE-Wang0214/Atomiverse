@@ -32,6 +32,7 @@
 #include "atomiverse/cpu/gpw/internal/hirshfeld_volumes.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/vdw_df.h"
+#include "atomiverse/cpu/gpw/internal/rvv10.h"
 #include "atomiverse/cpu/gpw/internal/grid_fft.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
@@ -1516,27 +1517,28 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                      std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
     // Dispersion — free-atom TS/MBD/D3/D4 are geometry-only (pre-SCF).
-    // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 are
-    // deferred to post-SCF on the Γ RKS path (`fold_dispersion` / density fold).
-    // `d3`, `d3bj`, `d4`, `ts`, `mbd`, `vdw_df`, and `vdw_df2` are pairwise
-    // mutually exclusive.
+    // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 / rvv10
+    // are deferred to post-SCF on the Γ RKS path (`fold_dispersion` / density
+    // fold). `d3`, `d3bj`, `d4`, `ts`, `mbd`, `vdw_df`, `vdw_df2`, and `rvv10`
+    // are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
                              + (cfg.mbd ? 1 : 0) + (cfg.vdw_df ? 1 : 0)
-                             + (cfg.vdw_df2 ? 1 : 0);
+                             + (cfg.vdw_df2 ? 1 : 0) + (cfg.rvv10 ? 1 : 0);
     if (n_disp_flags > 1)
         throw std::runtime_error(
-            "GPW: d3, d3bj, d4, ts, mbd, vdw_df, and vdw_df2 are mutually "
-            "exclusive — set only one");
+            "GPW: d3, d3bj, d4, ts, mbd, vdw_df, vdw_df2, and rvv10 are "
+            "mutually exclusive — set only one");
     if (cfg.hirshfeld) {
         if (!(cfg.ts || cfg.mbd))
             throw std::runtime_error(
                 "GPW: hirshfeld requires ts or mbd (no standalone Hirshfeld)");
-        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.vdw_df || cfg.vdw_df2)
+        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.vdw_df || cfg.vdw_df2
+            || cfg.rvv10)
             throw std::runtime_error(
-                "GPW: hirshfeld applies only to ts/mbd, not d3/d3bj/d4/"
-                "vdw_df/vdw_df2");
+                "GPW: hirshfeld applies only to ts/mbd, not "
+                "d3/d3bj/d4/vdw_df/vdw_df2/rvv10");
         if (use_kpath)
             throw std::runtime_error(
                 "GPW: hirshfeld TS/MBD is Γ-point only (no k-point path)");
@@ -1544,8 +1546,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             throw std::runtime_error(
                 "GPW: hirshfeld TS/MBD supports closed-shell RKS only");
     }
-    if (cfg.vdw_df || cfg.vdw_df2) {
-        const char* tag = cfg.vdw_df2 ? "vdw_df2" : "vdw_df";
+    if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
+        const char* tag = cfg.rvv10    ? "rvv10"
+                          : cfg.vdw_df2 ? "vdw_df2"
+                                        : "vdw_df";
         if (!periodic)
             throw std::runtime_error(
                 std::string("GPW ") + tag
@@ -2497,14 +2501,18 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.S = S;
         // res.converged remains false — honest partial SCF.
     }
-    // Post-SCF nonlocal vdW-DF (DRSLL) / vdW-DF2 (LMKLL) on the final total
-    // density, then fold free-atom e_d3 or Hirshfeld-scaled TS/MBD via
+// Post-SCF nonlocal vdW-DF (DRSLL) / vdW-DF2 (LMKLL) / rVV10 on the final
+    // total density, then fold free-atom e_d3 or Hirshfeld-scaled TS/MBD via
     // fold_dispersion.
-    if (cfg.vdw_df || cfg.vdw_df2) {
-        if (use_prod)
+    if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
+        if (use_prod) {
+            const char* tag = cfg.rvv10    ? "rvv10"
+                              : cfg.vdw_df2 ? "vdw_df2"
+                                            : "vdw_df";
             throw std::runtime_error(
-                std::string("GPW ") + (cfg.vdw_df2 ? "vdw_df2" : "vdw_df")
+                std::string("GPW ") + tag
                 + ": multigrid not supported (single-grid only)");
+        }
         const RealMatrix& Pfinal =
             (res.P.size() > 0) ? res.P : P;
         const std::vector<double> Pvec = mat_to_vec(Pfinal, nb);
@@ -2517,8 +2525,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             const double gz = gxyz[2][g];
             sigma[g] = gx * gx + gy * gy + gz * gz;
         }
-        e_d3 = cfg.vdw_df2 ? vdw_df_lmkll(grid, rho, sigma).energy
-                           : vdw_df_drsll(grid, rho, sigma).energy;
+        if (cfg.rvv10)
+            e_d3 = rvv10_energy(grid, rho, sigma).energy;
+        else if (cfg.vdw_df2)
+            e_d3 = vdw_df_lmkll(grid, rho, sigma).energy;
+        else
+            e_d3 = vdw_df_drsll(grid, rho, sigma).energy;
     }
     fold_dispersion(res, (res.P.size() > 0) ? res.P : P);
     return res;
@@ -2674,6 +2686,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.mbd = m.mbd;
     p.vdw_df = m.vdw_df;
     p.vdw_df2 = m.vdw_df2;
+    p.rvv10 = m.rvv10;
     p.hirshfeld = m.hirshfeld;
     p.use_ot = m.use_ot;
     for (int d = 0; d < 3; ++d)
