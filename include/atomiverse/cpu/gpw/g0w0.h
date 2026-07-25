@@ -4,13 +4,13 @@
 /// User path: `GpwDft::g0w0(atoms)` after a converged closed-shell
 /// `run()` — the GPW analogue of molecular `RHF::g0w0()`
 /// (`cpu/scf/g0w0.h`). Supports **Γ** (real MOs; RI-GPW or Poisson) and
-/// **multi-k** (complex Bloch + **k-diagonal** dRPA screening; RI-GPW
-/// product only). Screening is direct RPA (dRPA) on the same
-/// `(ia|jb)` path as `GpwDft::direct_rpa`; the correlation self-energy
-/// is the spectral (frequency-exact) sum over RPA poles. Exact-exchange
-/// diagonals use truncated (MT) Coulomb so the product is G=0-safe
-/// without a periodic-HF path. Full inter-\(k\) / finite-\(q\) \(W\) is
-/// a follow-on.
+/// **multi-k** (complex Bloch + **finite-\(q\) inter-\(k\)** dRPA
+/// screening; RI-GPW product only). Screening is direct RPA (dRPA) on
+/// the same dielectric path as multi-k `GpwDft::direct_rpa`; the
+/// correlation self-energy is the spectral (frequency-exact) sum over
+/// RPA poles at each transfer \(q\). Exact-exchange diagonals use
+/// truncated (MT) Coulomb so the product is G=0-safe without a
+/// periodic-HF path.
 ///
 /// Quasiparticle equation (Newton, orbit-by-orbit, per \(k\)):
 /// \f[
@@ -30,7 +30,7 @@ namespace cpu {
 namespace gpw {
 
 /// @brief Diagonal spectral G0W0 quasiparticle energies of a closed-shell
-///        GPW RKS reference (Γ or multi-k k-diagonal product).
+///        GPW RKS reference (Γ or multi-k finite-q inter-k product).
 struct G0W0Result {
     /// @brief Quasiparticle orbital energies \(\varepsilon_p^{\mathrm{QP}}\)
     ///        [Hartree], same order as the KS MO spectrum (not re-sorted).

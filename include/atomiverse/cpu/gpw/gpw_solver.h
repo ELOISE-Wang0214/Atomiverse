@@ -367,18 +367,19 @@ class GpwDft {
 
     /// @brief Spectral G0W0 quasiparticle energies on the converged
     ///        closed-shell KS orbitals of the last `run()` — Γ (real) or
-    ///        multi-k (complex Bloch, **k-diagonal** screening).
+    ///        multi-k (complex Bloch, **finite-\(q\) inter-\(k\)** \(W\)).
     ///
-    /// dRPA screening reuses the same `(ia|jb)` path as `direct_rpa` /
-    /// `mp2` (product RI-GPW when `mp2_ri` and periodic; multi-k requires
-    /// `mp2_ri = true`). Correlation self-energy is the spectral sum over
-    /// RPA poles (molecular `RHF::g0w0` form; multi-k uses same-\(k\)
-    /// poles only). Exact-exchange diagonals use truncated (MT) Coulomb
-    /// (G=0-safe foothold). Local \(v_{\mathrm{xc}}\) is the same
-    /// functional as the SCF. Virtual space for screening capped by
-    /// `mp2_n_virt` (0 = all kept virtuals); QP levels are reported for
-    /// every MO of the converged spectrum (multi-k: at the \(k\) of the
-    /// min direct QP gap; see `G0W0Result::n_kpts` / `gap_ev`).
+    /// dRPA screening reuses the same dielectric path as multi-k
+    /// `direct_rpa` / `mp2` (product RI-GPW when `mp2_ri` and periodic;
+    /// multi-k requires `mp2_ri = true`). Correlation self-energy is the
+    /// spectral sum over finite-\(q\) RPA poles (molecular `RHF::g0w0`
+    /// form with intermediate states at \(k-q\)). Exact-exchange
+    /// diagonals use truncated (MT) Coulomb (G=0-safe foothold). Local
+    /// \(v_{\mathrm{xc}}\) is the same functional as the SCF. Virtual
+    /// space for screening capped by `mp2_n_virt` (0 = all kept
+    /// virtuals); QP levels are reported for every MO of the converged
+    /// spectrum (multi-k: at the \(k\) of the min direct QP gap; see
+    /// `G0W0Result::n_kpts` / `gap_ev`).
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned G0W0 result (valid until the next `g0w0()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.

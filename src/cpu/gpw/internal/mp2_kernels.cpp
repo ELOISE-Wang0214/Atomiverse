@@ -954,50 +954,38 @@ constexpr double kGwEta = 1e-8;
 constexpr double kGwQpeTol = 1e-8;
 constexpr int kGwQpeMaxIter = 100;
 
-/// Diagonal Re Σ_c,p(ω) with complex transition densities stored as |t|².
-double sigma_c_diag_abs2(double omega, int p, int n_occ, int n_mo,
-                         const std::vector<double>& eps,
-                         const std::vector<double>& Om,
-                         const std::vector<double>& tdm_abs2) {
-    const int n_exc = static_cast<int>(Om.size());
-    const std::size_t nmo = static_cast<std::size_t>(n_mo);
+/// One spectral Σ_c contribution: pole Ω, intermediate ε_m, scaled |t|².
+struct ScTerm {
+    double Omega = 0.0;
+    double eps_m = 0.0;
+    double t2 = 0.0; ///< |t|² × q-weight
+    bool m_occ = true;
+};
+
+/// Diagonal Re Σ_c,p(ω) from a flat list of finite-q spectral terms.
+double sigma_c_from_terms(double omega, const std::vector<ScTerm>& terms) {
     double re = 0.0;
-    for (int s = 0; s < n_exc; ++s) {
-        const double Os = Om[static_cast<std::size_t>(s)];
-        const std::size_t s0 =
-            static_cast<std::size_t>(s) * nmo * nmo
-            + static_cast<std::size_t>(p);
-        for (int m = 0; m < n_occ; ++m) {
-            const double t2 = tdm_abs2[s0 + static_cast<std::size_t>(m) * nmo];
-            const double den_r = omega + Os - eps[static_cast<std::size_t>(m)];
-            const double den2 = den_r * den_r + kGwEta * kGwEta;
-            re += t2 * den_r / den2;
-        }
-        for (int m = n_occ; m < n_mo; ++m) {
-            const double t2 = tdm_abs2[s0 + static_cast<std::size_t>(m) * nmo];
-            const double den_r = omega - Os - eps[static_cast<std::size_t>(m)];
-            const double den2 = den_r * den_r + kGwEta * kGwEta;
-            re += t2 * den_r / den2;
-        }
+    for (const ScTerm& t : terms) {
+        const double den_r =
+            t.m_occ ? (omega + t.Omega - t.eps_m) : (omega - t.Omega - t.eps_m);
+        const double den2 = den_r * den_r + kGwEta * kGwEta;
+        re += t.t2 * den_r / den2;
     }
     return re;
 }
 
-bool solve_qp_abs2(double eps_p, double vx_m_vxc, int p, int n_occ, int n_mo,
-                   const std::vector<double>& eps, const std::vector<double>& Om,
-                   const std::vector<double>& tdm_abs2, double& omega_out) {
+bool solve_qp_terms(double eps_p, double vx_m_vxc,
+                    const std::vector<ScTerm>& terms, double& omega_out) {
     double w = eps_p;
     constexpr double kH = 1e-6;
     for (int it = 0; it < kGwQpeMaxIter; ++it) {
-        const double sig =
-            sigma_c_diag_abs2(w, p, n_occ, n_mo, eps, Om, tdm_abs2);
+        const double sig = sigma_c_from_terms(w, terms);
         const double f = w - eps_p - (sig + vx_m_vxc);
         if (std::abs(f) < kGwQpeTol) {
             omega_out = w;
             return true;
         }
-        const double sig_p =
-            sigma_c_diag_abs2(w + kH, p, n_occ, n_mo, eps, Om, tdm_abs2);
+        const double sig_p = sigma_c_from_terms(w + kH, terms);
         const double dsig = (sig_p - sig) / kH;
         const double df = 1.0 - dsig;
         if (!(std::abs(df) > 1e-14))
@@ -1006,8 +994,7 @@ bool solve_qp_abs2(double eps_p, double vx_m_vxc, int p, int n_occ, int n_mo,
     }
     omega_out = w;
     return std::abs(w - eps_p
-                    - (sigma_c_diag_abs2(w, p, n_occ, n_mo, eps, Om, tdm_abs2)
-                       + vx_m_vxc))
+                    - (sigma_c_from_terms(w, terms) + vx_m_vxc))
            < 10.0 * kGwQpeTol;
 }
 
@@ -1036,6 +1023,7 @@ void spectral_g0w0_rhf_kpoints(
     const UniformGrid& grid,
     const std::vector<std::vector<Cplx>>& psi_mo_k,
     const std::vector<std::vector<double>>& eps_k,
+    const std::vector<std::array<double, 3>>& k_frac,
     const std::vector<double>& k_weights, int n_occ, int n_virt,
     const std::vector<double>& vxc_r,
     std::vector<std::vector<double>>& qp_energy_k,
@@ -1048,7 +1036,8 @@ void spectral_g0w0_rhf_kpoints(
         throw std::invalid_argument(
             "gpw spectral_g0w0_rhf_kpoints: empty k mesh");
     if (static_cast<int>(eps_k.size()) != nk
-        || static_cast<int>(k_weights.size()) != nk)
+        || static_cast<int>(k_weights.size()) != nk
+        || static_cast<int>(k_frac.size()) != nk)
         throw std::invalid_argument(
             "gpw spectral_g0w0_rhf_kpoints: per-k array length mismatch");
     if (n_occ < 1 || n_virt < 1)
@@ -1087,7 +1076,10 @@ void spectral_g0w0_rhf_kpoints(
 
     constexpr double kAmBFloor = 1e-10;
     constexpr double kOmega2Tol = 1e-10;
+    constexpr double kQTol = 1e-10;
     const double sqrt2 = std::sqrt(2.0);
+    // Equal-mesh spectral weight: each q contributes 1/N_k (N_k=1 → 1).
+    const double w_q_se = 1.0 / static_cast<double>(nk);
 
     qp_energy_k.assign(static_cast<std::size_t>(nk),
                        std::vector<double>(static_cast<std::size_t>(n_mo), 0.0));
@@ -1097,99 +1089,166 @@ void spectral_g0w0_rhf_kpoints(
                       std::vector<double>(static_cast<std::size_t>(n_mo), 0.0));
     all_converged = true;
 
+    // Per-(k,p) spectral Σ_c terms accumulated over q.
+    std::vector<std::vector<std::vector<ScTerm>>> sc_terms(
+        static_cast<std::size_t>(nk),
+        std::vector<std::vector<ScTerm>>(static_cast<std::size_t>(n_mo)));
+
     std::vector<Cplx> rho(static_cast<std::size_t>(npts));
 
+    // ── Unique q = wrap(ka − ki) ──────────────────────────────────────
+    std::vector<std::array<double, 3>> q_list;
+    auto q_index_of = [&](double qx, double qy, double qz) -> int {
+        const double tx = wrap_frac(qx), ty = wrap_frac(qy),
+                     tz = wrap_frac(qz);
+        for (std::size_t iq = 0; iq < q_list.size(); ++iq) {
+            const double dx = wrap_frac(q_list[iq][0] - tx);
+            const double dy = wrap_frac(q_list[iq][1] - ty);
+            const double dz = wrap_frac(q_list[iq][2] - tz);
+            if (std::abs(dx) < kQTol && std::abs(dy) < kQTol
+                && std::abs(dz) < kQTol)
+                return static_cast<int>(iq);
+        }
+        return -1;
+    };
     for (int ik = 0; ik < nk; ++ik) {
-        const auto& psi = psi_mo_k[static_cast<std::size_t>(ik)];
-        const auto& eps = eps_k[static_cast<std::size_t>(ik)];
+        for (int ka = 0; ka < nk; ++ka) {
+            const double qx = k_frac[static_cast<std::size_t>(ka)][0]
+                              - k_frac[static_cast<std::size_t>(ik)][0];
+            const double qy = k_frac[static_cast<std::size_t>(ka)][1]
+                              - k_frac[static_cast<std::size_t>(ik)][1];
+            const double qz = k_frac[static_cast<std::size_t>(ka)][2]
+                              - k_frac[static_cast<std::size_t>(ik)][2];
+            if (q_index_of(qx, qy, qz) < 0)
+                q_list.push_back(
+                    {{wrap_frac(qx), wrap_frac(qy), wrap_frac(qz)}});
+        }
+    }
+    const int nq = static_cast<int>(q_list.size());
+    if (nq < 1)
+        throw std::runtime_error(
+            "gpw spectral_g0w0_rhf_kpoints: empty q mesh from k differences");
 
-        // ── OV Coulomb intermediates (q = 0 Poisson) ──────────────────
-        std::vector<std::vector<Cplx>> Via(static_cast<std::size_t>(nov));
-        for (int i = 0; i < n_occ; ++i) {
-            for (int a = 0; a < n_virt; ++a) {
-                const int ia = i * n_virt + a;
-                const Cplx* pi =
-                    psi.data()
-                    + static_cast<std::size_t>(i) * static_cast<std::size_t>(npts);
-                const Cplx* pa =
-                    psi.data()
-                    + static_cast<std::size_t>(n_occ + a)
-                          * static_cast<std::size_t>(npts);
-                for (long g = 0; g < npts; ++g)
-                    rho[static_cast<std::size_t>(g)] = std::conj(pi[g]) * pa[g];
-                poisson_complex(grid, rho.data(),
-                                Via[static_cast<std::size_t>(ia)]);
+    for (int iq = 0; iq < nq; ++iq) {
+        const double q_frac[3] = {q_list[static_cast<std::size_t>(iq)][0],
+                                  q_list[static_cast<std::size_t>(iq)][1],
+                                  q_list[static_cast<std::size_t>(iq)][2]};
+
+        // Sources ik with ka = k[ik] + q on the mesh (RPA dielectric block).
+        std::vector<int> src_k;
+        std::vector<int> tgt_k;
+        src_k.reserve(static_cast<std::size_t>(nk));
+        tgt_k.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const double fx = k_frac[static_cast<std::size_t>(ik)][0]
+                              + q_frac[0];
+            const double fy = k_frac[static_cast<std::size_t>(ik)][1]
+                              + q_frac[1];
+            const double fz = k_frac[static_cast<std::size_t>(ik)][2]
+                              + q_frac[2];
+            const int ka = find_k_index(k_frac, fx, fy, fz);
+            if (ka >= 0) {
+                src_k.push_back(ik);
+                tgt_k.push_back(ka);
             }
         }
+        const int n_src = static_cast<int>(src_k.size());
+        if (n_src < 1)
+            continue;
 
-        auto contract_ov = [&](int i, int a, int j, int b) -> Cplx {
-            const int ia = i * n_virt + a;
-            const Cplx* Via_g = Via[static_cast<std::size_t>(ia)].data();
-            const Cplx* pj =
-                psi.data()
-                + static_cast<std::size_t>(j) * static_cast<std::size_t>(npts);
-            const Cplx* pb =
-                psi.data()
-                + static_cast<std::size_t>(n_occ + b)
-                      * static_cast<std::size_t>(npts);
-            Cplx s{0.0, 0.0};
-            for (long g = 0; g < npts; ++g)
-                s += Via_g[g] * (std::conj(pj[g]) * pb[g]);
-            return w_grid * s;
-        };
+        const int n_block = n_src * nov;
+        std::vector<std::vector<Cplx>> Via(
+            static_cast<std::size_t>(n_block));
+        std::vector<double> de(static_cast<std::size_t>(n_block));
+        std::vector<std::vector<Cplx>> rho_alpha(
+            static_cast<std::size_t>(n_block));
 
-        std::vector<double> de(static_cast<std::size_t>(nov));
-        for (int i = 0; i < n_occ; ++i)
-            for (int a = 0; a < n_virt; ++a) {
-                const int p = i * n_virt + a;
-                de[static_cast<std::size_t>(p)] =
-                    eps[static_cast<std::size_t>(n_occ + a)]
-                    - eps[static_cast<std::size_t>(i)];
-                if (de[static_cast<std::size_t>(p)] <= kAmBFloor)
-                    throw std::runtime_error(
-                        "gpw spectral_g0w0_rhf_kpoints: non-positive Δε at a "
-                        "(k,i,a) transition — dRPA (A−B) not PD");
-            }
+        for (int is = 0; is < n_src; ++is) {
+            const int ik = src_k[static_cast<std::size_t>(is)];
+            const int ka = tgt_k[static_cast<std::size_t>(is)];
+            const auto& psi_o = psi_mo_k[static_cast<std::size_t>(ik)];
+            const auto& psi_v = psi_mo_k[static_cast<std::size_t>(ka)];
+            const auto& eps_o = eps_k[static_cast<std::size_t>(ik)];
+            const auto& eps_v = eps_k[static_cast<std::size_t>(ka)];
 
-        CplxMatrix Vmat = xt::zeros<Cplx>({nov, nov});
-        for (int i = 0; i < n_occ; ++i)
-            for (int a = 0; a < n_virt; ++a) {
-                const int p = i * n_virt + a;
-                for (int j = 0; j < n_occ; ++j)
-                    for (int b = 0; b < n_virt; ++b) {
-                        const int q = j * n_virt + b;
-                        Vmat(p, q) = contract_ov(i, a, j, b);
+            for (int i = 0; i < n_occ; ++i) {
+                for (int a = 0; a < n_virt; ++a) {
+                    const int ia = i * n_virt + a;
+                    const int alpha = is * nov + ia;
+                    const Cplx* pi =
+                        psi_o.data()
+                        + static_cast<std::size_t>(i)
+                              * static_cast<std::size_t>(npts);
+                    const Cplx* pa =
+                        psi_v.data()
+                        + static_cast<std::size_t>(n_occ + a)
+                              * static_cast<std::size_t>(npts);
+                    rho_alpha[static_cast<std::size_t>(alpha)].resize(
+                        static_cast<std::size_t>(npts));
+                    for (long g = 0; g < npts; ++g) {
+                        const Cplx r = std::conj(pi[g]) * pa[g];
+                        rho[static_cast<std::size_t>(g)] = r;
+                        rho_alpha[static_cast<std::size_t>(alpha)]
+                                 [static_cast<std::size_t>(g)] = r;
                     }
-            }
-        for (int p = 0; p < nov; ++p) {
-            Vmat(p, p) = Cplx{Vmat(p, p).real(), 0.0};
-            for (int q = p + 1; q < nov; ++q) {
-                const Cplx avg = 0.5 * (Vmat(p, q) + std::conj(Vmat(q, p)));
-                Vmat(p, q) = avg;
-                Vmat(q, p) = std::conj(avg);
+                    // Bloch product already carries e^{iq·r}; plain Poisson.
+                    poisson_complex(grid, rho.data(),
+                                    Via[static_cast<std::size_t>(alpha)]);
+
+                    de[static_cast<std::size_t>(alpha)] =
+                        eps_v[static_cast<std::size_t>(n_occ + a)]
+                        - eps_o[static_cast<std::size_t>(i)];
+                    if (de[static_cast<std::size_t>(alpha)] <= kAmBFloor)
+                        throw std::runtime_error(
+                            "gpw spectral_g0w0_rhf_kpoints: non-positive "
+                            "Δε at a (q,k,i,a) transition — dRPA (A−B) not "
+                            "PD");
+                }
             }
         }
 
-        // Hermitian reduction M = (A−B)^{1/2}(A+B)(A−B)^{1/2} with
-        // A−B = diag(Δε), A+B = diag(Δε) + 4 V.
-        CplxMatrix M = xt::zeros<Cplx>({nov, nov});
-        for (int p = 0; p < nov; ++p) {
+        // Hermitian Coulomb form (ρ_p | ρ_q).
+        CplxMatrix Vmat = xt::zeros<Cplx>({n_block, n_block});
+        for (int p = 0; p < n_block; ++p) {
+            const Cplx* Vp = Via[static_cast<std::size_t>(p)].data();
+            for (int qq = 0; qq < n_block; ++qq) {
+                const Cplx* rq =
+                    rho_alpha[static_cast<std::size_t>(qq)].data();
+                Cplx s{0.0, 0.0};
+                for (long g = 0; g < npts; ++g)
+                    s += std::conj(Vp[g]) * rq[g];
+                Vmat(p, qq) = w_grid * s;
+            }
+        }
+        for (int p = 0; p < n_block; ++p) {
+            Vmat(p, p) = Cplx{Vmat(p, p).real(), 0.0};
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg =
+                    0.5 * (Vmat(p, qq) + std::conj(Vmat(qq, p)));
+                Vmat(p, qq) = avg;
+                Vmat(qq, p) = std::conj(avg);
+            }
+        }
+
+        // M = (A−B)^{1/2}(A+B)(A−B)^{1/2}, A−B = diag(Δε), A+B = diag+4V.
+        CplxMatrix M = xt::zeros<Cplx>({n_block, n_block});
+        for (int p = 0; p < n_block; ++p) {
             const double dep = de[static_cast<std::size_t>(p)];
             const double sp = std::sqrt(dep);
-            for (int q = 0; q < nov; ++q) {
-                const double sq = std::sqrt(de[static_cast<std::size_t>(q)]);
-                Cplx apb = 4.0 * Vmat(p, q);
-                if (p == q)
+            for (int qq = 0; qq < n_block; ++qq) {
+                const double sq = std::sqrt(de[static_cast<std::size_t>(qq)]);
+                Cplx apb = 4.0 * Vmat(p, qq);
+                if (p == qq)
                     apb += dep;
-                M(p, q) = sp * apb * sq;
+                M(p, qq) = sp * apb * sq;
             }
         }
-        for (int p = 0; p < nov; ++p) {
+        for (int p = 0; p < n_block; ++p) {
             M(p, p) = Cplx{M(p, p).real(), 0.0};
-            for (int q = p + 1; q < nov; ++q) {
-                const Cplx avg = 0.5 * (M(p, q) + std::conj(M(q, p)));
-                M(p, q) = avg;
-                M(q, p) = std::conj(avg);
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg = 0.5 * (M(p, qq) + std::conj(M(qq, p)));
+                M(p, qq) = avg;
+                M(qq, p) = std::conj(avg);
             }
         }
 
@@ -1197,86 +1256,107 @@ void spectral_g0w0_rhf_kpoints(
         CplxMatrix Z;
         eigh_hermitian(M, w2, Z);
 
-        std::vector<double> Om(static_cast<std::size_t>(nov));
-        // X+Y [s, ia] complex row-major
-        std::vector<Cplx> Xpy(static_cast<std::size_t>(nov)
-                              * static_cast<std::size_t>(nov));
-        for (int s = 0; s < nov; ++s) {
+        std::vector<double> Om(static_cast<std::size_t>(n_block));
+        std::vector<Cplx> Xpy(static_cast<std::size_t>(n_block)
+                              * static_cast<std::size_t>(n_block));
+        for (int s = 0; s < n_block; ++s) {
             double lam = w2[static_cast<std::size_t>(s)];
             if (lam < -kOmega2Tol)
                 throw std::runtime_error(
                     "gpw spectral_g0w0_rhf_kpoints: dRPA omega^2 = "
-                    + std::to_string(lam) + " Ha^2 (k=" + std::to_string(ik)
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
                     + " root " + std::to_string(s)
                     + ") is negative — imaginary excitation (no fallback)");
             if (lam <= kOmega2Tol)
                 throw std::runtime_error(
                     "gpw spectral_g0w0_rhf_kpoints: dRPA omega^2 = "
-                    + std::to_string(lam) + " Ha^2 (k=" + std::to_string(ik)
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
                     + " root " + std::to_string(s)
                     + ") is numerically zero (no fallback)");
             const double om = std::sqrt(lam);
             Om[static_cast<std::size_t>(s)] = om;
-            // (X+Y) = Ω^{-1/2} (A−B)^{1/2} z = Ω^{-1/2} sqrt(Δε) z
             const double inv_sqrt_om = 1.0 / std::sqrt(om);
-            for (int p = 0; p < nov; ++p) {
+            for (int p = 0; p < n_block; ++p) {
                 const double sp = std::sqrt(de[static_cast<std::size_t>(p)]);
                 Xpy[static_cast<std::size_t>(s)
-                        * static_cast<std::size_t>(nov)
+                        * static_cast<std::size_t>(n_block)
                     + static_cast<std::size_t>(p)] =
                     inv_sqrt_om * sp * Z(p, s);
             }
         }
 
-        // Transition |t[s,m,p]|²: t = Σ_ia √2 (X+Y)_ia^s (ia|mp)
-        // (ia|mp) = ∫ V_ia · conj(ψ_m) ψ_p
-        std::vector<double> tdm_abs2(
-            static_cast<std::size_t>(nov) * static_cast<std::size_t>(n_mo)
-                * static_cast<std::size_t>(n_mo),
-            0.0);
+        // W_s(r) and matrix elements for every target kp with km = kp − q.
         std::vector<Cplx> Ws(static_cast<std::size_t>(npts));
-        for (int s = 0; s < nov; ++s) {
+        for (int s = 0; s < n_block; ++s) {
             std::fill(Ws.begin(), Ws.end(), Cplx{0.0, 0.0});
-            for (int ia = 0; ia < nov; ++ia) {
+            for (int alpha = 0; alpha < n_block; ++alpha) {
                 const Cplx z =
                     sqrt2
                     * Xpy[static_cast<std::size_t>(s)
-                              * static_cast<std::size_t>(nov)
-                          + static_cast<std::size_t>(ia)];
+                              * static_cast<std::size_t>(n_block)
+                          + static_cast<std::size_t>(alpha)];
                 if (z.real() == 0.0 && z.imag() == 0.0)
                     continue;
-                const Cplx* Via_g = Via[static_cast<std::size_t>(ia)].data();
+                const Cplx* Via_g =
+                    Via[static_cast<std::size_t>(alpha)].data();
                 for (long g = 0; g < npts; ++g)
                     Ws[static_cast<std::size_t>(g)] += z * Via_g[g];
             }
-            const std::size_t s0 = static_cast<std::size_t>(s)
-                                   * static_cast<std::size_t>(n_mo)
-                                   * static_cast<std::size_t>(n_mo);
-            for (int m = 0; m < n_mo; ++m) {
-                const Cplx* pm =
-                    psi.data()
-                    + static_cast<std::size_t>(m)
-                          * static_cast<std::size_t>(npts);
-                for (int p = 0; p < n_mo; ++p) {
-                    const Cplx* pp =
-                        psi.data()
-                        + static_cast<std::size_t>(p)
+
+            const double Os = Om[static_cast<std::size_t>(s)];
+            for (int kp = 0; kp < nk; ++kp) {
+                // Intermediate crystal momentum km = kp − q.
+                const double fmx = k_frac[static_cast<std::size_t>(kp)][0]
+                                   - q_frac[0];
+                const double fmy = k_frac[static_cast<std::size_t>(kp)][1]
+                                   - q_frac[1];
+                const double fmz = k_frac[static_cast<std::size_t>(kp)][2]
+                                   - q_frac[2];
+                const int km = find_k_index(k_frac, fmx, fmy, fmz);
+                if (km < 0)
+                    continue;
+
+                const auto& psi_p = psi_mo_k[static_cast<std::size_t>(kp)];
+                const auto& psi_m = psi_mo_k[static_cast<std::size_t>(km)];
+                const auto& eps_m = eps_k[static_cast<std::size_t>(km)];
+
+                for (int m = 0; m < n_mo; ++m) {
+                    const Cplx* pm =
+                        psi_m.data()
+                        + static_cast<std::size_t>(m)
                               * static_cast<std::size_t>(npts);
-                    Cplx acc{0.0, 0.0};
-                    for (long g = 0; g < npts; ++g)
-                        acc += Ws[static_cast<std::size_t>(g)]
-                               * (std::conj(pm[g]) * pp[g]);
-                    acc *= w_grid;
-                    tdm_abs2[s0
-                             + static_cast<std::size_t>(m)
-                                   * static_cast<std::size_t>(n_mo)
-                             + static_cast<std::size_t>(p)] =
-                        std::norm(acc); // |t|²
+                    for (int p = 0; p < n_mo; ++p) {
+                        const Cplx* pp =
+                            psi_p.data()
+                            + static_cast<std::size_t>(p)
+                                  * static_cast<std::size_t>(npts);
+                        Cplx acc{0.0, 0.0};
+                        for (long g = 0; g < npts; ++g)
+                            acc += Ws[static_cast<std::size_t>(g)]
+                                   * (std::conj(pm[g]) * pp[g]);
+                        acc *= w_grid;
+                        const double t2 = w_q_se * std::norm(acc);
+                        if (t2 == 0.0)
+                            continue;
+                        ScTerm term;
+                        term.Omega = Os;
+                        term.eps_m = eps_m[static_cast<std::size_t>(m)];
+                        term.t2 = t2;
+                        term.m_occ = (m < n_occ);
+                        sc_terms[static_cast<std::size_t>(kp)]
+                                [static_cast<std::size_t>(p)]
+                                    .push_back(term);
+                    }
                 }
             }
         }
+    }
 
-        // MT exchange diagonals Σ_x,p = −Σ_i Re(pi|pi)
+    // ── Per-k: MT Σ_x, v_xc diagonals, Newton QP ─────────────────────
+    for (int ik = 0; ik < nk; ++ik) {
+        const auto& psi = psi_mo_k[static_cast<std::size_t>(ik)];
+        const auto& eps = eps_k[static_cast<std::size_t>(ik)];
+
         auto& sx = sigma_x_k[static_cast<std::size_t>(ik)];
         std::vector<Cplx> Vmt;
         for (int p = 0; p < n_mo; ++p) {
@@ -1302,7 +1382,6 @@ void spectral_g0w0_rhf_kpoints(
             sx[static_cast<std::size_t>(p)] = sum;
         }
 
-        // Local v_xc diagonals
         auto& vxc_d = vxc_diag_k[static_cast<std::size_t>(ik)];
         for (int p = 0; p < n_mo; ++p) {
             const Cplx* pp =
@@ -1314,21 +1393,21 @@ void spectral_g0w0_rhf_kpoints(
             vxc_d[static_cast<std::size_t>(p)] = w_grid * acc;
         }
 
-        // Newton QP per orbital
         auto& qp = qp_energy_k[static_cast<std::size_t>(ik)];
         for (int p = 0; p < n_mo; ++p) {
             const double vx_m_vxc = sx[static_cast<std::size_t>(p)]
                                    - vxc_d[static_cast<std::size_t>(p)];
             double w = eps[static_cast<std::size_t>(p)];
-            const bool ok =
-                solve_qp_abs2(eps[static_cast<std::size_t>(p)], vx_m_vxc, p,
-                              n_occ, n_mo, eps, Om, tdm_abs2, w);
+            const bool ok = solve_qp_terms(
+                eps[static_cast<std::size_t>(p)], vx_m_vxc,
+                sc_terms[static_cast<std::size_t>(ik)]
+                        [static_cast<std::size_t>(p)],
+                w);
             if (!ok)
                 all_converged = false;
             qp[static_cast<std::size_t>(p)] = w;
         }
     }
-    (void)k_weights; // k-diagonal Σ_c; weights validated above
 }
 
 } // namespace internal
