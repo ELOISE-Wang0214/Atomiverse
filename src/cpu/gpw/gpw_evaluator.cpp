@@ -106,6 +106,11 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: xl_bomd and cpmd are mutually exclusive "
                 "(XL is SCF-converged auxiliary density; CP is fictitious "
                 "orbital dynamics)");
+        if (second_gen_cp)
+            throw std::invalid_argument(
+                "GPWEvaluator: xl_bomd and second_gen_cp are mutually "
+                "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
+                "partial SCF corrector)");
         xl_.emplace(xl_bomd_k); // validates xl_bomd_k in [3, 9]
     } else {
         xl_.reset();
@@ -121,6 +126,10 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd requires the diagonalization SCF path for "
                 "the cold seed (use_ot is refused — no silent OT-CP hybrid)");
+        if (second_gen_cp)
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd and second_gen_cp are mutually exclusive "
+                "(CPMD = fictitious mass; SGCP = ASPC + partial SCF)");
         if (!(cpmd_mu > 0.0) || !std::isfinite(cpmd_mu))
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd_mu must be finite and > 0 (a.u. mass)");
@@ -137,6 +146,32 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     } else {
         cpmd_.reset();
         last_te_ev_ = 0.0;
+    }
+
+    // Second-generation CP (Kühne PRL 2007): ASPC + partial SCF corrector.
+    if (second_gen_cp) {
+        if (n_alpha + n_beta > 0)
+            throw std::invalid_argument(
+                "GPWEvaluator: second_gen_cp supports closed-shell RKS only "
+                "(n_alpha/n_beta are set)");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GPWEvaluator: second_gen_cp requires the diagonalization "
+                "SCF path (OT corrector is a follow-on)");
+        if (!(second_gen_cp_k >= 0))
+            throw std::invalid_argument(
+                "GPWEvaluator: second_gen_cp_k must be >= 0 (ASPC order K)");
+        if (!(second_gen_cp_max_iter >= 1))
+            throw std::invalid_argument(
+                "GPWEvaluator: second_gen_cp_max_iter must be >= 1 "
+                "(corrector SCF budget)");
+        if (!compute_forces)
+            throw std::invalid_argument(
+                "GPWEvaluator: second_gen_cp requires compute_forces=true "
+                "(forces at the post-corrector density)");
+        sgcp_aspc_.emplace(second_gen_cp_k);
+    } else {
+        sgcp_aspc_.reset();
     }
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
@@ -211,6 +246,104 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         // Electronic step for the *next* nuclear force evaluation.
         cpmd_->advance(last_.H_ks, last_.S, cpmd_dt);
         last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
+        return;
+    }
+
+    // ── Second-generation Car–Parrinello (ASPC + partial SCF) ───────────
+    // Cold steps (insufficient history): full max_iter SCF, record P.
+    // Warm steps: ASPC predict → SCF with corrector budget → forces at that
+    // density → Kolafa correct + record (Kühne PRL 98, 066401 (2007)).
+    if (sgcp_aspc_) {
+        xt::xtensor<double, 2> P_pred;
+        const bool have_pred = sgcp_aspc_->predict(P_pred);
+        const ATV::cpu::linalg::RealMatrix* guess_c =
+            (last_.C.size() > 0) ? &last_.C : nullptr;
+        const ATV::cpu::linalg::RealMatrix* guess_p = nullptr;
+        const int saved_max = solver_->max_iter;
+        if (have_pred) {
+            // Layout convert: ASPC uses default-layout xtensor; GPW is
+            // column-major RealMatrix.
+            const auto n0 = P_pred.shape(0);
+            const auto n1 = P_pred.shape(1);
+            sgcp_guess_p_ = xt::zeros<double>({n0, n1});
+            for (std::size_t i = 0; i < n0; ++i)
+                for (std::size_t j = 0; j < n1; ++j)
+                    sgcp_guess_p_(i, j) = P_pred(i, j);
+            guess_p = &sgcp_guess_p_;
+            solver_->max_iter = second_gen_cp_max_iter;
+        }
+        try {
+            last_ = solver_->run(atoms, guess_c, guess_p);
+        } catch (...) {
+            solver_->max_iter = saved_max;
+            throw;
+        }
+        solver_->max_iter = saved_max;
+
+        if (last_.P.size() > 0) {
+            // Ensure H_ks / S for force-at-density when SCF stored orbitals
+            // without the fixed-density payload.
+            if (last_.H_ks.size() == 0 || last_.S.size() == 0) {
+                const int saved = solver_->max_iter;
+                solver_->max_iter = 0;
+                try {
+                    auto tmp = solver_->run(atoms, /*guess_C=*/nullptr,
+                                            &last_.P);
+                    last_.H_ks = std::move(tmp.H_ks);
+                    last_.S = std::move(tmp.S);
+                    // Keep energy / P / C / iters from the corrector SCF.
+                } catch (...) {
+                    solver_->max_iter = saved;
+                    throw;
+                }
+                solver_->max_iter = saved;
+            }
+            xt::xtensor<double, 2> P_scf = xt::zeros<double>(
+                {last_.P.shape(0), last_.P.shape(1)});
+            for (std::size_t i = 0; i < last_.P.shape(0); ++i)
+                for (std::size_t j = 0; j < last_.P.shape(1); ++j)
+                    P_scf(i, j) = last_.P(i, j);
+            if (have_pred) {
+                xt::xtensor<double, 2> P_corr;
+                sgcp_aspc_->correct(P_scf, P_pred, P_corr);
+                sgcp_aspc_->record(P_corr);
+            } else {
+                sgcp_aspc_->record(P_scf);
+            }
+        } else {
+            sgcp_aspc_->reset();
+        }
+
+        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
+            if (last_.C.size() == 0 || last_.P.size() == 0
+                || last_.H_ks.size() == 0)
+                throw std::runtime_error(
+                    "GPWEvaluator: second_gen_cp force path needs P, C, H_ks "
+                    "from the corrector SCF");
+            const int nb = static_cast<int>(last_.C.shape(0));
+            const int n_occ = solver_->n_occ;
+            linalg::RealMatrix C_occ = xt::zeros<double>(
+                {static_cast<std::size_t>(nb),
+                 static_cast<std::size_t>(n_occ)});
+            for (int mu = 0; mu < nb; ++mu)
+                for (int i = 0; i < n_occ; ++i)
+                    C_occ(mu, i) = last_.C(mu, i);
+            const auto F = gpw_forces_at_density(atoms, *solver_, last_.P,
+                                                 C_occ, last_.H_ks);
+            AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+            AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+            AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+            for (int i = 0; i < n; ++i) {
+                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            }
+        }
         return;
     }
 

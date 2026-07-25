@@ -15,6 +15,7 @@
 #include "atomiverse/cpu/gpw/cpmd.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/xl_bomd.h"
+#include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {
@@ -108,6 +109,18 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief Electronic (and nuclear) timestep [fs]. **Must match** the
     ///        `VelocityVerlet` dt used on the outer MD loop.
     double cpmd_dt = 0.1;
+    /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
+    ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
+    ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
+    ///        Niklasson XL-BOMD). Closed-shell RKS Γ diagonalization only —
+    ///        `build()` throws with UKS, `use_ot`, `cpmd`, or `xl_bomd`.
+    ///        Requires `compute_forces=true`.
+    bool second_gen_cp = false;
+    /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
+    int second_gen_cp_k = 3;
+    /// @brief Corrector SCF iteration budget (≪ full BOMD `max_iter`).
+    ///        Production steps after ASPC is warm use this cap.
+    int second_gen_cp_max_iter = 5;
     /// @brief Dudarev DFT+U (PLUS_U); empty disables. U−J in eV per entry.
     std::vector<PlusU> plus_u;
     /// @brief Per-atom initial spin seed for UKS AFM/FM (0 or n_atoms).
@@ -168,6 +181,10 @@ class GPWEvaluator : public cpu::GPW {
     /// CPMD electronic propagator (engaged when `cpmd`).
     std::optional<Cpmd> cpmd_;
     double last_te_ev_ = 0.0; ///< last electronic KE [eV]
+    /// Second-gen CP ASPC density history (engaged when `second_gen_cp`).
+    std::optional<scf::ASPCPredictor> sgcp_aspc_;
+    /// Scratch for ASPC → column-major `guess_P` (lifetime covers `run`).
+    linalg::RealMatrix sgcp_guess_p_;
 };
 
 } // namespace gpw
