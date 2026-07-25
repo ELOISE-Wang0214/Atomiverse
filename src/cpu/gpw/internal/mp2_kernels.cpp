@@ -728,112 +728,193 @@ void direct_rpa_rhf_energy_kpoints(
         throw std::invalid_argument(
             "gpw direct_rpa_rhf_energy_kpoints: k_weights must sum to 1");
 
-    // Product multi-k dRPA: k-diagonal (vertical) plasmon formula.
-    // For each sampled k, build the Coulomb-only Casida spectrum from
-    // same-k pair densities (q = 0) via RI-GPW Poisson, reduce with the
-    // Furche formula, and Brillouin-zone average
-    //   E_c = Σ_k w_k · ½(Σ_s Ω_{k,s} − Tr A_k).
+    // Product multi-k dRPA: finite-q inter-k dielectric (Furche plasmon).
+    // q-points are unique wrapped differences ka − ki over the sampled k mesh
+    // (Γ-avoiding MP meshes are not groups under addition, so q ≠ k in
+    // general). For each transfer q, Casida from transitions i_k → a_{k+q}
+    // for every ik with k+q on the mesh, Coulomb at q (RI-GPW Poisson),
+    // Furche-averaged
+    //   E_c = Σ_q w_q · ½(Σ_s Ω_{q,s} − Tr A_q),
+    // with w_q = n_src(q) / N_k² * N_k = n_src(q)/N_k  so Σ_q w_q = 1 when
+    // every ordered pair (ki,ka) contributes once (n_src summed over q = N_k).
     // Recovers the real Γ formula when N_k = 1 and orbitals are real.
-    // Full q-resolved inter-k coupling is a follow-on (finite-q dielectric).
     constexpr double kAmBFloor = 1e-10;
     constexpr double kOmega2Tol = 1e-10;
+    constexpr double kQTol = 1e-10;
 
     e_corr = 0.0;
     tr_A = 0.0;
     omega.clear();
     std::vector<Cplx> rho(static_cast<std::size_t>(npts));
 
+    // Unique q = wrap(ka − ki) over all ordered pairs.
+    std::vector<std::array<double, 3>> q_list;
+    auto q_index_of = [&](double qx, double qy, double qz) -> int {
+        const double tx = wrap_frac(qx), ty = wrap_frac(qy),
+                     tz = wrap_frac(qz);
+        for (std::size_t iq = 0; iq < q_list.size(); ++iq) {
+            const double dx = wrap_frac(q_list[iq][0] - tx);
+            const double dy = wrap_frac(q_list[iq][1] - ty);
+            const double dz = wrap_frac(q_list[iq][2] - tz);
+            if (std::abs(dx) < kQTol && std::abs(dy) < kQTol
+                && std::abs(dz) < kQTol)
+                return static_cast<int>(iq);
+        }
+        return -1;
+    };
     for (int ik = 0; ik < nk; ++ik) {
-        const double wk = k_weights[static_cast<std::size_t>(ik)];
-        const auto& po = psi_occ_k[static_cast<std::size_t>(ik)];
-        const auto& pv = psi_virt_k[static_cast<std::size_t>(ik)];
-        const auto& eo = eps_occ_k[static_cast<std::size_t>(ik)];
-        const auto& ev = eps_virt_k[static_cast<std::size_t>(ik)];
+        for (int ka = 0; ka < nk; ++ka) {
+            const double qx = k_frac[static_cast<std::size_t>(ka)][0]
+                              - k_frac[static_cast<std::size_t>(ik)][0];
+            const double qy = k_frac[static_cast<std::size_t>(ka)][1]
+                              - k_frac[static_cast<std::size_t>(ik)][1];
+            const double qz = k_frac[static_cast<std::size_t>(ka)][2]
+                              - k_frac[static_cast<std::size_t>(ik)][2];
+            if (q_index_of(qx, qy, qz) < 0)
+                q_list.push_back(
+                    {{wrap_frac(qx), wrap_frac(qy), wrap_frac(qz)}});
+        }
+    }
+    const int nq = static_cast<int>(q_list.size());
+    if (nq < 1)
+        throw std::runtime_error(
+            "gpw direct_rpa_rhf_energy_kpoints: empty q mesh from k "
+            "differences");
 
-        // V_ia intermediate via q = 0 Poisson (linear Re/Im).
+    for (int iq = 0; iq < nq; ++iq) {
+        const double q_frac[3] = {q_list[static_cast<std::size_t>(iq)][0],
+                                  q_list[static_cast<std::size_t>(iq)][1],
+                                  q_list[static_cast<std::size_t>(iq)][2]};
+        (void)q_frac; // diagnostics; Bloch ρ already carries e^{iq·r}
+
+        // Sources ik with ka = k[ik] + q on the mesh.
+        std::vector<int> src_k;
+        std::vector<int> tgt_k;
+        src_k.reserve(static_cast<std::size_t>(nk));
+        tgt_k.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const double fx = k_frac[static_cast<std::size_t>(ik)][0]
+                              + q_frac[0];
+            const double fy = k_frac[static_cast<std::size_t>(ik)][1]
+                              + q_frac[1];
+            const double fz = k_frac[static_cast<std::size_t>(ik)][2]
+                              + q_frac[2];
+            const int ka = find_k_index(k_frac, fx, fy, fz);
+            if (ka >= 0) {
+                src_k.push_back(ik);
+                tgt_k.push_back(ka);
+            }
+        }
+        const int n_src = static_cast<int>(src_k.size());
+        if (n_src < 1)
+            continue;
+        // Equal-pair weight: each ordered (ki,ka) contributes 1/N_k once
+        // when summed over q of n_src(q)/N_k  (Σ_q n_src = N_k when every
+        // ki has exactly one ka per… wait: Σ_q n_src(q) = N_k² ordered
+        // pairs that land on mesh = N_k² always since every (ki,ka) defines
+        // a q). So Σ_q w_q = Σ_q n_src/N_k = N_k. Need /N_k more → w_q =
+        // n_src / N_k².
+        const double wq =
+            static_cast<double>(n_src)
+            / (static_cast<double>(nk) * static_cast<double>(nk));
+
+        const int n_block = n_src * nov;
         std::vector<std::vector<Cplx>> Via(
-            static_cast<std::size_t>(nov));
-        for (int i = 0; i < n_occ; ++i) {
-            for (int a = 0; a < n_virt; ++a) {
-                const int ia = i * n_virt + a;
-                const Cplx* pi =
-                    po.data()
-                    + static_cast<std::size_t>(i) * static_cast<std::size_t>(npts);
-                const Cplx* pa =
-                    pv.data()
-                    + static_cast<std::size_t>(a) * static_cast<std::size_t>(npts);
-                for (long g = 0; g < npts; ++g)
-                    rho[static_cast<std::size_t>(g)] = std::conj(pi[g]) * pa[g];
-                poisson_complex(grid, rho.data(), Via[static_cast<std::size_t>(ia)]);
-            }
-        }
+            static_cast<std::size_t>(n_block));
+        std::vector<double> de(static_cast<std::size_t>(n_block));
+        std::vector<std::vector<Cplx>> rho_alpha(
+            static_cast<std::size_t>(n_block));
 
-        auto contract = [&](int i, int a, int j, int b) -> Cplx {
-            const int ia = i * n_virt + a;
-            const Cplx* Via_g = Via[static_cast<std::size_t>(ia)].data();
-            const Cplx* pj =
-                po.data()
-                + static_cast<std::size_t>(j) * static_cast<std::size_t>(npts);
-            const Cplx* pb =
-                pv.data()
-                + static_cast<std::size_t>(b) * static_cast<std::size_t>(npts);
-            Cplx s{0.0, 0.0};
-            for (long g = 0; g < npts; ++g)
-                s += Via_g[g] * (std::conj(pj[g]) * pb[g]);
-            return w_grid * s;
-        };
+        for (int is = 0; is < n_src; ++is) {
+            const int ik = src_k[static_cast<std::size_t>(is)];
+            const int ka = tgt_k[static_cast<std::size_t>(is)];
+            const auto& po = psi_occ_k[static_cast<std::size_t>(ik)];
+            const auto& pv = psi_virt_k[static_cast<std::size_t>(ka)];
+            const auto& eo = eps_occ_k[static_cast<std::size_t>(ik)];
+            const auto& ev = eps_virt_k[static_cast<std::size_t>(ka)];
 
-        std::vector<double> de(static_cast<std::size_t>(nov));
-        for (int i = 0; i < n_occ; ++i)
-            for (int a = 0; a < n_virt; ++a) {
-                const int p = i * n_virt + a;
-                de[static_cast<std::size_t>(p)] =
-                    ev[static_cast<std::size_t>(a)] - eo[static_cast<std::size_t>(i)];
-                if (de[static_cast<std::size_t>(p)] <= kAmBFloor)
-                    throw std::runtime_error(
-                        "gpw direct_rpa_rhf_energy_kpoints: non-positive Δε "
-                        "at a (k,i,a) transition — dRPA (A−B) not PD");
-            }
-
-        CplxMatrix Vmat = xt::zeros<Cplx>({nov, nov});
-        for (int i = 0; i < n_occ; ++i)
-            for (int a = 0; a < n_virt; ++a) {
-                const int p = i * n_virt + a;
-                for (int j = 0; j < n_occ; ++j)
-                    for (int b = 0; b < n_virt; ++b) {
-                        const int q = j * n_virt + b;
-                        Vmat(p, q) = contract(i, a, j, b);
+            for (int i = 0; i < n_occ; ++i) {
+                for (int a = 0; a < n_virt; ++a) {
+                    const int ia = i * n_virt + a;
+                    const int alpha = is * nov + ia;
+                    const Cplx* pi =
+                        po.data()
+                        + static_cast<std::size_t>(i)
+                              * static_cast<std::size_t>(npts);
+                    const Cplx* pa =
+                        pv.data()
+                        + static_cast<std::size_t>(a)
+                              * static_cast<std::size_t>(npts);
+                    rho_alpha[static_cast<std::size_t>(alpha)].resize(
+                        static_cast<std::size_t>(npts));
+                    for (long g = 0; g < npts; ++g) {
+                        const Cplx r = std::conj(pi[g]) * pa[g];
+                        rho[static_cast<std::size_t>(g)] = r;
+                        rho_alpha[static_cast<std::size_t>(alpha)]
+                                 [static_cast<std::size_t>(g)] = r;
                     }
-            }
-        for (int p = 0; p < nov; ++p) {
-            Vmat(p, p) = Cplx{Vmat(p, p).real(), 0.0};
-            for (int q = p + 1; q < nov; ++q) {
-                const Cplx avg = 0.5 * (Vmat(p, q) + std::conj(Vmat(q, p)));
-                Vmat(p, q) = avg;
-                Vmat(q, p) = std::conj(avg);
+                    // Full Bloch product ρ = ψ_i^{k*} ψ_a^{k+q} already
+                    // carries the e^{iq·r} envelope from the AO Bloch sum —
+                    // use plain Poisson (G=0 dropped; ρ is charge-neutral by
+                    // k-orthogonality). Do NOT also shift by q in G-space
+                    // (that double-counts the transfer; same as multi-k MP2).
+                    poisson_complex(grid, rho.data(),
+                                    Via[static_cast<std::size_t>(alpha)]);
+
+                    de[static_cast<std::size_t>(alpha)] =
+                        ev[static_cast<std::size_t>(a)]
+                        - eo[static_cast<std::size_t>(i)];
+                    if (de[static_cast<std::size_t>(alpha)] <= kAmBFloor)
+                        throw std::runtime_error(
+                            "gpw direct_rpa_rhf_energy_kpoints: non-positive "
+                            "Δε at a (q,k,i,a) transition — dRPA (A−B) not PD");
+                }
             }
         }
 
-        CplxMatrix M = xt::zeros<Cplx>({nov, nov});
-        double tr_Ak = 0.0;
-        for (int p = 0; p < nov; ++p) {
+        // Hermitian Coulomb form (ρ_p | ρ_q) = ∫ V[ρ_p]* ρ_q  (complex PD).
+        CplxMatrix Vmat = xt::zeros<Cplx>({n_block, n_block});
+        for (int p = 0; p < n_block; ++p) {
+            const Cplx* Vp = Via[static_cast<std::size_t>(p)].data();
+            for (int qq = 0; qq < n_block; ++qq) {
+                const Cplx* rq =
+                    rho_alpha[static_cast<std::size_t>(qq)].data();
+                Cplx s{0.0, 0.0};
+                for (long g = 0; g < npts; ++g)
+                    s += std::conj(Vp[g]) * rq[g];
+                Vmat(p, qq) = w_grid * s;
+            }
+        }
+        for (int p = 0; p < n_block; ++p) {
+            Vmat(p, p) = Cplx{Vmat(p, p).real(), 0.0};
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg =
+                    0.5 * (Vmat(p, qq) + std::conj(Vmat(qq, p)));
+                Vmat(p, qq) = avg;
+                Vmat(qq, p) = std::conj(avg);
+            }
+        }
+
+        CplxMatrix M = xt::zeros<Cplx>({n_block, n_block});
+        double tr_Aq = 0.0;
+        for (int p = 0; p < n_block; ++p) {
             const double dep = de[static_cast<std::size_t>(p)];
             const double sp = std::sqrt(dep);
-            tr_Ak += dep + 2.0 * Vmat(p, p).real();
-            for (int q = 0; q < nov; ++q) {
-                const double sq = std::sqrt(de[static_cast<std::size_t>(q)]);
-                Cplx apb = 4.0 * Vmat(p, q);
-                if (p == q)
+            tr_Aq += dep + 2.0 * Vmat(p, p).real();
+            for (int qq = 0; qq < n_block; ++qq) {
+                const double sq = std::sqrt(de[static_cast<std::size_t>(qq)]);
+                Cplx apb = 4.0 * Vmat(p, qq);
+                if (p == qq)
                     apb += dep;
-                M(p, q) = sp * apb * sq;
+                M(p, qq) = sp * apb * sq;
             }
         }
-        for (int p = 0; p < nov; ++p) {
+        for (int p = 0; p < n_block; ++p) {
             M(p, p) = Cplx{M(p, p).real(), 0.0};
-            for (int q = p + 1; q < nov; ++q) {
-                const Cplx avg = 0.5 * (M(p, q) + std::conj(M(q, p)));
-                M(p, q) = avg;
-                M(q, p) = std::conj(avg);
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg = 0.5 * (M(p, qq) + std::conj(M(qq, p)));
+                M(p, qq) = avg;
+                M(qq, p) = std::conj(avg);
             }
         }
 
@@ -843,29 +924,28 @@ void direct_rpa_rhf_energy_kpoints(
         (void)Z;
 
         double sum_om = 0.0;
-        for (int s = 0; s < nov; ++s) {
+        for (int s = 0; s < n_block; ++s) {
             double lam = w2[static_cast<std::size_t>(s)];
             if (lam < -kOmega2Tol)
                 throw std::runtime_error(
                     "gpw direct_rpa_rhf_energy_kpoints: dRPA omega^2 = "
-                    + std::to_string(lam) + " Ha^2 (k=" + std::to_string(ik)
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
                     + " root " + std::to_string(s)
                     + ") is negative — imaginary excitation (no fallback)");
             if (lam <= kOmega2Tol)
                 throw std::runtime_error(
                     "gpw direct_rpa_rhf_energy_kpoints: dRPA omega^2 = "
-                    + std::to_string(lam) + " Ha^2 (k=" + std::to_string(ik)
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
                     + " root " + std::to_string(s)
                     + ") is numerically zero (no fallback)");
             const double om = std::sqrt(lam);
             omega.push_back(om);
             sum_om += om;
         }
-        e_corr += wk * 0.5 * (sum_om - tr_Ak);
-        tr_A += wk * tr_Ak;
+        e_corr += wq * 0.5 * (sum_om - tr_Aq);
+        tr_A += wq * tr_Aq;
     }
     std::sort(omega.begin(), omega.end());
-    (void)k_frac; // used only for shape checks via k_weights length
 }
 
 namespace {

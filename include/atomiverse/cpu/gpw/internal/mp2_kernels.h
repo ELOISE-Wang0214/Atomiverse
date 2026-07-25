@@ -153,28 +153,33 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
                            const std::vector<double>& eps_virt, double& e_corr,
                            double& tr_A, std::vector<double>& omega);
 
-/// @brief Multi-k closed-shell RI-GPW direct RPA (dRPA) via **k-diagonal**
-///        Furche plasmon formula on complex Bloch orbitals.
+/// @brief Multi-k closed-shell RI-GPW direct RPA (dRPA) via **finite-\(q\)
+///        inter-\(k\)** Furche plasmon formula on complex Bloch orbitals.
 ///
-/// Product multi-k path: for each sampled \(k\), builds the Coulomb-only
-/// (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum from **same-\(k\)** (vertical,
-/// \(q=0\)) pair densities, reduces
-/// \((A-B)^{1/2}(A+B)(A-B)^{1/2}\) with \(A-B=\mathrm{diag}(\Delta\varepsilon)\),
-/// and Brillouin-zone averages
-/// \(E_c=\sum_k w_k\,\tfrac12\bigl(\sum_s\Omega_{k,s}-\mathrm{Tr}\,A_k\bigr)\).
-/// Recovers the real Γ formula when \(N_k=1\) and orbitals are real.
-/// Full inter-\(k\) / finite-\(q\) dielectric coupling is a follow-on.
+/// Product multi-k path: unique transfers \(q=\mathrm{wrap}(k_a-k_i)\) over
+/// the sampled mesh (Γ-avoiding MP is not a group under addition). For each
+/// \(q\), builds the Coulomb-only (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum
+/// from transitions \(i_k\to a_{k+q}\) for every \(k\) with \(k+q\) on the
+/// mesh, with pair densities \(\rho_{ia}^{k,q}=\psi_{ik}^*\psi_{a,k+q}\) and
+/// RI-GPW Poisson at transfer \(q\) (\(G=0\) dropped only at \(q=0\)). Reduces
+/// \((A-B)^{1/2}(A+B)(A-B)^{1/2}\) with \(A-B=\mathrm{diag}(\Delta\varepsilon)\)
+/// and averages
+/// \(E_c=\sum_q w_q\,\tfrac12\bigl(\sum_s\Omega_{q,s}-\mathrm{Tr}\,A_q\bigr)\)
+/// with \(w_q=n_{\mathrm{src}}(q)/N_k^2\) (Σ_q w_q = 1). Recovers the real Γ
+/// formula when \(N_k=1\) and orbitals are real.
 ///
 /// @param grid       Uniform density grid (as in the SCF).
 /// @param psi_occ_k  Per-k occupied MO grids [nk][n_occ·npts].
 /// @param psi_virt_k Per-k virtual MO grids [nk][n_virt·npts].
 /// @param eps_occ_k  Per-k occupied eigenvalues [nk][n_occ].
 /// @param eps_virt_k Per-k virtual eigenvalues [nk][n_virt].
-/// @param k_frac     Fractional k coordinates (length nk; shape / diagnostics).
-/// @param k_weights  Quadrature weights (Σ = 1).
+/// @param k_frac     Fractional k coordinates (length nk).
+/// @param k_weights  Quadrature weights (Σ = 1; shape check / future use).
 /// @param e_corr Out: dRPA correlation energy [Hartree].
-/// @param tr_A   Out: \(\sum_k w_k\,\mathrm{Tr}\,A_k\) [Hartree].
-/// @param omega  Out: positive \(\Omega_{k,s}\) across all k, ascending [Ha].
+/// @param tr_A   Out: \(\sum_q w_q\,\mathrm{Tr}\,A_q\) [Hartree].
+/// @param omega  Out: positive \(\Omega_{q,s}\) across all q-blocks, ascending
+///               [Ha]; length \(\sum_q n_{\mathrm{src}}(q)\cdot n_{\mathrm{ov}}\)
+///               (= \(N_k^2 n_{\mathrm{ov}}\) when every ordered pair lands).
 /// @throws std::invalid_argument on shape / weight errors.
 /// @throws std::runtime_error when (A−B) not PD or any \(\Omega^2\le 0\).
 void direct_rpa_rhf_energy_kpoints(
