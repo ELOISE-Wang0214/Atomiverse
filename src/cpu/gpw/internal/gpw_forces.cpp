@@ -265,8 +265,10 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             ? xc_grid_pbe(grid, rho)
             : (cfg.xc == XcKind::PBEsol
                    ? xc_grid_pbesol(grid, rho)
-                   : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
-                                             : xc_grid_pade(grid, rho)));
+                   : (cfg.xc == XcKind::RevPBE
+                          ? xc_grid_revpbe(grid, rho)
+                          : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
+                                                    : xc_grid_pade(grid, rho))));
     const std::vector<double>& v_es = es.v_r;
     // V_eff must be the SAME one the SCF converged against. When the local
     // short-range PP was collocated on the grid (the default), it is part of
