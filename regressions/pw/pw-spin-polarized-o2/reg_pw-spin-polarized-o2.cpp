@@ -50,7 +50,11 @@ int main() {
     constexpr double tol_mag = 1e-9;
     // Total energy [Ha] at the exact settings below (SG15 ONCV O, ecut=12 Ry,
     // Γ, L=8 Å, R=1.2075 Å, multiplicity 3). See REFERENCE.md for oracle note.
-    constexpr double want_e_ha = -28.3392565801;
+    // Re-pinned 2026-07-25: the Davidson subspace-Hermiticity +
+    // G-sphere-bounds fixes (see regressions/pw/berry-polarization/
+    // REFERENCE.md) legitimately lower this frozen method pin from
+    // -28.3392565801 (magnetization literature gate unchanged).
+    constexpr double want_e_ha = -28.6267426458;
     constexpr double tol_e_ha = 1.0e-3; // Ha — modest ecut / SCF tol
 
     const std::string upf = o_upf();

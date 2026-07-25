@@ -147,6 +147,91 @@ void jacobi_eigh(int n, AccReal* A, AccReal* eig, AccReal* vecs,
         vecs[i] = vecs_s[i];
 }
 
+void jacobi_eigh_hermitian(int n, std::complex<AccReal>* A, AccReal* eig,
+                           std::complex<AccReal>* vecs, int max_sweep) {
+    // Initialize eigenvectors to identity.
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j)
+            vecs[i * n + j] = (i == j) ? std::complex<AccReal>(1, 0)
+                                       : std::complex<AccReal>(0, 0);
+        eig[i] = A[i * n + i].real();
+    }
+
+    for (int sweep = 0; sweep < max_sweep; ++sweep) {
+        AccReal max_off = 0;
+        for (int i = 0; i < n; ++i)
+            for (int j = i + 1; j < n; ++j)
+                max_off = std::max(max_off, std::abs(A[i * n + j]));
+        if (max_off < AccReal(1e-14))
+            break;
+
+        for (int p = 0; p < n - 1; ++p) {
+            for (int q = p + 1; q < n; ++q) {
+                const std::complex<AccReal> apq = A[p * n + q];
+                const AccReal m = std::abs(apq);
+                if (m < AccReal(1e-14))
+                    continue;
+                const AccReal app = A[p * n + p].real();
+                const AccReal aqq = A[q * n + q].real();
+                // Phase e^{i phi} of a_pq; in the basis (e_p, e^{-i phi} e_q)
+                // the 2x2 block is real symmetric with off-diagonal m, and
+                // the standard real rotation applies.
+                const std::complex<AccReal> ph = apq / m; // e^{i phi}
+                const std::complex<AccReal> phc = std::conj(ph);
+                const AccReal theta =
+                    AccReal(0.5) * std::atan2(AccReal(2) * m, aqq - app);
+                const AccReal c = std::cos(theta), s = std::sin(theta);
+
+                // Rotate A (U columns: U_p = c e_p - s e^{-i phi} e_q,
+                //                      U_q = s e_p + c e^{-i phi} e_q).
+                A[p * n + p] = std::complex<AccReal>(
+                    c * c * app + s * s * aqq - AccReal(2) * c * s * m, 0);
+                A[q * n + q] = std::complex<AccReal>(
+                    s * s * app + c * c * aqq + AccReal(2) * c * s * m, 0);
+                A[p * n + q] = A[q * n + p] = std::complex<AccReal>(0, 0);
+                for (int r = 0; r < n; ++r) {
+                    if (r == p || r == q)
+                        continue;
+                    const std::complex<AccReal> arp = A[r * n + p];
+                    const std::complex<AccReal> arq = A[r * n + q];
+                    A[r * n + p] = c * arp - s * (phc * arq);
+                    A[r * n + q] = s * arp + c * (phc * arq);
+                    A[p * n + r] = std::conj(A[r * n + p]);
+                    A[q * n + r] = std::conj(A[r * n + q]);
+                }
+                // Rotate eigenvector columns.
+                for (int r = 0; r < n; ++r) {
+                    const std::complex<AccReal> vrp = vecs[r * n + p];
+                    const std::complex<AccReal> vrq = vecs[r * n + q];
+                    vecs[r * n + p] = c * vrp - s * (phc * vrq);
+                    vecs[r * n + q] = s * vrp + c * (phc * vrq);
+                }
+            }
+        }
+    }
+    for (int i = 0; i < n; ++i)
+        eig[i] = A[i * n + i].real();
+
+    // Sort eigenpairs ascending (callers take the first n_bands columns).
+    std::vector<int> order(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i)
+        order[static_cast<size_t>(i)] = i;
+    std::sort(order.begin(), order.end(),
+              [&](int a, int b) { return eig[a] < eig[b]; });
+    std::vector<AccReal> eig_s(static_cast<size_t>(n));
+    std::vector<std::complex<AccReal>> vecs_s(static_cast<size_t>(n) * n);
+    for (int k = 0; k < n; ++k) {
+        eig_s[static_cast<size_t>(k)] = eig[order[static_cast<size_t>(k)]];
+        for (int i = 0; i < n; ++i)
+            vecs_s[static_cast<size_t>(i * n + k)] =
+                vecs[i * n + order[static_cast<size_t>(k)]];
+    }
+    for (int i = 0; i < n; ++i)
+        eig[i] = eig_s[static_cast<size_t>(i)];
+    for (size_t i = 0; i < vecs_s.size(); ++i)
+        vecs[i] = vecs_s[i];
+}
+
 int init_subspace(const PWWorkspace& ws, int n_bands,
                   std::vector<std::complex<AccReal>>& sub_vectors) {
     int ng = ws.n_g;

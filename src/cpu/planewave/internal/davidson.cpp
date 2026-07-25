@@ -215,22 +215,37 @@ void DavidsonSolver::step(PWWorkspace& ws) {
             H_computed[j] = true;
         }
 
-        // Build subspace Hamiltonian H_sub[μ,ν] = ⟨v_μ|H|v_ν⟩
-        std::vector<AccReal> Hs(n_sub * n_sub, AccReal(0));
+        // Build subspace Hamiltonian H_sub[μ,ν] = ⟨v_μ|H|v_ν⟩. It is
+        // complex Hermitian at any k that is not time-reversal invariant;
+        // truncating it to its real part (the historical bug) corrupted
+        // the Ritz VECTORS at first order while leaving the eigenvalues
+        // plausible (second-order error) — fatal for Berry phases and
+        // any wavefunction-sensitive observable.
+        std::vector<std::complex<AccReal>> Hs(
+            static_cast<std::size_t>(n_sub) * static_cast<std::size_t>(n_sub));
         for (int mu = 0; mu < n_sub; ++mu) {
             for (int nu = mu; nu < n_sub; ++nu) {
                 std::complex<AccReal> sum(0, 0);
                 for (int ig = 0; ig < ng; ++ig)
                     sum += std::conj(sub_vectors[mu * ng + ig])
                            * H_sub_vectors[nu * ng + ig];
-                Hs[mu * n_sub + nu] = Hs[nu * n_sub + mu] = sum.real();
+                if (nu == mu) {
+                    Hs[static_cast<std::size_t>(mu * n_sub + mu)] =
+                        std::complex<AccReal>(sum.real(), 0);
+                } else {
+                    Hs[static_cast<std::size_t>(mu * n_sub + nu)] = sum;
+                    Hs[static_cast<std::size_t>(nu * n_sub + mu)] =
+                        std::conj(sum);
+                }
             }
         }
 
-        // Diagonalize subspace
-        std::vector<AccReal> sub_eig(n_sub), sub_vecs(n_sub * n_sub);
-        internal::jacobi_eigh(n_sub, Hs.data(), sub_eig.data(),
-                              sub_vecs.data());
+        // Diagonalize subspace (complex Hermitian Jacobi)
+        std::vector<AccReal> sub_eig(n_sub);
+        std::vector<std::complex<AccReal>> sub_vecs(
+            static_cast<std::size_t>(n_sub) * static_cast<std::size_t>(n_sub));
+        internal::jacobi_eigh_hermitian(n_sub, Hs.data(), sub_eig.data(),
+                                        sub_vecs.data());
 
         // Build Ritz vectors: ψ_i = Σ_μ x_{μ,i} v_μ
         std::vector<std::complex<AccReal>> ritz(nb * ng);

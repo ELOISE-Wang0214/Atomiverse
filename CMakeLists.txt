@@ -696,10 +696,12 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/planewave/internal/density_builder.cpp
             src/cpu/planewave/internal/convergence.cpp
             src/cpu/planewave/internal/smearing.cpp
+            src/cpu/planewave/internal/restricted_scf.cpp
             src/cpu/planewave/pw_solver.cpp
             src/cpu/planewave/pw_evaluator.cpp
             src/cpu/planewave/bands_dos.cpp
             src/cpu/planewave/dfpt_phonon.cpp
+            src/cpu/planewave/berry_polarization.cpp
         )
         if(NOT ATV_BUILD_HF)
             target_sources(atomiverse PRIVATE
