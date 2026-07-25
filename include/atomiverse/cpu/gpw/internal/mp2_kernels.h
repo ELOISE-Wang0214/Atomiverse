@@ -237,21 +237,24 @@ std::vector<double> exchange_diag_mt(const UniformGrid& grid,
                                      const std::vector<double>& psi_mo, int n_mo,
                                      int n_occ);
 
-/// @brief Multi-k **k-diagonal** spectral G0W0 quasiparticle energies.
+/// @brief Multi-k **finite-\(q\) inter-\(k\)** spectral G0W0 quasiparticle
+///        energies (product multi-k path).
 ///
-/// For each sampled \(k\): builds same-\(k\) (vertical, \(q=0\)) dRPA with
-/// complex \(X+Y\) amplitudes on RI-GPW Poisson pair densities, forms
-/// spectral transition densities, MT exchange diagonals, local
-/// \(v_{\mathrm{xc}}\) diagonals from the supplied real-space potential,
-/// and solves the Newton QP equation orbit-by-orbit. Recovers the real
-/// Γ spectral path when \(N_k=1\) and orbitals are real-valued complex.
-/// Full inter-\(k\) / finite-\(q\) \(W\) is a follow-on.
+/// Builds the Coulomb-only Casida spectrum for each transfer
+/// \(q=\mathrm{wrap}(k_a-k_i)\) from transitions \(i_k\to a_{k+q}\) (same
+/// dielectric as `direct_rpa_rhf_energy_kpoints`), keeps complex \(X+Y\)
+/// amplitudes, forms spectral transition potentials \(W_s^q\), and for each
+/// target \(k\) contracts intermediates at \(k-q\) into
+/// \(\mathrm{Re}\,\Sigma_c\) with weight \(1/N_k\). MT exchange diagonals and
+/// local \(v_{\mathrm{xc}}\) diagonals stay per-\(k\). Newton QP
+/// orbit-by-orbit. Recovers the real Γ spectral path when \(N_k=1\) and
+/// orbitals are real-valued complex.
 ///
 /// @param grid        Uniform density grid (as in the SCF).
 /// @param psi_mo_k    Per-k full MO grids [nk][n_mo·npts].
 /// @param eps_k       Per-k eigenvalues [nk][n_mo] [Hartree].
-/// @param k_weights   Quadrature weights (Σ = 1; unused in k-diagonal Σ_c,
-///                    kept for shape checks / future BZ averages).
+/// @param k_frac      Fractional k coordinates (length nk).
+/// @param k_weights   Quadrature weights (Σ = 1; shape check).
 /// @param n_occ       Occupied spatial MOs.
 /// @param n_virt      Virtuals in the dRPA screening space (prefix of the
 ///                    virtual block; QP covers all `n_mo`).
@@ -266,6 +269,7 @@ void spectral_g0w0_rhf_kpoints(
     const UniformGrid& grid,
     const std::vector<std::vector<Cplx>>& psi_mo_k,
     const std::vector<std::vector<double>>& eps_k,
+    const std::vector<std::array<double, 3>>& k_frac,
     const std::vector<double>& k_weights, int n_occ, int n_virt,
     const std::vector<double>& vxc_r,
     std::vector<std::vector<double>>& qp_energy_k,

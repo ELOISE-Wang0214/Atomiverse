@@ -2,6 +2,7 @@
 /// @brief GPW G0W0 kernel units: dRPA amplitudes match energy path +
 ///        X/Y norm; GpwDft::g0w0 guard throws. No SCF (unit tier).
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -116,7 +117,8 @@ TEST(GpwG0W0, G0W0UnconvergedThrows) {
 }
 
 // Multi-k kernel at N_k=1 with real-valued complex MOs recovers the real
-// Γ spectral HOMO/LUMO QP shifts on the same orbitals (no SCF).
+// Γ spectral HOMO/LUMO QP shifts on the same orbitals (no SCF). Finite-q
+// product at N_k=1 is q=0 only → same science as the real Γ path.
 TEST(GpwG0W0, KpointsNk1RecoversRealSpectral) {
     using ATV::cpu::gpw::make_uniform_grid;
     using ATV::cpu::gpw::UniformGrid;
@@ -127,6 +129,7 @@ TEST(GpwG0W0, KpointsNk1RecoversRealSpectral) {
     using ATV::cpu::gpw::internal::mo_eri_ovov;
     using ATV::cpu::gpw::internal::mo_pair_potentials_ov;
     using ATV::cpu::gpw::internal::spectral_g0w0_rhf_kpoints;
+    using std::array;
 
     const double cell[3] = {6.0, 6.0, 6.0};
     const UniformGrid grid = make_uniform_grid(cell, 25.0);
@@ -257,10 +260,11 @@ TEST(GpwG0W0, KpointsNk1RecoversRealSpectral) {
         psi_k[0][i] = Cplx{psi_all[i], 0.0};
     std::vector<std::vector<double>> eps_k = {eps};
     std::vector<double> k_w = {1.0};
+    std::vector<array<double, 3>> k_frac = {{{0.0, 0.0, 0.0}}};
     std::vector<std::vector<double>> qp_k, sx_k, vxc_k;
     bool ok = false;
-    spectral_g0w0_rhf_kpoints(grid, psi_k, eps_k, k_w, n_occ, n_virt, vxc_r,
-                              qp_k, sx_k, vxc_k, ok);
+    spectral_g0w0_rhf_kpoints(grid, psi_k, eps_k, k_frac, k_w, n_occ, n_virt,
+                              vxc_r, qp_k, sx_k, vxc_k, ok);
     ASSERT_EQ(qp_k.size(), 1u);
     ASSERT_EQ(qp_k[0].size(), static_cast<std::size_t>(n_mo));
     EXPECT_TRUE(ok);

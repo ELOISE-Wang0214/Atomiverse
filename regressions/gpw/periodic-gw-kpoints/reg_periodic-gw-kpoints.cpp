@@ -47,7 +47,9 @@ int main() {
     //  - unit tests pin N_k=1 multi-k ≡ real spectral QP
     //  - first-green absolute band on gap_ev (2026-07-26).
     //    Loose setup tol covers OMP orbital scatter on multi-k SCF.
-    constexpr double kGapRefEv = 8.009033; // eV (first-green 2026-07-26)
+    // Product multi-k path is finite-q after periodic-gw-finite-q; pin
+    // retargeted to the finite-q min-direct QP gap (same public call).
+    constexpr double kGapRefEv = 7.529834; // eV (finite-q product 2026-07-26)
     constexpr double kGapTolEv = 0.5;      // eV setup band
 
     auto atoms = si_bct(a_bohr);

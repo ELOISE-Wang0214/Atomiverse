@@ -1,8 +1,9 @@
 /// @file src/cpu/gpw/g0w0.cpp
-/// @brief GpwDft::g0w0 — Γ-point and multi-k (k-diagonal) spectral
-///        G0W0@KS on the converged RKS orbitals. dRPA screening + MT
-///        exchange + local v_xc.
+/// @brief GpwDft::g0w0 — Γ-point and multi-k (finite-q inter-k W)
+///        spectral G0W0@KS on the converged RKS orbitals. dRPA
+///        screening + MT exchange + local v_xc.
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -130,7 +131,7 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
             "GpwDft::g0w0: multi-k SCF result is missing Bloch C_k "
             "(re-run with a current multi-k path that stores orbitals)");
 
-    // ── Multi-k (complex Bloch, k-diagonal spectral G0W0) ─────────────
+    // ── Multi-k (complex Bloch, finite-q inter-k spectral G0W0) ───────
     if (multi_k) {
         if (nonperiodic)
             throw std::invalid_argument(
@@ -249,8 +250,8 @@ const G0W0Result& GpwDft::g0w0(const std::vector<GpwAtom>& atoms) {
         std::vector<std::vector<double>> qp_k, sx_k, vxc_k;
         bool ok = false;
         internal::spectral_g0w0_rhf_kpoints(
-            grid, psi_mo_k, eps_k_full, result_.k_weights, n_occ, n_virt,
-            xc_grid.vxc_r, qp_k, sx_k, vxc_k, ok);
+            grid, psi_mo_k, eps_k_full, result_.k_frac, result_.k_weights,
+            n_occ, n_virt, xc_grid.vxc_r, qp_k, sx_k, vxc_k, ok);
 
         // Min direct gaps over k; report spectrum at the k of min QP gap.
         const int homo = n_occ - 1;
