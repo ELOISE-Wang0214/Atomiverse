@@ -28,6 +28,7 @@
 #include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/g0w0.h"      // G0W0Result
 #include "atomiverse/cpu/gpw/mp2.h"       // Mp2Result
 #include "atomiverse/cpu/gpw/rpa.h"       // RpaResult
 #include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
@@ -345,10 +346,31 @@ class GpwDft {
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
 
+    /// @brief Γ-point spectral G0W0 quasiparticle energies on the converged
+    ///        closed-shell KS orbitals of the last `run()`.
+    ///
+    /// dRPA screening reuses the same `(ia|jb)` path as `direct_rpa` /
+    /// `mp2` (product RI-GPW when `mp2_ri` and periodic). Correlation
+    /// self-energy is the spectral sum over RPA poles (molecular
+    /// `RHF::g0w0` form). Exact-exchange diagonals use truncated (MT)
+    /// Coulomb (G=0-safe Γ foothold). Local \(v_{\mathrm{xc}}\) is the
+    /// same functional as the SCF. Virtual space for screening capped by
+    /// `mp2_n_virt` (0 = all kept virtuals); QP levels are reported for
+    /// every MO of the converged spectrum.
+    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// @return The owned G0W0 result (valid until the next `g0w0()`).
+    /// @throws std::logic_error before `build()` or a converged `run()`.
+    /// @throws std::invalid_argument for UKS, for `use_ot`, for multi-k
+    ///         SCF, when no virtuals remain, or for a vanishing
+    ///         HOMO–LUMO gap (< 1e-6 Ha).
+    /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
+    const G0W0Result& g0w0(const std::vector<GpwAtom>& atoms);
+
   private:
     GpwResult result_;     ///< Owned result buffer (last run).
     Mp2Result mp2_result_; ///< Owned MP2 result buffer (last mp2()).
     RpaResult rpa_result_; ///< Owned RPA result buffer (last direct_rpa()).
+    G0W0Result g0w0_result_; ///< Owned G0W0 result buffer (last g0w0()).
     bool built_ = false;   ///< Whether build() validated the configuration.
 };
 

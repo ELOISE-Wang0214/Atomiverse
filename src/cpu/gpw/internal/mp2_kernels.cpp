@@ -474,10 +474,10 @@ void mp2_rhf_energy_kpoints(
     }
 }
 
-void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
-                           const std::vector<double>& eps_occ,
-                           const std::vector<double>& eps_virt, double& e_corr,
-                           double& tr_A, std::vector<double>& omega) {
+void direct_rpa_rhf(const std::vector<double>& v_ovov,
+                    const std::vector<double>& eps_occ,
+                    const std::vector<double>& eps_virt,
+                    DirectRpaAmplitudes& out) {
     using linalg::RealMatrix;
     using linalg::sym_power;
 
@@ -485,24 +485,24 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
     const int nv = static_cast<int>(eps_virt.size());
     if (no < 1 || nv < 1)
         throw std::invalid_argument(
-            "gpw direct_rpa_rhf_energy: need n_occ >= 1 and n_virt >= 1");
+            "gpw direct_rpa_rhf: need n_occ >= 1 and n_virt >= 1");
     const std::size_t nov =
         static_cast<std::size_t>(no) * static_cast<std::size_t>(nv);
     if (v_ovov.size() != nov * nov)
         throw std::invalid_argument(
-            "gpw direct_rpa_rhf_energy: tensor size does not match "
-            "eps_occ/eps_virt");
+            "gpw direct_rpa_rhf: tensor size does not match eps_occ/eps_virt");
 
     // Singlet dRPA (α_hf = 0): A = Δε δ + 2 V, B = 2 V, index p = i*nv + a.
-    RealMatrix A = xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
-    RealMatrix B = xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
-    tr_A = 0.0;
+    RealMatrix A =
+        xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
+    RealMatrix B =
+        xt::zeros<double>({static_cast<int>(nov), static_cast<int>(nov)});
+    out.tr_A = 0.0;
     for (int i = 0; i < no; ++i)
         for (int a = 0; a < nv; ++a) {
             const int p = i * nv + a;
-            const double de =
-                eps_virt[static_cast<std::size_t>(a)]
-                - eps_occ[static_cast<std::size_t>(i)];
+            const double de = eps_virt[static_cast<std::size_t>(a)]
+                              - eps_occ[static_cast<std::size_t>(i)];
             for (int j = 0; j < no; ++j)
                 for (int b = 0; b < nv; ++b) {
                     const int q = j * nv + b;
@@ -516,7 +516,7 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
                     A(p, q) = Aval;
                     B(p, q) = two_v;
                 }
-            tr_A += A(p, p);
+            out.tr_A += A(p, p);
         }
 
     constexpr double kAmBFloor = 1e-10;
@@ -528,15 +528,15 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
         (void)U;
         if (s(0) <= kAmBFloor)
             throw std::runtime_error(
-                "gpw direct_rpa_rhf_energy: (A - B) is not positive definite "
+                "gpw direct_rpa_rhf: (A - B) is not positive definite "
                 "(lowest eigenvalue = "
                 + std::to_string(s(0))
                 + " Ha) — dRPA reduction undefined (no fallback)");
     }
-    const RealMatrix T =
-        sym_power(Mm, 0.5, kAmBFloor, "gpw direct_rpa_rhf_energy");
+    const RealMatrix T = sym_power(Mm, 0.5, kAmBFloor, "gpw direct_rpa_rhf");
+    const RealMatrix Ti =
+        sym_power(Mm, -0.5, kAmBFloor, "gpw direct_rpa_rhf");
     RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
-    // Symmetrize residual floating noise before the Hermitian eigendecomp.
     for (std::size_t r = 0; r < nov; ++r)
         for (std::size_t c = r + 1; c < nov; ++c) {
             const double v = 0.5 * (M(r, c) + M(c, r));
@@ -544,26 +544,131 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
             M(c, r) = v;
         }
     auto [w2, Z] = xt::linalg::eigh(M);
-    (void)Z;
 
-    omega.assign(nov, 0.0);
+    out.omega.assign(nov, 0.0);
+    out.X.assign(nov * nov, 0.0);
+    out.Y.assign(nov * nov, 0.0);
     double sum_om = 0.0;
     for (std::size_t s = 0; s < nov; ++s) {
         if (w2(s) < -kOmega2Tol)
             throw std::runtime_error(
-                "gpw direct_rpa_rhf_energy: dRPA omega^2 = "
-                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                "gpw direct_rpa_rhf: dRPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
                 + ") is negative — imaginary excitation (no fallback)");
         if (w2(s) <= kOmega2Tol)
             throw std::runtime_error(
-                "gpw direct_rpa_rhf_energy: dRPA omega^2 = "
-                + std::to_string(w2(s)) + " Ha^2 (root " + std::to_string(s)
+                "gpw direct_rpa_rhf: dRPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
                 + ") is numerically zero (no fallback)");
         const double w = std::sqrt(w2(s));
-        omega[s] = w;
+        out.omega[s] = w;
         sum_om += w;
+        // (X+Y) = ω^{-1/2} T z, (X−Y) = ω^{1/2} T^{-1} z
+        for (std::size_t r = 0; r < nov; ++r) {
+            double xpy = 0.0, xmy = 0.0;
+            for (std::size_t c = 0; c < nov; ++c) {
+                xpy += T(static_cast<int>(r), static_cast<int>(c))
+                       * Z(static_cast<int>(c), static_cast<int>(s));
+                xmy += Ti(static_cast<int>(r), static_cast<int>(c))
+                       * Z(static_cast<int>(c), static_cast<int>(s));
+            }
+            xpy /= std::sqrt(w);
+            xmy *= std::sqrt(w);
+            out.X[s * nov + r] = 0.5 * (xpy + xmy);
+            out.Y[s * nov + r] = 0.5 * (xpy - xmy);
+        }
     }
-    e_corr = 0.5 * (sum_om - tr_A);
+    out.e_corr = 0.5 * (sum_om - out.tr_A);
+}
+
+void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
+                           const std::vector<double>& eps_occ,
+                           const std::vector<double>& eps_virt, double& e_corr,
+                           double& tr_A, std::vector<double>& omega) {
+    DirectRpaAmplitudes full;
+    direct_rpa_rhf(v_ovov, eps_occ, eps_virt, full);
+    e_corr = full.e_corr;
+    tr_A = full.tr_A;
+    omega = std::move(full.omega);
+}
+
+std::vector<double> mo_pair_potentials_ov(const UniformGrid& grid,
+                                          const std::vector<double>& psi_occ,
+                                          int n_occ,
+                                          const std::vector<double>& psi_virt,
+                                          int n_virt) {
+    const long npts = grid.npts();
+    if (psi_occ.size()
+            != static_cast<std::size_t>(n_occ) * static_cast<std::size_t>(npts)
+        || psi_virt.size()
+               != static_cast<std::size_t>(n_virt)
+                      * static_cast<std::size_t>(npts))
+        throw std::invalid_argument(
+            "gpw mo_pair_potentials_ov: MO grid arrays do not match "
+            "n_occ/n_virt/npts");
+    if (n_occ < 0 || n_virt < 0)
+        throw std::invalid_argument(
+            "gpw mo_pair_potentials_ov: negative orbital count");
+
+    const int nov = n_occ * n_virt;
+    std::vector<double> V(static_cast<std::size_t>(nov)
+                          * static_cast<std::size_t>(npts));
+    std::vector<double> rho(static_cast<std::size_t>(npts));
+    for (int ia = 0; ia < nov; ++ia) {
+        const double* pi = psi_occ.data()
+                           + static_cast<std::size_t>(ia / n_virt)
+                                 * static_cast<std::size_t>(npts);
+        const double* pa = psi_virt.data()
+                           + static_cast<std::size_t>(ia % n_virt)
+                                 * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            rho[static_cast<std::size_t>(g)] = pi[g] * pa[g];
+        const PoissonResult pr = solve_poisson(grid, rho);
+        double* Via = V.data() + static_cast<std::size_t>(ia)
+                                      * static_cast<std::size_t>(npts);
+        for (long g = 0; g < npts; ++g)
+            Via[g] = pr.v_r[static_cast<std::size_t>(g)];
+    }
+    return V;
+}
+
+std::vector<double> exchange_diag_mt(const UniformGrid& grid,
+                                     const std::vector<double>& psi_mo, int n_mo,
+                                     int n_occ) {
+    const long npts = grid.npts();
+    const double w = grid.weight();
+    if (n_mo < 1 || n_occ < 1 || n_occ > n_mo)
+        throw std::invalid_argument(
+            "gpw exchange_diag_mt: bad n_mo/n_occ");
+    if (psi_mo.size()
+        != static_cast<std::size_t>(n_mo) * static_cast<std::size_t>(npts))
+        throw std::invalid_argument(
+            "gpw exchange_diag_mt: MO grid size mismatch");
+
+    std::vector<double> sx(static_cast<std::size_t>(n_mo), 0.0);
+    std::vector<double> rho(static_cast<std::size_t>(npts));
+    for (int p = 0; p < n_mo; ++p) {
+        const double* pp = psi_mo.data()
+                           + static_cast<std::size_t>(p)
+                                 * static_cast<std::size_t>(npts);
+        double sum = 0.0;
+        for (int i = 0; i < n_occ; ++i) {
+            const double* pi = psi_mo.data()
+                               + static_cast<std::size_t>(i)
+                                     * static_cast<std::size_t>(npts);
+            for (long g = 0; g < npts; ++g)
+                rho[static_cast<std::size_t>(g)] = pp[g] * pi[g];
+            // MT truncated Coulomb — G=0-safe for charged (ii|ii) pairs.
+            const PoissonResult pr = solve_poisson_mt(grid, rho);
+            double s = 0.0;
+            for (long g = 0; g < npts; ++g)
+                s += pr.v_r[static_cast<std::size_t>(g)]
+                     * rho[static_cast<std::size_t>(g)];
+            sum -= w * s; // Σ_x,p = −Σ_i (pi|pi)
+        }
+        sx[static_cast<std::size_t>(p)] = sum;
+    }
+    return sx;
 }
 
 void direct_rpa_rhf_energy_kpoints(

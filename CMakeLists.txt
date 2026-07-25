@@ -657,6 +657,7 @@ if(NOT ATV_DOCS_ONLY)
                 src/cpu/gpw/internal/mp2_kernels.cpp
                 src/cpu/gpw/mp2.cpp
                 src/cpu/gpw/rpa.cpp
+                src/cpu/gpw/g0w0.cpp
                 src/cpu/gpw/gpw_evaluator.cpp
             )
             target_compile_definitions(atomiverse PUBLIC ATV_GPW_HAS_FFT)
