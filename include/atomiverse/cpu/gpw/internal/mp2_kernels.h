@@ -1,8 +1,9 @@
 /// @file cpu/gpw/internal/mp2_kernels.h
 /// @brief Private GPW MP2 kernels: MO values on the density grid, the
 ///        occupied–virtual MO repulsion tensor via per-pair Poisson solves,
-///        the canonical closed-shell doubles sum, and multi-k (complex Bloch)
-///        momentum-conserving RI-GPW MP2.
+///        the canonical closed-shell (RHF) and unrestricted (UHF) doubles
+///        sums, cross-spin (ia|jb), and multi-k (complex Bloch)
+///        momentum-conserving RI-GPW MP2 (closed-shell).
 ///
 /// Private workspace behind `GpwDft::mp2` — never on the public include
 /// path (unit tests may include it). The `(ia|jb)` route is CP2K's
@@ -94,6 +95,63 @@ std::vector<double> mo_eri_ovov_ri(const UniformGrid& grid,
 void mp2_rhf_energy(const std::vector<double>& v_ovov,
                     const std::vector<double>& eps_occ,
                     const std::vector<double>& eps_virt, double& e_os,
+                    double& e_ss);
+
+/// @brief Cross-spin occupied–virtual MO repulsion tensor
+///        \((i_\alpha a_\alpha|j_\beta b_\beta)\) via per-pair Poisson.
+///
+/// Layout row-major
+/// `(nov_a × nov_b)`:
+/// `(ia|jb) = out[(i·n_virt_a+a)·nov_b + j·n_virt_b+b]`. No
+/// \((ia|jb)=(jb|ia)\) fill — the two spin channels may differ in size.
+/// @param nonperiodic true → MT isolated Poisson; false → periodic FFT.
+std::vector<double> mo_eri_ovov_ab(const UniformGrid& grid,
+                                   const std::vector<double>& psi_occ_a,
+                                   int n_occ_a,
+                                   const std::vector<double>& psi_virt_a,
+                                   int n_virt_a,
+                                   const std::vector<double>& psi_occ_b,
+                                   int n_occ_b,
+                                   const std::vector<double>& psi_virt_b,
+                                   int n_virt_b, bool nonperiodic);
+
+/// @brief Periodic RI-GPW cross-spin \((i_\alpha a_\alpha|j_\beta b_\beta)\).
+///
+/// Same layout as `mo_eri_ovov_ab`; numerically matches the Poisson path
+/// on a periodic cell (Parseval / PW resolution of the pair density).
+std::vector<double> mo_eri_ovov_ab_ri(const UniformGrid& grid,
+                                      const std::vector<double>& psi_occ_a,
+                                      int n_occ_a,
+                                      const std::vector<double>& psi_virt_a,
+                                      int n_virt_a,
+                                      const std::vector<double>& psi_occ_b,
+                                      int n_occ_b,
+                                      const std::vector<double>& psi_virt_b,
+                                      int n_virt_b);
+
+/// @brief Canonical unrestricted MP2 doubles sum (real orbitals; Γ).
+///
+/// Same-spin αα / ββ:
+/// \(E_{\mathrm{SS}}^\sigma = \tfrac14\sum_{ijab}
+///   [(ia|jb)-(ib|ja)]^2 / \Delta_{ij}^{ab}\)
+/// (molecular `ump2_energy` / PySCF UMP2 convention). Opposite-spin αβ:
+/// \(E_{\mathrm{OS}} = \sum_{ijab} (i_\alpha a_\alpha|j_\beta b_\beta)^2
+///   / \Delta\) (no exchange). Empty spin channels (n_occ or n_virt = 0)
+/// contribute zero; same-spin needs ≥2 occupied and ≥2 virtual.
+/// @param v_aa Same-spin α (ia|jb) [Ha], layout as `mo_eri_ovov` (may be empty).
+/// @param v_bb Same-spin β (ia|jb) [Ha] (may be empty).
+/// @param v_ab Cross-spin (iα aα|jβ bβ) [Ha], layout as `mo_eri_ovov_ab`.
+/// @param eps_occ_a / eps_virt_a α orbital energies [Ha].
+/// @param eps_occ_b / eps_virt_b β orbital energies [Ha].
+/// @param e_os Out: unscaled opposite-spin [Hartree].
+/// @param e_ss Out: unscaled same-spin (αα+ββ) [Hartree].
+void mp2_uhf_energy(const std::vector<double>& v_aa,
+                    const std::vector<double>& v_bb,
+                    const std::vector<double>& v_ab,
+                    const std::vector<double>& eps_occ_a,
+                    const std::vector<double>& eps_virt_a,
+                    const std::vector<double>& eps_occ_b,
+                    const std::vector<double>& eps_virt_b, double& e_os,
                     double& e_ss);
 
 /// @brief Complex Bloch MO values on the density grid from pre-summed

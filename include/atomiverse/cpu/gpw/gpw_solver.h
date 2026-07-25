@@ -314,13 +314,18 @@ class GpwDft {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
-    /// @brief GPW MP2 correlation on the converged closed-shell orbitals of
-    ///        the last `run()` — Γ (real) or multi-k (complex Bloch).
+    /// @brief GPW MP2 correlation on the converged orbitals of the last
+    ///        `run()` — RKS Γ/multi-k or UKS Γ (UMP2).
     ///
-    /// **Γ path** (`n_kpts == 0`): product RI-GPW (`mp2_ri`, default true,
-    /// periodic) or Poisson foothold (`mp2_ri = false` / isolated).
+    /// **Γ RKS** (`n_kpts == 0`, closed-shell): product RI-GPW (`mp2_ri`,
+    /// default true, periodic) or Poisson foothold (`mp2_ri = false` /
+    /// isolated).
     ///
-    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): momentum-
+    /// **Γ UKS** (`n_alpha`/`n_beta`): unrestricted MP2 (same-spin αα/ββ +
+    /// opposite-spin αβ; molecular / PySCF UMP2 convention) on the dual
+    /// α/β MO sets. Multi-k UMP2 is a follow-on and throws.
+    ///
+    /// **Multi-k RKS** (`n_kpts >= 1` with `C_k` populated): momentum-
     /// conserving RI-GPW sum over sampled k (Del Ben / CP2K `MP2_GPW` +
     /// `&KPOINTS`). Equal-weight meshes
     /// (\(E=\frac1{N_k}\sum_{k_i k_j k_a}\)); pair densities are complex,
@@ -328,14 +333,15 @@ class GpwDft {
     /// (Poisson multi-k foothold not offered). Prefer
     /// `k_time_reversal = false` so weights stay equal.
     ///
-    /// Virtual space capped by `mp2_n_virt`; `e_corr` applies
-    /// `mp2_os_scale` / `mp2_ss_scale`.
+    /// Virtual space capped by `mp2_n_virt` (per spin for UMP2); `e_corr`
+    /// applies `mp2_os_scale` / `mp2_ss_scale`.
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned MP2 result (valid until the next `mp2()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
-    /// @throws std::invalid_argument for UKS, for `use_ot` (no canonical
-    ///         virtuals), when multi-k `C_k` is missing, when no virtuals
-    ///         remain, or for a vanishing min HOMO–LUMO gap (< 1e-6 Ha).
+    /// @throws std::invalid_argument for multi-k UKS, for `use_ot` (no
+    ///         canonical virtuals), when multi-k `C_k` is missing, when no
+    ///         virtuals remain, or for a vanishing min HOMO–LUMO gap
+    ///         (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
     /// @brief GPW direct RPA (dRPA) correlation on the converged closed-shell
