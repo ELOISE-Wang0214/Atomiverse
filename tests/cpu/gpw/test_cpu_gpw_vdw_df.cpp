@@ -1,5 +1,5 @@
 /// @file tests/cpu/gpw/test_cpu_gpw_vdw_df.cpp
-/// @brief Unit tests for nonlocal vdW-DF (DRSLL) RPS kernel vs offline libvdwxc.
+/// @brief Unit tests for nonlocal vdW-DF (DRSLL) / vdW-DF2 (LMKLL) vs libvdwxc.
 
 #include <cmath>
 #include <cstdio>
@@ -10,8 +10,10 @@
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/vdw_df.h"
 
+using ATV::cpu::gpw::kVdwDf2Zab;
 using ATV::cpu::gpw::UniformGrid;
 using ATV::cpu::gpw::vdw_df_drsll;
+using ATV::cpu::gpw::vdw_df_lmkll;
 using ATV::cpu::gpw::vdw_df_q0;
 using ATV::cpu::gpw::VdwDfResult;
 
@@ -87,4 +89,34 @@ TEST(GpwVdwDf, Q0FiniteDensityInRange) {
     vdw_df_q0(rho, sigma, q0);
     EXPECT_GT(q0[0], 0.0);
     EXPECT_LE(q0[0], ATV::cpu::gpw::kVdwDfQCut + 1e-12);
+}
+
+// Offline pin: libvdwxc 0.5.0 VDWXC_DF2 on the same 16³ Gaussian blob.
+// See tools/cp2k_oracle/inputs/gpw-vdw-df2-ice/.
+TEST(GpwVdwDf, GaussianBlobDf2MatchesLibvdwxc) {
+    UniformGrid grid;
+    grid.L[0] = grid.L[1] = grid.L[2] = 8.0;
+    grid.n[0] = grid.n[1] = grid.n[2] = 16;
+    grid.origin[0] = grid.origin[1] = grid.origin[2] = 0.0;
+
+    std::vector<double> rho, sigma;
+    gaussian_blob(grid, /*a=*/0.5, /*A=*/1.0, rho, sigma);
+
+    const VdwDfResult r = vdw_df_lmkll(grid, rho, sigma);
+    const double libvdwxc = 1.1428161716669384e-01; // Ha
+    std::printf("[vdW-DF2] E_nl=%.16e  libvdwxc=%.16e  diff=%.3e Ha\n", r.energy,
+                libvdwxc, r.energy - libvdwxc);
+    EXPECT_NEAR(r.energy, libvdwxc, 1e-6);
+}
+
+TEST(GpwVdwDf, Df2Q0DiffersFromDf1WhenGradient) {
+    // With nonzero σ, DF2 Z_ab = −1.887 yields a different q0 than DF1.
+    std::vector<double> rho = {0.1};
+    std::vector<double> sigma = {0.01};
+    std::vector<double> q0_df1, q0_df2;
+    vdw_df_q0(rho, sigma, q0_df1);
+    vdw_df_q0(rho, sigma, q0_df2, kVdwDf2Zab);
+    EXPECT_NE(q0_df1[0], q0_df2[0]);
+    EXPECT_GT(q0_df1[0], 0.0);
+    EXPECT_GT(q0_df2[0], 0.0);
 }

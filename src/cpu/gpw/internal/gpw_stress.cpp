@@ -76,6 +76,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.ts = m.ts;
     p.mbd = m.mbd;
     p.vdw_df = m.vdw_df;
+    p.vdw_df2 = m.vdw_df2;
     p.use_ot = m.use_ot;
     p.plus_u = m.plus_u;
     p.atom_spin_guess = m.atom_spin_guess;
