@@ -167,6 +167,38 @@ inline double apply_dft_plus_u(linalg::RealMatrix& H,
     return e_u;
 }
 
+/// @brief Dudarev DFT+U energy only (no Fock scatter) — fixed-\(P\) stress.
+///
+/// Same occupation / energy formula as `apply_dft_plus_u` for one spin
+/// channel. Used by the Hellmann–Feynman cell stress Lagrangian where \(P\)
+/// is held fixed and \(S\) (geometry) varies.
+inline double dft_plus_u_energy(const linalg::RealMatrix& P,
+                                const linalg::RealMatrix& S,
+                                const std::vector<AoShellTag>& tags,
+                                const std::vector<int>& z_of_atom,
+                                const std::vector<PlusUHa>& by_z_slot,
+                                const std::vector<int>& z_keys) {
+    double e_u = 0.0;
+    const int n_atoms = static_cast<int>(z_of_atom.size());
+    for (int iat = 0; iat < n_atoms; ++iat) {
+        const int z = z_of_atom[static_cast<std::size_t>(iat)];
+        for (std::size_t k = 0; k < z_keys.size(); ++k) {
+            if (z_keys[k] != z)
+                continue;
+            const PlusUHa& pu = by_z_slot[k];
+            if (!(pu.U_ha > 0.0))
+                continue;
+            const auto idx = ao_indices_for_shell(tags, iat, pu.l);
+            if (idx.empty())
+                continue;
+            const linalg::RealMatrix occ = mulliken_occupation(P, S, idx);
+            linalg::RealMatrix V;
+            e_u += dudarev_energy_potential(pu.U_ha, occ, V);
+        }
+    }
+    return e_u;
+}
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu
