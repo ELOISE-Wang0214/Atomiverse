@@ -625,6 +625,9 @@ if(NOT ATV_DOCS_ONLY)
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
             src/cpu/gpw/internal/one_electron.cpp
+            # XL-BOMD auxiliary-density propagator (Niklasson dissipative
+            # recursion) — dense algebra only, no FFT dependency.
+            src/cpu/gpw/xl_bomd.cpp
             # DFT-D3 engine sources are compiled under ATV_BUILD_HF (shared
             # with molecular D3BJ); GPW zero-damping calls the same symbols.
         )

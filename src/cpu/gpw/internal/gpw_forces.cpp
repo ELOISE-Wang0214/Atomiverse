@@ -169,10 +169,11 @@ double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
 } // namespace
 
 std::vector<std::array<double, 3>>
-gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg) {
+gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const linalg::RealMatrix* guess_C) {
     GpwDft solver = copy_gpw(cfg);
     solver.build(atoms);
-    const GpwResult scf = solver.run(atoms);
+    const GpwResult scf = solver.run(atoms, guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
 
