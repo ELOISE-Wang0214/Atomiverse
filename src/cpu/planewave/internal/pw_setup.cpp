@@ -438,21 +438,30 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
 
     auto pos_bohr = pos_to_bohr(frame);
 
+    const bool has_upf = !upf_path.empty();
+    const bool rank0 = log_rank0();
+
+    // Valence electron count: UPF `z_valence` when present (supports elements
+    // beyond the toy H–Ar table, e.g. Fe Z=26 with SG15 ONCV Z_val=16);
+    // otherwise the toy `valence_from_z` table (throws on unsupported Z).
+    internal::UPFData upf_early;
+    if (has_upf)
+        upf_early = internal::read_upf_v1(upf_path);
+
     int n_elec = 0;
     std::vector<AccReal> valence_charges, nuclear_Z;
     const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < n_atoms; ++i) {
         int z = sp_type[i];
-        int v = valence_from_z(z);
+        int v = has_upf ? static_cast<int>(std::lround(static_cast<double>(
+                              upf_early.z_val)))
+                        : valence_from_z(z);
         n_elec += v;
         valence_charges.push_back(static_cast<AccReal>(v));
         nuclear_Z.push_back(static_cast<AccReal>(z));
     }
     out.n_elec = n_elec;
     out.n_bands = std::max(n_elec / 2, 1);
-
-    bool has_upf = !upf_path.empty();
-    const bool rank0 = log_rank0();
 
     if (rank0) {
         ATV_INFO("[pw] ========== PW SCF ==========");
@@ -532,10 +541,8 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     ws.atom_pos_bohr =
         pos_bohr; // atom positions for augmentation structure factor
 
-    // Initial density: read UPF first if needed
-    internal::UPFData upf;
-    if (has_upf)
-        upf = internal::read_upf_v1(upf_path);
+    // Initial density: reuse the UPF already parsed for valence counts.
+    internal::UPFData& upf = upf_early;
 
     for (int i = 0; i < ws.n_g; ++i)
         ws.rho_G[i] = std::complex<AccReal>(0, 0);

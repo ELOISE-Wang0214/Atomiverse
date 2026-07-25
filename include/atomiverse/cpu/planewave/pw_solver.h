@@ -45,7 +45,8 @@ struct PWResult {
     int iterations = 0;     ///< Actual SCF iterations taken.
     /// @brief Collinear magnetization N↑ − N↓ [electrons] after SCF.
     ///        Zero when `spin_polarized == false`. Fixed occupations set this
-    ///        exactly to `multiplicity - 1` for non-metallic fillings.
+    ///        exactly to `multiplicity - 1`. With metallic smearing it is the
+    ///        self-consistent \(\sum w(f_\uparrow - f_\downarrow)\).
     double magnetization = 0;
     double e_fermi = 0;    ///< Fermi level [Ry] (0 if fixed occupations).
     double n_elec_occ = 0; ///< \(\sum w f\) after last iteration.
@@ -91,17 +92,20 @@ class PW {
     /// `XCType::LSDA`. Parameters are members — no public `*Config` bag.
     cpu::scf::XCType xc = cpu::scf::XCType::PBE;
     /// @brief Collinear spin-polarized KS (nspin=2). Default false = restricted.
+    ///        Compatible with metallic `smearing` (shared μ, self-consistent mag).
     bool spin_polarized = false;
     /// @brief Spin multiplicity 2S+1 (used only when `spin_polarized`).
-    ///        O₂ triplet ground state uses 3 → N↑−N↓ = 2.
+    ///        Fixed occupations: N↑−N↓ = multiplicity−1. With metallic smearing
+    ///        this only seeds the initial ρ↑/ρ↓ split (mag is free in SCF).
     int multiplicity = 1;
     /// @brief Metallic smearing kind (default: fixed occupations).
+    ///        May be combined with `spin_polarized` (collinear metals).
     Smearing smearing = Smearing::none;
     /// @brief Smearing width [Ry] (QE `degauss`). Required > 0 when smearing is on.
     double degauss = 0.02;
     /// @brief Methfessel–Paxton order \(N\) (used when `smearing == methfessel_paxton`).
     int mp_order = 1;
-    /// @brief Extra bands beyond ceil(n_e/2) when smearing is on.
+    /// @brief Extra bands beyond ceil(n_e/2) when smearing is on (per spin if collinear).
     int extra_bands = 4;
 
     /// @brief Default construct (helpers allocated on first build/run).

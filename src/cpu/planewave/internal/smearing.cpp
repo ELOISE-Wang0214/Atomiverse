@@ -87,6 +87,14 @@ AccReal smear_f_band(AccReal eig, AccReal mu, AccReal degauss, SmearKind kind,
     return AccReal(2) * smear_f_spinless(x, kind, mp_order);
 }
 
+AccReal smear_f_spinor(AccReal eig, AccReal mu, AccReal degauss, SmearKind kind,
+                       int mp_order) {
+    if (!(degauss > AccReal(0)))
+        throw std::invalid_argument("smear_f_spinor: degauss must be > 0");
+    const AccReal x = (eig - mu) / degauss;
+    return smear_f_spinless(x, kind, mp_order);
+}
+
 AccReal smear_entropy_band(AccReal eig, AccReal mu, AccReal degauss,
                            SmearKind kind, int mp_order) {
     if (!(degauss > AccReal(0)))
@@ -126,15 +134,24 @@ AccReal smear_entropy_band(AccReal eig, AccReal mu, AccReal degauss,
     throw std::invalid_argument("smear_entropy_band: unknown kind");
 }
 
+AccReal smear_entropy_spinor(AccReal eig, AccReal mu, AccReal degauss,
+                             SmearKind kind, int mp_order) {
+    // Half the closed-shell band entropy (one spin channel).
+    return AccReal(0.5)
+           * smear_entropy_band(eig, mu, degauss, kind, mp_order);
+}
+
 namespace {
 
 AccReal nelec_of_mu(const std::vector<AccReal>& evals,
                     const std::vector<AccReal>& weights, AccReal mu,
-                    AccReal degauss, SmearKind kind, int mp_order) {
+                    AccReal degauss, SmearKind kind, int mp_order,
+                    AccReal spin_degen) {
     AccReal n = 0;
     const std::size_t m = evals.size();
     for (std::size_t i = 0; i < m; ++i)
-        n += weights[i] * smear_f_band(evals[i], mu, degauss, kind, mp_order);
+        n += weights[i] * spin_degen
+             * smear_f_spinless((evals[i] - mu) / degauss, kind, mp_order);
     return n;
 }
 
@@ -142,7 +159,8 @@ AccReal nelec_of_mu(const std::vector<AccReal>& evals,
 
 AccReal find_fermi_level(const std::vector<AccReal>& evals,
                          const std::vector<AccReal>& weights, AccReal n_elec,
-                         AccReal degauss, SmearKind kind, int mp_order) {
+                         AccReal degauss, SmearKind kind, int mp_order,
+                         AccReal spin_degen) {
     if (evals.empty())
         throw std::invalid_argument("find_fermi_level: empty spectrum");
     if (evals.size() != weights.size())
@@ -152,6 +170,8 @@ AccReal find_fermi_level(const std::vector<AccReal>& evals,
         throw std::invalid_argument("find_fermi_level: degauss must be > 0");
     if (!(n_elec > AccReal(0)))
         throw std::invalid_argument("find_fermi_level: n_elec must be > 0");
+    if (!(spin_degen > AccReal(0)))
+        throw std::invalid_argument("find_fermi_level: spin_degen must be > 0");
 
     AccReal emin = evals[0];
     AccReal emax = evals[0];
@@ -162,15 +182,19 @@ AccReal find_fermi_level(const std::vector<AccReal>& evals,
     // Pad the search window by several degauss widths.
     AccReal lo = emin - AccReal(20) * degauss;
     AccReal hi = emax + AccReal(20) * degauss;
-    AccReal n_lo = nelec_of_mu(evals, weights, lo, degauss, kind, mp_order);
-    AccReal n_hi = nelec_of_mu(evals, weights, hi, degauss, kind, mp_order);
+    AccReal n_lo =
+        nelec_of_mu(evals, weights, lo, degauss, kind, mp_order, spin_degen);
+    AccReal n_hi =
+        nelec_of_mu(evals, weights, hi, degauss, kind, mp_order, spin_degen);
     // Expand if needed (pathological empty/full windows).
     for (int expand = 0; expand < 20 && !(n_lo <= n_elec && n_elec <= n_hi);
          ++expand) {
         lo -= AccReal(20) * degauss;
         hi += AccReal(20) * degauss;
-        n_lo = nelec_of_mu(evals, weights, lo, degauss, kind, mp_order);
-        n_hi = nelec_of_mu(evals, weights, hi, degauss, kind, mp_order);
+        n_lo = nelec_of_mu(evals, weights, lo, degauss, kind, mp_order,
+                           spin_degen);
+        n_hi = nelec_of_mu(evals, weights, hi, degauss, kind, mp_order,
+                           spin_degen);
     }
     if (!(n_lo <= n_elec && n_elec <= n_hi)) {
         // Fall back to mid of spectrum — still better than throwing in SCF.
@@ -180,8 +204,8 @@ AccReal find_fermi_level(const std::vector<AccReal>& evals,
     // Bisection
     for (int it = 0; it < 80; ++it) {
         const AccReal mid = AccReal(0.5) * (lo + hi);
-        const AccReal n_mid =
-            nelec_of_mu(evals, weights, mid, degauss, kind, mp_order);
+        const AccReal n_mid = nelec_of_mu(evals, weights, mid, degauss, kind,
+                                          mp_order, spin_degen);
         if (n_mid < n_elec)
             lo = mid;
         else
@@ -194,15 +218,39 @@ AccReal find_fermi_level(const std::vector<AccReal>& evals,
 
 SmearFill fill_occupations(const std::vector<AccReal>& evals,
                            const std::vector<AccReal>& weights, AccReal mu,
-                           AccReal degauss, SmearKind kind, int mp_order) {
+                           AccReal degauss, SmearKind kind, int mp_order,
+                           AccReal spin_degen) {
     SmearFill out;
     out.occ.resize(evals.size());
     for (std::size_t i = 0; i < evals.size(); ++i) {
-        out.occ[i] = smear_f_band(evals[i], mu, degauss, kind, mp_order);
+        if (!(degauss > AccReal(0)))
+            throw std::invalid_argument("fill_occupations: degauss must be > 0");
+        const AccReal x = (evals[i] - mu) / degauss;
+        const AccReal f = smear_f_spinless(x, kind, mp_order);
+        out.occ[i] = spin_degen * f;
         out.n_occ += weights[i] * out.occ[i];
-        out.entropy +=
-            weights[i]
-            * smear_entropy_band(evals[i], mu, degauss, kind, mp_order);
+        // Entropy: compute spinless s and scale by spin_degen (not via
+        // smear_entropy_band's hard-coded ×2, which mixed poorly with
+        // spin_degen scaling when f is extreme).
+        AccReal s_spinless = AccReal(0);
+        switch (kind) {
+        case SmearKind::fermi_dirac: {
+            constexpr AccReal eps = AccReal(1e-30);
+            AccReal fc = std::min(std::max(f, eps), AccReal(1) - eps);
+            const AccReal omf = AccReal(1) - fc;
+            s_spinless = -(fc * std::log(fc) + omf * std::log(omf));
+            break;
+        }
+        case SmearKind::gaussian:
+        case SmearKind::methfessel_paxton:
+            // Half of the closed-shell band entropy weight.
+            s_spinless = AccReal(0.5)
+                         * smear_entropy_band(evals[i], mu, degauss, kind,
+                                              mp_order);
+            break;
+        }
+        if (std::isfinite(static_cast<double>(s_spinless)))
+            out.entropy += weights[i] * spin_degen * s_spinless;
     }
     return out;
 }
