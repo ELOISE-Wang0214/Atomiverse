@@ -2,13 +2,15 @@
 /// @brief GPW cell stress: Hellmann–Feynman fixed-P product path + multi-SCF FD.
 ///
 /// Analytic product path (gpw_stress / gpw_stress_analytic_impl):
-///   1. One full SCF at the reference geometry → density matrix P.
+///   1. One full SCF at the reference geometry → density matrix P (Γ) or
+///      per-k {P_k, W_k} from C_occ_k / eps_k (multi-k RKS).
 ///   2. Central FD of the *non-self-consistent* total energy E[P; ε] under
 ///      orthorhombic diagonal strain at fixed fractional coordinates. Geometry-
-///      dependent T, V_pp, grid, Poisson, XC (and optional D3) are rebuilt;
-///      the SCF is *not* re-converged. This is the GPW form of the Hellmann–
-///      Feynman cell theorem used for plane-wave Nielsen–Martin in this tree
-///      (Nielsen & Martin, PRB 32, 3780 (1985); Quickstep energy surface).
+///      dependent T, V_pp / S_k,T_k,V_nl^k, grid, Poisson, XC (and optional D3)
+///      are rebuilt; the SCF is *not* re-converged. This is the GPW form of the
+///      Hellmann–Feynman cell theorem used for plane-wave Nielsen–Martin in
+///      this tree (Nielsen & Martin, PRB 32, 3780 (1985); Quickstep energy
+///      surface). Multi-k sums the fixed-P Lagrangian over sampled k.
 ///
 /// Oracle path (gpw_stress_fd / gpw_stress_fd_impl): full multi-SCF strain-FD
 /// of E_tot (2 SCFs per diagonal axis).
@@ -19,6 +21,7 @@
 #include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 
 #include <array>
+#include <complex>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -27,6 +30,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
@@ -185,6 +189,241 @@ double core_self_energy(const GpwAtom& a) {
     return a.z_val * a.z_val / (2.0 * a.rloc * std::sqrt(M_PI));
 }
 
+bool uses_kpath(const GpwDft& cfg) {
+    return !cfg.k_points.empty() || cfg.k_mesh[0] != 1 || cfg.k_mesh[1] != 1
+           || cfg.k_mesh[2] != 1;
+}
+
+constexpr double kBuildScreen = 1e-12;
+
+using Cplx = std::complex<double>;
+using CplxMatrix = internal::CplxMatrix;
+using KPoint = internal::KPoint;
+using KpointBasisGrid = internal::KpointBasisGrid;
+using internal::build_overlap_kinetic_k;
+using internal::add_nonlocal_kb_k;
+using internal::build_kpoint_basis_grid;
+using internal::collocate_density_k;
+using internal::monkhorst_pack;
+
+double ctrace_re(const CplxMatrix& P, const CplxMatrix& M, int nb) {
+    double s = 0.0;
+    for (int i = 0; i < nb; ++i)
+        for (int j = 0; j < nb; ++j)
+            s += (P(i, j) * M(j, i)).real();
+    return s;
+}
+
+CplxMatrix density_from_occ(const std::vector<Cplx>& C_occ, int nb, int n_occ) {
+    CplxMatrix P = xt::zeros<Cplx>({nb, nb});
+    for (int i = 0; i < nb; ++i)
+        for (int o = 0; o < n_occ; ++o) {
+            const Cplx ci = 2.0 * C_occ[static_cast<std::size_t>(i) * n_occ
+                                       + static_cast<std::size_t>(o)];
+            for (int j = 0; j < nb; ++j)
+                P(i, j) +=
+                    ci
+                    * std::conj(C_occ[static_cast<std::size_t>(j) * n_occ
+                                      + static_cast<std::size_t>(o)]);
+        }
+    return P;
+}
+
+CplxMatrix energy_weighted_from_occ(const std::vector<Cplx>& C_occ,
+                                    const std::vector<double>& eps, int nb,
+                                    int n_occ) {
+    CplxMatrix W = xt::zeros<Cplx>({nb, nb});
+    for (int o = 0; o < n_occ; ++o) {
+        const double w = 2.0 * eps[static_cast<std::size_t>(o)];
+        for (int i = 0; i < nb; ++i) {
+            const Cplx ci =
+                w * C_occ[static_cast<std::size_t>(i) * n_occ
+                          + static_cast<std::size_t>(o)];
+            for (int j = 0; j < nb; ++j)
+                W(i, j) +=
+                    ci
+                    * std::conj(C_occ[static_cast<std::size_t>(j) * n_occ
+                                      + static_cast<std::size_t>(o)]);
+        }
+    }
+    return W;
+}
+
+std::vector<KPoint> resolve_kpts(const GpwDft& cfg) {
+    if (!cfg.k_points.empty()) {
+        std::vector<KPoint> kpts;
+        kpts.reserve(cfg.k_points.size());
+        for (std::size_t i = 0; i < cfg.k_points.size(); ++i) {
+            KPoint kp;
+            kp.frac[0] = cfg.k_points[i][0];
+            kp.frac[1] = cfg.k_points[i][1];
+            kp.frac[2] = cfg.k_points[i][2];
+            kp.weight = cfg.k_point_weights[i];
+            kpts.push_back(kp);
+        }
+        return kpts;
+    }
+    return monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
+}
+
+/// @brief Hellmann–Feynman fixed-{P_k,W_k} Lagrangian energy on a k mesh.
+///
+///   E_L = Σ_k w_k [ Re Tr(P_k T_k) + Re Tr(P_k V_nl^k) − Re Tr(W_k S_k) ]
+///       + E_locgrid[ρ] + E_es[ρ−n_c] + E_xc[ρ] + E_disp
+///
+/// Density ρ = Σ_k w_k ρ_k via collocate_density_k. Matches the k-path SCF
+/// energy assembly with local_pp_on_grid (required by the k foothold).
+double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                        const std::vector<CplxMatrix>& P_k,
+                        const std::vector<CplxMatrix>& W_k,
+                        const std::vector<KPoint>& kpts) {
+    if (cfg.is_uks())
+        throw std::invalid_argument(
+            "gpw_stress analytic k: UKS not supported in this foothold");
+    if (cfg.nonperiodic)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: nonperiodic not supported");
+    if (!cfg.local_pp_on_grid)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: requires local_pp_on_grid");
+    if (!cfg.plus_u.empty())
+        throw std::invalid_argument(
+            "gpw_stress analytic k: DFT+U not supported in this foothold");
+    if (cfg.d4)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: D4 not supported in this foothold");
+    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
+                       + (cfg.ts ? 1 : 0);
+    if (n_disp > 1)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: d3, d3bj, d4, and ts are mutually exclusive");
+
+    const std::vector<GridBasisFunction> basis = global_basis(atoms);
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+    if (static_cast<int>(P_k.size()) != nk || static_cast<int>(W_k.size()) != nk)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: P_k/W_k size mismatch vs kpts");
+
+    const double eps = cfg.eps_default;
+    std::vector<double> radii(static_cast<std::size_t>(nb));
+    double rmax = 0.0;
+    for (int u = 0; u < nb; ++u) {
+        radii[static_cast<std::size_t>(u)] =
+            basis_function_radius(basis[u], eps);
+        rmax = std::max(rmax, radii[static_cast<std::size_t>(u)]);
+    }
+    int mimg[3];
+    pair_image_counts(cfg.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+
+    std::vector<CplxMatrix> S_k, T_k;
+    build_overlap_kinetic_k(basis, radii, cfg.cell, mimg, kBuildScreen, kpts,
+                            S_k, T_k);
+    std::vector<CplxMatrix> Vnl_k(static_cast<std::size_t>(nk),
+                                  CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg, kBuildScreen,
+                      kpts);
+
+    double e_kin = 0.0, e_nl = 0.0, e_pulay = 0.0;
+    for (int ik = 0; ik < nk; ++ik) {
+        const double wk = kpts[static_cast<std::size_t>(ik)].weight;
+        e_kin +=
+            wk * ctrace_re(P_k[static_cast<std::size_t>(ik)],
+                           T_k[static_cast<std::size_t>(ik)], nb);
+        e_nl += wk * ctrace_re(P_k[static_cast<std::size_t>(ik)],
+                               Vnl_k[static_cast<std::size_t>(ik)], nb);
+        e_pulay +=
+            wk * ctrace_re(W_k[static_cast<std::size_t>(ik)],
+                           S_k[static_cast<std::size_t>(ik)], nb);
+    }
+
+    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    const long ng = grid.npts();
+    const double wgt = grid.weight();
+    const KpointBasisGrid kbg =
+        build_kpoint_basis_grid(grid, basis, kpts, eps);
+
+    std::vector<double> rho(static_cast<std::size_t>(ng), 0.0);
+    for (int ik = 0; ik < nk; ++ik)
+        collocate_density_k(kbg, ik, P_k[static_cast<std::size_t>(ik)],
+                            kpts[static_cast<std::size_t>(ik)].weight, rho);
+
+    // Ionic core density n_c (min-image; matches SCF / forces).
+    std::vector<double> n_ion(static_cast<std::size_t>(ng), 0.0);
+    double e_self = 0.0;
+    for (const auto& a : atoms)
+        e_self += core_self_energy(a);
+    for (long g = 0; g < ng; ++g) {
+        double r[3];
+        grid.point(g, r);
+        double s = 0.0;
+        for (const auto& a : atoms) {
+            const double s2 = a.rloc * a.rloc;
+            const double norm = a.z_val * std::pow(2.0 * M_PI * s2, -1.5);
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1],
+                   dz = r[2] - a.pos[2];
+            dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
+            dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
+            dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
+            s += norm * std::exp(-(dx * dx + dy * dy + dz * dz) / (2.0 * s2));
+        }
+        n_ion[static_cast<std::size_t>(g)] = s;
+    }
+
+    std::vector<double> n_tot(rho.size());
+    for (std::size_t g = 0; g < rho.size(); ++g)
+        n_tot[g] = rho[g] - n_ion[g];
+
+    const PoissonResult es = solve_poisson(grid, n_tot);
+    const XcOnGrid xc =
+        cfg.xc == XcKind::PBE
+            ? xc_grid_pbe(grid, rho)
+            : (cfg.xc == XcKind::PBEsol
+                   ? xc_grid_pbesol(grid, rho)
+                   : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
+                                             : xc_grid_pade(grid, rho)));
+
+    const std::vector<double> v_locsr =
+        local_pp_grid(grid, atoms, /*periodic=*/true);
+    double e_locgrid = 0.0;
+    for (std::size_t g = 0; g < rho.size(); ++g)
+        e_locgrid += rho[g] * v_locsr[g];
+    e_locgrid *= wgt;
+
+    const double e_es = es.e_hartree - e_self;
+    const double e_xc = xc.e_xc;
+
+    double e_disp = 0.0;
+    if (cfg.d3 || cfg.d3bj || cfg.ts) {
+        const int na = static_cast<int>(atoms.size());
+        std::vector<int> Z(static_cast<std::size_t>(na));
+        std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
+        for (int i = 0; i < na; ++i) {
+            Z[static_cast<std::size_t>(i)] =
+                atoms[static_cast<std::size_t>(i)].z;
+            pos[static_cast<std::size_t>(i)] = {
+                atoms[static_cast<std::size_t>(i)].pos[0],
+                atoms[static_cast<std::size_t>(i)].pos[1],
+                atoms[static_cast<std::size_t>(i)].pos[2]};
+        }
+        constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+        constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
+        if (cfg.ts) {
+            constexpr double kRcutTs = 50.0 * kAng2Bohr;
+            e_disp = ts_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutTs).energy;
+        } else {
+            const D3Result d3 =
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{})
+                       : dftd3_pbe_bj(Z, pos, cfg.cell, true, D3Params{},
+                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      /*cp2k_cn=*/true);
+            e_disp = d3.energy;
+        }
+    }
+
+    return e_kin + e_nl + e_locgrid + e_es + e_xc + e_disp - e_pulay;
+}
+
 /// @brief Hellmann–Feynman Lagrangian energy at fixed (P, W) and geometry.
 ///
 ///   E_L = Tr(P T) + Tr(P V_pp) + E_es[ρ_P] + E_xc[ρ_P] + E_disp − Tr(W S)
@@ -198,10 +437,6 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (cfg.is_uks())
         throw std::invalid_argument(
             "gpw_stress analytic: UKS not supported in this foothold");
-    if (cfg.k_mesh[0] != 1 || cfg.k_mesh[1] != 1 || cfg.k_mesh[2] != 1
-        || !cfg.k_points.empty())
-        throw std::invalid_argument(
-            "gpw_stress analytic: k-point GPW not supported in this foothold");
     if (!cfg.plus_u.empty())
         throw std::invalid_argument(
             "gpw_stress analytic: DFT+U not supported in this foothold");
@@ -383,36 +618,69 @@ std::array<double, 6> gpw_stress_analytic_impl(
     if (!(vol > 0.0))
         throw std::invalid_argument("gpw_stress: non-positive cell volume");
 
-    // Reference SCF → fixed density matrix P.
+    // Reference SCF → fixed density (Gamma: real P/W; multi-k: P_k/W_k).
     GpwDft solver = copy_gpw(method);
     solver.build(atoms);
     const GpwResult scf = solver.run(atoms, guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_stress: reference SCF did not converge");
-    if (scf.P.size() == 0)
-        throw std::runtime_error(
-            "gpw_stress: reference SCF produced empty density matrix");
 
-    // Closed-shell RKS density + energy-weighted density W = Σ_i 2 ε_i c_i c_iᵀ.
-    // UKS rejected in energy_fixed_P.
-    const RealMatrix& P = scf.P;
-    const int nb = static_cast<int>(P.shape(0));
-    RealMatrix W = xt::zeros<double>({nb, nb});
+    const bool kpath = uses_kpath(method);
     const int n_occ = method.n_occ;
     if (n_occ <= 0)
         throw std::invalid_argument(
             "gpw_stress analytic: n_occ must be positive for RKS");
-    if (static_cast<int>(scf.eps.size()) < n_occ
-        || static_cast<int>(scf.C.shape(0)) != nb
-        || static_cast<int>(scf.C.shape(1)) < n_occ)
-        throw std::runtime_error(
-            "gpw_stress analytic: converged C/eps missing for W build");
-    for (int i = 0; i < n_occ; ++i) {
-        const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
-        for (int mu = 0; mu < nb; ++mu) {
-            const double cmu = w * scf.C(mu, i);
-            for (int nu = 0; nu < nb; ++nu)
-                W(mu, nu) += cmu * scf.C(nu, i);
+
+    RealMatrix P_gamma, W_gamma;
+    std::vector<CplxMatrix> P_k, W_k;
+    std::vector<KPoint> kpts;
+    if (kpath) {
+        if (scf.C_occ_k.empty() || scf.eps_k.empty()
+            || scf.C_occ_k.size() != scf.eps_k.size())
+            throw std::runtime_error(
+                "gpw_stress analytic k: missing C_occ_k / eps_k payload");
+        kpts = resolve_kpts(method);
+        if (static_cast<int>(kpts.size()) != static_cast<int>(scf.C_occ_k.size()))
+            throw std::runtime_error(
+                "gpw_stress analytic k: k-point count mismatch vs C_occ_k");
+        // Rebuild nb from occupied payload (row-major nb * n_occ).
+        const int nb = static_cast<int>(scf.C_occ_k[0].size()) / n_occ;
+        if (nb * n_occ != static_cast<int>(scf.C_occ_k[0].size()) || nb < 1)
+            throw std::runtime_error(
+                "gpw_stress analytic k: C_occ_k shape is not nb * n_occ");
+        const int nk = static_cast<int>(kpts.size());
+        P_k.resize(static_cast<std::size_t>(nk));
+        W_k.resize(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            if (static_cast<int>(scf.eps_k[static_cast<std::size_t>(ik)].size())
+                < n_occ)
+                throw std::runtime_error(
+                    "gpw_stress analytic k: eps_k shorter than n_occ");
+            P_k[static_cast<std::size_t>(ik)] = density_from_occ(
+                scf.C_occ_k[static_cast<std::size_t>(ik)], nb, n_occ);
+            W_k[static_cast<std::size_t>(ik)] = energy_weighted_from_occ(
+                scf.C_occ_k[static_cast<std::size_t>(ik)],
+                scf.eps_k[static_cast<std::size_t>(ik)], nb, n_occ);
+        }
+    } else {
+        if (scf.P.size() == 0)
+            throw std::runtime_error(
+                "gpw_stress: reference SCF produced empty density matrix");
+        P_gamma = scf.P;
+        const int nb = static_cast<int>(P_gamma.shape(0));
+        W_gamma = xt::zeros<double>({nb, nb});
+        if (static_cast<int>(scf.eps.size()) < n_occ
+            || static_cast<int>(scf.C.shape(0)) != nb
+            || static_cast<int>(scf.C.shape(1)) < n_occ)
+            throw std::runtime_error(
+                "gpw_stress analytic: converged C/eps missing for W build");
+        for (int i = 0; i < n_occ; ++i) {
+            const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
+            for (int mu = 0; mu < nb; ++mu) {
+                const double cmu = w * scf.C(mu, i);
+                for (int nu = 0; nu < nb; ++nu)
+                    W_gamma(mu, nu) += cmu * scf.C(nu, i);
+            }
         }
     }
 
@@ -431,8 +699,14 @@ std::array<double, 6> gpw_stress_analytic_impl(
         mp.cell[a] = method.cell[a] * sp;
         mm.cell[a] = method.cell[a] * sm;
 
-        const double ep = energy_fixed_P(plus, mp, P, W);
-        const double em = energy_fixed_P(minus, mm, P, W);
+        double ep = 0.0, em = 0.0;
+        if (kpath) {
+            ep = energy_fixed_P_k(plus, mp, P_k, W_k, kpts);
+            em = energy_fixed_P_k(minus, mm, P_k, W_k, kpts);
+        } else {
+            ep = energy_fixed_P(plus, mp, P_gamma, W_gamma);
+            em = energy_fixed_P(minus, mm, P_gamma, W_gamma);
+        }
         // σ_aa = −(1/Ω) ∂E/∂ε_aa  (CP2K STRESS_TENSOR convention).
         stress[static_cast<std::size_t>(a)] = -(ep - em) / (2.0 * h) / vol;
     }

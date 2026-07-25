@@ -935,7 +935,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 internal::diagonalize_k(H_full[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
             res.eps_k.push_back(std::move(eps));
-            // Occupied block only (nb × n_occ), row-major for force rebuild.
+            // Occupied block only (nb × n_occ), row-major for force/stress rebuild.
             std::vector<Cplx> occ(
                 static_cast<std::size_t>(nb) * static_cast<std::size_t>(cfg.n_occ));
             for (int mu = 0; mu < nb; ++mu)
