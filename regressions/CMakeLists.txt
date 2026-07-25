@@ -128,6 +128,9 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-uks-o2-gamma)
     if(ATV_BUILD_MD)
         atv_add_regression(gpw gpw-bomd-water)
+        # Extended-Lagrangian BOMD (dynamics domain): XL auxiliary-density
+        # propagation on the same H2O NVE twin.
+        atv_add_regression(dynamics xl-bomd-water)
     endif()
     atv_add_regression(gpw gpw-pbesol-si)
     atv_add_regression(gpw gpw-dftu-nio)

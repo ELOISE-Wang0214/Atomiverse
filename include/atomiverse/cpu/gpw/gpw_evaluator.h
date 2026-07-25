@@ -4,12 +4,14 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "atomiverse/cpu/component/gpw.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
+#include "atomiverse/cpu/gpw/xl_bomd.h"
 #include "atomiverse/core/role.h"
 #include "atomiverse/molrs.hpp"
 
@@ -80,6 +82,14 @@ class GPWEvaluator : public cpu::GPW {
     /// O₂ GTH-q6 triplet: n_alpha=7, n_beta=5.
     int n_alpha = 0;
     int n_beta = 0;
+    /// @brief Extended-Lagrangian BOMD (dissipative XL-BOMD, Niklasson
+    ///        JCP 130, 214109 (2009)): propagate an auxiliary density as the
+    ///        SCF initial guess across MD steps. Closed-shell RKS
+    ///        diagonalization path only — `build()` throws when combined
+    ///        with UKS occupations or `use_ot`. Units-free switch.
+    bool xl_bomd = false;
+    /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
+    int xl_bomd_k = 5;
     /// @brief Dudarev DFT+U (PLUS_U); empty disables. U−J in eV per entry.
     std::vector<PlusU> plus_u;
     /// @brief Per-atom initial spin seed for UKS AFM/FM (0 or n_atoms).
@@ -125,6 +135,8 @@ class GPWEvaluator : public cpu::GPW {
     GpwResult last_{};
     std::unique_ptr<GpwDft> solver_;
     std::array<double, 6> last_stress_ha_{};
+    /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd`).
+    std::optional<XlBomd> xl_;
 };
 
 } // namespace gpw

@@ -217,10 +217,16 @@ class GpwDft {
     /// Re-entrant: geometry-dependent structures are rebuilt per call.
     /// @param atoms Atom set at the current geometry [Bohr].
     /// @param guess_C Optional warm-start MO coefficients from an earlier run.
+    /// @param guess_P Optional RKS initial-density override (n_ao × n_ao) —
+    ///        the XL-BOMD auxiliary density. Diagonalization/DIIS RKS path
+    ///        only; non-null with UKS or `use_ot` throws (no-fallback), and a
+    ///        shape mismatch throws inside the solve.
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
+    /// @throws std::invalid_argument for `guess_P` with UKS or `use_ot`.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
-                   const linalg::RealMatrix* guess_C = nullptr);
+                   const linalg::RealMatrix* guess_C = nullptr,
+                   const linalg::RealMatrix* guess_P = nullptr);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).

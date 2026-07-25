@@ -87,6 +87,22 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.plus_u = plus_u;
     cfg.atom_spin_guess = atom_spin_guess;
 
+    // XL-BOMD guards (no-fallback): the auxiliary-density guess feeds the
+    // closed-shell RKS diagonalization path only.
+    if (xl_bomd) {
+        if (n_alpha + n_beta > 0)
+            throw std::invalid_argument(
+                "GPWEvaluator: xl_bomd supports closed-shell RKS only "
+                "(n_alpha/n_beta are set)");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GPWEvaluator: xl_bomd requires the diagonalization SCF path "
+                "(use_ot parameterizes orbitals, not the density)");
+        xl_.emplace(xl_bomd_k); // validates xl_bomd_k in [3, 9]
+    } else {
+        xl_.reset();
+    }
+
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
     solver_->build(assemble_atoms(ctx.frame, *this));
 }
@@ -114,11 +130,26 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     if (last_.C.size() > 0) {
         guess = &last_.C;
     }
-    last_ = solver_->run(atoms, guess);
+    // XL-BOMD: the propagated auxiliary density is the SCF initial-density
+    // guess (Niklasson dissipative recursion, seeded on the first step).
+    const ATV::cpu::linalg::RealMatrix* guess_p =
+        (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
+    last_ = solver_->run(atoms, guess, guess_p);
+    if (xl_) {
+        if (last_.converged && last_.P.size() > 0)
+            xl_->advance(last_.P);
+        else
+            xl_->reset(); // discontinuity: never propagate an unconverged D
+    }
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (compute_forces) {
-        const auto F = gpw_forces_analytic(atoms, *solver_);
+        // XL mode warm-starts the force-pass SCF from the MO coefficients
+        // just converged at this exact geometry (same fixed point, fewer
+        // iterations). Default mode keeps the cold solve unchanged.
+        const auto F = gpw_forces_analytic(
+            atoms, *solver_,
+            (xl_ && last_.C.size() > 0) ? &last_.C : nullptr);
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         AccReal* __restrict sp_fx = frame.span(kAtom_fx);
         AccReal* __restrict sp_fy = frame.span(kAtom_fy);

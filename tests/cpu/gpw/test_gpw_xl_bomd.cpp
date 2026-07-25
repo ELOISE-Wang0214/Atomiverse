@@ -1,0 +1,331 @@
+/// @file tests/cpu/gpw/test_gpw_xl_bomd.cpp
+/// @brief Unit tests: XlBomd dissipative recursion (Niklasson JCP 130,
+///        214109 (2009) Table I) + the GpwDft guess_P plumbing.
+///
+/// Propagator tests are pure dense algebra (no SCF). The one guess_P
+/// plumbing test reuses the tiny inline H2 system of test_cpu_gpw_solver
+/// (ms-scale SCF). The e2e XL-BOMD NVE envelope lives in
+/// regressions/dynamics/xl-bomd-water (never here).
+
+#include <gtest/gtest.h>
+
+#include <cmath>
+#include <stdexcept>
+#include <vector>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+#include <xtensor/containers/xtensor.hpp>
+
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gpw_evaluator.h"
+#include "atomiverse/cpu/gpw/gpw_solver.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/xl_bomd.h"
+
+using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::GpwDft;
+using ATV::cpu::gpw::GpwResult;
+using ATV::cpu::gpw::GridBasisFunction;
+using ATV::cpu::gpw::GridPrimitive;
+using ATV::cpu::gpw::XlBomd;
+using ATV::cpu::linalg::RealMatrix;
+
+namespace {
+
+RealMatrix constant_matrix(int n, double v) {
+    RealMatrix m = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            m(i, j) = v + 0.1 * static_cast<double>(i == j);
+    return m;
+}
+
+double max_abs_diff(const RealMatrix& a, const RealMatrix& b) {
+    double worst = 0.0;
+    for (std::size_t i = 0; i < a.shape(0); ++i)
+        for (std::size_t j = 0; j < a.shape(1); ++j)
+            worst = std::max(worst, std::abs(a(i, j) - b(i, j)));
+    return worst;
+}
+
+} // namespace
+
+// A1: the K=5 row of Table I, bitwise.
+TEST(XlBomd, CoefficientTableK5Exact) {
+    const XlBomd xl(5);
+    EXPECT_EQ(xl.order(), 5);
+    EXPECT_DOUBLE_EQ(xl.kappa(), 1.82);
+    EXPECT_DOUBLE_EQ(xl.alpha(), 0.018);
+    const std::vector<double> want = {-6.0, 14.0, -8.0, -3.0, 4.0, -1.0};
+    ASSERT_EQ(xl.c().size(), want.size());
+    for (std::size_t k = 0; k < want.size(); ++k)
+        EXPECT_DOUBLE_EQ(xl.c()[k], want[k]) << "c[" << k << "]";
+}
+
+// A1: every Table-I row kills constant and linear history bias exactly.
+TEST(XlBomd, CoefficientSumsVanishForAllOrders) {
+    for (int k = 3; k <= 9; ++k) {
+        const XlBomd xl(k);
+        ASSERT_EQ(static_cast<int>(xl.c().size()), k + 1) << "K=" << k;
+        double sum0 = 0.0, sum1 = 0.0;
+        for (std::size_t j = 0; j < xl.c().size(); ++j) {
+            sum0 += xl.c()[j];
+            sum1 += static_cast<double>(j) * xl.c()[j];
+        }
+        EXPECT_DOUBLE_EQ(sum0, 0.0) << "sum c_k, K=" << k;
+        EXPECT_DOUBLE_EQ(sum1, 0.0) << "sum k*c_k, K=" << k;
+        EXPECT_GT(xl.kappa(), 0.0);
+        EXPECT_LT(xl.kappa(), 2.0);
+        EXPECT_GT(xl.alpha(), 0.0);
+    }
+}
+
+// A2: only the published K range exists — no silent fallback row.
+TEST(XlBomd, OrderOutsideTableThrows) {
+    EXPECT_THROW(XlBomd(2), std::invalid_argument);
+    EXPECT_THROW(XlBomd(10), std::invalid_argument);
+}
+
+// A2: an empty density is a programming error, not a seed.
+TEST(XlBomd, AdvanceWithEmptyDensityThrows) {
+    XlBomd xl(5);
+    EXPECT_THROW(xl.advance(RealMatrix{}), std::invalid_argument);
+}
+
+// A2: shape changes after seeding must be surfaced (basis discontinuity).
+TEST(XlBomd, AdvanceWithMismatchedShapeThrows) {
+    XlBomd xl(5);
+    xl.advance(constant_matrix(4, 0.3));
+    EXPECT_THROW(xl.advance(constant_matrix(5, 0.3)), std::invalid_argument);
+}
+
+// A3: aux() before any density is a logic error.
+TEST(XlBomd, AuxBeforeSeedThrows) {
+    const XlBomd xl(5);
+    EXPECT_FALSE(xl.ready());
+    EXPECT_THROW(xl.aux(), std::logic_error);
+}
+
+// A3: the first advance seeds a stationary history — aux == D.
+TEST(XlBomd, FirstAdvanceSeedsAuxToScfDensity) {
+    XlBomd xl(5);
+    const RealMatrix d = constant_matrix(4, 0.7);
+    xl.advance(d);
+    ASSERT_TRUE(xl.ready());
+    EXPECT_DOUBLE_EQ(max_abs_diff(xl.aux(), d), 0.0);
+}
+
+// A3: a constant SCF density is the recursion's fixed point.
+TEST(XlBomd, ConstantDensityIsFixedPoint) {
+    XlBomd xl(5);
+    const RealMatrix d = constant_matrix(6, -0.25);
+    for (int n = 0; n < 21; ++n)
+        xl.advance(d);
+    EXPECT_LE(max_abs_diff(xl.aux(), d), 1e-12);
+}
+
+// A3: reset() drops the history (restart / discontinuity policy).
+TEST(XlBomd, ResetDropsHistory) {
+    XlBomd xl(5);
+    xl.advance(constant_matrix(4, 0.4));
+    xl.reset();
+    EXPECT_FALSE(xl.ready());
+    EXPECT_THROW(xl.aux(), std::logic_error);
+}
+
+// A4: bounded response to an oscillatory driving density (no secular
+// growth from the dissipative Verlet recursion at K=5).
+TEST(XlBomd, BoundedUnderOscillatoryDriving) {
+    XlBomd xl(5);
+    const int n_ao = 5;
+    const RealMatrix d0 = constant_matrix(n_ao, 0.5);
+    RealMatrix b = xt::zeros<double>({n_ao, n_ao});
+    for (int i = 0; i < n_ao; ++i)
+        for (int j = 0; j < n_ao; ++j)
+            b(i, j) = ((i + j) % 2 == 0) ? 1.0 : -0.5; // symmetric, |b|max=1
+    double worst = 0.0;
+    for (int n = 0; n < 200; ++n) {
+        const RealMatrix d =
+            d0 + 0.01 * std::sin(0.3 * static_cast<double>(n)) * b;
+        xl.advance(d);
+        worst = std::max(worst, max_abs_diff(xl.aux(), d));
+    }
+    EXPECT_LE(worst, 0.1) << "auxiliary density lost the SCF density";
+}
+
+// ── guess_P plumbing on the tiny inline H2 GpwDft (mirrors the
+//    warm-start contract test in test_cpu_gpw_solver.cpp) ───────────────
+
+namespace {
+
+GridBasisFunction s_basis(double alpha, const double c[3]) {
+    GridPrimitive p;
+    p.alpha = alpha;
+    p.center[0] = c[0];
+    p.center[1] = c[1];
+    p.center[2] = c[2];
+    p.l[0] = p.l[1] = p.l[2] = 0;
+    p.coeff = std::pow(2.0 * alpha / M_PI, 0.75);
+    return {p};
+}
+
+GpwAtom hydrogen(const double pos[3]) {
+    GpwAtom a;
+    a.z_val = 1.0;
+    a.pos[0] = pos[0];
+    a.pos[1] = pos[1];
+    a.pos[2] = pos[2];
+    a.basis = {s_basis(0.5, pos)};
+    a.rloc = 0.2;
+    a.cloc = {-4.17890044, 0.72446331};
+    return a;
+}
+
+std::vector<GpwAtom> small_h2(double box = 8.0) {
+    const double rA[3] = {box / 2 - 0.7, box / 2, box / 2};
+    const double rB[3] = {box / 2 + 0.7, box / 2, box / 2};
+    return {hydrogen(rA), hydrogen(rB)};
+}
+
+GpwDft small_cfg(double box = 8.0) {
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = box;
+    cfg.cutoff_ry = 120.0;
+    cfg.n_occ = 1;
+    cfg.max_iter = 100;
+    cfg.tol = 1e-7;
+    cfg.mix = 0.5;
+    return cfg;
+}
+
+void pin_single_thread() {
+#ifdef _OPENMP
+    omp_set_num_threads(1);
+#endif
+}
+
+} // namespace
+
+// A5: a converged-density guess reaches the cold fixed point, no slower.
+TEST(GpwSolverGuessP, ConvergedDensityGuessReachesColdFixedPoint) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+
+    GpwDft cold = small_cfg();
+    cold.build(atoms);
+    const GpwResult ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+    ASSERT_GT(ref.P.size(), 0u);
+
+    GpwDft warm = small_cfg();
+    warm.build(atoms);
+    const GpwResult& r = warm.run(atoms, nullptr, &ref.P);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.e_total, ref.e_total, 1e-10);
+    EXPECT_LE(r.iters, ref.iters);
+}
+
+// A5: guess_P with a mismatched shape throws (never a silent cold start).
+TEST(GpwSolverGuessP, MismatchedShapeThrows) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft solver = small_cfg();
+    solver.build(atoms);
+    const RealMatrix bad = xt::zeros<double>({3, 3}); // nb is 2 here
+    EXPECT_THROW(solver.run(atoms, nullptr, &bad), std::invalid_argument);
+}
+
+// A5: guess_P refuses the UKS and OT paths loudly (no-fallback rule).
+TEST(GpwSolverGuessP, UksOrOtWithGuessPThrows) {
+    const auto atoms = small_h2();
+    const RealMatrix p = constant_matrix(2, 0.5);
+
+    GpwDft uks = small_cfg();
+    uks.n_occ = 0;
+    uks.n_alpha = 1;
+    uks.n_beta = 1;
+    uks.build(atoms);
+    EXPECT_THROW(uks.run(atoms, nullptr, &p), std::invalid_argument);
+
+    GpwDft ot = small_cfg();
+    ot.use_ot = true;
+    ot.build(atoms);
+    EXPECT_THROW(ot.run(atoms, nullptr, &p), std::invalid_argument);
+}
+
+// ── GPWEvaluator xl_bomd guards (validation only — no SCF runs) ─────────
+
+namespace {
+
+ATV::cpu::Frame water_frame() {
+    ATV::cpu::Frame f(3);
+    const int z[3] = {8, 1, 1};
+    const double x[3] = {5.0000, 5.7586, 4.2414};
+    const double y[3] = {5.0000, 5.0000, 5.0000};
+    const double zc[3] = {5.0000, 5.5043, 5.5043};
+    for (int i = 0; i < 3; ++i) {
+        f.span(ATV::kAtom_type)[i] = z[i];
+        f.span(ATV::kAtom_x)[i] = x[i];
+        f.span(ATV::kAtom_y)[i] = y[i];
+        f.span(ATV::kAtom_z)[i] = zc[i];
+    }
+    f.simbox = ATV::cpu::Box::cubic(10.0);
+    return f;
+}
+
+ATV::cpu::gpw::GPWEvaluator water_eval() {
+    const ATV::cpu::gpw::Kind O{
+        ATV::molrs::Element::O,
+        ATV::cpu::gpw::GaussianBasis(ATV::molrs::Element::O,
+                                     "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(ATV::molrs::Element::O, "GTH-PBE-q6")};
+    const ATV::cpu::gpw::Kind H{
+        ATV::molrs::Element::H,
+        ATV::cpu::gpw::GaussianBasis(ATV::molrs::Element::H,
+                                     "DZVP-MOLOPT-GTH"),
+        ATV::cpu::gpw::GthPotential(ATV::molrs::Element::H, "GTH-PBE-q1")};
+    return ATV::cpu::gpw::GPWEvaluator({O, H});
+}
+
+} // namespace
+
+// A6: xl_bomd with UKS occupations is refused at build() (RKS only).
+TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithUks) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A6: xl_bomd with the OT minimizer is refused at build().
+TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithOt) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.use_ot = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A6: an out-of-table dissipation order is refused at build().
+TEST(GpwEvaluatorXlBomd, BuildRejectsXlOrderOutsideTable) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.xl_bomd_k = 11;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}

@@ -39,10 +39,14 @@ namespace gpw {
 ///
 /// @param atoms GPW atoms (basis + GTH PP), as for `GpwDft::run`.
 /// @param cfg   SCF configuration (grid, XC, electrostatics).
+/// @param guess_C Optional warm-start MO coefficients for the internal SCF
+///        (e.g. the energy pass just converged at this geometry — XL-BOMD
+///        path). Default nullptr keeps the cold solve bit-for-bit.
 /// @return Forces [Hartree/Bohr], one xyz triple per atom, in input order.
 /// @throws std::runtime_error if the SCF does not converge.
 std::vector<std::array<double, 3>>
-gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg);
+gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const linalg::RealMatrix* guess_C = nullptr);
 
 } // namespace gpw
 } // namespace cpu
