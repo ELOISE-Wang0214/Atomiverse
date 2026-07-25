@@ -15,7 +15,8 @@ tests; libxc is never a runtime dependency.
 
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
-remaining periodic-only gaps (hybrids, DFPT, Gaussian k-points).
+remaining periodic-only gaps (hybrids, meta-GGA, finite-q DFPT, multi-k MP2 /
+RPA / GW depth; Gaussian k-point RKS and Γ DFPT already ship).
 
 ## 1. Kohn–Sham Methods
 
@@ -241,7 +242,8 @@ Two periodic DFT engines exist, with disjoint strengths:
   **PBE-GGA** `reg_gpw-uks-pbe`; `n_alpha`/`n_beta`), plus **Monkhorst–Pack
   k-point RKS** (`k_mesh` / explicit `k_points`; phased lattice sums, KB
   nonlocal, per-k DIIS; `reg_gpw-kpoints-si`). **Open GPW follow-ons**
-  (queued): k-point UKS, analytic k-point forces. CPU only.
+  (queued): k-point UKS, analytic k-point forces (WIP `wf/gpw-kpoint-forces`),
+  k-point stress, Γ-UKS forces, revPBE/RPBE, multi-k MP2. CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |

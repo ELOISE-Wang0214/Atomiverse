@@ -246,7 +246,8 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   **Analytic cell stress** (fixed-\(P\)+Pulay product; multi-SCF FD oracle;
   `reg_gpw-analytic-stress` / `reg_gpw-stress-water`) and **GPW CELL_OPT**
   (`reg_gpw-variable-cell-ice`). Open follow-ons: k-point UKS, analytic
-  k-point forces (see `cp2k-method-queue.md`).
+  k-point forces (WIP `wf/gpw-kpoint-forces`), k-point stress, Γ-UKS forces,
+  revPBE/RPBE, multi-k MP2 / RPA / GW (see `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient

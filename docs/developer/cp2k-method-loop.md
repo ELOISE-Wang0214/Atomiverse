@@ -68,6 +68,13 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-25 GapCensus wave 2 (parent `dev` @ `507bb5f8`):** recover found
+  unmerged `wf/gpw-kpoint-forces` (ahead 1) → `## in_progress` `[~]`. Prior
+  pending (−k-forces) re-verified true gaps; **+4** follow-ons
+  (`dfpt-finite-q-si`, `periodic-mp2-kpoints`, `gpw-kpoint-stress`,
+  `gpw-uks-forces`) → pending **12**; in_progress **1**; blocked **5**. No
+  ○/✓ table flips; stale DFPT/k-point intro prose refreshed. Next: Assign
+  (prefer resume k-forces + surface-disjoint pending).
 - **2026-07-25 harness wave 1 (post GapCensus staff; parent `dev` @
   `83a100df`):** 9 merged → done: `gpw-blyp-water`, `gpw-uks-pbe`,
   `pw-uks-fe-smearing`, `pw-variable-cell-si`, `gpw-ts-ice`,

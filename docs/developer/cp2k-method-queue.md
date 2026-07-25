@@ -134,21 +134,45 @@ phonon dispersion productized (IFC Fourier; finite-q DFPT still ○), GPW BLYP
 + UKS-PBE + bulk Fe smear + PW CELL_OPT prose. **Queue not exhausted** —
 GapCensus owns next discovery.
 
+**GapCensus wave 2 2026-07-25 (parent `dev` @ `507bb5f8`):** recover —
+incomplete_count was **0** in queue, but unmerged `wf/gpw-kpoint-forces`
+(ahead 1: `d15a475d` feat analytic k-point forces + reg + oracle input;
+merge-base `9ff2f9a8` pre-harness) → promote to **`## in_progress`**
+(incomplete ≫ pending; do not leave half-landed `wf/*` as pending). Open
+CP2K/GPW/PW specs on `dev` = **0** (PySCF deferred only); isolation
+worktrees = **0**; leftover builds = **none**. Tree re-diff vs
+`docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending (minus
+k-forces) still true gaps — `XcKind` still `{PADE,PBE,PBEsol,BLYP}` (no
+revPBE/RPBE); no MBD/vdW-DF symbols; DFPT remains **q = 0** only; multi-k
+MP2 still throws; `gpw_stress` throws multi-k + UKS; force assembly is
+closed-shell Γ RKS (UKS forces unpinned). **Added 4** tree-declared
+follow-ons with offline CP2K twins: `dfpt-finite-q-si`,
+`periodic-mp2-kpoints`, `gpw-kpoint-stress`, `gpw-uks-forces`. **Not
+added:** BP86/B97/OLYP/HCTH (molecular PySCF path); XDM/VV10 (hold behind
+MBD/vdW-DF order); GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular
+post-HF / classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table
+flips** (nothing new merged since harness); stale §10 intro + DFPT prose
+refreshed. **Pending = 12**; **in_progress = 1**.
+
 ## pending
 
 - [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓
-- [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk
+- [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk; extend `XcKind` (still PADE\|PBE\|PBEsol\|BLYP)
 - [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` (merge-conflict avoidance)
 - [ ] `gpw-kpoints-uks` | GPW k-point UKS | gpw | O₂ / Fe tiny | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (k-mesh RKS ✓ `reg_gpw-kpoints-si`; Γ UKS PBE ✓ `reg_gpw-uks-pbe`); CP2K KPOINTS + UKS; **dep:** `gpw-kpoints-si` ✓ + `gpw-uks-pbe` ✓
-- [ ] `gpw-kpoint-forces` | GPW analytic forces at k-points | gpw | Si | DZVP-MOLOPT-GTH | F [Ha/Bohr] | `gpw_solver.h` follow-on (Γ analytic forces ✓; k-path energy-only today); CP2K FORCE_EVAL k-mesh twin; **dep:** `gpw-kpoints-si` ✓ + `gpw-forces-water` ✓
+- [ ] `gpw-uks-forces` | Γ-UKS analytic ionic forces | gpw | O₂ | DZVP-MOLOPT-GTH | F [Ha/Bohr] | force assembly is closed-shell RKS (`gpw_forces_analytic` builds W from `n_occ` + real C); Γ-UKS energy ✓ (`reg_gpw-uks-pbe` / `reg_gpw-uks-o2-gamma`); no UKS force pin; CP2K FORCE_EVAL UKS twin; **dep:** `gpw-uks-pbe` ✓ + `gpw-forces-water` ✓
+- [ ] `gpw-kpoint-stress` | GPW analytic stress at k-points | gpw | Si | DZVP-MOLOPT-GTH | σ [Ha/Bohr³] | `gpw_stress` throws multi-k ("k-point GPW not supported in this foothold"); Γ analytic stress ✓ (`reg_gpw-analytic-stress`); CP2K STRESS_TENSOR / NUMERICAL k-mesh twin; **dep:** `gpw-kpoints-si` ✓ + `gpw-analytic-stress` ✓
 - [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; prefer after TS ✓ (`gpw-ts-ice`)
 - [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / MBD order
+- [ ] `periodic-mp2-kpoints` | Multi-k GPW MP2 residual | gpw | Si | MOLOPT+GTH | e_corr Ha | Γ RI-GPW MP2 product ✓ (`reg_periodic-ri-mp2-si`); `GpwDft::mp2` throws on multi-k SCF — capability depth beyond Γ; CP2K MP2_GPW + KPOINTS; **dep:** `periodic-ri-mp2-si` ✓ + `gpw-kpoints-si` ✓
 - [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after** Periodic MP2 ✓ (`periodic-ri-mp2-si`)
 - [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
+- [ ] `dfpt-finite-q-si` | Finite-q DFPT Sternheimer phonons | response / pw | Si | NC-UPF | ω(q) cm⁻¹ | roadmap §11: Γ DFPT ✓ (`reg_dfpt-phonon-si`); IFC-Fourier dispersions ✓ (`reg_phonon-dispersion-si`) cover classical q-path ≠ DFPT Sternheimer at q≠0; CP2K DFPT / PHONON; **dep:** `dfpt-phonon-si` ✓
 
 ## in_progress
 
-*(empty — harness wave 1 closed 9 merges 2026-07-25; no residual `[~]`)*
+- [~] `gpw-kpoint-forces` | GPW analytic forces at Monkhorst–Pack k-points | gpw | H₂ / Si | DZV-GTH-PADE | F [Ha/Bohr] | **Recover:** unmerged `wf/gpw-kpoint-forces` @ `d15a475d` (Bloch-phased Pulay/core/grid; `C_occ_k`; reg dual-gate max\|dF\|~6e-6; oracle `tools/cp2k_oracle/inputs/gpw-kpoint-forces.inp`). Not on `dev` (force path still Γ real-P assembly). Resume: rebase/rebuild on current `dev` @ `507bb5f8`, dual-gate unit+`reg_gpw-kpoint-forces`, merge; **dep:** `gpw-kpoints-si` ✓ + `gpw-forces-water` ✓
 
 ## done (harness wave 1 2026-07-25)
 
