@@ -103,6 +103,41 @@ TEST(GpwXcGGA, BLYPDiffersFromPBEOnGaussian) {
         << "BLYP inactive? |dE|=" << std::abs(blyp.e_xc - pbe.e_xc);
 }
 
+// revPBE at σ=0 matches evaluate_xc(RevPBE) LDA limit (= PBE LDA base).
+TEST(GpwXcGGA, RevPBEConstantDensityMatchesPBE) {
+    using ATV::cpu::gpw::xc_grid_revpbe;
+    const double cell[3] = {8.0, 8.0, 8.0};
+    UniformGrid grid = make_uniform_grid(cell, 150.0);
+    const double rho0 = 0.2;
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), rho0);
+
+    XcOnGrid pbe = xc_grid_pbe(grid, rho);
+    XcOnGrid rev = xc_grid_revpbe(grid, rho);
+    EXPECT_NEAR(rev.e_xc, pbe.e_xc, 1e-12 * std::max(1.0, std::abs(pbe.e_xc)));
+    EXPECT_NEAR(rev.vxc_r[0], pbe.vxc_r[0], 1e-12);
+
+    const ATV::cpu::scf::XCOutput ref = ATV::cpu::scf::evaluate_xc(
+        ATV::cpu::scf::XCType::RevPBE, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
+    const double volume = cell[0] * cell[1] * cell[2];
+    EXPECT_NEAR(rev.e_xc, volume * rho0 * ref.exc,
+                1e-9 * std::abs(volume * rho0 * ref.exc));
+}
+
+// Nonuniform density: revPBE and PBE must differ (κ activation gate).
+TEST(GpwXcGGA, RevPBEDiffersFromPBEOnGaussian) {
+    using ATV::cpu::gpw::xc_grid_revpbe;
+    const double cell[3] = {10.0, 10.0, 10.0};
+    UniformGrid grid = make_uniform_grid(cell, 200.0);
+    const double c[3] = {5.0, 5.0, 5.0};
+    std::vector<double> rho = gaussian_density(grid, c, 0.8, 1.0);
+    XcOnGrid pbe = xc_grid_pbe(grid, rho);
+    XcOnGrid rev = xc_grid_revpbe(grid, rho);
+    EXPECT_TRUE(std::isfinite(rev.e_xc));
+    EXPECT_LT(rev.e_xc, 0.0);
+    EXPECT_GT(std::abs(rev.e_xc - pbe.e_xc), 1e-6)
+        << "revPBE inactive? |dE|=" << std::abs(rev.e_xc - pbe.e_xc);
+}
+
 TEST(GpwXcGGA, GaussianEnergyNegative) {
     const double cell[3] = {10.0, 10.0, 10.0};
     UniformGrid grid = make_uniform_grid(cell, 200.0);

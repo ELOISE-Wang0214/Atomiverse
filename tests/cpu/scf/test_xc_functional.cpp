@@ -185,6 +185,34 @@ TEST(XCFunctional, PBEsolDiffersFromPBEAtFiniteGradient) {
     EXPECT_TRUE(std::isfinite(sol.vsigma_aa));
 }
 
+// ── revPBE GGA (κ=1.245; Zhang & Yang 1998) ──────────────────────────────
+
+TEST(XCFunctional, RevPBEMetadata) {
+    EXPECT_TRUE(is_gga(XCType::RevPBE));
+    EXPECT_DOUBLE_EQ(hybrid_exchange_fraction(XCType::RevPBE), 0.0);
+    EXPECT_DOUBLE_EQ(hybrid_pt2_fraction(XCType::RevPBE), 0.0);
+}
+
+TEST(XCFunctional, RevPBEMatchesPBEAtZeroGradient) {
+    // At σ=0, Fx=1 and H=0 → revPBE and PBE share the PW92 LDA base.
+    for (double rho : {0.01, 0.1, 0.5, 2.0}) {
+        auto pbe = evaluate_xc(XCType::PBE, rho / 2, rho / 2, 0, 0, 0);
+        auto rev = evaluate_xc(XCType::RevPBE, rho / 2, rho / 2, 0, 0, 0);
+        EXPECT_NEAR(rev.exc, pbe.exc, 1e-12) << "rho=" << rho;
+        EXPECT_NEAR(rev.vrho_alpha, pbe.vrho_alpha, 1e-12) << "rho=" << rho;
+        EXPECT_NEAR(rev.vrho_beta, pbe.vrho_beta, 1e-12) << "rho=" << rho;
+    }
+}
+
+TEST(XCFunctional, RevPBEDiffersFromPBEAtFiniteGradient) {
+    // κ_rev = 1.245 > κ_PBE → different enhancement at finite s.
+    auto pbe = evaluate_xc(XCType::PBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    auto rev = evaluate_xc(XCType::RevPBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    EXPECT_GT(std::abs(rev.exc - pbe.exc), 1e-8);
+    EXPECT_TRUE(std::isfinite(rev.exc));
+    EXPECT_TRUE(std::isfinite(rev.vsigma_aa));
+}
+
 // ── Numerical stability ─────────────────────────────────────────────────
 
 TEST(XCFunctional, NoNaNAtVariousDensities) {

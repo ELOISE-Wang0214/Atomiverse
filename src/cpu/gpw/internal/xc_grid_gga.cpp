@@ -82,6 +82,11 @@ XcOnGrid xc_grid_pbesol(const UniformGrid& grid,
     return xc_grid_gga(grid, rho_r, cpu::scf::XCType::PBEsol);
 }
 
+XcOnGrid xc_grid_revpbe(const UniformGrid& grid,
+                        const std::vector<double>& rho_r) {
+    return xc_grid_gga(grid, rho_r, cpu::scf::XCType::RevPBE);
+}
+
 XcOnGrid xc_grid_blyp(const UniformGrid& grid,
                       const std::vector<double>& rho_r) {
     return xc_grid_gga(grid, rho_r, cpu::scf::XCType::BLYP);
