@@ -179,6 +179,12 @@ XcOnGridSpin xc_grid_pbesol_spin(const UniformGrid& grid,
     return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::PBEsol);
 }
 
+XcOnGridSpin xc_grid_revpbe_spin(const UniformGrid& grid,
+                                 const std::vector<double>& rho_a,
+                                 const std::vector<double>& rho_b) {
+    return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::RevPBE);
+}
+
 XcOnGridSpin xc_grid_blyp_spin(const UniformGrid& grid,
                                const std::vector<double>& rho_a,
                                const std::vector<double>& rho_b) {

@@ -1152,9 +1152,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const int n_a = cfg.n_alpha;
     const int n_b = cfg.n_beta;
     if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
-        && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::BLYP)
+        && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
+        && cfg.xc != XcKind::BLYP)
         throw std::runtime_error(
-            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, or BLYP");
+            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, or BLYP");
 
     const GpwMpiLayout layout = gpw_mpi_layout();
     int n_kpts_local = 0;
@@ -1226,6 +1227,8 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return xc_grid_pbe_spin(grid, ra, rb);
         if (cfg.xc == XcKind::PBEsol)
             return xc_grid_pbesol_spin(grid, ra, rb);
+        if (cfg.xc == XcKind::RevPBE)
+            return xc_grid_revpbe_spin(grid, ra, rb);
         if (cfg.xc == XcKind::BLYP)
             return xc_grid_blyp_spin(grid, ra, rb);
         return xc_grid_pade_lsd(grid, ra, rb);
@@ -2215,13 +2218,14 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     }
 
     // ── UKS (spin-unrestricted, Γ-point) ────────────────────────────────────
-    // Separate Pa/Pb, spin-resolved XC (PADE LSD or PBE/PBEsol/BLYP GGA), dual KS
-    // matrices. Multigrid products and OT are not wired for UKS — single-grid.
+    // Separate Pa/Pb, spin-resolved XC (PADE LSD or PBE/PBEsol/RevPBE/BLYP GGA),
+    // dual KS matrices. Multigrid products and OT are not wired for UKS — single-grid.
     if (uks) {
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
-            && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::BLYP)
+            && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
+            && cfg.xc != XcKind::BLYP)
             throw std::runtime_error(
-                "GPW UKS: XcKind must be PADE, PBE, PBEsol, or BLYP");
+                "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, or BLYP");
         if (cfg.use_ot)
             throw std::runtime_error(
                 "GPW UKS: OT path is not implemented for unrestricted SCF");
@@ -2242,6 +2246,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 return xc_grid_pbe_spin(grid, ra, rb);
             if (cfg.xc == XcKind::PBEsol)
                 return xc_grid_pbesol_spin(grid, ra, rb);
+            if (cfg.xc == XcKind::RevPBE)
+                return xc_grid_revpbe_spin(grid, ra, rb);
             if (cfg.xc == XcKind::BLYP)
                 return xc_grid_blyp_spin(grid, ra, rb);
             return xc_grid_pade_lsd(grid, ra, rb);
@@ -2656,10 +2662,10 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                 + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
                 + ")");
         if (xc != XcKind::PADE && xc != XcKind::PBE && xc != XcKind::PBEsol
-            && xc != XcKind::BLYP)
+            && xc != XcKind::RevPBE && xc != XcKind::BLYP)
             throw std::invalid_argument(
-                "GpwDft::build: UKS supports XcKind::PADE, PBE, PBEsol, or "
-                "BLYP");
+                "GpwDft::build: UKS supports XcKind::PADE, PBE, PBEsol, "
+                "RevPBE, or BLYP");
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
@@ -2710,8 +2716,10 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         if (level_shift != 0.0)
             reject("level shifting");
         if (is_uks() && xc != XcKind::PADE && xc != XcKind::PBE
-            && xc != XcKind::PBEsol && xc != XcKind::BLYP)
-            reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, or BLYP)");
+            && xc != XcKind::PBEsol && xc != XcKind::RevPBE
+            && xc != XcKind::BLYP)
+            reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, RevPBE, "
+                   "or BLYP)");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {
