@@ -163,13 +163,12 @@ void lyp_correlation(double rho_a, double rho_b, double sigma_aa,
     const double a = kLYP_a, b = kLYP_b, c = kLYP_c, d = kLYP_d;
     const double zeta_threshold = kZetaThreshold;
 
-    const double rho0 = rho_a;
-    const double rho1 = rho_b;
-    const double sigma0 = sigma_aa;
-    const double sigma1 = sigma_ab;
-    const double sigma2 = sigma_bb;
-
     // Density cutoff: below it, libxc's work_gga returns zero.
+    double rho0 = rho_a > 0.0 ? rho_a : 0.0;
+    double rho1 = rho_b > 0.0 ? rho_b : 0.0;
+    double sigma0 = sigma_aa;
+    double sigma1 = sigma_ab;
+    double sigma2 = sigma_bb;
     if (rho0 + rho1 < kRhoMin) {
         ec = 0.0;
         vc_a = 0.0;
@@ -178,6 +177,22 @@ void lyp_correlation(double rho_a, double rho_b, double sigma_aa,
         vsigma_ab = 0.0;
         vsigma_bb = 0.0;
         return;
+    }
+    // Empty spin channel: the maple2c intermediates contain 1/rho_s^{8/3}
+    // factors (t70/t77). With rho_s = 0 and sigma_ss = 0 that is 0·∞ → NaN
+    // and poisons UKS (n_β=0). Floor the empty channel dens_threshold-style
+    // and zero its sigma (libxc dens_threshold guard). Occupied-channel
+    // numbers at finite density are unchanged (floor ≪ dens_threshold).
+    constexpr double kSpinFloor = 1e-14;
+    if (rho0 < kSpinFloor) {
+        rho0 = kSpinFloor;
+        sigma0 = 0.0;
+        sigma1 = 0.0;
+    }
+    if (rho1 < kSpinFloor) {
+        rho1 = kSpinFloor;
+        sigma2 = 0.0;
+        sigma1 = 0.0;
     }
 
     auto POW_1_3 = [](double v) { return std::cbrt(v); };

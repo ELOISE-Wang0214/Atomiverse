@@ -105,7 +105,7 @@ XcOnGridSpin xc_grid_gga_spin(const UniformGrid& grid,
     if (!cpu::scf::is_gga(xc)
         || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
         throw std::invalid_argument(
-            "xc_grid_gga_spin: only pure GGA XCType (PBE, PBEsol, …) "
+            "xc_grid_gga_spin: only pure GGA XCType (PBE, PBEsol, BLYP, …) "
             "supported");
     }
     const long ng = grid.npts();
@@ -177,6 +177,12 @@ XcOnGridSpin xc_grid_pbesol_spin(const UniformGrid& grid,
                                  const std::vector<double>& rho_a,
                                  const std::vector<double>& rho_b) {
     return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::PBEsol);
+}
+
+XcOnGridSpin xc_grid_blyp_spin(const UniformGrid& grid,
+                               const std::vector<double>& rho_a,
+                               const std::vector<double>& rho_b) {
+    return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::BLYP);
 }
 
 } // namespace gpw

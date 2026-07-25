@@ -186,6 +186,36 @@ TEST(GpwXcGGA, GaussianEnergyNegative) {
 // Functional-derivative consistency: for a band-limited perturbation direction
 // `bump`, d E_xc / d eps = integral v_xc bump dr. Central finite difference vs
 // the assembled v_xc (this exercises the divergence term and its adjoint).
+
+// Spin-resolved BLYP collapses to closed-shell BLYP; differs from spin-PBE.
+TEST(GpwXcGGA, BLYPSpinCollapseAndDiffersFromPBE) {
+    using ATV::cpu::gpw::xc_grid_blyp;
+    using ATV::cpu::gpw::xc_grid_blyp_spin;
+    using ATV::cpu::gpw::xc_grid_pbe_spin;
+    const double cell[3] = {10.0, 10.0, 10.0};
+    UniformGrid grid = make_uniform_grid(cell, 200.0);
+    const double c[3] = {5.0, 5.0, 5.0};
+    std::vector<double> rho = gaussian_density(grid, c, 0.8, 1.0);
+    std::vector<double> ra(rho.size()), rb(rho.size());
+    for (std::size_t g = 0; g < rho.size(); ++g) {
+        ra[g] = 0.55 * rho[g];
+        rb[g] = 0.45 * rho[g];
+    }
+    // polarized densities: BLYP vs PBE must differ
+    auto blyp = xc_grid_blyp_spin(grid, ra, rb);
+    auto pbe = xc_grid_pbe_spin(grid, ra, rb);
+    EXPECT_TRUE(std::isfinite(blyp.e_xc));
+    EXPECT_GT(std::abs(blyp.e_xc - pbe.e_xc), 1e-6);
+    // equal-spin collapse
+    for (std::size_t g = 0; g < rho.size(); ++g) {
+        ra[g] = 0.5 * rho[g];
+        rb[g] = 0.5 * rho[g];
+    }
+    auto uni = xc_grid_blyp(grid, rho);
+    auto spin = xc_grid_blyp_spin(grid, ra, rb);
+    EXPECT_NEAR(uni.e_xc, spin.e_xc, 1e-9 * std::max(1.0, std::abs(uni.e_xc)));
+}
+
 TEST(GpwXcGGA, SpinCollapseMatchesClosedShell) {
     using ATV::cpu::gpw::xc_grid_pbe_spin;
     const double cell[3] = {8.0, 8.0, 8.0};
