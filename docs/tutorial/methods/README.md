@@ -143,6 +143,7 @@ and `tools/cp2k_oracle/`. Fair walls from harness (`ratio` or `perf_exempt`).
 | Method | Page | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ------ | ---- | ---------- | --------------------------------------------- |
 | GPW cell stress strain-FD H₂O (NUMERICAL pin) | [gpw-stress-water](gpw-stress-water.md) | `regressions/gpw/gpw-stress-water` | **4.75** |
+| GPW analytic fixed-\(P\) stress H₂O | [gpw-analytic-stress](gpw-analytic-stress.md) | `regressions/gpw/gpw-analytic-stress` | dual-gate vs FD |
 | GPW BOMD H₂O NVE energy-drift foothold | [gpw-bomd-water](gpw-bomd-water.md) | `regressions/gpw/gpw-bomd-water` | **perf_exempt** |
 | PW Nielsen–Martin analytic stress Si | [pw-analytic-stress-si](pw-analytic-stress-si.md) | `regressions/pw/pw-analytic-stress-si` | **perf_exempt** |
 | FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` | **perf_exempt** |

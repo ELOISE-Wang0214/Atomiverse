@@ -267,25 +267,42 @@ std::vector<std::array<double, 3>>
 gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
               double h = 1e-3);
 
-/// @brief Cell stress σ [Hartree/Bohr³], Voigt order xx,yy,zz,xy,xz,yz.
+/// @brief Analytic cell stress σ [Hartree/Bohr³], Voigt order xx,yy,zz,xy,xz,yz.
 ///
-/// v1: orthorhombic strain-FD of the SCF energy at fixed fractional
-/// coordinates (diagonal only; off-diagonal components are 0). Same strategy
-/// as `cpu::pw::pw_stress` strain-FD foothold. Analytic stress is a follow-on.
+/// Product path: one SCF, then Hellmann–Feynman fixed-\(P\) central FD of the
+/// non-self-consistent total energy under orthorhombic diagonal strain at fixed
+/// fractional coordinates (GPW analogue of `cpu::pw::pw_stress`). Off-diagonal
+/// shear is 0 (orthorhombic cell only). Multi-SCF oracle: `gpw_stress_fd`.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
 /// @param method SCF configuration; `cell` must match the atom box [Bohr].
-/// @param h Dimensionless strain step (default 2e-3).
-/// @param axes Per-axis mask (x,y,z); a masked axis skips its two FD SCF
-///        solves and reports exactly 0 — for variable-cell relaxation of a
-///        subset of the box edges (CP2K `CELL_OPT` `CONSTRAINT` twin).
-/// @param guess_C Optional converged unstrained MO coefficients used to warm
-///        start every strained SCF (pure cost cut; the strain is O(h)).
+/// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
+/// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports
+///        exactly 0 — for variable-cell relaxation of constrained box edges.
+/// @param guess_C Optional warm-start MO coefficients for the reference SCF.
 /// @return Voigt stress [Hartree/Bohr³].
 std::array<double, 6>
 gpw_stress(const std::vector<GpwAtom>& atoms, const GpwDft& method,
            double h = 2e-3, const std::array<bool, 3>& axes = {true, true, true},
            const linalg::RealMatrix* guess_C = nullptr);
+
+/// @brief Multi-SCF strain-FD cell stress σ [Hartree/Bohr³] (oracle / twin).
+///
+/// Fully re-converges the SCF at each strained cell (±h per diagonal axis).
+/// Same sign convention and orthorhombic scope as `gpw_stress`. Use only for
+/// dual-gate tests and finite-difference twins — not the product hot path.
+///
+/// @param atoms Geometry [Bohr] + basis/PP (as for `GpwDft::run`).
+/// @param method SCF configuration; `cell` must match the atom box [Bohr].
+/// @param h Dimensionless strain step (default 2e-3).
+/// @param axes Per-axis mask (x,y,z); masked axes report exactly 0.
+/// @param guess_C Optional warm-start MO coefficients for every strained SCF.
+/// @return Voigt stress [Hartree/Bohr³].
+std::array<double, 6>
+gpw_stress_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
+              double h = 2e-3,
+              const std::array<bool, 3>& axes = {true, true, true},
+              const linalg::RealMatrix* guess_C = nullptr);
 
 } // namespace gpw
 } // namespace cpu

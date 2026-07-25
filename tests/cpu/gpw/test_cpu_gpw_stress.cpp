@@ -1,7 +1,8 @@
 /// @file tests/cpu/gpw/test_cpu_gpw_stress.cpp
-/// @brief Unit gates for GPW cell stress (orthorhombic strain-FD v1).
+/// @brief Unit gates for GPW cell stress (analytic fixed-P + multi-SCF FD oracle).
 ///
-/// E2E CP2K STRESS_TENSOR parity lives in regressions/gpw/gpw-stress-water/.
+/// E2E CP2K / analytic-vs-FD water twin lives in
+/// regressions/gpw/gpw-analytic-stress/ and regressions/gpw/gpw-stress-water/.
 
 #include <array>
 #include <cmath>
@@ -48,21 +49,41 @@ std::vector<GpwAtom> cheap_h2_atoms() {
 
 } // namespace
 
-TEST(GpwStress, OffDiagonalZeroOrthorhombicV1) {
+TEST(GpwStress, AnalyticOffDiagonalZeroOrthorhombic) {
     const auto atoms = cheap_h2_atoms();
     const auto s = gpw_stress(atoms, cheap_h2_cfg(), 3e-3);
     for (int k = 0; k < 6; ++k)
         EXPECT_TRUE(std::isfinite(s[static_cast<std::size_t>(k)])) << k;
-    // v1: shear components identically zero (no triclinic cell).
     EXPECT_DOUBLE_EQ(s[3], 0.0);
     EXPECT_DOUBLE_EQ(s[4], 0.0);
     EXPECT_DOUBLE_EQ(s[5], 0.0);
-    // Diagonal must be finite and nonzero for a confined molecule.
     const double max_diag =
         std::max({std::abs(s[0]), std::abs(s[1]), std::abs(s[2])});
-    std::printf("[GPW stress] Voigt Ha/Bohr3: %.6e %.6e %.6e | 0 0 0\n", s[0],
-                s[1], s[2]);
+    std::printf("[GPW stress analytic] Voigt Ha/Bohr3: %.6e %.6e %.6e | 0 0 0\n",
+                s[0], s[1], s[2]);
     EXPECT_GT(max_diag, 1e-8);
+}
+
+TEST(GpwStress, AnalyticMatchesFdDiagonal) {
+    // Hellmann–Feynman fixed-P product vs multi-SCF strain-FD oracle on the
+    // same cheap H₂ fixture. Residual is SCF residual / O(h²); gate is unit-
+    // tier loose (e2e water twin uses 1e-5).
+    const auto atoms = cheap_h2_atoms();
+    const auto cfg = cheap_h2_cfg();
+    const double h = 3e-3;
+    const auto san = gpw_stress(atoms, cfg, h);
+    const auto sfd = gpw_stress_fd(atoms, cfg, h);
+    double max_err = 0.0;
+    for (int a = 0; a < 3; ++a) {
+        const double err =
+            std::abs(san[static_cast<std::size_t>(a)]
+                     - sfd[static_cast<std::size_t>(a)]);
+        max_err = std::max(max_err, err);
+        std::printf("  axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                    san[static_cast<std::size_t>(a)],
+                    sfd[static_cast<std::size_t>(a)], err);
+    }
+    EXPECT_LT(max_err, 5e-5) << "analytic vs multi-SCF FD diagonal";
 }
 
 namespace {
@@ -112,32 +133,33 @@ GpwDft toy_h2_cfg() {
 
 } // namespace
 
-TEST(GpwStress, AxesMaskSkipsFrozenAxes) {
-    // Masked axes report exactly 0 (no FD solves); the unmasked axis is the
-    // same central FD as the full call — identical solver path, so equal to
-    // tight tolerance.
+TEST(GpwStress, AxesMaskSkipsFrozenAxesAnalyticAndFd) {
     const auto atoms = toy_h2_atoms();
-    const auto full = gpw_stress(atoms, toy_h2_cfg(), 3e-3);
-    const auto x_only = gpw_stress(atoms, toy_h2_cfg(), 3e-3,
-                                   /*axes*/ {true, false, false});
-    EXPECT_NEAR(x_only[0], full[0], 1e-12);
-    EXPECT_GT(std::abs(full[1]) + std::abs(full[2]), 0.0); // full solves y,z
-    EXPECT_DOUBLE_EQ(x_only[1], 0.0);
-    EXPECT_DOUBLE_EQ(x_only[2], 0.0);
-    EXPECT_DOUBLE_EQ(x_only[3], 0.0);
-    EXPECT_DOUBLE_EQ(x_only[4], 0.0);
-    EXPECT_DOUBLE_EQ(x_only[5], 0.0);
-    // All-masked is a caller error.
-    EXPECT_THROW(gpw_stress(atoms, toy_h2_cfg(), 3e-3,
-                            {false, false, false}),
+    const auto cfg = toy_h2_cfg();
+    const double h = 3e-3;
+    const auto full_an = gpw_stress(atoms, cfg, h);
+    const auto x_an = gpw_stress(atoms, cfg, h, /*axes*/ {true, false, false});
+    EXPECT_NEAR(x_an[0], full_an[0], 1e-12);
+    EXPECT_DOUBLE_EQ(x_an[1], 0.0);
+    EXPECT_DOUBLE_EQ(x_an[2], 0.0);
+
+    const auto full_fd = gpw_stress_fd(atoms, cfg, h);
+    const auto x_fd =
+        gpw_stress_fd(atoms, cfg, h, /*axes*/ {true, false, false});
+    EXPECT_NEAR(x_fd[0], full_fd[0], 1e-12);
+    EXPECT_DOUBLE_EQ(x_fd[1], 0.0);
+    EXPECT_DOUBLE_EQ(x_fd[2], 0.0);
+
+    EXPECT_THROW(gpw_stress(atoms, cfg, h, {false, false, false}),
+                 std::invalid_argument);
+    EXPECT_THROW(gpw_stress_fd(atoms, cfg, h, {false, false, false}),
                  std::invalid_argument);
 }
 
-TEST(GpwStress, EvaluatorWritesKStress) {
+TEST(GpwStress, EvaluatorWritesKStressAnalyticDefault) {
     cpu::Frame frame(2);
     frame.span(kAtom_type)[0] = 1;
     frame.span(kAtom_type)[1] = 1;
-    // Bohr coords from cheap_h2 → Å
     constexpr double b2a = 1.0 / 1.8897261245650618;
     frame.span(kAtom_x)[0] = 5.5 * b2a;
     frame.span(kAtom_y)[0] = 6.0 * b2a;
@@ -155,6 +177,7 @@ TEST(GpwStress, EvaluatorWritesKStress) {
                       /*tol*/ 1e-8, /*mix*/ 0.3, /*xc*/ XcKind::PADE,
                       /*nonperiodic*/ true, /*compute_forces*/ false);
     eval.compute_stress = true;
+    eval.stress_use_fd = false; // product default
     eval.stress_strain_h = 3e-3;
 
     cpu::Evaluate driver;

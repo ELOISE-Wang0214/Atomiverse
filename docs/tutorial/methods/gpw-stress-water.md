@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `gpw-stress-water` |
 | Regression | `regressions/gpw/gpw-stress-water/` |
-| Public API | `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_strain_h`); `last_stress_ha_bohr3()`; free `gpw_stress` on `gpw_solver.h` |
+| Public API | `cpu::gpw::GPWEvaluator` (`compute_stress`, `stress_use_fd`, `stress_strain_h`); product analytic default — see [gpw-analytic-stress](gpw-analytic-stress.md); free `gpw_stress` / `gpw_stress_fd` |
 | Related narrative | [Ch. 9 GPW](../ch09-gpw.md) |
 | Queue | CP2K capability loop — wave 2 done (2026-07-24) |
 

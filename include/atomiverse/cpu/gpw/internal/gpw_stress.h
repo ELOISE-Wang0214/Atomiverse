@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/gpw_stress.h
-/// @brief GPW cell stress via central FD of SCF energy under strain (v1).
+/// @brief GPW cell stress: analytic fixed-P (product) + multi-SCF strain-FD oracle.
 #pragma once
 
 #include <array>
@@ -12,24 +12,34 @@ namespace cpu {
 namespace gpw {
 namespace internal {
 
-/// @brief Strain-FD Voigt stress [Hartree/Bohr³], order xx,yy,zz,xy,xz,yz.
+/// @brief Analytic (Hellmann–Feynman fixed-\(P\)) Voigt stress [Hartree/Bohr³].
 ///
-/// Orthorhombic GPW only: diagonal components from central FD of \(E\) under
-/// axis-aligned strain at fixed fractional coordinates; off-diagonal are 0.
+/// One SCF → central FD of the non-self-consistent total energy \(E[P;\varepsilon]\)
+/// under orthorhombic diagonal strain at fixed fractional coordinates (GPW
+/// analogue of plane-wave Nielsen–Martin in this tree). Off-diagonal = 0.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (same as `GpwDft::run`).
 /// @param method SCF configuration (`cell` must match atoms' box).
-/// @param h Dimensionless strain step (default 2e-3).
-/// @param axes Per-axis mask (x,y,z); a masked axis skips both FD SCFs and
-///        reports exactly 0 (variable-cell relax of constrained axes).
-/// @param guess_C Optional converged unstrained MO coefficients — warm start
-///        for every strained SCF (cost only; values unchanged within SCF tol).
-/// @return Voigt stress σ [Hartree/Bohr³].
+/// @param h Dimensionless strain step for the fixed-\(P\) energy FD (default 2e-3).
+/// @param axes Per-axis mask (x,y,z); a masked axis skips samples and reports 0.
+/// @param guess_C Optional warm-start MO coefficients for the reference SCF.
+/// @return Voigt stress σ [Hartree/Bohr³], order xx,yy,zz,xy,xz,yz.
 std::array<double, 6>
-gpw_stress_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
-                double h = 2e-3,
-                const std::array<bool, 3>& axes = {true, true, true},
-                const linalg::RealMatrix* guess_C = nullptr);
+gpw_stress_analytic_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
+                         double h = 2e-3,
+                         const std::array<bool, 3>& axes = {true, true, true},
+                         const linalg::RealMatrix* guess_C = nullptr);
+
+/// @brief Multi-SCF strain-FD Voigt stress [Hartree/Bohr³] (oracle / twin).
+///
+/// Orthorhombic only: diagonal components from central FD of fully re-converged
+/// SCF energy under axis-aligned strain at fixed fractional coordinates;
+/// off-diagonal are 0.
+std::array<double, 6>
+gpw_stress_fd_impl(const std::vector<GpwAtom>& atoms, const GpwDft& method,
+                   double h = 2e-3,
+                   const std::array<bool, 3>& axes = {true, true, true},
+                   const linalg::RealMatrix* guess_C = nullptr);
 
 } // namespace internal
 } // namespace gpw
