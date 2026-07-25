@@ -92,6 +92,13 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_pw-analytic-stress-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    if(ATV_BUILD_MINIMIZER)
+        atv_add_regression(pw pw-variable-cell-si)
+        if(TARGET reg_pw-variable-cell-si)
+            target_compile_definitions(reg_pw-variable-cell-si PRIVATE
+                ATV_PW_UPF_PATH="${_atv_si_upf}")
+        endif()
+    endif()
     # DFPT phonons at Γ (response): PW LSDA Si + Sternheimer response.
     atv_add_regression(response dfpt-phonon-si)
     if(TARGET reg_dfpt-phonon-si)

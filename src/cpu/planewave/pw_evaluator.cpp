@@ -18,14 +18,32 @@ void PWEvaluator::build(const cpu::BuildContext& ctx) {
 }
 
 void PWEvaluator::launch(const cpu::LaunchContext& ctx) {
-    // Energy path (always). Nested force/stress SCFs re-resolve Frame keys
-    // many times; park the per-launch resolution window around them (same
-    // pattern as mean_field_method) so the outer Evaluate budget stays
-    // component-sized.
+    // Nested force/stress SCFs re-resolve Frame keys many times; park the
+    // per-launch resolution window around them (same pattern as
+    // mean_field_method) so the outer Evaluate budget stays component-sized.
+    //
+    // Variable-cell productization: stress-only launches use the production
+    // SCF inside `pw_stress` for both energy and stress (one SCF class, not
+    // energy-SCF + stress-SCF). Force paths still run energy then forces.
+    const bool want_forces = compute_forces_ && ctx.forces_requested;
+    const bool stress_only = compute_stress_ && !want_forces;
+
+    if (stress_only) {
+        const auto saved = ctx.frame.resolution_window();
+        double energy_ry = 0.0;
+        const auto s = pw_stress(ctx.frame, method_, &energy_ry);
+        ctx.frame.restore_resolution_window(saved);
+        ctx.frame.meta.get(kEnergy) = energy_ry * qe_units::rydberg_to_ev;
+        auto& st = ctx.frame.meta.get(kStress);
+        for (int k = 0; k < 6; ++k)
+            st[static_cast<std::size_t>(k)] = s[static_cast<std::size_t>(k)];
+        return;
+    }
+
     const auto& result = method_.run(ctx.frame);
     ctx.frame.meta.get(kEnergy) = result.energy * qe_units::rydberg_to_ev;
 
-    if (compute_forces_ && ctx.forces_requested) {
+    if (want_forces) {
         const auto saved = ctx.frame.resolution_window();
         const auto forces = pw_forces_analytic(ctx.frame, method_); // eV/Å
         ctx.frame.restore_resolution_window(saved);

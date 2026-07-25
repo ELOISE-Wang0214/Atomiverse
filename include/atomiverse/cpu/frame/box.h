@@ -214,8 +214,12 @@ class Box {
     /// @param sz Scale along z.
     void scale_diagonal(double sx, double sy, double sz) noexcept;
 
-    /// @brief Multiply all three diagonal entries by `s`.
-    /// @param s Isotropic scale.
+    /// @brief Isotropic volume scale: multiply the full cell matrix by `s`.
+    ///
+    /// \(h \leftarrow s\,h\) (all nine entries). For axis-aligned orthorhombic
+    /// boxes this equals diagonal-only scaling; for fcc/triclinic primitives
+    /// it is required so off-diagonal lattice vectors actually move.
+    /// @param s Isotropic scale (dimensionless).
     void scale_isotropic(double s) noexcept;
 
     /// @brief Multiply a single diagonal entry by `s`.

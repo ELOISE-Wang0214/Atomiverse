@@ -148,7 +148,13 @@ std::vector<std::array<double, 3>> pw_forces_analytic(const cpu::Frame& frame,
 ///
 /// One SCF + Hellmann–Feynman cell derivatives (kinetic, Hartree, local PP,
 /// Ewald, LDA XC, KB nonlocal). Matches strain-FD of the total energy.
-std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method);
+/// Mechanical / CP2K sign: \(\sigma=-(1/\Omega)\partial E/\partial\varepsilon\)
+/// (positive when compressed — drives `IsotropicCellRelax` to expand).
+///
+/// @param energy_ry_out Optional: total energy [Ry] from the production SCF
+///        (avoids a second SCF when the evaluator also needs energy).
+std::array<double, 6> pw_stress(const cpu::Frame& frame, const PW& method,
+                                double* energy_ry_out = nullptr);
 
 /// @brief Strain finite-difference cell stress oracle [eV/Å³] (Voigt).
 ///

@@ -14,6 +14,11 @@
 ///      ~1 SCF + 12 diagonalizations instead of 12 SCFs.
 ///
 /// Oracle path (`pw_stress_fd`): full multi-SCF strain-FD of E_tot (12 SCFs).
+///
+/// Sign convention (productization 2026-07-25): **mechanical / CP2K**
+/// \(\sigma = -(1/\Omega)\,\partial E/\partial\varepsilon\), matching
+/// GPW `gpw_stress` and `AnisotropicCellRelax` / `IsotropicCellRelax`
+/// (positive diagonal stress when the cell is compressed → expand).
 
 #include "atomiverse/cpu/planewave/internal/pw_stress.h"
 
@@ -341,13 +346,15 @@ std::array<double, 6> pw_stress_fd_impl(const cpu::Frame& frame,
         const double ep_ry = scf_energy_ry(fp, method);
         const double em_ry = scf_energy_ry(fm, method);
         const double dE_dev = (ep_ry - em_ry) * ry_to_ev / (2.0 * h);
-        stress[static_cast<std::size_t>(v)] = dE_dev / vol;
+        // Mechanical / CP2K: σ = −(1/Ω) ∂E/∂ε (matches GPW cell relax).
+        stress[static_cast<std::size_t>(v)] = -dE_dev / vol;
     }
     return stress;
 }
 
 std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
-                                              const PW& method) {
+                                              const PW& method,
+                                              double* energy_ry_out) {
     if (frame.nlocal() <= 0)
         throw std::invalid_argument("pw_stress: frame has no atoms");
     if (frame.simbox.volume() <= 0)
@@ -371,6 +378,8 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
     PWProblem scf_prob;
     const PWResult res = run_scf_fixed_occ(frame, method, scf_prob, poisson, xc,
                                            veff, density, davidson, "stress");
+    if (energy_ry_out)
+        *energy_ry_out = res.energy;
     if (!res.converged) {
         ATV_WARN("[pw] pw_stress_analytic: SCF not converged after {} iters; "
                  "using last density for HF stress",
@@ -411,7 +420,8 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
         const double em_ry = nscf_energy_ry(fm, method, rho_r0, omega0, poisson,
                                             xc, veff, davidson, n_bands);
         const double dE_dev = (ep_ry - em_ry) * ry_to_ev / (2.0 * h);
-        stress[static_cast<std::size_t>(v)] = dE_dev / vol;
+        // Mechanical / CP2K: σ = −(1/Ω) ∂E/∂ε (matches GPW cell relax).
+        stress[static_cast<std::size_t>(v)] = -dE_dev / vol;
     }
     return stress;
 }
