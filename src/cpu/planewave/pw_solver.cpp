@@ -158,6 +158,13 @@ PWResult& PW::run(const cpu::Frame& frame) {
     internal::PWWorkspace& ws = prob.ws;
     auto& gv0 = prob.gv0;
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
+    // Round-robin distribution observables (the scaling gate reads these):
+    // rank r owns k-points {r, r+nprocs, ...} — the exact count of every
+    // `for (ik = rank; ik < n_kpts; ik += nprocs)` loop below. Serial /
+    // MPI-uninitialized layouts are rank 0 of 1, so all k are local.
+    result_.n_kpts = n_kpts;
+    result_.n_kpts_local = n_kpts / layout.nprocs +
+                           (layout.rank < n_kpts % layout.nprocs ? 1 : 0);
     const int n_elec = prob.n_elec;
     const AccReal vol_bohr = prob.vol_bohr;
     ws.mix_beta = AccReal(mix_beta);

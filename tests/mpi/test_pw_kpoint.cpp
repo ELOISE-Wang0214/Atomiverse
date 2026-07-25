@@ -110,6 +110,43 @@ TEST(PWMpiKpoint, RankCountInvariantEnergy) {
     EXPECT_GT(r.iterations, 0);
 }
 
+TEST(PWMpiKpoint, RoundRobinPartitionCoversAllKpoints) {
+    // Distribution observables (mpi-pw-scaling-4rank): the per-rank owned
+    // k-point counts must partition the full set — SUM over ranks equals
+    // the total, and round-robin balance means MAX − MIN ≤ 1. One SCF
+    // pass is enough (the fields are set before the loop), so max_iter=1
+    // keeps this cheap at every rank count.
+    auto frame = make_si_fcc(5.43);
+
+    PW cfg;
+    cfg.ecut_ry = 10.0;
+    cfg.k_mesh = 2; // 8 k-points
+    cfg.tol = 1e-6;
+    cfg.max_iter = 1;
+
+    PW solver = std::move(cfg);
+    solver.build(frame);
+    const auto& r = solver.run(frame);
+
+    int nprocs = 1;
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+    EXPECT_EQ(r.n_kpts, 8) << "k_mesh=2 must generate the full 2x2x2 MP set";
+
+    int sum_local = 0, min_local = 0, max_local = 0;
+    MPI_Allreduce(&r.n_kpts_local, &sum_local, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&r.n_kpts_local, &min_local, 1, MPI_INT, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&r.n_kpts_local, &max_local, 1, MPI_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
+
+    EXPECT_EQ(sum_local, r.n_kpts) << "ranks do not partition the k set";
+    EXPECT_LE(max_local - min_local, 1) << "round-robin imbalance > 1";
+    if (nprocs == 1)
+        EXPECT_EQ(r.n_kpts_local, r.n_kpts) << "serial run must own all k";
+}
+
 int main(int argc, char** argv) {
     int provided = 0;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
