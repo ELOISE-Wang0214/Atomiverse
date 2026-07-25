@@ -45,59 +45,6 @@ bool log_rank0() {
     return true;
 }
 
-/// Radial → G-space transform of the local pseudopotential, QE-style
-/// (vloc_mod.f90): V_loc(r) → −Z/r at large r, so the bare integrand
-/// r²·V·j0(Gr) does not decay and the quadrature diverges. Add and
-/// subtract an erf-screened Coulomb: the difference V + Z·erf(r)/r
-/// decays like erfc, and the screened Coulomb has the analytic
-/// transform −(4πZ/ΩG²)·exp(−G²/4).
-///
-/// The G=0 element gets the finite part only (QE's "αZ" term):
-/// V(0) = (4π/Ω)∫ r²(V(r) + Z/r) dr — the divergent jellium piece is
-/// cancelled against the Ewald/Hartree G=0 conventions exactly as for
-/// the toy potential. All outputs in Hartree.
-std::vector<AccReal> upf_vloc_to_gspace(const internal::UPFData& upf,
-                                        const internal::GVectorList& gv,
-                                        AccReal omega) {
-    std::vector<AccReal> vg(gv.count(), AccReal(0));
-    const auto& r = upf.r;
-    const auto& vl = upf.v_loc;
-    AccReal inv_omega = AccReal(1) / omega;
-    AccReal ry_to_ha = AccReal(0.5); // UPF stores V_loc in Ry
-    AccReal z = static_cast<AccReal>(upf.z_val);
-
-    for (int ig = 0; ig < gv.count(); ++ig) {
-        AccReal G = std::sqrt(gv.g[ig].norm_squared());
-        AccReal g2 = gv.g[ig].norm_squared();
-        bool g_zero = g2 < AccReal(1e-16);
-        AccReal sum = 0;
-        for (size_t ir = 1; ir < r.size(); ++ir) {
-            AccReal r_mid = AccReal(0.5) * (r[ir] + r[ir - 1]);
-            AccReal dr = r[ir] - r[ir - 1];
-            AccReal v_mid = AccReal(0.5) * (vl[ir] + vl[ir - 1]) * ry_to_ha;
-            if (r_mid < AccReal(1e-12)) {
-                continue; // r²·(V + Z/r) → 0 at the origin
-            }
-            if (g_zero) {
-                // r²(V + Z/r): exactly zero beyond the core radius.
-                sum += r_mid * (r_mid * v_mid + z) * dr;
-            } else {
-                AccReal Gr = G * r_mid;
-                AccReal j0 = (Gr < AccReal(1e-8))
-                                 ? AccReal(1) - Gr * Gr / AccReal(6)
-                                 : std::sin(Gr) / Gr;
-                AccReal v_scr = r_mid * v_mid + z * std::erf(r_mid);
-                sum += r_mid * v_scr * j0 * dr;
-            }
-        }
-        if (g_zero)
-            vg[ig] = AccReal(4.0 * M_PI) * sum * inv_omega;
-        else
-            vg[ig] = AccReal(4.0 * M_PI) * inv_omega
-                     * (sum - z * std::exp(-g2 / AccReal(4)) / g2);
-    }
-    return vg;
-}
 
 void setup_upf_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
                     const internal::UPFData& upf, AccReal omega) {
@@ -378,6 +325,60 @@ void setup_atomic_wfc(std::vector<std::vector<PWWorkspace::AtomWfc>>& out,
 }
 
 } // namespace
+
+/// Radial → G-space transform of the local pseudopotential, QE-style
+/// (vloc_mod.f90): V_loc(r) → −Z/r at large r, so the bare integrand
+/// r²·V·j0(Gr) does not decay and the quadrature diverges. Add and
+/// subtract an erf-screened Coulomb: the difference V + Z·erf(r)/r
+/// decays like erfc, and the screened Coulomb has the analytic
+/// transform −(4πZ/ΩG²)·exp(−G²/4).
+///
+/// The G=0 element gets the finite part only (QE's "αZ" term):
+/// V(0) = (4π/Ω)∫ r²(V(r) + Z/r) dr — the divergent jellium piece is
+/// cancelled against the Ewald/Hartree G=0 conventions exactly as for
+/// the toy potential. All outputs in Hartree.
+std::vector<AccReal> upf_vloc_to_gspace(const internal::UPFData& upf,
+                                        const internal::GVectorList& gv,
+                                        AccReal omega) {
+    std::vector<AccReal> vg(gv.count(), AccReal(0));
+    const auto& r = upf.r;
+    const auto& vl = upf.v_loc;
+    AccReal inv_omega = AccReal(1) / omega;
+    AccReal ry_to_ha = AccReal(0.5); // UPF stores V_loc in Ry
+    AccReal z = static_cast<AccReal>(upf.z_val);
+
+    for (int ig = 0; ig < gv.count(); ++ig) {
+        AccReal G = std::sqrt(gv.g[ig].norm_squared());
+        AccReal g2 = gv.g[ig].norm_squared();
+        bool g_zero = g2 < AccReal(1e-16);
+        AccReal sum = 0;
+        for (size_t ir = 1; ir < r.size(); ++ir) {
+            AccReal r_mid = AccReal(0.5) * (r[ir] + r[ir - 1]);
+            AccReal dr = r[ir] - r[ir - 1];
+            AccReal v_mid = AccReal(0.5) * (vl[ir] + vl[ir - 1]) * ry_to_ha;
+            if (r_mid < AccReal(1e-12)) {
+                continue; // r²·(V + Z/r) → 0 at the origin
+            }
+            if (g_zero) {
+                // r²(V + Z/r): exactly zero beyond the core radius.
+                sum += r_mid * (r_mid * v_mid + z) * dr;
+            } else {
+                AccReal Gr = G * r_mid;
+                AccReal j0 = (Gr < AccReal(1e-8))
+                                 ? AccReal(1) - Gr * Gr / AccReal(6)
+                                 : std::sin(Gr) / Gr;
+                AccReal v_scr = r_mid * v_mid + z * std::erf(r_mid);
+                sum += r_mid * v_scr * j0 * dr;
+            }
+        }
+        if (g_zero)
+            vg[ig] = AccReal(4.0 * M_PI) * sum * inv_omega;
+        else
+            vg[ig] = AccReal(4.0 * M_PI) * inv_omega
+                     * (sum - z * std::exp(-g2 / AccReal(4)) / g2);
+    }
+    return vg;
+}
 
 int valence_from_z(int z) {
     switch (z) {

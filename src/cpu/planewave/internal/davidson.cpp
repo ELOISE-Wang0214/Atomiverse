@@ -107,6 +107,12 @@ void apply_hamiltonian(const PWWorkspace& ws,
             // β_lm(G) = (4π/√Ω)·(-i)^l·Y_lm(Ĝ)·f_l(G)·exp(-iG·R)
             std::vector<std::complex<AccReal>> c_lm(
                 nm, std::complex<AccReal>(0, 0));
+            std::vector<AccReal> ylm(nm); // hoisted: no per-G allocation
+            std::complex<AccReal> im_l(1, 0);
+            if (l == 1)
+                im_l = std::complex<AccReal>(0, -1);
+            else if (l == 2)
+                im_l = std::complex<AccReal>(-1, 0);
             for (int ig = 0; ig < ng; ++ig) {
                 // Bloch states live on q = k+G.
                 AccReal Gx = gv.g[ig][0] + gv.kvec[0],
@@ -119,14 +125,7 @@ void apply_hamiltonian(const PWWorkspace& ws,
                 AccReal phase = Gx * ax + Gy * ay + Gz * az;
                 AccReal cos_p = std::cos(phase), sin_p = std::sin(phase);
 
-                std::vector<AccReal> ylm(nm);
                 compute_ylm(Gx, Gy, Gz, Gr, l, ylm.data());
-
-                std::complex<AccReal> im_l(1, 0);
-                if (l == 1)
-                    im_l = std::complex<AccReal>(0, -1);
-                else if (l == 2)
-                    im_l = std::complex<AccReal>(-1, 0);
 
                 for (int m = 0; m < nm; ++m) {
                     std::complex<AccReal> beta_lm =
@@ -148,14 +147,7 @@ void apply_hamiltonian(const PWWorkspace& ws,
                 AccReal phase = Gx * ax + Gy * ay + Gz * az;
                 AccReal cos_p = std::cos(phase), sin_p = std::sin(phase);
 
-                std::vector<AccReal> ylm(nm);
                 compute_ylm(Gx, Gy, Gz, Gr, l, ylm.data());
-
-                std::complex<AccReal> im_l(1, 0);
-                if (l == 1)
-                    im_l = std::complex<AccReal>(0, -1);
-                else if (l == 2)
-                    im_l = std::complex<AccReal>(-1, 0);
 
                 for (int m = 0; m < nm; ++m) {
                     std::complex<AccReal> beta_lm =
@@ -170,9 +162,13 @@ void apply_hamiltonian(const PWWorkspace& ws,
 
 } // namespace
 
-void pw_apply_h_for_tests(const PWWorkspace& ws,
-                          const std::complex<AccReal>* psi_g,
-                          std::complex<AccReal>* hpsi_g) {
+void pw_apply_h(const PWWorkspace& ws, const std::complex<AccReal>* psi_g,
+                std::complex<AccReal>* hpsi_g, fftw_complex* work_buf) {
+    apply_hamiltonian(ws, psi_g, hpsi_g, work_buf);
+}
+
+void pw_apply_h(const PWWorkspace& ws, const std::complex<AccReal>* psi_g,
+                std::complex<AccReal>* hpsi_g) {
     auto* buf = static_cast<fftw_complex*>(
         fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(ws.nr)));
     apply_hamiltonian(ws, psi_g, hpsi_g, buf);

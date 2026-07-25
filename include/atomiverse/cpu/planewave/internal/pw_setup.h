@@ -9,6 +9,7 @@
 #include "atomiverse/cpu/planewave/internal/g_vector.h"
 #include "atomiverse/cpu/planewave/internal/kpoint.h"
 #include "atomiverse/cpu/planewave/internal/pw_workspace.h"
+#include "atomiverse/cpu/planewave/internal/upf_reader.h"
 #include <string>
 #include <vector>
 
@@ -47,6 +48,22 @@ struct PWProblem {
 /// @brief Number of valence electrons assumed for nuclear charge `z`
 ///        (H..Ar) when no UPF pseudopotential supplies it.
 int valence_from_z(int z);
+
+/// @brief Radial → G-space form factor v(G) of the UPF local potential
+///        [Hartree], one value per G of `gv` (QE `vloc_mod.f90` route:
+///        erf-screened quadrature + analytic screened-Coulomb transform;
+///        the G = 0 entry carries the finite "αZ" part only).
+///
+/// Per-atom quantity (no structure factor). Shared by problem assembly
+/// (`setup_pw_problem`) and the DFPT perturbation builder — dividing the
+/// assembled `V_loc_G` by the structure factor is ill-defined on shells
+/// where S(G) = 0 (e.g. diamond).
+///
+/// @param upf   Parsed UPF data.
+/// @param gv    G-vector list to evaluate on.
+/// @param omega Cell volume [Bohr³].
+std::vector<AccReal> upf_vloc_to_gspace(const UPFData& upf,
+                                        const GVectorList& gv, AccReal omega);
 
 /// @brief Assemble the complete SCF problem from a Frame: Ewald energy,
 ///        G-vectors, k-mesh, FFT grids, V_loc (UPF or toy), KB projectors,
