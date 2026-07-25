@@ -251,6 +251,7 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_mp2          cpu/gpw/test_cpu_gpw_mp2.cpp)
         # Γ-point GPW dRPA plasmon kernel + GpwDft::direct_rpa guards.
         atv_add_cpp_test(test_cpu_gpw_rpa          cpu/gpw/test_cpu_gpw_rpa.cpp)
+        atv_add_cpp_test(test_cpu_gpw_g0w0         cpu/gpw/test_cpu_gpw_g0w0.cpp)
         # XL-BOMD propagator (Table-I pin, fixed point, bounded response)
         # + GpwDft guess_P plumbing on the inline ms-scale H2.
         atv_add_cpp_test(test_cpu_gpw_xl_bomd     cpu/gpw/test_gpw_xl_bomd.cpp)

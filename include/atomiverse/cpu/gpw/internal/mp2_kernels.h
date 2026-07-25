@@ -153,6 +153,51 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
                            const std::vector<double>& eps_virt, double& e_corr,
                            double& tr_A, std::vector<double>& omega);
 
+/// @brief Full dRPA result including X/Y amplitudes (G0W0 screening).
+///
+/// Layout matches `mo_eri_ovov`: composite OV index
+/// \(ia = i\cdot n_{\mathrm{virt}}+a\). Matrices `X`/`Y` are row-major
+/// `[s, ia]` with shape \(n_{\mathrm{ov}}\times n_{\mathrm{ov}}\)
+/// (state s, OV component ia). Same science as molecular
+/// `OrbitalHessian::direct_rpa` (including the \(X,Y\) reconstruction).
+struct DirectRpaAmplitudes {
+    double e_corr = 0.0;           ///< Furche \(E_c\) [Hartree].
+    double tr_A = 0.0;             ///< \(\mathrm{Tr}\,A\) [Hartree].
+    std::vector<double> omega;     ///< \(\Omega_s\) ascending [Hartree].
+    std::vector<double> X;         ///< row-major [s, ia].
+    std::vector<double> Y;         ///< row-major [s, ia].
+};
+
+/// @brief dRPA Hermitian reduction with X/Y amplitudes for spectral G0W0.
+/// @see direct_rpa_rhf_energy
+void direct_rpa_rhf(const std::vector<double>& v_ovov,
+                    const std::vector<double>& eps_occ,
+                    const std::vector<double>& eps_virt,
+                    DirectRpaAmplitudes& out);
+
+/// @brief Real-space Coulomb potentials \(V_{ia}(r)\) of every OV pair density
+///        \(\rho_{ia}=\psi_i\psi_a\) (periodic FFT Poisson, G=0 dropped).
+///
+/// Shared intermediate for RI-style `(ia|jb)` and spectral G0W0 transition
+/// densities. Memory \(\mathcal O(n_{\mathrm{ov}} N_g)\).
+/// @return Row-major `(n_occ·n_virt) × npts` potentials [Hartree].
+std::vector<double> mo_pair_potentials_ov(const UniformGrid& grid,
+                                          const std::vector<double>& psi_occ,
+                                          int n_occ,
+                                          const std::vector<double>& psi_virt,
+                                          int n_virt);
+
+/// @brief Diagonal HF exchange \(\Sigma_{x,p}=-\sum_i^{\mathrm{occ}}(pi|pi)\)
+///        [Hartree] via truncated (MT) Coulomb on pair densities
+///        \(\rho_{pi}=\psi_p\psi_i\) (G=0-safe Γ foothold).
+/// @param psi_mo All MO values, row-major `(n_mo × npts)`.
+/// @param n_mo   Total spatial MOs.
+/// @param n_occ  Occupied count.
+/// @return Length-`n_mo` vector of \(\Sigma_{x,p}\) [Hartree].
+std::vector<double> exchange_diag_mt(const UniformGrid& grid,
+                                     const std::vector<double>& psi_mo, int n_mo,
+                                     int n_occ);
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu
