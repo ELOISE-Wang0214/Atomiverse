@@ -210,6 +210,22 @@ nonbonded force are an **OpenMM cluster/tile engine**, not a style flag and not
 
 Note: `.claude/notes/cuda-openmm-neighbor-force.md`
 
+<!-- mol:note:topic:oracle-capability-loop -->
+## Oracle capability loops (PySCF / CP2K / MetalWalls)
+
+**Pattern (binding):** continuous **GapCensus every wave** — re-diff offline
+oracle + roadmap/map vs ATV on `target_branch`, refill queue pending, update
+roadmap. Foothold ≠ capability closed. Stop only when `gaps_remaining=0`.
+
+**Clearup (binding):** after every Worktrees panel returns, **same wave** — remove
+isolation worktrees, prune fully-merged `wf/*` tips, wipe builds. Workers must
+not nest long-lived subagents; do not hold N full trees until shift end.
+
+- Design: `docs/developer/oracle-capability-loop.md`
+- Template: `.grok/workflows/_templates/oracle-capability-loop-template.rhai`
+- Skill: `.agents/skills/create-oracle-loop/` (`/create-oracle-loop`)
+- Instances: `pyscf-method-loop`, `cp2k-method-loop`, `metalwalls-method-loop`
+
 
 # AGENTS.md
 
