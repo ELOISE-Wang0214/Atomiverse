@@ -23,6 +23,7 @@
 #include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/mp2.h" // Mp2Result
 #include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
 #include "atomiverse/molrs.hpp"
 
@@ -157,6 +158,13 @@ class GpwDft {
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Dudarev PLUS_U entries (empty = off). U−J in eV on each entry.
     std::vector<PlusU> plus_u;
+    /// @brief MP2 virtual-space cap for `mp2()` (0 = all kept virtuals).
+    int mp2_n_virt = 0;
+    /// @brief Grimme opposite-spin scale for `mp2()` (1.0 = plain MP2;
+    ///        SCS-MP2 1.2 — same member name as the molecular methods).
+    double mp2_os_scale = 1.0;
+    /// @brief Grimme same-spin scale for `mp2()` (1.0 = plain MP2; SCS 1/3).
+    double mp2_ss_scale = 1.0;
     /// @brief Optional per-atom AFM/FM spin seed for the initial UKS density
     ///        (units-free sign/magnitude; size 0 or n_atoms). Applied only to
     ///        the cold-start densities, not as an external potential.
@@ -195,8 +203,28 @@ class GpwDft {
     ///        `converged == false` — before the first run).
     const GpwResult& last_result() const { return result_; }
 
+    /// @brief Γ-point canonical GPW MP2 correlation on the converged
+    ///        closed-shell orbitals of the last `run()`.
+    ///
+    /// The occupied–virtual (ia|jb) integrals are computed on the SCF's
+    /// density grid: collocate ψ_i ψ_a, one Poisson solve per pair
+    /// (periodic FFT, G=0 dropped — divergence-free since S_ia = 0 —
+    /// or the truncated-Coulomb isolated solver when `nonperiodic`),
+    /// grid quadrature against ψ_j ψ_b (CP2K `&WF_CORRELATION` MP2
+    /// `DIRECT_CANONICAL`; Del Ben, Hutter, VandeVondele, JCTC 8, 4177
+    /// (2012)). Virtual space capped by `mp2_n_virt`; `e_corr` applies
+    /// `mp2_os_scale` / `mp2_ss_scale`.
+    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// @return The owned MP2 result (valid until the next `mp2()`).
+    /// @throws std::logic_error before `build()` or a converged `run()`.
+    /// @throws std::invalid_argument for UKS, for `use_ot` (no canonical
+    ///         virtuals), when no virtuals remain, or for a vanishing
+    ///         HOMO–LUMO gap (< 1e-6 Ha; degenerate denominators).
+    const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
+
   private:
-    GpwResult result_;   ///< Owned result buffer (last run).
+    GpwResult result_;    ///< Owned result buffer (last run).
+    Mp2Result mp2_result_; ///< Owned MP2 result buffer (last mp2()).
     bool built_ = false; ///< Whether build() validated the configuration.
 };
 

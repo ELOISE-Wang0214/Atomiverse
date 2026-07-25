@@ -1713,6 +1713,9 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.use_ot = m.use_ot;
     p.plus_u = m.plus_u;
     p.atom_spin_guess = m.atom_spin_guess;
+    p.mp2_n_virt = m.mp2_n_virt;
+    p.mp2_os_scale = m.mp2_os_scale;
+    p.mp2_ss_scale = m.mp2_ss_scale;
     return p;
 }
 } // namespace
