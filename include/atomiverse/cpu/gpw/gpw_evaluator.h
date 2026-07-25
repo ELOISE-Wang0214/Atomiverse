@@ -82,8 +82,11 @@ class GPWEvaluator : public cpu::GPW {
     bool d4 = false;
     /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs d3/d3bj/d4/mbd.
     bool ts = false;
-    /// @brief MBD@rsSCS free-atom (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts/vdw_df/vdw_df2/rvv10.
+/// @brief MBD@rsSCS (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts/vdw_df/vdw_df2/rvv10.
+    ///        Default isolated; set `mbd_k_mesh` non-zero for periodic Ewald.
     bool mbd = false;
+    /// @brief MBD k-mesh (0,0,0 = free-atom isolated; else periodic Ewald).
+    int mbd_k_mesh[3] = {0, 0, 0};
     /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df2/rvv10.
     bool vdw_df = false;
     /// @brief Nonlocal vdW-DF2 (LMKLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/rvv10.

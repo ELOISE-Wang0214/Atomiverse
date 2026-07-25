@@ -65,6 +65,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d4 = m.d4;
     p.ts = m.ts;
     p.mbd = m.mbd;
+    for (int d = 0; d < 3; ++d)
+        p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
     p.use_ot = m.use_ot;
     for (int d = 0; d < 3; ++d)
         p.k_mesh[d] = m.k_mesh[d];

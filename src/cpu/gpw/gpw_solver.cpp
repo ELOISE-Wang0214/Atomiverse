@@ -1567,10 +1567,21 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
         if (cfg.mbd) {
-            // Free-atom MBD@rsSCS (isolated). Deferred when hirshfeld=true.
-            if (!cfg.hirshfeld)
-                e_d3 =
-                    mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
+            // MBD@rsSCS: free-atom isolated when mbd_k_mesh is all-zero;
+            // periodic Ewald + k-mesh when any component is set.
+            // Deferred when hirshfeld=true (post-SCF volume scaling).
+            if (!cfg.hirshfeld) {
+                const bool mbd_per =
+                    cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                    || cfg.mbd_k_mesh[2] > 0;
+                if (mbd_per && cfg.nonperiodic)
+                    throw std::runtime_error(
+                        "GPW MBD: mbd_k_mesh requires a periodic cell "
+                        "(!nonperiodic)");
+                e_d3 = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
+                                    mbd_per ? cfg.mbd_k_mesh : nullptr)
+                           .energy;
+            }
         } else if (cfg.ts) {
             // Free-atom TS (volume ratio = 1). Deferred when hirshfeld=true.
             if (!cfg.hirshfeld) {
@@ -1916,9 +1927,18 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             out.volume_ratios = hirshfeld_volume_ratios(grid, rho, Z, pos,
                                                        cfg.cell, periodic);
             if (cfg.mbd) {
-                out.e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false,
-                                           0.83, 6.0, out.volume_ratios)
-                                 .energy;
+                const bool mbd_per =
+                    cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                    || cfg.mbd_k_mesh[2] > 0;
+                if (mbd_per && cfg.nonperiodic)
+                    throw std::runtime_error(
+                        "GPW MBD: mbd_k_mesh requires a periodic cell "
+                        "(!nonperiodic)");
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
+                                 out.volume_ratios,
+                                 mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
             } else {
                 constexpr double kAng2Bohr = 1.0 / 0.52917720859;
                 constexpr double kRcutBohr = 50.0 * kAng2Bohr;
@@ -2684,6 +2704,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d4 = m.d4;
     p.ts = m.ts;
     p.mbd = m.mbd;
+    for (int d = 0; d < 3; ++d)
+        p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
     p.vdw_df = m.vdw_df;
     p.vdw_df2 = m.vdw_df2;
     p.rvv10 = m.rvv10;

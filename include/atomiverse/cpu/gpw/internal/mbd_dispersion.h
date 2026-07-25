@@ -1,14 +1,15 @@
 /// @file cpu/gpw/internal/mbd_dispersion.h
 /// @brief Many-body dispersion (MBD@rsSCS) for GPW.
 ///
-/// Free-atom (volume-ratio = 1) MBD@rsSCS energy matching libMBD
-/// `cmbd_mbd_scs_energy` / pure-Python `pymbd.mbd_energy` (Ambrosetti et al.,
-/// J. Chem. Phys. 140, 18A508 (2014); Hermann et al., J. Chem. Phys. 159,
-/// 174802 (2023)):
+/// Free-atom (volume-ratio = 1) and periodic Ewald + k-mesh MBD@rsSCS energy
+/// matching libMBD `cmbd_mbd_scs_energy` / pure-Python `pymbd.mbd_energy`
+/// (Ambrosetti et al., J. Chem. Phys. 140, 18A508 (2014); Hermann et al.,
+/// J. Chem. Phys. 159, 174802 (2023)):
 ///
 ///   1. Range-separated self-consistent screening of dynamical polarizabilities
-///      (Fermi × Gaussian dipole tensor, β damping).
-///   2. Long-range MBD Hamiltonian diagonalization → ZPE difference.
+///      (Fermi × Gaussian dipole tensor, β damping; lattice images when periodic).
+///   2. Long-range MBD Hamiltonian diagonalization → ZPE difference
+///      (Ewald dipole tensor + Brillouin-zone k-mesh average when periodic).
 ///
 /// PBE defaults: β = 0.83, Fermi a = 6. Free-atom α₀ / C₆ / R_vdW from
 /// `basis_data/ts_tables.h`. Forces are not computed (energy-only v1).
@@ -30,22 +31,23 @@ struct MbdResult {
 
 /// @brief PBE-MBD@rsSCS free-atom (or volume-scaled) many-body dispersion.
 ///
-/// Isolated systems only in this product path (`periodic` must be false).
-/// Periodic Ewald + k-mesh MBD is a follow-on (same free-atom tables).
-///
 /// @param Z         Atomic numbers, length N.
 /// @param pos_bohr  Positions [Bohr], length N.
-/// @param cell_bohr Orthorhombic a,b,c [Bohr] (unused when isolated).
-/// @param periodic  Must be false (throws otherwise).
+/// @param cell_bohr Orthorhombic a,b,c [Bohr] (required when periodic).
+/// @param periodic  false → isolated free-atom MBD; true → Ewald + k-mesh.
 /// @param beta      Range-separation β (default 0.83 for PBE).
 /// @param a_fermi   Fermi steepness a (default 6).
 /// @param vol_ratio Optional V/V_free per atom; empty ⇒ all 1 (free-atom).
+/// @param k_mesh    Monkhorst–Pack-like mesh (libMBD shift ½) when periodic
+///                  (length-3 pointer; nullptr ⇒ {2,2,2}); ignored when
+///                  isolated. Each component must be ≥ 1.
 /// @return Energy [Hartree].
 MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
                         const std::vector<std::array<double, 3>>& pos_bohr,
                         const double cell_bohr[3], bool periodic,
                         double beta = 0.83, double a_fermi = 6.0,
-                        const std::vector<double>& vol_ratio = {});
+                        const std::vector<double>& vol_ratio = {},
+                        const int* k_mesh = nullptr);
 
 } // namespace gpw
 } // namespace cpu

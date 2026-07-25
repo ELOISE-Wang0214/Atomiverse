@@ -88,6 +88,8 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.d4 = d4;
     cfg.ts = ts;
     cfg.mbd = mbd;
+    for (int d = 0; d < 3; ++d)
+        cfg.mbd_k_mesh[d] = mbd_k_mesh[d];
     cfg.vdw_df = vdw_df;
     cfg.vdw_df2 = vdw_df2;
     cfg.rvv10 = rvv10;

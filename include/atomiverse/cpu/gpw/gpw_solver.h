@@ -211,9 +211,15 @@ class GpwDft {
     ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4` / `mbd`.
     bool ts = false; ///< Tkatchenko–Scheffler (TS) dispersion.
     /// @brief Many-body dispersion MBD@rsSCS (PBE β=0.83, free-atom volumes).
-    ///        Isolated geometry only in this product path. Mutually exclusive
-    ///        with `d3` / `d3bj` / `d4` / `ts` / `vdw_df` / `vdw_df2` / `rvv10`.
-    bool mbd = false; ///< MBD@rsSCS (free-atom) dispersion.
+    ///        Default `mbd_k_mesh={0,0,0}` → isolated free-atom MBD@rsSCS.
+    ///        Non-zero `mbd_k_mesh` → periodic Ewald + k-mesh (requires
+    ///        `!nonperiodic`). Mutually exclusive with `d3` / `d3bj` / `d4` /
+    ///        `ts` / `vdw_df` / `vdw_df2` / `rvv10`.
+    bool mbd = false; ///< MBD@rsSCS dispersion.
+    /// @brief MBD Brillouin-zone mesh (libMBD shift-½). All-zero keeps isolated
+    ///        free-atom MBD; any positive component requires all three ≥ 1 and
+    ///        a periodic cell. Typical ice / condensed-phase pin: `{2,2,2}`.
+    int mbd_k_mesh[3] = {0, 0, 0};
     /// @brief Nonlocal vdW-DF correlation (DRSLL / DF1, post-SCF on final density).
     ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE DRSLL`. Mutually exclusive with
     ///        `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df2` / `rvv10`.
