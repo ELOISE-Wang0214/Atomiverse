@@ -44,6 +44,7 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
+| [mpi-gpw-scaling-4rank](mpi-gpw-scaling-4rank/) | cp2k / infra | in progress (`wf/mpi-gpw-scaling-4rank`) |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 

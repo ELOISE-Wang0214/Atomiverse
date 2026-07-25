@@ -19,6 +19,10 @@
 #include <omp.h>
 #endif
 
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
+
 extern "C" {
 // Direct LAPACK binding for the complex Hermitian eigensolver. The LWORK=-1
 // workspace query of the bundled LAPACK is broken (see dsygvd_ in
@@ -744,6 +748,10 @@ std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
                 const CplxMatrix& ej =
                     e_hist_[static_cast<std::size_t>(j)]
                            [static_cast<std::size_t>(ik)];
+                // Empty (zero-size) slots are non-owned k under MPI RR —
+                // their contribution is Allreduced in from the owner rank.
+                if (ei.size() == 0 || ej.size() == 0)
+                    continue;
                 double s = 0.0;
                 const std::size_t nn = ei.size();
                 const Cplx* pi = ei.data();
@@ -755,6 +763,29 @@ std::vector<CplxMatrix> KDiis::step(const std::vector<CplxMatrix>& H,
             B(i, j) = val;
             B(j, i) = val;
         }
+#ifdef ATV_HAS_MPI
+    // Multi-rank k-RR: each rank only filled local e^k in the history; sum the
+    // m×m Pulay block so every rank solves the same B system (serial-identical
+    // DIIS coefficients). Lagrange row/col is set after the reduction.
+    {
+        int initialized = 0;
+        MPI_Initialized(&initialized);
+        int nprocs = 1;
+        if (initialized)
+            MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+        if (initialized && nprocs > 1) {
+            std::vector<double> pack(static_cast<std::size_t>(m * m), 0.0);
+            for (int i = 0; i < m; ++i)
+                for (int j = 0; j < m; ++j)
+                    pack[static_cast<std::size_t>(i * m + j)] = B(i, j);
+            MPI_Allreduce(MPI_IN_PLACE, pack.data(), m * m, MPI_DOUBLE,
+                          MPI_SUM, MPI_COMM_WORLD);
+            for (int i = 0; i < m; ++i)
+                for (int j = 0; j < m; ++j)
+                    B(i, j) = pack[static_cast<std::size_t>(i * m + j)];
+        }
+    }
+#endif
     for (int i = 0; i < m; ++i) {
         B(m, i) = -1.0;
         B(i, m) = -1.0;
