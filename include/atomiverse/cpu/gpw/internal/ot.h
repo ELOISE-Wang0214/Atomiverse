@@ -10,9 +10,10 @@
 /// Parameterization (orthonormality-preserving for any S-tangent `x`,
 /// `C0^T S x = 0`):
 ///   `C(x) = C0 cos(U) + x U^{-1} sin(U)`,  `U = (x^T S x)^{1/2}`.
-/// Closed-shell band-energy gradient (matches `build_density_matrix` factor
-/// 2, i.e. `P = 2 C C^T`):
-///   `g = (I - S C0 C0^T) (4 H C0)`.
+/// Band-energy gradient for orbital occupation `occ` (matches
+/// `build_density_matrix` factor; closed-shell `occ=2` → `P = 2 C C^T`,
+/// open-shell / UKS spin channel `occ=1` → `P = C C^T`):
+///   `g = (I - S C0 C0^T) (2 * occ * H C0)`.
 /// Minimized by preconditioned conjugate gradient with a FULL_KINETIC
 /// preconditioner `M = T + S` (geometry-fixed; inverse built once).
 ///
@@ -57,17 +58,20 @@ RealMatrix ot_parameterize(const RealMatrix& C0, const RealMatrix& x,
 RealMatrix ot_tangent(const RealMatrix& C0, const RealMatrix& S,
                       const RealMatrix& d);
 
-/// @brief Projected closed-shell band-energy gradient `g = (I - S C0 C0^T)(4 H C0)`.
+/// @brief Projected band-energy gradient `g = (I - S C0 C0^T)(2·occ·H C0)`.
 ///
 /// This is the SCF error vector; `||g|| -> 0` at the self-consistent
-/// (gapped) ground state, where `H C0 = S C0 (C0^T H C0)`.
+/// (gapped) ground state, where `H C0 = S C0 (C0^T H C0)`. Closed-shell
+/// default `occ=2` recovers the historical factor 4; UKS spin channels use
+/// `occ=1` (single occupation, `P = C C^T`).
 ///
 /// @param H KS matrix [nb x nb].
 /// @param S Overlap matrix [nb x nb].
 /// @param C0 Occupied coefficients [nb x no], `C0^T S C0 = I`.
+/// @param occ Orbital occupation (2 closed-shell, 1 per UKS spin).
 /// @return Gradient [nb x no].
 RealMatrix ot_gradient(const RealMatrix& H, const RealMatrix& S,
-                       const RealMatrix& C0);
+                       const RealMatrix& C0, double occ = 2.0);
 
 /// @brief Re-orthonormalize occupied coefficients so `C^T S C = I` (Löwdin).
 ///

@@ -152,6 +152,46 @@ TEST(GpwOt, MiniH2OtMatchesDiisEnergy) {
         << " iters ot/diis=" << r_ot.iters << "/" << r_diis.iters;
 }
 
+// High-spin H₂ toy UKS: OT and DIIS must agree (occ=1 open-shell gradient).
+// Full O₂ CP2K pin lives in regressions/gpw/ot-uks-o2.
+TEST(GpwOt, UksOtMatchesDiisEnergy) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+
+    GpwDft diis = small_cfg();
+    diis.n_occ = 0;
+    diis.n_alpha = 2;
+    diis.n_beta = 0;
+    diis.use_ot = false;
+    diis.max_iter = 120;
+    diis.tol = 1e-6;
+    diis.mix = 0.4;
+    diis.xc = ATV::cpu::gpw::XcKind::PADE;
+    diis.build(atoms);
+    ASSERT_TRUE(diis.is_uks());
+    const GpwResult r_diis = diis.run(atoms);
+    ASSERT_TRUE(r_diis.converged)
+        << "UKS DIIS failed in " << r_diis.iters << " iters E=" << r_diis.e_total;
+
+    GpwDft ot = small_cfg();
+    ot.n_occ = 0;
+    ot.n_alpha = 2;
+    ot.n_beta = 0;
+    ot.use_ot = true;
+    ot.max_iter = 200;
+    ot.tol = 1e-6;
+    ot.xc = ATV::cpu::gpw::XcKind::PADE;
+    ot.build(atoms);
+    const GpwResult r_ot = ot.run(atoms);
+    ASSERT_TRUE(r_ot.converged)
+        << "UKS OT failed in " << r_ot.iters << " iters E=" << r_ot.e_total;
+
+    EXPECT_NEAR(r_ot.e_total, r_diis.e_total, 1e-5)
+        << "OT=" << r_ot.e_total << " DIIS=" << r_diis.e_total
+        << " iters ot/diis=" << r_ot.iters << "/" << r_diis.iters;
+    EXPECT_NEAR(r_ot.s2, r_diis.s2, 1e-6);
+}
+
 // Product switch is a public member (default false); ctor sets it without env.
 // Full Frame+MOLOPT OT SCF is the e2e regression (≤60 s), not this unit gate.
 TEST(GpwOt, EvaluatorUseOtMemberDefaultAndCtor) {
