@@ -508,3 +508,35 @@ the 8-spec scf-review chain (see git f9a6443a..8db7eab9). Durable knowledge:
 - **Fused JK (`ShellBlockPairList::jk_rhf`) emits bare, unscaled K** —
   binding shape for the deferred rsh-eri-cam-b3lyp spec (a second
   erf-attenuated K must be addable without unfusing J).
+
+<!-- mol:note:topic:scf-review-decided-rules -->
+Decided rules (2026-07-25 capture; first two are promotion candidates for
+AGENTS.md ## Conventions once stable):
+
+- **Never `std::abort` in library numerics — always throw a typed exception**,
+  even in code ported from C reference implementations (rys_roots was the last
+  abort site, cleared in scf-review-05; sits beside the no-fallback rule).
+- **π is single-sourced as `units::pi`** (`core/units.h`) — never a local
+  `kPi`/`PI` constant or `M_PI` (tree swept in scf-review-05; prose rule, no
+  grep gate yet).
+- **Feature lands ⇒ its "unsupported-path" guard tests update in the same
+  change.** Three `EXPECT_THROW` fossils were red on dev because ROMP2 /
+  C-PCM forces / spinor-validation typing shipped without touching the guards
+  that asserted their absence — grep for such guards when delivering a
+  capability.
+- **Regression witnesses are public-API-only** (regressions/README rule 1, no
+  `internal/` includes). A dual-path parity witness gets a minimal public
+  member instead — precedent: `bool RHF::cc_diis` (parameters-are-members),
+  added solely so the DIIS-vs-Jacobi leg of `reg_ccsd-spatial-so-parity` is
+  reachable from outside the library.
+- **Known toolchain gap (decision open)**: no clang-tidy/linter is wired
+  anywhere; clang-format runs only at pre-commit and with
+  `ReflowComments: false`, so over-80-column comments accumulate uncaught
+  (flagged independently by three hygiene passes). Suggested fix when adopted:
+  add `clang-format --dry-run -Werror` + a `.clang-tidy` pass to
+  `mol_project.build.check`.
+
+Fossil-check results (2026-07-25, so nobody re-checks): AGENTS.md's ERI line
+("eri_block dispatches by Ltot") is NOT stale — `eri_blk_ltot` lives at
+native_integrals.cpp:1414; "CUDA path is energy/density only (no CUDA SCF
+gradient)" is still accurate — src/cuda/scf/ has no gradient files.
