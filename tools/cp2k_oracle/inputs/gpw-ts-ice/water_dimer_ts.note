@@ -1,0 +1,15 @@
+# Offline TS pin notes (gpw-ts-ice)
+
+CP2K 2026.1 stock `PAIR_POTENTIAL TYPE` has no `TS` (only DFTD2/D3/D3BJ/D4).
+Hard pin is **libMBD** free-atom TS + pure real-space lattice sum — see
+`regressions/gpw/gpw-ts-ice/REFERENCE.md`.
+
+Isolated libMBD check (build libmbd, link OpenBLAS):
+
+```text
+Dispersion energy (isolated): -5.9764872295816794e-04 Eh
+```
+
+Periodic pure-RS (rcut 50 Å): -6.099626368528631e-04 Ha.
+
+Geometry: same water dimer / 12 Å cell as `gpw-pbe-d3bj-ice`.

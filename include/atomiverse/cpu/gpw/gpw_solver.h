@@ -95,7 +95,7 @@ struct GpwResult {
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
-    double e_disp = 0.0; ///< DFT-D3/D4 dispersion [Hartree] (0 when off).
+    double e_disp = 0.0; ///< DFT-D3/D4/TS dispersion [Hartree] (0 when off).
     double e_dftu =
         0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     /// @name k-point sampling payload (populated by the k-point RKS path only;
@@ -174,13 +174,16 @@ class GpwDft {
     bool nonperiodic = false;       ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true;   ///< collocate GTH local SR PP on grid.
     bool d3 =
-        false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4.
+        false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4/ts.
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
-    /// Mutually exclusive with `d3` / `d4` — any two true throws at run.
+    /// Mutually exclusive with `d3` / `d4` / `ts` — any two true throws at run.
     bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
     /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
-    /// Mutually exclusive with `d3` / `d3bj`.
-    bool d4 = false;     ///< Grimme DFT-D4 dispersion.
+    /// Mutually exclusive with `d3` / `d3bj` / `ts`.
+    bool d4 = false; ///< Grimme DFT-D4 dispersion.
+    /// @brief Tkatchenko–Scheffler pairwise dispersion (PBE s_R=0.94, free-atom
+    ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4`.
+    bool ts = false; ///< Tkatchenko–Scheffler (TS) dispersion.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
