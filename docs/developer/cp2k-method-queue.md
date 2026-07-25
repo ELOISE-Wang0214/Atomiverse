@@ -155,24 +155,39 @@ post-HF / classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table
 flips** (nothing new merged since harness); stale §10 intro + DFPT prose
 refreshed. **Pending = 12**; **in_progress = 1**.
 
+**Harness wave 2 2026-07-25 (parent `dev` @ `f5739506`):** 10 staffed
+slugs merged → `## done` (`gpw-kpoint-forces`, `gpw-revpbe-si`,
+`gpw-kpoints-uks`, `gpw-uks-forces`, `gpw-kpoint-stress`, `gpw-mbd-ice`,
+`periodic-mp2-kpoints`, `periodic-rpa-si`, `dfpt-finite-q-si`,
+`gpw-variable-cell-molopt`). Specs deleted on close. **Pending residual =
+3** (`gpw-rpbe-water`, `gpw-vdw-df-ice`, `periodic-gw-si`).
+`## in_progress` empty. Roadmap flips: revPBE ✓, free-atom MBD ✓, Periodic
+RPA ✓ (Γ dRPA@KS product), finite-q DFPT productized; multi-k MP2 residual
+closed; GPW k-UKS / k-forces / k-stress / Γ-UKS forces / MOLOPT CELL_OPT
+prose. **Queue not exhausted** — GapCensus owns next discovery.
+
 ## pending
 
-- [ ] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin | gpw | ice Ih | DZVP-MOLOPT-GTH | a\* Å | pin-quality follow-up declared in `gpw-variable-cell-ice` done row ("MOLOPT re-twin queued"; GTH-chain pin shipped 2026-07-25); CP2K CELL_OPT same input, MOLOPT basis; low priority; **dep:** `gpw-variable-cell-ice` ✓
-- [ ] `gpw-revpbe-si` | GPW revPBE GGA | gpw | Si | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 revPBE ○; CP2K XC_FUNCTIONAL revPBE textbook bulk; extend `XcKind` (still PADE\|PBE\|PBEsol\|BLYP)
-- [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` (merge-conflict avoidance)
-- [ ] `gpw-kpoints-uks` | GPW k-point UKS | gpw | O₂ / Fe tiny | DZVP-MOLOPT-GTH | e_tot / mag | `gpw_solver.h` follow-on (k-mesh RKS ✓ `reg_gpw-kpoints-si`; Γ UKS PBE ✓ `reg_gpw-uks-pbe`); CP2K KPOINTS + UKS; **dep:** `gpw-kpoints-si` ✓ + `gpw-uks-pbe` ✓
-- [ ] `gpw-uks-forces` | Γ-UKS analytic ionic forces | gpw | O₂ | DZVP-MOLOPT-GTH | F [Ha/Bohr] | force assembly is closed-shell RKS (`gpw_forces_analytic` builds W from `n_occ` + real C); Γ-UKS energy ✓ (`reg_gpw-uks-pbe` / `reg_gpw-uks-o2-gamma`); no UKS force pin; CP2K FORCE_EVAL UKS twin; **dep:** `gpw-uks-pbe` ✓ + `gpw-forces-water` ✓
-- [ ] `gpw-kpoint-stress` | GPW analytic stress at k-points | gpw | Si | DZVP-MOLOPT-GTH | σ [Ha/Bohr³] | `gpw_stress` throws multi-k ("k-point GPW not supported in this foothold"); Γ analytic stress ✓ (`reg_gpw-analytic-stress`); CP2K STRESS_TENSOR / NUMERICAL k-mesh twin; **dep:** `gpw-kpoints-si` ✓ + `gpw-analytic-stress` ✓
-- [ ] `gpw-mbd-ice` | Many-body dispersion (MBD) | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp | roadmap §8 MBD ○; prefer after TS ✓ (`gpw-ts-ice`)
-- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / MBD order
-- [ ] `periodic-mp2-kpoints` | Multi-k GPW MP2 residual | gpw | Si | MOLOPT+GTH | e_corr Ha | Γ RI-GPW MP2 product ✓ (`reg_periodic-ri-mp2-si`); `GpwDft::mp2` throws on multi-k SCF — capability depth beyond Γ; CP2K MP2_GPW + KPOINTS; **dep:** `periodic-ri-mp2-si` ✓ + `gpw-kpoints-si` ✓
-- [ ] `periodic-rpa-si` | Periodic RPA | gpw | Si | MOLOPT+GTH | e_tot Ha | roadmap §10 ○ Periodic RPA; CP2K RPA; **after** Periodic MP2 ✓ (`periodic-ri-mp2-si`)
-- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓; not molecular G0W0 (PySCF loop)
-- [ ] `dfpt-finite-q-si` | Finite-q DFPT Sternheimer phonons | response / pw | Si | NC-UPF | ω(q) cm⁻¹ | roadmap §11: Γ DFPT ✓ (`reg_dfpt-phonon-si`); IFC-Fourier dispersions ✓ (`reg_phonon-dispersion-si`) cover classical q-path ≠ DFPT Sternheimer at q≠0; CP2K DFPT / PHONON; **dep:** `dfpt-phonon-si` ✓
+- [ ] `gpw-rpbe-water` | GPW RPBE GGA | gpw | water | DZVP-MOLOPT-GTH | e_tot Ha | roadmap §3 RPBE ○; CP2K XC_FUNCTIONAL RPBE; shares `XcKind` plumbing — prefer after `gpw-revpbe-si` ✓ (merge-conflict avoidance)
+- [ ] `gpw-vdw-df-ice` | Nonlocal vdW-DF correlation | gpw | ice Ih | DZVP-MOLOPT-GTH | E_disp / e_tot Ha | roadmap §8 vdW-DF ○; CP2K VDW_POTENTIAL NON_LOCAL (DRSLL); **after** TS ✓ / MBD ✓ order
+- [ ] `periodic-gw-si` | Periodic GW | gpw / response | Si (tiny cell) | MOLOPT+GTH | QP gaps | roadmap §10 ○ Periodic GW; CP2K GW; **dep:** solid GPW + bands foothold ✓ + RPA ✓; not molecular G0W0 (PySCF loop)
 
 ## in_progress
 
-- [~] `gpw-kpoint-forces` | GPW analytic forces at Monkhorst–Pack k-points | gpw | H₂ / Si | DZV-GTH-PADE | F [Ha/Bohr] | **Recover:** unmerged `wf/gpw-kpoint-forces` @ `d15a475d` (Bloch-phased Pulay/core/grid; `C_occ_k`; reg dual-gate max\|dF\|~6e-6; oracle `tools/cp2k_oracle/inputs/gpw-kpoint-forces.inp`). Not on `dev` (force path still Γ real-P assembly). Resume: rebase/rebuild on current `dev` @ `507bb5f8`, dual-gate unit+`reg_gpw-kpoint-forces`, merge; **dep:** `gpw-kpoints-si` ✓ + `gpw-forces-water` ✓
+_(empty — harness wave 2 closed all staffed `[~]`)_
+
+## done (harness wave 2 2026-07-25)
+
+- [x] `gpw-kpoint-forces` | GPW analytic forces at Monkhorst–Pack k-points | gpw | `regressions/gpw/gpw-kpoint-forces` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-revpbe-si` | GPW revPBE GGA (`XcKind::RevPBE`) | gpw | `regressions/gpw/gpw-revpbe-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-kpoints-uks` | GPW collinear multi-k UKS SCF | gpw | `regressions/gpw/gpw-kpoints-uks` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-uks-forces` | Γ-UKS analytic ionic forces (O₂ PBE) | gpw | `regressions/gpw/gpw-uks-forces` | ratio **~2.52** | 2026-07-25
+- [x] `gpw-kpoint-stress` | GPW analytic cell stress at k-points | gpw | `regressions/gpw/gpw-kpoint-stress` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-mbd-ice` | Free-atom MBD@rsSCS dispersion | gpw | `regressions/gpw/gpw-mbd-ice` | ratio **perf_exempt** (libMBD E_disp) | 2026-07-25
+- [x] `periodic-mp2-kpoints` | Multi-k RI-GPW MP2 residual | gpw | `regressions/gpw/periodic-mp2-kpoints` | ratio **perf_exempt** | 2026-07-25
+- [x] `periodic-rpa-si` | Γ-point GPW direct RPA (dRPA@PBE) | gpw | `regressions/gpw/periodic-rpa-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `dfpt-finite-q-si` | Finite-q DFPT phonons at X (PW) | response | `regressions/response/dfpt-finite-q-si` | ratio **perf_exempt** | 2026-07-25
+- [x] `gpw-variable-cell-molopt` | GPW CELL_OPT MOLOPT re-twin vs CP2K | gpw | `regressions/gpw/gpw-variable-cell-molopt` | ratio **~7.5** | 2026-07-25
 
 ## done (harness wave 1 2026-07-25)
 

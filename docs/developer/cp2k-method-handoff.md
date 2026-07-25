@@ -1,6 +1,60 @@
 # CP2K capability loop — handoff
 
-## Harness wave 1 2026-07-25 (parent `dev` @ `83a100df`)
+## Harness wave 2 2026-07-25 (parent `dev` @ `f5739506`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **0** (no residual `[~]`) |
+| Open CP2K specs | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Specs closed this harness | **10** (deleted on close) |
+| Unmerged staff `wf/*` | **0** for the 10 wave slugs (clearup already ran) |
+| Isolation worktrees | **0** (main tree only) |
+| Leftover builds | **none** |
+| Pending gaps | **3** residual (not exhausted — GapCensus owns refill) |
+| Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done this wave | **10** landings (see table) |
+| Oracle | `tools/cp2k_oracle/` offline pins only |
+| Loop docs | queue / loop / handoff / roadmap **synced** |
+
+### Wave staff → done
+
+| Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ---------- | --------------------------------------------- |
+| `gpw-kpoint-forces` | gpw | `reg_gpw-kpoint-forces` | **perf_exempt** |
+| `gpw-revpbe-si` | gpw | `reg_gpw-revpbe-si` | **perf_exempt** |
+| `gpw-kpoints-uks` | gpw | `reg_gpw-kpoints-uks` | **perf_exempt** |
+| `gpw-uks-forces` | gpw | `reg_gpw-uks-forces` | **~2.52** |
+| `gpw-kpoint-stress` | gpw | `reg_gpw-kpoint-stress` | **perf_exempt** |
+| `gpw-mbd-ice` | gpw | `reg_gpw-mbd-ice` | **perf_exempt** (libMBD E_disp) |
+| `periodic-mp2-kpoints` | gpw | `reg_periodic-mp2-kpoints` | **perf_exempt** |
+| `periodic-rpa-si` | gpw | `reg_periodic-rpa-si` | **perf_exempt** |
+| `dfpt-finite-q-si` | response | `reg_dfpt-finite-q-si` | **perf_exempt** |
+| `gpw-variable-cell-molopt` | gpw | `reg_gpw-variable-cell-molopt` | **~7.5** |
+
+### Roadmap ○→✓ this harness
+
+| Row | Doc | Note |
+| --- | --- | ---- |
+| revPBE | `dft.md` §3 | `XCType`/`XcKind::RevPBE`; GPW dual-gate |
+| Many-body dispersion, MBD | `dft.md` §8 | free-atom MBD@rsSCS on GPW |
+| Periodic RPA | `dft.md` §10 | Γ dRPA@KS product; multi-k / RI-RPA residual |
+| Finite-q DFPT Sternheimer | `dft.md` §11 prose | PW X-point product path |
+| Multi-k GPW MP2 residual | `dft.md` §10 prose | closed (`reg_periodic-mp2-kpoints`) |
+| GPW k-UKS / k-forces / k-stress / Γ-UKS forces / MOLOPT CELL_OPT | prose + index | productized |
+
+### Pending residual (next Assign / GapCensus)
+
+1. `gpw-rpbe-water` (XcKind GGA expand — after revPBE ✓)
+2. `gpw-vdw-df-ice` (after TS ✓ / MBD ✓ order)
+3. `periodic-gw-si` (after RPA ✓)
+
+Do **not** staff PySCF deferred specs. No push from parent.
+**Queue not exhausted** — next wave starts with GapCensus.
+
+---
+
+## Harness wave 1 2026-07-25 (parent `dev` @ `83a100df`) — historical
 
 | Field | Value |
 | ----- | ----- |

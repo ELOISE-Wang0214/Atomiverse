@@ -33,7 +33,7 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (CP2K clean after harness wave 1 2026-07-25)
+## Live — deferred PySCF only (CP2K clean after harness wave 2 2026-07-25)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
@@ -41,8 +41,16 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
 No open CP2K/GPW/PW specs on `dev` — workers write `.claude/specs/<slug>/` on
-`wf/<slug>` before impl. Harness wave 1 2026-07-25 closed 9 CP2K specs
-(deleted); pending residual=9; in_progress=0.
+`wf/<slug>` before impl. Harness wave 2 2026-07-25 closed 10 CP2K specs
+(deleted); pending residual=3; in_progress=0.
+
+## Closed — CP2K harness wave 2 (2026-07-25)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 2 | gpw-kpoint-forces, gpw-revpbe-si, gpw-kpoints-uks, gpw-uks-forces, gpw-kpoint-stress, gpw-mbd-ice, periodic-mp2-kpoints, periodic-rpa-si, dfpt-finite-q-si, gpw-variable-cell-molopt | MP k-forces; revPBE GGA; k-UKS; Γ-UKS forces; k-stress; free-atom MBD; multi-k RI-MP2; Γ dRPA; finite-q DFPT X; MOLOPT CELL_OPT |
+
+Do not re-create closed slugs without superseding intent.
 
 MetalWalls wave 3 closed 2026-07-24 (specs deleted). **Wave-4 assign**
 (2026-07-24) staffed 10 production-depth / residual map rows to

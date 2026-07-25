@@ -241,24 +241,27 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
 ### GPW
 
 - Γ-point RKS + **Γ-point UKS** (PADE LSD `reg_gpw-uks-o2-gamma` + **PBE-GGA**
-  `reg_gpw-uks-pbe`) + **Monkhorst–Pack k-point RKS** (phased lattice sums /
-  KB / per-k DIIS; `reg_gpw-kpoints-si`). No hybrids / meta-GGA / GAPW.
-  **Analytic cell stress** (fixed-\(P\)+Pulay product; multi-SCF FD oracle;
-  `reg_gpw-analytic-stress` / `reg_gpw-stress-water`) and **GPW CELL_OPT**
-  (`reg_gpw-variable-cell-ice`). Open follow-ons: k-point UKS, analytic
-  k-point forces (WIP `wf/gpw-kpoint-forces`), k-point stress, Γ-UKS forces,
-  revPBE/RPBE, multi-k MP2 / RPA / GW (see `cp2k-method-queue.md`).
+  `reg_gpw-uks-pbe` + **forces** `reg_gpw-uks-forces`) + **Monkhorst–Pack
+  k-point RKS** and **k-point UKS** (phased lattice sums / KB / per-k DIIS;
+  `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`; **k-forces**
+  `reg_gpw-kpoint-forces`). No hybrids / meta-GGA / GAPW.
+  **Analytic cell stress** at Γ and k-points (fixed-\(P\)+Pulay product;
+  multi-SCF FD oracle; `reg_gpw-analytic-stress` / `reg_gpw-kpoint-stress` /
+  `reg_gpw-stress-water`) and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` +
+  MOLOPT `reg_gpw-variable-cell-molopt`). Open follow-ons: RPBE, vdW-DF,
+  periodic GW (see `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
   (`reg_gpw-forces-water`, `reg_gpw-water-pbe-mt`). Product **OT** via
   `use_ot` (`reg_ot-minimizer-water`). **PBEsol** (`reg_gpw-pbesol-si`);
-  **BLYP** (`reg_gpw-blyp-water`); **Dudarev DFT+U** (`reg_gpw-dftu-nio`).
-  Γ **RI-GPW MP2 product** (`reg_periodic-ri-mp2-si`; Poisson foothold
-  `reg_periodic-mp2-si`; multi-k residual).
-- DFT-D3 zero-damping, **D3(BJ)**, **D4**, and **TS** on GPW (PBE params;
-  `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`, `reg_gpw-ts-ice`). Molecular
-  Gaussian path also has **DFT-D3(BJ)** / **D4**.
+  **revPBE** (`reg_gpw-revpbe-si`); **BLYP** (`reg_gpw-blyp-water`);
+  **Dudarev DFT+U** (`reg_gpw-dftu-nio`). Γ + multi-k **RI-GPW MP2**
+  (`reg_periodic-ri-mp2-si` / `reg_periodic-mp2-kpoints`; Poisson foothold
+  `reg_periodic-mp2-si`); Γ **dRPA** (`reg_periodic-rpa-si`).
+- DFT-D3 zero-damping, **D3(BJ)**, **D4**, **TS**, and free-atom **MBD** on GPW (PBE params;
+  `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`, `reg_gpw-ts-ice`,
+  `reg_gpw-mbd-ice`). Molecular Gaussian path also has **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

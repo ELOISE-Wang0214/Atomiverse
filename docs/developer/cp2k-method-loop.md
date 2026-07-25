@@ -68,6 +68,17 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-25 harness wave 2 (parent `dev` @ `f5739506`):** 10 merged →
+  done: `gpw-kpoint-forces`, `gpw-revpbe-si`, `gpw-kpoints-uks`,
+  `gpw-uks-forces`, `gpw-kpoint-stress`, `gpw-mbd-ice`,
+  `periodic-mp2-kpoints`, `periodic-rpa-si`, `dfpt-finite-q-si`,
+  `gpw-variable-cell-molopt`. Incomplete remaining **0**; pending residual
+  **3** (`gpw-rpbe-water`, `gpw-vdw-df-ice`, `periodic-gw-si`); blocked **5**.
+  Specs closed (deleted) for all 10. Roadmap: revPBE ✓, free-atom MBD ✓,
+  Periodic RPA ✓ (Γ dRPA@KS), finite-q DFPT productized; multi-k MP2 residual
+  closed; GPW k-UKS / k-forces / k-stress / Γ-UKS forces / MOLOPT CELL_OPT
+  prose. Clearup already ran (no isolation worktrees; no builds). **Queue not
+  exhausted** — next wave GapCensus. No push.
 - **2026-07-25 GapCensus wave 2 (parent `dev` @ `507bb5f8`):** recover found
   unmerged `wf/gpw-kpoint-forces` (ahead 1) → `## in_progress` `[~]`. Prior
   pending (−k-forces) re-verified true gaps; **+4** follow-ons
