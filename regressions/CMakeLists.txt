@@ -163,6 +163,7 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-uks-o2-gamma)
     atv_add_regression(gpw gpw-uks-pbe)
     atv_add_regression(gpw gpw-uks-forces)
+    atv_add_regression(gpw gpw-uks-stress)
     if(ATV_BUILD_MD)
         atv_add_regression(gpw gpw-bomd-water)
         # Extended-Lagrangian BOMD (dynamics domain): XL auxiliary-density
