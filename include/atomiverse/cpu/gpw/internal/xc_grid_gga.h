@@ -1,6 +1,6 @@
 /// @file cpu/gpw/internal/xc_grid_gga.h
-/// @brief GGA (PBE / PBEsol) exchange-correlation energy and potential on the
-///        GPW grid.
+/// @brief GGA (PBE / PBEsol / BLYP) exchange-correlation energy and potential
+///        on the GPW grid.
 ///
 /// The GGA counterpart of `xc_grid_pade` (LDA). Density gradients are computed
 /// spectrally (`grid_fft`), the pointwise functional is reused from the
@@ -28,7 +28,7 @@ namespace gpw {
 ///
 /// @param grid  Uniform grid.
 /// @param rho_r Total electron density on the grid, length grid.npts().
-/// @param xc    Pure GGA type (`PBE` or `PBEsol`).
+/// @param xc    Pure GGA type (`PBE`, `PBEsol`, or `BLYP`).
 /// @return XcOnGrid with the total energy and the real-space potential.
 XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
                      cpu::scf::XCType xc);
@@ -39,6 +39,9 @@ XcOnGrid xc_grid_pbe(const UniformGrid& grid, const std::vector<double>& rho_r);
 /// @brief PBEsol GGA on the grid (`xc_grid_gga` with `XCType::PBEsol`).
 XcOnGrid xc_grid_pbesol(const UniformGrid& grid,
                         const std::vector<double>& rho_r);
+
+/// @brief BLYP GGA on the grid (`xc_grid_gga` with `XCType::BLYP`).
+XcOnGrid xc_grid_blyp(const UniformGrid& grid, const std::vector<double>& rho_r);
 
 } // namespace gpw
 } // namespace cpu

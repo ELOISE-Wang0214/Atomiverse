@@ -960,8 +960,10 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         const XcOnGrid xc =
             cfg.xc == XcKind::PBE
                 ? xc_grid_pbe(grid, rho)
-                : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
-                                            : xc_grid_pade(grid, rho));
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol(grid, rho)
+                       : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
+                                                 : xc_grid_pade(grid, rho)));
         std::vector<double> veff(rho.size());
         double e_locgrid = 0.0;
         for (std::size_t g = 0; g < rho.size(); ++g) {
@@ -1529,8 +1531,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         const XcOnGrid xc =
             cfg.xc == XcKind::PBE
                 ? xc_grid_pbe(grid, rho)
-                : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
-                                            : xc_grid_pade(grid, rho));
+                : (cfg.xc == XcKind::PBEsol
+                       ? xc_grid_pbesol(grid, rho)
+                       : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
+                                                 : xc_grid_pade(grid, rho)));
         auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)

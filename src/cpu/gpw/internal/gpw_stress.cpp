@@ -303,10 +303,13 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
                                              : solve_poisson(grid, n_tot);
-    const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
-                                              : (cfg.xc == XcKind::PBEsol
-                                                     ? xc_grid_pbesol(grid, rho)
-                                                     : xc_grid_pade(grid, rho));
+    const XcOnGrid xc =
+        cfg.xc == XcKind::PBE
+            ? xc_grid_pbe(grid, rho)
+            : (cfg.xc == XcKind::PBEsol
+                   ? xc_grid_pbesol(grid, rho)
+                   : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
+                                             : xc_grid_pade(grid, rho)));
 
     double e_locgrid = 0.0;
     if (!analytic_loc) {

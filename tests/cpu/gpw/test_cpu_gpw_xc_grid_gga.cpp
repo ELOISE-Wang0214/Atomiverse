@@ -71,6 +71,38 @@ TEST(GpwXcGGA, PBEsolConstantDensityMatchesPBE) {
                 1e-9 * std::abs(volume * rho0 * ref.exc));
 }
 
+// BLYP at σ=0 must match evaluate_xc(BLYP) LDA limit (B88+LYP at zero grad).
+TEST(GpwXcGGA, BLYPConstantDensityLdaLimit) {
+    using ATV::cpu::gpw::xc_grid_blyp;
+    const double cell[3] = {8.0, 8.0, 8.0};
+    UniformGrid grid = make_uniform_grid(cell, 150.0);
+    const double rho0 = 0.2;
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), rho0);
+
+    XcOnGrid xc = xc_grid_blyp(grid, rho);
+    const ATV::cpu::scf::XCOutput ref = ATV::cpu::scf::evaluate_xc(
+        ATV::cpu::scf::XCType::BLYP, 0.5 * rho0, 0.5 * rho0, 0, 0, 0);
+    const double volume = cell[0] * cell[1] * cell[2];
+    EXPECT_NEAR(xc.e_xc, volume * rho0 * ref.exc,
+                1e-9 * std::abs(volume * rho0 * ref.exc));
+    EXPECT_NEAR(xc.vxc_r[0], ref.vrho_alpha, 1e-9);
+}
+
+// Nonuniform density: BLYP and PBE GGA energies must differ (activation gate).
+TEST(GpwXcGGA, BLYPDiffersFromPBEOnGaussian) {
+    using ATV::cpu::gpw::xc_grid_blyp;
+    const double cell[3] = {10.0, 10.0, 10.0};
+    UniformGrid grid = make_uniform_grid(cell, 200.0);
+    const double c[3] = {5.0, 5.0, 5.0};
+    std::vector<double> rho = gaussian_density(grid, c, 0.8, 1.0);
+    XcOnGrid pbe = xc_grid_pbe(grid, rho);
+    XcOnGrid blyp = xc_grid_blyp(grid, rho);
+    EXPECT_TRUE(std::isfinite(blyp.e_xc));
+    EXPECT_LT(blyp.e_xc, 0.0);
+    EXPECT_GT(std::abs(blyp.e_xc - pbe.e_xc), 1e-6)
+        << "BLYP inactive? |dE|=" << std::abs(blyp.e_xc - pbe.e_xc);
+}
+
 TEST(GpwXcGGA, GaussianEnergyNegative) {
     const double cell[3] = {10.0, 10.0, 10.0};
     UniformGrid grid = make_uniform_grid(cell, 200.0);

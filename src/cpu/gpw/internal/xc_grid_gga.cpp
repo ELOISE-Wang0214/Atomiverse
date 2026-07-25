@@ -28,7 +28,8 @@ XcOnGrid xc_grid_gga(const UniformGrid& grid, const std::vector<double>& rho_r,
     if (!cpu::scf::is_gga(xc)
         || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
         throw std::invalid_argument(
-            "xc_grid_gga: only pure GGA XCType (PBE, PBEsol, …) supported");
+            "xc_grid_gga: only pure GGA XCType (PBE, PBEsol, BLYP, …) "
+            "supported");
     }
     const long ng = grid.npts();
     const double w = grid.weight();
@@ -79,6 +80,11 @@ XcOnGrid xc_grid_pbe(const UniformGrid& grid,
 XcOnGrid xc_grid_pbesol(const UniformGrid& grid,
                         const std::vector<double>& rho_r) {
     return xc_grid_gga(grid, rho_r, cpu::scf::XCType::PBEsol);
+}
+
+XcOnGrid xc_grid_blyp(const UniformGrid& grid,
+                      const std::vector<double>& rho_r) {
+    return xc_grid_gga(grid, rho_r, cpu::scf::XCType::BLYP);
 }
 
 } // namespace gpw
