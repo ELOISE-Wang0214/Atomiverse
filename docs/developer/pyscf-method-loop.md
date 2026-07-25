@@ -1,19 +1,29 @@
 # PySCF method loop — worktree → merge → dev
 
+Abstract pattern (all oracle loops):
+[`oracle-capability-loop.md`](oracle-capability-loop.md).  
+Scaffold skill: `.agents/skills/create-oracle-loop/`.
+
+## Continuous discovery (binding)
+
+**Every wave starts with GapCensus:** re-diff PySCF + roadmap ○ vs ATV on
+`target_branch`, refill `## pending`, update roadmap. A foothold regression
+does **not** close a capability. Stop `queue_empty` only when
+`gaps_remaining=0` and assign is empty for `stall_no_work` waves — **not**
+after one seed batch.
+
 ## Pipeline
 
 ```text
 parent (dev)
-  census + assign
+  recover incomplete (optional; pyscf default_skip_recover)
        │
-       ├─ worker₁ isolation_worktree  ──┐
-       ├─ worker₂ isolation_worktree  ──┼─ pin + impl + verify + commit on wf/<slug>
-       └─ workerₙ isolation_worktree  ──┘
-       │
-  merge agent (parent): git merge each green HEAD → dev
-       │
-  harness agent (parent): queue + roadmap + notes; commit chore(harness)
+  for each wave:
+    GapCensus → Assign → Worktrees → Merge? → Clearup → Harness? → Tutorial?
 ```
+
+Instance = template + CONFIG/`extra_law` only
+(`.grok/workflows/pyscf-method-loop.rhai`).
 
 | Role | `isolation_worktree` | Writes |
 | ---- | -------------------- | ------ |
@@ -120,3 +130,4 @@ args: { "mode":"exhaust", "staff_count":5, "max_waves":20, "target_branch":"dev"
 - 2026-07-24 tutorial: methods/nevpt2-h2-sto3g.md
 - 2026-07-24 tutorial: methods/uks-hessian-o2-sto3g.md
 - 2026-07-24 tutorial index: methods/README.md + tutorial/index.md Method tutorials (wave 3)
+- 2026-07-24 deferred specs: rsh-eri-cam-b3lyp + periodic-rhf-gamma under `.claude/specs/` (approved; implement later, no auto-impl)

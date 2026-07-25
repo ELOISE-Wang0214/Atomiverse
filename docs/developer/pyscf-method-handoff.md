@@ -12,8 +12,11 @@ Last harness pass: **2026-07-24 wave 3 (post re-census)** on `dev`
 
 - **Blocked this wave:** none
 - **Merge-failed this wave:** none
-- **Queue:** pending = 0; in_progress = 0; historical blocked list unchanged
-  (cam-b3lyp, periodic-rhf-gamma, td-dftb, gfn2-xtb, pm6-pm7, caspt2).
+- **Queue:** pending = 0; in_progress = 0. **blocked** (engine gaps only;
+  PySCF can oracle): `cam-b3lyp` → spec `.claude/specs/rsh-eri-cam-b3lyp/`;
+  `periodic-rhf-gamma` → spec `.claude/specs/periodic-rhf-gamma/` (both
+  **deferred**, no auto-impl). Non-PySCF twins removed from this queue
+  2026-07-24: `td-dftb`, `gfn2-xtb`, `pm6-pm7`, `caspt2`.
 - **Roadmap:** CPU ✓ for **strongly contracted NEVPT2** (`RHF::nevpt2` on
   CASSCF; H2/STO-3G full-valence e_corr≡0 pin) and **UKS nuclear Hessian**
   (`UKS::hessian`; FD of analytic UKS forces, same product class as RKS/ROHF).

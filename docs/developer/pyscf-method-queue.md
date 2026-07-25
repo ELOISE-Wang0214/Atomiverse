@@ -26,12 +26,16 @@ _(empty)_
 
 ## blocked
 
-- [!] `cam-b3lyp` | blocked — range-separated / erf-attenuated ERI engine absent (Rys has no attenuation)
-- [!] `periodic-rhf-gamma` | blocked — no periodic exact exchange; PW/GPW are semi-local DFT only
-- [!] `td-dftb` | blocked upstream — DFTB2 has no response path; not a PySCF twin
-- [!] `gfn2-xtb` | blocked — no PySCF oracle; xTB is external (GFN0 toy already ✓)
-- [!] `pm6-pm7` | blocked — NDDO tables / MOPAC twin, not PySCF
-- [!] `caspt2` | blocked — no stock PySCF oracle (OpenMolcas / external); NEVPT2 is the in-tree PySCF MRPT path
+PySCF *can* pin these; Atomiverse is missing a prerequisite engine (not a
+missing method flag). Dropped from this queue (not PySCF twins): `td-dftb`,
+`gfn2-xtb`, `pm6-pm7`, `caspt2` — revive under DFTB+/xTB/MOPAC/OpenMolcas if
+needed.
+
+Deferred specs (approved, implement later — not auto-impl):
+`.claude/specs/rsh-eri-cam-b3lyp/`, `.claude/specs/periodic-rhf-gamma/`.
+
+- [!] `cam-b3lyp` | blocked — range-separated / erf-attenuated ERI engine absent (Rys has no attenuation); PySCF has CAM-B3LYP once we have `(μ)`-split Coulomb — **spec:** `.claude/specs/rsh-eri-cam-b3lyp/`
+- [!] `periodic-rhf-gamma` | blocked — no periodic exact exchange; PW/GPW are semi-local DFT only; PySCF `pbc.scf` can oracle once four-index PBC HF-X exists — **spec:** `.claude/specs/periodic-rhf-gamma/`
 
 ## done
 
