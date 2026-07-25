@@ -352,9 +352,11 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                        ? xc_grid_pbesol(grid, rho)
                        : (cfg.xc == XcKind::RevPBE
                               ? xc_grid_revpbe(grid, rho)
-                              : (cfg.xc == XcKind::BLYP
-                                     ? xc_grid_blyp(grid, rho)
-                                     : xc_grid_pade(grid, rho))));
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe(grid, rho)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp(grid, rho)
+                                            : xc_grid_pade(grid, rho)))));
         veff.resize(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) {
             veff[g] = es.v_r[g] + xc.vxc_r[g];

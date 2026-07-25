@@ -382,8 +382,13 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             ? xc_grid_pbe(grid, rho)
             : (cfg.xc == XcKind::PBEsol
                    ? xc_grid_pbesol(grid, rho)
-                   : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
-                                             : xc_grid_pade(grid, rho)));
+                   : (cfg.xc == XcKind::RevPBE
+                          ? xc_grid_revpbe(grid, rho)
+                          : (cfg.xc == XcKind::RPBE
+                                 ? xc_grid_rpbe(grid, rho)
+                                 : (cfg.xc == XcKind::BLYP
+                                        ? xc_grid_blyp(grid, rho)
+                                        : xc_grid_pade(grid, rho)))));
 
     const std::vector<double> v_locsr =
         local_pp_grid(grid, atoms, /*periodic=*/true);
@@ -551,8 +556,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                    ? xc_grid_pbesol(grid, rho)
                    : (cfg.xc == XcKind::RevPBE
                           ? xc_grid_revpbe(grid, rho)
-                          : (cfg.xc == XcKind::BLYP ? xc_grid_blyp(grid, rho)
-                                                    : xc_grid_pade(grid, rho))));
+                          : (cfg.xc == XcKind::RPBE
+                                 ? xc_grid_rpbe(grid, rho)
+                                 : (cfg.xc == XcKind::BLYP
+                                        ? xc_grid_blyp(grid, rho)
+                                        : xc_grid_pade(grid, rho)))));
 
     double e_locgrid = 0.0;
     if (!analytic_loc) {

@@ -88,10 +88,10 @@ struct GpwAtom {
 
 /// @brief Exchange-correlation functional choice.
 ///
-/// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `BLYP` — pure GGA
-/// (shared `evaluate_xc`). RKS supports all five; Γ-UKS supports `PADE` /
+/// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `RPBE` / `BLYP` — pure GGA
+/// (shared `evaluate_xc`). RKS supports all six; Γ-UKS supports `PADE` /
 /// `PBE` / `PBEsol` (spin-GGA path).
-enum class XcKind { PADE, PBE, PBEsol, RevPBE, BLYP };
+enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
 
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
@@ -186,7 +186,8 @@ class GpwDft {
     int diis_depth = 6;        ///< Pulay DIIS history depth.
     double lindep_threshold = 1e-8; ///< S-eigenvalue keep threshold.
     double level_shift = 0.0;       ///< virtual level shift [Hartree].
-    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol / RevPBE / BLYP).
+    XcKind xc =
+        XcKind::PADE; ///< LDA (PADE) or GGA (PBE / PBEsol / RevPBE / RPBE / BLYP).
     bool nonperiodic = false;       ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true;   ///< collocate GTH local SR PP on grid.
     bool d3 =

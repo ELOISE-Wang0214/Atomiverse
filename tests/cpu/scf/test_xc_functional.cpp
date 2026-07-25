@@ -213,6 +213,41 @@ TEST(XCFunctional, RevPBEDiffersFromPBEAtFiniteGradient) {
     EXPECT_TRUE(std::isfinite(rev.vsigma_aa));
 }
 
+// ── RPBE GGA (exponential F_x; Hammer–Hansen–Nørskov 1999) ──────────────
+
+TEST(XCFunctional, RPBEMetadata) {
+    EXPECT_TRUE(is_gga(XCType::RPBE));
+    EXPECT_DOUBLE_EQ(hybrid_exchange_fraction(XCType::RPBE), 0.0);
+    EXPECT_DOUBLE_EQ(hybrid_pt2_fraction(XCType::RPBE), 0.0);
+}
+
+TEST(XCFunctional, RPBEMatchesPBEAtZeroGradient) {
+    // At σ=0, F_x=1 and H=0 → RPBE and PBE share the PW92 LDA base.
+    for (double rho : {0.01, 0.1, 0.5, 2.0}) {
+        auto pbe = evaluate_xc(XCType::PBE, rho / 2, rho / 2, 0, 0, 0);
+        auto rpbe = evaluate_xc(XCType::RPBE, rho / 2, rho / 2, 0, 0, 0);
+        EXPECT_NEAR(rpbe.exc, pbe.exc, 1e-12) << "rho=" << rho;
+        EXPECT_NEAR(rpbe.vrho_alpha, pbe.vrho_alpha, 1e-12) << "rho=" << rho;
+        EXPECT_NEAR(rpbe.vrho_beta, pbe.vrho_beta, 1e-12) << "rho=" << rho;
+    }
+}
+
+TEST(XCFunctional, RPBEDiffersFromPBEAtFiniteGradient) {
+    // Exponential F_x vs rational PBE form → different enhancement at finite s.
+    auto pbe = evaluate_xc(XCType::PBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    auto rpbe = evaluate_xc(XCType::RPBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    EXPECT_GT(std::abs(rpbe.exc - pbe.exc), 1e-8);
+    EXPECT_TRUE(std::isfinite(rpbe.exc));
+    EXPECT_TRUE(std::isfinite(rpbe.vsigma_aa));
+}
+
+TEST(XCFunctional, RPBEDiffersFromRevPBEAtFiniteGradient) {
+    // RPBE ≠ revPBE (different exchange form / κ).
+    auto rev = evaluate_xc(XCType::RevPBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    auto rpbe = evaluate_xc(XCType::RPBE, 0.3, 0.3, 0.2, 0.1, 0.2);
+    EXPECT_GT(std::abs(rpbe.exc - rev.exc), 1e-8);
+}
+
 // ── Numerical stability ─────────────────────────────────────────────────
 
 TEST(XCFunctional, NoNaNAtVariousDensities) {

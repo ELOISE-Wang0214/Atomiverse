@@ -2,8 +2,8 @@
 /// @brief Exchange-correlation functional evaluator for KS / UKS.
 ///
 /// Supports LSDA (Slater exchange + VWN5 correlation), pure GGAs (PBE,
-/// PBEsol, revPBE, BLYP), the B3LYP / PBE0 global hybrids, and the B2PLYP
-/// double hybrid.
+/// PBEsol, revPBE, RPBE, BLYP), the B3LYP / PBE0 global hybrids, and the
+/// B2PLYP double hybrid.
 /// A global hybrid mixes a functional-specific fraction of exact
 /// Hartree-Fock exchange (see `hybrid_exchange_fraction`) on top of a
 /// semi-local exchange-correlation part; `evaluate_xc` returns only the
@@ -22,6 +22,10 @@
 ///     β=0.046 (libxc / CP2K XC_FUNCTIONAL PBEsol convention)
 ///   - revPBE: Zhang & Yang, PRL 80, 890 (1998) — PBE form with κ=1.245
 ///     exchange (libxc GGA_X_PBE_R + GGA_C_PBE / CP2K XC_FUNCTIONAL revPBE)
+///   - RPBE: Hammer, Hansen, Nørskov, PRB 59, 7413 (1999) — exponential
+///     exchange enhancement \(F_x=1+\kappa(1-e^{-\mu s^2/\kappa})\) with
+///     PBE κ/μ + PBE correlation (libxc GGA_X_RPBE + GGA_C_PBE /
+///     CP2K XC_FUNCTIONAL RPBE). Distinct from revPBE.
 ///   - BLYP: B88 (Becke, Phys. Rev. A 38, 3098 (1988)) + LYP (Lee-Yang-Parr,
 ///     Phys. Rev. B 37, 785 (1988); Miehlich et al., Chem. Phys. Lett. 157,
 ///     200 (1989))
@@ -38,21 +42,31 @@ namespace scf {
 
 /// @brief XC functional type selector.
 ///
-/// `LSDA`, `PBE`, `PBEsol`, `RevPBE` and `BLYP` are pure (semi-local)
+/// `LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE` and `BLYP` are pure (semi-local)
 /// functionals. `B3LYP` and `PBE0` are global hybrids: their semi-local part
 /// is evaluated by `evaluate_xc` while a fixed fraction of exact HF exchange
 /// (`hybrid_exchange_fraction`) is added by the Fock builder. `B2PLYP` is
 /// a **double hybrid**: same hybrid-KS build with a_x=0.53 plus a PT2
 /// correlation scale a_c=0.27 applied by the MP2 path (see
 /// `hybrid_pt2_fraction`).
-enum class XCType { LSDA, PBE, PBEsol, RevPBE, BLYP, B3LYP, PBE0, B2PLYP };
+enum class XCType {
+    LSDA,
+    PBE,
+    PBEsol,
+    RevPBE,
+    RPBE,
+    BLYP,
+    B3LYP,
+    PBE0,
+    B2PLYP
+};
 
 /// @brief Fraction of exact Hartree-Fock exchange (`alpha_hf`) for a functional.
 ///
 /// Returns the global-hybrid exact-exchange admixture: `0.20` for B3LYP,
 /// `0.25` for PBE0, `0.53` for B2PLYP, and `0.0` for every pure functional
-/// (`LSDA`, `PBE`, `PBEsol`, `RevPBE`, `BLYP`). A `0.0` return is the signal
-/// "pure functional, no exchange-matrix build".
+/// (`LSDA`, `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`). A `0.0` return is the
+/// signal "pure functional, no exchange-matrix build".
 ///
 /// @param type XC functional type.
 /// @return alpha_hf, the dimensionless exact-exchange fraction in [0, 1].
@@ -72,9 +86,10 @@ double hybrid_pt2_fraction(XCType type);
 
 /// @brief Whether a functional has a gradient (GGA) dependence.
 ///
-/// True for `PBE`, `PBEsol`, `RevPBE`, `BLYP`, `B3LYP`, `PBE0` and `B2PLYP`
-/// (all carry a semi-local GGA term); false for the pure-LDA `LSDA`. Used to
-/// decide whether the XC grid engine must build basis-function gradients.
+/// True for `PBE`, `PBEsol`, `RevPBE`, `RPBE`, `BLYP`, `B3LYP`, `PBE0` and
+/// `B2PLYP` (all carry a semi-local GGA term); false for the pure-LDA
+/// `LSDA`. Used to decide whether the XC grid engine must build
+/// basis-function gradients.
 ///
 /// @param type XC functional type.
 /// @return `true` if the semi-local part needs density gradients.
@@ -99,8 +114,8 @@ struct XCOutput {
 ///
 /// Applies density cutoff: if rho_total < 1e-12, returns zero for all outputs.
 ///
-/// @param type  Functional type (LSDA, PBE, PBEsol, RevPBE, BLYP, B3LYP,
-///              PBE0 or B2PLYP).
+/// @param type  Functional type (LSDA, PBE, PBEsol, RevPBE, RPBE, BLYP,
+///              B3LYP, PBE0 or B2PLYP).
 /// @param rho_a Alpha density at grid point [electrons/Bohr^3].
 /// @param rho_b Beta density at grid point [electrons/Bohr^3].
 /// @param sigma_aa |grad rho_alpha|^2 (GGA only, ignored for LSDA).
@@ -116,8 +131,8 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
 /// Processes `n` grid points at once, enabling SIMD auto-vectorization of
 /// transcendental functions (pow, log, exp).
 ///
-/// @param type     Functional type (LSDA, PBE, PBEsol, RevPBE, BLYP, B3LYP,
-///                 PBE0 or B2PLYP).
+/// @param type     Functional type (LSDA, PBE, PBEsol, RevPBE, RPBE, BLYP,
+///                 B3LYP, PBE0 or B2PLYP).
 /// @param n        Number of grid points.
 /// @param rho_a    Alpha densities [n].
 /// @param rho_b    Beta densities [n].

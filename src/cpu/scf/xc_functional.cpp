@@ -372,11 +372,13 @@ static constexpr double kRevPBE_kappa = 1.245;
 // Compute PBE-family exchange for a single spin channel.
 // Returns: (energy density contribution, v_rho, v_sigma) for this spin.
 // `mu` selects PBE (`kPBE_mu`) or PBEsol (`kPBEsol_mu`); `kappa` selects
-// PBE/PBEsol (0.804) or revPBE (1.245).
+// PBE/PBEsol/RPBE (0.804) or revPBE (1.245). When `rpbe_form` is true, use
+// the Hammer–Hansen–Nørskov exponential enhancement (RPBE) instead of the
+// rational PBE/revPBE form.
 static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
                               double& vrho_s, double& vsigma_ss,
-                              double mu = kPBE_mu,
-                              double kappa = kPBE_kappa) {
+                              double mu = kPBE_mu, double kappa = kPBE_kappa,
+                              bool rpbe_form = false) {
     if (rho_s < kRhoMin * 0.5) {
         ex_s = 0;
         vrho_s = 0;
@@ -397,15 +399,23 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
     double s = grad / (2.0 * kf * rho_s);
     double s2 = s * s;
 
-    // Enhancement factor F_x(s)
-    double denom = 1.0 + mu * s2 / kappa;
-    double Fx = 1.0 + kappa - kappa / denom;
+    // Enhancement factor F_x(s) and dF_x/ds²
+    double Fx;
+    double dFx_ds2;
+    if (rpbe_form) {
+        // RPBE: F = 1 + κ (1 − exp(−μ s² / κ));  dF/ds² = μ exp(−μ s² / κ)
+        const double expm = std::exp(-mu * s2 / kappa);
+        Fx = 1.0 + kappa * (1.0 - expm);
+        dFx_ds2 = mu * expm;
+    } else {
+        // PBE / revPBE: F = 1 + κ − κ / (1 + μ s² / κ)
+        const double denom = 1.0 + mu * s2 / kappa;
+        Fx = 1.0 + kappa - kappa / denom;
+        dFx_ds2 = mu / (denom * denom);
+    }
 
     // Energy density (per volume) for this spin
     ex_s = ex_lda * Fx;
-
-    // dF_x/ds² = μ / (1 + μs²/κ)²
-    double dFx_ds2 = mu / (denom * denom);
 
     // ds²/dρ_σ: s² = σ / (4 k_f² ρ²), k_f = (6π²)^{1/3} ρ^{1/3}
     // s² = σ / (4 (6π²)^{2/3} ρ^{2/3} ρ²) = σ / (4 (6π²)^{2/3} ρ^{8/3})
@@ -666,6 +676,8 @@ double hybrid_exchange_fraction(XCType type) {
         return 0.0;
     case XCType::RevPBE:
         return 0.0; // pure GGA (κ-revised PBE exchange + PBE correlation)
+    case XCType::RPBE:
+        return 0.0; // pure GGA (HHN exponential exchange + PBE correlation)
     case XCType::BLYP:
         return 0.0; // pure GGA (B88 + LYP); no exact exchange
     case XCType::B3LYP:
@@ -686,6 +698,7 @@ double hybrid_pt2_fraction(XCType type) {
     case XCType::PBE:
     case XCType::PBEsol:
     case XCType::RevPBE:
+    case XCType::RPBE:
     case XCType::BLYP:
     case XCType::B3LYP:
     case XCType::PBE0:
@@ -703,6 +716,8 @@ bool is_gga(XCType type) {
     case XCType::PBEsol:
         return true;
     case XCType::RevPBE:
+        return true;
+    case XCType::RPBE:
         return true;
     case XCType::BLYP:
         return true;
@@ -902,17 +917,19 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b, double sigma_aa,
         out.vrho_alpha = static_cast<double>(vx_a + vc_a);
         out.vrho_beta = static_cast<double>(vx_b + vc_b);
     } else if (type == XCType::PBE || type == XCType::PBEsol
-               || type == XCType::RevPBE) {
+               || type == XCType::RevPBE || type == XCType::RPBE) {
         // PBE family = PW92 LDA base + gradient corrections. Do NOT clamp
         // per-spin densities to kRhoMin here -- inflating rho_s = 0 to 1e-12
         // makes ds2_dsigma ~ 1/rho_s^{8/3} explode by O(1e30). Exchange has
         // its own rho_s < kRhoMin/2 early-return (libxc-matched empty spin).
         // PBEsol: μ=10/81, β=0.046 (Perdew 2008 / libxc PBE_SOL).
         // revPBE: κ=1.245, μ/β as PBE (Zhang & Yang 1998 / libxc PBE_R).
+        // RPBE: κ/μ/β as PBE, exponential F_x (Hammer et al. 1999 / GGA_X_RPBE).
         const double mu = (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
         const double beta = (type == XCType::PBEsol) ? kPBEsol_beta : kPBE_beta;
         const double kappa =
             (type == XCType::RevPBE) ? kRevPBE_kappa : kPBE_kappa;
+        const bool rpbe_form = (type == XCType::RPBE);
 
         double ra_pbe = ra;
         double rb_pbe = rb;
@@ -936,8 +953,10 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b, double sigma_aa,
 
         double ex_pbe_a, vrho_x_a, vsig_x_aa;
         double ex_pbe_b, vrho_x_b, vsig_x_bb;
-        pbe_exchange_spin(ra_pbe, sa, ex_pbe_a, vrho_x_a, vsig_x_aa, mu, kappa);
-        pbe_exchange_spin(rb_pbe, sb, ex_pbe_b, vrho_x_b, vsig_x_bb, mu, kappa);
+        pbe_exchange_spin(ra_pbe, sa, ex_pbe_a, vrho_x_a, vsig_x_aa, mu, kappa,
+                          rpbe_form);
+        pbe_exchange_spin(rb_pbe, sb, ex_pbe_b, vrho_x_b, vsig_x_bb, mu, kappa,
+                          rpbe_form);
 
         double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho_pbe;
 
@@ -1005,13 +1024,14 @@ void evaluate_xc_batch(XCType type, int n, const double* rho_a_arr,
             vrho_a_arr[g] = vx_a + vc_a;
             vrho_b_arr[g] = vx_b + vc_b;
         } else if (type == XCType::PBE || type == XCType::PBEsol
-                   || type == XCType::RevPBE) {
+                   || type == XCType::RevPBE || type == XCType::RPBE) {
             // See scalar branch for rationale: no per-spin clamping here.
             const double mu = (type == XCType::PBEsol) ? kPBEsol_mu : kPBE_mu;
             const double beta =
                 (type == XCType::PBEsol) ? kPBEsol_beta : kPBE_beta;
             const double kappa =
                 (type == XCType::RevPBE) ? kRevPBE_kappa : kPBE_kappa;
+            const bool rpbe_form = (type == XCType::RPBE);
 
             double ra_pbe = ra;
             double rb_pbe = rb;
@@ -1033,9 +1053,9 @@ void evaluate_xc_batch(XCType type, int n, const double* rho_a_arr,
             double ex_pbe_a, vrho_x_a, vsig_x_aa;
             double ex_pbe_b, vrho_x_b, vsig_x_bb;
             pbe_exchange_spin(ra_pbe, sa, ex_pbe_a, vrho_x_a, vsig_x_aa, mu,
-                              kappa);
+                              kappa, rpbe_form);
             pbe_exchange_spin(rb_pbe, sb, ex_pbe_b, vrho_x_b, vsig_x_bb, mu,
-                              kappa);
+                              kappa, rpbe_form);
             double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho_pbe;
 
             double ec_pbe, vc_pbe_a, vc_pbe_b;
