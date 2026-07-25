@@ -105,6 +105,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-phonon-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Finite-q DFPT Sternheimer at X (response): same Si twin, q = (1/2,0,0).
+    atv_add_regression(response dfpt-finite-q-si)
+    if(TARGET reg_dfpt-finite-q-si)
+        target_compile_definitions(reg_dfpt-finite-q-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw bands-dos-si)

@@ -1,6 +1,6 @@
 /// @file cpu/pw/internal/dfpt.h
-/// @brief Γ-point DFPT machinery for the plane-wave method: Ewald force
-///        constants, Sternheimer conduction-space CG, and the assembly of
+/// @brief DFPT machinery for the plane-wave method (Γ and finite q): Ewald
+///        force constants, Sternheimer conduction-space CG, and assembly of
 ///        the Cartesian dynamical matrix from self-consistent first-order
 ///        response (Baroni, de Gironcoli, Dal Corso, Giannozzi,
 ///        Rev. Mod. Phys. 73, 515 (2001)).
@@ -43,6 +43,23 @@ std::vector<AccReal> ewald_dynamical_matrix(const std::vector<Vec3>& pos_ang,
                                             const cpu::Box& cell,
                                             AccReal ecut_hartree);
 
+/// @brief Analytic finite-q ion–ion (Ewald) dynamical matrix \(C(q)\).
+///
+/// Same α / cutoffs as `ewald_dynamical_matrix`. At \(q = 0\) the result is
+/// real and matches the Γ matrix to roundoff. Output is row-major complex
+/// Hermitian `3N × 3N` [Hartree/Bohr²].
+///
+/// @param pos_ang Positions [Å].
+/// @param charges Point charges (valence Z for UPF).
+/// @param cell    Simulation cell [Å].
+/// @param ecut_hartree Wavefunction cutoff [Hartree] (sets recip G cut).
+/// @param q_frac  Phonon wavevector in fractional crystal coordinates.
+std::vector<std::complex<AccReal>>
+ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
+                         const std::vector<AccReal>& charges,
+                         const cpu::Box& cell, AccReal ecut_hartree,
+                         const Vec3& q_frac);
+
 /// @brief Conduction-space projected preconditioned CG for the Sternheimer
 ///        equation `P_c (H − ε) P_c x = P_c b` at the bound k-sphere of `ws`.
 ///
@@ -77,6 +94,17 @@ struct DfptGammaOutput {
     AccReal max_asymmetry = AccReal(0);
 };
 
+/// @brief Result of a finite-q DFPT force-constant assembly.
+struct DfptQOutput {
+    /// Complex Hermitian Cartesian force constants [Hartree/Bohr²],
+    /// row-major `3N × 3N`, Hermitian-projected; index `3·I + α`.
+    std::vector<std::complex<AccReal>> force_constants;
+    bool scf_converged = false;
+    bool response_converged = false;
+    /// Max |C − C†|/2 before projection [Hartree/Bohr²].
+    AccReal max_asymmetry = AccReal(0);
+};
+
 /// @brief Assemble the q = 0 DFPT force-constant matrix for `frame`.
 ///
 /// Restricted fixed-occupation LSDA with a UPF pseudopotential only
@@ -94,6 +122,18 @@ DfptGammaOutput
 dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                            AccReal response_tol, int response_max_iter,
                            AccReal cg_tol, int cg_max_iter, AccReal mix_beta);
+
+/// @brief Assemble the finite-q DFPT force-constant matrix \(C(q)\).
+///
+/// Same scope as `dfpt_gamma_force_constants`. When `q_frac` is the zero
+/// vector the result is real and matches the Γ path (use the Γ entry for
+/// production Γ runs — this path always builds k and k+q tables).
+///
+/// @param q_frac Phonon wavevector in fractional crystal coordinates.
+DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
+                                   const Vec3& q_frac, AccReal response_tol,
+                                   int response_max_iter, AccReal cg_tol,
+                                   int cg_max_iter, AccReal mix_beta);
 
 } // namespace internal
 } // namespace pw

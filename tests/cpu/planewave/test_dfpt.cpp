@@ -208,3 +208,61 @@ TEST(DfptPhonon, ThrowsOnBadMixBeta) {
     dfpt.mix_beta = 1.5;
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
+
+TEST(EwaldDynamicalMatrixQ, MatchesGammaAtZeroQ) {
+    cpu::Box box = cpu::Box::cubic(8.0);
+    std::vector<Vec3> pos = {{0.0, 0.0, 0.0}, {1.5, 0.7, -0.3}};
+    std::vector<AccReal> charges = {4.0, 4.0};
+    const AccReal ecut = AccReal(10.0);
+    const auto Dg = ewald_dynamical_matrix(pos, charges, box, ecut);
+    const auto Dq =
+        ewald_dynamical_matrix_q(pos, charges, box, ecut, Vec3{0, 0, 0});
+    ASSERT_EQ(Dg.size(), Dq.size());
+    double max_err = 0;
+    for (std::size_t i = 0; i < Dg.size(); ++i) {
+        max_err = std::max(max_err, std::abs(static_cast<double>(Dg[i])
+                                             - static_cast<double>(Dq[i].real())));
+        EXPECT_NEAR(static_cast<double>(Dq[i].imag()), 0.0, 1e-10);
+    }
+    EXPECT_LT(max_err, 1e-12);
+}
+
+TEST(EwaldDynamicalMatrixQ, HermitianAtFiniteQ) {
+    cpu::Box box = cpu::Box::cubic(7.0);
+    std::vector<Vec3> pos = {{0.1, 0.0, 0.2}, {1.9, 1.4, 1.6}};
+    std::vector<AccReal> charges = {4.0, 4.0};
+    const auto D = ewald_dynamical_matrix_q(pos, charges, box, AccReal(8.0),
+                                            Vec3{0.5, 0.0, 0.0});
+    const int dim = 6;
+    for (int i = 0; i < dim; ++i)
+        for (int j = 0; j < dim; ++j) {
+            const auto a = D[static_cast<std::size_t>(i) * dim + j];
+            const auto b = D[static_cast<std::size_t>(j) * dim + i];
+            EXPECT_NEAR(static_cast<double>(a.real()),
+                        static_cast<double>(b.real()), 1e-12);
+            EXPECT_NEAR(static_cast<double>(a.imag()),
+                        -static_cast<double>(b.imag()), 1e-12);
+        }
+}
+
+TEST(DfptPhonon, DefaultQIsGamma) {
+    DfptPhonon dfpt;
+    EXPECT_DOUBLE_EQ(dfpt.q_frac[0], 0.0);
+    EXPECT_DOUBLE_EQ(dfpt.q_frac[1], 0.0);
+    EXPECT_DOUBLE_EQ(dfpt.q_frac[2], 0.0);
+}
+
+
+TEST(EwaldDynamicalMatrix, SupercellEnergySane) {
+    constexpr double kA=5.43, h=kA/2;
+    Mat3 cell; cell(0,0)=0; cell(0,1)=2*h; cell(0,2)=2*h;
+    cell(1,0)=h; cell(1,1)=0; cell(1,2)=h;
+    cell(2,0)=h; cell(2,1)=h; cell(2,2)=0;
+    cpu::Box box; box.set_cell(cell);
+    std::vector<Vec3> pos={{0,0,0},{kA/4,kA/4,kA/4},{0,2.715,2.715},{1.3575,4.0725,4.0725}};
+    std::vector<AccReal> z={4,4,4,4};
+    EwaldSummation ew(pos, z, box, AccReal(5.0));
+      (double)ew.total_energy(), (double)ew.real_energy(), (double)ew.recip_energy(),
+      (double)ew.self_energy(), (double)box.volume());
+    EXPECT_LT(std::abs((double)ew.total_energy()), 1000.0);
+}

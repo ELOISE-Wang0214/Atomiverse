@@ -58,21 +58,28 @@ EwaldSummation::EwaldSummation(const std::vector<Vec3>& pos_ang,
             for (int hx = -ncell_r; hx <= ncell_r; ++hx)
                 for (int hy = -ncell_r; hy <= ncell_r; ++hy)
                     for (int hz = -ncell_r; hz <= ncell_r; ++hz) {
+                        // L = hx a + hy b + hz c with rows of cb = lattice
+                        // vectors (not the transpose — non-symmetric cells
+                        // such as 2×1×1 diamond supercells break if rows and
+                        // columns are swapped).
+                        const AccReal Lx = AccReal(hx) * cb(0, 0)
+                                           + AccReal(hy) * cb(1, 0)
+                                           + AccReal(hz) * cb(2, 0);
+                        const AccReal Ly = AccReal(hx) * cb(0, 1)
+                                           + AccReal(hy) * cb(1, 1)
+                                           + AccReal(hz) * cb(2, 1);
+                        const AccReal Lz = AccReal(hx) * cb(0, 2)
+                                           + AccReal(hy) * cb(1, 2)
+                                           + AccReal(hz) * cb(2, 2);
                         Vec3 dr = {pos[static_cast<std::size_t>(i)][0]
                                        - pos[static_cast<std::size_t>(j)][0]
-                                       + AccReal(hx) * cb(0, 0)
-                                       + AccReal(hy) * cb(0, 1)
-                                       + AccReal(hz) * cb(0, 2),
+                                       + Lx,
                                    pos[static_cast<std::size_t>(i)][1]
                                        - pos[static_cast<std::size_t>(j)][1]
-                                       + AccReal(hx) * cb(1, 0)
-                                       + AccReal(hy) * cb(1, 1)
-                                       + AccReal(hz) * cb(1, 2),
+                                       + Ly,
                                    pos[static_cast<std::size_t>(i)][2]
                                        - pos[static_cast<std::size_t>(j)][2]
-                                       + AccReal(hx) * cb(2, 0)
-                                       + AccReal(hy) * cb(2, 1)
-                                       + AccReal(hz) * cb(2, 2)};
+                                       + Lz};
                         AccReal r = dr.norm();
                         if (r > AccReal(0) && r < r_cut) {
                             AccReal erfc_ar = std::erfc(alpha * r);
