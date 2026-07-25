@@ -16,6 +16,7 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -57,6 +58,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.mbd = m.mbd;
     p.use_ot = m.use_ot;
     return p;
 }
@@ -406,12 +408,12 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!analytic_loc)
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
-    // Dispersion forces (additive, geometry-only). D4 forces out of scope.
+    // Dispersion forces (additive, geometry-only). D4/MBD forces out of scope.
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
-            "GPW forces: d3, d3bj, d4, and ts are mutually exclusive");
+            "GPW forces: d3, d3bj, d4, ts, and mbd are mutually exclusive");
     if (cfg.d3 || cfg.d3bj || cfg.ts) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -443,6 +445,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
         }
     }
+    // mbd: energy-only product path (no analytic forces; same policy as D4).
 
     return forces;
 }

@@ -25,6 +25,7 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -68,6 +69,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.mbd = m.mbd;
     p.use_ot = m.use_ot;
     p.plus_u = m.plus_u;
     p.atom_spin_guess = m.atom_spin_guess;
@@ -209,10 +211,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         throw std::invalid_argument(
             "gpw_stress analytic: D4 not supported in this foothold");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
-            "gpw_stress analytic: d3, d3bj, d4, and ts are mutually exclusive");
+            "gpw_stress analytic: d3, d3bj, d4, ts, and mbd are mutually "
+            "exclusive");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
@@ -327,7 +330,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_xc = xc.e_xc;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.ts) {
+    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.mbd) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -341,7 +344,9 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
-        if (cfg.ts) {
+        if (cfg.mbd) {
+            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
+        } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;
         } else {

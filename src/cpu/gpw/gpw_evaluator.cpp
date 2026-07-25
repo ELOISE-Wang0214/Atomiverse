@@ -87,6 +87,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.d3bj = d3bj;
     cfg.d4 = d4;
     cfg.ts = ts;
+    cfg.mbd = mbd;
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     cfg.plus_u = plus_u;
     cfg.atom_spin_guess = atom_spin_guess;
