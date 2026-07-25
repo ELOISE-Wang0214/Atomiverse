@@ -35,6 +35,13 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 
 ## Live
 
+## Live — CP2K gpw-analytic-stress (2026-07-25)
+
+| Spec | Status | One-line |
+| ---- | ------ | -------- |
+| [gpw-analytic-stress](gpw-analytic-stress/spec.md) | in progress → commit | Analytic GPW fixed-P+Pulay stress product path |
+
+
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |

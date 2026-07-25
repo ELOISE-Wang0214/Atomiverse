@@ -49,12 +49,14 @@ Notes:
 - **Variable-cell:** isotropic / anisotropic / triclinic optimizers + joint
   atom+cell isotropic. Classical virial and **PW electronic stress**
   (Nielsen–Martin analytic `pw_stress`) drive cell steps; **GPW stress** is
-  strain-FD (`gpw_stress`; `reg_gpw-stress-water`), and **GPW CELL_OPT is
-  productized**: `AnisotropicCellRelax` re-targets the GPW evaluator with a
-  stress axes mask + `StressConverged` (`reg_gpw-variable-cell-ice` vs CP2K
-  CELL_OPT, 2026-07-25). No internal coordinates. **PR NPT dynamics** lives
-  under [Molecular Dynamics](molecular-dynamics.md) (`ParrinelloRahmanNPT`),
-  not here.
+  analytic fixed-\(P\)+Pulay (`gpw_stress`; multi-SCF FD oracle
+  `gpw_stress_fd`; `reg_gpw-analytic-stress` / `reg_gpw-stress-water`), and
+  **GPW CELL_OPT is productized**: `AnisotropicCellRelax` re-targets the GPW
+  evaluator with a stress axes mask + `StressConverged`
+  (`reg_gpw-variable-cell-ice` vs CP2K CELL_OPT, 2026-07-25). No internal
+  coordinates. **PR NPT dynamics** lives under
+  [Molecular Dynamics](molecular-dynamics.md) (`ParrinelloRahmanNPT`), not
+  here.
 
 ## 2. Transition-State and Reaction-Path Methods
 

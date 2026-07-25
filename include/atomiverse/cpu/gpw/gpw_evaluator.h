@@ -56,13 +56,17 @@ class GPWEvaluator : public cpu::GPW {
     bool nonperiodic = false;
     /// @brief Compute analytic forces (one SCF + one gradient pass).
     bool compute_forces = false;
-    /// @brief Compute cell stress via orthorhombic strain-FD of SCF energy.
+    /// @brief Compute cell stress (default: analytic fixed-\(P\) path).
     ///        Writes Frame `kStress` [eV/Å³] Voigt; also `last_stress_ha_bohr3()`.
     bool compute_stress = false;
-    /// @brief Dimensionless strain step for `compute_stress` (default 2e-3).
+    /// @brief When true, use multi-SCF strain-FD (`gpw_stress_fd`) instead of
+    ///        the product analytic path (`gpw_stress`). Default false.
+    bool stress_use_fd = false;
+    /// @brief Dimensionless strain step for analytic fixed-\(P\) FD and for
+    ///        multi-SCF FD when `stress_use_fd` (default 2e-3).
     double stress_strain_h = 2e-3;
-    /// @brief Per-axis stress mask (x,y,z): a masked axis skips its strain-FD
-    ///        SCF solves and reports σ exactly 0 — pair with the matching
+    /// @brief Per-axis stress mask (x,y,z): a masked axis skips samples and
+    ///        reports σ exactly 0 — pair with the matching
     ///        `AnisotropicCellRelax` `relax_*` mask in variable-cell runs.
     std::array<bool, 3> stress_axes = {true, true, true};
     /// @brief FD displacement [Bohr] for forces (legacy path).

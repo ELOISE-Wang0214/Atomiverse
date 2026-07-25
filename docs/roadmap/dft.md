@@ -229,7 +229,8 @@ Two periodic DFT engines exist, with disjoint strengths:
 - **GPW**, Gaussian and plane waves (`cpu::gpw::GpwDft` / `GPWEvaluator`) —
   Gaussian basis collocated on a uniform grid, GTH pseudopotentials, LDA
   (Padé) or **PBE / PBEsol**, DFT-D3 zero + **BJ** + **D4**, **analytic
-  forces**, **strain-FD cell stress** (`gpw_stress`; `reg_gpw-stress-water`),
+  forces**, **analytic cell stress** (`gpw_stress`; `reg_gpw-analytic-stress` /
+  `reg_gpw-stress-water`),
   product **OT** minimizer (`use_ot`), **Dudarev DFT+U** (`plus_u`;
   `reg_gpw-dftu-nio`). **Γ-point** RKS and **Γ-point UKS** (PADE LSD;
   `n_alpha`/`n_beta`), plus **Monkhorst–Pack k-point RKS** (`k_mesh` /
@@ -299,12 +300,13 @@ Which engine backs which ✓:
   remains as oracle.
 - **PW stress** is **Nielsen–Martin analytic** (`pw_stress` → Frame `kStress`;
   multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
-  **GPW stress** ships as orthorhombic **strain-FD** (`gpw_stress` /
-  `GPWEvaluator::compute_stress`; `reg_gpw-stress-water` vs CP2K NUMERICAL).
-  **GPW variable-cell relax ships** (evaluator re-target, stress axes mask,
-  `StressConverged`; `reg_gpw-variable-cell-ice` vs CP2K CELL_OPT — see
-  [Optimization](optimization.md)). Analytic GPW Pulay stress remains
-  productization (`gpw-analytic-stress`).
+  **GPW stress** is **analytic fixed-\(P\)+Pulay** product
+  (`gpw_stress` / `GPWEvaluator::compute_stress`, `stress_use_fd=false`;
+  multi-SCF oracle `gpw_stress_fd`; `reg_gpw-analytic-stress` dual-gate +
+  `reg_gpw-stress-water` vs CP2K NUMERICAL). **GPW variable-cell relax ships**
+  (evaluator re-target, stress axes mask, `StressConverged`;
+  `reg_gpw-variable-cell-ice` vs CP2K CELL_OPT — see
+  [Optimization](optimization.md)).
 - **Finite-displacement phonons** at Γ: `cpu::vib::Phonon` expands a supercell,
   runs 6N force evaluations, and diagonalizes the mass-weighted Hessian
   (`reg_fd-phonon-supercell`; SW 64-atom Si twin). Molecular

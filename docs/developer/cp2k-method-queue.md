@@ -62,7 +62,7 @@ variable-cell, DFPT Γ, Berry polarization, periodic MP2 foothold);
 xl-bomd-water WIP-checkpointed; 71 merged wf/* pruned.
 **Census 2026-07-25 (post harness wave 1):** no CP2K/GPW/PW merges since
 `859d6e28` (HEAD); all 13 prior pending re-verified as true gaps on `dev`
-(GPW `XcKind` still PADE|PBE|PBEsol; `gpw_stress` still strain-FD; no
+(GPW `XcKind` still PADE|PBE|PBEsol; `gpw_stress` analytic fixed-P; no
 TS/MBD/vdW-DF; DFPT q = 0 only; no Wannier/CPMD/RPA/GW; no PW variable-cell
 or Fe-smearing regressions). Wave-3 `[~]` ×5 preserved (xl-bomd-water WIP
 `61d235f4` untested; others no spec/`wf/*`/regression). Added 2 slugs for
@@ -118,7 +118,7 @@ may both touch AIMD propagator files — harness resolves at merge.
 - [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
 - [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
 - [~] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK; wave 3 new
-- [~] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓; promoted assign wave (claude) 2026-07-25 (wave 2)
+- [x] `gpw-analytic-stress` | Analytic GPW fixed-P+Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | product `gpw_stress`; oracle `gpw_stress_fd`; `reg_gpw-analytic-stress` dual-gate ~3e-10; **dep:** `gpw-stress-water` ✓; closed 2026-07-25
 
 ## blocked
 

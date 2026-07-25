@@ -165,12 +165,18 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     if (compute_stress) {
-        // Strain-FD rebuilds SCF per strain sample (independent of solver_).
-        // Warm-start every strained SCF from the just-converged MOs; skip
-        // masked axes entirely (variable-cell relax of constrained boxes).
+        // Product default: Hellmann–Feynman fixed-P analytic stress (one SCF
+        // already done above + fixed-P energy samples). Optional multi-SCF
+        // strain-FD oracle via stress_use_fd. Warm-start from last MOs; skip
+        // masked axes (variable-cell relax of constrained boxes).
+        const ATV::cpu::linalg::RealMatrix* stress_guess =
+            last_.C.size() > 0 ? &last_.C : nullptr;
         last_stress_ha_ =
-            gpw_stress(atoms, *solver_, stress_strain_h, stress_axes,
-                       last_.C.size() > 0 ? &last_.C : nullptr);
+            stress_use_fd
+                ? gpw_stress_fd(atoms, *solver_, stress_strain_h, stress_axes,
+                                stress_guess)
+                : gpw_stress(atoms, *solver_, stress_strain_h, stress_axes,
+                             stress_guess);
         // 1 Ha/Bohr³ = kHartreeInEv / (kBohrInAngstrom)³ eV/Å³
         const double ha_bohr3_to_ev_a3 =
             ATV::units::kHartreeInEv
