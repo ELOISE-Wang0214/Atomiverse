@@ -153,6 +153,40 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
                            const std::vector<double>& eps_virt, double& e_corr,
                            double& tr_A, std::vector<double>& omega);
 
+/// @brief Multi-k closed-shell RI-GPW direct RPA (dRPA) via **k-diagonal**
+///        Furche plasmon formula on complex Bloch orbitals.
+///
+/// Product multi-k path: for each sampled \(k\), builds the Coulomb-only
+/// (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum from **same-\(k\)** (vertical,
+/// \(q=0\)) pair densities, reduces
+/// \((A-B)^{1/2}(A+B)(A-B)^{1/2}\) with \(A-B=\mathrm{diag}(\Delta\varepsilon)\),
+/// and Brillouin-zone averages
+/// \(E_c=\sum_k w_k\,\tfrac12\bigl(\sum_s\Omega_{k,s}-\mathrm{Tr}\,A_k\bigr)\).
+/// Recovers the real Γ formula when \(N_k=1\) and orbitals are real.
+/// Full inter-\(k\) / finite-\(q\) dielectric coupling is a follow-on.
+///
+/// @param grid       Uniform density grid (as in the SCF).
+/// @param psi_occ_k  Per-k occupied MO grids [nk][n_occ·npts].
+/// @param psi_virt_k Per-k virtual MO grids [nk][n_virt·npts].
+/// @param eps_occ_k  Per-k occupied eigenvalues [nk][n_occ].
+/// @param eps_virt_k Per-k virtual eigenvalues [nk][n_virt].
+/// @param k_frac     Fractional k coordinates (length nk; shape / diagnostics).
+/// @param k_weights  Quadrature weights (Σ = 1).
+/// @param e_corr Out: dRPA correlation energy [Hartree].
+/// @param tr_A   Out: \(\sum_k w_k\,\mathrm{Tr}\,A_k\) [Hartree].
+/// @param omega  Out: positive \(\Omega_{k,s}\) across all k, ascending [Ha].
+/// @throws std::invalid_argument on shape / weight errors.
+/// @throws std::runtime_error when (A−B) not PD or any \(\Omega^2\le 0\).
+void direct_rpa_rhf_energy_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_k,
+    const std::vector<std::vector<double>>& eps_occ_k,
+    const std::vector<std::vector<double>>& eps_virt_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, double& e_corr, double& tr_A,
+    std::vector<double>& omega);
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu

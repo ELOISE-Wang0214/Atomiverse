@@ -1,21 +1,19 @@
 /// @file cpu/gpw/rpa.h
-/// @brief Γ-point GPW direct RPA (dRPA) correlation energy result (public
-///        value type).
+/// @brief GPW direct RPA (dRPA) correlation energy result (public value type).
 ///
 /// User path: `GpwDft::direct_rpa(atoms)` after a converged closed-shell
 /// `run()` — the GPW analogue of molecular `RHF::direct_rpa()`
-/// (`cpu/scf/rpa.h`). Product default reuses the RI-GPW plane-wave
-/// assembly of \((ia|jb)\) from `GpwDft::mp2` (`mp2_ri = true`); the
-/// Poisson foothold remains available with `mp2_ri = false`.
+/// (`cpu/scf/rpa.h`). Supports **Γ** (real MOs; RI-GPW or Poisson) and
+/// **multi-k** (complex Bloch + q-resolved Casida; RI-GPW product only).
 ///
-/// Correlation energy via the Furche plasmon formula on the full
+/// Correlation energy via the Furche plasmon formula on the
 /// Coulomb-only (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum:
 /// \f[
 ///   E_{\mathrm{c}}^{\mathrm{dRPA}}
 ///     = \tfrac12\Bigl(\sum_s \Omega_s - \mathrm{Tr}\,A\Bigr),
 /// \f]
-/// with singlet spin-adapted \(A,B\) and \(\Omega_s\) the positive
-/// eigenvalues of \((A-B)^{1/2}(A+B)(A-B)^{1/2}\). Total energy is the
+/// multi-k (k-diagonal product): \(E_c=\sum_k w_k\,\tfrac12\bigl(\sum_s
+/// \Omega_{k,s}-\mathrm{Tr}\,A_k\bigr)\). Total energy is the
 /// dRPA@KS sum \(E_{\mathrm{SCF}}+E_c\) (no EXX replacement — periodic
 /// exact exchange remains blocked).
 ///
@@ -30,8 +28,7 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief Γ-point GPW direct RPA correlation energy (closed-shell RKS;
-///        RI-GPW or Poisson foothold for the MO repulsion tensor).
+/// @brief GPW direct RPA correlation energy (closed-shell RKS; Γ or multi-k).
 struct RpaResult {
     /// @brief dRPA correlation energy \(E_c\) [Hartree] (typically < 0).
     double e_corr = 0.0;
@@ -39,7 +36,8 @@ struct RpaResult {
     double e_scf = 0.0;
     /// @brief e_scf + e_corr [Hartree].
     double e_total = 0.0;
-    /// @brief \(\mathrm{Tr}\,A\) of the singlet dRPA \(A\) matrix [Hartree].
+    /// @brief \(\mathrm{Tr}\,A\) (Γ) or \(\sum_q w_q\,\mathrm{Tr}\,A_q\)
+    ///        (multi-k) [Hartree].
     double tr_A = 0.0;
     /// @brief Correlated occupied spatial orbitals.
     int n_occ = 0;
@@ -47,9 +45,11 @@ struct RpaResult {
     int n_virt = 0;
     /// @brief true when (ia|jb) used the RI-GPW G-space product path.
     bool ri = false;
+    /// @brief Sampled k-points used in the RPA sum (0 = real Γ path).
+    int n_kpts = 0;
     /// @brief Positive dRPA excitation energies \(\Omega_s\) [Hartree],
-    ///        ascending (full spectrum, length \(n_{\mathrm{occ}}\cdot
-    ///        n_{\mathrm{virt}}\)).
+    ///        ascending. Γ: length \(n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\).
+    ///        Multi-k: all q-block roots concatenated then sorted.
     std::vector<double> omega_ha;
 };
 

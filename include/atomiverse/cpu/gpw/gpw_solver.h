@@ -311,21 +311,28 @@ class GpwDft {
     ///         remain, or for a vanishing min HOMO–LUMO gap (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
-    /// @brief Γ-point GPW direct RPA (dRPA) correlation on the converged
-    ///        closed-shell orbitals of the last `run()`.
+    /// @brief GPW direct RPA (dRPA) correlation on the converged closed-shell
+    ///        orbitals of the last `run()` — Γ (real) or multi-k (complex).
     ///
-    /// Builds the Coulomb-only singlet Casida spectrum
+    /// **Γ path** (`n_kpts == 0`): Coulomb-only singlet Casida
     /// (\(\alpha_{\mathrm{hf}}=0\)) from the same \((ia|jb)\) path as
     /// `mp2()` (product RI-GPW when `mp2_ri` and periodic; else Poisson
-    /// foothold), then the Furche plasmon formula
-    /// \(E_c=\tfrac12(\sum\Omega_s-\mathrm{Tr}\,A)\). Virtual space
-    /// capped by `mp2_n_virt`. Total energy is dRPA@KS
+    /// foothold), then Furche
+    /// \(E_c=\tfrac12(\sum\Omega_s-\mathrm{Tr}\,A)\).
+    ///
+    /// **Multi-k path** (`n_kpts >= 1` with `C_k` populated): **k-diagonal**
+    /// RI-GPW dRPA — per-k vertical (\(q=0\)) plasmon formula, BZ-averaged
+    /// \(E_c=\sum_k w_k\tfrac12(\sum_s\Omega_{k,s}-\mathrm{Tr}\,A_k)\).
+    /// Requires `mp2_ri` product and a periodic cell. Prefer
+    /// `k_time_reversal = false` so weights stay equal.
+    ///
+    /// Virtual space capped by `mp2_n_virt`. Total energy is dRPA@KS
     /// (\(E_{\mathrm{SCF}}+E_c\); no EXX replacement).
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned RPA result (valid until the next `direct_rpa()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
-    /// @throws std::invalid_argument for UKS, for `use_ot`, for multi-k
-    ///         SCF, when no virtuals remain, or for a vanishing
+    /// @throws std::invalid_argument for UKS, for `use_ot`, when multi-k
+    ///         `C_k` is missing, when no virtuals remain, or for a vanishing
     ///         HOMO–LUMO gap (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);

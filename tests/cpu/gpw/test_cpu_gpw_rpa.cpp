@@ -4,6 +4,7 @@
 ///        GpwDft::direct_rpa guard throws. No SCF (unit tier).
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -183,4 +184,61 @@ TEST(GpwRpa, DirectRpaUnconvergedThrows) {
     a.basis.push_back(s_gauss(0.8, 3.0, 3.0, 3.0));
     m.build({a});
     EXPECT_THROW(m.direct_rpa({a}), std::logic_error);
+}
+
+// Multi-k kernel at N_k=1 with real-valued complex MOs recovers the real
+// Γ plasmon formula on the same pair densities (no SCF).
+TEST(GpwRpa, KpointsNk1RecoversRealPlasmon) {
+    using ATV::cpu::gpw::make_uniform_grid;
+    using ATV::cpu::gpw::UniformGrid;
+    using ATV::cpu::gpw::internal::direct_rpa_rhf_energy;
+    using ATV::cpu::gpw::internal::direct_rpa_rhf_energy_kpoints;
+    using ATV::cpu::gpw::internal::mo_eri_ovov;
+    using ATV::cpu::gpw::internal::Cplx;
+
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 30.0);
+    const long npts = grid.npts();
+    const int no = 1, nv = 2;
+    std::vector<double> psi_o(static_cast<std::size_t>(no) * npts);
+    std::vector<double> psi_v(static_cast<std::size_t>(nv) * npts);
+    for (long g = 0; g < npts; ++g) {
+        double r[3];
+        grid.point(g, r);
+        const double dx = r[0] - 3.0, dy = r[1] - 3.0, dz = r[2] - 3.0;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        psi_o[static_cast<std::size_t>(g)] = std::exp(-0.7 * r2);
+        psi_v[static_cast<std::size_t>(0) * npts + g] = dx * std::exp(-0.5 * r2);
+        psi_v[static_cast<std::size_t>(1) * npts + g] = dy * std::exp(-0.45 * r2);
+    }
+    // Same Poisson route as multi-k (not G-space RI) so the integral tensors
+    // are bit-identical for real MOs.
+    const std::vector<double> v =
+        mo_eri_ovov(grid, psi_o, no, psi_v, nv, /*nonperiodic=*/false);
+    std::vector<double> eps_o = {-0.85};
+    std::vector<double> eps_v = {0.25, 0.70};
+    double e_real = 0.0, tr_real = 0.0;
+    std::vector<double> om_real;
+    direct_rpa_rhf_energy(v, eps_o, eps_v, e_real, tr_real, om_real);
+
+    std::vector<std::vector<Cplx>> psi_ok(1), psi_vk(1);
+    psi_ok[0].resize(static_cast<std::size_t>(no) * npts);
+    psi_vk[0].resize(static_cast<std::size_t>(nv) * npts);
+    for (std::size_t i = 0; i < psi_o.size(); ++i)
+        psi_ok[0][i] = Cplx{psi_o[i], 0.0};
+    for (std::size_t i = 0; i < psi_v.size(); ++i)
+        psi_vk[0][i] = Cplx{psi_v[i], 0.0};
+    std::vector<std::vector<double>> eps_ok = {eps_o};
+    std::vector<std::vector<double>> eps_vk = {eps_v};
+    std::vector<std::array<double, 3>> k_frac = {{{0.0, 0.0, 0.0}}};
+    std::vector<double> k_w = {1.0};
+    double e_k = 0.0, tr_k = 0.0;
+    std::vector<double> om_k;
+    direct_rpa_rhf_energy_kpoints(grid, psi_ok, psi_vk, eps_ok, eps_vk, k_frac,
+                                  k_w, e_k, tr_k, om_k);
+    EXPECT_NEAR(e_k, e_real, 1e-10);
+    EXPECT_NEAR(tr_k, tr_real, 1e-10);
+    ASSERT_EQ(om_k.size(), om_real.size());
+    for (std::size_t s = 0; s < om_k.size(); ++s)
+        EXPECT_NEAR(om_k[s], om_real[s], 1e-10);
 }
