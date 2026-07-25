@@ -42,8 +42,9 @@ struct BornTypeCoeff {
 /// \(\mathrm{d}U/\mathrm{d}r=-(A/\rho)\,e^{(\sigma-r)/\rho}+6C/r^{7}-8D/r^{9}\)
 /// (unshifted; shift is constant).
 ///
-/// O(N²) all-pairs walk (NeighborConsumer withdrawn) — same foothold shape as
-/// `PairBuck` / `PairYukawa`. Coulomb is a separate component (`PairCoulCut`).
+/// Prefer neighbor list when `ctx.md.pair_list` is published (production
+/// bulk path); otherwise O(N²) all-pairs (textbook foothold). Coulomb is a
+/// separate component (`PairCoulCut`).
 class PairBorn : public Pair {
   public:
     /// @param A      Born–Mayer prefactor [eV] (must be ≥ 0).

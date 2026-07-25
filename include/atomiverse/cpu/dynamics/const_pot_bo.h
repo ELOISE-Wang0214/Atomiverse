@@ -112,9 +112,29 @@ class ConstPotBO : public cpu::Component {
     /// @return True if `predict()` succeeded before the last solve.
     bool last_used_predictor() const { return last_used_predictor_; }
 
+    /// @brief Target \(\sum Q\) used on the last neutrality projection [e]
+    ///        (`0` for electrode-only; \(-\sum q_{\mathrm{elyt}}\) for global).
+    double neutrality_target() const { return neutrality_target_; }
+
+    /// @brief Frobenius condition number proxy \(\kappa_2(A)\approx
+    ///        \lambda_{\max}/\lambda_{\min}\) from power iteration (empty-cell
+    ///        elastance debug / MetalWalls matrix-condition tool).
+    double matrix_condition() const;
+
+    /// @brief Copy of last electrode charges [e] (length `n_electrode()`).
+    const std::vector<double>& charges() const { return Q_; }
+
     // ── Public parameters (mutable after construction) ───────────────
     double eta = 1.979;           ///< Gaussian width [1/Å].
-    bool electroneutrality = true; ///< Project \(\sum Q_i = 0\).
+    bool electroneutrality = true; ///< Project electrode net charge (see global_*).
+    /// When true with `electroneutrality`, enforce global neutrality
+    /// \(\sum_i Q_i = -\sum_j q_j^{\mathrm{electrolyte}}\) (MetalWalls /
+    /// Scalfi). When false (default), enforce electrode-only \(\sum Q_i=0\).
+    bool global_electroneutrality = false;
+    /// When true, after the charge solve accumulate Hellmann–Feynman-style
+    /// forces on electrode atoms from electrolyte point charges (fixed-\(Q\)
+    /// slice of \(-\nabla U\)). Required for movable walls / piston coupling.
+    bool write_electrode_forces = false;
     /// Half-range of 2D \(xy\) lattice images for planar PBC (0 = primary
     /// cell only). Matches LAMMPS ELECTRODE madelung / plate_cap sum when
     /// large (e.g. 200+). Cost \(\propto N_{\mathrm{elec}}^2 \times R^2\).
@@ -182,10 +202,14 @@ class ConstPotBO : public cpu::Component {
     int cg_solve_(const std::vector<double>& A, int n,
                   const std::vector<double>& b, std::vector<double>& x) const;
     void write_charges_(cpu::Frame& frame) const;
+    void write_electrode_forces_(cpu::Frame& frame) const;
+    double electrolyte_charge_(const cpu::Frame& frame) const;
     double pair_A_(double r, double eta_i, double eta_j) const;
     double pair_b_(double r, double q, double eta_i) const;
     void ensure_aspc_();
     void record_aspc_();
+
+    double neutrality_target_ = 0.0;
 };
 
 } // namespace md

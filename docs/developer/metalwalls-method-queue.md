@@ -16,34 +16,52 @@ MD+KSPACE+TESTS+REGRESSIONS **ON**). See `metalwalls-method-loop.md`.
 Census source: `.claude/notes/metalwalls-capability-map.md` slices **E1–E12**,
 plus classical MD/FF ○ rows that LAMMPS or MetalWalls can oracle offline.
 
-Census: **2026-07-24 wave 4 gap-census** (parent `dev` @ post–harness wave 3).
-**Recover (post-assign, 2026-07-24):** incomplete_count=**10** — all wave-4
-`## in_progress` `[~]` (not started: no open MD specs, no `wf/<slug>` ahead of
-`dev`, no half-written regressions). Do **not** demote to pending. Open
-MD/electrochem specs: **none** (PySCF deferred live specs are out of loop).
-Unmerged in-scope `wf/<slug>` ahead_of_dev: **none**. Blocked (4) preserved.
-**Foothold ≠ closed:** waves 1–3 shipped 26 textbook / observer / Component
-footholds; production-depth and residual map ○ rows remain staffed below
-(NeighborList salt/Gaussian pairs, MaZe, D-field, electrode BO forces, charge
-tools, CV-SMD, aqueous const-pot product); pending XL-PIM / QEq / TI (3).
+Census: **2026-07-24 wave 5 gap-census** (parent `dev`; waves 1–3 done=26;
+wave-4 staff still unstarted).
+**Tree audit (this census):** no wave-4 Components / regressions / `wf/<slug>`
+ahead of `dev`. Map ○/~ rows re-diffed; foothold ≠ closed. Open MD/electrochem
+specs: **none** (only deferred PySCF live specs — out of loop). Unmerged
+in-scope `wf/<slug>` ahead_of_dev: **none**. **Preserved:** `## in_progress`
+10× `[~]` (do not demote); blocked (4); done (26).
+**Foothold ≠ closed:** Gaussian / Born / Buck remain **O(N²)**; slab Yeh–Berkowitz
+≠ full 2D product; TF lacks Voronoi; electrode \(Q\) forces and MaZe still ○;
+const-pot+water/IL production boxes still open; D-field / \(C_{QQ}\) / elastance
+still ○.
 - **Excluded from pending:** already ✓ classical twins with in-tree pins
   (`lj_argon`, `npt_pme_nacl` Madelung, `gaff_peo_fragment` specials, NH/NPT
-  integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6),
-  SCF/post-HF, GPW/PW, CUDA product, AIM/DAIM (E11 blocked), ML electrodes
-  (E12 blocked), hybrid DFT electrodes, **full 2D-PBC product stack** (slab
-  Yeh–Berkowitz ✓ is the foothold; true 2D Ewald out of scope), **PLUMED**
-  bridge, cross-language product ports, non-electrochem MD residual (RESPA,
-  FSSH, PIMD variants, …)
+  integrators), wave-1 done (10), wave-2 done (10), wave-3 done (6), items
+  already in `## in_progress` (do not duplicate), SCF/post-HF, GPW/PW, CUDA
+  product, AIM/DAIM (E11 blocked), ML electrodes (E12 blocked), hybrid DFT
+  electrodes, **full 2D-PBC product stack** (slab Yeh–Berkowitz ✓ is the
+  foothold; true 2D Ewald out of scope), **PLUMED** bridge, cross-language
+  product ports, non-electrochem MD residual (RESPA, FSSH, PIMD variants, …),
+  XFT / linear-molecule / multipole-FF (P3 or off-spine)
 - Handoff next-list items `coul-long-pme-nacl-lammps` / `nose-hoover-nvt-lammps` /
   `special-bonds-amber-lammps` / `lj-cut-lammps-dimer` **not pending** (already
   covered by excluded twins)
 
 ## pending
 
-### E4 / E5 — polarization depth (staffed later if wave-4 capacity remains)
+### E1 / E2 — const-pot residual (not wave-4 staff)
+
+- [ ] `per-electrode-eta` | Per-electrode Gaussian width \(\eta_e\) (v1 shares one \(\eta\)) | electrochem | multi-wall different \(\eta\) | — | \(Q\), \(A\) diag vs shared-\(\eta\) twin | **oracle=metalwalls**; map §1 multi-electrode \(V,\eta\) ~
+- [ ] `const-charge-electrode` | Constant-charge electrode control (fixed \(Q\), not const-\(V\)) | electrochem | parallel-plate fixed total \(Q\) | — | \(Q\) fixed, \(V\) response | **oracle=lammps** ELECTRODE / fixed charge + freeze; map §1 const-charge ~
+- [ ] `const-pot-charge-halo-mpi` | Charge halo correctness after \(Q\) update under MPI DD | electrochem | multi-rank planar walls | — | ghost \(q\) match owner after solve | **oracle=literature** / self-consistency; map §1/§6 P0 timing (schema borders ✓; pre_force-after-HaloSend stale ghosts)
+
+### E4 / E5 — polarization depth
 
 - [ ] `extended-lagrangian-dipoles` | Extended-Lagrangian / mass-zero dipole dynamics | polarizable | bulk polarizable toy | — | \(\mu(t)\), energy | **oracle=metalwalls**; map §2 XL dipoles ○ (SCF PIM ✓ is foothold)
 - [ ] `qeq-fluctuating-charge` | QEq / fluctuating-charge (≠ const-pot electrode) | polarizable | small organic / ionic toy | — | \(q_i\), \(E\) | **oracle=lammps** `fix qeq` / charge equilibration; map §2 FQ/QEq ○
+- [ ] `pim-npt-polarizable-il` | Bulk polarizable IL under NPT (PIM product twin) | polarizable | small IL box NPT | — | \(E\), \(P\), short NPT | **oracle=metalwalls**; map §9 PIM-NPT ~ (bulk SCF PIM foothold only)
+
+### E7 — metallicity residual
+
+- [ ] `voronoi-volume-tf` | Voronoi / site-volume companion for Thomas–Fermi metallicity | electrochem | TF gold capacitor toy | — | \(v_i\), \(Q\) vs fixed-density TF | **oracle=metalwalls**; map §1 Voronoi volume (TF) ○; TF `l_tf` foothold ✓
+
+### E9 / scenarios — production EDL (beyond wave-4 aqueous staff)
+
+- [ ] `const-pot-il-edl-box` | Planar const-pot + non-polarizable IL EDL production box | electrochem | graphene-like walls + IL | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 planar graphene+const-pot+IL ~ (E1 Components ✓; product box open; aqueous path is wave-4 `const-pot-tip4p-edl`)
+- [ ] `nanoporous-carbon-const-pot` | Nanoporous carbon geometry + const-pot (product) | electrochem | slit / pore carbon + electrolyte | — | \(Q\), occupancy proxy | **oracle=metalwalls**; map §9 nanoporous ○ (after E1 production depth)
 
 ### E10 — TI residual (after charge-tool observers)
 
@@ -51,37 +69,7 @@ tools, CV-SMD, aqueous const-pot product); pending XL-PIM / QEq / TI (3).
 
 ## in_progress
 
-**Wave-4 assign (2026-07-24)** — production depth first (NeighborList salt/Gaussian,
-MaZe, electrode BO forces, CV-SMD, aqueous const-pot+TIP4P, D-field, charge tools).
-Staff_count=10; incomplete was 0. Spec-first on `wf/<slug>` before impl.
-
-### E1 / E2 — const-pot depth
-
-- [~] `maze-charge-dynamics` | MaZe mass-zero electrode charge dynamics | electrochem | parallel-plate / molten-salt toy | — | \(Q(t)\), energy drift proxy | **oracle=metalwalls**; map §1 MaZe ★ after BO/CG ✓
-- [~] `electrode-atom-forces` | Forces on electrode atoms from BO \(Q\) (term breakdown) | electrochem | movable wall toy | — | \(F\) on electrode sites | **oracle=metalwalls**; map §1 P1; needed for true movable const-pot walls (piston uses fluid \(F_z\) only)
-- [~] `global-electroneutrality-bo` | Global electroneutrality \(\sum Q_i=-\sum q_{\mathrm{elec}}\) on `ConstPotBO` path | electrochem | charged electrolyte + walls | — | neutrality residual | **oracle=metalwalls**; map §1 ~ unify with legacy `ConstPotentialBO`
-- [~] `gaussian-coul-neighborlist` | NeighborList-backed `PairGaussianCoul` (production depth) | electrochem | multi-site Gaussian wall | — | \(E\), \(F\) vs O(N²) twin | **oracle=literature** Reed/MW Gaussian; map §1 Gaussian ~ O(N²) foothold only
-
-### E3 — external / finite field residual
-
-- [~] `displacement-dfield-md` | Displacement \(\mathbf{D}\)-field finite-field MD | electrochem | planar capacitor | — | \(\langle P\rangle\), \(Q\) response | **oracle=metalwalls**; map §1 P2 Displacement D-field ○
-
-### E8 — salt / wall production depth
-
-- [~] `born-buck-neighborlist-bulk` | NeighborList `PairBorn`/`PairBuck` + bulk Fumi–Tosi molten-salt pin | forcefield | NaCl melt box | — | \(E\), \(P\), short NVE drift | **oracle=lammps** `born`/`buck` + bulk; map §3 Fumi–Tosi/Born ~; FF roadmap note O(N²)
-
-### E9 — aqueous electrodes product
-
-- [~] `const-pot-tip4p-edl` | Const-pot parallel-plate + TIP4P / virtual-site water EDL | electrochem | planar walls + TIP4P | — | \(Q\), \(\Psi(z)\), short NVT | **oracle=metalwalls**; map §9 TIP4P+const-pot ○; deps: E1 ✓ + vsites ✓
-
-### E10 — observe / analysis residual
-
-- [~] `charge-charge-autocorr` | Electrode charge–charge autocorrelation \(C_{QQ}(t)\) | electrochem | parallel-plate EDL | — | \(C_{QQ}(t)\) / \(\tau\) | **oracle=literature** / metalwalls tools; map §1/§8 P2
-- [~] `elastance-condition-observer` | Empty capacitance / elastance \(\mathrm{cond}(A)\) debug observer | electrochem | empty parallel plate | — | \(\mathrm{cond}(A)\), empty \(C\) | **oracle=literature**; map §8 P1 empty capacitance ○
-
-### Shared classical MD ○ (LAMMPS primary; electrochem-adjacent)
-
-- [~] `constant-velocity-smd` | Constant-velocity pulling / SMD residual | md | ion / tagged atom | — | \(z(t)\), work proxy | **oracle=lammps** `fix smd` / `fix move`; MD roadmap ○ CV pull; after constant-force ✓
+*(empty after manual wave-4 land 2026-07-24)*
 
 ## blocked
 
@@ -132,3 +120,19 @@ Staff_count=10; incomplete was 0. Spec-first on `wf/<slug>` before impl.
 | [x] `surface-tension-coupling` | `regressions/md/surface-tension-coupling` | lammps (`fix npt` couple xy) | **2.88** |
 | [x] `virtual-site-multi-topology` | `regressions/md/virtual-site-multi-topology` | lammps (tip4p path) | **0.084** |
 | [x] `dipole-electrode-joint` | `regressions/md/dipole-electrode-joint` | metalwalls | **perf_exempt** (no MW binary) |
+
+### Wave 4 — 2026-07-24 (manual land → `dev` tree)
+
+| slug | Regression | oracle | ratio |
+| ---- | ---------- | ------ | ----- |
+| [x] `maze-charge-dynamics` | `regressions/md/maze-charge-dynamics` | metalwalls (CG+ASPC foothold) | perf_exempt |
+| [x] `electrode-atom-forces` | `regressions/md/electrode-atom-forces` | literature (HF on elyt) | perf_exempt |
+| [x] `global-electroneutrality-bo` | `regressions/md/global-electroneutrality-bo` | metalwalls/Scalfi | perf_exempt |
+| [x] `gaussian-coul-neighborlist` | `regressions/md/gaussian-coul-neighborlist` | literature | perf_exempt |
+| [x] `displacement-dfield-md` | `regressions/md/displacement-dfield-md` | metalwalls D-field foothold | perf_exempt |
+| [x] `born-buck-neighborlist-bulk` | `regressions/md/born-buck-neighborlist-bulk` | lammps born | perf_exempt |
+| [x] `const-pot-tip4p-edl` | `regressions/md/const-pot-tip4p-edl` | metalwalls | perf_exempt |
+| [x] `charge-charge-autocorr` | `regressions/md/charge-charge-autocorr` | literature | perf_exempt |
+| [x] `elastance-condition-observer` | `regressions/md/elastance-condition-observer` | literature | perf_exempt |
+| [x] `constant-velocity-smd` | `regressions/md/constant-velocity-smd` | lammps fix move | perf_exempt |
+

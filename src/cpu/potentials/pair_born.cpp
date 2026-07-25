@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 
 namespace ATV {
 namespace cpu {
@@ -106,6 +107,51 @@ void PairBorn::compute(const LaunchContext& ctx) {
     AccReal* __restrict fy = f.span(kAtom_fy);
     AccReal* __restrict fz = f.span(kAtom_fz);
 
+    auto born_pair = [&](int i, int j, double dx, double dy, double dz,
+                         double A, double inv_rho, double sigma, double C,
+                         double D, double v_shift) {
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 >= cutoff_sq_ || r2 == 0.0) return;
+        const double r = std::sqrt(r2);
+        const double r6 = r2 * r2 * r2;
+        const double r8 = r6 * r2;
+        const double expterm = std::exp((sigma - r) * inv_rho);
+        const double v = A * expterm - C / r6 + D / r8 - v_shift;
+        const double dUdr =
+            -A * inv_rho * expterm + 6.0 * C / (r6 * r) - 8.0 * D / (r8 * r);
+        const double fpair = -dUdr / r;
+        fx[i] -= fpair * dx;
+        fy[i] -= fpair * dy;
+        fz[i] -= fpair * dz;
+        fx[j] += fpair * dx;
+        fy[j] += fpair * dy;
+        fz[j] += fpair * dz;
+        energy += v;
+    };
+
+    if (ctx.runtime.md.pair_list && !multi_) {
+        const auto& pairs = *ctx.runtime.md.pair_list;
+        const double inv_rho = inv_rho_;
+        for (int ii = 0; ii < pairs.inum; ++ii) {
+            const int i = pairs.ilist[static_cast<std::size_t>(ii)];
+            const int jnum = pairs.numneigh[static_cast<std::size_t>(i)];
+            const int off = pairs.firstneigh[static_cast<std::size_t>(i)];
+            for (int jj = 0; jj < jnum; ++jj) {
+                const int j =
+                    pairs.neighbors[static_cast<std::size_t>(off + jj)];
+                if (j <= i) continue;
+                double dx = x[j] - x[i];
+                double dy = y[j] - y[i];
+                double dz = z[j] - z[i];
+                f.simbox.min_image(dx, dy, dz);
+                born_pair(i, j, dx, dy, dz, A_, inv_rho, sigma_, C_, D_,
+                          v_shift_);
+            }
+        }
+        f.meta.get(kEnergy) += energy;
+        return;
+    }
+
     if (!multi_) {
         const double inv_rho = inv_rho_;
         for (int i = 0; i < n; ++i) {
@@ -114,29 +160,8 @@ void PairBorn::compute(const LaunchContext& ctx) {
                 double dy = y[j] - y[i];
                 double dz = z[j] - z[i];
                 f.simbox.min_image(dx, dy, dz);
-                const double r2 = dx * dx + dy * dy + dz * dz;
-                if (r2 >= cutoff_sq_ || r2 == 0.0)
-                    continue;
-
-                const double r = std::sqrt(r2);
-                const double r6 = r2 * r2 * r2;
-                const double r8 = r6 * r2;
-                const double expterm = std::exp((sigma_ - r) * inv_rho);
-                const double v = A_ * expterm - C_ / r6 + D_ / r8 - v_shift_;
-                // dU/dr (unshifted) = -(A/rho) exp((sigma-r)/rho) + 6C/r^7 - 8D/r^9
-                const double dUdr = -A_ * inv_rho * expterm + 6.0 * C_ / (r6 * r) -
-                                    8.0 * D_ / (r8 * r);
-                // Convention (Yukawa/Buck/Morse): fpair = -dUdr/r;
-                // F_i -= fpair * (r_j-r_i) ⇔ F_i = (dUdr/r)*(r_j-r_i).
-                const double fpair = -dUdr / r;
-
-                fx[i] -= fpair * dx;
-                fy[i] -= fpair * dy;
-                fz[i] -= fpair * dz;
-                fx[j] += fpair * dx;
-                fy[j] += fpair * dy;
-                fz[j] += fpair * dz;
-                energy += v;
+                born_pair(i, j, dx, dy, dz, A_, inv_rho, sigma_, C_, D_,
+                          v_shift_);
             }
         }
     } else {

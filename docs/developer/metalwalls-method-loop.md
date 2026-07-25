@@ -1,19 +1,28 @@
 # MetalWalls method loop — worktree → merge → dev
 
+Abstract pattern: [`oracle-capability-loop.md`](oracle-capability-loop.md).  
+Scaffold skill: `.agents/skills/create-oracle-loop/`.
+
+## Continuous discovery (binding)
+
+**Every wave starts with GapCensus:** re-diff MetalWalls capability map +
+LAMMPS-overlap classical MD vs ATV, refill pending, update roadmap. Foothold
+≠ map row closed. **Out of scope pending:** CUDA electrode, cross-language
+product, full 2D-PBC product stack, PLUMED. Stop `queue_empty` only when
+`gaps_remaining=0` — not after one seed batch.
+
 ## Pipeline
 
 ```text
 parent (dev)
-  census + assign
+  recover incomplete
        │
-       ├─ worker₁ isolation_worktree  ──┐
-       ├─ worker₂ isolation_worktree  ──┼─ pin + impl + verify + commit on wf/<slug>
-       └─ workerₙ isolation_worktree  ──┘
-       │
-  merge agent (parent): git merge each green HEAD → dev
-       │
-  harness agent (parent): queue + roadmap + notes; commit chore(harness)
+  for each wave:
+    GapCensus → Assign → Worktrees → Merge? → Clearup → Harness? → Tutorial?
 ```
+
+Instance = template + CONFIG/`extra_law` (LAMMPS-first, MD-only cmake, arch rules)
+in `.grok/workflows/metalwalls-method-loop.rhai`.
 
 | Role | `isolation_worktree` | Writes |
 | ---- | -------------------- | ------ |
@@ -102,3 +111,4 @@ bash -lc '
 - 2026-07-24 assign wave 3: dipole-electrode-joint, potential-profile-observer, oscillating-efield-md, virtual-site-multi-topology, constant-force-pull-ion, surface-tension-coupling → in_progress staff=6 (all remaining pending; staff default 10); is_resume=false all; incomplete_before=0; pending_remaining=0; blocked=4 skipped; new_assigned=6
 - 2026-07-24 wave 3 merge: all six green HEADs → dev (constant-force-pull-ion, oscillating-efield-md, potential-profile-observer, surface-tension-coupling, virtual-site-multi-topology, dipole-electrode-joint); blocked=[]; merge-failed=[]
 - 2026-07-24 harness wave 3: queue merged→done (6 wave-3); incomplete remaining=0; roadmaps ○→✓ SurfaceTensionNPT / oscillating efield / FixAddForce / VirtualSites multi-topology / DipoleElectrodeJoint / Ψ(z) observer; specs closed (6); ratios force-pull=0.12 osc-efield=2.12 surface-tension=2.88 vsite=0.084 Ψ(z)+dipole-joint perf_exempt; queue_remaining=0 (pending only); handoff rewritten; classical MW staff queue exhausted
+- 2026-07-24 census wave 4: gap-census on `dev` — map ATV marks refreshed (foothold ≠ ✓); pending refilled **13** production-depth/residual rows (MaZe, electrode forces, global neutrality, Gaussian/Born-Buck NL, D-field, XL-dipoles, QEq, const-pot+TIP4P EDL, CQQ, elastance cond, TI-C, CV-SMD); blocked=4 preserved; incomplete=0; gaps_remaining=13; roadmap notes production-depth (no false ○→✓)

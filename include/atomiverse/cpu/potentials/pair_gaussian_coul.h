@@ -38,9 +38,8 @@ class PairGaussianCoul : public Pair {
 
     std::string name() const override { return "gaussian/coul"; }
 
-    const NeighborConsumer* as_neighbor_consumer() const final {
-        return nullptr;
-    }
+    // NeighborConsumer via Pair — production depth uses ctx.md.pair_list when
+    // published; falls back to O(N²) if no list (small textbook cells).
 
     /// @brief Whether Gaussian self-energy is included.
     bool include_self() const { return include_self_; }

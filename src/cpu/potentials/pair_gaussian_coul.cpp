@@ -6,6 +6,7 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/gaussian_charge.h"
 
 namespace ATV {
@@ -37,41 +38,62 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
     const double K = ATV::units::coulomb;
     double energy = 0.0;
 
-    for (int i = 0; i < n; ++i) {
+    auto accumulate = [&](int i, int j, double dx, double dy, double dz) {
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 >= cutoff_sq_ || r2 == 0.0) return;
+        const double r = std::sqrt(r2);
         const double qi = static_cast<double>(q[i]);
+        const double qj = static_cast<double>(q[j]);
         const double ei = eta_of(static_cast<int>(type[i]));
+        const double ej = eta_of(static_cast<int>(type[j]));
+        const double G = GaussianChargeKernel::greens(r, ei, ej);
+        const double dG = GaussianChargeKernel::dgreens_dr(r, ei, ej);
+        const double pref = K * qi * qj;
+        energy += pref * G;
+        const double fpair = pref * dG / r;
+        fx[i] += fpair * dx;
+        fy[i] += fpair * dy;
+        fz[i] += fpair * dz;
+        fx[j] -= fpair * dx;
+        fy[j] -= fpair * dy;
+        fz[j] -= fpair * dz;
+    };
 
-        if (include_self_ && GaussianChargeKernel::is_gaussian(ei))
-            energy += GaussianChargeKernel::self_energy(K, qi, ei);
+    if (include_self_) {
+        for (int i = 0; i < n; ++i) {
+            const double qi = static_cast<double>(q[i]);
+            const double ei = eta_of(static_cast<int>(type[i]));
+            if (GaussianChargeKernel::is_gaussian(ei))
+                energy += GaussianChargeKernel::self_energy(K, qi, ei);
+        }
+    }
 
-        for (int j = i + 1; j < n; ++j) {
-            double dx = static_cast<double>(x[j] - x[i]);
-            double dy = static_cast<double>(y[j] - y[i]);
-            double dz = static_cast<double>(z[j] - z[i]);
-            f.simbox.min_image(dx, dy, dz);
-            const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= cutoff_sq_ || r2 == 0.0)
-                continue;
-
-            const double r = std::sqrt(r2);
-            const double qj = static_cast<double>(q[j]);
-            const double ej = eta_of(static_cast<int>(type[j]));
-
-            const double G = GaussianChargeKernel::greens(r, ei, ej);
-            const double dG = GaussianChargeKernel::dgreens_dr(r, ei, ej);
-            const double pref = K * qi * qj;
-            energy += pref * G;
-
-            // U = pref * G(r); F_i = −∇_i U.
-            // r = |r_j − r_i|, ∇_i r = −(r_j−r_i)/r ⇒ ∇_i U = pref * dG/dr * (−r̂)
-            // F_i = −∇_i U = pref * dG/dr * r̂ = (pref * dG/dr / r) * (r_j−r_i)
-            const double fpair = pref * dG / r;
-            fx[i] += fpair * dx;
-            fy[i] += fpair * dy;
-            fz[i] += fpair * dz;
-            fx[j] -= fpair * dx;
-            fy[j] -= fpair * dy;
-            fz[j] -= fpair * dz;
+    if (ctx.runtime.md.pair_list) {
+        const auto& pairs = *ctx.runtime.md.pair_list;
+        for (int ii = 0; ii < pairs.inum; ++ii) {
+            const int i = pairs.ilist[static_cast<std::size_t>(ii)];
+            const int jnum = pairs.numneigh[static_cast<std::size_t>(i)];
+            const int off = pairs.firstneigh[static_cast<std::size_t>(i)];
+            for (int jj = 0; jj < jnum; ++jj) {
+                const int j =
+                    pairs.neighbors[static_cast<std::size_t>(off + jj)];
+                if (j <= i) continue; // half-list safety for full lists
+                double dx = static_cast<double>(x[j] - x[i]);
+                double dy = static_cast<double>(y[j] - y[i]);
+                double dz = static_cast<double>(z[j] - z[i]);
+                f.simbox.min_image(dx, dy, dz);
+                accumulate(i, j, dx, dy, dz);
+            }
+        }
+    } else {
+        for (int i = 0; i < n; ++i) {
+            for (int j = i + 1; j < n; ++j) {
+                double dx = static_cast<double>(x[j] - x[i]);
+                double dy = static_cast<double>(y[j] - y[i]);
+                double dz = static_cast<double>(z[j] - z[i]);
+                f.simbox.min_image(dx, dy, dz);
+                accumulate(i, j, dx, dy, dz);
+            }
         }
     }
 

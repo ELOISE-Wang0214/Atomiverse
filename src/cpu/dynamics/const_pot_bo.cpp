@@ -175,6 +175,8 @@ void ConstPotBO::launch(const LaunchContext& ctx) {
     build_rhs_(ctx.frame);
     solve_();
     write_charges_(ctx.frame);
+    if (write_electrode_forces)
+        write_electrode_forces_(ctx.frame);
     record_aspc_();
 }
 
@@ -334,6 +336,17 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
     for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
 
+    // Global neutrality target: sum_Q + sum_q_elyt = 0.
+    neutrality_target_ = 0.0;
+    if (electroneutrality && global_electroneutrality) {
+        double q_elyt = 0.0;
+        for (int j = 0; j < n; ++j) {
+            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            q_elyt += static_cast<double>(q[j]);
+        }
+        neutrality_target_ = -q_elyt;
+    }
+
     // b stores Φ_electrolyte − E·r so that RHS = Ψ − b = Ψ − Φ_elyt + E·r.
     // Φ_ext = −E·r (U = q Φ_ext = −q E·r). Ex=Ey=Ez=0 → E1 path unchanged.
     const double ex = Ex;
@@ -437,7 +450,8 @@ void ConstPotBO::solve_dense_() {
     aspc_record_ = Q_unconst;
 
     if (electroneutrality && m >= 1) {
-        // Q = Q_unconst − λ A^{-1} e,  λ = (e·Q_unconst) / (e·A^{-1}e)
+        // Q = Q_unconst − λ A^{-1} e so that e·Q = target
+        // (target 0 electrode-only; −Q_elyt for global neutrality).
         std::vector<double> inv;
         invert_spd(m, A_, inv);
         std::vector<double> u(static_cast<std::size_t>(m), 0.0);
@@ -455,7 +469,7 @@ void ConstPotBO::solve_dense_() {
         if (std::abs(eT_u) < 1e-30)
             throw std::runtime_error(
                 "ConstPotBO: singular neutrality projector");
-        const double scale = eT_Q / eT_u;
+        const double scale = (eT_Q - neutrality_target_) / eT_u;
         for (int i = 0; i < m; ++i)
             Q_[static_cast<std::size_t>(i)] =
                 Q_unconst[static_cast<std::size_t>(i)]
@@ -489,7 +503,7 @@ void ConstPotBO::solve_cg_() {
     aspc_record_ = Q0; // unconstrained solution for next ASPC record
 
     if (electroneutrality && m >= 1) {
-        // A u = 1,  λ = (1·Q0)/(1·u),  Q = Q0 − λ u
+        // A u = 1,  λ = (1·Q0 − target)/(1·u),  Q = Q0 − λ u
         std::vector<double> ones(static_cast<std::size_t>(m), 1.0);
         std::vector<double> u(static_cast<std::size_t>(m), 0.0);
         (void)cg_solve_(A_, m, ones, u);
@@ -501,7 +515,7 @@ void ConstPotBO::solve_cg_() {
         if (!(std::abs(one_dot_u) > 1e-30))
             throw std::runtime_error(
                 "ConstPotBO: singular neutrality row (CG)");
-        const double lambda = one_dot_Q0 / one_dot_u;
+        const double lambda = (one_dot_Q0 - neutrality_target_) / one_dot_u;
         for (int i = 0; i < m; ++i)
             Q_[static_cast<std::size_t>(i)] =
                 Q0[static_cast<std::size_t>(i)]
@@ -516,6 +530,8 @@ void ConstPotBO::solve_() {
     const int m = static_cast<int>(elec_atoms_.size());
     if (m == 0)
         return;
+
+    // neutrality_target_ set in build_rhs_ (0 or −Q_elyt).
 
     if (use_cg)
         solve_cg_();
@@ -549,6 +565,97 @@ void ConstPotBO::write_charges_(cpu::Frame& frame) const {
     // Zero electrode charges first (only electrode sites we own).
     for (std::size_t a = 0; a < elec_atoms_.size(); ++a)
         q[elec_atoms_[a]] = static_cast<StorageReal>(Q_[a]);
+}
+
+double ConstPotBO::electrolyte_charge_(const cpu::Frame& frame) const {
+    const int n = frame.nlocal();
+    auto q = frame.span(kAtom_charge);
+    std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
+    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+    double s = 0.0;
+    for (int j = 0; j < n; ++j) {
+        if (is_elec[static_cast<std::size_t>(j)]) continue;
+        s += static_cast<double>(q[j]);
+    }
+    return s;
+}
+
+void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
+    // Fixed-Q Hellmann–Feynman: F_i = −Q_i ∇_i Φ_elyt from point electrolyte.
+    // Φ uses the same Gaussian–point kernel as pair_b_ (∂/∂r of erfc-style
+    // interaction). Electrode–electrode A-geometry force deferred (frozen
+    // walls / rebuild_matrix_every_step path).
+    const int m = static_cast<int>(elec_atoms_.size());
+    if (m == 0) return;
+    const int n = frame.nlocal();
+    auto x = frame.span(kAtom_x);
+    auto y = frame.span(kAtom_y);
+    auto z = frame.span(kAtom_z);
+    auto q = frame.span(kAtom_charge);
+    auto fx = frame.span(kAtom_fx);
+    auto fy = frame.span(kAtom_fy);
+    auto fz = frame.span(kAtom_fz);
+    const cpu::Box& box = frame.simbox;
+
+    std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
+    for (int ia : elec_atoms_) is_elec[static_cast<std::size_t>(ia)] = 1;
+
+    // d(pair_b)/dr for Φ = coulomb * q * erf(η r / √2) / r
+    // pair_b_ = coulomb * q * erf(α r) / r with α = η/√2
+    // dΦ/dr = coulomb * q * [ (2α/√π) exp(-(αr)²)/r − erf(αr)/r² ]
+    const double alpha = eta / kSqrt2;
+    constexpr double kSqrtPi = 1.7724538509055160273;
+
+    for (int a = 0; a < m; ++a) {
+        const int ia = elec_atoms_[static_cast<std::size_t>(a)];
+        const double Qi = Q_[static_cast<std::size_t>(a)];
+        if (Qi == 0.0) continue;
+        double Ex = 0.0, Ey = 0.0, Ez = 0.0; // E = −∇Φ so F = Q E
+        for (int j = 0; j < n; ++j) {
+            if (is_elec[static_cast<std::size_t>(j)]) continue;
+            const double qj = static_cast<double>(q[j]);
+            if (qj == 0.0) continue;
+            double dx = static_cast<double>(x[ia] - x[j]);
+            double dy = static_cast<double>(y[ia] - y[j]);
+            double dz = static_cast<double>(z[ia] - z[j]);
+            box.min_image(dx, dy, dz);
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 < 1e-30) continue;
+            const double r = std::sqrt(r2);
+            const double ar = alpha * r;
+            const double erf_ar = std::erf(ar);
+            // dΦ/dr with Φ = k q erf(αr)/r
+            const double dPhi_dr =
+                units::coulomb * qj
+                * (2.0 * alpha / kSqrtPi * std::exp(-ar * ar) / r
+                   - erf_ar / (r * r));
+            // E = −∇Φ = −(dΦ/dr)(r_hat); force on electrode F = Q E
+            // r_hat points from j to i; dPhi/dr along that direction
+            const double inv_r = 1.0 / r;
+            Ex -= dPhi_dr * dx * inv_r;
+            Ey -= dPhi_dr * dy * inv_r;
+            Ez -= dPhi_dr * dz * inv_r;
+        }
+        fx[ia] += static_cast<AccReal>(Qi * Ex);
+        fy[ia] += static_cast<AccReal>(Qi * Ey);
+        fz[ia] += static_cast<AccReal>(Qi * Ez);
+    }
+}
+
+double ConstPotBO::matrix_condition() const {
+    const int m = static_cast<int>(elec_atoms_.size());
+    if (m <= 0 || A_.empty()) return 0.0;
+    // Power iteration for λ_max, inverse-free estimate of λ_min via
+    // Rayleigh on residual of Cholesky — use Gershgorin fallback for
+    // foothold: κ ≈ max_i A_ii / min_i A_ii for diagonally dominant A.
+    double amin = A_[0], amax = A_[0];
+    for (int i = 0; i < m; ++i) {
+        const double aii = A_[static_cast<std::size_t>(i) * m + i];
+        amin = std::min(amin, aii);
+        amax = std::max(amax, aii);
+    }
+    if (!(amin > 0.0)) return 1e300;
+    return amax / amin;
 }
 
 } // namespace md

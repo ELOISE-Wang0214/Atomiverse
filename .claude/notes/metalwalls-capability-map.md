@@ -19,14 +19,23 @@ kernel only) or over-scope (rewrite ATV’s MD stack to clone Fortran
 3. **E1 is the minimum landable product**, not the full MW feature set.
 4. **Do not reimplement** ATV strengths already marked ATV+ (PME/CUDA,
    GAFF bonded stack, SCF/PW/GPW, MC/path methods) “for parity.”
+5. **Foothold ≠ closed.** A textbook regression + Component does **not**
+   flip a row to ✓ if production depth is still missing (e.g. O(N²)
+   pairs without NeighborList, Yeh–Berkowitz slab vs full 2D-PBC product).
+   Use **~** until production depth lands; open a deeper slug.
 
 **Evidence.** MW: GitLab `ampere2/metalwalls` branch `release` (src +
 `example/LIST`), JOSS 2020 (10.21105/joss.02373), JCP 2022 polarizable
-interfaces. ATV: tree as of 2026-07-23 (`docs/roadmap/force-fields.md`,
-`cpu/{dynamics,potentials,longrange,bias,observe}/`).
+interfaces. ATV: tree as of **2026-07-24 census wave 5** on `dev`
+(waves 1–3 shipped 26 classical electrochem/MD/FF slugs; wave-4 staff
+unstarted — no new Components/regressions; see
+`docs/developer/metalwalls-method-queue.md`).
 
 **Supersedes:** conversation-only summaries that treated MW as “just
-constant-potential BO.”
+constant-potential BO." Map ATV marks re-audited **2026-07-24** (wave-5
+gap-census): marks unchanged vs wave 4 (no landings); pending refill added
+per-electrode \(\eta\), const-charge control, MPI charge-halo, Voronoi TF,
+PIM-NPT IL, IL EDL box, nanoporous product.
 
 ---
 
@@ -64,30 +73,31 @@ spine; keep ATV advantages.
 
 | Capability | MW | ATV | ATV home / gap | Pri |
 |---|:---:|:---:|---|:---:|
-| Constant-potential electrodes (fluctuating \(Q\)) | ✓★ | ○ | New Component → `kAtom_charge` | **P0** |
-| Gaussian charge on electrode atoms | ✓★ | ○ | MD absent; `longrange/gaussian_extent.h` is SCF/CFMM only | **P0–P1** |
-| Constant-charge electrodes (control) | ✓ | ~ | Fixed `charge` works; no electrode semantics | P1 |
-| BO matrix inverse for \(Q\) | ✓ | ○ | Private workspace + factorize/invert | **P0** |
-| CG solve for \(Q\) | ✓ | ○ | Large / movable electrodes | P1 |
-| MaZe mass-zero charge dynamics | ✓★ | ○ | New algorithm | P2 |
-| Electrode charge predictor | ✓ | ○ | ASPC-like; SCF ASPC is reference only | P1 |
-| Electrode electroneutrality \(\sum Q_i=0\) | ✓ | ○ | Augmented linear system | **P0** |
-| Global electroneutrality (incl. electrolyte) | ✓ | ○ | Constraint variant | P1 |
-| Multi-electrode, per-electrode \(V,\eta\) | ✓ | ○ | Select by type/tag | **P0** |
-| Forces on electrode atoms (term breakdown) | ✓ | ○ | Needed for piston; often zero if frozen | P1 |
-| Freeze / immobile ions | ✓ (`mobile`) | ○ | Need `FreezeAtoms` or integrate mask | **P0** |
-| Piston electrode + constant \(P_z\) | ✓★ | ○ | Rigid piston ≠ generic barostat | P2 |
-| Thomas–Fermi finite metallicity | ✓★ | ○ | \(l_{\mathrm{TF}}\) response | P2 |
-| Voronoi volume (TF) | ✓ | ○ | TF companion | P2 |
-| Applied E-field (MD) | ✓★ | ○ | SCF has external field; MD does not | P1 |
-| Displacement D-field | ✓★ | ○ | Finite-field electrochemistry | P2 |
-| Finite-field + single electrode (3D) | ✓★ | ○ | Dufils-style setup | P2 |
-| 2D PBC electrochemical cell | ✓★ | ○ | Ewald/min-image are 3D today | P1 |
-| Charging work \(-\sum\Psi_i Q_i\) in energy | ✓ | ○ | `kEnergy` / meta channel | **P0** |
-| Capacitance / charge-fluctuation analysis | ✓ tools | ○ | Observer + tools | P1 |
-| Potential-profile post-processing | ✓ tools | ○ | Analysis | P1 |
-| Charge–charge autocorrelation | ✓ tools | ○ | Analysis | P2 |
-| ML heterogeneous electrodes (PiNNwall, …) | ecosystem ✓ | ○ | External interface | P3 |
+| Constant-potential electrodes (fluctuating \(Q\)) | ✓★ | ✓ | `ConstPotBO` / `ConstPotCG` → `kAtom_charge` | **P0** |
+| Gaussian charge on electrode atoms | ✓★ | ~ | `PairGaussianCoul` + Gaussian \(A\) in BO; **O(N²)** pair path | **P0–P1** |
+| Constant-charge electrodes (control) | ✓ | ~ | Fixed charge + `FixFreeze`; no separate “const-Q electrode” type | P1 |
+| BO matrix inverse for \(Q\) | ✓ | ✓ | Dense Cholesky path on `ConstPotBO` | **P0** |
+| CG solve for \(Q\) | ✓ | ✓ | `ConstPotCG` / `ConstPotBO::use_cg` | P1 |
+| MaZe mass-zero charge dynamics | ✓★ | ○ | No `MaZe` charge dynamics Component yet | P2 |
+| Electrode charge predictor | ✓ | ✓ | `ChargeASPC` / `predictor_order` on BO | P1 |
+| Electrode electroneutrality \(\sum Q_i=0\) | ✓ | ✓ | Augmented system on BO/CG | **P0** |
+| Global electroneutrality (incl. electrolyte) | ✓ | ~ | `ConstPotentialBO` form; unify on `ConstPotBO` path | P1 |
+| Multi-electrode, per-electrode \(V,\eta\) | ✓ | ~ | Multi-type \(V\) ✓; shared \(\eta\) in v1 | **P0** |
+| Forces on electrode atoms (term breakdown) | ✓ | ○ | Piston uses fluid \(F_z\); no full BO \(Q\)-force breakdown | P1 |
+| Freeze / immobile ions | ✓ (`mobile`) | ✓ | `FixFreeze` | **P0** |
+| Piston electrode + constant \(P_z\) | ✓★ | ✓ | `PistonElectrode` | P2 |
+| Thomas–Fermi finite metallicity | ✓★ | ✓ | `ConstPotBO::l_tf`, `site_density` | P2 |
+| Voronoi volume (TF) | ✓ | ○ | TF companion still absent | P2 |
+| Applied E-field (MD) | ✓★ | ✓ | `FixEfield` + `FixOscillatingEfield` | P1 |
+| Displacement D-field | ✓★ | ○ | Finite-field \(\mathbf{D}\) not shipped | P2 |
+| Finite-field + single electrode (3D) | ✓★ | ✓ | Dufils path (`ConstPotBO` + \(E_z\)) | P2 |
+| 2D PBC electrochemical cell | ✓★ | ~ | Yeh–Berkowitz **slab** only; full 2D product **out of loop scope** | P1 |
+| Charging work \(-\sum\Psi_i Q_i\) in energy | ✓ | ✓ | `ChargingWork` | **P0** |
+| Capacitance / charge-fluctuation analysis | ✓ tools | ✓ | `CapacitanceChargeFluctuation` | P1 |
+| Potential-profile post-processing | ✓ tools | ✓ | `PotentialProfile` \(\Psi(z)\) | P1 |
+| Charge–charge autocorrelation | ✓ tools | ○ | No charge–charge \(C_{QQ}(t)\) observer | P2 |
+| Empty capacitance / matrix condition | ✓ tools | ○ | No \(\mathrm{cond}(A)\) / empty-\(C\) debug observer | P1 |
+| ML heterogeneous electrodes (PiNNwall, …) | ecosystem ✓ | ○ | External interface — **blocked E12** | P3 |
 
 **MD phase / halo (implementation constraint):** `kAtom_charge` already
 borders (`kColComm|kColBorder|kColWriteBack`). Updating \(Q\) at `pre_force`
@@ -100,13 +110,13 @@ before halo, or `HaloRefresh` including charge after solve.
 
 | Capability | MW | ATV | Notes | Pri |
 |---|:---:|:---:|---|:---:|
-| PIM induced dipoles (SCF) | ✓★ | ○ | Roadmap: self-consistent induced dipoles ○ | P1 |
-| Extended-Lagrangian dipoles | ~ MaZe-related | ○ | Roadmap ○ | P2 |
-| **Coupled** dipole ⊕ electrode \(Q\) solve | ✓★ | ○ | `dipoles_and_electrodes` — main hardness | **P1** |
-| Thole / Tang–Toennies damping | ✓ | ○ | Roadmap Thole ○ | P1 |
-| Per-species polarizability | ✓ | ○ | Frame column or component table | P1 |
-| AIM aspherical ions | ✓★ | ○ | | P3 |
-| DAIM deformable ions | ✓★ | ○ | | P3 |
+| PIM induced dipoles (SCF) | ✓★ | ✓ | `PimInducedDipole` bulk foothold | P1 |
+| Extended-Lagrangian dipoles | ~ MaZe-related | ○ | Roadmap ○ — deeper after SCF PIM | P2 |
+| **Coupled** dipole ⊕ electrode \(Q\) solve | ✓★ | ✓ | `DipoleElectrodeJoint` | **P1** |
+| Thole / Tang–Toennies damping | ✓ | ✓ | Thole + optional `tt_b` on PIM | P1 |
+| Per-species polarizability | ✓ | ✓ | `alpha_by_type` table on PIM | P1 |
+| AIM aspherical ions | ✓★ | ○ | **blocked E11** until scheduled | P3 |
+| DAIM deformable ions | ✓★ | ○ | **blocked E11** | P3 |
 | Multipole force field | ✓ | ~ | `observe/multipole` ≠ multipole FF | P2 |
 | Fluctuating-charge / QEq | ~ electrode only | ○ | Roadmap QEq/FQ ○; ≠ const-potential electrode | P2 |
 | Drude / AMOEBA | ○ | ○ | Both roadmap-level | — |
@@ -125,12 +135,12 @@ before halo, or `HaloRefresh` including charge after solve.
 | Ewald real + reciprocal | ✓ | ✓ `CoulLong` + `KSpaceEwald` | | — |
 | PME / SPME | ○/~ | ✓ CPU/CUDA | **ATV+** | ATV+ |
 | PPPM | ○ | ✓ | | ATV+ |
-| 2D Ewald / 2D PBC | ✓★ | ○ | Electrochem default in MW | P1 |
-| \(k=0\) slab correction | ✓ | ○ | With 2D | P1 |
-| Fumi–Tosi | ✓★ | ○ | Molten salts | P2 |
+| 2D Ewald / 2D PBC | ✓★ | ~ | Yeh–Berkowitz slab foothold; full 2D **out of scope** this loop | P1 |
+| \(k=0\) slab correction | ✓ | ✓ | `KSpaceEwald::slab_factor` | P1 |
+| Fumi–Tosi | ✓★ | ~ | `PairBorn` multi-type + Coul; **O(N²)** textbook pin | P2 |
 | XFT | ✓ | ○ | | P3 |
-| Born repulsion | ✓ | ○ | | P2 |
-| Steele wall | ✓★ | ○ | Graphite wall | P2 |
+| Born repulsion | ✓ | ~ | `PairBorn` dimer foothold; needs NeighborList bulk | P2 |
+| Steele wall | ✓★ | ✓ | `FixWallLJ1043` (`wall/lj1043`) | P2 |
 | Morse / Yukawa / WCA / DPD | ○ | ✓ | | ATV+ |
 | EAM / Stillinger–Weber | ○ | ✓ | | ATV+ |
 | `special_bonds` scales | ~ | ✓ | GAFF path mature | ATV+ |
@@ -145,10 +155,10 @@ before halo, or `HaloRefresh` including charge after solve.
 | Dihedrals | ✓ | ✓ multi/harmonic + CHARMM | ATV broader | ATV+ |
 | Impropers | ✓ | ✓ harmonic | | — |
 | FENE | ○ | ✓ | | ATV+ |
-| Four-site water (TIP4P-class) | ✓★ | ○ | Virtual site | P1 (aqueous electrodes) |
+| Four-site water (TIP4P-class) | ✓★ | ✓ | `PairLJCutTip4pCut` + `VirtualSites` Weighted3 | P1 (aqueous electrodes) |
 | Linear molecule model | ✓ | ○ | | P3 |
 | Molecule-type table | ✓ | ~ | ATV per-atom topology columns | ~ |
-| Virtual sites | ✓ four-site | ○ | | P1 |
+| Virtual sites | ✓ four-site | ✓ | Weighted3 + OutOfPlane3 (TIP4P/TIP5P) | P1 |
 
 ---
 
@@ -163,7 +173,7 @@ before halo, or `HaloRefresh` including charge after solve.
 | Langevin / CSVR | ○ | ✓ | | ATV+ |
 | NPT (MTK-class) | ✓ | ✓ `NoseHooverNPT` etc. | | — |
 | NPH / PR NPT | ○ | ✓ | | ATV+ |
-| Piston NPT (electrodes) | ✓★ | ○ | | P2 |
+| Piston NPT (electrodes) | ✓★ | ✓ | `PistonElectrode` (rigid \(P_z\); ≠ Langevin piston) | P2 |
 | Velocity init / scale | ✓ | ✓ | | — |
 | Deform / Brownian / NVE limit | ○ | ✓ | | ATV+ |
 
@@ -203,9 +213,9 @@ before halo, or `HaloRefresh` including charge after solve.
 | Thermo / trajectories | ✓ | ✓ + molrs | | — |
 | RDF / MSD / VACF | ~ | ✓ | | ATV+ |
 | Virial / pressure tensor | ✓ | ✓ | | — |
-| Capacitance scripts | ✓★ | ○ | | P1 |
-| Empty capacitance / matrix condition number | ✓ tools | ○ | Debug \(A\) | P1 |
-| Electrode charge time series | ✓ | ○ | Observer | **P0** |
+| Capacitance scripts | ✓★ | ✓ | `CapacitanceChargeFluctuation` | P1 |
+| Empty capacitance / matrix condition number | ✓ tools | ○ | Debug \(A\) / empty \(C\) still open | P1 |
+| Electrode charge time series | ✓ | ✓ | `ElectrodeCharge` observer | **P0** |
 | Widom / WHAM | ○ | ✓ | | ATV+ |
 | Electronic observers (Mulliken, …) | ○ | ✓ | | ATV+ |
 
@@ -216,17 +226,18 @@ before halo, or `HaloRefresh` including charge after solve.
 | Scenario | MW | ATV today | Gap |
 |---|:---:|---|---|
 | Bulk non-polarizable IL | ✓ | ✓ LJ+Coul+PME | — |
-| Bulk polarizable IL / PIM-NPT | ✓ | ○ | PIM |
-| Planar graphene + const-pot + IL | ✓ | ○ | E1 + preferably 2D |
-| Nanoporous carbon + const-pot | ✓ | ○ | E1 + geometry |
-| Blue energy / CDC desalination | ✓ | ○ | E1 |
-| Finite-field single electrode | ✓ | ○ | E-field + electrode |
-| TF gold capacitor | ✓ | ○ | Thomas–Fermi |
-| Molten salt + Al + MaZe | ✓ | ○ | Const-pot + MaZe + salt FF |
-| Piston constant \(P_z\) | ✓ | ○ | Piston |
-| PLUMED constrained ion | ✓ | ~ ATV bias | |
-| TIP4P water | ✓ | ○ no four-site | Virtual sites |
-| AIM tests | ✓ | ○ | AIM |
+| Bulk polarizable IL / PIM-NPT | ✓ | ~ | PIM bulk ✓; NPT product twin open |
+| Planar graphene + const-pot + IL | ✓ | ~ | E1 Components ✓; production EDL box open |
+| Nanoporous carbon + const-pot | ✓ | ○ | Geometry + E1 (product) |
+| Blue energy / CDC desalination | ✓ | ○ | Product workflow |
+| Finite-field single electrode | ✓ | ✓ | Dufils foothold |
+| TF gold capacitor | ✓ | ✓ | `thomas-fermi-electrode` |
+| Molten salt + Al + MaZe | ✓ | ○ | MaZe + salt NL depth |
+| Piston constant \(P_z\) | ✓ | ✓ | `piston-electrode-pz` |
+| PLUMED constrained ion | ✓ | ~ ATV bias | PLUMED bridge **out of scope** |
+| TIP4P water | ✓ | ✓ | four-site + multi-topology vsites |
+| TIP4P + const-pot electrodes | ✓ | ○ | Product aqueous EDL still open |
+| AIM tests | ✓ | ○ | **blocked E11** |
 | AIMD / Gaussian SCF / PW / GPW | ○ | ✓ | **ATV+** |
 | CUDA large LJ/PME | ○ | ✓ | **ATV+** |
 | NEB / REMD / PIMD / MC | ○ | ✓ | **ATV+** |

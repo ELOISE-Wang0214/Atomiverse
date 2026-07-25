@@ -178,24 +178,30 @@ constant path): \(\mathbf{F}_i = q_i\mathbf{E}\), energy
 **Oscillating / AC field** is `cpu::md::FixOscillatingEfield` (cosine
 \(E(t)\); `reg_oscillating-efield-md`). **Constant-force pull** is
 `cpu::md::FixAddForce` (LAMMPS `fix addforce`; `reg_constant-force-pull-ion`).
-Constant-velocity / full SMD remain ○. Classical electrochemistry Components on
-`cpu::md::MD` (MetalWalls map E1–E10 footholds; see
-`docs/developer/metalwalls-method-queue.md`):
+**Constant-velocity SMD** is `cpu::md::FixMove` (LAMMPS `fix move`;
+`reg_constant-velocity-smd`). **Displacement \(\mathbf{D}\)-field** is
+`cpu::md::FixDfield` (`reg_displacement-dfield-md`). Classical electrochemistry
+Components on `cpu::md::MD` (MetalWalls map E1–E10; waves 1–4 done — see
+`docs/developer/metalwalls-method-queue.md`; residual pending wave-5+):
 
 - **E1:** `ConstPotBO`, `FixFreeze`, charge observer, charging work, short
-  const-pot NVT
-- **E2:** `ConstPotCG` (large multi-site walls); Kolafa ASPC charge predictor
-  on `ConstPotBO` (`predictor_order`, `ChargeASPC`)
-- **E3:** single-electrode finite-field (Dufils) via `ConstPotBO` + external
-  \(\mathbf{E}\) + `ClassicalPolarization` (`reg_finite-field-single-electrode`);
-  AC residual `FixOscillatingEfield`
+  const-pot NVT; wave-4: `ConstPotMaZe` (CG+ASPC adiabatic \(Q\)),
+  `write_electrode_forces`, `global_electroneutrality`. Still open:
+  per-electrode \(\eta\), MPI charge-halo timing, const-charge control type
+- **E2:** `ConstPotCG` (large multi-site walls); Kolafa ASPC on `ConstPotBO`;
+  `PairGaussianCoul` NeighborList bulk path (`reg_gaussian-coul-neighborlist`)
+- **E3:** single-electrode finite-field (Dufils); AC `FixOscillatingEfield`;
+  `FixDfield` displacement-field foothold
 - **E5:** `DipoleElectrodeJoint` — coupled PIM \(\boldsymbol{\mu}\) ⊕ electrode
   \(Q\) SCF (`reg_dipole-electrode-joint`)
 - **E6:** `PistonElectrode` constant \(P_z\) rigid wall (not Langevin piston)
-- **E7:** Thomas–Fermi finite metallicity (`ConstPotBO::l_tf`, `site_density`)
-- **E9:** multi-topology virtual sites (TIP4P/TIP5P; see constraints section)
-- **E10:** `CapacitanceChargeFluctuation` observer (\(C\) from \(\mathrm{Var}(Q)\));
-  slab \(\Psi(z)\) `PotentialProfile` observer (`reg_potential-profile-observer`)
+- **E7:** Thomas–Fermi finite metallicity (`ConstPotBO::l_tf`, `site_density`);
+  Voronoi volume companion still ○ (`voronoi-volume-tf` pending)
+- **E9:** multi-topology virtual sites (TIP4P/TIP5P); const-pot + TIP4P EDL
+  foothold (`reg_const-pot-tip4p-edl`). Still open: IL EDL product box,
+  nanoporous carbon product
+- **E10:** `CapacitanceChargeFluctuation`; slab \(\Psi(z)\) `PotentialProfile`;
+  wave-4: `ChargeAutocorr` (\(C_{QQ}\)), `ElastanceObserver` (\(\mathrm{cond}(A)\))
 - **E8 walls:** `FixWallLJ1043` Steele 10-4-3 (force-fields roadmap note)
 
 

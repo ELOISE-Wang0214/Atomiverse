@@ -119,8 +119,10 @@ Notes:
   \(A e^{(\sigma-r)/\rho}-C/r^{6}+D/r^{8}\) with energy shift; single-type dimer
   pin `reg_born-repulsion-foothold`. **Multi-type Fumi–Tosi** uses the same
   `PairBorn` type table + `PairCoulCut` (LAMMPS `hybrid/overlay born coul/cut`);
-  pin `reg_fumi-tosi-nacl`. Production NeighborList-backed bulk molten-salt
-  twin remains a future perf pin (current pins are O(N²) textbook cells).
+  pin `reg_fumi-tosi-nacl`. **NeighborList-backed bulk Born path** ships
+  (`PairBorn` prefers `ctx.md.pair_list` when published;
+  `reg_born-buck-neighborlist-bulk`). Same NeighborList preference on
+  `PairGaussianCoul` (`reg_gaussian-coul-neighborlist`).
 - **Steele 10-4-3 wall** ships as `cpu::md::FixWallLJ1043` (LAMMPS
   `fix wall/lj1043`, not `wall/lj93`); pin `reg_steele-wall-argon`.
 - **FENE** (`BondFene`) + **WCA** (`PairWCA`) and **Yukawa** (`PairYukawa`) and
@@ -128,7 +130,8 @@ Notes:
   (`reg_fene_wca_chain`, `reg_yukawa_dimer`, `reg_dpd_groot_warren`).
 - **Direct Ewald** supports Yeh–Berkowitz slab correction via public
   `KSpaceEwald::slab_factor` (LAMMPS `kspace_modify slab`); pin
-  `reg_slab-2d-ewald-foothold`. True 2D-only Ewald (no 3D+slab) remains future.
+  `reg_slab-2d-ewald-foothold`. True 2D-only Ewald (no 3D+slab) remains
+  **out of MetalWalls-loop product scope** (full 2D-PBC stack).
 
 ## 3. Polarizable Force Fields
 
@@ -150,8 +153,10 @@ induced dipoles with Thole exponential damping and optional Tang–Toennies
 (`tt_b`); permanent charge–charge is separate (`PairCoulCut` / PME). Pin
 `reg_pim-induced-dipole-bulk`. **Electrode-coupled dipole ⊕ \(Q\) joint** ships
 as `cpu::md::DipoleElectrodeJoint` (alternating ConstPotBO \(Q\) + PIM \(\mu\)
-until joint tol; `reg_dipole-electrode-joint`, oracle=metalwalls). Drude /
-AMOEBA / QEq remain ○.
+until joint tol; `reg_dipole-electrode-joint`, oracle=metalwalls). **Extended-
+Lagrangian dipoles**, **QEq / fluctuating-charge**, and **PIM-NPT polarizable
+IL product twin** remain ○ (MetalWalls pending: `extended-lagrangian-dipoles`,
+`qeq-fluctuating-charge`, `pim-npt-polarizable-il`). Drude / AMOEBA remain ○.
 
 ## 4. Many-Body and Reactive Potentials
 

@@ -1,13 +1,50 @@
 # MetalWalls method loop — handoff
 
-Last assign: **wave 4 — 2026-07-24** on `dev`
-(`chore(queue): metalwalls assign wave 4`). Prior harness wave 3
-(`chore(harness): metalwalls wf wave 3`); recover
-(`chore(queue): metalwalls recover incomplete`).
+Last land: **wave 4 — 2026-07-25** (manual; sources were on-disk/uncommitted
+after 2026-07-24 write; re-verified build-mw + 10/10 regressions PASS).
+All 10 wave-4 slugs → `## done`. Pending residual (**10**) and blocked (**4**)
+remain for later GapCensus/impl. **incomplete_remaining=0**.
+
+Prior census: **wave 5 gap-census — 2026-07-24** (refill pending while wave-4
+was still `[~]`; historical — see section below). Last assign was wave 4.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/metalwalls-method-loop.md`.
+
+## Wave 4 land (2026-07-25 re-verify)
+
+| Slug | Component / change | Regression | Result |
+| ---- | ------------------ | ---------- | ------ |
+| `maze-charge-dynamics` | `ConstPotMaZe` | `reg_maze-charge-dynamics` | PASS |
+| `electrode-atom-forces` | `ConstPotBO::write_electrode_forces` | `reg_electrode-atom-forces` | PASS |
+| `global-electroneutrality-bo` | `ConstPotBO::global_electroneutrality` | `reg_global-electroneutrality-bo` | PASS |
+| `gaussian-coul-neighborlist` | `PairGaussianCoul` NL path | `reg_gaussian-coul-neighborlist` | PASS |
+| `displacement-dfield-md` | `FixDfield` | `reg_displacement-dfield-md` | PASS |
+| `born-buck-neighborlist-bulk` | `PairBorn` NL path | `reg_born-buck-neighborlist-bulk` | PASS |
+| `const-pot-tip4p-edl` | const-pot + electrolyte EDL toy | `reg_const-pot-tip4p-edl` | PASS |
+| `charge-charge-autocorr` | `ChargeAutocorr` | `reg_charge-charge-autocorr` | PASS |
+| `elastance-condition-observer` | `ElastanceObserver` + `matrix_condition` | `reg_elastance-condition-observer` | PASS |
+| `constant-velocity-smd` | `FixMove` | `reg_constant-velocity-smd` | PASS |
+
+**Next:** GapCensus/assign on residual **pending=10** (no incomplete left).
+
+## Gap-census wave 5 (2026-07-24) — historical
+
+| Field | Value |
+| ----- | ----- |
+| Tree | `dev`; waves 1–3 done=26; wave-4 not yet committed |
+| `## in_progress` | **10** preserved `[~]` at census time |
+| Open MD/electrochem specs | **0** |
+| Unmerged in-scope `wf/<slug>` ahead_of_dev | **0** |
+| Blocked | **4** preserved |
+| Pending after rewrite | **10** (+7 new map residual slugs; kept XL/QEq/TI) |
+| gaps_remaining then | **20** (= pending 10 + in_progress 10); **now 10** after wave-4 land |
+| Roadmap / map | MD + FF notes + capability map ATV evidence refreshed |
+
+**New pending slugs (7):** `per-electrode-eta`, `const-charge-electrode`,
+`const-pot-charge-halo-mpi`, `pim-npt-polarizable-il`, `voronoi-volume-tf`,
+`const-pot-il-edl-box`, `nanoporous-carbon-const-pot`.
 
 ## Recover inventory (2026-07-24, post-assign wave 4)
 
@@ -24,8 +61,8 @@ Tutorial. See `docs/developer/metalwalls-method-loop.md`.
 `displacement-dfield-md`, `born-buck-neighborlist-bulk`, `const-pot-tip4p-edl`,
 `charge-charge-autocorr`, `elastance-condition-observer`,
 `constant-velocity-smd`. Keep as `[~]`; do **not** demote to pending.
-**incomplete_remaining=10**. Pending=3 (XL dipoles, QEq, TI capacitance);
-blocked=4. Next: worktrees + **spec-first** on each `wf/<slug>`.
+**incomplete_remaining=10**. Pending after wave-5 census=**10**; blocked=4.
+Next for impl: worktrees + **spec-first** on each wave-4 `wf/<slug>`.
 
 ### Recover inventory (2026-07-24, pre assign wave 4) — historical
 
