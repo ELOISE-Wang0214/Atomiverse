@@ -252,6 +252,7 @@ if(ATV_BUILD_GPW)
         # XL-BOMD propagator (Table-I pin, fixed point, bounded response)
         # + GpwDft guess_P plumbing on the inline ms-scale H2.
         atv_add_cpp_test(test_cpu_gpw_xl_bomd     cpu/gpw/test_gpw_xl_bomd.cpp)
+        atv_add_cpp_test(test_cpu_gpw_cpmd        cpu/gpw/test_gpw_cpmd.cpp)
         if(ATV_BUILD_MD)
             atv_add_cpp_test(test_cpu_gpw_bomd    cpu/gpw/test_gpw_bomd.cpp)
         endif()

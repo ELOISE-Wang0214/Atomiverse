@@ -215,7 +215,7 @@ Components on `cpu::md::MD` (MetalWalls map E1–E10; waves 1–4 done — see
 | Semiempirical Born–Oppenheimer MD       |  ✓  |   ○  |   ○  |
 | DFTB molecular dynamics                 |  ○  |   ○  |   ○  |
 | xTB molecular dynamics                  |  ○  |   ○  |   ○  |
-| Car–Parrinello molecular dynamics       |  ○  |   ○  |   ○  |
+| Car–Parrinello molecular dynamics       |  ✓  |   ○  |   ○  |
 | Extended-Lagrangian Born–Oppenheimer MD |  ✓  |   ○  |   ○  |
 | Second-generation Car–Parrinello MD     |  ○  |   ○  |   ○  |
 
@@ -239,6 +239,13 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 GPW diagonalization path (`reg_xl-bomd-water`). ASPC remains a separate
 density *predictor* (warm start); UKS/OT/k-point XL and zero-SCF linearized
 forces stay ○.
+
+**Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
+`GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
+then fixed-density KS eval + electronic Verlet + analytic forces at that
+density (`reg_cpmd-water`). Conserved \(E_{\mathrm{cons}} = T_n + T_e +
+E_{\mathrm{KS}}\). UKS/OT/electronic thermostat/RATTLE and second-generation
+CP stay ○.
 
 ## 8. Nuclear Quantum Dynamics
 

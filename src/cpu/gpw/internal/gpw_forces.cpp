@@ -26,6 +26,9 @@
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/linalg/matrix.h"
 
+#include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/views/xview.hpp>
+
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -168,18 +171,20 @@ double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
 
 } // namespace
 
-std::vector<std::array<double, 3>>
-gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
-                    const linalg::RealMatrix* guess_C) {
-    GpwDft solver = copy_gpw(cfg);
-    solver.build(atoms);
-    const GpwResult scf = solver.run(atoms, guess_C);
-    if (!scf.converged)
-        throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
+namespace {
 
+/// Shared force assembly at a fixed (P, W) electronic state (no SCF).
+std::vector<std::array<double, 3>>
+assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const RealMatrix& P, const RealMatrix& W) {
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
     const int na = static_cast<int>(atoms.size());
+    if (static_cast<int>(P.shape(0)) != nb || static_cast<int>(P.shape(1)) != nb
+        || static_cast<int>(W.shape(0)) != nb
+        || static_cast<int>(W.shape(1)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces: P/W shape does not match the AO basis");
     const bool periodic = !cfg.nonperiodic;
     const double eps = cfg.eps_default;
 
@@ -203,18 +208,6 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
     int mimg[3];
     pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
-
-    const RealMatrix& P = scf.P;
-    // Energy-weighted density matrix W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).
-    RealMatrix W = xt::zeros<double>({nb, nb});
-    for (int i = 0; i < cfg.n_occ; ++i) {
-        const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
-        for (int mu = 0; mu < nb; ++mu) {
-            const double cmu = w * scf.C(mu, i);
-            for (int nu = 0; nu < nb; ++nu)
-                W(mu, nu) += cmu * scf.C(nu, i);
-        }
-    }
 
     // Center-derivative basis functions d φ_u / dR_u along each axis, plus their
     // radii (the l+1 component reaches slightly farther than φ_u).
@@ -441,6 +434,58 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     }
 
     return forces;
+}
+
+} // namespace
+
+std::vector<std::array<double, 3>>
+gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                    const linalg::RealMatrix* guess_C) {
+    GpwDft solver = copy_gpw(cfg);
+    solver.build(atoms);
+    const GpwResult scf = solver.run(atoms, guess_C);
+    if (!scf.converged)
+        throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
+
+    const int nb = static_cast<int>(scf.P.shape(0));
+    // Energy-weighted density matrix W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).
+    RealMatrix W = xt::zeros<double>({nb, nb});
+    for (int i = 0; i < cfg.n_occ; ++i) {
+        const double w = 2.0 * scf.eps[static_cast<std::size_t>(i)];
+        for (int mu = 0; mu < nb; ++mu) {
+            const double cmu = w * scf.C(mu, i);
+            for (int nu = 0; nu < nb; ++nu)
+                W(mu, nu) += cmu * scf.C(nu, i);
+        }
+    }
+    return assemble_gpw_forces(atoms, cfg, scf.P, W);
+}
+
+std::vector<std::array<double, 3>>
+gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                      const linalg::RealMatrix& P,
+                      const linalg::RealMatrix& C_occ,
+                      const linalg::RealMatrix& H) {
+    const int nb = static_cast<int>(P.shape(0));
+    const int no = static_cast<int>(C_occ.shape(1));
+    if (static_cast<int>(C_occ.shape(0)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density: C_occ rows must equal AO dimension");
+    if (static_cast<int>(H.shape(0)) != nb
+        || static_cast<int>(H.shape(1)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density: H shape must be nb × nb");
+    if (no < 1)
+        throw std::invalid_argument(
+            "gpw_forces_at_density: C_occ has no occupied columns");
+
+    // Off-BO energy-weighted density: W = 2 C (C† H C) C†
+    // (at the SCF fixed point this recovers W = 2 C ε C†).
+    const RealMatrix HC = xt::linalg::dot(H, C_occ);
+    const RealMatrix Lambda = xt::linalg::dot(xt::transpose(C_occ), HC);
+    const RealMatrix W =
+        2.0 * xt::linalg::dot(C_occ, xt::linalg::dot(Lambda, xt::transpose(C_occ)));
+    return assemble_gpw_forces(atoms, cfg, P, W);
 }
 
 } // namespace gpw

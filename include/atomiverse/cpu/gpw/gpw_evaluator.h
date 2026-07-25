@@ -10,9 +10,11 @@
 #include <vector>
 
 #include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/gpw/cpmd.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/xl_bomd.h"
 #include "atomiverse/core/role.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {
@@ -90,6 +92,18 @@ class GPWEvaluator : public cpu::GPW {
     bool xl_bomd = false;
     /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
     int xl_bomd_k = 5;
+    /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
+    ///        fictitious mass (not BOMD, not XL-BOMD). After one cold SCF seed,
+    ///        each force step is a fixed-density KS eval + electronic Verlet +
+    ///        analytic forces at that density. Closed-shell RKS Γ only —
+    ///        `build()` throws with UKS, `use_ot`, or `xl_bomd`.
+    bool cpmd = false;
+    /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
+    ///        CPMD values \(10^2\)–\(10^3\). Default 400.
+    double cpmd_mu = 400.0;
+    /// @brief Electronic (and nuclear) timestep [fs]. **Must match** the
+    ///        `VelocityVerlet` dt used on the outer MD loop.
+    double cpmd_dt = 0.1;
     /// @brief Dudarev DFT+U (PLUS_U); empty disables. U−J in eV per entry.
     std::vector<PlusU> plus_u;
     /// @brief Per-atom initial spin seed for UKS AFM/FM (0 or n_atoms).
@@ -130,6 +144,15 @@ class GPWEvaluator : public cpu::GPW {
     const std::array<double, 6>& last_stress_ha_bohr3() const {
         return last_stress_ha_;
     }
+    /// @brief Electronic kinetic energy \(T_e\) [eV] from the last CPMD
+    ///        advance (0 when `cpmd` is off or before the first electronic step).
+    double last_electronic_ke_ev() const { return last_te_ev_; }
+    /// @brief Car–Parrinello conserved piece \(E_{\mathrm{KS}} + T_e\) [eV]
+    ///        (add nuclear KE from `frame.meta.get(kKinetic)` for full
+    ///        \(E_{\mathrm{cons}}\)).
+    double last_cp_energy_ev() const {
+        return last_.e_total * ATV::units::kHartreeInEv + last_te_ev_;
+    }
 
   private:
     GpwResult last_{};
@@ -137,6 +160,9 @@ class GPWEvaluator : public cpu::GPW {
     std::array<double, 6> last_stress_ha_{};
     /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd`).
     std::optional<XlBomd> xl_;
+    /// CPMD electronic propagator (engaged when `cpmd`).
+    std::optional<Cpmd> cpmd_;
+    double last_te_ev_ = 0.0; ///< last electronic KE [eV]
 };
 
 } // namespace gpw

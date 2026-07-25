@@ -131,6 +131,9 @@ if(ATV_BUILD_GPW)
         # Extended-Lagrangian BOMD (dynamics domain): XL auxiliary-density
         # propagation on the same H2O NVE twin.
         atv_add_regression(dynamics xl-bomd-water)
+        # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
+        # the same H2O NVE twin family — not BOMD, not XL-BOMD.
+        atv_add_regression(dynamics cpmd-water)
     endif()
     atv_add_regression(gpw gpw-pbesol-si)
     atv_add_regression(gpw gpw-dftu-nio)

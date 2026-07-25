@@ -115,7 +115,7 @@ may both touch AIMD propagator files — harness resolves at merge.
      (dep cpmd-water is a pick this wave) -->
 <!-- 2026-07-25: xl-bomd-water verified green + merged → done -->
 - [~] `wannier-centers` | Maximally localized Wannier | response | water / Si | — | centers | roadmap §11 ○; CP2K Wannier; **dep:** `bands-dos-si` ✓; wave 3 new
-- [~] `cpmd-water` | Car–Parrinello MD | dynamics | water | DZVP | energy drift | MD roadmap ○ CPMD; CP2K; after solid BOMD pins ✓; wave 3 new
+- [x] `cpmd-water` | Car–Parrinello MD foothold (`Cpmd` + `GPWEvaluator::cpmd`; fixed-density KS + electronic Verlet; H₂O NVE \(E_{\mathrm{cons}}\) envelope) | dynamics | `regressions/dynamics/cpmd-water` | ratio **perf_exempt** | 2026-07-25
 - [~] `mpi-gpw-scaling-4rank` | MPI GPW energy scaling | infra | water | MOLOPT | wall ratio | industrial gate; may start `perf_exempt` until domain decomp lands; wave 3 new
 - [~] `mpi-pw-scaling-4rank` | MPI PW k-mesh scaling | infra | Si | NC-UPF | wall ratio | k-point RR ships; multi-rank industrial gate; `perf_exempt` OK; wave 3 new
 - [~] `gpw-analytic-stress` | Analytic GPW Pulay stress | gpw | water | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | roadmap §11 productization after strain-FD ✓; CP2K STRESS_TENSOR ANALYTICAL; **dep:** `gpw-stress-water` ✓; promoted assign wave (claude) 2026-07-25 (wave 2)

@@ -1,13 +1,24 @@
 # CP2K capability loop — handoff
 
-Last land: **2026-07-25 xl-bomd-water** merged to `dev` (WIP `61d235f4`
-rebased, fixed, verified). Prior harness: **2026-07-25 claude wave 1**
-(`chore(cp2k-harness): wave 1 (claude)`).
+Last land (this worktree): **2026-07-25 cpmd-water** on `wf/cpmd-water`
+(not merged). Prior: **2026-07-25 xl-bomd-water** merged to `dev`.
 
 **Workflow order (binding):** Recover incomplete first → Census →
 Assign (`incomplete ≫ pending`) → Worktrees (**spec-first**) → Merge → Harness →
 Tutorial. See `docs/developer/cp2k-method-loop.md` and
 `.grok/workflows/cp2k-method-loop.rhai`.
+
+## cpmd-water land (2026-07-25, branch only)
+
+| Field | Value |
+| ----- | ----- |
+| Status | **on branch `wf/cpmd-water` — do not merge from this note alone** |
+| API | `cpu::gpw::Cpmd`; `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}`; fixed-density `max_iter==0` + `gpw_forces_at_density` |
+| Unit | `test_cpu_gpw_cpmd` **PASS**; XL-BOMD/BOMD/forces A9 **PASS** |
+| Regression | `reg_cpmd-water` **PASS** — worst \|ΔE_cons\|/scale = **2.0e-3** (tol 0.10), wall **~32 s**, prod iters=0 |
+| perf | **perf_exempt** |
+| Roadmap | MD §AIMD **Car–Parrinello → ✓** (UKS/OT/thermostat/RATTLE/2nd-gen still ○) |
+| Spec | live `.claude/specs/cpmd-water/` until merge close |
 
 ## xl-bomd-water land (2026-07-25)
 
