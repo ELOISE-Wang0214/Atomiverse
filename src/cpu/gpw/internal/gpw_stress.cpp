@@ -75,6 +75,8 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d4 = m.d4;
     p.ts = m.ts;
     p.mbd = m.mbd;
+    for (int d = 0; d < 3; ++d)
+        p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
     p.vdw_df = m.vdw_df;
     p.use_ot = m.use_ot;
     p.plus_u = m.plus_u;
@@ -647,7 +649,14 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
         if (cfg.mbd) {
-            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, /*periodic=*/false).energy;
+            const bool mbd_per = cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                                 || cfg.mbd_k_mesh[2] > 0;
+            if (mbd_per && cfg.nonperiodic)
+                throw std::runtime_error(
+                    "gpw_stress MBD: mbd_k_mesh requires a periodic cell");
+            e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
+                                  mbd_per ? cfg.mbd_k_mesh : nullptr)
+                         .energy;
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;
