@@ -73,12 +73,14 @@ class GPWEvaluator : public cpu::GPW {
     std::array<bool, 3> stress_axes = {true, true, true};
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
-    /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs d3bj/d4.
+    /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs d3bj/d4/ts.
     bool d3 = false;
-    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs d3/d4.
+    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs d3/d4/ts.
     bool d3bj = false;
-    /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs d3/d3bj.
+    /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs d3/d3bj/ts.
     bool d4 = false;
+    /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs d3/d3bj/d4.
+    bool ts = false;
     /// @brief Orbital Transformation (OT) SCF minimizer instead of
     ///        diagonalization + DIIS. Same gapped ground state; preferred for
     ///        larger AO bases (avoids dense \(O(n_b^3)\) eigensolve each step).

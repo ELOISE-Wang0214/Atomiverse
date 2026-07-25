@@ -25,6 +25,7 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
@@ -66,6 +67,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
+    p.ts = m.ts;
     p.use_ot = m.use_ot;
     p.plus_u = m.plus_u;
     p.atom_spin_guess = m.atom_spin_guess;
@@ -206,10 +208,11 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (cfg.d4)
         throw std::invalid_argument(
             "gpw_stress analytic: D4 not supported in this foothold");
-    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
+                       + (cfg.ts ? 1 : 0);
     if (n_disp > 1)
         throw std::invalid_argument(
-            "gpw_stress analytic: d3, d3bj, and d4 are mutually exclusive");
+            "gpw_stress analytic: d3, d3bj, d4, and ts are mutually exclusive");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
@@ -321,7 +324,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_xc = xc.e_xc;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj) {
+    if (cfg.d3 || cfg.d3bj || cfg.ts) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -335,12 +338,17 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
-        const D3Result d3 =
-            cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
-                   : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                  kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
-                                  /*cp2k_cn=*/true);
-        e_disp = d3.energy;
+        if (cfg.ts) {
+            constexpr double kRcutTs = 50.0 * kAng2Bohr;
+            e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;
+        } else {
+            const D3Result d3 =
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
+                       : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      /*cp2k_cn=*/true);
+            e_disp = d3.energy;
+        }
     }
 
     // −Tr(W S): Pulay contribution to the Lagrangian (constant −Tr(W S0) drops

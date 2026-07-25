@@ -272,6 +272,7 @@ if(ATV_BUILD_GPW)
     # term, against a finite-difference check. Reference-free.
     atv_add_cpp_test(test_cpu_gpw_dftd3         cpu/gpw/test_cpu_gpw_dftd3.cpp)
     atv_add_cpp_test(test_cpu_gpw_dftd4         cpu/gpw/test_cpu_gpw_dftd4.cpp)
+    atv_add_cpp_test(test_cpu_gpw_ts            cpu/gpw/test_cpu_gpw_ts.cpp)
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/dynamics/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/dynamics/test_pe_ff_constants.cpp)

@@ -16,6 +16,7 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
@@ -55,6 +56,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
+    p.ts = m.ts;
     p.use_ot = m.use_ot;
     return p;
 }
@@ -401,14 +403,13 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!analytic_loc)
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
-    // Grimme DFT-D3 dispersion forces (additive, geometry-only).
-    // D4 energy is supported; analytic D4 forces are out of scope for this
-    // foothold (energy pin only).
-    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0);
+    // Dispersion forces (additive, geometry-only). D4 forces out of scope.
+    const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
+                       + (cfg.ts ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
-            "GPW forces: d3, d3bj, and d4 are mutually exclusive");
-    if (cfg.d3 || cfg.d3bj) {
+            "GPW forces: d3, d3bj, d4, and ts are mutually exclusive");
+    if (cfg.d3 || cfg.d3bj || cfg.ts) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
         for (int i = 0; i < na; ++i) {
@@ -422,14 +423,22 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr =
             2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
-        const D3Result d3 =
-            cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
-                   : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                  kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
-                                  /*cp2k_cn=*/true);
-        for (int i = 0; i < na; ++i)
-            for (int k = 0; k < 3; ++k)
-                forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
+        if (cfg.ts) {
+            constexpr double kRcutTs = 50.0 * kAng2Bohr;
+            const TsResult ts = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs);
+            for (int i = 0; i < na; ++i)
+                for (int k = 0; k < 3; ++k)
+                    forces[i][k] += ts.forces[static_cast<std::size_t>(i)][k];
+        } else {
+            const D3Result d3 =
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
+                       : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      /*cp2k_cn=*/true);
+            for (int i = 0; i < na; ++i)
+                for (int k = 0; k < 3; ++k)
+                    forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
+        }
     }
 
     return forces;
