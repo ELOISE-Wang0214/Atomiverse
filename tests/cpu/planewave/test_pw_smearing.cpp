@@ -76,18 +76,47 @@ TEST(PWSmearing, FindFermiRecoversNelec) {
     EXPECT_LT(static_cast<double>(fill.occ[1]), 1.99);
 }
 
+TEST(PWSmearing, CollinearSpinorFermiRecoversNelec) {
+    // Two spin channels (shared μ, spin_degen=1): 4 up + 4 down spin-orbitals.
+    // Target Ne=8 with equal levels → half-filling, μ near 0.
+    std::vector<AccReal> evals = {AccReal(-2), AccReal(-1), AccReal(0),
+                                  AccReal(1),  AccReal(-2), AccReal(-1),
+                                  AccReal(0),  AccReal(1)};
+    std::vector<AccReal> w(evals.size(), AccReal(1));
+    const AccReal ne = AccReal(8);
+    const AccReal deg = AccReal(0.05);
+    const AccReal mu = find_fermi_level(evals, w, ne, deg,
+                                       SmearKind::fermi_dirac, 1, AccReal(1));
+    auto fill = fill_occupations(evals, w, mu, deg, SmearKind::fermi_dirac, 1,
+                                 AccReal(1));
+    EXPECT_NEAR(static_cast<double>(fill.n_occ), 8.0, 1e-8);
+    // Spin-orbital occupations in [0,1]
+    for (AccReal o : fill.occ) {
+        EXPECT_GE(static_cast<double>(o), -1e-12);
+        EXPECT_LE(static_cast<double>(o), 1.0 + 1e-12);
+    }
+    EXPECT_NEAR(static_cast<double>(smear_f_spinor(AccReal(0), AccReal(0), deg,
+                                                   SmearKind::fermi_dirac)),
+                0.5, 1e-12);
+}
+
 TEST(PWSmearing, PublicMembersNoConfigBag) {
     PW pw;
     pw.smearing = Smearing::fermi_dirac;
     pw.degauss = 0.02;
     pw.mp_order = 1;
     pw.extra_bands = 4;
+    pw.spin_polarized = true;
+    pw.multiplicity = 5;
     EXPECT_EQ(pw.smearing, Smearing::fermi_dirac);
     EXPECT_DOUBLE_EQ(pw.degauss, 0.02);
     EXPECT_EQ(pw.extra_bands, 4);
+    EXPECT_TRUE(pw.spin_polarized);
+    EXPECT_EQ(pw.multiplicity, 5);
     // Result fields default-constructible
     PWResult r;
     EXPECT_DOUBLE_EQ(r.e_fermi, 0.0);
     EXPECT_DOUBLE_EQ(r.n_elec_occ, 0.0);
     EXPECT_DOUBLE_EQ(r.e_entropy, 0.0);
+    EXPECT_DOUBLE_EQ(r.magnetization, 0.0);
 }

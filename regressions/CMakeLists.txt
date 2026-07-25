@@ -105,6 +105,11 @@ if(ATV_BUILD_PW)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw pw-uks-kmesh-fe)
+    atv_add_regression(pw pw-uks-fe-smearing)
+    if(TARGET reg_pw-uks-fe-smearing)
+        target_compile_definitions(reg_pw-uks-fe-smearing PRIVATE
+            ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    endif()
     # MPI k-point round-robin scaling gate: the binary re-launches itself
     # through the configured mpiexec at np=1 and np=4 (parity + wall ratio).
     if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
