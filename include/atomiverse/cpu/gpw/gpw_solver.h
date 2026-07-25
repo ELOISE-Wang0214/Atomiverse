@@ -105,6 +105,12 @@ struct GpwResult {
     /// @brief Band energies per k [Hartree], ascending; one vector per k
     ///        (length = linearly independent basis directions at that k).
     std::vector<std::vector<double>> eps_k;
+    /// @brief Total sampled k-points after mesh / TR fold / explicit list.
+    int n_kpts = 0;
+    /// @brief k-points owned by this MPI rank under round-robin
+    ///        (`ik = rank; ik < n_kpts; ik += nprocs`). Equals `n_kpts` when
+    ///        MPI is inactive or `nprocs == 1`.
+    int n_kpts_local = 0;
     /// @}
     double s2 = 0.0;   ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).

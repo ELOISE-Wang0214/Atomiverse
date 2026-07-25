@@ -137,6 +137,14 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-kpoints-si)
     atv_add_regression(gpw gpw-variable-cell-ice)
     atv_add_regression(gpw periodic-mp2-si)
+    # MPI k-point RR industrial gate (self-launches mpiexec when ATV_USE_MPI).
+    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+        atv_add_regression(gpw mpi-gpw-scaling-4rank)
+        target_compile_definitions(reg_mpi-gpw-scaling-4rank PRIVATE
+            ATV_MPIEXEC="${MPIEXEC_EXECUTABLE}")
+        # Parent self-launches mpiexec; link MPI for the --mpi-worker path.
+        target_link_libraries(reg_mpi-gpw-scaling-4rank PRIVATE MPI::MPI_CXX)
+    endif()
     # remaining green GPW e2e land with their branches
 endif()
 if(ATV_BUILD_HF)

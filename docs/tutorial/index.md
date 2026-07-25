@@ -192,6 +192,12 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | GPW Γ-RKS PBEsol Si₂ (MT) | [gpw-pbesol-si](methods/gpw-pbesol-si.md) | `regressions/gpw/gpw-pbesol-si` |
 | GPW PBE-D4 periodic water dimer | [gpw-d4-water](methods/gpw-d4-water.md) | `regressions/gpw/gpw-d4-water` |
 
+### CP2K industrial infra (MPI k-point foothold)
+
+| Method | Page | Regression |
+|--------|------|------------|
+| MPI GPW k-point RR (n=1 vs n=4) | [mpi-gpw-scaling-4rank](methods/mpi-gpw-scaling-4rank.md) | `regressions/gpw/mpi-gpw-scaling-4rank` (`perf_exempt`) |
+
 ### PySCF campaign (molecular post-HF / response)
 
 | Method | Page | Regression |

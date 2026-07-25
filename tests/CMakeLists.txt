@@ -559,6 +559,12 @@ if(ATV_BUILD_PW)
         atv_add_mpi_run(test_mpi_pw_kpoint_n2 test_mpi_pw_kpoint 2)
         atv_add_mpi_run(test_mpi_pw_kpoint_n4 test_mpi_pw_kpoint 4)
     endif()
+    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE AND ATV_BUILD_GPW)
+        atv_add_mpi_exec(test_mpi_gpw_kpoint mpi/test_gpw_kpoint.cpp)
+        atv_add_mpi_run(test_mpi_gpw_kpoint_n1 test_mpi_gpw_kpoint 1)
+        atv_add_mpi_run(test_mpi_gpw_kpoint_n2 test_mpi_gpw_kpoint 2)
+        atv_add_mpi_run(test_mpi_gpw_kpoint_n4 test_mpi_gpw_kpoint 4)
+    endif()
 endif()
 
 # ── Shared dense linear algebra (cpu/linalg) ──────────────────────────

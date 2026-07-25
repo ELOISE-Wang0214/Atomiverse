@@ -55,6 +55,10 @@
 #include <omp.h>
 #endif
 
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
+
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -63,6 +67,27 @@ namespace {
 
 using ATV::cpu::linalg::RealMatrix;
 using ATV::cpu::linalg::RealVector;
+
+/// @brief MPI layout for k-point round-robin (mirrors `cpu::pw` scf_loop).
+struct GpwMpiLayout {
+    int rank = 0;
+    int nprocs = 1;
+    bool active = false; ///< true only when MPI is built AND nprocs > 1.
+};
+
+GpwMpiLayout gpw_mpi_layout() {
+    GpwMpiLayout layout;
+#ifdef ATV_HAS_MPI
+    int initialized = 0;
+    MPI_Initialized(&initialized);
+    if (initialized) {
+        MPI_Comm_rank(MPI_COMM_WORLD, &layout.rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &layout.nprocs);
+        layout.active = (layout.nprocs > 1);
+    }
+#endif
+    return layout;
+}
 
 // Flatten all atoms' basis functions into one global list.
 std::vector<GridBasisFunction> global_basis(const std::vector<GpwAtom>& atoms) {
@@ -786,6 +811,13 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
 /// complex Bloch matrices S_k/T_k/V_nl^k, the per-k pre-summed basis-on-grid
 /// values, the per-k complex Hermitian diagonalization, and the k-summed
 /// density / Pulay DIIS. Reached only through `run_gpw_scf_impl`.
+///
+/// MPI: when built with `ATV_HAS_MPI` and MPI is initialized with nprocs > 1,
+/// k-points are distributed round-robin over `MPI_COMM_WORLD` (same layout as
+/// `cpu::pw`). Local ranks collocate / diagonalize only their k; density,
+/// kinetic/nonlocal traces, DIIS B-matrix, and residual norms are Allreduced
+/// so every rank holds identical `e_total`. Setup matrices stay replicated
+/// (foothold; not full domain decomp). nprocs==1 is bit-identical to serial.
 static GpwResult run_gpw_scf_kpoints(
     const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const std::vector<GridBasisFunction>& basis,
@@ -797,8 +829,13 @@ static GpwResult run_gpw_scf_kpoints(
     using Cplx = std::complex<double>;
     const int nb = static_cast<int>(basis.size());
     const int nk = static_cast<int>(kpts.size());
+    const GpwMpiLayout layout = gpw_mpi_layout();
+    int n_kpts_local = 0;
+    for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
+        ++n_kpts_local;
 
     // Phased analytic matrices: S_k, T_k in one image sweep; nonlocal KB.
+    // Replicated on every rank for this foothold (setup not parallelized).
     std::vector<CplxMatrix> S_k, T_k;
     internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
                                       kBuildScreen, kpts, S_k, T_k);
@@ -828,7 +865,7 @@ static GpwResult run_gpw_scf_kpoints(
     const internal::KpointBasisGrid kbg =
         internal::build_kpoint_basis_grid(grid, basis, kpts, cfg.eps_default);
 
-    // Cold start: per-k core Hamiltonian T_k + V_nl^k.
+    // Cold start: per-k core Hamiltonian T_k + V_nl^k (local k only under MPI).
     auto density_from = [&](const CplxMatrix& C, int n_occ) {
         const int m = static_cast<int>(C.shape(1));
         (void)m;
@@ -842,7 +879,7 @@ static GpwResult run_gpw_scf_kpoints(
         return P;
     };
     std::vector<CplxMatrix> P_k(static_cast<std::size_t>(nk));
-    for (int ik = 0; ik < nk; ++ik) {
+    for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
         const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
                                + Vnl_k[static_cast<std::size_t>(ik)];
         auto [eps0, C0k] =
@@ -860,6 +897,8 @@ static GpwResult run_gpw_scf_kpoints(
     };
 
     GpwResult res;
+    res.n_kpts = nk;
+    res.n_kpts_local = n_kpts_local;
     std::vector<double> weights(static_cast<std::size_t>(nk));
     for (int ik = 0; ik < nk; ++ik)
         weights[static_cast<std::size_t>(ik)] =
@@ -870,7 +909,21 @@ static GpwResult run_gpw_scf_kpoints(
     double e_prev = 0.0;
     const double gw = grid.weight();
 
-    auto store_k_payload = [&](const std::vector<CplxMatrix>& H_k) {
+    // Rebuild H_k for *all* k from Veff so every rank can emit the full band
+    // payload after a distributed SCF (local H_k alone is incomplete).
+    auto rebuild_all_H = [&](const std::vector<double>& veff) {
+        std::vector<CplxMatrix> full(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const CplxMatrix Vg =
+                internal::integrate_potential_k(kbg, ik, veff);
+            full[static_cast<std::size_t>(ik)] =
+                T_k[static_cast<std::size_t>(ik)]
+                + Vnl_k[static_cast<std::size_t>(ik)] + Vg;
+        }
+        return full;
+    };
+
+    auto store_k_payload = [&](const std::vector<CplxMatrix>& H_full) {
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
@@ -879,7 +932,7 @@ static GpwResult run_gpw_scf_kpoints(
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
             res.k_weights.push_back(kp.weight);
             auto [eps, C] = internal::diagonalize_k(
-                H_k[static_cast<std::size_t>(ik)],
+                H_full[static_cast<std::size_t>(ik)],
                 orth[static_cast<std::size_t>(ik)]);
             (void)C;
             res.eps_k.push_back(std::move(eps));
@@ -887,13 +940,21 @@ static GpwResult run_gpw_scf_kpoints(
     };
 
     std::vector<CplxMatrix> H_k(static_cast<std::size_t>(nk));
+    std::vector<double> last_veff;
     for (int iter = 0; iter < cfg.max_iter; ++iter) {
-        // k-summed density on the grid.
+        // k-summed density on the grid (local k only; Allreduce when multi-rank).
         std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
-        for (int ik = 0; ik < nk; ++ik)
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
             internal::collocate_density_k(
                 kbg, ik, P_k[static_cast<std::size_t>(ik)],
                 weights[static_cast<std::size_t>(ik)], rho);
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, rho.data(),
+                          static_cast<int>(rho.size()), MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
 
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)
@@ -911,9 +972,10 @@ static GpwResult run_gpw_scf_kpoints(
             e_locgrid += rho[g] * v_locsr[g];
         }
         e_locgrid *= gw;
+        last_veff = veff;
 
         double e_kin = 0.0, e_nl = 0.0;
-        for (int ik = 0; ik < nk; ++ik) {
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
             const double wk = weights[static_cast<std::size_t>(ik)];
             const CplxMatrix Vg = internal::integrate_potential_k(kbg, ik, veff);
             H_k[static_cast<std::size_t>(ik)] =
@@ -924,6 +986,14 @@ static GpwResult run_gpw_scf_kpoints(
             e_nl += wk * ctrace(P_k[static_cast<std::size_t>(ik)],
                                 Vnl_k[static_cast<std::size_t>(ik)]);
         }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, &e_nl, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+#endif
         res.e_kinetic = e_kin;
         res.e_nonlocal = 0.0; // folded into e_loc_sr (Γ-path convention)
         res.e_loc_sr = e_nl + e_locgrid;
@@ -934,10 +1004,10 @@ static GpwResult run_gpw_scf_kpoints(
         res.iters = iter + 1;
         res.e_total = e_total;
 
-        // k-resolved commutator residual X^dag (H P S - S P H) X.
+        // k-resolved commutator residual X^dag (H P S - S P H) X (local k).
         std::vector<CplxMatrix> err(static_cast<std::size_t>(nk));
         double err_norm = 0.0;
-        for (int ik = 0; ik < nk; ++ik) {
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
             const CplxMatrix e = internal::k_diis_error(
                 H_k[static_cast<std::size_t>(ik)],
                 P_k[static_cast<std::size_t>(ik)],
@@ -947,18 +1017,27 @@ static GpwResult run_gpw_scf_kpoints(
                 err_norm = std::max(err_norm, std::abs(v));
             err[static_cast<std::size_t>(ik)] = e;
         }
+#ifdef ATV_HAS_MPI
+        if (layout.active) {
+            double global_err = err_norm;
+            MPI_Allreduce(&err_norm, &global_err, 1, MPI_DOUBLE, MPI_MAX,
+                          MPI_COMM_WORLD);
+            err_norm = global_err;
+        }
+#endif
 
-        if (std::getenv("ATV_GPW_TRACE"))
+        if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
             std::fprintf(stderr,
                          "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d)\n",
+                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
                          iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
-                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk);
+                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk,
+                         n_kpts_local, layout.nprocs);
 
         if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
             && err_norm < kDiisErrTolK) {
             res.converged = true;
-            store_k_payload(H_k);
+            store_k_payload(rebuild_all_H(last_veff));
             res.e_disp = e_d3;
             res.e_total += e_d3;
             return res;
@@ -967,7 +1046,7 @@ static GpwResult run_gpw_scf_kpoints(
 
         if (use_diis) // extrapolated KS matrices drive the next density
             H_k = diis.step(H_k, err);
-        for (int ik = 0; ik < nk; ++ik) {
+        for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
             auto [eps, C] = internal::diagonalize_k(
                 H_k[static_cast<std::size_t>(ik)],
                 orth[static_cast<std::size_t>(ik)]);
@@ -982,7 +1061,8 @@ static GpwResult run_gpw_scf_kpoints(
         }
     }
     // Budget exhausted: report the last state (converged stays false).
-    store_k_payload(H_k);
+    if (!last_veff.empty())
+        store_k_payload(rebuild_all_H(last_veff));
     res.e_disp = e_d3;
     res.e_total += e_d3;
     return res;
