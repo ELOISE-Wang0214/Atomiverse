@@ -68,6 +68,16 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 4 (parent `dev` @ `decf917f`):** recover
+  clean (incomplete=0, CP2K specs=0, `wf/*`=0, builds=none). Prior pending
+  residual **0** (harness emptied list — not capability-closed). **+9**
+  residuals → pending **9** (`gpw-kpoint-uks-stress`, `periodic-gw-kpoints`,
+  `gpw-vdw-df2-ice`, `gpw-rvv10-ice`, `gpw-mbd-periodic`, `pw-spin-gga`,
+  `gpw-uks-blyp`, `periodic-rpa-finite-q`, `gpw-dftu-stress`); in_progress
+  **0**; blocked **5**. No ○/✓ table flips; §8/§10 residual prose + index
+  GPW residual line refreshed. Next: Assign (prefer surface-disjoint:
+  stress/DFT+U ∥ nonlocal (one VdW slug/wave) ∥ multi-k GW/RPA careful
+  surface share; PW spin-GGA ∥ GPW UKS BLYP free).
 - **2026-07-25 harness wave 3 (parent `dev` @ `0a642122`):** 8 merged →
   done: `gpw-rpbe-water`, `gpw-kpoint-uks-forces`, `gpw-uks-stress`,
   `gpw-vdw-df-ice`, `gpw-mbd-hirshfeld`, `periodic-rpa-kpoints`,

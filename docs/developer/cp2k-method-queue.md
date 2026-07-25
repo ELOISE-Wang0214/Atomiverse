@@ -202,9 +202,42 @@ Hirshfeld-scaled MBD/TS prose; multi-k dRPA residual closed; Γ-UKS
 stress productized (multi-k UKS stress residual); multi-k UKS forces
 productized; incommensurate DFPT productized. **Blocked = 5** unchanged.
 
+**GapCensus wave 4 2026-07-26 (parent `dev` @ `decf917f`):** recover
+clean — incomplete_count=**0**; `## in_progress` empty; open CP2K/GPW/PW
+specs=**0** (PySCF deferred only: `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`);
+unmerged `wf/*`=**0**; isolation worktrees=**0**; leftover builds=**none**.
+Tree re-diff vs `docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD +
+`tools/cp2k_oracle` + `include/atomiverse/cpu/{gpw,planewave}`: prior
+pending residual **0** (harness emptied list — not capability-closed).
+**True residuals re-opened (9)** with offline CP2K / literature twins:
+`gpw-kpoint-uks-stress` (throws multi-k UKS; after Γ-UKS + k-RKS stress ✓),
+`periodic-gw-kpoints` (Γ G0W0 foothold ≠ multi-k; `g0w0` throws nk>1),
+`gpw-vdw-df2-ice` / `gpw-rvv10-ice` (§8 vdW-DF2 / rVV10 ○ after DRSLL ✓),
+`gpw-mbd-periodic` (free-atom MBD ✓; periodic Ewald throw),
+`pw-spin-gga` (PW `step_spin` σ=0 LSDA-limit; true collinear spin-GGA
+deferred), `gpw-uks-blyp` (UKS spin-GGA wrappers only PBE/PBEsol; RKS
+BLYP ✓), `periodic-rpa-finite-q` (k-diagonal multi-k dRPA ✓; full
+q-resolved dielectric follow-on), `gpw-dftu-stress` (PLUS_U energy ✓;
+stress throws DFT+U). **Not added:** BP86/B97/OLYP/HCTH (molecular
+PySCF path); XDM (hold behind rVV10/vdW-DF2 product order — weaker stock
+CP2K twin); shear/off-diagonal stress; OT-UKS; CPMD RATTLE; GPW metallic
+smearing; UMP2/UGW/URPA; GAPW/PAW/periodic hybrid/meta-GGA (blocked);
+molecular post-HF / classical MW / CUDA ports (other loops). Roadmap:
+**no ○/✓ table flips** (nothing new merged since harness wave 3); §10/§8
+open-residual prose + index Cell/GPW residual line refreshed to match
+queue. **Pending = 9**; **in_progress = 0**; **blocked = 5**.
+
 ## pending
 
-_(empty after harness wave 3 — GapCensus must refill from tree/roadmap ○)_
+- [ ] `gpw-kpoint-uks-stress` | Multi-k UKS analytic cell stress | gpw | O₂ (tiny MP mesh) | DZVP-MOLOPT-GTH | Voigt stress Ha/Bohr³ | roadmap residual after Γ-UKS stress ✓ (`reg_gpw-uks-stress`) + k-RKS stress ✓ + k-UKS forces ✓; `gpw_stress` throws multi-k UKS; CP2K NUMERICAL stress twin
+- [ ] `periodic-gw-kpoints` | Multi-k spectral G0W0 residual | gpw | Si (tiny k-mesh) | MOLOPT+GTH | QP gaps eV | Γ G0W0 product ✓ (`reg_periodic-gw-si`); `GpwDft::g0w0` throws multi-k SCF — foothold ≠ multi-k capability; CP2K GW + KPOINTS; **dep:** `periodic-gw-si` ✓ + `periodic-rpa-kpoints` ✓
+- [ ] `gpw-vdw-df2-ice` | Nonlocal vdW-DF2 (LMKLL) correlation | gpw | water dimer / ice | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 vdW-DF2 ○ after DRSLL ✓ (`reg_gpw-vdw-df-ice`); CP2K `VDW_POTENTIAL NON_LOCAL TYPE LMKLL`; shares nonlocal kernel surface with DRSLL
+- [ ] `gpw-rvv10-ice` | Nonlocal rVV10 correlation | gpw | water dimer | DZVP-MOLOPT-GTH | E_disp Ha | roadmap §8 VV10/rVV10 ○ after vdW-DF ✓; CP2K `NON_LOCAL TYPE RVV10` (or VV10); prefer after / surface-disjoint from `gpw-vdw-df2-ice`
+- [ ] `gpw-mbd-periodic` | Periodic Ewald + k-mesh MBD@rsSCS | gpw | ice Ih (periodic) | DZVP-MOLOPT-GTH | E_disp Ha | free-atom MBD ✓ (`reg_gpw-mbd-ice` / Hirshfeld ✓); `mbd_dispersion` throws periodic Ewald — product path residual; libMBD / CP2K periodic twin
+- [ ] `pw-spin-gga` | True collinear spin-GGA on plane-wave grid | pw | O₂ / Fe tiny | NC-UPF | e_tot / mag | `XCBuilder::step_spin` is σ=0 LSDA-limit PBE per channel (true spin-GGA deferred); closed-shell PW GGA ✓ (`reg_pw-pbe-gga-si`); dual-gate vs GPW UKS PBE or offline pin
+- [ ] `gpw-uks-blyp` | Γ-UKS BLYP spin-GGA | gpw | O₂ | DZVP-MOLOPT-GTH | e_tot / mag | UKS spin-GGA wrappers only PBE/PBEsol (`xc_grid_gga_spin`); RKS BLYP ✓ (`reg_gpw-blyp-water`); extend spin path + solver; CP2K UKS BLYP twin
+- [ ] `periodic-rpa-finite-q` | Finite-q inter-k dRPA dielectric | gpw | Si (tiny mesh) | MOLOPT+GTH | E_c Ha | multi-k **k-diagonal** dRPA ✓ (`reg_periodic-rpa-kpoints`); full q-resolved inter-k coupling is follow-on in `mp2_kernels`; CP2K RPA twin; **dep:** `periodic-rpa-kpoints` ✓
+- [ ] `gpw-dftu-stress` | Analytic stress with Dudarev DFT+U | gpw | NiO tiny | DZVP-MOLOPT-GTH | stress Ha/Bohr³ | PLUS_U energy ✓ (`reg_gpw-dftu-nio`); `gpw_stress` throws DFT+U foothold; CP2K PLUS_U + STRESS_TENSOR twin; **dep:** `gpw-dftu-nio` ✓ + `gpw-analytic-stress` ✓
 
 ## in_progress
 

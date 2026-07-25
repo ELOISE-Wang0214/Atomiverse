@@ -41,14 +41,27 @@
 | Multi-k dRPA residual | `dft.md` §10 prose | closed (`reg_periodic-rpa-kpoints`) |
 | Multi-k UKS forces / Γ-UKS stress / incommensurate DFPT | prose + index | productized; multi-k UKS stress residual |
 
-### Pending residual (next Assign / GapCensus)
+### Pending residual (GapCensus wave 4 — 2026-07-26 @ `decf917f`)
 
-_(none from prior census — GapCensus must re-diff tree vs roadmap ○ and refill
-`## pending`.)_ Known tree residuals (not yet queue rows): multi-k UKS stress,
-multi-k G0W0, vdW-DF2/XDM/VV10, BP86/B97/… molecular GGA, blocked hybrid/GAPW/PAW/meta-GGA/CUDA-GPW.
+**Pending = 9** (refilled; see `cp2k-method-queue.md` `## pending`):
+
+| Slug | Residual |
+| ---- | -------- |
+| `gpw-kpoint-uks-stress` | multi-k UKS analytic stress |
+| `periodic-gw-kpoints` | multi-k G0W0 after Γ product |
+| `gpw-vdw-df2-ice` | vdW-DF2 LMKLL |
+| `gpw-rvv10-ice` | rVV10 nonlocal |
+| `gpw-mbd-periodic` | periodic Ewald MBD |
+| `pw-spin-gga` | PW true collinear spin-GGA |
+| `gpw-uks-blyp` | Γ-UKS BLYP spin-GGA |
+| `periodic-rpa-finite-q` | finite-q inter-k dRPA |
+| `gpw-dftu-stress` | PLUS_U + analytic stress |
+
+**Not queued:** XDM (hold behind nonlocal order); BP86/… molecular GGA
+(PySCF); blocked hybrid/GAPW/PAW/meta-GGA/CUDA-GPW.
 
 Do **not** staff PySCF deferred specs. No push from parent.
-**Queue not exhausted** — next wave starts with GapCensus.
+**Queue not exhausted** — next is Assign from pending.
 
 ---
 

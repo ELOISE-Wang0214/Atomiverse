@@ -251,8 +251,10 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). Open residuals: multi-k UKS stress,
-  multi-k G0W0, vdW-DF2/XDM/VV10 (see `cp2k-method-queue.md` after GapCensus).
+  `reg_gpw-variable-cell-molopt`). Open residuals (GapCensus wave 4 queue):
+  multi-k UKS stress, multi-k G0W0, vdW-DF2/rVV10, periodic Ewald MBD,
+  PW true spin-GGA, Γ-UKS BLYP, finite-q dRPA, DFT+U stress (see
+  `cp2k-method-queue.md`).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient

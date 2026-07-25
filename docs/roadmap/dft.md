@@ -16,8 +16,10 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, multi-k G0W0 / multi-k UKS
-stress, vdW-DF2; Gaussian k-point RKS/UKS, Γ + finite-q + incommensurate DFPT,
-multi-k MP2/RPA, Γ G0W0, RPBE / vdW-DF DRSLL already ship).
+stress, vdW-DF2 / rVV10, periodic Ewald MBD, PW true spin-GGA, finite-q RPA
+dielectric, DFT+U stress; Gaussian k-point RKS/UKS, Γ + finite-q +
+incommensurate DFPT, multi-k MP2/RPA, Γ G0W0, RPBE / vdW-DF DRSLL already
+ship).
 
 ## 1. Kohn–Sham Methods
 
@@ -211,7 +213,8 @@ dispersion ships on GPW (`GpwDft::mbd` / `GPWEvaluator::mbd`; libMBD Fortran
 pin; `reg_gpw-mbd-ice`). **Hirshfeld density volumes** (density-scaled
 TS/MBD via `GpwDft::hirshfeld`) ship on GPW (`reg_gpw-mbd-hirshfeld`).
 **vdW-DF** (DRSLL nonlocal correlation; `GpwDft::vdw_df`) ships on GPW
-(`reg_gpw-vdw-df-ice`). Periodic Ewald MBD, vdW-DF2, XDM, and VV10 remain ○.
+(`reg_gpw-vdw-df-ice`). **Periodic Ewald MBD**, **vdW-DF2 (LMKLL)**, **XDM**,
+and **VV10 / rVV10** remain ○ (queued on the CP2K loop after DRSLL product).
 
 ## 9. Composite DFT Methods
 
@@ -235,10 +238,12 @@ Two periodic DFT engines exist, with disjoint strengths:
   **Cell stress** is **Nielsen–Martin analytic** (`pw_stress` → `kStress`;
   multi-SCF strain-FD oracle `pw_stress_fd`; `reg_pw-analytic-stress-si`).
   XC is **true GGA PBE** on the FFT grid (density gradients enter Vxc; default
-  `xc = PBE`) or LSDA; **collinear spin** (`spin_polarized`) including
-  **k-mesh UKS** (`reg_pw-uks-kmesh-fe`), **metallic smearing**
+  `xc = PBE`) or LSDA for **closed-shell**; **collinear spin**
+  (`spin_polarized`) currently uses the **σ=0 LSDA-limit** of PBE per channel
+  (`XCBuilder::step_spin` — true spin-GGA residual / `pw-spin-gga` queue),
+  including **k-mesh UKS** (`reg_pw-uks-kmesh-fe`) and **metallic smearing**
   (Fermi–Dirac / Methfessel–Paxton; Al pin + **bulk Fe UKS+smear**
-  `reg_pw-uks-fe-smearing`) ship on CPU. **Bands / DOS** post-process
+  `reg_pw-uks-fe-smearing`) on CPU. **Bands / DOS** post-process
   (`cpu::pw::Bands` / `Dos`; `reg_bands-dos-si`). **PW CELL_OPT**
   (`IsotropicCellRelax` + intensive `kStress`; `reg_pw-variable-cell-si`).
   CUDA path remains LDA / spin-unpolarized.
@@ -256,8 +261,10 @@ Two periodic DFT engines exist, with disjoint strengths:
   **PBE-GGA** `reg_gpw-uks-pbe`; `n_alpha`/`n_beta`), plus **Monkhorst–Pack
   k-point RKS** and **k-point UKS** (`k_mesh` / explicit `k_points`; phased
   lattice sums, KB nonlocal, per-k DIIS; `reg_gpw-kpoints-si` /
-  `reg_gpw-kpoints-uks`). **Open GPW follow-ons** (residual): multi-k UKS
-  stress, multi-k G0W0, vdW-DF2 / XDM / VV10. CPU only.
+  `reg_gpw-kpoints-uks`). **Open GPW follow-ons** (residual; see
+  `cp2k-method-queue.md` GapCensus wave 4): multi-k UKS stress, multi-k
+  G0W0, vdW-DF2 / rVV10, periodic Ewald MBD, Γ-UKS BLYP spin-GGA, finite-q
+  inter-k dRPA dielectric, DFT+U stress. CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -313,7 +320,7 @@ Which engine backs which ✓:
   plasmon formula; `reg_periodic-rpa-si`) **and multi-k k-diagonal dRPA**
   (`reg_periodic-rpa-kpoints`). **Periodic GW** is **Γ-point spectral
   G0W0@KS** product (`GpwDft::g0w0`; `reg_periodic-gw-si`); multi-k G0W0
-  remains a residual.
+  remains a residual (`periodic-gw-kpoints` queue).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
