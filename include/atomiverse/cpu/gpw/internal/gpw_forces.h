@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/gpw_forces.h
-/// @brief Analytic ionic forces for the closed-shell GPW SCF.
+/// @brief Analytic ionic forces for the closed-shell GPW SCF (Γ and k-points).
 ///
 /// Replaces the 6N+1-SCF finite-difference oracle (`gpw_forces_fd`) with a
 /// single SCF solve followed by one gradient pass. At the SCF stationary point
@@ -17,6 +17,10 @@
 /// translational invariance (∂_C = −(∂_μ + ∂_ν)). The grid term holds the
 /// converged effective potential V_eff fixed (Hellmann–Feynman for the density).
 /// V_es held fixed likewise for the moving Gaussian ionic core n_c^A.
+///
+/// On a Monkhorst–Pack / explicit k mesh the same assembly is k-summed with
+/// Bloch-phased complex matrices and complex χ^k (see `internal/kpoints.h`);
+/// `GpwResult::C_occ_k` supplies the occupied MOs used to rebuild P_k / W_k.
 ///
 /// Reference: VandeVondele, Krack, Mohamed, Parrinello, Chassaing, Hutter,
 /// Comput. Phys. Commun. 167, 103 (2005) (Quickstep GPW forces).

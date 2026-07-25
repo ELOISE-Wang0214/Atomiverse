@@ -14,10 +14,12 @@
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
 /// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD
 /// or PBE/PBEsol GGA). Periodic neutral electrostatics via the GTH Gaussian
-/// core charge. k-point UKS and analytic k-point forces are follow-on.
+/// core charge. Analytic forces cover Γ and the k-point RKS path
+/// (`gpw_forces_analytic`). k-point UKS is follow-on.
 #pragma once
 
 #include <array>
+#include <complex>
 #include <string>
 #include <vector>
 
@@ -113,6 +115,11 @@ struct GpwResult {
     ///        (`ik = rank; ik < n_kpts; ik += nprocs`). Equals `n_kpts` when
     ///        MPI is inactive or `nprocs == 1`.
     int n_kpts_local = 0;
+    /// @brief Occupied MO coefficients per k (k-path only): each entry is a
+    ///        row-major complex matrix of shape `nb × n_occ` (columns =
+    ///        occupied orbitals). Empty for Γ / UKS. Used by
+    ///        `gpw_forces_analytic` to rebuild \(P_k\) / \(W_k\).
+    std::vector<std::vector<std::complex<double>>> C_occ_k;
     /// @}
     double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).

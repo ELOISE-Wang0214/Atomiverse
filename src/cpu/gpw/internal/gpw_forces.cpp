@@ -6,11 +6,16 @@
 /// term collocates the basis and its center-derivatives with the same
 /// multi-image window as the SCF density. Reduces to the isolated path when the
 /// cell is non-periodic (image counts collapse to 0).
+///
+/// The k-point RKS path generalises the same assembly with Bloch-phased
+/// complex S_k / T_k / V_nl and pre-summed complex χ^k on the grid
+/// (see internal/kpoints.h).
 
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 
 #include <array>
 #include <cmath>
+#include <complex>
 #include <stdexcept>
 #include <vector>
 
@@ -18,6 +23,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
@@ -58,7 +64,21 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d4 = m.d4;
     p.ts = m.ts;
     p.use_ot = m.use_ot;
+    for (int d = 0; d < 3; ++d)
+        p.k_mesh[d] = m.k_mesh[d];
+    p.k_time_reversal = m.k_time_reversal;
+    p.k_points = m.k_points;
+    p.k_point_weights = m.k_point_weights;
+    p.plus_u = m.plus_u;
+    p.atom_spin_guess = m.atom_spin_guess;
+    p.n_alpha = m.n_alpha;
+    p.n_beta = m.n_beta;
     return p;
+}
+
+bool uses_kpath(const GpwDft& cfg) {
+    return !cfg.k_points.empty() || cfg.k_mesh[0] != 1 || cfg.k_mesh[1] != 1
+           || cfg.k_mesh[2] != 1;
 }
 } // namespace
 
@@ -447,6 +467,399 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     return forces;
 }
 
+// ── k-point RKS force assembly ─────────────────────────────────────────────
+
+using Cplx = std::complex<double>;
+using internal::CplxMatrix;
+using internal::KPoint;
+
+constexpr double kTwoPiF = 6.283185307179586476925286766559;
+
+// Phased ⟨a|b⟩_k and ⟨a|T|b⟩_k for one pair (ket shifted by lattice images).
+void pair_ST_k(const GridBasisFunction& a, const GridBasisFunction& b,
+               const double L[3], const int m[3], double reach,
+               const std::vector<KPoint>& kpts, std::vector<Cplx>& s_out,
+               std::vector<Cplx>& t_out) {
+    const int nk = static_cast<int>(kpts.size());
+    s_out.assign(static_cast<std::size_t>(nk), Cplx(0, 0));
+    t_out.assign(static_cast<std::size_t>(nk), Cplx(0, 0));
+    if (a.empty() || b.empty())
+        return;
+    const double reach2 = reach * reach;
+    const double* ac = a[0].center;
+    const double* bc = b[0].center;
+    for (int tx = -m[0]; tx <= m[0]; ++tx)
+        for (int ty = -m[1]; ty <= m[1]; ++ty)
+            for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                const double dx = ac[0] - bc[0] - T[0];
+                const double dy = ac[1] - bc[1] - T[1];
+                const double dz = ac[2] - bc[2] - T[2];
+                if (dx * dx + dy * dy + dz * dz > reach2)
+                    continue;
+                double s_im = 0.0, t_im = 0.0;
+                for (const auto& pa : a)
+                    for (const auto& pb : b) {
+                        GridPrimitive q = pb;
+                        q.center[0] += T[0];
+                        q.center[1] += T[1];
+                        q.center[2] += T[2];
+                        s_im += prim_overlap(pa, q);
+                        t_im += prim_kinetic(pa, q);
+                    }
+                for (int ik = 0; ik < nk; ++ik) {
+                    const auto& kp = kpts[static_cast<std::size_t>(ik)];
+                    const double arg = kTwoPiF
+                                       * (kp.frac[0] * tx + kp.frac[1] * ty
+                                          + kp.frac[2] * tz);
+                    const Cplx phase(std::cos(arg), std::sin(arg));
+                    s_out[static_cast<std::size_t>(ik)] += phase * s_im;
+                    t_out[static_cast<std::size_t>(ik)] += phase * t_im;
+                }
+            }
+}
+
+// Phased ⟨a|V_nl|b⟩_k over a subset of GTH centers (no local SR — on grid).
+void pair_Vnl_k(const GridBasisFunction& a, const GridBasisFunction& b,
+                const std::vector<const GpwAtom*>& centers, const double L[3],
+                const int m[3], double reach, const std::vector<KPoint>& kpts,
+                std::vector<Cplx>& v_out) {
+    const int nk = static_cast<int>(kpts.size());
+    v_out.assign(static_cast<std::size_t>(nk), Cplx(0, 0));
+    if (a.empty() || b.empty() || centers.empty())
+        return;
+    const double reach2 = reach * reach;
+    const double* ac = a[0].center;
+    const double* bc = b[0].center;
+    const bool per = m[0] || m[1] || m[2];
+    for (int tx = -m[0]; tx <= m[0]; ++tx)
+        for (int ty = -m[1]; ty <= m[1]; ++ty)
+            for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                const double dx = ac[0] - bc[0] - T[0];
+                const double dy = ac[1] - bc[1] - T[1];
+                const double dz = ac[2] - bc[2] - T[2];
+                if (dx * dx + dy * dy + dz * dz > reach2)
+                    continue;
+                double v_im = 0.0;
+                for (const auto& p : a) {
+                    const Prim pp = to_prim(p);
+                    for (const auto& q0 : b) {
+                        const double cc = p.coeff * q0.coeff;
+                        if (cc == 0.0)
+                            continue;
+                        GridPrimitive q = q0;
+                        q.center[0] += T[0];
+                        q.center[1] += T[1];
+                        q.center[2] += T[2];
+                        const double aa = p.alpha, bb = q.alpha, g = aa + bb;
+                        double P[3];
+                        for (int d = 0; d < 3; ++d)
+                            P[d] = (aa * p.center[d] + bb * q.center[d]) / g;
+                        const Prim qq = to_prim(q);
+                        for (const GpwAtom* Cp : centers) {
+                            const GpwAtom& C = *Cp;
+                            double apos[3];
+                            for (int d = 0; d < 3; ++d) {
+                                apos[d] = C.pos[d];
+                                if (per && L[d] > 0.0)
+                                    apos[d] -= L[d]
+                                               * std::nearbyint(
+                                                   (C.pos[d] - P[d]) / L[d]);
+                            }
+                            for (const auto& ch : C.nonlocal)
+                                v_im += cc * gth_nonlocal(pp, qq, apos, ch);
+                        }
+                    }
+                }
+                for (int ik = 0; ik < nk; ++ik) {
+                    const auto& kp = kpts[static_cast<std::size_t>(ik)];
+                    const double arg = kTwoPiF
+                                       * (kp.frac[0] * tx + kp.frac[1] * ty
+                                          + kp.frac[2] * tz);
+                    const Cplx phase(std::cos(arg), std::sin(arg));
+                    v_out[static_cast<std::size_t>(ik)] += phase * v_im;
+                }
+            }
+}
+
+/// Analytic ionic forces after a converged k-point RKS SCF (uses C_occ_k).
+std::vector<std::array<double, 3>>
+assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
+                            const GpwDft& cfg, const GpwResult& scf) {
+    const std::vector<GridBasisFunction> basis = global_basis(atoms);
+    const int nb = static_cast<int>(basis.size());
+    const int na = static_cast<int>(atoms.size());
+    const int n_occ = cfg.n_occ;
+    const int nk = scf.n_kpts;
+    if (nk < 1 || static_cast<int>(scf.C_occ_k.size()) != nk
+        || static_cast<int>(scf.eps_k.size()) != nk
+        || static_cast<int>(scf.k_weights.size()) != nk)
+        throw std::runtime_error(
+            "gpw_forces kpoints: missing C_occ_k / eps_k payload from SCF");
+    if (cfg.nonperiodic)
+        throw std::runtime_error(
+            "gpw_forces kpoints: nonperiodic not supported on k-path");
+    if (!cfg.local_pp_on_grid)
+        throw std::runtime_error(
+            "gpw_forces kpoints: requires local_pp_on_grid (energy foothold)");
+
+    // Rebuild k list from the SCF payload (frac + weight).
+    std::vector<KPoint> kpts(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        kpts[static_cast<std::size_t>(ik)].frac[0] =
+            scf.k_frac[static_cast<std::size_t>(ik)][0];
+        kpts[static_cast<std::size_t>(ik)].frac[1] =
+            scf.k_frac[static_cast<std::size_t>(ik)][1];
+        kpts[static_cast<std::size_t>(ik)].frac[2] =
+            scf.k_frac[static_cast<std::size_t>(ik)][2];
+        kpts[static_cast<std::size_t>(ik)].weight =
+            scf.k_weights[static_cast<std::size_t>(ik)];
+    }
+
+    // P_k and W_k from occupied MOs.
+    std::vector<CplxMatrix> P_k(static_cast<std::size_t>(nk));
+    std::vector<CplxMatrix> W_k(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        const auto& Cflat = scf.C_occ_k[static_cast<std::size_t>(ik)];
+        const auto& eps = scf.eps_k[static_cast<std::size_t>(ik)];
+        if (static_cast<int>(Cflat.size()) != nb * n_occ)
+            throw std::runtime_error(
+                "gpw_forces kpoints: C_occ_k shape mismatch at k #"
+                + std::to_string(ik));
+        if (static_cast<int>(eps.size()) < n_occ)
+            throw std::runtime_error(
+                "gpw_forces kpoints: eps_k shorter than n_occ at k #"
+                + std::to_string(ik));
+        CplxMatrix P = xt::zeros<Cplx>({nb, nb});
+        CplxMatrix W = xt::zeros<Cplx>({nb, nb});
+        for (int o = 0; o < n_occ; ++o) {
+            const double weps = 2.0 * eps[static_cast<std::size_t>(o)];
+            for (int mu = 0; mu < nb; ++mu) {
+                const Cplx cmu =
+                    Cflat[static_cast<std::size_t>(mu) * n_occ
+                          + static_cast<std::size_t>(o)];
+                for (int nu = 0; nu < nb; ++nu) {
+                    const Cplx cnu =
+                        Cflat[static_cast<std::size_t>(nu) * n_occ
+                              + static_cast<std::size_t>(o)];
+                    // P = 2 C C† ; W = 2 ε C C†
+                    P(mu, nu) += 2.0 * cmu * std::conj(cnu);
+                    W(mu, nu) += weps * cmu * std::conj(cnu);
+                }
+            }
+        }
+        P_k[static_cast<std::size_t>(ik)] = std::move(P);
+        W_k[static_cast<std::size_t>(ik)] = std::move(W);
+    }
+
+    std::vector<int> atom_off(na + 1, 0);
+    for (int a = 0; a < na; ++a)
+        atom_off[a + 1] = atom_off[a] + static_cast<int>(atoms[a].basis.size());
+    std::vector<int> owner(nb, 0);
+    for (int a = 0; a < na; ++a)
+        for (int u = atom_off[a]; u < atom_off[a + 1]; ++u)
+            owner[u] = a;
+
+    const double eps = cfg.eps_default;
+    std::vector<double> radii(static_cast<std::size_t>(nb));
+    double rmax = 0.0;
+    for (int u = 0; u < nb; ++u) {
+        radii[static_cast<std::size_t>(u)] =
+            basis_function_radius(basis[u], eps);
+        rmax = std::max(rmax, radii[static_cast<std::size_t>(u)]);
+    }
+    int mimg[3];
+    pair_image_counts(cfg.cell, /*periodic=*/true, 2.0 * rmax, mimg);
+
+    std::vector<std::array<GridBasisFunction, 3>> dphi(nb);
+    std::vector<std::array<double, 3>> drad(nb);
+    for (int u = 0; u < nb; ++u)
+        for (int k = 0; k < 3; ++k) {
+            dphi[u][k] = deriv_bf(basis[u], k);
+            drad[u][k] = basis_function_radius(dphi[u][k], eps);
+        }
+
+    UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
+    const long ng = grid.npts();
+    const double wgt = grid.weight();
+    const internal::KpointBasisGrid kbg =
+        internal::build_kpoint_basis_grid(grid, basis, kpts, eps);
+
+    // Ionic cores + density + V_eff (same functional as the SCF).
+    std::vector<double> n_ion(static_cast<std::size_t>(ng), 0.0);
+    for (long g = 0; g < ng; ++g) {
+        double r[3];
+        grid.point(g, r);
+        double s = 0.0;
+        for (const auto& a : atoms) {
+            const double s2 = a.rloc * a.rloc;
+            const double norm = a.z_val * std::pow(2.0 * M_PI * s2, -1.5);
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1],
+                   dz = r[2] - a.pos[2];
+            dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
+            dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
+            dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
+            s += norm * std::exp(-(dx * dx + dy * dy + dz * dz) / (2.0 * s2));
+        }
+        n_ion[static_cast<std::size_t>(g)] = s;
+    }
+    std::vector<double> rho(static_cast<std::size_t>(ng), 0.0);
+    for (int ik = 0; ik < nk; ++ik)
+        internal::collocate_density_k(kbg, ik, P_k[static_cast<std::size_t>(ik)],
+                                      kpts[static_cast<std::size_t>(ik)].weight,
+                                      rho);
+    std::vector<double> n_tot(rho.size());
+    for (std::size_t g = 0; g < rho.size(); ++g)
+        n_tot[g] = rho[g] - n_ion[g];
+    const PoissonResult es = solve_poisson(grid, n_tot);
+    const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
+                                              : (cfg.xc == XcKind::PBEsol
+                                                     ? xc_grid_pbesol(grid, rho)
+                                                     : xc_grid_pade(grid, rho));
+    const std::vector<double> v_locsr = local_pp_grid(grid, atoms, true);
+    std::vector<double> veff(rho.size());
+    for (std::size_t g = 0; g < rho.size(); ++g)
+        veff[g] = es.v_r[g] + xc.vxc_r[g] + v_locsr[g];
+    const std::vector<double>& v_es = es.v_r;
+
+    // Derivative basis on grid (flat u*3+k).
+    std::vector<GridBasisFunction> dflat(static_cast<std::size_t>(nb) * 3);
+    for (int u = 0; u < nb; ++u)
+        for (int k = 0; k < 3; ++k)
+            dflat[static_cast<std::size_t>(u) * 3 + k] = dphi[u][k];
+    const internal::KpointBasisGrid kbgd =
+        internal::build_kpoint_basis_grid(grid, dflat, kpts, eps);
+
+    std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
+
+    // ── AO Pulay: Σ_k w_k 2 Re[ W_μν* ⟨dμφ|ν⟩_k − P_μν* ⟨dμφ|T+Vnl|ν⟩_k ] ──
+    std::vector<Cplx> s_k, t_k, v_k, vA_k;
+    for (int A = 0; A < na; ++A) {
+        for (int k = 0; k < 3; ++k) {
+            double f = 0.0;
+            std::vector<const GpwAtom*> all(static_cast<std::size_t>(na));
+            for (int a = 0; a < na; ++a)
+                all[static_cast<std::size_t>(a)] = &atoms[a];
+            const std::vector<const GpwAtom*> onlyA = {&atoms[A]};
+
+            for (int mu = atom_off[A]; mu < atom_off[A + 1]; ++mu) {
+                const GridBasisFunction& dmu = dphi[mu][k];
+                const double rdmu = drad[mu][k];
+                for (int nu = 0; nu < nb; ++nu) {
+                    const double reach =
+                        rdmu + radii[static_cast<std::size_t>(nu)];
+                    pair_ST_k(dmu, basis[nu], cfg.cell, mimg, reach, kpts, s_k,
+                              t_k);
+                    pair_Vnl_k(dmu, basis[nu], all, cfg.cell, mimg, reach, kpts,
+                               v_k);
+                    for (int ik = 0; ik < nk; ++ik) {
+                        const double wk =
+                            kpts[static_cast<std::size_t>(ik)].weight;
+                        const Cplx Wmn =
+                            W_k[static_cast<std::size_t>(ik)](mu, nu);
+                        const Cplx Pmn =
+                            P_k[static_cast<std::size_t>(ik)](mu, nu);
+                        const Cplx s = s_k[static_cast<std::size_t>(ik)];
+                        const Cplx t = t_k[static_cast<std::size_t>(ik)];
+                        const Cplx v = v_k[static_cast<std::size_t>(ik)];
+                        // 2 Re(W† s) with Hermitian W → 2 Re(conj(W)*s)
+                        f += 2.0 * wk * std::real(std::conj(Wmn) * s);
+                        f -= 2.0 * wk * std::real(std::conj(Pmn) * t);
+                        f -= 2.0 * wk * std::real(std::conj(Pmn) * v);
+                    }
+                }
+            }
+            // Operator-center TI for nonlocal on A: +2 Re P† ⟨dμφ|V_A|ν⟩
+            for (int mu = 0; mu < nb; ++mu) {
+                const GridBasisFunction& dmu = dphi[mu][k];
+                const double rdmu = drad[mu][k];
+                for (int nu = 0; nu < nb; ++nu) {
+                    const double reach =
+                        rdmu + radii[static_cast<std::size_t>(nu)];
+                    pair_Vnl_k(dmu, basis[nu], onlyA, cfg.cell, mimg, reach,
+                               kpts, vA_k);
+                    for (int ik = 0; ik < nk; ++ik) {
+                        const double wk =
+                            kpts[static_cast<std::size_t>(ik)].weight;
+                        const Cplx Pmn =
+                            P_k[static_cast<std::size_t>(ik)](mu, nu);
+                        f += 2.0 * wk
+                             * std::real(std::conj(Pmn)
+                                         * vA_k[static_cast<std::size_t>(ik)]);
+                    }
+                }
+            }
+            forces[A][k] = f;
+        }
+    }
+
+    // ── Grid term: −2 Σ_k w_k Σ_g w Veff Re[ (∂χ_μ) (P χ†)_μ ] ────────────
+    // kbgd.chi[ik][g * (nb*3) + (u*3+k)] = ∂χ_u^k / ∂R_k at g.
+    const int nbd = nb * 3;
+    for (int ik = 0; ik < nk; ++ik) {
+        const double wk = kpts[static_cast<std::size_t>(ik)].weight;
+        const auto& chi = kbg.chi[static_cast<std::size_t>(ik)];
+        const auto& dchi = kbgd.chi[static_cast<std::size_t>(ik)];
+        const CplxMatrix& Pk = P_k[static_cast<std::size_t>(ik)];
+        for (long g = 0; g < ng; ++g) {
+            const double vw = veff[static_cast<std::size_t>(g)] * wgt;
+            if (vw == 0.0)
+                continue;
+            const Cplx* v = chi.data() + static_cast<std::size_t>(g) * nb;
+            // y_μ = Σ_ν P_μν conj(χ_ν)
+            std::vector<Cplx> y(static_cast<std::size_t>(nb));
+            for (int mu = 0; mu < nb; ++mu) {
+                Cplx s(0, 0);
+                for (int nu = 0; nu < nb; ++nu)
+                    s += Pk(mu, nu) * std::conj(v[nu]);
+                y[static_cast<std::size_t>(mu)] = s;
+            }
+            const Cplx* dv =
+                dchi.data() + static_cast<std::size_t>(g) * nbd;
+            for (int u = 0; u < nb; ++u)
+                for (int k = 0; k < 3; ++k) {
+                    const Cplx dval = dv[static_cast<std::size_t>(u) * 3
+                                         + static_cast<std::size_t>(k)];
+                    // ∂ρ = 2 Re[ (∂χ_μ) y_μ ], y = P conj(χ); F = −∫ Veff ∂ρ
+                    forces[owner[u]][k] -=
+                        2.0 * wk * vw
+                        * std::real(dval * y[static_cast<std::size_t>(u)]);
+                }
+        }
+    }
+
+    // ── Ionic Hellmann–Feynman ────────────────────────────────────────────
+    for (int A = 0; A < na; ++A) {
+        const GpwAtom& Aatom = atoms[A];
+        const double s2 = Aatom.rloc * Aatom.rloc;
+        const double norm = Aatom.z_val * std::pow(2.0 * M_PI * s2, -1.5);
+        std::array<double, 3> acc = {0.0, 0.0, 0.0};
+        for (long g = 0; g < ng; ++g) {
+            double r[3];
+            grid.point(g, r);
+            double d[3] = {r[0] - Aatom.pos[0], r[1] - Aatom.pos[1],
+                           r[2] - Aatom.pos[2]};
+            for (int k = 0; k < 3; ++k)
+                d[k] -= grid.L[k] * std::nearbyint(d[k] / grid.L[k]);
+            const double gauss =
+                norm
+                * std::exp(-(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+                           / (2.0 * s2));
+            const double vg = v_es[static_cast<std::size_t>(g)] * gauss / s2;
+            for (int k = 0; k < 3; ++k)
+                acc[k] += vg * d[k];
+        }
+        for (int k = 0; k < 3; ++k)
+            forces[A][k] += wgt * acc[k];
+    }
+
+    // Local-PP HF (grid route).
+    add_local_pp_hf_forces(grid, atoms, /*periodic=*/true, rho, forces);
+
+    return forces;
+}
+
 } // namespace
 
 std::vector<std::array<double, 3>>
@@ -457,6 +870,14 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const GpwResult scf = solver.run(atoms, guess_C);
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_analytic: SCF did not converge");
+
+    if (uses_kpath(cfg)) {
+        if (guess_C != nullptr)
+            throw std::invalid_argument(
+                "gpw_forces_analytic: k-path does not accept guess_C "
+                "(no-fallback)");
+        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
+    }
 
     const int nb = static_cast<int>(scf.P.shape(0));
     // Energy-weighted density matrix W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).
