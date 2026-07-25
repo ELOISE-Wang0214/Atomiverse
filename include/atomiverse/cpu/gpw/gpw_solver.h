@@ -14,7 +14,8 @@
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
 /// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD
 /// or PBE/PBEsol GGA). Periodic neutral electrostatics via the GTH Gaussian
-/// core charge. k-point UKS and analytic k-point forces are follow-on.
+/// core charge. Analytic Γ forces cover RKS and UKS (`gpw_forces_analytic`).
+/// k-point UKS and analytic k-point forces are follow-on.
 #pragma once
 
 #include <array>
@@ -285,8 +286,8 @@ class GpwDft {
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
 ///
 /// Runs a `GpwDft` at +/- h displacements of each atom along each axis
-/// (6*N_atoms SCF solves). Correct but expensive; analytic GPW forces are a
-/// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
+/// (6*N_atoms SCF solves). Correct but expensive; product path is
+/// `gpw_forces_analytic`. Returns forces [Hartree/Bohr], one xyz triple per atom.
 /// @param h Displacement step [Bohr].
 std::vector<std::array<double, 3>>
 gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
