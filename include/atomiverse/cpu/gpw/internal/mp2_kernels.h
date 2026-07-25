@@ -232,6 +232,41 @@ std::vector<double> exchange_diag_mt(const UniformGrid& grid,
                                      const std::vector<double>& psi_mo, int n_mo,
                                      int n_occ);
 
+/// @brief Multi-k **k-diagonal** spectral G0W0 quasiparticle energies.
+///
+/// For each sampled \(k\): builds same-\(k\) (vertical, \(q=0\)) dRPA with
+/// complex \(X+Y\) amplitudes on RI-GPW Poisson pair densities, forms
+/// spectral transition densities, MT exchange diagonals, local
+/// \(v_{\mathrm{xc}}\) diagonals from the supplied real-space potential,
+/// and solves the Newton QP equation orbit-by-orbit. Recovers the real
+/// Γ spectral path when \(N_k=1\) and orbitals are real-valued complex.
+/// Full inter-\(k\) / finite-\(q\) \(W\) is a follow-on.
+///
+/// @param grid        Uniform density grid (as in the SCF).
+/// @param psi_mo_k    Per-k full MO grids [nk][n_mo·npts].
+/// @param eps_k       Per-k eigenvalues [nk][n_mo] [Hartree].
+/// @param k_weights   Quadrature weights (Σ = 1; unused in k-diagonal Σ_c,
+///                    kept for shape checks / future BZ averages).
+/// @param n_occ       Occupied spatial MOs.
+/// @param n_virt      Virtuals in the dRPA screening space (prefix of the
+///                    virtual block; QP covers all `n_mo`).
+/// @param vxc_r       Local XC potential on the grid [Hartree].
+/// @param qp_energy_k Out: QP energies [nk][n_mo] [Hartree].
+/// @param sigma_x_k   Out: MT exchange diagonals [nk][n_mo] [Hartree].
+/// @param vxc_diag_k  Out: \(v_{\mathrm{xc}}\) diagonals [nk][n_mo] [Hartree].
+/// @param all_converged Out: true when every Newton solve succeeded.
+/// @throws std::invalid_argument on shape / weight errors.
+/// @throws std::runtime_error when dRPA reduction is ill-conditioned.
+void spectral_g0w0_rhf_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_mo_k,
+    const std::vector<std::vector<double>>& eps_k,
+    const std::vector<double>& k_weights, int n_occ, int n_virt,
+    const std::vector<double>& vxc_r,
+    std::vector<std::vector<double>>& qp_energy_k,
+    std::vector<std::vector<double>>& sigma_x_k,
+    std::vector<std::vector<double>>& vxc_diag_k, bool& all_converged);
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu
