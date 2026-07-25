@@ -102,6 +102,9 @@ struct GpwResult {
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD dispersion [Hartree] (0 when off).
+    /// @brief Hirshfeld volume ratios \(V/V_{\mathrm{free}}\) when
+    ///        `GpwDft::hirshfeld` was set (empty for free-atom TS/MBD).
+    std::vector<double> volume_ratios;
     double e_dftu =
         0.0; ///< Dudarev DFT+U energy [Hartree] (0 when plus_u empty).
     /// @name k-point sampling payload (populated by multi-k RKS or multi-k UKS;
@@ -204,6 +207,11 @@ class GpwDft {
     ///        Isolated geometry only in this product path. Mutually exclusive
     ///        with `d3` / `d3bj` / `d4` / `ts`.
     bool mbd = false; ///< MBD@rsSCS (free-atom) dispersion.
+    /// @brief Scale TS/MBD free-atom parameters by Hirshfeld \(V/V_{\mathrm{free}}\)
+    ///        from the final SCF valence density (post-SCF, density-dependent).
+    ///        Requires `ts` or `mbd`. Γ-point RKS only (k-points / UKS throw).
+    ///        Free-atom path remains the default when false.
+    bool hirshfeld = false; ///< Hirshfeld volume ratios for TS/MBD.
     bool use_ot = false; ///< OT minimizer instead of diagonalization.
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a

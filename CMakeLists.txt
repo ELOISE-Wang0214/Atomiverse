@@ -578,6 +578,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/dftd3.cpp
             src/cpu/gpw/internal/ts_dispersion.cpp
             src/cpu/gpw/internal/mbd_dispersion.cpp
+            src/cpu/gpw/internal/hirshfeld_volumes.cpp
             src/cpu/scf/dftd3.cpp
             src/cpu/scf/dftd4.cpp
             src/cpu/record/cube.cpp
