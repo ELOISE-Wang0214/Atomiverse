@@ -29,6 +29,7 @@
 #include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/mp2.h"       // Mp2Result
+#include "atomiverse/cpu/gpw/rpa.h"       // RpaResult
 #include "atomiverse/cpu/linalg/matrix.h" // RealMatrix
 #include "atomiverse/molrs.hpp"
 
@@ -300,9 +301,29 @@ class GpwDft {
     ///         remain, or for a vanishing min HOMO–LUMO gap (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
+    /// @brief Γ-point GPW direct RPA (dRPA) correlation on the converged
+    ///        closed-shell orbitals of the last `run()`.
+    ///
+    /// Builds the Coulomb-only singlet Casida spectrum
+    /// (\(\alpha_{\mathrm{hf}}=0\)) from the same \((ia|jb)\) path as
+    /// `mp2()` (product RI-GPW when `mp2_ri` and periodic; else Poisson
+    /// foothold), then the Furche plasmon formula
+    /// \(E_c=\tfrac12(\sum\Omega_s-\mathrm{Tr}\,A)\). Virtual space
+    /// capped by `mp2_n_virt`. Total energy is dRPA@KS
+    /// (\(E_{\mathrm{SCF}}+E_c\); no EXX replacement).
+    /// @param atoms Same geometry [Bohr] the last `run()` converged on.
+    /// @return The owned RPA result (valid until the next `direct_rpa()`).
+    /// @throws std::logic_error before `build()` or a converged `run()`.
+    /// @throws std::invalid_argument for UKS, for `use_ot`, for multi-k
+    ///         SCF, when no virtuals remain, or for a vanishing
+    ///         HOMO–LUMO gap (< 1e-6 Ha).
+    /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
+    const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
+
   private:
     GpwResult result_;     ///< Owned result buffer (last run).
     Mp2Result mp2_result_; ///< Owned MP2 result buffer (last mp2()).
+    RpaResult rpa_result_; ///< Owned RPA result buffer (last direct_rpa()).
     bool built_ = false;   ///< Whether build() validated the configuration.
 };
 
