@@ -470,7 +470,7 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
     if (vol <= 0)
         return D;
 
-    // Cartesian q [1/Bohr] from fractional crystal coords (recip includes 2π).
+    // Cartesian q [1/Bohr]; recip_cell includes 2π.
     const auto recip = cell_bohr.recip_cell();
     const Vec3 b0{recip(0, 0), recip(0, 1), recip(0, 2)};
     const Vec3 b1{recip(1, 0), recip(1, 1), recip(1, 2)};
@@ -485,7 +485,8 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
         return D[static_cast<std::size_t>((3 * i + a) * dim) + 3 * j + b];
     };
 
-    // ── Real space: Φ(i, j; L) e^{i q · L} ──
+    // Mirror the Γ real-space pair loop (i < j) with lattice phase e^{iq·L}.
+    // Same φ′′ kernel and L = h a + k b + l c (rows) as ewald_dynamical_matrix.
     const AccReal r_cut = AccReal(5) / alpha;
     const auto lens = cell_bohr.lengths();
     const int ncell_r = static_cast<int>(std::ceil(
@@ -493,28 +494,28 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
                         + 1;
 
     for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
+        for (int j = i + 1; j < n; ++j) {
             const AccReal zz = charges[static_cast<std::size_t>(i)]
                                * charges[static_cast<std::size_t>(j)];
             for (int hx = -ncell_r; hx <= ncell_r; ++hx)
                 for (int hy = -ncell_r; hy <= ncell_r; ++hy)
                     for (int hz = -ncell_r; hz <= ncell_r; ++hz) {
-                        if (i == j && hx == 0 && hy == 0 && hz == 0)
-                            continue;
-                        const Vec3 L = {
-                            AccReal(hx) * cb(0, 0) + AccReal(hy) * cb(1, 0)
-                                + AccReal(hz) * cb(2, 0),
-                            AccReal(hx) * cb(0, 1) + AccReal(hy) * cb(1, 1)
-                                + AccReal(hz) * cb(2, 1),
-                            AccReal(hx) * cb(0, 2) + AccReal(hy) * cb(1, 2)
-                                + AccReal(hz) * cb(2, 2)};
+                        const AccReal Lx = AccReal(hx) * cb(0, 0)
+                                           + AccReal(hy) * cb(1, 0)
+                                           + AccReal(hz) * cb(2, 0);
+                        const AccReal Ly = AccReal(hx) * cb(0, 1)
+                                           + AccReal(hy) * cb(1, 1)
+                                           + AccReal(hz) * cb(2, 1);
+                        const AccReal Lz = AccReal(hx) * cb(0, 2)
+                                           + AccReal(hy) * cb(1, 2)
+                                           + AccReal(hz) * cb(2, 2);
                         const Vec3 dr = {
                             pos[static_cast<std::size_t>(i)][0]
-                                - pos[static_cast<std::size_t>(j)][0] - L[0],
+                                - pos[static_cast<std::size_t>(j)][0] + Lx,
                             pos[static_cast<std::size_t>(i)][1]
-                                - pos[static_cast<std::size_t>(j)][1] - L[1],
+                                - pos[static_cast<std::size_t>(j)][1] + Ly,
                             pos[static_cast<std::size_t>(i)][2]
-                                - pos[static_cast<std::size_t>(j)][2] - L[2]};
+                                - pos[static_cast<std::size_t>(j)][2] + Lz};
                         const AccReal r = dr.norm();
                         if (!(r > AccReal(0)) || r >= r_cut)
                             continue;
@@ -530,12 +531,13 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
                             + two_alpha_over_sqrt_pi * gauss
                                   * (AccReal(2) * inv_r2
                                      + AccReal(2) * alpha * alpha);
-                        // phase = e^{i q · L}; L in Bohr, q_cart in 1/Bohr.
-                        // recip_cell rows are 2π b*, so q_cart already has 2π.
-                        const AccReal ph =
-                            q_cart[0] * L[0] + q_cart[1] * L[1]
-                            + q_cart[2] * L[2];
+                        // L here is the cell shift on atom i relative to the
+                        // pair vector; dynamical-matrix phase uses the cell of
+                        // j, i.e. −L in the +L convention of dr = ri−rj+L.
+                        const AccReal ph = -(q_cart[0] * Lx + q_cart[1] * Ly
+                                             + q_cart[2] * Lz);
                         const Cx phase(std::cos(ph), std::sin(ph));
+                        const Cx cphase = std::conj(phase);
                         for (int a = 0; a < 3; ++a)
                             for (int b = 0; b < 3; ++b) {
                                 const AccReal ra = dr[a] * inv_r;
@@ -545,100 +547,80 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
                                     + phi1 * inv_r
                                           * ((a == b ? AccReal(1) : AccReal(0))
                                              - ra * rb);
-                                // Φ_{iα,jβ}(L) = −∂²φ/∂r_α∂r_β for the pair
-                                // (force-constant convention matching Γ path
-                                // off-diagonals); self terms via ASR below.
-                                const Cx val = zz * hab * phase;
-                                at(i, a, j, b) -= val;
+                                const AccReal val = zz * hab;
+                                // Diagonals are q-independent (self ASR-like).
+                                at(i, a, i, b) += val;
+                                at(j, a, j, b) += val;
+                                at(i, a, j, b) -= val * phase;
+                                at(j, a, i, b) -= val * cphase;
                             }
                     }
         }
     }
 
-    // Acoustic sum rule at the real-space level: diagonal self blocks so
-    // that sum_j C_{iα,jβ}(q=0) = 0. Store row sums at q via separate
-    // accumulation — for finite q, Gonze ASR uses the q=0 row sum on the
-    // diagonal. Compute ASR from the q=0 real-space pair sum only.
-    {
-        // Recompute q=0 real-space diagonal correction: for each i,a,b
-        // C_{ia,ib} += -sum_{j,L≠0 or j≠i} Φ_{ia,jb}(L) with phase=1.
-        // Equivalent: after the loop above at general q, add
-        //   C_{ia,ib} += -sum_j C^{RS}_{ia,jb}(q=0)
-        // We rebuild the q=0 real-space matrix contribution on the diagonal.
-        std::vector<AccReal> asr(static_cast<std::size_t>(n) * 9, AccReal(0));
-        for (int i = 0; i < n; ++i) {
-            for (int j = 0; j < n; ++j) {
-                const AccReal zz = charges[static_cast<std::size_t>(i)]
-                                   * charges[static_cast<std::size_t>(j)];
-                for (int hx = -ncell_r; hx <= ncell_r; ++hx)
-                    for (int hy = -ncell_r; hy <= ncell_r; ++hy)
-                        for (int hz = -ncell_r; hz <= ncell_r; ++hz) {
-                            if (i == j && hx == 0 && hy == 0 && hz == 0)
-                                continue;
-                            const Vec3 L = {
-                                AccReal(hx) * cb(0, 0) + AccReal(hy) * cb(1, 0)
-                                    + AccReal(hz) * cb(2, 0),
-                                AccReal(hx) * cb(0, 1) + AccReal(hy) * cb(1, 1)
-                                    + AccReal(hz) * cb(2, 1),
-                                AccReal(hx) * cb(0, 2) + AccReal(hy) * cb(1, 2)
-                                    + AccReal(hz) * cb(2, 2)};
-                            const Vec3 dr = {
-                                pos[static_cast<std::size_t>(i)][0]
-                                    - pos[static_cast<std::size_t>(j)][0]
-                                    - L[0],
-                                pos[static_cast<std::size_t>(i)][1]
-                                    - pos[static_cast<std::size_t>(j)][1]
-                                    - L[1],
-                                pos[static_cast<std::size_t>(i)][2]
-                                    - pos[static_cast<std::size_t>(j)][2]
-                                    - L[2]};
-                            const AccReal r = dr.norm();
-                            if (!(r > AccReal(0)) || r >= r_cut)
-                                continue;
-                            const AccReal inv_r = AccReal(1) / r;
-                            const AccReal inv_r2 = inv_r * inv_r;
-                            const AccReal erfc_ar = std::erfc(alpha * r);
-                            const AccReal gauss =
-                                std::exp(-alpha * alpha * r * r);
-                            const AccReal phi1 =
-                                -erfc_ar * inv_r2
-                                - two_alpha_over_sqrt_pi * gauss * inv_r;
-                            const AccReal phi2 =
-                                AccReal(2) * erfc_ar * inv_r2 * inv_r
-                                + two_alpha_over_sqrt_pi * gauss
-                                      * (AccReal(2) * inv_r2
-                                         + AccReal(2) * alpha * alpha);
-                            for (int a = 0; a < 3; ++a)
-                                for (int b = 0; b < 3; ++b) {
-                                    const AccReal ra = dr[a] * inv_r;
-                                    const AccReal rb = dr[b] * inv_r;
-                                    const AccReal hab =
-                                        phi2 * ra * rb
-                                        + phi1 * inv_r
-                                              * ((a == b ? AccReal(1)
-                                                         : AccReal(0))
-                                                 - ra * rb);
-                                    // Φ_ij = -zz*hab; ASR: C_ii += -sum_j Φ_ij
-                                    //      = sum_j zz*hab
-                                    asr[static_cast<std::size_t>(i) * 9 + 3 * a
-                                        + b] += zz * hab;
-                                }
+    // Also same-atom images L≠0 (self pair under lattice translation).
+    for (int i = 0; i < n; ++i) {
+        const AccReal zz = charges[static_cast<std::size_t>(i)]
+                           * charges[static_cast<std::size_t>(i)];
+        for (int hx = -ncell_r; hx <= ncell_r; ++hx)
+            for (int hy = -ncell_r; hy <= ncell_r; ++hy)
+                for (int hz = -ncell_r; hz <= ncell_r; ++hz) {
+                    if (hx == 0 && hy == 0 && hz == 0)
+                        continue;
+                    const AccReal Lx = AccReal(hx) * cb(0, 0)
+                                       + AccReal(hy) * cb(1, 0)
+                                       + AccReal(hz) * cb(2, 0);
+                    const AccReal Ly = AccReal(hx) * cb(0, 1)
+                                       + AccReal(hy) * cb(1, 1)
+                                       + AccReal(hz) * cb(2, 1);
+                    const AccReal Lz = AccReal(hx) * cb(0, 2)
+                                       + AccReal(hy) * cb(1, 2)
+                                       + AccReal(hz) * cb(2, 2);
+                    const AccReal r = std::sqrt(Lx * Lx + Ly * Ly + Lz * Lz);
+                    if (!(r > AccReal(0)) || r >= r_cut)
+                        continue;
+                    const AccReal inv_r = AccReal(1) / r;
+                    const AccReal inv_r2 = inv_r * inv_r;
+                    const AccReal erfc_ar = std::erfc(alpha * r);
+                    const AccReal gauss = std::exp(-alpha * alpha * r * r);
+                    const AccReal phi1 =
+                        -erfc_ar * inv_r2
+                        - two_alpha_over_sqrt_pi * gauss * inv_r;
+                    const AccReal phi2 =
+                        AccReal(2) * erfc_ar * inv_r2 * inv_r
+                        + two_alpha_over_sqrt_pi * gauss
+                              * (AccReal(2) * inv_r2
+                                 + AccReal(2) * alpha * alpha);
+                    const AccReal ph =
+                        q_cart[0] * Lx + q_cart[1] * Ly + q_cart[2] * Lz;
+                    const Cx phase(std::cos(ph), std::sin(ph));
+                    // Self: C_ii(q) += Φ(L) (e^{iqL} − 1) + Φ(L) for ASR at Γ;
+                    // equivalent to Γ self (=0 for no same-atom L in gamma pair
+                    // loop) plus finite-q Fourier. Use
+                    //   C_ii += Φ(L) * (1 − e^{iqL})  with Φ = zz*hab on the
+                    // image vector L (same structure as off-diag with j image).
+                    for (int a = 0; a < 3; ++a)
+                        for (int b = 0; b < 3; ++b) {
+                            const AccReal ua =
+                                (a == 0 ? Lx : (a == 1 ? Ly : Lz)) * inv_r;
+                            const AccReal ub =
+                                (b == 0 ? Lx : (b == 1 ? Ly : Lz)) * inv_r;
+                            const AccReal hab =
+                                phi2 * ua * ub
+                                + phi1 * inv_r
+                                      * ((a == b ? AccReal(1) : AccReal(0))
+                                         - ua * ub);
+                            const AccReal val = zz * hab;
+                            // Σ_{L≠0} Φ(L)(e^{iqL} − 1) → 0 at q = 0.
+                            at(i, a, i, b) += val * (phase - Cx(1, 0));
                         }
-            }
-        }
-        for (int i = 0; i < n; ++i)
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
-                    at(i, a, i, b) +=
-                        asr[static_cast<std::size_t>(i) * 9 + 3 * a + b];
+                }
     }
 
-    // ── Reciprocal space ──
-    // (4π/Ω) Σ_{G+q ≠ 0} e^{-|G+q|²/4α²}/|G+q|² (G+q)_α (G+q)_β
-    //   × Z_i Z_j exp(i (G+q)·(R_i − R_j))
-    // plus the G-sum self terms that restore ASR at the reciprocal level.
+    // Reciprocal: Γ uses (2π/Ω)·2·cos for i<j + ASR on diagonals.
+    // Finite q: (4π/Ω) Σ_{G+q≠0} e^{-…}/|G+q|² (G+q)_α(G+q)_β
+    //   × Z_i Z_j exp(i(G+q)·(R_i−R_j)) for i≤j with Hermitian completion.
     const AccReal g_cut = std::sqrt(AccReal(8) * ecut_hartree);
-    // Expand search to cover |G+q|.
     const AccReal qn = q_cart.norm();
     const AccReal g_cut_eff = g_cut + qn + AccReal(1e-6);
     const int gmax =
@@ -649,8 +631,6 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
     const AccReal four_pi_over_vol =
         AccReal(4) * AccReal(units::pi) / vol;
 
-    // Structure-factor form: for each G, accumulate
-    //   S_α(i) pieces via double loop over i,j.
     for (int hx = -gmax; hx <= gmax; ++hx)
         for (int hy = -gmax; hy <= gmax; ++hy)
             for (int hz = -gmax; hz <= gmax; ++hz) {
@@ -664,7 +644,7 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
                 const AccReal coeff =
                     four_pi_over_vol * std::exp(-gq2 / alpha_sq_4) / gq2;
                 for (int i = 0; i < n; ++i)
-                    for (int j = 0; j < n; ++j) {
+                    for (int j = i + 1; j < n; ++j) {
                         const AccReal phase_arg =
                             Gq[0]
                                 * (pos[static_cast<std::size_t>(i)][0]
@@ -681,9 +661,17 @@ ewald_dynamical_matrix_q(const std::vector<Vec3>& pos_ang,
                             charges[static_cast<std::size_t>(i)]
                             * charges[static_cast<std::size_t>(j)];
                         const Cx fac = coeff * zz * phase;
+                        const Cx cfac = std::conj(fac);
                         for (int a = 0; a < 3; ++a)
-                            for (int b = 0; b < 3; ++b)
-                                at(i, a, j, b) += fac * Gq[a] * Gq[b];
+                            for (int b = 0; b < 3; ++b) {
+                                const Cx val = fac * Gq[a] * Gq[b];
+                                const Cx cval = cfac * Gq[a] * Gq[b];
+                                at(i, a, j, b) += val;
+                                at(j, a, i, b) += cval;
+                                // ASR-style diagonal (same as Γ recip).
+                                at(i, a, i, b) -= val;
+                                at(j, a, j, b) -= cval;
+                            }
                     }
             }
 
@@ -1764,9 +1752,9 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                                  "band={})",
                                  mu, ik, b);
 
-                    // Δn(r) += 2 w f ψ_k*(r) Δψ_{k+q}(r) / Ω
-                    // (factor 2 matches Γ path / QE TR convention for the
-                    // conjugate partner; lattice-periodic part only).
+                    // Lattice-periodic Δñ_q(r) += w f [×2 if q=0] ψ_k* Δψ_{k+q}/Ω.
+                    // At finite q the TR partner is the independent −q channel
+                    // (no extra ×2). At q = 0 recover the Γ 2 Re[ψ*Δψ] weight.
                     {
                         ws.gvec = &gv_k0[static_cast<std::size_t>(ik)];
                         ws.n_g = ngk;
@@ -1778,8 +1766,13 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                         pad_sphere_to_grid(ws, *ws.gvec, ngkq, x.data(),
                                            work_buf2.data());
                         ws.fft->c2c_bwd(work_buf2.data());
-                        const AccReal pref =
-                            w * occ_f * AccReal(2) / omega;
+                        const AccReal tr =
+                            (q_cart[0] * q_cart[0] + q_cart[1] * q_cart[1]
+                             + q_cart[2] * q_cart[2])
+                                    < AccReal(1e-20)
+                                ? AccReal(2)
+                                : AccReal(1);
+                        const AccReal pref = w * occ_f * tr / omega;
                         for (int i = 0; i < nr; ++i) {
                             const Cx pk(
                                 static_cast<AccReal>(work_buf.data()[i][0]),
@@ -1903,12 +1896,19 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                                 const Cx cP = mo_psi[m].c;
                                 const Cx cD = mo_dpsi[m].c;
                                 for (int bb = 0; bb < 3; ++bb) {
+                                    const AccReal tr =
+                                        (q_cart[0] * q_cart[0]
+                                         + q_cart[1] * q_cart[1]
+                                         + q_cart[2] * q_cart[2])
+                                                < AccReal(1e-20)
+                                            ? AccReal(2)
+                                            : AccReal(1);
                                     const Cx el =
                                         Cx(0, 1) * Dc
                                         * (std::conj(cD) * mo_psi[m].s[bb]
                                            - std::conj(mo_dpsi[m].s[bb]) * cP);
                                     Cat(3 * static_cast<int>(ja) + bb, mu) +=
-                                        w * occ_f * AccReal(2) * el;
+                                        w * occ_f * tr * el;
                                 }
                             }
                         }

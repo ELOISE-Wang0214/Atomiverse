@@ -252,6 +252,38 @@ TEST(DfptPhonon, DefaultQIsGamma) {
     EXPECT_DOUBLE_EQ(dfpt.q_frac[2], 0.0);
 }
 
+// Incommensurate q must not throw at the rational-supercell gate. Empty UPF
+// still fails validation inside dfpt_q_force_constants (no SCF).
+TEST(DfptPhonon, IncommensurateQReachesUpfGuard) {
+    auto frame = si_frame();
+    PW method;
+    method.xc = cpu::scf::XCType::LSDA;
+    // upf_path empty
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.3, 0.0, 0.0};
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DfptPhonon, IncommensurateQThrowsOnNonLsda) {
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::PBE;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.3, 0.1, 0.05};
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DfptPhonon, OversizeCommensurateFallsToDirectPathGuard) {
+    // q = 1/7 is rational but n=7 > nmax=6 → direct Sternheimer gate (empty UPF).
+    auto frame = si_frame();
+    PW method;
+    method.xc = cpu::scf::XCType::LSDA;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {1.0 / 7.0, 0.0, 0.0};
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
 
 TEST(EwaldDynamicalMatrix, SupercellEnergySane) {
     constexpr double kA=5.43, h=kA/2;

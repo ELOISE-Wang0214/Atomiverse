@@ -7,8 +7,10 @@
 /// fixed occupations. Default `q_frac = {0,0,0}` is the Γ path. Finite
 /// \(\mathbf{q}\) that is **commensurate** with a small supercell
 /// (e.g. \(X=(1/2,0,0)\) → \(2\times1\times1\)) is evaluated as Γ-DFPT on
-/// that supercell plus IFC Fourier (exactly equivalent for rational \(q\));
-/// incommensurate direct Sternheimer is a follow-on.
+/// that supercell plus IFC Fourier (exactly equivalent for rational \(q\)).
+/// **Incommensurate** (or oversize-supercell) \(\mathbf{q}\) uses the direct
+/// finite-\(q\) Sternheimer assembly (`internal::dfpt_q_force_constants`) on
+/// the primitive cell.
 /// Parameters are members — no public `*Config` bag (`Bands` precedent).
 ///
 /// Reference: Baroni, de Gironcoli, Dal Corso, Giannozzi,
@@ -22,7 +24,7 @@
 ///   pw.xc = cpu::scf::XCType::LSDA;
 ///
 ///   cpu::pw::DfptPhonon dfpt;
-///   dfpt.q_frac = {0.5, 0.0, 0.0};   // X of the primitive cell
+///   dfpt.q_frac = {0.3, 0.0, 0.0};   // incommensurate along Γ–X
 ///   auto r = dfpt.compute(pw, frame); // ω [cm⁻¹] at q
 /// @endcode
 #pragma once
@@ -90,8 +92,9 @@ class DfptPhonon {
     double mix_beta = 0.5;
     /// @brief Phonon wavevector in fractional crystal coordinates of the
     ///        simulation cell (dimensionless). Default `{0,0,0}` = Γ.
-    ///        Finite values must be commensurate with a supercell of size
-    ///        ≤ 6 along each axis (product ≤ 8); e.g. X = `{0.5,0,0}`.
+    ///        Rational values with supercell product ≤ 8 use the
+    ///        commensurate Γ-supercell path; other values use direct
+    ///        finite-\(q\) Sternheimer on the primitive cell.
     std::array<double, 3> q_frac{{0.0, 0.0, 0.0}};
 
     /// @brief DFPT phonons at `q_frac` for the geometry in `frame`.
