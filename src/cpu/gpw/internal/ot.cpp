@@ -65,8 +65,9 @@ RealMatrix ot_tangent(const RealMatrix& C0, const RealMatrix& S,
 }
 
 RealMatrix ot_gradient(const RealMatrix& H, const RealMatrix& S,
-                       const RealMatrix& C0) {
-    const RealMatrix W = 4.0 * dot(H, C0); // closed shell, P = 2 C C^T
+                       const RealMatrix& C0, double occ) {
+    // Factor 2*occ: closed-shell occ=2 → 4 H C (P=2CCᵀ); UKS occ=1 → 2 H C.
+    const RealMatrix W = (2.0 * occ) * dot(H, C0);
     // (I - S C0 C0^T) W
     return W - dot(S, dot(C0, dot(xt::transpose(C0), W)));
 }
