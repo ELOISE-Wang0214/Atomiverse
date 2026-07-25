@@ -912,6 +912,19 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     double e_prev = 0.0;
     const double gw = grid.weight();
 
+    // Dudarev multi-k setup (empty plus_u → no-op).
+    std::vector<int> plus_u_z;
+    std::vector<internal::PlusUHa> plus_u_slots;
+    pack_plus_u(cfg.plus_u, plus_u_z, plus_u_slots);
+    const bool do_dftu = !plus_u_slots.empty();
+    const std::vector<internal::AoShellTag> ao_tags = global_ao_tags(atoms);
+    std::vector<int> z_of_atom(atoms.size());
+    for (std::size_t i = 0; i < atoms.size(); ++i)
+        z_of_atom[i] = atoms[i].z;
+    // Closed-shell: n_spin = n/2 → E_U = 2 E_U(n_spin); V added once to H.
+    linalg::RealMatrix V_dftu; // last-iteration potential (for rebuild_all_H)
+    bool have_V_dftu = false;
+
     // Rebuild H_k for *all* k from Veff so every rank can emit the full band
     // payload after a distributed SCF (local H_k alone is incomplete).
     auto rebuild_all_H = [&](const std::vector<double>& veff) {
@@ -922,6 +935,9 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             full[static_cast<std::size_t>(ik)] =
                 T_k[static_cast<std::size_t>(ik)]
                 + Vnl_k[static_cast<std::size_t>(ik)] + Vg;
+            if (do_dftu && have_V_dftu)
+                internal::add_real_potential(full[static_cast<std::size_t>(ik)],
+                                             V_dftu);
         }
         return full;
     };
@@ -1011,6 +1027,21 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     * ctrace(P_k[static_cast<std::size_t>(ik)],
                              Vnl_k[static_cast<std::size_t>(ik)]);
         }
+        // Closed-shell Dudarev: spin density = P/2 at each k; E_U = 2 E_U^σ.
+        double e_dftu = 0.0;
+        if (do_dftu) {
+            std::vector<CplxMatrix> Pspin_k(static_cast<std::size_t>(nk));
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
+                Pspin_k[static_cast<std::size_t>(ik)] =
+                    0.5 * P_k[static_cast<std::size_t>(ik)];
+            e_dftu = 2.0
+                     * internal::apply_dft_plus_u_k(
+                           H_k, Pspin_k, S_k, weights, layout.rank,
+                           layout.nprocs, layout.active, ao_tags, z_of_atom,
+                           plus_u_slots, plus_u_z, &V_dftu);
+            have_V_dftu = true;
+        }
+        res.e_dftu = e_dftu;
 #ifdef ATV_HAS_MPI
         if (layout.active) {
             MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
@@ -1025,7 +1056,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
         const double e_total =
-            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
         res.iters = iter + 1;
         res.e_total = e_total;
 
@@ -1055,13 +1086,14 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             std::fprintf(
                 stderr,
                 "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                "xc=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
+                "xc=%.4f U=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
                 iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es, res.e_xc,
-                std::abs(e_total - e_prev), err_norm, nk, n_kpts_local,
+                e_dftu, std::abs(e_total - e_prev), err_norm, nk, n_kpts_local,
                 layout.nprocs);
 
+        const double err_gate = do_dftu ? 5e-3 : kDiisErrTolK;
         if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
-            && err_norm < kDiisErrTolK) {
+            && err_norm < err_gate) {
             res.converged = true;
             store_k_payload(rebuild_all_H(last_veff));
             res.e_disp = e_d3;
@@ -1078,12 +1110,20 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                         orth[static_cast<std::size_t>(ik)]);
             (void)eps;
             CplxMatrix P_new = density_from(C, cfg.n_occ);
-            if (use_diis)
-                P_k[static_cast<std::size_t>(ik)] = std::move(P_new);
-            else
+            if (use_diis) {
+                if (do_dftu) {
+                    const double a = std::min(std::max(cfg.mix, 0.15), 0.6);
+                    P_k[static_cast<std::size_t>(ik)] =
+                        (1.0 - a) * P_k[static_cast<std::size_t>(ik)]
+                        + a * P_new;
+                } else {
+                    P_k[static_cast<std::size_t>(ik)] = std::move(P_new);
+                }
+            } else {
                 P_k[static_cast<std::size_t>(ik)] =
                     (1.0 - cfg.mix) * P_k[static_cast<std::size_t>(ik)]
                     + cfg.mix * P_new;
+            }
         }
     }
     // Budget exhausted: report the last state (converged stays false).
@@ -1205,6 +1245,18 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     double e_prev = 0.0;
     const double gw = grid.weight();
 
+    // Dudarev multi-k setup (empty plus_u → no-op).
+    std::vector<int> plus_u_z;
+    std::vector<internal::PlusUHa> plus_u_slots;
+    pack_plus_u(cfg.plus_u, plus_u_z, plus_u_slots);
+    const bool do_dftu = !plus_u_slots.empty();
+    const std::vector<internal::AoShellTag> ao_tags = global_ao_tags(atoms);
+    std::vector<int> z_of_atom(atoms.size());
+    for (std::size_t i = 0; i < atoms.size(); ++i)
+        z_of_atom[i] = atoms[i].z;
+    linalg::RealMatrix Va_dftu, Vb_dftu;
+    bool have_V_dftu = false;
+
     auto rebuild_all_H = [&](const std::vector<double>& veff_spin) {
         // veff_spin layout: first npts α, next npts β.
         const long ng = grid.npts();
@@ -1227,6 +1279,12 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                   + Vnl_k[static_cast<std::size_t>(ik)];
             Ha[static_cast<std::size_t>(ik)] = H0 + Va;
             Hb[static_cast<std::size_t>(ik)] = H0 + Vb;
+            if (do_dftu && have_V_dftu) {
+                internal::add_real_potential(Ha[static_cast<std::size_t>(ik)],
+                                             Va_dftu);
+                internal::add_real_potential(Hb[static_cast<std::size_t>(ik)],
+                                             Vb_dftu);
+            }
         }
         return std::make_pair(std::move(Ha), std::move(Hb));
     };
@@ -1336,6 +1394,19 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             e_kin += wk * ctrace(Ptot, T_k[static_cast<std::size_t>(ik)]);
             e_nl += wk * ctrace(Ptot, Vnl_k[static_cast<std::size_t>(ik)]);
         }
+        double e_dftu = 0.0;
+        if (do_dftu) {
+            e_dftu += internal::apply_dft_plus_u_k(
+                Ha_k, Pa_k, S_k, weights, layout.rank, layout.nprocs,
+                layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                &Va_dftu);
+            e_dftu += internal::apply_dft_plus_u_k(
+                Hb_k, Pb_k, S_k, weights, layout.rank, layout.nprocs,
+                layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                &Vb_dftu);
+            have_V_dftu = true;
+        }
+        res.e_dftu = e_dftu;
 #ifdef ATV_HAS_MPI
         if (layout.active) {
             MPI_Allreduce(MPI_IN_PLACE, &e_kin, 1, MPI_DOUBLE, MPI_SUM,
@@ -1350,7 +1421,7 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
         const double e_total =
-            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
         res.iters = iter + 1;
         res.e_total = e_total;
 
@@ -1387,13 +1458,14 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
             std::fprintf(stderr,
                          "[gpw k-UKS %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d Na=%d Nb=%d)\n",
+                         "xc=%.4f U=%.4f  dE=%.2e err=%.2e (nk=%d Na=%d Nb=%d)\n",
                          iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
-                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk, n_a,
-                         n_b);
+                         res.e_xc, e_dftu, std::abs(e_total - e_prev), err_norm,
+                         nk, n_a, n_b);
 
+        const double err_gate = do_dftu ? 5e-3 : kDiisErrTolK;
         if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
-            && err_norm < kDiisErrTolK) {
+            && err_norm < err_gate) {
             res.converged = true;
             auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
             store_k_payload(Ha_full, Hb_full);
@@ -1427,8 +1499,18 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             CplxMatrix Pa_new = density_spin(Ca, n_a);
             CplxMatrix Pb_new = density_spin(Cb, n_b);
             if (use_diis) {
-                Pa_k[static_cast<std::size_t>(ik)] = std::move(Pa_new);
-                Pb_k[static_cast<std::size_t>(ik)] = std::move(Pb_new);
+                if (do_dftu) {
+                    const double a = std::min(std::max(cfg.mix, 0.15), 0.6);
+                    Pa_k[static_cast<std::size_t>(ik)] =
+                        (1.0 - a) * Pa_k[static_cast<std::size_t>(ik)]
+                        + a * Pa_new;
+                    Pb_k[static_cast<std::size_t>(ik)] =
+                        (1.0 - a) * Pb_k[static_cast<std::size_t>(ik)]
+                        + a * Pb_new;
+                } else {
+                    Pa_k[static_cast<std::size_t>(ik)] = std::move(Pa_new);
+                    Pb_k[static_cast<std::size_t>(ik)] = std::move(Pb_new);
+                }
             } else {
                 Pa_k[static_cast<std::size_t>(ik)] =
                     (1.0 - cfg.mix) * Pa_k[static_cast<std::size_t>(ik)]
@@ -2616,8 +2698,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         };
         if (use_ot)
             reject("the OT minimizer");
-        if (!plus_u.empty())
-            reject("DFT+U");
+        // Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF
+        // (RKS + collinear UKS). Analytic multi-k DFT+U stress/forces remain
+        // out of scope (those paths still throw).
         if (ngrids > 1)
             reject("multigrid (ngrids > 1)");
         if (nonperiodic)

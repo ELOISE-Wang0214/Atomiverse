@@ -8,13 +8,22 @@
 /// Potential added to the spin Fock matrix on that subspace:
 ///   \( V_{mm'} = U\big(\tfrac12\delta_{mm'} - n_{mm'}\big) \).
 ///
+/// Multi-k (collinear): Brillouin-zone average
+///   \( n=\sum_k w_k\,\tfrac12\mathrm{Herm}\big[(P_k S_k)+(S_k P_k)\big] \)
+/// (real symmetric after Hermitian projection), one \(V\) for every \(H_k\).
+///
 /// Matches CP2K Dudarev / `U_MINUS_J` for collinear UKS (one channel at a time).
 /// Not a public header — included only from the GPW solver.
 #pragma once
 
 #include <cmath>
+#include <complex>
 #include <stdexcept>
 #include <vector>
+
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
 
 #include "atomiverse/cpu/linalg/matrix.h"
 
@@ -196,6 +205,158 @@ inline double dft_plus_u_energy(const linalg::RealMatrix& P,
             e_u += dudarev_energy_potential(pu.U_ha, occ, V);
         }
     }
+    return e_u;
+}
+
+// ── Multi-k (complex Bloch) Dudarev helpers ──────────────────────────────
+
+/// @brief Weighted Hermitian Mulliken occupation block from one \(P_k,S_k\).
+///
+/// Adds \(w\cdot\tfrac12\mathrm{Herm}[(PS)+(SP)]\) (real part after
+/// Hermitian projection) into `occ` (n×n, pre-sized / accumulated).
+inline void accumulate_mulliken_occupation_k(
+    linalg::RealMatrix& occ, const linalg::CplxMatrix& P,
+    const linalg::CplxMatrix& S, const std::vector<int>& idx, double w) {
+    using Cplx = std::complex<double>;
+    const int n = static_cast<int>(idx.size());
+    if (n == 0 || !(w > 0.0))
+        return;
+    const int nb = static_cast<int>(P.shape(0));
+    for (int a = 0; a < n; ++a) {
+        const int i = idx[static_cast<std::size_t>(a)];
+        for (int b = 0; b < n; ++b) {
+            const int j = idx[static_cast<std::size_t>(b)];
+            Cplx ps = 0.0;
+            Cplx sp = 0.0;
+            for (int k = 0; k < nb; ++k) {
+                ps += P(i, k) * S(k, j);
+                sp += S(i, k) * P(k, j);
+            }
+            // Hermitian projection of ½(PS+SP), keep real part (Dudarev real V).
+            const Cplx m = 0.5 * (ps + sp);
+            const Cplx mh = 0.5 * (m + std::conj(m)); // force Hermitian
+            // For a,b we accumulate only Re; full Herm is restored by
+            // symmetrizing after the k-sum (see build_dftu_potential_k).
+            occ(a, b) += w * mh.real();
+        }
+    }
+}
+
+/// @brief Scatter a real subspace potential into a complex Fock matrix.
+inline void scatter_potential_cplx(linalg::CplxMatrix& H,
+                                   const std::vector<int>& idx,
+                                   const linalg::RealMatrix& V_sub) {
+    const int n = static_cast<int>(idx.size());
+    for (int a = 0; a < n; ++a)
+        for (int b = 0; b < n; ++b)
+            H(idx[static_cast<std::size_t>(a)],
+              idx[static_cast<std::size_t>(b)]) += V_sub(a, b);
+}
+
+/// @brief Add a full real potential matrix onto a complex \(H_k\).
+inline void add_real_potential(linalg::CplxMatrix& H,
+                               const linalg::RealMatrix& V) {
+    const int nb = static_cast<int>(H.shape(0));
+    for (int i = 0; i < nb; ++i)
+        for (int j = 0; j < nb; ++j)
+            if (V(i, j) != 0.0)
+                H(i, j) += V(i, j);
+}
+
+/// @brief BZ-averaged Dudarev energy + full-AO real potential for one spin.
+///
+/// Accumulates Mulliken occupations over k indices
+/// `ik = ik_begin, ik_begin+ik_stride, …`. When `allreduce_occ` is true the
+/// occupation blocks are summed across ranks (MPI k-RR) **before** the
+/// nonlinear Dudarev energy/potential — partial \(n\) must not enter \(E_U\).
+///
+/// Serial: `ik_begin=0`, `ik_stride=1`, `allreduce_occ=false`.
+inline double build_dftu_potential_k(
+    const std::vector<linalg::CplxMatrix>& P_k,
+    const std::vector<linalg::CplxMatrix>& S_k,
+    const std::vector<double>& weights, int ik_begin, int ik_stride,
+    bool allreduce_occ, const std::vector<AoShellTag>& tags,
+    const std::vector<int>& z_of_atom, const std::vector<PlusUHa>& by_z_slot,
+    const std::vector<int>& z_keys, linalg::RealMatrix& V_full) {
+    (void)allreduce_occ;
+    const int nk = static_cast<int>(S_k.size());
+    const int nbas = nk > 0 ? static_cast<int>(S_k[0].shape(0)) : 0;
+    V_full = xt::zeros<double>({nbas, nbas});
+    if (nbas == 0 || by_z_slot.empty() || nk == 0)
+        return 0.0;
+
+    double e_u = 0.0;
+    const int n_atoms = static_cast<int>(z_of_atom.size());
+    for (int iat = 0; iat < n_atoms; ++iat) {
+        const int z = z_of_atom[static_cast<std::size_t>(iat)];
+        for (std::size_t s = 0; s < z_keys.size(); ++s) {
+            if (z_keys[s] != z)
+                continue;
+            const PlusUHa& pu = by_z_slot[s];
+            if (!(pu.U_ha > 0.0))
+                continue;
+            const auto idx = ao_indices_for_shell(tags, iat, pu.l);
+            if (idx.empty())
+                continue;
+            const int n = static_cast<int>(idx.size());
+            linalg::RealMatrix occ = xt::zeros<double>({n, n});
+            for (int ik = ik_begin; ik < nk; ik += ik_stride) {
+                accumulate_mulliken_occupation_k(
+                    occ, P_k[static_cast<std::size_t>(ik)],
+                    S_k[static_cast<std::size_t>(ik)], idx,
+                    weights[static_cast<std::size_t>(ik)]);
+            }
+#ifdef ATV_HAS_MPI
+            if (allreduce_occ) {
+                // E_U is nonlinear in n — reduce occupations, not energies.
+                // Flatten through a contiguous buffer (xtensor layout-safe).
+                std::vector<double> buf(static_cast<std::size_t>(n * n));
+                for (int a = 0; a < n; ++a)
+                    for (int b = 0; b < n; ++b)
+                        buf[static_cast<std::size_t>(a * n + b)] = occ(a, b);
+                MPI_Allreduce(MPI_IN_PLACE, buf.data(), n * n, MPI_DOUBLE,
+                              MPI_SUM, MPI_COMM_WORLD);
+                for (int a = 0; a < n; ++a)
+                    for (int b = 0; b < n; ++b)
+                        occ(a, b) = buf[static_cast<std::size_t>(a * n + b)];
+            }
+#endif
+            // Symmetrize accumulated real occupation (numerical Hermiticity).
+            for (int a = 0; a < n; ++a)
+                for (int b = a + 1; b < n; ++b) {
+                    const double avg = 0.5 * (occ(a, b) + occ(b, a));
+                    occ(a, b) = avg;
+                    occ(b, a) = avg;
+                }
+            linalg::RealMatrix V_sub;
+            e_u += dudarev_energy_potential(pu.U_ha, occ, V_sub);
+            scatter_potential(V_full, idx, V_sub);
+        }
+    }
+    return e_u;
+}
+
+/// @brief Apply multi-k Dudarev to every local \(H_k\) for one spin.
+/// @return \(E_U\) [Hartree] for this spin (global when `allreduce_occ`).
+inline double apply_dft_plus_u_k(std::vector<linalg::CplxMatrix>& H_k,
+                                 const std::vector<linalg::CplxMatrix>& P_k,
+                                 const std::vector<linalg::CplxMatrix>& S_k,
+                                 const std::vector<double>& weights,
+                                 int ik_begin, int ik_stride, bool allreduce_occ,
+                                 const std::vector<AoShellTag>& tags,
+                                 const std::vector<int>& z_of_atom,
+                                 const std::vector<PlusUHa>& by_z_slot,
+                                 const std::vector<int>& z_keys,
+                                 linalg::RealMatrix* V_out = nullptr) {
+    linalg::RealMatrix V_full;
+    const double e_u = build_dftu_potential_k(
+        P_k, S_k, weights, ik_begin, ik_stride, allreduce_occ, tags, z_of_atom,
+        by_z_slot, z_keys, V_full);
+    const int nk = static_cast<int>(H_k.size());
+    for (int ik = ik_begin; ik < nk; ik += ik_stride)
+        add_real_potential(H_k[static_cast<std::size_t>(ik)], V_full);
+    if (V_out)
+        *V_out = std::move(V_full);
     return e_u;
 }
 

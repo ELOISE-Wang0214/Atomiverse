@@ -246,7 +246,8 @@ class GpwDft {
     ///        Γ-avoiding shifted mesh). `{1,1,1}` keeps the Γ-point path.
     ///        The k-point path is periodic, single-grid, `local_pp_on_grid`
     ///        only — RKS (`n_occ`) or collinear UKS (`n_alpha`/`n_beta`);
-    ///        OT / DFT+U / multigrid / nonperiodic throw at `build()`.
+    ///        multi-k Dudarev DFT+U (`plus_u`) is supported for SCF energy.
+    ///        OT / multigrid / nonperiodic throw at `build()`.
     int k_mesh[3] = {1, 1, 1};
     /// @brief Fold ±k pairs by time reversal (exact for collinear RKS/UKS
     ///        without SOC; weights doubled on the retained partner).
@@ -415,7 +416,8 @@ gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwDft& method,
 /// Gamma RKS, Gamma UKS (spin-resolved fixed-\(P_\sigma\)), Dudarev DFT+U
 /// on the Γ path (`plus_u`, \(E_U\) on the fixed-\(P\) Lagrangian), closed-shell
 /// multi-k RKS (k-summed fixed-\(P_k\)), and multi-k collinear UKS (fixed
-/// \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC). Multi-k DFT+U is not implemented.
+/// \(\{P_k^\sigma,W_k^\sigma\}\) + spin XC). Multi-k DFT+U SCF energy is
+/// supported; multi-k DFT+U analytic stress is not (throws).
 /// Off-diagonal shear is 0 (orthorhombic cell only). Multi-SCF oracle:
 /// `gpw_stress_fd`.
 ///

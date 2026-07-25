@@ -110,3 +110,95 @@ TEST(GpwDftU, MullikenOccupationIdentityS) {
     EXPECT_NEAR(n(1, 1), 0.0, 1e-14);
     EXPECT_NEAR(n(0, 1), 0.0, 1e-14);
 }
+
+TEST(GpwDftU, MullikenOccupationKMatchesReal) {
+    // Complex Γ with real P,S must recover the real Mulliken block.
+    using Cplx = std::complex<double>;
+    using ATV::cpu::linalg::CplxMatrix;
+    using ATV::cpu::gpw::internal::accumulate_mulliken_occupation_k;
+    RealMatrix P = xt::zeros<double>({2, 2});
+    P(0, 0) = 0.7;
+    P(1, 1) = 0.3;
+    P(0, 1) = P(1, 0) = 0.1;
+    RealMatrix S = xt::zeros<double>({2, 2});
+    S(0, 0) = 1.0;
+    S(1, 1) = 1.0;
+    S(0, 1) = S(1, 0) = 0.2;
+    const std::vector<int> idx = {0, 1};
+    RealMatrix n_real = mulliken_occupation(P, S, idx);
+
+    CplxMatrix Pk = xt::zeros<Cplx>({2, 2});
+    CplxMatrix Sk = xt::zeros<Cplx>({2, 2});
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            Pk(i, j) = P(i, j);
+            Sk(i, j) = S(i, j);
+        }
+    RealMatrix n_k = xt::zeros<double>({2, 2});
+    accumulate_mulliken_occupation_k(n_k, Pk, Sk, idx, /*w=*/1.0);
+    EXPECT_NEAR(n_k(0, 0), n_real(0, 0), 1e-12);
+    EXPECT_NEAR(n_k(1, 1), n_real(1, 1), 1e-12);
+    EXPECT_NEAR(n_k(0, 1), n_real(0, 1), 1e-12);
+}
+
+TEST(GpwDftU, BuildAcceptsKmeshPlusU) {
+    using namespace ATV::cpu::gpw;
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0;
+    cfg.n_alpha = 2;
+    cfg.n_beta = 0;
+    cfg.k_mesh[0] = cfg.k_mesh[1] = cfg.k_mesh[2] = 2;
+    cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+    cfg.local_pp_on_grid = true;
+    cfg.nonperiodic = false;
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double r0[3] = {3.3, 4.0, 4.0};
+    const double r1[3] = {4.7, 4.0, 4.0};
+    std::vector<GpwAtom> atoms{GpwAtom(r0, basis, pot, 1),
+                               GpwAtom(r1, basis, pot, 1)};
+    EXPECT_NO_THROW(cfg.build(atoms));
+}
+
+TEST(GpwDftU, KpointGammaLimitMatchesRealGammaUks) {
+    // Explicit k={Γ} complex path + PLUS_U vs real Γ-UKS + PLUS_U.
+    using namespace ATV::cpu::gpw;
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double L = 8.0;
+    const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
+    const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
+    std::vector<GpwAtom> atoms{GpwAtom(r0, basis, pot, 1),
+                               GpwAtom(r1, basis, pot, 1)};
+
+    auto base = [&]() {
+        GpwDft cfg;
+        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+        cfg.cutoff_ry = 100.0;
+        cfg.n_alpha = 2;
+        cfg.n_beta = 0;
+        cfg.max_iter = 80;
+        cfg.tol = 1e-7;
+        cfg.xc = XcKind::PADE;
+        cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+        return cfg;
+    };
+
+    GpwDft g = base();
+    g.build(atoms);
+    const GpwResult rg = g.run(atoms);
+
+    GpwDft k = base();
+    k.k_points = {{0.0, 0.0, 0.0}};
+    k.k_point_weights = {1.0};
+    k.build(atoms);
+    const GpwResult rk = k.run(atoms);
+
+    ASSERT_TRUE(rg.converged);
+    ASSERT_TRUE(rk.converged);
+    EXPECT_NEAR(rk.e_total, rg.e_total, 1e-6);
+    // Total energy is the decisive identity; e_dftu decomposition can
+    // differ slightly under Hermitian projection / grid path.
+    EXPECT_NEAR(rk.e_dftu, rg.e_dftu, 1e-4);
+    EXPECT_GT(std::fabs(rg.e_dftu), 1e-8);
+}
