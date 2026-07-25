@@ -32,6 +32,7 @@
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/multigrid.h"
@@ -780,6 +781,213 @@ GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
     }
 }
 
+/// k-point RKS SCF (Monkhorst-Pack / explicit list). Shares the Γ path's grid
+/// pipeline (Poisson, XC, local-PP-on-grid) — the k-resolved pieces are the
+/// complex Bloch matrices S_k/T_k/V_nl^k, the per-k pre-summed basis-on-grid
+/// values, the per-k complex Hermitian diagonalization, and the k-summed
+/// density / Pulay DIIS. Reached only through `run_gpw_scf_impl`.
+static GpwResult run_gpw_scf_kpoints(
+    const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+    const std::vector<GridBasisFunction>& basis,
+    const std::vector<double>& radii, const int mimg[3],
+    const UniformGrid& grid, const std::vector<double>& n_ion,
+    const std::vector<double>& v_locsr, double e_self, double e_d3,
+    const std::vector<internal::KPoint>& kpts) {
+    using internal::CplxMatrix;
+    using Cplx = std::complex<double>;
+    const int nb = static_cast<int>(basis.size());
+    const int nk = static_cast<int>(kpts.size());
+
+    // Phased analytic matrices: S_k, T_k in one image sweep; nonlocal KB.
+    std::vector<CplxMatrix> S_k, T_k;
+    internal::build_overlap_kinetic_k(basis, radii, cfg.cell, mimg,
+                                      kBuildScreen, kpts, S_k, T_k);
+    std::vector<CplxMatrix> Vnl_k(
+        static_cast<std::size_t>(nk),
+        CplxMatrix(xt::zeros<Cplx>({nb, nb})));
+    internal::add_nonlocal_kb_k(Vnl_k, basis, atoms, radii, cfg.cell, mimg,
+                                kBuildScreen, kpts);
+
+    // Canonical orthogonalization per k (drops near-null Bloch directions).
+    std::vector<internal::KOrth> orth;
+    orth.reserve(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        orth.emplace_back(S_k[static_cast<std::size_t>(ik)],
+                          cfg.lindep_threshold);
+        const int m = static_cast<int>(orth.back().X.shape(1));
+        if (cfg.n_occ > m)
+            throw std::runtime_error(
+                "GPW kpoints: n_occ=" + std::to_string(cfg.n_occ)
+                + " exceeds the " + std::to_string(m)
+                + " independent basis directions at k #" + std::to_string(ik)
+                + " (no-fallback rule)");
+    }
+
+    // Per-k pre-summed complex basis-on-grid values (image sum + Bloch phase
+    // folded once; per-iteration cost is O(npts * nb^2) per k).
+    const internal::KpointBasisGrid kbg =
+        internal::build_kpoint_basis_grid(grid, basis, kpts, cfg.eps_default);
+
+    // Cold start: per-k core Hamiltonian T_k + V_nl^k.
+    auto density_from = [&](const CplxMatrix& C, int n_occ) {
+        const int m = static_cast<int>(C.shape(1));
+        (void)m;
+        CplxMatrix P = xt::zeros<Cplx>({nb, nb});
+        for (int i = 0; i < nb; ++i)
+            for (int o = 0; o < n_occ; ++o) {
+                const Cplx ci = 2.0 * C(i, o);
+                for (int j = 0; j < nb; ++j)
+                    P(i, j) += ci * std::conj(C(j, o));
+            }
+        return P;
+    };
+    std::vector<CplxMatrix> P_k(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik) {
+        const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
+                               + Vnl_k[static_cast<std::size_t>(ik)];
+        auto [eps0, C0k] =
+            internal::diagonalize_k(H0k, orth[static_cast<std::size_t>(ik)]);
+        (void)eps0;
+        P_k[static_cast<std::size_t>(ik)] = density_from(C0k, cfg.n_occ);
+    }
+
+    auto ctrace = [&](const CplxMatrix& P, const CplxMatrix& M) {
+        double s = 0.0;
+        for (int i = 0; i < nb; ++i)
+            for (int j = 0; j < nb; ++j)
+                s += (P(i, j) * M(j, i)).real();
+        return s;
+    };
+
+    GpwResult res;
+    std::vector<double> weights(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik)
+        weights[static_cast<std::size_t>(ik)] =
+            kpts[static_cast<std::size_t>(ik)].weight;
+    const bool use_diis = cfg.diis_depth > 0;
+    internal::KDiis diis(use_diis ? cfg.diis_depth : 1, weights);
+    constexpr double kDiisErrTolK = 1e-5; // same gate as the Γ DIIS path
+    double e_prev = 0.0;
+    const double gw = grid.weight();
+
+    auto store_k_payload = [&](const std::vector<CplxMatrix>& H_k) {
+        res.k_frac.clear();
+        res.k_weights.clear();
+        res.eps_k.clear();
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& kp = kpts[static_cast<std::size_t>(ik)];
+            res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
+            res.k_weights.push_back(kp.weight);
+            auto [eps, C] = internal::diagonalize_k(
+                H_k[static_cast<std::size_t>(ik)],
+                orth[static_cast<std::size_t>(ik)]);
+            (void)C;
+            res.eps_k.push_back(std::move(eps));
+        }
+    };
+
+    std::vector<CplxMatrix> H_k(static_cast<std::size_t>(nk));
+    for (int iter = 0; iter < cfg.max_iter; ++iter) {
+        // k-summed density on the grid.
+        std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+        for (int ik = 0; ik < nk; ++ik)
+            internal::collocate_density_k(
+                kbg, ik, P_k[static_cast<std::size_t>(ik)],
+                weights[static_cast<std::size_t>(ik)], rho);
+
+        std::vector<double> n_tot(rho.size());
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            n_tot[g] = rho[g] - n_ion[g];
+        const PoissonResult es = solve_poisson(grid, n_tot);
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE
+                ? xc_grid_pbe(grid, rho)
+                : (cfg.xc == XcKind::PBEsol ? xc_grid_pbesol(grid, rho)
+                                            : xc_grid_pade(grid, rho));
+        std::vector<double> veff(rho.size());
+        double e_locgrid = 0.0;
+        for (std::size_t g = 0; g < rho.size(); ++g) {
+            veff[g] = es.v_r[g] + xc.vxc_r[g] + v_locsr[g];
+            e_locgrid += rho[g] * v_locsr[g];
+        }
+        e_locgrid *= gw;
+
+        double e_kin = 0.0, e_nl = 0.0;
+        for (int ik = 0; ik < nk; ++ik) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            const CplxMatrix Vg = internal::integrate_potential_k(kbg, ik, veff);
+            H_k[static_cast<std::size_t>(ik)] =
+                T_k[static_cast<std::size_t>(ik)]
+                + Vnl_k[static_cast<std::size_t>(ik)] + Vg;
+            e_kin += wk * ctrace(P_k[static_cast<std::size_t>(ik)],
+                                 T_k[static_cast<std::size_t>(ik)]);
+            e_nl += wk * ctrace(P_k[static_cast<std::size_t>(ik)],
+                                Vnl_k[static_cast<std::size_t>(ik)]);
+        }
+        res.e_kinetic = e_kin;
+        res.e_nonlocal = 0.0; // folded into e_loc_sr (Γ-path convention)
+        res.e_loc_sr = e_nl + e_locgrid;
+        res.e_es = es.e_hartree - e_self;
+        res.e_xc = xc.e_xc;
+        const double e_total =
+            res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+        res.iters = iter + 1;
+        res.e_total = e_total;
+
+        // k-resolved commutator residual X^dag (H P S - S P H) X.
+        std::vector<CplxMatrix> err(static_cast<std::size_t>(nk));
+        double err_norm = 0.0;
+        for (int ik = 0; ik < nk; ++ik) {
+            const CplxMatrix e = internal::k_diis_error(
+                H_k[static_cast<std::size_t>(ik)],
+                P_k[static_cast<std::size_t>(ik)],
+                S_k[static_cast<std::size_t>(ik)],
+                orth[static_cast<std::size_t>(ik)].X);
+            for (const Cplx v : e)
+                err_norm = std::max(err_norm, std::abs(v));
+            err[static_cast<std::size_t>(ik)] = e;
+        }
+
+        if (std::getenv("ATV_GPW_TRACE"))
+            std::fprintf(stderr,
+                         "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                         "xc=%.4f  dE=%.2e err=%.2e (nk=%d)\n",
+                         iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                         res.e_xc, std::abs(e_total - e_prev), err_norm, nk);
+
+        if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
+            && err_norm < kDiisErrTolK) {
+            res.converged = true;
+            store_k_payload(H_k);
+            res.e_disp = e_d3;
+            res.e_total += e_d3;
+            return res;
+        }
+        e_prev = e_total;
+
+        if (use_diis) // extrapolated KS matrices drive the next density
+            H_k = diis.step(H_k, err);
+        for (int ik = 0; ik < nk; ++ik) {
+            auto [eps, C] = internal::diagonalize_k(
+                H_k[static_cast<std::size_t>(ik)],
+                orth[static_cast<std::size_t>(ik)]);
+            (void)eps;
+            CplxMatrix P_new = density_from(C, cfg.n_occ);
+            if (use_diis)
+                P_k[static_cast<std::size_t>(ik)] = std::move(P_new);
+            else
+                P_k[static_cast<std::size_t>(ik)] =
+                    (1.0 - cfg.mix) * P_k[static_cast<std::size_t>(ik)]
+                    + cfg.mix * P_new;
+        }
+    }
+    // Budget exhausted: report the last state (converged stays false).
+    store_k_payload(H_k);
+    res.e_disp = e_d3;
+    res.e_total += e_d3;
+    return res;
+}
+
 /// The full GPW SCF implementation, owned and reached through
 /// `GpwDft::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
@@ -824,6 +1032,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     int mimg[3];
     pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
 
+    // k-point RKS branch selector: any non-Γ mesh or an explicit k list.
+    // (Configuration conflicts are rejected fail-fast in GpwDft::build.)
+    const bool use_kpath = !cfg.k_points.empty() || cfg.k_mesh[0] != 1
+                           || cfg.k_mesh[1] != 1 || cfg.k_mesh[2] != 1;
+
     // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms)) GTH
     // build: each basis-pair queries only atoms near its product centre.
     double rmax_pp = 0.0;
@@ -835,9 +1048,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     }
     AtomCells acells;
     // ATV_GPW_NOCELLS forces one giant cell (query returns all atoms) — the
-    // pre-cell-list path, for bit-identity A/B verification.
-    acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0,
-                 periodic);
+    // pre-cell-list path, for bit-identity A/B verification. The k-point
+    // branch builds its own phased matrices, so the Γ helpers stay empty.
+    if (!use_kpath)
+        acells.build(atoms, cfg.cell,
+                     std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
     // Grimme DFT-D3 / DFT-D4 — geometry-only additive corrections (independent
     // of the SCF), folded into the final total energy. `d3`, `d3bj`, and `d4`
@@ -903,8 +1118,6 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     // pair is screened; the overlaps are short-ranged, so visit only neighbours.
     // ATV_GPW_NOCELLS forces one giant cell (query returns all j) for A/B bit-id.
     BasisCells bcells;
-    bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax,
-                 periodic);
     // Local short-range PP: by default collocated on the grid (local_pp_grid +
     // V_eff, O(grid)); local_pp_on_grid=false selects the per-pair analytic
     // gth_local_sr (O(nb²·natoms)), kept for grid-vs-analytic energy validation.
@@ -912,33 +1125,40 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     // functional the SCF actually converged, or the two disagree by the grid
     // discretization error of V_loc^SR (see internal/local_pp.h).
     const bool grid_loc = cfg.local_pp_on_grid;
+    // The Γ real S/T/Vpp lattice sums serve the Γ paths only; the k-point
+    // branch builds its own phased (complex) matrices per k.
+    if (!use_kpath) {
+        bcells.build(basis, cfg.cell,
+                     std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
 #pragma omp parallel for schedule(dynamic, 8)
-    for (int i = 0; i < nb; ++i) {
-        if (basis[i].empty())
-            continue;
-        const double* ci = basis[i][0].center;
-        const double Rq =
-            radii[static_cast<std::size_t>(i)] + rmax; // conservative
-        bcells.query(ci, Rq, [&](int j) {
-            // Overlap pair screening: S, T, Vpp are all bounded by the Gaussian
-            // product magnitude of (i,j). If even the best primitive pair is
-            // below the screen, the whole element is negligible -> leave 0.
-            if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic)
-                < kBuildScreen)
-                return;
-            const double reach = radii[static_cast<std::size_t>(i)]
-                                 + radii[static_cast<std::size_t>(j)];
-            S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
-            T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
-            if (!grid_loc) // analytic local PP only when grid path is disabled
-                Vpp(i, j) =
-                    gth_matrix_element(basis[i], basis[j], atoms, acells,
-                                       rmax_pp, cfg.cell, mimg, reach);
-        });
+        for (int i = 0; i < nb; ++i) {
+            if (basis[i].empty())
+                continue;
+            const double* ci = basis[i][0].center;
+            const double Rq =
+                radii[static_cast<std::size_t>(i)] + rmax; // conservative
+            bcells.query(ci, Rq, [&](int j) {
+                // Overlap pair screening: S, T, Vpp are all bounded by the
+                // Gaussian product magnitude of (i,j). If even the best
+                // primitive pair is below the screen, the whole element is
+                // negligible -> leave 0.
+                if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic)
+                    < kBuildScreen)
+                    return;
+                const double reach = radii[static_cast<std::size_t>(i)]
+                                     + radii[static_cast<std::size_t>(j)];
+                S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
+                T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
+                if (!grid_loc) // analytic local PP only when grid is disabled
+                    Vpp(i, j) =
+                        gth_matrix_element(basis[i], basis[j], atoms, acells,
+                                           rmax_pp, cfg.cell, mimg, reach);
+            });
+        }
+        // GTH nonlocal V_nl via the separable Kleinman-Bylander form
+        // (projectors computed once per (basis,atom)) — adds onto Vpp.
+        add_nonlocal_kb(Vpp, basis, atoms, radii, cfg.cell, mimg, bcells);
     }
-    // GTH nonlocal V_nl via the separable Kleinman-Bylander form (projectors
-    // computed once per (basis,atom), not per basis pair) — adds onto Vpp.
-    add_nonlocal_kb(Vpp, basis, atoms, radii, cfg.cell, mimg, bcells);
     const RealMatrix H0 = T + Vpp;
     smark("STVpp_build");
 
@@ -956,6 +1176,27 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         grid_loc ? local_pp_grid(grid, atoms, !cfg.nonperiodic)
                  : std::vector<double>{};
     smark("local_pp_grid");
+
+    // ── k-point RKS branch ─────────────────────────────────────────────────
+    if (use_kpath) {
+        std::vector<internal::KPoint> kpts;
+        if (!cfg.k_points.empty()) {
+            for (std::size_t i = 0; i < cfg.k_points.size(); ++i) {
+                internal::KPoint kp;
+                kp.frac[0] = cfg.k_points[i][0];
+                kp.frac[1] = cfg.k_points[i][1];
+                kp.frac[2] = cfg.k_points[i][2];
+                kp.weight = cfg.k_point_weights[i];
+                kpts.push_back(kp);
+            }
+        } else {
+            kpts = internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
+        }
+        GpwResult kres = run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg,
+                                             grid, n_ion, v_locsr, e_self,
+                                             e_d3, kpts);
+        return kres;
+    }
 
     // Core (H0) initial guess.
     // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
@@ -1661,6 +1902,58 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                     + " must be > 0 Bohr (got "
                     + std::to_string(cell[d]) + ")");
     }
+    for (int d = 0; d < 3; ++d)
+        if (k_mesh[d] < 1)
+            throw std::invalid_argument(
+                "GpwDft::build: k_mesh subdivision must be >= 1 (axis "
+                + std::to_string(d) + " got " + std::to_string(k_mesh[d])
+                + ")");
+    if (k_points.size() != k_point_weights.size())
+        throw std::invalid_argument(
+            "GpwDft::build: k_points and k_point_weights must have the same "
+            "length (got " + std::to_string(k_points.size()) + " vs "
+            + std::to_string(k_point_weights.size()) + ")");
+    const bool kpath = !k_points.empty() || k_mesh[0] != 1 || k_mesh[1] != 1
+                       || k_mesh[2] != 1;
+    if (kpath) {
+        // The k-point branch is the closed-shell RKS + periodic + single-grid
+        // + local-PP-on-grid foothold; every other combination is rejected
+        // fail-fast (no silent Γ fallback).
+        auto reject = [](const std::string& what) {
+            throw std::invalid_argument(
+                "GpwDft::build: k-point sampling does not support " + what
+                + " (k-point RKS foothold; no fallback)");
+        };
+        if (is_uks())
+            reject("UKS (n_alpha/n_beta)");
+        if (use_ot)
+            reject("the OT minimizer");
+        if (!plus_u.empty())
+            reject("DFT+U");
+        if (ngrids > 1)
+            reject("multigrid (ngrids > 1)");
+        if (nonperiodic)
+            reject("nonperiodic (Martyna-Tuckerman) boundaries");
+        if (!local_pp_on_grid)
+            reject("the analytic per-pair local PP (local_pp_on_grid=false)");
+        if (level_shift != 0.0)
+            reject("level shifting");
+        if (!k_points.empty()) {
+            double wsum = 0.0;
+            for (const double w : k_point_weights) {
+                if (!(w > 0.0))
+                    throw std::invalid_argument(
+                        "GpwDft::build: explicit k-point weights must be "
+                        "> 0");
+                wsum += w;
+            }
+            if (std::abs(wsum - 1.0) > 1e-8)
+                throw std::invalid_argument(
+                    "GpwDft::build: explicit k-point weights must sum to 1 "
+                    "(got " + std::to_string(wsum)
+                    + "); no implicit normalization");
+        }
+    }
     built_ = true;
 }
 
@@ -1711,6 +2004,11 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.use_ot = m.use_ot;
+    for (int d = 0; d < 3; ++d)
+        p.k_mesh[d] = m.k_mesh[d];
+    p.k_time_reversal = m.k_time_reversal;
+    p.k_points = m.k_points;
+    p.k_point_weights = m.k_point_weights;
     p.plus_u = m.plus_u;
     p.atom_spin_guess = m.atom_spin_guess;
     return p;
