@@ -116,6 +116,28 @@ TEST(GpwXcGGA, GaussianEnergyNegative) {
 // Functional-derivative consistency: for a band-limited perturbation direction
 // `bump`, d E_xc / d eps = integral v_xc bump dr. Central finite difference vs
 // the assembled v_xc (this exercises the divergence term and its adjoint).
+TEST(GpwXcGGA, SpinCollapseMatchesClosedShell) {
+    using ATV::cpu::gpw::xc_grid_pbe_spin;
+    const double cell[3] = {8.0, 8.0, 8.0};
+    UniformGrid grid = make_uniform_grid(cell, 120.0);
+    const double c[3] = {4.0, 4.0, 4.0};
+    std::vector<double> rho = gaussian_density(grid, c, 0.8, 1.0);
+    std::vector<double> ra(rho.size()), rb(rho.size());
+    for (std::size_t g = 0; g < rho.size(); ++g) {
+        ra[g] = 0.5 * rho[g];
+        rb[g] = 0.5 * rho[g];
+    }
+    XcOnGrid uni = xc_grid_pbe(grid, rho);
+    auto spin = xc_grid_pbe_spin(grid, ra, rb);
+    EXPECT_NEAR(uni.e_xc, spin.e_xc, 1e-9 * std::max(1.0, std::abs(uni.e_xc)));
+    for (long g = 0; g < grid.npts(); ++g) {
+        EXPECT_NEAR(uni.vxc_r[static_cast<std::size_t>(g)],
+                    spin.vxc_a[static_cast<std::size_t>(g)], 1e-8);
+        EXPECT_NEAR(spin.vxc_a[static_cast<std::size_t>(g)],
+                    spin.vxc_b[static_cast<std::size_t>(g)], 1e-12);
+    }
+}
+
 TEST(GpwXcGGA, PotentialIsFunctionalDerivative) {
     const double cell[3] = {8.0, 8.0, 8.0};
     UniformGrid grid = make_uniform_grid(cell, 120.0);

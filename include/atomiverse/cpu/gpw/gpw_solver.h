@@ -12,9 +12,9 @@
 ///
 /// Scope: closed-shell (RKS, `n_occ`) at Γ **or** on a Monkhorst-Pack k mesh
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
-/// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE
-/// LSD). Periodic neutral electrostatics via the GTH Gaussian core charge.
-/// UKS PBE-GGA, k-point UKS, and analytic k-point forces are follow-on.
+/// density), and Γ-point unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD
+/// or PBE/PBEsol GGA). Periodic neutral electrostatics via the GTH Gaussian
+/// core charge. k-point UKS and analytic k-point forces are follow-on.
 #pragma once
 
 #include <array>
@@ -81,10 +81,11 @@ struct GpwAtom {
             const GthPotential& pot, int z = 0);
 };
 
-/// @brief Exchange-correlation functional choice (RKS).
+/// @brief Exchange-correlation functional choice.
 ///
 /// `PADE` — LDA Padé; `PBE` / `PBEsol` / `BLYP` — pure GGA (shared
-/// `evaluate_xc`). UKS currently supports `PADE` only.
+/// `evaluate_xc`). RKS supports all four; Γ-UKS supports `PADE` / `PBE` /
+/// `PBEsol` (spin-GGA path).
 enum class XcKind { PADE, PBE, PBEsol, BLYP };
 
 /// @brief GPW SCF result with an energy decomposition.
@@ -229,8 +230,7 @@ class GpwDft {
     ///        structural validation only; `run()` takes the live set).
     /// @throws std::invalid_argument when the atom set is empty, when
     ///         neither RKS (`n_occ >= 1`) nor UKS (`n_alpha+n_beta >= 1`) is
-    ///         set, UKS+PBE is requested, or a periodic cell edge is
-    ///         non-positive.
+    ///         set, or a periodic cell edge is non-positive.
     void build(const std::vector<GpwAtom>& reference);
 
     /// @return true when this method is configured for UKS (`n_alpha+n_beta>0`).

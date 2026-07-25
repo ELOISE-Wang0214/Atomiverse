@@ -1636,14 +1636,14 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         return res;
     }
 
-    // ── UKS (spin-unrestricted, Γ-point, PADE LSD) ─────────────────────────
-    // Separate Pa/Pb, spin-resolved XC, dual KS matrices. Multigrid products
-    // and OT are not wired for UKS in this foothold — single-grid collocate.
+    // ── UKS (spin-unrestricted, Γ-point) ────────────────────────────────────
+    // Separate Pa/Pb, spin-resolved XC (PADE LSD or PBE/PBEsol GGA), dual KS
+    // matrices. Multigrid products and OT are not wired for UKS — single-grid.
     if (uks) {
-        if (cfg.xc != XcKind::PADE)
+        if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
+            && cfg.xc != XcKind::PBEsol)
             throw std::runtime_error(
-                "GPW UKS: only XcKind::PADE is supported (PBE GGA UKS is out "
-                "of scope for gpw-uks-o2-gamma)");
+                "GPW UKS: XcKind must be PADE, PBE, or PBEsol");
         if (cfg.use_ot)
             throw std::runtime_error(
                 "GPW UKS: OT path is not implemented for unrestricted SCF");
@@ -1657,6 +1657,14 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         };
         auto integrate_V = [&](const std::vector<double>& veff) {
             return vec_to_mat(integrate_potential(cbg, nb, veff), nb);
+        };
+        auto xc_spin = [&](const std::vector<double>& ra,
+                           const std::vector<double>& rb) -> XcOnGridSpin {
+            if (cfg.xc == XcKind::PBE)
+                return xc_grid_pbe_spin(grid, ra, rb);
+            if (cfg.xc == XcKind::PBEsol)
+                return xc_grid_pbesol_spin(grid, ra, rb);
+            return xc_grid_pade_lsd(grid, ra, rb);
         };
 
         internal::GpwDiis diis_a(use_diis ? cfg.diis_depth : 1);
@@ -1675,7 +1683,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             const PoissonResult es = cfg.nonperiodic
                                          ? solve_poisson_mt(grid, n_tot)
                                          : solve_poisson(grid, n_tot);
-            const XcOnGridSpin xc = xc_grid_pade_lsd(grid, rho_a, rho_b);
+            const XcOnGridSpin xc = xc_spin(rho_a, rho_b);
 
             std::vector<double> veff_a(rho.size()), veff_b(rho.size());
             double e_locgrid = 0.0;
@@ -2033,10 +2041,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                 "n_alpha+n_beta >= 1 (got n_alpha="
                 + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
                 + ")");
-        if (xc != XcKind::PADE)
+        if (xc != XcKind::PADE && xc != XcKind::PBE && xc != XcKind::PBEsol)
             throw std::invalid_argument(
-                "GpwDft::build: UKS supports XcKind::PADE only "
-                "(PBE GGA UKS is out of scope)");
+                "GpwDft::build: UKS supports XcKind::PADE, PBE, or PBEsol");
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "

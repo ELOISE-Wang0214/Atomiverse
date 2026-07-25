@@ -5,7 +5,8 @@
 /// to produce the XC energy E_xc = ∫ ρ ε_xc(ρ) dr and the real-space XC potential
 /// V_xc(r). The KS matrix contribution then follows from `integrate_potential`.
 /// LDA path: spin-unpolarized PADE (`xc_grid_pade`) and spin-resolved PADE LSD
-/// for UKS (`xc_grid_pade_lsd`). GGA UKS is a later task.
+/// for UKS (`xc_grid_pade_lsd`). GGA spin path: `xc_grid_gga_spin` in
+/// `xc_grid_gga.h`.
 #pragma once
 
 #include <vector>
