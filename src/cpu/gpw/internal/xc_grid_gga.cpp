@@ -81,6 +81,88 @@ XcOnGrid xc_grid_pbesol(const UniformGrid& grid,
     return xc_grid_gga(grid, rho_r, cpu::scf::XCType::PBEsol);
 }
 
+// Spin-resolved GGA: v_σ = vrho_σ − div[ 2 vσ_σσ ∇ρ_σ + vσ_αβ ∇ρ_σ̄ ].
+XcOnGridSpin xc_grid_gga_spin(const UniformGrid& grid,
+                              const std::vector<double>& rho_a,
+                              const std::vector<double>& rho_b,
+                              cpu::scf::XCType xc) {
+    if (!cpu::scf::is_gga(xc)
+        || cpu::scf::hybrid_exchange_fraction(xc) != 0.0) {
+        throw std::invalid_argument(
+            "xc_grid_gga_spin: only pure GGA XCType (PBE, PBEsol, …) "
+            "supported");
+    }
+    const long ng = grid.npts();
+    if (static_cast<long>(rho_a.size()) != ng
+        || static_cast<long>(rho_b.size()) != ng) {
+        throw std::invalid_argument(
+            "xc_grid_gga_spin: rho_a/rho_b length must equal grid.npts()");
+    }
+    const double w = grid.weight();
+
+    const std::array<std::vector<double>, 3> ga = gradient(grid, rho_a);
+    const std::array<std::vector<double>, 3> gb = gradient(grid, rho_b);
+
+    XcOnGridSpin out;
+    out.vxc_a.assign(static_cast<std::size_t>(ng), 0.0);
+    out.vxc_b.assign(static_cast<std::size_t>(ng), 0.0);
+    std::array<std::vector<double>, 3> flux_a;
+    std::array<std::vector<double>, 3> flux_b;
+    for (int d = 0; d < 3; ++d) {
+        flux_a[d].assign(static_cast<std::size_t>(ng), 0.0);
+        flux_b[d].assign(static_cast<std::size_t>(ng), 0.0);
+    }
+
+    double e = 0.0;
+#pragma omp parallel for reduction(+ : e) schedule(static)
+    for (long g = 0; g < ng; ++g) {
+        const double ra = rho_a[static_cast<std::size_t>(g)];
+        const double rb = rho_b[static_cast<std::size_t>(g)];
+        const double gax = ga[0][g], gay = ga[1][g], gaz = ga[2][g];
+        const double gbx = gb[0][g], gby = gb[1][g], gbz = gb[2][g];
+        const double saa = gax * gax + gay * gay + gaz * gaz;
+        const double sbb = gbx * gbx + gby * gby + gbz * gbz;
+        const double sab = gax * gbx + gay * gby + gaz * gbz;
+        const ATV::cpu::scf::XCOutput xco =
+            ATV::cpu::scf::evaluate_xc(xc, ra, rb, saa, sab, sbb);
+        e += w * (ra + rb) * xco.exc;
+        out.vxc_a[static_cast<std::size_t>(g)] = xco.vrho_alpha;
+        out.vxc_b[static_cast<std::size_t>(g)] = xco.vrho_beta;
+        // flux_α = 2 vσ_αα ∇ρ_α + vσ_αβ ∇ρ_β
+        // flux_β = 2 vσ_ββ ∇ρ_β + vσ_αβ ∇ρ_α
+        const double caa = 2.0 * xco.vsigma_aa;
+        const double cbb = 2.0 * xco.vsigma_bb;
+        const double cab = xco.vsigma_ab;
+        flux_a[0][g] = caa * gax + cab * gbx;
+        flux_a[1][g] = caa * gay + cab * gby;
+        flux_a[2][g] = caa * gaz + cab * gbz;
+        flux_b[0][g] = cbb * gbx + cab * gax;
+        flux_b[1][g] = cbb * gby + cab * gay;
+        flux_b[2][g] = cbb * gbz + cab * gaz;
+    }
+    out.e_xc = e;
+
+    const std::vector<double> div_a = divergence(grid, flux_a);
+    const std::vector<double> div_b = divergence(grid, flux_b);
+    for (long g = 0; g < ng; ++g) {
+        out.vxc_a[static_cast<std::size_t>(g)] -= div_a[g];
+        out.vxc_b[static_cast<std::size_t>(g)] -= div_b[g];
+    }
+    return out;
+}
+
+XcOnGridSpin xc_grid_pbe_spin(const UniformGrid& grid,
+                              const std::vector<double>& rho_a,
+                              const std::vector<double>& rho_b) {
+    return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::PBE);
+}
+
+XcOnGridSpin xc_grid_pbesol_spin(const UniformGrid& grid,
+                                 const std::vector<double>& rho_a,
+                                 const std::vector<double>& rho_b) {
+    return xc_grid_gga_spin(grid, rho_a, rho_b, cpu::scf::XCType::PBEsol);
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV
