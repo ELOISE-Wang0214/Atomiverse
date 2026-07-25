@@ -113,10 +113,11 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
     int xl_bomd_k = 5;
     /// @brief Car–Parrinello MD: propagate occupied MO coefficients with a
-    ///        fictitious mass (not BOMD, not XL-BOMD). After one cold SCF seed,
-    ///        each force step is a fixed-density KS eval + electronic Verlet +
-    ///        analytic forces at that density. Closed-shell RKS Γ only —
-    ///        `build()` throws with UKS, `use_ot`, or `xl_bomd`.
+    ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
+    ///        After one cold SCF seed, each force step is a fixed-density KS
+    ///        eval + electronic VV/RATTLE + analytic forces at that density.
+    ///        Closed-shell RKS Γ only — `build()` throws with UKS, `use_ot`,
+    ///        or `xl_bomd`.
     bool cpmd = false;
     /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
     ///        CPMD values \(10^2\)–\(10^3\). Default 400.

@@ -186,6 +186,7 @@ and `tools/cp2k_oracle/`. Narrative chapters: [Ch. 8 PW](ch08-plane-wave.md),
 | GPW analytic fixed-\(P\) stress H₂O | [gpw-analytic-stress](methods/gpw-analytic-stress.md) | `regressions/gpw/gpw-analytic-stress` |
 | GPW BOMD H₂O NVE energy-drift foothold | [gpw-bomd-water](methods/gpw-bomd-water.md) | `regressions/gpw/gpw-bomd-water` |
 | Car–Parrinello MD H₂O NVE (fictitious e⁻ DOF) | [cpmd-water](methods/cpmd-water.md) | `regressions/dynamics/cpmd-water` |
+| Car–Parrinello MD + electronic RATTLE H₂O NVE | [cpmd-rattle-water](methods/cpmd-rattle-water.md) | `regressions/dynamics/cpmd-rattle-water` |
 | PW Nielsen–Martin analytic stress Si | [pw-analytic-stress-si](methods/pw-analytic-stress-si.md) | `regressions/pw/pw-analytic-stress-si` |
 | FD supercell phonons diamond Si (Γ) | [fd-phonon-supercell](methods/fd-phonon-supercell.md) | `regressions/pw/fd-phonon-supercell` |
 | Dudarev DFT+U NiO mol (Γ-UKS GPW) | [gpw-dftu-nio](methods/gpw-dftu-nio.md) | `regressions/gpw/gpw-dftu-nio` |

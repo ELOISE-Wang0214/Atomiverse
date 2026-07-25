@@ -186,6 +186,9 @@ if(ATV_BUILD_GPW)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
         atv_add_regression(dynamics cpmd-water)
+        # CPMD electronic RATTLE (constraint-preserving orbitals) — upgrade
+        # of the Löwdin foothold on the same H2O NVE twin family.
+        atv_add_regression(dynamics cpmd-rattle-water)
         # Second-generation CP (Kühne ASPC + partial SCF corrector).
         atv_add_regression(dynamics second-gen-cpmd-water)
     endif()
