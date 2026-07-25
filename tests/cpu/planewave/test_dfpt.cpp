@@ -262,7 +262,5 @@ TEST(EwaldDynamicalMatrix, SupercellEnergySane) {
     std::vector<Vec3> pos={{0,0,0},{kA/4,kA/4,kA/4},{0,2.715,2.715},{1.3575,4.0725,4.0725}};
     std::vector<AccReal> z={4,4,4,4};
     EwaldSummation ew(pos, z, box, AccReal(5.0));
-      (double)ew.total_energy(), (double)ew.real_energy(), (double)ew.recip_energy(),
-      (double)ew.self_energy(), (double)box.volume());
-    EXPECT_LT(std::abs((double)ew.total_energy()), 1000.0);
+    EXPECT_LT(std::abs(static_cast<double>(ew.total_energy())), 1000.0);
 }
