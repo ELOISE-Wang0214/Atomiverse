@@ -1,10 +1,14 @@
 /// @file cpu/planewave/dfpt_phonon.h
-/// @brief Γ-point DFPT phonons for the plane-wave method (CPU).
+/// @brief DFPT phonons for the plane-wave method (Γ and finite q; CPU).
 ///
 /// Analytic dynamical matrix from density-functional perturbation theory
 /// (self-consistent Sternheimer response) instead of `6N` finite-displacement
 /// SCF solves. Restricted LSDA with a UPF norm-conserving pseudopotential and
-/// fixed occupations; q = 0 only (full dispersions are a follow-on).
+/// fixed occupations. Default `q_frac = {0,0,0}` is the Γ path. Finite
+/// \(\mathbf{q}\) that is **commensurate** with a small supercell
+/// (e.g. \(X=(1/2,0,0)\) → \(2\times1\times1\)) is evaluated as Γ-DFPT on
+/// that supercell plus IFC Fourier (exactly equivalent for rational \(q\));
+/// incommensurate direct Sternheimer is a follow-on.
 /// Parameters are members — no public `*Config` bag (`Bands` precedent).
 ///
 /// Reference: Baroni, de Gironcoli, Dal Corso, Giannozzi,
@@ -18,9 +22,12 @@
 ///   pw.xc = cpu::scf::XCType::LSDA;
 ///
 ///   cpu::pw::DfptPhonon dfpt;
-///   auto r = dfpt.compute(pw, frame);   // ω [cm⁻¹] at Γ
+///   dfpt.q_frac = {0.5, 0.0, 0.0};   // X of the primitive cell
+///   auto r = dfpt.compute(pw, frame); // ω [cm⁻¹] at q
 /// @endcode
 #pragma once
+
+#include <array>
 
 #include <xtensor/containers/xtensor.hpp>
 
@@ -31,7 +38,7 @@ namespace ATV {
 namespace cpu {
 namespace pw {
 
-/// @brief Result of a Γ-point DFPT phonon calculation.
+/// @brief Result of a DFPT phonon calculation (Γ or finite q).
 ///
 /// Frame purity: spectra and force constants live here, never on Frame.
 struct DfptPhononResult {
@@ -39,9 +46,14 @@ struct DfptPhononResult {
     ///        (λ < 0) are reported as negative values.
     xt::xtensor<double, 1> frequencies;
 
-    /// @brief Symmetrized Cartesian force-constant matrix [eV/Å²],
-    ///        shape `[3N, 3N]`, index `3·I + α`.
+    /// @brief Real part of the Cartesian force-constant matrix [eV/Å²],
+    ///        shape `[3N, 3N]`, index `3·I + α`. At Γ this is the full
+    ///        (symmetric) matrix; at finite q it is \(\mathrm{Re}\,C(q)\).
     xt::xtensor<double, 2> force_constants;
+
+    /// @brief Imaginary part of \(C(q)\) [eV/Å²], shape `[3N, 3N]`.
+    ///        Zero (to roundoff) at Γ.
+    xt::xtensor<double, 2> force_constants_imag;
 
     /// @brief Whether the ground-state SCF converged.
     bool scf_converged = false;
@@ -49,20 +61,20 @@ struct DfptPhononResult {
     /// @brief Whether every one of the `3N` response SCFs converged.
     bool response_converged = false;
 
-    /// @brief Max |C − Cᵀ|/2 before symmetrization [eV/Å²] (diagnostic).
+    /// @brief Max |C − C†|/2 before Hermitian projection [eV/Å²].
     double max_asymmetry = 0;
 
     /// @brief Atoms in the cell.
     int n_atoms = 0;
 };
 
-/// @brief Γ-point DFPT phonon calculator over a `PW` ground state.
+/// @brief DFPT phonon calculator over a `PW` ground state (Γ or finite q).
 ///
 /// `compute` runs one ground-state SCF, then `3N` self-consistent
-/// Sternheimer responses, and diagonalizes the mass-weighted dynamical
-/// matrix (masses from the IUPAC table by atomic number, the same
-/// convention as `cpu::vib`). All workspace is private and rebuilt per
-/// call; the input Frame is not mutated.
+/// Sternheimer responses at `q_frac`, and diagonalizes the mass-weighted
+/// Hermitian dynamical matrix (masses from the IUPAC table by atomic
+/// number, the same convention as `cpu::vib`). All workspace is private
+/// and rebuilt per call; the input Frame is not mutated.
 class DfptPhonon {
   public:
     /// @brief Response-density L2 convergence per perturbation
@@ -76,8 +88,13 @@ class DfptPhonon {
     int cg_max_iter = 200;
     /// @brief Linear mixing factor for the response density in (0, 1].
     double mix_beta = 0.5;
+    /// @brief Phonon wavevector in fractional crystal coordinates of the
+    ///        simulation cell (dimensionless). Default `{0,0,0}` = Γ.
+    ///        Finite values must be commensurate with a supercell of size
+    ///        ≤ 6 along each axis (product ≤ 8); e.g. X = `{0.5,0,0}`.
+    std::array<double, 3> q_frac{{0.0, 0.0, 0.0}};
 
-    /// @brief DFPT phonons at Γ for the geometry in `frame`.
+    /// @brief DFPT phonons at `q_frac` for the geometry in `frame`.
     ///
     /// Throws `std::invalid_argument` unless `method.xc == LSDA`,
     /// `method.upf_path` is set, smearing is off, and spin is restricted.
