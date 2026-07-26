@@ -326,10 +326,15 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!cfg.local_pp_on_grid)
         throw std::invalid_argument(
             "gpw_stress analytic k: requires local_pp_on_grid");
+    // Spin XC path matches multi-k UKS SCF / forces and Γ-UKS stress
+    // (PADE LSD + pure GGA spin: PBE / PBEsol / RevPBE / RPBE / BLYP / OptB88).
     if (uks && cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
-        && cfg.xc != XcKind::PBEsol)
+        && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
+        && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP
+        && cfg.xc != XcKind::OptB88VdW)
         throw std::invalid_argument(
-            "gpw_stress analytic k UKS: XcKind must be PADE, PBE, or PBEsol");
+            "gpw_stress analytic k UKS: XcKind must be PADE, PBE, PBEsol, "
+            "RevPBE, RPBE, BLYP, or OptB88VdW");
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
                        + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0);
     if (n_disp > 1)
@@ -441,7 +446,19 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 ? xc_grid_pbe_spin(grid, rho_a, rho_b)
                 : (cfg.xc == XcKind::PBEsol
                        ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
-                       : xc_grid_pade_lsd(grid, rho_a, rho_b));
+                       : (cfg.xc == XcKind::RevPBE
+                              ? xc_grid_revpbe_spin(grid, rho_a, rho_b)
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe_spin(grid, rho_a, rho_b)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp_spin(grid, rho_a,
+                                                                rho_b)
+                                            : (cfg.xc == XcKind::OptB88VdW
+                                                   ? xc_grid_optb88_vdw_spin(
+                                                         grid, rho_a, rho_b)
+                                                   : xc_grid_pade_lsd(
+                                                         grid, rho_a,
+                                                         rho_b))))));
         e_xc = xc.e_xc;
     } else {
         const XcOnGrid xc =

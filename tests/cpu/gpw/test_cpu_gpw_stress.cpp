@@ -389,6 +389,58 @@ TEST(GpwStress, ClosedShellKUksMatchesKRks) {
     EXPECT_LT(max_d, 5e-4) << "closed-shell k-UKS stress ≡ k-RKS";
 }
 
+TEST(GpwStress, UksKpointGgaAnalyticMatchesFdDiagonal) {
+    // Multi-k UKS pure spin-GGA residual (RevPBE / RPBE / BLYP): fixed-P_k^σ
+    // Lagrangian must dual-gate vs multi-SCF FD. PADE/PBE/PBEsol already
+    // covered by UksKpointAnalyticMatchesFdDiagonal + Γ GGA UKS stress.
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    const std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                        GpwAtom(rB, basis, pot, 1)};
+    const XcKind ggas[] = {XcKind::RevPBE, XcKind::RPBE, XcKind::BLYP};
+    const char* names[] = {"RevPBE", "RPBE", "BLYP"};
+    for (int ig = 0; ig < 3; ++ig) {
+        GpwDft cfg;
+        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+        cfg.cutoff_ry = 100.0;
+        cfg.n_occ = 0;
+        cfg.n_alpha = 2;
+        cfg.n_beta = 0;
+        cfg.tol = 1e-8;
+        cfg.max_iter = 60;
+        cfg.xc = ggas[ig];
+        cfg.local_pp_on_grid = true;
+        cfg.nonperiodic = false;
+        cfg.k_mesh[0] = 1;
+        cfg.k_mesh[1] = 1;
+        cfg.k_mesh[2] = 2;
+        const double h = 3e-3;
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  k-UKS %s axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n",
+                        names[ig], a, san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        const double max_diag =
+            std::max({std::abs(san[0]), std::abs(san[1]), std::abs(san[2])});
+        EXPECT_GT(max_diag, 1e-8) << names[ig];
+        EXPECT_LT(max_err, 1e-4)
+            << "k-UKS " << names[ig] << " analytic vs multi-SCF FD";
+    }
+}
+
 // ── Γ-UKS + Dudarev DFT+U analytic stress ─────────────────────────────────
 
 TEST(GpwStress, DftUUksAnalyticMatchesFdDiagonal) {
