@@ -3503,19 +3503,18 @@ static GpwResult run_gpw_scf_impl(
                     throw std::runtime_error(
                         "GPW D3: element Z=" + std::to_string(z)
                         + " is not in the in-tree D3 table (no fallback)");
+            // Both damping variants use CP2K's 2 × R_CUTOFF pair cutoff
+            // (kD3Cp2kPairCutoffBohr) so energy, force and stress all
+            // differentiate the same functional.
             if (cfg.d3)
-                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,
-                                 cfg.d3_atm)
+                e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
+                                 kD3Cp2kPairCutoffBohr, cfg.d3_atm)
                            .energy;
-            else {
-                // CP2K TYPE DFTD3(BJ): CP2K CN form; pair rcut = 2 × R_CUTOFF.
-                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-                constexpr double kRcutBohr = 2.0 * 20.0 * kAng2Bohr;
+            else
                 e_d3 = dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                    kRcutBohr, 1.0, 0.7875, 0.4289, 4.4407,
-                                    /*cp2k_cn=*/true, cfg.d3_atm)
+                                    kD3Cp2kPairCutoffBohr, 1.0, 0.7875, 0.4289,
+                                    4.4407, /*cp2k_cn=*/true, cfg.d3_atm)
                            .energy;
-            }
         }
     }
 
@@ -4948,6 +4947,47 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                                             + std::to_string(d)
                                             + " must be > 0 Bohr (got "
                                             + std::to_string(cell[d]) + ")");
+    } else {
+        // Martyna-Tuckerman cluster boundaries assume the charge density is
+        // *contained* in the cell: the collocation does not wrap in this mode,
+        // so a Gaussian centred near a face is clipped, the energy stops being
+        // translation invariant, and the ionic forces acquire a huge spurious
+        // boundary term (Sum_A F_A != 0). Energy still looks plausible, which
+        // makes this a silent-wrong-answer trap: it cost one full worker shift
+        // on gpw-fd-phonon-si, where an atom sat exactly at (0,0,0).
+        //
+        // Require every nucleus to keep one margin from each face. The margin
+        // is a fixed fraction of the edge rather than a basis-tail estimate so
+        // the check cannot itself depend on the basis being loaded.
+        constexpr double kMtMarginFraction = 0.15;
+        for (int d = 0; d < 3; ++d) {
+            if (!(cell[d] > 0.0))
+                throw std::invalid_argument(
+                    "GpwDft::build: nonperiodic (MT) cell edge "
+                    + std::to_string(d) + " must be > 0 Bohr (got "
+                    + std::to_string(cell[d]) + ")");
+            const double margin = kMtMarginFraction * cell[d];
+            for (std::size_t a = 0; a < reference.size(); ++a) {
+                const double p = reference[a].pos[d];
+                if (p < margin || p > cell[d] - margin)
+                    throw std::invalid_argument(
+                        "GpwDft::build: nonperiodic (Martyna-Tuckerman) "
+                        "boundaries require the system to sit inside the cell, "
+                        "but atom "
+                        + std::to_string(a) + " has axis "
+                        + std::to_string(d) + " coordinate "
+                        + std::to_string(p) + " Bohr, outside the allowed ["
+                        + std::to_string(margin) + ", "
+                        + std::to_string(cell[d] - margin)
+                        + "] Bohr window (cell edge "
+                        + std::to_string(cell[d])
+                        + " Bohr). Centre the molecule in the cell (or enlarge "
+                          "the cell); an isolated system's absolute position is "
+                          "physically irrelevant, but the cluster boundary "
+                          "condition is not translation invariant and off-"
+                          "centre placement silently corrupts the forces.");
+            }
+        }
     }
     for (int d = 0; d < 3; ++d)
         if (k_mesh[d] < 1)

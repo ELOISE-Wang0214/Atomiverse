@@ -564,8 +564,6 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-        constexpr double kRcutBjBohr =
-            2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
         if (cfg.mbd) {
             // Same isolated / periodic switch as fold_dispersion (mbd_k_mesh).
             const bool mbd_per = cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
@@ -605,10 +603,12 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     forces[i][k] += d4.forces[static_cast<std::size_t>(i)][k];
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
+                                   kD3Cp2kPairCutoffBohr,
                                    cfg.d3_atm)
                        : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      kD3Cp2kPairCutoffBohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
@@ -1191,7 +1191,6 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                     atoms[static_cast<std::size_t>(i)].pos[2]};
             }
             constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-            constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
             if (cfg.mbd) {
                 // Same isolated / periodic switch as Γ + fold_dispersion.
                 const bool mbd_per = cfg.mbd_k_mesh[0] > 0
@@ -1237,10 +1236,12 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             } else {
                 const D3Result d3 =
                     cfg.d3
-                        ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,
+                        ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
+                                   kD3Cp2kPairCutoffBohr,
                                     cfg.d3_atm)
                         : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                       kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                       kD3Cp2kPairCutoffBohr, 1.0, 0.7875,
+                                       0.4289, 4.4407,
                                        /*cp2k_cn=*/true, cfg.d3_atm);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)

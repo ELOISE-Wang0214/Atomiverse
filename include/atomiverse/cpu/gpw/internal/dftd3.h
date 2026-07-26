@@ -36,6 +36,17 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
+/// @brief CP2K-parity pair / ABC cutoff for the GPW dispersion sum [Bohr].
+///
+/// CP2K's `&PAIR_POTENTIAL R_CUTOFF 20.0` (Å) is a *half* cutoff — it prints
+/// `Cutoff Radius [Bohr]: 37.79` and sums pairs to **2 ×** that. Both damping
+/// variants must use the same value or the energy, force and stress paths
+/// differentiate different functionals. Verified against offline CP2K 2026.1 on
+/// a periodic water dimer: this value reproduces `Dispersion energy` to
+/// 6.7e-11 Ha, whereas the previously hard-coded 40 Bohr was off by 3.9e-7 Ha
+/// (see regressions/gpw/gpw-d3-forces/REFERENCE.md).
+inline constexpr double kD3Cp2kPairCutoffBohr = 2.0 * 20.0 / 0.52917720859;
+
 /// @brief Result of a DFT-D3 evaluation.
 struct D3Result {
     double energy = 0.0; ///< Dispersion energy [Hartree].

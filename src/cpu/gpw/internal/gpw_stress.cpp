@@ -505,7 +505,6 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-        constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
         if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
             e_disp =
@@ -522,10 +521,12 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 /*cn_cut=*/30.0, /*disp2_cut=*/60.0, s9);
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{}, 40.0,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{},
+                                   kD3Cp2kPairCutoffBohr,
                                    cfg.d3_atm)
                        : dftd3_pbe_bj(Z, pos, cfg.cell, true, D3Params{},
-                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      kD3Cp2kPairCutoffBohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             e_disp = d3.energy;
         }
@@ -838,7 +839,6 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
-        constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
         if (cfg.mbd) {
             const bool mbd_per = cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
                                  || cfg.mbd_k_mesh[2] > 0;
@@ -863,10 +863,12 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 s9);
         } else {
             const D3Result d3 =
-                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,
+                cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{},
+                                   kD3Cp2kPairCutoffBohr,
                                    cfg.d3_atm)
                        : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
-                                      kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                      kD3Cp2kPairCutoffBohr, 1.0, 0.7875,
+                                      0.4289, 4.4407,
                                       /*cp2k_cn=*/true, cfg.d3_atm);
             e_disp = d3.energy;
         }
