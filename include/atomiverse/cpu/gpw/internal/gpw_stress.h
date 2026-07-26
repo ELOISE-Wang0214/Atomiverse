@@ -19,9 +19,10 @@ namespace internal {
 /// analogue of plane-wave Nielsen–Martin in this tree). Supports Gamma RKS,
 /// Gamma UKS (spin densities \(P_\alpha,P_\beta\) + \(W_\alpha,W_\beta\)),
 /// multi-k closed-shell RKS (k-summed fixed-\(P_k\) Lagrangian), multi-k
-/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\), spin XC), and Dudarev
+/// collinear UKS (fixed \(\{P_k^\sigma,W_k^\sigma\}\), spin XC), Dudarev
 /// DFT+U on Γ and multi-k (BZ-averaged Mulliken \(E_U\) at strained
-/// \(S\)/\(S_k\)). Off-diagonal = 0.
+/// \(S\)/\(S_k\)), and geometry-only dispersion (D3 / D3(BJ) / DFT-D4 / TS /
+/// XDM / MBD as configured). Off-diagonal = 0.
 ///
 /// @param atoms Geometry [Bohr] + basis/PP (same as `GpwDft::run`).
 /// @param method SCF configuration (`cell` must match atoms' box).
