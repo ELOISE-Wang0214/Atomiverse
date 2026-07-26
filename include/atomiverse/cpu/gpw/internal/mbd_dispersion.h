@@ -12,7 +12,12 @@
 ///      (Ewald dipole tensor + Brillouin-zone k-mesh average when periodic).
 ///
 /// PBE defaults: β = 0.83, Fermi a = 6. Free-atom α₀ / C₆ / R_vdW from
-/// `basis_data/ts_tables.h`. Forces are not computed (energy-only v1).
+/// `basis_data/ts_tables.h`.
+///
+/// Ionic forces \(F_A = -\partial E_{\mathrm{MBD}}/\partial R_A\) are the
+/// negative gradient of this geometry-only energy (product path uses high-order
+/// central finite differences of the same kernel that matches libMBD; free-atom
+/// and fixed volume-ratio paths only — density-chain Hirshfeld is out of scope).
 #pragma once
 
 #include <array>
@@ -27,6 +32,8 @@ namespace gpw {
 /// @brief Result of an MBD evaluation.
 struct MbdResult {
     double energy = 0.0; ///< Dispersion energy [Hartree].
+    /// @brief Forces \(F_A = -\partial E/\partial R_A\) [Hartree/Bohr].
+    std::vector<std::array<double, 3>> forces;
 };
 
 /// @brief PBE-MBD@rsSCS free-atom (or volume-scaled) many-body dispersion.
@@ -41,7 +48,7 @@ struct MbdResult {
 /// @param k_mesh    Monkhorst–Pack-like mesh (libMBD shift ½) when periodic
 ///                  (length-3 pointer; nullptr ⇒ {2,2,2}); ignored when
 ///                  isolated. Each component must be ≥ 1.
-/// @return Energy [Hartree].
+/// @return Energy [Hartree] and forces [Hartree/Bohr].
 MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
                         const std::vector<std::array<double, 3>>& pos_bohr,
                         const double cell_bohr[3], bool periodic,
