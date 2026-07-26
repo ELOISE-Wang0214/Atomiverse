@@ -57,11 +57,24 @@ python_grep() { # extended-regex
         | grep -vE 'compatibility_(surface_scrub[.]sh|inventory[.]txt)'
 }
 
+# Same dirs as `python_grep` plus `python/tests`.  Only for fossil spellings
+# that must not appear even inside the test suite; rows whose banned spelling
+# is legitimately named by an inverted fossil guard (`assert "scalars" not in
+# frame.keys()`) must stay on the narrower `python` scope.
+python_with_tests_grep() { # extended-regex
+    grep -RnE --include='*.py' --include='*.md' "$1" \
+        "${ROOT}/python/src" "${ROOT}/python/docs" \
+        "${ROOT}/python/examples" "${ROOT}/python/benchmarks" \
+        "${ROOT}/python/tests" 2>/dev/null \
+        | grep -vE 'compatibility_(surface_scrub[.]sh|inventory[.]txt)'
+}
+
 all_python_grep() { # extended-regex
     grep -RnE --include='*.py' --exclude-dir=cuda --exclude-dir=torch \
         --exclude-dir=build --exclude-dir=.venv "$1" \
         "${ROOT}/python/src" "${ROOT}/python/docs" \
         "${ROOT}/python/examples" "${ROOT}/python/benchmarks" \
+        "${ROOT}/python/tests" \
         "${ROOT}/examples" "${ROOT}/regressions" \
         "${ROOT}/benchmarks" "${ROOT}/app" "${ROOT}/tools" 2>/dev/null \
         | grep -vE 'compatibility_(surface_scrub[.]sh|inventory[.]txt)'
@@ -78,6 +91,7 @@ else
         code) matches="$(code_grep "${pattern}")" ;;
         all) matches="$(common_grep "${pattern}")" ;;
         python) matches="$(python_grep "${pattern}")" ;;
+        python_with_tests) matches="$(python_with_tests_grep "${pattern}")" ;;
         *)
             echo "FAIL: unknown compatibility inventory scope '${scope}'"
             status=1
@@ -90,11 +104,11 @@ fi
 
 # The old aggregate spelling is checked only where the receiver is visibly a
 # Frame.  Scientific helper types such as IntegralPack::atoms remain valid.
-matches="$(common_grep '(ctx[.]frame|(^|[^[:alnum:]_])(frame|f))[.](atoms|scalars|box)([^[:alnum:]_]|$)|->[[:space:]]*(atoms|scalars|box)([^[:alnum:]_]|$)')"
-fail_matches 'legacy CPU Frame atoms/scalars/box surface remains' "${matches}"
+matches="$(common_grep '(ctx[.]frame|(^|[^[:alnum:]_])(frame|f))[.](atoms|scalars|simbox)([^[:alnum:]_]|$)|->[[:space:]]*(atoms|scalars|simbox)([^[:alnum:]_]|$)')"
+fail_matches 'legacy CPU Frame atoms/scalars/simbox surface remains' "${matches}"
 
-matches="$(all_python_grep '(^|[^[:alnum:]_])(frame|f)[.](box|metadata)([^[:alnum:]_]|$)')"
-fail_matches 'legacy Python Frame box/metadata surface remains' "${matches}"
+matches="$(all_python_grep '(^|[^[:alnum:]_])(frame|f)[.](simbox|metadata)([^[:alnum:]_]|$)')"
+fail_matches 'legacy Python Frame simbox/metadata surface remains' "${matches}"
 
 matches="$(common_grep 'ATV_FRAME_META|ATV_FIELD_BIND|(^|[^[:alnum:]_])ExtraColumn([^[:alnum:]_]|$)')"
 fail_matches 'legacy Frame macro/ExtraColumn surface remains' "${matches}"
