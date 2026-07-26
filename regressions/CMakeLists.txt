@@ -230,6 +230,7 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw periodic-rpa-finite-q)
     atv_add_regression(gpw periodic-gw-si)
     atv_add_regression(gpw periodic-ugw-si)
+    atv_add_regression(gpw periodic-ugw-kpoints)
     atv_add_regression(gpw periodic-gw-kpoints)
     atv_add_regression(gpw periodic-gw-finite-q)
     # MPI k-point RR industrial gate (self-launches mpiexec when ATV_USE_MPI).

@@ -326,3 +326,62 @@ TEST(GpwG0W0, KpointsNk1RecoversRealSpectral) {
                     sx[static_cast<std::size_t>(p)], 1e-8);
     }
 }
+
+// Multi-k UHF kernel at N_k=1 with identical α=β real-valued complex MOs
+// recovers closed-shell multi-k spectral QP (dual-gate vs RHF kernel).
+TEST(GpwG0W0, UhfKpointsNk1DualGatesRhf) {
+    using ATV::cpu::gpw::make_uniform_grid;
+    using ATV::cpu::gpw::UniformGrid;
+    using ATV::cpu::gpw::internal::Cplx;
+    using ATV::cpu::gpw::internal::spectral_g0w0_rhf_kpoints;
+    using ATV::cpu::gpw::internal::spectral_g0w0_uhf_kpoints;
+    using std::array;
+
+    const double cell[3] = {6.0, 6.0, 6.0};
+    const UniformGrid grid = make_uniform_grid(cell, 25.0);
+    const long npts = grid.npts();
+    const int n_occ = 1, n_virt = 1, n_mo = 2;
+
+    std::vector<double> psi_all(static_cast<std::size_t>(n_mo) * npts);
+    for (long g = 0; g < npts; ++g) {
+        double r[3];
+        grid.point(g, r);
+        const double dx = r[0] - 3.0, dy = r[1] - 3.0, dz = r[2] - 3.0;
+        const double r2 = dx * dx + dy * dy + dz * dz;
+        psi_all[static_cast<std::size_t>(g)] = std::exp(-0.7 * r2);
+        psi_all[static_cast<std::size_t>(npts) + static_cast<std::size_t>(g)] =
+            dx * std::exp(-0.5 * r2);
+    }
+    std::vector<double> eps = {-0.85, 0.30};
+    std::vector<double> vxc_r(static_cast<std::size_t>(npts), 0.0);
+
+    std::vector<std::vector<Cplx>> psi_k(1);
+    psi_k[0].resize(static_cast<std::size_t>(n_mo) * npts);
+    for (std::size_t i = 0; i < psi_all.size(); ++i)
+        psi_k[0][i] = Cplx{psi_all[i], 0.0};
+    std::vector<std::vector<double>> eps_k = {eps};
+    std::vector<double> k_w = {1.0};
+    std::vector<array<double, 3>> k_frac = {{{0.0, 0.0, 0.0}}};
+
+    std::vector<std::vector<double>> qp_rhf, sx_rhf, vxc_rhf;
+    bool ok_rhf = false;
+    spectral_g0w0_rhf_kpoints(grid, psi_k, eps_k, k_frac, k_w, n_occ, n_virt,
+                              vxc_r, qp_rhf, sx_rhf, vxc_rhf, ok_rhf);
+    ASSERT_TRUE(ok_rhf);
+    ASSERT_EQ(qp_rhf.size(), 1u);
+
+    std::vector<std::vector<double>> qp_uhf, sx_uhf, vxc_uhf;
+    bool ok_uhf = false;
+    spectral_g0w0_uhf_kpoints(grid, psi_k, psi_k, eps_k, eps_k, k_frac, k_w,
+                              n_occ, n_virt, n_occ, n_virt, vxc_r, qp_uhf,
+                              sx_uhf, vxc_uhf, ok_uhf);
+    ASSERT_TRUE(ok_uhf);
+    ASSERT_EQ(qp_uhf.size(), 1u);
+    ASSERT_EQ(qp_uhf[0].size(), static_cast<std::size_t>(n_mo));
+    for (int p = 0; p < n_mo; ++p) {
+        EXPECT_NEAR(qp_uhf[0][static_cast<std::size_t>(p)],
+                    qp_rhf[0][static_cast<std::size_t>(p)], 1e-8);
+        EXPECT_NEAR(sx_uhf[0][static_cast<std::size_t>(p)],
+                    sx_rhf[0][static_cast<std::size_t>(p)], 1e-8);
+    }
+}

@@ -2084,6 +2084,442 @@ void spectral_g0w0_rhf_kpoints(
     }
 }
 
+void spectral_g0w0_uhf_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_mo_a_k,
+    const std::vector<std::vector<Cplx>>& psi_mo_b_k,
+    const std::vector<std::vector<double>>& eps_a_k,
+    const std::vector<std::vector<double>>& eps_b_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, int n_oa, int n_va, int n_ob,
+    int n_vb, const std::vector<double>& vxc_a_r,
+    std::vector<std::vector<double>>& qp_energy_k,
+    std::vector<std::vector<double>>& sigma_x_k,
+    std::vector<std::vector<double>>& vxc_diag_k, bool& all_converged) {
+    using linalg::CplxMatrix;
+
+    const int nk = static_cast<int>(psi_mo_a_k.size());
+    if (nk < 1)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: empty k mesh");
+    if (static_cast<int>(psi_mo_b_k.size()) != nk
+        || static_cast<int>(eps_a_k.size()) != nk
+        || static_cast<int>(eps_b_k.size()) != nk
+        || static_cast<int>(k_weights.size()) != nk
+        || static_cast<int>(k_frac.size()) != nk)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: per-k array length mismatch");
+    if (n_oa < 1 || n_va < 1)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: need n_oa>=1 and n_va>=1 "
+            "(α primary report)");
+    if (n_ob < 0 || n_vb < 0)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: negative β orbital counts");
+    if ((n_ob == 0) != (n_vb == 0))
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: β channel must be empty on both "
+            "occ and virt or neither");
+
+    const long npts = grid.npts();
+    const double w_grid = grid.weight();
+    if (static_cast<int>(vxc_a_r.size()) != static_cast<int>(npts))
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: vxc_a_r size != npts");
+
+    const int n_mo_a = static_cast<int>(eps_a_k[0].size());
+    const int n_mo_b =
+        (n_ob > 0 || n_vb > 0) ? static_cast<int>(eps_b_k[0].size()) : 0;
+    if (n_mo_a < n_oa + n_va)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: n_mo_a < n_oa + n_va");
+    if (n_ob > 0 && n_mo_b < n_ob + n_vb)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: n_mo_b < n_ob + n_vb");
+
+    const int nov_a = n_oa * n_va;
+    const int nov_b = n_ob * n_vb;
+    const int nov = nov_a + nov_b;
+    if (nov < 1)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: empty composite OV space");
+
+    const std::size_t need_a =
+        static_cast<std::size_t>(n_mo_a) * static_cast<std::size_t>(npts);
+    const std::size_t need_b =
+        static_cast<std::size_t>(std::max(n_mo_b, 0))
+        * static_cast<std::size_t>(npts);
+
+    for (int ik = 0; ik < nk; ++ik) {
+        if (static_cast<int>(eps_a_k[static_cast<std::size_t>(ik)].size())
+            != n_mo_a)
+            throw std::invalid_argument(
+                "gpw spectral_g0w0_uhf_kpoints: inconsistent n_mo_a across k");
+        if (psi_mo_a_k[static_cast<std::size_t>(ik)].size() != need_a)
+            throw std::invalid_argument(
+                "gpw spectral_g0w0_uhf_kpoints: α MO grid size mismatch");
+        if (n_ob > 0) {
+            if (static_cast<int>(
+                    eps_b_k[static_cast<std::size_t>(ik)].size())
+                != n_mo_b)
+                throw std::invalid_argument(
+                    "gpw spectral_g0w0_uhf_kpoints: inconsistent n_mo_b "
+                    "across k");
+            if (psi_mo_b_k[static_cast<std::size_t>(ik)].size() != need_b)
+                throw std::invalid_argument(
+                    "gpw spectral_g0w0_uhf_kpoints: β MO grid size mismatch");
+        }
+    }
+    double wsum = 0.0;
+    for (double wk : k_weights)
+        wsum += wk;
+    if (std::abs(wsum - 1.0) > 1e-8)
+        throw std::invalid_argument(
+            "gpw spectral_g0w0_uhf_kpoints: k_weights must sum to 1");
+
+    constexpr double kAmBFloor = 1e-10;
+    constexpr double kOmega2Tol = 1e-10;
+    constexpr double kQTol = 1e-10;
+    // Equal-mesh spectral weight: each q contributes 1/N_k.
+    const double w_q_se = 1.0 / static_cast<double>(nk);
+
+    qp_energy_k.assign(static_cast<std::size_t>(nk),
+                       std::vector<double>(static_cast<std::size_t>(n_mo_a),
+                                           0.0));
+    sigma_x_k.assign(static_cast<std::size_t>(nk),
+                     std::vector<double>(static_cast<std::size_t>(n_mo_a),
+                                         0.0));
+    vxc_diag_k.assign(static_cast<std::size_t>(nk),
+                      std::vector<double>(static_cast<std::size_t>(n_mo_a),
+                                          0.0));
+    all_converged = true;
+
+    // Per-(k,p_α) spectral Σ_c terms accumulated over q (same-spin G_α W).
+    std::vector<std::vector<std::vector<ScTerm>>> sc_terms(
+        static_cast<std::size_t>(nk),
+        std::vector<std::vector<ScTerm>>(static_cast<std::size_t>(n_mo_a)));
+
+    std::vector<Cplx> rho(static_cast<std::size_t>(npts));
+
+    // ── Unique q = wrap(ka − ki) ──────────────────────────────────────
+    std::vector<std::array<double, 3>> q_list;
+    auto q_index_of = [&](double qx, double qy, double qz) -> int {
+        const double tx = wrap_frac(qx), ty = wrap_frac(qy),
+                     tz = wrap_frac(qz);
+        for (std::size_t iq = 0; iq < q_list.size(); ++iq) {
+            const double dx = wrap_frac(q_list[iq][0] - tx);
+            const double dy = wrap_frac(q_list[iq][1] - ty);
+            const double dz = wrap_frac(q_list[iq][2] - tz);
+            if (std::abs(dx) < kQTol && std::abs(dy) < kQTol
+                && std::abs(dz) < kQTol)
+                return static_cast<int>(iq);
+        }
+        return -1;
+    };
+    for (int ik = 0; ik < nk; ++ik) {
+        for (int ka = 0; ka < nk; ++ka) {
+            const double qx = k_frac[static_cast<std::size_t>(ka)][0]
+                              - k_frac[static_cast<std::size_t>(ik)][0];
+            const double qy = k_frac[static_cast<std::size_t>(ka)][1]
+                              - k_frac[static_cast<std::size_t>(ik)][1];
+            const double qz = k_frac[static_cast<std::size_t>(ka)][2]
+                              - k_frac[static_cast<std::size_t>(ik)][2];
+            if (q_index_of(qx, qy, qz) < 0)
+                q_list.push_back(
+                    {{wrap_frac(qx), wrap_frac(qy), wrap_frac(qz)}});
+        }
+    }
+    const int nq = static_cast<int>(q_list.size());
+    if (nq < 1)
+        throw std::runtime_error(
+            "gpw spectral_g0w0_uhf_kpoints: empty q mesh from k differences");
+
+    for (int iq = 0; iq < nq; ++iq) {
+        const double q_frac[3] = {q_list[static_cast<std::size_t>(iq)][0],
+                                  q_list[static_cast<std::size_t>(iq)][1],
+                                  q_list[static_cast<std::size_t>(iq)][2]};
+
+        std::vector<int> src_k;
+        std::vector<int> tgt_k;
+        src_k.reserve(static_cast<std::size_t>(nk));
+        tgt_k.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const double fx = k_frac[static_cast<std::size_t>(ik)][0]
+                              + q_frac[0];
+            const double fy = k_frac[static_cast<std::size_t>(ik)][1]
+                              + q_frac[1];
+            const double fz = k_frac[static_cast<std::size_t>(ik)][2]
+                              + q_frac[2];
+            const int ka = find_k_index(k_frac, fx, fy, fz);
+            if (ka >= 0) {
+                src_k.push_back(ik);
+                tgt_k.push_back(ka);
+            }
+        }
+        const int n_src = static_cast<int>(src_k.size());
+        if (n_src < 1)
+            continue;
+
+        // Composite OV per source k: α then β (matches direct_rpa_uhf layout).
+        const int n_block = n_src * nov;
+        std::vector<std::vector<Cplx>> Via(
+            static_cast<std::size_t>(n_block));
+        std::vector<double> de(static_cast<std::size_t>(n_block));
+        std::vector<std::vector<Cplx>> rho_alpha(
+            static_cast<std::size_t>(n_block));
+
+        auto fill_spin = [&](int is, int nov_off, int n_o, int n_v,
+                             const std::vector<std::vector<Cplx>>& psi_mo_k,
+                             const std::vector<std::vector<double>>& eps_k) {
+            const int ik = src_k[static_cast<std::size_t>(is)];
+            const int ka = tgt_k[static_cast<std::size_t>(is)];
+            const auto& psi_o = psi_mo_k[static_cast<std::size_t>(ik)];
+            const auto& psi_v = psi_mo_k[static_cast<std::size_t>(ka)];
+            const auto& eps_o = eps_k[static_cast<std::size_t>(ik)];
+            const auto& eps_v = eps_k[static_cast<std::size_t>(ka)];
+            for (int i = 0; i < n_o; ++i) {
+                for (int a = 0; a < n_v; ++a) {
+                    const int ia = i * n_v + a;
+                    const int alpha = is * nov + nov_off + ia;
+                    const Cplx* pi =
+                        psi_o.data()
+                        + static_cast<std::size_t>(i)
+                              * static_cast<std::size_t>(npts);
+                    const Cplx* pa =
+                        psi_v.data()
+                        + static_cast<std::size_t>(n_o + a)
+                              * static_cast<std::size_t>(npts);
+                    rho_alpha[static_cast<std::size_t>(alpha)].resize(
+                        static_cast<std::size_t>(npts));
+                    for (long g = 0; g < npts; ++g) {
+                        const Cplx r = std::conj(pi[g]) * pa[g];
+                        rho[static_cast<std::size_t>(g)] = r;
+                        rho_alpha[static_cast<std::size_t>(alpha)]
+                                 [static_cast<std::size_t>(g)] = r;
+                    }
+                    poisson_complex(grid, rho.data(),
+                                    Via[static_cast<std::size_t>(alpha)]);
+                    de[static_cast<std::size_t>(alpha)] =
+                        eps_v[static_cast<std::size_t>(n_o + a)]
+                        - eps_o[static_cast<std::size_t>(i)];
+                    if (de[static_cast<std::size_t>(alpha)] <= kAmBFloor)
+                        throw std::runtime_error(
+                            "gpw spectral_g0w0_uhf_kpoints: non-positive "
+                            "Δε at a (q,k,i,a,σ) transition — dRPA (A−B) not "
+                            "PD");
+                }
+            }
+        };
+
+        for (int is = 0; is < n_src; ++is) {
+            fill_spin(is, 0, n_oa, n_va, psi_mo_a_k, eps_a_k);
+            if (nov_b > 0)
+                fill_spin(is, nov_a, n_ob, n_vb, psi_mo_b_k, eps_b_k);
+        }
+
+        // Hermitian Coulomb form (ρ_p | ρ_q) — same- and cross-spin.
+        CplxMatrix Vmat = xt::zeros<Cplx>({n_block, n_block});
+        for (int p = 0; p < n_block; ++p) {
+            const Cplx* Vp = Via[static_cast<std::size_t>(p)].data();
+            for (int qq = 0; qq < n_block; ++qq) {
+                const Cplx* rq =
+                    rho_alpha[static_cast<std::size_t>(qq)].data();
+                Cplx s{0.0, 0.0};
+                for (long g = 0; g < npts; ++g)
+                    s += std::conj(Vp[g]) * rq[g];
+                Vmat(p, qq) = w_grid * s;
+            }
+        }
+        for (int p = 0; p < n_block; ++p) {
+            Vmat(p, p) = Cplx{Vmat(p, p).real(), 0.0};
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg =
+                    0.5 * (Vmat(p, qq) + std::conj(Vmat(qq, p)));
+                Vmat(p, qq) = avg;
+                Vmat(qq, p) = std::conj(avg);
+            }
+        }
+
+        // UHF Casida: A−B = diag(Δε), A+B = diag(Δε) + 2V (spins explicit).
+        CplxMatrix M = xt::zeros<Cplx>({n_block, n_block});
+        for (int p = 0; p < n_block; ++p) {
+            const double dep = de[static_cast<std::size_t>(p)];
+            const double sp = std::sqrt(dep);
+            for (int qq = 0; qq < n_block; ++qq) {
+                const double sq = std::sqrt(de[static_cast<std::size_t>(qq)]);
+                Cplx apb = 2.0 * Vmat(p, qq);
+                if (p == qq)
+                    apb += dep;
+                M(p, qq) = sp * apb * sq;
+            }
+        }
+        for (int p = 0; p < n_block; ++p) {
+            M(p, p) = Cplx{M(p, p).real(), 0.0};
+            for (int qq = p + 1; qq < n_block; ++qq) {
+                const Cplx avg = 0.5 * (M(p, qq) + std::conj(M(qq, p)));
+                M(p, qq) = avg;
+                M(qq, p) = std::conj(avg);
+            }
+        }
+
+        std::vector<double> w2;
+        CplxMatrix Z;
+        eigh_hermitian(M, w2, Z);
+
+        std::vector<double> Om(static_cast<std::size_t>(n_block));
+        std::vector<Cplx> Xpy(static_cast<std::size_t>(n_block)
+                              * static_cast<std::size_t>(n_block));
+        for (int s = 0; s < n_block; ++s) {
+            double lam = w2[static_cast<std::size_t>(s)];
+            if (lam < -kOmega2Tol)
+                throw std::runtime_error(
+                    "gpw spectral_g0w0_uhf_kpoints: dRPA omega^2 = "
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
+                    + " root " + std::to_string(s)
+                    + ") is negative — imaginary excitation (no fallback)");
+            if (lam <= kOmega2Tol)
+                throw std::runtime_error(
+                    "gpw spectral_g0w0_uhf_kpoints: dRPA omega^2 = "
+                    + std::to_string(lam) + " Ha^2 (q=" + std::to_string(iq)
+                    + " root " + std::to_string(s)
+                    + ") is numerically zero (no fallback)");
+            const double om = std::sqrt(lam);
+            Om[static_cast<std::size_t>(s)] = om;
+            const double inv_sqrt_om = 1.0 / std::sqrt(om);
+            for (int p = 0; p < n_block; ++p) {
+                const double sp = std::sqrt(de[static_cast<std::size_t>(p)]);
+                Xpy[static_cast<std::size_t>(s)
+                        * static_cast<std::size_t>(n_block)
+                    + static_cast<std::size_t>(p)] =
+                    inv_sqrt_om * sp * Z(p, s);
+            }
+        }
+
+        // W_s(r) = Σ_iaσ (X+Y) V_iaσ  (no √2 — spins explicit, Γ UGW form).
+        std::vector<Cplx> Ws(static_cast<std::size_t>(npts));
+        for (int s = 0; s < n_block; ++s) {
+            std::fill(Ws.begin(), Ws.end(), Cplx{0.0, 0.0});
+            for (int alpha = 0; alpha < n_block; ++alpha) {
+                const Cplx z =
+                    Xpy[static_cast<std::size_t>(s)
+                            * static_cast<std::size_t>(n_block)
+                        + static_cast<std::size_t>(alpha)];
+                if (z.real() == 0.0 && z.imag() == 0.0)
+                    continue;
+                const Cplx* Via_g =
+                    Via[static_cast<std::size_t>(alpha)].data();
+                for (long g = 0; g < npts; ++g)
+                    Ws[static_cast<std::size_t>(g)] += z * Via_g[g];
+            }
+
+            const double Os = Om[static_cast<std::size_t>(s)];
+            for (int kp = 0; kp < nk; ++kp) {
+                const double fmx = k_frac[static_cast<std::size_t>(kp)][0]
+                                   - q_frac[0];
+                const double fmy = k_frac[static_cast<std::size_t>(kp)][1]
+                                   - q_frac[1];
+                const double fmz = k_frac[static_cast<std::size_t>(kp)][2]
+                                   - q_frac[2];
+                const int km = find_k_index(k_frac, fmx, fmy, fmz);
+                if (km < 0)
+                    continue;
+
+                // Same-spin G_α: intermediates and external legs are α.
+                const auto& psi_p = psi_mo_a_k[static_cast<std::size_t>(kp)];
+                const auto& psi_m = psi_mo_a_k[static_cast<std::size_t>(km)];
+                const auto& eps_m = eps_a_k[static_cast<std::size_t>(km)];
+
+                for (int m = 0; m < n_mo_a; ++m) {
+                    const Cplx* pm =
+                        psi_m.data()
+                        + static_cast<std::size_t>(m)
+                              * static_cast<std::size_t>(npts);
+                    for (int p = 0; p < n_mo_a; ++p) {
+                        const Cplx* pp =
+                            psi_p.data()
+                            + static_cast<std::size_t>(p)
+                                  * static_cast<std::size_t>(npts);
+                        Cplx acc{0.0, 0.0};
+                        for (long g = 0; g < npts; ++g)
+                            acc += Ws[static_cast<std::size_t>(g)]
+                                   * (std::conj(pm[g]) * pp[g]);
+                        acc *= w_grid;
+                        const double t2 = w_q_se * std::norm(acc);
+                        if (t2 == 0.0)
+                            continue;
+                        ScTerm term;
+                        term.Omega = Os;
+                        term.eps_m = eps_m[static_cast<std::size_t>(m)];
+                        term.t2 = t2;
+                        term.m_occ = (m < n_oa);
+                        sc_terms[static_cast<std::size_t>(kp)]
+                                [static_cast<std::size_t>(p)]
+                                    .push_back(term);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Per-k α: MT Σ_x, v_xc^α diagonals, Newton QP ──────────────────
+    for (int ik = 0; ik < nk; ++ik) {
+        const auto& psi = psi_mo_a_k[static_cast<std::size_t>(ik)];
+        const auto& eps = eps_a_k[static_cast<std::size_t>(ik)];
+
+        auto& sx = sigma_x_k[static_cast<std::size_t>(ik)];
+        std::vector<Cplx> Vmt;
+        for (int p = 0; p < n_mo_a; ++p) {
+            const Cplx* pp =
+                psi.data()
+                + static_cast<std::size_t>(p) * static_cast<std::size_t>(npts);
+            double sum = 0.0;
+            for (int i = 0; i < n_oa; ++i) {
+                const Cplx* pi =
+                    psi.data()
+                    + static_cast<std::size_t>(i)
+                          * static_cast<std::size_t>(npts);
+                for (long g = 0; g < npts; ++g)
+                    rho[static_cast<std::size_t>(g)] =
+                        std::conj(pp[g]) * pi[g];
+                poisson_mt_complex(grid, rho.data(), Vmt);
+                Cplx s{0.0, 0.0};
+                for (long g = 0; g < npts; ++g)
+                    s += Vmt[static_cast<std::size_t>(g)]
+                         * rho[static_cast<std::size_t>(g)];
+                sum -= w_grid * s.real();
+            }
+            sx[static_cast<std::size_t>(p)] = sum;
+        }
+
+        auto& vxc_d = vxc_diag_k[static_cast<std::size_t>(ik)];
+        for (int p = 0; p < n_mo_a; ++p) {
+            const Cplx* pp =
+                psi.data()
+                + static_cast<std::size_t>(p) * static_cast<std::size_t>(npts);
+            double acc = 0.0;
+            for (long g = 0; g < npts; ++g)
+                acc +=
+                    std::norm(pp[g]) * vxc_a_r[static_cast<std::size_t>(g)];
+            vxc_d[static_cast<std::size_t>(p)] = w_grid * acc;
+        }
+
+        auto& qp = qp_energy_k[static_cast<std::size_t>(ik)];
+        for (int p = 0; p < n_mo_a; ++p) {
+            const double vx_m_vxc = sx[static_cast<std::size_t>(p)]
+                                   - vxc_d[static_cast<std::size_t>(p)];
+            double w = eps[static_cast<std::size_t>(p)];
+            const bool ok = solve_qp_terms(
+                eps[static_cast<std::size_t>(p)], vx_m_vxc,
+                sc_terms[static_cast<std::size_t>(ik)]
+                        [static_cast<std::size_t>(p)],
+                w);
+            if (!ok)
+                all_converged = false;
+            qp[static_cast<std::size_t>(p)] = w;
+        }
+    }
+}
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu

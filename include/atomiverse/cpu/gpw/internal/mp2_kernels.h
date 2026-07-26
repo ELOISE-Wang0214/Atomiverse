@@ -403,6 +403,37 @@ void spectral_g0w0_rhf_kpoints(
     std::vector<std::vector<double>>& sigma_x_k,
     std::vector<std::vector<double>>& vxc_diag_k, bool& all_converged);
 
+/// @brief Multi-k **finite-\(q\) inter-\(k\) unrestricted spectral G0W0**
+///        (UGW) quasiparticle energies on UKS Bloch orbitals.
+///
+/// Spin-conserving dRPA over α→α ⊕ β→β transitions \(i_k\to a_{k+q}\)
+/// (Coulomb-only Casida; spins explicit — no closed-shell factor 2),
+/// spectral \(W_s^q\) without \(\sqrt{2}\), same-spin \(G_\alpha W\) for the
+/// **α-channel** correlation self-energy, per-\(k\) MT \(\Sigma_x^\alpha\)
+/// and local \(v_{\mathrm{xc}}^\alpha\) diagonals. Newton QP on the α
+/// spectrum. Recovers `spectral_g0w0_rhf_kpoints` when \(N_k=1\) and
+/// \(C^\alpha=C^\beta\) (unit dual-gate). Requires \(n_\alpha\ge 1\) and
+/// \(n_{\mathrm{virt}}^\alpha\ge 1\) (primary report).
+///
+/// @param psi_mo_a_k / psi_mo_b_k Per-k full MO grids [nk][n_mo_σ·npts].
+/// @param eps_a_k / eps_b_k       Per-k eigenvalues [nk][n_mo_σ] [Hartree].
+/// @param n_oa / n_va / n_ob / n_vb Occupied / screening-virtual counts.
+/// @param vxc_a_r                 Spin-α local XC potential on the grid [Ha].
+/// @param qp_energy_k / sigma_x_k / vxc_diag_k Out: α-channel [nk][n_mo_a].
+/// @param all_converged Out: true when every α Newton solve succeeded.
+void spectral_g0w0_uhf_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_mo_a_k,
+    const std::vector<std::vector<Cplx>>& psi_mo_b_k,
+    const std::vector<std::vector<double>>& eps_a_k,
+    const std::vector<std::vector<double>>& eps_b_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, int n_oa, int n_va, int n_ob,
+    int n_vb, const std::vector<double>& vxc_a_r,
+    std::vector<std::vector<double>>& qp_energy_k,
+    std::vector<std::vector<double>>& sigma_x_k,
+    std::vector<std::vector<double>>& vxc_diag_k, bool& all_converged);
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu

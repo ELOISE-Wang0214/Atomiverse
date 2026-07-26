@@ -431,8 +431,8 @@ class GpwDft {
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
 
     /// @brief Spectral G0W0 quasiparticle energies on the converged KS
-    ///        orbitals of the last `run()` — Γ/multi-k RKS, or **Γ UKS
-    ///        (UGW)**.
+    ///        orbitals of the last `run()` — Γ/multi-k RKS, or **Γ/multi-k
+    ///        UKS (UGW)**.
     ///
     /// **RKS:** dRPA screening reuses the same dielectric path as multi-k
     /// `direct_rpa` / `mp2` (product RI-GPW when `mp2_ri` and periodic;
@@ -440,12 +440,13 @@ class GpwDft {
     /// spectral sum over finite-\(q\) RPA poles. Exact-exchange diagonals
     /// use truncated (MT) Coulomb. Local \(v_{\mathrm{xc}}\) matches the SCF.
     ///
-    /// **UKS (Γ only):** spin-conserving dRPA over α→α ⊕ β→β (Coulomb
-    /// kernel, spins explicit), same-spin spectral \(\Sigma_c^\sigma\),
-    /// per-spin MT \(\Sigma_x\), spin-resolved \(v_{\mathrm{xc}}^\sigma\).
-    /// Primary report is the **α-channel** spectrum / gap (dual-gates RKS
-    /// G0W0 when \(n_\alpha=n_\beta\) and orbitals match). Multi-k UGW is
-    /// a follow-on.
+    /// **UKS (Γ and multi-k):** spin-conserving dRPA over α→α ⊕ β→β
+    /// (Coulomb kernel, spins explicit), same-spin spectral
+    /// \(\Sigma_c^\sigma\), per-spin MT \(\Sigma_x\), spin-resolved
+    /// \(v_{\mathrm{xc}}^\sigma\). Multi-k uses finite-\(q\) inter-\(k\)
+    /// \(W\) on `C_k` / `C_k_beta` (requires `mp2_ri = true`). Primary
+    /// report is the **α-channel** spectrum / min-direct gap (dual-gates
+    /// RKS G0W0 when \(n_\alpha=n_\beta\) and orbitals match).
     ///
     /// Virtual space for screening capped by `mp2_n_virt` (0 = all kept
     /// virtuals); QP levels cover every MO of the reported spectrum.
@@ -453,9 +454,9 @@ class GpwDft {
     /// @return The owned G0W0 result (valid until the next `g0w0()`).
     /// @throws std::logic_error before `build()` or a converged `run()`,
     ///         or when UKS β orbitals are missing.
-    /// @throws std::invalid_argument for multi-k UKS, for `use_ot`, when
-    ///         multi-k `C_k` is missing, when multi-k and `!mp2_ri`, when
-    ///         no virtuals remain, or for a vanishing HOMO–LUMO gap
+    /// @throws std::invalid_argument for `use_ot`, when multi-k `C_k` /
+    ///         `C_k_beta` is missing, when multi-k and `!mp2_ri`, when no
+    ///         virtuals remain, or for a vanishing HOMO–LUMO gap
     ///         (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const G0W0Result& g0w0(const std::vector<GpwAtom>& atoms);
