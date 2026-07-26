@@ -25,7 +25,7 @@ The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
 | W2-3 | esmm-qmmm-03-electrostatic-rewrite | W2-2, W1-4, W1-5 | qm_z mask column + engine slot + real MM coupling |
 | W2-4 | esmm-qmmm-04-mech-pol-port | W2-3 | Mechanical/Polarizable onto QmSubsystem; quantitative re-pins |
 | W2-5 | esmm-qmmm-05-md-closure | W2-4 | QM/MM-MD conservation regression; roadmap ○→✓; tutorials |
-| W3-1 | esmm-cpmd-01-electronic-home | — | cpu/electronic/ shared propagators + linalg orbital_tangent extraction |
+| W3-1 | esmm-cpmd-01-electronic-home | — | DONE 2026-07-26 (closed; see git c40acdb3) — cpu/electronic/ shared propagators + linalg orbital_tangent extraction |
 | W3-2 | esmm-cpmd-02-timestep-protocol | W3-1 | TimestepProvider/Consumer; delete cpmd_dt; cpmd×stress gate |
 | W3-3 | esmm-cpmd-03-observability | W3-2 | kEnergyElectronKinetic/Thermostat + CpmdConserved → Thermo drift |
 | W3-4 | esmm-cpmd-04-ao-cpmd | W3-1..3 | Gaussian AO-CPMD on MeanFieldMethod (fixed-density eval + W=occ·C(CᵀFC)Cᵀ) |
