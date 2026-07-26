@@ -272,6 +272,7 @@ if(ATV_BUILD_GPW)
         atv_add_regression(dynamics xl-bomd-uks)
         # Multi-k RKS XL-BOMD (complex P_k aux densities) — H2 NVE.
         atv_add_regression(dynamics xl-bomd-kpoints)
+        atv_add_regression(dynamics cpmd-kpoints)
         # Multi-k UKS XL-BOMD (dual-spin P_k^sigma) — high-spin H2 NVE.
         atv_add_regression(dynamics xl-bomd-uks-kpoints)
         # Zero-SCF linearized-functional XL-BOMD forces (shadow BO potential).

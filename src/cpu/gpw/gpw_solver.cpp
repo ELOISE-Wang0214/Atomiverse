@@ -1252,6 +1252,51 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         return e_ks + e_ent;
     };
 
+    // ── Multi-k fixed-density KS eval (Car–Parrinello electronic step) ───
+    // max_iter == 0: one collocate→Poisson→XC→integrate at the supplied
+    // {P_k}; no diagonalization, no mixing, no orbital update. Populates
+    // H_ks_k / S_k for the complex electronic EOM (multi-k CPMD).
+    if (cfg.max_iter == 0) {
+        if (guess_P_k == nullptr)
+            throw std::invalid_argument(
+                "GpwDft: multi-k max_iter==0 (fixed-density) requires "
+                "guess_P_k (the Car–Parrinello density per k)");
+        if (cfg.use_ot)
+            throw std::invalid_argument(
+                "GpwDft: multi-k fixed-density eval is incompatible with "
+                "use_ot");
+        // Ensure every rank holds the full {P_k} (init loop only fills local k).
+        for (int ik = 0; ik < nk; ++ik)
+            P_k[static_cast<std::size_t>(ik)] =
+                CplxMatrix((*guess_P_k)[static_cast<std::size_t>(ik)]);
+        const double e_total = build_k_energy(P_k);
+        res.e_total = e_total;
+        // Full H_k on every rank from the shared V_eff.
+        const std::vector<CplxMatrix> H_full = rebuild_all_H(last_veff);
+        res.H_ks_k.resize(static_cast<std::size_t>(nk));
+        res.S_k.resize(static_cast<std::size_t>(nk));
+        res.P_k.resize(static_cast<std::size_t>(nk));
+        res.k_frac.clear();
+        res.k_weights.clear();
+        res.k_frac.reserve(static_cast<std::size_t>(nk));
+        res.k_weights.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& kp = kpts[static_cast<std::size_t>(ik)];
+            res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
+            res.k_weights.push_back(kp.weight);
+            res.H_ks_k[static_cast<std::size_t>(ik)] =
+                H_full[static_cast<std::size_t>(ik)];
+            res.S_k[static_cast<std::size_t>(ik)] =
+                S_k[static_cast<std::size_t>(ik)];
+            res.P_k[static_cast<std::size_t>(ik)] =
+                P_k[static_cast<std::size_t>(ik)];
+        }
+        res.converged = true;
+        res.iters = 0;
+        fold_dispersion_k(res, P_k);
+        return res;
+    }
+
     // ── Multi-k OT (closed-shell RKS; integer / metallic / +DFT+U) ─────────
     // Diagonalization-free: active C_k live on the complex OT manifold.
     // Integer occupations + PLUS_U: CP2K-style OUTER_SCF — rebuild H (incl.
@@ -4072,10 +4117,14 @@ static GpwResult run_gpw_scf_impl(
     // ── Fixed-density KS evaluation (Car–Parrinello electronic step) ─────
     // max_iter == 0: one collocate→Poisson→XC→integrate at the supplied
     // density; no diagonalization, no mixing, no orbital update. Populates
-    // H_ks (+ H_ks_beta for UKS) and S for the electronic EOM. Γ only.
-    // RKS is handled here; UKS fixed-density is inside the UKS block below
-    // (reuses build_uks_H).
+    // H_ks (+ H_ks_beta for UKS) and S for the electronic EOM. Γ RKS only
+    // here — multi-k fixed-density lives in run_gpw_scf_kpoints; UKS
+    // fixed-density is inside the UKS block below (reuses build_uks_H).
     if (cfg.max_iter == 0 && !uks) {
+        if (use_kpath)
+            throw std::invalid_argument(
+                "GpwDft: multi-k fixed-density must be reached via the "
+                "k-path runner (internal error: Γ RKS block saw use_kpath)");
         if (guess_P == nullptr)
             throw std::invalid_argument(
                 "GpwDft: max_iter==0 (fixed-density eval) requires guess_P "
@@ -4083,9 +4132,6 @@ static GpwResult run_gpw_scf_impl(
         if (cfg.use_ot)
             throw std::invalid_argument(
                 "GpwDft: fixed-density eval is incompatible with use_ot");
-        if (use_kpath)
-            throw std::invalid_argument(
-                "GpwDft: fixed-density eval supports Γ-point only");
         // P was already replaced by guess_P above when non-null.
         auto [H, e_total] = build_H_and_energy(P);
         res.e_total = e_total;
