@@ -158,6 +158,8 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw pw-spin-gga)
     atv_add_regression(pw bands-dos-si)
     atv_add_regression(pw bands-spin-si)
+    # Metallic occupation DOS (FD smear on diamond Si; integral to E_F).
+    atv_add_regression(pw dos-metallic-si)
     atv_add_regression(pw berry-polarization)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")

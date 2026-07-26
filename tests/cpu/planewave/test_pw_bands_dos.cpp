@@ -77,6 +77,23 @@ TEST(GaussianDos, SinglePeakIntegratesToWeightTimesTwo) {
     for (std::size_t i = 0; i + 1 < energy.size(); ++i)
         integ += 0.5 * (dos[i] + dos[i + 1]) * de;
     EXPECT_NEAR(integ, 2.0, 1e-3);
+
+    // Same integral via shared helper (metallic path uses cut = E_F).
+    EXPECT_NEAR(integrate_dos_to(energy, dos, /*e_cut=*/1.0), 2.0, 1e-3);
+}
+
+TEST(IntegrateDosTo, PartialCutoffHalfPeak) {
+    // Single peak at 0, closed-shell weight 1 → full ∫ = 2.
+    // Integrating only to 0 (peak centre, symmetric) ≈ 1.
+    std::vector<double> evals = {0.0};
+    std::vector<double> weights = {1.0};
+    std::vector<double> energy, dos;
+    const double sigma = 0.05;
+    gaussian_dos(evals, weights, /*e_min=*/-1.0, /*e_max=*/1.0, /*n_bins=*/4001,
+                 sigma, energy, dos);
+    const double half = integrate_dos_to(energy, dos, /*e_cut=*/0.0);
+    EXPECT_NEAR(half, 1.0, 2e-2);
+    EXPECT_NEAR(integrate_dos_to(energy, dos, /*e_cut=*/-1.0), 0.0, 1e-6);
 }
 
 TEST(BandsResult, DefaultIsRestricted) {

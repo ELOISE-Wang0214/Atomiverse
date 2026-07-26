@@ -26,6 +26,9 @@
 ///   dos.n_bands = 8;
 ///   dos.sigma_ry = 0.05;
 ///   auto dr = dos.compute(pw, frame);     // dos, n_elec_to_vbm
+///
+///   // Metallic occupations: set method.smearing / degauss / extra_bands;
+///   // integral is then to E_F (dr.e_fermi_ry).
 /// @endcode
 #pragma once
 
@@ -72,12 +75,17 @@ struct DosResult {
     /// DOS \(D(E)\) [states / Ry / cell]. Closed-shell: each band carries
     /// weight 2 when integrating the occupied spectrum.
     std::vector<double> dos;
-    /// \(\int_{-\infty}^{E_\mathrm{vbm}} D(E)\,dE\) (target \(\approx n_e\)).
+    /// Occupied DOS integral \(\int_{-\infty}^{E_\ast} D(E)\,dE\)
+    /// (target \(\approx n_e\)). For fixed occupations \(E_\ast=E_\mathrm{vbm}\);
+    /// for metallic smearing \(E_\ast=E_F\) (`e_fermi_ry`).
     double n_elec_to_vbm = 0;
-    double e_vbm_ry = 0;
-    double e_cbm_ry = 0;
-    double gap_ry = 0;
+    double e_vbm_ry = 0;  ///< Valence-band maximum [Ry] (fixed-occ / gapped).
+    double e_cbm_ry = 0;  ///< Conduction-band minimum [Ry].
+    double gap_ry = 0;    ///< \(E_\mathrm{cbm}-E_\mathrm{vbm}\) [Ry] (0 if no empty).
+    double e_fermi_ry = 0; ///< Fermi level [Ry] (0 if fixed occupations).
     bool scf_converged = false;
+    /// @brief SCF free energy \(F\) (smear) or total energy [Ry].
+    double scf_energy_ry = 0;
 };
 
 /// @brief High-symmetry-path band structure (NSCF on frozen \(V_\mathrm{eff}\)).
@@ -110,6 +118,12 @@ class Bands {
 };
 
 /// @brief Gaussian-broadened DOS from denser Monkhorst–Pack eigenvalues.
+///
+/// Fixed occupations (`method.smearing == none`): SCF is restricted
+/// integer-fill; occupied integral is to VBM. Metallic smearing
+/// (`fermi_dirac` / `methfessel_paxton` / `gaussian`): SCF uses fractional
+/// occupations; \(\mu\) is recomputed on the DOS mesh and the integral is to
+/// \(E_F\). Collinear spin remains unsupported on this path.
 class Dos {
   public:
     /// @brief DOS k-mesh per dimension (MP \(k_\mathrm{mesh}^3\)).
@@ -125,7 +139,8 @@ class Dos {
     double e_max_ry = 0;
 
     /// @brief SCF (method.k_mesh) + denser-mesh NSCF + Gaussian DOS.
-    /// @param method Plane-wave method (members; SCF uses method.k_mesh).
+    /// @param method Plane-wave method (members; SCF uses method.k_mesh;
+    ///               metallic path honors `smearing` / `degauss` / `extra_bands`).
     /// @param frame  Geometry [Å].
     /// @return Owned `DosResult`.
     DosResult compute(const PW& method, const cpu::Frame& frame) const;
@@ -167,6 +182,18 @@ void gaussian_dos(const std::vector<double>& evals,
                   const std::vector<double>& weights, double e_min,
                   double e_max, int n_bins, double sigma,
                   std::vector<double>& energy, std::vector<double>& dos);
+
+/// @brief Trapezoid \(\int_{-\infty}^{E_\mathrm{cut}} D(E)\,dE\) on a uniform grid.
+///
+/// Unit-testable free math shared by fixed-occupation (cut = VBM) and
+/// metallic (cut = \(E_F\)) DOS post-processing.
+///
+/// @param energy  Bin centres (ascending, uniform spacing).
+/// @param dos     \(D(E)\) at each bin.
+/// @param e_cut   Upper integration limit (same units as `energy`).
+/// @return Integrated electron count (states / cell).
+double integrate_dos_to(const std::vector<double>& energy,
+                        const std::vector<double>& dos, double e_cut);
 
 } // namespace pw
 } // namespace cpu
