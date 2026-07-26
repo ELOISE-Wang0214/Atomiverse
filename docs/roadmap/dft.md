@@ -18,14 +18,15 @@ plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 incomplete staff,
 optB88-vdW pending, GAPW/PAW; GapCensus wave-8 refill: multi-k URPA, OT+smear /
 multi-k UKS OT / multi-k OT+DFT+U, D4 analytic stress, nonlocal vdW SCF
-potential, DFPT metallic smear + spin-incommensurate \(q\); product already
+potential, DFPT metallic smear residual; product already
 ships URPA@UKS Γ, multi-k UGW, GPW UKS smear, UKS Hirshfeld, CPMD/SGCP UKS,
-OT+k / OT+DFT+U Γ, collinear-spin DFPT, XDM free-atom, GPW RKS/UKS metallic
-smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U energy/stress, multi-k UMP2,
-Γ+multi-k UGW, multi-k + UKS Hirshfeld, DFPT-GGA/spin, XL-BOMD UKS, k-point
-RKS/UKS forces/stress, Γ + finite-q + incommensurate DFPT, multi-k
-MP2/RPA/G0W0, vdW-DF / vdW-DF2 / rVV10 post-SCF \(E_{\mathrm{disp}}\),
-periodic Ewald MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE).
+OT+k / OT+DFT+U Γ, collinear-spin DFPT (Γ + commensurate + incommensurate \(q\)),
+XDM free-atom, GPW RKS/UKS metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k
+DFT+U energy/stress, multi-k UMP2, Γ+multi-k UGW, multi-k + UKS Hirshfeld,
+DFPT-GGA/spin, XL-BOMD UKS, k-point RKS/UKS forces/stress, Γ + finite-q +
+incommensurate DFPT, multi-k MP2/RPA/G0W0, vdW-DF / vdW-DF2 / rVV10 post-SCF
+\(E_{\mathrm{disp}}\), periodic Ewald MBD, PW true spin-GGA, finite-q dRPA,
+OT-UKS, CPMD RATTLE).
 
 ## 1. Kohn–Sham Methods
 
@@ -414,10 +415,9 @@ Which engine backs which ✓:
   energy-second-difference twin to 0.07 %; **finite-q at X** commensurate
   supercell path `reg_dfpt-finite-q-si`; **incommensurate** direct Sternheimer
   `reg_dfpt-incommensurate-si`; **GGA kernel** `reg_dfpt-gga-si`;
-  **collinear spin** `reg_dfpt-spin-si`). NC-UPF / fixed occupations;
-  **metallic smear on DFPT** (`dfpt-metallic-si`) and **collinear spin at
-  incommensurate \(q\)** (`dfpt-spin-incommensurate`) remain GapCensus
-  residuals.
+  **collinear spin** `reg_dfpt-spin-si`; **collinear spin at incommensurate
+  \(q\)** `reg_dfpt-spin-incommensurate`). NC-UPF / fixed occupations;
+  **metallic smear on DFPT** (`dfpt-metallic-si`) remains a GapCensus residual.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,

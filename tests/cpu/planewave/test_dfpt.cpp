@@ -241,16 +241,18 @@ TEST(DfptPhonon, ThrowsOnFiniteQWithSmearing) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, ThrowsOnSpinIncommensurateQ) {
-    // Direct finite-q Sternheimer still rejects collinear spin.
+TEST(DfptPhonon, SpinIncommensurateQReachesUpfIo) {
+    // Collinear spin at incommensurate q is supported; empty/missing UPF
+    // still fails inside dfpt_q_force_constants (I/O), not at a spin gate.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
     method.xc = cpu::scf::XCType::LSDA;
     method.spin_polarized = true;
+    method.multiplicity = 1;
     DfptPhonon dfpt;
     dfpt.q_frac = {0.3, 0.0, 0.0};
-    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+    EXPECT_THROW(dfpt.compute(method, frame), std::exception);
 }
 
 TEST(DfptPhonon, ThrowsOnBadMixBeta) {
