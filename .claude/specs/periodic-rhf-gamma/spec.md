@@ -107,7 +107,7 @@ Prefer **members on concrete RHF**, not a second world-model type:
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;   // or GTH/MOLOPT only if required by twin
 rhf.periodic = true;                    // public member; default false
-// Frame.simbox provides orthorhombic (v1) cell [Å]; positions in cell
+// Frame.box provides orthorhombic (v1) cell [Å]; positions in cell
 rhf.tol = 1e-8;
 rhf.max_iter = 100;
 rhf.run(frame);                         // frame.meta.get(kEnergy) [eV]

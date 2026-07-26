@@ -3,6 +3,35 @@
 Live specs under `.claude/specs/`. Completed work is **deleted**; history is
 the git log. Method census: `docs/roadmap/`.
 
+## Live — esmm campaign: ES × MM connection layer (2026-07-26, 16 specs)
+
+Operator-approved three-wave campaign (plan-mode design review + Q&A 2026-07-26):
+unify the force-pipeline composition contract, redesign QM/MM around an engine
+slot + `qm_z` mask column, generalize CPMD into a shared `cpu/electronic/`
+propagation layer. Execution order (operator, 2026-07-26): **esmm-cpmd wave
+first** (`/mol:impl-all esmm-cpmd`), then contract + qmmm waves;
+esmm-contract-05 rebases its gpw/scf `=`→`+=` sites over the cpmd wave.
+The libcint/C++20 sweep gate was cleared by committing it (2026-07-26).
+
+| # | Spec | Deps | One-line |
+| - | ---- | ---- | -------- |
+| W1-1 | esmm-contract-01-zeroing | — | Zero* unification (Hessian/Path/MC/Minimize/Evaluate) + k/2 oracle fix |
+| W1-2 | esmm-contract-02-validation-walks | — | McBase + PathDriver node-aware energy-source validation |
+| W1-3 | esmm-contract-03-runslot-nested | — | run_slot_ dispatches nested drivers (line-search zero-force fix) + R2 |
+| W1-4 | esmm-contract-04-forces-requested | W1-2 | phase_wants_forces plumbing + ASPC-under-MC guard + R3 |
+| W1-5 | esmm-contract-05-accumulate-switch | W1-1 | all ES sources `=`→`+=` + kEnergyElectronic + R1 |
+| W2-1 | esmm-qmmm-01-embed-forces | — | analytic embedding gradient + MM-site forces (third law) |
+| W2-2 | esmm-qmmm-02-qm-engine-protocol | W2-1 | QmEngine/EmbeddingEngine protocols; MFM×7 + AM1 + DFTB2 |
+| W2-3 | esmm-qmmm-03-electrostatic-rewrite | W2-2, W1-4, W1-5 | qm_z mask column + engine slot + real MM coupling |
+| W2-4 | esmm-qmmm-04-mech-pol-port | W2-3 | Mechanical/Polarizable onto QmSubsystem; quantitative re-pins |
+| W2-5 | esmm-qmmm-05-md-closure | W2-4 | QM/MM-MD conservation regression; roadmap ○→✓; tutorials |
+| W3-1 | esmm-cpmd-01-electronic-home | — | cpu/electronic/ shared propagators + linalg orbital_tangent extraction |
+| W3-2 | esmm-cpmd-02-timestep-protocol | W3-1 | TimestepProvider/Consumer; delete cpmd_dt; cpmd×stress gate |
+| W3-3 | esmm-cpmd-03-observability | W3-2 | kEnergyElectronKinetic/Thermostat + CpmdConserved → Thermo drift |
+| W3-4 | esmm-cpmd-04-ao-cpmd | W3-1..3 | Gaussian AO-CPMD on MeanFieldMethod (fixed-density eval + W=occ·C(CᵀFC)Cᵀ) |
+| W3-5 | esmm-cpmd-05-scf-xlbomd | W3-4 | XL-BOMD on the SCF methods (guess ladder) |
+| W3-6 | esmm-cpmd-06-single-eval | W3-3 | GpwDft::overlap(); CPMD single KS eval per step (~2×) |
+
 ## Live — deferred PySCF engine gaps (2026-07-24)
 
 Approved for **later** implementation (do **not** auto `/mol:impl` until
@@ -41,11 +70,9 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
 Open CP2K specs on `dev` = **0**. Stock VV10 is **blocked**. Incomplete
-feature tips (no parent specs): `wf/cpmd-kpoints`, `wf/periodic-wannier-gpw`,
-`wf/gpw-fd-phonon-si`. Workers write `.claude/specs/<slug>/` on `wf/<slug>`
-before impl. Harness wave 12 2026-07-26 closed 6 CP2K specs (deleted);
-pending residual=9 (GapCensus wave 13); in_progress=3; **not** queue
-exhausted.
+`[~]` = **0** after close of `gpw-fd-phonon-si` (2026-07-26; reg registered
+with 1D-curvature dual-gate + UKS density warm-start). Pending residual
+**12** (GapCensus wave 13/14 list); **not** queue exhausted.
 
 ## Closed — CP2K harness wave 12 (2026-07-26)
 
