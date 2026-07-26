@@ -3157,10 +3157,15 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
         throw std::invalid_argument(
             "dfpt_q_force_constants: hybrid XC unsupported "
             "(pure LSDA / pure GGA only; no exact-exchange response)");
-    if (method.smearing != Smearing::none)
+    const bool use_smear = (method.smearing != Smearing::none);
+    if (use_smear && method.spin_polarized)
         throw std::invalid_argument(
-            "dfpt_q_force_constants: metallic smearing unsupported at "
-            "finite q (use Γ restricted smear; finite-q follow-on)");
+            "dfpt_q_force_constants: collinear spin + metallic smearing "
+            "unsupported (restricted smear only)");
+    if (use_smear && !(method.degauss > 0.0))
+        throw std::invalid_argument(
+            "dfpt_q_force_constants: degauss must be > 0 [Ry] when "
+            "smearing is enabled");
     if (method.spin_polarized)
         return dfpt_q_spin_impl(frame, method, q_frac, response_tol,
                                 response_max_iter, cg_tol, cg_max_iter,
@@ -3180,11 +3185,24 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
     const int* types = frame.span(kAtom_type);
     for (int i = 0; i < n; ++i)
         n_elec += valence_from_z(types[i]);
-    const int n_bands = std::max(n_elec / 2, 1);
-    if (n_elec % 2 != 0)
+    const int n_valence = std::max((n_elec + 1) / 2, 1);
+    const int n_bands =
+        use_smear ? n_valence + std::max(method.extra_bands, 0)
+                  : std::max(n_elec / 2, 1);
+    if (!use_smear && n_elec % 2 != 0)
         throw std::invalid_argument(
             "dfpt_q_force_constants: odd electron count needs "
             "spin/smearing (unsupported)");
+
+    SmearKind smear_kind = SmearKind::fermi_dirac;
+    if (method.smearing == Smearing::methfessel_paxton)
+        smear_kind = SmearKind::methfessel_paxton;
+    else if (method.smearing == Smearing::gaussian)
+        smear_kind = SmearKind::gaussian;
+    const AccReal degauss_ha =
+        static_cast<AccReal>(method.degauss) * AccReal(0.5);
+    const int mp_order = method.mp_order;
+    constexpr AccReal kOccThr = AccReal(1e-8);
 
     PoissonSolver poisson;
     XCBuilder xc;
@@ -3194,8 +3212,12 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
 
     DfptQOutput out;
     PWProblem prob;
-    const PWResult scf = run_scf_fixed_occ(frame, method, prob, poisson, xc,
-                                           veff, density, davidson, "dfpt_q");
+    const PWResult scf =
+        use_smear
+            ? run_scf_smear_restricted(frame, method, prob, poisson, xc, veff,
+                                      density, davidson, n_bands, "dfpt_q")
+            : run_scf_fixed_occ(frame, method, prob, poisson, xc, veff, density,
+                               davidson, "dfpt_q");
     out.scf_converged = scf.converged;
     if (!scf.converged)
         ATV_WARN("[pw][dfpt_q] ground-state SCF not converged after {} iters; "
@@ -3211,7 +3233,6 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const AccReal omega = ws.omega;
     const AccReal dV = omega / AccReal(nr);
-    const AccReal occ_f = AccReal(2);
 
     // Cartesian q [1/Bohr].
     cpu::Box cell_bohr;
@@ -3291,6 +3312,36 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
     }
     const std::vector<AccReal> k_weights = prob.kg.weights;
 
+    // Per-(k, band) occupations [0, 2]: fixed f=2 or metallic smear fill.
+    std::vector<std::vector<AccReal>> occ_kb(
+        static_cast<std::size_t>(n_kpts),
+        std::vector<AccReal>(static_cast<std::size_t>(n_bands), AccReal(2)));
+    AccReal mu_ha = AccReal(0);
+    if (use_smear) {
+        std::vector<AccReal> all_evals;
+        std::vector<AccReal> all_weights;
+        all_evals.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        all_weights.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const AccReal w = k_weights[static_cast<std::size_t>(ik)];
+            const auto& ks = kstates[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands; ++b) {
+                all_evals.push_back(ks.eps[static_cast<std::size_t>(b)]);
+                all_weights.push_back(w);
+            }
+        }
+        mu_ha = find_fermi_level(all_evals, all_weights, AccReal(n_elec),
+                                 degauss_ha, smear_kind, mp_order);
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const auto& ks = kstates[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands; ++b)
+                occ_kb[static_cast<std::size_t>(ik)]
+                      [static_cast<std::size_t>(b)] =
+                    smear_f_band(ks.eps[static_cast<std::size_t>(b)], mu_ha,
+                                 degauss_ha, smear_kind, mp_order);
+        }
+    }
+
     // Eigenstates at k+q (occupied manifold for P_c^{k+q}).
     std::vector<Vec3> kq_frac(static_cast<std::size_t>(n_kpts));
     for (int ik = 0; ik < n_kpts; ++ik) {
@@ -3317,6 +3368,21 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             for (int ig = 0; ig < ws.n_g; ++ig)
                 ks.wfc[static_cast<std::size_t>(b) * ws.n_g + ig] =
                     ws.wfc(b, ig);
+    }
+
+    // Occupations at k+q from the same μ (projector manifold).
+    std::vector<std::vector<AccReal>> occ_kq(
+        static_cast<std::size_t>(n_kpts),
+        std::vector<AccReal>(static_cast<std::size_t>(n_bands), AccReal(2)));
+    if (use_smear) {
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const auto& ks = kqstates[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands; ++b)
+                occ_kq[static_cast<std::size_t>(ik)]
+                      [static_cast<std::size_t>(b)] =
+                    smear_f_band(ks.eps[static_cast<std::size_t>(b)], mu_ha,
+                                 degauss_ha, smear_kind, mp_order);
+        }
     }
 
     // Density sphere / V_eff stay on Γ; k-sphere tables are the owned copies.
@@ -3422,6 +3488,11 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             bind_state(ks, gv_k0[static_cast<std::size_t>(ik)]);
             const AccReal w = k_weights[static_cast<std::size_t>(ik)];
             for (int b = 0; b < n_bands; ++b) {
+                const AccReal f_b =
+                    occ_kb[static_cast<std::size_t>(ik)]
+                          [static_cast<std::size_t>(b)];
+                if (f_b < kOccThr)
+                    continue;
                 const Cx* psi =
                     ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ks.ng;
                 for (std::size_t ia = 0; ia < ws.kb_proj.size(); ++ia) {
@@ -3434,7 +3505,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                             for (int a = 0; a < 3; ++a)
                                 for (int bb = 0; bb < 3; ++bb) {
                                     const AccReal term =
-                                        w * occ_f * Dc
+                                        w * f_b * Dc
                                         * (AccReal(-2)
                                                * (mm.t[a][bb] * std::conj(mm.c))
                                                      .real()
@@ -3489,7 +3560,44 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                 const int ngk = ks.ng;
                 const int ngkq = kqs.ng;
 
+                // Projector at k+q: bands with f ≥ thr (empty extras stay
+                // in the conduction space for CG under metallic smear).
+                int n_proj = 0;
+                for (int b = 0; b < n_bands; ++b)
+                    if (occ_kq[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)]
+                        >= kOccThr)
+                        ++n_proj;
+                if (n_proj < 1)
+                    n_proj = 1;
+                std::vector<Cx> proj_wfc(
+                    static_cast<std::size_t>(n_proj)
+                    * static_cast<std::size_t>(ngkq));
+                {
+                    int ip = 0;
+                    for (int b = 0; b < n_bands && ip < n_proj; ++b) {
+                        if (occ_kq[static_cast<std::size_t>(ik)]
+                                  [static_cast<std::size_t>(b)]
+                            < kOccThr)
+                            continue;
+                        const Cx* pkq =
+                            kqs.wfc.data()
+                            + static_cast<std::ptrdiff_t>(b) * ngkq;
+                        std::copy(pkq, pkq + ngkq,
+                                  proj_wfc.begin()
+                                      + static_cast<std::ptrdiff_t>(ip)
+                                            * ngkq);
+                        ++ip;
+                    }
+                    n_proj = std::max(ip, 1);
+                }
+
                 for (int b = 0; b < n_bands; ++b) {
+                    const AccReal f_b =
+                        occ_kb[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)];
+                    if (f_b < kOccThr)
+                        continue;
                     const Cx* psi =
                         ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ngk;
 
@@ -3566,7 +3674,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                     if (static_cast<int>(x.size()) != ngkq)
                         x.assign(static_cast<std::size_t>(ngkq), Cx(0, 0));
                     const int its = sternheimer_cg(
-                        ws, kqs.wfc.data(), n_bands, ks.eps[b], rhs.data(),
+                        ws, proj_wfc.data(), n_proj, ks.eps[b], rhs.data(),
                         x.data(), cg_tol, cg_max_iter, work_buf2.data());
                     if (its > cg_max_iter)
                         ATV_WARN("[pw][dfpt_q] CG not converged (mu={} ik={} "
@@ -3593,7 +3701,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                                     < AccReal(1e-20)
                                 ? AccReal(2)
                                 : AccReal(1);
-                        const AccReal pref = w * occ_f * tr / omega;
+                        const AccReal pref = w * f_b * tr / omega;
                         for (int i = 0; i < nr; ++i) {
                             const Cx pk(
                                 static_cast<AccReal>(work_buf.data()[i][0]),
@@ -3709,10 +3817,17 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                 const AccReal w = k_weights[static_cast<std::size_t>(ik)];
                 const int ngk = ks.ng;
                 for (int b = 0; b < n_bands; ++b) {
+                    const AccReal f_b =
+                        occ_kb[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)];
+                    if (f_b < kOccThr)
+                        continue;
                     const Cx* psi =
                         ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ngk;
                     const auto& x = dpsi[static_cast<std::size_t>(ik) * n_bands
                                          + static_cast<std::size_t>(b)];
+                    if (static_cast<int>(x.size()) != kqs.ng)
+                        continue;
                     ws.gvec = &gv_k0[static_cast<std::size_t>(ik)];
                     ws.n_g = ngk;
                     ws.kb_proj = ks.kb_proj;
@@ -3749,7 +3864,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                                         * (std::conj(cD) * mo_psi[m].s[bb]
                                            - std::conj(mo_dpsi[m].s[bb]) * cP);
                                     Cat(3 * static_cast<int>(ja) + bb, mu) +=
-                                        w * occ_f * tr * el;
+                                        w * f_b * tr * el;
                                 }
                             }
                         }

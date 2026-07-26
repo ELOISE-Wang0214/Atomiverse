@@ -228,8 +228,9 @@ TEST(DfptPhonon, ThrowsOnSpinWithSmearing) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, ThrowsOnFiniteQWithSmearing) {
-    // Direct finite-q Sternheimer still rejects metallic smear.
+TEST(DfptPhonon, FiniteQWithSmearingReachesUpfIo) {
+    // Restricted metallic smear is accepted on direct finite-q Sternheimer;
+    // missing UPF fails inside setup (I/O), not at a smear gate.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
@@ -238,7 +239,20 @@ TEST(DfptPhonon, ThrowsOnFiniteQWithSmearing) {
     method.degauss = 0.02;
     DfptPhonon dfpt;
     dfpt.q_frac = {0.3, 0.0, 0.0};
-    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+    EXPECT_THROW(dfpt.compute(method, frame), std::exception);
+}
+
+TEST(DfptPhonon, CommensurateFiniteQWithSmearingReachesUpfIo) {
+    // X = (1/2,0,0) uses supercell Γ-DFPT; smear is accepted there too.
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.5, 0.0, 0.0};
+    EXPECT_THROW(dfpt.compute(method, frame), std::exception);
 }
 
 TEST(DfptPhonon, SpinIncommensurateQReachesUpfIo) {
