@@ -83,6 +83,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d3_atm = m.d3_atm;
     p.d4 = m.d4;
+    p.d4_atm = m.d4_atm;
     p.ts = m.ts;
     p.xdm = m.xdm;
     p.mbd = m.mbd;
@@ -513,7 +514,12 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutTs).energy;
         } else if (cfg.d4) {
-            e_disp = cpu::scf::dftd4_energy(Z, pos, cfg.cell, /*periodic=*/true);
+            const double s9 = cfg.d4_atm ? 1.0 : 0.0;
+            e_disp = cpu::scf::dftd4_energy(
+                Z, pos, cfg.cell, /*periodic=*/true, /*s6=*/1.0,
+                /*s8=*/0.95948085, /*a1=*/0.38574991, /*a2=*/4.80688534,
+                /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0, /*charge=*/0.0,
+                /*cn_cut=*/30.0, /*disp2_cut=*/60.0, s9);
         } else {
             const D3Result d3 =
                 cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, true, D3Params{}, 40.0,
@@ -849,7 +855,12 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;
         } else if (cfg.d4) {
-            e_disp = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic);
+            const double s9 = cfg.d4_atm ? 1.0 : 0.0;
+            e_disp = cpu::scf::dftd4_energy(
+                Z, pos, cfg.cell, periodic, /*s6=*/1.0, /*s8=*/0.95948085,
+                /*a1=*/0.38574991, /*a2=*/4.80688534, /*ga=*/3.0, /*gc=*/2.0,
+                /*wf=*/6.0, /*charge=*/0.0, /*cn_cut=*/30.0, /*disp2_cut=*/60.0,
+                s9);
         } else {
             const D3Result d3 =
                 cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}, 40.0,

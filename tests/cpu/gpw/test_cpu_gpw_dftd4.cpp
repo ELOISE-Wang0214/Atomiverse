@@ -155,3 +155,41 @@ TEST(GpwDftD4, ForcesMatchEnergyCentralDifference) {
     std::printf("[D4 self-FD] max|F-Ffd|=%.3e Ha/Bohr\n", max_err);
     EXPECT_LT(max_err, 1e-7);
 }
+
+// Isolated ATM: dftd4 3.7.0 -f pbe --mbdscale 1.0 on XYZ.
+TEST(GpwDftD4, WaterDimerIsolatedAtmMatchesDftd4) {
+    const auto pos = water_dimer_bohr();
+    const double cell[3] = {0.0, 0.0, 0.0};
+    const double e = dftd4_energy(kZ, pos, cell, /*periodic=*/false,
+                                  /*s6=*/1.0, /*s8=*/0.95948085,
+                                  /*a1=*/0.38574991, /*a2=*/4.80688534,
+                                  /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0,
+                                  /*charge=*/0.0, /*cn_cut=*/30.0,
+                                  /*disp2_cut=*/60.0, /*s9=*/1.0);
+    const double pin = -9.8819741533958208e-04;
+    const double e0 = dftd4_energy(kZ, pos, cell, /*periodic=*/false);
+    std::printf("[D4 iso ATM] E=%.14e  pin=%.14e  dE_atm=%.2e Ha\n", e, pin,
+                e - e0);
+    EXPECT_NEAR(e, pin, 1e-8);
+    // ATM contribution must be nonzero on this dimer.
+    EXPECT_GT(std::abs(e - e0), 1e-10);
+}
+
+// Periodic ATM: dftd4 3.7.0 -f pbe (default s9=1) on POSCAR.
+TEST(GpwDftD4, WaterDimerPeriodicAtmMatchesDftd4) {
+    const auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    const double e = dftd4_energy(kZ, pos, cell, /*periodic=*/true,
+                                  /*s6=*/1.0, /*s8=*/0.95948085,
+                                  /*a1=*/0.38574991, /*a2=*/4.80688534,
+                                  /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0,
+                                  /*charge=*/0.0, /*cn_cut=*/30.0,
+                                  /*disp2_cut=*/60.0, /*s9=*/1.0);
+    const double pin = -9.9554475834240288e-04;
+    const double e0 = dftd4_energy(kZ, pos, cell, /*periodic=*/true);
+    std::printf("[D4 per ATM] E=%.14e  pin=%.14e  dE_atm=%.2e Ha\n", e, pin,
+                e - e0);
+    EXPECT_NEAR(e, pin, 1e-8);
+    EXPECT_GT(std::abs(e - e0), 1e-10);
+}

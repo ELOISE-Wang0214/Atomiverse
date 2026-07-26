@@ -248,9 +248,13 @@ class GpwDft {
     /// @brief Three-body ATM / C9 on top of `d3` or `d3bj` (CP2K
     ///        `CALCULATE_C9_TERM`). Ignored when neither D3 flag is set.
     bool d3_atm = false; ///< DFT-D3 Axilrod–Teller–Muto (C9).
-    /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
+    /// @brief Grimme DFT-D4 BJ damping (PBE params; periodic EEQ).
     /// Mutually exclusive with `d3` / `d3bj` / `ts` / `mbd` / `xdm`.
+    /// Two-body only unless `d4_atm` is also set.
     bool d4 = false; ///< Grimme DFT-D4 dispersion.
+    /// @brief Include Axilrod–Teller–Muto three-body (s9 = 1) with D4.
+    ///        Requires `d4`. Default false (two-body product; `gpw-d4-water`).
+    bool d4_atm = false;
     /// @brief Tkatchenko–Scheffler pairwise dispersion (PBE s_R=0.94, free-atom
     ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4` /
     ///        `mbd` / `xdm`.

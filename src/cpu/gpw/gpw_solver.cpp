@@ -3444,7 +3444,13 @@ static GpwResult run_gpw_scf_impl(
                 e_d3 = ts_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
             }
         } else if (cfg.d4) {
-            e_d3 = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic);
+            const double s9 = cfg.d4_atm ? 1.0 : 0.0;
+            e_d3 = cpu::scf::dftd4_energy(Z, pos, cfg.cell, periodic,
+                                          /*s6=*/1.0, /*s8=*/0.95948085,
+                                          /*a1=*/0.38574991, /*a2=*/4.80688534,
+                                          /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0,
+                                          /*charge=*/0.0, /*cn_cut=*/30.0,
+                                          /*disp2_cut=*/60.0, s9);
         } else {
             // In-tree D3 tables only (basis_data/dftd3_tables.h).
             for (int z : Z)
@@ -5047,6 +5053,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d3_atm = m.d3_atm;
     p.d4 = m.d4;
+    p.d4_atm = m.d4_atm;
     p.ts = m.ts;
     p.xdm = m.xdm;
     p.mbd = m.mbd;
