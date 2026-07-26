@@ -1,6 +1,6 @@
 # Acceptance — `gpw-vv10-ice`
 
-## Gate result (waves 5–7 reconfirm)
+## Gate result (waves 5–8 reconfirm)
 
 | Gate | Result |
 | ---- | ------ |
@@ -11,6 +11,7 @@
 | Dual gate green | **no** |
 | Wave-6 re-probe | **ABORT** `invalid value for enumeration:VV10` (same as wave 5) |
 | Wave-7 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp`; source enum unchanged) |
+| Wave-8 re-probe | **ABORT** `invalid value for enumeration:VV10` (live `cp2k.psmp`; source enum + kernels unchanged) |
 | `acceptance_met` | **false** |
 
 ## Block reason (one line)
@@ -21,8 +22,8 @@ Quickstep oracle surface (probe ABORT `invalid value for enumeration:VV10`).
 ## Harness recommendation
 
 Move queue row from `## in_progress` → `## blocked` as oracle-surface gap
-(do not re-staff without unblock checklist). Keep roadmap `dft.md` §8 VV10 ○;
-product VV-family nonlocal on GPW is rVV10 ✓ (`reg_gpw-rvv10-ice`).
+(do **not** re-staff without unblock checklist). Keep roadmap `dft.md` §8
+VV10 ○; product VV-family nonlocal on GPW is rVV10 ✓ (`reg_gpw-rvv10-ice`).
 
 ## Unblock checklist
 

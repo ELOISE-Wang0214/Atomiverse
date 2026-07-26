@@ -6,7 +6,7 @@
 probe so GapCensus does not re-queue `gpw-vv10-ice` as if TYPE VV10 were a
 live Quickstep twin of product rVV10.
 
-## Probe (2026-07-26 wave 5; reconfirmed waves 6 and 7)
+## Probe (2026-07-26 wave 5; reconfirmed waves 6, 7, and 8)
 
 Host: Arrhenius tree install `work/cp2k/install` (CP2K 2026.1, libcp2k.so.2026.1).  
 Input: `water_dimer_vv10.inp` (this directory) — same water-dimer geometry as
@@ -17,15 +17,18 @@ Input: `water_dimer_vv10.inp` (this directory) — same water-dimer geometry as
   input/input_enumeration_types.F:215
 ```
 
-Wave-6 and wave-7 re-runs (`cp2k.psmp` with
+Wave-6 / wave-7 / wave-8 re-runs (`cp2k.psmp` with
 `LD_LIBRARY_PATH=…/install/lib` and `CP2K_DATA_DIR=…/data`) reproduced the
 same abort before any SCF step.
 
-Source of truth (`input_cp2k_xc.F` NON_LOCAL TYPE enum):
+Source of truth (`input_cp2k_xc.F` NON_LOCAL TYPE enum, re-read wave 8):
 
 ```text
 DRSLL | LMKLL | RVV10
 ```
+
+`input_constants.F`: `vdw_nl_DRSLL=1`, `vdw_nl_LMKLL=2`, `vdw_nl_RVV10=3`
+— no `vdw_nl_VV10`.
 
 No `VV10_kernel_table.dat` in `CP2K data/`. Only `rVV10_kernel_table.dat`
 (and `vdW_kernel_table.dat` for DRSLL/LMKLL).
