@@ -1,5 +1,31 @@
 # Architecture notes
 
+## [2026-07-26] DEBT: GPW analytic ionic forces are wrong for Si GTH
+
+**Found while landing `gpw-fd-phonon-si` (CP2K loop wave 14). Open.**
+
+Symptom on Si₂ (nonperiodic MT host, `GTH-PBE-q4` + `DZVP-MOLOPT-GTH`,
+L = 12 Å cubic): the **total energy** matches the offline CP2K 2026.1
+`ENERGY_FORCE` pin to ~0.014 Ha, but **analytic forces** are off by ~271×
+against the energy finite difference on the same functional, and ~40× against
+CP2K's printed \(F_x = \pm 3.370\times 10^{-3}\) Ha/Bohr. Water analytic forces
+(`gpw-forces-water`) stay green, so the defect is in the **Si GTH force
+assembly**, not the Phonon/FD wiring, and not the shared collocation path
+water also exercises. Prime suspects, in order: the nonlocal-projector
+(`h_ij`, l = 0/1 for q4) derivative term, and the local-PP short-range grid
+gradient for a 4-valence-electron GTH kind (`local_pp_on_grid` route).
+
+Consequence: **`regressions/gpw/gpw-fd-phonon-si` is de-registered** in
+`regressions/CMakeLists.txt` (loud comment there); the wiring unit gate
+`test_cpu_vib_phonon_gpw_wiring` and the recorded CP2K vib pin
+(`REFERENCE.md`: optical −263.481, −194.722, 383.783 cm⁻¹) are kept in tree so
+re-enabling is a one-line revert. Queue row stays **blocked**
+(`docs/developer/cp2k-method-queue.md`).
+
+Do not build FD/DFPT phonon capabilities on GPW Si forces until this is fixed —
+they will inherit the error. Route via `/mol:fix` with the FD-vs-analytic
+comparison on Si₂ as the reproducer.
+
 ## [2026-07-23] Iron law: no public Config bags
 
 **Binding (CLAUDE.md free-form iron law + AGENTS.md Conventions).** Public
