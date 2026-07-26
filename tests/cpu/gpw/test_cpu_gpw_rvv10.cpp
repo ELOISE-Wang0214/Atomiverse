@@ -95,3 +95,23 @@ TEST(GpwRvv10, DefaultParamsMatchSabatini) {
     EXPECT_NEAR(kRvv10B, 6.3, 1e-15);
     EXPECT_NEAR(kRvv10C, 0.0093, 1e-15);
 }
+
+TEST(GpwRvv10, PotentialIsFiniteAndSized) {
+    UniformGrid grid;
+    grid.L[0] = grid.L[1] = grid.L[2] = 8.0;
+    grid.n[0] = grid.n[1] = grid.n[2] = 12;
+    grid.origin[0] = grid.origin[1] = grid.origin[2] = 0.0;
+    std::vector<double> rho, sigma;
+    gaussian_blob(grid, /*a=*/0.5, /*A=*/1.0, rho, sigma);
+    const Rvv10Result r =
+        rvv10_energy(grid, rho, sigma, kRvv10B, kRvv10C, /*potential=*/true);
+    ASSERT_EQ(r.v_r.size(), rho.size());
+    EXPECT_TRUE(std::isfinite(r.energy));
+    double vsum = 0.0;
+    for (double v : r.v_r) {
+        EXPECT_TRUE(std::isfinite(v));
+        vsum += v;
+    }
+    // β contribution makes average potential nonzero.
+    EXPECT_NE(vsum, 0.0);
+}

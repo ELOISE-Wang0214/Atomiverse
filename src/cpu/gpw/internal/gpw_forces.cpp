@@ -23,6 +23,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
+#include "atomiverse/cpu/gpw/internal/vdw_df.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
@@ -376,6 +377,20 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             veff[g] = es.v_r[g] + xc.vxc_r[g];
             if (!v_locsr.empty())
                 veff[g] += v_locsr[g];
+        }
+    }
+    // SC nonlocal vdW potential on total density (both spins share V_nl).
+    if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
+        NonlocalVdwOnGrid nl = nonlocal_vdw_on_grid(
+            grid, rho, cfg.vdw_df, cfg.vdw_df2, cfg.rvv10, /*potential=*/true);
+        if (uks) {
+            for (std::size_t g = 0; g < rho.size(); ++g) {
+                veff_a[g] += nl.v_r[g];
+                veff_b[g] += nl.v_r[g];
+            }
+        } else {
+            for (std::size_t g = 0; g < rho.size(); ++g)
+                veff[g] += nl.v_r[g];
         }
     }
 
@@ -925,6 +940,19 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
         veff.resize(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)
             veff[g] = es.v_r[g] + xc.vxc_r[g] + v_locsr[g];
+    }
+    if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
+        NonlocalVdwOnGrid nl = nonlocal_vdw_on_grid(
+            grid, rho, cfg.vdw_df, cfg.vdw_df2, cfg.rvv10, /*potential=*/true);
+        if (uks) {
+            for (std::size_t g = 0; g < rho.size(); ++g) {
+                veff_a[g] += nl.v_r[g];
+                veff_b[g] += nl.v_r[g];
+            }
+        } else {
+            for (std::size_t g = 0; g < rho.size(); ++g)
+                veff[g] += nl.v_r[g];
+        }
     }
     const std::vector<double>& v_es = es.v_r;
 

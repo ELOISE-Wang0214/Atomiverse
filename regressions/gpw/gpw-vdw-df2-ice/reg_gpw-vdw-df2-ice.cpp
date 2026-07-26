@@ -48,10 +48,11 @@ int main() {
             atoms.emplace_back(pos, bH, pH, 1);
     }
 
-    // Offline pin (REFERENCE.md): post-SCF E_c^{nl} LMKLL on Γ-PBE density.
-    // Dual-frozen after unit gate vs libvdwxc DF2 synthetic pin.
-    constexpr double kEDispRef = 1.3011875519702767e-01; // Ha
-    constexpr double kTol = 5.0e-5; // Ha (post-SCF density + float32 kernel)
+    // Offline pin (REFERENCE.md): SC E_c^{nl} LMKLL on Γ-PBE+vdW-DF2 density.
+    // Dual-frozen after unit gate vs libvdwxc DF2 synthetic pin; SC product path
+    // (gpw-vdw-scf-potential) shifts E_disp by ~6e-5 Ha vs pure-PBE post-SCF.
+    constexpr double kEDispRef = 1.30057191985315e-01; // Ha (SC density)
+    constexpr double kTol = 5.0e-5; // Ha (SC density + float32 kernel)
 
     GpwDft gpw;
     const double L = 12.0 * kA2B;

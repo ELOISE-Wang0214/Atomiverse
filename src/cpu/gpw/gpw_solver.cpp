@@ -2823,6 +2823,18 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g)
             veff[g] = es.v_r[g] + xc.vxc_r[g];
+        // Self-consistent nonlocal vdW (DRSLL / LMKLL / rVV10): V_nl = δE/δρ
+        // added every SCF iteration (single-grid only; multigrid rejected above).
+        double e_nl = 0.0;
+        if ((cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) && !use_prod) {
+            NonlocalVdwOnGrid nl = nonlocal_vdw_on_grid(
+                grid, rho, cfg.vdw_df, cfg.vdw_df2, cfg.rvv10,
+                /*potential=*/true);
+            e_nl = nl.energy;
+            for (std::size_t g = 0; g < rho.size(); ++g)
+                veff[g] += nl.v_r[g];
+            e_d3 = e_nl; // keep outer e_d3 in sync for fold_dispersion
+        }
         // Add the geometry-fixed local short-range PP and its energy ∫ρ·V_loc^SR
         // (the grid form of the analytic Tr(P·V_loc^SR)).
         double e_locgrid = 0.0;
@@ -2881,6 +2893,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.e_loc_sr = trace_product(Pin, Vpp, nb) + e_locgrid;
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
+        // E_nl is reported via e_disp (fold_dispersion); do not double-add here.
+        (void)e_nl;
         return {H, res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc};
     };
 
@@ -3630,9 +3644,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         res.S = S;
         // res.converged remains false — honest partial SCF.
     }
-// Post-SCF nonlocal vdW-DF (DRSLL) / vdW-DF2 (LMKLL) / rVV10 on the final
-    // total density, then fold free-atom e_d3 or Hirshfeld-scaled TS/MBD via
-    // fold_dispersion.
+// Final nonlocal E_c^{nl} on the (self-consistent) total density. V_nl was
+    // already applied every SCF iteration; this sets e_disp for fold_dispersion.
     if (cfg.vdw_df || cfg.vdw_df2 || cfg.rvv10) {
         if (use_prod) {
             const char* tag = cfg.rvv10    ? "rvv10"
@@ -3646,20 +3659,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             (res.P.size() > 0) ? res.P : P;
         const std::vector<double> Pvec = mat_to_vec(Pfinal, nb);
         std::vector<double> rho = collocate_density(cbg, nb, Pvec);
-        const auto gxyz = gradient(grid, rho);
-        std::vector<double> sigma(rho.size());
-        for (std::size_t g = 0; g < rho.size(); ++g) {
-            const double gx = gxyz[0][g];
-            const double gy = gxyz[1][g];
-            const double gz = gxyz[2][g];
-            sigma[g] = gx * gx + gy * gy + gz * gz;
-        }
-        if (cfg.rvv10)
-            e_d3 = rvv10_energy(grid, rho, sigma).energy;
-        else if (cfg.vdw_df2)
-            e_d3 = vdw_df_lmkll(grid, rho, sigma).energy;
-        else
-            e_d3 = vdw_df_drsll(grid, rho, sigma).energy;
+        e_d3 = nonlocal_vdw_on_grid(grid, rho, cfg.vdw_df, cfg.vdw_df2,
+                                    cfg.rvv10, /*potential=*/false)
+                   .energy;
     }
     fold_dispersion(res, (res.P.size() > 0) ? res.P : P);
     return res;

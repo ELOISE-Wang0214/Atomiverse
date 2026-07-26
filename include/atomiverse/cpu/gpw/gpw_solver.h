@@ -256,20 +256,18 @@ class GpwDft {
     ///        free-atom MBD; any positive component requires all three ≥ 1 and
     ///        a periodic cell. Typical ice / condensed-phase pin: `{2,2,2}`.
     int mbd_k_mesh[3] = {0, 0, 0};
-    /// @brief Nonlocal vdW-DF correlation (DRSLL / DF1, post-SCF on final density).
-    ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE DRSLL`. Mutually exclusive with
+    /// @brief Nonlocal vdW-DF correlation (DRSLL / DF1). Self-consistent
+    ///        \(V_{\mathrm{nl}}\) each SCF step; analytic forces via veff;
+    ///        \(E_{\mathrm{disp}}\) on the final SC density. CP2K
+    ///        `VDW_POTENTIAL NON_LOCAL TYPE DRSLL`. Mutually exclusive with
     ///        `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df2` / `rvv10`.
     ///        Periodic single-grid only.
     bool vdw_df = false; ///< vdW-DF (DRSLL) nonlocal correlation.
-    /// @brief Nonlocal vdW-DF2 correlation (LMKLL / DF2, post-SCF on final density).
-    ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE LMKLL`. Same RPS kernel as
-    ///        `vdw_df`; Z_ab = −1.887. Mutually exclusive with pairwise /
-    ///        MBD / DRSLL / rVV10 flags. Periodic single-grid only.
+    /// @brief Nonlocal vdW-DF2 (LMKLL / DF2). Same SC product path as `vdw_df`;
+    ///        Z_ab = −1.887. CP2K `NON_LOCAL TYPE LMKLL`. Periodic single-grid.
     bool vdw_df2 = false; ///< vdW-DF2 (LMKLL) nonlocal correlation.
-    /// @brief Nonlocal rVV10 correlation (Sabatini et al.; post-SCF on final density).
-    ///        CP2K `VDW_POTENTIAL NON_LOCAL TYPE RVV10` (b=6.3, C=0.0093).
-    ///        Mutually exclusive with `d3` / `d3bj` / `d4` / `ts` / `mbd` /
-    ///        `vdw_df` / `vdw_df2`. Periodic single-grid only.
+    /// @brief Nonlocal rVV10 (Sabatini et al.). SC product path; CP2K
+    ///        `NON_LOCAL TYPE RVV10` (b=6.3, C=0.0093). Periodic single-grid.
     bool rvv10 = false; ///< rVV10 nonlocal correlation.
     /// @brief Scale TS/MBD free-atom parameters by Hirshfeld \(V/V_{\mathrm{free}}\)
     ///        from the final SCF total valence density (post-SCF,

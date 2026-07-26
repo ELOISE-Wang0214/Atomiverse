@@ -89,11 +89,11 @@ class GPWEvaluator : public cpu::GPW {
     bool mbd = false;
     /// @brief MBD k-mesh (0,0,0 = free-atom isolated; else periodic Ewald).
     int mbd_k_mesh[3] = {0, 0, 0};
-    /// @brief Nonlocal vdW-DF (DRSLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df2/rvv10.
+    /// @brief Nonlocal vdW-DF (DRSLL) SC potential. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df2/rvv10.
     bool vdw_df = false;
-    /// @brief Nonlocal vdW-DF2 (LMKLL) post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/rvv10.
+    /// @brief Nonlocal vdW-DF2 (LMKLL) SC potential. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/rvv10.
     bool vdw_df2 = false;
-    /// @brief Nonlocal rVV10 post-SCF. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/vdw_df2.
+    /// @brief Nonlocal rVV10 SC potential. Exclusive vs d3/d3bj/d4/ts/mbd/vdw_df/vdw_df2.
     bool rvv10 = false;
     /// @brief Hirshfeld \(V/V_{\mathrm{free}}\) scaling for TS/MBD (requires ts or mbd).
     bool hirshfeld = false;
