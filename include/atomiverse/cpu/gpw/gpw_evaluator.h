@@ -144,6 +144,16 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief Electronic (and nuclear) timestep [fs]. **Must match** the
     ///        `VelocityVerlet` dt used on the outer MD loop.
     double cpmd_dt = 0.1;
+    /// @brief Nosé–Hoover electronic thermostat on fictitious \(\dot C\)
+    ///        (requires `cpmd = true`). Regulates \(T_e\) toward
+    ///        `cpmd_ekin_target_ha` with coupling time `cpmd_tau_e`.
+    ///        Default false (NVE electrons / pure CP).
+    bool cpmd_thermostat = false;
+    /// @brief Target fictitious electronic kinetic energy \(K_0\) [Hartree].
+    ///        Must be > 0 when `cpmd_thermostat` is true.
+    double cpmd_ekin_target_ha = 1e-5;
+    /// @brief Electronic thermostat coupling time \(\tau_e\) [fs].
+    double cpmd_tau_e = 50.0;
     /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
     ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
     ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
@@ -203,9 +213,13 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief Electronic kinetic energy \(T_e\) [eV] from the last CPMD
     ///        advance (0 when `cpmd` is off or before the first electronic step).
     double last_electronic_ke_ev() const { return last_te_ev_; }
+    /// @brief Nosé–Hoover electronic thermostat energy \(E_{\mathrm{therm}}\)
+    ///        [eV] from the last CPMD advance (0 when thermostat is off).
+    double last_electronic_thermostat_ev() const { return last_etherm_ev_; }
     /// @brief Car–Parrinello conserved piece \(E_{\mathrm{KS}} + T_e\) [eV]
-    ///        (add nuclear KE from `frame.meta.get(kKinetic)` for full
-    ///        \(E_{\mathrm{cons}}\)).
+    ///        (add nuclear KE from `frame.meta.get(kKinetic)` for full NVE
+    ///        \(E_{\mathrm{cons}}\); when `cpmd_thermostat`, also add
+    ///        `last_electronic_thermostat_ev()` for \(E_{\mathrm{ext}}\)).
     double last_cp_energy_ev() const {
         return last_.e_total * ATV::units::kHartreeInEv + last_te_ev_;
     }
@@ -228,7 +242,8 @@ class GPWEvaluator : public cpu::GPW {
     std::optional<Cpmd> cpmd_;
     /// CPMD β-spin propagator (UKS only; empty for RKS).
     std::optional<Cpmd> cpmd_beta_;
-    double last_te_ev_ = 0.0; ///< last electronic KE [eV]
+    double last_te_ev_ = 0.0;     ///< last electronic KE [eV]
+    double last_etherm_ev_ = 0.0; ///< last electronic NH energy [eV]
     /// Second-gen CP ASPC density history (engaged when `second_gen_cp`).
     /// RKS: total \(P\). UKS: \(P_\alpha\).
     std::optional<scf::ASPCPredictor> sgcp_aspc_;

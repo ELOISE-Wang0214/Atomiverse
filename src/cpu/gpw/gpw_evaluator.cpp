@@ -179,16 +179,39 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         if (n_alpha + n_beta > 0 && n_alpha < 1)
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd UKS requires n_alpha >= 1");
+        if (cpmd_thermostat) {
+            if (!(cpmd_ekin_target_ha > 0.0)
+                || !std::isfinite(cpmd_ekin_target_ha))
+                throw std::invalid_argument(
+                    "GPWEvaluator: cpmd_thermostat requires "
+                    "cpmd_ekin_target_ha finite and > 0 (Ha)");
+            if (!(cpmd_tau_e > 0.0) || !std::isfinite(cpmd_tau_e))
+                throw std::invalid_argument(
+                    "GPWEvaluator: cpmd_thermostat requires cpmd_tau_e "
+                    "finite and > 0 (fs)");
+        }
         cpmd_.emplace(cpmd_mu);
-        if (n_alpha + n_beta > 0 && n_beta > 0)
+        cpmd_->thermostat = cpmd_thermostat;
+        cpmd_->ekin_target_ha = cpmd_ekin_target_ha;
+        cpmd_->tau_e_fs = cpmd_tau_e;
+        if (n_alpha + n_beta > 0 && n_beta > 0) {
             cpmd_beta_.emplace(cpmd_mu);
-        else
+            cpmd_beta_->thermostat = cpmd_thermostat;
+            cpmd_beta_->ekin_target_ha = cpmd_ekin_target_ha;
+            cpmd_beta_->tau_e_fs = cpmd_tau_e;
+        } else {
             cpmd_beta_.reset();
+        }
         last_te_ev_ = 0.0;
+        last_etherm_ev_ = 0.0;
     } else {
+        if (cpmd_thermostat)
+            throw std::invalid_argument(
+                "GPWEvaluator: cpmd_thermostat requires cpmd=true");
         cpmd_.reset();
         cpmd_beta_.reset();
         last_te_ev_ = 0.0;
+        last_etherm_ev_ = 0.0;
     }
 
     // Second-generation CP (Kühne PRL 2007): ASPC + partial SCF corrector.
@@ -338,14 +361,18 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
             // Dual electronic steps (occ=1 per spin).
             double te_ha = 0.0;
+            double eth_ha = 0.0;
             cpmd_->advance(last_.H_ks, last_.S, cpmd_dt, /*occ=*/1.0);
             te_ha += cpmd_->kinetic_ha();
+            eth_ha += cpmd_->thermostat_energy_ha();
             if (cpmd_beta_ && cpmd_beta_->ready()) {
                 cpmd_beta_->advance(last_.H_ks_beta, last_.S, cpmd_dt,
                                     /*occ=*/1.0);
                 te_ha += cpmd_beta_->kinetic_ha();
+                eth_ha += cpmd_beta_->thermostat_energy_ha();
             }
             last_te_ev_ = te_ha * ATV::units::kHartreeInEv;
+            last_etherm_ev_ = eth_ha * ATV::units::kHartreeInEv;
             return;
         }
 
@@ -374,6 +401,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
         cpmd_->advance(last_.H_ks, last_.S, cpmd_dt, /*occ=*/2.0);
         last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
+        last_etherm_ev_ =
+            cpmd_->thermostat_energy_ha() * ATV::units::kHartreeInEv;
         return;
     }
 

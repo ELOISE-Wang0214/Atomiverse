@@ -298,3 +298,137 @@ TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithoutForces) {
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
+
+// ── Nosé–Hoover electronic thermostat ───────────────────────────────────
+
+TEST(Cpmd, ThermostatInvalidParamsThrowOnAdvance) {
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    cp.seed(C);
+    cp.thermostat = true;
+    cp.ekin_target_ha = 0.0;
+    cp.tau_e_fs = 10.0;
+    RealMatrix H = eye_n(2);
+    RealMatrix S = eye_n(2);
+    EXPECT_THROW(cp.advance(H, S, 0.1), std::invalid_argument);
+    cp.ekin_target_ha = 1e-4;
+    cp.tau_e_fs = -1.0;
+    EXPECT_THROW(cp.advance(H, S, 0.1), std::invalid_argument);
+}
+
+TEST(Cpmd, SeedWithCdotSetsKineticEnergy) {
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    RealMatrix Cdot = xt::zeros<double>({2, 1});
+    Cdot(1, 0) = 0.01; // off-manifold component is fine for KE check
+    cp.seed(C, Cdot);
+    const double expect = 0.5 * 400.0 * (0.01 * 0.01);
+    EXPECT_NEAR(cp.kinetic_ha(), expect, 1e-15);
+    EXPECT_NEAR(cp.thermostat_energy_ha(), 0.0, 1e-15);
+    EXPECT_NEAR(cp.xi(), 0.0, 1e-15);
+    EXPECT_NEAR(cp.eta(), 0.0, 1e-15);
+}
+
+TEST(Cpmd, ThermostatRegulatesHotElectronicKe) {
+    // Hot seed Te ≫ K0; NH should pull Te down over several steps.
+    Cpmd cp(400.0);
+    cp.thermostat = true;
+    cp.ekin_target_ha = 1e-6;
+    cp.tau_e_fs = 5.0; // short τ for aggressive regulation on unit scale
+    RealMatrix C = xt::zeros<double>({3, 2});
+    C(0, 0) = 1.0;
+    C(1, 1) = 1.0;
+    RealMatrix Cdot = xt::zeros<double>({3, 2});
+    Cdot(2, 0) = 0.05;
+    Cdot(2, 1) = -0.04;
+    cp.seed(C, Cdot);
+    const double te0 = cp.kinetic_ha();
+    ASSERT_GT(te0, 10.0 * cp.ekin_target_ha);
+
+    RealMatrix S = eye_n(3);
+    RealMatrix H = xt::zeros<double>({3, 3});
+    H(0, 0) = -1.0;
+    H(1, 1) = -0.5;
+    H(2, 2) = 0.1;
+
+    for (int i = 0; i < 40; ++i)
+        cp.advance(H, S, 0.05);
+
+    const double tef = cp.kinetic_ha();
+    EXPECT_TRUE(std::isfinite(tef));
+    EXPECT_GE(tef, 0.0);
+    // Pull toward target: final below initial and not runaway.
+    EXPECT_LT(tef, te0);
+    EXPECT_LE(tef, 50.0 * cp.ekin_target_ha + 0.1 * te0);
+    EXPECT_TRUE(std::isfinite(cp.thermostat_energy_ha()));
+    EXPECT_LE(cp.last_constraint_residual(), 1e-9);
+
+    using xt::linalg::dot;
+    const RealMatrix G = dot(xt::transpose(cp.C()), dot(S, cp.C()));
+    EXPECT_LE(max_abs_mat(G - eye_n(2)), 1e-9);
+    const RealMatrix W = dot(xt::transpose(cp.C()), dot(S, cp.Cdot()));
+    const RealMatrix Wsym = 0.5 * (W + xt::transpose(W));
+    EXPECT_LE(max_abs_mat(Wsym), 1e-9);
+}
+
+TEST(Cpmd, ThermostatOffKeepsZeroThermostatEnergy) {
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    cp.seed(C);
+    EXPECT_FALSE(cp.thermostat);
+    EXPECT_NEAR(cp.thermostat_energy_ha(), 0.0, 1e-15);
+    RealMatrix H = eye_n(2);
+    H(0, 0) = -0.5;
+    RealMatrix S = eye_n(2);
+    cp.advance(H, S, 0.1);
+    EXPECT_NEAR(cp.thermostat_energy_ha(), 0.0, 1e-15);
+    EXPECT_NEAR(cp.xi(), 0.0, 1e-15);
+    EXPECT_NEAR(cp.eta(), 0.0, 1e-15);
+}
+
+TEST(GpwEvaluatorCpmd, BuildRejectsThermostatWithoutCpmd) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.cpmd = false;
+    eval.cpmd_thermostat = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+TEST(GpwEvaluatorCpmd, BuildRejectsBadThermostatParams) {
+    auto frame = water_frame();
+    {
+        auto eval = water_eval();
+        eval.cpmd = true;
+        eval.cpmd_thermostat = true;
+        eval.cpmd_ekin_target_ha = 0.0;
+        ATV::cpu::Context rt;
+        ATV::cpu::BuildContext bc{rt, frame};
+        EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    }
+    {
+        auto eval = water_eval();
+        eval.cpmd = true;
+        eval.cpmd_thermostat = true;
+        eval.cpmd_tau_e = -5.0;
+        ATV::cpu::Context rt;
+        ATV::cpu::BuildContext bc{rt, frame};
+        EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    }
+}
+
+TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithThermostat) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.cpmd = true;
+    eval.cpmd_thermostat = true;
+    eval.cpmd_ekin_target_ha = 1e-5;
+    eval.cpmd_tau_e = 50.0;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
