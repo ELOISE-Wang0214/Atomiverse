@@ -144,3 +144,52 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsDefaultMembers) {
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_NO_THROW(eval.build(bc));
 }
+
+TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiK) {
+    // Multi-k RKS ASPC on complex P_k (product path, second-gen-cpmd-kpoints).
+    auto frame = water_frame();
+    // Periodic cell required for a k-mesh.
+    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    auto eval = water_eval();
+    eval.nonperiodic = false;
+    eval.second_gen_cp = true;
+    eval.k_mesh[0] = 1;
+    eval.k_mesh[1] = 1;
+    eval.k_mesh[2] = 2;
+    eval.k_time_reversal = false;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+TEST(GpwEvaluatorSecondGenCp, BuildRejectsMultiKWithOt) {
+    auto frame = water_frame();
+    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    auto eval = water_eval();
+    eval.nonperiodic = false;
+    eval.second_gen_cp = true;
+    eval.use_ot = true;
+    eval.k_mesh[0] = 1;
+    eval.k_mesh[1] = 1;
+    eval.k_mesh[2] = 2;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiKUks) {
+    auto frame = water_frame();
+    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    auto eval = water_eval();
+    eval.nonperiodic = false;
+    eval.second_gen_cp = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    eval.k_mesh[0] = 1;
+    eval.k_mesh[1] = 1;
+    eval.k_mesh[2] = 2;
+    eval.k_time_reversal = false;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}

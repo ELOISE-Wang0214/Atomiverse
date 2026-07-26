@@ -8,6 +8,8 @@
 #ifdef ATV_HAS_HF
 
 #include <cmath>
+#include <complex>
+
 #include <gtest/gtest.h>
 
 #include <xtensor/containers/xtensor.hpp>
@@ -19,6 +21,7 @@
 #include "atomiverse/cpu/scf/internal/level_shift.h"
 
 using namespace ATV::cpu::scf;
+using ATV::cpu::linalg::CplxMatrix;
 using ATV::cpu::scf::internal::DIISMixer;
 
 // ── DIIS (internal::DIISMixer) ───────────────────────────────────────
@@ -107,6 +110,71 @@ TEST(ASPC, ResetClearsHistory) {
     EXPECT_EQ(aspc.history_size(), 1);
     aspc.reset();
     EXPECT_EQ(aspc.history_size(), 0);
+}
+
+// ── ASPC complex (multi-k P_k) ───────────────────────────────────────
+
+TEST(ASPCCplx, MatchesRealOnRealValuedMatrices) {
+    // Same Kolafa weights as real ASPC when imag parts are zero.
+    ASPCPredictor real_aspc(2);
+    ASPCPredictorCplx cplx_aspc(2);
+    xt::xtensor<double, 2> R1 = {{1.0, 0.1}, {0.1, 1.0}};
+    xt::xtensor<double, 2> R2 = {{1.1, 0.1}, {0.1, 1.1}};
+    xt::xtensor<double, 2> R3 = {{1.2, 0.1}, {0.1, 1.2}};
+    using Cplx = std::complex<double>;
+    CplxMatrix C1 = xt::zeros<Cplx>({2, 2});
+    CplxMatrix C2 = xt::zeros<Cplx>({2, 2});
+    CplxMatrix C3 = xt::zeros<Cplx>({2, 2});
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            C1(i, j) = Cplx(R1(i, j), 0.0);
+            C2(i, j) = Cplx(R2(i, j), 0.0);
+            C3(i, j) = Cplx(R3(i, j), 0.0);
+        }
+    real_aspc.record(R1);
+    real_aspc.record(R2);
+    real_aspc.record(R3);
+    cplx_aspc.record(C1);
+    cplx_aspc.record(C2);
+    cplx_aspc.record(C3);
+    xt::xtensor<double, 2> pred_r;
+    CplxMatrix pred_c;
+    ASSERT_TRUE(real_aspc.predict(pred_r));
+    ASSERT_TRUE(cplx_aspc.predict(pred_c));
+    EXPECT_NEAR(pred_c(0, 0).real(), pred_r(0, 0), 1e-12);
+    EXPECT_NEAR(pred_c(0, 0).imag(), 0.0, 1e-12);
+    EXPECT_NEAR(pred_c(1, 1).real(), pred_r(1, 1), 1e-12);
+
+    xt::xtensor<double, 2> corr_r;
+    CplxMatrix corr_c;
+    real_aspc.correct(R3, pred_r, corr_r);
+    cplx_aspc.correct(C3, pred_c, corr_c);
+    EXPECT_NEAR(corr_c(0, 0).real(), corr_r(0, 0), 1e-12);
+}
+
+TEST(ASPCCplx, ExtrapolatesComplexLinearTrend) {
+    ASPCPredictorCplx aspc(2);
+    using Cplx = std::complex<double>;
+    auto make_P = [](Cplx v) {
+        CplxMatrix P = xt::zeros<Cplx>({2, 2});
+        P(0, 0) = v;
+        P(1, 1) = v;
+        return P;
+    };
+    aspc.record(make_P(Cplx(1.0, 0.5)));
+    aspc.record(make_P(Cplx(1.1, 0.6)));
+    aspc.record(make_P(Cplx(1.2, 0.7)));
+    CplxMatrix pred;
+    ASSERT_TRUE(aspc.predict(pred));
+    // Linear trend +0.1 real / +0.1 imag per step → predict past last.
+    EXPECT_GT(pred(0, 0).real(), 1.15);
+    EXPECT_GT(pred(0, 0).imag(), 0.65);
+}
+
+TEST(ASPCCplx, PredictFalseBeforeHistory) {
+    ASPCPredictorCplx aspc(3);
+    CplxMatrix pred = xt::zeros<std::complex<double>>({2, 2});
+    EXPECT_FALSE(aspc.predict(pred));
 }
 
 // ── Level shift (internal::apply_level_shift) ────────────────────────
