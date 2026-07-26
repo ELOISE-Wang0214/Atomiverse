@@ -230,6 +230,21 @@ TEST(DfptPhonon, SpinWithSmearingReachesUpfIo) {
     EXPECT_THROW(dfpt.compute(method, frame), std::exception);
 }
 
+TEST(DfptPhonon, ThrowsOnSpinSmearAtIncommensurateQ) {
+    // Direct finite-q Sternheimer still rejects collinear spin + smear.
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.3, 0.0, 0.0};
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
 TEST(DfptPhonon, FiniteQWithSmearingReachesUpfIo) {
     // Restricted metallic smear is accepted on direct finite-q Sternheimer;
     // missing UPF fails inside setup (I/O), not at a smear gate.

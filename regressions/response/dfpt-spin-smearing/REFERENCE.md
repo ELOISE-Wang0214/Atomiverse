@@ -59,7 +59,7 @@ results track the collinear fixed-occ twin.
 | DFPT optical triplet | **579.45, 579.45, 579.59 cm⁻¹** → gate `[500, 650]`, spread ≤ 10 |
 | Max row sum (translational invariance) | 0.0002 eV/Å² → gate ≤ 0.05 |
 | Pre-symmetrization asymmetry | 7.3e-10 eV/Å² → gate ≤ 1e-5 |
-| Regression wall | ≈ **30 s** (≤ 60 s budget) |
+| Regression wall | ≈ **35 s** (≤ 60 s budget; OMP=8 Release re-verify 2026-07-26) |
 
 ## CP2K twin (offline only)
 
