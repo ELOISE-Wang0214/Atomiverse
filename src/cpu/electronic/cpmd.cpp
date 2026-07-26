@@ -1,7 +1,7 @@
-/// @file src/cpu/gpw/cpmd.cpp
+/// @file src/cpu/electronic/cpmd.cpp
 /// @brief Cpmd / CpmdCplx — Car–Parrinello electronic VV + RATTLE (+ NH).
 
-#include "atomiverse/cpu/gpw/cpmd.h"
+#include "atomiverse/cpu/electronic/cpmd.h"
 
 #include <cmath>
 #include <complex>
@@ -13,11 +13,11 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/core/xmath.hpp>
 
-#include "atomiverse/cpu/gpw/internal/ot.h"
+#include "atomiverse/cpu/linalg/orbital_tangent.h"
 
 namespace ATV {
 namespace cpu {
-namespace gpw {
+namespace electronic {
 
 namespace {
 /// Atomic unit of time in fs (ħ / E_h), CODATA-consistent with common AIMD.
@@ -94,7 +94,7 @@ PosRattleResult rattle_position(const linalg::RealMatrix& C_raw,
             Minv = xt::linalg::inv(M);
         } catch (...) {
             // Ill-conditioned M: fall back to Löwdin on the current C and stop.
-            C = internal::ot_orthonormalize(C, S);
+            C = linalg::lowdin_orthonormalize(C, S);
             const linalg::RealMatrix G2 = dot(xt::transpose(C), dot(S, C));
             res_inf = max_abs(G2 - I);
             return {std::move(C), it + 1, res_inf};
@@ -104,7 +104,7 @@ PosRattleResult rattle_position(const linalg::RealMatrix& C_raw,
     }
 
     // Did not meet tol: final Löwdin clean-up so the propagator stays safe.
-    C = internal::ot_orthonormalize(C, S);
+    C = linalg::lowdin_orthonormalize(C, S);
     const linalg::RealMatrix Gf = dot(xt::transpose(C), dot(S, C));
     res_inf = max_abs(Gf - I);
     return {std::move(C), it, res_inf};
@@ -221,7 +221,7 @@ void Cpmd::align_to_overlap(const linalg::RealMatrix& S) {
             "Cpmd::align_to_overlap: S shape does not match C rows");
     // Geometry change is not a dynamics step: Löwdin transport of C, then
     // project Ċ onto the new velocity-constraint manifold.
-    C_ = internal::ot_orthonormalize(C_, S);
+    C_ = linalg::lowdin_orthonormalize(C_, S);
     Cdot_ = rattle_velocity(Cdot_, C_, S);
     using xt::linalg::dot;
     const int no = static_cast<int>(C_.shape(1));
@@ -267,7 +267,7 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
 
     // Projected electronic force (S-tangent):
     // F = −(I − S C Cᵀ)(2·occ·H C). RKS occ=2 → factor 4; UKS occ=1 → factor 2.
-    const linalg::RealMatrix F = -internal::ot_gradient(H, S, C_, occ);
+    const linalg::RealMatrix F = -linalg::band_gradient(H, S, C_, occ);
     const double dt_over_2mu = dt_au / (2.0 * mu_);
 
     // 1) Velocity half-step (unconstrained).
@@ -346,41 +346,8 @@ CMat eye_c(int n) {
     return I;
 }
 
-// Row-major complex products (same layout as OT / kpoints).
-CMat c_mul(const CMat& A, const CMat& B) {
-    const int n = static_cast<int>(A.shape(0));
-    const int m = static_cast<int>(A.shape(1));
-    const int p = static_cast<int>(B.shape(1));
-    CMat C = xt::zeros<Cplx>({static_cast<std::size_t>(n),
-                              static_cast<std::size_t>(p)});
-    for (int i = 0; i < n; ++i)
-        for (int k = 0; k < m; ++k) {
-            const Cplx a = A(i, k);
-            if (a == Cplx(0, 0))
-                continue;
-            for (int j = 0; j < p; ++j)
-                C(i, j) += a * B(k, j);
-        }
-    return C;
-}
-
-// A† B
-CMat c_dagger_mul(const CMat& A, const CMat& B) {
-    const int n = static_cast<int>(A.shape(0));
-    const int m = static_cast<int>(A.shape(1));
-    const int p = static_cast<int>(B.shape(1));
-    CMat C = xt::zeros<Cplx>({static_cast<std::size_t>(m),
-                              static_cast<std::size_t>(p)});
-    for (int i = 0; i < m; ++i)
-        for (int k = 0; k < n; ++k) {
-            const Cplx a = std::conj(A(k, i));
-            if (a == Cplx(0, 0))
-                continue;
-            for (int j = 0; j < p; ++j)
-                C(i, j) += a * B(k, j);
-        }
-    return C;
-}
+// Row-major complex products `A B` / `A† B` come from
+// `linalg::c_mul` / `linalg::c_dagger_mul` (orbital_tangent.h).
 
 // Gaussian elimination inverse for small complex square matrices (n_occ).
 CMat c_inv(const CMat& A) {
@@ -444,13 +411,13 @@ CMat c_inv(const CMat& A) {
 
 // Velocity RATTLE: kill Herm(C† S Ċ). Ċ' = Ċ + C Γ with Γ = −Herm(C† S Ċ).
 CMat rattle_velocity_c(const CMat& Cdot, const CMat& C, const CMat& S) {
-    const CMat W = c_dagger_mul(C, c_mul(S, Cdot));
+    const CMat W = linalg::c_dagger_mul(C, linalg::c_mul(S, Cdot));
     CMat Gamma = xt::zeros<Cplx>(W.shape());
     const int no = static_cast<int>(W.shape(0));
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j)
             Gamma(i, j) = -0.5 * (W(i, j) + std::conj(W(j, i)));
-    return Cdot + c_mul(C, Gamma);
+    return Cdot + linalg::c_mul(C, Gamma);
 }
 
 struct PosRattleResultC {
@@ -469,7 +436,7 @@ PosRattleResultC rattle_position_c(const CMat& C_raw, const CMat& C_ref,
     double res_inf = 0.0;
     int it = 0;
     for (; it < kRattlePosMaxIter; ++it) {
-        const CMat G = c_dagger_mul(C, c_mul(S, C));
+        const CMat G = linalg::c_dagger_mul(C, linalg::c_mul(S, C));
         CMat residual = xt::zeros<Cplx>(G.shape());
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
@@ -478,13 +445,13 @@ PosRattleResultC rattle_position_c(const CMat& C_raw, const CMat& C_ref,
         if (res_inf <= kRattlePosTol)
             return {std::move(C), it, res_inf};
 
-        const CMat M = c_dagger_mul(C_ref, c_mul(S, C));
+        const CMat M = linalg::c_dagger_mul(C_ref, linalg::c_mul(S, C));
         CMat Minv;
         try {
             Minv = c_inv(M);
         } catch (...) {
-            C = internal::ot_orthonormalize_k(C, S);
-            const CMat G2 = c_dagger_mul(C, c_mul(S, C));
+            C = linalg::lowdin_orthonormalize_k(C, S);
+            const CMat G2 = linalg::c_dagger_mul(C, linalg::c_mul(S, C));
             res_inf = 0.0;
             for (int i = 0; i < no; ++i)
                 for (int j = 0; j < no; ++j) {
@@ -498,12 +465,12 @@ PosRattleResultC rattle_position_c(const CMat& C_raw, const CMat& C_ref,
         for (int i = 0; i < no; ++i)
             for (int j = 0; j < no; ++j)
                 residual(i, j) *= -0.5;
-        dL = c_mul(Minv, residual);
-        C = C + c_mul(C_ref, dL);
+        dL = linalg::c_mul(Minv, residual);
+        C = C + linalg::c_mul(C_ref, dL);
     }
 
-    C = internal::ot_orthonormalize_k(C, S);
-    const CMat Gf = c_dagger_mul(C, c_mul(S, C));
+    C = linalg::lowdin_orthonormalize_k(C, S);
+    const CMat Gf = linalg::c_dagger_mul(C, linalg::c_mul(S, C));
     res_inf = 0.0;
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j) {
@@ -620,10 +587,10 @@ void CpmdCplx::align_to_overlap(const linalg::CplxMatrix& S) {
         || static_cast<int>(S.shape(1)) != nb)
         throw std::invalid_argument(
             "CpmdCplx::align_to_overlap: S shape does not match C rows");
-    C_ = internal::ot_orthonormalize_k(C_, S);
+    C_ = linalg::lowdin_orthonormalize_k(C_, S);
     Cdot_ = rattle_velocity_c(Cdot_, C_, S);
     const int no = static_cast<int>(C_.shape(1));
-    const CMat G = c_dagger_mul(C_, c_mul(S, C_));
+    const CMat G = linalg::c_dagger_mul(C_, linalg::c_mul(S, C_));
     last_sigma_inf_ = 0.0;
     for (int i = 0; i < no; ++i)
         for (int j = 0; j < no; ++j) {
@@ -666,8 +633,8 @@ void CpmdCplx::advance(const linalg::CplxMatrix& H, const linalg::CplxMatrix& S,
     if (thermostat)
         nh_half_step(dt_half);
 
-    // F = −(I − S C C†)(2·occ·H C)  [ot_gradient_k returns the +gradient].
-    const CMat F = -internal::ot_gradient_k(H, S, C_, occ);
+    // F = −(I − S C C†)(2·occ·H C)  [band_gradient_k returns the +gradient].
+    const CMat F = -linalg::band_gradient_k(H, S, C_, occ);
     const double dt_over_2mu = dt_au / (2.0 * mu_);
 
     CMat Cdot_half = Cdot_ + dt_over_2mu * F;
@@ -705,6 +672,6 @@ void CpmdCplx::reset() {
     ready_ = false;
 }
 
-} // namespace gpw
+} // namespace electronic
 } // namespace cpu
 } // namespace ATV

@@ -11,7 +11,7 @@ closed-shell RKS** Gaussian-and-plane-waves (GPW / Quickstep) forces:
   **`second_gen_cp = true`**, **`second_gen_cp_k = 1`**,
   **`second_gen_cp_max_iter = 5`**
 - Electronics: Kolafa **ASPC** on complex Bloch densities \(P_k\)
-  (`cpu::scf::ASPCPredictorCplx`, one history per k) + **partial SCF
+  (`cpu::electronic::ASPCPredictorCplx`, one history per k) + **partial SCF
   corrector** (iteration budget ≪ full BOMD); analytic multi-k forces at
   the post-corrector density
 

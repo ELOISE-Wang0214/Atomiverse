@@ -18,8 +18,10 @@
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
 
 using namespace ATV::cpu::gpw;
+namespace linalg = ATV::cpu::linalg; // eigh_hermitian owner (not gpw::internal)
 using internal::CplxMatrix;
 using internal::KPoint;
 using Cplx = std::complex<double>;
@@ -160,7 +162,7 @@ TEST(GpwKpoints, EighHermitianAnalytic2x2) {
     A(1, 1) = Cplx(2, 0);
     std::vector<double> w;
     CplxMatrix V;
-    internal::eigh_hermitian(A, w, V);
+    linalg::eigh_hermitian(A, w, V);
     ASSERT_EQ(w.size(), 2u);
     EXPECT_NEAR(w[0], 1.0, 1e-12);
     EXPECT_NEAR(w[1], 3.0, 1e-12);

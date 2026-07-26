@@ -10,7 +10,7 @@ degrees of freedom on **multi-k closed-shell RKS** Gaussian-and-plane-waves
 - Force/energy: `cpu::gpw::GPWEvaluator` with `compute_forces = true`,
   **`k_mesh = {1,1,2}`**, **`k_time_reversal = false`** (two sampled k),
   **`cpmd = true`**, **`cpmd_mu`**, **`cpmd_dt`** matching nuclear dt
-- One `cpu::gpw::CpmdCplx` per sampled k propagates occupied Bloch
+- One `cpu::electronic::CpmdCplx` per sampled k propagates occupied Bloch
   coefficients with electronic RATTLE; production steps use fixed-density
   multi-k KS eval (`iters == 0`)
 - Conserved diagnostic:

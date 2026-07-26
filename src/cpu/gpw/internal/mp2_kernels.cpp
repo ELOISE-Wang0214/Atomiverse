@@ -1594,7 +1594,7 @@ void direct_rpa_rhf_energy_kpoints(
 
         std::vector<double> w2;
         CplxMatrix Z;
-        eigh_hermitian(M, w2, Z);
+        linalg::eigh_hermitian(M, w2, Z);
         (void)Z;
 
         double sum_om = 0.0;
@@ -1893,7 +1893,7 @@ void direct_rpa_uhf_energy_kpoints(
 
         std::vector<double> w2;
         CplxMatrix Z;
-        eigh_hermitian(M, w2, Z);
+        linalg::eigh_hermitian(M, w2, Z);
         (void)Z;
 
         double sum_om = 0.0;
@@ -2227,7 +2227,7 @@ void spectral_g0w0_rhf_kpoints(
 
         std::vector<double> w2;
         CplxMatrix Z;
-        eigh_hermitian(M, w2, Z);
+        linalg::eigh_hermitian(M, w2, Z);
 
         std::vector<double> Om(static_cast<std::size_t>(n_block));
         std::vector<Cplx> Xpy(static_cast<std::size_t>(n_block)
@@ -2663,7 +2663,7 @@ void spectral_g0w0_uhf_kpoints(
 
         std::vector<double> w2;
         CplxMatrix Z;
-        eigh_hermitian(M, w2, Z);
+        linalg::eigh_hermitian(M, w2, Z);
 
         std::vector<double> Om(static_cast<std::size_t>(n_block));
         std::vector<Cplx> Xpy(static_cast<std::size_t>(n_block)

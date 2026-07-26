@@ -23,8 +23,8 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/electronic/aspc_predictor.h"
 #include "atomiverse/cpu/linalg/eigensolve.h" // CanonicalOrth, build_orthogonalization_matrix
-#include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/dftd3.h"
 #include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/scf/ecp_potential.h"
@@ -122,8 +122,8 @@ void MeanFieldMethod<D>::set_predictor_(int order, int corrector_steps,
     corrector_steps_ = corrector_steps;
     corrector_tol_ = corrector_tol;
     fallback_full_scf_ = fallback;
-    aspc_alpha_ = std::make_unique<ASPCPredictor>(order);
-    aspc_beta_ = std::make_unique<ASPCPredictor>(order);
+    aspc_alpha_ = std::make_unique<electronic::ASPCPredictor>(order);
+    aspc_beta_ = std::make_unique<electronic::ASPCPredictor>(order);
 }
 
 // ── Stage wiring + Plan compile (lazy, once) ──────────────────────────────────

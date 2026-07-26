@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-uks-kpoints` |
 | Regression | `regressions/dynamics/xl-bomd-uks-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `n_alpha`/`n_beta`, `k_mesh`, `xl_bomd`, `xl_bomd_k` at `md::Phase::force`; propagator class `cpu::gpw::XlBomdCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `n_alpha`/`n_beta`, `k_mesh`, `xl_bomd`, `xl_bomd_k` at `md::Phase::force`; propagator class `cpu::electronic::XlBomdCplx` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-uks-kpoints`; MD AIMD XL multi-k UKS residual closed 2026-07-26 |
 | Dual gate | Correctness A6 (e2e NVE drift) + unit A1–A5 (`test_cpu_gpw_xl_bomd`); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 11 (2026-07-26) |
@@ -41,7 +41,7 @@ Related: [xl-bomd-water](xl-bomd-water.md) (Γ RKS foothold),
 
 An auxiliary AO density matrix is a **dynamical variable**, not a Kolafa
 ASPC extrapolation of past SCF densities
-(`cpu::scf::ASPCPredictor`). After each SCF, the multi-k UKS path advances
+(`cpu::electronic::ASPCPredictor`). After each SCF, the multi-k UKS path advances
 one `XlBomdCplx` per \((k,\sigma)\):
 
 \[
@@ -184,10 +184,10 @@ sim.run(frame, 1);              // warm-up: seed XL histories
 ```
 
 The complex multi-k propagator is also a public primitive
-(`include/atomiverse/cpu/gpw/xl_bomd.h`):
+(`include/atomiverse/cpu/electronic/xl_bomd.h`):
 
 ```cpp
-cpu::gpw::XlBomdCplx xl(5);   // throws unless 3 <= K <= 9
+cpu::electronic::XlBomdCplx xl(5);   // throws unless 3 <= K <= 9
 xl.advance(D_k_scf);          // first call seeds; later calls propagate
 const auto& guess = xl.aux(); // complex P_{n+1} for next SCF at this k
 ```
@@ -209,7 +209,7 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Propagator | `include/atomiverse/cpu/gpw/xl_bomd.h`, `src/cpu/gpw/xl_bomd.cpp` |
+| Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
 | Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`xl_bomd`, `xl_bomd_k`, `k_mesh`, `n_alpha`/`n_beta`) |
 | Multi-k UKS SCF + XL payload | `src/cpu/gpw/gpw_solver.cpp` (`run_gpw_scf_kpoints_uks`) |
 | Unit Table-I / dual-spin | `tests/cpu/gpw/` (`test_cpu_gpw_xl_bomd`) |

@@ -12,10 +12,10 @@
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/gpw.h"
-#include "atomiverse/cpu/gpw/cpmd.h"
+#include "atomiverse/cpu/electronic/aspc_predictor.h"
+#include "atomiverse/cpu/electronic/cpmd.h"
+#include "atomiverse/cpu/electronic/xl_bomd.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/xl_bomd.h"
-#include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/molrs.hpp"
 
 namespace ATV {
@@ -253,42 +253,42 @@ class GPWEvaluator : public cpu::GPW {
     std::array<double, 6> last_stress_ha_{};
     /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd` on Γ).
     /// RKS: total \(P\). UKS: \(P_\alpha\). Empty when multi-k XL is active.
-    std::optional<XlBomd> xl_;
+    std::optional<electronic::XlBomd> xl_;
     /// XL-BOMD β-spin propagator (Γ-UKS only; empty for RKS / multi-k).
-    std::optional<XlBomd> xl_beta_;
+    std::optional<electronic::XlBomd> xl_beta_;
     /// Multi-k XL α (or RKS total): one complex propagator per sampled k
     /// (empty on Γ).
-    std::vector<XlBomdCplx> xl_k_;
+    std::vector<electronic::XlBomdCplx> xl_k_;
     /// Multi-k UKS XL β: one complex propagator per k (empty for RKS / Γ).
-    std::vector<XlBomdCplx> xl_k_beta_;
+    std::vector<electronic::XlBomdCplx> xl_k_beta_;
     /// Scratch for multi-k XL `guess_P_k` (lifetime covers `run`).
     std::vector<linalg::CplxMatrix> xl_guess_p_k_;
     /// Scratch for multi-k UKS XL `guess_P_k_beta` (lifetime covers `run`).
     std::vector<linalg::CplxMatrix> xl_guess_p_k_beta_;
     /// CPMD electronic propagator (engaged when `cpmd` on Γ). RKS: total occ.
     /// UKS: α channel (occ=1). Empty when multi-k CPMD is active.
-    std::optional<Cpmd> cpmd_;
+    std::optional<electronic::Cpmd> cpmd_;
     /// CPMD β-spin propagator (Γ-UKS only; empty for RKS / multi-k).
-    std::optional<Cpmd> cpmd_beta_;
+    std::optional<electronic::Cpmd> cpmd_beta_;
     /// Multi-k CPMD: one complex propagator per sampled k (empty on Γ).
-    std::vector<CpmdCplx> cpmd_k_;
+    std::vector<electronic::CpmdCplx> cpmd_k_;
     /// Scratch multi-k densities for fixed-density CPMD eval.
     std::vector<linalg::CplxMatrix> cpmd_guess_p_k_;
     double last_te_ev_ = 0.0;     ///< last electronic KE [eV]
     double last_etherm_ev_ = 0.0; ///< last electronic NH energy [eV]
     /// Second-gen CP ASPC density history (engaged when `second_gen_cp` on Γ).
     /// RKS: total \(P\). UKS: \(P_\alpha\). Empty when multi-k SGCP is active.
-    std::optional<scf::ASPCPredictor> sgcp_aspc_;
+    std::optional<electronic::ASPCPredictor> sgcp_aspc_;
     /// Second-gen CP β-spin ASPC (Γ-UKS only; empty for RKS / multi-k).
-    std::optional<scf::ASPCPredictor> sgcp_aspc_beta_;
+    std::optional<electronic::ASPCPredictor> sgcp_aspc_beta_;
     /// Scratch for ASPC → column-major `guess_P` (lifetime covers `run`).
     linalg::RealMatrix sgcp_guess_p_;
     /// Scratch for ASPC β → column-major `guess_P_beta` (UKS).
     linalg::RealMatrix sgcp_guess_p_beta_;
     /// Multi-k SGCP α (or RKS total): one complex ASPC per sampled k (empty on Γ).
-    std::vector<scf::ASPCPredictorCplx> sgcp_aspc_k_;
+    std::vector<electronic::ASPCPredictorCplx> sgcp_aspc_k_;
     /// Multi-k SGCP β: one complex ASPC per k (empty for RKS / Γ).
-    std::vector<scf::ASPCPredictorCplx> sgcp_aspc_k_beta_;
+    std::vector<electronic::ASPCPredictorCplx> sgcp_aspc_k_beta_;
     /// Scratch for multi-k SGCP `guess_P_k` (lifetime covers `run`).
     std::vector<linalg::CplxMatrix> sgcp_guess_p_k_;
     /// Scratch for multi-k UKS SGCP `guess_P_k_beta`.

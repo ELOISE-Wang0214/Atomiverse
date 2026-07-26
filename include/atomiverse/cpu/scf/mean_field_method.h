@@ -66,6 +66,11 @@
 
 namespace ATV {
 namespace cpu {
+
+namespace electronic {
+class ASPCPredictor; // Kolafa density extrapolator (aspc_predictor.h)
+}
+
 namespace scf {
 
 namespace internal {
@@ -825,8 +830,8 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     int corrector_steps_ = 2;
     double corrector_tol_ = 1e-4;
     bool fallback_full_scf_ = true;
-    std::unique_ptr<class ASPCPredictor> aspc_alpha_;
-    std::unique_ptr<class ASPCPredictor> aspc_beta_;
+    std::unique_ptr<electronic::ASPCPredictor> aspc_alpha_;
+    std::unique_ptr<electronic::ASPCPredictor> aspc_beta_;
     bool has_last_density_ = false;
     xt::xtensor<double, 2> last_P_alpha_;
     xt::xtensor<double, 2> last_P_beta_;

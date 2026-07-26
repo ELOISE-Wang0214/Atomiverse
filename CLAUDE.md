@@ -411,6 +411,7 @@ follow-up, not part of this layout.
   neighbor/      infra: cell/Verlet neighbor structures + the published PairList
   asynchronous/  infra: AnalysisRuntime — async analysis pipeline (snapshot ring, D2H bridge)
   linalg/        infra: shared dense linear algebra (eigensolve, density build; CPU only)
+  electronic/    infra: shared electronic-state propagators — Cpmd/CpmdCplx, XlBomd/XlBomdCplx, ASPCPredictor(Cplx) (CPU only)
   dynamics/      domain: MD — integrators, thermostats, barostats, deform, velocity init
   montecarlo/    domain: Monte Carlo — the MC preset, movers, trial transaction (CPU only)
   minimize/      domain: SD, CG, L-BFGS + opt recorders (LbfgsHistory, shared with path/)
@@ -1119,7 +1120,8 @@ Driver loop; parameters are members; Frame in/out. **Debt (shipping):** still
 CUDA `SCFSolver` debt + private integrals; public Gaussian path is concrete `RHF`/`UHF`/…, plus component
 `cpu::scf::SCF` (`HF` kind; forces with `with_gradient(true)`). CUDA path is
 energy/density only (no CUDA SCF gradient). Gradients and utilities exist under
-`gradient.h`, `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`.
+`gradient.h`, `basis_eval.h`, `grid.h`, `xc_functional.h`; the ASPC density
+predictor lives in `cpu/electronic/aspc_predictor.h`.
 New API work lands on the target shape, not the debt.
 
 ### GPW data (in-tree static `.h` tables, no parsing)

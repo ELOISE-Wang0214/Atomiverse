@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-linearized-forces` |
 | Regression | `regressions/dynamics/xl-bomd-linearized-forces/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `xl_bomd`, `xl_bomd_k`, **`xl_bomd_linearized`**, `compute_forces` at `md::Phase::force`; propagator `cpu::gpw::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `xl_bomd`, `xl_bomd_k`, **`xl_bomd_linearized`**, `compute_forces` at `md::Phase::force`; propagator `cpu::electronic::XlBomd` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-linearized-forces`; [molecular-dynamics.md](../../roadmap/molecular-dynamics.md) XL-BOMD residual closed 2026-07-26 |
 | Dual gate | Correctness A1–A4 unit (`test_cpu_gpw_xl_bomd`) + A5 e2e NVE drift; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
@@ -48,7 +48,7 @@ golden Atomiverse total energy and not a measured CP2K AIMD wall.
 ### XL auxiliary density (same recursion as SCF XL)
 
 An auxiliary AO density matrix is a **dynamical variable**, not a Kolafa ASPC
-extrapolation (`cpu::scf::ASPCPredictor`). After each warm electronic step the
+extrapolation (`cpu::electronic::ASPCPredictor`). After each warm electronic step the
 propagator advances
 
 \[
@@ -232,7 +232,7 @@ Relevant sources:
 
 | Layer | Path |
 | ----- | ---- |
-| Propagator | `include/atomiverse/cpu/gpw/xl_bomd.h`, `src/cpu/gpw/xl_bomd.cpp` |
+| Propagator | `include/atomiverse/cpu/electronic/xl_bomd.h`, `src/cpu/electronic/xl_bomd.cpp` |
 | Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`xl_bomd`, `xl_bomd_k`, `xl_bomd_linearized`) |
 | Warm shadow path | `src/cpu/gpw/gpw_evaluator.cpp` (zero-SCF block after XL ready) |
 | Forces at density | `src/cpu/gpw/internal/gpw_forces.cpp` (`gpw_forces_at_density`) |

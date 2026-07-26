@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-water` |
 | Regression | `regressions/dynamics/cpmd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::gpw::Cpmd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-water`; MD roadmap Car–Parrinello |
 | Dual gate | Correctness A1–A15 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 3 |
@@ -71,10 +71,10 @@ const double e_cons = frame.meta.get(kKinetic)
                     + eval.last_electronic_ke_ev();
 ```
 
-The propagator primitive (`cpu/gpw/cpmd.h`):
+The propagator primitive (`cpu/electronic/cpmd.h`):
 
 ```cpp
-cpu::gpw::Cpmd cp(2000.0);  // throws if mu <= 0
+cpu::electronic::Cpmd cp(2000.0);  // throws if mu <= 0
 cp.seed(C_occ);             // after cold SCF
 cp.align_to_overlap(S);     // after nuclei move
 cp.advance(H, S, dt_fs);    // projected Verlet + Löwdin

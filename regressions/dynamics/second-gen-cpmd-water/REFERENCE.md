@@ -10,7 +10,7 @@
   **`second_gen_cp = true`**, **`second_gen_cp_k = 3`**,
   **`second_gen_cp_max_iter = 5`**, `compute_forces = true`
 - Electronics: Kolafa **ASPC** density predictor-corrector
-  (`cpu::scf::ASPCPredictor`) + **partial SCF corrector** (iteration budget
+  (`cpu::electronic::ASPCPredictor`) + **partial SCF corrector** (iteration budget
   ≪ full BOMD); analytic forces at the post-corrector density
 
 **Not BOMD** (production steps cap SCF iters at the corrector budget).  

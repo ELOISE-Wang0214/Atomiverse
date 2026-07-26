@@ -224,6 +224,11 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/longrange/fmm_operators.cpp
         src/cpu/longrange/fmm_tree.cpp
         src/cpu/scf/solve.cpp
+        # Shared dense linear algebra. S-metric orbital primitives (projected
+        # band gradient, tangent projection, Löwdin re-orthonormalization) are
+        # used by the GPW OT minimizer and by the electronic-state propagators,
+        # so they are never gated on a method flag.
+        src/cpu/linalg/orbital_tangent.cpp
         src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
@@ -574,8 +579,15 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/fci.cpp
             src/cpu/scf/casscf.cpp
             src/cpu/scf/nevpt2.cpp
-            src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/orbital_info_observer.cpp
+            # Electronic-state propagators (cpu/electronic/): Kolafa ASPC
+            # extrapolation, Car–Parrinello fictitious-mass dynamics, and the
+            # Niklasson dissipative XL-BOMD recursion. They depend only on
+            # cpu/linalg, and every consumer (Gaussian SCF here, GPW below —
+            # GPW requires HF) is behind this flag, so they build once here.
+            src/cpu/electronic/aspc_predictor.cpp
+            src/cpu/electronic/cpmd.cpp
+            src/cpu/electronic/xl_bomd.cpp
             # Molecular DFT-D3 (BJ) + shared Grimme tables (also used by GPW
             # zero-damping when ATV_BUILD_GPW=ON — sources live once under HF
             # because GPW requires HF).
@@ -640,12 +652,9 @@ if(NOT ATV_DOCS_ONLY)
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
             src/cpu/gpw/internal/one_electron.cpp
-            # XL-BOMD auxiliary-density propagator (Niklasson dissipative
-            # recursion) — dense algebra only, no FFT dependency.
-            src/cpu/gpw/xl_bomd.cpp
-            # Car–Parrinello fictitious electronic DOF propagator (Verlet +
-            # Löwdin) — dense algebra only; KS eval reuses the GPW solver.
-            src/cpu/gpw/cpmd.cpp
+            # The electronic-state propagators GPWEvaluator drives (XL-BOMD,
+            # CPMD, ASPC) live in src/cpu/electronic/ and are compiled under
+            # ATV_BUILD_HF, which GPW requires.
             # DFT-D3 engine sources are compiled under ATV_BUILD_HF (shared
             # with molecular D3BJ); GPW zero-damping calls the same symbols.
         )

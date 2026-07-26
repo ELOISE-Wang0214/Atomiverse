@@ -1,4 +1,4 @@
-/// @file cpu/scf/aspc_predictor.cpp
+/// @file src/cpu/electronic/aspc_predictor.cpp
 /// @brief ASPC predictor-corrector implementation.
 ///
 /// Lagrange extrapolation coefficients for order K:
@@ -7,13 +7,13 @@
 ///
 /// Reference: Kolafa, J. Comput. Chem. 25, 335 (2004), Eq. 7-11
 
-#include "atomiverse/cpu/scf/aspc_predictor.h"
+#include "atomiverse/cpu/electronic/aspc_predictor.h"
 
 #include <stdexcept>
 
 namespace ATV {
 namespace cpu {
-namespace scf {
+namespace electronic {
 
 ASPCPredictor::ASPCPredictor(int order) : K_(order) {
     if (K_ < 0)
@@ -129,6 +129,6 @@ void ASPCPredictorCplx::correct(const linalg::CplxMatrix& P_scf,
 
 void ASPCPredictorCplx::reset() { history_.clear(); }
 
-} // namespace scf
+} // namespace electronic
 } // namespace cpu
 } // namespace ATV

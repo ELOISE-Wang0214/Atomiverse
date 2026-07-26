@@ -1,23 +1,51 @@
-/// @file cpu/gpw/xl_bomd.h
-/// @brief XlBomd / XlBomdCplx — dissipative extended-Lagrangian BOMD
-///        auxiliary-density propagators (Niklasson XL-BOMD).
+/// @file cpu/electronic/xl_bomd.h
+/// @brief XlBomd / XlBomdCplx — dissipative extended-Lagrangian
+///        Born–Oppenheimer molecular dynamics (XL-BOMD) auxiliary-density
+///        propagators (Niklasson's scheme).
 ///
-/// Propagates an auxiliary AO density matrix P alongside the nuclei and
-/// serves it as the SCF initial guess each MD step:
+/// **The problem.** In Born–Oppenheimer molecular dynamics (BOMD) the electrons
+/// are re-converged at every nuclear step by a self-consistent-field (SCF)
+/// iteration, which needs a starting guess for the electron density. Reusing the
+/// previous step's converged density is the obvious guess, but it is *not* a
+/// time-reversible operation — the guess always lags the nuclei — and the
+/// resulting one-sided error pumps energy into the trajectory, so the total
+/// energy drifts steadily over a long run. XL-BOMD removes the drift by giving
+/// the guess its own reversible dynamics.
+///
+/// **The scheme.** An auxiliary density matrix \(P\) is propagated alongside the
+/// nuclei and handed to the SCF as the initial guess each molecular-dynamics
+/// (MD) step. With \(n\) the MD step index, \(P_n\) the auxiliary density at
+/// step \(n\), \(D_n\) the SCF-converged density at step \(n\), and \(K\) the
+/// dissipation order (history depth \(K+1\)):
 ///
 ///   P_{n+1} = 2 P_n − P_{n−1} + κ (D_n − P_n) + α Σ_{k=0}^{K} c_k P_{n−k}
 ///
-/// where D_n is the SCF-converged density at step n and (κ, α, c_k) are the
-/// dissipation coefficients of Table I in Niklasson et al., J. Chem. Phys.
-/// 130, 214109 (2009) (time-reversible scheme: Niklasson, Phys. Rev. Lett.
-/// 100, 123004 (2008)). Unlike the Kolafa ASPC *extrapolation*
-/// (`cpu::scf::ASPCPredictor`), the auxiliary density is a dynamical
-/// variable: the recursion is time-reversible up to the O(α) dissipation,
-/// which is what removes the systematic energy drift that plain guess reuse
-/// causes in long BOMD trajectories.
+/// The first three terms are the Verlet discretization of a harmonic equation
+/// of motion \(\ddot P = \omega^2 (D[P] - P)\) — the auxiliary density behaves
+/// like a mass on a spring whose equilibrium position is the true SCF density,
+/// with \(\kappa = \omega^2 \Delta t^2\) the (dimensionless) Verlet coupling.
+/// That part is exactly time-reversible. The last term is a weak dissipation
+/// (strength \(\alpha \ll 1\), integer weights \(c_k\), both dimensionless) that
+/// damps the numerical noise the SCF injects; it is the *only* time-irreversible
+/// piece, of size \(O(\alpha)\). \((\kappa, \alpha, c_k)\) are the tabulated
+/// rows of Table I in Niklasson et al., J. Chem. Phys. 130, 214109 (2009);
+/// the underlying reversible scheme is Niklasson,
+/// Phys. Rev. Lett. 100, 123004 (2008).
 ///
-/// Unit-agnostic dense linear algebra on AO density matrices; consumed by
-/// `cpu::gpw::GPWEvaluator` (`xl_bomd = true`):
+/// Contrast with the Kolafa always-stable predictor-corrector
+/// (`cpu::electronic::ASPCPredictor`): that one *extrapolates* a polynomial
+/// through past densities, whereas here the auxiliary density is a dynamical
+/// variable with its own equation of motion.
+///
+/// **Units.** All matrices are one-particle density matrices in the
+/// atomic-orbital (AO) basis — dimensionless — and the coefficients are
+/// dimensionless, so this file carries no physical units: it is dense linear
+/// algebra usable by any mean-field method that can hand over a converged
+/// density. Consumed today by `cpu::gpw::GPWEvaluator` (`xl_bomd = true`), for
+/// each spin/k-sampling combination it supports (Γ = the single \(k = 0\)
+/// sampling point, where the density is real; RKS = restricted Kohn–Sham, one
+/// orbital set for both spins; UKS = unrestricted Kohn–Sham, independent
+/// \(\alpha\) and \(\beta\) spin channels):
 /// - **Γ RKS:** total real \(P\) via `XlBomd`
 /// - **Γ UKS:** one `XlBomd` per spin channel
 /// - **multi-k RKS:** one `XlBomdCplx` per sampled \(k\) (complex \(P_k\))
@@ -32,7 +60,7 @@
 
 namespace ATV {
 namespace cpu {
-namespace gpw {
+namespace electronic {
 
 /// @brief Dissipative XL-BOMD auxiliary-density propagator (real AO density).
 ///
@@ -75,12 +103,14 @@ class XlBomd {
     /// First call: seeds the whole history with `d_scf` (stationary start —
     /// the recursion's fixed point for a constant density). Later calls:
     /// applies the dissipative Verlet recursion.
-    /// @param d_scf SCF-converged density matrix D_n (n_ao × n_ao).
+    /// @param d_scf SCF-converged density matrix \(D_n\) (n_ao × n_ao,
+    ///        dimensionless; n_ao = number of atomic-orbital basis functions).
     /// @throws std::invalid_argument when `d_scf` is empty or its shape
     ///         differs from the seeded history.
     void advance(const linalg::RealMatrix& d_scf);
 
-    /// @brief Drop all history (geometry discontinuity / restart policy).
+    /// @brief Drop all history (geometry discontinuity / restart policy):
+    ///        `ready()` becomes false and the next `advance` re-seeds.
     void reset();
 
   private:
@@ -108,22 +138,38 @@ class XlBomdCplx {
     /// @throws std::invalid_argument when k is outside [3, 9].
     explicit XlBomdCplx(int k = 5);
 
+    /// @brief Dissipation order K (history depth K+1).
+    /// @return K in [3, 9] (dimensionless).
     int order() const { return k_; }
+    /// @brief Verlet coupling κ (dimensionless), \(\kappa=\omega^2\Delta t^2\).
+    /// @return κ of Table I for this K.
     double kappa() const { return kappa_; }
+    /// @brief Dissipation strength α (dimensionless).
+    /// @return α of Table I for this K.
     double alpha() const { return alpha_; }
+    /// @brief Dissipation weights c_0..c_K (dimensionless).
+    /// @return K+1 coefficients of Table I (integer-valued).
     const std::vector<double>& c() const { return c_; }
+    /// @brief Whether an auxiliary density is available (history seeded).
+    /// @return true after the first `advance`.
     bool ready() const { return ready_; }
 
-    /// @brief Current auxiliary complex density \(P_{n+1}\).
+    /// @brief Current auxiliary complex density \(P_{n+1}\) — the SCF initial
+    ///        guess for the next MD step, in the same convention as the density
+    ///        fed to `advance` (one k-point, one spin channel).
+    /// @return \(P_{n+1}\) (n_ao × n_ao, dimensionless).
     /// @throws std::logic_error before the first `advance`.
     const linalg::CplxMatrix& aux() const;
 
-    /// @brief Record SCF \(D_k\) and propagate one step.
-    /// @param d_scf Complex Hermitian density (n_ao × n_ao).
+    /// @brief Record this step's SCF density \(D_n\) at this k-point and
+    ///        propagate the auxiliary density one step (first call seeds the
+    ///        whole history with `d_scf`, as in `XlBomd::advance`).
+    /// @param d_scf Complex Hermitian density (n_ao × n_ao, dimensionless).
     /// @throws std::invalid_argument on empty or shape-mismatched input.
     void advance(const linalg::CplxMatrix& d_scf);
 
-    /// @brief Drop all history.
+    /// @brief Drop all history: `ready()` becomes false and the next `advance`
+    ///        re-seeds.
     void reset();
 
   private:
@@ -136,6 +182,6 @@ class XlBomdCplx {
     bool ready_ = false;
 };
 
-} // namespace gpw
+} // namespace electronic
 } // namespace cpu
 } // namespace ATV

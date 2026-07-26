@@ -23,17 +23,6 @@
 #include <mpi.h>
 #endif
 
-extern "C" {
-// Direct LAPACK binding for the complex Hermitian eigensolver. The LWORK=-1
-// workspace query of the bundled LAPACK is broken (see dsygvd_ in
-// cpu/linalg/eigensolve.h), so the documented minimum workspace is passed
-// explicitly and no query is ever issued.
-void zheevd_(const char* jobz, const char* uplo, const int* n,
-             std::complex<double>* a, const int* lda, double* w,
-             std::complex<double>* work, const int* lwork, double* rwork,
-             const int* lrwork, int* iwork, const int* liwork, int* info);
-}
-
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -595,47 +584,11 @@ CplxMatrix integrate_potential_k(const KpointBasisGrid& kbg, int ik,
     return V;
 }
 
-void eigh_hermitian(const CplxMatrix& A, std::vector<double>& w,
-                    CplxMatrix& V) {
-    const int n = static_cast<int>(A.shape(0));
-    // Stage the LOGICAL matrix column-major so LAPACK sees exactly A.
-    std::vector<Cplx> buf(static_cast<std::size_t>(n) * n);
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            buf[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * n] =
-                A(i, j);
-    w.assign(static_cast<std::size_t>(n), 0.0);
-
-    // Documented zheevd minima for JOBZ='V': LWORK >= 2N + N^2,
-    // LRWORK >= 1 + 5N + 2N^2, LIWORK >= 3 + 5N (no LWORK=-1 query — broken
-    // in the bundled LAPACK, see the dsygvd_ note in linalg/eigensolve.h).
-    const char jobz = 'V';
-    const char uplo = 'L';
-    const int lwork = 2 * n + n * n + 16;
-    const int lrwork = 1 + 5 * n + 2 * n * n + 16;
-    const int liwork = 3 + 5 * n + 16;
-    std::vector<Cplx> work(static_cast<std::size_t>(lwork));
-    std::vector<double> rwork(static_cast<std::size_t>(lrwork));
-    std::vector<int> iwork(static_cast<std::size_t>(liwork));
-    int info = 0;
-    zheevd_(&jobz, &uplo, &n, buf.data(), &n, w.data(), work.data(), &lwork,
-            rwork.data(), &lrwork, iwork.data(), &liwork, &info);
-    if (info != 0)
-        throw std::runtime_error("gpw kpoints: zheevd failed, info="
-                                 + std::to_string(info));
-    // Columns of the column-major result are the eigenvectors.
-    V = xt::zeros<Cplx>({n, n});
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            V(i, j) = buf[static_cast<std::size_t>(i)
-                          + static_cast<std::size_t>(j) * n];
-}
-
 KOrth::KOrth(const CplxMatrix& S_k, double tau) {
     const int n = static_cast<int>(S_k.shape(0));
     std::vector<double> s;
     CplxMatrix U;
-    eigh_hermitian(S_k, s, U); // ascending
+    linalg::eigh_hermitian(S_k, s, U); // ascending
     s_min = s.empty() ? 0.0 : s[0];
     // A Bloch overlap is a Gram matrix at every k — a negative eigenvalue
     // means the phased lattice sum is WRONG, not ill-conditioned (same guard
@@ -710,7 +663,7 @@ std::pair<std::vector<double>, CplxMatrix> diagonalize_k(const CplxMatrix& H_k,
     const CplxMatrix Hp = dagger_mul(orth.X, mul(H_k, orth.X));
     std::vector<double> eps;
     CplxMatrix Cp;
-    eigh_hermitian(Hp, eps, Cp);
+    linalg::eigh_hermitian(Hp, eps, Cp);
     return {std::move(eps), mul(orth.X, Cp)};
 }
 

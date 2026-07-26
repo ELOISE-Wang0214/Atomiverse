@@ -10,7 +10,7 @@ degrees of freedom on **collinear Γ-point UKS** GPW:
   **`n_alpha = 7`**, **`n_beta = 5`** (O₂ GTH-q6 triplet),
   **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
   `compute_forces = true`
-- Propagator: dual `cpu::gpw::Cpmd` instances (α and β) with electronic
+- Propagator: dual `cpu::electronic::Cpmd` instances (α and β) with electronic
   RATTLE; occupancy-1 S-tangent force
   \(\mu\,\ddot C_\sigma = -(I-S C_\sigma C_\sigma^\top)(2 H_\sigma C_\sigma)\)
 

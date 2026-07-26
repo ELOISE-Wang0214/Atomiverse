@@ -1002,7 +1002,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         for (int mu = 0; mu < nb; ++mu)
             for (int o = 0; o < cfg.n_occ; ++o)
                 Cocc(mu, o) = C0k(mu, o);
-        Cocc = internal::ot_orthonormalize_k(
+        Cocc = linalg::lowdin_orthonormalize_k(
             Cocc, S_k[static_cast<std::size_t>(ik)]);
         Cocc_k[static_cast<std::size_t>(ik)] = Cocc;
         if (guess_P_k != nullptr) {
@@ -1381,7 +1381,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 for (int mu = 0; mu < nb; ++mu)
                     for (int o = 0; o < mcols; ++o)
                         Cocc(mu, o) = C0k(mu, o);
-                Cocc = internal::ot_orthonormalize_k(
+                Cocc = linalg::lowdin_orthonormalize_k(
                     Cocc, S_k[static_cast<std::size_t>(ik)]);
                 Cocc_k[static_cast<std::size_t>(ik)] = Cocc;
                 // Cold density: integer fill of n_occ (smear re-fills after H).
@@ -1436,7 +1436,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     }
                 std::vector<double> eps;
                 CplxMatrix U;
-                internal::eigh_hermitian(h, eps, U);
+                linalg::eigh_hermitian(h, eps, U);
                 // C ← C U
                 CplxMatrix Cnew = xt::zeros<Cplx>({nb, n_active});
                 for (int mu = 0; mu < nb; ++mu)
@@ -1446,7 +1446,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                             s += C(mu, p) * U(p, o);
                         Cnew(mu, o) = s;
                     }
-                C = internal::ot_orthonormalize_k(Cnew, S);
+                C = linalg::lowdin_orthonormalize_k(Cnew, S);
                 evals_k[static_cast<std::size_t>(ik)] = std::move(eps);
             }
 #ifdef ATV_HAS_MPI
@@ -1521,14 +1521,13 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 const auto& C = Cocc_k[static_cast<std::size_t>(ik)];
                 const CplxMatrix g =
                     use_smear
-                        ? internal::ot_gradient_k(
+                        ? linalg::band_gradient_k(
                               H, S, C, occ_k[static_cast<std::size_t>(ik)])
-                        : internal::ot_gradient_k(H, S, C, 2.0);
+                        : linalg::band_gradient_k(H, S, C, 2.0);
                 for (const Cplx v : g)
                     gnorm = std::max(gnorm, std::abs(v));
                 const internal::OtPrecondSingleInverseK pre(H, S, C);
-                const CplxMatrix pz =
-                    internal::ot_tangent_k(C, S, pre.apply(g));
+                const CplxMatrix pz = linalg::s_tangent_k(C, S, pre.apply(g));
                 g_k[static_cast<std::size_t>(ik)] = g;
                 pz_k[static_cast<std::size_t>(ik)] = pz;
             }
@@ -1626,7 +1625,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 if (!have_prev)
                     d = -pz;
                 else
-                    d = internal::ot_tangent_k(
+                    d = linalg::s_tangent_k(
                         C, S, -pz + beta * d_k[static_cast<std::size_t>(ik)]);
                 double sl = frob_k(g, d);
                 if (sl >= 0.0) {
@@ -1702,7 +1701,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const auto& C = Cocc_k[static_cast<std::size_t>(ik)];
                     const auto& d = d_k[static_cast<std::size_t>(ik)];
                     CplxMatrix Cnew = internal::ot_parameterize_k(C, a * d, S);
-                    Cnew = internal::ot_orthonormalize_k(Cnew, S);
+                    Cnew = linalg::lowdin_orthonormalize_k(Cnew, S);
                     Ptry[static_cast<std::size_t>(ik)] =
                         dens_from_cocc(Cnew, ik);
                 }
@@ -1720,7 +1719,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 const auto& S = S_k[static_cast<std::size_t>(ik)];
                 auto& C = Cocc_k[static_cast<std::size_t>(ik)];
                 const auto& d = d_k[static_cast<std::size_t>(ik)];
-                C = internal::ot_orthonormalize_k(
+                C = linalg::lowdin_orthonormalize_k(
                     internal::ot_parameterize_k(C, alpha * d, S), S);
                 P_k[static_cast<std::size_t>(ik)] = dens_from_cocc(C, ik);
             }
@@ -2344,7 +2343,7 @@ run_gpw_scf_kpoints_uks(
                     for (int o = 0; o < mcols; ++o)
                         Ca(mu, o) = C0k(mu, o);
                 Cocc_a_k[static_cast<std::size_t>(ik)] =
-                    internal::ot_orthonormalize_k(Ca, S);
+                    linalg::lowdin_orthonormalize_k(Ca, S);
             } else {
                 Cocc_a_k[static_cast<std::size_t>(ik)] =
                     xt::zeros<Cplx>({nb, 0});
@@ -2357,7 +2356,7 @@ run_gpw_scf_kpoints_uks(
                     for (int o = 0; o < mcols; ++o)
                         Cb(mu, o) = C0k(mu, o);
                 Cocc_b_k[static_cast<std::size_t>(ik)] =
-                    internal::ot_orthonormalize_k(Cb, S);
+                    linalg::lowdin_orthonormalize_k(Cb, S);
             } else {
                 Cocc_b_k[static_cast<std::size_t>(ik)] =
                     xt::zeros<Cplx>({nb, 0});
@@ -2413,7 +2412,7 @@ run_gpw_scf_kpoints_uks(
                     }
                 std::vector<double> eps;
                 CplxMatrix U;
-                internal::eigh_hermitian(h, eps, U);
+                linalg::eigh_hermitian(h, eps, U);
                 CplxMatrix Cnew = xt::zeros<Cplx>({nb, n_act});
                 for (int mu = 0; mu < nb; ++mu)
                     for (int o = 0; o < n_act; ++o) {
@@ -2422,7 +2421,7 @@ run_gpw_scf_kpoints_uks(
                             s += C(mu, p) * U(p, o);
                         Cnew(mu, o) = s;
                     }
-                C = internal::ot_orthonormalize_k(Cnew, S);
+                C = linalg::lowdin_orthonormalize_k(Cnew, S);
                 evals_out = std::move(eps);
             };
             for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
@@ -2714,16 +2713,15 @@ run_gpw_scf_kpoints_uks(
                     const auto& Ha = Ha_k[static_cast<std::size_t>(ik)];
                     const auto& Ca = Cocc_a_k[static_cast<std::size_t>(ik)];
                     const CplxMatrix g =
-                        use_smear
-                            ? internal::ot_gradient_k(
-                                  Ha, S, Ca,
-                                  occ_a_k[static_cast<std::size_t>(ik)])
-                            : internal::ot_gradient_k(Ha, S, Ca, 1.0);
+                        use_smear ? linalg::band_gradient_k(
+                                        Ha, S, Ca,
+                                        occ_a_k[static_cast<std::size_t>(ik)])
+                                  : linalg::band_gradient_k(Ha, S, Ca, 1.0);
                     for (const Cplx v : g)
                         gnorm = std::max(gnorm, std::abs(v));
                     const internal::OtPrecondSingleInverseK pre(Ha, S, Ca);
                     pz_a_k[static_cast<std::size_t>(ik)] =
-                        internal::ot_tangent_k(Ca, S, pre.apply(g));
+                        linalg::s_tangent_k(Ca, S, pre.apply(g));
                     g_a_k[static_cast<std::size_t>(ik)] = g;
                 } else {
                     g_a_k[static_cast<std::size_t>(ik)] =
@@ -2735,16 +2733,15 @@ run_gpw_scf_kpoints_uks(
                     const auto& Hb = Hb_k[static_cast<std::size_t>(ik)];
                     const auto& Cb = Cocc_b_k[static_cast<std::size_t>(ik)];
                     const CplxMatrix g =
-                        use_smear
-                            ? internal::ot_gradient_k(
-                                  Hb, S, Cb,
-                                  occ_b_k[static_cast<std::size_t>(ik)])
-                            : internal::ot_gradient_k(Hb, S, Cb, 1.0);
+                        use_smear ? linalg::band_gradient_k(
+                                        Hb, S, Cb,
+                                        occ_b_k[static_cast<std::size_t>(ik)])
+                                  : linalg::band_gradient_k(Hb, S, Cb, 1.0);
                     for (const Cplx v : g)
                         gnorm = std::max(gnorm, std::abs(v));
                     const internal::OtPrecondSingleInverseK pre(Hb, S, Cb);
                     pz_b_k[static_cast<std::size_t>(ik)] =
-                        internal::ot_tangent_k(Cb, S, pre.apply(g));
+                        linalg::s_tangent_k(Cb, S, pre.apply(g));
                     g_b_k[static_cast<std::size_t>(ik)] = g;
                 } else {
                     g_b_k[static_cast<std::size_t>(ik)] =
@@ -2866,7 +2863,7 @@ run_gpw_scf_kpoints_uks(
                     if (!have_prev)
                         d = -pz;
                     else
-                        d = internal::ot_tangent_k(
+                        d = linalg::s_tangent_k(
                             Ca, S,
                             -pz + beta * d_a_k[static_cast<std::size_t>(ik)]);
                     double sl = frob_k(g, d);
@@ -2891,7 +2888,7 @@ run_gpw_scf_kpoints_uks(
                     if (!have_prev)
                         d = -pz;
                     else
-                        d = internal::ot_tangent_k(
+                        d = linalg::s_tangent_k(
                             Cb, S,
                             -pz + beta * d_b_k[static_cast<std::size_t>(ik)]);
                     double sl = frob_k(g, d);
@@ -2993,7 +2990,7 @@ run_gpw_scf_kpoints_uks(
                         CplxMatrix Cnew = internal::ot_parameterize_k(
                             Cocc_a_k[static_cast<std::size_t>(ik)],
                             a * d_a_k[static_cast<std::size_t>(ik)], S);
-                        Cnew = internal::ot_orthonormalize_k(Cnew, S);
+                        Cnew = linalg::lowdin_orthonormalize_k(Cnew, S);
                         Pat[static_cast<std::size_t>(ik)] = dens_from_cocc(
                             Cnew, n_a, occ_a_k[static_cast<std::size_t>(ik)]);
                     } else {
@@ -3004,7 +3001,7 @@ run_gpw_scf_kpoints_uks(
                         CplxMatrix Cnew = internal::ot_parameterize_k(
                             Cocc_b_k[static_cast<std::size_t>(ik)],
                             a * d_b_k[static_cast<std::size_t>(ik)], S);
-                        Cnew = internal::ot_orthonormalize_k(Cnew, S);
+                        Cnew = linalg::lowdin_orthonormalize_k(Cnew, S);
                         Pbt[static_cast<std::size_t>(ik)] = dens_from_cocc(
                             Cnew, n_b, occ_b_k[static_cast<std::size_t>(ik)]);
                     } else {
@@ -3025,7 +3022,7 @@ run_gpw_scf_kpoints_uks(
                 const auto& S = S_k[static_cast<std::size_t>(ik)];
                 if (n_act_a > 0) {
                     auto& Ca = Cocc_a_k[static_cast<std::size_t>(ik)];
-                    Ca = internal::ot_orthonormalize_k(
+                    Ca = linalg::lowdin_orthonormalize_k(
                         internal::ot_parameterize_k(
                             Ca, alpha * d_a_k[static_cast<std::size_t>(ik)],
                             S),
@@ -3035,7 +3032,7 @@ run_gpw_scf_kpoints_uks(
                 }
                 if (n_act_b > 0) {
                     auto& Cb = Cocc_b_k[static_cast<std::size_t>(ik)];
-                    Cb = internal::ot_orthonormalize_k(
+                    Cb = linalg::lowdin_orthonormalize_k(
                         internal::ot_parameterize_k(
                             Cb, alpha * d_b_k[static_cast<std::size_t>(ik)],
                             S),
@@ -4340,19 +4337,17 @@ static GpwResult run_gpw_scf_impl(
             // (ASPC density guess) can differ per spin; cold path sets both
             // equal to C0 (core-guess) so this is bit-equivalent to reading C0.
             RealMatrix Cocc_a =
-                na > 0
-                    ? internal::ot_orthonormalize(
-                          RealMatrix(
-                              xt::view(Ca_prev, xt::all(), xt::range(0, na))),
-                          S)
-                    : RealMatrix(xt::zeros<double>({nb, 0}));
+                na > 0 ? linalg::lowdin_orthonormalize(
+                             RealMatrix(xt::view(Ca_prev, xt::all(),
+                                                 xt::range(0, na))),
+                             S)
+                       : RealMatrix(xt::zeros<double>({nb, 0}));
             RealMatrix Cocc_b =
-                nb_spin > 0
-                    ? internal::ot_orthonormalize(
-                          RealMatrix(xt::view(Cb_prev, xt::all(),
-                                              xt::range(0, nb_spin))),
-                          S)
-                    : RealMatrix(xt::zeros<double>({nb, 0}));
+                nb_spin > 0 ? linalg::lowdin_orthonormalize(
+                                  RealMatrix(xt::view(Cb_prev, xt::all(),
+                                                      xt::range(0, nb_spin))),
+                                  S)
+                            : RealMatrix(xt::zeros<double>({nb, 0}));
 
             auto frob = [](const RealMatrix& a, const RealMatrix& b) {
                 return xt::sum(a * b)();
@@ -4374,12 +4369,12 @@ static GpwResult run_gpw_scf_impl(
                 res.iters = iter + 1;
                 res.e_total = e_total;
 
-                RealMatrix g_a =
-                    na > 0 ? internal::ot_gradient(Ha, S, Cocc_a, 1.0)
-                           : RealMatrix(xt::zeros<double>({nb, 0}));
-                RealMatrix g_b =
-                    nb_spin > 0 ? internal::ot_gradient(Hb, S, Cocc_b, 1.0)
-                                : RealMatrix(xt::zeros<double>({nb, 0}));
+                RealMatrix g_a = na > 0
+                                     ? linalg::band_gradient(Ha, S, Cocc_a, 1.0)
+                                     : RealMatrix(xt::zeros<double>({nb, 0}));
+                RealMatrix g_b = nb_spin > 0
+                                     ? linalg::band_gradient(Hb, S, Cocc_b, 1.0)
+                                     : RealMatrix(xt::zeros<double>({nb, 0}));
                 double gnorm = 0.0;
                 for (double v : g_a)
                     gnorm = std::max(gnorm, std::abs(v));
@@ -4424,13 +4419,13 @@ static GpwResult run_gpw_scf_impl(
                 RealMatrix pz_a, pz_b;
                 if (na > 0) {
                     const internal::OtPrecondSingleInverse pre_a(Ha, S, Cocc_a);
-                    pz_a = internal::ot_tangent(Cocc_a, S, pre_a.apply(g_a));
+                    pz_a = linalg::s_tangent(Cocc_a, S, pre_a.apply(g_a));
                 } else {
                     pz_a = RealMatrix(xt::zeros<double>({nb, 0}));
                 }
                 if (nb_spin > 0) {
                     const internal::OtPrecondSingleInverse pre_b(Hb, S, Cocc_b);
-                    pz_b = internal::ot_tangent(Cocc_b, S, pre_b.apply(g_b));
+                    pz_b = linalg::s_tangent(Cocc_b, S, pre_b.apply(g_b));
                 } else {
                     pz_b = RealMatrix(xt::zeros<double>({nb, 0}));
                 }
@@ -4448,11 +4443,11 @@ static GpwResult run_gpw_scf_impl(
                         num += frob(g_b, RealMatrix(pz_b - pz_b_prev));
                     const double beta = std::max(0.0, num / denom_prev);
                     if (na > 0)
-                        d_a = internal::ot_tangent(
-                            Cocc_a, S, RealMatrix(-pz_a + beta * d_a));
+                        d_a = linalg::s_tangent(Cocc_a, S,
+                                                RealMatrix(-pz_a + beta * d_a));
                     if (nb_spin > 0)
-                        d_b = internal::ot_tangent(
-                            Cocc_b, S, RealMatrix(-pz_b + beta * d_b));
+                        d_b = linalg::s_tangent(Cocc_b, S,
+                                                RealMatrix(-pz_b + beta * d_b));
                 }
                 pz_a_prev = pz_a;
                 pz_b_prev = pz_b;
@@ -4485,9 +4480,9 @@ static GpwResult run_gpw_scf_impl(
                     slope += frob(g_b, d_b);
                 if (slope >= 0.0) {
                     if (na > 0)
-                        d_a = internal::ot_tangent(Cocc_a, S, -pz_a);
+                        d_a = linalg::s_tangent(Cocc_a, S, -pz_a);
                     if (nb_spin > 0)
-                        d_b = internal::ot_tangent(Cocc_b, S, -pz_b);
+                        d_b = linalg::s_tangent(Cocc_b, S, -pz_b);
                     slope = 0.0;
                     if (na > 0)
                         slope += frob(g_a, d_a);
@@ -4536,9 +4531,9 @@ static GpwResult run_gpw_scf_impl(
                             internal::ot_parameterize(Cocc_b, alpha * d_b, S);
                 }
                 if (na > 0)
-                    Cocc_a = internal::ot_orthonormalize(Cnew_a, S);
+                    Cocc_a = linalg::lowdin_orthonormalize(Cnew_a, S);
                 if (nb_spin > 0)
-                    Cocc_b = internal::ot_orthonormalize(Cnew_b, S);
+                    Cocc_b = linalg::lowdin_orthonormalize(Cnew_b, S);
             }
             // Budget exhausted: export full orbital state (P/C/eps + ⟨S²⟩) at
             // the final OT densities so partial-SCF / SGCP UKS-OT force
@@ -4667,7 +4662,7 @@ static GpwResult run_gpw_scf_impl(
     // diagonalization path. The line search uses the frozen-H band energy
     // 2 Tr(CᵀHC) (matrix-only); self-consistency comes from the H rebuild.
     if (cfg.use_ot) {
-        RealMatrix Cocc = internal::ot_orthonormalize(
+        RealMatrix Cocc = linalg::lowdin_orthonormalize(
             RealMatrix(xt::view(C0, xt::all(), xt::range(0, cfg.n_occ))), S);
         auto frob = [](const RealMatrix& a, const RealMatrix& b) {
             return xt::sum(a * b)();
@@ -4690,7 +4685,7 @@ static GpwResult run_gpw_scf_impl(
             res.e_total = e_total;
             int ls_rebuilds = 0;
 
-            const RealMatrix g = internal::ot_gradient(H, S, Cocc);
+            const RealMatrix g = linalg::band_gradient(H, S, Cocc);
             double gnorm = 0.0;
             for (double v : g)
                 gnorm = std::max(gnorm, std::abs(v));
@@ -4715,15 +4710,14 @@ static GpwResult run_gpw_scf_impl(
             // (CP2K's default for gapped systems; FULL_KINETIC T+S was too weak
             // and OT crawled). M = H + a S with a below the spectrum -> SPD.
             const internal::OtPrecondSingleInverse precond(H, S, Cocc);
-            const RealMatrix pz =
-                internal::ot_tangent(Cocc, S, precond.apply(g));
+            const RealMatrix pz = linalg::s_tangent(Cocc, S, precond.apply(g));
             auto tC = Clk::now();
             if (!have_prev) {
                 d = -pz;
             } else {
                 const double beta =
                     std::max(0.0, frob(g, pz - pz_prev) / denom_prev);
-                d = internal::ot_tangent(Cocc, S, -pz + beta * d);
+                d = linalg::s_tangent(Cocc, S, -pz + beta * d);
             }
             pz_prev = pz;
             denom_prev = frob(g, pz);
@@ -4742,7 +4736,7 @@ static GpwResult run_gpw_scf_impl(
             double slope = frob(g, d);
             if (slope
                 >= 0.0) { // not a descent direction -> restart to (precond) SD
-                d = internal::ot_tangent(Cocc, S, -pz);
+                d = linalg::s_tangent(Cocc, S, -pz);
                 slope = frob(g, d);
             }
             // Curvature-aware initial step from the frozen-H band energy (cheap,
@@ -4768,7 +4762,7 @@ static GpwResult run_gpw_scf_impl(
                 alpha *= 0.5;
                 Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
             }
-            Cocc = internal::ot_orthonormalize(Cnew, S);
+            Cocc = linalg::lowdin_orthonormalize(Cnew, S);
             if (prof) {
                 auto tD = Clk::now();
                 std::fprintf(stderr,

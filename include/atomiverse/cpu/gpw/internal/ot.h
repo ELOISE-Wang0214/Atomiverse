@@ -25,6 +25,7 @@
 #pragma once
 
 #include "atomiverse/cpu/linalg/matrix.h"
+#include "atomiverse/cpu/linalg/orbital_tangent.h" // s_tangent, band_gradient
 
 #include <vector>
 
@@ -42,47 +43,11 @@ using cpu::linalg::RealMatrix;
 /// with `C0^T S x = 0` the result satisfies `C(x)^T S C(x) = I` exactly.
 ///
 /// @param C0 Reference occupied coefficients [nb x no], `C0^T S C0 = I`.
-/// @param x  S-tangent step [nb x no] (project with ot_tangent first).
+/// @param x  S-tangent step [nb x no] (project with `linalg::s_tangent` first).
 /// @param S  Overlap matrix [nb x nb].
 /// @return Orthonormal occupied coefficients `C(x)` [nb x no].
 RealMatrix ot_parameterize(const RealMatrix& C0, const RealMatrix& x,
                            const RealMatrix& S);
-
-/// @brief S-tangent projection of a direction: `(I - C0 C0^T S) d`.
-///
-/// The result `t` satisfies `C0^T S t = 0`, so `ot_parameterize(C0, alpha*t, S)`
-/// stays on the constraint manifold for any step `alpha`.
-///
-/// @param C0 Reference occupied coefficients [nb x no], `C0^T S C0 = I`.
-/// @param S  Overlap matrix [nb x nb].
-/// @param d  Unconstrained direction [nb x no].
-/// @return S-tangent direction [nb x no].
-RealMatrix ot_tangent(const RealMatrix& C0, const RealMatrix& S,
-                      const RealMatrix& d);
-
-/// @brief Projected band-energy gradient `g = (I - S C0 C0^T)(2·occ·H C0)`.
-///
-/// This is the SCF error vector; `||g|| -> 0` at the self-consistent
-/// (gapped) ground state, where `H C0 = S C0 (C0^T H C0)`. Closed-shell
-/// default `occ=2` recovers the historical factor 4; UKS spin channels use
-/// `occ=1` (single occupation, `P = C C^T`).
-///
-/// @param H KS matrix [nb x nb].
-/// @param S Overlap matrix [nb x nb].
-/// @param C0 Occupied coefficients [nb x no], `C0^T S C0 = I`.
-/// @param occ Orbital occupation (2 closed-shell, 1 per UKS spin).
-/// @return Gradient [nb x no].
-RealMatrix ot_gradient(const RealMatrix& H, const RealMatrix& S,
-                       const RealMatrix& C0, double occ = 2.0);
-
-/// @brief Re-orthonormalize occupied coefficients so `C^T S C = I` (Löwdin).
-///
-/// Cleans roundoff after a rotation; `C <- C (C^T S C)^{-1/2}`.
-///
-/// @param C Occupied coefficients [nb x no].
-/// @param S Overlap matrix [nb x nb].
-/// @return S-orthonormal coefficients [nb x no].
-RealMatrix ot_orthonormalize(const RealMatrix& C, const RealMatrix& S);
 
 /// @brief FULL_KINETIC OT preconditioner `M = T + S`, applied as `M^{-1}`.
 ///
@@ -158,58 +123,34 @@ OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
                                 double tol, int max_iter);
 
 // ── Complex (Bloch / multi-k) OT ───────────────────────────────────────────
-// Hermitian generalization of the real OT manifold for k-space matrices.
-// Layout matches `gpw::internal::CplxMatrix` (row-major complex).
-
-using OtCplxMatrix = xt::xtensor<std::complex<double>, 2>;
+// Hermitian generalization of the real OT manifold for k-space matrices, on
+// `linalg::CplxMatrix` (row-major complex; same type as
+// `gpw::internal::CplxMatrix`). The S-metric primitives (tangent, gradient,
+// Löwdin) live in `cpu/linalg/orbital_tangent.h`.
 
 /// @brief Complex OT parameterization `C(x) = C0 cos(U) + x sinc(U)`.
 /// @param C0 Occupied Bloch coefficients [nb x no], `C0† S C0 = I`.
 /// @param x  S-tangent step [nb x no] (`C0† S x = 0`).
 /// @param S  Hermitian overlap [nb x nb].
-OtCplxMatrix ot_parameterize_k(const OtCplxMatrix& C0, const OtCplxMatrix& x,
-                               const OtCplxMatrix& S);
-
-/// @brief S-tangent projection `(I − C0 C0† S) d`.
-OtCplxMatrix ot_tangent_k(const OtCplxMatrix& C0, const OtCplxMatrix& S,
-                          const OtCplxMatrix& d);
-
-/// @brief Projected band-energy gradient `g = (I − S C0 C0†)(2·occ·H C0)`.
-/// @param occ Closed-shell band occupation (default 2).
-OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
-                           const OtCplxMatrix& C0, double occ = 2.0);
-
-/// @brief Projected gradient with **non-uniform** band occupations \(f_i\).
-///
-/// For \(P = C \mathrm{diag}(f) C^\dagger\) the band-energy derivative is
-/// \(2 H C f\) (column \(i\) scaled by \(f_i\)); project off the S-occupied
-/// subspace. Used by multi-k OT + metallic smearing (FD/MP).
-///
-/// @param H KS matrix [nb x nb].
-/// @param S Overlap [nb x nb].
-/// @param C0 Active coefficients [nb x no], `C0† S C0 = I`.
-/// @param f  Band occupations [no], closed-shell form \(f_i \in [0,2]\).
-OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
-                           const OtCplxMatrix& C0,
-                           const std::vector<double>& f);
-
-/// @brief Löwdin re-orthonormalize so `C† S C = I`.
-OtCplxMatrix ot_orthonormalize_k(const OtCplxMatrix& C, const OtCplxMatrix& S);
+linalg::CplxMatrix ot_parameterize_k(const linalg::CplxMatrix& C0,
+                                     const linalg::CplxMatrix& x,
+                                     const linalg::CplxMatrix& S);
 
 /// @brief FULL_SINGLE_INVERSE preconditioner for complex Hermitian H,S.
 class OtPrecondSingleInverseK {
   public:
-    OtPrecondSingleInverseK(const OtCplxMatrix& H, const OtCplxMatrix& S,
-                            const OtCplxMatrix& C);
-    OtCplxMatrix apply(const OtCplxMatrix& g) const;
+    OtPrecondSingleInverseK(const linalg::CplxMatrix& H,
+                            const linalg::CplxMatrix& S,
+                            const linalg::CplxMatrix& C);
+    linalg::CplxMatrix apply(const linalg::CplxMatrix& g) const;
 
   private:
-    OtCplxMatrix m_inv_;
+    linalg::CplxMatrix m_inv_;
 };
 
 /// @brief Fixed-H complex OT band minimization (unit-test entry).
 struct OtFixedResultK {
-    OtCplxMatrix C;
+    linalg::CplxMatrix C;
     double band_energy; ///< `2 Re Tr(C† H C)` [Hartree].
     int iters = 0;
     bool converged = false;
@@ -217,9 +158,11 @@ struct OtFixedResultK {
 
 /// @brief Minimize closed-shell band energy on a FIXED complex Hermitian H.
 /// @param T Kinetic (FULL_KINETIC precond: M = T+S; may equal H for tests).
-OtFixedResultK ot_minimize_fixed_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
-                                   const OtCplxMatrix& T, const OtCplxMatrix& C0,
-                                   double tol, int max_iter);
+OtFixedResultK ot_minimize_fixed_k(const linalg::CplxMatrix& H,
+                                   const linalg::CplxMatrix& S,
+                                   const linalg::CplxMatrix& T,
+                                   const linalg::CplxMatrix& C0, double tol,
+                                   int max_iter);
 
 } // namespace internal
 } // namespace gpw

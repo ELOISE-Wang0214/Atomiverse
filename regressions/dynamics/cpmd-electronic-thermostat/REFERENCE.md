@@ -11,7 +11,7 @@ degrees of freedom on closed-shell Γ-point GPW, **electronic RATTLE**, and a
   **`cpmd_thermostat = true`**, **`cpmd_ekin_target_ha`**, **`cpmd_tau_e`**,
   **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
   `compute_forces = true`
-- Propagator: `cpu::gpw::Cpmd` — VV + Andersen RATTLE + NH half-steps
+- Propagator: `cpu::electronic::Cpmd` — VV + Andersen RATTLE + NH half-steps
 
 **Not BOMD** (production `iters==0`). **Not nuclear NVT** as the pin (nuclei
 NVE; only electronic DOF thermostatted). **Not XL-BOMD / SGCP**.

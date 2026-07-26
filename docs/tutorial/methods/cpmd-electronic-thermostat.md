@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-electronic-thermostat` |
 | Regression | `regressions/dynamics/cpmd-electronic-thermostat/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt, cpmd_thermostat=true, cpmd_ekin_target_ha, cpmd_tau_e}` at `md::Phase::force`; propagator `cpu::gpw::Cpmd` (RATTLE + NH) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt, cpmd_thermostat=true, cpmd_ekin_target_ha, cpmd_tau_e}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE + NH) |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-electronic-thermostat`; MD AIMD electronic thermostat residual closed |
 | Dual gate | Correctness from REFERENCE (E_ext drift, Te ceiling, fixed-density); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 11 **done** (merged 2026-07-26) |
@@ -142,10 +142,10 @@ const double e_ext = frame.meta.get(kKinetic)
                    + eval.last_electronic_thermostat_ev();
 ```
 
-Propagator primitive (`include/atomiverse/cpu/gpw/cpmd.h`):
+Propagator primitive (`include/atomiverse/cpu/electronic/cpmd.h`):
 
 ```cpp
-cpu::gpw::Cpmd cp(2000.0);   // throws if mu <= 0
+cpu::electronic::Cpmd cp(2000.0);   // throws if mu <= 0
 cp.thermostat = true;
 cp.ekin_target_ha = 1e-5;
 cp.tau_e_fs = 50.0;
@@ -166,8 +166,9 @@ ctest --test-dir build -R '^(test_cpu_gpw_cpmd)$' --output-on-failure
 cmake --build build --target run_reg_cpmd-electronic-thermostat
 ```
 
-Headers / sources: `include/atomiverse/cpu/gpw/cpmd.h`,
-`gpw_evaluator.h`; `src/cpu/gpw/cpmd.cpp`, `gpw_evaluator.cpp`.
+Headers / sources: `include/atomiverse/cpu/electronic/cpmd.h`,
+`cpu/gpw/gpw_evaluator.h`; `src/cpu/electronic/cpmd.cpp`,
+`src/cpu/gpw/gpw_evaluator.cpp`.
 Unit: `tests/cpu/gpw/test_gpw_cpmd.cpp` (NH param guards, Te regulation,
 evaluator build accept/reject).
 

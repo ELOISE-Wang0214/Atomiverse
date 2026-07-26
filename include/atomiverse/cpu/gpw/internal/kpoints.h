@@ -2,8 +2,9 @@
 /// @brief Monkhorst-Pack k-point sampling machinery for the GPW RKS / UKS SCF:
 ///        phased (complex) Bloch lattice sums of the analytic one-electron and
 ///        GTH nonlocal matrices, per-k pre-summed complex basis-on-grid values
-///        for density collocation / potential integration, and the complex
-///        Hermitian generalized eigensolver.
+///        for density collocation / potential integration, and the per-k
+///        generalized eigensolve `diagonalize_k` (built on the shared complex
+///        Hermitian eigensolver in `cpu/linalg/eigensolve.h`).
 ///
 /// **Internal GPW helper** — never on the public include path. Owned by the
 /// GPW SCF (`GpwDft`) k-point branch and by unit tests (direct include).
@@ -34,6 +35,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h" // GpwAtom, GridBasisFunction
+#include "atomiverse/cpu/linalg/eigensolve.h" // eigh_hermitian
 
 namespace ATV {
 namespace cpu {
@@ -138,16 +140,6 @@ void collocate_density_k(const KpointBasisGrid& kbg, int ik,
 /// @brief Integrate V^k(μν) = Σ_g w V(g) conj(χ_μ^k) χ_ν^k for one k.
 CplxMatrix integrate_potential_k(const KpointBasisGrid& kbg, int ik,
                                  const std::vector<double>& V_r);
-
-/// @brief Complex Hermitian eigensolve A = V diag(w) V† (LAPACK zheevd).
-///
-/// Explicit workspace (the bundled LAPACK's LWORK=-1 query is broken — same
-/// rationale as `dsygvd_` in `cpu/linalg/eigensolve.h`). Input is the logical
-/// row-major matrix; the wrapper handles the column-major transposition.
-/// @param A Hermitian matrix (only its Hermitian part is referenced).
-/// @param w Out: ascending eigenvalues. @param V Out: columns = eigenvectors.
-/// @throws std::runtime_error on zheevd failure — no fallback.
-void eigh_hermitian(const CplxMatrix& A, std::vector<double>& w, CplxMatrix& V);
 
 /// @brief Canonical-orthogonalization transform for one k:
 ///        X_k = U_kept diag(s^{−1/2}) with S_k = U diag(s) U†, dropping

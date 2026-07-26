@@ -25,8 +25,6 @@ namespace cpu {
 namespace gpw {
 
 namespace {
-constexpr double kAng2Bohr = 1.8897259885789;
-
 const Kind& find_kind(const std::vector<Kind>& kinds, int z) {
     for (const auto& k : kinds)
         if (static_cast<int>(k.element) == z)
@@ -50,8 +48,9 @@ std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
     atoms.reserve(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         const Kind& k = find_kind(self.kinds, sp_type[i]);
-        const double pos[3] = {sp_x[i] * kAng2Bohr, sp_y[i] * kAng2Bohr,
-                               sp_z[i] * kAng2Bohr};
+        const double pos[3] = {sp_x[i] * units::kAngstromInBohr,
+                               sp_y[i] * units::kAngstromInBohr,
+                               sp_z[i] * units::kAngstromInBohr};
         atoms.push_back(GpwAtom(pos, k.basis, k.pot, sp_type[i]));
     }
     return atoms;
@@ -71,9 +70,9 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Assemble the solver from the build-time frame. Product path is the
     // `use_ot` member; env `ATV_GPW_OT` remains a diagnostic force-on.
     GpwDft cfg;
-    cfg.cell[0] = ctx.frame.box.length(0) * kAng2Bohr;
-    cfg.cell[1] = ctx.frame.box.length(1) * kAng2Bohr;
-    cfg.cell[2] = ctx.frame.box.length(2) * kAng2Bohr;
+    cfg.cell[0] = ctx.frame.box.length(0) * units::kAngstromInBohr;
+    cfg.cell[1] = ctx.frame.box.length(1) * units::kAngstromInBohr;
+    cfg.cell[2] = ctx.frame.box.length(2) * units::kAngstromInBohr;
     cfg.cutoff_ry = cutoff_ry;
     cfg.ngrids = ngrids;
     cfg.rel_cutoff = rel_cutoff;
@@ -161,7 +160,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             xl_beta_.reset();
             xl_k_.clear(); // sized after the first multi-k SCF (n_kpts known)
             xl_k_beta_.clear();
-            (void)XlBomd(xl_bomd_k); // throw early on bad K
+            (void)electronic::XlBomd(xl_bomd_k); // throw early on bad K
         } else {
             xl_.emplace(xl_bomd_k);
             if (n_alpha + n_beta > 0)
@@ -228,7 +227,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             cpmd_.reset();
             cpmd_beta_.reset();
             cpmd_k_.clear();
-            (void)CpmdCplx(cpmd_mu); // early mu validation
+            (void)electronic::CpmdCplx(cpmd_mu); // early mu validation
         } else {
             cpmd_.emplace(cpmd_mu);
             cpmd_->thermostat = cpmd_thermostat;
@@ -282,7 +281,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                     "not productized)");
             // Validate K early; k-histories sized after the first multi-k SCF
             // (n_kpts known).
-            (void)scf::ASPCPredictorCplx(second_gen_cp_k);
+            (void)electronic::ASPCPredictorCplx(second_gen_cp_k);
             sgcp_aspc_.reset();
             sgcp_aspc_beta_.reset();
             sgcp_aspc_k_.clear();
@@ -316,7 +315,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // lattice images, S/T/Vpp) from `cell` per call, so a box change between
     // launches is well-defined — cell-relax drivers rescale box freely.
     for (int d = 0; d < 3; ++d) {
-        const double now = frame.box.length(d) * kAng2Bohr;
+        const double now = frame.box.length(d) * units::kAngstromInBohr;
         if (!(now > 0.0))
             throw std::runtime_error(
                 "GPWEvaluator::launch: non-positive box edge");
@@ -663,14 +662,15 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             }
             solver_->max_iter = saved_max;
 
-            auto reseat_k = [&](std::vector<scf::ASPCPredictorCplx>& xs) {
-                if (static_cast<int>(xs.size()) != last_.n_kpts) {
-                    xs.clear();
-                    xs.reserve(static_cast<std::size_t>(last_.n_kpts));
-                    for (int ik = 0; ik < last_.n_kpts; ++ik)
-                        xs.emplace_back(second_gen_cp_k);
-                }
-            };
+            auto reseat_k =
+                [&](std::vector<electronic::ASPCPredictorCplx>& xs) {
+                    if (static_cast<int>(xs.size()) != last_.n_kpts) {
+                        xs.clear();
+                        xs.reserve(static_cast<std::size_t>(last_.n_kpts));
+                        for (int ik = 0; ik < last_.n_kpts; ++ik)
+                            xs.emplace_back(second_gen_cp_k);
+                    }
+                };
 
             const bool have_pk =
                 last_.n_kpts > 0
@@ -814,7 +814,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         }
         solver_->max_iter = saved_max;
 
-        auto record_channel = [](scf::ASPCPredictor& aspc,
+        auto record_channel = [](electronic::ASPCPredictor& aspc,
                                  const linalg::RealMatrix& Pmat,
                                  bool do_correct,
                                  const xt::xtensor<double, 2>& P_pred_in) {
@@ -1115,7 +1115,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             || (have_a
                 && static_cast<int>(last_.P_k_beta.size()) == last_.n_kpts);
         if (have_a && have_b) {
-            auto reseat = [&](std::vector<XlBomdCplx>& xs) {
+            auto reseat = [&](std::vector<electronic::XlBomdCplx>& xs) {
                 if (static_cast<int>(xs.size()) != last_.n_kpts) {
                     xs.clear();
                     xs.reserve(static_cast<std::size_t>(last_.n_kpts));
@@ -1237,7 +1237,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                             flat[static_cast<std::size_t>(mu) * n_occ
                                  + static_cast<std::size_t>(o)];
             }
-            CpmdCplx ch(cpmd_mu);
+            electronic::CpmdCplx ch(cpmd_mu);
             ch.seed(C_occ);
             cpmd_k_.push_back(std::move(ch));
         }

@@ -236,7 +236,7 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 - CUDA SCF has no gradient kernel — **there is no GPU AIMD**.
 
 **XL-BOMD** (Niklasson dissipative auxiliary density) ships as
-`cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
+`cpu::electronic::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
 GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
 (`reg_xl-bomd-uks`) **and multi-k RKS** (`reg_xl-bomd-kpoints`) **and
 multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
@@ -247,7 +247,7 @@ architecturally excluded (OT parameterizes orbitals, not density);
 **multi-k** linearized XL remain open (queued `xl-bomd-linearized-uks` /
 `xl-bomd-linearized-kpoints`).
 
-**Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
+**Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::electronic::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
 then fixed-density KS eval + electronic Verlet + analytic forces at that
 density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
@@ -255,7 +255,9 @@ density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
 (Andersen constraint-preserving orbitals; `reg_cpmd-rattle-water`) is product
 on the closed-shell path. **Electronic thermostat** (Nosé–Hoover on fictitious
 electronic DOF) productizes (`reg_cpmd-electronic-thermostat`). **Multi-k
-CPMD** (Bloch \(C_k\)) remains ○ (queued `cpmd-kpoints`).
+CPMD** (Bloch \(C_k\), one `cpu::electronic::CpmdCplx` per sampled k) ships
+for RKS (`reg_cpmd-kpoints`); multi-k **UKS** CPMD remains ○ (build-time
+throw).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ

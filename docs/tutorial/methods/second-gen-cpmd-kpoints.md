@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `second-gen-cpmd-kpoints` |
 | Regression | `regressions/dynamics/second-gen-cpmd-kpoints/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `k_mesh`, `second_gen_cp`, `second_gen_cp_k`, `second_gen_cp_max_iter` at `md::Phase::force`; predictor `cpu::scf::ASPCPredictorCplx` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator` with `k_mesh`, `second_gen_cp`, `second_gen_cp_k`, `second_gen_cp_max_iter` at `md::Phase::force`; predictor `cpu::electronic::ASPCPredictorCplx` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `second-gen-cpmd-kpoints`; MD AIMD multi-k SGCP residual closed 2026-07-26 |
 | Dual gate | Correctness (NVE drift + corrector budget + multi-k payload); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — harness wave 12 (2026-07-26) |
@@ -19,7 +19,7 @@ closed-shell RKS** Gaussian-and-plane-waves (GPW / Quickstep) forces. The
 outer loop is the MD preset (`cpu::md::MD` + NVE `VelocityVerlet`); the force
 slot binds `cpu::gpw::GPWEvaluator` with `compute_forces = true`, a non-Γ
 `k_mesh`, and `second_gen_cp = true`. Per sampled \(k\), a Kolafa **ASPC**
-predictor (`cpu::scf::ASPCPredictorCplx`) extrapolates the complex Bloch
+predictor (`cpu::electronic::ASPCPredictorCplx`) extrapolates the complex Bloch
 density \(P_k\) from prior ionic steps; a **partial SCF corrector**
 (iteration budget ≪ full BOMD) refines that guess; analytic multi-k forces
 are taken at the post-corrector density.
@@ -207,10 +207,10 @@ sim.run(frame, 2);   // seed: fill ASPC histories (full SCF OK)
 // production: iters ≤ 5, |E(t)-E0|/scale ≤ 0.10, n_kpts ≥ 2
 ```
 
-The complex ASPC primitive is also public (`include/atomiverse/cpu/scf/aspc_predictor.h`):
+The complex ASPC primitive is also public (`include/atomiverse/cpu/electronic/aspc_predictor.h`):
 
 ```cpp
-cpu::scf::ASPCPredictorCplx aspc(/*order K=*/1);
+cpu::electronic::ASPCPredictorCplx aspc(/*order K=*/1);
 // after cold multi-k SCF: aspc.record(P_k);
 // when history_size() >= K+1:
 //   aspc.predict(P_pred);  // partial SCF → P_scf
@@ -236,7 +236,7 @@ Relevant sources:
 | Layer | Path |
 | ----- | ---- |
 | Evaluator flags | `include/atomiverse/cpu/gpw/gpw_evaluator.h` (`second_gen_cp`, `second_gen_cp_k`, `second_gen_cp_max_iter`, `k_mesh`) |
-| ASPC real / complex | `include/atomiverse/cpu/scf/aspc_predictor.h` |
+| ASPC real / complex | `include/atomiverse/cpu/electronic/aspc_predictor.h` |
 | Multi-k RKS SCF + SGCP payload | `src/cpu/gpw/` (GPW multi-k force path + ASPC seed/correct) |
 | Unit multi-k build / OT refuse | `tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp` |
 | E2E | `regressions/dynamics/second-gen-cpmd-kpoints/` |

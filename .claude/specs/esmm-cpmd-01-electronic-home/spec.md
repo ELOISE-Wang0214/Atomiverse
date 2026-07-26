@@ -1,6 +1,6 @@
 ---
 slug: esmm-cpmd-01-electronic-home
-status: approved
+status: code-complete
 created: 2026-07-26
 revised: 2026-07-26
 domain: electronic-propagation / cpmd
@@ -110,19 +110,66 @@ primitives).
 - `tests/cpu/gpw/test_gpw_cpmd.cpp`, `test_gpw_xl_bomd.cpp`, `test_cpu_gpw_ot.cpp`,
   `tests/cpu/scf/test_scf_evaluator.cpp`, `test_accelerators.cpp`
 - `CMakeLists.txt`
+- **Architect deltas (2026-07-26 approve-with-notes):**
+  - 7 `regressions/dynamics/*/REFERENCE.md` carry old qualified names
+    (cpmd-water, cpmd-electronic-thermostat, cpmd-kpoints, cpmd-rattle-water,
+    cpmd-uks, second-gen-cpmd-kpoints, second-gen-cpmd-water) — AC-002's grep
+    scans `regressions/`, so they are in scope.
+  - 8 docs pages reference old names/paths: `docs/tutorial/methods/{cpmd-water,
+    cpmd-electronic-thermostat,cpmd-rattle-water,second-gen-cpmd-kpoints,
+    xl-bomd-linearized-forces,xl-bomd-uks-kpoints,xl-bomd-water}.md`,
+    `docs/roadmap/molecular-dynamics.md`.
+  - Tests-mirror-source: pure propagator unit tests split out to NEW
+    `tests/cpu/electronic/{test_cpmd,test_xl_bomd,test_aspc_predictor}.cpp`
+    (+ `tests/CMakeLists.txt` registrations); GPW/SCF integration guards stay.
+  - CLAUDE.md + AGENTS.md backend-directory tables gain the `electronic/` row.
 
 ## Tasks
 
-- [ ] Extract `orbital_tangent.{h,cpp}` from `ot.cpp`; update `ot.h`/`ot.cpp`/
+- [x] Extract `orbital_tangent.{h,cpp}` from `ot.cpp`; update `ot.h`/`ot.cpp`/
       `gpw_solver.cpp`/`test_cpu_gpw_ot.cpp` call sites; build green
-- [ ] Move the three propagator pairs into `cpu/electronic/` with namespace
+      (also relocated `eigh_hermitian` → `cpu/linalg/eigensolve.h` — the GPW-gated
+      kpoints home would have re-inverted layering; transitional `using` in
+      kpoints.h to be removed in tasks 2/5)
+- [x] Move the three propagator pairs into `cpu/electronic/` with namespace
       `electronic::`; delete old headers/sources; migrate the 12 include sites
-- [ ] Move propagator `.cpp`s to the `ATV_BUILD_HF` CMake block;
+      (also deduped cpmd.cpp's private c_mul/c_dagger_mul → linalg::)
+- [x] Move propagator `.cpp`s to the `ATV_BUILD_HF` CMake block;
       `orbital_tangent.cpp` unconditional
-- [ ] Verify an HF-only configure+build (`-DATV_BUILD_HF=ON -DATV_BUILD_GPW=OFF`)
-      compiles the `electronic/` sources
-- [ ] Replace `kAng2Bohr` in `gpw_evaluator.cpp` with `units::kAngstromInBohr`
-- [ ] Scoped build + full ctest + cpmd/xl/sgcp regressions — bit-identical green
+- [x] Update the 7 REFERENCE.md + 8 docs pages to `electronic::` names/paths;
+      add the `electronic/` row to CLAUDE.md + AGENTS.md dir tables
+      (+ grep-miss fixes in the CLAUDE/AGENTS scf-utilities line; roadmap
+      multi-k CPMD status corrected to shipped-RKS)
+- [x] Split pure propagator unit tests to `tests/cpu/electronic/` (mirror rule);
+      GPW/SCF integration guards stay in place (41 moved / 59 stay; counts
+      conserved; full ctest 375/375)
+- [x] Verify an HF-only configure+build (`-DATV_BUILD_HF=ON -DATV_BUILD_GPW=OFF`)
+      compiles the `electronic/` sources (scratch build green; electronic+
+      orbital_tangent objects present; gpw objects = dispersion family only,
+      the pre-existing named debt)
+- [x] Replace `kAng2Bohr` in `gpw_evaluator.cpp` with `units::kAngstromInBohr`
+      (NOTE: real numeric change — old local constant was truncated, rel Δ
+      7.2e-8; "bit-identical" amended to "pins pass with no tolerance edits")
+- [x] Scoped build + full ctest + cpmd/xl/sgcp regressions — pins pass with
+      no tolerance edits (full ctest 375/375; 15/15 spec regressions PASS +
+      bonus reg_gpw-bomd-water PASS; kAng2Bohr precision fix absorbed by
+      envelope pins with zero tolerance edits)
+
+- [x] Hygiene: /mol:simplify ran clean (dead transitional using deleted; 11
+      clang-format line fixes on diff-touched lines; zheevd_ linkage warning
+      fixed ABI-identically; full ctest green after batch)
+
+> Architect (2026-07-26) also NAMED pre-existing debt, routed separately (not
+> this spec): 🚨 scf ⇄ gpw cycle via `src/cpu/scf/dftd3.cpp:13-14` including
+> `gpw/internal/dftd3{,_params}.h` (shared Grimme engine parked in a foreign
+> domain's internal/ — same anti-pattern this spec fixes, running backwards);
+> HF-only build check (2026-07-26) shows the debt is the WHOLE dispersion
+> family: dftd3/dftd3_params/hirshfeld_volumes/mbd_dispersion/rvv10/
+> ts_dispersion/vdw_df/xdm_dispersion .cpp all live in gpw/internal yet
+> compile under the ATV_BUILD_HF block — a future `cpu/dispersion/` (or
+> similar) extraction is the clean fix, mirroring this spec's move;
+> 🟢 ASPCPredictor's raw `xt::xtensor<double,2>` vs `linalg::RealMatrix`
+> layout inconsistency (no silent change in a zero-behavior move).
 
 ## Testing strategy
 

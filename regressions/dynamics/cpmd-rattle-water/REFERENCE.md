@@ -10,7 +10,7 @@ to enforce \(C^\top S C = I\) (position) and \(\dot\sigma = 0\) (velocity):
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
   **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
   `compute_forces = true`
-- Propagator: `cpu::gpw::Cpmd` — velocity-Verlet + Andersen RATTLE on
+- Propagator: `cpu::electronic::Cpmd` — velocity-Verlet + Andersen RATTLE on
   occupied MO coefficients \(C\) (supersedes Löwdin-only `cpmd-water`)
 
 **Not BOMD** (production steps use fixed-density KS evaluation, `iters==0`).

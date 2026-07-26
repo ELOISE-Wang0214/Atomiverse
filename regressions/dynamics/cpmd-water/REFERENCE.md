@@ -9,7 +9,7 @@ degrees of freedom on closed-shell Γ-point GPW:
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
   **`cpmd_mu = 400` a.u.**, **`cpmd_dt`** matching nuclear dt,
   `compute_forces = true`
-- Propagator: `cpu::gpw::Cpmd` — position Verlet on occupied MO coefficients
+- Propagator: `cpu::electronic::Cpmd` — position Verlet on occupied MO coefficients
   \(C\) with Löwdin re-orthonormalization
 
 **Not BOMD** (production steps use fixed-density KS evaluation, `iters==0`).

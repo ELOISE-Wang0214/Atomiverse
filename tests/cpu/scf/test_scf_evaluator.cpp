@@ -1,5 +1,9 @@
 /// @file tests/cpu/scf/test_scf_evaluator.cpp
-/// @brief Integration tests for SCF component, BOMD, and ASPC predictor.
+/// @brief Integration tests for the SCF component and BOMD.
+///
+/// The ASPC predictor class itself lives in cpu/electronic/ and is pinned by
+/// tests/cpu/electronic/test_aspc_predictor.cpp; only the RHF-drives-a-predictor
+/// integration guard (BOMDTest.RHFWithASPC) stays here.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -12,7 +16,6 @@
 #include "atomiverse/cpu/dynamics/nose_hoover.h"
 #include "atomiverse/cpu/dynamics/velocity_verlet.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/internal/scf_types.h"
 #include "atomiverse/cpu/scf/methods.h"
 
@@ -357,43 +360,4 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
         << "(wrap × non-minimum-image SCF pathology). Expected bonded H2 "
         << "energy ≈ -30 eV.";
     EXPECT_GT(static_cast<double>(frame.meta.get(ATV::kEnergy)), -35.0);
-}
-
-// ── ASPC predictor unit tests ───────────────────────────────────────
-
-class ASPCPredictorTest : public ::testing::Test {};
-
-TEST_F(ASPCPredictorTest, BasicFunctionality) {
-    cpu::scf::ASPCPredictor pred(3);
-
-    xt::xtensor<double, 2> P1 = {{1.0, 0.0}, {0.0, 1.0}};
-    xt::xtensor<double, 2> P2 = {{1.1, 0.0}, {0.0, 1.1}};
-    xt::xtensor<double, 2> P3 = {{1.2, 0.0}, {0.0, 1.2}};
-    xt::xtensor<double, 2> P4 = {{1.3, 0.0}, {0.0, 1.3}};
-
-    xt::xtensor<double, 2> P_pred;
-
-    pred.record(P1);
-    EXPECT_FALSE(pred.predict(P_pred));
-    pred.record(P2);
-    EXPECT_FALSE(pred.predict(P_pred));
-    pred.record(P3);
-    EXPECT_FALSE(pred.predict(P_pred));
-    pred.record(P4);
-    EXPECT_TRUE(pred.predict(P_pred));
-
-    EXPECT_NEAR(static_cast<double>(P_pred(0, 0)), 1.4, 0.01);
-}
-
-TEST_F(ASPCPredictorTest, CorrectorBlending) {
-    cpu::scf::ASPCPredictor pred(3);
-
-    xt::xtensor<double, 2> P_scf = {{2.0}};
-    xt::xtensor<double, 2> P_pred = {{1.8}};
-    xt::xtensor<double, 2> P_corr;
-
-    pred.correct(P_scf, P_pred, P_corr);
-
-    EXPECT_NEAR(static_cast<double>(P_corr(0, 0)),
-                5.0 / 9.0 * 2.0 + 4.0 / 9.0 * 1.8, 1e-8);
 }

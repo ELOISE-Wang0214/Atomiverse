@@ -1,15 +1,15 @@
-/// @file src/cpu/gpw/xl_bomd.cpp
+/// @file src/cpu/electronic/xl_bomd.cpp
 /// @brief XlBomd / XlBomdCplx — Niklasson dissipative XL-BOMD recursion
 ///        (see header; coefficients: JCP 130, 214109 (2009), Table I).
 
-#include "atomiverse/cpu/gpw/xl_bomd.h"
+#include "atomiverse/cpu/electronic/xl_bomd.h"
 
 #include <stdexcept>
 #include <string>
 
 namespace ATV {
 namespace cpu {
-namespace gpw {
+namespace electronic {
 
 namespace {
 
@@ -163,6 +163,6 @@ void XlBomdCplx::reset() {
     ready_ = false;
 }
 
-} // namespace gpw
+} // namespace electronic
 } // namespace cpu
 } // namespace ATV

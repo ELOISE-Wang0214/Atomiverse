@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `xl-bomd-water` |
 | Regression | `regressions/dynamics/xl-bomd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, xl_bomd=true, xl_bomd_k=5}` at `md::Phase::force`; propagator class `cpu::gpw::XlBomd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, xl_bomd=true, xl_bomd_k=5}` at `md::Phase::force`; propagator class `cpu::electronic::XlBomd` |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `xl-bomd-water`; MD roadmap XL-BOMD (`ASPC ≠ XL`) |
 | Dual gate | Correctness A1–A9 of the spec acceptance; speed **`perf_exempt`** (no CP2K AIMD twin wall) |
 | Wave | CP2K capability loop — wave 3 |
@@ -26,7 +26,7 @@ P_{n+1} = 2P_n - P_{n-1} + \kappa\,(D_n - P_n)
 with \(D_n\) the SCF density at step \(n\) and \((\kappa, \alpha, c_k)\) from
 Table I of the 2009 paper (\(K \in [3,9]\); default \(K=5\):
 \(\kappa=1.82\), \(\alpha=0.018\), \(c=\{-6,14,-8,-3,4,-1\}\)). Unlike the
-Kolafa **ASPC extrapolation** (`cpu::scf::ASPCPredictor`), the auxiliary
+Kolafa **ASPC extrapolation** (`cpu::electronic::ASPCPredictor`), the auxiliary
 density is a *dynamical variable*: the recursion is time-reversible up to
 the \(O(\alpha)\) dissipation, which removes the systematic energy drift
 that plain guess reuse (broken time reversibility) causes in long BOMD
@@ -55,10 +55,10 @@ sim.build();
 sim.run(frame, n_steps);   // frame.meta.get(kEnergy) [eV]
 ```
 
-The propagator itself is a public primitive (`cpu/gpw/xl_bomd.h`):
+The propagator itself is a public primitive (`cpu/electronic/xl_bomd.h`):
 
 ```cpp
-cpu::gpw::XlBomd xl(5);      // throws unless 3 <= K <= 9
+cpu::electronic::XlBomd xl(5);      // throws unless 3 <= K <= 9
 xl.advance(D_scf);           // first call seeds; later calls propagate
 const auto& guess = xl.aux(); // SCF initial-density guess for the next step
 ```

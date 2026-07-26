@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-rattle-water` |
 | Regression | `regressions/dynamics/cpmd-rattle-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::gpw::Cpmd` (RATTLE) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE) |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-rattle-water` |
 | Dual gate | Correctness A1–A16 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 5 |
