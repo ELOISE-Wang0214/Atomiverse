@@ -68,6 +68,19 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 Assign wave 14 (parent `dev` @ `b06568f2`):** recover
+  incomplete=**3** (resumes `cpmd-kpoints` @ `3425c7c6`,
+  `periodic-wannier-gpw` @ `5c59a97f`, `gpw-fd-phonon-si` @ `7c3e1712`
+  — each behind=17 / ahead=1 vs `dev`; do not demote); CP2K specs=0;
+  isolation worktrees=0. Staffed **10** = 3 incomplete resumes + 7
+  pending → `[~]`: resumes + `gpw-d3-forces`, `gpw-d3bj-forces`,
+  `gpw-mbd-stress`, `gpw-dftu-kpoint-forces`, `dfpt-gga-spin-si`,
+  `gpw-bomd-kpoints`, `gpw-multigrid-kpoints`. Held pending **8**
+  (D3/MBD stress duals, finite-q GGA DFPT, linearized XL UKS/k,
+  D3/D4 ATM forces). Surface notes: D3 ∥ D3BJ forces careful
+  dispersion; multigrid×k free of BOMD×k; incomplete CPMD×k coordinate
+  with multi-k BOMD. Next: Worktrees / workers on `wf/<slug>` (resumes
+  rebase onto `dev` first).
 - **2026-07-26 GapCensus wave 14 (parent `dev` @ `cee90c43`):** recover
   incomplete=**3** (wave-12 residual `[~]` preserved; do not demote);
   CP2K specs on `dev`=0; isolation worktrees=0; builds=none. Prior pending

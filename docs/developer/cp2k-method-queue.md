@@ -745,18 +745,36 @@ harness wave 12); §8/§10–12 + MD AIMD residual prose + index GPW residual
 line refreshed for wave-14 queue. **Pending = 15**; **in_progress = 3**;
 **blocked = 6**.
 
+**Assign wave 14 2026-07-26 (parent `dev` @ `b06568f2`):** recover —
+incomplete_count=**3** (wave-12 residual `[~]` preserved; unmerged
+`wf/cpmd-kpoints` @ `3425c7c6`, `wf/periodic-wannier-gpw` @ `5c59a97f`,
+`wf/gpw-fd-phonon-si` @ `7c3e1712` — each behind=17 / ahead=1 vs `dev`;
+do not demote); open CP2K/GPW/PW specs=**0** (PySCF deferred only);
+isolation worktrees=**0**. Priority incomplete ≫ pending. Staffed
+**staff 10** = 3 incomplete resumes + 7 dep-safe pending →
+`## in_progress`. New promotions (write-first; no open
+`.claude/specs/<slug>/`, no `wf/<slug>` tip yet): `gpw-d3-forces`,
+`gpw-d3bj-forces`, `gpw-mbd-stress`, `gpw-dftu-kpoint-forces`,
+`dfpt-gga-spin-si`, `gpw-bomd-kpoints`, `gpw-multigrid-kpoints`.
+Surface notes: `gpw-d3-forces` ∥ `gpw-d3bj-forces` share dispersion /
+force-assembly fold — serialize or split patches carefully; `gpw-mbd-stress`
+free of multi-k MBD stress (held); `gpw-dftu-kpoint-forces` free of DFPT
+tree; `dfpt-gga-spin-si` free of finite-q GGA (held); `gpw-bomd-kpoints`
+∥ `gpw-multigrid-kpoints` free of each other per census (BOMD propagator
+vs multigrid build gate); incomplete CPMD×k free of multi-k BOMD if
+workers coordinate Bloch / MD evaluator paths. **Held pending (8):**
+`gpw-d3bj-stress`, `gpw-mbd-kpoint-stress`, `dfpt-gga-finite-q-si`,
+`xl-bomd-linearized-uks`, `xl-bomd-linearized-kpoints`, `gpw-d3-stress`,
+`gpw-d3-atm-forces`, `gpw-d4-atm-forces` (stress / ATM / linearized XL /
+finite-q GGA after force dual depth or next wave). Resume workers:
+rebase `wf/*` onto `dev` (behind 17) then dual-gate / finish acceptance.
+**Pending residual after assign = 8** (not queue exhausted).
+
 ## pending
 
-- [ ] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | twin: CP2K Quickstep D3 zero force / FD on water dimer | GapCensus wave 13
-- [ ] `gpw-d3bj-forces` | Analytic ionic forces with DFT-D3(BJ) | gpw | twin: CP2K `TYPE DFTD3(BJ)` force pin (extend `gpw-pbe-d3bj-ice`) | GapCensus wave 13
 - [ ] `gpw-d3bj-stress` | Analytic fixed-P cell stress with DFT-D3(BJ) | gpw | twin: CP2K D3(BJ) + NUMERICAL stress / extend d3bj ice | GapCensus wave 13
-- [ ] `gpw-mbd-stress` | Analytic cell stress with free-atom / periodic MBD@rsSCS (Γ) | gpw | twin: pymbd E_disp strain / CP2K MBD stress class | GapCensus wave 13
 - [ ] `gpw-mbd-kpoint-stress` | Multi-k analytic stress folds MBD (k-path currently skips MBD) | gpw | twin: extend `gpw-mbd-periodic` + multi-k stress | GapCensus wave 13
-- [ ] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | GapCensus wave 13
-- [ ] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` × `dfpt-spin-si` | GapCensus wave 13
 - [ ] `dfpt-gga-finite-q-si` | Finite-q DFPT with pure GGA kernel (PW) | response | twin: extend `dfpt-finite-q-si` (LSDA) to PBE | GapCensus wave 13
-- [ ] `gpw-bomd-kpoints` | Multi-k Born–Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13
-- [ ] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14
 - [ ] `xl-bomd-linearized-uks` | Zero-SCF linearized-functional XL-BOMD forces on Γ-UKS | dynamics | twin: extend `xl-bomd-linearized-forces` × UKS | GapCensus wave 14
 - [ ] `xl-bomd-linearized-kpoints` | Zero-SCF linearized XL-BOMD forces on multi-k RKS | dynamics | twin: extend linearized XL × k-mesh | GapCensus wave 14
 - [ ] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14
@@ -765,15 +783,21 @@ line refreshed for wave-14 queue. **Pending = 15**; **in_progress = 3**;
 
 ## in_progress
 
-<!-- GapCensus wave 14 2026-07-26 (parent `dev` @ `cee90c43`): incomplete_count=3 —
-     wave-12 residual staff (do not demote). Open CP2K specs on `dev`=0 (PySCF
+<!-- Assign wave 14 2026-07-26 (parent `dev` @ `b06568f2`): staff 10 =
+     3 incomplete resumes + 7 pending. Open CP2K specs on `dev`=0 (PySCF
      deferred only). Unmerged feature `wf/*`=3 (+ blocked `wf/gpw-vv10-ice`).
-     Isolation worktrees=0. Half-regs only on feature tips (none on `dev`).
-     Prefer resume/merge gate before promoting pending. -->
+     Isolation worktrees=0. Pending residual=8. -->
 
-- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (ahead=1; unmerged) | assign wave 12
-- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (ahead=1; unmerged) | assign wave 12
-- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (ahead=1; unmerged; blocked on Si forces per tip) | assign wave 12
+- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (behind=17 ahead=1; unmerged) | assign wave 12 / resume wave 14
+- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (behind=17 ahead=1; unmerged) | assign wave 12 / resume wave 14
+- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (behind=17 ahead=1; unmerged; Si force gate) | assign wave 12 / resume wave 14
+- [~] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | twin: CP2K Quickstep D3 zero force / FD on water dimer | assign wave 14
+- [~] `gpw-d3bj-forces` | Analytic ionic forces with DFT-D3(BJ) | gpw | twin: CP2K `TYPE DFTD3(BJ)` force pin (extend `gpw-pbe-d3bj-ice`) | assign wave 14
+- [~] `gpw-mbd-stress` | Analytic cell stress with free-atom / periodic MBD@rsSCS (Γ) | gpw | twin: pymbd E_disp strain / CP2K MBD stress class | assign wave 14
+- [~] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | assign wave 14
+- [~] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` × `dfpt-spin-si` | assign wave 14
+- [~] `gpw-bomd-kpoints` | Multi-k Born–Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | assign wave 14
+- [~] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | assign wave 14
 
 ## done (harness wave 12 2026-07-26)
 
