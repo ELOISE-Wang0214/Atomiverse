@@ -23,6 +23,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
+#include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -64,6 +65,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.xdm = m.xdm;
     p.mbd = m.mbd;
     for (int d = 0; d < 3; ++d)
         p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
@@ -513,11 +515,12 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     // Dispersion forces (additive, geometry-only). D4/MBD forces out of scope.
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
-                       + (cfg.ts ? 1 : 0) + (cfg.mbd ? 1 : 0);
+                       + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0)
+                       + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
-            "GPW forces: d3, d3bj, d4, ts, and mbd are mutually exclusive");
-    if (cfg.d3 || cfg.d3bj || cfg.ts) {
+            "GPW forces: d3, d3bj, d4, ts, xdm, and mbd are mutually exclusive");
+    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
         for (int i = 0; i < na; ++i) {
@@ -531,7 +534,14 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr =
             2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
-        if (cfg.ts) {
+        if (cfg.xdm) {
+            constexpr double kRcutXdm = 50.0 * kAng2Bohr;
+            const XdmResult xdm =
+                xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
+            for (int i = 0; i < na; ++i)
+                for (int k = 0; k < 3; ++k)
+                    forces[i][k] += xdm.forces[static_cast<std::size_t>(i)][k];
+        } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             const TsResult ts = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs);
             for (int i = 0; i < na; ++i)

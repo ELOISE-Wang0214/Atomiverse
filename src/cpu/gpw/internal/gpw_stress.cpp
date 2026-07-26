@@ -37,6 +37,7 @@
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
+#include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -80,6 +81,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.xdm = m.xdm;
     p.mbd = m.mbd;
     for (int d = 0; d < 3; ++d)
         p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
@@ -465,7 +467,7 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_es = es.e_hartree - e_self;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.ts) {
+    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -479,7 +481,11 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
-        if (cfg.ts) {
+        if (cfg.xdm) {
+            constexpr double kRcutXdm = 50.0 * kAng2Bohr;
+            e_disp =
+                xdm_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutXdm).energy;
+        } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, /*periodic=*/true, kRcutTs).energy;
         } else {
@@ -710,7 +716,7 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const double e_es = es.e_hartree - e_self;
 
     double e_disp = 0.0;
-    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.mbd) {
+    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm || cfg.mbd) {
         const int na = static_cast<int>(atoms.size());
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
@@ -733,6 +739,9 @@ double energy_fixed_P(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             e_disp = mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
                                   mbd_per ? cfg.mbd_k_mesh : nullptr)
                          .energy;
+        } else if (cfg.xdm) {
+            constexpr double kRcutXdm = 50.0 * kAng2Bohr;
+            e_disp = xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm).energy;
         } else if (cfg.ts) {
             constexpr double kRcutTs = 50.0 * kAng2Bohr;
             e_disp = ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs).energy;

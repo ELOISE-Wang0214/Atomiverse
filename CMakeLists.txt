@@ -577,6 +577,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/dftd3_params.cpp
             src/cpu/gpw/internal/dftd3.cpp
             src/cpu/gpw/internal/ts_dispersion.cpp
+            src/cpu/gpw/internal/xdm_dispersion.cpp
             src/cpu/gpw/internal/mbd_dispersion.cpp
             src/cpu/gpw/internal/vdw_df.cpp
             src/cpu/gpw/internal/vdw_df_kernel_data.cpp

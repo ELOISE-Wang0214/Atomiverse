@@ -87,6 +87,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.d3bj = d3bj;
     cfg.d4 = d4;
     cfg.ts = ts;
+    cfg.xdm = xdm;
     cfg.mbd = mbd;
     for (int d = 0; d < 3; ++d)
         cfg.mbd_k_mesh[d] = mbd_k_mesh[d];
