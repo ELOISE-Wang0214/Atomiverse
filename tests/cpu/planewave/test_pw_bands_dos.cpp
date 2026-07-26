@@ -87,6 +87,17 @@ TEST(GaussianDos, SinglePeakIntegratesToWeightTimesTwo) {
     EXPECT_NEAR(integrate_dos_to(energy, dos, /*e_cut=*/1.0), 2.0, 1e-3);
 }
 
+TEST(GaussianDos, SpinOrbitalDegeneracyOne) {
+    // Collinear spin-orbital: g=1 → ∫ D ≈ weight (not 2×).
+    std::vector<double> evals = {0.0};
+    std::vector<double> weights = {1.0};
+    std::vector<double> energy, dos;
+    const double sigma = 0.05;
+    gaussian_dos(evals, weights, /*e_min=*/-1.0, /*e_max=*/1.0, /*n_bins=*/2001,
+                 sigma, energy, dos, /*spin_degeneracy=*/1.0);
+    EXPECT_NEAR(integrate_dos_to(energy, dos, /*e_cut=*/1.0), 1.0, 1e-3);
+}
+
 TEST(IntegrateDosTo, PartialCutoffHalfPeak) {
     // Single peak at 0, closed-shell weight 1 → full ∫ = 2.
     // Integrating only to 0 (peak centre, symmetric) ≈ 1.
@@ -133,4 +144,12 @@ TEST(BandsCompute, RejectsSpinPlusMetallicSmear) {
     bands.n_bands = 4;
     bands.set_diamond_path(2);
     EXPECT_THROW(bands.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DosResult, DefaultIsRestricted) {
+    DosResult dr;
+    EXPECT_EQ(dr.nspin, 1);
+    EXPECT_TRUE(dr.dos_alpha.empty());
+    EXPECT_TRUE(dr.dos_beta.empty());
+    EXPECT_NEAR(dr.magnetization, 0.0, 1e-15);
 }
