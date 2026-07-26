@@ -24,6 +24,9 @@
 ///   // Metallic occupations (restricted): set method.smearing / degauss /
 ///   // extra_bands → SCF free-energy density, then NSCF path; br.e_fermi_ry.
 ///
+///   // Collinear spin + metallic smear (product): both flags together →
+///   // shared μ, free M, per-spin NSCF path; br.e_fermi_ry from SCF.
+///
 ///   cpu::pw::Dos dos;
 ///   dos.k_mesh = 4;
 ///   dos.n_bands = 8;
@@ -116,10 +119,14 @@ struct DosResult {
 /// \(N_\uparrow,N_\downarrow\) from `multiplicity`, then per-spin NSCF on
 /// frozen \(V_{\mathrm{eff},\sigma}\).
 ///
-/// **Metallic occupations** (restricted only): `method.smearing != none`
-/// runs fractional-occupation SCF, freezes \(V_\mathrm{eff}\), NSCF on the
-/// path, and reports SCF \(E_F\) on `BandsResult::e_fermi_ry`. Collinear
-/// spin + metallic smear is rejected (follow-on).
+/// **Metallic occupations** (restricted): `method.smearing != none` runs
+/// fractional-occupation SCF, freezes \(V_\mathrm{eff}\), NSCF on the path,
+/// and reports SCF \(E_F\) on `BandsResult::e_fermi_ry`.
+///
+/// **Collinear spin + metallic smear** (product): both flags together use
+/// a shared chemical potential over spin-orbitals (same as `PW::run`),
+/// free \(M\), free energy \(F\), then per-spin NSCF. Path gap reporting
+/// uses the integer-fill seed from `multiplicity` when empty states exist.
 class Bands {
   public:
     /// @brief Total bands to diagonalize per spin channel (valence + conduction).
@@ -138,7 +145,8 @@ class Bands {
     /// @brief SCF + NSCF bands for the geometry in `frame`.
     /// @param method Plane-wave method (members only; not mutated).
     ///               Metallic path honors `smearing` / `degauss` /
-    ///               `extra_bands` when restricted.
+    ///               `extra_bands`; collinear honors `spin_polarized` /
+    ///               `multiplicity`; both may be combined.
     /// @param frame  Atom positions [Å], types (Z), simulation cell.
     /// @return Owned `BandsResult` with eigenvalues [Ry], gap, optional \(E_F\).
     BandsResult compute(const PW& method, const cpu::Frame& frame) const;

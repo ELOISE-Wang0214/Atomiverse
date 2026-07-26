@@ -437,10 +437,6 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
         throw std::invalid_argument("Bands::compute: n_bands must be >= 2");
 
     const bool use_smear = (method.smearing != Smearing::none);
-    if (use_smear && method.spin_polarized)
-        throw std::invalid_argument(
-            "Bands::compute: collinear spin + metallic smearing not "
-            "supported for bands (restricted metallic or fixed-occ spin)");
     if (use_smear && !(method.degauss > 0.0))
         throw std::invalid_argument(
             "Bands::compute: degauss must be > 0 [Ry] when smearing is enabled");
@@ -520,7 +516,7 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
         return out;
     }
 
-    // ── Collinear spin-polarized bands (fixed occupations) ──
+    // ── Collinear spin-polarized bands (fixed occ or metallic smear) ──
     if (method.multiplicity < 1)
         throw std::invalid_argument(
             "Bands::compute: multiplicity must be >= 1 when spin_polarized");
@@ -536,6 +532,7 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
     if ((n_elec + mag) % 2 != 0 || mag > n_elec)
         throw std::invalid_argument(
             "Bands::compute: n_elec and multiplicity have incompatible parity");
+    // Integer-fill seed occupations (gap reporting; under smear M is free).
     const int n_alpha = (n_elec + mag) / 2;
     const int n_beta = (n_elec - mag) / 2;
     const int n_bands_dav = std::max(std::max(n_alpha, n_beta), 1);
@@ -544,8 +541,15 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
             "Bands::compute: n_bands must be >= max(N_alpha, N_beta)");
 
     internal::PWProblem prob;
-    const PWResult scf =
-        run_collinear_scf(frame, method, prob, n_alpha, n_beta, n_bands_dav);
+    PWResult scf{};
+    if (use_smear) {
+        scf = internal::run_collinear_smear_scf(frame, method, prob, n_bands);
+        out.e_fermi_ry = scf.e_fermi;
+    } else {
+        scf = run_collinear_scf(frame, method, prob, n_alpha, n_beta,
+                                n_bands_dav);
+        out.e_fermi_ry = 0;
+    }
     out.scf_converged = scf.converged;
     out.energy_ry = scf.energy;
     out.nspin = 2;
@@ -580,10 +584,13 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
         ws.V_eff_r[i] = veff_r[1][static_cast<std::size_t>(i)];
     out.eigenvalues_beta_ry = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
 
-    out.gap_ry = gap_from_spin_spectrum(
-        out.eigenvalues_ry, out.eigenvalues_beta_ry, n_alpha, n_beta,
-        out.e_vbm_ry, out.e_cbm_ry, out.vbm_k, out.cbm_k, out.vbm_band,
-        out.cbm_band, out.vbm_spin, out.cbm_spin);
+    // Integer-fill gap from multiplicity seed (gapped Si under mild FD).
+    if (n_bands > std::max(n_alpha, n_beta)) {
+        out.gap_ry = gap_from_spin_spectrum(
+            out.eigenvalues_ry, out.eigenvalues_beta_ry, n_alpha, n_beta,
+            out.e_vbm_ry, out.e_cbm_ry, out.vbm_k, out.cbm_k, out.vbm_band,
+            out.cbm_band, out.vbm_spin, out.cbm_spin);
+    }
     return out;
 }
 

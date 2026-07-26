@@ -45,6 +45,26 @@ PWResult run_restricted_scf(const cpu::Frame& frame, const PW& method,
 PWResult run_collinear_scf(const cpu::Frame& frame, const PW& method,
                            PWProblem& prob, int& n_alpha, int& n_beta);
 
+/// @brief Collinear UKS + metallic occupation smearing for post-processors.
+///
+/// Serial twin of `PW::run` spin+smear: shared \(\mu\) over spin-orbitals
+/// (\(f\in[0,1]\)), \(M=N_\uparrow-N_\downarrow\) free under smear, Mermin
+/// free energy \(F\). Seeds \(\rho_\sigma\) from `multiplicity` then
+/// iterates. Leaves total \(\rho\), \(\rho_\sigma\), and \(V_{\mathrm{xc},\sigma}\)
+/// on `prob`; callers re-bind per-spin \(V_\mathrm{eff}\) for NSCF.
+///
+/// Requires `method.spin_polarized` and `method.smearing != none` with
+/// `degauss > 0` [Ry]. Davidson subspace size is
+/// \(\max(\lceil n_e/2\rceil+\mathrm{extra\_bands},\,n_\mathrm{bands\_min})\).
+///
+/// @param frame          Geometry [Å].
+/// @param method         Plane-wave method (smear + spin members).
+/// @param prob           Problem assembled and converged for NSCF.
+/// @param n_bands_min    Lower bound on Davidson bands (e.g. path `n_bands`).
+/// @return SCF result with `e_fermi` [Ry], free energy, magnetization.
+PWResult run_collinear_smear_scf(const cpu::Frame& frame, const PW& method,
+                                 PWProblem& prob, int n_bands_min = 1);
+
 } // namespace internal
 } // namespace pw
 } // namespace cpu
