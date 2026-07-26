@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -183,4 +184,94 @@ TEST(GpwHirshfeld, GpwDftMbdHirshfeldReportsVolumesAndEDisp) {
     // Distinct from free-atom pin (volume scaling moved the energy).
     const double free_atom = -1.4928804171407961e-03;
     EXPECT_GT(std::abs(res.e_disp - free_atom), 1e-6);
+}
+
+// Multi-k RKS + mbd + hirshfeld: k-summed density → volume ratios + E_disp.
+TEST(GpwHirshfeld, MultiKMbdHirshfeldReportsVolumesAndEDisp) {
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GpwAtom;
+    using ATV::cpu::gpw::GpwDft;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::XcKind;
+
+    const double ang[6][3] = {
+        {0.000000, 0.000000, 0.000000}, {0.758602, 0.000000, 0.504284},
+        {0.758602, 0.000000, -0.504284}, {3.000000, 0.000000, 0.000000},
+        {3.758602, 0.000000, 0.504284}, {3.758602, 0.000000, -0.504284},
+    };
+    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const GaussianBasis bH(molrs::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
+    const GthPotential pH(molrs::Element::H, "GTH-PBE-q1");
+    std::vector<GpwAtom> atoms;
+    for (int i = 0; i < 6; ++i) {
+        const double pos[3] = {ang[i][0] * kAngToBohr, ang[i][1] * kAngToBohr,
+                               ang[i][2] * kAngToBohr};
+        if (i == 0 || i == 3)
+            atoms.emplace_back(pos, bO, pO, 8);
+        else
+            atoms.emplace_back(pos, bH, pH, 1);
+    }
+
+    GpwDft gpw;
+    const double L = 12.0 * kAngToBohr;
+    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    gpw.cutoff_ry = 160.0; // unit gate: lighter than regression 200 Ry
+    gpw.n_occ = 8;
+    gpw.max_iter = 10;
+    gpw.tol = 1e-5;
+    gpw.mix = 0.4;
+    gpw.xc = XcKind::PBE;
+    gpw.mbd = true;
+    gpw.hirshfeld = true;
+    gpw.k_mesh[0] = gpw.k_mesh[1] = gpw.k_mesh[2] = 2;
+    gpw.k_time_reversal = true;
+
+    gpw.build(atoms);
+    const auto& res = gpw.run(atoms);
+    std::printf("[Hirshfeld k] E_disp=%.16e  n_vol=%zu  n_kpts=%d  iters=%d\n",
+                res.e_disp, res.volume_ratios.size(), res.n_kpts, res.iters);
+    for (std::size_t i = 0; i < res.volume_ratios.size(); ++i)
+        std::printf("  v[%zu]=%.6f\n", i, res.volume_ratios[i]);
+
+    ASSERT_EQ(res.volume_ratios.size(), 6u);
+    EXPECT_GT(res.n_kpts, 1);
+    EXPECT_TRUE(std::isfinite(res.e_disp));
+    EXPECT_LT(res.e_disp, 0.0);
+    EXPECT_LT(std::abs(res.e_disp), 1e-2);
+    for (double v : res.volume_ratios) {
+        EXPECT_GT(v, 0.2);
+        EXPECT_LT(v, 2.0);
+    }
+    const double free_atom = -1.4928804171407961e-03;
+    EXPECT_GT(std::abs(res.e_disp - free_atom), 1e-6);
+}
+
+// UKS + hirshfeld remains out of scope (Γ and multi-k).
+TEST(GpwHirshfeld, UksHirshfeldThrows) {
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GpwAtom;
+    using ATV::cpu::gpw::GpwDft;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::XcKind;
+
+    const GaussianBasis bO(molrs::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const GthPotential pO(molrs::Element::O, "GTH-PBE-q6");
+    const double pos[3] = {0.0, 0.0, 0.0};
+    std::vector<GpwAtom> atoms;
+    atoms.emplace_back(pos, bO, pO, 8);
+
+    GpwDft gpw;
+    const double L = 10.0 * kAngToBohr;
+    gpw.cell[0] = gpw.cell[1] = gpw.cell[2] = L;
+    gpw.cutoff_ry = 80.0;
+    gpw.n_alpha = 4;
+    gpw.n_beta = 2;
+    gpw.max_iter = 2;
+    gpw.xc = XcKind::PBE;
+    gpw.mbd = true;
+    gpw.hirshfeld = true;
+
+    gpw.build(atoms);
+    EXPECT_THROW(gpw.run(atoms), std::runtime_error);
 }

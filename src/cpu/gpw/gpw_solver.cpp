@@ -994,6 +994,60 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     constexpr double kDiisErrTolK = 1e-5; // same gate as the Γ DIIS path
     double e_prev = 0.0;
     const double gw = grid.weight();
+    const bool periodic_cell = !cfg.nonperiodic;
+
+    // Fold free-atom e_d3, or Hirshfeld-scaled TS/MBD from the final k-summed
+    // density (post-SCF). Mirrors Γ `fold_dispersion` without multigrid.
+    auto fold_dispersion_k = [&](GpwResult& out,
+                                 const std::vector<CplxMatrix>& Pk) {
+        if (cfg.hirshfeld && (cfg.ts || cfg.mbd)) {
+            std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
+                internal::collocate_density_k(
+                    kbg, ik, Pk[static_cast<std::size_t>(ik)],
+                    weights[static_cast<std::size_t>(ik)], rho);
+#ifdef ATV_HAS_MPI
+            if (layout.active) {
+                MPI_Allreduce(MPI_IN_PLACE, rho.data(),
+                              static_cast<int>(rho.size()), MPI_DOUBLE, MPI_SUM,
+                              MPI_COMM_WORLD);
+            }
+#endif
+            std::vector<int> Z(atoms.size());
+            std::vector<std::array<double, 3>> pos(Z.size());
+            for (std::size_t i = 0; i < Z.size(); ++i) {
+                Z[i] = atoms[i].z;
+                pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
+            }
+            out.volume_ratios = hirshfeld_volume_ratios(
+                grid, rho, Z, pos, cfg.cell, periodic_cell);
+            if (cfg.mbd) {
+                const bool mbd_per =
+                    cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                    || cfg.mbd_k_mesh[2] > 0;
+                if (mbd_per && cfg.nonperiodic)
+                    throw std::runtime_error(
+                        "GPW MBD: mbd_k_mesh requires a periodic cell "
+                        "(!nonperiodic)");
+                out.e_disp =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0,
+                                 out.volume_ratios,
+                                 mbd_per ? cfg.mbd_k_mesh : nullptr)
+                        .energy;
+            } else {
+                constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+                constexpr double kRcutBohr = 50.0 * kAng2Bohr;
+                out.e_disp =
+                    ts_pbe(Z, pos, cfg.cell, periodic_cell, kRcutBohr, 0.94,
+                           20.0, out.volume_ratios)
+                        .energy;
+            }
+            out.e_total += out.e_disp;
+            return;
+        }
+        out.e_disp = e_d3;
+        out.e_total += e_d3;
+    };
 
     // Dudarev multi-k setup (empty plus_u → no-op).
     std::vector<int> plus_u_z;
@@ -1200,8 +1254,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             && err_norm < err_gate) {
             res.converged = true;
             store_k_payload(rebuild_all_H(last_veff));
-            res.e_disp = e_d3;
-            res.e_total += e_d3;
+            fold_dispersion_k(res, P_k);
             return res;
         }
         e_prev = e_total;
@@ -1286,8 +1339,7 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // Budget exhausted: report the last state (converged stays false).
     if (!last_veff.empty())
         store_k_payload(rebuild_all_H(last_veff));
-    res.e_disp = e_d3;
-    res.e_total += e_d3;
+    fold_dispersion_k(res, P_k);
     res.e_fermi = use_smear ? last_mu : 0.0;
     res.e_entropy = use_smear ? (-degauss_ha * last_entropy) : 0.0;
     res.n_elec_occ = use_smear ? last_n_elec : n_elec;
@@ -1775,8 +1827,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
     // Dispersion — free-atom TS/MBD/XDM/D3/D4 are geometry-only (pre-SCF).
     // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 / rvv10
-    // are deferred to post-SCF on the Γ RKS path (`fold_dispersion` / density
-    // fold). Pairwise / nonlocal dispersion flags are mutually exclusive.
+    // are deferred to post-SCF on the RKS path (`fold_dispersion` / k-path
+    // density fold). `d3`, `d3bj`, `d4`, `ts`, `mbd`, `xdm`, `vdw_df`,
+    // `vdw_df2`, and `rvv10` are pairwise mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
@@ -1796,9 +1849,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             throw std::runtime_error(
                 "GPW: hirshfeld applies only to ts/mbd, not "
                 "d3/d3bj/d4/xdm/vdw_df/vdw_df2/rvv10");
-        if (use_kpath)
-            throw std::runtime_error(
-                "GPW: hirshfeld TS/MBD is Γ-point only (no k-point path)");
+        // Multi-k RKS Hirshfeld is product (`run_gpw_scf_kpoints` folds the
+        // k-summed density). UKS remains out of scope (Γ and multi-k).
         if (cfg.n_alpha + cfg.n_beta > 0)
             throw std::runtime_error(
                 "GPW: hirshfeld TS/MBD supports closed-shell RKS only");
