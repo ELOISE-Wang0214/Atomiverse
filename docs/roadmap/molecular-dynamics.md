@@ -246,12 +246,13 @@ then fixed-density KS eval + electronic Verlet + analytic forces at that
 density (`reg_cpmd-water`). Conserved \(E_{\mathrm{cons}} = T_n + T_e +
 E_{\mathrm{KS}}\). **Electronic RATTLE** (Andersen constraint-preserving
 orbitals; `reg_cpmd-rattle-water`) is product on the closed-shell path.
-UKS / electronic thermostat stay ○.
+**UKS CPMD** and electronic thermostat stay ○ (queue: `cpmd-uks`).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
 GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
-(`reg_second-gen-cpmd-water`).
+(`reg_second-gen-cpmd-water`). **SGCP UKS** stays ○ (queue:
+`second-gen-cpmd-uks`).
 
 ## 8. Nuclear Quantum Dynamics
 

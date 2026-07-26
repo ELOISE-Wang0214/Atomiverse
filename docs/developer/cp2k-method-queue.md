@@ -325,9 +325,47 @@ Roadmap: **XDM ✓** table flip; residual prose closed GPW metallic smear,
 DFPT-GGA, XL-BOMD UKS; stock VV10 / URPA stay open. **Blocked = 5**
 unchanged. **Queue not exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 7 2026-07-26 (parent `dev` @ `9bdeddf1`):** recover —
+incomplete_count=**1** (`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @
+`9be3808a` docs/block — CP2K 2026.1 has no `TYPE VV10`; do not demote).
+Open CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**. Tree re-diff vs `docs/roadmap/dft.md` §3/§8/
+§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending **1**
+(`periodic-urpa-si`) still true (`direct_rpa` throws UKS — “URPA is a
+follow-on”; closed-shell multi-k dRPA + Γ UGW ✓). **Added 8**
+tree-declared follow-ons with offline CP2K / literature twins:
+`periodic-ugw-kpoints` (Γ UGW ✓; `g0w0` throws multi-k UKS — “multi-k
+UGW is a follow-on”), `gpw-uks-smearing` (multi-k RKS FD/MP ✓; build
+rejects UKS+smear), `gpw-hirshfeld-uks` (Hirshfeld TS/MBD Γ+multi-k RKS
+✓; UKS throws), `cpmd-uks` (CPMD + RATTLE RKS Γ ✓; evaluator rejects
+UKS), `second-gen-cpmd-uks` (SGCP ASPC+partial SCF RKS ✓; UKS throw),
+`ot-kpoints` (OT Γ RKS+UKS ✓; k-mesh rejects OT), `ot-dftu` (OT and
+DFT+U each product; OT+PLUS_U throws on UKS OT path), `dfpt-spin-si`
+(DFPT Γ/finite-q/incommensurate/GGA ✓; collinear spin unsupported).
+**Not added:** BP86/B97/OLYP/HCTH (molecular PySCF path); stock VV10
+(kept `[~]` incomplete — no demote; no CP2K twin); optB88-vdW (exchange
++ nonlocal combo); shear/off-diagonal stress (orthorhombic design);
+XL-BOMD multi-k / OT-XL (hold behind OT-k + XL depth); nonlocal vdW SCF
+potential / forces (post-SCF E_disp product depth); DFPT metallic smear
+(hold behind spin DFPT); GAPW/PAW/periodic hybrid/meta-GGA (blocked);
+molecular post-HF / classical MW / CUDA ports (other loops). Roadmap:
+**no ○/✓ table flips** (nothing new merged since harness wave 6); §8/§10
+open-residual prose + index GPW residual line refreshed for wave-7
+queue. **Pending = 9**; **in_progress = 1**; **blocked = 5**.
+
 ## pending
 
 - [ ] `periodic-urpa-si` | Unrestricted direct RPA (URPA@UKS) | gpw | offline CP2K / literature URPA pin (closed-shell dRPA ✓; UGW ✓)
+- [ ] `periodic-ugw-kpoints` | Multi-k unrestricted spectral G0W0 residual | gpw | offline CP2K / literature UGW@k pin (Γ UGW ✓; multi-k closed-shell G0W0 ✓)
+- [ ] `gpw-uks-smearing` | Metallic occupation smearing on GPW UKS (FD/MP) | gpw | offline CP2K UKS+smear pin (multi-k RKS smear ✓; PW UKS+smear ✓)
+- [ ] `gpw-hirshfeld-uks` | Hirshfeld volume ratios for UKS TS/MBD | gpw | offline CP2K / libMBD pin (RKS Γ + multi-k Hirshfeld ✓)
+- [ ] `cpmd-uks` | Car–Parrinello MD on Γ-UKS GPW | dynamics | offline CP2K / NVE drift envelope (RKS CPMD + RATTLE ✓)
+- [ ] `second-gen-cpmd-uks` | Second-gen CP (ASPC + partial SCF) on Γ-UKS | dynamics | offline CP2K / NVE drift (RKS SGCP ✓; XL-BOMD UKS ✓)
+- [ ] `ot-kpoints` | OT orbital minimizer with Monkhorst–Pack k-mesh | gpw | offline CP2K OT+KPOINTS pin (OT Γ RKS+UKS ✓; DIIS multi-k ✓)
+- [ ] `ot-dftu` | OT + Dudarev DFT+U (Γ) | gpw | offline CP2K OT+PLUS_U pin (OT and DFT+U each product; combo throws)
+- [ ] `dfpt-spin-si` | DFPT phonons with collinear spin (PW) | response | offline FD / literature spin-phonon pin (DFPT closed-shell GGA ✓)
 
 ## in_progress
 
