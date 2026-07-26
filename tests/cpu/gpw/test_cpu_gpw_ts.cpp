@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/molrs.hpp"
 
@@ -139,4 +140,109 @@ TEST(GpwTs, GpwDftReportsEDisp) {
     EXPECT_NEAR(res.e_disp, pin, 1e-12);
     EXPECT_LT(res.e_disp, 0.0);
     EXPECT_TRUE(std::isfinite(res.e_total));
+}
+
+// Periodic pure-RS forces: dual-gate vs independent FD + translation.
+TEST(GpwTs, PeriodicForcesMatchFiniteDifference) {
+    auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    constexpr double kRcut = 50.0 * kAngToBohr;
+    const TsResult r = ts_pbe(kZ, pos, cell, /*periodic=*/true, kRcut);
+
+    const double h = 1e-5;
+    double max_err = 0.0;
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + h;
+            const double ep =
+                ts_pbe(kZ, pos, cell, true, kRcut).energy;
+            pos[i][d] = save - h;
+            const double em =
+                ts_pbe(kZ, pos, cell, true, kRcut).energy;
+            pos[i][d] = save;
+            const double fd = -(ep - em) / (2.0 * h);
+            max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
+            sum[d] += r.forces[i][d];
+        }
+    }
+    const double sum_norm =
+        std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+    std::printf("[TS] periodic max|F-F_fd|=%.2e  |sum F|=%.2e Ha/Bohr\n",
+                max_err, sum_norm);
+    EXPECT_LT(max_err, 1e-6);
+    EXPECT_LT(sum_norm, 1e-8);
+    EXPECT_GT(std::abs(r.forces[0][0]), 1e-6);
+}
+
+// Γ force assembly must fold free-atom TS (geometry-only). H2: one SCF, two
+// assemblies vs standalone ts_pbe.
+TEST(GpwTs, ProductForcesFoldTs) {
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GpwAtom;
+    using ATV::cpu::gpw::GpwDft;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::gpw_forces_from_scf;
+    using ATV::cpu::gpw::XcKind;
+
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    // Positions [Bohr] in a 12 Bohr cell (same style as MBD k-force unit test).
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    auto make_cfg = [](bool with_ts) {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 12.0;
+        m.cutoff_ry = 100.0;
+        m.n_occ = 1;
+        m.tol = 1e-8;
+        m.max_iter = 60;
+        m.nonperiodic = false;
+        m.local_pp_on_grid = true;
+        m.xc = XcKind::PADE;
+        m.eps_default = 1e-8;
+        m.ts = with_ts;
+        return m;
+    };
+
+    GpwDft cfg = make_cfg(true);
+    cfg.build(atoms);
+    const auto& scf = cfg.run(atoms);
+    ASSERT_TRUE(scf.converged) << "H2 TS SCF did not converge";
+    EXPECT_TRUE(std::isfinite(scf.e_disp));
+    EXPECT_LT(scf.e_disp, 0.0);
+
+    const auto F_ts = gpw_forces_from_scf(atoms, cfg, scf);
+    GpwDft plain = make_cfg(false);
+    const auto F_plain = gpw_forces_from_scf(atoms, plain, scf);
+    ASSERT_EQ(F_ts.size(), 2u);
+    ASSERT_EQ(F_plain.size(), 2u);
+
+    std::vector<int> Z = {1, 1};
+    std::vector<std::array<double, 3>> pos = {
+        {rA[0], rA[1], rA[2]}, {rB[0], rB[1], rB[2]}};
+    const double cell[3] = {12.0, 12.0, 12.0};
+    constexpr double kRcut = 50.0 * kAngToBohr;
+    const TsResult geom = ts_pbe(Z, pos, cell, /*periodic=*/true, kRcut);
+
+    double max_wiring = 0.0;
+    for (int a = 0; a < 2; ++a) {
+        for (int k = 0; k < 3; ++k) {
+            const double delta =
+                (F_ts[static_cast<std::size_t>(a)][k]
+                 - F_plain[static_cast<std::size_t>(a)][k])
+                - geom.forces[static_cast<std::size_t>(a)][k];
+            max_wiring = std::max(max_wiring, std::abs(delta));
+        }
+    }
+    std::printf("[TS product fold] e_disp=%.6e  max|wiring|=%.2e Ha/Bohr\n",
+                scf.e_disp, max_wiring);
+    EXPECT_LT(max_wiring, 1e-8)
+        << "Γ assemble must add geometry-only TS forces";
+    EXPECT_GT(std::abs(geom.forces[0][0]), 1e-8);
 }
