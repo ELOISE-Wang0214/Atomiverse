@@ -237,8 +237,8 @@ class GpwDft {
     bool rvv10 = false; ///< rVV10 nonlocal correlation.
     /// @brief Scale TS/MBD free-atom parameters by Hirshfeld \(V/V_{\mathrm{free}}\)
     ///        from the final SCF valence density (post-SCF, density-dependent).
-    ///        Requires `ts` or `mbd`. Γ-point RKS only (k-points / UKS throw).
-    ///        Free-atom path remains the default when false.
+    ///        Requires `ts` or `mbd`. Closed-shell RKS only (Γ and multi-k);
+    ///        UKS throws. Free-atom path remains the default when false.
     bool hirshfeld = false; ///< Hirshfeld volume ratios for TS/MBD.
     /// @brief OT minimizer instead of diagonalization (Γ RKS and Γ UKS;
     ///        multi-k / DFT+U+OT throw).
