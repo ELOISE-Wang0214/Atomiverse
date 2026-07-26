@@ -947,10 +947,13 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.k_frac.clear();
         res.k_weights.clear();
         res.eps_k.clear();
+        res.eps_k_beta.clear();
         res.C_k.clear();
         res.C_k.reserve(static_cast<std::size_t>(nk));
+        res.C_k_beta.clear();
         res.C_occ_k.clear();
         res.C_occ_k.resize(static_cast<std::size_t>(nk));
+        res.C_occ_k_beta.clear();
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
@@ -1299,6 +1302,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.k_weights.clear();
         res.eps_k.clear();
         res.eps_k_beta.clear();
+        res.C_k.clear();
+        res.C_k.reserve(static_cast<std::size_t>(nk));
+        res.C_k_beta.clear();
+        res.C_k_beta.reserve(static_cast<std::size_t>(nk));
         res.C_occ_k.clear();
         res.C_occ_k.resize(static_cast<std::size_t>(nk));
         res.C_occ_k_beta.clear();
@@ -1315,7 +1322,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                                         orth[static_cast<std::size_t>(ik)]);
             res.eps_k.push_back(std::move(epsa));
             res.eps_k_beta.push_back(std::move(epsb));
-            // Occupied Bloch MOs for force/stress rebuild of P_k^σ / W_k^σ.
+            // Full Bloch C_k / C_k_beta for multi-k UMP2; occupied blocks
+            // for force/stress rebuild of P_k^σ / W_k^σ.
+            res.C_k.push_back(linalg::CplxMatrix(Ca));
+            res.C_k_beta.push_back(linalg::CplxMatrix(Cb));
             std::vector<Cplx> occ_a(
                 static_cast<std::size_t>(nb) * static_cast<std::size_t>(n_a));
             for (int mu = 0; mu < nb; ++mu)

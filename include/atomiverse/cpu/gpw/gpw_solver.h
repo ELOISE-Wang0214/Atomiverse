@@ -120,9 +120,14 @@ struct GpwResult {
     /// @brief Multi-k UKS β band energies per k [Hartree] (empty for RKS / Γ).
     std::vector<std::vector<double>> eps_k_beta;
     /// @brief Complex Bloch MO coefficients per k (nb × m_k, columns =
-    ///        orbitals, ascending energy). Empty for Γ runs. Required
-    ///        input to multi-k `GpwDft::mp2` (closed-shell RKS).
+    ///        orbitals, ascending energy). Empty for Γ runs. Multi-k RKS
+    ///        and multi-k UKS α. Required for multi-k `GpwDft::mp2`
+    ///        (closed-shell and unrestricted).
     std::vector<linalg::CplxMatrix> C_k;
+    /// @brief Multi-k UKS β full Bloch MO coefficients per k (nb × m_k;
+    ///        empty for RKS / Γ). Paired with `eps_k_beta`; virtual columns
+    ///        feed multi-k UMP2.
+    std::vector<linalg::CplxMatrix> C_k_beta;
     /// @brief Total sampled k-points after mesh / TR fold / explicit list.
     int n_kpts = 0;
     /// @brief k-points owned by this MPI rank under round-robin
@@ -317,15 +322,15 @@ class GpwDft {
     const GpwResult& last_result() const { return result_; }
 
     /// @brief GPW MP2 correlation on the converged orbitals of the last
-    ///        `run()` — RKS Γ/multi-k or UKS Γ (UMP2).
+    ///        `run()` — RKS Γ/multi-k or UKS Γ/multi-k (UMP2).
     ///
     /// **Γ RKS** (`n_kpts == 0`, closed-shell): product RI-GPW (`mp2_ri`,
     /// default true, periodic) or Poisson foothold (`mp2_ri = false` /
     /// isolated).
     ///
-    /// **Γ UKS** (`n_alpha`/`n_beta`): unrestricted MP2 (same-spin αα/ββ +
-    /// opposite-spin αβ; molecular / PySCF UMP2 convention) on the dual
-    /// α/β MO sets. Multi-k UMP2 is a follow-on and throws.
+    /// **Γ UKS** (`n_alpha`/`n_beta`, no k-mesh): unrestricted MP2
+    /// (same-spin αα/ββ + opposite-spin αβ; molecular / PySCF UMP2
+    /// convention) on the dual α/β MO sets.
     ///
     /// **Multi-k RKS** (`n_kpts >= 1` with `C_k` populated): momentum-
     /// conserving RI-GPW sum over sampled k (Del Ben / CP2K `MP2_GPW` +
@@ -335,15 +340,19 @@ class GpwDft {
     /// (Poisson multi-k foothold not offered). Prefer
     /// `k_time_reversal = false` so weights stay equal.
     ///
+    /// **Multi-k UKS** (`n_alpha`/`n_beta` with `C_k` + `C_k_beta`): same
+    /// momentum-conserving RI-GPW path with unrestricted doubles (SS αα/ββ
+    /// + OS αβ). Requires `mp2_ri` and a periodic cell.
+    ///
     /// Virtual space capped by `mp2_n_virt` (per spin for UMP2); `e_corr`
     /// applies `mp2_os_scale` / `mp2_ss_scale`.
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned MP2 result (valid until the next `mp2()`).
     /// @throws std::logic_error before `build()` or a converged `run()`.
-    /// @throws std::invalid_argument for multi-k UKS, for `use_ot` (no
-    ///         canonical virtuals), when multi-k `C_k` is missing, when no
-    ///         virtuals remain, or for a vanishing min HOMO–LUMO gap
-    ///         (< 1e-6 Ha).
+    /// @throws std::invalid_argument for `use_ot` (no canonical virtuals),
+    ///         when multi-k `C_k` / `C_k_beta` is missing, when multi-k
+    ///         and `!mp2_ri`, when no virtuals remain, or for a vanishing
+    ///         min HOMO–LUMO gap (< 1e-6 Ha).
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
     /// @brief GPW direct RPA (dRPA) correlation on the converged closed-shell

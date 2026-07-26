@@ -3,7 +3,7 @@
 ///        occupied–virtual MO repulsion tensor via per-pair Poisson solves,
 ///        the canonical closed-shell (RHF) and unrestricted (UHF) doubles
 ///        sums, cross-spin (ia|jb), and multi-k (complex Bloch)
-///        momentum-conserving RI-GPW MP2 (closed-shell).
+///        momentum-conserving RI-GPW MP2 (closed-shell and unrestricted).
 ///
 /// Private workspace behind `GpwDft::mp2` — never on the public include
 /// path (unit tests may include it). The `(ia|jb)` route is CP2K's
@@ -183,6 +183,39 @@ void mp2_rhf_energy_kpoints(
     const std::vector<std::vector<Cplx>>& psi_virt_k,
     const std::vector<std::vector<double>>& eps_occ_k,
     const std::vector<std::vector<double>>& eps_virt_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, double& e_os, double& e_ss);
+
+/// @brief Multi-k unrestricted RI-GPW MP2 (momentum-conserving; complex
+///        Bloch α/β).
+///
+/// Same-spin αα / ββ use the molecular UMP2 convention
+/// \(E_{\mathrm{SS}}^\sigma=\tfrac14\sum |v_{iajb}-v_{ibja}|^2/\Delta\);
+/// opposite-spin αβ uses \(\sum |v_{i_\alpha a_\alpha j_\beta b_\beta}|^2
+/// /\Delta\) (no exchange). Momentum map \(k_b\equiv k_i+k_j-k_a\) is shared
+/// with the closed-shell multi-k path. When \(C^\alpha\equiv C^\beta\) and
+/// occupations match, OS/SS recover multi-k RMP2.
+/// @param grid         Uniform density grid (as in the SCF).
+/// @param psi_occ_a_k  Per-k α occupied MO grids [nk][n_oa·npts].
+/// @param psi_virt_a_k Per-k α virtual MO grids [nk][n_va·npts].
+/// @param psi_occ_b_k  Per-k β occupied MO grids [nk][n_ob·npts].
+/// @param psi_virt_b_k Per-k β virtual MO grids [nk][n_vb·npts].
+/// @param eps_occ_a_k / eps_virt_a_k α eigenvalues [Ha].
+/// @param eps_occ_b_k / eps_virt_b_k β eigenvalues [Ha].
+/// @param k_frac       Fractional k coordinates (length nk).
+/// @param k_weights    Quadrature weights (Σ = 1).
+/// @param e_os Out: unscaled opposite-spin [Hartree].
+/// @param e_ss Out: unscaled same-spin (αα+ββ) [Hartree].
+void mp2_uhf_energy_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_a_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_a_k,
+    const std::vector<std::vector<Cplx>>& psi_occ_b_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_b_k,
+    const std::vector<std::vector<double>>& eps_occ_a_k,
+    const std::vector<std::vector<double>>& eps_virt_a_k,
+    const std::vector<std::vector<double>>& eps_occ_b_k,
+    const std::vector<std::vector<double>>& eps_virt_b_k,
     const std::vector<std::array<double, 3>>& k_frac,
     const std::vector<double>& k_weights, double& e_os, double& e_ss);
 
