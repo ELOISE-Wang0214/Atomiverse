@@ -2163,17 +2163,15 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     // ── Multi-k UKS OT (integer occupations; dual spin manifolds) ──────────
     // Independent complex OT manifolds per (k, σ) with occ=1 open-shell
-    // gradient; joint PR+ CG + Armijo on the rebuilt total energy. Same fixed
-    // point as multi-k UKS DIIS. DFT+U / smear remain fail-fast at build.
+    // gradient. Without PLUS_U: joint PR+ Armijo on rebuilt total energy.
+    // With PLUS_U: CP2K-style OUTER_SCF — rebuild H^σ (incl. V_U^σ), then
+    // fixed-H OT band minimize per (k, σ). Same fixed point as multi-k UKS
+    // DIIS (+U). Metallic smear remains fail-fast (integer occupations only).
     if (cfg.use_ot) {
         if (use_smear)
             throw std::runtime_error(
                 "GPW k-UKS OT: metallic smearing is incompatible with "
                 "use_ot (integer occupations only)");
-        if (do_dftu)
-            throw std::runtime_error(
-                "GPW k-UKS OT: DFT+U is not wired on the multi-k OT path "
-                "(use_ot=false or drop plus_u)");
         constexpr double kOtGradTolK = 1e-5;
 
         std::vector<CplxMatrix> Cocc_a_k(static_cast<std::size_t>(nk));
@@ -2296,7 +2294,19 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                               MPI_COMM_WORLD);
             }
 #endif
-            res.e_dftu = 0.0;
+            double e_dftu = 0.0;
+            if (do_dftu) {
+                e_dftu += internal::apply_dft_plus_u_k(
+                    Ha_k, Pak, S_k, weights, layout.rank, layout.nprocs,
+                    layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                    &Va_dftu);
+                e_dftu += internal::apply_dft_plus_u_k(
+                    Hb_k, Pbk, S_k, weights, layout.rank, layout.nprocs,
+                    layout.active, ao_tags, z_of_atom, plus_u_slots, plus_u_z,
+                    &Vb_dftu);
+                have_V_dftu = true;
+            }
+            res.e_dftu = e_dftu;
             res.e_kinetic = e_kin;
             res.e_nonlocal = 0.0;
             res.e_loc_sr = e_nl + e_locgrid;
@@ -2305,9 +2315,86 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             res.e_entropy = 0.0;
             res.e_fermi = 0.0;
             res.n_elec_occ = n_elec;
-            return res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+            return res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc
+                   + e_dftu;
         };
 
+        // ── OUTER_SCF + fixed-H OT for multi-k UKS OT+DFT+U ───────────────
+        if (do_dftu) {
+            constexpr double kInnerTol = 1e-7;
+            constexpr int kInnerMax = 80;
+            for (int outer = 0; outer < cfg.max_iter; ++outer) {
+                for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                    Pa_k[static_cast<std::size_t>(ik)] = density_spin(
+                        Cocc_a_k[static_cast<std::size_t>(ik)], n_a);
+                    Pb_k[static_cast<std::size_t>(ik)] = density_spin(
+                        Cocc_b_k[static_cast<std::size_t>(ik)], n_b);
+                }
+                const double e_total = build_uks_k_energy(Pa_k, Pb_k);
+                res.iters = outer + 1;
+                res.e_total = e_total;
+
+                if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
+                    std::fprintf(
+                        stderr,
+                        "[gpw k-UKS OT+U outer %2d] E=%.8f  U=%.4f  dE=%.2e "
+                        "(nk=%d Na=%d Nb=%d)\n",
+                        outer, e_total, res.e_dftu,
+                        std::abs(e_total - e_prev), nk, n_a, n_b);
+
+                if (outer > 0 && std::abs(e_total - e_prev) < cfg.tol) {
+                    res.converged = true;
+                    auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
+                    store_k_payload(Ha_full, Hb_full);
+                    {
+                        const double sz =
+                            0.5 * static_cast<double>(n_a - n_b);
+                        res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
+                    }
+                    fold_dispersion_k_uks(res);
+                    res.n_elec_occ = n_elec;
+                    return res;
+                }
+                e_prev = e_total;
+
+                // Inner: fixed-H OT → occupied eigenspace of current H_k^σ.
+                for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                    const auto& S = S_k[static_cast<std::size_t>(ik)];
+                    const auto& T = T_k[static_cast<std::size_t>(ik)];
+                    if (n_a > 0) {
+                        const auto ot = internal::ot_minimize_fixed_k(
+                            Ha_k[static_cast<std::size_t>(ik)], S, T,
+                            Cocc_a_k[static_cast<std::size_t>(ik)], kInnerTol,
+                            kInnerMax);
+                        Cocc_a_k[static_cast<std::size_t>(ik)] = ot.C;
+                        Pa_k[static_cast<std::size_t>(ik)] =
+                            density_spin(ot.C, n_a);
+                    }
+                    if (n_b > 0) {
+                        const auto ot = internal::ot_minimize_fixed_k(
+                            Hb_k[static_cast<std::size_t>(ik)], S, T,
+                            Cocc_b_k[static_cast<std::size_t>(ik)], kInnerTol,
+                            kInnerMax);
+                        Cocc_b_k[static_cast<std::size_t>(ik)] = ot.C;
+                        Pb_k[static_cast<std::size_t>(ik)] =
+                            density_spin(ot.C, n_b);
+                    }
+                }
+            }
+            if (!last_veff_ab.empty()) {
+                auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
+                store_k_payload(Ha_full, Hb_full);
+            }
+            {
+                const double sz = 0.5 * static_cast<double>(n_a - n_b);
+                res.s2 = sz * (sz + 1.0) + static_cast<double>(n_b);
+            }
+            fold_dispersion_k_uks(res);
+            res.n_elec_occ = n_elec;
+            return res;
+        }
+
+        // ── One PR+ Armijo step per outer H rebuild (no PLUS_U) ───────────
         std::vector<CplxMatrix> d_a_k(static_cast<std::size_t>(nk));
         std::vector<CplxMatrix> d_b_k(static_cast<std::size_t>(nk));
         std::vector<CplxMatrix> pz_a_prev_k(static_cast<std::size_t>(nk));
@@ -4459,12 +4546,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         };
         // Multi-k OT is product for closed-shell RKS (integer and metallic
         // FD/MP occupations, with or without Dudarev DFT+U) and collinear
-        // UKS (integer occupations). UKS OT+smearing and OT+U+smear remain
-        // fail-fast residuals.
-        // Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF on both
-        // DIIS and closed-shell OT paths (RKS + collinear UKS DIIS). Analytic
-        // multi-k DFT+U stress/forces remain out of scope where those paths
-        // still throw.
+        // UKS (integer occupations, with or without Dudarev DFT+U). UKS
+        // OT+smearing and OT+U+smear remain fail-fast residuals.
+        // Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF on DIIS
+        // and OT paths (RKS + collinear UKS). Analytic multi-k DFT+U
+        // stress/forces remain out of scope where those paths still throw.
         if (ngrids > 1)
             reject("multigrid (ngrids > 1)");
         if (nonperiodic)
