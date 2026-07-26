@@ -268,6 +268,8 @@ if(ATV_BUILD_GPW)
         atv_add_regression(dynamics xl-bomd-kpoints)
         # Multi-k UKS XL-BOMD (dual-spin P_k^sigma) — high-spin H2 NVE.
         atv_add_regression(dynamics xl-bomd-uks-kpoints)
+        # Zero-SCF linearized-functional XL-BOMD forces (shadow BO potential).
+        atv_add_regression(dynamics xl-bomd-linearized-forces)
         # Car–Parrinello MD (dynamics domain): fictitious electronic DOF on
         # the same H2O NVE twin family — not BOMD, not XL-BOMD.
         atv_add_regression(dynamics cpmd-water)

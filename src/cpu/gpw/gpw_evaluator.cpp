@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <stdexcept>
+#include <vector>
 
 #include <xtensor/views/xview.hpp>
 
@@ -14,6 +15,8 @@
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 #include "atomiverse/cpu/gpw/internal/gpw_stress.h"
 #include "atomiverse/cpu/linalg/density.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"
+#include "atomiverse/cpu/linalg/matrix.h"
 
 namespace ATV {
 namespace cpu {
@@ -113,6 +116,10 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     //   Γ UKS: dual α/β real propagators
     //   multi-k RKS: one complex propagator per k (seeded on first SCF)
     //   multi-k UKS: dual complex propagators per k (P_k^α, P_k^β)
+    if (xl_bomd_linearized && !xl_bomd)
+        throw std::invalid_argument(
+            "GPWEvaluator: xl_bomd_linearized requires xl_bomd=true "
+            "(zero-SCF shadow forces ride on the XL auxiliary density)");
     if (xl_bomd) {
         if (cfg.use_ot)
             throw std::invalid_argument(
@@ -128,6 +135,21 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: xl_bomd and second_gen_cp are mutually "
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
+        if (xl_bomd_linearized) {
+            // Zero-SCF linearized forces: Γ RKS diagonalization foothold.
+            if (!compute_forces)
+                throw std::invalid_argument(
+                    "GPWEvaluator: xl_bomd_linearized requires "
+                    "compute_forces=true (shadow forces are the product)");
+            if (n_alpha + n_beta > 0)
+                throw std::invalid_argument(
+                    "GPWEvaluator: xl_bomd_linearized is Γ RKS only "
+                    "(UKS linearized XL is a follow-on)");
+            if (multi_k)
+                throw std::invalid_argument(
+                    "GPWEvaluator: xl_bomd_linearized is Γ-point only "
+                    "(multi-k linearized XL is a follow-on)");
+        }
         // Validates xl_bomd_k ∈ [3, 9] via the real constructor even when
         // multi-k uses XlBomdCplx (same Table I).
         if (multi_k) {
@@ -586,6 +608,97 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
+    // ── Zero-SCF linearized XL-BOMD (shadow Born–Oppenheimer forces) ────
+    // After the cold full-SCF seed (xl history ready): one H[n] build from
+    // the auxiliary density n, one diagonalization → D = q[n], shadow
+    // energy E = Tr(H D) − Tr(H n) + E_KS[n], forces at (D, H[n]). No
+    // iterative SCF (iters = 0). Cold seed falls through to the SCF-XL
+    // path below (first advance seeds history with D_scf).
+    if (xl_bomd_linearized && xl_ && xl_->ready()) {
+        const linalg::RealMatrix& n_aux = xl_->aux();
+        const int saved_max = solver_->max_iter;
+        solver_->max_iter = 0;
+        try {
+            last_ = solver_->run(atoms, /*guess_C=*/nullptr, &n_aux);
+        } catch (...) {
+            solver_->max_iter = saved_max;
+            throw;
+        }
+        solver_->max_iter = saved_max;
+
+        if (last_.H_ks.size() == 0 || last_.S.size() == 0
+            || last_.P.size() == 0)
+            throw std::runtime_error(
+                "GPWEvaluator: xl_bomd_linearized fixed-density step needs "
+                "H_ks, S, and P from max_iter=0");
+
+        const int nb = static_cast<int>(last_.H_ks.shape(0));
+        const int n_occ = solver_->n_occ;
+        if (n_occ < 1)
+            throw std::runtime_error(
+                "GPWEvaluator: xl_bomd_linearized needs n_occ >= 1");
+
+        // One diagonalization of H[n] → D = q[n] (zero iterative SCF).
+        auto [eig, C] =
+            linalg::diagonalize_fock_generalized(last_.H_ks, last_.S);
+        const linalg::RealMatrix D =
+            linalg::build_density_matrix(C, n_occ, nb, 2.0);
+
+        // Shadow energy: Tr(H D) − Tr(H n) + E_KS[n]. Recovers E_KS at D=n.
+        auto tr_HM = [nb](const linalg::RealMatrix& H,
+                          const linalg::RealMatrix& M) {
+            double t = 0.0;
+            for (int i = 0; i < nb; ++i)
+                for (int j = 0; j < nb; ++j)
+                    t += H(static_cast<std::size_t>(i),
+                           static_cast<std::size_t>(j))
+                         * M(static_cast<std::size_t>(j),
+                             static_cast<std::size_t>(i));
+            return t;
+        };
+        const double e_ks_n = last_.e_total;
+        const double tr_Hn = tr_HM(last_.H_ks, last_.P);
+        const double tr_HD = tr_HM(last_.H_ks, D);
+        last_.e_total = tr_HD - tr_Hn + e_ks_n;
+
+        last_.P = D;
+        last_.C = C;
+        last_.eps.assign(eig.begin(), eig.end());
+        last_.converged = true; // stationary for the shadow functional
+        last_.iters = 0;        // zero iterative SCF
+
+        xl_->advance(D);
+
+        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
+            linalg::RealMatrix C_occ = xt::zeros<double>(
+                {static_cast<std::size_t>(nb),
+                 static_cast<std::size_t>(n_occ)});
+            for (int mu = 0; mu < nb; ++mu)
+                for (int i = 0; i < n_occ; ++i)
+                    C_occ(static_cast<std::size_t>(mu),
+                          static_cast<std::size_t>(i)) = C(
+                        static_cast<std::size_t>(mu),
+                        static_cast<std::size_t>(i));
+            // Forces of U(R,n) at fixed n: density D, KS matrix H[n].
+            const auto F = gpw_forces_at_density(atoms, *solver_, D, C_occ,
+                                                 last_.H_ks);
+            AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+            AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+            AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+            for (int i = 0; i < n; ++i) {
+                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            }
+        }
+        return;
+    }
+
     // BOMD warm-start: reuse previous MO coefficients when shape matches.
     // GpwDft::run accepts optional guess_C; empty last_.C → core guess.
     // Multi-k has no real C warm-start (Bloch C_k live on the k path).
@@ -597,6 +710,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // guess (Niklasson dissipative recursion, seeded on the first step).
     // Γ RKS: total P. Γ UKS: P_α / P_β. multi-k RKS: P_k. multi-k UKS:
     // dual P_k^α / P_k^β.
+    // (Linearized warm path returned above when aux is ready.)
     const ATV::cpu::linalg::RealMatrix* guess_p =
         (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
     const ATV::cpu::linalg::RealMatrix* guess_p_beta =
