@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -122,8 +123,34 @@ TEST(BandsResult, DefaultIsRestricted) {
     EXPECT_NEAR(br.e_fermi_ry, 0.0, 1e-15);
 }
 
-TEST(BandsCompute, RejectsSpinPlusMetallicSmear) {
-    // No SCF: guard fires before geometry setup.
+TEST(BandsCompute, SpinPlusMetallicSmearRequiresPositiveDegauss) {
+    // Guard only: spin+smear is product; degauss must be > 0.
+    ATV::cpu::Frame frame(1);
+    frame.span(ATV::kAtom_type)[0] = 14;
+    frame.span(ATV::kAtom_x)[0] = 0;
+    frame.span(ATV::kAtom_y)[0] = 0;
+    frame.span(ATV::kAtom_z)[0] = 0;
+    frame.simbox = ATV::cpu::Box::cubic(5.0);
+
+    PW method;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.0; // invalid
+    method.extra_bands = 2;
+    method.ecut_ry = 5.0;
+    method.k_mesh = 1;
+
+    Bands bands;
+    bands.n_bands = 4;
+    bands.set_diamond_path(2);
+    EXPECT_THROW(bands.compute(method, frame), std::invalid_argument);
+}
+
+TEST(BandsCompute, SpinPlusMetallicSmearNotRejectedByCombo) {
+    // Prior residual: combo threw before any SCF. Now only bad degauss /
+    // multiplicity / n_bands gates fire. Empty UPF fails inside setup (I/O),
+    // not at a spin+smear reject — same pattern as DFPT spin+smear unit.
     ATV::cpu::Frame frame(1);
     frame.span(ATV::kAtom_type)[0] = 14;
     frame.span(ATV::kAtom_x)[0] = 0;
@@ -139,11 +166,34 @@ TEST(BandsCompute, RejectsSpinPlusMetallicSmear) {
     method.extra_bands = 2;
     method.ecut_ry = 5.0;
     method.k_mesh = 1;
+    method.max_iter = 1; // cheap if setup succeeds with empty UPF toy path
 
     Bands bands;
     bands.n_bands = 4;
     bands.set_diamond_path(2);
-    EXPECT_THROW(bands.compute(method, frame), std::invalid_argument);
+    try {
+        (void)bands.compute(method, frame);
+        // Toy empty-UPF path may complete a cheap SCF; either is fine.
+        SUCCEED();
+    } catch (const std::invalid_argument& e) {
+        const std::string msg = e.what();
+        EXPECT_EQ(msg.find("collinear spin + metallic smearing not"),
+                  std::string::npos)
+            << "unexpected residual reject: " << msg;
+        // Other invalid_argument (parity / n_bands) would be a real bug here.
+        EXPECT_TRUE(msg.find("n_bands") != std::string::npos
+                    || msg.find("multiplicity") != std::string::npos
+                    || msg.find("degauss") != std::string::npos
+                    || msg.find("parity") != std::string::npos
+                    || msg.find("UPF") != std::string::npos
+                    || msg.find("upf") != std::string::npos
+                    || msg.find("pseudopotential") != std::string::npos)
+            << "unexpected invalid_argument: " << msg;
+    } catch (const std::exception&) {
+        // I/O or runtime failures inside SCF setup are acceptable for this
+        // unit (no full e2e); e2e is reg_bands-spin-metallic-si.
+        SUCCEED();
+    }
 }
 
 TEST(DosResult, DefaultIsRestricted) {

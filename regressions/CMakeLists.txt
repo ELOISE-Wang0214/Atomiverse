@@ -168,6 +168,8 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw dos-metallic-si)
     # Metallic occupation bands (FD smear + high-symmetry path).
     atv_add_regression(pw bands-metallic-si)
+    # Collinear spin + metallic smear bands (FD + nspin=2 diamond Si).
+    atv_add_regression(pw bands-spin-metallic-si)
     # Collinear-spin DOS (fixed occ M=0 diamond Si; integral to joint VBM).
     atv_add_regression(pw dos-spin-si)
     atv_add_regression(pw berry-polarization)
