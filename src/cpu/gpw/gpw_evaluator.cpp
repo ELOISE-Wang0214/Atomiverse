@@ -98,13 +98,10 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.plus_u = plus_u;
     cfg.atom_spin_guess = atom_spin_guess;
 
-    // XL-BOMD guards (no-fallback): the auxiliary-density guess feeds the
-    // closed-shell RKS diagonalization path only.
+    // XL-BOMD guards (no-fallback): auxiliary-density guess on the
+    // diagonalization path only. RKS: one total-P propagator. UKS: dual
+    // α/β propagators (same Table-I coefficients).
     if (xl_bomd) {
-        if (n_alpha + n_beta > 0)
-            throw std::invalid_argument(
-                "GPWEvaluator: xl_bomd supports closed-shell RKS only "
-                "(n_alpha/n_beta are set)");
         if (cfg.use_ot)
             throw std::invalid_argument(
                 "GPWEvaluator: xl_bomd requires the diagonalization SCF path "
@@ -120,8 +117,13 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
         xl_.emplace(xl_bomd_k); // validates xl_bomd_k in [3, 9]
+        if (n_alpha + n_beta > 0)
+            xl_beta_.emplace(xl_bomd_k);
+        else
+            xl_beta_.reset();
     } else {
         xl_.reset();
+        xl_beta_.reset();
     }
 
     // Car–Parrinello guards: closed-shell RKS Γ diagonalization path only.
@@ -361,16 +363,29 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     if (last_.C.size() > 0) {
         guess = &last_.C;
     }
-    // XL-BOMD: the propagated auxiliary density is the SCF initial-density
+    // XL-BOMD: propagated auxiliary density is the SCF initial-density
     // guess (Niklasson dissipative recursion, seeded on the first step).
+    // RKS: total P on guess_P. UKS: P_α / P_β on guess_P / guess_P_beta.
     const ATV::cpu::linalg::RealMatrix* guess_p =
         (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
-    last_ = solver_->run(atoms, guess, guess_p);
+    const ATV::cpu::linalg::RealMatrix* guess_p_beta =
+        (xl_beta_ && xl_beta_->ready()) ? &xl_beta_->aux() : nullptr;
+    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta);
     if (xl_) {
-        if (last_.converged && last_.P.size() > 0)
+        if (last_.converged && last_.P.size() > 0) {
             xl_->advance(last_.P);
-        else
-            xl_->reset(); // discontinuity: never propagate an unconverged D
+            if (xl_beta_) {
+                if (last_.P_beta.size() > 0)
+                    xl_beta_->advance(last_.P_beta);
+                else
+                    xl_beta_->reset();
+            }
+        } else {
+            // Discontinuity: never propagate an unconverged D.
+            xl_->reset();
+            if (xl_beta_)
+                xl_beta_->reset();
+        }
     }
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 

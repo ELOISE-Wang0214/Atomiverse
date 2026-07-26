@@ -17,8 +17,8 @@
 /// causes in long BOMD trajectories.
 ///
 /// Unit-agnostic dense linear algebra on AO density matrices; consumed by
-/// `cpu::gpw::GPWEvaluator` (`xl_bomd = true`) on the RKS diagonalization
-/// SCF path.
+/// `cpu::gpw::GPWEvaluator` (`xl_bomd = true`) on the RKS (total \(P\)) or
+/// Γ-UKS (one `XlBomd` per spin channel) diagonalization SCF path.
 #pragma once
 
 #include <deque>
@@ -60,7 +60,7 @@ class XlBomd {
 
     /// @brief Current auxiliary density — the SCF initial guess for the
     ///        next MD step (same scale/convention as the SCF density fed to
-    ///        `advance`, i.e. the RKS closed-shell P).
+    ///        `advance`: RKS total \(P\), or one UKS spin channel).
     /// @return P_{n+1} of the recursion above.
     /// @throws std::logic_error before the first `advance`.
     const linalg::RealMatrix& aux() const;

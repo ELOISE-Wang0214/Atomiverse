@@ -106,9 +106,10 @@ class GPWEvaluator : public cpu::GPW {
     int n_beta = 0;
     /// @brief Extended-Lagrangian BOMD (dissipative XL-BOMD, Niklasson
     ///        JCP 130, 214109 (2009)): propagate an auxiliary density as the
-    ///        SCF initial guess across MD steps. Closed-shell RKS
-    ///        diagonalization path only — `build()` throws when combined
-    ///        with UKS occupations or `use_ot`. Units-free switch.
+    ///        SCF initial guess across MD steps. Closed-shell RKS (one
+    ///        total \(P\)) or Γ-UKS (independent \(P_\alpha, P_\beta\))
+    ///        diagonalization path — `build()` throws when combined with
+    ///        `use_ot`, `cpmd`, or `second_gen_cp`. Units-free switch.
     bool xl_bomd = false;
     /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
     int xl_bomd_k = 5;
@@ -193,7 +194,10 @@ class GPWEvaluator : public cpu::GPW {
     std::unique_ptr<GpwDft> solver_;
     std::array<double, 6> last_stress_ha_{};
     /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd`).
+    /// RKS: total \(P\). UKS: \(P_\alpha\).
     std::optional<XlBomd> xl_;
+    /// XL-BOMD β-spin propagator (UKS only; empty for RKS).
+    std::optional<XlBomd> xl_beta_;
     /// CPMD electronic propagator (engaged when `cpmd`).
     std::optional<Cpmd> cpmd_;
     double last_te_ev_ = 0.0; ///< last electronic KE [eV]
