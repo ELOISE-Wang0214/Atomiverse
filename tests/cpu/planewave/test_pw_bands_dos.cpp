@@ -3,11 +3,16 @@
 ///        No full SCF e2e (that lives in regressions/pw/bands-dos-si).
 
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/frame_schema.h"
+#include "atomiverse/cpu/frame/box.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/planewave/bands_dos.h"
+#include "atomiverse/cpu/planewave/pw_solver.h"
 
 using namespace ATV::cpu::pw;
 
@@ -103,4 +108,29 @@ TEST(BandsResult, DefaultIsRestricted) {
     EXPECT_NEAR(br.magnetization, 0.0, 1e-15);
     EXPECT_EQ(br.vbm_spin, 0);
     EXPECT_EQ(br.cbm_spin, 0);
+    EXPECT_NEAR(br.e_fermi_ry, 0.0, 1e-15);
+}
+
+TEST(BandsCompute, RejectsSpinPlusMetallicSmear) {
+    // No SCF: guard fires before geometry setup.
+    ATV::cpu::Frame frame(1);
+    frame.span(ATV::kAtom_type)[0] = 14;
+    frame.span(ATV::kAtom_x)[0] = 0;
+    frame.span(ATV::kAtom_y)[0] = 0;
+    frame.span(ATV::kAtom_z)[0] = 0;
+    frame.simbox = ATV::cpu::Box::cubic(5.0);
+
+    PW method;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    method.extra_bands = 2;
+    method.ecut_ry = 5.0;
+    method.k_mesh = 1;
+
+    Bands bands;
+    bands.n_bands = 4;
+    bands.set_diamond_path(2);
+    EXPECT_THROW(bands.compute(method, frame), std::invalid_argument);
 }

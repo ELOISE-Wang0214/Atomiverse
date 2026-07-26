@@ -21,13 +21,16 @@
 ///   // Collinear spin (product): set method.spin_polarized = true
 ///   // → br.nspin == 2, br.eigenvalues_beta_ry holds spin-down.
 ///
+///   // Metallic occupations (restricted): set method.smearing / degauss /
+///   // extra_bands → SCF free-energy density, then NSCF path; br.e_fermi_ry.
+///
 ///   cpu::pw::Dos dos;
 ///   dos.k_mesh = 4;
 ///   dos.n_bands = 8;
 ///   dos.sigma_ry = 0.05;
 ///   auto dr = dos.compute(pw, frame);     // dos, n_elec_to_vbm
 ///
-///   // Metallic occupations: set method.smearing / degauss / extra_bands;
+///   // Metallic DOS: set method.smearing / degauss / extra_bands;
 ///   // integral is then to E_F (dr.e_fermi_ry).
 /// @endcode
 #pragma once
@@ -66,7 +69,11 @@ struct BandsResult {
     int vbm_spin = 0;
     int cbm_spin = 0;
     bool scf_converged = false; ///< Whether the preceding SCF converged.
-    double energy_ry = 0;       ///< SCF total energy [Ry].
+    double energy_ry = 0;       ///< SCF total / free energy \(F\) [Ry].
+    /// @brief Fermi level [Ry] from metallic SCF (0 if fixed occupations).
+    ///        Path is not a BZ mesh — \(\mu\) is the SCF value, not re-binned
+    ///        from path k-weights.
+    double e_fermi_ry = 0;
 };
 
 /// @brief Result of a Gaussian-broadened density of states.
@@ -95,13 +102,19 @@ struct DosResult {
 ///
 /// **Collinear spin** (`method.spin_polarized`): fixed-occupation SCF with
 /// \(N_\uparrow,N_\downarrow\) from `multiplicity`, then per-spin NSCF on
-/// frozen \(V_{\mathrm{eff},\sigma}\). Metallic smearing is rejected (see
-/// `dos-metallic-si` residual).
+/// frozen \(V_{\mathrm{eff},\sigma}\).
+///
+/// **Metallic occupations** (restricted only): `method.smearing != none`
+/// runs fractional-occupation SCF, freezes \(V_\mathrm{eff}\), NSCF on the
+/// path, and reports SCF \(E_F\) on `BandsResult::e_fermi_ry`. Collinear
+/// spin + metallic smear is rejected (follow-on).
 class Bands {
   public:
     /// @brief Total bands to diagonalize per spin channel (valence + conduction).
     ///        Silicon has 4 occupied valence bands (\(n_e=8\); \(N_\sigma=4\)
-    ///        when \(M=0\)).
+    ///        when \(M=0\)). With metallic smear, size Davidson to at least
+    ///        \(\lceil n_e/2\rceil + \mathrm{extra\_bands}\) via SCF, and
+    ///        keep `n_bands` covering valence + empty states for the gap.
     int n_bands = 8;
     /// @brief Fractional (crystal) k-list. Empty → `set_diamond_path(4)`.
     std::vector<std::array<double, 3>> kfrac;
@@ -112,8 +125,10 @@ class Bands {
 
     /// @brief SCF + NSCF bands for the geometry in `frame`.
     /// @param method Plane-wave method (members only; not mutated).
+    ///               Metallic path honors `smearing` / `degauss` /
+    ///               `extra_bands` when restricted.
     /// @param frame  Atom positions [Å], types (Z), simulation cell.
-    /// @return Owned `BandsResult` with eigenvalues [Ry] and gap.
+    /// @return Owned `BandsResult` with eigenvalues [Ry], gap, optional \(E_F\).
     BandsResult compute(const PW& method, const cpu::Frame& frame) const;
 };
 
