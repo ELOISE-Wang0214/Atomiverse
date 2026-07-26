@@ -9,6 +9,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/integrator.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -39,7 +40,7 @@ namespace md {
 /// Units: \(P\) [eV/Å³], \(\tau_P\) [fs], \(dt\) [fs], \(W\) [eV·fs²].
 ///
 /// Reference: Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994).
-class NphIntegrator : public cpu::Integrator {
+class NphIntegrator : public cpu::Integrator, public cpu::TimestepProvider {
   public:
     /// @param P_target Target pressure [eV/Å³], LAMMPS-standard sign
     ///                 (positive ⇔ compressive).
@@ -52,6 +53,11 @@ class NphIntegrator : public cpu::Integrator {
 
     bool requires_system_stress() const override { return true; }
     std::string name() const override { return "nph_integrator"; }
+    const cpu::TimestepProvider* as_timestep_provider() const override {
+        return this;
+    }
+    /// @brief Published nuclear timestep [fs] (the constructor `dt`).
+    double timestep() const override { return dt_; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
                 ATV::make_binding(ATV::md::Phase::final_integrate, 0),

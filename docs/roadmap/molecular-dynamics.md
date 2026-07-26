@@ -248,7 +248,9 @@ architecturally excluded (OT parameterizes orbitals, not density);
 `xl-bomd-linearized-kpoints`).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::electronic::Cpmd` +
-`GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
+`GPWEvaluator::{cpmd, cpmd_mu}` (the nuclear dt is pushed in from the MD
+integrator through `TimestepProvider`/`TimestepConsumer`, never re-declared on
+the evaluator) on closed-shell Γ GPW: cold SCF seed,
 then fixed-density KS eval + electronic Verlet + analytic forces at that
 density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
 \(E_{\mathrm{cons}} = T_n + T_e + E_{\mathrm{KS}}\). **Electronic RATTLE**

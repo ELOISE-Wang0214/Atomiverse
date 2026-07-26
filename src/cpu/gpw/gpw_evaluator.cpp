@@ -57,6 +57,15 @@ std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
 }
 } // namespace
 
+void GPWEvaluator::set_timestep(double dt_fs) {
+    if (!(dt_fs > 0.0) || !std::isfinite(dt_fs))
+        throw std::invalid_argument(
+            "GPWEvaluator::set_timestep: nuclear timestep must be finite and "
+            "> 0 (fs), got "
+            + std::to_string(dt_fs));
+    cpmd_dt_fs_ = dt_fs;
+}
+
 void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Validate that every atom in the frame has a configured element, and
     // count valence electrons for the closed-shell occupation.
@@ -190,14 +199,24 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         if (!(cpmd_mu > 0.0) || !std::isfinite(cpmd_mu))
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd_mu must be finite and > 0 (a.u. mass)");
-        if (!(cpmd_dt > 0.0) || !std::isfinite(cpmd_dt))
-            throw std::invalid_argument(
-                "GPWEvaluator: cpmd_dt must be finite and > 0 (fs); must match "
-                "the nuclear VelocityVerlet timestep");
+        // The electronic step rides the nuclear clock, so the dt is PUSHED by
+        // the MD integrator (`cpu::TimestepProvider` → `set_timestep`), never
+        // re-declared here. No push ⇒ either there is no MD loop around this
+        // evaluator, or its integrator publishes nothing: both are broken CP.
+        if (!(cpmd_dt_fs_ > 0.0))
+            throw std::runtime_error(
+                "GPWEvaluator: cpmd requires an MD integrator publishing the "
+                "timestep (TimestepProvider); CPMD outside MD is meaningless");
         if (!compute_forces)
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd requires compute_forces=true (nuclear "
                 "forces from the fixed-density electronic state)");
+        // Every CPMD branch of `launch` returns before the stress block, so a
+        // stress request would be silently dropped rather than refused.
+        if (compute_stress)
+            throw std::runtime_error(
+                "GPWEvaluator: CPMD stress path is not productized; "
+                "variable-cell CP is deferred");
         // Multi-k UKS CPMD is a residual (dual-spin Bloch C_k^σ).
         if (multi_k && (n_alpha + n_beta > 0))
             throw std::invalid_argument(
@@ -449,7 +468,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         for (int ik = 0; ik < nk; ++ik) {
             cpmd_k_[static_cast<std::size_t>(ik)].advance(
                 last_.H_ks_k[static_cast<std::size_t>(ik)],
-                last_.S_k[static_cast<std::size_t>(ik)], cpmd_dt, /*occ=*/2.0);
+                last_.S_k[static_cast<std::size_t>(ik)], cpmd_dt_fs_,
+                /*occ=*/2.0);
             const double wk =
                 (ik < static_cast<int>(last_.k_weights.size()))
                     ? last_.k_weights[static_cast<std::size_t>(ik)]
@@ -549,11 +569,11 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             // Dual electronic steps (occ=1 per spin).
             double te_ha = 0.0;
             double eth_ha = 0.0;
-            cpmd_->advance(last_.H_ks, last_.S, cpmd_dt, /*occ=*/1.0);
+            cpmd_->advance(last_.H_ks, last_.S, cpmd_dt_fs_, /*occ=*/1.0);
             te_ha += cpmd_->kinetic_ha();
             eth_ha += cpmd_->thermostat_energy_ha();
             if (cpmd_beta_ && cpmd_beta_->ready()) {
-                cpmd_beta_->advance(last_.H_ks_beta, last_.S, cpmd_dt,
+                cpmd_beta_->advance(last_.H_ks_beta, last_.S, cpmd_dt_fs_,
                                     /*occ=*/1.0);
                 te_ha += cpmd_beta_->kinetic_ha();
                 eth_ha += cpmd_beta_->thermostat_energy_ha();
@@ -586,7 +606,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
             }
         }
 
-        cpmd_->advance(last_.H_ks, last_.S, cpmd_dt, /*occ=*/2.0);
+        cpmd_->advance(last_.H_ks, last_.S, cpmd_dt_fs_, /*occ=*/2.0);
         last_te_ev_ = cpmd_->kinetic_ha() * ATV::units::kHartreeInEv;
         last_etherm_ev_ =
             cpmd_->thermostat_energy_ha() * ATV::units::kHartreeInEv;

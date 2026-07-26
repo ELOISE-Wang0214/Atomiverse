@@ -10,6 +10,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/integrator.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -50,7 +51,7 @@ namespace md {
 ///
 /// Bound to `initial_integrate @ 0` and `final_integrate @ 0` --
 /// replaces (do not combine with) `VelocityVerlet`.
-class NVELimit : public cpu::Integrator {
+class NVELimit : public cpu::Integrator, public cpu::TimestepProvider {
   public:
     /// @param dt   Timestep [fs]. Mirrors the global LAMMPS `timestep`.
     /// @param xmax Maximum distance an atom may move in one step [Å]
@@ -60,6 +61,11 @@ class NVELimit : public cpu::Integrator {
     NVELimit(double dt, double xmax);
 
     std::string name() const override { return "nve_limit"; }
+    const cpu::TimestepProvider* as_timestep_provider() const override {
+        return this;
+    }
+    /// @brief Published nuclear timestep [fs] (the constructor `dt`).
+    double timestep() const override { return dt_; }
     /* role via Integrator base */
     /// @brief Write-set: velocity Verlet with a per-step displacement cap.
     std::vector<DefaultBinding> default_bindings() const override {

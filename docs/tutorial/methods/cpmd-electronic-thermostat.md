@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-electronic-thermostat` |
 | Regression | `regressions/dynamics/cpmd-electronic-thermostat/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt, cpmd_thermostat=true, cpmd_ekin_target_ha, cpmd_tau_e}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE + NH) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_thermostat=true, cpmd_ekin_target_ha, cpmd_tau_e}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE + NH). The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-electronic-thermostat`; MD AIMD electronic thermostat residual closed |
 | Dual gate | Correctness from REFERENCE (E_ext drift, Te ceiling, fixed-density); speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 11 **done** (merged 2026-07-26) |
@@ -124,13 +124,13 @@ cpu::gpw::GPWEvaluator eval(
     /*compute_forces*/ true);
 eval.cpmd = true;
 eval.cpmd_mu = 2000.0;              // a.u.
-eval.cpmd_dt = dt;                  // MUST match VelocityVerlet
+// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
 eval.cpmd_thermostat = true;        // Nosé–Hoover on Te
 eval.cpmd_ekin_target_ha = 1e-5;    // K0 [Hartree]
 eval.cpmd_tau_e = 50.0;             // tau_e [fs]
 
 cpu::md::MD sim;
-sim.set_integrator(cpu::md::VelocityVerlet{dt});
+sim.set_integrator(cpu::md::VelocityVerlet{dt});  // the ONE owner of dt
 sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
 sim.build();
 sim.run(frame, n_steps);

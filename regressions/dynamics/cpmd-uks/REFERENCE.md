@@ -8,8 +8,10 @@ degrees of freedom on **collinear Γ-point UKS** GPW:
 - Outer loop: `cpu::md::MD` + NVE `VelocityVerlet` (nuclei)
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
   **`n_alpha = 7`**, **`n_beta = 5`** (O₂ GTH-q6 triplet),
-  **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
-  `compute_forces = true`
+  **`cpmd_mu = 2000` a.u.**, `compute_forces = true`; the electronic dt is
+  **not** set on the evaluator — `cpu::md::MD` pushes the nuclear dt in from
+  the `VelocityVerlet` integrator through the `TimestepProvider` /
+  `TimestepConsumer` protocol at build
 - Propagator: dual `cpu::electronic::Cpmd` instances (α and β) with electronic
   RATTLE; occupancy-1 S-tangent force
   \(\mu\,\ddot C_\sigma = -(I-S C_\sigma C_\sigma^\top)(2 H_\sigma C_\sigma)\)

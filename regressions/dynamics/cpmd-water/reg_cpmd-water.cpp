@@ -65,7 +65,8 @@ int main() {
     // Heavier fictitious mass than plane-wave textbook 400 a.u. — AO residual
     // curvature on DZVP water is stiffer; 2000 keeps short NVE stable at 0.1 fs.
     eval.cpmd_mu = 2000.0;
-    eval.cpmd_dt = dt; // must match nuclear VV
+    // No electronic dt here: `MD` pushes the nuclear dt from the integrator
+    // (TimestepProvider) into the evaluator at build, so `dt` has one owner.
 
     // Drift production after the baseline CP step that engages Te.
     constexpr int n_prod = 4;

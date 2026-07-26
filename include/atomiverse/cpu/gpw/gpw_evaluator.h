@@ -12,6 +12,7 @@
 #include "atomiverse/core/role.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/gpw.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/electronic/aspc_predictor.h"
 #include "atomiverse/cpu/electronic/cpmd.h"
 #include "atomiverse/cpu/electronic/xl_bomd.h"
@@ -43,7 +44,12 @@ struct Kind {
 /// so cell-relaxation drivers may rescale `frame.box` between launches.
 /// The MO warm start survives a cell change (the AO basis is
 /// geometry-independent in size).
-class GPWEvaluator : public cpu::GPW {
+///
+/// **Timestep:** under `cpmd = true` the electronic propagation shares the
+/// nuclear clock, so the evaluator is a `cpu::TimestepConsumer` — `cpu::md::MD`
+/// pushes the integrator's dt [fs] at build time. There is no duplicated
+/// timestep member to keep in sync (and no way to run CPMD outside an MD loop).
+class GPWEvaluator : public cpu::GPW, public cpu::TimestepConsumer {
   public:
     /// @brief Plane-wave cutoff [Ry].
     double cutoff_ry = 300.0;
@@ -154,14 +160,12 @@ class GPWEvaluator : public cpu::GPW {
     ///        Closed-shell RKS Γ, collinear Γ-UKS (dual α/β), or multi-k RKS
     ///        (one `CpmdCplx` per sampled \(k\); Bloch \(C_k\)). Multi-k UKS
     ///        + CPMD throws at `build()`. Also throws with `use_ot`,
-    ///        `xl_bomd`, or `second_gen_cp`.
+    ///        `xl_bomd`, `second_gen_cp`, or `compute_stress` (the CPMD
+    ///        stress/variable-cell path is not yet productized).
     bool cpmd = false;
     /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
     ///        CPMD values \(10^2\)–\(10^3\). Default 400.
     double cpmd_mu = 400.0;
-    /// @brief Electronic (and nuclear) timestep [fs]. **Must match** the
-    ///        `VelocityVerlet` dt used on the outer MD loop.
-    double cpmd_dt = 0.1;
     /// @brief Nosé–Hoover electronic thermostat on fictitious \(\dot C\)
     ///        (requires `cpmd = true`). Regulates \(T_e\) toward
     ///        `cpmd_ekin_target_ha` with coupling time `cpmd_tau_e`.
@@ -222,6 +226,21 @@ class GPWEvaluator : public cpu::GPW {
 
     std::string name() const override { return "gpw_evaluator"; }
 
+    // ── Nuclear timestep, single-sourced from the MD integrator ──────────
+    cpu::TimestepConsumer* as_timestep_consumer() override { return this; }
+    /// @brief CPMD cannot run without the nuclear dt; BOMD/XL/SGCP do not
+    ///        need it.
+    /// @return True when `cpmd` is enabled.
+    bool timestep_required() const override { return cpmd; }
+    /// @brief Receive the nuclear MD timestep [fs] (pushed before `build()`).
+    ///
+    /// The electronic RATTLE/Verlet step of Car–Parrinello MD must run on the
+    /// SAME clock as the nuclei, so the value is the integrator's own dt — not
+    /// a second copy the user has to keep in sync.
+    /// @param dt_fs Nuclear MD timestep [fs].
+    /// @throws std::invalid_argument when `dt_fs` is not finite and > 0.
+    void set_timestep(double dt_fs) override;
+
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
@@ -248,6 +267,9 @@ class GPWEvaluator : public cpu::GPW {
     }
 
   private:
+    /// Nuclear (and electronic) timestep [fs], pushed by the MD integrator
+    /// through `set_timestep`. 0 = never pushed ⇒ `build()` refuses `cpmd`.
+    double cpmd_dt_fs_ = 0.0;
     GpwResult last_{};
     std::unique_ptr<GpwDft> solver_;
     std::array<double, 6> last_stress_ha_{};

@@ -8,6 +8,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/integrator.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -33,13 +34,18 @@ namespace md {
 /// No behavioural change required — the component already matches
 /// `fix nve` exactly. `fix nve/sphere`/`nve/asphere` rotational variants
 /// are out of scope (point-mass NVE only).
-class VelocityVerlet : public cpu::Integrator {
+class VelocityVerlet : public cpu::Integrator, public cpu::TimestepProvider {
   public:
     /// @param dt Timestep [fs]. Mirrors the global LAMMPS `timestep`
     ///           consumed by `fix nve` via `update->dt`.
     explicit VelocityVerlet(double dt);
 
     std::string name() const override { return "velocity_verlet"; }
+    const cpu::TimestepProvider* as_timestep_provider() const override {
+        return this;
+    }
+    /// @brief Published nuclear timestep [fs] (the constructor `dt`).
+    double timestep() const override { return dt_; }
     /* role via Integrator base */
     /// @brief Write-set: half-kick (v) + drift (x).
     std::vector<DefaultBinding> default_bindings() const override {

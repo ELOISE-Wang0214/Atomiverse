@@ -60,7 +60,7 @@ int main() {
         /*compute_forces*/ true);
     eval.cpmd = true;
     eval.cpmd_mu = 2000.0;
-    eval.cpmd_dt = dt;
+    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
     eval.cpmd_thermostat = true;
     eval.cpmd_ekin_target_ha = 1e-5;
     eval.cpmd_tau_e = 50.0;

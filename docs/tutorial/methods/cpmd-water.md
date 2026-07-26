@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-water` |
 | Regression | `regressions/dynamics/cpmd-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd`. The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-water`; MD roadmap Car–Parrinello |
 | Dual gate | Correctness A1–A15 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 3 |
@@ -57,10 +57,10 @@ cpu::gpw::GPWEvaluator eval(
     /*compute_forces*/ true);
 eval.cpmd = true;
 eval.cpmd_mu = 2000.0;  // a.u.; AO residual is stiffer than PW textbook ~400
-eval.cpmd_dt = dt;      // MUST match VelocityVerlet dt
+// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
 
 cpu::md::MD sim;
-sim.set_integrator(cpu::md::VelocityVerlet{dt});
+sim.set_integrator(cpu::md::VelocityVerlet{dt});  // the ONE owner of dt
 sim.on(md::Phase::force).add_ref(eval, /*order=*/0);
 sim.build();
 sim.run(frame, n_steps);

@@ -3,10 +3,15 @@
 ///        step budget: it runs every step it was asked for, unless a criterion stops it.
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_set>
+#include <vector>
 
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/asynchronous/snapshot_publisher.h"
@@ -23,6 +28,7 @@
 #include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/component/semiempirical.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 #include "atomiverse/cpu/driver/driver.h"
 #include "atomiverse/cpu/driver/runtime.h"
 #include "atomiverse/cpu/dynamics/fix_csvr.h"
@@ -462,9 +468,140 @@ class MD : public Driver<ATV::md::Phase> {
         this->throw_if_missing_neighbor_list_(
             s, "MD",
             "Add `sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
+
+        this->push_timestep_();
     }
 
   private:
+    /// @brief Push the integrator's timestep to every `TimestepConsumer`.
+    ///
+    /// Called LAST from `install_defaults()` — i.e. strictly before any
+    /// component `build()`, so a consumer can validate the dt in its own build.
+    ///
+    /// The two checks below are gated differently, on purpose:
+    ///   - **Conflicting providers** throw unconditionally, whether or not
+    ///     a consumer is registered — two `TimestepProvider`s publishing
+    ///     different dt is an ambiguous clock either way.
+    ///   - **Dt validity** (must be finite and > 0) and the **push** itself
+    ///     run only when at least one `TimestepConsumer` is registered. A
+    ///     run with zero consumers never reads the value, so `dt = 0` stays
+    ///     legal — e.g. the shipped energy-only MPI harnesses register
+    ///     `VelocityVerlet{0.0}` purely to satisfy MD's Integrator
+    ///     requirement and deliberately move nothing.
+    void push_timestep_() {
+        // ── The nuclear timestep is single-sourced from the integrator ────
+        //
+        // The integrator owns the clock. Anything that must advance on the
+        // SAME clock — a Car-Parrinello electronic propagator, an
+        // extended-Lagrangian density — used to re-declare `dt` as its own
+        // member, and "must match the nuclear dt" was a docs-only contract: no
+        // runtime check was even possible, so a typo bought a silently wrong
+        // trajectory instead of an error. The dt is published by a
+        // `TimestepProvider` and pushed here, at the END of install_defaults()
+        // — i.e. strictly before any component `build()` — so a consumer can
+        // already validate it in its own build.
+        struct PublishedDt {
+            std::string owner;
+            double dt_fs;
+        };
+        std::vector<PublishedDt> published;
+        std::unordered_set<const cpu::TimestepProvider*> seen_providers;
+        for_each_pending([&](const cpu::Component& c) {
+            const cpu::TimestepProvider* p = c.as_timestep_provider();
+            // The walk visits BINDINGS: VelocityVerlet declares two
+            // (initial_integrate + final_integrate), so dedup by identity.
+            if (!p || !seen_providers.insert(p).second)
+                return;
+            published.push_back({c.name(), p->timestep()});
+        });
+
+        // Two integrators on different clocks is a broken setup whether or not
+        // anything consumes the dt: one of them is wrong and the engine cannot
+        // know which. Name BOTH — naming one leaves the user diffing the whole
+        // component set for the other.
+        for (std::size_t i = 1; i < published.size(); ++i) {
+            const double a = published[0].dt_fs;
+            const double b = published[i].dt_fs;
+            const double diff = std::fabs(a - b);
+            const double scale = std::max(std::fabs(a), std::fabs(b));
+            const bool disagree =
+                std::isfinite(diff) ? diff > 1e-12 * scale : !(a == b);
+            if (disagree)
+                throw std::runtime_error(
+                    "MD::build(): conflicting MD timesteps — integrator '"
+                    + published[0].owner + "' publishes " + std::to_string(a)
+                    + " fs, integrator '" + published[i].owner + "' publishes "
+                    + std::to_string(b)
+                    + " fs; exactly one clock may own the run");
+        }
+
+        // Collect the consumers BEFORE validating anything: whether the
+        // published dt must be *usable* is a question only a consumer can ask.
+        // A run with no consumer never reads the value — the shipped
+        // energy-only MPI harnesses register `VelocityVerlet{0.0}` purely to
+        // satisfy MD's Integrator requirement and deliberately move nothing —
+        // so rejecting dt = 0 there would fail a setup that is, for that run,
+        // entirely well defined. The CONFLICT check above is different in kind
+        // and stays unconditional: two clocks are ambiguous whether or not
+        // anybody reads them.
+        struct PendingConsumer {
+            cpu::TimestepConsumer* consumer;
+            std::string owner;
+        };
+        std::vector<PendingConsumer> consumers;
+        std::unordered_set<const cpu::TimestepConsumer*> seen_consumers;
+        auto collect_dt = [&](cpu::TimestepConsumer* tc,
+                              const std::string& who) {
+            // Dedup for the same reason as the providers: one consumer object
+            // must be handed the dt exactly once, not once per binding.
+            if (!tc || !seen_consumers.insert(tc).second)
+                return;
+            consumers.push_back({tc, who});
+        };
+        for_each_pending_kind_mut(
+            [&](cpu::Component& c) {
+                collect_dt(c.as_timestep_consumer(), c.name());
+            },
+            [&](cpu::DriverNode* d) {
+                // A nested method driver (MeanFieldMethod) is a DriverNode, not
+                // a Component, so it is reached by cross-cast — the same route
+                // validate_components() uses for the `HF` force source.
+                const auto* as_comp = dynamic_cast<const cpu::Component*>(d);
+                collect_dt(dynamic_cast<cpu::TimestepConsumer*>(d),
+                           as_comp ? as_comp->name()
+                                   : std::string("nested method driver"));
+            });
+
+        if (!consumers.empty()) {
+            // Validity is checked once, before the FIRST push: no consumer may
+            // receive a dt the engine already knows is unusable.
+            if (!published.empty()
+                && (!(published[0].dt_fs > 0.0)
+                    || !std::isfinite(published[0].dt_fs)))
+                throw std::runtime_error("MD::build(): integrator '"
+                                         + published[0].owner
+                                         + "' publishes an unusable timestep "
+                                         + std::to_string(published[0].dt_fs)
+                                         + " fs (must be finite and > 0)");
+
+            for (const PendingConsumer& pc : consumers) {
+                if (published.empty()) {
+                    if (pc.consumer->timestep_required())
+                        throw std::runtime_error(
+                            "MD::build(): '" + pc.owner
+                            + "' requires the nuclear timestep, but no "
+                              "registered component implements "
+                              "TimestepProvider; add an MD integrator (e.g. "
+                              "sim.set_integrator(cpu::md::VelocityVerlet{dt}"
+                              "))");
+                    // opt-in means opt-in: never push an unasked-for dt
+                    continue;
+                }
+                pc.consumer->set_timestep(published[0].dt_fs);
+            }
+        }
+    }
+
     std::optional<std::string> integrator_set_;
     int scalar_reduce_every_ = 1;
 };

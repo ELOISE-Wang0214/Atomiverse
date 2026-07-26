@@ -7,9 +7,20 @@
 /// No multi-step MD / full water SCF trajectory here (that is the e2e
 /// regressions/dynamics/cpmd-water and cpmd-rattle-water pins). build()
 /// validation and the tiny inline H2 payload only.
+///
+/// **Timestep:** the nuclear dt is owned by the MD integrator and pushed in
+/// through `cpu::TimestepConsumer::set_timestep` (esmm-cpmd-02) — the
+/// evaluator has no electronic-dt member of its own to set. Guards that are
+/// not *about* the dt therefore call `set_timestep(kDtFs)` first, so each one
+/// fails on its own gate rather than on the missing-provider gate that
+/// precedes most of them. The push walk itself (`cpu::md::MD`
+/// provider/consumer rules) is pinned by
+/// tests/cpu/dynamics/test_timestep_protocol.cpp.
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -25,6 +36,13 @@
 // ── GPWEvaluator cpmd guards ────────────────────────────────────────────
 
 namespace {
+
+/// A valid nuclear timestep [fs], standing in for the MD integrator's push.
+constexpr double kDtFs = 0.1;
+
+bool message_mentions(const std::exception& e, const std::string& needle) {
+    return std::string(e.what()).find(needle) != std::string::npos;
+}
 
 ATV::cpu::Frame water_frame() {
     ATV::cpu::Frame f(3);
@@ -64,6 +82,7 @@ TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithUks) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.n_alpha = 5;
     eval.n_beta = 3;
     ATV::cpu::Context rt;
@@ -75,6 +94,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsUksCpmdWithZeroAlpha) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.n_alpha = 0;
     eval.n_beta = 3;
     ATV::cpu::Context rt;
@@ -86,6 +106,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithOt) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
@@ -96,40 +117,89 @@ TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithXlBomd) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.xl_bomd = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
-TEST(GpwEvaluatorCpmd, BuildRejectsNonPositiveMuOrDt) {
+TEST(GpwEvaluatorCpmd, BuildRejectsNonPositiveMu) {
     auto frame = water_frame();
-    {
-        auto eval = water_eval();
-        eval.cpmd = true;
-        eval.cpmd_mu = 0.0;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
-    {
-        auto eval = water_eval();
-        eval.cpmd = true;
-        eval.cpmd_dt = -0.1;
-        ATV::cpu::Context rt;
-        ATV::cpu::BuildContext bc{rt, frame};
-        EXPECT_THROW(eval.build(bc), std::invalid_argument);
-    }
+    auto eval = water_eval();
+    eval.cpmd = true;
+    eval.set_timestep(kDtFs);
+    eval.cpmd_mu = 0.0;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
 TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithoutForces) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.compute_forces = false;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// ── Nuclear timestep protocol (esmm-cpmd-02) ────────────────────────────
+//
+// dt has exactly one owner (the MD integrator). The evaluator is a
+// `cpu::TimestepConsumer`: it validates what arrives, and refuses to build
+// CPMD when nothing ever arrived.
+
+TEST(GpwEvaluatorCpmd, SetTimestepRejectsNonPositive) {
+    auto eval = water_eval();
+    EXPECT_THROW(eval.set_timestep(0.0), std::invalid_argument);
+    EXPECT_THROW(eval.set_timestep(-0.1), std::invalid_argument);
+}
+
+TEST(GpwEvaluatorCpmd, SetTimestepRejectsNonFinite) {
+    auto eval = water_eval();
+    EXPECT_THROW(eval.set_timestep(std::numeric_limits<double>::quiet_NaN()),
+                 std::invalid_argument);
+    EXPECT_THROW(eval.set_timestep(std::numeric_limits<double>::infinity()),
+                 std::invalid_argument);
+}
+
+/// ac-003: a cpmd evaluator that no `TimestepProvider` ever pushed to has no
+/// nuclear clock to ride — building it outside an MD loop is meaningless, and
+/// the message must name the missing provider path so the fix is readable.
+TEST(GpwEvaluatorCpmd, BuildWithoutTimestepThrows) {
+    auto frame = water_frame();
+    auto eval = water_eval(); // valid kinds + compute_forces, NO set_timestep
+    eval.cpmd = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    try {
+        eval.build(bc);
+        FAIL() << "expected build() to refuse cpmd with no pushed timestep";
+    } catch (const std::runtime_error& e) {
+        EXPECT_TRUE(message_mentions(e, "CPMD outside MD")) << e.what();
+        EXPECT_TRUE(message_mentions(e, "TimestepProvider")) << e.what();
+    }
+}
+
+/// ac-004: every CPMD branch of `launch` returns before the stress block, so a
+/// stress request used to be dropped in silence. It must be refused instead.
+TEST(GpwEvaluatorCpmd, BuildRefusesCpmdWithStress) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.cpmd = true;
+    eval.set_timestep(kDtFs);
+    eval.compute_stress = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    try {
+        eval.build(bc);
+        FAIL() << "expected build() to refuse cpmd + compute_stress";
+    } catch (const std::runtime_error& e) {
+        EXPECT_TRUE(message_mentions(e, "variable-cell")) << e.what();
+    }
 }
 
 // ── Nosé–Hoover electronic thermostat guards ────────────────────────────
@@ -149,6 +219,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsBadThermostatParams) {
     {
         auto eval = water_eval();
         eval.cpmd = true;
+        eval.set_timestep(kDtFs);
         eval.cpmd_thermostat = true;
         eval.cpmd_ekin_target_ha = 0.0;
         ATV::cpu::Context rt;
@@ -158,6 +229,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsBadThermostatParams) {
     {
         auto eval = water_eval();
         eval.cpmd = true;
+        eval.set_timestep(kDtFs);
         eval.cpmd_thermostat = true;
         eval.cpmd_tau_e = -5.0;
         ATV::cpu::Context rt;
@@ -170,6 +242,7 @@ TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithThermostat) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.cpmd_thermostat = true;
     eval.cpmd_ekin_target_ha = 1e-5;
     eval.cpmd_tau_e = 50.0;
@@ -184,6 +257,7 @@ TEST(GpwEvaluatorCpmd, BuildAcceptsMultiKRksCpmd) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.k_mesh[0] = 1;
     eval.k_mesh[1] = 1;
     eval.k_mesh[2] = 2;
@@ -198,6 +272,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsMultiKUksCpmd) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.n_alpha = 5;
     eval.n_beta = 3;
     eval.k_mesh[2] = 2;
@@ -211,6 +286,7 @@ TEST(GpwEvaluatorCpmd, BuildRejectsMultiKCpmdThermostat) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
+    eval.set_timestep(kDtFs);
     eval.cpmd_thermostat = true;
     eval.k_mesh[2] = 2;
     eval.nonperiodic = false;

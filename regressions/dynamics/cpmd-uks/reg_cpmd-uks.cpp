@@ -63,7 +63,7 @@ int main() {
     // Heavier fictitious mass than PW textbook 400 a.u. — AO residual
     // curvature on DZVP O₂ is stiffer; 2000 keeps short NVE stable at 0.1 fs.
     eval.cpmd_mu = 2000.0;
-    eval.cpmd_dt = dt;
+    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
 
     // Drift production after the baseline CP step that engages Te.
     constexpr int n_prod = 4;

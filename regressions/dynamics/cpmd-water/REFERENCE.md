@@ -7,8 +7,11 @@ degrees of freedom on closed-shell Γ-point GPW:
 
 - Outer loop: `cpu::md::MD` + NVE `VelocityVerlet` (nuclei)
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
-  **`cpmd_mu = 400` a.u.**, **`cpmd_dt`** matching nuclear dt,
-  `compute_forces = true`
+  **`cpmd_mu = 400` a.u.**, `compute_forces = true`; the electronic dt is
+  **not** set on the evaluator — `cpu::md::MD` pushes the nuclear dt in from
+  the `VelocityVerlet` integrator through the `TimestepProvider` /
+  `TimestepConsumer` protocol at build, so nuclei and electrons share one clock
+  by construction
 - Propagator: `cpu::electronic::Cpmd` — position Verlet on occupied MO coefficients
   \(C\) with Löwdin re-orthonormalization
 

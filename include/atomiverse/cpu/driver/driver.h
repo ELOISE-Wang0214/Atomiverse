@@ -323,6 +323,24 @@ class Driver : public ATV::Driver<PhaseEnum, cpu::device_tag>,
         }
     }
 
+    /// @brief Mutable node-aware pending walk: components and nested drivers.
+    ///
+    /// The mutable twin of @ref for_each_pending_kind, for build-time wiring
+    /// that must *write* to a node rather than inspect it (pushing the
+    /// integrator timestep into a `TimestepConsumer`, whose nested-driver
+    /// half is reached by `dynamic_cast<cpu::TimestepConsumer*>`). Components
+    /// with multiple `default_bindings()` entries appear once per binding —
+    /// deduplicate by pointer when the visit has an effect.
+    template <typename CompFn, typename DrvFn>
+    void for_each_pending_kind_mut(CompFn&& cfn, DrvFn&& dfn) {
+        for (auto& pb : this->pending_) {
+            if (pb.is_driver())
+                dfn(static_cast<cpu::DriverNode*>(pb.nested_driver));
+            else
+                cfn(*pb.component);
+        }
+    }
+
     /// @brief Build-time halo wiring: collect every halo participant among
     /// the pending components (deduplicated — multi-binding components
     /// appear once) and hand the list to each exchange endpoint via

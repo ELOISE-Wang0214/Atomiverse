@@ -61,7 +61,7 @@ int main() {
     eval.cpmd = true;
     // Same μ as Löwdin foothold pin for fair envelope comparison.
     eval.cpmd_mu = 2000.0;
-    eval.cpmd_dt = dt;
+    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
 
     // Drift production after the baseline CP step that engages Te.
     constexpr int n_prod = 4;

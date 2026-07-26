@@ -9,7 +9,10 @@ degrees of freedom on **multi-k closed-shell RKS** Gaussian-and-plane-waves
 - Outer loop: `cpu::md::MD` + `VelocityVerlet` (NVE; no thermostat)
 - Force/energy: `cpu::gpw::GPWEvaluator` with `compute_forces = true`,
   **`k_mesh = {1,1,2}`**, **`k_time_reversal = false`** (two sampled k),
-  **`cpmd = true`**, **`cpmd_mu`**, **`cpmd_dt`** matching nuclear dt
+  **`cpmd = true`**, **`cpmd_mu`**; the electronic dt is **not** set on the
+  evaluator — `cpu::md::MD` pushes the nuclear dt in from the `VelocityVerlet`
+  integrator through the `TimestepProvider` / `TimestepConsumer` protocol at
+  build
 - One `cpu::electronic::CpmdCplx` per sampled k propagates occupied Bloch
   coefficients with electronic RATTLE; production steps use fixed-density
   multi-k KS eval (`iters == 0`)

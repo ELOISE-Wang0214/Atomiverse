@@ -8,8 +8,10 @@ to enforce \(C^\top S C = I\) (position) and \(\dot\sigma = 0\) (velocity):
 
 - Outer loop: `cpu::md::MD` + NVE `VelocityVerlet` (nuclei)
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
-  **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
-  `compute_forces = true`
+  **`cpmd_mu = 2000` a.u.**, `compute_forces = true`; the electronic dt is
+  **not** set on the evaluator — `cpu::md::MD` pushes the nuclear dt in from
+  the `VelocityVerlet` integrator through the `TimestepProvider` /
+  `TimestepConsumer` protocol at build
 - Propagator: `cpu::electronic::Cpmd` — velocity-Verlet + Andersen RATTLE on
   occupied MO coefficients \(C\) (supersedes Löwdin-only `cpmd-water`)
 

@@ -10,6 +10,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/integrator.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -41,7 +42,8 @@ namespace md {
 /// References: Parrinello & Rahman, *J. Appl. Phys.* **52**, 7182 (1981);
 /// Martyna, Tobias, Klein, *J. Chem. Phys.* **101**, 4177 (1994);
 /// Shinoda, Shiga, Mikami, *Phys. Rev. B* **69**, 134103 (2004).
-class ParrinelloRahmanNPT : public cpu::Integrator {
+class ParrinelloRahmanNPT : public cpu::Integrator,
+                            public cpu::TimestepProvider {
   public:
     /// @brief Construct a flexible-cell MTK NPT integrator.
     /// @param T_target Target temperature [K].
@@ -76,6 +78,11 @@ class ParrinelloRahmanNPT : public cpu::Integrator {
 
     bool requires_system_stress() const override { return true; }
     std::string name() const override { return "parrinello_rahman_npt"; }
+    const cpu::TimestepProvider* as_timestep_provider() const override {
+        return this;
+    }
+    /// @brief Published nuclear timestep [fs] (the constructor `dt`).
+    double timestep() const override { return dt_; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),

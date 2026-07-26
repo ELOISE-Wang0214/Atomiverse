@@ -6,7 +6,7 @@
 | ----- | ----- |
 | Slug | `cpmd-rattle-water` |
 | Regression | `regressions/dynamics/cpmd-rattle-water/` |
-| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu, cpmd_dt}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE) |
+| Public API | `cpu::md::MD` + `VelocityVerlet` + `cpu::gpw::GPWEvaluator{…, compute_forces=true, cpmd=true, cpmd_mu}` at `md::Phase::force`; propagator `cpu::electronic::Cpmd` (RATTLE). The nuclear dt is pushed from the integrator into the evaluator by `MD` (`TimestepProvider` → `TimestepConsumer`) — never set on the evaluator |
 | Roadmap / queue | [cp2k-method-queue.md](../../developer/cp2k-method-queue.md) row `cpmd-rattle-water` |
 | Dual gate | Correctness A1–A16 of the spec acceptance; speed **`perf_exempt`** |
 | Wave | CP2K capability loop — wave 5 |
@@ -41,10 +41,10 @@ cpu::gpw::GPWEvaluator eval({O, H}, /*cutoff_ry*/200.0, /*max_iter*/60,
                             /*nonperiodic*/true, /*compute_forces*/true);
 eval.cpmd = true;
 eval.cpmd_mu = 2000.0; // a.u. electron mass
-eval.cpmd_dt = 0.1;    // fs — must match VelocityVerlet
+// No electronic dt: MD pushes the integrator's dt into the evaluator at build.
 
 cpu::md::MD sim;
-sim.set_integrator(cpu::md::VelocityVerlet{0.1});
+sim.set_integrator(cpu::md::VelocityVerlet{0.1});  // fs — the ONE owner of dt
 sim.on(md::Phase::force).add_ref(eval);
 sim.build();
 sim.run(frame, nsteps);

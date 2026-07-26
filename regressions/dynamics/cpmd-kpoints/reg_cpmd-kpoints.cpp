@@ -62,7 +62,7 @@ int main() {
     eval.k_time_reversal = false;
     eval.cpmd = true;
     eval.cpmd_mu = 400.0;
-    eval.cpmd_dt = dt;
+    // dt is pushed in from `VelocityVerlet` by MD at build (TimestepProvider).
 
     constexpr int n_prod = 4;
     constexpr int n_chunks = 2;

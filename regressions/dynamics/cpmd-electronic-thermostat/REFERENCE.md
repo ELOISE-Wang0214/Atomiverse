@@ -9,8 +9,10 @@ degrees of freedom on closed-shell Γ-point GPW, **electronic RATTLE**, and a
 - Outer loop: `cpu::md::MD` + NVE `VelocityVerlet` (nuclei)
 - Force slot: `cpu::gpw::GPWEvaluator` with **`cpmd = true`**,
   **`cpmd_thermostat = true`**, **`cpmd_ekin_target_ha`**, **`cpmd_tau_e`**,
-  **`cpmd_mu = 2000` a.u.**, **`cpmd_dt`** matching nuclear dt,
-  `compute_forces = true`
+  **`cpmd_mu = 2000` a.u.**, `compute_forces = true`; the electronic dt is
+  **not** set on the evaluator — `cpu::md::MD` pushes the nuclear dt in from
+  the `VelocityVerlet` integrator through the `TimestepProvider` /
+  `TimestepConsumer` protocol at build
 - Propagator: `cpu::electronic::Cpmd` — VV + Andersen RATTLE + NH half-steps
 
 **Not BOMD** (production `iters==0`). **Not nuclear NVT** as the pin (nuclei

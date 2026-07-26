@@ -362,6 +362,11 @@ atv_add_cpp_test(test_cpu_dynamics_full_budget            cpu/test_dynamics_full
 atv_add_cpp_test(test_cpu_install_infra_hook              cpu/test_install_infra_hook.cpp)
 atv_add_cpp_test(test_cpu_md_set_api                      cpu/dynamics/test_md_set_api.cpp)
 atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/dynamics/test_md_plan_equivalence.cpp)
+# TimestepProvider/TimestepConsumer opt-in protocol + the MD build-time push
+# (esmm-cpmd-02-timestep-protocol): dt is single-sourced from the integrator,
+# conflicting/absent/invalid publications throw at build. Local stubs only —
+# no GPW dependency, one no-op MD step to fire the component build() pass.
+atv_add_cpp_test(test_cpu_md_timestep_protocol            cpu/dynamics/test_timestep_protocol.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 atv_add_cpp_test(test_cpu_molrs_contract                  cpu/test_molrs_contract.cpp)

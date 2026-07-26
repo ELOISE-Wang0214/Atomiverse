@@ -27,6 +27,8 @@ class ConstraintProvider;
 class NeighborConsumer;
 class NeighborProvider;
 class LongRangeParticipant;
+class TimestepProvider;
+class TimestepConsumer;
 
 struct BuildContext {
     cpu::Context& runtime;
@@ -74,6 +76,14 @@ class Component {
         return nullptr;
     }
     virtual const ConstraintProvider* as_constraint() const { return nullptr; }
+    /// @brief This component owns the MD clock (integrators).
+    /// @see component/timestep_protocol.h
+    virtual const TimestepProvider* as_timestep_provider() const {
+        return nullptr;
+    }
+    /// @brief This component must be handed the nuclear timestep [fs].
+    /// @see component/timestep_protocol.h
+    virtual TimestepConsumer* as_timestep_consumer() { return nullptr; }
     virtual HaloParticipant* halo_participant() { return nullptr; }
 
     /// @brief Plan needs a system-stress Observer (NPT / barostat).

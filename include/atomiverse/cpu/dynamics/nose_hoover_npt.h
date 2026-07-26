@@ -12,6 +12,7 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/stage.h"
 #include "atomiverse/cpu/component/integrator.h"
+#include "atomiverse/cpu/component/timestep_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -171,7 +172,7 @@ namespace md {
 /// and `Barostat`. Compatible with `KineticEnergy` -- this component
 /// rewrites `frame.kinetic` after the second NHC update so any thermo
 /// output bound at `end_of_step @ > -40` reads the post-NPT value.
-class NoseHooverNPT : public cpu::Integrator {
+class NoseHooverNPT : public cpu::Integrator, public cpu::TimestepProvider {
   public:
     /// @brief Construct MTK NPT integrator (parameters assigned immediately).
     /// @param T_target Target temperature [K] (also ramp start).
@@ -238,6 +239,11 @@ class NoseHooverNPT : public cpu::Integrator {
 
     bool requires_system_stress() const override { return true; }
     std::string name() const override { return "nose_hoover_npt"; }
+    const cpu::TimestepProvider* as_timestep_provider() const override {
+        return this;
+    }
+    /// @brief Published nuclear timestep [fs] (the constructor `dt`).
+    double timestep() const override { return dt_; }
     /// @brief Role tag — Integrator. Although this component subsumes
     /// VelocityVerlet + NoseHoover + Barostat in one Trotter splitting,
     /// only one structural role is exposed; the integrator role is the
