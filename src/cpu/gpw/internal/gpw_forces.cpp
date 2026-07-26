@@ -25,6 +25,7 @@
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/vdw_df.h"
 #include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
+#include "atomiverse/cpu/scf/dftd4.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/local_pp.h"
@@ -541,14 +542,15 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!analytic_loc)
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
-    // Dispersion forces (additive, geometry-only). D4/MBD forces out of scope.
+    // Dispersion forces (additive, geometry-only). MBD forces remain out of
+    // scope (energy/stress only); D4 is product via scf::dftd4.
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
                        + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0)
                        + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
             "GPW forces: d3, d3bj, d4, ts, xdm, and mbd are mutually exclusive");
-    if (cfg.d3 || cfg.d3bj || cfg.ts || cfg.xdm) {
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
         for (int i = 0; i < na; ++i) {
@@ -575,6 +577,12 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += ts.forces[static_cast<std::size_t>(i)][k];
+        } else if (cfg.d4) {
+            const cpu::scf::D4Result d4 =
+                cpu::scf::dftd4(Z, pos, cfg.cell, periodic);
+            for (int i = 0; i < na; ++i)
+                for (int k = 0; k < 3; ++k)
+                    forces[i][k] += d4.forces[static_cast<std::size_t>(i)][k];
         } else {
             const D3Result d3 =
                 cfg.d3 ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
@@ -586,7 +594,7 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
         }
     }
-    // mbd: energy-only product path (no analytic forces; same policy as D4).
+    // mbd: energy-only product path (no analytic forces yet).
 
     return forces;
 }
@@ -1137,6 +1145,69 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
 
     // Local-PP HF (grid route).
     add_local_pp_hf_forces(grid, atoms, /*periodic=*/true, rho, forces);
+
+    // Geometry-only dispersion (same as Γ assemble_gpw_forces).
+    {
+        const bool periodic = true;
+        const int na = static_cast<int>(atoms.size());
+        const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
+                           + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
+                           + (cfg.xdm ? 1 : 0) + (cfg.mbd ? 1 : 0);
+        if (n_disp > 1)
+            throw std::runtime_error(
+                "GPW k-forces: d3, d3bj, d4, ts, xdm, and mbd are mutually "
+                "exclusive");
+        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
+            std::vector<int> Z(static_cast<std::size_t>(na));
+            std::vector<std::array<double, 3>> pos(
+                static_cast<std::size_t>(na));
+            for (int i = 0; i < na; ++i) {
+                Z[static_cast<std::size_t>(i)] =
+                    atoms[static_cast<std::size_t>(i)].z;
+                pos[static_cast<std::size_t>(i)] = {
+                    atoms[static_cast<std::size_t>(i)].pos[0],
+                    atoms[static_cast<std::size_t>(i)].pos[1],
+                    atoms[static_cast<std::size_t>(i)].pos[2]};
+            }
+            constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+            constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
+            if (cfg.xdm) {
+                constexpr double kRcutXdm = 50.0 * kAng2Bohr;
+                const XdmResult xdm =
+                    xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
+                for (int i = 0; i < na; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        forces[i][k] +=
+                            xdm.forces[static_cast<std::size_t>(i)][k];
+            } else if (cfg.ts) {
+                constexpr double kRcutTs = 50.0 * kAng2Bohr;
+                const TsResult ts =
+                    ts_pbe(Z, pos, cfg.cell, periodic, kRcutTs);
+                for (int i = 0; i < na; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        forces[i][k] +=
+                            ts.forces[static_cast<std::size_t>(i)][k];
+            } else if (cfg.d4) {
+                const cpu::scf::D4Result d4 =
+                    cpu::scf::dftd4(Z, pos, cfg.cell, periodic);
+                for (int i = 0; i < na; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        forces[i][k] +=
+                            d4.forces[static_cast<std::size_t>(i)][k];
+            } else {
+                const D3Result d3 =
+                    cfg.d3
+                        ? dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{})
+                        : dftd3_pbe_bj(Z, pos, cfg.cell, periodic, D3Params{},
+                                       kRcutBjBohr, 1.0, 0.7875, 0.4289, 4.4407,
+                                       /*cp2k_cn=*/true);
+                for (int i = 0; i < na; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        forces[i][k] +=
+                            d3.forces[static_cast<std::size_t>(i)][k];
+            }
+        }
+    }
 
     return forces;
 }

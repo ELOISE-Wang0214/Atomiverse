@@ -1,5 +1,5 @@
 /// @file cpu/scf/dftd4.cpp
-/// @brief DFT-D4 two-body energy (molecular + orthorhombic periodic).
+/// @brief DFT-D4 two-body energy + forces (molecular + orthorhombic periodic).
 ///
 /// Algorithm matches simple-dftd4 / multicharge (Caldeweyher et al.): EN-weighted
 /// erf CNs, EEQ2019 charges (Ewald A-matrix when periodic), BJ-damped pair sum
@@ -722,6 +722,48 @@ double dftd4_energy(const std::vector<int>& Z,
     atomic_c6(Z, gw, ga, gc, c6);
 
     return disp2(Z, pos_bohr, cell, periodic, c6, s6, s8, a1, a2, disp2_cut);
+}
+
+D4Result dftd4(const std::vector<int>& Z,
+               const std::vector<std::array<double, 3>>& pos_bohr,
+               const double cell_bohr[3], bool periodic, double s6, double s8,
+               double a1, double a2, double ga, double gc, double wf,
+               double charge, double cn_cut, double disp2_cut, double grad_h) {
+    const int n = static_cast<int>(Z.size());
+    D4Result res;
+    res.forces.assign(static_cast<std::size_t>(n), {0.0, 0.0, 0.0});
+    if (n <= 0)
+        return res;
+    if (!(grad_h > 0.0) || !std::isfinite(grad_h))
+        throw std::runtime_error("D4: grad_h must be positive and finite");
+
+    res.energy = dftd4_energy(Z, pos_bohr, cell_bohr, periodic, s6, s8, a1, a2,
+                             ga, gc, wf, charge, cn_cut, disp2_cut);
+
+    // Exact ∇E of the geometry-only energy functional via central differences
+    // of dftd4_energy (CN + EEQ + BJ pair all move with nuclear positions).
+    std::vector<std::array<double, 3>> pos = pos_bohr;
+    for (int i = 0; i < n; ++i) {
+        for (int k = 0; k < 3; ++k) {
+            const double x0 = pos[static_cast<std::size_t>(i)]
+                                  [static_cast<std::size_t>(k)];
+            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
+                x0 + grad_h;
+            const double ep =
+                dftd4_energy(Z, pos, cell_bohr, periodic, s6, s8, a1, a2, ga,
+                             gc, wf, charge, cn_cut, disp2_cut);
+            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] =
+                x0 - grad_h;
+            const double em =
+                dftd4_energy(Z, pos, cell_bohr, periodic, s6, s8, a1, a2, ga,
+                             gc, wf, charge, cn_cut, disp2_cut);
+            pos[static_cast<std::size_t>(i)][static_cast<std::size_t>(k)] = x0;
+            // F = −dE/dR
+            res.forces[static_cast<std::size_t>(i)]
+                      [static_cast<std::size_t>(k)] = -(ep - em) / (2.0 * grad_h);
+        }
+    }
+    return res;
 }
 
 double D4::energy(const Frame& frame) const {
