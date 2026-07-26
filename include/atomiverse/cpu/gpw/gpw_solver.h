@@ -374,27 +374,32 @@ class GpwDft {
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
 
-    /// @brief Spectral G0W0 quasiparticle energies on the converged
-    ///        closed-shell KS orbitals of the last `run()` — Γ (real) or
-    ///        multi-k (complex Bloch, **finite-\(q\) inter-\(k\)** \(W\)).
+    /// @brief Spectral G0W0 quasiparticle energies on the converged KS
+    ///        orbitals of the last `run()` — Γ/multi-k RKS, or **Γ UKS
+    ///        (UGW)**.
     ///
-    /// dRPA screening reuses the same dielectric path as multi-k
+    /// **RKS:** dRPA screening reuses the same dielectric path as multi-k
     /// `direct_rpa` / `mp2` (product RI-GPW when `mp2_ri` and periodic;
     /// multi-k requires `mp2_ri = true`). Correlation self-energy is the
-    /// spectral sum over finite-\(q\) RPA poles (molecular `RHF::g0w0`
-    /// form with intermediate states at \(k-q\)). Exact-exchange
-    /// diagonals use truncated (MT) Coulomb (G=0-safe foothold). Local
-    /// \(v_{\mathrm{xc}}\) is the same functional as the SCF. Virtual
-    /// space for screening capped by `mp2_n_virt` (0 = all kept
-    /// virtuals); QP levels are reported for every MO of the converged
-    /// spectrum (multi-k: at the \(k\) of the min direct QP gap; see
-    /// `G0W0Result::n_kpts` / `gap_ev`).
+    /// spectral sum over finite-\(q\) RPA poles. Exact-exchange diagonals
+    /// use truncated (MT) Coulomb. Local \(v_{\mathrm{xc}}\) matches the SCF.
+    ///
+    /// **UKS (Γ only):** spin-conserving dRPA over α→α ⊕ β→β (Coulomb
+    /// kernel, spins explicit), same-spin spectral \(\Sigma_c^\sigma\),
+    /// per-spin MT \(\Sigma_x\), spin-resolved \(v_{\mathrm{xc}}^\sigma\).
+    /// Primary report is the **α-channel** spectrum / gap (dual-gates RKS
+    /// G0W0 when \(n_\alpha=n_\beta\) and orbitals match). Multi-k UGW is
+    /// a follow-on.
+    ///
+    /// Virtual space for screening capped by `mp2_n_virt` (0 = all kept
+    /// virtuals); QP levels cover every MO of the reported spectrum.
     /// @param atoms Same geometry [Bohr] the last `run()` converged on.
     /// @return The owned G0W0 result (valid until the next `g0w0()`).
-    /// @throws std::logic_error before `build()` or a converged `run()`.
-    /// @throws std::invalid_argument for UKS, for `use_ot`, when multi-k
-    ///         `C_k` is missing, when multi-k and `!mp2_ri`, when no
-    ///         virtuals remain, or for a vanishing HOMO–LUMO gap
+    /// @throws std::logic_error before `build()` or a converged `run()`,
+    ///         or when UKS β orbitals are missing.
+    /// @throws std::invalid_argument for multi-k UKS, for `use_ot`, when
+    ///         multi-k `C_k` is missing, when multi-k and `!mp2_ri`, when
+    ///         no virtuals remain, or for a vanishing HOMO–LUMO gap
     ///         (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const G0W0Result& g0w0(const std::vector<GpwAtom>& atoms);

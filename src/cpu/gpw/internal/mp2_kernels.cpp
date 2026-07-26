@@ -823,6 +823,171 @@ void direct_rpa_rhf_energy(const std::vector<double>& v_ovov,
     omega = std::move(full.omega);
 }
 
+void direct_rpa_uhf(const std::vector<double>& v_aa,
+                    const std::vector<double>& v_bb,
+                    const std::vector<double>& v_ab,
+                    const std::vector<double>& eps_occ_a,
+                    const std::vector<double>& eps_virt_a,
+                    const std::vector<double>& eps_occ_b,
+                    const std::vector<double>& eps_virt_b,
+                    DirectRpaAmplitudes& out) {
+    using linalg::RealMatrix;
+    using linalg::sym_power;
+
+    const int noa = static_cast<int>(eps_occ_a.size());
+    const int nva = static_cast<int>(eps_virt_a.size());
+    const int nob = static_cast<int>(eps_occ_b.size());
+    const int nvb = static_cast<int>(eps_virt_b.size());
+    const int nov_a = noa * nva;
+    const int nov_b = nob * nvb;
+    const int nov = nov_a + nov_b;
+    if (nov < 1)
+        throw std::invalid_argument(
+            "gpw direct_rpa_uhf: need at least one non-empty spin channel "
+            "(n_ov_α + n_ov_β >= 1)");
+
+    const std::size_t nov_a_sz = static_cast<std::size_t>(nov_a);
+    const std::size_t nov_b_sz = static_cast<std::size_t>(nov_b);
+    const std::size_t nov_sz = static_cast<std::size_t>(nov);
+
+    if (nov_a > 0
+        && v_aa.size() != nov_a_sz * nov_a_sz)
+        throw std::invalid_argument(
+            "gpw direct_rpa_uhf: α same-spin tensor size mismatch");
+    if (nov_b > 0
+        && v_bb.size() != nov_b_sz * nov_b_sz)
+        throw std::invalid_argument(
+            "gpw direct_rpa_uhf: β same-spin tensor size mismatch");
+    if (nov_a > 0 && nov_b > 0
+        && v_ab.size() != nov_a_sz * nov_b_sz)
+        throw std::invalid_argument(
+            "gpw direct_rpa_uhf: cross-spin tensor size mismatch");
+    if ((nov_a == 0 || nov_b == 0) && !v_ab.empty())
+        throw std::invalid_argument(
+            "gpw direct_rpa_uhf: cross-spin tensor present with empty channel");
+
+    // Spin-conserving dRPA: A = Δε δ + V, B = V (spins explicit; no ×2).
+    RealMatrix A =
+        xt::zeros<double>({nov, nov});
+    RealMatrix B =
+        xt::zeros<double>({nov, nov});
+    out.tr_A = 0.0;
+
+    auto set_V = [&](int p, int q, double v) {
+        A(p, q) += v;
+        B(p, q) = v;
+    };
+
+    // αα block
+    for (int i = 0; i < noa; ++i)
+        for (int a = 0; a < nva; ++a) {
+            const int p = i * nva + a;
+            const double de = eps_virt_a[static_cast<std::size_t>(a)]
+                              - eps_occ_a[static_cast<std::size_t>(i)];
+            A(p, p) += de;
+            for (int j = 0; j < noa; ++j)
+                for (int b = 0; b < nva; ++b) {
+                    const int q = j * nva + b;
+                    const double v =
+                        v_aa[static_cast<std::size_t>(p) * nov_a_sz
+                             + static_cast<std::size_t>(q)];
+                    set_V(p, q, v);
+                }
+            out.tr_A += A(p, p);
+        }
+    // ββ block
+    for (int i = 0; i < nob; ++i)
+        for (int a = 0; a < nvb; ++a) {
+            const int p = nov_a + i * nvb + a;
+            const double de = eps_virt_b[static_cast<std::size_t>(a)]
+                              - eps_occ_b[static_cast<std::size_t>(i)];
+            A(p, p) += de;
+            for (int j = 0; j < nob; ++j)
+                for (int b = 0; b < nvb; ++b) {
+                    const int q = nov_a + j * nvb + b;
+                    const int p0 = i * nvb + a;
+                    const int q0 = j * nvb + b;
+                    const double v =
+                        v_bb[static_cast<std::size_t>(p0) * nov_b_sz
+                             + static_cast<std::size_t>(q0)];
+                    set_V(p, q, v);
+                }
+            out.tr_A += A(p, p);
+        }
+    // αβ / βα cross blocks
+    if (nov_a > 0 && nov_b > 0) {
+        for (int p0 = 0; p0 < nov_a; ++p0)
+            for (int q0 = 0; q0 < nov_b; ++q0) {
+                const double v =
+                    v_ab[static_cast<std::size_t>(p0) * nov_b_sz
+                         + static_cast<std::size_t>(q0)];
+                set_V(p0, nov_a + q0, v);
+                set_V(nov_a + q0, p0, v);
+            }
+    }
+
+    constexpr double kAmBFloor = 1e-10;
+    constexpr double kOmega2Tol = 1e-10;
+    const RealMatrix Mp = A + B;
+    const RealMatrix Mm = A - B;
+    {
+        auto [s, U] = xt::linalg::eigh(Mm);
+        (void)U;
+        if (s(0) <= kAmBFloor)
+            throw std::runtime_error(
+                "gpw direct_rpa_uhf: (A - B) is not positive definite "
+                "(lowest eigenvalue = "
+                + std::to_string(s(0))
+                + " Ha) — dRPA reduction undefined (no fallback)");
+    }
+    const RealMatrix T =
+        sym_power(Mm, 0.5, kAmBFloor, "gpw direct_rpa_uhf");
+    const RealMatrix Ti =
+        sym_power(Mm, -0.5, kAmBFloor, "gpw direct_rpa_uhf");
+    RealMatrix M = xt::linalg::dot(T, RealMatrix(xt::linalg::dot(Mp, T)));
+    for (std::size_t r = 0; r < nov_sz; ++r)
+        for (std::size_t c = r + 1; c < nov_sz; ++c) {
+            const double v = 0.5 * (M(r, c) + M(c, r));
+            M(r, c) = v;
+            M(c, r) = v;
+        }
+    auto [w2, Z] = xt::linalg::eigh(M);
+
+    out.omega.assign(nov_sz, 0.0);
+    out.X.assign(nov_sz * nov_sz, 0.0);
+    out.Y.assign(nov_sz * nov_sz, 0.0);
+    double sum_om = 0.0;
+    for (std::size_t s = 0; s < nov_sz; ++s) {
+        if (w2(s) < -kOmega2Tol)
+            throw std::runtime_error(
+                "gpw direct_rpa_uhf: dRPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
+                + ") is negative — imaginary excitation (no fallback)");
+        if (w2(s) <= kOmega2Tol)
+            throw std::runtime_error(
+                "gpw direct_rpa_uhf: dRPA omega^2 = " + std::to_string(w2(s))
+                + " Ha^2 (root " + std::to_string(s)
+                + ") is numerically zero (no fallback)");
+        const double w = std::sqrt(w2(s));
+        out.omega[s] = w;
+        sum_om += w;
+        for (std::size_t r = 0; r < nov_sz; ++r) {
+            double xpy = 0.0, xmy = 0.0;
+            for (std::size_t c = 0; c < nov_sz; ++c) {
+                xpy += T(static_cast<int>(r), static_cast<int>(c))
+                       * Z(static_cast<int>(c), static_cast<int>(s));
+                xmy += Ti(static_cast<int>(r), static_cast<int>(c))
+                       * Z(static_cast<int>(c), static_cast<int>(s));
+            }
+            xpy /= std::sqrt(w);
+            xmy *= std::sqrt(w);
+            out.X[s * nov_sz + r] = 0.5 * (xpy + xmy);
+            out.Y[s * nov_sz + r] = 0.5 * (xpy - xmy);
+        }
+    }
+    out.e_corr = 0.5 * (sum_om - out.tr_A);
+}
+
 std::vector<double> mo_pair_potentials_ov(const UniformGrid& grid,
                                           const std::vector<double>& psi_occ,
                                           int n_occ,

@@ -272,6 +272,42 @@ void direct_rpa_rhf(const std::vector<double>& v_ovov,
                     const std::vector<double>& eps_virt,
                     DirectRpaAmplitudes& out);
 
+/// @brief Spin-conserving unrestricted dRPA (α→α ⊕ β→β) with X/Y amplitudes
+///        for spectral UGW screening.
+///
+/// Composite OV index: α block first
+/// \(ia_\alpha = i\cdot n_{\mathrm{virt}}^\alpha+a\), then β
+/// \(ia_\beta = n_{\mathrm{ov}}^\alpha + i\cdot n_{\mathrm{virt}}^\beta+a\).
+/// Coulomb-only Casida:
+/// \(A=\Delta\varepsilon\,\delta+V\), \(B=V\) with
+/// \(V_{ia\sigma,jb\tau}=(ia\sigma|jb\tau)\) — **no** closed-shell factor 2
+/// (spins explicit). Same-spin blocks from `mo_eri_ovov` / `mo_eri_ovov_ri`;
+/// cross-spin from `mo_eri_ovov_ab` / `mo_eri_ovov_ab_ri`. Empty spin
+/// channels (n_occ or n_virt = 0) contribute no OV rows; at least one
+/// non-empty channel is required. When \(C^\alpha=C^\beta\) and
+/// \(n_\alpha=n_\beta\), Furche \(E_c\) dual-gates `direct_rpa_rhf` on the
+/// spatial tensor (charge modes ≡ closed-shell singlet dRPA; spin modes
+/// cancel in the plasmon formula).
+///
+/// @param v_aa Same-spin α (ia|jb) [Ha] (may be empty).
+/// @param v_bb Same-spin β (ia|jb) [Ha] (may be empty).
+/// @param v_ab Cross-spin (iα aα|jβ bβ) [Ha], layout as `mo_eri_ovov_ab`
+///             (may be empty if either channel is empty).
+/// @param eps_occ_a / eps_virt_a α orbital energies [Ha].
+/// @param eps_occ_b / eps_virt_b β orbital energies [Ha].
+/// @param out  Amplitudes; `X`/`Y` row-major `[s, iaσ]` over the composite
+///             OV space (α then β).
+/// @throws std::invalid_argument on size mismatch or empty both channels.
+/// @throws std::runtime_error when (A−B) is not PD or any \(\Omega^2\le 0\).
+void direct_rpa_uhf(const std::vector<double>& v_aa,
+                    const std::vector<double>& v_bb,
+                    const std::vector<double>& v_ab,
+                    const std::vector<double>& eps_occ_a,
+                    const std::vector<double>& eps_virt_a,
+                    const std::vector<double>& eps_occ_b,
+                    const std::vector<double>& eps_virt_b,
+                    DirectRpaAmplitudes& out);
+
 /// @brief Real-space Coulomb potentials \(V_{ia}(r)\) of every OV pair density
 ///        \(\rho_{ia}=\psi_i\psi_a\) (periodic FFT Poisson, G=0 dropped).
 ///
