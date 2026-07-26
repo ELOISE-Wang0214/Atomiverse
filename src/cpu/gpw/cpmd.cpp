@@ -1,5 +1,6 @@
 /// @file src/cpu/gpw/cpmd.cpp
-/// @brief Cpmd implementation — Car–Parrinello electronic VV + RATTLE.
+/// @brief Cpmd implementation — Car–Parrinello electronic VV + RATTLE +
+///        optional Nosé–Hoover electronic thermostat.
 
 #include "atomiverse/cpu/gpw/cpmd.h"
 
@@ -130,6 +131,49 @@ const linalg::RealMatrix& Cpmd::Cdot() const {
     return Cdot_;
 }
 
+void Cpmd::check_thermostat_params() const {
+    if (!thermostat)
+        return;
+    if (!(ekin_target_ha > 0.0) || !std::isfinite(ekin_target_ha))
+        throw std::invalid_argument(
+            "Cpmd: thermostat requires ekin_target_ha finite and > 0 (got "
+            + std::to_string(ekin_target_ha) + " Ha)");
+    if (!(tau_e_fs > 0.0) || !std::isfinite(tau_e_fs))
+        throw std::invalid_argument(
+            "Cpmd: thermostat requires tau_e_fs finite and > 0 (got "
+            + std::to_string(tau_e_fs) + " fs)");
+}
+
+void Cpmd::update_energies() {
+    ke_ha_ = 0.5 * mu_ * frobenius_sq(Cdot_);
+    if (!std::isfinite(ke_ha_) || ke_ha_ < 0.0)
+        ke_ha_ = 0.0;
+    if (!thermostat) {
+        e_therm_ha_ = 0.0;
+        return;
+    }
+    // Q = 2 K0 τ² with τ in a.u. time.
+    const double tau_au = tau_e_fs / kAuTimeInFs;
+    const double Q = 2.0 * ekin_target_ha * tau_au * tau_au;
+    e_therm_ha_ = 0.5 * Q * xi_ * xi_ + 2.0 * ekin_target_ha * eta_;
+    if (!std::isfinite(e_therm_ha_))
+        e_therm_ha_ = 0.0;
+}
+
+void Cpmd::nh_half_step(double dt_half_au) {
+    // Q = 2 K0 τ² [a.u.].
+    const double tau_au = tau_e_fs / kAuTimeInFs;
+    const double Q = 2.0 * ekin_target_ha * tau_au * tau_au;
+    const double K = 0.5 * mu_ * frobenius_sq(Cdot_);
+    xi_ += dt_half_au * (2.0 * K - 2.0 * ekin_target_ha) / Q;
+    const double s = std::exp(-xi_ * dt_half_au);
+    if (!std::isfinite(s) || s <= 0.0)
+        throw std::runtime_error(
+            "Cpmd::nh_half_step: non-finite NH scale factor");
+    Cdot_ = Cdot_ * s;
+    eta_ += xi_ * dt_half_au;
+}
+
 void Cpmd::seed(const linalg::RealMatrix& C_occ) {
     if (C_occ.size() == 0 || static_cast<int>(C_occ.shape(0)) < 1
         || static_cast<int>(C_occ.shape(1)) < 1)
@@ -138,9 +182,31 @@ void Cpmd::seed(const linalg::RealMatrix& C_occ) {
     C_ = C_occ;
     Cdot_ = xt::zeros<double>(C_occ.shape());
     ke_ha_ = 0.0;
+    e_therm_ha_ = 0.0;
+    xi_ = 0.0;
+    eta_ = 0.0;
     last_pos_iters_ = 0;
     last_sigma_inf_ = 0.0;
     ready_ = true;
+}
+
+void Cpmd::seed(const linalg::RealMatrix& C_occ,
+                const linalg::RealMatrix& Cdot_occ) {
+    if (C_occ.size() == 0 || static_cast<int>(C_occ.shape(0)) < 1
+        || static_cast<int>(C_occ.shape(1)) < 1)
+        throw std::invalid_argument(
+            "Cpmd::seed: occupied coefficient matrix is empty");
+    if (Cdot_occ.shape() != C_occ.shape())
+        throw std::invalid_argument(
+            "Cpmd::seed: Cdot shape must match C shape");
+    C_ = C_occ;
+    Cdot_ = Cdot_occ;
+    xi_ = 0.0;
+    eta_ = 0.0;
+    last_pos_iters_ = 0;
+    last_sigma_inf_ = 0.0;
+    ready_ = true;
+    update_energies();
 }
 
 void Cpmd::align_to_overlap(const linalg::RealMatrix& S) {
@@ -160,6 +226,7 @@ void Cpmd::align_to_overlap(const linalg::RealMatrix& S) {
     const linalg::RealMatrix G = dot(xt::transpose(C_), dot(S, C_));
     last_sigma_inf_ = max_abs(G - eye(no));
     last_pos_iters_ = 0;
+    update_energies();
 }
 
 void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
@@ -175,6 +242,7 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
         throw std::invalid_argument(
             "Cpmd::advance: occ must be finite and > 0 (got "
             + std::to_string(occ) + ")");
+    check_thermostat_params();
 
     const int nb = static_cast<int>(C_.shape(0));
     if (static_cast<int>(H.shape(0)) != nb
@@ -188,10 +256,16 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
             "Cpmd::advance: S shape does not match C rows (nb="
             + std::to_string(nb) + ")");
 
+    const double dt_au = dt_fs / kAuTimeInFs;
+    const double dt_half = 0.5 * dt_au;
+
+    // Nosé–Hoover half-step (optional) before mechanical advance.
+    if (thermostat)
+        nh_half_step(dt_half);
+
     // Projected electronic force (S-tangent):
     // F = −(I − S C Cᵀ)(2·occ·H C). RKS occ=2 → factor 4; UKS occ=1 → factor 2.
     const linalg::RealMatrix F = -internal::ot_gradient(H, S, C_, occ);
-    const double dt_au = dt_fs / kAuTimeInFs;
     const double dt_over_2mu = dt_au / (2.0 * mu_);
 
     // 1) Velocity half-step (unconstrained).
@@ -215,15 +289,24 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
     Cdot_ = rattle_velocity(Cdot_unc, pos.C, S);
     C_ = std::move(pos.C);
 
-    ke_ha_ = 0.5 * mu_ * frobenius_sq(Cdot_);
-    if (!std::isfinite(ke_ha_) || ke_ha_ < 0.0)
-        ke_ha_ = 0.0;
+    // Nosé–Hoover half-step after mechanical advance.
+    if (thermostat)
+        nh_half_step(dt_half);
+
+    // Velocity RATTLE after NH scaling so the constraint manifold is restored.
+    if (thermostat)
+        Cdot_ = rattle_velocity(Cdot_, C_, S);
+
+    update_energies();
 }
 
 void Cpmd::reset() {
     C_ = linalg::RealMatrix{};
     Cdot_ = linalg::RealMatrix{};
     ke_ha_ = 0.0;
+    e_therm_ha_ = 0.0;
+    xi_ = 0.0;
+    eta_ = 0.0;
     last_pos_iters_ = 0;
     last_sigma_inf_ = 0.0;
     ready_ = false;

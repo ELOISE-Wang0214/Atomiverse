@@ -1,5 +1,6 @@
 /// @file cpu/gpw/cpmd.h
-/// @brief Cpmd — Car–Parrinello fictitious electronic DOF propagator (RATTLE).
+/// @brief Cpmd — Car–Parrinello fictitious electronic DOF propagator (RATTLE +
+///        optional Nosé–Hoover electronic thermostat).
 ///
 /// Propagates occupied MO coefficients \(C\) (\(n_b \times n_{\mathrm{occ}}\))
 /// with velocity-Verlet and a fictitious electron mass \(\mu\)
@@ -19,6 +20,14 @@
 /// then a velocity stage that kills \(\mathrm{sym}(C^\top S \dot C)\). This
 /// supersedes the Löwdin-only foothold of `cpmd-water`.
 ///
+/// Optional **Nosé–Hoover electronic thermostat** (Blöchl & Parrinello;
+/// Sprik; Marx & Hutter) regulates the fictitious kinetic energy
+/// \(T_e = \tfrac12\mu\lVert\dot C\rVert_F^2\) toward a target \(K_0\) with
+/// coupling time \(\tau_e\). Symmetric NH half-steps wrap the mechanical
+/// VV+RATTLE. Extended energy contribution
+/// \(E_{\mathrm{therm}} = \tfrac12 Q\xi^2 + 2 K_0\eta\) with
+/// \(Q = 2 K_0\tau_e^2\).
+///
 /// Unit-agnostic dense linear algebra on AO/MO matrices; consumed by
 /// `cpu::gpw::GPWEvaluator` (`cpmd = true`) on closed-shell RKS or collinear
 /// Γ-UKS (one `Cpmd` per spin channel). \(\mu\) is in atomic mass units
@@ -32,13 +41,15 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief Car–Parrinello occupied-orbital propagator with electronic RATTLE.
+/// @brief Car–Parrinello occupied-orbital propagator with electronic RATTLE
+///        and optional Nosé–Hoover electronic thermostat.
 ///
-/// Lifecycle: construct with \(\mu > 0\), `seed` with S-orthonormal occupied
-/// coefficients (typically from a cold SCF), then once per MD force step
-/// call `advance(H, S, dt_fs)` after the KS matrix at the current density
-/// has been built. Electronic kinetic energy uses the **velocity-RATTLE**
-/// \(\dot C\).
+/// Lifecycle: construct with \(\mu > 0\), optionally enable the thermostat
+/// via public members, `seed` with S-orthonormal occupied coefficients
+/// (typically from a cold SCF), then once per MD force step call
+/// `advance(H, S, dt_fs)` after the KS matrix at the current density has
+/// been built. Electronic kinetic energy uses the **velocity-RATTLE**
+/// \(\dot C\) (after NH rescaling when thermostatted).
 class Cpmd {
   public:
     /// @brief Construct with the fictitious electronic mass.
@@ -53,6 +64,15 @@ class Cpmd {
     /// @brief Whether occupied coefficients have been seeded.
     bool ready() const { return ready_; }
 
+    /// @brief Enable Nosé–Hoover control of fictitious \(T_e\) (default false).
+    bool thermostat = false;
+    /// @brief Target electronic kinetic energy \(K_0\) [Hartree]. Must be
+    ///        finite and > 0 when `thermostat` is true.
+    double ekin_target_ha = 1e-5;
+    /// @brief Electronic thermostat coupling time \(\tau_e\) [fs]. Must be
+    ///        finite and > 0 when `thermostat` is true.
+    double tau_e_fs = 50.0;
+
     /// @brief Current occupied MO coefficients \(C\) (\(n_b \times n_{\mathrm{occ}}\)).
     /// @throws std::logic_error before `seed`.
     const linalg::RealMatrix& C() const;
@@ -65,6 +85,16 @@ class Cpmd {
     ///        [Hartree] from the last advance (0 after seed, before any step).
     double kinetic_ha() const { return ke_ha_; }
 
+    /// @brief Nosé–Hoover thermostat energy \(E_{\mathrm{therm}}\) [Hartree]
+    ///        (\(0\) when thermostat is off).
+    double thermostat_energy_ha() const { return e_therm_ha_; }
+
+    /// @brief NH friction variable \(\xi\) [a.u. time\(^{-1}\)].
+    double xi() const { return xi_; }
+
+    /// @brief NH thermostat coordinate \(\eta\) (dimensionless log-scale).
+    double eta() const { return eta_; }
+
     /// @brief Position-RATTLE iterations used by the last `advance` (0 at rest).
     int last_position_iters() const { return last_pos_iters_; }
 
@@ -73,11 +103,17 @@ class Cpmd {
     double last_constraint_residual() const { return last_sigma_inf_; }
 
     /// @brief Seed the propagator at rest: \(C = C_{\mathrm{occ}}\), \(\dot C = 0\),
-    ///        \(T_e = 0\).
+    ///        \(T_e = 0\). Resets NH state.
     /// @param C_occ Occupied coefficients [n_b × n_occ], S-orthonormal at the
     ///        seed geometry (\(C^\top S C = I\)).
     /// @throws std::invalid_argument when `C_occ` is empty.
     void seed(const linalg::RealMatrix& C_occ);
+
+    /// @brief Seed with a prescribed electronic velocity (restart / tests).
+    /// @param C_occ Occupied coefficients [n_b × n_occ].
+    /// @param Cdot_occ Electronic velocity, same shape as `C_occ`.
+    /// @throws std::invalid_argument on empty / shape mismatch.
+    void seed(const linalg::RealMatrix& C_occ, const linalg::RealMatrix& Cdot_occ);
 
     /// @brief Re-orthonormalize \(C\) under a new metric \(S\) (nuclei moved)
     ///        and project \(\dot C\) onto the velocity constraint manifold.
@@ -85,7 +121,8 @@ class Cpmd {
     /// @throws std::logic_error before `seed`.
     void align_to_overlap(const linalg::RealMatrix& S);
 
-    /// @brief One electronic velocity-Verlet step with RATTLE (pos + vel).
+    /// @brief One electronic velocity-Verlet step with RATTLE (pos + vel),
+    ///        optionally wrapped by Nosé–Hoover half-steps.
     ///
     /// Uses the S-tangent force
     /// \(F = -(I-SC C^\top)(2\cdot\mathrm{occ}\,H C)\) [Hartree] and
@@ -97,7 +134,8 @@ class Cpmd {
     /// @param dt_fs Timestep [fs] — must match the nuclear integrator dt.
     /// @param occ Orbital occupation (2 closed-shell, 1 per UKS spin).
     /// @throws std::logic_error before `seed`.
-    /// @throws std::invalid_argument on non-positive dt/occ or shape mismatch.
+    /// @throws std::invalid_argument on non-positive dt/occ/thermostat params
+    ///         or shape mismatch.
     /// @throws std::runtime_error if position RATTLE fails to converge.
     void advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
                  double dt_fs, double occ = 2.0);
@@ -106,10 +144,20 @@ class Cpmd {
     void reset();
 
   private:
+    /// Validate thermostat members when engaged; throw if invalid.
+    void check_thermostat_params() const;
+    /// One NH half-step of length `dt_half_au` [a.u. time] using current Te.
+    void nh_half_step(double dt_half_au);
+    /// Recompute \(T_e\) and \(E_{\mathrm{therm}}\) from state.
+    void update_energies();
+
     double mu_ = 400.0;          ///< fictitious mass [a.u.].
     linalg::RealMatrix C_;       ///< occupied coefficients
     linalg::RealMatrix Cdot_;    ///< electronic velocity
     double ke_ha_ = 0.0;         ///< last T_e [Hartree]
+    double e_therm_ha_ = 0.0;    ///< last E_therm [Hartree]
+    double xi_ = 0.0;            ///< NH friction
+    double eta_ = 0.0;           ///< NH coordinate
     int last_pos_iters_ = 0;     ///< last position-RATTLE iteration count
     double last_sigma_inf_ = 0.0;///< last ‖σ‖_∞
     bool ready_ = false;
