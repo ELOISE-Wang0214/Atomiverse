@@ -780,24 +780,69 @@ rebase `wf/*` onto `dev` (behind 17) then dual-gate / finish acceptance.
 - [ ] `gpw-d3-stress` | Analytic fixed-P cell stress with DFT-D3 zero damping | gpw | twin: CP2K D3 zero + NUMERICAL stress / FD strain | GapCensus wave 14
 - [ ] `gpw-d3-atm-forces` | Analytic ionic forces with DFT-D3 three-body ATM (C9) | gpw | twin: CP2K D3 ATM force / FD on water dimer | GapCensus wave 14
 - [ ] `gpw-d4-atm-forces` | Analytic ionic forces with DFT-D4 three-body ATM (\(s_9\)) | gpw | twin: dftd4 ATM gradient / extend `gpw-d4-atm` | GapCensus wave 14
+- [ ] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | GapCensus wave 13; staffed wave 14, **not started** (worktree created, no implementation)
+- [ ] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` x `dfpt-spin-si` | GapCensus wave 13; staffed wave 14, **not started**
+- [ ] `gpw-bomd-kpoints` | Multi-k Born-Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | GapCensus wave 13; staffed wave 14, **not started**
+- [ ] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | GapCensus wave 14; staffed wave 14, **not started**
 
 ## in_progress
 
-<!-- Assign wave 14 2026-07-26 (parent `dev` @ `b06568f2`): staff 10 =
-     3 incomplete resumes + 7 pending. Open CP2K specs on `dev`=0 (PySCF
-     deferred only). Unmerged feature `wf/*`=3 (+ blocked `wf/gpw-vv10-ice`).
-     Isolation worktrees=0. Pending residual=8. -->
+<!-- Harness wave 14 2026-07-26 (parent `dev`): the assign panel staffed 10 but
+     the wave was interrupted during the Workers panel. Adjudicated outcome
+     below; 4 unstarted promotions demoted back to `## pending` (no worktree had
+     any implementation), 1 stays `[~]` with a corrected diagnosis. Isolation
+     worktrees removed in the same wave (Clearup). -->
 
-- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (behind=17 ahead=1; unmerged) | assign wave 12 / resume wave 14
-- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (behind=17 ahead=1; unmerged) | assign wave 12 / resume wave 14
-- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (behind=17 ahead=1; unmerged; Si force gate) | assign wave 12 / resume wave 14
-- [~] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | twin: CP2K Quickstep D3 zero force / FD on water dimer | assign wave 14
-- [~] `gpw-d3bj-forces` | Analytic ionic forces with DFT-D3(BJ) | gpw | twin: CP2K `TYPE DFTD3(BJ)` force pin (extend `gpw-pbe-d3bj-ice`) | assign wave 14
-- [~] `gpw-mbd-stress` | Analytic cell stress with free-atom / periodic MBD@rsSCS (Γ) | gpw | twin: pymbd E_disp strain / CP2K MBD stress class | assign wave 14
-- [~] `gpw-dftu-kpoint-forces` | Multi-k analytic ionic forces with Dudarev DFT+U | gpw | twin: CP2K PLUS_U + FORCES on NiO / small cell | assign wave 14
-- [~] `dfpt-gga-spin-si` | DFPT phonons with collinear spin **and** pure GGA kernel (PW) | response | twin: extend `dfpt-gga-si` × `dfpt-spin-si` | assign wave 14
-- [~] `gpw-bomd-kpoints` | Multi-k Born–Oppenheimer MD on GPW | dynamics | twin: CP2K Quickstep AIMD with k-mesh | assign wave 14
-- [~] `gpw-multigrid-kpoints` | Multi-k GPW with REL_CUTOFF multigrid (`ngrids>1`) | gpw | twin: CP2K NGRIDS + k-mesh water/Si | assign wave 14
+- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS`, isolated Si2 triplet | wiring + CP2K pin merged wave 14; regression rebuilt on the corrected physics | assign wave 12 / resume wave 14
+
+**Wave-14 phonon diagnosis correction (2026-07-26).** The wave-12/13 block reason
+recorded on `wf/gpw-fd-phonon-si` — "GPW analytic forces on Si disagree with
+energy FD by ~271x" — is **wrong** and was not reproducible. Measured on `dev`:
+wherever the SCF reaches a genuine stationary point, GPW analytic forces match
+the multi-SCF energy FD to **1.7e-6 Ha/Bohr** on that same Si2 / GTH-PBE-q4 /
+DZVP-MOLOPT-GTH surface. Three setup defects produced the symptom:
+
+1. **Forced closed shell.** Si2's ground state is a triplet; the regression ran
+   RKS. With OT the SCF reports `converged` on a saddle of the closed-shell
+   functional, where the frozen-density force is not the energy gradient:
+   analytic **0.1308** Ha/Bohr, analytic-vs-FD residual **7.5e-2** — exactly the
+   worker's reported 0.131. As UKS triplet the same code gives analytic-vs-FD
+   **2.5e-6** Ha/Bohr with |sum F| = 1.0e-7.
+2. **Cluster boundary placement.** An atom sat at (0,0,0) with `nonperiodic`
+   (Martyna-Tuckerman) boundaries, which do not wrap the collocation: the energy
+   surface stops being translation invariant and the forces pick up a boundary
+   term, |sum F| = **1.98** Ha/Bohr. `GpwDft::build` now throws on off-centre
+   nonperiodic systems (see `gpw-d3-forces/REFERENCE.md`).
+3. **Twin mismatch.** An isolated-cluster (MT) spectrum was compared against a
+   CP2K `FULLY_PERIODIC T` crystal pin expecting 3 optical modes; an isolated
+   diatomic has 1 stretch + 5 near-zero modes. Different physical systems.
+
+The analytic force code was never at fault.
+
+
+## done (harness wave 14 2026-07-26)
+
+- [x] `cpmd-kpoints` | Multi-k Car-Parrinello MD (Bloch \(C_k\)) | dynamics | `regressions/dynamics/cpmd-kpoints` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW (multi-k Marzari-Vanderbilt) | response | `regressions/gpw/periodic-wannier-gpw` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | `regressions/gpw/gpw-d3-forces` | ratio **1.4** (CP2K 12.3 s / ATV 17.8 s) | 2026-07-26
+- [x] `gpw-d3bj-forces` | Analytic ionic forces with DFT-D3(BJ) | gpw | `regressions/gpw/gpw-d3bj-forces` | ratio **2.7** (CP2K 11.9 s / ATV 32.2 s) | 2026-07-26
+- [x] `gpw-mbd-stress` | Analytic cell stress with periodic MBD@rsSCS (Gamma) | gpw | `regressions/gpw/gpw-mbd-stress` | ratio **perf_exempt** (no MBD-stress oracle) | 2026-07-26
+
+Defects found and fixed while gating these (each named in its commit):
+
+- D3-zero pair cutoff was hard-coded 40 Bohr in five sites instead of CP2K's
+  `2 x R_CUTOFF`; settled against a dedicated periodic D3-zero CP2K run
+  (75.589 Bohr reproduces its E_disp to 6.7e-11 Ha, 40 Bohr misses by 3.9e-7).
+  Unified behind `kD3Cp2kPairCutoffBohr` so energy, force and stress share one
+  convention.
+- Martyna-Tuckerman placement was a silent-wrong-answer path (31.9 Ha/Bohr force
+  error for an off-centre water dimer, with a plausible-looking energy).
+  `GpwDft::build` now throws with the fix named.
+- Multi-k analytic stress silently dropped `E_disp^MBD`; it now throws and points
+  at the Gamma path / FD oracle. The fold itself remains `gpw-mbd-kpoint-stress`.
+- Four architecture scrub gates were already red on `dev` before this wave
+  (`tests/cpu/md/` abbreviated dir, a banned token in CLAUDE.md, two
+  catch-all-numeric-type prose hits); all repaired.
 
 ## done (harness wave 12 2026-07-26)
 

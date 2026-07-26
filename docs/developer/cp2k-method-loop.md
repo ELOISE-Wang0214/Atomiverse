@@ -68,6 +68,30 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 14 (parent `dev` @ `dcf03d6d`):** the wave was
+  **interrupted during the Workers panel** and adjudicated on resume. Merged →
+  done **5**: `cpmd-kpoints`, `periodic-wannier-gpw` (both complete worker tips,
+  rebased and merged `--no-ff`), plus `gpw-d3-forces`, `gpw-d3bj-forces`,
+  `gpw-mbd-stress` finished here. `gpw-fd-phonon-si` stays `[~]`: wiring + CP2K
+  pin merged, and its **block reason was found to be wrong** — GPW analytic
+  forces match energy FD to 1.7e-6 Ha/Bohr; the "271×" came from forcing Si₂
+  closed-shell (OT converges on a saddle → analytic 0.1308 vs FD residual
+  7.5e-2, i.e. the worker's 0.131), from an atom at (0,0,0) under
+  Martyna–Tuckerman boundaries (|Σ F| = 1.98 Ha/Bohr), and from comparing an
+  isolated-cluster spectrum to a `FULLY_PERIODIC T` crystal pin. Demoted **4**
+  unstarted promotions back to pending (`gpw-dftu-kpoint-forces`,
+  `dfpt-gga-spin-si`, `gpw-bomd-kpoints`, `gpw-multigrid-kpoints`) — worktrees
+  existed, implementations did not. **Product defects fixed** (each named in its
+  commit): D3-zero pair cutoff 40 Bohr → CP2K's 2 × `R_CUTOFF` (settled against
+  a dedicated periodic D3-zero CP2K run; five sites unified behind
+  `kD3Cp2kPairCutoffBohr`); `GpwDft::build` now throws on off-centre
+  nonperiodic systems instead of returning silently wrong forces; multi-k MBD
+  stress throws instead of dropping `E_disp`; four architecture scrub gates that
+  were already red on `dev` repaired. New offline CP2K 2026.1 pins taken this
+  wave: isolated + periodic D3, periodic D3(BJ), periodic D3-zero, Si₂-triplet
+  energy/force + vib. Pending after this wave **12**; blocked **6**. Clearup ran
+  (8 isolation worktrees removed, merged `wf/*` pruned, builds wiped). Queue
+  **not** exhausted. No push.
 - **2026-07-26 Assign wave 14 (parent `dev` @ `b06568f2`):** recover
   incomplete=**3** (resumes `cpmd-kpoints` @ `3425c7c6`,
   `periodic-wannier-gpw` @ `5c59a97f`, `gpw-fd-phonon-si` @ `7c3e1712`
