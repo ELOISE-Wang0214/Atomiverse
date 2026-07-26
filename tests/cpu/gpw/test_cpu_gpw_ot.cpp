@@ -375,27 +375,44 @@ TEST(GpwOt, ExplicitGammaOtMatchesRealGammaOt) {
         << "k-Γ OT=" << r_k.e_total << " real Γ OT=" << r_real.e_total;
 }
 
-// Multi-k UKS + use_ot must fail-fast (out of product scope).
-TEST(GpwOt, MultiKUksOtThrowsAtBuild) {
+// Multi-k collinear UKS OT vs DIIS (high-spin H₂, κ = (1/4,0,0)).
+// Full e2e identities live in regressions/gpw/ot-uks-kpoints.
+TEST(GpwOt, MultiKUksOtMatchesDiisEnergy) {
     pin_single_thread();
     const auto atoms = small_h2();
-    GpwDft m = small_cfg();
-    m.n_occ = 0;
-    m.n_alpha = 2;
-    m.n_beta = 0;
-    m.use_ot = true;
-    m.k_mesh[0] = 2;
-    m.k_mesh[1] = 1;
-    m.k_mesh[2] = 1;
-    EXPECT_THROW(
-        {
-            try {
-                m.build(atoms);
-            } catch (const std::invalid_argument& e) {
-                EXPECT_TRUE(std::string(e.what()).find("OT")
-                            != std::string::npos);
-                throw;
-            }
-        },
-        std::invalid_argument);
+
+    GpwDft diis = small_cfg();
+    diis.n_occ = 0;
+    diis.n_alpha = 2;
+    diis.n_beta = 0;
+    diis.k_points.push_back({0.25, 0.0, 0.0});
+    diis.k_point_weights.push_back(1.0);
+    diis.use_ot = false;
+    diis.max_iter = 80;
+    diis.tol = 1e-7;
+    diis.xc = ATV::cpu::gpw::XcKind::PADE;
+    diis.build(atoms);
+    const GpwResult r_diis = diis.run(atoms);
+    ASSERT_TRUE(r_diis.converged)
+        << "multi-k UKS DIIS iters=" << r_diis.iters;
+
+    GpwDft ot = small_cfg();
+    ot.n_occ = 0;
+    ot.n_alpha = 2;
+    ot.n_beta = 0;
+    ot.k_points.push_back({0.25, 0.0, 0.0});
+    ot.k_point_weights.push_back(1.0);
+    ot.use_ot = true;
+    ot.max_iter = 200;
+    ot.tol = 1e-7;
+    ot.xc = ATV::cpu::gpw::XcKind::PADE;
+    ot.build(atoms);
+    const GpwResult r_ot = ot.run(atoms);
+    ASSERT_TRUE(r_ot.converged) << "multi-k UKS OT iters=" << r_ot.iters
+                                << " E=" << r_ot.e_total;
+    EXPECT_NEAR(r_ot.e_total, r_diis.e_total, 1e-5)
+        << "OT=" << r_ot.e_total << " DIIS=" << r_diis.e_total
+        << " iters ot/diis=" << r_ot.iters << "/" << r_diis.iters;
+    EXPECT_EQ(r_ot.n_kpts, 1);
+    EXPECT_NEAR(r_ot.s2, r_diis.s2, 1e-6);
 }

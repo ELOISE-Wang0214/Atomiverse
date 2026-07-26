@@ -149,9 +149,10 @@ int main() {
         check(ro.n_kpts >= 1, "A3 n_kpts >= 1");
     }
 
-    // ── A4: fail-fast multi-k UKS OT ───────────────────────────────────────
+    // ── A4: multi-k UKS OT is productized (reg_ot-uks-kpoints); RKS slug
+    //        only checks that build accepts the combo without throw ───────
     {
-        bool threw = false;
+        bool ok = true;
         try {
             GpwDft m = base_method(L);
             m.n_occ = 0;
@@ -161,10 +162,11 @@ int main() {
             m.k_mesh[0] = 2;
             m.k_mesh[1] = m.k_mesh[2] = 1;
             m.build(atoms);
-        } catch (const std::invalid_argument&) {
-            threw = true;
+        } catch (const std::exception& e) {
+            ok = false;
+            std::fprintf(stderr, "A4 unexpected: %s\n", e.what());
         }
-        check(threw, "A4 multi-k UKS OT throws at build");
+        check(ok, "A4 multi-k UKS OT builds (product path)");
     }
 
     // ── A5: frozen first-green absolute band (until offline CP2K pin) ──────
