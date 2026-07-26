@@ -369,13 +369,62 @@ GPW UKS smear, UKS Hirshfeld, CPMD/SGCP UKS, OT+k, OT+DFT+U, collinear-
 spin DFPT; stock VV10 stays open. **Blocked = 5** unchanged. **Queue not
 exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 8 2026-07-26 (parent `dev` @ `9c57a290`):** recover —
+incomplete_count=**1** (`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @
+`d15cd804` docs/block — CP2K 2026.1 has no `TYPE VV10`; do not demote).
+Open CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**. Tree re-diff vs `docs/roadmap/dft.md` §3/§8/
+§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending residual **0**
+(harness emptied list — not capability-closed). **True residuals
+re-opened (9)** with offline CP2K / literature twins:
+`periodic-urpa-kpoints` (`direct_rpa` throws multi-k UKS — “multi-k URPA
+is a follow-on”; Γ URPA + multi-k closed-shell dRPA ✓),
+`ot-smearing` (OT and metallic smear each product; `build` throws
+OT+smear — fixed integer OT occupations),
+`ot-uks-kpoints` (Γ-UKS OT ✓ + multi-k RKS OT ✓; multi-k UKS OT reject),
+`ot-dftu-kpoints` (Γ OT+DFT+U ✓ + multi-k OT / multi-k DFT+U DIIS ✓;
+multi-k OT+PLUS_U not wired),
+`gpw-d4-stress` (D4 energy ✓ `reg_gpw-d4-water`; analytic
+`gpw_stress` throws D4 on Γ and multi-k),
+`gpw-vdw-scf-potential` (vdW-DF/DF2/rVV10 post-SCF \(E_{\mathrm{disp}}\)
+✓; nonlocal potential back-propagation / forces follow-on per
+`vdw_df.h`),
+`dfpt-metallic-si` (DFPT Γ/finite-q/incommensurate/GGA/spin ✓; metallic
+smearing unsupported on Sternheimer path — hold cleared after spin DFPT),
+`dfpt-spin-incommensurate` (collinear spin DFPT ✓ at Γ/commensurate;
+incommensurate-\(q\) + spin throws),
+`gpw-optb88-vdw` (§8 optB88-vdW ○ — exchange + nonlocal combo after
+vdW-DF/rVV10 product depth). **Not added:** BP86/B97/OLYP/HCTH
+(molecular PySCF path); stock VV10 (kept `[~]` incomplete — no demote;
+no CP2K twin); shear/off-diagonal stress (orthorhombic design);
+D4/MBD analytic forces (hold behind D4 stress / SCF-vdW order);
+XL-BOMD multi-k / OT-XL / SGCP-OT corrector (hold behind OT+smear /
+OT-k-UKS depth this wave); UKS multigrid product collocation (infra
+multigrid ✓ single-grid product; O(mHa) residual vs CP2K NGRIDS);
+spin-polarized / metallic DOS foothold; UGW@UKS-RPBE XC throw (thin
+after UKS RPBE SCF); GAPW/PAW/periodic hybrid/meta-GGA (blocked);
+molecular post-HF / classical MW / CUDA ports (other loops). Roadmap:
+**no ○/✓ table flips** (nothing new merged since harness wave 7); §8/
+§10–12 open-residual prose + index GPW residual line refreshed for
+wave-8 queue. **Pending = 9**; **in_progress = 1**; **blocked = 5**.
+
 ## pending
 
-_(empty after harness wave 7 — **not** queue exhausted; GapCensus refills)_
+- [ ] `periodic-urpa-kpoints` | Multi-k unrestricted direct RPA residual (URPA@UKS + k-mesh) | gpw | dep `periodic-urpa-si` ✓ + `periodic-rpa-kpoints` ✓; `direct_rpa` multi-k UKS throw
+- [ ] `ot-smearing` | OT orbital minimizer + metallic occupation smearing (FD/MP) | gpw | dep `ot-kpoints` ✓ + `gpw-metallic-smearing` ✓; `build` rejects OT+smear
+- [ ] `ot-uks-kpoints` | Multi-k UKS OT minimizer | gpw | dep `ot-uks-o2` ✓ + `ot-kpoints` ✓; multi-k UKS OT not productized
+- [ ] `ot-dftu-kpoints` | Multi-k OT + Dudarev DFT+U | gpw | dep `ot-dftu` ✓ + `ot-kpoints` ✓ + `gpw-dftu-kpoints` ✓; multi-k OT+PLUS_U not wired
+- [ ] `gpw-d4-stress` | Analytic fixed-P cell stress with DFT-D4 | gpw | dep `gpw-d4-water` ✓ + `gpw-analytic-stress` ✓; `gpw_stress` throws D4
+- [ ] `gpw-vdw-scf-potential` | Nonlocal vdW-DF/DF2/rVV10 SCF potential + forces (beyond post-SCF E_disp) | gpw | dep `gpw-vdw-df-ice` ✓ / `gpw-vdw-df2-ice` ✓ / `gpw-rvv10-ice` ✓; potential back-propagation follow-on
+- [ ] `dfpt-metallic-si` | DFPT phonons with metallic occupation smearing (PW) | response | dep `dfpt-spin-si` ✓ + `pw-smearing-al` ✓; Sternheimer rejects smearing
+- [ ] `dfpt-spin-incommensurate` | Collinear-spin DFPT at incommensurate q (PW) | response | dep `dfpt-spin-si` ✓ + `dfpt-incommensurate-si` ✓; incommensurate+spin throw
+- [ ] `gpw-optb88-vdw` | optB88 exchange + nonlocal vdW correlation | gpw | roadmap §8 ○; dep vdW-DF/rVV10 product depth; offline CP2K NON_LOCAL + OPTB88 twin
 
 ## in_progress
 
-- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `9be3808a` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `d15cd804` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
 
 ## done (harness wave 7 2026-07-26)
 
