@@ -1,6 +1,60 @@
 # CP2K capability loop — handoff
 
-## Harness wave 4 2026-07-26 (parent `dev` @ `85eaa2d9`)
+## Harness wave 5 2026-07-26 (parent `dev` @ `2d43d1c2`)
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **2** (`[~] gpw-metallic-smearing`, `[~] gpw-vv10-ice`) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
+| Specs closed this harness | **6** (deleted on close) |
+| Unmerged staff `wf/*` | **2** incomplete kept: `wf/gpw-metallic-smearing`, `wf/gpw-vv10-ice` |
+| Isolation worktrees | **0** (clearup already ran; main tree only) |
+| Leftover builds | **none** |
+| Pending gaps | **1** residual (`gpw-xdm-ice` — not exhausted; GapCensus owns refill) |
+| Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
+| Done this wave | **6** landings (see table) |
+| Oracle | `tools/cp2k_oracle/` offline pins only |
+| Loop docs | queue / loop / handoff / roadmap residual prose **synced** |
+
+### Wave staff → done
+
+| Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
+| ---- | ------ | ---------- | --------------------------------------------- |
+| `gpw-dftu-kpoints` | gpw | `reg_gpw-dftu-kpoints` | **perf_exempt** |
+| `periodic-gw-finite-q` | gpw | `reg_periodic-gw-finite-q` | **perf_exempt** |
+| `gpw-uks-revpbe` | gpw | `reg_gpw-uks-revpbe` | **~3.22** |
+| `cpmd-rattle-water` | dynamics | `reg_cpmd-rattle-water` | **perf_exempt** |
+| `periodic-ump2-si` | gpw | `reg_periodic-ump2-si` | **perf_exempt** |
+| `ot-uks-o2` | gpw | `reg_ot-uks-o2` | **~8.50** |
+
+### Incomplete kept `[~]` (do not demote)
+
+| Slug | Branch | Tip | Note |
+| ---- | ------ | --- | ---- |
+| `gpw-metallic-smearing` | `wf/gpw-metallic-smearing` | `31b00478` | feat FD/MP multi-k RKS + reg + unit; resume merge gate next Assign |
+| `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `0197163f` | docs/block note: CP2K has no stock VV10 (≠ rVV10); incomplete |
+
+### Roadmap ○→✓ this harness
+
+| Row | Doc | Note |
+| --- | --- | ---- |
+| *(no new table ○→✓)* | `dft.md` | multi-k DFT+U / finite-q G0W0 / Γ-UKS revPBE / UMP2 / OT-UKS are residual closes of already-✓ rows |
+| CPMD electronic RATTLE | `molecular-dynamics.md` AIMD prose | productized (`reg_cpmd-rattle-water`); UKS/OT/thermostat still ○ |
+| Residual prose | `dft.md` §10 + `index.md` | drop closed residuals; keep XDM / stock VV10 / GPW metallic smear open |
+
+### Pending residual
+
+**Pending = 1** (`gpw-xdm-ice`). **Incomplete = 2** `[~]`. Next wave starts
+with **Recover incomplete** then **GapCensus** (tree/roadmap ○ vs `dev`).
+Blocked = 5 unchanged.
+
+Do **not** staff PySCF deferred specs. No push from parent.
+**Queue not exhausted** — GapCensus owns next discovery.
+
+---
+
+## Harness wave 4 2026-07-26 (parent `dev` @ `85eaa2d9`) — historical
 
 | Field | Value |
 | ----- | ----- |

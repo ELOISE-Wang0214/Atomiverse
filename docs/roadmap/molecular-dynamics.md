@@ -244,7 +244,9 @@ forces stay ○.
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
 then fixed-density KS eval + electronic Verlet + analytic forces at that
 density (`reg_cpmd-water`). Conserved \(E_{\mathrm{cons}} = T_n + T_e +
-E_{\mathrm{KS}}\). UKS/OT/electronic thermostat/RATTLE stay ○.
+E_{\mathrm{KS}}\). **Electronic RATTLE** (Andersen constraint-preserving
+orbitals; `reg_cpmd-rattle-water`) is product on the closed-shell path.
+UKS / electronic thermostat stay ○.
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
