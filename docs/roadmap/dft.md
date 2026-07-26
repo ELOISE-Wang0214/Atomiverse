@@ -16,17 +16,20 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 incomplete staff,
-GAPW/PAW; open after harness wave 9: DFPT collinear spin+smear incomplete
-staff, stock VV10 incomplete staff; product already ships UKS OT+smear,
-multi-k UKS OT+DFT+U, OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid,
-finite-q+smear DFPT, SGCP OT corrector, multi-k URPA, OT+smear RKS, multi-k
-UKS OT, multi-k OT+DFT+U, D4 analytic stress, nonlocal vdW SCF
-potential/forces, optB88-vdW, metallic DFPT, collinear-spin incommensurate
-DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW UKS smear, UKS Hirshfeld,
-CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM, GPW RKS/UKS
-metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U energy/stress,
-multi-k UMP2, multi-k MP2/RPA/G0W0, vdW-DF / DF2 / rVV10, periodic Ewald
-MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE).
+GAPW/PAW; open after harness wave 9 / GapCensus wave 10: DFPT collinear
+spin+smear incomplete staff, stock VV10 incomplete staff; multi-k UKS
+OT+U+smear, SGCP UKS OT, multi-k XL-BOMD, spin bands / metallic DOS,
+spin MLWF / Berry, multi-k MBD forces, UGW@UKS-RPBE XC; product already
+ships UKS OT+smear, multi-k UKS OT+DFT+U, OT+DFT+U+smear, D4/MBD analytic
+forces, UKS multigrid, finite-q+smear DFPT, SGCP OT corrector, multi-k
+URPA, OT+smear RKS, multi-k UKS OT, multi-k OT+DFT+U, D4 analytic stress,
+nonlocal vdW SCF potential/forces, optB88-vdW, metallic DFPT,
+collinear-spin incommensurate DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW
+UKS smear, UKS Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin
+DFPT, XDM, GPW RKS/UKS metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k
+DFT+U energy/stress, multi-k UMP2, multi-k MP2/RPA/G0W0, vdW-DF / DF2 /
+rVV10, periodic Ewald MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD
+RATTLE).
 
 ## 1. Kohn–Sham Methods
 
@@ -238,7 +241,9 @@ CP2K 2026.1 has no `TYPE VV10`; `[~] gpw-vv10-ice`) remains incomplete staff.
 **DFT-D4 analytic fixed-\(P\) stress** productizes (`reg_gpw-d4-stress`);
 **D4 analytic ionic forces** productize (`reg_gpw-d4-forces`; dftd4
 gradient pin + product wiring) and **MBD@rsSCS analytic ionic forces**
-productize (`reg_gpw-mbd-forces`; free-atom / periodic path).
+productize at **Γ** (`reg_gpw-mbd-forces`; free-atom / periodic path).
+**Open residual:** multi-k MBD ionic forces (`gpw-mbd-kpoint-forces` —
+k-path force assembly folds d3/d4/ts/xdm but skips MBD).
 
 ## 9. Composite DFT Methods
 
@@ -302,10 +307,12 @@ Two periodic DFT engines exist, with disjoint strengths:
   **Monkhorst–Pack k-point RKS** and **k-point UKS** (`k_mesh` / explicit
   `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
   `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`). **Open residuals** after
-  harness wave 9: DFPT collinear **spin+smear** incomplete staff
-  (`dfpt-spin-smearing`); stock VV10 incomplete staff; hybrids /
-  meta-GGA / GAPW / PAW remain blocked (queue not exhausted — see
-  `cp2k-method-queue.md`). CPU only.
+  harness wave 9 / GapCensus wave 10: DFPT collinear **spin+smear**
+  incomplete staff (`dfpt-spin-smearing`); stock VV10 incomplete staff;
+  multi-k UKS OT+U+smear; SGCP UKS OT; multi-k XL-BOMD; multi-k MBD
+  forces; UGW@UKS-RPBE XC; spin bands / metallic DOS / spin MLWF /
+  Berry; hybrids / meta-GGA / GAPW / PAW remain blocked (queue not
+  exhausted — see `cp2k-method-queue.md`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -380,7 +387,9 @@ Which engine backs which ✓:
   `reg_periodic-gw-si`), **multi-k k-diagonal spectral G0W0**
   (`reg_periodic-gw-kpoints`), **finite-q inter-\(k\) \(W\)**
   (`reg_periodic-gw-finite-q`), **Γ UGW@UKS** (`reg_periodic-ugw-si`),
-  **and multi-k UGW** (`reg_periodic-ugw-kpoints`).
+  **and multi-k UGW** (`reg_periodic-ugw-kpoints`). **Open residual:**
+  UGW@UKS **RPBE** spin XC (`ugw-uks-rpbe` — `g0w0` throws; PBE/revPBE
+  UKS UGW product).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
@@ -437,12 +446,15 @@ Which engine backs which ✓:
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,
-  `regressions/pw/berry-polarization`).
+  `regressions/pw/berry-polarization`). **Open residual:** collinear-spin
+  Berry strings (`berry-spin-si` — spin-polarized throw).
 - **Maximally localized Wannier functions**: molecular **Foster–Boys** on
   closed-shell Gaussian RHF/RKS (`cpu::scf::WannierCenters`;
   `regressions/scf/wannier-centers`) **and** periodic multi-k
   **Marzari–Vanderbilt** on PW (`cpu::pw::PeriodicWannier`; bond-midpoint Si
-  pin; `reg_periodic-wannier-si`). GPW-grid MLWF residual stays unqueued.
+  pin; `reg_periodic-wannier-si`). **Open residual:** spin-polarized
+  periodic MLWF (`periodic-wannier-uks`). GPW-grid MLWF residual stays
+  unqueued.
 
 ## 12. Periodic infrastructure
 
@@ -474,7 +486,9 @@ OT+DFT+U** `reg_ot-dftu-kpoints` + **OT+smear** RKS `reg_ot-smearing` +
 product collocation ships (`reg_gpw-uks-multigrid`).
 **Band structure / DOS** on CPU PW: `cpu::pw::Bands`
 (high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian smearing;
-`reg_bands-dos-si`).
+`reg_bands-dos-si`) — **closed-shell insulator foothold**. **Open
+residuals:** collinear-spin bands (`bands-spin-si`) and metallic
+occupation DOS (`dos-metallic-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

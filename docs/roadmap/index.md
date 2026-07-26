@@ -257,9 +257,11 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 9
-  are queue-owned (DFPT spin+smear incomplete staff; stock VV10
-  incomplete staff; hybrids / meta-GGA / GAPW blocked — see
+  `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 9 /
+  GapCensus wave 10 are queue-owned (DFPT spin+smear incomplete staff;
+  stock VV10 incomplete staff; multi-k UKS OT+U+smear; SGCP UKS OT;
+  multi-k XL; spin bands / metallic DOS / spin MLWF / Berry; multi-k
+  MBD forces; UGW@UKS-RPBE; hybrids / meta-GGA / GAPW blocked — see
   `cp2k-method-queue.md`; queue not exhausted; incomplete `[~]` first).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member

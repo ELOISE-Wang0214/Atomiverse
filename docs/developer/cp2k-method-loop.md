@@ -68,6 +68,21 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 10 (parent `dev` @ `94c2401d`):** recover
+  incomplete=**2** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` @
+  `2f1d90e2`; `[~] dfpt-spin-smearing` on unmerged `wf/dfpt-spin-smearing`
+  @ `d7576dea` — not demoted); CP2K specs on `dev`=0; isolation
+  worktrees=0; builds=none. Prior pending residual **0**; **+9**
+  residuals → pending **9** (`ot-uks-dftu-smearing`,
+  `second-gen-cpmd-uks-ot`, `xl-bomd-kpoints`, `bands-spin-si`,
+  `dos-metallic-si`, `periodic-wannier-uks`, `berry-spin-si`,
+  `gpw-mbd-kpoint-forces`, `ugw-uks-rpbe`); in_progress **2**; blocked
+  **5**. No ○/✓ table flips; §8/§10–12 + MD AIMD residual prose + index
+  GPW residual line refreshed. Next: Assign prefers incomplete first
+  (DFPT spin+smear merge gate; VV10 docs/block) then surface-disjoint
+  pending (OT+U+smear careful OT tree; SGCP UKS OT ∥ XL×k free of each
+  other; bands-spin ∥ dos-metallic ∥ Wannier-uks ∥ Berry-spin careful
+  PW response share; MBD×k forces free of UGW-RPBE).
 - **2026-07-26 harness wave 9 (parent `dev` @ `dab2b190`):** 8 merged →
   done: `ot-uks-smearing`, `ot-uks-dftu`, `ot-dftu-smearing`,
   `gpw-d4-forces`, `gpw-mbd-forces`, `gpw-uks-multigrid`,

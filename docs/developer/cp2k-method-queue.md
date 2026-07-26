@@ -482,9 +482,56 @@ smear, SGCP OT corrector; **DFPT spin+smear** stays open incomplete;
 stock VV10 stays open. **Blocked = 5** unchanged. **Queue not
 exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 10 2026-07-26 (parent `dev` @ `94c2401d`):** recover —
+incomplete_count=**2** (`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @
+`2f1d90e2` docs/block — CP2K 2026.1 has no `TYPE VV10`; do not demote;
+`[~] dfpt-spin-smearing` unmerged `wf/dfpt-spin-smearing` @ `d7576dea`
+feat+reg — not merged; do not demote). Open CP2K/GPW/PW specs on
+`dev`=**0** (PySCF deferred only: `periodic-rhf-gamma` /
+`rsh-eri-cam-b3lyp`); isolation worktrees=**0**; leftover builds=**none**.
+Tree re-diff vs `docs/roadmap/dft.md` §3/§8/§10–12 + MD AIMD +
+`tools/cp2k_oracle` + `include/atomiverse/cpu/{gpw,planewave}`: prior
+pending residual **0** (harness emptied list — not capability-closed).
+**True residuals re-opened (9)** with offline CP2K / literature twins:
+`ot-uks-dftu-smearing` (multi-k UKS OT + DFT+U + metallic smear —
+`build` / k-UKS OT path reject; RKS OT+U+smear + UKS OT+smear + UKS
+OT+U product),
+`second-gen-cpmd-uks-ot` (SGCP RKS OT corrector ✓; UKS OT + ASPC
+throws “follow-on”),
+`xl-bomd-kpoints` (Γ RKS/UKS XL ✓; multi-k XL product depth / pin after
+wave-9 OT depth),
+`bands-spin-si` (`Bands::compute` throws spin-polarized foothold),
+`dos-metallic-si` (`Dos::compute` throws metallic smearing foothold),
+`periodic-wannier-uks` (`PeriodicWannier` throws spin-polarized MLWF),
+`berry-spin-si` (`BerryPolarization` throws spin-polarized strings),
+`gpw-mbd-kpoint-forces` (Γ MBD ionic forces ✓; multi-k force path folds
+d3/d4/ts/xdm but **skips MBD**),
+`ugw-uks-rpbe` (`g0w0` UKS RPBE spin XC throws — not product; PBE/revPBE
+UKS UGW ✓). **Not added:** BP86/B97/OLYP/HCTH (molecular PySCF path);
+stock VV10 (kept `[~]` incomplete — no demote; no CP2K twin); shear /
+off-diagonal stress (orthorhombic design); electronic CPMD thermostat
+(hold behind SGCP UKS OT / XL×k depth); TS/XDM dedicated force regs
+(Γ force assembly already folds ts/xdm — thin after MBD×k); spin DOS /
+metallic bands thin siblings (hold behind bands-spin + dos-metallic
+first); finite-q DFPT spin+smear (hold behind incomplete Γ spin+smear
+merge); XL+OT architectural exclusion (density vs orbital parameter);
+GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular post-HF /
+classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table
+flips** (nothing new merged since harness wave 9); §8/§10–12 + MD AIMD
+open-residual prose + index GPW residual line refreshed for wave-10
+queue. **Pending = 9**; **in_progress = 2**; **blocked = 5**.
+
 ## pending
 
-_(empty after harness wave 9 — not queue exhausted; GapCensus owns refill)_
+- [ ] `ot-uks-dftu-smearing` | Multi-k UKS OT + Dudarev DFT+U + metallic smear | gpw | residual: RKS OT+U+smear ✓ + UKS OT+smear ✓ + UKS OT+U ✓; joint UKS OT+U+smear throws
+- [ ] `second-gen-cpmd-uks-ot` | SGCP ASPC + OT corrector on Γ-UKS | dynamics | residual: RKS SGCP+OT ✓; UKS OT+ASPC follow-on throw
+- [ ] `xl-bomd-kpoints` | Multi-k XL-BOMD auxiliary-density AIMD | dynamics | residual: Γ RKS/UKS XL ✓; multi-k product depth/pin open
+- [ ] `bands-spin-si` | Spin-polarized band structure (PW) | pw | residual: closed-shell bands ✓; spin foothold throw
+- [ ] `dos-metallic-si` | Metallic occupation DOS (PW) | pw | residual: insulator DOS ✓; metallic smear foothold throw
+- [ ] `periodic-wannier-uks` | Spin-polarized periodic MLWF (PW) | response | residual: closed-shell MV ✓; spin MLWF throw
+- [ ] `berry-spin-si` | Spin-polarized Berry-phase polarization (PW) | response | residual: closed-shell KSV ✓; spin strings throw
+- [ ] `gpw-mbd-kpoint-forces` | Multi-k analytic ionic forces with MBD@rsSCS | gpw | residual: Γ MBD forces ✓; k-path force assembly omits MBD
+- [ ] `ugw-uks-rpbe` | UGW@UKS with RPBE spin XC | gpw | residual: UGW + RPBE UKS SCF ✓; g0w0 RPBE spin XC throw
 
 ## in_progress
 
