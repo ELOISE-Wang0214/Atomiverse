@@ -143,11 +143,9 @@ int main() {
         check(d <= kAbsTol, "A5 |F_OT - frozen| <= 1e-3 Ha");
     }
 
-    // ── A6: multi-k UKS OT + metallic smear still throws ───────────────────
-    // Multi-k UKS OT (integer occupations) is productized (ot-uks-kpoints);
-    // UKS OT combined with FD/MP smear remains a residual.
+    // ── A6: multi-k UKS OT + metallic smear accepted at build ─────────────
+    // Product path is `ot-uks-smearing`; build must not reject the combo.
     {
-        bool threw = false;
         try {
             GpwDft m = base_method(a);
             m.n_occ = 0;
@@ -157,10 +155,11 @@ int main() {
             m.smearing = Smearing::fermi_dirac;
             m.degauss = 0.02;
             m.build(atoms);
-        } catch (const std::invalid_argument&) {
-            threw = true;
+            check(true, "A6 multi-k UKS OT + FD smear build accepted");
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "A6 threw: %s\n", e.what());
+            check(false, "A6 multi-k UKS OT + FD smear build accepted");
         }
-        check(threw, "A6 multi-k UKS OT + FD smear throws at build");
     }
 
     if (g_fail) {
