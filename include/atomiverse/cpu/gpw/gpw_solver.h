@@ -339,16 +339,24 @@ class GpwDft {
     /// Re-entrant: geometry-dependent structures are rebuilt per call.
     /// @param atoms Atom set at the current geometry [Bohr].
     /// @param guess_C Optional warm-start MO coefficients from an earlier run.
-    /// @param guess_P Optional RKS initial-density override (n_ao × n_ao) —
-    ///        the XL-BOMD auxiliary density. Diagonalization/DIIS RKS path
-    ///        only; non-null with UKS or `use_ot` throws (no-fallback), and a
-    ///        shape mismatch throws inside the solve.
+    /// @param guess_P Optional initial-density override (n_ao × n_ao) —
+    ///        XL-BOMD auxiliary density. RKS: total closed-shell \(P\).
+    ///        UKS: \(P_\alpha\) (requires non-null `guess_P_beta`).
+    ///        Diagonalization/DIIS only; non-null with `use_ot` throws
+    ///        (no-fallback). Shape mismatch throws inside the solve.
+    /// @param guess_P_beta Optional UKS \(P_\beta\) initial density
+    ///        (n_ao × n_ao). Must be null for RKS. For UKS both spin
+    ///        guesses are required together (no silent cold start of one
+    ///        channel).
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
-    /// @throws std::invalid_argument for `guess_P` with UKS or `use_ot`.
+    /// @throws std::invalid_argument for OT + density guess, UKS with only
+    ///         one spin guess, RKS + non-null `guess_P_beta`, or shape
+    ///         mismatch.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
                    const linalg::RealMatrix* guess_C = nullptr,
-                   const linalg::RealMatrix* guess_P = nullptr);
+                   const linalg::RealMatrix* guess_P = nullptr,
+                   const linalg::RealMatrix* guess_P_beta = nullptr);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).

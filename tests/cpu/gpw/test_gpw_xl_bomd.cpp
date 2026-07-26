@@ -242,22 +242,56 @@ TEST(GpwSolverGuessP, MismatchedShapeThrows) {
     EXPECT_THROW(solver.run(atoms, nullptr, &bad), std::invalid_argument);
 }
 
-// A5: guess_P refuses the UKS and OT paths loudly (no-fallback rule).
-TEST(GpwSolverGuessP, UksOrOtWithGuessPThrows) {
+// A5 / A3: UKS density guess requires both spin channels (no partial cold
+// start). OT still refuses any density guess.
+TEST(GpwSolverGuessP, UksPartialOrOtWithGuessPThrows) {
     const auto atoms = small_h2();
     const RealMatrix p = constant_matrix(2, 0.5);
+    const RealMatrix pb = constant_matrix(2, 0.4);
 
     GpwDft uks = small_cfg();
     uks.n_occ = 0;
     uks.n_alpha = 1;
     uks.n_beta = 1;
     uks.build(atoms);
-    EXPECT_THROW(uks.run(atoms, nullptr, &p), std::invalid_argument);
+    EXPECT_THROW(uks.run(atoms, nullptr, &p, nullptr), std::invalid_argument);
+    EXPECT_THROW(uks.run(atoms, nullptr, nullptr, &pb), std::invalid_argument);
+
+    GpwDft rks = small_cfg();
+    rks.build(atoms);
+    EXPECT_THROW(rks.run(atoms, nullptr, &p, &pb), std::invalid_argument);
 
     GpwDft ot = small_cfg();
     ot.use_ot = true;
     ot.build(atoms);
     EXPECT_THROW(ot.run(atoms, nullptr, &p), std::invalid_argument);
+    EXPECT_THROW(ot.run(atoms, nullptr, &p, &pb), std::invalid_argument);
+}
+
+// A2: UKS warm density guess (both spins) reaches the cold fixed point.
+TEST(GpwSolverGuessP, UksConvergedDensityGuessReachesColdFixedPoint) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+
+    GpwDft cold = small_cfg();
+    cold.n_occ = 0;
+    cold.n_alpha = 1;
+    cold.n_beta = 1;
+    cold.build(atoms);
+    const GpwResult ref = cold.run(atoms);
+    ASSERT_TRUE(ref.converged);
+    ASSERT_GT(ref.P.size(), 0u);
+    ASSERT_GT(ref.P_beta.size(), 0u);
+
+    GpwDft warm = small_cfg();
+    warm.n_occ = 0;
+    warm.n_alpha = 1;
+    warm.n_beta = 1;
+    warm.build(atoms);
+    const GpwResult& r = warm.run(atoms, nullptr, &ref.P, &ref.P_beta);
+    EXPECT_TRUE(r.converged);
+    EXPECT_NEAR(r.e_total, ref.e_total, 1e-10);
+    EXPECT_LE(r.iters, ref.iters);
 }
 
 // ── GPWEvaluator xl_bomd guards (validation only — no SCF runs) ─────────
@@ -294,8 +328,8 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 
 } // namespace
 
-// A6: xl_bomd with UKS occupations is refused at build() (RKS only).
-TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithUks) {
+// A6: xl_bomd + UKS occupations is allowed at build() (dual spin XL).
+TEST(GpwEvaluatorXlBomd, BuildAcceptsXlWithUks) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.xl_bomd = true;
@@ -303,7 +337,7 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithUks) {
     eval.n_beta = 3;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    EXPECT_NO_THROW(eval.build(bc));
 }
 
 // A6: xl_bomd with the OT minimizer is refused at build().
@@ -311,6 +345,19 @@ TEST(GpwEvaluatorXlBomd, BuildRejectsXlWithOt) {
     auto frame = water_frame();
     auto eval = water_eval();
     eval.xl_bomd = true;
+    eval.use_ot = true;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+// A6: xl_bomd + UKS + OT still refused (OT wins the mutual exclusion).
+TEST(GpwEvaluatorXlBomd, BuildRejectsXlUksWithOt) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.xl_bomd = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
     eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};

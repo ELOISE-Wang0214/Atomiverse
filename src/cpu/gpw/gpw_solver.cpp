@@ -1709,7 +1709,8 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 /// `GpwDft::run`.
 static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                   const GpwDft& cfg, const RealMatrix* guess_C,
-                                  const RealMatrix* guess_P) {
+                                  const RealMatrix* guess_P,
+                                  const RealMatrix* guess_P_beta) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
     // setting, so every FFT plan created downstream (Poisson, GGA grad/div, MT)
@@ -2083,10 +2084,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 Pb(i, i) = 0.0;
         }
     }
-    // XL-BOMD / warm density start (RKS diagonalization path only — the
-    // caller-facing UKS/OT guards live in GpwDft::run): the propagated
-    // auxiliary density replaces the C0-derived initial P for the first
-    // Fock build. C_prev (level shift) still comes from C0.
+    // XL-BOMD / warm density start (guards for OT / partial UKS live in
+    // GpwDft::run): the propagated auxiliary density replaces the
+    // C0-derived initial P (RKS) or Pa/Pb (UKS) for the first Fock build.
+    // C_prev (level shift) still comes from C0.
     if (guess_P != nullptr) {
         if (static_cast<int>(guess_P->shape(0)) != nb
             || static_cast<int>(guess_P->shape(1)) != nb)
@@ -2096,7 +2097,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                         + std::to_string(guess_P->shape(1))
                                         + ") does not match the AO basis (nb="
                                         + std::to_string(nb) + ")");
-        P = *guess_P;
+        if (uks) {
+            if (guess_P_beta == nullptr)
+                throw std::invalid_argument(
+                    "GpwDft::run: UKS density guess requires both guess_P "
+                    "(alpha) and guess_P_beta");
+            if (static_cast<int>(guess_P_beta->shape(0)) != nb
+                || static_cast<int>(guess_P_beta->shape(1)) != nb)
+                throw std::invalid_argument(
+                    "GpwDft::run: guess_P_beta shape ("
+                    + std::to_string(guess_P_beta->shape(0)) + "x"
+                    + std::to_string(guess_P_beta->shape(1))
+                    + ") does not match the AO basis (nb="
+                    + std::to_string(nb) + ")");
+            Pa = *guess_P;
+            Pb = *guess_P_beta;
+            P = Pa + Pb;
+        } else {
+            P = *guess_P;
+        }
     }
     smark("init_eigensolve");
 
@@ -3224,27 +3243,40 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
 }
 
 GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
-                       const RealMatrix* guess_C, const RealMatrix* guess_P) {
+                       const RealMatrix* guess_C, const RealMatrix* guess_P,
+                       const RealMatrix* guess_P_beta) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::run called before build() — validate the "
             "configuration first (no silent auto-build)");
-    if (guess_P != nullptr) {
-        // No-fallback rule: a density guess only feeds the RKS
-        // diagonalization/DIIS path. UKS keeps spin densities and OT
-        // parameterizes orbitals — silently ignoring the guess would fake
-        // XL-BOMD, so refuse loudly.
-        if (is_uks())
-            throw std::invalid_argument(
-                "GpwDft::run: guess_P (XL-BOMD density guess) supports the "
-                "closed-shell RKS path only (n_alpha/n_beta are set)");
+    if (guess_P != nullptr || guess_P_beta != nullptr) {
+        // No-fallback: density guess only feeds the diagonalization/DIIS
+        // path. OT parameterizes orbitals — silently ignoring the guess
+        // would fake XL-BOMD.
         if (use_ot)
             throw std::invalid_argument(
                 "GpwDft::run: guess_P (XL-BOMD density guess) requires the "
                 "diagonalization SCF path (use_ot=true parameterizes "
                 "orbitals, not the density)");
+        if (is_uks()) {
+            // UKS needs both spin channels; a partial guess would cold-
+            // start one channel and look like a working XL path.
+            if (guess_P == nullptr || guess_P_beta == nullptr)
+                throw std::invalid_argument(
+                    "GpwDft::run: UKS XL-BOMD density guess requires both "
+                    "guess_P (alpha) and guess_P_beta (no partial spin "
+                    "guess)");
+        } else if (guess_P_beta != nullptr) {
+            throw std::invalid_argument(
+                "GpwDft::run: guess_P_beta is UKS-only (closed-shell RKS "
+                "takes total density on guess_P)");
+        } else if (guess_P == nullptr) {
+            // Unreachable if only guess_P_beta were set without UKS —
+            // handled above. Keep the branch explicit for RKS null P.
+        }
     }
-    result_ = run_gpw_scf_impl(atoms, *this, guess_C, guess_P);
+    result_ =
+        run_gpw_scf_impl(atoms, *this, guess_C, guess_P, guess_P_beta);
     return result_;
 }
 
