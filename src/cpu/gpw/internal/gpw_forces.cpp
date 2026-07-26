@@ -1158,6 +1158,8 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
     add_local_pp_hf_forces(grid, atoms, /*periodic=*/true, rho, forces);
 
     // Geometry-only dispersion (same as Γ assemble_gpw_forces).
+    // MBD was previously counted for mutual exclusion but not folded in —
+    // multi-k product path must match Γ for d3/d3bj/d4/ts/xdm/mbd.
     {
         const bool periodic = true;
         const int na = static_cast<int>(atoms.size());
@@ -1168,7 +1170,7 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             throw std::runtime_error(
                 "GPW k-forces: d3, d3bj, d4, ts, xdm, and mbd are mutually "
                 "exclusive");
-        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
+        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm || cfg.mbd) {
             std::vector<int> Z(static_cast<std::size_t>(na));
             std::vector<std::array<double, 3>> pos(
                 static_cast<std::size_t>(na));
@@ -1182,7 +1184,22 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             }
             constexpr double kAng2Bohr = 1.0 / 0.52917720859;
             constexpr double kRcutBjBohr = 2.0 * 20.0 * kAng2Bohr;
-            if (cfg.xdm) {
+            if (cfg.mbd) {
+                // Same isolated / periodic switch as Γ + fold_dispersion.
+                const bool mbd_per = cfg.mbd_k_mesh[0] > 0
+                                     || cfg.mbd_k_mesh[1] > 0
+                                     || cfg.mbd_k_mesh[2] > 0;
+                if (mbd_per && cfg.nonperiodic)
+                    throw std::runtime_error(
+                        "GPW k-forces MBD: mbd_k_mesh requires a periodic cell");
+                const MbdResult mbd =
+                    mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
+                                  mbd_per ? cfg.mbd_k_mesh : nullptr);
+                for (int i = 0; i < na; ++i)
+                    for (int k = 0; k < 3; ++k)
+                        forces[i][k] +=
+                            mbd.forces[static_cast<std::size_t>(i)][k];
+            } else if (cfg.xdm) {
                 constexpr double kRcutXdm = 50.0 * kAng2Bohr;
                 const XdmResult xdm =
                     xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
@@ -1230,12 +1247,15 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const GpwResult& scf) {
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_from_scf: SCF did not converge");
+
+    // Multi-k payload is C_occ_k / eps_k (not Γ P/C/eps). Branch first so
+    // product evaluators can reuse one SCF on the k-path (gpw-mbd-kpoint-forces).
+    if (uses_kpath(cfg))
+        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
+
     if (scf.P.size() == 0 || scf.C.size() == 0 || scf.eps.empty())
         throw std::runtime_error(
             "gpw_forces_from_scf: converged result missing P/C/eps");
-
-    if (uses_kpath(cfg))
-        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
 
     if (cfg.is_uks()) {
         // W = Wα + Wβ with occupancy 1 per spin orbital.
