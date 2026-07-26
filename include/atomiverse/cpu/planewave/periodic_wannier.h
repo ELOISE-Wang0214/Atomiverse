@@ -1,20 +1,24 @@
 /// @file cpu/planewave/periodic_wannier.h
 /// @brief Periodic multi-k maximally localized Wannier functions (CPU PW).
 ///
-/// Marzari–Vanderbilt construction on the occupied manifold of a restricted
-/// fixed-occupation plane-wave SCF (Marzari & Vanderbilt, Phys. Rev. B 56,
-/// 12847 (1997); Marzari et al., Rev. Mod. Phys. 84, 1419 (2012)). After SCF,
-/// Bloch states are recomputed non-self-consistently on the frozen
-/// \(V_\mathrm{eff}\) at every Monkhorst–Pack k-point; neighbor overlap
-/// matrices \(M^{(\mathbf k,\mathbf b)}\) feed a projection initialization
+/// Marzari–Vanderbilt construction on the occupied manifold of a plane-wave
+/// SCF (Marzari & Vanderbilt, Phys. Rev. B 56, 12847 (1997); Marzari et al.,
+/// Rev. Mod. Phys. 84, 1419 (2012)). After SCF, Bloch states are recomputed
+/// non-self-consistently on the frozen \(V_\mathrm{eff}\) at every
+/// Monkhorst–Pack k-point; neighbor overlap matrices
+/// \(M^{(\mathbf k,\mathbf b)}\) feed a projection initialization
 /// (bond-centered Gaussians for elemental semiconductors) and optional MV
 /// steepest-descent polish. Centers come from the Berry-phase formula
 /// \(\mathbf r_n = -N_k^{-1}\sum_{\mathbf k,\mathbf b} w_b\,\mathbf b\,
 /// \operatorname{Im}\ln M_{nn}\).
 ///
+/// **Collinear spin:** when `PW::spin_polarized` is true, α and β occupied
+/// manifolds are localized independently on frozen
+/// \(V_{\mathrm{eff},\sigma}\) (fixed occupations; insulator only). Centers
+/// are concatenated α then β; see `PeriodicWannierResult::spin`.
+///
 /// Parameters are members of `PeriodicWannier` — no public `*Config` bag,
-/// no factories. Foothold: closed-shell insulator, fixed occupations, no
-/// disentanglement.
+/// no factories. No metallic smearing / disentanglement in this product path.
 ///
 /// @code
 ///   cpu::pw::PW pw;
@@ -22,10 +26,12 @@
 ///   pw.ecut_ry = 15.0;
 ///   pw.k_mesh = 2;
 ///   pw.xc = cpu::scf::XCType::LSDA;
+///   pw.spin_polarized = true;
+///   pw.multiplicity = 1;           // M = 0 closed-shell collinear
 ///
 ///   cpu::pw::PeriodicWannier mlwf;   // members: k_mesh, max_iter, …
 ///   auto r = mlwf.compute(pw, frame);
-///   // r.centers[i] [Å], r.spreads[i] [Å²]
+///   // r.centers[i] [Å], r.spreads[i] [Å²], r.n_wann_up / r.n_wann_dn
 /// @endcode
 #pragma once
 
@@ -43,31 +49,41 @@ namespace pw {
 /// @brief Result of a periodic multi-k MLWF calculation.
 struct PeriodicWannierResult {
     /// Wannier centroids \(\langle\mathbf r\rangle_n\) [Å].
+    /// Collinear spin: α manifold first, then β.
     std::vector<std::array<double, 3>> centers;
     /// Orbital spreads \(\Omega_n=\langle r^2\rangle_n-|\langle\mathbf r\rangle_n|^2\)
     /// [Å²] (SMV discretization).
     std::vector<double> spreads;
-    /// \(\sum_n\Omega_n\) after localization [Å²].
+    /// Spin index per center: 0 = ↑, 1 = ↓. Empty when restricted.
+    std::vector<int> spin;
+    /// \(\sum_n\Omega_n\) after localization [Å²] (all channels).
     double total_spread = 0.0;
-    /// \(\sum_n\Omega_n\) of the unrotated (identity-gauge) occupied manifold [Å²].
+    /// \(\sum_n\Omega_n\) of the unrotated (identity-gauge) manifold [Å²].
     double total_spread_initial = 0.0;
-    /// MV steepest-descent iterations executed (dimensionless).
+    /// MV steepest-descent iterations executed (max over spin channels).
     int iterations = 0;
-    /// Whether the SD loop stopped with \(\|\mathrm{G}\|_\infty < \texttt{tol}\).
+    /// Whether every spin channel's SD loop stopped with
+    /// \(\|\mathrm{G}\|_\infty < \texttt{tol}\) (or max_iter==0).
     bool converged = false;
     /// Whether the preceding SCF converged.
     bool scf_converged = false;
-    /// SCF total energy [Ry].
+    /// SCF total energy [Ry] (0 if not evaluated on the spin foothold path).
     double energy_ry = 0.0;
-    /// Number of Wannier functions (= occupied bands).
+    /// Number of Wannier functions (restricted: occupied bands;
+    /// spin: \(n_\uparrow+n_\downarrow\)).
     int n_wann = 0;
+    /// Occupied α count when collinear; 0 when restricted.
+    int n_wann_up = 0;
+    /// Occupied β count when collinear; 0 when restricted.
+    int n_wann_dn = 0;
 };
 
 /// @brief Multi-k Marzari–Vanderbilt MLWF on the PW method.
 ///
 /// Occupied-only manifold; projection initialization onto `n_wann` real-space
 /// Gaussians at caller-supplied or auto diamond bond midpoints when the frame
-/// has two identical atoms on the diamond basis.
+/// has two identical atoms on the diamond basis. Collinear spin localizes each
+/// channel separately (see `PeriodicWannierResult`).
 class PeriodicWannier {
   public:
     /// @brief Monkhorst–Pack mesh per dimension for the MLWF k-grid
@@ -88,17 +104,19 @@ class PeriodicWannier {
     ///        bond-centered Gaussians (diamond auto midpoints, or
     ///        `trial_centers` if non-empty). If false, start from identity.
     bool use_projection = true;
-    /// @brief Optional explicit trial centers [Å] (length must equal n_wann when
-    ///        non-empty). Empty → auto diamond bond midpoints for 2-atom Si-like
-    ///        cells, else crystal origin replicates (degrades gracefully).
+    /// @brief Optional explicit trial centers [Å] (length must equal n_wann
+    ///        per spin channel when non-empty — same trials for both spins).
+    ///        Empty → auto diamond bond midpoints for 2-atom Si-like
+    ///        cells with 4 WFs/spin, else crystal origin replicates.
     std::vector<std::array<double, 3>> trial_centers;
 
     /// @brief SCF + multi-k MLWF for the geometry in `frame`.
     /// @param method Plane-wave method (members only; not mutated).
     /// @param frame  Atom positions [Å], types (Z), simulation cell.
     /// @return Owned `PeriodicWannierResult` (centers [Å], spreads [Å²]).
-    /// @throws std::invalid_argument on spin-polarized / metallic method,
-    ///         non-positive mesh / step / tol, or empty occupied manifold.
+    /// @throws std::invalid_argument on metallic method, non-positive
+    ///         mesh / step / tol, empty occupied manifold, or incompatible
+    ///         spin multiplicity.
     PeriodicWannierResult compute(const PW& method,
                                   const cpu::Frame& frame) const;
 };

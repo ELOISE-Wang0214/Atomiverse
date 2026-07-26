@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -81,5 +82,31 @@ TEST(PeriodicWannierMath, InvalidArgumentsOnCompute) {
     EXPECT_THROW(mlwf.compute(method, f), std::invalid_argument);
     mlwf.k_mesh = 2;
     mlwf.tol = 0.0;
+    EXPECT_THROW(mlwf.compute(method, f), std::invalid_argument);
+}
+
+TEST(PeriodicWannierMath, SpinPolarizedGateNoLongerFootholdThrow) {
+    // Collinear spin is a product path: the foothold message is gone.
+    // Invalid k_mesh still fails before SCF; metallic smearing still rejected.
+    PeriodicWannier mlwf;
+    mlwf.k_mesh = 0;
+    PW method;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    cpu::Frame f(1);
+    f.span(kAtom_type)[0] = 1;
+    f.simbox = cpu::Box::cubic(5.0);
+    try {
+        mlwf.compute(method, f);
+        FAIL() << "expected invalid_argument for k_mesh=0";
+    } catch (const std::invalid_argument& e) {
+        const std::string msg = e.what();
+        EXPECT_EQ(msg.find("spin-polarized MLWF not supported"),
+                  std::string::npos);
+        EXPECT_NE(msg.find("k_mesh"), std::string::npos);
+    }
+    mlwf.k_mesh = 2;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.01;
     EXPECT_THROW(mlwf.compute(method, f), std::invalid_argument);
 }
