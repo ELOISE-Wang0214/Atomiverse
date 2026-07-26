@@ -163,7 +163,7 @@ void Cpmd::align_to_overlap(const linalg::RealMatrix& S) {
 }
 
 void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
-                   double dt_fs) {
+                   double dt_fs, double occ) {
     if (!ready_)
         throw std::logic_error(
             "Cpmd::advance: not seeded — run a cold SCF and call seed() first");
@@ -171,6 +171,10 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
         throw std::invalid_argument(
             "Cpmd::advance: dt_fs must be finite and > 0 (got "
             + std::to_string(dt_fs) + " fs)");
+    if (!(occ > 0.0) || !std::isfinite(occ))
+        throw std::invalid_argument(
+            "Cpmd::advance: occ must be finite and > 0 (got "
+            + std::to_string(occ) + ")");
 
     const int nb = static_cast<int>(C_.shape(0));
     if (static_cast<int>(H.shape(0)) != nb
@@ -184,8 +188,9 @@ void Cpmd::advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
             "Cpmd::advance: S shape does not match C rows (nb="
             + std::to_string(nb) + ")");
 
-    // Projected electronic force (S-tangent): F = −(I − S C Cᵀ)(4 H C).
-    const linalg::RealMatrix F = -internal::ot_gradient(H, S, C_);
+    // Projected electronic force (S-tangent):
+    // F = −(I − S C Cᵀ)(2·occ·H C). RKS occ=2 → factor 4; UKS occ=1 → factor 2.
+    const linalg::RealMatrix F = -internal::ot_gradient(H, S, C_, occ);
     const double dt_au = dt_fs / kAuTimeInFs;
     const double dt_over_2mu = dt_au / (2.0 * mu_);
 

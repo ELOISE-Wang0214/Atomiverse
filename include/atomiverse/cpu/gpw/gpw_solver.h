@@ -184,9 +184,11 @@ struct GpwResult {
     /// @name Fixed-density KS evaluation payload (Car–Parrinello path)
     /// Populated when `GpwDft::run` is called with `max_iter == 0` and a
     /// density guess — one collocate→Poisson→XC→integrate, no SCF. Empty
-    /// after a normal multi-iteration SCF.
+    /// after a normal multi-iteration SCF. RKS: `H_ks` only. UKS: `H_ks` is
+    /// \(H_\alpha\), `H_ks_beta` is \(H_\beta\).
     /// @{
-    linalg::RealMatrix H_ks; ///< KS matrix H[P] [Hartree] (nb × nb).
+    linalg::RealMatrix H_ks; ///< KS matrix H[P] / \(H_\alpha\) [Hartree] (nb × nb).
+    linalg::RealMatrix H_ks_beta; ///< UKS \(H_\beta\) [Hartree] (empty for RKS).
     linalg::RealMatrix S;    ///< Overlap matrix at this geometry (nb × nb).
     /// @}
 };

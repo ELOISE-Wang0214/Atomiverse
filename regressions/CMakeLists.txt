@@ -202,6 +202,8 @@ if(ATV_BUILD_GPW)
         # CPMD electronic RATTLE (constraint-preserving orbitals) — upgrade
         # of the Löwdin foothold on the same H2O NVE twin family.
         atv_add_regression(dynamics cpmd-rattle-water)
+        # CPMD on Γ-UKS (dual α/β fictitious electronic DOF) — O2 triplet NVE.
+        atv_add_regression(dynamics cpmd-uks)
         # Second-generation CP (Kühne ASPC + partial SCF corrector).
         atv_add_regression(dynamics second-gen-cpmd-water)
     endif()

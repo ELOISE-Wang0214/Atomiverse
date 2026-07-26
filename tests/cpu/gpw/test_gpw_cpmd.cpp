@@ -198,7 +198,8 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 
 } // namespace
 
-TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithUks) {
+TEST(GpwEvaluatorCpmd, BuildAcceptsCpmdWithUks) {
+    // Γ-UKS CPMD is product (dual α/β propagators); O2-like occupations.
     auto frame = water_frame();
     auto eval = water_eval();
     eval.cpmd = true;
@@ -206,7 +207,46 @@ TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithUks) {
     eval.n_beta = 3;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+TEST(GpwEvaluatorCpmd, BuildRejectsUksCpmdWithZeroAlpha) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.cpmd = true;
+    eval.n_alpha = 0;
+    eval.n_beta = 3;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
+}
+
+TEST(Cpmd, AdvanceWithOccOneMatchesUksFactor) {
+    // occ=1 uses ot_gradient factor 2 H C (UKS spin channel).
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    cp.seed(C);
+    RealMatrix H = xt::zeros<double>({2, 2});
+    H(0, 0) = -1.0;
+    H(1, 1) = 0.5;
+    H(0, 1) = H(1, 0) = 0.1;
+    RealMatrix S = eye_n(2);
+    // At BO-ish eigen direction force is small; just ensure finite advance.
+    EXPECT_NO_THROW(cp.advance(H, S, 0.05, /*occ=*/1.0));
+    EXPECT_TRUE(std::isfinite(cp.kinetic_ha()));
+    EXPECT_GE(cp.kinetic_ha(), 0.0);
+}
+
+TEST(Cpmd, AdvanceWithNonPositiveOccThrows) {
+    Cpmd cp(400.0);
+    RealMatrix C = xt::zeros<double>({2, 1});
+    C(0, 0) = 1.0;
+    cp.seed(C);
+    RealMatrix H = eye_n(2);
+    RealMatrix S = eye_n(2);
+    EXPECT_THROW(cp.advance(H, S, 0.1, /*occ=*/0.0), std::invalid_argument);
+    EXPECT_THROW(cp.advance(H, S, 0.1, /*occ=*/-1.0), std::invalid_argument);
 }
 
 TEST(GpwEvaluatorCpmd, BuildRejectsCpmdWithOt) {

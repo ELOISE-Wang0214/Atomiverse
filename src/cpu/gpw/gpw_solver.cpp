@@ -2434,15 +2434,14 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     // ── Fixed-density KS evaluation (Car–Parrinello electronic step) ─────
     // max_iter == 0: one collocate→Poisson→XC→integrate at the supplied
     // density; no diagonalization, no mixing, no orbital update. Populates
-    // H_ks and S for the electronic EOM. RKS Γ only.
-    if (cfg.max_iter == 0) {
+    // H_ks (+ H_ks_beta for UKS) and S for the electronic EOM. Γ only.
+    // RKS is handled here; UKS fixed-density is inside the UKS block below
+    // (reuses build_uks_H).
+    if (cfg.max_iter == 0 && !uks) {
         if (guess_P == nullptr)
             throw std::invalid_argument(
                 "GpwDft: max_iter==0 (fixed-density eval) requires guess_P "
                 "(the Car–Parrinello density)");
-        if (uks)
-            throw std::invalid_argument(
-                "GpwDft: fixed-density eval supports closed-shell RKS only");
         if (cfg.use_ot)
             throw std::invalid_argument(
                 "GpwDft: fixed-density eval is incompatible with use_ot");
@@ -2550,6 +2549,32 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
             return {std::move(Ha), std::move(Hb), e_total};
         };
+
+        // ── Fixed-density UKS (Car–Parrinello electronic step) ────────────
+        // max_iter == 0: one dual-KS build at the supplied (Pa, Pb); no
+        // diagonalization / mixing / orbital update. Populates H_ks (α),
+        // H_ks_beta (β), and S for the dual electronic EOMs.
+        if (cfg.max_iter == 0) {
+            if (guess_P == nullptr || guess_P_beta == nullptr)
+                throw std::invalid_argument(
+                    "GpwDft: max_iter==0 UKS fixed-density eval requires "
+                    "guess_P (alpha) and guess_P_beta");
+            if (cfg.use_ot)
+                throw std::invalid_argument(
+                    "GpwDft: fixed-density eval is incompatible with use_ot");
+            // Pa/Pb already loaded from guesses above.
+            auto [Ha, Hb, e_total] = build_uks_H(Pa, Pb);
+            res.e_total = e_total;
+            res.P = Pa;
+            res.P_beta = Pb;
+            res.H_ks = std::move(Ha);
+            res.H_ks_beta = std::move(Hb);
+            res.S = S;
+            res.converged = true;
+            res.iters = 0;
+            fold_dispersion(res, Pa + Pb);
+            return res;
+        }
 
         // ── UKS OT (orbital transformation) ────────────────────────────────
         // Independent S-orthonormal occupied manifolds per spin; joint CG
