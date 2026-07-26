@@ -117,7 +117,7 @@ struct GpwResult {
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
-    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/vdW-DF/DF2/rVV10 dispersion [Hartree] (0 when off).
+    double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/XDM/vdW-DF/DF2/rVV10 dispersion [Hartree] (0 when off).
     /// @brief Fermi level \(\mu\) [Hartree] when metallic smearing is on (0 if fixed occ).
     double e_fermi = 0.0;
     /// @brief Entropy contribution \(-\sigma S\) [Hartree] folded into free energy (0 if fixed).
@@ -226,21 +226,27 @@ class GpwDft {
     bool nonperiodic = false;       ///< isolated (MT) Poisson solver.
     bool local_pp_on_grid = true;   ///< collocate GTH local SR PP on grid.
     bool d3 =
-        false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4/ts/mbd.
+        false; ///< Grimme DFT-D3 zero damping (PBE). Exclusive vs d3bj/d4/ts/mbd/xdm.
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
-    /// Mutually exclusive with `d3` / `d4` / `ts` / `mbd`.
+    /// Mutually exclusive with `d3` / `d4` / `ts` / `mbd` / `xdm`.
     bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
     /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
-    /// Mutually exclusive with `d3` / `d3bj` / `ts` / `mbd`.
+    /// Mutually exclusive with `d3` / `d3bj` / `ts` / `mbd` / `xdm`.
     bool d4 = false; ///< Grimme DFT-D4 dispersion.
     /// @brief Tkatchenko–Scheffler pairwise dispersion (PBE s_R=0.94, free-atom
-    ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4` / `mbd`.
+    ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4` /
+    ///        `mbd` / `xdm`.
     bool ts = false; ///< Tkatchenko–Scheffler (TS) dispersion.
+    /// @brief Free-atom exchange-hole dipole moment (XDM) pairwise dispersion
+    ///        (Becke–Johnson; QE NC-PBE a1/a2). Mutually exclusive with
+    ///        `d3` / `d3bj` / `d4` / `ts` / `mbd` / `vdw_df` / `vdw_df2` /
+    ///        `rvv10`. Geometry-only free-atom foothold (no Hirshfeld).
+    bool xdm = false; ///< Free-atom XDM dispersion.
     /// @brief Many-body dispersion MBD@rsSCS (PBE β=0.83, free-atom volumes).
     ///        Default `mbd_k_mesh={0,0,0}` → isolated free-atom MBD@rsSCS.
     ///        Non-zero `mbd_k_mesh` → periodic Ewald + k-mesh (requires
     ///        `!nonperiodic`). Mutually exclusive with `d3` / `d3bj` / `d4` /
-    ///        `ts` / `vdw_df` / `vdw_df2` / `rvv10`.
+    ///        `ts` / `xdm` / `vdw_df` / `vdw_df2` / `rvv10`.
     bool mbd = false; ///< MBD@rsSCS dispersion.
     /// @brief MBD Brillouin-zone mesh (libMBD shift-½). All-zero keeps isolated
     ///        free-atom MBD; any positive component requires all three ≥ 1 and

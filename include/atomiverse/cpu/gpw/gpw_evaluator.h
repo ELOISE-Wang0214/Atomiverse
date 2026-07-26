@@ -74,15 +74,17 @@ class GPWEvaluator : public cpu::GPW {
     std::array<bool, 3> stress_axes = {true, true, true};
     /// @brief FD displacement [Bohr] for forces (legacy path).
     double fd_step = 1e-3;
-    /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs d3bj/d4/ts/mbd.
+    /// @brief Grimme DFT-D3 (zero damping, PBE params). Exclusive vs other disp.
     bool d3 = false;
-    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs d3/d4/ts/mbd.
+    /// @brief Grimme DFT-D3(BJ) (PBE params, CP2K CN). Exclusive vs other disp.
     bool d3bj = false;
-    /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs d3/d3bj/ts/mbd.
+    /// @brief Grimme DFT-D4 (PBE BJ, two-body). Exclusive vs other disp.
     bool d4 = false;
-    /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs d3/d3bj/d4/mbd.
+    /// @brief Tkatchenko–Scheffler (PBE free-atom TS). Exclusive vs other disp.
     bool ts = false;
-/// @brief MBD@rsSCS (PBE β=0.83). Exclusive vs d3/d3bj/d4/ts/vdw_df/vdw_df2/rvv10.
+    /// @brief Free-atom XDM (Becke–Johnson, QE NC-PBE a1/a2). Exclusive vs other disp.
+    bool xdm = false;
+    /// @brief MBD@rsSCS (PBE β=0.83). Exclusive vs other pairwise / nonlocal disp.
     ///        Default isolated; set `mbd_k_mesh` non-zero for periodic Ewald.
     bool mbd = false;
     /// @brief MBD k-mesh (0,0,0 = free-atom isolated; else periodic Ewald).

@@ -36,6 +36,7 @@
 #include "atomiverse/cpu/gpw/internal/rvv10.h"
 #include "atomiverse/cpu/gpw/internal/grid_fft.h"
 #include "atomiverse/cpu/gpw/internal/ts_dispersion.h"
+#include "atomiverse/cpu/gpw/internal/xdm_dispersion.h"
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
@@ -1772,29 +1773,29 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         acells.build(atoms, cfg.cell,
                      std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
 
-    // Dispersion — free-atom TS/MBD/D3/D4 are geometry-only (pre-SCF).
+    // Dispersion — free-atom TS/MBD/XDM/D3/D4 are geometry-only (pre-SCF).
     // Hirshfeld-scaled TS/MBD and density-dependent vdw_df / vdw_df2 / rvv10
     // are deferred to post-SCF on the Γ RKS path (`fold_dispersion` / density
-    // fold). `d3`, `d3bj`, `d4`, `ts`, `mbd`, `vdw_df`, `vdw_df2`, and `rvv10`
-    // are pairwise mutually exclusive.
+    // fold). Pairwise / nonlocal dispersion flags are mutually exclusive.
     double e_d3 = 0.0;
     const int n_disp_flags = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0)
                              + (cfg.d4 ? 1 : 0) + (cfg.ts ? 1 : 0)
-                             + (cfg.mbd ? 1 : 0) + (cfg.vdw_df ? 1 : 0)
-                             + (cfg.vdw_df2 ? 1 : 0) + (cfg.rvv10 ? 1 : 0);
+                             + (cfg.xdm ? 1 : 0) + (cfg.mbd ? 1 : 0)
+                             + (cfg.vdw_df ? 1 : 0) + (cfg.vdw_df2 ? 1 : 0)
+                             + (cfg.rvv10 ? 1 : 0);
     if (n_disp_flags > 1)
         throw std::runtime_error(
-            "GPW: d3, d3bj, d4, ts, mbd, vdw_df, vdw_df2, and rvv10 are "
+            "GPW: d3, d3bj, d4, ts, xdm, mbd, vdw_df, vdw_df2, and rvv10 are "
             "mutually exclusive — set only one");
     if (cfg.hirshfeld) {
         if (!(cfg.ts || cfg.mbd))
             throw std::runtime_error(
                 "GPW: hirshfeld requires ts or mbd (no standalone Hirshfeld)");
-        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.vdw_df || cfg.vdw_df2
-            || cfg.rvv10)
+        if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.xdm || cfg.vdw_df
+            || cfg.vdw_df2 || cfg.rvv10)
             throw std::runtime_error(
                 "GPW: hirshfeld applies only to ts/mbd, not "
-                "d3/d3bj/d4/vdw_df/vdw_df2/rvv10");
+                "d3/d3bj/d4/xdm/vdw_df/vdw_df2/rvv10");
         if (use_kpath)
             throw std::runtime_error(
                 "GPW: hirshfeld TS/MBD is Γ-point only (no k-point path)");
@@ -1815,7 +1816,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 std::string("GPW ") + tag
                 + ": incompatible with nonperiodic (MT) Poisson");
         // Energy is evaluated post-SCF on the final density (below).
-    } else if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.mbd) {
+    } else if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm || cfg.mbd) {
         std::vector<int> Z(atoms.size());
         std::vector<std::array<double, 3>> pos(Z.size());
         for (std::size_t i = 0; i < Z.size(); ++i) {
@@ -1838,6 +1839,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                                     mbd_per ? cfg.mbd_k_mesh : nullptr)
                            .energy;
             }
+        } else if (cfg.xdm) {
+            constexpr double kAng2Bohr = 1.0 / 0.52917720859;
+            constexpr double kRcutBohr = 50.0 * kAng2Bohr;
+            e_d3 = xdm_pbe(Z, pos, cfg.cell, periodic, kRcutBohr).energy;
         } else if (cfg.ts) {
             // Free-atom TS (volume ratio = 1). Deferred when hirshfeld=true.
             if (!cfg.hirshfeld) {
@@ -3316,6 +3321,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
     p.ts = m.ts;
+    p.xdm = m.xdm;
     p.mbd = m.mbd;
     for (int d = 0; d < 3; ++d)
         p.mbd_k_mesh[d] = m.mbd_k_mesh[d];
