@@ -131,9 +131,13 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
 
 /// @brief Assemble the finite-q DFPT force-constant matrix \(C(q)\).
 ///
-/// Same scope as `dfpt_gamma_force_constants` for pure LSDA / pure GGA
-/// (restricted fixed-occ or **collinear spin**). Metallic smear is rejected
-/// at finite q. When `q_frac` is the zero vector the result is real and
+/// Same scope as `dfpt_gamma_force_constants` for pure LSDA / pure GGA:
+/// restricted **fixed occupations** or **metallic smearing**, or
+/// **collinear spin** with fixed occupations. Spin + smear is rejected.
+/// Fractional \(f_{nk}\) weight the density response and force-constant
+/// terms; the Sternheimer projector at \(\mathbf{k}+\mathbf{q}\) removes
+/// bands with \(f\ge 10^{-8}\). No de Gironcoli \(\delta\mu\) at
+/// \(q\neq 0\). When `q_frac` is the zero vector the result is real and
 /// matches the Γ path (use the Γ entry for production Γ runs — this path
 /// always builds k and k+q tables).
 ///

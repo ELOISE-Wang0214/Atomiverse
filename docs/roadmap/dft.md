@@ -17,12 +17,12 @@ tests; libxc is never a runtime dependency.
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 incomplete staff,
 GAPW/PAW; GapCensus wave-9 queue: UKS OT+smear, multi-k UKS OT+DFT+U,
-OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid, DFPT spin+smear /
-finite-q+smear, SGCP OT corrector; product already ships multi-k URPA,
+OT+DFT+U+smear, D4/MBD analytic forces, UKS multigrid, DFPT spin+smear,
+SGCP OT corrector; product already ships multi-k URPA,
 OT+smear RKS, multi-k UKS OT, multi-k OT+DFT+U, D4 analytic stress, nonlocal
-vdW SCF potential/forces, optB88-vdW, metallic DFPT, collinear-spin
-incommensurate DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW UKS smear, UKS
-Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM,
+vdW SCF potential/forces, optB88-vdW, metallic DFPT, finite-q+smear DFPT,
+collinear-spin incommensurate DFPT, URPA@UKS Γ+multi-k, multi-k UGW, GPW UKS
+smear, UKS Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM,
 GPW RKS/UKS metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U
 energy/stress, multi-k UMP2, multi-k MP2/RPA/G0W0, vdW-DF / DF2 / rVV10,
 periodic Ewald MBD, PW true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE).
@@ -421,10 +421,11 @@ Which engine backs which ✓:
   `reg_dfpt-incommensurate-si`; **GGA kernel** `reg_dfpt-gga-si`;
   **collinear spin** `reg_dfpt-spin-si`; **collinear spin at incommensurate
   \(q\)** `reg_dfpt-spin-incommensurate`; **metallic occupation smearing**
-  `reg_dfpt-metallic-si`). **Open residuals:** collinear **spin + smear**
-  and **finite-q + smear** still throw (`dfpt-spin-smearing` /
-  `dfpt-finite-q-smearing` in the CP2K queue). NC-UPF; fixed-occupation and
-  Γ/commensurate metallic-smear Sternheimer paths productized.
+  `reg_dfpt-metallic-si`; **finite-q + metallic smear**
+  `reg_dfpt-finite-q-smearing`). **Open residual:** collinear **spin + smear**
+  still throws (`dfpt-spin-smearing` in the CP2K queue). NC-UPF;
+  fixed-occupation and restricted metallic-smear Sternheimer paths
+  (Γ / commensurate / direct finite-\(q\)) productized.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,

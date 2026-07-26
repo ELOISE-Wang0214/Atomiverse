@@ -135,6 +135,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-metallic-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Finite-q DFPT at X with metallic occupation smearing (FD).
+    atv_add_regression(response dfpt-finite-q-smearing)
+    if(TARGET reg_dfpt-finite-q-smearing)
+        target_compile_definitions(reg_dfpt-finite-q-smearing PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     # Incommensurate-q DFPT with collinear spin (direct Sternheimer).
     atv_add_regression(response dfpt-spin-incommensurate)
     if(TARGET reg_dfpt-spin-incommensurate)
