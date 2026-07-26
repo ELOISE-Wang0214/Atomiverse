@@ -12,12 +12,15 @@
 ///
 /// Scope: closed-shell (RKS, `n_occ`) at Γ **or** on a Monkhorst-Pack k mesh
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
-/// density), and unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or
-/// PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual H_k,
-/// spin-resolved density/XC). Periodic neutral electrostatics via the GTH
-/// Gaussian core charge. Analytic forces cover Γ RKS/UKS and multi-k RKS/UKS
-/// (`gpw_forces_analytic`); analytic cell stress covers Γ RKS/UKS, multi-k
-/// RKS, and multi-k collinear UKS (`gpw_stress` via fixed-\(P_k^\sigma\)).
+/// density), optional **metallic occupation smearing** (Fermi–Dirac /
+/// Methfessel–Paxton; multi-k RKS product path, Mermin free energy), and
+/// unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or PBE/PBEsol GGA) at
+/// Γ **or** on the same k mesh (collinear dual H_k, spin-resolved density/XC;
+/// fixed fillings only — no UKS+smear yet). Periodic neutral electrostatics
+/// via the GTH Gaussian core charge. Analytic forces cover Γ RKS/UKS and
+/// multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell stress covers Γ
+/// RKS/UKS, multi-k RKS, and multi-k collinear UKS (`gpw_stress` via
+/// fixed-\(P_k^\sigma\)).
 #pragma once
 
 #include <array>
@@ -94,15 +97,33 @@ struct GpwAtom {
 /// `PBE` / `PBEsol` / `RevPBE` / `BLYP` (spin-GGA path; `RPBE` not yet).
 enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
 
+/// @brief Metallic occupation smearing kind (product path: multi-k RKS).
+///
+/// Mirrors `cpu::pw::Smearing` for API parity with QE/CP2K. Default `none`
+/// keeps fixed integer fillings (`n_occ` double-occupied). When not `none`,
+/// the SCF reports the Mermin free energy \(F=E_{\mathrm{KS}}-TS\) as
+/// `e_total` and fills bands via a shared chemical potential \(\mu\).
+enum class Smearing : int {
+    none = 0,              ///< Fixed closed-shell occupations.
+    fermi_dirac = 1,       ///< Fermi–Dirac (CP2K `METHOD FERMI_DIRAC`).
+    methfessel_paxton = 2, ///< Methfessel–Paxton of order `mp_order`.
+};
+
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
-    double e_total = 0.0;    ///< total energy [Hartree].
+    double e_total = 0.0;    ///< total energy [Hartree] (free energy \(F\) when smearing).
     double e_kinetic = 0.0;  ///< Tr(P T)  (RKS: closed P; UKS: Tr((Pα+Pβ)T)).
     double e_loc_sr = 0.0;   ///< Tr(P V_loc^sr).
     double e_nonlocal = 0.0; ///< Tr(P V_nl).
     double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
     double e_xc = 0.0; ///< XC energy.
     double e_disp = 0.0; ///< DFT-D3/D4/TS/MBD/vdW-DF/DF2/rVV10 dispersion [Hartree] (0 when off).
+    /// @brief Fermi level \(\mu\) [Hartree] when metallic smearing is on (0 if fixed occ).
+    double e_fermi = 0.0;
+    /// @brief Entropy contribution \(-\sigma S\) [Hartree] folded into free energy (0 if fixed).
+    double e_entropy = 0.0;
+    /// @brief \(\sum_{k,b} w_k f_{kb}\) electron count after occupation fill.
+    double n_elec_occ = 0.0;
     /// @brief Hirshfeld volume ratios \(V/V_{\mathrm{free}}\) when
     ///        `GpwDft::hirshfeld` was set (empty for free-atom TS/MBD).
     std::vector<double> volume_ratios;
@@ -277,6 +298,18 @@ class GpwDft {
     ///        (units-free sign/magnitude; size 0 or n_atoms). Applied only to
     ///        the cold-start densities, not as an external potential.
     std::vector<double> atom_spin_guess;
+    /// @brief Metallic occupation smearing (default: fixed integer fillings).
+    ///        Product path: multi-k closed-shell RKS. UKS / OT throw at build.
+    Smearing smearing = Smearing::none;
+    /// @brief Smearing width [Ry] (QE `degauss` / CP2K \(k_B T_e\)). Required
+    ///        `> 0` when `smearing != none`. Converted to Ha inside the SCF.
+    double degauss = 0.02;
+    /// @brief Methfessel–Paxton order \(N\) (used when `smearing == methfessel_paxton`).
+    int mp_order = 1;
+    /// @brief Extra empty bands beyond `n_occ` (CP2K `ADDED_MOS` / PW
+    ///        `extra_bands`). GPW already diagonalizes the full AO spectrum, so
+    ///        this is API parity; a future band-cap may honour it.
+    int extra_bands = 0;
 
     GpwDft() = default;
     GpwDft(const GpwDft&) = delete;

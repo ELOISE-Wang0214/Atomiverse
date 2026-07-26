@@ -50,6 +50,7 @@
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/linalg/density.h"    // build_density_matrix
+#include "atomiverse/cpu/planewave/internal/smearing.h" // metallic occupations
 #include "atomiverse/cpu/linalg/eigensolve.h" // diagonalize_fock_generalized
 #include "atomiverse/cpu/linalg/matrix.h"     // RealMatrix
 #include "atomiverse/cpu/scf/dftd4.h"
@@ -852,10 +853,15 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // Canonical orthogonalization per k (drops near-null Bloch directions).
     std::vector<internal::KOrth> orth;
     orth.reserve(static_cast<std::size_t>(nk));
+    int m_min = 0;
     for (int ik = 0; ik < nk; ++ik) {
         orth.emplace_back(S_k[static_cast<std::size_t>(ik)],
                           cfg.lindep_threshold);
         const int m = static_cast<int>(orth.back().X.shape(1));
+        if (ik == 0)
+            m_min = m;
+        else
+            m_min = std::min(m_min, m);
         if (cfg.n_occ > m)
             throw std::runtime_error(
                 "GPW kpoints: n_occ=" + std::to_string(cfg.n_occ)
@@ -864,32 +870,111 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 + " (no-fallback rule)");
     }
 
+    // Metallic smearing (FD / MP) — shared μ over all k, Mermin free energy.
+    // Occupation math is `cpu::pw::internal` (unit-tested); units: Ha inside.
+    const bool use_smear = (cfg.smearing != Smearing::none);
+    const double n_elec = 2.0 * static_cast<double>(cfg.n_occ);
+    const double degauss_ha =
+        use_smear ? cfg.degauss * 0.5 : 0.0; // Ry → Ha (1 Ry = 0.5 Ha)
+    using pw::internal::SmearKind;
+    SmearKind smear_kind = SmearKind::fermi_dirac;
+    if (cfg.smearing == Smearing::methfessel_paxton)
+        smear_kind = SmearKind::methfessel_paxton;
+    const int mp_order = cfg.mp_order;
+    if (use_smear && m_min < cfg.n_occ + std::max(cfg.extra_bands, 0)
+        && std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
+        std::fprintf(stderr,
+                     "[gpw k] smear: m_min=%d n_occ=%d extra_bands=%d "
+                     "(full AO spectrum used)\n",
+                     m_min, cfg.n_occ, cfg.extra_bands);
+
     // Per-k pre-summed complex basis-on-grid values (image sum + Bloch phase
     // folded once; per-iteration cost is O(npts * nb^2) per k).
     const internal::KpointBasisGrid kbg =
         internal::build_kpoint_basis_grid(grid, basis, kpts, cfg.eps_default);
 
-    // Cold start: per-k core Hamiltonian T_k + V_nl^k (local k only under MPI).
-    auto density_from = [&](const CplxMatrix& C, int n_occ) {
+    // Density from band occupations f_b ∈ [0, 2] (closed-shell band form).
+    auto density_from_occ = [&](const CplxMatrix& C,
+                                const std::vector<double>& occ) {
         const int m = static_cast<int>(C.shape(1));
-        (void)m;
         CplxMatrix P = xt::zeros<Cplx>({nb, nb});
-        for (int i = 0; i < nb; ++i)
-            for (int o = 0; o < n_occ; ++o) {
-                const Cplx ci = 2.0 * C(i, o);
+        const int nfill = std::min(m, static_cast<int>(occ.size()));
+        for (int o = 0; o < nfill; ++o) {
+            const double fo = occ[static_cast<std::size_t>(o)];
+            if (!(fo > 1e-14))
+                continue;
+            for (int i = 0; i < nb; ++i) {
+                const Cplx ci = fo * C(i, o);
                 for (int j = 0; j < nb; ++j)
                     P(i, j) += ci * std::conj(C(j, o));
             }
+        }
         return P;
     };
+    auto density_from_fixed = [&](const CplxMatrix& C, int n_occ) {
+        std::vector<double> occ(static_cast<std::size_t>(n_occ), 2.0);
+        return density_from_occ(C, occ);
+    };
+
+    std::vector<double> weights(static_cast<std::size_t>(nk));
+    for (int ik = 0; ik < nk; ++ik)
+        weights[static_cast<std::size_t>(ik)] =
+            kpts[static_cast<std::size_t>(ik)].weight;
+
+    // Solve μ from the full (k,band) spectrum; return per-k band occupations.
+    auto fill_metallic = [&](const std::vector<std::vector<double>>& evals_k,
+                             double& mu_ha, double& n_occ_sum,
+                             double& entropy_sum) {
+        std::vector<AccReal> all_evals;
+        std::vector<AccReal> all_weights;
+        for (int ik = 0; ik < nk; ++ik) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+            for (double e : ev) {
+                all_evals.push_back(static_cast<AccReal>(e));
+                all_weights.push_back(static_cast<AccReal>(wk));
+            }
+        }
+        mu_ha = static_cast<double>(pw::internal::find_fermi_level(
+            all_evals, all_weights, static_cast<AccReal>(n_elec),
+            static_cast<AccReal>(degauss_ha), smear_kind, mp_order));
+        n_occ_sum = 0.0;
+        entropy_sum = 0.0;
+        std::vector<std::vector<double>> occ_k(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            const double wk = weights[static_cast<std::size_t>(ik)];
+            const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+            occ_k[static_cast<std::size_t>(ik)].resize(ev.size());
+            std::vector<AccReal> ev_a(ev.begin(), ev.end());
+            std::vector<AccReal> w_one(ev.size(), static_cast<AccReal>(wk));
+            auto fill = pw::internal::fill_occupations(
+                ev_a, w_one, static_cast<AccReal>(mu_ha),
+                static_cast<AccReal>(degauss_ha), smear_kind, mp_order);
+            n_occ_sum += static_cast<double>(fill.n_occ);
+            entropy_sum += static_cast<double>(fill.entropy);
+            for (std::size_t b = 0; b < ev.size(); ++b)
+                occ_k[static_cast<std::size_t>(ik)][b] =
+                    static_cast<double>(pw::internal::smear_f_band(
+                        static_cast<AccReal>(ev[b]),
+                        static_cast<AccReal>(mu_ha),
+                        static_cast<AccReal>(degauss_ha), smear_kind,
+                        mp_order));
+        }
+        return occ_k;
+    };
+
     std::vector<CplxMatrix> P_k(static_cast<std::size_t>(nk));
+    double last_mu = 0.0;
+    double last_n_elec = 0.0;
+    double last_entropy = 0.0;
+    // Cold start: fixed integer fill (smear path re-fills after first diag).
     for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
         const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
                                + Vnl_k[static_cast<std::size_t>(ik)];
         auto [eps0, C0k] =
             internal::diagonalize_k(H0k, orth[static_cast<std::size_t>(ik)]);
         (void)eps0;
-        P_k[static_cast<std::size_t>(ik)] = density_from(C0k, cfg.n_occ);
+        P_k[static_cast<std::size_t>(ik)] = density_from_fixed(C0k, cfg.n_occ);
     }
 
     auto ctrace = [&](const CplxMatrix& P, const CplxMatrix& M) {
@@ -903,10 +988,6 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     GpwResult res;
     res.n_kpts = nk;
     res.n_kpts_local = n_kpts_local;
-    std::vector<double> weights(static_cast<std::size_t>(nk));
-    for (int ik = 0; ik < nk; ++ik)
-        weights[static_cast<std::size_t>(ik)] =
-            kpts[static_cast<std::size_t>(ik)].weight;
     const bool use_diis = cfg.diis_depth > 0;
     internal::KDiis diis(use_diis ? cfg.diis_depth : 1, weights);
     constexpr double kDiisErrTolK = 1e-5; // same gate as the Γ DIIS path
@@ -1056,10 +1137,17 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.e_loc_sr = e_nl + e_locgrid;
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
-        const double e_total =
+        // Mermin free energy when smearing: F = E_KS − σ S (+ DFT+U if on).
+        const double e_ks =
             res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
+        const double e_ent =
+            use_smear ? (-degauss_ha * last_entropy) : 0.0;
+        const double e_total = e_ks + e_ent;
         res.iters = iter + 1;
         res.e_total = e_total;
+        res.e_entropy = e_ent;
+        res.e_fermi = use_smear ? last_mu : 0.0;
+        res.n_elec_occ = use_smear ? last_n_elec : n_elec;
 
         // k-resolved commutator residual X^dag (H P S - S P H) X (local k).
         std::vector<CplxMatrix> err(static_cast<std::size_t>(nk));
@@ -1083,14 +1171,25 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         }
 #endif
 
-        if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0)
-            std::fprintf(
-                stderr,
-                "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
-                "xc=%.4f U=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
-                iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es, res.e_xc,
-                e_dftu, std::abs(e_total - e_prev), err_norm, nk, n_kpts_local,
-                layout.nprocs);
+        if (std::getenv("ATV_GPW_TRACE") && layout.rank == 0) {
+            if (use_smear)
+                std::fprintf(
+                    stderr,
+                    "[gpw k %2d] F=%.8f  T=%.4f loc=%.4f es=%.4f "
+                    "xc=%.4f U=%.4f  dE=%.2e err=%.2e mu=%.6f Ne=%.6f "
+                    "(nk=%d nlocal=%d nprocs=%d)\n",
+                    iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                    res.e_xc, e_dftu, std::abs(e_total - e_prev), err_norm,
+                    last_mu, last_n_elec, nk, n_kpts_local, layout.nprocs);
+            else
+                std::fprintf(
+                    stderr,
+                    "[gpw k %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f "
+                    "xc=%.4f U=%.4f  dE=%.2e err=%.2e (nk=%d nlocal=%d nprocs=%d)\n",
+                    iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                    res.e_xc, e_dftu, std::abs(e_total - e_prev), err_norm, nk,
+                    n_kpts_local, layout.nprocs);
+        }
 
         const double err_gate = do_dftu ? 5e-3 : kDiisErrTolK;
         if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol
@@ -1105,12 +1204,49 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
         if (use_diis) // extrapolated KS matrices drive the next density
             H_k = diis.step(H_k, err);
+
+        // Diagonalize owned k; for metallic smear, gather the full spectrum
+        // and rebuild P_k with fractional occupations at a shared μ.
+        std::vector<std::vector<double>> evals_k(
+            static_cast<std::size_t>(nk));
+        std::vector<CplxMatrix> C_k_local(static_cast<std::size_t>(nk));
         for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
             auto [eps, C] =
                 internal::diagonalize_k(H_k[static_cast<std::size_t>(ik)],
                                         orth[static_cast<std::size_t>(ik)]);
-            (void)eps;
-            CplxMatrix P_new = density_from(C, cfg.n_occ);
+            evals_k[static_cast<std::size_t>(ik)] = std::move(eps);
+            C_k_local[static_cast<std::size_t>(ik)] = std::move(C);
+        }
+#ifdef ATV_HAS_MPI
+        if (layout.active && use_smear) {
+            // Pack eigenvalues: variable m per k — pad to nb (upper bound).
+            std::vector<double> pack(
+                static_cast<std::size_t>(nk * nb), 0.0);
+            std::vector<int> nband(static_cast<std::size_t>(nk), 0);
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                const auto& ev = evals_k[static_cast<std::size_t>(ik)];
+                nband[static_cast<std::size_t>(ik)] =
+                    static_cast<int>(ev.size());
+                for (std::size_t b = 0; b < ev.size(); ++b)
+                    pack[static_cast<std::size_t>(ik * nb)
+                         + b] = ev[b];
+            }
+            MPI_Allreduce(MPI_IN_PLACE, pack.data(), nk * nb, MPI_DOUBLE,
+                          MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(MPI_IN_PLACE, nband.data(), nk, MPI_INT, MPI_SUM,
+                          MPI_COMM_WORLD);
+            for (int ik = 0; ik < nk; ++ik) {
+                const int m = nband[static_cast<std::size_t>(ik)];
+                evals_k[static_cast<std::size_t>(ik)].resize(
+                    static_cast<std::size_t>(m));
+                for (int b = 0; b < m; ++b)
+                    evals_k[static_cast<std::size_t>(ik)]
+                           [static_cast<std::size_t>(b)] =
+                        pack[static_cast<std::size_t>(ik * nb + b)];
+            }
+        }
+#endif
+        auto mix_density = [&](int ik, CplxMatrix P_new) {
             if (use_diis) {
                 if (do_dftu) {
                     const double a = std::min(std::max(cfg.mix, 0.15), 0.6);
@@ -1125,6 +1261,22 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     (1.0 - cfg.mix) * P_k[static_cast<std::size_t>(ik)]
                     + cfg.mix * P_new;
             }
+        };
+        if (use_smear) {
+            auto occ_k =
+                fill_metallic(evals_k, last_mu, last_n_elec, last_entropy);
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                mix_density(ik,
+                            density_from_occ(
+                                C_k_local[static_cast<std::size_t>(ik)],
+                                occ_k[static_cast<std::size_t>(ik)]));
+            }
+        } else {
+            for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
+                mix_density(ik, density_from_fixed(
+                                    C_k_local[static_cast<std::size_t>(ik)],
+                                    cfg.n_occ));
+            }
         }
     }
     // Budget exhausted: report the last state (converged stays false).
@@ -1132,6 +1284,9 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         store_k_payload(rebuild_all_H(last_veff));
     res.e_disp = e_d3;
     res.e_total += e_d3;
+    res.e_fermi = use_smear ? last_mu : 0.0;
+    res.e_entropy = use_smear ? (-degauss_ha * last_entropy) : 0.0;
+    res.n_elec_occ = use_smear ? last_n_elec : n_elec;
     return res;
 }
 
@@ -2965,6 +3120,27 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
             + std::to_string(n_occ) + "); or set n_alpha/n_beta for UKS");
     }
+    if (smearing != Smearing::none) {
+        if (is_uks())
+            throw std::invalid_argument(
+                "GpwDft::build: metallic smearing supports closed-shell RKS "
+                "only (n_alpha/n_beta set — UKS+smear not productized)");
+        if (use_ot)
+            throw std::invalid_argument(
+                "GpwDft::build: metallic smearing is incompatible with "
+                "use_ot (OT uses fixed integer occupations)");
+        if (!(degauss > 0.0) || !std::isfinite(degauss))
+            throw std::invalid_argument(
+                "GpwDft::build: degauss must be finite and > 0 [Ry] when "
+                "smearing is enabled (got "
+                + std::to_string(degauss) + ")");
+        if (smearing == Smearing::methfessel_paxton && mp_order < 1)
+            throw std::invalid_argument(
+                "GpwDft::build: mp_order must be >= 1 for Methfessel-Paxton");
+        if (extra_bands < 0)
+            throw std::invalid_argument(
+                "GpwDft::build: extra_bands must be >= 0");
+    }
     if (!nonperiodic) {
         for (int d = 0; d < 3; ++d)
             if (!(cell[d] > 0.0))
@@ -3112,6 +3288,10 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.mp2_n_virt = m.mp2_n_virt;
     p.mp2_os_scale = m.mp2_os_scale;
     p.mp2_ss_scale = m.mp2_ss_scale;
+    p.smearing = m.smearing;
+    p.degauss = m.degauss;
+    p.mp_order = m.mp_order;
+    p.extra_bands = m.extra_bands;
     return p;
 }
 } // namespace
