@@ -45,6 +45,23 @@ PWResult run_scf_fixed_occ(const cpu::Frame& frame, const PW& method,
                            DensityBuilder& density, DavidsonSolver& davidson,
                            const char* tag);
 
+/// @brief Restricted SCF with metallic occupation smearing (FD / MP / Gaussian).
+///
+/// Same loop shape as `run_scf_fixed_occ`, but finds a shared \(\mu\) every
+/// iteration and builds the density with fractional band occupations in
+/// \([0,2]\). Requires `method.smearing != none`, `method.degauss > 0`, and
+/// `davidson` sized to \(\lceil N_e/2\rceil + \mathrm{extra\_bands}\).
+/// Collinear spin is not supported here (use `PW::run`).
+///
+/// @param n_bands  Band count (must match the Davidson solver).
+/// @return Free energy \(F=E_{\mathrm{KS}}-TS\) [Ry]/[Hartree], flags, iters.
+PWResult run_scf_smear_restricted(const cpu::Frame& frame, const PW& method,
+                                  PWProblem& prob, PoissonSolver& poisson,
+                                  XCBuilder& xc, VeffBuilder& veff,
+                                  DensityBuilder& density,
+                                  DavidsonSolver& davidson, int n_bands,
+                                  const char* tag);
+
 } // namespace internal
 } // namespace pw
 } // namespace cpu

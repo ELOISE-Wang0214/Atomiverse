@@ -4,23 +4,25 @@
 /// Analytic dynamical matrix from density-functional perturbation theory
 /// (self-consistent Sternheimer response) instead of `6N` finite-displacement
 /// SCF solves. Pure LSDA **or pure GGA** (PBE, PBEsol, revPBE, RPBE, BLYP)
-/// with a UPF norm-conserving pseudopotential and fixed occupations.
-/// **Collinear spin** (`method.spin_polarized`) is supported at Γ (and
-/// commensurate finite \(\mathbf{q}\) via the supercell Γ path): spin-resolved
-/// Sternheimer with \(f=1\) per spin-orbital and a spin XC kernel (local
-/// \(f_{\mathrm{xc}}^{\sigma\sigma'}\) for LDA; FD of `XCBuilder::step_spin`
-/// for GGA). Hybrids and metallic smearing are rejected. Default
-/// `q_frac = {0,0,0}` is the Γ path. Finite \(\mathbf{q}\) that is
-/// **commensurate** with a small supercell (e.g. \(X=(1/2,0,0)\) →
-/// \(2\times1\times1\)) is evaluated as Γ-DFPT on that supercell plus IFC
-/// Fourier (exactly equivalent for rational \(q\)). **Incommensurate** (or
-/// oversize-supercell) \(\mathbf{q}\) uses the direct finite-\(q\)
-/// Sternheimer assembly (`internal::dfpt_q_force_constants`) on the
-/// primitive cell (restricted only — collinear spin at incommensurate \(q\)
-/// is a follow-on). GGA \(K_{\mathrm{xc}}\) is the second functional
-/// derivative of the same `XCBuilder` operator used in the ground-state SCF
-/// (central FD of \(V_{\mathrm{xc}}[n]\)); pure LDA keeps a local
-/// \(f_{\mathrm{xc}}\) table.
+/// with a UPF norm-conserving pseudopotential. **Fixed occupations** or
+/// **restricted metallic smearing** (`method.smearing` = Fermi–Dirac /
+/// Methfessel–Paxton / Gaussian with `degauss` [Ry] and `extra_bands`) at
+/// Γ. **Collinear spin** (`method.spin_polarized`) is supported at Γ (and
+/// commensurate finite \(\mathbf{q}\) via the supercell Γ path) with fixed
+/// occupations only: spin-resolved Sternheimer with \(f=1\) per spin-orbital
+/// and a spin XC kernel (local \(f_{\mathrm{xc}}^{\sigma\sigma'}\) for LDA;
+/// FD of `XCBuilder::step_spin` for GGA). Hybrids, spin+smear, and finite-q
+/// + smear are rejected. Default `q_frac = {0,0,0}` is the Γ path. Finite
+/// \(\mathbf{q}\) that is **commensurate** with a small supercell
+/// (e.g. \(X=(1/2,0,0)\) → \(2\times1\times1\)) is evaluated as Γ-DFPT on
+/// that supercell plus IFC Fourier (exactly equivalent for rational \(q\)).
+/// **Incommensurate** (or oversize-supercell) \(\mathbf{q}\) uses the direct
+/// finite-\(q\) Sternheimer assembly (`internal::dfpt_q_force_constants`) on
+/// the primitive cell (restricted fixed-occ only — collinear spin /
+/// smear at incommensurate \(q\) are follow-ons). GGA \(K_{\mathrm{xc}}\) is
+/// the second functional derivative of the same `XCBuilder` operator used in
+/// the ground-state SCF (central FD of \(V_{\mathrm{xc}}[n]\)); pure LDA keeps
+/// a local \(f_{\mathrm{xc}}\) table.
 /// Parameters are members — no public `*Config` bag (`Bands` precedent).
 ///
 /// Reference: Baroni, de Gironcoli, Dal Corso, Giannozzi,
@@ -110,9 +112,11 @@ class DfptPhonon {
     /// @brief DFPT phonons at `q_frac` for the geometry in `frame`.
     ///
     /// Throws `std::invalid_argument` unless `method.xc` is pure LSDA or
-    /// pure GGA (`hybrid_exchange_fraction == 0`), `method.upf_path` is set,
-    /// and smearing is off. Collinear spin is allowed at Γ / commensurate
-    /// \(\mathbf{q}\); incommensurate-\(q\) + spin throws.
+    /// pure GGA (`hybrid_exchange_fraction == 0`) and `method.upf_path` is
+    /// set. Restricted metallic smearing is allowed at Γ / commensurate
+    /// \(\mathbf{q}\). Collinear spin is allowed at Γ / commensurate
+    /// \(\mathbf{q}\) with fixed occupations only; spin+smear,
+    /// incommensurate-\(q\) + spin, and finite-q + smear throw.
     ///
     /// @param method Plane-wave method (members only; not mutated).
     /// @param frame  Atom positions [Å], types (Z), simulation cell.

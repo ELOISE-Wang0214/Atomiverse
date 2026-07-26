@@ -36,6 +36,7 @@
 #include "atomiverse/cpu/planewave/internal/pw_setup.h"
 #include "atomiverse/cpu/planewave/internal/pw_subspace.h"
 #include "atomiverse/cpu/planewave/internal/scf_loop.h"
+#include "atomiverse/cpu/planewave/internal/smearing.h"
 #include "atomiverse/cpu/planewave/internal/upf_reader.h"
 #include "atomiverse/cpu/planewave/internal/veff_builder.h"
 #include "atomiverse/cpu/planewave/internal/xc_builder.h"
@@ -1609,10 +1610,15 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
         throw std::invalid_argument(
             "dfpt_gamma_force_constants: hybrid XC unsupported "
             "(pure LSDA / pure GGA only; no exact-exchange response)");
-    if (method.smearing != Smearing::none)
+    const bool use_smear = (method.smearing != Smearing::none);
+    if (use_smear && method.spin_polarized)
         throw std::invalid_argument(
-            "dfpt_gamma_force_constants: metallic smearing unsupported "
-            "(fixed occupations only)");
+            "dfpt_gamma_force_constants: collinear spin + metallic smearing "
+            "unsupported (restricted smear only)");
+    if (use_smear && !(method.degauss > 0.0))
+        throw std::invalid_argument(
+            "dfpt_gamma_force_constants: degauss must be > 0 [Ry] when "
+            "smearing is enabled");
     if (!(response_tol > 0) || !(cg_tol > 0) || response_max_iter < 1
         || cg_max_iter < 1 || !(mix_beta > 0) || mix_beta > 1)
         throw std::invalid_argument(
@@ -1630,16 +1636,29 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                                     response_max_iter, cg_tol, cg_max_iter,
                                     mix_beta);
 
-    // ── Ground-state SCF (shared minimal loop; honors method.xc) ──
+    // ── Ground-state SCF (fixed or metallic occupations) ──
     int n_elec = 0;
     const int* types = frame.span(kAtom_type);
     for (int i = 0; i < n; ++i)
         n_elec += valence_from_z(types[i]);
-    const int n_bands = std::max(n_elec / 2, 1);
-    if (n_elec % 2 != 0)
+    const int n_valence = std::max((n_elec + 1) / 2, 1); // ceil(N_e/2)
+    const int n_bands =
+        use_smear ? n_valence + std::max(method.extra_bands, 0)
+                  : std::max(n_elec / 2, 1);
+    if (!use_smear && n_elec % 2 != 0)
         throw std::invalid_argument(
             "dfpt_gamma_force_constants: odd electron count needs "
-            "spin/smearing (unsupported)");
+            "spin/smearing");
+
+    SmearKind smear_kind = SmearKind::fermi_dirac;
+    if (method.smearing == Smearing::methfessel_paxton)
+        smear_kind = SmearKind::methfessel_paxton;
+    else if (method.smearing == Smearing::gaussian)
+        smear_kind = SmearKind::gaussian;
+    const AccReal degauss_ha =
+        static_cast<AccReal>(method.degauss) * AccReal(0.5);
+    const int mp_order = method.mp_order;
+    constexpr AccReal kOccThr = AccReal(1e-8);
 
     PoissonSolver poisson;
     XCBuilder xc;
@@ -1649,8 +1668,12 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
 
     DfptGammaOutput out;
     PWProblem prob;
-    const PWResult scf = run_scf_fixed_occ(frame, method, prob, poisson, xc,
-                                           veff, density, davidson, "dfpt");
+    const PWResult scf =
+        use_smear
+            ? run_scf_smear_restricted(frame, method, prob, poisson, xc, veff,
+                                      density, davidson, n_bands, "dfpt")
+            : run_scf_fixed_occ(frame, method, prob, poisson, xc, veff, density,
+                               davidson, "dfpt");
     out.scf_converged = scf.converged;
     if (!scf.converged)
         ATV_WARN("[pw][dfpt] ground-state SCF not converged after {} iters; "
@@ -1666,7 +1689,6 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
     const int n_kpts = static_cast<int>(prob.kg.kpoints.size());
     const AccReal omega = ws.omega;
     const AccReal dV = omega / AccReal(nr);
-    const AccReal occ_f = AccReal(2);
 
     FFTWBuffer<fftw_complex> work_buf(static_cast<std::size_t>(nr));
     FFTWBuffer<fftw_complex> work_buf2(static_cast<std::size_t>(nr));
@@ -1725,6 +1747,36 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
     }
     ws.gvec = &prob.gv0;
     ws.n_g = ng0;
+
+    // Per-(k, band) occupations in [0, 2]: fixed f=2 or metallic smear fill.
+    std::vector<std::vector<AccReal>> occ_kb(
+        static_cast<std::size_t>(n_kpts),
+        std::vector<AccReal>(static_cast<std::size_t>(n_bands), AccReal(2)));
+    AccReal mu_ha = AccReal(0);
+    if (use_smear) {
+        std::vector<AccReal> all_evals;
+        std::vector<AccReal> all_weights;
+        all_evals.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        all_weights.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
+            const auto& ks = kstates[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands; ++b) {
+                all_evals.push_back(ks.eps[static_cast<std::size_t>(b)]);
+                all_weights.push_back(w);
+            }
+        }
+        mu_ha = find_fermi_level(all_evals, all_weights, AccReal(n_elec),
+                                 degauss_ha, smear_kind, mp_order);
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const auto& ks = kstates[static_cast<std::size_t>(ik)];
+            for (int b = 0; b < n_bands; ++b)
+                occ_kb[static_cast<std::size_t>(ik)]
+                      [static_cast<std::size_t>(b)] =
+                    smear_f_band(ks.eps[static_cast<std::size_t>(b)], mu_ha,
+                                 degauss_ha, smear_kind, mp_order);
+        }
+    }
 
     // ── Per-atom radial form factor v(G) on the density sphere ──
     const UPFData upf = read_upf_v1(method.upf_path);
@@ -1811,6 +1863,11 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
             const auto& ks = kstates[static_cast<std::size_t>(ik)];
             const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
             for (int b = 0; b < n_bands; ++b) {
+                const AccReal f_b =
+                    occ_kb[static_cast<std::size_t>(ik)]
+                          [static_cast<std::size_t>(b)];
+                if (f_b < kOccThr)
+                    continue;
                 const Cx* psi =
                     ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ks.ng;
                 for (std::size_t ia = 0; ia < ws.kb_proj.size(); ++ia) {
@@ -1823,7 +1880,7 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                             for (int a = 0; a < 3; ++a)
                                 for (int bb = 0; bb < 3; ++bb) {
                                     const AccReal term =
-                                        w * occ_f * Dc
+                                        w * f_b * Dc
                                         * (AccReal(-2)
                                                * (mm.t[a][bb] * std::conj(mm.c))
                                                      .real()
@@ -1884,7 +1941,44 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                 rhs.resize(static_cast<std::size_t>(ngk));
                 hpsi_tmp.resize(static_cast<std::size_t>(ngk));
 
+                // Projector: bands with f ≥ thr (valence for insulators;
+                // partially occupied near E_F for metals). Empty extra
+                // bands remain in the conduction space for CG.
+                int n_proj = 0;
+                for (int b = 0; b < n_bands; ++b)
+                    if (occ_kb[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)]
+                        >= kOccThr)
+                        ++n_proj;
+                if (n_proj < 1)
+                    n_proj = 1;
+                std::vector<Cx> proj_wfc(
+                    static_cast<std::size_t>(n_proj)
+                    * static_cast<std::size_t>(ngk));
+                {
+                    int ip = 0;
+                    for (int b = 0; b < n_bands && ip < n_proj; ++b) {
+                        if (occ_kb[static_cast<std::size_t>(ik)]
+                                  [static_cast<std::size_t>(b)]
+                            < kOccThr)
+                            continue;
+                        const Cx* psi =
+                            ks.wfc.data()
+                            + static_cast<std::ptrdiff_t>(b) * ngk;
+                        std::copy(psi, psi + ngk,
+                                  proj_wfc.begin()
+                                      + static_cast<std::ptrdiff_t>(ip) * ngk);
+                        ++ip;
+                    }
+                    n_proj = std::max(ip, 1);
+                }
+
                 for (int b = 0; b < n_bands; ++b) {
+                    const AccReal f_b =
+                        occ_kb[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)];
+                    if (f_b < kOccThr)
+                        continue;
                     const Cx* psi =
                         ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ngk;
                     // rhs = −(ΔV_scr ψ + ΔV_nl^{μ} ψ)
@@ -1901,7 +1995,7 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                     if (static_cast<int>(x.size()) != ngk)
                         x.assign(static_cast<std::size_t>(ngk), Cx(0, 0));
                     const int its = sternheimer_cg(
-                        ws, ks.wfc.data(), n_bands, ks.eps[b], rhs.data(),
+                        ws, proj_wfc.data(), n_proj, ks.eps[b], rhs.data(),
                         x.data(), cg_tol, cg_max_iter, work_buf2.data());
                     if (its > cg_max_iter)
                         ATV_WARN("[pw][dfpt] CG not converged (mu={} ik={} "
@@ -1914,7 +2008,7 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                     pad_sphere_to_grid(ws, *ws.gvec, ngk, x.data(),
                                        work_buf2.data());
                     ws.fft->c2c_bwd(work_buf2.data());
-                    const AccReal pref = w * occ_f * AccReal(2) / omega;
+                    const AccReal pref = w * f_b * AccReal(2) / omega;
                     for (int i = 0; i < nr; ++i) {
                         const AccReal re =
                             static_cast<AccReal>(work_buf.data()[i][0])
@@ -1928,6 +2022,79 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
             }
             ws.gvec = &prob.gv0;
             ws.n_g = ng0;
+
+            // Metallic Γ: restore charge neutrality with a Fermi-level shift
+            // δμ so ∫(Δn_Sternheimer + Δn_δμ) = 0 (de Gironcoli). For a
+            // gapped fill dN/dμ ≈ 0 and the correction is skipped.
+            if (use_smear && degauss_ha > AccReal(0)) {
+                AccReal q_dn = AccReal(0);
+                for (int i = 0; i < nr; ++i)
+                    q_dn += dn_new[static_cast<std::size_t>(i)] * dV;
+
+                AccReal dN_dmu = AccReal(0);
+                // DOS weight density ρ_μ(r) = Σ w (df_b/dμ) |ψ_b|²/Ω
+                std::vector<AccReal> rho_mu(static_cast<std::size_t>(nr),
+                                            AccReal(0));
+                for (int ik = 0; ik < n_kpts; ++ik) {
+                    bind_k(ik);
+                    const auto& ks = kstates[static_cast<std::size_t>(ik)];
+                    const int ngk = ks.ng;
+                    const AccReal w =
+                        prob.kg.weights[static_cast<std::size_t>(ik)];
+                    for (int b = 0; b < n_bands; ++b) {
+                        const AccReal f_b =
+                            occ_kb[static_cast<std::size_t>(ik)]
+                                  [static_cast<std::size_t>(b)];
+                        // df_band/dμ: FD → 2 f_s(1−f_s)/σ;
+                        // Gaussian/MP → (2/σ√π) exp(−x²).
+                        AccReal df_dmu = AccReal(0);
+                        const AccReal x =
+                            (ks.eps[static_cast<std::size_t>(b)] - mu_ha)
+                            / degauss_ha;
+                        if (smear_kind == SmearKind::fermi_dirac) {
+                            const AccReal f_s = f_b * AccReal(0.5);
+                            if (f_s > AccReal(1e-14)
+                                && f_s < AccReal(1) - AccReal(1e-14))
+                                df_dmu = AccReal(2) * f_s
+                                         * (AccReal(1) - f_s) / degauss_ha;
+                        } else {
+                            constexpr AccReal kSqrtPi =
+                                AccReal(1.77245385090551602729);
+                            AccReal xx = x * x;
+                            if (xx > AccReal(200))
+                                xx = AccReal(200);
+                            df_dmu = AccReal(2) * std::exp(-xx)
+                                     / (degauss_ha * kSqrtPi);
+                        }
+                        if (std::abs(df_dmu) < AccReal(1e-20))
+                            continue;
+                        dN_dmu += w * df_dmu;
+                        const Cx* psi =
+                            ks.wfc.data()
+                            + static_cast<std::ptrdiff_t>(b) * ngk;
+                        pad_sphere_to_grid(ws, *ws.gvec, ngk, psi,
+                                           work_buf.data());
+                        ws.fft->c2c_bwd(work_buf.data());
+                        const AccReal pref = w * df_dmu / omega;
+                        for (int i = 0; i < nr; ++i) {
+                            const AccReal re =
+                                static_cast<AccReal>(work_buf.data()[i][0]);
+                            const AccReal im =
+                                static_cast<AccReal>(work_buf.data()[i][1]);
+                            rho_mu[static_cast<std::size_t>(i)] +=
+                                pref * (re * re + im * im);
+                        }
+                    }
+                }
+                ws.gvec = &prob.gv0;
+                ws.n_g = ng0;
+                if (dN_dmu > AccReal(1e-8)) {
+                    const AccReal dmu = -q_dn / dN_dmu;
+                    for (int i = 0; i < nr; ++i)
+                        dn_new[static_cast<std::size_t>(i)] +=
+                            dmu * rho_mu[static_cast<std::size_t>(i)];
+                }
+            }
 
             // Convergence on ‖Δn_new − Δn_mixed‖ (grid L2, volume weight).
             AccReal diff2 = 0;
@@ -1997,10 +2164,17 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                 const auto& ks = kstates[static_cast<std::size_t>(ik)];
                 const AccReal w = prob.kg.weights[static_cast<std::size_t>(ik)];
                 for (int b = 0; b < n_bands; ++b) {
+                    const AccReal f_b =
+                        occ_kb[static_cast<std::size_t>(ik)]
+                              [static_cast<std::size_t>(b)];
+                    if (f_b < kOccThr)
+                        continue;
                     const Cx* psi =
                         ks.wfc.data() + static_cast<std::ptrdiff_t>(b) * ks.ng;
                     const auto& x = dpsi[static_cast<std::size_t>(ik) * n_bands
                                          + static_cast<std::size_t>(b)];
+                    if (x.empty())
+                        continue;
                     for (std::size_t ja = 0; ja < ws.kb_proj.size(); ++ja) {
                         for (std::size_t ip = 0; ip < ws.kb_proj[ja].size();
                              ++ip) {
@@ -2019,7 +2193,7 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
                                         * (std::conj(cD) * mo_psi[m].s[bb]
                                            - std::conj(mo_dpsi[m].s[bb]) * cP);
                                     Cat(3 * static_cast<int>(ja) + bb, mu) +=
-                                        w * occ_f * AccReal(2) * el.real();
+                                        w * f_b * AccReal(2) * el.real();
                                 }
                             }
                         }
@@ -2151,8 +2325,8 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             "(pure LSDA / pure GGA only; no exact-exchange response)");
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
-            "dfpt_q_force_constants: metallic smearing unsupported "
-            "(fixed occupations only)");
+            "dfpt_q_force_constants: metallic smearing unsupported at "
+            "finite q (use Γ restricted smear; finite-q follow-on)");
     if (method.spin_polarized)
         throw std::invalid_argument(
             "dfpt_q_force_constants: collinear spin at incommensurate q "
