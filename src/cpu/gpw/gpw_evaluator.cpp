@@ -4,10 +4,12 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 
 #include <cmath>
+#include <complex>
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
 
+#include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/frame_schema.h"
@@ -176,7 +178,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
         xl_k_beta_.clear();
     }
 
-    // Car–Parrinello guards: RKS Γ or collinear Γ-UKS diagonalization path.
+    // Car–Parrinello guards: RKS Γ, collinear Γ-UKS, or multi-k RKS.
     if (cpmd) {
         if (cfg.use_ot)
             throw std::invalid_argument(
@@ -197,11 +199,20 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd requires compute_forces=true (nuclear "
                 "forces from the fixed-density electronic state)");
+        // Multi-k UKS CPMD is a residual (dual-spin Bloch C_k^σ).
+        if (multi_k && (n_alpha + n_beta > 0))
+            throw std::invalid_argument(
+                "GPWEvaluator: multi-k UKS + cpmd is not productized "
+                "(use Γ-UKS CPMD or multi-k RKS CPMD)");
         // UKS CPMD: alpha is the primary channel (mirrors XL dual setup).
         if (n_alpha + n_beta > 0 && n_alpha < 1)
             throw std::invalid_argument(
                 "GPWEvaluator: cpmd UKS requires n_alpha >= 1");
         if (cpmd_thermostat) {
+            if (multi_k)
+                throw std::invalid_argument(
+                    "GPWEvaluator: multi-k CPMD electronic thermostat is not "
+                    "productized (NVE electrons only on the k path)");
             if (!(cpmd_ekin_target_ha > 0.0)
                 || !std::isfinite(cpmd_ekin_target_ha))
                 throw std::invalid_argument(
@@ -212,17 +223,26 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                     "GPWEvaluator: cpmd_thermostat requires cpmd_tau_e "
                     "finite and > 0 (fs)");
         }
-        cpmd_.emplace(cpmd_mu);
-        cpmd_->thermostat = cpmd_thermostat;
-        cpmd_->ekin_target_ha = cpmd_ekin_target_ha;
-        cpmd_->tau_e_fs = cpmd_tau_e;
-        if (n_alpha + n_beta > 0 && n_beta > 0) {
-            cpmd_beta_.emplace(cpmd_mu);
-            cpmd_beta_->thermostat = cpmd_thermostat;
-            cpmd_beta_->ekin_target_ha = cpmd_ekin_target_ha;
-            cpmd_beta_->tau_e_fs = cpmd_tau_e;
-        } else {
+        if (multi_k) {
+            // Complex propagators sized after the first multi-k SCF (n_kpts).
+            cpmd_.reset();
             cpmd_beta_.reset();
+            cpmd_k_.clear();
+            (void)CpmdCplx(cpmd_mu); // early mu validation
+        } else {
+            cpmd_.emplace(cpmd_mu);
+            cpmd_->thermostat = cpmd_thermostat;
+            cpmd_->ekin_target_ha = cpmd_ekin_target_ha;
+            cpmd_->tau_e_fs = cpmd_tau_e;
+            if (n_alpha + n_beta > 0 && n_beta > 0) {
+                cpmd_beta_.emplace(cpmd_mu);
+                cpmd_beta_->thermostat = cpmd_thermostat;
+                cpmd_beta_->ekin_target_ha = cpmd_ekin_target_ha;
+                cpmd_beta_->tau_e_fs = cpmd_tau_e;
+            } else {
+                cpmd_beta_.reset();
+            }
+            cpmd_k_.clear();
         }
         last_te_ev_ = 0.0;
         last_etherm_ev_ = 0.0;
@@ -232,6 +252,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: cpmd_thermostat requires cpmd=true");
         cpmd_.reset();
         cpmd_beta_.reset();
+        cpmd_k_.clear();
         last_te_ev_ = 0.0;
         last_etherm_ev_ = 0.0;
     }
@@ -309,13 +330,137 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // Later steps: fixed-density KS eval (max_iter=0) + forces at that
     // density + electronic Verlet. Nuclear PE is E_KS only; T_e is exposed
     // via last_electronic_ke_ev() for the CP conserved energy.
-    // RKS: one propagator (occ=2). UKS: dual α/β (occ=1 each).
+    // RKS Γ: one real propagator (occ=2). UKS Γ: dual α/β (occ=1 each).
+    // Multi-k RKS: one CpmdCplx per sampled k (occ=2).
+    const bool cpmd_multi_k =
+        !cpmd_k_.empty() && cpmd_k_[0].ready()
+        && [&]() {
+               for (const auto& ch : cpmd_k_)
+                   if (!ch.ready())
+                       return false;
+               return true;
+           }();
     const bool cpmd_uks = cpmd_ && (n_alpha + n_beta > 0);
     const bool cpmd_ready =
-        cpmd_
-        && (cpmd_uks ? (cpmd_->ready()
-                        && (n_beta < 1 || (cpmd_beta_ && cpmd_beta_->ready())))
-                     : cpmd_->ready());
+        cpmd_multi_k
+        || (cpmd_
+            && (cpmd_uks
+                    ? (cpmd_->ready()
+                       && (n_beta < 1
+                           || (cpmd_beta_ && cpmd_beta_->ready())))
+                    : cpmd_->ready()));
+    if (cpmd_ready && cpmd_multi_k) {
+        // Multi-k RKS CPMD: fixed-density {P_k} → forces → electronic VV.
+        using Cplx = std::complex<double>;
+        const int nk = static_cast<int>(cpmd_k_.size());
+        auto density_from_cocc = [](const linalg::CplxMatrix& C,
+                                    int n_occ) -> linalg::CplxMatrix {
+            const int nb = static_cast<int>(C.shape(0));
+            linalg::CplxMatrix P = xt::zeros<Cplx>(
+                {static_cast<std::size_t>(nb), static_cast<std::size_t>(nb)});
+            for (int o = 0; o < n_occ; ++o)
+                for (int mu = 0; mu < nb; ++mu) {
+                    const Cplx cmu = C(mu, o);
+                    for (int nu = 0; nu < nb; ++nu)
+                        P(mu, nu) += 2.0 * cmu * std::conj(C(nu, o));
+                }
+            return P;
+        };
+        auto fixed_density_eval_k = [&]() {
+            const int n_occ = solver_->n_occ;
+            cpmd_guess_p_k_.resize(static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik)
+                cpmd_guess_p_k_[static_cast<std::size_t>(ik)] =
+                    density_from_cocc(cpmd_k_[static_cast<std::size_t>(ik)].C(),
+                                      n_occ);
+            const int saved_max = solver_->max_iter;
+            solver_->max_iter = 0;
+            try {
+                last_ = solver_->run(atoms, /*guess_C=*/nullptr,
+                                     /*guess_P=*/nullptr,
+                                     /*guess_P_beta=*/nullptr, &cpmd_guess_p_k_);
+            } catch (...) {
+                solver_->max_iter = saved_max;
+                throw;
+            }
+            solver_->max_iter = saved_max;
+        };
+
+        fixed_density_eval_k();
+        if (static_cast<int>(last_.S_k.size()) != nk
+            || static_cast<int>(last_.H_ks_k.size()) != nk)
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k CPMD fixed-density missing H_ks_k/S_k");
+        for (int ik = 0; ik < nk; ++ik)
+            cpmd_k_[static_cast<std::size_t>(ik)].align_to_overlap(
+                last_.S_k[static_cast<std::size_t>(ik)]);
+        fixed_density_eval_k();
+
+        frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
+
+        if (compute_forces) {
+            // Populate C_occ_k + eps_k = diag(C† H C) for k-summed forces.
+            const int n_occ = solver_->n_occ;
+            last_.C_occ_k.resize(static_cast<std::size_t>(nk));
+            last_.eps_k.resize(static_cast<std::size_t>(nk));
+            for (int ik = 0; ik < nk; ++ik) {
+                const auto& C =
+                    cpmd_k_[static_cast<std::size_t>(ik)].C();
+                const auto& H = last_.H_ks_k[static_cast<std::size_t>(ik)];
+                const int nb = static_cast<int>(C.shape(0));
+                std::vector<Cplx> flat(
+                    static_cast<std::size_t>(nb)
+                    * static_cast<std::size_t>(n_occ));
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int o = 0; o < n_occ; ++o)
+                        flat[static_cast<std::size_t>(mu) * n_occ
+                             + static_cast<std::size_t>(o)] = C(mu, o);
+                last_.C_occ_k[static_cast<std::size_t>(ik)] = std::move(flat);
+                // ε_i ≈ Re (C† H C)_ii  (BO surface → exact eigenvalues).
+                std::vector<double> eps(static_cast<std::size_t>(n_occ), 0.0);
+                for (int o = 0; o < n_occ; ++o) {
+                    Cplx s(0, 0);
+                    for (int mu = 0; mu < nb; ++mu) {
+                        Cplx hco(0, 0);
+                        for (int nu = 0; nu < nb; ++nu)
+                            hco += H(mu, nu) * C(nu, o);
+                        s += std::conj(C(mu, o)) * hco;
+                    }
+                    eps[static_cast<std::size_t>(o)] = s.real();
+                }
+                last_.eps_k[static_cast<std::size_t>(ik)] = std::move(eps);
+            }
+            last_.converged = true;
+            const auto F = gpw_forces_from_scf(atoms, *solver_, last_);
+            AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+            AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+            AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+            for (int i = 0; i < n; ++i) {
+                sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                           * ATV::units::kHartreePerBohrInEvPerAngstrom;
+            }
+        }
+
+        // Electronic steps: T_e = Σ_k w_k T_e^{(k)}.
+        double te_ha = 0.0;
+        for (int ik = 0; ik < nk; ++ik) {
+            cpmd_k_[static_cast<std::size_t>(ik)].advance(
+                last_.H_ks_k[static_cast<std::size_t>(ik)],
+                last_.S_k[static_cast<std::size_t>(ik)], cpmd_dt, /*occ=*/2.0);
+            const double wk =
+                (ik < static_cast<int>(last_.k_weights.size()))
+                    ? last_.k_weights[static_cast<std::size_t>(ik)]
+                    : (1.0 / static_cast<double>(nk));
+            te_ha += wk * cpmd_k_[static_cast<std::size_t>(ik)].kinetic_ha();
+        }
+        last_te_ev_ = te_ha * ATV::units::kHartreeInEv;
+        last_etherm_ev_ = 0.0;
+        return;
+    }
     if (cpmd_ready) {
         auto fixed_density_eval_rks = [&](const linalg::RealMatrix& C_occ) {
             const int nb = static_cast<int>(C_occ.shape(0));
@@ -1021,7 +1166,67 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
 
     // CPMD cold seed after the first full SCF + BO forces.
-    if (cpmd_ && !cpmd_->ready()) {
+    // Multi-k RKS: seed one CpmdCplx per sampled k from Bloch C_k / C_occ_k.
+    if (cpmd && cpmd_k_.empty()
+        && (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1)) {
+        if (!last_.converged || last_.n_kpts < 1)
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k cpmd seed requires a converged multi-k "
+                "SCF");
+        const int nk = last_.n_kpts;
+        const int n_occ = solver_->n_occ;
+        if (n_occ < 1)
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k RKS CPMD seed requires n_occ >= 1");
+        // Prefer full C_k; fall back to flat C_occ_k.
+        const bool have_C_k =
+            static_cast<int>(last_.C_k.size()) == nk
+            && last_.C_k[0].size() > 0;
+        const bool have_C_occ =
+            static_cast<int>(last_.C_occ_k.size()) == nk
+            && !last_.C_occ_k[0].empty();
+        if (!have_C_k && !have_C_occ)
+            throw std::runtime_error(
+                "GPWEvaluator: multi-k cpmd seed missing C_k / C_occ_k");
+        cpmd_k_.clear();
+        cpmd_k_.reserve(static_cast<std::size_t>(nk));
+        for (int ik = 0; ik < nk; ++ik) {
+            linalg::CplxMatrix C_occ;
+            if (have_C_k) {
+                const auto& Cfull = last_.C_k[static_cast<std::size_t>(ik)];
+                const int nb = static_cast<int>(Cfull.shape(0));
+                if (static_cast<int>(Cfull.shape(1)) < n_occ)
+                    throw std::runtime_error(
+                        "GPWEvaluator: multi-k cpmd seed: C_k columns < n_occ");
+                C_occ = xt::zeros<std::complex<double>>(
+                    {static_cast<std::size_t>(nb),
+                     static_cast<std::size_t>(n_occ)});
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int o = 0; o < n_occ; ++o)
+                        C_occ(mu, o) = Cfull(mu, o);
+            } else {
+                const auto& flat = last_.C_occ_k[static_cast<std::size_t>(ik)];
+                // Infer nb from flat size / n_occ.
+                if (static_cast<int>(flat.size()) % n_occ != 0)
+                    throw std::runtime_error(
+                        "GPWEvaluator: multi-k cpmd seed: C_occ_k size not "
+                        "divisible by n_occ");
+                const int nb = static_cast<int>(flat.size()) / n_occ;
+                C_occ = xt::zeros<std::complex<double>>(
+                    {static_cast<std::size_t>(nb),
+                     static_cast<std::size_t>(n_occ)});
+                for (int mu = 0; mu < nb; ++mu)
+                    for (int o = 0; o < n_occ; ++o)
+                        C_occ(mu, o) =
+                            flat[static_cast<std::size_t>(mu) * n_occ
+                                 + static_cast<std::size_t>(o)];
+            }
+            CpmdCplx ch(cpmd_mu);
+            ch.seed(C_occ);
+            cpmd_k_.push_back(std::move(ch));
+        }
+        last_te_ev_ = 0.0;
+    } else if (cpmd_ && !cpmd_->ready()) {
         if (!last_.converged || last_.C.size() == 0)
             throw std::runtime_error(
                 "GPWEvaluator: cpmd seed requires a converged SCF with "

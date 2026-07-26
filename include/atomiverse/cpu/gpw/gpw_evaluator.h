@@ -151,8 +151,10 @@ class GPWEvaluator : public cpu::GPW {
     ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
     ///        After one cold SCF seed, each force step is a fixed-density KS
     ///        eval + electronic VV/RATTLE + analytic forces at that density.
-    ///        Closed-shell RKS Γ or collinear Γ-UKS (dual α/β propagators) —
-    ///        `build()` throws with `use_ot`, `xl_bomd`, or `second_gen_cp`.
+    ///        Closed-shell RKS Γ, collinear Γ-UKS (dual α/β), or multi-k RKS
+    ///        (one `CpmdCplx` per sampled \(k\); Bloch \(C_k\)). Multi-k UKS
+    ///        + CPMD throws at `build()`. Also throws with `use_ot`,
+    ///        `xl_bomd`, or `second_gen_cp`.
     bool cpmd = false;
     /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
     ///        CPMD values \(10^2\)–\(10^3\). Default 400.
@@ -263,11 +265,15 @@ class GPWEvaluator : public cpu::GPW {
     std::vector<linalg::CplxMatrix> xl_guess_p_k_;
     /// Scratch for multi-k UKS XL `guess_P_k_beta` (lifetime covers `run`).
     std::vector<linalg::CplxMatrix> xl_guess_p_k_beta_;
-    /// CPMD electronic propagator (engaged when `cpmd`). RKS: total occ.
-    /// UKS: α channel (occ=1).
+    /// CPMD electronic propagator (engaged when `cpmd` on Γ). RKS: total occ.
+    /// UKS: α channel (occ=1). Empty when multi-k CPMD is active.
     std::optional<Cpmd> cpmd_;
-    /// CPMD β-spin propagator (UKS only; empty for RKS).
+    /// CPMD β-spin propagator (Γ-UKS only; empty for RKS / multi-k).
     std::optional<Cpmd> cpmd_beta_;
+    /// Multi-k CPMD: one complex propagator per sampled k (empty on Γ).
+    std::vector<CpmdCplx> cpmd_k_;
+    /// Scratch multi-k densities for fixed-density CPMD eval.
+    std::vector<linalg::CplxMatrix> cpmd_guess_p_k_;
     double last_te_ev_ = 0.0;     ///< last electronic KE [eV]
     double last_etherm_ev_ = 0.0; ///< last electronic NH energy [eV]
     /// Second-gen CP ASPC density history (engaged when `second_gen_cp` on Γ).
