@@ -21,9 +21,10 @@
 
 ## Offline oracle
 
-No CP2K binary on worker host (same as other GPW pins). Document
-`tools/cp2k_oracle/inputs/al_fermi_dirac.inp` as algorithm twin; freeze first-green
-ATV free energy as absolute pin; replace when offline CP2K Na twin is run.
+CP2K 2026.1 twin input
+`tools/cp2k_oracle/inputs/gpw-metallic-smearing/na_bcc_fermi_dirac.inp`
+documents SMEAR + multi-k; absolute free energy stays frozen ATV (grid
+details differ). Dual-gate wall: ATV ≈ 1.0 s, CP2K ≈ 89.5 s → within_10x.
 
 ## Definition of done
 
