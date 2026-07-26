@@ -9,8 +9,10 @@
 ///             + Σ_{k,i} w f · 2 Re⟨Δψ_i^{(Jβ)}|∂V_ext^{(Iα)}|ψ_i⟩,
 ///
 /// with the self-consistent Sternheimer response
-/// `P_c (H − ε_i) P_c |Δψ⟩ = −P_c (ΔV_bare + ΔV_H[Δn] + f_xc Δn)|ψ_i⟩`
-/// solved by conduction-space projected preconditioned CG.
+/// `P_c (H − ε_i) P_c |Δψ⟩ = −P_c (ΔV_bare + ΔV_H[Δn] + K_xc[Δn])|ψ_i⟩`
+/// solved by conduction-space projected preconditioned CG. Pure LDA uses a
+/// local \(f_{\mathrm{xc}}\) table; pure GGA applies \(K_{\mathrm{xc}}\) by
+/// central FD of the same `XCBuilder::step` operator as the ground-state SCF.
 ///
 /// Grid/sphere conventions deliberately mirror the ground-state SCF
 /// (`density_builder` / `veff_builder` / `apply_hamiltonian`): every
@@ -257,6 +259,102 @@ AccReal lda_fxc_at(AccReal rho, cpu::scf::XCType xc) {
     const double vm =
         cpu::scf::evaluate_xc(xc, (r - h) / 2.0, (r - h) / 2.0).vrho_alpha;
     return static_cast<AccReal>((vp - vm) / (2.0 * h));
+}
+
+/// @brief Pure semi-local XC only (LSDA + pure GGA). Hybrids need HF-X response.
+bool dfpt_xc_supported(cpu::scf::XCType xc) {
+    return cpu::scf::hybrid_exchange_fraction(xc) == 0.0;
+}
+
+/// @brief \(K_{\mathrm{xc}}[\Delta n]\) via central FD of `XCBuilder::step`.
+///
+/// Matches the discrete ground-state \(V_{\mathrm{xc}}[n]\) operator (spectral
+/// \(\nabla\rho\) + GGA flux for pure GGA; local for LSDA). Output is
+/// sphere-filtered like the ground-state \(V_{\mathrm{xc}}\) path.
+/// Restores `ws.rho_G` to `rho0_G` on exit. `dn_r` must be real-valued
+/// total density response [e/Bohr³].
+void apply_xc_kernel_fd(XCBuilder& xc, PWWorkspace& ws,
+                        const GVectorList& gv0, const std::vector<Cx>& rho0_G,
+                        cpu::scf::XCType xc_type, const AccReal* dn_r,
+                        AccReal* dv_xc_r, fftw_complex* work, AccReal eps) {
+    const int ng0 = gv0.count();
+    const int nr = ws.nr;
+    std::vector<Cx> dn_g(static_cast<std::size_t>(ng0));
+    real_to_sphere(ws, gv0, dn_r, dn_g.data(), work);
+
+    // Scale ε so the density step is not vanishing on quiet grids and not
+    // huge on strong responses: target max |ε Δn| ≈ 1e-5 e/Bohr³.
+    AccReal max_abs = AccReal(0);
+    for (int i = 0; i < nr; ++i)
+        max_abs = std::max(max_abs, std::abs(dn_r[i]));
+    AccReal eps_use = eps;
+    if (max_abs > AccReal(1e-20)) {
+        const AccReal target = AccReal(1e-5);
+        eps_use = std::min(eps, target / max_abs);
+        eps_use = std::max(eps_use, AccReal(1e-8));
+    }
+
+    std::vector<AccReal> v_plus(static_cast<std::size_t>(nr));
+    std::vector<AccReal> v_minus(static_cast<std::size_t>(nr));
+
+    auto set_rho = [&](AccReal sign) {
+        for (int ig = 0; ig < ng0; ++ig)
+            ws.rho_G[ig] = rho0_G[static_cast<std::size_t>(ig)]
+                           + sign * eps_use * dn_g[static_cast<std::size_t>(ig)];
+    };
+
+    set_rho(+AccReal(1));
+    xc.step(ws, xc_type);
+    for (int i = 0; i < nr; ++i)
+        v_plus[static_cast<std::size_t>(i)] = ws.V_xc_r[i];
+
+    set_rho(-AccReal(1));
+    xc.step(ws, xc_type);
+    for (int i = 0; i < nr; ++i)
+        v_minus[static_cast<std::size_t>(i)] = ws.V_xc_r[i];
+
+    for (int ig = 0; ig < ng0; ++ig)
+        ws.rho_G[ig] = rho0_G[static_cast<std::size_t>(ig)];
+
+    const AccReal inv_2eps = AccReal(1) / (AccReal(2) * eps_use);
+    for (int i = 0; i < nr; ++i)
+        dv_xc_r[i] = (v_plus[static_cast<std::size_t>(i)]
+                      - v_minus[static_cast<std::size_t>(i)])
+                     * inv_2eps;
+
+    // Sphere-filter like the ground-state V_xc (reject high-G noise).
+    std::vector<Cx> vg(static_cast<std::size_t>(ng0));
+    real_to_sphere(ws, gv0, dv_xc_r, vg.data(), work);
+    sphere_to_real(ws, gv0, vg.data(), dv_xc_r, work);
+}
+
+/// @brief Add \(K_{\mathrm{xc}}[\Delta n]\) into `dv_hxc_r` (Γ, real Δn).
+///
+/// Pure LDA: local \(f_{\mathrm{xc}}\Delta n\) + sphere filter (fast path).
+/// Pure GGA: FD of `XCBuilder` (true gradient kernel).
+void add_xc_kernel_gamma(bool use_gga, XCBuilder& xc, PWWorkspace& ws,
+                         const GVectorList& gv0, const std::vector<Cx>& rho0_G,
+                         cpu::scf::XCType xc_type, const AccReal* fxc_r,
+                         const AccReal* dn_mixed, AccReal* dv_hxc_r,
+                         std::vector<Cx>& scratch_g, fftw_complex* work) {
+    const int nr = ws.nr;
+    if (!use_gga) {
+        std::vector<AccReal> tmp(static_cast<std::size_t>(nr));
+        for (int i = 0; i < nr; ++i)
+            tmp[static_cast<std::size_t>(i)] =
+                fxc_r[i] * dn_mixed[i];
+        real_to_sphere(ws, gv0, tmp.data(), scratch_g.data(), work);
+        std::vector<AccReal> tmp2(static_cast<std::size_t>(nr));
+        sphere_to_real(ws, gv0, scratch_g.data(), tmp2.data(), work);
+        for (int i = 0; i < nr; ++i)
+            dv_hxc_r[i] += tmp2[static_cast<std::size_t>(i)];
+        return;
+    }
+    std::vector<AccReal> dv_xc(static_cast<std::size_t>(nr));
+    apply_xc_kernel_fd(xc, ws, gv0, rho0_G, xc_type, dn_mixed, dv_xc.data(),
+                       work, AccReal(1e-3));
+    for (int i = 0; i < nr; ++i)
+        dv_hxc_r[i] += dv_xc[static_cast<std::size_t>(i)];
 }
 
 /// Project out the occupied manifold: x ← x − Σ_j ψ_j ⟨ψ_j|x⟩.
@@ -787,10 +885,10 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
         throw std::invalid_argument(
             "dfpt_gamma_force_constants: requires a UPF pseudopotential "
             "(toy V_loc path unsupported)");
-    if (method.xc != cpu::scf::XCType::LSDA)
+    if (!dfpt_xc_supported(method.xc))
         throw std::invalid_argument(
-            "dfpt_gamma_force_constants: response kernel implemented for "
-            "XCType::LSDA only");
+            "dfpt_gamma_force_constants: hybrid XC unsupported "
+            "(pure LSDA / pure GGA only; no exact-exchange response)");
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "dfpt_gamma_force_constants: metallic smearing unsupported "
@@ -855,19 +953,21 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
     xc.step(ws, method.xc);
     veff.step(ws);
 
-    // Ground-state density on the real grid (for f_xc).
+    // Ground-state density (real + G) for the XC kernel.
+    const bool use_gga = cpu::scf::is_gga(method.xc);
+    std::vector<Cx> rho0_G(static_cast<std::size_t>(ng0));
+    for (int ig = 0; ig < ng0; ++ig)
+        rho0_G[static_cast<std::size_t>(ig)] = ws.rho_G[ig];
     std::vector<AccReal> rho_real(static_cast<std::size_t>(nr));
-    {
-        std::vector<Cx> rho_g(static_cast<std::size_t>(ng0));
-        for (int ig = 0; ig < ng0; ++ig)
-            rho_g[static_cast<std::size_t>(ig)] = ws.rho_G[ig];
-        sphere_to_real(ws, gv0, rho_g.data(), rho_real.data(), work_buf.data());
+    sphere_to_real(ws, gv0, rho0_G.data(), rho_real.data(), work_buf.data());
+    // Local f_xc table only for the pure-LDA fast path.
+    std::vector<AccReal> fxc_r(static_cast<std::size_t>(nr), AccReal(0));
+    if (!use_gga) {
+        for (int i = 0; i < nr; ++i)
+            fxc_r[static_cast<std::size_t>(i)] = lda_fxc_at(
+                std::max(rho_real[static_cast<std::size_t>(i)], AccReal(0)),
+                method.xc);
     }
-    std::vector<AccReal> fxc_r(static_cast<std::size_t>(nr));
-    for (int i = 0; i < nr; ++i)
-        fxc_r[static_cast<std::size_t>(i)] = lda_fxc_at(
-            std::max(rho_real[static_cast<std::size_t>(i)], AccReal(0)),
-            method.xc);
 
     // ── Eigenstates of the frozen H at every k (all ranks, all k) ──
     struct KState {
@@ -1136,22 +1236,10 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
             }
             sphere_to_real(ws, gv0, dn_g.data(), dv_hxc_r.data(),
                            work_buf.data());
-            // + f_xc Δn, sphere-filtered like the ground-state V_xc.
-            {
-                std::vector<AccReal> tmp(static_cast<std::size_t>(nr));
-                for (int i = 0; i < nr; ++i)
-                    tmp[static_cast<std::size_t>(i)] =
-                        fxc_r[static_cast<std::size_t>(i)]
-                        * dn_mixed[static_cast<std::size_t>(i)];
-                real_to_sphere(ws, gv0, tmp.data(), dn_g.data(),
-                               work_buf.data());
-                std::vector<AccReal> tmp2(static_cast<std::size_t>(nr));
-                sphere_to_real(ws, gv0, dn_g.data(), tmp2.data(),
-                               work_buf.data());
-                for (int i = 0; i < nr; ++i)
-                    dv_hxc_r[static_cast<std::size_t>(i)] +=
-                        tmp2[static_cast<std::size_t>(i)];
-            }
+            // + K_xc[Δn]: local f_xc for LDA; XCBuilder FD for pure GGA.
+            add_xc_kernel_gamma(use_gga, xc, ws, gv0, rho0_G, method.xc,
+                               fxc_r.data(), dn_mixed.data(), dv_hxc_r.data(),
+                               dn_g, work_buf.data());
 
             if (this_converged) {
                 converged = true;
@@ -1334,10 +1422,10 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
         throw std::invalid_argument(
             "dfpt_q_force_constants: requires a UPF pseudopotential "
             "(toy V_loc path unsupported)");
-    if (method.xc != cpu::scf::XCType::LSDA)
+    if (!dfpt_xc_supported(method.xc))
         throw std::invalid_argument(
-            "dfpt_q_force_constants: response kernel implemented for "
-            "XCType::LSDA only");
+            "dfpt_q_force_constants: hybrid XC unsupported "
+            "(pure LSDA / pure GGA only; no exact-exchange response)");
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "dfpt_q_force_constants: metallic smearing unsupported "
@@ -1411,19 +1499,20 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
     xc.step(ws, method.xc);
     veff.step(ws);
 
-    // Ground-state density + f_xc on the real grid.
+    // Ground-state density for the XC kernel (real Δn split for GGA).
+    const bool use_gga = cpu::scf::is_gga(method.xc);
+    std::vector<Cx> rho0_G(static_cast<std::size_t>(ng0));
+    for (int ig = 0; ig < ng0; ++ig)
+        rho0_G[static_cast<std::size_t>(ig)] = ws.rho_G[ig];
     std::vector<AccReal> rho_real(static_cast<std::size_t>(nr));
-    {
-        std::vector<Cx> rho_g(static_cast<std::size_t>(ng0));
-        for (int ig = 0; ig < ng0; ++ig)
-            rho_g[static_cast<std::size_t>(ig)] = ws.rho_G[ig];
-        sphere_to_real(ws, gv0, rho_g.data(), rho_real.data(), work_buf.data());
+    sphere_to_real(ws, gv0, rho0_G.data(), rho_real.data(), work_buf.data());
+    std::vector<AccReal> fxc_r(static_cast<std::size_t>(nr), AccReal(0));
+    if (!use_gga) {
+        for (int i = 0; i < nr; ++i)
+            fxc_r[static_cast<std::size_t>(i)] = lda_fxc_at(
+                std::max(rho_real[static_cast<std::size_t>(i)], AccReal(0)),
+                method.xc);
     }
-    std::vector<AccReal> fxc_r(static_cast<std::size_t>(nr));
-    for (int i = 0; i < nr; ++i)
-        fxc_r[static_cast<std::size_t>(i)] = lda_fxc_at(
-            std::max(rho_real[static_cast<std::size_t>(i)], AccReal(0)),
-            method.xc);
 
     // Freeze V_eff_r for all subsequent Davidson / Sternheimer calls.
     std::vector<AccReal> veff_frozen(static_cast<std::size_t>(nr));
@@ -1819,7 +1908,8 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             }
             sphere_to_complex_grid(ws, gv0, dn_g.data(), dv_hxc_r.data(),
                                    work_buf.data());
-            {
+            // + K_xc[Δn]: local f_xc for LDA; Re/Im FD of XCBuilder for GGA.
+            if (!use_gga) {
                 std::vector<Cx> tmp(static_cast<std::size_t>(nr));
                 for (int i = 0; i < nr; ++i)
                     tmp[static_cast<std::size_t>(i)] =
@@ -1833,6 +1923,25 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
                 for (int i = 0; i < nr; ++i)
                     dv_hxc_r[static_cast<std::size_t>(i)] +=
                         tmp2[static_cast<std::size_t>(i)];
+            } else {
+                std::vector<AccReal> re(static_cast<std::size_t>(nr));
+                std::vector<AccReal> im(static_cast<std::size_t>(nr));
+                std::vector<AccReal> dvre(static_cast<std::size_t>(nr));
+                std::vector<AccReal> dvim(static_cast<std::size_t>(nr));
+                for (int i = 0; i < nr; ++i) {
+                    re[static_cast<std::size_t>(i)] =
+                        dn_mixed[static_cast<std::size_t>(i)].real();
+                    im[static_cast<std::size_t>(i)] =
+                        dn_mixed[static_cast<std::size_t>(i)].imag();
+                }
+                apply_xc_kernel_fd(xc, ws, gv0, rho0_G, method.xc, re.data(),
+                                   dvre.data(), work_buf.data(), AccReal(1e-3));
+                apply_xc_kernel_fd(xc, ws, gv0, rho0_G, method.xc, im.data(),
+                                   dvim.data(), work_buf.data(), AccReal(1e-3));
+                for (int i = 0; i < nr; ++i)
+                    dv_hxc_r[static_cast<std::size_t>(i)] += Cx(
+                        dvre[static_cast<std::size_t>(i)],
+                        dvim[static_cast<std::size_t>(i)]);
             }
 
             if (this_converged) {

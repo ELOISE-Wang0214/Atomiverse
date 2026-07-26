@@ -117,6 +117,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-incommensurate-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Γ DFPT with pure GGA (PBE) XC kernel (response).
+    atv_add_regression(response dfpt-gga-si)
+    if(TARGET reg_dfpt-gga-si)
+        target_compile_definitions(reg_dfpt-gga-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw pw-spin-gga)
