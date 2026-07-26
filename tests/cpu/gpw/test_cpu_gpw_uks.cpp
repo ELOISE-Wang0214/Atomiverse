@@ -329,6 +329,91 @@ TEST(GpwUks, TripletLikeH2ConvergesRpbe) {
     EXPECT_NEAR(r.s2, 2.0, 1e-8);
 }
 
+// ── UKS multigrid product collocation (gpw-uks-multigrid) ──────────────────
+
+TEST(GpwUks, MultigridHighSpinConverges) {
+    // ngrids>1 must not throw "not wired"; product collocation for dual P.
+    auto atoms = small_h2();
+    GpwDft m;
+    m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+    m.cutoff_ry = 120.0;
+    m.ngrids = 4;
+    m.rel_cutoff = 40.0;
+    m.n_alpha = 2;
+    m.n_beta = 0;
+    m.n_occ = 0;
+    m.max_iter = 100;
+    m.tol = 1e-6;
+    m.mix = 0.4;
+    m.xc = XcKind::PADE;
+    m.build(atoms);
+    ASSERT_TRUE(m.is_uks());
+    const GpwResult r = m.run(atoms);
+    EXPECT_TRUE(r.converged) << "iters=" << r.iters << " E=" << r.e_total;
+    EXPECT_TRUE(std::isfinite(r.e_total));
+    EXPECT_NEAR(r.s2, 2.0, 1e-8);
+}
+
+TEST(GpwUks, MultigridClosedShellMatchesRks) {
+    // Closed-shell UKS multigrid ≡ RKS multigrid (same product path).
+    auto atoms = small_h2();
+    auto run = [&](bool uks) {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+        m.cutoff_ry = 120.0;
+        m.ngrids = 4;
+        m.rel_cutoff = 40.0;
+        m.max_iter = 80;
+        m.tol = 1e-7;
+        m.mix = 0.5;
+        m.xc = XcKind::PADE;
+        if (uks) {
+            m.n_alpha = 1;
+            m.n_beta = 1;
+            m.n_occ = 0;
+        } else {
+            m.n_occ = 1;
+        }
+        m.build(atoms);
+        return m.run(atoms);
+    };
+    const GpwResult rr = run(false);
+    const GpwResult ru = run(true);
+    ASSERT_TRUE(rr.converged) << rr.e_total;
+    ASSERT_TRUE(ru.converged) << ru.e_total;
+    EXPECT_NEAR(ru.e_total, rr.e_total, 1e-6);
+    EXPECT_NEAR(ru.s2, 0.0, 1e-8);
+}
+
+TEST(GpwUks, MultigridNearSingleGridClosedShell) {
+    // Multigrid product collocation must recover the single-grid energy to
+    // discretization accuracy on the toy H₂ (not milli-Ha CP2K pin — shape
+    // check that prolong/restrict+products do not corrupt the SCF).
+    auto atoms = small_h2();
+    auto run = [&](int ngrids, double rcut) {
+        GpwDft m;
+        m.cell[0] = m.cell[1] = m.cell[2] = 8.0;
+        m.cutoff_ry = 120.0;
+        m.ngrids = ngrids;
+        m.rel_cutoff = rcut;
+        m.n_alpha = 1;
+        m.n_beta = 1;
+        m.n_occ = 0;
+        m.max_iter = 80;
+        m.tol = 1e-7;
+        m.mix = 0.5;
+        m.xc = XcKind::PADE;
+        m.build(atoms);
+        return m.run(atoms);
+    };
+    const GpwResult sg = run(1, 0.0);
+    const GpwResult mg = run(4, 40.0);
+    ASSERT_TRUE(sg.converged) << sg.e_total;
+    ASSERT_TRUE(mg.converged) << mg.e_total;
+    EXPECT_NEAR(mg.e_total, sg.e_total, 5e-3)
+        << "sg=" << sg.e_total << " mg=" << mg.e_total;
+}
+
 // ── Multi-k collinear UKS (gpw-kpoints-uks) ────────────────────────────────
 
 TEST(GpwUks, KpointsUksAcceptedAtBuild) {

@@ -47,6 +47,13 @@ class GPWEvaluator : public cpu::GPW {
   public:
     /// @brief Plane-wave cutoff [Ry].
     double cutoff_ry = 300.0;
+    /// @brief CP2K-style multigrid levels (`&MGRID NGRIDS`). Default 1 =
+    ///        single density grid (CompactBasisGrid). With `rel_cutoff > 0`
+    ///        and `ngrids > 1`, product collocation is used (RKS and UKS).
+    int ngrids = 1;
+    /// @brief CP2K REL_CUTOFF [Ry] for exponent→level mapping. Ignored when
+    ///        `ngrids == 1`. Typical twin: 60 Ry with CUTOFF 400 / NGRIDS 4.
+    double rel_cutoff = 0.0;
     /// @brief Max SCF iterations.
     int max_iter = 200;
     /// @brief SCF residual tolerance.

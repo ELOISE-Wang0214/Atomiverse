@@ -70,6 +70,8 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
     cfg.cell[2] = ctx.frame.simbox.length(2) * kAng2Bohr;
     cfg.cutoff_ry = cutoff_ry;
+    cfg.ngrids = ngrids;
+    cfg.rel_cutoff = rel_cutoff;
     cfg.n_alpha = n_alpha;
     cfg.n_beta = n_beta;
     if (n_alpha + n_beta > 0) {
