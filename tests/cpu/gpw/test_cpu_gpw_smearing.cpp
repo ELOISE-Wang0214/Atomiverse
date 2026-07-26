@@ -1,9 +1,9 @@
 /// @file test_cpu_gpw_smearing.cpp
 /// @brief Unit tests for GPW metallic occupation smearing API + fill math.
 ///
-/// Full multi-k SCF is the regression `reg_gpw-metallic-smearing`. Here: public
-/// members (no Config bag), build() fail-fast, and reuse of pw::internal
-/// occupation fill (FD recovers Ne).
+/// Full multi-k SCF is the regressions `reg_gpw-metallic-smearing` (RKS) and
+/// `reg_gpw-uks-smearing` (UKS). Here: public members (no Config bag), build()
+/// fail-fast, and reuse of pw::internal occupation fill (FD recovers Ne).
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/planewave/internal/smearing.h"
@@ -19,6 +19,7 @@ using ATV::cpu::pw::internal::SmearKind;
 using ATV::cpu::pw::internal::fill_occupations;
 using ATV::cpu::pw::internal::find_fermi_level;
 using ATV::cpu::pw::internal::smear_f_band;
+using ATV::cpu::pw::internal::smear_f_spinor;
 
 TEST(GpwSmearing, PublicMembersNoConfigBag) {
     GpwDft m;
@@ -36,30 +37,28 @@ TEST(GpwSmearing, PublicMembersNoConfigBag) {
     EXPECT_DOUBLE_EQ(r.n_elec_occ, 0.0);
 }
 
-TEST(GpwSmearing, BuildRejectsUksAndOtAndBadDegauss) {
-    std::vector<GpwAtom> atoms; // empty → empty-atom reject first
+TEST(GpwSmearing, BuildRejectsOtAndBadDegaussAcceptsUks) {
+    std::vector<GpwAtom> atoms;
     GpwDft empty;
     empty.n_occ = 1;
     empty.smearing = Smearing::fermi_dirac;
     empty.degauss = 0.02;
     EXPECT_THROW(empty.build(atoms), std::invalid_argument);
 
-    // Minimal non-empty atom for later gates (geometry irrelevant for build).
-    // Use explicit GpwAtom fields without full basis when only build() is
-    // exercised — still need non-empty vector; GpwAtom default is enough for
-    // emptiness check only. For UKS/OT we need at least one atom.
     GpwAtom a;
     a.z_val = 1.0;
     a.z = 1;
     atoms.push_back(a);
 
+    // UKS + FD is productized (multi-k path); build must accept it.
     GpwDft uks;
     uks.n_alpha = 1;
     uks.n_beta = 0;
     uks.cell[0] = uks.cell[1] = uks.cell[2] = 10.0;
     uks.smearing = Smearing::fermi_dirac;
     uks.degauss = 0.02;
-    EXPECT_THROW(uks.build(atoms), std::invalid_argument);
+    uks.k_mesh[0] = uks.k_mesh[1] = uks.k_mesh[2] = 2;
+    EXPECT_NO_THROW(uks.build(atoms));
 
     GpwDft ot;
     ot.n_occ = 1;
@@ -94,6 +93,23 @@ TEST(GpwSmearing, FermiDiracFillRecoversNelec) {
                 1.0, 1e-12);
 }
 
+TEST(GpwSmearing, SpinorFillRecoversNelecUks) {
+    // Collinear spin-orbitals: spin_degen=1, f∈[0,1]; Ne=3 over 4 levels.
+    std::vector<AccReal> evals = {AccReal(-1), AccReal(0), AccReal(0.5),
+                                  AccReal(2)};
+    std::vector<AccReal> w(evals.size(), AccReal(1));
+    const AccReal ne = AccReal(3);
+    const AccReal deg = AccReal(0.1);
+    const AccReal mu = find_fermi_level(evals, w, ne, deg,
+                                       SmearKind::fermi_dirac, 1, AccReal(1));
+    auto fill = fill_occupations(evals, w, mu, deg, SmearKind::fermi_dirac, 1,
+                                 AccReal(1));
+    EXPECT_NEAR(static_cast<double>(fill.n_occ), 3.0, 1e-8);
+    EXPECT_NEAR(static_cast<double>(smear_f_spinor(
+                    AccReal(0), AccReal(0), deg, SmearKind::fermi_dirac)),
+                0.5, 1e-12);
+}
+
 TEST(GpwSmearing, MethfesselPaxtonMemberAccepted) {
     GpwDft m;
     m.smearing = Smearing::methfessel_paxton;
@@ -105,6 +121,5 @@ TEST(GpwSmearing, MethfesselPaxtonMemberAccepted) {
     a.z_val = 1.0;
     a.z = 1;
     std::vector<GpwAtom> atoms{a};
-    // build validates configuration; does not require a complete basis set.
     EXPECT_NO_THROW(m.build(atoms));
 }
