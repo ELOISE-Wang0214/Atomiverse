@@ -29,6 +29,9 @@
 ///
 ///   // Metallic occupations: set method.smearing / degauss / extra_bands;
 ///   // integral is then to E_F (dr.e_fermi_ry).
+///
+///   // Collinear spin DOS: method.spin_polarized = true → dr.nspin == 2;
+///   // total D = Dα + Dβ (spin-orbital weight 1); integral to joint VBM.
 /// @endcode
 #pragma once
 
@@ -72,9 +75,18 @@ struct BandsResult {
 /// @brief Result of a Gaussian-broadened density of states.
 struct DosResult {
     std::vector<double> energy_ry; ///< Bin centres [Ry].
-    /// DOS \(D(E)\) [states / Ry / cell]. Closed-shell: each band carries
-    /// weight 2 when integrating the occupied spectrum.
+    /// DOS \(D(E)\) [states / Ry / cell]. Restricted: each band carries
+    /// spin degeneracy 2. Collinear: total \(D = D_\alpha + D_\beta\) with
+    /// spin-orbital weight 1.
     std::vector<double> dos;
+    /// Spin-up \(D_\alpha(E)\) when `nspin == 2`; empty when restricted.
+    std::vector<double> dos_alpha;
+    /// Spin-down \(D_\beta(E)\) when `nspin == 2`; empty when restricted.
+    std::vector<double> dos_beta;
+    /// 1 = restricted; 2 = collinear spin-polarized.
+    int nspin = 1;
+    /// \(N_\uparrow - N_\downarrow\) (fixed occupations; 0 when restricted).
+    double magnetization = 0;
     /// Occupied DOS integral \(\int_{-\infty}^{E_\ast} D(E)\,dE\)
     /// (target \(\approx n_e\)). For fixed occupations \(E_\ast=E_\mathrm{vbm}\);
     /// for metallic smearing \(E_\ast=E_F\) (`e_fermi_ry`).
@@ -119,11 +131,15 @@ class Bands {
 
 /// @brief Gaussian-broadened DOS from denser Monkhorst–Pack eigenvalues.
 ///
-/// Fixed occupations (`method.smearing == none`): SCF is restricted
-/// integer-fill; occupied integral is to VBM. Metallic smearing
-/// (`fermi_dirac` / `methfessel_paxton` / `gaussian`): SCF uses fractional
-/// occupations; \(\mu\) is recomputed on the DOS mesh and the integral is to
-/// \(E_F\). Collinear spin remains unsupported on this path.
+/// Fixed occupations (`method.smearing == none`): integer-fill SCF;
+/// occupied integral is to VBM. Metallic smearing (`fermi_dirac` /
+/// `methfessel_paxton` / `gaussian`): fractional occupations; \(\mu\) is
+/// recomputed on the DOS mesh and the integral is to \(E_F\).
+///
+/// **Collinear spin** (`method.spin_polarized`): fixed-occupation SCF with
+/// \(N_\uparrow,N_\downarrow\) from `multiplicity`, then per-spin NSCF on
+/// frozen \(V_{\mathrm{eff},\sigma}\). Metallic smearing is rejected on the
+/// spin path (see residual metallic-spin DOS if needed).
 class Dos {
   public:
     /// @brief DOS k-mesh per dimension (MP \(k_\mathrm{mesh}^3\)).
@@ -140,7 +156,8 @@ class Dos {
 
     /// @brief SCF (method.k_mesh) + denser-mesh NSCF + Gaussian DOS.
     /// @param method Plane-wave method (members; SCF uses method.k_mesh;
-    ///               metallic path honors `smearing` / `degauss` / `extra_bands`).
+    ///               metallic path honors `smearing` / `degauss` / `extra_bands`;
+    ///               collinear spin honors `spin_polarized` / `multiplicity`).
     /// @param frame  Geometry [Å].
     /// @return Owned `DosResult`.
     DosResult compute(const PW& method, const cpu::Frame& frame) const;
@@ -166,22 +183,24 @@ double gap_from_spectrum(const std::vector<std::vector<double>>& evals,
 
 /// @brief Gaussian DOS on a uniform energy grid (unit-testable free math).
 ///
-/// \(D(E_i)=\sum_{n k} w_{nk}\, (2/\sqrt{2\pi}\sigma)\,
-/// \exp(-(E_i-\varepsilon)^2/(2\sigma^2))\). The factor 2 is spinless
-/// closed-shell band degeneracy.
+/// \(D(E_i)=\sum_{n k} w_{nk}\, (g/\sqrt{2\pi}\sigma)\,
+/// \exp(-(E_i-\varepsilon)^2/(2\sigma^2))\). Default \(g=2\) is closed-shell
+/// spin degeneracy; collinear spin-orbitals use \(g=1\).
 ///
-/// @param evals     Flat list of eigenvalues [energy units].
-/// @param weights   Per-eigenvalue k-weight (same length as evals).
-/// @param e_min     Grid start.
-/// @param e_max     Grid end.
-/// @param n_bins    Number of bins.
-/// @param sigma     Gaussian width (same energy units).
-/// @param energy    Output bin centres.
-/// @param dos       Output \(D(E)\).
+/// @param evals            Flat list of eigenvalues [energy units].
+/// @param weights          Per-eigenvalue k-weight (same length as evals).
+/// @param e_min            Grid start.
+/// @param e_max            Grid end.
+/// @param n_bins           Number of bins.
+/// @param sigma            Gaussian width (same energy units).
+/// @param energy           Output bin centres.
+/// @param dos              Output \(D(E)\).
+/// @param spin_degeneracy  Band spin factor \(g\) (default 2; spin channels use 1).
 void gaussian_dos(const std::vector<double>& evals,
                   const std::vector<double>& weights, double e_min,
                   double e_max, int n_bins, double sigma,
-                  std::vector<double>& energy, std::vector<double>& dos);
+                  std::vector<double>& energy, std::vector<double>& dos,
+                  double spin_degeneracy = 2.0);
 
 /// @brief Trapezoid \(\int_{-\infty}^{E_\mathrm{cut}} D(E)\,dE\) on a uniform grid.
 ///

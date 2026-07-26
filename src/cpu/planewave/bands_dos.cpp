@@ -338,7 +338,8 @@ double gap_from_spectrum(const std::vector<std::vector<double>>& evals,
 void gaussian_dos(const std::vector<double>& evals,
                   const std::vector<double>& weights, double e_min,
                   double e_max, int n_bins, double sigma,
-                  std::vector<double>& energy, std::vector<double>& dos) {
+                  std::vector<double>& energy, std::vector<double>& dos,
+                  double spin_degeneracy) {
     if (evals.size() != weights.size())
         throw std::invalid_argument(
             "gaussian_dos: evals/weights size mismatch");
@@ -348,11 +349,15 @@ void gaussian_dos(const std::vector<double>& evals,
         throw std::invalid_argument("gaussian_dos: sigma must be > 0");
     if (!(e_max > e_min))
         throw std::invalid_argument("gaussian_dos: need e_max > e_min");
+    if (!(spin_degeneracy > 0.0))
+        throw std::invalid_argument(
+            "gaussian_dos: spin_degeneracy must be > 0");
 
     energy.resize(static_cast<std::size_t>(n_bins));
     dos.assign(static_cast<std::size_t>(n_bins), 0.0);
     const double de = (e_max - e_min) / static_cast<double>(n_bins - 1);
-    const double pref = 2.0 / (std::sqrt(2.0 * 3.14159265358979323846) * sigma);
+    const double pref = spin_degeneracy
+                        / (std::sqrt(2.0 * 3.14159265358979323846) * sigma);
     const double inv_2s2 = 1.0 / (2.0 * sigma * sigma);
 
     for (int i = 0; i < n_bins; ++i)
@@ -541,9 +546,6 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
 }
 
 DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
-    if (method.spin_polarized)
-        throw std::invalid_argument(
-            "Dos::compute: spin-polarized DOS not supported in this foothold");
     if (n_bands < 2)
         throw std::invalid_argument("Dos::compute: n_bands must be >= 2");
     if (k_mesh < 1)
@@ -565,6 +567,121 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
         for (int i = 0; i < frame.nlocal(); ++i)
             n_elec_est += internal::valence_from_z(types[i]);
     }
+
+    // ── Collinear spin-polarized DOS (fixed occupations) ──
+    if (method.spin_polarized) {
+        if (use_smear)
+            throw std::invalid_argument(
+                "Dos::compute: spin-polarized + metallic smearing not "
+                "supported in this foothold");
+        if (method.multiplicity < 1)
+            throw std::invalid_argument(
+                "Dos::compute: multiplicity must be >= 1 when spin_polarized");
+
+        const int mag = method.multiplicity - 1;
+        if ((n_elec_est + mag) % 2 != 0 || mag > n_elec_est)
+            throw std::invalid_argument(
+                "Dos::compute: n_elec and multiplicity have incompatible "
+                "parity");
+        const int n_alpha = (n_elec_est + mag) / 2;
+        const int n_beta = (n_elec_est - mag) / 2;
+        const int n_bands_dav = std::max(std::max(n_alpha, n_beta), 1);
+        if (n_bands < n_bands_dav)
+            throw std::invalid_argument(
+                "Dos::compute: n_bands must be >= max(N_alpha, N_beta)");
+
+        internal::PWProblem prob;
+        const PWResult scf =
+            run_collinear_scf(frame, method, prob, n_alpha, n_beta, n_bands_dav);
+
+        DosResult out;
+        out.scf_converged = scf.converged;
+        out.scf_energy_ry = scf.energy;
+        out.nspin = 2;
+        out.magnetization = scf.magnetization;
+
+        // Freeze V_eff_r per spin before replacing k-tables.
+        using namespace internal;
+        PWWorkspace& ws = prob.ws;
+        auto& gv0 = prob.gv0;
+        const int ng0 = gv0.count();
+        const int nr = ws.nr;
+        VeffBuilder veff;
+        veff.prepare(ws);
+        std::vector<AccReal> veff_r[2];
+        for (int s = 0; s < 2; ++s) {
+            for (int ig = 0; ig < ng0; ++ig)
+                ws.V_xc_G[ig] = ws.V_xc_spin_G[s][ig];
+            veff.step(ws);
+            veff_r[s].assign(ws.V_eff_r.begin(), ws.V_eff_r.begin() + nr);
+        }
+
+        auto kg = generate_mp_mesh(k_mesh, k_mesh, k_mesh);
+        rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry,
+                         kg.kpoints);
+
+        // NSCF α / β on frozen V_eff,σ
+        ws.V_eff_r.resize({static_cast<std::size_t>(nr)});
+        for (int i = 0; i < nr; ++i)
+            ws.V_eff_r[i] = veff_r[0][static_cast<std::size_t>(i)];
+        auto evals_a = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
+        for (int i = 0; i < nr; ++i)
+            ws.V_eff_r[i] = veff_r[1][static_cast<std::size_t>(i)];
+        auto evals_b = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
+
+        int vk = 0, ck = 0, vb = 0, cb = 0, vs = 0, cs = 0;
+        out.gap_ry = gap_from_spin_spectrum(
+            evals_a, evals_b, n_alpha, n_beta, out.e_vbm_ry, out.e_cbm_ry, vk,
+            ck, vb, cb, vs, cs);
+
+        const int n_kpts = static_cast<int>(evals_a.size());
+        std::vector<double> flat_a, flat_b, flat_w, flat_all, flat_w_all;
+        flat_a.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        flat_b.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        flat_w.reserve(static_cast<std::size_t>(n_kpts * n_bands));
+        flat_all.reserve(static_cast<std::size_t>(2 * n_kpts * n_bands));
+        flat_w_all.reserve(static_cast<std::size_t>(2 * n_kpts * n_bands));
+        for (int ik = 0; ik < n_kpts; ++ik) {
+            const double w =
+                static_cast<double>(kg.weights[static_cast<std::size_t>(ik)]);
+            for (int b = 0; b < n_bands; ++b) {
+                const double ea = evals_a[static_cast<std::size_t>(ik)]
+                                         [static_cast<std::size_t>(b)];
+                const double eb = evals_b[static_cast<std::size_t>(ik)]
+                                         [static_cast<std::size_t>(b)];
+                flat_a.push_back(ea);
+                flat_b.push_back(eb);
+                flat_w.push_back(w);
+                flat_all.push_back(ea);
+                flat_w_all.push_back(w);
+                flat_all.push_back(eb);
+                flat_w_all.push_back(w);
+            }
+        }
+
+        double emin = e_min_ry;
+        double emax = e_max_ry;
+        if (!(emax > emin)) {
+            emin = *std::min_element(flat_all.begin(), flat_all.end())
+                   - 4.0 * sigma_ry;
+            emax = *std::max_element(flat_all.begin(), flat_all.end())
+                   + 4.0 * sigma_ry;
+        }
+
+        // Spin-orbital weight 1: g = 1 for each channel and for the total.
+        gaussian_dos(flat_a, flat_w, emin, emax, n_bins, sigma_ry,
+                     out.energy_ry, out.dos_alpha, /*spin_degeneracy=*/1.0);
+        std::vector<double> e_beta;
+        gaussian_dos(flat_b, flat_w, emin, emax, n_bins, sigma_ry, e_beta,
+                     out.dos_beta, /*spin_degeneracy=*/1.0);
+        gaussian_dos(flat_all, flat_w_all, emin, emax, n_bins, sigma_ry,
+                     out.energy_ry, out.dos, /*spin_degeneracy=*/1.0);
+
+        out.n_elec_to_vbm =
+            integrate_dos_to(out.energy_ry, out.dos, out.e_vbm_ry);
+        return out;
+    }
+
     const int n_valence_est = std::max((n_elec_est + 1) / 2, 1);
     if (n_bands < n_valence_est)
         throw std::invalid_argument(
@@ -606,6 +723,8 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
     DosResult out;
     out.scf_converged = scf.converged;
     out.scf_energy_ry = scf.energy;
+    out.nspin = 1;
+    out.magnetization = 0;
 
     // Fixed-occ gap from integer valence; metallic still reports spectrum
     // gap when at least one empty band is present (Si twin stays gapped).
