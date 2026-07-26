@@ -3396,7 +3396,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                         rho = std::move(rho_l);
                     } else {
                         const std::vector<double> up = prolong_fft(
-                            mg.levels[l], mg.levels[0], rho_l, periodic);
+                            mg.levels[l], mg.levels[0], rho_l,
+                            /*spectral*/ true);
                         for (std::size_t g = 0; g < rho.size(); ++g)
                             rho[g] += up[g];
                     }
@@ -3490,7 +3491,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                     // Spectral (band-limited) prolongation to the fine grid:
                     // shape-exact and mass-conserving (no D_l correction).
                     const std::vector<double> up = prolong_fft(
-                        mg.levels[l], mg.levels[0], rho_l, periodic);
+                        mg.levels[l], mg.levels[0], rho_l,
+                        /*spectral*/ true);
                     for (std::size_t g = 0; g < rho.size(); ++g)
                         rho[g] += up[g];
                 }
@@ -3573,7 +3575,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                     // so the KS matrix is the exact gradient of the collocated
                     // energy (variational SCF).
                     V_l = restrict_fft(mg.levels[0], mg.levels[l], veff,
-                                       periodic);
+                                       /*spectral*/ true);
                 }
                 const std::vector<double> Vl_ks = integrate_products(
                     mg.levels[l], products.by_level[l], products.prims,
@@ -3639,7 +3641,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
     // ── UKS (spin-unrestricted, Γ-point) ────────────────────────────────────
     // Separate Pa/Pb, spin-resolved XC (PADE LSD or pure GGA spin),
-    // dual KS matrices. Multigrid products are not wired for UKS — single-grid.
+    // dual KS matrices. Multigrid product collocation (ngrids>1 && rel_cutoff>0)
+    // uses the same product set / prolong_fft / restrict_fft path as RKS;
+    // ngrids==1 keeps the CompactBasisGrid single-grid path bit-identical.
     // OT (use_ot) is product for Γ-UKS; DIIS/diagonalization remains default.
     if (uks) {
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
@@ -3648,15 +3652,52 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             && cfg.xc != XcKind::OptB88VdW)
             throw std::runtime_error(
                 "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, BLYP, or OptB88VdW");
-        if (use_prod)
-            throw std::runtime_error(
-                "GPW UKS: multigrid product collocation is not wired — use "
-                "ngrids=1 (single-grid CompactBasisGrid path)");
 
+        // Collocate one spin density: multigrid products or single-grid cbg.
         auto collocate_P = [&](const RealMatrix& Pin) {
-            return collocate_density(cbg, nb, mat_to_vec(Pin, nb));
+            const std::vector<double> Pvec = mat_to_vec(Pin, nb);
+            if (use_prod) {
+                std::vector<double> rho(
+                    static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
+                for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+                    std::vector<double> rho_l = collocate_products(
+                        mg.levels[l], products.by_level[l], products.prims,
+                        products.contribs, nb, Pvec, eps_default);
+                    if (l == 0) {
+                        rho = std::move(rho_l);
+                    } else {
+                        const std::vector<double> up = prolong_fft(
+                            mg.levels[l], mg.levels[0], rho_l,
+                            /*spectral*/ true);
+                        for (std::size_t g = 0; g < rho.size(); ++g)
+                            rho[g] += up[g];
+                    }
+                }
+                return rho;
+            }
+            return collocate_density(cbg, nb, Pvec);
         };
+        // Integrate one spin potential: multigrid restrict+products or cbg.
         auto integrate_V = [&](const std::vector<double>& veff) {
+            if (use_prod) {
+                std::vector<double> V_ks(static_cast<std::size_t>(nb) * nb,
+                                         0.0);
+                for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+                    std::vector<double> V_l;
+                    if (l == 0) {
+                        V_l = veff;
+                    } else {
+                        V_l = restrict_fft(mg.levels[0], mg.levels[l], veff,
+                                           /*spectral*/ true);
+                    }
+                    const std::vector<double> Vl_ks = integrate_products(
+                        mg.levels[l], products.by_level[l], products.prims,
+                        products.contribs, nb, V_l, eps_default);
+                    for (std::size_t kk = 0; kk < V_ks.size(); ++kk)
+                        V_ks[kk] += Vl_ks[kk];
+                }
+                return vec_to_mat(V_ks, nb);
+            }
             return vec_to_mat(integrate_potential(cbg, nb, veff), nb);
         };
         auto xc_spin = [&](const std::vector<double>& ra,
@@ -3685,9 +3726,35 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             for (std::size_t g = 0; g < rho.size(); ++g)
                 rho[g] = rho_a[g] + rho_b[g];
 
+            // Multigrid fine level must match the SCF `grid` (n_ion / Poisson /
+            // v_locsr live on `grid`). Mismatched npts would silently corrupt
+            // Hartree — fail loud (no-fallback).
+            if (static_cast<long>(rho.size()) != grid.npts()
+                || static_cast<long>(n_ion.size()) != grid.npts())
+                throw std::runtime_error(
+                    "GPW UKS: density grid size mismatch (rho="
+                    + std::to_string(rho.size()) + " n_ion="
+                    + std::to_string(n_ion.size()) + " grid.npts="
+                    + std::to_string(grid.npts()) + ")");
+            if (use_prod && use_mg
+                && (mg.levels[0].n[0] != grid.n[0] || mg.levels[0].n[1] != grid.n[1]
+                    || mg.levels[0].n[2] != grid.n[2]))
+                throw std::runtime_error(
+                    "GPW UKS: multigrid finest level n[] != SCF grid n[]");
+
             std::vector<double> n_tot(rho.size());
             for (std::size_t g = 0; g < rho.size(); ++g)
                 n_tot[g] = rho[g] - n_ion[g];
+            if (use_prod && std::getenv("ATV_GPW_MG_TRACE")) {
+                double qe = 0.0;
+                for (double v : rho)
+                    qe += v;
+                qe *= grid.weight();
+                std::fprintf(stderr,
+                             "[gpw uks mg] int rho_fine = %.10f "
+                             "(expect ~%d valence e)\n",
+                             qe, cfg.n_alpha + cfg.n_beta);
+            }
             const PoissonResult es = cfg.nonperiodic
                                          ? solve_poisson_mt(grid, n_tot)
                                          : solve_poisson(grid, n_tot);
@@ -4013,57 +4080,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         internal::GpwDiis diis_b(use_diis ? cfg.diis_depth : 1);
 
         for (int iter = 0; iter < cfg.max_iter; ++iter) {
-            std::vector<double> rho_a = collocate_P(Pa);
-            std::vector<double> rho_b = collocate_P(Pb);
-            std::vector<double> rho(rho_a.size());
-            for (std::size_t g = 0; g < rho.size(); ++g)
-                rho[g] = rho_a[g] + rho_b[g];
-
-            std::vector<double> n_tot(rho.size());
-            for (std::size_t g = 0; g < rho.size(); ++g)
-                n_tot[g] = rho[g] - n_ion[g];
-            const PoissonResult es = cfg.nonperiodic
-                                         ? solve_poisson_mt(grid, n_tot)
-                                         : solve_poisson(grid, n_tot);
-            const XcOnGridSpin xc = xc_spin(rho_a, rho_b);
-
-            std::vector<double> veff_a(rho.size()), veff_b(rho.size());
-            double e_locgrid = 0.0;
-            const double gw = grid.weight();
-            for (std::size_t g = 0; g < rho.size(); ++g) {
-                double vloc = 0.0;
-                if (!v_locsr.empty()) {
-                    vloc = v_locsr[g];
-                    e_locgrid += rho[g] * vloc;
-                }
-                veff_a[g] = es.v_r[g] + xc.vxc_a[g] + vloc;
-                veff_b[g] = es.v_r[g] + xc.vxc_b[g] + vloc;
-            }
-            e_locgrid *= gw;
-
-            const RealMatrix Va = integrate_V(veff_a);
-            const RealMatrix Vb = integrate_V(veff_b);
-            RealMatrix Ha = H0 + Va;
-            RealMatrix Hb = H0 + Vb;
-
-            double e_dftu = 0.0;
-            if (do_dftu) {
-                e_dftu += internal::apply_dft_plus_u(
-                    Ha, Pa, S, ao_tags, z_of_atom, plus_u_slots, plus_u_z);
-                e_dftu += internal::apply_dft_plus_u(
-                    Hb, Pb, S, ao_tags, z_of_atom, plus_u_slots, plus_u_z);
-            }
-            res.e_dftu = e_dftu;
-
-            // Total density for one-electron traces (Pa+Pb).
-            const RealMatrix Ptot = Pa + Pb;
-            res.e_kinetic = trace_product(Ptot, T, nb);
-            res.e_nonlocal = 0.0;
-            res.e_loc_sr = trace_product(Ptot, Vpp, nb) + e_locgrid;
-            res.e_es = es.e_hartree - e_self;
-            res.e_xc = xc.e_xc;
-            const double e_total =
-                res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc + e_dftu;
+            // Dual KS via shared builder (single-grid cbg or multigrid products).
+            auto [Ha, Hb, e_total] = build_uks_H(Pa, Pb);
             res.iters = iter + 1;
             res.e_total = e_total;
 
