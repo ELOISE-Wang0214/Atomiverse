@@ -1,19 +1,19 @@
 # CP2K capability loop — handoff
 
-## Harness wave 9 2026-07-26 (parent `dev` @ `dab2b190`)
+## Harness wave 10 2026-07-26 (parent `dev` @ `06ecaa66`)
 
 | Field | Value |
 | ----- | ----- |
 | Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
-| Incomplete / `in_progress` | **2** (`[~] gpw-vv10-ice`, `[~] dfpt-spin-smearing`) |
+| Incomplete / `in_progress` | **1** (`[~] gpw-vv10-ice`) |
 | Open CP2K specs on `dev` | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
-| Specs closed this harness | **8** (deleted on close) |
-| Unmerged staff `wf/*` | **2** incomplete kept: `wf/gpw-vv10-ice`, `wf/dfpt-spin-smearing` |
+| Specs closed this harness | **9** (deleted on close) |
+| Unmerged staff `wf/*` | **1** incomplete kept: `wf/gpw-vv10-ice` |
 | Isolation worktrees | **0** (clearup already ran; main tree only) |
 | Leftover builds | **none** |
-| Pending gaps | **0** residual from prior census list (not exhausted — GapCensus owns refill) |
+| Pending gaps | **1** residual (`ugw-uks-rpbe`; not exhausted — GapCensus owns refill) |
 | Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
-| Done this wave | **8** landings (see table) |
+| Done this wave | **9** landings (see table) |
 | Oracle | `tools/cp2k_oracle/` offline pins only |
 | Loop docs | queue / loop / handoff / roadmap residual prose **synced** |
 
@@ -21,39 +21,66 @@
 
 | Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ---- | ------ | ---------- | --------------------------------------------- |
-| `ot-uks-smearing` | gpw | `reg_ot-uks-smearing` | **~0.12** |
-| `ot-uks-dftu` | gpw | `reg_ot-uks-dftu` | **perf_exempt** |
-| `ot-dftu-smearing` | gpw | `reg_ot-dftu-smearing` | **perf_exempt** |
-| `gpw-d4-forces` | gpw | `reg_gpw-d4-forces` | **perf_exempt** |
-| `gpw-mbd-forces` | gpw | `reg_gpw-mbd-forces` | **perf_exempt** |
-| `gpw-uks-multigrid` | gpw | `reg_gpw-uks-multigrid` | **~1.54** |
-| `dfpt-finite-q-smearing` | response | `reg_dfpt-finite-q-smearing` | **perf_exempt** |
-| `second-gen-cpmd-ot` | dynamics | `reg_second-gen-cpmd-ot` | **perf_exempt** (NVE drift) |
+| `dfpt-spin-smearing` | response | `reg_dfpt-spin-smearing` | **perf_exempt** |
+| `ot-uks-dftu-smearing` | gpw | `reg_ot-uks-dftu-smearing` | **perf_exempt** |
+| `second-gen-cpmd-uks-ot` | dynamics | `reg_second-gen-cpmd-uks-ot` | **perf_exempt** (NVE drift) |
+| `xl-bomd-kpoints` | dynamics | `reg_xl-bomd-kpoints` | **perf_exempt** (NVE drift) |
+| `bands-spin-si` | pw | `reg_bands-spin-si` | **perf_exempt** |
+| `dos-metallic-si` | pw | `reg_dos-metallic-si` | **perf_exempt** |
+| `periodic-wannier-uks` | response | `reg_periodic-wannier-uks` | **perf_exempt** |
+| `berry-spin-si` | response | `reg_berry-spin-si` | **perf_exempt** |
+| `gpw-mbd-kpoint-forces` | gpw | `reg_gpw-mbd-kpoint-forces` | **perf_exempt** |
 
 ### Incomplete kept `[~]` (do not demote)
 
 | Slug | Branch | Tip | Note |
 | ---- | ------ | --- | ---- |
 | `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `2f1d90e2` | CP2K 2026.1 has no stock `TYPE VV10` (≠ rVV10); incomplete |
-| `dfpt-spin-smearing` | `wf/dfpt-spin-smearing` | `d7576dea` | feat+reg on branch; not merged to `dev` |
 
 ### Roadmap ○→✓ this harness
 
 | Row | Doc | Note |
 | --- | --- | ---- |
-| *(none)* | — | D4/MBD/OT/multigrid table rows already ✓; stock VV10 stays ○ |
-| Residual prose | `dft.md` §8/§10–12 + `index.md` + MD AIMD | closed UKS OT+smear; multi-k UKS OT+U; OT+U+smear; D4/MBD forces; UKS multigrid; finite-q DFPT smear; SGCP OT |
-| Still open | DFPT spin+smear; stock VV10 | both `[~]` incomplete staff |
+| *(none)* | — | DFPT / Berry / Wannier / bands-DOS / MBD / OT / SGCP / XL rows already ✓; stock VV10 stays ○ |
+| Residual prose | `dft.md` §8/§10–12 + `index.md` + MD AIMD | closed DFPT spin+smear; multi-k UKS OT+U+smear; SGCP UKS OT; multi-k XL; spin bands; metallic DOS; spin MLWF; spin Berry; multi-k MBD forces |
+| Still open | stock VV10; UGW@UKS-RPBE | VV10 `[~]` incomplete; `ugw-uks-rpbe` pending |
 
 ### Pending residual
 
-**Pending = 0** residual from GapCensus wave 9 landed staff (emptied — **not**
-queue exhausted). **Incomplete = 2** `[~]` (`gpw-vv10-ice`,
-`dfpt-spin-smearing`). Next wave starts with **Recover incomplete** then
-**GapCensus** (tree/roadmap ○ vs `dev`). Blocked = 5 unchanged.
+**Pending = 1** (`ugw-uks-rpbe`) residual from GapCensus wave 10 staff list
+(landed 8 of 9 pending + resolved incomplete `dfpt-spin-smearing` — **not**
+queue exhausted). **Incomplete = 1** `[~]` (`gpw-vv10-ice`). Next wave
+starts with **Recover incomplete** then **GapCensus** (tree/roadmap ○ vs
+`dev`). Blocked = 5 unchanged.
 
 Do **not** staff PySCF deferred specs. No push from parent.
 **Queue not exhausted** — GapCensus owns next discovery.
+
+---
+
+## Harness wave 9 2026-07-26 (parent `dev` @ `dab2b190`) — historical
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **2** (`[~] gpw-vv10-ice`, `[~] dfpt-spin-smearing`) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only) |
+| Specs closed this harness | **8** (deleted on close) |
+| Pending residual | **0** then refilled by GapCensus wave 10 |
+| Done this wave | **8** landings |
+
+### Wave staff → done (historical)
+
+| Slug | Domain | ratio |
+| ---- | ------ | ----- |
+| `ot-uks-smearing` | gpw | **~0.12** |
+| `ot-uks-dftu` | gpw | **perf_exempt** |
+| `ot-dftu-smearing` | gpw | **perf_exempt** |
+| `gpw-d4-forces` | gpw | **perf_exempt** |
+| `gpw-mbd-forces` | gpw | **perf_exempt** |
+| `gpw-uks-multigrid` | gpw | **~1.54** |
+| `dfpt-finite-q-smearing` | response | **perf_exempt** |
+| `second-gen-cpmd-ot` | dynamics | **perf_exempt** |
 
 ---
 

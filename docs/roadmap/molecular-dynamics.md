@@ -237,8 +237,8 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 **XL-BOMD** (Niklasson dissipative auxiliary density) ships as
 `cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
 GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
-(`reg_xl-bomd-uks`). ASPC remains a separate density *predictor* (warm start);
-**multi-k XL** is queued (`xl-bomd-kpoints`); OT+XL stays architecturally
+(`reg_xl-bomd-uks`) **and multi-k RKS** (`reg_xl-bomd-kpoints`). ASPC remains
+a separate density *predictor* (warm start); OT+XL stays architecturally
 excluded (OT parameterizes orbitals, not density); zero-SCF linearized
 forces stay ○.
 
@@ -249,15 +249,15 @@ density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
 \(E_{\mathrm{cons}} = T_n + T_e + E_{\mathrm{KS}}\). **Electronic RATTLE**
 (Andersen constraint-preserving orbitals; `reg_cpmd-rattle-water`) is product
 on the closed-shell path. Electronic thermostat remains a residual (held
-behind wave-10 SGCP UKS OT / multi-k XL depth).
+behind deeper AIMD productization).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
 GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
 (`reg_second-gen-cpmd-water`) **and Γ-UKS** (`reg_second-gen-cpmd-uks`).
 **RKS OT corrector** is product (`use_ot=true` with ASPC natural-orbital
-warm-start; `reg_second-gen-cpmd-ot`). **Γ-UKS OT + SGCP** remains a residual
-(`second-gen-cpmd-uks-ot`).
+warm-start; `reg_second-gen-cpmd-ot`) **and Γ-UKS OT + SGCP**
+(`reg_second-gen-cpmd-uks-ot`).
 
 ## 8. Nuclear Quantum Dynamics
 

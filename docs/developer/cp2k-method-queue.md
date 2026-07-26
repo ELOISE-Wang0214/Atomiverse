@@ -521,22 +521,42 @@ flips** (nothing new merged since harness wave 9); §8/§10–12 + MD AIMD
 open-residual prose + index GPW residual line refreshed for wave-10
 queue. **Pending = 9**; **in_progress = 2**; **blocked = 5**.
 
+**Harness wave 10 2026-07-26 (parent `dev` @ `06ecaa66`):** 9 staffed
+slugs merged → `## done` (`dfpt-spin-smearing`, `ot-uks-dftu-smearing`,
+`second-gen-cpmd-uks-ot`, `xl-bomd-kpoints`, `bands-spin-si`,
+`dos-metallic-si`, `periodic-wannier-uks`, `berry-spin-si`,
+`gpw-mbd-kpoint-forces`). Specs deleted on close. **Pending residual =
+1** (`ugw-uks-rpbe` — not staffed this wave; **not** queue exhausted;
+GapCensus owns next discovery). **in_progress = 1** unmerged staff
+`[~]`: `gpw-vv10-ice` on `wf/gpw-vv10-ice` (CP2K stock VV10 oracle gap;
+do not demote). `dfpt-spin-smearing` incomplete resolved by merge into
+`dev`. Roadmap: **no new ○→✓ table flips** (DFPT / Berry / Wannier /
+bands-DOS / MBD / OT / SGCP / XL rows already ✓; stock VV10 stays ○);
+residual prose closed collinear DFPT spin+smear, multi-k UKS OT+U+smear,
+SGCP UKS OT, multi-k XL-BOMD, spin bands, metallic DOS, spin MLWF,
+spin Berry, multi-k MBD forces; **UGW@UKS-RPBE** + stock VV10 stay open.
+**Blocked = 5** unchanged. **Queue not exhausted** — GapCensus owns next
+discovery.
+
 ## pending
 
-- [ ] `ot-uks-dftu-smearing` | Multi-k UKS OT + Dudarev DFT+U + metallic smear | gpw | residual: RKS OT+U+smear ✓ + UKS OT+smear ✓ + UKS OT+U ✓; joint UKS OT+U+smear throws
-- [ ] `second-gen-cpmd-uks-ot` | SGCP ASPC + OT corrector on Γ-UKS | dynamics | residual: RKS SGCP+OT ✓; UKS OT+ASPC follow-on throw
-- [ ] `xl-bomd-kpoints` | Multi-k XL-BOMD auxiliary-density AIMD | dynamics | residual: Γ RKS/UKS XL ✓; multi-k product depth/pin open
-- [ ] `bands-spin-si` | Spin-polarized band structure (PW) | pw | residual: closed-shell bands ✓; spin foothold throw
-- [ ] `dos-metallic-si` | Metallic occupation DOS (PW) | pw | residual: insulator DOS ✓; metallic smear foothold throw
-- [ ] `periodic-wannier-uks` | Spin-polarized periodic MLWF (PW) | response | residual: closed-shell MV ✓; spin MLWF throw
-- [ ] `berry-spin-si` | Spin-polarized Berry-phase polarization (PW) | response | residual: closed-shell KSV ✓; spin strings throw
-- [ ] `gpw-mbd-kpoint-forces` | Multi-k analytic ionic forces with MBD@rsSCS | gpw | residual: Γ MBD forces ✓; k-path force assembly omits MBD
 - [ ] `ugw-uks-rpbe` | UGW@UKS with RPBE spin XC | gpw | residual: UGW + RPBE UKS SCF ✓; g0w0 RPBE spin XC throw
 
 ## in_progress
 
 - [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `2f1d90e2` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
-- [~] `dfpt-spin-smearing` | DFPT collinear spin + metallic occupation smearing (PW) | response | unmerged `wf/dfpt-spin-smearing` @ `d7576dea` (feat+reg on branch; not merged — keep incomplete)
+
+## done (harness wave 10 2026-07-26)
+
+- [x] `dfpt-spin-smearing` | DFPT collinear spin + metallic occupation smearing (PW) | response | `regressions/response/dfpt-spin-smearing` | ratio **perf_exempt** | 2026-07-26
+- [x] `ot-uks-dftu-smearing` | Multi-k UKS OT + Dudarev DFT+U + metallic smear | gpw | `regressions/gpw/ot-uks-dftu-smearing` | ratio **perf_exempt** | 2026-07-26
+- [x] `second-gen-cpmd-uks-ot` | SGCP ASPC + OT corrector on Γ-UKS | dynamics | `regressions/dynamics/second-gen-cpmd-uks-ot` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `xl-bomd-kpoints` | Multi-k XL-BOMD auxiliary-density AIMD | dynamics | `regressions/dynamics/xl-bomd-kpoints` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `bands-spin-si` | Spin-polarized band structure (PW) | pw | `regressions/pw/bands-spin-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `dos-metallic-si` | Metallic occupation DOS (PW) | pw | `regressions/pw/dos-metallic-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `periodic-wannier-uks` | Spin-polarized periodic MLWF (PW) | response | `regressions/pw/periodic-wannier-uks` | ratio **perf_exempt** | 2026-07-26
+- [x] `berry-spin-si` | Spin-polarized Berry-phase polarization (PW) | response | `regressions/pw/berry-spin-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-mbd-kpoint-forces` | Multi-k analytic ionic forces with MBD@rsSCS | gpw | `regressions/gpw/gpw-mbd-kpoint-forces` | ratio **perf_exempt** (E_disp / force pin) | 2026-07-26
 
 ## done (harness wave 9 2026-07-26)
 

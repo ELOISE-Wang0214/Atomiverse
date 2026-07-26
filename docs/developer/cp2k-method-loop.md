@@ -68,6 +68,20 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 10 (parent `dev` @ `06ecaa66`):** 9 merged →
+  done: `dfpt-spin-smearing`, `ot-uks-dftu-smearing`,
+  `second-gen-cpmd-uks-ot`, `xl-bomd-kpoints`, `bands-spin-si`,
+  `dos-metallic-si`, `periodic-wannier-uks`, `berry-spin-si`,
+  `gpw-mbd-kpoint-forces`. Incomplete remaining **1** (`[~] gpw-vv10-ice`
+  on unmerged `wf/gpw-vv10-ice` — not demoted); pending residual **1**
+  (`ugw-uks-rpbe` — not staffed; **not** queue exhausted); blocked **5**.
+  Specs closed (deleted) for all 9. Roadmap: **no new ○→✓ table flips**
+  (capability rows already ✓ or VV10 still ○); residual prose closed
+  DFPT spin+smear, multi-k UKS OT+U+smear, SGCP UKS OT, multi-k XL-BOMD,
+  spin bands, metallic DOS, spin MLWF, spin Berry, multi-k MBD forces;
+  UGW@UKS-RPBE + stock VV10 stay open. Clearup already ran (no isolation
+  worktrees; no builds). **Queue not exhausted** — next wave Recover
+  incomplete then GapCensus. No push.
 - **2026-07-26 GapCensus wave 10 (parent `dev` @ `94c2401d`):** recover
   incomplete=**2** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` @
   `2f1d90e2`; `[~] dfpt-spin-smearing` on unmerged `wf/dfpt-spin-smearing`

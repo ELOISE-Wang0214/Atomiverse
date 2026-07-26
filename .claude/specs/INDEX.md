@@ -33,18 +33,25 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (CP2K staff residual on `wf/*` after harness wave 9)
+## Live — deferred PySCF only (CP2K staff residual on `wf/*` after harness wave 10)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-Open CP2K specs live only on incomplete `wf/*` tips (`gpw-vv10-ice`,
-`dfpt-spin-smearing`) — not on `dev`. Workers write `.claude/specs/<slug>/`
-on `wf/<slug>` before impl. Harness wave 9 2026-07-26 closed 8 CP2K specs
-(deleted); pending residual=0 (landed list emptied — not exhausted);
-in_progress=2 `[~]`.
+Open CP2K specs live only on incomplete `wf/*` tip (`gpw-vv10-ice`) — not
+on `dev`. Workers write `.claude/specs/<slug>/` on `wf/<slug>` before impl.
+Harness wave 10 2026-07-26 closed 9 CP2K specs (deleted); pending
+residual=1 (`ugw-uks-rpbe` — not exhausted); in_progress=1 `[~]`.
+
+## Closed — CP2K harness wave 10 (2026-07-26)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 10 | dfpt-spin-smearing, ot-uks-dftu-smearing, second-gen-cpmd-uks-ot, xl-bomd-kpoints, bands-spin-si, dos-metallic-si, periodic-wannier-uks, berry-spin-si, gpw-mbd-kpoint-forces | DFPT spin+smear; multi-k UKS OT+U+smear; SGCP UKS OT; multi-k XL-BOMD; spin bands; metallic DOS; spin MLWF; spin Berry; multi-k MBD forces |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K harness wave 9 (2026-07-26)
 
