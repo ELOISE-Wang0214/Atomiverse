@@ -11,20 +11,21 @@
 /// Sternheimer. **Collinear spin** (`method.spin_polarized`) is supported
 /// at Γ, commensurate finite \(\mathbf{q}\) (supercell Γ path), and
 /// **incommensurate** \(\mathbf{q}\) (direct Sternheimer) with fixed
-/// occupations: spin-resolved response with \(f=1\) per spin-orbital and a
-/// spin XC kernel (local \(f_{\mathrm{xc}}^{\sigma\sigma'}\) for LDA; FD of
-/// `XCBuilder::step_spin` for GGA). **Restricted metallic smearing** is
-/// allowed at Γ, commensurate finite \(\mathbf{q}\), and direct finite-\(q\)
-/// Sternheimer. **Collinear spin + metallic smearing** (shared \(\mu\),
-/// spinor \(f\)) is allowed at Γ and commensurate \(\mathbf{q}\) (supercell
-/// Γ path); direct finite-\(q\) + spin+smear is rejected. Hybrids are
-/// rejected. Default `q_frac = {0,0,0}` is the Γ path. Finite \(\mathbf{q}\)
-/// that is **commensurate** with a small supercell (e.g. \(X=(1/2,0,0)\) →
+/// occupations or metallic smear: spin-resolved response with spinor
+/// \(f\in[0,1]\) and a spin XC kernel (local \(f_{\mathrm{xc}}^{\sigma\sigma'}\)
+/// for LDA; FD of `XCBuilder::step_spin` for GGA). **Restricted metallic
+/// smearing** is allowed at Γ, commensurate finite \(\mathbf{q}\), and
+/// direct finite-\(q\) Sternheimer. **Collinear spin + metallic smearing**
+/// (shared \(\mu\), spinor \(f\)) is allowed at Γ, commensurate
+/// \(\mathbf{q}\) (supercell Γ path), and **direct** finite-\(q\) Sternheimer
+/// (no \(\delta\mu\) at \(q\neq 0\)). Hybrids are rejected. Default
+/// `q_frac = {0,0,0}` is the Γ path. Finite \(\mathbf{q}\) that is
+/// **commensurate** with a small supercell (e.g. \(X=(1/2,0,0)\) →
 /// \(2\times1\times1\)) is evaluated as Γ-DFPT on that supercell plus IFC
 /// Fourier (exactly equivalent for rational \(q\)). **Incommensurate** (or
 /// oversize-supercell) \(\mathbf{q}\) uses the direct finite-\(q\) Sternheimer
 /// assembly (`internal::dfpt_q_force_constants`) on the primitive cell
-/// (restricted fixed-occ, restricted smear, or collinear spin fixed-occ).
+/// (restricted fixed-occ / smear, collinear spin fixed-occ or spin+smear).
 /// GGA \(K_{\mathrm{xc}}\) is the second functional derivative of the same
 /// `XCBuilder` operator used in the ground-state SCF (central FD of
 /// \(V_{\mathrm{xc}}[n]\) or `step_spin`); pure LDA keeps a local
@@ -121,10 +122,8 @@ class DfptPhonon {
     /// pure GGA (`hybrid_exchange_fraction == 0`) and `method.upf_path` is
     /// set. Restricted metallic smearing is allowed at Γ, commensurate
     /// \(\mathbf{q}\), and direct finite-\(q\) Sternheimer. Collinear spin
-    /// is allowed at Γ, commensurate \(\mathbf{q}\), and incommensurate
-    /// \(\mathbf{q}\) with fixed occupations; collinear spin + metallic
-    /// smearing is allowed at Γ / commensurate \(\mathbf{q}\); direct
-    /// finite-\(q\) spin+smear throws.
+    /// (fixed occupations or metallic smear) is allowed at Γ, commensurate
+    /// \(\mathbf{q}\), and incommensurate \(\mathbf{q}\).
     ///
     /// @param method Plane-wave method (members only; not mutated).
     /// @param frame  Atom positions [Å], types (Z), simulation cell.

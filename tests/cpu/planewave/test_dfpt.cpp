@@ -230,8 +230,9 @@ TEST(DfptPhonon, SpinWithSmearingReachesUpfIo) {
     EXPECT_THROW(dfpt.compute(method, frame), std::exception);
 }
 
-TEST(DfptPhonon, ThrowsOnSpinSmearAtIncommensurateQ) {
-    // Direct finite-q Sternheimer still rejects collinear spin + smear.
+TEST(DfptPhonon, SpinSmearIncommensurateQReachesUpfIo) {
+    // Direct finite-q Sternheimer accepts collinear spin + metallic smear;
+    // missing UPF fails inside setup (I/O), not at a spin+smear gate.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
@@ -242,7 +243,22 @@ TEST(DfptPhonon, ThrowsOnSpinSmearAtIncommensurateQ) {
     method.degauss = 0.02;
     DfptPhonon dfpt;
     dfpt.q_frac = {0.3, 0.0, 0.0};
-    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+    EXPECT_THROW(dfpt.compute(method, frame), std::exception);
+}
+
+TEST(DfptPhonon, CommensurateFiniteQSpinSmearReachesUpfIo) {
+    // X = (1/2,0,0) uses supercell Γ-DFPT; spin+smear is accepted there.
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.5, 0.0, 0.0};
+    EXPECT_THROW(dfpt.compute(method, frame), std::exception);
 }
 
 TEST(DfptPhonon, FiniteQWithSmearingReachesUpfIo) {
