@@ -235,10 +235,10 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 - CUDA SCF has no gradient kernel — **there is no GPU AIMD**.
 
 **XL-BOMD** (Niklasson dissipative auxiliary density) ships as
-`cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on the closed-shell
-GPW diagonalization path (`reg_xl-bomd-water`). ASPC remains a separate
-density *predictor* (warm start); UKS/OT/k-point XL and zero-SCF linearized
-forces stay ○.
+`cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
+GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
+(`reg_xl-bomd-uks`). ASPC remains a separate density *predictor* (warm start);
+OT/k-point XL and zero-SCF linearized forces stay ○.
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,

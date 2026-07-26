@@ -313,22 +313,37 @@ flips** (nothing new merged since harness wave 5); §3/§8/§10–12 open-
 residual prose + index GPW residual line refreshed for wave-6 queue.
 **Pending = 9**; **in_progress = 2**; **blocked = 5**.
 
+**Harness wave 6 2026-07-26 (parent `dev` @ `0869833a`):** 9 staffed
+slugs merged → `## done` (`gpw-metallic-smearing`, `gpw-xdm-ice`,
+`gpw-uks-rpbe`, `gpw-dftu-kpoint-stress`, `periodic-ump2-kpoints`,
+`periodic-ugw-si`, `gpw-hirshfeld-kpoints`, `dfpt-gga-si`, `xl-bomd-uks`).
+Specs deleted on close. **Pending residual = 1** (`periodic-urpa-si`);
+**in_progress = 1** unmerged staff `[~]` (`gpw-vv10-ice` on
+`wf/gpw-vv10-ice` — CP2K stock VV10 oracle gap; do not demote).
+Roadmap: **XDM ✓** table flip; residual prose closed GPW metallic smear,
+Γ-UKS RPBE, multi-k DFT+U stress, multi-k UMP2, UGW, multi-k Hirshfeld,
+DFPT-GGA, XL-BOMD UKS; stock VV10 / URPA stay open. **Blocked = 5**
+unchanged. **Queue not exhausted** — GapCensus owns next discovery.
+
 ## pending
 
-- [ ] `gpw-xdm-ice` | Exchange-hole dipole moment (XDM) dispersion | gpw | offline CP2K XDM / literature pin
-- [ ] `gpw-uks-rpbe` | Γ-UKS RPBE spin-GGA (`XcKind::RPBE`) | gpw | offline CP2K O₂ RPBE twin (after RKS RPBE + UKS revPBE ✓)
-- [ ] `gpw-dftu-kpoint-stress` | Multi-k Dudarev DFT+U analytic cell stress | gpw | offline CP2K NUMERICAL stress + PLUS_U + k-mesh
-- [ ] `periodic-ump2-kpoints` | Multi-k unrestricted GPW MP2 residual | gpw | offline CP2K UMP2_GPW + KPOINTS (Γ UMP2 foothold ≠ multi-k)
-- [ ] `periodic-ugw-si` | Unrestricted spectral G0W0 (UGW@UKS) | gpw | offline CP2K / literature UGW pin (closed-shell GW ✓)
-- [ ] `periodic-urpa-si` | Unrestricted direct RPA (URPA@UKS) | gpw | offline CP2K / literature URPA pin (closed-shell dRPA ✓)
-- [ ] `gpw-hirshfeld-kpoints` | Hirshfeld volume ratios on multi-k TS/MBD | gpw | offline CP2K Hirshfeld + k-mesh (Γ Hirshfeld ✓)
-- [ ] `dfpt-gga-si` | DFPT phonons with GGA XC kernel (PW) | response | offline CP2K / energy-FD twin (LSDA DFPT ✓)
-- [ ] `xl-bomd-uks` | Niklasson XL-BOMD on Γ-UKS GPW | dynamics | offline CP2K XL-BOMD open-shell / drift envelope (RKS XL-BOMD ✓)
+- [ ] `periodic-urpa-si` | Unrestricted direct RPA (URPA@UKS) | gpw | offline CP2K / literature URPA pin (closed-shell dRPA ✓; UGW ✓)
 
 ## in_progress
 
-- [~] `gpw-metallic-smearing` | Metallic occupation smearing on GPW | gpw | unmerged `wf/gpw-metallic-smearing` @ `31b00478` (feat FD/MP multi-k RKS + reg; resume merge gate)
-- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `0197163f` (spec + oracle note: CP2K has no stock VV10; incomplete — do not force-merge)
+- [~] `gpw-vv10-ice` | Stock VV10 nonlocal correlation (≠ rVV10) | gpw | unmerged `wf/gpw-vv10-ice` @ `9be3808a` (docs/block: CP2K 2026.1 has no `TYPE VV10`; incomplete — do not force-merge)
+
+## done (harness wave 6 2026-07-26)
+
+- [x] `gpw-metallic-smearing` | Metallic occupation smearing on GPW (FD/MP multi-k RKS) | gpw | `regressions/gpw/gpw-metallic-smearing` | ratio **~0.011** (ATV ~1.0 s / CP2K 89.5 s; dual-gate free energy) | 2026-07-26
+- [x] `gpw-xdm-ice` | Exchange-hole dipole moment (XDM) free-atom dispersion | gpw | `regressions/gpw/gpw-xdm-ice` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `gpw-uks-rpbe` | Γ-UKS RPBE spin-GGA (`XcKind::RPBE`) | gpw | `regressions/gpw/gpw-uks-rpbe` | ratio **~2.70** | 2026-07-26
+- [x] `gpw-dftu-kpoint-stress` | Multi-k Dudarev DFT+U analytic cell stress | gpw | `regressions/gpw/gpw-dftu-kpoint-stress` | ratio **perf_exempt** | 2026-07-26
+- [x] `periodic-ump2-kpoints` | Multi-k unrestricted GPW MP2 residual | gpw | `regressions/gpw/periodic-ump2-kpoints` | ratio **perf_exempt** | 2026-07-26
+- [x] `periodic-ugw-si` | Unrestricted spectral G0W0 (UGW@UKS) | gpw | `regressions/gpw/periodic-ugw-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-hirshfeld-kpoints` | Hirshfeld volume ratios on multi-k TS/MBD | gpw | `regressions/gpw/gpw-hirshfeld-kpoints` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `dfpt-gga-si` | DFPT phonons with GGA XC kernel (PW) | response | `regressions/response/dfpt-gga-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `xl-bomd-uks` | Niklasson XL-BOMD on Γ-UKS GPW | dynamics | `regressions/dynamics/xl-bomd-uks` | ratio **perf_exempt** (NVE drift envelope) | 2026-07-26
 
 ## done (harness wave 5 2026-07-26)
 

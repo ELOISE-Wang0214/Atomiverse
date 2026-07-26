@@ -1,19 +1,19 @@
 # CP2K capability loop — handoff
 
-## Harness wave 5 2026-07-26 (parent `dev` @ `2d43d1c2`)
+## Harness wave 6 2026-07-26 (parent `dev` @ `0869833a`)
 
 | Field | Value |
 | ----- | ----- |
 | Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
-| Incomplete / `in_progress` | **2** (`[~] gpw-metallic-smearing`, `[~] gpw-vv10-ice`) |
+| Incomplete / `in_progress` | **1** (`[~] gpw-vv10-ice`) |
 | Open CP2K specs on `dev` | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
-| Specs closed this harness | **6** (deleted on close) |
-| Unmerged staff `wf/*` | **2** incomplete kept: `wf/gpw-metallic-smearing`, `wf/gpw-vv10-ice` |
+| Specs closed this harness | **9** (deleted on close) |
+| Unmerged staff `wf/*` | **1** incomplete kept: `wf/gpw-vv10-ice` |
 | Isolation worktrees | **0** (clearup already ran; main tree only) |
 | Leftover builds | **none** |
-| Pending gaps | **1** residual (`gpw-xdm-ice` — not exhausted; GapCensus owns refill) |
+| Pending gaps | **1** residual (`periodic-urpa-si` — not exhausted; GapCensus owns refill) |
 | Blocked | **5** (hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
-| Done this wave | **6** landings (see table) |
+| Done this wave | **9** landings (see table) |
 | Oracle | `tools/cp2k_oracle/` offline pins only |
 | Loop docs | queue / loop / handoff / roadmap residual prose **synced** |
 
@@ -21,36 +21,62 @@
 
 | Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ---- | ------ | ---------- | --------------------------------------------- |
-| `gpw-dftu-kpoints` | gpw | `reg_gpw-dftu-kpoints` | **perf_exempt** |
-| `periodic-gw-finite-q` | gpw | `reg_periodic-gw-finite-q` | **perf_exempt** |
-| `gpw-uks-revpbe` | gpw | `reg_gpw-uks-revpbe` | **~3.22** |
-| `cpmd-rattle-water` | dynamics | `reg_cpmd-rattle-water` | **perf_exempt** |
-| `periodic-ump2-si` | gpw | `reg_periodic-ump2-si` | **perf_exempt** |
-| `ot-uks-o2` | gpw | `reg_ot-uks-o2` | **~8.50** |
+| `gpw-metallic-smearing` | gpw | `reg_gpw-metallic-smearing` | **~0.011** (dual-gate free energy) |
+| `gpw-xdm-ice` | gpw | `reg_gpw-xdm-ice` | **perf_exempt** (E_disp pin) |
+| `gpw-uks-rpbe` | gpw | `reg_gpw-uks-rpbe` | **~2.70** |
+| `gpw-dftu-kpoint-stress` | gpw | `reg_gpw-dftu-kpoint-stress` | **perf_exempt** |
+| `periodic-ump2-kpoints` | gpw | `reg_periodic-ump2-kpoints` | **perf_exempt** |
+| `periodic-ugw-si` | gpw | `reg_periodic-ugw-si` | **perf_exempt** |
+| `gpw-hirshfeld-kpoints` | gpw | `reg_gpw-hirshfeld-kpoints` | **perf_exempt** (E_disp pin) |
+| `dfpt-gga-si` | response | `reg_dfpt-gga-si` | **perf_exempt** |
+| `xl-bomd-uks` | dynamics | `reg_xl-bomd-uks` | **perf_exempt** (NVE drift) |
 
 ### Incomplete kept `[~]` (do not demote)
 
 | Slug | Branch | Tip | Note |
 | ---- | ------ | --- | ---- |
-| `gpw-metallic-smearing` | `wf/gpw-metallic-smearing` | `31b00478` | feat FD/MP multi-k RKS + reg + unit; resume merge gate next Assign |
-| `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `0197163f` | docs/block note: CP2K has no stock VV10 (≠ rVV10); incomplete |
+| `gpw-vv10-ice` | `wf/gpw-vv10-ice` | `9be3808a` | CP2K 2026.1 has no stock `TYPE VV10` (≠ rVV10); incomplete |
 
 ### Roadmap ○→✓ this harness
 
 | Row | Doc | Note |
 | --- | --- | ---- |
-| *(no new table ○→✓)* | `dft.md` | multi-k DFT+U / finite-q G0W0 / Γ-UKS revPBE / UMP2 / OT-UKS are residual closes of already-✓ rows |
-| CPMD electronic RATTLE | `molecular-dynamics.md` AIMD prose | productized (`reg_cpmd-rattle-water`); UKS/OT/thermostat still ○ |
-| Residual prose | `dft.md` §10 + `index.md` | drop closed residuals; keep XDM / stock VV10 / GPW metallic smear open |
+| Exchange-hole dipole moment, XDM | `dft.md` §8 | free-atom XDM on GPW (`reg_gpw-xdm-ice`) |
+| Residual prose | `dft.md` §3/§8/§10–12 + `index.md` + AIMD | GPW metallic smear; Γ-UKS RPBE; multi-k DFT+U stress; multi-k UMP2; UGW; multi-k Hirshfeld; DFPT-GGA; XL-BOMD UKS productized |
+| Still open | stock VV10 / URPA | `[~] gpw-vv10-ice`; pending `periodic-urpa-si` |
 
 ### Pending residual
 
-**Pending = 1** (`gpw-xdm-ice`). **Incomplete = 2** `[~]`. Next wave starts
-with **Recover incomplete** then **GapCensus** (tree/roadmap ○ vs `dev`).
-Blocked = 5 unchanged.
+**Pending = 1** (`periodic-urpa-si`). **Incomplete = 1** `[~]`
+(`gpw-vv10-ice`). Next wave starts with **Recover incomplete** then
+**GapCensus** (tree/roadmap ○ vs `dev`). Blocked = 5 unchanged.
 
 Do **not** staff PySCF deferred specs. No push from parent.
 **Queue not exhausted** — GapCensus owns next discovery.
+
+---
+
+## Harness wave 5 2026-07-26 (parent `dev` @ `2d43d1c2`) — historical
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **2** (`[~] gpw-metallic-smearing`, `[~] gpw-vv10-ice`) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only) |
+| Specs closed this harness | **6** (deleted on close) |
+| Pending residual | **1** (`gpw-xdm-ice`) then refilled by GapCensus wave 6 |
+| Done this wave | **6** landings |
+
+### Wave staff → done (historical)
+
+| Slug | Domain | ratio |
+| ---- | ------ | ----- |
+| `gpw-dftu-kpoints` | gpw | **perf_exempt** |
+| `periodic-gw-finite-q` | gpw | **perf_exempt** |
+| `gpw-uks-revpbe` | gpw | **~3.22** |
+| `cpmd-rattle-water` | dynamics | **perf_exempt** |
+| `periodic-ump2-si` | gpw | **perf_exempt** |
+| `ot-uks-o2` | gpw | **~8.50** |
 
 ---
 

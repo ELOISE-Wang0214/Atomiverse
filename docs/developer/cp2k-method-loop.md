@@ -68,6 +68,18 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 6 (parent `dev` @ `0869833a`):** 9 merged →
+  done: `gpw-metallic-smearing`, `gpw-xdm-ice`, `gpw-uks-rpbe`,
+  `gpw-dftu-kpoint-stress`, `periodic-ump2-kpoints`, `periodic-ugw-si`,
+  `gpw-hirshfeld-kpoints`, `dfpt-gga-si`, `xl-bomd-uks`. Incomplete
+  remaining **1** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice`);
+  pending residual **1** (`periodic-urpa-si` — **not** queue exhausted);
+  blocked **5**. Specs closed (deleted) for all 9. Roadmap: **XDM ✓**;
+  residual prose closed GPW metallic smear, Γ-UKS RPBE, multi-k DFT+U
+  stress, multi-k UMP2, UGW, multi-k Hirshfeld, DFPT-GGA, XL-BOMD UKS;
+  stock VV10 / URPA stay open. Clearup already ran (no isolation
+  worktrees; no builds). **Queue not exhausted** — next wave Recover
+  incomplete then GapCensus. No push.
 - **2026-07-26 GapCensus wave 6 (parent `dev` @ `5847a35a`):** recover
   incomplete=**2** (`[~] gpw-metallic-smearing`, `[~] gpw-vv10-ice` on
   unmerged `wf/*` — not demoted); CP2K specs on `dev`=0; isolation
