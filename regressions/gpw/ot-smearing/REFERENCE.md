@@ -10,8 +10,8 @@ SCF **and** **Fermi–Dirac** electronic smearing (Mermin free energy
 `n_occ + max(extra_bands, 1)` with fractional band occupations; projected
 gradient is \(g = (I - S C C^\dagger)(2 H C f)\).
 
-Product path: multi-k closed-shell RKS only. Multi-k UKS OT + smear remains
-fail-fast.
+Product path: multi-k closed-shell RKS OT + smear. Multi-k UKS OT + smear is
+productized under `ot-uks-smearing` (build accepts the combo).
 
 ## System (Atomiverse pin)
 
@@ -36,7 +36,7 @@ fail-fast.
 | A3 | \(\lvert F_{\mathrm{OT}} - F_{\mathrm{DIIS}}\rvert\) | \(10^{-4}\) Ha |
 | A4 | \(N_{\mathrm{occ}} = 18\) | \(10^{-5}\) |
 | A5 | frozen free-energy pin (first green) | \(10^{-3}\) Ha |
-| A6 | multi-k UKS OT + FD smear throws | — |
+| A6 | multi-k UKS OT + FD smear build accepted | — |
 
 ## Offline free-energy pin (first green 2026-07-26)
 

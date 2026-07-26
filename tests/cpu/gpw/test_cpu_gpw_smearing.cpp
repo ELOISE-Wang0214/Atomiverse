@@ -71,7 +71,7 @@ TEST(GpwSmearing, BuildAcceptsOtRksAndUksSmearRejectsOtUksSmear) {
     ot.extra_bands = 2;
     EXPECT_NO_THROW(ot.build(atoms));
 
-    // UKS OT + smear remains out of product scope.
+    // UKS OT + FD is productized (multi-k UKS OT + metallic occupations).
     GpwDft ot_uks;
     ot_uks.n_alpha = 1;
     ot_uks.n_beta = 0;
@@ -79,7 +79,9 @@ TEST(GpwSmearing, BuildAcceptsOtRksAndUksSmearRejectsOtUksSmear) {
     ot_uks.use_ot = true;
     ot_uks.smearing = Smearing::fermi_dirac;
     ot_uks.degauss = 0.02;
-    EXPECT_THROW(ot_uks.build(atoms), std::invalid_argument);
+    ot_uks.k_mesh[0] = ot_uks.k_mesh[1] = ot_uks.k_mesh[2] = 2;
+    ot_uks.extra_bands = 2;
+    EXPECT_NO_THROW(ot_uks.build(atoms));
 
     GpwDft bad_deg;
     bad_deg.n_occ = 1;
