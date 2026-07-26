@@ -73,6 +73,28 @@ TEST(GpwXdm, AnalyticForcesMatchFiniteDifference) {
     const double cell[3] = {0.0, 0.0, 0.0};
     const XdmResult r = xdm_pbe(kZ, pos, cell, /*periodic=*/false);
 
+    // Offline dual-Python force sample (REFERENCE gpw-xdm-forces).
+    constexpr double kFIsoPin[6][3] = {
+        {1.6875829936003448e-04, 0.0, 0.0},
+        {6.9736686381575340e-05, 0.0, -1.3172272218329521e-05},
+        {6.9736686381575340e-05, 0.0, 1.3172272218329521e-05},
+        {-1.1378113807647229e-04, 0.0, 0.0},
+        {-9.7225267023356434e-05, 0.0, -1.5448899346549854e-05},
+        {-9.7225267023356434e-05, 0.0, 1.5448899346549854e-05},
+    };
+    double max_pin = 0.0;
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < 6; ++i) {
+        for (int d = 0; d < 3; ++d) {
+            max_pin =
+                std::max(max_pin, std::abs(r.forces[i][d] - kFIsoPin[i][d]));
+            sum[d] += r.forces[i][d];
+        }
+    }
+    EXPECT_LT(max_pin, 1e-12);
+    EXPECT_LT(std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]),
+              1e-12);
+
     const double h = 1e-5;
     double max_err = 0.0;
     for (std::size_t i = 0; i < pos.size(); ++i) {
@@ -87,8 +109,42 @@ TEST(GpwXdm, AnalyticForcesMatchFiniteDifference) {
             max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
         }
     }
-    std::printf("[XDM] max |F_analytic - F_fd| = %.2e Ha/Bohr\n", max_err);
+    std::printf("[XDM] max |F_analytic - F_fd| = %.2e Ha/Bohr (pin %.2e)\n",
+                max_err, max_pin);
     EXPECT_LT(max_err, 1e-7);
+}
+
+TEST(GpwXdm, PeriodicAnalyticForcesMatchFiniteDifference) {
+    auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    constexpr double kRcut = 50.0 * kAngToBohr;
+    const XdmResult r = xdm_pbe(kZ, pos, cell, /*periodic=*/true, kRcut);
+
+    const double h = 1e-5;
+    double max_err = 0.0;
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + h;
+            const double ep =
+                xdm_pbe(kZ, pos, cell, true, kRcut).energy;
+            pos[i][d] = save - h;
+            const double em =
+                xdm_pbe(kZ, pos, cell, true, kRcut).energy;
+            pos[i][d] = save;
+            const double fd = -(ep - em) / (2.0 * h);
+            max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
+            sum[d] += r.forces[i][d];
+        }
+    }
+    const double sum_norm =
+        std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+    std::printf("[XDM per] max |F_analytic - F_fd| = %.2e  |sum F|=%.2e\n",
+                max_err, sum_norm);
+    EXPECT_LT(max_err, 1e-7);
+    EXPECT_LT(sum_norm, 1e-10);
 }
 
 TEST(GpwXdm, GpwDftReportsEDisp) {
