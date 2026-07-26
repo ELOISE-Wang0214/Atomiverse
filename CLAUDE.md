@@ -200,7 +200,7 @@ nonbonded force are an **OpenMM cluster/tile engine**, not a style flag and not
 - **Engine path:** spatial reorder → clusters (target **32**) → AABB → cluster
   CSR + **real** interaction masks → **tile / shared-memory** force for LJ and
   real-space Coulomb. PME stays `longrange/` (cuFFT).
-- **Public facade** may stay LAMMPS-named (`set_neighbor`, MD phases); **CPU**
+- **Public surface** may stay LAMMPS-named (`set_neighbor`, MD phases); **CPU**
   may stay LAMMPS-like. That does not license `vl_*` / `launch_build_verlet_direct`
   as the CUDA MD force architecture.
 - **Forbidden:** `NonbondedStyle` / `ATV_CUDA_NONBONDED` dual architecture;

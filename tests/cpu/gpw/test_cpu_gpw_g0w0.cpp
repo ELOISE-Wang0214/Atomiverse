@@ -265,7 +265,7 @@ TEST(GpwG0W0, KpointsNk1RecoversRealSpectral) {
     std::vector<double> vxc_r(static_cast<std::size_t>(npts), 0.0);
     std::vector<double> vxc_diag(static_cast<std::size_t>(n_mo), 0.0);
 
-    // Real Newton (inline: residual zero at ω = ε + Σx when Σc=0; not
+    // Real-valued Newton (inline: residual zero at ω = ε + Σx when Σc=0; not
     // zero in general — use a few Newton steps matching g0w0.cpp).
     auto sigma_c = [&](double omega, int p) {
         double re = 0.0;

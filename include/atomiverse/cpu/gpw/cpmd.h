@@ -5,7 +5,7 @@
 /// Propagates occupied MO coefficients with velocity-Verlet and a fictitious
 /// electron mass \(\mu\) (Car & Parrinello, Phys. Rev. Lett. 55, 2471 (1985)).
 ///
-/// **Real Γ (`Cpmd`):** \(C\) is \(n_b\times n_{\mathrm{occ}}\) real;
+/// **Real-valued Γ (`Cpmd`):** \(C\) is \(n_b\times n_{\mathrm{occ}}\) real;
 /// \(P = 2 C C^\top\) (RKS) or \(P_\sigma = C_\sigma C_\sigma^\top\) (UKS);
 /// force \(\mu\,\ddot C = -(I - S C C^\top)\,(2\cdot\mathrm{occ}\,H C)\).
 /// Holonomic orthonormality \(C^\top S C = I\) via electronic RATTLE
