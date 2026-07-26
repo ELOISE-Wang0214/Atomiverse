@@ -2167,16 +2167,13 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     // Independent complex OT manifolds per (k, σ). Integer path: occ=1
     // open-shell gradient, manifold size n_α / n_β. Metallic smear: full AO
     // spectrum, shared μ over α+β (spin_degen=1), f_σ ∈ [0,1], Mermin free
-    // energy F = E_KS − σ S. Joint PR+ CG + Armijo on rebuilt F (no PLUS_U).
-    // With PLUS_U: CP2K-style OUTER_SCF — rebuild H^σ (incl. V_U^σ), then
-    // fixed-H OT band minimize per (k, σ). Same fixed point as multi-k UKS
-    // DIIS (+smear / +U). OT+U+smear remains fail-fast.
+    // energy F = E_KS − σ S. Joint PR+ CG + Armijo on rebuilt F.
+    // Integer + PLUS_U: CP2K-style OUTER_SCF — rebuild H^σ (incl. V_U^σ),
+    // then fixed-H OT band minimize per (k, σ). Metallic smear with or
+    // without PLUS_U: joint free-energy PR+ Armijo (build_uks_k_energy
+    // folds V_U / E_U when plus_u is set). Same fixed point as multi-k UKS
+    // DIIS (+smear / +U / +U+smear).
     if (cfg.use_ot) {
-        if (do_dftu && use_smear)
-            throw std::runtime_error(
-                "GPW k-UKS OT: metallic smearing with DFT+U is not "
-                "productized (use_ot with plus_u requires integer "
-                "occupations)");
         constexpr double kOtGradTolK = 1e-5;
         // Active manifold: integer keeps n_a / n_b; smear uses full spectrum.
         const int n_act_a = use_smear ? m_min : n_a;
@@ -2463,8 +2460,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return e_ks + e_ent;
         };
 
-        // ── OUTER_SCF + fixed-H OT for multi-k UKS OT+DFT+U ───────────────
-        if (do_dftu) {
+        // ── OUTER_SCF + fixed-H OT for multi-k UKS OT+DFT+U (integer) ────
+        // Metallic U+smear rides the free-energy PR+ path below (same as RKS
+        // OT+U+smear): OUTER_SCF freezes occupations and stalls under FD.
+        if (do_dftu && !use_smear) {
             constexpr double kInnerTol = 1e-7;
             constexpr int kInnerMax = 80;
             for (int outer = 0; outer < cfg.max_iter; ++outer) {
@@ -2538,7 +2537,10 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return res;
         }
 
-        // ── One PR+ Armijo step per outer H rebuild (no PLUS_U) ───────────
+        // ── One PR+ Armijo step per outer H rebuild (smear and/or no U) ──
+        // Active OT manifold: integer path keeps n_α / n_β; metallic smear
+        // uses the full AO spectrum. PLUS_U + smear rides this path (V_U via
+        // build_uks_k_energy) — product: OT+U+smear ≡ DIIS+U+smear.
         std::vector<CplxMatrix> d_a_k(static_cast<std::size_t>(nk));
         std::vector<CplxMatrix> d_b_k(static_cast<std::size_t>(nk));
         std::vector<CplxMatrix> pz_a_prev_k(static_cast<std::size_t>(nk));
@@ -2651,8 +2653,11 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                         n_a, n_b);
             }
 
+            // Metallic / PLUS_U softens g — accept energy plateau with soft
+            // gtol (same policy as multi-k RKS OT+U+smear).
             const double gtol =
-                use_smear ? std::max(kOtGradTolK, 5e-4) : kOtGradTolK;
+                (use_smear || do_dftu) ? std::max(kOtGradTolK, 5e-4)
+                                       : kOtGradTolK;
             auto finish_converged = [&]() {
                 res.converged = true;
                 auto [Ha_full, Hb_full] = rebuild_all_H(last_veff_ab);
@@ -2672,8 +2677,8 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 finish_converged();
                 return res;
             }
-            // Energy plateau fallback for metals (budget-friendly).
-            if (use_smear && iter > 15
+            // Energy plateau fallback for metals / OT+U+smear.
+            if ((use_smear || do_dftu) && iter > 15
                 && std::abs(e_total - e_prev_ot) < cfg.tol) {
                 finish_converged();
                 return res;
@@ -4752,8 +4757,7 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
     }
     if (smearing != Smearing::none) {
         // Multi-k RKS (DIIS and OT, with or without PLUS_U) + multi-k
-        // collinear UKS (DIIS and OT) productized. Multi-k UKS OT+U+smear
-        // remains a residual.
+        // collinear UKS (DIIS and OT, with or without PLUS_U) productized.
         if (!(degauss > 0.0) || !std::isfinite(degauss))
             throw std::invalid_argument(
                 "GpwDft::build: degauss must be finite and > 0 [Ry] when "
@@ -4802,11 +4806,12 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
         };
         // Multi-k OT is product for closed-shell RKS (integer and metallic
         // FD/MP occupations, with or without Dudarev DFT+U) and collinear
-        // UKS (integer occupations and metallic FD/MP, and integer + Dudarev
-        // DFT+U). Multi-k UKS OT+U+smear remains a fail-fast residual.
-        // Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF on DIIS
-        // and OT paths (RKS + collinear UKS). Analytic multi-k DFT+U
-        // stress/forces remain out of scope where those paths still throw.
+        // UKS (integer occupations and metallic FD/MP, with or without
+        // Dudarev DFT+U — including the joint UKS OT+U+smear free-energy
+        // path). Multi-k Dudarev DFT+U (PLUS_U) is supported for energy SCF
+        // on DIIS and OT paths (RKS + collinear UKS). Analytic multi-k
+        // DFT+U stress/forces remain out of scope where those paths still
+        // throw.
         if (ngrids > 1)
             reject("multigrid (ngrids > 1)");
         if (nonperiodic)
@@ -4821,11 +4826,6 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             && xc != XcKind::OptB88VdW)
             reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, RevPBE, "
                    "RPBE, BLYP, or OptB88VdW)");
-        // Residual: multi-k UKS OT + Dudarev + metallic smear (RKS OT+U+smear
-        // is product; UKS OT+smear and UKS OT+U alone are product).
-        if (is_uks() && use_ot && !plus_u.empty()
-            && smearing != Smearing::none)
-            reject("k-UKS OT with PLUS_U and metallic smearing together");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {

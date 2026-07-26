@@ -10,7 +10,7 @@
 ///   A1–A4 OT+U+FD ≡ DIIS+U+FD free energy, Ne, e_dftu (κ = 1/4)
 ///   A5 activation |F(U)−F(0)| on OT+FD
 ///   A6 frozen free-energy pin (first green)
-///   A7 multi-k UKS OT+U+FD still throws
+///   A7 multi-k UKS OT+U+FD accepted at build (product: ot-uks-dftu-smearing)
 ///
 /// Exit non-zero on failure. Target ≤ 60 s Release.
 
@@ -163,9 +163,8 @@ int main() {
         check(d <= kAbsTol, "A6 |F_OT − frozen| ≤ 1e-3 Ha");
     }
 
-    // ── A7: multi-k UKS OT + U + FD still throws ───────────────────────────
+    // ── A7: multi-k UKS OT + U + FD accepted (product ot-uks-dftu-smearing) ─
     {
-        bool threw = false;
         try {
             GpwDft m = base_method(L, kU_ev, true);
             m.n_occ = 0;
@@ -175,12 +174,11 @@ int main() {
             m.smearing = Smearing::fermi_dirac;
             m.degauss = 0.02;
             m.build(atoms);
-        } catch (const std::invalid_argument&) {
-            threw = true;
-        } catch (const std::runtime_error&) {
-            threw = true;
+            check(true, "A7 multi-k UKS OT + U + FD accepted at build");
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "A7 threw: %s\n", e.what());
+            check(false, "A7 multi-k UKS OT + U + FD accepted at build");
         }
-        check(threw, "A7 multi-k UKS OT + U + FD throws");
     }
 
     const auto t1 = clock::now();
