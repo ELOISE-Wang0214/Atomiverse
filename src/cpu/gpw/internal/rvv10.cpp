@@ -1,8 +1,12 @@
 /// @file cpu/gpw/internal/rvv10.cpp
 /// @brief RPS evaluation of rVV10 nonlocal correlation (CP2K TYPE RVV10).
+///
+/// Energy + self-consistent potential follow CP2K `qs_dispersion_nonloc.F`
+/// (`get_q0_on_grid_rvv10`, `vdW_energy`, `get_potential`).
 
 #include "atomiverse/cpu/gpw/internal/rvv10.h"
 
+#include <array>
 #include <cmath>
 #include <complex>
 #include <stdexcept>
@@ -10,6 +14,7 @@
 
 #include <fftw3.h>
 
+#include "atomiverse/cpu/gpw/internal/grid_fft.h"
 #include "atomiverse/cpu/gpw/internal/rvv10_kernel_data.h"
 
 namespace ATV {
@@ -23,7 +28,6 @@ constexpr double kRhoCut = 1e-10;
 /// @brief Natural cubic spline second derivatives of Kronecker-δ basis on q-mesh
 ///        (CP2K initialize_spline_interpolation).
 void init_p_spline_d2(const double* x, int n, std::vector<double>& d2) {
-    // d2 layout [P_i][index], n × n
     d2.assign(static_cast<std::size_t>(n * n), 0.0);
     std::vector<double> y(static_cast<std::size_t>(n));
     std::vector<double> temp(static_cast<std::size_t>(n));
@@ -64,19 +68,25 @@ void init_p_spline_d2(const double* x, int n, std::vector<double>& d2) {
     }
 }
 
-/// @brief Evaluate all p_α(q) via cubic spline on Kronecker basis (CP2K).
-void palpha_at_q(const double* x, const std::vector<double>& d2, int n,
-                 double q, double* out) {
+/// @brief Evaluate all p_α(q) and dp_α/dq via cubic spline on Kronecker basis.
+void palpha_and_deriv_at_q(const double* x, const std::vector<double>& d2, int n,
+                           double q, double* p_out, double* dp_out) {
     int lower = 0;
     int upper = n - 1;
     if (q <= x[0]) {
-        for (int a = 0; a < n; ++a)
-            out[a] = (a == 0) ? 1.0 : 0.0;
+        for (int a = 0; a < n; ++a) {
+            p_out[a] = (a == 0) ? 1.0 : 0.0;
+            if (dp_out)
+                dp_out[a] = 0.0;
+        }
         return;
     }
     if (q >= x[n - 1]) {
-        for (int a = 0; a < n; ++a)
-            out[a] = (a == n - 1) ? 1.0 : 0.0;
+        for (int a = 0; a < n; ++a) {
+            p_out[a] = (a == n - 1) ? 1.0 : 0.0;
+            if (dp_out)
+                dp_out[a] = 0.0;
+        }
         return;
     }
     while (upper - lower > 1) {
@@ -92,13 +102,20 @@ void palpha_at_q(const double* x, const std::vector<double>& d2, int n,
     const double b = (q - x[lower]) / dx;
     const double c = (a * a * a - a) * const_;
     const double d = (b * b * b - b) * const_;
+    // da/dq = -1/dx, db/dq = 1/dx
+    // dc/dq = (3a²-1) * da/dq * const_ ; same for d with b
+    const double e = (3.0 * a * a - 1.0) * (dx / 6.0); // used like CP2K
+    const double f = (3.0 * b * b - 1.0) * (dx / 6.0);
     for (int P_i = 0; P_i < n; ++P_i) {
-        // y is Kronecker: y[lower]=δ, y[upper]=δ
         const double yl = (P_i == lower) ? 1.0 : 0.0;
         const double yu = (P_i == upper) ? 1.0 : 0.0;
-        out[P_i] = a * yl + b * yu
-                   + (c * d2[static_cast<std::size_t>(P_i * n + lower)]
-                      + d * d2[static_cast<std::size_t>(P_i * n + upper)]);
+        const double d2l = d2[static_cast<std::size_t>(P_i * n + lower)];
+        const double d2u = d2[static_cast<std::size_t>(P_i * n + upper)];
+        p_out[P_i] = a * yl + b * yu + c * d2l + d * d2u;
+        if (dp_out) {
+            // CP2K: dP_dq0 = (y_hi - y_low)/dq - e*d2_low + f*d2_hi
+            dp_out[P_i] = (yu - yl) / dx - e * d2l + f * d2u;
+        }
     }
 }
 
@@ -124,6 +141,21 @@ void interpolate_kernel_linear(double k, double* kernel_aa) {
                        + static_cast<double>(right[i]) * t;
 }
 
+void soft_saturate(double q, double qcut, double& q0, double& dq0_dq) {
+    double exponent = 0.0;
+    double d_exp_d_qs = 0.0;
+    double qscaled0 = q / qcut;
+    double qscaled = 1.0;
+    for (int m = 1; m <= 12; ++m) {
+        qscaled *= qscaled0;
+        exponent += qscaled / static_cast<double>(m);
+        d_exp_d_qs += std::pow(qscaled0, m - 1);
+    }
+    const double em = std::exp(-exponent);
+    q0 = qcut * (1.0 - em);
+    dq0_dq = em * d_exp_d_qs;
+}
+
 } // namespace
 
 void rvv10_q0(const std::vector<double>& rho, const std::vector<double>& sigma,
@@ -140,26 +172,17 @@ void rvv10_q0(const std::vector<double>& rho, const std::vector<double>& sigma,
             q0[i] = qcut;
             continue;
         }
-        const double gmod2 = sigma[i]; // |∇ρ|²
-        // wp² = 16 π ρ ; wg² = 4 C (|∇ρ|/ρ)⁴ = 4 C (|∇ρ|²)² / ρ⁴
+        const double gmod2 = sigma[i];
         const double wp2 = 16.0 * kPi * mrho;
         const double rho2 = mrho * mrho;
         const double rho4 = rho2 * rho2;
         const double wg2 = 4.0 * C * (gmod2 * gmod2) / rho4;
-        // κ = b · 3π · (ρ/(9π))^{1/6}
         const double k =
             b * 3.0 * kPi * std::pow(mrho / (9.0 * kPi), 1.0 / 6.0);
         const double w0 = std::sqrt(wg2 + wp2 / 3.0);
         double q = w0 / k;
-        // Soft saturation (Soler eq. 5), m_cut = 12
-        double exponent = 0.0;
-        double qscaled0 = q / qcut;
-        double qscaled = 1.0;
-        for (int m = 1; m <= 12; ++m) {
-            qscaled *= qscaled0;
-            exponent += qscaled / static_cast<double>(m);
-        }
-        double qsat = qcut * (1.0 - std::exp(-exponent));
+        double qsat = 0.0, dq0_dq = 0.0;
+        soft_saturate(q, qcut, qsat, dq0_dq);
         if (qsat < qmin)
             qsat = qmin;
         q0[i] = qsat;
@@ -167,7 +190,8 @@ void rvv10_q0(const std::vector<double>& rho, const std::vector<double>& sigma,
 }
 
 Rvv10Result rvv10_energy(const UniformGrid& grid, const std::vector<double>& rho,
-                         const std::vector<double>& sigma, double b, double C) {
+                         const std::vector<double>& sigma, double b, double C,
+                         bool want_potential) {
     using namespace rvv10_data;
     const int n0 = grid.n[0];
     const int n1 = grid.n[1];
@@ -177,15 +201,49 @@ Rvv10Result rvv10_energy(const UniformGrid& grid, const std::vector<double>& rho
         || static_cast<long>(sigma.size()) != ntot)
         throw std::runtime_error("rVV10: density size mismatch vs grid");
 
-    std::vector<double> q0;
-    rvv10_q0(rho, sigma, q0, b, C);
+    const double qcut = kRvv10QCut;
+    const double qmin = kRvv10QMin;
+    const double dV = grid.weight();
+
+    // q0 + derivatives (CP2K get_q0_on_grid_rvv10)
+    std::vector<double> q0(static_cast<std::size_t>(ntot));
+    std::vector<double> dq0_drho(static_cast<std::size_t>(ntot), 0.0);
+    std::vector<double> dq0_dgradrho(static_cast<std::size_t>(ntot), 0.0);
+    for (long g = 0; g < ntot; ++g) {
+        const double mrho = rho[static_cast<std::size_t>(g)];
+        const double gmod2 = sigma[static_cast<std::size_t>(g)];
+        if (mrho < kRhoCut) {
+            q0[static_cast<std::size_t>(g)] = qcut;
+            continue;
+        }
+        const double rho2 = mrho * mrho;
+        const double rho4 = rho2 * rho2;
+        const double wp2 = 16.0 * kPi * mrho;
+        const double wg2 = 4.0 * C * (gmod2 * gmod2) / rho4;
+        const double k =
+            b * 3.0 * kPi * std::pow(mrho / (9.0 * kPi), 1.0 / 6.0);
+        const double w0 = std::sqrt(wg2 + wp2 / 3.0);
+        const double q = w0 / k;
+        double qsat = 0.0, dq0_dq = 0.0;
+        soft_saturate(q, qcut, qsat, dq0_dq);
+        if (qsat < qmin)
+            qsat = qmin;
+        q0[static_cast<std::size_t>(g)] = qsat;
+
+        const double dw0_dn =
+            1.0 / (2.0 * w0) * (16.0 / 3.0 * kPi - 4.0 * wg2 / mrho);
+        const double dk_dn = k / (6.0 * mrho);
+        dq0_drho[static_cast<std::size_t>(g)] =
+            dq0_dq * (1.0 / (k * k)) * (dw0_dn * k - dk_dn * w0);
+        if (gmod2 > kRhoCut)
+            dq0_dgradrho[static_cast<std::size_t>(g)] =
+                dq0_dq * (1.0 / (2.0 * k * w0)) * 4.0 * wg2 / gmod2;
+    }
 
     // θ_α = const * ρ^{3/4} * p_α(q0)
-    // const = 1 / (3 √π b^{3/2} π^{3/4})   [CP2K qs_dispersion_nonloc.F]
     const double rootpi = std::sqrt(kPi);
     const double const_theta =
         1.0 / (3.0 * rootpi * std::pow(b, 1.5) * std::pow(kPi, 0.75));
-
     // β = (1/32) (3 / b²)^{3/4}
     const double beta = 0.03125 * std::pow(3.0 / (b * b), 0.75);
 
@@ -206,7 +264,6 @@ Rvv10Result rvv10_energy(const UniformGrid& grid, const std::vector<double>& rho
 
     std::vector<double> ptmp(static_cast<std::size_t>(nalpha));
     double nelec = 0.0;
-    const double dV = grid.weight();
     for (long g = 0; g < ntot; ++g) {
         const double rg = rho[static_cast<std::size_t>(g)];
         nelec += rg;
@@ -215,8 +272,8 @@ Rvv10Result rvv10_energy(const UniformGrid& grid, const std::vector<double>& rho
                 rbuf[a * ntot + g] = 0.0;
             continue;
         }
-        palpha_at_q(qm, d2y, nalpha, q0[static_cast<std::size_t>(g)],
-                    ptmp.data());
+        palpha_and_deriv_at_q(qm, d2y, nalpha, q0[static_cast<std::size_t>(g)],
+                              ptmp.data(), nullptr);
         const double pref = const_theta * std::pow(rg, 0.75);
         for (int a = 0; a < nalpha; ++a)
             rbuf[a * ntot + g] = pref * ptmp[static_cast<std::size_t>(a)];
@@ -255,37 +312,114 @@ Rvv10Result rvv10_energy(const UniformGrid& grid, const std::vector<double>& rho
                 const double k = std::sqrt(gx * gx + gy * gy + gz * gz);
                 interpolate_kernel_linear(k, kernel_aa.data());
 
+                std::vector<std::complex<double>> theta(
+                    static_cast<std::size_t>(nalpha));
+                for (int a = 0; a < nalpha; ++a) {
+                    const fftw_complex& th = cbuf[a * ncplx + kindex];
+                    theta[static_cast<std::size_t>(a)] = {th[0], th[1]};
+                }
                 for (int a1 = 0; a1 < nalpha; ++a1) {
                     std::complex<double> F(0.0, 0.0);
                     for (int a2 = 0; a2 < nalpha; ++a2) {
-                        const fftw_complex& th =
-                            cbuf[a2 * ncplx + kindex];
                         const double phi = kernel_aa[static_cast<std::size_t>(
                             a1 * nalpha + a2)];
-                        F += std::complex<double>(th[0], th[1]) * phi;
+                        F += theta[static_cast<std::size_t>(a2)] * phi;
                     }
-                    const fftw_complex& th1 = cbuf[a1 * ncplx + kindex];
                     energy += weight
-                              * (th1[0] * F.real() + th1[1] * F.imag());
+                              * (theta[static_cast<std::size_t>(a1)].real()
+                                     * F.real()
+                                 + theta[static_cast<std::size_t>(a1)].imag()
+                                       * F.imag());
+                    if (want_potential) {
+                        fftw_complex& u = cbuf[a1 * ncplx + kindex];
+                        u[0] = F.real();
+                        u[1] = F.imag();
+                    }
                 }
             }
         }
     }
 
-    // Same FFT convention as DRSLL (matches unnormalized r2c + dV/N):
-    //   E_kernel_raw = ½ * (dV/N) * sum_k w Re(θ* φ θ)
-    // CP2K applies an extra ½ for RVV10 after its own ½·vol factor.
+    // Same FFT convention as DRSLL; rVV10 applies an extra ½ (CP2K).
     energy *= 0.5 * dV / static_cast<double>(ntot);
     const double e_kernel = 0.5 * energy;
     const double e_beta = beta * nelec;
-
-    fftw_free(rbuf);
-    fftw_free(cbuf);
 
     Rvv10Result res;
     res.e_kernel = e_kernel;
     res.e_beta = e_beta;
     res.energy = e_kernel + e_beta;
+
+    if (!want_potential) {
+        fftw_free(rbuf);
+        fftw_free(cbuf);
+        return res;
+    }
+
+    // IFFT u_α → real space (divide by N).
+    for (int a = 0; a < nalpha; ++a) {
+        fftw_complex* cin = cbuf + a * ncplx;
+        double* rout = rbuf + a * ntot;
+        fftw_plan bwd =
+            fftw_plan_dft_c2r_3d(n0, n1, n2, cin, rout, FFTW_ESTIMATE);
+        fftw_execute(bwd);
+        fftw_destroy_plan(bwd);
+        const double invN = 1.0 / static_cast<double>(ntot);
+        for (long g = 0; g < ntot; ++g)
+            rout[g] *= invN;
+    }
+
+    const auto gxyz = gradient(grid, rho);
+    res.v_r.assign(static_cast<std::size_t>(ntot), 0.0);
+    std::array<std::vector<double>, 3> flux;
+    for (int d = 0; d < 3; ++d)
+        flux[d].assign(static_cast<std::size_t>(ntot), 0.0);
+
+    std::vector<double> p_a(static_cast<std::size_t>(nalpha));
+    std::vector<double> dp_a(static_cast<std::size_t>(nalpha));
+    for (long g = 0; g < ntot; ++g) {
+        const double rg = rho[static_cast<std::size_t>(g)];
+        const double qg = q0[static_cast<std::size_t>(g)];
+        palpha_and_deriv_at_q(qm, d2y, nalpha, qg, p_a.data(), dp_a.data());
+        double pot = 0.0;
+        double hpref = 0.0;
+        if (rg > kRhoCut) {
+            const double tmp_1_2 = std::sqrt(rg);
+            const double tmp_1_4 = std::sqrt(tmp_1_2); // ρ^{1/4}
+            const double tmp_3_4 = tmp_1_4 * tmp_1_4 * tmp_1_4; // ρ^{3/4}
+            for (int a = 0; a < nalpha; ++a) {
+                const double u = rbuf[a * ntot + g];
+                // CP2K get_potential RVV10 (before ½ scaling):
+                pot += u
+                       * (const_theta * 0.75 / tmp_1_4
+                              * p_a[static_cast<std::size_t>(a)]
+                          + const_theta * tmp_3_4
+                                * dp_a[static_cast<std::size_t>(a)]
+                                * dq0_drho[static_cast<std::size_t>(g)]);
+                if (qg != qcut)
+                    hpref += u * const_theta * tmp_3_4
+                             * dp_a[static_cast<std::size_t>(a)]
+                             * dq0_dgradrho[static_cast<std::size_t>(g)];
+            }
+        }
+        // CP2K: potential = 0.5 * pot + beta; hpot = 0.5 * hpref
+        res.v_r[static_cast<std::size_t>(g)] = 0.5 * pot + beta;
+        hpref *= 0.5;
+        flux[0][static_cast<std::size_t>(g)] =
+            hpref * gxyz[0][static_cast<std::size_t>(g)];
+        flux[1][static_cast<std::size_t>(g)] =
+            hpref * gxyz[1][static_cast<std::size_t>(g)];
+        flux[2][static_cast<std::size_t>(g)] =
+            hpref * gxyz[2][static_cast<std::size_t>(g)];
+    }
+
+    const std::vector<double> divflux = divergence(grid, flux);
+    for (long g = 0; g < ntot; ++g)
+        res.v_r[static_cast<std::size_t>(g)] -=
+            divflux[static_cast<std::size_t>(g)];
+
+    fftw_free(rbuf);
+    fftw_free(cbuf);
     return res;
 }
 

@@ -14,8 +14,9 @@
 /// Same kernel tables for both (libvdwxc `vdwxc_default_kernel`). Matches
 /// libvdwxc `VDWXC_DF1` / `VDWXC_DF2` energy on the same density/gradient.
 ///
-/// Product path is **post-SCF energy-only** on the final total density
-/// (non-self-consistent); potential back-propagation is a follow-on.
+/// Product path is **self-consistent**: each SCF iteration adds
+/// V_nl = δE_c^{nl}/δρ (Soler eq. 10 + spectral divergence of the gradient
+/// flux) to the KS effective potential; forces reuse that V_nl in veff.
 #pragma once
 
 #include <vector>
@@ -29,6 +30,8 @@ namespace gpw {
 /// @brief Result of a vdW-DF / vdW-DF2 nonlocal evaluation.
 struct VdwDfResult {
     double energy = 0.0; ///< E_c^{nl} [Hartree].
+    /// Local KS potential V_nl [Hartree] on the grid (empty if energy-only).
+    std::vector<double> v_r;
 };
 
 /// @brief DF1 / DRSLL Z_ab gradient-correction prefactor (Dion et al.).
@@ -55,25 +58,50 @@ void vdw_df_q0(const std::vector<double>& rho, const std::vector<double>& sigma,
 void vdw_df_q0(const std::vector<double>& rho, const std::vector<double>& sigma,
                std::vector<double>& q0, double zab);
 
-/// @brief Nonlocal vdW-DF (DRSLL / DF1) energy on a periodic orthorhombic grid.
+/// @brief Nonlocal vdW-DF (DRSLL / DF1) energy (+ optional potential).
 ///
-/// @param grid  Uniform orthorhombic cell (Bohr).
-/// @param rho   Total density on the grid, length grid.npts().
-/// @param sigma |∇ρ|² on the grid (spectral or finite-difference), same length.
-/// @return E_c^{nl} [Hartree].
+/// @param grid       Uniform orthorhombic cell (Bohr).
+/// @param rho        Total density on the grid, length grid.npts().
+/// @param sigma      |∇ρ|² on the grid, same length.
+/// @param potential  If true, fill `VdwDfResult::v_r` (SC KS potential).
+/// @return E_c^{nl} [Hartree] and optional V_nl.
 VdwDfResult vdw_df_drsll(const UniformGrid& grid, const std::vector<double>& rho,
-                         const std::vector<double>& sigma);
+                         const std::vector<double>& sigma,
+                         bool potential = false);
 
-/// @brief Nonlocal vdW-DF2 (LMKLL / DF2) energy on a periodic orthorhombic grid.
+/// @brief Nonlocal vdW-DF2 (LMKLL / DF2) energy (+ optional potential).
 ///
 /// Same RPS kernel as DRSLL; only Z_ab differs (kVdwDf2Zab = −1.887).
 ///
-/// @param grid  Uniform orthorhombic cell (Bohr).
-/// @param rho   Total density on the grid, length grid.npts().
-/// @param sigma |∇ρ|² on the grid, same length.
-/// @return E_c^{nl} [Hartree].
+/// @param grid       Uniform orthorhombic cell (Bohr).
+/// @param rho        Total density on the grid, length grid.npts().
+/// @param sigma      |∇ρ|² on the grid, same length.
+/// @param potential  If true, fill `VdwDfResult::v_r`.
+/// @return E_c^{nl} [Hartree] and optional V_nl.
 VdwDfResult vdw_df_lmkll(const UniformGrid& grid, const std::vector<double>& rho,
-                         const std::vector<double>& sigma);
+                         const std::vector<double>& sigma,
+                         bool potential = false);
+
+/// @brief Evaluate nonlocal vdW (DRSLL / LMKLL / rVV10) energy and optional V_nl.
+///
+/// Exactly one of `vdw_df`, `vdw_df2`, `rvv10` must be true (caller-validated).
+/// Spectral |\nablaρ|² is computed inside from `rho`.
+///
+/// @param grid       Uniform grid (Bohr).
+/// @param rho        Total density.
+/// @param vdw_df     DRSLL.
+/// @param vdw_df2    LMKLL.
+/// @param rvv10      rVV10.
+/// @param potential  If true, fill `v_r`.
+/// @return Energy [Ha] and optional real-space potential.
+struct NonlocalVdwOnGrid {
+    double energy = 0.0; ///< E_c^{nl} [Hartree].
+    std::vector<double> v_r; ///< V_nl [Hartree] (empty if !potential).
+};
+NonlocalVdwOnGrid nonlocal_vdw_on_grid(const UniformGrid& grid,
+                                       const std::vector<double>& rho,
+                                       bool vdw_df, bool vdw_df2, bool rvv10,
+                                       bool potential);
 
 } // namespace gpw
 } // namespace cpu

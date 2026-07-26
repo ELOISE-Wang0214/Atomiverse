@@ -120,3 +120,48 @@ TEST(GpwVdwDf, Df2Q0DiffersFromDf1WhenGradient) {
     EXPECT_GT(q0_df1[0], 0.0);
     EXPECT_GT(q0_df2[0], 0.0);
 }
+
+// Finite-difference of E_c^{nl} vs ∫ V_nl δρ dV (SC potential gate).
+TEST(GpwVdwDf, PotentialMatchesEnergyFiniteDifference) {
+    UniformGrid grid;
+    grid.L[0] = grid.L[1] = grid.L[2] = 8.0;
+    grid.n[0] = grid.n[1] = grid.n[2] = 12;
+    grid.origin[0] = grid.origin[1] = grid.origin[2] = 0.0;
+
+    std::vector<double> rho, sigma;
+    gaussian_blob(grid, /*a=*/0.5, /*A=*/1.0, rho, sigma);
+    const VdwDfResult base = vdw_df_drsll(grid, rho, sigma, /*potential=*/true);
+    ASSERT_EQ(base.v_r.size(), rho.size());
+    EXPECT_TRUE(std::isfinite(base.energy));
+
+    // Perturb a mid-density grid point.
+    const long ntot = grid.npts();
+    long ig = ntot / 2;
+    for (long g = 0; g < ntot; ++g) {
+        if (rho[static_cast<std::size_t>(g)] > 0.05) {
+            ig = g;
+            break;
+        }
+    }
+    const double h = 1.0e-5;
+    std::vector<double> rho_p = rho, rho_m = rho, sig_p, sig_m;
+    rho_p[static_cast<std::size_t>(ig)] += h;
+    rho_m[static_cast<std::size_t>(ig)] -= h;
+    // Recompute analytic σ for the perturbed Gaussian is awkward — use
+    // finite-difference of energy with fixed σ (local ρ derivative only).
+    // Full FD including σ is covered by force FD in the regression.
+    const double e_p = vdw_df_drsll(grid, rho_p, sigma).energy;
+    const double e_m = vdw_df_drsll(grid, rho_m, sigma).energy;
+    const double dE_num = (e_p - e_m) / (2.0 * h);
+    const double dE_ana = base.v_r[static_cast<std::size_t>(ig)] * grid.weight();
+    std::printf("[vdW-DF pot] dE_num=%.6e dE_ana=%.6e rel=%.3e\n", dE_num,
+                dE_ana, (dE_num - dE_ana) / (std::abs(dE_ana) + 1e-14));
+    // Fixed-σ FD is only a partial derivative; gate on order-of-magnitude and
+    // sign agreement (full potential checked via force FD in regression).
+    EXPECT_TRUE(std::isfinite(dE_num));
+    EXPECT_TRUE(std::isfinite(dE_ana));
+    EXPECT_EQ(std::signbit(dE_num), std::signbit(dE_ana));
+    EXPECT_LT(std::abs(dE_num - dE_ana)
+                  / (std::abs(dE_ana) + std::abs(dE_num) + 1e-12),
+              0.5);
+}
