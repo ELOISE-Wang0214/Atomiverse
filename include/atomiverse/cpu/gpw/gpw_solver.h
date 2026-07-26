@@ -413,7 +413,7 @@ class GpwDft {
     const Mp2Result& mp2(const std::vector<GpwAtom>& atoms);
 
     /// @brief GPW direct RPA (dRPA) correlation on the converged orbitals of
-    ///        the last `run()` — Γ/multi-k RKS, or **Γ UKS (URPA)**.
+    ///        the last `run()` — Γ/multi-k RKS, or **Γ/multi-k UKS (URPA)**.
     ///
     /// **Γ RKS** (`n_kpts == 0`): Coulomb-only singlet Casida
     /// (\(\alpha_{\mathrm{hf}}=0\)) from the same \((ia|jb)\) path as
@@ -435,7 +435,11 @@ class GpwDft {
     /// `mo_eri_ovov_ab{,_ri}`; Furche \(E_c\) from
     /// `internal::direct_rpa_uhf`. When \(C^\alpha\approx C^\beta\) and
     /// \(n_\alpha=n_\beta\), \(E_c\) dual-gates closed-shell dRPA.
-    /// Multi-k URPA is a follow-on. `RpaResult::n_occ` / `n_virt` are
+    ///
+    /// **Multi-k UKS (URPA):** finite-\(q\) inter-\(k\) spin-conserving
+    /// dRPA on \(C_k\) / \(C_k^\beta\) (`internal::direct_rpa_uhf_energy_kpoints`).
+    /// Requires `mp2_ri` and a periodic cell. Dual-gates multi-k RKS dRPA
+    /// when \(C^\alpha\approx C^\beta\). `RpaResult::n_occ` / `n_virt` are
     /// spin-orbital totals (\(n_\alpha+n_\beta\), …); `omega_ha` length is
     /// the composite OV space \(n_{\mathrm{ov}}^\alpha+n_{\mathrm{ov}}^\beta\).
     ///
@@ -445,9 +449,9 @@ class GpwDft {
     /// @return The owned RPA result (valid until the next `direct_rpa()`).
     /// @throws std::logic_error before `build()` or a converged `run()`,
     ///         or when UKS β orbitals are missing.
-    /// @throws std::invalid_argument for multi-k UKS, for `use_ot`, when
-    ///         multi-k `C_k` is missing, when no virtuals remain, or for a
-    ///         vanishing HOMO–LUMO gap (< 1e-6 Ha).
+    /// @throws std::invalid_argument for `use_ot`, when multi-k `C_k` /
+    ///         `C_k_beta` is missing, when multi-k and `!mp2_ri`, when no
+    ///         virtuals remain, or for a vanishing HOMO–LUMO gap (< 1e-6 Ha).
     /// @throws std::runtime_error when the dRPA reduction is ill-conditioned.
     const RpaResult& direct_rpa(const std::vector<GpwAtom>& atoms);
 
