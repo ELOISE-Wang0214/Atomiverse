@@ -1,19 +1,19 @@
 # CP2K capability loop — handoff
 
-## Harness wave 11 2026-07-26 (parent `dev` @ `09298298`)
+## Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`)
 
 | Field | Value |
 | ----- | ----- |
 | Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
-| Incomplete / `in_progress` | **0** (no residual `[~]`; stock VV10 is **blocked**) |
+| Incomplete / `in_progress` | **3** (`[~] cpmd-kpoints`, `[~] periodic-wannier-gpw`, `[~] gpw-fd-phonon-si`) |
 | Open CP2K specs on `dev` | **0** (PySCF deferred only: `periodic-rhf-gamma`, `rsh-eri-cam-b3lyp`) |
-| Specs closed this harness | **9** (deleted on close) |
-| Unmerged staff `wf/*` | **0** for the 9 wave slugs (clearup already ran) |
+| Specs closed this harness | **6** (deleted on close) |
+| Unmerged staff `wf/*` | **3** incomplete kept (clearup already ran — no isolation worktrees) |
 | Isolation worktrees | **0** (clearup already ran; main tree only) |
 | Leftover builds | **none** |
-| Pending gaps | **0** residual from census list (not exhausted — GapCensus owns refill) |
+| Pending gaps | **9** residual from GapCensus wave 13 (not exhausted) |
 | Blocked | **6** (VV10 + hybrid / GAPW / PAW / CUDA-GPW / meta-GGA) |
-| Done this wave | **9** landings (see table) |
+| Done this wave | **6** landings (partial close of assign wave 12 staff) |
 | Oracle | `tools/cp2k_oracle/` offline pins only |
 | Loop docs | queue / loop / handoff / roadmap residual prose **synced** |
 
@@ -21,38 +21,65 @@
 
 | Slug | Domain | Regression | ratio \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) |
 | ---- | ------ | ---------- | --------------------------------------------- |
-| `ugw-uks-rpbe` | gpw | `reg_ugw-uks-rpbe` | **perf_exempt** |
-| `gpw-ts-forces` | gpw | `reg_gpw-ts-forces` | **perf_exempt** |
-| `gpw-xdm-forces` | gpw | `reg_gpw-xdm-forces` | **perf_exempt** |
-| `gpw-kpoint-uks-stress-gga` | gpw | `reg_gpw-kpoint-uks-stress-gga` | **perf_exempt** |
-| `cpmd-electronic-thermostat` | dynamics | `reg_cpmd-electronic-thermostat` | **perf_exempt** |
-| `xl-bomd-uks-kpoints` | dynamics | `reg_xl-bomd-uks-kpoints` | **perf_exempt** (NVE drift) |
-| `bands-metallic-si` | pw | `reg_bands-metallic-si` | **perf_exempt** |
-| `dos-spin-si` | pw | `reg_dos-spin-si` | **perf_exempt** |
-| `dfpt-finite-q-spin-smearing` | response | `reg_dfpt-finite-q-spin-smearing` | **perf_exempt** |
+| `xl-bomd-linearized-forces` | dynamics | `reg_xl-bomd-linearized-forces` | **perf_exempt** (NVE drift) |
+| `second-gen-cpmd-kpoints` | dynamics | `reg_second-gen-cpmd-kpoints` | **perf_exempt** (NVE drift) |
+| `gpw-d3-atm` | gpw | `reg_gpw-d3-atm` | **perf_exempt** (E_disp pin) |
+| `gpw-d4-atm` | gpw | `reg_gpw-d4-atm` | **perf_exempt** (E_disp pin) |
+| `bands-spin-metallic-si` | pw | `reg_bands-spin-metallic-si` | **perf_exempt** |
+| `dos-spin-metallic-si` | pw | `reg_dos-spin-metallic-si` | **perf_exempt** |
 
 ### Incomplete kept `[~]` (do not demote)
 
 | Slug | Branch | Tip | Note |
 | ---- | ------ | --- | ---- |
-| *(none)* | — | — | stock VV10 resolved → **blocked** (`gpw-vv10-ice`) |
+| `cpmd-kpoints` | `wf/cpmd-kpoints` | `3425c7c6` | ahead=1 behind=15; multi-k Bloch \(C_k\) feat unmerged |
+| `periodic-wannier-gpw` | `wf/periodic-wannier-gpw` | `5c59a97f` | ahead=1 behind=15; GPW MLWF feat unmerged |
+| `gpw-fd-phonon-si` | `wf/gpw-fd-phonon-si` | `7c3e1712` | ahead=1 behind=15; Phonon+GPW wiring; tip notes blocked on Si forces |
 
 ### Roadmap ○→✓ this harness
 
 | Row | Doc | Note |
 | --- | --- | ---- |
-| *(none)* | — | UGW/DFPT/bands-DOS/TS/XDM/stress/XL/CPMD rows already ✓; stock VV10 stays ○ (blocked) |
-| Residual prose | `dft.md` §8/§10–12 + `index.md` + MD AIMD | closed UGW@UKS-RPBE; TS/XDM force pins; multi-k UKS stress GGA; CPMD e-T; multi-k UKS XL; metallic bands; spin DOS; finite-q DFPT spin+smear |
-| Still open | stock VV10 (blocked) | no CP2K twin; product VV-family remains rVV10 |
+| *(none)* | — | XL / SGCP / bands-DOS / dispersion capability rows already ✓ |
+| Residual prose | `dft.md` §8/§10–12 + `index.md` + MD AIMD | closed zero-SCF linearized XL; multi-k SGCP; D3/D4 ATM; spin+metallic bands/DOS |
+| Still open incomplete | multi-k CPMD; GPW MLWF; GPW FD phonon | keep `[~]`; stock VV10 stays ○ (blocked) |
+| Still open pending | wave-13 D3/D3BJ forces+stress; MBD stress; multi-k DFT+U forces; DFPT GGA combos; multi-k BOMD | GapCensus wave 13 list |
 
 ### Pending residual
 
-**Pending = 0** residual from GapCensus wave 11 staff list (emptied — **not**
-queue exhausted). **Incomplete = 0**. Next wave starts with **GapCensus**
-(tree/roadmap ○ vs `dev`). Blocked = 6 unchanged.
+**Pending = 9** (GapCensus wave 13). **Incomplete = 3**. Next wave starts with
+**Recover incomplete** (prefer merge/resume of the three `[~]` tips) then
+continue. Blocked = 6 unchanged.
 
 Do **not** staff PySCF deferred specs. No push from parent.
-**Queue not exhausted** — GapCensus owns next discovery.
+**Queue not exhausted** — GapCensus owns discovery; incomplete ≫ pending.
+
+---
+
+## Harness wave 11 2026-07-26 (parent `dev` @ `09298298`) — historical
+
+| Field | Value |
+| ----- | ----- |
+| Branch | `dev` (tracks `origin/dev`, ahead of origin by merges) |
+| Incomplete / `in_progress` | **0** (no residual `[~]`; stock VV10 is **blocked**) |
+| Open CP2K specs on `dev` | **0** (PySCF deferred only) |
+| Specs closed this harness | **9** (deleted on close) |
+| Pending residual | **0** then refilled by GapCensus wave 12 |
+| Done this wave | **9** landings |
+
+### Wave staff → done (historical)
+
+| Slug | Domain | ratio |
+| ---- | ------ | ----- |
+| `ugw-uks-rpbe` | gpw | **perf_exempt** |
+| `gpw-ts-forces` | gpw | **perf_exempt** |
+| `gpw-xdm-forces` | gpw | **perf_exempt** |
+| `gpw-kpoint-uks-stress-gga` | gpw | **perf_exempt** |
+| `cpmd-electronic-thermostat` | dynamics | **perf_exempt** |
+| `xl-bomd-uks-kpoints` | dynamics | **perf_exempt** |
+| `bands-metallic-si` | pw | **perf_exempt** |
+| `dos-spin-si` | pw | **perf_exempt** |
+| `dfpt-finite-q-spin-smearing` | response | **perf_exempt** |
 
 ---
 

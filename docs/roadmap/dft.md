@@ -16,9 +16,9 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 **blocked** —
-no CP2K twin, GAPW/PAW; **GapCensus wave 12** still in flight: collinear
-spin+metallic **bands/DOS**, D3/D4 **ATM** three-body, zero-SCF
-**linearized XL** forces, multi-k **CPMD/SGCP**, **GPW MLWF**, GPW FD
+no CP2K twin, GAPW/PAW; **harness wave 12** closed zero-SCF linearized
+XL, multi-k **SGCP**, D3/D4 **ATM**, collinear spin+metallic **bands/DOS**;
+wave-12 incomplete still open: multi-k **CPMD**, **GPW MLWF**, GPW FD
 phonon twin; **GapCensus wave 13** reopens D3/D3BJ dedicated **forces**
 + D3BJ **stress**, MBD Γ/**multi-k stress**, multi-k DFT+U **forces**,
 DFPT **GGA×spin** / **GGA×finite-q**, multi-k **BOMD**; product after
@@ -253,13 +253,14 @@ productize at **Γ** (`reg_gpw-mbd-forces`; free-atom / periodic path)
 **and multi-k** (`reg_gpw-mbd-kpoint-forces`; k-path force assembly).
 Force assembly folds free-atom **TS** / **XDM** on Γ + multi-k with
 dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
-**Three-body ATM** (D3 C9 / D4 \(s_9\)) remains ○ on GPW (two-body only;
-queued `gpw-d3-atm` / `gpw-d4-atm`). Two-body D3/D3(BJ) **energy** is
-product; dedicated **force** pins and D3(BJ) **stress** remain open
-(queued `gpw-d3-forces` / `gpw-d3bj-forces` / `gpw-d3bj-stress` —
-same dedicated-pin pattern as TS/XDM forces). **MBD stress** (Γ
-dedicated pin + multi-k path that currently skips MBD) is queued
-(`gpw-mbd-stress` / `gpw-mbd-kpoint-stress`).
+**Three-body ATM** productizes on GPW: D3 C9 (`GpwDft::d3_atm`;
+`reg_gpw-d3-atm`) and D4 \(s_9=1\) (`GpwDft::d4_atm`; `reg_gpw-d4-atm`).
+Two-body D3/D3(BJ) **energy** is product; dedicated **force** pins and
+D3(BJ) **stress** remain open (queued `gpw-d3-forces` /
+`gpw-d3bj-forces` / `gpw-d3bj-stress` — same dedicated-pin pattern as
+TS/XDM forces). **MBD stress** (Γ dedicated pin + multi-k path that
+currently skips MBD) is queued (`gpw-mbd-stress` /
+`gpw-mbd-kpoint-stress`).
 
 ## 9. Composite DFT Methods
 
@@ -330,12 +331,12 @@ Two periodic DFT engines exist, with disjoint strengths:
   `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`), multi-k UKS analytic
   stress for **RevPBE/RPBE/BLYP** (`reg_gpw-kpoint-uks-stress-gga`),
   dedicated **TS/XDM** force pins (`reg_gpw-ts-forces` /
-  `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`). Stock VV10
-  is **blocked** (no CP2K twin). Open residuals: wave-12 staff (D3/D4 ATM,
-  multi-k CPMD/SGCP, linearized XL, GPW MLWF, GPW FD phonon, PW
-  spin+metallic bands/DOS) **plus** wave-13 pending (D3/D3BJ forces +
-  D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U forces, DFPT GGA×spin
-  / GGA×finite-q, multi-k BOMD). Hybrids / meta-GGA / GAPW / PAW remain
+  `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`), **D3/D4
+  ATM** (`reg_gpw-d3-atm` / `reg_gpw-d4-atm`). Stock VV10 is **blocked**
+  (no CP2K twin). Open residuals: wave-12 incomplete (multi-k CPMD, GPW
+  MLWF, GPW FD phonon) **plus** wave-13 pending (D3/D3BJ forces + D3BJ
+  stress, MBD Γ/multi-k stress, multi-k DFT+U forces, DFPT GGA×spin /
+  GGA×finite-q, multi-k BOMD). Hybrids / meta-GGA / GAPW / PAW remain
   blocked (queue not exhausted — see `cp2k-method-queue.md`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
@@ -519,8 +520,9 @@ product collocation ships (`reg_gpw-uks-multigrid`).
 `reg_bands-dos-si`) **plus collinear-spin bands** (`reg_bands-spin-si`)
 **and metallic occupation DOS** (`reg_dos-metallic-si`) **and metallic
 occupation bands** (`reg_bands-metallic-si`) **and collinear-spin DOS**
-(`reg_dos-spin-si`). **Collinear spin + metallic smear** on bands/DOS is
-still rejected (queued `bands-spin-metallic-si` / `dos-spin-metallic-si`).
+(`reg_dos-spin-si`) **and collinear spin + metallic smear bands**
+(`reg_bands-spin-metallic-si`) **and collinear spin + metallic smear DOS**
+(`reg_dos-spin-metallic-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

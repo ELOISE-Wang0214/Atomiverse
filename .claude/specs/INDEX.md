@@ -33,17 +33,27 @@ to green. Specs deleted on close; history in git (commits f9a6443a..HEAD).
 | 07 | scf-review-07-posthf-perf | 02 | DONE 2026-07-24 (closed; see git) — block eri_dense (10x/54x) + RI-MP2 GEMM + copy elision |
 | 08 | scf-review-08-ccsd-spatial-diis | 02, 03, 07 | DONE 2026-07-24 (closed; see git) — CcAmplitudeDiis + spatial CCSD (~87x, oracle parity 1e-9) |
 
-## Live — deferred PySCF only (after harness wave 11)
+## Live — deferred PySCF only (after harness wave 12)
 
 | Spec | Branch / track | Status |
 | ---- | -------------- | ------ |
 | [periodic-rhf-gamma](periodic-rhf-gamma/) | pyscf / HF periodic | open (deferred) |
 | [rsh-eri-cam-b3lyp](rsh-eri-cam-b3lyp/) | pyscf / RSH | open (deferred) |
 
-Open CP2K specs on `dev` = **0**. Stock VV10 is **blocked** (no incomplete
-`wf/*`). Workers write `.claude/specs/<slug>/` on `wf/<slug>` before impl.
-Harness wave 11 2026-07-26 closed 9 CP2K specs (deleted); pending residual=0
-(not exhausted — GapCensus owns refill); in_progress=0.
+Open CP2K specs on `dev` = **0**. Stock VV10 is **blocked**. Incomplete
+feature tips (no parent specs): `wf/cpmd-kpoints`, `wf/periodic-wannier-gpw`,
+`wf/gpw-fd-phonon-si`. Workers write `.claude/specs/<slug>/` on `wf/<slug>`
+before impl. Harness wave 12 2026-07-26 closed 6 CP2K specs (deleted);
+pending residual=9 (GapCensus wave 13); in_progress=3; **not** queue
+exhausted.
+
+## Closed — CP2K harness wave 12 (2026-07-26)
+
+| Queue | Specs (deleted; see git) | Shipped highlights |
+| ----- | ------------------------ | ------------------ |
+| cp2k-method-loop harness wave 12 | xl-bomd-linearized-forces, second-gen-cpmd-kpoints, gpw-d3-atm, gpw-d4-atm, bands-spin-metallic-si, dos-spin-metallic-si | zero-SCF linearized XL; multi-k SGCP; D3/D4 ATM; spin+metallic bands/DOS |
+
+Do not re-create closed slugs without superseding intent.
 
 ## Closed — CP2K harness wave 11 (2026-07-26)
 

@@ -242,7 +242,8 @@ GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
 multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
 remains a separate density *predictor* (warm start); OT+XL stays
 architecturally excluded (OT parameterizes orbitals, not density);
-**zero-SCF linearized forces stay ○** (queued `xl-bomd-linearized-forces`).
+**zero-SCF linearized-functional forces** productize
+(`xl_bomd_linearized`; `reg_xl-bomd-linearized-forces`).
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
@@ -260,8 +261,8 @@ GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
 (`reg_second-gen-cpmd-water`) **and Γ-UKS** (`reg_second-gen-cpmd-uks`).
 **RKS OT corrector** is product (`use_ot=true` with ASPC natural-orbital
 warm-start; `reg_second-gen-cpmd-ot`) **and Γ-UKS OT + SGCP**
-(`reg_second-gen-cpmd-uks-ot`). **Multi-k SGCP** (ASPC on \(P_k\)) remains ○
-(queued `second-gen-cpmd-kpoints`).
+(`reg_second-gen-cpmd-uks-ot`) **and multi-k SGCP** (ASPC on complex
+\(P_k\); `reg_second-gen-cpmd-kpoints`).
 
 ## 8. Nuclear Quantum Dynamics
 

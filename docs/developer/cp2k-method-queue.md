@@ -691,6 +691,21 @@ harness wave 11); §8/§10–12 + MD AIMD residual prose + index GPW residual
 line refreshed for wave-13 queue. **Pending = 9**; **in_progress = 9**;
 **blocked = 6**.
 
+**Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`):** 6 of 9 wave-12
+staff merged → `## done` (`xl-bomd-linearized-forces`,
+`second-gen-cpmd-kpoints`, `gpw-d3-atm`, `gpw-d4-atm`,
+`bands-spin-metallic-si`, `dos-spin-metallic-si`). Specs deleted on close.
+**Pending residual = 9** (GapCensus wave 13 list unchanged — **not** queue
+exhausted). **in_progress = 3** unmerged staff `[~]` (`cpmd-kpoints` @
+`3425c7c6`, `periodic-wannier-gpw` @ `5c59a97f`, `gpw-fd-phonon-si` @
+`7c3e1712` — do not demote). Roadmap: **no new ○→✓ table flips** (XL /
+SGCP / bands-DOS / dispersion rows already ✓); residual prose closed
+zero-SCF linearized XL, multi-k SGCP, D3/D4 ATM, collinear spin+metallic
+bands/DOS; multi-k CPMD + GPW MLWF + GPW FD phonon stay open incomplete.
+**Blocked = 6** unchanged. Clearup already ran (no isolation worktrees; no
+builds). **Queue not exhausted** — next wave Recover incomplete then
+continue.
+
 ## pending
 
 - [ ] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | twin: CP2K Quickstep D3 zero force / FD on water dimer | GapCensus wave 13
@@ -705,21 +720,24 @@ line refreshed for wave-13 queue. **Pending = 9**; **in_progress = 9**;
 
 ## in_progress
 
-<!-- Recover 2026-07-26 (parent `dev` @ `663f4804`): incomplete_count=9 — all wave-12
-     `[~]` staff. Open CP2K specs on `dev`=0 (PySCF deferred only). Unmerged
-     `wf/*`=9 feature tips (+ blocked `wf/gpw-vv10-ice` not incomplete). Isolation
-     worktrees=9. Half-regs live only on worktrees (none on `dev`). Prefer merge
-     gate for clean ahead=1 tips; resume dirty ahead=0 trees in place. -->
+<!-- Harness wave 12 2026-07-26 (parent `dev` @ `4ab58f97`): incomplete_count=3 —
+     wave-12 residual staff (do not demote). Open CP2K specs on `dev`=0 (PySCF
+     deferred only). Unmerged feature `wf/*`=3 (+ blocked `wf/gpw-vv10-ice`).
+     Isolation worktrees=0 (clearup already ran). Half-regs only on feature tips
+     (none on `dev` for these three). Prefer resume/merge gate. -->
 
-- [~] `bands-spin-metallic-si` | PW band structure with collinear spin **and** metallic occupation smearing | pw | twin: extend `bands-spin-si` / `bands-metallic-si` (CP2K/QE-class spin metal bands) | resume `wf/bands-spin-metallic-si` @ `ea3ae031` (ahead=1, clean; spec+reg on worktree) | assign wave 12
-- [~] `dos-spin-metallic-si` | PW DOS with collinear spin **and** metallic occupation smearing | pw | twin: extend `dos-spin-si` / `dos-metallic-si` | resume `wf/dos-spin-metallic-si` @ `c2402fc3` (ahead=1, clean; spec+reg on worktree) | assign wave 12
-- [~] `gpw-d3-atm` | DFT-D3 three-body ATM (C9) on GPW | gpw | twin: CP2K Quickstep D3 + ATM on water dimer | resume `wf/gpw-d3-atm` @ `da371950` (ahead=1, clean; E_disp pin −0.00081414118193 Ha) | assign wave 12
-- [~] `gpw-d4-atm` | DFT-D4 three-body ATM on GPW | gpw | twin: dftd4 ATM / CP2K D4 with \(s_9\neq 0\) | resume `wf/gpw-d4-atm` @ `d0371a5b` (ahead=1, clean; E_disp pin −9.955447583424e-4 Ha; no committed spec dir) | assign wave 12
-- [~] `xl-bomd-linearized-forces` | Zero-SCF linearized-functional XL-BOMD forces | dynamics | twin: Niklasson XL literature / CP2K XL-BOMD low-SCF path | resume `wf/xl-bomd-linearized-forces` @ `21d0603e` (ahead=1, clean; H₂O NVE drift ≤0.10) | assign wave 12
-- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (ahead=1, clean; H₂ k=1×1×2 E_cons drift ≤0.10) | assign wave 12
-- [~] `second-gen-cpmd-kpoints` | Multi-k second-generation CP (ASPC on \(P_k\)) | dynamics | twin: CP2K SGCP / Kühne ASPC + k-mesh | resume `wf/second-gen-cpmd-kpoints` @ `cbe74bdf` **dirty WIP** (ahead=0; uncommitted ASPC-cplx + reg + spec) | assign wave 12
-- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `cbe74bdf` **dirty WIP** (ahead=0; uncommitted PeriodicWannier + reg + spec) | assign wave 12
-- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `cbe74bdf` **dirty WIP** (ahead=0; uncommitted reg + wiring unit + pin) | assign wave 12
+- [~] `cpmd-kpoints` | Multi-k Car–Parrinello MD (Bloch \(C_k\)) | dynamics | twin: CP2K CP with k-points | resume `wf/cpmd-kpoints` @ `3425c7c6` (ahead=1 behind=15; unmerged) | assign wave 12
+- [~] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW | response | twin: CP2K `LOCALIZE` / Wannier on Quickstep | resume `wf/periodic-wannier-gpw` @ `5c59a97f` (ahead=1 behind=15; unmerged) | assign wave 12
+- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS` on small cell / GTH | resume `wf/gpw-fd-phonon-si` @ `7c3e1712` (ahead=1 behind=15; unmerged; blocked on Si forces per tip) | assign wave 12
+
+## done (harness wave 12 2026-07-26)
+
+- [x] `xl-bomd-linearized-forces` | Zero-SCF linearized-functional XL-BOMD forces | dynamics | `regressions/dynamics/xl-bomd-linearized-forces` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `second-gen-cpmd-kpoints` | Multi-k second-generation CP (ASPC on \(P_k\)) | dynamics | `regressions/dynamics/second-gen-cpmd-kpoints` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `gpw-d3-atm` | DFT-D3 three-body ATM (C9) on GPW | gpw | `regressions/gpw/gpw-d3-atm` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `gpw-d4-atm` | DFT-D4 three-body ATM on GPW | gpw | `regressions/gpw/gpw-d4-atm` | ratio **perf_exempt** (E_disp pin) | 2026-07-26
+- [x] `bands-spin-metallic-si` | PW band structure with collinear spin **and** metallic occupation smearing | pw | `regressions/pw/bands-spin-metallic-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `dos-spin-metallic-si` | PW DOS with collinear spin **and** metallic occupation smearing | pw | `regressions/pw/dos-spin-metallic-si` | ratio **perf_exempt** | 2026-07-26
 
 ## done (harness wave 11 2026-07-26)
 

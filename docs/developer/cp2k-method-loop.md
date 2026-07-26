@@ -68,6 +68,17 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 12 (parent `dev` @ `4ab58f97`):** 6 merged →
+  done: `xl-bomd-linearized-forces`, `second-gen-cpmd-kpoints`, `gpw-d3-atm`,
+  `gpw-d4-atm`, `bands-spin-metallic-si`, `dos-spin-metallic-si`. Incomplete
+  remaining **3** (`[~] cpmd-kpoints` @ `3425c7c6`; `[~] periodic-wannier-gpw`
+  @ `5c59a97f`; `[~] gpw-fd-phonon-si` @ `7c3e1712` — not demoted); pending
+  residual **9** (GapCensus wave 13 list — **not** queue exhausted); blocked
+  **6**. Specs closed (deleted) for all 6. Roadmap: **no new ○→✓ table
+  flips** (rows already ✓ or VV10 still ○/blocked); residual prose closed
+  zero-SCF linearized XL, multi-k SGCP, D3/D4 ATM, collinear spin+metallic
+  bands/DOS. Clearup already ran (no isolation worktrees; no builds).
+  **Queue not exhausted** — next Recover incomplete then continue. No push.
 - **2026-07-26 GapCensus wave 13 (parent `dev` @ `663f4804`):** recover
   incomplete=**9** (wave-12 `[~]` preserved; isolation worktrees=**9**);
   CP2K specs on `dev`=0; prior pending residual **0**; **+9** residuals →
