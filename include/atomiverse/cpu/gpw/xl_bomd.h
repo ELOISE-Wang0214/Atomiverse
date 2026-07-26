@@ -21,6 +21,7 @@
 /// - **Γ RKS:** total real \(P\) via `XlBomd`
 /// - **Γ UKS:** one `XlBomd` per spin channel
 /// - **multi-k RKS:** one `XlBomdCplx` per sampled \(k\) (complex \(P_k\))
+/// - **multi-k UKS:** dual `XlBomdCplx` per \(k\) (\(P_k^\alpha, P_k^\beta\))
 #pragma once
 
 #include <complex>
@@ -98,7 +99,8 @@ class XlBomd {
 /// Same Table-I recursion as `XlBomd`; real \((\kappa,\alpha,c_k)\) act
 /// element-wise on `linalg::CplxMatrix`. A Hermitian history remains
 /// Hermitian (up to floating-point roundoff). Used for multi-k RKS XL-BOMD
-/// (one instance per sampled k).
+/// (one instance per sampled k) and multi-k UKS XL-BOMD (two instances per
+/// k — α and β spin channels).
 class XlBomdCplx {
   public:
     /// @brief Construct with the Niklasson dissipation order.

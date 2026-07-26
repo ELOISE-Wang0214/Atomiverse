@@ -112,7 +112,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     //   Γ RKS: one total-P real propagator
     //   Γ UKS: dual α/β real propagators
     //   multi-k RKS: one complex propagator per k (seeded on first SCF)
-    //   multi-k UKS + XL: residual (throws)
+    //   multi-k UKS: dual complex propagators per k (P_k^α, P_k^β)
     if (xl_bomd) {
         if (cfg.use_ot)
             throw std::invalid_argument(
@@ -128,17 +128,13 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: xl_bomd and second_gen_cp are mutually "
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
-        if (multi_k && n_alpha + n_beta > 0)
-            throw std::invalid_argument(
-                "GPWEvaluator: multi-k UKS xl_bomd is not productized "
-                "(multi-k RKS XL and Γ-UKS XL are; dual-spin P_k^sigma is "
-                "a residual)");
         // Validates xl_bomd_k ∈ [3, 9] via the real constructor even when
         // multi-k uses XlBomdCplx (same Table I).
         if (multi_k) {
             xl_.reset();
             xl_beta_.reset();
             xl_k_.clear(); // sized after the first multi-k SCF (n_kpts known)
+            xl_k_beta_.clear();
             (void)XlBomd(xl_bomd_k); // throw early on bad K
         } else {
             xl_.emplace(xl_bomd_k);
@@ -147,11 +143,13 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             else
                 xl_beta_.reset();
             xl_k_.clear();
+            xl_k_beta_.clear();
         }
     } else {
         xl_.reset();
         xl_beta_.reset();
         xl_k_.clear();
+        xl_k_beta_.clear();
     }
 
     // Car–Parrinello guards: RKS Γ or collinear Γ-UKS diagonalization path.
@@ -597,19 +595,29 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     }
     // XL-BOMD: propagated auxiliary density is the SCF initial-density
     // guess (Niklasson dissipative recursion, seeded on the first step).
-    // Γ RKS: total P on guess_P. Γ UKS: P_α / P_β. multi-k RKS: P_k vector.
+    // Γ RKS: total P. Γ UKS: P_α / P_β. multi-k RKS: P_k. multi-k UKS:
+    // dual P_k^α / P_k^β.
     const ATV::cpu::linalg::RealMatrix* guess_p =
         (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
     const ATV::cpu::linalg::RealMatrix* guess_p_beta =
         (xl_beta_ && xl_beta_->ready()) ? &xl_beta_->aux() : nullptr;
     const std::vector<ATV::cpu::linalg::CplxMatrix>* guess_p_k = nullptr;
+    const std::vector<ATV::cpu::linalg::CplxMatrix>* guess_p_k_beta = nullptr;
     if (!xl_k_.empty() && xl_k_[0].ready()) {
         xl_guess_p_k_.resize(xl_k_.size());
         for (std::size_t ik = 0; ik < xl_k_.size(); ++ik)
             xl_guess_p_k_[ik] = xl_k_[ik].aux();
         guess_p_k = &xl_guess_p_k_;
+        if (!xl_k_beta_.empty() && xl_k_beta_[0].ready()
+            && xl_k_beta_.size() == xl_k_.size()) {
+            xl_guess_p_k_beta_.resize(xl_k_beta_.size());
+            for (std::size_t ik = 0; ik < xl_k_beta_.size(); ++ik)
+                xl_guess_p_k_beta_[ik] = xl_k_beta_[ik].aux();
+            guess_p_k_beta = &xl_guess_p_k_beta_;
+        }
     }
-    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta, guess_p_k);
+    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta, guess_p_k,
+                         guess_p_k_beta);
     if (xl_) {
         if (last_.converged && last_.P.size() > 0) {
             xl_->advance(last_.P);
@@ -626,26 +634,43 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 xl_beta_->reset();
         }
     }
-    // Multi-k XL: advance one complex propagator per k from SCF P_k.
+    // Multi-k XL: advance one complex propagator per k from SCF P_k
+    // (RKS total or UKS α). Multi-k UKS also advances β from P_k_beta.
     if (xl_bomd && last_.n_kpts > 0) {
-        if (last_.converged && static_cast<int>(last_.P_k.size()) == last_.n_kpts
-            && last_.n_kpts > 0) {
-            if (xl_k_.empty()) {
-                xl_k_.reserve(static_cast<std::size_t>(last_.n_kpts));
-                for (int ik = 0; ik < last_.n_kpts; ++ik)
-                    xl_k_.emplace_back(xl_bomd_k);
-            } else if (static_cast<int>(xl_k_.size()) != last_.n_kpts) {
-                // Mesh change / discontinuity — reseat.
-                xl_k_.clear();
-                xl_k_.reserve(static_cast<std::size_t>(last_.n_kpts));
-                for (int ik = 0; ik < last_.n_kpts; ++ik)
-                    xl_k_.emplace_back(xl_bomd_k);
-            }
+        const bool uks_k = (n_alpha + n_beta > 0);
+        const bool have_a =
+            last_.converged
+            && static_cast<int>(last_.P_k.size()) == last_.n_kpts
+            && last_.n_kpts > 0;
+        const bool have_b =
+            !uks_k
+            || (have_a
+                && static_cast<int>(last_.P_k_beta.size()) == last_.n_kpts);
+        if (have_a && have_b) {
+            auto reseat = [&](std::vector<XlBomdCplx>& xs) {
+                if (static_cast<int>(xs.size()) != last_.n_kpts) {
+                    xs.clear();
+                    xs.reserve(static_cast<std::size_t>(last_.n_kpts));
+                    for (int ik = 0; ik < last_.n_kpts; ++ik)
+                        xs.emplace_back(xl_bomd_k);
+                }
+            };
+            reseat(xl_k_);
             for (int ik = 0; ik < last_.n_kpts; ++ik)
                 xl_k_[static_cast<std::size_t>(ik)].advance(
                     last_.P_k[static_cast<std::size_t>(ik)]);
+            if (uks_k) {
+                reseat(xl_k_beta_);
+                for (int ik = 0; ik < last_.n_kpts; ++ik)
+                    xl_k_beta_[static_cast<std::size_t>(ik)].advance(
+                        last_.P_k_beta[static_cast<std::size_t>(ik)]);
+            } else {
+                xl_k_beta_.clear();
+            }
         } else {
             for (auto& xl : xl_k_)
+                xl.reset();
+            for (auto& xl : xl_k_beta_)
                 xl.reset();
         }
     }
