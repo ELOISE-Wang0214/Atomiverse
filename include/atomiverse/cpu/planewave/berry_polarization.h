@@ -7,8 +7,16 @@
 /// polarization is the string-averaged Berry phase
 /// \(\varphi_i = \operatorname{Im}\ln\prod_j \det S^{(j)}\)
 /// (King-Smith & Vanderbilt, Phys. Rev. B 47, 1651 (1993); Resta,
-/// Rev. Mod. Phys. 66, 899 (1994)). Parameters are members of
-/// `BerryPolarization` — no public `*Config` bag, no factories.
+/// Rev. Mod. Phys. 66, 899 (1994)).
+///
+/// **Closed shell** (`spin_polarized == false`): spin factor \(f=2\),
+/// \(p^\mathrm{el}=f\varphi/2\pi\), total wrapped with quantum 2.
+/// **Collinear spin** (`spin_polarized == true`): each spin channel has
+/// its own occupied manifold; \(p^\mathrm{el}=(\varphi_\uparrow+
+/// \varphi_\downarrow)/2\pi\) (factor 1 per channel), total wrapped with
+/// quantum 1. Metallic smearing is rejected (insulator required).
+/// Parameters are members of `BerryPolarization` — no public `*Config`
+/// bag, no factories.
 ///
 /// @code
 ///   cpu::pw::PW pw;
@@ -16,6 +24,7 @@
 ///   pw.ecut_ry = 15.0;
 ///   pw.k_mesh = 2;
 ///   pw.xc = cpu::scf::XCType::LSDA;
+///   // optional collinear: pw.spin_polarized = true; pw.multiplicity = 1;
 ///
 ///   cpu::pw::BerryPolarization berry;   // members: k_perp, k_string
 ///   auto r = berry.compute(pw, frame);
@@ -38,14 +47,16 @@ namespace pw {
 /// @brief Result of a Berry-phase polarization calculation.
 ///
 /// Fractional components are along the lattice vectors \(\mathbf a_i\), in
-/// units of the elementary charge \(e\). The closed-shell electronic phase
-/// carries spin factor 2, so the electronic branch is defined modulo 2 and
-/// `p_frac` is wrapped into \((-1, 1]\) (polarization quantum
-/// \(e\mathbf a_i/V\) resolvable modulo 2 for a spin-paired calculation).
+/// units of the elementary charge \(e\). Closed-shell: spin factor 2,
+/// `p_frac` wrapped into \((-1,1]\) (quantum 2). Collinear spin: factor 1
+/// per channel, `p_frac` wrapped into \((-0.5,0.5]\) (quantum 1).
 struct BerryPolarizationResult {
     /// String-averaged electronic Berry phase per direction [rad].
+    /// Closed-shell: single-manifold \(\varphi\). Collinear: mean of the
+    /// two spin phases \((\varphi_\uparrow+\varphi_\downarrow)/2\).
     std::array<double, 3> phase_el{};
-    /// Electronic polarization \(f\varphi_i/2\pi\), \(f=2\) [e, fractional].
+    /// Electronic polarization [e, fractional]: \(2\varphi/2\pi\) closed-
+    /// shell, \((\varphi_\uparrow+\varphi_\downarrow)/2\pi\) collinear.
     std::array<double, 3> p_el_frac{};
     /// Ionic polarization \(\sum_a Z^\mathrm{val}_a \tau_{a,i}\)
     /// (\(\tau\) wrapped into [0,1)) [e, fractional].

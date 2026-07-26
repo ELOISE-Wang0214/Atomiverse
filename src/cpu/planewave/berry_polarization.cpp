@@ -1,6 +1,7 @@
 /// @file cpu/planewave/berry_polarization.cpp
 /// @brief King–Smith–Vanderbilt Berry-phase polarization on frozen PW
 ///        \(V_\mathrm{eff}\) (NSCF strings + occupied overlap determinants).
+///        Closed-shell (f=2) and collinear-spin (f=1 per channel).
 
 #include "atomiverse/cpu/planewave/berry_polarization.h"
 
@@ -10,6 +11,7 @@
 #include "atomiverse/cpu/planewave/internal/davidson.h"
 #include "atomiverse/cpu/planewave/internal/pw_setup.h"
 #include "atomiverse/cpu/planewave/internal/restricted_scf.h"
+#include "atomiverse/cpu/planewave/internal/veff_builder.h"
 
 #include <cmath>
 #include <complex>
@@ -112,6 +114,117 @@ std::complex<double> overlap_det(const internal::GVectorList& bra,
     return det_lu(S, n_occ);
 }
 
+/// String-averaged Berry phase for one spin channel on frozen V_eff.
+double string_phase_for_channel(
+    internal::PWProblem& prob, internal::PWWorkspace& ws,
+    const std::vector<std::array<double, 3>>& kf, int dir, int k_string,
+    int k_perp, int n_occ, double tol, double two_pi) {
+    using internal::DavidsonSolver;
+
+    std::vector<Vec3> kvec;
+    kvec.reserve(kf.size());
+    for (const auto& f : kf)
+        kvec.push_back({static_cast<AccReal>(f[0]),
+                        static_cast<AccReal>(f[1]),
+                        static_cast<AccReal>(f[2])});
+    // Note: rebuild_k_tables is called by the outer loop once per direction
+    // before spin channels share the same k-mesh tables.
+
+    const int n_k = static_cast<int>(kf.size());
+    std::vector<std::vector<std::complex<AccReal>>> coef(
+        static_cast<std::size_t>(n_k));
+    DavidsonSolver davidson(n_occ, AccReal(tol) * AccReal(0.1), 50);
+    davidson.prepare(ws);
+    auto* saved_gvec = ws.gvec;
+    const int n_g0 = ws.n_g;
+    for (int ik = 0; ik < n_k; ++ik) {
+        auto& gvk = prob.gv_k[static_cast<std::size_t>(ik)];
+        ws.gvec = &gvk;
+        ws.n_g = gvk.count();
+        ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
+        for (int ig = 0; ig < ws.n_g; ++ig)
+            ws.T_G[ig] = gvk.ekin[ig];
+        if (!prob.kb_proj_k.empty())
+            ws.kb_proj = prob.kb_proj_k[static_cast<std::size_t>(ik)];
+        if (!prob.atom_wfc_k.empty())
+            ws.atom_wfc = prob.atom_wfc_k[static_cast<std::size_t>(ik)];
+
+        davidson.step(ws);
+
+        auto& c = coef[static_cast<std::size_t>(ik)];
+        c.resize(static_cast<std::size_t>(n_occ * ws.n_g));
+        for (int b = 0; b < n_occ; ++b)
+            for (int ig = 0; ig < ws.n_g; ++ig)
+                c[static_cast<std::size_t>(b * ws.n_g + ig)] = ws.wfc(b, ig);
+    }
+    ws.gvec = saved_gvec;
+    ws.n_g = n_g0;
+
+    const int J = k_string;
+    const int n_strings = k_perp * k_perp;
+    std::vector<double> phis;
+    phis.reserve(static_cast<std::size_t>(n_strings));
+    for (int s = 0; s < n_strings; ++s) {
+        std::vector<std::complex<double>> dets(static_cast<std::size_t>(J));
+        for (int j = 0; j < J; ++j) {
+            const int ib = s * J + j;
+            const int ik = s * J + (j + 1) % J;
+            const int shift = (j == J - 1) ? dir : -1;
+            dets[static_cast<std::size_t>(j)] = overlap_det(
+                prob.gv_k[static_cast<std::size_t>(ib)],
+                coef[static_cast<std::size_t>(ib)],
+                prob.gv_k[static_cast<std::size_t>(ik)],
+                coef[static_cast<std::size_t>(ik)], n_occ, shift);
+        }
+        phis.push_back(phase_from_link_dets(dets));
+        ATV_DEBUG_CAT("pw", "berry dir={} n_occ={} string={} phi={:+.6f}", dir,
+                      n_occ, s, phis.back());
+    }
+
+    const double phi0 = phis[0];
+    double acc = 0.0;
+    for (const double phi : phis)
+        acc += phi0 + wrap_centered(phi - phi0, two_pi);
+    return acc / static_cast<double>(n_strings);
+}
+
+void fill_ionic(BerryPolarizationResult& out, const cpu::Frame& frame) {
+    const auto recip = frame.simbox.recip_cell();
+    const StorageReal* __restrict sx = frame.span(kAtom_x);
+    const StorageReal* __restrict sy = frame.span(kAtom_y);
+    const StorageReal* __restrict sz = frame.span(kAtom_z);
+    const int* __restrict st = frame.span(kAtom_type);
+    const double two_pi = 2.0 * units::pi;
+    for (int a = 0; a < frame.nlocal(); ++a) {
+        const double zv = static_cast<double>(internal::valence_from_z(st[a]));
+        for (int d = 0; d < 3; ++d) {
+            double f = (static_cast<double>(recip(d, 0)) * sx[a]
+                        + static_cast<double>(recip(d, 1)) * sy[a]
+                        + static_cast<double>(recip(d, 2)) * sz[a])
+                       / two_pi;
+            f -= std::floor(f);
+            out.p_ion_frac[static_cast<std::size_t>(d)] += zv * f;
+        }
+    }
+}
+
+void assemble_totals(BerryPolarizationResult& out, const cpu::Frame& frame,
+                     double quantum) {
+    const auto& cell = frame.simbox.cell();
+    for (int d = 0; d < 3; ++d) {
+        if (!out.computed[static_cast<std::size_t>(d)])
+            continue;
+        out.p_frac[static_cast<std::size_t>(d)] =
+            wrap_centered(out.p_ion_frac[static_cast<std::size_t>(d)]
+                              + out.p_el_frac[static_cast<std::size_t>(d)],
+                          quantum);
+        for (int c = 0; c < 3; ++c)
+            out.dipole_e_ang[static_cast<std::size_t>(c)] +=
+                out.p_frac[static_cast<std::size_t>(d)]
+                * static_cast<double>(cell(d, c));
+    }
+}
+
 } // namespace
 
 double phase_from_link_dets(const std::vector<std::complex<double>>& dets) {
@@ -173,12 +286,6 @@ BerryPolarization::string_kpoints(int dir) const {
 
 BerryPolarizationResult
 BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
-    using internal::DavidsonSolver;
-
-    if (method.spin_polarized)
-        throw std::invalid_argument(
-            "BerryPolarization::compute: spin-polarized strings not "
-            "supported in this foothold");
     if (method.smearing != Smearing::none)
         throw std::invalid_argument(
             "BerryPolarization::compute: Berry-phase polarization requires "
@@ -187,39 +294,68 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
         throw std::invalid_argument(
             "BerryPolarization::compute: need k_perp >= 1 and k_string >= 2");
 
-    internal::PWProblem prob;
-    const PWResult scf = internal::run_restricted_scf(frame, method, prob);
-    const int n_occ = prob.n_bands;
-
-    BerryPolarizationResult out;
-    out.scf_converged = scf.converged;
-    out.energy_ry = scf.energy;
-
-    // ── Ionic part: Z_val * fractional coordinate (wrapped to [0,1)) ──────
-    const auto recip = frame.simbox.recip_cell(); // rows b_i [1/Å], incl. 2π
-    const StorageReal* __restrict sx = frame.span(kAtom_x);
-    const StorageReal* __restrict sy = frame.span(kAtom_y);
-    const StorageReal* __restrict sz = frame.span(kAtom_z);
-    const int* __restrict st = frame.span(kAtom_type);
     const double two_pi = 2.0 * units::pi;
-    for (int a = 0; a < frame.nlocal(); ++a) {
-        const double zv = static_cast<double>(internal::valence_from_z(st[a]));
-        for (int d = 0; d < 3; ++d) {
-            double f = (static_cast<double>(recip(d, 0)) * sx[a]
-                        + static_cast<double>(recip(d, 1)) * sy[a]
-                        + static_cast<double>(recip(d, 2)) * sz[a])
-                       / two_pi;
-            f -= std::floor(f);
-            out.p_ion_frac[static_cast<std::size_t>(d)] += zv * f;
+    BerryPolarizationResult out;
+
+    if (!method.spin_polarized) {
+        // ── Closed-shell restricted path (spin factor f = 2) ───────────
+        internal::PWProblem prob;
+        const PWResult scf = internal::run_restricted_scf(frame, method, prob);
+        const int n_occ = prob.n_bands;
+        out.scf_converged = scf.converged;
+        out.energy_ry = scf.energy;
+        fill_ionic(out, frame);
+
+        for (int dir = 0; dir < 3; ++dir) {
+            if (!directions[static_cast<std::size_t>(dir)])
+                continue;
+            const auto kf = string_kpoints(dir);
+            std::vector<Vec3> kvec;
+            kvec.reserve(kf.size());
+            for (const auto& f : kf)
+                kvec.push_back({static_cast<AccReal>(f[0]),
+                                static_cast<AccReal>(f[1]),
+                                static_cast<AccReal>(f[2])});
+            internal::rebuild_k_tables(prob, frame, method.upf_path,
+                                       method.ecut_ry, kvec);
+            const double phase =
+                string_phase_for_channel(prob, prob.ws, kf, dir, k_string,
+                                         k_perp, n_occ, method.tol, two_pi);
+            out.phase_el[static_cast<std::size_t>(dir)] = phase;
+            out.p_el_frac[static_cast<std::size_t>(dir)] = 2.0 * phase / two_pi;
+            out.computed[static_cast<std::size_t>(dir)] = true;
         }
+        assemble_totals(out, frame, /*quantum=*/2.0);
+        return out;
     }
 
-    // ── Electronic part: NSCF strings on the frozen V_eff ─────────────────
+    // ── Collinear spin path (spin factor f = 1 per channel) ────────────
+    internal::PWProblem prob;
+    int n_alpha = 0;
+    int n_beta = 0;
+    const PWResult scf =
+        internal::run_collinear_scf(frame, method, prob, n_alpha, n_beta);
+    out.scf_converged = scf.converged;
+    out.energy_ry = scf.energy;
+    fill_ionic(out, frame);
+
     internal::PWWorkspace& ws = prob.ws;
+    const int ng0 = prob.gv0.count();
+    // Freeze V_eff(r) per spin for NSCF strings.
+    internal::VeffBuilder veff;
+    veff.prepare(ws);
+    std::vector<AccReal> veff_r[2];
+    for (int s = 0; s < 2; ++s) {
+        for (int ig = 0; ig < ng0; ++ig)
+            ws.V_xc_G[ig] = ws.V_xc_spin_G[static_cast<std::size_t>(s)][ig];
+        veff.step(ws);
+        veff_r[s].assign(ws.V_eff_r.begin(), ws.V_eff_r.begin() + ws.nr);
+    }
+    const int n_occ[2] = {n_alpha, n_beta};
+
     for (int dir = 0; dir < 3; ++dir) {
         if (!directions[static_cast<std::size_t>(dir)])
             continue;
-
         const auto kf = string_kpoints(dir);
         std::vector<Vec3> kvec;
         kvec.reserve(kf.size());
@@ -230,89 +366,28 @@ BerryPolarization::compute(const PW& method, const cpu::Frame& frame) const {
         internal::rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry,
                                    kvec);
 
-        // Occupied Bloch coefficients at every string k-point.
-        const int n_k = static_cast<int>(kf.size());
-        std::vector<std::vector<std::complex<AccReal>>> coef(
-            static_cast<std::size_t>(n_k));
-        DavidsonSolver davidson(n_occ, AccReal(method.tol) * AccReal(0.1), 50);
-        davidson.prepare(ws);
-        auto* saved_gvec = ws.gvec;
-        const int n_g0 = ws.n_g;
-        for (int ik = 0; ik < n_k; ++ik) {
-            auto& gvk = prob.gv_k[static_cast<std::size_t>(ik)];
-            ws.gvec = &gvk;
-            ws.n_g = gvk.count();
-            ws.T_G.resize({static_cast<std::size_t>(ws.n_g)});
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.T_G[ig] = gvk.ekin[ig];
-            if (!prob.kb_proj_k.empty())
-                ws.kb_proj = prob.kb_proj_k[static_cast<std::size_t>(ik)];
-            if (!prob.atom_wfc_k.empty())
-                ws.atom_wfc = prob.atom_wfc_k[static_cast<std::size_t>(ik)];
-
-            davidson.step(ws);
-
-            auto& c = coef[static_cast<std::size_t>(ik)];
-            c.resize(static_cast<std::size_t>(n_occ * ws.n_g));
-            for (int b = 0; b < n_occ; ++b)
-                for (int ig = 0; ig < ws.n_g; ++ig)
-                    c[static_cast<std::size_t>(b * ws.n_g + ig)] =
-                        ws.wfc(b, ig);
+        double phase_sum = 0.0;
+        for (int s = 0; s < 2; ++s) {
+            if (n_occ[s] <= 0)
+                continue;
+            // Bind frozen H_σ.
+            for (int i = 0; i < ws.nr; ++i)
+                ws.V_eff_r[i] = veff_r[s][static_cast<std::size_t>(i)];
+            const double phi_s =
+                string_phase_for_channel(prob, ws, kf, dir, k_string, k_perp,
+                                         n_occ[s], method.tol, two_pi);
+            phase_sum += phi_s;
+            ATV_DEBUG_CAT("pw", "berry-spin dir={} spin={} phi={:+.6f}", dir, s,
+                          phi_s);
         }
-        ws.gvec = saved_gvec;
-        ws.n_g = n_g0;
-
-        // String phases: product of link determinants, closing with the
-        // periodic-gauge G-shift on the last link.
-        const int J = k_string;
-        const int n_strings = k_perp * k_perp;
-        std::vector<double> phis;
-        phis.reserve(static_cast<std::size_t>(n_strings));
-        for (int s = 0; s < n_strings; ++s) {
-            std::vector<std::complex<double>> dets(static_cast<std::size_t>(J));
-            for (int j = 0; j < J; ++j) {
-                const int ib = s * J + j;
-                const int ik = s * J + (j + 1) % J;
-                const int shift = (j == J - 1) ? dir : -1;
-                dets[static_cast<std::size_t>(j)] = overlap_det(
-                    prob.gv_k[static_cast<std::size_t>(ib)],
-                    coef[static_cast<std::size_t>(ib)],
-                    prob.gv_k[static_cast<std::size_t>(ik)],
-                    coef[static_cast<std::size_t>(ik)], n_occ, shift);
-            }
-            phis.push_back(phase_from_link_dets(dets));
-            ATV_DEBUG_CAT("pw", "berry dir={} string={} phi={:+.6f}", dir, s,
-                          phis.back());
-        }
-
-        // Average with 2π-branch alignment to the first string.
-        const double phi0 = phis[0];
-        double acc = 0.0;
-        for (const double phi : phis)
-            acc += phi0 + wrap_centered(phi - phi0, two_pi);
-        const double phase = acc / static_cast<double>(n_strings);
-
-        out.phase_el[static_cast<std::size_t>(dir)] = phase;
-        // Closed shell: spin factor f = 2; electronic branch mod 2.
-        out.p_el_frac[static_cast<std::size_t>(dir)] = 2.0 * phase / two_pi;
+        // Mean phase so closed-shell identity p_el = 2*phase/2π holds when
+        // N↑=N↓; total electronic polarization is always (φ↑+φ↓)/2π.
+        out.phase_el[static_cast<std::size_t>(dir)] = 0.5 * phase_sum;
+        out.p_el_frac[static_cast<std::size_t>(dir)] = phase_sum / two_pi;
         out.computed[static_cast<std::size_t>(dir)] = true;
     }
-
-    // ── Totals: wrap into (-1, 1] and assemble the Cartesian dipole ───────
-    const auto& cell = frame.simbox.cell(); // rows a_i [Å]
-    for (int d = 0; d < 3; ++d) {
-        if (!out.computed[static_cast<std::size_t>(d)])
-            continue;
-        out.p_frac[static_cast<std::size_t>(d)] =
-            wrap_centered(out.p_ion_frac[static_cast<std::size_t>(d)]
-                              + out.p_el_frac[static_cast<std::size_t>(d)],
-                          2.0);
-        for (int c = 0; c < 3; ++c)
-            out.dipole_e_ang[static_cast<std::size_t>(c)] +=
-                out.p_frac[static_cast<std::size_t>(d)]
-                * static_cast<double>(cell(d, c));
-    }
-
+    // nspin=2 quantum is e (not 2e).
+    assemble_totals(out, frame, /*quantum=*/1.0);
     return out;
 }
 

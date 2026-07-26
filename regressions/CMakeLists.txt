@@ -161,6 +161,9 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw berry-polarization)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")
+    atv_add_regression(pw berry-spin-si)
+    target_compile_definitions(reg_berry-spin-si PRIVATE
+        ATV_PW_UPF_PATH="${_atv_si_upf}")
     atv_add_regression(pw periodic-wannier-si)
     target_compile_definitions(reg_periodic-wannier-si PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")

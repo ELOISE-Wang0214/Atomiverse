@@ -130,6 +130,15 @@ TEST(BerryWrap, ThrowsOnNonPositiveQuantum) {
     EXPECT_THROW(wrap_centered(0.1, -1.0), std::invalid_argument);
 }
 
+TEST(BerryWrap, Nspin2QuantumOne) {
+    // Collinear (nspin=2) total polarization wraps with quantum 1
+    // into (-0.5, 0.5]; ionic p=1 maps to 0 on that branch.
+    EXPECT_NEAR(wrap_centered(1.0, 1.0), 0.0, 1e-12);
+    EXPECT_NEAR(wrap_centered(0.6, 1.0), -0.4, 1e-12);
+    EXPECT_NEAR(wrap_centered(-0.6, 1.0), 0.4, 1e-12);
+    EXPECT_NEAR(wrap_centered(0.5, 1.0), 0.5, 1e-12);
+}
+
 TEST(JacobiHermitian, TwoByTwoKnownSpectrum) {
     // [[1, i], [-i, 1]] has eigenvalues {0, 2}.
     using C = std::complex<ATV::AccReal>;
