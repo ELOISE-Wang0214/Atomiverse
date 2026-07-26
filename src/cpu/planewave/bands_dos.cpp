@@ -428,11 +428,17 @@ void Bands::set_diamond_path(int n_seg) {
 }
 
 BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
-    if (method.smearing != Smearing::none)
-        throw std::invalid_argument("Bands::compute: metallic smearing not "
-                                    "supported for bands foothold");
     if (n_bands < 2)
         throw std::invalid_argument("Bands::compute: n_bands must be >= 2");
+
+    const bool use_smear = (method.smearing != Smearing::none);
+    if (use_smear && method.spin_polarized)
+        throw std::invalid_argument(
+            "Bands::compute: collinear spin + metallic smearing not "
+            "supported for bands (restricted metallic or fixed-occ spin)");
+    if (use_smear && !(method.degauss > 0.0))
+        throw std::invalid_argument(
+            "Bands::compute: degauss must be > 0 [Ry] when smearing is enabled");
 
     std::vector<std::array<double, 3>> path = kfrac;
     if (path.empty()) {
@@ -450,11 +456,45 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
     out.kfrac = path;
 
     if (!method.spin_polarized) {
-        internal::PWProblem prob;
-        const PWResult scf = internal::run_restricted_scf(frame, method, prob);
-        if (n_bands < prob.n_bands)
+        // Pre-count valence for band-count gates (UPF may refine n_elec).
+        int n_elec_est = 0;
+        {
+            const auto types = frame.span(kAtom_type);
+            for (int i = 0; i < frame.nlocal(); ++i)
+                n_elec_est += internal::valence_from_z(types[i]);
+        }
+        const int n_valence_est = std::max((n_elec_est + 1) / 2, 1);
+        if (n_bands < n_valence_est)
             throw std::invalid_argument(
-                "Bands::compute: n_bands must be >= occupied band count");
+                "Bands::compute: n_bands must be >= ceil(n_e/2)");
+
+        internal::PWProblem prob;
+        PWResult scf{};
+        int n_occ = n_valence_est;
+        if (use_smear) {
+            // Metallic SCF: fractional occupations; empty states for μ.
+            const int n_scf_bands = std::max(
+                n_bands, n_valence_est + std::max(method.extra_bands, 0));
+            internal::PoissonSolver poisson;
+            internal::XCBuilder xc;
+            internal::VeffBuilder veff;
+            internal::DensityBuilder density(AccReal(method.mix_beta),
+                                             method.pulay_depth);
+            internal::DavidsonSolver davidson(
+                n_scf_bands, AccReal(method.tol) * AccReal(0.1), 40);
+            scf = internal::run_scf_smear_restricted(
+                frame, method, prob, poisson, xc, veff, density, davidson,
+                n_scf_bands, "bands-smear");
+            n_occ = std::max((prob.n_elec + 1) / 2, 1);
+            out.e_fermi_ry = scf.e_fermi;
+        } else {
+            scf = internal::run_restricted_scf(frame, method, prob);
+            n_occ = prob.n_bands; // n_e / 2
+            if (n_bands < n_occ)
+                throw std::invalid_argument(
+                    "Bands::compute: n_bands must be >= occupied band count");
+            out.e_fermi_ry = 0;
+        }
 
         rebuild_k_tables(prob, frame, method.upf_path, method.ecut_ry, kvec);
 
@@ -464,16 +504,18 @@ BandsResult Bands::compute(const PW& method, const cpu::Frame& frame) const {
         out.energy_ry = scf.energy;
         out.eigenvalues_ry = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
 
-        const int n_occ = prob.n_bands; // n_e / 2
-        out.gap_ry = gap_from_spectrum(out.eigenvalues_ry, n_occ, out.e_vbm_ry,
-                                       out.e_cbm_ry, out.vbm_k, out.cbm_k,
-                                       out.vbm_band, out.cbm_band);
+        if (n_bands > n_occ) {
+            out.gap_ry =
+                gap_from_spectrum(out.eigenvalues_ry, n_occ, out.e_vbm_ry,
+                                  out.e_cbm_ry, out.vbm_k, out.cbm_k,
+                                  out.vbm_band, out.cbm_band);
+        }
         out.vbm_spin = 0;
         out.cbm_spin = 0;
         return out;
     }
 
-    // ── Collinear spin-polarized bands ──
+    // ── Collinear spin-polarized bands (fixed occupations) ──
     if (method.multiplicity < 1)
         throw std::invalid_argument(
             "Bands::compute: multiplicity must be >= 1 when spin_polarized");
