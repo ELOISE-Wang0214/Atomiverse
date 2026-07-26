@@ -83,6 +83,11 @@ XcOnGridSpin xc_grid_revpbe_spin(const UniformGrid& grid,
                                  const std::vector<double>& rho_a,
                                  const std::vector<double>& rho_b);
 
+/// @brief Spin-resolved RPBE (`xc_grid_gga_spin` with `XCType::RPBE`).
+XcOnGridSpin xc_grid_rpbe_spin(const UniformGrid& grid,
+                               const std::vector<double>& rho_a,
+                               const std::vector<double>& rho_b);
+
 /// @brief Spin-resolved BLYP (`xc_grid_gga_spin` with `XCType::BLYP`).
 XcOnGridSpin xc_grid_blyp_spin(const UniformGrid& grid,
                                const std::vector<double>& rho_a,

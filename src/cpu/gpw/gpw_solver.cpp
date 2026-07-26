@@ -1154,9 +1154,9 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     const int n_b = cfg.n_beta;
     if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
         && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-        && cfg.xc != XcKind::BLYP)
+        && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
         throw std::runtime_error(
-            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, or BLYP");
+            "GPW k-UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, or BLYP");
 
     const GpwMpiLayout layout = gpw_mpi_layout();
     int n_kpts_local = 0;
@@ -1230,6 +1230,8 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return xc_grid_pbesol_spin(grid, ra, rb);
         if (cfg.xc == XcKind::RevPBE)
             return xc_grid_revpbe_spin(grid, ra, rb);
+        if (cfg.xc == XcKind::RPBE)
+            return xc_grid_rpbe_spin(grid, ra, rb);
         if (cfg.xc == XcKind::BLYP)
             return xc_grid_blyp_spin(grid, ra, rb);
         return xc_grid_pade_lsd(grid, ra, rb);
@@ -2219,15 +2221,15 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     }
 
     // ── UKS (spin-unrestricted, Γ-point) ────────────────────────────────────
-    // Separate Pa/Pb, spin-resolved XC (PADE LSD or PBE/PBEsol/RevPBE/BLYP GGA),
+    // Separate Pa/Pb, spin-resolved XC (PADE LSD or pure GGA spin),
     // dual KS matrices. Multigrid products are not wired for UKS — single-grid.
     // OT (use_ot) is product for Γ-UKS; DIIS/diagonalization remains default.
     if (uks) {
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
             && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-            && cfg.xc != XcKind::BLYP)
+            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
             throw std::runtime_error(
-                "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, or BLYP");
+                "GPW UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, RPBE, or BLYP");
         if (use_prod)
             throw std::runtime_error(
                 "GPW UKS: multigrid product collocation is not wired — use "
@@ -2247,6 +2249,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 return xc_grid_pbesol_spin(grid, ra, rb);
             if (cfg.xc == XcKind::RevPBE)
                 return xc_grid_revpbe_spin(grid, ra, rb);
+            if (cfg.xc == XcKind::RPBE)
+                return xc_grid_rpbe_spin(grid, ra, rb);
             if (cfg.xc == XcKind::BLYP)
                 return xc_grid_blyp_spin(grid, ra, rb);
             return xc_grid_pade_lsd(grid, ra, rb);
@@ -2956,10 +2960,10 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
                 + std::to_string(n_alpha) + " n_beta=" + std::to_string(n_beta)
                 + ")");
         if (xc != XcKind::PADE && xc != XcKind::PBE && xc != XcKind::PBEsol
-            && xc != XcKind::RevPBE && xc != XcKind::BLYP)
+            && xc != XcKind::RevPBE && xc != XcKind::RPBE && xc != XcKind::BLYP)
             throw std::invalid_argument(
                 "GpwDft::build: UKS supports XcKind::PADE, PBE, PBEsol, "
-                "RevPBE, or BLYP");
+                "RevPBE, RPBE, or BLYP");
     } else if (n_occ < 1) {
         throw std::invalid_argument(
             "GpwDft::build: n_occ must be >= 1 for closed-shell RKS (got "
@@ -3011,9 +3015,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             reject("level shifting");
         if (is_uks() && xc != XcKind::PADE && xc != XcKind::PBE
             && xc != XcKind::PBEsol && xc != XcKind::RevPBE
-            && xc != XcKind::BLYP)
+            && xc != XcKind::RPBE && xc != XcKind::BLYP)
             reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, RevPBE, "
-                   "or BLYP)");
+                   "RPBE, or BLYP)");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {
