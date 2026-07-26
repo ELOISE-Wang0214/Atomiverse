@@ -4821,6 +4821,11 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             && xc != XcKind::OptB88VdW)
             reject("k-UKS with this XcKind (need PADE, PBE, PBEsol, RevPBE, "
                    "RPBE, BLYP, or OptB88VdW)");
+        // Residual: multi-k UKS OT + Dudarev + metallic smear (RKS OT+U+smear
+        // is product; UKS OT+smear and UKS OT+U alone are product).
+        if (is_uks() && use_ot && !plus_u.empty()
+            && smearing != Smearing::none)
+            reject("k-UKS OT with PLUS_U and metallic smearing together");
         if (!k_points.empty()) {
             double wsum = 0.0;
             for (const double w : k_point_weights) {
