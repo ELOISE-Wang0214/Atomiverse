@@ -12,6 +12,8 @@
 ///
 ///   // Periodic (orthorhombic) from Bohr positions — GPW path:
 ///   double ed = cpu::scf::dftd4_energy(Z, pos_bohr, cell, /*periodic=*/true);
+///   auto r = cpu::scf::dftd4(Z, pos_bohr, cell, /*periodic=*/true);
+///   // r.forces[A] = −∂E_disp/∂R_A  [Hartree/Bohr]
 /// @endcode
 #pragma once
 
@@ -23,6 +25,13 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Two-body PBE-D4 energy and ionic forces.
+struct D4Result {
+    double energy = 0.0; ///< Dispersion energy [Hartree].
+    /// @brief Forces \(F_A = -\partial E/\partial R_A\) [Hartree/Bohr].
+    std::vector<std::array<double, 3>> forces;
+};
 
 /// @brief Two-body PBE-D4 energy from Bohr coordinates.
 ///
@@ -43,6 +52,23 @@ double dftd4_energy(const std::vector<int>& Z,
                     double a2 = 4.80688534, double ga = 3.0, double gc = 2.0,
                     double wf = 6.0, double charge = 0.0, double cn_cut = 30.0,
                     double disp2_cut = 60.0);
+
+/// @brief Two-body PBE-D4 energy and forces \(F = -\nabla E_{\mathrm{disp}}\).
+///
+/// Energy matches `dftd4_energy`. Forces are the exact gradient of that
+/// geometry-only energy (central differences of the energy functional with
+/// step `grad_h` [Bohr]; default \(10^{-4}\)). Dual-gates against offline
+/// dftd4 3.7.0 `-g` (printed gradient is \(+\nabla E\); ATV stores \(-\nabla E\)).
+///
+/// @param grad_h Central-difference step for \(\nabla E\) [Bohr].
+/// @return Energy [Hartree] and forces [Hartree/Bohr].
+D4Result dftd4(const std::vector<int>& Z,
+               const std::vector<std::array<double, 3>>& pos_bohr,
+               const double cell_bohr[3], bool periodic, double s6 = 1.0,
+               double s8 = 0.95948085, double a1 = 0.38574991,
+               double a2 = 4.80688534, double ga = 3.0, double gc = 2.0,
+               double wf = 6.0, double charge = 0.0, double cn_cut = 30.0,
+               double disp2_cut = 60.0, double grad_h = 1.0e-4);
 
 /// @brief Molecular Grimme DFT-D4 with Becke–Johnson (rational) damping.
 ///
