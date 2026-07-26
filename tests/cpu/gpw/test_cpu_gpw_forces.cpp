@@ -359,3 +359,47 @@ TEST(GpwForces, AnalyticMatchesFdWithD4) {
     std::printf("[GPW D4 F] max|dF|=%.3e Ha/Bohr\n", max_err);
     EXPECT_LT(max_err, 5e-5) << "Γ RKS + D4 analytic vs multi-SCF FD";
 }
+
+// Γ RKS + free-atom XDM: product analytic forces fold geometry-only XDM.
+// e2e pin is reg_gpw-xdm-forces (water dimer dual-Python + FD dual-gate).
+TEST(GpwForces, AnalyticMatchesFdWithXdm) {
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.7, 6.1, 5.9};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot, 1),
+                                  GpwAtom(rB, basis, pot, 1)};
+
+    GpwDft cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0;
+    cfg.cutoff_ry = 140.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-10;
+    cfg.max_iter = 100;
+    cfg.nonperiodic = true;
+    cfg.local_pp_on_grid = true;
+    cfg.xdm = true;
+
+    const auto Fa = gpw_forces_analytic(atoms, cfg);
+    const auto Ffd = gpw_forces_fd(atoms, cfg, 1e-3);
+    ASSERT_EQ(Fa.size(), 2u);
+    ASSERT_EQ(Ffd.size(), 2u);
+
+    double max_err = 0.0;
+    for (int a = 0; a < 2; ++a) {
+        for (int k = 0; k < 3; ++k) {
+            max_err = std::max(max_err,
+                               std::abs(Fa[static_cast<std::size_t>(a)][k]
+                                        - Ffd[static_cast<std::size_t>(a)][k]));
+            std::printf(
+                "[GPW XDM F] atom %d axis %d  an=% .8f  fd=% .8f  d=% .2e\n", a,
+                k, Fa[static_cast<std::size_t>(a)][k],
+                Ffd[static_cast<std::size_t>(a)][k],
+                Fa[static_cast<std::size_t>(a)][k]
+                    - Ffd[static_cast<std::size_t>(a)][k]);
+        }
+    }
+    std::printf("[GPW XDM F] max|dF|=%.3e Ha/Bohr\n", max_err);
+    EXPECT_LT(max_err, 5e-5) << "Γ RKS + XDM analytic vs multi-SCF FD";
+}
