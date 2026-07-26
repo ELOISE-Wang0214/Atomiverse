@@ -469,3 +469,62 @@ TEST(GpwOt, MultiKOtPlusUMatchesDiisEnergy) {
         << " iters ot/diis=" << r_ot.iters << "/" << r_diis.iters;
     EXPECT_NEAR(r_ot.e_dftu, r_diis.e_dftu, 1e-3);
 }
+
+// Multi-k RKS OT + DFT+U + FD smear: product path; free-energy fixed point
+// matches DIIS+U+FD. Full e2e: regressions/gpw/ot-dftu-smearing.
+TEST(GpwOt, MultiKOtPlusUSmearMatchesDiisFreeEnergy) {
+    pin_single_thread();
+    using ATV::cpu::gpw::GaussianBasis;
+    using ATV::cpu::gpw::GthPotential;
+    using ATV::cpu::gpw::PlusU;
+    using ATV::cpu::gpw::Smearing;
+    using ATV::cpu::gpw::XcKind;
+    const auto basis = GaussianBasis(molrs::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(molrs::Element::H, "GTH-PADE-q1");
+    const double L = 8.0;
+    const double r0[3] = {0.5 * L - 0.7, 0.5 * L, 0.5 * L};
+    const double r1[3] = {0.5 * L + 0.7, 0.5 * L, 0.5 * L};
+    std::vector<GpwAtom> atoms{GpwAtom(r0, basis, pot, 1),
+                               GpwAtom(r1, basis, pot, 1)};
+
+    auto base = [&]() {
+        GpwDft cfg;
+        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = L;
+        cfg.cutoff_ry = 100.0;
+        cfg.n_occ = 1;
+        cfg.max_iter = 120;
+        cfg.tol = 1e-7;
+        cfg.mix = 0.35;
+        cfg.xc = XcKind::PADE;
+        cfg.k_points.push_back({0.25, 0.0, 0.0});
+        cfg.k_point_weights.push_back(1.0);
+        cfg.plus_u.push_back(PlusU{molrs::Element::H, /*l=*/0, /*u_ev=*/4.0});
+        cfg.smearing = Smearing::fermi_dirac;
+        cfg.degauss = 0.02; // Ry
+        cfg.extra_bands = 2;
+        return cfg;
+    };
+
+    GpwDft diis = base();
+    diis.use_ot = false;
+    diis.build(atoms);
+    const GpwResult r_diis = diis.run(atoms);
+    ASSERT_TRUE(r_diis.converged) << "DIIS+U+FD iters=" << r_diis.iters
+                                  << " F=" << r_diis.e_total;
+    EXPECT_GT(std::fabs(r_diis.e_dftu), 1e-8);
+    EXPECT_NEAR(r_diis.n_elec_occ, 2.0, 1e-5);
+
+    GpwDft ot = base();
+    ot.use_ot = true;
+    ot.max_iter = 200;
+    EXPECT_NO_THROW(ot.build(atoms));
+    const GpwResult r_ot = ot.run(atoms);
+    ASSERT_TRUE(r_ot.converged) << "OT+U+FD iters=" << r_ot.iters
+                                << " F=" << r_ot.e_total;
+    EXPECT_GT(std::fabs(r_ot.e_dftu), 1e-8);
+    EXPECT_NEAR(r_ot.n_elec_occ, 2.0, 1e-5);
+    EXPECT_NEAR(r_ot.e_total, r_diis.e_total, 1e-4)
+        << "F_OT=" << r_ot.e_total << " F_DIIS=" << r_diis.e_total
+        << " iters ot/diis=" << r_ot.iters << "/" << r_diis.iters;
+    EXPECT_NEAR(r_ot.e_dftu, r_diis.e_dftu, 1e-3);
+}
