@@ -301,6 +301,12 @@ atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 if(ATV_BUILD_VIB)
     atv_add_cpp_test(test_cpu_vib_phonon_supercell cpu/vibration/test_phonon_supercell.cpp)
     atv_add_cpp_test(test_cpu_vib_phonon_dispersion cpu/vibration/test_phonon_dispersion.cpp)
+    # GPW force-consumer wiring for Phonon (no NeighborList). Full FD spectrum
+    # lives in regressions/gpw/gpw-fd-phonon-si (6N SCF — not unit budget).
+    if(ATV_BUILD_GPW)
+        atv_add_cpp_test(test_cpu_vib_phonon_gpw_wiring
+            cpu/vibration/test_phonon_gpw_wiring.cpp)
+    endif()
 endif()
 atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
 atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/dynamics/test_fix_rattle.cpp)
