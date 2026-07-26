@@ -1219,21 +1219,19 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
     // ── Multi-k OT (closed-shell RKS; integer / metallic / +DFT+U) ─────────
     // Diagonalization-free: active C_k live on the complex OT manifold.
-    // Without PLUS_U: joint PR+ Armijo per H rebuild (integer or FD/MP smear).
-    // With PLUS_U: CP2K-style OUTER_SCF — rebuild H (incl. V_U), then
-    // fixed-H OT band minimize on each local k (avoids stalled Armijo when
-    // the SCF total-energy gradient is not the frozen-H band gradient).
+    // Integer occupations + PLUS_U: CP2K-style OUTER_SCF — rebuild H (incl.
+    // V_U), then fixed-H OT band minimize on each local k (avoids stalled
+    // Armijo when the SCF total-energy gradient is not the frozen-H band
+    // gradient). Metallic smear (FD/MP), with or without PLUS_U: joint PR+
+    // Armijo on the free energy; build_k_energy already folds V_U / E_U when
+    // plus_u is set (product: OT+U+smear ≡ DIIS+U+smear fixed point).
     if (cfg.use_ot) {
-        if (do_dftu && use_smear)
-            throw std::runtime_error(
-                "GPW kpoints OT: metallic smearing with DFT+U is not "
-                "productized (use_ot with plus_u requires integer occupations)");
         auto dens_from_cocc_int = [&](const CplxMatrix& C) {
             return density_from_fixed(C, cfg.n_occ);
         };
 
-        // ── OUTER_SCF + fixed-H OT for multi-k OT+DFT+U ───────────────────
-        if (do_dftu) {
+        // ── OUTER_SCF + fixed-H OT for multi-k OT+DFT+U (integer occ) ────
+        if (do_dftu && !use_smear) {
             constexpr double kInnerTol = 1e-7;
             constexpr int kInnerMax = 80;
             for (int outer = 0; outer < cfg.max_iter; ++outer) {
@@ -1280,10 +1278,11 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
             return res;
         }
 
-        // ── One PR+ Armijo step per outer H rebuild (no PLUS_U) ───────────
+        // ── One PR+ Armijo step per outer H rebuild (smear and/or no U) ──
         // Active OT manifold: integer path keeps n_occ double-occupied columns;
         // metallic smear uses the full AO spectrum (same as DIIS + smear) so
         // the free-energy fixed point matches; extra_bands remains API parity.
+        // PLUS_U + smear rides this path (V_U via build_k_energy).
         const int n_active = use_smear ? m_min : cfg.n_occ;
         if (n_active < 1)
             throw std::runtime_error(
@@ -1482,8 +1481,10 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
             // Metallic: free-energy plateau + moderate gnorm is enough (FD
             // occupations make the projected gradient softer than gapped OT).
+            // PLUS_U softens g further — accept energy plateau with soft gtol.
             const double gtol =
-                use_smear ? std::max(kOtGradTolK, 5e-4) : kOtGradTolK;
+                (use_smear || do_dftu) ? std::max(kOtGradTolK, 5e-4)
+                                       : kOtGradTolK;
             if (iter > 0 && gnorm < gtol
                 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
@@ -1495,15 +1496,16 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 res.n_elec_occ = use_smear ? last_n_elec : n_elec;
                 return res;
             }
-            // Energy plateau fallback for metals (budget-friendly).
-            if (use_smear && iter > 15
+            // Energy plateau fallback for metals / OT+U+smear (budget-friendly).
+            if ((use_smear || do_dftu) && iter > 15
                 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_k_payload(rebuild_all_H(last_veff));
                 fold_dispersion_k(res, P_k);
-                res.e_fermi = last_mu;
-                res.e_entropy = -degauss_ha * last_entropy;
-                res.n_elec_occ = last_n_elec;
+                res.e_fermi = use_smear ? last_mu : 0.0;
+                res.e_entropy =
+                    use_smear ? (-degauss_ha * last_entropy) : 0.0;
+                res.n_elec_occ = use_smear ? last_n_elec : n_elec;
                 return res;
             }
             e_prev = e_total;
@@ -4749,8 +4751,9 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
             + std::to_string(n_occ) + "); or set n_alpha/n_beta for UKS");
     }
     if (smearing != Smearing::none) {
-        // Multi-k RKS (DIIS and OT) + multi-k collinear UKS (DIIS and OT)
-        // productized. OT + DFT+U + smear remains a residual (ot-dftu-smearing).
+        // Multi-k RKS (DIIS and OT, with or without PLUS_U) + multi-k
+        // collinear UKS (DIIS and OT) productized. Multi-k UKS OT+U+smear
+        // remains a residual.
         if (!(degauss > 0.0) || !std::isfinite(degauss))
             throw std::invalid_argument(
                 "GpwDft::build: degauss must be finite and > 0 [Ry] when "

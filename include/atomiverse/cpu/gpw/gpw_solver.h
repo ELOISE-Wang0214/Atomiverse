@@ -13,13 +13,14 @@
 /// Scope: closed-shell (RKS, `n_occ`) at Γ **or** on a Monkhorst-Pack k mesh
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
 /// density), optional **metallic occupation smearing** (Fermi–Dirac /
-/// Methfessel–Paxton; multi-k RKS DIIS **and** OT, Mermin free energy), and
-/// unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or PBE/PBEsol GGA) at
-/// Γ **or** on the same k mesh (collinear dual H_k, spin-resolved density/XC;
-/// multi-k UKS + FD/MP smear productized (DIIS **and** OT)).
-/// Periodic neutral electrostatics via the GTH Gaussian core charge. Analytic
-/// forces cover Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic
-/// cell stress covers Γ RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and
+/// Methfessel–Paxton; multi-k RKS DIIS **and** OT, including OT+DFT+U+smear;
+/// Mermin free energy), and unrestricted (UKS, `n_alpha`/`n_beta` with PADE
+/// LSD or PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual
+/// H_k, spin-resolved density/XC; multi-k UKS + FD/MP smear productized
+/// (DIIS **and** OT); multi-k UKS OT+DFT+U product, integer occ). Periodic
+/// neutral electrostatics via the GTH Gaussian core charge. Analytic forces
+/// cover Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell
+/// stress covers Γ RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and
 /// multi-k (`gpw_stress` via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
 #pragma once
 
@@ -280,8 +281,9 @@ class GpwDft {
     ///        including Γ-UKS + Dudarev DFT+U via `plus_u`, multi-k
     ///        closed-shell RKS, multi-k RKS + metallic FD/MP smearing,
     ///        multi-k collinear UKS (integer **and** FD/MP smear),
-    ///        multi-k RKS + Dudarev DFT+U, and multi-k UKS + Dudarev
-    ///        DFT+U). Multi-k UKS OT + DFT+U + smear is not product.
+    ///        multi-k RKS + Dudarev DFT+U (integer and with metallic
+    ///        smear), and multi-k UKS + Dudarev DFT+U (integer). Multi-k
+    ///        UKS OT + DFT+U + smear is not product.
     bool use_ot = false;
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
@@ -289,9 +291,10 @@ class GpwDft {
     ///        The k-point path is periodic, single-grid, `local_pp_on_grid`
     ///        only — RKS (`n_occ`) or collinear UKS (`n_alpha`/`n_beta`);
     ///        multi-k Dudarev DFT+U (`plus_u`) is supported for SCF energy
-    ///        (DIIS and OT, RKS and UKS). Multi-k RKS/UKS OT (`use_ot`) is
-    ///        product including OT+DFT+U combos; Γ-UKS OT+DFT+U is product
-    ///        on the Γ path. Multigrid / nonperiodic throw at `build()`.
+    ///        (DIIS and OT, RKS and UKS; RKS OT with or without metallic
+    ///        smear). Multi-k RKS/UKS OT (`use_ot`) is product including
+    ///        OT+DFT+U combos and RKS OT+DFT+U+smear; Γ-UKS OT+DFT+U is
+    ///        product on the Γ path. Multigrid / nonperiodic throw at `build()`.
     int k_mesh[3] = {1, 1, 1};
     /// @brief Fold ±k pairs by time reversal (exact for collinear RKS/UKS
     ///        without SOC; weights doubled on the retained partner).
@@ -320,9 +323,9 @@ class GpwDft {
     ///        the cold-start densities, not as an external potential.
     std::vector<double> atom_spin_guess;
     /// @brief Metallic occupation smearing (default: fixed integer fillings).
-    ///        Product path: multi-k RKS (DIIS **and** OT) and multi-k
-    ///        collinear UKS (DIIS **and** OT). OT + DFT+U + smear remains
-    ///        a residual (`ot-dftu-smearing`).
+    ///        Product path: multi-k RKS (DIIS **and** OT, with or without
+    ///        `plus_u`) and multi-k collinear UKS (DIIS **and** OT). Multi-k
+    ///        UKS OT + DFT+U + smear remains a residual.
     Smearing smearing = Smearing::none;
     /// @brief Smearing width [Ry] (QE `degauss` / CP2K \(k_B T_e\)). Required
     ///        `> 0` when `smearing != none`. Converted to Ha inside the SCF.
