@@ -1074,7 +1074,13 @@ dfpt_gamma_spin_impl(const cpu::Frame& frame, const PW& method,
     // fixed-occ spin DFPT. Self-consistent Mermin spin-density for open
     // metals reuses the same response; a fully fractional GS density loop is
     // available via PW::run (spin+smear) when needed as a follow-on.
+    // Supercell / sparse-k spin densities can ring with mix_beta ~ 0.7 —
+    // use a conservative channel mix and back off if the residual grows.
     bool scf_ok = false;
+    AccReal scf_mix = AccReal(method.mix_beta);
+    if (scf_mix > AccReal(0.4))
+        scf_mix = AccReal(0.4);
+    AccReal best_rms = AccReal(1e30);
     for (int iter = 0; iter < method.max_iter; ++iter) {
         for (int ig = 0; ig < ng0; ++ig)
             ws.rho_G[ig] = ws.rho_spin_G[0][ig] + ws.rho_spin_G[1][ig];
@@ -1115,8 +1121,7 @@ dfpt_gamma_spin_impl(const cpu::Frame& frame, const PW& method,
                 ws.rho_spin_G_old[s][ig] = ws.rho_spin_G[s][ig];
                 ws.rho_spin_G[s][ig] =
                     ws.rho_spin_G_old[s][ig]
-                    + AccReal(method.mix_beta)
-                          * (rho_out[s][ig] - ws.rho_spin_G_old[s][ig]);
+                    + scf_mix * (rho_out[s][ig] - ws.rho_spin_G_old[s][ig]);
             }
         }
         AccReal dr = 0;
@@ -1126,7 +1131,15 @@ dfpt_gamma_spin_impl(const cpu::Frame& frame, const PW& method,
             const Cx d = ws.rho_G[ig] - old;
             dr += d.real() * d.real() + d.imag() * d.imag();
         }
-        if (std::sqrt(dr) < AccReal(method.tol)) {
+        const AccReal rms = std::sqrt(dr);
+        if (rms < best_rms)
+            best_rms = rms;
+        else if (rms > AccReal(2) * best_rms && best_rms < AccReal(1e-3))
+            scf_mix = std::max(scf_mix * AccReal(0.5), AccReal(0.1));
+        if ((iter + 1) % 20 == 0 || rms < AccReal(method.tol))
+            ATV_DEBUG("[pw][dfpt] spin SCF iter={} dens_rms={:.3e} mix={:.2f}",
+                      iter + 1, rms, scf_mix);
+        if (rms < AccReal(method.tol)) {
             scf_ok = true;
             break;
         }
@@ -2510,10 +2523,28 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
             "incompatible parity");
     const int n_alpha = (n_elec + mag) / 2;
     const int n_beta = (n_elec - mag) / 2;
-    const int n_occ[2] = {n_alpha, n_beta};
-    const int n_bands = std::max(std::max(n_alpha, n_beta), 1);
-    // f = 1 per spin-orbital (collinear).
-    const AccReal occ_f = AccReal(1);
+    const int n_occ_fixed[2] = {n_alpha, n_beta};
+    const bool use_smear = (method.smearing != Smearing::none);
+    if (use_smear && !(method.degauss > 0.0))
+        throw std::invalid_argument(
+            "dfpt_q_force_constants: degauss must be > 0 [Ry] when "
+            "smearing is enabled");
+    SmearKind smear_kind = SmearKind::fermi_dirac;
+    if (method.smearing == Smearing::methfessel_paxton)
+        smear_kind = SmearKind::methfessel_paxton;
+    else if (method.smearing == Smearing::gaussian)
+        smear_kind = SmearKind::gaussian;
+    const AccReal degauss_ha =
+        static_cast<AccReal>(method.degauss) * AccReal(0.5);
+    const int mp_order = method.mp_order;
+    constexpr AccReal kOccThr = AccReal(1e-8);
+    // Davidson bands: fixed uses max(N↑,N↓); smear adds empty states near E_F.
+    int n_bands = std::max(std::max(n_alpha, n_beta), 1);
+    if (use_smear) {
+        const int n_occ_ceil = std::max((n_elec + 1) / 2, 1);
+        n_bands = std::max(n_occ_ceil + std::max(method.extra_bands, 0),
+                           n_bands);
+    }
 
     PoissonSolver poisson;
     XCBuilder xc;
@@ -2598,7 +2629,9 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                 davidson.step(ws);
                 const AccReal weight =
                     prob.kg.weights[static_cast<std::size_t>(ik)];
-                density.accumulate_kpoint(ws, weight, n_occ[s], AccReal(1));
+                // Integer channel fill for GS density (multiplicity constraint).
+                density.accumulate_kpoint(ws, weight, n_occ_fixed[s],
+                                          AccReal(1));
                 ws.gvec = saved_gvec;
                 ws.n_g = ng0;
             }
@@ -2705,8 +2738,8 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
     struct KState {
         std::vector<Cx> wfc;
         std::vector<AccReal> eps;
+        std::vector<AccReal> occ; ///< spinor f in [0,1]
         int ng = 0;
-        int n_occ = 0;
         std::vector<std::vector<PWWorkspace::KBProjG>> kb_proj;
     };
 
@@ -2721,7 +2754,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
             ws.V_eff_r[i] = veff_r[spin][static_cast<std::size_t>(i)];
     };
 
-    // Eigenstates at every ground-state k for both spins.
+    // Eigenstates at every ground-state k for both spins (n_bands).
     std::vector<GVectorList> gv_k0 = prob.gv_k;
     std::vector<KState> kstates(static_cast<std::size_t>(2 * n_kpts));
     for (int s = 0; s < 2; ++s) {
@@ -2735,18 +2768,53 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                 ws.atom_wfc = prob.atom_wfc_k[static_cast<std::size_t>(ik)];
             davidson.step(ws);
             ks.ng = ws.n_g;
-            ks.n_occ = n_occ[s];
             ks.eps.assign(ws.eigenvalues.begin(),
-                          ws.eigenvalues.begin() + n_occ[s]);
-            ks.wfc.resize(static_cast<std::size_t>(std::max(n_occ[s], 1))
+                          ws.eigenvalues.begin() + n_bands);
+            ks.wfc.resize(static_cast<std::size_t>(n_bands)
                           * static_cast<std::size_t>(ws.n_g));
-            for (int b = 0; b < n_occ[s]; ++b)
+            for (int b = 0; b < n_bands; ++b)
                 for (int ig = 0; ig < ws.n_g; ++ig)
                     ks.wfc[static_cast<std::size_t>(b) * ws.n_g + ig] =
                         ws.wfc(b, ig);
+            ks.occ.assign(static_cast<std::size_t>(n_bands), AccReal(0));
+            if (!use_smear) {
+                for (int b = 0; b < n_occ_fixed[s]; ++b)
+                    ks.occ[static_cast<std::size_t>(b)] = AccReal(1);
+            }
         }
     }
     const std::vector<AccReal> k_weights = prob.kg.weights;
+
+    // Shared μ for spinor occupations when metallic smearing is on.
+    AccReal mu_ha = AccReal(0);
+    if (use_smear) {
+        std::vector<AccReal> all_evals;
+        std::vector<AccReal> all_weights;
+        all_evals.reserve(static_cast<std::size_t>(2 * n_kpts * n_bands));
+        all_weights.reserve(static_cast<std::size_t>(2 * n_kpts * n_bands));
+        for (int s = 0; s < 2; ++s) {
+            for (int ik = 0; ik < n_kpts; ++ik) {
+                const AccReal w = k_weights[static_cast<std::size_t>(ik)];
+                const auto& ks =
+                    kstates[static_cast<std::size_t>(s * n_kpts + ik)];
+                for (int b = 0; b < n_bands; ++b) {
+                    all_evals.push_back(ks.eps[static_cast<std::size_t>(b)]);
+                    all_weights.push_back(w);
+                }
+            }
+        }
+        mu_ha = find_fermi_level(all_evals, all_weights, AccReal(n_elec),
+                                 degauss_ha, smear_kind, mp_order, AccReal(1));
+        for (int s = 0; s < 2; ++s) {
+            for (int ik = 0; ik < n_kpts; ++ik) {
+                auto& ks = kstates[static_cast<std::size_t>(s * n_kpts + ik)];
+                for (int b = 0; b < n_bands; ++b)
+                    ks.occ[static_cast<std::size_t>(b)] = smear_f_spinor(
+                        ks.eps[static_cast<std::size_t>(b)], mu_ha, degauss_ha,
+                        smear_kind, mp_order);
+            }
+        }
+    }
 
     // Eigenstates at k+q for both spins (P_c^{k+q} manifold).
     std::vector<Vec3> kq_frac(static_cast<std::size_t>(n_kpts));
@@ -2769,16 +2837,24 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                 ws.atom_wfc = prob.atom_wfc_k[static_cast<std::size_t>(ik)];
             davidson.step(ws);
             ks.ng = ws.n_g;
-            ks.n_occ = n_occ[s];
-            // Conduction projector uses occupied manifold at k+q.
             ks.eps.assign(ws.eigenvalues.begin(),
-                          ws.eigenvalues.begin() + n_occ[s]);
-            ks.wfc.resize(static_cast<std::size_t>(std::max(n_occ[s], 1))
+                          ws.eigenvalues.begin() + n_bands);
+            ks.wfc.resize(static_cast<std::size_t>(n_bands)
                           * static_cast<std::size_t>(ws.n_g));
-            for (int b = 0; b < n_occ[s]; ++b)
+            for (int b = 0; b < n_bands; ++b)
                 for (int ig = 0; ig < ws.n_g; ++ig)
                     ks.wfc[static_cast<std::size_t>(b) * ws.n_g + ig] =
                         ws.wfc(b, ig);
+            ks.occ.assign(static_cast<std::size_t>(n_bands), AccReal(0));
+            if (!use_smear) {
+                for (int b = 0; b < n_occ_fixed[s]; ++b)
+                    ks.occ[static_cast<std::size_t>(b)] = AccReal(1);
+            } else {
+                for (int b = 0; b < n_bands; ++b)
+                    ks.occ[static_cast<std::size_t>(b)] = smear_f_spinor(
+                        ks.eps[static_cast<std::size_t>(b)], mu_ha, degauss_ha,
+                        smear_kind, mp_order);
+            }
         }
     }
 
@@ -2873,7 +2949,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
         }
     }
 
-    // KB second-derivative diagonal, both spins, f=1.
+    // KB second-derivative diagonal, both spins, weight f_σ.
     {
         std::vector<KbMoments> mo;
         for (int s = 0; s < 2; ++s) {
@@ -2881,7 +2957,10 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                 auto& ks = kstates[static_cast<std::size_t>(s * n_kpts + ik)];
                 bind_state(ks, gv_k0[static_cast<std::size_t>(ik)], s);
                 const AccReal w = k_weights[static_cast<std::size_t>(ik)];
-                for (int b = 0; b < ks.n_occ; ++b) {
+                for (int b = 0; b < n_bands; ++b) {
+                    const AccReal f_b = ks.occ[static_cast<std::size_t>(b)];
+                    if (f_b < kOccThr)
+                        continue;
                     const Cx* psi =
                         ks.wfc.data()
                         + static_cast<std::ptrdiff_t>(b) * ks.ng;
@@ -2896,7 +2975,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                                 for (int a = 0; a < 3; ++a)
                                     for (int bb = 0; bb < 3; ++bb) {
                                         const AccReal term =
-                                            w * occ_f * Dc
+                                            w * f_b * Dc
                                             * (AccReal(-2)
                                                    * (mm.t[a][bb]
                                                       * std::conj(mm.c))
@@ -2976,7 +3055,38 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                     const int ngk = ks.ng;
                     const int ngkq = kqs.ng;
 
-                    for (int b = 0; b < ks.n_occ; ++b) {
+                    // Projector at k+q: bands with f >= thr.
+                    int n_proj = 0;
+                    for (int b = 0; b < n_bands; ++b)
+                        if (kqs.occ[static_cast<std::size_t>(b)] >= kOccThr)
+                            ++n_proj;
+                    if (n_proj < 1)
+                        n_proj = 1;
+                    std::vector<Cx> proj_wfc(
+                        static_cast<std::size_t>(n_proj)
+                        * static_cast<std::size_t>(ngkq));
+                    {
+                        int ip = 0;
+                        for (int b = 0; b < n_bands && ip < n_proj; ++b) {
+                            if (kqs.occ[static_cast<std::size_t>(b)] < kOccThr)
+                                continue;
+                            const Cx* psi_q =
+                                kqs.wfc.data()
+                                + static_cast<std::ptrdiff_t>(b) * ngkq;
+                            std::copy(psi_q, psi_q + ngkq,
+                                      proj_wfc.begin()
+                                          + static_cast<std::ptrdiff_t>(ip)
+                                                * ngkq);
+                            ++ip;
+                        }
+                        n_proj = std::max(ip, 1);
+                    }
+
+                    for (int b = 0; b < n_bands; ++b) {
+                        const AccReal f_b =
+                            ks.occ[static_cast<std::size_t>(b)];
+                        if (f_b < kOccThr)
+                            continue;
                         const Cx* psi =
                             ks.wfc.data()
                             + static_cast<std::ptrdiff_t>(b) * ngk;
@@ -3040,7 +3150,8 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                             rhs[static_cast<std::size_t>(ig)] =
                                 -rhs[static_cast<std::size_t>(ig)];
 
-                        // Sternheimer at k+q with H_σ.
+                        // Sternheimer at k+q with H_σ; project out occupied
+                        // manifold (f ≥ thr) at k+q.
                         ws.gvec = &gv_kq[static_cast<std::size_t>(ik)];
                         ws.n_g = ngkq;
                         ws.T_G.resize({static_cast<std::size_t>(ngkq)});
@@ -3057,18 +3168,16 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                         if (static_cast<int>(x.size()) != ngkq)
                             x.assign(static_cast<std::size_t>(ngkq), Cx(0, 0));
                         const AccReal eps_b =
-                            (b < static_cast<int>(ks.eps.size()))
-                                ? ks.eps[static_cast<std::size_t>(b)]
-                                : AccReal(0);
+                            ks.eps[static_cast<std::size_t>(b)];
                         const int its = sternheimer_cg(
-                            ws, kqs.wfc.data(), kqs.n_occ, eps_b, rhs.data(),
+                            ws, proj_wfc.data(), n_proj, eps_b, rhs.data(),
                             x.data(), cg_tol, cg_max_iter, work_buf2.data());
                         if (its > cg_max_iter)
                             ATV_WARN("[pw][dfpt_q] spin CG not converged "
                                      "(mu={} s={} ik={} band={})",
                                      mu, s, ik, b);
 
-                        // Lattice-periodic Δñ_{qσ}(r).
+                        // Lattice-periodic Δñ_{qσ}(r), weight f_b.
                         {
                             ws.gvec = &gv_k0[static_cast<std::size_t>(ik)];
                             ws.n_g = ngk;
@@ -3081,7 +3190,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                                                work_buf2.data());
                             ws.fft->c2c_bwd(work_buf2.data());
                             const AccReal pref =
-                                w * occ_f * tr_factor / omega;
+                                w * f_b * tr_factor / omega;
                             for (int i = 0; i < nr; ++i) {
                                 const Cx pk(
                                     static_cast<AccReal>(work_buf.data()[i][0]),
@@ -3235,7 +3344,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
             Cat(nu, mu) += s * dV;
         }
 
-        // Nonlocal response (both spins, f=1).
+        // Nonlocal response (both spins, weight f_σ).
         {
             std::vector<KbMoments> mo_psi, mo_dpsi;
             for (int s = 0; s < 2; ++s) {
@@ -3246,12 +3355,18 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                         kqstates[static_cast<std::size_t>(s * n_kpts + ik)];
                     const AccReal w = k_weights[static_cast<std::size_t>(ik)];
                     const int ngk = ks.ng;
-                    for (int b = 0; b < ks.n_occ; ++b) {
+                    for (int b = 0; b < n_bands; ++b) {
+                        const AccReal f_b =
+                            ks.occ[static_cast<std::size_t>(b)];
+                        if (f_b < kOccThr)
+                            continue;
                         const Cx* psi =
                             ks.wfc.data()
                             + static_cast<std::ptrdiff_t>(b) * ngk;
                         const auto& x = dpsi[static_cast<std::size_t>(
                             (s * n_kpts + ik) * n_bmax + b)];
+                        if (x.empty())
+                            continue;
                         ws.gvec = &gv_k0[static_cast<std::size_t>(ik)];
                         ws.n_g = ngk;
                         ws.kb_proj = ks.kb_proj;
@@ -3285,7 +3400,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
                                                - std::conj(mo_dpsi[m].s[bb])
                                                      * cP);
                                         Cat(3 * static_cast<int>(ja) + bb,
-                                            mu) += w * occ_f * tr_factor * el;
+                                            mu) += w * f_b * tr_factor * el;
                                     }
                                 }
                             }
@@ -3331,14 +3446,11 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             "dfpt_q_force_constants: hybrid XC unsupported "
             "(pure LSDA / pure GGA only; no exact-exchange response)");
     const bool use_smear = (method.smearing != Smearing::none);
-    if (use_smear && method.spin_polarized)
-        throw std::invalid_argument(
-            "dfpt_q_force_constants: collinear spin + metallic smearing "
-            "unsupported (restricted smear only)");
     if (use_smear && !(method.degauss > 0.0))
         throw std::invalid_argument(
             "dfpt_q_force_constants: degauss must be > 0 [Ry] when "
             "smearing is enabled");
+    // Collinear spin (fixed occ or metallic smear) — shared μ, no δμ at q≠0.
     if (method.spin_polarized)
         return dfpt_q_spin_impl(frame, method, q_frac, response_tol,
                                 response_max_iter, cg_tol, cg_max_iter,
