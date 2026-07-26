@@ -93,8 +93,8 @@ struct GpwAtom {
 /// @brief Exchange-correlation functional choice.
 ///
 /// `PADE` — LDA Padé; `PBE` / `PBEsol` / `RevPBE` / `RPBE` / `BLYP` — pure GGA
-/// (shared `evaluate_xc`). RKS supports all six; Γ-UKS supports `PADE` /
-/// `PBE` / `PBEsol` / `RevPBE` / `BLYP` (spin-GGA path; `RPBE` not yet).
+/// (shared `evaluate_xc`). RKS and Γ-UKS support all six (spin-GGA via
+/// `xc_grid_*_spin`; closed-shell via `xc_grid_*`).
 enum class XcKind { PADE, PBE, PBEsol, RevPBE, RPBE, BLYP };
 
 /// @brief Metallic occupation smearing kind (product path: multi-k RKS).

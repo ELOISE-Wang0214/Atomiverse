@@ -331,10 +331,10 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (uks) {
         if (cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
             && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-            && cfg.xc != XcKind::BLYP)
+            && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
             throw std::runtime_error(
-                "GPW UKS forces: XcKind must be PADE, PBE, PBEsol, RevPBE, or "
-                "BLYP");
+                "GPW UKS forces: XcKind must be PADE, PBE, PBEsol, RevPBE, "
+                "RPBE, or BLYP");
         const XcOnGridSpin xc =
             cfg.xc == XcKind::PBE
                 ? xc_grid_pbe_spin(grid, rho_a, rho_b)
@@ -342,9 +342,13 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                        ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
                        : (cfg.xc == XcKind::RevPBE
                               ? xc_grid_revpbe_spin(grid, rho_a, rho_b)
-                              : (cfg.xc == XcKind::BLYP
-                                     ? xc_grid_blyp_spin(grid, rho_a, rho_b)
-                                     : xc_grid_pade_lsd(grid, rho_a, rho_b))));
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe_spin(grid, rho_a, rho_b)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp_spin(grid, rho_a,
+                                                                rho_b)
+                                            : xc_grid_pade_lsd(grid, rho_a,
+                                                               rho_b)))));
         veff_a.resize(rho.size());
         veff_b.resize(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) {
@@ -743,10 +747,10 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
             "gpw_forces kpoints: requires local_pp_on_grid (energy foothold)");
     if (uks && cfg.xc != XcKind::PADE && cfg.xc != XcKind::PBE
         && cfg.xc != XcKind::PBEsol && cfg.xc != XcKind::RevPBE
-        && cfg.xc != XcKind::BLYP)
+        && cfg.xc != XcKind::RPBE && cfg.xc != XcKind::BLYP)
         throw std::runtime_error(
             "gpw_forces kpoints UKS: XcKind must be PADE, PBE, PBEsol, RevPBE, "
-            "or BLYP");
+            "RPBE, or BLYP");
 
     // Rebuild k list from the SCF payload (frac + weight).
     std::vector<KPoint> kpts(static_cast<std::size_t>(nk));
@@ -884,9 +888,13 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                        ? xc_grid_pbesol_spin(grid, rho_a, rho_b)
                        : (cfg.xc == XcKind::RevPBE
                               ? xc_grid_revpbe_spin(grid, rho_a, rho_b)
-                              : (cfg.xc == XcKind::BLYP
-                                     ? xc_grid_blyp_spin(grid, rho_a, rho_b)
-                                     : xc_grid_pade_lsd(grid, rho_a, rho_b))));
+                              : (cfg.xc == XcKind::RPBE
+                                     ? xc_grid_rpbe_spin(grid, rho_a, rho_b)
+                                     : (cfg.xc == XcKind::BLYP
+                                            ? xc_grid_blyp_spin(grid, rho_a,
+                                                                rho_b)
+                                            : xc_grid_pade_lsd(grid, rho_a,
+                                                               rho_b)))));
         veff_a.resize(rho.size());
         veff_b.resize(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) {
