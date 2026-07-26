@@ -3,8 +3,13 @@
 
 #include "atomiverse/cpu/gpw/internal/ot.h"
 
+#include "atomiverse/cpu/gpw/internal/kpoints.h" // eigh_hermitian
+
 #include <algorithm>
 #include <cmath>
+#include <complex>
+#include <stdexcept>
+#include <vector>
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
@@ -184,6 +189,208 @@ OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
         C = ot_orthonormalize(ot_parameterize(C, alpha * d, S), S);
     }
 
+    res.C = C;
+    res.band_energy = band(C);
+    return res;
+}
+
+// ── Complex (Bloch) OT ─────────────────────────────────────────────────────
+
+namespace {
+
+using Cplx = std::complex<double>;
+
+// Row-major complex products (same shape as kpoints.cpp; no xtensor-blas).
+OtCplxMatrix c_mul(const OtCplxMatrix& A, const OtCplxMatrix& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    const int p = static_cast<int>(B.shape(1));
+    OtCplxMatrix C = xt::zeros<Cplx>({n, p});
+    for (int i = 0; i < n; ++i)
+        for (int k = 0; k < m; ++k) {
+            const Cplx a = A(i, k);
+            if (a == Cplx(0, 0))
+                continue;
+            for (int j = 0; j < p; ++j)
+                C(i, j) += a * B(k, j);
+        }
+    return C;
+}
+
+// A† B
+OtCplxMatrix c_dagger_mul(const OtCplxMatrix& A, const OtCplxMatrix& B) {
+    const int n = static_cast<int>(A.shape(0));
+    const int m = static_cast<int>(A.shape(1));
+    const int p = static_cast<int>(B.shape(1));
+    OtCplxMatrix C = xt::zeros<Cplx>({m, p});
+    for (int i = 0; i < m; ++i)
+        for (int k = 0; k < n; ++k) {
+            const Cplx a = std::conj(A(k, i));
+            if (a == Cplx(0, 0))
+                continue;
+            for (int j = 0; j < p; ++j)
+                C(i, j) += a * B(k, j);
+        }
+    return C;
+}
+
+// Re Tr(A† B) Frobenius for complex CG.
+double c_frob(const OtCplxMatrix& a, const OtCplxMatrix& b) {
+    double s = 0.0;
+    const int n0 = static_cast<int>(a.shape(0));
+    const int n1 = static_cast<int>(a.shape(1));
+    for (int i = 0; i < n0; ++i)
+        for (int j = 0; j < n1; ++j)
+            s += (std::conj(a(i, j)) * b(i, j)).real();
+    return s;
+}
+
+double c_sinc(double u) {
+    if (std::abs(u) < 1e-4) {
+        const double u2 = u * u;
+        return 1.0 - u2 / 6.0 + u2 * u2 / 120.0;
+    }
+    return std::sin(u) / u;
+}
+
+// Hermitian matrix function f(G) = V diag(f(θ)) V† via zheevd.
+template <typename F>
+OtCplxMatrix herm_function(const OtCplxMatrix& G, F f) {
+    std::vector<double> theta;
+    CplxMatrix V;
+    // OtCplxMatrix and CplxMatrix are the same xtensor layout/type.
+    eigh_hermitian(G, theta, V);
+    const int n = static_cast<int>(theta.size());
+    OtCplxMatrix out = xt::zeros<Cplx>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            Cplx s(0, 0);
+            for (int k = 0; k < n; ++k) {
+                const double fk = f(theta[static_cast<std::size_t>(k)]);
+                s += V(i, k) * fk * std::conj(V(j, k));
+            }
+            out(i, j) = s;
+        }
+    return out;
+}
+
+} // namespace
+
+OtCplxMatrix ot_parameterize_k(const OtCplxMatrix& C0, const OtCplxMatrix& x,
+                               const OtCplxMatrix& S) {
+    // G = x† S x (no x no, Hermitian PSD).
+    const OtCplxMatrix G = c_dagger_mul(x, c_mul(S, x));
+    const OtCplxMatrix cosU = herm_function(
+        G, [](double t) { return std::cos(std::sqrt(std::max(t, 0.0))); });
+    const OtCplxMatrix sincU = herm_function(
+        G, [](double t) { return c_sinc(std::sqrt(std::max(t, 0.0))); });
+    return c_mul(C0, cosU) + c_mul(x, sincU);
+}
+
+OtCplxMatrix ot_tangent_k(const OtCplxMatrix& C0, const OtCplxMatrix& S,
+                          const OtCplxMatrix& d) {
+    // (I − C0 C0† S) d
+    return d - c_mul(C0, c_dagger_mul(C0, c_mul(S, d)));
+}
+
+OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                           const OtCplxMatrix& C0, double occ) {
+    const OtCplxMatrix W = (2.0 * occ) * c_mul(H, C0);
+    // (I − S C0 C0†) W
+    return W - c_mul(S, c_mul(C0, c_dagger_mul(C0, W)));
+}
+
+OtCplxMatrix ot_orthonormalize_k(const OtCplxMatrix& C, const OtCplxMatrix& S) {
+    const OtCplxMatrix G = c_dagger_mul(C, c_mul(S, C));
+    const OtCplxMatrix Ginvhalf = herm_function(G, [](double t) {
+        if (!(t > 1e-16))
+            throw std::runtime_error(
+                "ot_orthonormalize_k: non-positive metric eigenvalue");
+        return 1.0 / std::sqrt(t);
+    });
+    return c_mul(C, Ginvhalf);
+}
+
+OtPrecondSingleInverseK::OtPrecondSingleInverseK(const OtCplxMatrix& H,
+                                                 const OtCplxMatrix& S,
+                                                 const OtCplxMatrix& C) {
+    const OtCplxMatrix eps = c_dagger_mul(C, c_mul(H, C));
+    std::vector<double> theta;
+    CplxMatrix V;
+    eigh_hermitian(eps, theta, V);
+    double lambda_lo = theta.empty() ? 0.0 : theta[0];
+    for (double t : theta)
+        lambda_lo = std::min(lambda_lo, t);
+    const double a = -lambda_lo + 1.0;
+    const OtCplxMatrix M = H + a * S;
+    m_inv_ =
+        herm_function(M, [](double t) { return t > 1e-8 ? 1.0 / t : 0.0; });
+}
+
+OtCplxMatrix OtPrecondSingleInverseK::apply(const OtCplxMatrix& g) const {
+    return c_mul(m_inv_, g);
+}
+
+OtFixedResultK ot_minimize_fixed_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                                   const OtCplxMatrix& T, const OtCplxMatrix& C0,
+                                   double tol, int max_iter) {
+    // FULL_KINETIC M = T + S.
+    const OtCplxMatrix M = T + S;
+    const OtCplxMatrix Minv =
+        herm_function(M, [](double t) { return t > 1e-12 ? 1.0 / t : 0.0; });
+
+    OtCplxMatrix C = ot_orthonormalize_k(C0, S);
+    auto band = [&](const OtCplxMatrix& Cc) {
+        return 2.0 * c_frob(Cc, c_mul(H, Cc)); // 2 Re Tr(C† H C)
+    };
+
+    OtCplxMatrix d, pz_prev;
+    double denom_prev = 1.0;
+    bool have_prev = false;
+
+    OtFixedResultK res;
+    for (int it = 0; it < max_iter; ++it) {
+        res.iters = it + 1;
+        const OtCplxMatrix g = ot_gradient_k(H, S, C);
+        double gnorm = 0.0;
+        for (const Cplx v : g)
+            gnorm = std::max(gnorm, std::abs(v));
+        if (gnorm < tol) {
+            res.converged = true;
+            break;
+        }
+        OtCplxMatrix pz = ot_tangent_k(C, S, c_mul(Minv, g));
+        if (!have_prev) {
+            d = -pz;
+        } else {
+            const double num = c_frob(g, pz - pz_prev);
+            const double beta = std::max(0.0, num / denom_prev);
+            d = ot_tangent_k(C, S, -pz + beta * d);
+        }
+        pz_prev = pz;
+        denom_prev = c_frob(g, pz);
+        have_prev = true;
+
+        const double E0 = band(C);
+        double slope = c_frob(g, d);
+        double alpha;
+        if (slope >= 0.0) {
+            d = -pz;
+            slope = c_frob(g, d);
+            alpha = 0.5;
+        } else {
+            const double at = 1.0;
+            const double Et = band(ot_parameterize_k(C, at * d, S));
+            const double denom = 2.0 * (Et - E0 - slope * at);
+            alpha = (denom > 1e-300) ? -slope * at * at / denom : at;
+            for (int bt = 0; bt < 30; ++bt) {
+                if (band(ot_parameterize_k(C, alpha * d, S)) < E0)
+                    break;
+                alpha *= 0.5;
+            }
+        }
+        C = ot_orthonormalize_k(ot_parameterize_k(C, alpha * d, S), S);
+    }
     res.C = C;
     res.band_energy = band(C);
     return res;

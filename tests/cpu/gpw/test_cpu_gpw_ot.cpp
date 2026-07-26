@@ -23,9 +23,14 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/internal/kpoints.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 #include "atomiverse/cpu/linalg/matrix.h"
+
+#include <complex>
+#include <stdexcept>
+#include <string>
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwDft;
@@ -212,4 +217,131 @@ TEST(GpwOt, EvaluatorUseOtMemberDefaultAndCtor) {
     EXPECT_TRUE(on.use_ot);
     on.use_ot = false;
     EXPECT_FALSE(on.use_ot);
+}
+
+// Fixed complex Hermitian H: OT recovers the occupied band energy of
+// diagonalize_k (same subspace as complex generalized diagonalization).
+TEST(GpwOt, FixedHKMatchesDiagonalizeKBandEnergy) {
+    pin_single_thread();
+    using Cplx = std::complex<double>;
+    using ATV::cpu::gpw::internal::CplxMatrix;
+    using ATV::cpu::gpw::internal::KOrth;
+    using ATV::cpu::gpw::internal::diagonalize_k;
+    using ATV::cpu::gpw::internal::ot_minimize_fixed_k;
+
+    constexpr int nb = 3;
+    constexpr int no = 1;
+    CplxMatrix H = xt::zeros<Cplx>({nb, nb});
+    CplxMatrix S = xt::zeros<Cplx>({nb, nb});
+    CplxMatrix T = xt::zeros<Cplx>({nb, nb});
+    // Hermitian H with a clear gap; S = I; T = I.
+    H(0, 0) = -1.5;
+    H(1, 1) = -0.4;
+    H(2, 2) = 0.8;
+    H(0, 1) = Cplx(0.10, 0.05);
+    H(1, 0) = std::conj(H(0, 1));
+    H(0, 2) = Cplx(0.04, -0.02);
+    H(2, 0) = std::conj(H(0, 2));
+    H(1, 2) = Cplx(-0.03, 0.01);
+    H(2, 1) = std::conj(H(1, 2));
+    for (int i = 0; i < nb; ++i) {
+        S(i, i) = 1.0;
+        T(i, i) = 1.0;
+    }
+
+    KOrth orth(S, 1e-8);
+    auto [eps, C] = diagonalize_k(H, orth);
+    CplxMatrix Cguess = xt::zeros<Cplx>({nb, no});
+    for (int u = 0; u < nb; ++u)
+        Cguess(u, 0) = C(u, 0);
+    Cguess(1, 0) += Cplx(0.25, 0.1);
+    Cguess(2, 0) -= Cplx(0.15, -0.05);
+
+    const auto ot = ot_minimize_fixed_k(H, S, T, Cguess, /*tol=*/1e-8,
+                                        /*max_iter=*/200);
+    ASSERT_TRUE(ot.converged) << "complex OT fixed-H iters=" << ot.iters;
+    const double e_diag = 2.0 * eps[0];
+    EXPECT_NEAR(ot.band_energy, e_diag, 1e-6)
+        << "OT band=" << ot.band_energy << " diag=" << e_diag;
+}
+
+// Multi-k RKS OT vs DIIS on compact H₂ (explicit non-Γ k).
+TEST(GpwOt, MultiKOtMatchesDiisEnergy) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+
+    GpwDft diis = small_cfg();
+    diis.k_points.push_back({0.25, 0.0, 0.0});
+    diis.k_point_weights.push_back(1.0);
+    diis.use_ot = false;
+    diis.max_iter = 80;
+    diis.tol = 1e-7;
+    diis.build(atoms);
+    const GpwResult r_diis = diis.run(atoms);
+    ASSERT_TRUE(r_diis.converged) << "multi-k DIIS iters=" << r_diis.iters;
+
+    GpwDft ot = small_cfg();
+    ot.k_points.push_back({0.25, 0.0, 0.0});
+    ot.k_point_weights.push_back(1.0);
+    ot.use_ot = true;
+    ot.max_iter = 200;
+    ot.tol = 1e-7;
+    ot.build(atoms);
+    const GpwResult r_ot = ot.run(atoms);
+    ASSERT_TRUE(r_ot.converged) << "multi-k OT iters=" << r_ot.iters
+                                << " E=" << r_ot.e_total;
+    EXPECT_NEAR(r_ot.e_total, r_diis.e_total, 1e-5)
+        << "OT=" << r_ot.e_total << " DIIS=" << r_diis.e_total;
+    EXPECT_EQ(r_ot.n_kpts, 1);
+}
+
+// Explicit Γ through the complex OT path matches real Γ OT.
+TEST(GpwOt, ExplicitGammaOtMatchesRealGammaOt) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+
+    GpwDft real_ot = small_cfg();
+    real_ot.use_ot = true;
+    real_ot.max_iter = 200;
+    real_ot.tol = 1e-7;
+    real_ot.build(atoms);
+    const GpwResult r_real = real_ot.run(atoms);
+    ASSERT_TRUE(r_real.converged);
+
+    GpwDft k_ot = small_cfg();
+    k_ot.use_ot = true;
+    k_ot.k_points.push_back({0.0, 0.0, 0.0});
+    k_ot.k_point_weights.push_back(1.0);
+    k_ot.max_iter = 200;
+    k_ot.tol = 1e-7;
+    k_ot.build(atoms);
+    const GpwResult r_k = k_ot.run(atoms);
+    ASSERT_TRUE(r_k.converged);
+    EXPECT_NEAR(r_k.e_total, r_real.e_total, 1e-6)
+        << "k-Γ OT=" << r_k.e_total << " real Γ OT=" << r_real.e_total;
+}
+
+// Multi-k UKS + use_ot must fail-fast (out of product scope).
+TEST(GpwOt, MultiKUksOtThrowsAtBuild) {
+    pin_single_thread();
+    const auto atoms = small_h2();
+    GpwDft m = small_cfg();
+    m.n_occ = 0;
+    m.n_alpha = 2;
+    m.n_beta = 0;
+    m.use_ot = true;
+    m.k_mesh[0] = 2;
+    m.k_mesh[1] = 1;
+    m.k_mesh[2] = 1;
+    EXPECT_THROW(
+        {
+            try {
+                m.build(atoms);
+            } catch (const std::invalid_argument& e) {
+                EXPECT_TRUE(std::string(e.what()).find("OT")
+                            != std::string::npos);
+                throw;
+            }
+        },
+        std::invalid_argument);
 }

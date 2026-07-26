@@ -272,16 +272,18 @@ class GpwDft {
     ///        Requires `ts` or `mbd`. Closed-shell RKS only (Γ and multi-k);
     ///        UKS throws. Free-atom path remains the default when false.
     bool hirshfeld = false; ///< Hirshfeld volume ratios for TS/MBD.
-    /// @brief OT minimizer instead of diagonalization (Γ RKS and Γ UKS;
-    ///        multi-k / DFT+U+OT throw).
+    /// @brief OT minimizer instead of diagonalization (Γ RKS / Γ UKS, and
+    ///        multi-k closed-shell RKS). Multi-k UKS OT, OT+DFT+U, and
+    ///        OT+smearing throw at `build()`.
     bool use_ot = false;
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
     ///        Γ-avoiding shifted mesh). `{1,1,1}` keeps the Γ-point path.
     ///        The k-point path is periodic, single-grid, `local_pp_on_grid`
     ///        only — RKS (`n_occ`) or collinear UKS (`n_alpha`/`n_beta`);
-    ///        multi-k Dudarev DFT+U (`plus_u`) is supported for SCF energy.
-    ///        OT / multigrid / nonperiodic throw at `build()`.
+    ///        multi-k Dudarev DFT+U (`plus_u`) is supported for SCF energy
+    ///        (DIIS). Multi-k RKS OT (`use_ot`) is product; multigrid /
+    ///        nonperiodic / multi-k UKS OT / OT+DFT+U throw at `build()`.
     int k_mesh[3] = {1, 1, 1};
     /// @brief Fold ±k pairs by time reversal (exact for collinear RKS/UKS
     ///        without SOC; weights doubled on the retained partner).

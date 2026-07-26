@@ -155,6 +155,56 @@ OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
                                 const RealMatrix& T, const RealMatrix& C0,
                                 double tol, int max_iter);
 
+// ── Complex (Bloch / multi-k) OT ───────────────────────────────────────────
+// Hermitian generalization of the real OT manifold for k-space matrices.
+// Layout matches `gpw::internal::CplxMatrix` (row-major complex).
+
+using OtCplxMatrix = xt::xtensor<std::complex<double>, 2>;
+
+/// @brief Complex OT parameterization `C(x) = C0 cos(U) + x sinc(U)`.
+/// @param C0 Occupied Bloch coefficients [nb x no], `C0† S C0 = I`.
+/// @param x  S-tangent step [nb x no] (`C0† S x = 0`).
+/// @param S  Hermitian overlap [nb x nb].
+OtCplxMatrix ot_parameterize_k(const OtCplxMatrix& C0, const OtCplxMatrix& x,
+                               const OtCplxMatrix& S);
+
+/// @brief S-tangent projection `(I − C0 C0† S) d`.
+OtCplxMatrix ot_tangent_k(const OtCplxMatrix& C0, const OtCplxMatrix& S,
+                          const OtCplxMatrix& d);
+
+/// @brief Projected band-energy gradient `g = (I − S C0 C0†)(2·occ·H C0)`.
+/// @param occ Closed-shell band occupation (default 2).
+OtCplxMatrix ot_gradient_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                           const OtCplxMatrix& C0, double occ = 2.0);
+
+/// @brief Löwdin re-orthonormalize so `C† S C = I`.
+OtCplxMatrix ot_orthonormalize_k(const OtCplxMatrix& C, const OtCplxMatrix& S);
+
+/// @brief FULL_SINGLE_INVERSE preconditioner for complex Hermitian H,S.
+class OtPrecondSingleInverseK {
+  public:
+    OtPrecondSingleInverseK(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                            const OtCplxMatrix& C);
+    OtCplxMatrix apply(const OtCplxMatrix& g) const;
+
+  private:
+    OtCplxMatrix m_inv_;
+};
+
+/// @brief Fixed-H complex OT band minimization (unit-test entry).
+struct OtFixedResultK {
+    OtCplxMatrix C;
+    double band_energy; ///< `2 Re Tr(C† H C)` [Hartree].
+    int iters = 0;
+    bool converged = false;
+};
+
+/// @brief Minimize closed-shell band energy on a FIXED complex Hermitian H.
+/// @param T Kinetic (FULL_KINETIC precond: M = T+S; may equal H for tests).
+OtFixedResultK ot_minimize_fixed_k(const OtCplxMatrix& H, const OtCplxMatrix& S,
+                                   const OtCplxMatrix& T, const OtCplxMatrix& C0,
+                                   double tol, int max_iter);
+
 } // namespace internal
 } // namespace gpw
 } // namespace cpu
