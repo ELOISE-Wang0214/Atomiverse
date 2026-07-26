@@ -343,6 +343,18 @@ double energy_fixed_P_k(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         throw std::invalid_argument(
             "gpw_stress analytic k: d3, d3bj, d4, ts, and xdm are mutually "
             "exclusive");
+    // MBD@rsSCS is folded into the Gamma fixed-P Lagrangian (energy_fixed_P)
+    // but NOT into this k-summed one, so a multi-k stress would silently omit
+    // E_disp^MBD and report a wrong tensor. Refuse instead: the Gamma path is
+    // productised (regressions/gpw/gpw-mbd-stress) and the multi-k fold is the
+    // separate queued capability gpw-mbd-kpoint-stress.
+    if (cfg.mbd)
+        throw std::invalid_argument(
+            "gpw_stress analytic k: MBD@rsSCS stress is not implemented on the "
+            "multi-k path (it would silently drop E_disp from the strain "
+            "derivative). Use the Gamma path (k_mesh = {1,1,1}, no explicit "
+            "k_points) for MBD stress, or the multi-SCF strain-FD oracle "
+            "gpw_stress_fd.");
 
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());

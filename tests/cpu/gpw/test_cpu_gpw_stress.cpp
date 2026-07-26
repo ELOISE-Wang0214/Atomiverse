@@ -558,3 +558,65 @@ TEST(GpwStress, AnalyticMatchesFdWithD4) {
         EXPECT_LT(max_err, 5e-5) << "Γ RKS + D4 analytic vs multi-SCF FD";
     });
 }
+
+// ── Γ RKS + MBD@rsSCS analytic stress ─────────────────────────────────────
+// Free-atom (isolated) MBD is geometry-only, so it enters the fixed-P
+// Lagrangian exactly like D3/D4: analytic must track the multi-SCF strain-FD.
+// e2e pin (periodic MBD, pymbd E_disp) is reg_gpw-mbd-stress.
+TEST(GpwStress, AnalyticMatchesFdWithMbd) {
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.mbd = true;
+    const double h = 3e-3;
+    EXPECT_NO_THROW({
+        const auto san = gpw_stress(atoms, cfg, h);
+        const auto sfd = gpw_stress_fd(atoms, cfg, h);
+        double max_err = 0.0;
+        for (int a = 0; a < 3; ++a) {
+            const double err = std::abs(san[static_cast<std::size_t>(a)]
+                                        - sfd[static_cast<std::size_t>(a)]);
+            max_err = std::max(max_err, err);
+            std::printf("  MBD axis %d  an=%.6e  fd=%.6e  |d|=%.3e\n", a,
+                        san[static_cast<std::size_t>(a)],
+                        sfd[static_cast<std::size_t>(a)], err);
+            EXPECT_TRUE(std::isfinite(san[static_cast<std::size_t>(a)]));
+            EXPECT_TRUE(std::isfinite(sfd[static_cast<std::size_t>(a)]));
+        }
+        EXPECT_DOUBLE_EQ(san[3], 0.0);
+        EXPECT_DOUBLE_EQ(san[4], 0.0);
+        EXPECT_DOUBLE_EQ(san[5], 0.0);
+        EXPECT_LT(max_err, 5e-5) << "Γ RKS + MBD analytic vs multi-SCF FD";
+    });
+}
+
+// MBD must actually reach the stress, not be silently ignored: switching it on
+// has to move the diagonal. Guards the failure mode the multi-k path had.
+TEST(GpwStress, MbdChangesGammaDiagonal) {
+    const auto atoms = cheap_h2_atoms();
+    GpwDft plain = cheap_h2_cfg();
+    GpwDft with_mbd = cheap_h2_cfg();
+    with_mbd.mbd = true;
+    const auto s0 = gpw_stress(atoms, plain, 3e-3);
+    const auto s1 = gpw_stress(atoms, with_mbd, 3e-3);
+    double max_shift = 0.0;
+    for (int a = 0; a < 3; ++a)
+        max_shift = std::max(max_shift,
+                             std::abs(s1[static_cast<std::size_t>(a)]
+                                      - s0[static_cast<std::size_t>(a)]));
+    std::printf("[GPW stress MBD] max|sigma(mbd)-sigma(plain)|=%.3e Ha/Bohr3\n",
+                max_shift);
+    EXPECT_GT(max_shift, 1e-12) << "MBD is not entering the stress Lagrangian";
+}
+
+// Multi-k + MBD stress must refuse rather than silently drop E_disp from the
+// strain derivative (gpw-mbd-kpoint-stress is a separate queued capability).
+TEST(GpwStress, MbdMultiKStressThrows) {
+    const auto atoms = cheap_h2_atoms();
+    GpwDft cfg = cheap_h2_cfg();
+    cfg.nonperiodic = false;
+    cfg.mbd = true;
+    cfg.k_mesh[0] = 1;
+    cfg.k_mesh[1] = 1;
+    cfg.k_mesh[2] = 2;
+    EXPECT_THROW(gpw_stress(atoms, cfg, 3e-3), std::invalid_argument);
+}

@@ -309,6 +309,8 @@ if(ATV_BUILD_GPW)
     # Dispersion ionic forces vs offline CP2K Quickstep D3 twins.
     atv_add_regression(gpw gpw-d3-forces)
     atv_add_regression(gpw gpw-d3bj-forces)
+    # Gamma analytic cell stress folding periodic MBD@rsSCS.
+    atv_add_regression(gpw gpw-mbd-stress)
     atv_add_regression(gpw gpw-metallic-smearing)
     atv_add_regression(gpw gpw-uks-smearing)
     atv_add_regression(gpw gpw-kpoint-forces)
