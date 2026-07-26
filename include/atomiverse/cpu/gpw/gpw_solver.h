@@ -364,19 +364,19 @@ class GpwDft {
     ///        XL-BOMD auxiliary density or SGCP ASPC prediction. RKS:
     ///        total closed-shell \(P\). UKS: \(P_\alpha\) (requires
     ///        non-null `guess_P_beta`). On the DIIS path the density
-    ///        replaces the C0-derived \(P\). On the **RKS OT** path the
-    ///        density is purified to natural orbitals that seed \(C_0\)
-    ///        (SGCP OT corrector). UKS + `use_ot` + density guess still
-    ///        throws. Shape mismatch throws inside the solve.
+    ///        replaces the C0-derived \(P\). On the **OT** path the
+    ///        density is purified to natural orbitals that seed the OT
+    ///        manifold (RKS: total \(P\) → \(C_0\); UKS: dual-spin
+    ///        \(P_\alpha/P_\beta\) → \(C_a/C_b\) — SGCP OT corrector).
+    ///        Shape mismatch throws inside the solve.
     /// @param guess_P_beta Optional UKS \(P_\beta\) initial density
     ///        (n_ao × n_ao). Must be null for RKS. For UKS both spin
     ///        guesses are required together (no silent cold start of one
     ///        channel).
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
-    /// @throws std::invalid_argument for UKS OT + density guess, UKS with
-    ///         only one spin guess, RKS + non-null `guess_P_beta`, or shape
-    ///         mismatch.
+    /// @throws std::invalid_argument for UKS with only one spin guess,
+    ///         RKS + non-null `guess_P_beta`, or shape mismatch.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
                    const linalg::RealMatrix* guess_C = nullptr,
                    const linalg::RealMatrix* guess_P = nullptr,

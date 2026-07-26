@@ -167,13 +167,9 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     }
 
     // Second-generation CP (Kühne PRL 2007): ASPC + partial SCF corrector.
-    // RKS: one total-P ASPC (DIIS or OT corrector). UKS: dual α/β ASPC on
-    // the diagonalization path only (UKS OT + ASPC is a follow-on).
+    // RKS: one total-P ASPC (DIIS or OT corrector). UKS: dual α/β ASPC with
+    // DIIS or OT corrector (OT: spin-resolved natural-orbital warm-start).
     if (second_gen_cp) {
-        if (cfg.use_ot && (n_alpha + n_beta > 0))
-            throw std::invalid_argument(
-                "GPWEvaluator: second_gen_cp + use_ot is productized for "
-                "closed-shell RKS only (UKS OT ASPC corrector is a follow-on)");
         if (!(second_gen_cp_k >= 0))
             throw std::invalid_argument(
                 "GPWEvaluator: second_gen_cp_k must be >= 0 (ASPC order K)");

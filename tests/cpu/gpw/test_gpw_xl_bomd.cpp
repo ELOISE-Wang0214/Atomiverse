@@ -244,8 +244,9 @@ TEST(GpwSolverGuessP, MismatchedShapeThrows) {
 
 // A5 / A3: UKS density guess requires both spin channels (no partial cold
 // start). RKS OT + total density guess is product (SGCP OT corrector);
-// UKS OT + density guess and RKS + guess_P_beta still throw.
-TEST(GpwSolverGuessP, UksPartialOrOtWithGuessPThrows) {
+// UKS OT + dual density guess is product (second-gen-cpmd-uks-ot);
+// RKS + guess_P_beta still throws.
+TEST(GpwSolverGuessP, UksPartialOrOtWithGuessP) {
     const auto atoms = small_h2();
     const RealMatrix p = constant_matrix(2, 0.5);
     const RealMatrix pb = constant_matrix(2, 0.4);
@@ -275,7 +276,8 @@ TEST(GpwSolverGuessP, UksPartialOrOtWithGuessPThrows) {
     uks_ot.n_beta = 1;
     uks_ot.use_ot = true;
     uks_ot.build(atoms);
-    EXPECT_THROW(uks_ot.run(atoms, nullptr, &p, &pb), std::invalid_argument);
+    // UKS OT + dual density guess: spin-resolved natural-orbital seed.
+    EXPECT_NO_THROW(uks_ot.run(atoms, nullptr, &p, &pb));
 }
 
 // A2: UKS warm density guess (both spins) reaches the cold fixed point.
