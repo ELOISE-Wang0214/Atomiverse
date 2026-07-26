@@ -44,7 +44,7 @@ cpu::Frame make_thermal_box(int n_side) {
                 frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(double(n_side) * 4.0);
+    frame.box = cpu::Box::cubic(double(n_side) * 4.0);
     return frame;
 }
 

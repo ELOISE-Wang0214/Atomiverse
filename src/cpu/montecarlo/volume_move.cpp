@@ -33,7 +33,7 @@ void VolumeMove::launch(const cpu::LaunchContext& ctx) {
             "VolumeMove must run under an MC preset");
     }
 
-    const double v_old = ctx.frame.simbox.volume();
+    const double v_old = ctx.frame.box.volume();
     std::uniform_real_distribution<double> dv(-dv_max_, dv_max_);
     const double v_new = v_old + dv(*rng);
     if (!(v_new > 0.0)) {
@@ -56,7 +56,7 @@ void VolumeMove::launch(const cpu::LaunchContext& ctx) {
         sp_y[i] = static_cast<StorageReal>(static_cast<double>(sp_y[i]) * s);
         sp_z[i] = static_cast<StorageReal>(static_cast<double>(sp_z[i]) * s);
     }
-    ctx.frame.simbox.scale_isotropic(s);
+    ctx.frame.box.scale_isotropic(s);
 }
 
 } // namespace mc

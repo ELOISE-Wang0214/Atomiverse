@@ -104,7 +104,7 @@ cpu::Frame single_atom_frame(int Z) {
     f.span(kAtom_x)[0] = 0.0;
     f.span(kAtom_y)[0] = 0.0;
     f.span(kAtom_z)[0] = 0.0;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -117,7 +117,7 @@ cpu::Frame h2_frame(double bond_ang = 0.74) {
     }
     f.span(kAtom_z)[0] = 0.0;
     f.span(kAtom_z)[1] = bond_ang;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 

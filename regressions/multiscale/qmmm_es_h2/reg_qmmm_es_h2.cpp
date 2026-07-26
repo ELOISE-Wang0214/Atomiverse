@@ -23,7 +23,7 @@ static double energy(double q) {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_tag)[2] = 3;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::evaluate)
         .add(cpu::QmmmElectrostatic{{1, 2}, q, 0.01, 3.4, 8.0});

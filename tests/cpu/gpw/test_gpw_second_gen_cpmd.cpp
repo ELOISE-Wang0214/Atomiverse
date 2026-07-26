@@ -27,7 +27,7 @@ ATV::cpu::Frame water_frame() {
         f.span(ATV::kAtom_y)[i] = y[i];
         f.span(ATV::kAtom_z)[i] = zc[i];
     }
-    f.simbox = ATV::cpu::Box::cubic(10.0);
+    f.box = ATV::cpu::Box::cubic(10.0);
     return f;
 }
 
@@ -149,7 +149,7 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiK) {
     // Multi-k RKS ASPC on complex P_k (product path, second-gen-cpmd-kpoints).
     auto frame = water_frame();
     // Periodic cell required for a k-mesh.
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     auto eval = water_eval();
     eval.nonperiodic = false;
     eval.second_gen_cp = true;
@@ -164,7 +164,7 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiK) {
 
 TEST(GpwEvaluatorSecondGenCp, BuildRejectsMultiKWithOt) {
     auto frame = water_frame();
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     auto eval = water_eval();
     eval.nonperiodic = false;
     eval.second_gen_cp = true;
@@ -179,7 +179,7 @@ TEST(GpwEvaluatorSecondGenCp, BuildRejectsMultiKWithOt) {
 
 TEST(GpwEvaluatorSecondGenCp, BuildAcceptsMultiKUks) {
     auto frame = water_frame();
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     auto eval = water_eval();
     eval.nonperiodic = false;
     eval.second_gen_cp = true;

@@ -270,9 +270,9 @@ TEST(Materialize, RoundTrip) {
     EXPECT_DOUBLE_EQ(h[0], 20.0);
     EXPECT_DOUBLE_EQ(h[4], 20.0);
     EXPECT_DOUBLE_EQ(h[8], 20.0);
-    EXPECT_DOUBLE_EQ(cf.simbox.length(0), 20.0);
-    EXPECT_DOUBLE_EQ(cf.simbox.length(1), 20.0);
-    EXPECT_DOUBLE_EQ(cf.simbox.length(2), 20.0);
+    EXPECT_DOUBLE_EQ(cf.box.length(0), 20.0);
+    EXPECT_DOUBLE_EQ(cf.box.length(1), 20.0);
+    EXPECT_DOUBLE_EQ(cf.box.length(2), 20.0);
 
     // System results cross the boundary only as exact typed metadata. No
     // synthetic result block exists in schema v2.
@@ -529,7 +529,7 @@ TEST(WriteBackContract, NonContractFieldsUntouched) {
     // Mutate NON-contract fields...
     cf.span(ATV::kAtom_type)[0] = 99;
     cf.span(ATV::kAtom_mass)[1] = 999.9;
-    cf.simbox.set_cell(ATV::Mat3::cubic(42.0));
+    cf.box.set_cell(ATV::Mat3::cubic(42.0));
     // ...plus one contract sentinel proving write_back actually ran.
     cf.span(ATV::kAtom_x)[0] = 8.5;
 

@@ -16,7 +16,7 @@
 using namespace ATV;
 
 static double pressure(const cpu::Frame& f) {
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     const auto& s = f.meta.get(kStress);
     return (s[0] + s[1] + s[2]) / (3.0 * V);
 }
@@ -39,7 +39,7 @@ int main() {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(L0);
+    f.box = cpu::Box::cubic(L0);
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax cell(0.0, 0.08);
@@ -57,7 +57,7 @@ int main() {
     // by a single Minimize step with max_scale 0 — instead evaluate by short run.
     opt.run(f, 200);
 
-    const double L1 = f.simbox.length(0);
+    const double L1 = f.box.length(0);
     const double P1 = pressure(f);
 
     std::printf("Cell relax: L0=%.4f L1=%.4f  P1=%.6e eV/A3  residual=%.6e\n",

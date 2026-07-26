@@ -46,7 +46,7 @@ cpu::Frame make_lj_system(int n_side, double density) {
                 frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
     std::srand(42);
     for (int i = 0; i < n; ++i) {
         frame.span(kAtom_vx)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);

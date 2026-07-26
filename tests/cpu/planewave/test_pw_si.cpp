@@ -33,7 +33,7 @@ cpu::Frame make_si_fcc(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.simbox.set_cell(cell);
+    f.box.set_cell(cell);
     return f;
 }
 } // namespace

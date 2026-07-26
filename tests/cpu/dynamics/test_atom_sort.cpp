@@ -27,7 +27,7 @@ TEST(AtomSort, ReordersBySpatialBin) {
         f.span(kAtom_type)[i] = i;
         f.span(kAtom_mass)[i] = 1.0 + 0.01 * i;
     }
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
 
     // Snapshot tag→position
     std::vector<double> xref(n), yref(n), zref(n);
@@ -65,7 +65,7 @@ TEST(AtomSort, NotifyBumpsNeighborGeneration) {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_type)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(4.0);
+    f.box = cpu::Box::cubic(4.0);
     cpu::md::mpi::DomainDecomposition dd;
     dd.bind(f);
     const auto g0 = dd.neighbor_generation;

@@ -167,7 +167,7 @@ TEST(GpwStress, EvaluatorWritesKStressAnalyticDefault) {
     frame.span(kAtom_x)[1] = 6.7 * b2a;
     frame.span(kAtom_y)[1] = 6.1 * b2a;
     frame.span(kAtom_z)[1] = 5.9 * b2a;
-    frame.simbox = cpu::Box::cubic(12.0 * b2a);
+    frame.box = cpu::Box::cubic(12.0 * b2a);
 
     const Kind H{molrs::Element::H,
                  GaussianBasis(molrs::Element::H, "DZV-GTH-PADE"),

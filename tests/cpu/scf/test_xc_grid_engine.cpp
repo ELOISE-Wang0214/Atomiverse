@@ -50,7 +50,7 @@ cpu::Frame make_h2() {
     f.span(ATV::kAtom_type)[1] = 1;
     f.span(ATV::kAtom_mass)[0] = 1.008;
     f.span(ATV::kAtom_mass)[1] = 1.008;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

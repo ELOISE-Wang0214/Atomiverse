@@ -37,7 +37,7 @@ cpu::Frame make_rocksalt(double d, int n) {
                 frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(n * d);
+    frame.box = cpu::Box::cubic(n * d);
     return frame;
 }
 

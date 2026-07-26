@@ -82,7 +82,7 @@ cpu::Frame make_fcc_argon(double perturb_amp) {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(kCells * kALat);
+    frame.box = ATV::cpu::Box::cubic(kCells * kALat);
     return frame;
 }
 

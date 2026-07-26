@@ -125,7 +125,7 @@ class PressureConverged : public Criterion {
     void launch(const LaunchContext&) override {}
 
     Verdict verdict(const LoopState& s) override {
-        const double V = s.frame.simbox.volume();
+        const double V = s.frame.box.volume();
         if (!(V > 0.0))
             return Verdict::Stop;
         const auto& st = s.frame.meta.get(kStress);

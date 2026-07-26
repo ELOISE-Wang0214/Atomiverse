@@ -40,7 +40,7 @@ struct Kind {
 /// **Variable cell:** `launch()` re-targets the solver to the frame's current
 /// orthorhombic box on every call (`GpwDft::run` rebuilds all
 /// geometry-dependent structure — grids, lattice images, S/T/Vpp — per call),
-/// so cell-relaxation drivers may rescale `frame.simbox` between launches.
+/// so cell-relaxation drivers may rescale `frame.box` between launches.
 /// The MO warm start survives a cell change (the AO basis is
 /// geometry-independent in size).
 class GPWEvaluator : public cpu::GPW {

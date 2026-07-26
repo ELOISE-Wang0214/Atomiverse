@@ -114,7 +114,7 @@ cpu::Frame make_water() {
     f.span(ATV::kAtom_y)[2] = -0.757;
     f.span(ATV::kAtom_z)[2] = -0.468;
     f.span(ATV::kAtom_type)[2] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -141,7 +141,7 @@ cpu::Frame make_methane() {
     f.span(ATV::kAtom_y)[4] = -0.629;
     f.span(ATV::kAtom_z)[4] = -0.629;
     f.span(ATV::kAtom_type)[4] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

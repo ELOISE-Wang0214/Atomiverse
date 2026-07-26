@@ -72,8 +72,8 @@ MeanFieldMethod<D>::PositionGuard::PositionGuard(Frame& frame, bool active)
     z_.assign(pz, pz + n);
     if (n <= 1)
         return;
-    if (frame_.simbox.length(0) <= 0.0 || frame_.simbox.length(1) <= 0.0
-        || frame_.simbox.length(2) <= 0.0)
+    if (frame_.box.length(0) <= 0.0 || frame_.box.length(1) <= 0.0
+        || frame_.box.length(2) <= 0.0)
         return;
     StorageReal* __restrict sp_x = frame_.span(kAtom_x);
     StorageReal* __restrict sp_y = frame_.span(kAtom_y);
@@ -81,7 +81,7 @@ MeanFieldMethod<D>::PositionGuard::PositionGuard(Frame& frame, bool active)
     const double x0 = sp_x[0], y0 = sp_y[0], z0 = sp_z[0];
     for (int i = 1; i < n; ++i) {
         double dx = sp_x[i] - x0, dy = sp_y[i] - y0, dz = sp_z[i] - z0;
-        frame_.simbox.min_image(dx, dy, dz);
+        frame_.box.min_image(dx, dy, dz);
         sp_x[i] = x0 + dx;
         sp_y[i] = y0 + dy;
         sp_z[i] = z0 + dz;
@@ -968,7 +968,6 @@ void MeanFieldMethod<D>::drive_scf_core_(Frame& frame,
                                        grid_level,
                                        n_radial,
                                        n_angular,
-                                       force_native_two_electron_deriv,
                                        xc_grad_project_translation};
         last_grad_ = gradient.compute(frame, ints, *det_sp_, e_total_);
         const int natm = static_cast<int>(frame.nlocal());

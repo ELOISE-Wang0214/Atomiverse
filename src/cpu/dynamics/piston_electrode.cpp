@@ -101,8 +101,8 @@ void PistonElectrode::apply_forces_(cpu::Frame& f) {
     last_vz_com_ = vz_com;
     last_F_z_atoms_ = F_atoms;
 
-    const double Lx = f.simbox.length(0);
-    const double Ly = f.simbox.length(1);
+    const double Lx = f.box.length(0);
+    const double Ly = f.box.length(1);
     const double A = Lx * Ly;
     last_area_ = A;
     if (!(A > 0.0))

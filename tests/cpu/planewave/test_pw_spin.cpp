@@ -25,7 +25,7 @@ cpu::Frame o2_frame(double L_ang) {
     }
     f.span(kAtom_z)[0] = 0.0;
     f.span(kAtom_z)[1] = 1.2075; // Å
-    f.simbox = cpu::Box::cubic(L_ang);
+    f.box = cpu::Box::cubic(L_ang);
     return f;
 }
 

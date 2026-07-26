@@ -165,7 +165,7 @@ double compute_bonded_extension_local(const Frame& frame,
         double dx = sp_x[i] - sp_x[j];
         double dy = sp_y[i] - sp_y[j];
         double dz = sp_z[i] - sp_z[j];
-        frame.simbox.min_image(dx, dy, dz);
+        frame.box.min_image(dx, dy, dz);
         return dx * dx + dy * dy + dz * dz;
     };
 
@@ -425,7 +425,7 @@ void pack_forward_for_face(const Frame& frame,
                     "halo forward extras");
     buffer.resize(wire_bytes + extras);
     const int dim = face_dim(f);
-    const double shift = pbc_shift_for_face(dd, f, frame.simbox.length(dim));
+    const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
     const double sx = dim == 0 ? shift : 0.0;
     const double sy = dim == 1 ? shift : 0.0;
     const double sz = dim == 2 ? shift : 0.0;
@@ -1118,7 +1118,7 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
 
     for (int dim = 0; dim < 3; ++dim) {
         const int face[2] = {2 * dim, 2 * dim + 1};
-        const double L = frame.simbox.length(dim);
+        const double L = frame.box.length(dim);
 
         MPI_Request reqs[4];
         int n_req = 0;

@@ -62,7 +62,7 @@ KSpacePME::KSpacePME(KSpacePME&& other) noexcept
 }
 
 void KSpacePME::ensure_grid(const cpu::Frame& frame, bool initial_build) {
-    const auto& box = frame.simbox;
+    const auto& box = frame.box;
     if (have_grid_ && box_identity_ == &box && box.revision() == cell_revision_)
         return;
 
@@ -169,8 +169,8 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     AccReal* __restrict sp_fy = f.span(kAtom_fy);
     AccReal* __restrict sp_fz = f.span(kAtom_fz);
 
-    const auto& ic = f.simbox.inv_cell();
-    const double vol = f.simbox.volume();
+    const auto& ic = f.box.inv_cell();
+    const double vol = f.box.volume();
 
     // Zero charge grid (complex). memset is faster than per-element fill.
     std::memset(grid_.data(), 0,

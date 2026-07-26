@@ -29,7 +29,7 @@ int main() {
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(30);
+    f.box = cpu::Box::cubic(30);
     const double vz = 0.01;
     const double dt = 0.001;
     cpu::md::MD sim;

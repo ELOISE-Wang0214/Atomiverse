@@ -31,7 +31,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
 
     // Volume from box (orthorhombic). For multi-rank the box is
     // identical across ranks, so V is the global volume.
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (V <= 0.0)
         return;
 
@@ -67,7 +67,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // Scale box edges. Single-rank or multi-rank: deterministic, identical
     // computation on every rank (P, V, μ are all global) so the box stays
     // consistent across ranks without any explicit broadcast.
-    f.simbox.scale_isotropic(mu);
+    f.box.scale_isotropic(mu);
 
     // Affine-rescale owned atom positions.
     const int n = owned_count(ctx);
@@ -107,7 +107,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // from these bounds; letting them go stale degrades both as the box
     // breathes.
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 

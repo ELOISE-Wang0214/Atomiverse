@@ -46,7 +46,7 @@ cpu::Frame make_two_sheet() {
     f.span(kAtom_mass)[1] = 12.0;
     f.span(kAtom_tag)[1] = 2;
 
-    f.simbox = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
+    f.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
     return f;
 }
 

@@ -68,7 +68,7 @@ inline ATV::cpu::Frame make_trivial_frame(int n = 1) {
         f.span(ATV::kAtom_type)[i] = 0;
         f.span(ATV::kAtom_tag)[i] = i + 1;
     }
-    f.simbox = ATV::cpu::Box::cubic(10.0);
+    f.box = ATV::cpu::Box::cubic(10.0);
     return f;
 }
 

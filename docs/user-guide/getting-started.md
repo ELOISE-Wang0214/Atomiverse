@@ -5,13 +5,13 @@ This page is **install and run** only. For Driver / Component vocabulary see
 [Core concepts](concepts.md); for theory and literature numbers see the
 [Tutorial](../tutorial/).
 
-Requires **C++17** and **CMake ≥ 3.18**.
+Requires **C++20** and **CMake ≥ 3.18**.
 
 ## 1. Dependencies
 
 | Need | Why |
 |---|---|
-| C++17 compiler + CMake ≥ 3.18 | build |
+| C++20 compiler + CMake ≥ 3.18 | build |
 | BLAS/LAPACK (OpenBLAS) | dense linear algebra in SCF |
 | Rust toolchain | molrs (I/O) is built via corrosion |
 | FFTW3 *(optional)* | plane-wave DFT / k-space (`ATV_BUILD_PW`) |

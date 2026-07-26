@@ -4,7 +4,7 @@
 /// Owned by `cpu::Runtime`. Lifetime is strictly enclosed by the backend's
 /// init/shutdown bracket: no construction in `launch()`, no state carried
 /// across plan swaps. Uses `std::thread` + `std::condition_variable`
-/// (C++17, not `std::jthread` which requires C++20).
+/// (`std::thread` deliberately — not `std::jthread`).
 ///
 /// @see .claude/specs/async-analysis-snapshot-ring-01-uniformity.md
 #pragma once

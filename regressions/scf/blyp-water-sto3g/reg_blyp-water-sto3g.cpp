@@ -32,7 +32,7 @@ int main() {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -0.7572;
     frame.span(kAtom_z)[2] = -0.4692;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // PySCF 2.14.0 pin (REFERENCE.md): rks --geom water --basis sto-3g --xc blyp
     constexpr double kEnergyRef = -75.277447482665; // Ha

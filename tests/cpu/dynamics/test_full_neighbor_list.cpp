@@ -41,7 +41,7 @@ cpu::Frame lattice(int n_side, double spacing) {
                 f.span(ATV::kAtom_type)[idx] = 0;
                 ++idx;
             }
-    f.simbox = ATV::cpu::Box::cubic(n_side * spacing);
+    f.box = ATV::cpu::Box::cubic(n_side * spacing);
     return f;
 }
 
@@ -133,7 +133,7 @@ TEST(FullNeighborList, LegsAreCompleteWithinCutoffAndBoundedBySkin) {
             double dx = f.span(ATV::kAtom_x)[i] - f.span(ATV::kAtom_x)[j];
             double dy = f.span(ATV::kAtom_y)[i] - f.span(ATV::kAtom_y)[j];
             double dz = f.span(ATV::kAtom_z)[i] - f.span(ATV::kAtom_z)[j];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
 
             if (r <= cutoff) {

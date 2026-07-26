@@ -17,7 +17,7 @@ TEST(RpmdEstimator, AnalyticPositiveAndClassicalLimit) {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
 
     // Trigger ensure_built via short run so mass/spring set.
     pimd.run(f, 2);

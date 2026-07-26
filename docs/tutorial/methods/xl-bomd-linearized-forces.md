@@ -176,7 +176,7 @@ using namespace ATV;
 // Isolated H₂O — CP2K getting-started geometry (Å); twin of xl-bomd-water
 cpu::Frame frame(3);
 // ... Z, masses, coords as in REFERENCE; COM-preserving H stretch vx ...
-frame.simbox = cpu::Box::cubic(10.0);
+frame.box = cpu::Box::cubic(10.0);
 
 const cpu::gpw::Kind O{
     molrs::Element::O,

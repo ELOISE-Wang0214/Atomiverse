@@ -124,7 +124,7 @@ frame.span(kAtom_x)[0] = 5.0;
 frame.span(kAtom_y)[0] = 10.0;
 frame.span(kAtom_z)[0] = 10.0;
 // … fill atoms 1–2; tags/types/mass as needed
-frame.simbox = cpu::Box::cubic(20.0);
+frame.box = cpu::Box::cubic(20.0);
 
 // Amplitudes [V/Å], period and dt [fs], phase default 0
 cpu::md::FixOscillatingEfield osc(

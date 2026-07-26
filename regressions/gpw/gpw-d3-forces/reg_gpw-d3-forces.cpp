@@ -169,7 +169,7 @@ int main() {
         frame.span(kAtom_fx)[i] = frame.span(kAtom_fy)[i] =
             frame.span(kAtom_fz)[i] = 0;
     }
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     const cpu::gpw::Kind O{
         molrs::Element::O,

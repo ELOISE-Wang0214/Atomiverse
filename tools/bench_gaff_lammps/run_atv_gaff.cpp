@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
             nrank,
             std::getenv("OMP_NUM_THREADS") ? std::getenv("OMP_NUM_THREADS")
                                            : "1",
-            n_atoms, frame.simbox.length(0), args.cutoff, args.accuracy,
+            n_atoms, frame.box.length(0), args.cutoff, args.accuracy,
             args.steps, args.warmup);
         std::printf("[atv] data=%s\n", args.data.c_str());
     }

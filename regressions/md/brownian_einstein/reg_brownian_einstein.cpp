@@ -26,7 +26,7 @@ int main() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(1e6); // free sandbox — no wrap
+    f.box = cpu::Box::cubic(1e6); // free sandbox — no wrap
 
     cpu::md::Brownian bd(dt, D, 300.0, 7);
     cpu::Context ctx;

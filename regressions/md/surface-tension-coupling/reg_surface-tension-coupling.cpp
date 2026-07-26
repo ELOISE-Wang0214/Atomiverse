@@ -23,7 +23,7 @@ namespace {
 
 /// Instantaneous planar surface tension [eV/Å²] from stress tensor.
 double gamma_inst(const cpu::Frame& f) {
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         return 0.0;
     const auto& s = f.meta.get(kStress);
@@ -31,7 +31,7 @@ double gamma_inst(const cpu::Frame& f) {
     const double Pxx = (s[0] + sk[0]) / V;
     const double Pyy = (s[1] + sk[1]) / V;
     const double Pzz = (s[2] + sk[2]) / V;
-    return 0.5 * f.simbox.length(2) * (Pzz - 0.5 * (Pxx + Pyy));
+    return 0.5 * f.box.length(2) * (Pzz - 0.5 * (Pxx + Pyy));
 }
 
 } // namespace
@@ -69,9 +69,9 @@ int main() {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = cpu::Box::cubic(n_cells * a_lat);
-    const double L0 = frame.simbox.length(0);
-    const double V0 = frame.simbox.volume();
+    frame.box = cpu::Box::cubic(n_cells * a_lat);
+    const double L0 = frame.box.length(0);
+    const double V0 = frame.box.volume();
 
     // Offline-implied Plat at Lz0 (for documentation / sanity):
     // Plat = Pn - n_surf * gamma / L0
@@ -88,10 +88,10 @@ int main() {
     sim.build();
     sim.run(frame, n_steps);
 
-    const double Lx = frame.simbox.length(0);
-    const double Ly = frame.simbox.length(1);
-    const double Lz = frame.simbox.length(2);
-    const double V1 = frame.simbox.volume();
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
+    const double V1 = frame.box.volume();
     const double g = gamma_inst(frame);
 
     std::printf("SurfaceTensionNPT LJ FCC N=%d steps=%d\n", n, n_steps);

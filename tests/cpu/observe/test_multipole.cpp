@@ -66,7 +66,7 @@ cpu::Frame one_atom_frame(double x_ang, double y_ang, double z_ang, int z) {
     f.span(kAtom_x)[0] = x_ang;
     f.span(kAtom_y)[0] = y_ang;
     f.span(kAtom_z)[0] = z_ang;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 

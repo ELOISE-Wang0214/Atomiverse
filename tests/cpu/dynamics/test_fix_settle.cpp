@@ -43,7 +43,7 @@ cpu::Frame tip3p_perturbed() {
         f.span(kAtom_vy)[i] = -0.02 * (i + 1);
         f.span(kAtom_vz)[i] = 0.005;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

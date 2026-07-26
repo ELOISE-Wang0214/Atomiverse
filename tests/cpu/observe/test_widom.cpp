@@ -17,7 +17,7 @@ namespace {
 
 cpu::Frame empty_box(double L) {
     cpu::Frame f(0);
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -29,7 +29,7 @@ cpu::Frame one_atom_at_origin(double L) {
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 

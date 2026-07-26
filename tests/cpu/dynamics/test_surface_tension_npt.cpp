@@ -34,13 +34,13 @@ cpu::Frame make_lj_fcc(int n_cells, double a_lat, double mass) {
                     f.span(kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    f.simbox = cpu::Box::cubic(n_cells * a_lat);
+    f.box = cpu::Box::cubic(n_cells * a_lat);
     return f;
 }
 
 /// Instantaneous planar γ [eV/Å²] from frame stress + kinetic (diagnostic).
 double gamma_inst(const cpu::Frame& f) {
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         return 0.0;
     const auto& s = f.meta.get(kStress);
@@ -49,7 +49,7 @@ double gamma_inst(const cpu::Frame& f) {
     const double Pxx = (s[0] + sk[0]) / V;
     const double Pyy = (s[1] + sk[1]) / V;
     const double Pzz = (s[2] + sk[2]) / V;
-    const double Lz = f.simbox.length(2);
+    const double Lz = f.box.length(2);
     return 0.5 * Lz * (Pzz - 0.5 * (Pxx + Pyy));
 }
 
@@ -73,7 +73,7 @@ TEST(SurfaceTensionNPT, CoupleXyKeepsLxEqualsLy) {
     const double cutoff = 8.5;
     const double a_lat = 5.1;
     auto frame = make_lj_fcc(/*n_cells=*/3, a_lat, 39.948);
-    const double L0 = frame.simbox.length(0);
+    const double L0 = frame.box.length(0);
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
@@ -86,14 +86,14 @@ TEST(SurfaceTensionNPT, CoupleXyKeepsLxEqualsLy) {
     sim.build();
     sim.run(frame, 80);
 
-    const double Lx = frame.simbox.length(0);
-    const double Ly = frame.simbox.length(1);
-    const double Lz = frame.simbox.length(2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
     EXPECT_TRUE(std::isfinite(Lx) && std::isfinite(Ly) && std::isfinite(Lz));
     EXPECT_NEAR(Lx, Ly, 1e-10);
     // Box should move from compressed start (not frozen).
     EXPECT_GT(std::fabs(Lx - L0) + std::fabs(Lz - L0), 1e-6);
-    EXPECT_GT(frame.simbox.volume(), 0.0);
+    EXPECT_GT(frame.box.volume(), 0.0);
 
     const double g = gamma_inst(frame);
     EXPECT_TRUE(std::isfinite(g));

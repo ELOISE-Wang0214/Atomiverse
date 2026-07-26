@@ -78,7 +78,7 @@ cpu::Frame make_nacl(double scale) {
                 frame.span(ATV::kAtom_vz)[idx] = 0.0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(kSide * kD * scale);
+    frame.box = cpu::Box::cubic(kSide * kD * scale);
     return frame;
 }
 
@@ -140,7 +140,7 @@ TEST(PmeNaclParity, StaticEnergyStressForceOn1And2Ranks) {
         << "ranks disagree on reduced stress_xx";
 
     // Cell must be identical on every rank (NPT/deform path will write it).
-    double V = frame.simbox.volume();
+    double V = frame.box.volume();
     double V_min = V, V_max = V;
     MPI_Allreduce(MPI_IN_PLACE, &V_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(MPI_IN_PLACE, &V_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
@@ -185,7 +185,7 @@ TEST(PmeNaclParity, ShortNptConservedAndCellOn1And2Ranks) {
     // Mildly expanded start so NPT contracts under cohesion + P=0. Keep the
     // run short so the shrinking cell never undercuts the halo shell.
     auto frame = make_nacl(1.02);
-    const double V0 = frame.simbox.volume();
+    const double V0 = frame.box.volume();
 
     const double dt = 0.5;
     const double T = 300.0;
@@ -219,7 +219,7 @@ TEST(PmeNaclParity, ShortNptConservedAndCellOn1And2Ranks) {
     constexpr int n_steps = 40;
     sim.run(frame, n_steps);
     const double H1 = frame.meta.get(ATV::kConserved);
-    const double V1 = frame.simbox.volume();
+    const double V1 = frame.box.volume();
     ASSERT_TRUE(std::isfinite(H1)) << "rank " << rank << " H1 non-finite";
     ASSERT_TRUE(std::isfinite(frame.meta.get(ATV::kEnergy)));
     ASSERT_TRUE(std::isfinite(frame.meta.get(ATV::kKinetic)));

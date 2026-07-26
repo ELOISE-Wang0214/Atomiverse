@@ -56,7 +56,7 @@ int main() {
         f.span(kAtom_mass)[i] = masses[i];
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
 
     cpu::PairBorn born({{0, 0, A_NaNa, rho, sig_NaNa, C_NaNa, D_NaNa},
                         {1, 1, A_ClCl, rho, sig_ClCl, C_ClCl, D_ClCl},

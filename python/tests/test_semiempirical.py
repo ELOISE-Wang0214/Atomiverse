@@ -49,7 +49,7 @@ def _make_ch4_frame() -> "molrs.Frame":
     )
     atoms.insert("type", np.array([6, 1, 1, 1, 1], dtype=np.int32))
     frame["atoms"] = atoms
-    frame.simbox = molrs.Box.cube(20.0)
+    frame.box = molrs.Box.cube(20.0)
     return frame
 
 
@@ -194,7 +194,7 @@ class TestUnsupportedElement:
         atoms.insert("mass", np.array([252.0], dtype=np.float64))
         atoms.insert("type", np.array([99], dtype=np.int32))
         frame["atoms"] = atoms
-        frame.simbox = molrs.Box.cube(20.0)
+        frame.box = molrs.Box.cube(20.0)
 
         with pytest.raises(RuntimeError):
             av.single_point(frame, av.AM1Evaluator())

@@ -81,7 +81,7 @@ int main() {
         frame.span(kAtom_tag)[idx] = idx + 1;
         ++idx;
     }
-    frame.simbox = cpu::Box::orthorhombic(Lxy, Lxy, Lz);
+    frame.box = cpu::Box::orthorhombic(Lxy, Lxy, Lz);
 
     // Snapshot wall positions for freeze check.
     std::vector<double> wall_x0, wall_y0, wall_z0;

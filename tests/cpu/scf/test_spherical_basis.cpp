@@ -50,7 +50,7 @@ cpu::Frame water() {
     x[2] = 0.0;
     y[2] = -0.7572;
     z[2] = -0.4692;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -166,7 +166,7 @@ TEST(SphericalGradient, SphericalOverlapDerivMatchesFiniteDifference) {
 TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 8; // O
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     const IntegralPack p{f, BasisSet::Def2SVP};
     ASSERT_TRUE(p.spherical());
 
@@ -186,7 +186,6 @@ TEST(SphericalGradient, RhfSphericalRunsSiblingsStillThrow) {
                                                cpu::scf::GridLevel::SG0,
                                                0,
                                                0,
-                                               false,
                                                false};
     };
 

@@ -38,7 +38,7 @@ cpu::Frame make_water() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
     return f;
 }

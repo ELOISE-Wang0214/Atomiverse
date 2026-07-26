@@ -21,7 +21,7 @@ cpu::Frame expand_supercell(const cpu::Frame& unit, int na, int nb, int nc) {
     const int n_sc = n_unit * na * nb * nc;
     cpu::Frame sc(n_sc);
 
-    const Mat3& cell = unit.simbox.cell();
+    const Mat3& cell = unit.box.cell();
     // Rows of cell are lattice vectors a, b, c [Å].
     const double ax = cell(0, 0), ay = cell(0, 1), az = cell(0, 2);
     const double bx = cell(1, 0), by = cell(1, 1), bz = cell(1, 2);
@@ -37,7 +37,7 @@ cpu::Frame expand_supercell(const cpu::Frame& unit, int na, int nb, int nc) {
     sc_cell(2, 0) = cx * nc;
     sc_cell(2, 1) = cy * nc;
     sc_cell(2, 2) = cz * nc;
-    sc.simbox.set_cell(sc_cell);
+    sc.box.set_cell(sc_cell);
 
     const auto ux = unit.span(kAtom_x);
     const auto uy = unit.span(kAtom_y);

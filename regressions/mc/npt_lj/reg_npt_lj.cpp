@@ -95,7 +95,7 @@ int main() {
         frame.span(ATV::kAtom_mass)[i] = mass;
         frame.span(ATV::kAtom_type)[i] = 1;
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
 
     // δV ≈ σ_V = ⟨V⟩/√N keeps volume moves near 50% acceptance.
     const double dv_max = v_pred / std::sqrt(static_cast<double>(n_atoms));
@@ -112,7 +112,7 @@ int main() {
     double v_sum = 0.0, v_sq_sum = 0.0;
     for (int b = 0; b < n_blocks; ++b) {
         mc.run(frame, 10);
-        const double v_now = frame.simbox.volume();
+        const double v_now = frame.box.volume();
         v_sum += v_now;
         v_sq_sum += v_now * v_now;
     }

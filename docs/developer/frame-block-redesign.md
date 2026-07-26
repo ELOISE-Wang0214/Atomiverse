@@ -7,7 +7,7 @@ class cpu::Frame {
   public:
     BlockMap blocks;
     MetaMap meta;
-    cpu::Box simbox;
+    cpu::Box box;
 };
 ```
 
@@ -96,14 +96,14 @@ broadcast 或文件边界。
 
 ## 4. Box 是独立的 cell 所有者
 
-`simbox` 是 Frame 唯一 cell。它拥有 cell matrix 以及同步更新的
+`box` 是 Frame 唯一 cell。它拥有 cell matrix 以及同步更新的
 `inv_cell`、`inv_L`、`half_L` 和 orthogonality cache。调用者使用当前 Box API：
 
 ```cpp
-frame.simbox = cpu::Box::cubic(40.0);
-frame.simbox.set_cell(cell);
-const double lx = frame.simbox.length(0);
-const double volume = frame.simbox.volume();
+frame.box = cpu::Box::cubic(40.0);
+frame.box.set_cell(cell);
+const double lx = frame.box.length(0);
+const double volume = frame.box.volume();
 ```
 
 cell 更新必须经过 `Box`，从而同时刷新缓存。Frame 不提供另一个 cell 成员，
@@ -117,7 +117,7 @@ Box 也不提供把 `Mat3` 当作旧聚合对象操作的元素/赋值兼容运�
 - `copy_row` 搬运声明为 migrate 的标准列和运行时列；
 - `reserve_topology` / `grow_group` 统一 re-stride counted topology；
 - `clone_structure(rows)` 复制完整 Block/Column schema、运行时列、
-  serializable meta schema/value 和 simbox，但重建 backend-local counts/index；
+  serializable meta schema/value 和 box，但重建 backend-local counts/index；
 - `memory_bytes` 从实际 Block/Column/meta 所有权计算。
 
 新增列必须通过 `frame.block("atoms").insert(key, ColumnSpec{...})` 注册。
@@ -189,11 +189,11 @@ Block 化不改变 kernel 的计算布局：CPU 仍是连续 SoA，xsimd/OpenMP 
 
 CPU hard cut 的 source/compile-negative gates 至少保证：
 
-- `cpu::Frame` 只有 `blocks`、`meta`、`simbox` 三个物理成员；
+- `cpu::Frame` 只有 `blocks`、`meta`、`box` 三个物理成员；
 - 没有独立的原子聚合存储或 SystemScalars 镜像；
 - 没有旧 Frame 成员、Box 运算符、forwarding insert、proxy macro；
 - CPU production、tests、regressions、examples、tools、app、Python 和文档只教授
-  `span(ColKey)`、typed meta 与 `simbox`；
+  `span(ColKey)`、typed meta 与 `box`；
 - MPI payload 没有 double funnel，runtime columns/topology 参与 schema plan；
 - molrs typed meta ID/版本与 CXX 边界精确一致；
 - CUDA/Torch 仍明确 deferred，且 CPU 不因它们保留任何兼容表面。

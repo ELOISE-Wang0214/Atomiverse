@@ -87,7 +87,7 @@ static cpu::Frame make_aspirin() {
         f.span(ATV::kAtom_y)[i] = double(coords[i][1]);
         f.span(ATV::kAtom_z)[i] = double(coords[i][2]);
     }
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -105,7 +105,6 @@ int main() {
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = double(1e-6);
     rhf.max_iter = 200;
-    rhf.force_native_two_electron_deriv = true;
 
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{

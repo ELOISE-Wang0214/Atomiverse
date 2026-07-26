@@ -50,7 +50,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a);
     return frame;
 }
 

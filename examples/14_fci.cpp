@@ -21,7 +21,7 @@ int main() {
     frame.span(kAtom_type)[1] = 1;
     frame.span(kAtom_mass)[0] = 1.008;
     frame.span(kAtom_mass)[1] = 1.008;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;

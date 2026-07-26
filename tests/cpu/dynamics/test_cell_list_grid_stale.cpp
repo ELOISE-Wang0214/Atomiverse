@@ -24,7 +24,7 @@ cpu::Frame make_frame(double lx, double ly, double lz) {
         frame.span(ATV::kAtom_z)[i] = 0.5 + 2.0 * (i / 4);
         frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.simbox.set_cell(Mat3::diagonal(lx, ly, lz));
+    frame.box.set_cell(Mat3::diagonal(lx, ly, lz));
     return frame;
 }
 
@@ -38,9 +38,9 @@ TEST(CellListGridStale, EachAxisAloneTriggersRebuild) {
         cl.build(frame);
         ASSERT_FALSE(cl.needs_rebuild(frame)) << "axis " << axis;
 
-        Mat3 cell = frame.simbox.cell();
+        Mat3 cell = frame.box.cell();
         cell(axis, axis) *= 1.2; // stretch ONLY this edge
-        frame.simbox.set_cell(cell);
+        frame.box.set_cell(cell);
         EXPECT_TRUE(cl.needs_rebuild(frame))
             << "stretching only axis " << axis << " must stale the grid";
     }

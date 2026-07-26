@@ -19,7 +19,7 @@ int main() {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     // Multiple Evaluate launches deposit hills (pace=1)
     auto cv = std::make_unique<cpu::bias::DistanceCV>(1, 2);
     cpu::bias::Metadynamics1D* meta_ptr = nullptr;

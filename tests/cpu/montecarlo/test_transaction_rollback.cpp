@@ -51,7 +51,7 @@ cpu::Frame make_frame(int n) {
     frame.rebuild_tag_index(0, n);
     frame.add_bond(/*ti=*/0, /*tj=*/1, /*type=*/3);
     frame.add_angle(/*ti=*/0, /*tj=*/1, /*tk=*/2, /*type=*/4);
-    frame.simbox.set_cell(Mat3::diagonal(10.0, 12.0, 14.0));
+    frame.box.set_cell(Mat3::diagonal(10.0, 12.0, 14.0));
     frame.meta.get(ATV::kEnergy) = -1.25;
     return frame;
 }
@@ -124,7 +124,7 @@ void expect_frames_identical(const cpu::Frame& f, const cpu::Frame& ref) {
     }
     for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c)
-            EXPECT_EQ(f.simbox.cell()(r, c), ref.simbox.cell()(r, c));
+            EXPECT_EQ(f.box.cell()(r, c), ref.box.cell()(r, c));
 }
 
 } // namespace
@@ -199,7 +199,7 @@ TEST(TransactionRollback, RejectedVolumeMoveRestoresBoxAndCoordinates) {
         frame.span(ATV::kAtom_y)[i] *= s;
         frame.span(ATV::kAtom_z)[i] *= s;
     }
-    frame.simbox.scale_isotropic(s);
+    frame.box.scale_isotropic(s);
 
     t.rollback(frame);
     // s*x/s != x in floating point — only a stored-row splice passes this.

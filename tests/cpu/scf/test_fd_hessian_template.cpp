@@ -102,7 +102,7 @@ cpu::Frame make_frame(const std::vector<double>& r0) {
         f.span(kAtom_z)[a] =
             static_cast<StorageReal>(r0[static_cast<std::size_t>(3 * a + 2)]);
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

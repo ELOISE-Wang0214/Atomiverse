@@ -72,7 +72,7 @@ cpu::Frame make_parallel_plate() {
     mass[9] = 23.0;
     tag[9] = 10;
 
-    f.simbox = cpu::Box::orthorhombic(20.0, 10.0, 10.0);
+    f.box = cpu::Box::orthorhombic(20.0, 10.0, 10.0);
     return f;
 }
 

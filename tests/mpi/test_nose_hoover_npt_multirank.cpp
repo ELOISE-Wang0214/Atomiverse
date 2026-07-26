@@ -59,7 +59,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -113,7 +113,7 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
     if (my_rank == 0) {
         std::printf("[NHnpt-8r] step 1: T=%.3f K, E_kin=%.3f eV, box=%.4f Å\n",
                     T1, static_cast<double>(frame.meta.get(ATV::kKinetic)),
-                    frame.simbox.cell()(0, 0));
+                    frame.box.cell()(0, 0));
     }
     EXPECT_GT(T1, 50.0) << "after step 1: T_K should be > 50 K, got " << T1;
     EXPECT_LT(T1, 600.0) << "after step 1: T_K runaway: " << T1;
@@ -131,7 +131,7 @@ TEST(NoseHooverNptMultiRank, KineticEnergyNonZero) {
                         "box=%.4f Å\n",
                         chunk_start + probe_every + 1, T,
                         static_cast<double>(frame.meta.get(ATV::kKinetic)),
-                        frame.simbox.cell()(0, 0));
+                        frame.box.cell()(0, 0));
         }
         if (T < T_min_observed)
             T_min_observed = T;
@@ -205,7 +205,7 @@ cpu::Frame make_pe_box_simple(int n_chains_per_axis, int n_atoms_per_chain,
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -267,7 +267,7 @@ TEST(NoseHooverNptMultiRank, BondsOnlyKineticNonZero) {
                         "eV, box=%.4f Å\n",
                         s, T,
                         static_cast<double>(frame.meta.get(ATV::kKinetic)),
-                        frame.simbox.cell()(0, 0));
+                        frame.box.cell()(0, 0));
         }
         ASSERT_GT(T, 1.0) << "T_K collapsed at step " << s
                           << " (bonds-only repro)";
@@ -335,7 +335,7 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
                         "box=%.4f Å\n",
                         chunk + probe_every + 1, T,
                         static_cast<double>(frame.meta.get(ATV::kKinetic)),
-                        frame.simbox.cell()(0, 0));
+                        frame.box.cell()(0, 0));
         }
         ASSERT_GT(T, 1.0) << "T_K collapsed at step "
                           << (chunk + probe_every + 1)
@@ -413,7 +413,7 @@ cpu::Frame make_drifting_x1_chains(int n_lanes, int n_atoms_per_chain,
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -471,7 +471,7 @@ TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
             static_cast<double>(frame.meta.get(ATV::kEnergyPair));
         if (my_rank == 0) {
             std::printf("[mig-excl-8r] step %d: E_pair=%.4f eV, box=%.3f Å\n",
-                        chunk + probe_every, e_pair, frame.simbox.cell()(0, 0));
+                        chunk + probe_every, e_pair, frame.box.cell()(0, 0));
         }
         ASSERT_LT(std::abs(e_pair), 200.0)
             << "E_pair exploded at step " << (chunk + probe_every)

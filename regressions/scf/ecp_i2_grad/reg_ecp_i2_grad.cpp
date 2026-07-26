@@ -33,7 +33,7 @@ int main() {
     frame.span(kAtom_z)[0] = 0.0;
     frame.span(kAtom_type)[1] = 53;
     frame.span(kAtom_z)[1] = 2.666;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::Def2SVP;

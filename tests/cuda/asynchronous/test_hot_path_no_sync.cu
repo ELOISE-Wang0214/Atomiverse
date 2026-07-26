@@ -79,7 +79,7 @@ cpu::Frame make_lj_cube(int n_side = 4, double density = 0.8) {
                 frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
+    frame.box = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 

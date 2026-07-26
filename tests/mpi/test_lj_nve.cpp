@@ -74,7 +74,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
                     frame.span(ATV::kAtom_vz)[idx] = s * 0.25;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 

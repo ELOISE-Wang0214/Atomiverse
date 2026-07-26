@@ -19,7 +19,7 @@ int main() {
     f.span(kAtom_image)[0] = f.span(kAtom_image)[1] = f.span(kAtom_image)[2] =
         0;
     f.span(kAtom_fx)[0] = f.span(kAtom_fy)[0] = f.span(kAtom_fz)[0] = 0;
-    f.simbox = cpu::Box::cubic(10);
+    f.box = cpu::Box::cubic(10);
     f.meta.get(kEnergy) = 0;
     cpu::md::FixDfield d(0.1, 0, 0);
     cpu::Context ctx;

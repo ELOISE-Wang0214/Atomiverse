@@ -290,7 +290,7 @@ void ParrinelloRahmanNPT::nhc_baro_half(double half_dt) {
 void ParrinelloRahmanNPT::update_eps_dot(const cpu::LaunchContext& ctx,
                                          double half_dt) {
     const auto& f = ctx.frame;
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (V <= 0.0)
         return;
 
@@ -537,7 +537,7 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 
     // Cell: scale edges, then first-order tilt of off-diagonal entries.
-    Mat3 h = f.simbox.cell();
+    Mat3 h = f.box.cell();
     h(0, 0) *= ax;
     h(1, 1) *= ay;
     h(2, 2) *= az;
@@ -559,13 +559,13 @@ void ParrinelloRahmanNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     h(1, 0) = h(0, 1) = AccReal(0.5) * (h(0, 1) + h(1, 0));
     h(2, 0) = h(0, 2) = AccReal(0.5) * (h(0, 2) + h(2, 0));
     h(2, 1) = h(1, 2) = AccReal(0.5) * (h(1, 2) + h(2, 1));
-    f.simbox.set_cell(h);
+    f.box.set_cell(h);
 
-    if (f.simbox.is_orthorhombic())
+    if (f.box.is_orthorhombic())
         wrap_orthorhombic(f, n);
 
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 
@@ -596,7 +596,7 @@ ParrinelloRahmanNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
         H += kT_ * eta_t_[static_cast<std::size_t>(k)];
     for (int k = 0; k < mpchain_; ++k)
         H += kT_ * eta_b_[static_cast<std::size_t>(k)];
-    H += P_target_ * f.simbox.volume();
+    H += P_target_ * f.box.volume();
     return H;
 }
 

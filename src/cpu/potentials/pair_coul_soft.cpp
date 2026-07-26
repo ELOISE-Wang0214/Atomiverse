@@ -62,7 +62,7 @@ void PairCoulSoft::compute(const LaunchContext& ctx) {
             "PairCoulSoft::compute: runtime.md.pair_list is null");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     const auto* dd = ctx.runtime.md.dd;
 #ifdef ATV_HAS_MPI

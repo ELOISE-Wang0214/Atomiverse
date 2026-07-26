@@ -24,20 +24,12 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/internal/shell_pair.h"
-#include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 
 #ifdef _OPENMP
 #include <omp.h>
-#endif
-
-#ifdef ATV_HAS_LIBCINT
-extern "C" {
-#include <cint.h>
-#include <cint_funcs.h>
-}
 #endif
 
 #include <algorithm>
@@ -385,23 +377,6 @@ build_shell_to_atom_from_integrals(const IntegralPack& integrals) {
     return shell_to_atom;
 }
 
-#ifdef ATV_HAS_LIBCINT
-
-static inline int libcint_shell_dim(const LibcintContext& ctx, int sh) {
-    const int begin = ctx.shell_offsets[sh];
-    const int end =
-        (sh + 1 < ctx.nshells) ? ctx.shell_offsets[sh + 1] : ctx.nao;
-    return end - begin;
-}
-
-static inline std::size_t libcint_ip1_index(int comp, int i, int j, int k,
-                                            int l, int di, int dj, int dk,
-                                            int dl) {
-    return static_cast<std::size_t>(
-        i + di * (j + dj * (k + dk * (l + dl * comp))));
-}
-
-#endif
 
 static QuartetDerivTotals
 compute_quartet_derivatives(const native::Shell& shell_a, const int a_ang[3],
@@ -706,10 +681,9 @@ IntegralDerivPack::IntegralDerivPack(const IntegralPack& ipack) {
 }
 
 void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad, const Frame& frame,
-    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total_sph,
-    const SlaterDeterminant& det, MeanFieldType method, SpinType spin,
-    XCType xc_type, bool force_native_two_electron_deriv) {
+    xt::xtensor<double, 2>& grad, const IntegralPack& integrals,
+    const xt::xtensor<double, 2>& P_total_sph, const SlaterDeterminant& det,
+    MeanFieldType method, SpinType spin, XCType xc_type) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     // The on-the-fly ERI-derivative engines index Cartesian AOs; n is the
@@ -915,296 +889,6 @@ void accumulate_two_electron_gradient(
     // 0.5*[P(i,k)P(j,l)+P(j,k)P(i,l)] symmetrization, which are unchanged.
     const double alpha_hf = is_ks ? hybrid_exchange_fraction(xc_type) : 1.0;
     const bool do_exchange = (alpha_hf > 0.0);
-
-#ifdef ATV_HAS_LIBCINT
-    LibcintContext cint_ctx{frame};
-    if (cint_ctx.nao == n && !force_native_two_electron_deriv) {
-        const int nshells = cint_ctx.nshells;
-        ATV_INFO("[gradient] two_e engine=libcint natm={} basis={} shells={}",
-                 natm, n, nshells);
-        std::vector<int> shell_to_atom(nshells, -1);
-        for (int sh = 0; sh < nshells; ++sh)
-            shell_to_atom[sh] = cint_ctx.bas[sh * BAS_SLOTS + ATOM_OF];
-
-        std::vector<std::array<int, 2>> shell_pairs;
-        shell_pairs.reserve(
-            static_cast<std::size_t>(nshells * (nshells + 1) / 2));
-        for (int ish = 0; ish < nshells; ++ish)
-            for (int jsh = 0; jsh <= ish; ++jsh)
-                shell_pairs.push_back({ish, jsh});
-
-        const int n_shell_pairs = static_cast<int>(shell_pairs.size());
-        const long long n_unique_shell_quartets =
-            1LL * n_shell_pairs * (n_shell_pairs + 1) / 2;
-        const int progress_stride =
-            (n_shell_pairs >= 10) ? (n_shell_pairs / 10) : 1;
-
-        CINTOpt* ip1_opt = nullptr;
-        int2e_ip1_optimizer(&ip1_opt, cint_ctx.atm.data(), cint_ctx.natm,
-                            cint_ctx.bas.data(), cint_ctx.nshells,
-                            const_cast<double*>(cint_ctx.env.data()));
-
-        constexpr std::size_t kMaxIP1Block = 3u * 3u * 3u * 3u * 3u;
-        std::array<double, kMaxIP1Block> dA_buf{};
-        std::array<double, kMaxIP1Block> dB_buf{};
-        std::array<double, kMaxIP1Block> dC_buf{};
-        std::array<double, kMaxIP1Block> dD_buf{};
-
-        const auto eval_ip1 = [&](std::array<double, kMaxIP1Block>& buf,
-                                  const int shls[4]) {
-            std::fill(buf.begin(), buf.end(), 0.0);
-            int2e_ip1_cart(buf.data(), nullptr, const_cast<int*>(shls),
-                           cint_ctx.atm.data(), cint_ctx.natm,
-                           cint_ctx.bas.data(), cint_ctx.nshells,
-                           const_cast<double*>(cint_ctx.env.data()), ip1_opt,
-                           nullptr);
-        };
-
-        const auto t_coulomb = LogClock::now();
-        ATV_DEBUG("[gradient] two_e coulomb start engine=libcint natm={} "
-                  "basis={} shells={} unique_shell_quartets={}",
-                  natm, n, nshells, n_unique_shell_quartets);
-
-        for (int left = 0; left < n_shell_pairs; ++left) {
-            const int ish = shell_pairs[left][0];
-            const int jsh = shell_pairs[left][1];
-            const int i0 = cint_ctx.shell_offsets[ish];
-            const int j0 = cint_ctx.shell_offsets[jsh];
-            const int di = libcint_shell_dim(cint_ctx, ish);
-            const int dj = libcint_shell_dim(cint_ctx, jsh);
-            const int ai = shell_to_atom[ish];
-            const int aj = shell_to_atom[jsh];
-            const int mult_left = pair_multiplicity(ish, jsh);
-
-            for (int right = 0; right <= left; ++right) {
-                const int ksh = shell_pairs[right][0];
-                const int lsh = shell_pairs[right][1];
-                const int k0 = cint_ctx.shell_offsets[ksh];
-                const int l0 = cint_ctx.shell_offsets[lsh];
-                const int dk = libcint_shell_dim(cint_ctx, ksh);
-                const int dl = libcint_shell_dim(cint_ctx, lsh);
-                const int ak = shell_to_atom[ksh];
-                const int al = shell_to_atom[lsh];
-                const int mult_right = pair_multiplicity(ksh, lsh);
-                const int bra_ket_mult = (left == right) ? 1 : 2;
-
-                const int shls_a[4] = {ish, jsh, ksh, lsh};
-                const int shls_b[4] = {jsh, ish, ksh, lsh};
-                const int shls_c[4] = {ksh, lsh, ish, jsh};
-                const int shls_d[4] = {lsh, ksh, ish, jsh};
-                eval_ip1(dA_buf, shls_a);
-                eval_ip1(dB_buf, shls_b);
-                eval_ip1(dC_buf, shls_c);
-                eval_ip1(dD_buf, shls_d);
-
-                const double quartet_prefactor =
-                    0.5 * mult_left * mult_right * bra_ket_mult;
-                for (int ii = 0; ii < di; ++ii) {
-                    const int i = i0 + ii;
-                    for (int jj = 0; jj < dj; ++jj) {
-                        const int j = j0 + jj;
-                        const double Pij = P_total(i, j);
-                        if (std::abs(Pij) < 1e-18)
-                            continue;
-                        for (int kk = 0; kk < dk; ++kk) {
-                            const int k = k0 + kk;
-                            for (int ll = 0; ll < dl; ++ll) {
-                                const int l = l0 + ll;
-                                const double factor =
-                                    quartet_prefactor * Pij * P_total(k, l);
-                                if (std::abs(factor) < 1e-18)
-                                    continue;
-
-                                for (int axis = 0; axis < 3; ++axis) {
-                                    const double dA = -dA_buf[libcint_ip1_index(
-                                        axis, ii, jj, kk, ll, di, dj, dk, dl)];
-                                    const double dB = -dB_buf[libcint_ip1_index(
-                                        axis, jj, ii, kk, ll, dj, di, dk, dl)];
-                                    const double dC = -dC_buf[libcint_ip1_index(
-                                        axis, kk, ll, ii, jj, dk, dl, di, dj)];
-                                    const double dD = -dD_buf[libcint_ip1_index(
-                                        axis, ll, kk, ii, jj, dl, dk, di, dj)];
-                                    grad(ai, axis) += factor * dA;
-                                    grad(aj, axis) += factor * dB;
-                                    grad(ak, axis) += factor * dC;
-                                    grad(al, axis) += factor * dD;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            const bool should_log = (((left + 1) % progress_stride) == 0)
-                                    || ((left + 1) == n_shell_pairs);
-            if (should_log) {
-                const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
-                ATV_DEBUG("[gradient] two_e coulomb progress shell_pairs={}/{} "
-                          "unique_done={}/{} ms={:.1f}",
-                          left + 1, n_shell_pairs, unique_done,
-                          n_unique_shell_quartets, elapsed_ms(t_coulomb));
-            }
-        }
-
-        ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}",
-                  elapsed_ms(t_coulomb));
-
-        if (do_exchange) {
-            const auto t_exchange = LogClock::now();
-            ATV_DEBUG(
-                "[gradient] two_e exchange start engine=libcint natm={} "
-                "basis={} shells={} unique_shell_quartets={} alpha_hf={:.3f}",
-                natm, n, nshells, n_unique_shell_quartets, alpha_hf);
-
-            // Exchange iterates the SAME canonical (ij)×(kl) pairs as
-            // Coulomb — the ERI (ij|kl) has 8-fold symmetry under
-            // (i↔j), (k↔l), (bra↔ket), none of which match (i↔k) or
-            // (j↔l). A previous version canonicalized (ik)+(jl), which
-            // mis-counted multiplicities (e.g. (11|00) got mult=4 vs
-            // the correct 2; (10|10) got mult=2 vs the correct 4) and
-            // made exchange coincidentally track Coulomb so closely
-            // that the total force over-cancelled by ~225×. The density
-            // contraction factor for exchange remains P(i,k)·P(j,l)
-            // (Szabo 3.184 with the (μλ|νσ) → (ij|kl) relabelling:
-            // i=μ, j=λ, k=ν, l=σ).
-            for (int left = 0; left < n_shell_pairs; ++left) {
-                const int ish = shell_pairs[left][0];
-                const int jsh = shell_pairs[left][1];
-                const int i0 = cint_ctx.shell_offsets[ish];
-                const int j0 = cint_ctx.shell_offsets[jsh];
-                const int di = libcint_shell_dim(cint_ctx, ish);
-                const int dj = libcint_shell_dim(cint_ctx, jsh);
-                const int ai = shell_to_atom[ish];
-                const int aj = shell_to_atom[jsh];
-                const int mult_left = pair_multiplicity(ish, jsh);
-
-                for (int right = 0; right <= left; ++right) {
-                    const int ksh = shell_pairs[right][0];
-                    const int lsh = shell_pairs[right][1];
-                    const int k0 = cint_ctx.shell_offsets[ksh];
-                    const int l0 = cint_ctx.shell_offsets[lsh];
-                    const int dk = libcint_shell_dim(cint_ctx, ksh);
-                    const int dl = libcint_shell_dim(cint_ctx, lsh);
-                    const int ak = shell_to_atom[ksh];
-                    const int al = shell_to_atom[lsh];
-                    const int mult_right = pair_multiplicity(ksh, lsh);
-                    const int bra_ket_mult = (left == right) ? 1 : 2;
-
-                    const int shls_a[4] = {ish, jsh, ksh, lsh};
-                    const int shls_b[4] = {jsh, ish, ksh, lsh};
-                    const int shls_c[4] = {ksh, lsh, ish, jsh};
-                    const int shls_d[4] = {lsh, ksh, ish, jsh};
-                    eval_ip1(dA_buf, shls_a);
-                    eval_ip1(dB_buf, shls_b);
-                    eval_ip1(dC_buf, shls_c);
-                    eval_ip1(dD_buf, shls_d);
-
-                    const double quartet_prefactor =
-                        mult_left * mult_right * bra_ket_mult;
-                    for (int ii = 0; ii < di; ++ii) {
-                        const int i = i0 + ii;
-                        for (int jj = 0; jj < dj; ++jj) {
-                            const int j = j0 + jj;
-                            for (int kk = 0; kk < dk; ++kk) {
-                                const int k = k0 + kk;
-                                for (int ll = 0; ll < dl; ++ll) {
-                                    const int l = l0 + ll;
-
-                                    // Exchange density factor. The canonical enumeration
-                                    // of ERI (ij|kl) uses 8-fold symmetry, but the
-                                    // exchange *density* product P(i,k)·P(j,l) is NOT
-                                    // symmetric under i↔j or k↔l — it maps to
-                                    // P(j,k)·P(i,l) and P(i,l)·P(j,k). Symmetrize so
-                                    // canonical-enumeration * mult gives the full-sum
-                                    // exchange energy.
-                                    //
-                                    // Averaged over the 8 ERI permutations:
-                                    //   sum = 4·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
-                                    //   sym_factor = (1/8) · sum = ½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
-                                    // leading to the factor 0.5 inside the bracket.
-                                    //
-                                    // The global-hybrid admixture alpha_hf
-                                    // (1.0 for HF) is a pure scalar
-                                    // multiplier on top of the prefactors.
-                                    double density_factor = 0.0;
-                                    if (restricted) {
-                                        density_factor =
-                                            -0.25 * alpha_hf * 0.5
-                                            * (P_total(i, k) * P_total(j, l)
-                                               + P_total(j, k) * P_total(i, l));
-                                    } else {
-                                        density_factor =
-                                            -0.5 * alpha_hf * 0.5
-                                            * (Pa(i, k) * Pa(j, l)
-                                               + Pa(j, k) * Pa(i, l)
-                                               + Pb(i, k) * Pb(j, l)
-                                               + Pb(j, k) * Pb(i, l));
-                                    }
-
-                                    const double factor =
-                                        quartet_prefactor * density_factor;
-                                    if (std::abs(factor) < 1e-18)
-                                        continue;
-
-                                    for (int axis = 0; axis < 3; ++axis) {
-                                        const double dA =
-                                            -dA_buf[libcint_ip1_index(
-                                                axis, ii, jj, kk, ll, di, dj,
-                                                dk, dl)];
-                                        const double dB =
-                                            -dB_buf[libcint_ip1_index(
-                                                axis, jj, ii, kk, ll, dj, di,
-                                                dk, dl)];
-                                        const double dC =
-                                            -dC_buf[libcint_ip1_index(
-                                                axis, kk, ll, ii, jj, dk, dl,
-                                                di, dj)];
-                                        const double dD =
-                                            -dD_buf[libcint_ip1_index(
-                                                axis, ll, kk, ii, jj, dl, dk,
-                                                di, dj)];
-                                        grad(ai, axis) += factor * dA;
-                                        grad(aj, axis) += factor * dB;
-                                        grad(ak, axis) += factor * dC;
-                                        grad(al, axis) += factor * dD;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                const bool should_log = (((left + 1) % progress_stride) == 0)
-                                        || ((left + 1) == n_shell_pairs);
-                if (should_log) {
-                    const long long unique_done =
-                        1LL * (left + 1) * (left + 2) / 2;
-                    ATV_DEBUG("[gradient] two_e exchange progress "
-                              "shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
-                              left + 1, n_shell_pairs, unique_done,
-                              n_unique_shell_quartets, elapsed_ms(t_exchange));
-                }
-            }
-
-            ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}",
-                      elapsed_ms(t_exchange));
-        }
-
-        CINTdel_2e_optimizer(&ip1_opt);
-        ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}",
-                  elapsed_ms(t_total));
-        return;
-    }
-
-    if (force_native_two_electron_deriv) {
-        ATV_INFO("[gradient] two_e engine=native "
-                 "(force_native_two_electron_deriv=true)");
-    } else {
-        ATV_WARN("[gradient] libcint two_e derivative nao mismatch "
-                 "libcint_nao={} basis={}, falling back to native engine",
-                 cint_ctx.nao, n);
-    }
-#endif
 
     // ── Native 2e gradient: block-level + Schwarz + OpenMP + Rys ───────
     //

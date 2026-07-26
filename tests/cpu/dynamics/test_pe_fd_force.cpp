@@ -45,7 +45,7 @@ cpu::Frame make_perturbed_butane() {
         frame.span(ATV::kAtom_mass)[i] = 14.0;
         frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(50.0);
+    frame.box = ATV::cpu::Box::cubic(50.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());

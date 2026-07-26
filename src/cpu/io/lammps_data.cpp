@@ -293,7 +293,7 @@ Frame load_lammps_data(const std::string& path) {
     cell(0, 0) = xhi - xlo;
     cell(1, 1) = yhi - ylo;
     cell(2, 2) = zhi - zlo;
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
 
     // Build 1-2 / 1-3 / 1-4 exclusion list once topology is scattered.
     frame.build_special_list();

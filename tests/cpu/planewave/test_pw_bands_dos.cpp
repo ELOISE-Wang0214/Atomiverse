@@ -130,7 +130,7 @@ TEST(BandsCompute, SpinPlusMetallicSmearRequiresPositiveDegauss) {
     frame.span(ATV::kAtom_x)[0] = 0;
     frame.span(ATV::kAtom_y)[0] = 0;
     frame.span(ATV::kAtom_z)[0] = 0;
-    frame.simbox = ATV::cpu::Box::cubic(5.0);
+    frame.box = ATV::cpu::Box::cubic(5.0);
 
     PW method;
     method.spin_polarized = true;
@@ -156,7 +156,7 @@ TEST(BandsCompute, SpinPlusMetallicSmearNotRejectedByCombo) {
     frame.span(ATV::kAtom_x)[0] = 0;
     frame.span(ATV::kAtom_y)[0] = 0;
     frame.span(ATV::kAtom_z)[0] = 0;
-    frame.simbox = ATV::cpu::Box::cubic(5.0);
+    frame.box = ATV::cpu::Box::cubic(5.0);
 
     PW method;
     method.spin_polarized = true;
@@ -215,7 +215,7 @@ TEST(DosCompute, SpinPlusMetallicNoLongerGuardReject) {
     frame.span(ATV::kAtom_x)[0] = 0;
     frame.span(ATV::kAtom_y)[0] = 0;
     frame.span(ATV::kAtom_z)[0] = 0;
-    frame.simbox = ATV::cpu::Box::cubic(5.0);
+    frame.box = ATV::cpu::Box::cubic(5.0);
 
     PW method;
     method.spin_polarized = true;

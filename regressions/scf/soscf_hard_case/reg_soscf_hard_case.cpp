@@ -63,7 +63,7 @@ cpu::Frame make_h2o(double stretch) {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -hx;
     frame.span(kAtom_z)[2] = hz;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
     return frame;
 }
 
@@ -79,7 +79,7 @@ cpu::Frame make_n2(double R) {
     frame.span(kAtom_y)[1] = 0.0;
     frame.span(kAtom_z)[1] = 2.5;
     (void)R;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
     return frame;
 }
 

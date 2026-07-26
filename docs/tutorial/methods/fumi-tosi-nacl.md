@@ -130,7 +130,7 @@ for (int i = 0; i < 4; ++i) {
     f.span(kAtom_mass)[i] = masses[i];
     f.span(kAtom_tag)[i] = i + 1;
 }
-f.simbox = cpu::Box::cubic(40.0);
+f.box = cpu::Box::cubic(40.0);
 
 cpu::PairBorn born(
     {{0, 0, 25.4435, 0.317, 2.340, 101.1719, 48.1771},

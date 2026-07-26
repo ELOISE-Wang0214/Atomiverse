@@ -58,7 +58,7 @@ int main() {
     for (int i = 0; i < 2; ++i)
         frame.span(kAtom_fx)[i] = frame.span(kAtom_fy)[i] =
             frame.span(kAtom_fz)[i] = 0;
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     const cpu::gpw::Kind Ni{
         molrs::Element::Ni,

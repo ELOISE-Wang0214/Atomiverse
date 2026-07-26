@@ -34,7 +34,7 @@ TEST(PairLJCutPort, EnergyMatchesAnalyticFormula) {
     frame.span(ATV::kAtom_z)[1] = 0.0;
     frame.span(ATV::kAtom_mass)[0] = 1.0;
     frame.span(ATV::kAtom_mass)[1] = 1.0;
-    frame.simbox = ATV::cpu::Box::cubic(50.0);
+    frame.box = ATV::cpu::Box::cubic(50.0);
 
     ATV::cpu::md::MD sim;
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{rcut, /*skin=*/0.5});

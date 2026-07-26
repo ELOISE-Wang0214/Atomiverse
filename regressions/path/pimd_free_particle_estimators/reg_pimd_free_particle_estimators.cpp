@@ -16,7 +16,7 @@ int main() {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
 
     // Short free-particle PIMD; estimator gate is order-of-magnitude.
     pimd.run(f, 5);

@@ -37,7 +37,7 @@ cpu::Frame make_lattice(int n_side, double spacing) {
                 frame.span(kAtom_vz)[idx] = 0.0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(double(n_side) * spacing);
+    frame.box = cpu::Box::cubic(double(n_side) * spacing);
     return frame;
 }
 

@@ -43,7 +43,7 @@ ATV::cpu::Frame make_water() {
         f.span(ATV::kAtom_mass)[i] =
             (f.span(ATV::kAtom_type)[i] == 8) ? 15.999 : 1.008;
     }
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 

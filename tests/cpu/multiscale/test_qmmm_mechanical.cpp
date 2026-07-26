@@ -25,7 +25,7 @@ TEST(QmmmMechanical, H2PlusAr) {
     f.span(kAtom_mass)[0] = 1;
     f.span(kAtom_mass)[1] = 1;
     f.span(kAtom_mass)[2] = 40;
-    f.simbox = cpu::Box::cubic(30);
+    f.box = cpu::Box::cubic(30);
     f.meta.get(kEnergy) = 0;
     for (int i = 0; i < 3; ++i)
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;

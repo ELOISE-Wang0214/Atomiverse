@@ -42,7 +42,7 @@ def _molpy_argon_frame() -> "molrs.Frame":
                 )
     frame = system.to_frame()
     frame["atoms"].insert("type", np.zeros(8, dtype=np.int32))
-    frame.simbox = molrs.Box.cube(2 * scale)
+    frame.box = molrs.Box.cube(2 * scale)
     return frame
 
 

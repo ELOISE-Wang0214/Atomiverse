@@ -47,7 +47,7 @@ int main() {
         frame.span(kAtom_fz)[0] = 0;
     frame.span(kAtom_fx)[1] = frame.span(kAtom_fy)[1] =
         frame.span(kAtom_fz)[1] = 0;
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
     frame.meta.get(kEnergy) = 0;
 
     cpu::PimInducedDipole pim(20.0, /*alpha_by_type=*/{0.0, 1.0, 1.5}, thole_a,

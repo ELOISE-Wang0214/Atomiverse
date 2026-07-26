@@ -42,7 +42,7 @@ cpu::Frame make_si_diamond(double a_ang) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
     frame.span(kAtom_x)[0] = 0.0;
     frame.span(kAtom_y)[0] = 0.0;
     frame.span(kAtom_z)[0] = 0.0;
@@ -163,7 +163,7 @@ int main() {
                         ch_cent[static_cast<std::size_t>(i)][2]);
 
         const double dmax =
-            max_assigned_distance(ch_cent, mids, frame.simbox);
+            max_assigned_distance(ch_cent, mids, frame.box);
         std::printf("spin %d: max mid-image→midpoint = %.5f Ang (tol %.2f); "
                     "Omega_spin≈%.5f\n",
                     s, dmax, kMidTol, omega);

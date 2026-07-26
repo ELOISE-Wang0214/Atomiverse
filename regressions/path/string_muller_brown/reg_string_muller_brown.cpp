@@ -16,7 +16,7 @@ static cpu::Frame at(double x, double y) {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 

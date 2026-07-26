@@ -46,7 +46,7 @@ TEST(HRemd, ConstructsAndRunsTwoLambda) {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
 
     // PairLJSoft may need NeighborList — try without first; if MD validate fails
     // we'll fix in build.

@@ -39,7 +39,7 @@ TEST(PairMorse, EnergyAtEquilibriumIsZero) {
     frame.span(ATV::kAtom_z)[1] = 0.0;
     frame.span(ATV::kAtom_mass)[0] = 12.0;
     frame.span(ATV::kAtom_mass)[1] = 12.0;
-    frame.simbox = ATV::cpu::Box::cubic(50.0);
+    frame.box = ATV::cpu::Box::cubic(50.0);
 
     ATV::cpu::Context ctx;
     ATV::cpu::BuildContext bctx{ctx, frame};
@@ -81,7 +81,7 @@ TEST(PairMorse, EnergyMatchesAnalyticAtDisplacement) {
     frame.span(ATV::kAtom_z)[1] = 0.0;
     frame.span(ATV::kAtom_mass)[0] = 12.0;
     frame.span(ATV::kAtom_mass)[1] = 12.0;
-    frame.simbox = ATV::cpu::Box::cubic(50.0);
+    frame.box = ATV::cpu::Box::cubic(50.0);
 
     ATV::cpu::Context ctx;
     ATV::cpu::BuildContext bctx{ctx, frame};

@@ -14,16 +14,16 @@ namespace md {
 
 void ClassicalPolarization::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    if (!f.simbox.is_orthorhombic()) {
+    if (!f.box.is_orthorhombic()) {
         throw std::runtime_error(
             "ClassicalPolarization: triclinic boxes are not supported in this "
             "foothold (need orthorhombic image unwrap)");
     }
     const int n = owned_count(ctx);
-    const double lx = f.simbox.length(0);
-    const double ly = f.simbox.length(1);
-    const double lz = f.simbox.length(2);
-    const double V = f.simbox.volume();
+    const double lx = f.box.length(0);
+    const double ly = f.box.length(1);
+    const double lz = f.box.length(2);
+    const double V = f.box.volume();
     if (!(V > 0.0)) {
         throw std::runtime_error(
             "ClassicalPolarization: box volume must be positive");

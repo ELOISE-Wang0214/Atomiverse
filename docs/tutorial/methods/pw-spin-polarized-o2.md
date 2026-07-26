@@ -92,7 +92,7 @@ for (int i = 0; i < 2; ++i) {
 }
 frame.span(kAtom_z)[0] = 0.0;
 frame.span(kAtom_z)[1] = 1.2075;         // R(O–O) [Å]
-frame.simbox = cpu::Box::cubic(8.0);
+frame.box = cpu::Box::cubic(8.0);
 
 PW pw;
 pw.upf_path = "tests/data/pw/O_ONCV_PBE-1.2.upf";

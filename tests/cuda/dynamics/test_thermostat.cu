@@ -30,7 +30,7 @@ static cpu::Frame make_cubic(int n_side, double spacing) {
                 frame.span(kAtom_mass)[idx] = 14.0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(n_side * spacing);
+    frame.box = cpu::Box::cubic(n_side * spacing);
     return frame;
 }
 
@@ -57,7 +57,7 @@ TEST(NoseHoover, TemperatureControl) {
 
 TEST(Deform, BoxGrows) {
     auto frame = make_cubic(3, 5.0);
-    double L0 = frame.simbox.cell()(0, 0);
+    double L0 = frame.box.cell()(0, 0);
 
     double rate = 1e-4;
     double dt = 0.01;
@@ -73,8 +73,8 @@ TEST(Deform, BoxGrows) {
     sim.run(frame, n_steps);
 
     double expected_L = L0 * pow(1.0 + rate * dt, n_steps);
-    EXPECT_NEAR(frame.simbox.cell()(0, 0), expected_L, expected_L * 0.01);
-    EXPECT_NEAR(frame.simbox.cell()(1, 1), L0, 1e-6);
+    EXPECT_NEAR(frame.box.cell()(0, 0), expected_L, expected_L * 0.01);
+    EXPECT_NEAR(frame.box.cell()(1, 1), L0, 1e-6);
 }
 
 TEST(Virial, FiniteStress) {
@@ -118,6 +118,6 @@ TEST(Barostat, FiniteResults) {
         EXPECT_TRUE(std::isfinite(frame.span(kAtom_x)[i]));
         EXPECT_TRUE(std::isfinite(frame.span(kAtom_vx)[i]));
     }
-    EXPECT_TRUE(std::isfinite(frame.simbox.cell()(0, 0)));
-    EXPECT_GT(frame.simbox.cell()(0, 0), 0.0);
+    EXPECT_TRUE(std::isfinite(frame.box.cell()(0, 0)));
+    EXPECT_GT(frame.box.cell()(0, 0), 0.0);
 }

@@ -181,7 +181,7 @@ ATV::cpu::Frame water_frame() {
         f.span(ATV::kAtom_y)[i] = y[i];
         f.span(ATV::kAtom_z)[i] = zc[i];
     }
-    f.simbox = ATV::cpu::Box::cubic(10.0);
+    f.box = ATV::cpu::Box::cubic(10.0);
     return f;
 }
 

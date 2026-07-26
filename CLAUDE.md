@@ -33,7 +33,7 @@ mol_project:
 Atomiverse is a dual-backend (CPU + CUDA) molecular-simulation engine with one
 shared Driver/Component API spanning classical MD, Monte Carlo, geometry
 optimization, vibrational analysis, and electronic structure (Gaussian SCF,
-plane-wave DFT, GPW, NDDO/AM1). C++17, `ATV::` namespace. Active development is
+plane-wave DFT, GPW, NDDO/AM1). C++20, `ATV::` namespace. Active development is
 on **`dev`**.
 
 ## Where things live
@@ -130,7 +130,7 @@ For non-trivial work, prefer:
 
 ## What must never change casually
 
-- Frame as sole I/O currency (`blocks` + `meta` + `simbox`); no parallel `*System`
+- Frame as sole I/O currency (`blocks` + `meta` + `box`); no parallel `*System`
 - Driver = staged loop + Criterion/Handler termination; no category driver bases
 - No public factories (`make_*` / `build_*` / `*_config`); **no public `*Config` bags**
   (parameters = ctor args / members — iron law free-form section)
@@ -233,7 +233,7 @@ Atomiverse is a dual-backend (CPU + CUDA) molecular-simulation engine with one
 shared Driver/Component API spanning classical molecular dynamics, Monte Carlo
 sampling, geometry optimization, vibrational analysis, and electronic
 structure (Gaussian-basis SCF, plane-wave DFT, Gaussian-and-plane-waves DFT,
-and NDDO/AM1 semiempirics). C++17, `ATV::` namespace.
+and NDDO/AM1 semiempirics). C++20, `ATV::` namespace.
 
 > **Branch note:** active development is on **`dev`**. `master` is a single
 > squashed snapshot with the *old* pre-2026 flat layout (`cpu/frame.h`, abbreviated domain dirs,
@@ -250,7 +250,7 @@ ctest --test-dir build --output-on-failure
 ./build/tests/test_md             # single test binary
 ```
 
-Requires: C++17, CMake ≥ 3.18, a Rust toolchain (for molrs), xtensor
+Requires: C++20, CMake ≥ 3.18, a Rust toolchain (for molrs), xtensor
 (auto-fetched). CUDA toolkit only for the CUDA backend; FFTW3 only for
 plane-wave / k-space.
 
@@ -340,7 +340,6 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | `ATV_BUILD_KSPACE` | OFF | Reciprocal-space electrostatics PME (needs FFTW3) |
 | `ATV_BUILD_TORCH` | OFF | LibTorch backend; defines `ATV_HAS_TORCH` |
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
-| `ATV_USE_MATPLOT` | OFF | plot generation in selected examples (needs gnuplot) |
 | `ATV_REAL_STORAGE` / `ATV_REAL_WORK` | `double` / `double` | LAMMPS-style real tiers (`float`\|`double`): per-atom storage / kernel-work precision. Accumulators (`AccReal`) are always `double`. |
 | `ATV_ID_SIZE` | `bigbig` | integer-ID width: `bigbig` (64-bit `TagInt`, default — preserves legacy int64 tags) or `smallbig` (32-bit, LAMMPS/molrs-aligned memory opt-in). `BigInt` global counts always 64-bit. |
 
@@ -787,14 +786,14 @@ driver Context — it receives a narrow `SolverContext{stream, frame, step}`
 ### Frame — multi-backend design
 
 A Frame is the device-resident system state. Its boundary vocabulary is exactly
-three regions: named typed **blocks**, exact-dtype **meta**, and **simbox**.
+three regions: named typed **blocks**, exact-dtype **meta**, and **box**.
 The CPU hard cut is complete; CUDA and Torch representation work is deferred
 and their current layouts are not compatibility surfaces for CPU code.
 
 | Frame | Representation | Topology layout |
 |---|---|---|
-| `molrs.Frame` | flat typed Block columns + typed `MetaValue` map + `simbox` — exchange schema v2 | flat bonds/angles/dihedrals blocks |
-| `cpu::Frame` | exactly `BlockMap blocks; MetaMap meta; Box simbox;`, with native typed host columns and zero-copy spans in Driver | per-atom LAMMPS columns in the `atoms` block (`num_bond`/`bond_atom` with global-tag partners) |
+| `molrs.Frame` | flat typed Block columns + typed `MetaValue` map + `box` — exchange schema v2 | flat bonds/angles/dihedrals blocks |
+| `cpu::Frame` | exactly `BlockMap blocks; MetaMap meta; Box box;`, with native typed host columns and zero-copy spans in Driver | per-atom LAMMPS columns in the `atoms` block (`num_bond`/`bond_atom` with global-tag partners) |
 | `cuda::Frame` | raw device pointers + host-cached counts | **dual**: single-GPU flat `BondList`/`AngleList`/`DihedralList` (kernels not yet ported to per-atom, so `cpu::to_cuda` re-flattens on every transfer); multi-GPU per-atom SoA with global-tag partners for migration |
 | `torch::Frame` | `at::Tensor` blocks (autograd-capable) | flat bonds/angles/dihedrals sub-structs |
 
@@ -807,7 +806,7 @@ Conversion points, each owning exactly one boundary:
   (golden-tested in
   `tests/cpu/test_materialize.cpp`): x/v/f, charge, image, and tag are
   written back (tag with checked i32 narrowing — overflow throws, no silent
-  truncation); type, mass, topology, and simbox are per-run static inputs and
+  truncation); type, mass, topology, and box are per-run static inputs and
   **not** written; every serializable typed-meta value is written back exactly.
 - `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::write_back`
   inherits the cpu contract via `to_cpu`.
@@ -945,10 +944,10 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
 
 - **Frame:** `cpu::Frame f(n);` then resolve typed spans such as
   `auto x = f.span(kAtom_x)` / `auto type = f.span(kAtom_type)` (type = atomic
-  number Z for SCF); set `f.simbox = cpu::Box::cubic(L)`; scalar results are
+  number Z for SCF); set `f.box = cpu::Box::cubic(L)`; scalar results are
   exact typed entries such as `f.meta.get(kEnergy)` and
   `f.meta.get(kKinetic)`. The public physical representation is exactly
-  `blocks + meta + simbox`; there are no `atoms`, `scalars`, or `box` aliases.
+  `blocks + meta + box`; there are no `atoms`, `scalars`, or `simbox` aliases.
   Header `atomiverse/cpu/frame/frame.h`.
 - **Electronic structure (target API):** construct a **concrete method**
   (`RHF` / `UHF` / `RKS` / `UKS` / AM1 / PW / GPW), set parameters as

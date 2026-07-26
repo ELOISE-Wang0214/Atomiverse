@@ -12,7 +12,7 @@ namespace md {
 
 void FixDfield::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    if (!f.simbox.is_orthorhombic()) {
+    if (!f.box.is_orthorhombic()) {
         throw std::runtime_error(
             "FixDfield: triclinic boxes are not supported in this foothold");
     }
@@ -25,10 +25,10 @@ void FixDfield::launch(const cpu::LaunchContext& ctx) {
     auto fz = f.span(kAtom_fz);
     auto img = f.span(kAtom_image);
     const int n = f.nlocal();
-    const double Lx = f.simbox.length(0);
-    const double Ly = f.simbox.length(1);
-    const double Lz = f.simbox.length(2);
-    const double V = f.simbox.volume();
+    const double Lx = f.box.length(0);
+    const double Ly = f.box.length(1);
+    const double Lz = f.box.length(2);
+    const double V = f.box.volume();
 
     double U = 0.0;
     double Pz = 0.0;

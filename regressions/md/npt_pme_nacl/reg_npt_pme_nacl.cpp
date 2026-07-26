@@ -64,7 +64,7 @@ int main() {
                     frame.span(ATV::kAtom_tag)[idx] = idx + 1;
                     ++idx;
                 }
-        frame.simbox = cpu::Box::cubic(L * scale);
+        frame.box = cpu::Box::cubic(L * scale);
         return frame;
     };
 
@@ -109,7 +109,7 @@ int main() {
     // soft LJ core prevents free collapse of bare point charges. A frozen
     // cell (no barostat / stale stress) fails the volume-change check.
     auto dyn = make_nacl(1.05);
-    const double V0 = dyn.simbox.volume();
+    const double V0 = dyn.box.volume();
 
     const double dt = 0.5;  // [fs] — Coulomb forces need a short step
     const double T = 300.0; // [K]
@@ -147,7 +147,7 @@ int main() {
                 "FAIL: non-finite thermo at chunk %d (E=%.3e K=%.3e H=%.3e "
                 "V=%.3f)\n",
                 c, dyn.meta.get(ATV::kEnergy), dyn.meta.get(ATV::kKinetic), H,
-                dyn.simbox.volume());
+                dyn.box.volume());
             return 1;
         }
         const double rel = std::fabs(H - H0) / std::max(1.0, std::fabs(H0));
@@ -155,7 +155,7 @@ int main() {
             worst_rel = rel;
         H_last = H;
     }
-    const double V1 = dyn.simbox.volume();
+    const double V1 = dyn.box.volume();
     std::printf(
         "NPT %d steps (dt=%.2f fs): V0=%.3f V1=%.3f  H0=%.6e H_end=%.6e  "
         "max|ΔH|/max(1,|H0|)=%.3e\n",

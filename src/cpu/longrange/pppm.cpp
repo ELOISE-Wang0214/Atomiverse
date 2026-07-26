@@ -123,7 +123,7 @@ void KSpacePPPM::setup_brick_partition_(int coords[3], int dims[3]) {
 }
 
 void KSpacePPPM::ensure_grid(const cpu::Frame& frame, bool initial_build) {
-    const auto& box = frame.simbox;
+    const auto& box = frame.box;
     if (have_grid_ && box_identity_ == &box && box.revision() == cell_revision_)
         return;
 
@@ -294,8 +294,8 @@ void KSpacePPPM::compute(const LaunchContext& ctx) {
     AccReal* __restrict fy = f.span(kAtom_fy);
     AccReal* __restrict fz = f.span(kAtom_fz);
 
-    const auto& ic = f.simbox.inv_cell();
-    const double vol = f.simbox.volume();
+    const auto& ic = f.box.inv_cell();
+    const double vol = f.box.volume();
     const int K0 = K_[0], K1 = K_[1], K2 = K_[2];
     const int n = order_;
     const int nm1 = n - 1;

@@ -106,7 +106,7 @@ Config bag). Minimal MD binding matching the regression:
 using namespace ATV;
 
 // frame: type 1 fluid, type 2 lower wall, type 3 upper piston;
-// simbox orthorhombic 10×10×20 Å — see reg_piston-electrode-pz.cpp
+// box orthorhombic 10×10×20 Å — see reg_piston-electrode-pz.cpp
 
 // Probe: P_target=0 → last_P_z = F_z^atoms / A (must be >0 at compressed gap)
 cpu::md::PistonElectrode probe(/*type=*/3, /*P=*/0.0,

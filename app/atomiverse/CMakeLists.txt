@@ -16,7 +16,7 @@ add_executable(atomiverse_launcher
 )
 set_target_properties(atomiverse_launcher PROPERTIES
     OUTPUT_NAME atomiverse
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     # 05-packaging: conda/prefix layouts keep libpython at ../lib; uv-managed
     # python-build-standalone venvs have NO lib/ dir, so also carry the

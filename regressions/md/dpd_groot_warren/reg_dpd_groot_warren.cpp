@@ -40,7 +40,7 @@ int main() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairDpd{a, gamma, T_K, rc, dt, 7});

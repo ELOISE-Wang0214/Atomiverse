@@ -506,7 +506,7 @@ Frame::Frame(int n_atoms) {
 }
 
 Frame::Frame(const Frame& other)
-    : blocks(other.blocks), meta(other.meta), simbox(other.simbox) {
+    : blocks(other.blocks), meta(other.meta), box(other.box) {
     bind_resolution_state_();
 }
 
@@ -515,14 +515,14 @@ Frame& Frame::operator=(const Frame& other) {
         return *this;
     blocks = other.blocks;
     meta = other.meta;
-    simbox = other.simbox;
+    box = other.box;
     bind_resolution_state_();
     return *this;
 }
 
 Frame::Frame(Frame&& other)
     : blocks(std::move(other.blocks)), meta(std::move(other.meta)),
-      simbox(std::move(other.simbox)) {
+      box(std::move(other.box)) {
     bind_resolution_state_();
 }
 
@@ -531,7 +531,7 @@ Frame& Frame::operator=(Frame&& other) {
         return *this;
     blocks = std::move(other.blocks);
     meta = std::move(other.meta);
-    simbox = std::move(other.simbox);
+    box = std::move(other.box);
     bind_resolution_state_();
     return *this;
 }
@@ -979,7 +979,7 @@ Frame Frame::clone_structure(int rows) const {
         throw std::invalid_argument(
             "Frame clone row count must be non-negative");
     Frame out(rows);
-    out.simbox = simbox;
+    out.box = box;
 
     // Match the source topology widths before copying runtime schema. The
     // canonical fixed fields already exist in the constructor.

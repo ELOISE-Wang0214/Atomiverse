@@ -75,7 +75,7 @@ int main() {
     }
     frame.span(kAtom_z)[0] = 0.0;
     frame.span(kAtom_z)[1] = 1.2075;
-    frame.simbox = cpu::Box::cubic(5.5);
+    frame.box = cpu::Box::cubic(5.5);
 
     PW pw;
     pw.upf_path = upf;

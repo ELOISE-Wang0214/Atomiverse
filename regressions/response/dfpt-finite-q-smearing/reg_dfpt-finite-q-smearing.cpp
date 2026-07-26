@@ -61,7 +61,7 @@ int main() {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
 
     PW method;
     method.upf_path = ATV_PW_UPF_PATH;

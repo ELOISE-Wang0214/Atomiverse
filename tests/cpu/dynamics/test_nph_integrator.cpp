@@ -34,7 +34,7 @@ cpu::Frame make_lj_sc(int n_side, double density, double mass) {
                 f.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -42,7 +42,7 @@ cpu::Frame make_lj_sc(int n_side, double density, double mass) {
 ///        the integrator's kConserved).
 double enthalpy_from_frame(const cpu::Frame& f, double P_target) {
     return f.meta.get(kKinetic) + f.meta.get(kEnergy)
-           + P_target * f.simbox.volume();
+           + P_target * f.box.volume();
 }
 
 } // namespace
@@ -66,7 +66,7 @@ TEST(NphIntegrator, EnthalpyDefinitionSelfConsistent) {
     const double dt = 2.0;
 
     auto frame = make_lj_sc(4, density, 39.948);
-    const double V0 = frame.simbox.volume();
+    const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
@@ -84,7 +84,7 @@ TEST(NphIntegrator, EnthalpyDefinitionSelfConsistent) {
     EXPECT_GE(frame.meta.get(kConserved) + 1e-12, H_pub - 1e-6);
 
     sim.run(frame, 15);
-    const double V1 = frame.simbox.volume();
+    const double V1 = frame.box.volume();
     EXPECT_GT(V1, 0.0);
     EXPECT_TRUE(std::isfinite(V1));
     EXPECT_NE(V1, V0);
@@ -98,7 +98,7 @@ TEST(NphIntegrator, VolumeStaysPositive) {
     const double cutoff = 2.5 * sigma;
 
     auto frame = make_lj_sc(4, 0.02071, 39.948);
-    const double V0 = frame.simbox.volume();
+    const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
@@ -109,6 +109,6 @@ TEST(NphIntegrator, VolumeStaysPositive) {
     sim.build();
     sim.run(frame, 30);
 
-    EXPECT_GT(frame.simbox.volume(), 0.05 * V0);
-    EXPECT_LT(frame.simbox.volume(), 20.0 * V0);
+    EXPECT_GT(frame.box.volume(), 0.05 * V0);
+    EXPECT_LT(frame.box.volume(), 20.0 * V0);
 }

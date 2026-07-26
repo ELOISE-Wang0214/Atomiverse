@@ -21,7 +21,7 @@ namespace {
 
 cpu::Frame make_small_frame(int n) {
     cpu::Frame frame(n);
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     for (int i = 0; i < n; ++i) {
         frame.span(ATV::kAtom_x)[i] = 0.1 * i;
         frame.span(ATV::kAtom_y)[i] = 0.2 * i;

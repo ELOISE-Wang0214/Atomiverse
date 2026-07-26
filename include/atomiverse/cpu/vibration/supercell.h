@@ -1,7 +1,7 @@
 /// @file cpu/vib/supercell.h
 /// @brief Expand a unit-cell Frame into an \(n_a\times n_b\times n_c\) supercell.
 ///
-/// Rows of `frame.simbox.cell()` are lattice vectors \(\mathbf{a},\mathbf{b},
+/// Rows of `frame.box.cell()` are lattice vectors \(\mathbf{a},\mathbf{b},
 /// \mathbf{c}\) [Å]. The supercell uses \(\mathbf{a}'=n_a\mathbf{a}\), etc.,
 /// and places one image of every unit-cell atom at
 /// \(\mathbf{R} + i\mathbf{a} + j\mathbf{b} + k\mathbf{c}\).
@@ -21,7 +21,7 @@ namespace vib {
 /// `1..N_sc`. Does not copy topology (bonds/angles) — force engines that
 /// need topology must rebuild it. Ghost rows are empty (`nghost=0`).
 ///
-/// @param unit Unit-cell system (positions [Å], simbox set).
+/// @param unit Unit-cell system (positions [Å], box set).
 /// @param na Supercell repeats along \(\mathbf{a}\) (≥1).
 /// @param nb Supercell repeats along \(\mathbf{b}\) (≥1).
 /// @param nc Supercell repeats along \(\mathbf{c}\) (≥1).

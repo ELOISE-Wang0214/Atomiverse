@@ -159,7 +159,7 @@ for (int i = 0; i < 3; ++i) {
 // COM-preserving H stretch [Å/fs]
 frame.span(kAtom_vx)[1] = 0.0015;
 frame.span(kAtom_vx)[2] = -0.0015;
-frame.simbox = cpu::Box::cubic(10.0);
+frame.box = cpu::Box::cubic(10.0);
 
 const cpu::gpw::Kind O{
     molrs::Element::O,
@@ -194,7 +194,7 @@ Rules (architecture):
   electronic-structure setter.
 - `compute_forces = true` fills per-atom forces [eV/Å] via the product
   analytic path each MD force phase.
-- Frame is the sole I/O currency (`blocks` + `meta` + `simbox`).
+- Frame is the sole I/O currency (`blocks` + `meta` + `box`).
 - Fixed cell (NVE): GPW rejects box changes after `build()`.
 
 ```bash

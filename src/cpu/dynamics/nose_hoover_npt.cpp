@@ -459,7 +459,7 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
                                    double half_dt) {
     const auto& f = ctx.frame;
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (V <= 0.0)
         return;
 
@@ -521,7 +521,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // semi-isotropic isobaric NPT under couple_xy.
     double P_tgt[3] = {P_target_, P_target_, P_target_};
     if (couple_xy_ && gamma_ != 0.0) {
-        const double Lz = f.simbox.length(2);
+        const double Lz = f.box.length(2);
         if (Lz > 0.0) {
             const double Plat =
                 P_target_ - static_cast<double>(n_surfaces_) * gamma_ / Lz;
@@ -747,7 +747,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // multiplies by exp(0)=1, i.e. is left unchanged. For the all-coupled
     // case all three factors are equal so this is identical to the
     // legacy `box.scale_isotropic(a)`.
-    f.simbox.scale_diagonal(ax, ay, az);
+    f.box.scale_diagonal(ax, ay, az);
 
     // Wrap (orthorhombic) owned atoms into the freshly-scaled box.
     wrap_orthorhombic(f, n);
@@ -772,7 +772,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // promptly whenever an owner crosses a slab boundary because the
     // refreshed `sublo/subhi` above feeds the next scheduled migration.
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 
@@ -814,7 +814,7 @@ NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
     for (int k = 0; k < mpchain_; ++k)
         H += kT_ * eta_b_[static_cast<std::size_t>(k)];
     // Pressure-volume term.
-    H += P_target_ * f.simbox.volume();
+    H += P_target_ * f.box.volume();
     return H;
 }
 

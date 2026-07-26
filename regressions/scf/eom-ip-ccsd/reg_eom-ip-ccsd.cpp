@@ -43,7 +43,7 @@ int main() {
     frame.span(kAtom_type)[0] = 8;
     frame.span(kAtom_type)[1] = 1;
     frame.span(kAtom_type)[2] = 1;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // Pins — REFERENCE.md (PySCF 2.14.0 ipccsd / RHF STO-3G cart).
     constexpr double kIp0Ev = 8.415727034061687;  // eV

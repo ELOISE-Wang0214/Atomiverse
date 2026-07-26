@@ -78,7 +78,7 @@ cpu::Frame water_box(int n_side, double spacing) {
                 idx += 3;
                 ++mol;
             }
-    f.simbox = ATV::cpu::Box::cubic(n_side * spacing);
+    f.box = ATV::cpu::Box::cubic(n_side * spacing);
     f.rebuild_tag_index(0, n);
     for (int m = 0; m < n_mol; ++m) {
         const int o = 3 * m, h1 = o + 1, h2 = o + 2;
@@ -168,7 +168,7 @@ TEST(RattleMultiRank, GeometryStaysRigidAcrossRanks) {
             double dx = x[ii[c]] - x[jj[c]];
             double dy = y[ii[c]] - y[jj[c]];
             double dz = z[ii[c]] - z[jj[c]];
-            frame.simbox.min_image(dx, dy, dz);
+            frame.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             worst = std::max(worst, std::fabs(r - want[c]) / want[c]);
             ++checked;

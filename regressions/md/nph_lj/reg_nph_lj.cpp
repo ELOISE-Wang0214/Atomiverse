@@ -50,8 +50,8 @@ int main() {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = cpu::Box::cubic(n_cells * a_lat);
-    const double V0 = frame.simbox.volume();
+    frame.box = cpu::Box::cubic(n_cells * a_lat);
+    const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
@@ -74,7 +74,7 @@ int main() {
     for (int c = 0; c < n_chunks; ++c) {
         sim.run(frame, chunk);
         const double H = frame.meta.get(ATV::kConserved);
-        if (!std::isfinite(H) || !(frame.simbox.volume() > 0.0)) {
+        if (!std::isfinite(H) || !(frame.box.volume() > 0.0)) {
             std::printf("FAIL: non-finite H or volume at chunk %d\n", c);
             return 1;
         }
@@ -85,7 +85,7 @@ int main() {
     }
 
     const double rel_bound = 1.5e-1;
-    const double V1 = frame.simbox.volume();
+    const double V1 = frame.box.volume();
 
     std::printf("NPH LJ FCC, N=%d, P_target=%.2e, dt=%.1f fs, tau_P=%.0f\n", n,
                 P_target, dt, tau_P);

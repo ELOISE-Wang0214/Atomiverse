@@ -46,7 +46,7 @@ class XYZ {
 ///
 /// The reader expects per-atom columns `x, y, z, vx, vy, vz, mass, tag,
 /// image_x, image_y, image_z` (all f64) and an f64 `type` column in the
-/// `atoms` block, plus a 9-element `simbox` (row-major h-matrix) — exactly the
+/// `atoms` block, plus a 9-element `box` (row-major h-matrix) — exactly the
 /// fields `dump_frame_to_zarr()` writes (benchmarks/md/pe/.../polyethylene_tension.cpp).
 class ZarrReader {
   public:
@@ -56,7 +56,7 @@ class ZarrReader {
     ZarrReader& operator=(const ZarrReader&) = delete;
 
     /// @brief Read the first frame of the Zarr store into `frame`.
-    /// Overwrites the owned atom Block rows and `frame.simbox`. Throws on
+    /// Overwrites the owned atom Block rows and `frame.box`. Throws on
     /// I/O error or if `n_global > frame.nlocal()`.
     /// @return Number of atoms loaded (== `n_global` from the file).
     int read_into(Frame& frame);

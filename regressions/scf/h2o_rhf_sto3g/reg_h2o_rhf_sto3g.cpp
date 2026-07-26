@@ -46,7 +46,7 @@ int main() {
     frame.span(kAtom_x)[2] = -hx;
     frame.span(kAtom_y)[2] = 0.0;
     frame.span(kAtom_z)[2] = hz;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // ── Concrete RHF method, STO-3G. Parameters are members and Frame is the
     //    sole I/O currency. `run(frame)` writes the eV energy to

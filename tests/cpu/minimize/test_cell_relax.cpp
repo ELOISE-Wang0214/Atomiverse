@@ -33,7 +33,7 @@ cpu::Frame compressed_dimer(double L) {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -49,7 +49,7 @@ TEST(IsotropicCellRelax, ExpandsCompressedBox) {
     const double eps = 0.0104, sigma = 3.4, rc = 2.5 * sigma;
     // Box too small → high virial pressure → should expand toward P=0.
     auto frame = compressed_dimer(6.0);
-    const double L0 = frame.simbox.length(0);
+    const double L0 = frame.box.length(0);
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax cell(0.0, 0.1);
@@ -67,7 +67,7 @@ TEST(IsotropicCellRelax, ExpandsCompressedBox) {
     opt.build();
     opt.run(frame, 80);
 
-    const double L1 = frame.simbox.length(0);
+    const double L1 = frame.box.length(0);
     EXPECT_GT(L1, L0); // expanded
     EXPECT_TRUE(std::isfinite(L1));
 }
@@ -108,7 +108,7 @@ TEST(IsotropicCellRelax, IntensiveStressExpandsCompressed) {
     frame.span(kAtom_mass)[0] = 1.0;
     frame.span(kAtom_type)[0] = 0;
     frame.span(kAtom_tag)[0] = 1;
-    frame.simbox = cpu::Box::cubic(L0);
+    frame.box = cpu::Box::cubic(L0);
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax cell(0.0, /*alpha*/ 0.5);
@@ -122,7 +122,7 @@ TEST(IsotropicCellRelax, IntensiveStressExpandsCompressed) {
     opt.run(frame, 2); // seed + one scale step
 
     const double expected = L0 * (1.0 + 0.5 * 0.02 / 1.0);
-    EXPECT_NEAR(frame.simbox.length(0), expected, 1e-12 * L0);
+    EXPECT_NEAR(frame.box.length(0), expected, 1e-12 * L0);
 }
 
 TEST(IsotropicCellRelax, FullMatrixScaleOnFccPrimitive) {
@@ -145,8 +145,8 @@ TEST(IsotropicCellRelax, FullMatrixScaleOnFccPrimitive) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    frame.simbox.set_cell(cell);
-    const double vol0 = frame.simbox.volume();
+    frame.box.set_cell(cell);
+    const double vol0 = frame.box.volume();
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax relax(0.0, /*alpha*/ 1.0);
@@ -159,6 +159,6 @@ TEST(IsotropicCellRelax, FullMatrixScaleOnFccPrimitive) {
     opt.build();
     opt.run(frame, 2);
 
-    EXPECT_NEAR(frame.simbox.cell()(0, 1), h * 1.05, 1e-12);
-    EXPECT_NEAR(frame.simbox.volume(), vol0 * (1.05 * 1.05 * 1.05), 1e-9);
+    EXPECT_NEAR(frame.box.cell()(0, 1), h * 1.05, 1e-12);
+    EXPECT_NEAR(frame.box.volume(), vol0 * (1.05 * 1.05 * 1.05), 1e-9);
 }

@@ -65,7 +65,7 @@ struct CounterpoiseResult {
 /// SCFs, restores `ghost_atoms`, and returns the energy components.
 ///
 /// Sub-fragment Frames for free monomers are built with the public Frame
-/// API (row copy of positions + Z + simbox). Method `charge` is left
+/// API (row copy of positions + Z + box). Method `charge` is left
 /// untouched for the dimer run; free-monomer and ghosted runs force
 /// charge 0 (neutral monomers; charged monomers are out of scope).
 ///
@@ -191,7 +191,7 @@ class Counterpoise {
     /// @brief Build a sub-Frame from selected dimer rows (public Frame API).
     /// @param dimer Full complex geometry.
     /// @param idx   Local atom indices to copy (must be in range).
-    /// @return New Frame with `idx.size()` atoms and the dimer's simbox.
+    /// @return New Frame with `idx.size()` atoms and the dimer's box.
     static Frame sub_frame_(const Frame& dimer, const std::vector<int>& idx) {
         const int n_full = static_cast<int>(dimer.nlocal());
         const int n = static_cast<int>(idx.size());
@@ -218,7 +218,7 @@ class Counterpoise {
             dz[k] = sz[i];
             dt[k] = st[i];
         }
-        sub.simbox = dimer.simbox;
+        sub.box = dimer.box;
         return sub;
     }
 };

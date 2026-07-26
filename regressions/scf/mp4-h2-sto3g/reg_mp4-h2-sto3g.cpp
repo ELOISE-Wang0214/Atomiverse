@@ -25,7 +25,7 @@ ATV::cpu::Frame h2_frame() {
     frame.span(ATV::kAtom_x)[1] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 

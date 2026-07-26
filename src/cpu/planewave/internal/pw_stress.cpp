@@ -113,7 +113,7 @@ void apply_strain(cpu::Frame& frame, const Mat3& strain) {
         for (int b = 0; b < 3; ++b)
             F(a, b) = (a == b ? AccReal(1) : AccReal(0)) + strain(a, b);
 
-    Mat3 cell = frame.simbox.cell();
+    Mat3 cell = frame.box.cell();
     Mat3 cell_new;
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j) {
@@ -122,7 +122,7 @@ void apply_strain(cpu::Frame& frame, const Mat3& strain) {
                 s += F(i, k) * cell(k, j);
             cell_new(i, j) = s;
         }
-    frame.simbox.set_cell(cell_new);
+    frame.box.set_cell(cell_new);
 
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
@@ -318,12 +318,12 @@ std::array<double, 6> pw_stress_fd_impl(const cpu::Frame& frame,
                                         const PW& method, double h) {
     if (frame.nlocal() <= 0)
         throw std::invalid_argument("pw_stress_fd: frame has no atoms");
-    if (frame.simbox.volume() <= 0)
+    if (frame.box.volume() <= 0)
         throw std::invalid_argument("pw_stress_fd: non-positive cell volume");
     if (!(h > 0.0))
         throw std::invalid_argument("pw_stress_fd: h must be > 0");
 
-    const double vol = static_cast<double>(frame.simbox.volume());
+    const double vol = static_cast<double>(frame.box.volume());
     const double ry_to_ev = qe_units::rydberg_to_ev;
 
     std::array<double, 6> stress{};
@@ -357,7 +357,7 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
                                               double* energy_ry_out) {
     if (frame.nlocal() <= 0)
         throw std::invalid_argument("pw_stress: frame has no atoms");
-    if (frame.simbox.volume() <= 0)
+    if (frame.box.volume() <= 0)
         throw std::invalid_argument("pw_stress: non-positive cell volume");
 
     const int n = frame.nlocal();
@@ -394,7 +394,7 @@ std::array<double, 6> pw_stress_analytic_impl(const cpu::Frame& frame,
 
     // Hellmann–Feynman strain-FD of the NSCF energy (one SCF total).
     const double h = 2e-3;
-    const double vol = static_cast<double>(frame.simbox.volume());
+    const double vol = static_cast<double>(frame.box.volume());
     const double ry_to_ev = qe_units::rydberg_to_ev;
 
     std::array<double, 6> stress{};

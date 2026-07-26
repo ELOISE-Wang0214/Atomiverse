@@ -38,7 +38,7 @@ cpu::Frame make_h2() {
     frame.span(kAtom_mass)[1] = double(1.008);
     frame.span(kAtom_type)[0] = 1;
     frame.span(kAtom_type)[1] = 1; // H: Z=1
-    frame.simbox = cpu::Box::cubic(100.0);
+    frame.box = cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -50,7 +50,7 @@ cpu::Frame make_h_atom() {
     frame.span(kAtom_z)[0] = double(0);
     frame.span(kAtom_mass)[0] = double(1.008);
     frame.span(kAtom_type)[0] = 1; // H: Z=1, 1 electron
-    frame.simbox = cpu::Box::cubic(100.0);
+    frame.box = cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -424,7 +424,7 @@ static cpu::Frame make_he() {
     f.span(kAtom_z)[0] = 0;
     f.span(kAtom_mass)[0] = double(4.003);
     f.span(kAtom_type)[0] = 2;
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -440,7 +440,7 @@ static cpu::Frame make_heh_plus() {
     f.span(kAtom_mass)[1] = double(1.008);
     f.span(kAtom_type)[0] = 2;
     f.span(kAtom_type)[1] = 1; // HeH+ has 2 electrons
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -456,7 +456,7 @@ static cpu::Frame make_lih() {
     f.span(kAtom_mass)[1] = double(1.008);
     f.span(kAtom_type)[0] = 3;
     f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -515,7 +515,7 @@ TEST(RHF, H2PESScan) {
         f.span(kAtom_mass)[1] = double(1.008);
         f.span(kAtom_type)[0] = 1;
         f.span(kAtom_type)[1] = 1;
-        f.simbox = cpu::Box::cubic(100.0);
+        f.box = cpu::Box::cubic(100.0);
         auto ref = cpu_rhf_reference(f);
         EXPECT_TRUE(ref.converged) << "H2 scan failed at R=" << r;
         EXPECT_TRUE(std::isfinite(ref.energy));

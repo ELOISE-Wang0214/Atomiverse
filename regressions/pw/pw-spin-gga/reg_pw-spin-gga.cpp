@@ -52,7 +52,7 @@ cpu::Frame o2_frame() {
     }
     frame.span(kAtom_z)[0] = 0.0;
     frame.span(kAtom_z)[1] = 1.2075;
-    frame.simbox = cpu::Box::cubic(8.0);
+    frame.box = cpu::Box::cubic(8.0);
     return frame;
 }
 

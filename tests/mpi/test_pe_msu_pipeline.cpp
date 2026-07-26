@@ -106,7 +106,7 @@ cpu::Frame make_pe_box(int n_chains_per_axis, int n_carbons_per_chain,
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -156,7 +156,7 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
                             /*axis=*/0});
     sim.build();
 
-    const double box_x_initial = frame.simbox.cell()(0, 0);
+    const double box_x_initial = frame.box.cell()(0, 0);
     sim.run(frame, 1000);
 
     int my_rank = 0;
@@ -174,12 +174,12 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
     // We only assert it grew (Deform's pull is applied first; barostat
     // can damp but not reverse). Quantitative stress-strain analysis
     // belongs to msu-pe-validation §D against a LAMMPS reference.
-    EXPECT_GT(frame.simbox.cell()(0, 0), box_x_initial)
+    EXPECT_GT(frame.box.cell()(0, 0), box_x_initial)
         << "Deform pull did not grow box_x (initial=" << box_x_initial
-        << ", final=" << frame.simbox.cell()(0, 0) << ")";
+        << ", final=" << frame.box.cell()(0, 0) << ")";
 
     // Box must agree across ranks.
-    double bx = frame.simbox.cell()(0, 0);
+    double bx = frame.box.cell()(0, 0);
     double bx_min, bx_max;
     MPI_Allreduce(&bx, &bx_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&bx, &bx_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);

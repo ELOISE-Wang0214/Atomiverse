@@ -27,7 +27,7 @@ TEST(PairDpd, SoftConservativeEnergy) {
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
 
     cpu::Context ctx;

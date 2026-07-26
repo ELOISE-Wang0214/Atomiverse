@@ -70,8 +70,8 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
         // Skip the re-partition; refresh slab bounds against the (possibly
         // box-changed) current box and let the next Migrate absorb any drift.
         if (dd_->n_local == 0) {
-            dd_->init_topology(MPI_COMM_WORLD, frame.simbox.length(0),
-                               frame.simbox.length(1), frame.simbox.length(2));
+            dd_->init_topology(MPI_COMM_WORLD, frame.box.length(0),
+                               frame.box.length(1), frame.box.length(2));
             dd_->partition_atoms(frame);
             // Drop the Frame-local tag index: under decomposition the
             // authoritative tag->row map is `dd->tag_to_local`; the local index
@@ -79,7 +79,7 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
             // points at a different atom than the one it names.
             frame.release_tag_index();
         } else {
-            dd_->compute_sublo_subhi(frame.simbox);
+            dd_->compute_sublo_subhi(frame.box);
             // Carry-over preserves the partition, but the allocation bound must
             // still grow if this frame is larger than the one the partition was
             // sized for. Grow-only: never shrink below the existing ghost slack.
@@ -93,7 +93,7 @@ void DomainRuntime::bind_frame(cpu::Frame& frame, Context& ctx) {
     (void)ctx;
 #endif
     dd_->bind(frame);
-    dd_->compute_sublo_subhi(frame.simbox);
+    dd_->compute_sublo_subhi(frame.box);
     release_tag_maps_if_unused(frame);
 }
 

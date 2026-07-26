@@ -71,9 +71,9 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Assemble the solver from the build-time frame. Product path is the
     // `use_ot` member; env `ATV_GPW_OT` remains a diagnostic force-on.
     GpwDft cfg;
-    cfg.cell[0] = ctx.frame.simbox.length(0) * kAng2Bohr;
-    cfg.cell[1] = ctx.frame.simbox.length(1) * kAng2Bohr;
-    cfg.cell[2] = ctx.frame.simbox.length(2) * kAng2Bohr;
+    cfg.cell[0] = ctx.frame.box.length(0) * kAng2Bohr;
+    cfg.cell[1] = ctx.frame.box.length(1) * kAng2Bohr;
+    cfg.cell[2] = ctx.frame.box.length(2) * kAng2Bohr;
     cfg.cutoff_ry = cutoff_ry;
     cfg.ngrids = ngrids;
     cfg.rel_cutoff = rel_cutoff;
@@ -314,9 +314,9 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // Variable cell: re-target the solver to the frame's current orthorhombic
     // box. GpwDft::run rebuilds every geometry-dependent structure (grids,
     // lattice images, S/T/Vpp) from `cell` per call, so a box change between
-    // launches is well-defined — cell-relax drivers rescale simbox freely.
+    // launches is well-defined — cell-relax drivers rescale box freely.
     for (int d = 0; d < 3; ++d) {
-        const double now = frame.simbox.length(d) * kAng2Bohr;
+        const double now = frame.box.length(d) * kAng2Bohr;
         if (!(now > 0.0))
             throw std::runtime_error(
                 "GPWEvaluator::launch: non-positive box edge");
@@ -1037,9 +1037,14 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    // BOMD warm-start: reuse previous MO coefficients when shape matches.
+    // BOMD / FD-phonon warm-start: reuse previous MOs and spin densities.
     // GpwDft::run accepts optional guess_C; empty last_.C → core guess.
     // Multi-k has no real C warm-start (Bloch C_k live on the k path).
+    //
+    // UKS critical path: guess_C alone seeds *both* spins from α-like
+    // columns (see GpwDft::run), which is a cold open-shell start. Pass
+    // the converged P_α / P_β so successive force evaluations (Phonon
+    // displacements, UKS AIMD) re-enter near the previous solution.
     const ATV::cpu::linalg::RealMatrix* guess = nullptr;
     if (last_.C.size() > 0 && last_.n_kpts == 0) {
         guess = &last_.C;
@@ -1053,6 +1058,17 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
     const ATV::cpu::linalg::RealMatrix* guess_p_beta =
         (xl_beta_ && xl_beta_->ready()) ? &xl_beta_->aux() : nullptr;
+    if (guess_p == nullptr && last_.n_kpts == 0 && last_.P.size() > 0
+        && last_.converged) {
+        if (n_alpha + n_beta > 0) {
+            if (last_.P_beta.size() > 0) {
+                guess_p = &last_.P;
+                guess_p_beta = &last_.P_beta;
+            }
+        } else {
+            guess_p = &last_.P;
+        }
+    }
     const std::vector<ATV::cpu::linalg::CplxMatrix>* guess_p_k = nullptr;
     const std::vector<ATV::cpu::linalg::CplxMatrix>* guess_p_k_beta = nullptr;
     if (!xl_k_.empty() && xl_k_[0].ready()) {

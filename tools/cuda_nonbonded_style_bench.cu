@@ -42,7 +42,7 @@ static cpu::Frame make_lj(int n_side, double density) {
                 frame.span(kAtom_vz)[idx] = 0.01 * ((2 * ix + iz) % 3 - 1);
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
     return frame;
 }
 

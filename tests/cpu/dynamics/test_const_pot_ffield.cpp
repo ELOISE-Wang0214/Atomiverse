@@ -25,7 +25,7 @@ cpu::Frame vacuum_site(double z) {
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_mass)[0] = 196.97;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -118,7 +118,7 @@ TEST(ConstPotBOFfield, ElectrolyteEntersB) {
     f.span(kAtom_mass)[1] = 1.0;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     cpu::md::ConstPotBO conp(eta);
     conp.add_electrode(1, 0.0);

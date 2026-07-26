@@ -17,7 +17,7 @@ TEST(Metadynamics1D, HillsGrow) {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     cpu::Context ctx;
     auto cv = std::make_unique<cpu::bias::DistanceCV>(1, 2);
     cpu::bias::Metadynamics1D meta(std::move(cv), 0.1, 0.2, 300.0, 10.0, 1);

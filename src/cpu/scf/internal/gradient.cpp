@@ -466,11 +466,9 @@ namespace internal {
 
 ScfGradient::ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
                          GridLevel grid_level, int n_radial, int n_angular,
-                         bool force_native_two_electron_deriv,
                          bool xc_grad_project_translation)
     : method_(method), spin_(spin), xc_type_(xc_type), grid_level_(grid_level),
       n_radial_(n_radial), n_angular_(n_angular),
-      force_native_two_electron_deriv_(force_native_two_electron_deriv),
       xc_grad_project_translation_(xc_grad_project_translation) {}
 
 GradientResult ScfGradient::compute(const Frame& frame,
@@ -609,9 +607,8 @@ GradientResult ScfGradient::compute(const Frame& frame,
     // Two-electron term: contracted on the fly to avoid materializing dERI.
     const auto t_two_e = LogClock::now();
     xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
-    accumulate_two_electron_gradient(grad_two_e, frame, integrals, P, det,
-                                     method_, spin_, xc_type_,
-                                     force_native_two_electron_deriv_);
+    accumulate_two_electron_gradient(grad_two_e, integrals, P, det, method_,
+                                     spin_, xc_type_);
     grad += grad_two_e;
     const auto [two_e_max_abs, two_e_max_atom_norm] =
         gradient_metrics(grad_two_e);

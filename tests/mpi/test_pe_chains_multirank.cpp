@@ -113,7 +113,7 @@ cpu::Frame make_two_chain_box(double box_x, double box_yz) {
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
+    frame.box = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
     return frame;
 }
 

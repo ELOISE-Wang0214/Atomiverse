@@ -41,7 +41,7 @@ cpu::Frame make_tiny(int n) {
         frame.span(ATV::kAtom_x)[i] = 0.1 * i;
         frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     return frame;
 }
 

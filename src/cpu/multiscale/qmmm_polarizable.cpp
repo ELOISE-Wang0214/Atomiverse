@@ -173,7 +173,7 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
         fqm.span(kAtom_fx)[k] = fqm.span(kAtom_fy)[k] = fqm.span(kAtom_fz)[k] =
             0;
     }
-    fqm.simbox = f.simbox;
+    fqm.box = f.box;
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
@@ -214,7 +214,7 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
         for (int iq : qm_rows) {
             const double q = static_cast<double>(type[iq]);
             double dx = xi - x[iq], dy = yi - y[iq], dz = zi - z[iq];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (!(r2 > 0.0))
                 continue;
@@ -230,7 +230,7 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
                 continue;
             double dx = xi - pos[3 * b + 0], dy = yi - pos[3 * b + 1],
                    dz = zi - pos[3 * b + 2];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (!(r2 > 0.0))
                 continue;
@@ -272,7 +272,7 @@ void QmmmPolarizable::launch(const LaunchContext& ctx) {
             if (iqm && jqm)
                 continue;
             double dx = x[j] - x[i], dy = y[j] - y[i], dz = z[j] - z[i];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2 || r2 == 0.0)
                 continue;

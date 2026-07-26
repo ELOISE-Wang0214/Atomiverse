@@ -191,7 +191,7 @@ void VirtualSites::place(Frame& f) {
     StorageReal* __restrict x = f.span(kAtom_x);
     StorageReal* __restrict y = f.span(kAtom_y);
     StorageReal* __restrict z = f.span(kAtom_z);
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     for (const auto& s : sites_) {
         const int i0 = s.i0, i1 = s.i1, i2 = s.i2, is = s.is;
@@ -237,7 +237,7 @@ void VirtualSites::redistribute(Frame& f) {
     const StorageReal* __restrict x = f.span(kAtom_x);
     const StorageReal* __restrict y = f.span(kAtom_y);
     const StorageReal* __restrict z = f.span(kAtom_z);
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     for (const auto& s : sites_) {
         const int i0 = s.i0, i1 = s.i1, i2 = s.i2, is = s.is;

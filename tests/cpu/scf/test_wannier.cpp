@@ -105,7 +105,7 @@ cpu::Frame dummy_frame(int n) {
         f.span(kAtom_y)[i] = 0.0;
         f.span(kAtom_z)[i] = 0.0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

@@ -90,7 +90,7 @@ frame.span(ATV::kAtom_type)[2] = 1; // H
 frame.span(ATV::kAtom_x)[2] = 0.0;
 frame.span(ATV::kAtom_y)[2] = -0.7572;
 frame.span(ATV::kAtom_z)[2] = -0.4692;
-frame.simbox = ATV::cpu::Box::cubic(20.0); // ignored by D4
+frame.box = ATV::cpu::Box::cubic(20.0); // ignored by D4
 
 const ATV::cpu::scf::D4 d4{};              // PBE-D4 defaults as members
 const double e_disp = d4.energy(frame);    // [Hartree]

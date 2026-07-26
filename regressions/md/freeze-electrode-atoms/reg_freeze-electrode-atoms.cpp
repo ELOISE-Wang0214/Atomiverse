@@ -71,7 +71,7 @@ int main() {
         fluid_x0[static_cast<TagInt>(j + 1)] = {wall_xyz[i][0], wall_xyz[i][1],
                                                 fluid_z};
     }
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});

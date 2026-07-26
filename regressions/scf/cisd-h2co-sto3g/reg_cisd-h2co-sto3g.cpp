@@ -44,7 +44,7 @@ int main() {
         frame.span(kAtom_z)[i] = zs[i];
         frame.span(kAtom_type)[i] = types[i];
     }
-    frame.simbox = cpu::Box::cubic(30.0);
+    frame.box = cpu::Box::cubic(30.0);
 
     // ── Pins (REFERENCE.md; Hartree stored, eV via engine kHartreeInEv) ─
     constexpr double kERhf = -112.353990369522;    // Ha

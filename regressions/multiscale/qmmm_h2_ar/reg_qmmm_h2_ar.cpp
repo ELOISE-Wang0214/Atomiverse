@@ -26,7 +26,7 @@ int main() {
     f.span(kAtom_mass)[0] = 1;
     f.span(kAtom_mass)[1] = 1;
     f.span(kAtom_mass)[2] = 40;
-    f.simbox = cpu::Box::cubic(30);
+    f.box = cpu::Box::cubic(30);
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::evaluate)
         .add(cpu::QmmmMechanical{{1, 2}, 0.01, 3.4, 10.0});

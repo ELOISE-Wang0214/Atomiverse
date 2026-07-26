@@ -52,7 +52,7 @@ cpu::Frame make_frozen_lattice(int n_side, double spacing) {
                 frame.span(kAtom_vz)[idx] = 0.0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
     return frame;
 }
 

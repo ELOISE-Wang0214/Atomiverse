@@ -132,7 +132,7 @@ frame.span(kAtom_x)[0] = frame.span(kAtom_y)[0] = frame.span(kAtom_z)[0] = 0.0;
 frame.span(kAtom_vx)[0] = 0.002;
 frame.span(kAtom_vy)[0] = 0.0;
 frame.span(kAtom_vz)[0] = 0.0;
-frame.simbox = cpu::Box::cubic(6.0);
+frame.box = cpu::Box::cubic(6.0);
 
 cpu::pw::PW pw;
 pw.ecut_ry = 5.0;
@@ -159,7 +159,7 @@ Rules (architecture):
   electronic-structure setter.
 - `with_gradient(true)` (default **false**) fills per-atom forces [eV/Å] via
   analytic local HF + Ewald.
-- Frame is the sole I/O currency (`blocks` + `meta` + `simbox`).
+- Frame is the sole I/O currency (`blocks` + `meta` + `box`).
 
 ```bash
 # configure with plane-wave + regressions (CPU login node pattern)

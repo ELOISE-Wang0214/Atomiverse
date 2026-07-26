@@ -50,7 +50,7 @@ cpu::Frame make_sc_lattice(int n_side, double a0) {
                 frame.span(ATV::kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.simbox = ATV::cpu::Box::cubic(n_side * a0);
+    frame.box = ATV::cpu::Box::cubic(n_side * a0);
     return frame;
 }
 
@@ -70,7 +70,7 @@ double lj_pair_energy(double r2, double cutoff) {
 /// O(N^2) minimum-image total LJ energy oracle.
 double brute_force_energy(const cpu::Frame& frame, double cutoff) {
     const int n = frame.nlocal();
-    const double L = frame.simbox.length(0);
+    const double L = frame.box.length(0);
     double total = 0.0;
     for (int i = 0; i < n; ++i)
         for (int j = i + 1; j < n; ++j) {

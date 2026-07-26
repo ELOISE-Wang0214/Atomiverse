@@ -3,13 +3,9 @@
 ///
 /// Strategy: build a real molecular system via the existing native
 /// IntegralPack + ShellBlockPairList, then compute the full
-/// ERI tensor two ways — once through the canonical McMurchie-Davidson
-/// `native::eri_block` (already validated against libcint to 1e-7) and
-/// once through the new `native::rys_eri_block`. The two must agree.
-///
-/// When libcint is available we also compare directly against
-/// `build_integrals_libcint`, with a tighter tolerance, so any residual
-/// normalization drift vs. libcint is surfaced.
+/// ERI tensor two ways — once through the canonical McMurchie–Davidson
+/// `native::eri_block` and once through `native::rys_eri_block`. The two
+/// must agree (cross-check of the two native engines).
 
 #if defined(ATV_HAS_HF)
 
@@ -32,9 +28,6 @@
 #include <omp.h>
 #endif
 
-#ifdef ATV_HAS_LIBCINT
-#include "libcint_reference.cuh"
-#endif
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -59,7 +52,7 @@ cpu::Frame make_water() {
     f.span(ATV::kAtom_mass)[0] = 15.999;
     f.span(ATV::kAtom_mass)[1] = 1.008;
     f.span(ATV::kAtom_mass)[2] = 1.008;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -76,7 +69,7 @@ cpu::Frame make_co() {
     f.span(ATV::kAtom_type)[1] = 8;
     f.span(ATV::kAtom_mass)[0] = 12.011;
     f.span(ATV::kAtom_mass)[1] = 15.999;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -205,72 +198,6 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     compare_tensors(pack.ERI, eri_rys, 5e-7, "CO rys vs native M-D");
 }
 
-// ── Rys ERI should match libcint directly (tighter tolerance) ────────
-
-#ifdef ATV_HAS_LIBCINT
-
-TEST(RysEri, MatchesLibcint_H2O) {
-    auto frame = make_water();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
-                                       /*need_eri=*/true};
-    auto sp = ShellBlockPairList{pack, 1e-14};
-
-    auto eri_rys = build_eri_via_rys(sp);
-    auto libcint_pack = test::build_integrals_libcint(frame);
-    compare_tensors(libcint_pack.ERI, eri_rys, 5e-7, "H2O rys vs libcint");
-}
-
-TEST(RysEri, MatchesLibcint_CO) {
-    auto frame = make_co();
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::STO3G, 0,
-                                       /*need_eri=*/true};
-    auto sp = ShellBlockPairList{pack, 1e-14};
-
-    auto eri_rys = build_eri_via_rys(sp);
-    auto libcint_pack = test::build_integrals_libcint(frame);
-    compare_tensors(libcint_pack.ERI, eri_rys, 5e-7, "CO rys vs libcint");
-}
-
-// ── Phase 4 gate: d-shell (cc-pVDZ-class) ERIs vs libcint ────────────
-//
-// The eri-hpc-opt spec's Phase 4 targets cc-pVDZ enablement: d-shells,
-// 6 Cartesian functions per shell. The native ERI engine reaches l = 2
-// through the Rys-quadrature kernel (`native::rys_eri_block`, the same
-// 2D-VRR + HRR algebra as libcint), to which `eri_block()` dispatches
-// every non-(ss|ss) quartet. The d-polarized 6-31G* table exercises the
-// full set of d-shell quartet classes that cc-pVDZ needs — (dd|dd),
-// (dp|dd), (dd|pp), (dd|ss), (ds|ss), … — on a real molecule.
-//
-// This is the binding regression gate (acceptance ac-004): the native
-// d-shell ERI tensor must agree with libcint's `cint2e_cart` to 1e-7.
-TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
-    auto frame = make_water();
-    // 6-31G* puts a d-shell on oxygen → d quartets appear in the tensor.
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
-                                       /*need_eri=*/true};
-    auto sp = ShellBlockPairList{pack, 1e-14};
-    ASSERT_GT(sp.n_basis, 7)
-        << "6-31G* H2O must have > 7 AOs (d-shell present)";
-
-    auto eri_rys = build_eri_via_rys(sp);
-    auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);
-    compare_tensors(eri_ref, eri_rys, 1e-7,
-                    "H2O 6-31G* d-shell rys vs libcint");
-}
-
-TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
-    auto frame = make_co();
-    // 6-31G* puts a d-shell on both C and O → (dd|dd) quartets present.
-    auto pack = cpu::scf::IntegralPack{frame, cpu::scf::BasisSet::Pople631Gs, 0,
-                                       /*need_eri=*/true};
-    auto sp = ShellBlockPairList{pack, 1e-14};
-
-    auto eri_rys = build_eri_via_rys(sp);
-    auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);
-    compare_tensors(eri_ref, eri_rys, 1e-7, "CO 6-31G* d-shell rys vs libcint");
-}
-
-#endif // ATV_HAS_LIBCINT
 
 // ── thread_local ERI-reuse determinism guard (spec scf-review-06, ac-005) ─
 //

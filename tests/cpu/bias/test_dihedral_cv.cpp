@@ -34,7 +34,7 @@ cpu::Frame planar_dihedral(double lx, double ly) {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 

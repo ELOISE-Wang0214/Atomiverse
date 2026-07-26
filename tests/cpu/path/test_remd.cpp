@@ -29,7 +29,7 @@ TEST(Remd, BuildsAndRunsExchangeRounds) {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     cpu::path::Remd remd({100.0, 200.0, 300.0, 400.0}, 1.0, 5, 42);
     remd.set_program_builder(&build_lj, nullptr);

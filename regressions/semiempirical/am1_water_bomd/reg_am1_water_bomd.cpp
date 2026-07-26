@@ -43,7 +43,7 @@ ATV::cpu::Frame make_water() {
         f.span(ATV::kAtom_vy)[i] = 0.0;
         f.span(ATV::kAtom_vz)[i] = 0.0;
     }
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 

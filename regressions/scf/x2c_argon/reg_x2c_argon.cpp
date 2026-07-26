@@ -41,7 +41,7 @@ int main() {
     frame.span(kAtom_x)[0] = 0.0;
     frame.span(kAtom_y)[0] = 0.0;
     frame.span(kAtom_z)[0] = 0.0;
-    frame.simbox = cpu::Box::cubic(30.0);
+    frame.box = cpu::Box::cubic(30.0);
 
     // Non-relativistic reference.
     cpu::scf::RHF nr;

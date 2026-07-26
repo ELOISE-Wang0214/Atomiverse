@@ -82,7 +82,7 @@ Frame make_c10h22() {
         std::fprintf(stderr, "geometry atom count mismatch a=%d\n", a);
         std::exit(2);
     }
-    frame.simbox = ATV::cpu::Box::cubic(80.0);
+    frame.box = ATV::cpu::Box::cubic(80.0);
     return frame;
 }
 

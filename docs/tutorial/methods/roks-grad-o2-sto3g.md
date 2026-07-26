@@ -78,7 +78,7 @@ cpu::Frame frame(2);
 frame.span(kAtom_type)[0] = frame.span(kAtom_type)[1] = 8;
 frame.span(kAtom_z)[0] = 0.0;
 frame.span(kAtom_z)[1] = 1.2075;
-frame.simbox = cpu::Box::cubic(20.0);
+frame.box = cpu::Box::cubic(20.0);
 
 cpu::scf::ROKS roks(/*n_alpha=*/9, /*n_beta=*/7, cpu::scf::XCType::LSDA);
 roks.basis = cpu::scf::BasisSet::STO3G;

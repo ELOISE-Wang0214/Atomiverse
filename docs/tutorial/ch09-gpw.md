@@ -139,7 +139,7 @@ for (int i = 0; i < 3; ++i) {
     f.span(kAtom_y)[i] = y[i];
     f.span(kAtom_z)[i] = zc[i];
 }
-f.simbox = cpu::Box::cubic(10.0);                   // 10 Å box
+f.box = cpu::Box::cubic(10.0);                   // 10 Å box
 ```
 
 **Step 2 — declare a `Kind` per element.** A `cpu::gpw::Kind` is CP2K's

@@ -30,7 +30,7 @@ int main() {
         f.span(kAtom_tag)[i] = i;
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, f.nlocal());
     for (int i = 0; i + 1 < N; ++i)
@@ -48,7 +48,7 @@ int main() {
         double dx = f.span(kAtom_x)[i + 1] - f.span(kAtom_x)[i];
         double dy = f.span(kAtom_y)[i + 1] - f.span(kAtom_y)[i];
         double dz = f.span(kAtom_z)[i + 1] - f.span(kAtom_z)[i];
-        f.simbox.min_image(dx, dy, dz);
+        f.box.min_image(dx, dy, dz);
         const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
         if (r > rmax)
             rmax = r;

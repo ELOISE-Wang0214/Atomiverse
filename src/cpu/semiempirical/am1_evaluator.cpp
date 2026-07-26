@@ -35,8 +35,8 @@ WrappedPositionsSnapshot unwrap_for_am1(ATV::cpu::Frame& frame) {
 
     if (n <= 1)
         return snap;
-    if (frame.simbox.length(0) <= 0.0 || frame.simbox.length(1) <= 0.0
-        || frame.simbox.length(2) <= 0.0)
+    if (frame.box.length(0) <= 0.0 || frame.box.length(1) <= 0.0
+        || frame.box.length(2) <= 0.0)
         return snap;
 
     StorageReal* __restrict sp_x = frame.span(kAtom_x);
@@ -49,7 +49,7 @@ WrappedPositionsSnapshot unwrap_for_am1(ATV::cpu::Frame& frame) {
         double dx = sp_x[i] - x0;
         double dy = sp_y[i] - y0;
         double dz = sp_z[i] - z0;
-        frame.simbox.min_image(dx, dy, dz);
+        frame.box.min_image(dx, dy, dz);
         sp_x[i] = static_cast<StorageReal>(x0 + dx);
         sp_y[i] = static_cast<StorageReal>(y0 + dy);
         sp_z[i] = static_cast<StorageReal>(z0 + dz);

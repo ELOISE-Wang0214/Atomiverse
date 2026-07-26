@@ -34,7 +34,7 @@ cpu::Frame make_h_cubic() {
     f.span(kAtom_vx)[0] = 0.002;
     f.span(kAtom_vy)[0] = 0.0;
     f.span(kAtom_vz)[0] = 0.0;
-    f.simbox = cpu::Box::cubic(6.0);
+    f.box = cpu::Box::cubic(6.0);
     return f;
 }
 

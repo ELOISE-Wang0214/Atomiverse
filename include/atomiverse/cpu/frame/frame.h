@@ -1,8 +1,8 @@
 /// @file cpu/frame/frame.h
-/// @brief CPU Frame physical mapping: blocks + typed meta + simbox.
+/// @brief CPU Frame physical mapping: blocks + typed meta + box.
 ///
 /// This is the hard-cutover representation.  There is no Atom aggregate,
-/// SystemScalars mirror, named box alias, or compatibility accessor.
+/// SystemScalars mirror, `simbox` alias, or compatibility accessor.
 #pragma once
 
 #include <cstddef>
@@ -31,7 +31,7 @@ class Frame {
     // per-row buffers; all bookkeeping and scalar results live in typed meta.
     BlockMap blocks;
     MetaMap meta;
-    Box simbox;
+    Box box;
 
     Block& block(std::string_view key);
     const Block& block(std::string_view key) const;
@@ -98,7 +98,7 @@ class Frame {
 
     /// Create an independent Frame with the same exact Block/Column and
     /// serializable-meta schema. Per-row values and backend-local counts/index
-    /// are fresh; topology strides and simbox are preserved.
+    /// are fresh; topology strides and box are preserved.
     Frame clone_structure(int rows) const;
 
   private:

@@ -82,7 +82,7 @@ cpu::Frame f(2);
 // H2, r = 0.74 Å on +z (REFERENCE.md); type = Z
 f.span(kAtom_z)[1] = 0.74;
 f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
-f.simbox = cpu::Box::cubic(20.0);
+f.box = cpu::Box::cubic(20.0);
 
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;

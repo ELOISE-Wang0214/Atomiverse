@@ -115,7 +115,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
               type[idx] = 18;                      // Ar
               ++idx;
           }
-    f.simbox = cpu::Box::cubic(n_cells * a);
+    f.box = cpu::Box::cubic(n_cells * a);
     return f;
 }
 ```
@@ -363,10 +363,10 @@ the MD wiring.
 A short field guide to the things that have actually broken in this
 code:
 
-- **`frame.simbox` not set.** Every neighbor-search and minimum-image
+- **`frame.box` not set.** Every neighbor-search and minimum-image
   helper reads `cpu::Box`. An uninitialized box means
   zero-length edges, infinite densities, and segfaults inside cell-list
-  setup. Always set `frame.simbox = cpu::Box::cubic(L)` before `sim.build()`.
+  setup. Always set `frame.box = cpu::Box::cubic(L)` before `sim.build()`.
 - **Cutoff vs neighbor-list-cutoff.** `PairLJCut{eps, sigma, cutoff}` defines
   the physical cutoff. `NeighborList<>{cutoff}` defines the search
   cutoff. They must agree (or the neighbor-list cutoff is larger by the

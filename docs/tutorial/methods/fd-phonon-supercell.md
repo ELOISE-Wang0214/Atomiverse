@@ -28,7 +28,7 @@ the pin host).
 ## Method
 
 **Level.** Γ-point phonons of an \(n_a\times n_b\times n_c\) supercell of a
-periodic unit cell. Lattice vectors are the rows of `frame.simbox.cell()` [Å]:
+periodic unit cell. Lattice vectors are the rows of `frame.box.cell()` [Å]:
 
 \[
 \mathbf{a}' = n_a\mathbf{a},\quad

@@ -71,7 +71,7 @@ int main() {
         frame.span(kAtom_type)[i] = 0;
         frame.span(kAtom_tag)[i] = i + 1;
     }
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     cpu::Context ctx;
     cpu::md::FixOscillatingEfield osc(0.0, 0.0, Ez0, period, dt);

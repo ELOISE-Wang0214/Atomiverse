@@ -28,7 +28,7 @@ int main() {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -0.7572;
     frame.span(kAtom_z)[2] = -0.4692;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // PySCF 2.14.0 + pyscf-dispersion pin (REFERENCE.md): d3bj / water / PBE.
     constexpr double kEDispRef = -0.0003594686557095473; // Ha

@@ -266,7 +266,6 @@ class MeanFieldMethod : public cpu::Driver<ATV::scf::Phase>, public HF {
     int n_angular = 110;
 
     // ── Debug / regression knobs ──────────────────────────────────────
-    bool force_native_two_electron_deriv = false;
     bool xc_grad_project_translation = false;
     double hybrid_alpha_override = -1.0;
     const MolecularGrid* fixed_grid = nullptr;

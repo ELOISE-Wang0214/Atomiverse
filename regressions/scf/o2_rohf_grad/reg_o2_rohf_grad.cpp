@@ -31,7 +31,7 @@ int main() {
     }
     frame.span(kAtom_z)[0] = 0.0;
     frame.span(kAtom_z)[1] = 1.2075;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::scf::ROHF rohf(9, 7); // O2 triplet
     rohf.basis = cpu::scf::BasisSet::STO3G;

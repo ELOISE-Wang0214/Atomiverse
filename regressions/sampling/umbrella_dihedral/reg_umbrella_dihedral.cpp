@@ -35,7 +35,7 @@ int main() {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
 
     cpu::Evaluate eval;
     auto cv = std::make_unique<cpu::bias::DihedralCV>(1, 2, 3, 4);

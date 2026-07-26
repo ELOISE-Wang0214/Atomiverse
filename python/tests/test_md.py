@@ -204,9 +204,9 @@ class TestMolrsFrameV2Boundary:
     def test_exact_frame_schema_version(self):
         assert molrs.FRAME_SCHEMA_VERSION == 2
 
-    def test_simbox_is_the_only_cell_property(self, argon_frame):
-        assert argon_frame.simbox is not None
-        assert not hasattr(argon_frame, "box")
+    def test_box_is_the_only_cell_property(self, argon_frame):
+        assert argon_frame.box is not None
+        assert not hasattr(argon_frame, "simbox")
 
     def test_untyped_metadata_is_rejected(self, argon_frame):
         with pytest.raises(TypeError, match="MetaValue"):

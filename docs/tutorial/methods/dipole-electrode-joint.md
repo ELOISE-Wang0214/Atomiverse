@@ -107,7 +107,7 @@ for (int i = 0; i < 4; ++i) {
     frame.span(kAtom_mass)[i] = (typ[i] < 3) ? 12.0 : 1.0;
     frame.span(kAtom_tag)[i] = i + 1;
 }
-frame.simbox = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
+frame.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
 
 cpu::md::DipoleElectrodeJoint joint(
     /*eta [1/Å]=*/2.0, /*alpha_by_type=*/{0.0, 0.0, 0.0, 1.0, 1.5});

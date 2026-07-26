@@ -57,7 +57,7 @@ value-only (`energy_ev`, `e_corr_mp2_ha`) — not a config bag.
 
 cpu::Frame frame(3);
 // O(0,0,0.1173); H(0,±0.7572,−0.4692) Å — pin_scf water
-// types: 8, 1, 1; simbox = Box::cubic(30.0)
+// types: 8, 1, 1; box = Box::cubic(30.0)
 
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;

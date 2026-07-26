@@ -86,7 +86,6 @@ struct IntegralDerivPack {
 /// exchange prefactors and density symmetrization as a pure scalar.
 ///
 /// @param[out] grad      Gradient accumulator [n_atoms, 3] in Hartree/Bohr.
-/// @param frame          Frame supplying nuclear positions for libcint setup.
 /// @param integrals      Integral pack for the current geometry.
 /// @param P_total        Total density matrix P^alpha + P^beta (dimensionless).
 /// @param det            Converged mean-field wavefunction; supplies the
@@ -95,13 +94,10 @@ struct IntegralDerivPack {
 /// @param method         HF or KS mean field (selects the exchange fraction).
 /// @param spin           Restricted or unrestricted spin treatment.
 /// @param xc_type        XC functional (KS hybrid exact-exchange fraction).
-/// @param force_native_two_electron_deriv Force the native derivative engine
-///                       even when libcint is available (test knob).
 void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad, const Frame& frame,
-    const IntegralPack& integrals, const xt::xtensor<double, 2>& P_total,
-    const SlaterDeterminant& det, MeanFieldType method, SpinType spin,
-    XCType xc_type, bool force_native_two_electron_deriv);
+    xt::xtensor<double, 2>& grad, const IntegralPack& integrals,
+    const xt::xtensor<double, 2>& P_total, const SlaterDeterminant& det,
+    MeanFieldType method, SpinType spin, XCType xc_type);
 
 // ── Second derivatives (hf-capability-gaps-13-cphf) ──────────────────
 

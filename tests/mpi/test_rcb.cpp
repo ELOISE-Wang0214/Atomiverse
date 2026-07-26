@@ -42,7 +42,7 @@ cpu::Frame make_skewed_frame(double box_len, int n_atoms) {
         frame.span(ATV::kAtom_mass)[i] = 1.0;
         frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

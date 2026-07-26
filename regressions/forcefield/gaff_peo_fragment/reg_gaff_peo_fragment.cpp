@@ -43,7 +43,7 @@ int main() {
         f.span(kAtom_charge)[i] = q[i];
         f.span(kAtom_tag)[i] = i;
     }
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, n);
     f.add_bond(0, 1, 0); // c3-c3

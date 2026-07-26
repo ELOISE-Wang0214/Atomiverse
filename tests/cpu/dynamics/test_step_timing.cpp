@@ -50,7 +50,7 @@ cpu::Frame make_chain(int n, double box_len) {
     for (int k = 0; k < n - 3; ++k)
         frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     frame.build_special_list();
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

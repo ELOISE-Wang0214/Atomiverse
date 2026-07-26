@@ -112,7 +112,7 @@ frame.span(kAtom_mass)[0] = frame.span(kAtom_mass)[1] = 1.0;
 frame.span(kAtom_tag)[0] = 1;
 frame.span(kAtom_tag)[1] = 2;
 // zero forces / energy before launch
-frame.simbox = cpu::Box::cubic(50.0);
+frame.box = cpu::Box::cubic(50.0);
 frame.meta.get(kEnergy) = 0;
 
 cpu::PimInducedDipole pim(/*cutoff [Å]=*/20.0,

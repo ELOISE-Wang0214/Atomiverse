@@ -46,7 +46,7 @@ cpu::Frame make_drifting_lj(int n_side, double vx, double vy, double vz) {
                 frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(double(n_side) * spacing);
+    frame.box = cpu::Box::cubic(double(n_side) * spacing);
     return frame;
 }
 

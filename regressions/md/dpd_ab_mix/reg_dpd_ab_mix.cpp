@@ -18,7 +18,7 @@ int main() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(4.0);
+    f.box = cpu::Box::cubic(4.0);
     // a_AA=a_BB=25, a_AB=40
     std::vector<std::vector<double>> a{{25, 40}, {40, 25}};
     cpu::md::MD sim;

@@ -118,7 +118,7 @@ void Publish::launch(const LaunchContext& ctx) {
     const int n = ctx.frame.nlocal();
     snap.step = step;
     snap.n_owned = n;
-    snap.box = ctx.frame.simbox;
+    snap.box = ctx.frame.box;
 
     copy_range(snap.x, ctx.frame.span(kAtom_x).data(), n, mask.positions);
     copy_range(snap.y, ctx.frame.span(kAtom_y).data(), n, mask.positions);

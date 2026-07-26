@@ -20,8 +20,8 @@ int main() {
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 40;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::orthorhombic(5.0, 8.0, 8.0);
-    const double Lx0 = f.simbox.length(0);
+    f.box = cpu::Box::orthorhombic(5.0, 8.0, 8.0);
+    const double Lx0 = f.box.length(0);
     cpu::minimizer::Minimize opt;
     cpu::minimizer::AnisotropicCellRelax cell(0.0, 0.08);
     cell.max_scale = 0.08;
@@ -35,7 +35,7 @@ int main() {
     opt.enable_timing(false);
     opt.build();
     opt.run(f, 80);
-    const double Lx1 = f.simbox.length(0);
+    const double Lx1 = f.box.length(0);
     std::printf("aniso Lx0=%.4f Lx1=%.4f\n", Lx0, Lx1);
     if (!std::isfinite(Lx1) || std::fabs(Lx1 - Lx0) < 1e-8) {
         // may still move other axes; accept residual drop

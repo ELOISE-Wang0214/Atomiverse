@@ -428,7 +428,7 @@ int valence_from_z(int z) {
 void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
                       double ecut_ry, int k_mesh, PWProblem& out) {
     int n_atoms = static_cast<int>(frame.nlocal());
-    const cpu::Box& box_ang = frame.simbox;
+    const cpu::Box& box_ang = frame.box;
     cpu::Box box_bohr;
     box_bohr.set_cell(box_ang.cell() * AccReal(1.8897259886));
 
@@ -708,7 +708,7 @@ void rebuild_k_tables(PWProblem& out, const cpu::Frame& frame,
     if (kfrac.empty())
         throw std::invalid_argument("rebuild_k_tables: empty k-list");
 
-    const cpu::Box& box_ang = frame.simbox;
+    const cpu::Box& box_ang = frame.box;
     cpu::Box box_bohr;
     box_bohr.set_cell(box_ang.cell() * AccReal(1.8897259886));
     AccReal ecut_ht = static_cast<AccReal>(ecut_ry) * AccReal(0.5);

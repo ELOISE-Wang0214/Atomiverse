@@ -135,7 +135,7 @@ def silicon_frame() -> "molrs.Frame":
     atoms.insert("mass", np.full(2, 28.0855, dtype=np.float64))
     atoms.insert("type", np.full(2, 14, dtype=np.int32))
     frame["atoms"] = atoms
-    frame.simbox = molrs.Box.cube(a)
+    frame.box = molrs.Box.cube(a)
     return frame
 
 

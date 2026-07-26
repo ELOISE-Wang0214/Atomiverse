@@ -38,7 +38,7 @@ TEST(BondHarmonic, DimerAtEquilibrium) {
         tag[0] = 0;
         tag[1] = 1;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
@@ -80,7 +80,7 @@ TEST(BondHarmonic, DimerDisplaced) {
         tag[0] = 0;
         tag[1] = 1;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
@@ -135,7 +135,7 @@ TEST(AngleHarmonic, AtEquilibrium) {
         tag[1] = 1;
         tag[2] = 2;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
@@ -193,7 +193,7 @@ TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
         tag[2] = 2;
         tag[3] = 3;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
@@ -265,7 +265,7 @@ TEST(Bonded, ChainWithLJ) {
         tag[2] = 2;
         tag[3] = 3;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());

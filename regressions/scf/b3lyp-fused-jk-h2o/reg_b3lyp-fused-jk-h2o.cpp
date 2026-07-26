@@ -42,7 +42,7 @@ int main() {
     f.span(kAtom_x)[2] = 0.0;
     f.span(kAtom_y)[2] = -0.7572;
     f.span(kAtom_z)[2] = -0.4692;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     // PySCF 2.14.0 pin (REFERENCE.md; def2-SVP spherical, conv_tol=1e-12,
     // default DFT grid; ATV default RKS grid is MatchPySCF).

@@ -31,7 +31,7 @@ cpu::Frame dimer(double r, double q0, double q1, int t0, int t1) {
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.0;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 

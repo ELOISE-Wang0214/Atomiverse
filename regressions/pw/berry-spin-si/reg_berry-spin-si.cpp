@@ -42,7 +42,7 @@ cpu::Frame make_si_diamond(double a_ang, double delta_frac_a3) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
     frame.span(kAtom_x)[0] = 0.0;
     frame.span(kAtom_y)[0] = 0.0;
     frame.span(kAtom_z)[0] = 0.0;

@@ -52,7 +52,7 @@ int check_h2() {
     frame.span(kAtom_x)[1] = 0.0;
     frame.span(kAtom_y)[1] = 0.0;
     frame.span(kAtom_z)[1] = 0.74;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
@@ -101,7 +101,7 @@ int check_h2o() {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -0.7572;
     frame.span(kAtom_z)[2] = -0.4692;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     const std::array<double, 3> O = {0.0, 0.0, 0.1173};
     const std::array<double, 3> H1 = {0.0, 0.7572, -0.4692};

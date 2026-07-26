@@ -118,7 +118,7 @@ sim.build();
 sim.run(frame, /*nsteps=*/200);
 
 // diagnostics from box + stress meta:
-//   Lx, Ly, Lz = frame.simbox.length(0|1|2)
+//   Lx, Ly, Lz = frame.box.length(0|1|2)
 //   gamma_inst = 0.5 * Lz * (Pzz - 0.5*(Pxx+Pyy))
 //   with P_aa = (kStress[a] + kStressKinetic[a]) / V
 ```

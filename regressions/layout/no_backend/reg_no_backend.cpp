@@ -46,7 +46,7 @@ int main() {
                 mass[i] = 39.948; // argon [amu]
                 type[i] = 0;      // LJ is type-agnostic here
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
 
     // A preset composes the dissolved runtime internally — the caller never
     // names any engine/backend type.

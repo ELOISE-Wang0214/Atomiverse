@@ -32,7 +32,7 @@ int main() {
     frame.span(ATV::kAtom_mass)[1] = double(1.008);
     frame.span(ATV::kAtom_type)[0] = 1;
     frame.span(ATV::kAtom_type)[1] = 1;
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
 
     std::cout << "=== H2 / STO-3G / RHF (CPU) ===\n"
               << "Geometry: H-H at 0.74 Angstrom\n\n";

@@ -104,7 +104,7 @@ bag). Minimal multi-site solve matching the regression twin:
 using namespace ATV;
 
 // frame: 32 electrode sites (types 1,2) + 2 electrolyte ions (type 3);
-// simbox orthorhombic(4, 4, 20); see reg_const-pot-cg-large-electrode.cpp
+// box orthorhombic(4, 4, 20); see reg_const-pot-cg-large-electrode.cpp
 
 cpu::md::ConstPotCG cg(/*eta [1/Å]=*/2.0);
 cg.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);

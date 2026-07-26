@@ -55,7 +55,7 @@ void XtbGfn0::launch(const LaunchContext& ctx) {
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
             double dx = x[j] - x[i], dy = y[j] - y[i], dz = z[j] - z[i];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (r < 1e-8)
                 continue;

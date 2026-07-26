@@ -81,7 +81,7 @@ cpu::Frame particle_at(double x, double y) {
     f.span(ATV::kAtom_z)[0] = 0.0;
     f.span(ATV::kAtom_mass)[0] = 1.0;
     f.span(ATV::kAtom_type)[0] = 1;
-    f.simbox = ATV::cpu::Box::cubic(
+    f.box = ATV::cpu::Box::cubic(
         100.0); // the surface is unbounded; the box never binds
     return f;
 }

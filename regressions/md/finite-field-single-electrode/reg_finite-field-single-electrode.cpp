@@ -56,7 +56,7 @@ int main() {
         frame.span(kAtom_tag)[0] = 1;
         frame.span(kAtom_vx)[0] = frame.span(kAtom_vy)[0] =
             frame.span(kAtom_vz)[0] = 0.0;
-        frame.simbox = cpu::Box::cubic(kL);
+        frame.box = cpu::Box::cubic(kL);
 
         cpu::md::ConstPotBO conp(kEta);
         conp.add_electrode(/*type=*/1, kPsi);
@@ -102,7 +102,7 @@ int main() {
         frame.span(kAtom_tag)[0] = 1;
         frame.span(kAtom_fx)[0] = frame.span(kAtom_fy)[0] =
             frame.span(kAtom_fz)[0] = 0.0;
-        frame.simbox = cpu::Box::cubic(kL);
+        frame.box = cpu::Box::cubic(kL);
 
         cpu::Evaluate eval;
         eval.on(evaluate::Phase::evaluate)
@@ -132,7 +132,7 @@ int main() {
         frame.span(kAtom_tag)[0] = 1;
         frame.span(kAtom_vx)[0] = frame.span(kAtom_vy)[0] =
             frame.span(kAtom_vz)[0] = 0.0;
-        frame.simbox = cpu::Box::cubic(kL);
+        frame.box = cpu::Box::cubic(kL);
 
         cpu::md::ConstPotBO conp(kEta);
         conp.add_electrode(1, kPsi);

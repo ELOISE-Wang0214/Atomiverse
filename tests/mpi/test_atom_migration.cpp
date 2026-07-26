@@ -48,7 +48,7 @@ cpu::Frame make_chain_frame(double box_len, int n_atoms) {
         frame.span(ATV::kAtom_vy)[i] = 0.0;
         frame.span(ATV::kAtom_vz)[i] = 0.0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -103,7 +103,7 @@ TEST(Migrate, AtomDriftsAcrossPosXBoundary) {
         moved_tag = frame.span(ATV::kAtom_tag)[rightmost];
         moved_aux[0] = frame.span(kMigrationAux)(rightmost, 0);
         moved_aux[1] = frame.span(kMigrationAux)(rightmost, 1);
-        const double Lx = frame.simbox.cell()(0, 0);
+        const double Lx = frame.box.cell()(0, 0);
         const double new_x = dd->subhi[0] + 1.0;
         frame.span(ATV::kAtom_x)[rightmost] =
             new_x - Lx * std::floor(new_x / Lx);

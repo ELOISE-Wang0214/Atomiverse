@@ -1323,7 +1323,7 @@ dfpt_gamma_spin_impl(const cpu::Frame& frame, const PW& method,
             static_cast<AccReal>(valence_from_z(types[i]));
     const AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     std::vector<AccReal> C =
-        ewald_dynamical_matrix(pos_ang_v, valence, frame.simbox, ecut_ht);
+        ewald_dynamical_matrix(pos_ang_v, valence, frame.box, ecut_ht);
     auto Cat = [&](int mu, int nu) -> AccReal& {
         return C[static_cast<std::size_t>(mu) * dim + nu];
     };
@@ -2017,7 +2017,7 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
             static_cast<AccReal>(valence_from_z(types[i]));
     const AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     std::vector<AccReal> C =
-        ewald_dynamical_matrix(pos_ang_v, valence, frame.simbox, ecut_ht);
+        ewald_dynamical_matrix(pos_ang_v, valence, frame.box, ecut_ht);
 
     auto Cat = [&](int mu, int nu) -> AccReal& {
         return C[static_cast<std::size_t>(mu) * dim + nu];
@@ -2722,7 +2722,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
 
     // Cartesian q [1/Bohr].
     cpu::Box cell_bohr;
-    cell_bohr.set_cell(frame.simbox.cell() * AccReal(1.8897259886));
+    cell_bohr.set_cell(frame.box.cell() * AccReal(1.8897259886));
     const auto recip = cell_bohr.recip_cell();
     const Vec3 q_cart{recip(0, 0) * q_frac[0] + recip(1, 0) * q_frac[1]
                           + recip(2, 0) * q_frac[2],
@@ -2921,7 +2921,7 @@ DfptQOutput dfpt_q_spin_impl(const cpu::Frame& frame, const PW& method,
             static_cast<AccReal>(valence_from_z(types[i]));
     const AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     std::vector<Cx> C =
-        ewald_dynamical_matrix_q(pos_ang_v, valence, frame.simbox, ecut_ht,
+        ewald_dynamical_matrix_q(pos_ang_v, valence, frame.box, ecut_ht,
                                  q_frac);
 
     auto Cat = [&](int mu, int nu) -> Cx& {
@@ -3521,7 +3521,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
 
     // Cartesian q [1/Bohr].
     cpu::Box cell_bohr;
-    cell_bohr.set_cell(frame.simbox.cell() * AccReal(1.8897259886));
+    cell_bohr.set_cell(frame.box.cell() * AccReal(1.8897259886));
     const auto recip = cell_bohr.recip_cell();
     const Vec3 q_cart{recip(0, 0) * q_frac[0] + recip(1, 0) * q_frac[1]
                           + recip(2, 0) * q_frac[2],
@@ -3735,7 +3735,7 @@ DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,
             static_cast<AccReal>(valence_from_z(types[i]));
     const AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     std::vector<Cx> C =
-        ewald_dynamical_matrix_q(pos_ang_v, valence, frame.simbox, ecut_ht,
+        ewald_dynamical_matrix_q(pos_ang_v, valence, frame.box, ecut_ht,
                                  q_frac);
 
     auto Cat = [&](int mu, int nu) -> Cx& {

@@ -70,7 +70,7 @@ cpu::Frame make_h2() {
     f.span(ATV::kAtom_mass)[1] = 1.008;
     f.span(ATV::kAtom_type)[0] = 1;
     f.span(ATV::kAtom_type)[1] = 1;
-    f.simbox =
+    f.box =
         ATV::cpu::Box::cubic(100.0); // SCF treats the molecule as isolated
     return f;
 }
@@ -131,7 +131,7 @@ int main() {
     // Bond length via minimum image — atoms may have wrapped through
     // the box independently during the trajectory, but we want the
     // physical bond.
-    const double lx = frame.simbox.cell()(0, 0);
+    const double lx = frame.box.cell()(0, 0);
     auto min_image = [](double d, double L) {
         return (L > 0.0) ? (d - L * std::round(d / L)) : d;
     };

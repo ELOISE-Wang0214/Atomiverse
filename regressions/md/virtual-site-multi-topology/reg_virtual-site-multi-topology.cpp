@@ -82,7 +82,7 @@ int main() {
         f.span(kAtom_charge)[i] = q[i];
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, f.nlocal());
     // Topology so special 0,0,0 excludes all intra-water pairs including M
@@ -190,7 +190,7 @@ int main() {
         w.span(kAtom_type)[i] = (i == 0) ? 0 : (i <= 2 ? 1 : 2);
         w.span(kAtom_mass)[i] = 0;
     }
-    w.simbox = cpu::Box::cubic(20.0);
+    w.box = cpu::Box::cubic(20.0);
     w.clear_tag_index();
     w.rebuild_tag_index(0, w.nlocal());
     cpu::md::VirtualSites tip5p;

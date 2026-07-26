@@ -40,7 +40,7 @@ void extract(const Frame& frame, std::vector<int>& type_id,
         y[i] = static_cast<double>(sp_y[i]);
         z[i] = static_cast<double>(sp_z[i]);
     }
-    const auto& cell = frame.simbox.cell();
+    const auto& cell = frame.box.cell();
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
             box[static_cast<std::size_t>(i * 3 + j)] =
@@ -102,13 +102,13 @@ int ZarrReader::read_into(Frame& frame) {
             "ZarrReader: n_global=" + std::to_string(n) + " > frame.nlocal()="
             + std::to_string(frame.nlocal()) + " at " + path_);
     if (box_h.size() != 9)
-        throw std::runtime_error("ZarrReader: simbox.size != 9 at " + path_);
+        throw std::runtime_error("ZarrReader: box.size != 9 at " + path_);
 
     ATV::Mat3 cell;
     for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c)
             cell(r, c) = box_h[r * 3 + c];
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
 
     // Hoisted once before the loop -- the 13.7x rule.
     StorageReal* __restrict sp_x = frame.span(kAtom_x);

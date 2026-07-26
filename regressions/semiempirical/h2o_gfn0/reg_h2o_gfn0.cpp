@@ -20,7 +20,7 @@ int main() {
     f.span(kAtom_type)[0] = 8;
     f.span(kAtom_type)[1] = 1;
     f.span(kAtom_type)[2] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     cpu::Evaluate eval;
     eval.on(evaluate::Phase::evaluate).add(cpu::semiempirical::XtbGfn0{});
     eval.build();

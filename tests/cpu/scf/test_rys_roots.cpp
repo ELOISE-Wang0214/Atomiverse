@@ -12,7 +12,7 @@
 ///     the iterative scheme) to <= 1e-10, AND satisfies the Rys
 ///     quadrature moment identity sum_i w_i t_i^{2m} = F_m(x) for
 ///     m = 0..2N-1 — a libcint-independent mathematical check that holds
-///     even without -DATV_BUILD_LIBCINT.
+///     as a libcint-independent mathematical check.
 
 #if defined(ATV_HAS_HF)
 
@@ -25,11 +25,6 @@
 
 #include "atomiverse/cpu/scf/rys_roots.h"
 
-#ifdef ATV_HAS_LIBCINT
-extern "C" {
-void CINTrys_roots(int nroots, double x, double* u, double* w);
-}
-#endif
 
 namespace {
 
@@ -105,62 +100,6 @@ double boys_ref(int m, double x) {
 
 } // namespace
 
-#ifdef ATV_HAS_LIBCINT
-
-TEST(RysRoots, MatchesLibcint) {
-    for (int nroots = 1; nroots <= 5; ++nroots) {
-        for (double x : kSampleX) {
-            double u_ref[8] = {};
-            double w_ref[8] = {};
-            double u_atv[8] = {};
-            double w_atv[8] = {};
-
-            CINTrys_roots(nroots, x, u_ref, w_ref);
-            ATV::cpu::scf::native::rys_roots(nroots, x, u_atv, w_atv);
-
-            for (int i = 0; i < nroots; ++i) {
-                EXPECT_NEAR(u_atv[i], u_ref[i], kTol)
-                    << "root drift at nroots=" << nroots << " x=" << x
-                    << " i=" << i;
-                EXPECT_NEAR(w_atv[i], w_ref[i], kTol)
-                    << "weight drift at nroots=" << nroots << " x=" << x
-                    << " i=" << i;
-            }
-        }
-    }
-}
-
-// ── Iterative root finder (nroots 6, 7) vs libcint ───────────────────
-//
-// libcint dispatches nroots 6/7 to its own iterative segment_solve
-// (CINTrys_jacobi / CINTrys_schmidt) — an implementation independent of
-// our port. The native iterative finder must reproduce it to <= 1e-10
-// across the small / intermediate / large x regimes.
-TEST(RysRoots, IterativeMatchesLibcint) {
-    constexpr double kIterTol = 1e-10;
-    for (int nroots = 6; nroots <= 7; ++nroots) {
-        for (double x : kIterX) {
-            double u_ref[8] = {};
-            double w_ref[8] = {};
-            double u_atv[8] = {};
-            double w_atv[8] = {};
-
-            CINTrys_roots(nroots, x, u_ref, w_ref);
-            ATV::cpu::scf::native::rys_roots(nroots, x, u_atv, w_atv);
-
-            for (int i = 0; i < nroots; ++i) {
-                EXPECT_NEAR(u_atv[i], u_ref[i], kIterTol)
-                    << "iterative root drift at nroots=" << nroots << " x=" << x
-                    << " i=" << i;
-                EXPECT_NEAR(w_atv[i], w_ref[i], kIterTol)
-                    << "iterative weight drift at nroots=" << nroots
-                    << " x=" << x << " i=" << i;
-            }
-        }
-    }
-}
-
-#endif // ATV_HAS_LIBCINT
 
 // ── Rys quadrature moment identity (libcint-independent) ─────────────
 //
@@ -174,10 +113,8 @@ TEST(RysRoots, IterativeMatchesLibcint) {
 // ill-conditioned even for libcint's own (ground-truth) roots — at
 // nroots=7, x=1, libcint itself misses the m=13 moment by ~1e-7. The
 // check is therefore applied to m <= 2N-4, the range where the identity
-// holds to ~1e-10 for any correct root set. This is a libcint-
-// independent mathematical correctness check that holds even without
-// -DATV_BUILD_LIBCINT; the full-precision (<= 1e-10) match against the
-// independent libcint reference is asserted by IterativeMatchesLibcint.
+// holds to ~1e-10 for any correct root set. This is a mathematical
+// correctness check independent of any external integral library.
 TEST(RysRoots, IterativeSatisfiesMomentIdentity) {
     constexpr double kMomentTol = 1e-10;
     for (int nroots = 6; nroots <= 7; ++nroots) {

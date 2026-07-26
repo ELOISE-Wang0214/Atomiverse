@@ -145,7 +145,7 @@ NphIntegrator::compute_axis_KE(const cpu::LaunchContext& ctx) const {
 void NphIntegrator::update_eps_dot(const cpu::LaunchContext& ctx,
                                    double half_dt) {
     const auto& f = ctx.frame;
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (V <= 0.0)
         return;
 
@@ -257,11 +257,11 @@ void NphIntegrator::propagate_x_and_box(const cpu::LaunchContext& ctx) {
         }
     }
 
-    f.simbox.scale_isotropic(a);
+    f.box.scale_isotropic(a);
     wrap_orthorhombic(f, n);
 
     if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.md.dd->compute_sublo_subhi(f.simbox);
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 
@@ -270,7 +270,7 @@ double NphIntegrator::extended_enthalpy(const cpu::LaunchContext& ctx) const {
     // H = KE + PE + P·V + ½ W ε̇²  (no thermostat chain terms).
     double H = f.meta.get(kKinetic) + f.meta.get(kEnergy);
     H += 0.5 * W_ * eps_dot_ * eps_dot_;
-    H += P_target_ * f.simbox.volume();
+    H += P_target_ * f.box.volume();
     return H;
 }
 

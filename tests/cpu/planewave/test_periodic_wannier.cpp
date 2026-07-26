@@ -78,7 +78,7 @@ TEST(PeriodicWannierMath, InvalidArgumentsOnCompute) {
     PW method;
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 1;
-    f.simbox = cpu::Box::cubic(5.0);
+    f.box = cpu::Box::cubic(5.0);
     EXPECT_THROW(mlwf.compute(method, f), std::invalid_argument);
     mlwf.k_mesh = 2;
     mlwf.tol = 0.0;
@@ -95,7 +95,7 @@ TEST(PeriodicWannierMath, SpinPolarizedGateNoLongerFootholdThrow) {
     method.multiplicity = 1;
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 1;
-    f.simbox = cpu::Box::cubic(5.0);
+    f.box = cpu::Box::cubic(5.0);
     try {
         mlwf.compute(method, f);
         FAIL() << "expected invalid_argument for k_mesh=0";

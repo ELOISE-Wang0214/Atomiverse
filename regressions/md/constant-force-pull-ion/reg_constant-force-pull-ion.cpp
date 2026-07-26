@@ -41,7 +41,7 @@ cpu::Frame pin_frame() {
     f.span(kAtom_vx)[1] = f.span(kAtom_vy)[1] = f.span(kAtom_vz)[1] = 0.0;
     for (int i = 0; i < 2; ++i)
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0.0;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0.0;
     return f;
 }

@@ -2,7 +2,7 @@
 
 Units are eV, Å, fs, amu, eV/Å, K. Precision is tiered
 (`StorageReal` / `WorkReal` / always-double `AccReal`). Frame is
-`blocks` + `meta` + `simbox` only.
+`blocks` + `meta` + `box` only.
 
 Every later chapter reuses this model. Finite-difference gradient checks are the
 universal validation: analytic forces from any evaluator must match energy
@@ -11,7 +11,7 @@ differences within a documented tolerance before they feed MD or Minimize.
 ```cpp
 cpu::Frame f(n);
 auto x = f.span(kAtom_x);          // (Å)
-f.simbox = cpu::Box::cubic(L);     // (Å)
+f.box = cpu::Box::cubic(L);     // (Å)
 // after a force evaluation:
 double E = f.meta.get(kEnergy);    // (eV) for classical/AM1; SCF writes eV too
 ```
@@ -97,7 +97,7 @@ x[2] = 0.0; y[2] = -0.7555; z[2] = -0.4712;
 
 mass[0] = 15.999; mass[1] = 1.008; mass[2] = 1.008; // amu
 
-frame.simbox = cpu::Box::cubic(100.0);      // a big non-interacting cell (Å)
+frame.box = cpu::Box::cubic(100.0);      // a big non-interacting cell (Å)
 ```
 
 For a small molecule the initializer-list form used throughout the test
@@ -117,7 +117,7 @@ for (int i = 0; i < frame.nlocal(); ++i) {
     frame.span(kAtom_z)[i] = z[i];
     frame.span(kAtom_mass)[i] = mass[i];
 }
-frame.simbox = cpu::Box::cubic(100.0);
+frame.box = cpu::Box::cubic(100.0);
 ```
 
 Two conventions here are load-bearing and reused in every quantum chapter:
@@ -130,7 +130,7 @@ object: `frame.meta.get(kEnergy)` (potential energy, eV) and the
 
 The simulation cell is [`cpu::Box`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box.h),
 constructed most often with `cpu::Box::cubic(L)` and assigned to
-`frame.simbox`. It owns the 3×3 cell matrix plus a per-step-immutable cache and
+`frame.box`. It owns the 3×3 cell matrix plus a per-step-immutable cache and
 exposes the queries force kernels need:
 
 ```cpp

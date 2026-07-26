@@ -48,7 +48,7 @@ class SCFTest : public ::testing::Test {
         f.span(ATV::kAtom_type)[1] = 1;
         f.meta.get(ATV::kEnergy) = 0;
         f.meta.get(ATV::kKinetic) = 0;
-        f.simbox = ATV::cpu::Box::cubic(100.0);
+        f.box = ATV::cpu::Box::cubic(100.0);
         return f;
     }
 };
@@ -231,7 +231,7 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
     const double P_target = 0.0; // SCF on isolated H2 has no PBC stress;
     const double tau_P = 1000.0; // weak coupling, long time constant
 
-    Mat3 box_initial = frame.simbox.cell();
+    Mat3 box_initial = frame.box.cell();
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/3u});
@@ -251,9 +251,9 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
         std::isfinite(static_cast<double>(frame.meta.get(ATV::kKinetic))));
     // Barostat may scale the box at zero pressure with non-zero virial;
     // we only require it stays finite and within a sane range.
-    EXPECT_TRUE(std::isfinite(frame.simbox.cell()(0, 0)));
-    EXPECT_GT(frame.simbox.cell()(0, 0), 0.0);
-    EXPECT_LT(frame.simbox.cell()(0, 0), 10.0 * box_initial(0, 0));
+    EXPECT_TRUE(std::isfinite(frame.box.cell()(0, 0)));
+    EXPECT_GT(frame.box.cell()(0, 0), 0.0);
+    EXPECT_LT(frame.box.cell()(0, 0), 10.0 * box_initial(0, 0));
 }
 
 // ── Regression: builder chain on rvalue temporary (Bug #1) ──────────
@@ -341,7 +341,7 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
     frame.span(ATV::kAtom_type)[1] = 1;
     frame.meta.get(ATV::kEnergy) = 0;
     frame.meta.get(ATV::kKinetic) = 0;
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{double(0.5)});

@@ -14,7 +14,7 @@
 /// `cpu::to_cuda` re-flattens from the CPU per-atom layout on every
 /// H2D transfer), while the multi-GPU domain-decomposition path carries
 /// the per-atom SoA (global-tag partners) needed for migration. CPU is
-/// blocks+meta+simbox with per-atom topology columns only. Per the
+/// blocks+meta+box with per-atom topology columns only. Per the
 /// CLAUDE.md Frame purity rule the frame carries only fundamental physical
 /// quantities: method-specific scratch (the SCF workspace, the neighbor
 /// pair list) is owned by the components that compute it, not by the frame.

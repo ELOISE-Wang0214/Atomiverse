@@ -39,7 +39,6 @@ FACTORY_PATS=(
     'build_kinetic[[:space:]]*\('
     'build_nuclear_attraction[[:space:]]*\('
     'build_eri_dense[[:space:]]*\('
-    'build_libcint_context[[:space:]]*\('
 )
 
 INTERMEDIATE_PATS=(
@@ -60,7 +59,6 @@ for dir in "include/atomiverse" "src" "examples" "tests" "regressions" "app"; do
     for pat in "${FACTORY_PATS[@]}"; do
         matches="$(grep -rnE "${pat}" "${target}" 2>/dev/null \
             | grep -v 'no_factory_scrub.sh' \
-            | grep -v 'build_integrals_libcint' \
             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(///|//|\*|/\*)' \
             | grep -vE 'Wrong:|banned|Never `' \
             || true)"

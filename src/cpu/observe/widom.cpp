@@ -98,7 +98,7 @@ double Widom::delta_u_(const Frame& frame, double tx, double ty,
     const auto x = frame.span(kAtom_x);
     const auto y = frame.span(kAtom_y);
     const auto z = frame.span(kAtom_z);
-    const Box& box = frame.simbox;
+    const Box& box = frame.box;
 
     if (potential == WidomPotential::hard_sphere) {
         const double sig2 = sigma * sigma;
@@ -129,9 +129,9 @@ double Widom::delta_u_(const Frame& frame, double tx, double ty,
 }
 
 void Widom::accumulate_frame_(const Frame& frame) {
-    const double Lx = frame.simbox.length(0);
-    const double Ly = frame.simbox.length(1);
-    const double Lz = frame.simbox.length(2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
     if (!(Lx > 0.0 && Ly > 0.0 && Lz > 0.0))
         throw std::invalid_argument("Widom: box edges must be > 0");
 

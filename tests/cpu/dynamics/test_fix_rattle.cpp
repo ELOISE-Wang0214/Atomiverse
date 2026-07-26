@@ -83,7 +83,7 @@ cpu::Frame water_box(int n_side, double spacing) {
                 idx += 3;
                 ++mol;
             }
-    f.simbox = ATV::cpu::Box::cubic(n_side * spacing);
+    f.box = ATV::cpu::Box::cubic(n_side * spacing);
     f.rebuild_tag_index(0, n);
 
     // Topology through the loader API (it owns the LAMMPS ownership rules: the
@@ -118,7 +118,7 @@ double worst_geometry_error(const cpu::Frame& f, int n_mol) {
                         - f.span(ATV::kAtom_y)[c.first.second];
             double dz = f.span(ATV::kAtom_z)[c.first.first]
                         - f.span(ATV::kAtom_z)[c.first.second];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             worst = std::max(worst, std::fabs(r - c.second) / c.second);
         }
@@ -260,7 +260,7 @@ TEST(FixRattle, RelativeVelocityAlongBondsVanishes) {
                 f.span(ATV::kAtom_y)[p.first] - f.span(ATV::kAtom_y)[p.second];
             double dz =
                 f.span(ATV::kAtom_z)[p.first] - f.span(ATV::kAtom_z)[p.second];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double dvx = f.span(ATV::kAtom_vx)[p.first]
                                - f.span(ATV::kAtom_vx)[p.second];
             const double dvy = f.span(ATV::kAtom_vy)[p.first]

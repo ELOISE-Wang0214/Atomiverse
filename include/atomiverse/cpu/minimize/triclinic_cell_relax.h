@@ -15,7 +15,7 @@ namespace minimizer {
 
 /// @brief Strain cell by ε ∝ σ toward zero stress (0 K geometry).
 ///
-/// Uses full Voigt stress; updates `simbox` via \(h \leftarrow (I+ε)h\) and
+/// Uses full Voigt stress; updates `box` via \(h \leftarrow (I+ε)h\) and
 /// affinely maps atom positions. Textbook skeleton — not a PR barostat.
 class TriclinicCellRelax : public Optimizer {
   public:

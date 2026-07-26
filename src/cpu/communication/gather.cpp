@@ -63,7 +63,7 @@ void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
         throw std::out_of_range(
             "gather: owner range is outside Frame capacity");
     out.n_total = n_local;
-    out.box = frame.simbox.cell();
+    out.box = frame.box.cell();
     const StorageReal* x = frame.span(kAtom_x).data();
     const StorageReal* y = frame.span(kAtom_y).data();
     const StorageReal* z = frame.span(kAtom_z).data();
@@ -171,7 +171,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
                              const DomainDecomposition& dd, int root) {
     GatheredFrame out;
     out.root_rank = root;
-    out.box = frame.simbox.cell();
+    out.box = frame.box.cell();
 
     if (dd.cart_comm == MPI_COMM_NULL) {
         copy_owners_into(out, frame, dd.n_local);
@@ -391,7 +391,7 @@ cpu::Frame to_frame(const GatheredFrame& gathered) {
         throw std::invalid_argument("to_frame: image has inconsistent rows");
 
     cpu::Frame frame(n);
-    frame.simbox.set_cell(gathered.box);
+    frame.box.set_cell(gathered.box);
     for (const GatheredColumn& column : gathered.runtime_columns) {
         frame.block("atoms").insert(
             column.key,

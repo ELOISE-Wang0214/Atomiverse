@@ -39,7 +39,7 @@ cpu::Frame make_h2o() {
     f.span(kAtom_x)[2] = 0.0;
     f.span(kAtom_y)[2] = -0.7572;
     f.span(kAtom_z)[2] = -0.4692;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

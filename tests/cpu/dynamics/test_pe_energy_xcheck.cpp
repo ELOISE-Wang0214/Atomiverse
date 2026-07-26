@@ -133,7 +133,7 @@ cpu::Frame make_c20h42_perturbed() {
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
     return frame;
 }
 

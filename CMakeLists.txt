@@ -19,7 +19,15 @@ if(NOT ATV_DOCS_ONLY)
                      Debug Release RelWithDebInfo MinSizeRel)
     endif()
 
-    set(CMAKE_CXX_STANDARD 17)
+    # C++20 is not optional: xtensor 0.27.1 uses UNGUARDED C++20 `requires`
+    # clauses (e.g. xtensor/views/xview.hpp:1511) and declares
+    # `target_compile_features(xtensor INTERFACE cxx_std_20)`, which CMake
+    # propagates to every target linking xtensor. Before this line said 20 the
+    # `atomiverse` target was ALREADY compiling at -std=gnu++20 via that
+    # interface requirement while this variable claimed 17 — declaring 20 makes
+    # the build honest and also lifts the non-xtensor targets (molrs_cxx) that
+    # were still getting gnu++17.
+    set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
     option(ATV_BUILD_CUDA "Build CUDA backend (requires CUDA toolkit)" ON)
@@ -28,7 +36,7 @@ if(NOT ATV_DOCS_ONLY)
         # CUDA TUs that transitively include xtensor (via cpu/frame.h) need
         # C++20: xtensor 0.27.1 uses `<concepts>` / `std::input_iterator`
         # on toolchains where `<concepts>` is available (GCC 13), which
-        # nvcc cannot parse at -std=c++17. The CPU side stays at C++17.
+        # nvcc cannot parse at -std=c++17. The CPU side is C++20 too (above).
         set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         # Prefer an explicit arch when building for GH200 (sm_90). `native`
@@ -99,7 +107,6 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_GPW "Build GPW DFT module (Gaussian + uniform-grid Hartree/XC + GTH PP)" OFF)
     option(ATV_BUILD_KSPACE "Build Particle-Mesh Ewald (PME) electrostatics (CPU: FFTW3, CUDA: cuFFT)" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
-    option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
     option(ATV_BUILD_XC_ORACLE
            "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
            OFF)
@@ -131,7 +138,6 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_EXAMPLES "Build examples" OFF)
     option(ATV_BUILD_LAUNCHER
            "Build the atomiverse MPI launcher executable (rank-0 embedded CPython)" OFF)
-    option(ATV_USE_MATPLOT "Enable matplotplusplus for plotting in examples (requires gnuplot)" OFF)
 
     # Product-module gates (MD/MC/MINIMIZER/… + POTENTIALS/NEIGHBOR DAG).
     # Must run after ATV_BUILD_KSPACE is declared (KSPACE → POTENTIALS edge).
@@ -165,7 +171,7 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_Declare(
         xsimd
         GIT_REPOSITORY https://github.com/xtensor-stack/xsimd.git
-        GIT_TAG 14.2.0
+        GIT_TAG 14.3.0
     )
     FetchContent_MakeAvailable(xtl xtensor xtensor-blas spdlog xsimd)
 
@@ -568,7 +574,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/fci.cpp
             src/cpu/scf/casscf.cpp
             src/cpu/scf/nevpt2.cpp
-            src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/orbital_info_observer.cpp
             # Molecular DFT-D3 (BJ) + shared Grimme tables (also used by GPW
@@ -825,22 +830,6 @@ if(NOT ATV_DOCS_ONLY)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_TORCH)
     endif()
 
-    # Optional: fetch libcint as a test-only ground-truth reference
-    if(ATV_BUILD_LIBCINT)
-        FetchContent_Declare(
-            libcint
-            GIT_REPOSITORY https://github.com/sunqm/libcint.git
-            GIT_TAG v6.1.2
-        )
-        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(libcint)
-        target_include_directories(cint PUBLIC
-            ${libcint_BINARY_DIR}/include
-            ${libcint_SOURCE_DIR}/include
-        )
-        target_link_libraries(atomiverse PUBLIC cint)
-        target_compile_definitions(atomiverse PUBLIC ATV_HAS_LIBCINT)
-    endif()
 
     # Optional: libxc as test-only oracle (NOT a runtime dependency).
     # libxc is found here and consumed only by test targets under
@@ -881,8 +870,19 @@ if(NOT ATV_DOCS_ONLY)
     target_include_directories(atomiverse PUBLIC include)
     target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas xsimd spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
     # xsimd is linked for direct use in native_integrals.cpp ERI hot loops.
-    # XTENSOR_USE_XSIMD is NOT set globally: enabling it triggers SIMD-backed
-    # xtensor storage which breaks reshape_view in xc_grid_engine.h.
+    # XTENSOR_USE_XSIMD is NOT set globally. Precise reason (traced 2026-07-26,
+    # reported upstream as xtensor-stack/xtensor#2929): it is a hard COMPILE
+    # error, not a runtime break, and it is not reshape_view in general — it is
+    # `reshape_view(<lazy xfunction>, {G,1})` followed by a broadcast assign, the
+    # pattern used ~12× in cpu/scf/xc_grid_engine.h. xstrided_view gates its SIMD
+    # interface on the *wrapped expression* (xstrided_view.hpp:183) but then does
+    # `&(storage()[i])` (:688); for a lazy operand the flat storage returns
+    # prvalues, so taking `&` is ill-formed.
+    # WORKAROUND if we ever want the global flag: pre-evaluate the operand
+    # (`xt::xtensor<double,1> tmp = w * v;` then reshape_view(tmp, …)) — that
+    # makes the view container-backed and compiles under xsimd. Note this flag is
+    # NOT needed to vectorize a hot loop: use xsimd directly on raw spans the way
+    # native_integrals.cpp does.
     # Native CPU tuning: unlock NEON on ARM64, AVX2/AVX-512 on x86-64.
     # Language-guarded to prevent NVCC from seeing -march=native on CUDA files.
     target_compile_options(atomiverse PRIVATE
@@ -999,14 +999,6 @@ if(NOT ATV_DOCS_ONLY)
 
     target_link_libraries(atomiverse PUBLIC molrs_cxx)
 
-    if(ATV_USE_MATPLOT)
-        FetchContent_Declare(
-            matplotplusplus
-            GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus.git
-            GIT_TAG v1.2.1
-        )
-        FetchContent_MakeAvailable(matplotplusplus)
-    endif()
 
     # ── Python bindings (nanobind) ──
     # When built via scikit-build-core (pip install), nanobind is installed into

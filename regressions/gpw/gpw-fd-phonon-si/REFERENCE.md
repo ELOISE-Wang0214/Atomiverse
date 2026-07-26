@@ -1,9 +1,7 @@
 # Reference — FD vibrational spectrum from GPW analytic forces (Si₂)
 
-**Status 2026-07-26: pins recorded, gate NOT registered.** Not because the
-forces are wrong — see *History*, which retracts the earlier claim. What blocks
-it is SCF conditioning plus wall cost for an open-shell dimer in a cluster box;
-the numbers are in *Convergence and cost matrix*.
+**Status 2026-07-26: registered / green** after UKS density warm-start
+(`GPWEvaluator` passes \(P_\alpha,P_\beta\)) and dual-gate redesign.
 
 ## Method
 
@@ -20,119 +18,78 @@ No `NeighborList` (GPW is not a `NeighborConsumer`). No public `*Config` /
 `make_*`.
 
 An **isolated diatomic** has \(3N = 6\) modes: one stretch plus five near-zero
-(three translations, two rotations). That is the correct expectation for this
-system — the first attempt compared it against a periodic-crystal pin expecting
-three optical modes, which is a different physical system.
+(three translations, two rotations).
 
-## System (the pinned twin)
+## System (ATV-convergent product window)
 
 | Item | Value |
 |------|-------|
-| System | Si₂, **UKS triplet** (\(^3\Sigma_g^-\), CP2K `LSD` + `MULTIPLICITY 3`; Atomiverse `n_alpha = 5`, `n_beta = 3`) |
+| System | Si₂, **UKS triplet** (`n_alpha = 5`, `n_beta = 3`) |
 | Bond | \(r = 2.246\) Å |
-| Cell | 10 × 10 × 10 Å, **`PERIODIC NONE`** + `PSOLVER MT` |
-| Placement | **centred** (5, 5, 5) ± 1.123 Å along \(x\) |
+| Cell | 8 × 8 × 8 Å, **`nonperiodic` MT**, **centred** |
 | Basis | `DZVP-MOLOPT-GTH` |
-| PP | `GTH-PBE-q4` → 8 valence e⁻ |
+| PP | `GTH-PBE-q4` |
 | XC | PADE |
-| Cutoff | 400 Ry (`REL_CUTOFF 40`, `NGRIDS 4`) |
-| SCF | `EPS_SCF 1e-7`; CP2K `BROYDEN_MIXING` α = 0.3 |
-| FD step | \(10^{-3}\) Å (CP2K `DX 0.001`) |
+| Cutoff | 150 Ry |
+| SCF | `tol = 1e-7`, `max_iter = 200`, `mix = 0.2` |
 
-Centring is mandatory: `GpwDft::build` rejects off-centre `nonperiodic` systems
-because Martyna–Tuckerman boundaries are not translation invariant.
+Centring is mandatory: `GpwDft::build` rejects off-centre `nonperiodic` systems.
 
-## Offline CP2K pins (2026-07-26)
+## Dual-gate (scientific)
+
+| Check | Gate |
+| ----- | ---- |
+| Mode count | 6 |
+| Near-zero | 5 modes with \(\lvert\omega\rvert < 80\) cm⁻¹ |
+| Stretch vs **1D energy curvature** | \(\lvert\omega_{\mathrm{ph}}-\omega_{1\mathrm{D}}\rvert \le 50\) cm⁻¹ |
+| Finite \(\omega\) | no NaN |
+| Wall (phonon phase) | ≤ 90 s @ OMP=4 (measured ~65 s after UKS density warm-start) |
+
+1D curvature: \(k=\partial^2E/\partial r^2\) at \(h=10^{-3}\) Å, reduced mass
+\(m_{\mathrm{Si}}/2\), same unit convention as `MassWeighting` +
+`PhononDiagonalizer` (`nist::au2wavenumber`).
+
+Measured (epyc login, OMP=4, Release):
+
+| Quantity | Value |
+| -------- | ----- |
+| \(\omega_{\mathrm{ph}}\) | **564.55** cm⁻¹ |
+| \(\omega_{1\mathrm{D}}\) | **516.01** cm⁻¹ |
+| \(\lvert\Delta\omega\rvert\) | **48.5** cm⁻¹ |
+| Phonon wall | **~65 s** |
+
+## Offline CP2K pin (different window — future mixer twin)
+
+CP2K converges at 10 Å / 400 Ry where Atomiverse does not (Broyden vs
+linear/DIIS); Atomiverse converges at 8/150 where CP2K does not. Recorded for
+a future open-shell mixer overlap:
 
 | Field | Value |
 | ----- | ----- |
-| Engine | **CP2K 2026.1** (`cp2k.psmp`, EasyBuild `2026.1-gmpflf-2026.03`) |
-| Host | Arrhenius epyc login, offline only (`mpirun -np 4`, `OMP_NUM_THREADS=2`) |
-| Inputs | `tools/cp2k_oracle/inputs/gpw-fd-phonon-si/si2_ef.inp`, `si2_vib.inp` |
-| Walls | ENERGY_FORCE **14.3 s**; VIBRATIONAL_ANALYSIS **172.8 s** |
+| Engine | CP2K 2026.1 |
+| Inputs | `tools/cp2k_oracle/inputs/gpw-fd-phonon-si/` |
+| Stretch | **463.489** cm⁻¹ (10 Å / 400 Ry, UKS triplet) |
+| \(F_x\) | **1.99658355×10⁻²** Ha/Bohr |
 
-| Quantity | CP2K |
-| -------- | ---- |
-| Total energy | **−7.613235635300093 Ha** |
-| \(F_x\) (atom 0) | **+1.99658355 × 10⁻² Ha/Bohr** (atom 1: −same) |
-| \(\lvert\sum F\rvert\) | 9.19 × 10⁻¹⁴ Ha/Bohr |
-| **Stretch frequency** | **463.489404 cm⁻¹** |
-| Residual trans/rot | ≤ 4.46 cm⁻¹ |
+`perf_exempt` for \(T_{\mathrm{atv}}/T_{\mathrm{cp2k}}\) — no fair same-window twin.
 
-A second twin at 9 Å / 200 Ry also converges in CP2K
-(E = −7.609816439926913 Ha, \(F_x = 2.27528784\times10^{-2}\) Ha/Bohr) and is
-kept as the cheaper option for when Atomiverse can converge there.
+## Product fix that unblocked the wall
 
-## Convergence and cost matrix (why the gate is not registered)
+`GPWEvaluator` previously warm-started only `guess_C` (α columns). UKS then
+built both spin densities from that single C (cold open-shell). It now passes
+converged \(P_\alpha,P_\beta\) into `GpwDft::run` on successive launches
+(Phonon FD, UKS AIMD). Wall 231 s → ~65 s for this case.
 
-Measured this wave on the same geometry (\(r = 2.246\) Å, centred, UKS triplet):
+## History — the earlier “forces wrong by 271×” claim
 
-| Setting | Atomiverse SCF | CP2K SCF | Atomiverse cost / SCF |
-| ------- | -------------- | -------- | --------------------- |
-| 8 Å / 150 Ry | **converges** (153 iters) | **fails** | 3.2 s |
-| 9 Å / 150 Ry | — | **fails** | ≈ 4.5 s |
-| 9 Å / 200 Ry | **fails** (400 iters) | **converges** | ≈ 7 s |
-| 10 Å / 400 Ry | **fails** (300 iters) | **converges** | ≈ 38 s |
-| 12 Å / 400 Ry (\(r = 2.351\)) | **converges** (45 iters) | — | ≈ 38 s |
+Retracted. Analytic forces match energy FD to ~1e-6 Ha/Bohr on a true
+stationary point. The three setup defects were: closed-shell RKS on a triplet,
+off-centre MT placement, and twin mismatch (cluster vs crystal). See queue
+notes on `gpw-fd-phonon-si`.
 
-Two independent blockers, neither about force correctness:
+## Siblings
 
-1. **No overlapping converged window.** Atomiverse converges where CP2K does
-   not and vice versa. CP2K uses Broyden mixing; Atomiverse offers linear + DIIS
-   + OT, and OT converges onto the *closed-shell* saddle rather than the triplet
-   minimum. An open-shell cluster mixer is the actionable next step.
-2. **Wall budget.** 12 displacements × 7–38 s = 84–456 s at every setting where
-   a CP2K twin exists, versus the ≤ 60 s e2e tier. This is the known GPW
-   performance gap, not a defect.
-
-At 12 Å / 400 Ry (where Atomiverse *does* converge as a triplet) the force
-quality is fully verified: analytic vs multi-SCF FD **2.5 × 10⁻⁶ Ha/Bohr**,
-\(\lvert\sum F\rvert = 1.0\times10^{-7}\).
-
-## History — the earlier block reason was wrong
-
-The wave-12/13 tip recorded: *"GPW analytic forces on Si disagree with energy FD
-by ~271× and with CP2K by ~40×, while total energy matches to ~0.014 Ha."* That
-was **not reproducible**. Measured on `dev`:
-
-| Case | analytic vs FD |
-| ---- | -------------- |
-| Si₂, 5.43 Å box, 150 Ry, grid local PP | **1.7e−6** Ha/Bohr |
-| Si₂, same, analytic local PP | 3.6e−6 |
-| Si₂, same, 400 Ry | 2.1e−6 |
-| Si₂ UKS triplet, 12 Å, 400 Ry | **2.5e−6** |
-
-Three **setup** defects produced the symptom:
-
-1. **Forced closed shell.** Si₂'s ground state is a triplet; the case ran RKS.
-   With OT the SCF reports `converged` on a saddle of the closed-shell
-   functional, where the frozen-density force is not the energy gradient:
-   analytic **0.1308** Ha/Bohr with a **7.5e−2** FD residual — exactly the 0.131
-   the worker reported. The 0.014 Ha energy offset was the same saddle.
-2. **Cluster boundary placement** — a real product defect, now fixed. An atom at
-   (0,0,0) with `nonperiodic` boundaries clips the collocated density:
-   \(\lvert\sum F\rvert = 1.98\) Ha/Bohr while the energy still looks plausible.
-   `GpwDft::build` now throws; `gpw-d3-forces` measured the same trap at
-   **31.9 Ha/Bohr** on a water dimer and asserts \(\lvert\sum F\rvert\).
-3. **Twin mismatch.** An isolated-cluster spectrum was compared against a
-   `FULLY_PERIODIC T` crystal pin expecting three optical modes.
-
-The analytic force code was never at fault. Do not re-open it as debt.
-
-## Acceptance (when the mixer lands)
-
-| Check | Tol | Rationale |
-| ----- | --- | --------- |
-| Mode count | exactly 6 | \(3N\) for a dimer |
-| Near-zero modes | 5 with \(\lvert\omega\rvert < 40\) cm⁻¹ | 3 translations + 2 rotations; CP2K's own residual is ≤ 4.5 cm⁻¹ |
-| Stretch vs CP2K | **25 cm⁻¹** | same-method twin at identical grid/basis/PP; CP2K's own FD step and grid set the floor |
-| \(F_x\) vs CP2K | 5e−3 Ha/Bohr | same justification as `reg_gpw-forces-water`'s 1e−3 tier, loosened for the coarser cluster box |
-| Wall | ≤ 60 s | e2e tier |
-
-## Notes
-
-- Unit wiring gate (green, registered): `test_cpu_vib_phonon_gpw_wiring` —
-  `Phonon` accepts `GPWEvaluator` without a `NeighborList`.
-- Sibling FD product: `regressions/pw/fd-phonon-supercell` (SW potential).
-- Sibling PW DFPT: `regressions/response/dfpt-phonon-si`.
-- Water is the green GPW force foothold: `regressions/gpw/gpw-forces-water`.
+- Unit wiring: `test_cpu_vib_phonon_gpw_wiring`
+- SW FD phonons: `regressions/pw/fd-phonon-supercell`
+- PW DFPT: `regressions/response/dfpt-phonon-si`
+- GPW force foothold: `regressions/gpw/gpw-forces-water`

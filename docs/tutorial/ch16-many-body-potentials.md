@@ -302,7 +302,7 @@ for (int ix = 0; ix < nc; ++ix)
           type[idx] = 14;   // Z
           ++idx;
       }
-frame.simbox = cpu::Box::cubic(a0 * nc);
+frame.box = cpu::Box::cubic(a0 * nc);
 ```
 
 Two atoms per lattice point, offset by ¼ along the body diagonal: that is what makes

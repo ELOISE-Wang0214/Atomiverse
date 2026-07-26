@@ -53,7 +53,7 @@ class CpuMdTest : public ::testing::Test {
                     }
 
         double box_len = n_cells * lattice_const;
-        frame.simbox = ATV::cpu::Box::cubic(box_len);
+        frame.box = ATV::cpu::Box::cubic(box_len);
         return frame;
     }
 
@@ -74,7 +74,7 @@ TEST_F(CpuMdTest, ZeroForces) {
     }
     for (int i = 0; i < 10; ++i)
         frame.span(ATV::kAtom_mass)[i] = 1.0;
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
 
     cpu::Context ctx;
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -101,7 +101,7 @@ TEST_F(CpuMdTest, KineticEnergy) {
     frame.span(ATV::kAtom_vx)[1] = double(0);
     frame.span(ATV::kAtom_vy)[1] = double(1);
     frame.span(ATV::kAtom_vz)[1] = double(0);
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     frame.meta.get(ATV::kKinetic) = 0;
 
     cpu::Context ctx;
@@ -131,7 +131,7 @@ TEST_F(CpuMdTest, LjAnalyticForce) {
     frame.span(ATV::kAtom_z)[1] = double(0);
     frame.span(ATV::kAtom_mass)[0] = double(39.948);
     frame.span(ATV::kAtom_mass)[1] = double(39.948);
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
     frame.meta.get(ATV::kEnergy) = 0;
 
     cpu::Context ctx;
@@ -218,9 +218,9 @@ TEST_F(CpuMdTest, CellListPairCount) {
                 frame.span(ATV::kAtom_y)[i] - frame.span(ATV::kAtom_y)[j];
             double dz =
                 frame.span(ATV::kAtom_z)[i] - frame.span(ATV::kAtom_z)[j];
-            double lx = frame.simbox.cell()(0, 0),
-                   ly = frame.simbox.cell()(1, 1),
-                   lz = frame.simbox.cell()(2, 2);
+            double lx = frame.box.cell()(0, 0),
+                   ly = frame.box.cell()(1, 1),
+                   lz = frame.box.cell()(2, 2);
             if (dx > lx * double(0.5))
                 dx -= lx;
             if (dx < -lx * double(0.5))
@@ -296,7 +296,7 @@ TEST_F(CpuMdTest, CellListExtendedGridBoxChange) {
     dd.dims[0] = 2;
     for (int d = 0; d < 3; ++d) {
         dd.sublo[d] = 0.0;
-        dd.subhi[d] = frame.simbox.length(d);
+        dd.subhi[d] = frame.box.length(d);
     }
     cl.init_extended(frame, kCutoff, &dd, /*capacity=*/n_total);
 
@@ -307,7 +307,7 @@ TEST_F(CpuMdTest, CellListExtendedGridBoxChange) {
 
     // NPT-like: expand the box by 2% and displace atoms affinely.
     const double scale = 1.02;
-    frame.simbox.scale_isotropic(scale);
+    frame.box.scale_isotropic(scale);
     for (int i = 0; i < n_total; ++i) {
         frame.span(ATV::kAtom_x)[i] *= scale;
         frame.span(ATV::kAtom_y)[i] *= scale;
@@ -346,7 +346,7 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
     dd.dims[0] = 2;
     for (int d = 0; d < 3; ++d) {
         dd.sublo[d] = 0.0;
-        dd.subhi[d] = frame.simbox.length(d);
+        dd.subhi[d] = frame.box.length(d);
     }
     cl.init_extended(frame, kCutoff, &dd, /*capacity=*/N);
 
@@ -365,7 +365,7 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
     // framework's HaloSend does this.
     for (int i = n_owners; i < n_with_ghost; ++i) {
         frame.span(ATV::kAtom_x)[i] =
-            frame.span(ATV::kAtom_x)[i - n_owners] - frame.simbox.cell()(0, 0);
+            frame.span(ATV::kAtom_x)[i - n_owners] - frame.box.cell()(0, 0);
         frame.span(ATV::kAtom_y)[i] = frame.span(ATV::kAtom_y)[i - n_owners];
         frame.span(ATV::kAtom_z)[i] = frame.span(ATV::kAtom_z)[i - n_owners];
     }
@@ -405,7 +405,7 @@ TEST_F(CpuMdTest, CellListPbcPairAcrossEdge) {
     for (int i = 0; i < 2; ++i) {
         frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(30.0);
+    frame.box = ATV::cpu::Box::cubic(30.0);
 
     cpu::md::CellList cl(/*cutoff=*/6.0);
     cl.init(frame, 6.0);
@@ -464,7 +464,7 @@ TEST_F(CpuMdTest, BondedForce) {
     frame.span(ATV::kAtom_z)[1] = double(0);
     frame.span(ATV::kAtom_mass)[0] = double(12);
     frame.span(ATV::kAtom_mass)[1] = double(12);
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     frame.clear_tag_index();
     frame.rebuild_tag_index(0, frame.nlocal());
@@ -506,7 +506,7 @@ TEST_F(CpuMdTest, NveLimitCapsHotVelocity) {
     frame.span(ATV::kAtom_mass)[1] = 1.0;
     // pre-existing huge velocity in +x: |v| = 10 Å/fs
     frame.span(ATV::kAtom_vx)[0] = 10.0;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     const double dt = 0.5;
     const double xmax = 0.05; // → vmax = 0.1 Å/fs
@@ -530,7 +530,7 @@ TEST_F(CpuMdTest, NveLimitNoCapBelowThreshold) {
     cpu::Frame frame(1);
     frame.span(ATV::kAtom_mass)[0] = 1.0;
     frame.span(ATV::kAtom_vx)[0] = 0.05; // |v| = 0.05, vmax = 0.1 -> no cap
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     cpu::md::NVELimit limit(0.5, 0.05);
     cpu::Context ctx;
@@ -609,11 +609,11 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
     sim.add(cpu::md::Virial{});
     sim.build();
 
-    const double V0 = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
-                      * frame.simbox.cell()(2, 2);
+    const double V0 = frame.box.cell()(0, 0) * frame.box.cell()(1, 1)
+                      * frame.box.cell()(2, 2);
     sim.run(frame, 2000);
-    const double V1 = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
-                      * frame.simbox.cell()(2, 2);
+    const double V1 = frame.box.cell()(0, 0) * frame.box.cell()(1, 1)
+                      * frame.box.cell()(2, 2);
 
     // No NaN explosion.
     for (int i = 0; i < n; ++i) {
@@ -647,7 +647,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionEmptyTopology) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
     // Diatomic: single bond of length 1.5 Å. Extension = bond length.
     cpu::Frame frame(2);
-    frame.simbox =
+    frame.box =
         ATV::cpu::Box::cubic(100.0); // PBC no-op for this short bond; min_image
                                      // needs a non-degenerate box
     frame.span(ATV::kAtom_x)[0] = 0.0;
@@ -667,7 +667,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionAngleSpan) {
     // 3 atoms in a line, spaced 1.0 apart → angle-tuple span = 2.0.
     cpu::Frame frame(3);
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
     for (int i = 0; i < 3; ++i) {
         frame.span(ATV::kAtom_x)[i] = double(i);
         frame.span(ATV::kAtom_y)[i] = 0.0;
@@ -685,7 +685,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
     // 4 atoms in a trans-zigzag, bond = 1.529, angle = 112.7°.
     // Dihedral 1-to-4 straight-line span ≈ bond * sqrt(9 cos² + sin²) ≈ 3.9.
     cpu::Frame frame(4);
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
     const double bond = 1.529;
     const double half_apex = (units::pi - 112.7 * units::pi / 180.0) / 2.0;
     const double dx = bond * std::cos(half_apex);
@@ -714,7 +714,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     // Mixed topology: bond 1.0 + angle 3.0 + dihedral 2.0 → returns 3.0.
     cpu::Frame frame(4);
-    frame.simbox = ATV::cpu::Box::cubic(100.0);
+    frame.box = ATV::cpu::Box::cubic(100.0);
     // One bond (0-1, length 1.0); one angle (0-1-2); one dihedral (0-1-2-3).
     // Redo atoms: 0, 1, 4, 2.5 → bond 0-1 = 1.0, angle 0-1-2 span 4.0, dihedral 0-1-2-3 span 2.5.
     frame.span(ATV::kAtom_x)[0] = 0.0;
@@ -744,7 +744,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionPeriodicBondWrap) {
     // ships as a ghost on every face (n_ghost explodes past capacity).
     // Regression guard for the debug_amorphous 2/4-rank crash.
     cpu::Frame frame(2);
-    frame.simbox = ATV::cpu::Box::cubic(80.0);
+    frame.box = ATV::cpu::Box::cubic(80.0);
     frame.span(ATV::kAtom_x)[0] = 0.5;
     frame.span(ATV::kAtom_y)[0] = 0.0;
     frame.span(ATV::kAtom_z)[0] = 0.0;

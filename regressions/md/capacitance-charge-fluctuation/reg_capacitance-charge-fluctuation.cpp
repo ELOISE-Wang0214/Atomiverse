@@ -52,7 +52,7 @@ cpu::Frame make_parallel_plate() {
         f.span(kAtom_mass)[i] = 12.0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

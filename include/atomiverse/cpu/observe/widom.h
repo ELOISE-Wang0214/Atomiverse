@@ -83,7 +83,7 @@ class Widom : public Observer {
     void launch(const LaunchContext& ctx) override;
 
     /// @brief Sample insertions on a host Frame without a full Driver.
-    /// @param frame Host configuration (positions + simbox); not modified.
+    /// @param frame Host configuration (positions + box); not modified.
     void sample(const Frame& frame);
 
     /// @brief Reset running averages (keeps parameters and RNG seed reseeded).

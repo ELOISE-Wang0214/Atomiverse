@@ -61,7 +61,7 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     // which eventually drives an atom outside the box and blows up the cell
     // list. Energy is unaffected: the evaluator uses the minimum image. A
     // degenerate (zero-length) box is left as-is (wrap_axis is a no-op).
-    ctx.frame.simbox.wrap_into(nx, ny, nz);
+    ctx.frame.box.wrap_into(nx, ny, nz);
 
     sp_x[i] = static_cast<StorageReal>(nx);
     sp_y[i] = static_cast<StorageReal>(ny);

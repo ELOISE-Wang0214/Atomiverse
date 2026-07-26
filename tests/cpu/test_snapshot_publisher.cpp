@@ -49,7 +49,7 @@ cpu::Frame make_small_frame(int n) {
         frame.span(ATV::kAtom_vz)[i] = 0.03 * i;
         frame.span(ATV::kAtom_mass)[i] = 1.0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(10.0);
+    frame.box = ATV::cpu::Box::cubic(10.0);
     return frame;
 }
 
@@ -230,7 +230,7 @@ TEST(Publish, SnapshotCopiesBoxAndStep) {
     auto snap = cap.copy_last();
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
-            EXPECT_NEAR(snap.box.cell()(i, j), frame.simbox.cell()(i, j),
+            EXPECT_NEAR(snap.box.cell()(i, j), frame.box.cell()(i, j),
                         1e-12);
     EXPECT_GE(snap.step, 1)
         << "publisher fires after step 0; first capture must be step >= 1";

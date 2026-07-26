@@ -36,7 +36,7 @@ cpu::Frame h2o_frame() {
         f.span(kAtom_z)[i] = pos[i][2];
         f.span(kAtom_type)[i] = z[i];
     }
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     return f;
 }
 
@@ -123,7 +123,7 @@ TEST(EspCharges, IllConditionedMinimumNormIsFinite) {
     f.span(kAtom_z)[1] = 1e-9; // effectively coincident hydrogens
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
 
     ChelpgCharges chelpg;
     const auto grid = chelpg.grid(f);
@@ -147,7 +147,7 @@ TEST(EspCharges, UnsupportedElementThrows) {
     f.span(kAtom_y)[0] = 0.0;
     f.span(kAtom_z)[0] = 0.0;
     f.span(kAtom_type)[0] = 79; // Au — not in the Bondi table
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
 
     EXPECT_THROW(MKCharges{}.grid(f), std::invalid_argument);
     EXPECT_THROW(ChelpgCharges{}.grid(f), std::invalid_argument);

@@ -263,7 +263,7 @@ pw_forces_analytic_impl(const cpu::Frame& frame, const PW& method) {
                                                 static_cast<AccReal>(sy[i]),
                                                 static_cast<AccReal>(sz[i])};
 
-    const cpu::Box& box_ang = frame.simbox;
+    const cpu::Box& box_ang = frame.box;
     AccReal ecut_ht = static_cast<AccReal>(method.ecut_ry) * AccReal(0.5);
     EwaldSummation ewald(pos_ang, ewald_charges, box_ang, ecut_ht);
     const auto& few = ewald.forces_bohr();

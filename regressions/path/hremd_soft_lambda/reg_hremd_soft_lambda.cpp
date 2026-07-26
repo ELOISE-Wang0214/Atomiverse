@@ -25,7 +25,7 @@ int main() {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
 
     cpu::path::HRemd h({0.2, 0.8}, /*T=*/300.0, /*dt=*/1.0, /*steps=*/15,
                        /*seed=*/11);

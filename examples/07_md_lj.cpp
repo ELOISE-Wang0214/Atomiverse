@@ -56,7 +56,7 @@ cpu::Frame make_argon(int n_side, double density_per_A3) {
                 frame.span(ATV::kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
 
     std::srand(42);
     double mvx = 0, mvy = 0, mvz = 0;

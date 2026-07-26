@@ -31,7 +31,7 @@ int main() {
     host.span(kAtom_type)[0] = 0;
     host.span(kAtom_mass)[0] = 1.0;
     host.span(kAtom_tag)[0] = 1;
-    host.simbox = cpu::Box::cubic(L);
+    host.box = cpu::Box::cubic(L);
 
     // Large trial count for a tight free-volume MC estimate.
     cpu::Widom widom(T, sigma, /*n_trials=*/500000, /*seed=*/20260723,

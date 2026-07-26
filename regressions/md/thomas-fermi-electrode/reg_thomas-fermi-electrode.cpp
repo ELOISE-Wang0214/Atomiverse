@@ -53,7 +53,7 @@ cpu::Frame gold_capacitor() {
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0.0;
     }
     // Lz large; electrode solve uses 2D xy images only.
-    f.simbox = cpu::Box::orthorhombic(kA0, kA0, 80.0);
+    f.box = cpu::Box::orthorhombic(kA0, kA0, 80.0);
     return f;
 }
 

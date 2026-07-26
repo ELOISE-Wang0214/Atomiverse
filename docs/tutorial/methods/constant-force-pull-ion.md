@@ -100,7 +100,7 @@ f.span(kAtom_charge)[0] = 1.0;
 f.span(kAtom_charge)[1] = 0.0;
 f.span(kAtom_tag)[0] = 1;
 f.span(kAtom_tag)[1] = 2;
-f.simbox = cpu::Box::cubic(20.0);
+f.box = cpu::Box::cubic(20.0);
 
 const double Fz = 0.05;  // [eV/Å]
 cpu::Evaluate eval;

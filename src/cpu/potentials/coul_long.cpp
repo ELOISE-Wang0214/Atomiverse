@@ -77,7 +77,7 @@ void CoulLong::launch(const LaunchContext& ctx) {
                                  "to the force phase ahead of CoulLong.");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;

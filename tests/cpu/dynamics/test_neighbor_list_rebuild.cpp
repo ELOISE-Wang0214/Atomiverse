@@ -58,7 +58,7 @@ cpu::Frame make_fcc_argon() {
         frame.span(ATV::kAtom_mass)[i] = 39.948; // Ar amu
         frame.span(ATV::kAtom_type)[i] = 0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

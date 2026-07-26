@@ -44,7 +44,7 @@ cpu::Frame copper(double a0, int n_cell, double jitter) {
                     f.span(ATV::kAtom_type)[idx] = 29;
                     ++idx;
                 }
-    f.simbox = ATV::cpu::Box::cubic(a0 * n_cell);
+    f.box = ATV::cpu::Box::cubic(a0 * n_cell);
     return f;
 }
 

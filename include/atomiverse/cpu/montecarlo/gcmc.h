@@ -76,7 +76,7 @@ class GcmcMetropolis : public OutcomePolicy {
             1.0 / (units::kB_ev_per_k * static_cast<double>(temperature_));
         const double dE = static_cast<double>(e_trial - e_cur_);
         const double mu = static_cast<double>(mu_);
-        const double v = s.frame.simbox.volume();
+        const double v = s.frame.box.volume();
 
         // Acceptance probability written as exp(-arg): arg = βΔE − ln(prefactor).
         double arg;

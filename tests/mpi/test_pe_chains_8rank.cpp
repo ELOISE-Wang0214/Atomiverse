@@ -131,7 +131,7 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

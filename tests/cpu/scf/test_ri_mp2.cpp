@@ -15,7 +15,7 @@ TEST(RiMp2, H2Sto3gCloseToCanonical) {
     f.span(kAtom_y)[0] = f.span(kAtom_y)[1] = 0;
     f.span(kAtom_z)[0] = f.span(kAtom_z)[1] = 0;
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
 
     cpu::scf::RHF can;
     can.basis = cpu::scf::BasisSet::STO3G;
@@ -50,7 +50,7 @@ TEST(RiMp2, RiMp2GoldenUnchanged) {
     f.span(kAtom_y)[0] = f.span(kAtom_y)[1] = 0;
     f.span(kAtom_z)[0] = f.span(kAtom_z)[1] = 0;
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
 
     cpu::scf::RHF ri;
     ri.basis = cpu::scf::BasisSet::STO3G;

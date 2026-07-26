@@ -70,7 +70,7 @@ cpu::Frame make_h2(double r = 0.74) {
     }
     f.span(kAtom_x)[0] = 0;
     f.span(kAtom_x)[1] = r;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -87,7 +87,7 @@ cpu::Frame make_h3() {
         f.span(kAtom_y)[i] = hy[i];
         f.span(kAtom_z)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

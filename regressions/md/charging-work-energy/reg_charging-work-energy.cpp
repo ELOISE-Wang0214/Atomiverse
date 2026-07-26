@@ -44,7 +44,7 @@ int main() {
         frame.span(kAtom_mass)[i] = 12.011;
         frame.span(kAtom_tag)[i] = i + 1;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::Evaluate eval;
     eval.add_potential(cpu::electrodes::ChargingWork(/*types=*/{1, 2},

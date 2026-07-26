@@ -780,7 +780,7 @@ resolve_trials(const std::vector<std::array<double, 3>>& trial_centers,
     std::vector<std::array<double, 3>> trials = trial_centers;
     if (trials.empty()) {
         if (n_wann == 4 && frame.nlocal() == 2) {
-            const double a = cubic_a_from_cell(frame.simbox.cell());
+            const double a = cubic_a_from_cell(frame.box.cell());
             const auto mids = diamond_bond_midpoints(a);
             trials.assign(mids.begin(), mids.end());
         } else {
@@ -860,7 +860,7 @@ PeriodicWannierResult PeriodicWannier::compute(const PW& method,
 
     const int N = k_mesh;
     const int nk = N * N * N;
-    const Mat3 recip = frame.simbox.recip_cell();
+    const Mat3 recip = frame.box.recip_cell();
 
     // ── Collinear spin-polarized path ───────────────────────────────────
     if (method.spin_polarized) {

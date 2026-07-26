@@ -102,7 +102,7 @@ int main() {
             frame.span(ATV::kAtom_mass)[i] = mass;
             frame.span(ATV::kAtom_type)[i] = 1;
         }
-        frame.simbox = ATV::cpu::Box::cubic(box_len);
+        frame.box = ATV::cpu::Box::cubic(box_len);
 
         cpu::mc::Gcmc mc{temperature, mu, mass, /*seed=*/97u + p};
         mc.add_potential(cpu::PairLJCut{eps, sigma, cutoff});

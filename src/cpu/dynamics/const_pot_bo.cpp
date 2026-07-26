@@ -257,7 +257,7 @@ void ConstPotBO::build_matrix_(const cpu::Frame& frame) {
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
     const double Lx = box.length(0);
     const double Ly = box.length(1);
     const int R = xy_image_range < 0 ? 0 : xy_image_range;
@@ -338,7 +338,7 @@ void ConstPotBO::build_rhs_(const cpu::Frame& frame) {
     auto z = frame.span(kAtom_z);
     auto q = frame.span(kAtom_charge);
     auto type = frame.span(kAtom_type);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
     const double Lx = box.length(0);
     const double Ly = box.length(1);
     const int R = xy_image_range < 0 ? 0 : xy_image_range;
@@ -616,7 +616,7 @@ void ConstPotBO::write_electrode_forces_(cpu::Frame& frame) const {
     auto fx = frame.span(kAtom_fx);
     auto fy = frame.span(kAtom_fy);
     auto fz = frame.span(kAtom_fz);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
 
     std::vector<char> is_elec(static_cast<std::size_t>(n), 0);
     for (int ia : elec_atoms_)

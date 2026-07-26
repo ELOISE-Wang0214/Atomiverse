@@ -41,7 +41,7 @@ cpu::Frame wall_fluid_pair() {
     f.span(kAtom_fx)[1] = 1.0;
     f.span(kAtom_fy)[1] = 2.0;
     f.span(kAtom_fz)[1] = 3.0;
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
     return f;
 }
 

@@ -50,7 +50,7 @@ cpu::Frame two_water() {
         f.span(kAtom_charge)[i] = q[i];
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, f.nlocal());
     f.add_bond(1, 2, 0);

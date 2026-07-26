@@ -48,13 +48,10 @@ class ScfGradient {
     /// @param grid_level DFT integration-grid quality level (KS only).
     /// @param n_radial  Radial grid points per atom (SG0 grid only).
     /// @param n_angular Angular grid points per atom (SG0 grid only).
-    /// @param force_native_two_electron_deriv Force the native 2e derivative
-    ///        engine even when libcint is available (native-vs-libcint tests).
     /// @param xc_grad_project_translation Project out the net translational XC
     ///        gradient (debug / fixed-grid comparison; production leaves false).
     ScfGradient(MeanFieldType method, SpinType spin, XCType xc_type,
                 GridLevel grid_level, int n_radial, int n_angular,
-                bool force_native_two_electron_deriv,
                 bool xc_grad_project_translation);
 
     /// @brief Unified analytic nuclear gradient at the current geometry.
@@ -75,7 +72,6 @@ class ScfGradient {
     GridLevel grid_level_;                 ///< DFT grid quality (KS only).
     int n_radial_;                         ///< Radial grid points (SG0 only).
     int n_angular_;                        ///< Angular grid points (SG0 only).
-    bool force_native_two_electron_deriv_; ///< Force native 2e deriv engine.
     bool xc_grad_project_translation_;     ///< Project net translational XC.
 };
 

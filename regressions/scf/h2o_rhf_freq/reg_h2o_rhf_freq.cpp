@@ -49,7 +49,7 @@ int main() {
         frame.span(kAtom_x)[2] = static_cast<StorageReal>(-hx);
         frame.span(kAtom_y)[2] = 0.0;
         frame.span(kAtom_z)[2] = static_cast<StorageReal>(hz);
-        frame.simbox = cpu::Box::cubic(20.0);
+        frame.box = cpu::Box::cubic(20.0);
         return frame;
     };
 

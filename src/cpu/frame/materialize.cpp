@@ -236,7 +236,7 @@ Frame materialize(const molrs::FrameRef& src) {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 cell(i, j) = static_cast<AccReal>(cell_values[i * 3 + j]);
-        frame.simbox.set_cell(cell);
+        frame.box.set_cell(cell);
     }
     internal::decode_molrs_meta(molrs::frame_meta_entries(src), frame.meta);
     return frame;

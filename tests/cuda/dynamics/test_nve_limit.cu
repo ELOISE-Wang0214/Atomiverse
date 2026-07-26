@@ -37,7 +37,7 @@ cpu::Frame make_single_atom(double vx_init) {
     frame.span(kAtom_mass)[0] = 1.0;
     frame.span(kAtom_type)[0] = 0;
     frame.span(kAtom_tag)[0] = 0;
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
     return frame;
 }
 
@@ -60,7 +60,7 @@ cpu::Frame make_overlap_frame(int n_side) {
                 frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(double(n_side) * 0.8 + 5.0);
+    frame.box = cpu::Box::cubic(double(n_side) * 0.8 + 5.0);
     return frame;
 }
 

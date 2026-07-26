@@ -82,7 +82,7 @@ Deltas since the 2026-07-23 blueprint: **two module dirs added to the catalog** 
 - molrs: version/schema contract (`molrs_contract.h`); FFI via `molrs.hpp`
 
 **cpu pillars**
-- **Frame:** `cpu::Frame` (`blocks` + `meta` + `simbox`), `cpu::Box`, `Block` / `Column` / `Span` / `MetaMap`, `materialize` / `write_back`, `to_cuda` transfer
+- **Frame:** `cpu::Frame` (`blocks` + `meta` + `box`), `cpu::Box`, `Block` / `Column` / `Span` / `MetaMap`, `materialize` / `write_back`, `to_cuda` transfer
 - **Driver:** `cpu::Driver<P>` (loop node + `DriverNode` nesting), `cpu::Runtime`, `OutcomePolicy` / `Metropolis`, criteria `ForceConverged` / `AllReplicasConverged` / `StopOnNaN`, `Dof`, `StepTiming`
 - **Component:** base `Component`; kinds `Potential`, `Integrator`, `Thermostat`, `Barostat`, `Optimizer`, `Constraint`, `Mover`, `Observer`, `Recorder`, `Bias`, `PathCoupling`, `PlaneWave`, `GPW`, `Semiempirical`, `HF`; protocols `HaloParticipant`, `NeighborConsumer`/`NeighborProvider`, `LongRangeParticipant`, `PairEvaluator`, `ConstraintProvider`; zeros; `Context` slices (`md`/`mc`/`opt`/`path`/`loop`/`exec`/`analysis`)
 
@@ -183,7 +183,7 @@ Deltas since the 2026-07-23 blueprint: **two module dirs added to the catalog** 
 - **Construction:** OOP constructors and member parameters — **no public `make_*` / `build_*` / `*_config()` factories** (grep-gated; the whitelist shrank again with `build_molecular_grid`'s deletion, leaving 4 scoped exemptions in `cpu/scf`). Lookup tables are constructors (`GthPotential(Element, name)`, `MolecularGrid(atoms, natm, level, …)`, EAM/SW rows) and **throw** on unsupported input. Ownership at registration: `add(rvalue)` owns, `add_ref(lvalue)` borrows.
 - **Driver model:** a Driver is a **staged loop + Criterion termination + optional OutcomePolicy**; presets attach defaults in constructors. Nesting via `DriverNode` / `run_nested` on one shared `Runtime` (inner status isolated). Algorithms publish metrics; **only Criterion declares convergence**.
 - **Phase typing:** only `ATV::slot_of` / `ctx.at(phase)` / `make_binding` — no hand-written phase→int casts (scrubbed).
-- **Frame purity:** sole I/O currency is `blocks + meta + simbox` on CPU; method scratch (integrals, DIIS/CC amplitudes, AO maps, grids, AO-on-grid caches) is **private to the method**, never on Frame. Neighbor lists published as non-owning `ctx.md.pair_list`.
+- **Frame purity:** sole I/O currency is `blocks + meta + box` on CPU; method scratch (integrals, DIIS/CC amplitudes, AO maps, grids, AO-on-grid caches) is **private to the method**, never on Frame. Neighbor lists published as non-owning `ctx.md.pair_list`.
 - **Component model:** Role bitset (`FrameImmutable` / `Deferred` / `ExternalIO`); kinds for preset validation; opt-in protocols. Lifecycle `build → launch×N → destroy` (no alloc in `launch`).
 - **Dual-backend:** same directory vocabulary; CUDA Frame is device-pointer SoA; precision tiers map 1:1 (`StorageReal`↔`real_t`, …); kind bases mirrored on CUDA.
 - **Errors:** throw on contract breaks (schema materialize, unsupported basis/PP name, cross-workflow misbind, missing kinds, non-converged `solve_pcg`). **Never `std::abort` in library numerics — always a typed exception**, including in code ported from C references (`rys_roots` was the last abort site). No fallback values in lookup tables.

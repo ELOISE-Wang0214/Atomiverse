@@ -137,7 +137,7 @@ void ConstPotCG::build_matrix_(const cpu::Frame& frame) {
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
     const double Lx = box.length(0);
     const double Ly = box.length(1);
     const int R = xy_image_range < 0 ? 0 : xy_image_range;
@@ -200,7 +200,7 @@ void ConstPotCG::build_rhs_(const cpu::Frame& frame) {
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
     auto q = frame.span(kAtom_charge);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
     const double Lx = box.length(0);
     const double Ly = box.length(1);
     const int R = xy_image_range < 0 ? 0 : xy_image_range;

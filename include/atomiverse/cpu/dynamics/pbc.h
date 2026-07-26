@@ -25,9 +25,9 @@ namespace md {
 /// @param frame Frame whose `atoms.x/y/z` are shifted in place.
 /// @param n_owned Number of owned atoms to wrap (typically `owned_count(ctx)`).
 inline void wrap_orthorhombic(cpu::Frame& frame, int n_owned) {
-    const double lx = frame.simbox.length(0);
-    const double ly = frame.simbox.length(1);
-    const double lz = frame.simbox.length(2);
+    const double lx = frame.box.length(0);
+    const double ly = frame.box.length(1);
+    const double lz = frame.box.length(2);
     StorageReal* __restrict sp_x = frame.span(kAtom_x);
     StorageReal* __restrict sp_y = frame.span(kAtom_y);
     StorageReal* __restrict sp_z = frame.span(kAtom_z);

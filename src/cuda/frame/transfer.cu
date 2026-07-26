@@ -4,9 +4,9 @@
 /// Implements host<->device conversion with temporary buffers when the device
 /// storage type (real_t) differs from the host per-atom tier (StorageReal for
 /// positions/velocities, AccReal for forces). The host cpu::Frame is
-/// blocks+meta+simbox: per-atom columns are read via span(kAtom_*), the
+/// blocks+meta+box: per-atom columns are read via span(kAtom_*), the
 /// per-frame scalars are gathered from / scattered to typed meta through the
-/// device-resident SystemScalars bundle, and the cell is frame.simbox.
+/// device-resident SystemScalars bundle, and the cell is frame.box.
 
 // NOTE (topology representation): CUDA kernels have not been ported to
 // per-atom topology — the single-GPU path consumes the flat
@@ -267,7 +267,7 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
     // Box: 3x3 row-major on device (prec_t)
     cudaMalloc(&d.box, 9 * sizeof(prec_t));
     prec_t box_data[9];
-    const Mat3& cell = frame.simbox.cell();
+    const Mat3& cell = frame.box.cell();
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
             box_data[i * 3 + j] = static_cast<prec_t>(cell(i, j));
@@ -396,7 +396,7 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 m(i, j) = static_cast<AccReal>(box_data[i * 3 + j]);
-        frame.simbox.set_cell(m);
+        frame.box.set_cell(m);
     }
 }
 

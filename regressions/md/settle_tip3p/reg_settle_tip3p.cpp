@@ -48,7 +48,7 @@ int main() {
     f.span(kAtom_vx)[0] = 0.001;
     f.span(kAtom_vy)[1] = -0.002;
     f.span(kAtom_vz)[2] = 0.0015;
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});

@@ -15,7 +15,7 @@
 using namespace ATV;
 
 static double pressure(const cpu::Frame& f) {
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         return 0.0;
     const auto& s = f.meta.get(kStress);
@@ -29,7 +29,7 @@ int main() {
     frame.span(kAtom_x)[0] = frame.span(kAtom_y)[0] = frame.span(kAtom_z)[0] =
         0;
     const double L0 = 8.0; // expanded cubic H cell (toy)
-    frame.simbox = cpu::Box::cubic(L0);
+    frame.box = cpu::Box::cubic(L0);
 
     cpu::pw::PW cfg;
     cfg.ecut_ry = 5.0;
@@ -41,7 +41,7 @@ int main() {
     // Direct stress at L0
     const auto s0 = cpu::pw::pw_stress(frame, cfg);
     frame.meta.get(kStress) = s0;
-    const double P0 = (s0[0] + s0[1] + s0[2]) / (3.0 * frame.simbox.volume());
+    const double P0 = (s0[0] + s0[1] + s0[2]) / (3.0 * frame.box.volume());
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::IsotropicCellRelax cell(0.0, 0.05);
@@ -56,7 +56,7 @@ int main() {
     opt.build();
     opt.run(frame, 15);
 
-    const double L1 = frame.simbox.length(0);
+    const double L1 = frame.box.length(0);
     const double P1 = pressure(frame);
     std::printf("PW cell: L0=%.4f L1=%.4f |P0|=%.4g |P1|=%.4g\n", L0, L1,
                 std::fabs(P0), std::fabs(P1));

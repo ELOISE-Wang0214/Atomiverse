@@ -39,7 +39,7 @@ struct MoverHarness {
             frame.span(ATV::kAtom_mass)[i] = 39.948;
             frame.span(ATV::kAtom_type)[i] = 1;
         }
-        frame.simbox.set_cell(Mat3::diagonal(10.0, 10.0, 10.0));
+        frame.box.set_cell(Mat3::diagonal(10.0, 10.0, 10.0));
         ctx.mc.proposal = &txn;
         ctx.mc.rng = &rng;
     }
@@ -67,9 +67,9 @@ TEST(VolumeMove, RescalesBoxAndEveryCoordinateIsotropically) {
     ASSERT_EQ(h.txn.verb, Verb::Box);
     ASSERT_EQ(h.txn.size(), 3u); // every row snapshotted
     const double s =
-        h.frame.simbox.length(0) / before.simbox.length(0); // isotropic factor
-    EXPECT_NEAR(h.frame.simbox.length(1), before.simbox.length(1) * s, 1e-12);
-    EXPECT_NEAR(h.frame.simbox.length(2), before.simbox.length(2) * s, 1e-12);
+        h.frame.box.length(0) / before.box.length(0); // isotropic factor
+    EXPECT_NEAR(h.frame.box.length(1), before.box.length(1) * s, 1e-12);
+    EXPECT_NEAR(h.frame.box.length(2), before.box.length(2) * s, 1e-12);
     for (int i = 0; i < 3; ++i) {
         EXPECT_EQ(h.frame.span(ATV::kAtom_x)[i],
                   static_cast<StorageReal>(before.span(ATV::kAtom_x)[i] * s));
@@ -79,18 +79,18 @@ TEST(VolumeMove, RescalesBoxAndEveryCoordinateIsotropically) {
                   static_cast<StorageReal>(before.span(ATV::kAtom_z)[i] * s));
     }
     // ΔV bounded by δV.
-    const double v0 = before.simbox.volume();
-    EXPECT_LE(std::abs(h.frame.simbox.volume() - v0), 100.0 + 1e-9);
+    const double v0 = before.box.volume();
+    EXPECT_LE(std::abs(h.frame.box.volume() - v0), 100.0 + 1e-9);
 
     // And a rejection restores everything bitwise.
     h.txn.rollback(h.frame);
     EXPECT_EQ(h.frame.span(ATV::kAtom_x)[1], before.span(ATV::kAtom_x)[1]);
-    EXPECT_EQ(h.frame.simbox.cell()(2, 2), before.simbox.cell()(2, 2));
+    EXPECT_EQ(h.frame.box.cell()(2, 2), before.box.cell()(2, 2));
 }
 
 TEST(VolumeMove, ClampedDrawProposesNothing) {
     MoverHarness h{2};
-    h.frame.simbox.set_cell(Mat3::diagonal(1.0, 1.0, 1.0)); // V = 1 Å³
+    h.frame.box.set_cell(Mat3::diagonal(1.0, 1.0, 1.0)); // V = 1 Å³
     cpu::mc::VolumeMove mv{1e6}; // most draws land below V' <= 0
     int none_seen = 0;
     for (int k = 0; k < 50; ++k) {
@@ -110,7 +110,7 @@ TEST(VolumeMove, BootstrapPassIsNoOp) {
     cpu::mc::VolumeMove mv{10.0};
     mv.launch(h.launch(/*step=*/-1));
     EXPECT_EQ(h.txn.size(), 0u);
-    EXPECT_EQ(h.frame.simbox.cell()(0, 0), before.simbox.cell()(0, 0));
+    EXPECT_EQ(h.frame.box.cell()(0, 0), before.box.cell()(0, 0));
 }
 
 // ── InsertDeleteMove ────────────────────────────────────────────────────────

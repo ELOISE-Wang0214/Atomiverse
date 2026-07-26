@@ -22,7 +22,7 @@ static double energy_at(double lam, cpu::md::PairList& pairs) {
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     f.meta.get(kEnergy) = 0;
     f.meta.get(kEnergyPair) = 0;
     for (int i = 0; i < 2; ++i)
@@ -65,7 +65,7 @@ int main() {
         f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
         f.span(kAtom_tag)[0] = 1;
         f.span(kAtom_tag)[1] = 2;
-        f.simbox = cpu::Box::cubic(50.0);
+        f.box = cpu::Box::cubic(50.0);
         f.meta.get(kEnergy) = 0;
         f.meta.get(kEnergyPair) = 0;
         for (int a = 0; a < 2; ++a)

@@ -29,7 +29,7 @@ cpu::Frame make_h_cubic(double L) {
     f.span(kAtom_x)[0] = 0.0;
     f.span(kAtom_y)[0] = 0.0;
     f.span(kAtom_z)[0] = 0.0;
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -159,7 +159,7 @@ TEST(PWForces, AnalyticUpfSiDimerFiniteForces) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.simbox.set_cell(cell);
+    f.box.set_cell(cell);
 
     PW cfg;
     cfg.upf_path = upf;
@@ -202,7 +202,7 @@ TEST(PWForces, AnalyticMatchesFdToyDimer) {
     f.span(kAtom_x)[1] = 0.5;
     f.span(kAtom_y)[1] = 0.1;
     f.span(kAtom_z)[1] = -0.05;
-    f.simbox = cpu::Box::cubic(8.0);
+    f.box = cpu::Box::cubic(8.0);
 
     PW cfg = cheap_cfg();
     cfg.max_iter = 12;

@@ -45,7 +45,7 @@ cpu::Frame make_methanol_like() {
         f.span(kAtom_mass)[i] = 1.0;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
     return f;
 }
 

@@ -112,7 +112,7 @@ cpu::Frame i2_frame() {
     f.span(kAtom_x)[1] = 0.0;
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = 2.666;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -370,7 +370,7 @@ TEST(EcpIntegralPack, LightMoleculeUnchangedAndUnknownNameThrows) {
     h2o.span(kAtom_x)[2] = 0.0;
     h2o.span(kAtom_y)[2] = -0.7572;
     h2o.span(kAtom_z)[2] = -0.4692;
-    h2o.simbox = cpu::Box::cubic(20.0);
+    h2o.box = cpu::Box::cubic(20.0);
 
     const IntegralPack plain{h2o, BasisSet::Def2SVP};
     const IntegralPack named{h2o, BasisSet::Def2SVP, 0, false, "def2-ECP"};
@@ -417,7 +417,7 @@ TEST(EcpX2cGate, ThrowsForEcpElementPassesAllElectron) {
     h2.span(kAtom_x)[1] = 0.0;
     h2.span(kAtom_y)[1] = 0.0;
     h2.span(kAtom_z)[1] = 0.74;
-    h2.simbox = cpu::Box::cubic(20.0);
+    h2.box = cpu::Box::cubic(20.0);
     cpu::scf::RHF ok;
     ok.basis = BasisSet::STO3G;
     ok.ecp = "def2-ECP";

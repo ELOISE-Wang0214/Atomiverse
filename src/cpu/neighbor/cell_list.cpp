@@ -89,7 +89,7 @@ void CellList::compute_grid(const cpu::Frame& frame) {
     int nc[3];
     double cs[3];
     for (int d = 0; d < 3; ++d) {
-        const double L = frame.simbox.length(d);
+        const double L = frame.box.length(d);
         const int nc_global =
             std::max(int(1), static_cast<int>(std::floor(L / cutoff_skin_)));
         const double cs_d = L / nc_global;
@@ -128,7 +128,7 @@ void CellList::compute_grid(const cpu::Frame& frame) {
 
 bool CellList::grid_stale(const cpu::Frame& frame) const {
     for (int d = 0; d < 3; ++d)
-        if (frame.simbox.length(d) != box_at_last_build_[d])
+        if (frame.box.length(d) != box_at_last_build_[d])
             return true;
     if (dd_ != nullptr) {
         for (int d = 0; d < 3; ++d) {
@@ -178,9 +178,9 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
         y_save_ = xt::zeros<double>({capacity_});
         z_save_ = xt::zeros<double>({capacity_});
     }
-    double lx = frame.simbox.length(0);
-    double ly = frame.simbox.length(1);
-    double lz = frame.simbox.length(2);
+    double lx = frame.box.length(0);
+    double ly = frame.box.length(1);
+    double lz = frame.box.length(2);
 
     // Clear cell counts
     std::fill(cell_count_.begin(), cell_count_.end(), int(0));
@@ -281,7 +281,7 @@ void CellList::build(const cpu::Frame& frame, int n_active) {
     save_positions(frame, n_active);
     n_at_last_build_ = (n_active < 0) ? frame.nlocal() : n_active;
     for (int d = 0; d < 3; ++d)
-        box_at_last_build_[d] = frame.simbox.length(d);
+        box_at_last_build_[d] = frame.box.length(d);
 }
 
 bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
@@ -313,7 +313,7 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
         double dz = sp_z[i] - z_save_[i];
         // Use minimum-image convention so atom wrapping across PBC
         // boundaries doesn't falsely signal a ~box-length displacement.
-        frame.simbox.min_image(dx, dy, dz);
+        frame.box.min_image(dx, dy, dz);
         double dsq = dx * dx + dy * dy + dz * dz;
         if (dsq > max_disp_sq)
             max_disp_sq = dsq;
@@ -421,9 +421,9 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
         // x_ptr/y_ptr/z_ptr hoisted at function entry (shared with the
         // multi-thread branch below).
-        const double lx = frame.simbox.length(0);
-        const double ly = frame.simbox.length(1);
-        const double lz = frame.simbox.length(2);
+        const double lx = frame.box.length(0);
+        const double ly = frame.box.length(1);
+        const double lz = frame.box.length(2);
         const double half_lx = 0.5 * lx;
         const double half_ly = 0.5 * ly;
         const double half_lz = 0.5 * lz;
@@ -774,7 +774,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     // Extended-axis-aware min-image (see the serial
                     // full-stencil comment): never wrap axes the halo
                     // extended, or dual-image ghosts double-count.
-                    min_image_unextended_(frame.simbox, dx, dy, dz);
+                    min_image_unextended_(frame.box, dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {
@@ -950,7 +950,7 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                     // Extended-axis-aware min-image (see the serial
                     // full-stencil comment): never wrap axes the halo
                     // extended, or dual-image ghosts double-count.
-                    min_image_unextended_(frame.simbox, dx, dy, dz);
+                    min_image_unextended_(frame.box, dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {

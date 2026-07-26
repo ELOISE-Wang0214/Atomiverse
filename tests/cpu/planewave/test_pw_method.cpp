@@ -35,7 +35,7 @@ TEST(PWMethod, RunToyUpfFiniteEnergy) {
     f.span(kAtom_x)[1] = 1.3575;
     f.span(kAtom_y)[1] = 1.3575;
     f.span(kAtom_z)[1] = 1.3575;
-    f.simbox = cpu::Box::cubic(5.43);
+    f.box = cpu::Box::cubic(5.43);
 
     PW pw;
     pw.ecut_ry = 10.0;

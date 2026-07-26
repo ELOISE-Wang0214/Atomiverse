@@ -58,7 +58,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
                     frame.span(ATV::kAtom_vz)[idx] = s * 0.25;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -66,8 +66,8 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 // compressive — matches `compute pressure`, `NoseHooverNPT` and the
 // post-`lammps-api-align-04` `Barostat`.
 double pressure_from_frame(const cpu::Frame& frame) {
-    const double V = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
-                     * frame.simbox.cell()(2, 2);
+    const double V = frame.box.cell()(0, 0) * frame.box.cell()(1, 1)
+                     * frame.box.cell()(2, 2);
     const double trace =
         (frame.meta.get(ATV::kStress)[0] + frame.meta.get(ATV::kStress)[1]
          + frame.meta.get(ATV::kStress)[2])
@@ -107,14 +107,14 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
     sim.build();
 
     sim.run(frame, 1);
-    const double V_initial = frame.simbox.cell()(0, 0)
-                             * frame.simbox.cell()(1, 1)
-                             * frame.simbox.cell()(2, 2);
+    const double V_initial = frame.box.cell()(0, 0)
+                             * frame.box.cell()(1, 1)
+                             * frame.box.cell()(2, 2);
     const double P_initial = pressure_from_frame(frame);
 
     sim.run(frame, 999);
-    const double V_final = frame.simbox.cell()(0, 0) * frame.simbox.cell()(1, 1)
-                           * frame.simbox.cell()(2, 2);
+    const double V_final = frame.box.cell()(0, 0) * frame.box.cell()(1, 1)
+                           * frame.box.cell()(2, 2);
     const double P_final = pressure_from_frame(frame);
 
     int my_rank = 0;

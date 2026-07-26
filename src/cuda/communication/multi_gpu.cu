@@ -735,7 +735,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
     n_global_ = ng;
 
     // Global orthorhombic box edge lengths.
-    const Mat3& gcell = global.simbox.cell();
+    const Mat3& gcell = global.box.cell();
     const double Lx = gcell(0, 0);
     const double Ly = gcell(1, 1);
     const double Lz = gcell(2, 2);
@@ -744,7 +744,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
     box_L_[2] = Lz;
     dd_ = std::make_unique<DomainDecomposition>(N, Lx, Ly, Lz);
 
-    // Global per-atom columns (host spans; blocks+meta+simbox frame).
+    // Global per-atom columns (host spans; blocks+meta+box frame).
     const auto gx = global.span(kAtom_x);
     const auto gy = global.span(kAtom_y);
     const auto gz = global.span(kAtom_z);
@@ -796,7 +796,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         // each subdomain's neighbor list min-images against the full box.
         cpu::Frame sub(cnt > 0 ? cnt : 1);
         sub.set_nlocal(cnt);
-        sub.simbox = global.simbox;
+        sub.box = global.box;
         // The partition writes the wide bonded arrays directly (not via
         // add_bond), so explicitly size them on the fresh sub frame to the
         // global frame's runtime strides — otherwise the lazy

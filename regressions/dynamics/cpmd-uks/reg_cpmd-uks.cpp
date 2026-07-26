@@ -43,7 +43,7 @@ int main() {
     // Antisymmetric stretch [Å/fs] — no COM translation, small KE.
     frame.span(kAtom_vz)[0] = -0.0008;
     frame.span(kAtom_vz)[1] = 0.0008;
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     const cpu::gpw::Kind O{
         molrs::Element::O,

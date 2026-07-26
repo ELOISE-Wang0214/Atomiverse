@@ -2,7 +2,7 @@
 
 This manual explains how Atomiverse is put together internally. Read it when you
 want to **change** the codebase rather than just use it. Code examples and
-contributor guidance assume **C++17 or later** throughout.
+contributor guidance assume **C++20 or later** throughout.
 
 It still assumes the reader may be new to computational chemistry: where
 chemistry terms appear, the goal is to explain why the software is organized the

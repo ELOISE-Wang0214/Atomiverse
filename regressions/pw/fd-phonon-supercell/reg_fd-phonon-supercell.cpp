@@ -40,7 +40,7 @@ cpu::Frame diamond_conventional(double a, int n_cell) {
                     f.span(kAtom_tag)[idx] = static_cast<TagInt>(idx + 1);
                     ++idx;
                 }
-    f.simbox = cpu::Box::cubic(a * n_cell);
+    f.box = cpu::Box::cubic(a * n_cell);
     return f;
 }
 
@@ -60,9 +60,9 @@ int main() {
     cpu::Frame unit = diamond_conventional(kA0, kNCell);
     cpu::SWPotential pot(molrs::Element::Si, "stillinger-weber");
     const double cutoff = pot.cutoff();
-    if (unit.simbox.length(0) <= 2.0 * cutoff) {
+    if (unit.box.length(0) <= 2.0 * cutoff) {
         std::printf("FAIL: box L=%.4f must exceed 2*cutoff=%.4f\n",
-                    unit.simbox.length(0), 2.0 * cutoff);
+                    unit.box.length(0), 2.0 * cutoff);
         return 1;
     }
 

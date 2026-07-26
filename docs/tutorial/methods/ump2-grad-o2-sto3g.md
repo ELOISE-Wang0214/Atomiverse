@@ -84,7 +84,7 @@ cpu::Frame frame(2);
 frame.span(kAtom_type)[0] = frame.span(kAtom_type)[1] = 8;
 frame.span(kAtom_z)[0] = 0.0;
 frame.span(kAtom_z)[1] = 1.2075;
-frame.simbox = cpu::Box::cubic(20.0);
+frame.box = cpu::Box::cubic(20.0);
 
 // Warm-start: ROHF densities → UHF (multi-minima for O₂)
 cpu::scf::ROHF rohf(/*n_alpha=*/9, /*n_beta=*/7);

@@ -89,7 +89,7 @@ f.span(kAtom_z)[0] = 4.0;   // r = 4 Å above zlo wall at 0
 f.span(kAtom_mass)[0] = 39.948;
 f.span(kAtom_type)[0] = 0;
 f.span(kAtom_tag)[0] = 1;
-f.simbox = cpu::Box::orthorhombic(20.0, 20.0, 30.0);
+f.box = cpu::Box::orthorhombic(20.0, 20.0, 30.0);
 
 cpu::Evaluate eval;
 eval.on(evaluate::Phase::evaluate)

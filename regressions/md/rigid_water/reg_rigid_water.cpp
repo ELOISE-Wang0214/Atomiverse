@@ -84,7 +84,7 @@ int main() {
                 idx += 3;
                 ++mol;
             }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     frame.rebuild_tag_index(0, n);
     for (int m = 0; m < n_mol; ++m) {
         const int o = 3 * m, h1 = o + 1, h2 = o + 2;
@@ -144,7 +144,7 @@ int main() {
                             - frame.span(ATV::kAtom_y)[jj[c]];
                 double dz = frame.span(ATV::kAtom_z)[ii[c]]
                             - frame.span(ATV::kAtom_z)[jj[c]];
-                frame.simbox.min_image(dx, dy, dz);
+                frame.box.min_image(dx, dy, dz);
                 const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
                 worst_geom =
                     std::fmax(worst_geom, std::fabs(r - want[c]) / want[c]);

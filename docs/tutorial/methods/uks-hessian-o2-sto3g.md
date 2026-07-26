@@ -47,7 +47,7 @@ Public C++ (Frame + concrete method; no `*Config`, no factories). Minimal sequen
 
 ATV::cpu::Frame frame(2);
 // O₂: Z=8, r = 1.2075 Å along z; 20 Å cubic box (gas phase)
-// ... fill type / mass / x,y,z / simbox as in the regression ...
+// ... fill type / mass / x,y,z / box as in the regression ...
 
 ATV::cpu::scf::ROKS roks(/*n_alpha=*/9, /*n_beta=*/7, ATV::cpu::scf::XCType::LSDA);
 roks.basis = ATV::cpu::scf::BasisSet::STO3G;

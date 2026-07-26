@@ -24,7 +24,7 @@ cpu::Frame dimer_with_bond(double r) {
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
     f.span(kAtom_tag)[0] = 0;
     f.span(kAtom_tag)[1] = 1;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, f.nlocal());
     f.add_bond(0, 1, 0);

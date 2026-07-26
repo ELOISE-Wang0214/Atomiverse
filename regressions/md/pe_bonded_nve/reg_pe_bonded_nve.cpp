@@ -71,7 +71,7 @@ int main() {
     for (int k = 0; k < n_carbons - 3; ++k)
         frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     frame.build_special_list();
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
 
     // Bonded-only NVE: no pair potential, no neighbor list, no thermostat.
     cpu::md::MD sim;

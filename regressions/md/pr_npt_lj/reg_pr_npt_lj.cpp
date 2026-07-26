@@ -51,8 +51,8 @@ int main() {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = cpu::Box::cubic(n_cells * a_lat);
-    const double V0 = frame.simbox.volume();
+    frame.box = cpu::Box::cubic(n_cells * a_lat);
+    const double V0 = frame.box.volume();
 
     cpu::md::MD sim;
     sim.add_potential(cpu::PairLJCut{eps, sigma, cutoff});
@@ -66,8 +66,8 @@ int main() {
 
     sim.run(frame, n_steps);
 
-    const double V1 = frame.simbox.volume();
-    const Mat3& h = frame.simbox.cell();
+    const double V1 = frame.box.volume();
+    const Mat3& h = frame.box.cell();
     const double edge =
         std::max({std::fabs(h(0, 0)), std::fabs(h(1, 1)), std::fabs(h(2, 2))});
     const double shear = std::fabs(h(0, 1)) + std::fabs(h(0, 2))

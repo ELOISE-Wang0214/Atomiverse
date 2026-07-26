@@ -48,7 +48,7 @@ cpu::Frame water_parents(int n_extra = 0) {
         f.span(kAtom_fy)[i] = 0;
         f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, f.nlocal());
     return f;

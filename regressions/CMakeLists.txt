@@ -20,7 +20,7 @@ function(atv_add_regression domain case)
     set(target reg_${case})
     add_executable(${target} ${domain}/${case}/${target}.cpp)
     target_link_libraries(${target} PRIVATE atomiverse)
-    set_target_properties(${target} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${target} PROPERTIES CXX_STANDARD 20)
 
     add_custom_target(run_${target}
         COMMAND ${target}
@@ -320,20 +320,12 @@ if(ATV_BUILD_GPW)
     atv_add_regression(gpw gpw-kpoint-uks-stress-gga)
     atv_add_regression(gpw gpw-kpoints-uks)
     # FD vibrational spectrum from GPW analytic forces (Si2 UKS triplet,
-    # isolated). NOT REGISTERED — and NOT because the forces are wrong. The
-    # earlier "analytic vs FD off by 271x" claim was measured on `dev` and is
-    # false: analytic matches FD to 1.7e-6 Ha/Bohr wherever the SCF reaches a
-    # genuine stationary point (details + numbers in the case REFERENCE and
-    # .claude/notes/notes.md). What blocks it is SCF conditioning plus cost for
-    # the open-shell dimer in a cluster box: Atomiverse converges at 8 A/150 Ry
-    # where CP2K does not, CP2K converges at 9 A/200 Ry and 10 A/400 Ry where
-    # Atomiverse does not (linear/DIIS/OT vs CP2K's Broyden mixer), and 12
-    # displacements at ~7-38 s per SCF exceed the 60 s e2e tier at every setting
-    # where a CP2K twin exists. The offline pins ARE recorded, so re-enabling is
-    # this one line once an open-shell cluster mixer lands.
-    # if(ATV_BUILD_VIB)
-    #     atv_add_regression(gpw gpw-fd-phonon-si)
-    # endif()
+    # isolated, centred MT). Dual-gate vs 1D energy curvature at the
+    # ATV-convergent window (8 A / 150 Ry); offline CP2K 10 A/400 Ry pin
+    # stays in REFERENCE for a future mixer-overlap twin.
+    if(ATV_BUILD_VIB)
+        atv_add_regression(gpw gpw-fd-phonon-si)
+    endif()
     atv_add_regression(gpw gpw-variable-cell-ice)
     atv_add_regression(gpw gpw-variable-cell-molopt)
     atv_add_regression(gpw periodic-mp2-si)

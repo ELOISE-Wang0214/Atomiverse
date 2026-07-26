@@ -52,7 +52,7 @@ class NptMetropolis : public OutcomePolicy {
     ///        configuration.
     void on_start(const cpu::LoopState& s) override {
         e_cur_ = s.frame.meta.get(kEnergy);
-        v_cur_ = s.frame.simbox.volume();
+        v_cur_ = s.frame.box.volume();
     }
 
     /// @brief Judge the trial now in the frame, by its verb.
@@ -79,7 +79,7 @@ class NptMetropolis : public OutcomePolicy {
             arg = beta * dE;
             break;
         case Transaction::Verb::Box: {
-            const double v_trial = s.frame.simbox.volume();
+            const double v_trial = s.frame.box.volume();
             const double n = static_cast<double>(s.frame.nlocal());
             arg =
                 beta
@@ -95,7 +95,7 @@ class NptMetropolis : public OutcomePolicy {
 
         if (accept_(arg)) {
             e_cur_ = e_trial;
-            v_cur_ = s.frame.simbox.volume();
+            v_cur_ = s.frame.box.volume();
             return Outcome::Commit;
         }
         return Outcome::Rollback;

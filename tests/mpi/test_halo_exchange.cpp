@@ -77,7 +77,7 @@ cpu::Frame make_uniform_grid(int n_per_side, double box_len) {
                 frame.span(ATV::kAtom_mass)[idx] = 1.0;
                 ++idx;
             }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -122,9 +122,9 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
         r.dims[d] = dd->dims[d];
         r.coords[d] = dd->coords[d];
     }
-    r.Lx = frame.simbox.cell()(0, 0);
-    r.Ly = frame.simbox.cell()(1, 1);
-    r.Lz = frame.simbox.cell()(2, 2);
+    r.Lx = frame.box.cell()(0, 0);
+    r.Ly = frame.box.cell()(1, 1);
+    r.Lz = frame.box.cell()(2, 2);
 
     r.ghost_x.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
     r.ghost_y.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);

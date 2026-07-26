@@ -23,7 +23,7 @@ TEST(NDDOApiSurface, AM1MembersAndRun) {
     f.span(kAtom_y)[1] = 0;
     f.span(kAtom_z)[1] = 0;
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.008;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     AM1 am1;
     am1.charge = 0;

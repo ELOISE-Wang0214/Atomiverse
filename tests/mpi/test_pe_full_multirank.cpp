@@ -81,7 +81,7 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     for (int k = 0; k < n_carbons - 3; ++k)
         frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     frame.build_special_list();
-    frame.simbox = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
+    frame.box = ATV::cpu::Box::orthorhombic(box_x, box_yz, box_yz);
     return frame;
 }
 

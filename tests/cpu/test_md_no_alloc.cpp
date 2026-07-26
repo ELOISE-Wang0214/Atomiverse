@@ -110,7 +110,7 @@ ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {
     for (int k = 0; k < n_carbons - 1; ++k)
         frame.add_bond(k, k + 1, 0);
     frame.build_special_list();
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

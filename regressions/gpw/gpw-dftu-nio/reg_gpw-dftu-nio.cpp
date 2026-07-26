@@ -36,7 +36,7 @@ int main() {
     frame.span(kAtom_x)[1] = 0.5 * L;
     frame.span(kAtom_y)[1] = 0.5 * L;
     frame.span(kAtom_z)[1] = 0.5 * L + 0.5 * R;
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     cpu::gpw::Kind Ni{
         molrs::Element::Ni,

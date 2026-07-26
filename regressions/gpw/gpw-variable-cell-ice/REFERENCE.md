@@ -11,7 +11,7 @@ intensive `kStress` [eV/Å³]) + `StressConverged` criterion, with
 re-targets the solver cell to the frame box each call (the old
 "GPW does not support a variable cell" throw is gone); `GpwDft::run` rebuilds
 grids / lattice images / S/T/Vpp per call, so the relax loop rescales
-`frame.simbox` freely at **fixed fractional coordinates**.
+`frame.box` freely at **fixed fractional coordinates**.
 
 CP2K twin problem: `RUN_TYPE CELL_OPT`, `TYPE DIRECT_CELL_OPT`,
 `KEEP_ANGLES`, **`CONSTRAINT YZ`** (only the chain axis relaxes) with **all

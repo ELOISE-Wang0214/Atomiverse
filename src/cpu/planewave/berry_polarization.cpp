@@ -189,7 +189,7 @@ double string_phase_for_channel(
 }
 
 void fill_ionic(BerryPolarizationResult& out, const cpu::Frame& frame) {
-    const auto recip = frame.simbox.recip_cell();
+    const auto recip = frame.box.recip_cell();
     const StorageReal* __restrict sx = frame.span(kAtom_x);
     const StorageReal* __restrict sy = frame.span(kAtom_y);
     const StorageReal* __restrict sz = frame.span(kAtom_z);
@@ -210,7 +210,7 @@ void fill_ionic(BerryPolarizationResult& out, const cpu::Frame& frame) {
 
 void assemble_totals(BerryPolarizationResult& out, const cpu::Frame& frame,
                      double quantum) {
-    const auto& cell = frame.simbox.cell();
+    const auto& cell = frame.box.cell();
     for (int d = 0; d < 3; ++d) {
         if (!out.computed[static_cast<std::size_t>(d)])
             continue;

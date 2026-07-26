@@ -182,7 +182,7 @@ void DipoleElectrodeJoint::build_matrix_(const cpu::Frame& frame) {
     auto x = frame.span(kAtom_x);
     auto y = frame.span(kAtom_y);
     auto z = frame.span(kAtom_z);
-    const cpu::Box& box = frame.simbox;
+    const cpu::Box& box = frame.box;
     const double Lx = box.length(0);
     const double Ly = box.length(1);
     const int R = xy_image_range < 0 ? 0 : xy_image_range;
@@ -576,7 +576,7 @@ void DipoleElectrodeJoint::launch(const LaunchContext& ctx) {
     s.z = ctx.frame.span(kAtom_z);
     s.charge = ctx.frame.span(kAtom_charge);
     s.type = ctx.frame.span(kAtom_type);
-    s.box = &ctx.frame.simbox;
+    s.box = &ctx.frame.box;
 
     const int m = static_cast<int>(elec_atoms_.size());
     if (static_cast<int>(last_mu_.size()) != 3 * s.n)

@@ -36,7 +36,7 @@ cpu::Frame make_lj_block(int n_side, double density) {
                 frame.span(kAtom_tag)[idx] = idx;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
     std::srand(42);
     for (int i = 0; i < n; ++i) {
         frame.span(kAtom_vx)[i] = 1e-3 * (double(std::rand()) / RAND_MAX - 0.5);
@@ -89,14 +89,14 @@ TEST(CudaNoseHooverNPT, IsoNPTBuildsAndRunsFinite) {
     EXPECT_TRUE(std::isfinite(static_cast<double>(frame.meta.get(kConserved))));
     EXPECT_GT(frame.meta.get(kKinetic), 0.0);
     // Box must remain positive (not collapsed or NaN).
-    EXPECT_GT(frame.simbox.cell()(0, 0), 0.0);
-    EXPECT_GT(frame.simbox.cell()(1, 1), 0.0);
-    EXPECT_GT(frame.simbox.cell()(2, 2), 0.0);
+    EXPECT_GT(frame.box.cell()(0, 0), 0.0);
+    EXPECT_GT(frame.box.cell()(1, 1), 0.0);
+    EXPECT_GT(frame.box.cell()(2, 2), 0.0);
 }
 
 TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     auto frame = make_lj_block(2, 0.8);
-    const double box_x_initial = frame.simbox.cell()(0, 0);
+    const double box_x_initial = frame.box.cell()(0, 0);
     const double cutoff = 3.0;
     // x rigid, y/z barostatted
     cuda::md::MD sim;
@@ -112,10 +112,10 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     // that cuda::Box stores edges in real_t (single precision), so the
     // double box edge is quantized to float each step — rigid to float
     // round-off, not double bit-equality.
-    EXPECT_NEAR(frame.simbox.cell()(0, 0), box_x_initial, box_x_initial * 1e-6);
+    EXPECT_NEAR(frame.box.cell()(0, 0), box_x_initial, box_x_initial * 1e-6);
     // y and z edges may have moved (they are barostatted).
-    EXPECT_GT(frame.simbox.cell()(1, 1), 0.0);
-    EXPECT_GT(frame.simbox.cell()(2, 2), 0.0);
+    EXPECT_GT(frame.box.cell()(1, 1), 0.0);
+    EXPECT_GT(frame.box.cell()(2, 2), 0.0);
 }
 
 TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {

@@ -34,7 +34,7 @@ cpu::Frame make_o2() {
     }
     frame.span(kAtom_z)[0] = 0.5 * L - 0.5 * R;
     frame.span(kAtom_z)[1] = 0.5 * L + 0.5 * R;
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
     return frame;
 }
 

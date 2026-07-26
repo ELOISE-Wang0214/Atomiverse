@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.simbox.set_cell(cell);
+    f.box.set_cell(cell);
 
     internal::PWProblem prob;
     internal::setup_pw_problem(f, upf, ecut, 2, prob);

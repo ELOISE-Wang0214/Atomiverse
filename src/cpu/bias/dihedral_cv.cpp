@@ -59,7 +59,7 @@ double DihedralCV::evaluate(const cpu::Frame& frame, double* grad) const {
     const bool ok = dihedral_geom::fill(
         r1x, r1y, r1z, r2x, r2y, r2z, r3x, r3y, r3z, r4x, r4y, r4z,
         [&](double& dx, double& dy, double& dz) {
-            frame.simbox.min_image(dx, dy, dz);
+            frame.box.min_image(dx, dy, dz);
         },
         g);
     if (!ok)

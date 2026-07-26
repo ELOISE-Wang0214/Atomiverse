@@ -1,8 +1,7 @@
 /// @file cpu/scf/native_integrals.h
 /// @brief Native C++ molecular integral functions for s+p type Gaussians.
 ///
-/// Primary integral engine. Validated element-by-element against libcint
-/// as ground truth (enable -DATV_BUILD_LIBCINT=ON for validation tests).
+/// Primary integral engine (native Obara–Saika / McMurchie–Davidson / Rys).
 ///
 /// All functions operate in atomic units (Bohr, Hartree).
 /// Uses physical normalization: (2*alpha/pi)^{3/4} for s-type.

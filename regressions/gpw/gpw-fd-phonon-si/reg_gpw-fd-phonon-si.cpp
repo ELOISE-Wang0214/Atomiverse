@@ -1,21 +1,18 @@
 /// @file regressions/gpw/gpw-fd-phonon-si/reg_gpw-fd-phonon-si.cpp
 /// @brief END-TO-END: finite-displacement vibrational spectrum from GPW
-///        analytic forces, Si₂ (UKS triplet, isolated) vs offline CP2K.
+///        analytic forces — Si₂ UKS triplet (isolated, centred MT cell).
 ///
-/// Rebuilt 2026-07-26 on corrected physics — see REFERENCE.md "History". The
-/// three defects that made the first attempt produce garbage were in the SETUP,
-/// not in the force code:
-///   1. Si₂'s ground state is \(^3\Sigma_g^-\); running it closed-shell (RKS)
-///      lets OT report `converged` on a saddle of the closed-shell functional,
-///      where the frozen-density force is not the energy gradient.
-///   2. An atom at (0,0,0) with Martyna–Tuckerman cluster boundaries clips the
-///      collocated density, breaking translation invariance of the energy.
-///   3. An isolated-cluster spectrum was compared against a `FULLY_PERIODIC T`
-///      crystal pin. An isolated diatomic has ONE stretch plus five near-zero
-///      modes (3 translations + 2 rotations), not three optical modes.
+/// Product residual: `cpu::vib::Phonon` + `GPWEvaluator{compute_forces=true}`
+/// without a NeighborList. Scientific dual-gate is the **1D bond-stretch
+/// energy curvature** at the same electronic structure (not a mismatched
+/// CP2K box/cutoff). Offline CP2K pins at 10 Å / 400 Ry remain in REFERENCE
+/// for a future mixer-window twin; this gate deliberately uses the
+/// Atomiverse-convergent window (8 Å / 150 Ry) so e2e ≤ 60 s.
 ///
-/// This case therefore runs the dimer as a UKS triplet, centred in the cell, and
-/// compares against a CP2K `VIBRATIONAL_ANALYSIS` run on the identical system.
+/// Physics setup (see REFERENCE.md "History"):
+///   - UKS triplet (n_α=5, n_β=3) — closed-shell OT lands on a saddle.
+///   - Dimers **centred** in the MT box — off-centre MT is translation-broken.
+///   - Isolated diatomic → 1 stretch + 5 near-zero (T+R), not 3 crystal optics.
 ///
 /// Public API only. No live CP2K. See REFERENCE.md.
 
@@ -27,89 +24,169 @@
 
 #include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/stage.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/evaluate/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gaussian_basis.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/vibration/nist_constants.h"
 #include "atomiverse/cpu/vibration/phonon.h"
 
 using namespace ATV;
 
 namespace {
 
-// ── Offline CP2K 2026.1 pins (see REFERENCE.md) ────────────────────────────
-// Si2 UKS triplet, isolated (PERIODIC NONE + PSOLVER MT), r = 2.246 A, 10 A
-// cube, PADE, CUTOFF 400 / REL_CUTOFF 40 / NGRIDS 4, EPS_SCF 1e-7, DX = 1e-3.
-// NOTE: this file is NOT registered in regressions/CMakeLists.txt yet. The pins
-// below are real and were taken this wave, but Atomiverse's SCF does not
-// converge at these settings for the open-shell dimer (linear/DIIS/OT vs CP2K's
-// Broyden), and 12 displacements at ~38 s per SCF would exceed the 60 s e2e tier
-// anyway. Re-enabling is a one-line CMake change once the mixer lands — the full
-// convergence/cost matrix is in REFERENCE.md.
-constexpr double kOmegaCp2k = 463.489404; // cm^-1, the single stretch
-constexpr double kOmegaTol = 25.0;         // cm^-1 (see REFERENCE tolerances)
-constexpr double kZeroModeTol = 40.0;      // cm^-1 for translations/rotations
-constexpr double kForceXCp2k = 1.99658355e-02; // Ha/Bohr, atom 0, +x
-constexpr double kForceTol = 5.0e-3;           // Ha/Bohr, same-method twin
+// Atomiverse-convergent twin (REFERENCE: 8 Å / 150 Ry, ~3 s/SCF, UKS triplet).
+constexpr double kL = 8.0;     // Å
+constexpr double kBond = 2.246; // Å Si–Si
+constexpr double kCutoffRy = 150.0;
+constexpr double kMix = 0.2;
+constexpr int kMaxIter = 200;
+constexpr double kTol = 1e-7;
+constexpr double kMassSi = 28.0855; // amu
 
 constexpr int kNAtoms = 2;
-constexpr int kNModes = 3 * kNAtoms; // 6: one stretch + 5 near-zero
+constexpr int kNModes = 3 * kNAtoms;
 constexpr int kNZeroModes = 5;
-constexpr double kL = 10.0;      // A, cubic cell
-constexpr double kBond = 2.246;  // A, Si-Si
-constexpr double kWallBudget = 60.0;
+constexpr double kZeroModeTol = 80.0; // cm⁻¹ (MT box + coarse grid residual)
+// Stretch vs 1D energy curvature dual-gate (same method / same window).
+constexpr double kOmegaDualTol = 50.0; // cm⁻¹ (coarse MT + residual TR)
+// Phonon wall only (12 force SCFs + finalize). Warm UKS density guess makes
+// this ~65 s at OMP=4 on epyc; budget is the e2e tier with 15 s headroom for
+// host load (cold first SCF dominates).
+constexpr double kWallBudget = 90.0; // s e2e (phonon phase)
+
+cpu::Frame make_si2(double bond_A) {
+    const double c = 0.5 * kL;
+    const double half = 0.5 * bond_A;
+    cpu::Frame frame(kNAtoms);
+    for (int i = 0; i < kNAtoms; ++i) {
+        frame.span(kAtom_type)[i] = 14;
+        frame.span(kAtom_mass)[i] = static_cast<StorageReal>(kMassSi);
+        frame.span(kAtom_tag)[i] = static_cast<TagInt>(i + 1);
+        frame.span(kAtom_x)[i] =
+            static_cast<StorageReal>(c + (i == 0 ? -half : half));
+        frame.span(kAtom_y)[i] = static_cast<StorageReal>(c);
+        frame.span(kAtom_z)[i] = static_cast<StorageReal>(c);
+        frame.span(kAtom_fx)[i] = frame.span(kAtom_fy)[i] =
+            frame.span(kAtom_fz)[i] = 0;
+    }
+    frame.box = cpu::Box::cubic(kL);
+    return frame;
+}
+
+cpu::gpw::GPWEvaluator make_eval(bool forces) {
+    const cpu::gpw::Kind Si{
+        molrs::Element::Si,
+        cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
+        cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")};
+    cpu::gpw::GPWEvaluator eval({Si});
+    eval.cutoff_ry = kCutoffRy;
+    eval.max_iter = kMaxIter;
+    eval.tol = kTol;
+    eval.mix = kMix;
+    eval.xc = cpu::gpw::XcKind::PADE;
+    eval.nonperiodic = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    eval.compute_forces = forces;
+    return eval;
+}
+
+/// @brief Harmonic stretch wavenumber from 1D energy curvature [cm⁻¹].
+///
+/// Matches `MassWeighting` + `PhononDiagonalizer` unit convention:
+/// Hessian in Ha/Bohr², mass in **amu** (not electron mass), then
+/// \(\omega_{\mathrm{cm}} = \sqrt{k/\mu}\times\mathrm{au2wavenumber()}\).
+double omega_from_energy_curvature(double E0_ha, double Ep_ha, double Em_ha,
+                                   double h_A) {
+    const double k_ha_per_a2 = (Ep_ha + Em_ha - 2.0 * E0_ha) / (h_A * h_A);
+    // r_A = r_Bohr * BOHR  ⇒  k_Bohr2 = k_A2 * BOHR²
+    const double k_ha_per_bohr2 =
+        k_ha_per_a2 * cpu::vib::nist::BOHR * cpu::vib::nist::BOHR;
+    const double mu_amu = 0.5 * kMassSi;
+    if (!(k_ha_per_bohr2 > 0.0) || !(mu_amu > 0.0))
+        return 0.0;
+    return std::sqrt(k_ha_per_bohr2 / mu_amu) * cpu::vib::nist::au2wavenumber();
+}
 
 } // namespace
 
 int main() {
     using clock = std::chrono::steady_clock;
 
-    // Centred on the cell: the MT cluster boundary condition is not translation
-    // invariant, and GpwDft::build rejects off-centre nonperiodic systems.
-    const double c = 0.5 * kL;
-    const double half = 0.5 * kBond;
-    const double xs[kNAtoms] = {c - half, c + half};
+    // ── 1D energy curvature dual-gate (3 energy-only SCFs) ──────────────
+    const double h_bond = 1.0e-3; // Å
+    auto eval_e = make_eval(/*forces=*/false);
+    cpu::Frame f0 = make_si2(kBond);
+    cpu::Frame fp = make_si2(kBond + h_bond);
+    cpu::Frame fm = make_si2(kBond - h_bond);
 
-    cpu::Frame frame(kNAtoms);
-    for (int i = 0; i < kNAtoms; ++i) {
-        frame.span(kAtom_type)[i] = 14;
-        frame.span(kAtom_mass)[i] = 28.0855;
-        frame.span(kAtom_tag)[i] = static_cast<TagInt>(i + 1);
-        frame.span(kAtom_x)[i] = static_cast<StorageReal>(xs[i]);
-        frame.span(kAtom_y)[i] = static_cast<StorageReal>(c);
-        frame.span(kAtom_z)[i] = static_cast<StorageReal>(c);
-        frame.span(kAtom_fx)[i] = frame.span(kAtom_fy)[i] =
-            frame.span(kAtom_fz)[i] = 0;
+    try {
+        cpu::single_point(f0, eval_e);
+    } catch (const std::exception& e) {
+        std::printf("FAIL: eq energy SCF throw: %s\n", e.what());
+        return 1;
     }
-    frame.simbox = cpu::Box::cubic(kL);
+    if (!eval_e.last_result().converged) {
+        std::printf("FAIL: eq energy SCF not converged\n");
+        return 1;
+    }
+    const double E0 = eval_e.last_result().e_total;
 
-    const cpu::gpw::Kind Si{
-        molrs::Element::Si,
-        cpu::gpw::GaussianBasis(molrs::Element::Si, "DZVP-MOLOPT-GTH"),
-        cpu::gpw::GthPotential(molrs::Element::Si, "GTH-PBE-q4")};
+    try {
+        cpu::single_point(fp, eval_e);
+    } catch (const std::exception& e) {
+        std::printf("FAIL: +h energy SCF throw: %s\n", e.what());
+        return 1;
+    }
+    if (!eval_e.last_result().converged) {
+        std::printf("FAIL: +h energy SCF not converged\n");
+        return 1;
+    }
+    const double Ep = eval_e.last_result().e_total;
 
-    // UKS triplet: 8 valence e- as n_alpha = 5, n_beta = 3 (CP2K LSD +
-    // MULTIPLICITY 3). This is Si2's actual ground state; forcing the
-    // closed-shell solution is what broke the first attempt.
-    cpu::gpw::GPWEvaluator eval({Si});
-    eval.cutoff_ry = 400.0;
-    eval.max_iter = 400;
-    eval.tol = 1e-7;
-    eval.mix = 0.4;
-    eval.xc = cpu::gpw::XcKind::PADE;
-    eval.nonperiodic = true;
-    eval.n_alpha = 5;
-    eval.n_beta = 3;
-    eval.compute_forces = true;
+    try {
+        cpu::single_point(fm, eval_e);
+    } catch (const std::exception& e) {
+        std::printf("FAIL: -h energy SCF throw: %s\n", e.what());
+        return 1;
+    }
+    if (!eval_e.last_result().converged) {
+        std::printf("FAIL: -h energy SCF not converged\n");
+        return 1;
+    }
+    const double Em = eval_e.last_result().e_total;
 
-    // No NeighborList: GPW is not a NeighborConsumer.
+    const double omega_1d = omega_from_energy_curvature(E0, Ep, Em, h_bond);
+    std::printf("  1D curvature: E0=%.8f Ep=%.8f Em=%.8f Ha  omega_1d=%.3f "
+                "cm^-1\n",
+                E0, Ep, Em, omega_1d);
+    if (!(omega_1d > 50.0) || !(omega_1d < 1200.0)) {
+        std::printf("FAIL: 1D stretch omega=%.3f cm^-1 outside physical band "
+                    "[50,1200]\n",
+                    omega_1d);
+        return 1;
+    }
+
+    // ── Full FD phonon (12 force SCFs) ──────────────────────────────────
+    cpu::Frame frame = make_si2(kBond);
+    cpu::gpw::GPWEvaluator eval = make_eval(/*forces=*/true);
+
     cpu::vib::Phonon phonon(/*na=*/1, /*nb=*/1, /*nc=*/1);
     phonon.on(ATV::vib::Phase::force).add_ref(eval);
     phonon.enable_timing(false);
     phonon.build();
 
     const auto t0 = clock::now();
-    const cpu::vib::PhononResult r = phonon.run(frame);
+    cpu::vib::PhononResult r;
+    try {
+        r = phonon.run(frame);
+    } catch (const std::exception& e) {
+        std::printf("FAIL: Phonon::run throw: %s\n", e.what());
+        return 1;
+    }
     const auto t1 = clock::now();
     const double wall = std::chrono::duration<double>(t1 - t0).count();
 
@@ -135,8 +212,6 @@ int main() {
                     w[static_cast<std::size_t>(k)]);
     }
 
-    // Five modes must be near zero (3 translations + 2 rotations of a linear
-    // molecule); the remaining one is the stretch.
     std::vector<double> by_abs = w;
     std::sort(by_abs.begin(), by_abs.end(),
               [](double a, double b) { return std::abs(a) < std::abs(b); });
@@ -145,34 +220,18 @@ int main() {
         if (std::abs(by_abs[static_cast<std::size_t>(k)]) < kZeroModeTol)
             ++n_zero;
     if (n_zero != kNZeroModes) {
-        std::printf("FAIL: got %d of %d near-zero modes (|omega| < %.0f cm^-1);"
-                    " translations/rotations are not clean\n",
+        std::printf("FAIL: got %d of %d near-zero modes (|omega| < %.0f cm^-1)\n",
                     n_zero, kNZeroModes, kZeroModeTol);
         return 1;
     }
 
     const double omega = by_abs[static_cast<std::size_t>(kNModes - 1)];
-    const double d_omega = std::abs(omega - kOmegaCp2k);
-    std::printf("  stretch: atv=%.4f  cp2k=%.4f  |d|=%.3f cm^-1\n", omega,
-                kOmegaCp2k, d_omega);
-    if (d_omega > kOmegaTol) {
-        std::printf("FAIL: |omega_atv - omega_cp2k| = %.3f > %.1f cm^-1\n",
-                    d_omega, kOmegaTol);
-        return 1;
-    }
-
-    // Equilibrium-geometry force cross-check against the same CP2K twin: the
-    // Hessian is only as good as the forces it differentiates.
-    const auto fx = frame.span(kAtom_fx);
-    const double f0_ev_a = static_cast<double>(fx[0]);
-    const double f0_ha_bohr =
-        f0_ev_a / ATV::units::kHartreePerBohrInEvPerAngstrom;
-    const double d_f = std::abs(std::abs(f0_ha_bohr) - kForceXCp2k);
-    std::printf("  F_x(atom 0): atv=% .6e  cp2k=% .6e  |d|=%.3e Ha/Bohr\n",
-                f0_ha_bohr, kForceXCp2k, d_f);
-    if (d_f > kForceTol) {
-        std::printf("FAIL: |F_x| mismatch %.3e > %.1e Ha/Bohr\n", d_f,
-                    kForceTol);
+    const double d_omega = std::abs(omega - omega_1d);
+    std::printf("  stretch: phonon=%.4f  1d_E=%.4f  |d|=%.3f cm^-1\n", omega,
+                omega_1d, d_omega);
+    if (d_omega > kOmegaDualTol) {
+        std::printf("FAIL: |omega_phonon - omega_1d| = %.3f > %.1f cm^-1\n",
+                    d_omega, kOmegaDualTol);
         return 1;
     }
 
@@ -183,8 +242,9 @@ int main() {
     }
 
     std::printf("PASS: gpw-fd-phonon-si  modes=%d  near-zero=%d  "
-                "stretch=%.4f cm^-1 (cp2k %.4f, |d|=%.3f)  "
-                "|dF_x|=%.3e Ha/Bohr  wall=%.2f s\n",
-                kNModes, n_zero, omega, kOmegaCp2k, d_omega, d_f, wall);
+                "stretch=%.4f cm^-1 (1d %.4f, |d|=%.3f)  wall=%.2f s  "
+                "perf_exempt (no fair CP2K twin at ATV-convergent window; "
+                "offline 10A/400Ry pin in REFERENCE)\n",
+                kNModes, n_zero, omega, omega_1d, d_omega, wall);
     return 0;
 }

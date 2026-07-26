@@ -44,7 +44,7 @@ int main() {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
 
     cpu::Evaluate eval;
     eval.add_potential(cpu::PairBorn{A, rho, sigma, C, D, rc});

@@ -48,8 +48,8 @@ void PotentialProfile::launch(const LaunchContext& ctx) {
     }
 #endif
 
-    const double Lx = f.simbox.length(0);
-    const double Ly = f.simbox.length(1);
+    const double Lx = f.box.length(0);
+    const double Ly = f.box.length(1);
     const double area = Lx * Ly;
     const double inv_area_dz = 1.0 / (area * dz_);
     const double four_pi_ke = 4.0 * units::pi * units::coulomb;

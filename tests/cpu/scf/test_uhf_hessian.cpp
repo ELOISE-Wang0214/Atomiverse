@@ -31,7 +31,7 @@ cpu::Frame make_oh() {
     f.span(kAtom_x)[1] = 0.20;
     f.span(kAtom_y)[1] = 0.30;
     f.span(kAtom_z)[1] = 0.90;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

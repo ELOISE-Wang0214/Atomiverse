@@ -59,7 +59,7 @@ cpu::Frame silicon(int n_cell) {
                     f.span(ATV::kAtom_type)[idx] = 14;
                     ++idx;
                 }
-    f.simbox = ATV::cpu::Box::cubic(kA0 * n_cell);
+    f.box = ATV::cpu::Box::cubic(kA0 * n_cell);
     return f;
 }
 
@@ -105,7 +105,7 @@ TEST(SWMultiRank, ForcesMatchBruteForce) {
         dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
         dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
         dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
-        ref.simbox.min_image(dx, dy, dz);
+        ref.box.min_image(dx, dy, dz);
     };
 
     for (int i = 0; i < n; ++i) {

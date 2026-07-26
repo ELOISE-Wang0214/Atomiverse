@@ -364,7 +364,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
                 double rx = x[ci] - x[cj];
                 double ry = y[ci] - y[cj];
                 double rz = z[ci] - z[cj];
-                f.simbox.min_image(rx, ry, rz);
+                f.box.min_image(rx, ry, rz);
                 const double sigma = rx * rx + ry * ry + rz * rz - c.d2;
 
                 const double err = std::fabs(sigma) / c.d2;
@@ -379,7 +379,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
                             - ref_y_[static_cast<std::size_t>(cj)];
                 double sz = ref_z_[static_cast<std::size_t>(ci)]
                             - ref_z_[static_cast<std::size_t>(cj)];
-                f.simbox.min_image(sx, sy, sz);
+                f.box.min_image(sx, sy, sz);
 
                 const double rs = rx * sx + ry * sy + rz * sz;
                 const double denom = 2.0 * (c.inv_mi + c.inv_mj) * rs;
@@ -445,7 +445,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
                 double rx = x[ci] - x[cj];
                 double ry = y[ci] - y[cj];
                 double rz = z[ci] - z[cj];
-                f.simbox.min_image(rx, ry, rz);
+                f.box.min_image(rx, ry, rz);
 
                 const double dvx = vx_col[ci] - vx_col[cj];
                 const double dvy = vy_col[ci] - vy_col[cj];

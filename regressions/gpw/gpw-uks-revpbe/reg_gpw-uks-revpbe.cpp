@@ -32,7 +32,7 @@ ATV::cpu::Frame make_o2_mt() {
     }
     frame.span(ATV::kAtom_z)[0] = 0.5 * L - 0.5 * R;
     frame.span(ATV::kAtom_z)[1] = 0.5 * L + 0.5 * R;
-    frame.simbox = ATV::cpu::Box::cubic(L);
+    frame.box = ATV::cpu::Box::cubic(L);
     return frame;
 }
 

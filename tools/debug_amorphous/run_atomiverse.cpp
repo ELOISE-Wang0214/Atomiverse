@@ -105,9 +105,9 @@ class ThermoPrinter : public cpu::Component {
         const auto& f = ctx.frame;
 
         if (step_ % period_ == 0) {
-            const double Lx = f.simbox.length(0);
-            const double Ly = f.simbox.length(1);
-            const double Lz = f.simbox.length(2);
+            const double Lx = f.box.length(0);
+            const double Ly = f.box.length(1);
+            const double Lz = f.box.length(2);
             const double V = Lx * Ly * Lz;
             const double kinetic = f.meta.get(kKinetic);
             const double energy = f.meta.get(kEnergy);
@@ -256,9 +256,9 @@ int main(int argc, char** argv) {
         std::cerr << "[atomiverse] n_bonds     = " << nb << '\n';
         std::cerr << "[atomiverse] n_angles    = " << na << '\n';
         std::cerr << "[atomiverse] n_dihedrals = " << nd << '\n';
-        std::cerr << "[atomiverse] box (Å)     = " << frame.simbox.length(0)
-                  << ' ' << frame.simbox.length(1) << ' '
-                  << frame.simbox.length(2) << '\n';
+        std::cerr << "[atomiverse] box (Å)     = " << frame.box.length(0)
+                  << ' ' << frame.box.length(1) << ' '
+                  << frame.box.length(2) << '\n';
     }
 
     const int n_atoms_global = frame.nlocal();

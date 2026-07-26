@@ -57,7 +57,7 @@ cpu::Frame make_chain4() {
             tag[i] = i;
         }
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
     // Per-atom topology + 1-2/1-3/1-4 special-neighbor exclusion list.
     // build_special_list() does the BFS over the per-atom bond graph that
     // populates nspecial/special — the source of the LJ exclusion CSR.

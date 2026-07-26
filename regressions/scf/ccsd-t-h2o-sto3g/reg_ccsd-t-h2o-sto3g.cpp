@@ -44,7 +44,7 @@ int main() {
     frame.span(kAtom_type)[0] = 8;
     frame.span(kAtom_type)[1] = 1;
     frame.span(kAtom_type)[2] = 1;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // Pins — REFERENCE.md (PySCF 2.14.0 cc.CCSD + ccsd_t / RHF STO-3G).
     constexpr double kEHf = -74.963023138462930;      // Ha

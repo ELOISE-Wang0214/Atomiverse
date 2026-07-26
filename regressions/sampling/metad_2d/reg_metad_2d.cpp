@@ -31,7 +31,7 @@ int main() {
         f.span(kAtom_mass)[i] = 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
 
     std::vector<std::unique_ptr<cpu::bias::CollectiveVariable>> cvs;
     cvs.push_back(std::make_unique<cpu::bias::DistanceCV>(1, 2));

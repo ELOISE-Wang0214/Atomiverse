@@ -38,7 +38,7 @@ ATV::cpu::Frame h2_frame() {
     }
     frame.span(ATV::kAtom_x)[0] = 0.0;
     frame.span(ATV::kAtom_x)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 
@@ -54,7 +54,7 @@ ATV::cpu::Frame h3_frame() {
         frame.span(ATV::kAtom_y)[i] = hy[i];
         frame.span(ATV::kAtom_z)[i] = 0.0;
     }
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 

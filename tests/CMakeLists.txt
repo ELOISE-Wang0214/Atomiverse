@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.14.0
+    GIT_TAG v1.17.0
 )
 FetchContent_MakeAvailable(googletest)
 
@@ -64,7 +64,7 @@ function(atv_add_cpp_test name)
     atv_guard_cuda_sources(${name} ${ARGN})
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
-    set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${name} PROPERTIES CXX_STANDARD 20)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
     set_tests_properties(${name} PROPERTIES
@@ -77,7 +77,7 @@ endfunction()
 function(atv_add_mpi_exec target_name)
     add_executable(${target_name} ${ARGN})
     target_link_libraries(${target_name} PRIVATE atomiverse GTest::gtest MPI::MPI_CXX)
-    set_target_properties(${target_name} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${target_name} PROPERTIES CXX_STANDARD 20)
     target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endfunction()
 
@@ -568,7 +568,7 @@ if(ATV_BUILD_PW)
     # FFT test needs FFTW3 linkage
     add_executable(test_cpu_pw_fft cpu/planewave/test_fft.cpp)
     target_link_libraries(test_cpu_pw_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
-    set_target_properties(test_cpu_pw_fft PROPERTIES CXX_STANDARD 17)
+    set_target_properties(test_cpu_pw_fft PROPERTIES CXX_STANDARD 20)
     target_include_directories(test_cpu_pw_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME test_cpu_pw_fft COMMAND test_cpu_pw_fft)
     set_tests_properties(test_cpu_pw_fft PROPERTIES

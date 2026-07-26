@@ -28,7 +28,7 @@ void TriclinicCellRelax::build(const BuildContext&) {
 
 void TriclinicCellRelax::launch(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         throw std::runtime_error("TriclinicCellRelax: non-positive volume");
     const auto& s = f.meta.get(kStress); // Voigt xx,yy,zz,xy,xz,yz [eV/Å³]?
@@ -62,7 +62,7 @@ void TriclinicCellRelax::launch(const LaunchContext& ctx) {
 
     if (ctx.at(ATV::minimizer::Phase::line_search) && step_ > 0) {
         // h' = (I+ε) h ; r' = (I+ε) r
-        Mat3 h = f.simbox.cell();
+        Mat3 h = f.box.cell();
         Mat3 Ipe = Mat3::zeros();
         for (int a = 0; a < 3; ++a) {
             for (int b = 0; b < 3; ++b)
@@ -70,7 +70,7 @@ void TriclinicCellRelax::launch(const LaunchContext& ctx) {
             Ipe(a, a) += 1.0;
         }
         Mat3 hnew = Ipe * h;
-        f.simbox.set_cell(hnew);
+        f.box.set_cell(hnew);
         const int n = f.nlocal();
         auto x = f.span(kAtom_x);
         auto y = f.span(kAtom_y);

@@ -49,7 +49,7 @@ cpu::Frame make_h2o() {
     f.span(kAtom_x)[2] = 0.0;
     f.span(kAtom_y)[2] = -0.7572;
     f.span(kAtom_z)[2] = -0.4692;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -65,7 +65,7 @@ cpu::Frame make_asymmetric() {
     f.span(kAtom_x)[1] = 1.0;
     f.span(kAtom_y)[1] = 0.2;
     f.span(kAtom_z)[1] = -0.3;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

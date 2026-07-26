@@ -36,7 +36,7 @@ cpu::Frame make_lj_sc(int n_side, double density, double mass) {
                 f.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -62,7 +62,7 @@ TEST(ParrinelloRahmanNPT, ShortRunVolumePositiveFinite) {
     const double dt = 2.0;
 
     auto frame = make_lj_sc(/*n_side=*/4, density, /*mass=*/39.948);
-    const double V0 = frame.simbox.volume();
+    const double V0 = frame.box.volume();
     ASSERT_GT(V0, 0.0);
 
     cpu::md::MD sim;
@@ -76,7 +76,7 @@ TEST(ParrinelloRahmanNPT, ShortRunVolumePositiveFinite) {
     sim.build();
     sim.run(frame, 20);
 
-    const double V = frame.simbox.volume();
+    const double V = frame.box.volume();
     EXPECT_TRUE(std::isfinite(V));
     EXPECT_GT(V, 0.1 * V0);
     EXPECT_LT(V, 10.0 * V0);
@@ -85,7 +85,7 @@ TEST(ParrinelloRahmanNPT, ShortRunVolumePositiveFinite) {
     EXPECT_TRUE(std::isfinite(frame.meta.get(kConserved)));
     // Cache refresh: orthorhombic min_image still works.
     double dx = 0.1, dy = 0.0, dz = 0.0;
-    frame.simbox.min_image(dx, dy, dz);
+    frame.box.min_image(dx, dy, dz);
     EXPECT_NEAR(dx, 0.1, 1e-12);
 }
 
@@ -120,7 +120,7 @@ TEST(ParrinelloRahmanNPT, CubicIsotropicOffDiagonalBounded) {
     EXPECT_LT(off, 0.05);
     // Box should remain nearly orthorhombic (off-diagonal cell entries
     // small vs edge length).
-    const Mat3& h = frame.simbox.cell();
+    const Mat3& h = frame.box.cell();
     const double edge = std::abs(static_cast<double>(h(0, 0)));
     const double shear_cell = std::abs(static_cast<double>(h(0, 1)))
                               + std::abs(static_cast<double>(h(0, 2)))

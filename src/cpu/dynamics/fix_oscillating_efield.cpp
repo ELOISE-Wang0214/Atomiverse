@@ -27,14 +27,14 @@ void FixOscillatingEfield::launch(const cpu::LaunchContext& ctx) {
     last_Ez_ = ez;
 
     // Unwrapped energy needs orthorhombic image · L (LAMMPS domain->unmap).
-    if (!f.simbox.is_orthorhombic()) {
+    if (!f.box.is_orthorhombic()) {
         throw std::runtime_error(
             "FixOscillatingEfield: triclinic boxes are not supported in this "
             "foothold (need orthorhombic image unwrap)");
     }
-    const double lx = f.simbox.length(0);
-    const double ly = f.simbox.length(1);
-    const double lz = f.simbox.length(2);
+    const double lx = f.box.length(0);
+    const double ly = f.box.length(1);
+    const double lz = f.box.length(2);
 
     const StorageReal* __restrict q = f.span(kAtom_charge);
     const StorageReal* __restrict x = f.span(kAtom_x);

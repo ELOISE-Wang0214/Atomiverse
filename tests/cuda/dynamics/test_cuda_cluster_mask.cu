@@ -31,7 +31,7 @@ cpu::Frame make_sparse_lattice(int n_side, double spacing) {
                 frame.span(kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(double(n_side) * spacing);
+    frame.box = cpu::Box::cubic(double(n_side) * spacing);
     return frame;
 }
 

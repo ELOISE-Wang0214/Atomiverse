@@ -30,7 +30,7 @@ cpu::Frame make_water() {
         f.span(kAtom_y)[i] = y[i];
         f.span(kAtom_z)[i] = zc[i];
     }
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
     return f;
 }
 

@@ -99,7 +99,7 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
                                base + k + 3, 0);
     }
     frame.build_special_list();
-    frame.simbox = ATV::cpu::Box::orthorhombic(Lx, Ly, Lz);
+    frame.box = ATV::cpu::Box::orthorhombic(Lx, Ly, Lz);
     return frame;
 }
 

@@ -55,7 +55,7 @@ cpu::Frame make_grid_frame(double box_len, int per_axis) {
             }
         }
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

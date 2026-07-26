@@ -64,7 +64,7 @@ cpu::Frame make_nacl() {
                 frame.span(ATV::kAtom_vz)[idx] = 0.0;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(kSide * kD);
+    frame.box = cpu::Box::cubic(kSide * kD);
     return frame;
 }
 

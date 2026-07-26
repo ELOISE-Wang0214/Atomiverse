@@ -61,7 +61,7 @@ int main() {
         frame.span(kAtom_z)[i] = zs[i];
         frame.span(kAtom_type)[i] = types[i];
     }
-    frame.simbox = cpu::Box::cubic(30.0);
+    frame.box = cpu::Box::cubic(30.0);
 
     // ── PySCF 2.14.0 pins (REFERENCE.md; cart=True, conv_tol=1e-12) ──────
     constexpr double kERhf = -113.865575118441; // Ha

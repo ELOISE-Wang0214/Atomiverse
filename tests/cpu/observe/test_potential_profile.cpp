@@ -36,7 +36,7 @@ cpu::Frame two_sheet_plate(double Q = 1.0) {
     f.span(kAtom_mass)[1] = 12.0;
     f.span(kAtom_tag)[1] = 2;
 
-    f.simbox = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
+    f.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
     return f;
 }
 
@@ -95,7 +95,7 @@ TEST(PotentialProfile, EmptyWindowNoChargeZeroProfile) {
     f.span(kAtom_charge)[0] = 1.0;
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
 
     PotentialProfile obs(10, 0.0, 10.0);
     cpu::Context ctx;

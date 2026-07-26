@@ -160,7 +160,7 @@ CUDA scf domain (gated `ATV_BUILD_HF`):
 - `ATV::IterationStatus`, `LoopMetrics`, `Verdict`.
 
 #### CPU pillar — root
-- `ATV::cpu::Frame` = `blocks + meta + simbox` (schema-v2).
+- `ATV::cpu::Frame` = `blocks + meta + box` (schema-v2).
 - `ATV::cpu::Box`, `ATV::cpu::min_image_batch<B>` (in `box_simd.h`).
 - `ATV::cpu::Context`, `ATV::cpu::Component`, `BuildContext` / `LaunchContext` / `DestroyContext`.
 - Kinds (one header each): `Potential`, `HF`, `Semiempirical`, `PlaneWave`, `GPW`, `Bias`, `PathCoupling`, `Observer`, `Recorder`, `Integrator`, `Thermostat`, `Barostat`, `Optimizer`, `Constraint`, `Mover`.
@@ -240,7 +240,7 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 - `IterationStatus` + `LoopMetrics` are **owned by the loop node**; the Context only borrows them (`ctx.loop` = `LoopServices{status, metrics}`). A component can request a stop but cannot declare convergence, and a nested loop cannot stop its parent.
 - Nesting: `cpu::SubDriver` puts a Driver in a Plan slot; `Driver::run_nested` runs the child's Plan on the parent's Runtime (`ctx.exec.runtime`) — one Backend, however deep the tree.
 - Component model: `cpu::Component` / `cuda::Component` carry `name()`, `role()` (`Role` = `RoleFlag` bitset), opt-in protocol accessors (`as_neighbor_consumer()` / `as_neighbor_provider()` / `halo_participant()` / …), `requires_system_stress()` / `provides_system_stress()`, `scheduling()`, `frequency()`, `default_bindings()`, `build()` / `launch()` / `destroy()`. Kinds are C++ types (one header each). Allocation in `build()` only.
-- Frame: `cpu::Frame` = blocks + meta + simbox. Drivers do not own a Frame; `run(frame, …)` borrows.
+- Frame: `cpu::Frame` = blocks + meta + box. Drivers do not own a Frame; `run(frame, …)` borrows.
 - Categorical API: `add_potential` (plural energy/force terms), `set_neighbor`, `set_integrator`, `set_thermostat`, `set_barostat`, `set_optimizer`, `set_observer`, `set_record`, `set_thermo`, `set_mover`. `add()` / `on(phase).add()` remain public escape hatches. ForceField is data only — never a Driver config object.
 - Auto-injection at `build()`: barostats that `requires_system_stress()` get a Virial provider if missing; MPI + NeighborConsumer → HaloSend/Recv; missing NeighborList when a consumer is present → throw.
 - xsimd / xtensor compatibility: xsimd 13.2.0 (CMake declared; NOTES.md historically referenced 11.2.0) is `target_link_libraries`-linked directly to `atomiverse` for `native_integrals.cpp` ERI hot loops. `XTENSOR_USE_XSIMD` is deliberately NOT defined globally (it triggers SIMD-backed xtensor storage which breaks `reshape_view` in `xc_grid_engine.h`). xtensor 0.27.1 is used with a `xtensor-compat/` shim that forwards old flat headers (`xtensor.hpp`, `xarray.hpp`, `xview.hpp`, `xnorm.hpp`, …) to their new subdirectory locations for `xtensor-blas` 0.21.0 transitive includes.

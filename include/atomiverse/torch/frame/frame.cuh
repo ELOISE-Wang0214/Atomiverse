@@ -7,7 +7,7 @@
 /// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
 /// matching the molcrafts naming convention. The SEMANTIC field set
 /// mirrors `cpu::Frame` and `cuda::Frame`; the physical representation is
-/// independently `at::Tensor` (CPU is blocks+meta+simbox; CUDA is device
+/// independently `at::Tensor` (CPU is blocks+meta+box; CUDA is device
 /// pointers). Representation work toward a blocks map on torch is deferred.
 /// Per the CLAUDE.md Frame purity rule the frame carries only fundamental
 /// physical quantities: method-specific scratch (the neighbor pair list) is

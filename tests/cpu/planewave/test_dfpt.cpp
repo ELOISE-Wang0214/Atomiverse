@@ -156,7 +156,7 @@ cpu::Frame si_frame() {
     frame.span(kAtom_x)[1] = 5.43 / 4.0;
     frame.span(kAtom_y)[1] = 5.43 / 4.0;
     frame.span(kAtom_z)[1] = 5.43 / 4.0;
-    frame.simbox = cpu::Box::cubic(5.43);
+    frame.box = cpu::Box::cubic(5.43);
     return frame;
 }
 

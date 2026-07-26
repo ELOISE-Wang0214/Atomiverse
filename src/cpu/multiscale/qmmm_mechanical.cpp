@@ -52,7 +52,7 @@ void QmmmMechanical::launch(const LaunchContext& ctx) {
         fqm.span(kAtom_tag)[k] = static_cast<TagInt>(k + 1);
         fqm.span(kAtom_mass)[k] = 1.0;
     }
-    fqm.simbox = f.simbox;
+    fqm.box = f.box;
     fqm.meta.get(kEnergy) = 0;
     {
         LaunchContext lqm{ctx.runtime, fqm, ctx.stage, ctx.step};
@@ -77,7 +77,7 @@ void QmmmMechanical::launch(const LaunchContext& ctx) {
             if (iqm && jqm)
                 continue; // mechanical: no classical QM–QM
             double dx = x[j] - x[i], dy = y[j] - y[i], dz = z[j] - z[i];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2 || r2 == 0.0)
                 continue;

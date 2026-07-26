@@ -133,7 +133,7 @@ frame.span(kAtom_charge)[0] = 0.0;
 frame.span(kAtom_type)[0] = 1;
 frame.span(kAtom_mass)[0] = 196.966553;
 frame.span(kAtom_tag)[0] = 1;
-frame.simbox = cpu::Box::cubic(20.0);
+frame.box = cpu::Box::cubic(20.0);
 
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);

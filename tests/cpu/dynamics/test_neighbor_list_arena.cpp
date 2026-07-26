@@ -46,7 +46,7 @@ cpu::Frame make_uniform_cubic(int n_per_side, double box_len) {
             }
         }
     }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

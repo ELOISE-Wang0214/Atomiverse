@@ -30,7 +30,7 @@ double KSpaceEwald::recommend_alpha(double cutoff, double accuracy) {
 }
 
 void KSpaceEwald::ensure_kvectors(const cpu::Frame& frame, bool initial_build) {
-    const auto& box = frame.simbox;
+    const auto& box = frame.box;
     if (have_kvectors_ && box_identity_ == &box
         && box.revision() == cell_revision_
         && cached_slab_factor_ == slab_factor)
@@ -100,10 +100,10 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
     AccReal* __restrict sp_fz = f.span(kAtom_fz);
 
     // Physical volume vs extended slab volume for k-space.
-    const double vol_phys = f.simbox.volume();
+    const double vol_phys = f.box.volume();
     const double vol = slab_active() ? vol_phys * slab_factor : vol_phys;
     const double zprd_slab =
-        slab_active() ? f.simbox.length(2) * slab_factor : f.simbox.length(2);
+        slab_active() ? f.box.length(2) * slab_factor : f.box.length(2);
 
     // ── Partial structure factor S(k) over owned atoms ─────────────────
     sum_.structure_factor(x, y, z, q, n_local, sr_.data(), si_.data());

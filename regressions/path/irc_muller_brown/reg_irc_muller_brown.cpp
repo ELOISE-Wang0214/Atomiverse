@@ -16,7 +16,7 @@ int main() {
     saddle.span(kAtom_mass)[0] = 1.0;
     saddle.span(kAtom_type)[0] = 1;
     saddle.span(kAtom_tag)[0] = 1;
-    saddle.simbox = cpu::Box::cubic(100.0);
+    saddle.box = cpu::Box::cubic(100.0);
 
     cpu::path::Irc irc(0.02, 300, 0.05, 0.15);
     irc.use_muller_brown();

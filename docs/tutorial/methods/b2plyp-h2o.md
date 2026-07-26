@@ -52,7 +52,7 @@ Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no fa
 
 // H₂O geometry [Å] as in regressions/scf/b2plyp-h2o; 20 Å cubic box
 ATV::cpu::Frame frame(3);
-// ... type / x,y,z / simbox ...
+// ... type / x,y,z / box ...
 
 using ATV::cpu::scf::XCType;
 ATV::cpu::scf::RKS rks(XCType::B2PLYP);

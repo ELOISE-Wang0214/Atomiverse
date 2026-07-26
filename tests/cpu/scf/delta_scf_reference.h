@@ -70,7 +70,7 @@ inline cpu::Frame make_he() {
     f.span(ATV::kAtom_z)[0] = 0.0;
     f.span(ATV::kAtom_mass)[0] = 4.002602;
     f.span(ATV::kAtom_type)[0] = 2;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -88,7 +88,7 @@ inline cpu::Frame make_h2() {
     f.span(ATV::kAtom_mass)[1] = 1.008;
     f.span(ATV::kAtom_type)[0] = 1;
     f.span(ATV::kAtom_type)[1] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -112,7 +112,7 @@ inline cpu::Frame make_h2o() {
     f.span(ATV::kAtom_type)[0] = 8;
     f.span(ATV::kAtom_type)[1] = 1;
     f.span(ATV::kAtom_type)[2] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -141,7 +141,7 @@ inline cpu::Frame make_nh3() {
     f.span(ATV::kAtom_type)[1] = 1;
     f.span(ATV::kAtom_type)[2] = 1;
     f.span(ATV::kAtom_type)[3] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 
@@ -174,7 +174,7 @@ inline cpu::Frame make_ch4() {
     f.span(ATV::kAtom_type)[2] = 1;
     f.span(ATV::kAtom_type)[3] = 1;
     f.span(ATV::kAtom_type)[4] = 1;
-    f.simbox = ATV::cpu::Box::cubic(100.0);
+    f.box = ATV::cpu::Box::cubic(100.0);
     return f;
 }
 

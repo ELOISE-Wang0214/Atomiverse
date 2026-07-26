@@ -299,7 +299,7 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
         const StorageReal* __restrict sp_y = frame.span(kAtom_y);
         const StorageReal* __restrict sp_z = frame.span(kAtom_z);
         for (int i = 0; i < dd->n_local; ++i) {
-            if (dest_rank_for(*dd, sp_x[i], sp_y[i], sp_z[i], frame.simbox)
+            if (dest_rank_for(*dd, sp_x[i], sp_y[i], sp_z[i], frame.box)
                 != my_rank) {
                 any_local = 1;
                 break;
@@ -386,7 +386,7 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 cell[static_cast<std::size_t>(3 * i + j)] =
-                    frame.simbox.cell()(i, j);
+                    frame.box.cell()(i, j);
     }
     MPI_Bcast(cell.data(), static_cast<int>(cell.size()), MPI_DOUBLE, 0,
               MPI_COMM_WORLD);
@@ -395,14 +395,14 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 matrix(i, j) = cell[static_cast<std::size_t>(3 * i + j)];
-        frame.simbox.set_cell(matrix);
+        frame.box.set_cell(matrix);
     }
 
     // 2. Topology identical to the DD the backend builds → ownership matches
     //    partition_atoms' uniform-Cartesian rule (cuts empty here).
     md::mpi::DomainDecomposition dd;
-    dd.init_topology(MPI_COMM_WORLD, frame.simbox.length(0),
-                     frame.simbox.length(1), frame.simbox.length(2));
+    dd.init_topology(MPI_COMM_WORLD, frame.box.length(0),
+                     frame.box.length(1), frame.box.length(2));
     const int world_size = dd.dims[0] * dd.dims[1] * dd.dims[2];
 
     // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).
@@ -414,7 +414,7 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         const StorageReal* __restrict sp_z = frame.span(kAtom_z);
         for (int i = 0; i < n; ++i) {
             const int dest =
-                dest_rank_for(dd, sp_x[i], sp_y[i], sp_z[i], frame.simbox);
+                dest_rank_for(dd, sp_x[i], sp_y[i], sp_z[i], frame.box);
             by_dest[static_cast<std::size_t>(dest)].push_back(i);
         }
     }

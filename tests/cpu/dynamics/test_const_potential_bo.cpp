@@ -39,7 +39,7 @@ cpu::Frame make_vacuum_capacitor() {
                 ++idx;
             }
     }
-    f.simbox = cpu::Box::orthorhombic(Lxy, Lxy, Lz);
+    f.box = cpu::Box::orthorhombic(Lxy, Lxy, Lz);
     return f;
 }
 

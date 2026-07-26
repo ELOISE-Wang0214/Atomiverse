@@ -54,7 +54,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
                     frame.span(ATV::kAtom_type)[idx] = 18;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -74,7 +74,7 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
     const double lj_cut = 6.0;
     const double dt = 0.5;
 
-    const double box_x_initial = frame.simbox.cell()(0, 0);
+    const double box_x_initial = frame.box.cell()(0, 0);
     const double strain_rate = 1e-4; // 1/fs
     const int n_steps = 200;
 
@@ -97,13 +97,13 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
     const double expected_box_x =
         box_x_initial * (1.0 + strain_rate * n_steps * dt);
 
-    EXPECT_NEAR(frame.simbox.cell()(0, 0), expected_box_x, 1e-6)
+    EXPECT_NEAR(frame.box.cell()(0, 0), expected_box_x, 1e-6)
         << "box_x deformation diverged from analytic expectation";
 
     // Rank consistency: gather all ranks' box_x via min and max -- must agree
     // exactly across ranks (Deform is fully deterministic per rank).
     double box_x_min, box_x_max;
-    const double bx = frame.simbox.cell()(0, 0);
+    const double bx = frame.box.cell()(0, 0);
     MPI_Allreduce(&bx, &box_x_min, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&bx, &box_x_max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     EXPECT_DOUBLE_EQ(box_x_min, box_x_max)

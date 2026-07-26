@@ -120,7 +120,7 @@ void QmmmElectrostatic::launch(const LaunchContext& ctx) {
         qmass[hrow] = 1.0;
         qfx[hrow] = qfy[hrow] = qfz[hrow] = 0;
     }
-    fqm.simbox = f.simbox;
+    fqm.box = f.box;
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
@@ -184,7 +184,7 @@ void QmmmElectrostatic::launch(const LaunchContext& ctx) {
             if (iqm && jqm)
                 continue;
             double dx = x[j] - x[i], dy = y[j] - y[i], dz = z[j] - z[i];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2 || r2 == 0.0)
                 continue;

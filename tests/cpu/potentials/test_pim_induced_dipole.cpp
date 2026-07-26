@@ -33,7 +33,7 @@ cpu::Frame ion_pair(double r, double q0, double q1, int t0, int t1) {
     f.span(kAtom_tag)[1] = 2;
     f.span(kAtom_fx)[0] = f.span(kAtom_fy)[0] = f.span(kAtom_fz)[0] = 0;
     f.span(kAtom_fx)[1] = f.span(kAtom_fy)[1] = f.span(kAtom_fz)[1] = 0;
-    f.simbox = cpu::Box::cubic(50.0);
+    f.box = cpu::Box::cubic(50.0);
     f.meta.get(kEnergy) = 0;
     return f;
 }

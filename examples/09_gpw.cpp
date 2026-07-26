@@ -53,7 +53,7 @@ cpu::Frame make_water() {
         f.span(ATV::kAtom_y)[i] = y[i];
         f.span(ATV::kAtom_z)[i] = zc[i];
     }
-    f.simbox = cpu::Box::cubic(10.0); // 10 Å box
+    f.box = cpu::Box::cubic(10.0); // 10 Å box
     return f;
 }
 

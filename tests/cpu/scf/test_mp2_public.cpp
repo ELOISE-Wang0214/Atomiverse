@@ -16,7 +16,7 @@ TEST(MP2Public, H2ONegativeCorr) {
     f.span(kAtom_type)[0] = 8;
     f.span(kAtom_type)[1] = 1;
     f.span(kAtom_type)[2] = 1;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;
     rhf.tol = 1e-8;

@@ -64,7 +64,7 @@ cpu::Frame make_charged_fcc(int n_cells, double a_lat, double q_mag) {
                     frame.span(ATV::kAtom_vz)[idx] = 0.0;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -73,8 +73,8 @@ cpu::Frame make_charged_fcc(int n_cells, double a_lat, double q_mag) {
 double brute_force_coul_energy(const cpu::Frame& frame, double alpha,
                                double cutoff) {
     const int n = frame.nlocal();
-    const double lx = frame.simbox.cell()(0, 0), ly = frame.simbox.cell()(1, 1),
-                 lz = frame.simbox.cell()(2, 2);
+    const double lx = frame.box.cell()(0, 0), ly = frame.box.cell()(1, 1),
+                 lz = frame.box.cell()(2, 2);
     const double rc_sq = cutoff * cutoff;
     double e = 0.0;
     for (int i = 0; i < n; ++i) {

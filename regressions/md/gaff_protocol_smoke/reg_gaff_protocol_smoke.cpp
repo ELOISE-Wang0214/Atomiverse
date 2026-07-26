@@ -37,7 +37,7 @@ cpu::Frame make_fragment() {
         f.span(kAtom_tag)[i] = i;
         f.span(kAtom_vx)[i] = f.span(kAtom_vy)[i] = f.span(kAtom_vz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, n);
     for (int i = 0; i < n - 1; ++i)
@@ -103,7 +103,7 @@ int main() {
         sim.run(f, 50);
     }
     const double e_npt = f.meta.get(kEnergy);
-    const double vol = f.simbox.volume();
+    const double vol = f.box.volume();
     std::printf("after NPT E=%.6f V=%.6f\n", e_npt, vol);
 
     if (!std::isfinite(e_min) || !std::isfinite(e_nvt) || !std::isfinite(e_npt)

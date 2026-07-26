@@ -43,7 +43,7 @@ int main() {
     // COM-preserving H stretch mode [Å/fs] — small KE, no COM translation.
     frame.span(kAtom_vx)[1] = 0.0015;
     frame.span(kAtom_vx)[2] = -0.0015;
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     const cpu::gpw::Kind O{
         molrs::Element::O,

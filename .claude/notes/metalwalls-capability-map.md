@@ -61,7 +61,7 @@ or already covered better in ATV.
 |---|---|---|
 | Role | Electrochemical-interface classical MD | Dual-backend MD + electronic structure |
 | Depth | Constant potential / PIM / AIM / TF / piston / 2D | Driver architecture, PME, force catalogue, CUDA, SCF/PW/GPW |
-| Stack | Fortran + MPI + optional Python/PLUMED | C++17 + optional CUDA + molrs |
+| Stack | Fortran + MPI + optional Python/PLUMED | C++20 + optional CUDA + molrs |
 | Shape | Monolithic `system` + specialty modules | Driver / Component / Frame |
 
 Parity ≠ cloning the program: **add electrochemical depth** on ATV’s MD

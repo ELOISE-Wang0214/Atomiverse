@@ -38,7 +38,7 @@ cpu::Frame make_h2() {
     f.span(kAtom_x)[1] = 0.30;
     f.span(kAtom_y)[1] = 0.40;
     f.span(kAtom_z)[1] = 0.50;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -142,7 +142,7 @@ TEST(AnalyticHessian, HeliumNoVirtualsThrows) {
     f.span(kAtom_x)[0] = 0.0;
     f.span(kAtom_y)[0] = 0.0;
     f.span(kAtom_z)[0] = 0.0;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     cpu::scf::RHF rhf;
     rhf.basis = BasisSet::STO3G;

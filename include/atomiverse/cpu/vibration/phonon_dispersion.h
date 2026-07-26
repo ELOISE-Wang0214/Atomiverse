@@ -90,7 +90,7 @@ class PhononDispersion {
     /// @param hessian_sc Cartesian force constants [eV/Å²], shape
     ///                   `[3 N_sc, 3 N_sc]`, \(N_\mathrm{sc}=N\cdot n_a n_b n_c\).
     /// @param unit       Unit-cell Frame (atomic numbers via `kAtom_type`,
-    ///                   lattice via `simbox`; not mutated).
+    ///                   lattice via `box`; not mutated).
     /// @param na         Supercell repeats along \(\mathbf{a}\) (≥1).
     /// @param nb         Supercell repeats along \(\mathbf{b}\) (≥1).
     /// @param nc         Supercell repeats along \(\mathbf{c}\) (≥1).

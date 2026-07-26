@@ -42,7 +42,7 @@ cpu::Frame diamond_conventional(double a, int n_cell) {
                     f.span(kAtom_tag)[idx] = static_cast<TagInt>(idx + 1);
                     ++idx;
                 }
-    f.simbox = cpu::Box::cubic(a * n_cell);
+    f.box = cpu::Box::cubic(a * n_cell);
     return f;
 }
 
@@ -71,7 +71,7 @@ cpu::Frame diamond_primitive(double a) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    f.simbox.set_cell(cell);
+    f.box.set_cell(cell);
     return f;
 }
 
@@ -81,8 +81,8 @@ TEST(PhononSupercell, ExpandCountsAndCell) {
     cpu::Frame unit = diamond_primitive(5.431);
     cpu::Frame sc = expand_supercell(unit, 2, 2, 2);
     EXPECT_EQ(sc.nlocal(), 16);
-    EXPECT_NEAR(sc.simbox.volume(), unit.simbox.volume() * 8.0, 1e-9);
-    const Mat3& c = unit.simbox.cell();
+    EXPECT_NEAR(sc.box.volume(), unit.box.volume() * 8.0, 1e-9);
+    const Mat3& c = unit.box.cell();
     const double ax = c(0, 0), ay = c(0, 1), az = c(0, 2);
     bool found = false;
     for (int i = 0; i < sc.nlocal(); ++i) {
@@ -114,7 +114,7 @@ TEST(PhononSupercell, SwAcousticNearZero) {
     ASSERT_EQ(unit.nlocal(), 64);
     cpu::SWPotential pot(molrs::Element::Si, "stillinger-weber");
     const double cutoff = pot.cutoff();
-    ASSERT_GT(unit.simbox.length(0), 2.0 * cutoff);
+    ASSERT_GT(unit.box.length(0), 2.0 * cutoff);
 
     Phonon phonon(1, 1, 1);
     // always rebuild (check=false): displacements must re-enumerate pairs.

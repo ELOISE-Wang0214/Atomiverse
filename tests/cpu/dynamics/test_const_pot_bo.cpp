@@ -33,7 +33,7 @@ cpu::Frame madelung_primary() {
         f.span(kAtom_mass)[i] = (typ[i] < 3) ? 196.97 : 1.0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+    f.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
     return f;
 }
 
@@ -227,7 +227,7 @@ TEST(ConstPotBO, ThomasFermiHardnessAnalyticTwoSite) {
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
     // Large L so min-image is primary (R=0 path).
-    f.simbox = cpu::Box::orthorhombic(100.0, 100.0, 100.0);
+    f.box = cpu::Box::orthorhombic(100.0, 100.0, 100.0);
 
     cpu::md::ConstPotBO conp(kEta);
     conp.add_electrode(1, 0.0);

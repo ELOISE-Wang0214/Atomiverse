@@ -152,7 +152,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             double dx = x[i] - x[j];
             double dy = y[i] - y[j];
             double dz = z[i] - z[j];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2 || !(r2 > 0.0))
                 continue;
@@ -190,7 +190,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
                 double dx = x[i] - x[j];
                 double dy = y[i] - y[j];
                 double dz = z[i] - z[j];
-                f.simbox.min_image(dx, dy, dz);
+                f.box.min_image(dx, dy, dz);
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc2 || !(r2 > 0.0))
                     continue;
@@ -271,7 +271,7 @@ void PimInducedDipole::launch(const LaunchContext& ctx) {
             double dx = x[i] - x[j];
             double dy = y[i] - y[j];
             double dz = z[i] - z[j];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2 || !(r2 > 0.0))
                 continue;

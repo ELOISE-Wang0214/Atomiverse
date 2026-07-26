@@ -143,7 +143,7 @@ using namespace ATV;
 
 cpu::Frame frame(2);
 // atom 0: z=5.5 Å, q=+1 e; atom 1: z=14.5 Å, q=-1 e
-// frame.simbox = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
+// frame.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0);
 
 cpu::PotentialProfile obs(/*n_bins=*/20, /*z_min=*/0.0, /*z_max=*/20.0);
 cpu::Context ctx;

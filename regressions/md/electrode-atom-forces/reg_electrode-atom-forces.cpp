@@ -21,7 +21,7 @@ int main() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::orthorhombic(10, 10, 20);
+    f.box = cpu::Box::orthorhombic(10, 10, 20);
     cpu::md::ConstPotBO bo(2.0);
     bo.add_electrode(1, 0.0);
     bo.add_electrode(2, 1.0);

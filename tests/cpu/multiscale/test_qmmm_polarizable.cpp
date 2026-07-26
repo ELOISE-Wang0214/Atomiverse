@@ -63,7 +63,7 @@ TEST(QmmmPolarizable, PolarizationLowersEnergy) {
         f.span(kAtom_tag)[0] = 1;
         f.span(kAtom_tag)[1] = 2;
         f.span(kAtom_tag)[2] = 3;
-        f.simbox = cpu::Box::cubic(20);
+        f.box = cpu::Box::cubic(20);
         f.meta.get(kEnergy) = 0;
         cpu::Context ctx;
         cpu::QmmmPolarizable qm({1, 2}, /*mm_q=*/0.5, alpha, /*thole=*/0.39,

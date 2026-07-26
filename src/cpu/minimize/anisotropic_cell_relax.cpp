@@ -22,7 +22,7 @@ void AnisotropicCellRelax::apply_scales_(Frame& f, double sx, double sy,
                                          double sz) const {
     if (!(sx > 0.0) || !(sy > 0.0) || !(sz > 0.0))
         throw std::runtime_error("AnisotropicCellRelax: invalid scale");
-    f.simbox.scale_diagonal(sx, sy, sz);
+    f.box.scale_diagonal(sx, sy, sz);
     const int n = f.nlocal();
     auto x = f.span(kAtom_x);
     auto y = f.span(kAtom_y);
@@ -48,7 +48,7 @@ void AnisotropicCellRelax::build(const BuildContext&) {
 
 void AnisotropicCellRelax::launch(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         throw std::runtime_error("AnisotropicCellRelax: non-positive volume");
     const auto& s = f.meta.get(kStress);

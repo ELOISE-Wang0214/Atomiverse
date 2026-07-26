@@ -83,7 +83,7 @@ TEST(Backend, KernelDispatch) {
         for (int i = 0; i < 32; ++i)
             mass[i] = 1.0;
     }
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     cuda::Backend backend;
     backend.init();
@@ -124,7 +124,7 @@ TEST(Backend, BlockingDeferrable) {
             vx[i] = 1.0;
         }
     }
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     cuda::Backend backend;
     backend.init();
@@ -173,7 +173,7 @@ TEST(Backend, ConditionalExecution) {
             vx[i] = 1.0;
         }
     }
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     cuda::Backend backend;
     backend.init();

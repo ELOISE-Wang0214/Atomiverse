@@ -83,7 +83,7 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
                 double dx = static_cast<double>(x[j] - x[i]);
                 double dy = static_cast<double>(y[j] - y[i]);
                 double dz = static_cast<double>(z[j] - z[i]);
-                f.simbox.min_image(dx, dy, dz);
+                f.box.min_image(dx, dy, dz);
                 accumulate(i, j, dx, dy, dz);
             }
         }
@@ -93,7 +93,7 @@ void PairGaussianCoul::compute(const LaunchContext& ctx) {
                 double dx = static_cast<double>(x[j] - x[i]);
                 double dy = static_cast<double>(y[j] - y[i]);
                 double dz = static_cast<double>(z[j] - z[i]);
-                f.simbox.min_image(dx, dy, dz);
+                f.box.min_image(dx, dy, dz);
                 accumulate(i, j, dx, dy, dz);
             }
         }

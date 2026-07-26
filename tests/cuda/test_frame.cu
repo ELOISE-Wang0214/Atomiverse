@@ -21,10 +21,10 @@ TEST(Frame, HostCreate) {
 
 TEST(Frame, Mat3Box) {
     cpu::Frame frame(2);
-    frame.simbox = cpu::Box::cubic(10.0);
-    EXPECT_DOUBLE_EQ(frame.simbox.length(0), 10.0);
-    EXPECT_DOUBLE_EQ(frame.simbox.length(1), 10.0);
-    EXPECT_DOUBLE_EQ(frame.simbox.length(2), 10.0);
+    frame.box = cpu::Box::cubic(10.0);
+    EXPECT_DOUBLE_EQ(frame.box.length(0), 10.0);
+    EXPECT_DOUBLE_EQ(frame.box.length(1), 10.0);
+    EXPECT_DOUBLE_EQ(frame.box.length(2), 10.0);
 }
 
 TEST(Frame, ToDeviceAndBack) {
@@ -37,7 +37,7 @@ TEST(Frame, ToDeviceAndBack) {
     x[3] = 4.0;
     for (int i = 0; i < 4; ++i)
         mass[i] = 1.0;
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
 
     auto d_frame = cpu::to_cuda(frame);
     EXPECT_NE(d_frame.atoms.d_size, nullptr);
@@ -63,7 +63,7 @@ TEST(Frame, TopologyRoundTrip) {
         z[i] = 0.0;
         mass[i] = 14.0;
     }
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // Per-atom topology (LAMMPS layout): the owner atom holds each
     // bond/angle/dihedral; cpu::to_cuda() re-flattens to device tables.

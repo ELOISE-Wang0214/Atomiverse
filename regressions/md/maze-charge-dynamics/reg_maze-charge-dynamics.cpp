@@ -20,7 +20,7 @@ int main() {
         f.span(kAtom_mass)[i] = 1;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::orthorhombic(1, 1, 20);
+    f.box = cpu::Box::orthorhombic(1, 1, 20);
     cpu::md::ConstPotMaZe maze(2.0);
     maze.add_electrode(1, 0.0);
     maze.add_electrode(2, 1.0);

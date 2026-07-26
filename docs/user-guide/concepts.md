@@ -22,7 +22,7 @@ result objects). There is no separate "system" object beside the frame.
 cpu::Frame frame(n);
 auto x = frame.span(kAtom_x);
 // … fill x, type, mass …
-frame.simbox = cpu::Box::cubic(L);
+frame.box = cpu::Box::cubic(L);
 ```
 
 CUDA workflows use an analogous device frame; transfers are explicit

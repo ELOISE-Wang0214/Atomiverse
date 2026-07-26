@@ -61,7 +61,7 @@ void InsertDeleteMove::launch(const cpu::LaunchContext& ctx) {
 
         const int slot = nlocal;
         const double u0 = u01(*rng), u1 = u01(*rng), u2 = u01(*rng);
-        const auto& c = ctx.frame.simbox.cell();
+        const auto& c = ctx.frame.box.cell();
         sp_x[slot] = static_cast<StorageReal>(u0 * c(0, 0) + u1 * c(1, 0)
                                               + u2 * c(2, 0));
         sp_y[slot] = static_cast<StorageReal>(u0 * c(0, 1) + u1 * c(1, 1)

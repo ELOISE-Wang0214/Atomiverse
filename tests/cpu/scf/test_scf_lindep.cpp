@@ -15,7 +15,7 @@ static cpu::Frame h2() {
     f.span(kAtom_type)[1] = 1;
     f.span(kAtom_mass)[0] = 1.008;
     f.span(kAtom_mass)[1] = 1.008;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     return f;
 }
 TEST(Lindep, DefaultThresholdConverges) {

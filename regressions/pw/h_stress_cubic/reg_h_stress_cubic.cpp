@@ -15,7 +15,7 @@ int main() {
     frame.span(kAtom_mass)[0] = 1.008;
     frame.span(kAtom_x)[0] = frame.span(kAtom_y)[0] = frame.span(kAtom_z)[0] =
         0;
-    frame.simbox = cpu::Box::cubic(6.0);
+    frame.box = cpu::Box::cubic(6.0);
 
     PW cfg;
     cfg.ecut_ry = 5.0;

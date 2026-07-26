@@ -110,7 +110,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
         frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

@@ -20,7 +20,7 @@ TEST(Brownian, FreeParticleStepVariance) {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(1e6); // free sandbox — Brownian skips wrap
+    f.box = cpu::Box::cubic(1e6); // free sandbox — Brownian skips wrap
 
     cpu::Context ctx;
     const int N = 20000;

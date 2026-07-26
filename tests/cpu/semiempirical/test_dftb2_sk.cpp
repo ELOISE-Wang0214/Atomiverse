@@ -26,7 +26,7 @@ cpu::Frame make_h2(double r = 0.74) {
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.008;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
     for (int i = 0; i < 2; ++i)
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
@@ -53,7 +53,7 @@ cpu::Frame make_water() {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
     return f;
 }
@@ -107,7 +107,7 @@ TEST(DFTB2SK, CH4EnergyFinite) {
         f.span(kAtom_tag)[i] = i + 1;
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
     }
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
     cpu::Context ctx;
     DFTB2 dftb;
@@ -137,7 +137,7 @@ TEST(DFTB2SK, WaterEnergyFinite) {
 TEST(DFTB2SK, UnsupportedElementThrows) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 26; // Fe
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
     f.meta.get(kEnergy) = 0;
     cpu::Context ctx;
     DFTB2 dftb;

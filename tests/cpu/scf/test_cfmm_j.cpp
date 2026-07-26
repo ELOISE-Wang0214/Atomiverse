@@ -44,7 +44,7 @@ cpu::Frame make_h2o() {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -0.7572;
     frame.span(kAtom_z)[2] = -0.4692;
-    frame.simbox = cpu::Box::cubic(100.0);
+    frame.box = cpu::Box::cubic(100.0);
     return frame;
 }
 
@@ -60,7 +60,7 @@ cpu::Frame make_h2_far() {
     frame.span(kAtom_x)[1] = 40.0; // Å ≳ 75 Bohr — exercises multipole far
     frame.span(kAtom_y)[1] = 0.0;
     frame.span(kAtom_z)[1] = 0.0;
-    frame.simbox = cpu::Box::cubic(100.0);
+    frame.box = cpu::Box::cubic(100.0);
     return frame;
 }
 

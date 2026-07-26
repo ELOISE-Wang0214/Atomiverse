@@ -168,7 +168,7 @@ void DFTB2::launch(const LaunchContext& ctx) {
         dx = static_cast<double>(x[j] - x[i]);
         dy = static_cast<double>(y[j] - y[i]);
         dz = static_cast<double>(z[j] - z[i]);
-        f.simbox.min_image(dx, dy, dz);
+        f.box.min_image(dx, dy, dz);
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     };
 

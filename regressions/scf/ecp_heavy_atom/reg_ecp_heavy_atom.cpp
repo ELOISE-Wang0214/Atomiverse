@@ -66,7 +66,7 @@ int main() {
     i2.span(ATV::kAtom_x)[1] = 0.0;
     i2.span(ATV::kAtom_y)[1] = 0.0;
     i2.span(ATV::kAtom_z)[1] = 2.666;
-    i2.simbox = ATV::cpu::Box::cubic(20.0);
+    i2.box = ATV::cpu::Box::cubic(20.0);
     ok &= check("E(I2, def2-SVP+ECP)", run_rhf(i2), -593.3161818794323, 1e-6);
 
     // ── AuH, R = 1.524 A along z ────────────────────────────────────────
@@ -79,7 +79,7 @@ int main() {
     auh.span(ATV::kAtom_x)[1] = 0.0;
     auh.span(ATV::kAtom_y)[1] = 0.0;
     auh.span(ATV::kAtom_z)[1] = 1.524;
-    auh.simbox = ATV::cpu::Box::cubic(20.0);
+    auh.box = ATV::cpu::Box::cubic(20.0);
     ok &=
         check("E(AuH, def2-SVP+ECP)", run_rhf(auh), -135.34256700791678, 1e-6);
 

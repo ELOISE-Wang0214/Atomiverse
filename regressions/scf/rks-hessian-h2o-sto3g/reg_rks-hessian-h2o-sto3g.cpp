@@ -30,7 +30,7 @@ ATV::cpu::Frame water_frame() {
         frame.span(ATV::kAtom_y)[i] = static_cast<ATV::StorageReal>(xyz[i][1]);
         frame.span(ATV::kAtom_z)[i] = static_cast<ATV::StorageReal>(xyz[i][2]);
     }
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
     return frame;
 }
 

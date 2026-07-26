@@ -48,7 +48,7 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // capturing lo_start/hi_start). Strain is referenced to the box edge
     // at Deform activation, not the simulation-initial box.
     if (origin_step_ < 0) {
-        L0_ = f.simbox.length(axis_);
+        L0_ = f.box.length(axis_);
         origin_step_ = ctx.step;
     }
 
@@ -79,14 +79,14 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // current edge (Box exposes scale_axis, not set_axis). For an
     // unperturbed box this is exact; the affine atom remap below uses
     // the same factor (= LAMMPS `remap x`).
-    const double L_prev = f.simbox.length(axis_);
+    const double L_prev = f.box.length(axis_);
     if (L_prev <= 0.0)
         return;
     const double scale = L_target / L_prev;
     if (scale == 1.0)
         return;
 
-    f.simbox.scale_axis(axis_, scale);
+    f.box.scale_axis(axis_, scale);
 
     const int n = owned_count(ctx);
     // Resolve only the deformed axis's column -- matches the original

@@ -37,7 +37,7 @@ void PairYukawa::compute(const LaunchContext& ctx) {
             double dx = x[j] - x[i];
             double dy = y[j] - y[i];
             double dz = z[j] - z[i];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= cutoff_sq_ || r2 == 0.0)
                 continue;

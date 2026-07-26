@@ -52,11 +52,11 @@ int main() {
                         frame.span(ATV::kAtom_type)[idx] = 29;
                         ++idx;
                     }
-        frame.simbox = ATV::cpu::Box::cubic(a * n_cell);
+        frame.box = ATV::cpu::Box::cubic(a * n_cell);
 
-        if (frame.simbox.length(0) <= 2.0 * cutoff) {
+        if (frame.box.length(0) <= 2.0 * cutoff) {
             std::printf("FAIL: box %.2f A too small for cutoff %.2f A\n",
-                        frame.simbox.length(0), cutoff);
+                        frame.box.length(0), cutoff);
             return 1;
         }
 

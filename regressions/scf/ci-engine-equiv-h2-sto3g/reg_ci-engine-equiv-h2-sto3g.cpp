@@ -47,7 +47,7 @@ int main() {
     frame.span(kAtom_z)[1] = 0.74;
     frame.span(kAtom_type)[0] = 1;
     frame.span(kAtom_type)[1] = 1;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     // Pin — REFERENCE.md (PySCF 2.14.0 full CI / CASCI(2,2), RHF STO-3G).
     constexpr double kEFullCI = -1.137283834488502; // Ha

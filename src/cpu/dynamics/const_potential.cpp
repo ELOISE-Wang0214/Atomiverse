@@ -142,7 +142,7 @@ void ConstPotentialBO::rebuild_A_(const Frame& frame) {
             double dx = static_cast<double>(x[ii] - x[jj]);
             double dy = static_cast<double>(y[ii] - y[jj]);
             double dz = static_cast<double>(z[ii] - z[jj]);
-            frame.simbox.min_image(dx, dy, dz);
+            frame.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             const double aij = ke * erf_over_r(r, w_);
             A_[static_cast<std::size_t>(i * n_elec_ + j)] = aij;
@@ -195,7 +195,7 @@ void ConstPotentialBO::solve_(Frame& frame) {
             double dx = static_cast<double>(x[ii] - x[j]);
             double dy = static_cast<double>(y[ii] - y[j]);
             double dz = static_cast<double>(z[ii] - z[j]);
-            frame.simbox.min_image(dx, dy, dz);
+            frame.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (r < 1e-12)
                 continue;

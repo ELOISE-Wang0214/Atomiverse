@@ -33,7 +33,7 @@ cpu::Frame lj_dimer(double r) {
         f.span(kAtom_vy)[i] = 0.0;
         f.span(kAtom_vz)[i] = 0.0;
     }
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
     return f;
 }
 

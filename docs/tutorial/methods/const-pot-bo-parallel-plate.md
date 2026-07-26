@@ -117,7 +117,7 @@ for (int i = 0; i < 4; ++i) {
     frame.span(kAtom_mass)[i] = (typ[i] < 3) ? 196.966553 : 1.0;
     frame.span(kAtom_tag)[i] = i + 1;
 }
-frame.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+frame.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
 
 cpu::md::ConstPotBO conp(/*eta [1/Å]=*/2.0);
 conp.add_electrode(/*type=*/1, /*Psi [V]=*/0.0);

@@ -4,7 +4,7 @@ This page is the front door to the generated API reference. It is not meant to
 duplicate the class and file pages that Doxygen already generates. Its job is to
 help you find the right part of the reference quickly.
 
-All public code examples in Atomiverse assume **C++17 or later**.
+All public code examples in Atomiverse assume **C++20 or later**.
 
 ## How To Use The Generated Reference
 

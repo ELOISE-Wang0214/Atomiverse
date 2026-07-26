@@ -17,7 +17,7 @@ TEST(Dimer, InvertedHarmonicFindsOrigin) {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     cpu::path::Dimer dimer(0.01, 0.02, 10, 1e-3, 0.05, 7);
     dimer.use_inverted_harmonic(1.0, 1.0);

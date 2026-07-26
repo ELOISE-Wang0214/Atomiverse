@@ -28,7 +28,7 @@ static cpu::Frame h2() {
     f.span(kAtom_mass)[1] = 1.008;
     f.span(kAtom_vx)[0] = 0.001;
     f.span(kAtom_vx)[1] = -0.001;
-    f.simbox = cpu::Box::cubic(20);
+    f.box = cpu::Box::cubic(20);
     return f;
 }
 TEST(MethodDriverNoAlloc, MultiStepNestedRuns) {

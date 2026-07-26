@@ -30,7 +30,7 @@ TEST(ClassicalPolarization, VacuumDipoleOverVolume) {
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.0;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
 
     cpu::md::ClassicalPolarization pol;
     cpu::Context ctx;

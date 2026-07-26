@@ -44,7 +44,7 @@ cpu::Frame make_water_cheap() {
     // Tiny COM-preserving velocity so KE is non-zero (O≈0 for COM).
     f.span(kAtom_vx)[1] = 0.001;
     f.span(kAtom_vx)[2] = -0.001;
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
     return f;
 }
 

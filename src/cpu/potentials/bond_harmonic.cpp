@@ -109,7 +109,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             double dx = x_ptr[i] - x_ptr[j];
             double dy = y_ptr[i] - y_ptr[j];
             double dz = z_ptr[i] - z_ptr[j];
-            f.simbox.min_image(dx, dy, dz);
+            f.box.min_image(dx, dy, dz);
 
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             const double dr = r - r0_[type];

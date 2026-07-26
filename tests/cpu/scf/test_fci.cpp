@@ -19,7 +19,7 @@ cpu::Frame make_he() {
     f.span(kAtom_z)[0] = 0.0;
     f.span(kAtom_type)[0] = 2;
     f.span(kAtom_mass)[0] = 4.0026;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -35,7 +35,7 @@ cpu::Frame make_h2() {
     f.span(kAtom_type)[1] = 1;
     f.span(kAtom_mass)[0] = 1.008;
     f.span(kAtom_mass)[1] = 1.008;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

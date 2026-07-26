@@ -54,7 +54,7 @@ int main() {
         frame.span(kAtom_type)[i + 4] = 1;
         frame.span(kAtom_tag)[i + 4] = i + 5;
     }
-    frame.simbox = cpu::Box::orthorhombic(Lx, Ly, Lz);
+    frame.box = cpu::Box::orthorhombic(Lx, Ly, Lz);
 
     // ── Slab path ──────────────────────────────────────────────────────
     // add_potential binds at Evaluate's eval_phase (not KSpace default MD force).

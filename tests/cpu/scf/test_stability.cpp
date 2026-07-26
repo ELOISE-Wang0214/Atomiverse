@@ -54,7 +54,7 @@ cpu::Frame make_h2(double r_angstrom) {
     f.span(kAtom_z)[1] = r_angstrom;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

@@ -44,7 +44,7 @@ int main() {
             f.span(ATV::kAtom_mass)[i] = 12.0;
             f.span(ATV::kAtom_type)[i] = 0;
         }
-        f.simbox = cpu::Box::cubic(40.0);
+        f.box = cpu::Box::cubic(40.0);
         f.clear_tag_index();
         f.rebuild_tag_index(0, f.nlocal());
         f.add_improper(0, 1, 2, 3, 0);

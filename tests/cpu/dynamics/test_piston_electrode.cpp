@@ -46,7 +46,7 @@ cpu::Frame upper_wall_pair() {
         f.span(kAtom_fy)[i] = 0.0;
         f.span(kAtom_fz)[i] = 0.0;
     }
-    f.simbox = cpu::Box::orthorhombic(10.0, 10.0, 20.0); // A = 100 Å²
+    f.box = cpu::Box::orthorhombic(10.0, 10.0, 20.0); // A = 100 Å²
     return f;
 }
 

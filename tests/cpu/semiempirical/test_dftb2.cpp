@@ -20,7 +20,7 @@ TEST(DFTB2, H2EnergyFinite) {
     f.span(kAtom_mass)[0] = f.span(kAtom_mass)[1] = 1.008;
     f.span(kAtom_tag)[0] = 1;
     f.span(kAtom_tag)[1] = 2;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.meta.get(kEnergy) = 0;
     for (int i = 0; i < 2; ++i)
         f.span(kAtom_fx)[i] = f.span(kAtom_fy)[i] = f.span(kAtom_fz)[i] = 0;
@@ -38,7 +38,7 @@ TEST(DFTB2, H2EnergyFinite) {
 TEST(DFTB2, RejectsUnsupportedElement) {
     cpu::Frame f(1);
     f.span(kAtom_type)[0] = 26; // Fe — not in static H/C/N/O tables
-    f.simbox = cpu::Box::cubic(10.0);
+    f.box = cpu::Box::cubic(10.0);
     f.meta.get(kEnergy) = 0;
     cpu::Context ctx;
     cpu::semiempirical::DFTB2 dftb;

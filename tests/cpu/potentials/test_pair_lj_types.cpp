@@ -35,7 +35,7 @@ cpu::Frame dimer(int ta, int tb, double r) {
     f.span(ATV::kAtom_mass)[0] = f.span(ATV::kAtom_mass)[1] = 1.0;
     f.span(ATV::kAtom_type)[0] = ta;
     f.span(ATV::kAtom_type)[1] = tb;
-    f.simbox = ATV::cpu::Box::cubic(40.0);
+    f.box = ATV::cpu::Box::cubic(40.0);
     return f;
 }
 

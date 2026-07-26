@@ -10,7 +10,7 @@
 ///      equal-count slabs by linear interpolation between bin edges. The
 ///      resulting `dims[d] + 1` fractional cut positions are stored in
 ///      `dd->cuts[d]`.
-///   4. `compute_sublo_subhi(frame.simbox)` re-derives this rank's `sublo/subhi`
+///   4. `compute_sublo_subhi(frame.box)` re-derives this rank's `sublo/subhi`
 ///      from the new cuts, and `dd->neighbor_generation` is bumped so the
 ///      next `Migrate` ships any owner that has just moved outside
 ///      its (resized) slab.
@@ -170,9 +170,9 @@ void Rebalance::launch(const cpu::LaunchContext& ctx) {
         return;
 
     const Frame& frame = ctx.frame;
-    const double Lx = frame.simbox.length(0);
-    const double Ly = frame.simbox.length(1);
-    const double Lz = frame.simbox.length(2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
     if (Lx <= 0.0 || Ly <= 0.0 || Lz <= 0.0)
         return;
 
@@ -187,11 +187,11 @@ void Rebalance::launch(const cpu::LaunchContext& ctx) {
 
     {
         std::vector<std::int64_t> tmp(static_cast<std::size_t>(n_bins_), 0);
-        build_local_histogram(frame, n_local, 0, frame.simbox, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 0, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin());
-        build_local_histogram(frame, n_local, 1, frame.simbox, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 1, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin() + n_bins_);
-        build_local_histogram(frame, n_local, 2, frame.simbox, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 2, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin() + 2 * n_bins_);
     }
 
@@ -212,7 +212,7 @@ void Rebalance::launch(const cpu::LaunchContext& ctx) {
     }
 
     // Refresh this rank's slab from the new cuts.
-    dd->compute_sublo_subhi(frame.simbox);
+    dd->compute_sublo_subhi(frame.box);
 
     // Mark the partition as changed so Migrate ships any owner now
     // outside its slab. Note that Migrate normally runs at the next

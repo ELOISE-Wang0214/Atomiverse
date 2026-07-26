@@ -117,7 +117,7 @@ cpu::Frame make_pe_fragment() {
         f.span(ATV::kAtom_mass)[i] = 14.0; // UA CH₂
         f.span(ATV::kAtom_type)[i] = 0;
     }
-    f.simbox = ATV::cpu::Box::cubic(40.0); // large box -> no PBC interference
+    f.box = ATV::cpu::Box::cubic(40.0); // large box -> no PBC interference
 
     // One bond (0-1), one angle (0-1-2), one dihedral (0-1-2-3), in the
     // per-atom topology the force kernels actually read (num_bond/bond_atom,

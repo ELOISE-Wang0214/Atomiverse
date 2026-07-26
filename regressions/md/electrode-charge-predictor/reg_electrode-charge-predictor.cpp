@@ -34,7 +34,7 @@ cpu::Frame make_madelung() {
         f.span(kAtom_mass)[i] = (typ[i] < 3) ? 196.97 : 1.0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+    f.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
     return f;
 }
 
@@ -72,7 +72,7 @@ cpu::Frame make_multi(int n_side = 3) {
         f.span(kAtom_tag)[idx] = idx + 1;
         ++idx;
     }
-    f.simbox = cpu::Box::orthorhombic(Lxy, Lxy, 20.0);
+    f.box = cpu::Box::orthorhombic(Lxy, Lxy, 20.0);
     return f;
 }
 

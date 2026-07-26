@@ -264,7 +264,6 @@ auto config    = /* use cpu::scf::RHF */;   // RHF: no XC grid, fast
                                                     // (default_config => KS/PBE)
 config.tol     = 1e-6;                    // Hartree
 config.max_iter = 200;
-config.force_native_two_electron_deriv = true;
 
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, /*alpha0=*/0.01, /*max_ls=*/10});

@@ -52,7 +52,7 @@ cpu::Frame one_atom_box(double L) {
     f.span(kAtom_mass)[0] = 1.0;
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(L);
+    f.box = cpu::Box::cubic(L);
     return f;
 }
 
@@ -84,9 +84,9 @@ TEST(AnisotropicCellRelax, IntensiveStressStepAndMask) {
     opt.run(frame, 2); // iter 0 seeds the stress; iter 1 applies one step
 
     const double expected = L0 * (1.0 + 0.5 * 0.02 / 1.0); // 10.1, unclamped
-    EXPECT_NEAR(frame.simbox.length(0), expected, 1e-12 * L0);
-    EXPECT_EQ(frame.simbox.length(1), L0); // masked: bit-identical
-    EXPECT_EQ(frame.simbox.length(2), L0);
+    EXPECT_NEAR(frame.box.length(0), expected, 1e-12 * L0);
+    EXPECT_EQ(frame.box.length(1), L0); // masked: bit-identical
+    EXPECT_EQ(frame.box.length(2), L0);
     // Residual reads the relaxed axis only (0.02), not the masked 0.04.
     EXPECT_NEAR(cell.pressure_residual(), 0.02, 1e-15);
 }
@@ -108,7 +108,7 @@ TEST(AnisotropicCellRelax, MaxScaleClampsIntensiveStep) {
     opt.build();
     opt.run(frame, 2);
 
-    EXPECT_NEAR(frame.simbox.length(0), L0 * (1.0 - 0.03), 1e-12 * L0);
+    EXPECT_NEAR(frame.box.length(0), L0 * (1.0 - 0.03), 1e-12 * L0);
 }
 
 TEST(AnisotropicCellRelax, AllAxesMaskedThrowsAtComponentBuild) {
@@ -132,7 +132,7 @@ TEST(StressConverged, Name) {
 
 TEST(StressConverged, VerdictMaskedIntensive) {
     cpu::Frame frame(1);
-    frame.simbox = cpu::Box::cubic(10.0);
+    frame.box = cpu::Box::cubic(10.0);
     auto& st = frame.meta.get(kStress);
     st[0] = 5e-5; // under tol
     st[1] = 0.5;  // way out — but masked below

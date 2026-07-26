@@ -3,7 +3,7 @@
 ///
 /// Single source of truth for cell data and periodic-boundary helpers on
 /// the CPU backend. Lives in the `frame/` pillar because it is part of the
-/// Frame's physical `simbox` region and is consumed across method domains.
+/// Frame's physical `box` region and is consumed across method domains.
 ///
 /// **Hot-path discipline.** Box stores fundamental cell data
 /// (`Mat3 cell_`) plus a per-step-immutable cache (`Mat3 inv_cell_`,

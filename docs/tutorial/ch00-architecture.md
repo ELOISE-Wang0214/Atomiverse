@@ -10,7 +10,7 @@ the method without rewriting the loop.
 | **Runtime** (`cpu::Backend`) | frame binding, plan storage, MPI, timing | one per run |
 | **Driver** (`cpu::Driver<P>`) | stages + plan + criteria | `MD`, `Minimize`, `MC`, `Evaluate`, … |
 | **Component** | one step of physics | `PairLJCut`, `SCF`, `LBFGS`, `Thermo` |
-| **Frame** | device-resident state | `blocks` + `meta` + `simbox` |
+| **Frame** | device-resident state | `blocks` + `meta` + `box` |
 
 ```cpp
 // Same MD loop — different physics by swapping the force component

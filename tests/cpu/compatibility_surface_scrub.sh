@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Grep gate: compatibility-only CPU surfaces must not return.  CPU Frame is a
-# single hard-cut schema (`blocks + meta + simbox`); only CUDA/Torch are
+# single hard-cut schema (`blocks + meta + box`); only CUDA/Torch are
 # deferred.  There are intentionally no aliases, forwarding accessors, or
 # legacy wire decoders.
 #

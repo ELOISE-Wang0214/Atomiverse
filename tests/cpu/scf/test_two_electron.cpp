@@ -43,7 +43,7 @@ cpu::Frame make_h2(double bond_angstrom) {
     f.span(kAtom_z)[1] = 0.0;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -62,7 +62,7 @@ cpu::Frame make_h2o() {
     f.span(kAtom_x)[2] = -0.757;
     f.span(kAtom_y)[2] = 0.586;
     f.span(kAtom_z)[2] = 0.0;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

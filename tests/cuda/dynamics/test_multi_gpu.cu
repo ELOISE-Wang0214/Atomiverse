@@ -63,7 +63,7 @@ class StubKSpace : public cuda::KSpace {
 cpu::Frame make_grid(double L) {
     const int s = 4, n = s * s * s;
     cpu::Frame f(n);
-    f.simbox.set_cell(Mat3::cubic(L));
+    f.box.set_cell(Mat3::cubic(L));
     double sp = L / s;
     int idx = 0;
     for (int ix = 0; ix < s; ++ix)
@@ -623,7 +623,7 @@ namespace {
 cpu::Frame make_grid_n(int s, double L) {
     const int n = s * s * s;
     cpu::Frame f(n);
-    f.simbox.set_cell(Mat3::cubic(L));
+    f.box.set_cell(Mat3::cubic(L));
     double sp = L / s;
     int idx = 0;
     for (int ix = 0; ix < s; ++ix)

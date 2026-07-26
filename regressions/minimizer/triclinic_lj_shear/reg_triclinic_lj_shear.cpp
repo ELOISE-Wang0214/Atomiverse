@@ -27,8 +27,8 @@ int main() {
     c(1, 1) = 6;
     c(2, 2) = 6;
     c(0, 1) = 0.8;
-    f.simbox.set_cell(c);
-    const double shear0 = f.simbox.cell()(0, 1);
+    f.box.set_cell(c);
+    const double shear0 = f.box.cell()(0, 1);
     cpu::minimizer::Minimize opt;
     cpu::minimizer::TriclinicCellRelax cell(0.05, 0.5);
     cell.max_strain = 0.1;
@@ -41,7 +41,7 @@ int main() {
     opt.enable_timing(false);
     opt.build();
     opt.run(f, 40);
-    const double shear1 = f.simbox.cell()(0, 1);
+    const double shear1 = f.box.cell()(0, 1);
     std::printf("triclinic shear0=%.4f shear1=%.4f residual=%.4g\n", shear0,
                 shear1, cell.stress_residual());
     if (!std::isfinite(shear1)) {

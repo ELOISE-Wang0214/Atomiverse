@@ -18,7 +18,7 @@ The project is built around a clear separation of responsibilities:
 - the **API reference** documents the exact classes, functions, and headers
 
 All public examples and build instructions in this repository assume
-**C++17 or later**.
+**C++20 or later**.
 
 @section docs Documentation Structure
 

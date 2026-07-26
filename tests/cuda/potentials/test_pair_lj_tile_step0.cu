@@ -48,7 +48,7 @@ TEST(PairLjTileStep0, TwoAtomEnergyMatchesOracle) {
     frame.span(kAtom_mass)[1] = 1.0;
     frame.span(kAtom_type)[0] = 0;
     frame.span(kAtom_type)[1] = 0;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{rc, 0.5});

@@ -22,7 +22,7 @@ JointIsotropicRelax::JointIsotropicRelax(double P_target_ev_a3,
 }
 
 double JointIsotropicRelax::pressure_from_frame_(const Frame& f) {
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         throw std::runtime_error("JointIsotropicRelax: non-positive volume");
     const auto& s = f.meta.get(kStress);
@@ -32,7 +32,7 @@ double JointIsotropicRelax::pressure_from_frame_(const Frame& f) {
 void JointIsotropicRelax::apply_scale_(Frame& f, double s) const {
     if (!(s > 0.0) || !std::isfinite(s))
         throw std::runtime_error("JointIsotropicRelax: invalid scale");
-    f.simbox.scale_isotropic(s);
+    f.box.scale_isotropic(s);
     const int n = f.nlocal();
     auto x = f.span(kAtom_x);
     auto y = f.span(kAtom_y);

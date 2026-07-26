@@ -60,7 +60,7 @@ cpu::Frame h2_frame(double r_ang = 0.74) {
     f.span(kAtom_x)[1] = 0.0;
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = r_ang;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -74,7 +74,7 @@ cpu::Frame heh_frame(double r_ang = 0.77) {
     f.span(kAtom_x)[1] = 0.0;
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = r_ang;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -84,7 +84,7 @@ cpu::Frame h_atom_frame() {
     f.span(kAtom_x)[0] = 0.0;
     f.span(kAtom_y)[0] = 0.0;
     f.span(kAtom_z)[0] = 0.0;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -99,7 +99,7 @@ cpu::Frame i2_frame() {
     f.span(kAtom_x)[1] = 0.0;
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = 2.666;
-    f.simbox = cpu::Box::cubic(30.0);
+    f.box = cpu::Box::cubic(30.0);
     return f;
 }
 

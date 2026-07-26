@@ -58,7 +58,7 @@ def build_si_diamond(a_lat: float = 5.43) -> "molrs.Frame":
     frame["atoms"] = atoms
 
     h = a_lat / 2.0
-    frame.simbox = molrs.Box(
+    frame.box = molrs.Box(
         np.array(
             [
                 [0.0, h, h],

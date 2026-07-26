@@ -192,7 +192,7 @@ The contract is:
 1. **`build` runs once, before the first iteration.** All allocation
    goes here: per-thread reduction buffers, cell-list arrays,
    shell-pair lists, FFT plans, anything sized to `frame.capacity()`
-   or derived from `frame.simbox`.
+   or derived from `frame.box`.
 2. **`launch` runs once per iteration.** No allocation. Re-use only.
    This is enforced by code review and by regression tests like
    `tests/cpu/test_md_no_alloc.cpp`, which asserts that the inner MD

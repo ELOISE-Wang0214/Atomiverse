@@ -27,7 +27,7 @@ cpu::Frame mono_cubic(double a) {
     f.span(kAtom_y)[0] = 0;
     f.span(kAtom_z)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(a);
+    f.box = cpu::Box::cubic(a);
     return f;
 }
 

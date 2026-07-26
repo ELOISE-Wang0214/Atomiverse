@@ -45,7 +45,7 @@ void Transaction::record_touch(const cpu::Frame& f, int row) {
 }
 
 void Transaction::record_box(const cpu::Frame& f) {
-    patch_.simbox = f.simbox;
+    patch_.box = f.box;
     box_recorded_ = true;
 }
 
@@ -76,7 +76,7 @@ void Transaction::rollback(cpu::Frame& f) {
         }
     }
     if (box_recorded_)
-        f.simbox = patch_.simbox;
+        f.box = patch_.box;
 }
 
 void Transaction::clear() {

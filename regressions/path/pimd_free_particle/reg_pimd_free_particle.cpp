@@ -29,7 +29,7 @@ static cpu::Frame free_atom() {
     f.span(kAtom_mass)[0] = 1.0; // amu
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
     return f;
 }
 

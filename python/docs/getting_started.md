@@ -136,7 +136,7 @@ atoms.insert("z", zs)
 atoms.insert("mass", np.full(n, 39.948))   # Ar [amu]
 atoms.insert("type", np.zeros(n, dtype=np.int32))
 frame["atoms"] = atoms
-frame.simbox = molrs.Box.cube(n_cells * a0)
+frame.box = molrs.Box.cube(n_cells * a0)
 
 # 2. Configure the MD driver
 epsilon, sigma, cutoff = 0.0104, 3.4, 8.5   # LJ-Ar [eV, Å, Å]

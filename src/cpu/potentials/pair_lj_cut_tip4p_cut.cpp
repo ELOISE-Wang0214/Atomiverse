@@ -130,7 +130,7 @@ void PairLJCutTip4pCut::ensure_sites_(const Frame& f) {
     const StorageReal* x = f.span(kAtom_x).data();
     const StorageReal* y = f.span(kAtom_y).data();
     const StorageReal* z = f.span(kAtom_z).data();
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     // Resolve H partners only when the atom count changes (topology assumed
     // fixed for the foothold). M-site coordinates are always refreshed.
@@ -230,7 +230,7 @@ void PairLJCutTip4pCut::compute(const LaunchContext& ctx) {
             "PairLJCutTip4pCut::launch: runtime.md.pair_list is null");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.simbox;
+    const auto& box = f.box;
 
     const auto* dd = ctx.runtime.md.dd;
 #ifdef ATV_HAS_MPI

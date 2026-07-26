@@ -127,7 +127,7 @@ using namespace ATV;
 
 // 4 left (type 1) + 4 right (type 2); set wall totals each sample.
 cpu::Frame frame(8);
-// … positions, types, masses, tags; frame.simbox = cpu::Box::cubic(20.0);
+// … positions, types, masses, tags; frame.box = cpu::Box::cubic(20.0);
 
 cpu::CapacitanceChargeFluctuation obs(
     /*electrode_types=*/{1, 2},  // index 0 = primary Q

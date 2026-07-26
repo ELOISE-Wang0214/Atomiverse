@@ -305,7 +305,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             "NeighborList component to the force phase ahead of LJ?");
     }
     const auto& pairs = *ctx.runtime.md.pair_list;
-    const auto& box = f.simbox;
+    const auto& box = f.box;
     int n_force = f.nlocal();
     const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1) {

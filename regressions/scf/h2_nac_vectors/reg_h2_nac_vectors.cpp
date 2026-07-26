@@ -12,7 +12,7 @@ int main() {
     f.span(kAtom_y)[1] = 0;
     f.span(kAtom_z)[1] = 0;
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(15);
+    f.box = cpu::Box::cubic(15);
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::Pople631G;
     rhf.tol = 1e-7;

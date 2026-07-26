@@ -310,7 +310,7 @@ void bcast_frame(Frame& frame, int root) {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 cell[static_cast<std::size_t>(3 * i + j)] =
-                    frame.simbox.cell()(i, j);
+                    frame.box.cell()(i, j);
         header = {kBcastWireVersion,
                   static_cast<std::uint64_t>(n),
                   static_cast<std::uint64_t>(atom_payload.size()),
@@ -368,7 +368,7 @@ void bcast_frame(Frame& frame, int root) {
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
             matrix(i, j) = cell[static_cast<std::size_t>(3 * i + j)];
-    frame.simbox.set_cell(matrix);
+    frame.box.set_cell(matrix);
 
     frame.set_nghost(0);
     frame.set_nlocal(0);

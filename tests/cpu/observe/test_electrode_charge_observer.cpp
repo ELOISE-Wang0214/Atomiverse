@@ -63,7 +63,7 @@ cpu::Frame parallel_plate_toy() {
     mass[9] = 23.0;
     tag[9] = 10;
 
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

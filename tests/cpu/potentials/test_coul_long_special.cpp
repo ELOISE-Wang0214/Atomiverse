@@ -28,7 +28,7 @@ cpu::Frame two_charge_14() {
     }
     f.span(kAtom_charge)[0] = 1.0;
     f.span(kAtom_charge)[3] = -1.0;
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, 4);
     f.add_bond(0, 1, 0);
@@ -93,7 +93,7 @@ TEST(CoulLongSpecial, Zero12Bonded) {
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 0;
     f.span(kAtom_tag)[0] = 0;
     f.span(kAtom_tag)[1] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     f.clear_tag_index();
     f.rebuild_tag_index(0, 2);
     f.add_bond(0, 1, 0);

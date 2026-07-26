@@ -96,7 +96,7 @@ for adding new examples.
 
 ## Requirements
 
-C++17, CMake ≥ 3.18, a C++ compiler, BLAS/LAPACK (OpenBLAS). The Gaussian-SCF
+C++20, CMake ≥ 3.18, a C++ compiler, BLAS/LAPACK (OpenBLAS). The Gaussian-SCF
 methods need `-march=native`. Plane-wave DFT (`ATV_BUILD_PW`) needs FFTW3. The
 CUDA backend needs the CUDA toolkit and a GPU. A Rust toolchain is required to
 build the molrs I/O dependency (git submodule at `./molrs`; after clone run

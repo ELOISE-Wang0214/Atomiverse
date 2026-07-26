@@ -146,7 +146,7 @@ cpu::Frame gold_capacitor() {
         f.span(kAtom_mass)[i] = 196.966553;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::orthorhombic(kA0, kA0, 80.0);
+    f.box = cpu::Box::orthorhombic(kA0, kA0, 80.0);
     return f;
 }
 

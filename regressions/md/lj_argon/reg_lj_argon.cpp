@@ -63,7 +63,7 @@ int main() {
                 frame.span(ATV::kAtom_type)[idx] = 0;
                 ++idx;
             }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
 
     // NVE: no thermostat. InitVelocity draws a Maxwell distribution at T once,
     // at build; from then on the total energy is the engine's to conserve.

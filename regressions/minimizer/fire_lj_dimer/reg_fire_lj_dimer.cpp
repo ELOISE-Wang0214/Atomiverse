@@ -42,7 +42,7 @@ int main() {
         frame.span(ATV::kAtom_type)[i] = 0;
         frame.span(ATV::kAtom_tag)[i] = i + 1;
     }
-    frame.simbox = cpu::Box::cubic(L);
+    frame.box = cpu::Box::cubic(L);
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::FIRE fire;

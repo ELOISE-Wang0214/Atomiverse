@@ -97,8 +97,8 @@ void DihedralCharmm::compute(const LaunchContext& ctx) {
     const StorageReal* __restrict z_ptr = f.span(kAtom_z);
 
     // Hoist orthorhombic min-image constants (avoids per-bond virtual/ indirections).
-    const double lx = f.simbox.length(0), ly = f.simbox.length(1),
-                 lz = f.simbox.length(2);
+    const double lx = f.box.length(0), ly = f.box.length(1),
+                 lz = f.box.length(2);
     const double inv_lx = 1.0 / lx, inv_ly = 1.0 / ly, inv_lz = 1.0 / lz;
     auto min_image = [&](double& ax, double& ay, double& az) {
         ax -= lx * std::nearbyint(ax * inv_lx);

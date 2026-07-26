@@ -47,7 +47,7 @@ int main() {
         frame.span(kAtom_vx)[i] = frame.span(kAtom_vy)[i] =
             frame.span(kAtom_vz)[i] = 0.0;
     }
-    frame.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+    frame.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
 
     // Standalone solve (no need for a long MD trajectory — BO is algebraic).
     cpu::md::ConstPotBO conp(kEta);
@@ -115,7 +115,7 @@ int main() {
             f2.span(kAtom_vx)[i] = f2.span(kAtom_vy)[i] = f2.span(kAtom_vz)[i] =
                 0.0;
         }
-        f2.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+        f2.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
 
         cpu::md::ConstPotBO conp2(kEta);
         conp2.add_electrode(1, kPsiBot);

@@ -98,7 +98,7 @@ Mat3 cell;
 cell(0, 0) = 0; cell(0, 1) = h; cell(0, 2) = h;
 cell(1, 0) = h; cell(1, 1) = 0; cell(1, 2) = h;
 cell(2, 0) = h; cell(2, 1) = h; cell(2, 2) = 0;
-f.simbox.set_cell(cell);
+f.box.set_cell(cell);
 
 PW pw;
 pw.upf_path = "tests/data/pw/Al_pz_nc.upf"; // NC, LDA/PZ, Z_val = 3

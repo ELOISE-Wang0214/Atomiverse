@@ -43,7 +43,7 @@ cpu::Frame make_lj_system(int n_side, double density) {
                     18; // Ar (valid Z; molrs XYZ writer rejects Z=0)
                 idx++;
             }
-    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
+    frame.box = cpu::Box::cubic(static_cast<double>(box_len));
 
     // Small random velocities
     std::srand(42);
@@ -272,7 +272,7 @@ TEST(MD, InitVelocity) {
                 frame.span(kAtom_mass)[idx] = double(1.0);
                 idx++;
             }
-    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
+    frame.box = cpu::Box::cubic(static_cast<double>(box_len));
 
     // All velocities should be zero initially
     for (int i = 0; i < n; ++i) {

@@ -45,8 +45,8 @@ double AngleCV::evaluate(const cpu::Frame& frame, double* grad) const {
     double xk = frame.span(kAtom_x)[row_k_] - frame.span(kAtom_x)[row_j_];
     double yk = frame.span(kAtom_y)[row_k_] - frame.span(kAtom_y)[row_j_];
     double zk = frame.span(kAtom_z)[row_k_] - frame.span(kAtom_z)[row_j_];
-    frame.simbox.min_image(xi, yi, zi);
-    frame.simbox.min_image(xk, yk, zk);
+    frame.box.min_image(xi, yi, zi);
+    frame.box.min_image(xk, yk, zk);
 
     const double ri = std::sqrt(xi * xi + yi * yi + zi * zi);
     const double rk = std::sqrt(xk * xk + yk * yk + zk * zk);

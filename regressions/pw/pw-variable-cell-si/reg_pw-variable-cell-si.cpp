@@ -63,13 +63,13 @@ void set_diamond_si(cpu::Frame& frame, double a_ang) {
     cell(2, 0) = h;
     cell(2, 1) = h;
     cell(2, 2) = 0;
-    frame.simbox.set_cell(cell);
+    frame.box.set_cell(cell);
 }
 
 /// Conventional cubic lattice constant from the fcc primitive cell matrix.
 double conventional_a(const cpu::Frame& f) {
     // Orientation: off-diag entries = a/2.
-    return 2.0 * static_cast<double>(f.simbox.cell()(0, 1));
+    return 2.0 * static_cast<double>(f.box.cell()(0, 1));
 }
 
 } // namespace

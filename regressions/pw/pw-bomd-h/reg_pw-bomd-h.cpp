@@ -35,7 +35,7 @@ int main() {
     frame.span(kAtom_vx)[0] = 0.002;
     frame.span(kAtom_vy)[0] = 0.0;
     frame.span(kAtom_vz)[0] = 0.0;
-    frame.simbox = cpu::Box::cubic(6.0);
+    frame.box = cpu::Box::cubic(6.0);
 
     cpu::pw::PW pw;
     pw.ecut_ry = 5.0;

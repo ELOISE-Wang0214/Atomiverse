@@ -17,9 +17,9 @@ bool sort_owned_atoms(Frame& f, int n_local, double binsize) {
     if (n_local < 2 || !(binsize > 0.0))
         return false;
 
-    const double Lx = f.simbox.length(0);
-    const double Ly = f.simbox.length(1);
-    const double Lz = f.simbox.length(2);
+    const double Lx = f.box.length(0);
+    const double Ly = f.box.length(1);
+    const double Lz = f.box.length(2);
     if (!(Lx > 0.0) || !(Ly > 0.0) || !(Lz > 0.0))
         return false;
 

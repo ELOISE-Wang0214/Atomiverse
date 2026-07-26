@@ -85,7 +85,7 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
                 cell(i, j) = h[static_cast<std::size_t>(3 * i + j)];
             }
         }
-        work.simbox.set_cell(cell);
+        work.box.set_cell(cell);
     }
     return work;
 }

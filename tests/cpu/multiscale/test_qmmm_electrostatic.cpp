@@ -22,7 +22,7 @@ TEST(QmmmElectrostatic, ChargeShiftsEnergy) {
         f.span(kAtom_tag)[0] = 1;
         f.span(kAtom_tag)[1] = 2;
         f.span(kAtom_tag)[2] = 3;
-        f.simbox = cpu::Box::cubic(20);
+        f.box = cpu::Box::cubic(20);
         f.meta.get(kEnergy) = 0;
         cpu::Context ctx;
         cpu::QmmmElectrostatic qm({1, 2}, q, 0.01, 3.4, 10.0);

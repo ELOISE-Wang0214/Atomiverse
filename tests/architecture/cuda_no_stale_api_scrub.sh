@@ -10,8 +10,8 @@
 #      `Real` word is always the deleted type).
 #   2. the renamed LAMMPS unit constants (now core/units.h descriptive names:
 #      units::force_to_accel / mass_v2_to_energy / kB_ev_per_k / pi / coulomb).
-#   3. stale access on a HOST cpu::Frame. cpu::Frame is now blocks+meta+simbox,
-#      read via .span(k...)/.meta.get(k...)/.simbox. The device cuda::Frame
+#   3. stale access on a HOST cpu::Frame. cpu::Frame is now blocks+meta+box,
+#      read via .span(k...)/.meta.get(k...)/.box. The device cuda::Frame
 #      LEGITIMATELY owns .atoms/.box/.scalars (raw device pointers) — so we ban
 #      only the accessor SHAPES that can appear on a host frame and NEVER on the
 #      device pointer frame:

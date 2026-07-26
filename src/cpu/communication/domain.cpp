@@ -167,7 +167,7 @@ namespace {
 
 // Orthorhombic PBC wrap into [0, L) is provided by `Box::wrap_axis`
 // (`cpu/box.h`) — the single canonical implementation. partition_atoms()
-// below calls `frame.simbox.wrap_axis(coord, axis)` directly.
+// below calls `frame.box.wrap_axis(coord, axis)` directly.
 
 // Rank index (along one dim) that owns wrapped position `q` with `dims_d`
 // equal-width slabs over `[0, L)`. Clamps to [0, dims_d - 1] against FP
@@ -189,11 +189,11 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         return;
     }
 
-    compute_sublo_subhi(frame.simbox);
+    compute_sublo_subhi(frame.box);
 
-    const double Lx = frame.simbox.length(0);
-    const double Ly = frame.simbox.length(1);
-    const double Lz = frame.simbox.length(2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
 
     // First-run vs subsequent-run scoping. On the first call (n_local == 0)
     // we scan the entire user-supplied atom array because we don't yet know
@@ -242,9 +242,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             if (!seen_tags.insert(t).second)
                 continue; // duplicate tag from stale tail — keep first
         }
-        const double xw = frame.simbox.wrap_axis(sp_x[i], 0);
-        const double yw = frame.simbox.wrap_axis(sp_y[i], 1);
-        const double zw = frame.simbox.wrap_axis(sp_z[i], 2);
+        const double xw = frame.box.wrap_axis(sp_x[i], 0);
+        const double yw = frame.box.wrap_axis(sp_y[i], 1);
+        const double zw = frame.box.wrap_axis(sp_z[i], 2);
         const int cx = rank_along_dim(xw, Lx, dims[0]);
         const int cy = rank_along_dim(yw, Ly, dims[1]);
         const int cz = rank_along_dim(zw, Lz, dims[2]);

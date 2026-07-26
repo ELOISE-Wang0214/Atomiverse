@@ -297,8 +297,8 @@ class NeighborList : public cpu::Component, public cpu::NeighborProvider {
     }
 
     /// @brief (Re-)initialise the underlying spatial-index strategy from
-    /// the current frame.simbox.  Called from `build()` (one-time setup)
-    /// and from `launch()` whenever `frame.simbox` has drifted enough that
+    /// the current frame.box.  Called from `build()` (one-time setup)
+    /// and from `launch()` whenever `frame.box` has drifted enough that
     /// the cell-grid sizing is stale.
     void reinit_strategy(const cpu::Context& rt, cpu::Frame& f) {
         if (is_multi_rank(rt)) {

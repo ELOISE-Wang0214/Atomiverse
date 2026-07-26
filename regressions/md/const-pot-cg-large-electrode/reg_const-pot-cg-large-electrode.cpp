@@ -70,7 +70,7 @@ cpu::Frame multi_site_plate(int nx, int ny) {
     f.span(kAtom_tag)[a] = a + 1;
     f.span(kAtom_vx)[a] = f.span(kAtom_vy)[a] = f.span(kAtom_vz)[a] = 0.0;
 
-    f.simbox = cpu::Box::orthorhombic(Lx, Ly, Lz);
+    f.box = cpu::Box::orthorhombic(Lx, Ly, Lz);
     return f;
 }
 
@@ -90,7 +90,7 @@ cpu::Frame madelung_primary() {
         frame.span(kAtom_vx)[i] = frame.span(kAtom_vy)[i] =
             frame.span(kAtom_vz)[i] = 0.0;
     }
-    frame.simbox = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
+    frame.box = cpu::Box::orthorhombic(1.0, 1.0, 20.0);
     return frame;
 }
 

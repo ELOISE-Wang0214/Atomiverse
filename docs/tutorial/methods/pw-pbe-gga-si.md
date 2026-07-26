@@ -85,7 +85,7 @@ Public surface only (`cpu::Frame` + concrete method members; no `*Config`, no fa
 
 // Si diamond FCC primitive: a = 5.43 Å; basis (0,0,0), (a/4,a/4,a/4);
 // FCC cell matrix as in reg_pw-pbe-gga-si.cpp
-ATV::cpu::Frame frame = /* 2 Si, Z=14, mass 28.0855, simbox = FCC cell */;
+ATV::cpu::Frame frame = /* 2 Si, Z=14, mass 28.0855, box = FCC cell */;
 
 ATV::cpu::pw::PW pbe;
 pbe.upf_path = "tests/data/pw/Si_lda_nc.upf";  // in-tree ONCVPSP NC UPF

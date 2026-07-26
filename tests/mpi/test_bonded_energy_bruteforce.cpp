@@ -150,7 +150,7 @@ cpu::Frame make_axis_crossing_chains(double box_len) {
     }
     frame.build_special_list();
 
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -169,7 +169,7 @@ BondedEnergies brute_force_bonded(const cpu::Frame& f) {
     const auto angle_atom = f.span(kAtom_angle_atom);
     const auto num_dihedral = f.span(kAtom_num_dihedral);
     const auto dihedral_atom = f.span(kAtom_dihedral_atom);
-    const double L = f.simbox.cell()(0, 0);
+    const double L = f.box.cell()(0, 0);
     const int n = f.nlocal();
     const double bk = bond_K_eV();
     const double ak = angle_K_eV();

@@ -60,7 +60,7 @@ bool run_drpa() {
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = 0.74;
     f.span(kAtom_type)[0] = f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
 
     // PySCF 2.14.0 exact dRPA (plasmon) pins — direct-rpa-h2-sto3g/REFERENCE.md.
     constexpr double kERhfHa = -1.116759307396;
@@ -146,7 +146,7 @@ bool run_polarizability() {
     frame.span(kAtom_x)[2] = 0.0;
     frame.span(kAtom_y)[2] = -0.7572;
     frame.span(kAtom_z)[2] = -0.4692;
-    frame.simbox = cpu::Box::cubic(20.0);
+    frame.box = cpu::Box::cubic(20.0);
 
     cpu::scf::RHF rhf;
     rhf.basis = cpu::scf::BasisSet::STO3G;

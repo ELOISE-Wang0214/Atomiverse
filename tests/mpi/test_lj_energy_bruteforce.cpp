@@ -68,7 +68,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
                     frame.span(ATV::kAtom_vz)[idx] = 0.0;
                     ++idx;
                 }
-    frame.simbox = ATV::cpu::Box::cubic(n_cells * a_lat);
+    frame.box = ATV::cpu::Box::cubic(n_cells * a_lat);
     return frame;
 }
 
@@ -90,8 +90,8 @@ double lj_pair_energy(double r2, double eps, double sigma, double cutoff) {
 double brute_force_lj_energy(const cpu::Frame& frame, double eps, double sigma,
                              double cutoff) {
     const int n = frame.nlocal();
-    const double lx = frame.simbox.cell()(0, 0), ly = frame.simbox.cell()(1, 1),
-                 lz = frame.simbox.cell()(2, 2);
+    const double lx = frame.box.cell()(0, 0), ly = frame.box.cell()(1, 1),
+                 lz = frame.box.cell()(2, 2);
     double e = 0.0;
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {

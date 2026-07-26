@@ -40,7 +40,7 @@ cpu::Frame make_h2(double bond = 0.74) {
     f.span(kAtom_mass)[1] = 1.008;
     f.span(kAtom_type)[0] = 1;
     f.span(kAtom_type)[1] = 1;
-    f.simbox = cpu::Box::cubic(100.0);
+    f.box = cpu::Box::cubic(100.0);
     return f;
 }
 

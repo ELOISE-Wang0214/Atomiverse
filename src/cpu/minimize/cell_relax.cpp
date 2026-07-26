@@ -27,7 +27,7 @@ IsotropicCellRelax::IsotropicCellRelax(double P_target_ev_a3, double alpha)
 double IsotropicCellRelax::pressure_from_frame_(const Frame& f) const {
     // Classical extensive virial: P = tr(σ)/(3V). Intensive PW/GPW: P = tr/3.
     // Kinetic neglected for 0 K geometry optimization.
-    const double V = f.simbox.volume();
+    const double V = f.box.volume();
     if (!(V > 0.0))
         throw std::runtime_error("IsotropicCellRelax: non-positive volume");
     const auto& s = f.meta.get(kStress);
@@ -38,7 +38,7 @@ double IsotropicCellRelax::pressure_from_frame_(const Frame& f) const {
 void IsotropicCellRelax::apply_scale_(Frame& f, double s) const {
     if (!(s > 0.0) || !std::isfinite(s))
         throw std::runtime_error("IsotropicCellRelax: invalid scale");
-    f.simbox.scale_isotropic(s);
+    f.box.scale_isotropic(s);
     const int n = f.nlocal();
     auto x = f.span(kAtom_x);
     auto y = f.span(kAtom_y);

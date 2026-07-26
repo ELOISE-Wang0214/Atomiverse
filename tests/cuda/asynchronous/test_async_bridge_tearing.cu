@@ -186,7 +186,7 @@ cpu::Frame make_tagged_cube(int n_side = 4, double density = 0.8) {
                 frame.span(kAtom_tag)[idx] = idx + 1; // distinct, nonzero
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
+    frame.box = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 

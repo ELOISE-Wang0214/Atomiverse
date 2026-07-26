@@ -61,7 +61,7 @@ cpu::Frame one_atom_z(double z) {
     f.span(kAtom_mass)[0] = 39.948;
     f.span(kAtom_type)[0] = 0;
     f.span(kAtom_tag)[0] = 1;
-    f.simbox = cpu::Box::orthorhombic(20.0, 20.0, 30.0);
+    f.box = cpu::Box::orthorhombic(20.0, 20.0, 30.0);
     f.meta.get(kEnergy) = 0.0;
     f.span(kAtom_fx)[0] = f.span(kAtom_fy)[0] = f.span(kAtom_fz)[0] = 0.0;
     return f;

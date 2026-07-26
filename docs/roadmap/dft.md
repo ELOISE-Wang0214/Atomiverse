@@ -16,14 +16,14 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 **blocked** —
-no CP2K twin, GAPW/PAW; **harness wave 12** closed zero-SCF linearized
+no CP2K twin, GAPW/PAW; **harness wave 12–14** closed zero-SCF linearized
 XL (Γ RKS), multi-k **SGCP**, D3/D4 **ATM** energy, collinear
-spin+metallic **bands/DOS**; wave-12 incomplete still open: multi-k
-**CPMD**, **GPW MLWF**, GPW FD phonon twin; **GapCensus wave 14** keeps
-wave-13 residuals (D3/D3BJ **forces** + D3/D3BJ **stress**, MBD Γ/**multi-k
-stress**, multi-k DFT+U **forces**, DFPT **GGA×spin** / **GGA×finite-q**,
-multi-k **BOMD**) and adds multi-k **multigrid**, linearized XL
-**UKS**/multi-k, D3/D4 **ATM forces**; product after
+spin+metallic **bands/DOS**, multi-k **CPMD**, **GPW MLWF**, and
+**GPW FD phonons** (`reg_gpw-fd-phonon-si`); **GapCensus wave 14** pending
+residuals (D3/D3BJ **stress**, MBD multi-k **stress**, multi-k DFT+U
+**forces**, DFPT **GGA×spin** / **GGA×finite-q**, multi-k **BOMD**,
+multi-k **multigrid**, linearized XL **UKS**/multi-k, D3/D4 **ATM forces**);
+product after
 harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
 electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,

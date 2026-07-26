@@ -62,7 +62,7 @@ void Brownian::launch(const cpu::LaunchContext& ctx) {
         z[i] += noise * normal_(rng_);
     }
     // Skip wrap when the box is a free-particle sandbox (L ≥ 1e5 Å).
-    if (f.simbox.length(0) < 1.0e5)
+    if (f.box.length(0) < 1.0e5)
         wrap_orthorhombic(f, n);
 }
 

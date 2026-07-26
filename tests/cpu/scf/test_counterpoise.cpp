@@ -31,7 +31,7 @@ cpu::Frame make_he2(double r_ang = 2.5) {
     f.span(kAtom_x)[1] = r_ang;
     f.span(kAtom_y)[1] = 0.0;
     f.span(kAtom_z)[1] = 0.0;
-    f.simbox = cpu::Box::cubic(20.0);
+    f.box = cpu::Box::cubic(20.0);
     return f;
 }
 

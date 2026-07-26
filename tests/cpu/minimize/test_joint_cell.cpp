@@ -31,7 +31,7 @@ TEST(JointIsotropicRelax, LJdimerTowardRmin) {
         f.span(kAtom_type)[i] = 0;
         f.span(kAtom_tag)[i] = i + 1;
     }
-    f.simbox = cpu::Box::cubic(40.0);
+    f.box = cpu::Box::cubic(40.0);
 
     cpu::minimizer::Minimize opt;
     cpu::minimizer::JointIsotropicRelax joint(0.0, 0.02);

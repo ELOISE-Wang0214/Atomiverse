@@ -60,7 +60,7 @@ cpu::Frame copper(int n_cell) {
                     f.span(ATV::kAtom_type)[idx] = 29;
                     ++idx;
                 }
-    f.simbox = ATV::cpu::Box::cubic(kA0 * n_cell);
+    f.box = ATV::cpu::Box::cubic(kA0 * n_cell);
     return f;
 }
 
@@ -116,7 +116,7 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
             double dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
             double dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
             double dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
-            ref.simbox.min_image(dx, dy, dz);
+            ref.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (r >= kCutoff)
                 continue;
@@ -134,7 +134,7 @@ TEST(EAMMultiRank, ForcesMatchBruteForce) {
             double dx = ref.span(ATV::kAtom_x)[i] - ref.span(ATV::kAtom_x)[j];
             double dy = ref.span(ATV::kAtom_y)[i] - ref.span(ATV::kAtom_y)[j];
             double dz = ref.span(ATV::kAtom_z)[i] - ref.span(ATV::kAtom_z)[j];
-            ref.simbox.min_image(dx, dy, dz);
+            ref.box.min_image(dx, dy, dz);
             const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (r >= kCutoff)
                 continue;

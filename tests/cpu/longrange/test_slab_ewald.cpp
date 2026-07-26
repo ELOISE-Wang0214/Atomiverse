@@ -44,7 +44,7 @@ cpu::Frame make_plate_slab() {
         frame.span(kAtom_type)[i + 4] = 1;
         frame.span(kAtom_tag)[i + 4] = i + 5;
     }
-    frame.simbox = cpu::Box::orthorhombic(12.0, 12.0, 20.0);
+    frame.box = cpu::Box::orthorhombic(12.0, 12.0, 20.0);
     return frame;
 }
 

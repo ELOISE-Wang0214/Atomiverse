@@ -47,7 +47,7 @@ cpu::Frame make_uniform_grid(int n_per_side, double box_len) {
                 frame.span(ATV::kAtom_mass)[idx] = 1.0;
                 ++idx;
             }
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 

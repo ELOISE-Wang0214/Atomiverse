@@ -59,7 +59,7 @@ cpu::Frame make_displaced_system(int n_side, double density,
                 frame.span(kAtom_type)[idx] = 0;
                 idx++;
             }
-    frame.simbox = cpu::Box::cubic(static_cast<double>(box_len));
+    frame.box = cpu::Box::cubic(static_cast<double>(box_len));
     return frame;
 }
 

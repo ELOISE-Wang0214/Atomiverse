@@ -58,7 +58,7 @@ int main() {
         frame.span(kAtom_fx)[i] = frame.span(kAtom_fy)[i] =
             frame.span(kAtom_fz)[i] = 0;
     }
-    frame.simbox = cpu::Box::orthorhombic(kA0, kB, kC);
+    frame.box = cpu::Box::orthorhombic(kA0, kB, kC);
 
     const cpu::gpw::Kind O{
         molrs::Element::O,
@@ -105,9 +105,9 @@ int main() {
         return 1;
     }
 
-    const double a1 = frame.simbox.length(0);
-    const double b1 = frame.simbox.length(1);
-    const double c1 = frame.simbox.length(2);
+    const double a1 = frame.box.length(0);
+    const double b1 = frame.box.length(1);
+    const double c1 = frame.box.length(2);
     const double e_ha = eval.last_energy_hartree();
     const double sxx_ev_a3 = frame.meta.get(kStress)[0];
     const double sxx_ha_bohr3 = eval.last_stress_ha_bohr3()[0];

@@ -58,7 +58,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
         frame.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     }
     frame.build_special_list();
-    frame.simbox = ATV::cpu::Box::cubic(box_len);
+    frame.box = ATV::cpu::Box::cubic(box_len);
     return frame;
 }
 
@@ -134,7 +134,7 @@ TEST(LjExclusions, BondExclusionRemovesOne12PairOnly) {
         (*f).rebuild_tag_index(0, (*f).nlocal());
         (*f).add_bond(0, 1, 0);
         (*f).build_special_list();
-        (*f).simbox = ATV::cpu::Box::cubic(40.0);
+        (*f).box = ATV::cpu::Box::cubic(40.0);
     }
 
     // Excluding only 1-2 should drop only the 0-1 pair from LJ; pairs (0,2),

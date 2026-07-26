@@ -69,7 +69,7 @@ frame.span(kAtom_x)[1] = 0.0;
 frame.span(kAtom_y)[1] = 0.0;
 frame.span(kAtom_z)[1] = 0.74;
 frame.span(kAtom_type)[1] = 1;
-frame.simbox = cpu::Box::cubic(20.0);
+frame.box = cpu::Box::cubic(20.0);
 
 cpu::scf::RHF rhf;
 rhf.basis = cpu::scf::BasisSet::STO3G;

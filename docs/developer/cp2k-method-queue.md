@@ -787,60 +787,11 @@ rebase `wf/*` onto `dev` (behind 17) then dual-gate / finish acceptance.
 
 ## in_progress
 
-<!-- Harness wave 14 2026-07-26 (parent `dev`): the assign panel staffed 10 but
-     the wave was interrupted during the Workers panel. Adjudicated outcome
-     below; 4 unstarted promotions demoted back to `## pending` (no worktree had
-     any implementation), 1 stays `[~]` with a corrected diagnosis. Isolation
-     worktrees removed in the same wave (Clearup). -->
-
-- [~] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces | response | twin: CP2K `VIBRATIONAL_ANALYSIS`, isolated Si2 triplet | wiring + CP2K pin merged wave 14; regression rebuilt on the corrected physics | assign wave 12 / resume wave 14
-
-**Wave-14 phonon diagnosis correction (2026-07-26).** The wave-12/13 block reason
-recorded on `wf/gpw-fd-phonon-si` — "GPW analytic forces on Si disagree with
-energy FD by ~271x" — is **wrong** and was not reproducible. Measured on `dev`:
-wherever the SCF reaches a genuine stationary point, GPW analytic forces match
-the multi-SCF energy FD to **1.7e-6 Ha/Bohr** on that same Si2 / GTH-PBE-q4 /
-DZVP-MOLOPT-GTH surface. Three setup defects produced the symptom:
-
-1. **Forced closed shell.** Si2's ground state is a triplet; the regression ran
-   RKS. With OT the SCF reports `converged` on a saddle of the closed-shell
-   functional, where the frozen-density force is not the energy gradient:
-   analytic **0.1308** Ha/Bohr, analytic-vs-FD residual **7.5e-2** — exactly the
-   worker's reported 0.131. As UKS triplet the same code gives analytic-vs-FD
-   **2.5e-6** Ha/Bohr with |sum F| = 1.0e-7.
-2. **Cluster boundary placement.** An atom sat at (0,0,0) with `nonperiodic`
-   (Martyna-Tuckerman) boundaries, which do not wrap the collocation: the energy
-   surface stops being translation invariant and the forces pick up a boundary
-   term, |sum F| = **1.98** Ha/Bohr. `GpwDft::build` now throws on off-centre
-   nonperiodic systems (see `gpw-d3-forces/REFERENCE.md`).
-3. **Twin mismatch.** An isolated-cluster (MT) spectrum was compared against a
-   CP2K `FULLY_PERIODIC T` crystal pin expecting 3 optical modes; an isolated
-   diatomic has 1 stretch + 5 near-zero modes. Different physical systems.
-
-The analytic force code was never at fault.
-
-**Remaining blocker (measured, not inferred).** Si2-triplet GTH in a cluster box
-is SCF-ill-conditioned for **both** codes, in complementary regions, so there is
-no cheap settings window with a twin:
-
-| Setting | Atomiverse SCF | CP2K SCF | ATV cost/SCF |
-| ------- | -------------- | -------- | ------------ |
-| 8 A / 150 Ry | converges (153 it) | **fails** | 3.2 s |
-| 9 A / 200 Ry | **fails** (400 it) | converges | ~7 s |
-| 10 A / 400 Ry | **fails** (300 it) | converges | ~38 s |
-| 12 A / 400 Ry (r = 2.351) | converges (45 it) | - | ~38 s |
-
-CP2K uses Broyden mixing; Atomiverse has linear + DIIS + OT, and OT lands on the
-closed-shell saddle. Next step is an **open-shell cluster mixer**, not force
-work. Secondary blocker: 12 displacements at 7-38 s per SCF exceed the 60 s e2e
-tier wherever a CP2K twin exists (the known GPW performance gap). Offline pins
-for the 10 A / 400 Ry twin (E = -7.613235635 Ha, F_x = 1.99658355e-2 Ha/Bohr,
-stretch **463.489 cm^-1**) and the 9 A / 200 Ry twin are recorded in the case
-REFERENCE, so re-enabling is a one-line CMake change.
-
+<!-- empty — `gpw-fd-phonon-si` closed 2026-07-26 (see done wave 14). -->
 
 ## done (harness wave 14 2026-07-26)
 
+- [x] `gpw-fd-phonon-si` | Finite-displacement Γ phonons with GPW analytic forces (Si₂ UKS triplet, 1D-curvature dual-gate; UKS density warm-start) | response | `regressions/gpw/gpw-fd-phonon-si` | ratio **perf_exempt** (~65 s wall; no fair CP2K twin window) | 2026-07-26
 - [x] `cpmd-kpoints` | Multi-k Car-Parrinello MD (Bloch \(C_k\)) | dynamics | `regressions/dynamics/cpmd-kpoints` | ratio **perf_exempt** (NVE drift) | 2026-07-26
 - [x] `periodic-wannier-gpw` | Maximally localized Wannier functions on GPW (multi-k Marzari-Vanderbilt) | response | `regressions/gpw/periodic-wannier-gpw` | ratio **perf_exempt** | 2026-07-26
 - [x] `gpw-d3-forces` | Analytic ionic forces with DFT-D3 zero damping | gpw | `regressions/gpw/gpw-d3-forces` | ratio **1.4** (CP2K 12.3 s / ATV 17.8 s) | 2026-07-26

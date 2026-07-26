@@ -47,7 +47,7 @@ ATV::cpu::Frame make_frame(std::initializer_list<AtomSpec> atoms) {
         f.span(ATV::kAtom_z)[i] = atom.z;
         ++i;
     }
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -57,7 +57,7 @@ ATV::cpu::Frame make_h_atom_frame() {
     f.span(ATV::kAtom_x)[0] = 0.0;
     f.span(ATV::kAtom_y)[0] = 0.0;
     f.span(ATV::kAtom_z)[0] = 0.0;
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -73,7 +73,7 @@ ATV::cpu::Frame make_methane_frame() {
         f.span(ATV::kAtom_y)[i] = 0.0;
         f.span(ATV::kAtom_z)[i] = 0.0;
     }
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -101,7 +101,7 @@ ATV::cpu::Frame make_tetrahedral_methane_frame() {
     f.span(ATV::kAtom_x)[4] = h;
     f.span(ATV::kAtom_y)[4] = -h;
     f.span(ATV::kAtom_z)[4] = -h;
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -131,7 +131,7 @@ ATV::cpu::Frame make_methanol_frame() {
     f.span(ATV::kAtom_x)[5] = -0.36;
     f.span(ATV::kAtom_y)[5] = -0.51;
     f.span(ATV::kAtom_z)[5] = -0.883346;
-    f.simbox = ATV::cpu::Box::cubic(20.0);
+    f.box = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -369,7 +369,7 @@ TEST(NDDOSystem, MethaneMatchesReferenceOrbitalAndElectronBookkeeping) {
 TEST(NDDOSystem, DOrbitalBookkeepingComesFromReferenceButFockIsGuarded) {
     ATV::cpu::Frame frame(1);
     frame.span(ATV::kAtom_type)[0] = 42;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     ASSERT_EQ(system.atoms.size(), 1u);
@@ -613,7 +613,7 @@ TEST(NDDOHCoreBuilder, SPHcoreMatchesReferenceH2HcoreMatrix) {
     frame.span(ATV::kAtom_x)[1] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto hcore =
@@ -641,7 +641,7 @@ TEST(NDDOTwoElectron, H2TwoCenterIntegralMatchesReferenceHcorePrint) {
     frame.span(ATV::kAtom_x)[1] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto w = ATV::cpu::semiempirical::build_two_center_integral_block(
@@ -665,7 +665,7 @@ TEST(NDDOFockBuilder, H2FinalDensityFockMatchesReferenceEigenvalues) {
     frame.span(ATV::kAtom_x)[1] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::NDDOSystem{frame, 0, 1};
     const auto hcore =
@@ -760,7 +760,7 @@ TEST(AM1Solver, RunConvergesClosedShellH2AgainstReferenceChargeOracle) {
     frame.span(ATV::kAtom_x)[1] = 0.0;
     frame.span(ATV::kAtom_y)[1] = 0.0;
     frame.span(ATV::kAtom_z)[1] = 0.74;
-    frame.simbox = ATV::cpu::Box::cubic(20.0);
+    frame.box = ATV::cpu::Box::cubic(20.0);
 
     solver.build(frame);
     const auto& result = solver.run(frame);

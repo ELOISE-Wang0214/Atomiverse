@@ -132,7 +132,7 @@ cpu::Frame make_bonded_lattice(int n_side, double spacing) {
                     special(idx, m) = t * 400 + m;
                 ++idx;
             }
-    frame.simbox = cpu::Box::cubic(box_len);
+    frame.box = cpu::Box::cubic(box_len);
     return frame;
 }
 
