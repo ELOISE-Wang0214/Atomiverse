@@ -245,9 +245,13 @@ class GpwDft {
     /// @brief Grimme DFT-D3 Becke–Johnson damping (PBE params, CP2K CN form).
     /// Mutually exclusive with `d3` / `d4` / `ts` / `mbd` / `xdm`.
     bool d3bj = false; ///< Grimme DFT-D3(BJ) dispersion.
-    /// @brief Grimme DFT-D4 BJ damping (PBE params, two-body; periodic EEQ).
+    /// @brief Grimme DFT-D4 BJ damping (PBE params; periodic EEQ).
     /// Mutually exclusive with `d3` / `d3bj` / `ts` / `mbd` / `xdm`.
+    /// Two-body only unless `d4_atm` is also set.
     bool d4 = false; ///< Grimme DFT-D4 dispersion.
+    /// @brief Include Axilrod–Teller–Muto three-body (s9 = 1) with D4.
+    ///        Requires `d4`. Default false (two-body product; `gpw-d4-water`).
+    bool d4_atm = false;
     /// @brief Tkatchenko–Scheffler pairwise dispersion (PBE s_R=0.94, free-atom
     ///        volumes by default). Mutually exclusive with `d3` / `d3bj` / `d4` /
     ///        `mbd` / `xdm`.

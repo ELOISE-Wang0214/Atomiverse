@@ -66,6 +66,7 @@ GpwDft copy_gpw(const GpwDft& m) {
     p.d3 = m.d3;
     p.d3bj = m.d3bj;
     p.d4 = m.d4;
+    p.d4_atm = m.d4_atm;
     p.ts = m.ts;
     p.xdm = m.xdm;
     p.mbd = m.mbd;
@@ -591,8 +592,13 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += ts.forces[static_cast<std::size_t>(i)][k];
         } else if (cfg.d4) {
+            const double s9 = cfg.d4_atm ? 1.0 : 0.0;
             const cpu::scf::D4Result d4 =
-                cpu::scf::dftd4(Z, pos, cfg.cell, periodic);
+                cpu::scf::dftd4(Z, pos, cfg.cell, periodic, /*s6=*/1.0,
+                               /*s8=*/0.95948085, /*a1=*/0.38574991,
+                               /*a2=*/4.80688534, /*ga=*/3.0, /*gc=*/2.0,
+                               /*wf=*/6.0, /*charge=*/0.0, /*cn_cut=*/30.0,
+                               /*disp2_cut=*/60.0, s9);
             for (int i = 0; i < na; ++i)
                 for (int k = 0; k < 3; ++k)
                     forces[i][k] += d4.forces[static_cast<std::size_t>(i)][k];
@@ -1216,8 +1222,12 @@ assemble_gpw_forces_kpoints(const std::vector<GpwAtom>& atoms,
                         forces[i][k] +=
                             ts.forces[static_cast<std::size_t>(i)][k];
             } else if (cfg.d4) {
-                const cpu::scf::D4Result d4 =
-                    cpu::scf::dftd4(Z, pos, cfg.cell, periodic);
+                const double s9 = cfg.d4_atm ? 1.0 : 0.0;
+                const cpu::scf::D4Result d4 = cpu::scf::dftd4(
+                    Z, pos, cfg.cell, periodic, /*s6=*/1.0,
+                    /*s8=*/0.95948085, /*a1=*/0.38574991, /*a2=*/4.80688534,
+                    /*ga=*/3.0, /*gc=*/2.0, /*wf=*/6.0, /*charge=*/0.0,
+                    /*cn_cut=*/30.0, /*disp2_cut=*/60.0, s9);
                 for (int i = 0; i < na; ++i)
                     for (int k = 0; k < 3; ++k)
                         forces[i][k] +=

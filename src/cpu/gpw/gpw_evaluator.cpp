@@ -88,6 +88,7 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.d3 = d3;
     cfg.d3bj = d3bj;
     cfg.d4 = d4;
+    cfg.d4_atm = d4_atm;
     cfg.ts = ts;
     cfg.xdm = xdm;
     cfg.mbd = mbd;
