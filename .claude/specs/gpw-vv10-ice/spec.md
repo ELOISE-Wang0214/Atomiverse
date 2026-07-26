@@ -4,7 +4,7 @@
 **Method:** Stock VV10 nonlocal correlation (Vydrov & Van Voorhis 2010) ≠ rVV10  
 **Domain:** GPW (periodic)  
 **Branch:** `wf/gpw-vv10-ice`  
-**Status:** **blocked** (reconfirmed 2026-07-26, CP2K capability loop wave 9)
+**Status:** **blocked** (reconfirmed 2026-07-26, CP2K capability loop wave 10)
 
 ## Intent
 
@@ -38,6 +38,7 @@ Verified on Arrhenius tree install (`work/cp2k/install`, libcp2k 2026.1):
 | Wave-7 re-probe (`cp2k.psmp` 2026.1, 2026-07-26) | same **ABORT** before SCF; source enum still DRSLL\|LMKLL\|RVV10 only |
 | Wave-8 re-probe (`cp2k.psmp` 2026.1, 2026-07-26) | same **ABORT** before SCF; source enum + data kernels unchanged |
 | Wave-9 re-probe (`cp2k.psmp` 2026.1 @ 85b8a9b49c, 2026-07-26) | same **ABORT** before SCF; source enum + data kernels unchanged; rebased onto `dev` @ `bf8be7ed` |
+| Wave-10 re-probe (`cp2k.psmp` 2026.1 @ 85b8a9b49c, 2026-07-26) | same **ABORT** before SCF; source enum + data kernels unchanged; rebased onto `dev` @ `75655ede` (assign wave 10 parent) |
 
 Probe artefact: `tools/cp2k_oracle/inputs/gpw-vv10-ice/` (this tree).
 
@@ -94,10 +95,10 @@ Any one of:
 
 **`acceptance_met = false`.** Block reason: no CP2K oracle surface for stock
 VV10; cannot fulfil offline-CP2K pin contract. Product nonlocal VV-family
-capability on GPW remains **rVV10**. Wave-9 worker re-probed live
+capability on GPW remains **rVV10**. Wave-10 worker re-probed live
 (`cp2k.psmp` 2026.1 @ 85b8a9b49c ABORT `invalid value for enumeration:VV10`),
 re-read `input_cp2k_xc.F` / `input_constants.F` / `data/` kernels, rebased onto
-current `dev` (`bf8be7ed`); no `GpwDft::vv10` impl landed (would be false
+current `dev` (`75655ede`); no `GpwDft::vv10` impl landed (would be false
 closure). Alternate literature / non-CP2K oracle is **out of contract** for
 this CP2K capability loop without an explicit policy change. Harness should
 move the queue row from `## in_progress` to `## blocked` (stop re-staffing
