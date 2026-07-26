@@ -16,10 +16,13 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 **blocked** —
-no CP2K twin, GAPW/PAW; **GapCensus wave 12** residuals: collinear
+no CP2K twin, GAPW/PAW; **GapCensus wave 12** still in flight: collinear
 spin+metallic **bands/DOS**, D3/D4 **ATM** three-body, zero-SCF
 **linearized XL** forces, multi-k **CPMD/SGCP**, **GPW MLWF**, GPW FD
-phonon twin; product after harness wave 11 also ships UGW@UKS-RPBE,
+phonon twin; **GapCensus wave 13** reopens D3/D3BJ dedicated **forces**
++ D3BJ **stress**, MBD Γ/**multi-k stress**, multi-k DFT+U **forces**,
+DFPT **GGA×spin** / **GGA×finite-q**, multi-k **BOMD**; product after
+harness wave 11 also ships UGW@UKS-RPBE,
 dedicated TS/XDM force pins, multi-k UKS stress GGA expand, CPMD
 electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,
 finite-q DFPT spin+smear, collinear DFPT spin+smear, multi-k UKS
@@ -251,7 +254,12 @@ productize at **Γ** (`reg_gpw-mbd-forces`; free-atom / periodic path)
 Force assembly folds free-atom **TS** / **XDM** on Γ + multi-k with
 dedicated offline force pins (`reg_gpw-ts-forces` / `reg_gpw-xdm-forces`).
 **Three-body ATM** (D3 C9 / D4 \(s_9\)) remains ○ on GPW (two-body only;
-queued `gpw-d3-atm` / `gpw-d4-atm`).
+queued `gpw-d3-atm` / `gpw-d4-atm`). Two-body D3/D3(BJ) **energy** is
+product; dedicated **force** pins and D3(BJ) **stress** remain open
+(queued `gpw-d3-forces` / `gpw-d3bj-forces` / `gpw-d3bj-stress` —
+same dedicated-pin pattern as TS/XDM forces). **MBD stress** (Γ
+dedicated pin + multi-k path that currently skips MBD) is queued
+(`gpw-mbd-stress` / `gpw-mbd-kpoint-stress`).
 
 ## 9. Composite DFT Methods
 
@@ -323,9 +331,11 @@ Two periodic DFT engines exist, with disjoint strengths:
   stress for **RevPBE/RPBE/BLYP** (`reg_gpw-kpoint-uks-stress-gga`),
   dedicated **TS/XDM** force pins (`reg_gpw-ts-forces` /
   `reg_gpw-xdm-forces`), **UGW@UKS-RPBE** (`reg_ugw-uks-rpbe`). Stock VV10
-  is **blocked** (no CP2K twin). Open residuals (GapCensus wave 12): D3/D4
-  ATM, multi-k CPMD/SGCP, linearized XL forces, GPW MLWF, GPW FD phonon
-  twin, PW spin+metallic bands/DOS. Hybrids / meta-GGA / GAPW / PAW remain
+  is **blocked** (no CP2K twin). Open residuals: wave-12 staff (D3/D4 ATM,
+  multi-k CPMD/SGCP, linearized XL, GPW MLWF, GPW FD phonon, PW
+  spin+metallic bands/DOS) **plus** wave-13 pending (D3/D3BJ forces +
+  D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U forces, DFPT GGA×spin
+  / GGA×finite-q, multi-k BOMD). Hybrids / meta-GGA / GAPW / PAW remain
   blocked (queue not exhausted — see `cp2k-method-queue.md`). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
@@ -373,7 +383,8 @@ Which engine backs which ✓:
 - **Periodic DFT+U** is GPW Dudarev PLUS_U energy (`reg_gpw-dftu-nio`) **and
   analytic stress** (`reg_gpw-dftu-stress`) on the **Γ** path **and multi-k
   SCF** (`reg_gpw-dftu-kpoints`) **and multi-k analytic stress**
-  (`reg_gpw-dftu-kpoint-stress`). Molecular Gaussian DFT+U remains ○.
+  (`reg_gpw-dftu-kpoint-stress`). Multi-k DFT+U **ionic forces** remain
+  open (queued `gpw-dftu-kpoint-forces`). Molecular Gaussian DFT+U remains ○.
 - **Periodic dispersion-corrected DFT** is GPW + DFT-D3 zero damping,
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** energy (`reg_gpw-d4-water`)
   **+ analytic stress** (`reg_gpw-d4-stress`) **+ ionic forces**
@@ -458,6 +469,9 @@ Which engine backs which ✓:
   smear** `reg_dfpt-finite-q-spin-smearing`). NC-UPF; fixed-occupation and
   metallic-smear Sternheimer paths (Γ / commensurate / direct finite-\(q\);
   collinear spin × smear at Γ and finite-\(q\)) productized.
+  **GGA × collinear spin** and **finite-q GGA** remain open residuals
+  (queued `dfpt-gga-spin-si` / `dfpt-gga-finite-q-si` — GGA and spin/finite-q
+  pins are product only as separate axes).
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,

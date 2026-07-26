@@ -225,7 +225,8 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 - Concrete `RHF`/`UHF`/`RKS`/`UKS` (or nested SCF) with gradients → **HF and KS
   BOMD**, with an ASPC density predictor for warm starts.
 - `cpu::gpw::GPWEvaluator` with forces on → **periodic KS BOMD** (Γ-point,
-  closed-shell); NVE energy-drift pin `reg_gpw-bomd-water`.
+  closed-shell); NVE energy-drift pin `reg_gpw-bomd-water`. **Multi-k
+  BOMD** remains ○ (queued `gpw-bomd-kpoints`; multi-k XL is product).
 - `cpu::pw::PWEvaluator` with `with_gradient(true)` → **plane-wave BOMD**
   (analytic local + Ewald + KB forces; default is energy-only); foothold
   `reg_pw-bomd-h`.

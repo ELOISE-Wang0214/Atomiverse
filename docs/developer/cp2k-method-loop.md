@@ -68,6 +68,33 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 13 (parent `dev` @ `663f4804`):** recover
+  incomplete=**9** (wave-12 `[~]` preserved; isolation worktrees=**9**);
+  CP2K specs on `dev`=0; prior pending residual **0**; **+9** residuals →
+  pending **9** (`gpw-d3-forces`, `gpw-d3bj-forces`, `gpw-d3bj-stress`,
+  `gpw-mbd-stress`, `gpw-mbd-kpoint-stress`, `gpw-dftu-kpoint-forces`,
+  `dfpt-gga-spin-si`, `dfpt-gga-finite-q-si`, `gpw-bomd-kpoints`);
+  in_progress **9**; blocked **6**. No ○/✓ table flips; §8/§10–12 + MD
+  AIMD residual prose + index GPW residual line refreshed. Next: Assign
+  prefers incomplete resumes (wave-12 merge-ready clean tips first; dirty
+  WIP in place) then surface-disjoint pending (D3 force ∥ D3BJ force/stress
+  careful dispersion; MBD stress ∥ MBD×k stress careful stress tree; DFT+U
+  k-forces free of DFPT; DFPT GGA×spin ∥ GGA×finite-q careful DFPT tree;
+  multi-k BOMD free of multi-k CPMD/SGCP incomplete surface).
+- **2026-07-26 Recover (parent `dev` @ `663f4804`):** incomplete_count=**9**
+  (all wave-12 `[~]`); open CP2K specs on `dev`=**0** (PySCF deferred only:
+  `periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); unmerged feature `wf/*`=**9**
+  (plus blocked `wf/gpw-vv10-ice`); isolation worktrees=**9**; half-regs on
+  worktrees only (none on `dev`). **6 clean ahead=1** feat tips ready for
+  merge/dual-gate verify: `bands-spin-metallic-si`@`ea3ae031`,
+  `dos-spin-metallic-si`@`c2402fc3`, `gpw-d3-atm`@`da371950`,
+  `gpw-d4-atm`@`d0371a5b`, `xl-bomd-linearized-forces`@`21d0603e`,
+  `cpmd-kpoints`@`3425c7c6`. **3 dirty ahead=0** WIP (uncommitted spec+impl):
+  `second-gen-cpmd-kpoints`, `periodic-wannier-gpw`, `gpw-fd-phonon-si` @
+  `cbe74bdf`. Queue `## in_progress` normalized with resume tips; pending
+  residual still **0**; blocked **6** (incl. stock VV10). No invent. Next:
+  Assign prefers incomplete resumes (dirty WIP first or merge-ready clean
+  tips) → Worktrees.
 - **2026-07-26 Assign wave 12 (parent `dev` @ `cbe74bdf`):** recover
   incomplete=**0**; CP2K specs=0; unmerged feature `wf/*`=0. Staffed
   **all 9** pending → `[~]` / `## in_progress` (no resumes; no held

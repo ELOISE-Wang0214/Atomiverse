@@ -264,9 +264,11 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   `reg_gpw-variable-cell-molopt`). After harness wave 11 residual prose
   closes UGW@UKS-RPBE, multi-k UKS XL, metallic bands / spin DOS,
   finite-q DFPT spin+smear, multi-k UKS stress GGA, CPMD electronic
-  thermostat, and TS/XDM force pins; **GapCensus wave 12** reopens
-  spin+metallic bands/DOS, D3/D4 ATM, linearized XL forces, multi-k
-  CPMD/SGCP, GPW MLWF, GPW FD phonon twin; stock VV10 remains **blocked**
+  thermostat, and TS/XDM force pins; **wave 12** staff still open
+  (spin+metallic bands/DOS, D3/D4 ATM, linearized XL, multi-k CPMD/SGCP,
+  GPW MLWF, GPW FD phonon); **GapCensus wave 13** reopens D3/D3BJ forces +
+  D3BJ stress, MBD Γ/multi-k stress, multi-k DFT+U forces, DFPT GGA×spin /
+  GGA×finite-q, multi-k BOMD; stock VV10 remains **blocked**
   (no CP2K twin); hybrids / meta-GGA / GAPW blocked — see
   `cp2k-method-queue.md` (queue not exhausted — GapCensus owns next
   discovery).
