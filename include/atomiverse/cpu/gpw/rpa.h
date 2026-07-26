@@ -7,7 +7,9 @@
 /// - **multi-k RKS** (complex Bloch + finite-\(q\) inter-\(k\) Casida;
 ///   RI-GPW product only)
 /// - **Γ UKS (URPA)** spin-conserving dRPA over α→α ⊕ β→β (spins explicit;
-///   no closed-shell factor 2). Multi-k URPA is a follow-on.
+///   no closed-shell factor 2)
+/// - **multi-k UKS (URPA)** finite-\(q\) inter-\(k\) spin-conserving dRPA
+///   on \(C_k\) / \(C_k^\beta\) (RI-GPW product only)
 ///
 /// Correlation energy via the Furche plasmon formula on the
 /// Coulomb-only (\(\alpha_{\mathrm{hf}}=0\)) Casida spectrum:
@@ -33,7 +35,8 @@ namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief GPW direct RPA correlation energy (RKS Γ/multi-k, or Γ URPA@UKS).
+/// @brief GPW direct RPA correlation energy (RKS Γ/multi-k, or URPA@UKS
+///        Γ/multi-k).
 struct RpaResult {
     /// @brief dRPA correlation energy \(E_c\) [Hartree] (typically < 0).
     double e_corr = 0.0;
@@ -61,9 +64,11 @@ struct RpaResult {
     ///        Γ URPA: composite OV
     ///        \(n_{\mathrm{ov}}^\alpha+n_{\mathrm{ov}}^\beta\) (not
     ///        \(n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\) in general).
-    ///        Multi-k: all finite-\(q\) block roots concatenated then sorted
-    ///        (length \(N_k^2\cdot n_{\mathrm{occ}}\cdot n_{\mathrm{virt}}\)
-    ///        with \(q\)-mesh = \(k\)-mesh).
+    ///        Multi-k RKS: all finite-\(q\) block roots concatenated then
+    ///        sorted (length \(N_k^2\cdot n_{\mathrm{occ}}\cdot
+    ///        n_{\mathrm{virt}}\) when every ordered pair lands).
+    ///        Multi-k URPA: same with composite OV
+    ///        \(n_{\mathrm{ov}}^\alpha+n_{\mathrm{ov}}^\beta\).
     std::vector<double> omega_ha;
 };
 

@@ -283,6 +283,46 @@ void direct_rpa_rhf_energy_kpoints(
     const std::vector<double>& k_weights, double& e_corr, double& tr_A,
     std::vector<double>& omega);
 
+/// @brief Multi-k **finite-\(q\) inter-\(k\) unrestricted dRPA** (URPA)
+///        correlation energy (spin-conserving α→α ⊕ β→β).
+///
+/// Same q-mesh / source-k construction as
+/// `direct_rpa_rhf_energy_kpoints`. Composite OV per source \(k\): α block
+/// then β (matches `direct_rpa_uhf` / multi-k UGW dielectric). Coulomb-only
+/// Casida with spins explicit (\(A=\Delta\varepsilon+V\), \(B=V\) — no
+/// closed-shell factor 2). Furche-averaged
+/// \(E_c=\sum_q w_q\,\tfrac12\bigl(\sum_s\Omega_{q,s}-\mathrm{Tr}\,A_q\bigr)\)
+/// with \(w_q=n_{\mathrm{src}}(q)/N_k^2\). When \(N_k=1\) and orbitals are
+/// real-valued complex with \(C^\alpha=C^\beta\), recovers
+/// `direct_rpa_uhf` / closed-shell `direct_rpa_rhf_energy`.
+///
+/// @param psi_occ_a_k / psi_virt_a_k Per-k α MO grids [nk][n_oσ·npts].
+/// @param psi_occ_b_k / psi_virt_b_k Per-k β MO grids (empty channel OK).
+/// @param eps_occ_a_k / eps_virt_a_k Per-k α eigenvalues [Ha].
+/// @param eps_occ_b_k / eps_virt_b_k Per-k β eigenvalues [Ha].
+/// @param k_frac / k_weights Same as RHF multi-k (Σ weights = 1).
+/// @param e_corr Out: dRPA \(E_c\) [Hartree].
+/// @param tr_A   Out: \(\sum_q w_q\,\mathrm{Tr}\,A_q\) [Hartree].
+/// @param omega  Out: positive \(\Omega_{q,s}\) across all q-blocks,
+///               ascending [Ha]; length
+///               \(\sum_q n_{\mathrm{src}}(q)\cdot(n_{\mathrm{ov}}^\alpha
+///               +n_{\mathrm{ov}}^\beta)\).
+/// @throws std::invalid_argument on shape / empty both channels.
+/// @throws std::runtime_error when (A−B) not PD or any \(\Omega^2\le 0\).
+void direct_rpa_uhf_energy_kpoints(
+    const UniformGrid& grid,
+    const std::vector<std::vector<Cplx>>& psi_occ_a_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_a_k,
+    const std::vector<std::vector<Cplx>>& psi_occ_b_k,
+    const std::vector<std::vector<Cplx>>& psi_virt_b_k,
+    const std::vector<std::vector<double>>& eps_occ_a_k,
+    const std::vector<std::vector<double>>& eps_virt_a_k,
+    const std::vector<std::vector<double>>& eps_occ_b_k,
+    const std::vector<std::vector<double>>& eps_virt_b_k,
+    const std::vector<std::array<double, 3>>& k_frac,
+    const std::vector<double>& k_weights, double& e_corr, double& tr_A,
+    std::vector<double>& omega);
+
 /// @brief Full dRPA result including X/Y amplitudes (G0W0 screening).
 ///
 /// Layout matches `mo_eri_ovov`: composite OV index
