@@ -243,16 +243,15 @@ OT/k-point XL and zero-SCF linearized forces stay ○.
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
 then fixed-density KS eval + electronic Verlet + analytic forces at that
-density (`reg_cpmd-water`). Conserved \(E_{\mathrm{cons}} = T_n + T_e +
-E_{\mathrm{KS}}\). **Electronic RATTLE** (Andersen constraint-preserving
-orbitals; `reg_cpmd-rattle-water`) is product on the closed-shell path.
-**UKS CPMD** and electronic thermostat stay ○ (queue: `cpmd-uks`).
+density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
+\(E_{\mathrm{cons}} = T_n + T_e + E_{\mathrm{KS}}\). **Electronic RATTLE**
+(Andersen constraint-preserving orbitals; `reg_cpmd-rattle-water`) is product
+on the closed-shell path. Electronic thermostat remains a residual.
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
 GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
-(`reg_second-gen-cpmd-water`). **SGCP UKS** stays ○ (queue:
-`second-gen-cpmd-uks`).
+(`reg_second-gen-cpmd-water`) **and Γ-UKS** (`reg_second-gen-cpmd-uks`).
 
 ## 8. Nuclear Quantum Dynamics
 

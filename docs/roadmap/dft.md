@@ -16,13 +16,14 @@ tests; libxc is never a runtime dependency.
 **Periodic DFT is DFT**, so it lives here too: sections 10–11 cover the
 plane-wave and GPW engines, their functionals, forces/stress, phonons, and the
 remaining periodic-only gaps (hybrids, meta-GGA, stock VV10 incomplete staff,
-optB88-vdW, GAPW/PAW; queue open after harness wave 6: URPA@UKS, multi-k UGW,
-GPW UKS+smear, UKS Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin
-DFPT — XDM free-atom, GPW metallic RKS smear, Γ-UKS RPBE/revPBE/BLYP, multi-k
-DFT+U energy/stress, multi-k UMP2, Γ UGW, multi-k Hirshfeld RKS, DFPT-GGA,
-XL-BOMD UKS, k-point RKS/UKS forces/stress, Γ + finite-q + incommensurate
-DFPT, multi-k MP2/RPA/G0W0, vdW-DF / vdW-DF2 / rVV10, periodic Ewald MBD, PW
-true spin-GGA, finite-q dRPA, OT-UKS, CPMD RATTLE already ship).
+optB88-vdW, GAPW/PAW; pending residual emptied after harness wave 7 — **not**
+queue exhausted, GapCensus owns refill — URPA@UKS, multi-k UGW, GPW UKS smear,
+UKS Hirshfeld, CPMD/SGCP UKS, OT+k / OT+DFT+U, collinear-spin DFPT, XDM free-atom,
+GPW RKS/UKS metallic smear, Γ-UKS RPBE/revPBE/BLYP, multi-k DFT+U energy/stress,
+multi-k UMP2, Γ+multi-k UGW, multi-k + UKS Hirshfeld, DFPT-GGA/spin, XL-BOMD UKS,
+k-point RKS/UKS forces/stress, Γ + finite-q + incommensurate DFPT, multi-k
+MP2/RPA/G0W0, vdW-DF / vdW-DF2 / rVV10, periodic Ewald MBD, PW true spin-GGA,
+finite-q dRPA, OT-UKS, CPMD RATTLE already ship).
 
 ## 1. Kohn–Sham Methods
 
@@ -226,7 +227,7 @@ forces remain queue-depth). **Periodic Ewald + k-mesh MBD@rsSCS** productizes
 free-atom / Hirshfeld MBD for periodic cells (`reg_gpw-mbd-periodic`).
 **XDM** free-atom pairwise dispersion ships on GPW (`GpwDft::xdm` /
 `GPWEvaluator::xdm`; `reg_gpw-xdm-ice`). **Hirshfeld** volumes productize for
-**closed-shell RKS** only (Γ + multi-k); **UKS Hirshfeld** is queue-open.
+**closed-shell RKS** (Γ + multi-k) **and Γ-UKS** (`reg_gpw-hirshfeld-uks`).
 Stock **VV10** (distinct from rVV10; CP2K 2026.1 has no `TYPE VV10`;
 `[~] gpw-vv10-ice`) and **optB88-vdW** remain ○.
 
@@ -274,21 +275,20 @@ Two periodic DFT engines exist, with disjoint strengths:
   `reg_gpw-analytic-stress` / `reg_gpw-uks-stress` /
   `reg_gpw-kpoint-stress` / `reg_gpw-kpoint-uks-stress` /
   `reg_gpw-stress-water`) including **DFT+U** (`reg_gpw-dftu-stress`),
-  product **OT** minimizer (`use_ot` RKS + **Γ-UKS** `reg_ot-uks-o2`;
-  multi-k OT and OT+DFT+U remain queue-open),
+  product **OT** minimizer (`use_ot` RKS + **Γ-UKS** `reg_ot-uks-o2` +
+  **multi-k** `reg_ot-kpoints` + **OT+DFT+U** `reg_ot-dftu`),
   **Dudarev DFT+U** (`plus_u`; Γ `reg_gpw-dftu-nio` + **multi-k**
   `reg_gpw-dftu-kpoints` + **multi-k analytic stress**
   `reg_gpw-dftu-kpoint-stress`), **metallic occupation smearing** on
-  multi-k **RKS** (`reg_gpw-metallic-smearing`; UKS+smear queue-open).
+  multi-k **RKS** (`reg_gpw-metallic-smearing`) **and multi-k UKS**
+  (`reg_gpw-uks-smearing`).
   **Γ-point** RKS and **Γ-point UKS**
   (PADE LSD + **PBE-GGA** `reg_gpw-uks-pbe`; `n_alpha`/`n_beta`), plus
   **Monkhorst–Pack k-point RKS** and **k-point UKS** (`k_mesh` / explicit
   `k_points`; phased lattice sums, KB nonlocal, per-k DIIS;
   `reg_gpw-kpoints-si` / `reg_gpw-kpoints-uks`). **Open residuals** after
-  GapCensus wave 7 are owned by the queue (stock VV10 incomplete staff,
-  URPA@UKS, multi-k UGW, GPW UKS smear / UKS Hirshfeld, CPMD/SGCP UKS,
-  OT+k / OT+DFT+U, collinear-spin DFPT; hybrids / meta-GGA / GAPW / PAW
-  remain blocked). CPU only.
+  harness wave 7 are owned by GapCensus refill (stock VV10 incomplete staff;
+  hybrids / meta-GGA / GAPW / PAW remain blocked). CPU only.
 
 | Method                           | CPU | CUDA | Kokkos |
 | -------------------------------- | :-: | :--: | :---: |
@@ -340,26 +340,25 @@ Which engine backs which ✓:
   **D3(BJ)** (§8; `reg_gpw-pbe-d3bj-ice`), **D4** (`reg_gpw-d4-water`),
   **TS** (`reg_gpw-ts-ice`), free-atom **MBD@rsSCS** (`reg_gpw-mbd-ice`),
   **Hirshfeld-scaled MBD** (Γ `reg_gpw-mbd-hirshfeld` + multi-k
-  `reg_gpw-hirshfeld-kpoints`), **periodic Ewald MBD**
-  (`reg_gpw-mbd-periodic`), **XDM** (`reg_gpw-xdm-ice`), **vdW-DF DRSLL**
-  (`reg_gpw-vdw-df-ice`), **vdW-DF2 LMKLL** (`reg_gpw-vdw-df2-ice`), and
-  **rVV10** (`reg_gpw-rvv10-ice`).
+  `reg_gpw-hirshfeld-kpoints` + **Γ-UKS** `reg_gpw-hirshfeld-uks`),
+  **periodic Ewald MBD** (`reg_gpw-mbd-periodic`), **XDM** (`reg_gpw-xdm-ice`),
+  **vdW-DF DRSLL** (`reg_gpw-vdw-df-ice`), **vdW-DF2 LMKLL**
+  (`reg_gpw-vdw-df2-ice`), and **rVV10** (`reg_gpw-rvv10-ice`).
 - **Periodic MP2** is **Γ-point RI-GPW product** (`GpwDft::mp2` with
   `mp2_ri` default true; Del Ben et al. 2012 layout;
   `reg_periodic-ri-mp2-si` vs CP2K 2026.1; Poisson foothold
   `reg_periodic-mp2-si`) **and multi-k RI-GPW** (`reg_periodic-mp2-kpoints`)
   **and Γ UMP2@UKS** (`reg_periodic-ump2-si`) **and multi-k UMP2**
-  (`reg_periodic-ump2-kpoints`). **URPA@UKS** remains queue-open
-  (closed-shell multi-k RPA + Γ UGW productize; multi-k UGW residual
-  separate).
+  (`reg_periodic-ump2-kpoints`).
   **Periodic RPA** is **Γ-point dRPA@KS** product (`GpwDft::direct_rpa`;
   plasmon formula; `reg_periodic-rpa-si`), **multi-k k-diagonal dRPA**
-  (`reg_periodic-rpa-kpoints`), **and finite-q inter-k dRPA**
-  (`reg_periodic-rpa-finite-q`). **Periodic GW** is **Γ-point spectral
-  G0W0@KS** product (`GpwDft::g0w0`; `reg_periodic-gw-si`), **multi-k
-  k-diagonal spectral G0W0** (`reg_periodic-gw-kpoints`), **finite-q
-  inter-\(k\) \(W\)** (`reg_periodic-gw-finite-q`), **and Γ UGW@UKS**
-  (`reg_periodic-ugw-si`; multi-k UGW queue-open).
+  (`reg_periodic-rpa-kpoints`), **finite-q inter-k dRPA**
+  (`reg_periodic-rpa-finite-q`), **and Γ URPA@UKS** (`reg_periodic-urpa-si`).
+  **Periodic GW** is **Γ-point spectral G0W0@KS** product (`GpwDft::g0w0`;
+  `reg_periodic-gw-si`), **multi-k k-diagonal spectral G0W0**
+  (`reg_periodic-gw-kpoints`), **finite-q inter-\(k\) \(W\)**
+  (`reg_periodic-gw-finite-q`), **Γ UGW@UKS** (`reg_periodic-ugw-si`),
+  **and multi-k UGW** (`reg_periodic-ugw-kpoints`).
 - Periodic hybrids are ○ for the same reason periodic HF is (see
   [Hartree–Fock](hartree-fock.md#2-periodic-hartreefock)): no periodic exact
   exchange.
@@ -405,9 +404,9 @@ Which engine backs which ✓:
   Ewald/KB second derivatives (`regressions/response/dfpt-phonon-si`;
   energy-second-difference twin to 0.07 %; **finite-q at X** commensurate
   supercell path `reg_dfpt-finite-q-si`; **incommensurate** direct Sternheimer
-  `reg_dfpt-incommensurate-si`; **GGA kernel** `reg_dfpt-gga-si`). NC-UPF /
-  fixed occupations / **closed-shell only** (collinear spin and metallic
-  smear remain queue-open).
+  `reg_dfpt-incommensurate-si`; **GGA kernel** `reg_dfpt-gga-si`;
+  **collinear spin** `reg_dfpt-spin-si`). NC-UPF / fixed occupations;
+  **metallic smear on DFPT** remains a residual for GapCensus.
 - **Berry-phase polarization**: King-Smith–Vanderbilt (KSV) electronic
   polarization on the PW method (`cpu::pw::BerryPolarization`; string-averaged
   Berry phases over occupied Bloch manifolds; symmetry-exact Si pins,
@@ -438,10 +437,12 @@ Which engine backs which ✓:
 
 **Smearing for metals** on CPU PW: `PW::smearing` (Fermi–Dirac / Methfessel–Paxton)
 + `degauss` [Ry] + `extra_bands` (`reg_pw-smearing-al`) **and GPW** multi-k RKS
-FD/MP occupations (`reg_gpw-metallic-smearing`). OT on GPW is a product member
-(`use_ot`; RKS `reg_ot-minimizer-water` + **Γ-UKS** `reg_ot-uks-o2`). **Band
-structure / DOS** on CPU PW: `cpu::pw::Bands` (high-symmetry path) +
-`cpu::pw::Dos` (MP mesh + Gaussian smearing; `reg_bands-dos-si`).
+FD/MP (`reg_gpw-metallic-smearing`) **and multi-k UKS** (`reg_gpw-uks-smearing`).
+OT on GPW is a product member (`use_ot`; RKS `reg_ot-minimizer-water` +
+**Γ-UKS** `reg_ot-uks-o2` + **multi-k** `reg_ot-kpoints` + **OT+DFT+U**
+`reg_ot-dftu`). **Band structure / DOS** on CPU PW: `cpu::pw::Bands`
+(high-symmetry path) + `cpu::pw::Dos` (MP mesh + Gaussian smearing;
+`reg_bands-dos-si`).
 
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and

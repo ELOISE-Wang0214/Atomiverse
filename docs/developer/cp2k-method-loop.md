@@ -68,6 +68,18 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 7 (parent `dev` @ `8cb47664`):** 9 merged →
+  done: `periodic-urpa-si`, `periodic-ugw-kpoints`, `gpw-uks-smearing`,
+  `gpw-hirshfeld-uks`, `cpmd-uks`, `second-gen-cpmd-uks`, `ot-kpoints`,
+  `ot-dftu`, `dfpt-spin-si`. Incomplete remaining **1** (`[~] gpw-vv10-ice`
+  on unmerged `wf/gpw-vv10-ice`); pending residual **0** (census list
+  emptied — **not** queue exhausted); blocked **5**. Specs closed
+  (deleted) for all 9. Roadmap: **no new ○→✓ table flips**; residual
+  prose closed URPA@UKS, multi-k UGW, GPW UKS smear, UKS Hirshfeld,
+  CPMD/SGCP UKS, OT+k, OT+DFT+U, collinear-spin DFPT; stock VV10 stays
+  open. Clearup already ran (no isolation worktrees; no builds).
+  **Queue not exhausted** — next wave Recover incomplete then GapCensus.
+  No push.
 - **2026-07-26 GapCensus wave 7 (parent `dev` @ `9bdeddf1`):** recover
   incomplete=**1** (`[~] gpw-vv10-ice` on unmerged `wf/gpw-vv10-ice` —
   not demoted); CP2K specs on `dev`=0; isolation worktrees=0;
