@@ -164,3 +164,62 @@ TEST(GpwMbd, GpwDftReportsEDispPeriodic) {
     EXPECT_LT(res.e_disp, 0.0);
     EXPECT_TRUE(std::isfinite(res.e_total));
 }
+
+// Product forces must match an independent central FD of the same energy
+// (h_product = 1e-4; check with h = 1e-5).
+TEST(GpwMbd, ProductForcesMatchIndependentFiniteDifference) {
+    auto pos = water_dimer_bohr();
+    const double cell[3] = {0.0, 0.0, 0.0};
+    const MbdResult r = mbd_rsscs_pbe(kZ, pos, cell, /*periodic=*/false);
+
+    ASSERT_EQ(r.forces.size(), pos.size());
+    EXPECT_NEAR(r.energy, kLibMbdIsolated, 1e-12);
+
+    // Independent FD with a tighter step (energy-only re-eval via public API).
+    const double h = 1e-5;
+    double max_err = 0.0;
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + h;
+            const double ep = mbd_rsscs_pbe(kZ, pos, cell, false).energy;
+            pos[i][d] = save - h;
+            const double em = mbd_rsscs_pbe(kZ, pos, cell, false).energy;
+            pos[i][d] = save;
+            const double fd = -(ep - em) / (2.0 * h);
+            max_err = std::max(max_err, std::abs(fd - r.forces[i][d]));
+            sum[d] += r.forces[i][d];
+        }
+    }
+    std::printf("[MBD] max |F_product - F_fd(h=1e-5)| = %.2e Ha/Bohr\n",
+                max_err);
+    EXPECT_LT(max_err, 1e-6);
+    const double sum_norm =
+        std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+    std::printf("[MBD] |sum F| = %.2e Ha/Bohr\n", sum_norm);
+    EXPECT_LT(sum_norm, 1e-8);
+    // Net dispersion force on O0 should be nonzero (dimer attraction along x).
+    EXPECT_GT(std::abs(r.forces[0][0]), 1e-6);
+}
+
+TEST(GpwMbd, PeriodicForcesFiniteAndTranslationallyInvariant) {
+    auto pos = water_dimer_bohr();
+    const double L = 12.0 * kAngToBohr;
+    const double cell[3] = {L, L, L};
+    const int kmesh[3] = {2, 2, 2};
+    const MbdResult r =
+        mbd_rsscs_pbe(kZ, pos, cell, /*periodic=*/true, 0.83, 6.0, {}, kmesh);
+    ASSERT_EQ(r.forces.size(), pos.size());
+    EXPECT_NEAR(r.energy, kLibMbdPeriodic222, 1e-10);
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (std::size_t i = 0; i < r.forces.size(); ++i) {
+        for (int d = 0; d < 3; ++d) {
+            EXPECT_TRUE(std::isfinite(r.forces[i][d]));
+            sum[d] += r.forces[i][d];
+        }
+    }
+    const double sum_norm =
+        std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
+    EXPECT_LT(sum_norm, 1e-7);
+}

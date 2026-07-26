@@ -542,15 +542,15 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     if (!analytic_loc)
         add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
-    // Dispersion forces (additive, geometry-only). MBD forces remain out of
-    // scope (energy/stress only); D4 is product via scf::dftd4.
+    // Dispersion forces (additive, geometry-only). D3/BJ, D4, TS, XDM, and
+    // MBD@rsSCS are product paths (mutually exclusive).
     const int n_disp = (cfg.d3 ? 1 : 0) + (cfg.d3bj ? 1 : 0) + (cfg.d4 ? 1 : 0)
                        + (cfg.ts ? 1 : 0) + (cfg.xdm ? 1 : 0)
                        + (cfg.mbd ? 1 : 0);
     if (n_disp > 1)
         throw std::runtime_error(
             "GPW forces: d3, d3bj, d4, ts, xdm, and mbd are mutually exclusive");
-    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm) {
+    if (cfg.d3 || cfg.d3bj || cfg.d4 || cfg.ts || cfg.xdm || cfg.mbd) {
         std::vector<int> Z(static_cast<std::size_t>(na));
         std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
         for (int i = 0; i < na; ++i) {
@@ -564,7 +564,20 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         constexpr double kAng2Bohr = 1.0 / 0.52917720859;
         constexpr double kRcutBjBohr =
             2.0 * 20.0 * kAng2Bohr; // 2×R_CUTOFF 20 Å
-        if (cfg.xdm) {
+        if (cfg.mbd) {
+            // Same isolated / periodic switch as fold_dispersion (mbd_k_mesh).
+            const bool mbd_per = cfg.mbd_k_mesh[0] > 0 || cfg.mbd_k_mesh[1] > 0
+                                 || cfg.mbd_k_mesh[2] > 0;
+            if (mbd_per && cfg.nonperiodic)
+                throw std::runtime_error(
+                    "GPW forces MBD: mbd_k_mesh requires a periodic cell");
+            const MbdResult mbd =
+                mbd_rsscs_pbe(Z, pos, cfg.cell, mbd_per, 0.83, 6.0, {},
+                              mbd_per ? cfg.mbd_k_mesh : nullptr);
+            for (int i = 0; i < na; ++i)
+                for (int k = 0; k < 3; ++k)
+                    forces[i][k] += mbd.forces[static_cast<std::size_t>(i)][k];
+        } else if (cfg.xdm) {
             constexpr double kRcutXdm = 50.0 * kAng2Bohr;
             const XdmResult xdm =
                 xdm_pbe(Z, pos, cfg.cell, periodic, kRcutXdm);
@@ -594,8 +607,6 @@ assemble_gpw_forces(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
         }
     }
-    // mbd: energy-only product path (no analytic forces yet).
-
     return forces;
 }
 

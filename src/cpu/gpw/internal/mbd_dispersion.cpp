@@ -1,5 +1,5 @@
 /// @file cpu/gpw/internal/mbd_dispersion.cpp
-/// @brief MBD@rsSCS free-atom and periodic Ewald + k-mesh energy (libMBD pure-Python).
+/// @brief MBD@rsSCS free-atom / periodic energy + ionic forces (libMBD pure-Python).
 
 #include "atomiverse/cpu/gpw/internal/mbd_dispersion.h"
 
@@ -613,42 +613,15 @@ std::vector<std::array<double, 3>> get_kpts(const double cell[3],
     return pts;
 }
 
-} // namespace
-
-MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
+/// @brief Energy-only MBD@rsSCS (no forces). Shared by public API + force FD.
+double mbd_rsscs_energy(const std::vector<int>& Z,
                         const std::vector<std::array<double, 3>>& pos_bohr,
                         const double cell_bohr[3], bool periodic, double beta,
                         double a_fermi, const std::vector<double>& vol_ratio,
-                        const int* k_mesh_in) {
+                        const int k_mesh[3]) {
     const std::size_t n = Z.size();
-    if (pos_bohr.size() != n)
-        throw std::runtime_error("GPW MBD: Z and pos size mismatch");
-    if (!vol_ratio.empty() && vol_ratio.size() != n)
-        throw std::runtime_error("GPW MBD: vol_ratio size mismatch");
-    if (!(beta > 0.0) || !(a_fermi > 0.0))
-        throw std::runtime_error("GPW MBD: beta and a_fermi must be positive");
-
-    int k_mesh[3] = {2, 2, 2};
-    if (k_mesh_in) {
-        k_mesh[0] = k_mesh_in[0];
-        k_mesh[1] = k_mesh_in[1];
-        k_mesh[2] = k_mesh_in[2];
-    }
-    if (periodic) {
-        if (!(cell_bohr[0] > 0.0) || !(cell_bohr[1] > 0.0)
-            || !(cell_bohr[2] > 0.0))
-            throw std::runtime_error(
-                "GPW MBD: periodic requires positive orthorhombic cell edges");
-        for (int d = 0; d < 3; ++d) {
-            if (k_mesh[d] < 1)
-                throw std::runtime_error(
-                    "GPW MBD: periodic k_mesh components must be ≥ 1");
-        }
-    }
-
-    MbdResult res;
     if (n == 0)
-        return res;
+        return 0.0;
 
     std::vector<double> alpha0(n), c6(n), rvdw(n);
     for (std::size_t i = 0; i < n; ++i) {
@@ -798,7 +771,70 @@ MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
     for (std::size_t i = 0; i < n; ++i)
         sum_omega += omega_rsscs[i];
 
-    res.energy = 0.5 * sum_sqrt_avg - 1.5 * sum_omega;
+    return 0.5 * sum_sqrt_avg - 1.5 * sum_omega;
+}
+
+} // namespace
+
+MbdResult mbd_rsscs_pbe(const std::vector<int>& Z,
+                        const std::vector<std::array<double, 3>>& pos_bohr,
+                        const double cell_bohr[3], bool periodic, double beta,
+                        double a_fermi, const std::vector<double>& vol_ratio,
+                        const int* k_mesh_in) {
+    const std::size_t n = Z.size();
+    if (pos_bohr.size() != n)
+        throw std::runtime_error("GPW MBD: Z and pos size mismatch");
+    if (!vol_ratio.empty() && vol_ratio.size() != n)
+        throw std::runtime_error("GPW MBD: vol_ratio size mismatch");
+    if (!(beta > 0.0) || !(a_fermi > 0.0))
+        throw std::runtime_error("GPW MBD: beta and a_fermi must be positive");
+
+    int k_mesh[3] = {2, 2, 2};
+    if (k_mesh_in) {
+        k_mesh[0] = k_mesh_in[0];
+        k_mesh[1] = k_mesh_in[1];
+        k_mesh[2] = k_mesh_in[2];
+    }
+    if (periodic) {
+        if (!(cell_bohr[0] > 0.0) || !(cell_bohr[1] > 0.0)
+            || !(cell_bohr[2] > 0.0))
+            throw std::runtime_error(
+                "GPW MBD: periodic requires positive orthorhombic cell edges");
+        for (int d = 0; d < 3; ++d) {
+            if (k_mesh[d] < 1)
+                throw std::runtime_error(
+                    "GPW MBD: periodic k_mesh components must be ≥ 1");
+        }
+    }
+
+    MbdResult res;
+    res.forces.assign(n, {0.0, 0.0, 0.0});
+    if (n == 0)
+        return res;
+
+    res.energy = mbd_rsscs_energy(Z, pos_bohr, cell_bohr, periodic, beta,
+                                  a_fermi, vol_ratio, k_mesh);
+
+    // Product ionic forces: central FD of the geometry-only energy that matches
+    // libMBD. Step 1e-4 Bohr is a stable compromise for the 3N×3N eigensolve
+    // (unit tests re-check vs an independent h=1e-5 FD).
+    constexpr double kH = 1.0e-4;
+    auto pos = pos_bohr;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (int d = 0; d < 3; ++d) {
+            const double save = pos[i][d];
+            pos[i][d] = save + kH;
+            const double ep =
+                mbd_rsscs_energy(Z, pos, cell_bohr, periodic, beta, a_fermi,
+                                 vol_ratio, k_mesh);
+            pos[i][d] = save - kH;
+            const double em =
+                mbd_rsscs_energy(Z, pos, cell_bohr, periodic, beta, a_fermi,
+                                 vol_ratio, k_mesh);
+            pos[i][d] = save;
+            res.forces[i][d] = -(ep - em) / (2.0 * kH);
+        }
+    }
     return res;
 }
 
