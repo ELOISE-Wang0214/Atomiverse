@@ -100,10 +100,19 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     cfg.use_ot = use_ot || (std::getenv("ATV_GPW_OT") != nullptr);
     cfg.plus_u = plus_u;
     cfg.atom_spin_guess = atom_spin_guess;
+    for (int d = 0; d < 3; ++d)
+        cfg.k_mesh[d] = k_mesh[d];
+    cfg.k_time_reversal = k_time_reversal;
+
+    const bool multi_k =
+        (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1);
 
     // XL-BOMD guards (no-fallback): auxiliary-density guess on the
-    // diagonalization path only. RKS: one total-P propagator. UKS: dual
-    // α/β propagators (same Table-I coefficients).
+    // diagonalization path only.
+    //   Γ RKS: one total-P real propagator
+    //   Γ UKS: dual α/β real propagators
+    //   multi-k RKS: one complex propagator per k (seeded on first SCF)
+    //   multi-k UKS + XL: residual (throws)
     if (xl_bomd) {
         if (cfg.use_ot)
             throw std::invalid_argument(
@@ -119,14 +128,30 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
                 "GPWEvaluator: xl_bomd and second_gen_cp are mutually "
                 "exclusive (XL = Niklasson aux density; SGCP = ASPC + "
                 "partial SCF corrector)");
-        xl_.emplace(xl_bomd_k); // validates xl_bomd_k in [3, 9]
-        if (n_alpha + n_beta > 0)
-            xl_beta_.emplace(xl_bomd_k);
-        else
+        if (multi_k && n_alpha + n_beta > 0)
+            throw std::invalid_argument(
+                "GPWEvaluator: multi-k UKS xl_bomd is not productized "
+                "(multi-k RKS XL and Γ-UKS XL are; dual-spin P_k^sigma is "
+                "a residual)");
+        // Validates xl_bomd_k ∈ [3, 9] via the real constructor even when
+        // multi-k uses XlBomdCplx (same Table I).
+        if (multi_k) {
+            xl_.reset();
             xl_beta_.reset();
+            xl_k_.clear(); // sized after the first multi-k SCF (n_kpts known)
+            (void)XlBomd(xl_bomd_k); // throw early on bad K
+        } else {
+            xl_.emplace(xl_bomd_k);
+            if (n_alpha + n_beta > 0)
+                xl_beta_.emplace(xl_bomd_k);
+            else
+                xl_beta_.reset();
+            xl_k_.clear();
+        }
     } else {
         xl_.reset();
         xl_beta_.reset();
+        xl_k_.clear();
     }
 
     // Car–Parrinello guards: RKS Γ or collinear Γ-UKS diagonalization path.
@@ -540,18 +565,26 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     // BOMD warm-start: reuse previous MO coefficients when shape matches.
     // GpwDft::run accepts optional guess_C; empty last_.C → core guess.
+    // Multi-k has no real C warm-start (Bloch C_k live on the k path).
     const ATV::cpu::linalg::RealMatrix* guess = nullptr;
-    if (last_.C.size() > 0) {
+    if (last_.C.size() > 0 && last_.n_kpts == 0) {
         guess = &last_.C;
     }
     // XL-BOMD: propagated auxiliary density is the SCF initial-density
     // guess (Niklasson dissipative recursion, seeded on the first step).
-    // RKS: total P on guess_P. UKS: P_α / P_β on guess_P / guess_P_beta.
+    // Γ RKS: total P on guess_P. Γ UKS: P_α / P_β. multi-k RKS: P_k vector.
     const ATV::cpu::linalg::RealMatrix* guess_p =
         (xl_ && xl_->ready()) ? &xl_->aux() : nullptr;
     const ATV::cpu::linalg::RealMatrix* guess_p_beta =
         (xl_beta_ && xl_beta_->ready()) ? &xl_beta_->aux() : nullptr;
-    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta);
+    const std::vector<ATV::cpu::linalg::CplxMatrix>* guess_p_k = nullptr;
+    if (!xl_k_.empty() && xl_k_[0].ready()) {
+        xl_guess_p_k_.resize(xl_k_.size());
+        for (std::size_t ik = 0; ik < xl_k_.size(); ++ik)
+            xl_guess_p_k_[ik] = xl_k_[ik].aux();
+        guess_p_k = &xl_guess_p_k_;
+    }
+    last_ = solver_->run(atoms, guess, guess_p, guess_p_beta, guess_p_k);
     if (xl_) {
         if (last_.converged && last_.P.size() > 0) {
             xl_->advance(last_.P);
@@ -568,16 +601,45 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 xl_beta_->reset();
         }
     }
+    // Multi-k XL: advance one complex propagator per k from SCF P_k.
+    if (xl_bomd && last_.n_kpts > 0) {
+        if (last_.converged && static_cast<int>(last_.P_k.size()) == last_.n_kpts
+            && last_.n_kpts > 0) {
+            if (xl_k_.empty()) {
+                xl_k_.reserve(static_cast<std::size_t>(last_.n_kpts));
+                for (int ik = 0; ik < last_.n_kpts; ++ik)
+                    xl_k_.emplace_back(xl_bomd_k);
+            } else if (static_cast<int>(xl_k_.size()) != last_.n_kpts) {
+                // Mesh change / discontinuity — reseat.
+                xl_k_.clear();
+                xl_k_.reserve(static_cast<std::size_t>(last_.n_kpts));
+                for (int ik = 0; ik < last_.n_kpts; ++ik)
+                    xl_k_.emplace_back(xl_bomd_k);
+            }
+            for (int ik = 0; ik < last_.n_kpts; ++ik)
+                xl_k_[static_cast<std::size_t>(ik)].advance(
+                    last_.P_k[static_cast<std::size_t>(ik)]);
+        } else {
+            for (auto& xl : xl_k_)
+                xl.reset();
+        }
+    }
     frame.meta.get(kEnergy) = last_.e_total * ATV::units::kHartreeInEv;
 
     if (compute_forces) {
         // Prefer forces at the density just converged (no second SCF). UKS has
         // no guess_C warm-start, so a re-SCF would double wall; RKS cold
         // re-SCF is kept only when the energy result lacks orbitals (should
-        // not happen after a normal converged run).
+        // not happen after a normal converged run). Multi-k uses C_occ_k.
         std::vector<std::array<double, 3>> F;
-        if (last_.converged && last_.P.size() > 0 && last_.C.size() > 0
-            && !last_.eps.empty()) {
+        const bool gamma_payload =
+            last_.converged && last_.P.size() > 0 && last_.C.size() > 0
+            && !last_.eps.empty();
+        const bool k_payload =
+            last_.converged && last_.n_kpts > 0
+            && static_cast<int>(last_.C_occ_k.size()) == last_.n_kpts
+            && static_cast<int>(last_.eps_k.size()) == last_.n_kpts;
+        if (gamma_payload || k_payload) {
             F = gpw_forces_from_scf(atoms, *solver_, last_);
         } else {
             // XL mode warm-starts the force-pass SCF from the MO coefficients

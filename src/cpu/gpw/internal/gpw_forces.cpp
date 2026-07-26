@@ -1230,12 +1230,15 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const GpwResult& scf) {
     if (!scf.converged)
         throw std::runtime_error("gpw_forces_from_scf: SCF did not converge");
+
+    // Multi-k payload: C_occ_k / eps_k (no real Γ P/C). Dispatch first so a
+    // k-path result is never rejected for missing Γ orbitals.
+    if (uses_kpath(cfg) || scf.n_kpts > 0)
+        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
+
     if (scf.P.size() == 0 || scf.C.size() == 0 || scf.eps.empty())
         throw std::runtime_error(
             "gpw_forces_from_scf: converged result missing P/C/eps");
-
-    if (uses_kpath(cfg))
-        return assemble_gpw_forces_kpoints(atoms, cfg, scf);
 
     if (cfg.is_uks()) {
         // W = Wα + Wβ with occupancy 1 per spin orbital.

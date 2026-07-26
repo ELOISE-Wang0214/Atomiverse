@@ -113,12 +113,21 @@ class GPWEvaluator : public cpu::GPW {
     /// O₂ GTH-q6 triplet: n_alpha=7, n_beta=5.
     int n_alpha = 0;
     int n_beta = 0;
+    /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`).
+    ///        `{1,1,1}` keeps the Γ-point path. Non-Γ engages multi-k RKS/UKS
+    ///        SCF and (with `xl_bomd`) multi-k XL on closed-shell RKS.
+    int k_mesh[3] = {1, 1, 1};
+    /// @brief Fold ±k pairs by time reversal (default true; set false for
+    ///        an explicit unreduced mesh, e.g. multi-k XL regression).
+    bool k_time_reversal = true;
     /// @brief Extended-Lagrangian BOMD (dissipative XL-BOMD, Niklasson
     ///        JCP 130, 214109 (2009)): propagate an auxiliary density as the
-    ///        SCF initial guess across MD steps. Closed-shell RKS (one
-    ///        total \(P\)) or Γ-UKS (independent \(P_\alpha, P_\beta\))
-    ///        diagonalization path — `build()` throws when combined with
-    ///        `use_ot`, `cpmd`, or `second_gen_cp`. Units-free switch.
+    ///        SCF initial guess across MD steps. Closed-shell RKS at Γ
+    ///        (one total \(P\)) or multi-k (one complex \(P_k\) per sampled
+    ///        k via `XlBomdCplx`), or Γ-UKS (independent \(P_\alpha,
+    ///        P_\beta\)). Diagonalization path only — `build()` throws with
+    ///        `use_ot`, `cpmd`, `second_gen_cp`, or multi-k UKS + XL.
+    ///        Units-free switch.
     bool xl_bomd = false;
     /// @brief XL-BOMD dissipation order K (Table I rows K = 3..9).
     int xl_bomd_k = 5;
@@ -206,11 +215,15 @@ class GPWEvaluator : public cpu::GPW {
     GpwResult last_{};
     std::unique_ptr<GpwDft> solver_;
     std::array<double, 6> last_stress_ha_{};
-    /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd`).
-    /// RKS: total \(P\). UKS: \(P_\alpha\).
+    /// XL-BOMD auxiliary-density propagator (engaged when `xl_bomd` on Γ).
+    /// RKS: total \(P\). UKS: \(P_\alpha\). Empty when multi-k XL is active.
     std::optional<XlBomd> xl_;
-    /// XL-BOMD β-spin propagator (UKS only; empty for RKS).
+    /// XL-BOMD β-spin propagator (Γ-UKS only; empty for RKS / multi-k).
     std::optional<XlBomd> xl_beta_;
+    /// Multi-k RKS XL: one complex propagator per sampled k (empty on Γ).
+    std::vector<XlBomdCplx> xl_k_;
+    /// Scratch for multi-k XL `guess_P_k` (lifetime covers `run`).
+    std::vector<linalg::CplxMatrix> xl_guess_p_k_;
     /// CPMD electronic propagator (engaged when `cpmd`). RKS: total occ.
     /// UKS: α channel (occ=1).
     std::optional<Cpmd> cpmd_;

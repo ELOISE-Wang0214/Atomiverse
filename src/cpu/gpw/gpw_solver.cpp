@@ -831,7 +831,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     const std::vector<double>& radii, const int mimg[3],
                     const UniformGrid& grid, const std::vector<double>& n_ion,
                     const std::vector<double>& v_locsr, double e_self,
-                    double e_d3, const std::vector<internal::KPoint>& kpts) {
+                    double e_d3, const std::vector<internal::KPoint>& kpts,
+                    const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr) {
     using internal::CplxMatrix;
     using Cplx = std::complex<double>;
     const int nb = static_cast<int>(basis.size());
@@ -840,6 +841,24 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     int n_kpts_local = 0;
     for (int ik = layout.rank; ik < nk; ik += layout.nprocs)
         ++n_kpts_local;
+
+    // Validate multi-k XL density guess before any heavy setup.
+    if (guess_P_k != nullptr) {
+        if (static_cast<int>(guess_P_k->size()) != nk)
+            throw std::invalid_argument(
+                "GPW kpoints: guess_P_k size ("
+                + std::to_string(guess_P_k->size()) + ") != n_kpts ("
+                + std::to_string(nk) + ")");
+        for (int ik = 0; ik < nk; ++ik) {
+            const auto& Pk = (*guess_P_k)[static_cast<std::size_t>(ik)];
+            if (static_cast<int>(Pk.shape(0)) != nb
+                || static_cast<int>(Pk.shape(1)) != nb)
+                throw std::invalid_argument(
+                    "GPW kpoints: guess_P_k[" + std::to_string(ik)
+                    + "] shape does not match AO basis (nb="
+                    + std::to_string(nb) + ")");
+        }
+    }
 
     // Phased analytic matrices: S_k, T_k in one image sweep; nonlocal KB.
     // Replicated on every rank for this foothold (setup not parallelized).
@@ -971,6 +990,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
     double last_n_elec = 0.0;
     double last_entropy = 0.0;
     // Cold start: fixed integer fill (smear path re-fills after first diag).
+    // XL multi-k warm start: replace P_k with the propagated auxiliary density
+    // when guess_P_k is provided (still build Cocc_k from H0 for the OT path).
     for (int ik = layout.rank; ik < nk; ik += layout.nprocs) {
         const CplxMatrix H0k = T_k[static_cast<std::size_t>(ik)]
                                + Vnl_k[static_cast<std::size_t>(ik)];
@@ -984,7 +1005,13 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         Cocc = internal::ot_orthonormalize_k(
             Cocc, S_k[static_cast<std::size_t>(ik)]);
         Cocc_k[static_cast<std::size_t>(ik)] = Cocc;
-        P_k[static_cast<std::size_t>(ik)] = density_from_fixed(C0k, cfg.n_occ);
+        if (guess_P_k != nullptr) {
+            P_k[static_cast<std::size_t>(ik)] =
+                CplxMatrix((*guess_P_k)[static_cast<std::size_t>(ik)]);
+        } else {
+            P_k[static_cast<std::size_t>(ik)] =
+                density_from_fixed(C0k, cfg.n_occ);
+        }
     }
 
     auto ctrace = [&](const CplxMatrix& P, const CplxMatrix& M) {
@@ -1099,6 +1126,8 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         res.C_occ_k.clear();
         res.C_occ_k.resize(static_cast<std::size_t>(nk));
         res.C_occ_k_beta.clear();
+        res.P_k.clear();
+        res.P_k.resize(static_cast<std::size_t>(nk));
         for (int ik = 0; ik < nk; ++ik) {
             const auto& kp = kpts[static_cast<std::size_t>(ik)];
             res.k_frac.push_back({kp.frac[0], kp.frac[1], kp.frac[2]});
@@ -1116,6 +1145,12 @@ run_gpw_scf_kpoints(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                     occ[static_cast<std::size_t>(mu) * cfg.n_occ
                         + static_cast<std::size_t>(o)] = C(mu, o);
             res.C_occ_k[static_cast<std::size_t>(ik)] = std::move(occ);
+            // XL-BOMD payload: P_k rebuilt from the final MOs (occ = 2)
+            // so the auxiliary advance tracks the SCF fixed point, not a
+            // mixed DIIS density. Every rank can rebuild every k from C_k.
+            res.P_k[static_cast<std::size_t>(ik)] =
+                density_from_fixed(res.C_k[static_cast<std::size_t>(ik)],
+                                   cfg.n_occ);
         }
     };
 
@@ -3211,10 +3246,11 @@ run_gpw_scf_kpoints_uks(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 
 /// The full GPW SCF implementation, owned and reached through
 /// `GpwDft::run`.
-static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
-                                  const GpwDft& cfg, const RealMatrix* guess_C,
-                                  const RealMatrix* guess_P,
-                                  const RealMatrix* guess_P_beta) {
+static GpwResult run_gpw_scf_impl(
+    const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+    const RealMatrix* guess_C, const RealMatrix* guess_P,
+    const RealMatrix* guess_P_beta,
+    const std::vector<linalg::CplxMatrix>* guess_P_k) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
     // setting, so every FFT plan created downstream (Poisson, GGA grad/div, MT)
@@ -3460,6 +3496,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
     // ── k-point RKS / collinear UKS branch ─────────────────────────────────
     if (use_kpath) {
+        // Real Γ density guess has no meaning on the complex k path — refuse
+        // rather than silently cold-start (would mask a broken multi-k XL).
+        if (guess_P != nullptr || guess_P_beta != nullptr)
+            throw std::invalid_argument(
+                "GpwDft::run: multi-k SCF takes complex guess_P_k (one "
+                "density per k); real guess_P / guess_P_beta are Γ-only");
         std::vector<internal::KPoint> kpts;
         if (!cfg.k_points.empty()) {
             for (std::size_t i = 0; i < cfg.k_points.size(); ++i) {
@@ -3473,12 +3515,22 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         } else {
             kpts = internal::monkhorst_pack(cfg.k_mesh, cfg.k_time_reversal);
         }
-        if (cfg.is_uks())
+        if (cfg.is_uks()) {
+            if (guess_P_k != nullptr)
+                throw std::invalid_argument(
+                    "GpwDft::run: multi-k UKS density guess (guess_P_k) is "
+                    "not productized (multi-k RKS XL only; dual-spin "
+                    "P_k^sigma is a residual)");
             return run_gpw_scf_kpoints_uks(atoms, cfg, basis, radii, mimg, grid,
                                            n_ion, v_locsr, e_self, e_d3, kpts);
+        }
         return run_gpw_scf_kpoints(atoms, cfg, basis, radii, mimg, grid, n_ion,
-                                   v_locsr, e_self, e_d3, kpts);
+                                   v_locsr, e_self, e_d3, kpts, guess_P_k);
     }
+    if (guess_P_k != nullptr)
+        throw std::invalid_argument(
+            "GpwDft::run: guess_P_k is multi-k only (Γ path takes real "
+            "guess_P / guess_P_beta)");
 
     // Core (H0) initial guess.
     // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
@@ -4847,7 +4899,8 @@ void GpwDft::build(const std::vector<GpwAtom>& reference) {
 
 GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
                        const RealMatrix* guess_C, const RealMatrix* guess_P,
-                       const RealMatrix* guess_P_beta) {
+                       const RealMatrix* guess_P_beta,
+                       const std::vector<linalg::CplxMatrix>* guess_P_k) {
     if (!built_)
         throw std::logic_error(
             "GpwDft::run called before build() — validate the "
@@ -4879,8 +4932,12 @@ GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
             // handled above. Keep the branch explicit for RKS null P.
         }
     }
-    result_ =
-        run_gpw_scf_impl(atoms, *this, guess_C, guess_P, guess_P_beta);
+    if (guess_P_k != nullptr && use_ot)
+        throw std::invalid_argument(
+            "GpwDft::run: multi-k XL density guess with use_ot is not "
+            "productized (OT parameterizes orbitals, not P_k)");
+    result_ = run_gpw_scf_impl(atoms, *this, guess_C, guess_P, guess_P_beta,
+                               guess_P_k);
     return result_;
 }
 

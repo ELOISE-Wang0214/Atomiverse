@@ -167,6 +167,10 @@ struct GpwResult {
     /// @brief Multi-k UKS β occupied MOs per k: row-major `nb × n_beta`
     ///        (empty for RKS / Γ). Paired with `eps_k_beta`.
     std::vector<std::vector<std::complex<double>>> C_occ_k_beta;
+    /// @brief Multi-k RKS complex densities \(P_k\) (nb × nb Hermitian) after
+    ///        a converged k-path SCF — the XL-BOMD advance payload. Empty for
+    ///        Γ runs and multi-k UKS (UKS multi-k XL is a residual).
+    std::vector<linalg::CplxMatrix> P_k;
     /// @}
     double s2 = 0.0; ///< ⟨S²⟩ (Löwdin; RKS → 0; UKS after convergence).
     /// @brief Mulliken spin populations m_A = Nα−Nβ [e] per atom (empty if RKS).
@@ -367,20 +371,28 @@ class GpwDft {
     ///        replaces the C0-derived \(P\). On the **RKS OT** path the
     ///        density is purified to natural orbitals that seed \(C_0\)
     ///        (SGCP OT corrector). UKS + `use_ot` + density guess still
-    ///        throws. Shape mismatch throws inside the solve.
+    ///        throws. **Γ path only** — multi-k uses `guess_P_k`. Shape
+    ///        mismatch throws inside the solve.
     /// @param guess_P_beta Optional UKS \(P_\beta\) initial density
     ///        (n_ao × n_ao). Must be null for RKS. For UKS both spin
     ///        guesses are required together (no silent cold start of one
     ///        channel).
+    /// @param guess_P_k Optional multi-k RKS initial densities (one complex
+    ///        Hermitian \(P_k\) per sampled k, size == `n_kpts` after mesh /
+    ///        TR fold). Used by multi-k XL-BOMD. Must be null on the Γ path
+    ///        and for multi-k UKS (UKS multi-k XL residual). Real `guess_P`
+    ///        with a multi-k mesh throws (no silent Γ guess on the k path).
     /// @return The owned result of this run (valid until the next `run()`).
     /// @throws std::logic_error when called before `build()`.
     /// @throws std::invalid_argument for UKS OT + density guess, UKS with
-    ///         only one spin guess, RKS + non-null `guess_P_beta`, or shape
-    ///         mismatch.
+    ///         only one spin guess, RKS + non-null `guess_P_beta`, multi-k
+    ///         + real-only density guess, multi-k UKS + `guess_P_k`, or
+    ///         shape / count mismatch.
     GpwResult& run(const std::vector<GpwAtom>& atoms,
                    const linalg::RealMatrix* guess_C = nullptr,
                    const linalg::RealMatrix* guess_P = nullptr,
-                   const linalg::RealMatrix* guess_P_beta = nullptr);
+                   const linalg::RealMatrix* guess_P_beta = nullptr,
+                   const std::vector<linalg::CplxMatrix>* guess_P_k = nullptr);
 
     /// @brief Result of the most recent `run()` (default-constructed —
     ///        `converged == false` — before the first run).
