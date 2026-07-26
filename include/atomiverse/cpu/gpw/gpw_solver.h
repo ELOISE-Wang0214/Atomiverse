@@ -13,14 +13,14 @@
 /// Scope: closed-shell (RKS, `n_occ`) at Γ **or** on a Monkhorst-Pack k mesh
 /// (`k_mesh` / explicit `k_points`; complex Bloch matrices per k, k-summed
 /// density), optional **metallic occupation smearing** (Fermi–Dirac /
-/// Methfessel–Paxton; multi-k RKS product path, Mermin free energy), and
+/// Methfessel–Paxton; multi-k RKS DIIS **and** OT, Mermin free energy), and
 /// unrestricted (UKS, `n_alpha`/`n_beta` with PADE LSD or PBE/PBEsol GGA) at
 /// Γ **or** on the same k mesh (collinear dual H_k, spin-resolved density/XC;
-/// fixed fillings only — no UKS+smear yet). Periodic neutral electrostatics
-/// via the GTH Gaussian core charge. Analytic forces cover Γ RKS/UKS and
-/// multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell stress covers Γ
-/// RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and multi-k (`gpw_stress`
-/// via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
+/// multi-k UKS + FD/MP smear productized; UKS OT + smear not productized).
+/// Periodic neutral electrostatics via the GTH Gaussian core charge. Analytic
+/// forces cover Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic
+/// cell stress covers Γ RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and
+/// multi-k (`gpw_stress` via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
 #pragma once
 
 #include <array>
@@ -278,9 +278,9 @@ class GpwDft {
     ///        path remains the default when false.
     bool hirshfeld = false; ///< Hirshfeld volume ratios for TS/MBD.
     /// @brief OT minimizer instead of diagonalization (Γ RKS / Γ UKS,
-    ///        including Γ-UKS + Dudarev DFT+U via `plus_u`, and multi-k
-    ///        closed-shell RKS). Multi-k UKS OT, multi-k OT+DFT+U, and
-    ///        OT+smearing throw at `build()`.
+    ///        including Γ-UKS + Dudarev DFT+U via `plus_u`, multi-k
+    ///        closed-shell RKS, and multi-k RKS + metallic FD/MP smearing).
+    ///        Multi-k UKS OT and multi-k OT+DFT+U throw at `build()`.
     bool use_ot = false;
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
@@ -319,8 +319,8 @@ class GpwDft {
     ///        the cold-start densities, not as an external potential.
     std::vector<double> atom_spin_guess;
     /// @brief Metallic occupation smearing (default: fixed integer fillings).
-    ///        Product path: multi-k RKS **and** multi-k collinear UKS.
-    ///        OT + smear still throws at build.
+    ///        Product path: multi-k RKS (DIIS **and** OT) and multi-k
+    ///        collinear UKS (DIIS). UKS OT + smear throws at build.
     Smearing smearing = Smearing::none;
     /// @brief Smearing width [Ry] (QE `degauss` / CP2K \(k_B T_e\)). Required
     ///        `> 0` when `smearing != none`. Converted to Ha inside the SCF.
