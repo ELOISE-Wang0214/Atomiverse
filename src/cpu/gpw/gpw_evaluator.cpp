@@ -213,8 +213,10 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     }
 
     // Second-generation CP (Kühne PRL 2007): ASPC + partial SCF corrector.
-    // RKS: one total-P ASPC (DIIS or OT corrector). UKS: dual α/β ASPC with
-    // DIIS or OT corrector (OT: spin-resolved natural-orbital warm-start).
+    // Γ RKS: one total-P real ASPC (DIIS or OT corrector).
+    // Γ UKS: dual α/β real ASPC (DIIS or OT).
+    // multi-k RKS: one complex ASPC per k (DIIS only — OT + P_k throws).
+    // multi-k UKS: dual complex ASPC per k.
     if (second_gen_cp) {
         if (!(second_gen_cp_k >= 0))
             throw std::invalid_argument(
@@ -227,14 +229,33 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
             throw std::invalid_argument(
                 "GPWEvaluator: second_gen_cp requires compute_forces=true "
                 "(forces at the post-corrector density)");
-        sgcp_aspc_.emplace(second_gen_cp_k);
-        if (n_alpha + n_beta > 0)
-            sgcp_aspc_beta_.emplace(second_gen_cp_k);
-        else
+        if (multi_k) {
+            if (cfg.use_ot)
+                throw std::invalid_argument(
+                    "GPWEvaluator: multi-k second_gen_cp requires the "
+                    "diagonalization SCF path (use_ot + P_k density guess is "
+                    "not productized)");
+            // Validate K early; k-histories sized after the first multi-k SCF
+            // (n_kpts known).
+            (void)scf::ASPCPredictorCplx(second_gen_cp_k);
+            sgcp_aspc_.reset();
             sgcp_aspc_beta_.reset();
+            sgcp_aspc_k_.clear();
+            sgcp_aspc_k_beta_.clear();
+        } else {
+            sgcp_aspc_.emplace(second_gen_cp_k);
+            if (n_alpha + n_beta > 0)
+                sgcp_aspc_beta_.emplace(second_gen_cp_k);
+            else
+                sgcp_aspc_beta_.reset();
+            sgcp_aspc_k_.clear();
+            sgcp_aspc_k_beta_.clear();
+        }
     } else {
         sgcp_aspc_.reset();
         sgcp_aspc_beta_.reset();
+        sgcp_aspc_k_.clear();
+        sgcp_aspc_k_beta_.clear();
     }
 
     solver_ = std::make_unique<GpwDft>(std::move(cfg));
@@ -408,14 +429,184 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     // Cold steps (insufficient history): full max_iter SCF, record P.
     // Warm steps: ASPC predict → SCF with corrector budget → forces at that
     // density → Kolafa correct + record (Kühne PRL 98, 066401 (2007)).
-    // RKS: total P. UKS: dual ASPC on P_α / P_β (same order K).
-    if (sgcp_aspc_) {
-        const bool uks_sgcp = static_cast<bool>(sgcp_aspc_beta_);
+    // Γ RKS: total real P. Γ UKS: dual real P_α / P_β.
+    // multi-k RKS: complex P_k per k. multi-k UKS: dual P_k^α / P_k^β.
+    if (second_gen_cp) {
+        const bool multi_k_sgcp =
+            (k_mesh[0] != 1 || k_mesh[1] != 1 || k_mesh[2] != 1);
+        const bool uks_sgcp = (n_alpha + n_beta > 0);
+
+        // ── multi-k complex ASPC on P_k ────────────────────────────────
+        if (multi_k_sgcp) {
+            const std::vector<linalg::CplxMatrix>* guess_p_k = nullptr;
+            const std::vector<linalg::CplxMatrix>* guess_p_k_beta = nullptr;
+            std::vector<linalg::CplxMatrix> P_pred_k;
+            std::vector<linalg::CplxMatrix> P_pred_k_beta;
+            bool have_pred = false;
+            if (!sgcp_aspc_k_.empty()
+                && static_cast<int>(sgcp_aspc_k_.size()) > 0
+                && sgcp_aspc_k_[0].history_size() >= second_gen_cp_k + 1) {
+                // All k share the MD step count; require every channel warm.
+                have_pred = true;
+                P_pred_k.resize(sgcp_aspc_k_.size());
+                for (std::size_t ik = 0; ik < sgcp_aspc_k_.size(); ++ik) {
+                    if (!sgcp_aspc_k_[ik].predict(P_pred_k[ik])) {
+                        have_pred = false;
+                        break;
+                    }
+                }
+                if (have_pred && uks_sgcp) {
+                    if (sgcp_aspc_k_beta_.size() != sgcp_aspc_k_.size())
+                        have_pred = false;
+                    else {
+                        P_pred_k_beta.resize(sgcp_aspc_k_beta_.size());
+                        for (std::size_t ik = 0; ik < sgcp_aspc_k_beta_.size();
+                             ++ik) {
+                            if (!sgcp_aspc_k_beta_[ik].predict(
+                                    P_pred_k_beta[ik])) {
+                                have_pred = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (have_pred) {
+                    sgcp_guess_p_k_ = P_pred_k;
+                    guess_p_k = &sgcp_guess_p_k_;
+                    if (uks_sgcp) {
+                        sgcp_guess_p_k_beta_ = P_pred_k_beta;
+                        guess_p_k_beta = &sgcp_guess_p_k_beta_;
+                    }
+                }
+            }
+
+            const int saved_max = solver_->max_iter;
+            if (have_pred)
+                solver_->max_iter = second_gen_cp_max_iter;
+            try {
+                last_ = solver_->run(atoms, /*guess_C=*/nullptr,
+                                     /*guess_P=*/nullptr,
+                                     /*guess_P_beta=*/nullptr, guess_p_k,
+                                     guess_p_k_beta);
+            } catch (...) {
+                solver_->max_iter = saved_max;
+                throw;
+            }
+            solver_->max_iter = saved_max;
+
+            auto reseat_k = [&](std::vector<scf::ASPCPredictorCplx>& xs) {
+                if (static_cast<int>(xs.size()) != last_.n_kpts) {
+                    xs.clear();
+                    xs.reserve(static_cast<std::size_t>(last_.n_kpts));
+                    for (int ik = 0; ik < last_.n_kpts; ++ik)
+                        xs.emplace_back(second_gen_cp_k);
+                }
+            };
+
+            const bool have_pk =
+                last_.n_kpts > 0
+                && static_cast<int>(last_.P_k.size()) == last_.n_kpts;
+            const bool have_pk_b =
+                !uks_sgcp
+                || (have_pk
+                    && static_cast<int>(last_.P_k_beta.size())
+                           == last_.n_kpts);
+            if (have_pk && have_pk_b) {
+                reseat_k(sgcp_aspc_k_);
+                for (int ik = 0; ik < last_.n_kpts; ++ik) {
+                    const auto& Pk = last_.P_k[static_cast<std::size_t>(ik)];
+                    auto& aspc = sgcp_aspc_k_[static_cast<std::size_t>(ik)];
+                    if (have_pred
+                        && static_cast<int>(P_pred_k.size()) == last_.n_kpts) {
+                        linalg::CplxMatrix P_corr;
+                        aspc.correct(Pk, P_pred_k[static_cast<std::size_t>(ik)],
+                                     P_corr);
+                        aspc.record(P_corr);
+                    } else {
+                        aspc.record(Pk);
+                    }
+                }
+                if (uks_sgcp) {
+                    reseat_k(sgcp_aspc_k_beta_);
+                    for (int ik = 0; ik < last_.n_kpts; ++ik) {
+                        const auto& Pk =
+                            last_.P_k_beta[static_cast<std::size_t>(ik)];
+                        auto& aspc =
+                            sgcp_aspc_k_beta_[static_cast<std::size_t>(ik)];
+                        if (have_pred
+                            && static_cast<int>(P_pred_k_beta.size())
+                                   == last_.n_kpts) {
+                            linalg::CplxMatrix P_corr;
+                            aspc.correct(
+                                Pk, P_pred_k_beta[static_cast<std::size_t>(ik)],
+                                P_corr);
+                            aspc.record(P_corr);
+                        } else {
+                            aspc.record(Pk);
+                        }
+                    }
+                } else {
+                    sgcp_aspc_k_beta_.clear();
+                }
+            } else {
+                for (auto& a : sgcp_aspc_k_)
+                    a.reset();
+                for (auto& a : sgcp_aspc_k_beta_)
+                    a.reset();
+            }
+
+            frame.meta.get(kEnergy) =
+                last_.e_total * ATV::units::kHartreeInEv;
+
+            if (compute_forces) {
+                // Multi-k forces at the post-corrector density. Partial SCF
+                // may leave converged=false; SGCP semantics are forces at
+                // the corrector state (same as Γ-UKS SGCP).
+                if (!(last_.n_kpts > 0
+                      && static_cast<int>(last_.C_occ_k.size())
+                             == last_.n_kpts
+                      && static_cast<int>(last_.eps_k.size())
+                             == last_.n_kpts
+                      && static_cast<int>(last_.P_k.size()) == last_.n_kpts))
+                    throw std::runtime_error(
+                        "GPWEvaluator: multi-k second_gen_cp force path needs "
+                        "P_k / C_occ_k / eps_k from the corrector SCF");
+                if (uks_sgcp
+                    && (static_cast<int>(last_.P_k_beta.size()) != last_.n_kpts
+                        || static_cast<int>(last_.C_occ_k_beta.size())
+                               != last_.n_kpts
+                        || static_cast<int>(last_.eps_k_beta.size())
+                               != last_.n_kpts))
+                    throw std::runtime_error(
+                        "GPWEvaluator: multi-k UKS second_gen_cp force path "
+                        "needs dual-spin k payloads from the corrector SCF");
+                GpwResult force_scf = last_;
+                force_scf.converged = true;
+                const auto F = gpw_forces_from_scf(atoms, *solver_, force_scf);
+                AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+                AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+                AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+                for (int i = 0; i < n; ++i) {
+                    sp_fx[i] = F[static_cast<std::size_t>(i)][0]
+                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fy[i] = F[static_cast<std::size_t>(i)][1]
+                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                    sp_fz[i] = F[static_cast<std::size_t>(i)][2]
+                               * ATV::units::kHartreePerBohrInEvPerAngstrom;
+                }
+            }
+            return;
+        }
+
+        // ── Γ real ASPC ────────────────────────────────────────────────
+        if (!sgcp_aspc_)
+            throw std::logic_error(
+                "GPWEvaluator: second_gen_cp Γ path missing ASPC state");
         xt::xtensor<double, 2> P_pred;
         xt::xtensor<double, 2> P_pred_beta;
         const bool have_pred_a = sgcp_aspc_->predict(P_pred);
         bool have_pred_b = false;
-        if (uks_sgcp)
+        if (uks_sgcp && sgcp_aspc_beta_)
             have_pred_b = sgcp_aspc_beta_->predict(P_pred_beta);
         // Both channels must be warm together (shared MD step count).
         const bool have_pred =
@@ -498,7 +689,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 }
             }
             record_channel(*sgcp_aspc_, last_.P, have_pred, P_pred);
-            if (uks_sgcp) {
+            if (uks_sgcp && sgcp_aspc_beta_) {
                 if (last_.P_beta.size() > 0)
                     record_channel(*sgcp_aspc_beta_, last_.P_beta, have_pred,
                                    P_pred_beta);

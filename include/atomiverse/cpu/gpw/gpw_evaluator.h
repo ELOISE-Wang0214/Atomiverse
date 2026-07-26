@@ -157,12 +157,17 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
     ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
     ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
-    ///        Niklasson XL-BOMD). Closed-shell RKS (one total \(P\)) or
-    ///        Γ-UKS (independent \(P_\alpha, P_\beta\)). **OT corrector**
-    ///        is product when `use_ot=true` (ASPC density → natural-orbital
-    ///        OT warm-start; RKS: `second-gen-cpmd-ot`; UKS dual-spin:
-    ///        `second-gen-cpmd-uks-ot`). Mutually exclusive with `cpmd` /
-    ///        `xl_bomd`. Requires `compute_forces=true`.
+    ///        Niklasson XL-BOMD).
+    ///        - **Γ RKS:** one real total \(P\) (`ASPCPredictor`)
+    ///        - **Γ UKS:** dual real \(P_\alpha, P_\beta\)
+    ///        - **multi-k RKS:** one complex ASPC per sampled \(k\) on \(P_k\)
+    ///        - **multi-k UKS:** dual complex ASPC per \(k\) (\(P_k^\alpha,
+    ///          P_k^\beta\))
+    ///        **OT corrector** is product at Γ when `use_ot=true` (RKS:
+    ///        `second-gen-cpmd-ot`; UKS: `second-gen-cpmd-uks-ot`). Multi-k +
+    ///        `use_ot` throws (solver has no \(P_k\) OT warm-start).
+    ///        Mutually exclusive with `cpmd` / `xl_bomd`. Requires
+    ///        `compute_forces=true`.
     bool second_gen_cp = false;
     /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
     int second_gen_cp_k = 3;
@@ -249,15 +254,23 @@ class GPWEvaluator : public cpu::GPW {
     std::optional<Cpmd> cpmd_beta_;
     double last_te_ev_ = 0.0;     ///< last electronic KE [eV]
     double last_etherm_ev_ = 0.0; ///< last electronic NH energy [eV]
-    /// Second-gen CP ASPC density history (engaged when `second_gen_cp`).
-    /// RKS: total \(P\). UKS: \(P_\alpha\).
+    /// Second-gen CP ASPC density history (engaged when `second_gen_cp` on Γ).
+    /// RKS: total \(P\). UKS: \(P_\alpha\). Empty when multi-k SGCP is active.
     std::optional<scf::ASPCPredictor> sgcp_aspc_;
-    /// Second-gen CP β-spin ASPC (UKS only; empty for RKS).
+    /// Second-gen CP β-spin ASPC (Γ-UKS only; empty for RKS / multi-k).
     std::optional<scf::ASPCPredictor> sgcp_aspc_beta_;
     /// Scratch for ASPC → column-major `guess_P` (lifetime covers `run`).
     linalg::RealMatrix sgcp_guess_p_;
     /// Scratch for ASPC β → column-major `guess_P_beta` (UKS).
     linalg::RealMatrix sgcp_guess_p_beta_;
+    /// Multi-k SGCP α (or RKS total): one complex ASPC per sampled k (empty on Γ).
+    std::vector<scf::ASPCPredictorCplx> sgcp_aspc_k_;
+    /// Multi-k SGCP β: one complex ASPC per k (empty for RKS / Γ).
+    std::vector<scf::ASPCPredictorCplx> sgcp_aspc_k_beta_;
+    /// Scratch for multi-k SGCP `guess_P_k` (lifetime covers `run`).
+    std::vector<linalg::CplxMatrix> sgcp_guess_p_k_;
+    /// Scratch for multi-k UKS SGCP `guess_P_k_beta`.
+    std::vector<linalg::CplxMatrix> sgcp_guess_p_k_beta_;
 };
 
 } // namespace gpw
