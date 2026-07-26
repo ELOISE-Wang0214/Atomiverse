@@ -190,25 +190,54 @@ TEST(DfptPhonon, ThrowsOnEmptyUpfWithPbe) {
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
-TEST(DfptPhonon, ThrowsOnSmearing) {
+TEST(DfptPhonon, RestrictedSmearPassesXcGate) {
+    // Restricted metallic smearing is accepted at the XC/guard layer; the
+    // missing UPF fails during SCF setup (runtime_error from the reader).
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
     method.xc = cpu::scf::XCType::LSDA;
     method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    method.extra_bands = 2;
+    DfptPhonon dfpt;
+    EXPECT_ANY_THROW(dfpt.compute(method, frame));
+}
+
+TEST(DfptPhonon, ThrowsOnSmearWithoutDegauss) {
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.0;
     DfptPhonon dfpt;
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 
 TEST(DfptPhonon, ThrowsOnSpinWithSmearing) {
-    // Collinear spin + fixed occupations is supported; smear remains out.
+    // Collinear spin + fixed occupations is supported; spin+smear remains out.
     auto frame = si_frame();
     PW method;
     method.upf_path = "unused.upf";
     method.xc = cpu::scf::XCType::LSDA;
     method.spin_polarized = true;
     method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
     DfptPhonon dfpt;
+    EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
+}
+
+TEST(DfptPhonon, ThrowsOnFiniteQWithSmearing) {
+    // Direct finite-q Sternheimer still rejects metallic smear.
+    auto frame = si_frame();
+    PW method;
+    method.upf_path = "unused.upf";
+    method.xc = cpu::scf::XCType::LSDA;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    DfptPhonon dfpt;
+    dfpt.q_frac = {0.3, 0.0, 0.0};
     EXPECT_THROW(dfpt.compute(method, frame), std::invalid_argument);
 }
 

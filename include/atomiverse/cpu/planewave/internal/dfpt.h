@@ -107,12 +107,15 @@ struct DfptQOutput {
 
 /// @brief Assemble the q = 0 DFPT force-constant matrix for `frame`.
 ///
-/// Fixed-occupation pure LSDA or pure GGA with a UPF pseudopotential
-/// (throws `std::invalid_argument` otherwise). Restricted or **collinear
-/// spin** (`method.spin_polarized`). Runs the ground-state SCF, then one
-/// self-consistent Sternheimer response per Cartesian displacement. Pure
-/// GGA uses the spectral `XCBuilder` kernel (FD of \(V_{\mathrm{xc}}[n]\) or
-/// `step_spin`); hybrids are rejected.
+/// Pure LSDA or pure GGA with a UPF pseudopotential (throws
+/// `std::invalid_argument` otherwise). Restricted **fixed occupations** or
+/// **metallic smearing** (`method.smearing` + `degauss` + `extra_bands`), or
+/// **collinear spin** with fixed occupations (`method.spin_polarized`).
+/// Spin + smear is rejected. Runs the ground-state SCF, then one
+/// self-consistent Sternheimer response per Cartesian displacement with
+/// occupations \(f_{nk}\) weighting the density and force-constant terms.
+/// Pure GGA uses the spectral `XCBuilder` kernel (FD of \(V_{\mathrm{xc}}[n]\)
+/// or `step_spin`); hybrids are rejected.
 ///
 /// @param frame  Geometry [Å], types (Z), cell.
 /// @param method Plane-wave method members (`xc` pure LSDA or pure GGA).
@@ -128,10 +131,10 @@ dfpt_gamma_force_constants(const cpu::Frame& frame, const PW& method,
 
 /// @brief Assemble the finite-q DFPT force-constant matrix \(C(q)\).
 ///
-/// Same scope as `dfpt_gamma_force_constants` (pure LSDA / pure GGA). When
-/// `q_frac` is the zero vector the result is real and matches the Γ path
-/// (use the Γ entry for production Γ runs — this path always builds k and
-/// k+q tables).
+/// Restricted fixed-occupation pure LSDA / pure GGA only (metallic smear
+/// and collinear spin at finite q are follow-ons). When `q_frac` is the
+/// zero vector the result is real and matches the Γ path (use the Γ entry
+/// for production Γ runs — this path always builds k and k+q tables).
 ///
 /// @param q_frac Phonon wavevector in fractional crystal coordinates.
 DfptQOutput dfpt_q_force_constants(const cpu::Frame& frame, const PW& method,

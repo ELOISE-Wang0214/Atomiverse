@@ -129,6 +129,12 @@ if(ATV_BUILD_PW)
         target_compile_definitions(reg_dfpt-spin-si PRIVATE
             ATV_PW_UPF_PATH="${_atv_si_upf}")
     endif()
+    # Γ DFPT with metallic occupation smearing (FD, restricted Si twin).
+    atv_add_regression(response dfpt-metallic-si)
+    if(TARGET reg_dfpt-metallic-si)
+        target_compile_definitions(reg_dfpt-metallic-si PRIVATE
+            ATV_PW_UPF_PATH="${_atv_si_upf}")
+    endif()
     atv_add_regression(pw pw-pbe-gga-si)
     atv_add_regression(pw pw-spin-polarized-o2)
     atv_add_regression(pw pw-spin-gga)
