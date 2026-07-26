@@ -3408,34 +3408,21 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 Pb = (1.0 - cfg.mix) * Pb + cfg.mix * Pb_new;
             }
         }
-        // Budget exhausted: expose last mixed densities; leave converged=false.
-        res.P = Pa;
-        res.P_beta = Pb;
-        res.C = Ca_prev;
-        res.C_beta = Cb_prev;
+        // Budget exhausted: export full orbital state at the last mixed
+        // densities (partial-SCF / second-gen CP UKS corrector consumers).
+        // Matches RKS: store_converged_state* fills P/C/eps; leave
+        // converged=false so the residual budget is honest.
         {
-            // Löwdin ⟨S²⟩ from the last MO coefficients (even if not converged).
-            const double sz =
-                0.5 * static_cast<double>(cfg.n_alpha - cfg.n_beta);
-            double ov = 0.0;
-            if (cfg.n_alpha > 0 && cfg.n_beta > 0) {
-                const RealMatrix Ca_occ =
-                    xt::view(Ca_prev, xt::all(), xt::range(0, cfg.n_alpha));
-                const RealMatrix Cb_occ =
-                    xt::view(Cb_prev, xt::all(), xt::range(0, cfg.n_beta));
-                const RealMatrix Sab = xt::linalg::dot(
-                    xt::transpose(Ca_occ), xt::linalg::dot(S, Cb_occ));
-                for (int i = 0; i < cfg.n_alpha; ++i)
-                    for (int j = 0; j < cfg.n_beta; ++j) {
-                        const double s = Sab(i, j);
-                        ov += s * s;
-                    }
-            }
-            res.s2 = sz * (sz + 1.0) + static_cast<double>(cfg.n_beta) - ov;
+            const auto rebuilt = build_uks_H(Pa, Pb);
+            const RealMatrix& Ha_final = std::get<0>(rebuilt);
+            const RealMatrix& Hb_final = std::get<1>(rebuilt);
+            res.e_total = std::get<2>(rebuilt);
+            store_converged_state_uks(res, Ha_final, Hb_final, orth().X, S,
+                                      cfg.n_alpha, cfg.n_beta, nb);
         }
         res.mulliken_spin = internal::mulliken_spin_populations(
-            Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
-        fold_dispersion(res, Pa + Pb);
+            res.P, res.P_beta, S, ao_tags, static_cast<int>(atoms.size()));
+        fold_dispersion(res, res.P + res.P_beta);
         return res;
     }
 

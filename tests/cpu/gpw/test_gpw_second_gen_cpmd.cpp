@@ -1,7 +1,7 @@
 /// @file tests/cpu/gpw/test_gpw_second_gen_cpmd.cpp
 /// @brief Unit tests: GPWEvaluator second-generation CP (ASPC + partial SCF)
-///        build() guards only. No multi-step water MD here (e2e is
-///        regressions/dynamics/second-gen-cpmd-water).
+///        build() guards only. No multi-step MD here (e2e is
+///        regressions/dynamics/second-gen-cpmd-water and second-gen-cpmd-uks).
 
 #include <stdexcept>
 
@@ -48,12 +48,25 @@ ATV::cpu::gpw::GPWEvaluator water_eval() {
 
 } // namespace
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithUks) {
+TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithUks) {
+    // Γ-UKS dual ASPC (product path, wave-7 second-gen-cpmd-uks).
     auto frame = water_frame();
     auto eval = water_eval();
     eval.second_gen_cp = true;
     eval.n_alpha = 5;
     eval.n_beta = 3;
+    ATV::cpu::Context rt;
+    ATV::cpu::BuildContext bc{rt, frame};
+    EXPECT_NO_THROW(eval.build(bc));
+}
+
+TEST(GpwEvaluatorSecondGenCp, BuildRejectsUksWithOt) {
+    auto frame = water_frame();
+    auto eval = water_eval();
+    eval.second_gen_cp = true;
+    eval.n_alpha = 5;
+    eval.n_beta = 3;
+    eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
     EXPECT_THROW(eval.build(bc), std::invalid_argument);

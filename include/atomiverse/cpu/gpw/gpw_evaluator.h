@@ -131,8 +131,9 @@ class GPWEvaluator : public cpu::GPW {
     /// @brief Second-generation Car–Parrinello MD (Kühne et al., PRL 98,
     ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
     ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
-    ///        Niklasson XL-BOMD). Closed-shell RKS Γ diagonalization only —
-    ///        `build()` throws with UKS, `use_ot`, `cpmd`, or `xl_bomd`.
+    ///        Niklasson XL-BOMD). Closed-shell RKS (one total \(P\)) or
+    ///        Γ-UKS (independent \(P_\alpha, P_\beta\)) diagonalization
+    ///        path — `build()` throws with `use_ot`, `cpmd`, or `xl_bomd`.
     ///        Requires `compute_forces=true`.
     bool second_gen_cp = false;
     /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
@@ -207,9 +208,14 @@ class GPWEvaluator : public cpu::GPW {
     std::optional<Cpmd> cpmd_beta_;
     double last_te_ev_ = 0.0; ///< last electronic KE [eV]
     /// Second-gen CP ASPC density history (engaged when `second_gen_cp`).
+    /// RKS: total \(P\). UKS: \(P_\alpha\).
     std::optional<scf::ASPCPredictor> sgcp_aspc_;
+    /// Second-gen CP β-spin ASPC (UKS only; empty for RKS).
+    std::optional<scf::ASPCPredictor> sgcp_aspc_beta_;
     /// Scratch for ASPC → column-major `guess_P` (lifetime covers `run`).
     linalg::RealMatrix sgcp_guess_p_;
+    /// Scratch for ASPC β → column-major `guess_P_beta` (UKS).
+    linalg::RealMatrix sgcp_guess_p_beta_;
 };
 
 } // namespace gpw
