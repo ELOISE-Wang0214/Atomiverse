@@ -202,4 +202,46 @@ TEST(DosResult, DefaultIsRestricted) {
     EXPECT_TRUE(dr.dos_alpha.empty());
     EXPECT_TRUE(dr.dos_beta.empty());
     EXPECT_NEAR(dr.magnetization, 0.0, 1e-15);
+    EXPECT_NEAR(dr.e_fermi_ry, 0.0, 1e-15);
+}
+
+TEST(DosCompute, SpinPlusMetallicNoLongerGuardReject) {
+    // Guard that once threw "spin-polarized + metallic smearing not
+    // supported" is gone. Without a UPF the collinear-smear path fails
+    // later in setup (I/O / toy path), not at the product gate — same
+    // pattern as DFPT spin+smear unit tests.
+    ATV::cpu::Frame frame(1);
+    frame.span(ATV::kAtom_type)[0] = 14;
+    frame.span(ATV::kAtom_x)[0] = 0;
+    frame.span(ATV::kAtom_y)[0] = 0;
+    frame.span(ATV::kAtom_z)[0] = 0;
+    frame.simbox = ATV::cpu::Box::cubic(5.0);
+
+    PW method;
+    method.spin_polarized = true;
+    method.multiplicity = 1;
+    method.smearing = Smearing::fermi_dirac;
+    method.degauss = 0.02;
+    method.extra_bands = 2;
+    method.ecut_ry = 5.0;
+    method.k_mesh = 1;
+    method.max_iter = 1;
+    method.upf_path = "/nonexistent/Si.upf";
+
+    Dos dos;
+    dos.k_mesh = 1;
+    dos.n_bands = 4;
+    dos.sigma_ry = 0.05;
+    try {
+        (void)dos.compute(method, frame);
+        // Toy/empty UPF may still complete a minimal path; either outcome
+        // is fine as long as the old spin+smear guard message is gone.
+    } catch (const std::invalid_argument& e) {
+        const std::string msg = e.what();
+        EXPECT_EQ(msg.find("spin-polarized + metallic smearing not"),
+                  std::string::npos);
+        EXPECT_EQ(msg.find("spin + metallic"), std::string::npos);
+    } catch (const std::exception&) {
+        // I/O / setup failures are expected without a real UPF.
+    }
 }

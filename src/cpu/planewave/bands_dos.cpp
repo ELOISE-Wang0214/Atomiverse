@@ -617,12 +617,8 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
             n_elec_est += internal::valence_from_z(types[i]);
     }
 
-    // ── Collinear spin-polarized DOS (fixed occupations) ──
+    // ── Collinear spin-polarized DOS (fixed occupations or metallic smear) ──
     if (method.spin_polarized) {
-        if (use_smear)
-            throw std::invalid_argument(
-                "Dos::compute: spin-polarized + metallic smearing not "
-                "supported in this foothold");
         if (method.multiplicity < 1)
             throw std::invalid_argument(
                 "Dos::compute: multiplicity must be >= 1 when spin_polarized");
@@ -634,14 +630,29 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
                 "parity");
         const int n_alpha = (n_elec_est + mag) / 2;
         const int n_beta = (n_elec_est - mag) / 2;
-        const int n_bands_dav = std::max(std::max(n_alpha, n_beta), 1);
+        // GS density: fixed N↑/N↓ from multiplicity (stable for gapped twins;
+        // same policy as DFPT spin+smear ground state). When smearing is on,
+        // Davidson/NSCF still covers empty states for the DOS mesh μ search.
+        int n_bands_dav = std::max(std::max(n_alpha, n_beta), 1);
+        if (use_smear) {
+            const int n_occ_ceil = std::max((n_elec_est + 1) / 2, 1);
+            n_bands_dav = std::max(
+                n_bands_dav, n_occ_ceil + std::max(method.extra_bands, 0));
+        }
+        // NSCF / DOS band count must cover valence (+ empties when smearing).
         if (n_bands < n_bands_dav)
             throw std::invalid_argument(
-                "Dos::compute: n_bands must be >= max(N_alpha, N_beta)");
+                "Dos::compute: n_bands must cover max(N↑,N↓) "
+                "(and ceil(n_e/2)+extra_bands when smearing)");
 
+        // Integer-fill collinear SCF for the density (local helper ignores
+        // method.smearing). The public smear path still finds μ on the denser
+        // DOS spectrum (below); self-consistent Mermin spin-density for open
+        // metals remains PW::run(spin+smear).
         internal::PWProblem prob;
-        const PWResult scf =
-            run_collinear_scf(frame, method, prob, n_alpha, n_beta, n_bands_dav);
+        const int n_bands_scf = std::max(std::max(n_alpha, n_beta), 1);
+        const PWResult scf = run_collinear_scf(frame, method, prob, n_alpha,
+                                              n_beta, n_bands_scf);
 
         DosResult out;
         out.scf_converged = scf.converged;
@@ -678,6 +689,8 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
             ws.V_eff_r[i] = veff_r[1][static_cast<std::size_t>(i)];
         auto evals_b = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
 
+        // Integer gap from seed occupations (gapped Si twin stays open under
+        // mild FD smear).
         int vk = 0, ck = 0, vb = 0, cb = 0, vs = 0, cs = 0;
         out.gap_ry = gap_from_spin_spectrum(
             evals_a, evals_b, n_alpha, n_beta, out.e_vbm_ry, out.e_cbm_ry, vk,
@@ -726,8 +739,28 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
         gaussian_dos(flat_all, flat_w_all, emin, emax, n_bins, sigma_ry,
                      out.energy_ry, out.dos, /*spin_degeneracy=*/1.0);
 
+        double e_cut = out.e_vbm_ry;
+        if (use_smear) {
+            // Recompute μ on the DOS mesh over α+β (Ry; spin_degen = 1).
+            SmearKind kind = SmearKind::fermi_dirac;
+            if (method.smearing == Smearing::methfessel_paxton)
+                kind = SmearKind::methfessel_paxton;
+            else if (method.smearing == Smearing::gaussian)
+                kind = SmearKind::gaussian;
+            std::vector<AccReal> evals_a_ry(flat_all.begin(), flat_all.end());
+            std::vector<AccReal> weights_a(flat_w_all.begin(),
+                                           flat_w_all.end());
+            const AccReal mu_ry = find_fermi_level(
+                evals_a_ry, weights_a, AccReal(prob.n_elec),
+                AccReal(method.degauss), kind, method.mp_order, AccReal(1));
+            out.e_fermi_ry = static_cast<double>(mu_ry);
+            e_cut = out.e_fermi_ry;
+        } else {
+            out.e_fermi_ry = 0;
+        }
+
         out.n_elec_to_vbm =
-            integrate_dos_to(out.energy_ry, out.dos, out.e_vbm_ry);
+            integrate_dos_to(out.energy_ry, out.dos, e_cut);
         return out;
     }
 

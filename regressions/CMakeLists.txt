@@ -172,6 +172,8 @@ if(ATV_BUILD_PW)
     atv_add_regression(pw bands-spin-metallic-si)
     # Collinear-spin DOS (fixed occ M=0 diamond Si; integral to joint VBM).
     atv_add_regression(pw dos-spin-si)
+    # Collinear spin + metallic FD smear DOS (diamond Si; integral to E_F).
+    atv_add_regression(pw dos-spin-metallic-si)
     atv_add_regression(pw berry-polarization)
     target_compile_definitions(reg_berry-polarization PRIVATE
         ATV_PW_UPF_PATH="${_atv_si_upf}")
