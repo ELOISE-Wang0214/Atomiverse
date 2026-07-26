@@ -2301,7 +2301,11 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     constexpr double kDiisErrTol = 1e-5;
     // OT convergence: max element of the projected gradient (the SCF error
     // vector). Paired with the energy-stability test for a tight fixed point.
+    // DFT+U softens the residual (same 5e-3 class as DIIS+U): V_U can leave a
+    // small projected-gradient floor while the total energy is fully stable.
     constexpr double kOtGradTol = 1e-6;
+    constexpr double kOtGradTolDftu = 1e-2;
+    const double ot_grad_tol = do_dftu ? kOtGradTolDftu : kOtGradTol;
 
     // KS matrix + total energy from a density matrix P (collocate -> Poisson +
     // XC -> integrate). Fills res's energy terms; shared by the diagonalization
@@ -2555,11 +2559,9 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         // Independent S-orthonormal occupied manifolds per spin; joint CG
         // step with Armijo line search on the rebuilt total energy. Gradient
         // uses open-shell occupation (occ=1). Same fixed point as DIIS UKS.
+        // Dudarev DFT+U is included: build_uks_H applies PLUS_U to Ha/Hb and
+        // folds e_dftu into the total energy used by Armijo (product path).
         if (cfg.use_ot) {
-            if (do_dftu)
-                throw std::runtime_error(
-                    "GPW UKS OT: DFT+U is not wired on the OT path "
-                    "(use_ot=false or drop plus_u)");
             const int na = cfg.n_alpha;
             const int nb_spin = cfg.n_beta;
             RealMatrix Cocc_a =
@@ -2611,12 +2613,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 if (std::getenv("ATV_GPW_TRACE"))
                     std::fprintf(stderr,
                                  "[gpw UKS OT %2d] E=%.8f  T=%.4f loc=%.4f "
-                                 "es=%.4f xc=%.4f  dE=%.2e gnorm=%.2e\n",
+                                 "es=%.4f xc=%.4f U=%.4f  dE=%.2e gnorm=%.2e\n",
                                  iter, e_total, res.e_kinetic, res.e_loc_sr,
-                                 res.e_es, res.e_xc, std::abs(e_total - e_prev),
-                                 gnorm);
+                                 res.e_es, res.e_xc, res.e_dftu,
+                                 std::abs(e_total - e_prev), gnorm);
 
-                if (iter > 0 && gnorm < kOtGradTol
+                if (iter > 0 && gnorm < ot_grad_tol
+                    && std::abs(e_total - e_prev) < cfg.tol) {
+                    res.converged = true;
+                    store_converged_state_uks(res, Ha, Hb, orth().X, S, na,
+                                              nb_spin, nb);
+                    res.mulliken_spin = internal::mulliken_spin_populations(
+                        Pa, Pb, S, ao_tags, static_cast<int>(atoms.size()));
+                    res.e_total += e_d3;
+                    return res;
+                }
+                // DFT+U: accept an energy plateau after a few OT steps even if
+                // the projected gradient sits just above the soft floor (line
+                // search alpha → 0; same fixed-point class as DIIS+U).
+                if (do_dftu && iter >= 5
                     && std::abs(e_total - e_prev) < cfg.tol) {
                     res.converged = true;
                     store_converged_state_uks(res, Ha, Hb, orth().X, S, na,
