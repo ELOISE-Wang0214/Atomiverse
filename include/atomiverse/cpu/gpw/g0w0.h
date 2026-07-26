@@ -7,8 +7,10 @@
 ///   (complex Bloch + **finite-\(q\) inter-\(k\)** dRPA; RI-GPW product);
 /// - **Γ / multi-k UKS** unrestricted spectral G0W0 (UGW): spin-conserving
 ///   dRPA over α→α ⊕ β→β, same-spin \(G_\sigma W\), MT \(\Sigma_x^\sigma\),
-///   spin \(v_{\mathrm{xc}}^\sigma\). Multi-k uses finite-\(q\) inter-\(k\)
-///   \(W\) (same dielectric as multi-k RKS G0W0) with spins explicit.
+///   spin \(v_{\mathrm{xc}}^\sigma\) (PADE / PBE / PBEsol / RevPBE / **RPBE**
+///   / BLYP / optB88-vdW via the same grid kernels as UKS SCF). Multi-k uses
+///   finite-\(q\) inter-\(k\) \(W\) (same dielectric as multi-k RKS G0W0)
+///   with spins explicit.
 ///
 /// Screening is direct RPA (dRPA) on the same dielectric path as
 /// `GpwDft::direct_rpa` / UMP2 RI tensors; the correlation self-energy is
