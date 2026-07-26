@@ -1155,8 +1155,8 @@ gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                       const linalg::RealMatrix& H) {
     if (cfg.is_uks())
         throw std::invalid_argument(
-            "gpw_forces_at_density: UKS fixed-density forces are not "
-            "implemented (CPMD closed-shell only)");
+            "gpw_forces_at_density: UKS requires the dual-spin overload "
+            "(P_a, C_a, H_a, P_b, C_b, H_b)");
     const int nb = static_cast<int>(P.shape(0));
     const int no = static_cast<int>(C_occ.shape(1));
     if (static_cast<int>(C_occ.shape(0)) != nb)
@@ -1178,6 +1178,65 @@ gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
         2.0
         * xt::linalg::dot(C_occ, xt::linalg::dot(Lambda, xt::transpose(C_occ)));
     return assemble_gpw_forces(atoms, cfg, P, W);
+}
+
+namespace {
+/// Off-BO energy-weighted density for one spin channel (occ=1):
+/// W = C (C† H C) C†. Empty C (n_occ=0) → zero W.
+RealMatrix energy_weighted_fixed(const RealMatrix& C, const RealMatrix& H,
+                                 int nb) {
+    if (C.size() == 0 || static_cast<int>(C.shape(1)) < 1)
+        return xt::zeros<double>({static_cast<std::size_t>(nb),
+                                  static_cast<std::size_t>(nb)});
+    const RealMatrix HC = xt::linalg::dot(H, C);
+    const RealMatrix Lambda = xt::linalg::dot(xt::transpose(C), HC);
+    return xt::linalg::dot(C, xt::linalg::dot(Lambda, xt::transpose(C)));
+}
+} // namespace
+
+std::vector<std::array<double, 3>>
+gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                      const linalg::RealMatrix& P_a,
+                      const linalg::RealMatrix& C_a,
+                      const linalg::RealMatrix& H_a,
+                      const linalg::RealMatrix& P_b,
+                      const linalg::RealMatrix& C_b,
+                      const linalg::RealMatrix& H_b) {
+    if (!cfg.is_uks())
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): cfg is not UKS — use the RKS "
+            "overload");
+    const int nb = static_cast<int>(P_a.shape(0));
+    if (static_cast<int>(P_a.shape(1)) != nb
+        || static_cast<int>(P_b.shape(0)) != nb
+        || static_cast<int>(P_b.shape(1)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): P_a/P_b must be nb × nb");
+    if (static_cast<int>(H_a.shape(0)) != nb
+        || static_cast<int>(H_a.shape(1)) != nb
+        || static_cast<int>(H_b.shape(0)) != nb
+        || static_cast<int>(H_b.shape(1)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): H_a/H_b must be nb × nb");
+    if (C_a.size() > 0 && static_cast<int>(C_a.shape(0)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): C_a rows must equal nb");
+    if (C_b.size() > 0 && static_cast<int>(C_b.shape(0)) != nb)
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): C_b rows must equal nb");
+    if (cfg.n_alpha > 0
+        && (C_a.size() == 0
+            || static_cast<int>(C_a.shape(1)) != cfg.n_alpha))
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): C_a must be nb × n_alpha");
+    if (cfg.n_beta > 0
+        && (C_b.size() == 0 || static_cast<int>(C_b.shape(1)) != cfg.n_beta))
+        throw std::invalid_argument(
+            "gpw_forces_at_density (UKS): C_b must be nb × n_beta");
+
+    RealMatrix W = energy_weighted_fixed(C_a, H_a, nb);
+    W += energy_weighted_fixed(C_b, H_b, nb);
+    return assemble_gpw_forces(atoms, cfg, P_a, W, &P_b);
 }
 
 } // namespace gpw

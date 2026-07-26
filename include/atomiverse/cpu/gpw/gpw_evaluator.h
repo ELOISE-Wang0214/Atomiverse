@@ -119,8 +119,8 @@ class GPWEvaluator : public cpu::GPW {
     ///        fictitious mass and electronic RATTLE (not BOMD, not XL-BOMD).
     ///        After one cold SCF seed, each force step is a fixed-density KS
     ///        eval + electronic VV/RATTLE + analytic forces at that density.
-    ///        Closed-shell RKS Γ only — `build()` throws with UKS, `use_ot`,
-    ///        or `xl_bomd`.
+    ///        Closed-shell RKS Γ or collinear Γ-UKS (dual α/β propagators) —
+    ///        `build()` throws with `use_ot`, `xl_bomd`, or `second_gen_cp`.
     bool cpmd = false;
     /// @brief Fictitious electron mass \(\mu\) [a.u. electron mass]. Typical
     ///        CPMD values \(10^2\)–\(10^3\). Default 400.
@@ -200,8 +200,11 @@ class GPWEvaluator : public cpu::GPW {
     std::optional<XlBomd> xl_;
     /// XL-BOMD β-spin propagator (UKS only; empty for RKS).
     std::optional<XlBomd> xl_beta_;
-    /// CPMD electronic propagator (engaged when `cpmd`).
+    /// CPMD electronic propagator (engaged when `cpmd`). RKS: total occ.
+    /// UKS: α channel (occ=1).
     std::optional<Cpmd> cpmd_;
+    /// CPMD β-spin propagator (UKS only; empty for RKS).
+    std::optional<Cpmd> cpmd_beta_;
     double last_te_ev_ = 0.0; ///< last electronic KE [eV]
     /// Second-gen CP ASPC density history (engaged when `second_gen_cp`).
     std::optional<scf::ASPCPredictor> sgcp_aspc_;

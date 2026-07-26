@@ -10,6 +10,8 @@
 ///   \(\mu\,\ddot C = -(I - S C C^\top)\,(4 H C)\)
 ///
 /// so \(\ddot C \to 0\) on the BO surface (\(H C = S C \varepsilon\)).
+/// For a collinear UKS spin channel the occupation is 1 and the force is
+/// \(\mu\,\ddot C_\sigma = -(I - S C_\sigma C_\sigma^\top)\,(2 H_\sigma C_\sigma)\).
 ///
 /// Holonomic orthonormality \(C^\top S C = I\) is enforced by **electronic
 /// RATTLE** (Andersen, J. Comput. Phys. 52, 24 (1983)): a position SHAKE stage
@@ -18,9 +20,10 @@
 /// supersedes the Löwdin-only foothold of `cpmd-water`.
 ///
 /// Unit-agnostic dense linear algebra on AO/MO matrices; consumed by
-/// `cpu::gpw::GPWEvaluator` (`cpmd = true`) on the closed-shell RKS Γ path.
-/// \(\mu\) is in atomic mass units (electron-mass units); timesteps enter in
-/// fs and are converted to a.u. time internally for the EOM.
+/// `cpu::gpw::GPWEvaluator` (`cpmd = true`) on closed-shell RKS or collinear
+/// Γ-UKS (one `Cpmd` per spin channel). \(\mu\) is in atomic mass units
+/// (electron-mass units); timesteps enter in fs and are converted to a.u.
+/// time internally for the EOM.
 #pragma once
 
 #include "atomiverse/cpu/linalg/matrix.h"
@@ -84,17 +87,20 @@ class Cpmd {
 
     /// @brief One electronic velocity-Verlet step with RATTLE (pos + vel).
     ///
-    /// Uses the S-tangent force \(F = -(I-SC C^\top)(4 H C)\) [Hartree] and
-    /// \(\Delta t\) converted from fs to a.u. time.
+    /// Uses the S-tangent force
+    /// \(F = -(I-SC C^\top)(2\cdot\mathrm{occ}\,H C)\) [Hartree] and
+    /// \(\Delta t\) converted from fs to a.u. time. Closed-shell RKS uses
+    /// default `occ = 2` (factor 4); each UKS spin channel uses `occ = 1`.
     ///
     /// @param H KS matrix at the current density [Hartree], \(n_b \times n_b\).
     /// @param S Overlap matrix at the current geometry, \(n_b \times n_b\).
     /// @param dt_fs Timestep [fs] — must match the nuclear integrator dt.
+    /// @param occ Orbital occupation (2 closed-shell, 1 per UKS spin).
     /// @throws std::logic_error before `seed`.
-    /// @throws std::invalid_argument on non-positive dt or shape mismatch.
+    /// @throws std::invalid_argument on non-positive dt/occ or shape mismatch.
     /// @throws std::runtime_error if position RATTLE fails to converge.
     void advance(const linalg::RealMatrix& H, const linalg::RealMatrix& S,
-                 double dt_fs);
+                 double dt_fs, double occ = 2.0);
 
     /// @brief Drop electronic history (geometry discontinuity / restart).
     void reset();

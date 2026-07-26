@@ -76,10 +76,11 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 /// @brief Analytic ionic forces at a **fixed** electronic state (no SCF).
 ///
 /// Car–Parrinello path: nuclei feel \(-\partial E/\partial R\) at the current
-/// density \(P = 2 C C^\top\) with energy-weighted
-/// \(W = 2\,C\,(C^\top H C)\,C^\top\) (constraint contribution off the BO
-/// surface). Same force assembly as `gpw_forces_analytic` after its SCF.
-/// Closed-shell RKS only (UKS at fixed density is out of scope for CPMD v1).
+/// density. Closed-shell RKS: \(P = 2 C C^\top\),
+/// \(W = 2\,C\,(C^\top H C)\,C^\top\). Collinear UKS: pass spin-resolved
+/// \(P_\alpha, C_\alpha, H_\alpha\) and \(P_\beta, C_\beta, H_\beta\) via the
+/// overload; \(W = W_\alpha + W_\beta\) with occupancy-1 spin channels.
+/// Same force assembly as `gpw_forces_analytic` after its SCF.
 ///
 /// @param atoms Geometry + basis/PP [Bohr].
 /// @param cfg   Grid / XC / electrostatics (same functional as the energy).
@@ -87,11 +88,35 @@ gpw_forces_from_scf(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
 /// @param C_occ Occupied MO coefficients, nb × n_occ (S-orthonormal).
 /// @param H     KS matrix at this density [Hartree], nb × nb.
 /// @return Forces [Hartree/Bohr], one xyz triple per atom.
+/// @throws std::invalid_argument when `cfg.is_uks()` (use the UKS overload).
 std::vector<std::array<double, 3>>
 gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
                       const linalg::RealMatrix& P,
                       const linalg::RealMatrix& C_occ,
                       const linalg::RealMatrix& H);
+
+/// @brief Fixed-density analytic forces for collinear Γ-UKS (CPMD path).
+///
+/// \(W_\sigma = C_\sigma (C_\sigma^\top H_\sigma C_\sigma) C_\sigma^\top\),
+/// total \(W = W_\alpha + W_\beta\); assembly uses dual \(V_{\mathrm{eff}}^\sigma\).
+///
+/// @param atoms Geometry + basis/PP [Bohr].
+/// @param cfg   Grid / XC / occupations (`is_uks()` required).
+/// @param P_a   α AO density [e], nb × nb.
+/// @param C_a   α occupied coefficients, nb × n_alpha (S-orthonormal).
+/// @param H_a   α KS matrix [Hartree], nb × nb.
+/// @param P_b   β AO density [e], nb × nb.
+/// @param C_b   β occupied coefficients, nb × n_beta (S-orthonormal; empty ok if n_beta=0).
+/// @param H_b   β KS matrix [Hartree], nb × nb.
+/// @return Forces [Hartree/Bohr], one xyz triple per atom.
+std::vector<std::array<double, 3>>
+gpw_forces_at_density(const std::vector<GpwAtom>& atoms, const GpwDft& cfg,
+                      const linalg::RealMatrix& P_a,
+                      const linalg::RealMatrix& C_a,
+                      const linalg::RealMatrix& H_a,
+                      const linalg::RealMatrix& P_b,
+                      const linalg::RealMatrix& C_b,
+                      const linalg::RealMatrix& H_b);
 
 } // namespace gpw
 } // namespace cpu
