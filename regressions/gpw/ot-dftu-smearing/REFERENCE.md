@@ -16,7 +16,7 @@ Public API: concrete `cpu::gpw::GpwDft` members `use_ot`, `plus_u`, `smearing`,
 `degauss`, `extra_bands`, `k_points` / `k_mesh`. No public `*Config`, no
 factories.
 
-**Out of scope:** multi-k UKS OT + U + smear (`ot-uks-smearing` / `ot-uks-dftu`).
+**Related:** multi-k UKS OT + U + smear is product (`ot-uks-dftu-smearing`).
 
 ## System (regression)
 
@@ -72,7 +72,7 @@ factories.
 | A4 | \(N_e = 2\) | \(10^{-5}\) |
 | A5 | \(\lvert F(U)-F(0)\rvert\) activation | \(\ge 10^{-4}\) Ha |
 | A6 | absolute vs frozen first-green | \(10^{-3}\) Ha |
-| A7 | multi-k UKS OT + U + FD throws | — |
+| A7 | multi-k UKS OT + U + FD accepted at build | — |
 
 ## Performance
 

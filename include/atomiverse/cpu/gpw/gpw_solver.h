@@ -17,9 +17,10 @@
 /// Mermin free energy), and unrestricted (UKS, `n_alpha`/`n_beta` with PADE
 /// LSD or PBE/PBEsol GGA) at Γ **or** on the same k mesh (collinear dual
 /// H_k, spin-resolved density/XC; multi-k UKS + FD/MP smear productized
-/// (DIIS **and** OT); multi-k UKS OT+DFT+U product, integer occ). Periodic
-/// neutral electrostatics via the GTH Gaussian core charge. Analytic forces
-/// cover Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell
+/// (DIIS **and** OT); multi-k UKS OT+DFT+U product for integer occ **and**
+/// for metallic smear — joint free-energy OT+U+smear). Periodic neutral
+/// electrostatics via the GTH Gaussian core charge. Analytic forces cover
+/// Γ RKS/UKS and multi-k RKS/UKS (`gpw_forces_analytic`); analytic cell
 /// stress covers Γ RKS/UKS, multi-k RKS/UKS, and Dudarev DFT+U on Γ and
 /// multi-k (`gpw_stress` via fixed-\(P_k^\sigma\) + BZ-averaged \(E_U\)).
 #pragma once
@@ -282,8 +283,8 @@ class GpwDft {
     ///        closed-shell RKS, multi-k RKS + metallic FD/MP smearing,
     ///        multi-k collinear UKS (integer **and** FD/MP smear),
     ///        multi-k RKS + Dudarev DFT+U (integer and with metallic
-    ///        smear), and multi-k UKS + Dudarev DFT+U (integer). Multi-k
-    ///        UKS OT + DFT+U + smear is not product.
+    ///        smear), and multi-k UKS + Dudarev DFT+U (integer **and**
+    ///        with metallic smear — free-energy PR+ path).
     bool use_ot = false;
     /// @brief Monkhorst–Pack k mesh (CP2K `&KPOINTS SCHEME MONKHORST-PACK`
     ///        convention: κ_d = (2r − N_d − 1)/(2N_d), so even N is a
@@ -291,9 +292,9 @@ class GpwDft {
     ///        The k-point path is periodic, single-grid, `local_pp_on_grid`
     ///        only — RKS (`n_occ`) or collinear UKS (`n_alpha`/`n_beta`);
     ///        multi-k Dudarev DFT+U (`plus_u`) is supported for SCF energy
-    ///        (DIIS and OT, RKS and UKS; RKS OT with or without metallic
-    ///        smear). Multi-k RKS/UKS OT (`use_ot`) is product including
-    ///        OT+DFT+U combos and RKS OT+DFT+U+smear; Γ-UKS OT+DFT+U is
+    ///        (DIIS and OT, RKS and UKS; with or without metallic smear).
+    ///        Multi-k RKS/UKS OT (`use_ot`) is product including all
+    ///        OT+DFT+U and OT+DFT+U+smear combos; Γ-UKS OT+DFT+U is
     ///        product on the Γ path. Multigrid / nonperiodic throw at `build()`.
     int k_mesh[3] = {1, 1, 1};
     /// @brief Fold ±k pairs by time reversal (exact for collinear RKS/UKS
