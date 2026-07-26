@@ -3,12 +3,20 @@
 
 #include "atomiverse/cpu/planewave/bands_dos.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/core/vec3.h"
 #include "atomiverse/cpu/planewave/internal/davidson.h"
+#include "atomiverse/cpu/planewave/internal/density_builder.h"
 #include "atomiverse/cpu/planewave/internal/kpoint.h"
+#include "atomiverse/cpu/planewave/internal/poisson.h"
 #include "atomiverse/cpu/planewave/internal/pw_setup.h"
 #include "atomiverse/cpu/planewave/internal/restricted_scf.h"
+#include "atomiverse/cpu/planewave/internal/scf_loop.h"
+#include "atomiverse/cpu/planewave/internal/smearing.h"
+#include "atomiverse/cpu/planewave/internal/veff_builder.h"
+#include "atomiverse/cpu/planewave/internal/xc_builder.h"
 #include "atomiverse/cpu/planewave/qe_units.h"
 
 #include <algorithm>
@@ -164,6 +172,36 @@ void gaussian_dos(const std::vector<double>& evals,
     }
 }
 
+double integrate_dos_to(const std::vector<double>& energy,
+                        const std::vector<double>& dos, double e_cut) {
+    if (energy.size() != dos.size())
+        throw std::invalid_argument(
+            "integrate_dos_to: energy/dos size mismatch");
+    if (energy.size() < 2)
+        throw std::invalid_argument("integrate_dos_to: need >= 2 bins");
+
+    const double de = (energy.back() - energy.front())
+                      / static_cast<double>(static_cast<int>(energy.size()) - 1);
+    double integ = 0;
+    for (std::size_t i = 0; i + 1 < energy.size(); ++i) {
+        if (energy[i] > e_cut)
+            break;
+        const double e1 = energy[i];
+        const double e2 = energy[i + 1];
+        const double d1 = dos[i];
+        const double d2 = dos[i + 1];
+        if (e2 <= e_cut) {
+            integ += 0.5 * (d1 + d2) * de;
+        } else {
+            const double t = (e_cut - e1) / (e2 - e1);
+            const double d_c = d1 + t * (d2 - d1);
+            integ += 0.5 * (d1 + d_c) * (e_cut - e1);
+            break;
+        }
+    }
+    return integ;
+}
+
 void Bands::set_diamond_path(int n_seg) {
     if (n_seg < 2)
         n_seg = 2;
@@ -238,9 +276,6 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
     if (method.spin_polarized)
         throw std::invalid_argument(
             "Dos::compute: spin-polarized DOS not supported in this foothold");
-    if (method.smearing != Smearing::none)
-        throw std::invalid_argument(
-            "Dos::compute: metallic smearing not supported for DOS foothold");
     if (n_bands < 2)
         throw std::invalid_argument("Dos::compute: n_bands must be >= 2");
     if (k_mesh < 1)
@@ -250,12 +285,48 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
     if (n_bins < 2)
         throw std::invalid_argument("Dos::compute: n_bins must be >= 2");
 
-    // SCF density on method.k_mesh (can be cheaper than DOS mesh).
-    internal::PWProblem prob;
-    const PWResult scf = internal::run_restricted_scf(frame, method, prob);
-    if (n_bands < prob.n_bands)
+    const bool use_smear = (method.smearing != Smearing::none);
+    if (use_smear && !(method.degauss > 0.0))
         throw std::invalid_argument(
-            "Dos::compute: n_bands must be >= occupied band count");
+            "Dos::compute: degauss must be > 0 [Ry] when smearing is enabled");
+
+    // Pre-count valence for band-count gates (UPF may refine n_elec in setup).
+    int n_elec_est = 0;
+    {
+        const int* types = frame.span(kAtom_type);
+        for (int i = 0; i < frame.nlocal(); ++i)
+            n_elec_est += internal::valence_from_z(types[i]);
+    }
+    const int n_valence_est = std::max((n_elec_est + 1) / 2, 1);
+    if (n_bands < n_valence_est)
+        throw std::invalid_argument(
+            "Dos::compute: n_bands must be >= ceil(n_e/2)");
+
+    // SCF density on method.k_mesh (can be cheaper than DOS mesh).
+    // PWProblem is non-copyable/non-assignable — construct once.
+    internal::PWProblem prob;
+    PWResult scf{};
+    int n_valence = n_valence_est;
+    if (use_smear) {
+        // Metallic SCF: fractional occupations; empty states for μ.
+        const int n_scf_bands =
+            std::max(n_bands, n_valence_est + std::max(method.extra_bands, 0));
+        internal::PoissonSolver poisson;
+        internal::XCBuilder xc;
+        internal::VeffBuilder veff;
+        internal::DensityBuilder density(AccReal(method.mix_beta),
+                                         method.pulay_depth);
+        internal::DavidsonSolver davidson(n_scf_bands,
+                                          AccReal(method.tol) * AccReal(0.1),
+                                          40);
+        scf = internal::run_scf_smear_restricted(
+            frame, method, prob, poisson, xc, veff, density, davidson,
+            n_scf_bands, "dos-smear");
+        n_valence = std::max((prob.n_elec + 1) / 2, 1);
+    } else {
+        scf = internal::run_restricted_scf(frame, method, prob);
+        n_valence = prob.n_bands;
+    }
 
     // Replace k-mesh with denser MP grid for the DOS eigenvalues.
     auto kg = internal::generate_mp_mesh(k_mesh, k_mesh, k_mesh);
@@ -263,13 +334,18 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
 
     auto evals = nscf_evals_ry(prob, n_bands, method.tol * 0.1);
     const int n_kpts = static_cast<int>(evals.size());
-    const int n_occ = prob.n_bands;
 
     DosResult out;
     out.scf_converged = scf.converged;
-    int vk = 0, ck = 0, vb = 0, cb = 0;
-    out.gap_ry = gap_from_spectrum(evals, n_occ, out.e_vbm_ry, out.e_cbm_ry, vk,
-                                   ck, vb, cb);
+    out.scf_energy_ry = scf.energy;
+
+    // Fixed-occ gap from integer valence; metallic still reports spectrum
+    // gap when at least one empty band is present (Si twin stays gapped).
+    if (n_bands > n_valence) {
+        int vk = 0, ck = 0, vb = 0, cb = 0;
+        out.gap_ry = gap_from_spectrum(evals, n_valence, out.e_vbm_ry,
+                                       out.e_cbm_ry, vk, ck, vb, cb);
+    }
 
     std::vector<double> flat_e, flat_w;
     flat_e.reserve(static_cast<std::size_t>(n_kpts * n_bands));
@@ -294,29 +370,27 @@ DosResult Dos::compute(const PW& method, const cpu::Frame& frame) const {
     gaussian_dos(flat_e, flat_w, emin, emax, n_bins, sigma_ry, out.energy_ry,
                  out.dos);
 
-    // Trapezoid integrate DOS up to VBM (closed-shell factor already in D).
-    const double de =
-        (out.energy_ry.back() - out.energy_ry.front())
-        / static_cast<double>(static_cast<int>(out.energy_ry.size()) - 1);
-    double integ = 0;
-    for (std::size_t i = 0; i + 1 < out.energy_ry.size(); ++i) {
-        if (out.energy_ry[i] > out.e_vbm_ry)
-            break;
-        const double e1 = out.energy_ry[i];
-        const double e2 = out.energy_ry[i + 1];
-        const double d1 = out.dos[i];
-        const double d2 = out.dos[i + 1];
-        if (e2 <= out.e_vbm_ry) {
-            integ += 0.5 * (d1 + d2) * de;
-        } else {
-            // Partial last bin up to VBM.
-            const double t = (out.e_vbm_ry - e1) / (e2 - e1);
-            const double d_v = d1 + t * (d2 - d1);
-            integ += 0.5 * (d1 + d_v) * (out.e_vbm_ry - e1);
-            break;
-        }
+    double e_cut = out.e_vbm_ry;
+    if (use_smear) {
+        // Recompute μ on the DOS mesh (NSCF spectrum) in Ry.
+        internal::SmearKind kind = internal::SmearKind::fermi_dirac;
+        if (method.smearing == Smearing::methfessel_paxton)
+            kind = internal::SmearKind::methfessel_paxton;
+        else if (method.smearing == Smearing::gaussian)
+            kind = internal::SmearKind::gaussian;
+        std::vector<AccReal> evals_a(flat_e.begin(), flat_e.end());
+        std::vector<AccReal> weights_a(flat_w.begin(), flat_w.end());
+        const AccReal mu_ry = internal::find_fermi_level(
+            evals_a, weights_a, AccReal(prob.n_elec), AccReal(method.degauss),
+            kind, method.mp_order, AccReal(2));
+        out.e_fermi_ry = static_cast<double>(mu_ry);
+        e_cut = out.e_fermi_ry;
+        // Also mirror SCF free-energy e_fermi when present.
+        if (std::isfinite(scf.e_fermi) && scf.e_fermi != 0.0)
+            (void)scf.e_fermi; // NSCF μ is the DOS reference
     }
-    out.n_elec_to_vbm = integ;
+
+    out.n_elec_to_vbm = integrate_dos_to(out.energy_ry, out.dos, e_cut);
     return out;
 }
 
