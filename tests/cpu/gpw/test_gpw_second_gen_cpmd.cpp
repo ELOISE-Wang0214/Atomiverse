@@ -61,6 +61,7 @@ TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithUks) {
 }
 
 TEST(GpwEvaluatorSecondGenCp, BuildRejectsUksWithOt) {
+    // UKS OT + ASPC corrector is still a follow-on (dual natural-orbital seed).
     auto frame = water_frame();
     auto eval = water_eval();
     eval.second_gen_cp = true;
@@ -72,14 +73,15 @@ TEST(GpwEvaluatorSecondGenCp, BuildRejectsUksWithOt) {
     EXPECT_THROW(eval.build(bc), std::invalid_argument);
 }
 
-TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithOt) {
+TEST(GpwEvaluatorSecondGenCp, BuildAcceptsWithOt) {
+    // RKS OT partial-SCF corrector is product (second-gen-cpmd-ot).
     auto frame = water_frame();
     auto eval = water_eval();
     eval.second_gen_cp = true;
     eval.use_ot = true;
     ATV::cpu::Context rt;
     ATV::cpu::BuildContext bc{rt, frame};
-    EXPECT_THROW(eval.build(bc), std::invalid_argument);
+    EXPECT_NO_THROW(eval.build(bc));
 }
 
 TEST(GpwEvaluatorSecondGenCp, BuildRejectsWithCpmd) {

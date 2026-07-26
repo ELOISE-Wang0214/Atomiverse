@@ -165,12 +165,13 @@ void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     }
 
     // Second-generation CP (Kühne PRL 2007): ASPC + partial SCF corrector.
-    // RKS: one total-P ASPC. UKS: dual α/β ASPC (same order K).
+    // RKS: one total-P ASPC (DIIS or OT corrector). UKS: dual α/β ASPC on
+    // the diagonalization path only (UKS OT + ASPC is a follow-on).
     if (second_gen_cp) {
-        if (cfg.use_ot)
+        if (cfg.use_ot && (n_alpha + n_beta > 0))
             throw std::invalid_argument(
-                "GPWEvaluator: second_gen_cp requires the diagonalization "
-                "SCF path (OT corrector is a follow-on)");
+                "GPWEvaluator: second_gen_cp + use_ot is productized for "
+                "closed-shell RKS only (UKS OT ASPC corrector is a follow-on)");
         if (!(second_gen_cp_k >= 0))
             throw std::invalid_argument(
                 "GPWEvaluator: second_gen_cp_k must be >= 0 (ASPC order K)");
@@ -424,8 +425,14 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
         if (last_.P.size() > 0) {
             if (!uks_sgcp) {
                 // RKS force-at-density needs H_ks / S when the SCF stored
-                // orbitals without the fixed-density payload.
+                // orbitals without the fixed-density payload. DIIS path can
+                // re-eval with max_iter=0; OT forbids fixed-density eval —
+                // OT exit must export H_ks/S itself (second-gen-cpmd-ot).
                 if (last_.H_ks.size() == 0 || last_.S.size() == 0) {
+                    if (use_ot || solver_->use_ot)
+                        throw std::runtime_error(
+                            "GPWEvaluator: second_gen_cp OT corrector did not "
+                            "export H_ks/S (required for forces at density)");
                     const int saved = solver_->max_iter;
                     solver_->max_iter = 0;
                     try {
@@ -471,6 +478,32 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
                 GpwResult force_scf = last_;
                 force_scf.converged = true;
                 F = gpw_forces_from_scf(atoms, *solver_, force_scf);
+            } else if (use_ot || solver_->use_ot) {
+                // OT corrector: prefer forces-from-scf when C/eps present
+                // (partial OT may leave converged=false). Fall back to
+                // density path when H_ks was exported.
+                if (last_.P.size() > 0 && last_.C.size() > 0
+                    && !last_.eps.empty()) {
+                    GpwResult force_scf = last_;
+                    force_scf.converged = true;
+                    F = gpw_forces_from_scf(atoms, *solver_, force_scf);
+                } else if (last_.C.size() > 0 && last_.P.size() > 0
+                           && last_.H_ks.size() > 0) {
+                    const int nb = static_cast<int>(last_.C.shape(0));
+                    const int n_occ = solver_->n_occ;
+                    linalg::RealMatrix C_occ = xt::zeros<double>(
+                        {static_cast<std::size_t>(nb),
+                         static_cast<std::size_t>(n_occ)});
+                    for (int mu = 0; mu < nb; ++mu)
+                        for (int i = 0; i < n_occ; ++i)
+                            C_occ(mu, i) = last_.C(mu, i);
+                    F = gpw_forces_at_density(atoms, *solver_, last_.P, C_occ,
+                                              last_.H_ks);
+                } else {
+                    throw std::runtime_error(
+                        "GPWEvaluator: second_gen_cp OT force path needs "
+                        "P/C(/eps or H_ks) from the corrector SCF");
+                }
             } else {
                 if (last_.C.size() == 0 || last_.P.size() == 0
                     || last_.H_ks.size() == 0)
