@@ -280,9 +280,50 @@ OT-UKS productized; **no new ○→✓ table flips** (rows already ✓ or
 still-open XDM/VV10). **Blocked = 5** unchanged. **Queue not
 exhausted** — GapCensus owns next discovery.
 
+**GapCensus wave 6 2026-07-26 (parent `dev` @ `5847a35a`):** recover —
+incomplete_count=**2** (`[~] gpw-metallic-smearing` unmerged
+`wf/gpw-metallic-smearing` @ `31b00478` feat FD/MP multi-k RKS + reg;
+`[~] gpw-vv10-ice` unmerged `wf/gpw-vv10-ice` @ `0197163f` docs/block —
+CP2K 2026.1 `TYPE VV10` enum reject, only DRSLL|LMKLL|RVV10; do not
+demote). Open CP2K/GPW/PW specs on `dev`=**0** (PySCF deferred only:
+`periodic-rhf-gamma` / `rsh-eri-cam-b3lyp`); isolation worktrees=**0**;
+leftover builds=**none**. Tree re-diff vs `docs/roadmap/dft.md` §3/§8/
+§10–12 + MD AIMD + `tools/cp2k_oracle` +
+`include/atomiverse/cpu/{gpw,planewave}`: prior pending **1**
+(`gpw-xdm-ice`) still true (no XDM symbols; §8 ○). **Added 8**
+tree-declared follow-ons with offline CP2K / literature twins:
+`gpw-uks-rpbe` (Γ/k UKS XcKind still PADE|PBE|PBEsol|RevPBE|BLYP — no
+RPBE spin path / no `xc_grid_*_rpbe_spin`; RKS RPBE ✓),
+`gpw-dftu-kpoint-stress` (multi-k DFT+U SCF ✓; `gpw_stress` k-path
+throws `plus_u`), `periodic-ump2-kpoints` (Γ UMP2 ✓; multi-k UMP2
+throws), `periodic-ugw-si` / `periodic-urpa-si` (closed-shell G0W0/dRPA
+✓; UKS throws “UGW/URPA follow-on” after UMP2 foothold),
+`gpw-hirshfeld-kpoints` (Hirshfeld TS/MBD Γ RKS ✓; k-points + UKS
+throw), `dfpt-gga-si` (PW DFPT LSDA-only gate; GGA kernel residual),
+`xl-bomd-uks` (XL-BOMD closed-shell RKS Γ only; UKS/`use_ot` throw).
+**Not added:** BP86/B97/OLYP/HCTH (molecular PySCF path); shear /
+off-diagonal stress (orthorhombic design); optB88-vdW (exchange +
+nonlocal combo after XDM/rVV10 product depth); OT multi-k / OT+DFT+U
+(build rejects); second-gen CP UKS; nonlocal vdW SCF potential /
+forces (post-SCF E_disp product); multi-k UKS stress GGA expand
+(RevPBE/BLYP — thin after PADE/PBE/PBEsol k-UKS stress ✓);
+GAPW/PAW/periodic hybrid/meta-GGA (blocked); molecular post-HF /
+classical MW / CUDA ports (other loops). Roadmap: **no ○/✓ table
+flips** (nothing new merged since harness wave 5); §3/§8/§10–12 open-
+residual prose + index GPW residual line refreshed for wave-6 queue.
+**Pending = 9**; **in_progress = 2**; **blocked = 5**.
+
 ## pending
 
 - [ ] `gpw-xdm-ice` | Exchange-hole dipole moment (XDM) dispersion | gpw | offline CP2K XDM / literature pin
+- [ ] `gpw-uks-rpbe` | Γ-UKS RPBE spin-GGA (`XcKind::RPBE`) | gpw | offline CP2K O₂ RPBE twin (after RKS RPBE + UKS revPBE ✓)
+- [ ] `gpw-dftu-kpoint-stress` | Multi-k Dudarev DFT+U analytic cell stress | gpw | offline CP2K NUMERICAL stress + PLUS_U + k-mesh
+- [ ] `periodic-ump2-kpoints` | Multi-k unrestricted GPW MP2 residual | gpw | offline CP2K UMP2_GPW + KPOINTS (Γ UMP2 foothold ≠ multi-k)
+- [ ] `periodic-ugw-si` | Unrestricted spectral G0W0 (UGW@UKS) | gpw | offline CP2K / literature UGW pin (closed-shell GW ✓)
+- [ ] `periodic-urpa-si` | Unrestricted direct RPA (URPA@UKS) | gpw | offline CP2K / literature URPA pin (closed-shell dRPA ✓)
+- [ ] `gpw-hirshfeld-kpoints` | Hirshfeld volume ratios on multi-k TS/MBD | gpw | offline CP2K Hirshfeld + k-mesh (Γ Hirshfeld ✓)
+- [ ] `dfpt-gga-si` | DFPT phonons with GGA XC kernel (PW) | response | offline CP2K / energy-FD twin (LSDA DFPT ✓)
+- [ ] `xl-bomd-uks` | Niklasson XL-BOMD on Γ-UKS GPW | dynamics | offline CP2K XL-BOMD open-shell / drift envelope (RKS XL-BOMD ✓)
 
 ## in_progress
 

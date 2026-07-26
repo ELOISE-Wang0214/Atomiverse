@@ -68,6 +68,20 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 GapCensus wave 6 (parent `dev` @ `5847a35a`):** recover
+  incomplete=**2** (`[~] gpw-metallic-smearing`, `[~] gpw-vv10-ice` on
+  unmerged `wf/*` — not demoted); CP2K specs on `dev`=0; isolation
+  worktrees=0; builds=none. Prior pending **1** (`gpw-xdm-ice`) re-
+  verified; **+8** residuals → pending **9** (`gpw-xdm-ice`,
+  `gpw-uks-rpbe`, `gpw-dftu-kpoint-stress`, `periodic-ump2-kpoints`,
+  `periodic-ugw-si`, `periodic-urpa-si`, `gpw-hirshfeld-kpoints`,
+  `dfpt-gga-si`, `xl-bomd-uks`); in_progress **2**; blocked **5**. No
+  ○/✓ table flips; §3/§8/§10–12 residual prose + index GPW residual line
+  refreshed. Next: Assign prefers incomplete first (metallic merge gate;
+  VV10 docs/block resolution) then surface-disjoint pending (one nonlocal
+  XDM; UKS RPBE free; multi-k DFT+U stress ∥ multi-k UMP2 careful share
+  with RI kernels; UGW/URPA after Γ UMP2 ✓ free of closed-shell GW/RPA
+  surface; Hirshfeld×k ∥ DFPT-GGA ∥ XL-BOMD UKS free).
 - **2026-07-26 harness wave 5 (parent `dev` @ `2d43d1c2`):** 6 merged →
   done: `gpw-dftu-kpoints`, `periodic-gw-finite-q`, `gpw-uks-revpbe`,
   `cpmd-rattle-water`, `periodic-ump2-si`, `ot-uks-o2`. Incomplete
