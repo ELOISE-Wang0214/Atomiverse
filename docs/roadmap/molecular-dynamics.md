@@ -237,11 +237,11 @@ AIMD works by binding a force-providing method/component to `md::Phase::force`
 **XL-BOMD** (Niklasson dissipative auxiliary density) ships as
 `cpu::gpw::XlBomd` + `GPWEvaluator::{xl_bomd, xl_bomd_k}` on closed-shell
 GPW (`reg_xl-bomd-water`) **and Γ-UKS** dual-spin auxiliary densities
-(`reg_xl-bomd-uks`) **and multi-k RKS** (`reg_xl-bomd-kpoints`). **Multi-k
-UKS XL** (dual-spin \(P_k^\sigma\)) remains a residual
-(`xl-bomd-uks-kpoints`). ASPC remains a separate density *predictor*
-(warm start); OT+XL stays architecturally excluded (OT parameterizes
-orbitals, not density); zero-SCF linearized forces stay ○.
+(`reg_xl-bomd-uks`) **and multi-k RKS** (`reg_xl-bomd-kpoints`) **and
+multi-k UKS** dual-spin \(P_k^\sigma\) (`reg_xl-bomd-uks-kpoints`). ASPC
+remains a separate density *predictor* (warm start); OT+XL stays
+architecturally excluded (OT parameterizes orbitals, not density);
+zero-SCF linearized forces stay ○.
 
 **Car–Parrinello MD** (fictitious electronic DOF) ships as `cpu::gpw::Cpmd` +
 `GPWEvaluator::{cpmd, cpmd_mu, cpmd_dt}` on closed-shell Γ GPW: cold SCF seed,
@@ -249,9 +249,8 @@ then fixed-density KS eval + electronic Verlet + analytic forces at that
 density (`reg_cpmd-water`) **and Γ-UKS** (`reg_cpmd-uks`). Conserved
 \(E_{\mathrm{cons}} = T_n + T_e + E_{\mathrm{KS}}\). **Electronic RATTLE**
 (Andersen constraint-preserving orbitals; `reg_cpmd-rattle-water`) is product
-on the closed-shell path. **Electronic thermostat** remains a residual
-(`cpmd-electronic-thermostat` — held behind deeper AIMD productization;
-CPMD/RATTLE/UKS/SGCP depth is product).
+on the closed-shell path. **Electronic thermostat** (Nosé–Hoover on fictitious
+electronic DOF) productizes (`reg_cpmd-electronic-thermostat`).
 
 **Second-generation Car–Parrinello MD** (Kühne et al. 2007; ASPC predictor +
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ

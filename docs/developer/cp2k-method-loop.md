@@ -68,6 +68,19 @@ args: { "mode":"exhaust", "staff_count":10, "max_waves":20, "target_branch":"dev
 
 (autonomous harness appends lines here)
 
+- **2026-07-26 harness wave 11 (parent `dev` @ `09298298`):** 9 merged →
+  done: `ugw-uks-rpbe`, `gpw-ts-forces`, `gpw-xdm-forces`,
+  `gpw-kpoint-uks-stress-gga`, `cpmd-electronic-thermostat`,
+  `xl-bomd-uks-kpoints`, `bands-metallic-si`, `dos-spin-si`,
+  `dfpt-finite-q-spin-smearing`. Incomplete remaining **0** (no `[~]`;
+  stock VV10 is **blocked**); pending residual **0** (census list emptied
+  — **not** queue exhausted); blocked **6**. Specs closed (deleted) for
+  all 9. Roadmap: **no new ○→✓ table flips** (rows already ✓ or VV10
+  still ○/blocked); residual prose closed UGW@UKS-RPBE, dedicated TS/XDM
+  force pins, multi-k UKS stress GGA expand, CPMD electronic thermostat,
+  multi-k UKS XL-BOMD, metallic bands, spin DOS, finite-q DFPT
+  spin+smear. Clearup already ran (no isolation worktrees; no builds).
+  **Queue not exhausted** — next wave GapCensus. No push.
 - **2026-07-26 GapCensus wave 11 (parent `dev` @ `96a0a7d2`):** recover
   incomplete=**1** (`[~] gpw-vv10-ice` → **blocked**, no CP2K `TYPE
   VV10`); CP2K specs on `dev`=0; isolation worktrees=0; builds=none.

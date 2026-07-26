@@ -261,12 +261,13 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (fixed-\(P\)+Pulay product; multi-SCF FD oracle; `reg_gpw-analytic-stress` /
   `reg_gpw-uks-stress` / `reg_gpw-kpoint-stress` / `reg_gpw-stress-water`)
   and **GPW CELL_OPT** (`reg_gpw-variable-cell-ice` + MOLOPT
-  `reg_gpw-variable-cell-molopt`). Open residuals after harness wave 10
-  are queue-owned (UGW@UKS-RPBE; multi-k UKS XL; metallic bands / spin
-  DOS; finite-q DFPT spin+smear; multi-k UKS stress GGA; CPMD
-  electronic thermostat; TS/XDM force pins; stock VV10 **blocked** —
-  no CP2K twin; hybrids / meta-GGA / GAPW blocked — see
-  `cp2k-method-queue.md`; queue not exhausted).
+  `reg_gpw-variable-cell-molopt`). After harness wave 11 residual prose
+  closes UGW@UKS-RPBE, multi-k UKS XL, metallic bands / spin DOS,
+  finite-q DFPT spin+smear, multi-k UKS stress GGA, CPMD electronic
+  thermostat, and TS/XDM force pins; stock VV10 remains **blocked** (no
+  CP2K twin); hybrids / meta-GGA / GAPW blocked — see
+  `cp2k-method-queue.md` (queue not exhausted — GapCensus owns next
+  discovery).
 - Concrete method `GpwDft` (parameters as members; no public Config bag).
   Analytic Γ forces → AIMD (`reg_gpw-bomd-water`); keep member
   `local_pp_on_grid` consistent between energy and gradient
@@ -291,22 +292,23 @@ watch out for in the ones that do. Snapshot: **2026-07-23** on `dev`.
   (Γ + multi-k: `reg_periodic-rpa-si` / `reg_periodic-rpa-kpoints` /
   `reg_periodic-rpa-finite-q` / `reg_periodic-urpa-si` /
   `reg_periodic-urpa-kpoints`); Γ + multi-k + **finite-q** spectral G0W0 +
-  **UGW@UKS** (Γ + multi-k: `reg_periodic-gw-si` / `reg_periodic-gw-kpoints` /
-  `reg_periodic-gw-finite-q` / `reg_periodic-ugw-si` /
-  `reg_periodic-ugw-kpoints`; residual UGW@UKS-RPBE `ugw-uks-rpbe`).
+  **UGW@UKS** (Γ + multi-k + RPBE: `reg_periodic-gw-si` /
+  `reg_periodic-gw-kpoints` / `reg_periodic-gw-finite-q` /
+  `reg_periodic-ugw-si` / `reg_periodic-ugw-kpoints` /
+  `reg_ugw-uks-rpbe`).
 - DFT-D3 zero-damping, **D3(BJ)**, **D4** (+ analytic stress + ionic
   forces), **TS**, free-atom **MBD** (+ Γ and multi-k ionic forces),
   **Hirshfeld-scaled MBD** (Γ + multi-k RKS + Γ-UKS), **periodic Ewald
   MBD**, **XDM**, **vdW-DF DRSLL**, **vdW-DF2 LMKLL**, **rVV10**,
   **optB88-vdW**, and **nonlocal SCF vdW pot/forces** on GPW (PBE params;
   `reg_gpw-pbe-d3bj-ice`, `reg_gpw-d4-water`, `reg_gpw-d4-stress`,
-  `reg_gpw-d4-forces`, `reg_gpw-ts-ice`, `reg_gpw-mbd-ice`,
-  `reg_gpw-mbd-forces`, `reg_gpw-mbd-kpoint-forces`,
+  `reg_gpw-d4-forces`, `reg_gpw-ts-ice`, `reg_gpw-ts-forces`,
+  `reg_gpw-mbd-ice`, `reg_gpw-mbd-forces`, `reg_gpw-mbd-kpoint-forces`,
   `reg_gpw-mbd-hirshfeld`, `reg_gpw-hirshfeld-kpoints`,
   `reg_gpw-hirshfeld-uks`, `reg_gpw-mbd-periodic`, `reg_gpw-xdm-ice`,
-  `reg_gpw-vdw-df-ice`, `reg_gpw-vdw-df2-ice`, `reg_gpw-rvv10-ice`,
-  `reg_gpw-optb88-vdw`, `reg_gpw-vdw-scf-potential`). Molecular Gaussian
-  path also has **DFT-D3(BJ)** / **D4**.
+  `reg_gpw-xdm-forces`, `reg_gpw-vdw-df-ice`, `reg_gpw-vdw-df2-ice`,
+  `reg_gpw-rvv10-ice`, `reg_gpw-optb88-vdw`, `reg_gpw-vdw-scf-potential`).
+  Molecular Gaussian path also has **DFT-D3(BJ)** / **D4**.
 
 ### Semiempirical
 

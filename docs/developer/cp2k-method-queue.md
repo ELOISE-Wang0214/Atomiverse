@@ -575,21 +575,40 @@ MD AIMD open-residual prose + index GPW residual line refreshed;
 **VV10** remains ○ with blocked note. **Pending = 9**; **in_progress
 = 0**; **blocked = 6**.
 
+**Harness wave 11 2026-07-26 (parent `dev` @ `09298298`):** 9 staffed
+slugs merged → `## done` (`ugw-uks-rpbe`, `gpw-ts-forces`, `gpw-xdm-forces`,
+`gpw-kpoint-uks-stress-gga`, `cpmd-electronic-thermostat`,
+`xl-bomd-uks-kpoints`, `bands-metallic-si`, `dos-spin-si`,
+`dfpt-finite-q-spin-smearing`). Specs deleted on close. **Pending residual
+= 0** (staff batch emptied the census pending list — **not** queue
+exhausted; GapCensus owns next discovery). **in_progress = 0** (no `[~]`;
+stock VV10 stays **blocked**). Roadmap: **no new ○→✓ table flips**
+(capability rows already ✓ or VV10 still ○/blocked); residual prose closed
+UGW@UKS-RPBE, dedicated TS/XDM force pins, multi-k UKS stress GGA expand,
+CPMD electronic thermostat, multi-k UKS XL-BOMD, metallic bands, spin DOS,
+finite-q DFPT spin+smear. **Blocked = 6** unchanged. **Queue not
+exhausted** — GapCensus owns next discovery.
+
 ## pending
 
-- [ ] `ugw-uks-rpbe` | UGW@UKS with RPBE spin XC | gpw | residual: UGW + RPBE UKS SCF ✓; g0w0 RPBE spin XC throw
-- [ ] `xl-bomd-uks-kpoints` | Multi-k UKS XL-BOMD (dual-spin \(P_k^\sigma\)) | dynamics | residual: multi-k RKS XL + Γ-UKS XL ✓; multi-k UKS XL throw
-- [ ] `bands-metallic-si` | Metallic occupation band structure (PW) | pw | residual: Bands::compute throws metallic smear after dos-metallic-si ✓
-- [ ] `dos-spin-si` | Collinear-spin DOS (PW) | pw | residual: Dos::compute throws spin foothold after bands-spin-si ✓
-- [ ] `dfpt-finite-q-spin-smearing` | Finite-q DFPT collinear spin + metallic smear (PW) | response | residual: Γ spin+smear ✓; finite-q spin / finite-q smear product; combo throws
-- [ ] `gpw-kpoint-uks-stress-gga` | Multi-k UKS analytic stress for RevPBE/RPBE/BLYP | gpw | residual: k-UKS stress XcKind PADE\|PBE\|PBEsol only; Γ UKS GGA ✓
-- [ ] `cpmd-electronic-thermostat` | Electronic thermostat on CPMD (GPW) | dynamics | residual: CPMD + RATTLE + UKS/SGCP ✓; electronic T residual
-- [ ] `gpw-ts-forces` | Analytic ionic forces with free-atom TS | gpw | residual: force fold exists; dedicated offline pin after MBD×k forces ✓
-- [ ] `gpw-xdm-forces` | Analytic ionic forces with free-atom XDM | gpw | residual: force fold exists; dedicated offline pin after MBD×k forces ✓
+_(empty — harness wave 11 emptied census list; **not** queue exhausted —
+GapCensus owns next discovery)_
 
 ## in_progress
 
-_(empty — incomplete `gpw-vv10-ice` resolved to blocked; no open CP2K specs / no unmerged feature `wf/*`)_
+_(empty — no incomplete `[~]`; stock VV10 is blocked; no open CP2K specs / no unmerged feature `wf/*`)_
+
+## done (harness wave 11 2026-07-26)
+
+- [x] `ugw-uks-rpbe` | UGW@UKS with RPBE spin XC | gpw | `regressions/gpw/ugw-uks-rpbe` | ratio **perf_exempt** | 2026-07-26
+- [x] `gpw-ts-forces` | Analytic ionic forces with free-atom TS | gpw | `regressions/gpw/gpw-ts-forces` | ratio **perf_exempt** (E_disp / force pin) | 2026-07-26
+- [x] `gpw-xdm-forces` | Analytic ionic forces with free-atom XDM | gpw | `regressions/gpw/gpw-xdm-forces` | ratio **perf_exempt** (E_disp / force pin) | 2026-07-26
+- [x] `gpw-kpoint-uks-stress-gga` | Multi-k UKS analytic stress for RevPBE/RPBE/BLYP | gpw | `regressions/gpw/gpw-kpoint-uks-stress-gga` | ratio **perf_exempt** | 2026-07-26
+- [x] `cpmd-electronic-thermostat` | Electronic thermostat on CPMD (GPW) | dynamics | `regressions/dynamics/cpmd-electronic-thermostat` | ratio **perf_exempt** (NVE / thermostat envelope) | 2026-07-26
+- [x] `xl-bomd-uks-kpoints` | Multi-k UKS XL-BOMD (dual-spin \(P_k^\sigma\)) | dynamics | `regressions/dynamics/xl-bomd-uks-kpoints` | ratio **perf_exempt** (NVE drift) | 2026-07-26
+- [x] `bands-metallic-si` | Metallic occupation band structure (PW) | pw | `regressions/pw/bands-metallic-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `dos-spin-si` | Collinear-spin DOS (PW) | pw | `regressions/pw/dos-spin-si` | ratio **perf_exempt** | 2026-07-26
+- [x] `dfpt-finite-q-spin-smearing` | Finite-q DFPT collinear spin + metallic smear (PW) | response | `regressions/response/dfpt-finite-q-spin-smearing` | ratio **perf_exempt** | 2026-07-26
 
 ## done (harness wave 10 2026-07-26)
 
