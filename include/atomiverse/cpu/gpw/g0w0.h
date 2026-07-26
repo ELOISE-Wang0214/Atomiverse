@@ -5,9 +5,10 @@
 /// analogue of molecular `RHF::g0w0()` (`cpu/scf/g0w0.h`). Supports:
 /// - **Γ RKS** (real MOs; RI-GPW or Poisson) and **multi-k RKS**
 ///   (complex Bloch + **finite-\(q\) inter-\(k\)** dRPA; RI-GPW product);
-/// - **Γ UKS** unrestricted spectral G0W0 (UGW): spin-conserving dRPA over
-///   α→α ⊕ β→β, same-spin \(G_\sigma W\), MT \(\Sigma_x^\sigma\), spin
-///   \(v_{\mathrm{xc}}^\sigma\). Multi-k UGW is a follow-on.
+/// - **Γ / multi-k UKS** unrestricted spectral G0W0 (UGW): spin-conserving
+///   dRPA over α→α ⊕ β→β, same-spin \(G_\sigma W\), MT \(\Sigma_x^\sigma\),
+///   spin \(v_{\mathrm{xc}}^\sigma\). Multi-k uses finite-\(q\) inter-\(k\)
+///   \(W\) (same dielectric as multi-k RKS G0W0) with spins explicit.
 ///
 /// Screening is direct RPA (dRPA) on the same dielectric path as
 /// `GpwDft::direct_rpa` / UMP2 RI tensors; the correlation self-energy is
@@ -33,7 +34,7 @@ namespace cpu {
 namespace gpw {
 
 /// @brief Diagonal spectral G0W0 quasiparticle energies of a GPW KS
-///        reference (Γ/multi-k RKS, or Γ UKS UGW).
+///        reference (Γ/multi-k RKS, or Γ/multi-k UKS UGW).
 struct G0W0Result {
     /// @brief Quasiparticle orbital energies \(\varepsilon_p^{\mathrm{QP}}\)
     ///        [Hartree], same order as the KS MO spectrum (not re-sorted).
