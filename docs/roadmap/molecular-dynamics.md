@@ -253,8 +253,8 @@ on the closed-shell path. Electronic thermostat remains a residual.
 partial-SCF corrector, no fictitious electronic mass) ships on closed-shell Γ
 GPW via `GPWEvaluator::{second_gen_cp, second_gen_cp_k, second_gen_cp_max_iter}`
 (`reg_second-gen-cpmd-water`) **and Γ-UKS** (`reg_second-gen-cpmd-uks`).
-OT corrector path still throws (`second_gen_cp` requires diagonalization SCF;
-queued as `second-gen-cpmd-ot`).
+**RKS OT corrector** is product (`use_ot=true` with ASPC natural-orbital
+warm-start; `reg_second-gen-cpmd-ot`). Γ-UKS OT + SGCP remains a residual.
 
 ## 8. Nuclear Quantum Dynamics
 

@@ -3498,10 +3498,10 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 Pb(i, i) = 0.0;
         }
     }
-    // XL-BOMD / warm density start (guards for OT / partial UKS live in
-    // GpwDft::run): the propagated auxiliary density replaces the
+    // XL-BOMD / SGCP ASPC warm density start (UKS partial-guess guards live
+    // in GpwDft::run): the propagated / predicted density replaces the
     // C0-derived initial P (RKS) or Pa/Pb (UKS) for the first Fock build.
-    // C_prev (level shift) still comes from C0.
+    // C_prev (level shift) still comes from C0 on the DIIS path.
     if (guess_P != nullptr) {
         if (static_cast<int>(guess_P->shape(0)) != nb
             || static_cast<int>(guess_P->shape(1)) != nb)
@@ -3529,6 +3529,25 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             P = Pa + Pb;
         } else {
             P = *guess_P;
+        }
+        // RKS OT: purify ASPC/XL density to natural orbitals → C0 so the
+        // OT manifold starts on the predicted density (not a silent ignore
+        // of guess_P, and not the previous-step C alone). Eigenvalues of
+        // Xᵀ P X ascend; largest occupations occupy the last columns.
+        if (cfg.use_ot && !uks) {
+            if (cfg.n_occ < 1)
+                throw std::invalid_argument(
+                    "GpwDft::run: RKS OT density warm-start requires n_occ >= 1");
+            auto [n_occ_vals, Cnat] = linalg::diagonalize_fock(P, orth().X);
+            (void)n_occ_vals;
+            C0 = xt::zeros<double>({static_cast<std::size_t>(nb),
+                                    static_cast<std::size_t>(nb)});
+            for (int i = 0; i < cfg.n_occ; ++i) {
+                const int src = nb - cfg.n_occ + i;
+                for (int u = 0; u < nb; ++u)
+                    C0(u, i) = Cnat(u, src);
+            }
+            C_prev = C0;
         }
     }
     smark("init_eigensolve");
@@ -4418,6 +4437,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_converged_state(res, H, orth().X, cfg.n_occ, nb);
+                res.H_ks = H;
+                res.S = S;
                 break;
             }
             e_prev = e_total;
@@ -4489,19 +4510,31 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
                              ls_rebuilds, ms(tA, tD));
             }
         }
-        // Always expose the final occupied orbitals as res.C (first n_occ columns),
-        // so the next step / an ASPC predictor can warm-start even if this solve
-        // plateaued short of the tolerance.
+        // Always expose final occupied orbitals, density, and KS matrix so
+        // partial-SCF consumers (SGCP OT corrector, force-at-density) work
+        // even when the solve plateaued short of the tolerance.
         if (static_cast<int>(res.C.shape(0)) != nb) {
             res.C = xt::zeros<double>({nb, nb});
             for (int u = 0; u < nb; ++u)
                 for (int i = 0; i < cfg.n_occ; ++i)
                     res.C(u, i) = Cocc(u, i);
         }
-        // Final P from occupied orbitals for Hirshfeld / free-atom fold.
         {
             const RealMatrix P_final =
                 linalg::build_density_matrix(Cocc, cfg.n_occ, nb, 2.0);
+            res.P = P_final;
+            // Rebuild H once at the final density when not already stored
+            // (budget-exhausted path); converged path set H_ks on exit.
+            if (res.H_ks.size() == 0) {
+                auto [H_final, e_final] = build_H_and_energy(P_final);
+                res.H_ks = std::move(H_final);
+                res.e_total = e_final;
+                // Virtuals/eps for gpw_forces_from_scf consumers.
+                if (res.eps.empty())
+                    store_converged_state(res, res.H_ks, orth().X, cfg.n_occ,
+                                          nb);
+            }
+            res.S = S;
             fold_dispersion(res, P_final);
         }
         return res;
@@ -4722,14 +4755,15 @@ GpwResult& GpwDft::run(const std::vector<GpwAtom>& atoms,
             "GpwDft::run called before build() — validate the "
             "configuration first (no silent auto-build)");
     if (guess_P != nullptr || guess_P_beta != nullptr) {
-        // No-fallback: density guess only feeds the diagonalization/DIIS
-        // path. OT parameterizes orbitals — silently ignoring the guess
-        // would fake XL-BOMD.
-        if (use_ot)
+        // Density guess: DIIS replaces P; RKS OT purifies P → natural
+        // orbitals for C0 (SGCP ASPC corrector). UKS OT + density guess
+        // is not productized (dual-spin natural-orbital seed is a
+        // follow-on — no silent ignore of the guess).
+        if (use_ot && is_uks())
             throw std::invalid_argument(
-                "GpwDft::run: guess_P (XL-BOMD density guess) requires the "
-                "diagonalization SCF path (use_ot=true parameterizes "
-                "orbitals, not the density)");
+                "GpwDft::run: UKS density guess with use_ot is not "
+                "productized (RKS OT + ASPC density guess is the SGCP OT "
+                "path; dual-spin natural orbitals are a follow-on)");
         if (is_uks()) {
             // UKS needs both spin channels; a partial guess would cold-
             // start one channel and look like a working XL path.

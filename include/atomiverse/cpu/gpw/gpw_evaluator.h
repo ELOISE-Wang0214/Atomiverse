@@ -139,9 +139,12 @@ class GPWEvaluator : public cpu::GPW {
     ///        066401 (2007)): Kolafa ASPC density predictor + a **partial**
     ///        SCF corrector (not full BOMD, not fictitious-mass CPMD, not
     ///        Niklasson XL-BOMD). Closed-shell RKS (one total \(P\)) or
-    ///        Γ-UKS (independent \(P_\alpha, P_\beta\)) diagonalization
-    ///        path — `build()` throws with `use_ot`, `cpmd`, or `xl_bomd`.
-    ///        Requires `compute_forces=true`.
+    ///        Γ-UKS (independent \(P_\alpha, P_\beta\)) on the
+    ///        diagonalization path. **RKS OT corrector** is product when
+    ///        `use_ot=true` (ASPC \(P\) → natural-orbital OT warm-start;
+    ///        `second-gen-cpmd-ot`). Γ-UKS + OT still throws. Mutually
+    ///        exclusive with `cpmd` / `xl_bomd`. Requires
+    ///        `compute_forces=true`.
     bool second_gen_cp = false;
     /// @brief ASPC extrapolation order \(K\) (Kolafa 2004). Typical 1–4.
     int second_gen_cp_k = 3;
